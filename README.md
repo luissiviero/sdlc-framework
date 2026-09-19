@@ -1,6 +1,14 @@
-# SDLC framework — starting pack
+# SDLC framework
 
-Copy the contents of this folder into the root of the new framework repo, then open a Claude Code session there and start with: "Read HANDOFF.md and execute session 1."
+A Claude Code plugin (`plugin/`) plus a project template (`template/`) that drives any project through plan → design → build → test → deploy → maintain with profile-based human gates. `docs/OPERATING_MODEL.md` is the contract; `docs/PROGRESS.md` says what exists after each build session; `docs/NOTES.md` holds the platform facts verified against the Claude Code docs.
+
+- Tests and lint: `python tasks.py check` (or `test` / `lint` / `format`).
+- Try the plugin in a project: `claude --plugin-dir <path-to>/plugin`, then `/sdlc:sdlc-init`.
+- The framework installs itself into a project by declaring the marketplace in the project's `.claude/settings.json` (done by `/sdlc-init`), so cloud sessions and the owner's PC load the same pinned plugin.
+
+## Starting pack (session 1 input)
+
+The files below were the input to the first build session; `HANDOFF.md` is that session's brief.
 
 | File | What it is | Used by |
 |---|---|---|
