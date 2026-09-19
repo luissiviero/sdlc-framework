@@ -1,0 +1,47 @@
+{
+  "$comment": "Project settings installed by /sdlc-init (build guide step 7; article p.37 worked example, tailored). Permissions: deny secrets and raw network, allow the inner loop, disable bypass. Hooks come from the pinned plugin declared below, not from this file (decision 6). The sandbox is on where the OS supports it (macOS, Linux, WSL2) and falls back with a warning on native Windows.",
+  "permissions": {
+    "deny": [
+      "Read(.env*)",
+      "Read(**/.env*)",
+      "Read(./secrets/**)",
+      "Read(**/secrets/**)",
+      "Edit(.claude/**)",
+      "Edit(CLAUDE.md)",
+      "Edit(REVIEW.md)",
+      "Edit(sdlc.yaml)",
+      "WebFetch",
+      "Bash(curl *)",
+      "Bash(wget *)",
+      "Bash(git push --force*)",
+      "Bash(git push -f*)"
+    ],
+    "allow": [
+      "Bash(git *)",
+      "{{BUILD_RULE}}",
+      "{{TEST_RULE}}",
+      "{{LINT_RULE}}",
+      "Bash(python tasks.py *)"
+    ],
+    "disableBypassPermissionsMode": "disable"
+  },
+  "sandbox": {
+    "enabled": true,
+    "failIfUnavailable": false,
+    "allowUnsandboxedCommands": false,
+    "network": {
+      "allowedDomains": ["github.com", "*.github.com", "pypi.org", "files.pythonhosted.org"]
+    }
+  },
+  "extraKnownMarketplaces": {
+    "sdlc-framework": {
+      "source": {
+        "source": "github",
+        "repo": "{{FRAMEWORK_REPO}}"
+      }
+    }
+  },
+  "enabledPlugins": {
+    "sdlc@sdlc-framework": true
+  }
+}

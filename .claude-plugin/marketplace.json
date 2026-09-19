@@ -1,0 +1,14 @@
+{
+  "name": "sdlc-framework",
+  "owner": {
+    "name": "Luis Siviero"
+  },
+  "plugins": [
+    {
+      "name": "sdlc",
+      "source": "./plugin",
+      "version": "0.1.0",
+      "description": "Drives a project through plan, design, build, test, deploy and maintain with profile-based human gates."
+    }
+  ]
+}

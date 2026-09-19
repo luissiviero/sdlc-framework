@@ -1,0 +1,43 @@
+{
+  "$comment": "Owner-machine managed settings (decision 6, layer ii). Install as C:\\Program Files\\ClaudeCode\\managed-settings.json on Windows (admin rights), /etc/claude-code/managed-settings.json on Linux/WSL, /Library/Application Support/ClaudeCode/managed-settings.json on macOS. It applies to EVERY Claude Code session on the machine; see docs/owner-machine/README.md before installing. Cloud sessions ignore it.",
+  "permissions": {
+    "deny": [
+      "Read(.env*)",
+      "Read(**/.env*)",
+      "Read(./secrets/**)",
+      "Read(**/secrets/**)",
+      "Edit(.claude/**)",
+      "Edit(CLAUDE.md)",
+      "Edit(REVIEW.md)",
+      "Edit(sdlc.yaml)",
+      "WebFetch",
+      "Bash(curl *)",
+      "Bash(wget *)"
+    ],
+    "allow": [
+      "Bash(git *)",
+      "Bash(python *)",
+      "Bash(python3 *)",
+      "Bash(py *)",
+      "Bash(pytest*)",
+      "Bash(ruff*)",
+      "Bash(npm test*)",
+      "Bash(npm run *)",
+      "Bash(make *)"
+    ],
+    "disableBypassPermissionsMode": "disable"
+  },
+  "allowManagedPermissionRulesOnly": true,
+  "allowManagedHooksOnly": true,
+  "extraKnownMarketplaces": {
+    "sdlc-framework": {
+      "source": {
+        "source": "github",
+        "repo": "luissiviero/sdlc-framework"
+      }
+    }
+  },
+  "enabledPlugins": {
+    "sdlc@sdlc-framework": true
+  }
+}
