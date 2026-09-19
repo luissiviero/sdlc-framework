@@ -2,10 +2,12 @@
 step 15 (2); article p.23 'Run the formatter and linter after file edits so drift never
 accumulates' and 'build-phase hooks should be fast and scoped to the file that changed').
 
-Python files: ``ruff format`` then ``ruff check --fix``; anything ruff cannot fix is fed back
-to Claude as a PostToolUse ``decision: block`` reason. Other file types are ignored in this
-version; ``sdlc.yaml`` can turn the hook off with ``hooks: {format_on_edit: false}``.
-This hook fails open: a missing ruff is reported on stderr and never blocks.
+Python files inside the project: ``ruff check --fix`` (may delete lines), then ``ruff format``,
+then ``ruff check`` to report what is left; anything unfixable is fed back to Claude as a
+PostToolUse ``decision: block`` + ``reason`` (the decision-control table lists PostToolUse
+under 'Top-level decision'). Other file types are ignored in this version; ``sdlc.yaml`` can
+turn the hook off with ``hooks: {format_on_edit: false}``. This hook fails open: a missing
+ruff, a broken ruff configuration or a timeout is reported on stderr and never blocks.
 """
 
 from __future__ import annotations
@@ -18,47 +20,58 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _common import (  # noqa: E402
     FILE_TOOLS,
+    ConfigError,
     Decision,
     load_sdlc_config,
     project_dir,
+    rel_to,
     run_hook,
     target_paths,
 )
 
 PY_SUFFIXES = {".py", ".pyi"}
+STEP_TIMEOUT = 25  # seconds per ruff call; the handler's own timeout in hooks.json is 60
 
 
-def ruff_command(runner: str | None = None) -> list[str] | None:
+def ruff_command() -> list[str] | None:
     """Prefer `python -m ruff` (same interpreter as the hook), else `ruff` on PATH."""
-    probe = subprocess.run(
-        [sys.executable, "-m", "ruff", "--version"], capture_output=True, text=True
-    )
-    if probe.returncode == 0:
-        return [sys.executable, "-m", "ruff"]
+    try:
+        probe = subprocess.run(
+            [sys.executable, "-m", "ruff", "--version"], capture_output=True, text=True, timeout=10
+        )
+        if probe.returncode == 0:
+            return [sys.executable, "-m", "ruff"]
+    except (OSError, subprocess.TimeoutExpired):
+        pass
     exe = shutil.which("ruff")
     return [exe] if exe else None
 
 
 def format_file(path: Path, root: Path, run=subprocess.run) -> tuple[bool, str]:
-    """Returns (clean, message). clean=False means unfixable lint findings remain.
-    Order matters: fix first (may delete lines), then format, then report what is left."""
+    """Returns (clean, message). clean=False means unfixable lint findings remain."""
     cmd = ruff_command()
     if cmd is None:
         return True, "ruff not installed; skipped formatter/lint"
-    common = dict(cwd=str(root), capture_output=True, text=True)
+    common = dict(cwd=str(root), capture_output=True, text=True, timeout=STEP_TIMEOUT)
     run([*cmd, "check", "--fix", "--quiet", str(path)], **common)
     run([*cmd, "format", str(path)], **common)
     proc = run([*cmd, "check", "--output-format", "concise", str(path)], **common)
     if proc.returncode == 0:
         return True, ""
-    return False, (proc.stdout or proc.stderr).strip()
+    if proc.returncode == 1:  # lint findings; 2 = ruff itself failed (config error etc.)
+        return False, (proc.stdout or proc.stderr).strip()
+    return True, f"ruff could not run: {(proc.stderr or proc.stdout).strip()}"
 
 
 def decide(payload: dict, argv: list[str], env: dict[str, str] | None = None) -> Decision:
     if payload.get("tool_name") not in FILE_TOOLS:
         return Decision.allow()
     root = Path(project_dir(payload, env))
-    config = load_sdlc_config(str(root))
+    try:
+        config = load_sdlc_config(str(root))
+    except ConfigError as exc:
+        sys.stderr.write(str(exc))
+        config = {}
     hooks_cfg = config.get("hooks") or {}
     if isinstance(hooks_cfg, dict) and hooks_cfg.get("format_on_edit") is False:
         return Decision.allow()
@@ -66,6 +79,8 @@ def decide(payload: dict, argv: list[str], env: dict[str, str] | None = None) ->
         path = Path(path_s)
         if path.suffix.lower() not in PY_SUFFIXES or not path.is_file():
             continue
+        if rel_to(str(root), path_s) is None:
+            continue  # outside the project: not ours to format
         clean, message = format_file(path, root)
         if not clean:
             return Decision(

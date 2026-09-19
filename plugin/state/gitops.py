@@ -3,6 +3,7 @@ code runs on Windows, in a cloud session and on a Linux runner."""
 
 from __future__ import annotations
 
+import re
 import subprocess
 from pathlib import Path
 
@@ -35,7 +36,8 @@ def default_branch(root: Path) -> str:
     """origin/HEAD if set, else main/master if they exist, else the current branch."""
     try:
         ref = run(root, "symbolic-ref", "refs/remotes/origin/HEAD").strip()
-        return ref.rsplit("/", 1)[-1]
+        prefix = "refs/remotes/origin/"
+        return ref[len(prefix) :] if ref.startswith(prefix) else ref.rsplit("/", 1)[-1]
     except GitError:
         pass
     for cand in ("main", "master"):
@@ -46,7 +48,9 @@ def default_branch(root: Path) -> str:
 
 def checkout_branch(root: Path, branch: str, start_point: str | None = None) -> None:
     """Create the branch if missing (from start_point or HEAD), then switch to it."""
-    exists = bool(run(root, "branch", "--list", branch).strip())
+    if branch.startswith("-") or (start_point and start_point.startswith("-")):
+        raise GitError("branch and start point must not look like options")
+    exists = bool(run(root, "branch", "--list", "--", branch).strip())
     if exists:
         run(root, "checkout", branch)
     elif start_point:
@@ -87,10 +91,25 @@ def remote_url(root: Path, remote: str = "origin") -> str | None:
 def github_repo(root: Path, remote: str = "origin") -> str | None:
     """'owner/repo' from an https or ssh GitHub remote URL, else None."""
     url = remote_url(root, remote)
-    if not url or "github.com" not in url:
+    if not url:
         return None
-    tail = url.split("github.com", 1)[1].lstrip(":/")
-    if tail.endswith(".git"):
-        tail = tail[:-4]
-    parts = tail.strip("/").split("/")
-    return "/".join(parts[:2]) if len(parts) >= 2 else None
+    m = re.match(
+        r"^(?:https?://(?:[^@/]+@)?github\.com/|git@github\.com:|ssh://git@github\.com/)"
+        r"([\w.-]+)/([\w.-]+?)(?:\.git)?/?$",
+        url.strip(),
+    )
+    return f"{m.group(1)}/{m.group(2)}" if m else None
+
+
+def remote_change_ids(root: Path, remote: str = "origin") -> list[str]:
+    """Change ids that already have sdlc/<id>/* branches on the remote (best effort)."""
+    try:
+        out = run(root, "ls-remote", "--heads", remote, "refs/heads/sdlc/*")
+    except (GitError, FileNotFoundError):
+        return []
+    ids = set()
+    for line in out.splitlines():
+        parts = line.split("refs/heads/sdlc/")
+        if len(parts) == 2:
+            ids.add(parts[1].split("/")[0])
+    return sorted(i for i in ids if i.isdigit() and len(i) == 4)

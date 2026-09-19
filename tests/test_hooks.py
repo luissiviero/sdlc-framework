@@ -14,7 +14,7 @@ import pytest
 from hooks import _common, format_on_edit, plan_sync, protected_paths, secrets_check
 
 HOOKS_DIR = Path(__file__).resolve().parents[1] / "plugin" / "hooks"
-PLUGIN_ROOT = HOOKS_DIR.parent
+PLUGIN_ROOT = HOOKS_DIR.parents[1]  # the repository root is the plugin root
 
 
 def pre(tool: str, **tool_input):
@@ -37,8 +37,12 @@ def test_glob_matching_gitignore_style():
 
 def test_norm_handles_windows_paths():
     assert _common.norm("C:\\project\\src\\index.ts") == "c:/project/src/index.ts"
-    assert _common.rel_to("C:\\project", "C:\\project\\CLAUDE.md") == "CLAUDE.md"
+    assert _common.rel_to("C:\\project", "C:\\project\\CLAUDE.md") == "claude.md"
     assert _common.rel_to("/home/u/proj", "/home/u/other/x") is None
+    # spelling variants collapse to one comparison form
+    assert _common.norm("/p/src/../.claude//settings.json ") == "/p/.claude/settings.json"
+    assert _common.norm("C:\\Work\\Proj\\Claude.MD") == "c:/work/proj/claude.md"
+    assert _common.norm("\\\\server\\share\\x") == "//server/share/x"
 
 
 # --- protected paths -----------------------------------------------------------------------
@@ -97,7 +101,7 @@ def test_plugin_root_is_self_protected(project):
     hook_file = PLUGIN_ROOT / "hooks" / "protected_paths.py"
     payload = pre("Edit", file_path=str(hook_file), old_string="a", new_string="b")
     d = protected_paths.decide(payload, ["--plugin-root", str(PLUGIN_ROOT)], env=_env(project))
-    assert d.block and "plugin" in d.reason
+    assert d.block and "SDLC plugin" in d.reason
 
 
 def test_non_file_tools_ignored(project):
@@ -355,8 +359,192 @@ def test_hooks_json_uses_exec_form_with_python():
     assert handlers
     for h in handlers:
         assert h["type"] == "command" and h["command"] == "python"
-        assert h["args"][0].startswith("${CLAUDE_PLUGIN_ROOT}/hooks/")
+        assert h["args"][0].startswith("${CLAUDE_PLUGIN_ROOT}/plugin/hooks/")
         assert (HOOKS_DIR / Path(h["args"][0]).name).is_file()
         assert h["timeout"] <= 60
     events = set(data["hooks"])
     assert events == {"PreToolUse", "PostToolUse"}  # no 'ask' hooks in the build phase
+
+
+# --- hardening (second review round) ------------------------------------------------------
+@pytest.mark.parametrize(
+    "rel",
+    [
+        "src/../.claude/settings.json",
+        ".Claude/Settings.JSON",
+        "claude.md",
+        "CLAUDE.md ",
+        "src//..//sdlc.yaml",
+    ],
+)
+def test_protected_paths_spelling_variants(project, rel):
+    payload = pre("Write", file_path=str(project) + "/" + rel, content="")
+    assert protected_paths.decide(payload, [], env=_env(project)).block, rel
+
+
+def test_protected_paths_symlink_into_project(project):
+    (project / "src").mkdir()
+    try:
+        os.symlink(project, project / "src" / "up", target_is_directory=True)
+    except (OSError, NotImplementedError):
+        pytest.skip("symlinks not available")
+    payload = pre(
+        "Write", file_path=str(project / "src" / "up" / ".claude" / "settings.json"), content=""
+    )
+    assert protected_paths.decide(payload, [], env=_env(project)).block
+
+
+def test_user_level_settings_are_protected_outside_the_project(project, tmp_path):
+    home = tmp_path / "home" / ".claude"
+    payload = pre("Edit", file_path=str(home / "settings.json"), old_string="", new_string="")
+    assert protected_paths.decide(payload, [], env=_env(project)).block
+    payload = pre("Write", file_path=str(home / "hooks" / "x.py"), content="")
+    assert protected_paths.decide(payload, [], env=_env(project)).block
+    payload = pre("Write", file_path=str(tmp_path / "home" / "notes.md"), content="")
+    assert not protected_paths.decide(payload, [], env=_env(project)).block
+
+
+def test_protected_paths_fail_closed_on_unreadable_sdlc_yaml(tmp_path):
+    (tmp_path / "sdlc.yaml").write_text("protected_paths: {bad: [\n", encoding="utf-8")
+    payload = pre("Write", file_path=str(tmp_path / "src" / "ok.py"), content="")
+    d = protected_paths.decide(payload, [], env={"CLAUDE_PROJECT_DIR": str(tmp_path)})
+    assert d.block and "sdlc.yaml" in d.reason
+
+
+def test_protected_paths_reads_bom_and_document_marker(tmp_path):
+    (tmp_path / "sdlc.yaml").write_text("\ufeff---\nprotected_paths: [gen/**]\n", encoding="utf-8")
+    payload = pre("Write", file_path=str(tmp_path / "gen" / "a.py"), content="")
+    assert protected_paths.decide(payload, [], env={"CLAUDE_PROJECT_DIR": str(tmp_path)}).block
+
+
+def test_project_dir_falls_back_to_nearest_root(tmp_path):
+    (tmp_path / "sdlc.yaml").write_text("profile: lite\n", encoding="utf-8")
+    (tmp_path / "src").mkdir()
+    payload = {
+        "tool_name": "Write",
+        "tool_input": {"file_path": str(tmp_path / "CLAUDE.md"), "content": ""},
+        "cwd": str(tmp_path / "src"),
+    }
+    assert protected_paths.decide(payload, [], env={}).block
+
+
+def test_protected_paths_empty_stdin_fails_closed():
+    proc = subprocess.run(
+        [sys.executable, str(HOOKS_DIR / "protected_paths.py")],
+        input="",
+        capture_output=True,
+        text=True,
+    )
+    assert proc.returncode == 2
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "git add .\ngit commit -m x",
+        "(git commit -m x)",
+        "$(git commit -m x)",
+        "GIT_EDITOR=true git commit",
+        "git -c user.name=x commit -m y",
+        'git -C "my dir" commit -m y',
+        "git add . && git commit --amend --no-edit",
+    ],
+)
+def test_plan_sync_detects_commit_in_any_position(command):
+    assert plan_sync.COMMIT_RE.search(command), command
+
+
+@pytest.mark.parametrize(
+    "command",
+    ["git status", "git commit-tree abc", "echo 'git commits are nice'", "git log --grep commit"],
+)
+def test_plan_sync_ignores_non_commit_commands(command):
+    assert not plan_sync.COMMIT_RE.search(command), command
+
+
+def test_plan_sync_commit_options():
+    assert plan_sync.commit_options("git commit -m 'x'") == (False, [])
+    assert plan_sync.commit_options("git commit -am 'x'") == (True, [])
+    assert plan_sync.commit_options("git commit -qa -m x") == (True, [])
+    assert plan_sync.commit_options("git commit --all -m x") == (True, [])
+    assert plan_sync.commit_options("git commit -m x src/a.py") == (False, ["src/a.py"])
+    assert plan_sync.commit_options("git commit -m x -- src/a.py b.py && echo hi") == (
+        False,
+        ["src/a.py", "b.py"],
+    )
+    assert plan_sync.commit_options('git commit -m "don\'t" src/a.py') == (False, ["src/a.py"])
+
+
+def test_plan_sync_pathspec_commit_is_checked(tmp_path):
+    _git(tmp_path, "init", "-q", "-b", "main")
+    _git(tmp_path, "config", "user.email", "t@example.com")
+    _git(tmp_path, "config", "user.name", "t")
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "a.py").write_text("x = 1\n", encoding="utf-8")
+    _git(tmp_path, "add", ".")
+    _git(tmp_path, "commit", "-q", "-m", "init")
+    _git(tmp_path, "checkout", "-q", "-b", "sdlc/0002/c")
+    (tmp_path / "src" / "a.py").write_text("x = 2\n", encoding="utf-8")  # unstaged
+    payload = {**pre("Bash", command="git commit -m 'x' src/a.py"), "cwd": str(tmp_path)}
+    env = {**os.environ, "CLAUDE_PROJECT_DIR": str(tmp_path)}
+    proc = subprocess.run(
+        [sys.executable, str(HOOKS_DIR / "plan_sync.py")],
+        input=json.dumps(payload),
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+    assert proc.returncode == 2, proc.stderr
+
+
+def test_plan_sync_tolerates_bad_config_and_quotes():
+    def fake_git(root, *args):
+        return "sdlc/0001/c\n" if args[0] == "rev-parse" else "src/a.py\0"
+
+    assert plan_sync.exempt_patterns({"plan_sync": True}) == list(plan_sync.DEFAULT_EXEMPT)
+    d = plan_sync.decide(
+        pre("Bash", command="git commit -m 'don't"),
+        [],
+        env={"CLAUDE_PROJECT_DIR": "/p"},
+        git=fake_git,
+    )
+    assert d.block and "plan.md is out of sync" in d.reason
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        '{"password": "s3cretvalue123"}',
+        "POSTGRES_PASSWORD=hunter2hunter2",
+        "DB_PASSWORD: hunter2hunter2",
+        "client_secret = 'abcdefghijkl'",
+        "aws_secret_access_key = 'wJalrXUtnFEMI/K7MDENG'",
+        "key = 'sk-proj-" + "c" * 40 + "'",
+        "-----BEGIN ENCRYPTED PRIVATE KEY-----",
+    ],
+)
+def test_secrets_more_shapes_denied(text):
+    assert secrets_check.decide(pre("Write", file_path="/p/x", content=text), []).block
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "password = os.getenv('PASSWORD')",
+        "PASSWORD=$SECRET_FROM_ENV",
+        "password: ...",
+        "token = 'sk-ant-api03-…'  # sdlc: allow-secret",
+    ],
+)
+def test_secrets_more_shapes_allowed(text):
+    assert not secrets_check.decide(pre("Write", file_path="/p/x", content=text), []).block
+
+
+def test_format_on_edit_ignores_files_outside_project(tmp_path):
+    outside = tmp_path / "outside.py"
+    outside.write_text("x=1\n", encoding="utf-8")
+    proj = tmp_path / "proj"
+    proj.mkdir()
+    payload = {"tool_name": "Write", "tool_input": {"file_path": str(outside)}, "cwd": str(proj)}
+    assert not format_on_edit.decide(payload, [], env={"CLAUDE_PROJECT_DIR": str(proj)}).block
+    assert outside.read_text(encoding="utf-8") == "x=1\n"

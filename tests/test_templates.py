@@ -28,9 +28,9 @@ VALUES = {
     "MAINTAIN_METRIC": "ci_test_failure_rate",
     "MAINTAIN_SOURCE": "github-actions",
     "PLUGIN_VERSION": "0.1.0",
-    "BUILD_RULE": "Bash(python -m build*)",
-    "TEST_RULE": "Bash(python -m pytest*)",
-    "LINT_RULE": "Bash(python -m ruff*)",
+    "BUILD_RULE": "Bash(python -m build *)",
+    "TEST_RULE": "Bash(python -m pytest *)",
+    "LINT_RULE": "Bash(python -m ruff *)",
     "FRAMEWORK_REPO": "luissiviero/sdlc-framework",
 }
 
@@ -131,6 +131,9 @@ def test_settings_json_contract():
         == "luissiviero/sdlc-framework"
     )
     assert "hooks" not in data, "hooks come from the pinned plugin, never from the project file"
+    assert not any(k.startswith("$comment") for k in data)
+    assert not any("--force" in r for r in deny), "force-push cannot be caught by Bash() rules"
+    assert not any("tasks.py" in r for r in data["permissions"]["allow"])
 
 
 def test_changes_readme_names_the_conventions():

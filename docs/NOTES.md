@@ -34,9 +34,9 @@ and shell form").
 **Chosen way to run the Python hooks:** exec form, `"command": "python"` with the script
 path in `args` via `${CLAUDE_PLUGIN_ROOT}` (see `plugin/hooks/hooks.json`). No shell on any
 platform, no quoting, no dependence on Git Bash versus PowerShell. Consequences:
-- `python.exe` must be on `PATH` on the owner's PC (the python.org installer and the Store
-  alias both provide it); Linux runners and cloud sessions provide `python` too. If a machine
-  only has `python3`, change the `command` field once in `hooks.json`.
+- `python` must resolve on `PATH` wherever hooks run (check with `python --version` on the
+  PC; the build container and cloud sessions have it). If a machine only has `python3`,
+  change the `command` field once in `hooks.json`.
 - The scripts import nothing outside the standard library and the plugin itself, so a missing
   package can never turn a guardrail into a non-blocking error. Policy hooks fail closed
   (exit 2 on any exception); the formatter hook fails open.
@@ -97,17 +97,24 @@ setup").
   from the marketplace you declared."
 - "Settings deployed to your device through MDM or managed settings files don't apply,
   because the session runs on an Anthropic-managed VM".
-- "GitHub's `gh` CLI is pre-installed ... `gh` reads `GH_TOKEN` automatically"; some remote
-  sessions expose GitHub MCP tools instead. `/sdlc-plan` therefore tries `gh`, then a GitHub
-  MCP tool, then prints the compare URL.
+- "GitHub's `gh` CLI is pre-installed ... `gh` reads `GH_TOKEN` automatically". Observed in
+  the session that built this repo (Claude Code on the web, 2026-09-19): no `gh` binary, GitHub
+  reached through `mcp__github__*` tools instead. `/sdlc-plan` therefore tries `gh`, then a
+  GitHub MCP tool, then prints the compare URL.
 - `CLAUDE_CODE_REMOTE=true` identifies a cloud run.
 
 Consequence: a project pins and loads the plugin through its own `.claude/settings.json`
 (`extraKnownMarketplaces` → `github: luissiviero/sdlc-framework`, `enabledPlugins:
 {"sdlc@sdlc-framework": true}`), written by `/sdlc-init`. That works identically on the PC
-and in the cloud. Note: "Claude Code honors entries in a repository's `.claude/settings.json`
-... only after you accept the workspace trust dialog for that folder; in a folder you haven't
-trusted, including a `-p` run there, it ignores them without a message."
+and in the cloud. Note (settings-reference, `extraKnownMarketplaces` entry): "Claude Code
+honors entries in a repository's `.claude/settings.json` or `.claude/settings.local.json`
+only after you accept the workspace trust dialog for that folder; in a folder you haven't
+trusted, including a `-p` run there, it ignores them without a message." Allow rules follow
+the same trust gate (permissions page: "What runs before you trust a folder"); deny rules
+apply immediately. Consequence for B3: a headless `claude -p` run in a fresh checkout does
+not install the plugin from the project's settings by itself; the CI job must load the pinned
+plugin explicitly (`--plugin-dir` on the checked-out framework) — which is layer (iii) of
+decision 6 anyway.
 
 ## 4. The managed-settings keys and what they do to decision 6
 
@@ -158,7 +165,8 @@ Source: https://code.claude.com/docs/en/permissions.
 
 - "A `Read` deny rule also blocks the Edit and Write tools on the same path, including
   creating a new file there. NotebookEdit isn't covered, so add an `Edit` deny rule for paths
-  no tool may change."
+  no tool may change." ("The check requires Claude Code v2.1.208 or later on edits, and
+  v2.1.228 or later on writes" — so the framework's minimum Claude Code version is 2.1.228.)
 - "Claude Code checks file permissions against `Edit(path)` and `Read(path)` rules only. If
   you write a path rule for `Write`, `NotebookEdit`, `Glob`, or the legacy `MultiEdit` tool
   instead, Claude Code accepts the rule but never consults it" — so the template uses
@@ -170,33 +178,63 @@ Source: https://code.claude.com/docs/en/permissions.
   For OS-level enforcement that blocks all processes from accessing a path, enable the
   sandbox." — the same gap applies to the protected-path hook, which sees file tools only.
 - "Rules are evaluated in order: deny, then ask, then allow."
+- A `Bash(git push --force *)` deny cannot catch `git push origin --force`, `+main` or
+  `git -C . push -f` (rule prefixes match the command text only), so the template carries no
+  such rule; the branch ruleset (decision 4) is the real guard for `main`.
 
 ## 7. Plugin distribution facts
 
 Source: https://code.claude.com/docs/en/plugins, /plugins-reference, /plugin-marketplaces.
 
 - Manifest `.claude-plugin/plugin.json` with `name`, `version`, `description`, `author`;
-  default component directories `commands/`, `skills/`, `agents/`, `hooks/hooks.json`.
-  "Plugin skills are always namespaced (like `/my-first-plugin:hello`)" — the commands are
-  therefore invoked as `/sdlc:sdlc-init` and `/sdlc:sdlc-plan` when installed from the
-  marketplace.
+  default component directories `commands/`, `skills/`, `agents/`, `hooks/hooks.json`, each
+  overridable by a manifest key ("`skills`: `./custom/skills/`", "`commands`", "`agents`",
+  "`hooks`: `./config/hooks.json`"). "Plugin skills are always namespaced (like
+  `/my-first-plugin:hello`)" — the commands are therefore invoked as `/sdlc:sdlc-init` and
+  `/sdlc:sdlc-plan` when installed from the marketplace.
+- Path traversal: "Claude Code doesn't let a plugin reference files outside its own
+  directory" and "Claude Code also doesn't copy files outside the plugin directory into the
+  cache when it installs the plugin, so when a script inside a copied plugin reads a path
+  above the plugin root, it doesn't find those files either." A marketplace entry may point
+  at the marketplace root: "several plugin entries share one `skills/` folder at the
+  marketplace root (`source: "./"`)". Therefore the **repository root is the plugin root**
+  (`.claude-plugin/plugin.json` at the root points components at `./plugin/...`, the
+  marketplace entry's `source` is `./`), so `template/` travels with the plugin and
+  `/sdlc-init` finds it at `${CLAUDE_PLUGIN_ROOT}/template`. The cached copy therefore also
+  contains `docs/` and `tests/` (about 3 MB, mostly the reference PDF).
 - "Setting `version` means users only receive updates when you change this field, so bump it
   on every release." (marketplace entry and `plugin.json` both carry `0.1.0`; a test keeps
   them equal).
 - Local development: "Run Claude Code with the `--plugin-dir` flag to load your plugin."
-  Caveat: with the plugin loaded in place from this repo, the protected-path hook protects the
-  plugin's own files, so edit the framework in a session without the plugin loaded (or from
-  a marketplace-cached copy).
+  (`claude --plugin-dir <this repo>`). Caveat: with the plugin loaded in place from this repo,
+  the protected-path hook protects the whole repository (it is the plugin root), so edit the
+  framework in a session without the plugin loaded, or from a marketplace-cached copy.
 - "**Commands** and **Skills** use the same mechanism now. For new workflows, prefer
   **skills** ... Commands remain supported for single-file prompts." The repo keeps
   `plugin/commands/` as `CLAUDE.md` prescribes.
 - Not found in the docs: whether one slash command can invoke another. `/sdlc-init` therefore
   says "generate one the way `/init` does (use the `init` skill if it is available ...)".
 
-## 8. Known gaps carried to B2/B3
+## 8. Hook output contract (checked against the decision-control table)
+
+"UserPromptSubmit, UserPromptExpansion, PostToolUse, PostToolUseFailure, PostToolBatch, Stop,
+SubagentStop, ConfigChange, PreCompact | Top-level `decision` | `decision: "block"`,
+`reason`" and, for PreToolUse, "`hookSpecificOutput` | `permissionDecision`
+(allow/deny/ask/defer), `permissionDecisionReason`". The formatter hook therefore returns
+top-level `decision`/`reason` on PostToolUse; the policy hooks return `hookSpecificOutput`
+plus exit code 2. "For `PreToolUse` permission decisions, the most restrictive answer
+applies, in the order `deny`, `defer`, `ask`, `allow`."
+
+## 9. Known gaps carried to B2/B3
 
 - A `Bash` command that writes a protected file through a script is not seen by the
   protected-path hook or by `Edit` deny rules (section 6); the sandbox and the review pass
   (REVIEW.md framework rules) are the remaining nets until the gate check of step 16 exists.
+- The plan-sync hook sees the index, the working tree for `-a`/`--include`, and pathspecs
+  named after `commit`; a commit driven from a script the hook cannot parse is not checked.
+  The REVIEW.md compliance pass is the second net.
+- Change ids are allocated from the local `changes/` folder plus the remote's `sdlc/<id>/*`
+  branches (best effort); two changes started at the same moment on two machines can still
+  collide, and the second push then fails on the branch name, which is the signal to re-run.
 - Skill triggering ("test that it triggers", step 10) and the PR-opening step need a live
   model / GitHub; see `docs/PROGRESS.md`.

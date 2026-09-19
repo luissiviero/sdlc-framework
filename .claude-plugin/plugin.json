@@ -5,5 +5,9 @@
   "description": "Drives a project through plan, design, build, test, deploy and maintain with profile-based human gates (AI-Native SDLC playbook).",
   "author": {
     "name": "Luis Siviero"
-  }
+  },
+  "repository": "https://github.com/luissiviero/sdlc-framework",
+  "commands": "./plugin/commands",
+  "skills": "./plugin/skills",
+  "hooks": "./plugin/hooks/hooks.json"
 }

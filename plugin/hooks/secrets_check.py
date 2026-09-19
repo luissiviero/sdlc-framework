@@ -1,10 +1,12 @@
 """PreToolUse hook: keep credentials out of the diff (build guide step 15 (3); article p.23
 'Keep credentials out of the diff', p.37 deny of .env* / secrets/**).
 
-Scans every piece of text an Edit/Write would put into a file. A line ending with
-``# sdlc: allow-secret`` (or ``// sdlc: allow-secret``) is skipped, so a documented test
-fixture can carry a fake key on purpose. Placeholders (``<...>``, ``${...}``, example,
-changeme, dummy, xxx) are not reported.
+Scans every piece of text an Edit/Write would put into a file. A line containing
+``sdlc: allow-secret`` is skipped, so a documented test fixture can carry a fake key on
+purpose. For the generic credential-assignment rule, placeholder values (``<...>``,
+``${...}``, ``{{...}}``, example, changeme, dummy, xxx, redacted, your-…) are not reported;
+the token-shaped rules (AWS, GitHub, Slack, Anthropic, OpenAI, Google, private keys) always
+are.
 """
 
 from __future__ import annotations
@@ -18,28 +20,31 @@ from _common import Decision, new_texts, run_hook  # noqa: E402
 
 ALLOW_MARK = "sdlc: allow-secret"
 
+_NAME = (
+    r"(?:api[_-]?key|secret(?:[_-]?(?:key|access[_-]?key))?|client[_-]?secret|password|passwd|"
+    r"pwd|auth[_-]?token|access[_-]?token|refresh[_-]?token|private[_-]?key|"
+    r"aws[_-]?secret[_-]?access[_-]?key)"
+)
 PATTERNS: list[tuple[str, re.Pattern[str]]] = [
-    (
-        "private key block",
-        re.compile(r"-----BEGIN (?:RSA |EC |DSA |OPENSSH |PGP )?PRIVATE KEY-----"),
-    ),
-    ("AWS access key id", re.compile(r"\bAKIA[0-9A-Z]{16}\b")),
-    ("GitHub token", re.compile(r"\bgh[pousr]_[A-Za-z0-9]{36,}\b")),
-    ("GitHub fine-grained token", re.compile(r"\bgithub_pat_[A-Za-z0-9_]{50,}\b")),
-    ("Slack token", re.compile(r"\bxox[abprs]-[A-Za-z0-9-]{10,}\b")),
-    ("Anthropic API key", re.compile(r"\bsk-ant-[A-Za-z0-9_\-]{20,}\b")),
-    ("OpenAI-style key", re.compile(r"\bsk-(?!ant-)[A-Za-z0-9]{32,}\b")),
-    ("Google API key", re.compile(r"\bAIza[0-9A-Za-z_\-]{35}\b")),
+    ("private key block", re.compile(r"-----BEGIN (?:[A-Z ]+ )?PRIVATE KEY-----")),
+    ("AWS access key id", re.compile(r"(?<![A-Za-z0-9])AKIA[0-9A-Z]{16}(?![A-Za-z0-9])")),
+    ("GitHub token", re.compile(r"(?<![A-Za-z0-9])gh[pousr]_[A-Za-z0-9]{36,}")),
+    ("GitHub fine-grained token", re.compile(r"(?<![A-Za-z0-9])github_pat_[A-Za-z0-9_]{50,}")),
+    ("Slack token", re.compile(r"(?<![A-Za-z0-9])xox[abprs]-[A-Za-z0-9-]{10,}")),
+    ("Anthropic API key", re.compile(r"(?<![A-Za-z0-9])sk-ant-[A-Za-z0-9_\-]{20,}")),
+    ("OpenAI-style key", re.compile(r"(?<![A-Za-z0-9])sk-(?:proj-)?(?!ant-)[A-Za-z0-9_\-]{32,}")),
+    ("Google API key", re.compile(r"(?<![A-Za-z0-9])AIza[0-9A-Za-z_\-]{35}")),
     (
         "hard-coded credential assignment",
         re.compile(
-            r"(?i)\b(?:api[_-]?key|secret(?:_key)?|password|passwd|auth[_-]?token|access[_-]?token)"
-            r"\s*[:=]\s*['\"]([^'\"\n]{8,})['\"]"
+            r"(?i)(?<![A-Za-z0-9])[\"']?(?:[A-Z0-9_]*_)?" + _NAME + r"[\"']?"
+            r"\s*[:=]\s*[\"']?([^\"'\s#][^\"'\n#]{7,})[\"']?"
         ),
     ),
 ]
 PLACEHOLDER = re.compile(
-    r"(?i)(<[^>]*>|\$\{[^}]*\}|\{\{[^}]*\}\}|example|changeme|dummy|xxx+|your[_-]|placeholder|redacted|\*{3,})"
+    r"(?i)(<[^>]*>|\$\{[^}]*\}|\{\{[^}]*\}\}|\$[A-Z_][A-Z0-9_]*|os\.environ|getenv|env\(|"
+    r"example|changeme|dummy|xxx+|your[_-]|placeholder|redacted|\*{3,}|\.\.\.)"
 )
 
 
@@ -70,7 +75,7 @@ def decide(payload: dict, argv: list[str]) -> Decision:
             return Decision.deny(
                 f"Possible secret in the text written to {target} ({where}). Credentials never "
                 "go into the diff: read them from the environment or a secrets store. If this is"
-                f" a deliberate fake value, end that line with '# {ALLOW_MARK}'."
+                f" a deliberate fake value, put '# {ALLOW_MARK}' on that line."
             )
     return Decision.allow()
 

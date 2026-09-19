@@ -11,6 +11,7 @@ and identical on Windows, in a cloud session and in CI.
     python cli.py set-phase --root . --id 0001 --phase b
     python cli.py park --root . --id 0001 --reason "..."
     python cli.py show --root . --id 0001
+    python cli.py list --root .
     python cli.py labels
 """
 
@@ -34,6 +35,9 @@ def _emit(obj) -> None:
 
 def cmd_new_change(args) -> int:
     root = Path(args.root).resolve()
+    change_id = args.id
+    if change_id is None and gitops.is_repo(root) and gitops.has_remote(root):
+        change_id = c.next_change_id(root, gitops.remote_change_ids(root))
     change_dir, st = status.new_change(
         root,
         title=args.title,
@@ -41,7 +45,7 @@ def cmd_new_change(args) -> int:
         change_type=args.type,
         profile_override=args.profile_override,
         external_ref=args.external_ref,
-        change_id=args.id,
+        change_id=change_id,
     )
     _emit(
         {
@@ -62,18 +66,19 @@ def cmd_commit_phase(args) -> int:
     if change_dir is None:
         print(f"no change folder for id {args.id}", file=sys.stderr)
         return 2
+    if not gitops.is_repo(root):
+        print(f"{root} is not a git repository", file=sys.stderr)
+        return 2
+    branch = c.branch_name(args.id, args.phase)
+    start = args.start_point or None
+    gitops.checkout_branch(root, branch, start)
     st = status.read_status(change_dir)
     if st.phase != args.phase:  # idempotent: an unchanged phase leaves status.yaml untouched
         st.set_phase(args.phase)
         status.write_status(change_dir, st)
-    branch = c.branch_name(args.id, args.phase)
-    if not gitops.is_repo(root):
-        print(f"{root} is not a git repository", file=sys.stderr)
-        return 2
-    start = args.start_point or None
-    gitops.checkout_branch(root, branch, start)
     rel = str(change_dir.relative_to(root)).replace("\\", "/")
-    sha = gitops.commit_paths(root, [rel, *args.paths], args.message)
+    extra = [p for p in args.paths if (root / p).exists()]  # e.g. ruff.toml only when created
+    sha = gitops.commit_paths(root, [rel, *extra], args.message)
     pushed = False
     if args.push and gitops.has_remote(root):
         gitops.push(root, branch)
@@ -131,6 +136,30 @@ def cmd_show(args) -> int:
     return 0
 
 
+def cmd_list(args) -> int:
+    """Every change folder with its phase, so a re-run of /sdlc-plan can find an existing one."""
+    root = Path(args.root).resolve()
+    rows = []
+    for change_dir in c.list_change_dirs(root):
+        try:
+            st = status.read_status(change_dir)
+            rows.append(
+                {
+                    "id": st.id,
+                    "slug": st.slug,
+                    "title": st.title,
+                    "phase": st.phase,
+                    "change_type": st.change_type,
+                    "parked_reason": st.parked_reason,
+                    "dir": str(change_dir.relative_to(root)).replace("\\", "/"),
+                }
+            )
+        except Exception as exc:  # noqa: BLE001
+            rows.append({"dir": change_dir.name, "error": repr(exc)})
+    _emit(rows)
+    return 0
+
+
 def cmd_labels(_args) -> int:
     _emit(c.all_labels())
     return 0
@@ -169,6 +198,10 @@ def build_parser() -> argparse.ArgumentParser:
         if name == "park":
             s.add_argument("--reason", required=True)
         s.set_defaults(fn=fn)
+
+    ls = sub.add_parser("list")
+    ls.add_argument("--root", default=".")
+    ls.set_defaults(fn=cmd_list)
 
     lab = sub.add_parser("labels")
     lab.set_defaults(fn=cmd_labels)

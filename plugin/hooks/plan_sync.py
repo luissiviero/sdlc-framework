@@ -3,12 +3,16 @@
 the plan, update plan.md in the same commit. Consider using a hook to enforce
 synchronization between the two.').
 
-Mechanism (the article suggests the hook but not its mechanism): registered with
-``"if": "Bash(git commit *)"`` (and the PowerShell twin). It reads the current branch; only
-``sdlc/<id>/c`` branches are checked (OPERATING_MODEL section 8: 'In (c) a pre-commit check
-enforces that plan.md changes whenever source changes'). If any staged path is source — not
-under ``changes/`` and not matched by ``plan_sync.exempt`` in sdlc.yaml — then
-``changes/<id>-*/plan.md`` must be staged too, or the commit is denied.
+Mechanism (the article suggests the hook but not its mechanism): registered on the Bash and
+PowerShell tools with ``"if": "Bash(git *)"`` (a narrower ``Bash(git commit *)`` would skip
+``git -C dir commit``). The hook itself finds a ``commit`` subcommand anywhere in the command
+text (chains, subshells, env prefixes). It reads the current branch; only ``sdlc/<id>/c``
+branches are checked (OPERATING_MODEL section 8: 'In (c) a hook on git commit denies a
+commit that changes source without changing plan.md in the same commit'). The files the
+commit would contain are the index, plus the working tree when ``-a``/``--all``/``--include``
+is given, plus any pathspec named after ``commit``. If any of them is source — not matched by
+``changes/**`` or by ``plan_sync.exempt`` in sdlc.yaml — then ``changes/<id>-*/plan.md`` must
+be among them, or the commit is denied.
 """
 
 from __future__ import annotations
@@ -25,26 +29,98 @@ from _common import Decision, load_sdlc_config, matches, project_dir, run_hook  
 from state import conventions as c  # noqa: E402
 
 DEFAULT_EXEMPT = ("changes/**",)
-COMMIT_RE = re.compile(r"(^|[;&|]\s*)git\s+(?:-C\s+\S+\s+)?commit\b")
+# `git`, optional global options (-C dir, -c k=v, --long[=v]), then the `commit` word.
+COMMIT_RE = re.compile(
+    r"(?<![\w./-])git(?:\s+(?:-C\s+(?:\"[^\"]*\"|'[^']*'|\S+)|-c\s+\S+|--[\w-]+(?:=\S+)?))*"
+    r"\s+commit(?![\w-])"
+)
+_TAKES_ARG = {
+    "-m",
+    "--message",
+    "-F",
+    "--file",
+    "--author",
+    "--date",
+    "-C",
+    "-c",
+    "--reuse-message",
+    "--reedit-message",
+    "--fixup",
+    "--squash",
+    "--trailer",
+    "--cleanup",
+    "-t",
+    "--template",
+}
 
 
 def _git(root: str, *args: str) -> str:
-    proc = subprocess.run(
-        ["git", *args], cwd=root, capture_output=True, text=True, encoding="utf-8"
-    )
+    try:
+        proc = subprocess.run(
+            ["git", *args], cwd=root, capture_output=True, text=True, encoding="utf-8", timeout=20
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return ""
     return proc.stdout if proc.returncode == 0 else ""
 
 
-def staged_and_auto(root: str, command: str, git=_git) -> list[str]:
-    files = git(root, "diff", "--cached", "--name-only", "--diff-filter=ACMRD").split()
-    tokens = shlex.split(command, posix=True) if command else []
-    if (
-        "-a" in tokens
-        or "--all" in tokens
-        or any(t.startswith("-a") and t[1:].isalpha() for t in tokens)
-    ):
-        files += git(root, "diff", "--name-only", "--diff-filter=ACMRD").split()
-    return sorted({f.replace("\\", "/") for f in files})
+def _tokens(command: str) -> list[str]:
+    try:
+        return shlex.split(command, posix=True)
+    except ValueError:
+        return command.split()
+
+
+def commit_options(command: str) -> tuple[bool, list[str]]:
+    """(includes working tree?, pathspecs) for the first `git ... commit` in the command."""
+    tokens = _tokens(command)
+    try:
+        idx = next(i for i, t in enumerate(tokens) if t == "commit" and "git" in tokens[:i])
+    except StopIteration:
+        return False, []
+    rest = tokens[idx + 1 :]
+    all_files, paths, i, after_dashes = False, [], 0, False
+    while i < len(rest):
+        t = rest[i]
+        if t in ("&&", "||", ";", "|"):
+            break
+        if after_dashes:
+            paths.append(t)
+        elif t == "--":
+            after_dashes = True
+        elif t in ("-a", "--all", "-i", "--include"):
+            all_files = True
+        elif t in _TAKES_ARG:
+            i += 1
+        elif t.startswith("-") and not t.startswith("--") and len(t) > 2:
+            # bundled short options, e.g. -am 'msg', -qa: any 'a'/'i' includes the tree;
+            # a trailing m/F/C/c/t consumes the next token
+            flags = t[1:]
+            if "a" in flags or "i" in flags:
+                all_files = True
+            if flags[-1] in "mFCct":
+                i += 1
+        elif t.startswith("-"):
+            pass
+        else:
+            paths.append(t)
+        i += 1
+    return all_files, paths
+
+
+def _z(out: str) -> list[str]:
+    return [f.replace("\\", "/") for f in out.split("\0") if f]
+
+
+def files_in_commit(root: str, command: str, git=_git) -> list[str]:
+    all_files, paths = commit_options(command)
+    files = _z(git(root, "diff", "--cached", "--name-only", "-z", "--diff-filter=ACMRD"))
+    if all_files:
+        files += _z(git(root, "diff", "--name-only", "-z", "--diff-filter=ACMRD"))
+    if paths:
+        files += _z(git(root, "diff", "--name-only", "-z", "--diff-filter=ACMRD", "--", *paths))
+        files += _z(git(root, "ls-files", "-z", "--others", "--exclude-standard", "--", *paths))
+    return sorted(set(files))
 
 
 def check(branch: str, files: list[str], exempt: list[str]) -> Decision:
@@ -52,7 +128,7 @@ def check(branch: str, files: list[str], exempt: list[str]) -> Decision:
     if not parsed or parsed[1] != "c":
         return Decision.allow()
     change_id = parsed[0]
-    plan_rx = re.compile(rf"^changes/{change_id}-[^/]+/plan\.md$")
+    plan_rx = re.compile(rf"^changes/{change_id}-[^/]+/plan\.md$", re.IGNORECASE)
     plan_staged = any(plan_rx.match(f) for f in files)
     source = [f for f in files if not any(matches(p, f) for p in exempt)]
     if source and not plan_staged:
@@ -60,10 +136,18 @@ def check(branch: str, files: list[str], exempt: list[str]) -> Decision:
         return Decision.deny(
             "plan.md is out of sync: this commit changes source files but not "
             f"changes/{change_id}-<slug>/plan.md. When implementation departs from the plan, "
-            "update plan.md in the same commit (article p.16, step 7). Source files staged:\n"
-            f"{listed}"
+            "update plan.md in the same commit (article p.16, step 7). Source files in the "
+            f"commit:\n{listed}"
         )
     return Decision.allow()
+
+
+def exempt_patterns(config: dict) -> list[str]:
+    cfg = config.get("plan_sync")
+    extra = cfg.get("exempt") if isinstance(cfg, dict) else None
+    if not isinstance(extra, list):
+        extra = []
+    return list(DEFAULT_EXEMPT) + [str(p) for p in extra if str(p).strip()]
 
 
 def decide(payload: dict, argv: list[str], env: dict[str, str] | None = None, git=_git) -> Decision:
@@ -76,11 +160,8 @@ def decide(payload: dict, argv: list[str], env: dict[str, str] | None = None, gi
     branch = git(root, "rev-parse", "--abbrev-ref", "HEAD").strip()
     if not branch:
         return Decision.allow()  # not a git repo: nothing to enforce
-    cfg = load_sdlc_config(root).get("plan_sync") or {}
-    exempt = list(DEFAULT_EXEMPT) + [
-        str(p) for p in (cfg.get("exempt") or []) if isinstance(cfg, dict)
-    ]
-    return check(branch, staged_and_auto(root, command, git), exempt)
+    exempt = exempt_patterns(load_sdlc_config(root))
+    return check(branch, files_in_commit(root, command, git), exempt)
 
 
 if __name__ == "__main__":

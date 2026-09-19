@@ -11,9 +11,9 @@ profile: {{PROFILE}}
 # --- feedback loop: one-command targets (build guide step 14; article p.27 step 1) --------
 # Each must exit non-zero on failure. /sdlc-init detects them for Python projects.
 commands:
-  build: {{BUILD_CMD}}
-  test: {{TEST_CMD}}
-  lint: {{LINT_CMD}}
+  build: "{{BUILD_CMD}}"
+  test: "{{TEST_CMD}}"
+  lint: "{{LINT_CMD}}"
 
 # --- phase adapters (OPERATING_MODEL section 9; decision 19) ---------------------------------
 deploy:

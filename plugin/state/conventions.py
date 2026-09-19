@@ -91,7 +91,7 @@ DIR_RE = re.compile(r"^(?P<id>\d{4})-(?P<slug>[a-z0-9]+(?:-[a-z0-9]+)*)$")
 def slugify(title: str, max_len: int = 40) -> str:
     s = re.sub(r"[^a-z0-9]+", "-", title.lower()).strip("-")
     if not s:
-        raise ValueError("title has no slug-able characters")
+        s = "change"  # e.g. a title written entirely in non-Latin script
     if len(s) > max_len:
         s = s[:max_len].rstrip("-")
     return s
@@ -111,9 +111,12 @@ def list_change_dirs(project_root: Path) -> list[Path]:
     return sorted(p for p in root.iterdir() if p.is_dir() and DIR_RE.match(p.name))
 
 
-def next_change_id(project_root: Path) -> str:
-    """Zero-padded sequence: max existing id + 1, starting at 0001 (0000 is /sdlc-init)."""
+def next_change_id(project_root: Path, extra_ids: list[str] | None = None) -> str:
+    """Zero-padded sequence: max known id + 1, starting at 0001 (0000 is /sdlc-init).
+    ``extra_ids`` lets the caller add ids seen elsewhere (remote sdlc/<id>/* branches), so
+    a change started on the PC and one started in a cloud session do not collide."""
     ids = [int(DIR_RE.match(p.name).group("id")) for p in list_change_dirs(project_root)]
+    ids += [int(i) for i in (extra_ids or []) if i.isdigit()]
     return f"{(max(ids) if ids else 0) + 1:04d}"
 
 

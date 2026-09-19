@@ -82,7 +82,7 @@ def test_merge_helpers():
     assert merged["permissions"]["deny"] == ["Bash(rm *)", "WebFetch"]
     assert merged["permissions"]["allow"] == ["Bash(git *)"]
     assert merged["permissions"]["disableBypassPermissionsMode"] == "disable"
-    assert "hooks" not in merged and merged["env"] == {"X": "1"}
+    assert merged["hooks"] == {"PreToolUse": []} and merged["env"] == {"X": "1"}
 
 
 def test_merge_claude_md_keeps_existing_and_adds_missing_sections():
@@ -128,13 +128,15 @@ def test_init_on_fixture_copy_is_idempotent(tmp_path):
     assert cfg["profile"] == "lite" and cfg["commands"]["test"] == "python -m pytest"
     assert cfg["plugin"]["version"] == sdlc_init.plugin_version()
     settings = json.loads((root / ".claude" / "settings.json").read_text(encoding="utf-8"))
-    assert "Bash(python -m pytest*)" in settings["permissions"]["allow"]
+    assert "Bash(python -m pytest *)" in settings["permissions"]["allow"]
     assert (root / "changes" / "0000-sdlc-init" / "intent.md").exists()
     assert (root / "changes" / "0000-sdlc-init" / "status.yaml").exists()
 
-    # owner edits survive a re-run; the re-run changes nothing else
-    cfg["protected_paths"] = ["sample_pkg/generated/**"]
-    yamlish.dump_file(root / "sdlc.yaml", cfg)
+    # owner edits survive a re-run (edited in place, comments and all); nothing else changes
+    text = (root / "sdlc.yaml").read_text(encoding="utf-8")
+    assert text.count("#") > 10, "template comments are kept on first write"
+    text = text.replace("protected_paths: []", "protected_paths: [sample_pkg/generated/**]")
+    (root / "sdlc.yaml").write_text(text, encoding="utf-8")
     (root / "CLAUDE.md").write_text(
         (root / "CLAUDE.md").read_text(encoding="utf-8") + "\n- owner note\n", encoding="utf-8"
     )
@@ -143,6 +145,7 @@ def test_init_on_fixture_copy_is_idempotent(tmp_path):
     assert report2["files"][".claude/settings.json"] == "unchanged"
     assert report2["files"]["REVIEW.md"] == "kept" and report2["files"]["CLAUDE.md"] == "unchanged"
     assert yamlish.load_file(root / "sdlc.yaml")["protected_paths"] == ["sample_pkg/generated/**"]
+    assert (root / "sdlc.yaml").read_text(encoding="utf-8").count("#") > 10, "comments kept"
     assert "- owner note" in (root / "CLAUDE.md").read_text(encoding="utf-8")
 
 
@@ -158,3 +161,41 @@ def test_init_detect_only_writes_nothing(tmp_path):
     report = _run_init(tmp_path, "--detect-only")
     assert "files" in report and report["files"] == {}
     assert not (tmp_path / "sdlc.yaml").exists()
+
+
+def test_init_version_bump_patches_one_line_and_keeps_comments(tmp_path):
+    root = tmp_path / "proj"
+    shutil.copytree(FIXTURE, root)
+    _run_init(root)
+    text = (
+        (root / "sdlc.yaml").read_text(encoding="utf-8").replace("version: 0.1.0", "version: 0.0.1")
+    )
+    (root / "sdlc.yaml").write_text(text, encoding="utf-8")
+    report = _run_init(root)
+    assert report["files"]["sdlc.yaml"] == "updated"
+    new = (root / "sdlc.yaml").read_text(encoding="utf-8")
+    assert "version: 0.1.0" in new and new.count("#") > 10
+
+
+def test_init_claude_md_from_proposal(tmp_path):
+    (tmp_path / "app.py").write_text("x = 1\n", encoding="utf-8")
+    prop = tmp_path / "CLAUDE.proposed.md"
+    prop.write_text(
+        "# my app\n\n## Commands\n- Test: `python -m pytest` — healthy: passed\n\n"
+        "## Architecture\n- one file\n",
+        encoding="utf-8",
+    )
+    report = _run_init(tmp_path, "--claude-md-from", str(prop))
+    assert report["files"]["CLAUDE.md"] == "created"
+    text = (tmp_path / "CLAUDE.md").read_text(encoding="utf-8")
+    assert text.startswith("# my app") and text.count("## Commands") == 1 and "- one file" in text
+    assert "## Verifying your work" in text and "## Things Claude gets wrong" in text
+
+
+def test_init_escapes_commands_with_quotes_and_hashes(tmp_path):
+    (tmp_path / "app.py").write_text("x = 1\n", encoding="utf-8")
+    _run_init(tmp_path, "--test", 'python -m pytest -k "not slow" # fast')
+    cfg = yamlish.load_file(tmp_path / "sdlc.yaml")
+    assert cfg["commands"]["test"] == 'python -m pytest -k "not slow" # fast'
+    settings = json.loads((tmp_path / ".claude" / "settings.json").read_text(encoding="utf-8"))
+    assert "Bash(python -m pytest *)" in settings["permissions"]["allow"]

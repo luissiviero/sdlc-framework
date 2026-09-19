@@ -1,16 +1,16 @@
 # Progress — session 1 (B0 + B1)
 
 ## Summary
-- B0 (steps 1–9b) and B1 (steps 10–15) are built and green: 88 self-tests plus fixture integration tests pass with `python tasks.py check` (lint zero warnings) on Linux; Windows execution and the live-session checks (hook denial inside Claude Code, skill triggering, PR opening) are still owed and listed below as partial.
+- B0 (steps 1–9b) and B1 (steps 10–15) are built and green: 142 tests (layer 1 plus the fixture integration tests) pass with `python tasks.py check` (lint zero warnings) on Linux; two fresh-context reviews (compliance and code) were run and their findings fixed; Windows execution and the live-session checks (hook denial inside Claude Code, skill triggering, PR opening) are still owed and listed below as partial.
 - Four Python hooks (protected paths with self-protection, secrets check, formatter/lint on edit, plan.md sync on `git commit`) ship in the plugin in exec form, fail closed, and are unit-tested with sample tool inputs; the protected-path hook demonstrably blocks an edit to `.claude/settings.json` (exit 2 + deny JSON).
-- Docs verification changed two designs: the managed-settings keys are managed-scope only and machine-wide (so `docs/owner-machine/` documents, and does not install, the file), and the framework must work in cloud sessions, so a project loads the plugin through its own `.claude/settings.json` marketplace declaration. No decision was reopened; decision 6 keeps its three layers with corrected mechanics.
+- Docs verification changed three designs: the managed-settings keys are managed-scope only and machine-wide (so `docs/owner-machine/` documents, and does not install, the file); the framework must work in cloud sessions, so a project loads the plugin through its own `.claude/settings.json` marketplace declaration; and the repository root is the plugin root (marketplace `source: "./"`), because a copied plugin cannot read `template/` above its root. No decision was reopened; decision 6 keeps its three layers with corrected mechanics.
 - `/sdlc-init` (minimal, step 21) and `/sdlc-plan` exist as commands over deterministic Python (`plugin/init`, `plugin/state`); the fixture project is initialised and gets its first PR branch `sdlc/0000/a`, and a recorded intent lands on `sdlc/0001/a` in the integration test.
 - Left for B2: the confidence gate (`plugin/gate/`), agents, run limits, policy skills, `/sdlc-init` extras (evals/, bands.yaml, CI workflows), and the live checks above.
 
 ## Definition of done (handoff)
 | Item | Status |
 |---|---|
-| `python tasks.py test` and `python tasks.py lint` green on Windows and Linux | Linux: done (88 passed, ruff clean). Windows: not executed in this session; code is path-agnostic (no shell, `pathlib`, backslash normalisation tested). Owner to run once on the PC. |
+| `python tasks.py test` and `python tasks.py lint` green on Windows and Linux | Linux: done (142 passed, ruff clean). Windows: not executed in this session; code is path-agnostic (no shell, `pathlib`, backslash normalisation tested). Owner to run once on the PC. |
 | Fixture initialised with `/sdlc-init` from a temporary copy; `/sdlc-plan` produces a committed `changes/<id>-<slug>/intent.md` on `sdlc/<id>/a` with an open PR | Python halves: done and tested against a temp copy with a bare remote (`tests/test_integration_fixture.py`). The model-driven halves (questions, `/init`, the PR) are prompts in `plugin/commands/`; the PR itself needs GitHub and is not exercised. |
 | Every hook has a unit test; protected-path hook blocks an edit to `.claude/settings.json` | Done (`tests/test_hooks.py`, end-to-end over stdin with exit code 2). Not yet observed inside a live Claude Code session. |
 | `docs/NOTES.md` answers the two verification questions with links | Done (sections 1 and 2), plus cloud, managed keys, sandbox, permissions and plugin facts. |
@@ -33,10 +33,10 @@
 | 10 intent.md skill | partial | `plugin/skills/intent-template/SKILL.md` (five article sections in order, Author/Status header, change id, entry route, Evidence for incidents). Static tests pass; **"test that it triggers" needs a live model** — owner check: ask "draft an intent for X" in a project with the plugin and confirm the skill loads. |
 | 11 `/sdlc-plan` | partial | `plugin/commands/sdlc-plan.md` + `state/cli.py`. Commit and push tested; PR step (gh → GitHub MCP → compare URL) needs a live session. |
 | 12 plan.md template + interrogation | done (template) | `plugin/skills/plan-template/SKILL.md`: four article sections + Options not taken, five interrogation questions, read-only rule. `/sdlc-design` is B3. |
-| 13 CLAUDE.md skeleton | done | `template/CLAUDE.md` (Commands with healthy output · Conventions · Architecture · Things Claude gets wrong · SDLC framework · Verifying your work, p.28 lines verbatim); `sdlc_init.py` merges missing sections into an existing CLAUDE.md. Note: Commands and Verifying both list the three commands, as the handoff asked; the owner may trim one. |
+| 13 CLAUDE.md skeleton | done | `template/CLAUDE.md` (Commands with healthy output · Conventions · Architecture · Things Claude gets wrong · SDLC framework · Verifying your work, p.28 lines verbatim). Because the protected-path hook denies the model a direct write to CLAUDE.md, `/sdlc-init` has the model write the trimmed /init-style text to `changes/0000-sdlc-init/CLAUDE.proposed.md` and the install script builds CLAUDE.md from it (`--claude-md-from`); an existing CLAUDE.md only gains the missing skeleton sections (Conventions/Architecture are never merged into an existing file). Commands and Verifying both list the three commands, as the handoff asked; the owner may trim one. |
 | 14 Feedback loop | partial | `plugin/init/detect.py` detects or creates build/test/lint for Python (pytest/unittest, ruff/flake8/created ruff.toml, build/compileall) with statistics; targets go into `sdlc.yaml` and CLAUDE.md. Non-Python detection and the "refuse to enter (c)" check are B2/B3. |
 | 15 Hooks | done | `plugin/hooks/`: `protected_paths.py`, `secrets_check.py`, `format_on_edit.py` (ruff, Python only), `plan_sync.py` (PreToolUse on `git commit`, phase c branches only); `hooks.json` exec form. Test-file lock is step 25 (B3). |
-| 21 `/sdlc-init` (minimal) | partial | `plugin/commands/sdlc-init.md` + `plugin/init/sdlc_init.py` (idempotent: merges sdlc.yaml/settings/CLAUDE.md, keeps REVIEW.md, creates change 0000). Not in this version: evals/, bands.yaml, CI workflows, daily digest, non-Python detection. |
+| 21 `/sdlc-init` (minimal) | partial | `plugin/commands/sdlc-init.md` + `plugin/init/sdlc_init.py` (idempotent: a re-run leaves an unchanged sdlc.yaml untouched with its comments, patches only the pinned version line, rewrites the file only when new keys must be added; merges settings rules without deleting owner keys; keeps REVIEW.md; creates change 0000). `commit-phase` skips listed paths that do not exist (e.g. `ruff.toml`). Not in this version: evals/, bands.yaml, CI workflows, daily digest, non-Python detection. |
 
 ## Decisions: none reopened, none impossible
 - Decision 6 stays; mechanics corrected from the docs (managed keys are managed-scope only, machine-wide, ignore project rules, block non-managed plugin hooks). Recorded in NOTES §4 and OPERATING_MODEL §8.
@@ -45,22 +45,27 @@
 
 ## Choices made where the pack left it open
 1. Change id = four-digit sequence from `changes/`, `0000` reserved for `/sdlc-init`; slug = kebab-case title, ≤40 chars.
-2. plan.md sync = Claude Code PreToolUse hook on `git commit` (Python, unit-testable), not a git-native hook (would need a shell shim). Exempt globs from `sdlc.yaml: plan_sync.exempt` (default `*.md`).
+2. plan.md sync = Claude Code PreToolUse hook on `git commit` (Python, unit-testable), not a git-native hook (would need a shell shim). Registered with `if: Bash(git *)` and its own commit detection (chains, subshells, `git -C`, env prefixes, `-a`/`--include`, pathspecs). The hook's built-in exempt list is `changes/**`; the template adds `*.md` through `sdlc.yaml: plan_sync.exempt`.
 3. PR opening order in the commands: `gh` → GitHub MCP tool → compare URL printed for the owner.
 4. Project protected list lives in `sdlc.yaml`, which the hook also protects.
 5. The formatter hook covers Python only in this version; other suffixes are ignored.
 6. `sdlc.yaml` and `status.yaml` are read and written by an in-tree YAML subset parser (no PyYAML at runtime); tests cross-check with PyYAML.
 7. The article's tension between "protect CLAUDE.md" and "the second finding edits CLAUDE.md" is resolved for now as: the hook always denies; the review proposes the CLAUDE.md line and the owner applies it (REVIEW.md framework rules). Revisit in B3 with `/sdlc-fix`.
+8. Protected-path comparison is case-insensitive on every OS, collapses `..`/`//`, follows symlinks, and also denies `.claude/settings*.json` and `.claude/hooks/**` anywhere on disk (user-level settings). A `sdlc.yaml` that exists but cannot be parsed makes the hook deny every edit (fail closed) rather than drop the owner's list.
+9. `Bash()` deny rules for force-push were dropped from the template: they cannot match `git push origin --force`; the branch ruleset (decision 4) is the guard.
+10. `/sdlc-plan` re-run: the command lists existing changes (`cli.py list`) and continues an existing phase-(a) change with the same idea instead of allocating a new id; ids also take the remote's `sdlc/<id>/*` branches into account.
 
 ## Live checks the owner can do now (not automatable here)
 1. On the PC: `python tasks.py check`.
-2. In a fresh project: `claude --plugin-dir <framework>/plugin`, run `/sdlc:sdlc-init`, then ask Claude to edit `.claude/settings.json` → expect "Protected path".
+2. In a fresh project: `claude --plugin-dir <framework repo root>`, run `/sdlc:sdlc-init`, then ask Claude to edit `.claude/settings.json` → expect "Protected path". Minimum Claude Code version for the settings deny layer: 2.1.228 (NOTES §6).
 3. Ask "draft an intent for ..." → the intent-template skill should load (step 10 trigger test).
 4. Run `/sdlc:sdlc-plan` end to end and check the PR and the `sdlc:a-ready` label.
 
 ## Left for B2 (next handoff)
 - Step 16 confidence gate in `plugin/gate/` (deterministic checks: artifact vs template, tests/build/lint, evidence, no Important findings, plan↔diff, no guardrail edits; risk list) + adversarial reviewer verdict continue/park.
-- Step 17 agents (verifier, code-simplifier, researcher, adversarial-reviewer) in `plugin/agents/`.
+- Step 17 agents (verifier, code-simplifier, researcher, adversarial-reviewer) in `plugin/agents/`; then add `"agents": ["./plugin/agents/<name>.md", ...]` to `.claude-plugin/plugin.json` (`claude plugin validate .` rejects a directory string for `agents`; commands/skills/hooks accept one).
 - Step 18 auto-accept conditions; step 19 run limits (iterations, wall-clock, budget, pause flag) parking through the gate; `status.yaml: iterations` is ready for it.
 - Step 20 policy skills; step 21 full `/sdlc-init` (evals/, bands.yaml, workflows, digest) and non-Python detection.
 - Live verification items above; Windows run of the test suite.
+- B3 CI: a headless `claude -p` run in an untrusted checkout ignores the project's marketplace declaration and allow rules (NOTES §3), so the workflow must load the pinned plugin with `--plugin-dir` and pass permissions explicitly.
+- Review findings deliberately left open (low severity, documented in NOTES §9): commits driven from scripts the plan-sync hook cannot parse; id collisions between simultaneous machines; `Read(.env*)` also hides `.env.example` (article's own rule).

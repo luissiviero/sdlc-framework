@@ -63,7 +63,11 @@ class Status:
             raise ValueError(f"gate.result must be one of {c.GATE_RESULTS} or null")
         if self.gate.phase is not None and self.gate.phase not in c.PHASES:
             raise ValueError("gate.phase must be a phase letter or null")
-        if not isinstance(self.iterations, int) or self.iterations < 0:
+        if (
+            isinstance(self.iterations, bool)
+            or not isinstance(self.iterations, int)
+            or self.iterations < 0
+        ):
             raise ValueError("iterations must be a non-negative integer")
         if not self.title.strip():
             raise ValueError("title must not be empty")

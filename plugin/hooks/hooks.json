@@ -1,5 +1,5 @@
 {
-  "description": "SDLC framework build-time guardrails (build guide step 15). Exec form: `python` is spawned directly with the script path, so no shell is involved on Windows, macOS or Linux.",
+  "description": "SDLC framework build-time guardrails (build guide step 15). Exec form: `python` is spawned directly with the script path, so no shell is involved on Windows, macOS or Linux. The plugin root is the framework repository root; scripts live under plugin/hooks/.",
   "hooks": {
     "PreToolUse": [
       {
@@ -9,7 +9,7 @@
             "type": "command",
             "command": "python",
             "args": [
-              "${CLAUDE_PLUGIN_ROOT}/hooks/protected_paths.py",
+              "${CLAUDE_PLUGIN_ROOT}/plugin/hooks/protected_paths.py",
               "--plugin-root",
               "${CLAUDE_PLUGIN_ROOT}"
             ],
@@ -18,7 +18,7 @@
           {
             "type": "command",
             "command": "python",
-            "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/secrets_check.py"],
+            "args": ["${CLAUDE_PLUGIN_ROOT}/plugin/hooks/secrets_check.py"],
             "timeout": 20
           }
         ]
@@ -28,9 +28,9 @@
         "hooks": [
           {
             "type": "command",
-            "if": "Bash(git commit *)",
+            "if": "Bash(git *)",
             "command": "python",
-            "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/plan_sync.py"],
+            "args": ["${CLAUDE_PLUGIN_ROOT}/plugin/hooks/plan_sync.py"],
             "timeout": 30
           }
         ]
@@ -40,9 +40,9 @@
         "hooks": [
           {
             "type": "command",
-            "if": "PowerShell(git commit *)",
+            "if": "PowerShell(git *)",
             "command": "python",
-            "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/plan_sync.py"],
+            "args": ["${CLAUDE_PLUGIN_ROOT}/plugin/hooks/plan_sync.py"],
             "timeout": 30
           }
         ]
@@ -55,7 +55,7 @@
           {
             "type": "command",
             "command": "python",
-            "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/format_on_edit.py"],
+            "args": ["${CLAUDE_PLUGIN_ROOT}/plugin/hooks/format_on_edit.py"],
             "timeout": 60
           }
         ]

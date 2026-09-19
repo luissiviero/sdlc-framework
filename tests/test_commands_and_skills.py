@@ -30,10 +30,15 @@ def test_command_frontmatter_and_script_references(name):
     fm = frontmatter(path)
     assert fm["description"] and fm["disable-model-invocation"] == "true"
     body = path.read_text(encoding="utf-8")
-    for ref in re.findall(
+    refs = re.findall(
         r"\$\{CLAUDE_PLUGIN_ROOT\}/([\w/.-]+\.py)", body + fm.get("allowed-tools", "")
-    ):
-        assert (PLUGIN / ref).is_file(), ref
+    )
+    assert refs
+    for ref in refs:  # the plugin root is the repository root
+        assert (PLUGIN.parent / ref).is_file(), ref
+    # allow rules and the body spell the script call identically (quoted), so no prompt
+    for rule in re.findall(r"Bash\((python [^)]*\.py\") \*\)", fm["allowed-tools"]):
+        assert rule in body, rule
     assert "bypass" in body.lower() or "Never edit" in body  # guardrail reminder present
 
 

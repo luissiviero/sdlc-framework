@@ -2,7 +2,7 @@
 description: Phase (a) plan — brainstorm a change with the owner, write changes/<id>-<slug>/intent.md via the intent-template skill, let the owner correct it, commit on sdlc/<id>/a and open the intent PR. Gate (a) = the owner merges that PR.
 argument-hint: [one-line description of the idea, ticket or incident]
 disable-model-invocation: true
-allowed-tools: Bash(python ${CLAUDE_PLUGIN_ROOT}/state/cli.py *), Bash(git *), Bash(gh *), Read, Write, Edit, Glob, Grep, AskUserQuestion
+allowed-tools: Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/state/cli.py" *), Bash(git *), Bash(gh *), Read, Write, Edit, Glob, Grep, AskUserQuestion
 ---
 
 # /sdlc-plan — phase (a)
@@ -15,6 +15,10 @@ a new one.
 ## 0. Preconditions
 - `sdlc.yaml` exists at the project root. If not, stop and tell the owner to run `/sdlc-init`.
 - Note the current branch; work happens on `sdlc/<id>/a`, branched from the default branch.
+- Re-run rule: list the existing changes first —
+  `python "${CLAUDE_PLUGIN_ROOT}/plugin/state/cli.py" list --root "${CLAUDE_PROJECT_DIR}"` —
+  and if one in phase `a` has the same title or clearly the same idea, continue with that id
+  and its intent.md (skip step 2) instead of allocating a new one.
 
 ## 1. Brainstorm until the idea is concrete (article p.10 step 2)
 Start from `$ARGUMENTS` (may be empty). Ask the questions an analyst would ask, a few at a
@@ -32,7 +36,7 @@ Do not write files during the brainstorm.
 ## 2. Allocate the change
 Run (from the project root):
 ```
-python "${CLAUDE_PLUGIN_ROOT}/state/cli.py" new-change --root "${CLAUDE_PROJECT_DIR}" --title "<short title>" --route <idea|ticket|incident> --type <feature|fix> [--profile-override <standard|full|lite>] [--external-ref <ticket number>]
+python "${CLAUDE_PLUGIN_ROOT}/plugin/state/cli.py" new-change --root "${CLAUDE_PROJECT_DIR}" --title "<short title>" --route <idea|ticket|incident> --type <feature|fix> [--profile-override <standard|full|lite>] [--external-ref <ticket number>]
 ```
 It prints the id, slug, folder and branch. Read them from the JSON; never invent an id.
 
@@ -46,7 +50,7 @@ Repeat until the owner says it is right. Then set the header status to `proposed
 
 ## 5. Commit on the phase branch (article p.11 step 5)
 ```
-python "${CLAUDE_PLUGIN_ROOT}/state/cli.py" commit-phase --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase a --message "intent(<id>): <title>" --start-point <default branch> --push
+python "${CLAUDE_PLUGIN_ROOT}/plugin/state/cli.py" commit-phase --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase a --message "intent(<id>): <title>" --start-point <default branch> --push
 ```
 The JSON tells you the branch, the commit and whether the push happened (`pushed`) and the
 GitHub repo (`github_repo`). If there is no remote, stop after the commit and report it.

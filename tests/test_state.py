@@ -44,8 +44,7 @@ def test_slugify():
     assert c.slugify("Claims status self-service") == "claims-status-self-service"
     assert c.slugify("  Ünïcode & stuff!! ") == "n-code-stuff"
     assert len(c.slugify("x" * 100)) <= 40
-    with pytest.raises(ValueError):
-        c.slugify("!!!")
+    assert c.slugify("!!!") == "change"
 
 
 def test_new_change_allocates_sequential_ids(tmp_path):
@@ -134,3 +133,33 @@ def test_cli_runs_as_a_script(tmp_path):
         check=True,
     )
     assert "sdlc:needs-human" in json.loads(proc.stdout)
+
+
+def test_slugify_falls_back_for_non_latin_titles():
+    assert c.slugify("日本語のタイトル") == "change"
+
+
+def test_next_change_id_considers_remote_ids(tmp_path):
+    status.new_change(tmp_path, "one")
+    assert c.next_change_id(tmp_path, ["0007"]) == "0008"
+
+
+def test_github_repo_parsing(tmp_path, monkeypatch):
+    from state import gitops
+
+    cases = {
+        "https://github.com/o/r.git": "o/r",
+        "https://github.com/o/r": "o/r",
+        "git@github.com:o/r.git": "o/r",
+        "ssh://git@github.com/o/r": "o/r",
+        "https://github.company.com/o/r": None,
+        "https://gitlab.com/o/r": None,
+    }
+    for url, expected in cases.items():
+        monkeypatch.setattr(gitops, "remote_url", lambda root, remote="origin", u=url: u)
+        assert gitops.github_repo(tmp_path) == expected, url
+
+
+def test_status_rejects_bool_iterations():
+    with pytest.raises(ValueError):
+        status.Status.from_dict({"id": "0001", "slug": "x", "title": "t", "iterations": True})

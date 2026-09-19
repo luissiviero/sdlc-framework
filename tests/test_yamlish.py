@@ -67,3 +67,54 @@ def test_pyyaml_agrees_when_available():
 def test_tabs_rejected():
     with pytest.raises(yamlish.YamlishError):
         yamlish.loads("a:\n\tb: 1\n")
+
+
+def test_newlines_and_special_strings_round_trip():
+    data = {
+        "reason": 'line one\nline two "quoted" \\ back',
+        "title": "Don't panic # not a comment",
+        "path": "C:\\work\\proj",
+        "cmd": "python -m pytest # fast",
+        "tab": "a\tb",
+        "unicode": "ação ✓",
+        "big": 1e20,
+    }
+    text = yamlish.dumps(data)
+    assert yamlish.loads(text) == data
+    yaml = pytest.importorskip("yaml")
+    assert yaml.safe_load(text) == data
+
+
+def test_reader_tolerates_bom_document_marker_and_flow_lists():
+    text = "\ufeff---\n# c\nlist: [a, 1, true]\nempty: []\ntitle: Don't stop  # trailing\n"
+    assert yamlish.loads(text) == {
+        "list": ["a", 1, True],
+        "empty": [],
+        "title": "Don't stop",
+    }
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "a: &x 1\n",
+        "a: |\n  block\n",
+        "'a': 1\n",
+        "a: {b: 1}\n",
+        "a:\n  - - 1\n",
+        "a: 1\na: 2\n",
+        "a: [[1]]\n",
+    ],
+)
+def test_reader_raises_on_unsupported_syntax(text):
+    with pytest.raises(yamlish.YamlishError):
+        yamlish.loads(text)
+
+
+def test_writer_refuses_what_it_cannot_read_back():
+    with pytest.raises(yamlish.YamlishError):
+        yamlish.dumps({"a": [[1, 2]]})
+    with pytest.raises(yamlish.YamlishError):
+        yamlish.dumps({"a": float("inf")})
+    with pytest.raises(yamlish.YamlishError):
+        yamlish.dumps({"bad key": 1})

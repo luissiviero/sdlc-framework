@@ -4,6 +4,7 @@
         --deploy-action none --deploy-production false \
         --maintain-metric ci_test_failure_rate --maintain-source github-actions \
         [--project-name X] [--build CMD] [--test CMD] [--lint CMD] \
+        [--claude-md-from changes/0000-sdlc-init/CLAUDE.proposed.md] \
         [--framework-repo owner/repo] [--detect-only]
 
 What it does, idempotently (re-running upgrades):
@@ -11,8 +12,10 @@ What it does, idempotently (re-running upgrades):
   2. writes sdlc.yaml (merging missing keys into an existing one; pins the plugin version);
   3. writes .claude/settings.json (merging rules and keys into an existing one);
   4. writes REVIEW.md and changes/README.md when absent;
-  5. merges the CLAUDE.md skeleton sections into the project's CLAUDE.md (never overwrites
-     existing sections; creates the file when missing);
+  5. builds CLAUDE.md: an existing CLAUDE.md is kept and only gains the skeleton sections it
+     lacks; when there is none, the file starts from ``--claude-md-from`` (the trimmed
+     /init-style text the model wrote into the change folder, because the protected-path
+     hook denies it a direct write) with the missing skeleton sections appended;
   6. creates ruff.toml when the lint target was "created";
   7. creates change 0000 (changes/0000-sdlc-init/, intent.md + status.yaml) so the
      installation goes through gate (a) like any other change.
@@ -28,16 +31,17 @@ import re
 import sys
 from pathlib import Path
 
-PLUGIN_ROOT = Path(__file__).resolve().parent.parent
-if str(PLUGIN_ROOT) not in sys.path:
-    sys.path.insert(0, str(PLUGIN_ROOT))
+PLUGIN_DIR = Path(__file__).resolve().parent.parent  # <repo>/plugin
+REPO_ROOT = PLUGIN_DIR.parent  # the plugin root Claude Code installs (marketplace source "./")
+if str(PLUGIN_DIR) not in sys.path:
+    sys.path.insert(0, str(PLUGIN_DIR))
 
 from init import detect as detect_mod  # noqa: E402
 from init.render import render_file  # noqa: E402
 from state import conventions as c  # noqa: E402
 from state import status, yamlish  # noqa: E402
 
-TEMPLATE = PLUGIN_ROOT.parent / "template"
+TEMPLATE = REPO_ROOT / "template"
 DEFAULT_FRAMEWORK_REPO = "luissiviero/sdlc-framework"
 SKELETON_SECTIONS = (
     "## Commands",
@@ -49,7 +53,7 @@ SKELETON_SECTIONS = (
 
 def plugin_version() -> str:
     manifest = json.loads(
-        (PLUGIN_ROOT / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8")
+        (REPO_ROOT / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8")
     )
     return str(manifest["version"])
 
@@ -58,7 +62,12 @@ def _rule_for(command: str | None, fallback: str) -> str:
     if not command:
         return fallback
     head = " ".join(command.split()[:3])
-    return f"Bash({head}*)"
+    return f"Bash({head} *)"
+
+
+def _esc(value: str) -> str:
+    """Escape for use inside a double-quoted YAML/JSON string in the templates."""
+    return value.replace("\\", "\\\\").replace('"', '\\"')
 
 
 def build_values(args, det: detect_mod.Detection) -> dict[str, str]:
@@ -68,9 +77,9 @@ def build_values(args, det: detect_mod.Detection) -> dict[str, str]:
     return {
         "PROJECT_NAME": args.project_name or Path(args.root).resolve().name,
         "PROFILE": args.profile,
-        "BUILD_CMD": build_cmd,
-        "TEST_CMD": test_cmd,
-        "LINT_CMD": lint_cmd,
+        "BUILD_CMD": _esc(build_cmd),
+        "TEST_CMD": _esc(test_cmd),
+        "LINT_CMD": _esc(lint_cmd),
         "BUILD_HEALTHY": det.build.healthy or "exit code 0",
         "TEST_HEALTHY": det.test.healthy or "exit code 0",
         "LINT_HEALTHY": det.lint.healthy or "exit code 0",
@@ -115,17 +124,19 @@ def merge_settings(existing: dict, fresh: dict) -> dict:
         **(out.get("extraKnownMarketplaces") or {}),
         **fresh["extraKnownMarketplaces"],
     }
-    out.pop("hooks", None)  # hooks come from the pinned plugin, never from the project file
+    # hooks come from the pinned plugin; an owner-written hooks block is left untouched
     return out
 
 
-def merge_claude_md(existing: str | None, skeleton: str) -> str:
-    """Keep the project's CLAUDE.md; append only the skeleton sections it lacks."""
-    if existing is None or not existing.strip():
+def merge_claude_md(existing: str | None, skeleton: str, proposal: str | None = None) -> str:
+    """Keep the project's CLAUDE.md; append only the skeleton sections it lacks. Without an
+    existing file, start from the proposal (if any) and append the missing skeleton sections."""
+    base = existing if existing and existing.strip() else (proposal or "")
+    if not base.strip():
         return skeleton
     sections = _split_sections(skeleton)
-    present = {h for h, _ in _split_sections(existing)}
-    out = existing.rstrip("\n") + "\n"
+    present = {h for h, _ in _split_sections(base)}
+    out = base.rstrip("\n") + "\n"
     for heading, body in sections:
         if heading and heading not in present and heading in SKELETON_SECTIONS:
             out += "\n" + heading + "\n" + body.strip("\n") + "\n"
@@ -167,9 +178,21 @@ def run(args) -> dict:
     fresh_yaml = yamlish.loads(render_file(TEMPLATE / "sdlc.yaml", values))
     sdlc_path = root / "sdlc.yaml"
     if sdlc_path.exists():
-        merged = merge_missing(yamlish.load_file(sdlc_path), fresh_yaml)
+        existing_yaml = yamlish.load_file(sdlc_path)
+        merged = merge_missing(existing_yaml, fresh_yaml)
         merged.setdefault("plugin", {})["version"] = values["PLUGIN_VERSION"]
-        _write_if_changed(sdlc_path, yamlish.dumps(merged), report["files"], "sdlc.yaml")
+        if merged == existing_yaml:
+            report["files"]["sdlc.yaml"] = "unchanged"
+        elif merge_missing(existing_yaml, fresh_yaml) == existing_yaml:
+            # only the pinned version moved: patch that one line, keep the owner's comments
+            text = sdlc_path.read_text(encoding="utf-8")
+            patched = re.sub(
+                r"(?m)^(\s+version:\s*).*$", rf"\g<1>{values['PLUGIN_VERSION']}", text, count=1
+            )
+            _write_if_changed(sdlc_path, patched, report["files"], "sdlc.yaml")
+        else:
+            _write_if_changed(sdlc_path, yamlish.dumps(merged), report["files"], "sdlc.yaml")
+            report["files"]["sdlc.yaml"] = "updated (new keys added; comments dropped)"
     else:
         _write_if_changed(
             sdlc_path, render_file(TEMPLATE / "sdlc.yaml", values), report["files"], "sdlc.yaml"
@@ -202,7 +225,13 @@ def run(args) -> dict:
     # CLAUDE.md: merge skeleton
     claude_path = root / "CLAUDE.md"
     existing = claude_path.read_text(encoding="utf-8") if claude_path.exists() else None
-    merged_md = merge_claude_md(existing, render_file(TEMPLATE / "CLAUDE.md", values))
+    proposal = None
+    if args.claude_md_from:
+        proposal_path = Path(args.claude_md_from)
+        if not proposal_path.is_absolute():
+            proposal_path = root / proposal_path
+        proposal = proposal_path.read_text(encoding="utf-8")
+    merged_md = merge_claude_md(existing, render_file(TEMPLATE / "CLAUDE.md", values), proposal)
     _write_if_changed(claude_path, merged_md, report["files"], "CLAUDE.md")
 
     # created lint target
@@ -271,6 +300,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--build", default=None)
     p.add_argument("--test", default=None)
     p.add_argument("--lint", default=None)
+    p.add_argument("--claude-md-from", default=None, help="trimmed CLAUDE.md text to start from")
     p.add_argument("--framework-repo", default=DEFAULT_FRAMEWORK_REPO)
     p.add_argument("--detect-only", action="store_true")
     return p
