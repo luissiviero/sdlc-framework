@@ -61,7 +61,7 @@
 3. Ask "draft an intent for ..." → the intent-template skill should load (step 10 trigger test).
 4. Run `/sdlc:sdlc-plan` end to end and check the PR and the `sdlc:a-ready` label.
 
-## Left for B2 (next handoff)
+## Left for B2 (the brief is `HANDOFF.md`; session 1's brief moved to `docs/handoffs/session-1-B0-B1.md`)
 - Step 16 confidence gate in `plugin/gate/` (deterministic checks: artifact vs template, tests/build/lint, evidence, no Important findings, plan↔diff, no guardrail edits; risk list) + adversarial reviewer verdict continue/park.
 - Step 17 agents (verifier, code-simplifier, researcher, adversarial-reviewer) in `plugin/agents/`; then add `"agents": ["./plugin/agents/<name>.md", ...]` to `.claude-plugin/plugin.json` (`claude plugin validate .` rejects a directory string for `agents`; commands/skills/hooks accept one).
 - Step 18 auto-accept conditions; step 19 run limits (iterations, wall-clock, budget, pause flag) parking through the gate; `status.yaml: iterations` is ready for it.
