@@ -64,6 +64,8 @@ Test repository: `luissiviero/sdlc-sample-python` (a copy of the fixture with th
 
 First attempt (2026-09-20, cloud session, no setup script): the plugin did not load (NOTES §3a), so checks 2 and 3 were **not exercised**; the session ran the installer by hand instead, which exposed the pre-existing-folder crash fixed below, and had to push to its assigned branch rather than `sdlc/0000/a` (cloud branch policy; the command now says what to do).
 
+Second attempt (2026-09-20, cloud session with the two-line setup script): the plugin loaded; `/sdlc:sdlc-init` asked its four questions, verified the three targets, installed the files (after the same pre-existing-folder workaround, since the fix was not merged yet) and opened `sdlc-sample-python` PR #2 on `sdlc/0000/a` with `sdlc:a-ready`. **Check 3 passed**: "draft an intent for adding a percent helper" loaded the `intent-template` skill, allocated id 0001 through the state CLI, wrote the five sections in order and opened PR #3 on `sdlc/0001/a`. Check 2 (hook denial) still to be reported.
+
 ## Fixed after the first live run (2026-09-20)
 - `status.new_change` adopts a change folder that exists without `status.yaml` (the command writes `CLAUDE.proposed.md` there first); previously the installer crashed.
 - `/sdlc-init` step 5 says what to do when the platform assigns a branch (Claude Code on the web); step 6 gives the cloud setup-script remedy.
