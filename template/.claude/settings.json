@@ -1,0 +1,43 @@
+{
+  "permissions": {
+    "deny": [
+      "Read(.env*)",
+      "Read(**/.env*)",
+      "Read(./secrets/**)",
+      "Read(**/secrets/**)",
+      "Edit(.claude/**)",
+      "Edit(CLAUDE.md)",
+      "Edit(REVIEW.md)",
+      "Edit(sdlc.yaml)",
+      "WebFetch",
+      "Bash(curl *)",
+      "Bash(wget *)"
+    ],
+    "allow": [
+      "Bash(git *)",
+      "{{BUILD_RULE}}",
+      "{{TEST_RULE}}",
+      "{{LINT_RULE}}"
+    ],
+    "disableBypassPermissionsMode": "disable"
+  },
+  "sandbox": {
+    "enabled": true,
+    "failIfUnavailable": false,
+    "allowUnsandboxedCommands": false,
+    "network": {
+      "allowedDomains": ["github.com", "*.github.com", "pypi.org", "files.pythonhosted.org"]
+    }
+  },
+  "extraKnownMarketplaces": {
+    "sdlc-framework": {
+      "source": {
+        "source": "github",
+        "repo": "{{FRAMEWORK_REPO}}"
+      }
+    }
+  },
+  "enabledPlugins": {
+    "sdlc@sdlc-framework": true
+  }
+}

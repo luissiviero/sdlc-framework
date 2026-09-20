@@ -1,0 +1,56 @@
+# sdlc.yaml — the project's SDLC framework configuration (written by /sdlc-init).
+# Process lives in the pinned plugin; this file is the project content the plugin reads.
+# It is a protected path: only the owner edits it, in a reviewed PR.
+
+# --- profile: which gates are human (OPERATING_MODEL section 3; decision 18) --------------
+# standard: owner merges at (a) intent PR, (b) spec+plan PR, (e) build PR; (c),(d) automated
+# full:     all five gates human; (c),(d) = approving review + label on the build PR
+# lite:     (a) and (e) only; (b) is confidence-gated too
+profile: {{PROFILE}}
+
+# --- feedback loop: one-command targets (build guide step 14; article p.27 step 1) --------
+# Each must exit non-zero on failure. /sdlc-init detects them for Python projects.
+commands:
+  build: "{{BUILD_CMD}}"
+  test: "{{TEST_CMD}}"
+  lint: "{{LINT_CMD}}"
+
+# --- phase adapters (OPERATING_MODEL section 9; decision 19) ---------------------------------
+deploy:
+  # what makes a merged change live: publish package | schedule job | regenerate report |
+  # promote to paper trading | deploy service | none
+  action: {{DEPLOY_ACTION}}
+  # true turns on the release label at gate (e) and the production-gate hook (B4)
+  production: {{DEPLOY_PRODUCTION}}
+maintain:
+  # the watched metric and where the detection script reads it (default: CI test failure
+  # rate from the CI API — decision 15). Bands and the 3-sigma tiers arrive in B5.
+  metric: {{MAINTAIN_METRIC}}
+  source: {{MAINTAIN_SOURCE}}
+  # runbooks the 3-sigma tier may call; authorization: preapproved (CI-scoped, reversible)
+  # or go (touches a running system; waits for the owner's "Go" as a parked item)
+  runbooks: []
+
+# --- risk list (build guide step 5; a hit parks the change at its next gate) ---------------
+risk_list:
+  - auth
+  - data migrations
+  - money movement
+  - production config
+
+# --- guardrails read by the plugin's hooks (build guide step 15) -----------------------------
+# Always protected, whatever is listed here: .claude/**, CLAUDE.md, REVIEW.md, sdlc.yaml and
+# the plugin's own files. Add generated code, frozen packages, migrations, infra.
+protected_paths: []
+plan_sync:
+  # staged paths matching these globs do not require a plan.md update in phase (c)
+  exempt:
+    - "*.md"
+hooks:
+  format_on_edit: true
+
+# --- pinned process (decision 8) ----------------------------------------------------------
+plugin:
+  name: sdlc
+  marketplace: sdlc-framework
+  version: {{PLUGIN_VERSION}}

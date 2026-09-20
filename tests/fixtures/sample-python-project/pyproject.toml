@@ -1,0 +1,11 @@
+[project]
+name = "sample-python-project"
+version = "0.1.0"
+description = "Fixture project for the SDLC framework integration tests (layer 2)."
+requires-python = ">=3.10"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100

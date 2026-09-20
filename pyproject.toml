@@ -1,0 +1,31 @@
+[project]
+name = "sdlc-framework"
+version = "0.1.0"
+description = "Claude Code plugin + project template that drives a project through plan, design, build, test, deploy and maintain with profile-based human gates."
+requires-python = ">=3.10"
+# Runtime has no third-party dependency on purpose: hooks must run under the owner's
+# plain `python` (Windows) and on a CI runner without an install step (decision 7).
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "ruff>=0.5", "pyyaml>=6"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# the fixture project has its own tests (one fails on purpose behind a flag): never collect them here
+norecursedirs = ["fixtures", ".git", ".venv", "__pycache__"]
+# `plugin` on the path lets tests import state/, hooks/ and init/ exactly as the
+# hook scripts and command helpers do at runtime.
+pythonpath = ["plugin", "."]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+extend-exclude = ["docs"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["state", "hooks", "init", "gate"]

@@ -1,42 +1,59 @@
-# Handoff — build the SDLC framework repo (session 1: B0 + B1)
+# Handoff — session 2: build stage B2 (autonomy kit, steps 16–21)
+
+Session 1's brief is kept at `docs/handoffs/session-1-B0-B1.md`; its result is on `main` once PR #1 is merged.
+
+## Preconditions — check before building anything
+1. PR #1 (session 1) is merged to `main` and this session starts from `main`. If it is not merged, stop and say so.
+2. The owner's live checks from `docs/PROGRESS.md` ("Live checks the owner can do now"). Read their status from the owner's first message or from the PR #1 checklist; do not assume. If any is unreported, ask once and continue with the rest of B2, marking the dependent step partial.
+   - Windows: `python tasks.py check` green on the owner's PC. If it failed, fixing it is the first task (the code is meant to be path-agnostic; see NOTES §1).
+   - Hook denial in a live session: with the plugin loaded, an attempted edit of `.claude/settings.json` is refused with "Protected path". If it was **not** refused, step 18 (auto-accept) must not be enabled in this session; diagnose first (hooks.json exec form, `python` on PATH, plugin actually loaded — `/plugin` shows `sdlc@sdlc-framework`).
+   - Intent-skill trigger: "draft an intent for …" loads `intent-template`. If not, tune the skill's `description` (article p.22 step 4) before writing the policy skills of step 20 the same way.
+3. `python tasks.py check` is green in this session before the first edit (142 tests at the end of session 1).
 
 ## Read in this order
-1. `docs/OPERATING_MODEL.md` — the contract (gates, profiles, conventions). Treat it as the spec.
-2. `docs/DECISIONS.md` — 20 settled decisions. Do not reopen them; if one proves impossible, stop and report why.
-3. `docs/BUILD_GUIDE.md` — the 46-step build plan (`docs/build_guide.json` is the same data). Steps are grouped in build stages B0 → B5; the "Phase" of a step is where it operates once built, not when to build it.
-4. `docs/reference/ai-native-sdlc-playbook.txt` — the source article, page-tagged (`===== PAGE N =====`). Read a page whenever a step cites it and you need the original wording; the PDF is beside it.
-5. `CLAUDE.md` — conventions for this repo.
+1. `docs/OPERATING_MODEL.md` — the contract, finalised in session 1.
+2. `docs/DECISIONS.md` — 20 settled decisions. Do not reopen them; if one proves impossible, document why in `docs/PROGRESS.md` and continue.
+3. `docs/PROGRESS.md` — what exists after session 1, the choices made where the pack was open, and the gaps carried forward.
+4. `docs/NOTES.md` — platform facts verified against the Claude Code docs (hooks, cloud sessions, managed settings, permissions, plugin layout). Re-verify a fact only if the plugin's minimum Claude Code version (2.1.228) changes.
+5. `docs/BUILD_GUIDE.md` — steps 16–21 (B2) and, for the interfaces B2 must leave ready, steps 22–30 (B3).
+6. `docs/reference/ai-native-sdlc-playbook.txt` — page-tagged article; read a page when a step cites it.
+7. `CLAUDE.md` — conventions for this repo.
 
 ## Objective of this session
-Complete build stage **B0** (foundations, steps 1–9b) and **B1** (the five "clay" plays as manual commands, steps 10–15). Do not start B2 in this session. Everything here must work locally on the owner's Windows PC with no CI (decision 1: CI arrives in B3).
+Complete build stage **B2**: everything a phase needs to run unattended safely — the confidence gate, the four agents, auto-accept conditions, run limits, the policy skills, and the full `/sdlc-init`. Do not start B3 (`/sdlc-design`, the phase runbooks, CI workflows). Everything must still work by hand on the owner's PC and in a Claude Code cloud session (decision 1: CI arrives in B3).
 
-## Deliverables (in order)
-1. `docs/OPERATING_MODEL.md` reviewed against the guide and finalised (step 1) — it is already drafted; edit, do not rewrite.
-2. Repo scaffold (step 2): `plugin/` and `template/` layout exactly as in `CLAUDE.md`; `tasks.py` task runner; `pytest` + `ruff` wired; a first passing test.
-3. `docs/NOTES.md`: the verified answer to "how does Claude Code on Windows invoke hook commands" and the chosen way to run Python hooks from `.claude/settings.json` (step 2, decision 7). Check the Claude Code docs (hooks reference) before writing a hook. Also record whether the current docs allow CI authentication with a Max subscription (decision 1) — read only, no assumption.
-4. Conventions implemented (step 9): `changes/<id>-<slug>/` layout, `status.yaml` schema (phase, profile override, change type, gate result, parked reason, iteration count), branch names `sdlc/<id>/<phase>`, label names. A small Python module `plugin/state/` reads and writes them.
-5. Template files (steps 2, 9a, 9b, 10, 13): `template/sdlc.yaml` (profile + phase adapters, documented), `template/CLAUDE.md` skeleton (Commands with healthy output · Conventions · Architecture · Things Claude gets wrong · Verifying your work block from article p.28), `template/REVIEW.md` (article p.34 structure plus the rules in the guide's step 26), `template/changes/README.md`.
-6. Skills (steps 10, 20 — only the intent template now): `plugin/skills/intent-template/SKILL.md` with the article's sections (Problem · Proposed outcome · Affected users and systems · Constraints · Open questions; header Author/Status; plus change id, entry route idea/ticket/incident, and an Evidence section for incidents). Test that it triggers.
-7. Commands (steps 11, 12): `/sdlc-plan` (brainstorm → intent.md via the skill → owner corrects → commit on `sdlc/<id>/a` and open the PR) and the plan.md template + interrogation prompt (files that change · order of work · risks · options not taken · proof), used later by `/sdlc-design`. `/sdlc-design` itself is B3 — do not build it yet.
-8. Feedback loop (step 14): `/sdlc-init` must detect or create one-command build/test/lint targets in the target project; implement the detection for Python projects first.
-9. Hooks (step 15) in Python: protected-path deny (always including `.claude/**`, `CLAUDE.md`, `REVIEW.md`, the hook scripts), formatter/lint on edit, secrets-pattern check, plan.md-sync pre-commit check. Unit-test each hook with sample tool inputs.
-10. Settings (step 7): `template/.claude/settings.json` with the allow-list (git, build, test, lint), deny-list (`.env*`, secrets, WebFetch, curl, wget), sandbox where available; plus a documented user-level managed settings file for the owner's machine.
-11. `/sdlc-init` (step 21) — minimal version: copies the template, asks profile + adapters, writes `sdlc.yaml`, runs `/init` and trims `CLAUDE.md`, installs hooks/settings, commits as the project's first PR. Idempotent.
+## Layout facts from session 1 that B2 builds on
+- The **repository root is the plugin root** (marketplace `source: "./"`, `.claude-plugin/plugin.json` points at `./plugin/...`). Scripts are called as `python "${CLAUDE_PLUGIN_ROOT}/plugin/<pkg>/<script>.py"`; hooks live in `plugin/hooks/hooks.json` in exec form. When adding agents, add `"agents": ["./plugin/agents/<name>.md", ...]` to `.claude-plugin/plugin.json` (the validator rejects a directory string for `agents`) and run `claude plugin validate .`.
+- `plugin/state/` owns `status.yaml` (fields: id, slug, title, phase, entry_route, change_type, profile_override, gate{phase,result,reason,at}, parked_reason, iterations, external_ref, timestamps). `Status.park()`, `record_gate()` and `bump_iteration()` already exist for the gate to call. `conventions.HUMAN_GATES` gives the human gates per profile; `is_human_gate(profile, phase)` decides whether a gate waits for the owner or calls the confidence gate.
+- The YAML subset reader/writer is `plugin/state/yamlish.py` (no PyYAML at runtime; never add a third-party runtime dependency — decision 7 and NOTES §1 explain why a crashing hook is worse than a missing one).
+- The protected-path hook has no exception; the only sanctioned writer of guardrail files in a run is `plugin/init/sdlc_init.py`. Any B2 code that must write `.claude/**`, `CLAUDE.md`, `REVIEW.md` or `sdlc.yaml` goes through that script or is left to the owner.
+- Commands are single-file prompts in `plugin/commands/`; deterministic work is Python called from them, so it is testable without a model (layer 1) and against the fixture (layer 2).
 
-## How the framework is tested (three layers — build layer 1 and 2 in this session)
-1. **Self-tests, no project and no model** (`pytest` in this repo): every hook with sample tool inputs, the confidence-gate deterministic checks, the `plugin/state/` module (status.yaml, labels, branch names), template rendering, the detection script's statistics. This is most of the framework and must be green on every commit.
-2. **Fixture project** — `tests/fixtures/sample-python-project/`: a tiny Python package (one module, one passing test, one intentionally failing test behind a flag, a `.env` to prove the deny rules). Integration tests run `/sdlc-init` and the phase commands against a temporary copy of it, with the model calls replaced by recorded outputs where possible, and assert on the files, branches, labels and status.yaml they produce. Create this fixture in this session and use it for the definition of done below.
-3. **Evals and shakedown (later, B5)**: the article's eval suite runs the real model on real tasks (20–50, collected from actual use), and the shakedown sessions run the framework on a real project. Neither exists on day one; do not simulate them.
+## Deliverables (in dependency order)
+1. **Confidence gate** (step 16) as `plugin/gate/`: one function used by every autonomous phase. Deterministic checks — artifact exists and matches its template (intent/spec/plan section names), tests/build/lint green via the `sdlc.yaml` commands, evidence present for (d), no Important review findings (read a findings JSON; format to define now, produced by the review pass in B3), plan.md ↔ diff consistency (reuse `plugin/hooks/plan_sync.check`), no diff touching the guardrail files unless the change's intent.md says it is the framework itself, no risk-list hit (`sdlc.yaml: risk_list` words against the diff paths and the spec). Result: `continue` or `park` with reasons. Park = `Status.park(reason)`, the `sdlc:needs-human` label, and a "What I need from you" block for the PR description; never a notification (decision 11). CLI: `python "${CLAUDE_PLUGIN_ROOT}/plugin/gate/cli.py" check --root . --id 0001 --phase c`. Every check unit-tested with fixtures; the adversarial reviewer's verdict is an input to the gate (a JSON the agent writes), not something the gate runs itself.
+2. **Agents** (step 17) in `plugin/agents/`: `verifier.md` (copy the article's p.25–26 example: tools Bash, Read; "Exercise the changed behavior and the two nearest neighboring flows … Do not fix anything; report only"), `code-simplifier.md`, `researcher.md`, `adversarial-reviewer.md` (fresh context; returns continue/escalate with reasons and a routine/non-routine classification for step 18, written as JSON into `changes/<id>-<slug>/evidence/`). All four "report only, do not fix". Register them in the manifest.
+3. **Run limits** (step 19) in the gate: max fix iterations per phase (3; `status.iterations`), wall-clock per run, a per-change budget where the substrate exposes one, and a repo-level pause flag (`sdlc.yaml: paused: true` or a `changes/PAUSE` file — pick one and document). On any limit: park with partial evidence. Check the Claude Code CLI docs for `--max-turns` as the outer bound for `claude -p` runs (B3 uses it); record the answer in NOTES.
+4. **Auto-accept conditions** (step 18): a deterministic preflight, `python "${CLAUDE_PLUGIN_ROOT}/plugin/gate/preflight.py" --root .`, that says whether the implementation run may use `--permission-mode acceptEdits`: CLAUDE.md present with the three commands, the policy skills present, the plugin's hooks loaded (check `hooks.json` reachable and `python` on PATH), one-command test target green. Never bypass-permissions mode (the template disables it). The routine/non-routine verdict tightens the gate (mandatory adversarial review, iteration cap 2) and never interrupts the owner.
+5. **Policy skills** (step 20) in `plugin/skills/`: `coding-standards`, `security-baseline`, `ux-conventions`, `data-conventions`, `definition-of-done`. Each frontmatter description says when it triggers; each body names its written source (start from the article pages and the owner's own standards if provided; say "no owner source yet" otherwise) and ends, where possible, with a deterministic script call and its output (article p.22 pattern). Projects override in `.claude/skills/`. Static tests on frontmatter and sections, like `tests/test_commands_and_skills.py`.
+6. **Full `/sdlc-init`** (step 21): extend `plugin/init/sdlc_init.py` and the command with `template/evals/` (empty suite with a README: filled by incidents from B5, decision 17), `template/bands.yaml` (the p.44 shape for CI test failure rate, decision 15), and non-Python detection for at least Node (package.json scripts) so a JS project gets its three targets. The CI workflows and the daily digest stay in B3. Keep it idempotent (the tests in `tests/test_init.py` define the contract: unchanged files stay untouched, comments survive).
+7. **Docs**: `docs/PROGRESS.md` rewritten for session 2 (same structure, 5-bullet summary on top, a row per step 16–21, decisions not reopened, choices made, live checks owed, what is left for B3); `docs/NOTES.md` extended with any new docs fact (cite URL and quote); `README.md` if the usage changed.
+
+## How the framework is tested (unchanged; layer 3 stays in B5)
+1. Self-tests (`python tasks.py check`): every gate check, the preflight, run limits and the pause flag with fixtures; agents and skills statically (frontmatter, required sections, manifest registration); `claude plugin validate .` clean.
+2. Fixture project (`tests/fixtures/sample-python-project/`): a copy initialised with the full `/sdlc-init`, then the gate run against a prepared change folder in states that must continue and states that must park (missing plan.md, failing test behind `SAMPLE_FAIL=1`, a diff touching `.claude/settings.json`, a risk-list word). Add a second minimal fixture for Node detection if step 21's non-Python detection is built.
+3. Evals and shakedown: B5; do not simulate.
 
 ## Definition of done for this session
-- `python tasks.py test` and `python tasks.py lint` are green on Windows and Linux.
-- The fixture project can be initialised with `/sdlc-init` from a temporary copy, and `/sdlc-plan` produces a committed `changes/<id>-<slug>/intent.md` on branch `sdlc/<id>/a` with an open PR.
-- Every hook has a unit test; the protected-path hook demonstrably blocks an edit to `.claude/settings.json`.
-- `docs/NOTES.md` answers the two verification questions above with links to the docs consulted.
-- A `docs/PROGRESS.md` lists each B0/B1 step with done / partial / not started and what is left for B2.
+- `python tasks.py check` green (report the count) and `claude plugin validate .` clean; Windows run by the owner listed as owed if not confirmed.
+- The gate, run against the fixture, returns `continue` on a clean change and `park` with the right reason for each prepared failure; parking writes `status.yaml` (gate result, parked reason) and prints the "What I need from you" block.
+- The four agent files exist, are registered, and say "report only, do not fix".
+- Preflight refuses auto-accept when any precondition is missing and allows it on the initialised fixture.
+- Five policy skills with static tests; the full `/sdlc-init` writes evals/ and bands.yaml and stays idempotent.
+- `docs/PROGRESS.md` for session 2 with the ≤5-bullet summary on top and the list of what B3 needs.
 
 ## Rules for this session
-- Never reopen a decision in `docs/DECISIONS.md`; if a decision is technically impossible, document why in `docs/PROGRESS.md` and continue with the rest.
-- When something in the article is needed, cite the PDF page in code comments or docs.
-- Do not add notifications of any kind. Do not use bypass-permissions mode.
-- The owner reviews once the session is done. End with a ≤5-bullet summary at the top of `docs/PROGRESS.md`; the long version goes below it.
+- Never reopen a decision in `docs/DECISIONS.md`; if one is technically impossible, document why in `docs/PROGRESS.md` and continue with the rest.
+- Cite the PDF page in code comments or docs whenever the article is used.
+- No notifications of any kind. No bypass-permissions mode. No third-party runtime dependency.
+- Before the final commit run a fresh-context review of the diff against this handoff and the decisions, fix what it finds, and only then commit, push and open a draft PR against `main`.
+- End with the ≤5-bullet summary at the top of `docs/PROGRESS.md`; the long version goes below it.

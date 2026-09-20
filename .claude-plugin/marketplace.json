@@ -1,0 +1,15 @@
+{
+  "name": "sdlc-framework",
+  "description": "Plugins of the SDLC framework: plan → design → build → test → deploy → maintain with profile-based human gates.",
+  "owner": {
+    "name": "Luis Siviero"
+  },
+  "plugins": [
+    {
+      "name": "sdlc",
+      "source": "./",
+      "version": "0.1.0",
+      "description": "Drives a project through plan, design, build, test, deploy and maintain with profile-based human gates."
+    }
+  ]
+}
