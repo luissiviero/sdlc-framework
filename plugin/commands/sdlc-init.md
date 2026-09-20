@@ -52,6 +52,10 @@ Run the three commands from `sdlc.yaml` once and paste the output. A target that
 reported, not hidden: the owner decides whether to fix the project or change the target.
 
 ## 5. Commit as the project's first PR (gate (a) of change 0000)
+Branch policy: the framework's branch is `sdlc/0000/a`. If this session's platform assigns
+a branch and forbids pushing any other (Claude Code on the web does), run the command below
+without `--push`, then push the resulting commit to the assigned branch and open the PR from
+it, keeping the label; say in the PR body that the framework branch is `sdlc/0000/a` locally.
 ```
 python "${CLAUDE_PLUGIN_ROOT}/plugin/state/cli.py" commit-phase --root "${CLAUDE_PROJECT_DIR}" --id 0000 --phase a --message "sdlc-init: connect the SDLC framework" --paths sdlc.yaml .claude/settings.json REVIEW.md CLAUDE.md changes ruff.toml --start-point <default branch> --push
 ```
@@ -62,10 +66,12 @@ installed · profile and adapters · detected targets and their health · files 
 review (CLAUDE.md trim, settings) · merge = accept.
 
 ## 6. After the merge (tell the owner, do not do it)
-- The plugin is declared in `.claude/settings.json`; a new session (local or cloud) installs
-  it from the marketplace once the owner has trusted the folder (allow rules and marketplace
-  declarations apply only after workspace trust). Locally the owner may also run
-  `claude plugin install sdlc@sdlc-framework`.
+- The plugin is declared in `.claude/settings.json`. A local interactive session installs it
+  from the marketplace once the owner accepts the trust dialog for the folder. A cloud
+  session never shows that dialog, so the repository's marketplace declaration is ignored
+  there ("marketplace not registered"): the owner adds two lines to the cloud environment's
+  setup script — `claude plugin marketplace add luissiviero/sdlc-framework` and
+  `claude plugin install sdlc@sdlc-framework --yes` (see `docs/NOTES.md` §3).
 - Optional, owner's machine only: `docs/owner-machine/README.md` in the framework repo
   explains the managed settings file and its machine-wide consequences.
 

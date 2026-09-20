@@ -116,6 +116,53 @@ not install the plugin from the project's settings by itself; the CI job must lo
 plugin explicitly (`--plugin-dir` on the checked-out framework) — which is layer (iii) of
 decision 6 anyway.
 
+### 3a. Observed on 2026-09-20: the cloud session did not install the declared plugin
+
+First live run on `luissiviero/sdlc-sample-python` (Claude Code 2.1.278, Claude Code on the
+web). `claude plugin list` printed "No plugins installed"; the debug log said:
+
+```
+Skipping orphaned enabledPlugins entry sdlc@sdlc-framework: marketplace not registered
+installPluginsForHeadless: no marketplaces declared
+```
+
+and stderr: "Ignoring 4 permissions.allow entries from .claude/settings.json: this workspace
+has not been trusted. Run Claude Code interactively here once and accept the trust dialog, or
+set projects["/home/user/sdlc-sample-python"].hasTrustDialogAccepted: true in
+/root/.claude.json."
+
+Cause, from https://code.claude.com/docs/en/permissions ("What runs before you trust a
+folder"): repository `extraKnownMarketplaces` entries are "Not used, and no dialog is
+offered" in the two untrusted situations, and "Claude Code shows the trust dialog in
+interactive sessions only. A `claude -p` run or an SDK session never shows it". A cloud
+session behaves like the latter, so the "Yes" in the cloud-environments table (§3 above)
+holds only once the folder counts as trusted.
+
+Documented remedies: "For the rows that need this exact folder trusted, trust it by hand:
+set `projects["<path>"].hasTrustDialogAccepted` to `true` in `~/.claude.json`", or register
+and install explicitly: "Claude Code provides non-interactive `claude plugin marketplace`
+subcommands for scripting and automation" (`claude plugin marketplace add <owner/repo>`),
+and "In a non-interactive shell, such as a provisioning script, pass `--yes` to
+`claude plugin install`". Cloud environments run a **setup script** "when a new cloud
+session starts, before Claude Code launches", and the environment cache keeps what it
+installs.
+
+**Chosen remedy for cloud sessions** (owner configures once, in the environment dialog at
+claude.ai/code):
+
+```
+claude plugin marketplace add luissiviero/sdlc-framework
+claude plugin install sdlc@sdlc-framework --yes
+```
+
+The project's `.claude/settings.json` declaration stays: it is what a trusted local session
+uses, and it documents the pin. For B3 (`claude -p` in GitHub Actions) the same applies: the
+workflow either runs those two lines or loads the checked-out framework with `--plugin-dir`.
+
+Also observed: the sample container lacks bubblewrap and socat, so the template's sandbox
+block is inert there ("Sandbox disabled: ... dependencies are missing"); the setup script
+may install them if OS-level isolation is wanted in the cloud.
+
 ## 4. The managed-settings keys and what they do to decision 6
 
 Source: https://code.claude.com/docs/en/settings-reference,

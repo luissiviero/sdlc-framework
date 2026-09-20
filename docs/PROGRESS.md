@@ -56,10 +56,17 @@
 10. `/sdlc-plan` re-run: the command lists existing changes (`cli.py list`) and continues an existing phase-(a) change with the same idea instead of allocating a new id; ids also take the remote's `sdlc/<id>/*` branches into account.
 
 ## Live checks the owner can do now (not automatable here)
+Test repository: `luissiviero/sdlc-sample-python` (a copy of the fixture with the plugin declared in `.claude/settings.json`).
 1. On the PC: `python tasks.py check`.
-2. In a fresh project: `claude --plugin-dir <framework repo root>`, run `/sdlc:sdlc-init`, then ask Claude to edit `.claude/settings.json` → expect "Protected path". Minimum Claude Code version for the settings deny layer: 2.1.228 (NOTES §6).
+2. In the sample repo: with the plugin loaded (locally `claude --plugin-dir <framework repo root>`; in a cloud session the environment setup script of NOTES §3a), run `/sdlc:sdlc-init`, then ask Claude to edit `.claude/settings.json` → expect "Protected path". Minimum Claude Code version for the settings deny layer: 2.1.228 (NOTES §6).
 3. Ask "draft an intent for ..." → the intent-template skill should load (step 10 trigger test).
 4. Run `/sdlc:sdlc-plan` end to end and check the PR and the `sdlc:a-ready` label.
+
+First attempt (2026-09-20, cloud session, no setup script): the plugin did not load (NOTES §3a), so checks 2 and 3 were **not exercised**; the session ran the installer by hand instead, which exposed the pre-existing-folder crash fixed below, and had to push to its assigned branch rather than `sdlc/0000/a` (cloud branch policy; the command now says what to do).
+
+## Fixed after the first live run (2026-09-20)
+- `status.new_change` adopts a change folder that exists without `status.yaml` (the command writes `CLAUDE.proposed.md` there first); previously the installer crashed.
+- `/sdlc-init` step 5 says what to do when the platform assigns a branch (Claude Code on the web); step 6 gives the cloud setup-script remedy.
 
 ## Left for B2 (the brief is `HANDOFF.md`; session 1's brief moved to `docs/handoffs/session-1-B0-B1.md`)
 - Step 16 confidence gate in `plugin/gate/` (deterministic checks: artifact vs template, tests/build/lint, evidence, no Important findings, plan↔diff, no guardrail edits; risk list) + adversarial reviewer verdict continue/park.

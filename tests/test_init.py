@@ -199,3 +199,17 @@ def test_init_escapes_commands_with_quotes_and_hashes(tmp_path):
     assert cfg["commands"]["test"] == 'python -m pytest -k "not slow" # fast'
     settings = json.loads((tmp_path / ".claude" / "settings.json").read_text(encoding="utf-8"))
     assert "Bash(python -m pytest *)" in settings["permissions"]["allow"]
+
+
+def test_init_accepts_preexisting_change_folder_with_only_the_proposal(tmp_path):
+    """The command writes CLAUDE.proposed.md into changes/0000-sdlc-init/ before the installer
+    runs (observed crash in the first live run, 2026-09-20)."""
+    (tmp_path / "app.py").write_text("x = 1\n", encoding="utf-8")
+    folder = tmp_path / "changes" / "0000-sdlc-init"
+    folder.mkdir(parents=True)
+    (folder / "CLAUDE.proposed.md").write_text("# app\n\n## Commands\n- x\n", encoding="utf-8")
+    report = _run_init(tmp_path, "--claude-md-from", "changes/0000-sdlc-init/CLAUDE.proposed.md")
+    assert report["change"]["dir"] == "changes/0000-sdlc-init"
+    assert (folder / "status.yaml").exists() and (folder / "intent.md").exists()
+    assert (folder / "CLAUDE.proposed.md").exists()
+    assert (tmp_path / "CLAUDE.md").read_text(encoding="utf-8").startswith("# app")
