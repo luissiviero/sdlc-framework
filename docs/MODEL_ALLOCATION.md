@@ -2,7 +2,7 @@
 
 Purpose: the owner's Fable quota runs out faster than the Opus quota, and the build
 sessions keep Fable as the session model. This file says, step by step for build stages
-B3–B5 (sessions 3 and later, plus the unfinished rest of session 2), which tasks the Fable
+B3–B5 (sessions 3 and later), which tasks the Fable
 main session should do itself and which it should hand to an Opus sub-agent. It does not
 change any decision in `docs/DECISIONS.md`; it only says who does the work inside a session.
 
@@ -95,29 +95,37 @@ which.
 Assumption: session 3 covers the whole of B3, as session 2 covers the whole of B2. If the
 owner splits B3 in two, the rows split with it; the allocation per task does not change.
 
-What already exists that B3 builds on (checked in the code on 2026-09-21): `plugin/gate/`
-implements `check_artifacts`, `check_open_concerns` (step 23's "no open concern"),
-`check_commands`, `check_evidence` (step 28's precondition), `check_findings` with the
-findings JSON shape (`{"schema_version": 1, "head": ..., "findings": [{"pass": "bugs|security|compliance", ...}]}`,
-step 26), `check_plan_sync`, `check_guardrails`, `check_risk_list`, `check_adversarial_verdict`
-and `limits.check_limits`; `plugin/state/` owns `status.yaml` (with `change_type`) and the
-branch/label names; the four agents carry `model: inherit`. Commands that exist:
-`/sdlc-init`, `/sdlc-plan`. Not yet in the tree: `/sdlc-design`, the four phase runbooks,
-`/sdlc-fix`, `plugin/gate/preflight.py` (step 18, rest of session 2; rows 24.2 and 30.3 depend on it), any hook beyond the four of step 15, any workflow, `evals/`, `bands.yaml`.
+What already exists that B3 builds on (checked against `main` after session 2's last PR, #7,
+and PR #8, on 2026-09-21): `plugin/gate/` implements `check_artifacts`, `check_open_concerns`
+(step 23's "no open concern"; PROGRESS choice 14: a concern is open unless its item starts
+with `[x]`, `closed`, `resolved` or `decided`), `check_commands`, `check_evidence` (step 28's
+precondition), `check_findings` with the findings JSON of PROGRESS choice 7
+(`findings[].severity important|nit`, `tally`, `head`), `check_plan_sync`, `check_guardrails`,
+`check_risk_list`, `check_adversarial_verdict` and `limits.check_limits`; `preflight.py`
+(step 18) and `policy.py`; `plugin/state/` owns `status.yaml` (with `change_type`) and the
+branch/label names; the four agents carry `model: inherit`; the five policy skills ship with
+a `check.py` each; `/sdlc-init` writes `evals/` and `bands.yaml` and detects Node. Commands
+that exist: `/sdlc-init`, `/sdlc-plan`. Not yet in the tree: `/sdlc-design`, the phase
+runbooks, `/sdlc-fix`, any hook beyond the four of step 15, any workflow, the digest.
+The session-3 `HANDOFF.md` lists the same work as seven deliverables; the rows below map to
+them as: deliverable 1 = 22.x and 23.x, 2 = 24.x and 28.x, 3 = 25.x, 4 = 26.x, 5 = 27.x and
+27a.x, 6 = 30.x, 7 = §2.
 
 | Step · task | Who | What Fable must give the sub-agent, or why it stays with Fable |
 |---|---|---|
 | 22.1 Run the p.14 design prompt by hand on two or three real intents (the ladder's first rung) | O | One sub-agent per intent, Read/Grep/Glob plus Write limited to `changes/<id>-<slug>/spec.md`; it reports the spec's section list and the flagged concerns. Writing `spec.md` is allowed because OPERATING_MODEL §8 makes phase (c) the first run with edit tools *on source*; `changes/**` is not source. Fable reads the reports, not the specs, and decides what the command must say differently. |
 | 22.2 `plugin/commands/sdlc-design.md`: spec pass with the policy skills loaded, mandatory "Flagged concerns" section, header with the prompt and the pinned plugin version, then the read-only plan run (plan-template skill), then one PR with spec+plan (Standard/Full) or commit on the change branch and hand over to the build job (Lite) | F | Prompt text plus the profile branching and the re-run-after-comments behaviour (step 8). Opus may draft the p.14 wording; Fable owns the final file. |
+| 22.2a `plugin/skills/spec-template/SKILL.md`: the spec.md shape from `gate/artifacts.py` (the handoff says to write it from those names and invent none), the closed-concern wording of PROGRESS choice 14, and the header line | F | Skill text the design run reads on every change; short. |
 | 22.3 Deterministic support: spec.md section check (`gate/artifacts.py` already lists the spec sections including "Flagged concerns"; confirm the check is wired for (b)) and header rendering with the prompt text that produced the spec and the pinned plugin version from `sdlc.yaml` (p.14: the spec, the prompt and the skill versions in force are all logged); `state/cli.py commit-phase` already accepts phase `b` and needs no code | F→O | Spec: which sections, what the header line looks like. Tests in `tests/test_gate.py` and `tests/test_state.py`. |
 | 22.4 Static tests for the command file (sections, skill names, no bypass mode), like `tests/test_commands_and_skills.py` | O | No spec needed beyond "mirror the existing tests". |
 | 23.1 PR-description checklist for gate (b) (problem solved? open questions answered or carried forward? every concern closed? plan implementable by someone who never saw the conversation?) as a template rendered by the PR-description builder of 27a | O | The four items are quoted in the guide; mechanical. Depends on 27a.1 — do it in the same sub-agent task or after it. |
-| 23.2 Convention for closing a concern — the guide gives two routes: edit the "Flagged concerns" item to record the decision, or leave a review comment that `/sdlc-fix` consumes (which then edits the item) — so `check_open_concerns` can tell open from closed | F | One paragraph in the plan-template or intent-template skill and OPERATING_MODEL §8; Fable decides because every later spec is written against it. Opus then aligns `artifacts.open_concerns` and its tests (F→O). |
+| 23.2 Closing a concern: the first route (edit the item so it starts with `[x]`, `closed`, `resolved` or `decided`) is decided and implemented (PROGRESS choice 14); what is left is the second route the guide names — a review comment that `/sdlc-fix` consumes and turns into that edit — as one rule in the `/sdlc-fix` prompt (26.3) | F | Prompt text; no new gate code. |
 | 23.3 Lite profile: the design run calls the gate for (b) instead of opening a PR, using `conventions.is_human_gate` | F→O | Spec: the call in the command, the gate phase, the label to set. |
 | 24.1 Phase composition — inputs, order, artifact, exit condition, profile branching, idempotence — for (c), (d), (e), (f) | F | The core of the step. The article gives components only; the guide's implementation notes for step 24 give the composition per phase, which is the starting point. What they leave open — idempotence, re-run after review comments, the exact exit condition of each run, and where the gate (c) wait of the Full profile sits — is Fable's. Written once as a short table in OPERATING_MODEL or the command files. |
 | 24.2 The four runbook prompts `sdlc-build.md`, `sdlc-test.md`, `sdlc-deploy.md`, `sdlc-maintain.md` (auto-accept under preflight, simplifier, verifier, PR description, gate call; fresh-context full run and evidence; review passes and fix loop and release preparation; one finding per maintain run) | F | Model-facing text that every future run reads. Opus may draft from the 24.1 table (O→F) if Fable reviews every line. |
-| 24.3 Orchestrator glue in Python: phase transitions (`state/cli.py set-phase`, labels, evidence dir), the "refuse to enter (c) without the three commands" check left from step 14, and the calls into the existing `gate/cli.py` subcommands (`check`, `start-run`, `record-spend`, `set-iterations`) | F→O | Spec: subcommands, status.yaml fields touched, exit codes (the gate CLI already uses 0 continue / 3 wait / 4 park). Tests in `tests/test_state.py`, fixture run in `tests/test_integration_fixture.py`. |
+| 24.3 Orchestrator glue in Python: phase transitions (`state/cli.py set-phase`, labels, evidence dir), the "refuse to enter (c) without the three commands" check left from step 14, the calls into the existing `gate/cli.py` subcommands (`check`, `start-run`, `record-spend`, `set-iterations`), and applying the `sdlc:*-ready` / `sdlc:needs-human` labels the gate prints but nothing applies yet (PROGRESS known gap) | F→O | Spec: subcommands, status.yaml fields touched, exit codes (the gate CLI already uses 0 continue / 3 wait / 4 park). Tests in `tests/test_state.py`, fixture run in `tests/test_integration_fixture.py`. |
 | 24.4 Fixture states for the gate at (c), (d), (e) (continue and park cases) | O | Extend the existing fixture; the gate tests define the shape. |
+| 24.5 Owner-only state: `accept-risk` and `set-iterations` are owner actions by convention only (PROGRESS known gap); decide whether they are tied to the commit author (owner ≠ automation identity) or moved to a PR label | F for the choice, F→O for the check and its tests | A guardrail-semantics choice the handoff carries into B3. |
 | 25.1 Test-file lock semantics: when the lock is on (fix-type change, after the reproducing test is committed, for the rest of (c) and (d)), where the state lives (a `status.yaml` field set by the build run), what counts as a test path (a `sdlc.yaml` key with defaults per language) | F | Guardrail semantics; the article leaves the mechanism open. Three sentences in OPERATING_MODEL §8 and the sdlc.yaml comments. |
 | 25.2 `plugin/hooks/test_file_lock.py` (PreToolUse on Edit/Write/MultiEdit/NotebookEdit, fail closed, exit 2 with the reason), registration in `hooks.json`, tests over stdin like `tests/test_hooks.py` | F→O | Spec from 25.1 plus the existing hook pattern in `_common.py`. |
 | 25.3 Build-run wording for fix changes: write and commit the reproducing test first, confirm it fails for the expected reason; plan-template Proof names the test | F | Prompt text (part of 24.2 and the plan-template skill). |
@@ -139,7 +147,7 @@ branch/label names; the four agents carry `model: inherit`. Commands that exist:
 | 30.1 Platform facts into `docs/NOTES.md` with URL and quote: `GITHUB_TOKEN` events not starting workflow runs and the `workflow_dispatch`/`repository_dispatch` exemption; `pull_request` `closed`+`merged` trigger for the owner's merges; label events; `permissions:` needed (`contents`, `pull-requests`, `checks`); `concurrency` per change id; how the pinned plugin is loaded with `--plugin-dir` in an untrusted checkout (NOTES §3); whether the API key or subscription auth is permitted in CI (decision 1, NOTES §2 says terms not checked); `--max-turns`, `--max-budget-usd`, `--permission-prompts none` (NOTES §10b already) | O | One research sub-agent, report only. |
 | 30.2 Trigger and dispatch table: one workflow per transition (intent merged → design; spec+plan merged or design-job dispatch in Lite → build; build → test → review either directly or after `sdlc:c-approved`/`sdlc:d-approved`), the status.yaml guard, the change id carried in the dispatch payload, what runs under which token | F | The place where the token-event rule and the profiles meet; a wrong table silently stops the loop. |
 | 30.3 `plugin/ci/run_phase.py`: composes and runs the `claude -p` call (pinned plugin via `--plugin-dir`, allow-list from step 7, `--max-turns`, `--max-budget-usd`, `--permission-mode acceptEdits` only when `preflight.py` allows, `--permission-prompts none`, `--output-format json`), stores the JSON transcript in `evidence/`, records spend, dispatches the next workflow | F→O | Spec = the 30.2 table plus NOTES §10b. Tested with a fake `claude` executable on PATH. |
-| 30.4 `template/.github/workflows/*.yml` for each transition and the digest, all steps calling Python | F→O | Spec = 30.2; Opus writes YAML, and a test parses every workflow and asserts triggers, the `permissions:` block, `concurrency` per change id, the status.yaml guard step, no deploy secrets, and the sandbox settings of 30.7. |
+| 30.4 `template/.github/workflows/*.yml` for each transition and the digest, all steps calling Python | F→O | Spec = 30.2; the first workflow also creates the `sdlc:*` labels (handoff deliverable 6); Opus writes YAML, and a test parses every workflow and asserts triggers, the `permissions:` block, `concurrency` per change id, the status.yaml guard step, no deploy secrets, and the sandbox settings of 30.7. |
 | 30.5 The p.41 read-only "triage failed build" step as the first proof of the substrate | O | Copy from the article page, adapt to Python; the live run is the owner's. |
 | 30.6 Re-verify decision 6 layer (iii): CI never loads hooks from the PR branch | O | Read the workflows and report; Fable decides if a change is needed. |
 | 30.7 Sandboxing of the phase jobs (p.40: containers under a network policy, short-lived scoped tokens, no production credentials by default): what the GitHub-hosted runner gives, the `permissions:` block per job, no deploy secrets in B3 workflows, the network limits Claude Code's own sandbox setting adds (NOTES §5) | F for the policy, F→O for the YAML | The policy is a guardrail choice; the YAML follows from it and from 30.1's facts. |
@@ -196,18 +204,12 @@ documentation already in the guide. They appear below only where a small task ex
 | 42.2 The later scheduled report over `changes/*/` and PR history | O→F | Optional; Opus drafts, Fable decides whether to ship it. |
 | B5 wrap-up: reviews, docs, final handoff | see §2 | |
 
-## 6. Rest of session 2 (steps 18–21, not yet merged)
+## 6. Session 2 (steps 16–21) — finished
 
-Steps 16 and 17 are merged; 18–21 are not. Same rules as above.
-
-| Step · task | Who | Notes |
-|---|---|---|
-| 18 `plugin/gate/preflight.py` (CLAUDE.md with the three commands, policy skills present, `hooks.json` reachable and `python` on PATH, test target green) and its tests | F→O | Fully specified in HANDOFF.md deliverable 4. |
-| 18 The routine/non-routine tightening (already in `limits.classification_for` and `iteration_cap`) — confirm and document | O | Report. |
-| 19 Run limits: `limits.py`, the `gate:` block and `paused: false` in `template/sdlc.yaml`, and `gate/cli.py record-spend` already exist; the pause flag is `sdlc.yaml: paused: true` (chosen over a `PAUSE` file, recorded in the `limits.py` docstring and enforced by `check_limits`); confirm against HANDOFF.md deliverable 3 and add the PROGRESS/NOTES rows | O | Report only; any gap found becomes an F→O row like the others. |
-| 20 Five policy skills: frontmatter descriptions in the style that passed the live trigger check, body naming the source, deterministic script call at the end | F for the descriptions and the rules that a hook must back; O→F for the bodies | The trigger description is what the model matches on; the rules are policy. Opus drafts each body from the article pages cited by build-guide step 20 (p.12–13, p.21–22, p.32, p.6) and the p.22 script pattern the handoff names; Fable edits. |
-| 21 Full `/sdlc-init`: `template/evals/` with README, `template/bands.yaml`, Node detection in `detect.py`, idempotence tests | F→O | HANDOFF.md deliverable 6 is the spec. |
-| Session 2 wrap-up | see §2 | |
+Session 2 completed on `main` (PRs #4, #5, #7, plus #8 for the editable install) before
+this file was first merged, with 207 tests green on Linux and on the owner's Windows PC.
+Nothing of B2 is left to allocate; the live checks it left (policy-skill and agent triggers,
+preflight in the sample repo) are the owner's, not a model's.
 
 ## 7. Runtime model choice (not a build-session question, recorded for completeness)
 

@@ -18,7 +18,7 @@ Session 2's brief is kept at `docs/handoffs/session-2-B2.md`; its result is on `
 5. `docs/BUILD_GUIDE.md` — steps 22–30 (B3) and, for the interfaces B3 must leave ready, steps 31–32 (B4).
 6. `docs/reference/ai-native-sdlc-playbook.txt` — read a page when a step cites it (p.13–14 the design prompt; p.16 plan mode; p.27–29 the feedback loop and evidence; p.32–35 review passes and REVIEW.md; p.39–41 CI/CD).
 7. `CLAUDE.md` — conventions for this repo.
-8. `docs/MODEL_ALLOCATION.md` — which tasks the Fable session does itself and which it hands to Opus sub-agents (steps 18–21 in §6; every later session in §2–§5).
+8. `docs/MODEL_ALLOCATION.md` — which tasks the Fable session does itself and which it hands to Opus sub-agents (§2 for every session, §3 for this one).
 
 ## Objective of this session
 Complete build stage **B3**: the first fully autonomous phase (`/sdlc-design`), the phase runbooks (`/sdlc-build`, `/sdlc-test`, `/sdlc-deploy`), the review pass and `/sdlc-fix`, the test-file lock, the PR summary and daily digest, and the merge-triggered `claude -p` workflows so that after gate (a) the owner never launches a phase by hand. Do not start B4 (release gate, production-gate hook, deploy adapters). Everything must still work by hand on the owner's PC and in a cloud session before the workflows exist.
@@ -54,6 +54,12 @@ Complete build stage **B3**: the first fully autonomous phase (`/sdlc-design`), 
 - `review-findings.json` is produced in the recorded format; `/sdlc-fix` bumps the iteration and parks at the cap.
 - The workflows are in the template, installed idempotently by `/sdlc-init`, and dispatch the next phase explicitly; the daily digest job exists.
 - `docs/PROGRESS.md` for session 3 with the ≤5-bullet summary on top and the list of what B4 needs.
+
+## Model rule for this session (approved by the owner on 2026-09-21)
+- The session model stays Fable. Before starting the session, the owner sets `CLAUDE_CODE_SUBAGENT_MODEL=opus` (user-level: the `env` block of `~/.claude/settings.json`, or the environment the session is launched from; never in this repo or the template) so every delegated task runs on Opus by default.
+- Delegate per `docs/MODEL_ALLOCATION.md` §2 and §3: name `opus` in each sub-agent invocation anyway (the built-in Explore and Plan sub-agents ignore the variable), give each sub-agent the step number, the article pages and the files to read, and ask for a short report, never file contents.
+- Fresh-context reviews run as general-purpose sub-agents on Opus, not through the plugin's `adversarial-reviewer` (its `model: inherit` would run on Fable).
+- After the first delegated task, run `/usage` and `/tasks`: if the Fable window moved by the delegated share, or a sub-agent row names Fable, stop delegating for quota reasons and say so in `docs/PROGRESS.md`.
 
 ## Rules for this session
 - Never reopen a decision in `docs/DECISIONS.md`; if one is technically impossible, document why in `docs/PROGRESS.md` and continue with the rest.
