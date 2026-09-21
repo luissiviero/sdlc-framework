@@ -18,6 +18,7 @@ VALUES = {
     "BUILD_CMD": "python -m build",
     "TEST_CMD": "python -m pytest",
     "LINT_CMD": "python -m ruff check .",
+    "SETUP_CMD": "python -m pip install -e . pytest ruff",
     "BUILD_HEALTHY": "exit code 0",
     "TEST_HEALTHY": "N passed",
     "LINT_HEALTHY": "All checks passed!",
@@ -97,6 +98,8 @@ def test_sdlc_yaml_renders_to_documented_keys():
         "build": "python -m build",
         "test": "python -m pytest",
         "lint": "python -m ruff check .",
+        # step 30: the one-command install the CI phase jobs run before the phase
+        "setup": "python -m pip install -e . pytest ruff",
     }
     assert data["deploy"] == {"action": "none", "production": False}
     assert (

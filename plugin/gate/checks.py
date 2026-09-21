@@ -617,7 +617,9 @@ def check_clean_tree(ctx: GateContext) -> CheckResult:
     if ctx.diff is None:
         return _fail("clean_tree", ctx.diff_error, "Run the gate inside the project's git repo.")
     prefix = ctx.change_rel + "/"
-    dirty = [f for f in diffmod.dirty_files(ctx.root) if not f.startswith(prefix)]
+    tree = diffmod.dirty_files(ctx.root)
+    ignored = diffmod.sandbox_placeholders(ctx.root, tree)
+    dirty = [f for f in tree if f not in set(ignored) and not f.startswith(prefix)]
     if dirty:
         return _fail(
             "clean_tree",
@@ -625,8 +627,11 @@ def check_clean_tree(ctx: GateContext) -> CheckResult:
             "Commit (or discard) the work first: the adversarial verdict and the PR judge "
             "HEAD, not the working tree.",
             dirty=dirty[:50],
+            ignored=ignored[:50],
         )
-    return _ok("clean_tree", "no uncommitted change outside the change folder")
+    return _ok(
+        "clean_tree", "no uncommitted change outside the change folder", ignored=ignored[:50]
+    )
 
 
 # --- 11. phase (b) touches no source (decision 2; OPERATING_MODEL section 8) -------------------
@@ -636,7 +641,8 @@ def check_design_scope(ctx: GateContext) -> CheckResult:
     if ctx.diff is None:
         return _fail("design_scope", ctx.diff_error, "Run the gate inside the project's git repo.")
     prefix = ctx.change_rel + "/"
-    outside = [f for f in ctx.diff.files if not f.startswith(prefix)]
+    ignored = diffmod.sandbox_placeholders(ctx.root, ctx.diff.files)
+    outside = [f for f in ctx.diff.files if f not in set(ignored) and not f.startswith(prefix)]
     if outside:
         return _fail(
             "design_scope",
@@ -644,8 +650,9 @@ def check_design_scope(ctx: GateContext) -> CheckResult:
             f"Revert them: phase (b) writes only {prefix}; the first run with edit tools on "
             "source is phase (c).",
             outside=outside[:50],
+            ignored=ignored[:50],
         )
-    return _ok("design_scope", f"the diff stays inside {prefix}")
+    return _ok("design_scope", f"the diff stays inside {prefix}", ignored=ignored[:50])
 
 
 # --- 12. owner-only state: accept-risk and set-iterations (build guide step 24.5) -------------

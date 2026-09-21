@@ -839,6 +839,60 @@ def test_gate_b_parks_when_the_branch_touches_source(design_project):
     assert "design_scope" not in _names(result, False) and result.result == "wait", result.reason
 
 
+def test_gate_b_ignores_the_sandbox_placeholders_but_not_a_stray_file(design_project):
+    """Claude Code's sandbox leaves empty placeholder entries (.bashrc, .vscode/) in the
+    working directory; the first live design run (2026-09-21) parked on them. They are
+    untracked and empty, so design_scope looks past them - an untracked file with content
+    outside the change folder is still a departure from phase (b)."""
+    root, _change = design_project
+    (root / ".bashrc").write_text("", encoding="utf-8")  # zero bytes: a placeholder
+    (root / ".vscode").mkdir()  # empty directory: a placeholder
+    verdict(root, "b")
+    result = gate.run_gate(root, "0001", "b", dry_run=True)
+    assert "design_scope" not in _names(result, False), result.reason
+    ds = next(ch for ch in result.checks if ch.name == "design_scope")
+    assert ".bashrc" in ds.details["ignored"]
+    assert result.result == "wait"
+
+    write(root / "stray.py", "x = 1\n")  # untracked but not empty: a real stray
+    verdict(root, "b")
+    result = gate.run_gate(root, "0001", "b", dry_run=True)
+    assert result.result == "park"
+    ds = next(ch for ch in result.failed if ch.name == "design_scope")
+    assert ds.details["outside"] == ["stray.py"] and ".bashrc" in ds.details["ignored"]
+
+
+def test_clean_tree_ignores_the_sandbox_placeholders_but_not_a_stray_file(project):
+    """The same placeholders would fail clean_tree at gates (c), (d) and (e)."""
+    root, _change = project
+    (root / ".bashrc").write_text("", encoding="utf-8")
+    (root / ".idea").mkdir()
+    verdict(root, "c")
+    result = gate.run_gate(root, "0001", "c", dry_run=True)
+    assert "clean_tree" not in _names(result, False), result.reason
+    ct = next(ch for ch in result.checks if ch.name == "clean_tree")
+    assert ct.details["ignored"] == [".bashrc"]  # `git status -uall` never names an empty dir
+    assert checks.diffmod.sandbox_placeholders(root, [".idea/"]) == [".idea/"]
+
+    write(root / "stray.py", "x = 1\n")
+    result = gate.run_gate(root, "0001", "c", dry_run=True)
+    ct = next(ch for ch in result.failed if ch.name == "clean_tree")
+    assert ct.details["dirty"] == ["stray.py"]
+
+
+def test_a_committed_empty_file_is_still_part_of_the_diff(design_project):
+    """Only untracked entries are treated as placeholders: an empty file the phase committed
+    is a change like any other (ctx.diff.files keeps its meaning for committed work)."""
+    root, _change = design_project
+    write(root / "sample_pkg" / "marker.py", "")
+    git(root, "add", "sample_pkg/marker.py")
+    git(root, "commit", "-q", "-m", "an empty module, committed")
+    verdict(root, "b")
+    result = gate.run_gate(root, "0001", "b", dry_run=True)
+    ds = next(ch for ch in result.failed if ch.name == "design_scope")
+    assert ds.details["outside"] == ["sample_pkg/marker.py"]
+
+
 def test_gate_cli_spec_header(project, capsys, tmp_path):
     root, change = project
     rc = gate_cli.main(["spec-header", "--root", str(root), "--id", "0001"])
