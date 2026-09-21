@@ -19,7 +19,7 @@ from pathlib import Path
 import pytest
 
 from gate import artifacts as art
-from gate import checks, gate, limits, preflight
+from gate import checks, gate, limits, policy, preflight
 from gate import cli as gate_cli
 from state import status as status_mod
 from state import yamlish
@@ -864,3 +864,211 @@ def test_gate_cli_spec_header(project, capsys, tmp_path):
         ["spec-header", "--root", str(bare), "--id", "0001", "--plugin-root", str(ROOT)]
     )
     assert rc == 0 and json.loads(capsys.readouterr().out)["plugin_version"] == PLUGIN_VERSION
+
+
+# --- step 24.3: bump-iteration ------------------------------------------------------------
+def bump(root: Path) -> tuple[int, dict]:
+    proc = run_py(str(GATE_CLI), "bump-iteration", "--root", str(root), "--id", "0001", cwd=root)
+    return proc.returncode, (json.loads(proc.stdout) if proc.stdout.strip() else {})
+
+
+def test_gate_cli_bump_iteration_counts_rounds_and_reports_the_cap(project):
+    """Every fix round of a phase run counts (OPERATING_MODEL section 4.1); the command exits
+    3 once the count is past the cap the gate would park on."""
+    root, change = project
+    for expected in (1, 2, 3):
+        rc, out = bump(root)
+        assert rc == 0, out
+        assert out == {
+            "iterations": expected,
+            "cap": 3,
+            "cap_reached": False,
+            "classification": None,
+        }
+        assert status_mod.read_status(change).iterations == expected
+    rc, out = bump(root)
+    assert rc == 3 and out["iterations"] == 4 and out["cap_reached"] is True
+    # and the gate agrees: the same count parks the change
+    verdict(root, "c")
+    assert gate.run_gate(root, "0001", "c", dry_run=True).result == "park"
+    # a non-routine plan tightens the cap (step 19)
+    assert (
+        gate_cli.main(["set-iterations", "--root", str(root), "--id", "0001", "--count", "1"]) == 0
+    )
+    verdict(root, "c", classification="non-routine")
+    rc, out = bump(root)
+    assert rc == 0 and out == {
+        "iterations": 2,
+        "cap": 2,
+        "cap_reached": False,
+        "classification": "non-routine",
+    }
+    rc, out = bump(root)
+    assert rc == 3 and out["cap"] == 2 and out["cap_reached"] is True
+    proc = run_py(str(GATE_CLI), "bump-iteration", "--root", str(root), "--id", "0009", cwd=root)
+    assert proc.returncode == 2
+
+
+# --- step 24.5: accept-risk and set-iterations are the owner's ------------------------------
+BOT_AUTHOR = "github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>"
+
+
+def commit_all(root: Path, message: str, author: str | None = None) -> str:
+    git(root, "add", ".")
+    args = ["commit", "-q", "-m", message] + (["--author", author] if author else [])
+    git(root, *args)
+    return git(root, "rev-parse", "HEAD").strip()
+
+
+def accept_risk(root: Path, change: Path, item: str = "auth") -> None:
+    st = status_mod.read_status(change)
+    st.accept_risk(item)
+    status_mod.write_status(change, st)
+
+
+def test_owner_actions_ties_a_risk_acceptance_to_the_owner(project):
+    root, change = project
+    verdict(root, "c")
+    assert "owner_actions" not in _names(gate.run_gate(root, "0001", "c", dry_run=True), False)
+    # an acceptance sitting in the working tree was committed by nobody
+    accept_risk(root, change)
+    result = gate.run_gate(root, "0001", "c", dry_run=True)
+    oa = next(ch for ch in result.failed if ch.name == "owner_actions")
+    assert "risk_accepted gained auth" in oa.reason and "in no commit" in oa.reason
+    assert "a run cannot approve itself" in oa.need and "accept-risk" in oa.need
+    # the owner commits it: it counts
+    commit_all(root, "owner: accept the auth risk")
+    verdict(root, "c")
+    assert "owner_actions" not in _names(gate.run_gate(root, "0001", "c", dry_run=True), False)
+    # the very same acceptance made by the automation identity does not
+    git(root, "reset", "-q", "--hard", "HEAD~1")
+    accept_risk(root, change)
+    sha = commit_all(root, "accept the auth risk", author=BOT_AUTHOR)
+    verdict(root, "c")
+    result = gate.run_gate(root, "0001", "c", dry_run=True)
+    assert result.result == "park" and result.label == "sdlc:needs-human"
+    oa = next(ch for ch in result.failed if ch.name == "owner_actions")
+    assert f"commit {sha[:10]}" in oa.reason and "github-actions[bot]" in oa.reason
+    assert "risk_accepted" in oa.reason
+    assert oa.details["automation_identity"] == policy.DEFAULT_AUTOMATION_IDENTITY
+
+
+def test_owner_actions_parks_on_an_iteration_reset_by_the_automation_identity(project):
+    root, change = project
+    st = status_mod.read_status(change)
+    st.iterations = 2  # two fix rounds, counted by the run itself: that is not owner state
+    status_mod.write_status(change, st)
+    commit_all(root, "build(0001): two fix rounds")
+    verdict(root, "c")
+    assert "owner_actions" not in _names(gate.run_gate(root, "0001", "c", dry_run=True), False)
+    # the reset itself is the owner's act: uncommitted it belongs to nobody
+    assert (
+        gate_cli.main(["set-iterations", "--root", str(root), "--id", "0001", "--count", "0"]) == 0
+    )
+    result = gate.run_gate(root, "0001", "c", dry_run=True)
+    oa = next(ch for ch in result.failed if ch.name == "owner_actions")
+    assert "iterations dropped from 2 to 0" in oa.reason and "in no commit" in oa.reason
+    # committed by the automation identity it is still not the owner's
+    sha = commit_all(root, "reset the iteration count", author=BOT_AUTHOR)
+    verdict(root, "c")
+    result = gate.run_gate(root, "0001", "c", dry_run=True)
+    assert result.result == "park"
+    oa = next(ch for ch in result.failed if ch.name == "owner_actions")
+    assert f"iterations dropped from 2 to 0 in commit {sha[:10]}" in oa.reason
+    # the owner's own commit passes
+    git(root, "reset", "-q", "--hard", "HEAD~1")
+    assert (
+        gate_cli.main(["set-iterations", "--root", str(root), "--id", "0001", "--count", "0"]) == 0
+    )
+    commit_all(root, "owner: allow another round")
+    verdict(root, "c")
+    assert gate.run_gate(root, "0001", "c", dry_run=True).result == "continue"
+
+
+# --- step 24.4: the fixture states of gates (c), (d) and (e) --------------------------------
+def write_logs(change: Path, red: str | None = None) -> None:
+    """The three command logs exactly as plugin/evidence/collect.py writes them."""
+    for target, name in art.EVIDENCE_TARGETS.items():
+        code = 1 if target == red else 0
+        header = art.render_evidence_header(
+            f"python -m {target}", code, 1.2, "2026-09-21T10:00:00Z"
+        )
+        body = "42 passed\n" if code == 0 else "E   assert percent(1, 3) == 33.3\n1 failed\n"
+        write(change / "evidence" / name, header + "\n" + body)
+
+
+def set_phase(change: Path, phase: str) -> None:
+    st = status_mod.read_status(change)
+    st.set_phase(phase)
+    status_mod.write_status(change, st)
+
+
+def test_gate_c_parks_without_the_verifier_report(project):
+    """The continue case is test_gate_continues_on_a_clean_change; this is its mirror: the
+    only evidence gate (c) requires is the verifier report (artifacts.REQUIRED_EVIDENCE)."""
+    root, change = project
+    verdict(root, "c")
+    (change / "evidence" / art.EVIDENCE_VERIFIER).unlink()
+    result = gate.run_gate(root, "0001", "c")
+    assert result.result == "park" and result.label == "sdlc:needs-human"
+    ev = next(ch for ch in result.failed if ch.name == "evidence")
+    assert ev.details["missing"] == ["verifier.md"]
+    assert "changes/0001-percent-helper/evidence/verifier.md" in ev.need
+    assert "verifier.md" in result.what_i_need()
+    assert status_mod.read_status(change).gate.result == "parked"
+
+
+def test_gate_d_continues_on_green_logs_and_parks_on_a_red_test_log(project):
+    root, change = project
+    set_phase(change, "d")
+    start_run(root, "d")
+    write_logs(change)
+    verdict(root, "d")
+    result = gate.run_gate(root, "0001", "d", dry_run=True)
+    assert result.result == "continue", result.reason
+    assert result.label is None and result.human_gate is False
+    assert "evidence" in _names(result, True)
+    # a red log parks the change even though the gate's own re-run of the suite is green
+    write_logs(change, red="test")
+    result = gate.run_gate(root, "0001", "d")
+    assert result.result == "park" and result.label == "sdlc:needs-human"
+    ev = next(ch for ch in result.failed if ch.name == "evidence")
+    assert "evidence/test.log" in ev.reason and "exited 1" in ev.reason
+    assert ev.details["red_files"] == ["test.log"]
+    assert "changes/0001-percent-helper/evidence/test.log" in ev.need
+    assert "commands" not in _names(result, False)  # the project's own targets are green
+    assert "test.log" in result.what_i_need()
+
+
+def test_gate_e_waits_for_the_owner_and_parks_on_an_important_finding(project):
+    root, change = project
+    set_phase(change, "e")
+    start_run(root, "e")
+    write_logs(change)
+    head = git(root, "rev-parse", "HEAD").strip()
+    findings = change / "evidence" / art.REVIEW_FINDINGS
+    write(
+        findings,
+        json.dumps(
+            {"head": head, "findings": [{"severity": "nit", "summary": "naming"}], "tally": {}}
+        ),
+    )
+    result = gate.run_gate(root, "0001", "e", dry_run=True)
+    assert result.result == "wait", result.reason
+    assert result.label == "sdlc:e-ready" and result.human_gate is True
+    assert _names(result, False) == []
+    write(
+        findings,
+        json.dumps(
+            {
+                "head": head,
+                "findings": [{"severity": "important", "summary": "leaks PII", "file": "x.py"}],
+            }
+        ),
+    )
+    result = gate.run_gate(root, "0001", "e")
+    assert result.result == "park" and result.label == "sdlc:needs-human"
+    f = next(ch for ch in result.failed if ch.name == "findings")
+    assert "1 Important review finding(s) open" in f.reason
+    assert "changes/0001-percent-helper/evidence/review-findings.json" in f.need
+    assert "review-findings.json" in result.what_i_need()

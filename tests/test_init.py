@@ -171,14 +171,17 @@ def test_init_version_bump_patches_one_line_and_keeps_comments(tmp_path):
     root = tmp_path / "proj"
     shutil.copytree(FIXTURE, root)
     _run_init(root)
+    current = sdlc_init.plugin_version()  # the manifest is the single source of the pin
     text = (
-        (root / "sdlc.yaml").read_text(encoding="utf-8").replace("version: 0.1.0", "version: 0.0.1")
+        (root / "sdlc.yaml")
+        .read_text(encoding="utf-8")
+        .replace(f"version: {current}", "version: 0.0.1")
     )
     (root / "sdlc.yaml").write_text(text, encoding="utf-8")
     report = _run_init(root)
     assert report["files"]["sdlc.yaml"] == "updated"
-    new = (root / "sdlc.yaml").read_text(encoding="utf-8")
-    assert "version: 0.1.0" in new and new.count("#") > 10
+    updated = (root / "sdlc.yaml").read_text(encoding="utf-8")
+    assert f"version: {current}" in updated and updated.count("#") > 10
 
 
 def test_init_claude_md_from_proposal(tmp_path):
@@ -371,3 +374,91 @@ def test_init_upgrade_adds_the_test_paths_block_once(tmp_path):
     assert new.count("test_paths:") == 1 and "# --- test-file lock" in new
     assert yamlish.load_file(root / "sdlc.yaml")["test_paths"] == detect.TEST_PATHS["python"]
     assert _run_init(root)["files"]["sdlc.yaml"] == "unchanged"
+
+
+# --- the SDLC workflows /sdlc-init installs (build guide step 30, task 30.8) -----------------
+def _git_init(root: Path, branch: str) -> None:
+    """A repository with one commit, so gitops.default_branch() has a HEAD to read."""
+    run = lambda *a: subprocess.run(  # noqa: E731
+        ["git", "-C", str(root), *a], check=True, capture_output=True
+    )
+    subprocess.run(["git", "init", "-b", branch, str(root)], check=True, capture_output=True)
+    run("config", "user.email", "test@example.com")
+    run("config", "user.name", "test")
+    run("add", "-A")
+    run("commit", "-m", "fixture")
+
+
+WORKFLOWS = (
+    ".github/workflows/sdlc-design.yml",
+    ".github/workflows/sdlc-build.yml",
+    ".github/workflows/sdlc-test.yml",
+    ".github/workflows/sdlc-deploy.yml",
+    ".github/workflows/sdlc-digest.yml",
+)
+PIN_SCRIPT = ".github/scripts/sdlc_pin.py"
+
+
+def test_init_installs_the_workflows_and_the_pin_script(tmp_path):
+    root = tmp_path / "proj"
+    shutil.copytree(FIXTURE, root)
+    report = _run_init(root)
+    for rel in (*WORKFLOWS, PIN_SCRIPT):
+        assert report["files"][rel] == "created", rel
+        assert (root / rel).is_file()
+    design = (root / WORKFLOWS[0]).read_text(encoding="utf-8")
+    assert "{{" not in design.replace("${{", "")  # only GitHub's own expressions are left
+    assert 'repository: "luissiviero/sdlc-framework"' in design
+    # the CLI version comes from the pin step at run time, so a later sdlc.yaml bump applies
+    assert "@anthropic-ai/claude-code@${{ steps.pin.outputs.claude_code }}" in design
+    assert "path: framework" in design
+    # the pin the workflows check out comes from sdlc.yaml, not from the template
+    cfg = yamlish.load_file(root / "sdlc.yaml")
+    assert cfg["plugin"]["claude_code"] == sdlc_init.DEFAULT_CLAUDE_CODE_VERSION
+    proc = subprocess.run(
+        [sys.executable, str(root / PIN_SCRIPT), "--root", str(root)],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert f"ref=v{sdlc_init.plugin_version()}" in proc.stdout
+
+    # re-running changes nothing and says so
+    report2 = _run_init(root)
+    for rel in (*WORKFLOWS, PIN_SCRIPT):
+        assert report2["files"][rel] == "unchanged", rel
+
+
+def test_init_keeps_a_workflow_the_owner_already_wrote(tmp_path):
+    root = tmp_path / "proj"
+    shutil.copytree(FIXTURE, root)
+    target = root / WORKFLOWS[2]
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text("name: mine\non: workflow_dispatch\n", encoding="utf-8")
+    report = _run_init(root)
+    assert report["files"][WORKFLOWS[2]] == "kept"
+    assert target.read_text(encoding="utf-8") == "name: mine\non: workflow_dispatch\n"
+    assert report["files"][WORKFLOWS[0]] == "created"  # the others are still installed
+
+
+def test_init_rewrites_the_base_branch_filter_to_the_projects_default(tmp_path):
+    root = tmp_path / "proj"
+    shutil.copytree(FIXTURE, root)
+    _git_init(root, "trunk")
+    _run_init(root)
+    for rel in (WORKFLOWS[0], WORKFLOWS[1]):  # the two merge-triggered workflows
+        text = (root / rel).read_text(encoding="utf-8")
+        lines = [ln for ln in text.splitlines() if ln.startswith("    branches:")]
+        assert lines == ["    branches: [trunk]"], rel
+    # the label-triggered ones carry no base filter at all
+    labeled = (root / WORKFLOWS[2]).read_text(encoding="utf-8")
+    assert not [ln for ln in labeled.splitlines() if ln.startswith("    branches:")]
+
+
+def test_init_substitution_helpers_are_pure(tmp_path):
+    values = {"FRAMEWORK_REPO": "me/fw", "CLAUDE_CODE_VERSION": "9.9.9"}
+    text = sdlc_init.render_workflow(".github/workflows/sdlc-design.yml", values, "develop")
+    assert "branches: [develop]" in text and "me/fw" in text
+    assert "claude-code@${{ steps.pin.outputs.claude_code }}" in text
+    same = sdlc_init.render_workflow(".github/workflows/sdlc-design.yml", values, "main")
+    assert "branches: [main]" in same

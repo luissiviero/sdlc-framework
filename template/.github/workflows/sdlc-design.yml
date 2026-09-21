@@ -68,7 +68,7 @@ jobs:
       # The pin step also prints sdlc.yaml's plugin.claude_code; re-install the workflows
       # when the two differ (/sdlc-init rendered the version below).
       - name: Install the pinned Claude Code CLI
-        run: npm install -g @anthropic-ai/claude-code@{{CLAUDE_CODE_VERSION}}
+        run: npm install -g @anthropic-ai/claude-code@${{ steps.pin.outputs.claude_code }}
 
       - name: Prepare the runner for Claude Code's sandbox
         run: python framework/plugin/ci/runner_setup.py

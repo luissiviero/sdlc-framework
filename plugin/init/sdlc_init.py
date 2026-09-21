@@ -5,7 +5,7 @@
         --maintain-metric ci_test_failure_rate --maintain-source github-actions \
         [--project-name X] [--build CMD] [--test CMD] [--lint CMD] \
         [--claude-md-from changes/0000-sdlc-init/CLAUDE.proposed.md] \
-        [--framework-repo owner/repo] [--detect-only]
+        [--framework-repo owner/repo] [--claude-code 2.1.278] [--detect-only]
 
 What it does, idempotently (re-running upgrades):
   1. detects build/test/lint targets (init/detect.py) unless overridden;
@@ -19,9 +19,11 @@ What it does, idempotently (re-running upgrades):
   6. creates ruff.toml when the lint target was "created";
   7. creates evals/ (empty suite with its README, decision 17) and bands.yaml (the p.44
      shape for the maintain metric, decision 15) when absent;
-  8. creates change 0000 (changes/0000-sdlc-init/, intent.md + status.yaml) so the
+  8. installs the SDLC workflows and the pin script under .github/ (step 30), create-only:
+     an existing file is kept and reported as such, and the `branches:` filter of the
+     merge triggers is rewritten to the project's default branch;
+  9. creates change 0000 (changes/0000-sdlc-init/, intent.md + status.yaml) so the
      installation goes through gate (a) like any other change.
-The CI workflows and the daily digest arrive in B3.
 The model-driven half (asking the owner, /init, trimming CLAUDE.md, committing, the PR) is in
 plugin/commands/sdlc-init.md.
 """
@@ -46,6 +48,9 @@ from state import status, yamlish  # noqa: E402
 
 TEMPLATE = REPO_ROOT / "template"
 DEFAULT_FRAMEWORK_REPO = "luissiviero/sdlc-framework"
+# The Claude Code CLI the SDLC workflows install; the framework's declared minimum
+# (docs/NOTES.md sections 2 and 10b: --permission-prompts none needs 2.1.259 or later).
+DEFAULT_CLAUDE_CODE_VERSION = "2.1.278"
 SKELETON_SECTIONS = (
     "## Commands",
     "## Things Claude gets wrong",
@@ -105,6 +110,7 @@ def build_values(args, det: detect_mod.Detection) -> dict[str, str]:
         "LINT_RULE": _rule_for(lint_cmd, "Bash(echo *)"),
         "TEST_PATHS": _yaml_list(detect_mod.test_paths(det.language)),
         "FRAMEWORK_REPO": args.framework_repo,
+        "CLAUDE_CODE_VERSION": args.claude_code,
     }
 
 
@@ -179,6 +185,57 @@ def template_block(rendered_template: str, key: str) -> str:
     while end < len(lines) and (lines[end].startswith((" ", "\t")) or lines[end].strip() == ""):
         end += 1
     return "\n".join(lines[first:end]).rstrip("\n") + "\n"
+
+
+# --- the SDLC workflows (build guide step 30, task 30.8) ------------------------------------
+WORKFLOW_FILES = (
+    ".github/workflows/sdlc-design.yml",
+    ".github/workflows/sdlc-build.yml",
+    ".github/workflows/sdlc-test.yml",
+    ".github/workflows/sdlc-deploy.yml",
+    ".github/workflows/sdlc-digest.yml",
+    ".github/scripts/sdlc_pin.py",
+)
+# The template writes the default branch GitHub gives most repositories; a project whose
+# default branch has another name gets it substituted here, on the `branches:` filter only
+# (OPERATING_MODEL section 4.2: the merge triggers filter the *base* branch).
+BRANCH_FILTER_RE = re.compile(r"(?m)^(\s*branches:\s*\[)main(\]\s*)$")
+
+
+def project_default_branch(root: Path) -> str:
+    """The project's default branch, or "main" outside a git repository."""
+    try:
+        from state import gitops  # noqa: PLC0415 - only needed when a project is being written
+
+        return gitops.default_branch(root) if gitops.is_repo(root) else "main"
+    except Exception:  # noqa: BLE001 - a fresh checkout must not fail the install
+        return "main"
+
+
+def render_workflow(rel: str, values: dict[str, str], default_branch: str) -> str:
+    text = render_file(TEMPLATE / rel, values)
+    if default_branch != "main":
+        text = BRANCH_FILTER_RE.sub(rf"\g<1>{default_branch}\g<2>", text)
+    return text
+
+
+def install_workflows(root: Path, values: dict[str, str], report: dict) -> None:
+    """Install the phase workflows and the pin script, create-only.
+
+    An existing file is never overwritten: the owner may have edited it, and a workflow is
+    project content. "unchanged" means the file on disk is already exactly what this version
+    of the framework installs; "kept" means it differs and was left alone.
+    """
+    default_branch = project_default_branch(root)
+    for rel in WORKFLOW_FILES:
+        target = root / rel
+        content = render_workflow(rel, values, default_branch)
+        if not target.exists():
+            _write_if_changed(target, content, report, rel)
+        elif target.read_text(encoding="utf-8") == content:
+            report[rel] = "unchanged"
+        else:
+            report[rel] = "kept"
 
 
 def _write_if_changed(path: Path, content: str, report: dict, key: str) -> None:
@@ -264,6 +321,8 @@ def run(args) -> dict:
         else:
             _write_if_changed(target, render_file(TEMPLATE / rel, values), report["files"], rel)
 
+    install_workflows(root, values, report["files"])
+
     # CLAUDE.md: merge skeleton
     claude_path = root / "CLAUDE.md"
     existing = claude_path.read_text(encoding="utf-8") if claude_path.exists() else None
@@ -345,6 +404,11 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--lint", default=None)
     p.add_argument("--claude-md-from", default=None, help="trimmed CLAUDE.md text to start from")
     p.add_argument("--framework-repo", default=DEFAULT_FRAMEWORK_REPO)
+    p.add_argument(
+        "--claude-code",
+        default=DEFAULT_CLAUDE_CODE_VERSION,
+        help="Claude Code CLI version the installed workflows pin",
+    )
     p.add_argument("--detect-only", action="store_true")
     return p
 

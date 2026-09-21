@@ -1,0 +1,56 @@
+# The daily review-queue digest (no phase run, no model call).
+#
+# Contract: docs/OPERATING_MODEL.md sections 4.2 and 7 ("a scheduled job posts a daily digest
+# of the queue. Nothing pushes to the owner"), build guide step 30, article p.39-41. Installed
+# into this project by /sdlc-init from the framework's template/.github/workflows/.
+#
+# Token rule: events caused by this workflow's GITHUB_TOKEN never start another workflow run
+# - only workflow_dispatch and repository_dispatch do. This workflow starts nothing; it edits
+# the body of one long-lived issue, which sends no notification. It holds no deploy secret
+# and needs no model credential.
+#
+# Schedule note: cron is UTC, runs on the default branch, and an off-the-hour minute is less
+# delayed than :00. GitHub disables schedules in a public repository after 60 days without
+# activity; the workflow_dispatch trigger is how the owner re-enables it.
+#
+# /sdlc-init filled in the framework repository and the pinned Claude Code version.
+name: SDLC review-queue digest
+
+on:
+  schedule:
+    - cron: "17 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  issues: write
+  pull-requests: read
+
+concurrency:
+  group: "sdlc-digest"
+  cancel-in-progress: false
+
+jobs:
+  digest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out the project
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Read the framework pin from sdlc.yaml
+        id: pin
+        run: python .github/scripts/sdlc_pin.py
+
+      - name: Check out the pinned framework (public repository, no token)
+        uses: actions/checkout@v4
+        with:
+          repository: "{{FRAMEWORK_REPO}}"
+          ref: ${{ steps.pin.outputs.ref }}
+          path: framework
+
+      - name: Post the digest
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python framework/plugin/pr/digest.py --repo "${{ github.repository }}"

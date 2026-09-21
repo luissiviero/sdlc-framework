@@ -189,3 +189,91 @@ def test_cli_lock_and_unlock_tests_round_trip(tmp_path, capsys):
     assert json.loads(capsys.readouterr().out)["tests_locked"] is False
     assert status.read_status(change_dir).tests_locked is False
     assert cli.main(["lock-tests", "--root", root, "--id", "0099"]) == 2
+
+
+def test_work_branch_keeps_the_build_branch_through_d_and_e():
+    """OPERATING_MODEL section 8: (c) carries "the build PR that stays open through (d) and
+    (e)"; an incident (f) produces a new intent, which is (a) work."""
+    assert c.work_branch("0001", "a") == "sdlc/0001/a"
+    assert c.work_branch("0001", "b") == "sdlc/0001/b"
+    assert [c.work_branch("0001", p) for p in "cde"] == ["sdlc/0001/c"] * 3
+    assert c.work_branch("0001", "f") == "sdlc/0001/a"
+    assert c.branch_name("0001", "d") == "sdlc/0001/d"  # the literal name is still available
+    assert c.parse_branch(c.work_branch("0042", "e")) == ("0042", "c")
+    with pytest.raises(ValueError):
+        c.work_branch("0001", "z")
+    with pytest.raises(ValueError):
+        c.work_branch("1", "c")
+
+
+def _git(root: Path, *args: str) -> str:
+    return subprocess.run(
+        ["git", *args], cwd=root, capture_output=True, text=True, check=True, encoding="utf-8"
+    ).stdout
+
+
+@pytest.fixture
+def repo(tmp_path):
+    root = tmp_path / "proj"
+    root.mkdir()
+    (root / "README.md").write_text("# project\n", encoding="utf-8")
+    _git(root, "init", "-q", "-b", "main")
+    _git(root, "config", "user.email", "owner@example.com")
+    _git(root, "config", "user.name", "Owner")
+    _git(root, "add", ".")
+    _git(root, "commit", "-q", "-m", "initial")
+    return root
+
+
+def _commit_phase(root: Path, phase: str, message: str, capsys) -> tuple[int, dict, str]:
+    rc = cli.main(
+        [
+            "commit-phase",
+            "--root",
+            str(root),
+            "--id",
+            "0001",
+            "--phase",
+            phase,
+            "--message",
+            message,
+        ]
+    )
+    captured = capsys.readouterr()
+    return rc, (json.loads(captured.out) if captured.out.strip() else {}), captured.err
+
+
+def test_commit_phase_d_lands_on_the_build_branch(repo, capsys):
+    """Phases (d) and (e) commit on sdlc/<id>/c — the build PR stays open through them — and
+    never create a branch of their own (build guide step 24.3)."""
+    root = repo
+    assert cli.main(["new-change", "--root", str(root), "--title", "Percent helper"]) == 0
+    capsys.readouterr()
+    change = c.find_change_dir(root, "0001")
+    (change / "intent.md").write_text("# Intent: percent helper\n", encoding="utf-8")
+    rc, out, _ = _commit_phase(root, "a", "intent(0001): percent helper", capsys)
+    assert rc == 0 and out["branch"] == "sdlc/0001/a" and out["work_branch"] == "sdlc/0001/a"
+
+    # (d) before /sdlc-build ever ran: the build branch is missing, which is an error
+    rc, _out, err = _commit_phase(root, "d", "test(0001): evidence", capsys)
+    assert rc == 2 and "sdlc/0001/c" in err
+    assert _git(root, "branch", "--list", "sdlc/0001/c").strip() == ""
+
+    (change / "plan.md").write_text("# Plan\n", encoding="utf-8")
+    rc, out, _ = _commit_phase(root, "c", "build(0001): percent helper", capsys)
+    assert rc == 0 and out["branch"] == "sdlc/0001/c"
+
+    (change / "evidence" / "test.log").write_text("# python -m pytest\nok\n", encoding="utf-8")
+    rc, out, _ = _commit_phase(root, "d", "test(0001): evidence", capsys)
+    assert rc == 0 and out["branch"] == "sdlc/0001/c" and out["work_branch"] == "sdlc/0001/c"
+    assert _git(root, "rev-parse", "--abbrev-ref", "HEAD").strip() == "sdlc/0001/c"
+    assert _git(root, "branch", "--list", "sdlc/0001/d").strip() == ""
+    assert status.read_status(change).phase == "d"
+
+    (change / "evidence" / "review-findings.json").write_text("{}", encoding="utf-8")
+    rc, out, _ = _commit_phase(root, "e", "review(0001): findings", capsys)
+    assert rc == 0 and out["branch"] == "sdlc/0001/c"
+    branches = set(_git(root, "branch", "--format=%(refname:short)").split())
+    assert branches == {"main", "sdlc/0001/a", "sdlc/0001/c"}
+    tracked = _git(root, "ls-tree", "-r", "--name-only", "sdlc/0001/c").split()
+    assert "changes/0001-percent-helper/evidence/test.log" in tracked

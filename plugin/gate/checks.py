@@ -287,6 +287,7 @@ def check_evidence(ctx: GateContext) -> CheckResult:
         return _ok("evidence", "no evidence required at this gate")
     missing = []
     red: list[str] = []
+    red_names: list[str] = []
     for name in required:
         path = ctx.evidence_dir / name
         text = path.read_text(encoding="utf-8", errors="replace") if path.is_file() else ""
@@ -298,6 +299,7 @@ def check_evidence(ctx: GateContext) -> CheckResult:
         failure = art.evidence_failure(text)
         if failure:
             red.append(f"evidence/{name}: {failure}")
+            red_names.append(name)
     if missing:
         return _fail(
             "evidence",
@@ -310,13 +312,15 @@ def check_evidence(ctx: GateContext) -> CheckResult:
             missing=missing,
         )
     if red:
+        files = ", ".join(f"{ctx.change_rel}/evidence/{n}" for n in red_names)
         return _fail(
             "evidence",
             "; ".join(red),
             "Fix the failing target (fix the code, not the test), then re-run "
             f'`python "${{CLAUDE_PLUGIN_ROOT}}/plugin/evidence/collect.py" --root . --id '
-            f"{ctx.status.id}` so the log in {ctx.change_rel}/evidence/ records a green run.",
+            f"{ctx.status.id}` so {files} records a green run.",
             red=red,
+            red_files=red_names,
         )
     return _ok("evidence", f"evidence present: {', '.join(required)}")
 
@@ -378,7 +382,8 @@ def check_findings(ctx: GateContext) -> CheckResult:
             "findings",
             f"{len(important)} Important review finding(s) open",
             "Fix every Important finding (or have the owner waive it in a review comment), "
-            "then re-run the review pass.",
+            f"then re-run the review pass so {ctx.change_rel}/evidence/{art.REVIEW_FINDINGS} "
+            "shows none.",
             important=important[:20],
         )
     tally = data.get("tally") if isinstance(data.get("tally"), dict) else {}
