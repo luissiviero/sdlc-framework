@@ -159,6 +159,14 @@ The project's `.claude/settings.json` declaration stays: it is what a trusted lo
 uses, and it documents the pin. For B3 (`claude -p` in GitHub Actions) the same applies: the
 workflow either runs those two lines or loads the checked-out framework with `--plugin-dir`.
 
+Confirmed on 2026-09-21 with the setup script in place: `claude plugin list` shows
+`sdlc@sdlc-framework`; the debug log reads `Read manifest hooks for plugin sdlc
+(enabled=true): ./plugin/hooks/hooks.json` and `Registered 5 hooks from 2 plugins`; the
+cloud image has both `python` and `python3` (3.11.15) on PATH; a schema-valid Edit of
+`.claude/settings.json` was denied by the hook. The log also says "installed plugins' hooks
+modules not loaded: rollout flag (tengu_plugin_hooks_modules) is off" — that is a separate,
+module-style hook mechanism; command hooks from `hooks.json` are unaffected.
+
 Also observed: the sample container lacks bubblewrap and socat, so the template's sandbox
 block is inert there ("Sandbox disabled: ... dependencies are missing"); the setup script
 may install them if OS-level isolation is wanted in the cloud.
