@@ -28,10 +28,17 @@ writing (2026-09-21); where the owner says "Opus 5.1", read "the current Opus".
     user-facing way to set it per call, so the session prompt (the handoff) has to tell the
     model which sub-agents run on Opus, and the model names it in each invocation.
   - Default for every delegated task while the session stays on Fable: start the session
-    with `CLAUDE_CODE_SUBAGENT_MODEL=opus` (the docs show it in the `env` block of a
-    settings file; user-level, never in the template). Two limits, both from the docs: the
-    variable alone "doesn't change the model the built-in Explore and Plan subagents run
-    on", and a definition's `model` field, "including `inherit`", outranks it. The four
+    with `CLAUDE_CODE_SUBAGENT_MODEL=opus`. Where it goes depends on the surface: a cloud
+    session "copies the environment's values once, at startup" from the cloud environment's
+    environment variables and never reads `~/.claude/settings.json` ("User and project local
+    settings ... not read"); on the PC the `env` block of `~/.claude/settings.json` applies
+    "for every session and its subprocesses". A repo's `.claude/settings.json` `env` block is
+    read in a single-repository cloud session, but this is the owner's quota policy, so it is
+    not committed. Never in the template. Two limits, both from the docs: the variable alone
+    "doesn't change the model the built-in Explore and Plan subagents run on" (the built-in
+    general-purpose sub-agent does honour it, and on the Claude API Explore under a Fable
+    session is already "capped at Opus"), and a definition's `model` field, "including
+    `inherit`", outranks it. The four
     plugin agents already say `model: inherit`, so in a session that loads the plugin
     (`--plugin-dir`, or a project session) they would still run on Fable. This repo has no
     `.claude/` directory and does not load its own plugin, so build sessions are not
@@ -144,11 +151,11 @@ them as: deliverable 1 = 22.x and 23.x, 2 = 24.x and 28.x, 3 = 25.x, 4 = 26.x, 5
 | 28.2 Check-run summary for phase (d) (same poster as 26.2) | O | Reuse. |
 | 28.3 `/sdlc-test` prompt (fresh context, full suite, UI screenshot loop against the mock, verifier report) | F | Part of 24.2. |
 | 28.4 Full profile at gate (d): the wait for `sdlc:d-approved` and what the PR description shows as new versus (c) (the full-suite, fresh-context run and its evidence) | F for the wait (24.1 / 30.2), O for the description section (27a.1) | Mirror of 27.1. |
-| 30.1 Platform facts into `docs/NOTES.md` with URL and quote: `GITHUB_TOKEN` events not starting workflow runs and the `workflow_dispatch`/`repository_dispatch` exemption; `pull_request` `closed`+`merged` trigger for the owner's merges; label events; `permissions:` needed (`contents`, `pull-requests`, `checks`); `concurrency` per change id; how the pinned plugin is loaded with `--plugin-dir` in an untrusted checkout (NOTES §3); whether the API key or subscription auth is permitted in CI (decision 1, NOTES §2 says terms not checked); `--max-turns`, `--max-budget-usd`, `--permission-prompts none` (NOTES §10b already) | O | One research sub-agent, report only. |
+| 30.1 Platform facts into `docs/NOTES.md` with URL and quote: `GITHUB_TOKEN` events not starting workflow runs and the `workflow_dispatch`/`repository_dispatch` exemption; `pull_request` `closed`+`merged` trigger for the owner's merges; label events; `permissions:` needed (`contents`, `pull-requests`, `checks`); `concurrency` per change id; how the pinned plugin is loaded with `--plugin-dir` in an untrusted checkout (NOTES §3); the credential is decided (`ANTHROPIC_API_KEY`, NOTES §2, applied 2026-09-21); `--max-turns`, `--max-budget-usd`, `--permission-prompts none` (NOTES §10b already) | O | One research sub-agent, report only. |
 | 30.2 Trigger and dispatch table: one workflow per transition (intent merged → design; spec+plan merged or design-job dispatch in Lite → build; build → test → review either directly or after `sdlc:c-approved`/`sdlc:d-approved`), the status.yaml guard, the change id carried in the dispatch payload, what runs under which token | F | The place where the token-event rule and the profiles meet; a wrong table silently stops the loop. |
 | 30.3 `plugin/ci/run_phase.py`: composes and runs the `claude -p` call (pinned plugin via `--plugin-dir`, allow-list from step 7, `--max-turns`, `--max-budget-usd`, `--permission-mode acceptEdits` only when `preflight.py` allows, `--permission-prompts none`, `--output-format json`), stores the JSON transcript in `evidence/`, records spend, dispatches the next workflow | F→O | Spec = the 30.2 table plus NOTES §10b. Tested with a fake `claude` executable on PATH. |
 | 30.4 `template/.github/workflows/*.yml` for each transition and the digest, all steps calling Python | F→O | Spec = 30.2; the first workflow also creates the `sdlc:*` labels (handoff deliverable 6); Opus writes YAML, and a test parses every workflow and asserts triggers, the `permissions:` block, `concurrency` per change id, the status.yaml guard step, no deploy secrets, and the sandbox settings of 30.7. |
-| 30.5 The p.41 read-only "triage failed build" step as the first proof of the substrate | O | Copy from the article page, adapt to Python; the live run is the owner's. |
+| 30.5 The p.41 read-only "triage failed build" step as the first proof of the substrate | O | `.github/workflows/substrate-smoke.yml` (dispatch only, one headless turn) already exists in this repo as the credential proof; extend it to the p.41 triage step in Python. The live run is the owner's. |
 | 30.6 Re-verify decision 6 layer (iii): CI never loads hooks from the PR branch | O | Read the workflows and report; Fable decides if a change is needed. |
 | 30.7 Sandboxing of the phase jobs (p.40: containers under a network policy, short-lived scoped tokens, no production credentials by default): what the GitHub-hosted runner gives, the `permissions:` block per job, no deploy secrets in B3 workflows, the network limits Claude Code's own sandbox setting adds (NOTES §5) | F for the policy, F→O for the YAML | The policy is a guardrail choice; the YAML follows from it and from 30.1's facts. |
 | 30.8 `/sdlc-init` installs `template/.github/workflows/` (phase transitions and the digest job) into the project, idempotent, with tests in `tests/test_init.py` — step 21's text and the session-2 handoff both leave this to B3 | F→O | Spec: which files, merge behaviour when a workflow already exists. |

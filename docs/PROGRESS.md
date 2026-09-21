@@ -70,6 +70,10 @@ Results:
 - `python tasks.py check` on Windows: PASS — ruff lint clean, 70 files formatted, 207 passed / 0 failed / 0 skipped (the npm half of `test_init_on_node_fixture_writes_npm_targets` ran); `claude plugin validate .` passed.
 - `pip install -e ".[dev]"` failed on `main` (setuptools flat-layout: `plugin` + `template`, on any OS); fixed in PR #8 (`[tool.setuptools] packages = []`).
 
+## Closed after session 2 (2026-09-21, outside a build session)
+- **Step 3 (execution substrate)**: the credential branch of decision 1 is applied — CI runs use an `ANTHROPIC_API_KEY` repository secret from a dedicated Console workspace with a monthly spend limit; the subscription token stays the documented fallback. Facts, quotes and the owner's four setup steps are in NOTES §2. `.github/workflows/substrate-smoke.yml` (dispatch only) is the first proof; it was written from the docs and not executed here. The step is closed when the owner has created the secret and the smoke run is green; the merge-triggered workflows themselves are session 3 (step 30).
+- **Model allocation for the build sessions**: `docs/MODEL_ALLOCATION.md` and the "Model rule" section of `HANDOFF.md` (owner-approved).
+
 ## Left for B3 (write the next `HANDOFF.md` from this list)
 - `/sdlc-design` (step 22): the p.14 prompt with the policy skills loaded, `spec.md` with the five sections of `plugin/gate/artifacts.py`, then the read-only planning run (`plan-template` skill), adversarial verdict, gate (b), PR or hand-over per profile.
 - Phase runbooks (step 24): `/sdlc-build` (`gate/cli.py start-run`, `preflight.py` → permission mode, implementation, code-simplifier, verifier → `evidence/verifier.md`, adversarial reviewer, gate (c)), `/sdlc-test` (fresh context; `evidence/test.log`, `build.log`, `lint.log`, screenshots; verifier; gate (d)), `/sdlc-deploy` (review passes → `review-findings.json`; fix loop bounded by `status.iterations`; PR summary; gate (e)).

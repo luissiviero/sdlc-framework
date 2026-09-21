@@ -84,6 +84,49 @@ so B3 should re-read them before choosing the token over an API key. Also noted:
 secret shared across repositories, authenticate with an API key ... since an OAuth token is
 tied to the subscription of the person who ran `claude setup-token`."
 
+**Applied on 2026-09-21 (step 3 closed within decision 1):** the CI runs authenticate with an
+API key, not the subscription token. Reasons: the docs say "If you authenticate with an OAuth
+token, runs use your Claude subscription instead of API billing"
+(https://code.claude.com/docs/en/github-actions), which would draw the phase jobs from the
+plan window the owner is protecting; the token expires after one year ("generate a one-year
+OAuth token with `claude setup-token`", https://code.claude.com/docs/en/authentication); and
+bare mode, "useful for CI and scripts where you need the same result on every machine", reads
+only the key: "In bare mode, Claude Code never reads OAuth credentials or the system keychain.
+For the Anthropic API, set `ANTHROPIC_API_KEY` in the environment"
+(https://code.claude.com/docs/en/headless). The key is honoured in print mode: "In
+non-interactive mode (`-p`), the key is always used when present"
+(https://code.claude.com/docs/en/env-vars). The consumer terms therefore no longer need
+reading for the framework's own runs; the OAuth token stays the fallback for a run the owner
+starts by hand.
+
+Spend control, two layers (https://platform.claude.com/docs/en/manage-claude/workspaces and
+https://code.claude.com/docs/en/cli-reference): a dedicated Console workspace with the key
+scoped to it — "Spend limits: Cap monthly spending for a workspace. Set these on the
+workspace's Spend limits settings tab", "You cannot set limits on the Default Workspace",
+"API keys can be scoped to a single workspace" — and, per run, `--max-budget-usd`: "Maximum
+dollar amount to spend on API calls before stopping (print mode only). Spend from subagents
+counts toward the cap ... the cap-enforcement behaviors require Claude Code v2.1.217 or
+later" (a client-side estimate; the workspace limit is the authoritative one). What a request
+gets when the workspace cap is reached is not documented.
+
+Owner setup (not automatable from the repo):
+1. Console → Workspaces → create `sdlc-ci`; on its Spend limits tab set a monthly cap and an
+   alert threshold.
+2. Create an API key scoped to that workspace.
+3. GitHub → each repository the framework drives (`sdlc-framework`, `sdlc-sample-python`) →
+   Settings → Secrets and variables → Actions → new repository secret `ANTHROPIC_API_KEY`.
+4. In `sdlc-framework`, run the dispatch-only workflow `substrate-smoke.yml` (Actions →
+   "Substrate smoke test" → Run workflow); it installs the pinned CLI with the documented
+   installer (`curl -fsSL https://claude.ai/install.sh | bash -s <version>`), runs one
+   `claude -p --bare` turn under `--max-budget-usd`, and prints `total_cost_usd` from the JSON
+   result (with the model names from `modelUsage`; the step fails when `is_error` is true).
+   A green run closes build guide step 3. The workflow was not executed in the session that
+   added it (no Actions runner there); its `claude` command line was dry-run locally on CLI
+   2.1.278 with an invalid key: the flags parsed, the JSON result carried `total_cost_usd`,
+   `result`, `is_error` and `modelUsage`, and the command exited 1 with `api_error`, which is
+   what the step must do on a bad secret.
+
+
 ## 3. Where the framework runs: owner's PC and Claude Code cloud sessions
 
 Source: https://code.claude.com/docs/en/cloud-environments ("What carries over from your
