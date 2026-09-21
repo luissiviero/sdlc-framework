@@ -10,6 +10,11 @@ dependencies = []
 [project.optional-dependencies]
 dev = ["pytest>=8", "ruff>=0.5", "pyyaml>=6"]
 
+# Nothing to package: `pip install -e ".[dev]"` only installs the dev tools. Without this,
+# setuptools refuses the flat layout (`plugin` and `template` are both top-level folders).
+[tool.setuptools]
+packages = []
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 # the fixture project has its own tests (one fails on purpose behind a flag): never collect them here

@@ -48,7 +48,8 @@ queue; nobody is paged.
 
 Do not fix anything; report only. The one file you write is the verdict, and nothing else:
 `changes/<id>-<slug>/evidence/adversarial-review-<phase>.json` with exactly this shape
-(`head` is `git rev-parse HEAD`; the gate rejects a verdict for another commit):
+(`head` is mandatory, `git rev-parse HEAD`; the gate rejects a verdict without it or for
+another commit, and parks on uncommitted work outside the change folder, so review HEAD):
 
 ```json
 {

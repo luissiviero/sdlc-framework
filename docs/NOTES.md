@@ -345,7 +345,9 @@ Source: https://code.claude.com/docs/en/cli-reference, https://code.claude.com/d
   you want". `acceptEdits`: "Claude writes files without prompting ... other shell commands
   and network requests still need an `--allowedTools` entry or a `permissions.allow` rule".
 - "Pass `--permission-prompts none` when nobody is available to answer permission prompts
-  ... Anything that would prompt is denied" (v2.1.259+).
+  ... Anything that would prompt is denied" (v2.1.259+). The framework's declared minimum
+  is 2.1.228 (section 6); B3 bumps it to 2.1.259 when it adopts this flag, or leaves the
+  flag out on older runners (a `-p` run with no host denies such prompts anyway).
 - `--bare` "is the recommended mode for scripted and SDK calls" but "Bare mode does not read
   `CLAUDE_CODE_OAUTH_TOKEN`" (section 2) and skips CLAUDE.md, hooks and plugins unless
   passed explicitly (`--plugin-dir`, `--settings`).

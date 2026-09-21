@@ -5,6 +5,10 @@ A Claude Code plugin (`plugin/`) plus a project template (`template/`) that driv
 - Tests and lint: `python tasks.py check` (or `test` / `lint` / `format`).
 - Try the plugin in a project: `claude --plugin-dir <path-to-this-repo>` (the repository root is the plugin root; `.claude-plugin/plugin.json` points at `plugin/`), then `/sdlc:sdlc-init`.
 - The framework installs itself into a project by declaring the marketplace in the project's `.claude/settings.json` (done by `/sdlc-init`), so cloud sessions and the owner's PC load the same pinned plugin.
+- What a project gets (after B2): commands `/sdlc:sdlc-init`, `/sdlc:sdlc-plan`; agents `sdlc:verifier`, `sdlc:code-simplifier`, `sdlc:researcher`, `sdlc:adversarial-reviewer`; skills `intent-template`, `plan-template` and the five policy skills (`coding-standards`, `security-baseline`, `ux-conventions`, `data-conventions`, `definition-of-done`, each with a `check.py`); the guardrail hooks; and the deterministic gate tools, all called as `python "${CLAUDE_PLUGIN_ROOT}/plugin/<pkg>/<script>.py"`:
+  - `state/cli.py` — change folders, `status.yaml`, phase branches, `accept-risk`;
+  - `gate/cli.py check --root . --id 0001 --phase c` — the confidence gate (exit 0 continue, 3 wait at a human gate, 4 park), plus `start-run`, `record-spend`, `set-iterations` for the run limits;
+  - `gate/preflight.py --root .` — whether the implementation run may use `--permission-mode acceptEdits` (never bypass mode).
 
 ## Starting pack (session 1 input)
 
@@ -12,7 +16,7 @@ The files below were the input to the first build session; that session's brief 
 
 | File | What it is | Used by |
 |---|---|---|
-| `HANDOFF.md` | Brief for the **next** build session (now: session 2, B2); earlier briefs are kept in `docs/handoffs/` | the session |
+| `HANDOFF.md` | Brief for the **next** build session (now: session 3, B3); earlier briefs are kept in `docs/handoffs/` | the session |
 | `CLAUDE.md` | Conventions for this repo (English only, Python hooks, plugin/template layout) | every session |
 | `docs/OPERATING_MODEL.md` | The contract: phases, artifacts, profiles, gates, park-never-page, conventions (draft to finalise in step 1) | the framework itself |
 | `docs/DECISIONS.md` | The 20 settled decisions with alternatives and reasons | sessions, to avoid reopening them |

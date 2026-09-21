@@ -1,12 +1,16 @@
 """Detect (or propose) one-command build/test/lint targets (build guide step 14; article
 p.27 step 1: 'wrap checks in a single target ... that exits non-zero on failure').
 
-Python projects first (handoff deliverable 8). Every target is a ``python -m ...`` command so
-it runs identically on Windows, in a cloud session and on a Linux runner (decision 7).
+Python projects (session 1) and Node projects (session 2, from ``package.json`` scripts).
+Python targets are ``python -m ...`` commands and Node targets ``npm ...`` commands, so each
+runs identically on Windows, in a cloud session and on a Linux runner (decision 7). A target
+the detector cannot find or create is left as ``None``: the installer writes a placeholder
+and the gate refuses to enter phase (c) until the owner provides one.
 """
 
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -19,7 +23,6 @@ class Target:
     command: str | None
     healthy: str
     origin: str  # "detected: <evidence>" | "created: <what>" | "none"
-    permission_rule: str | None = None
 
 
 @dataclass
@@ -100,14 +103,12 @@ def detect_python(root: Path) -> Detection:
             "python -m pytest",
             "'N passed' and exit code 0",
             f"detected: {why}",
-            "Bash(python -m pytest*)",
         )
     elif is_python:
         test = Target(
             "python -m unittest discover -v",
             "'OK' and exit code 0",
             "created: unittest discovery (no tests found yet; add tests/test_*.py)",
-            "Bash(python -m unittest*)",
         )
         notes.append("no tests found: the test target is unittest discovery until tests exist")
     else:
@@ -123,28 +124,24 @@ def detect_python(root: Path) -> Detection:
             "python -m ruff check .",
             "'All checks passed!'",
             "detected: ruff configuration",
-            "Bash(python -m ruff*)",
         )
     elif _mentions(deps_text, "ruff"):
         lint = Target(
             "python -m ruff check .",
             "'All checks passed!'",
             "detected: ruff in dependencies",
-            "Bash(python -m ruff*)",
         )
     elif "[flake8]" in setup_cfg or (root / ".flake8").is_file() or "[flake8]" in tox_ini:
         lint = Target(
             "python -m flake8",
             "no output and exit code 0",
             "detected: flake8 configuration",
-            "Bash(python -m flake8*)",
         )
     elif is_python:
         lint = Target(
             "python -m ruff check .",
             "'All checks passed!'",
             "created: ruff.toml with default rules (pip install ruff)",
-            "Bash(python -m ruff*)",
         )
         notes.append(
             "no linter configured: /sdlc-init creates ruff.toml; install ruff in the environment"
@@ -158,14 +155,12 @@ def detect_python(root: Path) -> Detection:
             "python -m build",
             "'Successfully built' and exit code 0",
             "detected: [build-system] in pyproject.toml",
-            "Bash(python -m build*)",
         )
     elif is_python:
         build = Target(
             "python -m compileall -q .",
             "no output and exit code 0",
             "created: byte-compile as the build check (no packaging configured)",
-            "Bash(python -m compileall*)",
         )
     else:
         build = Target(None, "", "none")
@@ -173,6 +168,79 @@ def detect_python(root: Path) -> Detection:
     return Detection(language, build, test, lint, stats, notes)
 
 
+def _package_json(root: Path) -> dict | None:
+    path = root / "package.json"
+    if not path.is_file():
+        return None
+    try:
+        data = json.loads(_read(path) or "{}")
+    except ValueError:
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def detect_node(root: Path, pkg: dict) -> Detection:
+    """Targets from package.json ``scripts`` (npm runs them the same way on every OS)."""
+    scripts = pkg.get("scripts") if isinstance(pkg.get("scripts"), dict) else {}
+    stats = {
+        "js_files": _count(root, "*.js") + _count(root, "*.mjs") + _count(root, "*.cjs"),
+        "ts_files": _count(root, "*.ts") + _count(root, "*.tsx"),
+        "test_files": _count(root, "*.test.*") + _count(root, "*.spec.*"),
+        "has_test_script": int("test" in scripts),
+        "has_lint_script": int("lint" in scripts),
+        "has_build_script": int("build" in scripts),
+    }
+    notes: list[str] = []
+    placeholder_test = 'echo "Error: no test specified" && exit 1'
+    if "test" in scripts and scripts["test"].strip() != placeholder_test:
+        test = Target(
+            "npm test",
+            "exit code 0",
+            f"detected: scripts.test = {scripts['test']}",
+        )
+    else:
+        test = Target(
+            "node --test",
+            "'# fail 0' and exit code 0",
+            "created: node's built-in test runner (add *.test.js files; needs Node 18+)",
+        )
+        notes.append(
+            "no test script in package.json: the test target is `node --test` until one exists"
+        )
+    if "lint" in scripts:
+        lint = Target(
+            "npm run lint",
+            "exit code 0",
+            f"detected: scripts.lint = {scripts['lint']}",
+        )
+    else:
+        lint = Target(None, "", "none")
+        notes.append("no lint script in package.json: add one (e.g. eslint) and re-run /sdlc-init")
+    if "build" in scripts:
+        build = Target(
+            "npm run build",
+            "exit code 0",
+            f"detected: scripts.build = {scripts['build']}",
+        )
+    elif isinstance(pkg.get("main"), str) and pkg["main"].strip():
+        build = Target(
+            f"node --check {pkg['main'].strip()}",
+            "no output and exit code 0",
+            "created: syntax check of package.json main (no build script)",
+        )
+    else:
+        build = Target(None, "", "none")
+        notes.append("no build script and no main in package.json: add a build script")
+    return Detection("node", build, test, lint, stats, notes)
+
+
 def detect(root: Path) -> Detection:
-    """Entry point; only Python is implemented in this session (handoff deliverable 8)."""
-    return detect_python(root)
+    """Entry point: Python when Python signals exist, else Node when package.json exists."""
+    root = Path(root)
+    py = detect_python(root)
+    if py.language == "python":
+        return py
+    pkg = _package_json(root)
+    if pkg is not None:
+        return detect_node(root, pkg)
+    return py

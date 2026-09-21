@@ -7,7 +7,9 @@ says which run at the gate of which phase. A failed check carries ``need``: the 
 from __future__ import annotations
 
 import json
+import os
 import re
+import signal
 import subprocess
 import sys
 from collections.abc import Callable
@@ -20,6 +22,7 @@ if str(PLUGIN_DIR) not in sys.path:
     sys.path.insert(0, str(PLUGIN_DIR))
 
 from gate import artifacts as art  # noqa: E402
+from gate import diff as diffmod  # noqa: E402
 from gate.diff import Diff  # noqa: E402
 from hooks import plan_sync, protected_paths  # noqa: E402
 from hooks._common import matches  # noqa: E402
@@ -55,17 +58,36 @@ class GateContext:
     change_dir: Path
     phase: str
     status: Status
-    config: dict[str, Any]
+    config: dict[str, Any]  # sdlc.yaml as committed on the base when the diff changes it
     diff: Diff | None  # None when the project is not a git repository
     human_gate: bool
     diff_error: str = ""
+    profile: str = "standard"
+    config_note: str = ""  # set when the config was taken from the merge base
 
     @property
     def evidence_dir(self) -> Path:
         return self.change_dir / art.EVIDENCE_DIR
 
+    @property
+    def change_rel(self) -> str:
+        return str(self.change_dir.relative_to(self.root)).replace("\\", "/")
+
     def artifact(self, name: str) -> str | None:
         return art.read_text(self.change_dir / name)
+
+    def approved_artifact(self, name: str) -> str | None:
+        """The artifact as committed on the base branch (what the owner approved), falling
+        back to the working tree only when there is no base to compare with."""
+        if self.diff is not None and self.diff.merge_base:
+            committed = diffmod.file_at(
+                self.root, self.diff.merge_base, f"{self.change_rel}/{name}"
+            )
+            if committed is not None:
+                return committed
+            if f"{self.change_rel}/{name}" in self.diff.files:
+                return None  # new on this branch: not approved by anyone yet
+        return self.artifact(name)
 
     def gate_setting(self, key: str, default):
         gate_cfg = self.config.get("gate")
@@ -142,33 +164,66 @@ def _commands(ctx: GateContext) -> dict[str, str]:
     return out
 
 
+def _kill_tree(proc: subprocess.Popen) -> None:
+    """Kill the shell and everything it started (a hung pytest/npm would otherwise keep the
+    pipes open and block the timeout on Windows)."""
+    try:
+        if os.name == "nt":
+            subprocess.run(
+                ["taskkill", "/T", "/F", "/PID", str(proc.pid)], capture_output=True, timeout=30
+            )
+        else:
+            os.killpg(proc.pid, signal.SIGKILL)
+    except (OSError, subprocess.SubprocessError):
+        try:
+            proc.kill()
+        except OSError:
+            pass
+
+
 def run_command(command: str, root: Path, timeout: int) -> dict[str, Any]:
     """Run one project target through the platform shell (the targets are the owner's own
-    one-liners: `npm test`, `python -m pytest`; on Windows the .cmd shims need cmd.exe)."""
+    one-liners: `npm test`, `python -m pytest`; on Windows the .cmd shims need cmd.exe). The
+    command runs in its own process group so a timeout kills the whole tree."""
+    group: dict[str, Any] = (
+        {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP}  # type: ignore[attr-defined]
+        if os.name == "nt"
+        else {"start_new_session": True}
+    )
     try:
-        proc = subprocess.run(
+        proc = subprocess.Popen(
             command,
             cwd=str(root),
             shell=True,
-            capture_output=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            stdin=subprocess.DEVNULL,
             text=True,
             encoding="utf-8",
             errors="replace",
-            timeout=timeout,
+            **group,
         )
-        output = (proc.stdout or "") + (proc.stderr or "")
-        return {"command": command, "exit_code": proc.returncode, "output": output[-OUTPUT_TAIL:]}
-    except subprocess.TimeoutExpired as exc:
-        out = (exc.stdout or b"") if isinstance(exc.stdout, bytes) else (exc.stdout or "")
-        text = out.decode("utf-8", "replace") if isinstance(out, bytes) else str(out)
+    except OSError as exc:
+        return {"command": command, "exit_code": None, "output": repr(exc)}
+    try:
+        output, _ = proc.communicate(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        _kill_tree(proc)
+        try:
+            output, _ = proc.communicate(timeout=30)
+        except subprocess.TimeoutExpired:
+            output = ""
         return {
             "command": command,
             "exit_code": None,
-            "output": text[-OUTPUT_TAIL:],
+            "output": (output or "")[-OUTPUT_TAIL:],
             "timeout": timeout,
         }
-    except OSError as exc:
-        return {"command": command, "exit_code": None, "output": repr(exc)}
+    return {
+        "command": command,
+        "exit_code": proc.returncode,
+        "output": (output or "")[-OUTPUT_TAIL:],
+    }
 
 
 def check_commands(ctx: GateContext) -> CheckResult:
@@ -258,6 +313,21 @@ def check_findings(ctx: GateContext) -> CheckResult:
             f"evidence/{art.REVIEW_FINDINGS} {error}",
             "Run the review passes (REVIEW.md) so they publish their findings JSON.",
         )
+    head = ctx.diff.head if ctx.diff else None
+    if ctx.phase in art.FINDINGS_REQUIRED_AT:
+        if not data.get("head"):
+            return _fail(
+                "findings",
+                f"evidence/{art.REVIEW_FINDINGS} carries no 'head' commit",
+                "The review pass must record the commit it reviewed; re-run it.",
+            )
+        if head and not str(head).startswith(str(data["head"])):
+            return _fail(
+                "findings",
+                f"findings are for commit {str(data['head'])[:10]}, HEAD is {head[:10]}",
+                "Re-run the review pass on the current HEAD.",
+                stale=True,
+            )
     important = important_findings(data)
     if important:
         return _fail(
@@ -332,9 +402,20 @@ def check_guardrails(ctx: GateContext) -> CheckResult:
         return _fail("guardrails", ctx.diff_error, "Run the gate inside the project's git repo.")
     patterns = protected_paths.protected_patterns(ctx.config)
     touched = [f for f in ctx.diff.files if any(matches(p, f) for p in patterns)]
+    intent_rel = f"{ctx.change_rel}/intent.md"
+    if ctx.phase != "a" and intent_rel in ctx.diff.files:
+        # the intent was accepted at gate (a): a later phase may not rewrite it (it is what
+        # the guardrail exemption and the risk acceptance are judged against)
+        return _fail(
+            "guardrails",
+            "intent.md changed on this branch after gate (a)",
+            "Revert the intent.md change; an accepted intent changes only through a new "
+            "intent PR (phase a).",
+            touched=touched,
+        )
     if not touched:
         return _ok("guardrails", "the diff does not touch a guardrail file")
-    intent = ctx.artifact("intent.md") or ""
+    intent = ctx.approved_artifact("intent.md") or ""
     if ctx.status.id == c.INIT_CHANGE_ID or art.is_framework_change(intent):
         return _ok(
             "guardrails",
@@ -345,8 +426,8 @@ def check_guardrails(ctx: GateContext) -> CheckResult:
         "guardrails",
         f"the diff touches guardrail file(s): {', '.join(touched[:10])}",
         "Guardrail files (.claude/**, CLAUDE.md, REVIEW.md, sdlc.yaml, protected_paths) are "
-        "changed by the owner in a reviewed PR. Revert them here, or mark the intent with "
-        "'Framework change: yes' if this change is the framework itself.",
+        "changed by the owner in a reviewed PR. Revert them here; a framework change says "
+        "'Framework change: yes' in the intent the owner merged at gate (a).",
         touched=touched,
     )
 
@@ -427,15 +508,22 @@ def load_verdict(path: Path) -> tuple[dict[str, Any] | None, str]:
         return None, "malformed: 'verdict' must be 'continue' or 'escalate'"
     if data.get("classification") not in ("routine", "non-routine"):
         return None, "malformed: 'classification' must be 'routine' or 'non-routine'"
+    if not isinstance(data.get("head"), str) or len(data["head"]) < 7:
+        return None, "malformed: 'head' must be the commit sha the verdict judged"
     return data, ""
+
+
+VERDICT_REQUIRED_AT = ("b", "c", "d")  # every profile: the reviewer runs before each of these
 
 
 def check_adversarial_verdict(ctx: GateContext) -> CheckResult:
     path = ctx.evidence_dir / art.ADVERSARIAL_VERDICT.format(phase=ctx.phase)
     data, error = load_verdict(path)
     if data is None:
-        if error == "missing" and ctx.human_gate:
-            return _ok("adversarial_review", "human gate: no adversarial verdict required")
+        if error == "missing" and ctx.phase not in VERDICT_REQUIRED_AT:
+            return _ok(
+                "adversarial_review", f"no adversarial verdict required at gate ({ctx.phase})"
+            )
         return _fail(
             "adversarial_review",
             f"evidence/{path.name} {error}",
@@ -443,7 +531,7 @@ def check_adversarial_verdict(ctx: GateContext) -> CheckResult:
             "the verdict JSON.",
         )
     head = ctx.diff.head if ctx.diff else None
-    if head and data.get("head") and not str(head).startswith(str(data["head"])):
+    if head and not str(head).startswith(str(data["head"])):
         return _fail(
             "adversarial_review",
             f"verdict is for commit {str(data['head'])[:10]}, HEAD is {head[:10]}",
@@ -468,6 +556,23 @@ def check_adversarial_verdict(ctx: GateContext) -> CheckResult:
     )
 
 
+# --- 10. committed work only: the verdict and the PR cover HEAD, not the working tree -----------
+def check_clean_tree(ctx: GateContext) -> CheckResult:
+    if ctx.diff is None:
+        return _fail("clean_tree", ctx.diff_error, "Run the gate inside the project's git repo.")
+    prefix = ctx.change_rel + "/"
+    dirty = [f for f in diffmod.dirty_files(ctx.root) if not f.startswith(prefix)]
+    if dirty:
+        return _fail(
+            "clean_tree",
+            f"{len(dirty)} uncommitted file(s) outside the change folder: " + ", ".join(dirty[:10]),
+            "Commit (or discard) the work first: the adversarial verdict and the PR judge "
+            "HEAD, not the working tree.",
+            dirty=dirty[:50],
+        )
+    return _ok("clean_tree", "no uncommitted change outside the change folder")
+
+
 # --- which checks at which gate --------------------------------------------------------------
 Check = Callable[[GateContext], CheckResult]
 CHECKS_BY_PHASE: dict[str, tuple[Check, ...]] = {
@@ -481,6 +586,7 @@ CHECKS_BY_PHASE: dict[str, tuple[Check, ...]] = {
         check_adversarial_verdict,
     ),
     "c": (
+        check_clean_tree,
         check_artifacts,
         check_open_concerns,
         check_commands,
@@ -492,6 +598,7 @@ CHECKS_BY_PHASE: dict[str, tuple[Check, ...]] = {
         check_adversarial_verdict,
     ),
     "d": (
+        check_clean_tree,
         check_artifacts,
         check_open_concerns,
         check_commands,
@@ -503,6 +610,7 @@ CHECKS_BY_PHASE: dict[str, tuple[Check, ...]] = {
         check_adversarial_verdict,
     ),
     "e": (
+        check_clean_tree,
         check_artifacts,
         check_open_concerns,
         check_commands,

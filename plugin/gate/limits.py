@@ -127,6 +127,16 @@ def check_limits(ctx: GateContext, now: datetime | None = None) -> CheckResult:
             {**details, "stop": True},
         )
     run = read_run(ctx)
+    if not run and not ctx.human_gate and ctx.phase in ("b", "c", "d"):
+        return CheckResult(
+            "limits",
+            False,
+            f"the run did not register its start (evidence/{RUN_FILE.format(phase=ctx.phase)} "
+            "missing), so the wall clock and budget cannot be enforced",
+            f"Start phase runs with `gate/cli.py start-run --id {ctx.status.id} --phase "
+            f"{ctx.phase}` before the work, and record spend with `record-spend`.",
+            {**details, "stop": False},
+        )
     max_minutes = _int(
         ctx.gate_setting("max_wall_clock_minutes", None), DEFAULT_MAX_WALL_CLOCK_MINUTES
     )
