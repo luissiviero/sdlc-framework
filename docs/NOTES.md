@@ -84,50 +84,65 @@ so B3 should re-read them before choosing the token over an API key. Also noted:
 secret shared across repositories, authenticate with an API key ... since an OAuth token is
 tied to the subscription of the person who ran `claude setup-token`."
 
-**Applied on 2026-09-21 (step 3's credential decision, within decision 1; the step itself closes on a green smoke run):** the CI runs authenticate with an
-API key, not the subscription token. Reasons: the docs say "If you authenticate with an OAuth
-token, runs use your Claude subscription instead of API billing"
-(https://code.claude.com/docs/en/github-actions), which would draw the phase jobs from the
-plan window the owner is protecting; the token expires after one year ("generate a one-year
-OAuth token with `claude setup-token`", https://code.claude.com/docs/en/authentication); and
-bare mode, "useful for CI and scripts where you need the same result on every machine", reads
-only the key: "In bare mode, Claude Code never reads OAuth credentials or the system keychain.
-For the Anthropic API, set `ANTHROPIC_API_KEY` in the environment"
-(https://code.claude.com/docs/en/headless). The key is honoured in print mode: "In
-non-interactive mode (`-p`), the key is always used when present"
-(https://code.claude.com/docs/en/env-vars). The consumer terms therefore no longer need
-reading for the framework's own runs; the OAuth token stays the fallback for a run the owner
-starts by hand.
+**Applied on 2026-09-21 (step 3's credential arrangement, within decision 1; the step itself
+closes on a green smoke run):** the CI runs accept either credential, and the choice is made
+from usage data, not in advance.
 
-Spend control, two layers (https://platform.claude.com/docs/en/manage-claude/workspaces and
-https://code.claude.com/docs/en/cli-reference): a dedicated Console workspace with the key
-scoped to it — "Spend limits: Cap monthly spending for a workspace. Set these on the
-workspace's Spend limits settings tab", "You cannot set limits on the Default Workspace",
-"API keys can be scoped to a single workspace" — and, per run, `--max-budget-usd`: "Maximum
-dollar amount to spend on API calls before stopping (print mode only). Spend from subagents
-counts toward the cap ... the cap-enforcement behaviors require Claude Code v2.1.217 or
-later" (a client-side estimate; the workspace limit is the authoritative one). What a request
-gets when the workspace cap is reached is not documented.
+- **Subscription token** (`claude setup-token` → repository secret `CLAUDE_CODE_OAUTH_TOKEN`):
+  nothing to pay beyond the plan; the docs support it for Pro (quotes above). Its cost is the
+  plan window: "If you authenticate with an OAuth token, runs use your Claude subscription
+  instead of API billing" (https://code.claude.com/docs/en/github-actions), so every
+  unattended phase run competes with the owner's own sessions for the same window and cannot
+  be capped in dollars; the token expires after one year ("generate a one-year OAuth token
+  with `claude setup-token`", https://code.claude.com/docs/en/authentication); and it is not
+  read in bare mode (section 2 above), so a token run is `claude -p` without `--bare`.
+  Generating the token spends no quota; only the runs that use it do.
+- **API key** (Console → repository secret `ANTHROPIC_API_KEY`): billed per token in dollars
+  on top of the plan, isolated from every plan window, and capped twice
+  (https://platform.claude.com/docs/en/manage-claude/workspaces,
+  https://code.claude.com/docs/en/cli-reference): a dedicated Console workspace with the key
+  scoped to it — "Spend limits: Cap monthly spending for a workspace. Set these on the
+  workspace's Spend limits settings tab", "You cannot set limits on the Default Workspace",
+  "API keys can be scoped to a single workspace" — and, per run, `--max-budget-usd`: "Maximum
+  dollar amount to spend on API calls before stopping (print mode only). Spend from subagents
+  counts toward the cap ... the cap-enforcement behaviors require Claude Code v2.1.217 or
+  later" (a client-side estimate; the workspace limit is the authoritative one). What a
+  request gets when the workspace cap is reached is not documented. Bare mode, "useful for CI
+  and scripts where you need the same result on every machine", reads only the key: "In bare
+  mode, Claude Code never reads OAuth credentials or the system keychain. For the Anthropic
+  API, set `ANTHROPIC_API_KEY` in the environment" (https://code.claude.com/docs/en/headless);
+  and "In non-interactive mode (`-p`), the key is always used when present"
+  (https://code.claude.com/docs/en/env-vars), so when both secrets exist the key wins.
+
+Order decided with the owner: start with the token (session 3's first live runs are few and
+launched by hand), read `/usage` after them, and move to the key once the merge-triggered
+jobs run unattended or the window shows the strain. Every workflow the framework ships
+therefore takes both secrets and prefers the key: `.github/scripts/substrate_smoke.py` is
+the pattern (`--bare` only on the key path), and B3's `plugin/ci/run_phase.py` follows it.
+The consumer terms were not read from the build container (above); the product docs support
+the token for Pro, which is what the framework relies on.
 
 Owner setup (not automatable from the repo):
-1. Console → Settings → Workspaces → Create workspace `sdlc-ci`; on its Spend limits tab set a monthly cap and an
-   alert threshold.
-2. Create an API key scoped to that workspace.
-3. GitHub → each repository the framework drives (`sdlc-framework`, `sdlc-sample-python`) →
-   Settings → Secrets and variables → Actions → new repository secret `ANTHROPIC_API_KEY`.
-4. In `sdlc-framework`, run the dispatch-only workflow `substrate-smoke.yml` (Actions →
+1. Token path: on the PC, `claude setup-token`, approve in the browser, copy the printed
+   token → GitHub → each repository the framework drives (`sdlc-framework`,
+   `sdlc-sample-python`) → Settings → Secrets and variables → Actions → new repository
+   secret `CLAUDE_CODE_OAUTH_TOKEN`.
+2. Key path, when the time comes: Console → Settings → Workspaces → Create workspace
+   `sdlc-ci`, set a monthly cap and an alert on its Spend limits tab; create an API key scoped
+   to it; store it as the repository secret `ANTHROPIC_API_KEY` in the same repositories.
+   The token secret can stay; the key takes precedence.
+3. In `sdlc-framework`, run the dispatch-only workflow `substrate-smoke.yml` (Actions →
    "Substrate smoke test" → Run workflow); it installs the pinned CLI from npm
    (`npm install -g @anthropic-ai/claude-code@2.1.278`, on Node 22 as the setup page
-   requires; the curl installer with `bash -s <version>` is the documented alternative), runs
-   one `claude -p --bare` turn under `--max-budget-usd`, and prints `total_cost_usd` from the JSON
-   result (with the model names from `modelUsage`; the turn step continues on error so the
-   report step always prints, and the report step fails when `is_error` is true).
-   A green run closes build guide step 3. The workflow was not executed in the session that
-   added it (no Actions runner there); its `claude` command line was dry-run locally on CLI
-   2.1.278 with an invalid key: the flags parsed, the JSON result carried `total_cost_usd`,
-   `result`, `is_error` and `modelUsage`, and the command exited 1 with `api_error`, which is
-   what the step must do on a bad secret.
-
+   requires; the curl installer with `bash -s <version>` is the documented alternative) and
+   runs `.github/scripts/substrate_smoke.py`: one turn under `--max-turns` and
+   `--max-budget-usd`, then `auth`, `total_cost_usd`, the model names from `modelUsage` and
+   the reply, failing when the CLI reports `is_error`. A green run closes build guide step 3.
+   The script is unit-tested with a fake CLI (`tests/test_substrate_smoke.py`); the workflow
+   was not executed in the session that added it (no Actions runner there). Its key-path
+   command line was dry-run locally on CLI 2.1.278 with an invalid key: the flags parsed, the
+   JSON result carried `total_cost_usd`, `result`, `is_error` and `modelUsage`, and the CLI
+   exited 1 with `api_error`.
 
 ## 3. Where the framework runs: owner's PC and Claude Code cloud sessions
 
