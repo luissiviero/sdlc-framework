@@ -47,6 +47,11 @@ class Status:
     # risk-list items the owner has accepted for this change (gate check `risk_list`, step 16):
     # the change touches them knowingly; the gate no longer parks on them.
     risk_accepted: list[str] = field(default_factory=list)
+    # test-file lock (build guide step 25; article p.28 step 4, p.35): set by the build run of a
+    # fix-type change once the reproducing test is committed. While true the PreToolUse hook
+    # denies every edit under `sdlc.yaml: test_paths` on the change's sdlc/<id>/(c|d|e) branch.
+    # Only the owner clears it (`state/cli.py unlock-tests`), in a reviewed PR.
+    tests_locked: bool = False
     created_at: str = field(default_factory=_now)
     updated_at: str = field(default_factory=_now)
     schema_version: int = SCHEMA_VERSION
@@ -78,6 +83,8 @@ class Status:
             isinstance(r, str) and r.strip() for r in self.risk_accepted
         ):
             raise ValueError("risk_accepted must be a list of non-empty strings")
+        if not isinstance(self.tests_locked, bool):
+            raise ValueError("tests_locked must be a boolean")
 
     # -- (de)serialisation --------------------------------------------------------------
     def to_dict(self) -> dict[str, Any]:
@@ -118,6 +125,18 @@ class Status:
         """Park, never page (decision 11): record why and wait in the review queue. ``phase``
         is the gate that parked (defaults to the change's current phase)."""
         self.record_gate(phase or self.phase, "parked", reason)
+
+    def lock_tests(self) -> None:
+        """The reproducing test of a fix-type change is committed: freeze the test paths."""
+        self.tests_locked = True
+        self.touch()
+        self.validate()
+
+    def unlock_tests(self) -> None:
+        """Owner-only (the test itself was wrong): thaw the test paths for this change."""
+        self.tests_locked = False
+        self.touch()
+        self.validate()
 
     def bump_iteration(self) -> int:
         self.iterations += 1

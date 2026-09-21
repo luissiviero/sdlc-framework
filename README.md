@@ -5,10 +5,15 @@ A Claude Code plugin (`plugin/`) plus a project template (`template/`) that driv
 - Tests and lint: `python tasks.py check` (or `test` / `lint` / `format`).
 - Try the plugin in a project: `claude --plugin-dir <path-to-this-repo>` (the repository root is the plugin root; `.claude-plugin/plugin.json` points at `plugin/`), then `/sdlc:sdlc-init`.
 - The framework installs itself into a project by declaring the marketplace in the project's `.claude/settings.json` (done by `/sdlc-init`), so cloud sessions and the owner's PC load the same pinned plugin.
-- What a project gets (after B2): commands `/sdlc:sdlc-init`, `/sdlc:sdlc-plan`; agents `sdlc:verifier`, `sdlc:code-simplifier`, `sdlc:researcher`, `sdlc:adversarial-reviewer`; skills `intent-template`, `plan-template` and the five policy skills (`coding-standards`, `security-baseline`, `ux-conventions`, `data-conventions`, `definition-of-done`, each with a `check.py`); the guardrail hooks; and the deterministic gate tools, all called as `python "${CLAUDE_PLUGIN_ROOT}/plugin/<pkg>/<script>.py"`:
-  - `state/cli.py` — change folders, `status.yaml`, phase branches, `accept-risk`;
-  - `gate/cli.py check --root . --id 0001 --phase c` — the confidence gate (exit 0 continue, 3 wait at a human gate, 4 park), plus `start-run`, `record-spend`, `set-iterations` for the run limits;
-  - `gate/preflight.py --root .` — whether the implementation run may use `--permission-mode acceptEdits` (never bypass mode).
+- What a project gets (after B3): commands `/sdlc:sdlc-init`, `/sdlc:sdlc-plan`, `/sdlc:sdlc-design`, `/sdlc:sdlc-build`, `/sdlc:sdlc-test`, `/sdlc:sdlc-deploy`, `/sdlc:sdlc-fix` (`/sdlc-maintain` waits for B5); agents `sdlc:verifier`, `sdlc:code-simplifier`, `sdlc:researcher`, `sdlc:adversarial-reviewer`; skills `intent-template`, `spec-template`, `plan-template` and the five policy skills (`coding-standards`, `security-baseline`, `ux-conventions`, `data-conventions`, `definition-of-done`, each with a `check.py`); the guardrail hooks (protected paths, secrets, plan sync, formatter, test-file lock for fix-type changes); the merge-triggered workflows and the daily digest installed into `.github/workflows/`; and the deterministic tools, all called as `python "${CLAUDE_PLUGIN_ROOT}/plugin/<pkg>/<script>.py"`:
+  - `state/cli.py` — change folders, `status.yaml`, phase branches (`commit-phase`, `set-phase`), `park`, `accept-risk`, `lock-tests` / `unlock-tests`;
+  - `gate/cli.py check --root . --id 0001 --phase c` — the confidence gate (exit 0 continue, 3 wait at a human gate, 4 park), plus `start-run`, `record-spend`, `set-iterations`, `bump-iteration` for the run limits and `spec-header` for phase (b);
+  - `gate/preflight.py --root .` — whether the implementation run may use `--permission-mode acceptEdits` (never bypass mode);
+  - `evidence/collect.py` — runs the project's test, build and lint targets into `changes/<id>/evidence/*.log`;
+  - `review/cli.py prompt | validate | check-run` — the fresh-context review pass (REVIEW.md) and its machine-readable findings;
+  - `pr/cli.py upsert` — opens or updates the change's PR with the ≤5-bullet summary and the gate's label; `pr/digest.py` — the daily review-queue digest (a pinned issue whose body is rewritten; nothing notifies);
+  - `ci/run_phase.py` — what each workflow runs: the guard, the pinned plugin, `claude -p` with the run limits, spend recording and the explicit dispatch of the next phase.
+- Phases by hand: `/sdlc-plan` (interactive) → owner merges the intent PR → `/sdlc-design <id>` → owner merges the spec+plan PR → `/sdlc-build <id>` → `/sdlc-test <id>` → `/sdlc-deploy <id>` → owner merges the build PR. Review comments on any PR: `/sdlc-fix <id>`. With the workflows installed, everything after the first merge runs on its own (`docs/OPERATING_MODEL.md` §4.2).
 
 ## Starting pack (session 1 input)
 

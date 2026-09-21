@@ -4,7 +4,19 @@
         [--base origin/main] [--dry-run]
     python cli.py start-run --root . --id 0001 --phase c        # wall-clock start (step 19)
     python cli.py record-spend --root . --id 0001 --phase c --usd 1.25
-    python cli.py set-iterations --root . --id 0001 --count 0
+    python cli.py set-iterations --root . --id 0001 --count 0   # owner only (decision 11)
+    python cli.py bump-iteration --root . --id 0001             # one fix round (step 24)
+    python cli.py spec-header --root . --id 0001 [--plugin-root <path>]
+
+``bump-iteration`` counts one fix round of the change's current phase (the runbooks call it
+per round of the verifier / evidence / review loops), writes ``status.yaml`` and prints the
+new count with the cap in force (the adversarial reviewer's routine/non-routine
+classification tightens it, step 19). It exits 3 once the count is past the cap, so a
+runbook can stop the loop before the gate parks the change.
+
+``spec-header`` prints the two header lines of spec.md (step 22; article p.14: the spec, the
+prompt that produced it and the skill versions in force are logged together) as JSON, with
+the pieces it rendered them from.
 
 ``check`` prints the gate result as JSON (result: continue | wait | park, the checks, the
 "What I need from you" block) and exits 0 on continue, 3 on wait (human gate), 4 on park,
@@ -23,11 +35,17 @@ from pathlib import Path
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from gate import gate, limits  # noqa: E402
+from gate import artifacts as art  # noqa: E402
+from gate import gate, limits, preflight  # noqa: E402
+from gate.checks import GateContext  # noqa: E402
+from hooks._common import ConfigError, load_sdlc_config  # noqa: E402
 from state import conventions as c  # noqa: E402
 from state import status as status_mod  # noqa: E402
 
 EXIT = {"continue": 0, "wait": 3, "park": 4}
+EXIT_CAP_REACHED = 3  # bump-iteration: the loop has spent its last round
+REPO_ROOT = Path(__file__).resolve().parents[2]  # the plugin root Claude Code installs
+UNKNOWN_VERSION = "unknown"
 
 
 def _emit(obj) -> None:
@@ -104,6 +122,91 @@ def cmd_set_iterations(args) -> int:
     return 0
 
 
+def cmd_bump_iteration(args) -> int:
+    """One more fix round in the change's current phase (OPERATING_MODEL section 4.1).
+
+    The cap comes from the run limits (step 19), tightened when the adversarial reviewer
+    classed the plan non-routine; the gate parks the change once the count is past it, so
+    this command reports the cap and exits 3 to let the runbook stop one round earlier."""
+    change_dir, st = _change(args)
+    if change_dir is None:
+        return 2
+    root = Path(args.root).resolve()
+    try:
+        config = load_sdlc_config(str(root))
+    except ConfigError as exc:
+        print(f"gate: {exc}", file=sys.stderr)
+        return 2
+    # a bare context: the caps and the classification read only the config and evidence/
+    ctx = GateContext(root, change_dir, st.phase, st, config, None, True, "no diff needed")
+    classification = limits.classification_for(ctx)
+    cap = limits.iteration_cap(ctx, classification)
+    iterations = st.bump_iteration()
+    status_mod.write_status(change_dir, st)
+    cap_reached = iterations > cap
+    _emit(
+        {
+            "iterations": iterations,
+            "cap": cap,
+            "cap_reached": cap_reached,
+            "classification": classification,
+        }
+    )
+    return EXIT_CAP_REACHED if cap_reached else 0
+
+
+def plugin_version(root: Path, plugin_root: Path) -> str:
+    """The pinned version from the project's sdlc.yaml (decision 8), falling back to the
+    installed plugin's manifest when the project has no pin yet."""
+    try:
+        config = load_sdlc_config(str(root))
+    except ConfigError:
+        config = {}
+    pinned = config.get("plugin") if isinstance(config.get("plugin"), dict) else {}
+    version = str(pinned.get("version") or "").strip()
+    if version:
+        return version
+    manifest = Path(plugin_root) / ".claude-plugin" / "plugin.json"
+    try:
+        data = json.loads(manifest.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return UNKNOWN_VERSION
+    return str(data.get("version") or UNKNOWN_VERSION)
+
+
+def skill_overrides(root: Path) -> list[str]:
+    """Policy skills the project replaced with its own under .claude/skills/ (step 20)."""
+    return [
+        name
+        for name in preflight.POLICY_SKILLS
+        if (Path(root) / ".claude" / "skills" / name / "SKILL.md").is_file()
+    ]
+
+
+def cmd_spec_header(args) -> int:
+    root = Path(args.root).resolve()
+    change_dir, st = _change(args)
+    if change_dir is None:
+        return 2
+    intent = art.read_text(change_dir / "intent.md") or ""
+    title = art.intent_title(intent) or st.title
+    version = plugin_version(root, Path(args.plugin_root))
+    skills = list(preflight.POLICY_SKILLS)
+    overrides = skill_overrides(root)
+    _emit(
+        {
+            "title": title,
+            "change_id": st.id,
+            "plugin_version": version,
+            "skills": skills,
+            "overrides": overrides,
+            "prompt_version": art.DESIGN_PROMPT_VERSION,
+            "header": art.render_spec_header(title, st.id, version, skills, overrides),
+        }
+    )
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="sdlc-gate", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
@@ -131,11 +234,30 @@ def build_parser() -> argparse.ArgumentParser:
     rs.add_argument("--usd", required=True, type=float)
     rs.set_defaults(fn=cmd_record_spend)
 
+    bi = sub.add_parser(
+        "bump-iteration", help="count one fix round; exit 3 when the iteration cap is reached"
+    )
+    bi.add_argument("--root", default=".")
+    bi.add_argument("--id", required=True)
+    bi.set_defaults(fn=cmd_bump_iteration)
+
     si = sub.add_parser("set-iterations")
     si.add_argument("--root", default=".")
     si.add_argument("--id", required=True)
     si.add_argument("--count", required=True, type=int)
     si.set_defaults(fn=cmd_set_iterations)
+
+    sh = sub.add_parser(
+        "spec-header", help="render the two header lines of spec.md for the design pass"
+    )
+    sh.add_argument("--root", default=".")
+    sh.add_argument("--id", required=True)
+    sh.add_argument(
+        "--plugin-root",
+        default=str(REPO_ROOT),
+        help="installed plugin root, read when sdlc.yaml carries no plugin.version pin",
+    )
+    sh.set_defaults(fn=cmd_spec_header)
     return p
 
 

@@ -31,7 +31,9 @@ VALUES = {
     "BUILD_RULE": "Bash(python -m build *)",
     "TEST_RULE": "Bash(python -m pytest *)",
     "LINT_RULE": "Bash(python -m ruff *)",
+    "TEST_PATHS": '  - "tests/**"\n  - "**/test_*.py"',
     "FRAMEWORK_REPO": "luissiviero/sdlc-framework",
+    "CLAUDE_CODE_VERSION": "2.1.278",
 }
 
 
@@ -101,9 +103,15 @@ def test_sdlc_yaml_renders_to_documented_keys():
         data["maintain"]["metric"] == "ci_test_failure_rate" and data["maintain"]["runbooks"] == []
     )
     assert data["risk_list"] == ["auth", "data migrations", "money movement", "production config"]
+    assert data["test_paths"] == ["tests/**", "**/test_*.py"]  # step 25: the test-file lock
     assert data["protected_paths"] == [] and data["plan_sync"]["exempt"] == ["*.md"]
     assert data["hooks"]["format_on_edit"] is True
-    assert data["plugin"] == {"name": "sdlc", "marketplace": "sdlc-framework", "version": "0.1.0"}
+    assert data["plugin"] == {
+        "name": "sdlc",
+        "marketplace": "sdlc-framework",
+        "version": VALUES["PLUGIN_VERSION"],
+        "claude_code": VALUES["CLAUDE_CODE_VERSION"],  # step 30: the CLI the workflows pin
+    }
 
 
 def test_sdlc_yaml_also_parses_with_pyyaml():
@@ -159,3 +167,64 @@ def test_bands_yaml_has_the_p44_shape_with_authorization_per_route():
     assert (TEMPLATE / "evals" / "README.md").is_file() and (
         TEMPLATE / "evals" / "cases" / ".gitkeep"
     ).is_file()
+
+
+# --- the SDLC workflows (build guide step 30; OPERATING_MODEL section 4.2) --------------------
+WORKFLOW_DIR = TEMPLATE / ".github" / "workflows"
+PHASE_WORKFLOWS = ("sdlc-design.yml", "sdlc-build.yml", "sdlc-test.yml", "sdlc-deploy.yml")
+ALL_WORKFLOWS = (*PHASE_WORKFLOWS, "sdlc-digest.yml")
+
+
+def test_workflow_templates_exist_and_render():
+    assert sorted(p.name for p in WORKFLOW_DIR.glob("*.yml")) == sorted(ALL_WORKFLOWS)
+    for name in ALL_WORKFLOWS:
+        text = render.render_file(WORKFLOW_DIR / name, VALUES)
+        # GitHub's own ${{ ... }} expressions survive; no {{NAME}} placeholder may.
+        assert render.placeholders(text) == set()
+        assert VALUES["FRAMEWORK_REPO"] in text
+
+
+def test_pin_script_is_installed_and_reads_the_template_pin(tmp_path):
+    script = TEMPLATE / ".github" / "scripts" / "sdlc_pin.py"
+    assert script.is_file()
+    rendered = render.render_file(TEMPLATE / "sdlc.yaml", VALUES)
+    (tmp_path / "sdlc.yaml").write_text(rendered, encoding="utf-8")
+    import subprocess
+    import sys
+
+    proc = subprocess.run(
+        [sys.executable, str(script), "--root", str(tmp_path)],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert f"ref=v{VALUES['PLUGIN_VERSION']}" in proc.stdout
+    assert f"claude_code={VALUES['CLAUDE_CODE_VERSION']}" in proc.stdout
+
+
+def _pin(tmp_path: Path, plugin_block: str):
+    import subprocess
+    import sys
+
+    script = TEMPLATE / ".github" / "scripts" / "sdlc_pin.py"
+    (tmp_path / "sdlc.yaml").write_text(plugin_block, encoding="utf-8")
+    return subprocess.run(
+        [sys.executable, str(script), "--root", str(tmp_path)],
+        capture_output=True,
+        text=True,
+    )
+
+
+def test_pin_script_does_not_double_the_v_of_a_version(tmp_path):
+    proc = _pin(tmp_path, 'plugin:\n  version: "v1.4.0"\n  claude_code: "2.1.278"\n')
+    assert proc.returncode == 0, proc.stderr
+    assert "ref=v1.4.0" in proc.stdout and "ref=vv" not in proc.stdout
+
+
+def test_pin_script_refuses_a_claude_code_that_is_not_a_version(tmp_path):
+    """The value is interpolated into the install step's shell command."""
+    proc = _pin(tmp_path, 'plugin:\n  version: "1.4.0"\n  claude_code: "2.1.1; rm -rf /"\n')
+    assert proc.returncode == 2
+    assert "not a version string" in proc.stderr
+    ok = _pin(tmp_path, 'plugin:\n  version: "1.4.0"\n  claude_code: "latest"\n')
+    assert ok.returncode == 0 and "claude_code=latest" in ok.stdout

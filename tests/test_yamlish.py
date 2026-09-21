@@ -57,6 +57,21 @@ def test_strings_that_look_like_other_types_are_quoted():
     assert yamlish.loads(yamlish.dumps(data)) == data
 
 
+def test_glob_and_indicator_strings_are_quoted_not_refused():
+    """``**/test_*.py`` is a glob to us and an alias to YAML: the writer quotes it. The
+    framework's own defaults (test_paths, plan_sync.exempt) are made of these."""
+    data = {
+        "test_paths": ["**/test_*.py", "tests/**", "*.md"],
+        "plan_sync": {"exempt": ["*.md"]},
+        "odd": ["&anchor", "|block", ">folded", "#hash", " padded "],
+    }
+    text = yamlish.dumps(data)
+    assert yamlish.loads(text) == data
+    assert '"**/test_*.py"' in text
+    yaml = pytest.importorskip("yaml")
+    assert yaml.safe_load(text) == data
+
+
 def test_pyyaml_agrees_when_available():
     yaml = pytest.importorskip("yaml")
     data = yamlish.loads(SAMPLE)

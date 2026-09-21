@@ -24,10 +24,12 @@ if str(PLUGIN_DIR) not in sys.path:
 from gate import artifacts as art  # noqa: E402
 from gate import diff as diffmod  # noqa: E402
 from gate.diff import Diff  # noqa: E402
+from gate.policy import automation_identity, is_automation  # noqa: E402
 from hooks import plan_sync, protected_paths  # noqa: E402
 from hooks._common import matches  # noqa: E402
 from state import conventions as c  # noqa: E402
-from state.status import Status  # noqa: E402
+from state import yamlish  # noqa: E402
+from state.status import STATUS_FILE, Status  # noqa: E402
 
 PLACEHOLDER_COMMAND_RE = re.compile(r"^\s*echo\s+no\s+\w+\s+target\s*$", re.IGNORECASE)
 DEFAULT_COMMAND_TIMEOUT = 900  # seconds per command; sdlc.yaml: gate.command_timeout
@@ -124,12 +126,19 @@ def check_artifacts(ctx: GateContext) -> CheckResult:
             lacking = [f for f in art.INTENT_HEADER_FIELDS if f not in head]
             if lacking:
                 problems.append(f"intent.md header lacks {', '.join(lacking)}")
+        if name == "spec.md":
+            # the header logs the prompt, the plugin pin and the skills in force (p.14)
+            head = text.split("## ", 1)[0]
+            lacking = [f for f in art.SPEC_HEADER_FIELDS if f not in head]
+            if lacking:
+                problems.append(f"spec.md header lacks {', '.join(lacking)}")
     if problems:
         return _fail(
             "artifacts",
             "; ".join(problems),
-            "Complete the phase artifact so it matches its template (intent-template / "
-            "plan-template skills; spec sections in plugin/gate/artifacts.py).",
+            "Complete the phase artifact so it matches its template (intent-template, "
+            "spec-template and plan-template skills; the sections and header fields are "
+            "defined in plugin/gate/artifacts.py).",
             problems=problems,
         )
     return _ok("artifacts", "every required artifact exists and has its template sections")
@@ -153,8 +162,10 @@ def check_open_concerns(ctx: GateContext) -> CheckResult:
 
 
 # --- 3. tests/build/lint green via the sdlc.yaml commands (step 14: refuse to enter (c)) -----
-def _commands(ctx: GateContext) -> dict[str, str]:
-    cmds = ctx.config.get("commands")
+def commands_from_config(config: dict[str, Any]) -> dict[str, str]:
+    """The usable ``sdlc.yaml: commands`` targets ("echo no lint target" is not one). Shared
+    with plugin/evidence/collect.py so the gate and the evidence writer run the same lines."""
+    cmds = config.get("commands")
     out: dict[str, str] = {}
     if isinstance(cmds, dict):
         for key in ("build", "test", "lint"):
@@ -162,6 +173,15 @@ def _commands(ctx: GateContext) -> dict[str, str]:
             if isinstance(value, str) and value.strip() and not PLACEHOLDER_COMMAND_RE.match(value):
                 out[key] = value.strip()
     return out
+
+
+def _commands(ctx: GateContext) -> dict[str, str]:
+    return commands_from_config(ctx.config)
+
+
+def _tail(output: str | None, tail: int | None) -> str:
+    text = output or ""
+    return text if tail is None else text[-tail:]
 
 
 def _kill_tree(proc: subprocess.Popen) -> None:
@@ -181,10 +201,14 @@ def _kill_tree(proc: subprocess.Popen) -> None:
             pass
 
 
-def run_command(command: str, root: Path, timeout: int) -> dict[str, Any]:
+def run_command(
+    command: str, root: Path, timeout: int, tail: int | None = OUTPUT_TAIL
+) -> dict[str, Any]:
     """Run one project target through the platform shell (the targets are the owner's own
     one-liners: `npm test`, `python -m pytest`; on Windows the .cmd shims need cmd.exe). The
-    command runs in its own process group so a timeout kills the whole tree."""
+    command runs in its own process group so a timeout kills the whole tree. ``tail`` caps
+    the kept output (the gate result keeps the tail; ``None`` keeps the literal output, which
+    is what the evidence writer of step 28 stores)."""
     group: dict[str, Any] = (
         {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP}  # type: ignore[attr-defined]
         if os.name == "nt"
@@ -216,13 +240,13 @@ def run_command(command: str, root: Path, timeout: int) -> dict[str, Any]:
         return {
             "command": command,
             "exit_code": None,
-            "output": (output or "")[-OUTPUT_TAIL:],
+            "output": _tail(output, tail),
             "timeout": timeout,
         }
     return {
         "command": command,
         "exit_code": proc.returncode,
-        "output": (output or "")[-OUTPUT_TAIL:],
+        "output": _tail(output, tail),
     }
 
 
@@ -257,22 +281,53 @@ def check_commands(ctx: GateContext) -> CheckResult:
 
 
 # --- 4. evidence present (step 28) --------------------------------------------------------
+COMMAND_LOGS = tuple(art.EVIDENCE_TARGETS.values())  # test.log, build.log, lint.log
+HEADER_REQUIRED_AT = ("d", "e")  # the gates that read the toolchain's own output
+
+
 def check_evidence(ctx: GateContext) -> CheckResult:
     required = art.REQUIRED_EVIDENCE.get(ctx.phase, ())
     if not required:
         return _ok("evidence", "no evidence required at this gate")
     missing = []
+    red: list[str] = []
+    red_names: list[str] = []
     for name in required:
         path = ctx.evidence_dir / name
-        if not path.is_file() or not path.read_text(encoding="utf-8", errors="replace").strip():
+        text = path.read_text(encoding="utf-8", errors="replace") if path.is_file() else ""
+        if not text.strip():
             missing.append(name)
+            continue
+        # logs written by evidence/collect.py carry their exit code on the first line; a log
+        # that records a failure is evidence of a red run, whatever a later re-run says, and
+        # at (d) and (e) a command log without that header is not evidence at all
+        failure = art.evidence_failure(
+            text, require_header=ctx.phase in HEADER_REQUIRED_AT and name in COMMAND_LOGS
+        )
+        if failure:
+            red.append(f"evidence/{name}: {failure}")
+            red_names.append(name)
     if missing:
         return _fail(
             "evidence",
             f"evidence/ lacks {', '.join(missing)}",
             "Phase (d) must leave the literal toolchain output and the verifier report in "
-            "changes/<id>-<slug>/evidence/ (article p.28–29); re-run the phase.",
+            f"{ctx.change_rel}/evidence/ (article p.28–29): write "
+            + ", ".join(f"{ctx.change_rel}/evidence/{n}" for n in missing)
+            + ' by running `python "${CLAUDE_PLUGIN_ROOT}/plugin/evidence/collect.py" --root . '
+            f"--id {ctx.status.id}` (the verifier agent writes verifier.md).",
             missing=missing,
+        )
+    if red:
+        files = ", ".join(f"{ctx.change_rel}/evidence/{n}" for n in red_names)
+        return _fail(
+            "evidence",
+            "; ".join(red),
+            "Fix the failing target (fix the code, not the test), then re-run "
+            f'`python "${{CLAUDE_PLUGIN_ROOT}}/plugin/evidence/collect.py" --root . --id '
+            f"{ctx.status.id}` so {files} records a green run.",
+            red=red,
+            red_files=red_names,
         )
     return _ok("evidence", f"evidence present: {', '.join(required)}")
 
@@ -334,7 +389,8 @@ def check_findings(ctx: GateContext) -> CheckResult:
             "findings",
             f"{len(important)} Important review finding(s) open",
             "Fix every Important finding (or have the owner waive it in a review comment), "
-            "then re-run the review pass.",
+            f"then re-run the review pass so {ctx.change_rel}/evidence/{art.REVIEW_FINDINGS} "
+            "shows none.",
             important=important[:20],
         )
     tally = data.get("tally") if isinstance(data.get("tally"), dict) else {}
@@ -573,16 +629,149 @@ def check_clean_tree(ctx: GateContext) -> CheckResult:
     return _ok("clean_tree", "no uncommitted change outside the change folder")
 
 
+# --- 11. phase (b) touches no source (decision 2; OPERATING_MODEL section 8) -------------------
+def check_design_scope(ctx: GateContext) -> CheckResult:
+    """The spec-and-plan run of phase (b) is read-only on source: the only files it writes are
+    the change folder's own artifacts. The first run with edit tools on source is phase (c)."""
+    if ctx.diff is None:
+        return _fail("design_scope", ctx.diff_error, "Run the gate inside the project's git repo.")
+    prefix = ctx.change_rel + "/"
+    outside = [f for f in ctx.diff.files if not f.startswith(prefix)]
+    if outside:
+        return _fail(
+            "design_scope",
+            f"{len(outside)} file(s) changed outside {prefix}: " + ", ".join(outside[:10]),
+            f"Revert them: phase (b) writes only {prefix}; the first run with edit tools on "
+            "source is phase (c).",
+            outside=outside[:50],
+        )
+    return _ok("design_scope", f"the diff stays inside {prefix}")
+
+
+# --- 12. owner-only state: accept-risk and set-iterations (build guide step 24.5) -------------
+OWNER_ACTIONS_NEED = (
+    "accept-risk and set-iterations are the owner's: run them on your machine or in your own "
+    "session and commit; a run cannot approve itself (decision 11)."
+)
+STATUS_HISTORY_LIMIT = "200"  # commits of status.yaml history the check walks back through
+
+
+def _status_fields(ctx: GateContext, ref: str) -> dict[str, Any] | None:
+    """``risk_accepted`` and ``iterations`` of the change's status.yaml at ``ref``."""
+    text = diffmod.file_at(ctx.root, ref, f"{ctx.change_rel}/{STATUS_FILE}")
+    if text is None:
+        return None
+    try:
+        data = yamlish.loads(text)
+    except Exception:  # noqa: BLE001 — an unreadable old copy is treated as absent
+        return None
+    if not isinstance(data, dict):
+        return None
+    risk = {str(r).strip().lower() for r in (data.get("risk_accepted") or []) if str(r).strip()}
+    iterations = data.get("iterations")
+    if isinstance(iterations, bool) or not isinstance(iterations, int):
+        iterations = 0
+    return {"risk": risk, "iterations": iterations}
+
+
+def _status_history(ctx: GateContext) -> list[tuple[str, str, str]]:
+    """(sha, author email, author name) for the commits that touched status.yaml, newest
+    first — the author is who introduced the change of state, which is the point here."""
+    out = diffmod._git(
+        ctx.root,
+        "log",
+        "-n",
+        STATUS_HISTORY_LIMIT,
+        "--format=%H%x1f%ae%x1f%an",
+        "--",
+        f"{ctx.change_rel}/{STATUS_FILE}",
+        check=False,
+    )
+    rows = []
+    for line in out.splitlines():
+        parts = line.strip().split("\x1f")
+        if len(parts) == 3 and parts[0]:
+            rows.append((parts[0], parts[1], parts[2]))
+    return rows
+
+
+def check_owner_actions(ctx: GateContext) -> CheckResult:
+    """A risk acceptance or an iteration reset counts only when the owner made it.
+
+    ``status.yaml: risk_accepted`` and ``iterations`` were owner actions by convention only
+    (PROGRESS known gap); this ties them to the commit author. The newest commit that gained
+    a risk item and the newest that lowered the iteration count must not be the automation
+    identity, and an acceptance that sits uncommitted in the working tree belongs to nobody:
+    the owner commits theirs."""
+    if ctx.diff is None:
+        return _fail("owner_actions", ctx.diff_error, "Run the gate inside the project's git repo.")
+    identities = automation_identity(ctx.config)
+    empty = {"risk": set(), "iterations": 0}
+    head = _status_fields(ctx, "HEAD") or empty
+    tree_risk = {str(r).strip().lower() for r in ctx.status.risk_accepted if str(r).strip()}
+    problems: list[str] = []
+    gained = sorted(tree_risk - head["risk"])
+    if gained:
+        problems.append(
+            f"risk_accepted gained {', '.join(gained)} in the working tree, in no commit"
+        )
+    if ctx.status.iterations < head["iterations"]:
+        problems.append(
+            f"iterations dropped from {head['iterations']} to {ctx.status.iterations} in the "
+            "working tree, in no commit"
+        )
+    risk_event: tuple[str, str, str, list[str]] | None = None
+    drop_event: tuple[str, str, str, int, int] | None = None
+    for sha, email, name in _status_history(ctx):
+        if risk_event is not None and drop_event is not None:
+            break
+        now = _status_fields(ctx, sha)
+        if now is None:
+            continue
+        before = _status_fields(ctx, f"{sha}^") or empty
+        added = sorted(now["risk"] - before["risk"])
+        if added and risk_event is None:
+            risk_event = (sha, email, name, added)
+        if now["iterations"] < before["iterations"] and drop_event is None:
+            drop_event = (sha, email, name, before["iterations"], now["iterations"])
+    if risk_event and is_automation(risk_event[2], risk_event[1], identities):
+        problems.append(
+            f"risk_accepted gained {', '.join(risk_event[3])} in commit {risk_event[0][:10]}, "
+            f"authored by the automation identity ({risk_event[2]} <{risk_event[1]}>)"
+        )
+    if drop_event and is_automation(drop_event[2], drop_event[1], identities):
+        problems.append(
+            f"iterations dropped from {drop_event[3]} to {drop_event[4]} in commit "
+            f"{drop_event[0][:10]}, authored by the automation identity "
+            f"({drop_event[2]} <{drop_event[1]}>)"
+        )
+    if problems:
+        return _fail(
+            "owner_actions",
+            "; ".join(problems),
+            OWNER_ACTIONS_NEED,
+            problems=problems,
+            automation_identity=identities,
+        )
+    return _ok(
+        "owner_actions",
+        "risk acceptances and iteration resets, if any, were committed by the owner",
+        risk_accepted=sorted(tree_risk),
+    )
+
+
 # --- which checks at which gate --------------------------------------------------------------
 Check = Callable[[GateContext], CheckResult]
 CHECKS_BY_PHASE: dict[str, tuple[Check, ...]] = {
     "a": (check_artifacts, check_guardrails, check_risk_list),
     "b": (
         check_artifacts,
+        check_design_scope,
         check_open_concerns,
         check_commands,
         check_guardrails,
         check_risk_list,
+        check_owner_actions,
         check_adversarial_verdict,
     ),
     "c": (
@@ -595,6 +784,7 @@ CHECKS_BY_PHASE: dict[str, tuple[Check, ...]] = {
         check_plan_sync,
         check_guardrails,
         check_risk_list,
+        check_owner_actions,
         check_adversarial_verdict,
     ),
     "d": (
@@ -607,6 +797,7 @@ CHECKS_BY_PHASE: dict[str, tuple[Check, ...]] = {
         check_plan_sync,
         check_guardrails,
         check_risk_list,
+        check_owner_actions,
         check_adversarial_verdict,
     ),
     "e": (
@@ -619,6 +810,7 @@ CHECKS_BY_PHASE: dict[str, tuple[Check, ...]] = {
         check_plan_sync,
         check_guardrails,
         check_risk_list,
+        check_owner_actions,
         check_adversarial_verdict,
     ),
     "f": (),

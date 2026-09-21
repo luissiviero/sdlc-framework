@@ -26,6 +26,40 @@ if str(PLUGIN_DIR) not in sys.path:
 from gate import diff as diffmod  # noqa: E402
 from hooks._common import ConfigError, load_sdlc_config  # noqa: E402
 
+# The identities the framework itself runs under (OPERATING_MODEL section 8: the automation
+# identity has branch-only write access; only the owner merges). A project overrides the list
+# with `sdlc.yaml: automation_identity` — the GitHub Actions bot is the default, matched
+# against a commit's author name or email. The gate's `owner_actions` check (build guide step
+# 24.5) uses it to refuse a risk acceptance or an iteration reset a run made for itself.
+DEFAULT_AUTOMATION_IDENTITY = [
+    "github-actions[bot]",
+    "41898282+github-actions[bot]@users.noreply.github.com",
+]
+# Any GitHub App writes as "<app>[bot]@users.noreply.github.com", so the suffix is automation
+# whatever the project listed.
+BOT_EMAIL_SUFFIX = "[bot]@users.noreply.github.com"
+
+
+def automation_identity(config: dict[str, Any]) -> list[str]:
+    """``sdlc.yaml: automation_identity`` when the owner set one, else the default list."""
+    listed = config.get("automation_identity")
+    if isinstance(listed, list):
+        names = [str(i).strip() for i in listed if str(i).strip()]
+        if names:
+            return names
+    return list(DEFAULT_AUTOMATION_IDENTITY)
+
+
+def is_automation(author_name: str, author_email: str, identities: list[str]) -> bool:
+    """True when a commit's author is the framework's own automation identity, never the
+    owner: a run cannot approve itself (decision 11)."""
+    who = {(author_name or "").strip().lower(), (author_email or "").strip().lower()}
+    who.discard("")
+    if any(i.strip().lower() in who for i in identities):
+        return True
+    return (author_email or "").strip().lower().endswith(BOT_EMAIL_SUFFIX)
+
+
 TEXT_SUFFIXES = {
     ".py", ".js", ".ts", ".tsx", ".jsx", ".mjs", ".cjs", ".json", ".yaml", ".yml", ".toml",
     ".md", ".txt", ".html", ".css", ".scss", ".vue", ".svelte", ".sql", ".sh", ".ps1", ".cfg",

@@ -50,6 +50,21 @@ gate:
   max_budget_usd: null           # per change, when the substrate reports spend; null = off
   command_timeout: 900           # seconds per build/test/lint command run by the gate
 
+# --- automation identity (decision 11; gate check owner_actions) ---------------------------------
+# The gate honours a risk acceptance (accept-risk) or an iteration reset (set-iterations) only
+# when the commit that introduced it was not authored by the automation identity: a run cannot
+# approve itself. Default: github-actions[bot] (plugin/gate/policy.py). Override only if your
+# CI commits under another name:
+# automation_identity:
+#   - github-actions[bot]
+
+# --- test-file lock (build guide step 25; OPERATING_MODEL section 8) -------------------------
+# Globs of the project's test files. In a fix-type change the build run commits the reproducing
+# test first and locks these paths (status.yaml: tests_locked) for the rest of the change; the
+# hook denies any edit under them. Defaults per detected language are written by /sdlc-init.
+test_paths:
+{{TEST_PATHS}}
+
 # --- guardrails read by the plugin's hooks (build guide step 15) -----------------------------
 # Always protected, whatever is listed here: .claude/**, CLAUDE.md, REVIEW.md, sdlc.yaml and
 # the plugin's own files. Add generated code, frozen packages, migrations, infra.
@@ -66,3 +81,7 @@ plugin:
   name: sdlc
   marketplace: sdlc-framework
   version: {{PLUGIN_VERSION}}
+  # Claude Code CLI version the SDLC workflows install (`npm install -g
+  # @anthropic-ai/claude-code@<this>`). `--permission-prompts none` needs 2.1.259 or later;
+  # 2.1.278 is the CLI the jobs install and the framework's minimum.
+  claude_code: "{{CLAUDE_CODE_VERSION}}"

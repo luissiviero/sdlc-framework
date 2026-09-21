@@ -11,7 +11,15 @@ from pathlib import Path
 
 import pytest
 
-from hooks import _common, format_on_edit, plan_sync, protected_paths, secrets_check
+from hooks import (
+    _common,
+    format_on_edit,
+    plan_sync,
+    protected_paths,
+    secrets_check,
+    test_file_lock,
+)
+from state import status
 
 HOOKS_DIR = Path(__file__).resolve().parents[1] / "plugin" / "hooks"
 PLUGIN_ROOT = HOOKS_DIR.parents[1]  # the repository root is the plugin root
@@ -548,3 +556,156 @@ def test_format_on_edit_ignores_files_outside_project(tmp_path):
     payload = {"tool_name": "Write", "tool_input": {"file_path": str(outside)}, "cwd": str(proj)}
     assert not format_on_edit.decide(payload, [], env={"CLAUDE_PROJECT_DIR": str(proj)}).block
     assert outside.read_text(encoding="utf-8") == "x=1\n"
+
+
+# --- test-file lock (build guide step 25) ---------------------------------------------------
+LOCK_HOOK = HOOKS_DIR / "test_file_lock.py"
+DEFAULT_TEST_PATHS_BLOCK = '  - "tests/**"\n  - "**/test_*.py"\n'
+
+
+def _lock_project(
+    tmp_path,
+    change_type="fix",
+    locked=True,
+    branch="sdlc/0001/c",
+    test_paths=DEFAULT_TEST_PATHS_BLOCK,
+):
+    """A git repo on `branch` holding change 0001 and a test file the lock can cover."""
+    root = tmp_path
+    body = "profile: standard\nprotected_paths: []\n"
+    if test_paths is not None:
+        body += "test_paths:\n" + test_paths
+    (root / "sdlc.yaml").write_text(body, encoding="utf-8")
+    (root / "tests").mkdir()
+    (root / "tests" / "test_calc.py").write_text("def test_x():\n    pass\n", encoding="utf-8")
+    (root / "sample_pkg").mkdir()
+    (root / "sample_pkg" / "calc.py").write_text("x = 1\n", encoding="utf-8")
+    change_dir, st = status.new_change(root, "Fix the thing", change_type=change_type)
+    if locked:
+        st.lock_tests()
+        status.write_status(change_dir, st)
+    _git(root, "init", "-q", "-b", "main")
+    _git(root, "config", "user.email", "t@example.com")
+    _git(root, "config", "user.name", "t")
+    _git(root, "add", ".")
+    _git(root, "commit", "-q", "-m", "init")
+    if branch != "main":
+        _git(root, "checkout", "-q", "-b", branch)
+    return root, change_dir
+
+
+def _run_lock_hook(root, payload):
+    return subprocess.run(
+        [sys.executable, str(LOCK_HOOK)],
+        input=json.dumps({**payload, "cwd": str(root)}),
+        capture_output=True,
+        text=True,
+        env={**os.environ, "CLAUDE_PROJECT_DIR": str(root)},
+    )
+
+
+def test_test_file_lock_denies_a_test_edit_in_a_locked_fix(tmp_path):
+    root, _ = _lock_project(tmp_path)
+    proc = _run_lock_hook(
+        root,
+        pre("Edit", file_path=str(root / "tests" / "test_calc.py"), old_string="a", new_string="b"),
+    )
+    assert proc.returncode == 2, proc.stderr
+    out = json.loads(proc.stdout)
+    assert out["hookSpecificOutput"]["permissionDecision"] == "deny"
+    assert "Test-file lock" in proc.stderr and "unlock-tests" in proc.stderr
+    assert "tests/test_calc.py" in out["hookSpecificOutput"]["permissionDecisionReason"]
+
+
+def test_test_file_lock_allows_source_edits_in_a_locked_fix(tmp_path):
+    root, _ = _lock_project(tmp_path)
+    proc = _run_lock_hook(
+        root,
+        pre("Edit", file_path=str(root / "sample_pkg" / "calc.py"), old_string="a", new_string="b"),
+    )
+    assert proc.returncode == 0 and proc.stdout == "", proc.stderr
+
+
+def test_test_file_lock_ignores_feature_changes(tmp_path):
+    root, _ = _lock_project(tmp_path, change_type="feature")
+    proc = _run_lock_hook(
+        root, pre("Write", file_path=str(root / "tests" / "test_calc.py"), content="x")
+    )
+    assert proc.returncode == 0, proc.stderr
+
+
+def test_test_file_lock_ignores_a_fix_before_the_test_is_committed(tmp_path):
+    root, _ = _lock_project(tmp_path, locked=False)
+    proc = _run_lock_hook(
+        root, pre("Write", file_path=str(root / "tests" / "test_calc.py"), content="x")
+    )
+    assert proc.returncode == 0, proc.stderr
+
+
+def test_test_file_lock_never_denies_outside_a_phase_branch(tmp_path):
+    root, _ = _lock_project(tmp_path, branch="main")
+    proc = _run_lock_hook(
+        root, pre("Write", file_path=str(root / "tests" / "test_calc.py"), content="x")
+    )
+    assert proc.returncode == 0, proc.stderr
+
+
+def test_test_file_lock_checks_every_multiedit_target(tmp_path):
+    root, _ = _lock_project(tmp_path)
+    payload = pre(
+        "MultiEdit",
+        file_path=str(root / "sample_pkg" / "calc.py"),
+        edits=[
+            {
+                "file_path": str(root / "sample_pkg" / "calc.py"),
+                "old_string": "x",
+                "new_string": "y",
+            },
+            {
+                "file_path": str(root / "tests" / "test_calc.py"),
+                "old_string": "a",
+                "new_string": "b",
+            },
+        ],
+    )
+    proc = _run_lock_hook(root, payload)
+    assert proc.returncode == 2, proc.stderr
+    assert "Test-file lock" in proc.stderr
+
+
+def test_test_file_lock_fails_closed_on_an_unreadable_status_yaml(tmp_path):
+    root, change_dir = _lock_project(tmp_path)
+    (change_dir / "status.yaml").write_text("id: 0001\n\tbroken: [\n", encoding="utf-8")
+    proc = _run_lock_hook(
+        root,
+        pre("Edit", file_path=str(root / "sample_pkg" / "calc.py"), old_string="a", new_string="b"),
+    )
+    assert proc.returncode == 2, proc.stdout
+    assert "fails closed" in proc.stderr and "status.yaml" in proc.stderr
+
+
+def test_test_file_lock_falls_back_to_the_built_in_globs(tmp_path):
+    """A project initialised before step 25 has no `test_paths:` key: the lock still holds."""
+    root, _ = _lock_project(tmp_path, test_paths=None)
+    payload = {
+        **pre(
+            "Edit", file_path=str(root / "tests" / "test_calc.py"), old_string="a", new_string="b"
+        ),
+        "cwd": str(root),
+    }
+    d = test_file_lock.decide(payload, [], env={"CLAUDE_PROJECT_DIR": str(root)})
+    assert d.block and "Test-file lock" in d.reason
+
+
+def test_hooks_json_registers_the_test_file_lock_with_the_protected_path_matcher():
+    data = json.loads((HOOKS_DIR / "hooks.json").read_text(encoding="utf-8"))
+    entries = [
+        e
+        for e in data["hooks"]["PreToolUse"]
+        if any("test_file_lock.py" in h["args"][0] for h in e["hooks"])
+    ]
+    assert len(entries) == 1
+    scripts = [Path(h["args"][0]).name for h in entries[0]["hooks"]]
+    assert entries[0]["matcher"] == "Edit|Write|MultiEdit|NotebookEdit"
+    assert "protected_paths.py" in scripts
+    assert scripts.index("test_file_lock.py") > scripts.index("protected_paths.py")

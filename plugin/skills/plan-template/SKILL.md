@@ -50,4 +50,8 @@ After drafting, answer these in writing before finishing:
 - In phase (c) the plan-sync hook denies a commit that changes source without changing
   plan.md (p.16 step 7): when implementation departs from the plan, update plan.md in the
   same commit.
+- Fix-type change (`status.yaml: change_type: fix`; build guide step 25, article p.28 step 4):
+  the first item of Order of work is "write the reproducing test and see it fail", and Proof
+  names that test. The build run commits it first and then locks the test files
+  (`tests_locked`); the fix must make it pass without touching tests.
 - Keep the article's section names exactly; the review's compliance pass reads them.

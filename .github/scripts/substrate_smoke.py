@@ -23,6 +23,16 @@ import os
 import subprocess
 import sys
 from collections.abc import Mapping, Sequence
+from pathlib import Path
+
+# The selection itself lives in the plugin (plugin/ci/auth.py) so the smoke run and the
+# merge-triggered phase jobs of build guide step 30 can never disagree about which secret
+# wins; this script only renders it.
+PLUGIN_DIR = Path(__file__).resolve().parents[2] / "plugin"
+if str(PLUGIN_DIR) not in sys.path:
+    sys.path.insert(0, str(PLUGIN_DIR))
+
+from ci import auth as auth_mod  # noqa: E402
 
 PROMPT = "Reply with the single word OK. Do not use any tool."
 # The outer bounds every phase job will carry (docs/NOTES.md section 10b).
@@ -31,11 +41,10 @@ BOUNDS = ["--model", "opus", "--max-turns", "2", "--max-budget-usd", "0.25"]
 
 def choose_auth(env: Mapping[str, str]) -> tuple[str, list[str]] | None:
     """Return (label, extra CLI flags) for the credential present in ``env``, or None."""
-    if env.get("ANTHROPIC_API_KEY"):
-        return "api-key", ["--bare"]
-    if env.get("CLAUDE_CODE_OAUTH_TOKEN"):
-        return "subscription-token", []
-    return None
+    chosen = auth_mod.choose_auth(env)
+    if chosen["auth"] is None:
+        return None
+    return auth_mod.LABELS[chosen["auth"]], (["--bare"] if chosen["bare"] else [])
 
 
 def run(
@@ -46,11 +55,7 @@ def run(
     env = dict(os.environ if env is None else env)
     auth = choose_auth(env)
     if auth is None:
-        print(
-            "no credential: set the repository secret ANTHROPIC_API_KEY or "
-            "CLAUDE_CODE_OAUTH_TOKEN (docs/NOTES.md section 2)",
-            file=out,
-        )
+        print(auth_mod.choose_auth(env)["reason"], file=out)
         return 2
     label, flags = auth
     argv = [*claude, "-p", *flags, *BOUNDS, "--output-format", "json", PROMPT]

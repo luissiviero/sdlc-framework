@@ -24,6 +24,8 @@ INTENT_SECTIONS = (
     "## Open questions",
 )
 INTENT_HEADER_FIELDS = ("Author:", "Status:", "Change id:", "Entry route:")
+# The first heading of intent.md: "# Intent: <title>" (skill ``intent-template``).
+INTENT_TITLE_RE = re.compile(r"(?i)^#\s*Intent:\s*(?P<title>.*)$")
 
 SPEC_SECTIONS = (
     "## Requirements",
@@ -32,6 +34,13 @@ SPEC_SECTIONS = (
     "## Flagged concerns",
     "## Acceptance",
 )
+# The spec header logs the change, the prompt and the versions in force (article p.14:
+# "the spec, the prompt that produced it, and the skill versions in force are all logged").
+SPEC_HEADER_FIELDS = ("Change id:", "Produced by:")
+# The prompt text itself lives in plugin/commands/sdlc-design.md and is logged through the
+# plugin pin (article p.14): the pinned plugin version identifies the prompt that ran, so the
+# header carries this version number, not a copy of the prompt.
+DESIGN_PROMPT_VERSION = "v1"
 
 PLAN_SECTIONS = (
     "## Files that change",
@@ -54,6 +63,8 @@ EVIDENCE_TEST = "test.log"
 EVIDENCE_BUILD = "build.log"
 EVIDENCE_LINT = "lint.log"
 EVIDENCE_VERIFIER = "verifier.md"
+EVIDENCE_SCREENSHOTS = "screenshots"  # UI proof of phase (d); created empty with a .gitkeep
+EVIDENCE_TARGETS = {"test": EVIDENCE_TEST, "build": EVIDENCE_BUILD, "lint": EVIDENCE_LINT}
 REVIEW_FINDINGS = "review-findings.json"  # the review passes' machine-readable tally (p.33)
 ADVERSARIAL_VERDICT = "adversarial-review-{phase}.json"  # the agent of step 17, per gate
 GATE_RESULT = "gate-{phase}.json"  # written by the gate itself, read by the PR summary (B3)
@@ -75,6 +86,54 @@ REQUIRED_EVIDENCE = {
 # The review passes (step 26, phase e) publish review-findings.json; the gate refuses to pass
 # gate (e) without it, and reads it at (c)/(d) whenever it is present.
 FINDINGS_REQUIRED_AT = ("e",)
+
+# The first line of each command log written by plugin/evidence/collect.py (step 28):
+#   # <command> — exit <code> — <seconds>s — <ISO-8601 UTC>
+# followed by the literal combined output of the command (article p.27-29: the evidence is
+# the toolchain's own output, not a summary of it). The gate reads the header back, so a log
+# whose header records a failure parks the change even when the gate's own re-run is green.
+EVIDENCE_TIMEOUT = "timeout"  # the exit field when the command was killed at the timeout
+EVIDENCE_HEADER_RE = re.compile(
+    r"^#\s+(?P<command>.+?)\s+—\s+exit\s+(?P<exit>-?\d+|timeout)\s+—\s+"
+    r"(?P<seconds>[0-9.]+)s\s+—\s+(?P<at>\S+)\s*$"
+)
+
+
+def render_evidence_header(command: str, exit_code: int | None, seconds: float, at: str) -> str:
+    """The first line of test.log / build.log / lint.log."""
+    code = EVIDENCE_TIMEOUT if exit_code is None else int(exit_code)
+    return f"# {command} — exit {code} — {seconds:.1f}s — {at}"
+
+
+def parse_evidence_header(text: str) -> dict[str, str] | None:
+    """{'command', 'exit', 'seconds', 'at'} from a log's first line, or None when the log was
+    not written by collect.py (a hand-written log is accepted as it is)."""
+    first = (text or "").splitlines()[:1]
+    if not first:
+        return None
+    m = EVIDENCE_HEADER_RE.match(first[0])
+    return m.groupdict() if m else None
+
+
+MISSING_HEADER = "evidence log without the collector header: re-run evidence/collect.py"
+
+
+def evidence_failure(text: str, *, require_header: bool = False) -> str | None:
+    """The header's failure, or None when the log records exit 0.
+
+    ``require_header`` is what gates (d) and (e) pass for the three command logs: a log
+    nobody can date back to a command and an exit code is not evidence, and accepting it
+    would let a hand-written "all good" stand in for the toolchain's own output (p.27-29).
+    """
+    header = parse_evidence_header(text)
+    if header is None:
+        return MISSING_HEADER if require_header else None
+    if header["exit"] == EVIDENCE_TIMEOUT:
+        return f"`{header['command']}` timed out after {header['seconds']}s"
+    if header["exit"] != "0":
+        return f"`{header['command']}` exited {header['exit']}"
+    return None
+
 
 # A line in intent.md's header that marks the change as the framework itself, which is the
 # only case where the diff may touch the guardrail files (OPERATING_MODEL section 3).
@@ -109,6 +168,38 @@ def missing_sections(text: str, required: tuple[str, ...]) -> list[str]:
 def empty_sections(text: str, required: tuple[str, ...]) -> list[str]:
     sections = split_sections(text)
     return [h for h in required if h in sections and not sections[h].strip()]
+
+
+def render_spec_header(
+    title: str,
+    change_id: str,
+    plugin_version: str,
+    skills: list[str],
+    overrides: list[str],
+) -> str:
+    """The two header lines of spec.md, exactly as the ``spec-template`` skill shows them
+    (article p.14: the spec, the prompt that produced it and the skill versions in force are
+    logged together). ``gate/cli.py spec-header`` renders it; the design pass pastes it."""
+    applied = ", ".join(skills)
+    overridden = ", ".join(overrides) if overrides else "none"
+    return (
+        f"# Spec: {title}\n"
+        f"Change id: {change_id}. Status: proposed. Produced by: sdlc plugin "
+        f"{plugin_version}, /sdlc-design prompt {DESIGN_PROMPT_VERSION} (article p.14). "
+        f"Skills: {applied} (plugin {plugin_version}); overrides: {overridden}"
+    )
+
+
+def intent_title(intent_text: str) -> str | None:
+    """The title of intent.md: the text after ``# Intent:`` on its first heading line."""
+    for line in intent_text.splitlines():
+        if not line.startswith("#"):
+            continue
+        m = INTENT_TITLE_RE.match(line)
+        if not m:
+            return None
+        return m.group("title").strip() or None
+    return None
 
 
 def is_framework_change(intent_text: str) -> bool:

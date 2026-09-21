@@ -59,7 +59,7 @@ def test_policy_skill_shape(name):
 
 def test_skill_names_match_preflight_list():
     assert sorted(p.name for p in SKILLS.iterdir() if (p / "SKILL.md").is_file()) == sorted(
-        [*NAMES, "intent-template", "plan-template"]
+        [*NAMES, "intent-template", "spec-template", "plan-template"]
     )
 
 

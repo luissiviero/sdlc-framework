@@ -5,7 +5,7 @@
         --maintain-metric ci_test_failure_rate --maintain-source github-actions \
         [--project-name X] [--build CMD] [--test CMD] [--lint CMD] \
         [--claude-md-from changes/0000-sdlc-init/CLAUDE.proposed.md] \
-        [--framework-repo owner/repo] [--detect-only]
+        [--framework-repo owner/repo] [--claude-code 2.1.278] [--detect-only]
 
 What it does, idempotently (re-running upgrades):
   1. detects build/test/lint targets (init/detect.py) unless overridden;
@@ -19,9 +19,11 @@ What it does, idempotently (re-running upgrades):
   6. creates ruff.toml when the lint target was "created";
   7. creates evals/ (empty suite with its README, decision 17) and bands.yaml (the p.44
      shape for the maintain metric, decision 15) when absent;
-  8. creates change 0000 (changes/0000-sdlc-init/, intent.md + status.yaml) so the
+  8. installs the SDLC workflows and the pin script under .github/ (step 30), create-only:
+     an existing file is kept and reported as such, and the `branches:` filter of the
+     merge triggers is rewritten to the project's default branch;
+  9. creates change 0000 (changes/0000-sdlc-init/, intent.md + status.yaml) so the
      installation goes through gate (a) like any other change.
-The CI workflows and the daily digest arrive in B3.
 The model-driven half (asking the owner, /init, trimming CLAUDE.md, committing, the PR) is in
 plugin/commands/sdlc-init.md.
 """
@@ -46,6 +48,9 @@ from state import status, yamlish  # noqa: E402
 
 TEMPLATE = REPO_ROOT / "template"
 DEFAULT_FRAMEWORK_REPO = "luissiviero/sdlc-framework"
+# The Claude Code CLI the SDLC workflows install; the framework's declared minimum
+# (docs/NOTES.md sections 2 and 10b: --permission-prompts none needs 2.1.259 or later).
+DEFAULT_CLAUDE_CODE_VERSION = "2.1.278"
 SKELETON_SECTIONS = (
     "## Commands",
     "## Things Claude gets wrong",
@@ -73,6 +78,13 @@ def _esc(value: str) -> str:
     return value.replace("\\", "\\\\").replace('"', '\\"')
 
 
+def _yaml_list(items: list[str], indent: int = 2) -> str:
+    """A block sequence of quoted strings, the `risk_list` style, for a placeholder that sits
+    alone on its line (``test_paths:`` + ``{{TEST_PATHS}}``)."""
+    pad = " " * indent
+    return "\n".join(f'{pad}- "{_esc(str(item))}"' for item in items)
+
+
 def build_values(args, det: detect_mod.Detection) -> dict[str, str]:
     build_cmd = args.build or det.build.command or "echo no build target"
     test_cmd = args.test or det.test.command or "echo no test target"
@@ -96,7 +108,9 @@ def build_values(args, det: detect_mod.Detection) -> dict[str, str]:
         "BUILD_RULE": _rule_for(build_cmd, "Bash(echo *)"),
         "TEST_RULE": _rule_for(test_cmd, "Bash(echo *)"),
         "LINT_RULE": _rule_for(lint_cmd, "Bash(echo *)"),
+        "TEST_PATHS": _yaml_list(detect_mod.test_paths(det.language)),
         "FRAMEWORK_REPO": args.framework_repo,
+        "CLAUDE_CODE_VERSION": args.claude_code,
     }
 
 
@@ -173,6 +187,112 @@ def template_block(rendered_template: str, key: str) -> str:
     return "\n".join(lines[first:end]).rstrip("\n") + "\n"
 
 
+def nested_key_lines(rendered_template: str, top: str, key: str) -> list[str]:
+    """The template's lines for ``top.key``: the key line, its indented body and the comment
+    lines directly above it — what an upgrade inserts into a block the project already has."""
+    lines = template_block(rendered_template, top).splitlines()
+    pattern = re.compile(rf"^(\s+){re.escape(key)}:")
+    for i, line in enumerate(lines):
+        match = pattern.match(line)
+        if not match:
+            continue
+        first = i
+        while first > 0 and lines[first - 1].strip().startswith("#"):
+            first -= 1
+        end, indent = i + 1, len(match.group(1))
+        while end < len(lines) and lines[end].strip():
+            if len(lines[end]) - len(lines[end].lstrip()) <= indent:
+                break
+            end += 1
+        return lines[first:end]
+    return []
+
+
+def missing_nested_keys(existing: dict, fresh: dict) -> list[tuple[str, str]]:
+    """[(top, key)] for every second-level key the template has and the project lacks under a
+    block it already has (e.g. ``plugin.claude_code`` in a project initialised before B3)."""
+    out: list[tuple[str, str]] = []
+    for top, value in fresh.items():
+        current = existing.get(top)
+        if not isinstance(value, dict) or not isinstance(current, dict):
+            continue
+        out += [(top, key) for key in value if key not in current]
+    return out
+
+
+def insert_nested_key(text: str, top: str, lines: list[str]) -> str:
+    """Append ``lines`` to the end of the existing ``top:`` block, as text: an upgrade must
+    never re-serialise the file, or the owner's comments and layout are lost."""
+    if not lines:
+        return text
+    out = text.splitlines()
+    start = next(
+        (n for n, line in enumerate(out) if re.match(rf"^{re.escape(top)}:\s*$", line)), None
+    )
+    if start is None:
+        return text
+    last, n = start, start + 1
+    while n < len(out) and (not out[n].strip() or out[n][:1].isspace()):
+        if out[n].strip():
+            last = n
+        n += 1
+    block = {line.strip() for line in out[start : last + 1]}
+    # a comment the block already carries is not repeated (an interrupted upgrade re-run)
+    body = [line for line in lines if not (line.strip().startswith("#") and line.strip() in block)]
+    return "\n".join([*out[: last + 1], *body, *out[last + 1 :]]) + "\n"
+
+
+# --- the SDLC workflows (build guide step 30, task 30.8) ------------------------------------
+WORKFLOW_FILES = (
+    ".github/workflows/sdlc-design.yml",
+    ".github/workflows/sdlc-build.yml",
+    ".github/workflows/sdlc-test.yml",
+    ".github/workflows/sdlc-deploy.yml",
+    ".github/workflows/sdlc-digest.yml",
+    ".github/scripts/sdlc_pin.py",
+)
+# The template writes the default branch GitHub gives most repositories; a project whose
+# default branch has another name gets it substituted here, on the `branches:` filter only
+# (OPERATING_MODEL section 4.2: the merge triggers filter the *base* branch).
+BRANCH_FILTER_RE = re.compile(r"(?m)^(\s*branches:\s*\[)main(\]\s*)$")
+
+
+def project_default_branch(root: Path) -> str:
+    """The project's default branch, or "main" outside a git repository."""
+    try:
+        from state import gitops  # noqa: PLC0415 - only needed when a project is being written
+
+        return gitops.default_branch(root) if gitops.is_repo(root) else "main"
+    except Exception:  # noqa: BLE001 - a fresh checkout must not fail the install
+        return "main"
+
+
+def render_workflow(rel: str, values: dict[str, str], default_branch: str) -> str:
+    text = render_file(TEMPLATE / rel, values)
+    if default_branch != "main":
+        text = BRANCH_FILTER_RE.sub(rf"\g<1>{default_branch}\g<2>", text)
+    return text
+
+
+def install_workflows(root: Path, values: dict[str, str], report: dict) -> None:
+    """Install the phase workflows and the pin script, create-only.
+
+    An existing file is never overwritten: the owner may have edited it, and a workflow is
+    project content. "unchanged" means the file on disk is already exactly what this version
+    of the framework installs; "kept" means it differs and was left alone.
+    """
+    default_branch = project_default_branch(root)
+    for rel in WORKFLOW_FILES:
+        target = root / rel
+        content = render_workflow(rel, values, default_branch)
+        if not target.exists():
+            _write_if_changed(target, content, report, rel)
+        elif target.read_text(encoding="utf-8") == content:
+            report[rel] = "unchanged"
+        else:
+            report[rel] = "kept"
+
+
 def _write_if_changed(path: Path, content: str, report: dict, key: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     if path.exists() and path.read_text(encoding="utf-8") == content:
@@ -200,24 +320,32 @@ def run(args) -> dict:
         merged.setdefault("plugin", {})["version"] = values["PLUGIN_VERSION"]
         rendered = render_file(TEMPLATE / "sdlc.yaml", values)
         missing_top = [k for k in fresh_yaml if k not in existing_yaml]
-        only_top_level_added = merge_missing(existing_yaml, fresh_yaml) == {
-            **existing_yaml,
-            **{k: fresh_yaml[k] for k in missing_top},
-        }
+        missing_nested = missing_nested_keys(existing_yaml, fresh_yaml)
+        # what a text edit can produce: the new top-level blocks, the new keys inside blocks
+        # the project already has, and the pinned version
+        expected = {k: (dict(v) if isinstance(v, dict) else v) for k, v in existing_yaml.items()}
+        for key in missing_top:
+            expected[key] = fresh_yaml[key]
+        for top, key in missing_nested:
+            expected[top][key] = fresh_yaml[top][key]
+        expected.setdefault("plugin", {})["version"] = values["PLUGIN_VERSION"]
         if merged == existing_yaml:
             report["files"]["sdlc.yaml"] = "unchanged"
-        elif only_top_level_added:
-            # new top-level keys (a plugin upgrade) and/or the pinned version: edit the text,
-            # so the owner's comments and layout survive
+        elif merged == expected:
+            # an upgrade: new top-level keys, new keys inside an existing block and/or the
+            # pinned version. Edit the text, so the owner's comments and layout survive.
             text = sdlc_path.read_text(encoding="utf-8")
             text = re.sub(
                 r"(?m)^(\s+version:\s*).*$", rf"\g<1>{values['PLUGIN_VERSION']}", text, count=1
             )
+            for top, key in missing_nested:
+                text = insert_nested_key(text, top, nested_key_lines(rendered, top, key))
             for key in missing_top:
                 text = text.rstrip("\n") + "\n\n" + template_block(rendered, key)
             _write_if_changed(sdlc_path, text, report["files"], "sdlc.yaml")
-            if missing_top:
-                report["files"]["sdlc.yaml"] = f"updated (added {', '.join(missing_top)})"
+            added = [*missing_top, *(f"{top}.{key}" for top, key in missing_nested)]
+            if added:
+                report["files"]["sdlc.yaml"] = f"updated (added {', '.join(added)})"
         else:
             _write_if_changed(sdlc_path, yamlish.dumps(merged), report["files"], "sdlc.yaml")
             report["files"]["sdlc.yaml"] = "updated (new nested keys added; comments dropped)"
@@ -255,6 +383,8 @@ def run(args) -> dict:
             report["files"][rel] = "kept"
         else:
             _write_if_changed(target, render_file(TEMPLATE / rel, values), report["files"], rel)
+
+    install_workflows(root, values, report["files"])
 
     # CLAUDE.md: merge skeleton
     claude_path = root / "CLAUDE.md"
@@ -337,6 +467,11 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--lint", default=None)
     p.add_argument("--claude-md-from", default=None, help="trimmed CLAUDE.md text to start from")
     p.add_argument("--framework-repo", default=DEFAULT_FRAMEWORK_REPO)
+    p.add_argument(
+        "--claude-code",
+        default=DEFAULT_CLAUDE_CODE_VERSION,
+        help="Claude Code CLI version the installed workflows pin",
+    )
     p.add_argument("--detect-only", action="store_true")
     return p
 
