@@ -499,6 +499,15 @@ paths given), the official OpenAPI description (`github/rest-api-description`),
   on it, and the owner sets the repository watch to participating-only (OPERATING_MODEL §7).
   Pinning an issue exists only in GraphQL (`pinIssue(input: PinIssueInput!)`).
 
+- Residual exposure of the untrusted project checkout (decision 6 layer iii): §3 records that
+  allow rules and the marketplace declaration of a project's `.claude/settings.json` are
+  ignored in an untrusted folder and that deny rules apply; whether a `hooks` or `env` block
+  in that file is honoured by a `claude -p` run there is **not documented**. `--settings` adds
+  the framework's CI settings on top, it does not remove the project file from the stack, and
+  managed settings (layer ii) cannot reach a runner. Mitigation in B3: `run_phase.py` parks a
+  phase whose branch changed a guardrail file (PROGRESS choice 27); the gate's `guardrails`
+  check judges the diff again afterwards. Re-verify when the permissions docs state the rule.
+
 ### 11b. Claude Code flags used by `plugin/ci/run_phase.py`
 Source: https://code.claude.com/docs/en/cli-reference, https://code.claude.com/docs/en/headless,
 https://code.claude.com/docs/en/sandboxing, https://code.claude.com/docs/en/agent-sdk/typescript.

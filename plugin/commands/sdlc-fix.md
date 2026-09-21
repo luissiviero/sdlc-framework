@@ -14,8 +14,7 @@ concern), step 19 (iteration cap). This command never redesigns: it applies what
 asked for, on the branch the PR already has, and stops at the cap.
 
 Unattended: never ask the owner a question. If a comment is ambiguous, apply the reading
-that changes the least, say so in the reply to that comment (via the PR update), and let
-the owner correct it.
+that changes the least, say so in `evidence/fix-response.md`, and let the owner correct it.
 
 ## 0. Preconditions
 - Change id `$ARGUMENTS` (first token). `state/cli.py show`: the phase is `b`, `c`, `d` or
@@ -37,7 +36,10 @@ Keep only the unresolved comments and the failing checks. Also read
 need from you": a park is a change request from the gate. If there is nothing to do, say
 so and stop.
 
-## 2. Bump the iteration (build guide step 19)
+## 2. Register the round and bump the iteration (build guide step 19)
+`python "${CLAUDE_PLUGIN_ROOT}/plugin/gate/cli.py" start-run --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase <phase>`
+— the gate's wall clock restarts here; without it the clock of the previous run (the owner
+reviews on their own cadence, decision 20) would park every round as "wall-clock limit exceeded".
 `python "${CLAUDE_PLUGIN_ROOT}/plugin/gate/cli.py" bump-iteration --root "${CLAUDE_PROJECT_DIR}" --id <id>`
 If it reports the cap reached: do not change anything; run
 `python "${CLAUDE_PLUGIN_ROOT}/plugin/state/cli.py" park --root "${CLAUDE_PROJECT_DIR}" --id <id> --reason "iteration cap reached after review comments: <one line per open request>"`,
@@ -62,9 +64,9 @@ steps on it (the commands are idempotent):
   step 2's loop for the Important ones; a nit the owner asked for is fixed like an
   Important one.
 A fix-type change never edits the locked tests (the hook denies it); if the comment asks
-for exactly that, reply that the owner unlocks with `state/cli.py unlock-tests` and park.
+for exactly that, write in `evidence/fix-response.md` that the owner unlocks with `state/cli.py unlock-tests`, and park.
 A comment asking for a guardrail-file edit (`.claude/**`, `CLAUDE.md`, `REVIEW.md`,
-`sdlc.yaml`) is answered with the proposed content in the PR reply; the owner applies it.
+`sdlc.yaml`) is answered with the proposed content in `evidence/fix-response.md`; the owner applies it.
 
 ## 4. Commit and push on the same branch
 `python "${CLAUDE_PLUGIN_ROOT}/plugin/state/cli.py" commit-phase --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase <phase> --message "fix(<id>): <what the comments asked>" --paths <files> --push`
@@ -79,12 +81,13 @@ round: the next round is the owner's.
 
 ## 6. Refresh the PR and answer the comments
 `python "${CLAUDE_PLUGIN_ROOT}/plugin/pr/cli.py" upsert --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase <phase>`
-regenerates the summary and the label. Reply to each comment you acted on with one line
-(what changed, the commit), and to each you could not act on with why (`gh pr comment`,
-or the MCP reply tool, or list them in the report when neither exists). Resolve nothing on
-the owner's behalf. The second occurrence of a review finding is detected by
-`review/cli.py validate` and lands in the PR's "Proposed CLAUDE.md lines"; do not edit
-`CLAUDE.md`.
+regenerates the summary and the label. **Never post a PR comment, reply, review or
+@mention** (decision 20: nothing pushes to the owner; a comment is a notification). Instead
+write `changes/<id>-<slug>/evidence/fix-response.md`: one line per request — what changed
+and the commit, or why it was not applied — and commit it with the evidence; it is in the
+PR diff and the report. Resolve nothing on the owner's behalf. The second occurrence of a
+review finding is detected by `review/cli.py validate` and lands in the PR's "Proposed
+CLAUDE.md lines"; do not edit `CLAUDE.md`.
 
 ## 7. Report
 One line: the PR URL, the gate result, iterations used of the cap, and the requests left

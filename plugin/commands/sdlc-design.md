@@ -2,7 +2,7 @@
 description: Phase (b) design — from the merged intent, write spec.md with the policy skills loaded (the article's p.14 prompt), then the read-only planning run that writes plan.md, run the adversarial reviewer and call gate (b). Standard/Full: open the spec+plan PR on sdlc/<id>/b with sdlc:b-ready. Lite: commit and hand over to /sdlc-build. Re-runnable after review comments. No questions to the owner; a gap becomes a flagged concern.
 argument-hint: [change id, e.g. 0001]
 disable-model-invocation: true
-allowed-tools: Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/state/cli.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/gate/cli.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/pr/cli.py" *), Bash(git *), Bash(gh *), Read, Glob, Grep, Edit(changes/**), Write(changes/**), Agent
+allowed-tools: Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/state/cli.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/gate/cli.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/pr/cli.py" *), Bash(git *), Bash(gh *), Read, Glob, Grep, Edit(changes/**), Write, Agent
 ---
 
 # /sdlc-design — phase (b)
