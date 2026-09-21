@@ -37,7 +37,7 @@ Set per project in `sdlc.yaml` by `/sdlc-init`; overridable per change in `chang
 | **Full** | (a), (b), (c) review + label, (d) review + label, (e) merge (+ release label) | — | live production, money at stake |
 | **Lite** | (a) merge intent PR · (e) merge build PR | (b), (c), (d) | scripts, experiments, docs |
 
-Automated gates are passed by the **confidence gate**: deterministic checks (artifact matches its template; tests, build, lint green; evidence present; no Important review findings; `plan.md` ↔ diff consistent; no diff touching `.claude/**`, `CLAUDE.md`, `REVIEW.md`, `sdlc.yaml` unless the change is the framework itself) followed by an adversarial reviewer agent in a fresh context that returns *continue* or *park*.
+Automated gates are passed by the **confidence gate** (`plugin/gate/`, session 2): deterministic checks (artifact matches its template; no open flagged concern in `spec.md`; tests, build, lint green; evidence present; no Important review findings; `plan.md` ↔ diff consistent; no diff touching `.claude/**`, `CLAUDE.md`, `REVIEW.md`, `sdlc.yaml` unless the change is the framework itself — `intent.md` says `Framework change: yes`; no risk-list hit the owner has not accepted; run limits) followed by the adversarial reviewer agent's verdict, written in a fresh context as `evidence/adversarial-review-<phase>.json`: *continue* or *escalate* (= park). The same checks run at a human gate: all green → the run stops with `sdlc:<phase>-ready`; a failed check parks there too.
 
 ## 4. Gate mechanics
 
@@ -58,7 +58,7 @@ At any human gate, "ask for changes" = review comments on that PR. One command, 
 
 ## 6. Park, never page
 
-When a confidence gate fails, a run limit is hit (iterations, wall-clock, budget, pause flag), or a risk-list item is touched (auth, data migrations, money movement, production config), the run **parks**: it finishes every artifact it can, writes a "what I need from you" section into the PR description, records the reason in `status.yaml`, labels the PR `sdlc:needs-human`, and notifies nobody. Parked and finished work waits in the review queue.
+When a confidence gate fails, a run limit is hit (iterations, wall-clock, budget, pause flag), or a risk-list item is touched (auth, data migrations, money movement, production config), the run **parks**: it finishes every artifact it can, writes a "what I need from you" section into the PR description, records the reason in `status.yaml`, labels the PR `sdlc:needs-human`, and notifies nobody. Parked and finished work waits in the review queue. The owner un-parks by settling the item: a review comment (→ `/sdlc-fix`), `accept-risk` for a risk-list hit (recorded in `status.yaml: risk_accepted`), `set-iterations` after an iteration cap, `paused: false` in `sdlc.yaml`.
 
 ## 7. Review queue
 
@@ -81,6 +81,8 @@ The queue is the PR list filtered by `sdlc:*-ready` (a run stopped at a human ga
 - `protected_paths`: the project's own frozen paths, added to the always-protected set
 - `risk_list`: touching any item parks the change at its next gate (default: auth, data migrations, money movement, production config)
 - `plan_sync.exempt`: globs (besides `changes/**`) whose changes do not require a `plan.md` update in (c); `hooks.format_on_edit`: switch for the formatter hook
+- `paused` and `gate.*` (`max_iterations`, `max_iterations_non_routine`, `max_wall_clock_minutes`, `max_budget_usd`, `command_timeout`): the run limits every gate enforces; a limit hit parks with the partial evidence
+- `bands.yaml` (next to `sdlc.yaml`): the control bands of phase (f) — metric, baseline, rules, the three σ tiers and, per 3σ route, `authorization: preapproved | go`
 - `plugin`: name, marketplace and pinned version of the process in force
 - `deploy.action`: what makes a merged change live (publish package · schedule job · regenerate report · promote to paper trading · deploy service)
 - `deploy.production`: true/false — turns on the release label and the production-gate hook
