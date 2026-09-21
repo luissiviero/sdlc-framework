@@ -81,7 +81,7 @@ Delegate to `sdlc:verifier` with the change id: it runs the changed behaviour an
 nearest neighbouring flows and reports. Store its report verbatim as
 `changes/<id>-<slug>/evidence/verifier.md`. If it reports behaviour that does not match
 `plan.md`, fix it (step 4 again, bounded by the iteration cap from the preflight: run
-`python "${CLAUDE_PLUGIN_ROOT}/plugin/state/cli.py" bump-iteration --root "${CLAUDE_PROJECT_DIR}" --id <id>`
+`python "${CLAUDE_PLUGIN_ROOT}/plugin/gate/cli.py" bump-iteration --root "${CLAUDE_PROJECT_DIR}" --id <id>`
 per round; the gate parks at the cap), then re-run the verifier. Commit the evidence:
 `commit-phase ... --phase c --message "build(<id>): verifier evidence"`.
 Push: `git push -u origin sdlc/<id>/c`.

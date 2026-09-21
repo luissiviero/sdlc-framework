@@ -38,7 +38,7 @@ need from you": a park is a change request from the gate. If there is nothing to
 so and stop.
 
 ## 2. Bump the iteration (build guide step 19)
-`python "${CLAUDE_PLUGIN_ROOT}/plugin/state/cli.py" bump-iteration --root "${CLAUDE_PROJECT_DIR}" --id <id>`
+`python "${CLAUDE_PLUGIN_ROOT}/plugin/gate/cli.py" bump-iteration --root "${CLAUDE_PROJECT_DIR}" --id <id>`
 If it reports the cap reached: do not change anything; run
 `python "${CLAUDE_PLUGIN_ROOT}/plugin/state/cli.py" park --root "${CLAUDE_PROJECT_DIR}" --id <id> --reason "iteration cap reached after review comments: <one line per open request>"`,
 commit and push the change folder, refresh the PR (step 6) and stop. The owner resets the

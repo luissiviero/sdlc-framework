@@ -38,7 +38,7 @@ writes the literal output to `changes/<id>-<slug>/evidence/test.log`, `build.log
 
 ## 2. Fix loop, bounded (article p.28: "two or three rounds is normal")
 While `all_green` is false:
-1. `python "${CLAUDE_PLUGIN_ROOT}/plugin/state/cli.py" bump-iteration --root "${CLAUDE_PROJECT_DIR}" --id <id>`
+1. `python "${CLAUDE_PLUGIN_ROOT}/plugin/gate/cli.py" bump-iteration --root "${CLAUDE_PROJECT_DIR}" --id <id>`
    — if it reports the cap reached (`gate.max_iterations`, or
    `max_iterations_non_routine` when the verdict classed the plan non-routine), stop:
    go to step 5 and let the gate park with the partial evidence.

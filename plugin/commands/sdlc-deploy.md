@@ -46,7 +46,7 @@ A malformed or stale file (wrong `head`) is re-requested from the reviewer once;
 
 ## 2. Fix loop while an Important finding stands (article p.34 step 5: "babysit to green")
 While `tally.important` > 0:
-1. `python "${CLAUDE_PLUGIN_ROOT}/plugin/state/cli.py" bump-iteration --root "${CLAUDE_PROJECT_DIR}" --id <id>`;
+1. `python "${CLAUDE_PLUGIN_ROOT}/plugin/gate/cli.py" bump-iteration --root "${CLAUDE_PROJECT_DIR}" --id <id>`;
    at the cap stop and go to step 4 (the gate parks with the findings listed).
 2. Fix each Important finding in the code (a fix-type change never touches the locked
    tests; a compliance finding about `plan.md` is fixed by updating `plan.md` in the same
