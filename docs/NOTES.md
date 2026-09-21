@@ -50,14 +50,15 @@ platform, no quoting, no dependence on Git Bash versus PowerShell. Consequences:
   PowerShell twin because "On Windows without Git Bash ... Claude Code doesn't register the
   Bash tool at all."
 
-Live check still owed (needs a Windows machine): one `/sdlc-init` run on the owner's PC with
-the plugin loaded, then an attempted edit of `.claude/settings.json` must show the
-"Protected path" denial. The unit tests prove the scripts' behaviour with Windows-style
-paths; they cannot prove the spawn on Windows.
+Live check still owed (needs a Windows machine; PROGRESS live-check item 6): one `/sdlc-init`
+run on the owner's PC with the plugin loaded, then an attempted edit of `.claude/settings.json`
+must show the "Protected path" denial. The denial itself passed in a cloud session (section 3a);
+`python tasks.py check` passed on Windows on 2026-09-21; only the hook spawn by Claude Code on
+Windows is unproven.
 
 ## 2. Does the current documentation allow CI authentication with a Max subscription? (decision 1)
 
-Read only; nothing was built on it.
+The research below (2026-09-19) was read-only; the arrangement applied on 2026-09-21 follows it.
 
 - https://code.claude.com/docs/en/github-actions: "`CLAUDE_CODE_OAUTH_TOKEN`: an OAuth token
   that authenticates with your Claude subscription, available on Pro, Max, Team, and
@@ -80,7 +81,7 @@ Read only; nothing was built on it.
 **Answer:** the product documentation explicitly supports subscription authentication for
 GitHub Actions and headless `claude -p` runs via `claude setup-token`. Not verified: the
 consumer terms of service pages were not reachable from the build container (proxy 403/404),
-so B3 should re-read them before choosing the token over an API key. Also noted: "For a
+so the terms themselves remain unread; the product docs are what the framework relies on. Also noted: "For a
 secret shared across repositories, authenticate with an API key ... since an OAuth token is
 tied to the subscription of the person who ran `claude setup-token`."
 
@@ -135,9 +136,12 @@ Owner setup (not automatable from the repo):
    "Substrate smoke test" → Run workflow); it installs the pinned CLI from npm
    (`npm install -g @anthropic-ai/claude-code@2.1.278`, on Node 22 as the setup page
    requires; the curl installer with `bash -s <version>` is the documented alternative) and
-   runs `.github/scripts/substrate_smoke.py`: one turn under `--max-turns` and
-   `--max-budget-usd`, then `auth`, `total_cost_usd`, the model names from `modelUsage` and
-   the reply, failing when the CLI reports `is_error`. A green run closes build guide step 3.
+   runs `.github/scripts/substrate_smoke.py`: `claude -p [--bare] --model opus --max-turns 2
+   --max-budget-usd 0.25 --output-format json <prompt>` (`--bare` on the key path only; on the
+   token path the turn draws on the owner's Opus window), then prints `auth`, `total_cost_usd`,
+   the model names from `modelUsage` and the reply. Exit codes: 2 when neither secret is set,
+   1 when the CLI exits non-zero, reports `is_error` or returns no JSON, 0 on success. A green
+   run closes build guide step 3.
    The script is unit-tested with a fake CLI (`tests/test_substrate_smoke.py`); the workflow
    was not executed in the session that added it (no Actions runner there). Its key-path
    command line was dry-run locally on CLI 2.1.278 with an invalid key: the flags parsed, the

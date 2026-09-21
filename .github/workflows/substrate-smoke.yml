@@ -2,9 +2,9 @@
 # "start with the copy-paste-ready read-only step", article p.41). Dispatch only: it never
 # runs on its own. It installs the pinned Claude Code CLI and runs .github/scripts/
 # substrate_smoke.py, which takes whichever repository secret exists — ANTHROPIC_API_KEY
-# (bare mode, billed per token) or CLAUDE_CODE_OAUTH_TOKEN (the owner's subscription) — runs
-# one headless turn under a per-run budget, and prints the cost and the model the CLI
-# reports. Facts and quotes behind every flag are in docs/NOTES.md sections 2 and 10b.
+# (bare mode, billed per token; preferred when both are set) or CLAUDE_CODE_OAUTH_TOKEN (the
+# owner's subscription) — runs one headless turn under a per-run budget, and prints the cost
+# and the model the CLI reports. Facts and quotes behind every flag are in docs/NOTES.md sections 2 and 10b.
 name: Substrate smoke test
 
 on:
