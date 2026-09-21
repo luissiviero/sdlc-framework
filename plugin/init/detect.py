@@ -23,7 +23,6 @@ class Target:
     command: str | None
     healthy: str
     origin: str  # "detected: <evidence>" | "created: <what>" | "none"
-    permission_rule: str | None = None
 
 
 @dataclass
@@ -104,14 +103,12 @@ def detect_python(root: Path) -> Detection:
             "python -m pytest",
             "'N passed' and exit code 0",
             f"detected: {why}",
-            "Bash(python -m pytest*)",
         )
     elif is_python:
         test = Target(
             "python -m unittest discover -v",
             "'OK' and exit code 0",
             "created: unittest discovery (no tests found yet; add tests/test_*.py)",
-            "Bash(python -m unittest*)",
         )
         notes.append("no tests found: the test target is unittest discovery until tests exist")
     else:
@@ -127,28 +124,24 @@ def detect_python(root: Path) -> Detection:
             "python -m ruff check .",
             "'All checks passed!'",
             "detected: ruff configuration",
-            "Bash(python -m ruff*)",
         )
     elif _mentions(deps_text, "ruff"):
         lint = Target(
             "python -m ruff check .",
             "'All checks passed!'",
             "detected: ruff in dependencies",
-            "Bash(python -m ruff*)",
         )
     elif "[flake8]" in setup_cfg or (root / ".flake8").is_file() or "[flake8]" in tox_ini:
         lint = Target(
             "python -m flake8",
             "no output and exit code 0",
             "detected: flake8 configuration",
-            "Bash(python -m flake8*)",
         )
     elif is_python:
         lint = Target(
             "python -m ruff check .",
             "'All checks passed!'",
             "created: ruff.toml with default rules (pip install ruff)",
-            "Bash(python -m ruff*)",
         )
         notes.append(
             "no linter configured: /sdlc-init creates ruff.toml; install ruff in the environment"
@@ -162,14 +155,12 @@ def detect_python(root: Path) -> Detection:
             "python -m build",
             "'Successfully built' and exit code 0",
             "detected: [build-system] in pyproject.toml",
-            "Bash(python -m build*)",
         )
     elif is_python:
         build = Target(
             "python -m compileall -q .",
             "no output and exit code 0",
             "created: byte-compile as the build check (no packaging configured)",
-            "Bash(python -m compileall*)",
         )
     else:
         build = Target(None, "", "none")
@@ -206,14 +197,12 @@ def detect_node(root: Path, pkg: dict) -> Detection:
             "npm test",
             "exit code 0",
             f"detected: scripts.test = {scripts['test']}",
-            "Bash(npm test*)",
         )
     else:
         test = Target(
             "node --test",
             "'# fail 0' and exit code 0",
             "created: node's built-in test runner (add *.test.js files; needs Node 18+)",
-            "Bash(node --test*)",
         )
         notes.append(
             "no test script in package.json: the test target is `node --test` until one exists"
@@ -223,7 +212,6 @@ def detect_node(root: Path, pkg: dict) -> Detection:
             "npm run lint",
             "exit code 0",
             f"detected: scripts.lint = {scripts['lint']}",
-            "Bash(npm run lint*)",
         )
     else:
         lint = Target(None, "", "none")
@@ -233,14 +221,12 @@ def detect_node(root: Path, pkg: dict) -> Detection:
             "npm run build",
             "exit code 0",
             f"detected: scripts.build = {scripts['build']}",
-            "Bash(npm run build*)",
         )
     elif isinstance(pkg.get("main"), str) and pkg["main"].strip():
         build = Target(
             f"node --check {pkg['main'].strip()}",
             "no output and exit code 0",
             "created: syntax check of package.json main (no build script)",
-            "Bash(node --check*)",
         )
     else:
         build = Target(None, "", "none")

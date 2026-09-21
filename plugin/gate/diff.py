@@ -65,6 +65,37 @@ class Diff:
         }
 
 
+def file_at(root: Path, ref: str | None, rel: str) -> str | None:
+    """The committed content of ``rel`` at ``ref`` (None when absent there or no ref)."""
+    if not ref or not _cat_ok(root, ref, rel):
+        return None
+    return _git(root, "show", f"{ref}:{rel}", check=False)
+
+
+def _cat_ok(root: Path, ref: str, rel: str) -> bool:
+    try:
+        proc = subprocess.run(
+            ["git", "cat-file", "-e", f"{ref}:{rel}"],
+            cwd=str(root),
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return proc.returncode == 0
+
+
+def dirty_files(root: Path) -> list[str]:
+    """Paths with uncommitted changes (modified, staged or untracked), forward slashes."""
+    out = _git(root, "status", "--porcelain", "-z", "--untracked-files=all", check=False)
+    files = []
+    for entry in out.split("\0"):
+        if len(entry) > 3:
+            files.append(entry[3:].replace("\\", "/"))
+    return sorted(set(files))
+
+
 def is_repo(root: Path) -> bool:
     try:
         return _git(root, "rev-parse", "--is-inside-work-tree").strip() == "true"

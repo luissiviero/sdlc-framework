@@ -147,6 +147,25 @@ def verdict(root: Path, phase: str, verdict: str = "continue", classification="r
     return path
 
 
+def on_base(root: Path, edit, message: str = "owner change on main") -> None:
+    """Apply ``edit(root)`` as a commit on main and merge it into the current phase branch,
+    so the gate sees it as approved (part of the merge base), not as part of the diff."""
+    branch = git(root, "rev-parse", "--abbrev-ref", "HEAD").strip()
+    git(root, "checkout", "-q", "main")
+    edit(root)
+    git(root, "add", ".")
+    git(root, "commit", "-q", "-m", message)
+    git(root, "checkout", "-q", branch)
+    git(root, "merge", "-q", "--no-edit", "main")
+
+
+def start_run(root: Path, phase: str) -> None:
+    proc = run_py(
+        str(GATE_CLI), "start-run", "--root", str(root), "--id", "0001", "--phase", phase, cwd=root
+    )
+    assert proc.returncode == 0, proc.stderr
+
+
 @pytest.fixture
 def project(tmp_path):
     """Fixture copy initialised (standard profile), change 0001 through (b), and a phase-(c)
@@ -185,6 +204,7 @@ def project(tmp_path):
     write(change / "plan.md", PLAN + "\nProgress: step 1 and 2 done.\n")
     git(root, "add", ".")
     git(root, "commit", "-q", "-m", "build: percent helper")
+    start_run(root, "c")  # the runbook registers the run before the work (step 19)
     return root, change
 
 
@@ -209,6 +229,18 @@ def test_artifact_section_helpers():
     assert art.open_concerns(SPEC) == []
     assert art.open_concerns(SPEC.replace("- [x] Rounding", "- [ ] Rounding")) == [
         "- [ ] Rounding half-even vs half-up: decided half-up via round() (documented)."
+    ]
+    # fail closed: an item that does not say it is closed is open; "none" is no concern
+    assert art.open_concerns("## Flagged concerns\n- Rounding: undecided, needs owner\n") == [
+        "- Rounding: undecided, needs owner"
+    ]
+    assert art.open_concerns("## Flagged concerns\n- none\n- Closed: fine\n1. resolved\n") == []
+    # dot paths and a backtick span anywhere in the item
+    plan = "## Files that change\n- `.github/workflows/ci.yml` — new\n- new file `src/x.py`\n"
+    assert art.planned_files(plan + "- ./.gitignore\n") == [
+        ".github/workflows/ci.yml",
+        "src/x.py",
+        ".gitignore",
     ]
     assert art.is_framework_change("Author: o. Status: draft.\nFramework change: yes\n")
     assert not art.is_framework_change(INTENT)
@@ -239,6 +271,10 @@ def test_findings_and_verdict_readers(tmp_path):
     v.write_text(json.dumps({"verdict": "maybe"}), encoding="utf-8")
     assert checks.load_verdict(v)[1].startswith("malformed")
     v.write_text(json.dumps({"verdict": "continue", "classification": "routine"}))
+    assert "head" in checks.load_verdict(v)[1]  # a verdict without a commit is malformed
+    v.write_text(
+        json.dumps({"verdict": "continue", "classification": "routine", "head": "abc1234"})
+    )
     assert checks.load_verdict(v)[0]["verdict"] == "continue"
 
 
@@ -247,7 +283,8 @@ def _ctx(tmp_path, config=None, iterations=0, phase="c"):
     change_dir = tmp_path / "changes" / "0001-x"
     (change_dir / "evidence").mkdir(parents=True, exist_ok=True)
     st = status_mod.Status(id="0001", slug="x", title="x", phase=phase, iterations=iterations)
-    return checks.GateContext(tmp_path, change_dir, phase, st, config or {}, None, False, "no git")
+    # human_gate=True: these unit tests isolate the caps; run registration is tested on the fixture
+    return checks.GateContext(tmp_path, change_dir, phase, st, config or {}, None, True, "no git")
 
 
 def test_limits_pause_flag_stops_everything(tmp_path):
@@ -262,7 +299,7 @@ def test_limits_iteration_cap_default_and_non_routine(tmp_path):
     ctx = _ctx(tmp_path, iterations=3)
     write(
         ctx.evidence_dir / "adversarial-review-b.json",
-        json.dumps({"verdict": "continue", "classification": "non-routine"}),
+        json.dumps({"verdict": "continue", "classification": "non-routine", "head": "abc1234"}),
     )
     res = limits.check_limits(ctx)
     assert not res.ok and "cap 2" in res.reason and "non-routine" in res.reason
@@ -305,6 +342,7 @@ def test_gate_continues_on_a_clean_change(project):
     assert _names(result, False) == []
     assert set(_names(result, True)) == {
         "limits",
+        "clean_tree",
         "artifacts",
         "open_concerns",
         "commands",
@@ -328,6 +366,10 @@ def test_gate_waits_at_a_human_gate_and_dry_run_writes_nothing(project):
     st.profile_override = "full"
     status_mod.write_status(change, st)
     before = (change / "status.yaml").read_text(encoding="utf-8")
+    result = gate.run_gate(root, "0001", "c", dry_run=True)
+    assert result.result == "park"  # Full profile still needs the adversarial verdict at (c)
+    assert "adversarial_review" in _names(result, False)
+    verdict(root, "c")
     result = gate.run_gate(root, "0001", "c", dry_run=True)
     assert result.result == "wait" and result.label == "sdlc:c-ready"
     assert (change / "status.yaml").read_text(encoding="utf-8") == before
@@ -377,16 +419,32 @@ def test_gate_parks_when_the_diff_touches_settings_json(project):
     assert result.result == "park"
     g = next(ch for ch in result.failed if ch.name == "guardrails")
     assert ".claude/settings.json" in g.reason
-    # a declared framework change may touch them
+    assert "clean_tree" in _names(result, False)  # and it is uncommitted
+    # the run cannot grant itself the exemption by editing intent.md on the branch
     write(
         change / "intent.md",
         INTENT.replace("Entry route: idea.", "Entry route: idea.\nFramework change: yes"),
     )
     git(root, "add", ".")
-    git(root, "commit", "-q", "-m", "framework change")
+    git(root, "commit", "-q", "-m", "self-declared framework change")
+    verdict(root, "c")
+    result = gate.run_gate(root, "0001", "c")
+    g = next(ch for ch in result.failed if ch.name == "guardrails")
+    assert "intent.md changed on this branch" in g.reason
+    git(root, "reset", "-q", "--hard", "HEAD~1")
+    # only the intent the owner merged at gate (a) can declare a framework change
+    on_base(
+        root,
+        lambda r: write(
+            r / "changes" / "0001-percent-helper" / "intent.md",
+            INTENT.replace("Entry route: idea.", "Entry route: idea.\nFramework change: yes"),
+        ),
+        "intent: framework change (merged at gate a)",
+    )
     verdict(root, "c")
     result = gate.run_gate(root, "0001", "c")
     assert "guardrails" not in _names(result, False)
+    assert "clean_tree" not in _names(result, False)
 
 
 def test_gate_parks_on_a_risk_list_word_until_the_owner_accepts_it(project):
@@ -436,7 +494,6 @@ def test_gate_parks_on_escalate_missing_or_stale_verdict(project):
 
 def test_gate_parks_on_open_concern_and_unsynced_commit(project):
     root, change = project
-    verdict(root, "c")
     write(change / "spec.md", SPEC.replace("- [x] Rounding", "- [ ] Rounding"))
     write(root / "sample_pkg" / "helper.py", "y = 2\n")
     git(root, "add", ".")
@@ -454,28 +511,46 @@ def test_gate_parks_on_open_concern_and_unsynced_commit(project):
 
 def test_gate_phase_d_requires_evidence_and_findings_at_e(project):
     root, change = project
+    with pytest.raises(gate.GateError, match="in phase \\(c\\); gate \\(d\\)"):
+        gate.run_gate(root, "0001", "d")  # the phase must be set before its gate runs
     st = status_mod.read_status(change)
     st.set_phase("d")
     status_mod.write_status(change, st)
     verdict(root, "d")
+    result = gate.run_gate(root, "0001", "d")
+    limits_check = result.checks[0]
+    assert not limits_check.ok and "did not register its start" in limits_check.reason
+    start_run(root, "d")
     result = gate.run_gate(root, "0001", "d")
     ev = next(ch for ch in result.failed if ch.name == "evidence")
     assert ev.details["missing"] == ["test.log", "build.log", "lint.log"]
     for name in ("test.log", "build.log", "lint.log"):
         write(change / "evidence" / name, "ok\n")
     assert gate.run_gate(root, "0001", "d").result == "continue"
-    # gate (e) is human; the findings JSON is mandatory there and Important findings park
+    # gate (e) is human; the findings JSON is mandatory there, tied to HEAD, and Important
+    # findings park
+    st = status_mod.read_status(change)
+    st.set_phase("e")
+    status_mod.write_status(change, st)
     result = gate.run_gate(root, "0001", "e")
     assert result.result == "park" and "findings" in _names(result, False)
+    head = git(root, "rev-parse", "HEAD").strip()
+    findings = change / "evidence" / "review-findings.json"
+    write(findings, json.dumps({"findings": [{"severity": "nit", "summary": "naming"}]}))
+    f = next(ch for ch in gate.run_gate(root, "0001", "e").failed if ch.name == "findings")
+    assert "no 'head'" in f.reason
+    write(findings, json.dumps({"findings": [], "head": "0000000000deadbeef"}))
+    f = next(ch for ch in gate.run_gate(root, "0001", "e").failed if ch.name == "findings")
+    assert f.details.get("stale") is True
     write(
-        change / "evidence" / "review-findings.json",
-        json.dumps({"findings": [{"severity": "nit", "summary": "naming"}], "tally": {"nit": 1}}),
+        findings,
+        json.dumps({"findings": [{"severity": "nit", "summary": "naming"}], "head": head}),
     )
     result = gate.run_gate(root, "0001", "e")
-    assert result.result == "wait" and result.label == "sdlc:e-ready"
+    assert result.result == "wait" and result.label == "sdlc:e-ready", result.reason
     write(
-        change / "evidence" / "review-findings.json",
-        json.dumps({"findings": [{"severity": "important", "summary": "leaks PII"}]}),
+        findings,
+        json.dumps({"findings": [{"severity": "important", "summary": "leaks PII"}], "head": head}),
     )
     assert "findings" in _names(gate.run_gate(root, "0001", "e"), False)
 
@@ -503,6 +578,21 @@ def test_gate_parks_on_iteration_cap_and_pause_flag(project):
     text = (root / "sdlc.yaml").read_text(encoding="utf-8")
     assert "paused: false" in text  # written by /sdlc-init from the template
     write(root / "sdlc.yaml", text.replace("paused: false", "paused: true"))
+    result = gate.run_gate(root, "0001", "c")
+    # an sdlc.yaml edited on the branch is ignored for limits (the base copy rules) and is
+    # itself a guardrail hit; the pause flag counts once the owner merged it
+    assert result.config_note.startswith("sdlc.yaml changed on the branch")
+    assert "paused" not in result.reason and "guardrails" in _names(result, False)
+    git(root, "checkout", "-q", "--", "sdlc.yaml")
+    on_base(
+        root,
+        lambda r: write(
+            r / "sdlc.yaml",
+            (r / "sdlc.yaml").read_text(encoding="utf-8").replace("paused: false", "paused: true"),
+        ),
+        "pause",
+    )
+    verdict(root, "c")
     result = gate.run_gate(root, "0001", "c")
     assert result.result == "park" and "paused" in result.reason
 
@@ -558,18 +648,62 @@ def test_gate_cli_main_dry_run(project, capsys):
     assert rc == 0 and json.loads(capsys.readouterr().out)["dry_run"] is True
 
 
-def test_sdlc_yaml_gate_block_is_read_by_the_limits(project):
+def test_sdlc_yaml_gate_block_is_read_from_the_base(project):
     root, change = project
     text = (root / "sdlc.yaml").read_text(encoding="utf-8")
     cfg = yamlish.load_file(root / "sdlc.yaml")["gate"]
     assert cfg["max_iterations"] == 3 and cfg["max_budget_usd"] is None
-    write(root / "sdlc.yaml", text.replace("max_iterations: 3", "max_iterations: 5"))
     st = status_mod.read_status(change)
     st.iterations = 5
     status_mod.write_status(change, st)
     verdict(root, "c")
+    # relaxing the cap in the working tree changes nothing: the base copy rules
+    write(root / "sdlc.yaml", text.replace("max_iterations: 3", "max_iterations: 5"))
     result = gate.run_gate(root, "0001", "c", dry_run=True)
-    assert result.checks[0].name == "limits" and result.checks[0].ok
-    assert result.checks[0].details["cap"] == 5
-    # editing sdlc.yaml in the working tree is itself a guardrail hit (and unplanned)
-    assert sorted(ch.name for ch in result.failed) == ["guardrails", "plan_sync"]
+    assert result.checks[0].name == "limits" and not result.checks[0].ok
+    assert result.checks[0].details["cap"] == 3 and result.config_note
+    git(root, "checkout", "-q", "--", "sdlc.yaml")
+    # the owner raising it on main (merged into the branch) does
+    on_base(
+        root,
+        lambda r: write(
+            r / "sdlc.yaml",
+            (r / "sdlc.yaml")
+            .read_text(encoding="utf-8")
+            .replace("max_iterations: 3", "max_iterations: 5"),
+        ),
+        "raise the cap",
+    )
+    verdict(root, "c")
+    result = gate.run_gate(root, "0001", "c", dry_run=True)
+    assert result.checks[0].ok and result.checks[0].details["cap"] == 5 and not result.config_note
+    assert result.result == "continue", result.reason
+
+
+def test_gate_parks_on_uncommitted_work_outside_the_change_folder(project):
+    root, change = project
+    verdict(root, "c")
+    write(root / "sample_pkg" / "scratch.py", "x = 1\n")
+    result = gate.run_gate(root, "0001", "c", dry_run=True)
+    ct = next(ch for ch in result.failed if ch.name == "clean_tree")
+    assert ct.details["dirty"] == ["sample_pkg/scratch.py"]
+    (root / "sample_pkg" / "scratch.py").unlink()
+    write(change / "evidence" / "note.md", "inside the change folder: fine\n")
+    assert "clean_tree" not in _names(gate.run_gate(root, "0001", "c", dry_run=True), False)
+
+
+def test_run_command_timeout_kills_the_whole_tree(tmp_path):
+    started = datetime.now(timezone.utc)
+    run = checks.run_command(f'"{sys.executable}" -c "import time; time.sleep(30)"', tmp_path, 1)
+    assert run["exit_code"] is None and run["timeout"] == 1
+    assert (datetime.now(timezone.utc) - started).total_seconds() < 20
+    run = checks.run_command(f'"{sys.executable}" -c "print(42)"', tmp_path, 10)
+    assert run["exit_code"] == 0 and "42" in run["output"]
+
+
+def test_gate_cli_rejects_a_malformed_id(project):
+    root, _ = project
+    proc = run_py(
+        str(GATE_CLI), "check", "--root", str(root), "--id", "x", "--phase", "c", cwd=root
+    )
+    assert proc.returncode == 2 and "four digits" in proc.stderr

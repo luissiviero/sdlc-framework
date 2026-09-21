@@ -1,7 +1,7 @@
 # Progress — session 2 (B2: autonomy kit, steps 16–21)
 
 ## Summary
-- B2 is built and green: 203 tests pass with `python tasks.py check` (ruff zero warnings) on Linux, `claude plugin validate .` is clean; the work landed in two PRs (#4: gate and run limits, merged; #5: agents, preflight, policy skills, full `/sdlc-init`, docs). Windows execution is still owed by the owner (unreported at session start, asked once).
+- B2 is built and green: 207 tests pass with `python tasks.py check` (ruff zero warnings) on Linux, `claude plugin validate .` is clean; the work landed in two PRs (#4: gate and run limits, merged; #5: agents, preflight, policy skills, full `/sdlc-init`, docs). Windows execution is still owed by the owner (unreported at session start, asked once).
 - The confidence gate (`plugin/gate/`) is one function for every autonomous phase: nine deterministic checks (artifact vs template, open concerns, commands green, evidence, no Important finding, plan.md vs diff, guardrail files, risk list, run limits) plus the adversarial reviewer's verdict as an input; result `continue` / `wait` (human gate) / `park` with `status.yaml`, the `sdlc:needs-human` label and a "What I need from you" block. Against the fixture it continues on a clean change and parks with the right reason for every prepared failure.
 - Four agents ship and are registered (verifier from article p.25–26, code-simplifier, researcher, adversarial-reviewer writing `evidence/adversarial-review-<phase>.json`); five policy skills ship with a deterministic `check.py` each (article p.22 pattern) and "no owner source yet" where the owner's standards are still to be named; `preflight.py` decides `acceptEdits` versus `default` from six preconditions and never bypass mode.
 - `/sdlc-init` is full for this stage: `evals/` (empty on purpose, decision 17), `bands.yaml` (p.44 shape with an authorization per 3σ route, decisions 14 and 15), Node detection from `package.json` scripts with a second fixture; idempotence kept. CI workflows and the daily digest stay in B3 as the handoff said.
@@ -10,7 +10,7 @@
 ## Definition of done (handoff)
 | Item | Status |
 |---|---|
-| `python tasks.py check` green (report the count) and `claude plugin validate .` clean; Windows run listed as owed if not confirmed | Linux: 203 passed, ruff clean, validate clean. Windows: **owed** (unreported at session start). |
+| `python tasks.py check` green (report the count) and `claude plugin validate .` clean; Windows run listed as owed if not confirmed | Linux: 207 passed, ruff clean, validate clean. Windows: **owed** (unreported at session start). |
 | Gate against the fixture: `continue` on a clean change; `park` with the right reason for each prepared failure; parking writes `status.yaml` and prints the "What I need from you" block | Done (`tests/test_gate.py`, 20 tests: missing plan.md, failing test behind `SAMPLE_FAIL=1`, a diff touching `.claude/settings.json`, a risk-list word, escalating / missing / stale verdict, open concern, unsynced commit, missing evidence, Important finding, iteration cap, pause flag). |
 | Four agent files exist, are registered, say "report only, do not fix" | Done (`tests/test_agents.py`). |
 | Preflight refuses auto-accept when any precondition is missing and allows it on the initialised fixture | Done (`tests/test_preflight.py`, 12 tests; the fixture passes with the plugin's own skills). |
@@ -39,13 +39,23 @@
 3. **Risk acceptance**: a risk-list hit parks until the owner runs `state/cli.py accept-risk --id <id> --item "<item>"`, which writes `status.yaml: risk_accepted`. Matching is whole-token and plural-tolerant (`auth` matches `auth/` and `auth_token`, not `author`); owners add variants to the list.
 4. **plan.md ↔ diff** is two checks in one: every changed source file (not `plan_sync.exempt`) is listed under "Files that change" (a path, a glob or a folder), and the plan-sync hook rule is re-applied to every commit on the branch (closes the NOTES §9 gap for commits the hook could not parse).
 5. **Spec.md sections** (the article gives the prompt, not the shape): Requirements · Design · Open questions from intent · Flagged concerns · Acceptance. An open concern is a list item starting with `[ ]` or `open`.
-6. **Verdict freshness**: the adversarial verdict carries `head`; a verdict for another commit is rejected. A verdict is required at every automated gate; at a human gate it is read when present.
+6. **Verdict freshness**: the adversarial verdict must carry `head` (a verdict without one is malformed); a verdict for another commit is rejected. A verdict is required at gates (b), (c) and (d) in every profile (the Full profile gets the same machine review as Standard); at (a) and (e) it is read when present. `review-findings.json` must carry `head` at gate (e) too.
 7. **Findings JSON** (`evidence/review-findings.json`, produced by B3's review pass): `{"findings": [{"pass", "severity": "important|nit", "file", "line", "summary"}], "tally": {...}, "head"}`; required at gate (e), read at (c)/(d) when present.
 8. **Pause flag** is `sdlc.yaml: paused: true` (a protected path, so a run cannot un-pause itself), not a `changes/PAUSE` file.
 9. **Wall-clock and budget** are read from `evidence/run-<phase>.json`, written by `gate/cli.py start-run` and `record-spend`; a run that never called `start-run` is not wall-clock limited (B3's runbooks call it first).
 10. **Evidence file names**: `test.log`, `build.log`, `lint.log`, `verifier.md` (required at (d) and (e); `verifier.md` also at (c)), plus screenshots for UI changes, `adversarial-review-<phase>.json`, `review-findings.json`, `gate-<phase>.json`, `run-<phase>.json`.
 11. **Policy checks are advisory scripts** (exit 1 = something to look at, never a block); the must-hold policies have the hooks and the gate behind them, as p.22 governance asks. `definition-of-done/check.py` is the gate in dry-run.
 12. **Node targets** come from `package.json` scripts; a missing lint script stays `none` (the gate then refuses phase (c)) rather than adding a dependency the owner did not choose.
+13. **The gate judges committed, owner-approved inputs** (fresh-context review of session 2): `intent.md` is read as merged at gate (a) (the merge base), and a later phase that edits it parks; when the branch edits `sdlc.yaml`, limits, risk list and exemptions are read from the base copy (`config_note` says so) and the edit is a guardrail hit; uncommitted files outside the change folder park at (c)/(d)/(e) (`clean_tree`), because the verdict and the PR judge HEAD; an automated gate at (b)/(c)/(d) parks when the runbook did not call `start-run`; `--phase` must equal `status.yaml: phase`.
+14. **Flagged concerns fail closed**: every list item under "Flagged concerns" is open unless it starts with `[x]`, `closed`, `resolved` or `decided` (`none` means no concern).
+15. **A plugin upgrade adds new top-level `sdlc.yaml` keys as text blocks** with the template's comments; only a new nested key still re-dumps the file (reported as "comments dropped").
+
+## Known gaps (carried to B3, found by the session's fresh-context review)
+- `status.yaml: risk_accepted` and `iterations` are owner actions by convention only: a run could call `accept-risk` or `set-iterations` itself. B3 ties them to the commit author (owner ≠ automation identity) or moves the acceptance to a PR label.
+- The adversarial reviewer has `Bash` (it needs `git diff` and the test target), so "the one file you write is the verdict" is an instruction, not a mechanism; the protected-path hook and the review pass are the nets.
+- Risk-list matching is lexical (whole tokens, plural-tolerant); synonyms go into the owner's list.
+- The policy `check.py` scripts are pattern-based and advisory by design (p.22).
+- The `sdlc:needs-human` / `sdlc:<phase>-ready` labels are printed by the gate, not applied (B3's runbooks apply them).
 
 ## Live checks the owner can do now (not automatable here)
 Test repository: `luissiviero/sdlc-sample-python` (plugin loaded through the setup script of NOTES §3a).

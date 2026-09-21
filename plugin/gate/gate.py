@@ -29,9 +29,10 @@ from gate import artifacts as art  # noqa: E402
 from gate import checks, limits  # noqa: E402
 from gate import diff as diffmod  # noqa: E402
 from gate.checks import CheckResult, GateContext  # noqa: E402
-from hooks._common import ConfigError, load_sdlc_config  # noqa: E402
+from hooks._common import SDLC_FILE, ConfigError, load_sdlc_config  # noqa: E402
 from state import conventions as c  # noqa: E402
 from state import status as status_mod  # noqa: E402
+from state import yamlish  # noqa: E402
 
 RESULTS = ("continue", "wait", "park")
 
@@ -53,6 +54,7 @@ class GateResult:
     head: str | None
     at: str = field(default_factory=_now)
     dry_run: bool = False
+    config_note: str = ""
 
     @property
     def failed(self) -> list[CheckResult]:
@@ -96,6 +98,7 @@ class GateResult:
             "at": self.at,
             "dry_run": self.dry_run,
             "reason": self.reason,
+            "config_note": self.config_note,
             "checks": [ch.as_dict() for ch in self.checks],
             "what_i_need": self.what_i_need(),
         }
@@ -109,26 +112,47 @@ def build_context(root: Path, change_id: str, phase: str, base: str | None = Non
     root = Path(root).resolve()
     if phase not in c.PHASES:
         raise GateError(f"phase must be one of {c.PHASES}")
+    if not c.ID_RE.match(change_id):
+        raise GateError(f"change id must be four digits, got {change_id!r}")
     change_dir = c.find_change_dir(root, change_id)
     if change_dir is None:
         raise GateError(f"no change folder for id {change_id} under {root / c.CHANGES_DIR}")
     st = status_mod.read_status(change_dir)
+    if st.phase != phase:
+        raise GateError(
+            f"status.yaml says change {change_id} is in phase ({st.phase}); gate ({phase}) "
+            "was asked for. Set the phase first (state/cli.py set-phase / commit-phase)."
+        )
     try:
         config = load_sdlc_config(str(root))
     except ConfigError as exc:
         raise GateError(str(exc)) from exc
     if not config:
         raise GateError("sdlc.yaml not found: run /sdlc-init first")
-    profile = c.effective_profile(config.get("profile"), st.profile_override)
-    human = c.is_human_gate(profile, phase)
     diff_error = ""
     try:
         d = diffmod.collect(root, base)
     except diffmod.GitUnavailable as exc:
         d, diff_error = None, str(exc)
-    ctx = GateContext(root, change_dir, phase, st, config, d, human, diff_error)
-    ctx.profile = profile  # type: ignore[attr-defined]
-    return ctx
+    config_note = ""
+    if d is not None and SDLC_FILE in d.files and d.merge_base:
+        # the branch edits sdlc.yaml: judge the change by the config the owner approved
+        committed = diffmod.file_at(root, d.merge_base, SDLC_FILE)
+        if committed is not None:
+            try:
+                base_cfg = yamlish.loads(committed)
+            except Exception as exc:  # noqa: BLE001
+                raise GateError(f"{SDLC_FILE} at {d.merge_base[:10]} unreadable: {exc}") from exc
+            if isinstance(base_cfg, dict):
+                config = base_cfg
+                config_note = (
+                    f"sdlc.yaml changed on the branch: limits and lists read from {d.base}"
+                )
+    profile = c.effective_profile(config.get("profile"), st.profile_override)
+    human = c.is_human_gate(profile, phase)
+    return GateContext(
+        root, change_dir, phase, st, config, d, human, diff_error, profile, config_note
+    )
 
 
 def evaluate(ctx: GateContext) -> GateResult:
@@ -149,7 +173,7 @@ def evaluate(ctx: GateContext) -> GateResult:
                     )
                 )
     failed = [r for r in results if not r.ok]
-    profile = getattr(ctx, "profile", c.DEFAULT_PROFILE)
+    profile = ctx.profile
     if failed:
         result, label = "park", c.NEEDS_HUMAN_LABEL
     elif ctx.human_gate:
@@ -166,6 +190,7 @@ def evaluate(ctx: GateContext) -> GateResult:
         checks=results,
         label=label,
         head=ctx.diff.head if ctx.diff else None,
+        config_note=ctx.config_note,
     )
 
 
@@ -173,7 +198,7 @@ def apply(ctx: GateContext, result: GateResult) -> None:
     """Record the verdict: status.yaml (park or passed) and evidence/gate-<phase>.json."""
     st = ctx.status
     if result.result == "park":
-        st.park(result.reason)
+        st.park(result.reason, phase=ctx.phase)
     elif result.result == "continue":
         st.record_gate(ctx.phase, "passed")
     else:

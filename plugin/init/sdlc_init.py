@@ -159,6 +159,20 @@ def _split_sections(text: str) -> list[tuple[str, str]]:
     return parts
 
 
+def template_block(rendered_template: str, key: str) -> str:
+    """The text of one top-level key in the rendered template: the comment lines directly
+    above it plus its lines up to the next top-level key or blank-line-separated comment."""
+    lines = rendered_template.splitlines()
+    start = next(i for i, line in enumerate(lines) if re.match(rf"^{re.escape(key)}:", line))
+    first = start
+    while first > 0 and lines[first - 1].startswith("#"):
+        first -= 1
+    end = start + 1
+    while end < len(lines) and (lines[end].startswith((" ", "\t")) or lines[end].strip() == ""):
+        end += 1
+    return "\n".join(lines[first:end]).rstrip("\n") + "\n"
+
+
 def _write_if_changed(path: Path, content: str, report: dict, key: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     if path.exists() and path.read_text(encoding="utf-8") == content:
@@ -184,18 +198,29 @@ def run(args) -> dict:
         existing_yaml = yamlish.load_file(sdlc_path)
         merged = merge_missing(existing_yaml, fresh_yaml)
         merged.setdefault("plugin", {})["version"] = values["PLUGIN_VERSION"]
+        rendered = render_file(TEMPLATE / "sdlc.yaml", values)
+        missing_top = [k for k in fresh_yaml if k not in existing_yaml]
+        only_top_level_added = merge_missing(existing_yaml, fresh_yaml) == {
+            **existing_yaml,
+            **{k: fresh_yaml[k] for k in missing_top},
+        }
         if merged == existing_yaml:
             report["files"]["sdlc.yaml"] = "unchanged"
-        elif merge_missing(existing_yaml, fresh_yaml) == existing_yaml:
-            # only the pinned version moved: patch that one line, keep the owner's comments
+        elif only_top_level_added:
+            # new top-level keys (a plugin upgrade) and/or the pinned version: edit the text,
+            # so the owner's comments and layout survive
             text = sdlc_path.read_text(encoding="utf-8")
-            patched = re.sub(
+            text = re.sub(
                 r"(?m)^(\s+version:\s*).*$", rf"\g<1>{values['PLUGIN_VERSION']}", text, count=1
             )
-            _write_if_changed(sdlc_path, patched, report["files"], "sdlc.yaml")
+            for key in missing_top:
+                text = text.rstrip("\n") + "\n\n" + template_block(rendered, key)
+            _write_if_changed(sdlc_path, text, report["files"], "sdlc.yaml")
+            if missing_top:
+                report["files"]["sdlc.yaml"] = f"updated (added {', '.join(missing_top)})"
         else:
             _write_if_changed(sdlc_path, yamlish.dumps(merged), report["files"], "sdlc.yaml")
-            report["files"]["sdlc.yaml"] = "updated (new keys added; comments dropped)"
+            report["files"]["sdlc.yaml"] = "updated (new nested keys added; comments dropped)"
     else:
         _write_if_changed(
             sdlc_path, render_file(TEMPLATE / "sdlc.yaml", values), report["files"], "sdlc.yaml"

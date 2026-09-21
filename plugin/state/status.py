@@ -114,9 +114,10 @@ class Status:
         self.touch()
         self.validate()
 
-    def park(self, reason: str) -> None:
-        """Park, never page (decision 11): record why and wait in the review queue."""
-        self.record_gate(self.phase, "parked", reason)
+    def park(self, reason: str, phase: str | None = None) -> None:
+        """Park, never page (decision 11): record why and wait in the review queue. ``phase``
+        is the gate that parked (defaults to the change's current phase)."""
+        self.record_gate(phase or self.phase, "parked", reason)
 
     def bump_iteration(self) -> int:
         self.iterations += 1

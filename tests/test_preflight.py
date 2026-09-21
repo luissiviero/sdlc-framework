@@ -172,7 +172,9 @@ def test_classification_reported_for_a_change(project):
         "verdict_file": "adversarial-review-b.json",
     }
     verdict = project / "changes" / "0001-x" / "evidence" / "adversarial-review-b.json"
-    verdict.write_text(json.dumps({"verdict": "continue", "classification": "non-routine"}))
+    verdict.write_text(
+        json.dumps({"verdict": "continue", "classification": "non-routine", "head": "abc1234"})
+    )
     report = preflight.run_preflight(project, ROOT, "0001")
     assert report["change"]["classification"] == "non-routine"
     assert report["change"]["iteration_cap"] == 2 and report["allow"] is True  # tightens only

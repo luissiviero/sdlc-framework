@@ -227,7 +227,6 @@ def test_detect_node_fixture():
     assert det.language == "node"
     assert det.test.command == "npm test" and det.test.origin.startswith("detected: scripts.test")
     assert det.lint.command == "npm run lint" and det.build.command == "npm run build"
-    assert det.test.permission_rule == "Bash(npm test*)"
     assert det.stats["has_test_script"] == 1 and det.stats["test_files"] == 1
     assert det.notes == []
 
@@ -273,6 +272,8 @@ def test_init_on_node_fixture_writes_npm_targets(tmp_path):
     assert "ruff.toml" not in report["files"]
     assert "npm test" in (root / "CLAUDE.md").read_text(encoding="utf-8")
     # the three targets really run, and the test target exits non-zero on failure
+    if not shutil.which("npm"):
+        pytest.skip("npm not installed: detection checked, execution skipped")
     for cmd in ("npm run build", "npm test", "npm run lint"):
         proc = subprocess.run(cmd, cwd=root, shell=True, capture_output=True, text=True)
         assert proc.returncode == 0, (cmd, proc.stdout, proc.stderr)
@@ -322,3 +323,25 @@ def test_bands_yaml_also_parses_with_pyyaml(tmp_path):
     _run_init(root)
     data = yaml.safe_load((root / "bands.yaml").read_text(encoding="utf-8"))
     assert data["tiers"]["3sigma"]["routes"][0]["name"] == "pull_request"
+
+
+def test_init_upgrade_adds_new_top_level_keys_and_keeps_comments(tmp_path):
+    """A project initialised by session 1 has no `paused` / `gate:` block; the re-run must add
+    them with their template comments and leave the owner's edits and comments in place."""
+    root = tmp_path / "proj"
+    shutil.copytree(FIXTURE, root)
+    _run_init(root)
+    text = (root / "sdlc.yaml").read_text(encoding="utf-8")
+    start = text.index("# --- confidence gate")
+    end = text.index("# --- guardrails")
+    old_style = text[:start] + text[end:]
+    old_style = old_style.replace("protected_paths: []", "protected_paths: [gen/**]  # owner note")
+    (root / "sdlc.yaml").write_text(old_style, encoding="utf-8")
+    report = _run_init(root)
+    assert report["files"]["sdlc.yaml"] == "updated (added paused, gate)"
+    new = (root / "sdlc.yaml").read_text(encoding="utf-8")
+    assert "# owner note" in new and new.count("#") >= old_style.count("#") + 5
+    cfg = yamlish.load_file(root / "sdlc.yaml")
+    assert cfg["paused"] is False and cfg["gate"]["max_iterations"] == 3
+    assert cfg["protected_paths"] == ["gen/**"]
+    assert _run_init(root)["files"]["sdlc.yaml"] == "unchanged"
