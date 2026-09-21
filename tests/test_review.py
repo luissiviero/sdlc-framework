@@ -440,7 +440,7 @@ def fake_github(monkeypatch):
     calls: list[dict] = []
     module = types.ModuleType("pr.github")
 
-    def create_check_run(repo, head_sha, name, conclusion, title, summary):
+    def create_check_run(repo, head_sha, name, conclusion, title, summary, cwd=None):
         calls.append(
             {
                 "repo": repo,
@@ -449,6 +449,7 @@ def fake_github(monkeypatch):
                 "conclusion": conclusion,
                 "title": title,
                 "summary": summary,
+                "cwd": cwd,
             }
         )
         return {"id": 7, "html_url": "https://github.test/check/7"}
@@ -472,6 +473,7 @@ def test_cli_check_run_posts_the_summary(tmp_path, capsys, monkeypatch, fake_git
     assert len(fake_github) == 1
     call = fake_github[0]
     assert call["repo"] == "owner/repo" and call["name"] == "sdlc/review"
+    assert call["cwd"] == root  # gh reads the repository from the directory it runs in
     assert call["head_sha"] == head_of(root) and call["title"] == "1 Important, 1 nits"
     assert "### Important" in call["summary"]
 

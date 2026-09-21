@@ -242,7 +242,7 @@ def cmd_check_run(args) -> int:
         _emit({"route": "none", "reason": f"pr/github.py cannot post a check run: {exc}"})
         return EXIT_OK
     try:
-        result = create(repo, head, fmod.CHECK_RUN_NAME, conclusion, title, summary)
+        result = create(repo, head, fmod.CHECK_RUN_NAME, conclusion, title, summary, cwd=root)
     except Exception as exc:  # noqa: BLE001 - a missing token must not fail the phase
         _emit({"route": "none", "reason": f"check run not posted: {exc!r}"})
         return EXIT_OK

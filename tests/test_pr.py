@@ -546,6 +546,30 @@ def no_gh(monkeypatch):
 
 
 @pytest.fixture
+def fake_gh(monkeypatch):
+    """A ``gh`` on PATH that runs nothing: it records (args, stdin, cwd) and answers from a
+    queue of ``_gh`` results (an empty queue means success with no output)."""
+    calls: list[dict] = []
+    answers: list[dict] = []
+
+    def run(*args, stdin=None, cwd=None):
+        calls.append({"args": list(args), "stdin": stdin, "cwd": cwd})
+        return answers.pop(0) if answers else {"ok": True, "code": 0, "out": "", "err": ""}
+
+    monkeypatch.setattr(github, "gh_path", lambda: "/usr/bin/gh")
+    monkeypatch.setattr(github, "_gh", run)
+    return calls, answers
+
+
+@pytest.fixture
+def gh_only(monkeypatch, fake_gh):
+    """``gh`` and no token: the fallback route on its own."""
+    for var in github.TOKEN_VARS:
+        monkeypatch.delenv(var, raising=False)
+    return fake_gh
+
+
+@pytest.fixture
 def recorder(monkeypatch, no_gh):
     """Record every call to the single HTTP entry point and answer from a canned table."""
     calls: list[tuple] = []
@@ -618,19 +642,13 @@ def test_set_labels_ignores_404_on_remove(recorder):
     assert result["ok"] is True and result["removed"] == []
 
 
-def test_ensure_label_never_forces_and_accepts_an_existing_label(monkeypatch):
+def test_ensure_label_never_forces_and_accepts_an_existing_label(monkeypatch, gh_only):
     """--force would rewrite the colour and description of a label the owner edited."""
-    calls: list[list[str]] = []
-
-    def fake_gh(*args, stdin=None):
-        calls.append(list(args))
-        return {"ok": False, "code": 1, "out": "", "err": "label already exists; ..."}
-
-    monkeypatch.setattr(github, "gh_path", lambda: "/usr/bin/gh")
-    monkeypatch.setattr(github, "_gh", fake_gh)
+    calls, answers = gh_only
+    answers.append({"ok": False, "code": 1, "out": "", "err": "label already exists; ..."})
     result = github.ensure_label("o/r", "sdlc:c-ready", "0E8A16", "SDLC gate (c)")
     assert result["ok"] is True and result["created"] is False
-    assert "--force" not in calls[0]
+    assert "--force" not in calls[0]["args"]
 
 
 def test_ensure_label_treats_already_exists_as_success(recorder):
@@ -668,6 +686,67 @@ def test_check_run_and_issue_helpers(recorder):
     assert found["number"] == 9 and found["node_id"] == "I_9"
     answers[("PATCH", "/issues/9")] = {"status": 200, "data": {"number": 9}, "error": ""}
     assert github.update_issue_body("o/r", 9, "# queue")["ok"] is True
+
+
+# --- the order of the routes (third live design run, 2026-09-21) ------------------------------
+def test_the_token_route_goes_first_and_gh_is_never_called(recorder, fake_gh):
+    """A CI runner has both. The token is the identity the workflow acts as and the REST call
+    behaves the same everywhere, so it goes first; ``gh`` is the fallback."""
+    calls, answers = recorder
+    gh_calls, _gh_answers = fake_gh
+    answers[("POST", "/repos/o/r/pulls")] = {
+        "status": 201,
+        "data": {"number": 7, "html_url": "https://github.com/o/r/pull/7"},
+        "error": "",
+    }
+    created = github.create_pr("o/r", "main", "sdlc/0001/c", "t", "body", cwd="/tmp/project")
+    assert created["route"] == "api" and created["number"] == 7
+    assert gh_calls == [] and calls[-1][0] == "POST"
+
+
+def test_gh_takes_over_when_the_token_route_fails(recorder, fake_gh):
+    _calls, answers = recorder
+    gh_calls, gh_answers = fake_gh
+    answers[("POST", "/repos/o/r/pulls")] = {
+        "status": 403,
+        "data": {"message": "Resource not accessible by integration"},
+        "error": "Resource not accessible by integration",
+    }
+    gh_answers.append({"ok": True, "code": 0, "out": "https://github.com/o/r/pull/9\n", "err": ""})
+    created = github.create_pr("o/r", "main", "sdlc/0001/c", "t", "body", cwd="/tmp/project")
+    assert created["route"] == "gh" and created["number"] == 9 and created["created"] is True
+    assert gh_calls[0]["args"][:2] == ["pr", "create"]
+    assert gh_calls[0]["cwd"] == "/tmp/project"  # gh reads the repo from its directory
+    assert gh_calls[0]["stdin"] == "body"
+
+
+def test_when_both_routes_fail_the_reason_names_both(recorder, fake_gh):
+    _calls, answers = recorder
+    _gh_calls, gh_answers = fake_gh
+    answers[("PATCH", "/repos/o/r/pulls/7")] = {
+        "status": 404,
+        "data": {"message": "Not Found"},
+        "error": "Not Found",
+    }
+    gh_answers.append(
+        {"ok": False, "code": 1, "out": "", "err": "could not determine base repository"}
+    )
+    result = github.update_pr("o/r", 7, "body", "title", cwd="/tmp/project")
+    assert result["ok"] is False and result["route"] == "none" and result["number"] == 7
+    assert "api: Not Found" in result["reason"]
+    assert "gh: gh pr edit exited 1: could not determine base repository" in result["reason"]
+
+
+def test_gh_alone_still_opens_the_pull_request(gh_only):
+    calls, answers = gh_only
+    answers.append({"ok": True, "code": 0, "out": "https://github.com/o/r/pull/4\n", "err": ""})
+    result = github.create_pr("o/r", "main", "sdlc/0001/b", "t", "body", cwd="/tmp/project")
+    assert result["route"] == "gh" and result["number"] == 4
+    assert calls[0]["cwd"] == "/tmp/project"
+
+    answers.append({"ok": True, "code": 0, "out": "[]", "err": ""})
+    assert github.find_open_pr("o/r", "sdlc/0001/b", cwd="/tmp/project")["number"] is None
+    assert calls[-1]["cwd"] == "/tmp/project"
 
 
 # --- the daily digest ---------------------------------------------------------------------

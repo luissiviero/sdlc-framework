@@ -19,6 +19,12 @@ What one run does, in order:
    works on (``sdlc/<id>/b`` for a design run, ``sdlc/<id>/c`` for build, test, deploy and
    the review pass), creating it for (b) and (c) — in the Lite profile (c) branches off
    ``sdlc/<id>/b``. When there is nothing to switch to, the current checkout is used;
+1c. **installs the project's own toolchain** — ``sdlc.yaml: commands.setup`` through
+   ``ci/project_setup.py``. A GitHub-hosted runner carries none of the project's tools, and
+   the installed workflow file may be an older copy without that step (the third live design
+   run, 2026-09-21, failed the gate's ``commands`` check with "No module named pytest"), so
+   the run does it itself. A project with no setup command is skipped; a setup command that
+   fails is an infrastructure failure. A dry run installs nothing;
 2. **guards** — not paused, the change exists, ``status.yaml`` is at the phase this run
    follows with a passing gate, not parked, and in the Full profile the owner's approval
    label is on the build PR and was applied by a human, not by the workflow token. A failed
@@ -39,14 +45,17 @@ What one run does, in order:
    after a review pass;
 7. opens or updates the phase's pull request with ``pr/cli.py upsert`` (idempotent: an
    existing PR only has its body and its gate label refreshed), so a parked run is a queue
-   item even when the model's session never reached that step;
+   item even when the model's session never reached that step. The upsert's own JSON says
+   which route it took: a run that ends with no pull request is an infrastructure failure,
+   because a phase result nobody can find in the queue is not a hand-over;
 8. reads ``evidence/gate-<phase>.json`` and, on ``continue``, dispatches the next workflow
    with the change id and the next phase's work branch as ``head_ref`` (the only hand-over
    GitHub allows from the workflow token; ``head_ref`` keys the concurrency group).
 
 Exit codes: 0 the run finished, was skipped or parked (a park is a queue item, not a CI
-failure); 1 an infrastructure failure — the CLI exited non-zero, reported ``is_error``, or
-left no gate file behind; 2 a usage error.
+failure); 1 an infrastructure failure — the setup command failed, the CLI exited non-zero,
+reported ``is_error``, left no gate file behind, or no pull request carries the result;
+2 a usage error.
 """
 
 from __future__ import annotations
@@ -66,6 +75,7 @@ if str(PLUGIN_DIR) not in sys.path:
     sys.path.insert(0, str(PLUGIN_DIR))
 
 from ci import auth as auth_mod  # noqa: E402
+from ci import project_setup  # noqa: E402
 from gate import artifacts as art  # noqa: E402
 from gate import diff as gate_diff  # noqa: E402
 from gate import limits  # noqa: E402
@@ -300,6 +310,9 @@ RUNNER_EXCLUDE_HEADER = (
     "# sdlc framework: entries the phase job leaves in the checkout "
     "(first live design run, 2026-09-21)"
 )
+# No trailing slash on the directory entries: ``/.idea/`` excludes a directory only, and the
+# sandbox may leave a *file* of that name (third live design run, 2026-09-21). ``/.idea``
+# matches both.
 RUNNER_EXCLUDES = (
     "/framework/",
     "/.bash_profile",
@@ -307,11 +320,11 @@ RUNNER_EXCLUDES = (
     "/.env",
     "/.gitconfig",
     "/.gitmodules",
-    "/.idea/",
+    "/.idea",
     "/.mcp.json",
     "/.profile",
     "/.ripgreprc",
-    "/.vscode/",
+    "/.vscode",
     "/.zprofile",
     "/.zshrc",
 )
@@ -349,6 +362,38 @@ def write_git_exclude(root: Path) -> dict[str, Any]:
     except OSError as exc:
         return {**out, "note": f"could not write the exclude file: {exc}"}
     return {**out, "added": missing}
+
+
+# --- the project's own toolchain (third live design run, 2026-09-21) -------------------------
+# The phase job installs it in a workflow step, but the workflow files a project carries are
+# the copies /sdlc-init wrote when it ran: a project initialised with an older framework never
+# gets the step, and its gate fails on "No module named pytest". The run therefore installs
+# the toolchain itself, before the guard reads anything. Both are idempotent, so a checkout
+# whose workflow already ran the step pays only the cost of a no-op install.
+SETUP_FAILED = "the project's setup command failed: {reason}"
+
+
+def install_toolchain(root: Path, dry_run: bool = False) -> tuple[dict[str, Any], bool]:
+    """Run ``sdlc.yaml: commands.setup`` in ``root``. (result, ok).
+
+    A project with no setup command is skipped, not failed; a dry run installs nothing.
+    """
+    if dry_run:
+        return {"skipped": "dry run: nothing is installed"}, True
+    try:
+        result, code = project_setup.run_setup(root)
+    except Exception as exc:  # noqa: BLE001 — an install must not crash the run silently
+        return {"error": f"{type(exc).__name__}: {exc}"}, False
+    return result, code == project_setup.EXIT_OK
+
+
+def setup_failure_reason(result: dict[str, Any]) -> str:
+    """The one line the run prints on stderr when the setup command failed."""
+    if result.get("error"):
+        return str(result["error"])
+    command = result.get("command", "")
+    tail = str(result.get("output", "")).strip().splitlines()[-1:] or [""]
+    return f"{command} exited {result.get('exit_code')}: {tail[0]}"
 
 
 # --- the work branch ----------------------------------------------------------------------
@@ -701,6 +746,12 @@ def run_phase(args, env: dict[str, str]) -> int:
         return _skip(reason)
     excluded = write_git_exclude(root)
     branch = prepare_branch(root, change_id, phase)
+    setup, setup_ok = install_toolchain(root, args.dry_run)
+    if not setup_ok:
+        reason = setup_failure_reason(setup)
+        print(SETUP_FAILED.format(reason=reason), file=sys.stderr)
+        _emit({"phase": phase, "change_id": change_id, "setup": setup, "branch": branch})
+        return EXIT_FAILED
     change_dir, st, config, reason = guard(root, change_id, phase, args.repo, env)
     if reason:
         return _skip(reason)
@@ -759,6 +810,7 @@ def run_phase(args, env: dict[str, str]) -> int:
                 "argv": argv,
                 "branch": branch,
                 "git_exclude": excluded,
+                "setup": setup,
             }
         )
         return EXIT_OK
@@ -786,6 +838,7 @@ def run_phase(args, env: dict[str, str]) -> int:
                 "cost_usd": cost,
                 "review": review,
                 "labels": labels,
+                "setup": setup,
             }
         )
         return EXIT_OK if review and review.get("ok") else EXIT_FAILED
@@ -801,7 +854,7 @@ def run_phase(args, env: dict[str, str]) -> int:
     # the PR is where the owner meets the change, parked or not: open it here rather than
     # trusting the run to have done it (the parked run of 2026-09-21 did not)
     pr = ensure_pr(plugin_dir, root, change_id, phase, args.repo, env)
-    handed = hand_over(args, result, phase, change_id)
+    handed = hand_over(args, result, phase, change_id) if pr.get("ok") else None
     _emit(
         {
             "phase": phase,
@@ -811,9 +864,15 @@ def run_phase(args, env: dict[str, str]) -> int:
             "cost_usd": cost,
             "dispatched": handed,
             "labels": labels,
+            "setup": setup,
             "pr": pr,
         }
     )
+    if not pr.get("ok"):
+        # the evidence is written and the spend is recorded above; what is missing is the
+        # queue item, and a phase result nobody can find is an infrastructure failure
+        print(PR_MISSING.format(reason=pr.get("reason") or "no route"), file=sys.stderr)
+        return EXIT_FAILED
     return EXIT_OK
 
 
@@ -917,6 +976,13 @@ def write_park_result(
 
 
 def _cli_call(script: Path, argv: list[str], timeout: int = 600) -> dict[str, Any]:
+    """Run a plugin CLI and keep what it said.
+
+    Every plugin CLI prints JSON, and that JSON is the only place the route, the URL and the
+    reason live: discarding stdout is how a run of 2026-09-21 reported ``ok`` for an upsert
+    that had opened no pull request. The parsed object comes back under ``output``; output
+    that is not JSON is kept verbatim under ``stdout``.
+    """
     try:
         proc = subprocess.run(
             [_python(), str(script), *argv],
@@ -927,7 +993,20 @@ def _cli_call(script: Path, argv: list[str], timeout: int = 600) -> dict[str, An
         )
     except (OSError, subprocess.SubprocessError) as exc:
         return {"ok": False, "reason": str(exc)}
-    return {"ok": proc.returncode == 0, "reason": (proc.stderr or "").strip()[-500:]}
+    out: dict[str, Any] = {
+        "ok": proc.returncode == 0,
+        "reason": (proc.stderr or "").strip()[-500:],
+    }
+    text = (proc.stdout or "").strip()
+    try:
+        parsed = json.loads(text) if text else None
+    except ValueError:
+        parsed = None
+    if isinstance(parsed, dict):
+        out["output"] = parsed
+    elif text:
+        out["stdout"] = text[-2000:]
+    return out
 
 
 def park_and_publish(
@@ -951,10 +1030,12 @@ def park_and_publish(
         ["commit-phase", "--root", str(root), "--id", st.id, "--phase", branch_phase,
          "--message", f"park: {reason}"[:500], "--push"],
     )  # fmt: skip
-    out["pr"] = _cli_call(
-        plugin_dir / "plugin" / "pr" / "cli.py",
-        ["upsert", "--root", str(root), "--id", st.id, "--phase", branch_phase, "--draft"],
-    )  # fmt: skip
+    out["pr"] = upsert_outcome(
+        _cli_call(
+            plugin_dir / "plugin" / "pr" / "cli.py",
+            ["upsert", "--root", str(root), "--id", st.id, "--phase", branch_phase, "--draft"],
+        )
+    )
     return out
 
 
@@ -964,13 +1045,38 @@ def park_and_publish(
 # did. The hand-over does it itself now, whatever the session did: ``upsert`` is idempotent,
 # so a PR that already exists only has its body and its gate label brought up to date.
 PR_DRAFT_PHASES = ("c",)  # the build PR opens as a draft; (b), (d) and (e) open plain
+PR_ROUTES = ("gh", "api")  # the routes that really reach GitHub; "none" opened nothing
+PR_MISSING = "no pull request carries this phase's result: {reason}"
+
+
+def upsert_outcome(call: dict[str, Any], fallback_number: int | None = None) -> dict[str, Any]:
+    """What ``pr/cli.py upsert`` did, read from its own JSON: route, url, number, reason.
+
+    ``ok`` means the owner can find the run in the queue: the upsert took a real route (gh or
+    api) and named a pull request. Exit code 0 is not enough — ``upsert`` exits 0 with route
+    "none" when there is no GitHub remote or no credential, and it prints the body instead
+    (third live design run, 2026-09-21: ``{"existed": false, "ok": true}`` and no PR).
+    """
+    data = call.get("output") if isinstance(call.get("output"), dict) else {}
+    route = data.get("route")
+    number = data.get("number") if data.get("number") is not None else fallback_number
+    url = data.get("url")
+    ok = bool(call.get("ok")) and route in PR_ROUTES and bool(number or url)
+    reason = str(data.get("reason") or call.get("reason") or "")
+    if not ok and not reason:
+        reason = f"pr upsert took route {route!r} and opened no pull request"
+    return {"ok": ok, "route": route, "number": number, "url": url, "reason": reason}
 
 
 def ensure_pr(
     plugin_dir: Path, root: Path, change_id: str, phase: str, repo: str, env: dict[str, str]
 ) -> dict[str, Any]:
     """Open or update the phase's PR for the work branch. Never marks one ready for review:
-    that is the owner's move at a human gate."""
+    that is the owner's move at a human gate.
+
+    The result is the upsert's own answer (``upsert_outcome``): ``ok`` only when a pull
+    request now carries the phase, whatever the CLI's exit code was.
+    """
     branch_phase = BRANCH_PHASE.get(phase, phase)
     head = work_branch_for(change_id, phase)
     out: dict[str, Any] = {"head": head, "phase": branch_phase, "existed": None}
@@ -981,14 +1087,15 @@ def ensure_pr(
         return {**out, "ok": False, "reason": "no gh and no GITHUB_TOKEN/GH_TOKEN: no PR route"}
     number = None
     if repo:
-        found = github.find_open_pr(repo, head)
+        found = github.find_open_pr(repo, head, cwd=root)
         number = found.get("number")
         out["existed"] = bool(number)
         out["number"] = number
     argv = ["upsert", "--root", str(root), "--id", change_id, "--phase", branch_phase]
     if phase in PR_DRAFT_PHASES:
         argv.append("--draft")
-    return {**out, **_cli_call(plugin_dir / "plugin" / "pr" / "cli.py", argv)}
+    call = _cli_call(plugin_dir / "plugin" / "pr" / "cli.py", argv)
+    return {**out, **upsert_outcome(call, fallback_number=number)}
 
 
 # --- CLI --------------------------------------------------------------------------------------

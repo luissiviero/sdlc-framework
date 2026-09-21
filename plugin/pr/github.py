@@ -1,11 +1,19 @@
-"""A thin GitHub client with three routes, tried in that order (the fallback chain
-``/sdlc-plan`` step 6 already uses by hand, made deterministic here):
+"""A thin GitHub client with three routes (the fallback chain ``/sdlc-plan`` step 6 already
+uses by hand, made deterministic here):
 
-1. **gh** - the ``gh`` CLI when it is on PATH and authenticated (the owner's PC, most CI);
-2. **api** - the REST API over ``urllib`` with ``GITHUB_TOKEN`` or ``GH_TOKEN`` (the
-   automation identity in a workflow);
+1. **api** - the REST API over ``urllib`` with ``GITHUB_TOKEN`` or ``GH_TOKEN``. It is tried
+   **first** whenever a token exists: it behaves the same on every machine, while ``gh``
+   depends on its own login, its version and the directory it runs in (a CI runner has both,
+   and the token is the identity the workflow is supposed to act as);
+2. **gh** - the ``gh`` CLI when it is on PATH and authenticated: the fallback, and the only
+   route on the owner's PC when no token is exported. Every ``gh`` call takes the project
+   root as its working directory, because ``gh pr create|edit|view`` resolve the repository
+   from the directory they run in;
 3. **none** - nothing is contacted: the caller gets the compare URL and prints it with the
-   body so the owner opens the PR by hand. A missing route is never an error.
+   body so the owner opens the PR by hand.
+
+When both routes are available and both fail, the reason names what each one said (the third
+live design run, 2026-09-21, could not tell which route had failed).
 
 No third-party dependency (decision 7), a 30 s timeout on every request, and the token is
 never printed: it only ever reaches an ``Authorization`` header inside ``_request``, which is
@@ -21,6 +29,8 @@ import subprocess
 import urllib.error
 import urllib.parse
 import urllib.request
+from collections.abc import Callable
+from pathlib import Path
 from typing import Any
 
 API_ROOT = "https://api.github.com"
@@ -29,6 +39,7 @@ API_VERSION = "2022-11-28"
 TIMEOUT = 30  # seconds, every request
 TOKEN_VARS = ("GITHUB_TOKEN", "GH_TOKEN")
 GH_TIMEOUT = 120  # seconds for one gh invocation
+NO_ROUTE = "no GITHUB_TOKEN/GH_TOKEN and no gh on PATH"
 
 
 # --- routes ---------------------------------------------------------------------------------
@@ -54,6 +65,33 @@ def _no_route(reason: str, **extra: Any) -> dict[str, Any]:
     out: dict[str, Any] = {"route": "none", "ok": False, "reason": reason}
     out.update(extra)
     return out
+
+
+def _attempt(
+    api_call: Callable[[], dict[str, Any]],
+    gh_call: Callable[[], dict[str, Any]] | None = None,
+    **extra: Any,
+) -> dict[str, Any]:
+    """The first route that works: the token route, then ``gh``.
+
+    Both routes return the usual result dict; a failure carries ``reason``. With no route at
+    all the caller gets ``route: none`` and ``extra`` (the compare URL, a number), and when
+    every available route failed the reason names each one.
+    """
+    problems: list[str] = []
+    for name, call in (
+        ("api", api_call if token() else None),
+        ("gh", gh_call if gh_path() else None),
+    ):
+        if call is None:
+            continue
+        result = call()
+        if result.get("ok"):
+            return result
+        problems.append(f"{name}: {result.get('reason') or 'failed'}")
+    if not problems:
+        return _no_route(NO_ROUTE, **extra)
+    return {"route": "none", "ok": False, "reason": "; ".join(problems), **extra}
 
 
 # --- the one HTTP entry point -----------------------------------------------------------------
@@ -92,8 +130,13 @@ def _request(
     return {"status": status, "data": data, "error": error, "headers": headers}
 
 
-def _gh(*args: str, stdin: str | None = None) -> dict[str, Any]:
-    """Run ``gh`` with an argument list (no shell, so the same call works on Windows)."""
+def _gh(*args: str, stdin: str | None = None, cwd: str | Path | None = None) -> dict[str, Any]:
+    """Run ``gh`` with an argument list (no shell, so the same call works on Windows).
+
+    ``cwd`` is the project root: ``gh pr create|edit|view`` read the repository from the
+    directory they run in, and a run whose process started somewhere else (the runner's
+    home, the framework checkout) finds no repository there.
+    """
     exe = gh_path()
     if not exe:
         return {"ok": False, "code": 127, "out": "", "err": "gh not found"}
@@ -104,6 +147,7 @@ def _gh(*args: str, stdin: str | None = None) -> dict[str, Any]:
             text=True,
             encoding="utf-8",
             input=stdin,
+            cwd=str(cwd) if cwd else None,
             timeout=GH_TIMEOUT,
         )
     except (OSError, subprocess.SubprocessError) as exc:
@@ -116,51 +160,42 @@ def _gh(*args: str, stdin: str | None = None) -> dict[str, Any]:
     }
 
 
-def _gh_json(*args: str) -> tuple[Any, str]:
-    result = _gh(*args)
+def _gh_error(result: dict[str, Any], what: str) -> str:
+    """One line naming what failed and what ``gh`` printed on stderr."""
+    err = (result.get("err") or "").strip().replace("\n", " ")
+    return (
+        f"{what} exited {result.get('code')}: {err}"
+        if err
+        else f"{what} exited {result.get('code')}"
+    )
+
+
+def _gh_json(*args: str, cwd: str | Path | None = None) -> tuple[Any, str]:
+    result = _gh(*args, cwd=cwd)
     if not result["ok"]:
-        return None, result["err"] or f"gh exited {result['code']}"
+        return None, _gh_error(result, "gh " + " ".join(args[:2]))
     try:
         return json.loads(result["out"] or "null"), ""
     except ValueError as exc:
         return None, f"gh output is not JSON: {exc}"
 
 
+def _gh_url(result: dict[str, Any]) -> str | None:
+    """The URL ``gh`` prints as the last line of a create/edit."""
+    out = (result.get("out") or "").strip()
+    return out.splitlines()[-1] if out else None
+
+
+def _number_in(url: str | None) -> int | None:
+    tail = url.rsplit("/", 1)[-1] if url else ""
+    return int(tail) if tail.isdigit() else None
+
+
 # --- pull requests -----------------------------------------------------------------------------
-def find_open_pr(repo: str, head_branch: str) -> dict[str, Any]:
-    """{'route', 'number', 'url', 'labels', 'draft'} - number None when there is none."""
-    if gh_path():
-        data, error = _gh_json(
-            "pr",
-            "list",
-            "--repo",
-            repo,
-            "--head",
-            head_branch,
-            "--state",
-            "open",
-            "--json",
-            "number,url,labels,isDraft",
-        )
-        if error:
-            return _no_route(error, number=None)
-        first = (data or [None])[0] if isinstance(data, list) else None
-        if not first:
-            return {"route": "gh", "ok": True, "number": None, "url": None, "labels": []}
-        return {
-            "route": "gh",
-            "ok": True,
-            "number": first.get("number"),
-            "url": first.get("url"),
-            "labels": [lb.get("name") for lb in first.get("labels") or []],
-            "draft": bool(first.get("isDraft")),
-        }
-    tok = token()
-    if not tok:
-        return _no_route("no gh on PATH and no GITHUB_TOKEN/GH_TOKEN", number=None)
+def _find_open_pr_api(repo: str, head_branch: str) -> dict[str, Any]:
     owner = repo.split("/")[0]
     query = urllib.parse.urlencode({"state": "open", "head": f"{owner}:{head_branch}"})
-    result = _request("GET", f"{API_ROOT}/repos/{repo}/pulls?{query}", tok)
+    result = _request("GET", f"{API_ROOT}/repos/{repo}/pulls?{query}", token() or "")
     if result["error"]:
         return {"route": "api", "ok": False, "reason": result["error"], "number": None}
     items = result["data"] if isinstance(result["data"], list) else []
@@ -178,42 +213,40 @@ def find_open_pr(repo: str, head_branch: str) -> dict[str, Any]:
     }
 
 
-def create_pr(
-    repo: str, base: str, head: str, title: str, body: str, draft: bool = False
+def _find_open_pr_gh(repo: str, head_branch: str, cwd: str | Path | None) -> dict[str, Any]:
+    data, error = _gh_json(
+        "pr", "list", "--repo", repo, "--head", head_branch, "--state", "open",
+        "--json", "number,url,labels,isDraft", cwd=cwd,
+    )  # fmt: skip
+    if error:
+        return {"route": "gh", "ok": False, "reason": error, "number": None}
+    first = (data or [None])[0] if isinstance(data, list) else None
+    if not first:
+        return {"route": "gh", "ok": True, "number": None, "url": None, "labels": []}
+    return {
+        "route": "gh",
+        "ok": True,
+        "number": first.get("number"),
+        "url": first.get("url"),
+        "labels": [lb.get("name") for lb in first.get("labels") or []],
+        "draft": bool(first.get("isDraft")),
+    }
+
+
+def find_open_pr(repo: str, head_branch: str, cwd: str | Path | None = None) -> dict[str, Any]:
+    """{'route', 'number', 'url', 'labels', 'draft'} - number None when there is none."""
+    return _attempt(
+        lambda: _find_open_pr_api(repo, head_branch),
+        lambda: _find_open_pr_gh(repo, head_branch, cwd),
+        number=None,
+    )
+
+
+def _create_pr_api(
+    repo: str, base: str, head: str, title: str, body: str, draft: bool
 ) -> dict[str, Any]:
-    if gh_path():
-        args = [
-            "pr",
-            "create",
-            "--repo",
-            repo,
-            "--base",
-            base,
-            "--head",
-            head,
-            "--title",
-            title,
-            "--body-file",
-            "-",
-        ]
-        if draft:
-            args.append("--draft")
-        result = _gh(*args, stdin=body)
-        if not result["ok"]:
-            return _no_route(result["err"] or "gh pr create failed")
-        url = (result["out"] or "").strip().splitlines()[-1] if result["out"].strip() else None
-        number = None
-        if url and url.rsplit("/", 1)[-1].isdigit():
-            number = int(url.rsplit("/", 1)[-1])
-        return {"route": "gh", "ok": True, "number": number, "url": url, "created": True}
-    tok = token()
-    if not tok:
-        return _no_route(
-            "no gh on PATH and no GITHUB_TOKEN/GH_TOKEN",
-            compare_url=compare_url(repo, base, head),
-        )
     payload = {"title": title, "head": head, "base": base, "body": body, "draft": bool(draft)}
-    result = _request("POST", f"{API_ROOT}/repos/{repo}/pulls", tok, payload)
+    result = _request("POST", f"{API_ROOT}/repos/{repo}/pulls", token() or "", payload)
     if result["error"]:
         return {
             "route": "api",
@@ -232,23 +265,48 @@ def create_pr(
     }
 
 
-def update_pr(repo: str, number: int, body: str, title: str | None = None) -> dict[str, Any]:
-    if gh_path():
-        args = ["pr", "edit", str(number), "--repo", repo, "--body-file", "-"]
-        if title:
-            args += ["--title", title]
-        result = _gh(*args, stdin=body)
-        if not result["ok"]:
-            return _no_route(result["err"] or "gh pr edit failed", number=number)
-        url = (result["out"] or "").strip().splitlines()[-1] if result["out"].strip() else None
-        return {"route": "gh", "ok": True, "number": number, "url": url, "created": False}
-    tok = token()
-    if not tok:
-        return _no_route("no gh on PATH and no GITHUB_TOKEN/GH_TOKEN", number=number)
+def _create_pr_gh(
+    repo: str, base: str, head: str, title: str, body: str, draft: bool, cwd: str | Path | None
+) -> dict[str, Any]:
+    args = [
+        "pr", "create", "--repo", repo, "--base", base, "--head", head,
+        "--title", title, "--body-file", "-",
+    ]  # fmt: skip
+    if draft:
+        args.append("--draft")
+    result = _gh(*args, stdin=body, cwd=cwd)
+    if not result["ok"]:
+        return {
+            "route": "gh",
+            "ok": False,
+            "reason": _gh_error(result, "gh pr create"),
+            "compare_url": compare_url(repo, base, head),
+        }
+    url = _gh_url(result)
+    return {"route": "gh", "ok": True, "number": _number_in(url), "url": url, "created": True}
+
+
+def create_pr(
+    repo: str,
+    base: str,
+    head: str,
+    title: str,
+    body: str,
+    draft: bool = False,
+    cwd: str | Path | None = None,
+) -> dict[str, Any]:
+    return _attempt(
+        lambda: _create_pr_api(repo, base, head, title, body, draft),
+        lambda: _create_pr_gh(repo, base, head, title, body, draft, cwd),
+        compare_url=compare_url(repo, base, head),
+    )
+
+
+def _update_pr_api(repo: str, number: int, body: str, title: str | None) -> dict[str, Any]:
     payload: dict[str, Any] = {"body": body}
     if title:
         payload["title"] = title
-    result = _request("PATCH", f"{API_ROOT}/repos/{repo}/pulls/{number}", tok, payload)
+    result = _request("PATCH", f"{API_ROOT}/repos/{repo}/pulls/{number}", token() or "", payload)
     if result["error"]:
         return {"route": "api", "ok": False, "reason": result["error"], "number": number}
     return {
@@ -261,17 +319,41 @@ def update_pr(repo: str, number: int, body: str, title: str | None = None) -> di
     }
 
 
-def set_ready(repo: str, number: int) -> dict[str, Any]:
-    """Mark a draft PR ready for review (phase (e)). REST has no such field: the GraphQL
-    mutation ``markPullRequestReadyForReview`` takes the PR's node id."""
-    if gh_path():
-        result = _gh("pr", "ready", str(number), "--repo", repo)
-        if not result["ok"]:
-            return _no_route(result["err"] or "gh pr ready failed", number=number)
-        return {"route": "gh", "ok": True, "number": number}
-    tok = token()
-    if not tok:
-        return _no_route("no gh on PATH and no GITHUB_TOKEN/GH_TOKEN", number=number)
+def _update_pr_gh(
+    repo: str, number: int, body: str, title: str | None, cwd: str | Path | None
+) -> dict[str, Any]:
+    args = ["pr", "edit", str(number), "--repo", repo, "--body-file", "-"]
+    if title:
+        args += ["--title", title]
+    result = _gh(*args, stdin=body, cwd=cwd)
+    if not result["ok"]:
+        return {
+            "route": "gh",
+            "ok": False,
+            "reason": _gh_error(result, "gh pr edit"),
+            "number": number,
+        }
+    return {
+        "route": "gh",
+        "ok": True,
+        "number": number,
+        "url": _gh_url(result),
+        "created": False,
+    }
+
+
+def update_pr(
+    repo: str, number: int, body: str, title: str | None = None, cwd: str | Path | None = None
+) -> dict[str, Any]:
+    return _attempt(
+        lambda: _update_pr_api(repo, number, body, title),
+        lambda: _update_pr_gh(repo, number, body, title, cwd),
+        number=number,
+    )
+
+
+def _set_ready_api(repo: str, number: int) -> dict[str, Any]:
+    tok = token() or ""
     got = _request("GET", f"{API_ROOT}/repos/{repo}/pulls/{number}", tok)
     node_id = got["data"].get("node_id") if isinstance(got["data"], dict) else None
     if got["error"] or not node_id:
@@ -288,91 +370,131 @@ def set_ready(repo: str, number: int) -> dict[str, Any]:
     return {"route": "api", "ok": True, "number": number}
 
 
+def set_ready(repo: str, number: int, cwd: str | Path | None = None) -> dict[str, Any]:
+    """Mark a draft PR ready for review (phase (e)). REST has no such field: the GraphQL
+    mutation ``markPullRequestReadyForReview`` takes the PR's node id."""
+
+    def via_gh() -> dict[str, Any]:
+        result = _gh("pr", "ready", str(number), "--repo", repo, cwd=cwd)
+        if not result["ok"]:
+            return {
+                "route": "gh",
+                "ok": False,
+                "reason": _gh_error(result, "gh pr ready"),
+                "number": number,
+            }
+        return {"route": "gh", "ok": True, "number": number}
+
+    return _attempt(lambda: _set_ready_api(repo, number), via_gh, number=number)
+
+
 # --- labels ---------------------------------------------------------------------------------
-def ensure_label(repo: str, name: str, color: str, description: str) -> dict[str, Any]:
+def ensure_label(
+    repo: str, name: str, color: str, description: str, cwd: str | Path | None = None
+) -> dict[str, Any]:
     """Create the label if the repository does not have it; an existing one is success.
 
     Never ``--force``: that would rewrite the colour and description of a label the owner
     edited. ``gh`` says "already exists" instead, which is the success we want.
     """
-    if gh_path():
+
+    def via_api() -> dict[str, Any]:
+        payload = {"name": name, "color": color, "description": description}
+        result = _request("POST", f"{API_ROOT}/repos/{repo}/labels", token() or "", payload)
+        if result["status"] == 422 and "already_exists" in json.dumps(result["data"]):
+            return {"route": "api", "ok": True, "label": name, "created": False}
+        if result["error"]:
+            return {"route": "api", "ok": False, "reason": result["error"], "label": name}
+        return {"route": "api", "ok": True, "label": name, "created": True}
+
+    def via_gh() -> dict[str, Any]:
         result = _gh(
-            "label",
-            "create",
-            name,
-            "--repo",
-            repo,
-            "--color",
-            color,
-            "--description",
-            description,
-        )
+            "label", "create", name, "--repo", repo,
+            "--color", color, "--description", description, cwd=cwd,
+        )  # fmt: skip
         if not result["ok"]:
             if "already exists" in (result["err"] or "").lower():
                 return {"route": "gh", "ok": True, "label": name, "created": False}
-            return _no_route(result["err"] or "gh label create failed", label=name)
+            return {
+                "route": "gh",
+                "ok": False,
+                "reason": _gh_error(result, "gh label create"),
+                "label": name,
+            }
         return {"route": "gh", "ok": True, "label": name, "created": True}
-    tok = token()
-    if not tok:
-        return _no_route("no gh on PATH and no GITHUB_TOKEN/GH_TOKEN", label=name)
-    payload = {"name": name, "color": color, "description": description}
-    result = _request("POST", f"{API_ROOT}/repos/{repo}/labels", tok, payload)
-    if result["status"] == 422 and "already_exists" in json.dumps(result["data"]):
-        return {"route": "api", "ok": True, "label": name, "created": False}
-    if result["error"]:
-        return {"route": "api", "ok": False, "reason": result["error"], "label": name}
-    return {"route": "api", "ok": True, "label": name, "created": True}
+
+    return _attempt(via_api, via_gh, label=name)
 
 
-def set_labels(repo: str, number: int, add: list[str], remove: list[str]) -> dict[str, Any]:
+def set_labels(
+    repo: str,
+    number: int,
+    add: list[str],
+    remove: list[str],
+    cwd: str | Path | None = None,
+) -> dict[str, Any]:
     """Remove first, then add: the PR carries exactly one ``sdlc:`` label at a time."""
-    if gh_path():
+
+    def via_api() -> dict[str, Any]:
+        tok = token() or ""
+        base = f"{API_ROOT}/repos/{repo}/issues/{number}/labels"
+        removed, added, problems = [], [], []
+        for name in remove:
+            result = _request("DELETE", f"{base}/{urllib.parse.quote(name)}", tok)
+            if result["status"] == 404:  # the PR does not carry it: nothing to do
+                continue
+            if result["error"]:
+                problems.append(f"remove {name}: {result['error']}")
+            else:
+                removed.append(name)
+        if add:
+            result = _request("POST", base, tok, {"labels": list(add)})
+            if result["error"]:
+                problems.append(f"add {', '.join(add)}: {result['error']}")
+            else:
+                added = list(add)
+        return {
+            "route": "api",
+            "ok": not problems,
+            "added": added,
+            "removed": removed,
+            "reason": "; ".join(problems),
+        }
+
+    def via_gh() -> dict[str, Any]:
         args = ["pr", "edit", str(number), "--repo", repo]
         for name in remove:
             args += ["--remove-label", name]
         for name in add:
             args += ["--add-label", name]
-        if not remove and not add:
-            return {"route": "gh", "ok": True, "added": [], "removed": []}
-        result = _gh(*args)
+        result = _gh(*args, cwd=cwd)
         if not result["ok"]:
-            return _no_route(result["err"] or "gh pr edit failed", number=number)
+            return {
+                "route": "gh",
+                "ok": False,
+                "reason": _gh_error(result, "gh pr edit"),
+                "number": number,
+            }
         return {"route": "gh", "ok": True, "added": list(add), "removed": list(remove)}
-    tok = token()
-    if not tok:
-        return _no_route("no gh on PATH and no GITHUB_TOKEN/GH_TOKEN", number=number)
-    base = f"{API_ROOT}/repos/{repo}/issues/{number}/labels"
-    removed, added, problems = [], [], []
-    for name in remove:
-        result = _request("DELETE", f"{base}/{urllib.parse.quote(name)}", tok)
-        if result["status"] == 404:  # the PR does not carry it: nothing to do
-            continue
-        if result["error"]:
-            problems.append(f"remove {name}: {result['error']}")
-        else:
-            removed.append(name)
-    if add:
-        result = _request("POST", base, tok, {"labels": list(add)})
-        if result["error"]:
-            problems.append(f"add {', '.join(add)}: {result['error']}")
-        else:
-            added = list(add)
-    return {
-        "route": "api",
-        "ok": not problems,
-        "added": added,
-        "removed": removed,
-        "reason": "; ".join(problems),
-    }
+
+    if not remove and not add:
+        return {"route": "none", "ok": True, "added": [], "removed": []}
+    return _attempt(via_api, via_gh, number=number)
 
 
 # --- check runs -------------------------------------------------------------------------------
 def create_check_run(
-    repo: str, head_sha: str, name: str, conclusion: str, title: str, summary: str
+    repo: str,
+    head_sha: str,
+    name: str,
+    conclusion: str,
+    title: str,
+    summary: str,
+    cwd: str | Path | None = None,
 ) -> dict[str, Any]:
     """The phase (d) check run (build guide step 28). Check runs need an app/installation
-    token, which ``gh``'s user token usually is not - we try ``gh api`` anyway and report the
-    failure rather than inventing a route."""
+    token, which neither ``gh``'s user token nor every workflow token is - both routes are
+    tried and the failure is reported rather than a route invented."""
     payload = {
         "name": name,
         "head_sha": head_sha,
@@ -380,57 +502,63 @@ def create_check_run(
         "conclusion": conclusion,
         "output": {"title": title, "summary": summary},
     }
-    if gh_path():
+
+    def via_api() -> dict[str, Any]:
+        result = _request("POST", f"{API_ROOT}/repos/{repo}/check-runs", token() or "", payload)
+        if result["error"]:
+            return {"route": "api", "ok": False, "reason": result["error"]}
+        return {
+            "route": "api",
+            "ok": True,
+            "id": result["data"].get("id"),
+            "url": result["data"].get("html_url"),
+        }
+
+    def via_gh() -> dict[str, Any]:
         result = _gh(
-            "api",
-            "--method",
-            "POST",
-            f"repos/{repo}/check-runs",
-            "--input",
-            "-",
-            stdin=json.dumps(payload),
-        )
-        if result["ok"]:
-            try:
-                data = json.loads(result["out"] or "{}")
-            except ValueError:
-                data = {}
-            return {"route": "gh", "ok": True, "id": data.get("id"), "url": data.get("html_url")}
-        # fall through to the token route: a user token cannot create check runs
-        if not token():
-            return _no_route(result["err"] or "gh api check-runs failed")
-    tok = token()
-    if not tok:
-        return _no_route("no token: a check run needs an app or installation token")
-    result = _request("POST", f"{API_ROOT}/repos/{repo}/check-runs", tok, payload)
-    if result["error"]:
-        return {"route": "api", "ok": False, "reason": result["error"]}
-    return {
-        "route": "api",
-        "ok": True,
-        "id": result["data"].get("id"),
-        "url": result["data"].get("html_url"),
-    }
+            "api", "--method", "POST", f"repos/{repo}/check-runs", "--input", "-",
+            stdin=json.dumps(payload), cwd=cwd,
+        )  # fmt: skip
+        if not result["ok"]:
+            return {"route": "gh", "ok": False, "reason": _gh_error(result, "gh api check-runs")}
+        try:
+            data = json.loads(result["out"] or "{}")
+        except ValueError:
+            data = {}
+        return {"route": "gh", "ok": True, "id": data.get("id"), "url": data.get("html_url")}
+
+    return _attempt(via_api, via_gh)
 
 
 # --- issues (the daily digest lives in one) ----------------------------------------------------
-def pinned_issue(repo: str, title: str) -> dict[str, Any]:
+def pinned_issue(repo: str, title: str, cwd: str | Path | None = None) -> dict[str, Any]:
     """The open issue with this exact title, if any: {'number', 'node_id'}."""
-    if gh_path():
+
+    def via_api() -> dict[str, Any]:
+        query = urllib.parse.urlencode({"state": "open", "per_page": 100})
+        result = _request("GET", f"{API_ROOT}/repos/{repo}/issues?{query}", token() or "")
+        if result["error"]:
+            return {"route": "api", "ok": False, "reason": result["error"], "number": None}
+        items = result["data"] if isinstance(result["data"], list) else []
+        for item in items:
+            if "pull_request" in item:
+                continue
+            if str(item.get("title", "")).strip() == title:
+                return {
+                    "route": "api",
+                    "ok": True,
+                    "number": item.get("number"),
+                    "node_id": item.get("node_id"),
+                }
+        return {"route": "api", "ok": True, "number": None}
+
+    def via_gh() -> dict[str, Any]:
         data, error = _gh_json(
-            "issue",
-            "list",
-            "--repo",
-            repo,
-            "--state",
-            "open",
-            "--limit",
-            "100",
-            "--json",
-            "number,title,id",
-        )
+            "issue", "list", "--repo", repo, "--state", "open",
+            "--limit", "100", "--json", "number,title,id", cwd=cwd,
+        )  # fmt: skip
         if error:
-            return _no_route(error, number=None)
+            return {"route": "gh", "ok": False, "reason": error, "number": None}
         for item in data or []:
             if str(item.get("title", "")).strip() == title:
                 return {
@@ -440,74 +568,76 @@ def pinned_issue(repo: str, title: str) -> dict[str, Any]:
                     "node_id": item.get("id"),
                 }
         return {"route": "gh", "ok": True, "number": None}
-    tok = token()
-    if not tok:
-        return _no_route("no gh on PATH and no GITHUB_TOKEN/GH_TOKEN", number=None)
-    query = urllib.parse.urlencode({"state": "open", "per_page": 100})
-    result = _request("GET", f"{API_ROOT}/repos/{repo}/issues?{query}", tok)
-    if result["error"]:
-        return {"route": "api", "ok": False, "reason": result["error"], "number": None}
-    items = result["data"] if isinstance(result["data"], list) else []
-    for item in items:
-        if "pull_request" in item:
-            continue
-        if str(item.get("title", "")).strip() == title:
-            return {
-                "route": "api",
-                "ok": True,
-                "number": item.get("number"),
-                "node_id": item.get("node_id"),
-            }
-    return {"route": "api", "ok": True, "number": None}
+
+    return _attempt(via_api, via_gh, number=None)
 
 
-def create_issue(repo: str, title: str, body: str) -> dict[str, Any]:
-    if gh_path():
+def create_issue(repo: str, title: str, body: str, cwd: str | Path | None = None) -> dict[str, Any]:
+    def via_api() -> dict[str, Any]:
+        result = _request(
+            "POST", f"{API_ROOT}/repos/{repo}/issues", token() or "", {"title": title, "body": body}
+        )
+        if result["error"]:
+            return {"route": "api", "ok": False, "reason": result["error"]}
+        return {
+            "route": "api",
+            "ok": True,
+            "number": result["data"].get("number"),
+            "url": result["data"].get("html_url"),
+            "node_id": result["data"].get("node_id"),
+            "created": True,
+        }
+
+    def via_gh() -> dict[str, Any]:
         result = _gh(
-            "issue", "create", "--repo", repo, "--title", title, "--body-file", "-", stdin=body
+            "issue", "create", "--repo", repo, "--title", title, "--body-file", "-",
+            stdin=body, cwd=cwd,
+        )  # fmt: skip
+        if not result["ok"]:
+            return {"route": "gh", "ok": False, "reason": _gh_error(result, "gh issue create")}
+        url = _gh_url(result)
+        return {
+            "route": "gh",
+            "ok": True,
+            "number": _number_in(url),
+            "url": url,
+            "created": True,
+        }
+
+    return _attempt(via_api, via_gh)
+
+
+def update_issue_body(
+    repo: str, number: int, body: str, cwd: str | Path | None = None
+) -> dict[str, Any]:
+    def via_api() -> dict[str, Any]:
+        result = _request(
+            "PATCH", f"{API_ROOT}/repos/{repo}/issues/{number}", token() or "", {"body": body}
+        )
+        if result["error"]:
+            return {"route": "api", "ok": False, "reason": result["error"], "number": number}
+        return {
+            "route": "api",
+            "ok": True,
+            "number": number,
+            "url": result["data"].get("html_url"),
+            "created": False,
+        }
+
+    def via_gh() -> dict[str, Any]:
+        result = _gh(
+            "issue", "edit", str(number), "--repo", repo, "--body-file", "-", stdin=body, cwd=cwd
         )
         if not result["ok"]:
-            return _no_route(result["err"] or "gh issue create failed")
-        url = (result["out"] or "").strip().splitlines()[-1] if result["out"].strip() else None
-        number = int(url.rsplit("/", 1)[-1]) if url and url.rsplit("/", 1)[-1].isdigit() else None
-        return {"route": "gh", "ok": True, "number": number, "url": url, "created": True}
-    tok = token()
-    if not tok:
-        return _no_route("no gh on PATH and no GITHUB_TOKEN/GH_TOKEN")
-    result = _request(
-        "POST", f"{API_ROOT}/repos/{repo}/issues", tok, {"title": title, "body": body}
-    )
-    if result["error"]:
-        return {"route": "api", "ok": False, "reason": result["error"]}
-    return {
-        "route": "api",
-        "ok": True,
-        "number": result["data"].get("number"),
-        "url": result["data"].get("html_url"),
-        "node_id": result["data"].get("node_id"),
-        "created": True,
-    }
-
-
-def update_issue_body(repo: str, number: int, body: str) -> dict[str, Any]:
-    if gh_path():
-        result = _gh("issue", "edit", str(number), "--repo", repo, "--body-file", "-", stdin=body)
-        if not result["ok"]:
-            return _no_route(result["err"] or "gh issue edit failed", number=number)
+            return {
+                "route": "gh",
+                "ok": False,
+                "reason": _gh_error(result, "gh issue edit"),
+                "number": number,
+            }
         return {"route": "gh", "ok": True, "number": number, "created": False}
-    tok = token()
-    if not tok:
-        return _no_route("no gh on PATH and no GITHUB_TOKEN/GH_TOKEN", number=number)
-    result = _request("PATCH", f"{API_ROOT}/repos/{repo}/issues/{number}", tok, {"body": body})
-    if result["error"]:
-        return {"route": "api", "ok": False, "reason": result["error"], "number": number}
-    return {
-        "route": "api",
-        "ok": True,
-        "number": number,
-        "url": result["data"].get("html_url"),
-        "created": False,
-    }
+
+    return _attempt(via_api, via_gh, number=number)
 
 
 def pin_issue(repo: str, node_id: str | None) -> dict[str, Any]:

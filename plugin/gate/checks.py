@@ -618,7 +618,11 @@ def check_clean_tree(ctx: GateContext) -> CheckResult:
         return _fail("clean_tree", ctx.diff_error, "Run the gate inside the project's git repo.")
     prefix = ctx.change_rel + "/"
     tree = diffmod.dirty_files(ctx.root)
-    ignored = diffmod.sandbox_placeholders(ctx.root, tree)
+    # two kinds of entry are nobody's work: the sandbox's empty placeholders, and the paths
+    # the sandbox masks (.env, .idea, .vscode and friends — diffmod.SANDBOX_MASKED)
+    ignored = sorted(
+        set(diffmod.sandbox_placeholders(ctx.root, tree)) | set(diffmod.sandbox_masked(tree))
+    )
     dirty = [f for f in tree if f not in set(ignored) and not f.startswith(prefix)]
     if dirty:
         return _fail(
@@ -637,22 +641,30 @@ def check_clean_tree(ctx: GateContext) -> CheckResult:
 # --- 11. phase (b) touches no source (decision 2; OPERATING_MODEL section 8) -------------------
 def check_design_scope(ctx: GateContext) -> CheckResult:
     """The spec-and-plan run of phase (b) is read-only on source: the only files it writes are
-    the change folder's own artifacts. The first run with edit tools on source is phase (c)."""
+    the change folder's own artifacts. The first run with edit tools on source is phase (c).
+
+    The verdict is the **committed** diff only: the files between the merge base and HEAD,
+    which is what the PR carries and what would merge. The working tree is reported under
+    ``details.dirty`` and never parks the run — the gate may be executed inside Claude Code's
+    sandbox, whose masked paths (``diff.SANDBOX_MASKED``) show up as modified or untracked
+    however clean the checkout is, and that parked the third live design run (2026-09-21).
+    """
     if ctx.diff is None:
         return _fail("design_scope", ctx.diff_error, "Run the gate inside the project's git repo.")
     prefix = ctx.change_rel + "/"
-    ignored = diffmod.sandbox_placeholders(ctx.root, ctx.diff.files)
-    outside = [f for f in ctx.diff.files if f not in set(ignored) and not f.startswith(prefix)]
+    committed = diffmod.committed_files(ctx.root, ctx.diff.merge_base, ctx.diff.head)
+    outside = [f for f in committed if not f.startswith(prefix)]
+    dirty = diffmod.without_placeholders(ctx.root, diffmod.dirty_files(ctx.root))
     if outside:
         return _fail(
             "design_scope",
-            f"{len(outside)} file(s) changed outside {prefix}: " + ", ".join(outside[:10]),
-            f"Revert them: phase (b) writes only {prefix}; the first run with edit tools on "
-            "source is phase (c).",
+            f"{len(outside)} committed file(s) outside {prefix}: " + ", ".join(outside[:10]),
+            f"Revert them on the branch: phase (b) commits only {prefix}; the first run with "
+            "edit tools on source is phase (c).",
             outside=outside[:50],
-            ignored=ignored[:50],
+            dirty=dirty[:50],
         )
-    return _ok("design_scope", f"the diff stays inside {prefix}", ignored=ignored[:50])
+    return _ok("design_scope", f"the committed diff stays inside {prefix}", dirty=dirty[:50])
 
 
 # --- 12. owner-only state: accept-risk and set-iterations (build guide step 24.5) -------------
