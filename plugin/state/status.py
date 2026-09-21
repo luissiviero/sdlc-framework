@@ -149,10 +149,16 @@ def new_change(
     project_root = Path(project_root)
     change_id = change_id or c.next_change_id(project_root)
     existing = c.find_change_dir(project_root, change_id)
-    if existing is not None:
+    if existing is not None and status_path(existing).exists():
         return existing, read_status(existing)
-    slug = c.slugify(title)
-    change_dir = project_root / c.CHANGES_DIR / c.change_dir_name(change_id, slug)
+    if existing is not None:
+        # The folder exists without a status.yaml: /sdlc-init writes CLAUDE.proposed.md into
+        # changes/0000-sdlc-init/ before the installer runs. Adopt the folder and its slug.
+        slug = c.DIR_RE.match(existing.name).group("slug")
+        change_dir = existing
+    else:
+        slug = c.slugify(title)
+        change_dir = project_root / c.CHANGES_DIR / c.change_dir_name(change_id, slug)
     status = Status(
         id=change_id,
         slug=slug,

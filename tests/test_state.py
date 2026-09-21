@@ -163,3 +163,11 @@ def test_github_repo_parsing(tmp_path, monkeypatch):
 def test_status_rejects_bool_iterations():
     with pytest.raises(ValueError):
         status.Status.from_dict({"id": "0001", "slug": "x", "title": "t", "iterations": True})
+
+
+def test_new_change_adopts_folder_without_status(tmp_path):
+    folder = tmp_path / "changes" / "0000-sdlc-init"
+    folder.mkdir(parents=True)
+    (folder / "CLAUDE.proposed.md").write_text("# x\n", encoding="utf-8")
+    change_dir, st = status.new_change(tmp_path, "sdlc-init", change_id="0000")
+    assert change_dir == folder and st.slug == "sdlc-init" and (folder / "status.yaml").exists()
