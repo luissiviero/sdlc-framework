@@ -59,11 +59,16 @@
 
 ## Live checks the owner can do now (not automatable here)
 Test repository: `luissiviero/sdlc-sample-python` (plugin loaded through the setup script of NOTES §3a).
-1. On the PC: `python tasks.py check` (owed since session 1).
+1. On the PC: `python tasks.py check` (owed since session 1). Done, see below.
 2. Re-run `/sdlc:sdlc-init` in the sample repo: expect `evals/README.md`, `evals/cases/.gitkeep` and `bands.yaml` created and everything else `unchanged` / `kept`.
 3. Policy-skill trigger (step 20's "test that it triggers"): ask "review this diff for security" → `sdlc:security-baseline` should load; ask "is change 0001 done?" → `sdlc:definition-of-done`.
 4. Agents: ask "run the verifier on change 0001" → `sdlc:verifier` should run with Bash and Read only; ask "run the adversarial reviewer for phase c of change 0001" → it should write `changes/0001-*/evidence/adversarial-review-c.json`, and `python "${CLAUDE_PLUGIN_ROOT}/plugin/gate/cli.py" check --root . --id 0001 --phase c` should then read it.
 5. Preflight: `python "${CLAUDE_PLUGIN_ROOT}/plugin/gate/preflight.py" --root .` → `allow: true` in the sample repo once `/sdlc-init` has been re-run (it needs the five skills, which the pinned plugin now ships).
+
+Results:
+- 2026-09-21 — Windows 10 (19045), Python 3.14.7, ruff 0.16.8, pytest 9.1.1, Node 24.19.0 / npm on PATH.
+- `python tasks.py check` on Windows: PASS — ruff lint clean, 70 files formatted, 207 passed / 0 failed / 0 skipped (the npm half of `test_init_on_node_fixture_writes_npm_targets` ran); `claude plugin validate .` passed.
+- `pip install -e ".[dev]"` failed on `main` (setuptools flat-layout: `plugin` + `template`, on any OS); fixed in PR #8 (`[tool.setuptools] packages = []`).
 
 ## Left for B3 (write the next `HANDOFF.md` from this list)
 - `/sdlc-design` (step 22): the p.14 prompt with the policy skills loaded, `spec.md` with the five sections of `plugin/gate/artifacts.py`, then the read-only planning run (`plan-template` skill), adversarial verdict, gate (b), PR or hand-over per profile.
