@@ -1,0 +1,189 @@
+"""Layer-1 tests for plugin/gate/preflight.py (build guide step 18): refuses auto-accept when
+any precondition is missing, allows it on the initialised fixture, never names bypass mode."""
+
+from __future__ import annotations
+
+import json
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+
+import pytest
+
+from gate import preflight
+
+ROOT = Path(__file__).resolve().parents[1]
+FIXTURE = ROOT / "tests" / "fixtures" / "sample-python-project"
+INIT = ROOT / "plugin" / "init" / "sdlc_init.py"
+PREFLIGHT = ROOT / "plugin" / "gate" / "preflight.py"
+
+
+def _init(root: Path) -> None:
+    subprocess.run(
+        [sys.executable, str(INIT), "--root", str(root), "--profile", "standard"],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+
+def _project_skills(root: Path, names=preflight.POLICY_SKILLS) -> None:
+    """Project overrides under .claude/skills/ (the plugin's own skills arrive with step 20)."""
+    for name in names:
+        path = root / ".claude" / "skills" / name / "SKILL.md"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(f"---\nname: {name}\ndescription: test\n---\n# {name}\n", encoding="utf-8")
+
+
+@pytest.fixture
+def project(tmp_path):
+    root = tmp_path / "proj"
+    shutil.copytree(FIXTURE, root)
+    _init(root)
+    _project_skills(root)
+    return root
+
+
+def _names(report, ok):
+    return sorted(ch["name"] for ch in report["checks"] if ch["ok"] is ok)
+
+
+def test_refuses_on_the_raw_fixture(tmp_path):
+    root = tmp_path / "raw"
+    shutil.copytree(FIXTURE, root)
+    report = preflight.run_preflight(root, ROOT)
+    assert report["allow"] is False and report["permission_mode"] == "default"
+    assert {"sdlc_yaml", "settings", "policy_skills"} <= set(_names(report, False))
+    assert "test_target" not in [ch["name"] for ch in report["checks"]]  # never runs blind
+
+
+def test_allows_on_the_initialised_fixture(project):
+    report = preflight.run_preflight(project, ROOT)
+    assert report["allow"] is True, report["reasons"]
+    assert report["permission_mode"] == "acceptEdits" and report["never"] == "bypassPermissions"
+    assert _names(report, True) == sorted(
+        ["sdlc_yaml", "claude_md", "policy_skills", "hooks", "settings", "paused", "test_target"]
+    )
+    assert report["checks"][-1]["details"]["run"]["exit_code"] == 0
+
+
+@pytest.mark.parametrize(
+    "break_it, name, fragment",
+    [
+        (lambda r: (r / "CLAUDE.md").unlink(), "claude_md", "CLAUDE.md is missing"),
+        (
+            lambda r: (r / "CLAUDE.md").write_text("# p\n## Commands\n- none\n", encoding="utf-8"),
+            "claude_md",
+            "does not name the build, test, lint command",
+        ),
+        (
+            lambda r: shutil.rmtree(r / ".claude" / "skills" / "security-baseline"),
+            "policy_skills",
+            "security-baseline",
+        ),
+        (
+            lambda r: (r / "sdlc.yaml").write_text(
+                (r / "sdlc.yaml")
+                .read_text(encoding="utf-8")
+                .replace("paused: false", "paused: true"),
+                encoding="utf-8",
+            ),
+            "paused",
+            "paused",
+        ),
+    ],
+)
+def test_refuses_when_a_precondition_is_missing(project, break_it, name, fragment):
+    break_it(project)
+    report = preflight.run_preflight(project, ROOT)
+    assert report["allow"] is False and name in _names(report, False)
+    failed = next(ch for ch in report["checks"] if ch["name"] == name)
+    assert fragment in failed["reason"] and failed["need"]
+
+
+def test_refuses_when_settings_allow_bypass_or_lack_a_deny_rule(project):
+    path = project / ".claude" / "settings.json"
+    data = json.loads(path.read_text(encoding="utf-8"))
+    data["permissions"]["disableBypassPermissionsMode"] = "enable"
+    data["permissions"]["deny"].remove("Edit(CLAUDE.md)")
+    del data["enabledPlugins"]
+    path.write_text(json.dumps(data), encoding="utf-8")
+    report = preflight.run_preflight(project, ROOT)
+    failed = next(ch for ch in report["checks"] if ch["name"] == "settings")
+    assert failed["details"]["problems"] == [
+        "permissions.disableBypassPermissionsMode is not 'disable'",
+        "deny rule Edit(CLAUDE.md) missing",
+        "enabledPlugins does not enable sdlc@sdlc-framework",
+    ]
+
+
+def test_refuses_when_the_test_target_is_red(project, monkeypatch):
+    monkeypatch.setenv("SAMPLE_FAIL", "1")
+    report = preflight.run_preflight(project, ROOT)
+    assert report["allow"] is False and _names(report, False) == ["test_target"]
+    assert "SAMPLE_FAIL" in report["checks"][-1]["details"]["run"]["output"]
+
+
+def test_refuses_without_python_on_path_or_hooks(project, monkeypatch, tmp_path):
+    monkeypatch.setattr(preflight.shutil, "which", lambda name: None)
+    report = preflight.run_preflight(project, ROOT)
+    hooks = next(ch for ch in report["checks"] if ch["name"] == "hooks")
+    assert not hooks["ok"] and "PATH" in hooks["reason"]
+    monkeypatch.undo()
+    fake_plugin = tmp_path / "plugin-copy"
+    shutil.copytree(ROOT / "plugin", fake_plugin / "plugin")
+    (fake_plugin / "plugin" / "hooks" / "secrets_check.py").unlink()
+    report = preflight.run_preflight(project, fake_plugin)
+    hooks = next(ch for ch in report["checks"] if ch["name"] == "hooks")
+    assert not hooks["ok"] and "secrets_check.py" in hooks["reason"]
+    (fake_plugin / "plugin" / "hooks" / "hooks.json").unlink()
+    report = preflight.run_preflight(project, fake_plugin)
+    assert "not found" in next(ch for ch in report["checks"] if ch["name"] == "hooks")["reason"]
+
+
+def test_classification_reported_for_a_change(project):
+    subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "plugin/state/cli.py"),
+            "new-change",
+            "--root",
+            str(project),
+            "--title",
+            "X",
+        ],
+        check=True,
+        capture_output=True,
+    )
+    report = preflight.run_preflight(project, ROOT, "0001")
+    assert report["change"] == {
+        "change_id": "0001",
+        "classification": None,
+        "iteration_cap": 3,
+        "iterations_so_far": 0,
+        "verdict_file": "adversarial-review-b.json",
+    }
+    verdict = project / "changes" / "0001-x" / "evidence" / "adversarial-review-b.json"
+    verdict.write_text(json.dumps({"verdict": "continue", "classification": "non-routine"}))
+    report = preflight.run_preflight(project, ROOT, "0001")
+    assert report["change"]["classification"] == "non-routine"
+    assert report["change"]["iteration_cap"] == 2 and report["allow"] is True  # tightens only
+
+
+def test_preflight_cli_exit_codes(project):
+    proc = subprocess.run(
+        [sys.executable, str(PREFLIGHT), "--root", str(project)], capture_output=True, text=True
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert json.loads(proc.stdout)["permission_mode"] == "acceptEdits"
+    (project / "CLAUDE.md").unlink()
+    proc = subprocess.run(
+        [sys.executable, str(PREFLIGHT), "--root", str(project)], capture_output=True, text=True
+    )
+    assert proc.returncode == 4 and json.loads(proc.stdout)["allow"] is False
+
+
+def test_no_agent_command_or_skill_mentions_bypass_as_an_option():
+    text = PREFLIGHT.read_text(encoding="utf-8")
+    assert "bypassPermissions" in text and "--dangerously-skip-permissions" not in text
