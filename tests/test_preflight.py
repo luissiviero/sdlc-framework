@@ -29,7 +29,7 @@ def _init(root: Path) -> None:
 
 
 def _project_skills(root: Path, names=preflight.POLICY_SKILLS) -> None:
-    """Project overrides under .claude/skills/ (the plugin's own skills arrive with step 20)."""
+    """Project overrides under .claude/skills/ (the plugin ships its own; both paths count)."""
     for name in names:
         path = root / ".claude" / "skills" / name / "SKILL.md"
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -54,7 +54,7 @@ def test_refuses_on_the_raw_fixture(tmp_path):
     shutil.copytree(FIXTURE, root)
     report = preflight.run_preflight(root, ROOT)
     assert report["allow"] is False and report["permission_mode"] == "default"
-    assert {"sdlc_yaml", "settings", "policy_skills"} <= set(_names(report, False))
+    assert {"sdlc_yaml", "settings"} <= set(_names(report, False))
     assert "test_target" not in [ch["name"] for ch in report["checks"]]  # never runs blind
 
 
@@ -78,11 +78,6 @@ def test_allows_on_the_initialised_fixture(project):
             "does not name the build, test, lint command",
         ),
         (
-            lambda r: shutil.rmtree(r / ".claude" / "skills" / "security-baseline"),
-            "policy_skills",
-            "security-baseline",
-        ),
-        (
             lambda r: (r / "sdlc.yaml").write_text(
                 (r / "sdlc.yaml")
                 .read_text(encoding="utf-8")
@@ -100,6 +95,18 @@ def test_refuses_when_a_precondition_is_missing(project, break_it, name, fragmen
     assert report["allow"] is False and name in _names(report, False)
     failed = next(ch for ch in report["checks"] if ch["name"] == name)
     assert fragment in failed["reason"] and failed["need"]
+
+
+def test_refuses_when_a_policy_skill_is_missing_everywhere(project, tmp_path):
+    shutil.rmtree(project / ".claude" / "skills" / "security-baseline")
+    assert preflight.run_preflight(project, ROOT)["allow"] is True  # the plugin ships it
+    bare_plugin = tmp_path / "plugin-without-skills"
+    (bare_plugin / "plugin").mkdir(parents=True)
+    shutil.copytree(ROOT / "plugin" / "hooks", bare_plugin / "plugin" / "hooks")
+    report = preflight.run_preflight(project, bare_plugin)
+    failed = next(ch for ch in report["checks"] if ch["name"] == "policy_skills")
+    assert report["allow"] is False and failed["details"]["missing"] == ["security-baseline"]
+    assert failed["details"]["found"]["coding-standards"] == "project override"
 
 
 def test_refuses_when_settings_allow_bypass_or_lack_a_deny_rule(project):
