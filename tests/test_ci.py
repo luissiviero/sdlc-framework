@@ -150,8 +150,12 @@ def test_substrate_smoke_agrees_with_the_shared_selection():
 def test_dry_run_argv_per_phase(capsys, project, phase, command, mode):
     root, _change = project
     argv = dry_run_argv(capsys, root, phase)
-    assert argv[:3] == ["claude", "-p", "--bare"]  # the key path is bare mode
-    assert argv[-1] == f"/sdlc:{command} 0001"
+    assert argv[:4] == [
+        "claude",
+        "-p",
+        f"/sdlc:{command} 0001",
+        "--bare",
+    ]  # prompt first, then bare mode on the key path
     assert argv[argv.index("--permission-mode") + 1] == mode
     assert "--permission-prompts" in argv and argv[argv.index("--permission-prompts") + 1] == "none"
     assert argv[argv.index("--plugin-dir") + 1] == str(ROOT)
@@ -194,7 +198,7 @@ def test_phase_c_takes_its_permission_mode_from_the_preflight(capsys, project, m
     assert run_phase.run_phase(args, dict(KEY_ENV)) == run_phase.EXIT_OK
     argv = json.loads(capsys.readouterr().out)["argv"]
     assert argv[argv.index("--permission-mode") + 1] == "acceptEdits"
-    assert argv[-1] == "/sdlc:sdlc-build 0001"
+    assert argv[2] == "/sdlc:sdlc-build 0001"
     assert "bypassPermissions" not in argv
 
 
@@ -219,8 +223,8 @@ def test_triage_phase_is_read_only(capsys):
     argv = json.loads(capsys.readouterr().out)["argv"]
     assert argv[argv.index("--allowedTools") + 1] == "Read"
     assert argv[argv.index("--disallowedTools") + 1] == "Edit,Write,Bash"
-    assert argv[-1].startswith("Read the CI log at out/build.log.")
-    assert "Do not fix anything." in argv[-1]
+    assert argv[2].startswith("Read the CI log at out/build.log.")
+    assert "Do not fix anything." in argv[2]
 
 
 def test_triage_without_a_log_is_a_usage_error():
@@ -364,7 +368,7 @@ def test_a_dispatched_run_switches_to_the_work_branch_before_the_guard(project, 
     out = json.loads(capsys.readouterr().out)
     assert out["branch"]["branch"] == "sdlc/0001/c" and out["branch"]["switched"] is True
     assert out["branch"]["from"] == "origin/sdlc/0001/c"
-    assert out["argv"][-1] == "/sdlc:sdlc-test 0001"  # the guard saw phase (c), not (b)
+    assert out["argv"][2] == "/sdlc:sdlc-test 0001"  # the guard saw phase (c), not (b)
     assert status_mod.read_status(change).phase == "c"
     assert git(root, "rev-parse", "--abbrev-ref", "HEAD").strip() == "sdlc/0001/c"
 
@@ -629,7 +633,7 @@ def test_review_phase_argv_is_read_only(project, monkeypatch, capsys):
     assert argv[argv.index("--allowedTools") + 1] == "Read,Grep,Glob,Bash(git *),Write"
     assert argv[argv.index("--disallowedTools") + 1] == "Edit,WebFetch,WebSearch"
     assert argv[argv.index("--permission-mode") + 1] == "default"
-    assert argv[-1] == "REVIEW the diff."
+    assert argv[2] == "REVIEW the diff."
 
 
 # --- 5. the workflow templates against the trigger and dispatch table ----------------------------
@@ -767,3 +771,22 @@ def test_runner_setup_check_reports_without_changing_anything():
     )
     assert report["check_only"] is True and report["steps"] == []
     assert report["sandbox_applies"] is sys.platform.startswith("linux")
+
+
+def test_the_prompt_precedes_every_list_valued_flag(tmp_path):
+    """Regression for the first live design run (2026-09-21): --allowedTools and
+    --disallowedTools take a list of values, so a prompt placed after them was read as a
+    tool name and the CLI reported that no prompt was given."""
+    argv = run_phase.compose(
+        claude="claude",
+        plugin_dir=tmp_path,
+        phase="b",
+        prompt="/sdlc:sdlc-design 0001",
+        permission_mode="default",
+        config={},
+        env=dict(KEY_ENV),
+    )
+    assert argv[:3] == ["claude", "-p", "/sdlc:sdlc-design 0001"]
+    for flag in ("--allowedTools", "--disallowedTools"):
+        assert argv.index(flag) > 2
+    assert argv[-1] != "/sdlc:sdlc-design 0001"
