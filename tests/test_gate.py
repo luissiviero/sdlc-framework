@@ -3,7 +3,8 @@ readers, run limits — and, against a temporary copy of the fixture project, th
 `continue` on a clean change, `wait` at a human gate, `park` with the right reason for each
 prepared failure (missing plan.md, failing test behind SAMPLE_FAIL=1, a diff touching
 .claude/settings.json, a risk-list word, an escalating or stale adversarial verdict, an open
-flagged concern, a limit hit)."""
+flagged concern, a limit hit), and gate (b): a spec.md without its rendered header or a design
+branch that touches source parks, while a clean one waits (Standard) or continues (Lite)."""
 
 from __future__ import annotations
 
@@ -18,7 +19,7 @@ from pathlib import Path
 import pytest
 
 from gate import artifacts as art
-from gate import checks, gate, limits
+from gate import checks, gate, limits, preflight
 from gate import cli as gate_cli
 from state import status as status_mod
 from state import yamlish
@@ -28,6 +29,9 @@ FIXTURE = ROOT / "tests" / "fixtures" / "sample-python-project"
 INIT = ROOT / "plugin" / "init" / "sdlc_init.py"
 GATE_CLI = ROOT / "plugin" / "gate" / "cli.py"
 STATE_CLI = ROOT / "plugin" / "state" / "cli.py"
+PLUGIN_VERSION = json.loads((ROOT / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8"))[
+    "version"
+]
 
 INTENT = """# Intent: percent helper
 Author: owner (developer). Status: accepted. Change id: 0001. Entry route: idea.
@@ -48,8 +52,12 @@ No new dependencies.
 none
 """
 
-SPEC = """# Spec: percent helper
-
+# The header is what `gate/cli.py spec-header` renders and the design pass pastes (step 22);
+# the gate parks a spec.md whose header lacks one of art.SPEC_HEADER_FIELDS.
+SPEC_HEADER = art.render_spec_header(
+    "percent helper", "0001", PLUGIN_VERSION, list(preflight.POLICY_SKILLS), []
+)
+SPEC_BODY = """
 ## Requirements
 - percent(part, whole) returns part / whole * 100 rounded to one decimal.
 - whole == 0 raises ValueError.
@@ -66,6 +74,7 @@ none
 ## Acceptance
 Tests in tests/test_percent.py pass; lint clean.
 """
+SPEC = SPEC_HEADER + "\n" + SPEC_BODY
 
 PLAN = """# Plan: percent helper (from intent.md 2026-09-21, spec.md 2026-09-21)
 
@@ -166,10 +175,9 @@ def start_run(root: Path, phase: str) -> None:
     assert proc.returncode == 0, proc.stderr
 
 
-@pytest.fixture
-def project(tmp_path):
-    """Fixture copy initialised (standard profile), change 0001 through (b), and a phase-(c)
-    branch with the implementation committed together with plan.md."""
+def _initialised_fixture(tmp_path) -> tuple[Path, Path]:
+    """A fixture copy on main with /sdlc-init merged and change 0001 created with its intent
+    (uncommitted): the common ground of the phase-(b) and phase-(c) states below."""
     root = tmp_path / "proj"
     shutil.copytree(FIXTURE, root)
     git(root, "init", "-q", "-b", "main")
@@ -187,6 +195,14 @@ def project(tmp_path):
     assert proc.returncode == 0, proc.stderr
     change = root / "changes" / "0001-percent-helper"
     write(change / "intent.md", INTENT)
+    return root, change
+
+
+@pytest.fixture
+def project(tmp_path):
+    """Fixture copy initialised (standard profile), change 0001 through (b), and a phase-(c)
+    branch with the implementation committed together with plan.md."""
+    root, change = _initialised_fixture(tmp_path)
     write(change / "spec.md", SPEC)
     write(change / "plan.md", PLAN)
     st = status_mod.read_status(change)
@@ -205,6 +221,25 @@ def project(tmp_path):
     git(root, "add", ".")
     git(root, "commit", "-q", "-m", "build: percent helper")
     start_run(root, "c")  # the runbook registers the run before the work (step 19)
+    return root, change
+
+
+@pytest.fixture
+def design_project(tmp_path):
+    """Fixture copy initialised, the intent merged on main (as if the (a) PR did), and the
+    phase-(b) branch carrying only spec.md and plan.md — the state gate (b) judges."""
+    root, change = _initialised_fixture(tmp_path)
+    git(root, "add", ".")
+    git(root, "commit", "-q", "-m", "intent(0001): percent helper (as if the a PR merged)")
+    git(root, "checkout", "-q", "-b", "sdlc/0001/b")
+    write(change / "spec.md", SPEC)
+    write(change / "plan.md", PLAN)
+    st = status_mod.read_status(change)
+    st.set_phase("b")
+    status_mod.write_status(change, st)
+    git(root, "add", ".")
+    git(root, "commit", "-q", "-m", "design(0001): spec and plan")
+    start_run(root, "b")
     return root, change
 
 
@@ -244,6 +279,31 @@ def test_artifact_section_helpers():
     ]
     assert art.is_framework_change("Author: o. Status: draft.\nFramework change: yes\n")
     assert not art.is_framework_change(INTENT)
+
+
+def test_spec_header_render_and_intent_title():
+    header = art.render_spec_header(
+        "percent helper", "0001", "0.1.0", ["coding-standards", "security-baseline"], []
+    )
+    title_line, fields = header.splitlines()
+    assert title_line == "# Spec: percent helper"
+    assert fields == (
+        "Change id: 0001. Status: proposed. Produced by: sdlc plugin 0.1.0, /sdlc-design "
+        "prompt v1 (article p.14). Skills: coding-standards, security-baseline "
+        "(plugin 0.1.0); overrides: none"
+    )
+    assert all(f in fields for f in art.SPEC_HEADER_FIELDS)
+    assert art.DESIGN_PROMPT_VERSION == "v1"
+    overridden = art.render_spec_header("x", "0002", "1.2.3", ["a", "b"], ["b"])
+    assert overridden.endswith("Skills: a, b (plugin 1.2.3); overrides: b")
+    # the header a spec carries is the one the gate accepts
+    assert art.missing_sections(SPEC, art.SPEC_SECTIONS) == []
+    assert all(f in SPEC.split("## ", 1)[0] for f in art.SPEC_HEADER_FIELDS)
+    assert art.intent_title(INTENT) == "percent helper"
+    assert art.intent_title("#  Intent:   spaced title  \n## Problem\n") == "spaced title"
+    assert art.intent_title("# Spec: percent helper\n") is None
+    assert art.intent_title("# Intent:\n") is None
+    assert art.intent_title("") is None
 
 
 def test_risk_hits_match_whole_tokens_only():
@@ -351,6 +411,7 @@ def test_gate_continues_on_a_clean_change(project):
         "plan_sync",
         "guardrails",
         "risk_list",
+        "owner_actions",
         "adversarial_review",
     }
     st = status_mod.read_status(change)
@@ -473,6 +534,12 @@ def test_gate_parks_on_a_risk_list_word_until_the_owner_accepts_it(project):
         cwd=root,
     )
     assert proc.returncode == 0 and json.loads(proc.stdout)["risk_accepted"] == ["auth"]
+    # the acceptance is the owner's and counts only once they committed it (step 24.5)
+    result = gate.run_gate(root, "0001", "c")
+    assert result.result == "park" and "owner_actions" in _names(result, False)
+    git(root, "add", ".")
+    git(root, "commit", "-q", "-m", "owner: accept the auth risk for change 0001")
+    verdict(root, "c")
     assert gate.run_gate(root, "0001", "c").result == "continue"
 
 
@@ -707,3 +774,93 @@ def test_gate_cli_rejects_a_malformed_id(project):
         str(GATE_CLI), "check", "--root", str(root), "--id", "x", "--phase", "c", cwd=root
     )
     assert proc.returncode == 2 and "four digits" in proc.stderr
+
+
+# --- gate (b): the design gate (steps 22-23) ---------------------------------------------------
+def test_gate_b_waits_for_the_owner_and_lite_continues(design_project):
+    root, change = design_project
+    verdict(root, "b")
+    result = gate.run_gate(root, "0001", "b", dry_run=True)
+    assert result.result == "wait", result.reason
+    assert result.label == "sdlc:b-ready" and result.profile == "standard"
+    assert _names(result, False) == []
+    assert set(_names(result, True)) == {
+        "limits",
+        "artifacts",
+        "design_scope",
+        "open_concerns",
+        "commands",
+        "guardrails",
+        "risk_list",
+        "owner_actions",
+        "adversarial_review",
+    }
+    # Lite gate-checks (b) instead of asking the owner (23.3; conventions.HUMAN_GATES)
+    st = status_mod.read_status(change)
+    st.profile_override = "lite"
+    status_mod.write_status(change, st)
+    result = gate.run_gate(root, "0001", "b", dry_run=True)
+    assert result.result == "continue", result.reason
+    assert result.label is None and result.profile == "lite" and result.human_gate is False
+
+
+def test_gate_b_parks_on_a_spec_without_the_header(design_project):
+    root, change = design_project
+    verdict(root, "b")
+    write(change / "spec.md", SPEC_BODY)  # the five sections, no header line
+    result = gate.run_gate(root, "0001", "b", dry_run=True)
+    assert result.result == "park"
+    a = next(ch for ch in result.failed if ch.name == "artifacts")
+    assert "spec.md header lacks Change id:, Produced by:" in a.reason
+    assert any("header" in p for p in a.details["problems"])
+
+
+def test_gate_b_parks_when_the_branch_touches_source(design_project):
+    root, _change = design_project
+    verdict(root, "b")
+    assert "design_scope" not in _names(gate.run_gate(root, "0001", "b", dry_run=True), False)
+    # the plan run of phase (b) is read-only on source (decision 2; OPERATING_MODEL section 8)
+    write(root / "sample_pkg" / "percent.py", PERCENT)
+    git(root, "add", "sample_pkg/percent.py")
+    git(root, "commit", "-q", "-m", "implementation written in the design phase")
+    verdict(root, "b")
+    result = gate.run_gate(root, "0001", "b", dry_run=True)
+    assert result.result == "park"
+    ds = next(ch for ch in result.failed if ch.name == "design_scope")
+    assert ds.details["outside"] == ["sample_pkg/percent.py"]
+    assert "phase (c)" in ds.need and "changes/0001-percent-helper/" in ds.need
+    # the same tree with only changes/** in the diff passes
+    git(root, "reset", "-q", "--hard", "HEAD~1")
+    verdict(root, "b")
+    result = gate.run_gate(root, "0001", "b", dry_run=True)
+    assert "design_scope" not in _names(result, False) and result.result == "wait", result.reason
+
+
+def test_gate_cli_spec_header(project, capsys, tmp_path):
+    root, change = project
+    rc = gate_cli.main(["spec-header", "--root", str(root), "--id", "0001"])
+    assert rc == 0
+    out = json.loads(capsys.readouterr().out)
+    assert out["title"] == "percent helper"  # from intent.md, not the status.yaml title
+    assert out["change_id"] == "0001" and out["prompt_version"] == "v1"
+    assert out["plugin_version"] == yamlish.load_file(root / "sdlc.yaml")["plugin"]["version"]
+    assert out["skills"] == list(preflight.POLICY_SKILLS) and out["overrides"] == []
+    assert out["header"] == SPEC_HEADER
+    # a project skill under .claude/skills/ overrides the plugin's policy skill (step 20)
+    write(root / ".claude" / "skills" / "coding-standards" / "SKILL.md", "# ours\n")
+    rc = gate_cli.main(["spec-header", "--root", str(root), "--id", "0001"])
+    out = json.loads(capsys.readouterr().out)
+    assert rc == 0 and out["overrides"] == ["coding-standards"]
+    assert out["header"].endswith("overrides: coding-standards")
+    # no intent.md: the title falls back to status.yaml
+    (change / "intent.md").unlink()
+    gate_cli.main(["spec-header", "--root", str(root), "--id", "0001"])
+    assert json.loads(capsys.readouterr().out)["title"] == "Percent helper"
+    assert gate_cli.main(["spec-header", "--root", str(root), "--id", "0009"]) == 2
+    # a project without the sdlc.yaml pin: the installed plugin's manifest answers
+    bare = tmp_path / "bare"
+    status_mod.new_change(bare, "Other change")
+    rc = gate_cli.main(
+        ["spec-header", "--root", str(bare), "--id", "0001", "--plugin-root", str(ROOT)]
+    )
+    assert rc == 0 and json.loads(capsys.readouterr().out)["plugin_version"] == PLUGIN_VERSION

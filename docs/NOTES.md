@@ -285,7 +285,7 @@ Source: https://code.claude.com/docs/en/permissions.
 - "A `Read` deny rule also blocks the Edit and Write tools on the same path, including
   creating a new file there. NotebookEdit isn't covered, so add an `Edit` deny rule for paths
   no tool may change." ("The check requires Claude Code v2.1.208 or later on edits, and
-  v2.1.228 or later on writes" — so the framework's minimum Claude Code version is 2.1.228.)
+  v2.1.228 or later on writes" — so the framework's minimum Claude Code version was 2.1.228 until B3; it is 2.1.278 since session 3, see §11c.)
 - "Claude Code checks file permissions against `Edit(path)` and `Read(path)` rules only. If
   you write a path rule for `Write`, `NotebookEdit`, `Glob`, or the legacy `MultiEdit` tool
   instead, Claude Code accepts the rule but never consults it" — so the template uses
@@ -411,7 +411,7 @@ Source: https://code.claude.com/docs/en/cli-reference, https://code.claude.com/d
   and network requests still need an `--allowedTools` entry or a `permissions.allow` rule".
 - "Pass `--permission-prompts none` when nobody is available to answer permission prompts
   ... Anything that would prompt is denied" (v2.1.259+). The framework's declared minimum
-  is 2.1.228 (section 6); B3 bumps it to 2.1.259 when it adopts this flag, or leaves the
+  was 2.1.228 (section 6); B3 adopted this flag and set the minimum to 2.1.278 (§11c), or leaves the
   flag out on older runners (a `-p` run with no host denies such prompts anyway).
 - `--bare` "is the recommended mode for scripted and SDK calls" but "Bare mode does not read
   `CLAUDE_CODE_OAUTH_TOKEN`" (section 2) and skips CLAUDE.md, hooks and plugins unless
@@ -423,3 +423,123 @@ Source: https://code.claude.com/docs/en/cli-reference, https://code.claude.com/d
 result's `total_cost_usd` into `gate/cli.py record-spend` so the per-change budget of step 19
 is enforced across phases. The gate's own limits (iterations, wall-clock, budget, pause) are
 the inner bound and are the ones that park with evidence; the CLI bound just stops.
+
+## 11. Facts added in session 3 (B3), read on 2026-09-21
+
+Sources were read by an Opus research sub-agent. `docs.github.com` is blocked by the cloud
+session's egress policy, so the GitHub quotes below come from the documentation's source
+repository (`github/docs` on raw.githubusercontent.com, the same text the site renders; page
+paths given), the official OpenAPI description (`github/rest-api-description`),
+`actions/checkout`, `cli/cli` and `octokit/graphql-schema`; `code.claude.com` was reachable.
+
+### 11a. GitHub Actions (build guide step 30; OPERATING_MODEL §4.2)
+- Token events (page /actions/how-tos/write-workflows/choose-when-workflows-run/trigger-a-workflow):
+  "When you use the repository's `GITHUB_TOKEN` to perform tasks, events triggered by the
+  `GITHUB_TOKEN` will not create a new workflow run, with the following exceptions:" ...
+  "`workflow_dispatch` and `repository_dispatch` events always create workflow runs."
+  Newer nuance on the same page: `pull_request` `opened`/`synchronize`/`reopened` events
+  caused by the token "create workflow runs in an approval-required state", while "Other
+  `pull_request` activity types (such as `labeled`, `edited`, or `closed`) do not create
+  workflow runs." Consequence unchanged: every automated transition dispatches the next
+  workflow explicitly (decision 5).
+- Merge trigger (page /actions/reference/workflows-and-actions/events-that-trigger-workflows):
+  "To run a workflow when a pull request merges, use the `pull_request` `closed` event type
+  along with a conditional that checks the `merged` value of the event." —
+  `if: github.event.pull_request.merged == true`; "You can use the `branches` or
+  `branches-ignore` filter to configure your workflow to only run on pull requests that
+  target specific branches."
+- Label trigger: `pull_request` activity types include `labeled`; the docs' example reads
+  the name with `if: github.event.label.name == 'bug'`. The top-level `label` event is about
+  label definitions, not applications.
+- `permissions:` keys: `actions`, `checks`, `contents`, `issues`, `pull-requests` (each
+  `read|write|none`); "If you specify the access for any of these permissions, all of those
+  that are not specified are set to `none`." Which permission each REST endpoint needs is
+  rendered onto the site from internal data and was **not verifiable** from the reachable
+  sources: the workflows request `contents`, `pull-requests`, `issues`, `checks` and
+  `actions: write` and the first live run verifies them.
+- `concurrency` (page /actions/reference/workflows-and-actions/workflow-syntax): "A
+  concurrency group can be any string or expression. The expression can only use `github`,
+  `inputs` and `vars` contexts." and "there can be at most one running and one pending job
+  in a concurrency group at any time" — a newer pending run replaces the pending one even
+  with `cancel-in-progress: false`; group names are case-insensitive.
+- `workflow_dispatch` inputs are read as `inputs.<name>` or `github.event.inputs.<name>`
+  ("identical except that the `inputs` context preserves Boolean values"); REST
+  `POST /repos/{owner}/{repo}/actions/workflows/{workflow_id}/dispatches` ("You can replace
+  `workflow_id` with the workflow file name", 204); `gh workflow run <file> -f k=v --ref
+  <branch>`. `repository_dispatch`: "Any data that you send through the `client_payload`
+  parameter will be available in the `github.event` context"; at most 10 top-level
+  properties and 65,535 characters.
+- Labels: `POST /repos/{owner}/{repo}/labels` answers 201, or 422 (validation failed) when
+  the name exists — not idempotent, so `plugin/pr/github.py` treats 422 as "exists";
+  `POST /repos/{owner}/{repo}/issues/{issue_number}/labels` adds labels (PR numbers are
+  issue numbers).
+- Check runs: `POST /repos/{owner}/{repo}/check-runs` with `name`, `head_sha`, `conclusion`,
+  `output.title/summary`; "To create a check run, you must use a GitHub App. OAuth apps and
+  authenticated users are not able to create a check suite." — the workflow token acts as
+  an app, a personal token cannot: check runs are posted only from CI.
+- `schedule`: "Scheduled workflows run on the latest commit on the default branch. The
+  shortest interval you can run scheduled workflows is once every 5 minutes."; "By default,
+  scheduled workflows run in UTC."; "In a public repository, scheduled workflows are
+  automatically disabled when no repository activity has occurred in 60 days."; delays are
+  common "at the start of every hour", so the digest runs at 06:17 UTC. Every `schedule`,
+  `workflow_dispatch` and label trigger needs the workflow file on the default branch.
+- `actions/checkout` inputs: `repository` ("Repository name with owner"), `ref` ("The
+  branch, tag or SHA to checkout."), `path` ("Relative path under $GITHUB_WORKSPACE to
+  place the repository"); the README's side-by-side example checks out a second **public**
+  repository without a token; a private one needs a PAT. `luissiviero/sdlc-framework` is
+  public, so the phase jobs check it out at the tag `v<sdlc.yaml plugin.version>` with no
+  token — the framework must be tagged at every version the projects pin.
+- Notifications (pages under /subscriptions-and-notifications): "By default, you also
+  automatically watch all repositories that you create and are owned by your personal
+  account."; default subscriptions include "Opened a pull request or issue", "Been assigned",
+  "Commented on a thread", "Had your username @mentioned"; the watch menu's **Custom** option
+  adds chosen events "in addition to participating and @mentions". Whether editing an issue
+  body notifies subscribers is **not stated** in the docs, so the digest design does not
+  depend on it: the digest issue is opened by the workflow token, the owner never comments
+  on it, and the owner sets the repository watch to participating-only (OPERATING_MODEL §7).
+  Pinning an issue exists only in GraphQL (`pinIssue(input: PinIssueInput!)`).
+
+### 11b. Claude Code flags used by `plugin/ci/run_phase.py`
+Source: https://code.claude.com/docs/en/cli-reference, https://code.claude.com/docs/en/headless,
+https://code.claude.com/docs/en/sandboxing, https://code.claude.com/docs/en/agent-sdk/typescript.
+- `--plugin-dir`: "Load a plugin from a directory or `.zip` archive, or several from a folder
+  of plugins, for this session only. Each flag takes one path."
+- `--settings`: "Load a settings file (`.json` or `.yaml`) for this session. Can be repeated
+  to load multiple files in order. Values from later files override earlier ones." The
+  headless page's bare-mode table lists "Settings | `--settings <file-or-json>`", so the
+  key-path run (`--bare`) gets `plugin/ci/settings.ci.json` explicitly.
+- `--allowedTools`: "Tools that execute without prompting for permission."; prefix form
+  `Bash(git diff *)` ("The space before `*` is important"). `--disallowedTools`: "A bare
+  tool name removes the matching tools from Claude's context".
+- `--output-format json`: "the response payload includes `total_cost_usd` and a per-model
+  cost breakdown ... client-side estimates"; the SDK result type carries `session_id`,
+  `duration_ms`, `is_error`, `num_turns`, `result`, `total_cost_usd`.
+- Sandbox: keys `sandbox.enabled`, `sandbox.network.allowedDomains`,
+  `sandbox.failIfUnavailable` ("By default, if the sandbox cannot start because dependencies
+  are missing or the platform is unsupported, Claude Code shows a warning and runs commands
+  without sandboxing. To make this a hard failure instead, set `sandbox.failIfUnavailable`
+  to `true`."). Linux needs `bubblewrap` and `socat`; on ubuntu-24.04 runners "the default
+  AppArmor policy prevents bubblewrap from creating the user namespaces it needs" (check
+  `kernel.apparmor_restrict_unprivileged_userns`; install an AppArmor profile for `bwrap`);
+  `plugin/ci/runner_setup.py` does both, and the CI settings set `failIfUnavailable: true`
+  (the template keeps `false` for the owner's PC, §5).
+
+### 11c. Sub-agent model facts (Model rule of `HANDOFF.md`; re-read 2026-09-21)
+- Resolution order (https://code.claude.com/docs/en/sub-agents): per-invocation `model`,
+  then the definition's `model` frontmatter (`inherit` = the main conversation's model),
+  then `CLAUDE_CODE_SUBAGENT_MODEL`, then the main conversation's model; "Before v2.1.251,
+  `CLAUDE_CODE_SUBAGENT_MODEL` came first in this order". "Setting `CLAUDE_CODE_SUBAGENT_MODEL`
+  by itself doesn't change the model the built-in Explore and Plan subagents run on" — a
+  per-invocation model does.
+- "To check which model a subagent is running on, run `/tasks`. Claude Code names the model
+  on the subagent's row ... Requires Claude Code v2.1.242 or later."
+- `/usage` (https://code.claude.com/docs/en/costs): the Session block shows "Usage by
+  model"; the plan figures are "computed from local session history on this machine"; what a
+  cloud session shows is not documented.
+- Cloud environments (https://code.claude.com/docs/en/cloud-environments): "Each session
+  copies the environment's values once, at startup ... sessions already running keep the
+  values they started with."; there is "no settings page or direct URL for the selector";
+  `~/.claude/settings.json` is "not read" in a cloud session.
+- `--permission-prompts none` (cli-reference): `none` means nobody can answer, Claude Code
+  denies prompts instead; "Requires Claude Code v2.1.259 or later." The framework's minimum
+  Claude Code version is therefore **2.1.278**, the CLI the workflows install.

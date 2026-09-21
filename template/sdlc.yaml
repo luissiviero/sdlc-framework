@@ -50,6 +50,13 @@ gate:
   max_budget_usd: null           # per change, when the substrate reports spend; null = off
   command_timeout: 900           # seconds per build/test/lint command run by the gate
 
+# --- test-file lock (build guide step 25; OPERATING_MODEL section 8) -------------------------
+# Globs of the project's test files. In a fix-type change the build run commits the reproducing
+# test first and locks these paths (status.yaml: tests_locked) for the rest of the change; the
+# hook denies any edit under them. Defaults per detected language are written by /sdlc-init.
+test_paths:
+{{TEST_PATHS}}
+
 # --- guardrails read by the plugin's hooks (build guide step 15) -----------------------------
 # Always protected, whatever is listed here: .claude/**, CLAUDE.md, REVIEW.md, sdlc.yaml and
 # the plugin's own files. Add generated code, frozen packages, migrations, infra.

@@ -8,9 +8,12 @@ and identical on Windows, in a cloud session and in CI.
         [--route idea|ticket|incident] [--type feature|fix] [--profile-override lite] \
         [--external-ref 42]
     python cli.py commit-phase --root . --id 0001 --phase a --message "..."
+        # phases d and e commit on the (c) branch: the build PR stays open through them
     python cli.py set-phase --root . --id 0001 --phase b
     python cli.py park --root . --id 0001 --reason "..."
     python cli.py accept-risk --root . --id 0001 --item "auth"   # owner accepts a risk hit
+    python cli.py lock-tests --root . --id 0001     # fix change: reproducing test committed
+    python cli.py unlock-tests --root . --id 0001   # owner only: the test itself was wrong
     python cli.py show --root . --id 0001
     python cli.py list --root .
     python cli.py labels
@@ -60,8 +63,17 @@ def cmd_new_change(args) -> int:
     return 0
 
 
+def _branch_exists(root: Path, branch: str) -> bool:
+    return bool(gitops.run(root, "branch", "--list", "--", branch).strip())
+
+
 def cmd_commit_phase(args) -> int:
-    """Switch to sdlc/<id>/<phase>, stage the change folder (+ extra paths) and commit."""
+    """Switch to the phase's work branch, stage the change folder (+ extra paths) and commit.
+
+    The work branch is ``conventions.work_branch``, not the literal ``sdlc/<id>/<phase>``:
+    phases (d) and (e) commit on ``sdlc/<id>/c``, the build PR that stays open through them
+    (OPERATING_MODEL section 8). A (d)/(e) run therefore never creates a branch: a missing
+    ``sdlc/<id>/c`` means the build phase never ran, which is an error, not a fresh start."""
     root = Path(args.root).resolve()
     change_dir = c.find_change_dir(root, args.id)
     if change_dir is None:
@@ -70,8 +82,18 @@ def cmd_commit_phase(args) -> int:
     if not gitops.is_repo(root):
         print(f"{root} is not a git repository", file=sys.stderr)
         return 2
-    branch = c.branch_name(args.id, args.phase)
+    branch = c.work_branch(args.id, args.phase)
     start = args.start_point or None
+    if args.phase in ("d", "e"):
+        if not _branch_exists(root, branch):
+            print(
+                f"phase ({args.phase}) commits on {branch}, which does not exist: run "
+                f"/sdlc-build for change {args.id} first (the build PR stays open through "
+                "(d) and (e))",
+                file=sys.stderr,
+            )
+            return 2
+        start = None  # switch to the existing build branch; never branch off somewhere else
     gitops.checkout_branch(root, branch, start)
     st = status.read_status(change_dir)
     if st.phase != args.phase:  # idempotent: an unchanged phase leaves status.yaml untouched
@@ -88,6 +110,7 @@ def cmd_commit_phase(args) -> int:
         {
             "id": st.id,
             "branch": branch,
+            "work_branch": branch,
             "commit": sha,
             "pushed": pushed,
             "github_repo": gitops.github_repo(root),
@@ -137,6 +160,31 @@ def cmd_accept_risk(args) -> int:
     st.accept_risk(args.item)
     status.write_status(change_dir, st)
     _emit({"risk_accepted": st.risk_accepted, "status": st.to_dict()})
+    return 0
+
+
+def cmd_lock_tests(args) -> int:
+    """Fix-type change: the reproducing test is committed, so the test paths freeze for the
+    rest of the change (build guide step 25; hooks/test_file_lock.py enforces it)."""
+    loaded = _load(args)
+    if not loaded:
+        return 2
+    change_dir, st = loaded
+    st.lock_tests()
+    status.write_status(change_dir, st)
+    _emit(st.to_dict())
+    return 0
+
+
+def cmd_unlock_tests(args) -> int:
+    """Owner only, in a reviewed PR, when the reproducing test itself was wrong."""
+    loaded = _load(args)
+    if not loaded:
+        return 2
+    change_dir, st = loaded
+    st.unlock_tests()
+    status.write_status(change_dir, st)
+    _emit(st.to_dict())
     return 0
 
 
@@ -207,6 +255,8 @@ def build_parser() -> argparse.ArgumentParser:
         ("park", cmd_park),
         ("show", cmd_show),
         ("accept-risk", cmd_accept_risk),
+        ("lock-tests", cmd_lock_tests),
+        ("unlock-tests", cmd_unlock_tests),
     ):
         s = sub.add_parser(name)
         s.add_argument("--root", default=".")

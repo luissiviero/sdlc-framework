@@ -2,7 +2,7 @@
 description: Connect the SDLC framework to this project in one command — profile and phase adapters into sdlc.yaml, one-command build/test/lint targets (Python or Node detected), guardrail hooks and permissions, CLAUDE.md skeleton, REVIEW.md, changes/, evals/, bands.yaml — committed as the project's first PR (change 0000). Idempotent; re-run to upgrade.
 argument-hint: [--profile standard|full|lite]
 disable-model-invocation: true
-allowed-tools: Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/init/sdlc_init.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/state/cli.py" *), Bash(git *), Bash(gh *), Read, Write, Edit, Glob, Grep, AskUserQuestion
+allowed-tools: Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/init/sdlc_init.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/state/cli.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/pr/cli.py" *), Bash(git *), Bash(gh *), Read, Write, Edit, Glob, Grep, AskUserQuestion
 ---
 
 # /sdlc-init — connect the framework (build guide step 21)
@@ -64,10 +64,12 @@ it, keeping the label; say in the PR body that the framework branch is `sdlc/000
 python "${CLAUDE_PLUGIN_ROOT}/plugin/state/cli.py" commit-phase --root "${CLAUDE_PROJECT_DIR}" --id 0000 --phase a --message "sdlc-init: connect the SDLC framework" --paths sdlc.yaml .claude/settings.json REVIEW.md CLAUDE.md changes ruff.toml evals bands.yaml --start-point <default branch> --push
 ```
 (paths that do not exist, such as an uncreated `ruff.toml`, are skipped). Then open the PR exactly as
-`/sdlc-plan` step 6 does (gh, else the GitHub MCP tool, else the compare URL), title
-`sdlc-init: connect the SDLC framework`, label `sdlc:a-ready`, body = ≤5 bullets: what was
-installed · profile and adapters · detected targets and their health · files the owner should
-review (CLAUDE.md trim, settings) · merge = accept.
+`/sdlc-plan` step 6 does:
+`python "${CLAUDE_PLUGIN_ROOT}/plugin/pr/cli.py" upsert --root "${CLAUDE_PROJECT_DIR}" --id 0000 --phase a`
+(title `intent(0000): <title>`, label `sdlc:a-ready`, the generated ≤5-bullet summary from
+`changes/0000-sdlc-init/intent.md`; routes gh → REST API → compare URL for the owner). In the
+report, add what the summary cannot know: the detected targets and their health, and the
+files the owner should review (CLAUDE.md trim, settings). Merge = accept.
 
 ## 6. After the merge (tell the owner, do not do it)
 - The plugin is declared in `.claude/settings.json`. A local interactive session installs it
@@ -81,4 +83,4 @@ review (CLAUDE.md trim, settings) · merge = accept.
 
 Never edit `.claude/**`, `CLAUDE.md`, `REVIEW.md` or `sdlc.yaml` directly; only the install
 script writes them, and the owner reviews the result in the PR. Never use bypass-permissions
-mode.
+mode. Never notify anyone.

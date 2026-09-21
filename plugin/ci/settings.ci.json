@@ -1,0 +1,55 @@
+{
+  "_comment": "Settings passed with --settings to every unattended `claude -p` phase run in GitHub Actions (build guide step 30; article p.40: containers under a network policy, short-lived scoped tokens, no production credentials). Bare mode (API-key path) reads no settings by itself, so this file is always passed explicitly. It mirrors template/.claude/settings.json (decision 6 layer iii: hooks and permissions come from the pinned framework, never from the PR branch) with the differences a runner allows: the sandbox is mandatory (failIfUnavailable true; the job installs bubblewrap and socat first), the allowed domains are the API, GitHub and the package registries, and the allow-list covers the framework's own scripts so the run never waits on a prompt (--permission-prompts none denies anything else).",
+  "permissions": {
+    "deny": [
+      "Read(.env*)",
+      "Read(**/.env*)",
+      "Read(./secrets/**)",
+      "Read(**/secrets/**)",
+      "Edit(.claude/**)",
+      "Edit(CLAUDE.md)",
+      "Edit(REVIEW.md)",
+      "Edit(sdlc.yaml)",
+      "WebFetch",
+      "WebSearch",
+      "Bash(curl *)",
+      "Bash(wget *)",
+      "Bash(ssh *)",
+      "Bash(scp *)"
+    ],
+    "allow": [
+      "Bash(git *)",
+      "Bash(gh *)",
+      "Bash(python *)",
+      "Bash(python3 *)",
+      "Bash(npm *)",
+      "Bash(npx *)",
+      "Bash(node *)",
+      "Bash(pytest *)",
+      "Bash(ruff *)",
+      "Read",
+      "Glob",
+      "Grep",
+      "Edit",
+      "Write",
+      "Agent"
+    ],
+    "disableBypassPermissionsMode": "disable"
+  },
+  "sandbox": {
+    "enabled": true,
+    "failIfUnavailable": true,
+    "allowUnsandboxedCommands": false,
+    "network": {
+      "allowedDomains": [
+        "api.anthropic.com",
+        "github.com",
+        "*.github.com",
+        "objects.githubusercontent.com",
+        "pypi.org",
+        "files.pythonhosted.org",
+        "registry.npmjs.org"
+      ]
+    }
+  }
+}

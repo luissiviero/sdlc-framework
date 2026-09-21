@@ -31,6 +31,7 @@ VALUES = {
     "BUILD_RULE": "Bash(python -m build *)",
     "TEST_RULE": "Bash(python -m pytest *)",
     "LINT_RULE": "Bash(python -m ruff *)",
+    "TEST_PATHS": '  - "tests/**"\n  - "**/test_*.py"',
     "FRAMEWORK_REPO": "luissiviero/sdlc-framework",
 }
 
@@ -101,6 +102,7 @@ def test_sdlc_yaml_renders_to_documented_keys():
         data["maintain"]["metric"] == "ci_test_failure_rate" and data["maintain"]["runbooks"] == []
     )
     assert data["risk_list"] == ["auth", "data migrations", "money movement", "production config"]
+    assert data["test_paths"] == ["tests/**", "**/test_*.py"]  # step 25: the test-file lock
     assert data["protected_paths"] == [] and data["plan_sync"]["exempt"] == ["*.md"]
     assert data["hooks"]["format_on_edit"] is True
     assert data["plugin"] == {"name": "sdlc", "marketplace": "sdlc-framework", "version": "0.1.0"}

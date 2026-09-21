@@ -81,6 +81,19 @@ def parse_branch(name: str) -> tuple[str, str] | None:
     return (m.group("id"), m.group("phase")) if m else None
 
 
+# Which branch a phase actually works on (OPERATING_MODEL section 8): (a) carries the intent
+# PR, (b) the spec+plan PR, and (c) "the build PR that stays open through (d) and (e)" — so
+# the test and deploy runs commit on sdlc/<id>/c, never on a branch of their own. Phase (f)
+# produces a new intent, which is phase (a) work of that change.
+WORK_PHASE = {"a": "a", "b": "b", "c": "c", "d": "c", "e": "c", "f": "a"}
+
+
+def work_branch(change_id: str, phase: str) -> str:
+    """The branch a run of ``phase`` commits on (``branch_name`` stays the literal name)."""
+    _check_phase(phase)
+    return branch_name(change_id, WORK_PHASE[phase])
+
+
 # --- change folder ------------------------------------------------------------------------
 CHANGES_DIR = "changes"
 ID_RE = re.compile(r"^\d{4}$")

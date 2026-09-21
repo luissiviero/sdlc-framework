@@ -17,6 +17,36 @@ from pathlib import Path
 
 PY_TEST_GLOBS = ("test_*.py", "*_test.py")
 
+# Test-file lock (build guide step 25; OPERATING_MODEL section 8): the globs /sdlc-init writes
+# into `sdlc.yaml: test_paths` for the detected language. They are the paths the PreToolUse
+# hook freezes once a fix-type change has committed its reproducing test. Gitignore-style
+# globs, matched against the project-relative path with forward slashes.
+TEST_PATHS = {
+    "python": [
+        "tests/**",
+        "test/**",
+        "**/test_*.py",
+        "**/*_test.py",
+        "**/conftest.py",
+    ],
+    "node": [
+        "test/**",
+        "tests/**",
+        "__tests__/**",
+        "**/*.test.js",
+        "**/*.spec.js",
+        "**/*.test.ts",
+        "**/*.spec.ts",
+    ],
+    "unknown": ["tests/**", "test/**"],
+}
+
+
+def test_paths(language: str) -> list[str]:
+    """The default test-path globs for a detected language (unknown languages get the two
+    conventional folders; the owner edits `test_paths` in sdlc.yaml afterwards)."""
+    return list(TEST_PATHS.get(language, TEST_PATHS["unknown"]))
+
 
 @dataclass
 class Target:

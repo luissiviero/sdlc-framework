@@ -129,6 +129,7 @@ def test_init_on_fixture_copy_is_idempotent(tmp_path):
     }
     cfg = yamlish.load_file(root / "sdlc.yaml")
     assert cfg["profile"] == "lite" and cfg["commands"]["test"] == "python -m pytest"
+    assert cfg["test_paths"] == detect.TEST_PATHS["python"]  # step 25: the test-file lock
     assert cfg["plugin"]["version"] == sdlc_init.plugin_version()
     settings = json.loads((root / ".claude" / "settings.json").read_text(encoding="utf-8"))
     assert "Bash(python -m pytest *)" in settings["permissions"]["allow"]
@@ -266,6 +267,7 @@ def test_init_on_node_fixture_writes_npm_targets(tmp_path):
     report = _run_init(root)
     cfg = yamlish.load_file(root / "sdlc.yaml")
     assert cfg["commands"] == {"build": "npm run build", "test": "npm test", "lint": "npm run lint"}
+    assert cfg["test_paths"] == detect.TEST_PATHS["node"]  # step 25: the test-file lock
     settings = json.loads((root / ".claude" / "settings.json").read_text(encoding="utf-8"))
     for rule in ("Bash(npm run build *)", "Bash(npm test *)", "Bash(npm run lint *)"):
         assert rule in settings["permissions"]["allow"], rule
@@ -338,10 +340,34 @@ def test_init_upgrade_adds_new_top_level_keys_and_keeps_comments(tmp_path):
     old_style = old_style.replace("protected_paths: []", "protected_paths: [gen/**]  # owner note")
     (root / "sdlc.yaml").write_text(old_style, encoding="utf-8")
     report = _run_init(root)
-    assert report["files"]["sdlc.yaml"] == "updated (added paused, gate)"
+    assert report["files"]["sdlc.yaml"] == "updated (added paused, gate, test_paths)"
     new = (root / "sdlc.yaml").read_text(encoding="utf-8")
     assert "# owner note" in new and new.count("#") >= old_style.count("#") + 5
     cfg = yamlish.load_file(root / "sdlc.yaml")
     assert cfg["paused"] is False and cfg["gate"]["max_iterations"] == 3
     assert cfg["protected_paths"] == ["gen/**"]
+    assert _run_init(root)["files"]["sdlc.yaml"] == "unchanged"
+
+
+def test_init_unknown_language_gets_the_two_conventional_test_folders(tmp_path):
+    (tmp_path / "main.go").write_text("package main\n", encoding="utf-8")
+    _run_init(tmp_path)
+    assert yamlish.load_file(tmp_path / "sdlc.yaml")["test_paths"] == ["tests/**", "test/**"]
+
+
+def test_init_upgrade_adds_the_test_paths_block_once(tmp_path):
+    """A project initialised before step 25 has no `test_paths:`: the re-run appends the block
+    with its template comments, and a second run reports the file unchanged."""
+    root = tmp_path / "proj"
+    shutil.copytree(FIXTURE, root)
+    _run_init(root)
+    text = (root / "sdlc.yaml").read_text(encoding="utf-8")
+    start = text.index("# --- test-file lock")
+    end = text.index("# --- guardrails")
+    (root / "sdlc.yaml").write_text(text[:start] + text[end:], encoding="utf-8")
+    report = _run_init(root)
+    assert report["files"]["sdlc.yaml"] == "updated (added test_paths)"
+    new = (root / "sdlc.yaml").read_text(encoding="utf-8")
+    assert new.count("test_paths:") == 1 and "# --- test-file lock" in new
+    assert yamlish.load_file(root / "sdlc.yaml")["test_paths"] == detect.TEST_PATHS["python"]
     assert _run_init(root)["files"]["sdlc.yaml"] == "unchanged"

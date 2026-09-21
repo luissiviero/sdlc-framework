@@ -81,6 +81,7 @@ def test_status_round_trip_and_schema(tmp_path):
         "iterations",
         "external_ref",
         "risk_accepted",
+        "tests_locked",
         "created_at",
         "updated_at",
         "schema_version",
@@ -88,6 +89,7 @@ def test_status_round_trip_and_schema(tmp_path):
     back = status.read_status(change_dir)
     assert back.phase == "b" and back.iterations == 1 and back.gate.result == "passed"
     assert back.entry_route == "incident" and back.change_type == "fix"
+    assert back.tests_locked is False
     assert back.id == "0001"  # stays a string, never the int 1
 
 
@@ -172,3 +174,18 @@ def test_new_change_adopts_folder_without_status(tmp_path):
     (folder / "CLAUDE.proposed.md").write_text("# x\n", encoding="utf-8")
     change_dir, st = status.new_change(tmp_path, "sdlc-init", change_id="0000")
     assert change_dir == folder and st.slug == "sdlc-init" and (folder / "status.yaml").exists()
+
+
+def test_cli_lock_and_unlock_tests_round_trip(tmp_path, capsys):
+    """Build guide step 25: the build run locks the tests of a fix, only the owner unlocks."""
+    root = str(tmp_path)
+    assert cli.main(["new-change", "--root", root, "--title", "Fix it", "--type", "fix"]) == 0
+    capsys.readouterr()
+    assert cli.main(["lock-tests", "--root", root, "--id", "0001"]) == 0
+    assert json.loads(capsys.readouterr().out)["tests_locked"] is True
+    change_dir = c.find_change_dir(tmp_path, "0001")
+    assert status.read_status(change_dir).tests_locked is True
+    assert cli.main(["unlock-tests", "--root", root, "--id", "0001"]) == 0
+    assert json.loads(capsys.readouterr().out)["tests_locked"] is False
+    assert status.read_status(change_dir).tests_locked is False
+    assert cli.main(["lock-tests", "--root", root, "--id", "0099"]) == 2
