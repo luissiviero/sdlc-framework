@@ -261,6 +261,7 @@ def run(args) -> dict:
 def _init_intent(values: dict[str, str], det: detect_mod.Detection) -> str:
     return f"""# Intent: connect the SDLC framework
 Author: owner. Status: draft. Change id: 0000. Entry route: idea.
+Framework change: yes
 
 ## Problem
 {values["PROJECT_NAME"]} has no shared process for taking a change from idea to production

@@ -44,6 +44,9 @@ class Status:
     parked_reason: str | None = None
     iterations: int = 0
     external_ref: str | None = None
+    # risk-list items the owner has accepted for this change (gate check `risk_list`, step 16):
+    # the change touches them knowingly; the gate no longer parks on them.
+    risk_accepted: list[str] = field(default_factory=list)
     created_at: str = field(default_factory=_now)
     updated_at: str = field(default_factory=_now)
     schema_version: int = SCHEMA_VERSION
@@ -71,6 +74,10 @@ class Status:
             raise ValueError("iterations must be a non-negative integer")
         if not self.title.strip():
             raise ValueError("title must not be empty")
+        if not isinstance(self.risk_accepted, list) or not all(
+            isinstance(r, str) and r.strip() for r in self.risk_accepted
+        ):
+            raise ValueError("risk_accepted must be a list of non-empty strings")
 
     # -- (de)serialisation --------------------------------------------------------------
     def to_dict(self) -> dict[str, Any]:
@@ -115,6 +122,14 @@ class Status:
         self.iterations += 1
         self.touch()
         return self.iterations
+
+    def accept_risk(self, item: str) -> None:
+        """The owner accepts a risk-list hit for this change (recorded, never inferred)."""
+        item = item.strip()
+        if item and item not in self.risk_accepted:
+            self.risk_accepted.append(item)
+        self.touch()
+        self.validate()
 
 
 def status_path(change_dir: Path) -> Path:

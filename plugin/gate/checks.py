@@ -1,0 +1,517 @@
+"""The deterministic checks of the confidence gate (build guide step 16; OPERATING_MODEL
+section 3). Each check is a function ``(GateContext) -> CheckResult``; ``CHECKS_BY_PHASE``
+says which run at the gate of which phase. A failed check carries ``need``: the sentence the
+"What I need from you" block shows the owner (decision 11).
+"""
+
+from __future__ import annotations
+
+import json
+import re
+import subprocess
+import sys
+from collections.abc import Callable
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any
+
+PLUGIN_DIR = Path(__file__).resolve().parent.parent
+if str(PLUGIN_DIR) not in sys.path:
+    sys.path.insert(0, str(PLUGIN_DIR))
+
+from gate import artifacts as art  # noqa: E402
+from gate.diff import Diff  # noqa: E402
+from hooks import plan_sync, protected_paths  # noqa: E402
+from hooks._common import matches  # noqa: E402
+from state import conventions as c  # noqa: E402
+from state.status import Status  # noqa: E402
+
+PLACEHOLDER_COMMAND_RE = re.compile(r"^\s*echo\s+no\s+\w+\s+target\s*$", re.IGNORECASE)
+DEFAULT_COMMAND_TIMEOUT = 900  # seconds per command; sdlc.yaml: gate.command_timeout
+OUTPUT_TAIL = 4000  # characters of command output kept in the gate result
+
+
+@dataclass
+class CheckResult:
+    name: str
+    ok: bool
+    reason: str
+    need: str = ""  # what the owner must do when the check fails
+    details: dict[str, Any] = field(default_factory=dict)
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "name": self.name,
+            "ok": self.ok,
+            "reason": self.reason,
+            "need": self.need,
+            "details": self.details,
+        }
+
+
+@dataclass
+class GateContext:
+    root: Path
+    change_dir: Path
+    phase: str
+    status: Status
+    config: dict[str, Any]
+    diff: Diff | None  # None when the project is not a git repository
+    human_gate: bool
+    diff_error: str = ""
+
+    @property
+    def evidence_dir(self) -> Path:
+        return self.change_dir / art.EVIDENCE_DIR
+
+    def artifact(self, name: str) -> str | None:
+        return art.read_text(self.change_dir / name)
+
+    def gate_setting(self, key: str, default):
+        gate_cfg = self.config.get("gate")
+        if isinstance(gate_cfg, dict) and key in gate_cfg:
+            return gate_cfg[key]
+        return default
+
+
+def _ok(name: str, reason: str, **details) -> CheckResult:
+    return CheckResult(name, True, reason, details=details)
+
+
+def _fail(name: str, reason: str, need: str, **details) -> CheckResult:
+    return CheckResult(name, False, reason, need, details)
+
+
+# --- 1. artifact exists and matches its template ---------------------------------------------
+def check_artifacts(ctx: GateContext) -> CheckResult:
+    problems: list[str] = []
+    for name in art.REQUIRED_ARTIFACTS.get(ctx.phase, ()):
+        text = ctx.artifact(name)
+        if text is None or not text.strip():
+            problems.append(f"{name} is missing or empty")
+            continue
+        required = art.ARTIFACT_SECTIONS[name]
+        missing = art.missing_sections(text, required)
+        if missing:
+            problems.append(f"{name} lacks sections: {', '.join(missing)}")
+        empty = art.empty_sections(text, required)
+        if empty:
+            problems.append(f"{name} has empty sections: {', '.join(empty)}")
+        if name == "intent.md":
+            head = text.split("## ", 1)[0]
+            lacking = [f for f in art.INTENT_HEADER_FIELDS if f not in head]
+            if lacking:
+                problems.append(f"intent.md header lacks {', '.join(lacking)}")
+    if problems:
+        return _fail(
+            "artifacts",
+            "; ".join(problems),
+            "Complete the phase artifact so it matches its template (intent-template / "
+            "plan-template skills; spec sections in plugin/gate/artifacts.py).",
+            problems=problems,
+        )
+    return _ok("artifacts", "every required artifact exists and has its template sections")
+
+
+# --- 2. no open flagged concern in spec.md (step 23: the deterministic gate check) ------------
+def check_open_concerns(ctx: GateContext) -> CheckResult:
+    spec = ctx.artifact("spec.md")
+    if spec is None:
+        return _ok("open_concerns", "no spec.md at this gate")
+    concerns = art.open_concerns(spec)
+    if concerns:
+        return _fail(
+            "open_concerns",
+            f"{len(concerns)} flagged concern(s) still open in spec.md",
+            "Close each open item under '## Flagged concerns' with a decision "
+            "(article p.14 step 4), or leave a review comment for /sdlc-fix.",
+            open=concerns,
+        )
+    return _ok("open_concerns", "no open flagged concern")
+
+
+# --- 3. tests/build/lint green via the sdlc.yaml commands (step 14: refuse to enter (c)) -----
+def _commands(ctx: GateContext) -> dict[str, str]:
+    cmds = ctx.config.get("commands")
+    out: dict[str, str] = {}
+    if isinstance(cmds, dict):
+        for key in ("build", "test", "lint"):
+            value = cmds.get(key)
+            if isinstance(value, str) and value.strip() and not PLACEHOLDER_COMMAND_RE.match(value):
+                out[key] = value.strip()
+    return out
+
+
+def run_command(command: str, root: Path, timeout: int) -> dict[str, Any]:
+    """Run one project target through the platform shell (the targets are the owner's own
+    one-liners: `npm test`, `python -m pytest`; on Windows the .cmd shims need cmd.exe)."""
+    try:
+        proc = subprocess.run(
+            command,
+            cwd=str(root),
+            shell=True,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=timeout,
+        )
+        output = (proc.stdout or "") + (proc.stderr or "")
+        return {"command": command, "exit_code": proc.returncode, "output": output[-OUTPUT_TAIL:]}
+    except subprocess.TimeoutExpired as exc:
+        out = (exc.stdout or b"") if isinstance(exc.stdout, bytes) else (exc.stdout or "")
+        text = out.decode("utf-8", "replace") if isinstance(out, bytes) else str(out)
+        return {
+            "command": command,
+            "exit_code": None,
+            "output": text[-OUTPUT_TAIL:],
+            "timeout": timeout,
+        }
+    except OSError as exc:
+        return {"command": command, "exit_code": None, "output": repr(exc)}
+
+
+def check_commands(ctx: GateContext) -> CheckResult:
+    cmds = _commands(ctx)
+    missing = [k for k in ("build", "test", "lint") if k not in cmds]
+    if missing:
+        return _fail(
+            "commands",
+            f"sdlc.yaml has no usable {', '.join(missing)} target",
+            "Give the project one-command build/test/lint targets in sdlc.yaml "
+            "(re-run /sdlc-init or edit sdlc.yaml in a reviewed PR); the framework does not "
+            "enter phase (c) without them (article p.27 step 1).",
+            missing=missing,
+        )
+    timeout = int(ctx.gate_setting("command_timeout", DEFAULT_COMMAND_TIMEOUT))
+    runs = {name: run_command(cmd, ctx.root, timeout) for name, cmd in cmds.items()}
+    red = {n: r for n, r in runs.items() if r["exit_code"] != 0}
+    if red:
+        summary = ", ".join(
+            f"{n} ({'timed out' if r['exit_code'] is None else 'exit ' + str(r['exit_code'])})"
+            for n, r in red.items()
+        )
+        return _fail(
+            "commands",
+            f"not green: {summary}",
+            "Make the failing target pass (fix the code, not the test) and re-run the gate. "
+            "The tail of each output is in the gate result.",
+            runs=runs,
+        )
+    return _ok("commands", "build, test and lint exit 0", runs=runs)
+
+
+# --- 4. evidence present (step 28) --------------------------------------------------------
+def check_evidence(ctx: GateContext) -> CheckResult:
+    required = art.REQUIRED_EVIDENCE.get(ctx.phase, ())
+    if not required:
+        return _ok("evidence", "no evidence required at this gate")
+    missing = []
+    for name in required:
+        path = ctx.evidence_dir / name
+        if not path.is_file() or not path.read_text(encoding="utf-8", errors="replace").strip():
+            missing.append(name)
+    if missing:
+        return _fail(
+            "evidence",
+            f"evidence/ lacks {', '.join(missing)}",
+            "Phase (d) must leave the literal toolchain output and the verifier report in "
+            "changes/<id>-<slug>/evidence/ (article p.28–29); re-run the phase.",
+            missing=missing,
+        )
+    return _ok("evidence", f"evidence present: {', '.join(required)}")
+
+
+# --- 5. no Important review finding (step 26; the tally of p.33) ---------------------------
+def load_findings(path: Path) -> tuple[dict[str, Any] | None, str]:
+    """(data, error). Format (defined here, produced by the review pass in B3):
+    {"schema_version": 1, "head": "<sha>", "findings": [{"pass": "bugs|security|compliance",
+     "severity": "important|nit", "file": "...", "line": N, "summary": "..."}],
+     "tally": {"important": N, "nit": M}}"""
+    if not path.is_file():
+        return None, "missing"
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        return None, f"unreadable: {exc}"
+    if not isinstance(data, dict) or not isinstance(data.get("findings"), list):
+        return None, "malformed: expected an object with a 'findings' list"
+    return data, ""
+
+
+def important_findings(data: dict[str, Any]) -> list[dict[str, Any]]:
+    return [
+        f
+        for f in data["findings"]
+        if isinstance(f, dict) and str(f.get("severity", "")).lower() == "important"
+    ]
+
+
+def check_findings(ctx: GateContext) -> CheckResult:
+    path = ctx.evidence_dir / art.REVIEW_FINDINGS
+    data, error = load_findings(path)
+    if data is None:
+        if error == "missing" and ctx.phase not in art.FINDINGS_REQUIRED_AT:
+            return _ok("findings", "no review findings yet (the review pass runs in phase e)")
+        return _fail(
+            "findings",
+            f"evidence/{art.REVIEW_FINDINGS} {error}",
+            "Run the review passes (REVIEW.md) so they publish their findings JSON.",
+        )
+    important = important_findings(data)
+    if important:
+        return _fail(
+            "findings",
+            f"{len(important)} Important review finding(s) open",
+            "Fix every Important finding (or have the owner waive it in a review comment), "
+            "then re-run the review pass.",
+            important=important[:20],
+        )
+    tally = data.get("tally") if isinstance(data.get("tally"), dict) else {}
+    return _ok("findings", "no Important review finding", tally=tally)
+
+
+# --- 6. plan.md <-> diff (step 12/16; article p.17 'the merged diff still matches plan.md') -----
+def _source_files(ctx: GateContext, files: list[str]) -> list[str]:
+    exempt = plan_sync.exempt_patterns(ctx.config)
+    return [f for f in files if not any(matches(p, f) for p in exempt)]
+
+
+def check_plan_sync(ctx: GateContext) -> CheckResult:
+    if ctx.diff is None:
+        return _fail("plan_sync", ctx.diff_error, "Run the gate inside the project's git repo.")
+    plan = ctx.artifact("plan.md") or ""
+    planned = art.planned_files(plan)
+    source = _source_files(ctx, ctx.diff.files)
+    change_id = ctx.status.id
+    unplanned = [f for f in source if not any(_same_path(f, p) for p in planned)]
+    # the per-commit rule of the plan-sync hook, re-applied to every commit on the branch
+    # (catches commits driven from scripts the hook could not parse, NOTES section 9)
+    branch = c.branch_name(change_id, "c")
+    exempt = plan_sync.exempt_patterns(ctx.config)
+    unsynced = [
+        commit.sha[:10]
+        for commit in ctx.diff.commits
+        if plan_sync.check(branch, commit.files, exempt).block
+    ]
+    problems = []
+    if unplanned:
+        problems.append(f"{len(unplanned)} changed file(s) not listed in plan.md")
+    if unsynced:
+        problems.append(f"{len(unsynced)} commit(s) changed source without plan.md")
+    if problems:
+        return _fail(
+            "plan_sync",
+            "; ".join(problems),
+            "Update '## Files that change' in plan.md to match the diff (article p.16 step 7) "
+            "in the same commit as the departure, or revert the unplanned change.",
+            unplanned=unplanned[:50],
+            unsynced_commits=unsynced,
+        )
+    unrealised = [p for p in planned if not any(_same_path(f, p) for f in ctx.diff.files)]
+    return _ok(
+        "plan_sync",
+        "every changed source file is in plan.md",
+        planned_but_unchanged=unrealised,
+    )
+
+
+def _same_path(changed: str, planned: str) -> bool:
+    changed = changed.lower().strip("/")
+    planned = planned.lower().strip("/")
+    if changed == planned:
+        return True
+    if any(ch in planned for ch in "*?["):
+        return matches(planned, changed)
+    return planned.endswith("/") and changed.startswith(planned)
+
+
+# --- 7. no diff touching the guardrail files (OPERATING_MODEL section 3) ------------------------
+def check_guardrails(ctx: GateContext) -> CheckResult:
+    if ctx.diff is None:
+        return _fail("guardrails", ctx.diff_error, "Run the gate inside the project's git repo.")
+    patterns = protected_paths.protected_patterns(ctx.config)
+    touched = [f for f in ctx.diff.files if any(matches(p, f) for p in patterns)]
+    if not touched:
+        return _ok("guardrails", "the diff does not touch a guardrail file")
+    intent = ctx.artifact("intent.md") or ""
+    if ctx.status.id == c.INIT_CHANGE_ID or art.is_framework_change(intent):
+        return _ok(
+            "guardrails",
+            "guardrail files changed by a declared framework change",
+            touched=touched,
+        )
+    return _fail(
+        "guardrails",
+        f"the diff touches guardrail file(s): {', '.join(touched[:10])}",
+        "Guardrail files (.claude/**, CLAUDE.md, REVIEW.md, sdlc.yaml, protected_paths) are "
+        "changed by the owner in a reviewed PR. Revert them here, or mark the intent with "
+        "'Framework change: yes' if this change is the framework itself.",
+        touched=touched,
+    )
+
+
+# --- 8. risk list (step 5; OPERATING_MODEL section 9) ------------------------------------------
+def _tokens(text: str) -> list[str]:
+    return re.findall(r"[a-z0-9]+", text.lower())
+
+
+def _phrase_in(tokens: list[str], phrase: list[str]) -> bool:
+    n = len(phrase)
+    for i in range(len(tokens) - n + 1):
+        if all(_tok_eq(tokens[i + j], phrase[j]) for j in range(n)):
+            return True
+    return False
+
+
+def _tok_eq(a: str, b: str) -> bool:
+    return a == b or a == b + "s" or b == a + "s"
+
+
+def risk_hits(items: list[str], paths: list[str], texts: dict[str, str]) -> dict[str, list[str]]:
+    """{risk item: [where it matched]}; whole-token phrase match, plural-tolerant, so 'auth'
+    matches 'auth/' and 'auth_token' but not 'author'."""
+    hits: dict[str, list[str]] = {}
+    for item in items:
+        phrase = _tokens(item)
+        if not phrase:
+            continue
+        where = [p for p in paths if _phrase_in(_tokens(p), phrase)]
+        where += [
+            f"{name}: text" for name, text in texts.items() if _phrase_in(_tokens(text), phrase)
+        ]
+        if where:
+            hits[item] = where
+    return hits
+
+
+def check_risk_list(ctx: GateContext) -> CheckResult:
+    items = ctx.config.get("risk_list") or []
+    if not isinstance(items, list):
+        return _fail("risk_list", "sdlc.yaml: risk_list must be a list", "Fix sdlc.yaml.")
+    items = [str(i) for i in items if str(i).strip()]
+    accepted = {a.lower().strip() for a in ctx.status.risk_accepted}
+    paths = ctx.diff.files if ctx.diff else []
+    texts = {}
+    spec = ctx.artifact("spec.md")
+    if spec:
+        texts["spec.md"] = spec
+    hits = risk_hits(items, paths, texts)
+    live = {k: v for k, v in hits.items() if k.lower().strip() not in accepted}
+    if live:
+        return _fail(
+            "risk_list",
+            "risk-list hit: " + "; ".join(f"'{k}' in {', '.join(v[:3])}" for k, v in live.items()),
+            "Review the change with the risk in mind. To let it continue, accept the item for "
+            'this change: `python "${CLAUDE_PLUGIN_ROOT}/plugin/state/cli.py" accept-risk '
+            f'--root . --id {ctx.status.id} --item "<item>"` (recorded in status.yaml).',
+            hits=live,
+            accepted=sorted(accepted),
+        )
+    return _ok("risk_list", "no risk-list item touched", accepted=sorted(accepted))
+
+
+# --- 9. the adversarial reviewer's verdict (step 17; an input, never run by the gate) ---------
+def load_verdict(path: Path) -> tuple[dict[str, Any] | None, str]:
+    """Format written by the adversarial-reviewer agent:
+    {"schema_version": 1, "phase": "c", "head": "<sha>", "verdict": "continue|escalate",
+     "reasons": [...], "classification": "routine|non-routine",
+     "classification_reasons": [...], "at": "<iso>"}"""
+    if not path.is_file():
+        return None, "missing"
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        return None, f"unreadable: {exc}"
+    if not isinstance(data, dict) or data.get("verdict") not in ("continue", "escalate"):
+        return None, "malformed: 'verdict' must be 'continue' or 'escalate'"
+    if data.get("classification") not in ("routine", "non-routine"):
+        return None, "malformed: 'classification' must be 'routine' or 'non-routine'"
+    return data, ""
+
+
+def check_adversarial_verdict(ctx: GateContext) -> CheckResult:
+    path = ctx.evidence_dir / art.ADVERSARIAL_VERDICT.format(phase=ctx.phase)
+    data, error = load_verdict(path)
+    if data is None:
+        if error == "missing" and ctx.human_gate:
+            return _ok("adversarial_review", "human gate: no adversarial verdict required")
+        return _fail(
+            "adversarial_review",
+            f"evidence/{path.name} {error}",
+            "Run the adversarial-reviewer agent in a fresh context for this phase; it writes "
+            "the verdict JSON.",
+        )
+    head = ctx.diff.head if ctx.diff else None
+    if head and data.get("head") and not str(head).startswith(str(data["head"])):
+        return _fail(
+            "adversarial_review",
+            f"verdict is for commit {str(data['head'])[:10]}, HEAD is {head[:10]}",
+            "Re-run the adversarial-reviewer on the current HEAD (a verdict never outlives "
+            "the diff it judged).",
+            stale=True,
+        )
+    reasons = [str(r) for r in (data.get("reasons") or [])]
+    if data["verdict"] == "escalate":
+        return _fail(
+            "adversarial_review",
+            "adversarial reviewer says escalate: " + ("; ".join(reasons) or "no reason given"),
+            "Read the reviewer's reasons and decide: fix and re-run, or accept in review.",
+            reasons=reasons,
+            classification=data["classification"],
+        )
+    return _ok(
+        "adversarial_review",
+        "adversarial reviewer says continue",
+        classification=data["classification"],
+        reasons=reasons,
+    )
+
+
+# --- which checks at which gate --------------------------------------------------------------
+Check = Callable[[GateContext], CheckResult]
+CHECKS_BY_PHASE: dict[str, tuple[Check, ...]] = {
+    "a": (check_artifacts, check_guardrails, check_risk_list),
+    "b": (
+        check_artifacts,
+        check_open_concerns,
+        check_commands,
+        check_guardrails,
+        check_risk_list,
+        check_adversarial_verdict,
+    ),
+    "c": (
+        check_artifacts,
+        check_open_concerns,
+        check_commands,
+        check_evidence,
+        check_findings,
+        check_plan_sync,
+        check_guardrails,
+        check_risk_list,
+        check_adversarial_verdict,
+    ),
+    "d": (
+        check_artifacts,
+        check_open_concerns,
+        check_commands,
+        check_evidence,
+        check_findings,
+        check_plan_sync,
+        check_guardrails,
+        check_risk_list,
+        check_adversarial_verdict,
+    ),
+    "e": (
+        check_artifacts,
+        check_open_concerns,
+        check_commands,
+        check_evidence,
+        check_findings,
+        check_plan_sync,
+        check_guardrails,
+        check_risk_list,
+        check_adversarial_verdict,
+    ),
+    "f": (),
+}
