@@ -90,7 +90,7 @@ When a confidence gate fails, a run limit is hit (iterations, wall-clock, budget
 
 ## 7. Review queue
 
-The queue is the PR list filtered by `sdlc:*-ready` (a run stopped at a human gate) and `sdlc:needs-human` (parked). Every PR the framework opens or updates starts with a ≤5-bullet summary: what changed and why, evidence status, review findings by severity, plan conformance, and — if parked — what is needed. A scheduled job rewrites the body of one pinned issue ("SDLC review queue") with the digest. Nothing pushes to the owner: the framework never comments, assigns, @mentions or requests a review; the owner sets the repository watch to Custom (participating and @mentions), and may turn off GitHub's default e-mail for failed Actions runs — a parked phase is a green job by design (only an infrastructure failure is red).
+The queue is the PR list filtered by `sdlc:*-ready` (a run stopped at a human gate) and `sdlc:needs-human` (parked). Every PR the framework opens or updates starts with a ≤5-bullet summary: what changed and why, evidence status, review findings by severity, plan conformance, and — if parked — what is needed. A scheduled job rewrites the body of one pinned issue ("SDLC review queue") with the digest. Nothing pushes to the owner: the framework never comments, assigns, @mentions or requests a review; the owner sets the repository watch to "Participating and @mentions", and may turn off GitHub's default e-mail for failed Actions runs — a parked phase is a green job by design (only an infrastructure failure is red).
 
 ## 8. Conventions
 
