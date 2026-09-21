@@ -37,7 +37,10 @@ What one run does, in order:
 6. stores the JSON result as ``changes/<id>-<slug>/evidence/claude-<phase>.json``, records
    ``total_cost_usd`` with ``gate/cli.py record-spend``, and validates the findings file
    after a review pass;
-7. reads ``evidence/gate-<phase>.json`` and, on ``continue``, dispatches the next workflow
+7. opens or updates the phase's pull request with ``pr/cli.py upsert`` (idempotent: an
+   existing PR only has its body and its gate label refreshed), so a parked run is a queue
+   item even when the model's session never reached that step;
+8. reads ``evidence/gate-<phase>.json`` and, on ``continue``, dispatches the next workflow
    with the change id and the next phase's work branch as ``head_ref`` (the only hand-over
    GitHub allows from the workflow token; ``head_ref`` keys the concurrency group).
 
@@ -281,6 +284,71 @@ def check_approval(repo: str, change_id: str, run_phase: str, env: dict[str, str
         return None
     ok, who = label_applied_by_a_human(repo, int(number), label)
     return None if ok else f"{label} on PR #{number}: {who}"
+
+
+# --- what the runner leaves in the working directory (first live design run, 2026-09-21) -----
+# Two kinds of untracked entry appear in a phase job's checkout and belong to nobody:
+#   * ``framework/`` — the pinned framework the workflow checks out beside the project
+#     (actions/checkout with ``path: framework``); it is a nested repository, so git lists it
+#     as one untracked entry;
+#   * the placeholder dotfiles Claude Code's sandbox creates in the working directory.
+# Neither is ever committed (commit-phase stages the change folder only), but both made the
+# gate's ``design_scope`` check park the run. They are excluded per checkout, in
+# ``.git/info/exclude``: a local file git never commits, so the project's own .gitignore is
+# left alone. Root-anchored, so a project's real ``src/.env`` is untouched.
+RUNNER_EXCLUDE_HEADER = (
+    "# sdlc framework: entries the phase job leaves in the checkout "
+    "(first live design run, 2026-09-21)"
+)
+RUNNER_EXCLUDES = (
+    "/framework/",
+    "/.bash_profile",
+    "/.bashrc",
+    "/.env",
+    "/.gitconfig",
+    "/.gitmodules",
+    "/.idea/",
+    "/.mcp.json",
+    "/.profile",
+    "/.ripgreprc",
+    "/.vscode/",
+    "/.zprofile",
+    "/.zshrc",
+)
+
+
+def write_git_exclude(root: Path) -> dict[str, Any]:
+    """Append the runner's own untracked entries to ``<root>/.git/info/exclude``.
+
+    Idempotent: an entry the file already carries is not written again, so a second run of
+    the same checkout adds nothing.
+    """
+    from state import gitops
+
+    out: dict[str, Any] = {"added": [], "path": None}
+    if not gitops.is_repo(root):
+        return {**out, "note": "not a git checkout: nothing to exclude"}
+    git_dir = Path(root) / ".git"
+    if git_dir.is_file():  # a worktree or submodule: .git points at the real directory
+        return {**out, "note": ".git is a file (worktree): the exclude file was not touched"}
+    path = git_dir / "info" / "exclude"
+    out["path"] = str(path)
+    try:
+        current = path.read_text(encoding="utf-8") if path.is_file() else ""
+        have = {line.strip() for line in current.splitlines()}
+        missing = [entry for entry in RUNNER_EXCLUDES if entry not in have]
+        if not missing:
+            return out
+        body = "" if not current or current.endswith("\n") else "\n"
+        if RUNNER_EXCLUDE_HEADER not in have:
+            body += RUNNER_EXCLUDE_HEADER + "\n"
+        body += "".join(f"{entry}\n" for entry in missing)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8", newline="\n") as handle:
+            handle.write(body)
+    except OSError as exc:
+        return {**out, "note": f"could not write the exclude file: {exc}"}
+    return {**out, "added": missing}
 
 
 # --- the work branch ----------------------------------------------------------------------
@@ -631,6 +699,7 @@ def run_phase(args, env: dict[str, str]) -> int:
     change_id, reason = resolve_change_id(args.id, args.head_ref, phase)
     if reason:
         return _skip(reason)
+    excluded = write_git_exclude(root)
     branch = prepare_branch(root, change_id, phase)
     change_dir, st, config, reason = guard(root, change_id, phase, args.repo, env)
     if reason:
@@ -683,7 +752,15 @@ def run_phase(args, env: dict[str, str]) -> int:
         env=env,
     )
     if args.dry_run:
-        _emit({"phase": phase, "change_id": change_id, "argv": argv, "branch": branch})
+        _emit(
+            {
+                "phase": phase,
+                "change_id": change_id,
+                "argv": argv,
+                "branch": branch,
+                "git_exclude": excluded,
+            }
+        )
         return EXIT_OK
 
     # only a real run creates the labels it will apply (a dry run contacts nothing)
@@ -721,6 +798,9 @@ def run_phase(args, env: dict[str, str]) -> int:
             file=sys.stderr,
         )
         return EXIT_FAILED
+    # the PR is where the owner meets the change, parked or not: open it here rather than
+    # trusting the run to have done it (the parked run of 2026-09-21 did not)
+    pr = ensure_pr(plugin_dir, root, change_id, phase, args.repo, env)
     handed = hand_over(args, result, phase, change_id)
     _emit(
         {
@@ -731,6 +811,7 @@ def run_phase(args, env: dict[str, str]) -> int:
             "cost_usd": cost,
             "dispatched": handed,
             "labels": labels,
+            "pr": pr,
         }
     )
     return EXIT_OK
@@ -875,6 +956,39 @@ def park_and_publish(
         ["upsert", "--root", str(root), "--id", st.id, "--phase", branch_phase, "--draft"],
     )  # fmt: skip
     return out
+
+
+# --- the phase's pull request (the surface of OPERATING_MODEL section 4.1) --------------------
+# A parked run of 2026-09-21 pushed sdlc/0001/b with the evidence on it but opened no PR: the
+# runbook asks the model to call ``pr/cli.py upsert`` and the model's session ended before it
+# did. The hand-over does it itself now, whatever the session did: ``upsert`` is idempotent,
+# so a PR that already exists only has its body and its gate label brought up to date.
+PR_DRAFT_PHASES = ("c",)  # the build PR opens as a draft; (b), (d) and (e) open plain
+
+
+def ensure_pr(
+    plugin_dir: Path, root: Path, change_id: str, phase: str, repo: str, env: dict[str, str]
+) -> dict[str, Any]:
+    """Open or update the phase's PR for the work branch. Never marks one ready for review:
+    that is the owner's move at a human gate."""
+    branch_phase = BRANCH_PHASE.get(phase, phase)
+    head = work_branch_for(change_id, phase)
+    out: dict[str, Any] = {"head": head, "phase": branch_phase, "existed": None}
+    github = _github()
+    if github is None:
+        return {**out, "ok": False, "reason": "plugin/pr/github.py is not available"}
+    if not _token(env) and not github.gh_path():
+        return {**out, "ok": False, "reason": "no gh and no GITHUB_TOKEN/GH_TOKEN: no PR route"}
+    number = None
+    if repo:
+        found = github.find_open_pr(repo, head)
+        number = found.get("number")
+        out["existed"] = bool(number)
+        out["number"] = number
+    argv = ["upsert", "--root", str(root), "--id", change_id, "--phase", branch_phase]
+    if phase in PR_DRAFT_PHASES:
+        argv.append("--draft")
+    return {**out, **_cli_call(plugin_dir / "plugin" / "pr" / "cli.py", argv)}
 
 
 # --- CLI --------------------------------------------------------------------------------------

@@ -14,6 +14,9 @@ commands:
   build: "{{BUILD_CMD}}"
   test: "{{TEST_CMD}}"
   lint: "{{LINT_CMD}}"
+  # one command that installs what test/build/lint need; the CI phase jobs run it before
+  # the phase; empty = nothing to install
+  setup: "{{SETUP_CMD}}"
 
 # --- phase adapters (OPERATING_MODEL section 9; decision 19) ---------------------------------
 deploy:

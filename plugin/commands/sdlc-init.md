@@ -16,7 +16,10 @@ python "${CLAUDE_PLUGIN_ROOT}/plugin/init/sdlc_init.py" --root "${CLAUDE_PROJECT
 Detection covers Python (pyproject/pytest/ruff/flake8) and Node (`package.json` scripts →
 `npm test`, `npm run lint`, `npm run build`). For other languages, or when a target is
 reported as `none`, ask the owner for the command and pass it with `--build/--test/--lint`;
-the gate does not enter phase (c) without all three.
+the gate does not enter phase (c) without all three. Detection also proposes `commands.setup`
+— the one command that installs what those three need (`python -m pip install -e ".[dev]"`,
+`npm ci`, ...), which the CI phase jobs run before every phase; override it with `--setup`
+and pass `--setup ""` when the project has nothing to install.
 
 ## 1. Ask the owner (one question round, defaults in brackets)
 - profile [standard]: standard (owner merges at a, b, e) · full (all five gates) · lite (a, e)
@@ -24,7 +27,7 @@ the gate does not enter phase (c) without all three.
   regenerate report · promote to paper trading · deploy service · none
 - real production? [no] — turns on the release label and the production gate (B4)
 - maintain metric and source [ci_test_failure_rate from github-actions]
-- confirm or override the detected build/test/lint commands
+- confirm or override the detected build/test/lint commands and the setup (install) command
 
 ## 2. CLAUDE.md proposal (the hook denies direct writes to CLAUDE.md, so write it here)
 If `CLAUDE.md` does not exist yet: generate its content the way `/init` does (use the `init`
@@ -39,7 +42,7 @@ sections, and the owner trims it in the PR.
 
 ## 3. Install
 ```
-python "${CLAUDE_PLUGIN_ROOT}/plugin/init/sdlc_init.py" --root "${CLAUDE_PROJECT_DIR}" --profile <profile> --deploy-action "<action>" --deploy-production <true|false> --maintain-metric <metric> --maintain-source <source> [--claude-md-from changes/0000-sdlc-init/CLAUDE.proposed.md] [--build "<cmd>"] [--test "<cmd>"] [--lint "<cmd>"]
+python "${CLAUDE_PLUGIN_ROOT}/plugin/init/sdlc_init.py" --root "${CLAUDE_PROJECT_DIR}" --profile <profile> --deploy-action "<action>" --deploy-production <true|false> --maintain-metric <metric> --maintain-source <source> [--claude-md-from changes/0000-sdlc-init/CLAUDE.proposed.md] [--build "<cmd>"] [--test "<cmd>"] [--lint "<cmd>"] [--setup "<cmd>"]
 ```
 It writes `sdlc.yaml`, `.claude/settings.json` (permissions + the pinned plugin
 declaration; hooks come from the plugin), `REVIEW.md`, `changes/README.md`, builds

@@ -20,6 +20,7 @@ from pathlib import Path
 import pytest
 from ci import auth, run_phase
 
+from gate import preflight
 from state import status as status_mod
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -555,10 +556,20 @@ def fake_cli(bindir: Path) -> str:
     return str(bindir / ("claude.cmd" if os.name == "nt" else "claude"))
 
 
+def no_pr_route(monkeypatch) -> None:
+    """The hand-over asks GitHub whether the phase's PR is open; in a test it never is and
+    nothing may leave the machine."""
+    from pr import github
+
+    monkeypatch.setattr(github, "gh_path", lambda: None)
+    monkeypatch.setattr(github, "find_open_pr", lambda repo, head: {"number": None, "labels": []})
+
+
 def test_full_run_stores_the_transcript_records_spend_and_hands_over(
     project, fake_claude, monkeypatch, capsys
 ):
     root, change = project
+    no_pr_route(monkeypatch)
     write(change / "evidence" / "gate-b.json", json.dumps(GATE_FILE))
     monkeypatch.setenv("FAKE_CLAUDE_RESULT", json.dumps(FAKE_RESULT))
     env = dict(os.environ, **KEY_ENV)
@@ -790,3 +801,177 @@ def test_the_prompt_precedes_every_list_valued_flag(tmp_path):
     for flag in ("--allowedTools", "--disallowedTools"):
         assert argv.index(flag) > 2
     assert argv[-1] != "/sdlc:sdlc-design 0001"
+
+
+# --- 7. the untracked entries the runner itself leaves behind (2026-09-21) -----------------------
+def test_the_run_excludes_the_runner_s_own_untracked_entries_once(project):
+    """``framework/`` (the pinned framework checked out beside the project) and the sandbox's
+    placeholder dotfiles are untracked, are nobody's change and parked the first live design
+    run. Each is written to .git/info/exclude once."""
+    root, _change = project
+    first = run_phase.write_git_exclude(root)
+    assert first["added"] == list(run_phase.RUNNER_EXCLUDES)
+    text = Path(first["path"]).read_text(encoding="utf-8")
+    assert run_phase.RUNNER_EXCLUDE_HEADER in text
+    for entry in ("/framework/", "/.bashrc", "/.vscode/", "/.mcp.json"):
+        assert f"\n{entry}\n" in f"\n{text}"
+
+    second = run_phase.write_git_exclude(root)
+    assert second["added"] == []
+    assert Path(second["path"]).read_text(encoding="utf-8") == text
+
+    # and git really stops reporting them
+    (root / ".bashrc").write_text("", encoding="utf-8")
+    (root / "framework").mkdir()
+    (root / "framework" / "README.md").write_text("pinned framework\n", encoding="utf-8")
+    from gate import diff as gate_diff
+
+    untracked = gate_diff.untracked_files(root)
+    assert ".bashrc" not in untracked and "framework/" not in untracked
+
+
+def test_write_git_exclude_outside_a_repository_is_a_no_op(tmp_path):
+    out = run_phase.write_git_exclude(tmp_path)
+    assert out["added"] == [] and "not a git checkout" in out["note"]
+
+
+# --- 8. the project's own toolchain, installed before the phase (2026-09-21) --------------------
+PROJECT_SETUP = ROOT / "plugin" / "ci" / "project_setup.py"
+
+
+@pytest.mark.parametrize("name", PHASE_WORKFLOWS)
+def test_phase_workflow_installs_the_project_toolchain_before_the_phase(name):
+    """The runner has neither the project nor pytest/ruff: without this step the gate's
+    `commands` check fails with "No module named pytest" (first live design run)."""
+    steps = workflow(name).split("    steps:\n", 1)[1]
+    assert "run: python framework/plugin/ci/project_setup.py --root ." in steps
+    assert steps.index("runner_setup.py") < steps.index("project_setup.py")
+    assert steps.index("project_setup.py") < steps.index("run_phase.py")
+
+
+def set_setup_command(root: Path, command: str) -> None:
+    """Rewrite ``commands.setup`` in the project's sdlc.yaml (the owner's own one-liner)."""
+    text = (root / "sdlc.yaml").read_text(encoding="utf-8")
+    escaped = command.replace("\\", "\\\\").replace('"', '\\"')
+    text = re.sub(r"(?m)^  setup: .*$", f'  setup: "{escaped}"', text, count=1)
+    (root / "sdlc.yaml").write_text(text, encoding="utf-8")
+
+
+def test_project_setup_runs_the_configured_command(project):
+    root, _change = project
+    write(root / "install.py", "print('installed')\n")
+    set_setup_command(root, f'"{sys.executable}" install.py')
+    proc = run_py(str(PROJECT_SETUP), "--root", str(root), cwd=root)
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    out = json.loads(proc.stdout)
+    assert out["ok"] is True and out["exit_code"] == 0 and "installed" in out["output"]
+
+
+def test_project_setup_fails_when_the_command_fails(project):
+    root, _change = project
+    write(root / "install.py", "import sys\nprint('boom')\nsys.exit(3)\n")
+    set_setup_command(root, f'"{sys.executable}" install.py')
+    proc = run_py(str(PROJECT_SETUP), "--root", str(root), cwd=root)
+    assert proc.returncode == 1
+    out = json.loads(proc.stdout)
+    assert out["ok"] is False and out["exit_code"] == 3 and "boom" in out["output"]
+
+
+def test_project_setup_with_no_command_is_skipped_not_failed(project):
+    root, _change = project
+    set_setup_command(root, "")
+    proc = run_py(str(PROJECT_SETUP), "--root", str(root), cwd=root)
+    assert proc.returncode == 0
+    assert json.loads(proc.stdout) == {"skipped": "no setup command"}
+
+
+def test_preflight_reports_the_setup_command(project):
+    """No new check: the owner just sees what the phase job installs (step 18)."""
+    root, _change = project
+    report = preflight.run_preflight(root, ROOT)
+    assert report["setup_command"] == "python -m pip install -e . pytest ruff"
+
+
+# --- 9. the phase's pull request is opened by the hand-over, not by the run (2026-09-21) --------
+def upsert_recorder(monkeypatch) -> list:
+    """Record every plugin CLI the hand-over calls instead of running it."""
+    calls: list = []
+
+    def fake_cli_call(script, argv, timeout=600):
+        calls.append((Path(script).name, list(argv)))
+        return {"ok": True, "reason": ""}
+
+    monkeypatch.setattr(run_phase, "_cli_call", fake_cli_call)
+    return calls
+
+
+def full_run(root: Path, change: Path, fake_claude, monkeypatch, phase: str = "b") -> dict:
+    write(change / "evidence" / f"gate-{phase}.json", json.dumps({**GATE_FILE, "phase": phase}))
+    monkeypatch.setenv("FAKE_CLAUDE_RESULT", json.dumps(FAKE_RESULT))
+    args = Args(
+        root=str(root), phase=phase, dry_run=False, no_dispatch=True, claude=fake_cli(fake_claude)
+    )
+    env = dict(os.environ, **KEY_ENV, GITHUB_TOKEN=FAKE_TOKEN)
+    assert run_phase.run_phase(args, env) == run_phase.EXIT_OK
+    return args
+
+
+def test_the_hand_over_opens_the_phase_pr_when_the_run_left_none(
+    project, fake_claude, monkeypatch, capsys
+):
+    """The parked design run of 2026-09-21 pushed sdlc/0001/b with the evidence on it and
+    opened no PR: the runbook's pr/cli.py step never ran inside the model's session."""
+    root, change = project
+    from pr import github
+
+    monkeypatch.setattr(github, "gh_path", lambda: None)
+    monkeypatch.setattr(github, "find_open_pr", lambda repo, head: {"number": None, "labels": []})
+    calls = upsert_recorder(monkeypatch)
+    full_run(root, change, fake_claude, monkeypatch, "b")
+
+    pr = json.loads(capsys.readouterr().out)["pr"]
+    assert pr["head"] == "sdlc/0001/b" and pr["existed"] is False and pr["ok"] is True
+    upserts = [argv for name, argv in calls if name == "cli.py" and argv[0] == "upsert"]
+    assert upserts == [["upsert", "--root", str(root), "--id", "0001", "--phase", "b"]]
+    assert "--draft" not in upserts[0] and "--ready" not in upserts[0]
+
+
+def test_the_hand_over_still_upserts_when_the_pr_is_already_open(
+    project, fake_claude, monkeypatch, capsys
+):
+    """Idempotent: an open PR has its body and its gate label brought up to date."""
+    root, change = project
+    from pr import github
+
+    monkeypatch.setattr(github, "gh_path", lambda: None)
+    monkeypatch.setattr(github, "find_open_pr", lambda repo, head: {"number": 12, "labels": []})
+    calls = upsert_recorder(monkeypatch)
+    monkeypatch.setattr(
+        run_phase, "preflight", lambda *a: {"allow": True, "permission_mode": "acceptEdits"}
+    )
+    set_state(change, "b", gate_phase="b", gate_result="passed")
+    full_run(root, change, fake_claude, monkeypatch, "c")
+
+    pr = json.loads(capsys.readouterr().out)["pr"]
+    assert pr["existed"] is True and pr["number"] == 12
+    upserts = [argv for name, argv in calls if name == "cli.py" and argv[0] == "upsert"]
+    assert upserts[-1][-1] == "--draft"  # the build PR opens as a draft; (b) does not
+    assert "--ready" not in upserts[-1]
+
+
+def test_the_hand_over_says_so_when_there_is_no_route_to_github(
+    project, fake_claude, monkeypatch, capsys
+):
+    root, change = project
+    from pr import github
+
+    monkeypatch.setattr(github, "gh_path", lambda: None)
+    write(change / "evidence" / "gate-b.json", json.dumps(GATE_FILE))
+    monkeypatch.setenv("FAKE_CLAUDE_RESULT", json.dumps(FAKE_RESULT))
+    args = Args(
+        root=str(root), phase="b", dry_run=False, no_dispatch=True, claude=fake_cli(fake_claude)
+    )
+    env = {k: v for k, v in os.environ.items() if k not in run_phase.TOKEN_VARS}
+    assert run_phase.run_phase(args, dict(env, **KEY_ENV)) == run_phase.EXIT_OK
+    pr = json.loads(capsys.readouterr().out)["pr"]
+    assert pr["ok"] is False and "no PR route" in pr["reason"]

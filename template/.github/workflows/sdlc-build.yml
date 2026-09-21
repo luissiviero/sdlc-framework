@@ -88,6 +88,9 @@ jobs:
       - name: Prepare the runner for Claude Code's sandbox
         run: python framework/plugin/ci/runner_setup.py
 
+      - name: Install the project's own toolchain (sdlc.yaml: commands.setup)
+        run: python framework/plugin/ci/project_setup.py --root .
+
       - name: Run phase (c)
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}

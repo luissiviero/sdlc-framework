@@ -3,7 +3,7 @@
     python "${CLAUDE_PLUGIN_ROOT}/init/sdlc_init.py" --root <project> --profile standard \
         --deploy-action none --deploy-production false \
         --maintain-metric ci_test_failure_rate --maintain-source github-actions \
-        [--project-name X] [--build CMD] [--test CMD] [--lint CMD] \
+        [--project-name X] [--build CMD] [--test CMD] [--lint CMD] [--setup CMD] \
         [--claude-md-from changes/0000-sdlc-init/CLAUDE.proposed.md] \
         [--framework-repo owner/repo] [--claude-code 2.1.278] [--detect-only]
 
@@ -89,12 +89,15 @@ def build_values(args, det: detect_mod.Detection) -> dict[str, str]:
     build_cmd = args.build or det.build.command or "echo no build target"
     test_cmd = args.test or det.test.command or "echo no test target"
     lint_cmd = args.lint or det.lint.command or "echo no lint target"
+    # empty is a legitimate answer here: a project with nothing to install runs nothing
+    setup_cmd = args.setup if args.setup is not None else (det.setup.command or "")
     return {
         "PROJECT_NAME": args.project_name or Path(args.root).resolve().name,
         "PROFILE": args.profile,
         "BUILD_CMD": _esc(build_cmd),
         "TEST_CMD": _esc(test_cmd),
         "LINT_CMD": _esc(lint_cmd),
+        "SETUP_CMD": _esc(setup_cmd),
         "BUILD_HEALTHY": det.build.healthy or "exit code 0",
         "TEST_HEALTHY": det.test.healthy or "exit code 0",
         "LINT_HEALTHY": det.lint.healthy or "exit code 0",
@@ -465,6 +468,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--build", default=None)
     p.add_argument("--test", default=None)
     p.add_argument("--lint", default=None)
+    p.add_argument("--setup", default=None, help='one-command install ("" = nothing to run)')
     p.add_argument("--claude-md-from", default=None, help="trimmed CLAUDE.md text to start from")
     p.add_argument("--framework-repo", default=DEFAULT_FRAMEWORK_REPO)
     p.add_argument(

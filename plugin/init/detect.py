@@ -55,6 +55,10 @@ class Target:
     origin: str  # "detected: <evidence>" | "created: <what>" | "none"
 
 
+def _no_target() -> Target:
+    return Target(None, "", "none")
+
+
 @dataclass
 class Detection:
     language: str
@@ -63,6 +67,11 @@ class Detection:
     lint: Target
     stats: dict[str, int] = field(default_factory=dict)
     notes: list[str] = field(default_factory=list)
+    # The one-command install of everything build/test/lint need. The CI phase jobs run it
+    # before the phase (plugin/ci/project_setup.py): a GitHub-hosted runner has neither the
+    # project nor its test and lint tools installed, which failed the gate's `commands` check
+    # on the first live design run (2026-09-21). None means "nothing to install".
+    setup: Target = field(default_factory=_no_target)
 
     def as_dict(self) -> dict:
         return {
@@ -70,9 +79,64 @@ class Detection:
             "build": self.build.__dict__,
             "test": self.test.__dict__,
             "lint": self.lint.__dict__,
+            "setup": self.setup.__dict__,
             "stats": self.stats,
             "notes": self.notes,
         }
+
+
+# The extra a Python project's setup command installs when pyproject.toml declares optional
+# dependencies; the first declared extra is used when none of these is there.
+SETUP_EXTRAS = ("dev", "test", "tests", "develop", "all")
+# What a Python project needs installed when it declares no extra of its own: the toolchain
+# the detected test and lint targets call.
+PY_SETUP_TOOLS = "pytest ruff"
+
+
+def optional_extra(pyproject: str) -> str | None:
+    """The extra to install from ``[project.optional-dependencies]``, or None when there is
+    none (PEP 621 tables only; a project with another layout gets the plain install)."""
+    block = re.search(r"(?ms)^\[project\.optional-dependencies\]\s*$(.*?)(?=^\[|\Z)", pyproject)
+    if not block:
+        return None
+    names = re.findall(r"(?m)^\s*[\"']?([A-Za-z0-9_.-]+)[\"']?\s*=", block.group(1))
+    if not names:
+        return None
+    lower = {n.lower(): n for n in names}
+    for preferred in SETUP_EXTRAS:
+        if preferred in lower:
+            return lower[preferred]
+    return names[0]
+
+
+def python_setup(root: Path, pyproject: str) -> Target:
+    """The one-command install for a Python project (article p.27: one command, exits
+    non-zero on failure)."""
+    extra = optional_extra(pyproject)
+    if extra:
+        return Target(
+            f'python -m pip install -e ".[{extra}]"',
+            "'Successfully installed' and exit code 0",
+            f"detected: [project.optional-dependencies] extra '{extra}' in pyproject.toml",
+        )
+    if (root / "pyproject.toml").is_file():
+        return Target(
+            f"python -m pip install -e . {PY_SETUP_TOOLS}",
+            "'Successfully installed' and exit code 0",
+            "created: editable install plus the test and lint toolchain (no extras declared)",
+        )
+    return Target(
+        f"python -m pip install {PY_SETUP_TOOLS}",
+        "'Successfully installed' and exit code 0",
+        "created: the test and lint toolchain (no pyproject.toml to install from)",
+    )
+
+
+def node_setup(root: Path) -> Target:
+    """``npm ci`` when the lockfile is there (reproducible), else ``npm install``."""
+    if (root / "package-lock.json").is_file():
+        return Target("npm ci", "exit code 0", "detected: package-lock.json")
+    return Target("npm install", "exit code 0", "created: no package-lock.json to install from")
 
 
 def _read(path: Path) -> str:
@@ -195,7 +259,8 @@ def detect_python(root: Path) -> Detection:
     else:
         build = Target(None, "", "none")
 
-    return Detection(language, build, test, lint, stats, notes)
+    setup = python_setup(root, pyproject) if is_python else _no_target()
+    return Detection(language, build, test, lint, stats, notes, setup)
 
 
 def _package_json(root: Path) -> dict | None:
@@ -261,7 +326,7 @@ def detect_node(root: Path, pkg: dict) -> Detection:
     else:
         build = Target(None, "", "none")
         notes.append("no build script and no main in package.json: add a build script")
-    return Detection("node", build, test, lint, stats, notes)
+    return Detection("node", build, test, lint, stats, notes, node_setup(root))
 
 
 def detect(root: Path) -> Detection:

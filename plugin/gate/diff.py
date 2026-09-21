@@ -96,6 +96,53 @@ def dirty_files(root: Path) -> list[str]:
     return sorted(set(files))
 
 
+def untracked_files(root: Path) -> list[str]:
+    """The paths git knows nothing about yet, honouring .gitignore and .git/info/exclude.
+
+    Both listings: the files, and the untracked directories collapsed to one entry each
+    (``--directory``), which is the only way an empty directory is named at all.
+    """
+    args = ("ls-files", "-z", "--others", "--exclude-standard")
+    return sorted(
+        set(_z(_git(root, *args, check=False)))
+        | set(_z(_git(root, *args, "--directory", check=False)))
+    )
+
+
+def _holds_nothing(root: Path, rel: str) -> bool:
+    """True when ``rel`` is a zero-byte file or an empty directory (never a symlink)."""
+    path = Path(root) / rel
+    try:
+        if path.is_symlink():
+            return False
+        if path.is_file():
+            return path.stat().st_size == 0
+        if path.is_dir():
+            return not any(path.iterdir())
+    except OSError:
+        return False
+    return False
+
+
+def sandbox_placeholders(root: Path, files: list[str]) -> list[str]:
+    """The entries of ``files`` that are untracked and hold nothing.
+
+    Claude Code's sandbox creates placeholder entries in the working directory (.bashrc,
+    .gitconfig, .vscode and friends): they are empty, nobody wrote them and nothing commits
+    them, but ``git status`` lists them as untracked, which parked the first live design run
+    on 2026-09-21. An untracked file with content is a real stray and is still reported.
+    """
+    root = Path(root)
+    untracked = set(untracked_files(root))
+    return sorted(f for f in files if f in untracked and _holds_nothing(root, f))
+
+
+def without_placeholders(root: Path, files: list[str]) -> list[str]:
+    """``files`` without the sandbox placeholders; the order and the rest are untouched."""
+    drop = set(sandbox_placeholders(root, files))
+    return [f for f in files if f not in drop]
+
+
 def is_repo(root: Path) -> bool:
     try:
         return _git(root, "rev-parse", "--is-inside-work-tree").strip() == "true"

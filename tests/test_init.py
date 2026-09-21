@@ -269,7 +269,12 @@ def test_init_on_node_fixture_writes_npm_targets(tmp_path):
     shutil.copytree(NODE_FIXTURE, root)
     report = _run_init(root)
     cfg = yamlish.load_file(root / "sdlc.yaml")
-    assert cfg["commands"] == {"build": "npm run build", "test": "npm test", "lint": "npm run lint"}
+    assert cfg["commands"] == {
+        "build": "npm run build",
+        "test": "npm test",
+        "lint": "npm run lint",
+        "setup": "npm install",  # no package-lock.json in the fixture
+    }
     assert cfg["test_paths"] == detect.TEST_PATHS["node"]  # step 25: the test-file lock
     settings = json.loads((root / ".claude" / "settings.json").read_text(encoding="utf-8"))
     for rule in ("Bash(npm run build *)", "Bash(npm test *)", "Bash(npm run lint *)"):
@@ -373,6 +378,74 @@ def test_init_upgrade_adds_the_test_paths_block_once(tmp_path):
     new = (root / "sdlc.yaml").read_text(encoding="utf-8")
     assert new.count("test_paths:") == 1 and "# --- test-file lock" in new
     assert yamlish.load_file(root / "sdlc.yaml")["test_paths"] == detect.TEST_PATHS["python"]
+    assert _run_init(root)["files"]["sdlc.yaml"] == "unchanged"
+
+
+def test_detect_setup_command_per_language(tmp_path):
+    """The one-command install the CI phase jobs run before the phase: the runner of the
+    first live design run had neither pytest nor ruff (2026-09-21)."""
+    assert detect.detect(FIXTURE).setup.command == "python -m pip install -e . pytest ruff"
+    assert detect.detect(NODE_FIXTURE).setup.command == "npm install"
+
+    node = tmp_path / "node"
+    node.mkdir()
+    (node / "package.json").write_text('{"scripts": {"test": "jest"}}', encoding="utf-8")
+    (node / "package-lock.json").write_text("{}", encoding="utf-8")
+    assert detect.detect(node).setup.command == "npm ci"  # reproducible when locked
+
+    extras = tmp_path / "extras"
+    extras.mkdir()
+    (extras / "pyproject.toml").write_text(
+        '[project]\nname = "x"\n\n[project.optional-dependencies]\n'
+        'lint = ["ruff"]\ndev = ["pytest", "ruff"]\n',
+        encoding="utf-8",
+    )
+    assert detect.detect(extras).setup.command == 'python -m pip install -e ".[dev]"'
+
+    bare = tmp_path / "bare"
+    (bare / "pkg").mkdir(parents=True)
+    (bare / "pkg" / "app.py").write_text("x = 1\n", encoding="utf-8")
+    assert detect.detect(bare).setup.command == "python -m pip install pytest ruff"
+
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    assert detect.detect(empty).setup.command is None  # unknown language: nothing to install
+
+
+def test_init_writes_an_empty_setup_for_an_unknown_project(tmp_path):
+    root = tmp_path / "plain"
+    root.mkdir()
+    (root / "README.md").write_text("# a project with no toolchain\n", encoding="utf-8")
+    _run_init(root)
+    assert yamlish.load_file(root / "sdlc.yaml")["commands"]["setup"] == ""
+
+
+def test_init_upgrade_adds_commands_setup_as_text(tmp_path):
+    """A project initialised before this version has `commands:` without `setup`. The
+    upgrade inserts the nested key as text, comments and layout intact."""
+    root = tmp_path / "proj"
+    shutil.copytree(FIXTURE, root)
+    _run_init(root)
+    text = (root / "sdlc.yaml").read_text(encoding="utf-8")
+    pre = "\n".join(
+        line
+        for line in text.splitlines()
+        if not line.strip().startswith(("setup:", "# one command that installs", "# the phase;"))
+    )
+    pre = pre.replace("protected_paths: []", "protected_paths: [gen/**]  # owner note")
+    (root / "sdlc.yaml").write_text(pre + "\n", encoding="utf-8")
+    assert "setup:" not in (root / "sdlc.yaml").read_text(encoding="utf-8")
+
+    report = _run_init(root)
+    assert report["files"]["sdlc.yaml"] == "updated (added commands.setup)"
+    new_text = (root / "sdlc.yaml").read_text(encoding="utf-8")
+    assert new_text.count("setup:") == 1 and "# owner note" in new_text
+    assert "# one command that installs what test/build/lint need" in new_text
+    for comment in [ln for ln in pre.splitlines() if ln.strip().startswith("#")]:
+        assert comment in new_text
+    cfg = yamlish.load_file(root / "sdlc.yaml")
+    assert cfg["commands"]["setup"] == "python -m pip install -e . pytest ruff"
+    assert cfg["commands"]["test"] == "python -m pytest"  # the siblings are untouched
     assert _run_init(root)["files"]["sdlc.yaml"] == "unchanged"
 
 

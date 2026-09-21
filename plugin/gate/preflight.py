@@ -16,6 +16,10 @@ Says whether the implementation run of phase (c) may start with
      bypass-permissions mode (step 7); bypass mode is never used, whatever the answer;
   5. the repository is not paused (step 19);
   6. the one-command test target runs green (step 14).
+The report also carries ``setup_command``: the project's one-command install from
+``sdlc.yaml: commands.setup``, which the CI phase jobs run before the phase. It is reported
+so the owner sees what the runner installs; it is not a precondition.
+
 With ``--id`` it also reports the adversarial reviewer's routine / non-routine
 classification for the change and the iteration cap it implies (the classification tightens
 the gate; it never changes the permission mode and never interrupts the owner, decision 11).
@@ -64,6 +68,15 @@ def _ok(name: str, reason: str, **details: Any) -> CheckResult:
 
 def _fail(name: str, reason: str, need: str, **details: Any) -> CheckResult:
     return CheckResult(name, False, reason, need, details)
+
+
+def setup_command(config: dict[str, Any]) -> str:
+    """``sdlc.yaml: commands.setup``: the one-command install the CI phase jobs run before
+    the phase (plugin/ci/project_setup.py). Reported, never checked here — a project with
+    nothing to install declares "" and the step is skipped."""
+    cmds = config.get("commands")
+    value = cmds.get("setup") if isinstance(cmds, dict) else None
+    return value.strip() if isinstance(value, str) else ""
 
 
 def _commands(config: dict[str, Any]) -> dict[str, str]:
@@ -287,6 +300,7 @@ def run_preflight(root: Path, plugin_root: Path, change_id: str | None = None) -
         "permission_mode": ALLOW_MODE if allow else REFUSE_MODE,
         "never": "bypassPermissions",
         "reasons": [f"{ch.name}: {ch.reason}" for ch in checks if not ch.ok],
+        "setup_command": setup_command(config),
         "checks": [ch.as_dict() for ch in checks],
         "change": classification(root, config, change_id) if not cfg_error else {},
     }
