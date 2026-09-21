@@ -13,6 +13,8 @@ Companion to `BUILD_GUIDE.md`. Step numbers refer to that guide. The accepted al
 
 **Accepted:** Local only for B1; hosted CI + API key from B3 on; check (2) first and take it if permitted REVISED
 
+*Applied 2026-09-21 (not a reopening):* the product docs permit (2) for Pro, so every workflow accepts both secrets — `ANTHROPIC_API_KEY` preferred, `CLAUDE_CODE_OAUTH_TOKEN` otherwise — and the owner starts on the token and moves to the key from `/usage` data. Facts and setup in `docs/NOTES.md` §2.
+
 **Why:** The article's own ladder is "by hand → slash command → trigger" (p.13), so B1–B3 need no CI at all. Hosted CI is the only option with zero local maintenance, which matches your constraint; the API cost is bounded per change by step 19's limits. Option 2 is worth one check because it removes that cost, but building on it unverified could strand the design. Revised: hands-off means you should not be the one launching phases either, so merge-triggered CI moves up from B4 to B3 — the first autonomous phase should already fire on its own.
 
 **Decide by / reversibility:** B3 REVERSIBLE
