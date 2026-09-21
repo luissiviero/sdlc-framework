@@ -293,3 +293,66 @@ applies, in the order `deny`, `defer`, `ask`, `allow`."
   collide, and the second push then fails on the branch name, which is the signal to re-run.
 - Skill triggering ("test that it triggers", step 10) and the PR-opening step need a live
   model / GitHub; see `docs/PROGRESS.md`.
+
+## 10. Facts added in session 2 (B2), read on 2026-09-21
+
+### 10a. Subagents and plugin agents (step 17)
+
+Source: https://code.claude.com/docs/en/sub-agents, https://code.claude.com/docs/en/plugins-reference.
+
+- "Each subagent runs in its own context window with a custom system prompt, specific tool
+  access, and independent permissions." and "Each subagent starts with a fresh, isolated
+  context window. It doesn't see your conversation history, the skills you've already
+  invoked, or the files Claude has already read." — this is the fresh context the article's
+  verifier (p.27) and adversarial reviewer (p.42) need; the four agents rely on it.
+- `tools`: "Tools the subagent can use. Inherits every tool available to subagents if
+  omitted"; `disallowedTools`: "Tools to deny, removed from inherited or specified list".
+  The agents list their tools explicitly (the verifier: `Bash, Read`, as on p.25).
+- "Plugin agents support `name`, `description`, `model`, `effort`, `maxTurns`, `tools`,
+  `disallowedTools`, `skills`, `memory`, `background`, `omitClaudeMd`, and `isolation`
+  frontmatter fields." `permissionMode`, `hooks` and `mcpServers` are "Ignored for plugin
+  subagents" — so an agent cannot widen its own permissions; the project's settings and the
+  plugin's hooks apply to it like to the main session.
+- Manifest: "`agents` | `string|array` | Custom agent files (replaces default `agents/`)";
+  the repo lists the four files explicitly (a directory string fails `claude plugin
+  validate`, observed in session 1). Names: "a file at `agents/review/security.md` in
+  plugin `my-plugin` registers as `my-plugin:review:security`", so ours are
+  `sdlc:verifier`, `sdlc:code-simplifier`, `sdlc:researcher`, `sdlc:adversarial-reviewer`.
+- "Claude automatically delegates tasks based on the task description in your request, the
+  `description` field in subagent configurations, and current context. To encourage
+  proactive delegation, include phrases like 'use proactively' in your subagent's
+  description field." — the descriptions say when to use each agent, in the same style as
+  the intent skill whose trigger passed the live check.
+- `maxTurns`: "Maximum number of agentic turns before the subagent stops. When the subagent
+  reaches the limit, Claude Code returns its output marked as partial" — set on every agent
+  as its own run limit (step 19).
+
+### 10b. Outer bound for headless runs: `--max-turns` and `--max-budget-usd` (step 19)
+
+Source: https://code.claude.com/docs/en/cli-reference, https://code.claude.com/docs/en/headless.
+
+- "`--max-turns`: Limit the number of agentic turns (print mode only). Exits with an error
+  when the limit is reached. No limit by default."
+- "`--max-budget-usd`: Maximum dollar amount to spend on API calls before stopping (print
+  mode only). Spend from subagents counts toward the cap ... the cap-enforcement behaviors
+  require Claude Code v2.1.217 or later".
+- "With `--output-format json`, the response payload includes `total_cost_usd` and a
+  per-model cost breakdown, so scripted callers can track spend per invocation" ("client-side
+  estimates").
+- "`--permission-mode`: Begin in a specified permission mode. Accepts `default`,
+  `acceptEdits`, `plan`, `auto`, `dontAsk`, `bypassPermissions`, or `manual`". For `-p`
+  "the built-in starting permission mode is Manual on every plan, so pass the permission mode
+  you want". `acceptEdits`: "Claude writes files without prompting ... other shell commands
+  and network requests still need an `--allowedTools` entry or a `permissions.allow` rule".
+- "Pass `--permission-prompts none` when nobody is available to answer permission prompts
+  ... Anything that would prompt is denied" (v2.1.259+).
+- `--bare` "is the recommended mode for scripted and SDK calls" but "Bare mode does not read
+  `CLAUDE_CODE_OAUTH_TOKEN`" (section 2) and skips CLAUDE.md, hooks and plugins unless
+  passed explicitly (`--plugin-dir`, `--settings`).
+
+**Consequences for B3's `claude -p` jobs:** every phase job passes `--max-turns` and
+`--max-budget-usd` as the outer bound, `--permission-mode acceptEdits` only when
+`plugin/gate/preflight.py` allows it, `--permission-prompts none`, and pipes the JSON
+result's `total_cost_usd` into `gate/cli.py record-spend` so the per-change budget of step 19
+is enforced across phases. The gate's own limits (iterations, wall-clock, budget, pause) are
+the inner bound and are the ones that park with evidence; the CLI bound just stops.
