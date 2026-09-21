@@ -60,6 +60,8 @@ Three Opus sub-agents ran the article's p.14 prompt verbatim on fixture copies (
 - The framework repository carries no release tag yet; the phase jobs need `v0.2.0` on the merge commit of PR #10.
 - The Full-profile approval label cannot be verified without `gh` or a token: the job then skips (it never runs unapproved); only the actor check degrades with a printed note.
 - `gate.max_budget_usd` binds unattended runs only (spend is known from the `claude -p` result); by hand, iterations and the wall clock are the limits.
+- On Claude Code on the web, `/sdlc-plan` and `/sdlc-init` push to the platform's assigned branch, not to `sdlc/<id>/a`; the merge-triggered design workflow keys on a head named `sdlc/<id>/a`, so an intent PR opened from the web will not start the design run until the branch rule is adapted (B4: dispatch by change id from the merged `status.yaml` instead of the head name, or push `sdlc/<id>/a` as a second ref).
+- `state/cli.py commit-phase` stages every path it is given, including unchanged protected files such as `.claude/settings.json` listed by `/sdlc-init`; a session's permission classifier may deny that. B4: stage only changed paths.
 - Monthly tuning of review findings (26.5) is not built.
 - The adversarial reviewer still has `Bash` (session 2's gap); the protected-path hook and the review pass remain the nets. Risk-list matching stays lexical; policy checks stay advisory.
 
@@ -73,6 +75,10 @@ Test repository: `luissiviero/sdlc-sample-python` (plugin loaded through the set
 6. End-to-end: `/sdlc:sdlc-plan "<idea>"` → merge the intent PR → watch Actions: the design workflow opens the spec+plan PR (`sdlc:b-ready` or `sdlc:needs-human`). Paste the job's auth line, `total_cost_usd`, the gate result and the PR link into session 4's first message.
 7. Windows: `python tasks.py check` on the PC (the session touched path handling), and an attempted edit of a test file on a fix-type change branch should show the "Test-file lock" denial.
 8. Set `CLAUDE_CODE_SUBAGENT_MODEL=opus` in the cloud environment's variables before session 4.
+
+## Results of the live checks so far (2026-09-21)
+- Smoke run in `sdlc-framework`: green in 16 s; `auth: subscription-token`, model `claude-opus-5`, `total_cost_usd: 0.0089815`, reply `OK`. Build guide step 3 closed. Annotations: actions/checkout@v4 and setup-node@v4 are on Node 20 (deprecated; bump to v5 in B4); `ubuntu-latest` moves to Ubuntu 26 on 2026-10-19.
+- `/sdlc:sdlc-init` re-run on `sdlc-sample-python` with plugin 0.2.0 (environment setup script rebuilt): pin 0.1.0 → 0.2.0, `test_paths`, `plugin.claude_code`, the five workflows, `sdlc_pin.py`, `bands.yaml`, `evals/` created; comments kept; the three targets green; draft PR #4 opened with `sdlc:a-ready`. The upgrade path fixed in this session works live.
 
 ## Left for B4 (write the next `HANDOFF.md` from this list — done: see `HANDOFF.md`)
 - Step 29: release approval (label or signed tag), the production-gate hook, the hook decision log.
