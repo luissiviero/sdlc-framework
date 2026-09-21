@@ -28,8 +28,10 @@ def test_plugin_manifest_points_components_into_plugin_dir():
     assert manifest["name"] == "sdlc" and manifest["version"]
     assert manifest["commands"] == "./plugin/commands"
     assert manifest["skills"] == "./plugin/skills"
-    # agents: the manifest key takes a list of files; added in B2 when the first agent exists
-    assert "agents" not in manifest
+    # agents: the manifest key takes a list of files (the validator rejects a directory)
+    assert isinstance(manifest["agents"], list) and manifest["agents"]
+    for rel in manifest["agents"]:
+        assert rel.startswith("./plugin/agents/") and (ROOT / rel).is_file(), rel
     assert manifest["hooks"] == "./plugin/hooks/hooks.json"
     for key in ("commands", "skills", "hooks"):
         assert (ROOT / manifest[key]).exists(), key

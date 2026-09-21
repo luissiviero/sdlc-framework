@@ -9,5 +9,11 @@
   "repository": "https://github.com/luissiviero/sdlc-framework",
   "commands": "./plugin/commands",
   "skills": "./plugin/skills",
+  "agents": [
+    "./plugin/agents/verifier.md",
+    "./plugin/agents/code-simplifier.md",
+    "./plugin/agents/researcher.md",
+    "./plugin/agents/adversarial-reviewer.md"
+  ],
   "hooks": "./plugin/hooks/hooks.json"
 }
