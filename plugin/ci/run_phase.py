@@ -477,7 +477,11 @@ def compose(
     env: dict[str, str],
 ) -> list[str]:
     """The full argv of one headless run. It carries no secret, so it is safe to print."""
-    argv = [claude, "-p", *auth_mod.flags(env)]
+    # The prompt goes right after -p: --allowedTools / --disallowedTools take a list of
+    # values, so a prompt placed after them is read as one more tool name and the CLI
+    # answers "Input must be provided either through stdin or as a prompt argument"
+    # (observed on the first live design run, 2026-09-21).
+    argv = [claude, "-p", prompt, *auth_mod.flags(env)]
     argv += ["--plugin-dir", str(plugin_dir)]
     argv += ["--settings", str(Path(plugin_dir).joinpath(*SETTINGS_REL))]
     argv += ["--permission-mode", permission_mode]
@@ -500,7 +504,6 @@ def compose(
     elif phase == "triage":
         argv += ["--allowedTools", TRIAGE_ALLOWED_TOOLS]
         argv += ["--disallowedTools", TRIAGE_DISALLOWED_TOOLS]
-    argv.append(prompt)
     return argv
 
 
