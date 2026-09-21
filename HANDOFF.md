@@ -18,6 +18,7 @@ Session 1's brief is kept at `docs/handoffs/session-1-B0-B1.md`; its result is o
 5. `docs/BUILD_GUIDE.md` — steps 16–21 (B2) and, for the interfaces B2 must leave ready, steps 22–30 (B3).
 6. `docs/reference/ai-native-sdlc-playbook.txt` — page-tagged article; read a page when a step cites it.
 7. `CLAUDE.md` — conventions for this repo.
+8. `docs/MODEL_ALLOCATION.md` — which tasks the Fable session does itself and which it hands to Opus sub-agents (steps 18–21 in §6; every later session in §2–§5).
 
 ## Objective of this session
 Complete build stage **B2**: everything a phase needs to run unattended safely — the confidence gate, the four agents, auto-accept conditions, run limits, the policy skills, and the full `/sdlc-init`. Do not start B3 (`/sdlc-design`, the phase runbooks, CI workflows). Everything must still work by hand on the owner's PC and in a Claude Code cloud session (decision 1: CI arrives in B3).
