@@ -80,9 +80,11 @@ FINDINGS_REQUIRED_AT = ("e",)
 # only case where the diff may touch the guardrail files (OPERATING_MODEL section 3).
 FRAMEWORK_CHANGE_RE = re.compile(r"(?im)^\s*Framework change:\s*yes\b")
 
-# Open concern in spec.md's "Flagged concerns" list: an item not closed with a decision.
-OPEN_CONCERN_RE = re.compile(r"(?im)^\s*[-*]\s+(?:\[ \]|open\b|OPEN\b)")
-CLOSED_CONCERN_RE = re.compile(r"(?im)^\s*[-*]\s+(?:\[x\]|closed\b|resolved\b|decided\b)")
+# Flagged concerns in spec.md: every list item is a concern; it is closed only when it says
+# so (a decision recorded, article p.14 step 4). Anything else is open — fail closed.
+CONCERN_ITEM_RE = re.compile(r"^\s*(?:[-*]|\d+[.)])\s+(?P<text>.+)$")
+CLOSED_CONCERN_RE = re.compile(r"(?i)^(?:\[x\]|closed\b|resolved\b|decided\b)")
+NO_CONCERN_RE = re.compile(r"(?i)^(?:none|n/a|no concerns?)\.?$")
 
 
 def split_sections(text: str) -> dict[str, str]:
@@ -115,7 +117,16 @@ def is_framework_change(intent_text: str) -> bool:
 
 def open_concerns(spec_text: str) -> list[str]:
     body = split_sections(spec_text).get("## Flagged concerns", "")
-    return [line.strip() for line in body.splitlines() if OPEN_CONCERN_RE.match(line)]
+    out = []
+    for line in body.splitlines():
+        m = CONCERN_ITEM_RE.match(line)
+        if not m:
+            continue
+        text = m.group("text").strip()
+        if NO_CONCERN_RE.match(text) or CLOSED_CONCERN_RE.match(text):
+            continue
+        out.append(line.strip())
+    return out
 
 
 def planned_files(plan_text: str) -> list[str]:
@@ -128,11 +139,12 @@ def planned_files(plan_text: str) -> list[str]:
         if not s or s[0] not in "-*0123456789":
             continue
         s = re.sub(r"^(?:[-*]|\d+[.)])\s*", "", s)
-        m = re.match(r"`([^`]+)`", s)
+        m = re.search(r"`([^`]+)`", s)  # the first backtick span anywhere in the item
         token = m.group(1) if m else re.split(r"[\s—:]", s, maxsplit=1)[0]
         token = token.strip().strip("`'\"").replace("\\", "/")
+        token = re.sub(r"^(?:\./)+", "", token)  # keep dotfiles: .github/..., .gitignore
         if token and token.lower() not in ("none", "n/a"):
-            files.append(token.lstrip("./"))
+            files.append(token)
     return files
 
 

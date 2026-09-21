@@ -1,0 +1,12 @@
+{
+  "name": "sample-node-project",
+  "version": "0.1.0",
+  "description": "Fixture project (Node) for the SDLC framework integration tests (layer 2).",
+  "main": "src/calc.js",
+  "scripts": {
+    "test": "node --test",
+    "lint": "node scripts/lint.js",
+    "build": "node --check src/calc.js"
+  },
+  "license": "MIT"
+}

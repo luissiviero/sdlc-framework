@@ -9,7 +9,7 @@ kebab-case title.
 | `intent.md` | (a) plan | `/sdlc-plan`, with the owner (article p.10–11 template) |
 | `spec.md` | (b) design | `/sdlc-design` (B3) |
 | `plan.md` | (b) design, read-only run | `/sdlc-design` (B3); kept in sync in (c) by the plan-sync hook |
-| `evidence/` | (d) test | the test run (B3) |
+| `evidence/` | (c), (d), (e) | `verifier.md` (verifier agent), `test.log` · `build.log` · `lint.log` · screenshots (the test run, B3), `adversarial-review-<phase>.json` (adversarial reviewer), `review-findings.json` (review pass, B3), `gate-<phase>.json` and `run-<phase>.json` (the gate) |
 | `status.yaml` | every phase | `plugin/state` — phase, profile override, change type, gate result, parked reason, iteration count |
 
 Branches: `sdlc/<id>/a` (intent PR), `sdlc/<id>/b` (spec+plan PR), `sdlc/<id>/c` (build PR,
