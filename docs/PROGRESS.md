@@ -35,7 +35,7 @@
 Decision 1 (CI with either credential, key preferred) and decision 12 (review pass as a CI job) are executed by `ci/run_phase.py` and `sdlc-deploy.yml` (review job, then the phase run). Decision 20's "nothing pushes" is honoured by the digest medium (below).
 
 ## Choices made where the pack left it open
-16. **Digest medium** (27a.0): one pinned issue titled "SDLC review queue" whose body the daily job rewrites; the owner sets the repository watch to Custom/participating. The GitHub docs do not state whether body edits notify, so the design does not rely on it: the issue is opened by the workflow token and the owner never comments on it (NOTES §11a).
+16. **Digest medium** (27a.0): one pinned issue titled "SDLC review queue" whose body the daily job rewrites; the owner sets the repository watch to "Participating and @mentions". The GitHub docs do not state whether body edits notify, so the design does not rely on it: the issue is opened by the workflow token and the owner never comments on it (NOTES §11a).
 17. **Owner-only state** (24.5): `accept-risk` and `set-iterations` stay CLI commands; the gate's `owner_actions` check honours a risk acceptance or an iteration reset only when the commit that introduced it is not authored by the automation identity (`sdlc.yaml: automation_identity`, default `github-actions[bot]`), and parks on an uncommitted one. By-hand runs are the owner's own sessions, so their commits count as the owner's act.
 18. **Sandbox for phase jobs** (30.7): the GitHub-hosted runner (ephemeral VM, only the CI credential) plus Claude Code's sandbox with `failIfUnavailable: true` and an allowed-domain list (`plugin/ci/settings.ci.json`, passed with `--settings` because bare mode reads no settings); `ci/runner_setup.py` installs bubblewrap and socat and the AppArmor profile when needed. `permissions:` per job: contents, pull-requests, issues, checks, actions — which endpoint needs which could not be verified from the reachable docs (NOTES §11a); the first live run verifies.
 19. **Test-file lock semantics** (25.1): as the handoff proposed — `status.yaml: tests_locked` set by the build run after the reproducing test is committed; `sdlc.yaml: test_paths` with defaults per detected language; the lock holds on `sdlc/<id>/c` through (d) and (e); only the owner unlocks.
@@ -60,6 +60,8 @@ Three Opus sub-agents ran the article's p.14 prompt verbatim on fixture copies (
 - The framework repository carries no release tag yet; the phase jobs need `v0.2.0` on the merge commit of PR #10.
 - The Full-profile approval label cannot be verified without `gh` or a token: the job then skips (it never runs unapproved); only the actor check degrades with a printed note.
 - `gate.max_budget_usd` binds unattended runs only (spend is known from the `claude -p` result); by hand, iterations and the wall clock are the limits.
+- On Claude Code on the web, `/sdlc-plan` and `/sdlc-init` push to the platform's assigned branch, not to `sdlc/<id>/a`; the merge-triggered design workflow keys on a head named `sdlc/<id>/a`, so an intent PR opened from the web will not start the design run until the branch rule is adapted (B4: dispatch by change id from the merged `status.yaml` instead of the head name, or push `sdlc/<id>/a` as a second ref).
+- `state/cli.py commit-phase` stages every path it is given, including unchanged protected files such as `.claude/settings.json` listed by `/sdlc-init`; a session's permission classifier may deny that. B4: stage only changed paths.
 - Monthly tuning of review findings (26.5) is not built.
 - The adversarial reviewer still has `Bash` (session 2's gap); the protected-path hook and the review pass remain the nets. Risk-list matching stays lexical; policy checks stay advisory.
 
@@ -68,11 +70,15 @@ Test repository: `luissiviero/sdlc-sample-python` (plugin loaded through the set
 1. Tag the framework: `git tag v0.2.0 <merge commit of PR #10> && git push origin v0.2.0`.
 2. Store `CLAUDE_CODE_OAUTH_TOKEN` (from `claude setup-token`) as a repository secret in both repositories; run Actions → "Substrate smoke test" in `sdlc-framework`: green closes build guide step 3.
 3. Re-run `/sdlc:sdlc-init` in the sample repo: expect `.github/workflows/sdlc-*.yml`, `.github/scripts/sdlc_pin.py`, the `test_paths` and `plugin.claude_code` keys added to `sdlc.yaml`, everything else `unchanged` / `kept`; merge the change-0000 PR it opens.
-4. Set the sample repository's watch to Custom (participating and @mentions).
+4. Set the sample repository's watch to "Participating and @mentions" (the Watch dropdown; Custom is only for adding events on top of it).
 5. Agent triggers (session 2's check 4): "run the adversarial reviewer for phase c of change 0001" must write `evidence/adversarial-review-c.json`, and `gate/cli.py check --id 0001 --phase c` must read it.
-6. End-to-end: `/sdlc:sdlc-plan "<idea>"` → merge the intent PR → watch Actions: the design workflow opens the spec+plan PR (`sdlc:b-ready` or `sdlc:needs-human`). Paste the job's auth line, `total_cost_usd`, the gate result and the PR link into session 4's first message.
+6. End-to-end: `/sdlc:sdlc-plan "<idea>"` → merge the intent PR → the design workflow opens the spec+plan PR (`sdlc:b-ready` or `sdlc:needs-human`). From a web session the intent PR's head is the platform's branch, not `sdlc/<id>/a`, so the merge does not fire the workflow (gap above): start it by hand instead — Actions → "sdlc-design" → Run workflow → `change_id` = the four-digit id — which runs the same `run_phase.py` path. Paste the job's auth line, `total_cost_usd`, the gate result and the PR link into session 4's first message.
 7. Windows: `python tasks.py check` on the PC (the session touched path handling), and an attempted edit of a test file on a fix-type change branch should show the "Test-file lock" denial.
 8. Set `CLAUDE_CODE_SUBAGENT_MODEL=opus` in the cloud environment's variables before session 4.
+
+## Results of the live checks so far (2026-09-21)
+- Smoke run in `sdlc-framework`: green in 16 s; `auth: subscription-token`, model `claude-opus-5`, `total_cost_usd: 0.0089815`, reply `OK`. Build guide step 3 closed. Annotations: actions/checkout@v4 and setup-node@v4 are on Node 20 (deprecated; bump to v5 in B4); `ubuntu-latest` moves to Ubuntu 26 on 2026-10-19.
+- `/sdlc:sdlc-init` re-run on `sdlc-sample-python` with plugin 0.2.0 (environment setup script rebuilt): pin 0.1.0 → 0.2.0, `test_paths`, `plugin.claude_code`, the five workflows, `sdlc_pin.py`, `bands.yaml`, `evals/` created; comments kept; the three targets green; draft PR #4 opened with `sdlc:a-ready`. The upgrade path fixed in this session works live.
 
 ## Left for B4 (write the next `HANDOFF.md` from this list — done: see `HANDOFF.md`)
 - Step 29: release approval (label or signed tag), the production-gate hook, the hook decision log.
