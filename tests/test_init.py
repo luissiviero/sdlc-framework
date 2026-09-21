@@ -384,7 +384,7 @@ def test_init_upgrade_adds_the_test_paths_block_once(tmp_path):
 def test_detect_setup_command_per_language(tmp_path):
     """The one-command install the CI phase jobs run before the phase: the runner of the
     first live design run had neither pytest nor ruff (2026-09-21)."""
-    assert detect.detect(FIXTURE).setup.command == "python -m pip install -e . pytest ruff"
+    assert detect.detect(FIXTURE).setup.command == "python -m pip install pytest ruff"
     assert detect.detect(NODE_FIXTURE).setup.command == "npm install"
 
     node = tmp_path / "node"
@@ -444,7 +444,7 @@ def test_init_upgrade_adds_commands_setup_as_text(tmp_path):
     for comment in [ln for ln in pre.splitlines() if ln.strip().startswith("#")]:
         assert comment in new_text
     cfg = yamlish.load_file(root / "sdlc.yaml")
-    assert cfg["commands"]["setup"] == "python -m pip install -e . pytest ruff"
+    assert cfg["commands"]["setup"] == "python -m pip install pytest ruff"
     assert cfg["commands"]["test"] == "python -m pytest"  # the siblings are untouched
     assert _run_init(root)["files"]["sdlc.yaml"] == "unchanged"
 

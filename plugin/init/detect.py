@@ -119,16 +119,15 @@ def python_setup(root: Path, pyproject: str) -> Target:
             "'Successfully installed' and exit code 0",
             f"detected: [project.optional-dependencies] extra '{extra}' in pyproject.toml",
         )
-    if (root / "pyproject.toml").is_file():
-        return Target(
-            f"python -m pip install -e . {PY_SETUP_TOOLS}",
-            "'Successfully installed' and exit code 0",
-            "created: editable install plus the test and lint toolchain (no extras declared)",
-        )
+    # No editable install without a declared extra: `pip install -e .` runs setuptools'
+    # automatic package discovery, which refuses a flat layout with several top-level folders
+    # (changes/, evals/, framework/ checked out by the CI job, the package itself) - observed on
+    # the fourth live design run, 2026-09-21. Tests import the package from the working
+    # directory anyway; a project that needs the install declares an extra.
     return Target(
         f"python -m pip install {PY_SETUP_TOOLS}",
         "'Successfully installed' and exit code 0",
-        "created: the test and lint toolchain (no pyproject.toml to install from)",
+        "created: the test and lint toolchain (no extras declared; no editable install)",
     )
 
 
