@@ -2,14 +2,17 @@
 (build guide step 27a; OPERATING_MODEL section 4.1 "surface").
 
     python "${CLAUDE_PLUGIN_ROOT}/plugin/pr/cli.py" description --root . --id 0001 --phase c
-    python cli.py upsert --root . --id 0001 --phase c [--draft] [--ready] [--dry-run]
+    python cli.py upsert --root . --id 0001 --phase c [--draft] [--ready] [--check-run]
+                                                      [--dry-run]
     python cli.py check-run --root . --id 0001 --phase d
 
 ``description`` prints the body only (nothing else). ``upsert`` opens or updates the phase's
 PR with that body, the generated title and the label the gate printed, and prints a JSON
-summary: route, url (or compare_url when no route exists), number, label, created.
-``check-run`` posts the phase's check run for HEAD (step 28). Exit 0 on success, 2 on a
-usage error; a missing GitHub route is not an error - it prints the body for the owner.
+summary: route, url (or compare_url when no route exists), number, label, created; with
+``--check-run`` it also posts the phase's check run, so the phase (d) runbook line is one
+command. ``check-run`` posts the phase's check run for HEAD (step 28) on its own. Exit 0 on
+success, 2 on a usage error; a missing GitHub route is not an error - it prints the body for
+the owner.
 """
 
 from __future__ import annotations
@@ -97,10 +100,17 @@ def cmd_upsert(args) -> int:
         out.update({"route": "dry-run", "url": None, "body": body})
         _emit(out)
         return 0
-    if not repo:
-        out.update({"route": "none", "url": None, "reason": "no GitHub remote", "body": body})
+
+    def finish() -> int:
+        """Emit, after posting the phase's check run when --check-run asked for it."""
+        if getattr(args, "check_run", False):
+            out["check_run"] = check_run_result(root, change_dir, args.phase)
         _emit(out)
         return 0
+
+    if not repo:
+        out.update({"route": "none", "url": None, "reason": "no GitHub remote", "body": body})
+        return finish()
 
     found = github.find_open_pr(repo, head)
     number = found.get("number")
@@ -115,8 +125,7 @@ def cmd_upsert(args) -> int:
     if not result.get("ok"):
         out["reason"] = result.get("reason", "")
         out["body"] = body  # no route: the owner opens the PR from the compare URL
-        _emit(out)
-        return 0
+        return finish()
 
     number = out["number"]
     if label and number:
@@ -129,8 +138,37 @@ def cmd_upsert(args) -> int:
             out["labels"] = github.set_labels(repo, int(number), add, remove)
         if args.ready:
             out["ready"] = github.set_ready(repo, int(number))
-    _emit(out)
-    return 0
+    return finish()
+
+
+def check_run_result(root: Path, change_dir: Path, phase: str) -> dict[str, Any]:
+    """Post the phase's check run for HEAD and return what happened (route "none" when
+    there is no GitHub remote or no commit yet: a missing route is never an error)."""
+    gate_json = desc.load_gate(change_dir, phase)
+    conclusion = "failure" if (gate_json or {}).get("result") == "park" else "success"
+    summary = desc.evidence_status(change_dir, phase)
+    repo, _base = _repo_and_base(root)
+    try:
+        head_sha = gitops.run(root, "rev-parse", "HEAD").strip()
+    except (gitops.GitError, FileNotFoundError):
+        head_sha = ""
+    name = CHECK_RUN_NAME.format(phase=phase)
+    if not repo or not head_sha:
+        return {
+            "route": "none",
+            "ok": False,
+            "reason": "no GitHub remote or no HEAD",
+            "name": name,
+            "conclusion": conclusion,
+            "summary": summary,
+        }
+    result = github.create_check_run(
+        repo, head_sha, name, conclusion, f"SDLC gate ({phase})", summary
+    )
+    result.update(
+        {"name": name, "conclusion": conclusion, "summary": summary, "head_sha": head_sha}
+    )
+    return result
 
 
 def cmd_check_run(args) -> int:
@@ -138,34 +176,7 @@ def cmd_check_run(args) -> int:
     if ctx is None:
         return 2
     root, change_dir, _st = ctx
-    gate_json = desc.load_gate(change_dir, args.phase)
-    conclusion = "failure" if (gate_json or {}).get("result") == "park" else "success"
-    summary = desc.evidence_status(change_dir, args.phase)
-    repo, _base = _repo_and_base(root)
-    try:
-        head_sha = gitops.run(root, "rev-parse", "HEAD").strip()
-    except (gitops.GitError, FileNotFoundError):
-        head_sha = ""
-    name = CHECK_RUN_NAME.format(phase=args.phase)
-    if not repo or not head_sha:
-        _emit(
-            {
-                "route": "none",
-                "ok": False,
-                "reason": "no GitHub remote or no HEAD",
-                "name": name,
-                "conclusion": conclusion,
-                "summary": summary,
-            }
-        )
-        return 0
-    result = github.create_check_run(
-        repo, head_sha, name, conclusion, f"SDLC gate ({args.phase})", summary
-    )
-    result.update(
-        {"name": name, "conclusion": conclusion, "summary": summary, "head_sha": head_sha}
-    )
-    _emit(result)
+    _emit(check_run_result(root, change_dir, args.phase))
     return 0
 
 
@@ -180,6 +191,11 @@ def build_parser() -> argparse.ArgumentParser:
         if name == "upsert":
             p.add_argument("--draft", action="store_true", help="open the PR as a draft")
             p.add_argument("--ready", action="store_true", help="mark the PR ready for review")
+            p.add_argument(
+                "--check-run",
+                action="store_true",
+                help="also post the phase's check run for HEAD (step 28)",
+            )
             p.add_argument("--dry-run", action="store_true", help="compute, contact nothing")
     return parser
 

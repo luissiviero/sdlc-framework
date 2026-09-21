@@ -12,8 +12,13 @@ It reads the ``plugin:`` block of ``sdlc.yaml`` and writes two step outputs into
     ref=v<plugin.version>            the git ref of the pinned framework release
     claude_code=<plugin.claude_code> the Claude Code CLI version the jobs install
 
+A ``plugin.version`` that already starts with ``v`` is not doubled: ``v1.2.3`` prints
+``ref=v1.2.3``. ``plugin.claude_code`` is checked against ``^[0-9A-Za-z.+-]+$`` because the
+install step interpolates it into a shell command; anything else stops the workflow.
+
 Exit codes: 0 the pin was read; 1 sdlc.yaml is missing or carries no ``plugin.version``
-(the workflow must then stop rather than silently check out the framework's default branch).
+(the workflow must then stop rather than silently check out the framework's default branch);
+2 ``plugin.claude_code`` is not a version string.
 """
 
 from __future__ import annotations
@@ -25,6 +30,8 @@ import sys
 from pathlib import Path
 
 DEFAULT_CLAUDE_CODE = "2.1.278"  # the framework's minimum, used when the key is absent
+# npm version or dist-tag characters only: the value reaches a shell command in the job
+CLAUDE_CODE_RE = re.compile(r"^[0-9A-Za-z.+-]+$")
 PLUGIN_BLOCK_RE = re.compile(r"(?m)^plugin:[ \t]*$")
 KEY_RE = r"(?m)^[ \t]+{key}:[ \t]*[\"']?([^\"'#\r\n]+)"
 
@@ -66,8 +73,15 @@ def main(argv: list[str] | None = None) -> int:
         print(f"{path} has no plugin.version: run /sdlc-init first", file=sys.stderr)
         return 1
     claude_code = read_key(block, "claude_code") or DEFAULT_CLAUDE_CODE
+    if not CLAUDE_CODE_RE.match(claude_code):
+        print(
+            f"{path}: plugin.claude_code {claude_code!r} is not a version string "
+            "(allowed: letters, digits, '.', '+', '-')",
+            file=sys.stderr,
+        )
+        return 2
 
-    lines = [f"ref=v{version}", f"claude_code={claude_code}"]
+    lines = [f"ref=v{version.removeprefix('v')}", f"claude_code={claude_code}"]
     for line in lines:
         print(line)
     out = os.environ.get("GITHUB_OUTPUT")

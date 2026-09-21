@@ -5,9 +5,11 @@ the parked ones (``sdlc:needs-human``) first, then the ones waiting at a human g
 (``sdlc:<phase>-ready``), each with the first bullet of its generated summary.
 
 **Delivery medium.** The digest replaces the body of one long-lived open issue titled
-"SDLC review queue" (created and pinned on the first run). Editing an issue body sends no
-notification - GitHub notifies on new issues and new comments, not on body edits - so the
-digest stays pull, not push: the owner opens the pinned issue on their own cadence, exactly
+"SDLC review queue" (created and pinned on the first run). GitHub's documentation does not
+say whether editing an issue body notifies, and the design does not depend on it: the issue
+is opened and edited by the workflow token, the owner never comments on it, and the owner
+sets the repository watch to participating-only (OPERATING_MODEL section 7; NOTES section
+11a). The first run opens the issue and may notify once. So the digest stays pull, not push,
 as decision 20 ("nothing pushes to you") and OPERATING_MODEL section 7 ("a scheduled job
 posts a daily digest of the queue. Nothing pushes to the owner") require. A daily comment
 would page the owner every morning; a committed file would need a commit on the default

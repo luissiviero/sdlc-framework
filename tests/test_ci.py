@@ -161,6 +161,15 @@ def test_dry_run_argv_per_phase(capsys, project, phase, command, mode):
     assert int(argv[argv.index("--max-turns") + 1]) == run_phase.DEFAULT_MAX_TURNS
 
 
+def test_design_phase_argv_cannot_edit_a_file(capsys, project):
+    """Phase (b) writes spec.md and plan.md; it never edits code (decision 6, layer iii)."""
+    root, _change = project
+    argv = dry_run_argv(capsys, root, "b")
+    assert argv[argv.index("--allowedTools") + 1] == run_phase.DESIGN_ALLOWED_TOOLS
+    assert argv[argv.index("--disallowedTools") + 1] == run_phase.DESIGN_DISALLOWED_TOOLS
+    assert "Edit" in argv[argv.index("--disallowedTools") + 1]
+
+
 def test_dry_run_argv_on_the_token_path_is_not_bare(capsys, project):
     root, _change = project
     argv = dry_run_argv(capsys, root, env=dict(TOKEN_ENV))
@@ -323,6 +332,178 @@ def test_full_profile_needs_a_human_applied_approval_label(project, monkeypatch)
     assert skip_reason(root, "d", env) is None
 
 
+def with_remote(root: Path, tmp_path: Path) -> Path:
+    """A bare origin with the project's main branch pushed to it."""
+    bare = tmp_path / "remote.git"
+    git(tmp_path, "init", "-q", "--bare", "-b", "main", str(bare))
+    git(root, "remote", "add", "origin", str(bare))
+    git(root, "add", "-A")
+    git(root, "commit", "-q", "-m", "sdlc-init")
+    git(root, "push", "-q", "-u", "origin", "main")
+    return bare
+
+
+def test_a_dispatched_run_switches_to_the_work_branch_before_the_guard(project, tmp_path, capsys):
+    """A workflow_dispatch run checks out the default branch, where status.yaml is still at
+    the phase main knows; without the switch every dispatched (d)/(e) run would skip."""
+    root, change = project
+    set_state(change, "b")
+    with_remote(root, tmp_path)
+    # the build branch carries phase (c) with a passing gate; main stays at (b)
+    git(root, "checkout", "-q", "-b", "sdlc/0001/c")
+    set_state(change, "c", gate_phase="c", gate_result="passed")
+    git(root, "add", "-A")
+    git(root, "commit", "-q", "-m", "build(0001): the work")
+    git(root, "push", "-q", "-u", "origin", "sdlc/0001/c")
+    git(root, "checkout", "-q", "main")
+    git(root, "branch", "-q", "-D", "sdlc/0001/c")  # the dispatched runner has main only
+    assert status_mod.read_status(change).phase == "b"
+
+    args = Args(root=str(root), phase="d")
+    assert run_phase.run_phase(args, dict(KEY_ENV)) == run_phase.EXIT_OK
+    out = json.loads(capsys.readouterr().out)
+    assert out["branch"]["branch"] == "sdlc/0001/c" and out["branch"]["switched"] is True
+    assert out["branch"]["from"] == "origin/sdlc/0001/c"
+    assert out["argv"][-1] == "/sdlc:sdlc-test 0001"  # the guard saw phase (c), not (b)
+    assert status_mod.read_status(change).phase == "c"
+    assert git(root, "rev-parse", "--abbrev-ref", "HEAD").strip() == "sdlc/0001/c"
+
+
+def test_the_build_run_creates_its_branch_off_the_design_branch(project, tmp_path, capsys):
+    """Lite: the spec+plan PR is not merged before the build, so sdlc/<id>/c starts there."""
+    root, change = project
+    set_state(change, "b", gate_phase="b", gate_result="passed")
+    with_remote(root, tmp_path)
+    git(root, "checkout", "-q", "-b", "sdlc/0001/b")
+    git(root, "commit", "-q", "--allow-empty", "-m", "design(0001): spec and plan")
+    git(root, "push", "-q", "-u", "origin", "sdlc/0001/b")
+    git(root, "checkout", "-q", "main")
+    design_head = git(root, "rev-parse", "origin/sdlc/0001/b").strip()
+
+    branch = run_phase.prepare_branch(root, "0001", "c")
+    assert branch["branch"] == "sdlc/0001/c" and branch["switched"] is True
+    assert branch["from"] == "origin/sdlc/0001/b"
+    assert git(root, "rev-parse", "HEAD").strip() == design_head
+
+
+def test_a_missing_build_branch_leaves_the_checkout_alone(project):
+    root, _change = project
+    branch = run_phase.prepare_branch(root, "0001", "e")
+    assert branch["switched"] is False and "does not exist" in branch["note"]
+
+
+def test_a_ci_park_commits_the_change_and_updates_the_pr(project, tmp_path, capsys, monkeypatch):
+    """A park is a queue item: it has to reach the branch and the PR, not just status.yaml
+    on a runner that is about to be deleted (OPERATING_MODEL section 5)."""
+    root, change = project
+    set_state(change, "b", gate_phase="b", gate_result="passed")
+    bare = with_remote(root, tmp_path)
+    monkeypatch.setattr(
+        run_phase, "preflight", lambda *a: {"allow": False, "reasons": ["test_target: red"]}
+    )
+    args = Args(root=str(root), phase="c", dry_run=False)
+    assert run_phase.run_phase(args, dict(KEY_ENV)) == run_phase.EXIT_OK
+    out = json.loads(capsys.readouterr().out)
+    assert out["parked"] == ["test_target: red"] and out["commit"]["ok"] is True
+    st = status_mod.read_status(change)
+    assert "preflight:" in st.parked_reason  # the park survives the commit
+    assert "sdlc/0001/c" in git(bare, "branch", "--list", "sdlc/0001/c")
+    tracked = git(root, "ls-tree", "-r", "--name-only", "sdlc/0001/c")
+    assert "changes/0001-percent-helper/evidence/gate-c.json" in tracked
+    gate_file = json.loads((change / "evidence" / "gate-c.json").read_text(encoding="utf-8"))
+    assert gate_file["result"] == "park" and gate_file["label"] == "sdlc:needs-human"
+    assert "What I need from you" in gate_file["what_i_need"]
+
+
+def test_a_branch_that_changed_a_guardrail_file_never_runs(project, tmp_path, capsys):
+    """Decision 6 layer iii: prevention. The hook denies the edit inside a run; a branch that
+    arrives with one is parked before the model is called."""
+    root, change = project
+    set_state(change, "c", gate_phase="c", gate_result="passed")
+    with_remote(root, tmp_path)
+    git(root, "checkout", "-q", "-b", "sdlc/0001/c")
+    (root / "CLAUDE.md").write_text("# rewritten by the run\n", encoding="utf-8")
+    git(root, "add", "-A")
+    git(root, "commit", "-q", "-m", "build(0001): the work")
+    git(root, "push", "-q", "-u", "origin", "sdlc/0001/c")
+
+    args = Args(root=str(root), phase="d", dry_run=False)
+    assert run_phase.run_phase(args, dict(KEY_ENV)) == run_phase.EXIT_OK
+    out = json.loads(capsys.readouterr().out)
+    assert "CLAUDE.md" in out["parked"] and "refuses to run" in out["parked"]
+    assert "guardrail" in status_mod.read_status(change).parked_reason
+
+
+def test_a_framework_change_may_touch_the_guardrails(project, tmp_path):
+    """The one exception of OPERATING_MODEL section 3, read from the base copy of intent.md
+    so a branch cannot declare itself a framework change."""
+    root, change = project
+    write(change / "intent.md", "# Intent: the framework\nFramework change: yes\n")
+    with_remote(root, tmp_path)  # the marker is on the base branch
+    git(root, "checkout", "-q", "-b", "sdlc/0001/c")
+    (root / "CLAUDE.md").write_text("# a reviewed framework change\n", encoding="utf-8")
+    git(root, "add", "-A")
+    git(root, "commit", "-q", "-m", "build(0001): the framework change")
+    assert run_phase.guardrail_changes(root, change, {}) == []
+
+
+def test_full_profile_fails_closed_when_the_label_cannot_be_read(project, monkeypatch):
+    """No gh and no token is no route to the label: an unverifiable human gate is not a
+    passed human gate, so the run skips instead of proceeding (OPERATING_MODEL 4.2)."""
+    root, change = project
+    text = (root / "sdlc.yaml").read_text(encoding="utf-8")
+    (root / "sdlc.yaml").write_text(text.replace("profile: standard", "profile: full"), "utf-8")
+    set_state(change, "c", gate_phase="c", gate_result="passed")
+    from pr import github
+
+    monkeypatch.setattr(github, "gh_path", lambda: None)
+    monkeypatch.setattr(github, "token", lambda: None)
+    assert "cannot be verified" in skip_reason(root, "d", {})
+
+    # gh alone still reads the label; only the actor check degrades, with a note
+    monkeypatch.setattr(github, "gh_path", lambda: "/usr/bin/gh")
+    monkeypatch.setattr(
+        github, "find_open_pr", lambda repo, head: {"number": 7, "labels": ["sdlc:c-approved"]}
+    )
+    assert skip_reason(root, "d", {}) is None
+
+
+def test_label_events_are_read_page_by_page(monkeypatch):
+    """A long PR thread pushes the `labeled` event past the first page of the timeline."""
+    from pr import github
+
+    pages = {
+        "https://api.github.com/repos/o/r/issues/7/events?per_page=100": {
+            "status": 200,
+            "data": [{"event": "commented"}],
+            "error": "",
+            "headers": {"Link": '<https://api.github.com/x?page=2>; rel="next"'},
+        },
+        "https://api.github.com/x?page=2": {
+            "status": 200,
+            "data": [
+                {
+                    "event": "labeled",
+                    "label": {"name": "sdlc:c-approved"},
+                    "actor": {"login": "luissiviero"},
+                }
+            ],
+            "error": "",
+            "headers": {"Link": '<https://api.github.com/x?page=1>; rel="prev"'},
+        },
+    }
+    seen = []
+
+    def fake_request(method, url, tok, payload=None):
+        seen.append(url)
+        return pages[url]
+
+    monkeypatch.setattr(github, "token", lambda: FAKE_TOKEN)
+    monkeypatch.setattr(github, "_request", fake_request)
+    assert run_phase.label_applied_by_a_human("o/r", 7, "sdlc:c-approved") == (True, "luissiviero")
+    assert len(seen) == 2 and seen[0].endswith("per_page=100")
+
+
 def test_change_id_comes_from_the_head_ref_when_no_input_is_given():
     assert run_phase.resolve_change_id(None, "sdlc/0042/a", "b") == ("0042", None)
     assert run_phase.resolve_change_id(None, "sdlc/0042/b", "b")[0] is None
@@ -385,6 +566,7 @@ def test_full_run_stores_the_transcript_records_spend_and_hands_over(
     assert out["result"] == "continue" and out["cost_usd"] == 0.42
     assert out["dispatched"]["would_dispatch"] == "sdlc-build.yml"
     assert out["dispatched"]["change_id"] == "0001"
+    assert out["dispatched"]["head_ref"] == "sdlc/0001/c"  # keys the next run's group
 
     stored = json.loads((change / "evidence" / "claude-b.json").read_text(encoding="utf-8"))
     assert stored == FAKE_RESULT
@@ -489,9 +671,36 @@ def test_phase_workflow_permissions_and_concurrency(name):
         "checks: write",
         "actions: write",
     ]
-    assert 'group: "sdlc-${{ inputs.change_id || github.event.pull_request.head.ref }}"' in text
+    assert 'group: "sdlc-${{ inputs.head_ref || github.event.pull_request.head.ref }}"' in text
     assert "cancel-in-progress: false" in text
     assert "timeout-minutes: 150" in text
+
+
+@pytest.mark.parametrize("name", PHASE_WORKFLOWS)
+def test_phase_workflow_dispatch_takes_the_head_ref_that_keys_the_group(name):
+    """run_phase.py's dispatch passes it, so an automated hop shares the PR-fired run's
+    concurrency group (OPERATING_MODEL section 4.2)."""
+    text = workflow(name)
+    block = re.search(r"(?m)^      head_ref:\n(?:        .*\n)+", text)
+    assert block and "required: false" in block.group(0)
+    assert "type: string" in text
+
+
+@pytest.mark.parametrize("name", ALL_WORKFLOWS)
+def test_no_workflow_run_line_interpolates_an_expression(name):
+    """Script injection: a `${{ }}` in a run: line is pasted into the shell before it runs.
+    Every value reaches the script through a step-level env var instead."""
+    for line in workflow(name).splitlines():
+        if line.strip().startswith("run: "):
+            assert "${{" not in line, line
+
+
+@pytest.mark.parametrize("name", ("sdlc-design.yml", "sdlc-build.yml"))
+def test_merge_fired_workflows_only_look_at_sdlc_branches(name):
+    """A closed PR on any other branch is not this framework's business."""
+    text = workflow(name)
+    assert "startsWith(github.event.pull_request.head.ref, 'sdlc/')" in text
+    assert "github.event_name != 'pull_request'" in text  # the dispatch path still runs
 
 
 def test_digest_workflow_is_scheduled_and_needs_no_model_credential():
@@ -499,7 +708,11 @@ def test_digest_workflow_is_scheduled_and_needs_no_model_credential():
     assert re.search(r'(?m)^    - cron: "17 6 \* \* \*"$', text)
     assert re.search(r"(?m)^  workflow_dispatch:$", text)
     block = text.split("permissions:\n", 1)[1].split("\n\n", 1)[0]
-    assert [line.strip() for line in block.splitlines()] == ["issues: write", "pull-requests: read"]
+    assert [line.strip() for line in block.splitlines()] == [
+        "contents: read",  # actions/checkout fails without it
+        "issues: write",
+        "pull-requests: read",
+    ]
     assert "plugin/pr/digest.py --repo" in text
     assert KEY_VAR not in text and TOKEN_VAR not in text
 

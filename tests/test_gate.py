@@ -592,7 +592,10 @@ def test_gate_phase_d_requires_evidence_and_findings_at_e(project):
     ev = next(ch for ch in result.failed if ch.name == "evidence")
     assert ev.details["missing"] == ["test.log", "build.log", "lint.log"]
     for name in ("test.log", "build.log", "lint.log"):
-        write(change / "evidence" / name, "ok\n")
+        write(change / "evidence" / name, "ok\n")  # no collector header: not evidence
+    ev = next(ch for ch in gate.run_gate(root, "0001", "d").failed if ch.name == "evidence")
+    assert "collector header" in ev.reason
+    write_logs(change)
     assert gate.run_gate(root, "0001", "d").result == "continue"
     # gate (e) is human; the findings JSON is mandatory there, tied to HEAD, and Important
     # findings park

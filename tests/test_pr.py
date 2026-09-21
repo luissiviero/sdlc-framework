@@ -205,16 +205,15 @@ def gate_json(
     return data
 
 
-def logs(change_dir: Path, exit_code: int = 0) -> None:
+def logs(change_dir: Path, exit_code: int | None = 0) -> None:
+    """The three command logs with the header plugin/evidence/collect.py writes."""
     for name, command in (
         (art.EVIDENCE_TEST, "python -m pytest"),
         (art.EVIDENCE_BUILD, "python -m build"),
         (art.EVIDENCE_LINT, "ruff check ."),
     ):
-        write(
-            change_dir / art.EVIDENCE_DIR / name,
-            f"{command} -> exit {exit_code}\nall good\n",
-        )
+        header = art.render_evidence_header(command, exit_code, 1.2, "2026-09-21T10:00:00Z")
+        write(change_dir / art.EVIDENCE_DIR / name, header + "\nall good\n")
 
 
 def findings(change_dir: Path, important: int = 0, nits: int = 0) -> None:
@@ -507,6 +506,31 @@ def test_check_run_without_remote_reports_route_none(project, capsys):
     assert out["name"] == "sdlc/d" and "test red" in out["summary"]
 
 
+def test_upsert_posts_the_phase_check_run_when_asked(project, capsys, monkeypatch):
+    """The phase (d) runbook line is one command: upsert --check-run (build guide step 28)."""
+    root, change = project
+    gate_json(change, "d", "park", c.NEEDS_HUMAN_LABEL)
+    logs(change, exit_code=1)
+    monkeypatch.setattr(github.shutil, "which", lambda *_a, **_k: None)
+    posted: list[tuple] = []
+    monkeypatch.setattr(
+        github,
+        "create_check_run",
+        lambda *args: posted.append(args) or {"route": "api", "ok": True, "id": 3},
+    )
+    code = pr_cli.main(
+        ["upsert", "--root", str(root), "--id", "0001", "--phase", "d", "--check-run"]
+    )
+    assert code == 0
+    out = json.loads(capsys.readouterr().out)
+    assert out["check_run"]["name"] == "sdlc/d"
+    assert out["check_run"]["conclusion"] == "failure"  # the gate parked
+    assert "test red" in out["check_run"]["summary"]  # the evidence summary, as posted
+    # without the flag nothing is posted at all
+    assert pr_cli.main(["upsert", "--root", str(root), "--id", "0001", "--phase", "d"]) == 0
+    assert "check_run" not in json.loads(capsys.readouterr().out)
+
+
 def test_label_colours(project):
     assert pr_cli.label_color(c.NEEDS_HUMAN_LABEL) == "D93F0B"
     assert pr_cli.label_color(c.ready_label("c")) == "0E8A16"
@@ -592,6 +616,21 @@ def test_set_labels_ignores_404_on_remove(recorder):
     }
     result = github.set_labels("o/r", 7, [], ["sdlc:c-ready"])
     assert result["ok"] is True and result["removed"] == []
+
+
+def test_ensure_label_never_forces_and_accepts_an_existing_label(monkeypatch):
+    """--force would rewrite the colour and description of a label the owner edited."""
+    calls: list[list[str]] = []
+
+    def fake_gh(*args, stdin=None):
+        calls.append(list(args))
+        return {"ok": False, "code": 1, "out": "", "err": "label already exists; ..."}
+
+    monkeypatch.setattr(github, "gh_path", lambda: "/usr/bin/gh")
+    monkeypatch.setattr(github, "_gh", fake_gh)
+    result = github.ensure_label("o/r", "sdlc:c-ready", "0E8A16", "SDLC gate (c)")
+    assert result["ok"] is True and result["created"] is False
+    assert "--force" not in calls[0]
 
 
 def test_ensure_label_treats_already_exists_as_success(recorder):

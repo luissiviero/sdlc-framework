@@ -60,7 +60,11 @@ def _no_route(reason: str, **extra: Any) -> dict[str, Any]:
 def _request(
     method: str, url: str, tok: str, payload: dict[str, Any] | None = None
 ) -> dict[str, Any]:
-    """{'status', 'data', 'error'}. The only place a token touches the network."""
+    """{'status', 'data', 'error', 'headers'}. The only place a token touches the network.
+
+    ``headers`` carries the response headers as they arrived; callers that page read
+    ``Link`` from it (a monkeypatched ``_request`` may leave it out: treat it as empty).
+    """
     body = json.dumps(payload).encode("utf-8") if payload is not None else None
     request = urllib.request.Request(url, data=body, method=method)
     request.add_header("Authorization", f"Bearer {tok}")
@@ -73,17 +77,19 @@ def _request(
         with urllib.request.urlopen(request, timeout=TIMEOUT) as response:
             raw = response.read().decode("utf-8")
             status = response.status
+            headers = dict(response.headers.items())
     except urllib.error.HTTPError as exc:  # 4xx/5xx carry a body worth reading
         raw = exc.read().decode("utf-8", errors="replace")
         status = exc.code
+        headers = dict(exc.headers.items()) if exc.headers else {}
     except (urllib.error.URLError, OSError, ValueError) as exc:
-        return {"status": 0, "data": {}, "error": f"{type(exc).__name__}: {exc}"}
+        return {"status": 0, "data": {}, "error": f"{type(exc).__name__}: {exc}", "headers": {}}
     try:
         data = json.loads(raw) if raw.strip() else {}
     except ValueError:
         data = {"raw": raw}
     error = "" if 200 <= status < 300 else str(data.get("message", f"HTTP {status}"))
-    return {"status": status, "data": data, "error": error}
+    return {"status": status, "data": data, "error": error, "headers": headers}
 
 
 def _gh(*args: str, stdin: str | None = None) -> dict[str, Any]:
@@ -284,7 +290,11 @@ def set_ready(repo: str, number: int) -> dict[str, Any]:
 
 # --- labels ---------------------------------------------------------------------------------
 def ensure_label(repo: str, name: str, color: str, description: str) -> dict[str, Any]:
-    """Create the label if the repository does not have it; an existing one is success."""
+    """Create the label if the repository does not have it; an existing one is success.
+
+    Never ``--force``: that would rewrite the colour and description of a label the owner
+    edited. ``gh`` says "already exists" instead, which is the success we want.
+    """
     if gh_path():
         result = _gh(
             "label",
@@ -292,13 +302,14 @@ def ensure_label(repo: str, name: str, color: str, description: str) -> dict[str
             name,
             "--repo",
             repo,
-            "--force",
             "--color",
             color,
             "--description",
             description,
         )
         if not result["ok"]:
+            if "already exists" in (result["err"] or "").lower():
+                return {"route": "gh", "ok": True, "label": name, "created": False}
             return _no_route(result["err"] or "gh label create failed", label=name)
         return {"route": "gh", "ok": True, "label": name, "created": True}
     tok = token()

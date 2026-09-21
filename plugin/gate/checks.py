@@ -281,6 +281,10 @@ def check_commands(ctx: GateContext) -> CheckResult:
 
 
 # --- 4. evidence present (step 28) --------------------------------------------------------
+COMMAND_LOGS = tuple(art.EVIDENCE_TARGETS.values())  # test.log, build.log, lint.log
+HEADER_REQUIRED_AT = ("d", "e")  # the gates that read the toolchain's own output
+
+
 def check_evidence(ctx: GateContext) -> CheckResult:
     required = art.REQUIRED_EVIDENCE.get(ctx.phase, ())
     if not required:
@@ -295,8 +299,11 @@ def check_evidence(ctx: GateContext) -> CheckResult:
             missing.append(name)
             continue
         # logs written by evidence/collect.py carry their exit code on the first line; a log
-        # that records a failure is evidence of a red run, whatever a later re-run says
-        failure = art.evidence_failure(text)
+        # that records a failure is evidence of a red run, whatever a later re-run says, and
+        # at (d) and (e) a command log without that header is not evidence at all
+        failure = art.evidence_failure(
+            text, require_header=ctx.phase in HEADER_REQUIRED_AT and name in COMMAND_LOGS
+        )
         if failure:
             red.append(f"evidence/{name}: {failure}")
             red_names.append(name)

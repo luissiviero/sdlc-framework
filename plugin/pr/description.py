@@ -49,9 +49,11 @@ SCREENSHOT_DIR = "screenshots"
 CLAUDE_MD_PROPOSALS = "claude-md-proposals.md"
 MAX_NITS = 5
 
-# ``evidence/collect.py`` writes "<command> -> exit <code>" as the first line of each log
-# (build guide step 28): the exit code, not the agent's claim, is the evidence.
-EXIT_RE = re.compile(r"exit\s+(\d+)")
+# ``evidence/collect.py`` writes "# <command> — exit <code> — <seconds>s — <ISO-8601 UTC>"
+# as the first line of each log (build guide step 28; artifacts.EVIDENCE_HEADER_RE): the exit
+# code, not the agent's claim, is the evidence. ``exit timeout`` is a killed command, so it
+# reads red like any other non-zero exit.
+EXIT_RE = re.compile(rf"exit\s+(\d+|{art.EVIDENCE_TIMEOUT})")
 SENTENCE_RE = re.compile(r"(?s)^(.*?[.!?])(?:\s|$)")
 LIST_ITEM_RE = re.compile(r"^\s*(?:[-*]|\d+[.)])\s+(?P<text>.+)$")
 CARRIED_FORWARD_RE = re.compile(r"(?i)carried forward")
@@ -147,7 +149,7 @@ def _list_items(body: str) -> list[str]:
 
 # --- bullet 2: evidence status ------------------------------------------------------------
 def log_state(path: Path) -> str:
-    """green / red / missing, read from the log's first line (``... exit <code>``)."""
+    """green / red / missing, read from the log's first line (``... — exit <code> — ...``)."""
     if not Path(path).is_file():
         return "missing"
     try:

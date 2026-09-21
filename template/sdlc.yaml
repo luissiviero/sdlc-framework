@@ -82,6 +82,6 @@ plugin:
   marketplace: sdlc-framework
   version: {{PLUGIN_VERSION}}
   # Claude Code CLI version the SDLC workflows install (`npm install -g
-  # @anthropic-ai/claude-code@<this>`); the framework's minimum is 2.1.278, which is the
-  # first version with `--permission-prompts none` and the cap enforcement the gate relies on.
+  # @anthropic-ai/claude-code@<this>`). `--permission-prompts none` needs 2.1.259 or later;
+  # 2.1.278 is the CLI the jobs install and the framework's minimum.
   claude_code: "{{CLAUDE_CODE_VERSION}}"

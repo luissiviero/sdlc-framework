@@ -75,8 +75,16 @@ def normalise_summary(summary: str) -> str:
     return _SPACE_RE.sub(" ", text).strip()[:SUMMARY_MAX]
 
 
+def strip_dot_slash(path: str) -> str:
+    """Drop every leading ``./`` — and nothing else. ``lstrip("./")`` would eat the dot of
+    ``.github/workflows/ci.yml`` and turn it into ``github/workflows/ci.yml``."""
+    while path.startswith("./"):
+        path = path.removeprefix("./")
+    return path
+
+
 def normalise_file(path: str) -> str:
-    return str(path).strip().replace("\\", "/").lstrip("./").lower()
+    return strip_dot_slash(str(path).strip().replace("\\", "/")).lower()
 
 
 def signature(finding: dict[str, Any]) -> str:
@@ -235,7 +243,7 @@ def framework_findings(
         change_rel = ""
     out: list[dict[str, Any]] = []
     for raw in sorted({str(f).replace("\\", "/") for f in diff_files}):
-        rel = raw.lstrip("./")
+        rel = strip_dot_slash(raw)
         if change_rel and (rel == change_rel or rel.startswith(change_rel + "/")):
             continue
         if not any(matches(g, rel) for g in globs):

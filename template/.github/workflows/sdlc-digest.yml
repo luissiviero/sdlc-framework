@@ -13,7 +13,8 @@
 # delayed than :00. GitHub disables schedules in a public repository after 60 days without
 # activity; the workflow_dispatch trigger is how the owner re-enables it.
 #
-# /sdlc-init filled in the framework repository and the pinned Claude Code version.
+# /sdlc-init filled in the framework repository. The Claude Code version is read from
+# sdlc.yaml at run time.
 name: SDLC review-queue digest
 
 on:
@@ -22,6 +23,7 @@ on:
   workflow_dispatch:
 
 permissions:
+  contents: read
   issues: write
   pull-requests: read
 
@@ -53,4 +55,5 @@ jobs:
       - name: Post the digest
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: python framework/plugin/pr/digest.py --repo "${{ github.repository }}"
+          REPO: ${{ github.repository }}
+        run: python framework/plugin/pr/digest.py --repo "$REPO"

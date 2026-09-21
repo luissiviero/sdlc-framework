@@ -204,6 +204,27 @@ _PLAIN_OK = re.compile(r"^[A-Za-z_./*][A-Za-z0-9_./*: \-()+,@]*$")
 _YAML11_WORDS = {"y", "n", "yes", "no", "on", "off", "true", "false", "null"}
 
 
+# A plain scalar may not begin with a YAML indicator — an anchor (&), an alias (*), a block
+# scalar (| >), a comment (#), a tag (!), a directive (%) or a flow punctuation mark — and may
+# not carry leading or trailing space. ``**/test_*.py`` is the everyday case: it is a glob to
+# us and an alias to YAML, so it is quoted rather than refused.
+_INDICATORS = ("&", "*", "|", ">", "#", "!", "%", "@", "`", ",", "[", "]", "{", "}", "?", "-")
+
+
+def _is_plain(s: str) -> bool:
+    """True when the string can be written without quotes and read back unchanged."""
+    if not s or s != s.strip() or s.startswith(_INDICATORS):
+        return False
+    if not _PLAIN_OK.match(s) or s.lower() in _YAML11_WORDS:
+        return False
+    try:
+        if parse_scalar(s) != s:
+            return False
+    except YamlishError:  # the reader refuses it: quoting is exactly the fix
+        return False
+    return ": " not in s and not s.endswith(":") and " #" not in s
+
+
 def _dump_scalar(value: Any) -> str:
     if value is None:
         return "null"
@@ -221,16 +242,7 @@ def _dump_scalar(value: Any) -> str:
     if not isinstance(value, str):
         raise YamlishError(f"unsupported scalar type: {type(value).__name__}")
     s = value
-    if (
-        s
-        and _PLAIN_OK.match(s)
-        and s.lower() not in _YAML11_WORDS
-        and parse_scalar(s) == s
-        and not s.endswith(" ")
-        and ": " not in s
-        and not s.endswith(":")
-        and " #" not in s
-    ):
+    if _is_plain(s):
         return s
     escaped = (
         s.replace("\\", "\\\\")

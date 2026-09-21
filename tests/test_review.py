@@ -161,6 +161,16 @@ def test_signature_separates_pass_file_and_wording():
     assert fmod.signature(dict(BUG, summary="Something else entirely.")) != first
 
 
+def test_normalise_file_keeps_dotfiles_and_drops_only_a_leading_dot_slash():
+    """``lstrip("./")`` ate every leading "." and "/", so .github/... lost its dot."""
+    assert fmod.normalise_file(".github/workflows/ci.yml") == ".github/workflows/ci.yml"
+    assert fmod.normalise_file("./.github/workflows/ci.yml") == ".github/workflows/ci.yml"
+    assert fmod.normalise_file("././src/a.py") == "src/a.py"
+    assert fmod.normalise_file(".env") == ".env"
+    assert fmod.normalise_file("  Sample_Pkg\\calc.py  ") == "sample_pkg/calc.py"
+    assert fmod.strip_dot_slash("./tests/test_a.py") == "tests/test_a.py"
+
+
 def test_normalise_summary_truncates_to_eighty_characters():
     assert len(fmod.normalise_summary("word " * 60)) == 80
 

@@ -11,7 +11,8 @@
 # run_phase.py sends with the change id. The job holds no deploy secret and no production
 # credential (article p.40).
 #
-# /sdlc-init filled in the framework repository and the pinned Claude Code version.
+# /sdlc-init filled in the framework repository. The Claude Code version is read from
+# sdlc.yaml at run time.
 name: SDLC test (d)
 
 on:
@@ -20,6 +21,10 @@ on:
       change_id:
         description: "Four-digit change id, e.g. 0001"
         required: true
+        type: string
+      head_ref:
+        description: "The change's work branch, e.g. sdlc/0001/c; it keys the concurrency group"
+        required: false
         type: string
   pull_request:
     types: [labeled]
@@ -31,8 +36,12 @@ permissions:
   checks: write
   actions: write
 
+# One change at a time, keyed on the change's own branch: sdlc/<id>/b for the design PR
+# merge, sdlc/<id>/c for build, test and deploy — the runs that must serialise
+# (OPERATING_MODEL section 4.2). run_phase.py passes head_ref on every dispatch, so an
+# automated hop lands in the same group as the PR-fired run of the same branch.
 concurrency:
-  group: "sdlc-${{ inputs.change_id || github.event.pull_request.head.ref }}"
+  group: "sdlc-${{ inputs.head_ref || github.event.pull_request.head.ref }}"
   cancel-in-progress: false
 
 jobs:
@@ -63,10 +72,12 @@ jobs:
         with:
           node-version: "22"
 
-      # The pin step also prints sdlc.yaml's plugin.claude_code; re-install the workflows
-      # when the two differ (/sdlc-init rendered the version below).
+      # The version comes from the pin step at run time, so a bump in sdlc.yaml applies on
+      # the next run; re-install the workflows only when this file itself changes.
       - name: Install the pinned Claude Code CLI
-        run: npm install -g @anthropic-ai/claude-code@${{ steps.pin.outputs.claude_code }}
+        env:
+          CLAUDE_CODE_VERSION: ${{ steps.pin.outputs.claude_code }}
+        run: npm install -g @anthropic-ai/claude-code@"$CLAUDE_CODE_VERSION"
 
       - name: Prepare the runner for Claude Code's sandbox
         run: python framework/plugin/ci/runner_setup.py
@@ -76,4 +87,8 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           GITHUB_TOKEN: ${{ github.token }}
-        run: python framework/plugin/ci/run_phase.py --root . --plugin-dir framework --phase d --id "${{ inputs.change_id }}" --head-ref "${{ github.event.pull_request.head.ref }}" --repo "${{ github.repository }}" --ref "${{ github.event.repository.default_branch }}"
+          CHANGE_ID: ${{ inputs.change_id }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          REPO: ${{ github.repository }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: python framework/plugin/ci/run_phase.py --root . --plugin-dir framework --phase d --id "$CHANGE_ID" --head-ref "$HEAD_REF" --repo "$REPO" --ref "$DEFAULT_BRANCH"

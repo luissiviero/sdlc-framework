@@ -13,13 +13,23 @@ What one run does, in order:
 
 1. sets a git identity when the runner has none (the automation identity of
    OPERATING_MODEL section 2; the owner's account never commits from CI);
+1b. **switches to the change's work branch** — a ``workflow_dispatch`` run checks out the
+   default branch, where ``status.yaml`` says what main says, so every guard below would
+   read the wrong phase. The run fetches ``origin`` and switches to the branch this phase
+   works on (``sdlc/<id>/b`` for a design run, ``sdlc/<id>/c`` for build, test, deploy and
+   the review pass), creating it for (b) and (c) — in the Lite profile (c) branches off
+   ``sdlc/<id>/b``. When there is nothing to switch to, the current checkout is used;
 2. **guards** — not paused, the change exists, ``status.yaml`` is at the phase this run
    follows with a passing gate, not parked, and in the Full profile the owner's approval
    label is on the build PR and was applied by a human, not by the workflow token. A failed
    guard prints ``{"skipped": ...}`` and exits 0, so a duplicate trigger is harmless;
-3. creates the ``sdlc:*`` labels the runs apply (422 = the label already exists);
+3. refuses to run on a branch that changed a guardrail file (``.claude/**``, ``CLAUDE.md``,
+   ``REVIEW.md``, ``sdlc.yaml``, ``protected_paths``) unless intent.md says
+   ``Framework change: yes``; a park commits the change folder on the work branch and
+   updates the phase's PR, so the owner finds it in the queue (decision 6, layer iii);
 4. for phase (c), runs ``gate/preflight.py``: it decides the permission mode, and a refusal
-   that is not about auto-accept parks the change instead of running;
+   that is not about auto-accept parks the change (same mechanics) instead of running;
+4b. creates the ``sdlc:*`` labels the runs apply (422 = the label already exists);
 5. composes and runs the bounded headless call — the pinned plugin through ``--plugin-dir``,
    the CI settings file through ``--settings`` (bare mode reads no settings by itself),
    ``--permission-prompts none``, ``--max-turns`` / ``--max-budget-usd`` from ``sdlc.yaml``,
@@ -28,7 +38,8 @@ What one run does, in order:
    ``total_cost_usd`` with ``gate/cli.py record-spend``, and validates the findings file
    after a review pass;
 7. reads ``evidence/gate-<phase>.json`` and, on ``continue``, dispatches the next workflow
-   with the change id (the only hand-over GitHub allows from the workflow token).
+   with the change id and the next phase's work branch as ``head_ref`` (the only hand-over
+   GitHub allows from the workflow token; ``head_ref`` keys the concurrency group).
 
 Exit codes: 0 the run finished, was skipped or parked (a park is a queue item, not a CI
 failure); 1 an infrastructure failure — the CLI exited non-zero, reported ``is_error``, or
@@ -40,6 +51,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -52,8 +64,9 @@ if str(PLUGIN_DIR) not in sys.path:
 
 from ci import auth as auth_mod  # noqa: E402
 from gate import artifacts as art  # noqa: E402
+from gate import diff as gate_diff  # noqa: E402
 from gate import limits  # noqa: E402
-from hooks._common import ConfigError, load_sdlc_config  # noqa: E402
+from hooks._common import ConfigError, load_sdlc_config, matches  # noqa: E402
 from state import conventions as c  # noqa: E402
 from state import status as status_mod  # noqa: E402
 
@@ -71,8 +84,16 @@ APPROVAL_LABEL = {"d": "c", "e": "d", "review": "d"}  # run phase -> phase whose
 APPROVAL_BRANCH_PHASE = "c"  # the build PR, which lives on sdlc/<id>/c through (d) and (e)
 # Hand-over (section 4.2, "Hands over" column). A `wait` or a `park` dispatches nothing.
 NEXT_WORKFLOW = {"b": "sdlc-build.yml", "c": "sdlc-test.yml", "d": "sdlc-deploy.yml"}
+# The phase the dispatched workflow runs; its work branch is the dispatch's ``head_ref``
+# input, which keys the workflow's concurrency group on the change's own branch.
+NEXT_PHASE = {"b": "c", "c": "d", "d": "e"}
 # Permission mode per phase; (c) asks the preflight instead (step 18, never bypass).
 PERMISSION_MODE = {"b": "default", "d": "acceptEdits", "e": "acceptEdits", "review": "default"}
+# Phase (b) writes spec.md and plan.md and nothing else: it may create files, never edit one.
+# Write cannot be path-scoped (NOTES section 6), so the gate's design_scope check stays the
+# net for a source file a Write overwrote.
+DESIGN_ALLOWED_TOOLS = "Read,Grep,Glob,Write,Bash(python *),Bash(git *)"
+DESIGN_DISALLOWED_TOOLS = "Edit,MultiEdit,NotebookEdit,WebFetch,WebSearch"
 # The review pass is read-only but for the one file it writes (decision 12).
 REVIEW_ALLOWED_TOOLS = "Read,Grep,Glob,Bash(git *),Write"
 REVIEW_DISALLOWED_TOOLS = "Edit,WebFetch,WebSearch"
@@ -185,6 +206,23 @@ def ensure_labels(repo: str, env: dict[str, str]) -> dict[str, Any]:
     return {"ensured": len(c.all_labels()), "created": created, "failed": failed}
 
 
+EVENTS_PER_PAGE = 100
+MAX_EVENT_PAGES = 10  # 1000 timeline events is far past any real review thread
+LINK_NEXT_RE = re.compile(r'<([^>]+)>\s*;\s*rel="next"')
+
+
+def next_page_url(result: dict[str, Any]) -> str | None:
+    """The ``rel="next"`` target of a REST ``Link`` header, or None on the last page."""
+    headers = result.get("headers") or {}
+    link = ""
+    for key, value in headers.items():
+        if str(key).lower() == "link":
+            link = str(value)
+            break
+    match = LINK_NEXT_RE.search(link)
+    return match.group(1) if match else None
+
+
 def label_applied_by_a_human(repo: str, number: int, label: str) -> tuple[bool, str]:
     """Read the issue's timeline and say whether a person applied ``label``.
 
@@ -198,15 +236,21 @@ def label_applied_by_a_human(repo: str, number: int, label: str) -> tuple[bool, 
     tok = github.token()
     if not tok:
         return False, "no GITHUB_TOKEN/GH_TOKEN to read the label events with"
-    url = f"{github.API_ROOT}/repos/{repo}/issues/{number}/events"
-    result = github._request("GET", url, tok)
-    if result.get("error"):
-        return False, f"could not read the label events: {result['error']}"
-    actors = [
-        (event.get("actor") or {}).get("login") or "unknown"
-        for event in (result.get("data") or [])
-        if event.get("event") == "labeled" and (event.get("label") or {}).get("name") == label
-    ]
+    url = f"{github.API_ROOT}/repos/{repo}/issues/{number}/events?per_page={EVENTS_PER_PAGE}"
+    actors: list[str] = []
+    for _page in range(MAX_EVENT_PAGES):
+        result = github._request("GET", url, tok)
+        if result.get("error"):
+            return False, f"could not read the label events: {result['error']}"
+        actors += [
+            (event.get("actor") or {}).get("login") or "unknown"
+            for event in (result.get("data") or [])
+            if event.get("event") == "labeled" and (event.get("label") or {}).get("name") == label
+        ]
+        next_url = next_page_url(result)
+        if not next_url:
+            break
+        url = next_url
     if not actors:
         return False, f"no `labeled` event for {label}"
     actor = actors[-1]
@@ -222,12 +266,9 @@ def check_approval(repo: str, change_id: str, run_phase: str, env: dict[str, str
     if github is None:
         return f"{label} cannot be checked: plugin/pr/github.py is not available"
     if not _token(env) and not github.gh_path():
-        print(
-            f"note: no GITHUB_TOKEN/GH_TOKEN and no gh on PATH, so the actor of {label} is "
-            "not checked; the Full profile relies on branch protection here",
-            file=sys.stderr,
-        )
-        return None
+        # fail closed: with no route to GitHub the label cannot be read at all, and an
+        # unverifiable human gate is not a passed human gate (OPERATING_MODEL section 4.2).
+        return f"{label} cannot be verified: no gh and no token"
     head = c.branch_name(change_id, APPROVAL_BRANCH_PHASE)
     pr = github.find_open_pr(repo, head)
     number = pr.get("number")
@@ -240,6 +281,120 @@ def check_approval(repo: str, change_id: str, run_phase: str, env: dict[str, str
         return None
     ok, who = label_applied_by_a_human(repo, int(number), label)
     return None if ok else f"{label} on PR #{number}: {who}"
+
+
+# --- the work branch ----------------------------------------------------------------------
+# The phase whose branch a run works on. A ``workflow_dispatch`` run starts on the default
+# branch, where ``status.yaml`` is whatever main says, so every run puts the checkout on the
+# change's own branch before the guard reads anything (OPERATING_MODEL section 8).
+BRANCH_PHASE = {"review": "e"}  # the review pass runs on the build PR's branch
+CREATES_ITS_BRANCH = ("b", "c")  # (d), (e) and the review pass need sdlc/<id>/c to exist
+
+
+def work_branch_for(change_id: str, phase: str) -> str:
+    return c.work_branch(change_id, BRANCH_PHASE.get(phase, phase))
+
+
+def _git_ok(root: Path, *args: str) -> bool:
+    from state import gitops
+
+    try:
+        gitops.run(root, *args)
+    except (gitops.GitError, OSError):
+        return False
+    return True
+
+
+def _ref_exists(root: Path, ref: str) -> bool:
+    from state import gitops
+
+    return bool(gitops.run(root, "rev-parse", "--verify", "--quiet", ref, check=False).strip())
+
+
+def _start_point(root: Path, change_id: str, phase: str) -> str | None:
+    """Where a missing work branch starts: the default branch, or — in the Lite profile,
+    where the spec+plan PR is never merged before the build — ``sdlc/<id>/b``."""
+    if phase == "c":
+        design = c.branch_name(change_id, "b")
+        for ref in (f"origin/{design}", design):
+            if _ref_exists(root, ref):
+                return ref
+    base = gate_diff.default_base(root)
+    return base if base and _ref_exists(root, base) else None
+
+
+def prepare_branch(root: Path, change_id: str, phase: str) -> dict[str, Any]:
+    """Put the checkout on the branch this phase works on, creating it for (b) and (c).
+
+    Without this a dispatched run reads main's ``status.yaml`` and skips every phase past
+    (c), and a park would have no branch to commit its own evidence on.
+    """
+    from state import gitops
+
+    branch = work_branch_for(change_id, phase)
+    out: dict[str, Any] = {"branch": branch, "switched": False}
+    if not gitops.is_repo(root):
+        return {**out, "note": "not a git checkout: the current directory is used as it is"}
+    if gitops.has_remote(root):
+        gitops.run(root, "fetch", "origin", check=False)
+    if gitops.current_branch(root) == branch:
+        return {**out, "switched": True, "note": "already on the work branch"}
+    if _ref_exists(root, f"refs/heads/{branch}"):
+        return {**out, "switched": _git_ok(root, "checkout", branch), "from": "local"}
+    if _ref_exists(root, f"refs/remotes/origin/{branch}"):
+        ok = _git_ok(root, "checkout", "-b", branch, "--track", f"origin/{branch}")
+        return {**out, "switched": ok, "from": f"origin/{branch}"}
+    if phase not in CREATES_ITS_BRANCH:
+        return {**out, "note": f"{branch} does not exist: the build phase has not run yet"}
+    start = _start_point(root, change_id, phase)
+    if start is None:
+        return {**out, "note": "no base branch to create the work branch from"}
+    return {**out, "switched": _git_ok(root, "checkout", "-b", branch, start), "from": start}
+
+
+# --- the guardrails on the branch (decision 6, layer iii: prevention) -------------------------
+GUARDRAIL_PARK = "guardrail file changed on the branch: {files}; CI refuses to run a phase on it"
+
+
+def _committed_diff(root: Path) -> tuple[list[str], str | None]:
+    """(files changed against the base branch, the merge base) — committed changes only."""
+    from state import gitops
+
+    base = gate_diff.default_base(root)
+    merge_base = gitops.run(root, "merge-base", base, "HEAD", check=False).strip()
+    if not merge_base:
+        return [], None
+    out = gitops.run(root, "diff", "--name-only", merge_base, "HEAD", check=False)
+    files = [line.strip().replace("\\", "/") for line in out.splitlines() if line.strip()]
+    return files, merge_base
+
+
+def guardrail_changes(root: Path, change_dir: Path, config: dict[str, Any]) -> list[str]:
+    """The guardrail files this branch changes, unless intent.md says it is a framework
+    change (OPERATING_MODEL section 3). The hook denies such an edit inside a run; this is
+    the same rule applied to a branch the run inherits."""
+    from hooks import protected_paths as pp
+
+    if not gate_diff.is_repo(root):
+        return []
+    files, merge_base = _committed_diff(root)
+    if not files:
+        return []
+    try:
+        patterns = pp.protected_patterns(config)
+    except ConfigError:
+        patterns = list(pp.ALWAYS_PROTECTED)
+    hits = sorted({f for f in files if any(matches(p, f) for p in patterns)})
+    if not hits:
+        return []
+    try:
+        rel = Path(change_dir).resolve().relative_to(Path(root).resolve()).as_posix()
+    except ValueError:
+        rel = ""
+    base_intent = gate_diff.file_at(root, merge_base, f"{rel}/intent.md") if rel else None
+    if base_intent and art.is_framework_change(base_intent):
+        return []
+    return hits
 
 
 # --- the guard --------------------------------------------------------------------------------
@@ -336,7 +491,10 @@ def compose(
     model = env.get("SDLC_MODEL")
     if model:
         argv += ["--model", model]
-    if phase == "review":
+    if phase == "b":
+        argv += ["--allowedTools", DESIGN_ALLOWED_TOOLS]
+        argv += ["--disallowedTools", DESIGN_DISALLOWED_TOOLS]
+    elif phase == "review":
         argv += ["--allowedTools", REVIEW_ALLOWED_TOOLS]
         argv += ["--disallowedTools", REVIEW_DISALLOWED_TOOLS]
     elif phase == "triage":
@@ -410,11 +568,13 @@ def read_gate(change_dir: Path, phase: str) -> dict[str, Any] | None:
         return None
 
 
-def dispatch(repo: str, workflow: str, ref: str, change_id: str) -> dict[str, Any]:
+def dispatch(repo: str, workflow: str, ref: str, change_id: str, head_ref: str) -> dict[str, Any]:
     """``POST /repos/{repo}/actions/workflows/{file}/dispatches`` — 204 means accepted.
 
     ``workflow_dispatch`` is one of the two events GitHub still starts a run for when the
     workflow token causes it, which is why every automated transition goes through here.
+    ``head_ref`` is the work branch of the phase being dispatched; the workflow keys its
+    concurrency group on it, so every run of one change serialises (section 4.2).
     """
     github = _github()
     if github is None:
@@ -423,7 +583,8 @@ def dispatch(repo: str, workflow: str, ref: str, change_id: str) -> dict[str, An
     if not tok:
         return {"ok": False, "reason": "no GITHUB_TOKEN/GH_TOKEN to dispatch with"}
     url = f"{github.API_ROOT}/repos/{repo}/actions/workflows/{workflow}/dispatches"
-    result = github._request("POST", url, tok, {"ref": ref, "inputs": {"change_id": change_id}})
+    inputs = {"change_id": change_id, "head_ref": head_ref}
+    result = github._request("POST", url, tok, {"ref": ref, "inputs": inputs})
     ok = result.get("status") == 204 or not result.get("error")
     return {"ok": ok, "status": result.get("status"), "reason": result.get("error", "")}
 
@@ -467,20 +628,37 @@ def run_phase(args, env: dict[str, str]) -> int:
     change_id, reason = resolve_change_id(args.id, args.head_ref, phase)
     if reason:
         return _skip(reason)
+    branch = prepare_branch(root, change_id, phase)
     change_dir, st, config, reason = guard(root, change_id, phase, args.repo, env)
     if reason:
         return _skip(reason)
     if auth_mod.choose_auth(env)["auth"] is None and not args.dry_run:
         return _skip(auth_mod.choose_auth(env)["reason"])
-    labels = ensure_labels(args.repo, env)
+
+    # the branch itself must be clean of guardrail edits before a run touches it (decision 6)
+    guardrails = guardrail_changes(root, change_dir, config)
+    if guardrails:
+        parked = park_and_publish(
+            plugin_dir,
+            root,
+            change_dir,
+            st,
+            phase,
+            GUARDRAIL_PARK.format(files=", ".join(guardrails)),
+        )
+        _emit({**parked, "branch": branch})
+        return EXIT_OK
 
     # phase (c): the preflight decides the permission mode, or parks the change (step 18)
     permission_mode = PERMISSION_MODE.get(phase, "default")
     if phase == "c":
         report = preflight(plugin_dir, root, change_id)
         if not report.get("allow"):
-            park(plugin_dir, root, change_id, "preflight: " + "; ".join(report.get("reasons", [])))
-            _emit({"parked": report.get("reasons", []), "phase": phase, "change_id": change_id})
+            reasons = report.get("reasons", [])
+            parked = park_and_publish(
+                plugin_dir, root, change_dir, st, phase, "preflight: " + "; ".join(reasons)
+            )
+            _emit({**parked, "parked": reasons, "branch": branch})
             return EXIT_OK
         permission_mode = report.get("permission_mode", "acceptEdits")
 
@@ -502,9 +680,11 @@ def run_phase(args, env: dict[str, str]) -> int:
         env=env,
     )
     if args.dry_run:
-        _emit({"phase": phase, "change_id": change_id, "argv": argv, "labels": labels})
+        _emit({"phase": phase, "change_id": change_id, "argv": argv, "branch": branch})
         return EXIT_OK
 
+    # only a real run creates the labels it will apply (a dry run contacts nothing)
+    labels = ensure_labels(args.repo, env)
     data, raw, err, code = invoke(argv, root, env, run_timeout_seconds(config))
     store_result(change_dir, phase, data, raw)
     cost = None
@@ -519,7 +699,15 @@ def run_phase(args, env: dict[str, str]) -> int:
 
     review = validate_review(plugin_dir, root, change_id) if phase == "review" else None
     if phase == "review":
-        _emit({"phase": phase, "change_id": change_id, "cost_usd": cost, "review": review})
+        _emit(
+            {
+                "phase": phase,
+                "change_id": change_id,
+                "cost_usd": cost,
+                "review": review,
+                "labels": labels,
+            }
+        )
         return EXIT_OK if review and review.get("ok") else EXIT_FAILED
 
     result = read_gate(change_dir, phase)
@@ -539,6 +727,7 @@ def run_phase(args, env: dict[str, str]) -> int:
             "label": result.get("label"),
             "cost_usd": cost,
             "dispatched": handed,
+            "labels": labels,
         }
     )
     return EXIT_OK
@@ -549,9 +738,20 @@ def hand_over(args, result: dict[str, Any], phase: str, change_id: str) -> Any:
     if result.get("result") != "continue" or not workflow:
         return None
     ref = args.ref or default_ref(Path(args.root))
+    head_ref = work_branch_for(change_id, NEXT_PHASE[phase])
     if args.no_dispatch:
-        return {"would_dispatch": workflow, "ref": ref, "change_id": change_id}
-    return {"workflow": workflow, "ref": ref, **dispatch(args.repo, workflow, ref, change_id)}
+        return {
+            "would_dispatch": workflow,
+            "ref": ref,
+            "change_id": change_id,
+            "head_ref": head_ref,
+        }
+    return {
+        "workflow": workflow,
+        "ref": ref,
+        "head_ref": head_ref,
+        **dispatch(args.repo, workflow, ref, change_id, head_ref),
+    }
 
 
 def default_ref(root: Path) -> str:
@@ -590,6 +790,88 @@ def park(plugin_dir: Path, root: Path, change_id: str, reason: str) -> bool:
     except (OSError, subprocess.SubprocessError):
         return False
     return proc.returncode == 0
+
+
+# --- parking from CI: the park has to be visible where the owner looks -----------------------
+PARK_CHECK = {"c": "preflight", "b": "guardrails", "d": "guardrails", "e": "guardrails"}
+
+
+def write_park_result(
+    root: Path, change_dir: Path, st, phase: str, check: str, reason: str
+) -> Path:
+    """``evidence/gate-<phase>.json`` in the gate's own shape, so the PR description shows
+    the park and its "What I need from you" block (the gate itself overwrites it later)."""
+    from gate.checks import CheckResult  # noqa: PLC0415
+    from gate.gate import GateResult  # noqa: PLC0415
+
+    result = GateResult(
+        change_id=st.id,
+        slug=st.slug,
+        phase=phase,
+        profile=getattr(st, "profile_override", None) or "",
+        human_gate=True,
+        result="park",
+        checks=[
+            CheckResult(
+                name=check,
+                ok=False,
+                reason=reason,
+                need="Settle this, then re-run the phase: CI stopped before the run started.",
+            )
+        ],
+        label=c.NEEDS_HUMAN_LABEL,
+        head=gate_diff.head_sha(Path(root)) if gate_diff.is_repo(Path(root)) else None,
+    )
+    path = change_dir / art.EVIDENCE_DIR / art.GATE_RESULT.format(phase=phase)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(result.as_dict(), indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    return path
+
+
+def _cli_call(script: Path, argv: list[str], timeout: int = 600) -> dict[str, Any]:
+    try:
+        proc = subprocess.run(
+            [_python(), str(script), *argv],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            timeout=timeout,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        return {"ok": False, "reason": str(exc)}
+    return {"ok": proc.returncode == 0, "reason": (proc.stderr or "").strip()[-500:]}
+
+
+def park_and_publish(
+    plugin_dir: Path, root: Path, change_dir: Path, st, phase: str, reason: str
+) -> dict[str, Any]:
+    """Park, then leave the park where the owner will find it: the change folder committed
+    and pushed on the work branch, and the phase's PR carrying ``sdlc:needs-human`` and the
+    "What I need from you" block (OPERATING_MODEL section 5: a park is a queue item)."""
+    branch_phase = BRANCH_PHASE.get(phase, phase)
+    state_cli = plugin_dir / "plugin" / "state" / "cli.py"
+    out: dict[str, Any] = {"parked": reason, "phase": phase, "change_id": st.id}
+    # the phase first: ``set-phase`` clears any earlier park, so parking after it keeps
+    # ``parked_reason`` in the commit (and ``commit-phase`` then leaves the phase alone).
+    out["phase_set"] = _cli_call(
+        state_cli, ["set-phase", "--root", str(root), "--id", st.id, "--phase", branch_phase]
+    )
+    out["status"] = park(plugin_dir, root, st.id, reason)
+    write_park_result(root, change_dir, st, branch_phase, PARK_CHECK.get(phase, "ci"), reason)
+    out["commit"] = _cli_call(
+        state_cli,
+        ["commit-phase", "--root", str(root), "--id", st.id, "--phase", branch_phase,
+         "--message", f"park: {reason}"[:500], "--push"],
+    )  # fmt: skip
+    out["pr"] = _cli_call(
+        plugin_dir / "plugin" / "pr" / "cli.py",
+        ["upsert", "--root", str(root), "--id", st.id, "--phase", branch_phase, "--draft"],
+    )  # fmt: skip
+    return out
 
 
 # --- CLI --------------------------------------------------------------------------------------

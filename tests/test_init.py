@@ -376,6 +376,37 @@ def test_init_upgrade_adds_the_test_paths_block_once(tmp_path):
     assert _run_init(root)["files"]["sdlc.yaml"] == "unchanged"
 
 
+def test_init_upgrade_adds_a_missing_nested_key_as_text(tmp_path):
+    """A project initialised before B3 has `plugin:` but no `plugin.claude_code`, and no
+    `test_paths:`. The upgrade adds both in one run, as text: re-serialising the file would
+    drop every comment (and used to raise on the `**/test_*.py` default)."""
+    root = tmp_path / "proj"
+    shutil.copytree(FIXTURE, root)
+    _run_init(root)
+    text = (root / "sdlc.yaml").read_text(encoding="utf-8")
+    start, end = text.index("# --- test-file lock"), text.index("# --- guardrails")
+    pre_b3 = text[:start] + text[end:]
+    pre_b3 = "\n".join(
+        line
+        for line in pre_b3.splitlines()
+        if not line.strip().startswith(("claude_code:", "# @anthropic-ai/claude-code@<this>"))
+    )
+    pre_b3 = pre_b3.replace("protected_paths: []", "protected_paths: [gen/**]  # owner note")
+    (root / "sdlc.yaml").write_text(pre_b3 + "\n", encoding="utf-8")
+
+    report = _run_init(root)
+    assert report["files"]["sdlc.yaml"] == "updated (added test_paths, plugin.claude_code)"
+    new_text = (root / "sdlc.yaml").read_text(encoding="utf-8")
+    assert new_text.count("claude_code:") == 1
+    assert "# owner note" in new_text  # every comment the owner had is still there
+    for comment in [ln for ln in pre_b3.splitlines() if ln.strip().startswith("#")]:
+        assert comment in new_text
+    cfg = yamlish.load_file(root / "sdlc.yaml")
+    assert cfg["plugin"]["claude_code"] == sdlc_init.DEFAULT_CLAUDE_CODE_VERSION
+    assert cfg["test_paths"] == detect.TEST_PATHS["python"]
+    assert _run_init(root)["files"]["sdlc.yaml"] == "unchanged"
+
+
 # --- the SDLC workflows /sdlc-init installs (build guide step 30, task 30.8) -----------------
 def _git_init(root: Path, branch: str) -> None:
     """A repository with one commit, so gitops.default_branch() has a HEAD to read."""
@@ -409,8 +440,10 @@ def test_init_installs_the_workflows_and_the_pin_script(tmp_path):
     design = (root / WORKFLOWS[0]).read_text(encoding="utf-8")
     assert "{{" not in design.replace("${{", "")  # only GitHub's own expressions are left
     assert 'repository: "luissiviero/sdlc-framework"' in design
-    # the CLI version comes from the pin step at run time, so a later sdlc.yaml bump applies
-    assert "@anthropic-ai/claude-code@${{ steps.pin.outputs.claude_code }}" in design
+    # the CLI version comes from the pin step at run time, so a later sdlc.yaml bump applies;
+    # it reaches the shell through a step-level env var, never interpolated into the run line
+    assert "CLAUDE_CODE_VERSION: ${{ steps.pin.outputs.claude_code }}" in design
+    assert 'npm install -g @anthropic-ai/claude-code@"$CLAUDE_CODE_VERSION"' in design
     assert "path: framework" in design
     # the pin the workflows check out comes from sdlc.yaml, not from the template
     cfg = yamlish.load_file(root / "sdlc.yaml")
@@ -459,6 +492,7 @@ def test_init_substitution_helpers_are_pure(tmp_path):
     values = {"FRAMEWORK_REPO": "me/fw", "CLAUDE_CODE_VERSION": "9.9.9"}
     text = sdlc_init.render_workflow(".github/workflows/sdlc-design.yml", values, "develop")
     assert "branches: [develop]" in text and "me/fw" in text
-    assert "claude-code@${{ steps.pin.outputs.claude_code }}" in text
+    assert "CLAUDE_CODE_VERSION: ${{ steps.pin.outputs.claude_code }}" in text
+    assert 'claude-code@"$CLAUDE_CODE_VERSION"' in text
     same = sdlc_init.render_workflow(".github/workflows/sdlc-design.yml", values, "main")
     assert "branches: [main]" in same

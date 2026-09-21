@@ -115,11 +115,19 @@ def parse_evidence_header(text: str) -> dict[str, str] | None:
     return m.groupdict() if m else None
 
 
-def evidence_failure(text: str) -> str | None:
-    """The header's failure, or None when the log has no header or records exit 0."""
+MISSING_HEADER = "evidence log without the collector header: re-run evidence/collect.py"
+
+
+def evidence_failure(text: str, *, require_header: bool = False) -> str | None:
+    """The header's failure, or None when the log records exit 0.
+
+    ``require_header`` is what gates (d) and (e) pass for the three command logs: a log
+    nobody can date back to a command and an exit code is not evidence, and accepting it
+    would let a hand-written "all good" stand in for the toolchain's own output (p.27-29).
+    """
     header = parse_evidence_header(text)
     if header is None:
-        return None
+        return MISSING_HEADER if require_header else None
     if header["exit"] == EVIDENCE_TIMEOUT:
         return f"`{header['command']}` timed out after {header['seconds']}s"
     if header["exit"] != "0":

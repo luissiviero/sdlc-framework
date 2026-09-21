@@ -187,6 +187,61 @@ def template_block(rendered_template: str, key: str) -> str:
     return "\n".join(lines[first:end]).rstrip("\n") + "\n"
 
 
+def nested_key_lines(rendered_template: str, top: str, key: str) -> list[str]:
+    """The template's lines for ``top.key``: the key line, its indented body and the comment
+    lines directly above it — what an upgrade inserts into a block the project already has."""
+    lines = template_block(rendered_template, top).splitlines()
+    pattern = re.compile(rf"^(\s+){re.escape(key)}:")
+    for i, line in enumerate(lines):
+        match = pattern.match(line)
+        if not match:
+            continue
+        first = i
+        while first > 0 and lines[first - 1].strip().startswith("#"):
+            first -= 1
+        end, indent = i + 1, len(match.group(1))
+        while end < len(lines) and lines[end].strip():
+            if len(lines[end]) - len(lines[end].lstrip()) <= indent:
+                break
+            end += 1
+        return lines[first:end]
+    return []
+
+
+def missing_nested_keys(existing: dict, fresh: dict) -> list[tuple[str, str]]:
+    """[(top, key)] for every second-level key the template has and the project lacks under a
+    block it already has (e.g. ``plugin.claude_code`` in a project initialised before B3)."""
+    out: list[tuple[str, str]] = []
+    for top, value in fresh.items():
+        current = existing.get(top)
+        if not isinstance(value, dict) or not isinstance(current, dict):
+            continue
+        out += [(top, key) for key in value if key not in current]
+    return out
+
+
+def insert_nested_key(text: str, top: str, lines: list[str]) -> str:
+    """Append ``lines`` to the end of the existing ``top:`` block, as text: an upgrade must
+    never re-serialise the file, or the owner's comments and layout are lost."""
+    if not lines:
+        return text
+    out = text.splitlines()
+    start = next(
+        (n for n, line in enumerate(out) if re.match(rf"^{re.escape(top)}:\s*$", line)), None
+    )
+    if start is None:
+        return text
+    last, n = start, start + 1
+    while n < len(out) and (not out[n].strip() or out[n][:1].isspace()):
+        if out[n].strip():
+            last = n
+        n += 1
+    block = {line.strip() for line in out[start : last + 1]}
+    # a comment the block already carries is not repeated (an interrupted upgrade re-run)
+    body = [line for line in lines if not (line.strip().startswith("#") and line.strip() in block)]
+    return "\n".join([*out[: last + 1], *body, *out[last + 1 :]]) + "\n"
+
+
 # --- the SDLC workflows (build guide step 30, task 30.8) ------------------------------------
 WORKFLOW_FILES = (
     ".github/workflows/sdlc-design.yml",
@@ -265,24 +320,32 @@ def run(args) -> dict:
         merged.setdefault("plugin", {})["version"] = values["PLUGIN_VERSION"]
         rendered = render_file(TEMPLATE / "sdlc.yaml", values)
         missing_top = [k for k in fresh_yaml if k not in existing_yaml]
-        only_top_level_added = merge_missing(existing_yaml, fresh_yaml) == {
-            **existing_yaml,
-            **{k: fresh_yaml[k] for k in missing_top},
-        }
+        missing_nested = missing_nested_keys(existing_yaml, fresh_yaml)
+        # what a text edit can produce: the new top-level blocks, the new keys inside blocks
+        # the project already has, and the pinned version
+        expected = {k: (dict(v) if isinstance(v, dict) else v) for k, v in existing_yaml.items()}
+        for key in missing_top:
+            expected[key] = fresh_yaml[key]
+        for top, key in missing_nested:
+            expected[top][key] = fresh_yaml[top][key]
+        expected.setdefault("plugin", {})["version"] = values["PLUGIN_VERSION"]
         if merged == existing_yaml:
             report["files"]["sdlc.yaml"] = "unchanged"
-        elif only_top_level_added:
-            # new top-level keys (a plugin upgrade) and/or the pinned version: edit the text,
-            # so the owner's comments and layout survive
+        elif merged == expected:
+            # an upgrade: new top-level keys, new keys inside an existing block and/or the
+            # pinned version. Edit the text, so the owner's comments and layout survive.
             text = sdlc_path.read_text(encoding="utf-8")
             text = re.sub(
                 r"(?m)^(\s+version:\s*).*$", rf"\g<1>{values['PLUGIN_VERSION']}", text, count=1
             )
+            for top, key in missing_nested:
+                text = insert_nested_key(text, top, nested_key_lines(rendered, top, key))
             for key in missing_top:
                 text = text.rstrip("\n") + "\n\n" + template_block(rendered, key)
             _write_if_changed(sdlc_path, text, report["files"], "sdlc.yaml")
-            if missing_top:
-                report["files"]["sdlc.yaml"] = f"updated (added {', '.join(missing_top)})"
+            added = [*missing_top, *(f"{top}.{key}" for top, key in missing_nested)]
+            if added:
+                report["files"]["sdlc.yaml"] = f"updated (added {', '.join(added)})"
         else:
             _write_if_changed(sdlc_path, yamlish.dumps(merged), report["files"], "sdlc.yaml")
             report["files"]["sdlc.yaml"] = "updated (new nested keys added; comments dropped)"
