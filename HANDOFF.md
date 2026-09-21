@@ -1,9 +1,9 @@
 # Handoff — session 3: build stage B3 (first autonomous phases, gates, merge-triggered plumbing; steps 22–30)
 
-Session 2's brief is kept at `docs/handoffs/session-2-B2.md`; its result is on `main` once PR #5 is merged (PR #4, the gate, is already merged).
+Session 2's brief is kept at `docs/handoffs/session-2-B2.md`; its result is on `main` once PR #6 is merged (PR #4, the gate, and PR #5, the agents, are already merged).
 
 ## Preconditions — check before building anything
-1. PR #5 (session 2) is merged to `main` and this session starts from `main`. If it is not merged, stop and say so.
+1. PR #6 (session 2, last part) is merged to `main` and this session starts from `main`. If it is not merged, stop and say so.
 2. The owner's live checks from `docs/PROGRESS.md` ("Live checks the owner can do now"). Read their status from the owner's first message; do not assume. If any is unreported, ask once and continue, marking the dependent step partial.
    - Windows: `python tasks.py check` green on the owner's PC (owed since session 1). If it failed, fixing it is the first task (the code is path-agnostic; NOTES §1).
    - Policy-skill and agent triggers in a live session (PROGRESS items 3–4): if they failed, fix the descriptions first (same style as `intent-template`, whose trigger passed).
