@@ -47,3 +47,7 @@ Rules
 - Incident route: fill Evidence from the detection record; the Proposed outcome is the fix
   or the mitigation, not the diagnosis.
 - Never leave a section empty; write "none" or "unknown — to be settled in design".
+- Only when the change is the framework itself (it must edit `.claude/**`, `CLAUDE.md`,
+  `REVIEW.md`, `sdlc.yaml` or a protected path): add a header line `Framework change: yes`
+  under the Author line. The confidence gate parks any other change whose diff touches a
+  guardrail file (OPERATING_MODEL section 3).

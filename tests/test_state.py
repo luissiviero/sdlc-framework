@@ -80,6 +80,7 @@ def test_status_round_trip_and_schema(tmp_path):
         "parked_reason",
         "iterations",
         "external_ref",
+        "risk_accepted",
         "created_at",
         "updated_at",
         "schema_version",

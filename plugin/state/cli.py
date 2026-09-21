@@ -10,6 +10,7 @@ and identical on Windows, in a cloud session and in CI.
     python cli.py commit-phase --root . --id 0001 --phase a --message "..."
     python cli.py set-phase --root . --id 0001 --phase b
     python cli.py park --root . --id 0001 --reason "..."
+    python cli.py accept-risk --root . --id 0001 --item "auth"   # owner accepts a risk hit
     python cli.py show --root . --id 0001
     python cli.py list --root .
     python cli.py labels
@@ -127,6 +128,18 @@ def cmd_park(args) -> int:
     return 0
 
 
+def cmd_accept_risk(args) -> int:
+    """The owner accepts a risk-list hit for this change (gate check risk_list, step 16)."""
+    loaded = _load(args)
+    if not loaded:
+        return 2
+    change_dir, st = loaded
+    st.accept_risk(args.item)
+    status.write_status(change_dir, st)
+    _emit({"risk_accepted": st.risk_accepted, "status": st.to_dict()})
+    return 0
+
+
 def cmd_show(args) -> int:
     loaded = _load(args)
     if not loaded:
@@ -189,7 +202,12 @@ def build_parser() -> argparse.ArgumentParser:
     cp.add_argument("--push", action="store_true")
     cp.set_defaults(fn=cmd_commit_phase)
 
-    for name, fn in (("set-phase", cmd_set_phase), ("park", cmd_park), ("show", cmd_show)):
+    for name, fn in (
+        ("set-phase", cmd_set_phase),
+        ("park", cmd_park),
+        ("show", cmd_show),
+        ("accept-risk", cmd_accept_risk),
+    ):
         s = sub.add_parser(name)
         s.add_argument("--root", default=".")
         s.add_argument("--id", required=True)
@@ -197,6 +215,8 @@ def build_parser() -> argparse.ArgumentParser:
             s.add_argument("--phase", required=True, choices=c.PHASES)
         if name == "park":
             s.add_argument("--reason", required=True)
+        if name == "accept-risk":
+            s.add_argument("--item", required=True)
         s.set_defaults(fn=fn)
 
     ls = sub.add_parser("list")

@@ -38,6 +38,18 @@ risk_list:
   - money movement
   - production config
 
+# --- confidence gate and run limits (build guide steps 16 and 19; decision 11) ---------------
+# A gate failure or a limit hit parks the change (label sdlc:needs-human, "What I need from
+# you" in the PR); nobody is notified. The owner accepts a risk-list hit per change with
+# `state/cli.py accept-risk`. Setting `paused: true` stops every run before it starts.
+paused: false
+gate:
+  max_iterations: 3              # fix iterations per phase ("two or three rounds", p.28)
+  max_iterations_non_routine: 2  # when the adversarial reviewer classes the plan non-routine
+  max_wall_clock_minutes: 120    # per phase run, from `gate/cli.py start-run`
+  max_budget_usd: null           # per change, when the substrate reports spend; null = off
+  command_timeout: 900           # seconds per build/test/lint command run by the gate
+
 # --- guardrails read by the plugin's hooks (build guide step 15) -----------------------------
 # Always protected, whatever is listed here: .claude/**, CLAUDE.md, REVIEW.md, sdlc.yaml and
 # the plugin's own files. Add generated code, frozen packages, migrations, infra.

@@ -1,0 +1,575 @@
+"""Layer-1 tests for plugin/gate: artifact contracts, risk matching, findings and verdict
+readers, run limits — and, against a temporary copy of the fixture project, the gate itself:
+`continue` on a clean change, `wait` at a human gate, `park` with the right reason for each
+prepared failure (missing plan.md, failing test behind SAMPLE_FAIL=1, a diff touching
+.claude/settings.json, a risk-list word, an escalating or stale adversarial verdict, an open
+flagged concern, a limit hit)."""
+
+from __future__ import annotations
+
+import json
+import os
+import shutil
+import subprocess
+import sys
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+
+import pytest
+
+from gate import artifacts as art
+from gate import checks, gate, limits
+from gate import cli as gate_cli
+from state import status as status_mod
+from state import yamlish
+
+ROOT = Path(__file__).resolve().parents[1]
+FIXTURE = ROOT / "tests" / "fixtures" / "sample-python-project"
+INIT = ROOT / "plugin" / "init" / "sdlc_init.py"
+GATE_CLI = ROOT / "plugin" / "gate" / "cli.py"
+STATE_CLI = ROOT / "plugin" / "state" / "cli.py"
+
+INTENT = """# Intent: percent helper
+Author: owner (developer). Status: accepted. Change id: 0001. Entry route: idea.
+
+## Problem
+Callers compute percentages by hand and get rounding wrong.
+
+## Proposed outcome
+`sample_pkg.percent(part, whole)` returns a rounded percentage; covered by tests.
+
+## Affected users and systems
+sample_pkg users.
+
+## Constraints
+No new dependencies.
+
+## Open questions
+none
+"""
+
+SPEC = """# Spec: percent helper
+
+## Requirements
+- percent(part, whole) returns part / whole * 100 rounded to one decimal.
+- whole == 0 raises ValueError.
+
+## Design
+A pure function in sample_pkg/percent.py exported from the package.
+
+## Open questions from intent
+none
+
+## Flagged concerns
+- [x] Rounding half-even vs half-up: decided half-up via round() (documented).
+
+## Acceptance
+Tests in tests/test_percent.py pass; lint clean.
+"""
+
+PLAN = """# Plan: percent helper (from intent.md 2026-09-21, spec.md 2026-09-21)
+
+## Files that change
+- `sample_pkg/percent.py` — new: percent(part, whole)
+- `sample_pkg/__init__.py` — export percent
+- `tests/test_percent.py` — new: three cases
+
+## Order of work
+1. Add the function and its test.
+2. Export it.
+
+## Risks
+Rounding; nothing else.
+
+## Options not taken
+Decimal module: overkill.
+
+## Proof
+tests/test_percent.py::test_percent_rounds
+"""
+
+PERCENT = '''"""Percent helper."""
+
+
+def percent(part: float, whole: float) -> float:
+    if whole == 0:
+        raise ValueError("whole must not be zero")
+    return round(part / whole * 100, 1)
+'''
+
+TEST_PERCENT = """from sample_pkg.percent import percent
+
+
+def test_percent_rounds():
+    assert percent(1, 3) == 33.3
+"""
+
+
+# --- helpers ----------------------------------------------------------------------------------
+def git(cwd: Path, *args: str) -> str:
+    return subprocess.run(
+        ["git", *args], cwd=cwd, capture_output=True, text=True, check=True, encoding="utf-8"
+    ).stdout
+
+
+def run_py(*args: str, cwd: Path, env: dict | None = None) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        [sys.executable, *args],
+        cwd=cwd,
+        capture_output=True,
+        text=True,
+        env=env or os.environ.copy(),
+        encoding="utf-8",
+    )
+
+
+def write(path: Path, text: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8", newline="\n")
+
+
+def verdict(root: Path, phase: str, verdict: str = "continue", classification="routine", head=None):
+    head = head or git(root, "rev-parse", "HEAD").strip()
+    data = {
+        "schema_version": 1,
+        "phase": phase,
+        "head": head,
+        "verdict": verdict,
+        "reasons": [] if verdict == "continue" else ["blast radius larger than the plan says"],
+        "classification": classification,
+        "classification_reasons": [],
+        "at": "2026-09-21T10:00:00Z",
+    }
+    path = (
+        root / "changes" / "0001-percent-helper" / "evidence" / f"adversarial-review-{phase}.json"
+    )
+    write(path, json.dumps(data))
+    return path
+
+
+@pytest.fixture
+def project(tmp_path):
+    """Fixture copy initialised (standard profile), change 0001 through (b), and a phase-(c)
+    branch with the implementation committed together with plan.md."""
+    root = tmp_path / "proj"
+    shutil.copytree(FIXTURE, root)
+    git(root, "init", "-q", "-b", "main")
+    git(root, "config", "user.email", "owner@example.com")
+    git(root, "config", "user.name", "Owner")
+    git(root, "add", ".")
+    git(root, "commit", "-q", "-m", "fixture")
+    proc = run_py(str(INIT), "--root", str(root), "--profile", "standard", cwd=root)
+    assert proc.returncode == 0, proc.stderr
+    git(root, "add", ".")
+    git(root, "commit", "-q", "-m", "sdlc-init (as if the 0000 PR merged)")
+    proc = run_py(
+        str(STATE_CLI), "new-change", "--root", str(root), "--title", "Percent helper", cwd=root
+    )
+    assert proc.returncode == 0, proc.stderr
+    change = root / "changes" / "0001-percent-helper"
+    write(change / "intent.md", INTENT)
+    write(change / "spec.md", SPEC)
+    write(change / "plan.md", PLAN)
+    st = status_mod.read_status(change)
+    st.set_phase("c")
+    status_mod.write_status(change, st)
+    git(root, "add", ".")
+    git(root, "commit", "-q", "-m", "intent, spec and plan (as if the a and b PRs merged)")
+    git(root, "checkout", "-q", "-b", "sdlc/0001/c")
+    write(root / "sample_pkg" / "percent.py", PERCENT)
+    write(root / "tests" / "test_percent.py", TEST_PERCENT)
+    init_py = root / "sample_pkg" / "__init__.py"
+    write(init_py, init_py.read_text(encoding="utf-8") + "from .percent import percent  # noqa\n")
+    write(change / "evidence" / "verifier.md", "# Verifier\nRan the tests; percent(1,3)=33.3.\n")
+    # the plan-sync hook requires plan.md in every commit that changes source (p.16 step 7)
+    write(change / "plan.md", PLAN + "\nProgress: step 1 and 2 done.\n")
+    git(root, "add", ".")
+    git(root, "commit", "-q", "-m", "build: percent helper")
+    return root, change
+
+
+# --- artifact contracts -----------------------------------------------------------------------
+def test_artifact_section_helpers():
+    assert art.missing_sections(INTENT, art.INTENT_SECTIONS) == []
+    assert art.missing_sections("# x\n## Problem\nfoo\n", art.INTENT_SECTIONS) == list(
+        art.INTENT_SECTIONS[1:]
+    )
+    assert art.empty_sections(
+        "## Problem\n\n## Proposed outcome\nok\n", art.INTENT_SECTIONS[:2]
+    ) == ["## Problem"]
+    assert art.planned_files(PLAN) == [
+        "sample_pkg/percent.py",
+        "sample_pkg/__init__.py",
+        "tests/test_percent.py",
+    ]
+    assert art.planned_files("## Files that change\n- src/a.py: add x\n1. lib\\b.py — y\n") == [
+        "src/a.py",
+        "lib/b.py",
+    ]
+    assert art.open_concerns(SPEC) == []
+    assert art.open_concerns(SPEC.replace("- [x] Rounding", "- [ ] Rounding")) == [
+        "- [ ] Rounding half-even vs half-up: decided half-up via round() (documented)."
+    ]
+    assert art.is_framework_change("Author: o. Status: draft.\nFramework change: yes\n")
+    assert not art.is_framework_change(INTENT)
+
+
+def test_risk_hits_match_whole_tokens_only():
+    items = ["auth", "data migrations", "money movement", "production config"]
+    hits = checks.risk_hits(items, ["src/auth/login.py", "db/data_migration/001.sql"], {})
+    assert hits == {
+        "auth": ["src/auth/login.py"],
+        "data migrations": ["db/data_migration/001.sql"],
+    }
+    assert checks.risk_hits(["auth"], ["docs/author.md"], {"spec.md": "the author writes"}) == {}
+    assert checks.risk_hits(["money movement"], [], {"spec.md": "No money-movement here"}) == {
+        "money movement": ["spec.md: text"]
+    }
+
+
+def test_findings_and_verdict_readers(tmp_path):
+    p = tmp_path / "review-findings.json"
+    assert checks.load_findings(p) == (None, "missing")
+    p.write_text("{", encoding="utf-8")
+    assert checks.load_findings(p)[1].startswith("unreadable")
+    p.write_text(json.dumps({"findings": [{"severity": "Important", "summary": "x"}]}))
+    data, err = checks.load_findings(p)
+    assert err == "" and len(checks.important_findings(data)) == 1
+    v = tmp_path / "adversarial-review-c.json"
+    v.write_text(json.dumps({"verdict": "maybe"}), encoding="utf-8")
+    assert checks.load_verdict(v)[1].startswith("malformed")
+    v.write_text(json.dumps({"verdict": "continue", "classification": "routine"}))
+    assert checks.load_verdict(v)[0]["verdict"] == "continue"
+
+
+# --- run limits (step 19) with a bare context -------------------------------------------------
+def _ctx(tmp_path, config=None, iterations=0, phase="c"):
+    change_dir = tmp_path / "changes" / "0001-x"
+    (change_dir / "evidence").mkdir(parents=True, exist_ok=True)
+    st = status_mod.Status(id="0001", slug="x", title="x", phase=phase, iterations=iterations)
+    return checks.GateContext(tmp_path, change_dir, phase, st, config or {}, None, False, "no git")
+
+
+def test_limits_pause_flag_stops_everything(tmp_path):
+    res = limits.check_limits(_ctx(tmp_path, {"paused": True}))
+    assert not res.ok and res.details["stop"] and "paused" in res.reason
+
+
+def test_limits_iteration_cap_default_and_non_routine(tmp_path):
+    assert limits.check_limits(_ctx(tmp_path, iterations=3)).ok
+    res = limits.check_limits(_ctx(tmp_path, iterations=4))
+    assert not res.ok and "cap 3" in res.reason
+    ctx = _ctx(tmp_path, iterations=3)
+    write(
+        ctx.evidence_dir / "adversarial-review-b.json",
+        json.dumps({"verdict": "continue", "classification": "non-routine"}),
+    )
+    res = limits.check_limits(ctx)
+    assert not res.ok and "cap 2" in res.reason and "non-routine" in res.reason
+    ctx = _ctx(tmp_path / "fresh", {"gate": {"max_iterations": 5}}, iterations=5)
+    assert limits.check_limits(ctx).ok
+
+
+def test_limits_wall_clock_and_budget(tmp_path):
+    ctx = _ctx(tmp_path, {"gate": {"max_wall_clock_minutes": 30, "max_budget_usd": 2}})
+    started = datetime.now(timezone.utc) - timedelta(minutes=45)
+    write(
+        ctx.evidence_dir / "run-c.json",
+        json.dumps({"started_at": started.isoformat().replace("+00:00", "Z")}),
+    )
+    res = limits.check_limits(ctx)
+    assert not res.ok and "wall-clock" in res.reason
+    write(
+        ctx.evidence_dir / "run-c.json",
+        json.dumps({"started_at": datetime.now(timezone.utc).isoformat(), "spend_usd": 2.5}),
+    )
+    res = limits.check_limits(ctx)
+    assert not res.ok and "budget" in res.reason
+    write(ctx.evidence_dir / "run-c.json", json.dumps({"spend_usd": 2.5}))
+    assert not limits.check_limits(ctx).ok
+    write(ctx.evidence_dir / "run-c.json", json.dumps({"spend_usd": 1.0}))
+    assert limits.check_limits(ctx).ok
+
+
+# --- the gate against the fixture --------------------------------------------------------------
+def _names(result, ok):
+    return sorted(ch.name for ch in result.checks if ch.ok is ok)
+
+
+def test_gate_continues_on_a_clean_change(project):
+    root, change = project
+    verdict(root, "c")
+    result = gate.run_gate(root, "0001", "c")
+    assert result.result == "continue", result.reason
+    assert result.label is None and result.human_gate is False and result.profile == "standard"
+    assert _names(result, False) == []
+    assert set(_names(result, True)) == {
+        "limits",
+        "artifacts",
+        "open_concerns",
+        "commands",
+        "evidence",
+        "findings",
+        "plan_sync",
+        "guardrails",
+        "risk_list",
+        "adversarial_review",
+    }
+    st = status_mod.read_status(change)
+    assert st.gate.phase == "c" and st.gate.result == "passed" and st.parked_reason is None
+    recorded = json.loads((change / "evidence" / "gate-c.json").read_text(encoding="utf-8"))
+    assert recorded["result"] == "continue" and recorded["head"] == result.head
+    assert result.what_i_need() == ""
+
+
+def test_gate_waits_at_a_human_gate_and_dry_run_writes_nothing(project):
+    root, change = project
+    st = status_mod.read_status(change)
+    st.profile_override = "full"
+    status_mod.write_status(change, st)
+    before = (change / "status.yaml").read_text(encoding="utf-8")
+    result = gate.run_gate(root, "0001", "c", dry_run=True)
+    assert result.result == "wait" and result.label == "sdlc:c-ready"
+    assert (change / "status.yaml").read_text(encoding="utf-8") == before
+    assert not (change / "evidence" / "gate-c.json").exists()
+    # a failed check parks even at a human gate
+    (root / "sample_pkg" / "percent.py").unlink()
+    write(root / "sample_pkg" / "extra.py", "x = 1\n")
+    result = gate.run_gate(root, "0001", "c")
+    assert result.result == "park" and "plan_sync" in _names(result, False)
+
+
+def test_gate_parks_without_plan_md(project):
+    root, change = project
+    verdict(root, "c")
+    (change / "plan.md").unlink()
+    result = gate.run_gate(root, "0001", "c")
+    assert result.result == "park"
+    failed = {ch.name: ch for ch in result.failed}
+    assert "artifacts" in failed and "plan.md is missing" in failed["artifacts"].reason
+    st = status_mod.read_status(change)
+    assert st.gate.result == "parked" and "plan.md is missing" in st.parked_reason
+    block = result.what_i_need()
+    assert block.startswith("## What I need from you") and "**artifacts**" in block
+    assert "--id 0001 --phase c" in block
+
+
+def test_gate_parks_on_a_failing_test(project, monkeypatch):
+    root, _ = project
+    verdict(root, "c")
+    monkeypatch.setenv("SAMPLE_FAIL", "1")
+    result = gate.run_gate(root, "0001", "c")
+    assert result.result == "park"
+    cmd = next(ch for ch in result.failed if ch.name == "commands")
+    assert "test (exit 1)" in cmd.reason
+    assert "SAMPLE_FAIL=1" in cmd.details["runs"]["test"]["output"]
+    assert cmd.details["runs"]["build"]["exit_code"] == 0
+
+
+def test_gate_parks_when_the_diff_touches_settings_json(project):
+    root, change = project
+    verdict(root, "c")
+    settings = root / ".claude" / "settings.json"
+    data = json.loads(settings.read_text(encoding="utf-8"))
+    data["permissions"]["allow"].append("Bash(rm *)")
+    write(settings, json.dumps(data, indent=2))
+    result = gate.run_gate(root, "0001", "c")
+    assert result.result == "park"
+    g = next(ch for ch in result.failed if ch.name == "guardrails")
+    assert ".claude/settings.json" in g.reason
+    # a declared framework change may touch them
+    write(
+        change / "intent.md",
+        INTENT.replace("Entry route: idea.", "Entry route: idea.\nFramework change: yes"),
+    )
+    git(root, "add", ".")
+    git(root, "commit", "-q", "-m", "framework change")
+    verdict(root, "c")
+    result = gate.run_gate(root, "0001", "c")
+    assert "guardrails" not in _names(result, False)
+
+
+def test_gate_parks_on_a_risk_list_word_until_the_owner_accepts_it(project):
+    root, change = project
+    write(root / "sample_pkg" / "auth.py", "TOKEN_TTL = 60\n")
+    write(
+        change / "plan.md",
+        PLAN.replace("## Order of work", "- `sample_pkg/auth.py` — ttl\n\n## Order of work"),
+    )
+    git(root, "add", ".")
+    git(root, "commit", "-q", "-m", "auth ttl")
+    verdict(root, "c")
+    result = gate.run_gate(root, "0001", "c")
+    assert result.result == "park"
+    r = next(ch for ch in result.failed if ch.name == "risk_list")
+    assert r.details["hits"] == {"auth": ["sample_pkg/auth.py"]} and "accept-risk" in r.need
+    proc = run_py(
+        str(STATE_CLI),
+        "accept-risk",
+        "--root",
+        str(root),
+        "--id",
+        "0001",
+        "--item",
+        "auth",
+        cwd=root,
+    )
+    assert proc.returncode == 0 and json.loads(proc.stdout)["risk_accepted"] == ["auth"]
+    assert gate.run_gate(root, "0001", "c").result == "continue"
+
+
+def test_gate_parks_on_escalate_missing_or_stale_verdict(project):
+    root, change = project
+    result = gate.run_gate(root, "0001", "c")
+    assert result.result == "park"
+    assert "missing" in next(ch for ch in result.failed if ch.name == "adversarial_review").reason
+    verdict(root, "c", "escalate", "non-routine")
+    result = gate.run_gate(root, "0001", "c")
+    a = next(ch for ch in result.failed if ch.name == "adversarial_review")
+    assert "escalate" in a.reason and "blast radius" in a.reason
+    verdict(root, "c", head="0000000000deadbeef")
+    a = next(
+        ch for ch in gate.run_gate(root, "0001", "c").failed if ch.name == "adversarial_review"
+    )
+    assert a.details.get("stale") is True
+
+
+def test_gate_parks_on_open_concern_and_unsynced_commit(project):
+    root, change = project
+    verdict(root, "c")
+    write(change / "spec.md", SPEC.replace("- [x] Rounding", "- [ ] Rounding"))
+    write(root / "sample_pkg" / "helper.py", "y = 2\n")
+    git(root, "add", ".")
+    git(root, "commit", "-q", "-m", "departure without plan.md")
+    verdict(root, "c")
+    result = gate.run_gate(root, "0001", "c")
+    names = _names(result, False)
+    assert "open_concerns" in names and "plan_sync" in names
+    p = next(ch for ch in result.failed if ch.name == "plan_sync")
+    assert (
+        p.details["unplanned"] == ["sample_pkg/helper.py"]
+        and len(p.details["unsynced_commits"]) == 1
+    )
+
+
+def test_gate_phase_d_requires_evidence_and_findings_at_e(project):
+    root, change = project
+    st = status_mod.read_status(change)
+    st.set_phase("d")
+    status_mod.write_status(change, st)
+    verdict(root, "d")
+    result = gate.run_gate(root, "0001", "d")
+    ev = next(ch for ch in result.failed if ch.name == "evidence")
+    assert ev.details["missing"] == ["test.log", "build.log", "lint.log"]
+    for name in ("test.log", "build.log", "lint.log"):
+        write(change / "evidence" / name, "ok\n")
+    assert gate.run_gate(root, "0001", "d").result == "continue"
+    # gate (e) is human; the findings JSON is mandatory there and Important findings park
+    result = gate.run_gate(root, "0001", "e")
+    assert result.result == "park" and "findings" in _names(result, False)
+    write(
+        change / "evidence" / "review-findings.json",
+        json.dumps({"findings": [{"severity": "nit", "summary": "naming"}], "tally": {"nit": 1}}),
+    )
+    result = gate.run_gate(root, "0001", "e")
+    assert result.result == "wait" and result.label == "sdlc:e-ready"
+    write(
+        change / "evidence" / "review-findings.json",
+        json.dumps({"findings": [{"severity": "important", "summary": "leaks PII"}]}),
+    )
+    assert "findings" in _names(gate.run_gate(root, "0001", "e"), False)
+
+
+def test_gate_parks_on_iteration_cap_and_pause_flag(project):
+    root, change = project
+    verdict(root, "c")
+    st = status_mod.read_status(change)
+    st.iterations = 4
+    status_mod.write_status(change, st)
+    result = gate.run_gate(root, "0001", "c")
+    assert result.result == "park" and [ch.name for ch in result.checks] == ["limits"]
+    proc = run_py(
+        str(GATE_CLI),
+        "set-iterations",
+        "--root",
+        str(root),
+        "--id",
+        "0001",
+        "--count",
+        "0",
+        cwd=root,
+    )
+    assert proc.returncode == 0
+    text = (root / "sdlc.yaml").read_text(encoding="utf-8")
+    assert "paused: false" in text  # written by /sdlc-init from the template
+    write(root / "sdlc.yaml", text.replace("paused: false", "paused: true"))
+    result = gate.run_gate(root, "0001", "c")
+    assert result.result == "park" and "paused" in result.reason
+
+
+def test_gate_cli_exit_codes_and_run_files(project):
+    root, change = project
+    proc = run_py(
+        str(GATE_CLI), "check", "--root", str(root), "--id", "0001", "--phase", "c", cwd=root
+    )
+    assert proc.returncode == 4, proc.stderr
+    out = json.loads(proc.stdout)
+    assert out["result"] == "park" and "What I need from you" in proc.stderr
+    verdict(root, "c")
+    proc = run_py(
+        str(GATE_CLI), "start-run", "--root", str(root), "--id", "0001", "--phase", "c", cwd=root
+    )
+    assert proc.returncode == 0 and (change / "evidence" / "run-c.json").exists()
+    proc = run_py(
+        str(GATE_CLI),
+        "record-spend",
+        "--root",
+        str(root),
+        "--id",
+        "0001",
+        "--phase",
+        "c",
+        "--usd",
+        "0.4",
+        cwd=root,
+    )
+    assert proc.returncode == 0 and json.loads(proc.stdout)["spend_usd"] == 0.4
+    proc = run_py(
+        str(GATE_CLI), "check", "--root", str(root), "--id", "0001", "--phase", "c", cwd=root
+    )
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert json.loads(proc.stdout)["result"] == "continue"
+    proc = run_py(
+        str(GATE_CLI), "check", "--root", str(root), "--id", "0009", "--phase", "c", cwd=root
+    )
+    assert proc.returncode == 2
+
+
+def test_gate_refuses_without_sdlc_yaml(tmp_path):
+    change_dir, _ = status_mod.new_change(tmp_path, "x")
+    with pytest.raises(gate.GateError):
+        gate.run_gate(tmp_path, "0001", "a")
+
+
+def test_gate_cli_main_dry_run(project, capsys):
+    root, _ = project
+    verdict(root, "c")
+    rc = gate_cli.main(["check", "--root", str(root), "--id", "0001", "--phase", "c", "--dry-run"])
+    assert rc == 0 and json.loads(capsys.readouterr().out)["dry_run"] is True
+
+
+def test_sdlc_yaml_gate_block_is_read_by_the_limits(project):
+    root, change = project
+    text = (root / "sdlc.yaml").read_text(encoding="utf-8")
+    cfg = yamlish.load_file(root / "sdlc.yaml")["gate"]
+    assert cfg["max_iterations"] == 3 and cfg["max_budget_usd"] is None
+    write(root / "sdlc.yaml", text.replace("max_iterations: 3", "max_iterations: 5"))
+    st = status_mod.read_status(change)
+    st.iterations = 5
+    status_mod.write_status(change, st)
+    verdict(root, "c")
+    result = gate.run_gate(root, "0001", "c", dry_run=True)
+    assert result.checks[0].name == "limits" and result.checks[0].ok
+    assert result.checks[0].details["cap"] == 5
+    # editing sdlc.yaml in the working tree is itself a guardrail hit (and unplanned)
+    assert sorted(ch.name for ch in result.failed) == ["guardrails", "plan_sync"]
