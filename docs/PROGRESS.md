@@ -1,7 +1,7 @@
 # Progress — session 2 (B2: autonomy kit, steps 16–21)
 
 ## Summary
-- B2 is built and green: 207 tests pass with `python tasks.py check` (ruff zero warnings) on Linux, `claude plugin validate .` is clean; the work landed in three PRs (#4: gate and run limits; #5: agents; #7: preflight, policy skills, full `/sdlc-init`, review fixes, docs). Windows execution is still owed by the owner (unreported at session start, asked once).
+- B2 is built and green: 207 tests pass with `python tasks.py check` (ruff zero warnings) on Linux, `claude plugin validate .` is clean; the work landed in three PRs (#4: gate and run limits; #5: agents; #7: preflight, policy skills, full `/sdlc-init`, review fixes, docs). Windows execution, owed at the end of the session, passed on 2026-09-21 (see "Results" below).
 - The confidence gate (`plugin/gate/`) is one function for every autonomous phase: nine deterministic checks (artifact vs template, open concerns, commands green, evidence, no Important finding, plan.md vs diff, guardrail files, risk list, run limits) plus the adversarial reviewer's verdict as an input; result `continue` / `wait` (human gate) / `park` with `status.yaml`, the `sdlc:needs-human` label and a "What I need from you" block. Against the fixture it continues on a clean change and parks with the right reason for every prepared failure.
 - Four agents ship and are registered (verifier from article p.25–26, code-simplifier, researcher, adversarial-reviewer writing `evidence/adversarial-review-<phase>.json`); five policy skills ship with a deterministic `check.py` each (article p.22 pattern) and "no owner source yet" where the owner's standards are still to be named; `preflight.py` decides `acceptEdits` versus `default` from six preconditions and never bypass mode.
 - `/sdlc-init` is full for this stage: `evals/` (empty on purpose, decision 17), `bands.yaml` (p.44 shape with an authorization per 3σ route, decisions 14 and 15), Node detection from `package.json` scripts with a second fixture; idempotence kept. CI workflows and the daily digest stay in B3 as the handoff said.
@@ -10,7 +10,7 @@
 ## Definition of done (handoff)
 | Item | Status |
 |---|---|
-| `python tasks.py check` green (report the count) and `claude plugin validate .` clean; Windows run listed as owed if not confirmed | Linux: 207 passed, ruff clean, validate clean. Windows: **owed** (unreported at session start). |
+| `python tasks.py check` green (report the count) and `claude plugin validate .` clean; Windows run listed as owed if not confirmed | Linux: 207 passed, ruff clean, validate clean. Windows: **passed on 2026-09-21** (207 passed; see "Results" below). |
 | Gate against the fixture: `continue` on a clean change; `park` with the right reason for each prepared failure; parking writes `status.yaml` and prints the "What I need from you" block | Done (`tests/test_gate.py`, 20 tests: missing plan.md, failing test behind `SAMPLE_FAIL=1`, a diff touching `.claude/settings.json`, a risk-list word, escalating / missing / stale verdict, open concern, unsynced commit, missing evidence, Important finding, iteration cap, pause flag). |
 | Four agent files exist, are registered, say "report only, do not fix" | Done (`tests/test_agents.py`). |
 | Preflight refuses auto-accept when any precondition is missing and allows it on the initialised fixture | Done (`tests/test_preflight.py`, 12 tests; the fixture passes with the plugin's own skills). |
@@ -69,6 +69,10 @@ Results:
 - 2026-09-21 — Windows 10 (19045), Python 3.14.7, ruff 0.16.8, pytest 9.1.1, Node 24.19.0 / npm on PATH.
 - `python tasks.py check` on Windows: PASS — ruff lint clean, 70 files formatted, 207 passed / 0 failed / 0 skipped (the npm half of `test_init_on_node_fixture_writes_npm_targets` ran); `claude plugin validate .` passed.
 - `pip install -e ".[dev]"` failed on `main` (setuptools flat-layout: `plugin` + `template`, on any OS); fixed in PR #8 (`[tool.setuptools] packages = []`).
+
+## Applied after session 2 (2026-09-21, outside a build session; owner action pending)
+- **Step 3 (execution substrate)**: the credential branch of decision 1 is applied — CI runs use an `ANTHROPIC_API_KEY` repository secret from a dedicated Console workspace with a monthly spend limit; the subscription token stays the documented fallback. Facts, quotes and the owner's four setup steps are in NOTES §2. `.github/workflows/substrate-smoke.yml` (dispatch only) is the first proof; its command line was dry-run locally with an invalid key (NOTES §2), the workflow itself has not run. Step 3 stays **open** until the owner has created the secret and the smoke run is green; the merge-triggered workflows themselves are session 3 (step 30).
+- **Model allocation for the build sessions**: `docs/MODEL_ALLOCATION.md` and the "Model rule" section of `HANDOFF.md` (owner-approved).
 
 ## Left for B3 (write the next `HANDOFF.md` from this list)
 - `/sdlc-design` (step 22): the p.14 prompt with the policy skills loaded, `spec.md` with the five sections of `plugin/gate/artifacts.py`, then the read-only planning run (`plan-template` skill), adversarial verdict, gate (b), PR or hand-over per profile.

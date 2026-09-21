@@ -1,0 +1,39 @@
+# First proof of the execution substrate (build guide step 3, decision 1; step 30's
+# "start with the copy-paste-ready read-only step", article p.41). Dispatch only: it never
+# runs on its own. It installs the pinned Claude Code CLI, runs one headless turn with the
+# repository secret ANTHROPIC_API_KEY under a per-run budget, and prints the cost the CLI
+# reports. Facts and quotes behind every flag are in docs/NOTES.md sections 2 and 10b.
+name: Substrate smoke test
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"   # the npm package requires Node.js 22 or later (setup docs)
+
+      - name: Install the pinned Claude Code CLI
+        run: npm install -g @anthropic-ai/claude-code@2.1.278
+
+      - name: One headless turn
+        continue-on-error: true   # let the report step print the JSON even when the turn fails
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        # --bare: the documented mode for scripted calls; it reads ANTHROPIC_API_KEY (or an
+        # apiKeyHelper), never OAuth (headless and authentication docs).
+        # --max-turns / --max-budget-usd: the outer bounds every phase job will carry (NOTES 10b).
+        run: >
+          claude -p --bare --model opus --max-turns 2 --max-budget-usd 0.25
+          --output-format json "Reply with the single word OK. Do not use any tool."
+          > result.json
+
+      - name: Report the cost, the models used and the reply
+        run: python3 -c "import json, sys; d = json.load(open('result.json')); print('total_cost_usd:', d.get('total_cost_usd')); print('models:', ', '.join(sorted(d.get('modelUsage', {}))) or 'none'); print('result:', d.get('result')); sys.exit(1 if d.get('is_error') else 0)"
