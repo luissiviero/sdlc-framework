@@ -24,22 +24,16 @@ jobs:
         run: npm install -g @anthropic-ai/claude-code@2.1.278
 
       - name: One headless turn
+        continue-on-error: true   # let the report step print the JSON even when the turn fails
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-        # --bare: recommended for CI, reads ANTHROPIC_API_KEY only (headless docs).
+        # --bare: the documented mode for scripted calls; it reads ANTHROPIC_API_KEY (or an
+        # apiKeyHelper), never OAuth (headless and authentication docs).
         # --max-turns / --max-budget-usd: the outer bounds every phase job will carry (NOTES 10b).
         run: >
-          claude -p --bare --model opus --max-turns 1 --max-budget-usd 0.25
-          --output-format json "Reply with the single word OK."
+          claude -p --bare --model opus --max-turns 2 --max-budget-usd 0.25
+          --output-format json "Reply with the single word OK. Do not use any tool."
           > result.json
 
       - name: Report the cost, the models used and the reply
-        run: |
-          python3 - <<'PY'
-          import json, sys
-          d = json.load(open("result.json"))
-          print("total_cost_usd:", d.get("total_cost_usd"))
-          print("models:", ", ".join(sorted(d.get("modelUsage", {}))) or "none")
-          print("result:", d.get("result"))
-          sys.exit(1 if d.get("is_error") else 0)
-          PY
+        run: python3 -c "import json, sys; d = json.load(open('result.json')); print('total_cost_usd:', d.get('total_cost_usd')); print('models:', ', '.join(sorted(d.get('modelUsage', {}))) or 'none'); print('result:', d.get('result')); sys.exit(1 if d.get('is_error') else 0)"

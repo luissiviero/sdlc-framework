@@ -55,8 +55,9 @@ writing (2026-09-21); where the owner says "Opus 5.1", read "the current Opus".
     follows from usage being reported by model. Check `/usage` after the first delegated
     session; if the Fable window moved by the delegated share, stop delegating for
     quota reasons and rely on the CI route of §7 (API key, no plan window) instead.
-  - No documented way keeps a Fable main session and plans on Opus (`opusplan` swaps the
-    whole session to Opus + Sonnet). The advisor tool is the documented "consult a second
+  - No documented way keeps a Fable main session and plans on Opus without also forcing
+    every other sub-agent (`opusplan` swaps the whole session to Opus + Sonnet; the built-in
+    Plan sub-agent moves only under `CLAUDE_CODE_SUBAGENT_MODEL` plus `_FORCE`). The advisor tool is the documented "consult a second
     model mid-task" route; it is not used here.
 - The saving comes from three things: (1) the sub-agent reads the files, not Fable — so a
   delegated task must include *reading* the step text, the article page and the code, not
