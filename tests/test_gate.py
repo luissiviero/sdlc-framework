@@ -839,45 +839,67 @@ def test_gate_b_parks_when_the_branch_touches_source(design_project):
     assert "design_scope" not in _names(result, False) and result.result == "wait", result.reason
 
 
-def test_gate_b_ignores_the_sandbox_placeholders_but_not_a_stray_file(design_project):
-    """Claude Code's sandbox leaves empty placeholder entries (.bashrc, .vscode/) in the
-    working directory; the first live design run (2026-09-21) parked on them. They are
-    untracked and empty, so design_scope looks past them - an untracked file with content
-    outside the change folder is still a departure from phase (b)."""
+def test_gate_b_judges_the_committed_diff_not_the_working_tree(design_project):
+    """The gate at (b) may run inside Claude Code's sandbox, which masks .env, .idea and
+    .vscode: the third live design run (2026-09-21) parked on them although the committed
+    diff held only the change folder. The working tree is reported, never a park."""
     root, _change = design_project
+    (root / ".env").write_text("SANDBOX=1\n", encoding="utf-8")  # tracked and "modified"
+    (root / ".idea").mkdir()
+    write(root / ".idea" / "workspace.xml", "<project/>\n")  # untracked, not empty
     (root / ".bashrc").write_text("", encoding="utf-8")  # zero bytes: a placeholder
-    (root / ".vscode").mkdir()  # empty directory: a placeholder
     verdict(root, "b")
     result = gate.run_gate(root, "0001", "b", dry_run=True)
     assert "design_scope" not in _names(result, False), result.reason
     ds = next(ch for ch in result.checks if ch.name == "design_scope")
-    assert ".bashrc" in ds.details["ignored"]
+    assert ".env" in ds.details["dirty"] and ".idea/workspace.xml" in ds.details["dirty"]
+    assert ".bashrc" not in ds.details["dirty"]  # an empty placeholder is not even reported
     assert result.result == "wait"
 
-    write(root / "stray.py", "x = 1\n")  # untracked but not empty: a real stray
+    # an uncommitted stray is reported and still does not park: only the PR's diff counts
+    write(root / "stray.py", "x = 1\n")
+    verdict(root, "b")
+    result = gate.run_gate(root, "0001", "b", dry_run=True)
+    assert "design_scope" not in _names(result, False), result.reason
+    ds = next(ch for ch in result.checks if ch.name == "design_scope")
+    assert "stray.py" in ds.details["dirty"]
+
+
+def test_gate_b_parks_on_a_stray_file_the_branch_committed(design_project):
+    """What the branch carries is the verdict: a source file committed outside the change
+    folder is the departure from phase (b) design_scope exists to catch."""
+    root, _change = design_project
+    write(root / "stray.py", "x = 1\n")
+    git(root, "add", "stray.py")
+    git(root, "commit", "-q", "-m", "a file phase (b) had no business writing")
     verdict(root, "b")
     result = gate.run_gate(root, "0001", "b", dry_run=True)
     assert result.result == "park"
     ds = next(ch for ch in result.failed if ch.name == "design_scope")
-    assert ds.details["outside"] == ["stray.py"] and ".bashrc" in ds.details["ignored"]
+    assert ds.details["outside"] == ["stray.py"]
+    assert "phase (c)" in ds.need
 
 
-def test_clean_tree_ignores_the_sandbox_placeholders_but_not_a_stray_file(project):
-    """The same placeholders would fail clean_tree at gates (c), (d) and (e)."""
+def test_clean_tree_ignores_the_placeholders_and_the_masked_paths(project):
+    """At (c), (d) and (e) the working tree is still the verdict - but neither the sandbox's
+    empty placeholders nor the paths it masks (diff.SANDBOX_MASKED) are anyone's work."""
     root, _change = project
     (root / ".bashrc").write_text("", encoding="utf-8")
+    (root / ".env").write_text("SANDBOX=1\n", encoding="utf-8")  # tracked: shows as modified
+    write(root / ".vscode" / "settings.json", "{}\n")  # untracked, not empty
     (root / ".idea").mkdir()
     verdict(root, "c")
     result = gate.run_gate(root, "0001", "c", dry_run=True)
     assert "clean_tree" not in _names(result, False), result.reason
     ct = next(ch for ch in result.checks if ch.name == "clean_tree")
-    assert ct.details["ignored"] == [".bashrc"]  # `git status -uall` never names an empty dir
+    assert ct.details["ignored"] == [".bashrc", ".env", ".vscode/settings.json"]
     assert checks.diffmod.sandbox_placeholders(root, [".idea/"]) == [".idea/"]
+    assert checks.diffmod.sandbox_masked([".env", "src/.env", ".idea/x"]) == [".env", ".idea/x"]
 
-    write(root / "stray.py", "x = 1\n")
+    write(root / "sample_pkg" / "calc.py", "x = 1\n")  # real work, uncommitted
     result = gate.run_gate(root, "0001", "c", dry_run=True)
     ct = next(ch for ch in result.failed if ch.name == "clean_tree")
-    assert ct.details["dirty"] == ["stray.py"]
+    assert ct.details["dirty"] == ["sample_pkg/calc.py"]
 
 
 def test_a_committed_empty_file_is_still_part_of_the_diff(design_project):

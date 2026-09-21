@@ -143,6 +143,56 @@ def without_placeholders(root: Path, files: list[str]) -> list[str]:
     return [f for f in files if f not in drop]
 
 
+# Claude Code's sandbox masks these paths inside the sandbox: a run that looks at the working
+# directory from in there sees the project's own ``.env`` as modified and ``.idea``/``.vscode``
+# as untracked, whatever the checkout really holds (observed on 2026-09-21, third live design
+# run: the gate parked on ``.env, .idea, .vscode`` while the committed diff was clean). The
+# mask is the sandbox's, not the run's: no phase writes these, a modification of ``.env``
+# cannot come from a run at all (the CI settings deny reading it, and the guardrail and
+# secrets checks cover it), so the gate looks past them wherever it happens to run. Names
+# only: they are matched at the root of the checkout, so a project's own ``src/.env`` is
+# untouched.
+SANDBOX_MASKED = frozenset(
+    {
+        ".env",
+        ".idea",
+        ".vscode",
+        ".bash_profile",
+        ".bashrc",
+        ".gitconfig",
+        ".gitmodules",
+        ".mcp.json",
+        ".profile",
+        ".ripgreprc",
+        ".zprofile",
+        ".zshrc",
+    }
+)
+
+
+def sandbox_masked(files: list[str]) -> list[str]:
+    """The entries of ``files`` that sit under a root-level ``SANDBOX_MASKED`` name.
+
+    Size and tracked state do not matter here (a tracked ``.env`` shows up as modified, an
+    untracked ``.idea`` as one entry or as the files below it): the entry is the sandbox's
+    view, not the change's.
+    """
+    return sorted({f for f in files if f.split("/", 1)[0] in SANDBOX_MASKED})
+
+
+def committed_files(root: Path, merge_base: str | None, head: str | None = None) -> list[str]:
+    """The files the branch carries: ``git diff --name-only <merge_base>...HEAD``.
+
+    This is the PR's own diff — what a reviewer sees and what merges. The working tree says
+    nothing here: a checkout can be dirty for reasons that have nothing to do with the change
+    (see ``SANDBOX_MASKED``), and a phase that commits its work is judged on the commits.
+    """
+    if not merge_base:
+        return []
+    ref = f"{merge_base}...{head or 'HEAD'}"
+    return _z(_git(root, "diff", "--name-only", "-z", "--diff-filter=ACMRD", ref, check=False))
+
+
 def is_repo(root: Path) -> bool:
     try:
         return _git(root, "rev-parse", "--is-inside-work-tree").strip() == "true"

@@ -112,12 +112,12 @@ def cmd_upsert(args) -> int:
         out.update({"route": "none", "url": None, "reason": "no GitHub remote", "body": body})
         return finish()
 
-    found = github.find_open_pr(repo, head)
+    found = github.find_open_pr(repo, head, cwd=root)
     number = found.get("number")
     if number:
-        result = github.update_pr(repo, int(number), body, title)
+        result = github.update_pr(repo, int(number), body, title, cwd=root)
     else:
-        result = github.create_pr(repo, base, head, title, body, draft=args.draft)
+        result = github.create_pr(repo, base, head, title, body, draft=args.draft, cwd=root)
     out["route"] = result.get("route", "none")
     out["number"] = result.get("number", number)
     out["url"] = result.get("url")
@@ -129,15 +129,15 @@ def cmd_upsert(args) -> int:
 
     number = out["number"]
     if label and number:
-        github.ensure_label(repo, label, label_color(label), f"SDLC gate ({args.phase})")
+        github.ensure_label(repo, label, label_color(label), f"SDLC gate ({args.phase})", cwd=root)
     if number:
         carried = [lb for lb in found.get("labels") or [] if str(lb).startswith(c.LABEL_PREFIX)]
         remove = [lb for lb in carried if lb != label]
         add = [label] if label and label not in carried else []
         if add or remove:
-            out["labels"] = github.set_labels(repo, int(number), add, remove)
+            out["labels"] = github.set_labels(repo, int(number), add, remove, cwd=root)
         if args.ready:
-            out["ready"] = github.set_ready(repo, int(number))
+            out["ready"] = github.set_ready(repo, int(number), cwd=root)
     return finish()
 
 
@@ -163,7 +163,7 @@ def check_run_result(root: Path, change_dir: Path, phase: str) -> dict[str, Any]
             "summary": summary,
         }
     result = github.create_check_run(
-        repo, head_sha, name, conclusion, f"SDLC gate ({phase})", summary
+        repo, head_sha, name, conclusion, f"SDLC gate ({phase})", summary, cwd=root
     )
     result.update(
         {"name": name, "conclusion": conclusion, "summary": summary, "head_sha": head_sha}

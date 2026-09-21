@@ -38,6 +38,9 @@ KEY_ENV = {KEY_VAR: FAKE_KEY}
 TOKEN_ENV = {TOKEN_VAR: FAKE_TOKEN}
 BOTH_ENV = {KEY_VAR: FAKE_KEY, TOKEN_VAR: FAKE_TOKEN}
 
+# what the fixture project's ``commands.setup`` is rewritten to: it installs nothing
+NOOP_SETUP = f'"{sys.executable}" -c "print(\'setup ok\')"'
+
 
 # --- helpers ------------------------------------------------------------------------------------
 def git(cwd: Path, *args: str) -> str:
@@ -60,6 +63,14 @@ def run_py(*args: str, cwd: Path, env: dict | None = None) -> subprocess.Complet
 def write(path: Path, text: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text, encoding="utf-8", newline="\n")
+
+
+def set_setup_command(root: Path, command: str) -> None:
+    """Rewrite ``commands.setup`` in the project's sdlc.yaml (the owner's own one-liner)."""
+    text = (root / "sdlc.yaml").read_text(encoding="utf-8")
+    escaped = command.replace("\\", "\\\\").replace('"', '\\"')
+    text = re.sub(r"(?m)^  setup: .*$", f'  setup: "{escaped}"', text, count=1)
+    (root / "sdlc.yaml").write_text(text, encoding="utf-8")
 
 
 class Args:
@@ -249,6 +260,10 @@ def project(tmp_path):
         str(STATE_CLI), "new-change", "--root", str(root), "--title", "Percent helper", cwd=root
     )
     assert proc.returncode == 0, proc.stderr
+    # every phase run installs the project's toolchain (commands.setup) before the guard; a
+    # test installs nothing and reaches no network, so the detected pip line is replaced by a
+    # command that only proves the step ran (the detection itself is tested in test_init.py)
+    set_setup_command(root, NOOP_SETUP)
     return root, root / "changes" / "0001-percent-helper"
 
 
@@ -556,23 +571,29 @@ def fake_cli(bindir: Path) -> str:
     return str(bindir / ("claude.cmd" if os.name == "nt" else "claude"))
 
 
-def no_pr_route(monkeypatch) -> None:
-    """The hand-over asks GitHub whether the phase's PR is open; in a test it never is and
-    nothing may leave the machine."""
+def pr_route(monkeypatch, number: int | None = None) -> list:
+    """The hand-over asks GitHub whether the phase's PR is open and then calls ``pr/cli.py
+    upsert``; in a test nothing may leave the machine, so both are answered here. The
+    recorded calls come back for the tests that read them."""
     from pr import github
 
     monkeypatch.setattr(github, "gh_path", lambda: None)
-    monkeypatch.setattr(github, "find_open_pr", lambda repo, head: {"number": None, "labels": []})
+    monkeypatch.setattr(
+        github,
+        "find_open_pr",
+        lambda repo, head, cwd=None: {"number": number, "labels": []},
+    )
+    return upsert_recorder(monkeypatch, number=number or 7)
 
 
 def test_full_run_stores_the_transcript_records_spend_and_hands_over(
     project, fake_claude, monkeypatch, capsys
 ):
     root, change = project
-    no_pr_route(monkeypatch)
+    pr_route(monkeypatch)
     write(change / "evidence" / "gate-b.json", json.dumps(GATE_FILE))
     monkeypatch.setenv("FAKE_CLAUDE_RESULT", json.dumps(FAKE_RESULT))
-    env = dict(os.environ, **KEY_ENV)
+    env = dict(os.environ, **KEY_ENV, GITHUB_TOKEN=FAKE_TOKEN)
     args = Args(
         root=str(root), phase="b", dry_run=False, no_dispatch=True, claude=fake_cli(fake_claude)
     )
@@ -813,8 +834,10 @@ def test_the_run_excludes_the_runner_s_own_untracked_entries_once(project):
     assert first["added"] == list(run_phase.RUNNER_EXCLUDES)
     text = Path(first["path"]).read_text(encoding="utf-8")
     assert run_phase.RUNNER_EXCLUDE_HEADER in text
-    for entry in ("/framework/", "/.bashrc", "/.vscode/", "/.mcp.json"):
+    for entry in ("/framework/", "/.bashrc", "/.vscode", "/.mcp.json"):
         assert f"\n{entry}\n" in f"\n{text}"
+    # no trailing slash on the dotfile directories: the sandbox may leave a file of that name
+    assert "/.idea\n" in text and "/.idea/\n" not in text
 
     second = run_phase.write_git_exclude(root)
     assert second["added"] == []
@@ -822,12 +845,14 @@ def test_the_run_excludes_the_runner_s_own_untracked_entries_once(project):
 
     # and git really stops reporting them
     (root / ".bashrc").write_text("", encoding="utf-8")
+    (root / ".idea").write_text("a file, not a directory\n", encoding="utf-8")
     (root / "framework").mkdir()
     (root / "framework" / "README.md").write_text("pinned framework\n", encoding="utf-8")
     from gate import diff as gate_diff
 
     untracked = gate_diff.untracked_files(root)
     assert ".bashrc" not in untracked and "framework/" not in untracked
+    assert ".idea" not in untracked
 
 
 def test_write_git_exclude_outside_a_repository_is_a_no_op(tmp_path):
@@ -847,14 +872,6 @@ def test_phase_workflow_installs_the_project_toolchain_before_the_phase(name):
     assert "run: python framework/plugin/ci/project_setup.py --root ." in steps
     assert steps.index("runner_setup.py") < steps.index("project_setup.py")
     assert steps.index("project_setup.py") < steps.index("run_phase.py")
-
-
-def set_setup_command(root: Path, command: str) -> None:
-    """Rewrite ``commands.setup`` in the project's sdlc.yaml (the owner's own one-liner)."""
-    text = (root / "sdlc.yaml").read_text(encoding="utf-8")
-    escaped = command.replace("\\", "\\\\").replace('"', '\\"')
-    text = re.sub(r"(?m)^  setup: .*$", f'  setup: "{escaped}"', text, count=1)
-    (root / "sdlc.yaml").write_text(text, encoding="utf-8")
 
 
 def test_project_setup_runs_the_configured_command(project):
@@ -886,19 +903,28 @@ def test_project_setup_with_no_command_is_skipped_not_failed(project):
 
 
 def test_preflight_reports_the_setup_command(project):
-    """No new check: the owner just sees what the phase job installs (step 18)."""
+    """No new check: the owner just sees what the phase job installs (step 18). What
+    /sdlc-init detects for a Python project is tested in test_init.py."""
     root, _change = project
     report = preflight.run_preflight(root, ROOT)
-    assert report["setup_command"] == "python -m pip install -e . pytest ruff"
+    assert report["setup_command"] == NOOP_SETUP
 
 
 # --- 9. the phase's pull request is opened by the hand-over, not by the run (2026-09-21) --------
-def upsert_recorder(monkeypatch) -> list:
-    """Record every plugin CLI the hand-over calls instead of running it."""
+def upsert_recorder(monkeypatch, number: int | None = 7, route: str = "api", **extra) -> list:
+    """Record every plugin CLI the hand-over calls instead of running it.
+
+    The recorded ``upsert`` answers with the JSON ``pr/cli.py upsert`` prints: the hand-over
+    reads its route from there, not from its exit code.
+    """
     calls: list = []
+    answer = {"route": route, "number": number, "url": f"https://github.test/o/r/pull/{number}"}
+    answer.update(extra)
 
     def fake_cli_call(script, argv, timeout=600):
         calls.append((Path(script).name, list(argv)))
+        if Path(script).name == "cli.py" and argv and argv[0] == "upsert":
+            return {"ok": True, "reason": "", "output": dict(answer)}
         return {"ok": True, "reason": ""}
 
     monkeypatch.setattr(run_phase, "_cli_call", fake_cli_call)
@@ -922,15 +948,12 @@ def test_the_hand_over_opens_the_phase_pr_when_the_run_left_none(
     """The parked design run of 2026-09-21 pushed sdlc/0001/b with the evidence on it and
     opened no PR: the runbook's pr/cli.py step never ran inside the model's session."""
     root, change = project
-    from pr import github
-
-    monkeypatch.setattr(github, "gh_path", lambda: None)
-    monkeypatch.setattr(github, "find_open_pr", lambda repo, head: {"number": None, "labels": []})
-    calls = upsert_recorder(monkeypatch)
+    calls = pr_route(monkeypatch)
     full_run(root, change, fake_claude, monkeypatch, "b")
 
     pr = json.loads(capsys.readouterr().out)["pr"]
     assert pr["head"] == "sdlc/0001/b" and pr["existed"] is False and pr["ok"] is True
+    assert pr["route"] == "api" and pr["number"] == 7  # read from the upsert's own JSON
     upserts = [argv for name, argv in calls if name == "cli.py" and argv[0] == "upsert"]
     assert upserts == [["upsert", "--root", str(root), "--id", "0001", "--phase", "b"]]
     assert "--draft" not in upserts[0] and "--ready" not in upserts[0]
@@ -941,11 +964,7 @@ def test_the_hand_over_still_upserts_when_the_pr_is_already_open(
 ):
     """Idempotent: an open PR has its body and its gate label brought up to date."""
     root, change = project
-    from pr import github
-
-    monkeypatch.setattr(github, "gh_path", lambda: None)
-    monkeypatch.setattr(github, "find_open_pr", lambda repo, head: {"number": 12, "labels": []})
-    calls = upsert_recorder(monkeypatch)
+    calls = pr_route(monkeypatch, number=12)
     monkeypatch.setattr(
         run_phase, "preflight", lambda *a: {"allow": True, "permission_mode": "acceptEdits"}
     )
@@ -953,13 +972,44 @@ def test_the_hand_over_still_upserts_when_the_pr_is_already_open(
     full_run(root, change, fake_claude, monkeypatch, "c")
 
     pr = json.loads(capsys.readouterr().out)["pr"]
-    assert pr["existed"] is True and pr["number"] == 12
+    assert pr["existed"] is True and pr["number"] == 12 and pr["ok"] is True
     upserts = [argv for name, argv in calls if name == "cli.py" and argv[0] == "upsert"]
     assert upserts[-1][-1] == "--draft"  # the build PR opens as a draft; (b) does not
     assert "--ready" not in upserts[-1]
 
 
-def test_the_hand_over_says_so_when_there_is_no_route_to_github(
+def test_an_upsert_that_opened_no_pull_request_fails_the_run(
+    project, fake_claude, monkeypatch, capsys
+):
+    """The run of 2026-09-21 reported ``ok`` for an upsert that had taken route "none" and
+    left no PR behind: a phase result nobody can find in the queue is a failure."""
+    root, change = project
+    from pr import github
+
+    monkeypatch.setattr(github, "gh_path", lambda: None)
+    monkeypatch.setattr(
+        github, "find_open_pr", lambda repo, head, cwd=None: {"number": None, "labels": []}
+    )
+    upsert_recorder(monkeypatch, number=None, route="none", reason="no GitHub remote")
+    write(change / "evidence" / "gate-b.json", json.dumps(GATE_FILE))
+    monkeypatch.setenv("FAKE_CLAUDE_RESULT", json.dumps(FAKE_RESULT))
+    args = Args(
+        root=str(root), phase="b", dry_run=False, no_dispatch=True, claude=fake_cli(fake_claude)
+    )
+    env = dict(os.environ, **KEY_ENV, GITHUB_TOKEN=FAKE_TOKEN)
+    assert run_phase.run_phase(args, env) == run_phase.EXIT_FAILED
+
+    captured = capsys.readouterr()
+    out = json.loads(captured.out)
+    assert out["pr"]["ok"] is False and "no GitHub remote" in out["pr"]["reason"]
+    assert out["dispatched"] is None  # nothing is handed over past a missing queue item
+    assert "no pull request carries this phase's result" in captured.err
+    # the evidence and the spend are written before the failure: the run is not lost
+    assert (change / "evidence" / "claude-b.json").is_file()
+    assert json.loads((change / "evidence" / "run-b.json").read_text(encoding="utf-8"))
+
+
+def test_a_run_without_a_pr_route_is_an_infrastructure_failure(
     project, fake_claude, monkeypatch, capsys
 ):
     root, change = project
@@ -972,6 +1022,78 @@ def test_the_hand_over_says_so_when_there_is_no_route_to_github(
         root=str(root), phase="b", dry_run=False, no_dispatch=True, claude=fake_cli(fake_claude)
     )
     env = {k: v for k, v in os.environ.items() if k not in run_phase.TOKEN_VARS}
-    assert run_phase.run_phase(args, dict(env, **KEY_ENV)) == run_phase.EXIT_OK
-    pr = json.loads(capsys.readouterr().out)["pr"]
-    assert pr["ok"] is False and "no PR route" in pr["reason"]
+    assert run_phase.run_phase(args, dict(env, **KEY_ENV)) == run_phase.EXIT_FAILED
+    captured = capsys.readouterr()
+    pr = json.loads(captured.out)["pr"]
+    assert pr["ok"] is False and "no PR route" in pr["reason"] and "no PR route" in captured.err
+
+
+def test_the_upsert_verdict_reads_the_route_not_the_exit_code():
+    """``upsert`` exits 0 with route "none" when there is no GitHub remote or no credential:
+    it prints the body for the owner instead of opening a PR."""
+    opened = run_phase.upsert_outcome({"ok": True, "output": {"route": "api", "number": 7}})
+    assert opened["ok"] is True and opened["number"] == 7
+
+    silent = run_phase.upsert_outcome(
+        {"ok": True, "reason": "", "output": {"route": "none", "reason": "no GitHub remote"}}
+    )
+    assert silent["ok"] is False and silent["reason"] == "no GitHub remote"
+
+    empty = run_phase.upsert_outcome({"ok": True, "output": {"route": "gh"}})
+    assert empty["ok"] is False and "opened no pull request" in empty["reason"]
+
+    known = run_phase.upsert_outcome({"ok": True, "output": {"route": "gh"}}, fallback_number=12)
+    assert known["ok"] is True and known["number"] == 12
+
+    assert run_phase.upsert_outcome({"ok": False, "reason": "boom"})["reason"] == "boom"
+
+
+def test_cli_call_keeps_the_json_the_cli_printed(tmp_path):
+    """Every plugin CLI prints JSON, and that JSON is where the route and the reason live."""
+    script = tmp_path / "printer.py"
+    write(script, 'import json\nprint(json.dumps({"route": "api", "number": 7}))\n')
+    out = run_phase._cli_call(script, [])
+    assert out["ok"] is True and out["output"] == {"route": "api", "number": 7}
+    assert "stdout" not in out
+
+    noisy = tmp_path / "noisy.py"
+    write(noisy, 'import sys\nprint("not json at all")\nsys.exit(2)\n')
+    out = run_phase._cli_call(noisy, [])
+    assert out["ok"] is False and out["stdout"] == "not json at all" and "output" not in out
+
+
+# --- 10. the run installs the project's toolchain itself (third live run, 2026-09-21) ----------
+def test_the_phase_run_installs_the_project_toolchain(project, fake_claude, monkeypatch, capsys):
+    """The workflow step exists, but a project carries the workflow files /sdlc-init wrote
+    when it ran: the 0.2.0 copies have no such step, and the gate failed with "No module
+    named pytest". The run installs the toolchain itself."""
+    root, change = project
+    pr_route(monkeypatch)
+    full_run(root, change, fake_claude, monkeypatch, "b")
+    setup = json.loads(capsys.readouterr().out)["setup"]
+    assert setup["ok"] is True and setup["command"] == NOOP_SETUP
+    assert "setup ok" in setup["output"]
+
+
+def test_a_failing_setup_command_stops_the_run_before_the_guard(project, capsys):
+    """Proof of the order: this change sits at a phase this run does not follow, so a run
+    that reached the guard would print ``{"skipped": ...}`` and exit 0."""
+    root, change = project
+    set_state(change, "d")
+    set_setup_command(root, f'"{sys.executable}" -c "import sys; sys.exit(3)"')
+    args = Args(root=str(root), phase="b", dry_run=False)
+    assert run_phase.run_phase(args, dict(KEY_ENV)) == run_phase.EXIT_FAILED
+    captured = capsys.readouterr()
+    out = json.loads(captured.out)
+    assert out["setup"]["exit_code"] == 3 and out["setup"]["ok"] is False
+    assert "the project's setup command failed" in captured.err
+
+
+def test_the_run_installs_nothing_in_a_dry_run_or_without_a_setup_command(project):
+    root, _change = project
+    result, ok = run_phase.install_toolchain(root, dry_run=True)
+    assert ok is True and "dry run" in result["skipped"]
+
+    set_setup_command(root, "")
+    result, ok = run_phase.install_toolchain(root)
+    assert ok is True and result == {"skipped": run_phase.project_setup.NOTHING_TO_RUN}
