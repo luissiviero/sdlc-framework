@@ -70,6 +70,9 @@ def test_sdlc_init_flow_matches_step_21():
         "--id 0000",
         "sdlc:a-ready",
         "Re-running is safe",
+        "evals",
+        "bands.yaml",
+        "Node",
     ]:
         assert token in body, token
 

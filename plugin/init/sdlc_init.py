@@ -1,4 +1,4 @@
-"""Deterministic half of /sdlc-init (build guide step 21, minimal version for B1).
+"""Deterministic half of /sdlc-init (build guide step 21; full version from B2).
 
     python "${CLAUDE_PLUGIN_ROOT}/init/sdlc_init.py" --root <project> --profile standard \
         --deploy-action none --deploy-production false \
@@ -17,8 +17,11 @@ What it does, idempotently (re-running upgrades):
      /init-style text the model wrote into the change folder, because the protected-path
      hook denies it a direct write) with the missing skeleton sections appended;
   6. creates ruff.toml when the lint target was "created";
-  7. creates change 0000 (changes/0000-sdlc-init/, intent.md + status.yaml) so the
+  7. creates evals/ (empty suite with its README, decision 17) and bands.yaml (the p.44
+     shape for the maintain metric, decision 15) when absent;
+  8. creates change 0000 (changes/0000-sdlc-init/, intent.md + status.yaml) so the
      installation goes through gate (a) like any other change.
+The CI workflows and the daily digest arrive in B3.
 The model-driven half (asking the owner, /init, trimming CLAUDE.md, committing, the PR) is in
 plugin/commands/sdlc-init.md.
 """
@@ -214,8 +217,14 @@ def run(args) -> dict:
         ".claude/settings.json",
     )
 
-    # REVIEW.md, changes/README.md: create only
-    for rel in ("REVIEW.md", "changes/README.md"):
+    # REVIEW.md, changes/README.md, evals/, bands.yaml: create only (owner-edited afterwards)
+    for rel in (
+        "REVIEW.md",
+        "changes/README.md",
+        "evals/README.md",
+        "evals/cases/.gitkeep",
+        "bands.yaml",
+    ):
         target = root / rel
         if target.exists():
             report["files"][rel] = "kept"

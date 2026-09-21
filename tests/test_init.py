@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
 import sys
 from pathlib import Path
+
+import pytest
 
 from init import detect, sdlc_init
 from state import yamlish
@@ -213,3 +216,109 @@ def test_init_accepts_preexisting_change_folder_with_only_the_proposal(tmp_path)
     assert (folder / "status.yaml").exists() and (folder / "intent.md").exists()
     assert (folder / "CLAUDE.proposed.md").exists()
     assert (tmp_path / "CLAUDE.md").read_text(encoding="utf-8").startswith("# app")
+
+
+# --- step 21 (session 2): Node detection, evals/, bands.yaml ---------------------------------
+NODE_FIXTURE = ROOT / "tests" / "fixtures" / "sample-node-project"
+
+
+def test_detect_node_fixture():
+    det = detect.detect(NODE_FIXTURE)
+    assert det.language == "node"
+    assert det.test.command == "npm test" and det.test.origin.startswith("detected: scripts.test")
+    assert det.lint.command == "npm run lint" and det.build.command == "npm run build"
+    assert det.test.permission_rule == "Bash(npm test*)"
+    assert det.stats["has_test_script"] == 1 and det.stats["test_files"] == 1
+    assert det.notes == []
+
+
+def test_detect_node_without_scripts_creates_or_leaves_none(tmp_path):
+    (tmp_path / "package.json").write_text(
+        json.dumps(
+            {
+                "name": "x",
+                "main": "index.js",
+                "scripts": {"test": 'echo "Error: no test specified" && exit 1'},
+            }
+        ),
+        encoding="utf-8",
+    )
+    (tmp_path / "index.js").write_text("module.exports = 1;\n", encoding="utf-8")
+    det = detect.detect(tmp_path)
+    assert det.language == "node"
+    assert det.test.command == "node --test" and det.test.origin.startswith("created")
+    assert det.lint.command is None and det.lint.origin == "none"
+    assert det.build.command == "node --check index.js" and det.build.origin.startswith("created")
+    assert len(det.notes) == 2
+
+
+def test_detect_prefers_python_when_both_exist(tmp_path):
+    (tmp_path / "package.json").write_text('{"scripts": {"test": "jest"}}', encoding="utf-8")
+    (tmp_path / "app.py").write_text("x = 1\n", encoding="utf-8")
+    assert detect.detect(tmp_path).language == "python"
+    (tmp_path / "package.json").write_text("{not json", encoding="utf-8")
+    (tmp_path / "app.py").unlink()
+    assert detect.detect(tmp_path).language == "unknown"
+
+
+def test_init_on_node_fixture_writes_npm_targets(tmp_path):
+    root = tmp_path / "node"
+    shutil.copytree(NODE_FIXTURE, root)
+    report = _run_init(root)
+    cfg = yamlish.load_file(root / "sdlc.yaml")
+    assert cfg["commands"] == {"build": "npm run build", "test": "npm test", "lint": "npm run lint"}
+    settings = json.loads((root / ".claude" / "settings.json").read_text(encoding="utf-8"))
+    for rule in ("Bash(npm run build *)", "Bash(npm test *)", "Bash(npm run lint *)"):
+        assert rule in settings["permissions"]["allow"], rule
+    assert "ruff.toml" not in report["files"]
+    assert "npm test" in (root / "CLAUDE.md").read_text(encoding="utf-8")
+    # the three targets really run, and the test target exits non-zero on failure
+    for cmd in ("npm run build", "npm test", "npm run lint"):
+        proc = subprocess.run(cmd, cwd=root, shell=True, capture_output=True, text=True)
+        assert proc.returncode == 0, (cmd, proc.stdout, proc.stderr)
+    proc = subprocess.run(
+        "npm test",
+        cwd=root,
+        shell=True,
+        capture_output=True,
+        text=True,
+        env={**os.environ, "SAMPLE_FAIL": "1"},
+    )
+    assert proc.returncode != 0
+
+
+def test_init_writes_evals_and_bands_once(tmp_path):
+    root = tmp_path / "proj"
+    shutil.copytree(FIXTURE, root)
+    report = _run_init(root)
+    assert report["files"]["evals/README.md"] == "created"
+    assert report["files"]["evals/cases/.gitkeep"] == "created"
+    assert report["files"]["bands.yaml"] == "created"
+    bands = yamlish.load_file(root / "bands.yaml")
+    assert bands["metric"] == "ci_test_failure_rate" and bands["source"] == "github-actions"
+    assert bands["rules"] == "western_electric" and bands["baseline"] == "rolling_30d"
+    assert bands["tiers"]["1sigma"] == {"action": "log"}
+    assert bands["tiers"]["2sigma"]["action"] == "diagnose"
+    routes = bands["tiers"]["3sigma"]["routes"]
+    assert {r["authorization"] for r in routes} == {"preapproved", "go"}
+    assert (
+        next(r for r in routes if r["name"] == "runbook:rollback-deploy")["authorization"] == "go"
+    )
+    readme = (root / "evals" / "README.md").read_text(encoding="utf-8")
+    assert "starts empty on purpose" in readme and "p.30" in readme
+    # owner edits survive: create-only files are kept on re-run
+    (root / "bands.yaml").write_text("metric: my_metric\n", encoding="utf-8")
+    report2 = _run_init(root)
+    assert (
+        report2["files"]["bands.yaml"] == "kept" and report2["files"]["evals/README.md"] == "kept"
+    )
+    assert (root / "bands.yaml").read_text(encoding="utf-8") == "metric: my_metric\n"
+
+
+def test_bands_yaml_also_parses_with_pyyaml(tmp_path):
+    yaml = pytest.importorskip("yaml")
+    root = tmp_path / "proj"
+    shutil.copytree(FIXTURE, root)
+    _run_init(root)
+    data = yaml.safe_load((root / "bands.yaml").read_text(encoding="utf-8"))
+    assert data["tiers"]["3sigma"]["routes"][0]["name"] == "pull_request"

@@ -1,11 +1,11 @@
 ---
-description: Connect the SDLC framework to this project in one command — profile and phase adapters into sdlc.yaml, one-command build/test/lint targets, guardrail hooks and permissions, CLAUDE.md skeleton, REVIEW.md, changes/ — committed as the project's first PR (change 0000). Idempotent; re-run to upgrade.
+description: Connect the SDLC framework to this project in one command — profile and phase adapters into sdlc.yaml, one-command build/test/lint targets (Python or Node detected), guardrail hooks and permissions, CLAUDE.md skeleton, REVIEW.md, changes/, evals/, bands.yaml — committed as the project's first PR (change 0000). Idempotent; re-run to upgrade.
 argument-hint: [--profile standard|full|lite]
 disable-model-invocation: true
 allowed-tools: Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/init/sdlc_init.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/state/cli.py" *), Bash(git *), Bash(gh *), Read, Write, Edit, Glob, Grep, AskUserQuestion
 ---
 
-# /sdlc-init — connect the framework (build guide step 21, minimal B1 version)
+# /sdlc-init — connect the framework (build guide step 21)
 
 ## 0. Preconditions
 - The current directory is the root of a git repository. If not, stop and say so.
@@ -13,8 +13,10 @@ allowed-tools: Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/init/sdlc_init.py" *), 
 ```
 python "${CLAUDE_PLUGIN_ROOT}/plugin/init/sdlc_init.py" --root "${CLAUDE_PROJECT_DIR}" --detect-only
 ```
-Only Python detection is implemented in this version; for other languages ask the owner for
-the three commands and pass them with `--build/--test/--lint`.
+Detection covers Python (pyproject/pytest/ruff/flake8) and Node (`package.json` scripts →
+`npm test`, `npm run lint`, `npm run build`). For other languages, or when a target is
+reported as `none`, ask the owner for the command and pass it with `--build/--test/--lint`;
+the gate does not enter phase (c) without all three.
 
 ## 1. Ask the owner (one question round, defaults in brackets)
 - profile [standard]: standard (owner merges at a, b, e) · full (all five gates) · lite (a, e)
@@ -42,7 +44,9 @@ python "${CLAUDE_PLUGIN_ROOT}/plugin/init/sdlc_init.py" --root "${CLAUDE_PROJECT
 It writes `sdlc.yaml`, `.claude/settings.json` (permissions + the pinned plugin
 declaration; hooks come from the plugin), `REVIEW.md`, `changes/README.md`, builds
 `CLAUDE.md` from the proposal plus the skeleton sections, creates `ruff.toml` when no linter
-existed, and creates `changes/0000-sdlc-init/` with an intent.md. Read its JSON report and
+existed, creates `evals/` (empty suite, filled by incidents — decision 17) and `bands.yaml`
+(control bands for the maintain metric — decision 15), and creates
+`changes/0000-sdlc-init/` with an intent.md. The CI workflows and the daily digest are B3. Read its JSON report and
 show the owner the file-by-file result. Re-running is safe: it merges and never overwrites
 the owner's edits. This script is the only sanctioned writer of guardrail files in a run;
 everything it writes rides in the change-0000 PR the owner merges.
@@ -57,7 +61,7 @@ a branch and forbids pushing any other (Claude Code on the web does), run the co
 without `--push`, then push the resulting commit to the assigned branch and open the PR from
 it, keeping the label; say in the PR body that the framework branch is `sdlc/0000/a` locally.
 ```
-python "${CLAUDE_PLUGIN_ROOT}/plugin/state/cli.py" commit-phase --root "${CLAUDE_PROJECT_DIR}" --id 0000 --phase a --message "sdlc-init: connect the SDLC framework" --paths sdlc.yaml .claude/settings.json REVIEW.md CLAUDE.md changes ruff.toml --start-point <default branch> --push
+python "${CLAUDE_PLUGIN_ROOT}/plugin/state/cli.py" commit-phase --root "${CLAUDE_PROJECT_DIR}" --id 0000 --phase a --message "sdlc-init: connect the SDLC framework" --paths sdlc.yaml .claude/settings.json REVIEW.md CLAUDE.md changes ruff.toml evals bands.yaml --start-point <default branch> --push
 ```
 (paths that do not exist, such as an uncreated `ruff.toml`, are skipped). Then open the PR exactly as
 `/sdlc-plan` step 6 does (gh, else the GitHub MCP tool, else the compare URL), title
