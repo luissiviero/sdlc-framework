@@ -73,7 +73,7 @@ branch); it writes `evidence/adversarial-review-d.json` for HEAD. Then
 
 ## 6. Update the build PR and the check run
 ```
-python "${CLAUDE_PLUGIN_ROOT}/plugin/pr/cli.py" upsert --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase d
+python "${CLAUDE_PLUGIN_ROOT}/plugin/pr/cli.py" upsert --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase d --check-run
 ```
 It regenerates the ≤5-bullet summary (evidence status now filled from the logs), applies
 the gate's label (`sdlc:d-ready` in the Full profile, `sdlc:needs-human` when parked) and,

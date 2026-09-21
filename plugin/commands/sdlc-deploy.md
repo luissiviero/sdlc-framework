@@ -70,6 +70,9 @@ edit `CLAUDE.md` yourself (protected path: the owner applies the line in the PR 
 finding, the plan in sync with the diff, no guardrail or risk hit. Exit 3 `wait` is the
 normal outcome (gate (e) is human in every profile); 4 = `park`. Commit:
 `commit-phase ... --phase e --message "review(<id>): gate (e) evidence" --push`.
+In CI (a token is present), publish the review tally as a check run:
+`python "${CLAUDE_PLUGIN_ROOT}/plugin/review/cli.py" check-run --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase e`
+(route "none" by hand; nothing else changes).
 
 ## 5. Mark the PR ready with the final summary (build guide step 27a, decision 20)
 ```

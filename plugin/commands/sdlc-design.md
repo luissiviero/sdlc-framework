@@ -131,14 +131,14 @@ Base: the default branch. Head: `sdlc/<id>/b`. Title: `design(<id>): <title>`. T
 renders the ≤5-bullet summary from `status.yaml`, `spec.md`, `plan.md` and
 `evidence/gate-b.json`:
 1. what the change is and the design in one line;
-2. flagged concerns: how many open, how many closed, the open ones quoted verbatim;
-3. open questions from the intent: answered / carried forward;
-4. the plan: files that change, the riskiest step, the proof;
+2. evidence status ("design phase, no code yet" at this gate);
+3. flagged concerns: how many open, how many closed, the open ones quoted verbatim;
+4. open questions from the intent: answered / carried forward;
 5. what needs the owner — the gate (b) checklist (build guide step 23): does the spec solve
    the stated problem? are the intent's open questions answered or carried forward? is every
    flagged concern closed? could someone who never saw this conversation implement plan.md?
    Merge = approve; a review comment = change request (`/sdlc-fix`). When parked, the
-   gate's "What I need from you" block replaces this bullet.
+   gate's "What I need from you" block follows the bullets verbatim.
 Then the links to `spec.md`, `plan.md` and `evidence/gate-b.json`. Label: the one the gate
 printed (`sdlc:b-ready`, or `sdlc:needs-human` when parked); the previous `sdlc:*` label is
 removed. Re-run: the same command updates the existing PR; never open a second one. Routes:
