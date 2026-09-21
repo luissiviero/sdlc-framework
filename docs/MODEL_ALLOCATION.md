@@ -47,12 +47,19 @@ writing (2026-09-21); where the owner says "Opus 5.1", read "the current Opus".
     way to override every definition, plugin agents included; it also stops Claude passing
     a model per invocation, so use it only in a session where every sub-agent should be
     Opus, and never commit it.
-  - Check which model a sub-agent ran on with `/tasks` (v2.1.242 or later).
+  - Check which model a sub-agent ran on with `/tasks` (v2.1.242 or later): "Claude Code
+    names the model on the subagent's row". This is the authoritative check, and only the
+    owner can run it in the session UI. Because the per-invocation model is first in the
+    order, naming `opus` per invocation also covers the built-in Explore and Plan
+    sub-agents, which the variable alone does not move; only a forked sub-agent always
+    inherits the session model.
   - Usage: the docs describe both "a seat-based usage window on a subscription plan, shared
     across all models" and the model-specific "You've hit your Opus limit" window; `/usage`
     shows usage by model and an attribution breakdown for sub-agents. The docs never state
     in one sentence that a sub-agent's tokens count against its own model's window; it
-    follows from usage being reported by model. Check `/usage` after the first delegated
+    follows from usage being reported by model. Its figures are "computed from local session
+    history on this machine" and the docs say nothing about what it shows in a cloud
+    session (re-verified 2026-09-21), so read `/usage` on the PC. Check it after the first delegated
     session; if the Fable window moved by the delegated share, stop delegating for
     quota reasons and rely on the CI route of §7 once B3 has built it (on the key it is
     outside every plan window).
