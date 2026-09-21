@@ -150,7 +150,12 @@ def test_substrate_smoke_agrees_with_the_shared_selection():
 def test_dry_run_argv_per_phase(capsys, project, phase, command, mode):
     root, _change = project
     argv = dry_run_argv(capsys, root, phase)
-    assert argv[:4] == ["claude", "-p", f"/sdlc:{command} 0001", "--bare"]  # prompt first, then bare mode on the key path
+    assert argv[:4] == [
+        "claude",
+        "-p",
+        f"/sdlc:{command} 0001",
+        "--bare",
+    ]  # prompt first, then bare mode on the key path
     assert argv[argv.index("--permission-mode") + 1] == mode
     assert "--permission-prompts" in argv and argv[argv.index("--permission-prompts") + 1] == "none"
     assert argv[argv.index("--plugin-dir") + 1] == str(ROOT)

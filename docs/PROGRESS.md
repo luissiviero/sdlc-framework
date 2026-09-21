@@ -78,6 +78,7 @@ Test repository: `luissiviero/sdlc-sample-python` (plugin loaded through the set
 
 ## Results of the live checks so far (2026-09-21)
 - Smoke run in `sdlc-framework`: green in 16 s; `auth: subscription-token`, model `claude-opus-5`, `total_cost_usd: 0.0089815`, reply `OK`. Build guide step 3 closed. Annotations: actions/checkout@v4 and setup-node@v4 are on Node 20 (deprecated; bump to v5 in B4); `ubuntu-latest` moves to Ubuntu 26 on 2026-10-19.
+- First live design run on `sdlc-sample-python` (workflow_dispatch, change 0001, framework at `v0.2.0`): checkout, pin step, CLI install and the sandbox setup (bubblewrap, socat, AppArmor profile) all worked on the runner; `claude -p` then refused with "Input must be provided either through stdin or as a prompt argument" because `--allowedTools`/`--disallowedTools` take a list of values and the prompt placed after them was read as a tool name. Fixed in 0.2.1 (`run_phase.compose` puts the prompt right after `-p`; regression test). Also observed: GitHub Actions refused to start the job while the sample repository was private (billing); the owner made it public.
 - `/sdlc:sdlc-init` re-run on `sdlc-sample-python` with plugin 0.2.0 (environment setup script rebuilt): pin 0.1.0 → 0.2.0, `test_paths`, `plugin.claude_code`, the five workflows, `sdlc_pin.py`, `bands.yaml`, `evals/` created; comments kept; the three targets green; draft PR #4 opened with `sdlc:a-ready`. The upgrade path fixed in this session works live.
 
 ## Left for B4 (write the next `HANDOFF.md` from this list — done: see `HANDOFF.md`)
