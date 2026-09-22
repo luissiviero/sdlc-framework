@@ -55,6 +55,13 @@ import json, os, subprocess, sys
 from pathlib import Path
 
 argv = sys.argv[1:]
+if os.environ.get("FAKE_CLAUDE_MODE") == "idle":  # a session that gives up at once
+    print("Ignoring 4 permissions.allow entries: this workspace has not been trusted",
+          file=sys.stderr)
+    print(json.dumps({"type": "result", "is_error": False, "num_turns": 2, "duration_ms": 900,
+                      "total_cost_usd": 0.01,
+                      "result": "I cannot run the build: every Bash call was denied."}))
+    sys.exit(0)
 plugin = Path(argv[argv.index("--plugin-dir") + 1])
 change_id = argv[argv.index("-p") + 1].split()[-1]
 root = Path.cwd()
@@ -178,7 +185,11 @@ def checkout(tmp_path):
 
 
 def run_design_job(
-    root: Path, tmp_path: Path, gh_mode: str, spec_body: str = RECORDED_SPEC_BODY
+    root: Path,
+    tmp_path: Path,
+    gh_mode: str,
+    spec_body: str = RECORDED_SPEC_BODY,
+    claude_mode: str = "design",
 ) -> tuple:
     """Run the workflow's step with its env; return (process, parsed JSON, gh calls)."""
     bindir = tmp_path / "bin"
@@ -200,6 +211,7 @@ def run_design_job(
         {
             "PATH": str(bindir) + os.pathsep + env.get("PATH", ""),
             "FAKE_SPEC_BODY": spec_body,
+            "FAKE_CLAUDE_MODE": claude_mode,
             "FAKE_PLAN": RECORDED_PLAN,
             "FAKE_GH_LOG": str(gh_log),
             "FAKE_GH_MODE": gh_mode,
@@ -222,7 +234,8 @@ def run_design_job(
     )
     out = proc.stdout
     data = json.loads(out[out.index("{") :]) if "{" in out else None
-    calls = [json.loads(line) for line in gh_log.read_text(encoding="utf-8").splitlines()]
+    lines = gh_log.read_text(encoding="utf-8").splitlines() if gh_log.exists() else []
+    calls = [json.loads(line) for line in lines]
     return proc, data, calls
 
 
@@ -297,3 +310,24 @@ def test_a_second_dispatch_repeats_the_design_when_the_first_left_no_pr(checkout
     status = remote_file(bare, "sdlc/0001/b", f"{CHANGE}/status.yaml")
     assert "phase: b" in status and "parked_reason: null" in status
     assert any(c[:2] == ["pr", "create"] for c in calls)
+
+
+def test_a_run_that_never_reaches_its_gate_leaves_its_record_on_the_branch(checkout, tmp_path):
+    """The eighth live run (2026-09-22, phase (c)) ended in 28 s with one line, "the run
+    left no evidence/gate-c.json", and the runner took the CLI's result and stderr with
+    it. The failure must say what the session said, and keep it on the work branch."""
+    root, bare = checkout
+    proc, out, _calls = run_design_job(root, tmp_path / "idle", "ok", claude_mode="idle")
+    assert proc.returncode == 1 and out is None
+    assert "did not reach its gate" in proc.stderr
+    assert "every Bash call was denied" in proc.stderr
+    assert "not been trusted" in proc.stderr and '"num_turns": 2' in proc.stderr
+    stored = json.loads(remote_file(bare, "sdlc/0001/b", f"{CHANGE}/evidence/claude-b.json"))
+    assert stored["num_turns"] == 2
+    stderr_file = remote_file(bare, "sdlc/0001/b", f"{CHANGE}/evidence/claude-b.stderr.txt")
+    assert "not been trusted" in stderr_file
+    # the next dispatch runs the phase for real on the same branch
+    git(root, "checkout", "-q", "main")
+    proc, out, _calls = run_design_job(root, tmp_path / "again", "ok")
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert out["result"] == "wait" and out["pr"]["ok"] is True
