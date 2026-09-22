@@ -76,7 +76,10 @@ Rules for the pass (from the three by-hand runs of build guide step 22, recorded
   `python "${CLAUDE_PLUGIN_ROOT}/plugin/gate/cli.py" spec-header --root "${CLAUDE_PROJECT_DIR}" --id <id>`
   (title, change id, plugin version, skills in force, prompt version).
 - A guess made because the intent is silent is a flagged concern. So is any risk-list item
-  in `sdlc.yaml` the design touches, and any policy the design cannot meet.
+  in `sdlc.yaml` the design touches, and any policy the design cannot meet. Name a risk-list
+  item under "## Flagged concerns" only when the design touches it: the gate reads that
+  section literally and parks on every item named there until the owner accepts it. The
+  items that do not apply are said not to apply in Requirements, never listed there.
 - Close a concern yourself only when the policy text settles it, and say which policy
   (`- [x] <concern>: decided <how> per <skill> rule <n>`); the closing word is the first
   word of the item — a label such as `C3:` in front of it keeps the concern open. Every

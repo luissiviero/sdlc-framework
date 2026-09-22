@@ -35,6 +35,14 @@ Attack the output from these angles and record what you tried:
 6. **The tests** — could the tests pass with the bug still present? were pre-existing tests
    weakened (a fix-type change must not touch them)?
 
+The deterministic checks are not yours to repeat. Do not run `gate/cli.py check`, the
+definition-of-done `check.py` or any policy skill's `check.py`, and never quote their output
+as a reason: the gate runs them itself, records each result beside your verdict, and parks
+on them without your help. Your reasons are what those checks cannot see — the intent, the
+design, the proof, the blast radius, the tests. A verdict whose only reasons restate a
+deterministic check is a `continue` with those reasons left out (fifth live design run,
+2026-09-21: the reviewer re-ran the gate's dry run and escalated on its false positive).
+
 Then classify the plan (article p.17–18, build guide step 18): **routine** only when all
 three hold — a tight spec (no open concern, acceptance measurable), a small blast radius
 (few files, no risk-list item, no schema or contract change), and code the existing tests

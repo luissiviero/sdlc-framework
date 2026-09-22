@@ -529,10 +529,17 @@ def check_risk_list(ctx: GateContext) -> CheckResult:
     items = [str(i) for i in items if str(i).strip()]
     accepted = {a.lower().strip() for a in ctx.status.risk_accepted}
     paths = ctx.diff.files if ctx.diff else []
+    # Only the "Flagged concerns" section of spec.md is read, never its prose: the design
+    # prompt and security-baseline rule 8 make every spec name the risk-list items it checked
+    # ("none of auth, data migrations, ... is touched"), and a whole-text scan fired on that
+    # sentence in every live design run of 2026-09-21. A risk item the design touches is a
+    # flagged concern (skill spec-template), so that section is where it is declared.
     texts = {}
     spec = ctx.artifact("spec.md")
     if spec:
-        texts["spec.md"] = spec
+        concerns = art.split_sections(spec).get(art.CONCERNS_SECTION, "")
+        if concerns.strip():
+            texts[f"spec.md {art.CONCERNS_SECTION[3:]}"] = concerns
     hits = risk_hits(items, paths, texts)
     live = {k: v for k, v in hits.items() if k.lower().strip() not in accepted}
     if live:

@@ -477,6 +477,20 @@ paths given), the official OpenAPI description (`github/rest-api-description`),
   `output.title/summary`; "To create a check run, you must use a GitHub App. OAuth apps and
   authenticated users are not able to create a check suite." — the workflow token acts as
   an app, a personal token cannot: check runs are posted only from CI.
+- Pull requests from the workflow token need a **repository setting**, not only the
+  `pull-requests: write` permission: Settings → Actions → General → Workflow permissions →
+  "Allow GitHub Actions to create and approve pull requests", off by default. While it is
+  off, `POST /repos/{owner}/{repo}/pulls` answers 403 "GitHub Actions is not permitted to
+  create or approve pull requests" and `gh pr create` reports the same GraphQL error
+  (`createPullRequest`) — the fifth live design run of 2026-09-21 completed phase (b) and
+  failed only there. The REST endpoint `GET|PUT /repos/{owner}/{repo}/actions/permissions/
+  workflow` (https://docs.github.com/en/rest/actions/permissions, "Set default workflow
+  permissions for a repository": "configure the default permissions granted to the
+  GITHUB_TOKEN and whether GitHub Actions can submit approving pull request reviews") reads
+  and sets it as `can_approve_pull_request_reviews` ("Whether GitHub Actions can approve
+  pull requests. Enabling this can be a security risk."). An organization-level setting of
+  the same name can override the repository's. The setting is the owner's, once per
+  repository; `/sdlc-init` names it in its report and `docs/PROGRESS.md` in the live checks.
 - `schedule`: "Scheduled workflows run on the latest commit on the default branch. The
   shortest interval you can run scheduled workflows is once every 5 minutes."; "By default,
   scheduled workflows run in UTC."; "In a public repository, scheduled workflows are

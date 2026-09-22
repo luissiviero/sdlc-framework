@@ -81,6 +81,12 @@ files the owner should review (CLAUDE.md trim, settings). Merge = accept.
   there ("marketplace not registered"): the owner adds two lines to the cloud environment's
   setup script — `claude plugin marketplace add luissiviero/sdlc-framework` and
   `claude plugin install sdlc@sdlc-framework --yes` (see `docs/NOTES.md` §3).
+- The phase workflows open pull requests with the workflow token, which GitHub refuses
+  until the owner turns on, once per repository, Settings → Actions → General → Workflow
+  permissions → "Allow GitHub Actions to create and approve pull requests" (NOTES §11a).
+  Without it every phase job ends with "GitHub Actions is not permitted to create or
+  approve pull requests" after the phase has run. The workflows also need the repository
+  secret `CLAUDE_CODE_OAUTH_TOKEN` or `ANTHROPIC_API_KEY` (NOTES §2).
 - Optional, owner's machine only: `docs/owner-machine/README.md` in the framework repo
   explains the managed settings file and its machine-wide consequences.
 

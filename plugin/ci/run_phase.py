@@ -28,7 +28,10 @@ What one run does, in order:
 2. **guards** — not paused, the change exists, ``status.yaml`` is at the phase this run
    follows with a passing gate, not parked, and in the Full profile the owner's approval
    label is on the build PR and was applied by a human, not by the workflow token. A failed
-   guard prints ``{"skipped": ...}`` and exits 0, so a duplicate trigger is harmless;
+   guard prints ``{"skipped": ...}`` and exits 0, so a duplicate trigger is harmless. One
+   exception: a (b) or (c) run whose work branch already carries this phase but has no open
+   pull request is a re-run of an attempt that never reached the queue, and it proceeds with
+   the earlier park cleared (``rerun_reason``);
 3. refuses to run on a branch that changed a guardrail file (``.claude/**``, ``CLAUDE.md``,
    ``REVIEW.md``, ``sdlc.yaml``, ``protected_paths``) unless intent.md says
    ``Framework change: yes``; a park commits the change folder on the work branch and
@@ -41,8 +44,9 @@ What one run does, in order:
    ``--permission-prompts none``, ``--max-turns`` / ``--max-budget-usd`` from ``sdlc.yaml``,
    ``--output-format json`` — with exactly one credential in the environment;
 6. stores the JSON result as ``changes/<id>-<slug>/evidence/claude-<phase>.json``, records
-   ``total_cost_usd`` with ``gate/cli.py record-spend``, and validates the findings file
-   after a review pass;
+   ``total_cost_usd`` with ``gate/cli.py record-spend`` and commits the run record on the
+   work branch (the model's session pushed before the spend was known), and validates the
+   findings file after a review pass;
 7. opens or updates the phase's pull request with ``pr/cli.py upsert`` (idempotent: an
    existing PR only has its body and its gate label refreshed), so a parked run is a queue
    item even when the model's session never reached that step. The upsert's own JSON says
@@ -527,6 +531,34 @@ def resolve_change_id(change_id: str | None, head_ref: str | None, run_phase: st
     return parsed_id, None
 
 
+def rerun_reason(
+    root: Path, change_id: str, run_phase: str, repo: str, env: dict[str, str]
+) -> str | None:
+    """None when a run of ``run_phase`` may repeat on its existing work branch.
+
+    The branch carries this phase's result but no open pull request: the earlier attempt
+    never reached the queue (the fifth live design run of 2026-09-21 pushed ``sdlc/0001/b``
+    and was refused the PR; the next dispatch then skipped with "at phase b, not a", and
+    nothing could move the change). A branch whose pull request exists is a queue item:
+    review comments go through ``/sdlc-fix``, not a second run. With no route to GitHub the
+    question cannot be answered, so the run skips (fail closed).
+    """
+    head = work_branch_for(change_id, run_phase)
+    github = _github()
+    at = f"change {change_id} is already at phase {run_phase} on {head}"
+    if github is None or not repo or (not _token(env) and not github.gh_path()):
+        return f"{at}, and no GitHub route can tell whether its pull request exists"
+    found = github.find_open_pr(repo, head, cwd=root)
+    if found.get("number"):
+        return (
+            f"{at}; pull request #{found['number']} carries it (review comments go through "
+            "/sdlc-fix, not a second run)"
+        )
+    if not found.get("ok", True) and found.get("reason"):
+        return f"{at}, and the pull request lookup failed: {found['reason']}"
+    return None
+
+
 def guard(root: Path, change_id: str, run_phase: str, repo: str, env: dict[str, str]):
     """(change_dir, status, config, skip reason)."""
     config = _config(root)
@@ -540,10 +572,19 @@ def guard(root: Path, change_id: str, run_phase: str, repo: str, env: dict[str, 
     except (OSError, ValueError) as exc:
         return None, None, config, f"status.yaml is unreadable: {exc}"
     expected = PREVIOUS_PHASE[run_phase]
-    if st.phase != expected:
-        return None, None, config, f"change {change_id} is at phase {st.phase}, not {expected}"
-    if st.parked_reason:
-        return None, None, config, f"change {change_id} is parked: {st.parked_reason}"
+    if st.phase == run_phase and run_phase in CREATES_ITS_BRANCH:
+        # the work branch already carries this phase: a re-run, allowed only when no pull
+        # request carries it (the earlier attempt never reached the queue)
+        reason = rerun_reason(root, change_id, run_phase, repo, env)
+        if reason:
+            return None, None, config, reason
+        st.set_phase(run_phase)  # clears the earlier attempt's park; the phase is unchanged
+        status_mod.write_status(change_dir, st)
+    else:
+        if st.phase != expected:
+            return None, None, config, f"change {change_id} is at phase {st.phase}, not {expected}"
+        if st.parked_reason:
+            return None, None, config, f"change {change_id} is parked: {st.parked_reason}"
     if run_phase in GATE_MUST_HAVE_PASSED:
         if st.gate.phase != expected or st.gate.result != "passed":
             return (
@@ -851,6 +892,10 @@ def run_phase(args, env: dict[str, str]) -> int:
             file=sys.stderr,
         )
         return EXIT_FAILED
+    # the spend is recorded after the run's own commits, so on an ephemeral runner it would
+    # leave with the job (the fifth live run of 2026-09-21 pushed run-b.json with spend_usd
+    # null): commit it on the work branch before the PR is brought up to date
+    record = commit_run_record(plugin_dir, root, change_id, phase) if cost is not None else None
     # the PR is where the owner meets the change, parked or not: open it here rather than
     # trusting the run to have done it (the parked run of 2026-09-21 did not)
     pr = ensure_pr(plugin_dir, root, change_id, phase, args.repo, env)
@@ -859,6 +904,7 @@ def run_phase(args, env: dict[str, str]) -> int:
         {
             "phase": phase,
             "change_id": change_id,
+            "run_record": record,
             "result": result.get("result"),
             "label": result.get("label"),
             "cost_usd": cost,
@@ -874,6 +920,18 @@ def run_phase(args, env: dict[str, str]) -> int:
         print(PR_MISSING.format(reason=pr.get("reason") or "no route"), file=sys.stderr)
         return EXIT_FAILED
     return EXIT_OK
+
+
+def commit_run_record(plugin_dir: Path, root: Path, change_id: str, phase: str) -> dict[str, Any]:
+    """Commit and push the change folder after ``record_spend``: ``run-<phase>.json`` now
+    carries the spend, and nothing commits after the model's session but the run itself.
+    ``commit-phase`` is a no-op commit when nothing changed, so a by-hand run pays nothing."""
+    branch_phase = BRANCH_PHASE.get(phase, phase)
+    return _cli_call(
+        plugin_dir / "plugin" / "state" / "cli.py",
+        ["commit-phase", "--root", str(root), "--id", change_id, "--phase", branch_phase,
+         "--message", f"run({phase}): spend recorded", "--push"],
+    )  # fmt: skip
 
 
 def hand_over(args, result: dict[str, Any], phase: str, change_id: str) -> Any:
