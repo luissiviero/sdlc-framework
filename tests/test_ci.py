@@ -1137,3 +1137,16 @@ def test_a_re_run_fails_closed_without_a_github_route(project, monkeypatch):
     set_state(change, "b")
     monkeypatch.setattr(github, "gh_path", lambda: None)
     assert "no GitHub route" in skip_reason(root, "b")
+
+
+def test_a_park_lifted_by_a_passed_gate_does_not_stop_the_next_phase(project):
+    """status.yaml written by a plugin before 0.2.6: gate (b) passed, parked_reason stale."""
+    root, change = project
+    set_state(change, "b", gate_phase="b", gate_result="passed", parked="open_concerns: stale")
+    assert skip_reason(root, "c") is None
+
+
+def test_a_park_still_stops_the_next_phase_when_its_gate_did_not_pass(project):
+    root, change = project
+    set_state(change, "b", gate_phase="b", gate_result="parked", parked="open_concerns: 1 open")
+    assert "parked" in skip_reason(root, "c")

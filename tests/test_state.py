@@ -277,3 +277,15 @@ def test_commit_phase_d_lands_on_the_build_branch(repo, capsys):
     assert branches == {"main", "sdlc/0001/a", "sdlc/0001/c"}
     tracked = _git(root, "ls-tree", "-r", "--name-only", "sdlc/0001/c").split()
     assert "changes/0001-percent-helper/evidence/test.log" in tracked
+
+
+def test_a_passing_gate_lifts_the_park(tmp_path):
+    """The first fix round of change 0001 (2026-09-22) re-ran gate (b) to `passed` and left
+    the old parked_reason behind; the next phase's CI guard would have skipped the change."""
+    change_dir, st = status.new_change(tmp_path, "Percent helper")
+    st.park("open_concerns: 1 flagged concern(s) still open in spec.md")
+    assert st.parked_reason and st.gate.result == "parked"
+    st.record_gate("b", "passed", "waiting for the owner at gate (b)")
+    assert st.parked_reason is None and st.gate.result == "passed"
+    status.write_status(change_dir, st)
+    assert status.read_status(change_dir).parked_reason is None
