@@ -1,0 +1,94 @@
+# sdlc.yaml — the project's SDLC framework configuration (written by /sdlc-init).
+# Process lives in the pinned plugin; this file is the project content the plugin reads.
+# It is a protected path: only the owner edits it, in a reviewed PR.
+
+# --- profile: which gates are human (OPERATING_MODEL section 3; decision 18) --------------
+# standard: owner merges at (a) intent PR, (b) spec+plan PR, (e) build PR; (c),(d) automated
+# full:     all five gates human; (c),(d) = approving review + label on the build PR
+# lite:     (a) and (e) only; (b) is confidence-gated too
+profile: standard
+
+# --- feedback loop: one-command targets (build guide step 14; article p.27 step 1) --------
+# Each must exit non-zero on failure. /sdlc-init detects them for Python projects.
+commands:
+  build: "python -m compileall -q plugin tests tasks.py"
+  test: "python -m pytest"
+  lint: "python -m ruff check ."
+  # one command that installs what test/build/lint need; the CI phase jobs run it before
+  # the phase; empty = nothing to install
+  setup: "python -m pip install -e \".[dev]\""
+
+# --- phase adapters (OPERATING_MODEL section 9; decision 19) ---------------------------------
+deploy:
+  # what makes a merged change live: publish package | schedule job | regenerate report |
+  # promote to paper trading | deploy service | none
+  action: none
+  # true turns on the release label at gate (e) and the production-gate hook (B4)
+  production: false
+maintain:
+  # the watched metric and where the detection script reads it (default: CI test failure
+  # rate from the CI API — decision 15). Bands and the 3-sigma tiers arrive in B5.
+  metric: ci_test_failure_rate
+  source: github-actions
+  # runbooks the 3-sigma tier may call; authorization: preapproved (CI-scoped, reversible)
+  # or go (touches a running system; waits for the owner's "Go" as a parked item)
+  runbooks: []
+
+# --- risk list (build guide step 5; a hit parks the change at its next gate) ---------------
+risk_list:
+  - auth
+  - data migrations
+  - money movement
+  - production config
+
+# --- confidence gate and run limits (build guide steps 16 and 19; decision 11) ---------------
+# A gate failure or a limit hit parks the change (label sdlc:needs-human, "What I need from
+# you" in the PR); nobody is notified. The owner accepts a risk-list hit per change with
+# `state/cli.py accept-risk`. Setting `paused: true` stops every run before it starts.
+paused: false
+gate:
+  max_iterations: 3              # fix iterations per phase ("two or three rounds", p.28)
+  max_iterations_non_routine: 2  # when the adversarial reviewer classes the plan non-routine
+  max_wall_clock_minutes: 120    # per phase run, from `gate/cli.py start-run`
+  max_budget_usd: null           # per change, when the substrate reports spend; null = off
+  command_timeout: 900           # seconds per build/test/lint command run by the gate
+
+# --- automation identity (decision 11; gate check owner_actions) ---------------------------------
+# The gate honours a risk acceptance (accept-risk) or an iteration reset (set-iterations) only
+# when the commit that introduced it was not authored by the automation identity: a run cannot
+# approve itself. Default: github-actions[bot] (plugin/gate/policy.py). Override only if your
+# CI commits under another name:
+# automation_identity:
+#   - github-actions[bot]
+
+# --- test-file lock (build guide step 25; OPERATING_MODEL section 8) -------------------------
+# Globs of the project's test files. In a fix-type change the build run commits the reproducing
+# test first and locks these paths (status.yaml: tests_locked) for the rest of the change; the
+# hook denies any edit under them. Defaults per detected language are written by /sdlc-init.
+test_paths:
+  - "tests/**"
+  - "test/**"
+  - "**/test_*.py"
+  - "**/*_test.py"
+  - "**/conftest.py"
+
+# --- guardrails read by the plugin's hooks (build guide step 15) -----------------------------
+# Always protected, whatever is listed here: .claude/**, CLAUDE.md, REVIEW.md, sdlc.yaml and
+# the plugin's own files. Add generated code, frozen packages, migrations, infra.
+protected_paths: []
+plan_sync:
+  # staged paths matching these globs do not require a plan.md update in phase (c)
+  exempt:
+    - "*.md"
+hooks:
+  format_on_edit: true
+
+# --- pinned process (decision 8) ----------------------------------------------------------
+plugin:
+  name: sdlc
+  marketplace: sdlc-framework
+  version: 0.2.9
+  # Claude Code CLI version the SDLC workflows install (`npm install -g
+  # @anthropic-ai/claude-code@<this>`). `--permission-prompts none` needs 2.1.259 or later;
+  # 2.1.278 is the CLI the jobs install and the framework's minimum.
+  claude_code: "2.1.278"
