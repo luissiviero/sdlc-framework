@@ -115,9 +115,12 @@ class Status:
         self.validate()
 
     def record_gate(self, phase: str, result: str, reason: str | None = None) -> None:
+        """A gate result replaces the previous one, park included: a gate that passes after
+        a park lifts it (the first fix round of change 0001 on the sample repository,
+        2026-09-22, left the old reason behind a ``passed`` result, and the next phase's CI
+        guard would have skipped the change as parked)."""
         self.gate = Gate(phase=phase, result=result, reason=reason, at=_now())
-        if result == "parked":
-            self.parked_reason = reason
+        self.parked_reason = reason if result == "parked" else None
         self.touch()
         self.validate()
 
