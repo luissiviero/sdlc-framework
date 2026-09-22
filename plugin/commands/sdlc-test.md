@@ -19,7 +19,9 @@ that produced the code"). Unattended: never ask the owner; a blocker parks.
 ## 0. Preconditions
 - Change id `$ARGUMENTS` (or the single change whose `status.phase` is `c` with gate
   `passed` — in the Full profile also labelled `sdlc:c-approved`; stop and list otherwise).
-- `state/cli.py show`: stop if `parked_reason` is set.
+- `python "${CLAUDE_PLUGIN_ROOT}/plugin/gate/preflight.py" --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase d`:
+  if `allow` is false, stop and report its `reasons` (a `parked: ...` reason is the
+  owner's item). Never judge `status.yaml` yourself.
 - `git fetch origin`, `git switch sdlc/<id>/c`, `git pull --ff-only origin sdlc/<id>/c`.
   Phases (c), (d) and (e) share this branch and its PR (OPERATING_MODEL §8).
 - `python "${CLAUDE_PLUGIN_ROOT}/plugin/gate/cli.py" start-run --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase d`

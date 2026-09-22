@@ -12,6 +12,7 @@ from pathlib import Path
 import pytest
 
 from gate import preflight
+from state import status
 
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURE = ROOT / "tests" / "fixtures" / "sample-python-project"
@@ -178,6 +179,65 @@ def test_classification_reported_for_a_change(project):
     report = preflight.run_preflight(project, ROOT, "0001")
     assert report["change"]["classification"] == "non-routine"
     assert report["change"]["iteration_cap"] == 2 and report["allow"] is True  # tightens only
+
+
+def _new_change(project: Path) -> Path:
+    subprocess.run(
+        [sys.executable, str(ROOT / "plugin/state/cli.py"), "new-change", "--root", str(project),
+         "--title", "X"],
+        check=True,
+        capture_output=True,
+    )  # fmt: skip
+    return project / "changes" / "0001-x"
+
+
+def test_refuses_a_parked_change(project):
+    """The park is the owner's item and the run must not start under it. The check lives
+    here, not in the command's prose: the ninth live run (2026-09-22, phase (c)) had the CI
+    guard let a change through and the session refuse it on its own reading of status.yaml.
+    Nothing is run under a park, the test target included."""
+    change = _new_change(project)
+    st = status.read_status(change)
+    st.set_phase("b")
+    st.park("open_concerns: 1 open")
+    status.write_status(change, st)
+    report = preflight.run_preflight(project, ROOT, "0001")
+    assert report["allow"] is False and report["permission_mode"] == "default"
+    assert report["reasons"] == ["parked: open_concerns: 1 open"]
+    parked = next(ch for ch in report["checks"] if ch["name"] == "parked")
+    assert "/sdlc-fix 0001" in parked["need"]
+    assert "test_target" not in [ch["name"] for ch in report["checks"]]
+
+
+def test_a_park_that_a_later_gate_result_lifted_does_not_refuse(project):
+    """status.yaml as plugins before 0.2.6 wrote it: gate (b) passed, the reason kept."""
+    change = _new_change(project)
+    st = status.read_status(change)
+    st.set_phase("b")
+    st.park("open_concerns: stale")
+    st.gate.result = "passed"
+    status.write_status(change, st)
+    report = preflight.run_preflight(project, ROOT, "0001")
+    assert report["allow"] is True
+    assert next(ch for ch in report["checks"] if ch["name"] == "parked")["ok"] is True
+
+
+def test_a_missing_change_refuses(project):
+    report = preflight.run_preflight(project, ROOT, "0042")
+    assert report["allow"] is False
+    assert report["reasons"] == ["parked: no change folder for id 0042"]
+
+
+def test_phases_d_and_e_skip_the_test_target(project, monkeypatch):
+    """(d) judges the suite itself and (e) ships what (d) judged: their preflight checks the
+    guardrails and the park, never the tests. (c) still needs the suite green to lean on."""
+    monkeypatch.setenv("SAMPLE_FAIL", "1")
+    for phase in ("d", "e"):
+        report = preflight.run_preflight(project, ROOT, phase=phase)
+        assert report["allow"] is True and report["phase"] == phase
+        assert "test_target" not in [ch["name"] for ch in report["checks"]]
+    report = preflight.run_preflight(project, ROOT, phase="c")
+    assert report["allow"] is False and _names(report, False) == ["test_target"]
 
 
 def test_preflight_cli_exit_codes(project):

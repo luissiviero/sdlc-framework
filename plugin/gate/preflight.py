@@ -3,10 +3,15 @@ later plays mature (a tuned CLAUDE.md, skills that encode policy, hooks that blo
 actions, and a test suite Claude can run), auto-accept becomes the default for routine
 work").
 
-    python "${CLAUDE_PLUGIN_ROOT}/plugin/gate/preflight.py" --root . [--id 0001]
+    python "${CLAUDE_PLUGIN_ROOT}/plugin/gate/preflight.py" --root . [--id 0001] [--phase c]
 
 Says whether the implementation run of phase (c) may start with
-``--permission-mode acceptEdits``. Every precondition is checked deterministically:
+``--permission-mode acceptEdits``, and whether a (d) or (e) run may start at all
+(``--phase d`` / ``--phase e``: the same checks but the test target, which (d) judges
+itself). It is the one place that decides; the phase commands read its ``allow`` and never
+judge ``status.yaml`` on their own (the ninth live run, 2026-09-22: the CI guard let a
+change through and the session refused it on a ``parked_reason`` a later gate had lifted).
+Every precondition is checked deterministically:
   1. CLAUDE.md exists and names the three one-command targets of sdlc.yaml (step 13);
   2. the policy skills exist — the plugin's own under ``plugin/skills/`` or the project's
      overrides under ``.claude/skills/`` (step 20);
@@ -15,7 +20,9 @@ Says whether the implementation run of phase (c) may start with
   4. the project settings declare the plugin, carry the guardrail deny rules and disable
      bypass-permissions mode (step 7); bypass mode is never used, whatever the answer;
   5. the repository is not paused (step 19);
-  6. the one-command test target runs green (step 14).
+  6. with ``--id``, the change is not parked: a park is the owner's item (decision 11) and
+     nothing runs under it;
+  7. the one-command test target runs green (step 14) - phase (c) only.
 The report also carries ``setup_command``: the project's one-command install from
 ``sdlc.yaml: commands.setup``, which the CI phase jobs run before the phase. It is reported
 so the owner sees what the runner installs; it is not a precondition.
@@ -228,7 +235,31 @@ def check_not_paused(config: dict[str, Any]) -> CheckResult:
     return _ok("paused", "not paused")
 
 
-# --- 6. the test target is green  ----------------------------------------------------------------
+# --- 6. the change is not parked  ----------------------------------------------------------------
+def check_not_parked(root: Path, change_id: str) -> CheckResult:
+    """``read_status`` already ignores a park that a later gate result lifted, so a refusal
+    here is a park that holds."""
+    change_dir = c.find_change_dir(root, change_id)
+    if change_dir is None:
+        return _fail("parked", f"no change folder for id {change_id}", "Check the change id.")
+    try:
+        st = status_mod.read_status(change_dir)
+    except (OSError, ValueError) as exc:
+        return _fail("parked", f"status.yaml is unreadable: {exc}", "Fix status.yaml first.")
+    if st.parked_reason:
+        return _fail(
+            "parked",
+            st.parked_reason,
+            f"The owner has something to do first: the reason is in status.yaml and in "
+            f'evidence/gate-{st.gate.phase or st.phase}.json ("What I need from you"); '
+            f"/sdlc-fix {change_id} is the way to clear it.",
+            gate=st.gate.phase,
+            gate_result=st.gate.result,
+        )
+    return _ok("parked", "not parked")
+
+
+# --- 7. the test target is green  ----------------------------------------------------------------
 def check_test_target(root: Path, config: dict[str, Any]) -> CheckResult:
     cmds = _commands(config)
     if "test" not in cmds:
@@ -269,7 +300,12 @@ def classification(root: Path, config: dict[str, Any], change_id: str | None) ->
     }
 
 
-def run_preflight(root: Path, plugin_root: Path, change_id: str | None = None) -> dict[str, Any]:
+PHASES_WITH_TEST_TARGET = ("c",)  # (d) judges the suite itself; (e) ships what (d) judged
+
+
+def run_preflight(
+    root: Path, plugin_root: Path, change_id: str | None = None, phase: str = "c"
+) -> dict[str, Any]:
     root = Path(root).resolve()
     plugin_root = Path(plugin_root).resolve()
     try:
@@ -287,15 +323,18 @@ def run_preflight(root: Path, plugin_root: Path, change_id: str | None = None) -
     checks.append(check_policy_skills(root, plugin_root))
     checks.append(check_hooks(plugin_root))
     checks.append(check_settings(root))
+    if change_id:
+        checks.append(check_not_parked(root, change_id))
     if not cfg_error:
         checks.append(check_not_paused(config))
-        if all(ch.ok for ch in checks):  # the slow one, only when the rest holds
-            checks.append(check_test_target(root, config))
+        if phase in PHASES_WITH_TEST_TARGET and all(ch.ok for ch in checks):
+            checks.append(check_test_target(root, config))  # the slow one, only when the rest holds
     allow = all(ch.ok for ch in checks)
     return {
         "schema_version": 1,
         "root": str(root),
         "plugin_root": str(plugin_root),
+        "phase": phase,
         "allow": allow,
         "permission_mode": ALLOW_MODE if allow else REFUSE_MODE,
         "never": "bypassPermissions",
@@ -314,13 +353,19 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument("--root", default=".")
     p.add_argument("--plugin-root", default=str(REPO_ROOT))
-    p.add_argument("--id", default=None, help="change id: report its classification and cap")
+    p.add_argument("--id", default=None, help="change id: refuse a park; classification and cap")
+    p.add_argument(
+        "--phase",
+        default="c",
+        choices=("c", "d", "e"),
+        help="the phase about to run; (d) and (e) skip the test target",
+    )
     return p
 
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    report = run_preflight(Path(args.root), Path(args.plugin_root), args.id)
+    report = run_preflight(Path(args.root), Path(args.plugin_root), args.id, args.phase)
     print(json.dumps(report, indent=2, sort_keys=True))
     return 0 if report["allow"] else 4
 

@@ -101,6 +101,8 @@ class Status:
         if unknown:
             raise ValueError(f"unknown status.yaml keys: {sorted(unknown)}")
         st = cls(gate=Gate(**gate), **d)
+        if stale_park(st):
+            st.parked_reason = None
         st.validate()
         return st
 
@@ -155,15 +157,46 @@ class Status:
         self.validate()
 
 
+def stale_park(st: Status) -> str | None:
+    """The ``parked_reason`` a later gate result already lifted, or None.
+
+    A park is a gate result (``park`` records one), so a reason beside any other result is
+    a leftover: plugins before 0.2.6 kept it when a gate passed after a park, and the file
+    the design PR merged into the sample repository's main (change 0001, 2026-09-22) still
+    carries it. Every reader goes through ``from_dict``, so the guard, ``show``, ``list``
+    and the preflight agree on it; nothing else is asked to judge the raw field.
+    """
+    if st.parked_reason and st.gate.result != "parked":
+        return st.parked_reason
+    return None
+
+
 def status_path(change_dir: Path) -> Path:
     return Path(change_dir) / STATUS_FILE
 
 
-def read_status(change_dir: Path) -> Status:
+def _load(change_dir: Path) -> dict[str, Any]:
     data = yamlish.load_file(status_path(change_dir))
     if not isinstance(data, dict):
         raise ValueError(f"{status_path(change_dir)} is not a mapping")
-    return Status.from_dict(data)
+    return data
+
+
+def read_status(change_dir: Path) -> Status:
+    return Status.from_dict(_load(change_dir))
+
+
+def lift_stale_park(change_dir: Path) -> str | None:
+    """Rewrite ``status.yaml`` when its park was lifted by a later gate result, so a session
+    that reads the file itself sees what every reader sees. Returns the lifted reason, or
+    None when the file already says what ``read_status`` says (idempotent)."""
+    data = _load(change_dir)
+    st = Status.from_dict(data)
+    raw = data.get("parked_reason")
+    if raw and st.parked_reason is None:
+        write_status(change_dir, st)
+        return str(raw)
+    return None
 
 
 def write_status(change_dir: Path, status: Status) -> Path:

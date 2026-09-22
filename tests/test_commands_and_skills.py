@@ -260,6 +260,8 @@ def test_sdlc_build_flow_matches_step_24():
 def test_sdlc_test_flow_matches_step_28():
     text = flat(COMMANDS / "sdlc-test.md")
     for token in [
+        "preflight.py",
+        "--phase d",
         "evidence/collect.py",
         "bump-iteration",
         "screenshots",
@@ -273,6 +275,7 @@ def test_sdlc_test_flow_matches_step_28():
 def test_sdlc_deploy_flow_matches_step_26():
     text = flat(COMMANDS / "sdlc-deploy.md")
     for token in [
+        "preflight.py",
         'review/cli.py" prompt',
         'review/cli.py" validate',
         "--phase e",
