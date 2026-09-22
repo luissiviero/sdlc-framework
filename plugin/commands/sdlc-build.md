@@ -67,8 +67,9 @@ step touches (the full suite is phase (d)). Commit with
 `python "${CLAUDE_PLUGIN_ROOT}/plugin/state/cli.py" commit-phase --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase c --message "build(<id>): <step>" --paths <files>`
 — it commits the change folder plus the paths you name. A commit inside the plan needs
 nothing more; a commit that touches a file "## Files that change" does not list is a
-departure and must update `plan.md` in the same commit (the hook denies it otherwise, and
-gate (c) re-checks every commit).
+departure and must update `plan.md` in the same commit: `commit-phase` refuses it
+otherwise (exit 2, the reason on stderr), the hook denies a raw `git commit` the same way,
+and gate (c) re-checks every commit on the branch.
 Never edit `intent.md` or `spec.md` in this phase; never touch a guardrail file. No new
 dependency without the plan naming it.
 

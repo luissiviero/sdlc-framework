@@ -29,6 +29,8 @@ from pathlib import Path
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from hooks import plan_sync  # noqa: E402
+from hooks._common import load_sdlc_config  # noqa: E402
 from state import conventions as c  # noqa: E402
 from state import gitops, status  # noqa: E402
 
@@ -101,7 +103,21 @@ def cmd_commit_phase(args) -> int:
         status.write_status(change_dir, st)
     rel = str(change_dir.relative_to(root)).replace("\\", "/")
     extra = [p for p in args.paths if (root / p).exists()]  # e.g. ruff.toml only when created
-    sha = gitops.commit_paths(root, [rel, *extra], args.message)
+    staged = gitops.stage_paths(root, [rel, *extra])
+    # The plan-sync rule, applied here because this command is how the phase commands
+    # commit and the hook only sees ``git *`` shell commands (NOTES section 9): a commit on
+    # sdlc/<id>/c that departs from plan.md without updating it is refused now, not found
+    # by gate (c) twenty turns later (the first gated build run, 2026-09-22).
+    denial = plan_sync.check(
+        branch,
+        staged,
+        plan_sync.exempt_patterns(load_sdlc_config(str(root))),
+        plan_sync.planned_files(str(root), args.id),
+    )
+    if denial.block:
+        print(denial.reason, file=sys.stderr)
+        return 2
+    sha = gitops.commit_staged(root, args.message) if staged else None
     pushed = False
     if args.push and gitops.has_remote(root):
         gitops.push(root, branch)

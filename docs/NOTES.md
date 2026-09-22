@@ -350,8 +350,11 @@ applies, in the order `deny`, `defer`, `ask`, `allow`."
   protected-path hook or by `Edit` deny rules (section 6); the sandbox and the review pass
   (REVIEW.md framework rules) are the remaining nets until the gate check of step 16 exists.
 - The plan-sync hook sees the index, the working tree for `-a`/`--include`, and pathspecs
-  named after `commit`; a commit driven from a script the hook cannot parse is not checked.
-  The REVIEW.md compliance pass is the second net.
+  named after `commit`; a commit driven from a script the hook cannot parse is not checked
+  by the hook. `state/cli.py commit-phase`, the way the phase commands commit, applies the
+  same rule itself before committing (0.2.9: the first gated build run made three such
+  commits and heard about plan.md only from the gate), and gate (c) re-checks every commit
+  on the branch. The REVIEW.md compliance pass is the last net.
 - Change ids are allocated from the local `changes/` folder plus the remote's `sdlc/<id>/*`
   branches (best effort); two changes started at the same moment on two machines can still
   collide, and the second push then fails on the branch name, which is the signal to re-run.
