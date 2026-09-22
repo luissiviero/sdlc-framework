@@ -30,3 +30,22 @@ Run tests and lint before reporting any task complete, and paste the output. If 
 - Escalation means park (label `sdlc:needs-human`, write "what I need from you"), never a notification.
 - The plan.md run is read-only (Read/Grep/Glob); the first run with edit tools is phase (c).
 - Verify how Claude Code on Windows invokes hook commands before writing the first hook; record the answer in `docs/NOTES.md`.
+
+## Things Claude gets wrong
+<!-- One line per recurring mistake; added when a review flags the same finding twice. -->
+- (none yet)
+
+## SDLC framework
+- Every change lives in `changes/<id>-<slug>/` (intent.md → spec.md + plan.md → evidence/);
+  phase branches are `sdlc/<id>/<phase>`; see `changes/README.md`.
+- Never edit `.claude/**`, `CLAUDE.md`, `REVIEW.md` or `sdlc.yaml` in a run: they are
+  guardrails the owner changes in a reviewed PR. Never use bypass-permissions mode.
+- When a run cannot finish, park: write "what I need from you", never notify.
+
+## Verifying your work
+<!-- Verbatim structure of the article's verification block (p.28). -->
+- Build: `python -m compileall -q plugin tests tasks.py` (must finish with no output and exit code 0)
+- Test: `python -m pytest` (all green; never skip or delete a failing test)
+- Lint: `python -m ruff check .` (zero warnings)
+Run all three before reporting any task complete, and paste the output.
+If a test fails, fix the code, not the test.

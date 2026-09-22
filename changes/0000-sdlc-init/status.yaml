@@ -1,0 +1,20 @@
+id: "0000"
+slug: sdlc-init
+title: sdlc-init
+phase: a
+entry_route: idea
+change_type: feature
+profile_override: null
+gate:
+  phase: null
+  result: null
+  reason: null
+  at: null
+parked_reason: null
+iterations: 0
+external_ref: null
+risk_accepted: []
+tests_locked: false
+created_at: "2026-09-22T15:48:48Z"
+updated_at: "2026-09-22T15:48:48Z"
+schema_version: 1

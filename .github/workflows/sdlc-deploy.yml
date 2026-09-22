@@ -1,0 +1,109 @@
+# Phase (e) deploy, fired by the test job's dispatch, or by the owner's sdlc:d-approved label (Full).
+#
+# Contract: docs/OPERATING_MODEL.md section 4.2 (the trigger and dispatch table), build guide
+# step 30, article p.39-41 ("Run Claude Code non-interactively inside the CI/CD pipeline,
+# sandbox the execution"). Installed into this project by /sdlc-init from the framework's
+# template/.github/workflows/; edit it here, not in the framework.
+#
+# Token rule: events caused by this workflow's GITHUB_TOKEN never start another workflow run
+# - only workflow_dispatch and repository_dispatch do. The owner's merges and labels fire
+# these workflows normally; every automated transition is an explicit workflow_dispatch that
+# run_phase.py sends with the change id. The job holds no deploy secret and no production
+# credential (article p.40).
+#
+# /sdlc-init filled in the framework repository. The Claude Code version is read from
+# sdlc.yaml at run time.
+name: SDLC deploy (e)
+
+on:
+  workflow_dispatch:
+    inputs:
+      change_id:
+        description: "Four-digit change id, e.g. 0001"
+        required: true
+        type: string
+      head_ref:
+        description: "The change's work branch, e.g. sdlc/0001/c; it keys the concurrency group"
+        required: false
+        type: string
+  pull_request:
+    types: [labeled]
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+  checks: write
+  actions: write
+
+# One change at a time, keyed on the change's own branch: sdlc/<id>/b for the design PR
+# merge, sdlc/<id>/c for build, test and deploy — the runs that must serialise
+# (OPERATING_MODEL section 4.2). run_phase.py passes head_ref on every dispatch, so an
+# automated hop lands in the same group as the PR-fired run of the same branch.
+concurrency:
+  group: "sdlc-${{ inputs.head_ref || github.event.pull_request.head.ref }}"
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    # Only the gate (d) approval label starts this workflow from a PR event; run_phase.py
+    # also checks that a human, not the workflow token, applied it. The review pass and
+    # phase (e) are two steps of one job, in that order.
+    if: ${{ github.event_name != 'pull_request' || github.event.label.name == 'sdlc:d-approved' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    steps:
+      - name: Check out the project
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Read the framework pin from sdlc.yaml
+        id: pin
+        run: python .github/scripts/sdlc_pin.py
+
+      - name: Check out the pinned framework (public repository, no token)
+        uses: actions/checkout@v4
+        with:
+          repository: "luissiviero/sdlc-framework"
+          ref: ${{ steps.pin.outputs.ref }}
+          path: framework
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      # The version comes from the pin step at run time, so a bump in sdlc.yaml applies on
+      # the next run; re-install the workflows only when this file itself changes.
+      - name: Install the pinned Claude Code CLI
+        env:
+          CLAUDE_CODE_VERSION: ${{ steps.pin.outputs.claude_code }}
+        run: npm install -g @anthropic-ai/claude-code@"$CLAUDE_CODE_VERSION"
+
+      - name: Prepare the runner for Claude Code's sandbox
+        run: python framework/plugin/ci/runner_setup.py
+
+      - name: Install the project's own toolchain (sdlc.yaml: commands.setup)
+        run: python framework/plugin/ci/project_setup.py --root .
+
+      - name: Review pass in a fresh context (read-only but for the findings file)
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          GITHUB_TOKEN: ${{ github.token }}
+          CHANGE_ID: ${{ inputs.change_id }}
+          HEAD_REF: ${{ inputs.head_ref || github.event.pull_request.head.ref }}
+          REPO: ${{ github.repository }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: python framework/plugin/ci/run_phase.py --root . --plugin-dir framework --phase review --id "$CHANGE_ID" --head-ref "$HEAD_REF" --repo "$REPO" --ref "$DEFAULT_BRANCH"
+
+      - name: Run phase (e)
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          GITHUB_TOKEN: ${{ github.token }}
+          CHANGE_ID: ${{ inputs.change_id }}
+          HEAD_REF: ${{ inputs.head_ref || github.event.pull_request.head.ref }}
+          REPO: ${{ github.repository }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: python framework/plugin/ci/run_phase.py --root . --plugin-dir framework --phase e --id "$CHANGE_ID" --head-ref "$HEAD_REF" --repo "$REPO" --ref "$DEFAULT_BRANCH"
