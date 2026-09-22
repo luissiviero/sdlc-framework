@@ -21,11 +21,11 @@ reproducing test is committed. Never work around a hook; if it blocks the plan, 
 ## 0. Preconditions and preflight (build guide step 18)
 - `sdlc.yaml` exists; the change id is `$ARGUMENTS` (or the single change whose
   `status.phase` is `b` with gate `passed`; stop and list candidates otherwise).
-- `python "${CLAUDE_PLUGIN_ROOT}/plugin/state/cli.py" show --root "${CLAUDE_PROJECT_DIR}" --id <id>`:
-  stop if `parked_reason` is set.
-- `python "${CLAUDE_PLUGIN_ROOT}/plugin/gate/preflight.py" --root "${CLAUDE_PROJECT_DIR}" --id <id>`.
-  Read `allow`, `permission_mode`, `reasons` and `change.iteration_cap`. If `allow` is
-  false: do not implement anything; park with the reasons
+- `python "${CLAUDE_PLUGIN_ROOT}/plugin/gate/preflight.py" --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase c`
+  decides whether the phase may start; never judge `status.yaml` yourself (its park check
+  is the one that counts). Read `allow`, `permission_mode`, `reasons` and
+  `change.iteration_cap`. If `allow` is false: do not implement anything. A `parked: ...`
+  reason is the owner's item: stop and report it. Any other reason: park with the reasons
   (`state/cli.py park --root ... --id <id> --reason "preflight: <reasons>"`) and report.
   The permission mode it prints is the one the unattended job runs under (`acceptEdits`
   at most; `bypassPermissions` never); by hand the session's own mode applies.

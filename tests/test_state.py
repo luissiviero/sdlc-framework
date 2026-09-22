@@ -103,6 +103,33 @@ def test_park_records_reason(tmp_path):
     assert back.gate.result == "parked" and back.gate.phase == "c"
 
 
+def test_a_park_that_a_later_gate_result_lifted_is_dropped_on_read(tmp_path):
+    """status.yaml as plugins before 0.2.6 wrote it (change 0001 on the sample repository,
+    2026-09-22): gate (b) passed, and the reason of the park it lifted still beside it. The
+    file on main outlives every plugin release, so the reader is where it is normalised: a
+    park is a gate result, and a parked_reason without one is a leftover."""
+    change_dir, st = status.new_change(tmp_path, "Percent helper")
+    st.set_phase("b")
+    st.park("open_concerns: 1 open")
+    st.gate.result = "passed"  # what record_gate did before 0.2.6, the reason kept
+    st.gate.reason = "waiting for the owner at gate (b)"
+    status.write_status(change_dir, st)
+    text = status.status_path(change_dir).read_text(encoding="utf-8")
+    assert 'parked_reason: "open_concerns: 1 open"' in text
+    back = status.read_status(change_dir)
+    assert back.parked_reason is None and back.gate.result == "passed"
+    # the file itself is rewritten on request, once
+    assert status.lift_stale_park(change_dir) == "open_concerns: 1 open"
+    text = status.status_path(change_dir).read_text(encoding="utf-8")
+    assert "parked_reason: null" in text and "result: passed" in text
+    assert status.lift_stale_park(change_dir) is None
+    # a real park is a parked gate result, and holds
+    st.park("open_concerns: 1 open")
+    status.write_status(change_dir, st)
+    assert status.read_status(change_dir).parked_reason == "open_concerns: 1 open"
+    assert status.lift_stale_park(change_dir) is None
+
+
 def test_invalid_status_rejected():
     with pytest.raises(ValueError):
         status.Status.from_dict({"id": "0001", "slug": "x", "title": "t", "phase": "q"})

@@ -296,7 +296,13 @@ def test_guard_skips_at_the_wrong_phase(project):
 
 def test_guard_skips_a_parked_change(project):
     root, change = project
-    set_state(change, "a", parked="waiting for the owner's decision on rounding")
+    set_state(
+        change,
+        "a",
+        gate_phase="a",
+        gate_result="parked",
+        parked="waiting for the owner's decision on rounding",
+    )
     assert "parked" in skip_reason(root, "b")
 
 
@@ -1115,7 +1121,9 @@ def test_a_design_run_repeats_on_its_branch_when_no_pr_carries_it(project, monke
     """The fifth live run pushed sdlc/0001/b (phase b, parked) and was refused the PR; the
     sixth dispatch skipped with "at phase b, not a". A branch with no PR is run again."""
     root, change = project
-    set_state(change, "b", parked="risk-list hit: 'auth' in spec.md: text")
+    set_state(
+        change, "b", gate_phase="b", gate_result="parked", parked="risk-list hit: 'auth' in spec.md"
+    )
     _pr_lookup(monkeypatch, None)
     assert skip_reason(root, "b") is None
     st = status_mod.read_status(change)
@@ -1144,6 +1152,10 @@ def test_a_park_lifted_by_a_passed_gate_does_not_stop_the_next_phase(project):
     root, change = project
     set_state(change, "b", gate_phase="b", gate_result="passed", parked="open_concerns: stale")
     assert skip_reason(root, "c") is None
+    # the file the session reads on the work branch says so too: the ninth live run
+    # (2026-09-22, phase (c)) had the guard let the change through and the session refuse
+    # it on the raw field
+    assert "parked_reason: null" in (change / "status.yaml").read_text(encoding="utf-8")
 
 
 def test_a_park_still_stops_the_next_phase_when_its_gate_did_not_pass(project):

@@ -19,7 +19,9 @@ action in this phase; nothing is deployed here (steps 29 and 32 are B4).
 ## 0. Preconditions
 - Change id `$ARGUMENTS` (or the single change whose `status.phase` is `d` with gate
   `passed` — Full profile: also labelled `sdlc:d-approved`).
-- `state/cli.py show`: stop if `parked_reason` is set.
+- `python "${CLAUDE_PLUGIN_ROOT}/plugin/gate/preflight.py" --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase e`:
+  if `allow` is false, stop and report its `reasons` (a `parked: ...` reason is the
+  owner's item). Never judge `status.yaml` yourself.
 - `git fetch origin`, `git switch sdlc/<id>/c`, `git pull --ff-only origin sdlc/<id>/c`.
 - `python "${CLAUDE_PLUGIN_ROOT}/plugin/gate/cli.py" start-run --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase e`
 - `python "${CLAUDE_PLUGIN_ROOT}/plugin/state/cli.py" set-phase --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase e`

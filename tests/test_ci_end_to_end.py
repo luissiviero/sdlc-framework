@@ -26,6 +26,7 @@ from pathlib import Path
 
 import pytest
 
+from state import status as status_mod
 from tests.test_ci import (
     FIXTURE,
     INIT,
@@ -36,6 +37,7 @@ from tests.test_ci import (
     run_py,
     set_setup_command,
 )
+from tests.test_gate import PERCENT, TEST_PERCENT
 from tests.test_integration_fixture import RECORDED_INTENT, RECORDED_PLAN, RECORDED_SPEC_BODY
 
 STATE_CLI = ROOT / "plugin" / "state" / "cli.py"
@@ -48,8 +50,11 @@ GH_REFUSAL = (
 CHANGE = "changes/0001-percent-helper"
 
 # The fake claude. Its argv is the one run_phase composes: it reads the plugin directory and
-# the change id from it, does what the design command's steps 5-7 do, and prints the JSON
-# the real CLI prints with --output-format json.
+# the command from it, does what the command's prose says - step 0 as written (read the
+# change, stop on a park, ask the preflight for (c)), then the deterministic half of the
+# phase with the plugin's own CLIs - and prints the JSON the real CLI prints with
+# --output-format json. The model's rule-following is the seam the ninth live run
+# (2026-09-22) failed at, so the fake obeys the prose literally.
 FAKE_CLAUDE = """
 import json, os, subprocess, sys
 from pathlib import Path
@@ -63,10 +68,12 @@ if os.environ.get("FAKE_CLAUDE_MODE") == "idle":  # a session that gives up at o
                       "result": "I cannot run the build: every Bash call was denied."}))
     sys.exit(0)
 plugin = Path(argv[argv.index("--plugin-dir") + 1])
-change_id = argv[argv.index("-p") + 1].split()[-1]
+command, change_id = argv[argv.index("-p") + 1].split()
+phase = {"/sdlc:sdlc-design": "b", "/sdlc:sdlc-build": "c"}[command]
 root = Path.cwd()
 state = str(plugin / "plugin" / "state" / "cli.py")
 gate = str(plugin / "plugin" / "gate" / "cli.py")
+preflight = str(plugin / "plugin" / "gate" / "preflight.py")
 change = next(root.glob(f"changes/{change_id}-*"))
 
 
@@ -78,23 +85,65 @@ def run(*args, ok=(0,)):
     return proc.stdout
 
 
-run(gate, "start-run", "--root", ".", "--id", change_id, "--phase", "b")
-header = json.loads(run(gate, "spec-header", "--root", ".", "--id", change_id))["header"]
-(change / "spec.md").write_text(header + "\\n" + os.environ["FAKE_SPEC_BODY"], encoding="utf-8")
-(change / "plan.md").write_text(os.environ["FAKE_PLAN"], encoding="utf-8")
-run(state, "commit-phase", "--root", ".", "--id", change_id, "--phase", "b",
-    "--message", "design(0001): percent helper", "--push")
+def give_up(message):  # the session stops in step 0 and reports, as the prose tells it to
+    print(json.dumps({"type": "result", "is_error": False, "num_turns": 4,
+                      "duration_ms": 30995, "total_cost_usd": 0.13, "result": message}))
+    sys.exit(0)
+
+
+# step 0: /sdlc-design reads the change and stops on a park; /sdlc-build asks the preflight
+shown = json.loads(run(state, "show", "--root", ".", "--id", change_id))["status"]
+if phase == "b" and shown["parked_reason"]:
+    give_up(f"Phase (b) cannot start: parked_reason is set: {shown['parked_reason']}")
+if phase == "c":
+    report = json.loads(
+        run(preflight, "--root", ".", "--id", change_id, "--phase", "c", ok=(0, 4))
+    )
+    if not report["allow"]:
+        give_up("Phase (c) cannot start: preflight refused: " + "; ".join(report["reasons"]))
+
+run(gate, "start-run", "--root", ".", "--id", change_id, "--phase", phase)
+if phase == "b":  # steps 5-7 of /sdlc-design
+    header = json.loads(run(gate, "spec-header", "--root", ".", "--id", change_id))["header"]
+    (change / "spec.md").write_text(
+        header + "\\n" + os.environ["FAKE_SPEC_BODY"], encoding="utf-8"
+    )
+    (change / "plan.md").write_text(os.environ["FAKE_PLAN"], encoding="utf-8")
+    run(state, "commit-phase", "--root", ".", "--id", change_id, "--phase", "b",
+        "--message", "design(0001): percent helper", "--push")
+else:  # the recorded implementation of /sdlc-build, as tests/test_integration_fixture.py
+    run(state, "set-phase", "--root", ".", "--id", change_id, "--phase", "c")
+    (root / "sample_pkg" / "percent.py").write_text(os.environ["FAKE_PERCENT"], encoding="utf-8")
+    (root / "tests" / "test_percent.py").write_text(
+        os.environ["FAKE_TEST_PERCENT"], encoding="utf-8"
+    )
+    init_py = root / "sample_pkg" / "__init__.py"
+    init_py.write_text(
+        init_py.read_text(encoding="utf-8") + "from .percent import percent  # noqa\\n",
+        encoding="utf-8",
+    )
+    (change / "plan.md").write_text(
+        os.environ["FAKE_PLAN"] + "\\nProgress: steps 1 and 2 done.\\n", encoding="utf-8"
+    )
+    run(state, "commit-phase", "--root", ".", "--id", change_id, "--phase", "c",
+        "--message", "build(0001): percent helper", "--paths", "sample_pkg/percent.py",
+        "tests/test_percent.py", "sample_pkg/__init__.py", "--push")
+    (change / "evidence" / "verifier.md").write_text(
+        "# Verifier\\nRan percent(1, 3) -> 33.3 and the two nearest flows; both behave.\\n",
+        encoding="utf-8",
+    )
 head = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=root, text=True).strip()
-verdict = {"schema_version": 1, "phase": "b", "head": head, "verdict": "continue",
+verdict = {"schema_version": 1, "phase": phase, "head": head, "verdict": "continue",
            "reasons": [], "classification": "routine", "classification_reasons": [],
            "at": "2026-09-21T10:00:00Z"}
-(change / "evidence" / "adversarial-review-b.json").write_text(
+(change / "evidence" / f"adversarial-review-{phase}.json").write_text(
     json.dumps(verdict), encoding="utf-8"
 )
-run(gate, "check", "--root", ".", "--id", change_id, "--phase", "b", ok=(0, 3, 4))
-run(state, "commit-phase", "--root", ".", "--id", change_id, "--phase", "b",
-    "--message", "design(0001): gate (b) evidence", "--push")
-print(json.dumps({"type": "result", "is_error": False, "result": "design done",
+run(gate, "check", "--root", ".", "--id", change_id, "--phase", phase, ok=(0, 3, 4))
+word = "design" if phase == "b" else "build"
+run(state, "commit-phase", "--root", ".", "--id", change_id, "--phase", phase,
+    "--message", f"{word}(0001): gate ({phase}) evidence", "--push")
+print(json.dumps({"type": "result", "is_error": False, "result": f"{word} done",
                   "total_cost_usd": 0.5, "num_turns": 3}))
 """
 
@@ -133,11 +182,14 @@ def launcher(bindir: Path, name: str, script_text: str) -> Path:
     return cmd if os.name == "nt" else sh
 
 
-def workflow_run_line() -> list[str]:
-    """The ``run:`` line of the design workflow, as the template ships it."""
-    text = (WORKFLOW_DIR / "sdlc-design.yml").read_text(encoding="utf-8")
+WORKFLOW_FILE = {"b": "sdlc-design.yml", "c": "sdlc-build.yml"}
+
+
+def workflow_run_line(phase: str = "b") -> list[str]:
+    """The ``run:`` line of the phase's workflow, as the template ships it."""
+    text = (WORKFLOW_DIR / WORKFLOW_FILE[phase]).read_text(encoding="utf-8")
     m = re.search(r"(?m)^\s+run: (python framework/plugin/ci/run_phase\.py .*)$", text)
-    assert m, "the design workflow's run line moved"
+    assert m, f"the run line of {WORKFLOW_FILE[phase]} moved"
     return shlex.split(m.group(1))
 
 
@@ -184,12 +236,13 @@ def checkout(tmp_path):
     return root, bare
 
 
-def run_design_job(
+def run_phase_job(
     root: Path,
     tmp_path: Path,
     gh_mode: str,
     spec_body: str = RECORDED_SPEC_BODY,
     claude_mode: str = "design",
+    phase: str = "b",
 ) -> tuple:
     """Run the workflow's step with its env; return (process, parsed JSON, gh calls)."""
     bindir = tmp_path / "bin"
@@ -213,6 +266,8 @@ def run_design_job(
             "FAKE_SPEC_BODY": spec_body,
             "FAKE_CLAUDE_MODE": claude_mode,
             "FAKE_PLAN": RECORDED_PLAN,
+            "FAKE_PERCENT": PERCENT,
+            "FAKE_TEST_PERCENT": TEST_PERCENT,
             "FAKE_GH_LOG": str(gh_log),
             "FAKE_GH_MODE": gh_mode,
             "FAKE_GH_REFUSAL": GH_REFUSAL,
@@ -226,7 +281,7 @@ def run_design_job(
         }
     )
     argv = [sys.executable if a == "python" else env.get(a[1:], "") if a.startswith("$") else a
-            for a in workflow_run_line()]  # fmt: skip
+            for a in workflow_run_line(phase)]  # fmt: skip
     if os.name == "nt":
         argv += ["--claude", str(claude)]  # CreateProcess does not resolve claude.cmd on PATH
     proc = subprocess.run(
@@ -245,7 +300,7 @@ def remote_file(bare: Path, branch: str, path: str) -> str:
 
 def test_the_design_job_pushes_the_evidence_and_opens_the_pr(checkout, tmp_path):
     root, bare = checkout
-    proc, out, calls = run_design_job(root, tmp_path, "ok")
+    proc, out, calls = run_phase_job(root, tmp_path, "ok")
     assert proc.returncode == 0, proc.stdout + proc.stderr
     assert out["result"] == "wait" and out["label"] == "sdlc:b-ready"  # Standard: the owner
     assert out["dispatched"] is None and out["cost_usd"] == 0.5
@@ -280,7 +335,7 @@ def test_the_design_job_is_red_when_github_refuses_the_pr(checkout, tmp_path):
     """The fifth live run: everything ran, GitHub refused `pr create` because the repository
     setting was off. The evidence still reaches the remote; the job fails and says why."""
     root, bare = checkout
-    proc, out, calls = run_design_job(root, tmp_path, "refuse")
+    proc, out, calls = run_phase_job(root, tmp_path, "refuse")
     assert proc.returncode == 1, proc.stdout + proc.stderr
     assert "no pull request carries this phase's result" in proc.stderr
     assert "not permitted to create or approve pull requests" in proc.stderr
@@ -299,11 +354,11 @@ def test_a_second_dispatch_repeats_the_design_when_the_first_left_no_pr(checkout
     branch, see that no pull request carries it, clear the park, run again and open it."""
     root, bare = checkout
     open_concern = RECORDED_SPEC_BODY.replace("- [x] Rounding", "- Rounding")
-    proc, out, _calls = run_design_job(root, tmp_path / "first", "refuse", open_concern)
+    proc, out, _calls = run_phase_job(root, tmp_path / "first", "refuse", open_concern)
     assert proc.returncode == 1 and out["result"] == "park" and out["pr"]["ok"] is False
     assert "parked_reason: null" not in remote_file(bare, "sdlc/0001/b", f"{CHANGE}/status.yaml")
     git(root, "checkout", "-q", "main")  # a fresh runner checks out the default branch
-    proc, out, calls = run_design_job(root, tmp_path / "second", "ok")
+    proc, out, calls = run_phase_job(root, tmp_path / "second", "ok")
     assert proc.returncode == 0, proc.stdout + proc.stderr
     assert "skipped" not in out
     assert out["result"] == "wait" and out["pr"]["ok"] is True and out["pr"]["number"] == 7
@@ -317,7 +372,7 @@ def test_a_run_that_never_reaches_its_gate_leaves_its_record_on_the_branch(check
     left no evidence/gate-c.json", and the runner took the CLI's result and stderr with
     it. The failure must say what the session said, and keep it on the work branch."""
     root, bare = checkout
-    proc, out, _calls = run_design_job(root, tmp_path / "idle", "ok", claude_mode="idle")
+    proc, out, _calls = run_phase_job(root, tmp_path / "idle", "ok", claude_mode="idle")
     assert proc.returncode == 1 and out is None
     assert "did not reach its gate" in proc.stderr
     assert "every Bash call was denied" in proc.stderr
@@ -328,6 +383,49 @@ def test_a_run_that_never_reaches_its_gate_leaves_its_record_on_the_branch(check
     assert "not been trusted" in stderr_file
     # the next dispatch runs the phase for real on the same branch
     git(root, "checkout", "-q", "main")
-    proc, out, _calls = run_design_job(root, tmp_path / "again", "ok")
+    proc, out, _calls = run_phase_job(root, tmp_path / "again", "ok")
     assert proc.returncode == 0, proc.stdout + proc.stderr
     assert out["result"] == "wait" and out["pr"]["ok"] is True
+
+
+def legacy_park_on(root: Path, branch: str) -> None:
+    """status.yaml as plugin 0.2.5 left it on the sample repository's sdlc/0001/b and, through
+    the owner's merge, on main: gate (b) passed, the reason of the lifted park still beside it."""
+    git(root, "checkout", "-q", branch)
+    change = root / CHANGE
+    st = status_mod.read_status(change)
+    assert st.gate.phase == "b" and st.gate.result == "passed" and st.parked_reason is None
+    st.parked_reason = "risk_list: risk-list hit: 'auth' in spec.md: text"
+    status_mod.write_status(change, st)
+    git(root, "add", f"{CHANGE}/status.yaml")
+    git(root, "commit", "-q", "-m", "fix(0001): gate (b) evidence and fix response for round 2")
+    git(root, "push", "-q", "origin", branch)
+
+
+def test_the_build_starts_although_main_carries_a_lifted_park(checkout, tmp_path):
+    """The ninth and tenth live runs (2026-09-22, phase (c), plugins 0.2.6 and 0.2.7): the
+    design PR merged status.yaml as plugin 0.2.5 wrote it, gate (b) passed with the old
+    parked_reason still beside it. The CI guard let the change through; the session read
+    the raw field, obeyed its command's "stop if parked_reason is set" and gave up after
+    four turns, twice. One reader decides now: the guard rewrites the file the session
+    reads on the work branch, and the preflight says whether the phase may start."""
+    root, bare = checkout
+    proc, out, _calls = run_phase_job(root, tmp_path / "design", "ok")
+    assert proc.returncode == 0 and out["result"] == "wait"
+    legacy_park_on(root, "sdlc/0001/b")
+    git(root, "checkout", "-q", "main")
+    git(root, "merge", "-q", "--no-edit", "sdlc/0001/b")  # gate (b): the owner's merge
+    git(root, "push", "-q", "origin", "main")
+    assert "risk-list hit: 'auth'" in remote_file(bare, "main", f"{CHANGE}/status.yaml")
+
+    proc, out, calls = run_phase_job(root, tmp_path / "build", "ok", phase="c")
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert "cannot start" not in proc.stderr
+    assert out["result"] == "continue" and out["pr"]["ok"] is True and out["cost_usd"] == 0.5
+    status = remote_file(bare, "sdlc/0001/c", f"{CHANGE}/status.yaml")
+    assert "phase: c" in status and "parked_reason: null" in status
+    gate_file = json.loads(remote_file(bare, "sdlc/0001/c", f"{CHANGE}/evidence/gate-c.json"))
+    assert gate_file["result"] == "continue"
+    assert "def percent" in remote_file(bare, "sdlc/0001/c", "sample_pkg/percent.py")
+    create = next(c for c in calls if c[:2] == ["pr", "create"])
+    assert "--draft" in create and create[create.index("--head") + 1] == "sdlc/0001/c"

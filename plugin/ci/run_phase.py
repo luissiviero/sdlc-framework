@@ -594,10 +594,12 @@ def guard(root: Path, change_id: str, run_phase: str, repo: str, env: dict[str, 
     else:
         if st.phase != expected:
             return None, None, config, f"change {change_id} is at phase {st.phase}, not {expected}"
-        # a park is over once the same gate passed after it: plugins before 0.2.6 left the
-        # old reason behind a ``passed`` result (change 0001 on the sample repository)
-        stale_park = st.gate.phase == expected and st.gate.result == "passed"
-        if st.parked_reason and not stale_park:
+        # ``read_status`` ignores a park that a later gate result lifted (plugins before
+        # 0.2.6 left the reason behind a ``passed`` result); the file on the work branch is
+        # rewritten to say the same, because the session reads it itself: the ninth live
+        # run (2026-09-22, phase (c)) passed this guard and then refused on the raw field
+        status_mod.lift_stale_park(change_dir)
+        if st.parked_reason:
             return None, None, config, f"change {change_id} is parked: {st.parked_reason}"
     if run_phase in GATE_MUST_HAVE_PASSED:
         if st.gate.phase != expected or st.gate.result != "passed":
