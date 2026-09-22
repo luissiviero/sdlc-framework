@@ -58,6 +58,11 @@ UI, the metric and its threshold>
   Only the owner closes a concern (article p.14 step 4: "the product owner resolves each one
   with its policy owner"); the design pass opens them and may close only the ones the policy
   text itself settles, saying which policy.
+- **Risk-list items are declared here, and only here.** The gate's risk-list check reads
+  the diff's paths and the "## Flagged concerns" section of spec.md, nothing else of the
+  spec; an item of `sdlc.yaml: risk_list` named in that section parks the change until the
+  owner accepts it (`state/cli.py accept-risk`). List the items the design touches, and
+  say in Requirements that the others do not apply — never under Flagged concerns.
 - **Open questions are answered or carried forward**, never dropped (p.14 step 3). A
   carried-forward question is also a flagged concern if the build cannot proceed without it.
 - **Requirements, not implementation.** Files, order of work, risks and proof go to plan.md

@@ -69,7 +69,9 @@ def set_setup_command(root: Path, command: str) -> None:
     """Rewrite ``commands.setup`` in the project's sdlc.yaml (the owner's own one-liner)."""
     text = (root / "sdlc.yaml").read_text(encoding="utf-8")
     escaped = command.replace("\\", "\\\\").replace('"', '\\"')
-    text = re.sub(r"(?m)^  setup: .*$", f'  setup: "{escaped}"', text, count=1)
+    # a callable replacement: a string one re-reads the doubled backslashes of a Windows
+    # interpreter path and leaves the file with `\U...`, which yamlish rejects
+    text = re.sub(r"(?m)^  setup: .*$", lambda _m: f'  setup: "{escaped}"', text, count=1)
     (root / "sdlc.yaml").write_text(text, encoding="utf-8")
 
 

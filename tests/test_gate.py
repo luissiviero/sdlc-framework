@@ -1151,3 +1151,36 @@ def test_gate_e_waits_for_the_owner_and_parks_on_an_important_finding(project):
     assert "1 Important review finding(s) open" in f.reason
     assert "changes/0001-percent-helper/evidence/review-findings.json" in f.need
     assert "review-findings.json" in result.what_i_need()
+
+
+# --- the risk-list check reads the diff and the "Flagged concerns" section, never the prose --
+RISK_PROSE = (
+    "Checked sdlc.yaml risk_list: auth, data migrations, money movement and production "
+    "config are not touched by this design.\n"
+)
+
+
+def test_gate_b_ignores_risk_list_words_in_the_spec_s_prose(design_project):
+    """Security-baseline rule 8 makes every spec name the risk items it checked; the fifth
+    live design run (2026-09-21) parked on exactly that sentence."""
+    root, change = design_project
+    write(change / "spec.md", SPEC.replace("## Design\n", "## Design\n" + RISK_PROSE))
+    git(root, "add", ".")
+    git(root, "commit", "-q", "-m", "design(0001): the spec names the risk items it checked")
+    verdict(root, "b")
+    result = gate.run_gate(root, "0001", "b", dry_run=True)
+    assert result.result == "wait", result.reason
+    assert "risk_list" not in _names(result, False)
+
+
+def test_gate_b_parks_on_a_risk_list_item_declared_under_flagged_concerns(design_project):
+    root, change = design_project
+    concern = "- auth: the helper reads the caller's session token; the owner decides.\n"
+    write(change / "spec.md", SPEC.replace("## Acceptance", concern + "\n## Acceptance"))
+    git(root, "add", ".")
+    git(root, "commit", "-q", "-m", "design(0001): a risk item flagged")
+    verdict(root, "b")
+    result = gate.run_gate(root, "0001", "b", dry_run=True)
+    assert result.result == "park"
+    hit = next(ch for ch in result.failed if ch.name == "risk_list")
+    assert hit.details["hits"] == {"auth": ["spec.md Flagged concerns: text"]}

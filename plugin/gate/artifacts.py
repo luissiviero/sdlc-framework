@@ -140,7 +140,9 @@ def evidence_failure(text: str, *, require_header: bool = False) -> str | None:
 FRAMEWORK_CHANGE_RE = re.compile(r"(?im)^\s*Framework change:\s*yes\b")
 
 # Flagged concerns in spec.md: every list item is a concern; it is closed only when it says
-# so (a decision recorded, article p.14 step 4). Anything else is open — fail closed.
+# so (a decision recorded, article p.14 step 4). Anything else is open — fail closed. The
+# gate's risk-list check reads this section too, and only this section of the spec.
+CONCERNS_SECTION = "## Flagged concerns"
 CONCERN_ITEM_RE = re.compile(r"^\s*(?:[-*]|\d+[.)])\s+(?P<text>.+)$")
 CLOSED_CONCERN_RE = re.compile(r"(?i)^(?:\[x\]|closed\b|resolved\b|decided\b)")
 NO_CONCERN_RE = re.compile(r"(?i)^(?:none|n/a|no concerns?)\.?$")
@@ -207,7 +209,7 @@ def is_framework_change(intent_text: str) -> bool:
 
 
 def open_concerns(spec_text: str) -> list[str]:
-    body = split_sections(spec_text).get("## Flagged concerns", "")
+    body = split_sections(spec_text).get(CONCERNS_SECTION, "")
     out = []
     for line in body.splitlines():
         m = CONCERN_ITEM_RE.match(line)

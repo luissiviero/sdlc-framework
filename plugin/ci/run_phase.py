@@ -41,8 +41,9 @@ What one run does, in order:
    ``--permission-prompts none``, ``--max-turns`` / ``--max-budget-usd`` from ``sdlc.yaml``,
    ``--output-format json`` — with exactly one credential in the environment;
 6. stores the JSON result as ``changes/<id>-<slug>/evidence/claude-<phase>.json``, records
-   ``total_cost_usd`` with ``gate/cli.py record-spend``, and validates the findings file
-   after a review pass;
+   ``total_cost_usd`` with ``gate/cli.py record-spend`` and commits the run record on the
+   work branch (the model's session pushed before the spend was known), and validates the
+   findings file after a review pass;
 7. opens or updates the phase's pull request with ``pr/cli.py upsert`` (idempotent: an
    existing PR only has its body and its gate label refreshed), so a parked run is a queue
    item even when the model's session never reached that step. The upsert's own JSON says
@@ -851,6 +852,10 @@ def run_phase(args, env: dict[str, str]) -> int:
             file=sys.stderr,
         )
         return EXIT_FAILED
+    # the spend is recorded after the run's own commits, so on an ephemeral runner it would
+    # leave with the job (the fifth live run of 2026-09-21 pushed run-b.json with spend_usd
+    # null): commit it on the work branch before the PR is brought up to date
+    record = commit_run_record(plugin_dir, root, change_id, phase) if cost is not None else None
     # the PR is where the owner meets the change, parked or not: open it here rather than
     # trusting the run to have done it (the parked run of 2026-09-21 did not)
     pr = ensure_pr(plugin_dir, root, change_id, phase, args.repo, env)
@@ -859,6 +864,7 @@ def run_phase(args, env: dict[str, str]) -> int:
         {
             "phase": phase,
             "change_id": change_id,
+            "run_record": record,
             "result": result.get("result"),
             "label": result.get("label"),
             "cost_usd": cost,
@@ -874,6 +880,18 @@ def run_phase(args, env: dict[str, str]) -> int:
         print(PR_MISSING.format(reason=pr.get("reason") or "no route"), file=sys.stderr)
         return EXIT_FAILED
     return EXIT_OK
+
+
+def commit_run_record(plugin_dir: Path, root: Path, change_id: str, phase: str) -> dict[str, Any]:
+    """Commit and push the change folder after ``record_spend``: ``run-<phase>.json`` now
+    carries the spend, and nothing commits after the model's session but the run itself.
+    ``commit-phase`` is a no-op commit when nothing changed, so a by-hand run pays nothing."""
+    branch_phase = BRANCH_PHASE.get(phase, phase)
+    return _cli_call(
+        plugin_dir / "plugin" / "state" / "cli.py",
+        ["commit-phase", "--root", str(root), "--id", change_id, "--phase", branch_phase,
+         "--message", f"run({phase}): spend recorded", "--push"],
+    )  # fmt: skip
 
 
 def hand_over(args, result: dict[str, Any], phase: str, change_id: str) -> Any:
