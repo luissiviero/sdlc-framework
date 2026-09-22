@@ -28,7 +28,10 @@ What one run does, in order:
 2. **guards** — not paused, the change exists, ``status.yaml`` is at the phase this run
    follows with a passing gate, not parked, and in the Full profile the owner's approval
    label is on the build PR and was applied by a human, not by the workflow token. A failed
-   guard prints ``{"skipped": ...}`` and exits 0, so a duplicate trigger is harmless;
+   guard prints ``{"skipped": ...}`` and exits 0, so a duplicate trigger is harmless. One
+   exception: a (b) or (c) run whose work branch already carries this phase but has no open
+   pull request is a re-run of an attempt that never reached the queue, and it proceeds with
+   the earlier park cleared (``rerun_reason``);
 3. refuses to run on a branch that changed a guardrail file (``.claude/**``, ``CLAUDE.md``,
    ``REVIEW.md``, ``sdlc.yaml``, ``protected_paths``) unless intent.md says
    ``Framework change: yes``; a park commits the change folder on the work branch and
@@ -528,6 +531,34 @@ def resolve_change_id(change_id: str | None, head_ref: str | None, run_phase: st
     return parsed_id, None
 
 
+def rerun_reason(
+    root: Path, change_id: str, run_phase: str, repo: str, env: dict[str, str]
+) -> str | None:
+    """None when a run of ``run_phase`` may repeat on its existing work branch.
+
+    The branch carries this phase's result but no open pull request: the earlier attempt
+    never reached the queue (the fifth live design run of 2026-09-21 pushed ``sdlc/0001/b``
+    and was refused the PR; the next dispatch then skipped with "at phase b, not a", and
+    nothing could move the change). A branch whose pull request exists is a queue item:
+    review comments go through ``/sdlc-fix``, not a second run. With no route to GitHub the
+    question cannot be answered, so the run skips (fail closed).
+    """
+    head = work_branch_for(change_id, run_phase)
+    github = _github()
+    at = f"change {change_id} is already at phase {run_phase} on {head}"
+    if github is None or not repo or (not _token(env) and not github.gh_path()):
+        return f"{at}, and no GitHub route can tell whether its pull request exists"
+    found = github.find_open_pr(repo, head, cwd=root)
+    if found.get("number"):
+        return (
+            f"{at}; pull request #{found['number']} carries it (review comments go through "
+            "/sdlc-fix, not a second run)"
+        )
+    if not found.get("ok", True) and found.get("reason"):
+        return f"{at}, and the pull request lookup failed: {found['reason']}"
+    return None
+
+
 def guard(root: Path, change_id: str, run_phase: str, repo: str, env: dict[str, str]):
     """(change_dir, status, config, skip reason)."""
     config = _config(root)
@@ -541,10 +572,19 @@ def guard(root: Path, change_id: str, run_phase: str, repo: str, env: dict[str, 
     except (OSError, ValueError) as exc:
         return None, None, config, f"status.yaml is unreadable: {exc}"
     expected = PREVIOUS_PHASE[run_phase]
-    if st.phase != expected:
-        return None, None, config, f"change {change_id} is at phase {st.phase}, not {expected}"
-    if st.parked_reason:
-        return None, None, config, f"change {change_id} is parked: {st.parked_reason}"
+    if st.phase == run_phase and run_phase in CREATES_ITS_BRANCH:
+        # the work branch already carries this phase: a re-run, allowed only when no pull
+        # request carries it (the earlier attempt never reached the queue)
+        reason = rerun_reason(root, change_id, run_phase, repo, env)
+        if reason:
+            return None, None, config, reason
+        st.set_phase(run_phase)  # clears the earlier attempt's park; the phase is unchanged
+        status_mod.write_status(change_dir, st)
+    else:
+        if st.phase != expected:
+            return None, None, config, f"change {change_id} is at phase {st.phase}, not {expected}"
+        if st.parked_reason:
+            return None, None, config, f"change {change_id} is parked: {st.parked_reason}"
     if run_phase in GATE_MUST_HAVE_PASSED:
         if st.gate.phase != expected or st.gate.result != "passed":
             return (

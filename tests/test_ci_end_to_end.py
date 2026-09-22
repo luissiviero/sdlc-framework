@@ -177,10 +177,12 @@ def checkout(tmp_path):
     return root, bare
 
 
-def run_design_job(root: Path, tmp_path: Path, gh_mode: str) -> tuple:
+def run_design_job(
+    root: Path, tmp_path: Path, gh_mode: str, spec_body: str = RECORDED_SPEC_BODY
+) -> tuple:
     """Run the workflow's step with its env; return (process, parsed JSON, gh calls)."""
     bindir = tmp_path / "bin"
-    bindir.mkdir()
+    bindir.mkdir(parents=True)
     claude = launcher(bindir, "claude", FAKE_CLAUDE)
     launcher(bindir, "gh", FAKE_GH)
     gh_log = tmp_path / "gh.log"
@@ -197,7 +199,7 @@ def run_design_job(root: Path, tmp_path: Path, gh_mode: str) -> tuple:
     env.update(
         {
             "PATH": str(bindir) + os.pathsep + env.get("PATH", ""),
-            "FAKE_SPEC_BODY": RECORDED_SPEC_BODY,
+            "FAKE_SPEC_BODY": spec_body,
             "FAKE_PLAN": RECORDED_PLAN,
             "FAKE_GH_LOG": str(gh_log),
             "FAKE_GH_MODE": gh_mode,
@@ -274,4 +276,24 @@ def test_the_design_job_is_red_when_github_refuses_the_pr(checkout, tmp_path):
     assert out["result"] == "wait" and out["cost_usd"] == 0.5  # the phase itself succeeded
     gate_file = json.loads(remote_file(bare, "sdlc/0001/b", f"{CHANGE}/evidence/gate-b.json"))
     assert gate_file["result"] == "wait"
+    assert any(c[:2] == ["pr", "create"] for c in calls)
+
+
+def test_a_second_dispatch_repeats_the_design_when_the_first_left_no_pr(checkout, tmp_path):
+    """The sixth live run (2026-09-22): the fifth had pushed sdlc/0001/b, parked, and was
+    refused the PR; the next dispatch skipped with "change 0001 is at phase b, not a" and
+    nothing could move the change. A fresh runner starts on main; the run must find the
+    branch, see that no pull request carries it, clear the park, run again and open it."""
+    root, bare = checkout
+    open_concern = RECORDED_SPEC_BODY.replace("- [x] Rounding", "- Rounding")
+    proc, out, _calls = run_design_job(root, tmp_path / "first", "refuse", open_concern)
+    assert proc.returncode == 1 and out["result"] == "park" and out["pr"]["ok"] is False
+    assert "parked_reason: null" not in remote_file(bare, "sdlc/0001/b", f"{CHANGE}/status.yaml")
+    git(root, "checkout", "-q", "main")  # a fresh runner checks out the default branch
+    proc, out, calls = run_design_job(root, tmp_path / "second", "ok")
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert "skipped" not in out
+    assert out["result"] == "wait" and out["pr"]["ok"] is True and out["pr"]["number"] == 7
+    status = remote_file(bare, "sdlc/0001/b", f"{CHANGE}/status.yaml")
+    assert "phase: b" in status and "parked_reason: null" in status
     assert any(c[:2] == ["pr", "create"] for c in calls)

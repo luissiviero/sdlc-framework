@@ -1099,3 +1099,41 @@ def test_the_run_installs_nothing_in_a_dry_run_or_without_a_setup_command(projec
     set_setup_command(root, "")
     result, ok = run_phase.install_toolchain(root)
     assert ok is True and result == {"skipped": run_phase.project_setup.NOTHING_TO_RUN}
+
+
+# --- a re-run on the existing work branch (sixth live design run, 2026-09-22) -----------------
+def _pr_lookup(monkeypatch, number: int | None) -> None:
+    from pr import github
+
+    monkeypatch.setattr(github, "gh_path", lambda: "gh")
+    monkeypatch.setattr(
+        github, "find_open_pr", lambda repo, head, cwd=None: {"ok": True, "number": number}
+    )
+
+
+def test_a_design_run_repeats_on_its_branch_when_no_pr_carries_it(project, monkeypatch):
+    """The fifth live run pushed sdlc/0001/b (phase b, parked) and was refused the PR; the
+    sixth dispatch skipped with "at phase b, not a". A branch with no PR is run again."""
+    root, change = project
+    set_state(change, "b", parked="risk-list hit: 'auth' in spec.md: text")
+    _pr_lookup(monkeypatch, None)
+    assert skip_reason(root, "b") is None
+    st = status_mod.read_status(change)
+    assert st.phase == "b" and st.parked_reason is None  # the earlier park does not hold
+
+
+def test_a_design_run_does_not_repeat_when_its_pr_exists(project, monkeypatch):
+    root, change = project
+    set_state(change, "b")
+    _pr_lookup(monkeypatch, 12)
+    reason = skip_reason(root, "b")
+    assert "pull request #12" in reason and "/sdlc-fix" in reason
+
+
+def test_a_re_run_fails_closed_without_a_github_route(project, monkeypatch):
+    from pr import github
+
+    root, change = project
+    set_state(change, "b")
+    monkeypatch.setattr(github, "gh_path", lambda: None)
+    assert "no GitHub route" in skip_reason(root, "b")
