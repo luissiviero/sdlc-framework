@@ -64,13 +64,22 @@ def staged_files(root: Path) -> list[str]:
     return [line.strip().replace("\\", "/") for line in out.splitlines() if line.strip()]
 
 
-def commit_paths(root: Path, paths: list[str], message: str) -> str | None:
-    """Stage the given paths and commit. Returns the new SHA, or None when nothing changed."""
+def stage_paths(root: Path, paths: list[str]) -> list[str]:
+    """Stage the given paths; returns everything now staged."""
     run(root, "add", "--", *paths)
-    if not staged_files(root):
-        return None
+    return staged_files(root)
+
+
+def commit_staged(root: Path, message: str) -> str:
     run(root, "commit", "-q", "-m", message)
     return run(root, "rev-parse", "HEAD").strip()
+
+
+def commit_paths(root: Path, paths: list[str], message: str) -> str | None:
+    """Stage the given paths and commit. Returns the new SHA, or None when nothing changed."""
+    if not stage_paths(root, paths):
+        return None
+    return commit_staged(root, message)
 
 
 def push(root: Path, branch: str, remote: str = "origin") -> None:

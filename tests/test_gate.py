@@ -435,11 +435,13 @@ def test_gate_waits_at_a_human_gate_and_dry_run_writes_nothing(project):
     assert result.result == "wait" and result.label == "sdlc:c-ready"
     assert (change / "status.yaml").read_text(encoding="utf-8") == before
     assert not (change / "evidence" / "gate-c.json").exists()
-    # a failed check parks even at a human gate
+    # a failed check parks even at a human gate (uncommitted work is clean_tree's, not
+    # plan_sync's: the plan is judged on the commits since 0.2.9)
     (root / "sample_pkg" / "percent.py").unlink()
     write(root / "sample_pkg" / "extra.py", "x = 1\n")
     result = gate.run_gate(root, "0001", "c")
-    assert result.result == "park" and "plan_sync" in _names(result, False)
+    assert result.result == "park" and "clean_tree" in _names(result, False)
+    assert "plan_sync" in _names(result, True)
 
 
 def test_gate_parks_without_plan_md(project):
@@ -574,6 +576,43 @@ def test_gate_parks_on_open_concern_and_unsynced_commit(project):
         p.details["unplanned"] == ["sample_pkg/helper.py"]
         and len(p.details["unsynced_commits"]) == 1
     )
+
+
+def test_plan_sync_judges_the_committed_diff_only(project):
+    """The first gated build run on the sample repository (2026-09-22, plugin 0.2.8): the
+    gate ran inside Claude Code's sandbox, where the masked ``.env`` shows as modified, and
+    plan_sync parked on ".env not listed in plan.md". The working tree says nothing about
+    the plan; the commits do, as design_scope has judged since 0.2.3."""
+    root, change = project
+    verdict(root, "c")
+    write(root / ".env", "SAMPLE_FLAG=masked-by-the-sandbox\n")  # tracked, dirty, uncommitted
+    result = gate.run_gate(root, "0001", "c", dry_run=True)
+    p = next(ch for ch in result.checks if ch.name == "plan_sync")
+    assert p.ok, p.reason
+    assert "clean_tree" in _names(result, True)  # .env is a sandbox-masked name
+
+
+def test_plan_sync_wants_plan_md_only_in_a_commit_that_departs_from_the_plan(project):
+    """Article p.16 step 7: "When implementation departs from the plan, update plan.md in
+    the same commit". The same run committed exactly the three files plan.md lists, one plan
+    step per commit as /sdlc-build asks, and was parked because no commit carried plan.md.
+    A commit whose source files are all planned needs no plan.md; a commit that touches a
+    file the plan does not list still does."""
+    root, change = project
+    write(root / "sample_pkg" / "percent.py", PERCENT.replace("Percent helper", "Step 2"))
+    git(root, "add", "sample_pkg/percent.py")
+    git(root, "commit", "-q", "-m", "build: step 2 on a planned file, no plan.md")
+    verdict(root, "c")
+    result = gate.run_gate(root, "0001", "c", dry_run=True)
+    assert "plan_sync" in _names(result, True), result.reason
+    write(root / "sample_pkg" / "helper.py", "y = 2\n")
+    git(root, "add", "sample_pkg/helper.py")
+    git(root, "commit", "-q", "-m", "departure without plan.md")
+    verdict(root, "c")
+    result = gate.run_gate(root, "0001", "c", dry_run=True)
+    p = next(ch for ch in result.failed if ch.name == "plan_sync")
+    assert p.details["unplanned"] == ["sample_pkg/helper.py"]
+    assert len(p.details["unsynced_commits"]) == 1  # the step-2 commit is inside the plan
 
 
 def test_gate_phase_d_requires_evidence_and_findings_at_e(project):

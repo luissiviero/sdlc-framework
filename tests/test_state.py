@@ -252,7 +252,9 @@ def repo(tmp_path):
     return root
 
 
-def _commit_phase(root: Path, phase: str, message: str, capsys) -> tuple[int, dict, str]:
+def _commit_phase(
+    root: Path, phase: str, message: str, capsys, paths: list[str] = ()
+) -> tuple[int, dict, str]:
     rc = cli.main(
         [
             "commit-phase",
@@ -264,6 +266,7 @@ def _commit_phase(root: Path, phase: str, message: str, capsys) -> tuple[int, di
             phase,
             "--message",
             message,
+            *(["--paths", *paths] if paths else []),
         ]
     )
     captured = capsys.readouterr()
@@ -304,6 +307,50 @@ def test_commit_phase_d_lands_on_the_build_branch(repo, capsys):
     assert branches == {"main", "sdlc/0001/a", "sdlc/0001/c"}
     tracked = _git(root, "ls-tree", "-r", "--name-only", "sdlc/0001/c").split()
     assert "changes/0001-percent-helper/evidence/test.log" in tracked
+
+
+def test_commit_phase_refuses_a_departure_from_the_plan_without_plan_md(repo, capsys):
+    """/sdlc-build commits through commit-phase, which the plan-sync hook never sees: the
+    hook is registered on ``git *`` shell commands and this is a python one. The first gated
+    build run (2026-09-22) made three such commits and heard about plan.md from the gate,
+    twenty turns and two dollars later. The command applies the hook's rule itself, at the
+    commit, so the denial arrives when it is cheap to act on."""
+    root = repo
+    assert cli.main(["new-change", "--root", str(root), "--title", "Percent helper"]) == 0
+    capsys.readouterr()
+    change = c.find_change_dir(root, "0001")
+    (change / "plan.md").write_text(
+        "# Plan\n\n## Files that change\n- `src/a.py` - the helper\n\n## Order of work\n- 1\n",
+        encoding="utf-8",
+    )
+    (root / "src").mkdir()
+    (root / "src" / "a.py").write_text("x = 1\n", encoding="utf-8")
+    (root / "src" / "b.py").write_text("y = 1\n", encoding="utf-8")
+    # phases before (c) are not checked: the plan is written on sdlc/<id>/b
+    rc, out, _ = _commit_phase(root, "b", "design(0001): plan", capsys)
+    assert rc == 0 and out["branch"] == "sdlc/0001/b"
+    # inside the plan: commits, no plan.md needed
+    rc, out, _ = _commit_phase(root, "c", "build(0001): step 1", capsys, ["src/a.py"])
+    assert rc == 0 and out["branch"] == "sdlc/0001/c"
+    # a departure without plan.md in the commit: refused, nothing committed
+    head = _git(root, "rev-parse", "HEAD").strip()
+    rc, out, err = _commit_phase(root, "c", "build(0001): departure", capsys, ["src/b.py"])
+    assert rc == 2 and out == {}
+    assert "plan.md is out of sync" in err and "src/b.py" in err and "src/a.py" not in err
+    assert _git(root, "rev-parse", "HEAD").strip() == head
+    assert "src/b.py" not in _git(root, "ls-tree", "-r", "--name-only", "HEAD")
+    # the plan updated in the same commit: the departure is recorded, and commits
+    (change / "plan.md").write_text(
+        (change / "plan.md")
+        .read_text(encoding="utf-8")
+        .replace(
+            "- `src/a.py` - the helper\n", "- `src/a.py` - the helper\n- `src/b.py` - export\n"
+        ),
+        encoding="utf-8",
+    )
+    rc, out, _ = _commit_phase(root, "c", "build(0001): departure, planned", capsys, ["src/b.py"])
+    assert rc == 0 and out["commit"]
+    assert "src/b.py" in _git(root, "ls-tree", "-r", "--name-only", "HEAD")
 
 
 def test_a_passing_gate_lifts_the_park(tmp_path):

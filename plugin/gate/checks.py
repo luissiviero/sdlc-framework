@@ -404,13 +404,19 @@ def _source_files(ctx: GateContext, files: list[str]) -> list[str]:
 
 
 def check_plan_sync(ctx: GateContext) -> CheckResult:
+    """The plan against the **committed** diff (as ``check_design_scope``): the working tree
+    is ``check_clean_tree``'s, and inside Claude Code's sandbox the masked ``.env`` shows as
+    modified however clean the checkout is - it parked the first gated build run
+    (2026-09-22) as "not listed in plan.md". The per-commit rule is the hook's: plan.md in
+    the same commit only when the commit departs from the plan (article p.16 step 7)."""
     if ctx.diff is None:
         return _fail("plan_sync", ctx.diff_error, "Run the gate inside the project's git repo.")
     plan = ctx.artifact("plan.md") or ""
     planned = art.planned_files(plan)
-    source = _source_files(ctx, ctx.diff.files)
+    committed = diffmod.committed_files(ctx.root, ctx.diff.merge_base, ctx.diff.head)
+    source = _source_files(ctx, committed)
     change_id = ctx.status.id
-    unplanned = [f for f in source if not any(_same_path(f, p) for p in planned)]
+    unplanned = [f for f in source if not any(plan_sync.is_planned(f, p) for p in planned)]
     # the per-commit rule of the plan-sync hook, re-applied to every commit on the branch
     # (catches commits driven from scripts the hook could not parse, NOTES section 9)
     branch = c.branch_name(change_id, "c")
@@ -418,7 +424,7 @@ def check_plan_sync(ctx: GateContext) -> CheckResult:
     unsynced = [
         commit.sha[:10]
         for commit in ctx.diff.commits
-        if plan_sync.check(branch, commit.files, exempt).block
+        if plan_sync.check(branch, commit.files, exempt, planned).block
     ]
     problems = []
     if unplanned:
@@ -434,22 +440,12 @@ def check_plan_sync(ctx: GateContext) -> CheckResult:
             unplanned=unplanned[:50],
             unsynced_commits=unsynced,
         )
-    unrealised = [p for p in planned if not any(_same_path(f, p) for f in ctx.diff.files)]
+    unrealised = [p for p in planned if not any(plan_sync.is_planned(f, p) for f in committed)]
     return _ok(
         "plan_sync",
-        "every changed source file is in plan.md",
+        "every committed source file is in plan.md",
         planned_but_unchanged=unrealised,
     )
-
-
-def _same_path(changed: str, planned: str) -> bool:
-    changed = changed.lower().strip("/")
-    planned = planned.lower().strip("/")
-    if changed == planned:
-        return True
-    if any(ch in planned for ch in "*?["):
-        return matches(planned, changed)
-    return planned.endswith("/") and changed.startswith(planned)
 
 
 # --- 7. no diff touching the guardrail files (OPERATING_MODEL section 3) ------------------------

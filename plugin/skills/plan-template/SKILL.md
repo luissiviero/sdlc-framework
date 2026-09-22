@@ -47,9 +47,10 @@ After drafting, answer these in writing before finishing:
 ## Rules
 - Read-only: this run never edits source files (decision 2). If something must change before
   the plan can be written, say so in Risks.
-- In phase (c) the plan-sync hook denies a commit that changes source without changing
-  plan.md (p.16 step 7): when implementation departs from the plan, update plan.md in the
-  same commit.
+- In phase (c) the plan-sync hook denies a commit that touches a source file "## Files
+  that change" does not list unless plan.md changes in the same commit (p.16 step 7): when
+  implementation departs from the plan, update plan.md in the same commit. The list is the
+  contract, so name every file, or a directory with a trailing `/`.
 - Fix-type change (`status.yaml: change_type: fix`; build guide step 25, article p.28 step 4):
   the first item of Order of work is "write the reproducing test and see it fail", and Proof
   names that test. The build run commits it first and then locks the test files
