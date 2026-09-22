@@ -15,8 +15,8 @@ and verifier, p.25), step 18 (preflight), step 25 (failing test first, p.28 step
 Unattended run: never ask the owner anything; a blocker becomes a parked reason. The
 project's own commands and hooks are the guardrails: the protected-path hook denies
 `.claude/**`, `CLAUDE.md`, `REVIEW.md`, `sdlc.yaml`; the plan-sync hook denies a commit that
-changes source without `plan.md`; the test-file lock denies test edits in a fix after the
-reproducing test is committed. Never work around a hook; if it blocks the plan, park.
+changes a source file `plan.md` does not list unless `plan.md` is in the same commit; the
+test-file lock denies test edits in a fix after the reproducing test is committed. Never work around a hook; if it blocks the plan, park.
 
 ## 0. Preconditions and preflight (build guide step 18)
 - `sdlc.yaml` exists; the change id is `$ARGUMENTS` (or the single change whose
@@ -65,8 +65,10 @@ When `status.change_type` is `fix`:
 Follow "Order of work". After each step run the project's `test` command for the tests the
 step touches (the full suite is phase (d)). Commit with
 `python "${CLAUDE_PLUGIN_ROOT}/plugin/state/cli.py" commit-phase --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase c --message "build(<id>): <step>" --paths <files>`
-— it commits the change folder plus the paths you name (the plan-sync hook expects
-`plan.md` in the same commit whenever source changed and the plan needed an update).
+— it commits the change folder plus the paths you name. A commit inside the plan needs
+nothing more; a commit that touches a file "## Files that change" does not list is a
+departure and must update `plan.md` in the same commit (the hook denies it otherwise, and
+gate (c) re-checks every commit).
 Never edit `intent.md` or `spec.md` in this phase; never touch a guardrail file. No new
 dependency without the plan naming it.
 

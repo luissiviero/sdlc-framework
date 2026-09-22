@@ -292,6 +292,57 @@ def test_plan_sync_rules():
     assert not ok("sdlc/0001/c", ["src/a.py", "changes/0001-x/plan.md"], exempt).block
     assert ok("sdlc/0001/c", ["src/a.py", "changes/0002-y/plan.md"], exempt).block  # wrong change
     assert not ok("sdlc/0001/c", ["docs/x.md"], exempt + ["docs/**"]).block
+    # the departure rule (article p.16 step 7): a commit whose source files are all listed
+    # under "## Files that change" needs no plan.md; one that touches an unlisted file does
+    planned = ["src/a.py", "tests/test_a.py"]
+    assert not ok("sdlc/0001/c", ["src/a.py"], exempt, planned).block
+    assert not ok("sdlc/0001/c", ["src/a.py", "tests/test_a.py"], exempt, planned).block
+    d = ok("sdlc/0001/c", ["src/a.py", "src/b.py"], exempt, planned)
+    assert d.block and "src/b.py" in d.reason and "src/a.py" not in d.reason
+    assert not ok("sdlc/0001/c", ["src/b.py", "changes/0001-x/plan.md"], exempt, planned).block
+    assert not ok("sdlc/0001/c", ["src/sub/x.py"], exempt, ["src/"]).block  # a directory entry
+    assert not ok("sdlc/0001/c", ["SRC/A.py"], exempt, planned).block  # case, as the gate
+
+
+def test_plan_sync_allows_a_commit_inside_the_plan_in_a_real_repo(tmp_path):
+    """The first gated build run (2026-09-22): three commits, each on files plan.md lists,
+    none with plan.md - the prose asks for plan.md only when the work departs from it."""
+    _git(tmp_path, "init", "-q", "-b", "main")
+    _git(tmp_path, "config", "user.email", "t@example.com")
+    _git(tmp_path, "config", "user.name", "t")
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "a.py").write_text("x = 1\n", encoding="utf-8")
+    plan = tmp_path / "changes" / "0001-x"
+    plan.mkdir(parents=True)
+    (plan / "plan.md").write_text(
+        "# Plan\n\n## Files that change\n- `src/a.py` - bump x\n\n## Order of work\n- 1\n",
+        encoding="utf-8",
+    )
+    _git(tmp_path, "add", ".")
+    _git(tmp_path, "commit", "-q", "-m", "init")
+    _git(tmp_path, "checkout", "-q", "-b", "sdlc/0001/c")
+    (tmp_path / "src" / "a.py").write_text("x = 2\n", encoding="utf-8")
+    _git(tmp_path, "add", "src/a.py")
+    payload = {**pre("Bash", command="git commit -m 'change'"), "cwd": str(tmp_path)}
+    env = {**os.environ, "CLAUDE_PROJECT_DIR": str(tmp_path)}
+    proc = subprocess.run(
+        [sys.executable, str(HOOKS_DIR / "plan_sync.py")],
+        input=json.dumps(payload),
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+    assert proc.returncode == 0, proc.stderr  # inside the plan: nothing to sync
+    (tmp_path / "src" / "b.py").write_text("y = 1\n", encoding="utf-8")
+    _git(tmp_path, "add", "src/b.py")
+    proc = subprocess.run(
+        [sys.executable, str(HOOKS_DIR / "plan_sync.py")],
+        input=json.dumps(payload),
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+    assert proc.returncode == 2 and "src/b.py" in proc.stderr  # a departure without plan.md
 
 
 def test_plan_sync_only_on_commit_commands():
