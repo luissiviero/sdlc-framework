@@ -1150,3 +1150,27 @@ def test_a_park_still_stops_the_next_phase_when_its_gate_did_not_pass(project):
     root, change = project
     set_state(change, "b", gate_phase="b", gate_result="parked", parked="open_concerns: 1 open")
     assert "parked" in skip_reason(root, "c")
+
+
+# --- the implementation phases name their tools (eighth live run, 2026-09-22) ------------------
+def test_implementation_phases_name_their_tools(capsys, project):
+    root, _change = project
+    for phase in ("d", "e"):
+        argv = dry_run_argv(capsys, root, phase)
+        assert argv[argv.index("--allowedTools") + 1] == run_phase.IMPLEMENT_ALLOWED_TOOLS
+        assert argv[argv.index("--disallowedTools") + 1] == run_phase.IMPLEMENT_DISALLOWED_TOOLS
+    argv = run_phase.compose(
+        claude="claude",
+        plugin_dir=ROOT,
+        phase="c",
+        prompt="/sdlc:sdlc-build 0001",
+        permission_mode="acceptEdits",
+        config={},
+        env=dict(KEY_ENV),
+    )
+    assert argv[argv.index("--allowedTools") + 1] == run_phase.IMPLEMENT_ALLOWED_TOOLS
+    # the list mirrors the CI settings' allow-list, which an untrusted checkout may ignore
+    settings = json.loads((ROOT / "plugin" / "ci" / "settings.ci.json").read_text("utf-8"))
+    named = run_phase.IMPLEMENT_ALLOWED_TOOLS.split(",")
+    for rule in settings["permissions"]["allow"]:
+        assert rule in named, rule

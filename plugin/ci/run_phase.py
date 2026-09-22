@@ -111,6 +111,16 @@ PERMISSION_MODE = {"b": "default", "d": "acceptEdits", "e": "acceptEdits", "revi
 # net for a source file a Write overwrote.
 DESIGN_ALLOWED_TOOLS = "Read,Grep,Glob,Write,Bash(python *),Bash(git *)"
 DESIGN_DISALLOWED_TOOLS = "Edit,MultiEdit,NotebookEdit,WebFetch,WebSearch"
+# Phases (c), (d) and (e) edit code and run the toolchain. The tools are named explicitly,
+# as for (b): the project's allow rules are ignored in an untrusted checkout (NOTES section
+# 3) and whether a --settings allow-list counts is undocumented; the eighth live run
+# (2026-09-22, phase (c)) ended in 28 s without reaching its gate. The list mirrors the
+# allow-list of settings.ci.json; the deny rules of that file still apply on top.
+IMPLEMENT_ALLOWED_TOOLS = (
+    "Read,Grep,Glob,Edit,MultiEdit,Write,Agent,Bash(git *),Bash(gh *),Bash(python *),"
+    "Bash(python3 *),Bash(pytest *),Bash(ruff *),Bash(npm *),Bash(npx *),Bash(node *)"
+)
+IMPLEMENT_DISALLOWED_TOOLS = "WebFetch,WebSearch"
 # The review pass is read-only but for the one file it writes (decision 12).
 REVIEW_ALLOWED_TOOLS = "Read,Grep,Glob,Bash(git *),Write"
 REVIEW_DISALLOWED_TOOLS = "Edit,WebFetch,WebSearch"
@@ -125,6 +135,7 @@ TRIAGE_PROMPT = (
 SPEND_PHASE = {"review": "e"}
 
 CLAUDE_RESULT_FILE = "claude-{phase}.json"
+CLAUDE_STDERR_FILE = "claude-{phase}.stderr.txt"
 SETTINGS_REL = ("plugin", "ci", "settings.ci.json")
 
 BOT_LOGIN = "github-actions[bot]"
@@ -655,6 +666,9 @@ def compose(
     if phase == "b":
         argv += ["--allowedTools", DESIGN_ALLOWED_TOOLS]
         argv += ["--disallowedTools", DESIGN_DISALLOWED_TOOLS]
+    elif phase in ("c", "d", "e"):
+        argv += ["--allowedTools", IMPLEMENT_ALLOWED_TOOLS]
+        argv += ["--disallowedTools", IMPLEMENT_DISALLOWED_TOOLS]
     elif phase == "review":
         argv += ["--allowedTools", REVIEW_ALLOWED_TOOLS]
         argv += ["--disallowedTools", REVIEW_DISALLOWED_TOOLS]
@@ -694,6 +708,51 @@ def store_result(change_dir: Path, phase: str, data: Any, raw: str) -> Path:
     body = json.dumps(data, indent=2, sort_keys=True) if data is not None else raw
     path.write_text(body + "\n", encoding="utf-8", newline="\n")
     return path
+
+
+def store_stderr(change_dir: Path, phase: str, err: str) -> Path | None:
+    """The CLI's stderr next to its result: permission denials, ignored settings and the
+    like are printed there and nowhere else (the eighth live run, 2026-09-22, ended in 28 s
+    with nothing to read)."""
+    if not (err or "").strip():
+        return None
+    path = change_dir / art.EVIDENCE_DIR / CLAUDE_STDERR_FILE.format(phase=phase)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(err, encoding="utf-8", newline="\n")
+    return path
+
+
+def report_failed_run(
+    root: Path, change_dir: Path, phase: str, data: Any, raw: str, err: str, why: str
+) -> None:
+    """A run that ends without its gate is an infrastructure failure: say why, show the
+    CLI's last message, its counters and its stderr, and commit the stored result and
+    stderr on the work branch so they outlive the runner."""
+    print(why, file=sys.stderr)
+    if isinstance(data, dict):
+        counters = {
+            k: data.get(k)
+            for k in ("num_turns", "duration_ms", "total_cost_usd", "is_error", "subtype")
+        }
+        print(f"claude result: {json.dumps(counters)}", file=sys.stderr)
+        text = str(data.get("result") or "")
+    else:
+        text = raw or ""
+    if text.strip():
+        print("claude's last message:\n" + text[-3000:], file=sys.stderr)
+    if (err or "").strip():
+        print("claude stderr:\n" + err[-3000:], file=sys.stderr)
+    from state import gitops
+
+    if not gitops.is_repo(root):
+        return
+    try:
+        rel = str(change_dir.relative_to(root)).replace("\\", "/")
+        sha = gitops.commit_paths(root, [rel], f"run({phase}): failed run record")
+        if sha and gitops.has_remote(root):
+            gitops.push(root, gitops.current_branch(root))
+    except (gitops.GitError, OSError) as exc:
+        print(f"the failed run record could not be committed: {exc}", file=sys.stderr)
 
 
 def record_spend(plugin_dir: Path, root: Path, change_id: str, phase: str, usd: float) -> bool:
@@ -863,14 +922,14 @@ def run_phase(args, env: dict[str, str]) -> int:
     labels = ensure_labels(args.repo, env)
     data, raw, err, code = invoke(argv, root, env, run_timeout_seconds(config))
     store_result(change_dir, phase, data, raw)
+    store_stderr(change_dir, phase, err)
     cost = None
     if isinstance(data, dict):
         cost = data.get("total_cost_usd")
         if isinstance(cost, (int, float)):
             record_spend(plugin_dir, root, change_id, phase, float(cost))
     if code != 0 or not isinstance(data, dict) or data.get("is_error"):
-        text = (data or {}).get("result") if isinstance(data, dict) else raw[-2000:]
-        print(text or err or f"claude exited {code}", file=sys.stderr)
+        report_failed_run(root, change_dir, phase, data, raw, err, f"claude exited {code}")
         return EXIT_FAILED
 
     review = validate_review(plugin_dir, root, change_id) if phase == "review" else None
@@ -889,11 +948,11 @@ def run_phase(args, env: dict[str, str]) -> int:
 
     result = read_gate(change_dir, phase)
     if result is None:
-        print(
+        why = (
             f"the run left no evidence/{art.GATE_RESULT.format(phase=phase)}: the phase command "
-            "did not reach its gate",
-            file=sys.stderr,
+            "did not reach its gate"
         )
+        report_failed_run(root, change_dir, phase, data, raw, err, why)
         return EXIT_FAILED
     # the spend is recorded after the run's own commits, so on an ephemeral runner it would
     # leave with the job (the fifth live run of 2026-09-21 pushed run-b.json with spend_usd
