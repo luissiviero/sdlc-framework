@@ -297,6 +297,19 @@ Source: https://code.claude.com/docs/en/permissions.
   For OS-level enforcement that blocks all processes from accessing a path, enable the
   sandbox." — the same gap applies to the protected-path hook, which sees file tools only.
 - "Rules are evaluated in order: deny, then ask, then allow."
+- Path patterns (re-read 2026-09-23 for section 12): "Read and Edit rules both use gitignore
+  pattern syntax" and "Bare filenames follow gitignore semantics and match at any depth, so
+  `Read(.env)` and `Read(**/.env)` are equivalent" — so `Edit(CLAUDE.md)` denied
+  `template/CLAUDE.md` too. "`/path` — Path relative to the settings source": in project
+  settings `<primary working directory>/path` (in a worktree session, that worktree); in
+  "A file passed with `--settings <file>`", `<directory of file>/path`; in user settings
+  `~/.claude/path`. "`//path` — Absolute path from filesystem root"; "On Windows, paths are
+  normalized to POSIX form before matching. `C:\Users\alice` becomes `/c/Users/alice`".
+  Consequences: the template's four `Edit` deny rules carry the `/` anchor;
+  `plugin/ci/settings.ci.json` carries it too but is passed through
+  `run_phase.ci_settings_file`, a temporary copy with those rules rewritten to
+  `//<absolute project root>/...`; the machine-wide managed file cannot name a project root
+  and keeps the bare names.
 - A `Bash(git push --force *)` deny cannot catch `git push origin --force`, `+main` or
   `git -C . push -f` (rule prefixes match the command text only), so the template carries no
   such rule; the branch ruleset (decision 4) is the real guard for `main`.
@@ -604,18 +617,21 @@ project lists it. That is exactly the status of `template/CLAUDE.md` here. The s
 hooks layer is not weakened: `GLOBAL_PROTECTED` still catches `.claude/settings*.json` and
 `.claude/hooks/**` anywhere on disk, so `template/.claude/settings.json` stays owner-only.
 
-Residual, deliberately left out of 0.2.10 (owner's follow-up): the second layer, the
-`Edit(...)` deny rules in `.claude/settings.json`, uses Claude Code's own matching, and it
-also matches by basename: in the session that made this change the Edit tool refused
+Residual found while making the change, closed by the follow-up PR the same day (no
+plugin version of its own; it ships with the next release): the second layer, the `Edit(...)`
+deny rules in the settings files, matched by basename too. The Edit tool refused
 `template/sdlc.yaml` ("File is in a directory that is denied by your permission settings")
-under the root `Edit(sdlc.yaml)` rule while every other edit went through; the three other
-rules are spelled the same way. Anchoring them means `Edit(/CLAUDE.md)`, `Edit(/REVIEW.md)`,
-`Edit(/sdlc.yaml)`, `Edit(/.claude/**)` (a leading slash is project-root-relative in
-permission rules), in this repository's root `.claude/settings.json` (owner-only),
-`template/.claude/settings.json`, `plugin/ci/settings.ci.json` and
-`docs/owner-machine/managed-settings.json`, and the exact-string checks
-`gate/preflight.py::REQUIRED_DENY` and `skills/security-baseline/check.py::REQUIRED_DENY`
-(with `tests/test_templates.py::test_settings_json_contract` and `tests/test_preflight.py`)
-must accept either spelling. Until then, a run in this repository is still refused
-`template/CLAUDE.md`, `template/REVIEW.md` and `template/sdlc.yaml` by the deny rules; the
-hook and the gate no longer stand in the way.
+under the root `Edit(sdlc.yaml)` rule while every other edit went through, and the
+permissions reference confirms it (section 6: bare filenames match at any depth). The
+follow-up: `template/.claude/settings.json` spells the four rules `Edit(/.claude/**)`,
+`Edit(/CLAUDE.md)`, `Edit(/REVIEW.md)`, `Edit(/sdlc.yaml)` (the `/` anchor of a project
+settings file); `plugin/ci/settings.ci.json` spells them the same way and
+`run_phase.ci_settings_file` passes a temporary copy with them rewritten to
+`//<absolute project root>/...`, because a `/path` rule in a `--settings` file anchors at
+that file's own directory; `gate/preflight.py` and `skills/security-baseline/check.py`
+accept either spelling, so a project installed before the anchoring keeps passing (the
+install script only adds rules, so an upgraded project carries both spellings until its
+owner removes the bare ones). Still the owner's: this repository's root
+`.claude/settings.json` (same four lines), and `docs/owner-machine/managed-settings.json`,
+which keeps the bare names because a machine-wide file has no per-project anchor (a `//`
+absolute rule per repository is the alternative).

@@ -70,6 +70,7 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -636,6 +637,49 @@ def review_prompt(plugin_dir: Path, root: Path, change_id: str) -> tuple[str | N
     return proc.stdout.strip(), ""
 
 
+# --- the CI settings, anchored to the project (permissions reference; NOTES 6 and 12) ---------
+_ANCHORED_RULE = re.compile(r"^(Read|Edit)\(/(?!/)(.*)\)$")
+
+
+def _posix_root(resolved: str) -> str:
+    """A resolved project root as a ``//`` absolute permission path. Claude Code normalises
+    Windows paths to POSIX form before matching (``C:\\Users\\alice`` becomes
+    ``/c/Users/alice``), so ``C:/work/proj`` gives ``//c/work/proj`` and ``/home/r/proj``
+    gives ``//home/r/proj``."""
+    p = resolved.replace("\\", "/").rstrip("/")
+    if len(p) >= 2 and p[1] == ":":
+        p = "/" + p[0].lower() + p[2:]
+    return "/" + p
+
+
+def _absolute_rule_root(root: Path) -> str:
+    return _posix_root(Path(root).resolve().as_posix())
+
+
+def _absolute_rule(rule: str, base: str) -> str:
+    m = _ANCHORED_RULE.match(rule)
+    return f"{m.group(1)}({base}/{m.group(2)})" if m else rule
+
+
+def ci_settings_file(plugin_dir: Path, root: Path) -> Path:
+    """``settings.ci.json`` with its ``/``-anchored path rules resolved against the project
+    root, written to a temporary copy. A ``/path`` rule anchors at the directory of the
+    settings file that defines it, and for a ``--settings`` file that is the file's own
+    directory (the permissions reference), so ``Edit(/CLAUDE.md)`` left in the framework
+    checkout would guard ``plugin/ci/CLAUDE.md``, not the project's guardrail file. The copy
+    carries ``Edit(//<absolute project root>/CLAUDE.md)`` instead; every other rule is kept."""
+    source = Path(plugin_dir).joinpath(*SETTINGS_REL)
+    data = json.loads(source.read_text(encoding="utf-8"))
+    base = _absolute_rule_root(root)
+    perms = data.get("permissions") or {}
+    for key in ("deny", "ask", "allow"):
+        if isinstance(perms.get(key), list):
+            perms[key] = [_absolute_rule(r, base) for r in perms[key]]
+    out = Path(tempfile.mkdtemp(prefix="sdlc-ci-")) / source.name
+    out.write_text(json.dumps(data, indent=2), encoding="utf-8")
+    return out
+
+
 def compose(
     *,
     claude: str,
@@ -645,15 +689,22 @@ def compose(
     permission_mode: str,
     config: dict[str, Any],
     env: dict[str, str],
+    root: Path | None = None,
 ) -> list[str]:
-    """The full argv of one headless run. It carries no secret, so it is safe to print."""
+    """The full argv of one headless run. It carries no secret, so it is safe to print.
+    With ``root`` the CI settings are rendered against the project (``ci_settings_file``);
+    without it the file is passed as is."""
     # The prompt goes right after -p: --allowedTools / --disallowedTools take a list of
     # values, so a prompt placed after them is read as one more tool name and the CLI
     # answers "Input must be provided either through stdin or as a prompt argument"
     # (observed on the first live design run, 2026-09-21).
     argv = [claude, "-p", prompt, *auth_mod.flags(env)]
     argv += ["--plugin-dir", str(plugin_dir)]
-    argv += ["--settings", str(Path(plugin_dir).joinpath(*SETTINGS_REL))]
+    if root:
+        settings = ci_settings_file(plugin_dir, root)
+    else:
+        settings = Path(plugin_dir).joinpath(*SETTINGS_REL)
+    argv += ["--settings", str(settings)]
     argv += ["--permission-mode", permission_mode]
     argv += ["--permission-prompts", "none"]  # nobody is there to answer (NOTES 10b)
     gate_cfg = _gate_settings(config)
@@ -826,6 +877,7 @@ def run_triage(args, env: dict[str, str]) -> int:
         permission_mode="default",
         config=_config(root),
         env=env,
+        root=root,
     )
     if args.dry_run:
         _emit({"phase": "triage", "argv": argv})
@@ -906,6 +958,7 @@ def run_phase(args, env: dict[str, str]) -> int:
         permission_mode=permission_mode,
         config=config,
         env=env,
+        root=root,
     )
     if args.dry_run:
         _emit(

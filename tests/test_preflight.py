@@ -114,16 +114,32 @@ def test_refuses_when_settings_allow_bypass_or_lack_a_deny_rule(project):
     path = project / ".claude" / "settings.json"
     data = json.loads(path.read_text(encoding="utf-8"))
     data["permissions"]["disableBypassPermissionsMode"] = "enable"
-    data["permissions"]["deny"].remove("Edit(CLAUDE.md)")
+    data["permissions"]["deny"].remove("Edit(/CLAUDE.md)")
     del data["enabledPlugins"]
     path.write_text(json.dumps(data), encoding="utf-8")
     report = preflight.run_preflight(project, ROOT)
     failed = next(ch for ch in report["checks"] if ch["name"] == "settings")
     assert failed["details"]["problems"] == [
         "permissions.disableBypassPermissionsMode is not 'disable'",
-        "deny rule Edit(CLAUDE.md) missing",
+        "deny rule Edit(/CLAUDE.md) missing",
         "enabledPlugins does not enable sdlc@sdlc-framework",
     ]
+
+
+def test_accepts_the_bare_deny_spelling_of_an_older_install(project):
+    """A project initialised before the rules were anchored carries Edit(CLAUDE.md); it
+    still denies the root file, so the settings check accepts either spelling."""
+    path = project / ".claude" / "settings.json"
+    data = json.loads(path.read_text(encoding="utf-8"))
+    data["permissions"]["deny"] = [
+        r.replace("(/", "(", 1) if r.startswith("Edit(/") else r
+        for r in data["permissions"]["deny"]
+    ]
+    assert "Edit(CLAUDE.md)" in data["permissions"]["deny"]
+    path.write_text(json.dumps(data), encoding="utf-8")
+    report = preflight.run_preflight(project, ROOT)
+    settings = next(ch for ch in report["checks"] if ch["name"] == "settings")
+    assert settings["ok"], settings
 
 
 def test_refuses_when_the_test_target_is_red(project, monkeypatch):

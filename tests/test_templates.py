@@ -128,7 +128,7 @@ def test_settings_json_contract():
     deny = data["permissions"]["deny"]
     for rule in ["Read(.env*)", "Read(./secrets/**)", "WebFetch", "Bash(curl *)", "Bash(wget *)"]:
         assert rule in deny  # article p.37
-    for rule in ["Edit(.claude/**)", "Edit(CLAUDE.md)", "Edit(REVIEW.md)", "Edit(sdlc.yaml)"]:
+    for rule in ["Edit(/.claude/**)", "Edit(/CLAUDE.md)", "Edit(/REVIEW.md)", "Edit(/sdlc.yaml)"]:
         assert rule in deny  # second layer under the protected-path hook
     assert not any(r.startswith("Write(") for r in deny), (
         "Write() path rules are ignored by Claude Code"

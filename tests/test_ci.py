@@ -174,7 +174,12 @@ def test_dry_run_argv_per_phase(capsys, project, phase, command, mode):
     assert "--permission-prompts" in argv and argv[argv.index("--permission-prompts") + 1] == "none"
     assert argv[argv.index("--plugin-dir") + 1] == str(ROOT)
     settings = Path(argv[argv.index("--settings") + 1])
-    assert settings == ROOT / "plugin" / "ci" / "settings.ci.json" and settings.is_file()
+    # a temporary copy of plugin/ci/settings.ci.json with the /-anchored rules made absolute
+    assert settings.name == "settings.ci.json" and settings.is_file()
+    assert settings != ROOT / "plugin" / "ci" / "settings.ci.json"
+    rendered = json.loads(settings.read_text(encoding="utf-8"))
+    base = run_phase._absolute_rule_root(root)
+    assert f"Edit({base}/CLAUDE.md)" in rendered["permissions"]["deny"]
     assert argv[argv.index("--output-format") + 1] == "json"
     assert int(argv[argv.index("--max-turns") + 1]) == run_phase.DEFAULT_MAX_TURNS
 
@@ -473,6 +478,33 @@ def test_a_framework_change_may_touch_the_guardrails(project, tmp_path):
     git(root, "add", "-A")
     git(root, "commit", "-q", "-m", "build(0001): the framework change")
     assert run_phase.guardrail_changes(root, change, {}) == []
+
+
+def test_ci_settings_are_rendered_against_the_project_root(tmp_path):
+    """A /path rule in a --settings file anchors at that file's directory (permissions
+    reference), so the CI copy carries //<absolute project root>/... instead; every other
+    rule and section is kept as written."""
+    source = json.loads((ROOT / "plugin" / "ci" / "settings.ci.json").read_text("utf-8"))
+    out = run_phase.ci_settings_file(ROOT, tmp_path)
+    assert out != ROOT / "plugin" / "ci" / "settings.ci.json"
+    data = json.loads(out.read_text(encoding="utf-8"))
+    base = run_phase._absolute_rule_root(tmp_path)
+    assert base.startswith("//") and not base.startswith("///") and ":" not in base
+    deny = data["permissions"]["deny"]
+    for name in (".claude/**", "CLAUDE.md", "REVIEW.md", "sdlc.yaml"):
+        assert f"Edit(/{name})" in source["permissions"]["deny"]
+        assert f"Edit({base}/{name})" in deny and f"Edit(/{name})" not in deny
+    for rule in ("Read(.env*)", "Read(**/.env*)", "WebFetch", "Bash(curl *)"):
+        assert rule in deny  # relative and tool-level rules untouched
+    assert data["permissions"]["allow"] == source["permissions"]["allow"]
+    assert data["sandbox"] == source["sandbox"]
+    # the spelling Claude Code documents for Windows and POSIX roots
+    assert run_phase._posix_root("C:/work/proj") == "//c/work/proj"
+    assert run_phase._posix_root("C:\\work\\proj\\") == "//c/work/proj"
+    assert run_phase._posix_root("/home/runner/work/proj/proj") == "//home/runner/work/proj/proj"
+    assert run_phase._absolute_rule("Edit(/CLAUDE.md)", "//c/p") == "Edit(//c/p/CLAUDE.md)"
+    assert run_phase._absolute_rule("Read(//etc/passwd)", "//c/p") == "Read(//etc/passwd)"
+    assert run_phase._absolute_rule("Edit(docs/**)", "//c/p") == "Edit(docs/**)"
 
 
 def test_a_nested_guardrail_name_is_not_a_guardrail_change(project, tmp_path):
