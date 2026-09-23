@@ -38,6 +38,12 @@ def test_glob_matching_gitignore_style():
     assert m("CLAUDE.md", "CLAUDE.md")
     assert m("CLAUDE.md", "packages/api/CLAUDE.md")  # unanchored: any directory
     assert not m("CLAUDE.md", "CLAUDE.md.bak")
+    # a leading slash anchors a bare name to the root (gitignore); Windows spelling too
+    assert m("/CLAUDE.md", "CLAUDE.md") and m("/CLAUDE.md", "claude.md")
+    assert not m("/CLAUDE.md", "packages/api/CLAUDE.md")
+    assert not m("/CLAUDE.md", "template\\CLAUDE.md")
+    assert m("/.claude/**", ".claude/settings.json")
+    assert not m("/.claude/**", "template/.claude/settings.json")
     assert m("src/gen/**", "src/gen/a/b.py")
     assert m("*.lock", "poetry.lock") and m("*.lock", "sub/poetry.lock")
     assert m("migrations/", "migrations/0001_init.py")
@@ -76,7 +82,6 @@ def _env(project):
         "sdlc.yaml",
         "src/gen/model.py",
         "migrations/0002.py",
-        "api/CLAUDE.md",
     ],
 )
 def test_protected_paths_denied(project, rel):
@@ -92,6 +97,75 @@ def test_protected_paths_denied(project, rel):
 def test_unprotected_paths_allowed(project, rel):
     payload = pre("Write", file_path=str(project / rel), content="x")
     assert not protected_paths.decide(payload, [], env=_env(project)).block
+
+
+@pytest.mark.parametrize(
+    "rel",
+    [
+        "template/CLAUDE.md",
+        "template/REVIEW.md",
+        "template/sdlc.yaml",
+        "docs/x/CLAUDE.md",
+        "api/CLAUDE.md",
+        "packages/api/.claude/commands/x.md",
+    ],
+)
+def test_nested_guardrail_names_are_project_content(project, rel):
+    """0.2.10: the always-protected set is the project's own guardrail files, at the root.
+    The framework repository builds template/CLAUDE.md, template/REVIEW.md and
+    template/sdlc.yaml; a phase (c) run there must be able to edit them (NOTES section 12).
+    Nested .claude/settings*.json and .claude/hooks/** stay caught by GLOBAL_PROTECTED."""
+    payload = pre("Edit", file_path=str(project / rel), old_string="a", new_string="b")
+    assert not protected_paths.decide(payload, [], env=_env(project)).block, rel
+
+
+def test_nested_settings_and_hooks_stay_protected(project):
+    for rel in ("packages/api/.claude/settings.json", "template/.claude/hooks/x.py"):
+        payload = pre("Write", file_path=str(project / rel), content="")
+        assert protected_paths.decide(payload, [], env=_env(project)).block, rel
+
+
+@pytest.mark.parametrize(
+    ("rel", "blocked"),
+    [
+        ("CLAUDE.md", True),
+        ("REVIEW.md", True),
+        ("sdlc.yaml", True),
+        (".claude\\settings.json", True),
+        ("template\\CLAUDE.md", False),
+        ("template\\REVIEW.md", False),
+        ("template\\sdlc.yaml", False),
+        ("Docs\\X\\Claude.MD", False),
+    ],
+)
+def test_root_anchoring_on_windows_paths(rel, blocked):
+    """Backslash spellings, a drive letter and mixed case: the root copy is caught, the
+    nested copy is free. No file exists, so both norm() and real() candidates are exercised."""
+    win_root = "C:\\work\\proj"
+    payload = {
+        "tool_name": "Write",
+        "tool_input": {"file_path": win_root + "\\" + rel, "content": ""},
+        "cwd": win_root,
+    }
+    d = protected_paths.decide(payload, [], env={"CLAUDE_PROJECT_DIR": win_root})
+    assert d.block is blocked, rel
+
+
+def test_project_protected_paths_keep_gitignore_semantics(tmp_path):
+    """Only the four always-protected patterns are anchored; the owner's own list still
+    matches a bare name in any directory, as before 0.2.10."""
+    (tmp_path / "sdlc.yaml").write_text(
+        "protected_paths: [poetry.lock, /Makefile]\n", encoding="utf-8"
+    )
+    env = {"CLAUDE_PROJECT_DIR": str(tmp_path)}
+    for rel, blocked in (
+        ("poetry.lock", True),
+        ("sub/poetry.lock", True),
+        ("Makefile", True),
+        ("sub/Makefile", False),
+    ):
+        payload = pre("Write", file_path=str(tmp_path / rel), content="")
+        assert protected_paths.decide(payload, [], env=env).block is blocked, rel
 
 
 def test_windows_style_path_is_still_caught(project):

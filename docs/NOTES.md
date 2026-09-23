@@ -569,3 +569,53 @@ https://code.claude.com/docs/en/sandboxing, https://code.claude.com/docs/en/agen
 - `--permission-prompts none` (cli-reference): `none` means nobody can answer, Claude Code
   denies prompts instead; "Requires Claude Code v2.1.259 or later." The framework's minimum
   Claude Code version is therefore **2.1.278**, the CLI the workflows install.
+
+## 12. The always-protected patterns are anchored to the project root (plugin 0.2.10, 2026-09-23)
+
+Context: PR #21 installs the framework into this repository itself (change 0000). With the
+hook active here, `plugin/hooks/protected_paths.py` computed the protected set as
+`['.claude/**', 'CLAUDE.md', 'REVIEW.md', 'sdlc.yaml']` plus `protected_paths`, and
+`_common.glob_to_regex` gives a pattern without a slash gitignore semantics: unanchored, the
+basename in any directory. Verified with the hook's own functions: `template/sdlc.yaml`,
+`template/CLAUDE.md`, `template/REVIEW.md` and `docs/x/CLAUDE.md` were all denied. Harmless
+in a project that uses the framework; in this repository those three template files are the
+product (`CLAUDE.md` "Layout", OPERATING_MODEL section 8), so a phase (c) run could never
+build it.
+
+Options weighed: (a) anchor the four always-protected patterns to the project root and keep
+the owner's `protected_paths` with gitignore semantics; (b) leave the hook alone and give this
+repository's `sdlc.yaml` an exemption mechanism for `template/`. Chosen: (a), because
+
+- it is what the hook's docstring and decision 6 already say: the hook protects *the
+  project's* guardrail files, the ones Claude Code and the framework read at the project
+  root. The reading changes, not the decision, so DECISIONS.md is not amended.
+- `.claude/**` was anchored all along (a slash anchors); only the three bare names moved.
+- `protected_patterns()` has three readers, the hook, the gate's `check_guardrails` and the
+  CI branch guard `run_phase.guardrail_changes`, and anchoring fixes all three at once. An
+  exemption list (b) would have to be threaded through all three, would be one more key in
+  `sdlc.yaml` that only this repository ever sets, and a run could not use it anyway, since
+  `sdlc.yaml` is itself protected.
+- the owner's own list keeps gitignore semantics, so a project whose nested `CLAUDE.md`
+  files are guardrails too writes `protected_paths: ["**/CLAUDE.md"]`.
+
+Trade-off accepted: Claude Code loads a subdirectory's `CLAUDE.md` on demand when it works
+on files there, so a nested `CLAUDE.md` is instruction content a run may now edit unless the
+project lists it. That is exactly the status of `template/CLAUDE.md` here. The settings and
+hooks layer is not weakened: `GLOBAL_PROTECTED` still catches `.claude/settings*.json` and
+`.claude/hooks/**` anywhere on disk, so `template/.claude/settings.json` stays owner-only.
+
+Residual, deliberately left out of 0.2.10 (owner's follow-up): the second layer, the
+`Edit(...)` deny rules in `.claude/settings.json`, uses Claude Code's own matching, and it
+also matches by basename: in the session that made this change the Edit tool refused
+`template/sdlc.yaml` ("File is in a directory that is denied by your permission settings")
+under the root `Edit(sdlc.yaml)` rule while every other edit went through; the three other
+rules are spelled the same way. Anchoring them means `Edit(/CLAUDE.md)`, `Edit(/REVIEW.md)`,
+`Edit(/sdlc.yaml)`, `Edit(/.claude/**)` (a leading slash is project-root-relative in
+permission rules), in this repository's root `.claude/settings.json` (owner-only),
+`template/.claude/settings.json`, `plugin/ci/settings.ci.json` and
+`docs/owner-machine/managed-settings.json`, and the exact-string checks
+`gate/preflight.py::REQUIRED_DENY` and `skills/security-baseline/check.py::REQUIRED_DENY`
+(with `tests/test_templates.py::test_settings_json_contract` and `tests/test_preflight.py`)
+must accept either spelling. Until then, a run in this repository is still refused
+`template/CLAUDE.md`, `template/REVIEW.md` and `template/sdlc.yaml` by the deny rules; the
+hook and the gate no longer stand in the way.

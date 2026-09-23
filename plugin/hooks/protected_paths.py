@@ -1,14 +1,19 @@
 """PreToolUse hook: deny edits to protected paths (build guide step 15 (1), step 7; article
 p.23 'Block edits to protected paths', p.36 example PreToolUse hook).
 
-Always protected (self-protection, decision 6): ``.claude/**``, ``CLAUDE.md``, ``REVIEW.md``,
-``sdlc.yaml`` (it holds the project's own protected list) and every file under the plugin
-root (the hook scripts). Anywhere on disk, inside or outside the project: ``.claude/settings*.json``
-and ``.claude/hooks/**`` (the user-level settings are guardrails too). The project adds its
-own list under ``protected_paths:`` in ``sdlc.yaml``. There is no exception: a change to
-the guardrails is made by the owner, in a session without this hook, and reviewed like any
-other PR. The only sanctioned writer in a run is ``/sdlc-init``'s install script, whose
-output rides in the change-0000 PR.
+Always protected (self-protection, decision 6): the project's own guardrail files at the
+project root - ``/.claude/**``, ``/CLAUDE.md``, ``/REVIEW.md``, ``/sdlc.yaml`` (it holds the
+project's protected list) - and every file under the plugin root (the hook scripts). The four
+are anchored (0.2.10, NOTES.md section 12): a same-named file in a subdirectory, such as the
+framework repository's ``template/CLAUDE.md``, is ordinary project content; a project whose
+nested copies are guardrails too lists them under ``protected_paths`` (``**/CLAUDE.md``).
+Anywhere on disk, inside or outside the project: ``.claude/settings*.json`` and
+``.claude/hooks/**`` (the user-level settings are guardrails too). The project adds its own
+list under ``protected_paths:`` in ``sdlc.yaml``, with gitignore semantics (a bare name
+matches in any directory; a leading slash anchors). There is no exception: a change to the
+guardrails is made by the owner, in a session without this hook, and reviewed like any other
+PR. The only sanctioned writer in a run is ``/sdlc-init``'s install script, whose output
+rides in the change-0000 PR.
 
 Fails closed: a missing or unreadable sdlc.yaml that exists, a bad payload or any error
 denies the edit with the reason.
@@ -37,7 +42,8 @@ from _common import (  # noqa: E402
     target_paths,
 )
 
-ALWAYS_PROTECTED = (".claude/**", "CLAUDE.md", "REVIEW.md", "sdlc.yaml")
+# anchored to the project root (the leading slash): docs/x/CLAUDE.md is not a guardrail file
+ALWAYS_PROTECTED = ("/.claude/**", "/CLAUDE.md", "/REVIEW.md", "/sdlc.yaml")
 # matched against the whole normalised path, wherever it is (user-level settings included)
 GLOBAL_PROTECTED = ("**/.claude/settings.json", "**/.claude/settings.*.json", "**/.claude/hooks/**")
 
