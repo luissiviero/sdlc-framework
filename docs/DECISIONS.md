@@ -2,6 +2,8 @@
 
 Companion to `BUILD_GUIDE.md`. Step numbers refer to that guide. The accepted alternative is marked **[ACCEPTED]**.
 
+Decisions 21–26 were added on 2026-09-23 after the plan was audited against the owner's original objective and the article (session record: PR #22). They are **provisional**: the mechanism of 21 is the owner's, the rest are the session's suggestions adopted on the owner's instruction to proceed; the owner confirms them by merging PR #22 or overturns any by editing it there.
+
 
 ## 1. Where unattended claude -p runs execute and how they authenticate
 
@@ -26,7 +28,7 @@ Companion to `BUILD_GUIDE.md`. Step numbers refer to that guide. The accepted al
 
 - A — end of phase (b) , read-only planning run; approved with spec.md at one gate. **[ACCEPTED]**
 - B — inside phase (c) , approval replaced by the confidence gate; you see plan.md with the diff at gate (c).
-- C — its own gate between (b) and (c): six approvals become seven.
+- C — its own gate between (b) and (c): one more approval per change.
 
 **Accepted:** A
 
@@ -75,7 +77,7 @@ Companion to `BUILD_GUIDE.md`. Step numbers refer to that guide. The accepted al
 
 **Accepted:** Built-in token first; GitHub App only when its limits bite
 
-**Why:** Zero setup and zero secrets to rotate — the maintenance profile you asked for — and it already separates "what the agent did" from "what you approved" in the log (p.41). Its known limit (PRs it opens may not trigger follow-on workflows) is designed around in step 9 by triggering on branch pushes and labels. A machine account is a second login to protect for no benefit.
+**Why:** Zero setup and zero secrets to rotate — the maintenance profile you asked for — and it already separates "what the agent did" from "what you approved" in the log (p.41). Its known limit (events it causes — pushes, PRs, labels — do not start workflow runs, except `workflow_dispatch` and `repository_dispatch`) is designed around in steps 9 and 30: the owner's own merges and labels fire workflows normally, and every automated transition dispatches the next workflow explicitly (NOTES §11a). A machine account is a second login to protect for no benefit.
 
 **Decide by / reversibility:** B3 REVERSIBLE
 
@@ -165,6 +167,8 @@ Companion to `BUILD_GUIDE.md`. Step numbers refer to that guide. The accepted al
 
 **Accepted:** Park, never page (3) REVISED
 
+*Amended by decision 21 (2026-09-23):* under deferred review a judgment item that would park is put to the review panel and the run continues; the hard parks (risk-list hit, guardrail file change, run limit, infrastructure failure) still park, and nobody is ever notified.
+
 **Why:** In a new project almost nothing is "routine" by the article's definition (p.17), so option 1 would page you constantly and defeat point 3 of your objective. Option 2 was my first answer; your hands-off constraint changes it: escalation and notification are different things. The article's headless gate "escalates to a human" (p.42) but says nothing about paging one. Parking keeps the safety property (nothing risky proceeds unreviewed) without ever calling you — the parked PR simply joins the queue you review in one sitting. The only cost is latency on that change, which you have said you accept.
 
 **Decide by / reversibility:** B2 REVERSIBLE
@@ -209,6 +213,8 @@ Companion to `BUILD_GUIDE.md`. Step numbers refer to that guide. The accepted al
 - Split by blast radius: pre-approve CI-scoped, reversible actions (quarantine a flaky test, open a revert PR); require "Go" for anything that touches a running system (rollback, config change). **[ACCEPTED]**
 
 **Accepted:** Split by blast radius (3)
+
+*Amended by decision 26 (2026-09-23):* on a project that declares a real production, a rollback that has been rehearsed is pre-approved; every other running-system action still waits for "Go".
 
 **Why:** The article shows both models for the same action and never reconciles them. For systems that move money the asymmetry is clear: a missed auto-quarantine costs minutes, a wrong automatic rollback at 3 a.m. can cost a position. Write the split into bands.yaml per route so it is enforced, not remembered.
 
@@ -270,6 +276,8 @@ Companion to `BUILD_GUIDE.md`. Step numbers refer to that guide. The accepted al
 
 **Accepted:** Profiles, default Standard (3 gates)
 
+*Amended by decision 21 (2026-09-23):* Standard stays the default; the Lite profile is withdrawn — it removed the human from gate (b), which the article keeps human (p.14 "A human team mate always makes this call", p.15 "Nothing is implemented without an accepted plan") — and deferred review (step 16a) replaces what Lite was for. Lite stays in the code, unused by new projects, until step 16a ships and removes it.
+
 **Why:** This is the biggest consequence of your two constraints. Literally "input at the end of each step" is five interactions per change, and for a small project that is more ceremony than the change itself. The article's own end state runs gates as "a deterministic check or an adversarial reviewing agent" with humans only on escalation (p.42), and its Deploy row reserves "human review for regulated and critical code" (p.6). Gate (e) already shows you plan conformance, evidence and review findings on one PR, so reviewing there is reviewing (c) and (d) after the fact — which is what "review once it's done" means. Keep Full for the projects where a wrong autonomous step is expensive.
 
 **Decide by / reversibility:** B0 REVERSIBLE
@@ -303,6 +311,97 @@ Companion to `BUILD_GUIDE.md`. Step numbers refer to that guide. The accepted al
 **Why:** Hands-off review works only if the review itself is cheap: the article's principle is that human attention "concentrates at the gates, reviewing what the agent flagged rather than starting each stage from scratch" (p.8). A generated summary at the top of every PR is that flagging; a daily digest replaces notifications with one predictable touchpoint. Nothing pushes to you.
 
 **Decide by / reversibility:** B2 REVERSIBLE
+
+
+## 21. Deferred review inside a phase — the owner reviews once, at the end (replaces the Lite profile)
+
+*Reference: steps 9a, 16, 23, 16a · NEW (2026-09-23)*
+
+- Lite profile: no human gate at (b); the confidence gate accepts spec.md + plan.md. Withdrawn: it contradicts the article's human acceptance of the spec (p.14, p.15).
+- Park on every judgment item and wait for the owner (the behaviour as built): the first design run parks on 6–9 open concerns, and each round is a commit, a workflow run and a review — so many that no single change gets read carefully.
+- Deferred review: a per-project setting (`sdlc.yaml: review: deferred`, per-change override in `status.yaml`). Inside a phase, a judgment item that would otherwise park is put to a **review panel** — a reviewer (the REVIEW.md pass) and a devil's advocate (the adversarial reviewer), each in its own fresh context and blind to the other, then a conciliator (fresh context) that reads both verdicts and writes the decision with its rationale. The run applies the decision and continues. Every panel decision is one line in `evidence/decisions-<phase>.md`; the PR summary at the next human gate opens with "Decisions taken for you (N)", and any of them is overturned by a review comment that `/sdlc-fix` applies. The human gates at the end of each phase are unchanged (Standard: a, b, e; Full: all five). **[ACCEPTED]**
+
+**Accepted:** Deferred review (3); Lite withdrawn
+
+**What goes to the panel — a fixed list, never the run's own judgment:** an open flagged concern in spec.md; contradicting policy skills; a non-routine classification by the adversarial reviewer; an Important review finding whose fix the run cannot determine; a verifier disagreement. **What never goes to the panel and still parks:** a risk-list hit (auth, data migrations, money movement, production config), a guardrail file change, a run limit (iterations, wall clock, budget, pause flag), an infrastructure failure, and anything that merges to `main` or deploys.
+
+**Why:** The owner's account of the live runs: the commit → workflow → review rounds inside one phase are so many that the changes stop being read carefully; one review per phase, everything at once, is what point 3 of the objective ("my input at the end of each step") meant. The article's own end state is the same mechanism — "an independent confidence gate between stages, a deterministic check or an adversarial reviewing agent, deciding whether the previous stage's output continues or is escalated to a human" (p.42) — applied here to the parks inside a phase, while the human gate at the end of (b) is kept, so p.14 and p.15 hold. Human accountability (p.6) is kept by the decisions ledger: nothing is decided without a line the owner reads. A panel reduces variance, not bias — three judges on one model share its blind spots — so the devil's advocate runs on a different model than the reviewer where the docs allow it (sub-agent `model` frontmatter, NOTES §11c), and the panel is reserved for the fixed list, never for deterministic checks. Cost: three fresh runs per panel call, bounded by `gate.max_budget_usd`. A wrong panel decision at (b) yields a spec the owner still reads before anything is built, the cheapest place to be wrong; inside (c)–(e) the framework already runs unattended and the hard parks stay.
+
+**Decide by / reversibility:** B4 (step 16a) REVERSIBLE — provisional (see the note at the top)
+
+
+## 22. How "ask for changes" runs by itself
+
+*Reference: steps 8, 11, 26, 30 · NEW (2026-09-23)*
+
+- Manual: the owner launches `/sdlc-fix` after commenting (as built; the command carries `disable-model-invocation: true` and refuses phase (a)).
+- A label the owner applies (`sdlc:fix`) starts a fix workflow.
+- The owner's **"Request changes" review submission** starts a fix workflow: `template/.github/workflows/sdlc-fix.yml` on `pull_request_review` `submitted` with state `changes_requested` on an `sdlc/*` head, actor not the workflow token → `run_phase.py --phase fix` → `/sdlc-fix <id>`. `/sdlc-fix` is extended to gate (a): on an intent PR it applies the comments to `intent.md` without re-running the brainstorm, so `sdlc-plan.md`'s pointer to it becomes true. **[ACCEPTED]**
+
+**Accepted:** "Request changes" starts the fix run (3); the label is not added
+
+**Why:** "Request changes" is already the owner's second verb in GitHub, so no new mechanism is introduced; a review the owner submits starts workflows normally, since only events caused by the workflow token are ignored (NOTES §11a); and it closes the audit's finding that applying the owner's change requests was the one non-autonomous step between gates. The article's loop is the same: "address the comments … babysit the PR to merge" (p.33–34).
+
+**Decide by / reversibility:** B4 REVERSIBLE — provisional
+
+
+## 23. Hosting scope: GitHub only
+
+*Reference: steps 2, 6, 21, 30 · NEW (2026-09-23)*
+
+- Record GitHub hosting as a precondition of "any new project"; `/sdlc-init` refuses a project whose `origin` is not GitHub, with the reason. **[ACCEPTED]**
+- Abstract the hosting layer (Actions, PRs, labels, rulesets, workflow token, check runs, the pinned issue) behind an interface.
+
+**Accepted:** Record it (1)
+
+**Why:** Every piece of plumbing the plan relies on is GitHub-specific — the merge and label triggers, the token identity, the ruleset, the check runs, the digest issue — and the audit found that nothing said so. An abstraction has no consumer today; recording the limit costs one sentence and one check in `/sdlc-init`.
+
+**Decide by / reversibility:** B4 REVERSIBLE — provisional
+
+
+## 24. The owner's un-park verbs are labels
+
+*Reference: steps 5, 9, 16, 19 · NEW (2026-09-23)*
+
+- CLI commands only (as built): `accept-risk`, `set-iterations`, `unlock-tests`, `paused: false` in `sdlc.yaml`.
+- Labels the owner applies on the PR — `sdlc:accept-risk`, `sdlc:reset-iterations`, `sdlc:unlock-tests` — read by the next run and recorded in `status.yaml` with the label's actor; the CLI commands stay for by-hand runs; the pause flag stays in `sdlc.yaml` because pausing is a reviewed change. **[ACCEPTED]**
+
+**Accepted:** Labels (2), CLI kept
+
+**Why:** Point 3 of the objective puts the owner's input in the PR, not in a terminal; GitHub records who applied a label, so the `owner_actions` check can read the actor instead of inferring from the commit author (PROGRESS choice 17), which is the stronger separation-of-duties check (p.34–35, p.41).
+
+**Decide by / reversibility:** B4 REVERSIBLE — provisional
+
+
+## 25. Gate (f) is per-finding triage; closing a PR at (a)–(e) abandons the change
+
+*Reference: steps 9, 39 · NEW (2026-09-23)*
+
+- (f): per-finding triage of each incident intent PR — merge (fix now), label (schedule), close with a reason (dismiss) — is the gate; there is no phase-level sign-off, because maintain is a standing loop and each incident re-enters at gate (a). **[ACCEPTED]**
+- (f): add a periodic sign-off of the maintain loop.
+- Closing a PR at gates (a)–(e) without merging = abandon: `status.yaml: phase: abandoned`, branches kept, every workflow skips the change. **[ACCEPTED]**
+- Leave closing undefined.
+
+**Accepted:** Triage as the gate; close = abandon
+
+**Why:** The article's loop has no end-of-maintain approval; its human point is "the review gate decides" per proposal (p.45). Abandon is cheap to add and prevents orphaned state files and workflows that fire on a closed change.
+
+**Decide by / reversibility:** B4 REVERSIBLE — provisional
+
+
+## 26. Rollback authorization on a declared production (amends 14)
+
+*Reference: steps 37, 39 · NEW (2026-09-23)*
+
+- Keep "Go" for every running-system action (decision 14 as accepted).
+- Allow one notification for a 3σ breach on a declared production.
+- Pre-approve a **rehearsed** rollback on a project with `deploy.production: true` — `maintain.runbooks[].rehearsed_at` recorded in `sdlc.yaml` by the owner after a staging rehearsal; every other running-system action keeps "Go" as a parked item; still no notification. **[ACCEPTED]**
+
+**Accepted:** Pre-approve rehearsed rollback (3)
+
+**Why:** The article has the agent trigger the rollback pipeline itself at 3σ (p.45), and "rehearsed" is its own condition for the pre-approved route (p.49–50: "The rollback was rehearsed in staging this morning"). A "Go" that waits silently in the queue brings back the problem the loop exists to remove — "an alert … can be missed" (p.42) — for exactly the case where minutes matter. Notification is still ruled out (decision 20).
+
+**Decide by / reversibility:** B5 REVERSIBLE — provisional
 
 
 Sticky decisions (2, 6, 7, 8, 10, 19) shape files and conventions every later step writes to.
