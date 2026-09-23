@@ -475,6 +475,24 @@ def test_a_framework_change_may_touch_the_guardrails(project, tmp_path):
     assert run_phase.guardrail_changes(root, change, {}) == []
 
 
+def test_a_nested_guardrail_name_is_not_a_guardrail_change(project, tmp_path):
+    """0.2.10: the branch guard shares the hook's anchored patterns, so a change to the
+    framework repository's template/CLAUDE.md runs; the root CLAUDE.md still parks."""
+    root, change = project
+    with_remote(root, tmp_path)
+    git(root, "checkout", "-q", "-b", "sdlc/0001/c")
+    (root / "template").mkdir()
+    (root / "template" / "CLAUDE.md").write_text("# the product\n", encoding="utf-8")
+    (root / "template" / "sdlc.yaml").write_text("profile: standard\n", encoding="utf-8")
+    git(root, "add", "-A")
+    git(root, "commit", "-q", "-m", "build(0001): the template")
+    assert run_phase.guardrail_changes(root, change, {}) == []
+    (root / "CLAUDE.md").write_text("# rewritten by the run\n", encoding="utf-8")
+    git(root, "add", "-A")
+    git(root, "commit", "-q", "-m", "build(0001): the guardrail")
+    assert run_phase.guardrail_changes(root, change, {}) == ["CLAUDE.md"]
+
+
 def test_full_profile_fails_closed_when_the_label_cannot_be_read(project, monkeypatch):
     """No gh and no token is no route to the label: an unverifiable human gate is not a
     passed human gate, so the run skips instead of proceeding (OPERATING_MODEL 4.2)."""
