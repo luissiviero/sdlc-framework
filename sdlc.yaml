@@ -47,7 +47,7 @@ risk_list:
 # `state/cli.py accept-risk`. Setting `paused: true` stops every run before it starts.
 paused: false
 gate:
-  max_iterations: 3              # fix iterations per phase ("two or three rounds", p.28)
+  max_iterations: 3              # fix iterations per change, one counter across the phases
   max_iterations_non_routine: 2  # when the adversarial reviewer classes the plan non-routine
   max_wall_clock_minutes: 120    # per phase run, from `gate/cli.py start-run`
   max_budget_usd: null           # per change, when the substrate reports spend; null = off
