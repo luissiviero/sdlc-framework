@@ -69,8 +69,10 @@ test_paths:
 {{TEST_PATHS}}
 
 # --- guardrails read by the plugin's hooks (build guide step 15) -----------------------------
-# Always protected, whatever is listed here: .claude/**, CLAUDE.md, REVIEW.md, sdlc.yaml and
-# the plugin's own files. Add generated code, frozen packages, migrations, infra.
+# Always protected, whatever is listed here: .claude/**, CLAUDE.md, REVIEW.md, sdlc.yaml (the
+# copies at the project root) and the plugin's own files. Add generated code, frozen packages,
+# migrations, infra. Entries follow gitignore rules: a bare name matches in any directory,
+# a leading slash anchors it to the project root (e.g. "**/CLAUDE.md" freezes nested copies).
 protected_paths: []
 plan_sync:
   # staged paths matching these globs do not require a plan.md update in phase (c)
