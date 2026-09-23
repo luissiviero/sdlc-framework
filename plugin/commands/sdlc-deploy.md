@@ -15,6 +15,12 @@ only when `sdlc.yaml` declares a real production, B4).
 
 Unattended: never ask the owner; a blocker parks. The owner's merge is the only human
 action in this phase; nothing is deployed here (steps 29 and 32 are B4).
+One shell command per Bash call: an unattended run allows only an explicit list of
+command prefixes (`git *`, `python *` and a few more, per phase: `plugin/ci/run_phase.py`
+and this command's `allowed-tools`), Claude Code checks each part of a chained command
+against that list on its own, and a chain with one part the list does not cover is denied
+whole, so the step it carried is lost (the first `/sdlc-fix` run of 2026-09-23 lost its
+final commit to `cd ... && python ...`).
 
 ## 0. Preconditions
 - Change id `$ARGUMENTS` (or the single change whose `status.phase` is `d` with gate

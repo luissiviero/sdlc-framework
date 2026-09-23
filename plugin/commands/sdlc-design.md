@@ -19,6 +19,12 @@ leaves open becomes a carried-forward question or a flagged concern the owner re
 gate. Never edit intent.md (accepted at gate (a); the gate parks a branch that changes it).
 Never edit source: the only files this phase writes are under `changes/<id>-<slug>/`
 (decision 2; the gate's `design_scope` check parks anything else).
+One shell command per Bash call: an unattended run allows only an explicit list of
+command prefixes (`git *`, `python *` and a few more, per phase: `plugin/ci/run_phase.py`
+and this command's `allowed-tools`), Claude Code checks each part of a chained command
+against that list on its own, and a chain with one part the list does not cover is denied
+whole, so the step it carried is lost (the first `/sdlc-fix` run of 2026-09-23 lost its
+final commit to `cd ... && python ...`).
 
 ## 0. Preconditions
 - `sdlc.yaml` exists at the project root; otherwise stop and say `/sdlc-init` is missing.

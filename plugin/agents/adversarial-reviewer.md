@@ -47,7 +47,8 @@ Then classify the plan (article p.17–18, build guide step 18): **routine** onl
 three hold — a tight spec (no open concern, acceptance measurable), a small blast radius
 (few files, no risk-list item, no schema or contract change), and code the existing tests
 already cover. Otherwise **non-routine**; in a new project almost nothing is routine, and
-that is fine: it only tightens the gate (iteration cap 2), it never interrupts the owner.
+that is fine: it only tightens the gate (`gate.max_iterations_non_routine`, 2 by default),
+it never interrupts the owner.
 
 Verdict: `continue` when you found nothing that would break behavior, leak data, breach a
 policy or leave the plan unfulfilled; `escalate` otherwise, with the reasons a person needs

@@ -2,8 +2,10 @@
 with the partial evidence attached; never a silent stop, never a notification.
 
 Limits (sdlc.yaml ``gate:`` block, all optional; defaults here):
-  - ``max_iterations``: fix iterations per phase (default 3, "two or three rounds", article
-    p.28); the non-routine classification of the adversarial reviewer lowers it to
+  - ``max_iterations``: fix iterations per change, one counter across the phases
+    (OPERATING_MODEL section 4.1; default 3, after the article's "two or three rounds" of
+    the visual check, p.28; one change spends rounds at several gates); the non-routine
+    classification of the adversarial reviewer lowers it to
     ``max_iterations_non_routine`` (default 2), never below 1;
   - ``max_wall_clock_minutes``: elapsed time since the phase run started (default 120);
     the run records its start with ``cli.py start-run``;

@@ -17,6 +17,12 @@ project's own commands and hooks are the guardrails: the protected-path hook den
 `.claude/**`, `CLAUDE.md`, `REVIEW.md`, `sdlc.yaml`; the plan-sync hook denies a commit that
 changes a source file `plan.md` does not list unless `plan.md` is in the same commit; the
 test-file lock denies test edits in a fix after the reproducing test is committed. Never work around a hook; if it blocks the plan, park.
+One shell command per Bash call: an unattended run allows only an explicit list of
+command prefixes (`git *`, `python *` and a few more, per phase: `plugin/ci/run_phase.py`
+and this command's `allowed-tools`), Claude Code checks each part of a chained command
+against that list on its own, and a chain with one part the list does not cover is denied
+whole, so the step it carried is lost (the first `/sdlc-fix` run of 2026-09-23 lost its
+final commit to `cd ... && python ...`).
 
 ## 0. Preconditions and preflight (build guide step 18)
 - `sdlc.yaml` exists; the change id is `$ARGUMENTS` (or the single change whose
