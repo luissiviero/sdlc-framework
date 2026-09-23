@@ -64,7 +64,13 @@ POLICY_SKILLS = (
     "definition-of-done",
 )
 PLUGIN_ID = "sdlc@sdlc-framework"
-REQUIRED_DENY = ("Edit(.claude/**)", "Edit(CLAUDE.md)", "Edit(REVIEW.md)", "Edit(sdlc.yaml)")
+REQUIRED_DENY = ("Edit(/.claude/**)", "Edit(/CLAUDE.md)", "Edit(/REVIEW.md)", "Edit(/sdlc.yaml)")
+
+
+def has_deny_rule(deny: list[str], rule: str) -> bool:
+    """The anchored spelling, or the bare one a project installed before the anchoring
+    still carries (``Edit(CLAUDE.md)`` matches the root file too, plus nested copies)."""
+    return rule in deny or rule.replace("(/", "(", 1) in deny
 ALLOW_MODE = "acceptEdits"
 REFUSE_MODE = "default"
 
@@ -210,7 +216,7 @@ def check_settings(root: Path) -> CheckResult:
         problems.append("permissions.disableBypassPermissionsMode is not 'disable'")
     deny = perms.get("deny") or []
     for rule in REQUIRED_DENY:
-        if rule not in deny:
+        if not has_deny_rule(deny, rule):
             problems.append(f"deny rule {rule} missing")
     if not (data.get("enabledPlugins") or {}).get(PLUGIN_ID):
         problems.append(f"enabledPlugins does not enable {PLUGIN_ID}")

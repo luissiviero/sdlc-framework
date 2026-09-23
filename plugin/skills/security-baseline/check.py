@@ -30,7 +30,7 @@ DANGEROUS = (
         "SQL built by string formatting",
     ),
 )
-REQUIRED_DENY = ("Read(.env*)", "Edit(.claude/**)", "Edit(CLAUDE.md)", "Edit(sdlc.yaml)")
+REQUIRED_DENY = ("Read(.env*)", "Edit(/.claude/**)", "Edit(/CLAUDE.md)", "Edit(/sdlc.yaml)")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -61,7 +61,8 @@ def main(argv: list[str] | None = None) -> int:
         except ValueError:
             deny = []
         for rule in REQUIRED_DENY:
-            if rule not in deny:
+            # the anchored spelling, or the bare one of a project installed before it
+            if rule not in deny and rule.replace("(/", "(", 1) not in deny:
                 findings.append(f".claude/settings.json lacks the deny rule {rule}")
     else:
         findings.append(".claude/settings.json is missing (run /sdlc-init)")
