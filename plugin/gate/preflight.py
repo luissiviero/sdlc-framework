@@ -71,6 +71,8 @@ def has_deny_rule(deny: list[str], rule: str) -> bool:
     """The anchored spelling, or the bare one a project installed before the anchoring
     still carries (``Edit(CLAUDE.md)`` matches the root file too, plus nested copies)."""
     return rule in deny or rule.replace("(/", "(", 1) in deny
+
+
 ALLOW_MODE = "acceptEdits"
 REFUSE_MODE = "default"
 

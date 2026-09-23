@@ -457,7 +457,7 @@ ARTICLE = taken from the playbook as written · ADAPTED = article concept re-sha
 - p.28 — Feedback loop › step 5
 - p.25 — Parallel sessions › step 3
 
-**Implementation notes.** Add to the gate of step 16: max fix iterations per phase (3, matching 'two or three rounds'), a wall-clock timeout per run, a per-change usage budget where the substrate exposes one (step 3), and a repo-level pause flag checked before every run. Use the CLI's own bounds for non-interactive runs as the outer limits: --max-turns and --max-budget-usd (print mode; sub-agent spend counts toward the cap; both from sdlc.yaml: gate, passed by plugin/ci/run_phase.py — Claude Code CLI reference, not the article). On any limit → park with the partial evidence attached (step 16); never stop silently, never notify. [ADDED]
+**Implementation notes.** Add to the gate of step 16: max fix iterations per change (3 by default, 2 when non-routine; one counter across the phases, OPERATING_MODEL §4.1; the article's 'two or three rounds', p.28, describes the visual-check loop, not a cap), a wall-clock timeout per run, a per-change usage budget where the substrate exposes one (step 3), and a repo-level pause flag checked before every run. Use the CLI's own bounds for non-interactive runs as the outer limits: --max-turns and --max-budget-usd (print mode; sub-agent spend counts toward the cap; both from sdlc.yaml: gate, passed by plugin/ci/run_phase.py — Claude Code CLI reference, not the article). On any limit → park with the partial evidence attached (step 16); never stop silently, never notify. [ADDED]
 
 
 #### Step 20 — Policy skills (coding standards, security, UX, data conventions, definition of done) and the skill update rule

@@ -582,6 +582,25 @@ https://code.claude.com/docs/en/sandboxing, https://code.claude.com/docs/en/agen
 - `--permission-prompts none` (cli-reference): `none` means nobody can answer, Claude Code
   denies prompts instead; "Requires Claude Code v2.1.259 or later." The framework's minimum
   Claude Code version is therefore **2.1.278**, the CLI the workflows install.
+- Headless runs and chained commands (observed 2026-09-23, the first `/sdlc-fix` run, launched
+  by hand from the owner's PC with `claude -p "/sdlc:sdlc-fix 0001" --plugin-dir ...
+  --permission-prompts none --allowedTools "Read,Grep,Glob,Edit,Write,Agent,Bash(git *),
+  Bash(gh *),Bash(python *)"`): the permissions reference
+  (https://code.claude.com/docs/en/permissions) splits a compound command at `&&`, `||`, `;`,
+  `|`, `|&`, `&` and newlines and requires a rule to "match each subcommand independently", so a chain
+  passes only when every part passes; it also lists `cd` among the built-in read-only
+  commands that need no rule, but only for a target inside the working directory or an
+  additional directory (a `cd` elsewhere prompts, and `--permission-prompts none` turns a
+  prompt into a denial); the session's `cd ... && python ...` calls were denied whole, its final `commit-phase --push` and `pr/cli.py upsert` were lost that way, and
+  `permission_denials` lists five such calls. Whatever the exact trigger, the safe rule for
+  an unattended run is one command per Bash call. In CI, `run_phase.py` passes its own per-phase
+  lists (`DESIGN_ALLOWED_TOOLS`, `IMPLEMENT_ALLOWED_TOOLS`, `REVIEW_ALLOWED_TOOLS`; the flag
+  itself in section 11b: `python *` and `git *` for (b); `git *`, `gh *`, `python *`, `python3 *`,
+  `pytest *`, `ruff *`, `npm *`, `npx *`, `node *` for (c), (d), (e); `git *` for the review
+  pass), so the same rule holds there, and its deterministic tail (`ensure_pr`,
+  `commit_run_record`) runs outside the model's session, which is why the CI build run of
+  2026-09-22 did not suffer. Every unattended command now says "one shell command per Bash
+  call".
 
 ## 12. The always-protected patterns are anchored to the project root (plugin 0.2.10, 2026-09-23)
 

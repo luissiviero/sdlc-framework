@@ -240,6 +240,15 @@ def test_sdlc_design_flow_matches_steps_22_23():
     assert positions == sorted(positions), "the spec sections are not named in order"
 
 
+def test_every_unattended_command_states_the_one_command_rule():
+    """The first /sdlc-fix run of 2026-09-23 chained `cd ... && python ...` and was denied
+    its last step: a headless run allows only an explicit list of command prefixes, per phase
+    (plugin/ci/run_phase.py, the command's allowed-tools), and a chain is allowed only when
+    every part of it matches one of them, so the prose says one shell command per Bash call."""
+    for name in ("sdlc-design", "sdlc-build", "sdlc-test", "sdlc-deploy", "sdlc-fix"):
+        assert "One shell command per Bash call" in flat(COMMANDS / f"{name}.md"), name
+
+
 def test_sdlc_build_flow_matches_step_24():
     text = flat(COMMANDS / "sdlc-build.md")
     for token in [

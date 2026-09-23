@@ -653,7 +653,7 @@
       "phase": "cross-cutting",
       "importance": 4,
       "why": "A loop that fixes its own failures can also loop forever; the article's gates bound what the agent may do, not how long or how much it may try.",
-      "comments": "Add to the gate of step 16: max fix iterations per phase (3, matching 'two or three rounds'), a wall-clock timeout per run, a per-change usage budget where the substrate exposes one (step 3), and a repo-level pause flag checked before every run. Use the CLI's own bounds for non-interactive runs as the outer limits: --max-turns and --max-budget-usd (print mode; sub-agent spend counts toward the cap; both from sdlc.yaml: gate, passed by plugin/ci/run_phase.py — Claude Code CLI reference, not the article). On any limit → park with the partial evidence attached (step 16); never stop silently, never notify. [ADDED]"
+      "comments": "Add to the gate of step 16: max fix iterations per change (3 by default, 2 when non-routine; one counter across the phases, OPERATING_MODEL §4.1; the article's 'two or three rounds', p.28, describes the visual-check loop, not a cap), a wall-clock timeout per run, a per-change usage budget where the substrate exposes one (step 3), and a repo-level pause flag checked before every run. Use the CLI's own bounds for non-interactive runs as the outer limits: --max-turns and --max-budget-usd (print mode; sub-agent spend counts toward the cap; both from sdlc.yaml: gate, passed by plugin/ci/run_phase.py — Claude Code CLI reference, not the article). On any limit → park with the partial evidence attached (step 16); never stop silently, never notify. [ADDED]"
     },
     {
       "id": "20",

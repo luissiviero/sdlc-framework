@@ -367,6 +367,15 @@ def test_limits_iteration_cap_default_and_non_routine(tmp_path):
     assert limits.check_limits(ctx).ok
 
 
+def test_the_cap_is_described_as_per_change_everywhere():
+    """sdlc.yaml's comment said "per phase" while the contract (OPERATING_MODEL section 4.1)
+    and the code count per change; a session took the comment at its word (2026-09-23)."""
+    for rel in ("template/sdlc.yaml", "plugin/gate/limits.py", "docs/BUILD_GUIDE.md"):
+        text = (ROOT / rel).read_text(encoding="utf-8")
+        assert "fix iterations per change" in text, rel
+        assert "iterations per phase" not in text, rel
+
+
 def test_limits_wall_clock_and_budget(tmp_path):
     ctx = _ctx(tmp_path, {"gate": {"max_wall_clock_minutes": 30, "max_budget_usd": 2}})
     started = datetime.now(timezone.utc) - timedelta(minutes=45)
