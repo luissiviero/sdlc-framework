@@ -40,10 +40,12 @@ writing (2026-09-21); where the owner says "Opus 5.1", read "the current Opus".
     session is already "capped at Opus"), and a definition's `model` field, "including
     `inherit`", outranks it. The four
     plugin agents already say `model: inherit`, so in a session that loads the plugin
-    (`--plugin-dir`, or a project session) they would still run on Fable. This repo has no
-    `.claude/` directory and does not load its own plugin, so build sessions are not
-    affected; they use the built-in general-purpose sub-agent with `opus` named per
-    invocation. `CLAUDE_CODE_SUBAGENT_MODEL_FORCE=1` (v2.1.257 or later) is the documented
+    (`--plugin-dir`, or a project session) they would still run on Fable. Since PR #21
+    (2026-09-22, the framework's own `/sdlc-init` on this repository) this repo has a
+    `.claude/settings.json` that declares the plugin, so build sessions here do load it;
+    that changes nothing for the model rule as long as delegated work uses the built-in
+    general-purpose sub-agent with `opus` named per invocation and never the plugin's
+    `adversarial-reviewer`, whose `model: inherit` would run on Fable. `CLAUDE_CODE_SUBAGENT_MODEL_FORCE=1` (v2.1.257 or later) is the documented
     way to override every definition, plugin agents included; it also stops Claude passing
     a model per invocation, so use it only in a session where every sub-agent should be
     Opus, and never commit it.
