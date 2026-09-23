@@ -35,7 +35,7 @@ Set per project in `sdlc.yaml` by `/sdlc-init`; overridable per change in `chang
 |---|---|---|---|
 | **Standard** (default) | (a) merge intent PR · (b) merge spec+plan PR · (e) merge build PR | (c), (d) | most projects |
 | **Full** | (a), (b), (c) review + label, (d) review + label, (e) merge (+ release label) | — | live production, money at stake |
-| **Lite** | (a) merge intent PR · (e) merge build PR | (b), (c), (d) | scripts, experiments, docs |
+| **Lite** (withdrawn, decision 21) | (a) merge intent PR · (e) merge build PR | (b), (c), (d) | do not choose it for a new project; still offered by `/sdlc-init` and in the code until step 16a ships and removes it |
 
 Automated gates are passed by the **confidence gate** (`plugin/gate/`, session 2): deterministic checks (artifact matches its template; no open flagged concern in `spec.md`; tests, build, lint green; evidence present; no Important review findings; `plan.md` ↔ diff consistent; no diff touching `.claude/**`, `CLAUDE.md`, `REVIEW.md`, `sdlc.yaml` unless the change is the framework itself — `intent.md` says `Framework change: yes`; no risk-list hit the owner has not accepted; run limits) followed by the adversarial reviewer agent's verdict, written in a fresh context as `evidence/adversarial-review-<phase>.json`: *continue* or *escalate* (= park), required at (b), (c) and (d) in every profile. The gate judges committed work against what the owner approved: the intent as merged at gate (a), `sdlc.yaml` as on the base branch when the diff changes it, HEAD rather than the working tree. The same checks run at a human gate: all green → the run stops with `sdlc:<phase>-ready`; a failed check parks there too.
 
@@ -105,7 +105,7 @@ The queue is the PR list filtered by `sdlc:*-ready` (a run stopped at a human ga
 
 ## 9. Phase adapters (per project, in `sdlc.yaml`)
 
-- `profile`: standard | full | lite
+- `profile`: standard | full | lite (lite withdrawn, decision 21; in the code until step 16a)
 - `commands.build` / `commands.test` / `commands.lint`: the one-command targets that exit non-zero on failure (detected or created by `/sdlc-init`); the framework refuses to enter phase (c) without them
 - `protected_paths`: the project's own frozen paths, added to the always-protected set
 - `risk_list`: touching any item parks the change at its next gate (default: auth, data migrations, money movement, production config)
@@ -117,3 +117,14 @@ The queue is the PR list filtered by `sdlc:*-ready` (a run stopped at a human ga
 - `deploy.production`: true/false — turns on the release label and the production-gate hook
 - `maintain.metric` and `maintain.source`: the watched metric and where the detection script reads it (default for every new project: CI test failure rate from the CI API)
 - `maintain.runbooks`: each with `authorization: preapproved | go` — CI-scoped reversible actions are pre-approved; anything touching a running system waits for the owner's "Go" (as a parked item)
+
+## 10. Adopted on 2026-09-23, not yet built (decisions 21–26, provisional until PR #22 merges)
+
+| Decision | What changes in this model when it ships | Lands in |
+|---|---|---|
+| 21 Deferred review | `sdlc.yaml: review: deferred` (per-change override). Inside a phase, a judgment item from a fixed list (open flagged concern, contradicting policies, the adversarial reviewer's escalate verdict, undeterminable Important finding, verifier disagreement) goes to a review panel — reviewer and devil's advocate in blind fresh contexts, a conciliator that decides — and the run continues; every decision is a ledger line in `evidence/decisions-<phase>.md` and the PR summary opens with "Decisions taken for you (N)". The hard parks (risk-list hit, guardrail file change, run limit, infrastructure failure, merge to main, deploy) are unchanged; §6's "a confidence gate fails" then excludes the fixed-list items. The Lite profile is removed. | step 16a, B4 |
+| 22 Fix trigger | The owner's "Request changes" review submission starts `sdlc-fix.yml` → `/sdlc-fix <id>`; `/sdlc-fix` covers gate (a). §5 then needs no owner-launched command. §4.1's "nothing in a run edits intent.md" and §8's "interactively" gain one exception: `/sdlc-fix` on the unmerged intent PR. | step 8, B4 |
+| 23 GitHub only | `/sdlc-init` refuses a project whose origin is not GitHub; §1 "any project" reads "any GitHub-hosted project". | step 21, B4 |
+| 24 Labels as un-park verbs | `sdlc:accept-risk`, `sdlc:reset-iterations`, `sdlc:unlock-tests` applied by the owner on the PR, recorded with the label's actor; the CLI commands of §6 and §8 stay for by-hand runs. | steps 9, 16, B4 |
+| 25 Triage and abandon | Gate (f) is per-finding triage only (§4 row (f) is complete as written); closing a PR at (a)–(e) without merging sets `status.yaml: phase: abandoned` and every workflow skips the change. | steps 9, 39, B4 |
+| 26 Rehearsed rollback | On `deploy.production: true`, a rollback runbook with `rehearsed_at` set by the owner is pre-approved; everything else that touches a running system keeps `authorization: go` (§9). Still no notification. | step 37, B5 |
