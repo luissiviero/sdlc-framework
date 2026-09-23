@@ -2,7 +2,7 @@
 
 Companion to `BUILD_GUIDE.md`. Step numbers refer to that guide. The accepted alternative is marked **[ACCEPTED]**.
 
-Decisions 21–26 were added on 2026-09-23 after the plan was audited against the owner's original objective and the article (session record: PR #22). They are **provisional**: the mechanism of 21 is the owner's, the rest are the session's suggestions adopted on the owner's instruction to proceed; the owner confirms them by merging PR #22 or overturns any by editing it there.
+Decisions 21–26 were added on 2026-09-23 after the plan was audited against the owner's original objective and the article (session record: PR #22). The mechanism of 21 is the owner's, the rest are the session's suggestions adopted on the owner's instruction to proceed; all six were **confirmed on 2026-09-23** by the owner's merge of PR #22.
 
 
 ## 1. Where unattended claude -p runs execute and how they authenticate
@@ -327,7 +327,7 @@ Decisions 21–26 were added on 2026-09-23 after the plan was audited against th
 
 **Why:** The owner's account of the live runs: the commit → workflow → review rounds inside one phase are so many that the changes stop being read carefully; one review per phase, everything at once, is what point 3 of the objective ("my input at the end of each step") meant. The article's own end state is the same mechanism — "an independent confidence gate between stages, a deterministic check or an adversarial reviewing agent, deciding whether the previous stage's output continues or is escalated to a human" (p.42) — applied here to the parks inside a phase, while the human gate at the end of (b) is kept, so p.14 and p.15 hold. Human accountability (p.6) is kept by the decisions ledger: nothing is decided without a line the owner reads. A panel reduces variance, not bias — three judges on one model share its blind spots — so the devil's advocate runs on a different model than the reviewer (`--model` on its `claude -p` run, or the agent's `model` frontmatter when it runs as a sub-agent; NOTES §11b, §11c), and the panel is reserved for the fixed list, never for deterministic checks. Cost: three fresh runs per panel call, bounded by `gate.max_budget_usd`. A wrong panel decision at (b) yields a spec the owner still reads before anything is built, the cheapest place to be wrong; inside (c)–(e) the framework already runs unattended and the hard parks stay.
 
-**Decide by / reversibility:** B4 (step 16a) REVERSIBLE — provisional (see the note at the top)
+**Decide by / reversibility:** B4 (step 16a) REVERSIBLE — confirmed on 2026-09-23
 
 
 ## 22. How "ask for changes" runs by itself
@@ -342,7 +342,7 @@ Decisions 21–26 were added on 2026-09-23 after the plan was audited against th
 
 **Why:** "Request changes" is already the owner's second verb in GitHub, so no new mechanism is introduced; a review the owner submits starts workflows normally, since only events caused by the workflow token are ignored (NOTES §11a); and it closes the audit's finding that applying the owner's change requests was the one non-autonomous step between gates. The article's loop is the same: "Claude addresses the comment and pushes the fix" (p.33) and "let Claude babysit the PR to merge" (p.34). One exception to OPERATING_MODEL §4.1 ("nothing in a run edits intent.md") and §8 ("interactively") follows: `/sdlc-fix` on the unmerged intent PR edits `intent.md` from the owner's comments.
 
-**Decide by / reversibility:** B4 REVERSIBLE — provisional
+**Decide by / reversibility:** B4 REVERSIBLE — confirmed on 2026-09-23
 
 
 ## 23. Hosting scope: GitHub only
@@ -356,7 +356,7 @@ Decisions 21–26 were added on 2026-09-23 after the plan was audited against th
 
 **Why:** Every piece of plumbing the plan relies on is GitHub-specific — the merge and label triggers, the token identity, the ruleset, the check runs, the digest issue — and the audit found that nothing said so. An abstraction has no consumer today; recording the limit costs one sentence and one check in `/sdlc-init`.
 
-**Decide by / reversibility:** B4 REVERSIBLE — provisional
+**Decide by / reversibility:** B4 REVERSIBLE — confirmed on 2026-09-23
 
 
 ## 24. The owner's un-park verbs are labels
@@ -370,7 +370,7 @@ Decisions 21–26 were added on 2026-09-23 after the plan was audited against th
 
 **Why:** Point 3 of the objective puts the owner's input in the PR, not in a terminal; GitHub records who applied a label, so the `owner_actions` check can read the actor instead of inferring from the commit author (PROGRESS choice 17), which is the stronger separation-of-duties check (p.34–35, p.41).
 
-**Decide by / reversibility:** B4 REVERSIBLE — provisional
+**Decide by / reversibility:** B4 REVERSIBLE — confirmed on 2026-09-23
 
 
 ## 25. Gate (f) is per-finding triage; closing a PR at (a)–(e) abandons the change
@@ -386,7 +386,7 @@ Decisions 21–26 were added on 2026-09-23 after the plan was audited against th
 
 **Why:** The article's loop has no end-of-maintain approval; its human point is "the review gate decides" per proposal (p.45). Abandon is cheap to add and prevents orphaned state files and workflows that fire on a closed change.
 
-**Decide by / reversibility:** B4 REVERSIBLE — provisional
+**Decide by / reversibility:** B4 REVERSIBLE — confirmed on 2026-09-23
 
 
 ## 26. Rollback authorization on a declared production (amends 14)
@@ -401,7 +401,7 @@ Decisions 21–26 were added on 2026-09-23 after the plan was audited against th
 
 **Why:** The article has the agent trigger the rollback pipeline itself at 3σ (p.45), and the p.49 figure makes a rehearsal the precondition Claude states before asking for "Go" ("The rollback was rehearsed in staging this morning; shall I run it?"); this decision goes one step further than the article by dropping the "Go" for that case, with p.45 as the precedent. A "Go" that waits silently in the queue brings back the problem the loop exists to remove — "an alert … can be missed" (p.42) — for exactly the case where minutes matter. Notification is still ruled out (decision 20).
 
-**Decide by / reversibility:** B5 REVERSIBLE — provisional
+**Decide by / reversibility:** B5 REVERSIBLE — confirmed on 2026-09-23
 
 
 Sticky decisions (2, 6, 7, 8, 10, 19) shape files and conventions every later step writes to.

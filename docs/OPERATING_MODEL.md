@@ -118,7 +118,7 @@ The queue is the PR list filtered by `sdlc:*-ready` (a run stopped at a human ga
 - `maintain.metric` and `maintain.source`: the watched metric and where the detection script reads it (default for every new project: CI test failure rate from the CI API)
 - `maintain.runbooks`: each with `authorization: preapproved | go` — CI-scoped reversible actions are pre-approved; anything touching a running system waits for the owner's "Go" (as a parked item)
 
-## 10. Adopted on 2026-09-23, not yet built (decisions 21–26, provisional until PR #22 merges)
+## 10. Adopted on 2026-09-23, not yet built (decisions 21–26, confirmed on 2026-09-23 by the merge of PR #22)
 
 | Decision | What changes in this model when it ships | Lands in |
 |---|---|---|

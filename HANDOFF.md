@@ -11,7 +11,7 @@ Session 3's brief is kept at `docs/handoffs/session-3-B3.md`; its result is on `
 
 ## Read in this order
 1. `docs/OPERATING_MODEL.md` — the contract; §4.1 (phase composition) and §4.2 (workflow trigger table) were added in session 3 and are what B4 extends with the deploy transition.
-2. `docs/DECISIONS.md` — 20 settled decisions plus 21–26 (provisional until PR #22 merges). Do not reopen them; B4 executes decision 13 (gate (e) = merge, plus a release label only when `sdlc.yaml` declares a real production) and decision 19 (what deploy means for non-service projects), and touches decision 7 (no third-party runtime dependency) in 31.1.
+2. `docs/DECISIONS.md` — 20 settled decisions plus 21–26 (confirmed on 2026-09-23 by the merge of PR #22). Do not reopen them; B4 executes decision 13 (gate (e) = merge, plus a release label only when `sdlc.yaml` declares a real production) and decision 19 (what deploy means for non-service projects), and touches decision 7 (no third-party runtime dependency) in 31.1.
 3. `docs/PROGRESS.md` — what exists after session 3, the choices made, the live checks owed, and the B4 list.
 4. `docs/NOTES.md` — platform facts; §11 (session 3: GitHub Actions facts with quotes, the Claude Code flags `run_phase.py` uses, the sandbox on runners, the sub-agent model facts). Re-verify a fact only if the minimum Claude Code version (2.1.278) changes.
 5. `docs/BUILD_GUIDE.md` — steps 29, 31, 32 (B4) and, for the interfaces B4 must leave ready, steps 33–43 (B5).
