@@ -410,7 +410,10 @@ def release_note(change_dir: Path, intent: str) -> str:
 
 def _counters_line(st: Status) -> str:
     first_pass = "yes" if st.iterations == 0 else "no"
-    return f"Counters: first-pass merge: {first_pass} · fix iterations: {st.iterations}"
+    line = f"Counters: first-pass merge: {first_pass} · fix iterations: {st.iterations}"
+    if st.panel_calls:  # decision 21: the panel's calls are not fix rounds
+        line += f" · panel calls: {st.panel_calls}"
+    return line
 
 
 def build_description(root: Path, change_id: str, phase: str) -> str:

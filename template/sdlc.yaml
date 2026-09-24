@@ -21,7 +21,7 @@ profile: {{PROFILE}}
 #           human gate, and a review comment on any of them overturns it (/sdlc-fix). What
 #           never goes to the panel and still parks: a risk-list hit, a guardrail file change,
 #           a run limit, an infrastructure failure, a merge to main, a deploy. Each panel call
-#           counts as one iteration against gate.max_iterations. Per-change override:
+#           counts against gate.max_panel_calls, not the fix iterations. Per-change override:
 #           status.yaml: review_override.
 review: {{REVIEW}}
 # the model alias of the devil's advocate (a panel reduces variance, not bias: three judges
@@ -92,6 +92,7 @@ paused: false
 gate:
   max_iterations: 3              # fix iterations per change, one counter across the phases
   max_iterations_non_routine: 2  # when the adversarial reviewer classes the plan non-routine
+  max_panel_calls: 4             # panel calls per change under deferred review; not fix iterations
   max_wall_clock_minutes: 120    # per phase run, from `gate/cli.py start-run`
   max_budget_usd: null           # per change, when the substrate reports spend; null = off
   command_timeout: 900           # seconds per build/test/lint command run by the gate

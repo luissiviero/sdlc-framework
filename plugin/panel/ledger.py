@@ -25,7 +25,8 @@ An entry::
 Kinds — the fixed list of what may go to the panel (nothing else ever does):
 
 - ``concern``: an open flagged concern in ``spec.md`` (the decision closes it: the item is
-  rewritten to start with ``decided (by panel): <decision> — <original>``);
+  rewritten to start with ``decided (by panel #<n>): <decision> — <original>``, ``n`` the
+  ledger line, which is what the gate matches — the wording after it may be tidied);
 - ``policy``: a concern that names contradicting policy skills (closed the same way);
 - ``escalate``: an ``escalate`` verdict of the adversarial reviewer (keyed by its reasons;
   the gate's ``adversarial_review`` check reads the entry);
@@ -80,7 +81,10 @@ NEVER_TO_PANEL = (
     "panel",
 )
 RATIONALE_MAX_LINES = 5
-PANEL_CLOSING = "decided (by panel):"  # the closing word first: the gate reads "decided"
+# The closing word first: the gate's ``open_concerns`` check reads "decided". ``#<n>`` names
+# the ledger line (0.2.15); the form without it is what 0.2.14 wrote and is still read.
+PANEL_CLOSING = "decided (by panel):"
+PANEL_CLOSING_RE = re.compile(r"(?i)^decided \(by panel(?: #(?P<n>\d+))?\):\s*")
 POLICY_RE = re.compile(
     r"(?i)\b(contradict\w*|conflict\w*)\b.*\b(polic\w*|skill\w*)\b|\bpolic\w*.*\b(contradict\w*|conflict\w*)\b"
 )
@@ -118,6 +122,42 @@ VERIFIER_KEY = "verifier:mismatch"
 
 def kind_of_concern(text: str) -> str:
     return "policy" if POLICY_RE.search(text) else "concern"
+
+
+def closing_marker(n: int) -> str:
+    return f"decided (by panel #{int(n)}):"
+
+
+def _norm(text: str) -> str:
+    """Words only, for the item-text match: the conciliator restates the item without its
+    backticks or quotes."""
+    return " ".join(re.sub(r"[`*_\"']", "", str(text or "")).split()).lower()
+
+
+def clean_decision(decision: str, item: str) -> str:
+    """The conciliator's decision line as the run applies it: one line, without a closing
+    prefix it copied from the brief and without the item's text appended after an em dash
+    (the first deferred run, sample change 0002, wrote ``decided (by panel): X — <the
+    concern>`` into ``decision`` and the spec read ``decided (by panel): decided (by panel):
+    X — ... — ...``). The item's text is recognised by its first forty characters."""
+    text = " ".join(str(decision or "").split())
+    while True:
+        m = PANEL_CLOSING_RE.match(text)
+        if not m:
+            break
+        text = text[m.end() :].strip()
+    item_head = _norm(item)[:40]
+    while " — " in text:
+        head, _sep, tail = text.rpartition(" — ")
+        tail_norm = _norm(tail)
+        if item_head and (
+            tail_norm.startswith(item_head)
+            or (len(tail_norm) >= 20 and item_head.startswith(tail_norm))
+        ):
+            text = head.strip()
+            continue
+        break
+    return text
 
 
 # --- paths --------------------------------------------------------------------------------------
@@ -283,21 +323,33 @@ def render_md(phase: str, entries: list[dict[str, Any]]) -> str:
 
 
 # --- applying a decision to spec.md ---------------------------------------------------------
-def panel_closed_concerns(spec_text: str) -> list[str]:
-    """The concern items ``apply_decision`` closed (they start with ``decided (by panel):``)."""
+def panel_closings(spec_text: str) -> list[tuple[int | None, str]]:
+    """The concern items ``apply_decision`` closed: ``(n, text)`` per item, ``n`` the ledger
+    line the closing names (``decided (by panel #n):``) or None for the 0.2.14 form."""
     body = art.split_sections(spec_text or "").get(art.CONCERNS_SECTION, "")
-    out: list[str] = []
+    out: list[tuple[int | None, str]] = []
     for line in body.splitlines():
         m = art.CONCERN_ITEM_RE.match(line)
-        if m and m.group("text").strip().lower().startswith(PANEL_CLOSING):
-            out.append(m.group("text").strip())
+        if not m:
+            continue
+        text = m.group("text").strip()
+        closing = PANEL_CLOSING_RE.match(text)
+        if closing:
+            n = closing.group("n")
+            out.append((int(n) if n else None, text))
     return out
+
+
+def panel_closed_concerns(spec_text: str) -> list[str]:
+    """The concern items ``apply_decision`` closed, as text."""
+    return [text for _n, text in panel_closings(spec_text)]
 
 
 def apply_decision(change_dir: Path, entry: dict[str, Any]) -> bool:
     """Close the concern the entry decides in ``spec.md``: the item is rewritten to
-    ``decided (by panel): <decision> — <original text>`` so the gate's ``open_concerns``
-    check reads it as closed and the owner sees what was decided and what the concern was.
+    ``decided (by panel #<n>): <decision> — <original text>`` so the gate's ``open_concerns``
+    check reads it as closed, the ``panel`` check finds the ledger line by ``n`` however the
+    words are tidied later, and the owner sees what was decided and what the concern was.
     True when an open item with the entry's key was found and rewritten; False otherwise
     (the entry is for another kind, or the concern is already closed)."""
     if entry.get("kind") not in ("concern", "policy"):
@@ -322,7 +374,7 @@ def apply_decision(change_dir: Path, entry: dict[str, Any]) -> bool:
             if is_open and concern_key(item) == entry.get("key"):
                 marker = line[: line.index(m.group("text"))]
                 decision = " ".join(str(entry.get("decision", "")).split())
-                line = f"{marker}{PANEL_CLOSING} {decision} — {item}"
+                line = f"{marker}{closing_marker(int(entry.get('n', 0)))} {decision} — {item}"
                 done = True
         out.append(line)
     if done:
@@ -355,7 +407,7 @@ def new_entry(
         "item": " ".join(str(item.get("item", "")).split()),
         "reviewer": " ".join(str(decision.get("reviewer", "")).split()),
         "advocate": " ".join(str(decision.get("advocate", "")).split()),
-        "decision": " ".join(str(decision.get("decision", "")).split()),
+        "decision": clean_decision(str(decision.get("decision", "")), str(item.get("item", ""))),
         "rationale": [" ".join(str(line).split()) for line in rationale],
         "cost_usd": cost_usd,
         "head": head,

@@ -116,6 +116,8 @@ def cmd_set_iterations(args) -> int:
     if change_dir is None:
         return 2
     st.iterations = int(args.count)
+    if args.panel_calls is not None:
+        st.panel_calls = int(args.panel_calls)  # decision 21: the panel's own count
     st.touch()
     status_mod.write_status(change_dir, st)
     _emit(st.to_dict())
@@ -245,6 +247,7 @@ def build_parser() -> argparse.ArgumentParser:
     si.add_argument("--root", default=".")
     si.add_argument("--id", required=True)
     si.add_argument("--count", required=True, type=int)
+    si.add_argument("--panel-calls", default=None, type=int, help="also set the panel-call count")
     si.set_defaults(fn=cmd_set_iterations)
 
     sh = sub.add_parser(

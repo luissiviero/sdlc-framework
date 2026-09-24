@@ -127,7 +127,7 @@ a risk-list item, or decide anything outside this item (those park for the owner
 {{
   "reviewer": "<the reviewer's verdict in one clause>",
   "advocate": "<the devil's advocate's verdict in one clause>",
-  "decision": "<one line the run applies>",
+  "decision": "<one line: the decision alone — no 'decided' prefix, no restatement of the item>",
   "rationale": ["<line 1>", "<line 2>", "<at most five lines>"]
 }}
 ```
@@ -137,8 +137,9 @@ Then reply with the decision line only. Never ask a question; never edit any oth
 
 APPLY_HINT = {
     "concern": (
-        "the wording that closes this flagged concern in spec.md (the run rewrites the "
-        "item to 'decided (by panel): <your decision> — <the concern>')."
+        "what the design does about this flagged concern, in one line: the decision alone. "
+        "The run closes the item in spec.md with it and keeps the concern's text beside it, "
+        "so do not repeat the concern and do not add any 'decided' prefix."
     ),
     "policy": (
         "which policy reading wins for this concern and what the design does about the "

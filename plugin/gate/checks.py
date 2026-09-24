@@ -988,13 +988,23 @@ def check_panel(ctx: GateContext) -> CheckResult:
             f"the ledger has {len(entries)} decision(s) but the review mode is {ctx.review_mode}"
         )
     standing = ledger.active(entries)
+    # a closing names its ledger line (``decided (by panel #n):``, 0.2.15), so the words after
+    # it may be tidied; the 0.2.14 form without the number is matched on the decision text
+    by_n = {e.get("n"): e for e in entries if e.get("kind") in ("concern", "policy")}
     concern_decisions = {
         " ".join(str(e.get("decision", "")).split()).lower()
         for e in standing
         if e.get("kind") in ("concern", "policy")
     }
-    for item in closed_by_panel:
-        text = item[len(ledger.PANEL_CLOSING) :].strip().lower()
+    for n, item in ledger.panel_closings(spec):
+        if n is not None:
+            if n not in by_n:
+                problems.append(
+                    f"spec.md closes a concern by panel decision {n}, which the ledger lacks: "
+                    f"{item[:80]}"
+                )
+            continue
+        text = ledger.PANEL_CLOSING_RE.sub("", item, count=1).strip().lower()
         if not any(text.startswith(d) for d in concern_decisions if d):
             problems.append(
                 f"spec.md closes a concern by the panel with no ledger line: {item[:80]}"

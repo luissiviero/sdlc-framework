@@ -769,8 +769,8 @@ def test_a_pr_closed_without_a_merge_abandons_the_change_and_every_run_skips_it(
 def test_under_deferred_review_the_panel_closes_the_concern_and_the_pr_says_so(checkout, tmp_path):
     """The design run leaves one open concern. Under review: parked it parks (the third
     test above). Under review: deferred the run puts it to the panel, records the decision,
-    commits, re-runs the verdict, and the gate waits for the owner with the decision at the
-    top of the PR body; one iteration was spent."""
+    commits (``record`` does), re-runs the verdict, and the gate waits for the owner with
+    the decision at the top of the PR body; one panel call was spent, no fix iteration."""
     root, bare = checkout
     change = root / CHANGE
     st = status_mod.read_status(change)
@@ -784,7 +784,7 @@ def test_under_deferred_review_the_panel_closes_the_concern_and_the_pr_says_so(c
     assert proc.returncode == 0, proc.stdout + proc.stderr
     assert out["result"] == "wait" and out["label"] == "sdlc:b-ready"
     spec = remote_file(bare, "sdlc/0001/b", f"{CHANGE}/spec.md")
-    assert "- decided (by panel): keep half-up rounding via round() — Rounding" in spec
+    assert "- decided (by panel #1): keep half-up rounding via round() — Rounding" in spec
     ledger_md = remote_file(bare, "sdlc/0001/b", f"{CHANGE}/evidence/decisions-b.md")
     assert "1. [concern] Rounding" in ledger_md and "cost: $0.09" in ledger_md
     ledger_json = json.loads(
@@ -792,7 +792,9 @@ def test_under_deferred_review_the_panel_closes_the_concern_and_the_pr_says_so(c
     )
     assert ledger_json["decisions"][0]["decision"] == "keep half-up rounding via round()"
     status = remote_file(bare, "sdlc/0001/b", f"{CHANGE}/status.yaml")
-    assert "iterations: 1" in status  # one panel call, one iteration
+    assert "panel_calls: 1" in status and "iterations: 0" in status  # not a fix iteration
+    log = git(root, "log", "--format=%s", "origin/main..origin/sdlc/0001/b")
+    assert "design(0001): panel decision 1" in log  # record committed the decision itself
     gate_file = json.loads(remote_file(bare, "sdlc/0001/b", f"{CHANGE}/evidence/gate-b.json"))
     assert gate_file["result"] == "wait"
     names = {ch["name"]: ch["ok"] for ch in gate_file["checks"]}

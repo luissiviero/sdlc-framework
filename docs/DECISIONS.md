@@ -329,6 +329,8 @@ Decisions 21–26 were added on 2026-09-23 after the plan was audited against th
 
 **Decide by / reversibility:** B4 (step 16a) REVERSIBLE — confirmed on 2026-09-23
 
+**Amendment (2026-09-24, plugin 0.2.15, owner's choice "separate counter"):** a panel call is not a fix iteration. The first live deferred run (sample change 0002) spent both non-routine iterations on its two concerns, so the owner's first review comment would have parked the change on the cap. Panel calls count in `status.yaml: panel_calls` against `gate.max_panel_calls` (default 4); `iterations` stays the fix rounds; the `sdlc:reset-iterations` label resets both. Cost stays bounded by `gate.max_budget_usd` and this count.
+
 
 ## 22. How "ask for changes" runs by itself
 

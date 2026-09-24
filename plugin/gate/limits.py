@@ -7,6 +7,9 @@ Limits (sdlc.yaml ``gate:`` block, all optional; defaults here):
     the visual check, p.28; one change spends rounds at several gates); the non-routine
     classification of the adversarial reviewer lowers it to
     ``max_iterations_non_routine`` (default 2), never below 1;
+  - ``max_panel_calls``: review-panel calls per change under deferred review (decision 21,
+    amended in 0.2.15: a panel call is not a fix iteration; default 4; the same
+    ``sdlc:reset-iterations`` label resets both counts);
   - ``max_wall_clock_minutes``: elapsed time since the phase run started (default 120);
     the run records its start with ``cli.py start-run``;
   - ``max_budget_usd``: per-change spend where the substrate exposes one; the run writes the
@@ -33,6 +36,7 @@ from gate.checks import CheckResult, GateContext  # noqa: E402
 
 DEFAULT_MAX_ITERATIONS = 3
 DEFAULT_MAX_ITERATIONS_NON_ROUTINE = 2
+DEFAULT_MAX_PANEL_CALLS = 4
 DEFAULT_MAX_WALL_CLOCK_MINUTES = 120
 RUN_FILE = "run-{phase}.json"  # evidence/run-<phase>.json: started_at, spend_usd
 
@@ -61,6 +65,13 @@ def iteration_cap(ctx: GateContext, classification: str | None) -> int:
         )
         cap = max(1, min(cap, tight))
     return cap
+
+
+def panel_cap(ctx: GateContext) -> int:
+    """Panel calls per change (decision 21): ``gate.max_panel_calls``, default 4, whatever
+    the classification (the panel is bounded by the budget and this count, not by the fix
+    rounds)."""
+    return _int(ctx.gate_setting("max_panel_calls", None), DEFAULT_MAX_PANEL_CALLS)
 
 
 def classification_for(ctx: GateContext) -> str | None:
@@ -126,6 +137,18 @@ def check_limits(ctx: GateContext, now: datetime | None = None) -> CheckResult:
             "Look at the partial evidence, then either fix by hand, or reset the count with "
             f"`cli.py set-iterations --root . --id {ctx.status.id} --count 0` to allow another "
             "round.",
+            {**details, "stop": True},
+        )
+    calls_cap = panel_cap(ctx)
+    details.update({"panel_calls": ctx.status.panel_calls, "panel_cap": calls_cap})
+    if ctx.status.panel_calls > calls_cap:
+        return CheckResult(
+            "limits",
+            False,
+            f"panel-call cap reached: {ctx.status.panel_calls} panel calls, cap {calls_cap}",
+            "Read the decisions ledger, then either settle the rest by hand, or apply "
+            "`sdlc:reset-iterations` (it resets both counts) or raise `gate.max_panel_calls` "
+            "in sdlc.yaml (a reviewed PR) to allow more.",
             {**details, "stop": True},
         )
     run = read_run(ctx)
