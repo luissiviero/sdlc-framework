@@ -160,6 +160,20 @@ def clean_decision(decision: str, item: str) -> str:
     return text
 
 
+LEDGER_PHASES = ("b", "c", "d", "e")
+
+
+def phases_up_to(phase: str) -> tuple[str, ...]:
+    """The phases whose ledgers a gate at ``phase`` reads for the closings in ``spec.md``:
+    a concern closed by the panel at (b) stays closed through (c), (d) and (e), and its
+    ledger line lives in ``decisions-b.json`` (the first build under deferred review, sample
+    change 0002, 2026-09-24, parked at gate (c) on "closed with no ledger line" because the
+    check read the phase's own ledger only)."""
+    if phase not in LEDGER_PHASES:
+        return ()
+    return LEDGER_PHASES[: LEDGER_PHASES.index(phase) + 1]
+
+
 # --- paths --------------------------------------------------------------------------------------
 def ledger_path(change_dir: Path, phase: str) -> Path:
     return Path(change_dir) / art.EVIDENCE_DIR / LEDGER_JSON.format(phase=phase)
@@ -192,6 +206,11 @@ def load_ledger(change_dir: Path, phase: str) -> list[dict[str, Any]]:
         return []
     entries = data.get("decisions") if isinstance(data, dict) else None
     return [e for e in entries if isinstance(e, dict)] if isinstance(entries, list) else []
+
+
+def load_ledgers(change_dir: Path, phase: str) -> list[tuple[str, list[dict[str, Any]]]]:
+    """``(phase, entries)`` for every phase up to and including ``phase`` (``phases_up_to``)."""
+    return [(ph, load_ledger(change_dir, ph)) for ph in phases_up_to(phase)]
 
 
 def ledger_error(change_dir: Path, phase: str) -> str | None:

@@ -425,6 +425,37 @@ def test_gate_accepts_an_important_finding_the_panel_settled(project):  # noqa: 
     assert check.details["settled_by_panel"] == [finding["summary"]]
 
 
+def test_gate_at_c_reads_the_closings_of_b_from_the_b_ledger(project):  # noqa: F811
+    """The first build under deferred review (sample change 0002, 2026-09-24) parked at gate
+    (c) on "closes a concern by the panel with no ledger line": the concern was closed at (b)
+    and its line is in decisions-b.json, which the check did not read at (c)."""
+    root, change = project
+    set_review(change, "deferred")
+    verdict(root, "c")
+    head = git(root, "rev-parse", "HEAD").strip()
+    item = {"kind": "concern", "key": ledger.concern_key("Rounding half-even vs half-up"),
+            "item": "Rounding half-even vs half-up"}  # fmt: skip
+    _ledger_entry(change, "b", item, "keep half-up", head)
+    spec = (change / "spec.md").read_text(encoding="utf-8")
+    closed = "- [x] Rounding half-even vs half-up: decided half-up via round() (documented)."
+    # the 0.2.14 form (no number): matched on the decision text of the (b) ledger
+    write(change / "spec.md", spec.replace(closed, "- decided (by panel): keep half-up — Rounding"))
+    result = gate.run_gate(root, "0001", "c", dry_run=True)
+    panel = next(ch for ch in result.checks if ch.name == "panel")
+    assert panel.ok, panel.reason
+    # the numbered form: matched by the line number in the (b) ledger, wording free
+    write(change / "spec.md", spec.replace(closed, "- decided (by panel #1): keep `half-up`."))
+    result = gate.run_gate(root, "0001", "c", dry_run=True)
+    panel = next(ch for ch in result.checks if ch.name == "panel")
+    assert panel.ok, panel.reason
+    # a number no ledger of b/c carries still parks
+    write(change / "spec.md", spec.replace(closed, "- decided (by panel #5): keep half-up."))
+    result = gate.run_gate(root, "0001", "c", dry_run=True)
+    panel = next(ch for ch in result.failed if ch.name == "panel")
+    assert "panel decision 5, which no ledger of phases b/c carries" in panel.reason
+    assert ledger.phases_up_to("e") == ("b", "c", "d", "e") and ledger.phases_up_to("a") == ()
+
+
 def test_gate_panel_check_refuses_a_bad_ledger_and_an_unrecorded_closing(project):  # noqa: F811
     root, change = project
     set_review(change, "deferred")
@@ -456,7 +487,7 @@ def test_gate_panel_check_refuses_a_bad_ledger_and_an_unrecorded_closing(project
     write(change / "spec.md", spec)
     result = gate.run_gate(root, "0001", "c", dry_run=True)
     panel = next(ch for ch in result.failed if ch.name == "panel")
-    assert "panel decision 4, which the ledger lacks" in panel.reason
+    assert "panel decision 4, which no ledger of phases b/c carries" in panel.reason
 
 
 def test_a_change_may_override_the_review_mode(tmp_path):
