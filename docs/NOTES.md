@@ -243,6 +243,10 @@ Also observed: the sample container lacks bubblewrap and socat, so the template'
 block is inert there ("Sandbox disabled: ... dependencies are missing"); the setup script
 may install them if OS-level isolation is wanted in the cloud.
 
+### 3b. Observed on 2026-09-24: a cloud session cannot push a tag
+
+The session's git proxy accepts pushes to `refs/heads/*` only: `git push origin refs/tags/v0.2.15:refs/tags/v0.2.15` from the cloud session ended in `error: RPC failed; HTTP 403` (packet trace: the ref update was sent, the pack was refused). The GitHub MCP tools of the session create branches, files, pull requests and reviews, not refs or releases. So release tags are the framework repository's own workflow (`.github/workflows/sdlc-tag.yml` → `.github/scripts/sdlc_tag.py`): a push to `main` that changes `.claude-plugin/plugin.json` creates `v<version>` on that commit once, with the workflow token (`contents: write`), which may push a tag and starts no other run by doing so. The owner's GitHub Release pages (v0.2.13, v0.2.14) stay as they are; a release page is optional, the tag is what projects pin.
+
 ## 4. The managed-settings keys and what they do to decision 6
 
 Source: https://code.claude.com/docs/en/settings-reference,

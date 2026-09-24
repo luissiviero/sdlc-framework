@@ -1,0 +1,40 @@
+# Tag each plugin release on the default branch (framework repository only; not a template).
+#
+# The owner tags nothing by hand any more: a merge to main that changes the version in
+# .claude-plugin/plugin.json gets the tag v<version> on that merge commit, created once and
+# never moved (.github/scripts/sdlc_tag.py). Projects pin the framework by this tag
+# (sdlc.yaml: plugin.version -> ref=v<version> in their workflows), so the tag must exist
+# before a project bumps its pin.
+#
+# Token rule: a tag pushed with this workflow's GITHUB_TOKEN starts no other workflow run,
+# which is what a release tag needs. The job needs contents: write and nothing else.
+name: SDLC release tag
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".claude-plugin/plugin.json"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sdlc-tag
+  cancel-in-progress: false
+
+jobs:
+  tag:
+    name: Tag v<version> from .claude-plugin/plugin.json
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 1
+      - name: Create the tag when it does not exist yet
+        id: tag
+        run: python3 .github/scripts/sdlc_tag.py
+      - name: Report
+        run: echo "${{ steps.tag.outputs.tag }} created=${{ steps.tag.outputs.created }}"
