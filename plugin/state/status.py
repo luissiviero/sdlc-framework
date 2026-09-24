@@ -49,6 +49,10 @@ class Status:
     gate: Gate = field(default_factory=Gate)
     parked_reason: str | None = None
     iterations: int = 0
+    # Decision 21 (amended 0.2.15): panel calls have their own count against
+    # ``gate.max_panel_calls``; ``iterations`` stays the fix rounds. The first deferred run
+    # (sample change 0002, 2026-09-24) spent the whole non-routine cap on two concerns.
+    panel_calls: int = 0
     external_ref: str | None = None
     # risk-list items the owner has accepted for this change (gate check `risk_list`, step 16):
     # the change touches them knowingly; the gate no longer parks on them.
@@ -101,6 +105,12 @@ class Status:
             or self.iterations < 0
         ):
             raise ValueError("iterations must be a non-negative integer")
+        if (
+            isinstance(self.panel_calls, bool)
+            or not isinstance(self.panel_calls, int)
+            or self.panel_calls < 0
+        ):
+            raise ValueError("panel_calls must be a non-negative integer")
         if not self.title.strip():
             raise ValueError("title must not be empty")
         if not isinstance(self.risk_accepted, list) or not all(
@@ -187,6 +197,7 @@ class Status:
                 ] + [{"item": item.strip(), "actor": actor}]
         elif label == c.RESET_ITERATIONS_LABEL:
             self.iterations = 0
+            self.panel_calls = 0  # one un-park verb resets both counts (decision 21)
             self.iterations_reset_by = actor
         elif label == c.UNLOCK_TESTS_LABEL:
             self.tests_locked = False
@@ -227,6 +238,12 @@ class Status:
         self.iterations += 1
         self.touch()
         return self.iterations
+
+    def bump_panel_call(self) -> int:
+        """One more panel call (decision 21): its own count, never a fix iteration."""
+        self.panel_calls += 1
+        self.touch()
+        return self.panel_calls
 
     def accept_risk(self, item: str) -> None:
         """The owner accepts a risk-list hit for this change (recorded, never inferred)."""

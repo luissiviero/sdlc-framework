@@ -122,17 +122,24 @@ order, three fresh contexts, each with the brief printed by
    it reads both files and writes `evidence/panel/e-<n>-conciliator.json`.
 Then record it:
 `python "${CLAUDE_PLUGIN_ROOT}/plugin/panel/cli.py" record --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase e --item <n>`
-— one panel call is one iteration (exit 3 at the cap: stop the panel, the gate parks); it
-appends the line to `evidence/decisions-e.json` (and the `.md` the owner reads), and for
-a concern closes the item in `spec.md` as `decided (by panel): <decision> — <concern>`. Apply
-what the decision asks beyond that (an `escalate` decided `continue` needs nothing more; a
-fix the decision names is made now, `plan.md` in the same commit). When any file changed,
-commit (`commit-phase ... --phase e --message "review(<id>): panel decisions"`),
-then re-run step 1's `validate` for the new HEAD (a verdict never outlives the diff it
-judged); an `escalate` with new reasons is a new item: run `items` once more. The panel
-never decides a park item, never raises a limit, never touches a guardrail file, and never
-asks the owner: the owner reads "Decisions taken for you" at the gate and overturns any
-line with a review comment.
+— one panel call counts against `gate.max_panel_calls` (its own count, not a fix
+iteration; exit 3 at the cap: stop the panel, the gate parks); it appends the line to
+`evidence/decisions-e.json` (and the `.md` the owner reads), for a concern closes the item
+in `spec.md` as `decided (by panel #<n>): <decision> — <concern>`, and commits the change
+folder itself (`review(<id>): panel decision <n>`), so the decision is in HEAD before anyone
+judges it. Do not reword a closed concern line: the gate matches it to the ledger by
+`#<n>`. Apply what the decision asks beyond that (an `escalate` decided `continue` needs
+nothing more; a fix the decision names is made now, `plan.md` in the same commit, committed
+with `commit-phase ... --phase e --message "review(<id>): panel decision <n> applied"`).
+After the last item, re-run step 1's `validate` for the new HEAD, once (a verdict never
+outlives the diff it judged, and the diff file must be regenerated first); from then on
+nothing is committed before the gate except the gate evidence, and the verdict file never
+travels in a commit with content the reviewer did not see (the first deferred run,
+2026-09-24, committed each verdict beside the content it did not judge, three times, and
+needed four commits to land one). An `escalate` with new reasons is a new item: run
+`items` once more. The panel never decides a park item, never raises a limit, never
+touches a guardrail file, and never asks the owner: the owner reads "Decisions taken for
+you" at the gate and overturns any line with a review comment.
 
 ## 4. Gate (e)
 `python "${CLAUDE_PLUGIN_ROOT}/plugin/gate/cli.py" check --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase e`

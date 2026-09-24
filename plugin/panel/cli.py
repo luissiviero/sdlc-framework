@@ -17,11 +17,16 @@ settle, each with its stable key and whether the ledger already decides it; ever
 that failed is listed under ``parks`` and stays the owner's. It writes the list to
 ``evidence/panel/<phase>-items.json`` for ``prompt`` and ``record``. ``prompt`` prints one
 member's brief with the item filled in (``panel/prompts.py``). ``record`` reads the
-conciliator's ``evidence/panel/<phase>-<n>-conciliator.json``, counts one iteration against
-the cap (exit 3 at the cap: nothing is recorded, the gate parks), appends the entry to
-``evidence/decisions-<phase>.json`` (and renders the ``.md``), and for a concern rewrites
-the item in ``spec.md`` as ``decided (by panel): ...``. ``overturn`` marks an entry
-overturned by the owner's review comment (``/sdlc-fix`` applies the comment itself).
+conciliator's ``evidence/panel/<phase>-<n>-conciliator.json``, counts one panel call
+against ``gate.max_panel_calls`` (its own count since 0.2.15, never a fix iteration; exit 3
+at the cap: nothing is recorded, the gate parks), appends the entry to
+``evidence/decisions-<phase>.json`` (and renders the ``.md``), for a concern rewrites the
+item in ``spec.md`` as ``decided (by panel #<n>): ...``, and commits the change folder on
+the current branch (``--no-commit`` leaves that to the caller): the decision is then in
+HEAD before the adversarial reviewer judges it, so a verdict never predates the panel (the
+first deferred run committed each verdict beside the content it did not judge, three
+times). ``overturn`` marks an entry overturned by the owner's review comment
+(``/sdlc-fix`` applies the comment itself).
 
 Under ``review: parked`` every command still answers (``items`` says the mode), so a
 by-hand run can see what the panel would take; nothing is decided unless the mode is
@@ -49,9 +54,19 @@ from hooks._common import ConfigError, load_sdlc_config  # noqa: E402
 from panel import ledger  # noqa: E402
 from panel import prompts as prompts_mod  # noqa: E402
 from state import conventions as c  # noqa: E402
+from state import gitops  # noqa: E402
 from state import status as status_mod  # noqa: E402
 
 EXIT_OK, EXIT_USAGE, EXIT_CAP, EXIT_PARKED_MODE = 0, 2, 3, 4
+# the commit word of each phase's runbook (design(<id>): ..., build(<id>): ...)
+COMMIT_WORD = {
+    "a": "intent",
+    "b": "design",
+    "c": "build",
+    "d": "test",
+    "e": "review",
+    "f": "maintain",
+}
 
 
 def _emit(obj: Any) -> None:
@@ -173,6 +188,7 @@ def cmd_items(args) -> int:
     entries = ledger.load_ledger(change_dir, args.phase)
     ctx = GateContext(root, change_dir, args.phase, st, _config(root), None, True, "")
     cap = limits.iteration_cap(ctx, limits.classification_for(ctx))
+    calls_cap = limits.panel_cap(ctx)
     out = {
         "mode": mode,
         "phase": args.phase,
@@ -181,6 +197,11 @@ def cmd_items(args) -> int:
         "pending": [i["n"] for i in items if not i["decided"]],
         "decided": len(ledger.active(entries)),
         "iterations": {"used": st.iterations, "cap": cap, "left": max(cap - st.iterations, 0)},
+        "panel_calls": {
+            "used": st.panel_calls,
+            "cap": calls_cap,
+            "left": max(calls_cap - st.panel_calls, 0),
+        },
         "gate": result.result,
     }
     path = ledger.items_path(change_dir, args.phase)
@@ -270,6 +291,11 @@ def cmd_record(args) -> int:
     except (OSError, ValueError) as exc:
         print(f"{decision_path.name} is missing or unreadable: {exc}", file=sys.stderr)
         return EXIT_USAGE
+    if isinstance(decision, dict):
+        # the decision alone: no closing prefix copied from the brief, no item text after it
+        decision["decision"] = ledger.clean_decision(
+            str(decision.get("decision") or ""), str(item.get("item", ""))
+        )
     problems = ledger.validate_decision_file(decision)
     if problems:
         print("; ".join(problems), file=sys.stderr)
@@ -279,20 +305,21 @@ def cmd_record(args) -> int:
         existing = next(e for e in ledger.active(entries) if e.get("key") == item["key"])
         _emit({"recorded": False, "reason": "already decided", "entry": existing})
         return EXIT_OK
-    # one panel call is one iteration (decision 21: bounded by gate.max_iterations)
+    # one panel call counts against gate.max_panel_calls (decision 21, amended in 0.2.15:
+    # the fix iterations are another count)
     ctx = GateContext(root, change_dir, st.phase, st, config, None, True, "no diff needed")
-    cap = limits.iteration_cap(ctx, limits.classification_for(ctx))
-    if st.iterations + 1 > cap:
+    cap = limits.panel_cap(ctx)
+    if st.panel_calls + 1 > cap:
         _emit(
             {
                 "recorded": False,
-                "reason": "iteration cap reached",
-                "iterations": st.iterations,
+                "reason": "panel-call cap reached",
+                "panel_calls": st.panel_calls,
                 "cap": cap,
             }
         )
         return EXIT_CAP
-    st.bump_iteration()
+    st.bump_panel_call()
     status_mod.write_status(change_dir, st)
     head = diffmod.head_sha(root) or "unknown"
     cost = float(args.cost_usd) if args.cost_usd is not None else None
@@ -300,13 +327,24 @@ def cmd_record(args) -> int:
     entries.append(entry)
     ledger.save_ledger(change_dir, args.phase, entries)
     applied = ledger.apply_decision(change_dir, entry)
+    committed = None
+    if not args.no_commit and gitops.is_repo(root):
+        rel = str(change_dir.relative_to(root)).replace("\\", "/")
+        gitops.ensure_identity(root)  # a CI runner commits under the automation identity
+        committed = gitops.commit_paths(
+            root,
+            [rel],
+            f"{COMMIT_WORD.get(args.phase, args.phase)}({st.id}): panel decision {entry['n']}",
+        )
     _emit(
         {
             "recorded": True,
             "entry": entry,
             "applied_to_spec": applied,
-            "iterations": st.iterations,
+            "panel_calls": st.panel_calls,
             "cap": cap,
+            "iterations": st.iterations,
+            "commit": committed,
             "ledger": str(ledger.ledger_path(change_dir, args.phase).relative_to(root)).replace(
                 "\\", "/"
             ),
@@ -354,6 +392,11 @@ def build_parser() -> argparse.ArgumentParser:
             s.add_argument("--member", required=True, choices=ledger.MEMBERS)
         if name == "record":
             s.add_argument("--cost-usd", default=None, type=float)
+            s.add_argument(
+                "--no-commit",
+                action="store_true",
+                help="leave the change folder uncommitted (the caller commits it)",
+            )
         if name == "overturn":
             s.add_argument("--comment", required=True)
         s.set_defaults(fn=fn)

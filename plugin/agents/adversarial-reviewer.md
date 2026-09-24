@@ -67,6 +67,13 @@ policy or leave the plan unfulfilled; `escalate` otherwise, with the reasons a p
 to decide in one reading. Escalate means park (decision 11): the owner finds it in the review
 queue; nobody is paged.
 
+Under deferred review (decision 21) the panel runs after your verdict, on the items your
+verdict and the gate's dry run surface; its files (`evidence/decisions-<phase>.*`,
+`evidence/panel/`) and the concern closings it writes are never in the diff you judge, and
+their absence is never a reason (the first deferred run, sample change 0002, escalated on
+"the panel did not run" against a pre-panel diff). Judge the design, the proof and the blast
+radius; the process around them is the gate's.
+
 Panel duty (decision 21; `plugin/panel/prompts.py`): when the delegation prompt is a
 devil's advocate brief — it names one item and the file
 `changes/<id>-<slug>/evidence/panel/<phase>-<n>-advocate.md` — you judge that one item as

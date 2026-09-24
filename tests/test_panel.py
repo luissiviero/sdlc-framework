@@ -127,10 +127,42 @@ def test_apply_decision_closes_the_concern_in_spec_md(tmp_path):
     spec = (change / "spec.md").read_text(encoding="utf-8")
     assert art.open_concerns(spec) == []
     closed = ledger.panel_closed_concerns(spec)
-    assert closed == [f"decided (by panel): {DECISION['decision']} — {OPEN_CONCERN}"]
+    assert closed == [f"decided (by panel #1): {DECISION['decision']} — {OPEN_CONCERN}"]
+    assert ledger.panel_closings(spec) == [(1, closed[0])]
     assert "- [x] Rounding half-even" in spec  # the other item is untouched
     assert ledger.apply_decision(change, entry) is False  # already closed
     assert ledger.apply_decision(change, dict(entry, kind="escalate")) is False
+
+
+def test_clean_decision_strips_the_copied_closing_and_the_restated_item():
+    """The first deferred run (sample change 0002): the conciliator copied the closing
+    format from its brief and the spec read ``decided (by panel): decided (by panel): X —
+    <concern> — <concern>``."""
+    item = "`mean`'s parameter type is undecided: a materialised `Sequence[float]` (simpler,"
+    raw = (
+        "decided (by panel): `Sequence[float]` — mean's parameter type is undecided: a "
+        'materialised `Sequence[float]` (simpler, matches intent\'s "keep it minimal") or a '
+        "general `Iterable[float]`."
+    )
+    assert ledger.clean_decision(raw, item) == "`Sequence[float]`"
+    assert (
+        ledger.clean_decision("Decided (by panel #3): keep it — keep it", item)
+        == "keep it — keep it"
+    )
+    assert ledger.clean_decision("  keep   half-up  ", item) == "keep half-up"
+    assert ledger.clean_decision("a — b", "unrelated concern text here") == "a — b"
+    entry = ledger.new_entry(2, "b", {"kind": "concern", "key": "k", "item": item},
+                             dict(DECISION, decision=raw), "abc", None)  # fmt: skip
+    assert entry["decision"] == "`Sequence[float]`"
+    # the 0.2.14 form (no number) is still a closing; the number is read when present
+    spec = SPEC.replace(
+        "- [x] Rounding half-even vs half-up: decided half-up via round() (documented).",
+        "- decided (by panel): keep half-up — Rounding\n- decided (by panel #7): x — y",
+    )
+    assert ledger.panel_closings(spec) == [
+        (None, "decided (by panel): keep half-up — Rounding"),
+        (7, "decided (by panel #7): x — y"),
+    ]
 
 
 def test_verifier_disagreement_is_read_from_the_report():
@@ -188,20 +220,38 @@ def test_record_refuses_under_parked_and_decides_under_deferred(design_project):
          "--cost-usd", "0.42"]
     )  # fmt: skip
     assert rc == 0, out
-    assert out["recorded"] and out["applied_to_spec"] and out["iterations"] == 1
+    assert out["recorded"] and out["applied_to_spec"] and out["panel_calls"] == 1
+    assert out["iterations"] == 0  # a panel call is not a fix iteration (0.2.15)
     entry = out["entry"]
     assert entry["kind"] == "concern" and entry["decision"] == DECISION["decision"]
-    assert entry["head"] == git(root, "rev-parse", "HEAD").strip() and entry["cost_usd"] == 0.42
-    assert status_mod.read_status(change).iterations == 1  # one panel call, one iteration
+    before = entry["head"]
+    assert entry["cost_usd"] == 0.42
+    st = status_mod.read_status(change)
+    assert st.panel_calls == 1 and st.iterations == 0
     spec = (change / "spec.md").read_text(encoding="utf-8")
-    assert art.open_concerns(spec) == [] and ledger.panel_closed_concerns(spec)
+    assert art.open_concerns(spec) == [] and ledger.panel_closings(spec)[0][0] == 1
     assert (change / "evidence" / "decisions-b.md").is_file()
+    # record committed the decision itself: spec, status and ledger are in HEAD
+    head = git(root, "rev-parse", "HEAD").strip()
+    assert out["commit"] == head and head != before
+    assert git(root, "log", "-1", "--format=%s").strip() == "design(0001): panel decision 1"
+    assert git(root, "status", "--porcelain", "--", "changes").strip() == ""
     # idempotent: the same item again is not recorded twice
     rc, out = run(["record", "--root", str(root), "--id", "0001", "--phase", "b", "--item", "1"])
     assert rc == 0 and out["recorded"] is False and out["reason"] == "already decided"
-    # the gate now continues past the concern and reads the ledger
+    # the gate now continues past the concern and reads the ledger; a tidied closing line
+    # still matches its ledger line by number
+    spec = (
+        (change / "spec.md")
+        .read_text(encoding="utf-8")
+        .replace(
+            f"decided (by panel #1): {DECISION['decision']} — {OPEN_CONCERN}",
+            "decided (by panel #1): keep `half-up`: the invoices module never calls it.",
+        )
+    )
+    write(change / "spec.md", spec)
     git(root, "add", ".")
-    git(root, "commit", "-q", "-m", "design(0001): panel decisions")
+    git(root, "commit", "-q", "-m", "design(0001): tidy")
     verdict(root, "b")
     result = gate.run_gate(root, "0001", "b", dry_run=True)
     assert result.result == "wait", result.reason
@@ -239,13 +289,34 @@ def test_record_stops_at_the_iteration_cap_and_validates_the_decision(design_pro
     assert rc == panel_cli.EXIT_USAGE  # no reviewer clause, no rationale
     decision.write_text(json.dumps(DECISION), encoding="utf-8")
     st = status_mod.read_status(change)
-    st.iterations = 3  # the cap
+    st.iterations = 3  # the fix-iteration cap: not the panel's
+    st.panel_calls = 4  # gate.max_panel_calls (default 4)
     status_mod.write_status(change, st)
     rc, out = run(["record", "--root", str(root), "--id", "0001", "--phase", "b", "--item", "1"])
-    assert rc == panel_cli.EXIT_CAP and out["reason"] == "iteration cap reached"
+    assert rc == panel_cli.EXIT_CAP and out["reason"] == "panel-call cap reached"
+    assert out["panel_calls"] == 4 and out["cap"] == 4
     assert ledger.load_ledger(change, "b") == [] and art.open_concerns(
         (change / "spec.md").read_text(encoding="utf-8")
     )
+    rc, out = run(["items", "--root", str(root), "--id", "0001", "--phase", "b"])
+    assert rc == 0 and out["panel_calls"] == {"used": 4, "cap": 4, "left": 0}
+    # the gate parks on the count once it is past the cap, and says how to lift it
+    st.panel_calls = 5
+    status_mod.write_status(change, st)
+    result = gate.run_gate(root, "0001", "b", dry_run=True)
+    limits_check = next(ch for ch in result.checks if ch.name == "limits")
+    assert (
+        not limits_check.ok
+        and "panel-call cap reached: 5 panel calls, cap 4" in limits_check.reason
+    )
+    assert "sdlc:reset-iterations" in limits_check.need
+    # --no-commit leaves the commit to the caller
+    st.panel_calls = 0
+    status_mod.write_status(change, st)
+    rc, out = run(["record", "--root", str(root), "--id", "0001", "--phase", "b", "--item", "1",
+                   "--no-commit"])  # fmt: skip
+    assert rc == 0 and out["commit"] is None
+    assert git(root, "status", "--porcelain", "--", "changes").strip() != ""
     rc, _out = run(["record", "--root", str(root), "--id", "0001", "--phase", "b", "--item", "9"])
     assert rc == panel_cli.EXIT_USAGE
 
@@ -379,6 +450,13 @@ def test_gate_panel_check_refuses_a_bad_ledger_and_an_unrecorded_closing(project
     result = gate.run_gate(root, "0001", "c", dry_run=True)
     panel = next(ch for ch in result.failed if ch.name == "panel")
     assert "no ledger line" in panel.reason
+    spec = spec.replace(
+        "- decided (by panel): keep half-up", "- decided (by panel #4): keep half-up"
+    )
+    write(change / "spec.md", spec)
+    result = gate.run_gate(root, "0001", "c", dry_run=True)
+    panel = next(ch for ch in result.failed if ch.name == "panel")
+    assert "panel decision 4, which the ledger lacks" in panel.reason
 
 
 def test_a_change_may_override_the_review_mode(tmp_path):

@@ -86,6 +86,7 @@ def test_status_round_trip_and_schema(tmp_path):
         "gate",
         "parked_reason",
         "iterations",
+        "panel_calls",  # decision 21 (0.2.15): the panel's own count
         "external_ref",
         "risk_accepted",
         "tests_locked",
