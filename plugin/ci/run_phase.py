@@ -8,9 +8,18 @@ docs/OPERATING_MODEL.md sections 4.1 and 4.2; the flag facts are docs/NOTES.md s
         --phase b|c|d|e|review --id 0001 --repo owner/name \
         [--head-ref sdlc/0001/a] [--pr-number 12] [--ref main] [--dry-run] [--no-dispatch]
         [--claude claude]
-    python framework/plugin/ci/run_phase.py --root . --phase b|c --head-ref <head> \
+    python framework/plugin/ci/run_phase.py --root . --phase b|c|fix --head-ref <head> \
         --repo owner/name --pr-number 12 [--id 0001] --find-change
+    python framework/plugin/ci/run_phase.py --root . --plugin-dir framework --phase fix \
+        --id 0001 --head-ref <the PR's head> --repo owner/name --pr-number 12
     python framework/plugin/ci/run_phase.py --phase triage --log out/build.log
+
+``--phase fix`` is the fix round (decision 22; ``template/.github/workflows/sdlc-fix.yml``):
+the owner's "Request changes" review or one of the un-park labels (decision 24) on any
+phase's pull request. It runs on that PR's own head (``--head-ref``, never created), performs
+the owner's labels first (``state/unpark.py``, committed with the actor), then runs
+``/sdlc-fix <id>``; the gate file, the spend and the PR are those of the change's own phase.
+An abandoned change (decision 25) is skipped by every phase.
 
 The change id comes from ``--id``, else from a head ref ``sdlc/<id>/<previous phase>``, else
 from the one ``changes/<id>-<slug>/`` folder the merged pull request ``--pr-number`` touches
@@ -104,12 +113,22 @@ from state import status as status_mod  # noqa: E402
 EXIT_OK, EXIT_FAILED, EXIT_USAGE = 0, 1, 2
 
 # --- the phases this script runs -----------------------------------------------------------
-PHASE_COMMAND = {"b": "sdlc-design", "c": "sdlc-build", "d": "sdlc-test", "e": "sdlc-deploy"}
+PHASE_COMMAND = {
+    "b": "sdlc-design",
+    "c": "sdlc-build",
+    "d": "sdlc-test",
+    "e": "sdlc-deploy",
+    # decision 22: the owner's "Request changes" review (or an un-park label) starts a fix
+    # round on the phase's own PR, whatever phase the change is in (a)-(e)
+    "fix": "sdlc-fix",
+}
 RUNNABLE = (*PHASE_COMMAND, "review", "triage")
 # The phase whose artifact this run consumes: status.yaml must be there, with a passing gate
-# for every phase past (b) (OPERATING_MODEL section 4.2, "Guard" column).
-PREVIOUS_PHASE = {"b": "a", "c": "b", "d": "c", "e": "d", "review": "d"}
+# for every phase past (b) (OPERATING_MODEL section 4.2, "Guard" column). A fix round has no
+# previous phase: it re-runs the change's current phase on the PR's own head.
+PREVIOUS_PHASE = {"b": "a", "c": "b", "d": "c", "e": "d", "review": "d", "fix": None}
 GATE_MUST_HAVE_PASSED = ("c", "d", "e", "review")
+FIX_PHASES = ("a", "b", "c", "d", "e")  # the phases whose PR a fix round may run on
 # Full profile only: the owner's approving label on the build PR, and who applied it.
 APPROVAL_LABEL = {"d": "c", "e": "d", "review": "d"}  # run phase -> phase whose label is read
 APPROVAL_BRANCH_PHASE = "c"  # the build PR, which lives on sdlc/<id>/c through (d) and (e)
@@ -119,7 +138,13 @@ NEXT_WORKFLOW = {"b": "sdlc-build.yml", "c": "sdlc-test.yml", "d": "sdlc-deploy.
 # input, which keys the workflow's concurrency group on the change's own branch.
 NEXT_PHASE = {"b": "c", "c": "d", "d": "e"}
 # Permission mode per phase; (c) asks the preflight instead (step 18, never bypass).
-PERMISSION_MODE = {"b": "default", "d": "acceptEdits", "e": "acceptEdits", "review": "default"}
+PERMISSION_MODE = {
+    "b": "default",
+    "d": "acceptEdits",
+    "e": "acceptEdits",
+    "review": "default",
+    "fix": "acceptEdits",
+}
 # Phase (b) writes spec.md and plan.md and nothing else: it may create files, never edit one.
 # Write cannot be path-scoped (NOTES section 6), so the gate's design_scope check stays the
 # net for a source file a Write overwrote.
@@ -178,13 +203,7 @@ def ensure_git_identity(root: Path) -> str | None:
 
     if not gitops.is_repo(root):
         return None
-    name = gitops.run(root, "config", "--get", "user.name", check=False).strip()
-    email = gitops.run(root, "config", "--get", "user.email", check=False).strip()
-    if name and email:
-        return None
-    gitops.run(root, "config", "user.name", BOT_LOGIN)
-    gitops.run(root, "config", "user.email", BOT_EMAIL)
-    return BOT_LOGIN
+    return gitops.ensure_identity(root, BOT_LOGIN, BOT_EMAIL)
 
 
 # --- configuration --------------------------------------------------------------------------
@@ -405,6 +424,28 @@ def work_branch_for(change_id: str, phase: str) -> str:
     return c.work_branch(change_id, BRANCH_PHASE.get(phase, phase))
 
 
+def fix_branch_for(root: Path, change_id: str, head_ref: str | None) -> tuple[str, str | None]:
+    """(the branch a fix round runs on, the change's phase as the checkout says it).
+
+    The PR's own head when the event named one (``--head-ref``; a web-session intent PR has
+    a ``claude/...`` head and no ``sdlc/<id>/a``), else the work branch of the phase
+    ``status.yaml`` is at on the current checkout (a ``workflow_dispatch`` re-run).
+    """
+    phase = None
+    change_dir = c.find_change_dir(root, change_id)
+    if change_dir is not None:
+        try:
+            phase = status_mod.read_status(change_dir).phase
+        except (OSError, ValueError):
+            phase = None
+    head = (head_ref or "").strip()
+    if head:
+        return head, phase
+    if phase in FIX_PHASES:
+        return c.work_branch(change_id, phase), phase
+    return c.work_branch(change_id, "a"), phase
+
+
 def _git_ok(root: Path, *args: str) -> bool:
     from state import gitops
 
@@ -458,20 +499,26 @@ def _start_point(root: Path, change_id: str, phase: str, profile: str | None) ->
 
 
 def prepare_branch(
-    root: Path, change_id: str, phase: str, profile: str | None = None
+    root: Path,
+    change_id: str,
+    phase: str,
+    profile: str | None = None,
+    branch: str | None = None,
 ) -> dict[str, Any]:
     """Put the checkout on the branch this phase works on, creating it for (b) and (c).
 
     Without this a dispatched run reads main's ``status.yaml`` and skips every phase past
     (c), and a park would have no branch to commit its own evidence on. ``profile`` decides
     where a new ``sdlc/<id>/c`` starts (``_start_point``); when it is not given it is read
-    from the checkout before anything is switched (``checkout_profile``).
+    from the checkout before anything is switched (``checkout_profile``). ``branch`` names
+    the branch outright (a fix round: the PR's own head), which is never created.
     """
     from state import gitops
 
     if profile is None:
         profile = checkout_profile(root, change_id)
-    branch = work_branch_for(change_id, phase)
+    named = bool(branch)
+    branch = branch or work_branch_for(change_id, phase)
     out: dict[str, Any] = {"branch": branch, "switched": False}
     if not gitops.is_repo(root):
         return {**out, "note": "not a git checkout: the current directory is used as it is"}
@@ -484,6 +531,8 @@ def prepare_branch(
     if _ref_exists(root, f"refs/remotes/origin/{branch}"):
         ok = _git_ok(root, "checkout", "-b", branch, "--track", f"origin/{branch}")
         return {**out, "switched": ok, "from": f"origin/{branch}"}
+    if named:
+        return {**out, "note": f"{branch} does not exist: the pull request's head is gone"}
     if phase not in CREATES_ITS_BRANCH:
         return {**out, "note": f"{branch} does not exist: the build phase has not run yet"}
     start = _start_point(root, change_id, phase, profile)
@@ -549,7 +598,7 @@ def resolve_change_id(change_id: str | None, head_ref: str | None, run_phase: st
         return None, "no change id: neither --id nor a head ref of the form sdlc/<id>/<phase>"
     parsed_id, branch_phase = parsed
     expected = PREVIOUS_PHASE[run_phase]
-    if branch_phase != expected:
+    if expected is not None and branch_phase != expected:
         return None, f"head branch {head_ref} is phase {branch_phase}, not {expected}"
     return parsed_id, None
 
@@ -680,6 +729,15 @@ def guard(root: Path, change_id: str, run_phase: str, repo: str, env: dict[str, 
         st = status_mod.read_status(change_dir)
     except (OSError, ValueError) as exc:
         return None, None, config, f"status.yaml is unreadable: {exc}"
+    if st.abandoned:  # decision 25: every workflow skips an abandoned change
+        return None, None, config, f"change {change_id} is abandoned: {st.abandoned_reason}"
+    if run_phase == "fix":
+        # a fix round runs on the phase the change is in, parked or not: the park is a change
+        # request from the gate (/sdlc-fix step 1), and the owner's un-park label was read
+        # before this guard. No gate needs to have passed and no approval label is read.
+        if st.phase not in FIX_PHASES:
+            return None, None, config, f"change {change_id} is at phase {st.phase}: no fix round"
+        return change_dir, st, config, None
     expected = PREVIOUS_PHASE[run_phase]
     if st.phase == run_phase and run_phase in CREATES_ITS_BRANCH:
         # the work branch already carries this phase: a re-run, allowed only when no pull
@@ -816,7 +874,10 @@ def compose(
     if phase == "b":
         argv += ["--allowedTools", DESIGN_ALLOWED_TOOLS]
         argv += ["--disallowedTools", DESIGN_DISALLOWED_TOOLS]
-    elif phase in ("c", "d", "e"):
+    elif phase in ("c", "d", "e", "fix"):
+        # a fix round edits the phase's artifact (intent.md, spec.md, code) and re-runs the
+        # toolchain; at (a) and (b) the gate's design_scope and guardrails checks still
+        # refuse a source file it should not have touched
         argv += ["--allowedTools", IMPLEMENT_ALLOWED_TOOLS]
         argv += ["--disallowedTools", IMPLEMENT_DISALLOWED_TOOLS]
     elif phase == "review":
@@ -1001,7 +1062,9 @@ def run_phase(args, env: dict[str, str]) -> int:
     if reason:
         return _skip(reason)
     excluded = write_git_exclude(root)
-    branch = prepare_branch(root, change_id, phase)
+    # a fix round (decision 22) runs on the PR's own head, never on a branch of its own
+    fix_branch = fix_branch_for(root, change_id, args.head_ref)[0] if phase == "fix" else None
+    branch = prepare_branch(root, change_id, phase, branch=fix_branch)
     setup, setup_ok = install_toolchain(root, args.dry_run)
     if not setup_ok:
         reason = setup_failure_reason(setup)
@@ -1013,6 +1076,19 @@ def run_phase(args, env: dict[str, str]) -> int:
         return _skip(reason)
     if auth_mod.choose_auth(env)["auth"] is None and not args.dry_run:
         return _skip(auth_mod.choose_auth(env)["reason"])
+    # the phase whose gate, evidence and PR this run produces: the change's own phase for a
+    # fix round, the run's phase otherwise
+    gate_phase = st.phase if phase == "fix" else phase
+    # decision 24: the owner's un-park labels on the PR are performed before anything runs
+    # and committed on the work branch, so the change request they answer (a park on a
+    # risk hit, the iteration cap, a locked test) is settled when the session reads status.yaml
+    labels_applied = None
+    if phase == "fix" and not args.dry_run:
+        labels_applied = apply_owner_labels(
+            plugin_dir, root, change_dir, config, args.repo, getattr(args, "pr_number", None),
+            gate_phase, fix_branch, env,
+        )  # fmt: skip
+        st = status_mod.read_status(change_dir)
 
     # the branch itself must be clean of guardrail edits before a run touches it (decision 6)
     guardrails = guardrail_changes(root, change_dir, config)
@@ -1024,6 +1100,7 @@ def run_phase(args, env: dict[str, str]) -> int:
             st,
             phase,
             GUARDRAIL_PARK.format(files=", ".join(guardrails)),
+            branch=fix_branch,
         )
         _emit({**parked, "branch": branch})
         return EXIT_OK
@@ -1081,7 +1158,7 @@ def run_phase(args, env: dict[str, str]) -> int:
     if isinstance(data, dict):
         cost = data.get("total_cost_usd")
         if isinstance(cost, (int, float)):
-            record_spend(plugin_dir, root, change_id, phase, float(cost))
+            record_spend(plugin_dir, root, change_id, gate_phase, float(cost))
     if code != 0 or not isinstance(data, dict) or data.get("is_error"):
         report_failed_run(root, change_dir, phase, data, raw, err, f"claude exited {code}")
         return EXIT_FAILED
@@ -1100,26 +1177,32 @@ def run_phase(args, env: dict[str, str]) -> int:
         )
         return EXIT_OK if review and review.get("ok") else EXIT_FAILED
 
-    result = read_gate(change_dir, phase)
+    result = read_gate(change_dir, gate_phase)
     if result is None:
         why = (
-            f"the run left no evidence/{art.GATE_RESULT.format(phase=phase)}: the phase command "
-            "did not reach its gate"
+            f"the run left no evidence/{art.GATE_RESULT.format(phase=gate_phase)}: the phase "
+            "command did not reach its gate"
         )
         report_failed_run(root, change_dir, phase, data, raw, err, why)
         return EXIT_FAILED
     # the spend is recorded after the run's own commits, so on an ephemeral runner it would
     # leave with the job (the fifth live run of 2026-09-21 pushed run-b.json with spend_usd
     # null): commit it on the work branch before the PR is brought up to date
-    record = commit_run_record(plugin_dir, root, change_id, phase) if cost is not None else None
+    record = (
+        commit_run_record(plugin_dir, root, change_id, phase, gate_phase, fix_branch)
+        if cost is not None
+        else None
+    )
     # the PR is where the owner meets the change, parked or not: open it here rather than
     # trusting the run to have done it (the parked run of 2026-09-21 did not)
-    pr = ensure_pr(plugin_dir, root, change_id, phase, args.repo, env)
-    handed = hand_over(args, result, phase, change_id) if pr.get("ok") else None
+    pr = ensure_pr(plugin_dir, root, change_id, phase, args.repo, env, gate_phase, fix_branch)
+    handed = hand_over(args, result, gate_phase, change_id) if pr.get("ok") else None
     _emit(
         {
             "phase": phase,
+            "gate_phase": gate_phase,
             "change_id": change_id,
+            "owner_labels": labels_applied,
             "run_record": record,
             "result": result.get("result"),
             "label": result.get("label"),
@@ -1138,16 +1221,60 @@ def run_phase(args, env: dict[str, str]) -> int:
     return EXIT_OK
 
 
-def commit_run_record(plugin_dir: Path, root: Path, change_id: str, phase: str) -> dict[str, Any]:
+def commit_run_record(
+    plugin_dir: Path,
+    root: Path,
+    change_id: str,
+    phase: str,
+    branch_phase: str | None = None,
+    branch: str | None = None,
+) -> dict[str, Any]:
     """Commit and push the change folder after ``record_spend``: ``run-<phase>.json`` now
     carries the spend, and nothing commits after the model's session but the run itself.
-    ``commit-phase`` is a no-op commit when nothing changed, so a by-hand run pays nothing."""
-    branch_phase = BRANCH_PHASE.get(phase, phase)
+    ``commit-phase`` is a no-op commit when nothing changed, so a by-hand run pays nothing.
+    A fix round names the change's phase and the PR's head (``branch``)."""
+    branch_phase = branch_phase or BRANCH_PHASE.get(phase, phase)
     return _cli_call(
         plugin_dir / "plugin" / "state" / "cli.py",
         ["commit-phase", "--root", str(root), "--id", change_id, "--phase", branch_phase,
-         "--message", f"run({phase}): spend recorded", "--push"],
+         "--message", f"run({phase}): spend recorded", "--push",
+         *(["--branch", branch] if branch else [])],
     )  # fmt: skip
+
+
+# --- the owner's un-park labels (decision 24) --------------------------------------------------
+def apply_owner_labels(
+    plugin_dir: Path,
+    root: Path,
+    change_dir: Path,
+    config: dict[str, Any],
+    repo: str,
+    pr_number: Any,
+    branch_phase: str,
+    branch: str | None,
+    env: dict[str, str],
+) -> dict[str, Any]:
+    """Perform the owner's labels on the change's PR (``state/unpark.py``) and commit
+    ``status.yaml`` on the work branch, so the session and the gate read the settled state.
+    A run without a GitHub route or without the PR's number reads nothing and says so."""
+    from state import unpark  # noqa: PLC0415
+
+    number = _pr_number(pr_number)
+    github = _github()
+    if github is None or number is None or not repo:
+        return {"ok": False, "reason": "no pull request number or repository: labels not read"}
+    if not _token(env) and not github.gh_path():
+        return {"ok": False, "reason": "no gh and no GITHUB_TOKEN/GH_TOKEN: labels not read"}
+    result = unpark.apply_from_pr(root, change_dir, config, repo, number, github=github)
+    if result.get("performed"):
+        names = ", ".join(p["label"] for p in result["performed"])
+        result["commit"] = _cli_call(
+            plugin_dir / "plugin" / "state" / "cli.py",
+            ["commit-phase", "--root", str(root), "--id", status_mod.read_status(change_dir).id,
+             "--phase", branch_phase, "--message", f"owner labels applied: {names}", "--push",
+             *(["--branch", branch] if branch else [])],
+        )  # fmt: skip
+    return result
 
 
 def hand_over(args, result: dict[str, Any], phase: str, change_id: str) -> Any:
@@ -1284,12 +1411,19 @@ def _cli_call(script: Path, argv: list[str], timeout: int = 600) -> dict[str, An
 
 
 def park_and_publish(
-    plugin_dir: Path, root: Path, change_dir: Path, st, phase: str, reason: str
+    plugin_dir: Path,
+    root: Path,
+    change_dir: Path,
+    st,
+    phase: str,
+    reason: str,
+    branch: str | None = None,
 ) -> dict[str, Any]:
     """Park, then leave the park where the owner will find it: the change folder committed
     and pushed on the work branch, and the phase's PR carrying ``sdlc:needs-human`` and the
-    "What I need from you" block (OPERATING_MODEL section 5: a park is a queue item)."""
-    branch_phase = BRANCH_PHASE.get(phase, phase)
+    "What I need from you" block (OPERATING_MODEL section 5: a park is a queue item). A fix
+    round parks the change's own phase on the PR's head (``branch``)."""
+    branch_phase = st.phase if phase == "fix" else BRANCH_PHASE.get(phase, phase)
     state_cli = plugin_dir / "plugin" / "state" / "cli.py"
     out: dict[str, Any] = {"parked": reason, "phase": phase, "change_id": st.id}
     # the phase first: ``set-phase`` clears any earlier park, so parking after it keeps
@@ -1302,13 +1436,24 @@ def park_and_publish(
     out["commit"] = _cli_call(
         state_cli,
         ["commit-phase", "--root", str(root), "--id", st.id, "--phase", branch_phase,
-         "--message", f"park: {reason}"[:500], "--push"],
+         "--message", f"park: {reason}"[:500], "--push",
+         *(["--branch", branch] if branch else [])],
     )  # fmt: skip
     out["pr"] = upsert_outcome(
         _cli_call(
             plugin_dir / "plugin" / "pr" / "cli.py",
-            ["upsert", "--root", str(root), "--id", st.id, "--phase", branch_phase, "--draft"],
-        )
+            [
+                "upsert",
+                "--root",
+                str(root),
+                "--id",
+                st.id,
+                "--phase",
+                branch_phase,
+                "--draft",
+                *(["--head", branch] if branch else []),
+            ],
+        )  # fmt: skip
     )
     return out
 
@@ -1343,16 +1488,24 @@ def upsert_outcome(call: dict[str, Any], fallback_number: int | None = None) -> 
 
 
 def ensure_pr(
-    plugin_dir: Path, root: Path, change_id: str, phase: str, repo: str, env: dict[str, str]
+    plugin_dir: Path,
+    root: Path,
+    change_id: str,
+    phase: str,
+    repo: str,
+    env: dict[str, str],
+    branch_phase: str | None = None,
+    branch: str | None = None,
 ) -> dict[str, Any]:
     """Open or update the phase's PR for the work branch. Never marks one ready for review:
     that is the owner's move at a human gate.
 
     The result is the upsert's own answer (``upsert_outcome``): ``ok`` only when a pull
-    request now carries the phase, whatever the CLI's exit code was.
+    request now carries the phase, whatever the CLI's exit code was. A fix round passes the
+    change's phase and the PR's head (``branch``): the PR is the one the review was left on.
     """
-    branch_phase = BRANCH_PHASE.get(phase, phase)
-    head = work_branch_for(change_id, phase)
+    branch_phase = branch_phase or BRANCH_PHASE.get(phase, phase)
+    head = branch or work_branch_for(change_id, phase)
     out: dict[str, Any] = {"head": head, "phase": branch_phase, "existed": None}
     github = _github()
     if github is None:
@@ -1366,8 +1519,10 @@ def ensure_pr(
         out["existed"] = bool(number)
         out["number"] = number
     argv = ["upsert", "--root", str(root), "--id", change_id, "--phase", branch_phase]
-    if phase in PR_DRAFT_PHASES:
+    if branch_phase in PR_DRAFT_PHASES:
         argv.append("--draft")
+    if branch:
+        argv += ["--head", branch]
     call = _cli_call(plugin_dir / "plugin" / "pr" / "cli.py", argv)
     return {**out, **upsert_outcome(call, fallback_number=number)}
 

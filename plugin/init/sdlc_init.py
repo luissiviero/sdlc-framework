@@ -20,10 +20,16 @@ What it does, idempotently (re-running upgrades):
   7. creates evals/ (empty suite with its README, decision 17) and bands.yaml (the p.44
      shape for the maintain metric, decision 15) when absent;
   8. installs the SDLC workflows and the pin script under .github/ (step 30), create-only:
-     an existing file is kept and reported as such, and the `branches:` filter of the
-     merge triggers is rewritten to the project's default branch;
+     an existing file is kept and reported as ``outdated`` when it differs from what this
+     version installs (the owner replaces it to upgrade, or keeps their edits), and the
+     `branches:` filter of the merge triggers is rewritten to the project's default branch;
   9. creates change 0000 (changes/0000-sdlc-init/, intent.md + status.yaml) so the
      installation goes through gate (a) like any other change.
+  0. before any of it, checks the hosting (decision 23): every trigger, identity, label,
+     check run and the digest issue are GitHub-specific, so a project whose ``origin``
+     remote points at another host is refused with the reason (exit 2, nothing written); a
+     missing ``origin`` or a local-path remote is let through with ``hosting`` in the report
+     saying the CI plumbing will not run (the fixture tests push to a local bare remote).
 The model-driven half (asking the owner, /init, trimming CLAUDE.md, committing, the PR) is in
 plugin/commands/sdlc-init.md.
 """
@@ -255,6 +261,10 @@ WORKFLOW_FILES = (
     # the release transition of gate (e) (build guide step 32.3; plugin 0.2.12): create-only
     # like the others, so re-running /sdlc-init on an initialised project installs it
     ".github/workflows/sdlc-release.yml",
+    # the fix round on a "Request changes" review or an un-park label (decisions 22 and 24)
+    # and the end state of a PR closed without a merge (decision 25); plugin 0.2.13
+    ".github/workflows/sdlc-fix.yml",
+    ".github/workflows/sdlc-abandon.yml",
     ".github/scripts/sdlc_pin.py",
 )
 # The template writes the default branch GitHub gives most repositories; a project whose
@@ -280,12 +290,20 @@ def render_workflow(rel: str, values: dict[str, str], default_branch: str) -> st
     return text
 
 
+OUTDATED = (
+    "outdated: differs from what plugin {version} installs; replace it with the template "
+    "copy to upgrade (delete it and re-run /sdlc-init), or keep your edits"
+)
+
+
 def install_workflows(root: Path, values: dict[str, str], report: dict) -> None:
     """Install the phase workflows and the pin script, create-only.
 
     An existing file is never overwritten: the owner may have edited it, and a workflow is
     project content. "unchanged" means the file on disk is already exactly what this version
-    of the framework installs; "kept" means it differs and was left alone.
+    of the framework installs; "outdated" means it differs and was left alone - an older
+    framework wrote it or the owner edited it, and only the owner can tell which (PROGRESS
+    known gap of 0.2.12: a project initialised before the find step never got it).
     """
     default_branch = project_default_branch(root)
     for rel in WORKFLOW_FILES:
@@ -296,7 +314,56 @@ def install_workflows(root: Path, values: dict[str, str], report: dict) -> None:
         elif target.read_text(encoding="utf-8") == content:
             report[rel] = "unchanged"
         else:
-            report[rel] = "kept"
+            report[rel] = OUTDATED.format(version=values["PLUGIN_VERSION"])
+
+
+# --- hosting: GitHub only (decision 23; build guide steps 2, 6, 21, 30) -------------------------
+NOT_GITHUB = (
+    "hosting: the origin remote {url!r} is on {host}, not github.com. Every trigger, the "
+    "automation identity, the labels, the check runs and the digest issue are GitHub-specific "
+    "(decision 23): host the project on GitHub, or run the phase commands by hand only"
+)
+NO_GITHUB_REMOTE = "not GitHub ({what}): the CI plumbing will not run; the commands work by hand"
+_HOST_RE = re.compile(
+    r"^(?:[a-z][a-z0-9+.-]*://(?:[^@/]+@)?(?P<h1>[^/:]+)|(?:[^@/]+@)?(?P<h2>[^/:]+):(?!//))",
+    re.IGNORECASE,
+)
+
+
+def remote_host(url: str) -> str | None:
+    """The host of a remote URL (https, ssh://, scp-style ``git@host:path``), or None for a
+    local path or a file URL: those have no host to be wrong about."""
+    url = url.strip()
+    if not url or url.lower().startswith("file://"):
+        return None
+    m = _HOST_RE.match(url)
+    if not m:
+        return None  # a bare path such as ../remote.git or C:\work\remote.git
+    host = (m.group("h1") or m.group("h2") or "").lower()
+    if len(host) == 1 and url[1:2] == ":":
+        return None  # a Windows drive letter, not a host
+    return host or None
+
+
+def hosting(root: Path) -> tuple[bool, str]:
+    """(ok, note). ``ok`` False refuses the install; the note says why, or what the report
+    carries when the project is let through without a GitHub remote."""
+    try:
+        from state import gitops  # noqa: PLC0415
+
+        if not gitops.is_repo(root):
+            return True, NO_GITHUB_REMOTE.format(what="not a git repository")
+        url = gitops.remote_url(root)
+    except Exception:  # noqa: BLE001 - git itself unavailable: nothing to judge
+        return True, NO_GITHUB_REMOTE.format(what="git unavailable")
+    if not url:
+        return True, NO_GITHUB_REMOTE.format(what="no origin remote")
+    host = remote_host(url)
+    if host is None:
+        return True, NO_GITHUB_REMOTE.format(what=f"local remote {url}")
+    if host == "github.com" or host.endswith(".github.com"):
+        return True, f"GitHub ({url})"
+    return False, NOT_GITHUB.format(url=url, host=host)
 
 
 def _write_if_changed(path: Path, content: str, report: dict, key: str) -> None:
@@ -309,10 +376,17 @@ def _write_if_changed(path: Path, content: str, report: dict, key: str) -> None:
 
 
 # --- main ---------------------------------------------------------------------------------
+class HostingError(RuntimeError):
+    """The project is not hosted on GitHub (decision 23); nothing was written."""
+
+
 def run(args) -> dict:
     root = Path(args.root).resolve()
     det = detect_mod.detect(root)
-    report: dict = {"root": str(root), "detection": det.as_dict(), "files": {}}
+    ok, note = hosting(root)
+    report: dict = {"root": str(root), "detection": det.as_dict(), "hosting": note, "files": {}}
+    if not ok:
+        raise HostingError(note)
     if args.detect_only:
         return report
     values = build_values(args, det)
@@ -488,7 +562,13 @@ def main(argv: list[str] | None = None) -> int:
     if not re.fullmatch(r"[\w.-]+/[\w.-]+", args.framework_repo):
         print("--framework-repo must be owner/repo", file=sys.stderr)
         return 2
-    print(json.dumps(run(args), indent=2, sort_keys=True))
+    try:
+        report = run(args)
+    except HostingError as exc:
+        print(json.dumps({"error": str(exc), "root": str(Path(args.root).resolve())}))
+        print(str(exc), file=sys.stderr)
+        return 2
+    print(json.dumps(report, indent=2, sort_keys=True))
     return 0
 
 

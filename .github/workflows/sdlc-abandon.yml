@@ -1,0 +1,77 @@
+# Abandon (decision 25; build guide step 9): a pull request of gate (a)-(e) closed without a
+# merge ends its change. status.yaml says `phase: abandoned` on the closed PR's head and on
+# every other sdlc/<id>/* branch of the change on the remote; the branches are kept; every
+# workflow's guard skips the change from then on (OPERATING_MODEL sections 4 and 4.2).
+#
+# Contract: docs/OPERATING_MODEL.md section 4.2 (the trigger and dispatch table), build guide
+# step 30, article p.39-41 (the pipeline runs deterministic steps without a person). Installed
+# into this project by /sdlc-init from the framework's template/.github/workflows/; edit it
+# here, not in the framework.
+#
+# Token rule: events caused by this workflow's GITHUB_TOKEN never start another workflow run
+# - only workflow_dispatch and repository_dispatch do. The owner's close fires this workflow
+# normally; the commits it pushes to the change's branches start nothing. Not a phase run: no
+# claude starts, no model credential is read, no deploy secret is held.
+#
+# The change is found from the pull request's own files (its changes/<id>-<slug>/ folder),
+# never from the head name alone (a web-session intent PR carries a claude/... head). A
+# closed PR that carries no change folder costs one green job of about 20 s. A merged PR is
+# gate (a), (b) or (e) passed and is never this workflow's.
+#
+# /sdlc-init filled in the framework repository.
+name: SDLC abandon (closed without a merge)
+
+on:
+  pull_request:
+    types: [closed]
+
+# contents: write to commit the end state on the change's branches; nothing else.
+permissions:
+  contents: write
+  pull-requests: read
+
+concurrency:
+  group: "sdlc-${{ github.event.pull_request.head.ref }}"
+  cancel-in-progress: false
+
+jobs:
+  abandon:
+    if: ${{ github.event.pull_request.merged == false }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      # The closed pull request's head: the branch that carries the change's status.yaml.
+      - name: Check out the pull request's head
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+
+      - name: Read the framework pin from sdlc.yaml
+        id: pin
+        run: python .github/scripts/sdlc_pin.py
+
+      - name: Check out the pinned framework (public repository, no token)
+        uses: actions/checkout@v5
+        with:
+          repository: "luissiviero/sdlc-framework"
+          ref: ${{ steps.pin.outputs.ref }}
+          path: framework
+
+      - name: Find the change this pull request carries
+        id: find
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          CHANGE_ID: ""
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: python framework/plugin/ci/run_phase.py --root . --plugin-dir framework --phase fix --id "$CHANGE_ID" --head-ref "$HEAD_REF" --repo "$REPO" --pr-number "$PR_NUMBER" --find-change
+
+      - name: Record the end state on the change's branches
+        if: steps.find.outputs.change_id != ''
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          CHANGE_ID: ${{ steps.find.outputs.change_id }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: python framework/plugin/state/cli.py abandon --root . --id "$CHANGE_ID" --reason "pull request $PR_NUMBER closed without a merge" --push --all-branches

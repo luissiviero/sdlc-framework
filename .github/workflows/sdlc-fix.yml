@@ -1,0 +1,138 @@
+# The fix round (decision 22; build guide steps 8 and 26): the owner's "Request changes"
+# review on any phase's pull request starts /sdlc-fix on that PR's own head branch, and so
+# does one of the owner's un-park labels (decision 24: sdlc:accept-risk,
+# sdlc:reset-iterations, sdlc:unlock-tests), which the run performs first. Intent, design and
+# build PRs alike; nothing notifies anyone (OPERATING_MODEL section 5).
+#
+# Contract: docs/OPERATING_MODEL.md section 4.2 (the trigger and dispatch table) and 5, build
+# guide step 30, article p.33-34 ("Claude addresses the comment and pushes the fix"; "let
+# Claude babysit the PR to merge") and p.39-41 ("Run Claude Code non-interactively inside
+# the CI/CD pipeline, sandbox the execution"). Installed into this project by /sdlc-init from
+# the framework's template/.github/workflows/; edit it here, not in the framework.
+#
+# Token rule: events caused by this workflow's GITHUB_TOKEN never start another workflow run
+# - only workflow_dispatch and repository_dispatch do. The owner's review and labels fire
+# this workflow normally; a review or a label the workflow token itself left never does, and
+# the job condition refuses a [bot] reviewer besides. The job holds no deploy secret and no
+# production credential (article p.40).
+#
+# The change is found from the pull request's own files (its changes/<id>-<slug>/ folder),
+# never from the head name alone: a web-session intent PR carries a claude/... head, and an
+# unmerged intent PR has no status.yaml on the default branch. The run checks that head out
+# and commits on it.
+#
+# /sdlc-init filled in the framework repository. The Claude Code version is read from
+# sdlc.yaml at run time.
+name: SDLC fix (review comments)
+
+on:
+  workflow_dispatch:
+    inputs:
+      change_id:
+        description: "Four-digit change id, e.g. 0001"
+        required: true
+        type: string
+      head_ref:
+        description: "The pull request's head branch, e.g. sdlc/0001/c; it keys the concurrency group"
+        required: false
+        type: string
+  pull_request_review:
+    types: [submitted]
+  pull_request:
+    types: [labeled]
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+  checks: write
+  actions: write
+
+# One run at a time per pull request head: a fix round shares the group of the phase runs of
+# the same branch (OPERATING_MODEL section 4.2), so it never races a dispatched phase.
+concurrency:
+  group: "sdlc-${{ inputs.head_ref || github.event.pull_request.head.ref }}"
+  cancel-in-progress: false
+
+jobs:
+  fix:
+    # A review counts when it asks for changes and a person submitted it (the review's
+    # state is lower-case in the event payload; a `[bot]` reviewer never starts a round). A
+    # label counts only when it is one of the owner's three un-park verbs; the gate labels
+    # sdlc:c-approved and sdlc:d-approved have their own workflows.
+    if: >-
+      ${{ github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request_review' &&
+      github.event.review.state == 'changes_requested' &&
+      !endsWith(github.event.review.user.login, '[bot]')) ||
+      (github.event_name == 'pull_request' &&
+      (github.event.label.name == 'sdlc:accept-risk' ||
+      github.event.label.name == 'sdlc:reset-iterations' ||
+      github.event.label.name == 'sdlc:unlock-tests')) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    steps:
+      # The pull request's head, not the event's default ref (a review event checks out the
+      # merge ref): the round commits on the branch the PR is opened from.
+      - name: Check out the pull request's head
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.head_ref || github.event.pull_request.head.ref || github.ref }}
+          fetch-depth: 0
+
+      - name: Read the framework pin from sdlc.yaml
+        id: pin
+        run: python .github/scripts/sdlc_pin.py
+
+      - name: Check out the pinned framework (public repository, no token)
+        uses: actions/checkout@v5
+        with:
+          repository: "luissiviero/sdlc-framework"
+          ref: ${{ steps.pin.outputs.ref }}
+          path: framework
+
+      # --id wins (a dispatch), then a head sdlc/<id>/<phase>, then the one changes/<id>-<slug>/
+      # folder the pull request touches. An empty change_id skips every step below.
+      - name: Find the change this pull request carries
+        id: find
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          CHANGE_ID: ${{ inputs.change_id }}
+          HEAD_REF: ${{ inputs.head_ref || github.event.pull_request.head.ref }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: python framework/plugin/ci/run_phase.py --root . --plugin-dir framework --phase fix --id "$CHANGE_ID" --head-ref "$HEAD_REF" --repo "$REPO" --pr-number "$PR_NUMBER" --find-change
+
+      - if: steps.find.outputs.change_id != ''
+        uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+
+      # The version comes from the pin step at run time, so a bump in sdlc.yaml applies on
+      # the next run; re-install the workflows only when this file itself changes.
+      - name: Install the pinned Claude Code CLI
+        if: steps.find.outputs.change_id != ''
+        env:
+          CLAUDE_CODE_VERSION: ${{ steps.pin.outputs.claude_code }}
+        run: npm install -g @anthropic-ai/claude-code@"$CLAUDE_CODE_VERSION"
+
+      - name: Prepare the runner for Claude Code's sandbox
+        if: steps.find.outputs.change_id != ''
+        run: python framework/plugin/ci/runner_setup.py
+
+      - name: "Install the project's own toolchain (sdlc.yaml: commands.setup)"
+        if: steps.find.outputs.change_id != ''
+        run: python framework/plugin/ci/project_setup.py --root .
+
+      - name: Run the fix round
+        if: steps.find.outputs.change_id != ''
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          GITHUB_TOKEN: ${{ github.token }}
+          CHANGE_ID: ${{ steps.find.outputs.change_id }}
+          HEAD_REF: ${{ inputs.head_ref || github.event.pull_request.head.ref }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: python framework/plugin/ci/run_phase.py --root . --plugin-dir framework --phase fix --id "$CHANGE_ID" --head-ref "$HEAD_REF" --repo "$REPO" --pr-number "$PR_NUMBER" --ref "$DEFAULT_BRANCH"

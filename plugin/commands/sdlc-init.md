@@ -9,6 +9,12 @@ allowed-tools: Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/init/sdlc_init.py" *), 
 
 ## 0. Preconditions
 - The current directory is the root of a git repository. If not, stop and say so.
+- Hosting is GitHub (decision 23): every trigger, the automation identity, the labels, the
+  check runs and the digest issue are GitHub-specific. The install script refuses a project
+  whose `origin` remote is on another host (exit 2, the reason in its JSON `error`): stop
+  and tell the owner. A project with no `origin` yet, or a local-path remote, is let through
+  and the report's `hosting` line says the CI plumbing will not run until a GitHub remote
+  exists; say so in the report.
 - Run the detection first and show it to the owner:
 ```
 python "${CLAUDE_PLUGIN_ROOT}/plugin/init/sdlc_init.py" --root "${CLAUDE_PROJECT_DIR}" --detect-only
@@ -49,11 +55,14 @@ declaration; hooks come from the plugin), `REVIEW.md`, `changes/README.md`, buil
 `CLAUDE.md` from the proposal plus the skeleton sections, creates `ruff.toml` when no linter
 existed, creates `evals/` (empty suite, filled by incidents — decision 17) and `bands.yaml`
 (control bands for the maintain metric — decision 15), and creates
-`changes/0000-sdlc-init/` with an intent.md. It also installs the CI workflows and the daily
-digest under `.github/`, create-only (an existing file is never overwritten); re-running it
-on an upgrade installs the workflow files a newer plugin adds. Read its JSON report and
-show the owner the file-by-file result. Re-running is safe: it merges and never overwrites
-the owner's edits. This script is the only sanctioned writer of guardrail files in a run;
+`changes/0000-sdlc-init/` with an intent.md. It also installs the CI workflows (the phase
+transitions, the release, the fix round, the abandon rule) and the daily digest under
+`.github/`, create-only (an existing file is never overwritten); re-running it on an upgrade
+installs the workflow files a newer plugin adds and reports an existing one that differs
+from this version's template as `outdated` — the owner replaces it (delete it and re-run)
+to get the newer steps, or keeps their edits. Read its JSON report and show the owner the
+file-by-file result, the `outdated` ones first. Re-running is safe: it merges and never
+overwrites the owner's edits. This script is the only sanctioned writer of guardrail files in a run;
 everything it writes rides in the change-0000 PR the owner merges.
 
 ## 4. Verify the feedback loop

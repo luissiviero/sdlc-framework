@@ -187,6 +187,24 @@ def commit_paths(root: Path, paths: list[str], message: str) -> str | None:
     return commit_files(root, changed_files(root, paths), message)
 
 
+# The automation identity of OPERATING_MODEL section 2 (the CI workflow token); a runner has
+# no git identity of its own, and a commit needs one.
+BOT_LOGIN = "github-actions[bot]"
+BOT_EMAIL = "41898282+github-actions[bot]@users.noreply.github.com"
+
+
+def ensure_identity(root: Path, name: str = BOT_LOGIN, email: str = BOT_EMAIL) -> str | None:
+    """Give the checkout ``name``/``email`` when it has no user.name or user.email; returns
+    the name when it was set, None when the checkout already had one."""
+    have_name = run(root, "config", "--get", "user.name", check=False).strip()
+    have_email = run(root, "config", "--get", "user.email", check=False).strip()
+    if have_name and have_email:
+        return None
+    run(root, "config", "user.name", name)
+    run(root, "config", "user.email", email)
+    return name
+
+
 def push(root: Path, branch: str, remote: str = "origin") -> None:
     run(root, "push", "-u", remote, branch)
 
