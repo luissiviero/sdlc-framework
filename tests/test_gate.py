@@ -1257,7 +1257,8 @@ def test_owner_actions_parks_on_an_iteration_reset_by_the_automation_identity(pr
     )
     commit_all(root, "owner: allow another round")
     verdict(root, "c")
-    assert gate.run_gate(root, "0001", "c", dry_run=True).result == "continue"
+    result = gate.run_gate(root, "0001", "c", dry_run=True)
+    assert result.result == "continue", result.reason
 
 
 # --- step 24.4: the fixture states of gates (c), (d) and (e) --------------------------------
@@ -1407,6 +1408,51 @@ def test_owner_actions_honours_a_label_the_owner_applied_and_the_run_committed(p
     assert "applied by the owner's label" in oa.reason
 
 
+def test_owner_actions_honours_a_second_reset_by_the_same_person(project):
+    """The second sdlc:reset-iterations on sample change 0002 (2026-09-24) parked: the actor
+    field already said luissiviero, so the commit that lowered the count changed no actor.
+    Since 0.2.17 the act is recorded by its stamp (``iterations_reset_at``) as well."""
+    from state import conventions as c
+
+    root, change = project
+    st = status_mod.read_status(change)
+    st.iterations = 2
+    status_mod.write_status(change, st)
+    commit_all(root, "build(0001): two fix rounds")
+    _label_act(change, c.RESET_ITERATIONS_LABEL, "luissiviero")
+    commit_all(root, "owner labels applied: sdlc:reset-iterations", author=BOT_AUTHOR)
+    st = status_mod.read_status(change)
+    assert st.iterations == 0 and st.panel_calls == 0 and st.iterations_reset_at
+    first_stamp = st.iterations_reset_at
+    st.iterations = 1
+    status_mod.write_status(change, st)
+    commit_all(root, "fix(0001): one round")
+    import time
+
+    time.sleep(1.1)  # the stamp has second resolution; the second act must differ
+    _label_act(change, c.RESET_ITERATIONS_LABEL, "luissiviero")  # the same person again
+    commit_all(root, "owner labels applied: sdlc:reset-iterations", author=BOT_AUTHOR)
+    st = status_mod.read_status(change)
+    assert st.iterations_reset_by == "luissiviero" and st.iterations_reset_at != first_stamp
+    verdict(root, "c")
+    result = gate.run_gate(root, "0001", "c", dry_run=True)
+    assert "owner_actions" not in _names(result, False), result.reason
+    oa = next(ch for ch in result.checks if ch.name == "owner_actions")
+    assert oa.details["label_actors"] == {"iterations_reset": "luissiviero"}
+    # a drop with neither a new actor nor a new stamp is still the run's own act: rejected
+    st = status_mod.read_status(change)
+    st.iterations = 1
+    status_mod.write_status(change, st)
+    commit_all(root, "fix(0001): another round")
+    st = status_mod.read_status(change)
+    st.iterations = 0  # no label: actor and stamp unchanged
+    status_mod.write_status(change, st)
+    commit_all(root, "owner labels applied: sdlc:reset-iterations", author=BOT_AUTHOR)
+    verdict(root, "c")
+    result = gate.run_gate(root, "0001", "c", dry_run=True)
+    assert "owner_actions" in _names(result, False)
+
+
 def test_owner_actions_rejects_a_label_actor_that_is_the_automation_identity(project):
     """A recorded actor that is a bot never passes, whoever wrote the commit: a run cannot
     un-park itself (decision 11)."""
@@ -1434,7 +1480,7 @@ def test_owner_actions_rejects_a_label_actor_that_is_the_automation_identity(pro
     commit_all(root, "owner labels applied: sdlc:reset-iterations", author=BOT_AUTHOR)
     verdict(root, "c")
     result = gate.run_gate(root, "0001", "c", dry_run=True)
-    assert result.result == "continue"
+    assert result.result == "continue", result.reason
     oa = next(ch for ch in result.checks if ch.name == "owner_actions")
     assert oa.details["label_actors"] == {"iterations_reset": "luissiviero"}
     # a bot-authored acceptance with no actor recorded is the CLI case: still refused

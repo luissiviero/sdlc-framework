@@ -1302,7 +1302,10 @@ def test_workflow_checks_out_the_pinned_framework_beside_the_project(name):
     assert 'repository: "{{FRAMEWORK_REPO}}"' in text
     assert "ref: ${{ steps.pin.outputs.ref }}" in text
     assert "path: framework" in text
-    assert "run: python .github/scripts/sdlc_pin.py" in text
+    # the pin is the default branch's, never the PR head's (0.2.17); the branch name
+    # reaches the script through a step-level env var, never pasted into the run line
+    assert 'run: python .github/scripts/sdlc_pin.py --ref "origin/$SDLC_DEFAULT_BRANCH"' in text
+    assert "SDLC_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}" in text
     assert "fetch-depth: 0" in text
 
 

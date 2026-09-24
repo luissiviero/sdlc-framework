@@ -392,6 +392,56 @@ def _pin(tmp_path: Path, plugin_block: str):
     )
 
 
+def test_pin_script_reads_the_default_branch_s_pin_not_the_head_s(tmp_path):
+    """0.2.17: the workflows pass ``--ref origin/<default>``; a phase branch that started
+    under an older pin runs the framework the project has today (the first overturn rounds
+    on the sample repository ran 0.2.14 on a branch while main pinned 0.2.16)."""
+    import subprocess
+    import sys
+
+    script = TEMPLATE / ".github" / "scripts" / "sdlc_pin.py"
+    bare = tmp_path / "bare.git"
+    subprocess.run(["git", "init", "-q", "--bare", str(bare)], check=True)
+    work = tmp_path / "work"
+    subprocess.run(["git", "init", "-q", "-b", "main", str(work)], check=True)
+
+    def git(*args):
+        return subprocess.run(
+            ["git", *args], cwd=work, check=True, capture_output=True, text=True
+        ).stdout
+
+    git("config", "user.email", "owner@example.com")
+    git("config", "user.name", "Owner")
+    (work / "sdlc.yaml").write_text("plugin:\n  version: 0.2.14\n", encoding="utf-8")
+    git("add", ".")
+    git("commit", "-q", "-m", "pin 0.2.14")
+    git("checkout", "-q", "-b", "sdlc/0001/b")  # the phase branch keeps the old pin
+    git("checkout", "-q", "main")
+    (work / "sdlc.yaml").write_text("plugin:\n  version: 0.2.16\n", encoding="utf-8")
+    git("commit", "-q", "-am", "pin 0.2.16")
+    git("remote", "add", "origin", str(bare))
+    git("push", "-q", "-u", "origin", "main")
+    git("checkout", "-q", "sdlc/0001/b")
+
+    def pin(*extra):
+        return subprocess.run(
+            [sys.executable, str(script), "--root", str(work), *extra],
+            capture_output=True, text=True,
+        )  # fmt: skip
+
+    assert "ref=v0.2.14" in pin().stdout  # the head's copy: what 0.2.16 and before read
+    proc = pin("--ref", "origin/main")
+    assert proc.returncode == 0, proc.stderr
+    assert "ref=v0.2.16" in proc.stdout and "claude_code=" in proc.stdout
+    # a ref the checkout lacks is fetched from origin
+    git("update-ref", "-d", "refs/remotes/origin/main")
+    proc = pin("--ref", "origin/main")
+    assert proc.returncode == 0, proc.stderr
+    assert "ref=v0.2.16" in proc.stdout
+    proc = pin("--ref", "origin/nowhere")
+    assert proc.returncode == 1 and "cannot read sdlc.yaml at origin/nowhere" in proc.stderr
+
+
 def test_pin_script_does_not_double_the_v_of_a_version(tmp_path):
     proc = _pin(tmp_path, 'plugin:\n  version: "v1.4.0"\n  claude_code: "2.1.278"\n')
     assert proc.returncode == 0, proc.stderr

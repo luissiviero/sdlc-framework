@@ -825,11 +825,13 @@ def _status_fields(ctx: GateContext, ref: str) -> dict[str, Any] | None:
         if isinstance(e, dict) and str(e.get("item", "")).strip()
     }
     reset_by = data.get("iterations_reset_by")
+    reset_at = data.get("iterations_reset_at")
     return {
         "risk": risk,
         "iterations": iterations,
         "risk_by": risk_by,
         "reset_by": str(reset_by).strip() if isinstance(reset_by, str) else None,
+        "reset_at": str(reset_at).strip() if isinstance(reset_at, str) else None,
     }
 
 
@@ -880,7 +882,7 @@ def check_owner_actions(ctx: GateContext) -> CheckResult:
     if ctx.diff is None:
         return _fail("owner_actions", ctx.diff_error, "Run the gate inside the project's git repo.")
     identities = automation_identity(ctx.config)
-    empty = {"risk": set(), "iterations": 0, "risk_by": {}, "reset_by": None}
+    empty = {"risk": set(), "iterations": 0, "risk_by": {}, "reset_by": None, "reset_at": None}
     head = _status_fields(ctx, "HEAD") or empty
     tree_risk = {str(r).strip().lower() for r in ctx.status.risk_accepted if str(r).strip()}
     problems: list[str] = []
@@ -913,7 +915,12 @@ def check_owner_actions(ctx: GateContext) -> CheckResult:
             }
             risk_event = (sha, email, name, added, by)
         if now["iterations"] < before["iterations"] and drop_event is None:
-            reset_by = now["reset_by"] if now["reset_by"] != before["reset_by"] else None
+            # the act is recorded in this very commit when the actor or the stamp changed:
+            # a second reset by the same person changes the stamp only (0.2.17)
+            recorded = now["reset_by"] != before["reset_by"] or (
+                now["reset_at"] is not None and now["reset_at"] != before["reset_at"]
+            )
+            reset_by = now["reset_by"] if recorded else None
             drop_event = (sha, email, name, before["iterations"], now["iterations"], reset_by)
     labels: dict[str, Any] = {}
     if risk_event and is_automation(risk_event[2], risk_event[1], identities):

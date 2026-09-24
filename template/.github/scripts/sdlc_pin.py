@@ -4,7 +4,16 @@ Installed into the project by ``/sdlc-init`` (build guide step 30, task 30.8) an
 second step of every SDLC workflow, *before* the framework itself is checked out — which is
 why it lives in the project and imports nothing but the standard library.
 
-    python .github/scripts/sdlc_pin.py [--root .] [--file sdlc.yaml]
+    python .github/scripts/sdlc_pin.py [--root .] [--file sdlc.yaml] [--ref origin/main]
+
+``--ref`` reads the file from that git ref instead of the working tree: the workflows pass
+``origin/<default branch>``, because the pin is the project's, not the branch's. A phase
+branch carries the ``sdlc.yaml`` it started from, and a pull request may stay open across
+several framework releases: read from the head, the branch would run the framework it was
+created under for its whole life (the first overturn rounds on the sample repository,
+2026-09-24, ran 0.2.14 on ``sdlc/0002/b`` while ``main`` pinned 0.2.16). The run's own
+configuration (review mode, limits) already comes from the base branch's copy. When the ref
+is not in the checkout, ``origin/<branch>`` is fetched with depth 1 first.
 
 It reads the ``plugin:`` block of ``sdlc.yaml`` and writes two step outputs into
 ``$GITHUB_OUTPUT`` (and prints them, so a local run shows the same two lines):
@@ -26,6 +35,7 @@ from __future__ import annotations
 import argparse
 import os
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -55,18 +65,55 @@ def read_key(block: str, key: str) -> str:
     return match.group(1).strip() if match else ""
 
 
+def _git_show(root: Path, ref: str, file: str) -> str | None:
+    argv = ["git", "show", f"{ref}:{file}"]
+    proc = subprocess.run(
+        argv, cwd=root, capture_output=True, text=True, encoding="utf-8", check=False
+    )
+    return proc.stdout if proc.returncode == 0 else None
+
+
+def read_at_ref(root: Path, ref: str, file: str) -> str | None:
+    """``file`` as committed at ``ref``; an ``origin/<branch>`` ref that the checkout lacks is
+    fetched (depth 1) and read from ``FETCH_HEAD``. None when nothing can be read."""
+    text = _git_show(root, ref, file)
+    if text is not None or not ref.startswith("origin/"):
+        return text
+    branch = ref[len("origin/") :]
+    argv = ["git", "fetch", "--depth=1", "origin", branch]
+    fetched = subprocess.run(
+        argv, cwd=root, capture_output=True, text=True, encoding="utf-8", check=False
+    )
+    if fetched.returncode != 0:
+        return None
+    return _git_show(root, "FETCH_HEAD", file)
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="sdlc-pin", description=__doc__.splitlines()[0])
     parser.add_argument("--root", default=".")
     parser.add_argument("--file", default="sdlc.yaml")
+    parser.add_argument(
+        "--ref", default=None, help="read the file at this git ref (workflows: origin/<default>)"
+    )
     args = parser.parse_args(argv)
 
     path = Path(args.root) / args.file
-    try:
-        text = path.read_text(encoding="utf-8")
-    except OSError as exc:
-        print(f"cannot read {path}: {exc}", file=sys.stderr)
-        return 1
+    if args.ref:
+        text = read_at_ref(Path(args.root), args.ref, args.file)
+        if text is None:
+            print(
+                f"cannot read {args.file} at {args.ref}: fetch the default branch first",
+                file=sys.stderr,
+            )
+            return 1
+        path = Path(f"{args.ref}:{args.file}")
+    else:
+        try:
+            text = path.read_text(encoding="utf-8")
+        except OSError as exc:
+            print(f"cannot read {path}: {exc}", file=sys.stderr)
+            return 1
     block = plugin_block(text)
     version = read_key(block, "version")
     if not version:
