@@ -15,6 +15,7 @@ A Claude Code plugin (`plugin/`) plus a project template (`template/`) that driv
   - `panel/cli.py mode | items | prompt | record | overturn` — deferred review (decision 21): the judgment items a phase would park on, the three briefs (reviewer, devil's advocate, conciliator), the decisions ledger `evidence/decisions-<phase>.md` and the owner's overturn;
   - `pr/cli.py upsert` — opens or updates the change's PR with the ≤5-bullet summary and the gate's label; `pr/digest.py` — the daily review-queue digest (a pinned issue whose body is rewritten; nothing notifies);
   - `ci/run_phase.py` — what each workflow runs: the guard, the pinned plugin, `claude -p` with the run limits, spend recording and the explicit dispatch of the next phase.
+- Releases of the framework itself: a merge to `main` that bumps the version in `.claude-plugin/plugin.json` gets its tag `v<version>` and its GitHub Release page from `.github/workflows/sdlc-tag.yml` (`.github/scripts/sdlc_tag.py`); projects pin that tag in `sdlc.yaml`, and their workflows read the pin from their default branch.
 - Phases by hand: `/sdlc-plan` (interactive) → owner merges the intent PR → `/sdlc-design <id>` → owner merges the spec+plan PR → `/sdlc-build <id>` → `/sdlc-test <id>` → `/sdlc-deploy <id>` → owner merges the build PR → the release workflow runs the project's `deploy.command` (with `deploy.production: true`, only once the owner has applied `sdlc:release-approved` on the merged PR). Review comments on any PR: a "Request changes" review starts the fix round in CI (`/sdlc-fix <id>` by hand); the labels `sdlc:accept-risk`, `sdlc:reset-iterations` and `sdlc:unlock-tests` are the owner's un-park verbs; closing a PR without merging abandons the change. GitHub-hosted projects only (`/sdlc-init` refuses another host). Profiles: standard (the owner merges at gates a, b, e) or full (all five gates); Lite is gone since 0.2.14. With `sdlc.yaml: review: deferred` a review panel settles the judgment items inside a phase and the PR opens with "Decisions taken for you". With the workflows installed, everything after the first merge runs on its own (`docs/OPERATING_MODEL.md` §4.2).
 
 ## Starting pack (session 1 input)
@@ -23,7 +24,7 @@ The files below were the input to the first build session; that session's brief 
 
 | File | What it is | Used by |
 |---|---|---|
-| `HANDOFF.md` | Brief for the **next** build session (now: session 4, B4 and decisions 21–26); earlier briefs are kept in `docs/handoffs/` | the session |
+| `HANDOFF.md` | Brief for the **next** build session (now: session 5, B5 and decision 26); earlier briefs are kept in `docs/handoffs/` | the session |
 | `CLAUDE.md` | Conventions for this repo (English only, Python hooks, plugin/template layout) | every session |
 | `docs/OPERATING_MODEL.md` | The contract: phases, artifacts, profiles, gates, park-never-page, conventions (draft to finalise in step 1) | the framework itself |
 | `docs/DECISIONS.md` | The 26 settled decisions with alternatives and reasons (21–26 added 2026-09-23) | sessions, to avoid reopening them |
