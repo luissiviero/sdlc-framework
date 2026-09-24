@@ -7,6 +7,8 @@
 # full:     all five gates human; (c),(d) = approving review + label on the build PR
 # lite:     (a) and (e) only; (b) is confidence-gated too
 profile: standard
+review: parked
+panel_advocate_model: opus
 
 # --- feedback loop: one-command targets (build guide step 14; article p.27 step 1) --------
 # Each must exit non-zero on failure. /sdlc-init detects them for Python projects.
@@ -87,7 +89,7 @@ hooks:
 plugin:
   name: sdlc
   marketplace: sdlc-framework
-  version: 0.2.13
+  version: 0.2.14
   # Claude Code CLI version the SDLC workflows install (`npm install -g
   # @anthropic-ai/claude-code@<this>`). `--permission-prompts none` needs 2.1.259 or later;
   # 2.1.278 is the CLI the jobs install and the framework's minimum.
