@@ -384,6 +384,83 @@ def test_phase_e_release_note_and_counters(project):
     # relative repository paths when the fixture has no GitHub remote
     assert f"changes/{CHANGE_DIR_NAME}/intent.md" in body
     assert f"changes/{CHANGE_DIR_NAME}/evidence/gate-e.json" in body
+    # waiting for the owner's merge; the release workflow runs after it (build guide step 32)
+    assert "merge = gate (e) passed; the release workflow then runs `deploy.command`" in body
+    # the fixture declares no production: merge is the whole gate (decision 13)
+    assert "Release approval" not in body and "sdlc:release-approved" not in body
+
+
+RELEASE_NOTES = """# Release notes — change 0001: Percent helper
+
+## What changed
+
+- `sample_pkg.percent(part, whole)` added.
+
+## Evidence
+
+test green, build green, lint green
+"""
+
+
+def test_phase_e_release_note_quotes_the_release_notes_file(project):
+    """32.2: at (e) the "## Release note" section is evidence/release-notes.md verbatim,
+    without its H1 title; the intent's proposed outcome is only the fallback."""
+    root, change = project
+    logs(change)
+    gate_json(change, "e", "wait", c.ready_label("e"))
+    write(change / art.EVIDENCE_DIR / desc.RELEASE_NOTES, RELEASE_NOTES)
+    body = desc.build_description(root, "0001", "e")
+    assert len(bullets(body)) == 5
+    note = body.split("## Release note\n")[1]
+    assert note.startswith("\n### What changed\n\n- `sample_pkg.percent(part, whole)` added.\n")
+    assert "### Evidence\n\ntest green, build green, lint green" in note
+    # the file's headings are demoted one level so they nest under "## Release note"
+    assert "\n## What changed" not in body and "\n## Evidence" not in body
+    assert "# Release notes — change 0001" not in body
+    assert "returns a rounded percentage" not in note  # the fallback is not used
+
+
+def test_phase_e_release_note_falls_back_to_the_intent_outcome(project):
+    root, change = project
+    gate_json(change, "e", "wait", c.ready_label("e"))
+    write(change / art.EVIDENCE_DIR / desc.RELEASE_NOTES, "# Release notes — change 0001\n\n")
+    body = desc.build_description(root, "0001", "e")
+    assert "returns a rounded percentage" in body.split("## Release note")[1]
+
+
+def _declare_production(root: Path, value: str) -> None:
+    config = root / "sdlc.yaml"
+    text = config.read_text(encoding="utf-8")
+    lines = [
+        f"  production: {value}" if line.strip().startswith("production:") else line
+        for line in text.splitlines()
+    ]
+    assert sum(line.strip().startswith("production:") for line in text.splitlines()) == 1
+    write(config, "\n".join(lines) + "\n")
+
+
+def test_release_approval_line_only_when_production_is_declared(project):
+    """Decision 13: with `deploy.production: true` the release label is the second act; the
+    line sits below the five bullets (not a sixth bullet) and only at phase (e)."""
+    root, change = project
+    logs(change)
+    gate_json(change, "e", "wait", c.ready_label("e"))
+    gate_json(change, "d", "continue", None)
+    _declare_production(root, "true")
+    body = desc.build_description(root, "0001", "e")
+    assert len(bullets(body)) == 5
+    line = (
+        "Release approval: apply `sdlc:release-approved` on this PR after merging; the "
+        "release workflow waits for it."
+    )
+    assert line in body.splitlines()
+    assert "signed tag" not in body  # decision 11: the label is the only route
+    assert body.index(line) > body.index(bullets(body)[-1]) and body.index(line) < body.index(
+        "Links:"
+    )
+    assert line not in desc.build_description(root, "0001", "d")
+    _declare_production(root, "false")
+    assert line not in desc.build_description(root, "0001", "e")
 
 
 def test_counters_after_a_fix_round(project):

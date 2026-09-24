@@ -372,3 +372,118 @@ def test_review_prompt_renders_with_str_format():
     assert shape["head"] == "0" * 40
     assert sorted(shape["tally"]) == ["important", "nit", "nits_omitted"]
     assert shape["findings"][0]["severity"]
+
+
+# --- 0.2.12: the reviewer has no shell (deliverable 6(e)); gate (e) finished (step 32) -------
+REVIEWER_BRIEFS = {
+    "sdlc-design.md": "b",
+    "sdlc-build.md": "c",
+    "sdlc-test.md": "d",
+    "sdlc-fix.md": "<phase>",
+}
+
+
+@pytest.mark.parametrize("name", sorted(REVIEWER_BRIEFS))
+def test_reviewer_delegation_writes_the_diff_file_and_passes_the_sha_first(name):
+    """The adversarial reviewer has no Bash, so every run that delegates to it writes the
+    diff file in one git call and reads HEAD's sha before the delegation, and hands both over;
+    the diff file is evidence committed after the gate."""
+    text = flat(COMMANDS / name)
+    phase = REVIEWER_BRIEFS[name]
+    diff_file = f"changes/<id>-<slug>/evidence/diff-{phase}.patch"
+    write = f"git diff --stat --patch --output={diff_file} <base>...HEAD"
+    assert write in text, name
+    assert "git rev-parse HEAD" in text, name
+    delegate = re.search(r"Delegate to (?:the )?`sdlc:adversarial-reviewer`", text).start()
+    assert text.index(write) < delegate, f"{name}: the diff file is written after delegating"
+    assert text.index("git rev-parse HEAD") < delegate, name
+    brief = text[delegate : delegate + 400]
+    assert "full HEAD sha" in brief and diff_file in brief, name
+    assert "The diff file is evidence" in text, name
+    assert " && " not in write  # one shell command per Bash call
+
+
+def test_sdlc_deploy_prepares_the_release_around_the_review_and_the_gate():
+    """Step 32: the adapter's artifact is prepared and committed BEFORE the review pass, so
+    the review and gate (e) judge HEAD with it (no extra review job); the release notes are
+    written AFTER the gate check and ride in the evidence commit (OPERATING_MODEL 4.1:
+    evidence is committed after the gate); step 5 only marks the PR ready."""
+    text = flat(COMMANDS / "sdlc-deploy.md")
+    prep = text[text.index("## 0a. Prepare the release artifact") :]
+    prep = prep[: prep.index("## 1. Review passes")]
+    assert text.index("## 0a. Prepare the release artifact") < text.index("## 1. Review passes")
+    assert text.index("## 0a.") < text.index('review/cli.py" prompt')
+    assert "notes.py" not in prep
+    assert "is a departure from `plan.md` unless the plan lists it" in prep
+    assert '"## Files that change" of `plan.md` in the same commit' in prep
+    assert '--phase e --message "release(<id>): release prepared"' in prep
+    assert "## 3a." not in text and "fresh review of the new HEAD" not in text
+    notes_call = (
+        'python "${CLAUDE_PLUGIN_ROOT}/plugin/release/notes.py" --root "${CLAUDE_PROJECT_DIR}" '
+        "--id <id> --write"
+    )
+    gate = text[text.index("## 4. Gate (e)") : text.index("## 5. Mark the PR ready")]
+    evidence_commit = (
+        'commit-phase --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase e '
+        '--message "review(<id>): gate (e) evidence" --push'
+    )
+    assert gate.index(GATE_CHECK) < gate.index(notes_call) < gate.index(evidence_commit)
+    assert "evidence/release-notes.md" in gate
+    step5 = text[text.index("## 5. Mark the PR ready with the final summary") :]
+    step5 = step5[: step5.index("## 6. Hand over")]
+    assert "notes.py" not in step5 and "commit-phase" not in step5
+    assert "evidence/release-notes.md" in step5
+    for adapter in (
+        "publish package",
+        "regenerate report",
+        "schedule job",
+        "promote to paper trading",
+        "deploy service",
+        "none",
+    ):
+        assert f"`{adapter}` →" in prep, adapter
+    for nothing in (
+        "nothing uploaded",
+        "nothing scheduled",
+        "nothing promoted",
+        "nothing deployed",
+    ):
+        assert nothing in prep, nothing
+    assert "--ready" in step5 and "sdlc:e-ready" in step5
+    assert "The agent does everything up to the production gate and nothing past it" in text
+    assert "merge = gate (e) passed; the release workflow then runs `deploy.command`" in step5
+    two_acts = (
+        "the release label `sdlc:release-approved` is the second act: apply it on this PR "
+        "after merging; the release workflow waits for it"
+    )
+    assert two_acts in step5
+    # decision 11: the label is the only route, a signed tag a run could make is not one
+    assert "signed tag" not in text
+    hand_over = text[text.index("## 6. Hand over") :]
+    assert two_acts in hand_over and "Nothing else runs" in hand_over
+    fm = frontmatter(COMMANDS / "sdlc-deploy.md")
+    assert 'Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/release/notes.py" *)' in fm["allowed-tools"]
+    assert "is B4" not in fm["description"] and "release workflow" in fm["description"]
+
+
+def test_no_command_or_agent_defers_to_a_finished_build_stage():
+    """B3 shipped in 0.2.x and B4 ships with 0.2.12: no process file may still say that
+    something "is B4" or "is/are B3" (or "from B3 on", "(B4)")."""
+    stale = re.compile(r"\b(?:is|are|from|available from)\s+B[34]\b|\(B[34]\)|\bB[34] on\b")
+    for path in sorted(COMMANDS.glob("*.md")) + sorted((PLUGIN / "agents").glob("*.md")):
+        for match in stale.finditer(flat(path)):
+            raise AssertionError(f"{path.name}: stale build-stage reference {match.group(0)!r}")
+    for path in sorted(COMMANDS.glob("*.md")) + sorted((PLUGIN / "agents").glob("*.md")):
+        assert not re.search(r"\bB[34]\b", path.read_text(encoding="utf-8")), path.name
+
+
+def test_pr_route_order_matches_the_github_client():
+    """pr/github.py tries the REST API with the token first, then `gh`, then the compare URL
+    (since 0.2.3); the commands describe the same order."""
+    plan = flat(COMMANDS / "sdlc-plan.md")
+    assert (
+        "the GitHub REST API with the token (`GITHUB_TOKEN`/`GH_TOKEN`) first, then the `gh` CLI"
+        in plan
+    )
+    build = flat(COMMANDS / "sdlc-build.md")
+    assert "uses the GitHub REST API with `GITHUB_TOKEN`/`GH_TOKEN` first, then `gh`" in build

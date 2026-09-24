@@ -2,6 +2,13 @@
 section 3). Each check is a function ``(GateContext) -> CheckResult``; ``CHECKS_BY_PHASE``
 says which run at the gate of which phase. A failed check carries ``need``: the sentence the
 "What I need from you" block shows the owner (decision 11).
+
+The gate judges HEAD, not the working tree (OPERATING_MODEL section 3: "HEAD rather than the
+working tree"): ``plan_sync``, ``design_scope``, ``guardrails`` and ``risk_list`` read the
+committed diff (``diff.committed_files``: merge base...HEAD, the PR's own diff), and
+``clean_tree`` is the only check that looks at the working tree — its job is to say that
+the work was committed at all. Those four fail (``_no_base``) when no default branch exists
+to take the merge base from: an empty committed diff would otherwise pass them silently.
 """
 
 from __future__ import annotations
@@ -104,6 +111,23 @@ def _ok(name: str, reason: str, **details) -> CheckResult:
 
 def _fail(name: str, reason: str, need: str, **details) -> CheckResult:
     return CheckResult(name, False, reason, need, details)
+
+
+NO_BASE_REASON = "no base branch: the committed diff cannot be judged"
+NO_BASE_NEED = (
+    "Run the gate in a checkout whose default branch exists (origin/HEAD, main or master)"
+)
+
+
+def _no_base(ctx: GateContext, name: str) -> CheckResult | None:
+    """The failure of a check that judges the committed diff when there is nothing to judge
+    it against: ``diff.default_base`` found no default branch at all (``diff.collect`` then
+    compares HEAD with itself, ``base`` "HEAD", and the committed diff is empty whatever the
+    branch carries). A checkout of the default branch itself is not this case: its merge base
+    is HEAD because nothing was committed on top of the base yet."""
+    if ctx.diff is None or ctx.diff.base != "HEAD":
+        return None
+    return _fail(name, NO_BASE_REASON, NO_BASE_NEED, note=ctx.diff.note)
 
 
 # --- 1. artifact exists and matches its template ---------------------------------------------
@@ -411,6 +435,9 @@ def check_plan_sync(ctx: GateContext) -> CheckResult:
     the same commit only when the commit departs from the plan (article p.16 step 7)."""
     if ctx.diff is None:
         return _fail("plan_sync", ctx.diff_error, "Run the gate inside the project's git repo.")
+    no_base = _no_base(ctx, "plan_sync")
+    if no_base:
+        return no_base
     plan = ctx.artifact("plan.md") or ""
     planned = art.planned_files(plan)
     committed = diffmod.committed_files(ctx.root, ctx.diff.merge_base, ctx.diff.head)
@@ -450,12 +477,23 @@ def check_plan_sync(ctx: GateContext) -> CheckResult:
 
 # --- 7. no diff touching the guardrail files (OPERATING_MODEL section 3) ------------------------
 def check_guardrails(ctx: GateContext) -> CheckResult:
+    """No guardrail file and no accepted ``intent.md`` in the **committed** diff (as
+    ``check_plan_sync`` and ``check_design_scope``; OPERATING_MODEL section 3: the gate
+    judges HEAD). An uncommitted edit is ``check_clean_tree``'s. Read from the working tree,
+    the ``.env`` that Claude Code's sandbox shows as modified is part of the "diff" however
+    clean the branch is - the false positive that parked ``plan_sync`` in the eleventh live
+    run (2026-09-22) - and a project that protects ``.env`` or lists it on its risk list
+    would park here on it the same way."""
     if ctx.diff is None:
         return _fail("guardrails", ctx.diff_error, "Run the gate inside the project's git repo.")
+    no_base = _no_base(ctx, "guardrails")
+    if no_base:
+        return no_base
+    committed = diffmod.committed_files(ctx.root, ctx.diff.merge_base, ctx.diff.head)
     patterns = protected_paths.protected_patterns(ctx.config)
-    touched = [f for f in ctx.diff.files if any(matches(p, f) for p in patterns)]
+    touched = [f for f in committed if any(matches(p, f) for p in patterns)]
     intent_rel = f"{ctx.change_rel}/intent.md"
-    if ctx.phase != "a" and intent_rel in ctx.diff.files:
+    if ctx.phase != "a" and intent_rel in committed:
         # the intent was accepted at gate (a): a later phase may not rewrite it (it is what
         # the guardrail exemption and the risk acceptance are judged against)
         return _fail(
@@ -519,19 +557,36 @@ def risk_hits(items: list[str], paths: list[str], texts: dict[str, str]) -> dict
 
 
 def check_risk_list(ctx: GateContext) -> CheckResult:
+    """Risk-list items in the **committed** diff's paths and in the committed spec's
+    "Flagged concerns" (OPERATING_MODEL section 3: the gate judges HEAD; see
+    ``check_guardrails`` for the sandbox-masked ``.env`` this keeps out)."""
     items = ctx.config.get("risk_list") or []
     if not isinstance(items, list):
         return _fail("risk_list", "sdlc.yaml: risk_list must be a list", "Fix sdlc.yaml.")
+    no_base = _no_base(ctx, "risk_list")
+    if no_base:
+        return no_base
     items = [str(i) for i in items if str(i).strip()]
     accepted = {a.lower().strip() for a in ctx.status.risk_accepted}
-    paths = ctx.diff.files if ctx.diff else []
+    head = ctx.diff.head if ctx.diff else None
+    paths = (
+        diffmod.committed_files(ctx.root, ctx.diff.merge_base, ctx.diff.head) if ctx.diff else []
+    )
     # Only the "Flagged concerns" section of spec.md is read, never its prose: the design
     # prompt and security-baseline rule 8 make every spec name the risk-list items it checked
     # ("none of auth, data migrations, ... is touched"), and a whole-text scan fired on that
     # sentence in every live design run of 2026-09-21. A risk item the design touches is a
     # flagged concern (skill spec-template), so that section is where it is declared.
+    # The spec is read at HEAD: ``check_clean_tree`` skips the change folder (the evidence is
+    # committed after the gate) and does not run at (a) or (b), so the working-tree spec is
+    # not guaranteed to be the committed one. The working tree is the fallback only when there
+    # is no commit to read (not a repository, or an unborn branch).
     texts = {}
-    spec = ctx.artifact("spec.md")
+    spec = (
+        diffmod.file_at(ctx.root, head, f"{ctx.change_rel}/spec.md")
+        if head
+        else ctx.artifact("spec.md")
+    )
     if spec:
         concerns = art.split_sections(spec).get(art.CONCERNS_SECTION, "")
         if concerns.strip():
@@ -654,6 +709,9 @@ def check_design_scope(ctx: GateContext) -> CheckResult:
     """
     if ctx.diff is None:
         return _fail("design_scope", ctx.diff_error, "Run the gate inside the project's git repo.")
+    no_base = _no_base(ctx, "design_scope")
+    if no_base:
+        return no_base
     prefix = ctx.change_rel + "/"
     committed = diffmod.committed_files(ctx.root, ctx.diff.merge_base, ctx.diff.head)
     outside = [f for f in committed if not f.startswith(prefix)]

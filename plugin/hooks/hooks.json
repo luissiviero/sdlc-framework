@@ -1,5 +1,5 @@
 {
-  "description": "SDLC framework build-time guardrails (build guide step 15). Exec form: `python` is spawned directly with the script path, so no shell is involved on Windows, macOS or Linux. The plugin root is the framework repository root; scripts live under plugin/hooks/.",
+  "description": "SDLC framework guardrails (build guide step 15) and the production gate (step 29: with sdlc.yaml deploy.production true, a guarded production command on Bash or PowerShell needs the release approval; it only allows or blocks, never asks). Exec form: `python` is spawned directly with the script path, so no shell is involved on Windows, macOS or Linux. The plugin root is the framework repository root; scripts live under plugin/hooks/.",
   "hooks": {
     "PreToolUse": [
       {
@@ -50,6 +50,17 @@
             "command": "python",
             "args": ["${CLAUDE_PLUGIN_ROOT}/plugin/hooks/plan_sync.py"],
             "timeout": 30
+          }
+        ]
+      },
+      {
+        "matcher": "Bash|PowerShell",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python",
+            "args": ["${CLAUDE_PLUGIN_ROOT}/plugin/hooks/production_gate.py"],
+            "timeout": 60
           }
         ]
       }

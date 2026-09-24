@@ -6,8 +6,18 @@ docs/OPERATING_MODEL.md sections 4.1 and 4.2; the flag facts are docs/NOTES.md s
 
     python framework/plugin/ci/run_phase.py --root . --plugin-dir framework \
         --phase b|c|d|e|review --id 0001 --repo owner/name \
-        [--head-ref sdlc/0001/a] [--ref main] [--dry-run] [--no-dispatch] [--claude claude]
+        [--head-ref sdlc/0001/a] [--pr-number 12] [--ref main] [--dry-run] [--no-dispatch]
+        [--claude claude]
+    python framework/plugin/ci/run_phase.py --root . --phase b|c --head-ref <head> \
+        --repo owner/name --pr-number 12 [--id 0001] --find-change
     python framework/plugin/ci/run_phase.py --phase triage --log out/build.log
+
+The change id comes from ``--id``, else from a head ref ``sdlc/<id>/<previous phase>``, else
+from the one ``changes/<id>-<slug>/`` folder the merged pull request ``--pr-number`` touches
+(``find_change``; HANDOFF 4(a): a web-session intent PR has a ``claude/...`` head). With
+``--find-change`` the script prints only ``change_id=`` and ``reason=`` and writes the id to
+``$GITHUB_OUTPUT``: the merge-fired design and build workflows run it first and skip every
+later step when the merge carries no change.
 
 What one run does, in order:
 
@@ -17,8 +27,9 @@ What one run does, in order:
    default branch, where ``status.yaml`` says what main says, so every guard below would
    read the wrong phase. The run fetches ``origin`` and switches to the branch this phase
    works on (``sdlc/<id>/b`` for a design run, ``sdlc/<id>/c`` for build, test, deploy and
-   the review pass), creating it for (b) and (c) — in the Lite profile (c) branches off
-   ``sdlc/<id>/b``. When there is nothing to switch to, the current checkout is used;
+   the review pass), creating it for (b) and (c) — only in the Lite profile does (c) branch
+   off ``sdlc/<id>/b``; every other profile starts it from the default branch. When there
+   is nothing to switch to, the current checkout is used;
 1c. **installs the project's own toolchain** — ``sdlc.yaml: commands.setup`` through
    ``ci/project_setup.py``. A GitHub-hosted runner carries none of the project's tools, and
    the installed workflow file may be an older copy without that step (the third live design
@@ -78,6 +89,8 @@ PLUGIN_DIR = Path(__file__).resolve().parent.parent  # <framework root>/plugin
 FRAMEWORK_ROOT = PLUGIN_DIR.parent
 if str(PLUGIN_DIR) not in sys.path:
     sys.path.insert(0, str(PLUGIN_DIR))
+
+from pr.github import next_page_url  # noqa: E402, F401 - re-exported, moved there in 0.2.12
 
 from ci import auth as auth_mod  # noqa: E402
 from ci import project_setup  # noqa: E402
@@ -235,54 +248,22 @@ def ensure_labels(repo: str, env: dict[str, str]) -> dict[str, Any]:
     return {"ensured": len(c.all_labels()), "created": created, "failed": failed}
 
 
-EVENTS_PER_PAGE = 100
-MAX_EVENT_PAGES = 10  # 1000 timeline events is far past any real review thread
-LINK_NEXT_RE = re.compile(r'<([^>]+)>\s*;\s*rel="next"')
-
-
-def next_page_url(result: dict[str, Any]) -> str | None:
-    """The ``rel="next"`` target of a REST ``Link`` header, or None on the last page."""
-    headers = result.get("headers") or {}
-    link = ""
-    for key, value in headers.items():
-        if str(key).lower() == "link":
-            link = str(value)
-            break
-    match = LINK_NEXT_RE.search(link)
-    return match.group(1) if match else None
-
-
 def label_applied_by_a_human(repo: str, number: int, label: str) -> tuple[bool, str]:
-    """Read the issue's timeline and say whether a person applied ``label``.
+    """Say whether a person applied ``label`` last: (True, login) or (False, reason).
 
-    GitHub records one ``labeled`` event per application, with the actor that caused it; the
-    workflow token's own label would be ``github-actions[bot]`` and must never pass a human
-    gate (OPERATING_MODEL section 4.2, "actor not the token").
+    The timeline is read by ``pr/github.py label_actor`` (the paging lives there since
+    0.2.12); the workflow token's own label would be ``github-actions[bot]`` and must never
+    pass a human gate (OPERATING_MODEL section 4.2, "actor not the token").
     """
     github = _github()
     if github is None:
         return False, "plugin/pr/github.py is not available"
-    tok = github.token()
-    if not tok:
-        return False, "no GITHUB_TOKEN/GH_TOKEN to read the label events with"
-    url = f"{github.API_ROOT}/repos/{repo}/issues/{number}/events?per_page={EVENTS_PER_PAGE}"
-    actors: list[str] = []
-    for _page in range(MAX_EVENT_PAGES):
-        result = github._request("GET", url, tok)
-        if result.get("error"):
-            return False, f"could not read the label events: {result['error']}"
-        actors += [
-            (event.get("actor") or {}).get("login") or "unknown"
-            for event in (result.get("data") or [])
-            if event.get("event") == "labeled" and (event.get("label") or {}).get("name") == label
-        ]
-        next_url = next_page_url(result)
-        if not next_url:
-            break
-        url = next_url
-    if not actors:
+    found = github.label_actor(repo, number, label)
+    if not found.get("ok"):
+        return False, f"could not read the label events: {found.get('reason') or 'failed'}"
+    actor = found.get("actor")
+    if not actor:
         return False, f"no `labeled` event for {label}"
-    actor = actors[-1]
     if actor == BOT_LOGIN:
         return False, f"{label} was applied by {actor}, not by a human"
     return True, actor
@@ -440,10 +421,34 @@ def _ref_exists(root: Path, ref: str) -> bool:
     return bool(gitops.run(root, "rev-parse", "--verify", "--quiet", ref, check=False).strip())
 
 
-def _start_point(root: Path, change_id: str, phase: str) -> str | None:
-    """Where a missing work branch starts: the default branch, or — in the Lite profile,
-    where the spec+plan PR is never merged before the build — ``sdlc/<id>/b``."""
-    if phase == "c":
+def checkout_profile(root: Path, change_id: str) -> str | None:
+    """The change's effective profile as the current checkout says it (``sdlc.yaml: profile``
+    and the change's ``status.yaml: profile_override``); None when it cannot be read.
+
+    ``prepare_branch`` calls it before it switches, so it reads the default branch the run
+    started on: the owner's merged ``sdlc.yaml`` and the merged intent's status."""
+    override = None
+    change_dir = c.find_change_dir(root, change_id)
+    if change_dir is not None:
+        try:
+            override = status_mod.read_status(change_dir).profile_override
+        except (OSError, ValueError):
+            override = None
+    try:
+        return c.effective_profile(_config(root).get("profile"), override)
+    except ValueError:
+        return None
+
+
+def _start_point(root: Path, change_id: str, phase: str, profile: str | None) -> str | None:
+    """Where a missing work branch starts: the default branch — except ``sdlc/<id>/c`` in the
+    Lite profile, where the spec+plan PR is never merged before the build, which starts from
+    ``sdlc/<id>/b``. Every other profile starts the build from the default branch even when
+    ``sdlc/<id>/b`` still exists: there the owner's merge at gate (b) put the approved spec
+    and plan on the default branch, and a design branch left behind after that merge lacks
+    the default branch's later commits and may carry commits made after the merge (PROGRESS
+    known gaps, ninth live run; HANDOFF 6(a))."""
+    if phase == "c" and profile == "lite":
         design = c.branch_name(change_id, "b")
         for ref in (f"origin/{design}", design):
             if _ref_exists(root, ref):
@@ -452,14 +457,20 @@ def _start_point(root: Path, change_id: str, phase: str) -> str | None:
     return base if base and _ref_exists(root, base) else None
 
 
-def prepare_branch(root: Path, change_id: str, phase: str) -> dict[str, Any]:
+def prepare_branch(
+    root: Path, change_id: str, phase: str, profile: str | None = None
+) -> dict[str, Any]:
     """Put the checkout on the branch this phase works on, creating it for (b) and (c).
 
     Without this a dispatched run reads main's ``status.yaml`` and skips every phase past
-    (c), and a park would have no branch to commit its own evidence on.
+    (c), and a park would have no branch to commit its own evidence on. ``profile`` decides
+    where a new ``sdlc/<id>/c`` starts (``_start_point``); when it is not given it is read
+    from the checkout before anything is switched (``checkout_profile``).
     """
     from state import gitops
 
+    if profile is None:
+        profile = checkout_profile(root, change_id)
     branch = work_branch_for(change_id, phase)
     out: dict[str, Any] = {"branch": branch, "switched": False}
     if not gitops.is_repo(root):
@@ -475,7 +486,7 @@ def prepare_branch(root: Path, change_id: str, phase: str) -> dict[str, Any]:
         return {**out, "switched": ok, "from": f"origin/{branch}"}
     if phase not in CREATES_ITS_BRANCH:
         return {**out, "note": f"{branch} does not exist: the build phase has not run yet"}
-    start = _start_point(root, change_id, phase)
+    start = _start_point(root, change_id, phase, profile)
     if start is None:
         return {**out, "note": "no base branch to create the work branch from"}
     return {**out, "switched": _git_ok(root, "checkout", "-b", branch, start), "from": start}
@@ -541,6 +552,92 @@ def resolve_change_id(change_id: str | None, head_ref: str | None, run_phase: st
     if branch_phase != expected:
         return None, f"head branch {head_ref} is phase {branch_phase}, not {expected}"
     return parsed_id, None
+
+
+# A merged pull request names its change by the folder it touches (HANDOFF 4(a)): the web
+# platform pushes /sdlc-plan's intent to a branch of its own (``claude/...``), so the head
+# name of a merged intent PR says nothing about the change.
+CHANGE_FOLDER_RE = re.compile(r"^changes/(\d{4})-[^/]+/")
+
+
+def _pr_number(value: Any) -> int | None:
+    text = str(value or "").strip().lstrip("#")
+    return int(text) if text.isdigit() and int(text) > 0 else None
+
+
+def find_change(
+    run_phase: str,
+    change_id: str | None,
+    head_ref: str | None,
+    repo: str,
+    pr_number: Any,
+    env: dict[str, str],
+) -> tuple[str | None, str | None]:
+    """(change id, skip reason) for the run, from the first source that names one:
+
+    1. ``--id`` (a ``workflow_dispatch`` or a by-hand run);
+    2. a head ref of the form ``sdlc/<id>/<phase>``. One that names another phase keeps its
+       skip reason and is never looked up by its files: it is that phase's own PR (the
+       design PR ``sdlc/<id>/b`` also fires the design workflow when it merges), and its
+       files carry the same change folder, so the lookup would re-run a merged phase;
+    3. the merged pull request's files: exactly one ``changes/<id>-<slug>/`` folder names
+       the change; none, several or no route to GitHub is a skip with the reason.
+
+    ``env`` is the run's environment; the GitHub client reads its own token from the
+    process environment, as every other call here does.
+    """
+    if change_id:
+        return resolve_change_id(change_id, None, run_phase)
+    if c.parse_branch(head_ref or "") is not None:
+        return resolve_change_id(None, head_ref, run_phase)
+    number = _pr_number(pr_number)
+    if number is None:
+        if str(pr_number or "").strip():
+            return None, f"--pr-number {pr_number!r} is not a pull request number"
+        return None, (
+            "no change id: neither --id, a head ref of the form sdlc/<id>/<phase> nor --pr-number"
+        )
+    github = _github()
+    if github is None:
+        return None, "plugin/pr/github.py is not available"
+    if not repo:
+        return None, f"--repo is needed to read the files of pull request #{number}"
+    listed = github.pr_files(repo, number)
+    if not listed.get("ok"):
+        why = listed.get("reason") or "failed"
+        return None, f"the files of pull request #{number} could not be read: {why}"
+    ids = sorted(
+        {m.group(1) for f in listed.get("files") or [] if (m := CHANGE_FOLDER_RE.match(str(f)))}
+    )
+    if not ids:
+        return None, f"pull request #{number} touches no changes/<id>-<slug>/ folder"
+    if len(ids) > 1:
+        return None, (
+            f"pull request #{number} touches {len(ids)} change folders ({', '.join(ids)}): "
+            "ambiguous, run the phase with --id"
+        )
+    return ids[0], None
+
+
+def print_found_change(args, env: dict[str, str]) -> int:
+    """``--find-change``: the workflow's first step. Prints ``change_id=<id or empty>`` and
+    ``reason=<...>`` and appends ``change_id=<id>`` to ``$GITHUB_OUTPUT``, so every later
+    step can be skipped for a merge that carries no change (about 20 s of a green job)."""
+    change_id, reason = find_change(
+        args.phase, args.id, args.head_ref, args.repo, getattr(args, "pr_number", None), env
+    )
+    found = change_id or ""
+    print(f"change_id={found}")
+    print("reason=" + " ".join(str(reason or "").split()))
+    output = env.get("GITHUB_OUTPUT")
+    if output:
+        try:
+            with open(output, "a", encoding="utf-8", newline="\n") as handle:
+                handle.write(f"change_id={found}\n")
+        except OSError as exc:  # later steps would be skipped silently: say so, fail
+            print(f"could not write {output}: {exc}", file=sys.stderr)
+            return EXIT_FAILED
+    return EXIT_OK
 
 
 def rerun_reason(
@@ -898,7 +995,9 @@ def run_phase(args, env: dict[str, str]) -> int:
     phase = args.phase
     ensure_git_identity(root)
 
-    change_id, reason = resolve_change_id(args.id, args.head_ref, phase)
+    change_id, reason = find_change(
+        phase, args.id, args.head_ref, args.repo, getattr(args, "pr_number", None), env
+    )
     if reason:
         return _skip(reason)
     excluded = write_git_exclude(root)
@@ -1289,6 +1388,18 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--phase", required=True, choices=RUNNABLE)
     p.add_argument("--id", default=None, help="change id; omit to read it from --head-ref")
     p.add_argument("--head-ref", default=None, help="the PR head branch sdlc/<id>/<phase>")
+    p.add_argument(
+        "--pr-number",
+        default=None,
+        help="the merged pull request; its changes/<id>-<slug>/ folder names the change when "
+        "neither --id nor an sdlc/<id>/<phase> head ref does",
+    )
+    p.add_argument(
+        "--find-change",
+        action="store_true",
+        help="only print change_id=<id or empty> and reason=<...> (and append change_id to "
+        "$GITHUB_OUTPUT); exits 0 unless $GITHUB_OUTPUT cannot be written",
+    )
     p.add_argument("--repo", default="", help="owner/name, for labels and the hand-over")
     p.add_argument("--ref", default=None, help="default branch the dispatch targets")
     p.add_argument("--log", default=None, help="--phase triage: the CI log to read")
@@ -1303,8 +1414,13 @@ def main(argv: list[str] | None = None) -> int:
     env = dict(os.environ)
     if args.phase == "triage":
         return run_triage(args, env)
-    if not args.id and not args.head_ref:
-        print("--id or --head-ref is required for a phase run", file=sys.stderr)
+    if args.find_change:
+        if args.phase not in PREVIOUS_PHASE:
+            print(f"--find-change does not apply to --phase {args.phase}", file=sys.stderr)
+            return EXIT_USAGE
+        return print_found_change(args, env)
+    if not args.id and not args.head_ref and not args.pr_number:
+        print("--id, --head-ref or --pr-number is required for a phase run", file=sys.stderr)
         return EXIT_USAGE
     return run_phase(args, env)
 

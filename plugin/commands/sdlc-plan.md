@@ -64,8 +64,8 @@ title `intent(<id>): <title>` — with the generated description: a ≤5-bullet 
 (what the change is and why · entry route and change type · affected users and systems ·
 open questions · what needs the owner: read, correct via review comments, merge = approve),
 then the link to `changes/<id>-<slug>/intent.md`; and applies the label `sdlc:a-ready`
-(created if missing). Routes, in order: the `gh` CLI, then the GitHub REST API with
-`GITHUB_TOKEN`/`GH_TOKEN`, else it prints the compare URL
+(created if missing). Routes, in order: the GitHub REST API with the token
+(`GITHUB_TOKEN`/`GH_TOKEN`) first, then the `gh` CLI, then it prints the compare URL
 `https://github.com/<github_repo>/compare/<base>...sdlc/<id>/a?expand=1` and the body for
 the owner to paste (in a cloud session without `gh`, a GitHub MCP tool such as
 `create_pull_request` may be used with that title, body and label instead). Do not retry
@@ -73,7 +73,7 @@ with other means.
 
 ## 7. Report
 One line: the PR URL (or the compare URL), and "gate (a): merge the PR to approve; review
-comments are the change request (then run `/sdlc-fix` — available from B3)". Do not start
+comments are the change request (then run `/sdlc-fix`)". Do not start
 phase (b).
 
 Never edit `.claude/**`, `CLAUDE.md`, `REVIEW.md` or `sdlc.yaml`. Never use bypass-permissions

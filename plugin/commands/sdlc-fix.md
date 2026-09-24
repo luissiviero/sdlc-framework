@@ -79,8 +79,13 @@ A comment asking for a guardrail-file edit (`.claude/**`, `CLAUDE.md`, `REVIEW.m
 (never a new branch, never a force-push; the PR keeps its history).
 
 ## 5. Verdict and gate again
-The verdict never outlives the diff it judged: delegate to `sdlc:adversarial-reviewer`
-for the phase, then
+The verdict never outlives the diff it judged. The reviewer has no shell, so write the diff
+it reads first, in one call (`<base>` is the default branch, `origin/<default>` after the
+fetch: the base the gate diffs against):
+`git diff --stat --patch --output=changes/<id>-<slug>/evidence/diff-<phase>.patch <base>...HEAD`,
+then `git rev-parse HEAD` for the full sha. The diff file is evidence: it is committed with
+the evidence commit that follows the gate. Delegate to `sdlc:adversarial-reviewer` for the
+phase with the full HEAD sha and the path `changes/<id>-<slug>/evidence/diff-<phase>.patch`, then
 `python "${CLAUDE_PLUGIN_ROOT}/plugin/gate/cli.py" check --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase <phase>`,
 commit the evidence and push. If the gate parks again for the same reason, stop after this
 round: the next round is the owner's.

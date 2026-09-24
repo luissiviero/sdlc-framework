@@ -357,6 +357,16 @@ top-level `decision`/`reason` on PostToolUse; the policy hooks return `hookSpeci
 plus exit code 2. "For `PreToolUse` permission decisions, the most restrictive answer
 applies, in the order `deny`, `defer`, `ask`, `allow`."
 
+Timeouts (https://code.claude.com/docs/en/hooks, "Timeouts", read 2026-09-23 for the
+production-gate hook of step 29): "Claude Code cancels a `command`, `http`, or `mcp_tool` hook
+that reaches its `timeout`, discarding the hook's output, so on most events a timed-out hook
+renders no decision." and, for PreToolUse, "A timed-out `command`, `http`, or `mcp_tool` hook
+doesn't block the tool call. The call continues through the normal permission flow, so don't
+count on a stalled hook to act as a gate." Consequence: a policy hook that talks to the
+network must finish inside its `timeout` or it is no gate. `production_gate.py` has a 60 s
+timeout in `hooks.json` and bounds each of its own calls (GitHub requests, git) to 10 s,
+turning a timeout of its own into a block; the other policy hooks read local files only.
+
 ## 9. Known gaps carried to B2/B3
 
 - A `Bash` command that writes a protected file through a script is not seen by the
@@ -467,6 +477,16 @@ paths given), the official OpenAPI description (`github/rest-api-description`),
 - Label trigger: `pull_request` activity types include `labeled`; the docs' example reads
   the name with `if: github.event.label.name == 'bug'`. The top-level `label` event is about
   label definitions, not applications.
+- Label on a merged pull request (session 4, 2026-09-23; build guide step 32): whether a
+  `pull_request` `labeled` event fires for a closed, merged PR is **not stated** on the
+  events page (labels can be applied to closed PRs in the UI and through
+  `POST /repos/{owner}/{repo}/issues/{issue_number}/labels`). `sdlc-release.yml` therefore
+  listens to both `closed` and `labeled` and its job re-checks `merged == true` and the
+  approval on every event, so it is correct whichever way GitHub behaves; the first
+  production project's live run settles the fact (a `workflow_dispatch(pr_number)` is the
+  fallback). The merged PR's files come from `GET /repos/{owner}/{repo}/pulls/{number}/files`
+  (paginated with `Link: rel="next"`), which is how the merge-triggered jobs find the change
+  folder a PR carries whatever its head branch is called.
 - `permissions:` keys: `actions`, `checks`, `contents`, `issues`, `pull-requests` (each
   `read|write|none`); "If you specify the access for any of these permissions, all of those
   that are not specified are set to `none`." Which permission each REST endpoint needs is
@@ -553,6 +573,12 @@ https://code.claude.com/docs/en/sandboxing, https://code.claude.com/docs/en/agen
 - `--output-format json`: "the response payload includes `total_cost_usd` and a per-model
   cost breakdown ... client-side estimates"; the SDK result type carries `session_id`,
   `duration_ms`, `is_error`, `num_turns`, `result`, `total_cost_usd`.
+- `--model` (cli-reference, read 2026-09-23 for step 16a's devil's advocate): "Sets the model
+  for the current session with a model alias such as `sonnet`, `opus`, `haiku`, or `fable`, or
+  a model's full name. Overrides the `model` setting and `ANTHROPIC_MODEL`"; example
+  `claude --model claude-sonnet-5`. `run_phase.py` already passes it when the `SDLC_MODEL`
+  environment variable is set, so a panel member on another model is `--model <alias>` on
+  its own `claude -p` run.
 - Sandbox: keys `sandbox.enabled`, `sandbox.network.allowedDomains`,
   `sandbox.failIfUnavailable` ("By default, if the sandbox cannot start because dependencies
   are missing or the platform is unsupported, Claude Code shows a warning and runs commands
@@ -572,6 +598,18 @@ https://code.claude.com/docs/en/sandboxing, https://code.claude.com/docs/en/agen
   per-invocation model does.
 - "To check which model a subagent is running on, run `/tasks`. Claude Code names the model
   on the subagent's row ... Requires Claude Code v2.1.242 or later."
+- Sub-agent tool scope (https://code.claude.com/docs/en/sub-agents, read 2026-09-23 for the
+  adversarial reviewer, HANDOFF 6(e)): "To restrict tools, use the `tools` field as an
+  allowlist or the `disallowedTools` field as a denylist." "If both are set,
+  `disallowedTools` is applied first, then `tools` is resolved against the remaining pool."
+  "Both fields accept MCP server-level patterns in addition to exact tool names:
+  `mcp__<server>` or `mcp__<server>__*`". A permission-rule specifier such as
+  `Bash(git diff *)` is documented for `--allowedTools` and settings only, **not** as a
+  `tools` value; "When nothing in the `tools` list resolves to a tool ... Claude Code usually
+  refuses to launch the subagent". So a git-only Bash cannot be given to a sub-agent through
+  its frontmatter: since plugin 0.2.12 the adversarial reviewer has no `Bash`, and the
+  calling run writes `evidence/diff-<phase>.patch` and passes HEAD's sha in the delegation
+  brief instead.
 - `/usage` (https://code.claude.com/docs/en/costs): the Session block shows "Usage by
   model"; the plan figures are "computed from local session history on this machine"; what a
   cloud session shows is not documented.

@@ -25,7 +25,7 @@ and pass `--setup ""` when the project has nothing to install.
 - profile [standard]: standard (owner merges at a, b, e) · full (all five gates) · lite (a, e)
 - deploy action [none]: what makes a merged change live — publish package · schedule job ·
   regenerate report · promote to paper trading · deploy service · none
-- real production? [no] — turns on the release label and the production gate (B4)
+- real production? [no] — turns on the release label and the production gate
 - maintain metric and source [ci_test_failure_rate from github-actions]
 - confirm or override the detected build/test/lint commands and the setup (install) command
 
@@ -49,7 +49,9 @@ declaration; hooks come from the plugin), `REVIEW.md`, `changes/README.md`, buil
 `CLAUDE.md` from the proposal plus the skeleton sections, creates `ruff.toml` when no linter
 existed, creates `evals/` (empty suite, filled by incidents — decision 17) and `bands.yaml`
 (control bands for the maintain metric — decision 15), and creates
-`changes/0000-sdlc-init/` with an intent.md. The CI workflows and the daily digest are B3. Read its JSON report and
+`changes/0000-sdlc-init/` with an intent.md. It also installs the CI workflows and the daily
+digest under `.github/`, create-only (an existing file is never overwritten); re-running it
+on an upgrade installs the workflow files a newer plugin adds. Read its JSON report and
 show the owner the file-by-file result. Re-running is safe: it merges and never overwrites
 the owner's edits. This script is the only sanctioned writer of guardrail files in a run;
 everything it writes rides in the change-0000 PR the owner merges.

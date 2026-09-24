@@ -36,6 +36,10 @@ class Status:
     id: str
     slug: str
     title: str
+    # The phase the change is in. On the default branch a change at phase e was merged by the
+    # owner, and that merge is the whole of gate (e) (decision 13): ``read_status(...,
+    # on_default_branch=True)`` derives gate e/passed from it (``merged_at_gate_e``) without
+    # rewriting the file, because the automation identity never writes to the default branch.
     phase: str = "a"
     entry_route: str = "idea"
     change_type: str = "feature"
@@ -182,8 +186,49 @@ def _load(change_dir: Path) -> dict[str, Any]:
     return data
 
 
-def read_status(change_dir: Path) -> Status:
-    return Status.from_dict(_load(change_dir))
+MERGED_AT_GATE_E_REASON = "merged by the owner: gate (e) is the merge (decision 13)"
+# With ``sdlc.yaml: deploy.production`` true the phase gate is still passed by the merge (the
+# change is done and merged), but the release needs a second act the release workflow checks.
+MERGED_AT_GATE_E_PRODUCTION_REASON = (
+    MERGED_AT_GATE_E_REASON + "; the release approval sdlc:release-approved is the release "
+    "workflow's second act on this declared production"
+)
+
+
+def merged_at_gate_e(st: Status, production: bool = False) -> Status:
+    """The status as the owner's merge of the build PR left it: gate (e) passed.
+
+    Pure: returns a new ``Status`` and never touches ``st`` or the file. A change at phase e
+    whose ``status.yaml`` sits on the default branch reached it through the owner's merge of
+    the build PR, and that merge is the whole of gate (e) (decision 13; OPERATING_MODEL
+    section 4). The last run on the branch may have parked (the thirteenth live run parked
+    change 0001 on the iteration cap and the owner merged anyway), so the park is lifted and
+    the gate reads e/passed, stamped with the file's ``updated_at``. Anything else (another
+    phase, or gate (e) already passed) comes back as an unchanged copy. ``production`` is
+    ``sdlc.yaml: deploy.production``: when true the gate still reads passed (the change is
+    done and merged), but the reason says the release label is the second act, which is the
+    release workflow's to check, not this function's.
+    """
+    derived = Status.from_dict(st.to_dict())
+    if st.phase != "e" or (st.gate.phase == "e" and st.gate.result == "passed"):
+        return derived
+    reason = MERGED_AT_GATE_E_PRODUCTION_REASON if production else MERGED_AT_GATE_E_REASON
+    derived.gate = Gate(phase="e", result="passed", reason=reason, at=st.updated_at)
+    derived.parked_reason = None
+    return derived
+
+
+def read_status(
+    change_dir: Path, on_default_branch: bool = False, production: bool = False
+) -> Status:
+    """``status.yaml`` of the change. ``on_default_branch`` says the file was read from a
+    checkout of the default branch: a change at phase e there was merged by the owner, so
+    gate (e) reads passed (``merged_at_gate_e``; ``production`` is ``sdlc.yaml:
+    deploy.production`` and only changes the derived reason). The derivation happens in
+    memory only; the file on disk is never rewritten by it (the default branch is read-only
+    for automation, and only the owner's reviewed PRs reach it)."""
+    st = Status.from_dict(_load(change_dir))
+    return merged_at_gate_e(st, production=production) if on_default_branch else st
 
 
 def lift_stale_park(change_dir: Path) -> str | None:

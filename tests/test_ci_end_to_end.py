@@ -147,9 +147,9 @@ print(json.dumps({"type": "result", "is_error": False, "result": f"{word} done",
                   "total_cost_usd": 0.5, "num_turns": 3}))
 """
 
-# The fake gh: every call is logged; `pr list` finds nothing, `pr create` answers with the
-# PR URL (or refuses as GitHub does while the repository setting is off), `pr edit` and
-# `label create` succeed silently.
+# The fake gh: every call is logged; `pr list` finds nothing, `pr view <n> --json files` lists
+# FAKE_PR_FILES, `pr create` answers with the PR URL (or refuses as GitHub does while the
+# repository setting is off), `pr edit` and `label create` succeed silently.
 FAKE_GH = """
 import json, os, sys
 
@@ -160,6 +160,10 @@ if "--body-file" in args and "-" in args:
     sys.stdin.read()
 if args[:2] == ["pr", "list"]:
     print("[]")
+elif args[:2] == ["pr", "view"] and args[-2:] == ["--json", "files"]:
+    # the merged pull request's files, as `gh pr view <n> --json files` prints them
+    paths = json.loads(os.environ.get("FAKE_PR_FILES", "[]"))
+    print(json.dumps({"files": [{"path": p, "additions": 1, "deletions": 0} for p in paths]}))
 elif args[:2] == ["pr", "create"]:
     if os.environ.get("FAKE_GH_MODE") == "refuse":
         print(os.environ["FAKE_GH_REFUSAL"], file=sys.stderr)
@@ -185,12 +189,14 @@ def launcher(bindir: Path, name: str, script_text: str) -> Path:
 WORKFLOW_FILE = {"b": "sdlc-design.yml", "c": "sdlc-build.yml"}
 
 
-def workflow_run_line(phase: str = "b") -> list[str]:
-    """The ``run:`` line of the phase's workflow, as the template ships it."""
+def workflow_run_line(phase: str = "b", find: bool = False) -> list[str]:
+    """The ``run:`` line of the phase's workflow, as the template ships it: the phase run,
+    or with ``find`` the step before it that finds the change (``--find-change``)."""
     text = (WORKFLOW_DIR / WORKFLOW_FILE[phase]).read_text(encoding="utf-8")
-    m = re.search(r"(?m)^\s+run: (python framework/plugin/ci/run_phase\.py .*)$", text)
-    assert m, f"the run line of {WORKFLOW_FILE[phase]} moved"
-    return shlex.split(m.group(1))
+    lines = re.findall(r"(?m)^\s+run: (python framework/plugin/ci/run_phase\.py .*)$", text)
+    lines = [ln for ln in lines if ("--find-change" in ln) == find]
+    assert len(lines) == 1, f"the run line of {WORKFLOW_FILE[phase]} moved"
+    return shlex.split(lines[0])
 
 
 @pytest.fixture
@@ -243,8 +249,13 @@ def run_phase_job(
     spec_body: str = RECORDED_SPEC_BODY,
     claude_mode: str = "design",
     phase: str = "b",
+    step_env: dict | None = None,
+    find: bool = False,
 ) -> tuple:
-    """Run the workflow's step with its env; return (process, parsed JSON, gh calls)."""
+    """Run the workflow's step with its env; return (process, parsed JSON, gh calls).
+
+    ``step_env`` overrides the step's env block (a merge-fired run: no CHANGE_ID, the PR's
+    head and number); ``find`` runs the step before the phase run that finds the change."""
     bindir = tmp_path / "bin"
     bindir.mkdir(parents=True)
     claude = launcher(bindir, "claude", FAKE_CLAUDE)
@@ -256,9 +267,12 @@ def run_phase_job(
         "HEAD_REF": "",
         "REPO": REPO,
         "DEFAULT_BRANCH": "main",
+        "PR_NUMBER": "",
+        **(step_env or {}),
     }
     env = {k: v for k, v in os.environ.items() if k not in ("GITHUB_TOKEN", "GH_TOKEN")}
-    env.pop("ANTHROPIC_API_KEY", None)
+    for var in ("ANTHROPIC_API_KEY", "GITHUB_OUTPUT"):
+        env.pop(var, None)
     env.update(job_env)
     env.update(
         {
@@ -281,7 +295,7 @@ def run_phase_job(
         }
     )
     argv = [sys.executable if a == "python" else env.get(a[1:], "") if a.startswith("$") else a
-            for a in workflow_run_line(phase)]  # fmt: skip
+            for a in workflow_run_line(phase, find)]  # fmt: skip
     if os.name == "nt":
         argv += ["--claude", str(claude)]  # CreateProcess does not resolve claude.cmd on PATH
     proc = subprocess.run(
@@ -429,3 +443,55 @@ def test_the_build_starts_although_main_carries_a_lifted_park(checkout, tmp_path
     assert "def percent" in remote_file(bare, "sdlc/0001/c", "sample_pkg/percent.py")
     create = next(c for c in calls if c[:2] == ["pr", "create"])
     assert "--draft" in create and create[create.index("--head") + 1] == "sdlc/0001/c"
+
+
+# --- the merge of a web-session intent PR (HANDOFF 4(a), plugin 0.2.12) ----------------------
+def find_step(root: Path, tmp_path: Path, head_ref: str, files: list[str]) -> tuple:
+    """Run the design workflow's find step for merged PR #5 with ``head_ref``, whose files
+    the fake gh lists; return (process, stdout lines, what it wrote to $GITHUB_OUTPUT)."""
+    output = tmp_path / "github_output"
+    step_env = {
+        "CHANGE_ID": "",  # a merge event carries no dispatch input
+        "HEAD_REF": head_ref,
+        "PR_NUMBER": "5",
+        "GITHUB_OUTPUT": str(output),
+        "FAKE_PR_FILES": json.dumps(files),
+    }
+    proc, _data, calls = run_phase_job(root, tmp_path, "ok", step_env=step_env, find=True)
+    view = [c for c in calls if c[:2] == ["pr", "view"]]
+    assert view == [["pr", "view", "5", "--repo", REPO, "--json", "files"]]
+    written = output.read_text(encoding="utf-8") if output.exists() else ""
+    return proc, proc.stdout.splitlines(), written
+
+
+def test_a_merged_web_session_intent_pr_starts_the_design(checkout, tmp_path):
+    """The web platform pushed /sdlc-plan's intent to claude/relaxed-x; the old head rule
+    (sdlc/<id>/a) never fired for it. The find step names the change from the PR's files,
+    and the phase step runs with that id exactly as the workflow passes it."""
+    root, bare = checkout
+    files = [f"{CHANGE}/intent.md", f"{CHANGE}/status.yaml", "changes/README.md"]
+    proc, lines, written = find_step(root, tmp_path / "find", "claude/relaxed-x", files)
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert lines == ["change_id=0001", "reason="]
+    assert written == "change_id=0001\n"
+
+    found = written.strip().split("=", 1)[1]  # steps.find.outputs.change_id
+    step_env = {"CHANGE_ID": found, "HEAD_REF": "claude/relaxed-x", "PR_NUMBER": "5"}
+    proc, out, calls = run_phase_job(root, tmp_path / "design", "ok", step_env=step_env)
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert out["change_id"] == "0001" and out["result"] == "wait"
+    assert out["pr"]["ok"] is True and out["pr"]["head"] == "sdlc/0001/b"
+    assert "phase: b" in remote_file(bare, "sdlc/0001/b", f"{CHANGE}/status.yaml")
+    assert any(c[:2] == ["pr", "create"] for c in calls)
+
+
+def test_an_unrelated_merge_finds_no_change_and_stays_green(checkout, tmp_path):
+    """Any merge into the default branch starts the job now; one that carries no change
+    folder prints an empty id, and the workflow skips every later step."""
+    root, _bare = checkout
+    proc, lines, written = find_step(root, tmp_path, "claude/docs-typo", ["README.md"])
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert lines[0] == "change_id="
+    assert lines[1] == "reason=pull request #5 touches no changes/<id>-<slug>/ folder"
+    assert written == "change_id=\n"
+    assert "sdlc/0001/b" not in git(root, "branch", "--list")  # nothing else ran

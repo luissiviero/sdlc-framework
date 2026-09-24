@@ -96,8 +96,14 @@ per round; the gate parks at the cap), then re-run the verifier. Commit the evid
 Push: `git push -u origin sdlc/<id>/c`.
 
 ## 7. Adversarial verdict and gate (c) (build guide steps 16–17, 27)
-Delegate to `sdlc:adversarial-reviewer` with the change id, phase `c`, the project root
-and the default branch; it writes `evidence/adversarial-review-c.json` for HEAD. Then:
+The reviewer has no shell, so write the diff it reads first, in one call (`<base>` is the
+default branch, `origin/<default>` after the fetch: the base the gate diffs against):
+`git diff --stat --patch --output=changes/<id>-<slug>/evidence/diff-c.patch <base>...HEAD`,
+then `git rev-parse HEAD` for the full sha. The diff file is evidence: it is committed with
+the gate (c) evidence commit below.
+Delegate to `sdlc:adversarial-reviewer` with the change id, phase `c`, the project root,
+the full HEAD sha and the path `changes/<id>-<slug>/evidence/diff-c.patch`; it writes
+`evidence/adversarial-review-c.json` for HEAD. Then:
 `python "${CLAUDE_PLUGIN_ROOT}/plugin/gate/cli.py" check --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase c`
 (exit 0 continue · 3 wait · 4 park; it writes `status.yaml` and `evidence/gate-c.json`).
 Commit the evidence: `commit-phase ... --phase c --message "build(<id>): gate (c) evidence" --push`.
@@ -110,8 +116,8 @@ python "${CLAUDE_PLUGIN_ROOT}/plugin/pr/cli.py" upsert --root "${CLAUDE_PROJECT_
 ```
 It renders the ≤5-bullet summary from `status.yaml`, `evidence/gate-c.json`, the verifier
 report and the plan-vs-diff check, applies the label (`sdlc:c-ready` in the Full profile,
-`sdlc:needs-human` when parked, none otherwise), and uses `gh`, then the GitHub REST API
-with `GITHUB_TOKEN`/`GH_TOKEN`, then prints the compare URL and the body for the owner to
+`sdlc:needs-human` when parked, none otherwise), and uses the GitHub REST API with
+`GITHUB_TOKEN`/`GH_TOKEN` first, then `gh`, then prints the compare URL and the body for the owner to
 paste. Do not retry with other means.
 
 ## 9. Hand over

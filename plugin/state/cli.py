@@ -14,8 +14,8 @@ and identical on Windows, in a cloud session and in CI.
     python cli.py accept-risk --root . --id 0001 --item "auth"   # owner accepts a risk hit
     python cli.py lock-tests --root . --id 0001     # fix change: reproducing test committed
     python cli.py unlock-tests --root . --id 0001   # owner only: the test itself was wrong
-    python cli.py show --root . --id 0001
-    python cli.py list --root .
+    python cli.py show --root . --id 0001   # on the default branch: gate (e) of a merged
+    python cli.py list --root .             # phase-e change is derived as passed
     python cli.py labels
 """
 
@@ -30,7 +30,7 @@ if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from hooks import plan_sync  # noqa: E402
-from hooks._common import load_sdlc_config  # noqa: E402
+from hooks._common import ConfigError, load_sdlc_config  # noqa: E402
 from state import conventions as c  # noqa: E402
 from state import gitops, status  # noqa: E402
 
@@ -70,7 +70,8 @@ def _branch_exists(root: Path, branch: str) -> bool:
 
 
 def cmd_commit_phase(args) -> int:
-    """Switch to the phase's work branch, stage the change folder (+ extra paths) and commit.
+    """Switch to the phase's work branch and commit what changed under the change folder (+
+    extra paths), and only that: anything staged beforehand elsewhere stays out.
 
     The work branch is ``conventions.work_branch``, not the literal ``sdlc/<id>/<phase>``:
     phases (d) and (e) commit on ``sdlc/<id>/c``, the build PR that stays open through them
@@ -102,22 +103,26 @@ def cmd_commit_phase(args) -> int:
         st.set_phase(args.phase)
         status.write_status(change_dir, st)
     rel = str(change_dir.relative_to(root)).replace("\\", "/")
-    extra = [p for p in args.paths if (root / p).exists()]  # e.g. ruff.toml only when created
-    staged = gitops.stage_paths(root, [rel, *extra])
+    # Only what changed under the change folder and --paths goes into the commit: the
+    # concrete files (modified, added, deleted, renamed, untracked), staged and committed
+    # alone with ``git commit --only``, so a file staged beforehand by a hook, an earlier
+    # partial command or the session stays out of it. A --paths entry that matches nothing
+    # (e.g. ruff.toml when it was not created) contributes nothing; a deleted one is recorded.
+    files = gitops.changed_files(root, [rel, *args.paths])
     # The plan-sync rule, applied here because this command is how the phase commands
     # commit and the hook only sees ``git *`` shell commands (NOTES section 9): a commit on
     # sdlc/<id>/c that departs from plan.md without updating it is refused now, not found
     # by gate (c) twenty turns later (the first gated build run, 2026-09-22).
     denial = plan_sync.check(
         branch,
-        staged,
+        files,
         plan_sync.exempt_patterns(load_sdlc_config(str(root))),
         plan_sync.planned_files(str(root), args.id),
     )
     if denial.block:
         print(denial.reason, file=sys.stderr)
         return 2
-    sha = gitops.commit_staged(root, args.message) if staged else None
+    sha = gitops.commit_files(root, files, args.message)
     pushed = False
     if args.push and gitops.has_remote(root):
         gitops.push(root, branch)
@@ -204,33 +209,84 @@ def cmd_unlock_tests(args) -> int:
     return 0
 
 
+def _default_branch_checkout(root: Path) -> str | None:
+    """The default branch's name when ``root`` is a checkout of it, else None (also for a
+    folder that is not a git repository, or a detached HEAD). A ``sdlc/<id>/<phase>`` work
+    branch is never the default one, even when ``gitops.default_branch`` falls back to the
+    current branch (a CI checkout with neither ``origin/HEAD`` nor a local main)."""
+    try:
+        if not gitops.is_repo(root):
+            return None
+        current = gitops.current_branch(root)
+        if current == "HEAD" or c.parse_branch(current):
+            return None
+        default = gitops.default_branch(root)
+        return default if current == default else None
+    except (gitops.GitError, OSError):
+        return None
+
+
+def _production(root: Path) -> bool:
+    """``sdlc.yaml: deploy.production`` of the project; False when the file or the key is
+    missing or unreadable. It only words the derived gate (e) reason (decision 13): the
+    release approval itself is the release workflow's to check."""
+    try:
+        deploy = load_sdlc_config(str(root)).get("deploy")
+    except (ConfigError, OSError):
+        return False
+    return isinstance(deploy, dict) and deploy.get("production") is True
+
+
+def _derived_gate(raw: status.Status, st: status.Status, default: str | None) -> str | None:
+    """The marker ``show`` and ``list`` print when the gate was derived, not read."""
+    if default is None or st.gate == raw.gate:
+        return None
+    return f"gate: {st.gate.phase}/{st.gate.result} (derived: merged on {default})"
+
+
 def cmd_show(args) -> int:
+    """``status.yaml`` of one change. On a checkout of the default branch a change at phase e
+    was merged by the owner, which is gate (e) passed (decision 13): the output shows the
+    derived gate and says so under ``derived``; the file itself is left as it is."""
     loaded = _load(args)
     if not loaded:
         return 2
-    change_dir, st = loaded
-    _emit({"dir": str(change_dir), "status": st.to_dict()})
+    change_dir, raw = loaded
+    root = Path(args.root).resolve()
+    default = _default_branch_checkout(root)
+    st = status.merged_at_gate_e(raw, production=_production(root)) if default else raw
+    out = {"dir": str(change_dir), "status": st.to_dict()}
+    marker = _derived_gate(raw, st, default)
+    if marker:
+        out["derived"] = marker
+    _emit(out)
     return 0
 
 
 def cmd_list(args) -> int:
-    """Every change folder with its phase, so a re-run of /sdlc-plan can find an existing one."""
+    """Every change folder with its phase, so a re-run of /sdlc-plan can find an existing one.
+    On the default branch the gate of a merged phase-e change is derived as in ``show``."""
     root = Path(args.root).resolve()
+    default = _default_branch_checkout(root)
+    production = _production(root) if default else False
     rows = []
     for change_dir in c.list_change_dirs(root):
         try:
-            st = status.read_status(change_dir)
-            rows.append(
-                {
-                    "id": st.id,
-                    "slug": st.slug,
-                    "title": st.title,
-                    "phase": st.phase,
-                    "change_type": st.change_type,
-                    "parked_reason": st.parked_reason,
-                    "dir": str(change_dir.relative_to(root)).replace("\\", "/"),
-                }
-            )
+            raw = status.read_status(change_dir)
+            st = status.merged_at_gate_e(raw, production=production) if default else raw
+            row = {
+                "id": st.id,
+                "slug": st.slug,
+                "title": st.title,
+                "phase": st.phase,
+                "change_type": st.change_type,
+                "parked_reason": st.parked_reason,
+                "dir": str(change_dir.relative_to(root)).replace("\\", "/"),
+            }
+            marker = _derived_gate(raw, st, default)
+            if marker:
+                row["derived"] = marker
+            rows.append(row)
         except Exception as exc:  # noqa: BLE001
             rows.append({"dir": change_dir.name, "error": repr(exc)})
     _emit(rows)
@@ -261,7 +317,7 @@ def build_parser() -> argparse.ArgumentParser:
     cp.add_argument("--id", required=True)
     cp.add_argument("--phase", required=True, choices=c.PHASES)
     cp.add_argument("--message", required=True)
-    cp.add_argument("--paths", nargs="*", default=[], help="extra paths to stage")
+    cp.add_argument("--paths", nargs="*", default=[], help="extra paths to commit")
     cp.add_argument("--start-point", default=None)
     cp.add_argument("--push", action="store_true")
     cp.set_defaults(fn=cmd_commit_phase)

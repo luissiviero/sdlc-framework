@@ -19,7 +19,14 @@ Layout of the body, in order:
   3. ``Counters:`` the two indicators of step 42 - first-pass merge yes/no and fix iterations;
   4. the proposed ``CLAUDE.md`` lines when the review pass left them (never applied here:
      ``CLAUDE.md`` is a protected path, the owner applies the line in the PR review);
-  5. at phase (e), the release note - the intent's proposed outcome, in the owner's words.
+  5. at phase (e), the release note: ``evidence/release-notes.md`` (written by
+     ``plugin/release/notes.py``, build guide step 32) quoted without its H1 title and with
+     its headings demoted one level so they nest, else the intent's proposed outcome, in the
+     owner's words.
+
+At phase (e), when ``sdlc.yaml: deploy.production`` is true, one more line follows the
+bullets (like the counters line, not a sixth bullet): the release approval, the second act
+of gate (e) (decision 13).
 """
 
 from __future__ import annotations
@@ -38,6 +45,7 @@ from gate import artifacts as art  # noqa: E402
 from gate import checks  # noqa: E402
 from gate.checks import CheckResult  # noqa: E402
 from gate.gate import GateResult  # noqa: E402
+from hooks._common import ConfigError, load_sdlc_config  # noqa: E402
 from state import conventions as c  # noqa: E402
 from state import gitops  # noqa: E402
 from state import status as status_mod  # noqa: E402
@@ -47,6 +55,7 @@ ARTIFACTS = ("intent.md", "spec.md", "plan.md")
 LOG_FILES = (art.EVIDENCE_TEST, art.EVIDENCE_BUILD, art.EVIDENCE_LINT)
 SCREENSHOT_DIR = "screenshots"
 CLAUDE_MD_PROPOSALS = "claude-md-proposals.md"
+RELEASE_NOTES = "release-notes.md"
 MAX_NITS = 5
 
 # ``evidence/collect.py`` writes "# <command> — exit <code> — <seconds>s — <ISO-8601 UTC>"
@@ -57,6 +66,7 @@ EXIT_RE = re.compile(rf"exit\s+(\d+|{art.EVIDENCE_TIMEOUT})")
 SENTENCE_RE = re.compile(r"(?s)^(.*?[.!?])(?:\s|$)")
 LIST_ITEM_RE = re.compile(r"^\s*(?:[-*]|\d+[.)])\s+(?P<text>.+)$")
 CARRIED_FORWARD_RE = re.compile(r"(?i)carried forward")
+HEADING_RE = re.compile(r"^#{2,5} ")  # an H2-H5 heading of release-notes.md, demoted once
 
 # The PR the phase opens: (b) has its own spec+plan PR; (c), (d) and (e) share the one build
 # PR the article keeps open from build to merge (p.34; OPERATING_MODEL section 4.1).
@@ -83,8 +93,16 @@ GATE_CHECKLIST = {
     + " Merge = approve; a review comment = change request (/sdlc-fix).",
     "c": "approving review + label sdlc:c-approved starts the test phase",
     "d": "approving review + label sdlc:d-approved starts the review phase",
-    "e": "merge = approve; a review comment is the change request (/sdlc-fix)",
+    "e": "merge = approve; a review comment is the change request (/sdlc-fix). Waiting for "
+    "your merge: merge = gate (e) passed; the release workflow then runs `deploy.command`",
 }
+# Decision 13: when the project declares a real production, the merge is the first act and
+# the release label, applied by a person on GitHub, the second (the only route: a run cannot
+# approve itself, decision 11).
+RELEASE_APPROVAL_LINE = (
+    f"Release approval: apply `{c.RELEASE_APPROVED_LABEL}` on this PR after merging; the "
+    "release workflow waits for it."
+)
 NOTHING_NEEDED = "nothing: the run continues to the next phase"
 
 
@@ -318,6 +336,35 @@ def _links_line(root: Path, change_dir: Path, change_id: str, phase: str) -> str
     return "Links: " + " · ".join(parts)
 
 
+def production_declared(root: Path) -> bool:
+    """``sdlc.yaml: deploy.production`` is true. An unreadable or absent file declares
+    nothing (the gate, not the PR body, is where a broken sdlc.yaml parks)."""
+    try:
+        config = load_sdlc_config(str(root))
+    except ConfigError:
+        return False
+    deploy = config.get("deploy")
+    return isinstance(deploy, dict) and deploy.get("production") is True
+
+
+def release_note(change_dir: Path, intent: str) -> str:
+    """``evidence/release-notes.md`` without its H1 title line, headings demoted one level
+    (``## `` becomes ``### ``), otherwise verbatim; else the intent's
+    proposed outcome on one line; "" when neither exists."""
+    notes = art.read_text(Path(change_dir) / art.EVIDENCE_DIR / RELEASE_NOTES)
+    if notes and notes.strip():
+        lines = notes.strip("\n").splitlines()
+        if lines and lines[0].startswith("# "):
+            lines = lines[1:]
+        # demote the file's headings one level so they nest under "## Release note"
+        lines = [f"#{line}" if HEADING_RE.match(line) else line for line in lines]
+        body = "\n".join(lines).strip("\n")
+        if body.strip():
+            return body
+    outcome = _section(intent, "## Proposed outcome")
+    return " ".join(outcome.split()) if outcome else ""
+
+
 def _counters_line(st: Status) -> str:
     first_pass = "yes" if st.iterations == 0 else "no"
     return f"Counters: first-pass merge: {first_pass} · fix iterations: {st.iterations}"
@@ -368,6 +415,8 @@ def build_description(root: Path, change_id: str, phase: str) -> str:
         block = what_i_need_block(gate_json)
         if block:
             out += ["", block]
+    if phase == "e" and production_declared(root):
+        out += ["", RELEASE_APPROVAL_LINE]
     out += ["", _links_line(root, change_dir, change_id, phase), "", _counters_line(st)]
 
     proposals = art.read_text(change_dir / art.EVIDENCE_DIR / CLAUDE_MD_PROPOSALS)
@@ -376,7 +425,7 @@ def build_description(root: Path, change_id: str, phase: str) -> str:
         out += ["", "## Proposed CLAUDE.md lines", "", quoted_lines]
 
     if phase == "e":
-        outcome = _section(intent, "## Proposed outcome")
-        if outcome:
-            out += ["", "## Release note", "", " ".join(outcome.split())]
+        note = release_note(change_dir, intent)
+        if note:
+            out += ["", "## Release note", "", note]
     return "\n".join(out) + "\n"
