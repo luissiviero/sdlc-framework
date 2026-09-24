@@ -44,6 +44,8 @@ class Status:
     entry_route: str = "idea"
     change_type: str = "feature"
     profile_override: str | None = None
+    # decision 21: ``parked`` | ``deferred`` | null (the project's ``sdlc.yaml: review``)
+    review_override: str | None = None
     gate: Gate = field(default_factory=Gate)
     parked_reason: str | None = None
     iterations: int = 0
@@ -82,8 +84,13 @@ class Status:
             raise ValueError(f"entry_route must be one of {c.ENTRY_ROUTES}")
         if self.change_type not in c.CHANGE_TYPES:
             raise ValueError(f"change_type must be one of {c.CHANGE_TYPES}")
-        if self.profile_override is not None and self.profile_override not in c.PROFILES:
+        if self.profile_override is not None and (
+            self.profile_override not in c.PROFILES
+            and self.profile_override not in c.LEGACY_PROFILES
+        ):
             raise ValueError(f"profile_override must be one of {c.PROFILES} or null")
+        if self.review_override is not None and self.review_override not in c.REVIEW_MODES:
+            raise ValueError(f"review_override must be one of {c.REVIEW_MODES} or null")
         if self.gate.result is not None and self.gate.result not in c.GATE_RESULTS:
             raise ValueError(f"gate.result must be one of {c.GATE_RESULTS} or null")
         if self.gate.phase is not None and self.gate.phase not in c.PHASES:
@@ -330,6 +337,7 @@ def new_change(
     profile_override: str | None = None,
     external_ref: str | None = None,
     change_id: str | None = None,
+    review_override: str | None = None,
 ) -> tuple[Path, Status]:
     """Create ``changes/<id>-<slug>/`` with a status.yaml in phase (a). Idempotent per id."""
     project_root = Path(project_root)
@@ -352,6 +360,7 @@ def new_change(
         entry_route=entry_route,
         change_type=change_type,
         profile_override=profile_override,
+        review_override=review_override,
         external_ref=external_ref,
     )
     write_status(change_dir, status)

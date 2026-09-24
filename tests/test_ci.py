@@ -423,21 +423,23 @@ def _design_branch_left_on_the_remote(root: Path, tmp_path: Path, profile: str) 
     return git(root, "rev-parse", "origin/sdlc/0001/b").strip()
 
 
-def test_the_build_run_creates_its_branch_off_the_design_branch(project, tmp_path, capsys):
-    """Lite: the spec+plan PR is not merged before the build, so sdlc/<id>/c starts there."""
+def test_a_legacy_lite_project_builds_from_the_default_branch(project, tmp_path):
+    """Decision 21 (0.2.14): Lite is gone. A project whose sdlc.yaml still says lite reads
+    as Standard, and its build branch starts from the default branch, never from a design
+    branch left on the remote."""
     root, _change = project
     design_head = _design_branch_left_on_the_remote(root, tmp_path, "lite")
-    assert run_phase.checkout_profile(root, "0001") == "lite"
+    assert run_phase.checkout_profile(root, "0001") == "standard"
 
     branch = run_phase.prepare_branch(root, "0001", "c")
     assert branch["branch"] == "sdlc/0001/c" and branch["switched"] is True
-    assert branch["from"] == "origin/sdlc/0001/b"
-    assert git(root, "rev-parse", "HEAD").strip() == design_head
+    assert branch["from"] == "origin/main"
+    assert git(root, "rev-parse", "HEAD").strip() != design_head
 
 
-def test_outside_lite_the_build_branch_starts_from_the_default_branch(project, tmp_path):
+def test_the_build_branch_starts_from_the_default_branch(project, tmp_path):
     """HANDOFF 6(a): a design branch that outlived the owner's merge at gate (b) is not
-    where the build starts in the Standard (or Full) profile; the default branch is."""
+    where the build starts; the default branch is."""
     root, _change = project
     design_head = _design_branch_left_on_the_remote(root, tmp_path, "standard")
     main_head = git(root, "rev-parse", "origin/main").strip()
@@ -448,22 +450,25 @@ def test_outside_lite_the_build_branch_starts_from_the_default_branch(project, t
     assert head == main_head and head != design_head
 
 
-def test_start_point_follows_the_profile_it_is_given(project, tmp_path):
+def test_start_point_is_the_default_branch_whatever_the_profile(project, tmp_path):
     root, _change = project
     _design_branch_left_on_the_remote(root, tmp_path, "standard")
-    assert run_phase._start_point(root, "0001", "c", "lite") == "origin/sdlc/0001/b"
-    for profile in ("standard", "full", None):
+    for profile in ("standard", "full", "lite", None):
         assert run_phase._start_point(root, "0001", "c", profile) == "origin/main"
-    assert run_phase._start_point(root, "0001", "b", "lite") == "origin/main"
+        assert run_phase._start_point(root, "0001", "b", profile) == "origin/main"
+    assert "b" not in run_phase.NEXT_WORKFLOW  # a design run never dispatches the build
 
 
-def test_a_profile_override_on_the_change_makes_it_lite(project):
+def test_a_profile_override_on_the_change_is_read_and_a_legacy_lite_is_standard(project):
     root, change = project
     assert run_phase.checkout_profile(root, "0001") == "standard"
     st = status_mod.read_status(change)
-    st.profile_override = "lite"
+    st.profile_override = "full"
     status_mod.write_status(change, st)
-    assert run_phase.checkout_profile(root, "0001") == "lite"
+    assert run_phase.checkout_profile(root, "0001") == "full"
+    st.profile_override = "lite"  # a change from before 0.2.14
+    status_mod.write_status(change, st)
+    assert run_phase.checkout_profile(root, "0001") == "standard"
     assert run_phase.checkout_profile(root, "0099") == "standard"  # no change: the project's
 
 
@@ -1006,7 +1011,7 @@ GATE_FILE = {
     "change_id": "0001",
     "slug": "percent-helper",
     "phase": "b",
-    "profile": "lite",
+    "profile": "standard",
     "human_gate": False,
     "result": "continue",
     "label": None,
@@ -1056,25 +1061,29 @@ def pr_route(monkeypatch, number: int | None = None) -> list:
 def test_full_run_stores_the_transcript_records_spend_and_hands_over(
     project, fake_claude, monkeypatch, capsys
 ):
+    """A build run (c) whose gate says continue hands over to the test workflow. Since
+    0.2.14 (decision 21) a design run (b) hands over nothing whatever the profile: the
+    spec+plan PR waits for the owner's merge, which fires ``sdlc-build.yml``."""
     root, change = project
     pr_route(monkeypatch)
-    write(change / "evidence" / "gate-b.json", json.dumps(GATE_FILE))
+    set_state(change, "b", gate_phase="b", gate_result="passed")
+    write(change / "evidence" / "gate-c.json", json.dumps({**GATE_FILE, "phase": "c"}))
     monkeypatch.setenv("FAKE_CLAUDE_RESULT", json.dumps(FAKE_RESULT))
     env = dict(os.environ, **KEY_ENV, GITHUB_TOKEN=FAKE_TOKEN)
     args = Args(
-        root=str(root), phase="b", dry_run=False, no_dispatch=True, claude=fake_cli(fake_claude)
+        root=str(root), phase="c", dry_run=False, no_dispatch=True, claude=fake_cli(fake_claude)
     )
     assert run_phase.run_phase(args, env) == run_phase.EXIT_OK
     out = json.loads(capsys.readouterr().out)
     assert out["result"] == "continue" and out["cost_usd"] == 0.42
-    assert out["dispatched"]["would_dispatch"] == "sdlc-build.yml"
+    assert out["dispatched"]["would_dispatch"] == "sdlc-test.yml"
     assert out["dispatched"]["change_id"] == "0001"
-    assert out["dispatched"]["head_ref"] == "sdlc/0001/c"  # keys the next run's group
+    assert out["dispatched"]["head_ref"] == "sdlc/0001/c"  # (d) runs on the build branch
 
-    stored = json.loads((change / "evidence" / "claude-b.json").read_text(encoding="utf-8"))
+    stored = json.loads((change / "evidence" / "claude-c.json").read_text(encoding="utf-8"))
     assert stored == FAKE_RESULT
-    run_file = json.loads((change / "evidence" / "run-b.json").read_text(encoding="utf-8"))
-    assert run_file["spend_usd"] == 0.42 and run_file["phase"] == "b"
+    run_file = json.loads((change / "evidence" / "run-c.json").read_text(encoding="utf-8"))
+    assert run_file["spend_usd"] == 0.42 and run_file["phase"] == "c"
 
 
 def test_a_run_that_leaves_no_gate_file_is_an_infrastructure_failure(
@@ -1111,13 +1120,13 @@ def test_no_credential_skips_instead_of_failing(project, capsys):
 
 
 def test_hand_over_table_matches_operating_model_4_2():
-    assert run_phase.NEXT_WORKFLOW == {
-        "b": "sdlc-build.yml",
-        "c": "sdlc-test.yml",
-        "d": "sdlc-deploy.yml",
-    }
+    # the design job hands over nothing (0.2.14, decision 21): the owner's merge of the
+    # spec+plan PR is what fires sdlc-build.yml
+    assert run_phase.NEXT_WORKFLOW == {"c": "sdlc-test.yml", "d": "sdlc-deploy.yml"}
+    assert run_phase.NEXT_PHASE == {"c": "d", "d": "e"}
     args = Args(no_dispatch=True)
-    assert run_phase.hand_over(args, {"result": "wait"}, "b", "0001") is None
+    assert run_phase.hand_over(args, {"result": "wait"}, "c", "0001") is None
+    assert run_phase.hand_over(args, {"result": "continue"}, "b", "0001") is None
     assert run_phase.hand_over(args, {"result": "park"}, "c", "0001") is None
     assert run_phase.hand_over(args, {"result": "continue"}, "e", "0001") is None  # (e) ends here
 

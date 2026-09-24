@@ -34,13 +34,26 @@ PHASE_ARTIFACTS = {
 }
 
 # --- profiles (decision 18; OPERATING_MODEL section 3) ------------------------------------
-PROFILES = ("standard", "full", "lite")
+# Lite (gates (a) and (e) only) was withdrawn by decision 21 and removed in plugin 0.2.14:
+# it took the human out of gate (b), which the article keeps human (p.14, p.15). Deferred
+# review (``sdlc.yaml: review: deferred``) is what it was for. A file that still says
+# ``lite`` (a project or a change from before 0.2.14) reads as Standard (``LEGACY_PROFILES``).
+PROFILES = ("standard", "full")
 DEFAULT_PROFILE = "standard"
+LEGACY_PROFILES = {"lite": "standard"}
 HUMAN_GATES = {
     "standard": frozenset({"a", "b", "e"}),
     "full": frozenset({"a", "b", "c", "d", "e"}),
-    "lite": frozenset({"a", "e"}),
 }
+
+# --- review mode (decision 21; OPERATING_MODEL sections 3 and 6) ----------------------------
+# ``parked``: a judgment item of the fixed list parks the change for the owner (the behaviour
+# before 0.2.14). ``deferred``: the run puts it to the review panel (reviewer, devil's
+# advocate, conciliator, each in a fresh context) and continues; the owner reads the panel's
+# decisions once, at the phase's end. Per project in ``sdlc.yaml: review``, per change in
+# ``status.yaml: review_override``.
+REVIEW_MODES = ("parked", "deferred")
+DEFAULT_REVIEW_MODE = "parked"
 
 CHANGE_TYPES = ("feature", "fix")
 ENTRY_ROUTES = ("idea", "ticket", "incident")  # article p.9: idea / ticket / incident
@@ -171,9 +184,17 @@ def _check_id(change_id: str) -> None:
 
 def effective_profile(project_profile: str | None, override: str | None) -> str:
     profile = override or project_profile or DEFAULT_PROFILE
+    profile = LEGACY_PROFILES.get(profile, profile)
     if profile not in PROFILES:
         raise ValueError(f"unknown profile {profile!r}; expected one of {PROFILES}")
     return profile
+
+
+def effective_review_mode(project_mode: str | None, override: str | None) -> str:
+    mode = override or project_mode or DEFAULT_REVIEW_MODE
+    if mode not in REVIEW_MODES:
+        raise ValueError(f"unknown review mode {mode!r}; expected one of {REVIEW_MODES}")
+    return mode
 
 
 def is_human_gate(profile: str, phase: str) -> bool:

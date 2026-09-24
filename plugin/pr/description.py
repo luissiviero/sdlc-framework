@@ -9,6 +9,10 @@ is needed" (OPERATING_MODEL section 7). This module renders exactly that, from f
 re-runnable after every review comment.
 
 Layout of the body, in order:
+  0. under deferred review (decision 21), "Decisions taken for you (N)" above the bullets:
+     one line per standing panel decision of the phases this PR covers ((b) for the design
+     PR; (c), (d), (e) for the build PR), from ``evidence/decisions-<phase>.json``; a review
+     comment on any of them overturns it (/sdlc-fix);
   1. the five bullets, one line each (a fixed order, so the owner reads the same shape every
      time); when the gate parked, the fifth bullet points at the "What I need from you" block
      and the block itself follows the list verbatim (it is multi-line, a bullet is not). At
@@ -40,6 +44,8 @@ from typing import Any
 PLUGIN_DIR = Path(__file__).resolve().parent.parent
 if str(PLUGIN_DIR) not in sys.path:
     sys.path.insert(0, str(PLUGIN_DIR))
+
+from panel import ledger  # noqa: E402
 
 from gate import artifacts as art  # noqa: E402
 from gate import checks  # noqa: E402
@@ -317,6 +323,43 @@ def _intent_bullets(intent: str, st: Status) -> list[str]:
     ]
 
 
+# --- decision 21: the panel's decisions, above the bullets --------------------------------------
+LEDGER_PHASES = {"b": ("b",), "c": ("c",), "d": ("c", "d"), "e": ("c", "d", "e")}
+
+
+def decisions_block(change_dir: Path, phase: str) -> list[str]:
+    """``**Decisions taken for you (N)**`` and one numbered line per standing decision of
+    the phases the PR covers, or [] when the panel decided nothing. The owner reads these
+    first: each is a call the panel made in their place (decision 21), and a review comment
+    on the line overturns it."""
+    entries: list[tuple[str, dict[str, Any]]] = []
+    overturned = 0
+    for ledger_phase in LEDGER_PHASES.get(phase, ()):
+        for entry in ledger.load_ledger(Path(change_dir), ledger_phase):
+            if entry.get("overturned"):
+                overturned += 1
+            else:
+                entries.append((ledger_phase, entry))
+    if not entries and not overturned:
+        return []
+    head = f"**Decisions taken for you ({len(entries)})**"
+    if overturned:
+        head += f" — {overturned} overturned by your review comments"
+    head += (
+        ": the review panel settled these inside the phase (decision 21); a review comment "
+        "on any of them overturns it (/sdlc-fix)."
+    )
+    lines = [head]
+    for n, (ledger_phase, entry) in enumerate(entries, 1):
+        item = " ".join(str(entry.get("item", "")).split())
+        decision = " ".join(str(entry.get("decision", "")).split())
+        lines.append(
+            f"{n}. ({ledger_phase}) [{entry.get('kind')}] {item} → **{decision}** "
+            f"(ledger: evidence/decisions-{ledger_phase}.md, line {entry.get('n')})"
+        )
+    return lines
+
+
 # --- the body ---------------------------------------------------------------------------------
 def _links_line(root: Path, change_dir: Path, change_id: str, phase: str) -> str:
     rel_dir = str(Path(change_dir).relative_to(root)).replace("\\", "/")
@@ -409,7 +452,11 @@ def build_description(root: Path, change_id: str, phase: str) -> str:
         f"- **Plan conformance**: {_conformance_line(gate_json, spec, phase)}",
         f"- **What needs you**: {_owner_line(gate_json, phase)}",
     ]
-    out = [" ".join(b.split()) for b in bullets]
+    out: list[str] = []
+    decisions = decisions_block(change_dir, phase)
+    if decisions:
+        out += [*decisions, ""]
+    out += [" ".join(b.split()) for b in bullets]
 
     if (gate_json or {}).get("result") == "park":
         block = what_i_need_block(gate_json)

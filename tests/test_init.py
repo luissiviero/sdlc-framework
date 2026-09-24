@@ -106,7 +106,7 @@ def test_merge_claude_md_keeps_existing_and_adds_missing_sections():
 
 def _run_init(root: Path, *extra: str) -> dict:
     proc = subprocess.run(
-        [sys.executable, str(INIT), "--root", str(root), "--profile", "lite", *extra],
+        [sys.executable, str(INIT), "--root", str(root), "--profile", "full", *extra],
         capture_output=True,
         text=True,
         check=True,
@@ -128,7 +128,8 @@ def test_init_on_fixture_copy_is_idempotent(tmp_path):
         "branch": "sdlc/0000/a",
     }
     cfg = yamlish.load_file(root / "sdlc.yaml")
-    assert cfg["profile"] == "lite" and cfg["commands"]["test"] == "python -m pytest"
+    assert cfg["profile"] == "full" and cfg["commands"]["test"] == "python -m pytest"
+    assert cfg["review"] == "parked"  # decision 21: off by default
     assert cfg["test_paths"] == detect.TEST_PATHS["python"]  # step 25: the test-file lock
     assert cfg["plugin"]["version"] == sdlc_init.plugin_version()
     settings = json.loads((root / ".claude" / "settings.json").read_text(encoding="utf-8"))

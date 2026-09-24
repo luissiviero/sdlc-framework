@@ -5,8 +5,29 @@
 # --- profile: which gates are human (OPERATING_MODEL section 3; decision 18) --------------
 # standard: owner merges at (a) intent PR, (b) spec+plan PR, (e) build PR; (c),(d) automated
 # full:     all five gates human; (c),(d) = approving review + label on the build PR
-# lite:     (a) and (e) only; (b) is confidence-gated too
+# (lite, gates (a) and (e) only, was withdrawn by decision 21 and removed in 0.2.14: a file
+# that still says lite reads as standard)
 profile: {{PROFILE}}
+
+# --- review mode inside a phase (OPERATING_MODEL sections 3 and 6; decision 21) -------------
+# parked:   a judgment item parks the change and waits for you (an open flagged concern in
+#           spec.md, contradicting policies, an escalate verdict of the adversarial reviewer,
+#           an Important review finding whose fix the run cannot determine, a verifier
+#           disagreement)
+# deferred: the run puts each such item to a review panel - a reviewer and a devil's
+#           advocate in blind fresh contexts, then a conciliator that decides - applies the
+#           decision, records it in changes/<id>-<slug>/evidence/decisions-<phase>.md and
+#           continues; you read "Decisions taken for you (N)" at the top of the PR at the next
+#           human gate, and a review comment on any of them overturns it (/sdlc-fix). What
+#           never goes to the panel and still parks: a risk-list hit, a guardrail file change,
+#           a run limit, an infrastructure failure, a merge to main, a deploy. Each panel call
+#           counts as one iteration against gate.max_iterations. Per-change override:
+#           status.yaml: review_override.
+review: {{REVIEW}}
+# the model alias of the devil's advocate (a panel reduces variance, not bias: three judges
+# on one model share its blind spots, so the advocate runs on another model than the
+# reviewer); the reviewer and the conciliator inherit the session's model
+panel_advocate_model: opus
 
 # --- feedback loop: one-command targets (build guide step 14; article p.27 step 1) --------
 # Each must exit non-zero on failure. /sdlc-init detects them for Python projects.

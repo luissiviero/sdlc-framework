@@ -1,6 +1,7 @@
 # Phase (c) build, fired by the merge of the spec+plan PR: the merged pull request that carries
-# the change's changes/<id>-<slug>/ folder (head sdlc/<id>/b when the design job opened it),
-# or by the design job's dispatch (Lite).
+# the change's changes/<id>-<slug>/ folder (head sdlc/<id>/b when the design job opened it).
+# Gate (b) is the owner's merge in every profile (the Lite profile is gone since plugin
+# 0.2.14, decision 21), so nothing dispatches this workflow but a re-run by hand.
 #
 # Contract: docs/OPERATING_MODEL.md section 4.2 (the trigger and dispatch table), build guide
 # step 30, article p.39-41 ("Run Claude Code non-interactively inside the CI/CD pipeline,

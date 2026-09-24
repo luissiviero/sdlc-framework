@@ -2,7 +2,7 @@
 description: The single change-request handler for every phase's PR, the intent PR included — read the unresolved review comments and the failing checks on the change's open PR, perform the owner's un-park labels, bump the iteration count, re-run the phase on the PR's own branch with the comments as constraints (correcting intent.md at gate (a), closing flagged concerns the owner decided in a comment, fixing findings, re-collecting evidence), push, refresh the PR summary, and park at the iteration cap. Re-runnable; started by the owner's "Request changes" review in CI.
 argument-hint: [change id, e.g. 0001] [--comments "<pasted review comments>"]
 disable-model-invocation: true
-allowed-tools: Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/state/cli.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/gate/cli.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/evidence/collect.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/review/cli.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/pr/cli.py" *), Bash(git *), Bash(gh *), Read, Glob, Grep, Edit, Write, Agent
+allowed-tools: Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/state/cli.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/gate/cli.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/panel/cli.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/evidence/collect.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/review/cli.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/pr/cli.py" *), Bash(git *), Bash(gh *), Read, Glob, Grep, Edit, Write, Agent
 ---
 
 # /sdlc-fix — change requests on any phase's PR
@@ -89,6 +89,12 @@ steps on it (the commands are idempotent):
 - **Phase (e)** — review findings the owner endorsed or new comments: `/sdlc-deploy`
   step 2's loop for the Important ones; a nit the owner asked for is fixed like an
   Important one.
+A comment on a line of "Decisions taken for you" (decision 21) overturns that panel
+decision: apply the comment like any other (for a concern, rewrite the item as
+`decided <the owner's words>`; for a finding, fix it as the owner says), then mark the
+ledger line —
+`python "${CLAUDE_PLUGIN_ROOT}/plugin/panel/cli.py" overturn --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase <phase> --item <n> --comment "<the owner's words>"`
+— so the PR summary counts it as overturned. The owner's word replaces the panel's.
 A fix-type change never edits the locked tests (the hook denies it); if the comment asks
 for exactly that, write in `evidence/fix-response.md` that the owner unlocks with `state/cli.py unlock-tests`, and park.
 A comment asking for a guardrail-file edit (`.claude/**`, `CLAUDE.md`, `REVIEW.md`,

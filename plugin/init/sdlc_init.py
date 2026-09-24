@@ -1,7 +1,7 @@
 """Deterministic half of /sdlc-init (build guide step 21; full version from B2).
 
     python "${CLAUDE_PLUGIN_ROOT}/init/sdlc_init.py" --root <project> --profile standard \
-        --deploy-action none --deploy-production false \
+        --review parked --deploy-action none --deploy-production false \
         --maintain-metric ci_test_failure_rate --maintain-source github-actions \
         [--project-name X] [--build CMD] [--test CMD] [--lint CMD] [--setup CMD] \
         [--claude-md-from changes/0000-sdlc-init/CLAUDE.proposed.md] \
@@ -100,6 +100,7 @@ def build_values(args, det: detect_mod.Detection) -> dict[str, str]:
     return {
         "PROJECT_NAME": args.project_name or Path(args.root).resolve().name,
         "PROFILE": args.profile,
+        "REVIEW": args.review,
         "BUILD_CMD": _esc(build_cmd),
         "TEST_CMD": _esc(test_cmd),
         "LINT_CMD": _esc(lint_cmd),
@@ -535,6 +536,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument("--root", default=".")
     p.add_argument("--profile", default=c.DEFAULT_PROFILE, choices=c.PROFILES)
+    p.add_argument(
+        "--review",
+        default=c.DEFAULT_REVIEW_MODE,
+        choices=c.REVIEW_MODES,
+        help="decision 21: deferred puts judgment items to the review panel inside a phase",
+    )
     p.add_argument("--deploy-action", default="none")
     p.add_argument(
         "--deploy-production", default="false", type=lambda s: s.lower() in ("1", "true", "yes")

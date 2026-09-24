@@ -4,7 +4,7 @@ readers, run limits — and, against a temporary copy of the fixture project, th
 prepared failure (missing plan.md, failing test behind SAMPLE_FAIL=1, a diff touching
 .claude/settings.json, a risk-list word, an escalating or stale adversarial verdict, an open
 flagged concern, a limit hit), and gate (b): a spec.md without its rendered header or a design
-branch that touches source parks, while a clean one waits (Standard) or continues (Lite)."""
+branch that touches source parks, while a clean one waits for the owner."""
 
 from __future__ import annotations
 
@@ -414,6 +414,7 @@ def test_gate_continues_on_a_clean_change(project):
         "clean_tree",
         "artifacts",
         "open_concerns",
+        "panel",
         "commands",
         "evidence",
         "findings",
@@ -973,7 +974,7 @@ def test_gate_cli_rejects_a_malformed_id(project):
 
 
 # --- gate (b): the design gate (steps 22-23) ---------------------------------------------------
-def test_gate_b_waits_for_the_owner_and_lite_continues(design_project):
+def test_gate_b_waits_for_the_owner_in_every_profile(design_project):
     root, change = design_project
     verdict(root, "b")
     result = gate.run_gate(root, "0001", "b", dry_run=True)
@@ -985,19 +986,21 @@ def test_gate_b_waits_for_the_owner_and_lite_continues(design_project):
         "artifacts",
         "design_scope",
         "open_concerns",
+        "panel",
         "commands",
         "guardrails",
         "risk_list",
         "owner_actions",
         "adversarial_review",
     }
-    # Lite gate-checks (b) instead of asking the owner (23.3; conventions.HUMAN_GATES)
+    # decision 21 (0.2.14): Lite is gone; a change that still says lite waits like Standard
     st = status_mod.read_status(change)
     st.profile_override = "lite"
     status_mod.write_status(change, st)
     result = gate.run_gate(root, "0001", "b", dry_run=True)
-    assert result.result == "continue", result.reason
-    assert result.label is None and result.profile == "lite" and result.human_gate is False
+    assert result.result == "wait", result.reason
+    assert result.label == "sdlc:b-ready" and result.profile == "standard"
+    assert result.human_gate is True
 
 
 def test_gate_b_parks_on_a_spec_without_the_header(design_project):

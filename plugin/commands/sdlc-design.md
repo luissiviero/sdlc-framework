@@ -1,8 +1,8 @@
 ---
-description: Phase (b) design — from the merged intent, write spec.md with the policy skills loaded (the article's p.14 prompt), then the read-only planning run that writes plan.md, run the adversarial reviewer and call gate (b). Standard/Full: open the spec+plan PR on sdlc/<id>/b with sdlc:b-ready. Lite: commit and hand over to /sdlc-build. Re-runnable after review comments. No questions to the owner; a gap becomes a flagged concern.
+description: Phase (b) design — from the merged intent, write spec.md with the policy skills loaded (the article's p.14 prompt), then the read-only planning run that writes plan.md, run the adversarial reviewer and call gate (b). Under review: deferred, the panel settles open concerns before the gate. Open the spec+plan PR on sdlc/<id>/b with sdlc:b-ready. Re-runnable after review comments. No questions to the owner; a gap becomes a flagged concern.
 argument-hint: [change id, e.g. 0001]
 disable-model-invocation: true
-allowed-tools: Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/state/cli.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/gate/cli.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/pr/cli.py" *), Bash(git *), Bash(gh *), Read, Glob, Grep, Edit(changes/**), Write, Agent
+allowed-tools: Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/state/cli.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/gate/cli.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/panel/cli.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/pr/cli.py" *), Bash(git *), Bash(gh *), Read, Glob, Grep, Edit(changes/**), Write, Agent
 ---
 
 # /sdlc-design — phase (b)
@@ -89,9 +89,10 @@ Rules for the pass (from the three by-hand runs of build guide step 22, recorded
 - Close a concern yourself only when the policy text settles it, and say which policy
   (`- [x] <concern>: decided <how> per <skill> rule <n>`); the closing word is the first
   word of the item — a label such as `C3:` in front of it keeps the concern open. Every
-  other concern stays open;
-  the gate parks while one is open and the owner closes it in review (step 23; `/sdlc-fix`
-  applies a review comment that closes it).
+  other concern stays open; under `review: parked` the gate parks while one is open and
+  the owner closes it in review (step 23; `/sdlc-fix` applies a review comment that closes
+  it); under `review: deferred` the panel of step 6a closes it and the owner reads the
+  decision at the gate.
 - As short as the change allows: a small change gets a short spec. Requirements are
   checkable bullets; Design is the shape, not the code.
 - Write `changes/<id>-<slug>/spec.md`. Nothing else.
@@ -125,19 +126,54 @@ project root, the full HEAD sha and the path `changes/<id>-<slug>/evidence/diff-
 `changes/<id>-<slug>/evidence/adversarial-review-b.json` for the current HEAD (the commit
 of step 5) and reports a verdict. Do not argue with it and do not edit its file.
 
+
+### Deferred review: the panel settles the judgment items (decision 21; build guide step 16a)
+```
+python "${CLAUDE_PLUGIN_ROOT}/plugin/panel/cli.py" items --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase b
+```
+It prints the review mode (`sdlc.yaml: review`, `status.yaml: review_override`), the items
+the gate would park on that belong to the panel's fixed list (an open flagged concern, a
+concern naming contradicting policies, the reviewer's `escalate` verdict, an Important
+finding the run cannot fix, the verifier's "does not match the plan"), which of them the
+ledger already decides, and under `parks` what stays the owner's whatever the mode (a
+risk-list hit, a guardrail file, a run limit, an infrastructure failure). When `mode` is
+`parked` or `pending` is empty, go on to the gate. Otherwise, for each pending item `n` in
+order, three fresh contexts, each with the brief printed by
+`python "${CLAUDE_PLUGIN_ROOT}/plugin/panel/cli.py" prompt --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase b --item <n> --member <reviewer|advocate|conciliator>`:
+1. **reviewer** — delegate to a general-purpose sub-agent with the `reviewer` brief; it
+   writes `evidence/panel/b-<n>-reviewer.md`.
+2. **devil's advocate** — delegate to `sdlc:adversarial-reviewer` with the `advocate`
+   brief, on the model `sdlc.yaml: panel_advocate_model` names (pass it as the sub-agent's
+   model: the per-invocation model wins, NOTES §11c; a panel on one model shares its blind
+   spots), blind to the reviewer's file; it writes `evidence/panel/b-<n>-advocate.md`.
+3. **conciliator** — delegate to a general-purpose sub-agent with the `conciliator` brief;
+   it reads both files and writes `evidence/panel/b-<n>-conciliator.json`.
+Then record it:
+`python "${CLAUDE_PLUGIN_ROOT}/plugin/panel/cli.py" record --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase b --item <n>`
+— one panel call is one iteration (exit 3 at the cap: stop the panel, the gate parks); it
+appends the line to `evidence/decisions-b.json` (and the `.md` the owner reads), and for
+a concern closes the item in `spec.md` as `decided (by panel): <decision> — <concern>`. Apply
+what the decision asks beyond that (an `escalate` decided `continue` needs nothing more; a
+fix the decision names is made now, `plan.md` in the same commit). When any file changed,
+commit (`commit-phase ... --phase b --message "design(<id>): panel decisions"`),
+then re-run step 6 for the new HEAD (a verdict never outlives the diff it
+judged); an `escalate` with new reasons is a new item: run `items` once more. The panel
+never decides a park item, never raises a limit, never touches a guardrail file, and never
+asks the owner: the owner reads "Decisions taken for you" at the gate and overturns any
+line with a review comment.
+
 ## 7. Gate (b) (build guide steps 16, 23)
 ```
 python "${CLAUDE_PLUGIN_ROOT}/plugin/gate/cli.py" check --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase b
 ```
-Exit 3 = `wait` (a human gate: Standard and Full profiles), 0 = `continue` (Lite), 4 =
-`park`. It writes `status.yaml` and `evidence/gate-b.json`, and prints the label to apply
+Exit 3 = `wait` (gate (b) is a human gate in every profile), 4 = `park`. It writes `status.yaml` and `evidence/gate-b.json`, and prints the label to apply
 and, when parked, the "What I need from you" block. Then commit the evidence:
 ```
 python "${CLAUDE_PLUGIN_ROOT}/plugin/state/cli.py" commit-phase --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase b --message "design(<id>): gate (b) evidence" --push
 ```
 
 ## 8. Outcome
-**`wait` (Standard, Full) or `park` in any profile — open or update the spec+plan PR.**
+**`wait` or `park` — open or update the spec+plan PR.**
 ```
 python "${CLAUDE_PLUGIN_ROOT}/plugin/pr/cli.py" upsert --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase b
 ```
@@ -160,14 +196,10 @@ removed. Re-run: the same command updates the existing PR; never open a second o
 body for the owner (or a GitHub MCP tool with the same title, body and label). Do not retry
 with other means.
 
-**`continue` (Lite profile only).** No PR at (b). The spec and plan are committed on
-`sdlc/<id>/b` and pushed; `/sdlc-build` starts `sdlc/<id>/c` from that branch. By hand:
-report that the next step is `/sdlc-build <id>`; in the merge-triggered workflow the job
-dispatches the build workflow itself (build guide step 30). Do not start phase (c) here.
-
 ## 9. Report
-One line: the PR URL (or the compare URL, or "continue → /sdlc-build <id>"), the gate
-result, and the number of open concerns. Nothing else is started.
+One line: the PR URL (or the compare URL), the gate result, the number of open concerns
+and, under deferred review, the number of panel decisions. Nothing else is started.
+Do not start phase (c) here: gate (b) is the owner's merge in every profile.
 
 Never edit `.claude/**`, `CLAUDE.md`, `REVIEW.md`, `sdlc.yaml`, `intent.md` or any file
 outside `changes/<id>-<slug>/`. Never use bypass-permissions mode. Never notify anyone.

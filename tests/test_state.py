@@ -33,8 +33,14 @@ def test_labels():
 def test_profiles_and_human_gates():
     assert c.HUMAN_GATES["standard"] == {"a", "b", "e"}
     assert c.HUMAN_GATES["full"] == {"a", "b", "c", "d", "e"}
-    assert c.HUMAN_GATES["lite"] == {"a", "e"}
-    assert c.effective_profile("standard", "lite") == "lite"
+    assert "lite" not in c.HUMAN_GATES and c.PROFILES == ("standard", "full")
+    # decision 21 (0.2.14): a file that still says lite reads as standard
+    assert c.effective_profile("standard", "lite") == "standard"
+    assert c.effective_profile("lite", None) == "standard"
+    assert c.effective_review_mode(None, None) == "parked"
+    assert c.effective_review_mode("parked", "deferred") == "deferred"
+    with pytest.raises(ValueError):
+        c.effective_review_mode("panel", None)
     assert c.effective_profile(None, None) == "standard"
     assert c.is_human_gate("standard", "c") is False
     assert c.is_human_gate("full", "c") is True
@@ -76,6 +82,7 @@ def test_status_round_trip_and_schema(tmp_path):
         "entry_route",
         "change_type",
         "profile_override",
+        "review_override",  # decision 21: the per-change review mode
         "gate",
         "parked_reason",
         "iterations",

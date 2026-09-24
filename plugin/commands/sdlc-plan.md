@@ -30,13 +30,15 @@ time, until you can fill every section of the intent template without guessing:
 - entry route: idea, ticket or incident (for a ticket ask for its number; for an incident ask
   for the evidence: what was observed, where, when);
 - change type: feature or fix (a fix is proven by a failing test written first);
-- whether this change needs a profile different from the project's (`profile_override`).
+- whether this change needs a profile different from the project's (`profile_override`),
+  or a review mode different from the project's (`review_override`: `deferred` lets a review
+  panel settle judgment items inside a phase, decision 21).
 Do not write files during the brainstorm.
 
 ## 2. Allocate the change
 Run (from the project root):
 ```
-python "${CLAUDE_PLUGIN_ROOT}/plugin/state/cli.py" new-change --root "${CLAUDE_PROJECT_DIR}" --title "<short title>" --route <idea|ticket|incident> --type <feature|fix> [--profile-override <standard|full|lite>] [--external-ref <ticket number>]
+python "${CLAUDE_PLUGIN_ROOT}/plugin/state/cli.py" new-change --root "${CLAUDE_PROJECT_DIR}" --title "<short title>" --route <idea|ticket|incident> --type <feature|fix> [--profile-override <standard|full>] [--review-override <parked|deferred>] [--external-ref <ticket number>]
 ```
 It prints the id, slug, folder and branch. Read them from the JSON; never invent an id.
 

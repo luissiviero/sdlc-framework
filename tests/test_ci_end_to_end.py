@@ -163,13 +163,48 @@ else:  # the recorded implementation of /sdlc-build, as tests/test_integration_f
         "# Verifier\\nRan percent(1, 3) -> 33.3 and the two nearest flows; both behave.\\n",
         encoding="utf-8",
     )
-head = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=root, text=True).strip()
-verdict = {"schema_version": 1, "phase": phase, "head": head, "verdict": "continue",
-           "reasons": [], "classification": "routine", "classification_reasons": [],
-           "at": "2026-09-21T10:00:00Z"}
-(change / "evidence" / f"adversarial-review-{phase}.json").write_text(
-    json.dumps(verdict), encoding="utf-8"
-)
+panel = str(plugin / "plugin" / "panel" / "cli.py")
+
+
+def write_verdict():
+    head = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=root, text=True).strip()
+    verdict = {"schema_version": 1, "phase": phase, "head": head, "verdict": "continue",
+               "reasons": [], "classification": "routine", "classification_reasons": [],
+               "at": "2026-09-21T10:00:00Z"}
+    (change / "evidence" / f"adversarial-review-{phase}.json").write_text(
+        json.dumps(verdict), encoding="utf-8"
+    )
+
+
+write_verdict()
+# deferred review (decision 21): the panel settles the judgment items before the gate; the
+# three members are fresh contexts here stood in by recorded files, the record is the CLI's
+items = json.loads(run(panel, "items", "--root", ".", "--id", change_id, "--phase", phase))
+if items["mode"] == "deferred" and items["pending"]:
+    for n in items["pending"]:
+        for member in ("reviewer", "advocate", "conciliator"):
+            run(panel, "prompt", "--root", ".", "--id", change_id, "--phase", phase,
+                "--item", str(n), "--member", member)
+        folder = change / "evidence" / "panel"
+        (folder / f"{phase}-{n}-reviewer.md").write_text(
+            "## Verdict\\nkeep half-up\\n\\n## Why\\nthe coding standard names round().\\n",
+            encoding="utf-8",
+        )
+        (folder / f"{phase}-{n}-advocate.md").write_text(
+            "## Verdict\\nno objection\\n\\n## The case against\\nnone found.\\n", encoding="utf-8"
+        )
+        (folder / f"{phase}-{n}-conciliator.json").write_text(
+            json.dumps({"reviewer": "keep half-up", "advocate": "no objection",
+                        "decision": "keep half-up rounding via round()",
+                        "rationale": ["both verdicts agree", "the coding standard says so"]}),
+            encoding="utf-8",
+        )
+        run(panel, "record", "--root", ".", "--id", change_id, "--phase", phase,
+            "--item", str(n), "--cost-usd", "0.09", ok=(0, 3))
+    word = "design" if phase == "b" else "build"
+    run(state, "commit-phase", "--root", ".", "--id", change_id, "--phase", phase,
+        "--message", f"{word}(0001): panel decisions", "--push")
+    write_verdict()  # a verdict never outlives the diff it judged
 run(gate, "check", "--root", ".", "--id", change_id, "--phase", phase, ok=(0, 3, 4))
 word = "design" if phase == "b" else "build"
 run(state, "commit-phase", "--root", ".", "--id", change_id, "--phase", phase,
@@ -728,3 +763,46 @@ def test_a_pr_closed_without_a_merge_abandons_the_change_and_every_run_skips_it(
     }
     proc, out, _calls = _fix_job(root, tmp_path / "fix-again")
     assert proc.returncode == 0 and out["skipped"].startswith("change 0001 is abandoned")
+
+
+# --- deferred review (decision 21; plugin 0.2.14) --------------------------------------------
+def test_under_deferred_review_the_panel_closes_the_concern_and_the_pr_says_so(checkout, tmp_path):
+    """The design run leaves one open concern. Under review: parked it parks (the third
+    test above). Under review: deferred the run puts it to the panel, records the decision,
+    commits, re-runs the verdict, and the gate waits for the owner with the decision at the
+    top of the PR body; one iteration was spent."""
+    root, bare = checkout
+    change = root / CHANGE
+    st = status_mod.read_status(change)
+    st.review_override = "deferred"  # the per-change switch; sdlc.yaml stays as merged
+    status_mod.write_status(change, st)
+    git(root, "add", f"{CHANGE}/status.yaml")
+    git(root, "commit", "-q", "-m", "intent(0001): deferred review for this change")
+    git(root, "push", "-q", "origin", "main")
+    open_concern = RECORDED_SPEC_BODY.replace("- [x] Rounding", "- Rounding")
+    proc, out, calls = run_phase_job(root, tmp_path, "ok", open_concern)
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert out["result"] == "wait" and out["label"] == "sdlc:b-ready"
+    spec = remote_file(bare, "sdlc/0001/b", f"{CHANGE}/spec.md")
+    assert "- decided (by panel): keep half-up rounding via round() — Rounding" in spec
+    ledger_md = remote_file(bare, "sdlc/0001/b", f"{CHANGE}/evidence/decisions-b.md")
+    assert "1. [concern] Rounding" in ledger_md and "cost: $0.09" in ledger_md
+    ledger_json = json.loads(
+        remote_file(bare, "sdlc/0001/b", f"{CHANGE}/evidence/decisions-b.json")
+    )
+    assert ledger_json["decisions"][0]["decision"] == "keep half-up rounding via round()"
+    status = remote_file(bare, "sdlc/0001/b", f"{CHANGE}/status.yaml")
+    assert "iterations: 1" in status  # one panel call, one iteration
+    gate_file = json.loads(remote_file(bare, "sdlc/0001/b", f"{CHANGE}/evidence/gate-b.json"))
+    assert gate_file["result"] == "wait"
+    names = {ch["name"]: ch["ok"] for ch in gate_file["checks"]}
+    assert names["open_concerns"] and names["panel"] and names["adversarial_review"]
+    assert any(c[:2] == ["pr", "create"] for c in calls)
+    # the body went through stdin: read it from the description builder on the branch
+    git(root, "checkout", "-q", "sdlc/0001/b")
+    from pr import description as desc
+
+    text = desc.build_description(root, "0001", "b")
+    assert text.startswith("**Decisions taken for you (1)**")
+    assert "[concern] Rounding half-even vs half-up" in text
+    assert "0 open / 1 closed" in text  # the concern reads as closed in the bullets
