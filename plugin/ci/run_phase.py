@@ -177,6 +177,13 @@ SPEND_PHASE = {"review": "e"}
 
 CLAUDE_RESULT_FILE = "claude-{phase}.json"
 CLAUDE_STDERR_FILE = "claude-{phase}.stderr.txt"
+# A second run of the same phase (a fix round, a re-run by hand) keeps its own record:
+# ``claude-<phase>-2.json``, ``-3``, ... The first deferred fix round on the sample
+# repository (2026-09-24) overwrote nothing yet - the previous round's ``claude-fix.json``
+# was still the only transcript when the adversarial reviewer read the evidence, and it
+# escalated on a "proof mismatch" between that older run and the diff.
+CLAUDE_RUN_FILE = "claude-{phase}-{n}.json"
+CLAUDE_RUN_STDERR_FILE = "claude-{phase}-{n}.stderr.txt"
 SETTINGS_REL = ("plugin", "ci", "settings.ci.json")
 
 BOT_LOGIN = "github-actions[bot]"
@@ -910,21 +917,40 @@ def invoke(argv: list[str], root: Path, env: dict[str, str], timeout: int) -> tu
 
 
 # --- spend, evidence, hand-over ------------------------------------------------------------------
-def store_result(change_dir: Path, phase: str, data: Any, raw: str) -> Path:
-    path = change_dir / art.EVIDENCE_DIR / CLAUDE_RESULT_FILE.format(phase=phase)
+def run_record_paths(change_dir: Path, phase: str) -> tuple[Path, Path]:
+    """(result, stderr) paths for this run of the phase: ``claude-<phase>.json`` for the
+    first run, ``claude-<phase>-<n>.json`` for the n-th, so no run's record overwrites an
+    earlier one and every transcript in ``evidence/`` says which run it belongs to."""
+    evidence = change_dir / art.EVIDENCE_DIR
+    first = evidence / CLAUDE_RESULT_FILE.format(phase=phase)
+    if not first.exists():
+        return first, evidence / CLAUDE_STDERR_FILE.format(phase=phase)
+    n = 2
+    while (evidence / CLAUDE_RUN_FILE.format(phase=phase, n=n)).exists():
+        n += 1
+    return (
+        evidence / CLAUDE_RUN_FILE.format(phase=phase, n=n),
+        evidence / CLAUDE_RUN_STDERR_FILE.format(phase=phase, n=n),
+    )
+
+
+def store_result(
+    change_dir: Path, phase: str, data: Any, raw: str, path: Path | None = None
+) -> Path:
+    path = path or run_record_paths(change_dir, phase)[0]
     path.parent.mkdir(parents=True, exist_ok=True)
     body = json.dumps(data, indent=2, sort_keys=True) if data is not None else raw
     path.write_text(body + "\n", encoding="utf-8", newline="\n")
     return path
 
 
-def store_stderr(change_dir: Path, phase: str, err: str) -> Path | None:
+def store_stderr(change_dir: Path, phase: str, err: str, path: Path | None = None) -> Path | None:
     """The CLI's stderr next to its result: permission denials, ignored settings and the
     like are printed there and nowhere else (the eighth live run, 2026-09-22, ended in 28 s
     with nothing to read)."""
     if not (err or "").strip():
         return None
-    path = change_dir / art.EVIDENCE_DIR / CLAUDE_STDERR_FILE.format(phase=phase)
+    path = path or run_record_paths(change_dir, phase)[1]
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(err, encoding="utf-8", newline="\n")
     return path
@@ -1149,8 +1175,9 @@ def run_phase(args, env: dict[str, str]) -> int:
     # only a real run creates the labels it will apply (a dry run contacts nothing)
     labels = ensure_labels(args.repo, env)
     data, raw, err, code = invoke(argv, root, env, run_timeout_seconds(config))
-    store_result(change_dir, phase, data, raw)
-    store_stderr(change_dir, phase, err)
+    result_path, stderr_path = run_record_paths(change_dir, phase)
+    store_result(change_dir, phase, data, raw, result_path)
+    store_stderr(change_dir, phase, err, stderr_path)
     cost = None
     if isinstance(data, dict):
         cost = data.get("total_cost_usd")
