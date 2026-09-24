@@ -1,6 +1,6 @@
 ---
 description: Connect the SDLC framework to this project in one command — profile and phase adapters into sdlc.yaml, one-command build/test/lint targets (Python or Node detected), guardrail hooks and permissions, CLAUDE.md skeleton, REVIEW.md, changes/, evals/, bands.yaml — committed as the project's first PR (change 0000). Idempotent; re-run to upgrade.
-argument-hint: [--profile standard|full|lite]
+argument-hint: [--profile standard|full] [--review parked|deferred]
 disable-model-invocation: true
 allowed-tools: Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/init/sdlc_init.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/state/cli.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/pr/cli.py" *), Bash(git *), Bash(gh *), Read, Write, Edit, Glob, Grep, AskUserQuestion
 ---
@@ -28,7 +28,13 @@ the gate does not enter phase (c) without all three. Detection also proposes `co
 and pass `--setup ""` when the project has nothing to install.
 
 ## 1. Ask the owner (one question round, defaults in brackets)
-- profile [standard]: standard (owner merges at a, b, e) · full (all five gates) · lite (a, e)
+- profile [standard]: standard (owner merges at a, b, e) · full (all five gates). (Lite,
+  gates a and e only, was withdrawn by decision 21 and is gone since 0.2.14.)
+- review [parked]: parked (a judgment item inside a phase parks the change for the owner)
+  · deferred (a review panel decides it in fresh contexts and the run continues; the owner
+  reads "Decisions taken for you" at the next gate and overturns any of them with a review
+  comment; decision 21). A risk-list hit, a guardrail file change, a run limit, an
+  infrastructure failure, a merge to main and a deploy still park in both modes.
 - deploy action [none]: what makes a merged change live — publish package · schedule job ·
   regenerate report · promote to paper trading · deploy service · none
 - real production? [no] — turns on the release label and the production gate
@@ -48,7 +54,7 @@ sections, and the owner trims it in the PR.
 
 ## 3. Install
 ```
-python "${CLAUDE_PLUGIN_ROOT}/plugin/init/sdlc_init.py" --root "${CLAUDE_PROJECT_DIR}" --profile <profile> --deploy-action "<action>" --deploy-production <true|false> --maintain-metric <metric> --maintain-source <source> [--claude-md-from changes/0000-sdlc-init/CLAUDE.proposed.md] [--build "<cmd>"] [--test "<cmd>"] [--lint "<cmd>"] [--setup "<cmd>"]
+python "${CLAUDE_PLUGIN_ROOT}/plugin/init/sdlc_init.py" --root "${CLAUDE_PROJECT_DIR}" --profile <profile> --review <parked|deferred> --deploy-action "<action>" --deploy-production <true|false> --maintain-metric <metric> --maintain-source <source> [--claude-md-from changes/0000-sdlc-init/CLAUDE.proposed.md] [--build "<cmd>"] [--test "<cmd>"] [--lint "<cmd>"] [--setup "<cmd>"]
 ```
 It writes `sdlc.yaml`, `.claude/settings.json` (permissions + the pinned plugin
 declaration; hooks come from the plugin), `REVIEW.md`, `changes/README.md`, builds
@@ -89,9 +95,12 @@ files the owner should review (CLAUDE.md trim, settings). Merge = accept.
 - The plugin is declared in `.claude/settings.json`. A local interactive session installs it
   from the marketplace once the owner accepts the trust dialog for the folder. A cloud
   session never shows that dialog, so the repository's marketplace declaration is ignored
-  there ("marketplace not registered"): the owner adds two lines to the cloud environment's
-  setup script — `claude plugin marketplace add luissiviero/sdlc-framework` and
-  `claude plugin install sdlc@sdlc-framework --yes` (see `docs/NOTES.md` §3).
+  there ("marketplace not registered"): the owner adds four lines to the cloud environment's
+  setup script — `claude plugin marketplace add luissiviero/sdlc-framework`,
+  `claude plugin marketplace update sdlc-framework`, `claude plugin install
+  sdlc@sdlc-framework --yes` and `claude plugin update sdlc@sdlc-framework` (the two
+  `update` lines refresh the environment's cached copy after a framework release; see
+  `docs/NOTES.md` §3a).
 - The phase workflows open pull requests with the workflow token, which GitHub refuses
   until the owner turns on, once per repository, Settings → Actions → General → Workflow
   permissions → "Allow GitHub Actions to create and approve pull requests" (NOTES §11a).

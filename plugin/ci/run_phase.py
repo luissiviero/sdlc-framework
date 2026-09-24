@@ -36,9 +36,9 @@ What one run does, in order:
    default branch, where ``status.yaml`` says what main says, so every guard below would
    read the wrong phase. The run fetches ``origin`` and switches to the branch this phase
    works on (``sdlc/<id>/b`` for a design run, ``sdlc/<id>/c`` for build, test, deploy and
-   the review pass), creating it for (b) and (c) — only in the Lite profile does (c) branch
-   off ``sdlc/<id>/b``; every other profile starts it from the default branch. When there
-   is nothing to switch to, the current checkout is used;
+   the review pass), creating it for (b) and (c) from the default branch (the owner's merge
+   at gate (b) put the approved spec and plan there). When there is nothing to switch to,
+   the current checkout is used;
 1c. **installs the project's own toolchain** — ``sdlc.yaml: commands.setup`` through
    ``ci/project_setup.py``. A GitHub-hosted runner carries none of the project's tools, and
    the installed workflow file may be an older copy without that step (the third live design
@@ -132,11 +132,13 @@ FIX_PHASES = ("a", "b", "c", "d", "e")  # the phases whose PR a fix round may ru
 # Full profile only: the owner's approving label on the build PR, and who applied it.
 APPROVAL_LABEL = {"d": "c", "e": "d", "review": "d"}  # run phase -> phase whose label is read
 APPROVAL_BRANCH_PHASE = "c"  # the build PR, which lives on sdlc/<id>/c through (d) and (e)
-# Hand-over (section 4.2, "Hands over" column). A `wait` or a `park` dispatches nothing.
-NEXT_WORKFLOW = {"b": "sdlc-build.yml", "c": "sdlc-test.yml", "d": "sdlc-deploy.yml"}
+# Hand-over (section 4.2, "Hands over" column). A `wait` or a `park` dispatches nothing;
+# gate (b) is the owner's merge in every profile since the Lite removal (plugin 0.2.14), so
+# a design run never dispatches the build.
+NEXT_WORKFLOW = {"c": "sdlc-test.yml", "d": "sdlc-deploy.yml"}
 # The phase the dispatched workflow runs; its work branch is the dispatch's ``head_ref``
 # input, which keys the workflow's concurrency group on the change's own branch.
-NEXT_PHASE = {"b": "c", "c": "d", "d": "e"}
+NEXT_PHASE = {"c": "d", "d": "e"}
 # Permission mode per phase; (c) asks the preflight instead (step 18, never bypass).
 PERMISSION_MODE = {
     "b": "default",
@@ -482,18 +484,13 @@ def checkout_profile(root: Path, change_id: str) -> str | None:
 
 
 def _start_point(root: Path, change_id: str, phase: str, profile: str | None) -> str | None:
-    """Where a missing work branch starts: the default branch — except ``sdlc/<id>/c`` in the
-    Lite profile, where the spec+plan PR is never merged before the build, which starts from
-    ``sdlc/<id>/b``. Every other profile starts the build from the default branch even when
-    ``sdlc/<id>/b`` still exists: there the owner's merge at gate (b) put the approved spec
-    and plan on the default branch, and a design branch left behind after that merge lacks
-    the default branch's later commits and may carry commits made after the merge (PROGRESS
-    known gaps, ninth live run; HANDOFF 6(a))."""
-    if phase == "c" and profile == "lite":
-        design = c.branch_name(change_id, "b")
-        for ref in (f"origin/{design}", design):
-            if _ref_exists(root, ref):
-                return ref
+    """Where a missing work branch starts: the default branch, in every profile. The owner's
+    merge at gate (b) put the approved spec and plan there, and a design branch left behind
+    after that merge lacks the default branch's later commits and may carry commits made
+    after the merge (PROGRESS known gaps, ninth live run; HANDOFF 6(a)). Until 0.2.14 the
+    Lite profile started ``sdlc/<id>/c`` from ``sdlc/<id>/b``; Lite is gone (decision 21).
+    ``change_id``, ``phase`` and ``profile`` are kept for the callers' symmetry."""
+    del change_id, phase, profile
     base = gate_diff.default_base(root)
     return base if base and _ref_exists(root, base) else None
 

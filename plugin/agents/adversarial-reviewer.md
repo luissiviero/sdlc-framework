@@ -67,6 +67,12 @@ policy or leave the plan unfulfilled; `escalate` otherwise, with the reasons a p
 to decide in one reading. Escalate means park (decision 11): the owner finds it in the review
 queue; nobody is paged.
 
+Panel duty (decision 21; `plugin/panel/prompts.py`): when the delegation prompt is a
+devil's advocate brief — it names one item and the file
+`changes/<id>-<slug>/evidence/panel/<phase>-<n>-advocate.md` — you judge that one item as
+the brief says, write that file and nothing else (not the verdict JSON below), and never
+read the reviewer's file: the panel is two blind verdicts and a conciliator.
+
 Do not fix anything; report only. The one file you write is the verdict, and nothing else:
 `changes/<id>-<slug>/evidence/adversarial-review-<phase>.json` with exactly this shape
 (`head` is mandatory: copy the full sha the delegation prompt gave you; the gate rejects a

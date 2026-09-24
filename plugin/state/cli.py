@@ -5,8 +5,8 @@ status.yaml, branches, commits — goes through here so it is unit-testable with
 and identical on Windows, in a cloud session and in CI.
 
     python "${CLAUDE_PLUGIN_ROOT}/state/cli.py" new-change --root . --title "..." \
-        [--route idea|ticket|incident] [--type feature|fix] [--profile-override lite] \
-        [--external-ref 42]
+        [--route idea|ticket|incident] [--type feature|fix] [--profile-override full] \
+        [--review-override deferred|parked] [--external-ref 42]
     python cli.py commit-phase --root . --id 0001 --phase a --message "..."
         # phases d and e commit on the (c) branch: the build PR stays open through them
     python cli.py set-phase --root . --id 0001 --phase b
@@ -56,6 +56,7 @@ def cmd_new_change(args) -> int:
         entry_route=args.route,
         change_type=args.type,
         profile_override=args.profile_override,
+        review_override=args.review_override,
         external_ref=args.external_ref,
         change_id=change_id,
     )
@@ -429,6 +430,12 @@ def build_parser() -> argparse.ArgumentParser:
     n.add_argument("--route", default="idea", choices=c.ENTRY_ROUTES)
     n.add_argument("--type", default="feature", choices=c.CHANGE_TYPES)
     n.add_argument("--profile-override", default=None, choices=c.PROFILES)
+    n.add_argument(
+        "--review-override",
+        default=None,
+        choices=c.REVIEW_MODES,
+        help="decision 21: deferred puts judgment items to the review panel for this change",
+    )
     n.add_argument("--external-ref", default=None)
     n.add_argument("--id", default=None, help="force an id (e.g. 0000 for /sdlc-init)")
     n.set_defaults(fn=cmd_new_change)

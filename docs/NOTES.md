@@ -216,8 +216,16 @@ claude.ai/code):
 
 ```
 claude plugin marketplace add luissiviero/sdlc-framework
+claude plugin marketplace update sdlc-framework
 claude plugin install sdlc@sdlc-framework --yes
+claude plugin update sdlc@sdlc-framework
 ```
+
+The two `update` lines were added on 2026-09-24 (HANDOFF 6(b)): the environment cache keeps
+the plugin the first `install` fetched, so a session started after a framework release kept
+running the old version until the cache was refreshed by hand; `marketplace update`
+re-reads the marketplace and `plugin update` fetches the version it now names. Not yet
+seen live: the first cloud session after the 0.2.14 release is the check (PROGRESS).
 
 The project's `.claude/settings.json` declaration stays: it is what a trusted local session
 uses, and it documents the pin. For B3 (`claude -p` in GitHub Actions) the same applies: the

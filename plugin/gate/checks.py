@@ -73,6 +73,12 @@ class GateContext:
     diff_error: str = ""
     profile: str = "standard"
     config_note: str = ""  # set when the config was taken from the merge base
+    # decision 21: ``parked`` | ``deferred`` (sdlc.yaml: review, status.yaml: review_override)
+    review_mode: str = "parked"
+
+    @property
+    def deferred(self) -> bool:
+        return self.review_mode == "deferred"
 
     @property
     def evidence_dir(self) -> Path:
@@ -408,17 +414,57 @@ def check_findings(ctx: GateContext) -> CheckResult:
                 stale=True,
             )
     important = important_findings(data)
-    if important:
+    settled = _panel_settled_findings(ctx, important)
+    blocking = [f for f in important if f not in settled]
+    if blocking:
         return _fail(
             "findings",
-            f"{len(important)} Important review finding(s) open",
-            "Fix every Important finding (or have the owner waive it in a review comment), "
-            f"then re-run the review pass so {ctx.change_rel}/evidence/{art.REVIEW_FINDINGS} "
-            "shows none.",
-            important=important[:20],
+            f"{len(blocking)} Important review finding(s) open",
+            "Fix every Important finding (or have the owner waive it in a review comment; "
+            "under deferred review the panel may settle one the run cannot fix), then re-run "
+            f"the review pass so {ctx.change_rel}/evidence/{art.REVIEW_FINDINGS} shows none.",
+            important=blocking[:20],
+            settled_by_panel=[str(f.get("summary", "")) for f in settled],
         )
     tally = data.get("tally") if isinstance(data.get("tally"), dict) else {}
+    if settled:
+        return _ok(
+            "findings",
+            f"{len(settled)} Important finding(s) settled by the review panel, none open",
+            tally=tally,
+            settled_by_panel=[str(f.get("summary", "")) for f in settled],
+        )
     return _ok("findings", "no Important review finding", tally=tally)
+
+
+def _panel_entries(ctx: GateContext, kind: str) -> list[dict[str, Any]]:
+    """The standing ledger entries of ``kind`` for this phase (decision 21), [] unless the
+    review mode is deferred: under ``parked`` a ledger decides nothing."""
+    if not ctx.deferred:
+        return []
+    from panel import ledger  # noqa: PLC0415
+
+    return [
+        e
+        for e in ledger.active(ledger.load_ledger(ctx.change_dir, ctx.phase))
+        if e.get("kind") == kind
+    ]
+
+
+def _panel_settled_findings(
+    ctx: GateContext, important: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    from panel import ledger  # noqa: PLC0415
+    from review import findings as fmod  # noqa: PLC0415
+
+    keys = {str(e.get("key")) for e in _panel_entries(ctx, "finding")}
+    if not keys:
+        return []
+    return [
+        f
+        for f in important
+        if ledger.finding_key(str(f.get("signature") or fmod.signature(f))) in keys
+    ]
 
 
 # --- 6. plan.md <-> diff (step 12/16; article p.17 'the merged diff still matches plan.md') -----
@@ -655,10 +701,29 @@ def check_adversarial_verdict(ctx: GateContext) -> CheckResult:
         )
     reasons = [str(r) for r in (data.get("reasons") or [])]
     if data["verdict"] == "escalate":
+        from panel import ledger  # noqa: PLC0415
+
+        key = ledger.escalate_key(reasons)
+        settled = next((e for e in _panel_entries(ctx, "escalate") if e.get("key") == key), None)
+        if settled is not None and str(settled.get("decision", "")).lower().startswith("continue"):
+            return _ok(
+                "adversarial_review",
+                "adversarial reviewer said escalate; the review panel decided to continue: "
+                + str(settled.get("decision", "")),
+                classification=data["classification"],
+                reasons=reasons,
+                settled_by_panel=settled.get("n"),
+            )
         return _fail(
             "adversarial_review",
             "adversarial reviewer says escalate: " + ("; ".join(reasons) or "no reason given"),
-            "Read the reviewer's reasons and decide: fix and re-run, or accept in review.",
+            "Read the reviewer's reasons and decide: fix and re-run, or accept in review"
+            + (
+                " (the panel decided: " + str(settled.get("decision", "")) + ")"
+                if settled is not None
+                else ""
+            )
+            + ".",
             reasons=reasons,
             classification=data["classification"],
         )
@@ -897,6 +962,63 @@ def check_owner_actions(ctx: GateContext) -> CheckResult:
     )
 
 
+# --- 13. the decisions ledger of deferred review (decision 21; build guide step 16a) ----------
+def check_panel(ctx: GateContext) -> CheckResult:
+    """Every panel decision has a ledger line and no panel decision touched a never-to-panel
+    item. Passes trivially when there is no ledger and no concern closed by the panel."""
+    from panel import ledger  # noqa: PLC0415
+
+    error = ledger.ledger_error(ctx.change_dir, ctx.phase)
+    if error:
+        return _fail("panel", error, "Restore or remove the ledger; the gate cannot read it.")
+    entries = ledger.load_ledger(ctx.change_dir, ctx.phase)
+    spec = ctx.artifact("spec.md") or ""
+    closed_by_panel = ledger.panel_closed_concerns(spec)
+    if not entries and not closed_by_panel:
+        return _ok("panel", "no panel decision at this gate")
+    problems: list[str] = []
+    for entry in entries:
+        problems += ledger.validate_entry(entry)
+        if entry.get("kind") in ledger.NEVER_TO_PANEL:
+            problems.append(
+                f"decision {entry.get('n')}: {entry.get('kind')} never goes to the panel"
+            )
+    if entries and not ctx.deferred:
+        problems.append(
+            f"the ledger has {len(entries)} decision(s) but the review mode is {ctx.review_mode}"
+        )
+    standing = ledger.active(entries)
+    concern_decisions = {
+        " ".join(str(e.get("decision", "")).split()).lower()
+        for e in standing
+        if e.get("kind") in ("concern", "policy")
+    }
+    for item in closed_by_panel:
+        text = item[len(ledger.PANEL_CLOSING) :].strip().lower()
+        if not any(text.startswith(d) for d in concern_decisions if d):
+            problems.append(
+                f"spec.md closes a concern by the panel with no ledger line: {item[:80]}"
+            )
+    if problems:
+        return _fail(
+            "panel",
+            "; ".join(problems),
+            "Every panel decision is one ledger line in evidence/decisions-<phase>.json (panel/"
+            "cli.py record writes it); a never-to-panel item parks for the owner.",
+            problems=problems,
+        )
+    return _ok(
+        "panel",
+        f"{len(standing)} panel decision(s) recorded"
+        + (f", {len(entries) - len(standing)} overturned" if len(entries) > len(standing) else ""),
+        decisions=[
+            {"n": e.get("n"), "kind": e.get("kind"), "decision": e.get("decision")}
+            for e in standing
+        ],
+        cost_usd=ledger.total_cost(entries),
+    )
+
+
 # --- which checks at which gate --------------------------------------------------------------
 Check = Callable[[GateContext], CheckResult]
 CHECKS_BY_PHASE: dict[str, tuple[Check, ...]] = {
@@ -905,6 +1027,7 @@ CHECKS_BY_PHASE: dict[str, tuple[Check, ...]] = {
         check_artifacts,
         check_design_scope,
         check_open_concerns,
+        check_panel,
         check_commands,
         check_guardrails,
         check_risk_list,
@@ -915,6 +1038,7 @@ CHECKS_BY_PHASE: dict[str, tuple[Check, ...]] = {
         check_clean_tree,
         check_artifacts,
         check_open_concerns,
+        check_panel,
         check_commands,
         check_evidence,
         check_findings,
@@ -928,6 +1052,7 @@ CHECKS_BY_PHASE: dict[str, tuple[Check, ...]] = {
         check_clean_tree,
         check_artifacts,
         check_open_concerns,
+        check_panel,
         check_commands,
         check_evidence,
         check_findings,
@@ -941,6 +1066,7 @@ CHECKS_BY_PHASE: dict[str, tuple[Check, ...]] = {
         check_clean_tree,
         check_artifacts,
         check_open_concerns,
+        check_panel,
         check_commands,
         check_evidence,
         check_findings,

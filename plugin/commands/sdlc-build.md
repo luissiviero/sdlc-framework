@@ -1,8 +1,8 @@
 ---
-description: Phase (c) build — implement the merged spec+plan on sdlc/<id>/c under the guardrail hooks, after the preflight allows it. Fix-type changes write the reproducing test first. Then code-simplifier, verifier (evidence/verifier.md), adversarial verdict, gate (c), and the build PR (draft) with the generated summary. Standard/Lite: continue to /sdlc-test; Full: wait for sdlc:c-approved. Re-runnable.
+description: Phase (c) build — implement the merged spec+plan on sdlc/<id>/c under the guardrail hooks, after the preflight allows it. Fix-type changes write the reproducing test first. Then code-simplifier, verifier (evidence/verifier.md), adversarial verdict, gate (c), and the build PR (draft) with the generated summary. Standard: continue to /sdlc-test; Full: wait for sdlc:c-approved. Re-runnable.
 argument-hint: [change id, e.g. 0001]
 disable-model-invocation: true
-allowed-tools: Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/state/cli.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/gate/cli.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/gate/preflight.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/evidence/collect.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/pr/cli.py" *), Bash(git *), Bash(gh *), Read, Glob, Grep, Edit, Write, Agent
+allowed-tools: Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/state/cli.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/gate/cli.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/gate/preflight.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/panel/cli.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/evidence/collect.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/pr/cli.py" *), Bash(git *), Bash(gh *), Read, Glob, Grep, Edit, Write, Agent
 ---
 
 # /sdlc-build — phase (c)
@@ -40,9 +40,8 @@ final commit to `cd ... && python ...`).
 
 ## 1. Branch and run registration
 - Default branch as in `/sdlc-design` step 0. `git fetch origin`.
-- Start point: the default branch when gate (b) was the owner's merge (Standard, Full);
-  `sdlc/<id>/b` in the Lite profile (spec+plan were committed there). First run:
-  `git switch -c sdlc/<id>/c <start point>`. Re-run: `git switch sdlc/<id>/c` and
+- Start point: the default branch (gate (b) is the owner's merge in every profile). First
+  run: `git switch -c sdlc/<id>/c origin/<default>`. Re-run: `git switch sdlc/<id>/c` and
   `git pull --ff-only origin sdlc/<id>/c`; the existing diff and the PR's unresolved review
   comments are the starting point (see `/sdlc-fix` for the change-request loop).
 - `python "${CLAUDE_PLUGIN_ROOT}/plugin/gate/cli.py" start-run --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase c`
@@ -89,7 +88,8 @@ behaviour and tests unchanged, re-run the touched tests, commit as
 Delegate to `sdlc:verifier` with the change id: it runs the changed behaviour and the two
 nearest neighbouring flows and reports. Store its report verbatim as
 `changes/<id>-<slug>/evidence/verifier.md`. If it reports behaviour that does not match
-`plan.md`, fix it (step 4 again, bounded by the iteration cap from the preflight: run
+`plan.md`, fix it (step 4 again, bounded by the iteration cap from the preflight; under
+deferred review a mismatch you cannot resolve is a panel item of step 7: run
 `python "${CLAUDE_PLUGIN_ROOT}/plugin/gate/cli.py" bump-iteration --root "${CLAUDE_PROJECT_DIR}" --id <id>`
 per round; the gate parks at the cap), then re-run the verifier. Commit the evidence:
 `commit-phase ... --phase c --message "build(<id>): verifier evidence"`.
@@ -103,7 +103,44 @@ then `git rev-parse HEAD` for the full sha. The diff file is evidence: it is com
 the gate (c) evidence commit below.
 Delegate to `sdlc:adversarial-reviewer` with the change id, phase `c`, the project root,
 the full HEAD sha and the path `changes/<id>-<slug>/evidence/diff-c.patch`; it writes
-`evidence/adversarial-review-c.json` for HEAD. Then:
+`evidence/adversarial-review-c.json` for HEAD.
+
+### Deferred review: the panel settles the judgment items (decision 21; build guide step 16a)
+```
+python "${CLAUDE_PLUGIN_ROOT}/plugin/panel/cli.py" items --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase c
+```
+It prints the review mode (`sdlc.yaml: review`, `status.yaml: review_override`), the items
+the gate would park on that belong to the panel's fixed list (an open flagged concern, a
+concern naming contradicting policies, the reviewer's `escalate` verdict, an Important
+finding the run cannot fix, the verifier's "does not match the plan"), which of them the
+ledger already decides, and under `parks` what stays the owner's whatever the mode (a
+risk-list hit, a guardrail file, a run limit, an infrastructure failure). When `mode` is
+`parked` or `pending` is empty, go on to the gate. Otherwise, for each pending item `n` in
+order, three fresh contexts, each with the brief printed by
+`python "${CLAUDE_PLUGIN_ROOT}/plugin/panel/cli.py" prompt --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase c --item <n> --member <reviewer|advocate|conciliator>`:
+1. **reviewer** — delegate to a general-purpose sub-agent with the `reviewer` brief; it
+   writes `evidence/panel/c-<n>-reviewer.md`.
+2. **devil's advocate** — delegate to `sdlc:adversarial-reviewer` with the `advocate`
+   brief, on the model `sdlc.yaml: panel_advocate_model` names (pass it as the sub-agent's
+   model: the per-invocation model wins, NOTES §11c; a panel on one model shares its blind
+   spots), blind to the reviewer's file; it writes `evidence/panel/c-<n>-advocate.md`.
+3. **conciliator** — delegate to a general-purpose sub-agent with the `conciliator` brief;
+   it reads both files and writes `evidence/panel/c-<n>-conciliator.json`.
+Then record it:
+`python "${CLAUDE_PLUGIN_ROOT}/plugin/panel/cli.py" record --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase c --item <n>`
+— one panel call is one iteration (exit 3 at the cap: stop the panel, the gate parks); it
+appends the line to `evidence/decisions-c.json` (and the `.md` the owner reads), and for
+a concern closes the item in `spec.md` as `decided (by panel): <decision> — <concern>`. Apply
+what the decision asks beyond that (an `escalate` decided `continue` needs nothing more; a
+fix the decision names is made now, `plan.md` in the same commit). When any file changed,
+commit (`commit-phase ... --phase c --message "build(<id>): panel decisions"`),
+then re-run step 7 for the new HEAD (a verdict never outlives the diff it
+judged); an `escalate` with new reasons is a new item: run `items` once more. The panel
+never decides a park item, never raises a limit, never touches a guardrail file, and never
+asks the owner: the owner reads "Decisions taken for you" at the gate and overturns any
+line with a review comment.
+
+Then the gate:
 `python "${CLAUDE_PLUGIN_ROOT}/plugin/gate/cli.py" check --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase c`
 (exit 0 continue · 3 wait · 4 park; it writes `status.yaml` and `evidence/gate-c.json`).
 Commit the evidence: `commit-phase ... --phase c --message "build(<id>): gate (c) evidence" --push`.
@@ -121,7 +158,7 @@ report and the plan-vs-diff check, applies the label (`sdlc:c-ready` in the Full
 paste. Do not retry with other means.
 
 ## 9. Hand over
-- `continue` (Standard, Lite): report "gate (c) passed → /sdlc-test <id>". In the
+- `continue` (Standard): report "gate (c) passed → /sdlc-test <id>". In the
   merge-triggered workflow the job dispatches the test workflow itself. Do not run (d) here.
 - `wait` (Full): report the PR URL and "gate (c): approving review + `sdlc:c-approved`
   starts the test phase; review comments are the change request (`/sdlc-fix`)".

@@ -315,6 +315,28 @@ def update_seen(
     return updated, repeated
 
 
+CLAUDE_MD_RE = re.compile(r"(?i)\bCLAUDE\.md\b")
+
+
+def claude_md_first_time_lines(findings: list[dict[str, Any]], change_id: str) -> list[str]:
+    """One line per finding that names ``CLAUDE.md`` itself (REVIEW.md: "Flag when the change
+    has made CLAUDE.md outdated"): the fix is a CLAUDE.md edit, which only the owner makes, so
+    the proposal goes into the PR body the first time, not only on the second occurrence
+    (HANDOFF 6(f): the "CLAUDE.md outdated" finding was a deadlock at gate (e) otherwise)."""
+    lines: list[str] = []
+    for finding in findings:
+        if not isinstance(finding, dict):
+            continue
+        text = f"{finding.get('summary', '')} {finding.get('rule', '') or ''}"
+        if not CLAUDE_MD_RE.search(text):
+            continue
+        summary = str(finding.get("summary", "")).strip().rstrip(".")
+        line = f"- {summary} (change {change_id}; the owner edits CLAUDE.md)"
+        if line not in lines:
+            lines.append(line)
+    return lines
+
+
 def claude_md_lines(repeated: list[dict[str, Any]]) -> list[str]:
     """One line per repeated finding, to propose under "Things Claude gets wrong" in CLAUDE.md
     (article p.34 step 5). The review proposes; the owner applies it — CLAUDE.md is a protected

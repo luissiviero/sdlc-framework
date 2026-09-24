@@ -1,8 +1,8 @@
 ---
-description: Phase (d) test — in a fresh context, run the project's full test, build and lint targets into changes/<id>/evidence/ (test.log, build.log, lint.log), fix what fails within the iteration cap, take screenshots for UI changes, run the verifier, get the adversarial verdict, call gate (d) and update the build PR. Standard/Lite: continue to /sdlc-deploy; Full: wait for sdlc:d-approved. Re-runnable.
+description: Phase (d) test — in a fresh context, run the project's full test, build and lint targets into changes/<id>/evidence/ (test.log, build.log, lint.log), fix what fails within the iteration cap, take screenshots for UI changes, run the verifier, get the adversarial verdict, call gate (d) and update the build PR. Standard: continue to /sdlc-deploy; Full: wait for sdlc:d-approved. Re-runnable.
 argument-hint: [change id, e.g. 0001]
 disable-model-invocation: true
-allowed-tools: Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/state/cli.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/gate/cli.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/evidence/collect.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/pr/cli.py" *), Bash(git *), Bash(gh *), Read, Glob, Grep, Edit, Write, Agent
+allowed-tools: Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/state/cli.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/gate/cli.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/panel/cli.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/evidence/collect.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/pr/cli.py" *), Bash(git *), Bash(gh *), Read, Glob, Grep, Edit, Write, Agent
 ---
 
 # /sdlc-test — phase (d)
@@ -80,7 +80,44 @@ then `git rev-parse HEAD` for the full sha. The diff file is evidence: it is com
 the gate (d) evidence commit below.
 Delegate to `sdlc:adversarial-reviewer` (change id, phase `d`, project root, the full HEAD
 sha, the path `changes/<id>-<slug>/evidence/diff-d.patch`); it writes
-`evidence/adversarial-review-d.json` for HEAD. Then
+`evidence/adversarial-review-d.json` for HEAD.
+
+### Deferred review: the panel settles the judgment items (decision 21; build guide step 16a)
+```
+python "${CLAUDE_PLUGIN_ROOT}/plugin/panel/cli.py" items --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase d
+```
+It prints the review mode (`sdlc.yaml: review`, `status.yaml: review_override`), the items
+the gate would park on that belong to the panel's fixed list (an open flagged concern, a
+concern naming contradicting policies, the reviewer's `escalate` verdict, an Important
+finding the run cannot fix, the verifier's "does not match the plan"), which of them the
+ledger already decides, and under `parks` what stays the owner's whatever the mode (a
+risk-list hit, a guardrail file, a run limit, an infrastructure failure). When `mode` is
+`parked` or `pending` is empty, go on to the gate. Otherwise, for each pending item `n` in
+order, three fresh contexts, each with the brief printed by
+`python "${CLAUDE_PLUGIN_ROOT}/plugin/panel/cli.py" prompt --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase d --item <n> --member <reviewer|advocate|conciliator>`:
+1. **reviewer** — delegate to a general-purpose sub-agent with the `reviewer` brief; it
+   writes `evidence/panel/d-<n>-reviewer.md`.
+2. **devil's advocate** — delegate to `sdlc:adversarial-reviewer` with the `advocate`
+   brief, on the model `sdlc.yaml: panel_advocate_model` names (pass it as the sub-agent's
+   model: the per-invocation model wins, NOTES §11c; a panel on one model shares its blind
+   spots), blind to the reviewer's file; it writes `evidence/panel/d-<n>-advocate.md`.
+3. **conciliator** — delegate to a general-purpose sub-agent with the `conciliator` brief;
+   it reads both files and writes `evidence/panel/d-<n>-conciliator.json`.
+Then record it:
+`python "${CLAUDE_PLUGIN_ROOT}/plugin/panel/cli.py" record --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase d --item <n>`
+— one panel call is one iteration (exit 3 at the cap: stop the panel, the gate parks); it
+appends the line to `evidence/decisions-d.json` (and the `.md` the owner reads), and for
+a concern closes the item in `spec.md` as `decided (by panel): <decision> — <concern>`. Apply
+what the decision asks beyond that (an `escalate` decided `continue` needs nothing more; a
+fix the decision names is made now, `plan.md` in the same commit). When any file changed,
+commit (`commit-phase ... --phase d --message "test(<id>): panel decisions"`),
+then re-run step 5 for the new HEAD (a verdict never outlives the diff it
+judged); an `escalate` with new reasons is a new item: run `items` once more. The panel
+never decides a park item, never raises a limit, never touches a guardrail file, and never
+asks the owner: the owner reads "Decisions taken for you" at the gate and overturns any
+line with a review comment.
+
+Then the gate:
 `python "${CLAUDE_PLUGIN_ROOT}/plugin/gate/cli.py" check --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase d`
 (it requires `test.log`, `build.log`, `lint.log` and `verifier.md`, green; exit 0 continue ·
 3 wait · 4 park). Commit: `commit-phase ... --phase d --message "test(<id>): gate (d) evidence" --push`.
@@ -95,7 +132,7 @@ when a token is available, posts the phase (d) check run with the evidence summa
 (build guide step 28).
 
 ## 7. Hand over
-- `continue` (Standard, Lite): report "gate (d) passed → /sdlc-deploy <id>"; the workflow
+- `continue` (Standard): report "gate (d) passed → /sdlc-deploy <id>"; the workflow
   dispatches the review job itself. Do not run (e) here.
 - `wait` (Full): report the PR URL and "gate (d): approving review + `sdlc:d-approved`
   starts the review phase".

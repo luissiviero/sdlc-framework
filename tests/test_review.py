@@ -425,6 +425,32 @@ def test_cli_validate_writes_the_proposals_on_the_second_occurrence(tmp_path, ca
     assert not proposals.exists()
 
 
+def test_cli_validate_proposes_a_claude_md_finding_the_first_time(tmp_path, capsys):
+    """HANDOFF 6(f): "CLAUDE.md outdated" was a deadlock at gate (e): only the owner edits
+    CLAUDE.md, and the proposal appeared only on a second occurrence. The line is proposed
+    the first time a finding names CLAUDE.md, so it reaches the PR body at once."""
+    root, change = make_project(tmp_path, change_type="feature")
+    finding = {
+        "pass": "compliance",
+        "severity": "important",
+        "file": "CLAUDE.md",
+        "line": 0,
+        "summary": "CLAUDE.md is outdated: the Commands section does not name the new target.",
+        "rule": "REVIEW.md: flag when the change has made CLAUDE.md outdated",
+    }
+    record_findings(change, payload(head_of(root), [finding, BUG]))
+    assert run_cli(["validate", "--root", str(root), "--id", "0001"]) == 0
+    result = json.loads(capsys.readouterr().out)
+    assert result["repeated"] == []
+    assert result["proposals"] == [
+        "- CLAUDE.md is outdated: the Commands section does not name the new target "
+        "(change 0001; the owner edits CLAUDE.md)"
+    ]
+    proposals = change / art.EVIDENCE_DIR / fmod.PROPOSALS_FILE
+    assert result["proposals"][0] in proposals.read_text(encoding="utf-8")
+    assert fmod.claude_md_first_time_lines([BUG], "0001") == []
+
+
 def test_cli_validate_no_record_leaves_the_seen_file_alone(tmp_path, capsys):
     root, change = make_project(tmp_path, change_type="feature")
     record_findings(change, payload(head_of(root), [BUG]))

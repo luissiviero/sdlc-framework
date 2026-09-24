@@ -344,33 +344,6 @@ def test_sdlc_design_python_half_produces_spec_and_plan_and_gate_b_waits(project
     for rel in ("spec.md", "plan.md", "evidence/gate-b.json"):
         assert f"{alloc['dir']}/{rel}" in tracked, rel
 
-    # --- 23.3: Lite passes gate (b) by the confidence gate instead of asking the owner -----
-    st = status_mod.read_status(change)
-    st.profile_override = "lite"
-    status_mod.write_status(change, st)
-    py(
-        str(CLI),
-        "commit-phase",
-        "--root",
-        str(root),
-        "--id",
-        "0001",
-        "--phase",
-        "b",
-        "--message",
-        "profile(0001): lite",
-        cwd=root,
-    )
-    py(str(GATE_CLI), "start-run", "--root", str(root), "--id", "0001", "--phase", "b", cwd=root)
-    write_verdict(change, "b", git(root, "rev-parse", "HEAD").strip())
-    proc = py_raw(
-        str(GATE_CLI), "check", "--root", str(root), "--id", "0001", "--phase", "b", cwd=root
-    )
-    assert proc.returncode == 0, proc.stdout + proc.stderr
-    result = json.loads(proc.stdout)
-    assert result["result"] == "continue" and result["label"] is None
-    assert result["profile"] == "lite" and result["human_gate"] is False
-
 
 def test_labels_are_the_documented_set():
     out = json.loads(

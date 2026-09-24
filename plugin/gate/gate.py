@@ -150,9 +150,14 @@ def build_context(root: Path, change_id: str, phase: str, base: str | None = Non
                 )
     profile = c.effective_profile(config.get("profile"), st.profile_override)
     human = c.is_human_gate(profile, phase)
+    try:
+        review_mode = c.effective_review_mode(config.get("review"), st.review_override)
+    except ValueError as exc:
+        raise GateError(str(exc)) from exc
     return GateContext(
-        root, change_dir, phase, st, config, d, human, diff_error, profile, config_note
-    )
+        root, change_dir, phase, st, config, d, human, diff_error, profile, config_note,
+        review_mode,
+    )  # fmt: skip
 
 
 def evaluate(ctx: GateContext) -> GateResult:

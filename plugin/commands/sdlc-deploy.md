@@ -2,7 +2,7 @@
 description: Phase (e) deploy — the review passes in a fresh context with REVIEW.md (bugs, security, compliance) into evidence/review-findings.json, a fix loop bounded by the iteration cap while an Important finding stands, the regenerated PR summary, then gate (e): the build PR is marked ready with sdlc:e-ready and waits for the owner's merge in every profile. The release is prepared in the PR per the project's deploy adapter (release notes, nothing executed); the release workflow runs it on the owner's merge. Re-runnable.
 argument-hint: [change id, e.g. 0001]
 disable-model-invocation: true
-allowed-tools: Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/state/cli.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/gate/cli.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/evidence/collect.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/review/cli.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/pr/cli.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/release/notes.py" *), Bash(git *), Bash(gh *), Read, Glob, Grep, Edit, Write, Agent
+allowed-tools: Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/state/cli.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/gate/cli.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/panel/cli.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/evidence/collect.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/review/cli.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/pr/cli.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/release/notes.py" *), Bash(git *), Bash(gh *), Read, Glob, Grep, Edit, Write, Agent
 ---
 
 # /sdlc-deploy — phase (e)
@@ -81,8 +81,12 @@ While `tally.important` > 0:
    at the cap stop and go to step 4 (the gate parks with the findings listed).
 2. Fix each Important finding in the code (a fix-type change never touches the locked
    tests; a compliance finding about `plan.md` is fixed by updating `plan.md` in the same
-   commit as the code). A finding you believe wrong is not fixed silently: leave it and
-   note why in `evidence/review-response.md`; the owner decides at the gate.
+   commit as the code). A finding you believe wrong, or whose fix the run cannot make (a
+   guardrail file, a `CLAUDE.md` line — `review/cli.py validate` already proposes that line
+   in the PR body), is not fixed silently: under `review: parked` leave it and note why in
+   `evidence/review-response.md` (the owner decides at the gate); under `review: deferred`
+   it is a panel item of the deferred-review step below, which may settle it (`settled: ...`) so the gate passes
+   with the finding recorded.
 3. Re-collect the evidence (`evidence/collect.py`), commit
    (`commit-phase ... --phase e --message "review(<id>): fix <finding>" --paths <files>`),
    push, and re-run step 1 for a fresh verdict on the new HEAD.
@@ -94,6 +98,41 @@ Nits are not fixed in this loop; the reviewer lists at most five and the owner r
 before, it prints the one-line `CLAUDE.md` entry to propose under "Things Claude gets
 wrong". Put those lines in the PR description's "Proposed CLAUDE.md lines" block; never
 edit `CLAUDE.md` yourself (protected path: the owner applies the line in the PR review).
+
+### Deferred review — the panel settles the judgment items (decision 21; build guide step 16a)
+```
+python "${CLAUDE_PLUGIN_ROOT}/plugin/panel/cli.py" items --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase e
+```
+It prints the review mode (`sdlc.yaml: review`, `status.yaml: review_override`), the items
+the gate would park on that belong to the panel's fixed list (an open flagged concern, a
+concern naming contradicting policies, the reviewer's `escalate` verdict, an Important
+finding the run cannot fix, the verifier's "does not match the plan"), which of them the
+ledger already decides, and under `parks` what stays the owner's whatever the mode (a
+risk-list hit, a guardrail file, a run limit, an infrastructure failure). When `mode` is
+`parked` or `pending` is empty, go on to the gate. Otherwise, for each pending item `n` in
+order, three fresh contexts, each with the brief printed by
+`python "${CLAUDE_PLUGIN_ROOT}/plugin/panel/cli.py" prompt --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase e --item <n> --member <reviewer|advocate|conciliator>`:
+1. **reviewer** — delegate to a general-purpose sub-agent with the `reviewer` brief; it
+   writes `evidence/panel/e-<n>-reviewer.md`.
+2. **devil's advocate** — delegate to `sdlc:adversarial-reviewer` with the `advocate`
+   brief, on the model `sdlc.yaml: panel_advocate_model` names (pass it as the sub-agent's
+   model: the per-invocation model wins, NOTES §11c; a panel on one model shares its blind
+   spots), blind to the reviewer's file; it writes `evidence/panel/e-<n>-advocate.md`.
+3. **conciliator** — delegate to a general-purpose sub-agent with the `conciliator` brief;
+   it reads both files and writes `evidence/panel/e-<n>-conciliator.json`.
+Then record it:
+`python "${CLAUDE_PLUGIN_ROOT}/plugin/panel/cli.py" record --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase e --item <n>`
+— one panel call is one iteration (exit 3 at the cap: stop the panel, the gate parks); it
+appends the line to `evidence/decisions-e.json` (and the `.md` the owner reads), and for
+a concern closes the item in `spec.md` as `decided (by panel): <decision> — <concern>`. Apply
+what the decision asks beyond that (an `escalate` decided `continue` needs nothing more; a
+fix the decision names is made now, `plan.md` in the same commit). When any file changed,
+commit (`commit-phase ... --phase e --message "review(<id>): panel decisions"`),
+then re-run step 1's `validate` for the new HEAD (a verdict never outlives the diff it
+judged); an `escalate` with new reasons is a new item: run `items` once more. The panel
+never decides a park item, never raises a limit, never touches a guardrail file, and never
+asks the owner: the owner reads "Decisions taken for you" at the gate and overturns any
+line with a review comment.
 
 ## 4. Gate (e)
 `python "${CLAUDE_PLUGIN_ROOT}/plugin/gate/cli.py" check --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase e`

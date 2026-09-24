@@ -183,6 +183,10 @@ def cmd_validate(args) -> int:
     if not args.no_record:
         _write_json(record_path, updated)
     proposals = fmod.claude_md_lines(repeated)
+    # HANDOFF 6(f): a finding about CLAUDE.md itself is proposed the first time it is seen
+    for line in fmod.claude_md_first_time_lines(data["findings"], st.id):
+        if line not in proposals:
+            proposals.append(line)
     proposals_path = change_dir / art.EVIDENCE_DIR / fmod.PROPOSALS_FILE
     if proposals:
         proposals_path.parent.mkdir(parents=True, exist_ok=True)
