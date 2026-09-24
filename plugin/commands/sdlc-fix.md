@@ -60,10 +60,16 @@ nothing to do, say so and stop.
 — the gate's wall clock restarts here; without it the clock of the previous run (the owner
 reviews on their own cadence, decision 20) would park every round as "wall-clock limit exceeded".
 `python "${CLAUDE_PLUGIN_ROOT}/plugin/gate/cli.py" bump-iteration --root "${CLAUDE_PROJECT_DIR}" --id <id>`
-If it reports the cap reached: do not change anything; run
-`python "${CLAUDE_PLUGIN_ROOT}/plugin/state/cli.py" park --root "${CLAUDE_PROJECT_DIR}" --id <id> --reason "iteration cap reached after review comments: <one line per open request>"`,
-commit and push the change folder, refresh the PR (step 6) and stop. The owner resets the
-count with `set-iterations` when they want another round.
+If it reports the cap reached: do not change anything; write the open requests, one line
+each, into `evidence/fix-response.md` ("not applied: iteration cap reached"), then run the
+gate — `python "${CLAUDE_PLUGIN_ROOT}/plugin/gate/cli.py" check --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase <phase>` —
+whose `limits` check parks the change on the count and writes `evidence/gate-<phase>.json`
+with the "What I need from you" block and the label `sdlc:needs-human` (a bare
+`state/cli.py park` leaves the PR's label and body as the last gate left them: the first
+overturn round on the sample repository, 2026-09-24, parked that way and the PR still said
+`sdlc:b-ready`). Commit and push the change folder, refresh the PR (step 6) and stop. The
+owner resets the count with the `sdlc:reset-iterations` label (it resets the panel-call
+count too) or `set-iterations` by hand when they want another round.
 
 ## 3. Apply the requests as constraints
 Turn every comment into a constraint on the phase's artifact and re-run the phase's own
@@ -106,7 +112,7 @@ A comment asking for a guardrail-file edit (`.claude/**`, `CLAUDE.md`, `REVIEW.m
 not the phase's framework branch (an intent PR pushed from a web session), add
 `--branch <head>` so the commit lands on the branch the PR carries.
 
-## 5. Verdict and gate again
+## 5. Verdict, panel and gate again
 At phase (a) skip the verdict: run
 `python "${CLAUDE_PLUGIN_ROOT}/plugin/gate/cli.py" check --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase a`
 and go to step 6. For every other phase: the verdict never outlives the diff it judged. The reviewer has no shell, so write the diff
@@ -115,7 +121,35 @@ fetch: the base the gate diffs against):
 `git diff --stat --patch --output=changes/<id>-<slug>/evidence/diff-<phase>.patch <base>...HEAD`,
 then `git rev-parse HEAD` for the full sha. The diff file is evidence: it is committed with
 the evidence commit that follows the gate. Delegate to `sdlc:adversarial-reviewer` for the
-phase with the full HEAD sha and the path `changes/<id>-<slug>/evidence/diff-<phase>.patch`, then
+phase with the full HEAD sha and the path `changes/<id>-<slug>/evidence/diff-<phase>.patch`.
+
+### Deferred review: the panel settles the judgment items (decision 21; build guide step 16a)
+A fix round is a phase run: under `review: deferred` (`sdlc.yaml`, or the change's
+`status.yaml: review_override`) the judgment items the gate would park on go to the panel
+here too, the reviewer's `escalate` on this round included (the first overturn round on the
+sample repository, 2026-09-24, parked on an `escalate` that the panel should have taken).
+```
+python "${CLAUDE_PLUGIN_ROOT}/plugin/panel/cli.py" items --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase <phase>
+```
+When `mode` is `parked` or `pending` is empty, go on to the gate. Otherwise, for each
+pending item `n` in order, three fresh contexts, each with the brief printed by
+`python "${CLAUDE_PLUGIN_ROOT}/plugin/panel/cli.py" prompt --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase <phase> --item <n> --member <reviewer|advocate|conciliator>`
+(reviewer: a general-purpose sub-agent; devil's advocate: `sdlc:adversarial-reviewer` on
+the model `sdlc.yaml: panel_advocate_model` names, blind to the reviewer's file;
+conciliator: a general-purpose sub-agent that reads both), then
+`python "${CLAUDE_PLUGIN_ROOT}/plugin/panel/cli.py" record --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase <phase> --item <n>`
+— one panel call against `gate.max_panel_calls` (exit 3 at the cap: stop the panel, the
+gate parks); it writes the ledger line, closes a concern in `spec.md` as
+`decided (by panel #<n>): …` and commits the change folder itself. Do not reword a closed
+concern line. Apply what the decision asks beyond that (committed with
+`commit-phase ... --message "fix(<id>): panel decision <n> applied"`). After the last item,
+regenerate the diff file and run the verdict once more for the new HEAD; from then on
+nothing is committed before the gate except the gate evidence, and the verdict file never
+travels in a commit with content the reviewer did not see. An `escalate` with new reasons
+is a new item: run `items` once more. The panel never decides a park item, never raises a
+limit, never touches a guardrail file, and never asks the owner.
+
+Then the gate:
 `python "${CLAUDE_PLUGIN_ROOT}/plugin/gate/cli.py" check --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase <phase>`,
 commit the evidence and push. If the gate parks again for the same reason, stop after this
 round: the next round is the owner's.

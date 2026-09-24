@@ -1086,6 +1086,28 @@ def test_full_run_stores_the_transcript_records_spend_and_hands_over(
     assert run_file["spend_usd"] == 0.42 and run_file["phase"] == "c"
 
 
+def test_every_run_of_a_phase_keeps_its_own_transcript(project):
+    """0.2.16: the first run writes claude-<phase>.json, the next ones claude-<phase>-2.json,
+    -3, ... so the adversarial reviewer never reads an earlier run's transcript as the
+    current run's (the first overturn round on the sample repository, 2026-09-24)."""
+    _root, change = project
+    evidence = change / "evidence"
+    first, first_err = run_phase.run_record_paths(change, "fix")
+    assert first == evidence / "claude-fix.json" and first_err == evidence / "claude-fix.stderr.txt"
+    assert run_phase.store_result(change, "fix", {"result": "one"}, "", first) == first
+    assert run_phase.store_stderr(change, "fix", "warning\n", first_err) == first_err
+    second, second_err = run_phase.run_record_paths(change, "fix")
+    assert second == evidence / "claude-fix-2.json"
+    assert second_err == evidence / "claude-fix-2.stderr.txt"
+    run_phase.store_result(change, "fix", {"result": "two"}, "", second)
+    third, _ = run_phase.run_record_paths(change, "fix")
+    assert third == evidence / "claude-fix-3.json"
+    assert json.loads(first.read_text(encoding="utf-8")) == {"result": "one"}  # untouched
+    assert run_phase.store_stderr(change, "fix", "   ", second_err) is None  # nothing to keep
+    # another phase's first run is still the plain name
+    assert run_phase.run_record_paths(change, "b")[0] == evidence / "claude-b.json"
+
+
 def test_a_run_that_leaves_no_gate_file_is_an_infrastructure_failure(
     project, fake_claude, monkeypatch, capsys
 ):
