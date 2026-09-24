@@ -487,11 +487,20 @@ def test_gate_parks_when_the_diff_touches_settings_json(project):
     data = json.loads(settings.read_text(encoding="utf-8"))
     data["permissions"]["allow"].append("Bash(rm *)")
     write(settings, json.dumps(data, indent=2))
+    # uncommitted, the edit is clean_tree's: the gate judges HEAD (deliverable 6(d))
+    result = gate.run_gate(root, "0001", "c")
+    assert result.result == "park"
+    assert "clean_tree" in _names(result, False)
+    assert "guardrails" in _names(result, True)
+    # committed, it is on the branch the PR would merge, and guardrails parks
+    git(root, "add", ".claude/settings.json")
+    git(root, "commit", "-q", "-m", "widen the permissions")
+    verdict(root, "c")
     result = gate.run_gate(root, "0001", "c")
     assert result.result == "park"
     g = next(ch for ch in result.failed if ch.name == "guardrails")
     assert ".claude/settings.json" in g.reason
-    assert "clean_tree" in _names(result, False)  # and it is uncommitted
+    assert "clean_tree" in _names(result, True)
     # the run cannot grant itself the exemption by editing intent.md on the branch
     write(
         change / "intent.md",
@@ -517,6 +526,8 @@ def test_gate_parks_when_the_diff_touches_settings_json(project):
     result = gate.run_gate(root, "0001", "c")
     assert "guardrails" not in _names(result, False)
     assert "clean_tree" not in _names(result, False)
+    g = next(ch for ch in result.checks if ch.name == "guardrails")
+    assert g.details["touched"] == [".claude/settings.json"]  # still on the branch, exempted
 
 
 def test_gate_parks_on_a_risk_list_word_until_the_owner_accepts_it(project):
@@ -599,6 +610,130 @@ def test_plan_sync_judges_the_committed_diff_only(project):
     p = next(ch for ch in result.checks if ch.name == "plan_sync")
     assert p.ok, p.reason
     assert "clean_tree" in _names(result, True)  # .env is a sandbox-masked name
+
+
+def test_guardrails_and_risk_list_judge_the_committed_diff_only(project):
+    """Deliverable 6(d): guardrails and risk_list read merge base...HEAD, like plan_sync and
+    design_scope (OPERATING_MODEL section 3: the gate judges HEAD, not the working tree).
+    Uncommitted work is clean_tree's to report; once committed, the same change parks."""
+    root, _change = project
+    settings = root / ".claude" / "settings.json"
+    data = json.loads(settings.read_text(encoding="utf-8"))
+    data["permissions"]["allow"].append("Bash(rm *)")
+    write(settings, json.dumps(data, indent=2))  # tracked, modified
+    write(root / "CLAUDE.md", "# Project\nA line the run wrote.\n")  # a guardrail file
+    write(root / "sample_pkg" / "auth.py", "TOKEN_TTL = 60\n")  # untracked risk-list hit
+    verdict(root, "c")
+    result = gate.run_gate(root, "0001", "c", dry_run=True)
+    assert {"guardrails", "risk_list"} <= set(_names(result, True)), result.reason
+    ct = next(ch for ch in result.failed if ch.name == "clean_tree")
+    assert {".claude/settings.json", "CLAUDE.md", "sample_pkg/auth.py"} <= set(ct.details["dirty"])
+
+    git(root, "add", ".claude/settings.json", "CLAUDE.md", "sample_pkg/auth.py")
+    git(root, "commit", "-q", "-m", "the same change, committed")
+    verdict(root, "c")
+    result = gate.run_gate(root, "0001", "c", dry_run=True)
+    assert result.result == "park"
+    g = next(ch for ch in result.failed if ch.name == "guardrails")
+    assert g.details["touched"] == [".claude/settings.json", "CLAUDE.md"]
+    r = next(ch for ch in result.failed if ch.name == "risk_list")
+    assert r.details["hits"] == {"auth": ["sample_pkg/auth.py"]}
+    assert "clean_tree" in _names(result, True)
+
+
+def test_a_sandbox_masked_env_no_longer_trips_guardrails_or_risk_list(project):
+    """Inside Claude Code's sandbox the project's ``.env`` shows as modified however clean the
+    checkout is (the false positive that parked plan_sync in the eleventh live run,
+    2026-09-22). A project that protects ``.env`` or lists it on its risk list would have
+    parked on it in guardrails and risk_list too, which read the working tree until 0.2.12."""
+    root, _change = project
+
+    def protect_env(r: Path) -> None:
+        text = (r / "sdlc.yaml").read_text(encoding="utf-8")
+        edited = text.replace("protected_paths: []", 'protected_paths:\n  - ".env"').replace(
+            "  - production config\n", "  - production config\n  - env\n"
+        )
+        assert edited.count('- ".env"') == 1 and "  - env\n" in edited
+        write(r / "sdlc.yaml", edited)
+
+    on_base(root, protect_env, "owner: protect .env and put it on the risk list")
+    write(root / ".env", "SANDBOX=1\n")  # tracked: shows as modified, nobody's work
+    assert ".env" in checks.diffmod.collect(root).files  # what the two checks used to read
+    verdict(root, "c")
+    result = gate.run_gate(root, "0001", "c", dry_run=True)
+    assert {"guardrails", "risk_list", "clean_tree"} <= set(_names(result, True)), result.reason
+    assert result.result == "continue", result.reason
+
+
+DIFF_CHECKS = (
+    checks.check_plan_sync,
+    checks.check_design_scope,
+    checks.check_guardrails,
+    checks.check_risk_list,
+)
+
+
+def _single_branch_repo(tmp_path: Path, branch: str) -> Path:
+    """One branch, no remote: a change 0001 at phase (c) and a committed guardrail edit."""
+    root = tmp_path / branch
+    write(root / "sdlc.yaml", "protected_paths: []\nrisk_list:\n  - auth\n")
+    git(root, "init", "-q", "-b", branch)
+    git(root, "config", "user.email", "owner@example.com")
+    git(root, "config", "user.name", "Owner")
+    change_dir, st = status_mod.new_change(root, "Percent helper")
+    st.set_phase("c")
+    status_mod.write_status(change_dir, st)
+    write(root / "CLAUDE.md", "# Project\n")
+    write(root / "sample_pkg" / "auth.py", "TOKEN_TTL = 60\n")
+    git(root, "add", ".")
+    git(root, "commit", "-q", "-m", "everything on the one branch")
+    return root
+
+
+def test_the_diff_checks_fail_when_no_default_branch_exists(tmp_path):
+    """Review finding M2 (0.2.12): with no origin/HEAD, main or master, ``diff.collect``
+    compares HEAD with itself and the committed diff is empty whatever the branch carries;
+    the four checks that judge it used to pass silently on that empty list."""
+    root = _single_branch_repo(tmp_path, "trunk")
+    ctx = gate.build_context(root, "0001", "c")
+    assert ctx.diff is not None and ctx.diff.base == "HEAD" and "no base" in ctx.diff.note
+    for check in DIFF_CHECKS:
+        res = check(ctx)
+        assert not res.ok, check.__name__
+        assert res.reason == "no base branch: the committed diff cannot be judged"
+        assert res.need == (
+            "Run the gate in a checkout whose default branch exists (origin/HEAD, main or master)"
+        )
+
+
+def test_the_diff_checks_judge_a_checkout_of_the_default_branch_itself(tmp_path):
+    """A single-branch repository on its default branch is not "no base": the merge base is
+    HEAD because nothing was committed on top of the base yet, and the empty diff passes."""
+    root = _single_branch_repo(tmp_path, "main")
+    ctx = gate.build_context(root, "0001", "c")
+    assert ctx.diff is not None and ctx.diff.base == "main"
+    assert ctx.diff.merge_base == ctx.diff.head
+    for check in DIFF_CHECKS:
+        res = check(ctx)
+        assert res.ok, (check.__name__, res.reason)
+        assert res.reason != checks.NO_BASE_REASON
+
+
+def test_risk_list_reads_the_committed_spec(design_project):
+    """The spec's "Flagged concerns" are read at HEAD: clean_tree skips the change folder and
+    does not run at (b), so an uncommitted edit of spec.md is not what the PR carries."""
+    root, change = design_project
+    concern = "- auth: the helper reads the caller's session token; the owner decides.\n"
+    write(change / "spec.md", SPEC.replace("## Acceptance", concern + "\n## Acceptance"))
+    verdict(root, "b")
+    result = gate.run_gate(root, "0001", "b", dry_run=True)
+    assert "risk_list" in _names(result, True), result.reason
+    git(root, "add", ".")
+    git(root, "commit", "-q", "-m", "design(0001): a risk item flagged")
+    verdict(root, "b")
+    result = gate.run_gate(root, "0001", "b", dry_run=True)
+    hit = next(ch for ch in result.failed if ch.name == "risk_list")
+    assert hit.details["hits"] == {"auth": ["spec.md Flagged concerns: text"]}
 
 
 def test_plan_sync_wants_plan_md_only_in_a_commit_that_departs_from_the_plan(project):
@@ -697,10 +832,20 @@ def test_gate_parks_on_iteration_cap_and_pause_flag(project):
     assert "paused: false" in text  # written by /sdlc-init from the template
     write(root / "sdlc.yaml", text.replace("paused: false", "paused: true"))
     result = gate.run_gate(root, "0001", "c")
-    # an sdlc.yaml edited on the branch is ignored for limits (the base copy rules) and is
-    # itself a guardrail hit; the pause flag counts once the owner merged it
+    # an sdlc.yaml edited on the branch is ignored for limits (the base copy rules); while
+    # uncommitted it is clean_tree's, and committed it is a guardrail hit (the gate judges
+    # HEAD, deliverable 6(d)); the pause flag counts once the owner merged it
+    assert result.config_note.startswith("sdlc.yaml changed on the branch")
+    assert "paused" not in result.reason and "clean_tree" in _names(result, False)
+    assert "guardrails" in _names(result, True)
+    git(root, "add", "sdlc.yaml")
+    git(root, "commit", "-q", "-m", "pause from the branch")
+    verdict(root, "c")
+    result = gate.run_gate(root, "0001", "c")
     assert result.config_note.startswith("sdlc.yaml changed on the branch")
     assert "paused" not in result.reason and "guardrails" in _names(result, False)
+    git(root, "reset", "-q", "--soft", "HEAD~1")  # keeps the uncommitted iteration reset
+    git(root, "reset", "-q", "--", "sdlc.yaml")
     git(root, "checkout", "-q", "--", "sdlc.yaml")
     on_base(
         root,

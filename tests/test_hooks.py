@@ -15,6 +15,7 @@ from hooks import (
     _common,
     format_on_edit,
     plan_sync,
+    production_gate,
     protected_paths,
     secrets_check,
     test_file_lock,
@@ -834,3 +835,447 @@ def test_hooks_json_registers_the_test_file_lock_with_the_protected_path_matcher
     assert entries[0]["matcher"] == "Edit|Write|MultiEdit|NotebookEdit"
     assert "protected_paths.py" in scripts
     assert scripts.index("test_file_lock.py") > scripts.index("protected_paths.py")
+
+
+# --- production gate (build guide step 29; decision 13; article p.35-37) -------------------
+GATE_HOOK = HOOKS_DIR / "production_gate.py"
+
+
+class FakeGitHub:
+    """The two pr.github calls the approval makes, answered from memory."""
+
+    def __init__(self, actor="owner-login", ok=True, reason="", labels=None, number=7):
+        self.actor, self.ok, self.reason, self.number = actor, ok, reason, number
+        self.labels = ["sdlc:release-approved"] if labels is None else labels
+        self.calls = []
+
+    def find_pr(self, repo, head, state="open", cwd=None):
+        self.calls.append(("find_pr", repo, head, state))
+        if not self.ok:
+            return {"ok": False, "number": None, "reason": self.reason}
+        return {"ok": True, "number": self.number, "labels": self.labels, "reason": ""}
+
+    def label_actor(self, repo, number, label):
+        self.calls.append(("label_actor", repo, number, label))
+        if not self.ok:
+            return {"ok": False, "actor": None, "reason": self.reason}
+        return {"ok": True, "actor": self.actor, "reason": ""}
+
+
+def gate_git(tags=(), verify_ok=False, branch="sdlc/0001/c", remote="https://github.com/o/r.git"):
+    """A git runner answering the calls the hook and the approval make: (exit, stdout)."""
+
+    def git(root, *args):
+        if args[:2] == ("rev-parse", "--abbrev-ref"):
+            return 0, branch + "\n"
+        if args == ("rev-parse", "HEAD"):
+            return 0, "abc1234def5678\n"
+        if args[:2] == ("remote", "get-url"):
+            return (0, remote + "\n") if remote else (2, "")
+        if args[:2] == ("tag", "--points-at"):
+            return 0, "".join(f"{t}\n" for t in tags)
+        if args[0] == "verify-tag":
+            return (0 if verify_ok else 1), ""
+        return 1, ""
+
+    return git
+
+
+def _gate_project(tmp_path, production=True, action="publish package", guarded=None):
+    body = f"deploy:\n  action: {action}\n  production: {'true' if production else 'false'}\n"
+    if guarded is not None:
+        body += "  guarded_commands:\n" + "".join(f'    - "{g}"\n' for g in guarded)
+    (tmp_path / "sdlc.yaml").write_text(body, encoding="utf-8")
+    log = tmp_path / "hook-log.jsonl"
+    return tmp_path, {"CLAUDE_PROJECT_DIR": str(tmp_path), "SDLC_HOOK_LOG": str(log)}, log
+
+
+def _log_lines(log):
+    if not log.exists():
+        return []
+    return [json.loads(line) for line in log.read_text(encoding="utf-8").splitlines()]
+
+
+def _gate(root, env, command, **kw):
+    payload = {**pre("Bash", command=command), "cwd": str(root)}
+    kw.setdefault("git", gate_git())
+    kw.setdefault("github", FakeGitHub(ok=False, reason="no route"))
+    return production_gate.decide(payload, [], env=env, **kw)
+
+
+def test_production_gate_is_inert_without_a_declared_production(tmp_path):
+    root, env, log = _gate_project(tmp_path, production=False)
+    d = _gate(root, env, "twine upload dist/*")
+    assert not d.block
+    assert not log.exists()
+    assert not (root / "changes").exists()  # no default log either
+
+
+def test_production_gate_allows_and_logs_a_non_guarded_command(tmp_path):
+    root, env, log = _gate_project(tmp_path)
+    d = _gate(root, env, "python -m pytest -q")
+    assert not d.block
+    (line,) = _log_lines(log)
+    assert line["verdict"] == "allow" and line["reason"] == "not a guarded command"
+    assert line["hook"] == "production_gate" and line["tool"] == "Bash" and line["at"]
+
+
+def test_production_gate_blocks_twine_upload_without_approval(tmp_path):
+    root, env, log = _gate_project(tmp_path)
+    d = _gate(root, env, "twine upload dist/*")
+    assert d.block
+    assert "Production gate" in d.reason and "sdlc:release-approved" in d.reason
+    assert "publish package" in d.reason and "nobody has been notified" in d.reason
+    (line,) = _log_lines(log)
+    assert line["verdict"] == "block" and line["matched"] == "twine upload*"
+
+
+def test_production_gate_allows_with_the_label_applied_by_a_person(tmp_path):
+    root, env, log = _gate_project(tmp_path)
+    gh = FakeGitHub(actor="luissiviero")
+    d = _gate(root, env, "twine upload dist/*", github=gh)
+    assert not d.block, d.reason
+    assert ("find_pr", "o/r", "sdlc/0001/c", "all") in gh.calls
+    (line,) = _log_lines(log)
+    assert line["verdict"] == "allow" and line["how"] == "label" and line["pr"] == 7
+
+
+def test_production_gate_refuses_the_label_applied_by_the_automation_identity(tmp_path):
+    root, env, log = _gate_project(tmp_path)
+    d = _gate(root, env, "twine upload dist/*", github=FakeGitHub(actor="github-actions[bot]"))
+    assert d.block
+    assert "github-actions[bot]" in d.reason and "#7" in d.reason
+    assert _log_lines(log)[-1]["verdict"] == "block"
+
+
+def test_production_gate_refuses_a_label_that_was_removed_again(tmp_path):
+    root, env, _ = _gate_project(tmp_path)
+    d = _gate(root, env, "twine upload dist/*", github=FakeGitHub(actor="owner", labels=[]))
+    assert d.block and "is not on #7" in d.reason
+
+
+def test_production_gate_never_allows_on_a_signed_tag(tmp_path):
+    """B1 (decision 11): a session allowed git can sign a tag itself, so a verified signed
+    tag is no approval; only the label a person applied on GitHub is."""
+    root, env, log = _gate_project(tmp_path)
+    gh = FakeGitHub(actor=None)
+    d = _gate(root, env, "twine upload dist/*", git=gate_git(tags=("v1.2.0",), verify_ok=True))
+    assert d.block
+    d = _gate(root, env, "twine upload dist/*", github=gh, git=gate_git(("v1",), True))
+    assert d.block and "is not on #7" in d.reason
+    line = _log_lines(log)[-1]
+    assert line["verdict"] == "block" and line["how"] == "none"
+    assert "signed tag" not in d.reason
+    assert "from GitHub, then re-runs" in d.reason
+
+
+def test_production_gate_refuses_an_unsigned_tag(tmp_path):
+    root, env, _ = _gate_project(tmp_path)
+    d = _gate(root, env, "twine upload dist/*", git=gate_git(tags=("v1.2.0",), verify_ok=False))
+    assert d.block and "verify-tag" not in d.reason and "cannot verify the label" in d.reason
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "gh pr edit 7 --add-label sdlc:release-approved",
+        "gh api repos/o/r/issues/7/labels -f 'labels[]=SDLC:Release-Approved'",
+        'curl -X POST -H "Authorization: token $T" https://api.github.com/repos/o/r/issues/7/'
+        'labels -d \'{"labels":["sdlc:release-approved"]}\'',
+        "python scripts/label.py 7 sdlc:release-approved",
+        "echo ok && gh issue edit 7 --add-label=sdlc:release-approved",
+    ],
+)
+def test_production_gate_blocks_any_command_that_names_the_release_label(tmp_path, command):
+    """B1 (decision 11): a run cannot apply the release label to itself, whatever the tool;
+    the block holds even when an approval exists."""
+    root, env, log = _gate_project(tmp_path, action="none")
+    gh = FakeGitHub(actor="luissiviero")
+    d = _gate(root, env, command, github=gh)
+    assert d.block
+    assert "a run cannot apply the label to itself (decision 11)" in d.reason
+    assert "the release approval is the owner's act on GitHub" in d.reason
+    assert gh.calls == []  # blocked before any approval lookup
+    line = _log_lines(log)[-1]
+    assert line["verdict"] == "block" and line["matched"] == "sdlc:release-approved"
+
+
+def test_production_gate_lets_the_label_through_when_no_production_is_declared(tmp_path):
+    root, env, log = _gate_project(tmp_path, production=False)
+    assert not _gate(root, env, "gh pr edit 7 --add-label sdlc:release-approved").block
+    assert not log.exists()
+
+
+def test_production_gate_fails_closed_when_github_cannot_be_reached(tmp_path):
+    root, env, log = _gate_project(tmp_path)
+    gh = FakeGitHub(ok=False, reason="api: HTTP 502; gh: gh not found")
+    d = _gate(root, env, "twine upload dist/*", github=gh)
+    assert d.block and "cannot verify the label" in d.reason and "HTTP 502" in d.reason
+    assert _log_lines(log)[-1]["verdict"] == "block"
+
+
+def test_production_gate_catches_the_article_trigger(tmp_path):
+    root, env, _ = _gate_project(tmp_path, action="none")
+    assert _gate(root, env, "./scripts/deploy.sh --env production").block
+    assert _gate(root, env, "make deploy ENV=production").block
+    assert not _gate(root, env, "./scripts/deploy.sh --env staging").block
+
+
+def test_production_gate_catches_a_chained_command(tmp_path):
+    root, env, _ = _gate_project(tmp_path)
+    assert _gate(root, env, "cd dist && twine upload *").block
+    assert _gate(root, env, "python -m build; python -m twine upload dist/*").block
+    assert not _gate(root, env, "cd dist && ls").block
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "true & twine upload dist/*",
+        "echo $(twine upload dist/*)",
+        "echo `twine upload dist/*`",
+        "bash -c 'twine upload dist/*'",
+        "time twine upload dist/*",
+        "nohup twine upload dist/* > log",
+        "python3.11 -m twine upload dist/*",
+        "cmd /c twine upload dist/*",
+        'pwsh -Command "twine upload dist/*"',
+        "& twine upload dist/*",
+        "(twine upload dist/*)",
+        "sudo -E env TWINE_USERNAME=x python -m twine upload dist/*",
+        "C:/Python312/python.exe -m twine upload dist/*",
+    ],
+)
+def test_production_gate_sees_through_wrappers(tmp_path, command):
+    """I3: a runner, wrapper or substitution in front of a guarded command does not hide it."""
+    root, env, log = _gate_project(tmp_path)
+    d = _gate(root, env, command)
+    assert d.block, command
+    assert _log_lines(log)[-1]["matched"] == "twine upload*"
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        'git commit -m "promote the docs"',
+        "echo twine",
+        "pip install twine",
+        "python -m pytest -q",
+        "git log --oneline",
+    ],
+)
+def test_production_gate_leaves_ordinary_commands_alone(tmp_path, command):
+    """I3 and M7: token suffixes do not turn a mention into a match, and the paper-trading
+    adapter has no default pattern that a commit message could hit."""
+    for action in ("publish package", "promote to paper trading"):
+        root, env, _ = _gate_project(tmp_path, action=action)
+        assert not _gate(root, env, command).block, (action, command)
+
+
+def test_promote_to_paper_trading_guards_only_what_the_project_lists(tmp_path):
+    """M7: no default pattern; the project's own promotion command is guarded, and the
+    article trigger still holds."""
+    assert production_gate.DEFAULT_GUARDED["promote to paper trading"] == ()
+    root, env, _ = _gate_project(
+        tmp_path, action="promote to paper trading", guarded=["python scripts/promote.py"]
+    )
+    assert _gate(root, env, "python scripts/promote.py --live").block
+    assert not _gate(root, env, 'git commit -m "promote the strategy"').block
+    assert _gate(root, env, "./deploy.sh --target production").block
+
+
+def test_production_gate_reads_guarded_commands_from_sdlc_yaml(tmp_path):
+    root, env, log = _gate_project(tmp_path, action="regenerate report", guarded=["make ship"])
+    d = _gate(root, env, "make ship --all")
+    assert d.block and "regenerate report" in d.reason
+    assert _log_lines(log)[-1]["matched"] == "make ship*"
+    assert not _gate(root, env, "make test").block
+
+
+def test_production_gate_fails_closed_on_an_unreadable_sdlc_yaml(tmp_path):
+    (tmp_path / "sdlc.yaml").write_text("deploy: [\n\tbroken", encoding="utf-8")
+    log = tmp_path / "log.jsonl"
+    env = {"CLAUDE_PROJECT_DIR": str(tmp_path), "SDLC_HOOK_LOG": str(log)}
+    with pytest.raises(_common_config_error()):
+        _gate(tmp_path, env, "ls")
+    assert _log_lines(log)[-1]["verdict"] == "block"
+
+
+def _common_config_error():
+    """The ConfigError class the hook script raises (it imports ``_common`` as a top-level
+    module, the way it runs under Claude Code)."""
+    return sys.modules["_common"].ConfigError
+
+
+def test_production_gate_honours_sdlc_hook_log_and_writes_valid_json_lines(tmp_path):
+    root, env, _ = _gate_project(tmp_path)
+    custom = tmp_path / "elsewhere" / "decisions.jsonl"
+    env["SDLC_HOOK_LOG"] = str(custom)
+    _gate(root, env, "echo hi")
+    _gate(root, env, "twine upload dist/*")
+    lines = _log_lines(custom)
+    assert [x["verdict"] for x in lines] == ["allow", "block"]
+    for line in lines:
+        assert {"at", "hook", "verdict", "reason", "event", "tool", "cwd"} <= set(line)
+        assert line["at"].endswith("Z") and len(line["at"]) == len("2026-09-23T10:00:00Z")
+
+
+def test_production_gate_end_to_end_blocks_with_exit_2(tmp_path):
+    root, env, log = _gate_project(tmp_path)
+    payload = {**pre("Bash", command="twine upload dist/*"), "cwd": str(root)}
+    proc = subprocess.run(
+        [sys.executable, str(GATE_HOOK)],
+        input=json.dumps(payload),
+        capture_output=True,
+        text=True,
+        env={**os.environ, **env},
+    )
+    assert proc.returncode == 2, proc.stderr
+    out = json.loads(proc.stdout)
+    assert out["hookSpecificOutput"]["permissionDecision"] == "deny"
+    assert "sdlc:release-approved" in out["hookSpecificOutput"]["permissionDecisionReason"]
+    assert "Production gate" in proc.stderr
+    assert _log_lines(log)[-1]["verdict"] == "block"
+
+
+def test_production_gate_end_to_end_is_silent_when_inert(tmp_path):
+    root, env, log = _gate_project(tmp_path, production=False)
+    payload = {**pre("PowerShell", command="twine upload dist/*"), "cwd": str(root)}
+    proc = subprocess.run(
+        [sys.executable, str(GATE_HOOK)],
+        input=json.dumps(payload),
+        capture_output=True,
+        text=True,
+        env={**os.environ, **env},
+    )
+    assert proc.returncode == 0 and proc.stdout == "", proc.stderr
+    assert not log.exists()
+
+
+def test_hooks_json_registers_the_production_gate_on_bash_and_powershell():
+    data = json.loads((HOOKS_DIR / "hooks.json").read_text(encoding="utf-8"))
+    entries = [
+        e
+        for e in data["hooks"]["PreToolUse"]
+        if any("production_gate.py" in h["args"][0] for h in e["hooks"])
+    ]
+    assert len(entries) == 1 and entries[0]["matcher"] == "Bash|PowerShell"
+    (handler,) = entries[0]["hooks"]
+    assert "if" not in handler and handler["timeout"] == 60
+    # the hook's own budget stays inside the 60 s the hook is given
+    assert production_gate.APPROVAL_DEADLINE < handler["timeout"]
+    assert production_gate.CALL_TIMEOUT <= production_gate.APPROVAL_DEADLINE
+    # I2: a timed-out PreToolUse hook does not block, so the worst case (the log path's one
+    # git call + the approval deadline) keeps a margin for the log writes
+    assert production_gate.WORST_CASE == (
+        production_gate.CALL_TIMEOUT + production_gate.APPROVAL_DEADLINE
+    )
+    assert production_gate.WORST_CASE < 50
+
+
+def test_production_gate_blocks_when_the_approval_cannot_be_verified_in_time(tmp_path):
+    class SlowGitHub(FakeGitHub):
+        TIMEOUT, GH_TIMEOUT = 30, 120  # the pr.github constants the hook caps meanwhile
+
+        def label_actor(self, repo, number, label):
+            assert (self.TIMEOUT, self.GH_TIMEOUT) == (10, 10)
+            raise TimeoutError("api: read timed out")
+
+    root, env, log = _gate_project(tmp_path)
+    gh = SlowGitHub(actor="owner")
+    d = _gate(root, env, "twine upload dist/*", github=gh)
+    assert d.block and "cannot verify the approval in time" in d.reason
+    assert (gh.TIMEOUT, gh.GH_TIMEOUT) == (30, 120)  # restored
+    assert _log_lines(log)[-1]["verdict"] == "block"
+
+
+def test_production_gate_computes_the_log_path_itself_and_log_decision_runs_no_git(
+    tmp_path, monkeypatch
+):
+    """I2: without $SDLC_HOOK_LOG the hook finds the log path with its own bounded git call
+    and hands it to log_decision, which then never starts git (its own lookup had a 20 s
+    timeout outside the hook's budget); a git timeout falls back to the project log."""
+    common = sys.modules["_common"]  # the module the hook script imported
+    started = []
+    monkeypatch.setattr(common.subprocess, "run", lambda *a, **k: started.append(a))
+    (tmp_path / "sdlc.yaml").write_text(
+        "deploy:\n  action: publish package\n  production: true\n", encoding="utf-8"
+    )
+    env = {"CLAUDE_PROJECT_DIR": str(tmp_path)}
+
+    def slow_git(root, *args):
+        if args[:2] == ("rev-parse", "--abbrev-ref"):
+            raise TimeoutError("git rev-parse took over 10s")
+        return gate_git()(root, *args)
+
+    assert _gate(tmp_path, env, "twine upload dist/*", git=slow_git).block
+    assert not _gate(tmp_path, env, "ls", git=gate_git(branch="main")).block
+    assert started == []
+    log = tmp_path / "changes" / ".hook-log.jsonl"
+    assert [x["verdict"] for x in _log_lines(log)] == ["block", "allow"]
+
+
+def test_log_decision_with_a_default_path_never_starts_git(tmp_path, monkeypatch):
+    """I2: a given default_path skips the branch lookup (a fake git that would sleep is never
+    started)."""
+    started = []
+
+    def would_sleep(*args, **kwargs):
+        started.append(args)
+        raise AssertionError("log_decision started git although default_path was given")
+
+    monkeypatch.setattr(_common.subprocess, "run", would_sleep)
+    target = tmp_path / "given.jsonl"
+    payload = {**pre("Bash", command="ls"), "cwd": str(tmp_path)}
+    path = _common.log_decision("t", "allow", "r", payload, env={}, default_path=target)
+    assert path == target and started == []
+    assert _log_lines(target)[0]["verdict"] == "allow"
+
+
+def test_project_dir_keeps_the_case_of_the_project_path(tmp_path):
+    app = tmp_path / "MyApp"
+    (app / "Src").mkdir(parents=True)
+    (app / "sdlc.yaml").write_text("profile: lite\n", encoding="utf-8")
+    root = _common.project_dir({"cwd": str(app / "Src")}, env={})
+    assert root.endswith("/MyApp") and "\\" not in root
+    assert _common.load_sdlc_config(root) == {"profile": "lite"}
+    assert _common.project_dir({}, env={"CLAUDE_PROJECT_DIR": str(app) + "/"}).endswith("/MyApp")
+    assert _common.rel_to(root, str(app / "Src" / "x.py")) == "src/x.py"  # norm() compares
+
+
+# --- the hook log's default place (build guide step 29.3) ----------------------------------
+def test_log_decision_defaults_to_the_change_evidence_on_a_change_branch(tmp_path):
+    change_dir, _ = status.new_change(tmp_path, "Ship it")
+    _git(tmp_path, "init", "-q", "-b", "main")
+    _git(tmp_path, "config", "user.email", "t@example.com")
+    _git(tmp_path, "config", "user.name", "t")
+    _git(tmp_path, "add", ".")
+    _git(tmp_path, "commit", "-q", "-m", "init")
+    _git(tmp_path, "checkout", "-q", "-b", "sdlc/0001/c")
+    payload = {**pre("Bash", command="ls"), "cwd": str(tmp_path)}
+    path = _common.log_decision(
+        "t", "allow", "why", payload, env={"CLAUDE_PROJECT_DIR": str(tmp_path)}
+    )
+    assert path is not None
+    assert os.path.samefile(path, change_dir / "evidence" / "hook-log.jsonl")
+    assert not (tmp_path / "changes" / ".hook-log.jsonl").exists()
+
+
+def test_log_decision_falls_back_to_the_project_log_off_a_change_branch(tmp_path):
+    status.new_change(tmp_path, "Ship it")
+    _git(tmp_path, "init", "-q", "-b", "main")
+    payload = {**pre("Bash", command="ls"), "cwd": str(tmp_path)}
+    path = _common.log_decision(
+        "t", "block", "why", payload, env={"CLAUDE_PROJECT_DIR": str(tmp_path)}, extra_key=1
+    )
+    assert path is not None
+    assert os.path.samefile(path, tmp_path / "changes" / ".hook-log.jsonl")
+    (line,) = _log_lines(Path(path))
+    assert line["verdict"] == "block" and line["extra_key"] == 1
+
+
+def test_log_decision_never_raises(tmp_path):
+    blocker = tmp_path / "file"
+    blocker.write_text("x", encoding="utf-8")
+    env = {"SDLC_HOOK_LOG": str(blocker / "sub" / "log.jsonl")}  # parent is a file
+    assert _common.log_decision("t", "allow", "r", pre("Bash", command="ls"), env=env) is None

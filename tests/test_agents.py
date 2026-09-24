@@ -84,3 +84,36 @@ def test_adversarial_verdict_example_matches_the_gate_reader(tmp_path):
     assert error == "" and data["verdict"] == "continue"
     assert "routine" in body and "non-routine" in body and "escalate" in body
     assert "park" in body.lower() and "nobody is paged" in body.lower()
+
+
+def test_adversarial_reviewer_has_no_shell_and_reads_the_given_diff_and_sha():
+    """Deliverable 6(e): a scoped git-only Bash is not a documented sub-agent tool value, so the
+    reviewer has no shell; the run hands it HEAD's sha and the diff file, and it never re-runs
+    the deterministic checks (fifth and seventh live runs)."""
+    fm, body = frontmatter(AGENTS / "adversarial-reviewer.md")
+    tools = [t.strip() for t in fm["tools"].split(",")]
+    assert tools == ["Read", "Grep", "Glob", "Write"]
+    assert "Bash" not in fm["tools"] and fm.get("disallowedTools") == "Edit"
+    assert fm["model"] == "inherit"
+    text = " ".join(body.split())
+    assert "evidence/diff-<phase>.patch" in text
+    assert "HEAD's full commit sha" in text
+    assert "copy the full sha the delegation prompt gave you" in text
+    assert "Claude Code docs, sub-agents reference" in text
+    assert "You run nothing" in text and "p.27" in text
+    assert "evidence/test.log" in text and "evidence/verifier.md" in text
+    assert "run the test target yourself" not in text
+    assert "must not ask the calling run for their result" in text
+    assert "2026-09-21" in text  # the fifth live run's example stays
+
+
+def test_adversarial_verdict_still_carries_head(tmp_path):
+    """The verdict keeps its mandatory `head`: without it the gate rejects the file."""
+    _, body = frontmatter(AGENTS / "adversarial-reviewer.md")
+    example = json.loads(re.search(r"```json\n(.*?)\n```", body, re.S).group(1))
+    assert example["head"]
+    path = tmp_path / "adversarial-review-c.json"
+    del example["head"]
+    path.write_text(json.dumps(example), encoding="utf-8")
+    data, error = checks.load_verdict(path)
+    assert error, "a verdict without head must be rejected"

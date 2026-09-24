@@ -23,8 +23,27 @@ deploy:
   # what makes a merged change live: publish package | schedule job | regenerate report |
   # promote to paper trading | deploy service | none
   action: {{DEPLOY_ACTION}}
-  # true turns on the release label at gate (e) and the production-gate hook (B4)
+  # true turns on the release label at gate (e), the production-gate hook and the approval
+  # check of the release workflow (build guide step 29; decision 13). The approval is the
+  # label sdlc:release-approved applied by a person on the build PR from GitHub, nothing
+  # else: a run cannot approve itself (decision 11), so no signed tag counts and the hook
+  # blocks any command that names the label
   production: {{DEPLOY_PRODUCTION}}
+  # the one command the release workflow (.github/workflows/sdlc-release.yml) runs after the
+  # owner's merge (and, when production is true, after the release label): e.g.
+  # `python -m build && twine upload dist/*`, `python scripts/regenerate_report.py`.
+  # Empty = the release is prepared in the PR and nothing runs. Runs on the GitHub runner
+  # with the repository's secrets only.
+  command: ""
+  # command patterns (shell-style globs, case-insensitive, matched against every token suffix
+  # of each part of a command, so wrappers such as `python -m`, `nohup` or `bash -c` do not
+  # hide one) the production-gate hook blocks inside a Claude session until the
+  # release approval exists; added to the plugin's defaults for the adapter
+  # (plugin/hooks/production_gate.py DEFAULT_GUARDED) and to the article's own trigger, a
+  # command containing both `deploy` and `production` (p.36). `promote to paper trading` has
+  # no default: a paper-trading project lists its own promotion command here (e.g.
+  # "python scripts/promote.py"). Only read when production is true.
+  guarded_commands: []
 maintain:
   # the watched metric and where the detection script reads it (default: CI test failure
   # rate from the CI API — decision 15). Bands and the 3-sigma tiers arrive in B5.
@@ -32,6 +51,9 @@ maintain:
   source: {{MAINTAIN_SOURCE}}
   # runbooks the 3-sigma tier may call; authorization: preapproved (CI-scoped, reversible)
   # or go (touches a running system; waits for the owner's "Go" as a parked item)
+  # - name: rollback
+  #   authorization: go        # decision 26 (B5): a rollback runbook with rehearsed_at set by the owner is pre-approved on a declared production
+  #   rehearsed_at: null
   runbooks: []
 
 # --- risk list (build guide step 5; a hit parks the change at its next gate) ---------------

@@ -387,6 +387,7 @@ def test_labels_are_the_documented_set():
         "sdlc:f-ready",
         "sdlc:c-approved",
         "sdlc:d-approved",
+        "sdlc:release-approved",
         "sdlc:needs-human",
     ]
 

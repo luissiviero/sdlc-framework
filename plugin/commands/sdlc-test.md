@@ -73,8 +73,14 @@ full suite). Commit the evidence:
 (`git push origin sdlc/<id>/c`).
 
 ## 5. Adversarial verdict and gate (d)
-Delegate to `sdlc:adversarial-reviewer` (change id, phase `d`, project root, default
-branch); it writes `evidence/adversarial-review-d.json` for HEAD. Then
+The reviewer has no shell, so write the diff it reads first, in one call (`<base>` is the
+default branch, `origin/<default>` after the fetch: the base the gate diffs against):
+`git diff --stat --patch --output=changes/<id>-<slug>/evidence/diff-d.patch <base>...HEAD`,
+then `git rev-parse HEAD` for the full sha. The diff file is evidence: it is committed with
+the gate (d) evidence commit below.
+Delegate to `sdlc:adversarial-reviewer` (change id, phase `d`, project root, the full HEAD
+sha, the path `changes/<id>-<slug>/evidence/diff-d.patch`); it writes
+`evidence/adversarial-review-d.json` for HEAD. Then
 `python "${CLAUDE_PLUGIN_ROOT}/plugin/gate/cli.py" check --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase d`
 (it requires `test.log`, `build.log`, `lint.log` and `verifier.md`, green; exit 0 continue ·
 3 wait · 4 park). Commit: `commit-phase ... --phase d --message "test(<id>): gate (d) evidence" --push`.

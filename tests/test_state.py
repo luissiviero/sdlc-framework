@@ -363,3 +363,242 @@ def test_a_passing_gate_lifts_the_park(tmp_path):
     assert st.parked_reason is None and st.gate.result == "passed"
     status.write_status(change_dir, st)
     assert status.read_status(change_dir).parked_reason is None
+
+
+# --- deliverable 32.0: the owner's merge is gate (e) (decision 13) -----------------------------
+def _parked_at_e(tmp_path: Path) -> tuple[Path, status.Status]:
+    """Change 0001 on the sample repository after the owner merged PR #7 (2026-09-23): phase
+    e, the thirteenth run's park on the iteration cap still recorded, iterations 3."""
+    change_dir, st = status.new_change(tmp_path, "Percent helper")
+    st.set_phase("e")
+    st.iterations = 3
+    st.park("limits: iteration cap reached (3 of 3)")
+    status.write_status(change_dir, st)
+    return change_dir, status.read_status(change_dir)
+
+
+def test_merged_at_gate_e_derives_passed_and_is_pure(tmp_path):
+    _change_dir, st = _parked_at_e(tmp_path)
+    before = st.to_dict()
+    derived = status.merged_at_gate_e(st)
+    assert st.to_dict() == before  # the argument is never touched
+    assert derived is not st
+    assert derived.gate == status.Gate(
+        phase="e", result="passed", reason=status.MERGED_AT_GATE_E_REASON, at=st.updated_at
+    )
+    assert "decision 13" in derived.gate.reason
+    assert derived.parked_reason is None and derived.phase == "e" and derived.iterations == 3
+    # already passed at (e): an unchanged copy
+    again = status.merged_at_gate_e(derived)
+    assert again is not derived and again.to_dict() == derived.to_dict()
+    # any other phase: an unchanged copy, park included
+    st.phase = "c"
+    other = status.merged_at_gate_e(st)
+    assert other.to_dict() == st.to_dict() and other.parked_reason
+
+
+def test_read_status_on_the_default_branch_derives_gate_e_without_a_write(tmp_path):
+    change_dir, _ = _parked_at_e(tmp_path)
+    path = status.status_path(change_dir)
+    text = path.read_text(encoding="utf-8")
+    plain = status.read_status(change_dir)
+    assert plain.gate.result == "parked" and plain.parked_reason
+    merged = status.read_status(change_dir, on_default_branch=True)
+    assert merged.gate.phase == "e" and merged.gate.result == "passed"
+    assert merged.parked_reason is None
+    assert path.read_text(encoding="utf-8") == text  # main is read-only for automation
+    # phases c and d are left as they are, even on the default branch
+    for phase in ("c", "d"):
+        st = status.read_status(change_dir)
+        st.phase = phase
+        status.write_status(change_dir, st)
+        on_main = status.read_status(change_dir, on_default_branch=True)
+        assert on_main.gate.result == "parked" and on_main.parked_reason
+        assert on_main.to_dict() == status.read_status(change_dir).to_dict()
+    # an e that already passed its gate keeps its own record
+    st = status.read_status(change_dir)
+    st.phase = "e"
+    st.record_gate("e", "passed", "waiting for the owner at gate (e)")
+    status.write_status(change_dir, st)
+    kept = status.read_status(change_dir, on_default_branch=True)
+    assert kept.gate.reason == "waiting for the owner at gate (e)"
+    assert kept.to_dict() == status.read_status(change_dir).to_dict()
+
+
+def test_show_and_list_on_the_default_branch_print_the_derived_gate(repo, capsys):
+    root = repo
+    change_dir, _ = _parked_at_e(root)
+    _git(root, "add", ".")
+    _git(root, "commit", "-q", "-m", "merge PR #7 (the owner's merge is gate e)")
+    text = status.status_path(change_dir).read_text(encoding="utf-8")
+
+    assert cli.main(["show", "--root", str(root), "--id", "0001"]) == 0
+    out = json.loads(capsys.readouterr().out)
+    assert out["status"]["gate"]["phase"] == "e" and out["status"]["gate"]["result"] == "passed"
+    assert out["status"]["parked_reason"] is None
+    assert out["derived"] == "gate: e/passed (derived: merged on main)"
+    assert cli.main(["list", "--root", str(root)]) == 0
+    (row,) = json.loads(capsys.readouterr().out)
+    assert row["id"] == "0001" and row["parked_reason"] is None
+    assert row["derived"] == "gate: e/passed (derived: merged on main)"
+    assert status.status_path(change_dir).read_text(encoding="utf-8") == text
+    assert _git(root, "status", "--porcelain") == ""
+
+    # on the build branch the park is the change's real state, and nothing is derived
+    _git(root, "checkout", "-q", "-b", "sdlc/0001/c")
+    assert cli.main(["show", "--root", str(root), "--id", "0001"]) == 0
+    out = json.loads(capsys.readouterr().out)
+    assert out["status"]["gate"]["result"] == "parked" and "derived" not in out
+    assert cli.main(["list", "--root", str(root)]) == 0
+    (row,) = json.loads(capsys.readouterr().out)
+    assert row["parked_reason"] and "derived" not in row
+
+
+def test_show_outside_a_repository_derives_nothing(tmp_path, capsys):
+    _parked_at_e(tmp_path)
+    assert cli.main(["show", "--root", str(tmp_path), "--id", "0001"]) == 0
+    out = json.loads(capsys.readouterr().out)
+    assert out["status"]["gate"]["result"] == "parked" and "derived" not in out
+
+
+def test_merged_at_gate_e_reason_names_the_release_act_on_a_declared_production(tmp_path):
+    """Review finding I4 (0.2.12): the merge passes gate (e) either way, but on a declared
+    production the derived reason says the release label is the release workflow's second
+    act (decision 13)."""
+    change_dir, st = _parked_at_e(tmp_path)
+    plain = status.merged_at_gate_e(st)
+    assert plain.gate.result == "passed"
+    assert plain.gate.reason == "merged by the owner: gate (e) is the merge (decision 13)"
+    prod = status.merged_at_gate_e(st, production=True)
+    assert prod.gate.phase == "e" and prod.gate.result == "passed"
+    assert prod.parked_reason is None
+    assert prod.gate.reason == (
+        "merged by the owner: gate (e) is the merge (decision 13); the release approval "
+        "sdlc:release-approved is the release workflow's second act on this declared production"
+    )
+    assert prod.gate.reason == status.MERGED_AT_GATE_E_PRODUCTION_REASON
+    read = status.read_status(change_dir, on_default_branch=True, production=True)
+    assert read.gate.reason == status.MERGED_AT_GATE_E_PRODUCTION_REASON
+    assert status.read_status(change_dir, on_default_branch=True).gate.reason == (
+        status.MERGED_AT_GATE_E_REASON
+    )
+    # production alone derives nothing off the default branch
+    assert status.read_status(change_dir, production=True).gate.result == "parked"
+
+
+def test_show_and_list_word_the_derived_reason_from_deploy_production(repo, capsys):
+    root = repo
+    _parked_at_e(root)
+    _git(root, "add", ".")
+    _git(root, "commit", "-q", "-m", "merge PR #7")
+
+    # no sdlc.yaml: tolerated, the plain reason
+    assert cli.main(["show", "--root", str(root), "--id", "0001"]) == 0
+    out = json.loads(capsys.readouterr().out)
+    assert out["status"]["gate"]["reason"] == status.MERGED_AT_GATE_E_REASON
+
+    for production, reason in (
+        ("false", status.MERGED_AT_GATE_E_REASON),
+        ("true", status.MERGED_AT_GATE_E_PRODUCTION_REASON),
+    ):
+        (root / "sdlc.yaml").write_text(
+            f"deploy:\n  action: none\n  production: {production}\n", encoding="utf-8"
+        )
+        assert cli.main(["show", "--root", str(root), "--id", "0001"]) == 0
+        out = json.loads(capsys.readouterr().out)
+        assert out["status"]["gate"]["result"] == "passed"
+        assert out["status"]["gate"]["reason"] == reason
+        assert out["derived"] == "gate: e/passed (derived: merged on main)"
+        assert cli.main(["list", "--root", str(root)]) == 0
+        (row,) = json.loads(capsys.readouterr().out)
+        assert row["derived"] == "gate: e/passed (derived: merged on main)"
+
+
+# --- deliverable 4(b): commit-phase commits only what changed under its paths ------------------
+def _committed(root: Path, ref: str = "HEAD") -> list[str]:
+    out = _git(root, "diff-tree", "--no-commit-id", "--name-status", "-r", ref)
+    return sorted(line.replace("\t", " ") for line in out.splitlines() if line.strip())
+
+
+def test_commit_phase_commits_only_the_changed_paths(repo, capsys):
+    """Until 0.2.12 commit-phase ran ``git add`` on its paths and committed the whole index,
+    so anything staged beforehand (a hook, an earlier partial command, the session) rode
+    along in the phase's commit."""
+    root = repo
+    assert cli.main(["new-change", "--root", str(root), "--title", "Percent helper"]) == 0
+    capsys.readouterr()
+    change = c.find_change_dir(root, "0001")
+    rel = "changes/0001-percent-helper"
+    (change / "intent.md").write_text("# Intent\n", encoding="utf-8")
+    (change / "notes.md").write_text("scratch\n", encoding="utf-8")
+    (root / "unrelated.txt").write_text("staged by someone else\n", encoding="utf-8")
+    _git(root, "add", "unrelated.txt")
+
+    rc, out, _ = _commit_phase(root, "a", "intent(0001): percent helper", capsys)
+    assert rc == 0 and out["commit"]
+    committed = _committed(root)
+    assert f"A {rel}/intent.md" in committed and f"A {rel}/notes.md" in committed
+    assert f"A {rel}/status.yaml" in committed  # untracked inside the change folder: included
+    assert not any("unrelated.txt" in f for f in committed)
+    # the unrelated file is still staged, and still not committed
+    assert _git(root, "diff", "--cached", "--name-only").split() == ["unrelated.txt"]
+
+    # a deletion and a rename inside the folder are recorded; --paths outside it are included
+    (change / "notes.md").unlink()
+    (change / "intent.md").rename(change / "intent-v2.md")
+    (root / "src").mkdir()
+    (root / "src" / "helper.py").write_text("x = 1\n", encoding="utf-8")
+    rc, out, _ = _commit_phase(
+        root, "a", "intent(0001): tidy", capsys, ["src/helper.py", "ruff.toml"]
+    )
+    assert rc == 0 and out["commit"]
+    assert _committed(root) == sorted(
+        [f"D {rel}/notes.md", f"D {rel}/intent.md", f"A {rel}/intent-v2.md", "A src/helper.py"]
+    )
+    assert _git(root, "diff", "--cached", "--name-only").split() == ["unrelated.txt"]
+
+    # a deleted --paths entry outside the folder is recorded too (no exists() filter any more)
+    (root / "src" / "helper.py").unlink()
+    rc, out, _ = _commit_phase(root, "a", "intent(0001): drop helper", capsys, ["src/helper.py"])
+    assert rc == 0 and _committed(root) == ["D src/helper.py"]
+
+    # nothing changed under the paths: no commit, the staged file untouched
+    head = _git(root, "rev-parse", "HEAD").strip()
+    rc, out, _ = _commit_phase(root, "a", "intent(0001): again", capsys)
+    assert rc == 0 and out["commit"] is None and out["base"] is None
+    assert _git(root, "rev-parse", "HEAD").strip() == head
+    assert _git(root, "diff", "--cached", "--name-only").split() == ["unrelated.txt"]
+
+
+def test_gitops_changed_files_and_commit_paths(repo):
+    from state import gitops
+
+    root = repo
+    folder = root / "changes" / "0001-x"
+    folder.mkdir(parents=True)
+    (folder / "a b.md").write_text("spaces\n", encoding="utf-8")
+    (folder / "c[1].md").write_text("glob characters are names\n", encoding="utf-8")
+    (root / "README.md").write_text("# changed, not under the paths\n", encoding="utf-8")
+    assert gitops.changed_files(root, ["changes\\0001-x"]) == [
+        "changes/0001-x/a b.md",
+        "changes/0001-x/c[1].md",
+    ]
+    assert gitops.changed_files(root, []) == []
+    assert gitops.changed_files(root, ["does/not/exist"]) == []
+    sha = gitops.commit_paths(root, ["changes/0001-x"], "x")
+    assert sha and _committed(root) == ["A changes/0001-x/a b.md", "A changes/0001-x/c[1].md"]
+    assert _git(root, "status", "--porcelain").strip() == "M README.md"
+    assert gitops.commit_paths(root, ["changes/0001-x"], "again") is None
+    # a staged rename: both sides are changed files, and the commit records it
+    _git(root, "mv", "changes/0001-x/a b.md", "changes/0001-x/moved.md")
+    assert gitops.changed_files(root, ["changes/0001-x"]) == [
+        "changes/0001-x/a b.md",
+        "changes/0001-x/moved.md",
+    ]
+    assert gitops.commit_paths(root, ["changes/0001-x"], "rename")
+    assert _committed(root) == ["A changes/0001-x/moved.md", "D changes/0001-x/a b.md"]
+    # a file added and deleted again before the commit: nothing to commit
+    (folder / "gone.md").write_text("x\n", encoding="utf-8")
+    _git(root, "add", "changes/0001-x/gone.md")
+    (folder / "gone.md").unlink()
+    assert gitops.commit_paths(root, ["changes/0001-x"], "nothing") is None

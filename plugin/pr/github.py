@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import urllib.error
@@ -191,55 +192,249 @@ def _number_in(url: str | None) -> int | None:
     return int(tail) if tail.isdigit() else None
 
 
+# --- paging ------------------------------------------------------------------------------------
+LINK_NEXT_RE = re.compile(r'<([^>]+)>\s*;\s*rel="next"')
+PER_PAGE = 100
+MAX_EVENT_PAGES = 10  # 1000 timeline events is far past any real review thread
+MAX_FILE_PAGES = 30  # GitHub lists at most 3000 files of a pull request
+EVENTS_OVERFLOW = (
+    f"label events exceed {PER_PAGE * MAX_EVENT_PAGES}: cannot determine the last actor"
+)
+
+
+def next_page_url(result: dict[str, Any]) -> str | None:
+    """The ``rel="next"`` target of a REST ``Link`` header, or None on the last page."""
+    headers = result.get("headers") or {}
+    link = ""
+    for key, value in headers.items():
+        if str(key).lower() == "link":
+            link = str(value)
+            break
+    match = LINK_NEXT_RE.search(link)
+    return match.group(1) if match else None
+
+
+def _get_pages(url: str, max_pages: int, overflow: str = "") -> tuple[list[Any], str]:
+    """Every item of a paged REST list, following ``Link: rel="next"``: (items, error).
+
+    When a next page still exists after ``max_pages`` pages, ``overflow`` (if given) is
+    returned as the error, so a caller that needs the whole list fails closed."""
+    items: list[Any] = []
+    tok = token() or ""
+    for _page in range(max_pages):
+        result = _request("GET", url, tok)
+        if result.get("error"):
+            return items, str(result["error"])
+        data = result.get("data")
+        items += data if isinstance(data, list) else []
+        next_url = next_page_url(result)
+        if not next_url:
+            return items, ""
+        url = next_url
+    return items, overflow
+
+
 # --- pull requests -----------------------------------------------------------------------------
-def _find_open_pr_api(repo: str, head_branch: str) -> dict[str, Any]:
+PR_STATES = ("open", "closed", "all")
+_EMPTY_PR: dict[str, Any] = {
+    "number": None,
+    "state": None,
+    "merged": False,
+    "merge_commit_sha": None,
+    "head_ref": None,
+    "base_ref": None,
+    "labels": [],
+    "html_url": None,
+    "url": None,
+    "draft": False,
+}
+
+
+def _pr_from_api(item: dict[str, Any]) -> dict[str, Any]:
+    """One REST pull request (single or listed) in the shape every lookup returns. A listed
+    item has no ``merged`` field, only ``merged_at``."""
+    merged = item.get("merged")
+    if merged is None:
+        merged = bool(item.get("merged_at"))
+    return {
+        "number": item.get("number"),
+        "state": item.get("state"),
+        "merged": bool(merged),
+        "merge_commit_sha": item.get("merge_commit_sha"),
+        "head_ref": (item.get("head") or {}).get("ref"),
+        "base_ref": (item.get("base") or {}).get("ref"),
+        "labels": [lb.get("name") for lb in item.get("labels") or []],
+        "html_url": item.get("html_url"),
+        "url": item.get("html_url"),
+        "draft": bool(item.get("draft")),
+        "node_id": item.get("node_id"),
+    }
+
+
+GH_PR_FIELDS = "number,url,labels,isDraft,state,mergeCommit,headRefName,baseRefName"
+
+
+def _pr_from_gh(item: dict[str, Any]) -> dict[str, Any]:
+    """One ``gh pr list|view --json`` item: ``state`` is OPEN, CLOSED or MERGED there."""
+    state = str(item.get("state") or "").lower()
+    return {
+        "number": item.get("number"),
+        "state": "closed" if state == "merged" else (state or None),
+        "merged": state == "merged",
+        "merge_commit_sha": (item.get("mergeCommit") or {}).get("oid"),
+        "head_ref": item.get("headRefName"),
+        "base_ref": item.get("baseRefName"),
+        "labels": [lb.get("name") for lb in item.get("labels") or []],
+        "html_url": item.get("url"),
+        "url": item.get("url"),
+        "draft": bool(item.get("isDraft")),
+    }
+
+
+def _find_pr_api(repo: str, head_branch: str, state: str) -> dict[str, Any]:
     owner = repo.split("/")[0]
-    query = urllib.parse.urlencode({"state": "open", "head": f"{owner}:{head_branch}"})
+    query = urllib.parse.urlencode({"state": state, "head": f"{owner}:{head_branch}"})
     result = _request("GET", f"{API_ROOT}/repos/{repo}/pulls?{query}", token() or "")
     if result["error"]:
         return {"route": "api", "ok": False, "reason": result["error"], "number": None}
     items = result["data"] if isinstance(result["data"], list) else []
     if not items:
-        return {"route": "api", "ok": True, "number": None, "url": None, "labels": []}
-    first = items[0]
-    return {
-        "route": "api",
-        "ok": True,
-        "number": first.get("number"),
-        "url": first.get("html_url"),
-        "labels": [lb.get("name") for lb in first.get("labels") or []],
-        "draft": bool(first.get("draft")),
-        "node_id": first.get("node_id"),
-    }
+        return {"route": "api", "ok": True, "reason": "", **_EMPTY_PR}
+    return {"route": "api", "ok": True, "reason": "", **_pr_from_api(items[0])}
 
 
-def _find_open_pr_gh(repo: str, head_branch: str, cwd: str | Path | None) -> dict[str, Any]:
+def _find_pr_gh(repo: str, head_branch: str, state: str, cwd: str | Path | None) -> dict[str, Any]:
     data, error = _gh_json(
-        "pr", "list", "--repo", repo, "--head", head_branch, "--state", "open",
-        "--json", "number,url,labels,isDraft", cwd=cwd,
+        "pr", "list", "--repo", repo, "--head", head_branch, "--state", state,
+        "--json", GH_PR_FIELDS, cwd=cwd,
     )  # fmt: skip
     if error:
         return {"route": "gh", "ok": False, "reason": error, "number": None}
     first = (data or [None])[0] if isinstance(data, list) else None
     if not first:
-        return {"route": "gh", "ok": True, "number": None, "url": None, "labels": []}
-    return {
-        "route": "gh",
-        "ok": True,
-        "number": first.get("number"),
-        "url": first.get("url"),
-        "labels": [lb.get("name") for lb in first.get("labels") or []],
-        "draft": bool(first.get("isDraft")),
-    }
+        return {"route": "gh", "ok": True, "reason": "", **_EMPTY_PR}
+    return {"route": "gh", "ok": True, "reason": "", **_pr_from_gh(first)}
+
+
+def find_pr(
+    repo: str, head_branch: str, state: str = "open", cwd: str | Path | None = None
+) -> dict[str, Any]:
+    """The most recent pull request from ``head_branch`` in ``state`` (open, closed or all):
+    {'route', 'ok', 'number', 'state', 'merged', 'merge_commit_sha', 'head_ref', 'base_ref',
+    'labels', 'html_url', 'url', 'draft', 'reason'} - number None when there is none."""
+    if state not in PR_STATES:
+        raise ValueError(f"state must be one of {PR_STATES}, not {state!r}")
+    return _attempt(
+        lambda: _find_pr_api(repo, head_branch, state),
+        lambda: _find_pr_gh(repo, head_branch, state, cwd),
+        number=None,
+    )
 
 
 def find_open_pr(repo: str, head_branch: str, cwd: str | Path | None = None) -> dict[str, Any]:
     """{'route', 'number', 'url', 'labels', 'draft'} - number None when there is none."""
-    return _attempt(
-        lambda: _find_open_pr_api(repo, head_branch),
-        lambda: _find_open_pr_gh(repo, head_branch, cwd),
-        number=None,
-    )
+    return find_pr(repo, head_branch, "open", cwd=cwd)
+
+
+def pr_by_number(repo: str, number: int, cwd: str | Path | None = None) -> dict[str, Any]:
+    """One pull request by number, in ``find_pr``'s shape; ``ok`` False with a reason when it
+    cannot be read (no route, not found)."""
+
+    def via_api() -> dict[str, Any]:
+        result = _request("GET", f"{API_ROOT}/repos/{repo}/pulls/{number}", token() or "")
+        if result["error"] or not isinstance(result["data"], dict):
+            reason = result["error"] or "the answer is not a pull request"
+            return {"route": "api", "ok": False, "reason": reason, "number": None}
+        return {"route": "api", "ok": True, "reason": "", **_pr_from_api(result["data"])}
+
+    def via_gh() -> dict[str, Any]:
+        data, error = _gh_json(
+            "pr", "view", str(number), "--repo", repo, "--json", GH_PR_FIELDS, cwd=cwd
+        )
+        if error or not isinstance(data, dict):
+            reason = error or "gh pr view printed no pull request"
+            return {"route": "gh", "ok": False, "reason": reason, "number": None}
+        return {"route": "gh", "ok": True, "reason": "", **_pr_from_gh(data)}
+
+    return _attempt(via_api, via_gh, **_EMPTY_PR)
+
+
+def pr_files(repo: str, number: int, cwd: str | Path | None = None) -> dict[str, Any]:
+    """The paths a pull request touches: {'ok', 'files', 'route', 'reason'}.
+
+    The REST route follows ``Link: rel="next"`` (100 per page, GitHub's own cap is 3000
+    files); ``gh pr view --json files`` is the fallback."""
+
+    def via_api() -> dict[str, Any]:
+        url = f"{API_ROOT}/repos/{repo}/pulls/{number}/files?per_page={PER_PAGE}"
+        items, error = _get_pages(url, MAX_FILE_PAGES)
+        if error:
+            return {"route": "api", "ok": False, "reason": error, "files": []}
+        files = [str(i.get("filename")) for i in items if isinstance(i, dict) and i.get("filename")]
+        return {"route": "api", "ok": True, "reason": "", "files": files}
+
+    def via_gh() -> dict[str, Any]:
+        data, error = _gh_json(
+            "pr", "view", str(number), "--repo", repo, "--json", "files", cwd=cwd
+        )
+        if error:
+            return {"route": "gh", "ok": False, "reason": error, "files": []}
+        listed = data.get("files") if isinstance(data, dict) else None
+        files = [str(i.get("path")) for i in listed or [] if isinstance(i, dict) and i.get("path")]
+        return {"route": "gh", "ok": True, "reason": "", "files": files}
+
+    return _attempt(via_api, via_gh, files=[])
+
+
+def _last_label_actor(events: list[Any], label: str) -> str | None:
+    """The login of the last ``labeled`` event for ``label``; a missing actor (a deleted
+    account) reads ``unknown``."""
+    actors = [
+        ((event.get("actor") or {}).get("login") or "unknown")
+        for event in events
+        if isinstance(event, dict)
+        and event.get("event") == "labeled"
+        and (event.get("label") or {}).get("name") == label
+    ]
+    return actors[-1] if actors else None
+
+
+def label_actor(repo: str, number: int, label: str) -> dict[str, Any]:
+    """Who applied ``label`` last on issue or pull request ``number``: {'ok', 'actor',
+    'reason'}; ``actor`` None when the label was never applied.
+
+    GitHub records one ``labeled`` event per application, with the actor that caused it
+    (``GET /repos/{repo}/issues/{number}/events``, oldest first, up to 10 pages). The ``gh``
+    route reads the same path with ``gh api``, page by page. More events than that fail
+    closed (``ok`` False, ``EVENTS_OVERFLOW``): the last actor would be a guess."""
+
+    path = f"repos/{repo}/issues/{number}/events"
+
+    def via_api() -> dict[str, Any]:
+        events, error = _get_pages(
+            f"{API_ROOT}/{path}?per_page={PER_PAGE}", MAX_EVENT_PAGES, overflow=EVENTS_OVERFLOW
+        )
+        if error:
+            return {"route": "api", "ok": False, "reason": error, "actor": None}
+        return {"route": "api", "ok": True, "reason": "", "actor": _last_label_actor(events, label)}
+
+    def via_gh() -> dict[str, Any]:
+        events: list[Any] = []
+        for page in range(1, MAX_EVENT_PAGES + 2):
+            data, error = _gh_json("api", f"{path}?per_page={PER_PAGE}&page={page}")
+            if error:
+                return {"route": "gh", "ok": False, "reason": error, "actor": None}
+            batch = data if isinstance(data, list) else []
+            if page > MAX_EVENT_PAGES:  # one page past the cap, read only to see if it exists
+                if batch:
+                    return {"route": "gh", "ok": False, "reason": EVENTS_OVERFLOW, "actor": None}
+                break
+            events += batch
+            if len(batch) < PER_PAGE:
+                break
+        return {"route": "gh", "ok": True, "reason": "", "actor": _last_label_actor(events, label)}
+
+    return _attempt(via_api, via_gh, actor=None)
 
 
 def _create_pr_api(

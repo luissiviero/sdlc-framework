@@ -45,6 +45,10 @@ GATE_RESULTS = ("passed", "parked", "approved", "changes-requested")
 # --- labels (OPERATING_MODEL section 8) ---------------------------------------------------
 LABEL_PREFIX = "sdlc:"
 NEEDS_HUMAN_LABEL = "sdlc:needs-human"
+# The second act at gate (e) when `sdlc.yaml: deploy.production` is true (decision 13; build
+# guide step 29): the owner applies it on the build PR; the production-gate hook and the
+# release workflow read it through the PR, never from an environment variable.
+RELEASE_APPROVED_LABEL = "sdlc:release-approved"
 
 
 def ready_label(phase: str) -> str:
@@ -62,6 +66,7 @@ def approved_label(phase: str) -> str:
 def all_labels() -> list[str]:
     labels = [ready_label(p) for p in PHASES]
     labels += [approved_label(p) for p in ("c", "d")]
+    labels.append(RELEASE_APPROVED_LABEL)
     labels.append(NEEDS_HUMAN_LABEL)
     return labels
 

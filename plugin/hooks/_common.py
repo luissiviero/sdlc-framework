@@ -19,8 +19,10 @@ import json
 import os
 import posixpath
 import re
+import subprocess
 import sys
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -60,10 +62,10 @@ def read_payload(stream=None) -> dict[str, Any]:
 
 
 # --- paths ---------------------------------------------------------------------------------
-def norm(path: str | os.PathLike[str]) -> str:
-    """Comparison form: forward slashes, ``..``/``.``/``//`` collapsed, no trailing slash or
-    whitespace, lower-cased (Windows and macOS paths are case-insensitive; on Linux a
-    same-spelled file in another case is blocked too, which is the safe direction)."""
+def fs_path(path: str | os.PathLike[str]) -> str:
+    """Filesystem form: forward slashes, ``..``/``.``/``//`` collapsed, no trailing slash or
+    whitespace, the drive letter lower-cased, **the rest of the case kept** — a path that
+    still opens on a case-sensitive file system (Linux)."""
     s = str(path).strip().replace("\\", "/")
     if s.startswith("//") and not s.startswith("///"):  # UNC: keep the leading //
         s = "//" + posixpath.normpath(s[2:])
@@ -71,7 +73,14 @@ def norm(path: str | os.PathLike[str]) -> str:
         s = posixpath.normpath(s)
     if len(s) >= 2 and s[1] == ":":
         s = s[0].lower() + s[1:]
-    return s.lower()
+    return s
+
+
+def norm(path: str | os.PathLike[str]) -> str:
+    """Comparison form: ``fs_path`` lower-cased (Windows and macOS paths are
+    case-insensitive; on Linux a same-spelled file in another case is blocked too, which is
+    the safe direction). Never open a file by this form: use ``fs_path``."""
+    return fs_path(path).lower()
 
 
 def real(path: str) -> str:
@@ -84,16 +93,18 @@ def real(path: str) -> str:
 
 def project_dir(payload: dict[str, Any], env: dict[str, str] | None = None) -> str:
     """CLAUDE_PROJECT_DIR (exported to hook processes), else the nearest ancestor of cwd that
-    holds sdlc.yaml or .git, else cwd."""
+    holds sdlc.yaml or .git, else cwd — in ``fs_path`` form, case kept, so ``sdlc.yaml`` and
+    git still find it on Linux (the fully lower-cased ``norm`` form made every hook inert in a
+    repository whose path has a capital). Compare it only through ``norm``/``rel_to``."""
     env = os.environ if env is None else env
     if env.get("CLAUDE_PROJECT_DIR"):
-        return norm(env["CLAUDE_PROJECT_DIR"])
+        return fs_path(env["CLAUDE_PROJECT_DIR"])
     cwd = str(payload.get("cwd") or os.getcwd())
     p = Path(cwd)
     for candidate in (p, *p.parents):
         if (candidate / SDLC_FILE).is_file() or (candidate / ".git").exists():
-            return norm(candidate)
-    return norm(cwd)
+            return fs_path(candidate)
+    return fs_path(cwd)
 
 
 def rel_to(root: str, path: str) -> str | None:
@@ -219,6 +230,83 @@ def emit(decision: Decision, event: str, out=None, err=None) -> int:
             payload.update(decision.extra)
         out.write(json.dumps(payload))
     return 0
+
+
+HOOK_LOG_ENV = "SDLC_HOOK_LOG"
+HOOK_LOG_DEFAULT = "changes/.hook-log.jsonl"
+HOOK_LOG_EVIDENCE = "evidence/hook-log.jsonl"
+
+
+def log_decision(
+    hook: str,
+    verdict: str,
+    reason: str,
+    payload: dict[str, Any],
+    env: dict[str, str] | None = None,
+    *,
+    default_path: str | os.PathLike[str] | None = None,
+    **extra: Any,
+) -> Path | None:
+    """Append one allow/block decision as one JSON line (build guide step 29.3; article p.37:
+    "Allow and block decisions are logged with a timestamp").
+
+    The file is ``$SDLC_HOOK_LOG`` when set, else ``default_path`` when the caller computed
+    one (then no git call is made here: a hook with a time budget, such as the production
+    gate, computes the path itself under its own timeout), else — on a change branch
+    ``sdlc/<id>/<phase>`` whose ``changes/<id>-<slug>/`` exists —
+    ``<change dir>/evidence/hook-log.jsonl``, committed with the rest of the
+    evidence (an untracked file outside the change folder would park the gate's
+    ``clean_tree`` check), and otherwise ``<project>/changes/.hook-log.jsonl``. Each line
+    carries ``at`` (ISO-8601 UTC, seconds), ``hook``, ``event``, ``tool``, ``verdict``
+    ("allow" | "block"), ``reason``, ``cwd`` and ``extra``. Logging is evidence, never a
+    precondition: it never raises (a read-only checkout must not turn an allow into a
+    crash), and returns the path written or None.
+    """
+    try:
+        env = os.environ if env is None else env
+        target = env.get(HOOK_LOG_ENV) or default_path
+        if target:
+            path = Path(target)
+        else:
+            root = project_dir(payload, env)
+            path = Path(root) / HOOK_LOG_DEFAULT
+            try:
+                from state import conventions as conv
+
+                proc = subprocess.run(
+                    ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+                    cwd=root,
+                    capture_output=True,
+                    text=True,
+                    encoding="utf-8",
+                    timeout=20,
+                )
+                parsed = conv.parse_branch(proc.stdout) if proc.returncode == 0 else None
+                change_dir = conv.find_change_dir(Path(root), parsed[0]) if parsed else None
+                if change_dir is not None:
+                    path = change_dir / HOOK_LOG_EVIDENCE
+            except (OSError, ValueError, subprocess.SubprocessError):
+                pass  # not a git repository, or no git: the project-level default stands
+        record: dict[str, Any] = {
+            "at": datetime.now(timezone.utc)
+            .replace(microsecond=0)
+            .isoformat()
+            .replace("+00:00", "Z"),
+            "hook": hook,
+            "event": payload.get("hook_event_name"),
+            "tool": payload.get("tool_name"),
+            "verdict": verdict,
+            "reason": reason,
+            "cwd": payload.get("cwd"),
+        }
+        record.update(extra)
+        line = json.dumps(record, sort_keys=True, default=str) + "\n"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8", newline="\n") as fh:
+            fh.write(line)
+        return path
+    except Exception:  # noqa: BLE001 - the log must never change the hook's verdict
+        return None
 
 
 def run_hook(decide, event: str, argv: list[str] | None = None) -> int:

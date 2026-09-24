@@ -101,7 +101,13 @@ def test_sdlc_yaml_renders_to_documented_keys():
         # step 30: the one-command install the CI phase jobs run before the phase
         "setup": "python -m pip install pytest ruff",
     }
-    assert data["deploy"] == {"action": "none", "production": False}
+    # step 29 / 32: the release workflow's command and the production-gate hook's patterns
+    assert data["deploy"] == {
+        "action": "none",
+        "production": False,
+        "command": "",
+        "guarded_commands": [],
+    }
     assert (
         data["maintain"]["metric"] == "ci_test_failure_rate" and data["maintain"]["runbooks"] == []
     )
@@ -175,7 +181,10 @@ def test_bands_yaml_has_the_p44_shape_with_authorization_per_route():
 # --- the SDLC workflows (build guide step 30; OPERATING_MODEL section 4.2) --------------------
 WORKFLOW_DIR = TEMPLATE / ".github" / "workflows"
 PHASE_WORKFLOWS = ("sdlc-design.yml", "sdlc-build.yml", "sdlc-test.yml", "sdlc-deploy.yml")
-ALL_WORKFLOWS = (*PHASE_WORKFLOWS, "sdlc-digest.yml")
+RELEASE_WORKFLOW = "sdlc-release.yml"  # build guide step 32.3 (plugin 0.2.12)
+ALL_WORKFLOWS = (*PHASE_WORKFLOWS, "sdlc-digest.yml", RELEASE_WORKFLOW)
+# this repository's own installed copies (PR #21) and its substrate smoke test
+REPO_WORKFLOW_DIR = TEMPLATE.parent / ".github" / "workflows"
 
 
 def test_workflow_templates_exist_and_render():
@@ -185,6 +194,99 @@ def test_workflow_templates_exist_and_render():
         # GitHub's own ${{ ... }} expressions survive; no {{NAME}} placeholder may.
         assert render.placeholders(text) == set()
         assert VALUES["FRAMEWORK_REPO"] in text
+
+
+def _workflow_yaml(name: str) -> dict:
+    yaml = pytest.importorskip("yaml")
+    data = yaml.safe_load(render.render_file(WORKFLOW_DIR / name, VALUES))
+    assert isinstance(data, dict) and data.get("jobs"), name
+    return data
+
+
+def _triggers(data: dict) -> dict:
+    return data.get("on", data.get(True))  # YAML 1.1 reads a bare `on` key as True
+
+
+@pytest.mark.parametrize("name", ALL_WORKFLOWS)
+def test_every_workflow_parses_as_yaml(name):
+    data = _workflow_yaml(name)
+    assert _triggers(data)
+    for job in data["jobs"].values():
+        assert job["runs-on"] == "ubuntu-latest" and job["steps"]
+
+
+def test_this_repository_s_workflow_copies_match_the_template():
+    """The installed copies differ from the template only by the framework repository."""
+    for name in ALL_WORKFLOWS:
+        installed = (REPO_WORKFLOW_DIR / name).read_text(encoding="utf-8")
+        assert installed == render.render_file(WORKFLOW_DIR / name, VALUES), name
+
+
+@pytest.mark.parametrize(
+    "path",
+    [*(WORKFLOW_DIR / n for n in ALL_WORKFLOWS), *sorted(REPO_WORKFLOW_DIR.glob("*.yml"))],
+    ids=lambda p: f"{p.parent.parent.parent.name}/{p.name}",
+)
+def test_every_workflow_uses_checkout_and_setup_node_v5(path):
+    """HANDOFF 4(c): the v4 actions run on Node 20, which GitHub deprecates."""
+    text = path.read_text(encoding="utf-8")
+    uses = [ln.split("uses:", 1)[1].strip() for ln in text.splitlines() if "uses:" in ln]
+    assert uses, path
+    for action in uses:
+        if action.startswith(("actions/checkout@", "actions/setup-node@")):
+            assert action.endswith("@v5"), f"{path.name}: {action}"
+
+
+def test_release_workflow_runs_the_release_cli_on_merge_and_label():
+    data = _workflow_yaml(RELEASE_WORKFLOW)
+    on = _triggers(data)
+    assert on["pull_request"]["types"] == ["closed", "labeled"]
+    assert on["pull_request"]["branches"] == ["main"]  # /sdlc-init rewrites it
+    assert on["workflow_dispatch"]["inputs"]["pr_number"]["required"] is True
+    # read-only: the release runs the project's own deploy.command, it writes nothing
+    assert set(data["permissions"].values()) == {"read"}
+    assert {"contents", "pull-requests"} <= set(data["permissions"])
+    assert data["concurrency"]["group"] == (
+        "sdlc-release-${{ github.event.pull_request.number || inputs.pr_number }}"
+    )
+    job = data["jobs"]["release"]
+    assert "github.event_name == 'workflow_dispatch'" in job["if"]
+    assert "github.event.pull_request.merged == true" in job["if"]
+    assert "github.event.label.name == 'sdlc:release-approved'" in job["if"]
+    runs = [step["run"] for step in job["steps"] if "run" in step]
+    assert runs[-1] == (
+        'python framework/plugin/release/cli.py run --root . --repo "$REPO" --pr "$PR_NUMBER" '
+        '--event "$EVENT_ACTION" --merge-sha "$MERGE_SHA"'
+    )
+    # I7: the documented `python -m build && twine upload dist/*` needs the project's own
+    # tools on a bare runner, installed right before the release step
+    assert runs[-2] == "python framework/plugin/ci/project_setup.py --root ."
+    assert job["steps"][-2]["name"] == (
+        "Install the project's own toolchain (sdlc.yaml: commands.setup)"
+    )
+    env = job["steps"][-1]["env"]
+    assert set(env) == {"GITHUB_TOKEN", "REPO", "PR_NUMBER", "EVENT_ACTION", "MERGE_SHA"}
+    # not a phase run: no model, no CLI install, no runner setup
+    text = (WORKFLOW_DIR / RELEASE_WORKFLOW).read_text(encoding="utf-8")
+    for absent in ("claude-code@", "run_phase.py", "runner_setup.py", "setup-node", "secrets."):
+        assert absent not in text, absent
+    assert "# environment: production" in text  # the owner's opt-in to environment rules
+    assert "environment" not in job
+
+
+@pytest.mark.parametrize("name", ("sdlc-design.yml", "sdlc-build.yml"))
+def test_merge_fired_jobs_find_the_change_instead_of_filtering_the_head(name):
+    """HANDOFF 4(a): any merge into the default branch starts the job; the find step names
+    the change, and every later step waits for it."""
+    job = next(iter(_workflow_yaml(name)["jobs"].values()))
+    assert "startsWith" not in job["if"] and "sdlc/" not in job["if"]
+    names = [step.get("id") or step.get("name") or step.get("uses") for step in job["steps"]]
+    find = names.index("find")
+    assert job["steps"][find - 1]["with"]["path"] == "framework"
+    assert "--find-change" in job["steps"][find]["run"]
+    for step in job["steps"][find + 1 :]:
+        assert step["if"] == "steps.find.outputs.change_id != ''", step
+    assert job["steps"][-1]["env"]["CHANGE_ID"] == "${{ steps.find.outputs.change_id }}"
 
 
 def test_pin_script_is_installed_and_reads_the_template_pin(tmp_path):

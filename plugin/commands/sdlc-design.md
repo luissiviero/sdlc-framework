@@ -13,7 +13,7 @@ prompt that produced it, and the skill versions in force are all logged in versi
 control"), step 12 and decision 2 (plan.md by a read-only run at the end of phase (b)),
 decision 18 (profiles). Prompt version: **v1** (the spec header records it).
 
-This phase runs unattended: by hand today, from the merge-triggered workflow from B3 on.
+This phase runs unattended: by hand or from the merge-triggered workflow.
 **Never ask the owner anything.** The merged intent.md is the owner's answer; anything it
 leaves open becomes a carried-forward question or a flagged concern the owner reads at the
 gate. Never edit intent.md (accepted at gate (a); the gate parks a branch that changes it).
@@ -115,8 +115,13 @@ there is a remote. Nothing outside the change folder may be modified; if `git st
 shows anything else, revert it before committing.
 
 ## 6. Adversarial review (build guide step 17; agent `sdlc:adversarial-reviewer`)
+The reviewer has no shell, so write the diff it reads first, in one call (`<base>` is the
+default branch, `origin/<default>` after the fetch: the base the gate diffs against):
+`git diff --stat --patch --output=changes/<id>-<slug>/evidence/diff-b.patch <base>...HEAD`,
+then `git rev-parse HEAD` for the full sha. The diff file is evidence: it is committed with
+the gate (b) evidence commit of step 7.
 Delegate to the `sdlc:adversarial-reviewer` agent with: the change id, the phase `b`, the
-project root and the default branch. It writes
+project root, the full HEAD sha and the path `changes/<id>-<slug>/evidence/diff-b.patch`. It writes
 `changes/<id>-<slug>/evidence/adversarial-review-b.json` for the current HEAD (the commit
 of step 5) and reports a verdict. Do not argue with it and do not edit its file.
 

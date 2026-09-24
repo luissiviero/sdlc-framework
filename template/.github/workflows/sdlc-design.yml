@@ -1,4 +1,5 @@
-# Phase (b) design, fired by the merge of the intent PR (head sdlc/<id>/a).
+# Phase (b) design, fired by the merge of the intent PR: the merged pull request that carries
+# the change's changes/<id>-<slug>/ folder, whatever its head branch is called.
 #
 # Contract: docs/OPERATING_MODEL.md section 4.2 (the trigger and dispatch table), build guide
 # step 30, article p.39-41 ("Run Claude Code non-interactively inside the CI/CD pipeline,
@@ -47,19 +48,20 @@ concurrency:
 
 jobs:
   design:
-    # A closed pull request only counts when it was merged; run_phase.py then checks that
-    # the head branch is sdlc/<id>/a and skips with a printed reason when it is not.
-    # ... and only for this framework's own branches: any other merge to the default branch
-    # is somebody else's pull request (OPERATING_MODEL section 4.2).
+    # A closed pull request only counts when it was merged (into the default branch: the
+    # `branches:` filter above). The head name is not a filter any more: a web session pushes
+    # /sdlc-plan's intent to a branch of its own (claude/...), and the old sdlc/ head rule
+    # never fired for it (HANDOFF 4(a)). The first step finds the change from the merged
+    # pull request's changes/<id>-<slug>/ folder instead; a merge that carries none costs one
+    # green job of about 20 s, and every later step is skipped.
     if: >-
-      ${{ github.event_name != 'pull_request' ||
-      (github.event.pull_request.merged == true &&
-      startsWith(github.event.pull_request.head.ref, 'sdlc/')) }}
+      ${{ github.event_name == 'workflow_dispatch' ||
+      github.event.pull_request.merged == true }}
     runs-on: ubuntu-latest
     timeout-minutes: 150
     steps:
       - name: Check out the project
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
@@ -68,35 +70,52 @@ jobs:
         run: python .github/scripts/sdlc_pin.py
 
       - name: Check out the pinned framework (public repository, no token)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: "{{FRAMEWORK_REPO}}"
           ref: ${{ steps.pin.outputs.ref }}
           path: framework
 
-      - uses: actions/setup-node@v4
+      # --id wins (a dispatch), then a head sdlc/<id>/a, then the one changes/<id>-<slug>/
+      # folder the merged pull request touches. An empty change_id skips every step below.
+      - name: Find the change this merge carries
+        id: find
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          CHANGE_ID: ${{ inputs.change_id }}
+          HEAD_REF: ${{ inputs.head_ref || github.event.pull_request.head.ref }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: python framework/plugin/ci/run_phase.py --root . --plugin-dir framework --phase b --id "$CHANGE_ID" --head-ref "$HEAD_REF" --repo "$REPO" --pr-number "$PR_NUMBER" --find-change
+
+      - if: steps.find.outputs.change_id != ''
+        uses: actions/setup-node@v5
         with:
           node-version: "22"
 
       # The version comes from the pin step at run time, so a bump in sdlc.yaml applies on
       # the next run; re-install the workflows only when this file itself changes.
       - name: Install the pinned Claude Code CLI
+        if: steps.find.outputs.change_id != ''
         env:
           CLAUDE_CODE_VERSION: ${{ steps.pin.outputs.claude_code }}
         run: npm install -g @anthropic-ai/claude-code@"$CLAUDE_CODE_VERSION"
 
       - name: Prepare the runner for Claude Code's sandbox
+        if: steps.find.outputs.change_id != ''
         run: python framework/plugin/ci/runner_setup.py
 
-      - name: Install the project's own toolchain (sdlc.yaml: commands.setup)
+      - name: "Install the project's own toolchain (sdlc.yaml: commands.setup)"
+        if: steps.find.outputs.change_id != ''
         run: python framework/plugin/ci/project_setup.py --root .
 
       - name: Run phase (b)
+        if: steps.find.outputs.change_id != ''
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           GITHUB_TOKEN: ${{ github.token }}
-          CHANGE_ID: ${{ inputs.change_id }}
+          CHANGE_ID: ${{ steps.find.outputs.change_id }}
           HEAD_REF: ${{ inputs.head_ref || github.event.pull_request.head.ref }}
           REPO: ${{ github.repository }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}

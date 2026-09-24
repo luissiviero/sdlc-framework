@@ -499,8 +499,24 @@ WORKFLOWS = (
     ".github/workflows/sdlc-test.yml",
     ".github/workflows/sdlc-deploy.yml",
     ".github/workflows/sdlc-digest.yml",
+    ".github/workflows/sdlc-release.yml",  # build guide step 32.3 (plugin 0.2.12)
 )
 PIN_SCRIPT = ".github/scripts/sdlc_pin.py"
+
+
+def test_init_upgrade_installs_the_release_workflow_beside_kept_ones(tmp_path):
+    """A project initialised before 0.2.12 has the five older workflows; re-running
+    /sdlc-init creates the release workflow and keeps the files it already has."""
+    root = tmp_path / "proj"
+    shutil.copytree(FIXTURE, root)
+    _run_init(root)
+    release = root / WORKFLOWS[-1]
+    release.unlink()  # the project as an older framework left it
+    (root / WORKFLOWS[0]).write_text("name: an older design workflow\n", encoding="utf-8")
+    report = _run_init(root)
+    assert report["files"][WORKFLOWS[-1]] == "created" and release.is_file()
+    assert report["files"][WORKFLOWS[0]] == "kept"
+    assert "python framework/plugin/release/cli.py run" in release.read_text(encoding="utf-8")
 
 
 def test_init_installs_the_workflows_and_the_pin_script(tmp_path):
@@ -552,7 +568,7 @@ def test_init_rewrites_the_base_branch_filter_to_the_projects_default(tmp_path):
     shutil.copytree(FIXTURE, root)
     _git_init(root, "trunk")
     _run_init(root)
-    for rel in (WORKFLOWS[0], WORKFLOWS[1]):  # the two merge-triggered workflows
+    for rel in (WORKFLOWS[0], WORKFLOWS[1], WORKFLOWS[5]):  # the three merge-triggered ones
         text = (root / rel).read_text(encoding="utf-8")
         lines = [ln for ln in text.splitlines() if ln.startswith("    branches:")]
         assert lines == ["    branches: [trunk]"], rel

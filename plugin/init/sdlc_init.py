@@ -252,6 +252,9 @@ WORKFLOW_FILES = (
     ".github/workflows/sdlc-test.yml",
     ".github/workflows/sdlc-deploy.yml",
     ".github/workflows/sdlc-digest.yml",
+    # the release transition of gate (e) (build guide step 32.3; plugin 0.2.12): create-only
+    # like the others, so re-running /sdlc-init on an initialised project installs it
+    ".github/workflows/sdlc-release.yml",
     ".github/scripts/sdlc_pin.py",
 )
 # The template writes the default branch GitHub gives most repositories; a project whose

@@ -37,7 +37,7 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Check out the project
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
@@ -46,7 +46,7 @@ jobs:
         run: python .github/scripts/sdlc_pin.py
 
       - name: Check out the pinned framework (public repository, no token)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: "luissiviero/sdlc-framework"
           ref: ${{ steps.pin.outputs.ref }}

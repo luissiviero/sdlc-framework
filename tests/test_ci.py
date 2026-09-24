@@ -30,6 +30,10 @@ STATE_CLI = ROOT / "plugin" / "state" / "cli.py"
 WORKFLOW_DIR = ROOT / "template" / ".github" / "workflows"
 PHASE_WORKFLOWS = ("sdlc-design.yml", "sdlc-build.yml", "sdlc-test.yml", "sdlc-deploy.yml")
 ALL_WORKFLOWS = (*PHASE_WORKFLOWS, "sdlc-digest.yml")
+# the release workflow (build guide step 32.3) cites step 32, not step 30, in its header; the
+# generic checks (python steps, no interpolation, secrets, the pinned framework) cover it too
+RELEASE_WORKFLOW = "sdlc-release.yml"
+EVERY_WORKFLOW = (*ALL_WORKFLOWS, RELEASE_WORKFLOW)
 
 KEY_VAR, TOKEN_VAR = auth.API_KEY_VAR, auth.OAUTH_TOKEN_VAR
 FAKE_KEY = "placeholder-key"  # sdlc: allow-secret
@@ -402,21 +406,63 @@ def test_a_dispatched_run_switches_to_the_work_branch_before_the_guard(project, 
     assert git(root, "rev-parse", "--abbrev-ref", "HEAD").strip() == "sdlc/0001/c"
 
 
-def test_the_build_run_creates_its_branch_off_the_design_branch(project, tmp_path, capsys):
-    """Lite: the spec+plan PR is not merged before the build, so sdlc/<id>/c starts there."""
-    root, change = project
-    set_state(change, "b", gate_phase="b", gate_result="passed")
+def _design_branch_left_on_the_remote(root: Path, tmp_path: Path, profile: str) -> str:
+    """Main at the given profile and a pushed sdlc/0001/b one commit past it; its sha."""
+    text = (root / "sdlc.yaml").read_text(encoding="utf-8")
+    (root / "sdlc.yaml").write_text(
+        text.replace("profile: standard", f"profile: {profile}"), encoding="utf-8"
+    )
+    set_state(root / "changes" / "0001-percent-helper", "b", gate_phase="b", gate_result="passed")
     with_remote(root, tmp_path)
     git(root, "checkout", "-q", "-b", "sdlc/0001/b")
     git(root, "commit", "-q", "--allow-empty", "-m", "design(0001): spec and plan")
     git(root, "push", "-q", "-u", "origin", "sdlc/0001/b")
     git(root, "checkout", "-q", "main")
-    design_head = git(root, "rev-parse", "origin/sdlc/0001/b").strip()
+    return git(root, "rev-parse", "origin/sdlc/0001/b").strip()
+
+
+def test_the_build_run_creates_its_branch_off_the_design_branch(project, tmp_path, capsys):
+    """Lite: the spec+plan PR is not merged before the build, so sdlc/<id>/c starts there."""
+    root, _change = project
+    design_head = _design_branch_left_on_the_remote(root, tmp_path, "lite")
+    assert run_phase.checkout_profile(root, "0001") == "lite"
 
     branch = run_phase.prepare_branch(root, "0001", "c")
     assert branch["branch"] == "sdlc/0001/c" and branch["switched"] is True
     assert branch["from"] == "origin/sdlc/0001/b"
     assert git(root, "rev-parse", "HEAD").strip() == design_head
+
+
+def test_outside_lite_the_build_branch_starts_from_the_default_branch(project, tmp_path):
+    """HANDOFF 6(a): a design branch that outlived the owner's merge at gate (b) is not
+    where the build starts in the Standard (or Full) profile; the default branch is."""
+    root, _change = project
+    design_head = _design_branch_left_on_the_remote(root, tmp_path, "standard")
+    main_head = git(root, "rev-parse", "origin/main").strip()
+
+    branch = run_phase.prepare_branch(root, "0001", "c")
+    assert branch["switched"] is True and branch["from"] == "origin/main"
+    head = git(root, "rev-parse", "HEAD").strip()
+    assert head == main_head and head != design_head
+
+
+def test_start_point_follows_the_profile_it_is_given(project, tmp_path):
+    root, _change = project
+    _design_branch_left_on_the_remote(root, tmp_path, "standard")
+    assert run_phase._start_point(root, "0001", "c", "lite") == "origin/sdlc/0001/b"
+    for profile in ("standard", "full", None):
+        assert run_phase._start_point(root, "0001", "c", profile) == "origin/main"
+    assert run_phase._start_point(root, "0001", "b", "lite") == "origin/main"
+
+
+def test_a_profile_override_on_the_change_makes_it_lite(project):
+    root, change = project
+    assert run_phase.checkout_profile(root, "0001") == "standard"
+    st = status_mod.read_status(change)
+    st.profile_override = "lite"
+    status_mod.write_status(change, st)
+    assert run_phase.checkout_profile(root, "0001") == "lite"
+    assert run_phase.checkout_profile(root, "0099") == "standard"  # no change: the project's
 
 
 def test_a_missing_build_branch_leaves_the_checkout_alone(project):
@@ -588,6 +634,367 @@ def test_change_id_comes_from_the_head_ref_when_no_input_is_given():
     assert run_phase.resolve_change_id(None, "feature/x", "b")[0] is None
     assert run_phase.resolve_change_id("0007", None, "b") == ("0007", None)
     assert run_phase.resolve_change_id("7", None, "b")[0] is None
+
+
+# --- 3b. the change a merged pull request carries (HANDOFF 4(a), plugin 0.2.12) ---------------
+def _pr_files(monkeypatch, files=(), ok=True, reason="") -> list:
+    """Answer ``github.pr_files`` from a list; the calls come back."""
+    from pr import github
+
+    calls: list = []
+
+    def fake(repo, number, cwd=None):
+        calls.append((repo, number))
+        return {"ok": ok, "files": list(files), "route": "api" if ok else "none", "reason": reason}
+
+    monkeypatch.setattr(github, "pr_files", fake)
+    return calls
+
+
+def test_find_change_takes_the_id_first(monkeypatch):
+    calls = _pr_files(monkeypatch, ["changes/0002-other/intent.md"])
+    assert run_phase.find_change("b", "0001", "claude/x", "o/r", "5", {}) == ("0001", None)
+    change_id, reason = run_phase.find_change("b", "7", None, "o/r", "5", {})
+    assert change_id is None and "not four digits" in reason
+    assert calls == []
+
+
+def test_find_change_reads_an_sdlc_head_before_the_files(monkeypatch):
+    calls = _pr_files(monkeypatch, ["changes/0042-x/intent.md"])
+    assert run_phase.find_change("b", None, "sdlc/0042/a", "o/r", "5", {}) == ("0042", None)
+    # another phase's own PR keeps its skip: its files carry the same change folder, and
+    # reading them would re-run the design the owner has just merged
+    change_id, reason = run_phase.find_change("b", None, "sdlc/0042/b", "o/r", "5", {})
+    assert change_id is None and "is phase b, not a" in reason
+    assert calls == []
+
+
+def test_find_change_reads_the_merged_pull_request_files(monkeypatch):
+    calls = _pr_files(
+        monkeypatch,
+        [
+            "README.md",
+            "changes/README.md",
+            "changes/0001-percent-helper/intent.md",
+            "changes/0001-percent-helper/status.yaml",
+        ],
+    )
+    found = run_phase.find_change("b", None, "claude/relaxed-x", "o/r", "12", {})
+    assert found == ("0001", None)
+    assert calls == [("o/r", 12)]
+
+
+def test_find_change_skips_a_pr_with_no_or_several_change_folders(monkeypatch):
+    _pr_files(monkeypatch, ["src/app.py", "changes/README.md"])
+    change_id, reason = run_phase.find_change("c", None, "claude/x", "o/r", 12, {})
+    assert change_id is None
+    assert reason == "pull request #12 touches no changes/<id>-<slug>/ folder"
+    _pr_files(monkeypatch, ["changes/0002-b/intent.md", "changes/0001-a/intent.md"])
+    change_id, reason = run_phase.find_change("c", None, "claude/x", "o/r", 12, {})
+    assert change_id is None and "ambiguous" in reason and "(0001, 0002)" in reason
+
+
+def test_find_change_without_a_route_a_number_or_a_repo(monkeypatch):
+    from pr import github
+
+    monkeypatch.setattr(github, "gh_path", lambda: None)
+    monkeypatch.setattr(github, "token", lambda: None)
+    change_id, reason = run_phase.find_change("b", None, "claude/x", "o/r", "12", {})
+    assert change_id is None and github.NO_ROUTE in reason and "#12" in reason
+    assert "--pr-number" in run_phase.find_change("b", None, "claude/x", "o/r", None, {})[1]
+    bad = run_phase.find_change("b", None, "claude/x", "o/r", "abc", {})[1]
+    assert "not a pull request number" in bad
+    assert "--repo" in run_phase.find_change("b", None, "claude/x", "", "12", {})[1]
+
+
+def test_the_find_change_flag_prints_the_id_and_writes_the_step_output(
+    monkeypatch, tmp_path, capsys
+):
+    _pr_files(monkeypatch, ["changes/0001-percent-helper/intent.md"])
+    output = tmp_path / "github_output"
+    output.write_text("ref=v0.2.12\n", encoding="utf-8")
+    monkeypatch.setenv("GITHUB_OUTPUT", str(output))
+    argv = [
+        "--root", str(tmp_path), "--phase", "b", "--id", "", "--head-ref", "claude/relaxed-x",
+        "--repo", "o/r", "--pr-number", "12", "--find-change",
+    ]  # fmt: skip
+    assert run_phase.main(argv) == run_phase.EXIT_OK
+    assert capsys.readouterr().out.splitlines() == ["change_id=0001", "reason="]
+    assert output.read_text(encoding="utf-8") == "ref=v0.2.12\nchange_id=0001\n"
+
+    # an unrelated merge: an empty id and the reason, and still a green step
+    _pr_files(monkeypatch, ["README.md"])
+    assert run_phase.main(argv) == run_phase.EXIT_OK
+    lines = capsys.readouterr().out.splitlines()
+    assert lines[0] == "change_id=" and "touches no changes/<id>-<slug>/ folder" in lines[1]
+    assert output.read_text(encoding="utf-8").endswith("change_id=0001\nchange_id=\n")
+
+
+def test_a_phase_run_finds_its_change_from_the_merged_pr(project, monkeypatch, capsys):
+    """The normal run uses the same lookup: no --id, a claude/... head, the PR's files."""
+    root, _change = project
+    _pr_files(monkeypatch, ["changes/0001-percent-helper/intent.md"])
+    args = Args(root=str(root), id=None, head_ref="claude/relaxed-x", pr_number="12")
+    assert run_phase.run_phase(args, dict(KEY_ENV)) == run_phase.EXIT_OK
+    out = json.loads(capsys.readouterr().out)
+    assert out["change_id"] == "0001" and out["argv"][2] == "/sdlc:sdlc-design 0001"
+
+
+# --- 3c. the GitHub lookups the release and the merge-fired runs use (pr/github.py) ----------
+def _api(monkeypatch, pages: dict) -> list:
+    """The token route only, answering each URL from ``pages``; the URLs come back."""
+    from pr import github
+
+    seen: list = []
+
+    def fake(method, url, tok, payload=None):
+        seen.append(url)
+        return pages[url]
+
+    monkeypatch.setattr(github, "token", lambda: FAKE_TOKEN)
+    monkeypatch.setattr(github, "gh_path", lambda: None)
+    monkeypatch.setattr(github, "_request", fake)
+    return seen
+
+
+def _gh_only(monkeypatch, answer) -> list:
+    """The gh route only: ``answer(args)`` gives (data, error); the argument lists come back."""
+    from pr import github
+
+    seen: list = []
+
+    def fake(*args, cwd=None):
+        seen.append(args)
+        return answer(args)
+
+    monkeypatch.setattr(github, "token", lambda: None)
+    monkeypatch.setattr(github, "gh_path", lambda: "gh")
+    monkeypatch.setattr(github, "_gh_json", fake)
+    return seen
+
+
+API = "https://api.github.com/repos/o/r"
+
+
+def test_pr_files_follows_the_link_header(monkeypatch):
+    from pr import github
+
+    first = f"{API}/pulls/12/files?per_page=100"
+    second = f"{API}/pulls/12/files?per_page=100&page=2"
+    seen = _api(
+        monkeypatch,
+        {
+            first: {
+                "status": 200,
+                "data": [{"filename": "changes/0001-x/intent.md"}],
+                "error": "",
+                "headers": {"link": f'<{second}>; rel="next"'},
+            },
+            second: {"status": 200, "data": [{"filename": "README.md"}], "error": ""},
+        },
+    )
+    result = github.pr_files("o/r", 12)
+    assert result == {
+        "route": "api",
+        "ok": True,
+        "reason": "",
+        "files": ["changes/0001-x/intent.md", "README.md"],
+    }
+    assert seen == [first, second]
+
+
+def test_pr_files_falls_back_to_gh_and_says_when_there_is_no_route(monkeypatch):
+    from pr import github
+
+    files = {"files": [{"path": "changes/0001-x/intent.md"}, {"path": "a.py"}]}
+    seen = _gh_only(monkeypatch, lambda args: (files, ""))
+    result = github.pr_files("o/r", 12, cwd="/tmp/p")
+    assert result["ok"] and result["route"] == "gh"
+    assert result["files"] == ["changes/0001-x/intent.md", "a.py"]
+    assert seen == [("pr", "view", "12", "--repo", "o/r", "--json", "files")]
+
+    monkeypatch.setattr(github, "gh_path", lambda: None)
+    none = github.pr_files("o/r", 12)
+    assert none["ok"] is False and none["files"] == [] and none["reason"] == github.NO_ROUTE
+
+
+def test_label_actor_is_the_last_labeled_event_for_that_label(monkeypatch):
+    from pr import github
+
+    url = f"{API}/issues/7/events?per_page=100"
+    events = [
+        {"event": "labeled", "label": {"name": "sdlc:release-approved"}, "actor": {"login": "a"}},
+        {"event": "labeled", "label": {"name": "other"}, "actor": {"login": "c"}},
+        {"event": "labeled", "label": {"name": "sdlc:release-approved"}, "actor": {"login": "b"}},
+        {"event": "unlabeled", "label": {"name": "sdlc:release-approved"}, "actor": {"login": "d"}},
+    ]
+    _api(monkeypatch, {url: {"status": 200, "data": events, "error": ""}})
+    found = github.label_actor("o/r", 7, "sdlc:release-approved")
+    assert found["ok"] is True and found["actor"] == "b"
+    never = github.label_actor("o/r", 7, "sdlc:never")
+    assert never["ok"] is True and never["actor"] is None
+
+    _api(monkeypatch, {url: {"status": 404, "data": {}, "error": "Not Found"}})
+    failed = github.label_actor("o/r", 7, "sdlc:release-approved")
+    assert failed["ok"] is False and failed["actor"] is None and "Not Found" in failed["reason"]
+
+
+def test_label_actor_reads_page_after_page_through_gh(monkeypatch):
+    from pr import github
+
+    filler = [{"event": "commented"}] * github.PER_PAGE
+    last = [{"event": "labeled", "label": {"name": "sdlc:c-approved"}, "actor": {"login": "me"}}]
+    seen = _gh_only(monkeypatch, lambda args: (last if args[1].endswith("page=2") else filler, ""))
+    found = github.label_actor("o/r", 7, "sdlc:c-approved")
+    assert found == {"route": "gh", "ok": True, "reason": "", "actor": "me"}
+    assert [a[1] for a in seen] == [
+        "repos/o/r/issues/7/events?per_page=100&page=1",
+        "repos/o/r/issues/7/events?per_page=100&page=2",
+    ]
+
+
+def test_label_actor_fails_closed_past_the_page_cap_through_the_api(monkeypatch):
+    """M4: a next page after MAX_EVENT_PAGES pages means the last actor is unknown."""
+    from pr import github
+
+    base = f"{API}/issues/7/events?per_page=100"
+    urls = [base] + [f"{base}&page={n}" for n in range(2, github.MAX_EVENT_PAGES + 2)]
+    human = [
+        {"event": "labeled", "label": {"name": "sdlc:release-approved"}, "actor": {"login": "me"}}
+    ]
+    pages = {
+        url: {
+            "status": 200,
+            "data": human,
+            "error": "",
+            "headers": {"Link": f'<{urls[i + 1]}>; rel="next"'},
+        }
+        for i, url in enumerate(urls[:-1])
+    }
+    seen = _api(monkeypatch, pages)
+    result = github.label_actor("o/r", 7, "sdlc:release-approved")
+    assert result["ok"] is False and result["actor"] is None
+    assert "label events exceed 1000: cannot determine the last actor" in result["reason"]
+    assert len(seen) == github.MAX_EVENT_PAGES  # the page past the cap is never read
+
+
+def test_label_actor_fails_closed_past_the_page_cap_through_gh(monkeypatch):
+    from pr import github
+
+    full = [{"event": "commented"}] * github.PER_PAGE
+    seen = _gh_only(monkeypatch, lambda args: (full, ""))
+    result = github.label_actor("o/r", 7, "sdlc:release-approved")
+    assert result["ok"] is False and result["actor"] is None
+    assert result["reason"].endswith(github.EVENTS_OVERFLOW)
+    assert len(seen) == github.MAX_EVENT_PAGES + 1  # one page past the cap, to see it exists
+
+    # exactly 1000 events and nothing after them: the answer is complete
+    last = github.MAX_EVENT_PAGES + 1
+    seen = _gh_only(
+        monkeypatch, lambda args: ([] if args[1].endswith(f"page={last}") else full, "")
+    )
+    done = github.label_actor("o/r", 7, "sdlc:release-approved")
+    assert done == {"route": "gh", "ok": True, "reason": "", "actor": None}
+
+
+def test_label_applied_by_a_human_wraps_label_actor(monkeypatch):
+    from pr import github
+
+    answers = {"ok": True, "actor": run_phase.BOT_LOGIN, "reason": ""}
+    monkeypatch.setattr(github, "label_actor", lambda repo, number, label: dict(answers))
+    assert "not by a human" in run_phase.label_applied_by_a_human("o/r", 7, "x")[1]
+    answers["actor"] = None
+    assert run_phase.label_applied_by_a_human("o/r", 7, "x") == (False, "no `labeled` event for x")
+    answers.update(ok=False, reason="api: Not Found")
+    ok, why = run_phase.label_applied_by_a_human("o/r", 7, "x")
+    assert ok is False and why == "could not read the label events: api: Not Found"
+    answers.update(ok=True, actor="luissiviero")
+    assert run_phase.label_applied_by_a_human("o/r", 7, "x") == (True, "luissiviero")
+    assert run_phase.next_page_url is github.next_page_url  # the re-export
+
+
+def test_pr_by_number_reads_the_merge_through_either_route(monkeypatch):
+    from pr import github
+
+    rest = {
+        "number": 12,
+        "state": "closed",
+        "merged": True,
+        "merge_commit_sha": "abc123",
+        "head": {"ref": "sdlc/0001/c"},
+        "base": {"ref": "main"},
+        "labels": [{"name": "sdlc:e-ready"}],
+        "html_url": "https://github.com/o/r/pull/12",
+    }
+    _api(monkeypatch, {f"{API}/pulls/12": {"status": 200, "data": rest, "error": ""}})
+    got = github.pr_by_number("o/r", 12)
+    assert got["ok"] and got["route"] == "api"
+    expected = {
+        "number": 12,
+        "state": "closed",
+        "merged": True,
+        "merge_commit_sha": "abc123",
+        "head_ref": "sdlc/0001/c",
+        "base_ref": "main",
+        "labels": ["sdlc:e-ready"],
+        "html_url": "https://github.com/o/r/pull/12",
+    }
+    assert {k: got[k] for k in expected} == expected
+
+    view = {
+        "number": 12,
+        "state": "MERGED",
+        "mergeCommit": {"oid": "abc123"},
+        "headRefName": "sdlc/0001/c",
+        "baseRefName": "main",
+        "labels": [{"name": "sdlc:e-ready"}],
+        "url": "https://github.com/o/r/pull/12",
+    }
+    seen = _gh_only(monkeypatch, lambda args: (view, ""))
+    got = github.pr_by_number("o/r", 12)
+    assert got["ok"] and got["route"] == "gh"
+    assert {k: got[k] for k in expected} == expected
+    assert seen[0][:5] == ("pr", "view", "12", "--repo", "o/r")
+
+    monkeypatch.setattr(github, "gh_path", lambda: None)
+    none = github.pr_by_number("o/r", 12)
+    assert none["ok"] is False and none["number"] is None and none["reason"] == github.NO_ROUTE
+
+
+def test_find_pr_reads_closed_pull_requests_and_find_open_pr_keeps_its_keys(monkeypatch):
+    from pr import github
+
+    item = {
+        "number": 9,
+        "state": "closed",
+        "merged_at": "2026-09-23T10:00:00Z",
+        "merge_commit_sha": "def456",
+        "head": {"ref": "claude/relaxed-x"},
+        "base": {"ref": "main"},
+        "labels": [],
+        "html_url": "https://github.com/o/r/pull/9",
+        "draft": False,
+    }
+    seen: list = []
+
+    def fake(method, url, tok, payload=None):
+        seen.append(url)
+        return {"status": 200, "data": [item], "error": ""}
+
+    monkeypatch.setattr(github, "token", lambda: FAKE_TOKEN)
+    monkeypatch.setattr(github, "gh_path", lambda: None)
+    monkeypatch.setattr(github, "_request", fake)
+    closed = github.find_pr("o/r", "claude/relaxed-x", "closed")
+    assert closed["number"] == 9 and closed["merged"] is True
+    assert closed["merge_commit_sha"] == "def456" and closed["head_ref"] == "claude/relaxed-x"
+    assert "state=closed" in seen[-1] and "head=o%3Aclaude%2Frelaxed-x" in seen[-1]
+    opened = github.find_open_pr("o/r", "claude/relaxed-x")
+    assert "state=open" in seen[-1]
+    for key in ("route", "number", "url", "labels", "draft"):
+        assert key in opened, key
+    assert opened["url"] == "https://github.com/o/r/pull/9"
+    with pytest.raises(ValueError):
+        github.find_pr("o/r", "x", "merged")
 
 
 # --- 4. a full run with a fake `claude` on PATH --------------------------------------------------
@@ -780,7 +1187,7 @@ def test_phase_workflow_dispatch_takes_the_head_ref_that_keys_the_group(name):
     assert "type: string" in text
 
 
-@pytest.mark.parametrize("name", ALL_WORKFLOWS)
+@pytest.mark.parametrize("name", EVERY_WORKFLOW)
 def test_no_workflow_run_line_interpolates_an_expression(name):
     """Script injection: a `${{ }}` in a run: line is pasted into the shell before it runs.
     Every value reaches the script through a step-level env var instead."""
@@ -790,11 +1197,37 @@ def test_no_workflow_run_line_interpolates_an_expression(name):
 
 
 @pytest.mark.parametrize("name", ("sdlc-design.yml", "sdlc-build.yml"))
-def test_merge_fired_workflows_only_look_at_sdlc_branches(name):
-    """A closed PR on any other branch is not this framework's business."""
+def test_merge_fired_workflows_find_the_change_from_the_merged_pr(name):
+    """HANDOFF 4(a): the head rule `startsWith(head.ref, 'sdlc/')` never matched a
+    web-session intent PR (head `claude/...`). Any merge into the default branch starts the
+    job; its first step after the framework checkout finds the change, and a merge that
+    carries none skips every later step (one green job of about 20 s)."""
     text = workflow(name)
-    assert "startsWith(github.event.pull_request.head.ref, 'sdlc/')" in text
-    assert "github.event_name != 'pull_request'" in text  # the dispatch path still runs
+    assert "startsWith(github.event.pull_request.head.ref, 'sdlc/')" not in text
+    assert "github.event_name == 'workflow_dispatch'" in text  # the dispatch path still runs
+    assert "github.event.pull_request.merged == true" in text
+    steps = text.split("    steps:\n", 1)[1]
+    find = steps.index("id: find")
+    assert steps.index("path: framework") < find < steps.index("actions/setup-node@")
+    assert find < steps.index("runner_setup.py") < steps.index("project_setup.py")
+    find_line = next(ln for ln in steps.splitlines() if "--find-change" in ln).strip()
+    phase = "b" if name == "sdlc-design.yml" else "c"
+    assert find_line == (
+        "run: python framework/plugin/ci/run_phase.py --root . --plugin-dir framework "
+        f'--phase {phase} --id "$CHANGE_ID" --head-ref "$HEAD_REF" --repo "$REPO" '
+        '--pr-number "$PR_NUMBER" --find-change'
+    )
+    assert "PR_NUMBER: ${{ github.event.pull_request.number }}" in steps
+    # every step after the find step is conditional on a change having been found
+    after = steps[find:].split("\n      - ")[1:]
+    assert len(after) == 5
+    for step in after:
+        assert "if: steps.find.outputs.change_id != ''" in step, step
+    # the phase run gets the id the find step printed, through an env var
+    assert after[-1].count("CHANGE_ID: ${{ steps.find.outputs.change_id }}") == 1
+    find_step = steps[find:].split("\n      - ")[0]
+    assert "CHANGE_ID: ${{ inputs.change_id }}" in find_step
+    assert "GITHUB_TOKEN: ${{ github.token }}" in find_step
 
 
 def test_digest_workflow_is_scheduled_and_needs_no_model_credential():
@@ -811,7 +1244,7 @@ def test_digest_workflow_is_scheduled_and_needs_no_model_credential():
     assert KEY_VAR not in text and TOKEN_VAR not in text
 
 
-@pytest.mark.parametrize("name", ALL_WORKFLOWS)
+@pytest.mark.parametrize("name", EVERY_WORKFLOW)
 def test_workflow_steps_are_python_or_the_pinned_cli(name):
     for line in workflow(name).splitlines():
         stripped = line.strip()
@@ -822,7 +1255,7 @@ def test_workflow_steps_are_python_or_the_pinned_cli(name):
             ), body
 
 
-@pytest.mark.parametrize("name", ALL_WORKFLOWS)
+@pytest.mark.parametrize("name", EVERY_WORKFLOW)
 def test_workflow_uses_no_other_secret(name):
     text = workflow(name)
     assert set(re.findall(r"secrets\.([A-Za-z_][A-Za-z0-9_]*)", text)) <= {KEY_VAR, TOKEN_VAR}
@@ -830,7 +1263,7 @@ def test_workflow_uses_no_other_secret(name):
     assert "${{ secrets.GITHUB_TOKEN }}" not in text  # github.token is the documented form
 
 
-@pytest.mark.parametrize("name", ALL_WORKFLOWS)
+@pytest.mark.parametrize("name", EVERY_WORKFLOW)
 def test_workflow_checks_out_the_pinned_framework_beside_the_project(name):
     text = workflow(name)
     assert 'repository: "{{FRAMEWORK_REPO}}"' in text
@@ -929,7 +1362,9 @@ def test_phase_workflow_installs_the_project_toolchain_before_the_phase(name):
     steps = workflow(name).split("    steps:\n", 1)[1]
     assert "run: python framework/plugin/ci/project_setup.py --root ." in steps
     assert steps.index("runner_setup.py") < steps.index("project_setup.py")
-    assert steps.index("project_setup.py") < steps.index("run_phase.py")
+    # the phase run is the last run_phase.py line (design and build first find the change)
+    assert steps.index("project_setup.py") < steps.rindex("run_phase.py")
+    assert "--find-change" not in steps[steps.rindex("run_phase.py") :]
 
 
 def test_project_setup_runs_the_configured_command(project):
