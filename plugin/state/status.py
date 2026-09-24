@@ -70,6 +70,11 @@ class Status:
     # and these fields for a label act a CI run committed under the automation identity.
     risk_accepted_by: list[dict[str, str]] = field(default_factory=list)
     iterations_reset_by: str | None = None
+    # when the last reset label was performed (0.2.17): a second reset by the same person
+    # leaves ``iterations_reset_by`` unchanged, and the gate's ``owner_actions`` check reads
+    # the commit that lowered the count for a recorded act - this stamp is that record (the
+    # second ``sdlc:reset-iterations`` on sample change 0002, 2026-09-24, parked on it)
+    iterations_reset_at: str | None = None
     tests_unlocked_by: str | None = None
     # Decision 25: the PR of gate (a)-(e) was closed without a merge; why, and when.
     abandoned_reason: str | None = None
@@ -126,7 +131,12 @@ class Status:
             for e in self.risk_accepted_by
         ):
             raise ValueError("risk_accepted_by must be a list of {item, actor} entries")
-        for name in ("iterations_reset_by", "tests_unlocked_by", "abandoned_reason"):
+        for name in (
+            "iterations_reset_by",
+            "iterations_reset_at",
+            "tests_unlocked_by",
+            "abandoned_reason",
+        ):
             value = getattr(self, name)
             if value is not None and (not isinstance(value, str) or not value.strip()):
                 raise ValueError(f"{name} must be a non-empty string or null")
@@ -199,6 +209,7 @@ class Status:
             self.iterations = 0
             self.panel_calls = 0  # one un-park verb resets both counts (decision 21)
             self.iterations_reset_by = actor
+            self.iterations_reset_at = _now()
         elif label == c.UNLOCK_TESTS_LABEL:
             self.tests_locked = False
             self.tests_unlocked_by = actor

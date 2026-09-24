@@ -92,6 +92,7 @@ def test_status_round_trip_and_schema(tmp_path):
         "tests_locked",
         "risk_accepted_by",  # decision 24: the label actors
         "iterations_reset_by",
+        "iterations_reset_at",  # 0.2.17: the stamp of the last reset label
         "tests_unlocked_by",
         "abandoned_reason",  # decision 25
         "created_at",
