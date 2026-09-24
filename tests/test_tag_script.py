@@ -90,6 +90,90 @@ def test_the_tag_is_created_once_and_never_moved(repo, capsys, monkeypatch):
     )
 
 
+class _FakeResponse:
+    def __init__(self, status, payload):
+        self.status, self._payload = status, payload
+
+    def read(self):
+        return json.dumps(self._payload).encode("utf-8")
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+
+def _opener(script: dict):
+    """An urlopen stand-in: ``script`` maps (method, url tail) to (status, payload); a
+    status of 404 is raised the way urllib raises it."""
+    import urllib.error
+
+    calls = []
+
+    def opener(req, timeout=0):
+        key = (req.get_method(), req.full_url.rsplit("/repos/", 1)[1])
+        calls.append((key, req.data, dict(req.header_items())))
+        status, payload = script[key]
+        if status >= 400:
+            raise urllib.error.HTTPError(req.full_url, status, "nope", {}, None)
+        return _FakeResponse(status, payload)
+
+    opener.calls = calls
+    return opener
+
+
+def test_a_release_page_is_created_once_with_generated_notes():
+    made = _opener(
+        {
+            ("GET", "o/r/releases/tags/v0.2.18"): (404, {}),
+            ("POST", "o/r/releases"): (
+                201,
+                {"html_url": "https://github.com/o/r/releases/tag/v0.2.18"},
+            ),
+        }
+    )
+    assert sdlc_tag.create_release("o/r", "v0.2.18", "tok", made) == (
+        "https://github.com/o/r/releases/tag/v0.2.18"
+    )
+    (_get, post) = made.calls
+    assert json.loads(post[1]) == {
+        "tag_name": "v0.2.18",
+        "name": "v0.2.18",
+        "generate_release_notes": True,
+    }
+    assert post[2]["Authorization"] == "Bearer tok"
+    # the tag already has a release page: nothing is created
+    exists = _opener({("GET", "o/r/releases/tags/v0.2.18"): (200, {"id": 1})})
+    assert sdlc_tag.create_release("o/r", "v0.2.18", "tok", exists) == "exists"
+    assert len(exists.calls) == 1
+    # a refusal is reported, never raised
+    refused = _opener(
+        {("GET", "o/r/releases/tags/v0.2.18"): (404, {}), ("POST", "o/r/releases"): (403, {})}
+    )
+    assert sdlc_tag.create_release("o/r", "v0.2.18", "tok", refused) == "failed:403"
+
+
+def test_main_reports_the_release_and_skips_it_without_a_token(repo, capsys, monkeypatch):
+    work, _bare = repo
+    monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+    monkeypatch.delenv("GITHUB_REPOSITORY", raising=False)
+    assert sdlc_tag.main(["--root", str(work)]) == 0
+    assert "release=skipped" in capsys.readouterr().out
+    monkeypatch.setenv("GITHUB_TOKEN", "tok")
+    monkeypatch.setenv("GITHUB_REPOSITORY", "o/r")
+    monkeypatch.setattr(sdlc_tag, "create_release", lambda repo, tag, token: f"made:{repo}:{tag}")
+    assert sdlc_tag.main(["--root", str(work)]) == 0
+    out = capsys.readouterr().out
+    assert "created=false" in out and "release=made:o/r:v0.2.15" in out  # the tag stood
+    assert sdlc_tag.main(["--root", str(work), "--no-release"]) == 0
+    assert "release=skipped" in capsys.readouterr().out
+    monkeypatch.setattr(sdlc_tag, "create_release", lambda repo, tag, token: "failed:403")
+    assert sdlc_tag.main(["--root", str(work)]) == 0
+    captured = capsys.readouterr()
+    assert "release=failed:403" in captured.out and "was not created" in captured.err
+
+
 def test_a_missing_manifest_is_exit_1(tmp_path, capsys):
     assert sdlc_tag.main(["--root", str(tmp_path)]) == 1
     assert "manifest" in capsys.readouterr().err

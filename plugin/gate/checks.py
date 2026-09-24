@@ -996,19 +996,25 @@ def check_panel(ctx: GateContext) -> CheckResult:
         )
     standing = ledger.active(entries)
     # a closing names its ledger line (``decided (by panel #n):``, 0.2.15), so the words after
-    # it may be tidied; the 0.2.14 form without the number is matched on the decision text
-    by_n = {e.get("n"): e for e in entries if e.get("kind") in ("concern", "policy")}
-    concern_decisions = {
-        " ".join(str(e.get("decision", "")).split()).lower()
-        for e in standing
+    # it may be tidied; the 0.2.14 form without the number is matched on the decision text.
+    # The line may live in an earlier phase's ledger: a concern closed at (b) stays closed
+    # through (c), (d) and (e) (0.2.18; the first build under deferred review parked here)
+    earlier = [
+        e
+        for _ph, phase_entries in ledger.load_ledgers(ctx.change_dir, ctx.phase)
+        for e in phase_entries
         if e.get("kind") in ("concern", "policy")
+    ]
+    by_n = {e.get("n") for e in earlier}
+    concern_decisions = {
+        " ".join(str(e.get("decision", "")).split()).lower() for e in ledger.active(earlier)
     }
     for n, item in ledger.panel_closings(spec):
         if n is not None:
             if n not in by_n:
                 problems.append(
-                    f"spec.md closes a concern by panel decision {n}, which the ledger lacks: "
-                    f"{item[:80]}"
+                    f"spec.md closes a concern by panel decision {n}, which no ledger of "
+                    f"phases {'/'.join(ledger.phases_up_to(ctx.phase))} carries: {item[:80]}"
                 )
             continue
         text = ledger.PANEL_CLOSING_RE.sub("", item, count=1).strip().lower()

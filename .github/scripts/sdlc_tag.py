@@ -14,9 +14,16 @@ session's git proxy refuses ``refs/tags/*`` (HTTP 403, 2026-09-24, session 4): i
 branches only. The workflow token may push a tag (``permissions: contents: write``), and a
 tag push starts no other workflow (the token rule), which is what a release tag needs.
 
+With ``GITHUB_TOKEN`` and ``GITHUB_REPOSITORY`` in the environment (the workflow passes
+``github.token``), the tag also gets a GitHub Release page named after it, with the
+notes GitHub generates from the merged pull requests, unless one exists already; the
+Releases page then lists every version, not only the ones made by hand (0.2.15–0.2.17
+were tags only). A release that cannot be created is reported, never fatal: the tag is
+what projects pin.
+
 Outputs (``$GITHUB_OUTPUT`` and stdout): ``version=<version>``, ``tag=v<version>``,
-``created=true|false``. Exit 0 in both cases; 1 when the manifest is missing or carries no
-version; 2 when git fails.
+``created=true|false``, ``release=<url>|exists|skipped|failed``. Exit 0 in all of those
+cases; 1 when the manifest is missing or carries no version; 2 when git fails.
 """
 
 from __future__ import annotations
@@ -27,6 +34,9 @@ import os
 import re
 import subprocess
 import sys
+import urllib.error
+import urllib.request
+from collections.abc import Callable
 from pathlib import Path
 
 MANIFEST = Path(".claude-plugin") / "plugin.json"
@@ -62,6 +72,43 @@ def tag_exists(root: Path, tag: str, remote: str) -> bool:
     return any(line.strip() for line in out.splitlines())
 
 
+API = "https://api.github.com"
+
+
+def _api(
+    method: str, url: str, token: str, body: dict | None, opener: Callable
+) -> tuple[int, dict]:
+    data = json.dumps(body).encode("utf-8") if body is not None else None
+    req = urllib.request.Request(url, data=data, method=method)
+    req.add_header("Authorization", f"Bearer {token}")
+    req.add_header("Accept", "application/vnd.github+json")
+    req.add_header("X-GitHub-Api-Version", "2022-11-28")
+    if data is not None:
+        req.add_header("Content-Type", "application/json")
+    try:
+        with opener(req, timeout=30) as resp:
+            payload = resp.read().decode("utf-8")
+            return resp.status, (json.loads(payload) if payload else {})
+    except urllib.error.HTTPError as exc:
+        return exc.code, {}
+
+
+def create_release(
+    repo: str, tag: str, token: str, opener: Callable = urllib.request.urlopen
+) -> str:
+    """A GitHub Release for ``tag`` in ``owner/repo`` with generated notes: the release's
+    URL when created, ``exists`` when the tag already has one, ``failed:<status>`` when
+    the API refused (reported, never fatal)."""
+    status, _ = _api("GET", f"{API}/repos/{repo}/releases/tags/{tag}", token, None, opener)
+    if status == 200:
+        return "exists"
+    body = {"tag_name": tag, "name": tag, "generate_release_notes": True}
+    status, data = _api("POST", f"{API}/repos/{repo}/releases", token, body, opener)
+    if status == 201:
+        return str(data.get("html_url") or "created")
+    return f"failed:{status}"
+
+
 def write_outputs(values: dict[str, str]) -> None:
     lines = [f"{k}={v}" for k, v in values.items()]
     print("\n".join(lines))
@@ -76,6 +123,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--root", default=".")
     p.add_argument("--remote", default="origin")
     p.add_argument("--dry-run", action="store_true", help="report; create and push nothing")
+    p.add_argument("--no-release", action="store_true", help="the tag only, no release page")
     args = p.parse_args(argv)
     root = Path(args.root).resolve()
     try:
@@ -90,7 +138,16 @@ def main(argv: list[str] | None = None) -> int:
     except SystemExit as exc:
         print(str(exc), file=sys.stderr)
         return 1 if "manifest" in str(exc) else 2
-    write_outputs({"version": version, "tag": tag, "created": str(created).lower()})
+    token = os.environ.get("GITHUB_TOKEN", "").strip()
+    repo = os.environ.get("GITHUB_REPOSITORY", "").strip()
+    release = "skipped"
+    if not args.dry_run and not args.no_release and token and repo:
+        release = create_release(repo, tag, token)
+        if release.startswith("failed"):
+            print(f"the release page for {tag} was not created ({release})", file=sys.stderr)
+    write_outputs(
+        {"version": version, "tag": tag, "created": str(created).lower(), "release": release}
+    )
     return 0
 
 
