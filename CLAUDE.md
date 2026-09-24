@@ -33,7 +33,8 @@ Run tests and lint before reporting any task complete, and paste the output. If 
 
 ## Things Claude gets wrong
 <!-- One line per recurring mistake; added when a review flags the same finding twice. -->
-- (none yet)
+- Editing a guardrail file (CLAUDE.md, .claude/**, REVIEW.md, sdlc.yaml) from a session: the tools are denied; propose the exact lines in docs/PROGRESS.md and leave the edit to the owner.
+- Rewriting documentation with a script: the auto-mode classifier blocks a scripted rewrite whose payload reads like instructions; edit docs with the Edit tool, sentence by sentence.
 
 ## SDLC framework
 - Every change lives in `changes/<id>-<slug>/` (intent.md → spec.md + plan.md → evidence/);
