@@ -1377,3 +1377,70 @@ def test_gate_b_parks_on_a_risk_list_item_declared_under_flagged_concerns(design
     assert result.result == "park"
     hit = next(ch for ch in result.failed if ch.name == "risk_list")
     assert hit.details["hits"] == {"auth": ["spec.md Flagged concerns: text"]}
+
+
+# --- decision 24: the owner's label, performed and committed by the CI run ---------------------
+def _label_act(change: Path, label: str, actor: str, items=("auth",)) -> None:
+    from state import conventions as c
+
+    st = status_mod.read_status(change)
+    st.record_owner_label(label, actor, list(items) if label == c.ACCEPT_RISK_LABEL else None)
+    status_mod.write_status(change, st)
+
+
+def test_owner_actions_honours_a_label_the_owner_applied_and_the_run_committed(project):
+    """The CI run performs sdlc:accept-risk and commits status.yaml under the automation
+    identity; the recorded actor is what the check reads (a person: passes)."""
+    from state import conventions as c
+
+    root, change = project
+    _label_act(change, c.ACCEPT_RISK_LABEL, "luissiviero")
+    commit_all(root, "owner labels applied: sdlc:accept-risk", author=BOT_AUTHOR)
+    verdict(root, "c")
+    result = gate.run_gate(root, "0001", "c", dry_run=True)
+    assert "owner_actions" not in _names(result, False)
+    oa = next(ch for ch in result.checks if ch.name == "owner_actions")
+    assert oa.details["label_actors"] == {"risk_accepted": {"auth": "luissiviero"}}
+    assert "applied by the owner's label" in oa.reason
+
+
+def test_owner_actions_rejects_a_label_actor_that_is_the_automation_identity(project):
+    """A recorded actor that is a bot never passes, whoever wrote the commit: a run cannot
+    un-park itself (decision 11)."""
+    from state import conventions as c
+
+    root, change = project
+    st = status_mod.read_status(change)
+    st.iterations = 2
+    status_mod.write_status(change, st)
+    commit_all(root, "build(0001): two fix rounds")
+    st = status_mod.read_status(change)
+    st.iterations = 0
+    st.iterations_reset_by = "github-actions[bot]"
+    status_mod.write_status(change, st)
+    sha = commit_all(root, "owner labels applied: sdlc:reset-iterations", author=BOT_AUTHOR)
+    verdict(root, "c")
+    result = gate.run_gate(root, "0001", "c", dry_run=True)
+    oa = next(ch for ch in result.failed if ch.name == "owner_actions")
+    assert f"iterations dropped from 2 to 0 in commit {sha[:10]}" in oa.reason
+    assert "'github-actions[bot]' is not a person" in oa.reason
+    assert "sdlc:reset-iterations" in oa.need
+    # the same drop recorded with the owner's login passes
+    git(root, "reset", "-q", "--hard", "HEAD~1")
+    _label_act(change, c.RESET_ITERATIONS_LABEL, "luissiviero")
+    commit_all(root, "owner labels applied: sdlc:reset-iterations", author=BOT_AUTHOR)
+    verdict(root, "c")
+    result = gate.run_gate(root, "0001", "c", dry_run=True)
+    assert result.result == "continue"
+    oa = next(ch for ch in result.checks if ch.name == "owner_actions")
+    assert oa.details["label_actors"] == {"iterations_reset": "luissiviero"}
+    # a bot-authored acceptance with no actor recorded is the CLI case: still refused
+    git(root, "reset", "-q", "--hard", "HEAD~1")
+    accept_risk(root, change)
+    commit_all(root, "accept the auth risk", author=BOT_AUTHOR)
+    verdict(root, "c")
+    oa = next(
+        ch for ch in gate.run_gate(root, "0001", "c", dry_run=True).failed
+        if ch.name == "owner_actions"
+    )  # fmt: skip
+    assert "no owner label actor is recorded" in oa.reason

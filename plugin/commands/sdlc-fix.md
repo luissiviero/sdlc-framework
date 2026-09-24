@@ -1,5 +1,5 @@
 ---
-description: The single change-request handler for every phase's PR — read the unresolved review comments and the failing checks on the change's open PR, bump the iteration count, re-run the phase on the same branch with the comments as constraints (closing flagged concerns the owner decided in a comment, fixing findings, re-collecting evidence), push, refresh the PR summary, and park at the iteration cap. Re-runnable.
+description: The single change-request handler for every phase's PR, the intent PR included — read the unresolved review comments and the failing checks on the change's open PR, perform the owner's un-park labels, bump the iteration count, re-run the phase on the PR's own branch with the comments as constraints (correcting intent.md at gate (a), closing flagged concerns the owner decided in a comment, fixing findings, re-collecting evidence), push, refresh the PR summary, and park at the iteration cap. Re-runnable; started by the owner's "Request changes" review in CI.
 argument-hint: [change id, e.g. 0001] [--comments "<pasted review comments>"]
 disable-model-invocation: true
 allowed-tools: Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/state/cli.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/gate/cli.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/evidence/collect.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/review/cli.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/pr/cli.py" *), Bash(git *), Bash(gh *), Read, Glob, Grep, Edit, Write, Agent
@@ -10,8 +10,10 @@ allowed-tools: Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/state/cli.py" *), Bash(
 Source: build guide step 26 (article p.34 steps 4–6: "address the comments", "babysit the
 PR to merge", "the second occurrence of a finding edits CLAUDE.md"), step 8 (every phase
 command re-runnable after review comments), step 23 (a review comment can close a flagged
-concern), step 19 (iteration cap). This command never redesigns: it applies what the owner
-asked for, on the branch the PR already has, and stops at the cap.
+concern), step 19 (iteration cap), decisions 22 and 24 (the owner's "Request changes" review
+starts this command in CI through `sdlc-fix.yml` → `run_phase.py --phase fix`, on the PR's
+own head; the owner's un-park labels are performed first). This command never redesigns: it
+applies what the owner asked for, on the branch the PR already has, and stops at the cap.
 
 Unattended: never ask the owner a question. If a comment is ambiguous, apply the reading
 that changes the least, say so in `evidence/fix-response.md`, and let the owner correct it.
@@ -23,11 +25,16 @@ whole, so the step it carried is lost (the first `/sdlc-fix` run of 2026-09-23 l
 final commit to `cd ... && python ...`).
 
 ## 0. Preconditions
-- Change id `$ARGUMENTS` (first token). `state/cli.py show`: the phase is `b`, `c`, `d` or
-  `e`; if `parked_reason` is set, this command is the way to clear it (below), so continue.
-- Branch: phase `b` → `sdlc/<id>/b`; `c`, `d`, `e` → `sdlc/<id>/c`. `git fetch origin`,
-  `git switch <branch>`, `git pull --ff-only origin <branch>`.
-- Load the policy skills and, for phase `b`, `spec-template` and `plan-template`.
+- Change id `$ARGUMENTS` (first token). `state/cli.py show`: the phase is `a`, `b`, `c`,
+  `d` or `e` (an `abandoned` change has no fix round: stop and say so); if `parked_reason`
+  is set, this command is the way to clear it (below), so continue.
+- Branch: phase `a` → the intent PR's head — `sdlc/<id>/a`, or the branch the web session
+  pushed the intent from (`claude/...`), read from the open PR that carries
+  `changes/<id>-<slug>/intent.md`; phase `b` → `sdlc/<id>/b`; `c`, `d`, `e` → `sdlc/<id>/c`.
+  In CI the run is already on that branch. `git fetch origin`, `git switch <branch>`,
+  `git pull --ff-only origin <branch>`.
+- Load the policy skills and, for phase `a`, `intent-template`; for phase `b`,
+  `spec-template` and `plan-template`.
 
 ## 1. Collect the change requests
 Gather, in this order of preference, and stop at the first that works:
@@ -39,8 +46,14 @@ Gather, in this order of preference, and stop at the first that works:
 3. The text passed after `--comments` in `$ARGUMENTS`, or pasted into the prompt.
 Keep only the unresolved comments and the failing checks. Also read
 `changes/<id>-<slug>/status.yaml: parked_reason` and `evidence/gate-<phase>.json` "What I
-need from you": a park is a change request from the gate. If there is nothing to do, say
-so and stop.
+need from you": a park is a change request from the gate. The owner's un-park labels on
+the PR (`sdlc:accept-risk`, `sdlc:reset-iterations`, `sdlc:unlock-tests`; decision 24) are
+change requests too: in CI the run performed them before this command started (they are in
+`status.yaml` with the label's actor: `risk_accepted_by`, `iterations_reset_by`,
+`tests_unlocked_by`); by hand, perform them now with
+`python "${CLAUDE_PLUGIN_ROOT}/plugin/state/cli.py" apply-labels --root "${CLAUDE_PROJECT_DIR}" --id <id> --pr <n>`
+(a label the automation identity applied is rejected and left on the PR). If there is
+nothing to do, say so and stop.
 
 ## 2. Register the round and bump the iteration (build guide step 19)
 `python "${CLAUDE_PLUGIN_ROOT}/plugin/gate/cli.py" start-run --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase <phase>`
@@ -55,13 +68,20 @@ count with `set-iterations` when they want another round.
 ## 3. Apply the requests as constraints
 Turn every comment into a constraint on the phase's artifact and re-run the phase's own
 steps on it (the commands are idempotent):
+- **Phase (a)** — comments on `intent.md` of the unmerged intent PR: apply the owner's
+  corrections to the intent (the `intent-template` skill defines the sections) without
+  re-running the brainstorm and without asking anything; a comment that is a question is
+  answered in the intent's own words where the answer is in the comments, else carried into
+  "Open questions". Keep the header status `proposed`. This is the one place a run edits
+  `intent.md` (decision 22; OPERATING_MODEL §4.1 and §8): once the intent PR is merged it is
+  never edited again. There is no adversarial verdict at (a); step 5 runs the gate only.
 - **Phase (b)** — comments on `spec.md` / `plan.md`. A comment that decides a flagged
   concern (any wording that settles it, e.g. "close concern 2: use half-up rounding",
   "C3: decided, library exceptions are not person-facing") is applied by editing that item
   under `## Flagged concerns` so it starts with `decided <the owner's words>` (the closing
   word first; `[x]` is equivalent). Other comments change Requirements, Design or the plan.
   Then re-run the planning rules of `/sdlc-design` step 4 on `plan.md` if the spec changed
-  in a way the plan depends on. Never edit `intent.md`.
+  in a way the plan depends on. Never edit `intent.md` at (b) or later.
 - **Phase (c)** — comments on the diff: change the code as asked, keep `plan.md` in sync
   in the same commit, re-run the touched tests; `/sdlc-build` steps 4–6 apply (simplifier
   and verifier again when code changed).
@@ -76,10 +96,14 @@ A comment asking for a guardrail-file edit (`.claude/**`, `CLAUDE.md`, `REVIEW.m
 
 ## 4. Commit and push on the same branch
 `python "${CLAUDE_PLUGIN_ROOT}/plugin/state/cli.py" commit-phase --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase <phase> --message "fix(<id>): <what the comments asked>" --paths <files> --push`
-(never a new branch, never a force-push; the PR keeps its history).
+(never a new branch, never a force-push; the PR keeps its history). When the PR's head is
+not the phase's framework branch (an intent PR pushed from a web session), add
+`--branch <head>` so the commit lands on the branch the PR carries.
 
 ## 5. Verdict and gate again
-The verdict never outlives the diff it judged. The reviewer has no shell, so write the diff
+At phase (a) skip the verdict: run
+`python "${CLAUDE_PLUGIN_ROOT}/plugin/gate/cli.py" check --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase a`
+and go to step 6. For every other phase: the verdict never outlives the diff it judged. The reviewer has no shell, so write the diff
 it reads first, in one call (`<base>` is the default branch, `origin/<default>` after the
 fetch: the base the gate diffs against):
 `git diff --stat --patch --output=changes/<id>-<slug>/evidence/diff-<phase>.patch <base>...HEAD`,
@@ -92,7 +116,9 @@ round: the next round is the owner's.
 
 ## 6. Refresh the PR and answer the comments
 `python "${CLAUDE_PLUGIN_ROOT}/plugin/pr/cli.py" upsert --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase <phase>`
-regenerates the summary and the label. **Never post a PR comment, reply, review or
+(with `--head <head>` when the PR's head is not the phase's framework branch) regenerates
+the summary and the label; the owner's own labels (release approval, un-park verbs) are
+never removed by it. **Never post a PR comment, reply, review or
 @mention** (decision 20: nothing pushes to the owner; a comment is a notification). Instead
 write `changes/<id>-<slug>/evidence/fix-response.md`: one line per request — what changed
 and the commit, or why it was not applied — and commit it with the evidence; it is in the

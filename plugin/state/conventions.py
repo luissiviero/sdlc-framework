@@ -11,6 +11,10 @@ from pathlib import Path
 
 # --- phases -----------------------------------------------------------------------------
 PHASES = ("a", "b", "c", "d", "e", "f")
+# Not a phase: the end state of a change whose PR the owner closed without merging at a gate
+# (a)-(e) (decision 25). ``status.yaml: phase: abandoned``; the branches are kept and every
+# workflow's guard skips the change. Never a value of ``gate.phase`` or a branch name.
+ABANDONED = "abandoned"
 PHASE_NAMES = {
     "a": "plan",
     "b": "design",
@@ -49,6 +53,14 @@ NEEDS_HUMAN_LABEL = "sdlc:needs-human"
 # guide step 29): the owner applies it on the build PR; the production-gate hook and the
 # release workflow read it through the PR, never from an environment variable.
 RELEASE_APPROVED_LABEL = "sdlc:release-approved"
+# The owner's un-park verbs (decision 24; OPERATING_MODEL section 6): applied on the PR, read
+# by the next run (``state/unpark.py``), performed and recorded in ``status.yaml`` with the
+# label's actor, then removed from the PR so one application is one act. The CLI commands
+# ``accept-risk``, ``set-iterations`` and ``unlock-tests`` stay for by-hand runs.
+ACCEPT_RISK_LABEL = "sdlc:accept-risk"
+RESET_ITERATIONS_LABEL = "sdlc:reset-iterations"
+UNLOCK_TESTS_LABEL = "sdlc:unlock-tests"
+UNPARK_LABELS = (ACCEPT_RISK_LABEL, RESET_ITERATIONS_LABEL, UNLOCK_TESTS_LABEL)
 
 
 def ready_label(phase: str) -> str:
@@ -67,6 +79,7 @@ def all_labels() -> list[str]:
     labels = [ready_label(p) for p in PHASES]
     labels += [approved_label(p) for p in ("c", "d")]
     labels.append(RELEASE_APPROVED_LABEL)
+    labels += list(UNPARK_LABELS)
     labels.append(NEEDS_HUMAN_LABEL)
     return labels
 

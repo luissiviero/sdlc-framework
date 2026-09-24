@@ -730,8 +730,9 @@ def check_design_scope(ctx: GateContext) -> CheckResult:
 
 # --- 12. owner-only state: accept-risk and set-iterations (build guide step 24.5) -------------
 OWNER_ACTIONS_NEED = (
-    "accept-risk and set-iterations are the owner's: run them on your machine or in your own "
-    "session and commit; a run cannot approve itself (decision 11)."
+    "accept-risk and set-iterations are the owner's: apply sdlc:accept-risk or "
+    "sdlc:reset-iterations on the pull request, or run the command on your machine or in "
+    "your own session and commit; a run cannot approve itself (decision 11)."
 )
 STATUS_HISTORY_LIMIT = "200"  # commits of status.yaml history the check walks back through
 
@@ -751,7 +752,28 @@ def _status_fields(ctx: GateContext, ref: str) -> dict[str, Any] | None:
     iterations = data.get("iterations")
     if isinstance(iterations, bool) or not isinstance(iterations, int):
         iterations = 0
-    return {"risk": risk, "iterations": iterations}
+    # decision 24: the actor of the owner label that made the change, when a label did
+    by = data.get("risk_accepted_by")
+    risk_by = {
+        str(e.get("item", "")).strip().lower(): str(e.get("actor", "")).strip()
+        for e in (by if isinstance(by, list) else [])
+        if isinstance(e, dict) and str(e.get("item", "")).strip()
+    }
+    reset_by = data.get("iterations_reset_by")
+    return {
+        "risk": risk,
+        "iterations": iterations,
+        "risk_by": risk_by,
+        "reset_by": str(reset_by).strip() if isinstance(reset_by, str) else None,
+    }
+
+
+def _label_actor_ok(actor: str | None, identities: list[str]) -> bool:
+    """A recorded label actor that is a person: not empty, not the automation identity, not
+    a ``[bot]`` account (``state/unpark.py`` applies the same rule before recording)."""
+    from state.unpark import is_automation_actor  # noqa: PLC0415
+
+    return bool(actor) and not is_automation_actor(str(actor), identities)
 
 
 def _status_history(ctx: GateContext) -> list[tuple[str, str, str]]:
@@ -782,11 +804,18 @@ def check_owner_actions(ctx: GateContext) -> CheckResult:
     (PROGRESS known gap); this ties them to the commit author. The newest commit that gained
     a risk item and the newest that lowered the iteration count must not be the automation
     identity, and an acceptance that sits uncommitted in the working tree belongs to nobody:
-    the owner commits theirs."""
+    the owner commits theirs.
+
+    Decision 24: the owner's label on the PR is the other form of the act. A CI run performs
+    it and commits ``status.yaml`` under the automation identity, so a commit by that
+    identity passes when the same commit recorded the label's actor
+    (``risk_accepted_by[item]``, ``iterations_reset_by``) and that actor is a person. An
+    actor that is the automation identity or a ``[bot]`` account is rejected as before: a
+    run cannot un-park itself (decision 11)."""
     if ctx.diff is None:
         return _fail("owner_actions", ctx.diff_error, "Run the gate inside the project's git repo.")
     identities = automation_identity(ctx.config)
-    empty = {"risk": set(), "iterations": 0}
+    empty = {"risk": set(), "iterations": 0, "risk_by": {}, "reset_by": None}
     head = _status_fields(ctx, "HEAD") or empty
     tree_risk = {str(r).strip().lower() for r in ctx.status.risk_accepted if str(r).strip()}
     problems: list[str] = []
@@ -800,8 +829,8 @@ def check_owner_actions(ctx: GateContext) -> CheckResult:
             f"iterations dropped from {head['iterations']} to {ctx.status.iterations} in the "
             "working tree, in no commit"
         )
-    risk_event: tuple[str, str, str, list[str]] | None = None
-    drop_event: tuple[str, str, str, int, int] | None = None
+    risk_event: tuple[str, str, str, list[str], dict[str, str]] | None = None
+    drop_event: tuple[str, str, str, int, int, str | None] | None = None
     for sha, email, name in _status_history(ctx):
         if risk_event is not None and drop_event is not None:
             break
@@ -811,20 +840,46 @@ def check_owner_actions(ctx: GateContext) -> CheckResult:
         before = _status_fields(ctx, f"{sha}^") or empty
         added = sorted(now["risk"] - before["risk"])
         if added and risk_event is None:
-            risk_event = (sha, email, name, added)
+            # the label actors this very commit recorded for the items it added
+            by = {
+                i: a
+                for i, a in now["risk_by"].items()
+                if i in added and a != before["risk_by"].get(i)
+            }
+            risk_event = (sha, email, name, added, by)
         if now["iterations"] < before["iterations"] and drop_event is None:
-            drop_event = (sha, email, name, before["iterations"], now["iterations"])
+            reset_by = now["reset_by"] if now["reset_by"] != before["reset_by"] else None
+            drop_event = (sha, email, name, before["iterations"], now["iterations"], reset_by)
+    labels: dict[str, Any] = {}
     if risk_event and is_automation(risk_event[2], risk_event[1], identities):
-        problems.append(
-            f"risk_accepted gained {', '.join(risk_event[3])} in commit {risk_event[0][:10]}, "
-            f"authored by the automation identity ({risk_event[2]} <{risk_event[1]}>)"
-        )
+        sha, email, name, added, by = risk_event
+        unlabelled = [i for i in added if not _label_actor_ok(by.get(i), identities)]
+        if unlabelled:
+            problems.append(
+                f"risk_accepted gained {', '.join(unlabelled)} in commit {sha[:10]}, "
+                f"authored by the automation identity ({name} <{email}>)"
+                + (
+                    f"; the recorded label actor {by[unlabelled[0]]!r} is not a person"
+                    if by.get(unlabelled[0])
+                    else " and no owner label actor is recorded for it"
+                )
+            )
+        else:
+            labels["risk_accepted"] = {i: by[i] for i in added}
     if drop_event and is_automation(drop_event[2], drop_event[1], identities):
-        problems.append(
-            f"iterations dropped from {drop_event[3]} to {drop_event[4]} in commit "
-            f"{drop_event[0][:10]}, authored by the automation identity "
-            f"({drop_event[2]} <{drop_event[1]}>)"
-        )
+        sha, email, name, was, now_count, reset_by = drop_event
+        if _label_actor_ok(reset_by, identities):
+            labels["iterations_reset"] = reset_by
+        else:
+            problems.append(
+                f"iterations dropped from {was} to {now_count} in commit {sha[:10]}, "
+                f"authored by the automation identity ({name} <{email}>)"
+                + (
+                    f"; the recorded label actor {reset_by!r} is not a person"
+                    if reset_by
+                    else " and no owner label actor is recorded for it"
+                )
+            )
     if problems:
         return _fail(
             "owner_actions",
@@ -835,8 +890,10 @@ def check_owner_actions(ctx: GateContext) -> CheckResult:
         )
     return _ok(
         "owner_actions",
-        "risk acceptances and iteration resets, if any, were committed by the owner",
+        "risk acceptances and iteration resets, if any, were committed by the owner or "
+        "applied by the owner's label",
         risk_accepted=sorted(tree_risk),
+        label_actors=labels,
     )
 
 

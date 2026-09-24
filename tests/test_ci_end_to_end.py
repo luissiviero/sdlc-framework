@@ -69,7 +69,7 @@ if os.environ.get("FAKE_CLAUDE_MODE") == "idle":  # a session that gives up at o
     sys.exit(0)
 plugin = Path(argv[argv.index("--plugin-dir") + 1])
 command, change_id = argv[argv.index("-p") + 1].split()
-phase = {"/sdlc:sdlc-design": "b", "/sdlc:sdlc-build": "c"}[command]
+phase = {"/sdlc:sdlc-design": "b", "/sdlc:sdlc-build": "c", "/sdlc:sdlc-fix": "fix"}[command]
 root = Path.cwd()
 state = str(plugin / "plugin" / "state" / "cli.py")
 gate = str(plugin / "plugin" / "gate" / "cli.py")
@@ -93,6 +93,37 @@ def give_up(message):  # the session stops in step 0 and reports, as the prose t
 
 # step 0: /sdlc-design reads the change and stops on a park; /sdlc-build asks the preflight
 shown = json.loads(run(state, "show", "--root", ".", "--id", change_id))["status"]
+if phase == "fix":  # the recorded fix round of /sdlc-fix: one comment, applied literally
+    fix_phase = shown["phase"]
+    if fix_phase == "abandoned":
+        give_up("No fix round: the change is abandoned.")
+    on = ["--branch", os.environ["FAKE_FIX_BRANCH"]] if os.environ.get("FAKE_FIX_BRANCH") else []
+    run(gate, "start-run", "--root", ".", "--id", change_id, "--phase", fix_phase)
+    run(gate, "bump-iteration", "--root", ".", "--id", change_id, ok=(0, 3))
+    target = change / ("intent.md" if fix_phase == "a" else "spec.md")
+    target.write_text(
+        target.read_text(encoding="utf-8") + "\\nRevised per the owner's review comment.\\n",
+        encoding="utf-8",
+    )
+    (change / "evidence" / "fix-response.md").write_text(
+        "- comment 1: applied in the commit below\\n", encoding="utf-8"
+    )
+    run(state, "commit-phase", "--root", ".", "--id", change_id, "--phase", fix_phase,
+        "--message", f"fix({change_id}): apply the review comment", "--push", *on)
+    if fix_phase != "a":
+        head = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=root, text=True).strip()
+        verdict = {"schema_version": 1, "phase": fix_phase, "head": head, "verdict": "continue",
+                   "reasons": [], "classification": "routine", "classification_reasons": [],
+                   "at": "2026-09-24T10:00:00Z"}
+        (change / "evidence" / f"adversarial-review-{fix_phase}.json").write_text(
+            json.dumps(verdict), encoding="utf-8"
+        )
+    run(gate, "check", "--root", ".", "--id", change_id, "--phase", fix_phase, ok=(0, 3, 4))
+    run(state, "commit-phase", "--root", ".", "--id", change_id, "--phase", fix_phase,
+        "--message", f"fix({change_id}): gate ({fix_phase}) evidence", "--push", *on)
+    print(json.dumps({"type": "result", "is_error": False, "result": "fix round done",
+                      "total_cost_usd": 0.2, "num_turns": 5}))
+    sys.exit(0)
 if phase == "b" and shown["parked_reason"]:
     give_up(f"Phase (b) cannot start: parked_reason is set: {shown['parked_reason']}")
 if phase == "c":
@@ -147,9 +178,12 @@ print(json.dumps({"type": "result", "is_error": False, "result": f"{word} done",
                   "total_cost_usd": 0.5, "num_turns": 3}))
 """
 
-# The fake gh: every call is logged; `pr list` finds nothing, `pr view <n> --json files` lists
-# FAKE_PR_FILES, `pr create` answers with the PR URL (or refuses as GitHub does while the
-# repository setting is off), `pr edit` and `label create` succeed silently.
+# The fake gh: every call is logged; `pr list` finds nothing (or PR #7 when its --head is
+# FAKE_OPEN_PR_HEAD), `pr view <n> --json files` lists FAKE_PR_FILES, `pr view <n> --json
+# <fields>` answers with PR #7 and its FAKE_PR_LABELS, `api .../issues/<n>/events` answers
+# with FAKE_LABEL_EVENTS (one page), `pr create` answers with the PR URL (or refuses as
+# GitHub does while the repository setting is off), `pr edit` and `label create` succeed
+# silently.
 FAKE_GH = """
 import json, os, sys
 
@@ -158,8 +192,24 @@ with open(os.environ["FAKE_GH_LOG"], "a", encoding="utf-8") as log:
     log.write(json.dumps(args) + "\\n")
 if "--body-file" in args and "-" in args:
     sys.stdin.read()
+
+
+def open_pr(head):
+    labels = json.loads(os.environ.get("FAKE_PR_LABELS", "[]"))
+    return {"number": 7, "url": os.environ["FAKE_PR_URL"], "isDraft": False, "state": "OPEN",
+            "mergeCommit": None, "headRefName": head, "baseRefName": "main",
+            "labels": [{"name": name} for name in labels]}
+
+
 if args[:2] == ["pr", "list"]:
-    print("[]")
+    head = args[args.index("--head") + 1] if "--head" in args else ""
+    mine = bool(head) and head == os.environ.get("FAKE_OPEN_PR_HEAD")
+    print(json.dumps([open_pr(head)]) if mine else "[]")
+elif args[:2] == ["pr", "view"] and args[-2:] != ["--json", "files"] and "--json" in args:
+    print(json.dumps(open_pr(os.environ.get("FAKE_OPEN_PR_HEAD", "sdlc/0001/b"))))
+elif args[:1] == ["api"] and "/issues/" in args[1] and "/events" in args[1]:
+    page = args[1].rsplit("page=", 1)[-1]
+    print(json.dumps(json.loads(os.environ.get("FAKE_LABEL_EVENTS", "[]")) if page == "1" else []))
 elif args[:2] == ["pr", "view"] and args[-2:] == ["--json", "files"]:
     # the merged pull request's files, as `gh pr view <n> --json files` prints them
     paths = json.loads(os.environ.get("FAKE_PR_FILES", "[]"))
@@ -186,7 +236,7 @@ def launcher(bindir: Path, name: str, script_text: str) -> Path:
     return cmd if os.name == "nt" else sh
 
 
-WORKFLOW_FILE = {"b": "sdlc-design.yml", "c": "sdlc-build.yml"}
+WORKFLOW_FILE = {"b": "sdlc-design.yml", "c": "sdlc-build.yml", "fix": "sdlc-fix.yml"}
 
 
 def workflow_run_line(phase: str = "b", find: bool = False) -> list[str]:
@@ -251,11 +301,13 @@ def run_phase_job(
     phase: str = "b",
     step_env: dict | None = None,
     find: bool = False,
+    run_line: list[str] | None = None,
 ) -> tuple:
     """Run the workflow's step with its env; return (process, parsed JSON, gh calls).
 
     ``step_env`` overrides the step's env block (a merge-fired run: no CHANGE_ID, the PR's
-    head and number); ``find`` runs the step before the phase run that finds the change."""
+    head and number); ``find`` runs the step before the phase run that finds the change;
+    ``run_line`` runs another step's line (the abandon workflow's) with the same fakes."""
     bindir = tmp_path / "bin"
     bindir.mkdir(parents=True)
     claude = launcher(bindir, "claude", FAKE_CLAUDE)
@@ -295,7 +347,7 @@ def run_phase_job(
         }
     )
     argv = [sys.executable if a == "python" else env.get(a[1:], "") if a.startswith("$") else a
-            for a in workflow_run_line(phase, find)]  # fmt: skip
+            for a in (run_line or workflow_run_line(phase, find))]  # fmt: skip
     if os.name == "nt":
         argv += ["--claude", str(claude)]  # CreateProcess does not resolve claude.cmd on PATH
     proc = subprocess.run(
@@ -495,3 +547,184 @@ def test_an_unrelated_merge_finds_no_change_and_stays_green(checkout, tmp_path):
     assert lines[1] == "reason=pull request #5 touches no changes/<id>-<slug>/ folder"
     assert written == "change_id=\n"
     assert "sdlc/0001/b" not in git(root, "branch", "--list")  # nothing else ran
+
+
+# --- the fix round, the owner labels and abandon (decisions 22, 24, 25; plugin 0.2.13) --------
+FIX_STEP_ENV = {"CHANGE_ID": "0001", "HEAD_REF": "sdlc/0001/b", "PR_NUMBER": "7"}
+
+
+def _design_pr(root: Path, tmp_path: Path) -> None:
+    """The design job has run: PR #7 on sdlc/0001/b waits for the owner (gate (b))."""
+    proc, out, _calls = run_phase_job(root, tmp_path / "design", "ok")
+    assert proc.returncode == 0 and out["result"] == "wait", proc.stdout + proc.stderr
+
+
+def _fix_job(root: Path, tmp_path: Path, **env: str) -> tuple:
+    step_env = {**FIX_STEP_ENV, "FAKE_OPEN_PR_HEAD": "sdlc/0001/b", "FAKE_PR_LABELS": "[]", **env}
+    return run_phase_job(root, tmp_path, "ok", phase="fix", step_env=step_env)
+
+
+def test_a_request_changes_review_starts_a_fix_round_on_the_design_pr(checkout, tmp_path):
+    """Decision 22: the owner's review starts sdlc-fix.yml → run_phase.py --phase fix on the
+    PR's head; the round applies the comment, re-runs the gate, pushes and refreshes the
+    PR summary; nobody is notified (no comment, no review, no assignment)."""
+    root, bare = checkout
+    _design_pr(root, tmp_path)
+    proc, out, calls = _fix_job(root, tmp_path / "fix")
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert out["phase"] == "fix" and out["gate_phase"] == "b" and out["change_id"] == "0001"
+    assert out["result"] == "wait" and out["label"] == "sdlc:b-ready"  # the owner again
+    assert out["dispatched"] is None and out["cost_usd"] == 0.2
+    assert out["pr"] == {**out["pr"], "ok": True, "number": 7, "head": "sdlc/0001/b"}
+    assert out["owner_labels"]["ok"] and out["owner_labels"]["performed"] == []
+    spec = remote_file(bare, "sdlc/0001/b", f"{CHANGE}/spec.md")
+    assert "Revised per the owner's review comment." in spec
+    status = remote_file(bare, "sdlc/0001/b", f"{CHANGE}/status.yaml")
+    assert "phase: b" in status and "iterations: 1" in status
+    assert "applied in the commit below" in remote_file(
+        bare, "sdlc/0001/b", f"{CHANGE}/evidence/fix-response.md"
+    )
+    run_file = json.loads(remote_file(bare, "sdlc/0001/b", f"{CHANGE}/evidence/run-b.json"))
+    assert run_file["spend_usd"] == 0.2
+    edit = [c for c in calls if c[:2] == ["pr", "edit"]]
+    assert edit and edit[-1][2] == "7"  # the existing PR is refreshed, never a second one
+    assert not any(c[:2] == ["pr", "create"] for c in calls)
+    for verb in ("comment", "review"):
+        assert not any(verb in c for c in calls), calls
+
+
+def test_an_owner_label_is_performed_before_the_round_and_a_bot_s_is_refused(checkout, tmp_path):
+    """Decision 24: sdlc:reset-iterations applied by the owner resets the count and records
+    the actor; the run commits that under the automation identity and the gate's
+    owner_actions check accepts it; sdlc:unlock-tests applied by a bot stays on the PR."""
+    root, bare = checkout
+    _design_pr(root, tmp_path)
+    git(root, "checkout", "-q", "sdlc/0001/b")
+    change = root / CHANGE
+    st = status_mod.read_status(change)
+    st.iterations = 3  # three rounds spent: the next one would park at the cap
+    status_mod.write_status(change, st)
+    git(root, "add", f"{CHANGE}/status.yaml")
+    git(root, "commit", "-q", "-m", "fix(0001): three rounds")
+    git(root, "push", "-q", "origin", "sdlc/0001/b")
+    git(root, "config", "--unset", "user.name")  # the runner commits as the automation identity
+    git(root, "config", "--unset", "user.email")
+    (tmp_path / "gitconfig").write_text("", encoding="utf-8")
+    events = [
+        {"event": "labeled", "label": {"name": "sdlc:reset-iterations"},
+         "actor": {"login": "luissiviero"}},
+        {"event": "labeled", "label": {"name": "sdlc:unlock-tests"},
+         "actor": {"login": "github-actions[bot]"}},
+    ]  # fmt: skip
+    proc, out, calls = _fix_job(
+        root,
+        tmp_path / "fix",
+        FAKE_PR_LABELS=json.dumps(["sdlc:b-ready", "sdlc:reset-iterations", "sdlc:unlock-tests"]),
+        FAKE_LABEL_EVENTS=json.dumps(events),
+        GIT_CONFIG_GLOBAL=str(tmp_path / "gitconfig"),
+        GIT_CONFIG_NOSYSTEM="1",
+    )
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    labels = out["owner_labels"]
+    assert labels["performed"] == [{"label": "sdlc:reset-iterations", "actor": "luissiviero"}]
+    assert labels["rejected"][0]["label"] == "sdlc:unlock-tests"
+    assert "cannot un-park itself" in labels["rejected"][0]["reason"]
+    assert labels["removed"] == ["sdlc:reset-iterations"] and labels["commit"]["ok"]
+    assert out["result"] == "wait"  # the round ran and the gate passed: no park at the cap
+    status = remote_file(bare, "sdlc/0001/b", f"{CHANGE}/status.yaml")
+    assert "iterations: 1" in status and "iterations_reset_by: luissiviero" in status
+    assert "tests_unlocked_by: null" in status
+    log = git(bare, "log", "--format=%an|%s", "refs/heads/sdlc/0001/b")
+    assert "github-actions[bot]|owner labels applied: sdlc:reset-iterations" in log
+    gate_file = json.loads(remote_file(bare, "sdlc/0001/b", f"{CHANGE}/evidence/gate-b.json"))
+    owner = next(ch for ch in gate_file["checks"] if ch["name"] == "owner_actions")
+    assert owner["ok"] and owner["details"]["label_actors"] == {"iterations_reset": "luissiviero"}
+    removal = next(c for c in calls if c[:2] == ["pr", "edit"] and "--remove-label" in c)
+    assert removal[removal.index("--remove-label") + 1] == "sdlc:reset-iterations"
+    assert "sdlc:unlock-tests" not in removal
+
+
+def test_a_fix_round_on_a_web_session_intent_pr_edits_the_intent_on_its_own_head(
+    checkout, tmp_path
+):
+    """Decision 22 at gate (a): the intent PR was pushed from claude/relaxed-y (no
+    sdlc/<id>/a); the round runs on that head, corrects intent.md there and refreshes PR #7."""
+    root, bare = checkout
+    proc = run_py(
+        str(STATE_CLI), "new-change", "--root", str(root), "--title", "Second idea", cwd=root
+    )
+    assert proc.returncode == 0, proc.stderr
+    second = "changes/0002-second-idea"
+    (root / second / "intent.md").write_text(
+        RECORDED_INTENT.replace("0001", "0002"), encoding="utf-8", newline="\n"
+    )
+    git(root, "checkout", "-q", "-b", "claude/relaxed-y", "main")
+    git(root, "add", second)
+    git(root, "commit", "-q", "-m", "intent(0002): second idea")
+    git(root, "push", "-q", "-u", "origin", "claude/relaxed-y")
+    git(root, "checkout", "-q", "main")
+    proc, out, calls = run_phase_job(
+        root, tmp_path / "fix", "ok", phase="fix",
+        step_env={"CHANGE_ID": "0002", "HEAD_REF": "claude/relaxed-y", "PR_NUMBER": "7",
+                  "FAKE_OPEN_PR_HEAD": "claude/relaxed-y", "FAKE_PR_LABELS": "[]",
+                  "FAKE_FIX_BRANCH": "claude/relaxed-y"},
+    )  # fmt: skip
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert out["gate_phase"] == "a" and out["result"] == "wait" and out["label"] == "sdlc:a-ready"
+    assert out["pr"]["ok"] and out["pr"]["head"] == "claude/relaxed-y"
+    intent = remote_file(bare, "claude/relaxed-y", f"{second}/intent.md")
+    assert "Revised per the owner's review comment." in intent
+    assert "phase: a" in remote_file(bare, "claude/relaxed-y", f"{second}/status.yaml")
+    assert "sdlc/0002/a" not in git(bare, "branch", "--list")  # nothing else was pushed
+    edit = next(c for c in calls if c[:2] == ["pr", "edit"])
+    assert edit[2] == "7" and not any(c[:2] == ["pr", "create"] for c in calls)
+    listed = next(c for c in calls if c[:2] == ["pr", "list"])
+    assert listed[listed.index("--head") + 1] == "claude/relaxed-y"
+
+
+def abandon_run_line() -> list[str]:
+    text = (WORKFLOW_DIR / "sdlc-abandon.yml").read_text(encoding="utf-8")
+    lines = re.findall(r"(?m)^\s+run: (python framework/plugin/state/cli\.py abandon .*)$", text)
+    assert len(lines) == 1
+    return [
+        re.sub(r"\$(\w+)", lambda m: {"CHANGE_ID": "0001", "PR_NUMBER": "7"}[m.group(1)], a)
+        for a in shlex.split(lines[0])
+    ]
+
+
+def test_a_pr_closed_without_a_merge_abandons_the_change_and_every_run_skips_it(checkout, tmp_path):
+    """Decision 25: the owner closes design PR #7; the abandon workflow finds the change
+    from the PR (its head here), records the end state on every branch of the change and
+    keeps the branches; a later dispatch of the design or a fix round skips."""
+    root, bare = checkout
+    _design_pr(root, tmp_path)
+    git(root, "checkout", "-q", "sdlc/0001/b")  # the abandon job checks the head out
+    step_env = {"CHANGE_ID": "", "HEAD_REF": "sdlc/0001/b", "PR_NUMBER": "7"}
+    proc, _data, _calls = run_phase_job(
+        root, tmp_path / "find", "ok", phase="fix", step_env=step_env, find=True
+    )
+    assert proc.returncode == 0 and proc.stdout.splitlines()[0] == "change_id=0001"
+    proc, _data, _calls = run_phase_job(
+        root,
+        tmp_path / "abandon",
+        "ok",
+        phase="fix",
+        step_env=step_env,
+        run_line=abandon_run_line(),
+    )
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    out = json.loads(proc.stdout[proc.stdout.index("{") :])
+    assert out["phase"] == "abandoned" and out["reason"] == "pull request 7 closed without a merge"
+    assert sorted(b["branch"] for b in out["branches"]) == ["sdlc/0001/a", "sdlc/0001/b"]
+    for branch in ("sdlc/0001/a", "sdlc/0001/b"):
+        assert "phase: abandoned" in remote_file(bare, branch, f"{CHANGE}/status.yaml")
+    assert "## Flagged concerns" in remote_file(bare, "sdlc/0001/b", f"{CHANGE}/spec.md")
+    # a fresh runner dispatches the design again, or a review starts a fix round: both skip
+    git(root, "checkout", "-q", "main")
+    git(root, "branch", "-q", "-D", "sdlc/0001/b")
+    proc, out, _calls = run_phase_job(root, tmp_path / "design-again", "ok")
+    assert proc.returncode == 0 and out == {
+        "skipped": "change 0001 is abandoned: pull request 7 closed without a merge"
+    }
+    proc, out, _calls = _fix_job(root, tmp_path / "fix-again")
+    assert proc.returncode == 0 and out["skipped"].startswith("change 0001 is abandoned")

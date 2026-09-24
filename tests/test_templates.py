@@ -182,7 +182,15 @@ def test_bands_yaml_has_the_p44_shape_with_authorization_per_route():
 WORKFLOW_DIR = TEMPLATE / ".github" / "workflows"
 PHASE_WORKFLOWS = ("sdlc-design.yml", "sdlc-build.yml", "sdlc-test.yml", "sdlc-deploy.yml")
 RELEASE_WORKFLOW = "sdlc-release.yml"  # build guide step 32.3 (plugin 0.2.12)
-ALL_WORKFLOWS = (*PHASE_WORKFLOWS, "sdlc-digest.yml", RELEASE_WORKFLOW)
+FIX_WORKFLOW = "sdlc-fix.yml"  # decisions 22 and 24 (plugin 0.2.13)
+ABANDON_WORKFLOW = "sdlc-abandon.yml"  # decision 25 (plugin 0.2.13)
+ALL_WORKFLOWS = (
+    *PHASE_WORKFLOWS,
+    "sdlc-digest.yml",
+    RELEASE_WORKFLOW,
+    FIX_WORKFLOW,
+    ABANDON_WORKFLOW,
+)
 # this repository's own installed copies (PR #21) and its substrate smoke test
 REPO_WORKFLOW_DIR = TEMPLATE.parent / ".github" / "workflows"
 
@@ -287,6 +295,62 @@ def test_merge_fired_jobs_find_the_change_instead_of_filtering_the_head(name):
     for step in job["steps"][find + 1 :]:
         assert step["if"] == "steps.find.outputs.change_id != ''", step
     assert job["steps"][-1]["env"]["CHANGE_ID"] == "${{ steps.find.outputs.change_id }}"
+
+
+def test_fix_workflow_starts_on_request_changes_and_on_the_owner_labels():
+    """Decision 22: the owner's "Request changes" review submission starts the fix round on
+    the PR's own head; decision 24: so does one of the three un-park labels. The workflow
+    token's own review or label never does (a [bot] reviewer is refused besides)."""
+    data = _workflow_yaml(FIX_WORKFLOW)
+    on = _triggers(data)
+    assert on["pull_request_review"]["types"] == ["submitted"]
+    assert on["pull_request"]["types"] == ["labeled"]
+    assert "branches" not in on["pull_request"]  # any base: the PR's head is what matters
+    assert on["workflow_dispatch"]["inputs"]["change_id"]["required"] is True
+    job = data["jobs"]["fix"]
+    assert "github.event.review.state == 'changes_requested'" in job["if"]
+    assert "!endsWith(github.event.review.user.login, '[bot]')" in job["if"]
+    for label in ("sdlc:accept-risk", "sdlc:reset-iterations", "sdlc:unlock-tests"):
+        assert f"github.event.label.name == '{label}'" in job["if"], label
+    assert "sdlc:c-approved" not in job["if"] and "sdlc:d-approved" not in job["if"]
+    # the checkout is the PR's head, never the review event's merge ref
+    checkout = job["steps"][0]
+    assert checkout["with"]["ref"] == (
+        "${{ inputs.head_ref || github.event.pull_request.head.ref || github.ref }}"
+    )
+    runs = [step["run"] for step in job["steps"] if "run" in step]
+    assert runs[-1] == (
+        "python framework/plugin/ci/run_phase.py --root . --plugin-dir framework --phase fix "
+        '--id "$CHANGE_ID" --head-ref "$HEAD_REF" --repo "$REPO" --pr-number "$PR_NUMBER" '
+        '--ref "$DEFAULT_BRANCH"'
+    )
+    find = next(step for step in job["steps"] if step.get("id") == "find")
+    assert "--phase fix" in find["run"] and "--find-change" in find["run"]
+    assert job["steps"][-1]["env"]["PR_NUMBER"] == "${{ github.event.pull_request.number }}"
+    assert data["concurrency"]["group"] == (
+        "sdlc-${{ inputs.head_ref || github.event.pull_request.head.ref }}"
+    )
+
+
+def test_abandon_workflow_records_the_end_state_without_a_model():
+    """Decision 25: a PR closed without a merge abandons its change on every branch of the
+    change; not a phase run (no claude, no model credential, contents: write only)."""
+    data = _workflow_yaml(ABANDON_WORKFLOW)
+    on = _triggers(data)
+    assert on == {"pull_request": {"types": ["closed"]}}
+    assert data["permissions"] == {"contents": "write", "pull-requests": "read"}
+    job = data["jobs"]["abandon"]
+    assert job["if"] == "${{ github.event.pull_request.merged == false }}"
+    assert job["steps"][0]["with"]["ref"] == "${{ github.event.pull_request.head.ref }}"
+    runs = [step["run"] for step in job["steps"] if "run" in step]
+    assert runs[-1] == (
+        'python framework/plugin/state/cli.py abandon --root . --id "$CHANGE_ID" '
+        '--reason "pull request $PR_NUMBER closed without a merge" --push --all-branches'
+    )
+    assert job["steps"][-1]["if"] == "steps.find.outputs.change_id != ''"
+    text = (WORKFLOW_DIR / ABANDON_WORKFLOW).read_text(encoding="utf-8")
+    for absent in ("claude-code@", "runner_setup.py", "setup-node", "secrets.", "--phase b"):
+        assert absent not in text, absent
 
 
 def test_pin_script_is_installed_and_reads_the_template_pin(tmp_path):

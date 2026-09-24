@@ -82,6 +82,10 @@ def test_status_round_trip_and_schema(tmp_path):
         "external_ref",
         "risk_accepted",
         "tests_locked",
+        "risk_accepted_by",  # decision 24: the label actors
+        "iterations_reset_by",
+        "tests_unlocked_by",
+        "abandoned_reason",  # decision 25
         "created_at",
         "updated_at",
         "schema_version",
@@ -602,3 +606,227 @@ def test_gitops_changed_files_and_commit_paths(repo):
     _git(root, "add", "changes/0001-x/gone.md")
     (folder / "gone.md").unlink()
     assert gitops.commit_paths(root, ["changes/0001-x"], "nothing") is None
+
+
+# --- decision 24: the owner's un-park labels, recorded with their actor --------------------------
+def test_record_owner_label_performs_the_act_and_keeps_the_actor(tmp_path):
+    change_dir, st = status.new_change(tmp_path, "Labels")
+    st.iterations = 3
+    st.lock_tests()
+    st.record_owner_label(c.ACCEPT_RISK_LABEL, "luissiviero", ["auth", "data migrations"])
+    st.record_owner_label(c.RESET_ITERATIONS_LABEL, "luissiviero")
+    st.record_owner_label(c.UNLOCK_TESTS_LABEL, "reviewer-2")
+    status.write_status(change_dir, st)
+    back = status.read_status(change_dir)
+    assert back.risk_accepted == ["auth", "data migrations"]
+    assert back.risk_accepted_by == [
+        {"item": "auth", "actor": "luissiviero"},
+        {"item": "data migrations", "actor": "luissiviero"},
+    ]
+    assert back.iterations == 0 and back.iterations_reset_by == "luissiviero"
+    assert back.tests_locked is False and back.tests_unlocked_by == "reviewer-2"
+    with pytest.raises(ValueError):
+        st.record_owner_label("sdlc:needs-human", "luissiviero")
+    with pytest.raises(ValueError):
+        st.record_owner_label(c.RESET_ITERATIONS_LABEL, "  ")
+    assert set(c.UNPARK_LABELS) <= set(c.all_labels())
+    assert c.RELEASE_APPROVED_LABEL in c.all_labels()
+
+
+def test_unpark_perform_honours_a_person_and_rejects_the_automation_identity(tmp_path):
+    from state import unpark
+
+    change_dir, st = status.new_change(tmp_path, "Labels")
+    st.phase = "c"
+    st.iterations = 4
+    gate_file = change_dir / "evidence" / "gate-c.json"
+    gate_file.write_text(
+        json.dumps(
+            {
+                "checks": [
+                    {"name": "risk_list", "ok": False, "details": {"hits": {"auth": ["src/auth"]}}}
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    assert unpark.risk_hits(change_dir, "c") == ["auth"]
+    assert unpark.risk_hits(change_dir, "b") == [] and unpark.risk_hits(change_dir, None) == []
+    present = {
+        c.ACCEPT_RISK_LABEL: "luissiviero",
+        c.RESET_ITERATIONS_LABEL: "github-actions[bot]",
+        c.UNLOCK_TESTS_LABEL: "dependabot[bot]",
+    }
+    performed, rejected = unpark.perform(
+        st, present, ["github-actions[bot]"], unpark.risk_hits(change_dir, "c")
+    )
+    assert performed == [{"label": c.ACCEPT_RISK_LABEL, "actor": "luissiviero", "items": ["auth"]}]
+    assert [r["label"] for r in rejected] == [c.RESET_ITERATIONS_LABEL, c.UNLOCK_TESTS_LABEL]
+    assert all("cannot un-park itself" in r["reason"] for r in rejected)
+    assert st.iterations == 4 and st.risk_accepted_by == [{"item": "auth", "actor": "luissiviero"}]
+    # accept-risk with no recorded hit accepts nothing and is left on the PR
+    st2 = status.new_change(tmp_path, "No hit", change_id="0002")[1]
+    performed, rejected = unpark.perform(st2, {c.ACCEPT_RISK_LABEL: "luissiviero"}, [], [])
+    assert performed == [] and "nothing to accept" in rejected[0]["reason"]
+    # a project's own automation identity counts as automation too
+    performed, rejected = unpark.perform(
+        st2, {c.RESET_ITERATIONS_LABEL: "ci-robot"}, ["ci-robot"], []
+    )
+    assert performed == [] and rejected[0]["actor"] == "ci-robot"
+
+
+class _FakeGitHub:
+    """The three calls ``unpark.apply_from_pr`` makes, answered from recorded payloads."""
+
+    def __init__(self, labels, actors, ok=True):
+        self.labels, self.actors, self.ok = labels, actors, ok
+        self.removed: list[str] = []
+
+    def pr_by_number(self, repo, number, cwd=None):
+        if not self.ok:
+            return {"ok": False, "reason": "HTTP 404"}
+        return {"ok": True, "number": number, "labels": list(self.labels)}
+
+    def label_actor(self, repo, number, label):
+        return {"ok": True, "actor": self.actors.get(label)}
+
+    def set_labels(self, repo, number, add, remove, cwd=None):
+        self.removed += remove
+        return {"ok": True, "added": add, "removed": remove}
+
+
+def test_apply_from_pr_records_the_actor_and_removes_the_performed_label(tmp_path):
+    from state import unpark
+
+    change_dir, st = status.new_change(tmp_path, "Labels")
+    st.iterations = 3
+    status.write_status(change_dir, st)
+    github = _FakeGitHub(
+        ["sdlc:needs-human", c.RESET_ITERATIONS_LABEL, c.UNLOCK_TESTS_LABEL],
+        {c.RESET_ITERATIONS_LABEL: "luissiviero", c.UNLOCK_TESTS_LABEL: "github-actions[bot]"},
+    )
+    out = unpark.apply_from_pr(tmp_path, change_dir, {}, "owner/name", 7, github=github)
+    assert out["ok"] and [p["label"] for p in out["performed"]] == [c.RESET_ITERATIONS_LABEL]
+    assert [r["label"] for r in out["rejected"]] == [c.UNLOCK_TESTS_LABEL]
+    assert github.removed == [c.RESET_ITERATIONS_LABEL]  # the rejected one stays on the PR
+    back = status.read_status(change_dir)
+    assert back.iterations == 0 and back.iterations_reset_by == "luissiviero"
+    assert back.tests_unlocked_by is None
+    # no owner label at all: nothing read, nothing written
+    quiet = _FakeGitHub(["sdlc:b-ready"], {})
+    out = unpark.apply_from_pr(tmp_path, change_dir, {}, "owner/name", 7, github=quiet)
+    assert out["ok"] and out["performed"] == [] and "no owner label" in out["reason"]
+    # an unreadable PR consumes nothing and says why
+    out = unpark.apply_from_pr(
+        tmp_path, change_dir, {}, "owner/name", 7, github=_FakeGitHub([], {}, ok=False)
+    )
+    assert out["ok"] is False and "HTTP 404" in out["reason"]
+
+
+def test_cli_apply_labels_uses_the_github_client(tmp_path, capsys, monkeypatch):
+    from pr import github
+
+    change_dir, st = status.new_change(tmp_path, "Labels")
+    st.iterations = 2
+    status.write_status(change_dir, st)
+    fake = _FakeGitHub([c.RESET_ITERATIONS_LABEL], {c.RESET_ITERATIONS_LABEL: "luissiviero"})
+    monkeypatch.setattr(github, "pr_by_number", fake.pr_by_number)
+    monkeypatch.setattr(github, "label_actor", fake.label_actor)
+    monkeypatch.setattr(github, "set_labels", fake.set_labels)
+    rc = cli.main(
+        ["apply-labels", "--root", str(tmp_path), "--id", "0001", "--repo", "o/n", "--pr", "7"]
+    )
+    out = json.loads(capsys.readouterr().out)
+    assert rc == 0 and out["performed"][0]["actor"] == "luissiviero"
+    assert status.read_status(change_dir).iterations == 0
+
+
+# --- decision 25: abandon ------------------------------------------------------------------
+def test_abandon_is_an_end_state(tmp_path):
+    change_dir, st = status.new_change(tmp_path, "Abandoned")
+    st.set_phase("b")
+    st.park("open_concerns: 2 open")
+    st.abandon("pull request 9 closed without a merge")
+    status.write_status(change_dir, st)
+    back = status.read_status(change_dir)
+    assert back.phase == c.ABANDONED and back.abandoned
+    assert back.abandoned_reason == "pull request 9 closed without a merge"
+    assert back.parked_reason is None and back.gate.phase == "b"  # the record is kept
+    with pytest.raises(ValueError):
+        back.set_phase("c")
+    assert status.merged_at_gate_e(back).phase == c.ABANDONED  # never reads as merged
+    assert c.ABANDONED not in c.PHASES
+    with pytest.raises(ValueError):
+        c.branch_name("0001", c.ABANDONED)
+
+
+def test_cli_abandon_marks_every_branch_of_the_change_on_the_remote(
+    repo, tmp_path, capsys, monkeypatch
+):
+    """The abandon workflow runs on the closed PR's head; with --all-branches the other
+    sdlc/<id>/* branches on the remote say the same, so a later dispatch of any phase
+    finds the end state on the branch it switches to."""
+    bare = tmp_path / "remote.git"
+    _git(tmp_path, "init", "-q", "--bare", "-b", "main", str(bare))
+    _git(repo, "remote", "add", "origin", str(bare))
+    _git(repo, "push", "-q", "-u", "origin", "main")
+    change_dir, _st = status.new_change(repo, "Abandoned")
+    (change_dir / "intent.md").write_text("# Intent\n", encoding="utf-8")
+    assert _commit_phase(repo, "a", "intent(0001): abandoned", capsys)[0] == 0
+    _git(repo, "push", "-q", "-u", "origin", "sdlc/0001/a")
+    assert _commit_phase(repo, "b", "design(0001): spec", capsys)[0] == 0
+    _git(repo, "push", "-q", "-u", "origin", "sdlc/0001/b")
+    _git(repo, "config", "--unset", "user.name")  # a runner has no identity of its own
+    _git(repo, "config", "--unset", "user.email")
+    (tmp_path / "gitconfig").write_text("", encoding="utf-8")  # nor a global one
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(tmp_path / "gitconfig"))
+    monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
+    rc = cli.main(
+        ["abandon", "--root", str(repo), "--id", "0001", "--reason", "pull request 9 closed "
+         "without a merge", "--push", "--all-branches"]
+    )  # fmt: skip
+    out = json.loads(capsys.readouterr().out)
+    assert rc == 0 and out["phase"] == "abandoned"
+    assert [b["branch"] for b in out["branches"]] == ["sdlc/0001/b", "sdlc/0001/a"]
+    assert all(b["pushed"] and b["commit"] for b in out["branches"])
+    for branch in ("sdlc/0001/a", "sdlc/0001/b"):
+        text = _git(bare, "show", f"refs/heads/{branch}:changes/0001-abandoned/status.yaml")
+        assert "phase: abandoned" in text and "pull request 9 closed" in text
+        author = _git(bare, "log", "-1", "--format=%an", f"refs/heads/{branch}")
+        assert author.strip() == "github-actions[bot]"
+    assert _git(repo, "rev-parse", "--abbrev-ref", "HEAD").strip() == "sdlc/0001/b"
+    # idempotent: a second close changes nothing
+    rc = cli.main(
+        ["abandon", "--root", str(repo), "--id", "0001", "--reason", "pull request 9 closed "
+         "without a merge", "--push"]
+    )  # fmt: skip
+    out = json.loads(capsys.readouterr().out)
+    assert rc == 0 and out["branches"][0]["commit"] is None and out["branches"][0]["already"]
+    # commit-phase refuses to run a phase on it
+    rc, _out, err = _commit_phase(repo, "c", "build(0001): nothing", capsys)
+    assert rc == 2 and "abandoned" in err
+    assert "sdlc/0001/c" not in _git(repo, "branch", "--list")  # nothing was created for it
+
+
+def test_commit_phase_on_a_named_branch(repo, capsys):
+    """Decision 22: a fix round on an intent PR a web session pushed from claude/... commits
+    on that head, never on sdlc/<id>/a."""
+    change_dir, _st = status.new_change(repo, "Web intent")
+    (change_dir / "intent.md").write_text("# Intent\n", encoding="utf-8")
+    _git(repo, "checkout", "-q", "-b", "claude/relaxed-x")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-q", "-m", "intent(0001): web intent")
+    (change_dir / "intent.md").write_text("# Intent\nCorrected.\n", encoding="utf-8")
+    rc = cli.main(
+        ["commit-phase", "--root", str(repo), "--id", "0001", "--phase", "a", "--message",
+         "fix(0001): corrected", "--branch", "claude/relaxed-x"]
+    )  # fmt: skip
+    out = json.loads(capsys.readouterr().out)
+    assert rc == 0 and out["branch"] == "claude/relaxed-x" and out["commit"]
+    assert _git(repo, "rev-parse", "--abbrev-ref", "HEAD").strip() == "claude/relaxed-x"
+    assert "sdlc/0001/a" not in _git(repo, "branch", "--list")
+    rc = cli.main(
+        ["commit-phase", "--root", str(repo), "--id", "0001", "--phase", "a", "--message",
+         "x", "--branch", "claude/missing"]
+    )  # fmt: skip
+    assert rc == 2 and "does not exist" in capsys.readouterr().err

@@ -500,6 +500,8 @@ WORKFLOWS = (
     ".github/workflows/sdlc-deploy.yml",
     ".github/workflows/sdlc-digest.yml",
     ".github/workflows/sdlc-release.yml",  # build guide step 32.3 (plugin 0.2.12)
+    ".github/workflows/sdlc-fix.yml",  # decisions 22 and 24 (plugin 0.2.13)
+    ".github/workflows/sdlc-abandon.yml",  # decision 25 (plugin 0.2.13)
 )
 PIN_SCRIPT = ".github/scripts/sdlc_pin.py"
 
@@ -510,12 +512,14 @@ def test_init_upgrade_installs_the_release_workflow_beside_kept_ones(tmp_path):
     root = tmp_path / "proj"
     shutil.copytree(FIXTURE, root)
     _run_init(root)
-    release = root / WORKFLOWS[-1]
+    release = root / WORKFLOWS[5]
     release.unlink()  # the project as an older framework left it
     (root / WORKFLOWS[0]).write_text("name: an older design workflow\n", encoding="utf-8")
     report = _run_init(root)
-    assert report["files"][WORKFLOWS[-1]] == "created" and release.is_file()
-    assert report["files"][WORKFLOWS[0]] == "kept"
+    assert report["files"][WORKFLOWS[5]] == "created" and release.is_file()
+    # 0.2.13: a differing file is reported as outdated, so the owner knows to replace it
+    assert report["files"][WORKFLOWS[0]].startswith("outdated: differs from what plugin ")
+    assert "an older design workflow" in (root / WORKFLOWS[0]).read_text(encoding="utf-8")
     assert "python framework/plugin/release/cli.py run" in release.read_text(encoding="utf-8")
 
 
@@ -558,7 +562,8 @@ def test_init_keeps_a_workflow_the_owner_already_wrote(tmp_path):
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text("name: mine\non: workflow_dispatch\n", encoding="utf-8")
     report = _run_init(root)
-    assert report["files"][WORKFLOWS[2]] == "kept"
+    assert report["files"][WORKFLOWS[2]].startswith("outdated: ")
+    assert "replace it" in report["files"][WORKFLOWS[2]]
     assert target.read_text(encoding="utf-8") == "name: mine\non: workflow_dispatch\n"
     assert report["files"][WORKFLOWS[0]] == "created"  # the others are still installed
 
@@ -585,3 +590,79 @@ def test_init_substitution_helpers_are_pure(tmp_path):
     assert 'claude-code@"$CLAUDE_CODE_VERSION"' in text
     same = sdlc_init.render_workflow(".github/workflows/sdlc-design.yml", values, "main")
     assert "branches: [main]" in same
+
+
+# --- decision 23: GitHub only ------------------------------------------------------------------
+def _with_origin(root: Path, url: str | None) -> None:
+    _git_init(root, "main")
+    if url:
+        subprocess.run(
+            ["git", "-C", str(root), "remote", "add", "origin", url],
+            check=True,
+            capture_output=True,
+        )
+
+
+def test_remote_host_reads_every_url_form():
+    host = sdlc_init.remote_host
+    assert host("https://github.com/a/b.git") == "github.com"
+    assert host("git@github.com:a/b.git") == "github.com"
+    assert host("ssh://git@github.com/a/b") == "github.com"
+    assert host("https://user@GitHub.com/a/b") == "github.com"
+    assert host("https://gitlab.com/a/b.git") == "gitlab.com"
+    assert host("git@bitbucket.org:a/b.git") == "bitbucket.org"
+    for local in ("/tmp/remote.git", "../remote.git", "file:///tmp/r.git", "C:\\work\\r.git", ""):
+        assert host(local) is None, local
+
+
+def test_init_refuses_a_project_hosted_elsewhere(tmp_path):
+    """Every trigger, identity, label, check run and the digest issue are GitHub-specific:
+    a non-GitHub origin is refused with the reason and nothing is written."""
+    root = tmp_path / "proj"
+    shutil.copytree(FIXTURE, root)
+    _with_origin(root, "https://gitlab.com/someone/proj.git")
+    ok, note = sdlc_init.hosting(root)
+    assert ok is False and "gitlab.com, not github.com" in note and "decision 23" in note
+    proc = subprocess.run(
+        [sys.executable, str(sdlc_init.__file__), "--root", str(root), "--profile", "standard"],
+        capture_output=True,
+        text=True,
+    )
+    assert proc.returncode == 2
+    assert "not github.com" in proc.stderr
+    assert json.loads(proc.stdout.splitlines()[0])["error"].startswith("hosting:")
+    assert not (root / "sdlc.yaml").exists() and not (root / ".github").exists()
+    # --detect-only is refused the same way: the answer would mislead
+    proc = subprocess.run(
+        [sys.executable, str(sdlc_init.__file__), "--root", str(root), "--detect-only"],
+        capture_output=True,
+        text=True,
+    )
+    assert proc.returncode == 2
+
+
+def test_init_accepts_github_and_lets_a_local_or_missing_origin_through(tmp_path):
+    github = tmp_path / "gh"
+    shutil.copytree(FIXTURE, github)
+    _with_origin(github, "https://github.com/someone/proj.git")
+    report = _run_init(github)
+    assert report["hosting"] == "GitHub (https://github.com/someone/proj.git)"
+    assert (github / "sdlc.yaml").exists()
+    # a local bare remote (the fixture tests) or no remote at all: installed, with the note
+    local = tmp_path / "local"
+    shutil.copytree(FIXTURE, local)
+    bare = tmp_path / "remote.git"
+    subprocess.run(["git", "init", "-q", "--bare", str(bare)], check=True)
+    _with_origin(local, str(bare))
+    report = _run_init(local)
+    assert report["hosting"].startswith("not GitHub (local remote ")
+    assert "the CI plumbing will not run" in report["hosting"]
+    none = tmp_path / "none"
+    shutil.copytree(FIXTURE, none)
+    _with_origin(none, None)
+    assert _run_init(none)["hosting"] == (
+        "not GitHub (no origin remote): the CI plumbing will not run; the commands work by hand"
+    )
+    plain = tmp_path / "plain"  # not even a git repository (the layer-1 tests' case)
+    shutil.copytree(FIXTURE, plain)
+    assert _run_init(plain)["hosting"].startswith("not GitHub (not a git repository)")

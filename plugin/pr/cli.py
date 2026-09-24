@@ -3,7 +3,7 @@
 
     python "${CLAUDE_PLUGIN_ROOT}/plugin/pr/cli.py" description --root . --id 0001 --phase c
     python cli.py upsert --root . --id 0001 --phase c [--draft] [--ready] [--check-run]
-                                                      [--dry-run]
+                                                      [--head <branch>] [--dry-run]
     python cli.py check-run --root . --id 0001 --phase d
 
 ``description`` prints the body only (nothing else). ``upsert`` opens or updates the phase's
@@ -12,7 +12,12 @@ summary: route, url (or compare_url when no route exists), number, label, create
 ``--check-run`` it also posts the phase's check run, so the phase (d) runbook line is one
 command. ``check-run`` posts the phase's check run for HEAD (step 28) on its own. Exit 0 on
 success, 2 on a usage error; a missing GitHub route is not an error - it prints the body for
-the owner.
+the owner. ``--head`` names the PR's head branch when it is not the phase's framework branch
+(a fix round on an intent PR a web session pushed from ``claude/...``, decision 22).
+
+Labels: the PR carries one gate label at a time (``sdlc:<phase>-ready``,
+``sdlc:<phase>-approved``, ``sdlc:needs-human``); the owner's own labels - the release
+approval and the un-park verbs of decision 24 - are never removed by an upsert.
 """
 
 from __future__ import annotations
@@ -35,6 +40,9 @@ from state import status as status_mod  # noqa: E402
 READY_COLOR = "0E8A16"  # green: the run finished and waits at a human gate
 NEEDS_HUMAN_COLOR = "D93F0B"  # orange-red: parked, waiting for a decision
 CHECK_RUN_NAME = "sdlc/{phase}"
+# the owner's labels: applied by a person, read by the release workflow and the next run,
+# never swept away when the gate label changes
+OWNER_LABELS = frozenset({c.RELEASE_APPROVED_LABEL, *c.UNPARK_LABELS})
 
 
 def _emit(obj: Any) -> None:
@@ -84,7 +92,7 @@ def cmd_upsert(args) -> int:
     title = desc.pr_title(st, args.phase)
     gate_json = desc.load_gate(change_dir, args.phase)
     label = desc.label_for(gate_json, args.phase)
-    head = desc.head_branch(args.id, args.phase)
+    head = (getattr(args, "head", None) or "").strip() or desc.head_branch(args.id, args.phase)
     repo, base = _repo_and_base(root)
     out: dict[str, Any] = {
         "repo": repo,
@@ -131,7 +139,11 @@ def cmd_upsert(args) -> int:
     if label and number:
         github.ensure_label(repo, label, label_color(label), f"SDLC gate ({args.phase})", cwd=root)
     if number:
-        carried = [lb for lb in found.get("labels") or [] if str(lb).startswith(c.LABEL_PREFIX)]
+        carried = [
+            lb
+            for lb in found.get("labels") or []
+            if str(lb).startswith(c.LABEL_PREFIX) and lb not in OWNER_LABELS
+        ]
         remove = [lb for lb in carried if lb != label]
         add = [label] if label and label not in carried else []
         if add or remove:
@@ -197,6 +209,12 @@ def build_parser() -> argparse.ArgumentParser:
                 help="also post the phase's check run for HEAD (step 28)",
             )
             p.add_argument("--dry-run", action="store_true", help="compute, contact nothing")
+            p.add_argument(
+                "--head",
+                default=None,
+                help="the PR's head branch when it is not sdlc/<id>/<phase> (a fix round on "
+                "a web-session intent PR)",
+            )
     return parser
 
 

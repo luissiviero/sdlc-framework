@@ -477,6 +477,26 @@ paths given), the official OpenAPI description (`github/rest-api-description`),
 - Label trigger: `pull_request` activity types include `labeled`; the docs' example reads
   the name with `if: github.event.label.name == 'bug'`. The top-level `label` event is about
   label definitions, not applications.
+- Review trigger (session 4 PR B, 2026-09-24; decision 22): the `pull_request_review` event
+  has the activity types `submitted`, `edited` and `dismissed`; the events page's example
+  for "running a workflow when a pull request is approved" reads
+  `if: github.event.review.state == 'approved'` — lower-case, so a "Request changes"
+  submission is `github.event.review.state == 'changes_requested'` (the webhook payload's
+  `review.state` values are `approved`, `changes_requested`, `commented` and `dismissed`).
+  The event carries `github.event.pull_request` (head ref and number) and
+  `github.event.review.user.login`, which `sdlc-fix.yml` uses to refuse a `[bot]` reviewer.
+  "This event will only trigger a workflow run if the workflow file exists on the default
+  branch", and a review the workflow token submits creates no run (the token rule above).
+  The `GITHUB_TOKEN` of a `pull_request_review` run is read-only by default for a pull
+  request from a fork; for the owner's own branches the job's `permissions:` block applies
+  (`sdlc-fix.yml` asks for the same five write scopes as the phase jobs). Read on
+  2026-09-24 from the events page, the webhook events reference and "Assigning permissions
+  to jobs" through a research sub-agent (the cloud session's own shell cannot reach
+  `docs.github.com`); the first live "Request changes" round (PROGRESS live check 6) is
+  the confirmation.
+- A `#` after a space starts a YAML comment even inside a `run:` scalar (`--reason "pull
+  request #$PR_NUMBER ..."` lost the rest of its line): the abandon step's reason carries
+  no `#`, and `tests/test_templates.py` parses every workflow and compares the run lines.
 - Label on a merged pull request (session 4, 2026-09-23; build guide step 32): whether a
   `pull_request` `labeled` event fires for a closed, merged PR is **not stated** on the
   events page (labels can be applied to closed PRs in the UI and through

@@ -56,6 +56,17 @@ class Status:
     # denies every edit under `sdlc.yaml: test_paths` on the change's sdlc/<id>/(c|d|e) branch.
     # Only the owner clears it (`state/cli.py unlock-tests`), in a reviewed PR.
     tests_locked: bool = False
+    # The owner's un-park verbs as labels (decision 24; build guide step 9): who applied the
+    # label the run performed, per risk item (``[{item, actor}]``: a risk item may carry a
+    # space, which a mapping key cannot here) / for the last iteration reset / for the last
+    # unlock, as GitHub recorded the actor. A CLI command run by hand leaves these unset: the
+    # gate's ``owner_actions`` check reads the commit author for those (PROGRESS choice 17)
+    # and these fields for a label act a CI run committed under the automation identity.
+    risk_accepted_by: list[dict[str, str]] = field(default_factory=list)
+    iterations_reset_by: str | None = None
+    tests_unlocked_by: str | None = None
+    # Decision 25: the PR of gate (a)-(e) was closed without a merge; why, and when.
+    abandoned_reason: str | None = None
     created_at: str = field(default_factory=_now)
     updated_at: str = field(default_factory=_now)
     schema_version: int = SCHEMA_VERSION
@@ -63,8 +74,10 @@ class Status:
     # -- validation ---------------------------------------------------------------------
     def validate(self) -> None:
         c.change_dir_name(self.id, self.slug)
-        if self.phase not in c.PHASES:
-            raise ValueError(f"phase must be one of {c.PHASES}, got {self.phase!r}")
+        if self.phase not in c.PHASES and self.phase != c.ABANDONED:
+            raise ValueError(
+                f"phase must be one of {c.PHASES} or {c.ABANDONED!r}, got {self.phase!r}"
+            )
         if self.entry_route not in c.ENTRY_ROUTES:
             raise ValueError(f"entry_route must be one of {c.ENTRY_ROUTES}")
         if self.change_type not in c.CHANGE_TYPES:
@@ -89,6 +102,17 @@ class Status:
             raise ValueError("risk_accepted must be a list of non-empty strings")
         if not isinstance(self.tests_locked, bool):
             raise ValueError("tests_locked must be a boolean")
+        if not isinstance(self.risk_accepted_by, list) or not all(
+            isinstance(e, dict)
+            and set(e) == {"item", "actor"}
+            and all(isinstance(v, str) and v.strip() for v in e.values())
+            for e in self.risk_accepted_by
+        ):
+            raise ValueError("risk_accepted_by must be a list of {item, actor} entries")
+        for name in ("iterations_reset_by", "tests_unlocked_by", "abandoned_reason"):
+            value = getattr(self, name)
+            if value is not None and (not isinstance(value, str) or not value.strip()):
+                raise ValueError(f"{name} must be a non-empty string or null")
 
     # -- (de)serialisation --------------------------------------------------------------
     def to_dict(self) -> dict[str, Any]:
@@ -115,8 +139,53 @@ class Status:
         self.updated_at = _now()
 
     def set_phase(self, phase: str) -> None:
+        if phase not in c.PHASES:
+            raise ValueError(f"phase must be one of {c.PHASES}, got {phase!r}")
+        if self.phase == c.ABANDONED:
+            raise ValueError(f"change {self.id} is abandoned; it does not re-enter a phase")
         self.phase = phase
         self.parked_reason = None
+        self.touch()
+        self.validate()
+
+    @property
+    def abandoned(self) -> bool:
+        return self.phase == c.ABANDONED
+
+    def abandon(self, reason: str) -> None:
+        """The owner closed the change's PR without merging (decision 25): the change ends
+        here. The park, if any, is left behind; the gate record is kept as it was; the
+        branches stay. Idempotent: a second close changes nothing but the reason."""
+        reason = reason.strip() or "pull request closed without a merge"
+        if self.abandoned and self.abandoned_reason == reason:
+            return  # a second close: the file stays as it is
+        self.phase = c.ABANDONED
+        self.abandoned_reason = reason
+        self.parked_reason = None
+        self.touch()
+        self.validate()
+
+    def record_owner_label(self, label: str, actor: str, items: list[str] | None = None) -> None:
+        """Perform one of the owner's un-park labels (decision 24) and record who applied it.
+        ``items`` are the risk-list items an ``sdlc:accept-risk`` accepts (the hits the last
+        gate reported); the other two labels carry no argument."""
+        actor = actor.strip()
+        if not actor:
+            raise ValueError("an owner label needs its actor")
+        if label == c.ACCEPT_RISK_LABEL:
+            for item in items or []:
+                self.accept_risk(item)
+                self.risk_accepted_by = [
+                    e for e in self.risk_accepted_by if e["item"] != item.strip()
+                ] + [{"item": item.strip(), "actor": actor}]
+        elif label == c.RESET_ITERATIONS_LABEL:
+            self.iterations = 0
+            self.iterations_reset_by = actor
+        elif label == c.UNLOCK_TESTS_LABEL:
+            self.tests_locked = False
+            self.tests_unlocked_by = actor
+        else:
+            raise ValueError(f"{label} is not an owner label ({', '.join(c.UNPARK_LABELS)})")
         self.touch()
         self.validate()
 
@@ -211,6 +280,7 @@ def merged_at_gate_e(st: Status, production: bool = False) -> Status:
     """
     derived = Status.from_dict(st.to_dict())
     if st.phase != "e" or (st.gate.phase == "e" and st.gate.result == "passed"):
+        # an abandoned change (decision 25) never reads as merged: its phase is not e
         return derived
     reason = MERGED_AT_GATE_E_PRODUCTION_REASON if production else MERGED_AT_GATE_E_REASON
     derived.gate = Gate(phase="e", result="passed", reason=reason, at=st.updated_at)

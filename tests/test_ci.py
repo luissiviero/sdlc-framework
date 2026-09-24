@@ -33,7 +33,9 @@ ALL_WORKFLOWS = (*PHASE_WORKFLOWS, "sdlc-digest.yml")
 # the release workflow (build guide step 32.3) cites step 32, not step 30, in its header; the
 # generic checks (python steps, no interpolation, secrets, the pinned framework) cover it too
 RELEASE_WORKFLOW = "sdlc-release.yml"
-EVERY_WORKFLOW = (*ALL_WORKFLOWS, RELEASE_WORKFLOW)
+# the fix round and the abandon rule (decisions 22, 24, 25; plugin 0.2.13) cite step 30 too
+FIX_WORKFLOW, ABANDON_WORKFLOW = "sdlc-fix.yml", "sdlc-abandon.yml"
+EVERY_WORKFLOW = (*ALL_WORKFLOWS, RELEASE_WORKFLOW, FIX_WORKFLOW, ABANDON_WORKFLOW)
 
 KEY_VAR, TOKEN_VAR = auth.API_KEY_VAR, auth.OAUTH_TOKEN_VAR
 FAKE_KEY = "placeholder-key"  # sdlc: allow-secret
@@ -1138,7 +1140,7 @@ def workflow(name: str) -> str:
     return (WORKFLOW_DIR / name).read_text(encoding="utf-8")
 
 
-@pytest.mark.parametrize("name", ALL_WORKFLOWS)
+@pytest.mark.parametrize("name", (*ALL_WORKFLOWS, FIX_WORKFLOW, ABANDON_WORKFLOW))
 def test_workflow_header_cites_the_contract(name):
     text = workflow(name)
     assert re.search(r"OPERATING_MODEL\.md sections? 4\.2", text)
@@ -1277,7 +1279,7 @@ def test_permission_prompts_none_lives_in_run_phase_not_in_yaml():
     """The flag is composed in Python (task 30.3), so the YAML never carries a CLI flag."""
     source = (ROOT / "plugin" / "ci" / "run_phase.py").read_text(encoding="utf-8")
     assert "--permission-prompts" in source
-    for name in ALL_WORKFLOWS:
+    for name in EVERY_WORKFLOW:
         assert "--permission-prompts" not in workflow(name)
 
 
@@ -1671,3 +1673,125 @@ def test_implementation_phases_name_their_tools(capsys, project):
     named = run_phase.IMPLEMENT_ALLOWED_TOOLS.split(",")
     for rule in settings["permissions"]["allow"]:
         assert rule in named, rule
+
+
+# --- decisions 22, 24, 25: the fix round, the owner labels, the abandoned change --------------
+def test_a_fix_round_runs_on_the_change_s_phase_parked_or_not(project):
+    """Decision 22: the guard of a fix round asks only that the change is at a gate (a)-(e)
+    and not abandoned; a park is the change request it answers."""
+    root, change = project
+    for phase in ("a", "b", "c", "d", "e"):
+        set_state(change, phase, parked="risk-list hit: 'auth'")
+        assert skip_reason(root, "fix") is None, phase
+    set_state(change, "f")
+    assert "no fix round" in skip_reason(root, "fix")
+
+
+def test_every_run_skips_an_abandoned_change(project):
+    root, change = project
+    st = status_mod.read_status(change)
+    st.abandon("pull request 9 closed without a merge")
+    status_mod.write_status(change, st)
+    for phase in ("b", "c", "d", "e", "review", "fix"):
+        reason = skip_reason(root, phase)
+        assert reason == "change 0001 is abandoned: pull request 9 closed without a merge", phase
+
+
+def test_find_change_for_a_fix_round_takes_any_sdlc_head():
+    """The review may be on the intent, design or build PR: a head sdlc/<id>/<any phase>
+    names the change; anything else falls through to the PR's files."""
+    for head in ("sdlc/0001/a", "sdlc/0001/b", "sdlc/0001/c"):
+        assert run_phase.resolve_change_id(None, head, "fix") == ("0001", None)
+    change_id, reason = run_phase.find_change("fix", None, "claude/relaxed-x", "", "", {})
+    assert change_id is None and "--pr-number" in reason
+
+
+def test_fix_branch_is_the_pull_request_s_head_else_the_phase_s_work_branch(project):
+    root, change = project
+    assert run_phase.fix_branch_for(root, "0001", "claude/relaxed-x") == ("claude/relaxed-x", "a")
+    assert run_phase.fix_branch_for(root, "0001", "") == ("sdlc/0001/a", "a")
+    set_state(change, "d")
+    assert run_phase.fix_branch_for(root, "0001", None) == ("sdlc/0001/c", "d")
+    assert run_phase.fix_branch_for(root, "0009", None) == ("sdlc/0009/a", None)
+
+
+def test_a_fix_round_dry_run_names_its_command_tools_and_branch(capsys, project, tmp_path):
+    root, change = project
+    with_remote(root, tmp_path)
+    set_state(change, "b")
+    git(root, "checkout", "-q", "-b", "sdlc/0001/b")
+    git(root, "add", "-A")
+    git(root, "commit", "-q", "-m", "design(0001): spec and plan")
+    git(root, "push", "-q", "-u", "origin", "sdlc/0001/b")
+    git(root, "checkout", "-q", "main")
+    git(root, "branch", "-q", "-D", "sdlc/0001/b")  # the runner starts on main
+    args = Args(root=str(root), phase="fix", head_ref="sdlc/0001/b", pr_number="7")
+    assert run_phase.run_phase(args, dict(KEY_ENV)) == run_phase.EXIT_OK
+    out = json.loads(capsys.readouterr().out)
+    assert out["branch"] == {
+        "branch": "sdlc/0001/b",
+        "switched": True,
+        "from": "origin/sdlc/0001/b",
+    }
+    argv = out["argv"]
+    assert argv[2] == "/sdlc:sdlc-fix 0001"
+    assert argv[argv.index("--permission-mode") + 1] == "acceptEdits"
+    assert argv[argv.index("--allowedTools") + 1] == run_phase.IMPLEMENT_ALLOWED_TOOLS
+    assert git(root, "rev-parse", "--abbrev-ref", "HEAD").strip() == "sdlc/0001/b"
+    # a head that is not on the remote is reported, not created
+    args = Args(root=str(root), phase="fix", head_ref="claude/gone", pr_number="7")
+    assert run_phase.run_phase(args, dict(KEY_ENV)) == run_phase.EXIT_OK
+    out = json.loads(capsys.readouterr().out)
+    assert out["branch"]["switched"] is False and "head is gone" in out["branch"]["note"]
+
+
+def test_apply_owner_labels_performs_commits_and_reports(project, tmp_path, monkeypatch):
+    """The CI run performs the owner's labels before the session starts and commits
+    status.yaml on the work branch under the automation identity, with the actor recorded."""
+    from pr import github
+
+    root, change = project
+    with_remote(root, tmp_path)
+    set_state(change, "b")
+    st = status_mod.read_status(change)
+    st.iterations = 3
+    status_mod.write_status(change, st)
+    git(root, "checkout", "-q", "-b", "sdlc/0001/b")
+    git(root, "add", "-A")
+    git(root, "commit", "-q", "-m", "design(0001): spec and plan")
+    git(root, "push", "-q", "-u", "origin", "sdlc/0001/b")
+    monkeypatch.setattr(github, "gh_path", lambda: "gh")
+    monkeypatch.setattr(
+        github,
+        "pr_by_number",
+        lambda repo, n, cwd=None: {"ok": True, "number": n, "labels": ["sdlc:reset-iterations"]},
+    )
+    monkeypatch.setattr(
+        github, "label_actor", lambda repo, n, label: {"ok": True, "actor": "luissiviero"}
+    )
+    removed = []
+    monkeypatch.setattr(
+        github,
+        "set_labels",
+        lambda repo, n, add, remove, cwd=None: (
+            removed.extend(remove) or {"ok": True, "removed": remove}
+        ),
+    )
+    out = run_phase.apply_owner_labels(
+        ROOT, root, change, {}, "owner/name", "7", "b", None, {"GITHUB_TOKEN": FAKE_TOKEN}
+    )
+    assert out["ok"] and out["performed"] == [
+        {"label": "sdlc:reset-iterations", "actor": "luissiviero"}
+    ]
+    assert removed == ["sdlc:reset-iterations"]
+    assert out["commit"]["ok"] and out["commit"]["output"]["pushed"] is True
+    assert "iterations_reset_by: luissiviero" in git(
+        root, "show", "origin/sdlc/0001/b:changes/0001-percent-helper/status.yaml"
+    )
+    assert status_mod.read_status(change).iterations == 0
+    # without a route or a number nothing is read
+    out = run_phase.apply_owner_labels(ROOT, root, change, {}, "owner/name", "", "b", None, {})
+    assert out["ok"] is False and "labels not read" in out["reason"]
+    monkeypatch.setattr(github, "gh_path", lambda: None)
+    out = run_phase.apply_owner_labels(ROOT, root, change, {}, "owner/name", "7", "b", None, {})
+    assert out["ok"] is False and "no gh and no GITHUB_TOKEN" in out["reason"]

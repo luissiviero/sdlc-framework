@@ -300,8 +300,34 @@ def test_sdlc_fix_flow_matches_the_change_request_loop():
     text = flat(COMMANDS / "sdlc-fix.md")
     for token in ["bump-iteration", "park", "decided", "upsert", "Never merge"]:
         assert token in text, token
-    for phase in ["(b)", "(c)", "(d)", "(e)"]:
+    for phase in ["(a)", "(b)", "(c)", "(d)", "(e)"]:
         assert f"Phase {phase}" in text, phase
+
+
+def test_sdlc_fix_covers_gate_a_and_the_owner_labels():
+    """Decision 22: the fix round on the unmerged intent PR edits intent.md - the one
+    exception - on the PR's own head; decision 24: the labels are performed before the
+    comments are applied; the trigger is the workflow, never the model."""
+    path = COMMANDS / "sdlc-fix.md"
+    text = flat(path)
+    assert frontmatter(path)["disable-model-invocation"] == "true"
+    assert "the phase is `a`, `b`, `c`, `d` or `e`" in text
+    assert "phase `a` → the intent PR's head" in text and "`claude/...`" in text
+    assert "without re-running the brainstorm" in text
+    assert "This is the one place a run edits `intent.md`" in text
+    assert "Never edit `intent.md` at (b) or later" in text
+    assert "apply-labels" in text and "`risk_accepted_by`" in text
+    assert "--branch <head>" in text and "--head <head>" in text
+    assert "At phase (a) skip the verdict" in text
+    assert "`sdlc-fix.yml`" in text and "Request changes" in text
+    assert "`abandoned` change has no fix round" in text
+
+
+def test_sdlc_init_states_the_hosting_rule_and_the_outdated_report():
+    text = flat(COMMANDS / "sdlc-init.md")
+    assert "Hosting is GitHub (decision 23)" in text
+    assert "refuses a project whose `origin` remote is on another host" in text
+    assert "`outdated`" in text and "the fix round, the abandon rule" in text
 
 
 @pytest.mark.parametrize("name", COMMAND_FILES)

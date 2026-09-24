@@ -388,6 +388,9 @@ def test_labels_are_the_documented_set():
         "sdlc:c-approved",
         "sdlc:d-approved",
         "sdlc:release-approved",
+        "sdlc:accept-risk",  # the owner's un-park verbs (decision 24, plugin 0.2.13)
+        "sdlc:reset-iterations",
+        "sdlc:unlock-tests",
         "sdlc:needs-human",
     ]
 
