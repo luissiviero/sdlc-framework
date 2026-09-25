@@ -1,0 +1,416 @@
+<title>OKF and the SDLC Framework</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@500;600;700&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&display=swap">
+<style>
+:root{
+  --bg:#F3F5F7; --surface:#FFFFFF; --ink:#172026; --muted:#56636C; --rule:#D3DBE1;
+  --accent:#1D6A86; --accent-soft:#E1EEF3; --code-bg:#E9EEF2;
+  --yes:#2C7A4B; --yes-bg:#E3F2E8; --part:#9A6300; --part-bg:#FAF0DA; --no:#A63D3A; --no-bg:#F8E4E2;
+  --serif:"Source Serif 4",Georgia,"Times New Roman",serif;
+  --sans:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    color-scheme:dark;
+    --bg:#12181C; --surface:#1A2227; --ink:#E4EAEE; --muted:#9AA8B1; --rule:#2E3A41;
+    --accent:#6DB7D3; --accent-soft:#1C323B; --code-bg:#202A30;
+    --yes:#7CC89A; --yes-bg:#1C3326; --part:#E2B25C; --part-bg:#3A2E17; --no:#EA8F8B; --no-bg:#3D2221;
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --bg:#12181C; --surface:#1A2227; --ink:#E4EAEE; --muted:#9AA8B1; --rule:#2E3A41;
+  --accent:#6DB7D3; --accent-soft:#1C323B; --code-bg:#202A30;
+  --yes:#7CC89A; --yes-bg:#1C3326; --part:#E2B25C; --part-bg:#3A2E17; --no:#EA8F8B; --no-bg:#3D2221;
+}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--serif);font-size:18px;line-height:1.62;padding-inline:20px;padding-block:0 64px}
+.wrap{max-width:720px;margin:0 auto}
+.wide{max-width:1180px;margin:0 auto}
+header.top{padding-block:56px 28px;border-bottom:1px solid var(--rule);margin-bottom:36px}
+.eyebrow{font-family:var(--mono);font-size:13px;letter-spacing:.06em;text-transform:uppercase;color:var(--accent)}
+h1,h2,h3{font-family:var(--sans);text-wrap:balance;line-height:1.2;color:var(--ink)}
+h1{font-size:clamp(32px,5.2vw,48px);font-weight:700;margin:10px 0 14px;letter-spacing:-.01em}
+h2{font-size:26px;font-weight:600;margin:56px 0 14px}
+h3{font-size:19px;font-weight:600;margin:32px 0 8px}
+.dek{font-size:21px;color:var(--muted);margin:0;max-width:62ch}
+.byline{font-family:var(--sans);font-size:14px;color:var(--muted);margin-top:18px}
+p{margin:0 0 16px;max-width:66ch}
+a{color:var(--accent);text-underline-offset:3px}
+a:focus-visible,button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+code{font-family:var(--mono);font-size:.84em;background:var(--code-bg);padding:1px 5px;border-radius:4px}
+ul,ol{padding-left:22px;margin:0 0 18px;max-width:64ch}
+li{margin-bottom:8px}
+li::marker{color:var(--muted)}
+blockquote{margin:22px 0;padding:4px 0 4px 20px;border-left:3px solid var(--accent);font-style:italic;color:var(--muted);max-width:60ch}
+.note{font-family:var(--sans);font-size:15px;line-height:1.55;background:var(--accent-soft);border-radius:8px;padding:14px 18px;margin:22px 0;max-width:66ch}
+.note strong{font-weight:600}
+figure{margin:24px 0}
+.file{background:var(--surface);border:1px solid var(--rule);border-radius:8px;overflow:hidden}
+.file .name{font-family:var(--mono);font-size:13px;color:var(--muted);padding:8px 14px;border-bottom:1px solid var(--rule)}
+.file pre{margin:0;padding:14px 16px;overflow-x:auto;font-family:var(--mono);font-size:14px;line-height:1.55}
+.fm{color:var(--accent)}
+.k{color:var(--muted)}
+figcaption{font-family:var(--sans);font-size:14px;color:var(--muted);margin-top:8px}
+.principles{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px;margin:18px 0 8px}
+.principles div{background:var(--surface);border:1px solid var(--rule);border-radius:8px;padding:16px 18px}
+.principles b{display:block;font-family:var(--sans);font-size:16px;margin-bottom:6px}
+.principles span{font-size:16px;line-height:1.5;color:var(--muted)}
+.dl{display:grid;grid-template-columns:minmax(120px,190px) 1fr;gap:10px 22px;margin:18px 0;max-width:720px}
+.dl dt{font-family:var(--mono);font-size:14px;color:var(--accent);padding-top:3px}
+.dl dd{margin:0;font-size:17px}
+@media (max-width:560px){.dl{grid-template-columns:1fr;gap:2px 0}.dl dd{margin-bottom:12px}}
+.filters{display:flex;flex-wrap:wrap;gap:8px;margin:18px 0 14px;font-family:var(--sans);font-size:14px}
+.filters button{font:inherit;color:var(--ink);background:var(--surface);border:1px solid var(--rule);border-radius:999px;padding:5px 14px;cursor:pointer}
+.filters button[aria-pressed="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.tablebox{overflow-x:auto;border:1px solid var(--rule);border-radius:8px;background:var(--surface)}
+table{border-collapse:collapse;width:100%;min-width:980px;font-family:var(--sans);font-size:14.5px;line-height:1.5}
+th,td{text-align:left;vertical-align:top;padding:12px 14px;border-bottom:1px solid var(--rule)}
+thead th{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:600;background:var(--bg);position:sticky;top:0}
+tbody tr:last-child td{border-bottom:0}
+td.n{font-family:var(--mono);color:var(--muted);font-variant-numeric:tabular-nums;width:36px}
+td.item{font-weight:600;width:170px}
+td.what{width:210px;color:var(--muted)}
+.chip{display:inline-block;font-size:12px;font-weight:600;letter-spacing:.03em;border-radius:4px;padding:1px 7px;margin-bottom:5px;white-space:nowrap}
+.yes{color:var(--yes);background:var(--yes-bg)}
+.part{color:var(--part);background:var(--part-bg)}
+.no{color:var(--no);background:var(--no-bg)}
+.lvl{color:var(--ink);background:var(--code-bg)}
+td p{font-size:14.5px;margin:0;max-width:none}
+.takeaways{counter-reset:t;list-style:none;padding:0}
+.takeaways li{counter-increment:t;position:relative;padding-left:44px;margin-bottom:22px}
+.takeaways li::before{content:counter(t);position:absolute;left:0;top:2px;font-family:var(--mono);font-size:14px;width:28px;height:28px;border-radius:50%;display:grid;place-items:center;background:var(--accent-soft);color:var(--accent)}
+footer{margin-top:64px;padding-top:22px;border-top:1px solid var(--rule);font-family:var(--sans);font-size:14px;color:var(--muted)}
+footer p{max-width:none}
+@media (max-width:600px){body{font-size:17px}h2{font-size:23px}.dek{font-size:19px}}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+
+<div class="wrap">
+<header class="top">
+  <div class="eyebrow">Analysis · plugin 0.2.19 · September 2026</div>
+  <h1>What the Open Knowledge Format could bring to the SDLC framework</h1>
+  <p class="dek">Google's OKF turns the "LLM wiki" pattern into a shared file format. The SDLC framework already follows most of its ideas. This page lays out where they match, where they don't, and the few places adopting it would pay off.</p>
+  <p class="byline">Sources: the Google Cloud blog post "Introducing the Open Knowledge Format" (McVeety and Hormati, June 12, 2026, describing v0.1) and the OKF repository's SPEC.md (v0.2), compared with the <code>sdlc-framework</code> repo as it stands today.</p>
+</header>
+
+<h2 id="problem">The problem OKF sets out to solve</h2>
+<p>AI models need knowledge that lives outside the model: the schema of a table, what a metric means in your business, the runbook for an incident, the join path between two systems, the deprecation notice for an old API. The article's point is that this knowledge is scattered across metadata catalogs with their own APIs, wikis and shared drives, code comments and notebook cells, and "the heads of a few senior engineers."</p>
+<p>Every vendor ships its own catalog, SDK and knowledge-graph schema, so every agent builder solves the same context-assembly problem from scratch. The knowledge stays locked in whichever tool created it.</p>
+<p>The article notes that a "knowledge as a wiki" pattern keeps reappearing: Obsidian vaults wired to coding agents, <strong>the AGENTS.md / CLAUDE.md family of convention files</strong>, repos full of <code>index.md</code> and <code>log.md</code> files that agents read before doing real work, and "metadata as code" repos in data teams. It credits Andrej Karpathy's LLM Wiki gist for the clearest statement of the idea:</p>
+<blockquote>LLMs don't get bored, don't forget to update a cross-reference, and can touch 15 files in one pass.</blockquote>
+<p>Each of those instances is bespoke, though. None agrees on which fields a document carries or what a filename means. The article's conclusion: what's missing is <em>a format, not another service</em>.</p>
+
+<h2 id="format">The format in one screen</h2>
+<p>An OKF <strong>bundle</strong> is a directory of Markdown files. Each file is one <strong>concept</strong>: a table, a dataset, a metric, a playbook, a runbook, an API. The file's path is its identity. A small YAML frontmatter block holds the fields you query, and the Markdown body holds everything else.</p>
+<figure>
+  <div class="file">
+    <div class="name">sales/tables/orders.md</div>
+<pre><span class="fm">---</span>
+<span class="k">type:</span> BigQuery Table
+<span class="k">title:</span> Orders
+<span class="k">description:</span> One row per completed customer order.
+<span class="k">resource:</span> https://console.cloud.google.com/bigquery?p=acme&amp;d=sales&amp;t=orders
+<span class="k">tags:</span> [sales, revenue]
+<span class="k">timestamp:</span> 2026-05-28T14:30:00Z
+<span class="fm">---</span>
+
+# Schema
+
+| Column        | Type   | Description                          |
+|---------------|--------|--------------------------------------|
+| `order_id`    | STRING | Globally unique order identifier.    |
+| `customer_id` | STRING | FK to [customers](/tables/customers.md). |
+
+# Joins
+
+Joined with [customers](/tables/customers.md) on `customer_id`.</pre>
+  </div>
+  <figcaption>The v0.1 example from the article. In v0.2, <code>timestamp</code> is replaced by <code>generated.at</code>.</figcaption>
+</figure>
+<p>Concepts link to each other with ordinary Markdown links, so a bundle is a graph, not just a tree. Two reserved filenames are optional in any folder: <code>index.md</code> lists what the folder holds, so an agent can read one level at a time, and <code>log.md</code> records the folder's change history.</p>
+
+<h3>Three design principles</h3>
+<div class="principles">
+  <div><b>Minimally opinionated</b><span>Only <code>type</code> is required. The spec defines the interoperability surface, not your content model.</span></div>
+  <div><b>Producer/consumer independence</b><span>A human, a pipeline or an LLM can write a bundle; anything that reads Markdown can consume it.</span></div>
+  <div><b>Format, not platform</b><span>OKF will never require a proprietary account or SDK to read, write or serve.</span></div>
+</div>
+
+<h3>What v0.2 adds</h3>
+<p>The blog post announced v0.1. The spec in the repository is already at v0.2, which answers questions an agent-maintained corpus raises: where did this come from, who checked it, and is it still true?</p>
+<dl class="dl">
+  <dt>sources</dt><dd>Structured provenance, with optional credibility signals (author, usage count, last modified). Footnotes cite a source by ID rather than by position, so they survive agents rewriting the document.</dd>
+  <dt>generated</dt><dd><code>{by, at}</code>: who produced the content and when it last changed meaningfully.</dd>
+  <dt>verified</dt><dd>A list of sign-off events. Trust tiers are derived from it and never stored: unverified, machine-confirmed or human-reviewed.</dd>
+  <dt>actors</dt><dd><code>human:&lt;id&gt;</code>, <code>process:&lt;id&gt;</code> and <code>&lt;agent&gt;/&lt;version&gt;</code>, so "was this a person?" is a string check.</dd>
+  <dt>status, stale_after</dt><dd>Lifecycle (draft, stable or deprecated) and an absolute expiry time, so staleness is a plain comparison.</dd>
+  <dt>Attested Computation</dt><dd>A concept that fixes how a number must be computed. The agent may only supply parameters, and deterministic code on the consumer's side checks that what ran is what was sanctioned.</dd>
+</dl>
+<p>Conformance stays permissive: a consumer must not reject a bundle for unknown types or keys, missing optional fields or broken links.</p>
+<p>Google also shipped proofs of concept: an enrichment agent that drafts a concept for each BigQuery table and enriches it from documentation, a single-file HTML graph viewer, and three sample bundles. Google Cloud's Knowledge Catalog can now ingest OKF.</p>
+</div>
+
+<div class="wide">
+<h2 id="map" style="max-width:720px;margin-left:auto;margin-right:auto">How each item maps onto the framework</h2>
+<div class="wrap">
+<p>Each row reads the framework as it will be once fully built, with what's already implemented at plugin 0.2.19. "Complexity" means the effort in the current codebase.</p>
+</div>
+<div class="filters" role="group" aria-label="Filter rows by status" style="max-width:720px;margin-left:auto;margin-right:auto">
+  <button type="button" id="f-all" data-f="all" aria-pressed="true">All 25</button>
+  <button type="button" id="f-yes" data-f="yes" aria-pressed="false">Already done</button>
+  <button type="button" id="f-part" data-f="part" aria-pressed="false">Partial</button>
+  <button type="button" id="f-no" data-f="no" aria-pressed="false">Not done</button>
+</div>
+<div class="tablebox">
+<table>
+<thead><tr><th>#</th><th>OKF item</th><th>What it is</th><th>In the framework today</th><th>Worth adopting?</th><th>Complexity</th></tr></thead>
+<tbody id="rows">
+<tr data-s="yes"><td class="n">1</td><td class="item">Knowledge bundle</td><td class="what">A directory of Markdown files, ideally in git; the unit you share.</td><td><span class="chip yes">Yes</span><p><code>changes/</code>, <code>lessons/</code>, <code>docs/</code> and the skills are Markdown and YAML in git, and the repo is the source of truth (decision 9).</p></td><td><p>Already done.</p></td><td><p>None</p></td></tr>
+<tr data-s="part"><td class="n">2</td><td class="item">One file per concept, YAML frontmatter, required <code>type</code></td><td class="what">A machine-readable header on every knowledge file.</td><td><span class="chip part">Partial</span><p>Skills, agents and commands have frontmatter. <code>intent.md</code>, <code>spec.md</code>, <code>plan.md</code> and lessons carry metadata in a prose header line (<code>Author: … Status: … Change id: …</code>).</p></td><td><span class="chip lvl">Medium</span><p>Mainly for <code>lessons/</code>, a growing corpus the agent reads. Low for intent, spec and plan, whose headers are already parsed and gated.</p></td><td><p><b>Lessons: low.</b> No code validates them yet. <b>Intent, spec, plan: medium.</b> Header parsing lives in <code>plugin/gate/artifacts.py</code>, plus gate checks and tests.</p></td></tr>
+<tr data-s="part"><td class="n">3</td><td class="item"><code>title</code>, <code>description</code>, <code>resource</code>, <code>tags</code></td><td class="what">A one-line summary for indexes and search, the underlying asset, and tags.</td><td><span class="chip part">Partial</span><p>Skills have <code>description</code> and use it as the load trigger. Lessons, eval cases and changes have none.</p></td><td><span class="chip lvl">Medium</span><p>Tags such as metric, rule and component would let <code>/sdlc-maintain</code> filter lessons instead of reading all of them.</p></td><td><p>Low</p></td></tr>
+<tr data-s="yes"><td class="n">4</td><td class="item">Structured body, conventional headings</td><td class="what">Prefer headings, tables and lists over prose; no sections are required.</td><td><span class="chip yes">Yes, stricter</span><p>Sections are fixed in code (<code>INTENT_SECTIONS</code>, <code>SPEC_SECTIONS</code>, <code>PLAN_SECTIONS</code>), and the gate parks a change if one is missing.</p></td><td><p>Keep as is. The strictness is deliberate.</p></td><td><p>None</p></td></tr>
+<tr data-s="part"><td class="n">5</td><td class="item"><code>sources</code> and keyed footnotes</td><td class="what">Structured provenance whose citations survive agents rewriting the text.</td><td><span class="chip part">Partial</span><p>Sources are cited in prose: the article by PDF page, NOTES.md with verbatim quotes and URLs, an incident's <code>## Evidence</code> citing a lesson, each policy skill's <code>## Source</code>.</p></td><td><span class="chip lvl">Low–medium</span><p>Most useful where agents rewrite text on fix rounds (<code>spec.md</code>) and for NOTES.md platform facts.</p></td><td><p>Low as a convention; medium if the gate validates it.</p></td></tr>
+<tr data-s="yes"><td class="n">6</td><td class="item"><code>generated {by, at}</code></td><td class="what">Who or what produced the content, and when.</td><td><span class="chip yes">Mostly</span><p>The spec header logs plugin and prompt versions, the intent has <code>Author</code>, <code>status.yaml</code> has timestamps, and evidence JSON has <code>at</code>. Lessons and eval cases lack it.</p></td><td><span class="chip lvl">Low</span><p>Add it to lessons and eval cases only.</p></td><td><p>Low</p></td></tr>
+<tr data-s="yes"><td class="n">7</td><td class="item"><code>verified</code> and trust tiers</td><td class="what">Sign-off events; tiers derived from them: unverified, machine-confirmed, human-reviewed.</td><td><span class="chip yes">Yes, through git</span><p>The owner's merge is human verification; the adversarial verdict and <code>gate-&lt;phase&gt;.json</code> are machine verification. The intent template says: "the merge is the record of acceptance; do not add approval lines."</p></td><td><span class="chip lvl">Low</span><p>Don't copy sign-offs into files; that conflicts with an existing rule. The derived-tier idea could label lessons and NOTES facts.</p></td><td><p>Low, but it touches a settled rule. Ask before reopening.</p></td></tr>
+<tr data-s="part"><td class="n">8</td><td class="item">Actor convention</td><td class="what"><code>human:</code>, <code>process:</code>, <code>agent/version</code> used the same way everywhere.</td><td><span class="chip part">Partial</span><p>Actors are recorded (label actors in <code>status.yaml</code>, dismissal <code>by</code>, panel reviewer and advocate), each in its own format.</p></td><td><span class="chip lvl">Low–medium</span><p>One format would make "was this a person?" the same check across all JSON records.</p></td><td><p>Medium: several schemas and a <code>schema_version</code> bump.</p></td></tr>
+<tr data-s="part"><td class="n">9</td><td class="item"><code>status</code>: draft, stable, deprecated</td><td class="what">Whether a document is still current.</td><td><span class="chip part">Partial</span><p>Intent status and change <code>phase</code> (including <code>abandoned</code>) exist. Lessons and skills can't be marked deprecated.</p></td><td><span class="chip lvl">Low</span><p>Until lessons pile up and some describe code that no longer exists.</p></td><td><p>Low</p></td></tr>
+<tr data-s="part"><td class="n">10</td><td class="item"><code>stale_after</code></td><td class="what">An absolute expiry time; stale once "now" passes it.</td><td><span class="chip part">Partial</span><p>Scattered: detection dismissals expire (<code>until</code>), runbooks carry <code>rehearsed_at</code>, NOTES.md says to re-verify when the minimum Claude Code version moves, and the data-conventions skill asks for a freshness expectation.</p></td><td><span class="chip lvl">Medium</span><p>For NOTES.md platform facts, which drive hook behaviour, and the rehearsed rollback that decision 26 pre-approves. I haven't checked whether the age of <code>rehearsed_at</code> is enforced.</p></td><td><p>Low as a convention; medium if the gate or preflight enforces it.</p></td></tr>
+<tr data-s="part"><td class="n">11</td><td class="item">Cross-links</td><td class="what">Links from the bundle root; broken links tolerated. The bundle forms a graph.</td><td><span class="chip part">Partial</span><p>PR bodies carry a "Links:" line, a lesson's <code>## Prevention</code> points to its eval case, and an incident cites a lesson. <code>plan.md</code> refers to intent and spec by date, not by link.</p></td><td><span class="chip lvl">Low–medium</span><p>Links between lesson, change folder, eval case and PR would make incident history navigable.</p></td><td><p>Low</p></td></tr>
+<tr data-s="yes"><td class="n">12</td><td class="item"><code>references/</code> folder</td><td class="what">External material mirrored inside the bundle.</td><td><span class="chip yes">Yes, in spirit</span><p><code>docs/reference/</code> holds the page-tagged source article.</p></td><td><p>Nothing to add.</p></td><td><p>None</p></td></tr>
+<tr data-s="no"><td class="n">13</td><td class="item"><code>index.md</code> for progressive disclosure</td><td class="what">A per-folder list of links with one-line descriptions, so an agent reads one level at a time.</td><td><span class="chip no">Only through skills</span><p>Skill descriptions do this for skills. There's no index for <code>lessons/</code>, <code>changes/</code> or <code>evals/cases/</code>, and <code>/sdlc-maintain</code> reads every lesson file.</p></td><td><span class="chip lvl">Medium–high</span><p>The clearest win. Unattended runs have budget and time limits, and <code>lessons/</code> only grows.</p></td><td><p>Low: a Python generator run in <code>/sdlc-deploy</code> step 0b, committed in the same PR as the lesson.</p></td></tr>
+<tr data-s="yes"><td class="n">14</td><td class="item"><code>log.md</code></td><td class="what">A dated change history per folder.</td><td><span class="chip yes">Covered</span><p>Git history, PROGRESS.md session records, dated amendments in DECISIONS and BUILD_GUIDE, and release notes.</p></td><td><span class="chip lvl">Low</span><p>It would duplicate git.</p></td><td><p>Low</p></td></tr>
+<tr data-s="no"><td class="n">15</td><td class="item">Tags as views</td><td class="what">Tag views built by scanning frontmatter; no aggregation file.</td><td><span class="chip no">No</span><p>Nothing carries tags yet.</p></td><td><span class="chip lvl">Low–medium</span><p>Only matters together with rows 2 and 3, for lessons.</p></td><td><p>Low</p></td></tr>
+<tr data-s="yes"><td class="n">16</td><td class="item">Attested Computation</td><td class="what">The sanctioned computation is fixed; the agent supplies only parameters, and deterministic code checks the run.</td><td><span class="chip yes">Largely yes</span><p><code>commands.*</code> in <code>sdlc.yaml</code> are the sanctioned commands. <code>evidence/collect.py</code> runs them and writes a <code># &lt;command&gt; — exit &lt;code&gt;</code> header. Runbooks run from <code>sdlc.yaml</code> without a shell, and the agent only picks the route. The gate and policy checks are deterministic.</p></td><td><span class="chip lvl">Medium</span><p>As hardening: check that each evidence log's command matches the base branch's <code>sdlc.yaml</code>. I haven't confirmed whether the gate already does this.</p></td><td><p>Low–medium</p></td></tr>
+<tr data-s="part"><td class="n">17</td><td class="item">Permissive conformance</td><td class="what">Never reject a bundle for missing optional fields, unknown keys or broken links.</td><td><span class="chip part">Opposite, by design</span><p>Gated artifacts fail closed: strict sections, and a YAML parser that won't silently turn off a guardrail.</p></td><td><span class="chip lvl">Low</span><p>Keep strictness for gated artifacts. A minimal OKF-style check would suit lessons, which nothing validates today.</p></td><td><p>Low</p></td></tr>
+<tr data-s="part"><td class="n">18</td><td class="item">Format version</td><td class="what"><code>okf_version</code> at the bundle root.</td><td><span class="chip part">Partial</span><p>JSON records carry <code>schema_version: 1</code>; the plugin and prompt versions are pinned. Markdown files carry no format version, except the plugin version in the spec header.</p></td><td><span class="chip lvl">Low</span></td><td><p>Low</p></td></tr>
+<tr data-s="yes"><td class="n">19</td><td class="item">Git as governance</td><td class="what">Knowledge is curated through PRs, diffs, blame and review.</td><td><span class="chip yes">Yes, fully</span><p>This is the framework's core: "the chain of commits is the audit trail."</p></td><td><p>Already done.</p></td><td><p>None</p></td></tr>
+<tr data-s="yes"><td class="n">20</td><td class="item">Format, not platform</td><td class="what">Plain files any Markdown tool or LLM can read; no vendor lock-in.</td><td><span class="chip yes">Yes, for the knowledge</span><p>Artifacts are plain Markdown, YAML and JSON. The process is tied to GitHub (decision 23) and Claude Code, by design.</p></td><td><p>Nothing to add.</p></td><td><p>None</p></td></tr>
+<tr data-s="part"><td class="n">21</td><td class="item">Sharing across teams and projects</td><td class="what">Bundles move between organizations and tools unchanged. This is the "data sharing" in the article's URL.</td><td><span class="chip part">Only process knowledge</span><p>Policy skills ship with the pinned plugin. Lessons, eval cases, dismissals and review memory stay inside each project, and nothing collects them.</p></td><td><span class="chip lvl">Medium, grows with projects</span><p>A lesson from one project (a flaky-test pattern, say) could inform diagnosis in another.</p></td><td><p>Medium–high: it needs a home outside the plugin, since the plugin must not hold project content. It touches decisions 8 and 9, so it's your call.</p></td></tr>
+<tr data-s="no"><td class="n">22</td><td class="item">Enrichment agent</td><td class="what">An LLM drafts concepts from metadata, then enriches them from a bounded web crawl.</td><td><span class="chip no">No</span><p>The <code>researcher</code> agent explores, but its findings aren't kept.</p></td><td><span class="chip lvl">Low</span><p>Perhaps a "codebase bundle" at <code>/sdlc-init</code> one day. Web crawling in unattended runs raises security-baseline questions.</p></td><td><p>High</p></td></tr>
+<tr data-s="no"><td class="n">23</td><td class="item">Graph visualizer</td><td class="what">A self-contained HTML graph of concepts and their links.</td><td><span class="chip no">No</span></td><td><span class="chip lvl">Low</span><p>Nice for browsing changes and lessons; the loop doesn't need it.</p></td><td><p>Low–medium: Python writing a static HTML file.</p></td></tr>
+<tr data-s="no"><td class="n">24</td><td class="item">Knowledge Catalog serving</td><td class="what">A runtime that ingests bundles and serves them to agents.</td><td><span class="chip no">No</span></td><td><span class="chip lvl">Low</span><p>Out of scope for a GitHub-only framework whose repo is the source of truth.</p></td><td><p>High</p></td></tr>
+<tr data-s="yes"><td class="n">25</td><td class="item">Signals, not scores</td><td class="what">Store raw signals such as usage counts; let each consumer judge.</td><td><span class="chip yes">Yes, in one place</span><p><code>changes/.review-seen.json</code> counts repeat review findings; the second occurrence proposes a CLAUDE.md line.</p></td><td><p>Already consistent.</p></td><td><p>None</p></td></tr>
+</tbody>
+</table>
+</div>
+</div>
+
+<div class="wrap">
+<h2 id="value">Where the value is</h2>
+<ol class="takeaways">
+  <li><strong>The framework already follows OKF's thinking.</strong> It keeps knowledge in git-native Markdown, governs it through PRs, prefers deterministic checks to trusting the agent, and logs provenance in the spec header. Where it gates, it is stricter than OKF. Most gaps are about using one format everywhere, not about missing capability.</li>
+  <li><strong>The payoff is concentrated in <code>lessons/</code>.</strong> It is the one corpus that grows without limit, is read by an unattended agent under a budget, and has no metadata, index or validation. OKF-style frontmatter, a generated <code>index.md</code>, a <code>status</code> and <code>stale_after</code>, and links to the change and eval case would be cheap to add, and they pay off as soon as phase (f) runs live.</li>
+  <li><strong>Cross-project sharing is the article's headline benefit and the open question here.</strong> It matters only if you run the framework on several projects, and it runs into decisions 8 and 9, which separate process content from project content. That makes it an owner decision, not a build step. <a href="#sharing">Explained below.</a></li>
+</ol>
+
+<h2 id="lesson">A lesson file in OKF form</h2>
+<p>This is an invented incident written in today's <code>lessons/</code> shape, with the header line moved into OKF frontmatter. It uses a runbook the framework already ships (<code>quarantine-flaky-test</code>) and the first metric, CI failure rate (decision 15).</p>
+<figure>
+  <div class="file">
+    <div class="name">lessons/2026-10-order-total-timezone.md</div>
+<pre><span class="fm">---</span>
+<span class="k">type:</span> Lesson
+<span class="k">title:</span> Order-total test fails near UTC midnight
+<span class="k">description:</span> A test built "today" from the local clock, so CI runs crossing UTC midnight compared two different dates.
+<span class="k">tags:</span> [flaky-test, time, ci_failure_rate]
+<span class="k">change:</span> "0042"
+<span class="k">detected:</span> {at: 2026-10-03T00:40:00Z, metric: ci_failure_rate, tier: 3, rule: "1 point beyond 3 sigma"}
+<span class="k">fixed:</span> {at: 2026-10-05T16:20:00Z, pr: 57}
+<span class="k">runbook:</span> quarantine-flaky-test
+<span class="k">generated:</span> {by: sdlc-plugin/0.2.19, at: 2026-10-05T15:02:00Z}
+<span class="k">status:</span> stable
+<span class="k">stale_after:</span> 2027-10-05T00:00:00Z
+<span class="k">sources:</span>
+  - id: detection
+    resource: /changes/0042-order-total-timezone/evidence/detection.json
+  - id: eval
+    resource: /evals/cases/0042-order-total-timezone/
+  - id: fix-pr
+    resource: https://github.com/&lt;owner&gt;/&lt;repo&gt;/pull/57
+<span class="fm">---</span>
+
+# Order-total test fails near UTC midnight
+
+## What happened
+CI failure rate crossed 3 sigma on 2026-10-03 [^detection]. All failures were in
+`test_order_total_includes_daily_discount`, and all ran between 23:55 and 00:05 UTC.
+
+## Root cause
+The test built "today" with `date.today()`, but the code under test uses UTC. Near
+midnight the two disagree, so the discount was applied to the wrong day.
+
+## Fix
+The test now uses a frozen UTC clock. `quarantine-flaky-test` ran first and was the
+right call: it kept main green while the fix went through PR #57 [^fix-pr].
+
+## Prevention
+Eval case added [^eval]. Proposed CLAUDE.md line: "Tests never read the wall clock;
+use the frozen UTC clock fixture."
+
+[^detection]: Detection record.
+[^eval]: Eval case.
+[^fix-pr]: Fix PR.</pre>
+  </div>
+  <figcaption>An invented example. The four body sections are exactly those in today's <code>template/lessons/README.md</code>.</figcaption>
+</figure>
+<p>Compared with today's format:</p>
+<ul>
+  <li>The prose header line (<code>Change: … · Detected: … · Fixed: …</code>) moves into frontmatter, so a script can read it without parsing prose.</li>
+  <li><code>description</code> and <code>tags</code> let <code>/sdlc-maintain</code> pick out relevant lessons without opening each file.</li>
+  <li><code>status</code> and <code>stale_after</code> let a lesson be retired once the code it describes is gone.</li>
+  <li><code>sources</code> with keyed footnotes keep citations correct when an agent rewrites the text on a fix round.</li>
+  <li>There is no <code>verified</code> field. The owner's merge of the fix PR already records that, and the intent template says not to add approval lines.</li>
+</ul>
+
+<h3>The index that goes with it</h3>
+<figure>
+  <div class="file">
+    <div class="name">lessons/index.md</div>
+<pre><span class="fm">---</span>
+<span class="k">okf_version:</span> "0.2"
+<span class="fm">---</span>
+# Lessons
+
+## flaky-test
+* [Order-total test fails near UTC midnight](/lessons/2026-10-order-total-timezone.md) - Test built "today" from the local clock; fails on runs crossing UTC midnight. Tier 3, Oct 2026.
+* [Checkout test depends on test order](/lessons/2026-08-checkout-order.md) - Shared fixture mutated by an earlier test. Tier 2, Aug 2026.
+
+## dependencies
+* [Build broke on a transitive minor bump](/lessons/2026-09-lockfile-drift.md) - Unpinned transitive dependency; lockfile now enforced in CI. Tier 3, Sep 2026.
+
+## Retired
+* [Cache warm-up timeout](/lessons/2026-07-cache-warmup.md) - deprecated: the cache layer was removed in change 0038.</pre>
+  </div>
+  <figcaption>Generated from the lessons' frontmatter by a script, never edited by hand. Only a bundle's root index may carry <code>okf_version</code>.</figcaption>
+</figure>
+<p><strong>How this changes <code>/sdlc-maintain</code>.</strong> Today it reads every lesson file. With the index, it reads one short page first, then opens only the lessons whose tags match the metric or rule in <code>detection.json</code>, plus any that look related. With 5 lessons the difference is small. With 80, it is the difference between a diagnosis that fits the run's budget and one that does not.</p>
+<p><strong>What it would take:</strong> a small Python script that rebuilds the index, <code>/sdlc-deploy</code> step 0b writing frontmatter and running that script in the same fix PR, and updates to the lesson shape in <code>template/lessons/README.md</code> and to the <code>/sdlc-maintain</code> prompt.</p>
+
+<h2 id="sharing">Sharing lessons across projects, explained</h2>
+<p>OKF's idea of sharing is simple: a bundle is a folder in an agreed format, so another team, project or tool can take it and read it without translation. The framework already splits its knowledge into two kinds (decision 8), and only one of them travels.</p>
+<div class="tablebox">
+<table style="min-width:640px">
+<thead><tr><th>Kind</th><th>Examples</th><th>Where it lives</th><th>Shared across projects?</th></tr></thead>
+<tbody>
+<tr><td class="item">Process knowledge</td><td>Policy skills, agents, review prompt, hooks, gate</td><td>The plugin</td><td><span class="chip yes">Yes</span><p>Every project pinned to the plugin gets it.</p></td></tr>
+<tr><td class="item">Project knowledge</td><td><code>lessons/</code>, eval cases, dismissals, review memory, the project's CLAUDE.md</td><td>Each project's own repo</td><td><span class="chip no">No</span><p>It never leaves that repo.</p></td></tr>
+</tbody>
+</table>
+</div>
+<p style="margin-top:18px"><strong>The consequence.</strong> Say you run the framework on projects A, B and C. Project A learns that tests reading the local clock flake near midnight, and that lesson sits in A's <code>lessons/</code>. When B hits the same problem, B's <code>/sdlc-maintain</code> cannot see A's lesson and pays for the whole diagnosis again. Format isn't what stops the lesson from traveling. Nothing moves it, and nothing reads across repos.</p>
+<h3>Why it touches decisions 8 and 9</h3>
+<ul>
+  <li><strong>Decision 8 (sticky): the plugin holds process, the template holds project content.</strong> The obvious shortcut, shipping shared lessons inside the plugin, is ruled out. CLAUDE.md says: "Never put project content in the plugin." Shared lessons would need a new home.</li>
+  <li><strong>Decision 9 (reversible): each project's repo is the source of truth for its own artifacts.</strong> A shared store would be a second place the same lesson lives, so you would have to say which copy wins. The natural answer is that the project holds the original and the shared store holds a copy.</li>
+  <li><strong>A practical limit.</strong> The CI workflow token can only read its own repo. Reading a shared lessons repo from CI needs a token with wider access, such as the GitHub App that decision 5 keeps in reserve for when the token's limits bite.</li>
+</ul>
+<h3>The realistic options</h3>
+<ol>
+  <li><strong>Do nothing.</strong> Right while you run one project.</li>
+  <li><strong>Promote lessons to rules.</strong> When the same kind of lesson appears in a second project, write it as a rule in a policy skill (for example, coding-standards: "tests never read the wall clock") through a normal plugin PR. Every pinned project then gets it. This fits decision 8 as it stands, needs no new mechanism, and captures most of the value.</li>
+  <li><strong>A shared lessons repo.</strong> Each project's fix PR also sends a copy of the lesson there, and <code>/sdlc-maintain</code> reads its <code>index.md</code> read-only. This is where OKF's format pays off most, because lessons from different projects would share one shape. It needs the wider-access token and your call on decision 9.</li>
+</ol>
+<p><strong>Recommendation:</strong> option 2 now, and option 3 only once several projects run phase (f) live. Nothing needs deciding until a second project exists. If lessons are ever shared outside your own projects, review them first: they can contain project details that the data-conventions rules would classify as internal.</p>
+
+<h2 id="context">Should the often-loaded docs become an OKF-style reference?</h2>
+<p>The question: would turning the docs Claude loads all the time into an indexed, OKF-style reference keep the information but cost fewer tokens? The short answer is no for CLAUDE.md. It is already small, cheap to re-send, and holds exactly the rules that must always be present. The saving is in the four large docs that sessions are <em>told</em> to read.</p>
+
+<h3>What Claude Code loads, and when</h3>
+<p>Claude doesn't re-read these files on every prompt. It reads them <strong>once per session</strong>, then re-sends the whole context with every request. The unchanged start of that context is billed at the <strong>cache-read rate, 0.1× the normal input price</strong>. After <code>/compact</code>, the root CLAUDE.md is read from disk again and put back.</p>
+<div class="tablebox">
+<table style="min-width:680px">
+<thead><tr><th>When</th><th>What</th></tr></thead>
+<tbody>
+<tr><td class="item">Session start, kept all session</td><td><p>The system prompt. CLAUDE.md from your user folder, the project root and its parent folders, plus any <code>@path</code> imports (the docs indicate these load at launch, though no verbatim quote was found). Auto-memory <code>MEMORY.md</code>, up to the first 200 lines or 25 KB. Skill names and descriptions (about 100 tokens each). Subagent descriptions. MCP tool <em>names</em> only. SessionStart hook output.</p></td></tr>
+<tr><td class="item">Only when triggered</td><td><p>A CLAUDE.md in a subfolder, when a file there is read. <code>.claude/rules/</code> files with <code>paths:</code>, when a matching file is read. A skill's full SKILL.md, when invoked, and its supporting files, when read. Any doc Claude decides to read.</p></td></tr>
+<tr><td class="item">Survives <code>/compact</code></td><td><p>Root CLAUDE.md and auto-memory, which are reloaded from disk. Recently invoked skills, up to 5k tokens each and 25k in total. Subfolder CLAUDE.md files and path-scoped rules do <strong>not</strong> survive; they are summarized away.</p></td></tr>
+<tr><td class="item">Headless <code>claude -p</code></td><td><p>Loads CLAUDE.md and skills. <code>--bare</code> skips CLAUDE.md, hooks and plugins unless they are passed explicitly. Most subagents load CLAUDE.md; the built-in Explore and Plan agents don't.</p></td></tr>
+</tbody>
+</table>
+</div>
+<p style="margin-top:14px">Official guidance is to keep each CLAUDE.md <strong>under 200 lines</strong>, asking of every line "would removing this cause Claude to make mistakes?". <code>/context</code> shows what is actually loaded.</p>
+
+<h3>What that means for this repo</h3>
+<div class="tablebox">
+<table style="min-width:640px">
+<thead><tr><th>File</th><th>Size</th><th>How it gets loaded</th></tr></thead>
+<tbody>
+<tr><td class="item"><code>CLAUDE.md</code> (root)</td><td>56 lines, 4.7 KB (about 1.2k tokens)</td><td><p>Every session. Well under the 200-line guidance.</p></td></tr>
+<tr><td class="item"><code>template/CLAUDE.md</code></td><td>40 lines, 1.8 KB</td><td><p>A project's CI runs load it on the subscription-token path. With an API key, the run uses <code>--bare</code>, so CLAUDE.md is not picked up automatically (see the finding below).</p></td></tr>
+<tr><td class="item">8 skill descriptions</td><td>about 100 tokens each</td><td><p>Every session. Full bodies (2.6 to 5 KB) load on demand.</p></td></tr>
+<tr><td class="item"><code>plugin/commands/*.md</code></td><td>5 to 15 KB each</td><td><p>On demand, when the command runs.</p></td></tr>
+<tr><td class="item"><code>docs/OPERATING_MODEL.md</code></td><td>50 KB</td><td><p>Not auto-loaded, but CLAUDE.md line 3 says "Read <code>docs/OPERATING_MODEL.md</code> first".</p></td></tr>
+<tr><td class="item"><code>docs/PROGRESS.md</code></td><td>137 KB, 366 lines</td><td><p>Read by build sessions from HANDOFF's "Read in this order" list. Lines 1 to 115 cover the current session; the rest is sessions 3 and 4.</p></td></tr>
+<tr><td class="item"><code>docs/NOTES.md</code></td><td>62 KB, 815 lines</td><td><p>Read for platform facts.</p></td></tr>
+<tr><td class="item"><code>docs/DECISIONS.md</code></td><td>29 KB</td><td><p>Read so decisions aren't reopened.</p></td></tr>
+</tbody>
+</table>
+</div>
+<p style="margin-top:14px">The always-loaded part is about 2k tokens, and it is cached. HANDOFF's reading list points to specific <em>sections</em>, but a default <code>Read</code> returns the whole file. A build session that reads the four files whole can take in <strong>up to about 60k tokens</strong>, most of it history it doesn't need.</p>
+
+<div class="note"><strong>Repo finding: CLAUDE.md in API-key CI runs.</strong> <code>plugin/ci/auth.py</code> adds <code>--bare</code> whenever <code>ANTHROPIC_API_KEY</code> is set. NOTES §10 and §13 record that bare mode "skips CLAUDE.md, hooks and plugins unless passed explicitly". <code>run_phase.py</code> passes <code>--plugin-dir</code> and <code>--settings</code> explicitly, so skills and hooks still load. Nothing passes the project's CLAUDE.md, so in API-key runs it is likely absent. The subscription-token path and the eval runner don't use <code>--bare</code>, so they load it. A phase transcript in <code>evidence/claude-&lt;phase&gt;.json</code> would confirm this. It matters less than it sounds, because the hooks and the gate enforce CLAUDE.md's guardrails.</div>
+
+<h3>Evidence on both sides</h3>
+<p>Both research passes worked from search snippets, because direct page fetches were blocked. Abstract-level numbers agreed across several independent snippets. Figures marked ² appeared only in third-party write-ups.</p>
+<div class="tablebox">
+<table style="min-width:760px">
+<thead><tr><th>Side</th><th>Source</th><th>Finding</th></tr></thead>
+<tbody>
+<tr><td><span class="chip yes">For</span></td><td class="item">Anthropic, <em>Effective context engineering for AI agents</em> (Sep 2025)</td><td><p>Aim for "the smallest possible set of high-signal tokens" and load context "just-in-time". It describes Claude Code as a hybrid: CLAUDE.md is loaded up front, and grep and glob fetch the rest.</p></td></tr>
+<tr><td><span class="chip yes">For</span></td><td class="item">Anthropic, <em>Agent Skills</em> (Oct 2025)</td><td><p>Progressive disclosure: about 100 tokens of metadata always, a body under 5k tokens when the skill is triggered, and resources only when accessed.</p></td></tr>
+<tr><td><span class="chip yes">For</span></td><td class="item">Claude Code costs docs</td><td><p>Workflow-specific instructions in CLAUDE.md "are present even when you're doing unrelated work"; move them into skills.</p></td></tr>
+<tr><td><span class="chip yes">For</span></td><td class="item">Chroma, <em>Context Rot</em> (Jul 2025)</td><td><p>Across 18 models, performance gets "increasingly unreliable as input length grows", even on the same task.</p></td></tr>
+<tr><td><span class="chip yes">For</span></td><td class="item">Liu et al., <em>Lost in the Middle</em> (TACL 2024)</td><td><p>Accuracy drops when the relevant information sits in the middle of a long context.</p></td></tr>
+<tr><td><span class="chip yes">For</span></td><td class="item">IFScale (Jul 2025)</td><td><p>At 500 instructions, the best model scored 68% and claude-sonnet-4 scored 42.9%. Earlier instructions are favored.</p></td></tr>
+<tr><td><span class="chip yes">For</span></td><td class="item">HumanLayer, <em>Writing a good CLAUDE.md</em></td><td><p>Keep it under 60 lines, with pointer files that each have a one-line description. "Never send an LLM to do a linter's job."</p></td></tr>
+<tr><td><span class="chip yes">For</span></td><td class="item">Karpathy's LLM Wiki; llms.txt; Claude's <code>MEMORY.md</code></td><td><p>All share one shape: a short index read first, with detail pages opened as needed.</p></td></tr>
+<tr><td><span class="chip no">Against</span></td><td class="item">Vercel, <em>AGENTS.md outperforms skills in our agent evals</em> (Jan 2026)</td><td><p>No docs: 53%. Skills: 53%, and "in 56% of cases, the skill was never used". Skills with explicit instructions: 79%. A compressed 8 KB docs index kept in AGENTS.md: 100%. When loading depends on the model choosing to fetch, it fails silently.</p></td></tr>
+<tr><td><span class="chip no">Against</span></td><td class="item">Anthropic's skill-creator skill</td><td><p>Claude tends to "undertrigger" skills, so descriptions should be "a little bit pushy".</p></td></tr>
+<tr><td><span class="chip no">Against</span></td><td class="item">Scott Spence, skill activation tests</td><td><p>Skills activated 20% of the time with plain instructions and 84% with a hook that forces an evaluation step.</p></td></tr>
+<tr><td><span class="chip no">Against</span></td><td class="item">ETH Zurich, <em>Evaluating AGENTS.md</em> (Feb 2026)</td><td><p>Context files "do not generally improve task success rates" and raise cost "by over 20%". Overviews "are not helpful", but instructions in them "are well followed". It recommends "only minimal requirements". LLM-generated files lowered success by about 3%².</p></td></tr>
+<tr><td><span class="chip no">Against</span></td><td class="item">Claude Code docs</td><td><p>Content loaded on demand (subfolder CLAUDE.md files, path rules) is summarized away at compaction; root CLAUDE.md is not.</p></td></tr>
+<tr><td><span class="chip part">Cost</span></td><td class="item">Prompt-caching pricing</td><td><p>Cache reads cost 0.1× the input price. Removing a stable 1k-token file saves almost no money. The real costs are attention and context space.</p></td></tr>
+</tbody>
+</table>
+</div>
+<p style="margin-top:14px"><strong>Where the sources agree:</strong> keep a short index that is always loaded, put the detail in small files, and don't rely on the model deciding whether to look. Vercel's 100% came from that shape. Its 53% came from skills that depended on being triggered.</p>
+
+<h3>What this means for the framework</h3>
+<ul>
+  <li><strong>Leave CLAUDE.md as it is.</strong> It is 56 lines, cached, and survives compaction. Its content is always-needed rules ("never edit guardrails", "park, never page"), which shouldn't depend on a fetch that might not happen. The repo already follows the "linter's job" advice: hooks and the gate enforce the rules, and CLAUDE.md only states them.</li>
+  <li><strong>Convert the large docs.</strong>
+    <ul>
+      <li><code>docs/NOTES.md</code> becomes <code>docs/notes/</code>: one file per platform fact, with <code>sources</code> (docs URL and verbatim quote), <code>generated.at</code> and <code>stale_after</code>, plus an <code>index.md</code>. The existing "re-verify when the Claude Code version moves" becomes a date check. This is the best candidate.</li>
+      <li><code>docs/DECISIONS.md</code> becomes one file per decision, with frontmatter such as <code>status: accepted</code> or <code>amended</code>, <code>reversibility: sticky</code> and <code>amended_by: 21</code>. The index has one line per decision, which is often enough to know what not to reopen.</li>
+      <li><code>docs/PROGRESS.md</code>: split the current session (lines 1 to 115) from the archive of sessions 3 and 4.</li>
+    </ul>
+  </li>
+  <li><strong>Point to the indexes from CLAUDE.md.</strong> Add a few pointer lines, for example "<code>docs/notes/index.md</code> lists every verified platform fact; read the matching note before relying on one". This is one step removed from Vercel's winning shape, which kept the index itself in the always-loaded file. Your rule that CLAUDE.md fits on a page rules that out. A pointer relies on Claude following an instruction rather than on a skill being triggered, and the evidence favors instructions: ETH found them "well followed", and sessions here already follow line 3's "Read OPERATING_MODEL first".</li>
+  <li><strong>In projects</strong>, the same logic applies to <code>lessons/</code> (the <a href="#lesson">example above</a>). <code>/sdlc-maintain</code> reads the index first because its prompt says to, then opens only matching lessons.</li>
+  <li><strong>How to do it:</strong> split the docs with the Edit tool, not a script (your CLAUDE.md warns that scripted rewrites get blocked). CLAUDE.md is a guardrail file, so the pointer lines go to you as an edit table. HANDOFF's reading list becomes "index first".</li>
+</ul>
+<p>The saving is mostly attention and context space, not money. For unattended runs with budget and turn limits, those are the limits that matter.</p>
+
+<div class="note"><strong>How this was checked.</strong> The article's claims come from the published blog post (v0.1). Field-level details (<code>sources</code>, <code>verified</code>, <code>stale_after</code>, Attested Computation) come from SPEC.md v0.2 in <code>GoogleCloudPlatform/open-knowledge-format</code>. The framework was read from its design docs and from the code at plugin 0.2.19. Claude Code loading behavior was checked against the official docs at code.claude.com. The external evidence on context files came from search snippets; direct fetches were blocked. The findings were re-checked independently in a second pass, which corrected four points: CLAUDE.md in API-key CI runs, <code>@path</code> imports, the 60k-token figure, and the pointer approach. Still unverified: whether the gate compares evidence commands against <code>sdlc.yaml</code> (row 16), whether rehearsal age is enforced (row 10), and the CI CLAUDE.md finding, which needs a transcript to confirm.</div>
+
+<footer>
+  <p>Sources: <a href="https://cloud.google.com/blog/products/data-analytics/how-the-open-knowledge-format-can-improve-data-sharing">Google Cloud blog: Introducing the Open Knowledge Format</a> · <a href="https://github.com/GoogleCloudPlatform/open-knowledge-format/blob/main/SPEC.md">OKF SPEC.md (v0.2)</a> · <code>docs/OPERATING_MODEL.md</code>, <code>docs/DECISIONS.md</code> and <code>docs/PROGRESS.md</code> in <code>luissiviero/sdlc-framework</code>.</p>
+</footer>
+</div>
+
+<script>
+(function(){
+  var btns=document.querySelectorAll('.filters button');
+  var rows=document.querySelectorAll('#rows tr');
+  btns.forEach(function(b){
+    b.addEventListener('click',function(){
+      var f=b.getAttribute('data-f');
+      btns.forEach(function(x){x.setAttribute('aria-pressed',x===b?'true':'false');});
+      rows.forEach(function(r){r.hidden=!(f==='all'||r.getAttribute('data-s')===f);});
+    });
+  });
+})();
+</script>
