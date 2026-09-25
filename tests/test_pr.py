@@ -984,8 +984,8 @@ def test_phase_f_finding_of_a_rehearsal_on_an_empty_series_says_no_observation(p
     )  # fmt: skip
     lines = bullets(desc.build_description(root, "0001", "f"))
     assert lines[0] == (
-        "- **Finding**: ci_test_failure_rate at tier 2 (forced): no observation on 2026-09-25, "
-        "forced by a rehearsal"
+        "- **Finding**: ci_test_failure_rate at tier 2 (forced): no observation in the window "
+        "(run of 2026-09-25), forced by a rehearsal"
     )
     assert "None" not in lines[0]
 

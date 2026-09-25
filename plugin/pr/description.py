@@ -350,7 +350,7 @@ def _incident_bullets(
         value = latest.get("value")
         day = str(latest.get("at") or record.get("at"))[:10]
         if not latest:  # a forced rehearsal on an empty series: nothing was observed
-            observed = f"no observation on {day}"
+            observed = f"no observation in the window (run of {day})"
         elif isinstance(value, (int, float)):
             observed = f"{float(value):.3f} on {day}"
         else:

@@ -522,7 +522,8 @@ paths given), the official OpenAPI description (`github/rest-api-description`),
   production project's live run settles the fact (a `workflow_dispatch(pr_number)` is the
   fallback). The merged PR's files come from `GET /repos/{owner}/{repo}/pulls/{number}/files`
   (paginated with `Link: rel="next"`), which is how the merge-triggered jobs find the change
-  folder a PR carries whatever its head branch is called.
+  folder a PR carries whatever its head branch is called. The same paging on the runs API
+  was confirmed live on 2026-09-25 (§14).
 - `permissions:` keys: `actions`, `checks`, `contents`, `issues`, `pull-requests` (each
   `read|write|none`); "If you specify the access for any of these permissions, all of those
   that are not specified are set to `none`." Which permission each REST endpoint needs is
@@ -841,7 +842,8 @@ Every fact below is read from a job log or a committed evidence file of
 - A GitHub-hosted runner has **no git identity**: `git commit` fails with "Author identity
   unknown … empty ident name". `run_phase.py` set one for the phase jobs since B3; the
   detect step's own `commit-phase` had none — https://github.com/luissiviero/sdlc-sample-python/actions/runs/36163920571.
-  Since 0.2.20 `gitops.commit_files` ensures the automation identity itself.
+  Since 0.2.20 `gitops.commit_files` passes the automation identity as per-commit `-c`
+  arguments when the checkout has none (nothing is written into an owner's `.git/config`).
 - `$GITHUB_OUTPUT` takes one `key=value` per line; a value with a newline written that way
   makes the runner log "Unable to process file command 'output' successfully … Invalid
   format" (same run). The documented heredoc form (`key<<DELIM`, the value, `DELIM`) is
@@ -851,7 +853,15 @@ Every fact below is read from a job log or a committed evidence file of
   reference is the remote-tracking `origin/main`. `gitops.default_branch` used to fall
   through to the current branch there (run 36165497264: the incident branched off the
   dispatched ref); the workflows now pass `SDLC_DEFAULT_BRANCH` from
-  `github.event.repository.default_branch` to every detect and scan step.
+  `github.event.repository.default_branch` to every step that reads the default branch's
+  files. One observation does not fit the rule: the 0.2.19 abandon job of PR #26
+  (https://github.com/luissiviero/sdlc-sample-python/actions/runs/36166179352, a checkout
+  of the head `sdlc/0004/a`) opened its dismissal PR against `main`, not the head. The
+  likely cause, unverified: `abandon --all-branches` runs a plain `git fetch origin` before
+  `dismiss`, and git 2.48 and later (`remote.origin.followRemoteHEAD` defaulting to
+  `create`; the runner has git 2.55) creates `refs/remotes/origin/HEAD` on that fetch. So
+  "no `origin/HEAD`" holds only until something fetches, and the 0.2.19 runbook job (`go`
+  judges before any fetch) really would have read the head's copies.
 - The maintain run (`/sdlc-maintain <id> --diagnosis-only`, Claude Code 2.1.278, the OAuth
   token): 19 turns, $0.40, 59 s at tier 2; 14 turns, $0.24 at tier 3; `permission_denials`
   empty; the transcript's stderr carries the known "Ignoring 4 permissions.allow entries

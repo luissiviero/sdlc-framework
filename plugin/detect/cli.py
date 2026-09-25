@@ -163,18 +163,11 @@ def maintain_tools(bands: bands_mod.Bands | None) -> str:
 
 
 # --- run --------------------------------------------------------------------------------------
-DEFAULT_BRANCH_ENV = "SDLC_DEFAULT_BRANCH"
-
-
 def _default_branch(root: Path) -> str:
-    """The default branch: an explicit value wins over the guess. ``SDLC_DEFAULT_BRANCH``
-    (the workflows set it from ``github.event.repository.default_branch``; ``--default-branch``
-    sets it too) when non-empty, else ``gitops.default_branch``. The runbook and abandon
-    workflows check out the PR head ``sdlc/<id>/a``: the guess alone could name that head,
-    and the dispatcher would judge by the head's bands.yaml and sdlc.yaml (decision 14)."""
-    explicit = os.environ.get(DEFAULT_BRANCH_ENV, "").strip()
-    if explicit:
-        return explicit
+    """``gitops.default_branch`` (``SDLC_DEFAULT_BRANCH`` first, then the git guess), "main"
+    outside a git checkout. The workflows set the variable from
+    ``github.event.repository.default_branch``: the runbook and abandon workflows check out
+    the PR head ``sdlc/<id>/a``, and the guess alone could name that head (decision 14)."""
     try:
         return gitops.default_branch(root)
     except (gitops.GitError, FileNotFoundError):
@@ -396,6 +389,14 @@ def _log_line(path: Path | None, entry: dict[str, Any]) -> None:
         pass
 
 
+def _last_line(err: str | None, code: int) -> str:
+    """The last non-empty line of a child's stderr ("fatal: ..." for a git failure), else
+    ``exit code <code>``. A reason goes into the log line and $GITHUB_OUTPUT: one line; the
+    stderr's tail stays in the printed JSON only."""
+    lines = [line.strip() for line in (err or "").splitlines() if line.strip()]
+    return lines[-1] if lines else f"exit code {code}"
+
+
 def file_change(root: Path, record: dict[str, Any], *, push: bool, dry_run: bool) -> dict[str, Any]:
     """Allocate the incident change, write the detection record and commit it on
     ``sdlc/<id>/a`` from the default branch (the maintain run works there; the owner's merge
@@ -413,7 +414,11 @@ def file_change(root: Path, record: dict[str, Any], *, push: bool, dry_run: bool
         root,
     )  # fmt: skip
     if code != 0 or not data:
-        return {"filed": False, "reason": f"new-change failed: {err or code}"}
+        return {
+            "filed": False,
+            "reason": f"new-change failed: {_last_line(err, code)}",
+            "stderr": (err or "")[-2000:],
+        }
     change_id = data["id"]
     change_dir = root / data["dir"]
     finding.write(change_dir / art.EVIDENCE_DIR / finding.DETECTION_FILE, record)
@@ -426,14 +431,11 @@ def file_change(root: Path, record: dict[str, Any], *, push: bool, dry_run: bool
         argv.append("--push")
     committed, code, err = _cli(STATE_CLI, argv, root)
     if code != 0:
-        # the reason goes into the log line and $GITHUB_OUTPUT: one line (the last of stderr,
-        # "fatal: ..." for a git failure); the whole stderr stays in the printed JSON only
-        lines = [line.strip() for line in (err or "").splitlines() if line.strip()]
         return {
             "filed": False,
             "change_id": change_id,
-            "reason": f"commit-phase failed: {lines[-1] if lines else f'exit code {code}'}",
-            "stderr": (err or "")[:2000],
+            "reason": f"commit-phase failed: {_last_line(err, code)}",
+            "stderr": (err or "")[-2000:],
         }
     return {
         "filed": True,
@@ -745,14 +747,22 @@ def _act(
 def approved_files(root: Path, config: dict[str, Any]) -> tuple[dict[str, Any], Any, str]:
     """``(sdlc.yaml, bands.yaml, where from)`` as the owner approved them: the default
     branch's copies through ``git show`` when the checkout knows the remote, else the
-    checkout's. The maintain run holds Write and python (p.43: read-only on *source*), so an
+    checkout's only when the repository has no remote at all (a by-hand run on a local
+    repository); with a remote, an unreadable copy raises ``BandsError`` (fail closed). The
+    maintain run holds Write and python (p.43: read-only on *source*), so an
     uncommitted edit of either file must never change a route's authorization (decision 14:
     "enforced, not remembered"; decision 11: a run cannot approve itself)."""
     ref = f"origin/{_default_branch(root)}"
-    cfg_text = _show(root, ref, SDLC_FILE) if gitops.is_repo(root) else None
-    bands_text = _show(root, ref, bands_mod.BANDS_FILE) if gitops.is_repo(root) else None
-    if cfg_text is None or bands_text is None:
+    if not gitops.is_repo(root) or not gitops.has_remote(root):
+        # a by-hand run on a local repository: no remote holds an approved copy
         return config, bands_mod.load_project(root), "the checkout"
+    cfg_text = _show(root, ref, SDLC_FILE)
+    bands_text = _show(root, ref, bands_mod.BANDS_FILE)
+    if cfg_text is None or bands_text is None:
+        # fail closed: never fall back to the checkout's (possibly edited) copies
+        raise bands_mod.BandsError(
+            f"the default branch's bands.yaml/sdlc.yaml could not be read: {ref}"
+        )
     try:
         approved_cfg = status_mod.yamlish.loads(cfg_text)
     except status_mod.yamlish.YamlishError as exc:
@@ -1081,14 +1091,6 @@ def cmd_dismiss(args) -> int:
 
 
 # --- CLI ----------------------------------------------------------------------------------------
-def _add_default_branch(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument(
-        "--default-branch",
-        default=None,
-        help=f"the default branch's name (else ${DEFAULT_BRANCH_ENV}, else the git guess)",
-    )
-
-
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="detect", description=__doc__.split("\n\n")[0])
     sub = p.add_subparsers(dest="command", required=True)
@@ -1107,12 +1109,10 @@ def build_parser() -> argparse.ArgumentParser:
     r.add_argument("--file", action="store_true", help="open the incident change at tier 2/3")
     r.add_argument("--no-push", action="store_true")
     r.add_argument("--dry-run", action="store_true")
-    _add_default_branch(r)
 
     for name in ("routes", "dispatch", "finish", "go", "dismiss"):
         s = sub.add_parser(name)
         s.add_argument("--root", default=".")
-        _add_default_branch(s)
         s.add_argument("--id", required=True)
         s.add_argument("--dry-run", action="store_true")
         if name != "routes":
@@ -1131,11 +1131,8 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    # --default-branch goes through the same environment variable _default_branch reads, so
-    # every helper (and every child CLI this process starts) sees one value without threading
-    # an argument through each call.
-    if args.default_branch:
-        os.environ[DEFAULT_BRANCH_ENV] = args.default_branch
+    # the default branch comes from $SDLC_DEFAULT_BRANCH only (gitops.default_branch): no
+    # flag, so the model's session cannot point the dispatcher at a branch (decisions 11, 14)
     root = Path(args.root).resolve()
     if getattr(args, "repo", None) is None and hasattr(args, "repo"):
         try:

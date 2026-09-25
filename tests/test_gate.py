@@ -720,6 +720,28 @@ def test_the_diff_checks_judge_a_checkout_of_the_default_branch_itself(tmp_path)
         assert res.reason != checks.NO_BASE_REASON
 
 
+def test_default_base_prefers_the_environment_value_when_its_remote_branch_exists(
+    tmp_path, monkeypatch
+):
+    """``SDLC_DEFAULT_BRANCH`` names the base when ``origin/<value>`` resolves, before
+    origin/HEAD; a framework branch name or a branch the remote lacks falls through."""
+    from gate import diff
+
+    root = _single_branch_repo(tmp_path, "main")
+    origin = tmp_path / "origin.git"
+    git(tmp_path, "init", "-q", "--bare", "-b", "main", str(origin))
+    git(root, "remote", "add", "origin", str(origin))
+    git(root, "push", "-q", "origin", "main", "main:trunk", "main:sdlc/0001/a")
+    git(root, "fetch", "-q", "origin")
+    git(root, "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main")
+    assert diff.default_base(root) == "origin/main"
+    monkeypatch.setenv("SDLC_DEFAULT_BRANCH", "trunk")
+    assert diff.default_base(root) == "origin/trunk"
+    for fallthrough in ("sdlc/0001/a", "nonexistent"):
+        monkeypatch.setenv("SDLC_DEFAULT_BRANCH", fallthrough)
+        assert diff.default_base(root) == "origin/main", fallthrough
+
+
 def test_risk_list_reads_the_committed_spec(design_project):
     """The spec's "Flagged concerns" are read at HEAD: clean_tree skips the change folder and
     does not run at (b), so an uncommitted edit of spec.md is not what the PR carries."""

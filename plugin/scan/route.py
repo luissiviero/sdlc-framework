@@ -20,7 +20,6 @@ eval of p.48 step 7 is ``/sdlc-deploy`` step 0b, as for every incident change.
 from __future__ import annotations
 
 import json
-import os
 import subprocess
 import sys
 from datetime import date, datetime, timezone
@@ -405,12 +404,8 @@ def _write_json(path: Path, data: Any) -> None:
 
 
 def _default_branch(root: Path) -> str:
-    """``SDLC_DEFAULT_BRANCH`` when non-empty (the scan workflow sets it from
-    ``github.event.repository.default_branch``), else ``gitops.default_branch``: the same
-    rule as ``detect/cli.py``."""
-    explicit = os.environ.get("SDLC_DEFAULT_BRANCH", "").strip()
-    if explicit:
-        return explicit
+    """``gitops.default_branch`` (``SDLC_DEFAULT_BRANCH`` first: the scan workflow sets it
+    from ``github.event.repository.default_branch``), "main" outside a git checkout."""
     try:
         return gitops.default_branch(root)
     except (gitops.GitError, FileNotFoundError):

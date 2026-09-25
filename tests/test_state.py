@@ -84,6 +84,19 @@ def test_truncate_words_hard_cuts_a_single_long_word():
     assert c.truncate_words("y" * 100 + " tail", 10) == "y" * 10
 
 
+def test_truncate_words_strips_the_fallback_when_the_cut_leaves_only_trim_characters():
+    # the word cut leaves "..." (all trim characters): the hard cut "... ." is trimmed too
+    assert c.truncate_words("... .... words", 5) == ""
+    assert c.truncate_words("-- abcdefgh", 6) == "-- abc"
+    assert c.truncate_words("x ((( more", 5) == "x"
+
+
+def test_truncate_words_with_a_limit_of_zero_or_less_is_empty():
+    assert c.truncate_words("a runner outage", 0) == ""
+    assert c.truncate_words("a runner outage", -3) == ""
+    assert c.truncate_words("", 0) == ""
+
+
 def test_new_change_allocates_sequential_ids(tmp_path):
     d1, s1 = status.new_change(tmp_path, "First change")
     d2, s2 = status.new_change(tmp_path, "Second: change")
@@ -654,7 +667,9 @@ def test_commit_files_on_a_checkout_without_identity_commits_as_the_automation(
 ):
     """A GitHub-hosted runner has no git user.name/user.email: the detect step's
     ``commit-phase`` failed there with "empty ident name" (live run of 2026-09-25).
-    ``commit_files`` sets the automation identity itself when the checkout has none."""
+    ``commit_files`` commits as the automation identity when the checkout has none, for
+    that commit only: nothing is written into ``.git/config`` (on an owner's machine a
+    persisted bot identity would sign their later commits)."""
     from state import gitops
 
     home = tmp_path / "home"
@@ -684,6 +699,9 @@ def test_commit_files_on_a_checkout_without_identity_commits_as_the_automation(
     assert sha
     author = gitops.run(root, "log", "-1", "--format=%an <%ae>").strip()
     assert author == f"{gitops.BOT_LOGIN} <{gitops.BOT_EMAIL}>"
+    assert gitops.run(root, "config", "--get", "user.name", check=False).strip() == ""
+    assert gitops.run(root, "config", "--get", "user.email", check=False).strip() == ""
+    assert "[user]" not in (root / ".git" / "config").read_text(encoding="utf-8")
     # an owner's identity, once present, is left alone
     gitops.run(root, "config", "user.name", "Owner")
     gitops.run(root, "config", "user.email", "owner@example.com")
@@ -717,6 +735,23 @@ def test_default_branch_on_a_runner_shaped_checkout_reads_the_remote_tracking_ma
     # none of them: the current branch
     _git(work, "branch", "-q", "-D", "master")
     assert gitops.default_branch(work) == "sdlc/0001/a"
+
+
+def test_default_branch_prefers_the_environment_value_unless_it_names_a_framework_branch(
+    repo, monkeypatch
+):
+    """``SDLC_DEFAULT_BRANCH`` (set by the workflows) wins over the guess; a value that names
+    a framework branch (``sdlc/<id>/<phase>`` or anything under ``sdlc/``) is refused and
+    the guess is used, and an empty value is no value."""
+    from state import gitops
+
+    assert gitops.DEFAULT_BRANCH_ENV == "SDLC_DEFAULT_BRANCH"
+    _git(repo, "checkout", "-q", "-b", "sdlc/0001/a")
+    monkeypatch.setenv(gitops.DEFAULT_BRANCH_ENV, "trunk")
+    assert gitops.default_branch(repo) == "trunk"
+    for refused in ("sdlc/0001/a", "sdlc/0001/revert-abc1234", "sdlc/x", "  ", ""):
+        monkeypatch.setenv(gitops.DEFAULT_BRANCH_ENV, refused)
+        assert gitops.default_branch(repo) == "main", refused
 
 
 # --- decision 24: the owner's un-park labels, recorded with their actor --------------------------

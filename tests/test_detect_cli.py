@@ -932,6 +932,33 @@ def test_open_incidents_ignores_a_merged_incident_abandoned_on_a_later_branch(in
     assert detect_cli._remote_abandoned_ids(root) == {"0001"}
 
 
+def test_remote_abandoned_ids_ignores_the_dismiss_and_revert_branches(incident):
+    """``sdlc/<id>/dismiss`` and ``sdlc/<id>/revert-<sha>`` never parse as phase branches:
+    whatever status.yaml they carry, even an abandoned one, abandons no change."""
+    root, change = incident
+    rel = f"changes/{change.name}"
+    git(root, "checkout", "-q", "main")
+    git(root, "checkout", "sdlc/0001/a", "--", rel)
+    st = status_mod.read_status(root / rel)
+    st.abandon("closed: looks abandoned")
+    status_mod.write_status(root / rel, st)
+    for branch in ("sdlc/0001/dismiss", "sdlc/0001/revert-abc1234"):
+        git(root, "checkout", "-q", "-b", branch, "main")
+        git(root, "add", "--", rel)
+        git(root, "commit", "-q", "-m", f"a status on {branch}")
+        git(root, "push", "-q", "origin", branch)
+        git(root, "checkout", "-q", "main")
+        git(root, "checkout", branch, "--", rel)
+    git(root, "reset", "-q", "--hard", "main")
+    git(root, "fetch", "-q", "origin")
+    refs = git(root, "for-each-ref", "--format=%(refname:short)", "refs/remotes/origin/sdlc/")
+    assert {"origin/sdlc/0001/dismiss", "origin/sdlc/0001/revert-abc1234"} <= set(refs.split())
+    for branch in ("sdlc/0001/dismiss", "sdlc/0001/revert-abc1234"):
+        raw = git(root, "show", f"origin/{branch}:{rel}/status.yaml")
+        assert status_mod.Status.from_dict(status_mod.yamlish.loads(raw)).abandoned
+    assert detect_cli._remote_abandoned_ids(root) == set()
+
+
 def test_dismiss_title_cuts_a_long_reason_at_a_word_boundary(incident, gh, capsys):
     root, _change = incident
     reason = (
@@ -1142,6 +1169,30 @@ def test_a_failing_commit_phase_keeps_the_reason_to_one_line(
     assert "outcome=not filed: commit-phase failed: fatal: empty ident name" in lines
 
 
+def test_a_failing_new_change_keeps_the_reason_to_one_line_and_the_stderr_tail(
+    tmp_path, src, gh, capsys, monkeypatch
+):
+    """``new-change`` failing with a multi-line stderr is reported as its last non-empty
+    line (the rule of the commit-phase reason); the kept stderr is its tail."""
+    root = project(tmp_path)
+    src.observations = series(16)
+    stderr = "x" * 3000 + "\nTraceback (most recent call last):\nValueError: bad title\n\n"
+
+    def fake_cli(script, argv, cwd):
+        assert argv[0] == "new-change", argv
+        return None, 1, stderr
+
+    monkeypatch.setattr(detect_cli, "_cli", fake_cli)
+    argv = ["run", "--root", str(root), "--repo", REPO]
+    code, out = cli(capsys, *argv, "--force-tier", "2", "--file")
+    assert code == 1, out
+    filed = out["filed"]
+    assert filed["reason"] == "new-change failed: ValueError: bad title"
+    assert filed["stderr"] == stderr[-2000:]
+    assert filed["stderr"].endswith("ValueError: bad title\n\n")
+    assert detect_cli._last_line("", 3) == "exit code 3"
+
+
 def test_default_branch_prefers_the_explicit_environment_value(tmp_path, monkeypatch):
     """The workflows set ``SDLC_DEFAULT_BRANCH`` from the repository's default branch: it
     wins over the git guess, which on a checkout of a PR head could name that head (live run
@@ -1152,16 +1203,19 @@ def test_default_branch_prefers_the_explicit_environment_value(tmp_path, monkeyp
     assert detect_cli._default_branch(root) == "trunk"
     monkeypatch.setenv("SDLC_DEFAULT_BRANCH", "")
     assert detect_cli._default_branch(root) == "main"
+    monkeypatch.setenv("SDLC_DEFAULT_BRANCH", "sdlc/0001/a")  # a framework branch: refused
+    assert detect_cli._default_branch(root) == "main"
 
 
-def test_run_default_branch_argument_sets_the_filing_s_start_point(
+def test_run_default_branch_environment_sets_the_filing_s_start_point(
     tmp_path, src, gh, capsys, monkeypatch
 ):
-    """``--default-branch trunk`` wins over the guess (origin/HEAD is main here): the
-    incident branch starts from origin/trunk, not from the checkout's own branch."""
+    """``SDLC_DEFAULT_BRANCH=trunk`` wins over the guess (origin/HEAD is main here): the
+    incident branch starts from origin/trunk, not from the checkout's own branch. The
+    variable is the only way to name the branch: there is no command-line flag."""
     root = project(tmp_path)
     git(root, "checkout", "-q", "-b", "shakedown/detect")
-    monkeypatch.setenv("SDLC_DEFAULT_BRANCH", "")  # restored after main() sets it
+    monkeypatch.setenv("SDLC_DEFAULT_BRANCH", "trunk")
     src.observations = series(16)
     seen: list[list[str]] = []
     real_cli = detect_cli._cli
@@ -1173,8 +1227,47 @@ def test_run_default_branch_argument_sets_the_filing_s_start_point(
         return real_cli(script, argv, cwd)
 
     monkeypatch.setattr(detect_cli, "_cli", spy_cli)
-    argv = ["run", "--root", str(root), "--repo", REPO, "--default-branch", "trunk"]
+    argv = ["run", "--root", str(root), "--repo", REPO]
     code, out = cli(capsys, *argv, "--force-tier", "2", "--file")
     assert code == 1, out
     [commit_phase] = seen
     assert commit_phase[commit_phase.index("--start-point") + 1] == "origin/trunk"
+
+
+@pytest.mark.parametrize("command", ["run", "routes", "dispatch", "finish", "go", "dismiss"])
+def test_no_subcommand_accepts_a_default_branch_flag(command, capsys):
+    """Decisions 11 and 14: the model's session must not be able to point the dispatcher at
+    a branch; CI names the default branch per step through the environment only."""
+    with pytest.raises(SystemExit) as exc:
+        detect_cli.build_parser().parse_args(
+            [command, "--id", "0001", "--repo", REPO, "--default-branch", "trunk"]
+        )
+    assert exc.value.code == 2
+    assert "--default-branch" in capsys.readouterr().err
+
+
+def test_dispatch_with_an_unreadable_default_branch_fails_closed(
+    incident, spy, capsys, monkeypatch
+):
+    """With a remote, bands.yaml and sdlc.yaml are read from origin/<default> only: when
+    that ref cannot be read the dispatcher does not act and names the branch, instead of
+    falling back to the checkout's (possibly edited) copies."""
+    root, change = incident
+    write_proposal(change, "pull_request")
+    monkeypatch.setenv("SDLC_DEFAULT_BRANCH", "nonexistent")
+    code, out = cli(capsys, "dispatch", "--root", str(root), "--id", "0001")
+    assert code == 0, out
+    assert out["acted"] is False
+    assert "origin/nonexistent" in out["reason"]
+    assert "could not be read" in out["reason"]
+    assert spy.calls == [] and runbook_records(change) == []
+
+
+def test_approved_files_without_a_remote_reads_the_checkout(tmp_path, monkeypatch):
+    """A by-hand run on a local repository (no remote at all) keeps the checkout fallback."""
+    root = project(tmp_path)
+    git(root, "remote", "remove", "origin")
+    monkeypatch.setenv("SDLC_DEFAULT_BRANCH", "nonexistent")
+    _cfg, bands, where = detect_cli.approved_files(root, {})
+    assert where == "the checkout"
+    assert bands.metric == METRIC
