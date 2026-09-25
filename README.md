@@ -24,7 +24,7 @@ The files below were the input to the first build session; that session's brief 
 
 | File | What it is | Used by |
 |---|---|---|
-| `HANDOFF.md` | Brief for the **next** session (now: session 6, the phase (f) shakedown — every build stage is built); earlier briefs are kept in `docs/handoffs/` | the session |
+| `HANDOFF.md` | Brief for the **next** session (now: session 7, the loop on real data after the phase (f) shakedown of session 6 — every build stage is built and every live check of the loop is proven); earlier briefs are kept in `docs/handoffs/` | the session |
 | `CLAUDE.md` | Conventions for this repo (English only, Python hooks, plugin/template layout) | every session |
 | `docs/OPERATING_MODEL.md` | The contract: phases, artifacts, profiles, gates, park-never-page, conventions (draft to finalise in step 1) | the framework itself |
 | `docs/DECISIONS.md` | The 26 settled decisions with alternatives and reasons (21–26 added 2026-09-23) | sessions, to avoid reopening them |
