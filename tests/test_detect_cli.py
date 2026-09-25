@@ -904,6 +904,49 @@ def test_open_incidents_ignores_a_shipped_incident(incident):
     assert detect_cli.open_incidents(root, METRIC) == []
 
 
+def test_open_incidents_ignores_a_merged_incident_abandoned_on_a_later_branch(incident):
+    """The live sequence of 2026-09-25: the owner merges the incident PR (the folder lands on
+    main at phase f; GitHub deletes sdlc/0001/a), then closes the design PR on sdlc/0001/b;
+    abandon writes ``phase: abandoned`` on the change's branches only, never on main."""
+    root, change = incident
+    rel = f"changes/{change.name}"
+    git(root, "checkout", "-q", "main")
+    git(root, "merge", "-q", "--no-ff", "-m", "merge the incident PR", "sdlc/0001/a")
+    git(root, "push", "-q", "origin", "main")
+    git(root, "push", "-q", "origin", "--delete", "sdlc/0001/a")
+    git(root, "fetch", "-q", "--prune", "origin")
+    # control: merged and not abandoned, the incident is in flight until it ships
+    [found] = detect_cli.open_incidents(root, METRIC)
+    assert (found["change_id"], found["ref"]) == ("0001", "the checkout")
+    git(root, "checkout", "-q", "-b", "sdlc/0001/b", "main")
+    st = status_mod.read_status(root / rel)
+    st.abandon("closed: the design PR")
+    status_mod.write_status(root / rel, st)
+    git(root, "add", "--", rel)
+    git(root, "commit", "-q", "-m", "abandon(0001)")
+    git(root, "push", "-q", "origin", "sdlc/0001/b")
+    git(root, "checkout", "-q", "main")
+    git(root, "fetch", "-q", "origin")
+    assert not status_mod.read_status(root / rel).abandoned  # main still says phase f
+    assert detect_cli.open_incidents(root, METRIC) == []
+    assert detect_cli._remote_abandoned_ids(root) == {"0001"}
+
+
+def test_dismiss_title_cuts_a_long_reason_at_a_word_boundary(incident, gh, capsys):
+    root, _change = incident
+    reason = (
+        "Dismissed: the `.env` file is the framework's secrets-check fixture, committed on purpose"
+    )
+    code, out = cli(
+        capsys, "dismiss", "--root", str(root), "--id", "0001", "--reason", reason,
+        "--by", "the-owner",
+    )  # fmt: skip
+    assert code == 0, out
+    subject = git(root, "log", "-1", "--format=%s", "sdlc/0001/dismiss").strip()
+    assert subject == "dismiss(0001): Dismissed: the `.env` file is the framework's secrets-check"
+    assert len(subject) <= len("dismiss(0001): ") + 60
+
+
 # --- the session-5 review's fixes -------------------------------------------------------------
 def test_run_accepts_the_workflow_s_empty_force_tier(tmp_path, src, gh, capsys):
     """The scheduled workflow passes --force-tier "" (its dispatch input's default): it means

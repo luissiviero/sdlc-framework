@@ -176,8 +176,8 @@ def select(
 
 # --- the intent ---------------------------------------------------------------------------------
 def title_for(finding: dict[str, Any]) -> str:
-    summary = " ".join(str(finding.get("summary", "")).split())
-    short = summary[:TITLE_SUMMARY_CHARS].rstrip(" .,;:")
+    # cut at a word boundary: the live run of 2026-09-25 titled an intent "... in git (pre"
+    short = c.truncate_words(finding.get("summary", ""), TITLE_SUMMARY_CHARS).rstrip(" .,;:")
     return f"security: {finding.get('class') or DEFAULT_CLASS}: {short}"
 
 

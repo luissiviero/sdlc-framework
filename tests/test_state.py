@@ -61,6 +61,29 @@ def test_slugify():
     assert c.slugify("!!!") == "change"
 
 
+def test_truncate_words_keeps_a_short_text_whole():
+    assert c.truncate_words("a runner outage.", 60) == "a runner outage."
+    assert c.truncate_words("  a  runner\n outage ", 60) == "a runner outage"
+
+
+def test_truncate_words_cuts_at_a_word_boundary():
+    text = "the fixture file is committed and tracked in git (present since day one)"
+    out = c.truncate_words(text, 50)
+    assert out == "the fixture file is committed and tracked in git"
+    assert len(out) <= 50 and text.startswith(out)
+    assert c.truncate_words("abc def ghi", 7) == "abc def"  # a space right at the limit
+
+
+def test_truncate_words_strips_trailing_punctuation_and_space():
+    assert c.truncate_words("first clause, second clause here", 16) == "first clause"
+    assert c.truncate_words("a note: (with more text after it)", 10) == "a note"
+
+
+def test_truncate_words_hard_cuts_a_single_long_word():
+    assert c.truncate_words("x" * 100, 40) == "x" * 40
+    assert c.truncate_words("y" * 100 + " tail", 10) == "y" * 10
+
+
 def test_new_change_allocates_sequential_ids(tmp_path):
     d1, s1 = status.new_change(tmp_path, "First change")
     d2, s2 = status.new_change(tmp_path, "Second: change")

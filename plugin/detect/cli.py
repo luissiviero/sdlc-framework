@@ -239,6 +239,36 @@ def _show(root: Path, ref: str, path: str) -> str | None:
         return None
 
 
+def _remote_abandoned_ids(root: Path) -> set[str]:
+    """Ids of the changes whose ``status.yaml`` says abandoned on any remote
+    ``origin/sdlc/<id>/<phase>`` branch. ``state/cli.py abandon --all-branches`` writes the
+    marker on the change's branches only, never on the default branch (decision 4)."""
+    try:
+        out = gitops.run(
+            root, "for-each-ref", "--format=%(refname:short)", "refs/remotes/origin/sdlc/"
+        )
+    except (gitops.GitError, FileNotFoundError):
+        return set()
+    abandoned: set[str] = set()
+    for ref in out.split():
+        parsed = c.parse_branch(ref.removeprefix("origin/"))
+        if not parsed or parsed[0] in abandoned:
+            continue
+        change_id = parsed[0]
+        listing = _show(root, ref, c.CHANGES_DIR) or ""
+        names = [n.rstrip("/") for n in listing.split() if n.startswith(change_id + "-")]
+        if not names:
+            continue
+        raw = _show(root, ref, f"{c.CHANGES_DIR}/{names[0]}/{status_mod.STATUS_FILE}")
+        try:
+            st = status_mod.Status.from_dict(status_mod.yamlish.loads(raw or ""))
+        except Exception:  # noqa: BLE001
+            continue
+        if st.abandoned:
+            abandoned.add(change_id)
+    return abandoned
+
+
 def open_incidents(root: Path, metric: str) -> list[dict[str, Any]]:
     """Incident changes of ``metric`` that are still in flight: filed (a remote
     ``sdlc/<id>/a`` carries a detection record for the metric), not abandoned, and not yet
@@ -281,9 +311,14 @@ def open_incidents(root: Path, metric: str) -> list[dict[str, Any]]:
         found.append({"change_id": change_id, "ref": ref, "signature": record.get("signature")})
     seen = {item["change_id"] for item in found}
     # the incident changes the owner merged (fix now) are folders on the default branch,
-    # whatever became of their sdlc/<id>/a branch (GitHub may delete merged heads)
+    # whatever became of their sdlc/<id>/a branch (GitHub may delete merged heads).
+    # A merged incident can still be abandoned later: in the live run of 2026-09-25 the owner
+    # merged the incident PR, then closed its design PR on sdlc/<id>/b; abandon wrote
+    # ``phase: abandoned`` on the change's branches only (never the default branch, decision
+    # 4), so the default branch's folder stayed at phase f and blocked the metric forever.
+    abandoned = _remote_abandoned_ids(root)
     for change_dir in c.list_change_dirs(root):
-        if change_dir.name[:4] in seen:
+        if change_dir.name[:4] in seen or change_dir.name[:4] in abandoned:
             continue
         record, _why = finding.read(change_dir / art.EVIDENCE_DIR / finding.DETECTION_FILE)
         if record is None or record.get("metric") != metric:
@@ -1004,7 +1039,7 @@ def cmd_dismiss(args) -> int:
         out["file"] = str(path.relative_to(root)).replace("\\", "/")
         out["dismissed"] = True
         if gitops.is_repo(root):
-            title = f"dismiss({args.id}): {reason[:60]}"
+            title = f"dismiss({args.id}): {c.truncate_words(reason, 60)}"
             sha = gitops.commit_files(root, [out["file"]], title)
             out["commit"] = sha
             if args.open_pr and gitops.has_remote(root) and args.repo:
