@@ -408,11 +408,54 @@ def test_run_force_tier_2_on_a_flat_series_files_a_forced_finding(tmp_path, src,
     assert record["breach_start"] == "2026-09-16"  # the latest point, when nothing tripped
 
 
-def test_run_force_tier_with_no_observation_fails(tmp_path, src, gh, capsys):
+def test_run_force_tier_with_no_observation_still_files_the_rehearsal(
+    tmp_path, src, gh, capsys, monkeypatch
+):
+    """The workflow's force_tier input files an incident "whatever the metric says": on a
+    repository whose every run is an excluded `SDLC ...` workflow the series is empty (live
+    run of 2026-09-25), and the rehearsal is still filed, with no latest observation."""
     root = project(tmp_path)
     src.observations = []
-    code, out = cli(capsys, "run", "--root", str(root), "--repo", REPO, "--force-tier", "3")
-    assert (code, out) == (1, None)
+    outfile = tmp_path / "github_output"
+    monkeypatch.setenv("GITHUB_OUTPUT", str(outfile))
+    log = tmp_path / "detect-log.jsonl"
+    argv = ["run", "--root", str(root), "--repo", REPO, "--log", str(log)]
+    code, out = cli(capsys, *argv, "--force-tier", "2", "--file")
+    assert code == 0, out
+    assert out["forced"] is True
+    assert out["tier"] == 2
+    assert out["latest"] is None and out["breach_start"] is None
+    assert "no complete-day observation" in out["reason"]
+    assert out["filed"]["filed"] is True
+    change_id = out["filed"]["change_id"]
+    change = incident_dir(root, change_id)
+    record = json.loads((change / "evidence" / "detection.json").read_text(encoding="utf-8"))
+    assert finding.validate(record) == []
+    assert record["latest"] is None
+    assert record["forced"] is True
+    assert record["observations"] == []
+    assert record["failed_run_urls"] == [] and record["commits"] == []
+    assert "no complete-day observation" in record["reason"]
+    branch = f"sdlc/{change_id}/a"
+    rel = f"changes/{change.name}/evidence/detection.json"
+    assert json.loads(git(bare(root), "show", f"{branch}:{rel}")) == record
+    [entry] = [json.loads(x) for x in log.read_text(encoding="utf-8").splitlines()]
+    assert entry["change_id"] == change_id and entry["forced"] is True
+    lines = outfile.read_text(encoding="utf-8").splitlines()
+    assert f"change_id={change_id}" in lines and f"head_ref={branch}" in lines
+
+
+def test_run_without_force_on_an_empty_series_logs_tier_0_and_files_nothing(
+    tmp_path, src, gh, capsys
+):
+    root = project(tmp_path)
+    src.observations = []
+    log = tmp_path / "detect-log.jsonl"
+    code, out = cli(capsys, "run", "--root", str(root), "--repo", REPO, "--log", str(log), "--file")
+    assert code == 0
+    assert (out["tier"], out["forced"], out["outcome"], out["filed"]) == (0, False, "logged", {})
+    assert [p.name for p in change_dirs(root)] == ["0000-sdlc-init"]
+    assert len(log.read_text(encoding="utf-8").splitlines()) == 1
 
 
 def test_run_tier_3_without_file_names_the_flag_and_files_nothing(tmp_path, src, gh, capsys):

@@ -321,6 +321,8 @@ def _force(verdict: stats.Verdict, tier: int) -> stats.Verdict:
     verdict.rule = "forced"
     verdict.rules_hit = ["forced"]
     verdict.reason = f"tier {tier} forced by workflow_dispatch (a rehearsal of the loop)"
+    if verdict.latest is None:
+        verdict.reason += "; no complete-day observation in the window: the source returned none"
     if verdict.breach_start is None and verdict.latest is not None:
         verdict.breach_start = verdict.latest.at
     return verdict
@@ -435,9 +437,9 @@ def cmd_run(args) -> int:
     )
     forced = False
     if args.force_tier:
-        if not points:
-            print("nothing to force: the source returned no observation", file=sys.stderr)
-            return EXIT_FAILED
+        # the workflow's force_tier input files an incident at this tier "whatever the metric
+        # says": an empty series (every run is an excluded `SDLC ...` workflow, live run of
+        # 2026-09-25) still files the rehearsal, with latest and breach_start null
         verdict = _force(verdict, int(args.force_tier))
         forced = True
     action = bands.action(verdict.tier)
