@@ -847,3 +847,23 @@ def test_commit_phase_on_a_named_branch(repo, capsys):
          "x", "--branch", "claude/missing"]
     )  # fmt: skip
     assert rc == 2 and "does not exist" in capsys.readouterr().err
+
+
+def test_read_status_on_the_default_branch_reads_a_merged_incident_as_gate_a(tmp_path):
+    """Decision 25 (plugin 0.2.19): an incident change stays at phase f on its branch and the
+    owner's merge of its intent PR is gate (a); on the default branch the file reads as gate
+    (a) passed with any park lifted, without a write (like gate (e), decision 13)."""
+    change_dir, st = status.new_change(
+        tmp_path, "CI breach", entry_route="incident", change_type="fix"
+    )
+    st.set_phase("f")
+    st.park("route: Go requested", phase="f")
+    status.write_status(change_dir, st)
+    before = (change_dir / "status.yaml").read_text(encoding="utf-8")
+    merged = status.read_status(change_dir, on_default_branch=True)
+    assert merged.phase == "f" and merged.parked_reason is None
+    assert (merged.gate.phase, merged.gate.result) == ("a", "passed")
+    assert "decision 25" in merged.gate.reason
+    assert (change_dir / "status.yaml").read_text(encoding="utf-8") == before
+    raw = status.read_status(change_dir)
+    assert raw.parked_reason == "route: Go requested" and raw.gate.result == "parked"

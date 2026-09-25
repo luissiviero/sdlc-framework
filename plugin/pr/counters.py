@@ -41,6 +41,8 @@ def collect(root: Path) -> dict[str, Any]:
         except (OSError, ValueError):
             unreadable += 1
     shipped = [st for st in changes if st.phase == SHIPPED_PHASE]
+    # an incident folder reaches the default branch when the owner merged its intent PR
+    # (fix now): a closed one never does - its finding is in the dismissal store instead
     incidents = [st for st in changes if st.entry_route == "incident"]
     dismissed = dismissals.load(dismissals.path_for(root, c.CHANGES_DIR)).get("entries") or {}
     first_pass = sum(1 for st in shipped if st.iterations == 0)
@@ -55,10 +57,8 @@ def collect(root: Path) -> dict[str, Any]:
             sum(st.iterations for st in shipped) / len(shipped) if shipped else None
         ),
         "panel_calls_total": sum(st.panel_calls for st in changes),
-        "abandoned": sum(1 for st in changes if st.abandoned),
-        "incidents": len(incidents),
+        "incidents_merged": len(incidents),
         "incidents_shipped": sum(1 for st in incidents if st.phase == SHIPPED_PHASE),
-        "incidents_abandoned": sum(1 for st in incidents if st.abandoned),
         "dismissals": len(dismissed),
         "dismissals_by_kind": {
             kind: sum(
@@ -93,11 +93,9 @@ def render(counts: dict[str, Any]) -> str:
             _num(counts["fix_iterations_mean"]),
         ),
         ("Panel calls, all changes (decision 21)", str(counts["panel_calls_total"])),
-        ("Abandoned (closed without a merge)", str(counts["abandoned"])),
         (
-            "Incidents filed / shipped / dismissed (p.45)",
-            f"{counts['incidents']} / {counts['incidents_shipped']} / "
-            f"{counts['incidents_abandoned']}",
+            "Incidents merged (fix now) / shipped (p.45)",
+            f"{counts['incidents_merged']} / {counts['incidents_shipped']}",
         ),
         (
             "Dismissals in force (detect / scan)",
@@ -106,6 +104,12 @@ def render(counts: dict[str, Any]) -> str:
     ]
     out = ["## Counters", "", "| Indicator | Value |", "|---|---|"]
     out += [f"| {name} | {value} |" for name, value in rows]
+    out.append("")
+    out.append(
+        "From the change folders of the default branch and changes/.dismissed.json: a "
+        "change closed without a merge, and an incident closed (dismissed) before its "
+        "intent merged, never reach the default branch and are not counted here."
+    )
     if counts.get("unreadable"):
         out.append("")
         out.append(f"{counts['unreadable']} change folder(s) had an unreadable status.yaml.")

@@ -176,6 +176,20 @@ def authorization(route: str, bands_route: Any, config: dict[str, Any], language
     return resolved
 
 
+FORCED_SOURCE = "a forced finding (a rehearsal) never pre-approves a runbook: Go required"
+
+
+def apply_forced(resolved: Resolved | None, forced: bool) -> Resolved | None:
+    """A rehearsal (``detection.json: forced``) has no breach behind it: decision 26's
+    pre-approval and a bands ``preapproved`` are for a real 3σ, so every runbook route of a
+    forced finding waits for the owner's Go (the intent PR is still opened)."""
+    if resolved is not None and forced and resolved.runbook:
+        resolved.authorization = GO
+        resolved.source = FORCED_SOURCE
+        resolved.rehearsed_at = None
+    return resolved
+
+
 def available(bands: Any, config: dict[str, Any], language: str, tier: int) -> list[Resolved]:
     """The routes the diagnosis may propose at this tier, resolved."""
     if tier < 2:

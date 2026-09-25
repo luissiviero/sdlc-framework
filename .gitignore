@@ -6,3 +6,7 @@ __pycache__/
 venv/
 *.egg-info/
 .claude/settings.local.json
+
+# the hooks' fallback log off a change branch (build guide step 41.1): evidence of a session,
+# never committed here; on a change branch the log lives in the change folder
+changes/.hook-log.jsonl

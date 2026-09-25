@@ -1838,7 +1838,9 @@ def test_dry_run_argv_at_phase_f_is_read_only_on_source(capsys, project):
     (Write for the two artifacts, python and git for the CLIs) and no Edit (p.43 step 3)."""
     root, _change = project
     argv = dry_run_argv(capsys, root, "f")
-    assert argv[:3] == ["claude", "-p", "/sdlc:sdlc-maintain 0001"]
+    # --diagnosis-only: the CI tail (dispatch, gate, PR) is detect/cli.py finish, a step of
+    # its own with the runbook secrets, never the model's session
+    assert argv[:3] == ["claude", "-p", "/sdlc:sdlc-maintain 0001 --diagnosis-only"]
     assert argv[argv.index("--permission-mode") + 1] == "default"
     allowed = argv[argv.index("--allowedTools") + 1].split(",")
     for tool in ("Read", "Grep", "Bash(gh run view *)", "Glob", "Write", "Bash(python *)",
@@ -1863,3 +1865,15 @@ def test_the_design_run_accepts_a_merged_incident_at_phase_f_as_at_a(project):
     set_state(change, "a")
     assert "not f" in skip_reason(root, "f")
     assert run_phase.NEXT_WORKFLOW.get("f") is None  # gate (f) is the owner's triage
+
+
+def test_the_merge_of_a_parked_incident_pr_is_still_gate_a(project):
+    """Session-5 review: a `go` route parks the incident PR ("Go requested"); the owner may
+    merge it instead (fix now, decision 25), and that merge lifts the park for the design
+    run - the park was the maintain run's, the merge is the owner's answer."""
+    root, change = project
+    set_state(change, "f", gate_phase="f", gate_result="parked", parked="route: Go requested")
+    assert skip_reason(root, "b") is None
+    # a parked change at any other phase still skips (the park is a change request)
+    set_state(change, "a", parked="risk-list hit: 'auth'")
+    assert "parked" in skip_reason(root, "b")

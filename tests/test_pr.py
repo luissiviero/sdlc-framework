@@ -989,15 +989,29 @@ def test_counters_over_the_change_folders_and_the_digest_section(project, tmp_pa
     assert counts["shipped"] == base["shipped"] + 2
     assert counts["first_pass_merges"] == base["first_pass_merges"] + 1
     assert counts["fix_iterations_total"] == base["fix_iterations_total"] + 2
-    assert counts["incidents"] == 2 and counts["incidents_shipped"] == 1
-    assert counts["incidents_abandoned"] == 1 and counts["abandoned"] == base["abandoned"] + 1
+    assert counts["incidents_merged"] == 2 and counts["incidents_shipped"] == 1
     assert counts["dismissals"] == 1 and counts["dismissals_by_kind"] == {"detect": 1, "scan": 0}
     md = counters.render(counts)
     assert md.startswith("## Counters") and "| First-pass merge share (p.17) | " in md
-    assert "| Incidents filed / shipped / dismissed (p.45) | 2 / 1 / 1 |" in md
+    assert "| Incidents merged (fix now) / shipped (p.45) | 2 / 1 |" in md
+    assert "never reach the default branch" in md
     digest = digest_mod.render_digest([], "2026-09-25T06:00:00Z", md)
     assert digest_mod.NOTHING_WAITING in digest and "## Counters" in digest
     digest = digest_mod.render_digest(QUEUE, "2026-09-25T06:00:00Z", md)
     assert digest.index("## Waiting at a human gate") < digest.index("## Counters")
     assert digest.rstrip().endswith("Generated 2026-09-25T06:00:00Z.")
     assert counters.main(["--root", str(root), "--json"]) == 0
+
+
+def test_digest_lists_the_runbook_and_dismissal_prs_under_the_incident_label():
+    """Session-5 review: a revert, a quarantine or a dismissal PR carries `incident` and no
+    gate label; decision 20 makes the digest the only place the owner meets them."""
+    revert = {"number": 31, "title": "revert(0007): fix x", "body": "- **Runbook**: revert-pr",
+              "html_url": "https://x/31", "labels": [{"name": "incident"}]}  # fmt: skip
+    md = digest_mod.render_digest([*QUEUE, revert], "2026-09-25T06:00:00Z")
+    assert "1 runbook or dismissal PR(s) of phase (f)" in md
+    assert "## Phase (f): runbook and dismissal PRs — `incident`" in md and "#31" in md
+    assert md.index("## Waiting at a human gate") < md.index("## Phase (f)")
+    md = digest_mod.render_digest([revert], "2026-09-25T06:00:00Z")
+    assert digest_mod.NOTHING_WAITING not in md and "#31" in md
+    assert digest_mod.incident_prs(QUEUE) == []  # an intent PR has its gate label: a queue item

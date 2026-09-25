@@ -326,6 +326,20 @@ def merged_at_gate_e(st: Status, production: bool = False) -> Status:
     return derived
 
 
+MERGED_AT_GATE_A_REASON = (
+    "merged by the owner: the incident intent PR's merge is gate (a) (decision 25)"
+)
+
+
+def merged_at_gate_a(st: Status) -> Status:
+    """An incident change at phase f on the default branch was merged by the owner (the
+    maintain run leaves it at f on its branch): gate (a) reads passed and any park is
+    lifted, without a write to the file - the same derivation as ``merged_at_gate_e``."""
+    st.gate = Gate(phase="a", result="passed", reason=MERGED_AT_GATE_A_REASON, at=st.gate.at)
+    st.parked_reason = None
+    return st
+
+
 def read_status(
     change_dir: Path, on_default_branch: bool = False, production: bool = False
 ) -> Status:
@@ -336,7 +350,11 @@ def read_status(
     memory only; the file on disk is never rewritten by it (the default branch is read-only
     for automation, and only the owner's reviewed PRs reach it)."""
     st = Status.from_dict(_load(change_dir))
-    return merged_at_gate_e(st, production=production) if on_default_branch else st
+    if not on_default_branch:
+        return st
+    if st.phase == "f":
+        return merged_at_gate_a(st)
+    return merged_at_gate_e(st, production=production)
 
 
 def lift_stale_park(change_dir: Path) -> str | None:

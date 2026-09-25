@@ -169,13 +169,25 @@ def load(path: Path) -> Bands:
     if not path.is_file():
         raise BandsError(f"{path.name} not found: {path}")
     try:
-        data = yamlish.load_file(path)
-    except (OSError, UnicodeDecodeError, yamlish.YamlishError) as exc:
+        text = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as exc:
         detail = str(exc).splitlines()[0] if str(exc) else type(exc).__name__
         raise BandsError(f"cannot read {path.name}: {detail}") from exc
+    return load_text(text, path.name)
+
+
+def load_text(text: str, name: str = BANDS_FILE) -> Bands:
+    """The bands from the file's text (the dispatcher reads the default branch's copy through
+    ``git show``, never the working tree's: an uncommitted edit cannot change a route's
+    authorization, decision 14 "enforced, not remembered")."""
+    try:
+        data = yamlish.loads(text)
+    except yamlish.YamlishError as exc:
+        detail = str(exc).splitlines()[0] if str(exc) else type(exc).__name__
+        raise BandsError(f"cannot read {name}: {detail}") from exc
     reasons = validate(data)
     if reasons:
-        raise BandsError(f"invalid {path.name}: {'; '.join(reasons)}")
+        raise BandsError(f"invalid {name}: {'; '.join(reasons)}")
     return Bands(
         metric=data["metric"].strip(),
         source=(data.get("source") or "").strip(),

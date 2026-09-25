@@ -242,6 +242,12 @@ def test_every_workflow_parses_as_yaml(name):
 def test_this_repository_s_workflow_copies_match_the_template():
     """The installed copies differ from the template only by the framework repository."""
     for name in ALL_WORKFLOWS:
+        if name == EVALS_WORKFLOW:
+            # this repository runs framework-evals.yml (its own suite over the fixture) and
+            # has no evals/check.py: the per-project workflow is not installed here
+            assert not (REPO_WORKFLOW_DIR / name).exists()
+            assert (REPO_WORKFLOW_DIR / "framework-evals.yml").is_file()
+            continue
         installed = (REPO_WORKFLOW_DIR / name).read_text(encoding="utf-8")
         assert installed == render.render_file(WORKFLOW_DIR / name, VALUES), name
 
@@ -420,6 +426,15 @@ def test_detect_workflow_is_scheduled_deterministic_and_runs_the_diagnosis_only_
     assert log["uses"].startswith("actions/upload-artifact@") and log["if"] == "${{ always() }}"
     phase = steps["Run phase (f)"]
     assert phase["if"] == "steps.detect.outputs.change_id != ''"
+    # the dispatcher is its own step after the model's (decisions 11 and 14): no model
+    # credential there, and the runbook secrets never where the model runs
+    finish = steps["Dispatch the route, run gate (f) and open the intent PR"]
+    assert finish["if"] == "steps.detect.outputs.change_id != ''"
+    assert finish["run"] == (
+        'python framework/plugin/detect/cli.py finish --root . --id "$CHANGE_ID" --repo "$REPO"'
+    )
+    assert "secrets." not in json.dumps(finish) and "secrets." in json.dumps(phase)
+    assert '--force-tier "$FORCE_TIER"' in detect["run"]
     assert "--phase f" in phase["run"] and "HEAD_REF: ${{ steps.detect.outputs.head_ref }}" in (
         (WORKFLOW_DIR / DETECT_WORKFLOW).read_text(encoding="utf-8")
     )

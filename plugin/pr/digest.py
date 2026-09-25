@@ -53,6 +53,13 @@ def labels_of(pr: dict[str, Any]) -> list[str]:
     return out
 
 
+def incident_prs(prs: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Open PRs carrying ``incident`` and no gate label: the runbook PRs a 3σ route opened
+    (a revert, a quarantine) and the dismissal PRs of gate (f), which decision 20 lets the
+    owner find only here (the incident intent PRs carry a gate label and are queue items)."""
+    return [pr for pr in prs if c.INCIDENT_LABEL in labels_of(pr) and not sdlc_labels(pr)]
+
+
 def sdlc_labels(pr: dict[str, Any]) -> list[str]:
     return [lb for lb in labels_of(pr) if lb.startswith(c.LABEL_PREFIX)]
 
@@ -92,13 +99,15 @@ def render_digest(prs: list[dict[str, Any]], now: str, counters: str = "") -> st
     parked = [pr for pr in queue if c.NEEDS_HUMAN_LABEL in sdlc_labels(pr)]
     ready = [pr for pr in queue if pr not in parked]
     ready.sort(key=lambda pr: (_phase_of(sdlc_labels(pr)), pr.get("number") or 0))
+    incidents = incident_prs(prs)
     out = [f"# {ISSUE_TITLE} — {now[:10]}", ""]
     out.append(
-        f"{len(parked)} parked, {len(ready)} waiting at a gate. "
-        "Nothing here notified you; this issue is rewritten once a day (decision 20)."
+        f"{len(parked)} parked, {len(ready)} waiting at a gate"
+        + (f", {len(incidents)} runbook or dismissal PR(s) of phase (f)" if incidents else "")
+        + ". Nothing here notified you; this issue is rewritten once a day (decision 20)."
     )
     out.append("")
-    if not parked and not ready:
+    if not parked and not ready and not incidents:
         out.append(NOTHING_WAITING)
         if counters:
             out += ["", counters.rstrip("\n")]
@@ -110,6 +119,10 @@ def render_digest(prs: list[dict[str, Any]], now: str, counters: str = "") -> st
     if ready:
         out += ["## Waiting at a human gate", ""]
         out += [_line(pr) for pr in ready]
+        out.append("")
+    if incidents:
+        out += [f"## Phase (f): runbook and dismissal PRs — `{c.INCIDENT_LABEL}`", ""]
+        out += [_line(pr) for pr in sorted(incidents, key=lambda pr: pr.get("number") or 0)]
         out.append("")
     if counters:
         out += [counters.rstrip("\n"), ""]
@@ -128,7 +141,7 @@ def list_queue_prs(repo: str) -> tuple[list[dict[str, Any]], str]:
     if result["error"]:
         return [], result["error"]
     items = result["data"] if isinstance(result["data"], list) else []
-    return [pr for pr in items if sdlc_labels(pr)], ""
+    return [pr for pr in items if sdlc_labels(pr) or c.INCIDENT_LABEL in labels_of(pr)], ""
 
 
 def publish(repo: str, markdown: str) -> dict[str, Any]:

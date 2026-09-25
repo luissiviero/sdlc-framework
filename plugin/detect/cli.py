@@ -6,6 +6,7 @@
     python plugin/detect/cli.py routes --root . --id 0007
     python plugin/detect/cli.py dispatch --root . --id 0007 [--repo owner/name] [--commit]
         [--dry-run]
+    python plugin/detect/cli.py finish --root . --id 0007 --repo owner/name   # the CI tail
     python plugin/detect/cli.py go --root . --id 0007 --repo owner/name --pr-number 12
     python plugin/detect/cli.py dismiss --root . --id 0007 --repo owner/name --pr-number 12
         [--reason "..."] [--by login] [--open-pr]
@@ -52,7 +53,7 @@ from detect import bands as bands_mod  # noqa: E402
 from detect import dismissals, finding, routes, source, stats  # noqa: E402
 from gate import artifacts as art  # noqa: E402
 from gate.policy import automation_identity, is_automation  # noqa: E402
-from hooks._common import ConfigError, load_sdlc_config  # noqa: E402
+from hooks._common import SDLC_FILE, ConfigError, load_sdlc_config  # noqa: E402
 from state import conventions as c  # noqa: E402
 from state import gitops  # noqa: E402
 from state import status as status_mod  # noqa: E402
@@ -256,7 +257,51 @@ def open_incidents(root: Path, metric: str) -> list[dict[str, Any]]:
             except Exception:  # noqa: BLE001
                 pass
         found.append({"change_id": change_id, "ref": ref, "signature": record.get("signature")})
+    seen = {item["change_id"] for item in found}
+    # the incident changes the owner merged (fix now) are folders on the default branch,
+    # whatever became of their sdlc/<id>/a branch (GitHub may delete merged heads)
+    for change_dir in c.list_change_dirs(root):
+        if change_dir.name[:4] in seen:
+            continue
+        record, _why = finding.read(change_dir / art.EVIDENCE_DIR / finding.DETECTION_FILE)
+        if record is None or record.get("metric") != metric:
+            continue
+        try:
+            st = status_mod.read_status(change_dir)
+        except (OSError, ValueError):
+            continue
+        if st.abandoned or st.phase == "e" or st.entry_route != "incident":
+            continue
+        found.append({"change_id": st.id, "ref": "the checkout", "signature": record["signature"]})
     return found
+
+
+def _with_pending_dismissals(root: Path, store: dict[str, Any]) -> dict[str, Any]:
+    """The store plus the entries of every ``origin/sdlc/<id>/dismiss`` branch: a dismissal
+    the owner has not merged yet still suppresses its finding (else the closed incident
+    would be refiled the next morning, p.47 step 4)."""
+    try:
+        out = gitops.run(
+            root, "for-each-ref", "--format=%(refname:short)", "refs/remotes/origin/sdlc/"
+        )
+    except (gitops.GitError, FileNotFoundError):
+        return store
+    entries = dict(store.get("entries") or {})
+    for ref in out.split():
+        if not ref.endswith("/dismiss"):
+            continue
+        raw = _show(root, ref, f"{c.CHANGES_DIR}/{dismissals.FILE}")
+        if not raw:
+            continue
+        try:
+            data = json.loads(raw)
+        except ValueError:
+            continue
+        pending = data.get("entries") if isinstance(data, dict) else None
+        for sig, entry in (pending or {}).items():
+            if isinstance(entry, dict):
+                entries.setdefault(sig, {**entry, "pending": ref})
+    return {**store, "entries": entries}
 
 
 def _observations_to_points(observations: list[dict[str, Any]]) -> list[stats.Point]:
@@ -377,7 +422,11 @@ def cmd_run(args) -> int:
             "cache": fetched.cache_note,
         }
     )
-    points = _observations_to_points(fetched.observations)
+    # only complete UTC days are judged: today's first hours against full-day baseline points
+    # would compare unlike samples, and the scheduled run is at 05:41 UTC
+    today = _today().isoformat()
+    complete = [o for o in fetched.observations if str(o.get("at", ""))[:10] < today]
+    points = _observations_to_points(complete)
     verdict = stats.evaluate(
         points,
         window_days=window_days,
@@ -397,7 +446,7 @@ def cmd_run(args) -> int:
         metric=metric,
         source=source_value,
         verdict=verdict.as_dict(),
-        observations=fetched.observations,
+        observations=complete,
         action=action,
         failed_run_urls=list(latest_meta.get("failed_run_urls") or []),
         commits=_commits_between(
@@ -425,6 +474,7 @@ def cmd_run(args) -> int:
     filed: dict[str, Any] = {}
     if verdict.tier >= 2:
         store = dismissals.load(dismissals.path_for(root, c.CHANGES_DIR))
+        store = _with_pending_dismissals(root, store)
         entry = dismissals.lookup(store, record["signature"])
         open_ones = open_incidents(root, metric)
         if entry:
@@ -625,17 +675,39 @@ def _act(
     return outcome
 
 
+def approved_files(root: Path, config: dict[str, Any]) -> tuple[dict[str, Any], Any, str]:
+    """``(sdlc.yaml, bands.yaml, where from)`` as the owner approved them: the default
+    branch's copies through ``git show`` when the checkout knows the remote, else the
+    checkout's. The maintain run holds Write and python (p.43: read-only on *source*), so an
+    uncommitted edit of either file must never change a route's authorization (decision 14:
+    "enforced, not remembered"; decision 11: a run cannot approve itself)."""
+    ref = f"origin/{_default_branch(root)}"
+    cfg_text = _show(root, ref, SDLC_FILE) if gitops.is_repo(root) else None
+    bands_text = _show(root, ref, bands_mod.BANDS_FILE) if gitops.is_repo(root) else None
+    if cfg_text is None or bands_text is None:
+        return config, bands_mod.load_project(root), "the checkout"
+    try:
+        approved_cfg = status_mod.yamlish.loads(cfg_text)
+    except status_mod.yamlish.YamlishError as exc:
+        raise bands_mod.BandsError(f"{SDLC_FILE} at {ref}: {exc}") from exc
+    if not isinstance(approved_cfg, dict):
+        approved_cfg = config
+    return approved_cfg, bands_mod.load_text(bands_text), ref
+
+
 def _judge(root: Path, change_dir: Path, record: dict[str, Any], config: dict[str, Any]):
     proposal, why = routes.load_proposal(change_dir / art.EVIDENCE_DIR / finding.PROPOSAL_FILE)
     if proposal is None:
         return None, None, why
     try:
-        bands = bands_mod.load_project(root)
+        config, bands, _where = approved_files(root, config)
     except bands_mod.BandsError as exc:
         return proposal, None, f"bands.yaml: {exc}"
     resolved, why = routes.validate_proposal(
         proposal, int(record["tier"]), bands, config, _language(root)
     )
+    # finding 3 of the session-5 review: a rehearsal never pre-approves a runbook
+    routes.apply_forced(resolved, bool(record.get("forced")))
     return proposal, resolved, why
 
 
@@ -672,6 +744,69 @@ def cmd_dispatch(args) -> int:
     return EXIT_OK
 
 
+def _gate_and_pr(root: Path, change_id: str, push: bool, out: dict[str, Any]) -> dict[str, Any]:
+    """Gate (f) on the branch, the evidence commit, the intent PR (what the maintain command
+    does by hand in its steps 7 and 8)."""
+    gate, code, err = _cli(
+        GATE_CLI, ["check", "--root", str(root), "--id", change_id, "--phase", "f"], root
+    )
+    out["gate"] = gate or {"error": err, "exit": code}
+    out["evidence_commit"] = _commit_change(
+        root, change_id, f"maintain({change_id}): gate (f) evidence", push=push
+    )
+    pr, code, err = _cli(
+        PR_CLI, ["upsert", "--root", str(root), "--id", change_id, "--phase", "f"], root
+    )
+    out["pr"] = pr or {"error": err, "exit": code}
+    return out
+
+
+def cmd_finish(args) -> int:
+    """The deterministic tail of a CI maintain run (``sdlc-detect.yml``): the model's session
+    wrote the intent and the proposal (``/sdlc-maintain <id> --diagnosis-only``); this step,
+    with the project's runbook secrets in its environment and none in the model's, dispatches
+    the route, runs gate (f), commits the evidence and opens the intent PR."""
+    root = Path(args.root).resolve()
+    change_dir, st = _change(root, args.id)
+    record = _load_finding(change_dir)
+    config = _config(root)
+    proposal, resolved, why = _judge(root, change_dir, record, config)
+    out: dict[str, Any] = {
+        "change_id": args.id,
+        "tier": record["tier"],
+        "proposal": proposal.as_dict() if proposal else None,
+        "dispatch": {"acted": False, "reason": why} if resolved is None else None,
+    }
+    push = not args.no_push
+    if resolved is not None:
+        out["resolved"] = resolved.as_dict()
+        if resolved.route == routes.PULL_REQUEST:
+            out["dispatch"] = {
+                "acted": True,
+                "outcome": "pull_request: this intent PR is the route",
+            }
+        else:
+            outcome = _act(
+                root, args.id, change_dir, resolved, proposal, config,
+                repo=args.repo, dry_run=args.dry_run,
+            )  # fmt: skip
+            out["dispatch"] = {"acted": outcome.get("status") == "ran", "outcome": outcome}
+            if not args.dry_run:
+                out["route_commit"] = _commit_change(
+                    root, args.id, f"maintain({args.id}): route {resolved.route}", push=push
+                )
+    if args.dry_run:
+        _emit(out)
+        return EXIT_OK
+    _gate_and_pr(root, args.id, push, out)
+    _emit(out)
+    pr = out.get("pr") or {}
+    if pr.get("route") in (None, "none") and not pr.get("url"):
+        print(f"no pull request carries the incident: {pr.get('reason') or pr}", file=sys.stderr)
+        return EXIT_FAILED
+    return EXIT_OK
+
+
 # --- go: the owner's per-incident authorization (decision 14) ----------------------------------
 def _human_label_actor(repo: str, number: int, label: str, config: dict[str, Any]):
     found = _github().label_actor(repo, number, label)
@@ -698,6 +833,23 @@ def cmd_go(args) -> int:
     if resolved is None or resolved.route == routes.PULL_REQUEST:
         _emit({"change_id": args.id, "performed": False, "reason": why or "no runbook proposed"})
         return EXIT_OK
+    from detect import runbooks  # noqa: PLC0415
+
+    record_path = runbooks.record_path(change_dir / art.EVIDENCE_DIR, resolved.runbook or "")
+    try:
+        recorded = json.loads(record_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        recorded = {}
+    if str((recorded or {}).get("status")) != "go-requested":
+        _emit(
+            {
+                "change_id": args.id,
+                "performed": False,
+                "reason": f"runbook {resolved.runbook} did not ask for Go (record: "
+                f"{(recorded or {}).get('status') or 'none'}); a Go runs a route once",
+            }
+        )
+        return EXIT_OK
     outcome = _act(
         root, args.id, change_dir, resolved, proposal, config,
         repo=args.repo, dry_run=args.dry_run, authorized_by=actor,
@@ -722,17 +874,7 @@ def cmd_go(args) -> int:
     )  # fmt: skip
     github = _github()
     out["label_removed"] = github.set_labels(args.repo, args.pr_number, [], [c.GO_LABEL], cwd=root)
-    gate, code, err = _cli(
-        GATE_CLI, ["check", "--root", str(root), "--id", args.id, "--phase", "f"], root
-    )
-    out["gate"] = gate or {"error": err, "exit": code}
-    out["evidence_commit"] = _commit_change(
-        root, args.id, f"maintain({args.id}): gate (f) evidence", push=not args.no_push
-    )
-    pr, code, err = _cli(
-        PR_CLI, ["upsert", "--root", str(root), "--id", args.id, "--phase", "f"], root
-    )
-    out["pr"] = pr or {"error": err, "exit": code}
+    _gate_and_pr(root, args.id, not args.no_push, out)
     _emit(out)
     return EXIT_OK
 
@@ -810,10 +952,16 @@ def cmd_dismiss(args) -> int:
         return EXIT_OK
     branch = DISMISS_BRANCH.format(id=args.id)
     default = _default_branch(root)
-    original = gitops.current_branch(root) if gitops.is_repo(root) else None
+    original = None
+    if gitops.is_repo(root):
+        original = gitops.current_branch(root)
+        if original == "HEAD":  # detached: come back to the commit
+            original = gitops.run(root, "rev-parse", "HEAD").strip()
     try:
         if gitops.is_repo(root):
             start = f"origin/{default}" if gitops.has_remote(root) else default
+            if gitops.has_remote(root) and _show(root, f"origin/{branch}", ".") is not None:
+                start = f"origin/{branch}"  # a second close: continue the pending dismissal
             gitops.checkout_branch(root, branch, start)
         path = dismissals.path_for(root, c.CHANGES_DIR)
         store = dismissals.add(
@@ -839,9 +987,22 @@ def cmd_dismiss(args) -> int:
                     "not return as new on the next run (article p.47 step 4). Nothing else "
                     "changes."
                 )  # fmt: skip
-                out["pr"] = _github().create_pr(
+                github = _github()
+                out["pr"] = github.create_pr(
                     args.repo, default, branch, title, body, draft=False, cwd=root
                 )
+                number = (out["pr"] or {}).get("number")
+                if number:  # the digest lists it under the incident label (decision 20)
+                    github.ensure_label(
+                        args.repo,
+                        c.INCIDENT_LABEL,
+                        "B60205",
+                        "SDLC phase (f): an incident intent",
+                        cwd=root,
+                    )
+                    out["label"] = github.set_labels(
+                        args.repo, int(number), [c.INCIDENT_LABEL], [], cwd=root
+                    )
     finally:
         if original and gitops.is_repo(root):
             try:
@@ -862,12 +1023,17 @@ def build_parser() -> argparse.ArgumentParser:
     r.add_argument("--repo", default=None, help="owner/name (default: the GitHub origin)")
     r.add_argument("--cache", default=None, help=f"runs cache file (e.g. {DEFAULT_CACHE})")
     r.add_argument("--log", default=None, help=f"append one JSON line per run (e.g. {DEFAULT_LOG})")
-    r.add_argument("--force-tier", default=None, choices=["2", "3"], help="rehearse the loop")
+    r.add_argument(
+        "--force-tier",
+        default="",
+        choices=["", "2", "3"],
+        help='rehearse the loop at tier 2 or 3; "" (the workflow\'s default) forces nothing',
+    )
     r.add_argument("--file", action="store_true", help="open the incident change at tier 2/3")
     r.add_argument("--no-push", action="store_true")
     r.add_argument("--dry-run", action="store_true")
 
-    for name in ("routes", "dispatch", "go", "dismiss"):
+    for name in ("routes", "dispatch", "finish", "go", "dismiss"):
         s = sub.add_parser(name)
         s.add_argument("--root", default=".")
         s.add_argument("--id", required=True)
@@ -902,6 +1068,7 @@ def main(argv: list[str] | None = None) -> int:
         "routes": cmd_routes,
         "dispatch": cmd_dispatch,
         "go": cmd_go,
+        "finish": cmd_finish,
         "dismiss": cmd_dismiss,
     }[args.command]
     try:

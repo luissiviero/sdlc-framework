@@ -119,7 +119,9 @@ CHECK_KEYS = {
     "denied": frozenset({"denied"}),
 }
 OUTPUT_KEYS = frozenset({"contains", "not_contains", "regex"})
-WORKSPACE_IGNORE = (".sdlc", "node_modules", "__pycache__", ".pytest_cache", ".venv")
+# ``framework`` is where the CI workflows check out the pinned framework inside the project:
+# its own CLAUDE.md and .claude/ must not colour a case
+WORKSPACE_IGNORE = (".sdlc", "node_modules", "__pycache__", ".pytest_cache", ".venv", "framework")
 FIXTURE_IGNORE = ("__pycache__", ".pytest_cache", ".ruff_cache", ".venv")
 DETAIL_TAIL = 400  # characters of a failing command's output kept in the report
 

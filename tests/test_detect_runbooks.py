@@ -483,3 +483,26 @@ def test_write_record_path_and_content(tmp_path):
     assert data["status"] == "ran" and data["args"] == {"sha": "abc"}
     assert data["at"].endswith("Z") and data["exit_code"] is None
     assert b"\r\n" not in path.read_bytes()
+
+
+def test_a_modified_record_inside_the_change_folder_never_blocks_a_runbook(project, gh):
+    """Session-5 review: every hook appends to the change's tracked hook-log.jsonl before the
+    dispatch call itself, and a fix round rewrites proposal.json; a runbook starts its branch
+    from the default branch and never touches changes/, so such files are not "dirty" for
+    it. A modified source file still is."""
+    root = project
+    change = root / "changes" / "0007-x" / "evidence"
+    change.mkdir(parents=True)
+    (change / "hook-log.jsonl").write_text('{"verdict": "allow"}\n', encoding="utf-8")
+    git(root, "add", ".")
+    git(root, "commit", "-q", "-m", "the change folder")
+    git(root, "push", "-q", "origin", "main")
+    sha = git(root, "rev-parse", "HEAD").strip()
+    (change / "hook-log.jsonl").write_text('{"verdict": "allow"}\n{"verdict": "block"}\n', "utf-8")
+    assert runbooks._dirty(root) == []
+    outcome = runbooks.revert_pr(root, "0007", {"sha": sha}, repo="o/r", dry_run=True)
+    assert outcome.status == "ran", outcome.reason
+    (root / "app.py").write_text("VALUE = 2\n", encoding="utf-8")
+    assert runbooks._dirty(root) == ["app.py"]
+    outcome = runbooks.revert_pr(root, "0007", {"sha": sha}, repo="o/r")
+    assert outcome.status == "failed" and "uncommitted" in outcome.reason

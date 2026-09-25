@@ -136,8 +136,12 @@ def _base_ref(root: Path, default: str, remote: bool) -> str:
 
 
 def _dirty(root: Path) -> list[str]:
+    """Modified tracked files outside ``changes/``: the change folder's own records (the
+    hook log every hook appends to, a rewritten proposal) never block a runbook, which
+    starts its branch from the default branch and never touches that folder."""
     out = gitops.run(root, "status", "--porcelain", "--untracked-files=no")
-    return [line[3:] for line in out.splitlines() if line.strip()]
+    files = [line[3:] for line in out.splitlines() if line.strip()]
+    return [f for f in files if not f.replace("\\", "/").lstrip("./").startswith("changes/")]
 
 
 def _start_point(root: Path) -> str:

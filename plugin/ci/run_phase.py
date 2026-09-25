@@ -768,6 +768,11 @@ def guard(root: Path, change_id: str, run_phase: str, repo: str, env: dict[str, 
         accepted = PHASE_BEFORE.get(run_phase, (expected,))
         if st.phase not in accepted:
             return None, None, config, f"change {change_id} is at phase {st.phase}, not {expected}"
+        if run_phase == "b" and st.phase == "f":
+            # the owner merged the incident intent PR: that merge is gate (a) of the change
+            # (decision 25) and lifts the park the maintain run left ("Go requested", a
+            # refused proposal) - the owner chose the pipeline over the runbook
+            st.parked_reason = None
         # ``read_status`` ignores a park that a later gate result lifted (plugins before
         # 0.2.6 left the reason behind a ``passed`` result); the file on the work branch is
         # rewritten to say the same, because the session reads it itself: the ninth live
@@ -1179,6 +1184,12 @@ def run_phase(args, env: dict[str, str]) -> int:
             return EXIT_FAILED
     else:
         prompt = f"/sdlc:{PHASE_COMMAND[phase]} {change_id}"
+        if phase == "f":
+            # the model writes the intent and the proposal and stops; the workflow's next
+            # step (detect/cli.py finish) dispatches the route with the project's runbook
+            # secrets in its own environment, runs gate (f) and opens the PR - nothing that
+            # touches a running system runs where the model runs (decisions 11 and 14)
+            prompt += " --diagnosis-only"
 
     argv = compose(
         claude=args.claude,
@@ -1217,6 +1228,12 @@ def run_phase(args, env: dict[str, str]) -> int:
     if code != 0 or not isinstance(data, dict) or data.get("is_error"):
         report_failed_run(root, change_dir, phase, data, raw, err, f"claude exited {code}")
         return EXIT_FAILED
+
+    if phase == "f":
+        record = commit_run_record(plugin_dir, root, change_id, phase) if cost is not None else None
+        _emit({"phase": phase, "change_id": change_id, "cost_usd": cost, "run_record": record,
+               "labels": labels, "setup": setup, "next": "detect/cli.py finish"})  # fmt: skip
+        return EXIT_OK
 
     review = validate_review(plugin_dir, root, change_id) if phase == "review" else None
     if phase == "review":

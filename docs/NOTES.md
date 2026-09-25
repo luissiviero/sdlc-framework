@@ -800,10 +800,11 @@ local `claude --help`.
   each of your skills costs and how often it gets used, so you can decide which ones to turn
   off." Usage and context cost, not a behavioural eval.
 
-### 13c. GitHub Actions facts used by the phase (f) workflows
-- `actions/upload-artifact@v4` and `actions/cache@v4` are the current majors of the two
-  actions (the repository standardised `checkout` and `setup-node` on v5 in session 4;
-  `upload-artifact` has no v5 at the time of writing — verify on the next bump). The hook
+### 13c. GitHub Actions choices of the phase (f) workflows (not verified against the docs)
+- The workflows pin `actions/upload-artifact@v4` and `actions/cache@v4`, the majors the
+  session knew; the actions' own release pages were not read (the docs host is outside the
+  network policy, and the Context7 index does not carry them), so a newer major may exist:
+  verify on the next bump, as the session-4 bump to `checkout@v5` was verified. The hook
   log, the detection log, the eval report and the scan reports ride as artifacts with
   `if-no-files-found: ignore`, so a run that produced none is still green.
 - A `schedule` workflow runs on the default branch's copy of the file; the detection and the

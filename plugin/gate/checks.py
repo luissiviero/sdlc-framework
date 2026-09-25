@@ -1130,8 +1130,17 @@ def check_route(ctx: GateContext) -> CheckResult:
     proposal, why = routes.load_proposal(ctx.evidence_dir / finding.PROPOSAL_FILE)
     if proposal is None:
         return _fail("route", why, ROUTE_NEED)
+    # the bands the owner approved: the merge base's copy when the branch changed the file
+    # (as the gate reads sdlc.yaml), else the checkout's
+    bands_text = None
+    if ctx.diff is not None and ctx.diff.merge_base and bands_mod.BANDS_FILE in ctx.diff.files:
+        bands_text = diffmod.file_at(ctx.root, ctx.diff.merge_base, bands_mod.BANDS_FILE)
     try:
-        bands = bands_mod.load_project(ctx.root)
+        bands = (
+            bands_mod.load_text(bands_text)
+            if bands_text is not None
+            else bands_mod.load_project(ctx.root)
+        )
     except bands_mod.BandsError as exc:
         return _fail("route", f"bands.yaml: {exc}", "Fix bands.yaml in a reviewed PR.")
     language = _project_language(ctx.root)
@@ -1140,6 +1149,7 @@ def check_route(ctx: GateContext) -> CheckResult:
     )
     if resolved is None:
         return _fail("route", why, ROUTE_NEED, proposal=proposal.as_dict())
+    routes.apply_forced(resolved, bool(record.get("forced")))
     details = {"proposal": proposal.as_dict(), "resolved": resolved.as_dict()}
     if resolved.route == routes.PULL_REQUEST:
         return _ok("route", "pull_request: this intent PR is the route (p.44 step 5)", **details)
@@ -1159,6 +1169,27 @@ def check_route(ctx: GateContext) -> CheckResult:
         )
     status = str(outcome.get("status") or "")
     details["outcome"] = outcome
+    if status == "ran" and resolved.authorization == routes.GO and not outcome.get("authorized_by"):
+        return _fail(
+            "route",
+            f"runbook {name} is recorded as run, but its route needs the owner's Go and the "
+            "record names nobody who gave it",
+            f"A `go` route runs only through `{c.GO_LABEL}` (sdlc-runbook.yml records the "
+            "actor); re-run /sdlc-maintain <id> to record the route again.",
+            **details,
+        )
+    if (
+        status == "ran"
+        and resolved.builtin
+        and not (outcome.get("pr_url") or outcome.get("reason"))
+    ):
+        return _fail(
+            "route",
+            f"runbook {name} is recorded as run with no pull request and no reason",
+            "The shipped runbooks open a pull request the review gate decides on (p.45); "
+            "re-run /sdlc-maintain <id>.",
+            **details,
+        )
     if status == "ran":
         return _ok(
             "route",

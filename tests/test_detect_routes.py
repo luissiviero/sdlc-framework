@@ -708,3 +708,27 @@ def test_proposal_as_dict_shape():
     }
     assert out["args"] is not args
     assert Proposal(2, "pull_request").as_dict()["args"] == {}
+
+
+# --- the session-5 review: a forced finding never pre-approves a runbook ----------------------
+def test_apply_forced_turns_every_runbook_route_into_go_and_leaves_pull_request():
+    from detect import routes
+
+    resolved = routes.Resolved(
+        "runbook:revert-pr", "preapproved", "bands.yaml", runbook="revert-pr", builtin=True
+    )
+    assert routes.apply_forced(resolved, False).authorization == "preapproved"
+    forced = routes.apply_forced(resolved, True)
+    assert forced.authorization == "go" and forced.source == routes.FORCED_SOURCE
+    rehearsed = routes.Resolved(
+        "runbook:rollback-deploy",
+        "preapproved",
+        "decision 26: ...",
+        runbook="rollback-deploy",
+        rehearsed_at="2026-09-24",
+    )
+    forced = routes.apply_forced(rehearsed, True)
+    assert forced.authorization == "go" and forced.rehearsed_at is None
+    intent = routes.Resolved("pull_request", "preapproved", "the incident intent PR")
+    assert routes.apply_forced(intent, True).authorization == "preapproved"
+    assert routes.apply_forced(None, True) is None

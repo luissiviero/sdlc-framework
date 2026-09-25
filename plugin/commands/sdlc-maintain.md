@@ -85,13 +85,19 @@ wait.
 ## 5. Commit the diagnosis
 `python "${CLAUDE_PLUGIN_ROOT}/plugin/state/cli.py" commit-phase --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase f --message "maintain(<id>): diagnosis" --push`
 (only the change folder is committed; `--phase f` commits on `sdlc/<id>/a`).
+**When `$ARGUMENTS` carries `--diagnosis-only` (the CI runner passes it), stop here** and
+report the commit: the workflow's next step (`detect/cli.py finish`, with the project's
+runbook secrets in its own environment and none in this session's) dispatches the route,
+runs gate (f), commits the evidence and opens the PR. Steps 6–8 are the by-hand run's.
 
 ## 6. Dispatch the route (deterministic; decisions 14 and 26)
 `python "${CLAUDE_PLUGIN_ROOT}/plugin/detect/cli.py" dispatch --root "${CLAUDE_PROJECT_DIR}" --id <id> --commit`
-It validates the proposal against `bands.yaml` and the tier, resolves the authorization
-(the bands' value; a stricter `go` in `sdlc.yaml: maintain.runbooks` wins; a rollback
-runbook with `rehearsed_at` set on a project with `deploy.production: true` is pre-approved,
-decision 26), and acts: a pre-approved runbook runs now (its branch, its pull request, the
+It validates the proposal against the tier and the **default branch's** `bands.yaml` and
+`sdlc.yaml` (never the checkout's: an edit in this session changes no authorization,
+decision 14), resolves the authorization (the bands' value; a stricter `go` in
+`sdlc.yaml: maintain.runbooks` wins; a rollback runbook with `rehearsed_at` set on a project
+with `deploy.production: true` is pre-approved, decision 26; a forced finding — a rehearsal —
+never pre-approves a runbook), and acts: a pre-approved runbook runs now (its branch, its pull request, the
 record `evidence/runbook-<name>.json` with `status: ran`), a `go` route records
 `go-requested`, `pull_request` records nothing. `--commit` commits the record on the
 branch. Read its JSON; a rejected proposal (`acted: false` with a reason) is fixed by

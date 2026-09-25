@@ -652,6 +652,8 @@ def test_dispatch_without_a_proposal_says_so(incident, spy, capsys):
 def test_go_by_a_person_runs_the_runbook_and_reruns_the_gate(rollback_incident, gh, spy, capsys):
     root, change = rollback_incident
     write_proposal(change, "runbook:rollback-deploy")
+    code, out = cli(capsys, "dispatch", "--root", str(root), "--id", "0001", "--repo", REPO)
+    assert code == 0 and out["outcome"]["status"] == "go-requested"
     gh.actor = {"ok": True, "actor": "the-owner", "reason": ""}
     code, out = cli(
         capsys, "go", "--root", str(root), "--id", "0001", "--repo", REPO, "--pr-number", "12"
@@ -857,3 +859,142 @@ def test_open_incidents_ignores_a_shipped_incident(incident):
     git(root, "commit", "-q", "-m", "ship 0001 (as if the fix merged and deployed)")
     git(root, "push", "-q", "origin", "main")
     assert detect_cli.open_incidents(root, METRIC) == []
+
+
+# --- the session-5 review's fixes -------------------------------------------------------------
+def test_run_accepts_the_workflow_s_empty_force_tier(tmp_path, src, gh, capsys):
+    """The scheduled workflow passes --force-tier "" (its dispatch input's default): it means
+    "force nothing", never a usage error (the first review found argparse refusing it)."""
+    root = project(tmp_path)
+    src.observations = series(16)
+    code, out = cli(capsys, "run", "--root", str(root), "--repo", REPO, "--force-tier", "")
+    assert code == 0 and out["forced"] is False and out["outcome"] == "logged"
+
+
+def test_run_judges_complete_days_only(tmp_path, src, gh, capsys):
+    """Today's first hours are not a day: the latest point judged is yesterday's."""
+    from datetime import datetime, timezone
+
+    root = project(tmp_path)
+    src.observations = series(16, spike=True)
+    today = datetime.now(timezone.utc).date().isoformat()
+    src.observations.append({"at": today, "value": 0.0, "meta": {"runs": 1, "failed": 0}})
+    code, out = cli(capsys, "run", "--root", str(root), "--repo", REPO)
+    assert code == 0 and out["tier"] == 3 and out["latest"]["at"] != today
+
+
+def test_go_runs_only_a_route_that_asked_for_it(rollback_incident, gh, spy, capsys):
+    root, change = rollback_incident
+    write_proposal(change, "runbook:rollback-deploy")
+    gh.actor = {"ok": True, "actor": "the-owner", "reason": ""}
+    code, out = cli(
+        capsys, "go", "--root", str(root), "--id", "0001", "--repo", REPO, "--pr-number", "12"
+    )
+    assert code == 0 and out["performed"] is False and "did not ask for Go" in out["reason"]
+    assert spy.calls == [] and gh.named("set_labels") == []
+    record = change / "evidence" / "runbook-rollback-deploy.json"
+    record.write_text(json.dumps({"runbook": "rollback-deploy", "status": "ran"}), "utf-8")
+    code, out = cli(
+        capsys, "go", "--root", str(root), "--id", "0001", "--repo", REPO, "--pr-number", "12"
+    )
+    assert out["performed"] is False and "record: ran" in out["reason"] and spy.calls == []
+
+
+def test_finish_dispatches_runs_the_gate_and_opens_the_pr(incident, gh, capsys):
+    """The CI tail after the model's diagnosis-only session: dispatch, gate (f), the evidence
+    commit and the intent PR, in one deterministic step that holds the runbook secrets."""
+    root, change = incident
+    # the model's diagnosis-only session wrote the intent and the proposal and committed them
+    (change / "intent.md").write_text(
+        "# Intent: CI failure rate breach\n"
+        "Author: maintain run (phase f). Status: proposed. Change id: 0001. "
+        "Entry route: incident abc.\n\n"
+        "## Problem\nThe failure rate spiked.\n\n## Proposed outcome\nThe flaky test is "
+        "quarantined.\n\n## Affected users and systems\nCI.\n\n## Constraints\nNone.\n\n"
+        "## Open questions\nnone\n\n## Evidence\nwe1 at 3sigma; run https://x/runs/1.\n",
+        encoding="utf-8",
+    )
+    write_proposal(change, "pull_request")
+    git(root, "add", "changes")
+    git(root, "commit", "-q", "-m", "maintain(0001): diagnosis")
+    code, out = cli(capsys, "finish", "--root", str(root), "--id", "0001", "--repo", REPO)
+    assert out["dispatch"]["acted"] is True
+    failed = [ch for ch in out["gate"]["checks"] if not ch["ok"]]
+    assert out["gate"]["result"] == "wait" and out["gate"]["label"] == "sdlc:f-ready", failed
+    assert (change / "evidence" / "gate-f.json").is_file()
+    assert out["evidence_commit"]["ok"] is True
+    assert out["pr"]["route"] == "none" and code == 1  # no GitHub route in the test: red
+    rel = f"changes/{change.name}/evidence/gate-f.json"
+    assert git(bare(root), "show", f"sdlc/0001/a:{rel}")
+
+
+def test_finish_judges_by_the_default_branch_s_bands_not_the_checkout_s(
+    rollback_incident, gh, spy, capsys
+):
+    """Decision 14 "enforced, not remembered": an uncommitted edit of bands.yaml in the
+    session (a prompt injection in a failed-run log could ask for one) changes no route's
+    authorization - the dispatcher reads the default branch's copies."""
+    root, change = rollback_incident
+    write_proposal(change, "runbook:rollback-deploy")
+    bands = root / "bands.yaml"
+    bands.write_text(
+        bands.read_text(encoding="utf-8").replace(
+            "- name: runbook:rollback-deploy\n        authorization: go",
+            "- name: runbook:rollback-deploy\n        authorization: preapproved",
+        ),
+        encoding="utf-8",
+    )
+    assert "authorization: preapproved" in bands.read_text(encoding="utf-8")
+    code, out = cli(capsys, "dispatch", "--root", str(root), "--id", "0001", "--repo", REPO)
+    assert code == 0 and out["outcome"]["status"] == "go-requested", out
+    assert spy.calls == []
+
+
+def test_a_forced_finding_never_pre_approves_a_runbook(tmp_path, src, gh, spy, capsys):
+    root = project(tmp_path)
+    file_incident(root, src, capsys, force="3")
+    change = incident_dir(root)
+    write_proposal(change, "runbook:revert-pr", args={"sha": "0" * 40})
+    code, out = cli(capsys, "dispatch", "--root", str(root), "--id", "0001", "--repo", REPO)
+    assert code == 0 and out["outcome"]["status"] == "go-requested"
+    assert "rehearsal" in out["resolved"]["source"] and spy.calls == []
+
+
+def test_open_incidents_sees_a_merged_incident_on_the_default_branch(incident, src, gh, capsys):
+    """GitHub may delete a merged head: an incident the owner merged (fix now) is a folder on
+    the default branch until its fix ships, and still suppresses a second filing."""
+    root, change = incident
+    git(root, "checkout", "-q", "main")
+    git(root, "merge", "-q", "--no-ff", "-m", "merge the incident (gate a)", "sdlc/0001/a")
+    git(root, "push", "-q", "origin", "main")
+    git(root, "push", "-q", "origin", "--delete", "sdlc/0001/a")
+    git(root, "fetch", "-q", "--prune", "origin")
+    found = detect_cli.open_incidents(root, METRIC)
+    assert [i["change_id"] for i in found] == ["0001"] and found[0]["ref"] == "the checkout"
+    src.observations = series(20, spike=True)
+    code, out = cli(capsys, "run", "--root", str(root), "--repo", REPO, "--file")
+    assert out["outcome"] == f"open incident 0001 already carries {METRIC}"
+
+
+def test_a_pending_dismissal_branch_already_suppresses_the_finding(incident, src, gh, capsys):
+    """The owner closed the incident with a comment; until the dismissal PR is merged the
+    default branch's store is empty, and the pending branch must still mute the finding."""
+    root, change = incident
+    code, out = cli(
+        capsys, "dismiss", "--root", str(root), "--id", "0001", "--reason", "runner outage",
+        "--by", "owner", "--repo", REPO, "--pr-number", "5",
+    )  # fmt: skip
+    assert out["dismissed"] is True
+    git(root, "push", "-q", "origin", "sdlc/0001/dismiss")
+    git(root, "fetch", "-q", "origin")
+    # the incident itself is abandoned (the abandon workflow ran)
+    st = status_mod.read_status(change)
+    st.abandon("pull request 5 closed without a merge")
+    status_mod.write_status(change, st)
+    git(root, "add", "changes")
+    git(root, "commit", "-q", "-m", "abandon")
+    git(root, "push", "-q", "origin", "sdlc/0001/a")
+    src.observations = series(20, spike=True)
+    code, out = cli(capsys, "run", "--root", str(root), "--repo", REPO, "--file")
+    assert out["outcome"].startswith("dismissed until") and out["filed"] == {}
+    assert out["dismissal"]["pending"] == "origin/sdlc/0001/dismiss"
