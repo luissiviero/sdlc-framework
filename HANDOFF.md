@@ -1,6 +1,6 @@
 # Handoff — session 7: finish the phase (f) shakedown (the owner-gated checks 17, 18 and 8), then the first real breach
 
-Session 6's brief is kept at `docs/handoffs/session-6-shakedown.md`; its result is the session-6 record on top of `docs/PROGRESS.md` (the live-check table, the seven defects D1–D7, choices 84–88) and plugin **0.2.20**. Read that record first: it says which checks are proven and which were pending the owner's acts when the session closed. Keep the owner's format for every guardrail edit: "link; row; what is there; what it needs to be".
+Session 6's brief is kept at `docs/handoffs/session-6-shakedown.md`; its result is the session-6 record on top of `docs/PROGRESS.md` (the live-check table, every row proven; the ten defects D1–D10; choices 84–88) and plugins **0.2.20, 0.2.21 and 0.2.22** (PRs #47, #48, #49, all merged and tagged on 2026-09-25; the sample pins 0.2.22). Read that record first. Keep the owner's format for every guardrail edit: "link; row; what is there; what it needs to be".
 
 ## Preconditions — check before doing anything
 1. `main` is at plugin 0.2.22 (`.claude-plugin/plugin.json`; `git ls-remote --tags origin | sort -V` ends with `v0.2.22`). If not, the third session-6 PR (D10) is not merged: stop and say so.
@@ -10,7 +10,7 @@ Session 6's brief is kept at `docs/handoffs/session-6-shakedown.md`; its result 
 5. The sample repository in the session's GitHub scope with push access (`add_repo`, the clone, `register_repo_root`). The GitHub tools act as the owner's login (NOTES §14): a label, a comment or a close from the session is a person's act; leave merges to the owner.
 
 ## Read in this order
-1. `docs/PROGRESS.md` — the session-6 record: the live-check table (what is pending), the defects, the choices, the guardrail lines, the known gaps.
+1. `docs/PROGRESS.md` — the session-6 record: the live-check table (every row proven, with run URLs and PR numbers), the defects D1–D10, the choices 84–88, the known gaps (D11 and the rest of deliverable 3).
 2. `docs/NOTES.md` §14 — the platform facts the live runs settled (the runs API, the cache, the runner's git identity, `$GITHUB_OUTPUT`, `origin/HEAD`).
 3. `docs/OPERATING_MODEL.md` §4 (gate (f)), §4.1 (the (f) row), §4.2 (`sdlc-detect.yml`, `sdlc-runbook.yml`, `sdlc-abandon.yml`), §9 (`maintain.runbooks`, `bands.yaml`).
 4. `docs/DECISIONS.md` 14, 25, 26 (the ones the remaining checks exercise). Do not reopen any.

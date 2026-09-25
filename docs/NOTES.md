@@ -877,3 +877,21 @@ Every fact below is read from a job log or a committed evidence file of
   https://github.com/luissiviero/sdlc-sample-python/actions/runs/36166179352 and the
   dismissal PR #27). A merge from the session would be the owner's too; the session leaves
   merges to the owner by rule.
+- **One concurrency group, several workflows, one event**: a `pull_request` `closed` event
+  fires `sdlc-abandon.yml`, `sdlc-design.yml` and `sdlc-build.yml`, and a `labeled` event
+  fires the fix, runbook, test, deploy and release workflows. With the same `group:` on all
+  of them, GitHub's "one running and one pending run per group" rule (§11a) cancelled a
+  pending run at random: the abandon run twice (PRs #34 and #35 of the sample,
+  https://github.com/luissiviero/sdlc-sample-python/actions/runs/36184176916, re-run by hand
+  with `rerun_workflow_run`, attempt 2 green) and, harmlessly, a design run and a fix run.
+  Since 0.2.22 the abandon and runbook workflows have their own groups (D10). A cancelled
+  run can be re-run with the same event payload from the API.
+- **The tag workflow on a merge push**: `sdlc-tag.yml` (`push` to `main` with a `paths:`
+  filter on `.claude-plugin/plugin.json`) fired by itself for the 0.2.20 and 0.2.22 merges
+  but not for the 0.2.21 merge (PR #48, 18:30 UTC): no run appeared for the push, and a
+  `workflow_dispatch` of the same workflow tagged `v0.2.21` a minute later (the script tags
+  once and never moves a tag, so the dispatch is safe). Cause unknown; the dispatch is the
+  fallback.
+- **The digest and the owner's labels**: `pr/digest.py` lists a scheduled incident under
+  "Waiting at a human gate" with its gate label only; the `schedule` label the owner applied
+  is not shown (D11, session 7).
