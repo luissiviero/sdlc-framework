@@ -25,9 +25,9 @@
 # Token rule: events caused by this workflow's GITHUB_TOKEN never start another workflow run
 # - only workflow_dispatch and repository_dispatch do. This workflow's commits and pull
 # requests start nothing; your merge, label or close of the incident PR fires the design,
-# runbook or abandon workflow normally. The model's step holds no deploy secret: a project
-# runbook with a command runs in the "Dispatch the route" step below, whose env: is where
-# the repository's own secrets go (as for the release); the model's session never sees
+# runbook or abandon workflow normally. No deploy credential reaches the model's step; a
+# project runbook with a command runs in the "Dispatch the route" step below, whose env: is
+# where the repository's own secrets go (as for the release); the model's session never sees
 # them, and the dispatcher judges the route by the default branch's bands.yaml and
 # sdlc.yaml, never the checkout's (decisions 11 and 14).
 #
