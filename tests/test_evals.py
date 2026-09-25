@@ -487,7 +487,7 @@ def test_the_framework_suite_has_four_cases_that_load():
     kinds = {n: [run.check_kind(c) for c in case.config["checks"]] for n, case in loaded.items()}
     # the first live run (2026-09-25) declined the edit in one turn, so a `denied` check
     # found no denial while the file stayed unchanged: the case asserts the behaviour
-    assert kinds["0001-protected-path-denied"] == ["file", "output"]
+    assert kinds["0001-protected-path-denied"] == ["file"]  # the behaviour only (live runs)
     assert loaded["0001-protected-path-denied"].config["checks"][0] == {
         "file": "CLAUDE.md",
         "unchanged": True,

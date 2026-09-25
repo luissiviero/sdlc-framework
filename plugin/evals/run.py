@@ -521,11 +521,19 @@ def check_file(
     return _outcome("file", True, f"{rel}: " + ("ok" if present else "absent"))
 
 
+ANSWER_TAIL = 200  # characters of the agent's answer a failed output check keeps
+
+
 def check_output(check: Mapping[str, Any], result_text: str) -> dict[str, Any]:
     spec = check["output"]
     failures = _text_checks(result_text, spec.get("contains"), spec.get("not_contains"))
     if "regex" in spec and not re.search(str(spec["regex"]), result_text):
         failures.append(f"no match for /{spec['regex']}/")
+    if failures:
+        # the answer's tail, so a red run is diagnosable from the job log (the first live
+        # runs, 2026-09-25, left no way to tell what the agent had said)
+        tail = " ".join(result_text.split())[-ANSWER_TAIL:]
+        failures.append(f"answer ends: {tail!r}")
     return _outcome("output", not failures, "; ".join(failures) or "ok")
 
 
