@@ -76,6 +76,7 @@ def stage_paths(root: Path, paths: list[str]) -> list[str]:
 
 def commit_staged(root: Path, message: str) -> str:
     """Commit the whole index (whatever was staged, by whom). Prefer ``commit_files``."""
+    ensure_identity(root)  # a runner has no git identity (see commit_files)
     run(root, "commit", "-q", "-m", message)
     return run(root, "rev-parse", "HEAD").strip()
 
@@ -171,6 +172,10 @@ def commit_files(root: Path, files: list[str], message: str) -> str | None:
     to_commit = sorted({_norm(f) for f in out.split("\0") if f})
     if not to_commit:
         return None
+    # every commit the plugin makes goes through here: a runner has no git identity, and the
+    # detect step's ``commit-phase`` failed on one with "empty ident name" (live run of
+    # 2026-09-25); ensure_identity writes the automation identity only when none is set.
+    ensure_identity(top)
     run(top, "--literal-pathspecs", "commit", "-q", "-m", message, "--only", "--", *to_commit)
     return run(top, "rev-parse", "HEAD").strip()
 

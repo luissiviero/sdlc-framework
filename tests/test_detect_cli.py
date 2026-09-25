@@ -1041,3 +1041,59 @@ def test_a_pending_dismissal_branch_already_suppresses_the_finding(incident, src
     code, out = cli(capsys, "run", "--root", str(root), "--repo", REPO, "--file")
     assert out["outcome"].startswith("dismissed until") and out["filed"] == {}
     assert out["dismissal"]["pending"] == "origin/sdlc/0001/dismiss"
+
+
+# --- $GITHUB_OUTPUT and a failing commit (live run of 2026-09-25) -----------------------------
+def test_github_output_writes_multi_line_values_in_the_heredoc_form(tmp_path):
+    """``key=value`` is one line per value: a multi-line value (a traceback) made the runner
+    reject the file ("Invalid format"); it goes in GitHub's ``key<<DELIM`` form instead."""
+    outfile = tmp_path / "github_output"
+    value = 'Traceback (most recent call last):\n  File "x.py", line 1\nfatal: boom'
+    detect_cli._github_output(
+        {"tier": 2, "outcome": value, "change_id": None}, env={"GITHUB_OUTPUT": str(outfile)}
+    )
+    lines = outfile.read_text(encoding="utf-8").split("\n")
+    assert lines[0] == "tier=2"
+    key, _, delim = lines[1].partition("<<")
+    assert key == "outcome" and delim.startswith("ghadelimiter_")
+    end = lines.index(delim, 2)
+    assert "\n".join(lines[2:end]) == value
+    assert all(delim not in line for line in lines[2:end])
+    assert lines[end + 1 :] == ["change_id=", ""]
+    # two multi-line values never share a delimiter
+    detect_cli._github_output({"a": "1\n2", "b": "3\n4"}, env={"GITHUB_OUTPUT": str(outfile)})
+    heads = [x for x in outfile.read_text(encoding="utf-8").splitlines() if "<<" in x]
+    assert len({h.partition("<<")[2] for h in heads}) == 3
+
+
+def test_a_failing_commit_phase_keeps_the_reason_to_one_line(
+    tmp_path, src, gh, capsys, monkeypatch
+):
+    """A git failure in ``commit-phase`` ("empty ident name" on a runner) is reported as its
+    last stderr line; the whole stderr stays in the printed JSON only."""
+    root = project(tmp_path)
+    src.observations = series(16)
+    stderr = "line1\nline2\nfatal: empty ident name"
+    real_cli = detect_cli._cli
+
+    def fake_cli(script, argv, cwd):
+        if argv and argv[0] == "commit-phase":
+            return None, 1, stderr
+        return real_cli(script, argv, cwd)
+
+    monkeypatch.setattr(detect_cli, "_cli", fake_cli)
+    outfile = tmp_path / "github_output"
+    monkeypatch.setenv("GITHUB_OUTPUT", str(outfile))
+    log = tmp_path / "detect-log.jsonl"
+    argv = ["run", "--root", str(root), "--repo", REPO, "--log", str(log)]
+    code, out = cli(capsys, *argv, "--force-tier", "2", "--file")
+    assert code == 1, out
+    filed = out["filed"]
+    assert filed["filed"] is False
+    assert filed["reason"] == "commit-phase failed: fatal: empty ident name"
+    assert filed["stderr"] == stderr
+    [entry] = [json.loads(x) for x in log.read_text(encoding="utf-8").splitlines()]
+    assert "\n" not in entry["outcome"]
+    assert entry["outcome"] == "not filed: commit-phase failed: fatal: empty ident name"
+    lines = outfile.read_text(encoding="utf-8").splitlines()
+    assert "outcome=not filed: commit-phase failed: fatal: empty ident name" in lines

@@ -1,4 +1,5 @@
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -623,6 +624,51 @@ def test_gitops_changed_files_and_commit_paths(repo):
     _git(root, "add", "changes/0001-x/gone.md")
     (folder / "gone.md").unlink()
     assert gitops.commit_paths(root, ["changes/0001-x"], "nothing") is None
+
+
+def test_commit_files_on_a_checkout_without_identity_commits_as_the_automation(
+    tmp_path, monkeypatch
+):
+    """A GitHub-hosted runner has no git user.name/user.email: the detect step's
+    ``commit-phase`` failed there with "empty ident name" (live run of 2026-09-25).
+    ``commit_files`` sets the automation identity itself when the checkout has none."""
+    from state import gitops
+
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("USERPROFILE", str(home))
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(home / ".config"))
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", os.devnull)
+    monkeypatch.setenv("GIT_CONFIG_SYSTEM", os.devnull)
+    monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
+    for name in (
+        "GIT_AUTHOR_NAME",
+        "GIT_AUTHOR_EMAIL",
+        "GIT_COMMITTER_NAME",
+        "GIT_COMMITTER_EMAIL",
+        "GIT_CONFIG_COUNT",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.delenv("EMAIL", raising=False)  # git falls back to $EMAIL for the address
+    root = tmp_path / "proj"
+    root.mkdir()
+    gitops.run(root, "init", "-q", "-b", "main")
+    assert gitops.run(root, "config", "--get", "user.name", check=False).strip() == ""
+    assert gitops.run(root, "config", "--get", "user.email", check=False).strip() == ""
+    (root / "README.md").write_text("# project\n", encoding="utf-8")
+    sha = gitops.commit_files(root, ["README.md"], "first commit on a runner")
+    assert sha
+    author = gitops.run(root, "log", "-1", "--format=%an <%ae>").strip()
+    assert author == f"{gitops.BOT_LOGIN} <{gitops.BOT_EMAIL}>"
+    # an owner's identity, once present, is left alone
+    gitops.run(root, "config", "user.name", "Owner")
+    gitops.run(root, "config", "user.email", "owner@example.com")
+    (root / "README.md").write_text("# changed\n", encoding="utf-8")
+    assert gitops.commit_files(root, ["README.md"], "by the owner")
+    assert gitops.run(root, "log", "-1", "--format=%an <%ae>").strip() == (
+        "Owner <owner@example.com>"
+    )
 
 
 # --- decision 24: the owner's un-park labels, recorded with their actor --------------------------

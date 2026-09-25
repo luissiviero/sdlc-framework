@@ -41,6 +41,7 @@ import os
 import re
 import subprocess
 import sys
+import uuid
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -95,15 +96,25 @@ def _github():
 
 
 def _github_output(values: dict[str, Any], env: dict[str, str] | None = None) -> None:
-    """Append ``key=value`` lines to ``$GITHUB_OUTPUT`` when the workflow set it."""
+    """Append the values to ``$GITHUB_OUTPUT`` when the workflow set it: ``key=value`` for a
+    single-line value, GitHub's heredoc form ``key<<DELIM`` / value / ``DELIM`` for a value
+    with a newline (a multi-line traceback in ``key=value`` form made the runner reject the
+    file, live run of 2026-09-25), with a delimiter that does not occur in the value."""
     env = os.environ if env is None else env
     path = env.get("GITHUB_OUTPUT")
     if not path:
         return
     try:
-        with open(path, "a", encoding="utf-8") as fh:
+        with open(path, "a", encoding="utf-8", newline="\n") as fh:
             for key, value in values.items():
-                fh.write(f"{key}={'' if value is None else value}\n")
+                text = "" if value is None else str(value)
+                if "\n" not in text and "\r" not in text:
+                    fh.write(f"{key}={text}\n")
+                    continue
+                delim = f"ghadelimiter_{uuid.uuid4().hex}"
+                while delim in text:
+                    delim = f"ghadelimiter_{uuid.uuid4().hex}"
+                fh.write(f"{key}<<{delim}\n{text}\n{delim}\n")
     except OSError:
         pass
 
@@ -369,7 +380,15 @@ def file_change(root: Path, record: dict[str, Any], *, push: bool, dry_run: bool
         argv.append("--push")
     committed, code, err = _cli(STATE_CLI, argv, root)
     if code != 0:
-        return {"filed": False, "change_id": change_id, "reason": f"commit-phase failed: {err}"}
+        # the reason goes into the log line and $GITHUB_OUTPUT: one line (the last of stderr,
+        # "fatal: ..." for a git failure); the whole stderr stays in the printed JSON only
+        lines = [line.strip() for line in (err or "").splitlines() if line.strip()]
+        return {
+            "filed": False,
+            "change_id": change_id,
+            "reason": f"commit-phase failed: {lines[-1] if lines else f'exit code {code}'}",
+            "stderr": (err or "")[:2000],
+        }
     return {
         "filed": True,
         "change_id": change_id,
