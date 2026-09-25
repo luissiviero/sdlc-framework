@@ -84,8 +84,10 @@ def _line(pr: dict[str, Any]) -> str:
     return f"{line}\n  - {bullet}" if bullet else line
 
 
-def render_digest(prs: list[dict[str, Any]], now: str) -> str:
-    """The digest markdown. Parked first, then the phase-ready queue by phase letter."""
+def render_digest(prs: list[dict[str, Any]], now: str, counters: str = "") -> str:
+    """The digest markdown. Parked first, then the phase-ready queue by phase letter, then
+    the counters section (build guide step 42.2, ``pr/counters.py``) when the caller gives
+    one."""
     queue = [pr for pr in prs if sdlc_labels(pr)]
     parked = [pr for pr in queue if c.NEEDS_HUMAN_LABEL in sdlc_labels(pr)]
     ready = [pr for pr in queue if pr not in parked]
@@ -98,6 +100,8 @@ def render_digest(prs: list[dict[str, Any]], now: str) -> str:
     out.append("")
     if not parked and not ready:
         out.append(NOTHING_WAITING)
+        if counters:
+            out += ["", counters.rstrip("\n")]
         return "\n".join(out) + "\n"
     if parked:
         out += [f"## Parked — `{c.NEEDS_HUMAN_LABEL}`", ""]
@@ -107,6 +111,8 @@ def render_digest(prs: list[dict[str, Any]], now: str) -> str:
         out += ["## Waiting at a human gate", ""]
         out += [_line(pr) for pr in ready]
         out.append("")
+    if counters:
+        out += [counters.rstrip("\n"), ""]
     out.append(f"Generated {now}.")
     return "\n".join(out) + "\n"
 
@@ -144,6 +150,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--repo", required=True, help="owner/name")
     parser.add_argument("--dry-run", action="store_true", help="print the markdown, touch nothing")
     parser.add_argument("--input", help="a JSON file with the PR list, instead of the API")
+    parser.add_argument(
+        "--root", default=None, help="the project checkout: adds the counters section (step 42.2)"
+    )
     args = parser.parse_args(argv)
 
     error = ""
@@ -159,7 +168,12 @@ def main(argv: list[str] | None = None) -> int:
     else:
         prs, error = list_queue_prs(args.repo)
 
-    markdown = render_digest(prs, _now())
+    counters_md = ""
+    if args.root:
+        from pr import counters  # noqa: PLC0415
+
+        counters_md = counters.render(counters.collect(Path(args.root).resolve()))
+    markdown = render_digest(prs, _now(), counters_md)
     if args.dry_run:
         print(markdown, end="")
         return 0

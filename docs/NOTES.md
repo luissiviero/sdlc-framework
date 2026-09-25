@@ -728,3 +728,87 @@ owner removes the bare ones). Still the owner's: this repository's root
 `.claude/settings.json` (same four lines), and `docs/owner-machine/managed-settings.json`,
 which keeps the bare names because a machine-wide file has no per-project anchor (a `//`
 absolute rule per repository is the alternative).
+
+## 13. Facts added in session 5 (B5), read on 2026-09-25
+
+Sources were read by an Opus research sub-agent through the Context7 index of
+code.claude.com (the session's `curl` to the docs host was denied) and by running the local
+CLI (`2.1.282`); every quote is verbatim from the page named.
+
+### 13a. `claude plugin eval` (build guide step 35.2) — read and not used
+Source: https://code.claude.com/docs/en/plugin-evals and
+https://code.claude.com/docs/en/plugins-reference; local `claude plugin eval --help`.
+- "Run a plugin's eval cases and report scored results. Requires Claude Code v2.1.269 or
+  later. Each case is a prompt plus graders; Claude Code runs it several times in an isolated
+  session with only the target plugin loaded, and by default also without the plugin so the
+  report shows the difference."
+- The cases: `evals/<case>/prompt.md` (frontmatter `name`, `tags`, `plugins`, `runs` (3, 1–50),
+  `expected_outcome` — "For humans. Not used at run time" —, `max_turns` (10, up to 200),
+  `timeout_seconds` (300, up to 3600), `allowed_tools` — "Read-only tools are granted when
+  listed here" —, `env` (`EVAL_*` only)) or `case.yaml` (`schema_version: "1.1"`,
+  `context.scaffold_script` — "runs only when you pass `--scaffold`" —, `context.add_dirs` —
+  "inside the case directory ... granted read-only"), `graders/<name>.md`.
+- The graders: "Of the six types, `regex`, `tool_used`, `tool_order`, and `file_exists` are
+  computed from the transcript and files and cost nothing, while `llm` and `baseline` call a
+  judge model and add to the run's cost. There are no custom-code graders." A grader sees
+  `last_message`, `trace`, `files` ("Not their contents, and not files that a scaffold
+  created or that Claude only modified") or one file's contents.
+- Isolation: "Each run gets a throwaway home directory, working directory, and Claude Code
+  configuration, and the agent under test runs there as a `claude -p` child process with
+  only your plugin loaded." "Nothing personal or project-level loads. Your user settings,
+  hooks, `CLAUDE.md` files, MCP servers, other installed plugins, memory, and skills are
+  absent, and no project-scoped `.claude/` or `.mcp.json` above the sandbox is read."
+- Exit codes: 0 every case at or above `--threshold` (default 1.0); 1 below, a load
+  failure, no cases, an untrusted directory without `--trust-plugin`; 2 partial
+  (`--max-cost-usd` hit or the credential rejected); 130 interrupted; 143 terminated. CI: "A
+  CI runner needs a Claude Code install and credentials in the environment such as
+  `ANTHROPIC_API_KEY`."
+- Availability: "Anthropic has switched the command off server-side. Nothing on your machine
+  turns it back on".
+
+Why the framework has its own runner (`plugin/evals/run.py`): the per-project suite tests the
+project's `CLAUDE.md`, hooks and `.claude/` settings, which the command loads none of; our
+checks are commands that must exit 0 (tests, lint), which the command cannot express ("no
+custom-code graders"); the only way to put a repository into a run is a Bash scaffold
+script (decision 7: Python only, an owner on Windows); the default with/without arms double
+the cost and the command can be switched off server-side, a poor fit for a merge check. A
+`claude plugin eval` suite that only checks skill triggering (`tool_used: Skill`, free
+graders, `--ablation none`) stays an option as an advisory signal, never as the gate.
+
+### 13b. `claude -p` result fields the eval runner reads
+Source: https://code.claude.com/docs/en/agent-sdk/agent-loop,
+https://code.claude.com/docs/en/agent-sdk/python, https://code.claude.com/docs/en/headless,
+local `claude --help`.
+- The "`subtype` field ... is the primary way to check termination state": `success`,
+  `error_max_turns`, `error_max_budget_usd`, `error_during_execution`,
+  `error_max_structured_output_retries`; "The `result` field holds the final text output and
+  is only present on the `success` variant"; "All result subtypes carry `total_cost_usd`,
+  `usage`, `num_turns`, and `session_id`"; "`is_error`: `True` when the conversation ended in
+  an error state. Always `True` on the `error_*` subtypes."
+- "the final result message lists them in `permission_denials`" (the binary's result schema
+  carries the field on every result message; the runner's `denied:` check reads it).
+- `--permission-prompts none` (local help): "nobody: anything that would prompt is denied
+  automatically; the permission mode still decides everything else".
+- `--max-turns` is hidden from `--help` in 2.1.282 (`.hideHelp()` in the binary) and still
+  accepted: "Maximum number of agentic turns in non-interactive mode."
+- `--bare` (local help): "skip hooks (those defined in settings and by installed plugins
+  ...), LSP, plugin sync, ... and CLAUDE.md auto-discovery." So the eval runner never passes
+  it: the suite tests exactly what bare mode skips. Print mode uses `ANTHROPIC_API_KEY` when
+  present and the OAuth token otherwise, so the same runner works with either secret.
+- There is no `--cwd` flag: the runner sets the child process's working directory.
+- `/skill-doctor` (https://code.claude.com/docs/en/skills): "Run `/skill-doctor` to see what
+  each of your skills costs and how often it gets used, so you can decide which ones to turn
+  off." Usage and context cost, not a behavioural eval.
+
+### 13c. GitHub Actions facts used by the phase (f) workflows
+- `actions/upload-artifact@v4` and `actions/cache@v4` are the current majors of the two
+  actions (the repository standardised `checkout` and `setup-node` on v5 in session 4;
+  `upload-artifact` has no v5 at the time of writing — verify on the next bump). The hook
+  log, the detection log, the eval report and the scan reports ride as artifacts with
+  `if-no-files-found: ignore`, so a run that produced none is still green.
+- A `schedule` workflow runs on the default branch's copy of the file; the detection and the
+  digest therefore read the default branch's `bands.yaml` and `sdlc.yaml`, which is the rule
+  every gate follows (§4.2: the configuration the owner approved).
+- The runs API (`GET /repos/{owner}/{repo}/actions/runs?created=>=YYYY-MM-DD&status=completed`)
+  needs `actions: read` on the workflow token; the detection workflow grants it and nothing
+  more than the phase jobs already have.

@@ -1279,3 +1279,41 @@ def test_log_decision_never_raises(tmp_path):
     blocker.write_text("x", encoding="utf-8")
     env = {"SDLC_HOOK_LOG": str(blocker / "sub" / "log.jsonl")}  # parent is a file
     assert _common.log_decision("t", "allow", "r", pre("Bash", command="ls"), env=env) is None
+
+
+# --- build guide step 41.1: every hook logs its decisions (plugin 0.2.19) --------------------
+def test_every_hook_logs_its_decision_through_run_hook(tmp_path):
+    """Article p.39: "Every hook decision is written ... with a timestamp and an allow or
+    block verdict". run_hook appends one line per decision - the hook, the verdict, the
+    reason, the tool and its target paths - to the log file; the production gate keeps its
+    own line (it computes the path under its own time budget)."""
+    log = tmp_path / "hook-log.jsonl"
+    env = {**os.environ, "SDLC_HOOK_LOG": str(log), "CLAUDE_PROJECT_DIR": str(tmp_path)}
+    denied = pre("Write", file_path=str(tmp_path / "x.py"), content="password = 'abcdefghij'")
+    allowed = pre("Write", file_path=str(tmp_path / "y.py"), content="x = 1\n")
+    for payload, code in ((denied, 2), (allowed, 0)):
+        proc = subprocess.run(
+            [sys.executable, str(HOOKS_DIR / "secrets_check.py")],
+            input=json.dumps(payload),
+            capture_output=True,
+            text=True,
+            env=env,
+        )
+        assert proc.returncode == code, proc.stderr
+    lines = [json.loads(line) for line in log.read_text(encoding="utf-8").splitlines()]
+    assert [line["verdict"] for line in lines] == ["block", "allow"]
+    assert lines[0]["hook"] == "secrets_check" and lines[0]["tool"] == "Write"
+    assert lines[0]["paths"] == [str(tmp_path / "x.py")] and lines[0]["reason"]
+    assert lines[0]["event"] == "PreToolUse" and lines[0]["at"].endswith("Z")
+    assert lines[1]["reason"] == ""
+    # a hook that crashes fails closed and logs the block too
+    proc = subprocess.run(
+        [sys.executable, str(HOOKS_DIR / "protected_paths.py")],
+        input="not json",
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+    assert proc.returncode == 2
+    last = json.loads(log.read_text(encoding="utf-8").splitlines()[-1])
+    assert last["verdict"] == "block" and "failed closed" in last["reason"]

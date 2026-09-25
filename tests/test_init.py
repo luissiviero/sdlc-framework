@@ -304,6 +304,8 @@ def test_init_writes_evals_and_bands_once(tmp_path):
     shutil.copytree(FIXTURE, root)
     report = _run_init(root)
     assert report["files"]["evals/README.md"] == "created"
+    assert report["files"]["evals/check.py"] == "created"  # step 35 (0.2.19)
+    assert report["files"]["lessons/README.md"] == "created"  # step 36 (0.2.19)
     assert report["files"]["evals/cases/.gitkeep"] == "created"
     assert report["files"]["bands.yaml"] == "created"
     bands = yamlish.load_file(root / "bands.yaml")
@@ -503,6 +505,10 @@ WORKFLOWS = (
     ".github/workflows/sdlc-release.yml",  # build guide step 32.3 (plugin 0.2.12)
     ".github/workflows/sdlc-fix.yml",  # decisions 22 and 24 (plugin 0.2.13)
     ".github/workflows/sdlc-abandon.yml",  # decision 25 (plugin 0.2.13)
+    ".github/workflows/sdlc-detect.yml",  # build guide step 37 (plugin 0.2.19)
+    ".github/workflows/sdlc-runbook.yml",  # the owner's Go on a runbook (plugin 0.2.19)
+    ".github/workflows/sdlc-evals.yml",  # build guide step 35 (plugin 0.2.19)
+    ".github/workflows/sdlc-scan.yml",  # build guide step 38 (plugin 0.2.19)
 )
 PIN_SCRIPT = ".github/scripts/sdlc_pin.py"
 

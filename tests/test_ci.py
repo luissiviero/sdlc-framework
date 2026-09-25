@@ -1253,11 +1253,13 @@ def test_merge_fired_workflows_find_the_change_from_the_merged_pr(name):
     assert "PR_NUMBER: ${{ github.event.pull_request.number }}" in steps
     # every step after the find step is conditional on a change having been found
     after = steps[find:].split("\n      - ")[1:]
-    assert len(after) == 5
+    assert len(after) == 6  # setup-node, the CLI, the sandbox, the toolchain, the run, the log
     for step in after:
         assert "if: steps.find.outputs.change_id != ''" in step, step
-    # the phase run gets the id the find step printed, through an env var
-    assert after[-1].count("CHANGE_ID: ${{ steps.find.outputs.change_id }}") == 1
+    # the phase run gets the id the find step printed, through an env var; the hook log
+    # (step 41.1) rides as an artifact after it
+    assert after[-2].count("CHANGE_ID: ${{ steps.find.outputs.change_id }}") == 1
+    assert "Keep the hook log" in after[-1]
     find_step = steps[find:].split("\n      - ")[0]
     assert "CHANGE_ID: ${{ inputs.change_id }}" in find_step
     assert "GITHUB_TOKEN: ${{ github.token }}" in find_step
@@ -1711,14 +1713,13 @@ def test_implementation_phases_name_their_tools(capsys, project):
 
 # --- decisions 22, 24, 25: the fix round, the owner labels, the abandoned change --------------
 def test_a_fix_round_runs_on_the_change_s_phase_parked_or_not(project):
-    """Decision 22: the guard of a fix round asks only that the change is at a gate (a)-(e)
-    and not abandoned; a park is the change request it answers."""
+    """Decision 22: the guard of a fix round asks only that the change is at a gate (a)-(f)
+    and not abandoned; a park is the change request it answers (an incident intent PR at (f)
+    takes review comments like the intent PR at (a), plugin 0.2.19)."""
     root, change = project
-    for phase in ("a", "b", "c", "d", "e"):
+    for phase in ("a", "b", "c", "d", "e", "f"):
         set_state(change, phase, parked="risk-list hit: 'auth'")
         assert skip_reason(root, "fix") is None, phase
-    set_state(change, "f")
-    assert "no fix round" in skip_reason(root, "fix")
 
 
 def test_every_run_skips_an_abandoned_change(project):
@@ -1829,3 +1830,36 @@ def test_apply_owner_labels_performs_commits_and_reports(project, tmp_path, monk
     monkeypatch.setattr(github, "gh_path", lambda: None)
     out = run_phase.apply_owner_labels(ROOT, root, change, {}, "owner/name", "7", "b", None, {})
     assert out["ok"] is False and "no gh and no GITHUB_TOKEN" in out["reason"]
+
+
+# --- phase (f): the maintain run (build guide step 37; plugin 0.2.19) ------------------------
+def test_dry_run_argv_at_phase_f_is_read_only_on_source(capsys, project):
+    """The diagnosis runs /sdlc-maintain with the bands' diagnose tools plus the plugin's own
+    (Write for the two artifacts, python and git for the CLIs) and no Edit (p.43 step 3)."""
+    root, _change = project
+    argv = dry_run_argv(capsys, root, "f")
+    assert argv[:3] == ["claude", "-p", "/sdlc:sdlc-maintain 0001"]
+    assert argv[argv.index("--permission-mode") + 1] == "default"
+    allowed = argv[argv.index("--allowedTools") + 1].split(",")
+    for tool in ("Read", "Grep", "Bash(gh run view *)", "Glob", "Write", "Bash(python *)",
+                 "Bash(git *)"):  # fmt: skip
+        assert tool in allowed
+    assert "Edit" not in allowed
+    disallowed = argv[argv.index("--disallowedTools") + 1].split(",")
+    assert {"Edit", "MultiEdit", "NotebookEdit", "WebFetch", "WebSearch"} <= set(disallowed)
+
+
+def test_the_design_run_accepts_a_merged_incident_at_phase_f_as_at_a(project):
+    """Decision 25: the owner's merge of the incident intent PR is gate (a) of that change,
+    which stays at phase f on its branch; the design guard reads it as at (a)."""
+    root, change = project
+    set_state(change, "f")
+    assert skip_reason(root, "b") is None
+    set_state(change, "e")
+    assert "not a" in skip_reason(root, "b")
+    # a maintain run follows the filing step, which leaves the change at f itself
+    set_state(change, "f")
+    assert skip_reason(root, "f") is None
+    set_state(change, "a")
+    assert "not f" in skip_reason(root, "f")
+    assert run_phase.NEXT_WORKFLOW.get("f") is None  # gate (f) is the owner's triage

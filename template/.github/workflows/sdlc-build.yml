@@ -124,3 +124,16 @@ jobs:
           REPO: ${{ github.repository }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: python framework/plugin/ci/run_phase.py --root . --plugin-dir framework --phase c --id "$CHANGE_ID" --head-ref "$HEAD_REF" --repo "$REPO" --ref "$DEFAULT_BRANCH"
+
+      # Build guide step 41.1 (article p.39): every hook decision of the run is one line of
+      # changes/<id>-<slug>/evidence/hook-log.jsonl (committed with the evidence) or of
+      # changes/.hook-log.jsonl; the artifact keeps them readable when a run never committed.
+      - name: Keep the hook log
+        if: steps.find.outputs.change_id != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: sdlc-hook-log-${{ github.run_id }}
+          path: |
+            changes/**/evidence/hook-log.jsonl
+            changes/.hook-log.jsonl
+          if-no-files-found: ignore

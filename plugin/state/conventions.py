@@ -41,9 +41,11 @@ PHASE_ARTIFACTS = {
 PROFILES = ("standard", "full")
 DEFAULT_PROFILE = "standard"
 LEGACY_PROFILES = {"lite": "standard"}
+# Gate (f) is human in every profile (decision 25): the owner triages each incident intent
+# PR - merge (fix now), label ``schedule``, or close with a reason (dismiss).
 HUMAN_GATES = {
-    "standard": frozenset({"a", "b", "e"}),
-    "full": frozenset({"a", "b", "c", "d", "e"}),
+    "standard": frozenset({"a", "b", "e", "f"}),
+    "full": frozenset({"a", "b", "c", "d", "e", "f"}),
 }
 
 # --- review mode (decision 21; OPERATING_MODEL sections 3 and 6) ----------------------------
@@ -74,6 +76,15 @@ ACCEPT_RISK_LABEL = "sdlc:accept-risk"
 RESET_ITERATIONS_LABEL = "sdlc:reset-iterations"
 UNLOCK_TESTS_LABEL = "sdlc:unlock-tests"
 UNPARK_LABELS = (ACCEPT_RISK_LABEL, RESET_ITERATIONS_LABEL, UNLOCK_TESTS_LABEL)
+# Phase (f) (build guide steps 37 and 39; decisions 14, 25): ``incident`` marks every intent
+# PR the maintain loop opens - the triage queue is the set of open PRs carrying it (p.44
+# step 6); ``schedule`` is the owner's "not now" (the PR stays open, nothing runs); ``sdlc:go``
+# is the owner's per-incident authorization of a runbook whose route says ``authorization:
+# go`` (p.49-50: "shall I run it?" - "Go."), read by ``sdlc-runbook.yml``, performed once,
+# recorded with the actor and removed, like the un-park labels.
+INCIDENT_LABEL = "incident"
+SCHEDULE_LABEL = "schedule"
+GO_LABEL = "sdlc:go"
 
 
 def ready_label(phase: str) -> str:
@@ -94,6 +105,7 @@ def all_labels() -> list[str]:
     labels.append(RELEASE_APPROVED_LABEL)
     labels += list(UNPARK_LABELS)
     labels.append(NEEDS_HUMAN_LABEL)
+    labels += [INCIDENT_LABEL, SCHEDULE_LABEL, GO_LABEL]
     return labels
 
 

@@ -227,6 +227,17 @@ documentation already in the guide. They appear below only where a small task ex
 | 42.2 The later scheduled report over `changes/*/` and PR history | O→F | Optional; Opus drafts, Fable decides whether to ship it. |
 | B5 wrap-up: reviews, docs, final handoff | see §2 | |
 
+Outcome (2026-09-25, plugin 0.2.19; the record is `docs/PROGRESS.md`): every row above was
+built in one cloud session. Opus wrote, from Fable's specs, `plugin/detect/stats.py` and
+`bands.py` (37.1), `source.py` (37.2), `runbooks.py` (37.4), `plugin/evals/` with the
+template wrapper and the first four cases (35.3, 35.4), `plugin/scan/` (38.2, 38.3), the
+35.2 research report, and the unit tests of `routes.py`, `dismissals.py`, `finding.py` and
+`detect/cli.py`; Fable wrote the specs, the phase (f) design (the routes and their
+authorization, the dispatcher, the dismissal store, the gate (f) checks, the CLI), the
+prompts (`/sdlc-maintain`, the lines of `/sdlc-deploy`, `/sdlc-fix`, `/sdlc-build` and
+`/sdlc-test`), the workflows, the observability change (every hook logs), the counters and
+the docs. Step 33 stays not built (decision 17); step 40 stays optional.
+
 ## 6. Session 2 (steps 16–21) — finished
 
 Session 2 completed on `main` (PRs #4, #5, #7, plus #8 for the editable install) before

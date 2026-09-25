@@ -1,0 +1,158 @@
+# Phase (f) maintain: the deterministic detection script on a schedule, and the diagnosis
+# it invokes when a control band is breached (build guide step 37; decisions 14, 15, 26).
+#
+# Contract: docs/OPERATING_MODEL.md sections 4 (gate (f)), 4.1 (the (f) row) and 4.2, article
+# p.42-45 ("A deterministic script watches production and invokes Claude when a control
+# band is breached"; the trigger layer "can be a scheduled workflow in GitHub"; "At 1σ the
+# script only logs, at 2σ it invokes Claude read-only to diagnose, and at 3σ Claude may act,
+# though only by opening a PR into the review gate or triggering a pre-approved runbook").
+# Installed into this project by /sdlc-init from the framework's template/.github/workflows/;
+# edit it here, not in the framework. The bands are the project's bands.yaml; a bands change
+# is a bands.yaml pull request, never something a run writes (step 39).
+#
+# What one run does: detect/cli.py run reads the metric's daily series from the source
+# (the GitHub Actions runs API, cached across runs), computes the rolling statistics and
+# the Western Electric rules with no model involved, appends one line to the detection log
+# (uploaded as an artifact: the p.45 leading indicator, "the detection script's log has the
+# breach timestamp and tier"), and at tier 2 or 3 files one incident change on sdlc/<id>/a
+# - unless an incident of the same metric is already open or the finding was dismissed
+# (changes/.dismissed.json). Then, only when a change was filed, run_phase.py runs the
+# diagnosis: /sdlc-maintain, read-only on source, which writes the incident intent.md and
+# the proposed route, dispatches it (a pre-approved runbook runs and opens its PR; a `go`
+# route parks the PR with "Go" requested) and opens the intent PR with the labels
+# sdlc:f-ready and incident. Gate (f) is your triage of that PR (decision 25).
+#
+# Token rule: events caused by this workflow's GITHUB_TOKEN never start another workflow run
+# - only workflow_dispatch and repository_dispatch do. This workflow's commits and pull
+# requests start nothing; your merge, label or close of the incident PR fires the design,
+# runbook or abandon workflow normally. The job holds no deploy secret (a project runbook
+# with a command runs with the repository's own secrets: add them to the env: of the
+# phase step below, as for the release).
+#
+# Schedule note: cron is UTC, runs on the default branch, and an off-the-hour minute is less
+# delayed than :00. GitHub disables schedules in a public repository after 60 days without
+# activity; the workflow_dispatch trigger is how the owner re-enables it, and its force_tier
+# input rehearses the whole loop on demand (recorded as "forced" in the detection record).
+#
+# /sdlc-init filled in the framework repository. The Claude Code version is read from
+# sdlc.yaml at run time.
+name: SDLC detect (f)
+
+on:
+  schedule:
+    - cron: "41 5 * * *"
+  workflow_dispatch:
+    inputs:
+      force_tier:
+        description: "Rehearse the loop: file an incident at this tier whatever the metric says (2 = diagnose, 3 = propose); empty = the real verdict"
+        required: false
+        type: choice
+        options: ["", "2", "3"]
+        default: ""
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+  checks: write
+  actions: read
+
+concurrency:
+  group: "sdlc-detect"
+  cancel-in-progress: false
+
+jobs:
+  detect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    steps:
+      - name: Check out the project
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Read the framework pin from the default branch's sdlc.yaml
+        id: pin
+        env:
+          SDLC_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: python .github/scripts/sdlc_pin.py --ref "origin/$SDLC_DEFAULT_BRANCH"
+
+      - name: Check out the pinned framework (public repository, no token)
+        uses: actions/checkout@v5
+        with:
+          repository: "luissiviero/sdlc-framework"
+          ref: ${{ steps.pin.outputs.ref }}
+          path: framework
+
+      # The runs cache: one fetch per run covers the days since the last one, not the whole
+      # window. Its absence only costs API calls.
+      - name: Restore the runs cache
+        uses: actions/cache@v4
+        with:
+          path: .sdlc/detect-cache.json
+          key: sdlc-detect-${{ github.run_id }}
+          restore-keys: sdlc-detect-
+
+      # Detection stays deterministic (p.43 step 2): no model, no credential but the
+      # workflow token for the runs API. At tier 2 or 3 --file opens the incident change.
+      - name: Detect
+        id: detect
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          FORCE_TIER: ${{ inputs.force_tier }}
+        run: python framework/plugin/detect/cli.py run --root . --repo "$REPO" --cache .sdlc/detect-cache.json --log detect-log.jsonl --force-tier "$FORCE_TIER" --file
+
+      - name: Keep the detection log
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: sdlc-detect-log-${{ github.run_id }}
+          path: detect-log.jsonl
+          if-no-files-found: ignore
+
+      - if: steps.detect.outputs.change_id != ''
+        uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+
+      - name: Install the pinned Claude Code CLI
+        if: steps.detect.outputs.change_id != ''
+        env:
+          CLAUDE_CODE_VERSION: ${{ steps.pin.outputs.claude_code }}
+        run: npm install -g @anthropic-ai/claude-code@"$CLAUDE_CODE_VERSION"
+
+      - name: Prepare the runner for Claude Code's sandbox
+        if: steps.detect.outputs.change_id != ''
+        run: python framework/plugin/ci/runner_setup.py
+
+      - name: "Install the project's own toolchain (sdlc.yaml: commands.setup)"
+        if: steps.detect.outputs.change_id != ''
+        run: python framework/plugin/ci/project_setup.py --root .
+
+      # The diagnosis (p.43 step 3, 2σ "read-only to diagnose"; 3σ "may act, though only by
+      # opening a PR into the review gate or triggering a pre-approved runbook").
+      - name: Run phase (f)
+        if: steps.detect.outputs.change_id != ''
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          GITHUB_TOKEN: ${{ github.token }}
+          CHANGE_ID: ${{ steps.detect.outputs.change_id }}
+          HEAD_REF: ${{ steps.detect.outputs.head_ref }}
+          REPO: ${{ github.repository }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: python framework/plugin/ci/run_phase.py --root . --plugin-dir framework --phase f --id "$CHANGE_ID" --head-ref "$HEAD_REF" --repo "$REPO" --ref "$DEFAULT_BRANCH"
+
+      # Build guide step 41.1 (article p.39): every hook decision of the run is one line of
+      # changes/<id>-<slug>/evidence/hook-log.jsonl (committed with the evidence) or of
+      # changes/.hook-log.jsonl; the artifact keeps them readable when a run never committed.
+      - name: Keep the hook log
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: sdlc-hook-log-${{ github.run_id }}
+          path: |
+            changes/**/evidence/hook-log.jsonl
+            changes/.hook-log.jsonl
+          if-no-files-found: ignore

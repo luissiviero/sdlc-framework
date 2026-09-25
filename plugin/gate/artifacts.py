@@ -23,6 +23,9 @@ INTENT_SECTIONS = (
     "## Constraints",
     "## Open questions",
 )
+# Incidents only (article p.44 step 5: "the anomaly and its evidence"): required by gate (f)
+# when ``status.yaml: entry_route`` is ``incident``.
+INTENT_EVIDENCE_SECTION = "## Evidence"
 INTENT_HEADER_FIELDS = ("Author:", "Status:", "Change id:", "Entry route:")
 # The first heading of intent.md: "# Intent: <title>" (skill ``intent-template``).
 INTENT_TITLE_RE = re.compile(r"(?i)^#\s*Intent:\s*(?P<title>.*)$")
@@ -76,7 +79,7 @@ REQUIRED_ARTIFACTS = {
     "c": ("intent.md", "spec.md", "plan.md"),
     "d": ("intent.md", "spec.md", "plan.md"),
     "e": ("intent.md", "spec.md", "plan.md"),
-    "f": (),
+    "f": ("intent.md",),  # the incident intent (p.44 step 5); Evidence checked by the gate
 }
 REQUIRED_EVIDENCE = {
     "c": (EVIDENCE_VERIFIER,),

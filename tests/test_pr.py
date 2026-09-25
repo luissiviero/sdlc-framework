@@ -899,3 +899,105 @@ def test_digest_publish_updates_the_issue_body(recorder):
     result = digest_mod.publish("o/r", "# queue\n")
     assert result["ok"] is True and result["number"] == 9
     assert calls[-1][0] == "PATCH" and calls[-1][2] == {"body": "# queue\n"}
+
+
+# --- phase (f): the incident intent PR (build guide steps 37 and 39; plugin 0.2.19) -----------
+def test_phase_f_bullets_describe_the_finding_the_route_and_the_triage(project):
+    from detect import finding
+
+    root, change = project
+    st = status_mod.read_status(change)
+    st.entry_route, st.change_type = "incident", "fix"
+    st.set_phase("f")
+    status_mod.write_status(change, st)
+    write(
+        change / "intent.md",
+        INTENT.replace("Entry route: idea", "Entry route: incident abc")
+        + "\n## Evidence\nwe1 at 3sigma; run https://x/runs/1.\n",
+    )
+    verdict = {"tier": 3, "rules_hit": ["we1"], "rule": "we1", "mean": 0.05, "sigma": 0.02,
+               "sigmas": 47.5, "latest": {"at": "2026-09-24", "value": 1.0, "meta": {}},
+               "breach_start": "2026-09-24", "window_days": 30, "n_baseline": 20, "n_tail": 8,
+               "direction": "above", "reason": "one point beyond 3 sigma"}  # fmt: skip
+    finding.write(
+        change / "evidence" / finding.DETECTION_FILE,
+        finding.build_record(metric="ci_test_failure_rate", source="github-actions",
+                             verdict=verdict, observations=[], action="propose",
+                             failed_run_urls=[], commits=[]),
+    )  # fmt: skip
+    write(
+        change / "evidence" / finding.PROPOSAL_FILE,
+        json.dumps({"schema_version": 1, "tier": 3, "route": "runbook:revert-pr",
+                    "args": {"sha": "0" * 40}, "rationale": "x"}),
+    )  # fmt: skip
+    write(
+        change / "evidence" / "runbook-revert-pr.json",
+        json.dumps({"runbook": "revert-pr", "status": "go-requested"}),
+    )
+    body = desc.build_description(root, "0001", "f")
+    lines = bullets(body)
+    heads = [line.split("**")[1] for line in lines]
+    assert heads == ["Finding", "Proposed outcome", "Route", "Entry route", "What needs you"]
+    assert lines[0] == (
+        "- **Finding**: ci_test_failure_rate at tier 3 (we1): 1.000 on 2026-09-24 "
+        "(mean 0.050, sigma 0.020)"
+    )
+    assert lines[2] == "- **Route**: runbook:revert-pr (go-requested)"
+    assert lines[3].endswith("incident route, fix change")
+    assert "merge = fix now" in lines[4] and "close with a comment = dismiss" in lines[4]
+    assert f"changes/{CHANGE_DIR_NAME}/evidence/detection.json" in body
+    assert "Counters: first-pass merge: yes" in body
+    # a parked gate (Go requested) shows "What I need from you"
+    write(
+        change / "evidence" / "gate-f.json",
+        json.dumps({"result": "park", "label": "sdlc:needs-human", "reason": "route: Go",
+                    "checks": [{"name": "route", "ok": False, "reason": "Go requested",
+                                "need": "Apply `sdlc:go` on this PR", "details": {}}]}),
+    )  # fmt: skip
+    body = desc.build_description(root, "0001", "f")
+    assert "What I need from you" in body and "Apply `sdlc:go`" in body
+    assert desc.pr_title(status_mod.read_status(change), "f").startswith("maintain(0001): ")
+    assert desc.head_branch("0001", "f") == "sdlc/0001/a"
+
+
+# --- build guide step 42.2: the counters over changes/*/ (plugin 0.2.19) ---------------------
+def test_counters_over_the_change_folders_and_the_digest_section(project, tmp_path):
+    from detect import dismissals
+    from pr import counters
+
+    root, change = project
+    base = counters.collect(root)  # the fixture's own changes (0000-sdlc-init, 0001)
+    st = status_mod.read_status(change)
+    st.set_phase("e")  # shipped, first pass
+    status_mod.write_status(change, st)
+    second, st2 = status_mod.new_change(root, "Second", entry_route="incident", change_type="fix")
+    st2.set_phase("e")
+    st2.bump_iteration()
+    st2.bump_iteration()
+    status_mod.write_status(second, st2)
+    third, st3 = status_mod.new_change(root, "Third", entry_route="incident", change_type="fix")
+    st3.abandon("closed")
+    status_mod.write_status(third, st3)
+    path = dismissals.path_for(root)
+    dismissals.save(
+        path,
+        dismissals.add(dismissals.load(path), "a" * 16, kind="detect", reason="noise", by="o",
+                       change_id="0003"),
+    )  # fmt: skip
+    counts = counters.collect(root)
+    assert counts["changes"] == base["changes"] + 2
+    assert counts["shipped"] == base["shipped"] + 2
+    assert counts["first_pass_merges"] == base["first_pass_merges"] + 1
+    assert counts["fix_iterations_total"] == base["fix_iterations_total"] + 2
+    assert counts["incidents"] == 2 and counts["incidents_shipped"] == 1
+    assert counts["incidents_abandoned"] == 1 and counts["abandoned"] == base["abandoned"] + 1
+    assert counts["dismissals"] == 1 and counts["dismissals_by_kind"] == {"detect": 1, "scan": 0}
+    md = counters.render(counts)
+    assert md.startswith("## Counters") and "| First-pass merge share (p.17) | " in md
+    assert "| Incidents filed / shipped / dismissed (p.45) | 2 / 1 / 1 |" in md
+    digest = digest_mod.render_digest([], "2026-09-25T06:00:00Z", md)
+    assert digest_mod.NOTHING_WAITING in digest and "## Counters" in digest
+    digest = digest_mod.render_digest(QUEUE, "2026-09-25T06:00:00Z", md)
+    assert digest.index("## Waiting at a human gate") < digest.index("## Counters")
+    assert digest.rstrip().endswith("Generated 2026-09-25T06:00:00Z.")
+    assert counters.main(["--root", str(root), "--json"]) == 0

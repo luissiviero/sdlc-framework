@@ -1,0 +1,134 @@
+# Phase (f) maintain: the weekly security review and the deterministic scanners (build guide
+# step 38; decision 16).
+#
+# Contract: docs/OPERATING_MODEL.md sections 4 (gate (f)) and 4.2, article p.46-48 ("run the
+# scan on a schedule, without a human in the invocation path, and send what it finds through
+# the same gates as any other change"; "The deterministic checks stay in CI, and the
+# model-driven scan covers the context-dependent vulnerabilities those checks are not built to
+# find"). Installed into this project by /sdlc-init from the framework's
+# template/.github/workflows/; edit it here, not in the framework.
+#
+# What one run does: scan/cli.py review runs one read-only claude -p over the whole codebase
+# at the commit checked out (Read, Grep, Glob and git; one Write, of scan-findings.json),
+# applying the security-baseline skill and REVIEW.md's "What Important means here". Then
+# scan/cli.py route files every Important finding that you have not dismissed - at most three
+# a week, the rest return next week - as an incident intent change on sdlc/<id>/a with the
+# intent PR labelled incident: a bounded finding (one file, one patch) as a fix whose
+# Proposed outcome is the patch, a wider one as a feature intent that describes the class.
+# Gate (f) is your triage of that PR (decision 25): merge to fix it through the pipeline,
+# label `schedule` to keep it, or close it with a comment to dismiss it (the finding does not
+# return, article p.47 step 4). Last, scan/cli.py scanners runs pip-audit and bandit (Python)
+# or npm audit (Node): reports in the job summary and the artifacts, never a failed job.
+#
+# Token rule: events caused by this workflow's GITHUB_TOKEN never start another workflow run
+# - only workflow_dispatch and repository_dispatch do. This workflow's commits and pull
+# requests start nothing; your merge or close of an intent PR fires the design or abandon
+# workflow normally. The job holds no deploy secret and no production credential (p.40).
+#
+# Schedule note: cron is UTC, runs on the default branch, and an off-the-hour minute is less
+# delayed than :00. GitHub disables schedules in a public repository after 60 days without
+# activity; the workflow_dispatch trigger re-enables it and runs the scan on demand.
+#
+# /sdlc-init filled in the framework repository. The Claude Code version is read from
+# sdlc.yaml at run time.
+name: SDLC scan (f)
+
+on:
+  schedule:
+    - cron: "23 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+concurrency:
+  group: "sdlc-scan"
+  cancel-in-progress: false
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - name: Check out the project
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Read the framework pin from the default branch's sdlc.yaml
+        id: pin
+        env:
+          SDLC_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: python .github/scripts/sdlc_pin.py --ref "origin/$SDLC_DEFAULT_BRANCH"
+
+      - name: Check out the pinned framework (public repository, no token)
+        uses: actions/checkout@v5
+        with:
+          repository: "{{FRAMEWORK_REPO}}"
+          ref: ${{ steps.pin.outputs.ref }}
+          path: framework
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+
+      - name: Install the pinned Claude Code CLI
+        env:
+          CLAUDE_CODE_VERSION: ${{ steps.pin.outputs.claude_code }}
+        run: npm install -g @anthropic-ai/claude-code@"$CLAUDE_CODE_VERSION"
+
+      - name: Prepare the runner for Claude Code's sandbox
+        run: python framework/plugin/ci/runner_setup.py
+
+      # The review reads the code; it needs none of the project's toolchain, so no setup
+      # step runs before it. Read-only but for the findings file (decision 16).
+      - name: Weekly security review (read-only claude -p)
+        id: review
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          HEAD_SHA: ${{ github.sha }}
+        run: python framework/plugin/scan/cli.py review --root . --plugin-dir framework --claude claude --head "$HEAD_SHA" --out scan-findings.json --run-record scan-run.json
+
+      # Every Important finding enters the framework as an incident intent change: no route
+      # skips gates (a) and (b). Dismissed findings (changes/.dismissed.json) never return.
+      - name: File the findings as incident intents
+        id: route
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.sha }}
+        run: python framework/plugin/scan/cli.py route --root . --findings scan-findings.json --repo "$REPO" --head "$HEAD_SHA" --max-findings 3
+
+      # The deterministic scanners stay in CI (p.48): reports, not gates. They run even when
+      # the review failed, and a finding never fails the job.
+      - name: Deterministic scanners (pip-audit, bandit, npm audit)
+        if: ${{ always() }}
+        continue-on-error: true
+        run: python framework/plugin/scan/cli.py scanners --root .
+
+      - name: Keep the findings, the review transcript and the scanner reports
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: sdlc-scan-${{ github.run_id }}
+          path: |
+            scan-findings.json
+            scan-run.json
+            scan-run.stderr.txt
+            pip-audit.json
+            bandit.json
+            npm-audit.json
+          if-no-files-found: ignore
+
+      # Build guide step 41.1 (article p.39): every hook decision of the review run is one
+      # line of changes/.hook-log.jsonl; the artifact keeps it readable.
+      - name: Keep the hook log
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: sdlc-hook-log-${{ github.run_id }}
+          path: changes/.hook-log.jsonl
+          if-no-files-found: ignore

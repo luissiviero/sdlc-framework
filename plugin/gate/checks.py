@@ -156,6 +156,13 @@ def check_artifacts(ctx: GateContext) -> CheckResult:
             lacking = [f for f in art.INTENT_HEADER_FIELDS if f not in head]
             if lacking:
                 problems.append(f"intent.md header lacks {', '.join(lacking)}")
+            if ctx.status.entry_route == "incident":
+                # p.44 step 5: "the anomaly and its evidence"; the intent-template skill adds
+                # the section for incidents only
+                if art.missing_sections(text, (art.INTENT_EVIDENCE_SECTION,)):
+                    problems.append(f"intent.md lacks section {art.INTENT_EVIDENCE_SECTION}")
+                elif art.empty_sections(text, (art.INTENT_EVIDENCE_SECTION,)):
+                    problems.append(f"intent.md has an empty {art.INTENT_EVIDENCE_SECTION}")
         if name == "spec.md":
             # the header logs the prompt, the plugin pin and the skills in force (p.14)
             head = text.split("## ", 1)[0]
@@ -539,9 +546,11 @@ def check_guardrails(ctx: GateContext) -> CheckResult:
     patterns = protected_paths.protected_patterns(ctx.config)
     touched = [f for f in committed if any(matches(p, f) for p in patterns)]
     intent_rel = f"{ctx.change_rel}/intent.md"
-    if ctx.phase != "a" and intent_rel in committed:
+    if ctx.phase not in ("a", "f") and intent_rel in committed:
         # the intent was accepted at gate (a): a later phase may not rewrite it (it is what
-        # the guardrail exemption and the risk acceptance are judged against)
+        # the guardrail exemption and the risk acceptance are judged against). Phase (f)
+        # writes the incident intent itself (p.44 step 5): its PR is the intent PR of that
+        # change, and the owner's merge is its gate (a) (decision 25)
         return _fail(
             "guardrails",
             "intent.md changed on this branch after gate (a)",
@@ -785,8 +794,14 @@ def check_design_scope(ctx: GateContext) -> CheckResult:
         return _fail(
             "design_scope",
             f"{len(outside)} committed file(s) outside {prefix}: " + ", ".join(outside[:10]),
-            f"Revert them on the branch: phase (b) commits only {prefix}; the first run with "
-            "edit tools on source is phase (c).",
+            f"Revert them on the branch: phase ({ctx.phase}) commits only {prefix}; the "
+            "first run with edit tools on source is phase (c)"
+            + (
+                " (the diagnosis of phase (f) is read-only, p.43 step 3; a runbook works on "
+                "a branch of its own)."
+                if ctx.phase == "f"
+                else "."
+            ),
             outside=outside[:50],
             dirty=dirty[:50],
         )
@@ -1044,6 +1059,141 @@ def check_panel(ctx: GateContext) -> CheckResult:
 
 # --- which checks at which gate --------------------------------------------------------------
 Check = Callable[[GateContext], CheckResult]
+# --- 15/16. gate (f): the finding and its route (build guide steps 37, 39; decisions 14, 25, 26)
+DETECTION_NEED = (
+    "The maintain run files a change from a detection record (detect/cli.py run --file) or "
+    "the weekly security review from a scan finding (scan/cli.py route); an incident intent "
+    "without one, or from a dismissed finding, is not a triage item. Close this PR, or "
+    "re-run the detection."
+)
+ROUTE_NEED = (
+    "The diagnosis writes evidence/proposal.json (route, args, rationale) and detect/cli.py "
+    "dispatch records the route's outcome in evidence/runbook-<name>.json; re-run "
+    "/sdlc-maintain <id>."
+)
+
+
+def _detect_modules():
+    from detect import dismissals, finding, routes  # noqa: PLC0415 - only at gate (f)
+
+    return dismissals, finding, routes
+
+
+def check_detection(ctx: GateContext) -> CheckResult:
+    """The finding exists, is recent enough to act on (tier 2 or 3) and is not dismissed: a
+    dismissal with a reason suppresses the signature (p.47 step 4), and a dismissed finding
+    that is filed anyway is not the owner's to triage again."""
+    dismissals, finding, _routes = _detect_modules()
+    record, why = finding.read_any(ctx.evidence_dir)
+    if record is None:
+        return _fail("detection", why, DETECTION_NEED)
+    if record["tier"] < 2:
+        return _fail(
+            "detection",
+            f"tier {record['tier']} ({record.get('rule') or 'no rule'}): the 1σ tier only "
+            "logs (p.43 step 3)",
+            DETECTION_NEED,
+            tier=record["tier"],
+        )
+    store = dismissals.load(dismissals.path_for(ctx.root, c.CHANGES_DIR))
+    entry = dismissals.lookup(store, record["signature"])
+    if entry:
+        return _fail(
+            "detection",
+            f"finding {record['signature']} ({record['metric']}, {record.get('rule')}) was "
+            f"dismissed by {entry.get('by')} on {entry.get('at')}: {entry.get('reason')}",
+            DETECTION_NEED,
+            dismissal=entry,
+        )
+    return _ok(
+        "detection",
+        f"{record['metric']} at tier {record['tier']} ({record.get('rule')}), "
+        f"signature {record['signature']}, not dismissed",
+        tier=record["tier"],
+        rule=record.get("rule"),
+        signature=record["signature"],
+        forced=record.get("forced", False),
+    )
+
+
+def check_route(ctx: GateContext) -> CheckResult:
+    """The proposed route is one bands.yaml lists for the tier, and it was taken: a
+    pre-approved runbook ran (its PR is open, the record says ``ran``); a ``go`` route waits
+    for the owner's ``sdlc:go`` (parks with "Go" requested, decision 14); a failed runbook
+    parks with its reason; ``pull_request`` is this PR itself."""
+    dismissals, finding, routes = _detect_modules()
+    from detect import bands as bands_mod  # noqa: PLC0415
+
+    record, why = finding.read_any(ctx.evidence_dir)
+    if record is None:
+        return _fail("route", why, DETECTION_NEED)
+    proposal, why = routes.load_proposal(ctx.evidence_dir / finding.PROPOSAL_FILE)
+    if proposal is None:
+        return _fail("route", why, ROUTE_NEED)
+    try:
+        bands = bands_mod.load_project(ctx.root)
+    except bands_mod.BandsError as exc:
+        return _fail("route", f"bands.yaml: {exc}", "Fix bands.yaml in a reviewed PR.")
+    language = _project_language(ctx.root)
+    resolved, why = routes.validate_proposal(
+        proposal, int(record["tier"]), bands, ctx.config, language
+    )
+    if resolved is None:
+        return _fail("route", why, ROUTE_NEED, proposal=proposal.as_dict())
+    details = {"proposal": proposal.as_dict(), "resolved": resolved.as_dict()}
+    if resolved.route == routes.PULL_REQUEST:
+        return _ok("route", "pull_request: this intent PR is the route (p.44 step 5)", **details)
+    name = resolved.runbook or ""
+    outcome_path = ctx.evidence_dir / f"runbook-{name}.json"
+    try:
+        outcome = json.loads(outcome_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        outcome = None
+    if not isinstance(outcome, dict):
+        return _fail(
+            "route",
+            f"runbook {name} was proposed and no evidence/runbook-{name}.json records what "
+            "happened",
+            ROUTE_NEED,
+            **details,
+        )
+    status = str(outcome.get("status") or "")
+    details["outcome"] = outcome
+    if status == "ran":
+        return _ok(
+            "route",
+            f"runbook {name} ran ({resolved.authorization}: {resolved.source})"
+            + (f"; PR {outcome['pr_url']}" if outcome.get("pr_url") else ""),
+            **details,
+        )
+    if status == "go-requested":
+        return _fail(
+            "route",
+            f"runbook {name} touches a running system (authorization: go): Go requested",
+            f"Apply `{c.GO_LABEL}` on this PR to run runbook {name} now (it touches a running "
+            "system, decision 14), or merge to fix through the pipeline, or close with a "
+            "reason to dismiss the finding.",
+            **details,
+        )
+    return _fail(
+        "route",
+        f"runbook {name}: {status or 'unknown'}: {outcome.get('reason') or ''}".rstrip(": "),
+        f"The runbook did not complete: {outcome.get('reason') or 'see the record'}. Fix "
+        "the cause (or run it by hand) and re-run /sdlc-maintain <id>, or merge / close this "
+        "PR.",
+        **details,
+    )
+
+
+def _project_language(root: Path) -> str:
+    try:
+        from init import detect as detect_mod  # noqa: PLC0415
+
+        return detect_mod.detect(root).language
+    except Exception:  # noqa: BLE001 - detection is a hint for the runbooks, never a park
+        return "unknown"
+
+
 CHECKS_BY_PHASE: dict[str, tuple[Check, ...]] = {
     "a": (check_artifacts, check_guardrails, check_risk_list),
     "b": (
@@ -1099,5 +1249,16 @@ CHECKS_BY_PHASE: dict[str, tuple[Check, ...]] = {
         check_owner_actions,
         check_adversarial_verdict,
     ),
-    "f": (),
+    # gate (f) = the owner's triage of the incident intent PR (decision 25): the intent in
+    # its incident shape, nothing committed outside the change folder (the diagnosis is
+    # read-only on source), the guardrails and the risk list as at (a), the finding itself
+    # and the route it took. No toolchain, no verdict, no panel: phase (f) builds nothing.
+    "f": (
+        check_artifacts,
+        check_design_scope,
+        check_guardrails,
+        check_risk_list,
+        check_detection,
+        check_route,
+    ),
 }

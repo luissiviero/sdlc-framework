@@ -59,7 +59,9 @@ While `all_green` is false:
 ## 3. UI changes: screenshot loop against the mock (article p.27 step 2)
 Only when `plan.md` Proof or `spec.md` Acceptance names a mock, screen or screenshot: run
 the app (the project's run instructions or the `run` skill if available), capture the
-screen into `changes/<id>-<slug>/evidence/screenshots/<name>.png`, compare with the mock,
+screen into `changes/<id>-<slug>/evidence/screenshots/<name>.png`, compare with the mock
+(the exported design mock lives in `changes/<id>-<slug>/mock/`, build guide step 34; a plan
+that names a mock the folder does not hold is a mismatch to report, not a reason to skip),
 adjust and repeat (bounded by the same iteration cap). Say in `evidence/verifier.md` what
 was compared and what differs. Without a browser or screenshot tool in this session, write
 `evidence/screenshots/README.md` saying so; the gate treats it as evidence missing only when

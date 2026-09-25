@@ -365,6 +365,9 @@ def test_labels_are_the_documented_set():
         "sdlc:reset-iterations",
         "sdlc:unlock-tests",
         "sdlc:needs-human",
+        "incident",  # phase (f), decision 25 (plugin 0.2.19): the triage queue's mark
+        "schedule",  # the owner's "not now" on an incident PR
+        "sdlc:go",  # the owner's per-incident runbook authorization (decision 14)
     ]
 
 
