@@ -33,8 +33,11 @@ permissions:
   pull-requests: write
   issues: write
 
+# Its own group (live, 2026-09-25): a label event also fires the fix, test and deploy workflows,
+# whose guards skip; on the shared sdlc-<head> group GitHub displaced one pending run at
+# random, and the Go must never be the one displaced (decision 14).
 concurrency:
-  group: "sdlc-${{ github.event.pull_request.head.ref }}"
+  group: "sdlc-runbook-${{ github.event.pull_request.head.ref }}"
   cancel-in-progress: false
 
 jobs:

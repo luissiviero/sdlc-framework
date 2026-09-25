@@ -38,8 +38,11 @@ permissions:
   contents: write
   pull-requests: write
 
+# Its own group (live run of 2026-09-25): the close also fires the merge-guarded design and
+# build workflows, and on the shared sdlc-<head> group GitHub displaced the pending abandon
+# run; those two still serialise with each other on sdlc-<head>.
 concurrency:
-  group: "sdlc-${{ github.event.pull_request.head.ref }}"
+  group: "sdlc-abandon-${{ github.event.pull_request.head.ref }}"
   cancel-in-progress: false
 
 jobs:

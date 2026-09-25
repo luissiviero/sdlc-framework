@@ -399,6 +399,13 @@ def test_abandon_workflow_records_the_end_state_without_a_model():
     text = (WORKFLOW_DIR / ABANDON_WORKFLOW).read_text(encoding="utf-8")
     for absent in ("claude-code@", "runner_setup.py", "setup-node", "secrets.", "--phase b"):
         assert absent not in text, absent
+    # its own concurrency group (live run of 2026-09-25): a close also fires the merge-guarded
+    # design and build workflows, and on a shared group GitHub displaced the pending abandon run
+    group = data["concurrency"]["group"]
+    assert group == "sdlc-abandon-${{ github.event.pull_request.head.ref }}"
+    assert data["concurrency"]["cancel-in-progress"] is False
+    for other in ("sdlc-design.yml", "sdlc-build.yml"):
+        assert _workflow_yaml(other)["concurrency"]["group"] != group, other
 
 
 @pytest.mark.parametrize("name", [*PHASE_WORKFLOWS, FIX_WORKFLOW, DETECT_WORKFLOW])
@@ -515,6 +522,10 @@ def test_runbook_workflow_runs_the_go_once_without_a_model():
     )
     go = [step for step in job["steps"] if "run" in step][-1]
     assert go["env"]["SDLC_DEFAULT_BRANCH"] == DEFAULT_BRANCH_EXPR
+    # its own concurrency group (live, 2026-09-25): a label event also fires the fix, test and
+    # deploy workflows, and on a shared group GitHub displaced a pending run at random
+    assert data["concurrency"]["group"] == "sdlc-runbook-${{ github.event.pull_request.head.ref }}"
+    assert data["concurrency"]["cancel-in-progress"] is False
     text = (WORKFLOW_DIR / RUNBOOK_WORKFLOW).read_text(encoding="utf-8")
     for absent in ("claude-code@", "runner_setup.py", "setup-node", "secrets.", "--phase f "):
         assert absent not in text, absent
