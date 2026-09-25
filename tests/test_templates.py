@@ -339,6 +339,14 @@ def test_fix_workflow_starts_on_request_changes_and_on_the_owner_labels():
     job = data["jobs"]["fix"]
     assert "github.event.review.state == 'changes_requested'" in job["if"]
     assert "!endsWith(github.event.review.user.login, '[bot]')" in job["if"]
+    # D9 (the sample's weekly security review, 2026-09-25): only a member of the repository
+    # starts a round; anyone with read access on a public repository can request changes
+    for association in ("OWNER", "MEMBER", "COLLABORATOR"):
+        assert f"github.event.review.author_association == '{association}'" in job["if"]
+    for refused in ("CONTRIBUTOR", "FIRST_TIME_CONTRIBUTOR", "FIRST_TIMER", "NONE"):
+        assert f"'{refused}'" not in job["if"], refused
+    installed = (REPO_WORKFLOW_DIR / FIX_WORKFLOW).read_text(encoding="utf-8")
+    assert installed == render.render_file(WORKFLOW_DIR / FIX_WORKFLOW, VALUES)
     for label in ("sdlc:accept-risk", "sdlc:reset-iterations", "sdlc:unlock-tests"):
         assert f"github.event.label.name == '{label}'" in job["if"], label
     assert "sdlc:c-approved" not in job["if"] and "sdlc:d-approved" not in job["if"]

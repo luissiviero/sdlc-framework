@@ -240,6 +240,15 @@ def test_sdlc_design_flow_matches_steps_22_23():
     assert positions == sorted(positions), "the spec sections are not named in order"
 
 
+def test_sdlc_design_accepts_a_merged_incident_change_at_phase_f():
+    """The design run of 2026-09-25 (change 0005) read ``phase: f`` on a merged incident
+    intent and stopped with nothing to do: the preconditions say that change is at gate (a)."""
+    text = flat(COMMANDS / "sdlc-design.md")
+    preconditions = text[text.index("## 0. Preconditions") : text.index("## 1. Branch")]
+    for token in ("entry_route: incident", "phase: f", "gate (a)", "decision 25", "Proceed"):
+        assert token in preconditions, token
+
+
 def test_every_unattended_command_states_the_one_command_rule():
     """The first /sdlc-fix run of 2026-09-23 chained `cd ... && python ...` and was denied
     its last step: a headless run allows only an explicit list of command prefixes, per phase

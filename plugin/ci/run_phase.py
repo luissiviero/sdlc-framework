@@ -771,8 +771,14 @@ def guard(root: Path, change_id: str, run_phase: str, repo: str, env: dict[str, 
         if run_phase == "b" and st.phase == "f":
             # the owner merged the incident intent PR: that merge is gate (a) of the change
             # (decision 25) and lifts the park the maintain run left ("Go requested", a
-            # refused proposal) - the owner chose the pipeline over the runbook
-            st.parked_reason = None
+            # refused proposal) - the owner chose the pipeline over the runbook. The file on
+            # the work branch is set to phase a with gate (a) passed before the session
+            # starts, because the model reads the raw file: the design run of 2026-09-25
+            # (change 0005) read ``phase: f`` and refused ("nothing for /sdlc-design to do").
+            # The session's own ``commit-phase --phase b`` moves it on to b.
+            st = status_mod.merged_at_gate_a(st)
+            st.set_phase("a")  # also clears the park
+            status_mod.write_status(change_dir, st)
         # ``read_status`` ignores a park that a later gate result lifted (plugins before
         # 0.2.6 left the reason behind a ``passed`` result); the file on the work branch is
         # rewritten to say the same, because the session reads it itself: the ninth live
