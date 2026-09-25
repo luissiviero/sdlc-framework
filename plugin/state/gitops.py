@@ -33,13 +33,25 @@ def current_branch(root: Path) -> str:
 
 
 def default_branch(root: Path) -> str:
-    """origin/HEAD if set, else main/master if they exist, else the current branch."""
+    """origin/HEAD if set, else the remote-tracking origin/main or origin/master, else a local
+    main or master, else the current branch.
+
+    The remote-tracking step comes from the live run of 2026-09-25 (sdlc-sample-python,
+    actions run 36165497264): ``actions/checkout`` with ``fetch-depth: 0`` on a non-default
+    ref sets no ``refs/remotes/origin/HEAD`` and creates no local default branch, only the
+    remote-tracking refs. Without this step the guess fell through to the current branch
+    (``shakedown/detect``), and an incident branch started from it. An explicit value
+    (``SDLC_DEFAULT_BRANCH`` in the workflows) is the caller's to prefer over this guess."""
     try:
         ref = run(root, "symbolic-ref", "refs/remotes/origin/HEAD").strip()
         prefix = "refs/remotes/origin/"
         return ref[len(prefix) :] if ref.startswith(prefix) else ref.rsplit("/", 1)[-1]
     except GitError:
         pass
+    for cand in ("main", "master"):
+        ref = f"refs/remotes/origin/{cand}"
+        if run(root, "rev-parse", "--verify", "--quiet", ref, check=False).strip():
+            return cand
     for cand in ("main", "master"):
         if run(root, "branch", "--list", cand).strip():
             return cand

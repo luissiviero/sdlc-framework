@@ -163,7 +163,18 @@ def maintain_tools(bands: bands_mod.Bands | None) -> str:
 
 
 # --- run --------------------------------------------------------------------------------------
+DEFAULT_BRANCH_ENV = "SDLC_DEFAULT_BRANCH"
+
+
 def _default_branch(root: Path) -> str:
+    """The default branch: an explicit value wins over the guess. ``SDLC_DEFAULT_BRANCH``
+    (the workflows set it from ``github.event.repository.default_branch``; ``--default-branch``
+    sets it too) when non-empty, else ``gitops.default_branch``. The runbook and abandon
+    workflows check out the PR head ``sdlc/<id>/a``: the guess alone could name that head,
+    and the dispatcher would judge by the head's bands.yaml and sdlc.yaml (decision 14)."""
+    explicit = os.environ.get(DEFAULT_BRANCH_ENV, "").strip()
+    if explicit:
+        return explicit
     try:
         return gitops.default_branch(root)
     except (gitops.GitError, FileNotFoundError):
@@ -1035,6 +1046,14 @@ def cmd_dismiss(args) -> int:
 
 
 # --- CLI ----------------------------------------------------------------------------------------
+def _add_default_branch(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--default-branch",
+        default=None,
+        help=f"the default branch's name (else ${DEFAULT_BRANCH_ENV}, else the git guess)",
+    )
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="detect", description=__doc__.split("\n\n")[0])
     sub = p.add_subparsers(dest="command", required=True)
@@ -1053,10 +1072,12 @@ def build_parser() -> argparse.ArgumentParser:
     r.add_argument("--file", action="store_true", help="open the incident change at tier 2/3")
     r.add_argument("--no-push", action="store_true")
     r.add_argument("--dry-run", action="store_true")
+    _add_default_branch(r)
 
     for name in ("routes", "dispatch", "finish", "go", "dismiss"):
         s = sub.add_parser(name)
         s.add_argument("--root", default=".")
+        _add_default_branch(s)
         s.add_argument("--id", required=True)
         s.add_argument("--dry-run", action="store_true")
         if name != "routes":
@@ -1075,6 +1096,11 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    # --default-branch goes through the same environment variable _default_branch reads, so
+    # every helper (and every child CLI this process starts) sees one value without threading
+    # an argument through each call.
+    if args.default_branch:
+        os.environ[DEFAULT_BRANCH_ENV] = args.default_branch
     root = Path(args.root).resolve()
     if getattr(args, "repo", None) is None and hasattr(args, "repo"):
         try:

@@ -103,6 +103,7 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           FORCE_TIER: ${{ inputs.force_tier }}
+          SDLC_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: python framework/plugin/detect/cli.py run --root . --repo "$REPO" --cache .sdlc/detect-cache.json --log detect-log.jsonl --force-tier "$FORCE_TIER" --file
 
       - name: Keep the detection log
@@ -155,6 +156,7 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
           CHANGE_ID: ${{ steps.detect.outputs.change_id }}
           REPO: ${{ github.repository }}
+          SDLC_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: python framework/plugin/detect/cli.py finish --root . --id "$CHANGE_ID" --repo "$REPO"
 
       # Build guide step 41.1 (article p.39): every hook decision of the run is one line of

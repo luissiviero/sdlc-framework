@@ -671,6 +671,31 @@ def test_commit_files_on_a_checkout_without_identity_commits_as_the_automation(
     )
 
 
+def test_default_branch_on_a_runner_shaped_checkout_reads_the_remote_tracking_main(repo):
+    """``actions/checkout`` (fetch-depth 0) of a non-default ref sets no origin/HEAD and
+    creates no local main: the guess fell through to the current branch (live run of
+    2026-09-25, sdlc-sample-python run 36165497264). The remote-tracking origin/main is the
+    default branch there; a local master comes next, and the current branch last."""
+    from state import gitops
+
+    bare = repo.parent / "origin.git"
+    _git(repo.parent, "clone", "-q", "--bare", str(repo), str(bare))
+    work = repo.parent / "work"
+    _git(repo.parent, "clone", "-q", str(bare), str(work))
+    _git(work, "remote", "set-head", "origin", "-d")
+    _git(work, "checkout", "-q", "-b", "sdlc/0001/a")
+    _git(work, "branch", "-q", "-D", "main")
+    assert _git(work, "branch", "--list", "main").strip() == ""
+    assert gitops.default_branch(work) == "main"
+    # no remote-tracking main either, a local master: master
+    _git(work, "update-ref", "-d", "refs/remotes/origin/main")
+    _git(work, "branch", "-q", "master")
+    assert gitops.default_branch(work) == "master"
+    # none of them: the current branch
+    _git(work, "branch", "-q", "-D", "master")
+    assert gitops.default_branch(work) == "sdlc/0001/a"
+
+
 # --- decision 24: the owner's un-park labels, recorded with their actor --------------------------
 def test_record_owner_label_performs_the_act_and_keeps_the_actor(tmp_path):
     change_dir, st = status.new_change(tmp_path, "Labels")

@@ -239,8 +239,8 @@ class RunbookSpy:
 @pytest.fixture(autouse=True)
 def _offline(monkeypatch):
     """No token reaches a subprocess (the gate and PR CLIs report ``route: none``), and no
-    ``$GITHUB_OUTPUT`` leaks in from the runner."""
-    for name in ("GITHUB_TOKEN", "GH_TOKEN", "GITHUB_OUTPUT"):
+    ``$GITHUB_OUTPUT`` or ``$SDLC_DEFAULT_BRANCH`` leaks in from the runner."""
+    for name in ("GITHUB_TOKEN", "GH_TOKEN", "GITHUB_OUTPUT", "SDLC_DEFAULT_BRANCH"):
         monkeypatch.delenv(name, raising=False)
 
 
@@ -1097,3 +1097,41 @@ def test_a_failing_commit_phase_keeps_the_reason_to_one_line(
     assert entry["outcome"] == "not filed: commit-phase failed: fatal: empty ident name"
     lines = outfile.read_text(encoding="utf-8").splitlines()
     assert "outcome=not filed: commit-phase failed: fatal: empty ident name" in lines
+
+
+def test_default_branch_prefers_the_explicit_environment_value(tmp_path, monkeypatch):
+    """The workflows set ``SDLC_DEFAULT_BRANCH`` from the repository's default branch: it
+    wins over the git guess, which on a checkout of a PR head could name that head (live run
+    of 2026-09-25). An empty value falls back to the guess."""
+    root = project(tmp_path)
+    git(root, "checkout", "-q", "-b", "shakedown/detect")
+    monkeypatch.setenv("SDLC_DEFAULT_BRANCH", "trunk")
+    assert detect_cli._default_branch(root) == "trunk"
+    monkeypatch.setenv("SDLC_DEFAULT_BRANCH", "")
+    assert detect_cli._default_branch(root) == "main"
+
+
+def test_run_default_branch_argument_sets_the_filing_s_start_point(
+    tmp_path, src, gh, capsys, monkeypatch
+):
+    """``--default-branch trunk`` wins over the guess (origin/HEAD is main here): the
+    incident branch starts from origin/trunk, not from the checkout's own branch."""
+    root = project(tmp_path)
+    git(root, "checkout", "-q", "-b", "shakedown/detect")
+    monkeypatch.setenv("SDLC_DEFAULT_BRANCH", "")  # restored after main() sets it
+    src.observations = series(16)
+    seen: list[list[str]] = []
+    real_cli = detect_cli._cli
+
+    def spy_cli(script, argv, cwd):
+        if argv and argv[0] == "commit-phase":
+            seen.append(list(argv))
+            return None, 1, "fatal: stop here"
+        return real_cli(script, argv, cwd)
+
+    monkeypatch.setattr(detect_cli, "_cli", spy_cli)
+    argv = ["run", "--root", str(root), "--repo", REPO, "--default-branch", "trunk"]
+    code, out = cli(capsys, *argv, "--force-tier", "2", "--file")
+    assert code == 1, out
+    [commit_phase] = seen
+    assert commit_phase[commit_phase.index("--start-point") + 1] == "origin/trunk"

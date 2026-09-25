@@ -247,7 +247,7 @@ def _revert(
     remote = gitops.has_remote(root)
     if remote and not dry_run:
         gitops.run(root, "fetch", "-q", "origin", check=False)
-    default = gitops.default_branch(root)
+    default = os.environ.get("SDLC_DEFAULT_BRANCH", "").strip() or gitops.default_branch(root)
     base = _base_ref(root, default, remote)
     if not _git_ok(root, "merge-base", "--is-ancestor", full, base):
         raise RunbookError(f"{full} is not on the default branch ({base})")
@@ -641,7 +641,7 @@ def _quarantine(
         raise RunbookError(f"the work tree has uncommitted changes: {', '.join(dirty)}")
     if remote:
         gitops.run(root, "fetch", "-q", "origin", check=False)
-    default = gitops.default_branch(root)
+    default = os.environ.get("SDLC_DEFAULT_BRANCH", "").strip() or gitops.default_branch(root)
     base = _base_ref(root, default, remote)
     start = _start_point(root)
     created: str | None = None
