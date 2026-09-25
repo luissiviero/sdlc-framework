@@ -3,9 +3,16 @@ code runs on Windows, in a cloud session and on a Linux runner."""
 
 from __future__ import annotations
 
+import os
 import re
 import subprocess
 from pathlib import Path
+
+from state import conventions
+
+# The workflows set it from ``github.event.repository.default_branch`` on every step that
+# needs the default branch (the only way to name it: no command-line flag, decisions 11, 14).
+DEFAULT_BRANCH_ENV = "SDLC_DEFAULT_BRANCH"
 
 
 class GitError(RuntimeError):
@@ -32,14 +39,43 @@ def current_branch(root: Path) -> str:
     return run(root, "rev-parse", "--abbrev-ref", "HEAD").strip()
 
 
+def explicit_default_branch() -> str | None:
+    """``SDLC_DEFAULT_BRANCH`` when non-empty and not a framework branch name, else None.
+
+    A value that parses as ``sdlc/<id>/<phase>`` (or starts with ``sdlc/``) is refused: the
+    default branch is never one of the framework's own branches, and naming one would make
+    the dispatcher judge by a PR head's bands.yaml and sdlc.yaml (decision 14)."""
+    value = os.environ.get(DEFAULT_BRANCH_ENV, "").strip()
+    if not value or value.startswith("sdlc/") or conventions.parse_branch(value):
+        return None
+    return value
+
+
 def default_branch(root: Path) -> str:
-    """origin/HEAD if set, else main/master if they exist, else the current branch."""
+    """``SDLC_DEFAULT_BRANCH`` when set to an acceptable name (``explicit_default_branch``),
+    else origin/HEAD if set, else the remote-tracking origin/main or origin/master, else a
+    local main or master, else the current branch.
+
+    The remote-tracking step comes from the live run of 2026-09-25 (sdlc-sample-python,
+    actions run 36165497264): ``actions/checkout`` with ``fetch-depth: 0`` on a non-default
+    ref sets no ``refs/remotes/origin/HEAD`` and creates no local default branch, only the
+    remote-tracking refs. Without this step the guess fell through to the current branch
+    (``shakedown/detect``), and an incident branch started from it. The runbook and abandon
+    workflows check out the PR head ``sdlc/<id>/a``, so the workflows name the branch
+    explicitly and the explicit value wins over the guess."""
+    explicit = explicit_default_branch()
+    if explicit:
+        return explicit
     try:
         ref = run(root, "symbolic-ref", "refs/remotes/origin/HEAD").strip()
         prefix = "refs/remotes/origin/"
         return ref[len(prefix) :] if ref.startswith(prefix) else ref.rsplit("/", 1)[-1]
     except GitError:
         pass
+    for cand in ("main", "master"):
+        ref = f"refs/remotes/origin/{cand}"
+        if run(root, "rev-parse", "--verify", "--quiet", ref, check=False).strip():
+            return cand
     for cand in ("main", "master"):
         if run(root, "branch", "--list", cand).strip():
             return cand
@@ -76,7 +112,7 @@ def stage_paths(root: Path, paths: list[str]) -> list[str]:
 
 def commit_staged(root: Path, message: str) -> str:
     """Commit the whole index (whatever was staged, by whom). Prefer ``commit_files``."""
-    run(root, "commit", "-q", "-m", message)
+    run(root, *identity_args(root), "commit", "-q", "-m", message)  # see commit_files
     return run(root, "rev-parse", "HEAD").strip()
 
 
@@ -171,7 +207,23 @@ def commit_files(root: Path, files: list[str], message: str) -> str | None:
     to_commit = sorted({_norm(f) for f in out.split("\0") if f})
     if not to_commit:
         return None
-    run(top, "--literal-pathspecs", "commit", "-q", "-m", message, "--only", "--", *to_commit)
+    # every commit the plugin makes goes through here: a runner has no git identity, and the
+    # detect step's ``commit-phase`` failed on one with "empty ident name" (live run of
+    # 2026-09-25). identity_args names the automation identity for this one commit when none
+    # is set, and writes nothing into .git/config: on an owner's machine a persisted bot
+    # identity would sign every later commit of theirs.
+    run(
+        top,
+        *identity_args(top),
+        "--literal-pathspecs",
+        "commit",
+        "-q",
+        "-m",
+        message,
+        "--only",
+        "--",
+        *to_commit,
+    )
     return run(top, "rev-parse", "HEAD").strip()
 
 
@@ -193,12 +245,25 @@ BOT_LOGIN = "github-actions[bot]"
 BOT_EMAIL = "41898282+github-actions[bot]@users.noreply.github.com"
 
 
+def _has_identity(root: Path) -> bool:
+    have_name = run(root, "config", "--get", "user.name", check=False).strip()
+    have_email = run(root, "config", "--get", "user.email", check=False).strip()
+    return bool(have_name and have_email)
+
+
+def identity_args(root: Path) -> list[str]:
+    """``-c user.name=... -c user.email=...`` of the automation identity when the checkout
+    has no user.name or user.email, else []. Passed before a ``git commit``; unlike
+    ``ensure_identity`` it writes nothing into the repository's configuration."""
+    if _has_identity(root):
+        return []
+    return ["-c", f"user.name={BOT_LOGIN}", "-c", f"user.email={BOT_EMAIL}"]
+
+
 def ensure_identity(root: Path, name: str = BOT_LOGIN, email: str = BOT_EMAIL) -> str | None:
     """Give the checkout ``name``/``email`` when it has no user.name or user.email; returns
     the name when it was set, None when the checkout already had one."""
-    have_name = run(root, "config", "--get", "user.name", check=False).strip()
-    have_email = run(root, "config", "--get", "user.email", check=False).strip()
-    if have_name and have_email:
+    if _has_identity(root):
         return None
     run(root, "config", "user.name", name)
     run(root, "config", "user.email", email)

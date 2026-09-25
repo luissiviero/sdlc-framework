@@ -348,7 +348,13 @@ def _incident_bullets(
     elif record:
         latest = record.get("latest") or {}
         value = latest.get("value")
-        shown = f"{float(value):.3f}" if isinstance(value, (int, float)) else str(value)
+        day = str(latest.get("at") or record.get("at"))[:10]
+        if not latest:  # a forced rehearsal on an empty series: nothing was observed
+            observed = f"no observation in the window (run of {day})"
+        elif isinstance(value, (int, float)):
+            observed = f"{float(value):.3f} on {day}"
+        else:
+            observed = f"{value} on {day}"
         mean = record.get("mean")
         sigma = record.get("sigma")
         band = (
@@ -358,8 +364,7 @@ def _incident_bullets(
         )
         found = (
             f"{record.get('metric')} at tier {record.get('tier')} ({record.get('rule')}): "
-            f"{shown} on {str(latest.get('at') or record.get('at'))[:10]}{band}"
-            + (", forced by a rehearsal" if record.get("forced") else "")
+            f"{observed}{band}" + (", forced by a rehearsal" if record.get("forced") else "")
         )
     else:
         found = f"no detection record ({why})"

@@ -396,7 +396,11 @@ def _with_sig(finding: dict[str, Any]) -> dict[str, Any]:
 def test_intent_text_of_a_bounded_finding_is_the_patch():
     finding = _with_sig(BOUNDED)
     text = route_mod.intent_text(finding, "0005", "a" * 40, REPO)
-    assert text.startswith(f"# Intent: security: injection: {BOUNDED['summary'][:59]}")
+    # the title cuts the summary at a word boundary (the 2026-09-25 live run cut mid-word)
+    assert text.startswith(
+        "# Intent: security: injection: The user id is formatted into the SQL string, so a "
+        "crafted\n"
+    )
     header = text.splitlines()[1]
     assert header == (
         "Author: security review (phase f). Status: proposed. Change id: 0005. "
@@ -431,6 +435,17 @@ def test_intent_text_of_a_wide_finding_describes_the_class():
     assert "authz pattern occur" in sections["## Open questions"]
     assert "https://github.com" not in text  # no repo: no link
     assert art.intent_title(text).startswith("security: authz: ")
+
+
+def test_title_for_cuts_a_long_summary_at_a_word_boundary():
+    summary = (
+        "The fixture `.env` file is committed and tracked in git (present since the first commit)"
+    )
+    title = route_mod.title_for({"class": "secrets", "summary": summary})
+    assert title == "security: secrets: The fixture `.env` file is committed and tracked in git"
+    assert len(title) <= len("security: secrets: ") + route_mod.TITLE_SUMMARY_CHARS
+    short = route_mod.title_for({"class": "secrets", "summary": "A token in the log."})
+    assert short == "security: secrets: A token in the log"
 
 
 # --- filing -----------------------------------------------------------------------------------

@@ -522,7 +522,8 @@ paths given), the official OpenAPI description (`github/rest-api-description`),
   production project's live run settles the fact (a `workflow_dispatch(pr_number)` is the
   fallback). The merged PR's files come from `GET /repos/{owner}/{repo}/pulls/{number}/files`
   (paginated with `Link: rel="next"`), which is how the merge-triggered jobs find the change
-  folder a PR carries whatever its head branch is called.
+  folder a PR carries whatever its head branch is called. The same paging on the runs API
+  was confirmed live on 2026-09-25 (§14).
 - `permissions:` keys: `actions`, `checks`, `contents`, `issues`, `pull-requests` (each
   `read|write|none`); "If you specify the access for any of these permissions, all of those
   that are not specified are set to `none`." Which permission each REST endpoint needs is
@@ -812,4 +813,67 @@ local `claude --help`.
   every gate follows (§4.2: the configuration the owner approved).
 - The runs API (`GET /repos/{owner}/{repo}/actions/runs?created=>=YYYY-MM-DD&status=completed`)
   needs `actions: read` on the workflow token; the detection workflow grants it and nothing
-  more than the phase jobs already have.
+  more than the phase jobs already have. Confirmed live on 2026-09-25 (§14).
+
+## 14. Facts from the live phase (f) runs (session 6, 2026-09-25)
+
+Every fact below is read from a job log or a committed evidence file of
+`luissiviero/sdlc-sample-python`; the run URL is the source.
+
+- The runs API as used by `plugin/detect/source.py` works as the REST description says
+  (§11a, §13c were unverified until now): `created=>=2026-08-24&status=completed` with
+  `per_page=100` returned the repository's 110 runs over two pages through `Link: rel="next"`
+  with no error, and the counted series was empty because every run there is one of the
+  framework's own `SDLC …` workflows (the source excludes them by design; PROGRESS choice 67)
+  — https://github.com/luissiviero/sdlc-sample-python/actions/runs/36163920571. The
+  project's own `CI` workflow (sample PR #24) is what gives the metric an observation.
+- `actions/cache@v4` restores across runs with the `restore-keys` prefix: the first run
+  logged "Cache not found for input keys", the third saved `sdlc-detect-36165497264` in its
+  post step, and the fourth logged "Cache hit for restore-key: sdlc-detect-36165497264 …
+  Cache restored from key" — https://github.com/luissiviero/sdlc-sample-python/actions/runs/36167240088.
+  A failed job saves nothing: run 36163920571 (red at the detect step) has no "Cache saved"
+  line in its post step, so the fourth run restored the third's cache, not the second's.
+- `actions/upload-artifact@v4` uploads a 403-byte `detect-log.jsonl` and the hook log
+  (`changes/**/evidence/hook-log.jsonl`, 574 bytes) with `if-no-files-found: ignore`
+  reporting "No files were found" as a plain line, never a failure. The runner prints
+  "Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced
+  to run on Node.js 24: actions/cache@v4, actions/upload-artifact@v4" — the next major of
+  each is the bump to make (§13c's open item), not verified in this session.
+- A GitHub-hosted runner has **no git identity**: `git commit` fails with "Author identity
+  unknown … empty ident name". `run_phase.py` set one for the phase jobs since B3; the
+  detect step's own `commit-phase` had none — https://github.com/luissiviero/sdlc-sample-python/actions/runs/36163920571.
+  Since 0.2.20 `gitops.commit_files` passes the automation identity as per-commit `-c`
+  arguments when the checkout has none (nothing is written into an owner's `.git/config`).
+- `$GITHUB_OUTPUT` takes one `key=value` per line; a value with a newline written that way
+  makes the runner log "Unable to process file command 'output' successfully … Invalid
+  format" (same run). The documented heredoc form (`key<<DELIM`, the value, `DELIM`) is
+  what `detect/cli.py _github_output` writes for a multi-line value since 0.2.20.
+- `actions/checkout@v5` with `fetch-depth: 0` sets **no** `refs/remotes/origin/HEAD` and
+  creates no local default branch: on a checkout of a non-default ref the only default-branch
+  reference is the remote-tracking `origin/main`. `gitops.default_branch` used to fall
+  through to the current branch there (run 36165497264: the incident branched off the
+  dispatched ref); the workflows now pass `SDLC_DEFAULT_BRANCH` from
+  `github.event.repository.default_branch` to every step that reads the default branch's
+  files. One observation does not fit the rule: the 0.2.19 abandon job of PR #26
+  (https://github.com/luissiviero/sdlc-sample-python/actions/runs/36166179352, a checkout
+  of the head `sdlc/0004/a`) opened its dismissal PR against `main`, not the head. The
+  likely cause, unverified: `abandon --all-branches` runs a plain `git fetch origin` before
+  `dismiss`, and git 2.48 and later (`remote.origin.followRemoteHEAD` defaulting to
+  `create`; the runner has git 2.55) creates `refs/remotes/origin/HEAD` on that fetch. So
+  "no `origin/HEAD`" holds only until something fetches, and the 0.2.19 runbook job (`go`
+  judges before any fetch) really would have read the head's copies.
+- The maintain run (`/sdlc-maintain <id> --diagnosis-only`, Claude Code 2.1.278, the OAuth
+  token): 19 turns, $0.40, 59 s at tier 2; 14 turns, $0.24 at tier 3; `permission_denials`
+  empty; the transcript's stderr carries the known "Ignoring 4 permissions.allow entries
+  from .claude/settings.json: this workspace has not been trusted" line (§3). `gh run view`
+  was never called: the rehearsal record lists no failed run, so the sandbox's `gh` stays
+  unverified.
+- The weekly security review (`scan/cli.py review`, read-only): 118 s, $0.55 on the
+  sample; the two scanners (`pip-audit`, `bandit`) installed and ran clean in 8 s —
+  https://github.com/luissiviero/sdlc-sample-python/actions/runs/36166536603.
+- The GitHub MCP tools of a cloud session act as the **owner's login**, so a label, a
+  comment or a close made from the session is a person's act to every workflow that reads
+  the actor (the abandon job recorded the session's closing comment as the owner's reason,
+  https://github.com/luissiviero/sdlc-sample-python/actions/runs/36166179352 and the
+  dismissal PR #27). A merge from the session would be the owner's too; the session leaves
+  merges to the owner by rule.

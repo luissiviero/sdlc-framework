@@ -11,6 +11,8 @@ import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from state import gitops
+
 
 class GitUnavailable(RuntimeError):
     pass
@@ -208,7 +210,15 @@ def head_sha(root: Path) -> str | None:
 
 
 def default_base(root: Path) -> str:
-    """origin/<default branch> when the remote has one, else main/master locally."""
+    """origin/<default branch> when the remote has one, else main/master locally.
+
+    ``SDLC_DEFAULT_BRANCH`` (refused when it names a framework branch, see
+    ``gitops.explicit_default_branch``) wins when ``origin/<value>`` resolves."""
+    explicit = gitops.explicit_default_branch()
+    if explicit:
+        ref = f"origin/{explicit}"
+        if _git(root, "rev-parse", "--verify", "--quiet", ref, check=False).strip():
+            return ref
     try:
         ref = _git(root, "symbolic-ref", "refs/remotes/origin/HEAD").strip()
         if ref.startswith("refs/remotes/"):

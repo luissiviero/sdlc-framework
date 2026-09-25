@@ -239,8 +239,8 @@ class RunbookSpy:
 @pytest.fixture(autouse=True)
 def _offline(monkeypatch):
     """No token reaches a subprocess (the gate and PR CLIs report ``route: none``), and no
-    ``$GITHUB_OUTPUT`` leaks in from the runner."""
-    for name in ("GITHUB_TOKEN", "GH_TOKEN", "GITHUB_OUTPUT"):
+    ``$GITHUB_OUTPUT`` or ``$SDLC_DEFAULT_BRANCH`` leaks in from the runner."""
+    for name in ("GITHUB_TOKEN", "GH_TOKEN", "GITHUB_OUTPUT", "SDLC_DEFAULT_BRANCH"):
         monkeypatch.delenv(name, raising=False)
 
 
@@ -408,11 +408,54 @@ def test_run_force_tier_2_on_a_flat_series_files_a_forced_finding(tmp_path, src,
     assert record["breach_start"] == "2026-09-16"  # the latest point, when nothing tripped
 
 
-def test_run_force_tier_with_no_observation_fails(tmp_path, src, gh, capsys):
+def test_run_force_tier_with_no_observation_still_files_the_rehearsal(
+    tmp_path, src, gh, capsys, monkeypatch
+):
+    """The workflow's force_tier input files an incident "whatever the metric says": on a
+    repository whose every run is an excluded `SDLC ...` workflow the series is empty (live
+    run of 2026-09-25), and the rehearsal is still filed, with no latest observation."""
     root = project(tmp_path)
     src.observations = []
-    code, out = cli(capsys, "run", "--root", str(root), "--repo", REPO, "--force-tier", "3")
-    assert (code, out) == (1, None)
+    outfile = tmp_path / "github_output"
+    monkeypatch.setenv("GITHUB_OUTPUT", str(outfile))
+    log = tmp_path / "detect-log.jsonl"
+    argv = ["run", "--root", str(root), "--repo", REPO, "--log", str(log)]
+    code, out = cli(capsys, *argv, "--force-tier", "2", "--file")
+    assert code == 0, out
+    assert out["forced"] is True
+    assert out["tier"] == 2
+    assert out["latest"] is None and out["breach_start"] is None
+    assert "no complete-day observation" in out["reason"]
+    assert out["filed"]["filed"] is True
+    change_id = out["filed"]["change_id"]
+    change = incident_dir(root, change_id)
+    record = json.loads((change / "evidence" / "detection.json").read_text(encoding="utf-8"))
+    assert finding.validate(record) == []
+    assert record["latest"] is None
+    assert record["forced"] is True
+    assert record["observations"] == []
+    assert record["failed_run_urls"] == [] and record["commits"] == []
+    assert "no complete-day observation" in record["reason"]
+    branch = f"sdlc/{change_id}/a"
+    rel = f"changes/{change.name}/evidence/detection.json"
+    assert json.loads(git(bare(root), "show", f"{branch}:{rel}")) == record
+    [entry] = [json.loads(x) for x in log.read_text(encoding="utf-8").splitlines()]
+    assert entry["change_id"] == change_id and entry["forced"] is True
+    lines = outfile.read_text(encoding="utf-8").splitlines()
+    assert f"change_id={change_id}" in lines and f"head_ref={branch}" in lines
+
+
+def test_run_without_force_on_an_empty_series_logs_tier_0_and_files_nothing(
+    tmp_path, src, gh, capsys
+):
+    root = project(tmp_path)
+    src.observations = []
+    log = tmp_path / "detect-log.jsonl"
+    code, out = cli(capsys, "run", "--root", str(root), "--repo", REPO, "--log", str(log), "--file")
+    assert code == 0
+    assert (out["tier"], out["forced"], out["outcome"], out["filed"]) == (0, False, "logged", {})
+    assert [p.name for p in change_dirs(root)] == ["0000-sdlc-init"]
+    assert len(log.read_text(encoding="utf-8").splitlines()) == 1
 
 
 def test_run_tier_3_without_file_names_the_flag_and_files_nothing(tmp_path, src, gh, capsys):
@@ -861,6 +904,76 @@ def test_open_incidents_ignores_a_shipped_incident(incident):
     assert detect_cli.open_incidents(root, METRIC) == []
 
 
+def test_open_incidents_ignores_a_merged_incident_abandoned_on_a_later_branch(incident):
+    """The live sequence of 2026-09-25: the owner merges the incident PR (the folder lands on
+    main at phase f; GitHub deletes sdlc/0001/a), then closes the design PR on sdlc/0001/b;
+    abandon writes ``phase: abandoned`` on the change's branches only, never on main."""
+    root, change = incident
+    rel = f"changes/{change.name}"
+    git(root, "checkout", "-q", "main")
+    git(root, "merge", "-q", "--no-ff", "-m", "merge the incident PR", "sdlc/0001/a")
+    git(root, "push", "-q", "origin", "main")
+    git(root, "push", "-q", "origin", "--delete", "sdlc/0001/a")
+    git(root, "fetch", "-q", "--prune", "origin")
+    # control: merged and not abandoned, the incident is in flight until it ships
+    [found] = detect_cli.open_incidents(root, METRIC)
+    assert (found["change_id"], found["ref"]) == ("0001", "the checkout")
+    git(root, "checkout", "-q", "-b", "sdlc/0001/b", "main")
+    st = status_mod.read_status(root / rel)
+    st.abandon("closed: the design PR")
+    status_mod.write_status(root / rel, st)
+    git(root, "add", "--", rel)
+    git(root, "commit", "-q", "-m", "abandon(0001)")
+    git(root, "push", "-q", "origin", "sdlc/0001/b")
+    git(root, "checkout", "-q", "main")
+    git(root, "fetch", "-q", "origin")
+    assert not status_mod.read_status(root / rel).abandoned  # main still says phase f
+    assert detect_cli.open_incidents(root, METRIC) == []
+    assert detect_cli._remote_abandoned_ids(root) == {"0001"}
+
+
+def test_remote_abandoned_ids_ignores_the_dismiss_and_revert_branches(incident):
+    """``sdlc/<id>/dismiss`` and ``sdlc/<id>/revert-<sha>`` never parse as phase branches:
+    whatever status.yaml they carry, even an abandoned one, abandons no change."""
+    root, change = incident
+    rel = f"changes/{change.name}"
+    git(root, "checkout", "-q", "main")
+    git(root, "checkout", "sdlc/0001/a", "--", rel)
+    st = status_mod.read_status(root / rel)
+    st.abandon("closed: looks abandoned")
+    status_mod.write_status(root / rel, st)
+    for branch in ("sdlc/0001/dismiss", "sdlc/0001/revert-abc1234"):
+        git(root, "checkout", "-q", "-b", branch, "main")
+        git(root, "add", "--", rel)
+        git(root, "commit", "-q", "-m", f"a status on {branch}")
+        git(root, "push", "-q", "origin", branch)
+        git(root, "checkout", "-q", "main")
+        git(root, "checkout", branch, "--", rel)
+    git(root, "reset", "-q", "--hard", "main")
+    git(root, "fetch", "-q", "origin")
+    refs = git(root, "for-each-ref", "--format=%(refname:short)", "refs/remotes/origin/sdlc/")
+    assert {"origin/sdlc/0001/dismiss", "origin/sdlc/0001/revert-abc1234"} <= set(refs.split())
+    for branch in ("sdlc/0001/dismiss", "sdlc/0001/revert-abc1234"):
+        raw = git(root, "show", f"origin/{branch}:{rel}/status.yaml")
+        assert status_mod.Status.from_dict(status_mod.yamlish.loads(raw)).abandoned
+    assert detect_cli._remote_abandoned_ids(root) == set()
+
+
+def test_dismiss_title_cuts_a_long_reason_at_a_word_boundary(incident, gh, capsys):
+    root, _change = incident
+    reason = (
+        "Dismissed: the `.env` file is the framework's secrets-check fixture, committed on purpose"
+    )
+    code, out = cli(
+        capsys, "dismiss", "--root", str(root), "--id", "0001", "--reason", reason,
+        "--by", "the-owner",
+    )  # fmt: skip
+    assert code == 0, out
+    subject = git(root, "log", "-1", "--format=%s", "sdlc/0001/dismiss").strip()
+    assert subject == "dismiss(0001): Dismissed: the `.env` file is the framework's secrets-check"
+    assert len(subject) <= len("dismiss(0001): ") + 60
+
+
 # --- the session-5 review's fixes -------------------------------------------------------------
 def test_run_accepts_the_workflow_s_empty_force_tier(tmp_path, src, gh, capsys):
     """The scheduled workflow passes --force-tier "" (its dispatch input's default): it means
@@ -998,3 +1111,163 @@ def test_a_pending_dismissal_branch_already_suppresses_the_finding(incident, src
     code, out = cli(capsys, "run", "--root", str(root), "--repo", REPO, "--file")
     assert out["outcome"].startswith("dismissed until") and out["filed"] == {}
     assert out["dismissal"]["pending"] == "origin/sdlc/0001/dismiss"
+
+
+# --- $GITHUB_OUTPUT and a failing commit (live run of 2026-09-25) -----------------------------
+def test_github_output_writes_multi_line_values_in_the_heredoc_form(tmp_path):
+    """``key=value`` is one line per value: a multi-line value (a traceback) made the runner
+    reject the file ("Invalid format"); it goes in GitHub's ``key<<DELIM`` form instead."""
+    outfile = tmp_path / "github_output"
+    value = 'Traceback (most recent call last):\n  File "x.py", line 1\nfatal: boom'
+    detect_cli._github_output(
+        {"tier": 2, "outcome": value, "change_id": None}, env={"GITHUB_OUTPUT": str(outfile)}
+    )
+    lines = outfile.read_text(encoding="utf-8").split("\n")
+    assert lines[0] == "tier=2"
+    key, _, delim = lines[1].partition("<<")
+    assert key == "outcome" and delim.startswith("ghadelimiter_")
+    end = lines.index(delim, 2)
+    assert "\n".join(lines[2:end]) == value
+    assert all(delim not in line for line in lines[2:end])
+    assert lines[end + 1 :] == ["change_id=", ""]
+    # two multi-line values never share a delimiter
+    detect_cli._github_output({"a": "1\n2", "b": "3\n4"}, env={"GITHUB_OUTPUT": str(outfile)})
+    heads = [x for x in outfile.read_text(encoding="utf-8").splitlines() if "<<" in x]
+    assert len({h.partition("<<")[2] for h in heads}) == 3
+
+
+def test_a_failing_commit_phase_keeps_the_reason_to_one_line(
+    tmp_path, src, gh, capsys, monkeypatch
+):
+    """A git failure in ``commit-phase`` ("empty ident name" on a runner) is reported as its
+    last stderr line; the whole stderr stays in the printed JSON only."""
+    root = project(tmp_path)
+    src.observations = series(16)
+    stderr = "line1\nline2\nfatal: empty ident name"
+    real_cli = detect_cli._cli
+
+    def fake_cli(script, argv, cwd):
+        if argv and argv[0] == "commit-phase":
+            return None, 1, stderr
+        return real_cli(script, argv, cwd)
+
+    monkeypatch.setattr(detect_cli, "_cli", fake_cli)
+    outfile = tmp_path / "github_output"
+    monkeypatch.setenv("GITHUB_OUTPUT", str(outfile))
+    log = tmp_path / "detect-log.jsonl"
+    argv = ["run", "--root", str(root), "--repo", REPO, "--log", str(log)]
+    code, out = cli(capsys, *argv, "--force-tier", "2", "--file")
+    assert code == 1, out
+    filed = out["filed"]
+    assert filed["filed"] is False
+    assert filed["reason"] == "commit-phase failed: fatal: empty ident name"
+    assert filed["stderr"] == stderr
+    [entry] = [json.loads(x) for x in log.read_text(encoding="utf-8").splitlines()]
+    assert "\n" not in entry["outcome"]
+    assert entry["outcome"] == "not filed: commit-phase failed: fatal: empty ident name"
+    lines = outfile.read_text(encoding="utf-8").splitlines()
+    assert "outcome=not filed: commit-phase failed: fatal: empty ident name" in lines
+
+
+def test_a_failing_new_change_keeps_the_reason_to_one_line_and_the_stderr_tail(
+    tmp_path, src, gh, capsys, monkeypatch
+):
+    """``new-change`` failing with a multi-line stderr is reported as its last non-empty
+    line (the rule of the commit-phase reason); the kept stderr is its tail."""
+    root = project(tmp_path)
+    src.observations = series(16)
+    stderr = "x" * 3000 + "\nTraceback (most recent call last):\nValueError: bad title\n\n"
+
+    def fake_cli(script, argv, cwd):
+        assert argv[0] == "new-change", argv
+        return None, 1, stderr
+
+    monkeypatch.setattr(detect_cli, "_cli", fake_cli)
+    argv = ["run", "--root", str(root), "--repo", REPO]
+    code, out = cli(capsys, *argv, "--force-tier", "2", "--file")
+    assert code == 1, out
+    filed = out["filed"]
+    assert filed["reason"] == "new-change failed: ValueError: bad title"
+    assert filed["stderr"] == stderr[-2000:]
+    assert filed["stderr"].endswith("ValueError: bad title\n\n")
+    assert detect_cli._last_line("", 3) == "exit code 3"
+
+
+def test_default_branch_prefers_the_explicit_environment_value(tmp_path, monkeypatch):
+    """The workflows set ``SDLC_DEFAULT_BRANCH`` from the repository's default branch: it
+    wins over the git guess, which on a checkout of a PR head could name that head (live run
+    of 2026-09-25). An empty value falls back to the guess."""
+    root = project(tmp_path)
+    git(root, "checkout", "-q", "-b", "shakedown/detect")
+    monkeypatch.setenv("SDLC_DEFAULT_BRANCH", "trunk")
+    assert detect_cli._default_branch(root) == "trunk"
+    monkeypatch.setenv("SDLC_DEFAULT_BRANCH", "")
+    assert detect_cli._default_branch(root) == "main"
+    monkeypatch.setenv("SDLC_DEFAULT_BRANCH", "sdlc/0001/a")  # a framework branch: refused
+    assert detect_cli._default_branch(root) == "main"
+
+
+def test_run_default_branch_environment_sets_the_filing_s_start_point(
+    tmp_path, src, gh, capsys, monkeypatch
+):
+    """``SDLC_DEFAULT_BRANCH=trunk`` wins over the guess (origin/HEAD is main here): the
+    incident branch starts from origin/trunk, not from the checkout's own branch. The
+    variable is the only way to name the branch: there is no command-line flag."""
+    root = project(tmp_path)
+    git(root, "checkout", "-q", "-b", "shakedown/detect")
+    monkeypatch.setenv("SDLC_DEFAULT_BRANCH", "trunk")
+    src.observations = series(16)
+    seen: list[list[str]] = []
+    real_cli = detect_cli._cli
+
+    def spy_cli(script, argv, cwd):
+        if argv and argv[0] == "commit-phase":
+            seen.append(list(argv))
+            return None, 1, "fatal: stop here"
+        return real_cli(script, argv, cwd)
+
+    monkeypatch.setattr(detect_cli, "_cli", spy_cli)
+    argv = ["run", "--root", str(root), "--repo", REPO]
+    code, out = cli(capsys, *argv, "--force-tier", "2", "--file")
+    assert code == 1, out
+    [commit_phase] = seen
+    assert commit_phase[commit_phase.index("--start-point") + 1] == "origin/trunk"
+
+
+@pytest.mark.parametrize("command", ["run", "routes", "dispatch", "finish", "go", "dismiss"])
+def test_no_subcommand_accepts_a_default_branch_flag(command, capsys):
+    """Decisions 11 and 14: the model's session must not be able to point the dispatcher at
+    a branch; CI names the default branch per step through the environment only."""
+    with pytest.raises(SystemExit) as exc:
+        detect_cli.build_parser().parse_args(
+            [command, "--id", "0001", "--repo", REPO, "--default-branch", "trunk"]
+        )
+    assert exc.value.code == 2
+    assert "--default-branch" in capsys.readouterr().err
+
+
+def test_dispatch_with_an_unreadable_default_branch_fails_closed(
+    incident, spy, capsys, monkeypatch
+):
+    """With a remote, bands.yaml and sdlc.yaml are read from origin/<default> only: when
+    that ref cannot be read the dispatcher does not act and names the branch, instead of
+    falling back to the checkout's (possibly edited) copies."""
+    root, change = incident
+    write_proposal(change, "pull_request")
+    monkeypatch.setenv("SDLC_DEFAULT_BRANCH", "nonexistent")
+    code, out = cli(capsys, "dispatch", "--root", str(root), "--id", "0001")
+    assert code == 0, out
+    assert out["acted"] is False
+    assert "origin/nonexistent" in out["reason"]
+    assert "could not be read" in out["reason"]
+    assert spy.calls == [] and runbook_records(change) == []
+
+
+def test_approved_files_without_a_remote_reads_the_checkout(tmp_path, monkeypatch):
+    """A by-hand run on a local repository (no remote at all) keeps the checkout fallback."""
+    root = project(tmp_path)
+    git(root, "remote", "remove", "origin")
+    monkeypatch.setenv("SDLC_DEFAULT_BRANCH", "nonexistent")
+    _cfg, bands, where = detect_cli.approved_files(root, {})
+    assert where == "the checkout"
+    assert bands.metric == METRIC

@@ -153,6 +153,26 @@ def slugify(title: str, max_len: int = 40) -> str:
     return s
 
 
+TRIM_CHARS = " .,;:!?-([{"
+
+
+def truncate_words(text: str, limit: int) -> str:
+    """``text`` (whitespace collapsed) cut to at most ``limit`` characters at the last word
+    boundary, with no trailing whitespace or punctuation after the cut (pull request and
+    commit titles: the live runs of 2026-09-25 cut titles mid-word). A text within the limit
+    is returned whole; a single word longer than ``limit`` is hard-cut. When the cut leaves
+    only trim characters the hard cut is used, trimmed as well; ``limit <= 0`` gives ""."""
+    if limit <= 0:
+        return ""
+    text = " ".join(str(text).split())
+    if len(text) <= limit:
+        return text
+    cut = text[: limit + 1]  # one more: a space right at the limit keeps the last word whole
+    space = cut.rfind(" ")
+    short = cut[:space] if space > 0 else text[:limit]
+    return short.rstrip(TRIM_CHARS) or text[:limit].rstrip(TRIM_CHARS)
+
+
 def change_dir_name(change_id: str, slug: str) -> str:
     _check_id(change_id)
     if not DIR_RE.match(f"{change_id}-{slug}"):

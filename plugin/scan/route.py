@@ -175,8 +175,8 @@ def select(
 
 # --- the intent ---------------------------------------------------------------------------------
 def title_for(finding: dict[str, Any]) -> str:
-    summary = " ".join(str(finding.get("summary", "")).split())
-    short = summary[:TITLE_SUMMARY_CHARS].rstrip(" .,;:")
+    # cut at a word boundary: the live run of 2026-09-25 titled an intent "... in git (pre"
+    short = c.truncate_words(finding.get("summary", ""), TITLE_SUMMARY_CHARS).rstrip(" .,;:")
     return f"security: {finding.get('class') or DEFAULT_CLASS}: {short}"
 
 
@@ -404,6 +404,8 @@ def _write_json(path: Path, data: Any) -> None:
 
 
 def _default_branch(root: Path) -> str:
+    """``gitops.default_branch`` (``SDLC_DEFAULT_BRANCH`` first: the scan workflow sets it
+    from ``github.event.repository.default_branch``), "main" outside a git checkout."""
     try:
         return gitops.default_branch(root)
     except (gitops.GitError, FileNotFoundError):

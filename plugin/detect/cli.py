@@ -41,6 +41,7 @@ import os
 import re
 import subprocess
 import sys
+import uuid
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -95,15 +96,25 @@ def _github():
 
 
 def _github_output(values: dict[str, Any], env: dict[str, str] | None = None) -> None:
-    """Append ``key=value`` lines to ``$GITHUB_OUTPUT`` when the workflow set it."""
+    """Append the values to ``$GITHUB_OUTPUT`` when the workflow set it: ``key=value`` for a
+    single-line value, GitHub's heredoc form ``key<<DELIM`` / value / ``DELIM`` for a value
+    with a newline (a multi-line traceback in ``key=value`` form made the runner reject the
+    file, live run of 2026-09-25), with a delimiter that does not occur in the value."""
     env = os.environ if env is None else env
     path = env.get("GITHUB_OUTPUT")
     if not path:
         return
     try:
-        with open(path, "a", encoding="utf-8") as fh:
+        with open(path, "a", encoding="utf-8", newline="\n") as fh:
             for key, value in values.items():
-                fh.write(f"{key}={'' if value is None else value}\n")
+                text = "" if value is None else str(value)
+                if "\n" not in text and "\r" not in text:
+                    fh.write(f"{key}={text}\n")
+                    continue
+                delim = f"ghadelimiter_{uuid.uuid4().hex}"
+                while delim in text:
+                    delim = f"ghadelimiter_{uuid.uuid4().hex}"
+                fh.write(f"{key}<<{delim}\n{text}\n{delim}\n")
     except OSError:
         pass
 
@@ -153,6 +164,10 @@ def maintain_tools(bands: bands_mod.Bands | None) -> str:
 
 # --- run --------------------------------------------------------------------------------------
 def _default_branch(root: Path) -> str:
+    """``gitops.default_branch`` (``SDLC_DEFAULT_BRANCH`` first, then the git guess), "main"
+    outside a git checkout. The workflows set the variable from
+    ``github.event.repository.default_branch``: the runbook and abandon workflows check out
+    the PR head ``sdlc/<id>/a``, and the guess alone could name that head (decision 14)."""
     try:
         return gitops.default_branch(root)
     except (gitops.GitError, FileNotFoundError):
@@ -217,6 +232,36 @@ def _show(root: Path, ref: str, path: str) -> str | None:
         return None
 
 
+def _remote_abandoned_ids(root: Path) -> set[str]:
+    """Ids of the changes whose ``status.yaml`` says abandoned on any remote
+    ``origin/sdlc/<id>/<phase>`` branch. ``state/cli.py abandon --all-branches`` writes the
+    marker on the change's branches only, never on the default branch (decision 4)."""
+    try:
+        out = gitops.run(
+            root, "for-each-ref", "--format=%(refname:short)", "refs/remotes/origin/sdlc/"
+        )
+    except (gitops.GitError, FileNotFoundError):
+        return set()
+    abandoned: set[str] = set()
+    for ref in out.split():
+        parsed = c.parse_branch(ref.removeprefix("origin/"))
+        if not parsed or parsed[0] in abandoned:
+            continue
+        change_id = parsed[0]
+        listing = _show(root, ref, c.CHANGES_DIR) or ""
+        names = [n.rstrip("/") for n in listing.split() if n.startswith(change_id + "-")]
+        if not names:
+            continue
+        raw = _show(root, ref, f"{c.CHANGES_DIR}/{names[0]}/{status_mod.STATUS_FILE}")
+        try:
+            st = status_mod.Status.from_dict(status_mod.yamlish.loads(raw or ""))
+        except Exception:  # noqa: BLE001
+            continue
+        if st.abandoned:
+            abandoned.add(change_id)
+    return abandoned
+
+
 def open_incidents(root: Path, metric: str) -> list[dict[str, Any]]:
     """Incident changes of ``metric`` that are still in flight: filed (a remote
     ``sdlc/<id>/a`` carries a detection record for the metric), not abandoned, and not yet
@@ -259,9 +304,14 @@ def open_incidents(root: Path, metric: str) -> list[dict[str, Any]]:
         found.append({"change_id": change_id, "ref": ref, "signature": record.get("signature")})
     seen = {item["change_id"] for item in found}
     # the incident changes the owner merged (fix now) are folders on the default branch,
-    # whatever became of their sdlc/<id>/a branch (GitHub may delete merged heads)
+    # whatever became of their sdlc/<id>/a branch (GitHub may delete merged heads).
+    # A merged incident can still be abandoned later: in the live run of 2026-09-25 the owner
+    # merged the incident PR, then closed its design PR on sdlc/<id>/b; abandon wrote
+    # ``phase: abandoned`` on the change's branches only (never the default branch, decision
+    # 4), so the default branch's folder stayed at phase f and blocked the metric forever.
+    abandoned = _remote_abandoned_ids(root)
     for change_dir in c.list_change_dirs(root):
-        if change_dir.name[:4] in seen:
+        if change_dir.name[:4] in seen or change_dir.name[:4] in abandoned:
             continue
         record, _why = finding.read(change_dir / art.EVIDENCE_DIR / finding.DETECTION_FILE)
         if record is None or record.get("metric") != metric:
@@ -321,6 +371,8 @@ def _force(verdict: stats.Verdict, tier: int) -> stats.Verdict:
     verdict.rule = "forced"
     verdict.rules_hit = ["forced"]
     verdict.reason = f"tier {tier} forced by workflow_dispatch (a rehearsal of the loop)"
+    if verdict.latest is None:
+        verdict.reason += "; no complete-day observation in the window: the source returned none"
     if verdict.breach_start is None and verdict.latest is not None:
         verdict.breach_start = verdict.latest.at
     return verdict
@@ -335,6 +387,14 @@ def _log_line(path: Path | None, entry: dict[str, Any]) -> None:
             fh.write(json.dumps(entry, sort_keys=True, default=str) + "\n")
     except OSError:
         pass
+
+
+def _last_line(err: str | None, code: int) -> str:
+    """The last non-empty line of a child's stderr ("fatal: ..." for a git failure), else
+    ``exit code <code>``. A reason goes into the log line and $GITHUB_OUTPUT: one line; the
+    stderr's tail stays in the printed JSON only."""
+    lines = [line.strip() for line in (err or "").splitlines() if line.strip()]
+    return lines[-1] if lines else f"exit code {code}"
 
 
 def file_change(root: Path, record: dict[str, Any], *, push: bool, dry_run: bool) -> dict[str, Any]:
@@ -354,7 +414,11 @@ def file_change(root: Path, record: dict[str, Any], *, push: bool, dry_run: bool
         root,
     )  # fmt: skip
     if code != 0 or not data:
-        return {"filed": False, "reason": f"new-change failed: {err or code}"}
+        return {
+            "filed": False,
+            "reason": f"new-change failed: {_last_line(err, code)}",
+            "stderr": (err or "")[-2000:],
+        }
     change_id = data["id"]
     change_dir = root / data["dir"]
     finding.write(change_dir / art.EVIDENCE_DIR / finding.DETECTION_FILE, record)
@@ -367,7 +431,12 @@ def file_change(root: Path, record: dict[str, Any], *, push: bool, dry_run: bool
         argv.append("--push")
     committed, code, err = _cli(STATE_CLI, argv, root)
     if code != 0:
-        return {"filed": False, "change_id": change_id, "reason": f"commit-phase failed: {err}"}
+        return {
+            "filed": False,
+            "change_id": change_id,
+            "reason": f"commit-phase failed: {_last_line(err, code)}",
+            "stderr": (err or "")[-2000:],
+        }
     return {
         "filed": True,
         "change_id": change_id,
@@ -435,9 +504,9 @@ def cmd_run(args) -> int:
     )
     forced = False
     if args.force_tier:
-        if not points:
-            print("nothing to force: the source returned no observation", file=sys.stderr)
-            return EXIT_FAILED
+        # the workflow's force_tier input files an incident at this tier "whatever the metric
+        # says": an empty series (every run is an excluded `SDLC ...` workflow, live run of
+        # 2026-09-25) still files the rehearsal, with latest and breach_start null
         verdict = _force(verdict, int(args.force_tier))
         forced = True
     action = bands.action(verdict.tier)
@@ -678,14 +747,22 @@ def _act(
 def approved_files(root: Path, config: dict[str, Any]) -> tuple[dict[str, Any], Any, str]:
     """``(sdlc.yaml, bands.yaml, where from)`` as the owner approved them: the default
     branch's copies through ``git show`` when the checkout knows the remote, else the
-    checkout's. The maintain run holds Write and python (p.43: read-only on *source*), so an
+    checkout's only when the repository has no remote at all (a by-hand run on a local
+    repository); with a remote, an unreadable copy raises ``BandsError`` (fail closed). The
+    maintain run holds Write and python (p.43: read-only on *source*), so an
     uncommitted edit of either file must never change a route's authorization (decision 14:
     "enforced, not remembered"; decision 11: a run cannot approve itself)."""
     ref = f"origin/{_default_branch(root)}"
-    cfg_text = _show(root, ref, SDLC_FILE) if gitops.is_repo(root) else None
-    bands_text = _show(root, ref, bands_mod.BANDS_FILE) if gitops.is_repo(root) else None
-    if cfg_text is None or bands_text is None:
+    if not gitops.is_repo(root) or not gitops.has_remote(root):
+        # a by-hand run on a local repository: no remote holds an approved copy
         return config, bands_mod.load_project(root), "the checkout"
+    cfg_text = _show(root, ref, SDLC_FILE)
+    bands_text = _show(root, ref, bands_mod.BANDS_FILE)
+    if cfg_text is None or bands_text is None:
+        # fail closed: never fall back to the checkout's (possibly edited) copies
+        raise bands_mod.BandsError(
+            f"the default branch's bands.yaml/sdlc.yaml could not be read: {ref}"
+        )
     try:
         approved_cfg = status_mod.yamlish.loads(cfg_text)
     except status_mod.yamlish.YamlishError as exc:
@@ -972,7 +1049,7 @@ def cmd_dismiss(args) -> int:
         out["file"] = str(path.relative_to(root)).replace("\\", "/")
         out["dismissed"] = True
         if gitops.is_repo(root):
-            title = f"dismiss({args.id}): {reason[:60]}"
+            title = f"dismiss({args.id}): {c.truncate_words(reason, 60)}"
             sha = gitops.commit_files(root, [out["file"]], title)
             out["commit"] = sha
             if args.open_pr and gitops.has_remote(root) and args.repo:
@@ -1054,6 +1131,8 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    # the default branch comes from $SDLC_DEFAULT_BRANCH only (gitops.default_branch): no
+    # flag, so the model's session cannot point the dispatcher at a branch (decisions 11, 14)
     root = Path(args.root).resolve()
     if getattr(args, "repo", None) is None and hasattr(args, "repo"):
         try:

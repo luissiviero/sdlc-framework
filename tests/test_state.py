@@ -1,4 +1,5 @@
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -58,6 +59,42 @@ def test_slugify():
     assert c.slugify("  Ünïcode & stuff!! ") == "n-code-stuff"
     assert len(c.slugify("x" * 100)) <= 40
     assert c.slugify("!!!") == "change"
+
+
+def test_truncate_words_keeps_a_short_text_whole():
+    assert c.truncate_words("a runner outage.", 60) == "a runner outage."
+    assert c.truncate_words("  a  runner\n outage ", 60) == "a runner outage"
+
+
+def test_truncate_words_cuts_at_a_word_boundary():
+    text = "the fixture file is committed and tracked in git (present since day one)"
+    out = c.truncate_words(text, 50)
+    assert out == "the fixture file is committed and tracked in git"
+    assert len(out) <= 50 and text.startswith(out)
+    assert c.truncate_words("abc def ghi", 7) == "abc def"  # a space right at the limit
+
+
+def test_truncate_words_strips_trailing_punctuation_and_space():
+    assert c.truncate_words("first clause, second clause here", 16) == "first clause"
+    assert c.truncate_words("a note: (with more text after it)", 10) == "a note"
+
+
+def test_truncate_words_hard_cuts_a_single_long_word():
+    assert c.truncate_words("x" * 100, 40) == "x" * 40
+    assert c.truncate_words("y" * 100 + " tail", 10) == "y" * 10
+
+
+def test_truncate_words_strips_the_fallback_when_the_cut_leaves_only_trim_characters():
+    # the word cut leaves "..." (all trim characters): the hard cut "... ." is trimmed too
+    assert c.truncate_words("... .... words", 5) == ""
+    assert c.truncate_words("-- abcdefgh", 6) == "-- abc"
+    assert c.truncate_words("x ((( more", 5) == "x"
+
+
+def test_truncate_words_with_a_limit_of_zero_or_less_is_empty():
+    assert c.truncate_words("a runner outage", 0) == ""
+    assert c.truncate_words("a runner outage", -3) == ""
+    assert c.truncate_words("", 0) == ""
 
 
 def test_new_change_allocates_sequential_ids(tmp_path):
@@ -623,6 +660,98 @@ def test_gitops_changed_files_and_commit_paths(repo):
     _git(root, "add", "changes/0001-x/gone.md")
     (folder / "gone.md").unlink()
     assert gitops.commit_paths(root, ["changes/0001-x"], "nothing") is None
+
+
+def test_commit_files_on_a_checkout_without_identity_commits_as_the_automation(
+    tmp_path, monkeypatch
+):
+    """A GitHub-hosted runner has no git user.name/user.email: the detect step's
+    ``commit-phase`` failed there with "empty ident name" (live run of 2026-09-25).
+    ``commit_files`` commits as the automation identity when the checkout has none, for
+    that commit only: nothing is written into ``.git/config`` (on an owner's machine a
+    persisted bot identity would sign their later commits)."""
+    from state import gitops
+
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("USERPROFILE", str(home))
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(home / ".config"))
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", os.devnull)
+    monkeypatch.setenv("GIT_CONFIG_SYSTEM", os.devnull)
+    monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
+    for name in (
+        "GIT_AUTHOR_NAME",
+        "GIT_AUTHOR_EMAIL",
+        "GIT_COMMITTER_NAME",
+        "GIT_COMMITTER_EMAIL",
+        "GIT_CONFIG_COUNT",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.delenv("EMAIL", raising=False)  # git falls back to $EMAIL for the address
+    root = tmp_path / "proj"
+    root.mkdir()
+    gitops.run(root, "init", "-q", "-b", "main")
+    assert gitops.run(root, "config", "--get", "user.name", check=False).strip() == ""
+    assert gitops.run(root, "config", "--get", "user.email", check=False).strip() == ""
+    (root / "README.md").write_text("# project\n", encoding="utf-8")
+    sha = gitops.commit_files(root, ["README.md"], "first commit on a runner")
+    assert sha
+    author = gitops.run(root, "log", "-1", "--format=%an <%ae>").strip()
+    assert author == f"{gitops.BOT_LOGIN} <{gitops.BOT_EMAIL}>"
+    assert gitops.run(root, "config", "--get", "user.name", check=False).strip() == ""
+    assert gitops.run(root, "config", "--get", "user.email", check=False).strip() == ""
+    assert "[user]" not in (root / ".git" / "config").read_text(encoding="utf-8")
+    # an owner's identity, once present, is left alone
+    gitops.run(root, "config", "user.name", "Owner")
+    gitops.run(root, "config", "user.email", "owner@example.com")
+    (root / "README.md").write_text("# changed\n", encoding="utf-8")
+    assert gitops.commit_files(root, ["README.md"], "by the owner")
+    assert gitops.run(root, "log", "-1", "--format=%an <%ae>").strip() == (
+        "Owner <owner@example.com>"
+    )
+
+
+def test_default_branch_on_a_runner_shaped_checkout_reads_the_remote_tracking_main(repo):
+    """``actions/checkout`` (fetch-depth 0) of a non-default ref sets no origin/HEAD and
+    creates no local main: the guess fell through to the current branch (live run of
+    2026-09-25, sdlc-sample-python run 36165497264). The remote-tracking origin/main is the
+    default branch there; a local master comes next, and the current branch last."""
+    from state import gitops
+
+    bare = repo.parent / "origin.git"
+    _git(repo.parent, "clone", "-q", "--bare", str(repo), str(bare))
+    work = repo.parent / "work"
+    _git(repo.parent, "clone", "-q", str(bare), str(work))
+    _git(work, "remote", "set-head", "origin", "-d")
+    _git(work, "checkout", "-q", "-b", "sdlc/0001/a")
+    _git(work, "branch", "-q", "-D", "main")
+    assert _git(work, "branch", "--list", "main").strip() == ""
+    assert gitops.default_branch(work) == "main"
+    # no remote-tracking main either, a local master: master
+    _git(work, "update-ref", "-d", "refs/remotes/origin/main")
+    _git(work, "branch", "-q", "master")
+    assert gitops.default_branch(work) == "master"
+    # none of them: the current branch
+    _git(work, "branch", "-q", "-D", "master")
+    assert gitops.default_branch(work) == "sdlc/0001/a"
+
+
+def test_default_branch_prefers_the_environment_value_unless_it_names_a_framework_branch(
+    repo, monkeypatch
+):
+    """``SDLC_DEFAULT_BRANCH`` (set by the workflows) wins over the guess; a value that names
+    a framework branch (``sdlc/<id>/<phase>`` or anything under ``sdlc/``) is refused and
+    the guess is used, and an empty value is no value."""
+    from state import gitops
+
+    assert gitops.DEFAULT_BRANCH_ENV == "SDLC_DEFAULT_BRANCH"
+    _git(repo, "checkout", "-q", "-b", "sdlc/0001/a")
+    monkeypatch.setenv(gitops.DEFAULT_BRANCH_ENV, "trunk")
+    assert gitops.default_branch(repo) == "trunk"
+    for refused in ("sdlc/0001/a", "sdlc/0001/revert-abc1234", "sdlc/x", "  ", ""):
+        monkeypatch.setenv(gitops.DEFAULT_BRANCH_ENV, refused)
+        assert gitops.default_branch(repo) == "main", refused
 
 
 # --- decision 24: the owner's un-park labels, recorded with their actor --------------------------
