@@ -266,6 +266,14 @@ WORKFLOW_FILES = (
     # and the end state of a PR closed without a merge (decision 25); plugin 0.2.13
     ".github/workflows/sdlc-fix.yml",
     ".github/workflows/sdlc-abandon.yml",
+    # phase (f): the scheduled detection and the owner's Go on a runbook (build guide step
+    # 37; decisions 14, 25, 26); plugin 0.2.19
+    ".github/workflows/sdlc-detect.yml",
+    ".github/workflows/sdlc-runbook.yml",
+    # the project's eval suite on configuration changes and nightly (build guide step 35)
+    ".github/workflows/sdlc-evals.yml",
+    # the weekly security review and the deterministic scanners (build guide step 38)
+    ".github/workflows/sdlc-scan.yml",
     ".github/scripts/sdlc_pin.py",
 )
 # The template writes the default branch GitHub gives most repositories; a project whose
@@ -451,13 +459,16 @@ def run(args) -> dict:
         ".claude/settings.json",
     )
 
-    # REVIEW.md, changes/README.md, evals/, bands.yaml: create only (owner-edited afterwards)
+    # REVIEW.md, changes/README.md, evals/, bands.yaml, lessons/: create only (owner-edited
+    # afterwards; lessons/ is the incident record of build guide step 36)
     for rel in (
         "REVIEW.md",
         "changes/README.md",
         "evals/README.md",
         "evals/cases/.gitkeep",
+        "evals/check.py",  # the p.30 check.sh in Python (build guide step 35; plugin 0.2.19)
         "bands.yaml",
+        "lessons/README.md",
     ):
         target = root / rel
         if target.exists():

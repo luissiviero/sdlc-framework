@@ -18,6 +18,14 @@
 # closed PR that carries no change folder costs one green job of about 20 s. A merged PR is
 # gate (a), (b) or (e) passed and is never this workflow's.
 #
+# Gate (f) (decision 25, second half; build guide step 39; article p.47 step 4 "Dismiss with
+# a reason, so the dismissal is recorded and the same finding does not return as new on the
+# next run"): closing an incident intent PR also dismisses its finding. The last comment by
+# a person on the PR is the reason; detect/cli.py dismiss appends the finding's signature to
+# changes/.dismissed.json on a branch sdlc/<id>/dismiss and opens the dismissal PR against
+# the default branch for you to merge (the automation identity never writes to it). No
+# comment, no dismissal: the finding may return, and the job says so.
+#
 # /sdlc-init filled in the framework repository.
 name: SDLC abandon (closed without a merge)
 
@@ -28,7 +36,7 @@ on:
 # contents: write to commit the end state on the change's branches; nothing else.
 permissions:
   contents: write
-  pull-requests: read
+  pull-requests: write
 
 concurrency:
   group: "sdlc-${{ github.event.pull_request.head.ref }}"
@@ -77,3 +85,14 @@ jobs:
           CHANGE_ID: ${{ steps.find.outputs.change_id }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
         run: python framework/plugin/state/cli.py abandon --root . --id "$CHANGE_ID" --reason "pull request $PR_NUMBER closed without a merge" --push --all-branches
+
+      # An incident intent PR closed with a comment: the finding is dismissed with that
+      # reason (the step is a no-op for a change without a finding record).
+      - name: Dismiss the finding with the closing comment as its reason
+        if: steps.find.outputs.change_id != ''
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          CHANGE_ID: ${{ steps.find.outputs.change_id }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: python framework/plugin/detect/cli.py dismiss --root . --id "$CHANGE_ID" --repo "$REPO" --pr-number "$PR_NUMBER" --open-pr

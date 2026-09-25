@@ -2,7 +2,7 @@
 description: Phase (e) deploy — the review passes in a fresh context with REVIEW.md (bugs, security, compliance) into evidence/review-findings.json, a fix loop bounded by the iteration cap while an Important finding stands, the regenerated PR summary, then gate (e): the build PR is marked ready with sdlc:e-ready and waits for the owner's merge in every profile. The release is prepared in the PR per the project's deploy adapter (release notes, nothing executed); the release workflow runs it on the owner's merge. Re-runnable.
 argument-hint: [change id, e.g. 0001]
 disable-model-invocation: true
-allowed-tools: Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/state/cli.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/gate/cli.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/panel/cli.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/evidence/collect.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/review/cli.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/pr/cli.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/release/notes.py" *), Bash(git *), Bash(gh *), Read, Glob, Grep, Edit, Write, Agent
+allowed-tools: Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/state/cli.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/gate/cli.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/panel/cli.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/evidence/collect.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/review/cli.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/pr/cli.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/release/notes.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/evals/case.py" *), Bash(git *), Bash(gh *), Read, Glob, Grep, Edit, Write, Agent
 ---
 
 # /sdlc-deploy — phase (e)
@@ -54,6 +54,26 @@ it under "## Files that change" of `plan.md` in the same commit (the plan-sync r
 to commit):
 `python "${CLAUDE_PLUGIN_ROOT}/plugin/state/cli.py" commit-phase --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase e --message "release(<id>): release prepared" --paths <files> --push`
 (`--paths` names the artifact files and `plan.md` is in the change folder).
+
+## 0b. An incident's fix ships with its lesson and its eval (build guide steps 36, 37; article p.44 step 7, p.49)
+When `status.yaml: entry_route` is `incident` (the change was filed by phase (f)), the fix
+carries its record — before the review, so the review pass reads them too:
+- `lessons/<yyyy-mm>-<slug>.md` (the naming rule and the shape are in `lessons/README.md`;
+  `<yyyy-mm>` is this month, `<slug>` the change's): what happened (from
+  `evidence/detection.json` and the intent's Evidence section), the root cause, the fix, the
+  prevention; cite an earlier lesson when this incident repeats its class. The article's
+  rule (p.49): the post-mortem goes "to a version-controlled lessons file that future
+  investigations can read" — the diagnosis of the next incident reads this folder first.
+- one eval case, `evals/cases/<id>-<slug>/` (p.44 step 7: "When a fix ships, add an eval for
+  the incident"): generate the skeleton with
+  `python "${CLAUDE_PLUGIN_ROOT}/plugin/evals/case.py" new --root "${CLAUDE_PROJECT_DIR}" --id <id>`
+  and complete `checks.yaml` so it asserts the property the fix restored (the test command
+  green, the file the fix changed, the output the agent must show); a case that asserts
+  nothing real is worse than none.
+Both are outside the change folder, so list them under "## Files that change" of `plan.md`
+in the same commit, and commit with the release artifact of step 0a (or on their own:
+`commit-phase ... --phase e --message "release(<id>): lesson and eval" --paths lessons evals --push`).
+A change whose entry route is not `incident` skips this step.
 
 ## 1. Review passes in a fresh context (build guide step 26; article p.33–34)
 If `changes/<id>-<slug>/evidence/review-findings.json` already exists for HEAD (the

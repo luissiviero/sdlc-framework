@@ -47,7 +47,7 @@ def test_render_rejects_missing_placeholders():
 
 def test_every_template_placeholder_has_a_value():
     for path in TEMPLATE.rglob("*"):
-        if path.is_file():
+        if path.is_file() and "__pycache__" not in path.parts:  # evals/check.py is importable
             missing = render.placeholders(path.read_text(encoding="utf-8")) - set(VALUES)
             assert not missing, f"{path}: {missing}"
 
@@ -192,12 +192,20 @@ PHASE_WORKFLOWS = ("sdlc-design.yml", "sdlc-build.yml", "sdlc-test.yml", "sdlc-d
 RELEASE_WORKFLOW = "sdlc-release.yml"  # build guide step 32.3 (plugin 0.2.12)
 FIX_WORKFLOW = "sdlc-fix.yml"  # decisions 22 and 24 (plugin 0.2.13)
 ABANDON_WORKFLOW = "sdlc-abandon.yml"  # decision 25 (plugin 0.2.13)
+DETECT_WORKFLOW = "sdlc-detect.yml"  # build guide step 37, decisions 14/15/26 (plugin 0.2.19)
+RUNBOOK_WORKFLOW = "sdlc-runbook.yml"  # the owner's Go on a runbook (plugin 0.2.19)
+EVALS_WORKFLOW = "sdlc-evals.yml"  # build guide step 35 (plugin 0.2.19)
+SCAN_WORKFLOW = "sdlc-scan.yml"  # build guide step 38, decision 16 (plugin 0.2.19)
 ALL_WORKFLOWS = (
     *PHASE_WORKFLOWS,
     "sdlc-digest.yml",
     RELEASE_WORKFLOW,
     FIX_WORKFLOW,
     ABANDON_WORKFLOW,
+    DETECT_WORKFLOW,
+    RUNBOOK_WORKFLOW,
+    EVALS_WORKFLOW,
+    SCAN_WORKFLOW,
 )
 # this repository's own installed copies (PR #21) and its substrate smoke test
 REPO_WORKFLOW_DIR = TEMPLATE.parent / ".github" / "workflows"
@@ -234,6 +242,12 @@ def test_every_workflow_parses_as_yaml(name):
 def test_this_repository_s_workflow_copies_match_the_template():
     """The installed copies differ from the template only by the framework repository."""
     for name in ALL_WORKFLOWS:
+        if name == EVALS_WORKFLOW:
+            # this repository runs framework-evals.yml (its own suite over the fixture) and
+            # has no evals/check.py: the per-project workflow is not installed here
+            assert not (REPO_WORKFLOW_DIR / name).exists()
+            assert (REPO_WORKFLOW_DIR / "framework-evals.yml").is_file()
+            continue
         installed = (REPO_WORKFLOW_DIR / name).read_text(encoding="utf-8")
         assert installed == render.render_file(WORKFLOW_DIR / name, VALUES), name
 
@@ -302,7 +316,11 @@ def test_merge_fired_jobs_find_the_change_instead_of_filtering_the_head(name):
     assert "--find-change" in job["steps"][find]["run"]
     for step in job["steps"][find + 1 :]:
         assert step["if"] == "steps.find.outputs.change_id != ''", step
-    assert job["steps"][-1]["env"]["CHANGE_ID"] == "${{ steps.find.outputs.change_id }}"
+    phase_step = [step for step in job["steps"] if "run" in step][-1]
+    assert phase_step["env"]["CHANGE_ID"] == "${{ steps.find.outputs.change_id }}"
+    # step 41.1: the hook log rides as an artifact after the run, gated like every step
+    assert job["steps"][-1]["name"] == "Keep the hook log"
+    assert "changes/**/evidence/hook-log.jsonl" in job["steps"][-1]["with"]["path"]
 
 
 def test_fix_workflow_starts_on_request_changes_and_on_the_owner_labels():
@@ -334,7 +352,9 @@ def test_fix_workflow_starts_on_request_changes_and_on_the_owner_labels():
     )
     find = next(step for step in job["steps"] if step.get("id") == "find")
     assert "--phase fix" in find["run"] and "--find-change" in find["run"]
-    assert job["steps"][-1]["env"]["PR_NUMBER"] == "${{ github.event.pull_request.number }}"
+    phase_step = [step for step in job["steps"] if "run" in step][-1]
+    assert phase_step["env"]["PR_NUMBER"] == "${{ github.event.pull_request.number }}"
+    assert job["steps"][-1]["name"] == "Keep the hook log"  # step 41.1
     assert data["concurrency"]["group"] == (
         "sdlc-${{ inputs.head_ref || github.event.pull_request.head.ref }}"
     )
@@ -346,18 +366,139 @@ def test_abandon_workflow_records_the_end_state_without_a_model():
     data = _workflow_yaml(ABANDON_WORKFLOW)
     on = _triggers(data)
     assert on == {"pull_request": {"types": ["closed"]}}
-    assert data["permissions"] == {"contents": "write", "pull-requests": "read"}
+    # pull-requests: write since 0.2.19: the dismissal of gate (f) opens a pull request
+    assert data["permissions"] == {"contents": "write", "pull-requests": "write"}
     job = data["jobs"]["abandon"]
     assert job["if"] == "${{ github.event.pull_request.merged == false }}"
     assert job["steps"][0]["with"]["ref"] == "${{ github.event.pull_request.head.ref }}"
     runs = [step["run"] for step in job["steps"] if "run" in step]
-    assert runs[-1] == (
+    assert runs[-2] == (
         'python framework/plugin/state/cli.py abandon --root . --id "$CHANGE_ID" '
         '--reason "pull request $PR_NUMBER closed without a merge" --push --all-branches'
     )
-    assert job["steps"][-1]["if"] == "steps.find.outputs.change_id != ''"
+    # decision 25, second half (step 39): the close of an incident PR dismisses its finding
+    # with the closing comment as the reason, through a dismissal PR
+    assert runs[-1] == (
+        'python framework/plugin/detect/cli.py dismiss --root . --id "$CHANGE_ID" '
+        '--repo "$REPO" --pr-number "$PR_NUMBER" --open-pr'
+    )
+    for step in job["steps"][-2:]:
+        assert step["if"] == "steps.find.outputs.change_id != ''"
     text = (WORKFLOW_DIR / ABANDON_WORKFLOW).read_text(encoding="utf-8")
     for absent in ("claude-code@", "runner_setup.py", "setup-node", "secrets.", "--phase b"):
+        assert absent not in text, absent
+
+
+@pytest.mark.parametrize("name", [*PHASE_WORKFLOWS, FIX_WORKFLOW, DETECT_WORKFLOW])
+def test_every_phase_run_keeps_the_hook_log_as_an_artifact(name):
+    """Build guide step 41.1 (article p.39: every hook decision logged with a timestamp and
+    a verdict): the log rides with the evidence and as a run artifact."""
+    job = next(iter(_workflow_yaml(name)["jobs"].values()))
+    step = job["steps"][-1]
+    assert step["name"] == "Keep the hook log" and step["uses"].startswith(
+        "actions/upload-artifact@"
+    )
+    assert step["with"]["if-no-files-found"] == "ignore"
+    assert "changes/.hook-log.jsonl" in step["with"]["path"]
+
+
+def test_detect_workflow_is_scheduled_deterministic_and_runs_the_diagnosis_only_when_filed():
+    """Build guide step 37 (article p.43-44): the detection script runs on a schedule with no
+    model, keeps its log as an artifact, and the diagnosis (a claude run) starts only when a
+    change was filed; workflow_dispatch's force_tier rehearses the loop."""
+    data = _workflow_yaml(DETECT_WORKFLOW)
+    on = _triggers(data)
+    assert "schedule" in on and on["schedule"][0]["cron"].split()[0] != "0"
+    assert on["workflow_dispatch"]["inputs"]["force_tier"]["options"] == ["", "2", "3"]
+    assert data["permissions"]["contents"] == "write"
+    assert data["permissions"]["actions"] == "read"  # the runs API, nothing dispatched
+    job = data["jobs"]["detect"]
+    steps = {s.get("name") or s.get("uses"): s for s in job["steps"]}
+    detect = steps["Detect"]
+    assert detect["id"] == "detect"
+    assert "secrets." not in json.dumps(detect)  # no model credential in the detection
+    assert detect["run"] == (
+        'python framework/plugin/detect/cli.py run --root . --repo "$REPO" '
+        "--cache .sdlc/detect-cache.json --log detect-log.jsonl "
+        '--force-tier "$FORCE_TIER" --file'
+    )
+    log = steps["Keep the detection log"]
+    assert log["uses"].startswith("actions/upload-artifact@") and log["if"] == "${{ always() }}"
+    phase = steps["Run phase (f)"]
+    assert phase["if"] == "steps.detect.outputs.change_id != ''"
+    # the dispatcher is its own step after the model's (decisions 11 and 14): no model
+    # credential there, and the runbook secrets never where the model runs
+    finish = steps["Dispatch the route, run gate (f) and open the intent PR"]
+    assert finish["if"] == "steps.detect.outputs.change_id != ''"
+    assert finish["run"] == (
+        'python framework/plugin/detect/cli.py finish --root . --id "$CHANGE_ID" --repo "$REPO"'
+    )
+    assert "secrets." not in json.dumps(finish) and "secrets." in json.dumps(phase)
+    assert '--force-tier "$FORCE_TIER"' in detect["run"]
+    assert "--phase f" in phase["run"] and "HEAD_REF: ${{ steps.detect.outputs.head_ref }}" in (
+        (WORKFLOW_DIR / DETECT_WORKFLOW).read_text(encoding="utf-8")
+    )
+    installs = (
+        "Install the pinned Claude Code CLI",
+        "Prepare the runner for Claude Code's sandbox",
+    )
+    for name in installs:
+        assert steps[name]["if"] == "steps.detect.outputs.change_id != ''"
+
+
+def test_evals_workflow_runs_on_configuration_changes_and_nightly():
+    """Build guide step 35 (article p.30 step 3: "on any change to CLAUDE.md, skills or
+    hooks" and on a schedule; step 4: the pass rate gates the change)."""
+    data = _workflow_yaml(EVALS_WORKFLOW)
+    on = _triggers(data)
+    assert on["pull_request"]["paths"] == ["CLAUDE.md", ".claude/**", "evals/**"]
+    assert on["pull_request"]["branches"] == ["main"] and "schedule" in on
+    assert data["permissions"] == {"contents": "read"}
+    job = data["jobs"]["evals"]
+    runs = [step["run"] for step in job["steps"] if "run" in step]
+    assert runs[-1] == "python evals/check.py --framework framework --report evals-report.json"
+    assert all("--bare" not in run and "run_phase.py" not in run for run in runs)
+    assert job["steps"][-1]["name"] == "Keep the report"
+
+
+def test_scan_workflow_is_weekly_reviews_routes_and_scans_in_that_order():
+    """Build guide step 38 (decision 16; article p.46-48): a weekly read-only review, its
+    findings routed through gate (f), then the deterministic scanners, reported and never a
+    gate; every run line is python (the framework's rule for unattended jobs)."""
+    data = _workflow_yaml(SCAN_WORKFLOW)
+    on = _triggers(data)
+    assert (
+        len(on["schedule"][0]["cron"].split()) == 5 and on["schedule"][0]["cron"].split()[4] != "*"
+    )
+    assert "workflow_dispatch" in on
+    job = next(iter(data["jobs"].values()))
+    runs = [step["run"] for step in job["steps"] if "run" in step]
+    assert all(run.startswith("python ") or run.startswith("npm ") for run in runs), runs
+    assert all("${{" not in run for run in runs)
+    review = next(run for run in runs if "scan/cli.py review" in run)
+    route = next(run for run in runs if "scan/cli.py route" in run)
+    scanners = next(run for run in runs if "scan/cli.py scanners" in run)
+    assert runs.index(review) < runs.index(route) < runs.index(scanners)
+    assert "--max-findings 3" in route
+    text = (WORKFLOW_DIR / SCAN_WORKFLOW).read_text(encoding="utf-8")
+    assert "upload-artifact@" in text and "Bash(git *)" not in text  # the tools live in the CLI
+
+
+def test_runbook_workflow_runs_the_go_once_without_a_model():
+    """Decisions 14 and 26: the owner's sdlc:go on the incident PR runs the proposed runbook;
+    a person must have applied it (detect/cli.py go reads the actor), no claude starts."""
+    data = _workflow_yaml(RUNBOOK_WORKFLOW)
+    assert _triggers(data) == {"pull_request": {"types": ["labeled"]}}
+    job = data["jobs"]["go"]
+    assert job["if"] == "${{ github.event.label.name == 'sdlc:go' }}"
+    assert job["steps"][0]["with"]["ref"] == "${{ github.event.pull_request.head.ref }}"
+    runs = [step["run"] for step in job["steps"] if "run" in step]
+    assert runs[-1] == (
+        'python framework/plugin/detect/cli.py go --root . --id "$CHANGE_ID" '
+        '--repo "$REPO" --pr-number "$PR_NUMBER"'
+    )
+    text = (WORKFLOW_DIR / RUNBOOK_WORKFLOW).read_text(encoding="utf-8")
+    for absent in ("claude-code@", "runner_setup.py", "setup-node", "secrets.", "--phase f "):
         assert absent not in text, absent
 
 

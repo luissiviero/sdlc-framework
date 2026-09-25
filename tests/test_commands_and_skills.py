@@ -294,6 +294,12 @@ def test_sdlc_deploy_flow_matches_step_26():
     ]:
         assert token in text, token
     assert "claude-md-proposals" in text or "Proposed CLAUDE.md lines" in text
+    # steps 36 and 37 (plugin 0.2.19): an incident's fix ships with its lesson and its eval,
+    # before the review pass reads the diff (p.44 step 7, p.49)
+    step = text[text.index("## 0b.") : text.index("## 1. Review passes")]
+    for token in ("lessons/<yyyy-mm>-<slug>.md", 'evals/case.py" new', "entry_route", "incident"):
+        assert token in step, token
+    assert text.index("## 0a.") < text.index("## 0b.") < text.index("## 1. Review passes")
 
 
 def test_sdlc_fix_flow_matches_the_change_request_loop():
@@ -311,14 +317,14 @@ def test_sdlc_fix_covers_gate_a_and_the_owner_labels():
     path = COMMANDS / "sdlc-fix.md"
     text = flat(path)
     assert frontmatter(path)["disable-model-invocation"] == "true"
-    assert "the phase is `a`, `b`, `c`, `d` or `e`" in text
+    assert "the phase is `a`, `b`, `c`, `d`, `e` or `f`" in text  # (f) since 0.2.19
     assert "phase `a` → the intent PR's head" in text and "`claude/...`" in text
     assert "without re-running the brainstorm" in text
     assert "This is the one place a run edits `intent.md`" in text
     assert "Never edit `intent.md` at (b) or later" in text
     assert "apply-labels" in text and "`risk_accepted_by`" in text
     assert "--branch <head>" in text and "--head <head>" in text
-    assert "At phase (a) skip the verdict" in text
+    assert "At phase (a) or (f) skip the verdict" in text  # (f) since 0.2.19
     assert "`sdlc-fix.yml`" in text and "Request changes" in text
     assert "`abandoned` change has no fix round" in text
 
@@ -513,3 +519,38 @@ def test_pr_route_order_matches_the_github_client():
     )
     build = flat(COMMANDS / "sdlc-build.md")
     assert "uses the GitHub REST API with `GITHUB_TOKEN`/`GH_TOKEN` first, then `gh`" in build
+
+
+def test_sdlc_maintain_flow_matches_step_37():
+    """Build guide step 37 (article p.43-44): the diagnosis reads lessons/ and the detection
+    record first, investigates read-only, writes the incident intent with its Evidence
+    section and a proposal, dispatches it through the route's authorization, runs gate (f)
+    and opens the intent PR labelled incident; nothing is fixed, merged or deployed."""
+    path = COMMANDS / "sdlc-maintain.md"
+    fm = frontmatter(path)
+    text = flat(path)
+    assert "Edit" not in fm["allowed-tools"].replace("acceptEdits", "")
+    assert "Bash(gh run view *)" in fm["allowed-tools"]
+    for token in [
+        'detect/cli.py" run',
+        "detection.json",
+        "lessons/",
+        "intent-template",
+        "## Evidence",
+        "proposal.json",
+        'detect/cli.py" routes',
+        'detect/cli.py" dispatch',
+        "--phase f",
+        "sdlc:f-ready",
+        "incident",
+        "sdlc:go",
+        "decision 25",
+        "decision 26",
+        "Never edit source",
+        "Do not start phase (b)",
+    ]:
+        assert token in text, token
+    assert text.index('detect/cli.py" routes') < text.index("proposal.json")
+    assert text.index("commit-phase") < text.index('detect/cli.py" dispatch')
+    assert text.index('detect/cli.py" dispatch') < text.index(GATE_CHECK)
+    assert text.index(GATE_START_RUN) < text.index(GATE_CHECK)

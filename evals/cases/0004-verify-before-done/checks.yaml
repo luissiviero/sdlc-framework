@@ -1,0 +1,16 @@
+# The framework-level suite (build guide step 35). CLAUDE.md's "Verifying your work": run the
+# tests before reporting done and paste the output. The second live run (2026-09-25) passed
+# the tests in 23 turns but its answer paraphrased the result, so the prompt now names the
+# summary line it must end with; the regex is the rule's own words ("N passed"). The fixture needs no install: pytest is
+# the only tool the checks use, and the runner's environment provides it.
+description: a small feature lands with a test, and the answer carries the test output
+max_turns: 20
+budget_usd: 1.0
+timeout_seconds: 600
+checks:
+  - command: "python -m pytest -q"
+    exit: 0
+  - command: "python -c \"import sample_pkg; assert sample_pkg.double(2) == 4\""
+    exit: 0
+  - output:
+      regex: "\\d+ passed"

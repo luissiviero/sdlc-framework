@@ -118,17 +118,24 @@ PHASE_COMMAND = {
     "c": "sdlc-build",
     "d": "sdlc-test",
     "e": "sdlc-deploy",
+    # phase (f) maintain (build guide step 37): the diagnosis of a filed detection record,
+    # read-only on source, that writes the incident intent and proposes a gated route
+    "f": "sdlc-maintain",
     # decision 22: the owner's "Request changes" review (or an un-park label) starts a fix
-    # round on the phase's own PR, whatever phase the change is in (a)-(e)
+    # round on the phase's own PR, whatever phase the change is in (a)-(f)
     "fix": "sdlc-fix",
 }
 RUNNABLE = (*PHASE_COMMAND, "review", "triage")
 # The phase whose artifact this run consumes: status.yaml must be there, with a passing gate
 # for every phase past (b) (OPERATING_MODEL section 4.2, "Guard" column). A fix round has no
 # previous phase: it re-runs the change's current phase on the PR's own head.
-PREVIOUS_PHASE = {"b": "a", "c": "b", "d": "c", "e": "d", "review": "d", "fix": None}
+# A maintain run follows the filing step (``detect/cli.py run --file``), which leaves the
+# change at phase f itself; a merged incident intent PR is gate (a) of that change (decision
+# 25), so the design run accepts a change at f as at a (``PHASE_BEFORE``).
+PREVIOUS_PHASE = {"b": "a", "c": "b", "d": "c", "e": "d", "f": "f", "review": "d", "fix": None}
+PHASE_BEFORE = {"b": ("a", "f")}  # the phases a run accepts where PREVIOUS_PHASE names one
 GATE_MUST_HAVE_PASSED = ("c", "d", "e", "review")
-FIX_PHASES = ("a", "b", "c", "d", "e")  # the phases whose PR a fix round may run on
+FIX_PHASES = ("a", "b", "c", "d", "e", "f")  # the phases whose PR a fix round may run on
 # Full profile only: the owner's approving label on the build PR, and who applied it.
 APPROVAL_LABEL = {"d": "c", "e": "d", "review": "d"}  # run phase -> phase whose label is read
 APPROVAL_BRANCH_PHASE = "c"  # the build PR, which lives on sdlc/<id>/c through (d) and (e)
@@ -144,6 +151,7 @@ PERMISSION_MODE = {
     "b": "default",
     "d": "acceptEdits",
     "e": "acceptEdits",
+    "f": "default",
     "review": "default",
     "fix": "acceptEdits",
 }
@@ -165,6 +173,11 @@ IMPLEMENT_DISALLOWED_TOOLS = "WebFetch,WebSearch"
 # The review pass is read-only but for the one file it writes (decision 12).
 REVIEW_ALLOWED_TOOLS = "Read,Grep,Glob,Bash(git *),Write"
 REVIEW_DISALLOWED_TOOLS = "Edit,WebFetch,WebSearch"
+# The maintain run diagnoses read-only (p.43 step 3): the bands' own tool list plus what it
+# needs to write intent.md and proposal.json and commit them (``detect/cli.py
+# maintain_tools``); the gate's design_scope check refuses anything committed outside the
+# change folder.
+MAINTAIN_DISALLOWED_TOOLS = "Edit,MultiEdit,NotebookEdit,WebFetch,WebSearch"
 # The p.41 read-only triage step: it reads a log and says what it thinks; it fixes nothing.
 TRIAGE_ALLOWED_TOOLS = "Read"
 TRIAGE_DISALLOWED_TOOLS = "Edit,Write,Bash"
@@ -425,7 +438,7 @@ def setup_failure_reason(result: dict[str, Any]) -> str:
 # The phase whose branch a run works on. A ``workflow_dispatch`` run starts on the default
 # branch, where ``status.yaml`` is whatever main says, so every run puts the checkout on the
 # change's own branch before the guard reads anything (OPERATING_MODEL section 8).
-BRANCH_PHASE = {"review": "e"}  # the review pass runs on the build PR's branch
+BRANCH_PHASE = {"review": "e"}  # the review pass runs on the build PR's branch (f: sdlc/<id>/a)
 CREATES_ITS_BRANCH = ("b", "c")  # (d), (e) and the review pass need sdlc/<id>/c to exist
 
 
@@ -752,8 +765,14 @@ def guard(root: Path, change_id: str, run_phase: str, repo: str, env: dict[str, 
         st.set_phase(run_phase)  # clears the earlier attempt's park; the phase is unchanged
         status_mod.write_status(change_dir, st)
     else:
-        if st.phase != expected:
+        accepted = PHASE_BEFORE.get(run_phase, (expected,))
+        if st.phase not in accepted:
             return None, None, config, f"change {change_id} is at phase {st.phase}, not {expected}"
+        if run_phase == "b" and st.phase == "f":
+            # the owner merged the incident intent PR: that merge is gate (a) of the change
+            # (decision 25) and lifts the park the maintain run left ("Go requested", a
+            # refused proposal) - the owner chose the pipeline over the runbook
+            st.parked_reason = None
         # ``read_status`` ignores a park that a later gate result lifted (plugins before
         # 0.2.6 left the reason behind a ``passed`` result); the file on the work branch is
         # rewritten to say the same, because the session reads it itself: the ninth live
@@ -887,10 +906,27 @@ def compose(
     elif phase == "review":
         argv += ["--allowedTools", REVIEW_ALLOWED_TOOLS]
         argv += ["--disallowedTools", REVIEW_DISALLOWED_TOOLS]
+    elif phase == "f":
+        argv += ["--allowedTools", maintain_allowed_tools(root)]
+        argv += ["--disallowedTools", MAINTAIN_DISALLOWED_TOOLS]
     elif phase == "triage":
         argv += ["--allowedTools", TRIAGE_ALLOWED_TOOLS]
         argv += ["--disallowedTools", TRIAGE_DISALLOWED_TOOLS]
     return argv
+
+
+def maintain_allowed_tools(root: Path | None) -> str:
+    """The maintain run's tools: bands.yaml's diagnose tools plus the plugin's own."""
+    from detect import bands as bands_mod  # noqa: PLC0415
+    from detect import cli as detect_cli  # noqa: PLC0415
+
+    bands = None
+    if root is not None:
+        try:
+            bands = bands_mod.load_project(Path(root))
+        except bands_mod.BandsError:
+            bands = None
+    return detect_cli.maintain_tools(bands)
 
 
 def invoke(argv: list[str], root: Path, env: dict[str, str], timeout: int) -> tuple:
@@ -1148,6 +1184,12 @@ def run_phase(args, env: dict[str, str]) -> int:
             return EXIT_FAILED
     else:
         prompt = f"/sdlc:{PHASE_COMMAND[phase]} {change_id}"
+        if phase == "f":
+            # the model writes the intent and the proposal and stops; the workflow's next
+            # step (detect/cli.py finish) dispatches the route with the project's runbook
+            # secrets in its own environment, runs gate (f) and opens the PR - nothing that
+            # touches a running system runs where the model runs (decisions 11 and 14)
+            prompt += " --diagnosis-only"
 
     argv = compose(
         claude=args.claude,
@@ -1186,6 +1228,12 @@ def run_phase(args, env: dict[str, str]) -> int:
     if code != 0 or not isinstance(data, dict) or data.get("is_error"):
         report_failed_run(root, change_dir, phase, data, raw, err, f"claude exited {code}")
         return EXIT_FAILED
+
+    if phase == "f":
+        record = commit_run_record(plugin_dir, root, change_id, phase) if cost is not None else None
+        _emit({"phase": phase, "change_id": change_id, "cost_usd": cost, "run_record": record,
+               "labels": labels, "setup": setup, "next": "detect/cli.py finish"})  # fmt: skip
+        return EXIT_OK
 
     review = validate_review(plugin_dir, root, change_id) if phase == "review" else None
     if phase == "review":

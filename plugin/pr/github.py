@@ -437,6 +437,53 @@ def label_actor(repo: str, number: int, label: str) -> dict[str, Any]:
     return _attempt(via_api, via_gh, actor=None)
 
 
+def issue_comments(repo: str, number: int, cwd: str | Path | None = None) -> dict[str, Any]:
+    """The comments on issue or pull request ``number``, oldest first: {'ok', 'comments',
+    'reason'}; each comment is {'author', 'body', 'at'} (``GET
+    /repos/{repo}/issues/{number}/comments``, paged like the label events). Read by the
+    dismissal of gate (f): the last comment by a person before the close is the reason."""
+
+    path = f"repos/{repo}/issues/{number}/comments"
+
+    def _shape(items: list[Any]) -> list[dict[str, Any]]:
+        out = []
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            user = item.get("user") if isinstance(item.get("user"), dict) else {}
+            out.append(
+                {
+                    "author": user.get("login"),
+                    "type": user.get("type"),
+                    "body": item.get("body") or "",
+                    "at": item.get("created_at"),
+                }
+            )
+        return out
+
+    def via_api() -> dict[str, Any]:
+        items, error = _get_pages(
+            f"{API_ROOT}/{path}?per_page={PER_PAGE}", MAX_EVENT_PAGES, overflow=EVENTS_OVERFLOW
+        )
+        if error:
+            return {"route": "api", "ok": False, "reason": error, "comments": []}
+        return {"route": "api", "ok": True, "reason": "", "comments": _shape(items)}
+
+    def via_gh() -> dict[str, Any]:
+        items: list[Any] = []
+        for page in range(1, MAX_EVENT_PAGES + 1):
+            data, error = _gh_json("api", f"{path}?per_page={PER_PAGE}&page={page}")
+            if error:
+                return {"route": "gh", "ok": False, "reason": error, "comments": []}
+            batch = data if isinstance(data, list) else []
+            items += batch
+            if len(batch) < PER_PAGE:
+                break
+        return {"route": "gh", "ok": True, "reason": "", "comments": _shape(items)}
+
+    return _attempt(via_api, via_gh, comments=[])
+
+
 def _create_pr_api(
     repo: str, base: str, head: str, title: str, body: str, draft: bool
 ) -> dict[str, Any]:

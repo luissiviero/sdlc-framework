@@ -42,7 +42,7 @@ NEEDS_HUMAN_COLOR = "D93F0B"  # orange-red: parked, waiting for a decision
 CHECK_RUN_NAME = "sdlc/{phase}"
 # the owner's labels: applied by a person, read by the release workflow and the next run,
 # never swept away when the gate label changes
-OWNER_LABELS = frozenset({c.RELEASE_APPROVED_LABEL, *c.UNPARK_LABELS})
+OWNER_LABELS = frozenset({c.RELEASE_APPROVED_LABEL, *c.UNPARK_LABELS, c.GO_LABEL})
 
 
 def _emit(obj: Any) -> None:
@@ -146,6 +146,12 @@ def cmd_upsert(args) -> int:
         ]
         remove = [lb for lb in carried if lb != label]
         add = [label] if label and label not in carried else []
+        if args.phase == "f" and c.INCIDENT_LABEL not in (found.get("labels") or []):
+            # the triage queue is the set of open intent PRs labelled incident (step 39)
+            github.ensure_label(
+                repo, c.INCIDENT_LABEL, "B60205", "SDLC phase (f): an incident intent", cwd=root
+            )
+            add.append(c.INCIDENT_LABEL)
         if add or remove:
             out["labels"] = github.set_labels(repo, int(number), add, remove, cwd=root)
         if args.ready:

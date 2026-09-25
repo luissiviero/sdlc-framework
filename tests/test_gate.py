@@ -1493,3 +1493,189 @@ def test_owner_actions_rejects_a_label_actor_that_is_the_automation_identity(pro
         if ch.name == "owner_actions"
     )  # fmt: skip
     assert "no owner label actor is recorded" in oa.reason
+
+
+# --- gate (f): the incident intent, the finding and its route (build guide steps 37 and 39;
+# --- decisions 14, 25, 26; plugin 0.2.19) ---------------------------------------------------------
+INCIDENT_INTENT = """# Intent: ci_test_failure_rate breached 3sigma (we1) on 2026-09-24
+Author: maintain run (phase f). Status: proposed. Change id: 0002. Entry route: incident abc.
+
+## Problem
+The CI test failure rate went from 0 to 1.0 on 2026-09-24.
+
+## Proposed outcome
+The flaky test is quarantined until its cause is fixed.
+
+## Affected users and systems
+CI of sample_pkg.
+
+## Constraints
+No test is edited.
+
+## Open questions
+none
+
+## Evidence
+we1 at 3sigma: mean 0.0, sigma 0.0, latest 1.0 on 2026-09-24; run https://x/runs/1.
+"""
+
+
+def _detection_record(tier: int = 3, rule: str = "we1") -> dict:
+    from detect import finding
+
+    verdict = {
+        "tier": tier,
+        "rules_hit": [rule],
+        "rule": rule,
+        "latest": {"at": "2026-09-24", "value": 1.0, "meta": {}},
+        "mean": 0.0,
+        "sigma": 0.0,
+        "sigmas": "inf",
+        "n_baseline": 20,
+        "n_tail": 8,
+        "window_days": 30,
+        "direction": "above",
+        "reason": "one point beyond 3 sigma",
+        "breach_start": "2026-09-24",
+    }
+    return finding.build_record(
+        metric="ci_test_failure_rate",
+        source="github-actions",
+        verdict=verdict,
+        observations=[],
+        action="propose",
+        failed_run_urls=["https://x/runs/1"],
+        commits=[],
+    )
+
+
+@pytest.fixture
+def maintain_project(tmp_path):
+    """Fixture copy initialised, and an incident change 0002 filed at phase (f) on its
+    sdlc/0002/a branch: the detection record, the intent and a pull_request proposal."""
+    from detect import finding
+
+    root, _change = _initialised_fixture(tmp_path)
+    git(root, "add", ".")
+    git(root, "commit", "-q", "-m", "change 0001 (as if merged)")
+    proc = run_py(
+        str(STATE_CLI), "new-change", "--root", str(root), "--title", "CI failure rate breach",
+        "--route", "incident", "--type", "fix", cwd=root,
+    )  # fmt: skip
+    assert proc.returncode == 0, proc.stderr
+    change = root / "changes" / "0002-ci-failure-rate-breach"
+    git(root, "checkout", "-q", "-b", "sdlc/0002/a")
+    st = status_mod.read_status(change)
+    st.set_phase("f")
+    status_mod.write_status(change, st)
+    finding.write(change / "evidence" / finding.DETECTION_FILE, _detection_record())
+    write(change / "intent.md", INCIDENT_INTENT)
+    write(
+        change / "evidence" / finding.PROPOSAL_FILE,
+        json.dumps({"schema_version": 1, "tier": 3, "route": "pull_request", "args": {},
+                    "rationale": "no runbook fits"}),
+    )  # fmt: skip
+    git(root, "add", ".")
+    git(root, "commit", "-q", "-m", "maintain(0002): diagnosis")
+    proc = run_py(
+        str(GATE_CLI), "start-run", "--root", str(root), "--id", "0002", "--phase", "f", cwd=root
+    )
+    assert proc.returncode == 0, proc.stderr
+    return root, change
+
+
+def test_gate_f_waits_for_the_owner_s_triage_with_the_finding_and_its_route(maintain_project):
+    root, change = maintain_project
+    result = gate.run_gate(root, "0002", "f")
+    assert result.result == "wait" and result.label == "sdlc:f-ready", result.reason
+    names = [ch.name for ch in result.checks]
+    assert names == ["limits", "artifacts", "design_scope", "guardrails", "risk_list",
+                     "detection", "route"]  # fmt: skip
+    detection = next(ch for ch in result.checks if ch.name == "detection")
+    assert detection.details["tier"] == 3 and detection.details["rule"] == "we1"
+    route = next(ch for ch in result.checks if ch.name == "route")
+    assert "this intent PR is the route" in route.reason
+    assert (change / "evidence" / "gate-f.json").is_file()
+    # the change stays at phase f: the owner's merge is gate (a) of this intent (decision 25)
+    assert status_mod.read_status(change).phase == "f"
+
+
+def test_gate_f_parks_on_an_intent_without_its_evidence_section(maintain_project):
+    root, change = maintain_project
+    write(change / "intent.md", INCIDENT_INTENT.split("## Evidence")[0])
+    git(root, "commit", "-q", "-am", "drop the evidence")
+    result = gate.run_gate(root, "0002", "f")
+    assert result.result == "park"
+    artifacts = next(ch for ch in result.checks if ch.name == "artifacts")
+    assert not artifacts.ok and "## Evidence" in artifacts.reason
+
+
+def test_gate_f_parks_on_a_dismissed_finding_and_on_a_logged_tier(maintain_project):
+    from detect import dismissals, finding
+
+    root, change = maintain_project
+    record = _detection_record()
+    path = dismissals.path_for(root)
+    dismissals.save(
+        path,
+        dismissals.add(dismissals.load(path), record["signature"], kind="detect",
+                       reason="known flaky suite", by="owner", change_id="0001"),
+    )  # fmt: skip
+    result = gate.run_gate(root, "0002", "f")
+    detection = next(ch for ch in result.checks if ch.name == "detection")
+    assert result.result == "park" and not detection.ok
+    assert "dismissed by owner" in detection.reason and "known flaky suite" in detection.reason
+    path.unlink()
+    finding.write(change / "evidence" / finding.DETECTION_FILE, _detection_record(1, "we3"))
+    git(root, "commit", "-q", "-am", "a 1 sigma record")
+    result = gate.run_gate(root, "0002", "f")
+    detection = next(ch for ch in result.checks if ch.name == "detection")
+    assert not detection.ok and "only logs" in detection.reason
+
+
+def test_gate_f_route_go_requested_parks_and_a_ran_runbook_passes(maintain_project):
+    root, change = maintain_project
+    proposal = change / "evidence" / "proposal.json"
+    write(
+        proposal,
+        json.dumps({"schema_version": 1, "tier": 3, "route": "runbook:rollback-deploy",
+                    "args": {}, "rationale": "a deploy in the window"}),
+    )  # fmt: skip
+    # the template lists rollback-deploy with authorization go and the fixture declares no
+    # runbook command: unsupported, so the proposal is refused with that reason
+    result = gate.run_gate(root, "0002", "f")
+    route = next(ch for ch in result.checks if ch.name == "route")
+    assert result.result == "park" and "no runbook named 'rollback-deploy'" in route.reason
+    write(
+        proposal,
+        json.dumps({"schema_version": 1, "tier": 3, "route": "runbook:revert-pr",
+                    "args": {"sha": "0" * 40}, "rationale": "commit x broke it"}),
+    )  # fmt: skip
+    result = gate.run_gate(root, "0002", "f")
+    route = next(ch for ch in result.checks if ch.name == "route")
+    assert not route.ok and "no evidence/runbook-revert-pr.json" in route.reason
+    record = change / "evidence" / "runbook-revert-pr.json"
+    write(record, json.dumps({"runbook": "revert-pr", "status": "go-requested"}))
+    result = gate.run_gate(root, "0002", "f")
+    route = next(ch for ch in result.checks if ch.name == "route")
+    assert not route.ok and "Go requested" in route.reason and "`sdlc:go`" in route.need
+    write(record, json.dumps({"runbook": "revert-pr", "status": "failed", "reason": "conflicts"}))
+    result = gate.run_gate(root, "0002", "f")
+    route = next(ch for ch in result.checks if ch.name == "route")
+    assert not route.ok and "conflicts" in route.reason
+    write(record, json.dumps({"runbook": "revert-pr", "status": "ran", "pr_url": "https://x/9"}))
+    git(root, "add", ".")
+    git(root, "commit", "-q", "-m", "route recorded")
+    result = gate.run_gate(root, "0002", "f")
+    route = next(ch for ch in result.checks if ch.name == "route")
+    assert route.ok and "https://x/9" in route.reason and result.result == "wait"
+
+
+def test_gate_f_parks_when_the_diagnosis_committed_source(maintain_project):
+    root, change = maintain_project
+    write(root / "sample_pkg" / "hotfix.py", "x = 1\n")
+    git(root, "add", ".")
+    git(root, "commit", "-q", "-m", "a fix the diagnosis must not make")
+    result = gate.run_gate(root, "0002", "f")
+    scope = next(ch for ch in result.checks if ch.name == "design_scope")
+    assert result.result == "park" and not scope.ok and "phase (f)" in scope.need

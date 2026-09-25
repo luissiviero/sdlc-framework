@@ -95,6 +95,9 @@ STEP_23_CHECKLIST = (
 )
 GATE_CHECKLIST = {
     "a": "read, correct via review comments, merge = approve (gate (a))",
+    "f": "triage (gate (f), decision 25): merge = fix now (gate (a) of this intent); label "
+    "`schedule` = later; close with a comment = dismiss the finding (the comment is the "
+    "recorded reason)",
     "b": "; ".join(STEP_23_CHECKLIST)
     + " Merge = approve; a review comment = change request (/sdlc-fix).",
     "c": "approving review + label sdlc:c-approved starts the test phase",
@@ -294,7 +297,7 @@ def _owner_line(gate_json: dict[str, Any] | None, phase: str) -> str:
             f'parked at gate ({phase}) - see "What I need from you" below; '
             "nobody was notified (decision 11)"
         )
-    if result == "wait" or phase == "a":  # gate (a) is the owner's merge in every profile
+    if result == "wait" or phase in ("a", "f"):  # (a) and (f) are human in every profile
         return GATE_CHECKLIST.get(phase, "the owner's review is the gate")
     return NOTHING_NEEDED
 
@@ -320,6 +323,70 @@ def _intent_bullets(intent: str, st: Status) -> list[str]:
         f"- **Affected users and systems**: {affected or 'not stated'}",
         f"- **Open questions**: {open_line}",
         f"- **What needs you**: {GATE_CHECKLIST['a']}",
+    ]
+
+
+def _incident_bullets(
+    intent: str, st: Status, change_dir: Path, gate_json: dict[str, Any] | None
+) -> list[str]:
+    """Phase (f): the incident intent PR the maintain loop opens (build guide steps 37 and
+    39). The finding, the diagnosis's proposed outcome, the route it took, and the triage
+    verbs of decision 25."""
+    from detect import finding, routes  # noqa: PLC0415
+
+    evidence = Path(change_dir) / art.EVIDENCE_DIR
+    record, why = finding.read_any(evidence)
+    if record and record.get("kind") == "scan":
+        where = record.get("file") or "?"
+        if record.get("line"):
+            where = f"{where}:{record['line']}"
+        found = (
+            f"security review ({record.get('class') or 'unclassified'}, "
+            f"{'bounded' if record.get('bounded') else 'wide'}): {record.get('summary')} "
+            f"at {where}"
+        )
+    elif record:
+        latest = record.get("latest") or {}
+        value = latest.get("value")
+        shown = f"{float(value):.3f}" if isinstance(value, (int, float)) else str(value)
+        mean = record.get("mean")
+        sigma = record.get("sigma")
+        band = (
+            f" (mean {float(mean):.3f}, sigma {float(sigma):.3f})"
+            if isinstance(mean, (int, float)) and isinstance(sigma, (int, float))
+            else ""
+        )
+        found = (
+            f"{record.get('metric')} at tier {record.get('tier')} ({record.get('rule')}): "
+            f"{shown} on {str(latest.get('at') or record.get('at'))[:10]}{band}"
+            + (", forced by a rehearsal" if record.get("forced") else "")
+        )
+    else:
+        found = f"no detection record ({why})"
+    outcome = _first_sentence(_section(intent, "## Proposed outcome")) or "not stated"
+    proposal, _why = routes.load_proposal(evidence / finding.PROPOSAL_FILE)
+    route_line = "no proposal yet"
+    if proposal:
+        route_line = proposal.route
+        if proposal.runbook:
+            outcome_path = evidence / f"runbook-{proposal.runbook}.json"
+            try:
+                data = json.loads(outcome_path.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                data = {}
+            status = str((data or {}).get("status") or "not run")
+            route_line += f" ({status}"
+            if (data or {}).get("pr_url"):
+                route_line += f", {data['pr_url']}"
+            route_line += ")"
+        elif proposal.route == routes.PULL_REQUEST:
+            route_line += " (this PR)"
+    return [
+        f"- **Finding**: {found}",
+        f"- **Proposed outcome**: {st.title}: {outcome}",
+        f"- **Route**: {route_line}",
+        f"- **Entry route**: {st.entry_route} route, {st.change_type} change",
+        f"- **What needs you**: {_owner_line(gate_json, 'f')}",
     ]
 
 
@@ -365,6 +432,19 @@ def _links_line(root: Path, change_dir: Path, change_id: str, phase: str) -> str
     rel_dir = str(Path(change_dir).relative_to(root)).replace("\\", "/")
     if phase == "a":  # spec, plan and the gate result do not exist yet
         targets = ["intent.md"]
+    elif phase == "f":  # the incident intent, the finding and the gate result
+        evidence = Path(change_dir) / art.EVIDENCE_DIR
+        record_name = (
+            "scan-finding.json"
+            if (evidence / "scan-finding.json").is_file()
+            and not (evidence / "detection.json").is_file()
+            else "detection.json"
+        )
+        targets = [
+            "intent.md",
+            f"{art.EVIDENCE_DIR}/{record_name}",
+            f"{art.EVIDENCE_DIR}/{art.GATE_RESULT.format(phase=phase)}",
+        ]
     else:
         targets = [*ARTIFACTS, f"{art.EVIDENCE_DIR}/{art.GATE_RESULT.format(phase=phase)}"]
     try:
@@ -432,6 +512,15 @@ def build_description(root: Path, change_id: str, phase: str) -> str:
     if phase == "a":
         bullets = _intent_bullets(intent, st)
         out = [" ".join(b.split()) for b in bullets]
+        out += ["", _links_line(root, change_dir, change_id, phase), "", _counters_line(st)]
+        return "\n".join(out) + "\n"
+    if phase == "f":
+        bullets = _incident_bullets(intent, st, change_dir, gate_json)
+        out = [" ".join(b.split()) for b in bullets]
+        if (gate_json or {}).get("result") == "park":
+            block = what_i_need_block(gate_json)
+            if block:
+                out += ["", block]
         out += ["", _links_line(root, change_dir, change_id, phase), "", _counters_line(st)]
         return "\n".join(out) + "\n"
 

@@ -1,0 +1,61 @@
+# The framework-level eval suite (build guide step 35; article p.30: a suite "that runs
+# whenever the agent's configuration changes"): this repository's evals/cases/ run against a
+# fixture project initialised with the plugin of the checkout, on every pull request that
+# changes the plugin and nightly. Not a template: a project gets sdlc-evals.yml instead.
+#
+# plugin/evals/run.py --fixture copies tests/fixtures/sample-python-project to a temporary
+# directory, runs /sdlc-init on it with this checkout as the plugin, and runs each case there
+# with the project's CLAUDE.md, hooks and settings in force (never --bare). The pass rate is
+# the job's verdict; the report is an artifact. Nothing is committed, nobody is notified.
+name: Framework evals
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "plugin/**"
+      - "template/**"
+      - "evals/**"
+  schedule:
+    - cron: "52 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: "framework-evals-${{ github.event.pull_request.head.ref || github.ref }}"
+  cancel-in-progress: false
+
+jobs:
+  evals:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+
+      - name: Install the pinned Claude Code CLI
+        run: npm install -g @anthropic-ai/claude-code@2.1.278
+
+      - name: Install the fixture's toolchain
+        run: python -m pip install pytest ruff
+
+      - name: Run the framework eval suite against the initialised fixture
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+        run: python plugin/evals/run.py --fixture --report evals-report.json
+
+      - name: Keep the report
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: framework-evals-report-${{ github.run_id }}
+          path: evals-report.json
+          if-no-files-found: ignore

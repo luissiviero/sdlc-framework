@@ -1,0 +1,88 @@
+# Phase (f): the owner's "Go" on an incident intent PR runs the runbook the diagnosis
+# proposed (build guide step 37; decisions 14 and 26; article p.49-50: "The rollback was
+# rehearsed in staging this morning; shall I run it?" - "Go.").
+#
+# Contract: docs/OPERATING_MODEL.md sections 4 (gate (f)), 4.2 and 6, article p.43-44 (a
+# route that touches a running system waits for a person; "the runbooks the agent may
+# trigger were approved in advance"). Installed into this project by /sdlc-init from the
+# framework's template/.github/workflows/; edit it here, not in the framework.
+#
+# A route whose bands.yaml authorization is `go` parks the incident PR with "Go requested"
+# (label sdlc:needs-human, "What I need from you"). Applying the label sdlc:go on that PR
+# is the Go: this job checks that a person applied it (never the workflow token or a
+# [bot]), runs the runbook once, records the actor in status.yaml (runbook_authorized_by),
+# removes the label (one application is one act, like the un-park labels of decision 24),
+# re-runs gate (f) and refreshes the PR. A pre-approved route never comes here: it ran in
+# the detect workflow. Not a phase run: no claude starts and no model credential is read; a
+# project runbook with a command runs with the repository's own secrets (add them to the
+# env: of the Go step below).
+#
+# Token rule: events caused by this workflow's GITHUB_TOKEN never start another workflow run
+# - only workflow_dispatch and repository_dispatch do. Your label fires this workflow
+# normally; the commits and the runbook's pull request start nothing.
+#
+# /sdlc-init filled in the framework repository.
+name: SDLC runbook (Go)
+
+on:
+  pull_request:
+    types: [labeled]
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+concurrency:
+  group: "sdlc-${{ github.event.pull_request.head.ref }}"
+  cancel-in-progress: false
+
+jobs:
+  go:
+    if: ${{ github.event.label.name == 'sdlc:go' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      # The incident PR's head: sdlc/<id>/a, which carries the detection record, the
+      # proposal and status.yaml.
+      - name: Check out the pull request's head
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+
+      - name: Read the framework pin from the default branch's sdlc.yaml
+        id: pin
+        env:
+          SDLC_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: python .github/scripts/sdlc_pin.py --ref "origin/$SDLC_DEFAULT_BRANCH"
+
+      - name: Check out the pinned framework (public repository, no token)
+        uses: actions/checkout@v5
+        with:
+          repository: "luissiviero/sdlc-framework"
+          ref: ${{ steps.pin.outputs.ref }}
+          path: framework
+
+      - name: Find the change this pull request carries
+        id: find
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          CHANGE_ID: ""
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: python framework/plugin/ci/run_phase.py --root . --plugin-dir framework --phase fix --id "$CHANGE_ID" --head-ref "$HEAD_REF" --repo "$REPO" --pr-number "$PR_NUMBER" --find-change
+
+      - name: "Install the project's own toolchain (sdlc.yaml: commands.setup)"
+        if: steps.find.outputs.change_id != ''
+        run: python framework/plugin/ci/project_setup.py --root .
+
+      - name: Go — run the proposed runbook once, as the label's actor authorized
+        if: steps.find.outputs.change_id != ''
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          CHANGE_ID: ${{ steps.find.outputs.change_id }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: python framework/plugin/detect/cli.py go --root . --id "$CHANGE_ID" --repo "$REPO" --pr-number "$PR_NUMBER"

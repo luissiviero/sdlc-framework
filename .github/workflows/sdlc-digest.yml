@@ -9,6 +9,10 @@
 # the body of one long-lived issue, which sends no notification. It holds no deploy secret
 # and needs no model credential.
 #
+# Since plugin 0.2.19 the digest ends with the counters of build guide step 42.2
+# (pr/counters.py: first-pass merge share, fix iterations, incidents, dismissals), computed
+# from the change folders of this checkout - no API, no model.
+#
 # Schedule note: cron is UTC, runs on the default branch, and an off-the-hour minute is less
 # delayed than :00. GitHub disables schedules in a public repository after 60 days without
 # activity; the workflow_dispatch trigger is how the owner re-enables it.
@@ -58,4 +62,4 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
-        run: python framework/plugin/pr/digest.py --repo "$REPO"
+        run: python framework/plugin/pr/digest.py --repo "$REPO" --root .

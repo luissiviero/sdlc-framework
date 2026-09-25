@@ -27,12 +27,19 @@ def test_labels():
     assert c.NEEDS_HUMAN_LABEL == "sdlc:needs-human"
     labels = c.all_labels()
     assert "sdlc:d-approved" in labels and "sdlc:needs-human" in labels
-    assert all(label.startswith("sdlc:") for label in labels)
+    # phase (f), decision 25: the triage queue's labels carry no prefix (the article's own
+    # "incident" and the owner's "schedule"); the Go authorization is the framework's
+    assert {"incident", "schedule", "sdlc:go"} <= set(labels)
+    assert all(
+        label.startswith("sdlc:") or label in (c.INCIDENT_LABEL, c.SCHEDULE_LABEL)
+        for label in labels
+    )
 
 
 def test_profiles_and_human_gates():
-    assert c.HUMAN_GATES["standard"] == {"a", "b", "e"}
-    assert c.HUMAN_GATES["full"] == {"a", "b", "c", "d", "e"}
+    # gate (f) is the owner's triage in every profile (decision 25; plugin 0.2.19)
+    assert c.HUMAN_GATES["standard"] == {"a", "b", "e", "f"}
+    assert c.HUMAN_GATES["full"] == {"a", "b", "c", "d", "e", "f"}
     assert "lite" not in c.HUMAN_GATES and c.PROFILES == ("standard", "full")
     # decision 21 (0.2.14): a file that still says lite reads as standard
     assert c.effective_profile("standard", "lite") == "standard"
@@ -94,6 +101,7 @@ def test_status_round_trip_and_schema(tmp_path):
         "iterations_reset_by",
         "iterations_reset_at",  # 0.2.17: the stamp of the last reset label
         "tests_unlocked_by",
+        "runbook_authorized_by",  # phase (f), decision 14 (plugin 0.2.19)
         "abandoned_reason",  # decision 25
         "created_at",
         "updated_at",
@@ -839,3 +847,23 @@ def test_commit_phase_on_a_named_branch(repo, capsys):
          "x", "--branch", "claude/missing"]
     )  # fmt: skip
     assert rc == 2 and "does not exist" in capsys.readouterr().err
+
+
+def test_read_status_on_the_default_branch_reads_a_merged_incident_as_gate_a(tmp_path):
+    """Decision 25 (plugin 0.2.19): an incident change stays at phase f on its branch and the
+    owner's merge of its intent PR is gate (a); on the default branch the file reads as gate
+    (a) passed with any park lifted, without a write (like gate (e), decision 13)."""
+    change_dir, st = status.new_change(
+        tmp_path, "CI breach", entry_route="incident", change_type="fix"
+    )
+    st.set_phase("f")
+    st.park("route: Go requested", phase="f")
+    status.write_status(change_dir, st)
+    before = (change_dir / "status.yaml").read_text(encoding="utf-8")
+    merged = status.read_status(change_dir, on_default_branch=True)
+    assert merged.phase == "f" and merged.parked_reason is None
+    assert (merged.gate.phase, merged.gate.result) == ("a", "passed")
+    assert "decision 25" in merged.gate.reason
+    assert (change_dir / "status.yaml").read_text(encoding="utf-8") == before
+    raw = status.read_status(change_dir)
+    assert raw.parked_reason == "route: Go requested" and raw.gate.result == "parked"

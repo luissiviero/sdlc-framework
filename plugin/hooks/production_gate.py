@@ -408,4 +408,4 @@ def decide(
 
 
 if __name__ == "__main__":
-    sys.exit(run_hook(decide, "PreToolUse", sys.argv[1:]))
+    sys.exit(run_hook(decide, "PreToolUse", sys.argv[1:], log=False))

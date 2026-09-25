@@ -70,11 +70,19 @@ maintain:
   # rate from the CI API — decision 15). Bands and the 3-sigma tiers arrive in B5.
   metric: {{MAINTAIN_METRIC}}
   source: {{MAINTAIN_SOURCE}}
-  # runbooks the 3-sigma tier may call; authorization: preapproved (CI-scoped, reversible)
-  # or go (touches a running system; waits for the owner's "Go" as a parked item)
-  # - name: rollback
-  #   authorization: go        # decision 26 (B5): a rollback runbook with rehearsed_at set by the owner is pre-approved on a declared production
-  #   rehearsed_at: null
+  # the project's own runbooks (plugin 0.2.19; plugin/detect/routes.py). bands.yaml names a
+  # route `runbook:<name>` with its authorization (decision 14: preapproved = CI-scoped and
+  # reversible, runs with no human in the path; go = touches a running system, parks the
+  # incident PR with "Go" requested until the owner applies sdlc:go). The plugin ships
+  # quarantine-flaky-test and revert-pr; an entry here adds a `command` (no shell; steps
+  # joined by &&, run on the runner with the repository's own secrets) under that name.
+  # A `go` here is stricter than the bands' value and wins. Decision 26: on a project with
+  # deploy.production: true, a runbook whose name contains "rollback" and whose
+  # rehearsed_at is a date the owner set after a staging rehearsal is pre-approved.
+  # - name: rollback-deploy
+  #   command: "python scripts/rollback.py"
+  #   authorization: go
+  #   rehearsed_at: null       # e.g. 2026-09-24, set by you after the rehearsal
   runbooks: []
 
 # --- risk list (build guide step 5; a hit parks the change at its next gate) ---------------

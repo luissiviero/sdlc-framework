@@ -309,16 +309,42 @@ def log_decision(
         return None
 
 
-def run_hook(decide, event: str, argv: list[str] | None = None) -> int:
+def _hook_name(decide) -> str:
+    """The hook's name for the log: its module, or the script's file name when the hook runs
+    as ``__main__`` (the exec form of hooks.json: ``python <script>``)."""
+    module = str(getattr(decide, "__module__", "") or "")
+    if module in ("", "__main__"):
+        return Path(sys.argv[0]).stem or "hook"
+    return module.rsplit(".", 1)[-1]
+
+
+def run_hook(decide, event: str, argv: list[str] | None = None, *, log: bool = True) -> int:
     """Standard main: read stdin, decide, emit. Any exception => fail closed (exit 2) for
-    PreToolUse, fail open (exit 0 with a note on stderr) for PostToolUse."""
+    PreToolUse, fail open (exit 0 with a note on stderr) for PostToolUse.
+
+    Every decision is one line of the hook log (build guide step 41.1; article p.39: "Every
+    hook decision is written ... with a timestamp and an allow or block verdict"): the hook's
+    name, the verdict, the reason, the tool and its target path(s). A hook that logs itself
+    with a path it computed under its own time budget (the production gate) passes
+    ``log=False``. The log never changes a verdict (``log_decision`` never raises).
+    """
     try:
         payload = read_payload()
         decision = decide(payload, argv or [])
+        if log:
+            log_decision(
+                _hook_name(decide),
+                "block" if decision.block else "allow",
+                decision.reason,
+                payload,
+                paths=target_paths(payload.get("tool_input") or {}),
+            )
         return emit(decision, event)
     except Exception as exc:  # noqa: BLE001
         if event == "PreToolUse":
             reason = f"{decide.__module__} hook failed closed: {exc!r}"
+            if log:
+                log_decision(_hook_name(decide), "block", reason, locals().get("payload") or {})
             sys.stdout.write(_deny_json(reason))
             sys.stderr.write(reason)
             return 2

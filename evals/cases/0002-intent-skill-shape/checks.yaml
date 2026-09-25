@@ -1,0 +1,10 @@
+# The framework-level suite (build guide step 35). The intent-template skill fixes the shape
+# of intent.md (build guide step 10; article p.10-11).
+description: an idea captured with the intent-template skill has the template's shape
+tools: "Read,Glob,Write"
+max_turns: 10
+budget_usd: 0.5
+timeout_seconds: 300
+checks:
+  - file: "changes/0001-percent-helper/intent.md"
+    contains: ["# Intent:", "## Problem", "## Proposed outcome", "## Open questions", "Entry route:"]

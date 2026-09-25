@@ -53,6 +53,13 @@ def labels_of(pr: dict[str, Any]) -> list[str]:
     return out
 
 
+def incident_prs(prs: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Open PRs carrying ``incident`` and no gate label: the runbook PRs a 3σ route opened
+    (a revert, a quarantine) and the dismissal PRs of gate (f), which decision 20 lets the
+    owner find only here (the incident intent PRs carry a gate label and are queue items)."""
+    return [pr for pr in prs if c.INCIDENT_LABEL in labels_of(pr) and not sdlc_labels(pr)]
+
+
 def sdlc_labels(pr: dict[str, Any]) -> list[str]:
     return [lb for lb in labels_of(pr) if lb.startswith(c.LABEL_PREFIX)]
 
@@ -84,20 +91,26 @@ def _line(pr: dict[str, Any]) -> str:
     return f"{line}\n  - {bullet}" if bullet else line
 
 
-def render_digest(prs: list[dict[str, Any]], now: str) -> str:
-    """The digest markdown. Parked first, then the phase-ready queue by phase letter."""
+def render_digest(prs: list[dict[str, Any]], now: str, counters: str = "") -> str:
+    """The digest markdown. Parked first, then the phase-ready queue by phase letter, then
+    the counters section (build guide step 42.2, ``pr/counters.py``) when the caller gives
+    one."""
     queue = [pr for pr in prs if sdlc_labels(pr)]
     parked = [pr for pr in queue if c.NEEDS_HUMAN_LABEL in sdlc_labels(pr)]
     ready = [pr for pr in queue if pr not in parked]
     ready.sort(key=lambda pr: (_phase_of(sdlc_labels(pr)), pr.get("number") or 0))
+    incidents = incident_prs(prs)
     out = [f"# {ISSUE_TITLE} — {now[:10]}", ""]
     out.append(
-        f"{len(parked)} parked, {len(ready)} waiting at a gate. "
-        "Nothing here notified you; this issue is rewritten once a day (decision 20)."
+        f"{len(parked)} parked, {len(ready)} waiting at a gate"
+        + (f", {len(incidents)} runbook or dismissal PR(s) of phase (f)" if incidents else "")
+        + ". Nothing here notified you; this issue is rewritten once a day (decision 20)."
     )
     out.append("")
-    if not parked and not ready:
+    if not parked and not ready and not incidents:
         out.append(NOTHING_WAITING)
+        if counters:
+            out += ["", counters.rstrip("\n")]
         return "\n".join(out) + "\n"
     if parked:
         out += [f"## Parked — `{c.NEEDS_HUMAN_LABEL}`", ""]
@@ -107,6 +120,12 @@ def render_digest(prs: list[dict[str, Any]], now: str) -> str:
         out += ["## Waiting at a human gate", ""]
         out += [_line(pr) for pr in ready]
         out.append("")
+    if incidents:
+        out += [f"## Phase (f): runbook and dismissal PRs — `{c.INCIDENT_LABEL}`", ""]
+        out += [_line(pr) for pr in sorted(incidents, key=lambda pr: pr.get("number") or 0)]
+        out.append("")
+    if counters:
+        out += [counters.rstrip("\n"), ""]
     out.append(f"Generated {now}.")
     return "\n".join(out) + "\n"
 
@@ -122,7 +141,7 @@ def list_queue_prs(repo: str) -> tuple[list[dict[str, Any]], str]:
     if result["error"]:
         return [], result["error"]
     items = result["data"] if isinstance(result["data"], list) else []
-    return [pr for pr in items if sdlc_labels(pr)], ""
+    return [pr for pr in items if sdlc_labels(pr) or c.INCIDENT_LABEL in labels_of(pr)], ""
 
 
 def publish(repo: str, markdown: str) -> dict[str, Any]:
@@ -144,6 +163,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--repo", required=True, help="owner/name")
     parser.add_argument("--dry-run", action="store_true", help="print the markdown, touch nothing")
     parser.add_argument("--input", help="a JSON file with the PR list, instead of the API")
+    parser.add_argument(
+        "--root", default=None, help="the project checkout: adds the counters section (step 42.2)"
+    )
     args = parser.parse_args(argv)
 
     error = ""
@@ -159,7 +181,12 @@ def main(argv: list[str] | None = None) -> int:
     else:
         prs, error = list_queue_prs(args.repo)
 
-    markdown = render_digest(prs, _now())
+    counters_md = ""
+    if args.root:
+        from pr import counters  # noqa: PLC0415
+
+        counters_md = counters.render(counters.collect(Path(args.root).resolve()))
+    markdown = render_digest(prs, _now(), counters_md)
     if args.dry_run:
         print(markdown, end="")
         return 0
