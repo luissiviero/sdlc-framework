@@ -24,7 +24,7 @@ The files below were the input to the first build session; that session's brief 
 
 | File | What it is | Used by |
 |---|---|---|
-| `HANDOFF.md` | Brief for the **next** build session (now: session 5, B5 and decision 26); earlier briefs are kept in `docs/handoffs/` | the session |
+| `HANDOFF.md` | Brief for the **next** session (now: session 6, the phase (f) shakedown — every build stage is built); earlier briefs are kept in `docs/handoffs/` | the session |
 | `CLAUDE.md` | Conventions for this repo (English only, Python hooks, plugin/template layout) | every session |
 | `docs/OPERATING_MODEL.md` | The contract: phases, artifacts, profiles, gates, park-never-page, conventions (draft to finalise in step 1) | the framework itself |
 | `docs/DECISIONS.md` | The 26 settled decisions with alternatives and reasons (21–26 added 2026-09-23) | sessions, to avoid reopening them |
@@ -36,4 +36,4 @@ The files below were the input to the first build session; that session's brief 
 
 Testing: layer 1 = self-tests without a project or a model; layer 2 = a fixture project inside the repo (`tests/fixtures/sample-python-project/`) for integration tests of `/sdlc-init` and the phase commands; layer 3 = evals and shakedown on a real project (B5). See the current `HANDOFF.md` and `docs/PROGRESS.md`.
 
-Sessions after the first: write a new `HANDOFF.md` per build stage (B2 … B5) from `docs/PROGRESS.md`, keeping the same structure, and move the previous brief to `docs/handoffs/`.
+Sessions after the first: write a new `HANDOFF.md` per session (B2 … B5, then the shakedown sessions) from `docs/PROGRESS.md`, keeping the same structure, and move the previous brief to `docs/handoffs/`.
