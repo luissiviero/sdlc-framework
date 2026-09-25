@@ -21,7 +21,9 @@ Run tests and lint before reporting any task complete, and paste the output. If 
 - `plugin/agents/`: verifier, code-simplifier, researcher, adversarial-reviewer (all "report only, do not fix")
 - `plugin/hooks/`: protected paths (incl. self-protection), formatter/lint on edit, secrets check, test-file lock for fix tasks, production gate
 - `plugin/gate/`: the confidence gate (deterministic checks + adversarial reviewer) and run limits
-- plugin/detect/: phase (f) — detection statistics, bands, routes and runbooks, the dismissal store, the maintain CLI- plugin/evals/: the eval runner and the incident case skeleton- plugin/scan/: the weekly security review and the deterministic scanners
+- plugin/detect/: phase (f) — detection statistics, bands, routes and runbooks, the dismissal store, the maintain CLI
+- plugin/evals/: the eval runner and the incident case skeleton
+- plugin/scan/: the weekly security review and the deterministic scanners
 - `template/`: CLAUDE.md skeleton, REVIEW.md, sdlc.yaml, changes/, bands.yaml, evals/, lessons/, CI workflows (phase transitions, daily digest, detection, runbook Go, weekly scan, evals)
 - `docs/reference/`: the source article (PDF, page-tagged text, dependency graph). Cite it by PDF page.
 
