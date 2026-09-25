@@ -14,6 +14,7 @@ import json
 import shutil
 import subprocess
 import sys
+import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -212,8 +213,18 @@ class FakeSource:
         self.error: str | None = None
         self.calls: list[dict[str, Any]] = []
 
-    def fetch(self, repo, *, since, cache=None, workflow=None, **_kw) -> source.FetchResult:
-        self.calls.append({"repo": repo, "since": since, "cache": cache, "workflow": workflow})
+    def fetch(
+        self, repo, *, since, cache=None, workflow=None, excluded_actors=None, **_kw
+    ) -> source.FetchResult:
+        self.calls.append(
+            {
+                "repo": repo,
+                "since": since,
+                "cache": cache,
+                "workflow": workflow,
+                "excluded_actors": excluded_actors,
+            }
+        )
         if self.error:
             raise source.SourceError(self.error)
         return source.FetchResult(
@@ -322,6 +333,10 @@ def test_run_below_tier_2_only_logs(tmp_path, src, gh, capsys, monkeypatch, make
         {},
     )
     assert src.calls and src.calls[0]["repo"] == REPO
+    # D12: the source is told which actor's runs are not observations: the workflow token's
+    # login, whose zero-job runs are the ghosts (never sdlc.yaml's automation_identity)
+    assert src.calls[0]["excluded_actors"] == source.DEFAULT_EXCLUDED_ACTORS
+    assert list(src.calls[0]["excluded_actors"]) == ["github-actions[bot]"]
     [line] = log.read_text(encoding="utf-8").splitlines()
     entry = json.loads(line)
     assert {"tier", "rule", "at", "outcome"} <= set(entry)
@@ -334,6 +349,25 @@ def test_run_below_tier_2_only_logs(tmp_path, src, gh, capsys, monkeypatch, make
     assert gitops.current_branch(root) == "main"
     assert not remote_has(root, "sdlc/0001/a")
     assert not git(root, "branch", "--list", "sdlc/*").strip()
+
+
+def test_run_excludes_the_token_s_login_whatever_the_automation_identity(tmp_path, src, gh, capsys):
+    """D12: the zero-job runs are caused by the workflow token, so they are by its login; an
+    automation_identity set to a PAT or App identity names real test runs, which stay in."""
+    root = project(tmp_path)
+    path = root / "sdlc.yaml"
+    path.write_text(
+        path.read_text(encoding="utf-8") + "\nautomation_identity:\n  - ci-bot\n",
+        encoding="utf-8",
+    )
+    assert detect_cli._config(root)["automation_identity"] == ["ci-bot"]
+    src.observations = series(16)
+    code, out = cli(capsys, "run", "--root", str(root), "--repo", REPO)
+    assert code == 0, out
+    assert out["tier"] == 0
+    [call] = src.calls
+    assert call["excluded_actors"] == source.DEFAULT_EXCLUDED_ACTORS
+    assert "ci-bot" not in call["excluded_actors"]
 
 
 def test_run_twice_appends_one_line_per_run(tmp_path, src, gh, capsys):
@@ -1271,3 +1305,294 @@ def test_approved_files_without_a_remote_reads_the_checkout(tmp_path, monkeypatc
     _cfg, bands, where = detect_cli.approved_files(root, {})
     assert where == "the checkout"
     assert bands.metric == METRIC
+
+
+# --- the approved sdlc.yaml decides who is a person (session-6 review finding) --------------
+OWNER_AS_AUTOMATION = "\nautomation_identity:\n  - the-owner\n"
+
+
+def list_owner_as_automation_on_main(root: Path) -> None:
+    """Commit ``automation_identity: [the-owner]`` on the bare remote's main from a
+    temporary clone, then fetch, so ``origin/main`` carries it and the checkout does not."""
+    clone = root.parent / "main-clone"
+    git(root.parent, "clone", "-q", "-b", "main", str(bare(root)), str(clone))
+    git(clone, "config", "user.email", "owner@example.com")
+    git(clone, "config", "user.name", "Owner")
+    path = clone / "sdlc.yaml"
+    path.write_text(path.read_text(encoding="utf-8") + OWNER_AS_AUTOMATION, encoding="utf-8")
+    git(clone, "commit", "-q", "-am", "the owner's login is the automation identity")
+    git(clone, "push", "-q", "origin", "main")
+    git(root, "fetch", "-q", "origin")
+    assert "the-owner" in git(root, "show", "origin/main:sdlc.yaml")
+    assert "the-owner" not in (root / "sdlc.yaml").read_text(encoding="utf-8")
+
+
+def list_owner_as_automation_in_the_checkout(root: Path) -> None:
+    """An uncommitted edit of the checkout's (the PR head's) sdlc.yaml only."""
+    path = root / "sdlc.yaml"
+    path.write_text(path.read_text(encoding="utf-8") + OWNER_AS_AUTOMATION, encoding="utf-8")
+    assert "the-owner" not in git(root, "show", "origin/main:sdlc.yaml")
+
+
+def go(capsys, root: Path) -> tuple[int, dict[str, Any] | None]:
+    return cli(
+        capsys, "go", "--root", str(root), "--id", "0001", "--repo", REPO, "--pr-number", "12"
+    )
+
+
+@pytest.mark.parametrize("listed_on", ["head", "main"])
+def test_go_reads_the_automation_identity_from_the_default_branch(
+    rollback_incident, gh, spy, capsys, listed_on
+):
+    """The Go step holds the runbook secrets: the PR head's sdlc.yaml cannot rename the
+    automation identity. Listed in the head's copy only, the owner's label still counts;
+    listed on origin/main, the same login is not a person and nothing runs."""
+    root, change = rollback_incident
+    write_proposal(change, "runbook:rollback-deploy")
+    code, out = cli(capsys, "dispatch", "--root", str(root), "--id", "0001", "--repo", REPO)
+    assert code == 0 and out["outcome"]["status"] == "go-requested", out
+    gh.actor = {"ok": True, "actor": "the-owner", "reason": ""}
+    if listed_on == "head":
+        list_owner_as_automation_in_the_checkout(root)
+        code, out = go(capsys, root)
+        assert code == 0, out
+        assert (out["performed"], out["actor"]) == (True, "the-owner"), out
+        assert len(spy.calls) == 1
+        # the runbook runs with the approved config, not the checkout's
+        assert "automation_identity" not in spy.calls[0][1]["config"]
+        assert len(gh.named("set_labels")) == 1
+    else:
+        list_owner_as_automation_on_main(root)
+        code, out = go(capsys, root)
+        assert code == 0, out
+        assert out["performed"] is False
+        assert "not by a person" in out["reason"]
+        assert spy.calls == []
+        assert gh.named("set_labels") == []  # the label is left where it is
+        assert status_mod.read_status(change).runbook_authorized_by is None
+
+
+@pytest.mark.parametrize("listed_on", ["head", "main"])
+def test_dismiss_reads_the_automation_identity_from_the_default_branch(
+    incident, gh, capsys, listed_on
+):
+    root, _change = incident
+    gh.comments = {
+        "ok": True,
+        "reason": "",
+        "comments": [{"author": "the-owner", "type": "User", "body": "a runner outage"}],
+    }
+    if listed_on == "head":
+        list_owner_as_automation_in_the_checkout(root)
+    else:
+        list_owner_as_automation_on_main(root)
+    code, out = cli(
+        capsys, "dismiss", "--root", str(root), "--id", "0001", "--repo", REPO, "--pr-number", "12"
+    )
+    assert code == 0, out
+    if listed_on == "head":
+        assert out["dismissed"] is True, out
+        assert (out["reason"], out["by"]) == ("a runner outage", "the-owner")
+    else:
+        assert out["dismissed"] is False
+        assert "no comment by a person" in out["reason"]
+        assert not git(root, "branch", "--list", "sdlc/0001/dismiss").strip()
+
+
+def test_dismiss_strips_the_github_tool_footer_from_the_reason(incident, gh, capsys):
+    """A comment posted through a cloud session's GitHub tools ends with an attribution
+    footer; it is not part of the reason, and a comment that is only the footer is skipped."""
+    root, _change = incident
+    footer = "---\n_Generated by [Claude Code](https://claude.ai/code)_\n"
+    gh.comments = {
+        "ok": True,
+        "reason": "",
+        "comments": [
+            {
+                "author": "the-owner",
+                "type": "User",
+                "body": "flaky runner, not the code\n\n" + footer,
+            },
+        ],
+    }
+    argv = ["dismiss", "--root", str(root), "--id", "0001", "--repo", REPO, "--pr-number", "12"]
+    code, out = cli(capsys, *argv, "--dry-run")
+    assert code == 0, out
+    assert (out["reason"], out["by"]) == ("flaky runner, not the code", "the-owner")
+    gh.comments["comments"] = [
+        {"author": "the-owner", "type": "User", "body": "a runner outage on the 16th"},
+        {"author": "a-reviewer", "type": "User", "body": "\n" + footer},
+    ]
+    code, out = cli(capsys, *argv, "--dry-run")
+    assert code == 0, out
+    assert (out["reason"], out["by"]) == ("a runner outage on the 16th", "the-owner")
+
+
+@pytest.mark.parametrize(
+    ("body", "reason"),
+    [
+        (  # Windows line ends
+            "flaky runner\r\n\r\n---\r\n_Generated by [Claude Code](https://claude.ai/code)_\r\n",
+            "flaky runner",
+        ),
+        (  # the session-link line the same tools add, after a blank line
+            "flaky runner\n\n---\n\U0001f916 Generated with [Claude Code]"
+            "(https://claude.com/claude-code)\n\nhttps://claude.ai/code/session_x\n",
+            "flaky runner",
+        ),
+        (  # ... and right after the footer line
+            "flaky runner\n---\n_Generated by [Claude Code](https://claude.ai/code)_\n"
+            "https://claude.ai/code/session_x",
+            "flaky runner",
+        ),
+        (  # a person's own rule and "Generated by" line are part of the reason
+            "False alarm.\n---\nGenerated by the nightly load test, not a regression.",
+            "False alarm. --- Generated by the nightly load test, not a regression.",
+        ),
+    ],
+)
+def test_dismiss_strips_only_the_tool_footer_from_the_reason(incident, gh, capsys, body, reason):
+    root, _change = incident
+    gh.comments = {
+        "ok": True,
+        "reason": "",
+        "comments": [{"author": "the-owner", "type": "User", "body": body}],
+    }
+    argv = ["dismiss", "--root", str(root), "--id", "0001", "--repo", REPO, "--pr-number", "12"]
+    code, out = cli(capsys, *argv, "--dry-run")
+    assert code == 0, out
+    assert (out["reason"], out["by"]) == (reason, "the-owner")
+
+
+def test_the_tool_footer_pattern_is_linear_on_a_long_run_of_newlines():
+    """The earlier pattern's leading whitespace group took ~35 s on a 65k-character comment."""
+    body = "\n" * 20000 + "---\n_Generated by [Claude Code](https://claude.ai/code)_\n"
+    start = time.perf_counter()
+    text = detect_cli.TOOL_FOOTER_RE.sub("", "\n" + body.rstrip())
+    assert time.perf_counter() - start < 1.0
+    assert not text.strip()
+
+
+def test_go_fails_closed_when_the_default_branch_copy_is_unreadable(
+    rollback_incident, gh, spy, capsys, monkeypatch
+):
+    """With a remote, go reads sdlc.yaml from origin/<default> only, refreshed from the remote
+    first: when the remote has no such branch the fetch fails, and nothing runs and the label
+    is left, even though the checkout holds a local ref of that name (a session could have
+    written one) - never the PR head's copy, never what the checkout has."""
+    root, change = rollback_incident
+    write_proposal(change, "runbook:rollback-deploy")
+    code, out = cli(capsys, "dispatch", "--root", str(root), "--id", "0001", "--repo", REPO)
+    assert code == 0 and out["outcome"]["status"] == "go-requested", out
+    monkeypatch.setenv("SDLC_DEFAULT_BRANCH", "nope")
+    assert not remote_has(root, "nope")
+    git(root, "update-ref", "refs/remotes/origin/nope", "refs/remotes/origin/main")
+    gh.actor = {"ok": True, "actor": "the-owner", "reason": ""}
+    code, out = go(capsys, root)
+    assert code == 0, out
+    assert out["performed"] is False
+    assert out["reason"].startswith("sdlc.yaml:"), out
+    assert "could not be refreshed from origin" in out["reason"]
+    assert spy.calls == []
+    assert gh.named("set_labels") == []
+    assert status_mod.read_status(change).runbook_authorized_by is None
+
+
+# --- the approved copies are the remote's, whatever the checkout's refs say (session 7) ------
+def commit_owner_as_automation_locally(root: Path) -> str:
+    """A local commit (never pushed) whose sdlc.yaml lists the owner as the automation
+    identity; its sha."""
+    path = root / "sdlc.yaml"
+    path.write_text(path.read_text(encoding="utf-8") + OWNER_AS_AUTOMATION, encoding="utf-8")
+    git(root, "commit", "-q", "-m", "not approved", "--", "sdlc.yaml")
+    sha = git(root, "rev-parse", "HEAD").strip()
+    assert "the-owner" in git(root, "show", f"{sha}:sdlc.yaml")
+    return sha
+
+
+def test_approved_files_refreshes_a_locally_rewritten_remote_ref(incident):
+    """``git update-ref refs/remotes/origin/main <commit>`` in the checkout (the maintain
+    session holds Bash(git *)) is undone by the fetch before the read."""
+    root, _change = incident
+    sha = commit_owner_as_automation_locally(root)
+    git(root, "update-ref", "refs/remotes/origin/main", sha)
+    assert "the-owner" in git(root, "show", "refs/remotes/origin/main:sdlc.yaml")
+    cfg, bands, where = detect_cli.approved_files(root, {"automation_identity": ["x"]})
+    assert where == "refs/remotes/origin/main"
+    assert "automation_identity" not in cfg
+    assert bands.metric == METRIC
+    remote_main = git(bare(root), "rev-parse", "main").strip()
+    assert git(root, "rev-parse", "refs/remotes/origin/main").strip() == remote_main
+
+
+def test_approved_files_ignores_a_tag_named_like_the_remote_ref(incident):
+    """``git tag origin/main <commit>``: the short refname resolves the tag first (git only
+    warns "refname is ambiguous"); the fully qualified ref is read instead."""
+    root, _change = incident
+    sha = commit_owner_as_automation_locally(root)
+    git(root, "tag", "origin/main", sha)
+    assert "the-owner" in git(root, "show", "origin/main:sdlc.yaml")  # the shadow is real
+    cfg, _bands, _where = detect_cli.approved_files(root, {})
+    assert "automation_identity" not in cfg
+
+
+def test_approved_files_refuses_an_sdlc_yaml_that_is_not_a_mapping(tmp_path):
+    root = project(tmp_path)
+    (root / "sdlc.yaml").write_text("- a list\n- not a mapping\n", encoding="utf-8")
+    git(root, "commit", "-q", "-am", "sdlc.yaml is a list")
+    git(root, "push", "-q", "origin", "main")
+    with pytest.raises(bands_mod.BandsError, match="not a mapping"):
+        detect_cli.approved_files(root, {"automation_identity": ["x"]})
+
+
+def test_dispatch_runs_the_runbook_with_the_default_branch_config(incident, spy, capsys):
+    root, change = incident
+    write_proposal(change, "runbook:revert-pr", args={"sha": "a" * 40})
+    list_owner_as_automation_in_the_checkout(root)
+    code, out = cli(capsys, "dispatch", "--root", str(root), "--id", "0001")
+    assert code == 0, out
+    assert out["acted"] is True, out
+    [(call_args, call_kwargs)] = spy.calls
+    assert call_args[0] == "revert-pr"
+    assert call_kwargs["config"] and "automation_identity" not in call_kwargs["config"]
+
+
+def test_finish_runs_the_runbook_with_the_default_branch_config(incident, gh, spy, capsys):
+    root, change = incident
+    write_proposal(change, "runbook:revert-pr", args={"sha": "a" * 40})
+    list_owner_as_automation_in_the_checkout(root)
+    _code, out = cli(capsys, "finish", "--root", str(root), "--id", "0001", "--repo", REPO)
+    assert out["dispatch"]["acted"] is True, out
+    [(call_args, call_kwargs)] = spy.calls
+    assert call_args[0] == "revert-pr"
+    assert call_kwargs["config"] and "automation_identity" not in call_kwargs["config"]
+
+
+@pytest.mark.parametrize("command", ["go", "dismiss"])
+def test_a_malformed_head_sdlc_yaml_does_not_stop_go_or_dismiss(
+    rollback_incident, gh, spy, capsys, command
+):
+    """The head's sdlc.yaml is not the one that decides: malformed, it is ignored."""
+    root, change = rollback_incident
+    write_proposal(change, "runbook:rollback-deploy")
+    code, out = cli(capsys, "dispatch", "--root", str(root), "--id", "0001", "--repo", REPO)
+    assert code == 0 and out["outcome"]["status"] == "go-requested", out
+    (root / "sdlc.yaml").write_text("- not\n- a mapping\n", encoding="utf-8")
+    with pytest.raises(SystemExit):
+        detect_cli._config(root)
+    gh.actor = {"ok": True, "actor": "the-owner", "reason": ""}
+    gh.comments = {
+        "ok": True,
+        "reason": "",
+        "comments": [{"author": "the-owner", "type": "User", "body": "a runner outage"}],
+    }
+    if command == "go":
+        code, out = go(capsys, root)
+        assert code == 0 and out["performed"] is True, out
+        assert len(spy.calls) == 1
+    else:
+        code, out = cli(
+            capsys, "dismiss", "--root", str(root), "--id", "0001", "--repo", REPO,
+            "--pr-number", "12", "--dry-run",
+        )  # fmt: skip
+        assert code == 0 and out["reason"] == "a runner outage", out

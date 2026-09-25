@@ -18,7 +18,7 @@ import sys
 from pathlib import Path
 
 import pytest
-from ci import auth, run_phase
+from ci import auth, project_setup, run_phase
 
 from gate import preflight
 from state import status as status_mod
@@ -1444,6 +1444,89 @@ def test_project_setup_with_no_command_is_skipped_not_failed(project):
     proc = run_py(str(PROJECT_SETUP), "--root", str(root), cwd=root)
     assert proc.returncode == 0
     assert json.loads(proc.stdout) == {"skipped": "no setup command"}
+
+
+def test_project_setup_reads_the_command_from_the_given_ref(project):
+    """The runbook workflow checks out the incident PR's head and passes
+    ``--ref refs/remotes/origin/<default>``: the committed command runs, never the working
+    tree's. The uncommitted edit is not a changed file either: the outside-changes/ check
+    compares commits."""
+    root, _change = project
+    write(root / "install_a.py", "open('ran-a', 'w').close()\nprint('installed a')\n")
+    write(root / "install_b.py", "open('ran-b', 'w').close()\nprint('installed b')\n")
+    set_setup_command(root, f'"{sys.executable}" install_a.py')
+    git(root, "add", "sdlc.yaml", "install_a.py", "install_b.py")
+    git(root, "commit", "-q", "-m", "setup command A")
+    set_setup_command(root, f'"{sys.executable}" install_b.py')  # the head's edit, uncommitted
+    proc = run_py(str(PROJECT_SETUP), "--root", str(root), "--ref", "main", cwd=root)
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    out = json.loads(proc.stdout)
+    assert out["ref"] == "main" and out["ok"] is True
+    assert "install_a.py" in out["command"] and "installed a" in out["output"]
+    assert (root / "ran-a").is_file() and not (root / "ran-b").exists()
+
+
+def test_project_setup_with_an_unreadable_ref_fails_closed(project):
+    """No fallback to the checkout's copy: an unreadable ref runs nothing."""
+    root, _change = project
+    write(root / "install.py", "open('ran', 'w').close()\n")
+    set_setup_command(root, f'"{sys.executable}" install.py')
+    proc = run_py(str(PROJECT_SETUP), "--root", str(root), "--ref", "no-such-ref", cwd=root)
+    assert proc.returncode == 1, proc.stdout + proc.stderr
+    out = json.loads(proc.stdout)
+    assert "sdlc.yaml at no-such-ref could not be read" in out["error"]
+    assert not (root / "ran").exists()
+
+
+def test_project_setup_with_a_ref_refuses_a_head_that_changed_files_outside_changes(project):
+    """The approved command still runs in the head's tree (review of 2026-09-25): a head
+    that changed a file outside changes/ relative to the ref runs nothing."""
+    root, _change = project
+    write(root / "install.py", "open('ran', 'w').close()\n")
+    set_setup_command(root, f'"{sys.executable}" install.py')
+    git(root, "add", "sdlc.yaml", "install.py")
+    git(root, "commit", "-q", "-m", "setup command")
+    git(root, "checkout", "-q", "-b", "sdlc/0001/a")
+    write(root / "src" / "x.py", "print('planted')\n")
+    write(root / "changes" / "0001-percent-helper" / "intent.md", "# Intent\n")
+    git(root, "add", "src/x.py", "changes/0001-percent-helper/intent.md")
+    git(root, "commit", "-q", "-m", "head change")
+    proc = run_py(str(PROJECT_SETUP), "--root", str(root), "--ref", "main", cwd=root)
+    assert proc.returncode == 1, proc.stdout + proc.stderr
+    out = json.loads(proc.stdout)
+    assert "changed files outside changes/ relative to main: src/x.py" in out["error"]
+    assert out["ref"] == "main" and out["paths"] == ["src/x.py"]
+    assert not (root / "ran").exists()
+    # a rename into changes/ still names the path it left
+    git(root, "mv", "src/x.py", "changes/0001-percent-helper/x.py")
+    git(root, "commit", "-q", "-m", "move it")
+    assert project_setup.paths_changed_outside_changes(root, "main") == []
+    git(root, "mv", "install.py", "changes/0001-percent-helper/install.py")
+    git(root, "commit", "-q", "-m", "move the installer")
+    assert project_setup.paths_changed_outside_changes(root, "main") == ["install.py"]
+    # a ref git cannot diff against fails closed
+    with pytest.raises(ValueError):
+        project_setup.paths_changed_outside_changes(root, "no-such-ref")
+    with pytest.raises(ValueError):
+        project_setup.paths_changed_outside_changes(root, "--output=x")
+
+
+def test_project_setup_with_a_ref_accepts_a_head_that_changed_only_the_change_folder(project):
+    """The maintain session writes only under changes/<id>-<slug>/: the command runs."""
+    root, _change = project
+    write(root / "install.py", "open('ran', 'w').close()\nprint('installed')\n")
+    set_setup_command(root, f'"{sys.executable}" install.py')
+    git(root, "add", "sdlc.yaml", "install.py")
+    git(root, "commit", "-q", "-m", "setup command")
+    git(root, "checkout", "-q", "-b", "sdlc/0001/a")
+    write(root / "changes" / "0001-percent-helper" / "intent.md", "# Intent\n")
+    git(root, "add", "changes/0001-percent-helper/intent.md")
+    git(root, "commit", "-q", "-m", "incident intent")
+    proc = run_py(str(PROJECT_SETUP), "--root", str(root), "--ref", "main", cwd=root)
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    out = json.loads(proc.stdout)
+    assert out["ok"] is True and out["ref"] == "main" and "installed" in out["output"]
+    assert (root / "ran").is_file()
 
 
 def test_preflight_reports_the_setup_command(project):

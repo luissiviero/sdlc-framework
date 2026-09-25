@@ -336,6 +336,9 @@ def test_sdlc_fix_covers_gate_a_and_the_owner_labels():
     assert "At phase (a) or (f) skip the verdict" in text  # (f) since 0.2.19
     assert "`sdlc-fix.yml`" in text and "Request changes" in text
     assert "`abandoned` change has no fix round" in text
+    # D9: only a member's review or comment reaches the round (the second security review)
+    assert "`OWNER`, `MEMBER` or `COLLABORATOR`" in text
+    assert "not applied: not a member of the repository" in text
 
 
 def test_sdlc_init_states_the_hosting_rule_and_the_outdated_report():
@@ -343,6 +346,7 @@ def test_sdlc_init_states_the_hosting_rule_and_the_outdated_report():
     assert "Hosting is GitHub (decision 23)" in text
     assert "refuses a project whose `origin` remote is on another host" in text
     assert "`outdated`" in text and "the fix round, the abandon rule" in text
+    assert "`maintain.observation`" in text  # choice 87
 
 
 @pytest.mark.parametrize("name", COMMAND_FILES)

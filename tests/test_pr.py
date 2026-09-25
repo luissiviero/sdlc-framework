@@ -873,6 +873,22 @@ def test_render_digest_empty_queue():
     assert "## Parked" not in markdown
 
 
+def test_digest_shows_the_owner_labels_beside_the_gate_label():
+    """D11 (live run of 2026-09-25): the `schedule` label the owner applied at gate (f) was
+    invisible, so a scheduled incident looked like a waiting one."""
+    labels = [{"name": "sdlc:f-ready"}, {"name": "incident"}, {"name": "schedule"}]
+    intent = {"number": 7, "title": "intent(0009): incident", "html_url": "https://x/7"}
+    intent["labels"] = labels
+    md = digest_mod.render_digest([intent], "2026-09-25T06:00:00Z")
+    section = md[md.index("## Waiting at a human gate") :]
+    line = next(ln for ln in section.splitlines() if "#7" in ln)
+    assert "— `sdlc:f-ready`, `incident`, `schedule` —" in line
+    assert "## Phase (f)" not in md  # it carries its gate label: a queue item
+    reordered = {**intent, "labels": [{"name": "schedule"}, {"name": "sdlc:f-ready"}]}
+    line = digest_mod._line(reordered)
+    assert "— `sdlc:f-ready`, `schedule` —" in line
+
+
 def test_digest_main_dry_run_reads_the_input_file(tmp_path, capsys, no_gh):
     path = tmp_path / "prs.json"
     write(path, json.dumps(QUEUE))
