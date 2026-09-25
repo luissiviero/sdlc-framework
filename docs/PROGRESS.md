@@ -41,7 +41,7 @@
 ## Guardrail lines for the owner (this session cannot edit these files)
 | Link | Row | What is there now | What it must become |
 |---|---|---|---|
-| [sdlc.yaml](../sdlc.yaml) | line 92 | `  version: 0.2.22` | `  version: 0.2.23` — after PR #<<PR>> is merged and `v0.2.23` exists (`sdlc-tag.yml`; NOTES §14: a `workflow_dispatch` of it is the fallback) |
+| [sdlc.yaml](../sdlc.yaml) | line 92 | `  version: 0.2.22` | `  version: 0.2.23` — after PR #52 is merged and `v0.2.23` exists (`sdlc-tag.yml`; NOTES §14: a `workflow_dispatch` of it is the fallback) |
 | sample `sdlc.yaml` (`luissiviero/sdlc-sample-python`) | line 77 | `  version: 0.2.22` | `  version: 0.2.23` — after the tag exists and the sample's PR #38 (the 0.2.23 runbook workflow) is merged |
 | [CLAUDE.md](../CLAUDE.md) | line 3, the end of the sentence | the sentence ends: records the 26 settled choices — do not reopen them without asking. | append after that sentence: `docs/ROADMAP.md` is what comes after Milestone 1: candidates with a proposal each, never a decision. |
 

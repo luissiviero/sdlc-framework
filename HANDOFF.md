@@ -1,9 +1,9 @@
 # Handoff — session 8: the first real breach on the sample, and what the owner decides next
 
-Session 7's brief is kept at `docs/handoffs/session-7-shakedown-2.md`; its result is the session-7 record on top of `docs/PROGRESS.md` (the gaps of the shakedown closed in plugin **0.2.23**, PR #<<PR>>; the roadmap and the two proposals; choices 89–94) and `docs/NOTES.md` §15 (the environment facts read on 2026-09-25). Read that record first. Keep the owner's format for every guardrail edit: "link; row; what is there; what it needs to be".
+Session 7's brief is kept at `docs/handoffs/session-7-shakedown-2.md`; its result is the session-7 record on top of `docs/PROGRESS.md` (the gaps of the shakedown closed in plugin **0.2.23**, PR #52; the roadmap and the two proposals; choices 89–94) and `docs/NOTES.md` §15 (the environment facts read on 2026-09-25). Read that record first. Keep the owner's format for every guardrail edit: "link; row; what is there; what it needs to be".
 
 ## Preconditions — check before doing anything
-1. `main` is at plugin 0.2.23 (`.claude-plugin/plugin.json`; `git ls-remote --tags origin | sort -V` ends with `v0.2.23`). If not, PR #<<PR>> is not merged or the tag workflow did not fire (NOTES §14: a `workflow_dispatch` of `sdlc-tag.yml` is the fallback): stop and say so.
+1. `main` is at plugin 0.2.23 (`.claude-plugin/plugin.json`; `git ls-remote --tags origin | sort -V` ends with `v0.2.23`). If not, PR #52 is not merged or the tag workflow did not fire (NOTES §14: a `workflow_dispatch` of `sdlc-tag.yml` is the fallback): stop and say so.
 2. The sample repository's `main` pins 0.2.23 (`sdlc.yaml` line 77) and carries the 0.2.23 runbook workflow (its upgrade PR #38, opened by session 7 from the 0.2.23 checkout, merged by the owner; the pin is the owner's edit after the tag). If the pin is older, give the row and stop the live part until it is in.
 3. `python tasks.py check` green (1160 tests at the end of session 7) and `claude plugin validate .` clean.
 4. Sub-agents named `model: "opus"` explicitly (`CLAUDE_CODE_SUBAGENT_MODEL` was unset in sessions 5–7).
