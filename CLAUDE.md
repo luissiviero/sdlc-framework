@@ -35,6 +35,7 @@ Run tests and lint before reporting any task complete, and paste the output. If 
 <!-- One line per recurring mistake; added when a review flags the same finding twice. -->
 - Editing a guardrail file (CLAUDE.md, .claude/**, REVIEW.md, sdlc.yaml) from a session: the tools are denied; propose the exact lines in docs/PROGRESS.md and leave the edit to the owner.
 - Rewriting documentation with a script: the auto-mode classifier blocks a scripted rewrite whose payload reads like instructions; edit docs with the Edit tool, sentence by sentence.
+- Asking the owner to edit a file: give a table with link, row, what is there now, what it must become (or the suggestion), one row per edit; nothing else.
 
 ## SDLC framework
 - Every change lives in `changes/<id>-<slug>/` (intent.md → spec.md + plan.md → evidence/);
