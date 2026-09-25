@@ -16,6 +16,12 @@
 # the job condition refuses a [bot] reviewer besides. The job holds no deploy secret and no
 # production credential (article p.40).
 #
+# Reviewer rule: a review starts a round only when its author is a member of the repository
+# (author_association OWNER, MEMBER or COLLABORATOR): on a public repository anyone with read
+# access can request changes, and the review's words reach this privileged run. A live
+# finding of the sample repository's weekly security review (2026-09-25); a label already
+# needs triage or write permission.
+#
 # The change is found from the pull request's own files (its changes/<id>-<slug>/ folder),
 # never from the head name alone: a web-session intent PR carries a claude/... head, and an
 # unmerged intent PR has no status.yaml on the default branch. The run checks that head out
@@ -56,15 +62,19 @@ concurrency:
 
 jobs:
   fix:
-    # A review counts when it asks for changes and a person submitted it (the review's
-    # state is lower-case in the event payload; a `[bot]` reviewer never starts a round). A
-    # label counts only when it is one of the owner's three un-park verbs; the gate labels
-    # sdlc:c-approved and sdlc:d-approved have their own workflows.
+    # A review counts when it asks for changes and a person who is a member of the
+    # repository submitted it (the review's state is lower-case in the event payload; a
+    # `[bot]` reviewer never starts a round; CONTRIBUTOR, FIRST_TIME_CONTRIBUTOR, FIRST_TIMER
+    # and NONE are refused). A label counts only when it is one of the owner's three un-park
+    # verbs; the gate labels sdlc:c-approved and sdlc:d-approved have their own workflows.
     if: >-
       ${{ github.event_name == 'workflow_dispatch' ||
       (github.event_name == 'pull_request_review' &&
       github.event.review.state == 'changes_requested' &&
-      !endsWith(github.event.review.user.login, '[bot]')) ||
+      !endsWith(github.event.review.user.login, '[bot]') &&
+      (github.event.review.author_association == 'OWNER' ||
+      github.event.review.author_association == 'MEMBER' ||
+      github.event.review.author_association == 'COLLABORATOR')) ||
       (github.event_name == 'pull_request' &&
       (github.event.label.name == 'sdlc:accept-risk' ||
       github.event.label.name == 'sdlc:reset-iterations' ||
