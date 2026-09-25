@@ -225,7 +225,7 @@ documentation already in the guide. They appear below only where a small task ex
 | 41.1 Keep each headless run's JSON transcript in `evidence/` (the gate verdicts already land there as `gate-<phase>.json`); every hook appends one line per decision (allow/block, timestamp, tool, path) to the log file defined in 29.1; upload it as a CI artifact | F→O | Spec: the 29.1 format and variable name; touches every hook, so the tests in `tests/test_hooks.py` grow. |
 | 42.1 The two counters (first-pass merge yes/no, fix iterations from `status.iterations`) in the PR description | O | Part of 27a.1 if not already there. |
 | 42.2 The later scheduled report over `changes/*/` and PR history | O→F | Optional; Opus drafts, Fable decides whether to ship it. |
-| B5 wrap-up: reviews, docs, final handoff | see §2 | |
+| B5 wrap-up: reviews, docs, final handoff | see §2 | Done 2026-09-25: session 5 ended with plugin 0.2.19 (PR #44), the sample repository upgraded (its PR #23), the live checks 16–23 listed in PROGRESS (none run yet but the evals) and `HANDOFF.md` rewritten for session 6 (§5a). |
 
 Outcome (2026-09-25, plugin 0.2.19; the record is `docs/PROGRESS.md`): every row above was
 built in one cloud session. Opus wrote, from Fable's specs, `plugin/detect/stats.py` and
@@ -237,6 +237,23 @@ authorization, the dispatcher, the dismissal store, the gate (f) checks, the CLI
 prompts (`/sdlc-maintain`, the lines of `/sdlc-deploy`, `/sdlc-fix`, `/sdlc-build` and
 `/sdlc-test`), the workflows, the observability change (every hook logs), the counters and
 the docs. Step 33 stays not built (decision 17); step 40 stays optional.
+
+## 5a. Session 6 — the phase (f) shakedown (live checks 16–23 and the owed 8)
+
+No build stage remains; the session runs the loop live on the sample repository and fixes
+what breaks. The split follows §1: judgement stays with Fable, mechanical work from a
+written spec goes to Opus (named `model: "opus"` explicitly; the environment variable was
+unset in session 5).
+
+| Task | Who | What Fable must give the sub-agent, or why it stays with Fable |
+|---|---|---|
+| Triggering each live check, reading the job log, the transcript and the committed evidence, deciding whether a misbehaviour is the framework's, the platform's or the model's | F | The verdict decides what is fixed, what becomes a NOTES fact and what becomes an eval case; wrong attribution costs a session. |
+| The regression test and the fix for a framework defect a check revealed | F→O | Spec: the observed behaviour (log lines), the expected one (the OPERATING_MODEL sentence or the decision), the file set. Disjoint file sets when two fixes run at once. |
+| A NOTES correction from live evidence (the runs API's filters and paging, the sandbox's `gh`, the artifact download) | O | URL and quote, plus the run URL that showed it. |
+| An eval case from a model-behaviour lesson (a prompt the model misread, a rule it skipped) | O→F | Opus writes the case from the transcript; Fable checks it asserts the behaviour, not the wording (session 5's case 0001 lesson). |
+| The sample's guardrail edits (a runbook under `maintain.runbooks`, a route in `bands.yaml`, `deploy.production`) | F | Given to the owner in the "link; row; what is there; what it needs to be" format; never edited by the session. |
+| The fresh-context review of the diff before the commit | O | As in every session (§2). |
+| Session-6 wrap-up: PROGRESS, the next handoff (if anything remains) | F | As in every session (§2). |
 
 ## 6. Session 2 (steps 16–21) — finished
 
