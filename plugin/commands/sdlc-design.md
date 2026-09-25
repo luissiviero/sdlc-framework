@@ -34,6 +34,10 @@ final commit to `cd ... && python ...`).
   there is not exactly one, stop and report the candidates. Never invent an id.
 - Read the change: `python "${CLAUDE_PLUGIN_ROOT}/plugin/state/cli.py" show --root "${CLAUDE_PROJECT_DIR}" --id <id>`.
   If `status.parked_reason` is set, stop: the owner has something to do first.
+- An incident change (`entry_route: incident`) whose intent PR the owner merged is at gate
+  (a) even if `status.yaml` still says `phase: f`: the maintain run leaves it there, and the
+  merge is gate (a) (decision 25; in CI the runner sets `a` before this command runs).
+  Proceed with the design; the intent is the one the maintain run wrote.
 - Default branch: `git symbolic-ref --short refs/remotes/origin/HEAD` minus `origin/`,
   else `main`. Run `git fetch origin` first.
 

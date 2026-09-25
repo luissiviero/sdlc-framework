@@ -22,6 +22,7 @@ from ci import auth, run_phase
 
 from gate import preflight
 from state import status as status_mod
+from state import yamlish
 
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURE = ROOT / "tests" / "fixtures" / "sample-python-project"
@@ -1027,11 +1028,23 @@ GATE_FILE = {
 
 @pytest.fixture
 def fake_claude(tmp_path):
-    """A stand-in CLI: it ignores its arguments and prints the JSON result it is given."""
+    """A stand-in CLI: it ignores its arguments and prints the JSON result it is given.
+    With ``FAKE_CLAUDE_WATCH`` (a path relative to its working directory, the project root)
+    and ``FAKE_CLAUDE_RECORD`` set, it first copies that file as it finds it to the record:
+    what the model's session would read."""
     bindir = tmp_path / "bin"
     bindir.mkdir()
     script = bindir / "claude.py"
-    write(script, "import os\nprint(os.environ['FAKE_CLAUDE_RESULT'])\n")
+    write(
+        script,
+        "import os, pathlib\n"
+        "watch = os.environ.get('FAKE_CLAUDE_WATCH')\n"
+        "record = os.environ.get('FAKE_CLAUDE_RECORD')\n"
+        "if watch and record:\n"
+        "    text = pathlib.Path(watch).read_text(encoding='utf-8')\n"
+        "    pathlib.Path(record).write_text(text, encoding='utf-8')\n"
+        "print(os.environ['FAKE_CLAUDE_RESULT'])\n",
+    )
     launcher = bindir / "claude"
     write(launcher, f'#!/bin/sh\nexec "{sys.executable}" "{script}" "$@"\n')
     launcher.chmod(0o755)
@@ -1874,6 +1887,54 @@ def test_the_merge_of_a_parked_incident_pr_is_still_gate_a(project):
     root, change = project
     set_state(change, "f", gate_phase="f", gate_result="parked", parked="route: Go requested")
     assert skip_reason(root, "b") is None
-    # a parked change at any other phase still skips (the park is a change request)
-    set_state(change, "a", parked="risk-list hit: 'auth'")
+    lifted = status_mod.read_status(change)  # the guard rewrote the file (0.2.21)
+    assert lifted.phase == "a" and lifted.parked_reason is None
+    assert (lifted.gate.phase, lifted.gate.result) == ("a", "passed")
+    # a parked change at any other phase still skips (the park is a change request); a park
+    # is a gate result, so the gate that parked is recorded with it
+    set_state(change, "a", gate_phase="a", gate_result="parked", parked="risk-list hit: 'auth'")
     assert "parked" in skip_reason(root, "b")
+
+
+@pytest.mark.parametrize("parked", [None, "route: Go requested"])
+def test_the_design_run_hands_the_session_a_merged_incident_at_phase_a(
+    project, fake_claude, monkeypatch, capsys, tmp_path, parked
+):
+    """The design run of 2026-09-25 (change 0005) passed the guard at phase f, and the model
+    read ``phase: f`` in status.yaml itself and stopped with nothing to do: the runner now
+    rewrites the file on the work branch to phase a, gate (a) passed by the owner's merge
+    and no park, before the session starts; the run then goes on as any design run."""
+    root, change = project
+    st = status_mod.read_status(change)
+    st.entry_route = "incident"
+    status_mod.write_status(change, st)
+    if parked:
+        set_state(change, "f", gate_phase="f", gate_result="parked", parked=parked)
+    else:
+        set_state(change, "f", gate_phase="f", gate_result="passed")
+    calls = pr_route(monkeypatch)
+    record = tmp_path / "status-seen-by-claude.yaml"
+    monkeypatch.setenv("FAKE_CLAUDE_WATCH", str((change / "status.yaml").relative_to(root)))
+    monkeypatch.setenv("FAKE_CLAUDE_RECORD", str(record))
+    full_run(root, change, fake_claude, monkeypatch, "b")
+
+    seen = status_mod.Status.from_dict(yamlish.load_file(record))
+    raw = yamlish.load_file(record)
+    assert seen.phase == "a" and raw["phase"] == "a"
+    assert raw["parked_reason"] is None  # the raw field, as the model reads it
+    assert (seen.gate.phase, seen.gate.result) == ("a", "passed")
+    assert seen.gate.reason == status_mod.MERGED_AT_GATE_A_REASON
+    assert seen.entry_route == "incident"
+    assert git(root, "branch", "--show-current").strip() == "sdlc/0001/b"
+    out = json.loads(capsys.readouterr().out)
+    assert out["pr"]["head"] == "sdlc/0001/b" and out["pr"]["ok"] is True
+    assert out["dispatched"] is None  # a design run hands over nothing (decision 21)
+    upserts = [argv for name, argv in calls if name == "cli.py" and argv[0] == "upsert"]
+    assert upserts == [["upsert", "--root", str(root), "--id", "0001", "--phase", "b"]]
+    # the session's own commit-phase --phase b moves the change on from a
+    proc = run_py(
+        str(STATE_CLI), "commit-phase", "--root", str(root), "--id", "0001", "--phase", "b",
+        "--message", "design(0001): spec", cwd=root,
+    )  # fmt: skip
+    assert proc.returncode == 0, proc.stderr
+    assert status_mod.read_status(change).phase == "b"

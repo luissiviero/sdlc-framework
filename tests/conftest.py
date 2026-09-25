@@ -6,6 +6,10 @@ for a test that runs a hook as a subprocess from this repository, is this reposi
 fixture below points the log at the test's own temporary directory so no test leaves a
 ``changes/.hook-log.jsonl`` behind; a test that asserts the default location passes its own
 ``env`` and is unaffected.
+
+``$SDLC_DEFAULT_BRANCH`` is removed too: ``gitops.default_branch`` prefers it over the git
+guess, and a value leaking in from a runner would change every test that reads the default
+branch.
 """
 
 from __future__ import annotations
@@ -16,4 +20,5 @@ import pytest
 @pytest.fixture(autouse=True)
 def _hook_log_in_tmp(tmp_path, monkeypatch):
     monkeypatch.setenv("SDLC_HOOK_LOG", str(tmp_path / "test-hook-log.jsonl"))
+    monkeypatch.delenv("SDLC_DEFAULT_BRANCH", raising=False)
     yield

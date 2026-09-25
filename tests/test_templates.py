@@ -209,6 +209,9 @@ ALL_WORKFLOWS = (
 )
 # this repository's own installed copies (PR #21) and its substrate smoke test
 REPO_WORKFLOW_DIR = TEMPLATE.parent / ".github" / "workflows"
+# the explicit default branch a detect/scan CLI step reads before its git guess (live run of
+# 2026-09-25: a checkout of a non-default ref has no origin/HEAD and no local main)
+DEFAULT_BRANCH_EXPR = "${{ github.event.repository.default_branch }}"
 
 
 def test_workflow_templates_exist_and_render():
@@ -336,6 +339,14 @@ def test_fix_workflow_starts_on_request_changes_and_on_the_owner_labels():
     job = data["jobs"]["fix"]
     assert "github.event.review.state == 'changes_requested'" in job["if"]
     assert "!endsWith(github.event.review.user.login, '[bot]')" in job["if"]
+    # D9 (the sample's weekly security review, 2026-09-25): only a member of the repository
+    # starts a round; anyone with read access on a public repository can request changes
+    for association in ("OWNER", "MEMBER", "COLLABORATOR"):
+        assert f"github.event.review.author_association == '{association}'" in job["if"]
+    for refused in ("CONTRIBUTOR", "FIRST_TIME_CONTRIBUTOR", "FIRST_TIMER", "NONE"):
+        assert f"'{refused}'" not in job["if"], refused
+    installed = (REPO_WORKFLOW_DIR / FIX_WORKFLOW).read_text(encoding="utf-8")
+    assert installed == render.render_file(WORKFLOW_DIR / FIX_WORKFLOW, VALUES)
     for label in ("sdlc:accept-risk", "sdlc:reset-iterations", "sdlc:unlock-tests"):
         assert f"github.event.label.name == '{label}'" in job["if"], label
     assert "sdlc:c-approved" not in job["if"] and "sdlc:d-approved" not in job["if"]
@@ -384,9 +395,17 @@ def test_abandon_workflow_records_the_end_state_without_a_model():
     )
     for step in job["steps"][-2:]:
         assert step["if"] == "steps.find.outputs.change_id != ''"
+    assert job["steps"][-1]["env"]["SDLC_DEFAULT_BRANCH"] == DEFAULT_BRANCH_EXPR
     text = (WORKFLOW_DIR / ABANDON_WORKFLOW).read_text(encoding="utf-8")
     for absent in ("claude-code@", "runner_setup.py", "setup-node", "secrets.", "--phase b"):
         assert absent not in text, absent
+    # its own concurrency group (live run of 2026-09-25): a close also fires the merge-guarded
+    # design and build workflows, and on a shared group GitHub displaced the pending abandon run
+    group = data["concurrency"]["group"]
+    assert group == "sdlc-abandon-${{ github.event.pull_request.head.ref }}"
+    assert data["concurrency"]["cancel-in-progress"] is False
+    for other in ("sdlc-design.yml", "sdlc-build.yml"):
+        assert _workflow_yaml(other)["concurrency"]["group"] != group, other
 
 
 @pytest.mark.parametrize("name", [*PHASE_WORKFLOWS, FIX_WORKFLOW, DETECT_WORKFLOW])
@@ -434,6 +453,8 @@ def test_detect_workflow_is_scheduled_deterministic_and_runs_the_diagnosis_only_
         'python framework/plugin/detect/cli.py finish --root . --id "$CHANGE_ID" --repo "$REPO"'
     )
     assert "secrets." not in json.dumps(finish) and "secrets." in json.dumps(phase)
+    for step in (detect, finish):
+        assert step["env"]["SDLC_DEFAULT_BRANCH"] == DEFAULT_BRANCH_EXPR
     assert '--force-tier "$FORCE_TIER"' in detect["run"]
     assert "--phase f" in phase["run"] and "HEAD_REF: ${{ steps.detect.outputs.head_ref }}" in (
         (WORKFLOW_DIR / DETECT_WORKFLOW).read_text(encoding="utf-8")
@@ -480,6 +501,8 @@ def test_scan_workflow_is_weekly_reviews_routes_and_scans_in_that_order():
     scanners = next(run for run in runs if "scan/cli.py scanners" in run)
     assert runs.index(review) < runs.index(route) < runs.index(scanners)
     assert "--max-findings 3" in route
+    [route_step] = [s for s in job["steps"] if "scan/cli.py route" in s.get("run", "")]
+    assert route_step["env"]["SDLC_DEFAULT_BRANCH"] == DEFAULT_BRANCH_EXPR
     text = (WORKFLOW_DIR / SCAN_WORKFLOW).read_text(encoding="utf-8")
     assert "upload-artifact@" in text and "Bash(git *)" not in text  # the tools live in the CLI
 
@@ -497,6 +520,12 @@ def test_runbook_workflow_runs_the_go_once_without_a_model():
         'python framework/plugin/detect/cli.py go --root . --id "$CHANGE_ID" '
         '--repo "$REPO" --pr-number "$PR_NUMBER"'
     )
+    go = [step for step in job["steps"] if "run" in step][-1]
+    assert go["env"]["SDLC_DEFAULT_BRANCH"] == DEFAULT_BRANCH_EXPR
+    # its own concurrency group (live, 2026-09-25): a label event also fires the fix, test and
+    # deploy workflows, and on a shared group GitHub displaced a pending run at random
+    assert data["concurrency"]["group"] == "sdlc-runbook-${{ github.event.pull_request.head.ref }}"
+    assert data["concurrency"]["cancel-in-progress"] is False
     text = (WORKFLOW_DIR / RUNBOOK_WORKFLOW).read_text(encoding="utf-8")
     for absent in ("claude-code@", "runner_setup.py", "setup-node", "secrets.", "--phase f "):
         assert absent not in text, absent

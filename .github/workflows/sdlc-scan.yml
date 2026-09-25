@@ -100,6 +100,7 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           HEAD_SHA: ${{ github.sha }}
+          SDLC_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: python framework/plugin/scan/cli.py route --root . --findings scan-findings.json --repo "$REPO" --head "$HEAD_SHA" --max-findings 3
 
       # The deterministic scanners stay in CI (p.48): reports, not gates. They run even when

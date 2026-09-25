@@ -253,7 +253,7 @@ unset in session 5).
 | An eval case from a model-behaviour lesson (a prompt the model misread, a rule it skipped) | O→F | Opus writes the case from the transcript; Fable checks it asserts the behaviour, not the wording (session 5's case 0001 lesson). |
 | The sample's guardrail edits (a runbook under `maintain.runbooks`, a route in `bands.yaml`, `deploy.production`) | F | Given to the owner in the "link; row; what is there; what it needs to be" format; never edited by the session. |
 | The fresh-context review of the diff before the commit | O | As in every session (§2). |
-| Session-6 wrap-up: PROGRESS, the next handoff (if anything remains) | F | As in every session (§2). |
+| Session-6 wrap-up: PROGRESS, the next handoff (if anything remains) | F | As in every session (§2). Done 2026-09-25: six detect runs, two scans, four digests, one design run, one fix round, one Go and five abandon jobs on the sample; ten defects (D1–D10) fixed by Opus from Fable's specs, each with its test, across plugin 0.2.20, 0.2.21 and 0.2.22 (PRs #47, #48, #49, all merged and tagged the same day); every live check of the table proven; no model lesson, so no eval case; NOTES §14; `HANDOFF.md` rewritten for session 7 (the first real breach and the recorded gaps). |
 
 ## 6. Session 2 (steps 16–21) — finished
 

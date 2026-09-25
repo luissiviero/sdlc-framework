@@ -960,6 +960,36 @@ def test_phase_f_bullets_describe_the_finding_the_route_and_the_triage(project):
     assert desc.head_branch("0001", "f") == "sdlc/0001/a"
 
 
+def test_phase_f_finding_of_a_rehearsal_on_an_empty_series_says_no_observation(project):
+    """A forced rehearsal whose source returned nothing (live run of 2026-09-25): the finding
+    names the record's day with "no observation", never "None", and has no band."""
+    from detect import finding
+
+    root, change = project
+    st = status_mod.read_status(change)
+    st.entry_route, st.change_type = "incident", "fix"
+    st.set_phase("f")
+    status_mod.write_status(change, st)
+    write(change / "intent.md", INTENT.replace("Entry route: idea", "Entry route: incident abc"))
+    verdict = {"tier": 2, "rules_hit": ["forced"], "rule": "forced", "mean": None,
+               "sigma": None, "sigmas": None, "latest": None, "breach_start": None,
+               "window_days": 30, "n_baseline": 0, "n_tail": 0, "direction": "above",
+               "reason": "tier 2 forced by workflow_dispatch (a rehearsal)"}  # fmt: skip
+    finding.write(
+        change / "evidence" / finding.DETECTION_FILE,
+        finding.build_record(metric="ci_test_failure_rate", source="github-actions",
+                             verdict=verdict, observations=[], action="diagnose",
+                             failed_run_urls=[], commits=[], forced=True,
+                             at="2026-09-25T05:41:00Z"),
+    )  # fmt: skip
+    lines = bullets(desc.build_description(root, "0001", "f"))
+    assert lines[0] == (
+        "- **Finding**: ci_test_failure_rate at tier 2 (forced): no observation in the window "
+        "(run of 2026-09-25), forced by a rehearsal"
+    )
+    assert "None" not in lines[0]
+
+
 # --- build guide step 42.2: the counters over changes/*/ (plugin 0.2.19) ---------------------
 def test_counters_over_the_change_folders_and_the_digest_section(project, tmp_path):
     from detect import dismissals
