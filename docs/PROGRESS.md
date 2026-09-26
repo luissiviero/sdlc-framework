@@ -47,13 +47,7 @@
 
 R2's own edit tables (the Python SessionStart hook, the permission entries, the "Tooling rules" section) are in `docs/proposals/session-tooling-pdf-web.md` and are not owed: they apply only if the owner accepts R2.
 
-Applied by the owner on 2026-09-25/26: the root pin (`0fafe58`) and the `CLAUDE.md` line-3 mention (`77c288c`). The `CLAUDE.md` edit split the sentence over three lines and repeated its end; the correction (one row per line, the owner's format):
-
-| Link | Row | What is there now | What it must become |
-|---|---|---|---|
-| [CLAUDE.md](../CLAUDE.md) | line 3 | ends with: `` `docs/DECISIONS.md` records the 26 settled choices `` (no period) | ends with: `` `docs/DECISIONS.md` records the 26 settled choices — do not reopen them without asking. `docs/ROADMAP.md` is what comes after Milestone 1: candidates with a proposal each, never a decision. `` |
-| [CLAUDE.md](../CLAUDE.md) | line 4 | `records the 26 settled choices — do not reopen them without asking. docs/ROADMAP.md is what comes after Milestone 1: candidates with a proposal each, never a decision.` | delete the line |
-| [CLAUDE.md](../CLAUDE.md) | line 5 | `— do not reopen them without asking.` | delete the line |
+Applied by the owner on 2026-09-25/26: the root pin (`0fafe58`) and the `CLAUDE.md` line-3 mention (`77c288c`; that edit split the sentence over three lines and repeated its end, corrected by the owner in `50c9232` and `6da4e13` from the edit table given in PR #53). Only the sample's pin remains.
 
 ## Questions for the owner (ask, do not build)
 - The Milestone 1 bump (`docs/ROADMAP.md`, "How it is marked"): `0.3.0` or `1.0.0`, once the first real detection is read.
