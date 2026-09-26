@@ -24,7 +24,7 @@ Milestone 1 is reached when all three hold:
 | Session 3's Windows items (the watch setting, the test-file lock) | Ask, do not assume; the owner's PC is the only Windows host. | Owner's call |
 | Whether the project's `CLAUDE.md` is loaded in a `--bare` API-key phase run | Every live run of the sample used the OAuth token, so no `--bare` transcript exists; read one when an API-key run happens (PROGRESS session 7, "Known gaps"). | Optional |
 
-**How it is marked.** The owner chooses the `plugin.json` bump for the milestone (`0.3.0` or `1.0.0`; the number is the owner's, not a session's); the merge of that bump to `main` makes `sdlc-tag.yml` tag the commit `v<version>` and write its release page (`sdlc_tag.py`, once, never moved). The root `sdlc.yaml` and the sample's pin follow as guardrail edits (the owner's format: link; row; what is there; what it needs to be). No other act marks it.
+**How it is marked.** The owner chose the number on 2026-09-26: **`1.0.0`**. The session that reads the first real detection (the last leftover above) bumps `plugin.json` and `marketplace.json` to `1.0.0` in its PR; the merge of that bump to `main` makes `sdlc-tag.yml` tag the commit `v1.0.0` and write its release page (`sdlc_tag.py`, once, never moved). The root `sdlc.yaml` and the sample's pin follow as guardrail edits (the owner's format: link; row; what is there; what it needs to be), then the sample's upgrade PR with the 1.0.0 copies. The GitHub Milestone ("Milestone 1 — 1.0.0", the pull requests of sessions 6–9 attached, closed after the tag) is the owner's act by hand: a session's GitHub tools have no milestone call. The steps are `HANDOFF.md` deliverable 6. No other act marks it.
 
 ## Candidates for what comes after
 
