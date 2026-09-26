@@ -1144,36 +1144,47 @@ def pin_issue(repo: str, node_id: str | None) -> dict[str, Any]:
 
 
 # --- the default branch's protection (decision 4; plugin 0.2.25) --------------------------------
+ENFORCING_RULE = "update"  # a ruleset's "Restrict updates": only its bypass actors push or merge
+
+
 def default_branch_protection(repo: str, cwd: str | Path | None = None) -> dict[str, Any]:
-    """Whether the repository's default branch is protected: {'branch', 'protected', 'by'}.
+    """Whether the repository's default branch keeps a merge to the owner: {'branch',
+    'protected', 'classic', 'rules', 'by'}.
 
     Decision 4 (only the owner merges; the automation identity has branch-only write access)
     is enforced by GitHub, never by the framework, and nothing checked it existed until the
     1.0.0 readiness review (2026-09-26) found the framework's own default branch
-    unprotected. Two forms count: the branch's ``protected`` flag (a classic branch
-    protection rule) and a ruleset that targets the branch, read from the active rules
-    endpoint (``GET /repos/{repo}/rules/branches/{branch}``: the rules in force on that
-    branch, an empty list when no ruleset applies). Read-only, so the workflow token's
+    unprotected. The one form that enforces it is a branch ruleset with *Restrict updates*
+    and only the repository admin in its bypass list: the workflow token holds
+    ``contents: write`` and the phase session ``Bash(gh *)``, so a rule that stops direct
+    pushes or requires a pull request (with no approvals) still lets ``gh pr merge`` through
+    (the review of the 0.2.25 diff, finding H1). The active rules of the branch are read from
+    ``GET /repos/{repo}/rules/branches/{branch}`` (an ``update`` rule is the one that
+    counts); the classic ``protected`` flag is reported beside them, because on a user-owned
+    repository a classic rule cannot restrict who pushes. Read-only, so the workflow token's
     ``contents: read`` is enough; the digest renders the answer (``pr/digest.py``)."""
 
-    def _judge(route: str, branch: str, protected: Any, rules: Any) -> dict[str, Any]:
-        if protected is True:
-            return {
-                "route": route,
-                "ok": True,
-                "branch": branch,
-                "protected": True,
-                "by": "branch protection",
-            }
-        if isinstance(rules, list) and rules:
-            return {
-                "route": route,
-                "ok": True,
-                "branch": branch,
-                "protected": True,
-                "by": "ruleset",
-            }
-        return {"route": route, "ok": True, "branch": branch, "protected": False, "by": "nothing"}
+    def _judge(route: str, branch: str, classic: Any, rules: Any) -> dict[str, Any]:
+        types = sorted(
+            {str(r.get("type")) for r in rules if isinstance(r, dict) and r.get("type")}
+            if isinstance(rules, list)
+            else set()
+        )
+        enforcing = ENFORCING_RULE in types
+        found = []
+        if classic is True:
+            found.append("classic branch protection")
+        if types:
+            found.append("rules " + ", ".join(types))
+        return {
+            "route": route,
+            "ok": True,
+            "branch": branch,
+            "protected": enforcing,
+            "classic": classic is True,
+            "rules": types,
+            "by": "ruleset: restrict updates" if enforcing else ("; ".join(found) or "nothing"),
+        }
 
     def via_api() -> dict[str, Any]:
         tok = token() or ""
@@ -1182,21 +1193,16 @@ def default_branch_protection(repo: str, cwd: str | Path | None = None) -> dict[
             return {"route": "api", "ok": False, "reason": result["error"]}
         branch = str((result["data"] or {}).get("default_branch") or "").strip()
         if not branch:
-            return {
-                "route": "api",
-                "ok": False,
-                "reason": "the repository record names no default branch",
-            }
+            reason = "the repository record names no default branch"
+            return {"route": "api", "ok": False, "reason": reason}
         quoted = urllib.parse.quote(branch, safe="")
         flag = _request("GET", f"{API_ROOT}/repos/{repo}/branches/{quoted}", tok)
         if flag["error"]:
             return {"route": "api", "ok": False, "reason": flag["error"]}
-        if (flag["data"] or {}).get("protected") is True:
-            return _judge("api", branch, True, None)
         rules = _request("GET", f"{API_ROOT}/repos/{repo}/rules/branches/{quoted}", tok)
         if rules["error"]:
             return {"route": "api", "ok": False, "reason": rules["error"]}
-        return _judge("api", branch, False, rules["data"])
+        return _judge("api", branch, (flag["data"] or {}).get("protected"), rules["data"])
 
     def via_gh() -> dict[str, Any]:
         data, error = _gh_json("api", f"repos/{repo}", cwd=cwd)
@@ -1204,20 +1210,15 @@ def default_branch_protection(repo: str, cwd: str | Path | None = None) -> dict[
             return {"route": "gh", "ok": False, "reason": error}
         branch = str((data or {}).get("default_branch") or "").strip()
         if not branch:
-            return {
-                "route": "gh",
-                "ok": False,
-                "reason": "the repository record names no default branch",
-            }
+            reason = "the repository record names no default branch"
+            return {"route": "gh", "ok": False, "reason": reason}
         quoted = urllib.parse.quote(branch, safe="")
         flag, error = _gh_json("api", f"repos/{repo}/branches/{quoted}", cwd=cwd)
         if error:
             return {"route": "gh", "ok": False, "reason": error}
-        if (flag or {}).get("protected") is True:
-            return _judge("gh", branch, True, None)
         rules, error = _gh_json("api", f"repos/{repo}/rules/branches/{quoted}", cwd=cwd)
         if error:
             return {"route": "gh", "ok": False, "reason": error}
-        return _judge("gh", branch, False, rules)
+        return _judge("gh", branch, (flag or {}).get("protected"), rules)
 
     return _attempt(via_api, via_gh)

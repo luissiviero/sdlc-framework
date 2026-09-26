@@ -754,6 +754,14 @@ def _approved_config(root: Path) -> dict[str, Any]:
         name = ""
     if not name or name.startswith("sdlc/") or c.parse_branch(name):
         return _config(root)
+    if not gitops.explicit_default_branch() and name not in ("main", "master"):
+        # the guess fell through to the current branch (no origin/HEAD, no main or master):
+        # on a PR head such as a web session's ``claude/…`` that is the branch's own copy
+        try:
+            if name == gitops.current_branch(root):
+                return _config(root)
+        except Exception:  # noqa: BLE001
+            return _config(root)
     text = gate_diff.file_at(root, f"refs/remotes/origin/{name}", SDLC_FILE)
     if text is None:
         return _config(root)

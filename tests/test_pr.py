@@ -1125,9 +1125,11 @@ def test_digest_lists_the_runbook_and_dismissal_prs_under_the_incident_label():
 
 
 # --- the default branch's protection (decision 4; plugin 0.2.25) ------------------------------
-def test_default_branch_protection_reads_the_flag_then_the_rulesets(recorder):
+def test_default_branch_protection_counts_a_restrict_updates_rule_only(recorder):
     """The framework's own default branch was unprotected at the 1.0.0 readiness review
-    (2026-09-26): the classic flag first, then the active rules of a ruleset."""
+    (2026-09-26). Only a ruleset's ``update`` rule (Restrict updates, the owner as bypass)
+    keeps the workflow token from merging: a classic flag or a pull-request rule without
+    it does not count (the review of the 0.2.25 diff, finding H1)."""
     calls, answers = recorder
     # the more specific fragments first: the recorder returns the first match
     answers[("GET", "/rules/branches/main")] = {"status": 200, "data": [], "error": ""}
@@ -1139,41 +1141,70 @@ def test_default_branch_protection_reads_the_flag_then_the_rulesets(recorder):
     }
     result = github.default_branch_protection("o/r")
     assert result == {
-        "route": "api",
-        "ok": True,
-        "branch": "main",
-        "protected": False,
-        "by": "nothing",
-    }
+        "route": "api", "ok": True, "branch": "main", "protected": False,
+        "classic": False, "rules": [], "by": "nothing",
+    }  # fmt: skip
     assert [url.split("api.github.com")[1] for _m, url, _p in calls] == [
-        "/repos/o/r",
-        "/repos/o/r/branches/main",
-        "/repos/o/r/rules/branches/main",
+        "/repos/o/r", "/repos/o/r/branches/main", "/repos/o/r/rules/branches/main"
+    ]  # fmt: skip
+    # a pull-request rule and a classic flag: still not enforcing
+    answers[("GET", "/rules/branches/main")]["data"] = [
+        {"type": "pull_request"},
+        {"type": "deletion"},
     ]
-    answers[("GET", "/rules/branches/main")]["data"] = [{"type": "pull_request"}]
-    result = github.default_branch_protection("o/r")
-    assert result["protected"] is True and result["by"] == "ruleset"
     answers[("GET", "/branches/main")]["data"]["protected"] = True
     result = github.default_branch_protection("o/r")
-    assert result["protected"] is True and result["by"] == "branch protection"
+    assert result["protected"] is False and result["classic"] is True
+    assert result["rules"] == ["deletion", "pull_request"]
+    assert result["by"] == "classic branch protection; rules deletion, pull_request"
+    # the update rule: enforcing
+    answers[("GET", "/rules/branches/main")]["data"].append({"type": "update"})
+    result = github.default_branch_protection("o/r")
+    assert result["protected"] is True and result["by"] == "ruleset: restrict updates"
     answers[("GET", "/repos/o/r")] = {"status": 404, "data": {}, "error": "Not Found"}
     assert github.default_branch_protection("o/r")["ok"] is False
+
+
+def test_digest_main_reads_the_protection_and_renders_the_notice(monkeypatch, capsys):
+    """``main`` asks GitHub once (never with ``--input``) and hands the answer to the
+    renderer; ``--dry-run`` prints the notice at the top."""
+    monkeypatch.setattr(digest_mod, "list_queue_prs", lambda repo: (list(QUEUE), ""))
+    asked = []
+
+    def protection(repo, cwd=None):
+        asked.append(repo)
+        return {"route": "api", "ok": True, "branch": "main", "protected": False,
+                "classic": True, "rules": ["pull_request"],
+                "by": "classic branch protection; rules pull_request"}  # fmt: skip
+
+    monkeypatch.setattr(digest_mod.github, "default_branch_protection", protection)
+    assert digest_mod.main(["--repo", "o/r", "--dry-run"]) == 0
+    out = capsys.readouterr().out
+    assert asked == ["o/r"]
+    assert (
+        "does not restrict who merges** (found: classic branch protection; rules pull_request)"
+        in out
+    )
+    assert out.index("does not restrict who merges") < out.index("## Waiting")
 
 
 def test_digest_says_so_while_the_default_branch_is_unprotected():
     unprotected = {"ok": True, "branch": "main", "protected": False, "by": "nothing"}
     md = digest_mod.render_digest(QUEUE, "2026-09-25T06:00:00Z", protection=unprotected)
-    assert md.index("**The default branch `main` is not protected.**") < md.index("## Waiting")
+    assert md.index(
+        "**The default branch `main` does not restrict who merges** (found: nothing)"
+    ) < md.index("## Waiting")
     assert "Settings → Rules → Rulesets" in md and "decision 4" in md.lower()
+    assert "Restrict updates" in md and "bypass: repository admin" in md
     md = digest_mod.render_digest([], "2026-09-25T06:00:00Z", protection=unprotected)
-    assert "is not protected" in md and digest_mod.NOTHING_WAITING in md
-    protected = {"ok": True, "branch": "main", "protected": True, "by": "ruleset"}
-    assert "not protected" not in digest_mod.render_digest(
+    assert "does not restrict who merges" in md and digest_mod.NOTHING_WAITING in md
+    protected = {"ok": True, "branch": "main", "protected": True, "by": "ruleset: restrict updates"}
+    assert "restrict who merges" not in digest_mod.render_digest(
         QUEUE, "2026-09-25T06:00:00Z", protection=protected
     )
     # a lookup that failed says nothing rather than something wrong
     failed = {"route": "none", "ok": False, "reason": "no route"}
-    assert "not protected" not in digest_mod.render_digest(
+    assert "restrict who merges" not in digest_mod.render_digest(
         QUEUE, "2026-09-25T06:00:00Z", protection=failed
     )
     assert digest_mod.unprotected_notice(None) == ""

@@ -610,5 +610,11 @@ def test_sdlc_init_prescribes_the_branch_ruleset_of_decision_4():
     text = flat(COMMANDS / "sdlc-init.md")
     assert "branch ruleset on the default branch (decision 4" in text
     assert "Require a pull request before merging" in text
-    assert "no bypass entry for the automation identity" in text
+    # the review of the 0.2.25 diff (H1): only "Restrict updates" with the owner as the sole
+    # bypass actor keeps the workflow token from merging a pull request
+    assert (
+        '**"Restrict updates"** with the repository admin (the owner) as the only bypass actor'
+        in text
+    )
+    assert "still lets `gh pr merge` through" in text
     assert "The daily digest says so" in text

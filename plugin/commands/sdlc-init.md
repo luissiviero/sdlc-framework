@@ -85,11 +85,13 @@ a branch and forbids pushing any other (Claude Code on the web does), run the co
 without `--push`, then push the resulting commit to the assigned branch and open the PR from
 it, keeping the label; say in the PR body that the framework branch is `sdlc/0000/a` locally.
 ```
-python "${CLAUDE_PLUGIN_ROOT}/plugin/state/cli.py" commit-phase --root "${CLAUDE_PROJECT_DIR}" --id 0000 --phase a --message "sdlc-init: connect the SDLC framework" --paths sdlc.yaml .claude/settings.json REVIEW.md CLAUDE.md changes ruff.toml evals bands.yaml lessons .github --start-point <default branch> --push
+python "${CLAUDE_PLUGIN_ROOT}/plugin/state/cli.py" commit-phase --root "${CLAUDE_PROJECT_DIR}" --id 0000 --phase a --message "sdlc-init: connect the SDLC framework" --paths sdlc.yaml .claude/settings.json REVIEW.md CLAUDE.md changes ruff.toml evals bands.yaml lessons .github/workflows .github/scripts --start-point <default branch> --push
 ```
-(paths that do not exist, such as an uncreated `ruff.toml`, are skipped; `.github` carries the
-twelve `sdlc-*.yml` workflows and `scripts/sdlc_pin.py` the install wrote — without them the
-merged project has no automation, and every pin step's `git show` of the script fails). Then open the PR exactly as
+(paths that do not exist, such as an uncreated `ruff.toml`, are skipped; `.github/workflows`
+and `.github/scripts` carry the twelve `sdlc-*.yml` workflows and `sdlc_pin.py` the install
+wrote — without them the merged project has no automation, and every pin step's `git show` of
+the script fails; a project's own workflow file already there rides along only if it was
+uncommitted, so commit the project's own work first). Then open the PR exactly as
 `/sdlc-plan` step 6 does:
 `python "${CLAUDE_PLUGIN_ROOT}/plugin/pr/cli.py" upsert --root "${CLAUDE_PROJECT_DIR}" --id 0000 --phase a`
 (title `intent(0000): <title>`, label `sdlc:a-ready`, the generated ≤5-bullet summary from
@@ -116,11 +118,17 @@ files the owner should review (CLAUDE.md trim, settings). Merge = accept.
 - The branch ruleset on the default branch (decision 4: only the owner merges; the
   automation identity has branch-only write access). The framework never creates it — a
   session must not be able to — and nothing but this rule keeps a session or a workflow
-  from pushing to the default branch or merging its own pull request. Settings → Rules →
-  Rulesets → New branch ruleset: target the default branch, "Restrict deletions", "Block
-  force pushes", "Require a pull request before merging", and no bypass entry for the
-  automation identity. The daily digest says so at the top of the review queue while the
-  default branch is unprotected (`pr/digest.py`, since 0.2.25).
+  from pushing to the default branch or merging its own pull request: the workflow token
+  holds `contents: write` and the phase session may run `gh`, so a rule that only requires
+  a pull request (with no approvals) or only stops direct pushes still lets `gh pr merge`
+  through. Settings → Rules → Rulesets → New branch ruleset: target the default branch,
+  **"Restrict updates"** with the repository admin (the owner) as the only bypass actor —
+  the one rule that keeps a merge to the owner —, plus "Restrict deletions", "Block force
+  pushes" and "Require a pull request before merging". The daily digest says so at the top
+  of the review queue while the default branch has no such rule (`pr/digest.py`,
+  `pr/github.py default_branch_protection`: the branch's active rules must include an
+  `update` rule; the classic `protected` flag is reported but does not count, since on a
+  user-owned repository a classic rule cannot restrict who pushes; since 0.2.25).
 - Optional, owner's machine only: `docs/owner-machine/README.md` in the framework repo
   explains the managed settings file and its machine-wide consequences.
 

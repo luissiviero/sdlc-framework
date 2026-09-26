@@ -35,18 +35,22 @@ from typing import Any
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from hooks._common import utf8_stdout  # noqa: E402
 from pr import github  # noqa: E402
 from state import conventions as c  # noqa: E402
 
 ISSUE_TITLE = "SDLC review queue"
 NOTHING_WAITING = "Nothing waiting: no open PR carries an `sdlc:` label."
 UNPROTECTED = (
-    "**The default branch `{branch}` is not protected.** Decision 4 (only the owner merges; "
-    "the automation identity has branch-only write access) is enforced by a branch ruleset "
-    "or protection rule that the framework never creates: Settings → Rules → Rulesets → New "
-    "branch ruleset on `{branch}` — restrict deletions, block force pushes, require a pull "
-    "request before merging, no bypass entry for the automation identity. Until then nothing "
-    "but convention keeps a session or a workflow from pushing to `{branch}`."
+    "**The default branch `{branch}` does not restrict who merges** (found: {found}). Decision "
+    "4 (only the owner merges; the automation identity has branch-only write access) is "
+    "enforced by a branch ruleset with *Restrict updates* and only the repository admin in its "
+    "bypass list — the one form that keeps the workflow token, which holds `contents: write`, "
+    "from merging a pull request; a classic protection rule or a pull-request requirement "
+    "without it does not. Settings → Rules → Rulesets → New branch ruleset on `{branch}`: "
+    "restrict updates (bypass: repository admin), restrict deletions, block force pushes, "
+    "require a pull request before merging. Until then nothing but convention keeps a session "
+    "or a workflow holding the token from merging to `{branch}`."
 )
 READY_SUFFIX = "-ready"
 
@@ -118,7 +122,7 @@ def unprotected_notice(protection: dict[str, Any] | None) -> str:
     if protection.get("protected") is not False:
         return ""
     branch = protection.get("branch") or "the default branch"
-    return UNPROTECTED.format(branch=branch)
+    return UNPROTECTED.format(branch=branch, found=protection.get("by") or "nothing")
 
 
 def render_digest(
@@ -206,6 +210,7 @@ def main(argv: list[str] | None = None) -> int:
         "--root", default=None, help="the project checkout: adds the counters section (step 42.2)"
     )
     args = parser.parse_args(argv)
+    utf8_stdout()  # the digest carries ``—`` and ``→``; a cp1252 pipe on Windows raised on them
 
     error = ""
     if args.input:

@@ -2547,3 +2547,24 @@ def test_guard_reads_paused_and_the_profile_from_the_default_branch_s_copy(
     # without a remote-tracking default branch the checkout's copy is all there is
     git(root, "remote", "remove", "origin")
     assert run_phase._approved_config(root)["paused"] is True
+
+
+def test_approved_config_reads_the_profile_from_the_default_branch_s_copy(project, tmp_path):
+    """The Full profile's (c) and (d) label gates read the profile the guard returns: a work
+    branch that says ``standard`` while the owner's copy says ``full`` is ignored."""
+    root, _change = project
+    with_remote(root, tmp_path)
+    path = root / "sdlc.yaml"
+    path.write_text(
+        path.read_text(encoding="utf-8").replace("profile: standard", "profile: full"), "utf-8"
+    )
+    git(root, "commit", "-q", "-am", "owner: full profile")
+    git(root, "push", "-q", "origin", "main")
+    git(root, "checkout", "-q", "-b", "sdlc/0001/c")
+    path.write_text(
+        path.read_text(encoding="utf-8").replace("profile: full", "profile: standard"), "utf-8"
+    )
+    git(root, "commit", "-q", "-am", "the branch lowers its own profile")
+    assert run_phase._approved_config(root)["profile"] == "full"
+    _dir, _st, config, _reason = run_phase.guard(root, "0001", "c", "owner/name", {})
+    assert config["profile"] == "full"

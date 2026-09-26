@@ -226,7 +226,9 @@ def utf8_stdout() -> None:
         if reconfigure is None:
             continue
         try:
-            reconfigure(encoding="utf-8")
+            # backslashreplace: stderr's default, kept; a lone surrogate from a
+            # surrogateescape'd path prints as an escape instead of raising
+            reconfigure(encoding="utf-8", errors="backslashreplace")
         except (ValueError, OSError):  # a closed or detached stream: nothing to change
             pass
 

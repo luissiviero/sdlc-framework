@@ -1029,6 +1029,82 @@ def check_owner_actions(ctx: GateContext) -> CheckResult:
     )
 
 
+# --- 12a. the test-file lock holds from its commit to HEAD (plugin 0.2.25) ------------------
+TEST_LOCK_NEED = (
+    "a fix-type change edits no test under sdlc.yaml: test_paths once its reproducing test is "
+    "committed (OPERATING_MODEL section 8): revert the test edits, or the owner unlocks "
+    "(sdlc:unlock-tests on the pull request, or unlock-tests on their machine and a commit) "
+    "when the test itself was wrong."
+)
+
+
+def _lock_commit(ctx: GateContext) -> str | None:
+    """The newest commit that set the lock: ``status.yaml`` gained ``tests_locked: true`` on a
+    fix-type change (or the oldest commit in the walked history, when it was locked already)."""
+    oldest_locked = None
+    for sha, _email, _name in _status_history(ctx):
+        now = _status_fields(ctx, sha)
+        if now is None or not now["locked"]:
+            continue
+        before = _status_fields(ctx, f"{sha}^")
+        if before is None or not before["locked"]:
+            return sha
+        oldest_locked = sha
+    return oldest_locked
+
+
+def check_test_lock(ctx: GateContext) -> CheckResult:
+    """No test file changed between the lock commit and HEAD while the lock stands.
+
+    The hook (``hooks/test_file_lock.py``) denies the edit tools and reads the working tree,
+    so a run that sets ``tests_locked: false`` in the file, edits a test and sets it back, or
+    edits through a shell command, leaves HEAD locked and the test changed, and
+    ``owner_actions`` sees no lift (the 0.2.25 review of the readiness fixes, finding M1).
+    The committed diff from the lock commit to HEAD under ``test_paths`` is the record the
+    hook cannot fake; when HEAD is unlocked, ``owner_actions`` judges who lifted it."""
+    from hooks._common import ConfigError  # noqa: PLC0415
+    from hooks.test_file_lock import test_path_patterns  # noqa: PLC0415
+
+    if ctx.diff is None:
+        return _fail("test_lock", ctx.diff_error, "Run the gate inside the project's git repo.")
+    if ctx.status.change_type != "fix":
+        return _ok("test_lock", "not a fix-type change: no test-file lock")
+    head = _status_fields(ctx, "HEAD")
+    if not head or not head["locked"]:
+        return _ok("test_lock", "the lock is not set at HEAD (owner_actions judges a lift)")
+    sha = _lock_commit(ctx)
+    if sha is None:
+        return _ok("test_lock", "no commit in the walked history set the lock")
+    try:
+        patterns = test_path_patterns(ctx.config)
+    except ConfigError as exc:
+        return _fail("test_lock", str(exc), "Fix sdlc.yaml: test_paths (a list of globs).")
+    changed = diffmod._z(
+        diffmod._git(
+            ctx.root,
+            "diff",
+            "--name-only",
+            "-z",
+            "--diff-filter=ACMRD",
+            f"{sha}..HEAD",
+            check=False,
+        )
+    )
+    hits = sorted(f for f in changed if any(matches(p, f) for p in patterns))
+    if hits:
+        return _fail(
+            "test_lock",
+            f"{len(hits)} test file(s) changed after the lock commit {sha[:10]}: "
+            + ", ".join(hits[:10]),
+            TEST_LOCK_NEED,
+            files=hits[:50],
+            lock_commit=sha,
+        )
+    return _ok(
+        "test_lock", f"no test file changed since the lock commit {sha[:10]}", lock_commit=sha
+    )
+
+
 # --- 13. the decisions ledger of deferred review (decision 21; build guide step 16a) ----------
 def check_panel(ctx: GateContext) -> CheckResult:
     """Every panel decision has a ledger line and no panel decision touched a never-to-panel
@@ -1295,6 +1371,7 @@ CHECKS_BY_PHASE: dict[str, tuple[Check, ...]] = {
         check_guardrails,
         check_risk_list,
         check_owner_actions,
+        check_test_lock,
         check_adversarial_verdict,
     ),
     "d": (
@@ -1309,6 +1386,7 @@ CHECKS_BY_PHASE: dict[str, tuple[Check, ...]] = {
         check_guardrails,
         check_risk_list,
         check_owner_actions,
+        check_test_lock,
         check_adversarial_verdict,
     ),
     "e": (
@@ -1323,6 +1401,7 @@ CHECKS_BY_PHASE: dict[str, tuple[Check, ...]] = {
         check_guardrails,
         check_risk_list,
         check_owner_actions,
+        check_test_lock,
         check_adversarial_verdict,
     ),
     # gate (f) = the owner's triage of the incident intent PR (decision 25): the intent in
