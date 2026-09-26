@@ -1,8 +1,6 @@
 # SDLC framework repo
 
-This repository builds a Claude Code plugin + project template that drives any project through plan → design → build → test → deploy → maintain with profile-based human gates. Read `docs/OPERATING_MODEL.md` first; it is the contract. `docs/BUILD_GUIDE.md` (47 steps, article-cited) is the build plan; `docs/DECISIONS.md` records the 26 settled choices
-records the 26 settled choices — do not reopen them without asking. docs/ROADMAP.md is what comes after Milestone 1: candidates with a proposal each, never a decision.
-— do not reopen them without asking.
+This repository builds a Claude Code plugin + project template that drives any project through plan → design → build → test → deploy → maintain with profile-based human gates. Read `docs/OPERATING_MODEL.md` first; it is the contract. `docs/BUILD_GUIDE.md` (47 steps, article-cited) is the build plan; `docs/DECISIONS.md` records the 26 settled choices — do not reopen them without asking. `docs/ROADMAP.md` is what comes after Milestone 1: candidates with a proposal each, never a decision.
 
 ## Commands
 - Test: `python -m pytest` (all green; never skip or delete a failing test)
