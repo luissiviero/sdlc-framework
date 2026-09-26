@@ -47,6 +47,8 @@ REPO_ROOT = PLUGIN_DIR.parent  # the plugin root Claude Code installs (marketpla
 if str(PLUGIN_DIR) not in sys.path:
     sys.path.insert(0, str(PLUGIN_DIR))
 
+from detect.source import FRAMEWORK_WORKFLOW_PREFIX, SourceError, parse_source  # noqa: E402
+
 from init import detect as detect_mod  # noqa: E402
 from init.render import render_file  # noqa: E402
 from state import conventions as c  # noqa: E402
@@ -326,6 +328,68 @@ def install_workflows(root: Path, values: dict[str, str], report: dict) -> None:
             report[rel] = OUTDATED.format(version=values["PLUGIN_VERSION"])
 
 
+# --- the maintain metric's observation (choice 87) ---------------------------------------------
+MAINTAIN_SOURCE_KIND = "github-actions"
+_WORKFLOW_NAME_RE = re.compile(r"^name:\s*(.+)$", re.MULTILINE)
+_QUOTED_RE = re.compile(r"""^(?P<q>["'])(?P<v>.*?)(?P=q)""")
+_COMMENT_RE = re.compile(r"\s+#.*$")
+NO_OBSERVATION = (
+    "none: every workflow under .github/workflows is one of the framework's own "
+    "(`SDLC \u2026`), which the detection excludes by design \u2014 add the project's own CI "
+    "workflow (run the test command on push and pull_request) or the maintain metric will "
+    "never have an observation (live, 2026-09-25)"
+)
+NO_WORKFLOWS_DIR = (
+    "none: no .github/workflows folder \u2014 add the project's own CI workflow (run the test "
+    "command on push and pull_request) or the maintain metric will never have an observation"
+)
+
+
+def _workflow_name(path: Path) -> str:
+    """The workflow's top-level ``name:``, a `` #...`` comment tail and quotes stripped; the
+    file stem when it has none. A ``#`` inside quotes is part of the name, as in YAML."""
+    try:
+        text = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return path.stem
+    match = _WORKFLOW_NAME_RE.search(text)
+    if not match:
+        return path.stem
+    value = match.group(1).strip()
+    quoted = _QUOTED_RE.match(value)
+    name = quoted.group("v") if quoted else _COMMENT_RE.sub("", value)
+    name = name.strip()
+    return name or path.stem
+
+
+def maintain_observation(root: Path, source: str) -> str:
+    """Whether the maintain metric will have an observation, as one sentence.
+
+    The detection (detect/source.py) counts the project's own CI workflow runs and excludes
+    the framework's workflows, whose name starts with FRAMEWORK_WORKFLOW_PREFIX; a project
+    whose only workflows are the framework's has no observation at all (choice 87). The
+    source is read with the detection's own ``parse_source`` and a named workflow is matched
+    case-insensitively, as ``source.counts`` does, so the sentence never disagrees with it.
+    """
+    try:
+        _kind, wanted = parse_source(source)
+    except SourceError as exc:
+        if source.partition(":")[0].strip() != MAINTAIN_SOURCE_KIND:
+            return f"not checked: the metric source is {source}"
+        return f"not checked: {exc}"
+    workflows_dir = root / ".github" / "workflows"
+    if not workflows_dir.is_dir():
+        return NO_WORKFLOWS_DIR
+    files = sorted([*workflows_dir.glob("*.yml"), *workflows_dir.glob("*.yaml")])
+    names = [_workflow_name(f) for f in files]
+    own = [n for n in names if not n.startswith(FRAMEWORK_WORKFLOW_PREFIX)]
+    if wanted is not None:
+        own = [n for n in own if n.casefold() == wanted.casefold()]
+    if not own:
+        return NO_OBSERVATION
+    return f"ok: {len(own)} project workflow(s) give the metric an observation: {', '.join(own)}"
+
+
 # --- hosting: GitHub only (decision 23; build guide steps 2, 6, 21, 30) -------------------------
 NOT_GITHUB = (
     "hosting: the origin remote {url!r} is on {host}, not github.com. Every trigger, the "
@@ -397,6 +461,7 @@ def run(args) -> dict:
     if not ok:
         raise HostingError(note)
     if args.detect_only:
+        report["maintain"] = _maintain_report(root, args.maintain_source)
         return report
     values = build_values(args, det)
 
@@ -510,8 +575,13 @@ def run(args) -> dict:
         "dir": str(change_dir.relative_to(root)).replace("\\", "/"),
         "branch": c.branch_name(st.id, "a"),
     }
+    report["maintain"] = _maintain_report(root, args.maintain_source)
     report["values"] = values
     return report
+
+
+def _maintain_report(root: Path, source: str) -> dict[str, str]:
+    return {"source": source, "observation": maintain_observation(root, source)}
 
 
 def _init_intent(values: dict[str, str], det: detect_mod.Detection) -> str:

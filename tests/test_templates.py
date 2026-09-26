@@ -522,6 +522,17 @@ def test_runbook_workflow_runs_the_go_once_without_a_model():
     )
     go = [step for step in job["steps"] if "run" in step][-1]
     assert go["env"]["SDLC_DEFAULT_BRANCH"] == DEFAULT_BRANCH_EXPR
+    # the Go step holds the runbook secrets: the install command is the default branch's,
+    # never the PR head's copy of commands.setup (session-6 review finding)
+    [setup] = [step for step in job["steps"] if "project_setup.py" in step.get("run", "")]
+    assert setup["run"] == (
+        "python framework/plugin/ci/project_setup.py --root . "
+        '--ref "refs/remotes/origin/$SDLC_DEFAULT_BRANCH"'
+    )
+    assert setup["env"]["SDLC_DEFAULT_BRANCH"] == DEFAULT_BRANCH_EXPR
+    assert job["steps"].index(setup) < job["steps"].index(go)
+    for step in job["steps"]:
+        assert "${{" not in step.get("run", ""), step["name"]
     # its own concurrency group (live, 2026-09-25): a label event also fires the fix, test and
     # deploy workflows, and on a shared group GitHub displaced a pending run at random
     assert data["concurrency"]["group"] == "sdlc-runbook-${{ github.event.pull_request.head.ref }}"

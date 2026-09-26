@@ -3,6 +3,9 @@
 The queue is the open PR list filtered by the ``sdlc:`` labels of OPERATING_MODEL section 8:
 the parked ones (``sdlc:needs-human``) first, then the ones waiting at a human gate
 (``sdlc:<phase>-ready``), each with the first bullet of its generated summary.
+Each line shows every label of the PR, the ``sdlc:`` ones first, because in the live run of
+2026-09-25 the ``schedule`` label the owner applied to an incident intent PR was invisible
+(defect D11).
 
 **Delivery medium.** The digest replaces the body of one long-lived open issue titled
 "SDLC review queue" (created and pinned on the first run). GitHub's documentation does not
@@ -81,7 +84,9 @@ def _phase_of(labels: list[str]) -> str:
 
 
 def _line(pr: dict[str, Any]) -> str:
-    labels = ", ".join(f"`{lb}`" for lb in sdlc_labels(pr)) or "`none`"
+    gate = sdlc_labels(pr)
+    owner = [lb for lb in labels_of(pr) if lb not in gate]
+    labels = ", ".join(f"`{lb}`" for lb in [*gate, *owner]) or "`none`"
     number = pr.get("number")
     title = str(pr.get("title", "")).strip()
     url = pr.get("html_url") or pr.get("url")

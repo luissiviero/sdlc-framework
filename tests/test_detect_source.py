@@ -21,6 +21,7 @@ def run(
     event: str = "push",
     name: str = "CI",
     status: str = "completed",
+    actor: str = "luissiviero",
 ) -> dict[str, Any]:
     return {
         "id": run_id,
@@ -31,6 +32,7 @@ def run(
         "name": name,
         "html_url": f"https://github.com/o/r/actions/runs/{run_id}",
         "head_sha": "abc",  # an API field the cache does not keep
+        "actor": {"login": actor, "id": 1, "type": "User"},  # the API shape
     }
 
 
@@ -46,7 +48,12 @@ class FakePages:
         return list(self.runs)
 
 
-def write_cache(path: Path, repo: str, runs: dict[str, dict[str, Any]], version: int = 1):
+def write_cache(
+    path: Path,
+    repo: str,
+    runs: dict[str, dict[str, Any]],
+    version: int = source.CACHE_SCHEMA_VERSION,
+):
     path.write_text(
         json.dumps({"schema_version": version, "repo": repo, "runs": runs, "fetched_at": "x"}),
         encoding="utf-8",
@@ -54,8 +61,7 @@ def write_cache(path: Path, repo: str, runs: dict[str, dict[str, Any]], version:
 
 
 def cached(created_at: str, conclusion: str = "success", **extra: Any) -> dict[str, Any]:
-    record = {k: v for k, v in run(0, created_at, conclusion, **extra).items() if k != "id"}
-    return {k: record[k] for k in source.CACHED_FIELDS}
+    return source._record(run(0, created_at, conclusion, **extra))
 
 
 # --- parse_source -----------------------------------------------------------------------------
@@ -135,6 +141,24 @@ def test_counts_workflow_filter_never_admits_a_framework_workflow():
     assert not source.counts(run(1, "2026-09-01T10:00:00Z", name="SDLC build"), "SDLC build")
 
 
+def test_counts_excludes_runs_by_the_automation_actor():
+    def token_run(actor: str) -> dict[str, Any]:
+        return run(1, "2026-09-25T10:00:00Z", "failure", event="pull_request", actor=actor)
+
+    assert source.DEFAULT_EXCLUDED_ACTORS == ("github-actions[bot]",)
+    assert not source.counts(token_run("github-actions[bot]"), "CI")
+    assert source.counts(token_run("luissiviero"), "CI")
+    # the project's own automation identity replaces the default
+    assert source.counts(token_run("github-actions[bot]"), "CI", ("ci-bot",))
+    assert not source.counts(token_run("ci-bot"), "CI", excluded_actors=("ci-bot",))
+    assert source.counts(token_run("github-actions[bot]"), "CI", excluded_actors=())
+    # Dependabot's pull_request runs are real test runs: no general [bot] exclusion
+    assert source.counts(token_run("dependabot[bot]"), "CI")
+    # case-insensitive and stripped, on both sides
+    assert not source.counts(token_run("GitHub-Actions[BOT]"), "CI")
+    assert not source.counts(token_run("ci-bot"), "CI", (" CI-Bot ",))
+
+
 # --- daily_series -----------------------------------------------------------------------------
 FIXTURE_RUNS = [
     # before the window: dropped
@@ -204,10 +228,63 @@ def test_daily_series_with_a_workflow_filter():
     assert series[0]["value"] == pytest.approx(0.5)
 
 
+def test_daily_series_ignores_the_token_runs_that_never_ran_a_job():
+    # 2026-09-25 on the sample repository, in miniature: the people's runs all succeeded, and
+    # the pull_request runs recorded for the token's own pushes ended failure with zero jobs
+    people = [run(10 + i, f"2026-09-25T0{i}:00:00Z", event="pull_request") for i in range(5)]
+    token = [
+        run(
+            20 + i,
+            f"2026-09-25T1{i}:00:00Z",
+            "failure",
+            event="pull_request",
+            actor="github-actions[bot]",
+        )
+        for i in range(3)
+    ]
+    series = source.daily_series(people + token, "CI", "2026-09-25")
+    assert series == [
+        {
+            "at": "2026-09-25",
+            "value": 0.0,
+            "meta": {"runs": 5, "failed": 0, "failed_run_ids": [], "failed_run_urls": []},
+        }
+    ]
+
+    real_failure = run(30, "2026-09-25T20:00:00Z", "failure", event="pull_request")
+    series = source.daily_series(people + token + [real_failure], "CI", "2026-09-25")
+    assert series[0]["value"] == pytest.approx(1 / 6)
+    assert series[0]["meta"]["runs"] == 6
+    assert series[0]["meta"]["failed_run_ids"] == [30]
+
+    # with no actor excluded the token runs would count again (the defect D12 reading)
+    series = source.daily_series(people + token, "CI", "2026-09-25", excluded_actors=())
+    assert series[0]["value"] == pytest.approx(3 / 8)
+
+
 def test_daily_series_all_green_day_has_rate_zero():
     series = source.daily_series([run(1, "2026-09-01T08:00:00Z")], None, "2026-09-01")
     assert series[0]["value"] == 0.0
     assert series[0]["meta"]["failed_run_ids"] == []
+
+
+# --- the cached record -------------------------------------------------------------------------
+def test_record_flattens_the_actor_login_and_keeps_a_cached_string():
+    api = run(1, "2026-09-25T10:00:00Z", "failure", actor="github-actions[bot]")
+    record = source._record(api)
+    assert record["actor"] == "github-actions[bot]"
+    assert set(record) == set(source.CACHED_FIELDS)
+    assert "head_sha" not in record
+
+    # a record read back from the cache already holds the string: kept as it is
+    assert source._record(record)["actor"] == "github-actions[bot]"
+    assert source._record(record) == record
+
+    # a run without an actor (or a cache written before it was kept) stores None and counts
+    no_actor = {k: v for k, v in api.items() if k != "actor"}
+    assert source._record(no_actor)["actor"] is None
+    assert source.counts(no_actor, "CI")
+    assert source.counts(source._record(no_actor), "CI")
 
 
 # --- fetch ------------------------------------------------------------------------------------
@@ -241,7 +318,7 @@ def test_fetch_with_an_empty_cache_requests_from_the_window_start(tmp_path):
     assert result.cache_path == str(cache)
 
     data = json.loads(cache.read_text(encoding="utf-8"))
-    assert data["schema_version"] == 1
+    assert data["schema_version"] == source.CACHE_SCHEMA_VERSION
     assert data["repo"] == REPO
     assert set(data["runs"]) == {"1", "2", "3"}
     assert set(data["runs"]["1"]) == set(source.CACHED_FIELDS)  # head_sha not kept
@@ -309,7 +386,7 @@ def test_fetch_ignores_a_foreign_repo_cache(tmp_path):
 
 
 @pytest.mark.parametrize(
-    "content", ["not json", "[]", '{"schema_version": 2, "repo": "owner/name"}']
+    "content", ["not json", "[]", '{"schema_version": 99, "repo": "owner/name"}']
 )
 def test_fetch_treats_an_unreadable_cache_as_empty(tmp_path, content):
     cache = tmp_path / "runs.json"
@@ -357,6 +434,46 @@ def test_fetch_passes_the_workflow_filter(tmp_path):
     result = source.fetch(REPO, since="2026-09-10", workflow="ci", get_pages=fake)
     assert result.runs_total == 1
     assert result.observations[0]["value"] == 0.0
+
+
+def test_fetch_passes_excluded_actors_through(tmp_path):
+    runs = [
+        run(1, "2026-09-25T08:00:00Z"),
+        run(
+            2, "2026-09-25T09:00:00Z", "failure", event="pull_request", actor="github-actions[bot]"
+        ),
+    ]
+    by_default = source.fetch(REPO, since="2026-09-25", get_pages=FakePages(runs))
+    assert by_default.runs_total == 1
+    assert by_default.observations[0]["value"] == 0.0
+    assert by_default.fetched == 2
+
+    kept = source.fetch(REPO, since="2026-09-25", get_pages=FakePages(runs), excluded_actors=())
+    assert kept.runs_total == 2
+    assert kept.observations[0]["meta"]["failed_run_ids"] == [2]
+
+    # the cache stores the flattened login, and a cached token run stays excluded
+    cache = tmp_path / "runs.json"
+    source.fetch(REPO, since="2026-09-25", cache=cache, get_pages=FakePages(runs))
+    data = json.loads(cache.read_text(encoding="utf-8"))
+    assert data["runs"]["2"]["actor"] == "github-actions[bot]"
+    again = source.fetch(REPO, since="2026-09-25", cache=cache, get_pages=FakePages([]))
+    assert again.runs_total == 1
+
+
+def test_fetch_discards_a_cache_written_before_the_actor_was_kept(tmp_path):
+    """Schema 1 entries carry no actor, so a token's zero-job failure cached by 0.2.22 would
+    sit in the baseline for a whole window (session-7 review): the old cache is dropped and
+    the window refetched once."""
+    cache = tmp_path / "runs.json"
+    old = {k: v for k, v in cached("2026-09-25T10:00:00Z", "failure").items() if k != "actor"}
+    write_cache(cache, REPO, {"7": old}, version=1)
+    pages = FakePages([run(8, "2026-09-25T11:00:00Z")])
+    result = source.fetch(REPO, since="2026-09-20", cache=cache, get_pages=pages)
+    assert "created=>=2026-09-20" in pages.urls[0]  # the whole window, not the last days
+    assert result.runs_total == 1 and result.observations[0]["value"] == 0.0
+    data = json.loads(cache.read_text(encoding="utf-8"))
+    assert data["schema_version"] == source.CACHE_SCHEMA_VERSION and "7" not in data["runs"]
 
 
 # --- the default HTTP pager -------------------------------------------------------------------

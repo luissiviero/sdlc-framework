@@ -77,9 +77,15 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
         run: python framework/plugin/ci/run_phase.py --root . --plugin-dir framework --phase fix --id "$CHANGE_ID" --head-ref "$HEAD_REF" --repo "$REPO" --pr-number "$PR_NUMBER" --find-change
 
-      - name: "Install the project's own toolchain (sdlc.yaml: commands.setup)"
+      # The Go step below holds the runbook secrets: the head's copy of commands.setup is not
+      # the owner's approved one, so the install command is read from the default branch —
+      # fully qualified, so a tag named origin/<branch> cannot shadow the remote-tracking ref —
+      # and the step refuses a head that changed files outside changes/.
+      - name: "Install the project's own toolchain (sdlc.yaml: commands.setup, from the default branch)"
         if: steps.find.outputs.change_id != ''
-        run: python framework/plugin/ci/project_setup.py --root .
+        env:
+          SDLC_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: python framework/plugin/ci/project_setup.py --root . --ref "refs/remotes/origin/$SDLC_DEFAULT_BRANCH"
 
       - name: Go — run the proposed runbook once, as the label's actor authorized
         if: steps.find.outputs.change_id != ''

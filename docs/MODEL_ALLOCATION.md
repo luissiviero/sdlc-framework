@@ -255,6 +255,25 @@ unset in session 5).
 | The fresh-context review of the diff before the commit | O | As in every session (§2). |
 | Session-6 wrap-up: PROGRESS, the next handoff (if anything remains) | F | As in every session (§2). Done 2026-09-25: six detect runs, two scans, four digests, one design run, one fix round, one Go and five abandon jobs on the sample; ten defects (D1–D10) fixed by Opus from Fable's specs, each with its test, across plugin 0.2.20, 0.2.21 and 0.2.22 (PRs #47, #48, #49, all merged and tagged the same day); every live check of the table proven; no model lesson, so no eval case; NOTES §14; `HANDOFF.md` rewritten for session 7 (the first real breach and the recorded gaps). |
 
+## 5b. Session 7 — the shakedown's gaps, the roadmap and two proposals
+
+No live check remained and the first real detection was out of reach by date (the sample's
+`CI` workflow started on 2026-09-25, the session's own day), so the session was the gaps of
+PROGRESS session 6 plus the docs the owner asked for. The split followed §1 and §2: Fable
+read the contract and the record, wrote every spec and every prompt-text edit, and kept the
+roadmap, the second proposal, PROGRESS, NOTES and the handoff; Opus (named `model: "opus"`
+explicitly) did the mechanical rows from written specs, in parallel with disjoint file sets.
+
+| Task | Who | What Fable gave the sub-agent, or why it stayed with Fable |
+|---|---|---|
+| Preconditions (`python tasks.py check`, `claude plugin validate .`, the tags, the sample's pin and workflow copies against the 0.2.22 template, the sample's `CI` run history) | F | Cheap to read directly; the verdict on deliverable 2 (eight days of CI do not exist yet) decides the session's shape. |
+| D11 (`pr/digest.py`) with its test | F→O | Spec: the live observation, the rendering rule (`sdlc:` labels first, then the owner's), the test names. |
+| The two Go-path items (`detect/cli.py go`, `finish`, `dismiss` read the default branch's `sdlc.yaml`; `project_setup.py --ref` and the runbook workflow) and the dismissal footer, with their tests | F→O | Spec: the authorization path, `approved_files` as the one reader, fail closed, the workflow lines (never a `${{ }}` in a `run:` line), the test names and mechanics. |
+| Choice 87 (`/sdlc-init` reports whether the metric will have an observation) and the D9 step-1 text of `/sdlc-fix` | F for the prompt text, O for the code, the command edit and the tests | The `/sdlc-fix` sentence was written by Fable and applied verbatim by Opus. |
+| `docs/proposals/okf-adoption.md` (R1) | O→F | Opus carried the owner's analysis over as Markdown from a section-by-section spec against the OKF spec text; Fable checked the field names and the "Decisions this touches" section. |
+| `docs/ROADMAP.md`, `docs/proposals/session-tooling-pdf-web.md` (R2), the environment facts of NOTES §15, PROGRESS, `HANDOFF.md` | F | Judgement and precision (what Milestone 1 is; which claims of the setup prompt were true here). |
+| The fresh-context review of the diff, the final check chain, the sample's upgrade PR | O / F | As in every session (§2); the sample PR is opened by the session, merged by the owner. |
+
 ## 6. Session 2 (steps 16–21) — finished
 
 Session 2 completed on `main` (PRs #4, #5, #7, plus #8 for the editable install) before

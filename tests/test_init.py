@@ -673,3 +673,69 @@ def test_init_accepts_github_and_lets_a_local_or_missing_origin_through(tmp_path
     plain = tmp_path / "plain"  # not even a git repository (the layer-1 tests' case)
     shutil.copytree(FIXTURE, plain)
     assert _run_init(plain)["hosting"].startswith("not GitHub (not a git repository)")
+
+
+# --- the maintain metric's observation (choice 87) ------------------------------------------
+
+
+def test_init_reports_no_observation_when_only_the_framework_workflows_exist(tmp_path):
+    root = tmp_path / "proj"
+    shutil.copytree(FIXTURE, root)
+    report = _run_init(root)
+    assert all((root / rel).is_file() for rel in WORKFLOWS)  # read after the install
+    assert report["maintain"]["source"] == "github-actions"
+    assert report["maintain"]["observation"].startswith("none:")
+    detect_only = _run_init(root, "--detect-only")
+    assert detect_only["maintain"]["observation"].startswith("none:")
+
+
+def test_init_reports_the_project_workflows_that_give_the_metric_an_observation(tmp_path):
+    root = tmp_path / "proj"
+    shutil.copytree(FIXTURE, root)
+    workflows = root / ".github" / "workflows"
+    workflows.mkdir(parents=True)
+    (workflows / "ci.yml").write_text(
+        "name: CI\non: [push, pull_request]\njobs:\n  test:\n    steps:\n      - name: tests\n",
+        encoding="utf-8",
+    )
+    (workflows / "copy.yaml").write_text('name: "SDLC design (b)"\n', encoding="utf-8")
+    observation = _run_init(root)["maintain"]["observation"]
+    assert observation.startswith("ok: 1 ") and observation.endswith(": CI")
+    assert "SDLC" not in observation
+
+
+def test_init_maintain_observation_for_a_named_workflow_source(tmp_path):
+    workflows = tmp_path / ".github" / "workflows"
+    workflows.mkdir(parents=True)
+    (workflows / "ci.yml").write_text("name: CI\n", encoding="utf-8")
+    (workflows / "nightly.yaml").write_text("name: 'Nightly'\n", encoding="utf-8")
+    (workflows / "sdlc-build.yml").write_text("name: SDLC build (c)\n", encoding="utf-8")
+    both = sdlc_init.maintain_observation(tmp_path, "github-actions")
+    assert both.startswith("ok: 2 ") and both.endswith(": CI, Nightly")
+    named = sdlc_init.maintain_observation(tmp_path, "github-actions:CI")
+    assert named.startswith("ok: 1 ") and named.endswith(": CI")
+    assert sdlc_init.maintain_observation(tmp_path, "github-actions:Other").startswith("none:")
+    assert sdlc_init.maintain_observation(tmp_path, "datadog") == (
+        "not checked: the metric source is datadog"
+    )
+    # the detection casefolds the workflow name (detect/source.py counts)
+    lower = sdlc_init.maintain_observation(tmp_path, "github-actions:ci")
+    assert lower.startswith("ok: 1 ") and lower.endswith(": CI")
+    # a YAML comment tail is not part of the name; a quoted '#' is
+    (workflows / "ci.yml").write_text("name: CI  # the project's own\n", encoding="utf-8")
+    (workflows / "nightly.yaml").write_text("name: 'Nightly #2'  # cron\n", encoding="utf-8")
+    both = sdlc_init.maintain_observation(tmp_path, "github-actions")
+    assert both.endswith(": CI, Nightly #2"), both
+    # the detection's own parse_source: no workflow after ':' and a look-alike kind
+    empty = sdlc_init.maintain_observation(tmp_path, "github-actions:")
+    assert empty.startswith("not checked:") and "names no workflow" in empty
+    lookalike = sdlc_init.maintain_observation(tmp_path, "github-actionsX")
+    assert lookalike.startswith("not checked:")
+    # no workflows folder at all has its own sentence
+    bare = tmp_path / "bare"
+    bare.mkdir()
+    assert sdlc_init.maintain_observation(bare, "github-actions") == (
+        "none: no .github/workflows folder \u2014 add the project's own CI workflow (run the "
+        "test command on push and pull_request) or the maintain metric will never have an "
+        "observation"
+    )

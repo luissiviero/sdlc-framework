@@ -14,9 +14,15 @@ Observations are plain dicts (``Observation``) so this module does not depend on
 ``detect.stats``; the caller converts them.
 
 A run counts when it completed with ``success`` or ``failure``, was started by a counted
-event, and is not one of the framework's own ``SDLC ...`` workflows (they end green by design
-and are not the project's test suite). A local JSON cache keeps the runs already seen, so a
-daily fetch only asks for the last few days.
+event, is not one of the framework's own ``SDLC ...`` workflows (they end green by design
+and are not the project's test suite), and was not started by an excluded actor (default
+``DEFAULT_EXCLUDED_ACTORS``, the framework's automation identity). The last rule exists
+because a ``pull_request`` event caused by the workflow token starts no run, yet GitHub still
+records one that ends ``completed`` / ``failure`` with zero jobs: on 2026-09-25 the sample
+repository's ``CI`` listing held nine such runs among 23, so the day's rate would have read
+0.39 on a day when no test failed. Only the automation identity is excluded, not every
+``[bot]`` actor: Dependabot's ``pull_request`` runs are real test runs. A local JSON cache
+keeps the runs already seen, so a daily fetch only asks for the last few days.
 
 No third-party dependency (decision 7), a 30 s timeout on every request (``TIMEOUT`` of
 ``pr.github``), and the token only ever reaches an ``Authorization`` header inside
@@ -49,13 +55,19 @@ GetPages = Callable[[str], list[dict[str, Any]]]
 SOURCE_KIND = "github-actions"
 MAX_PAGES = 10  # 1000 runs per fetch; the API returns newest first
 REFETCH_DAYS = 2  # a run in progress at the last fetch completes later
-CACHE_SCHEMA_VERSION = 1
+# 2 since 0.2.23: entries carry the actor; an older cache is discarded and refetched once,
+# so its zero-job token runs (D12) do not sit in the baseline for a whole window
+CACHE_SCHEMA_VERSION = 2
 MAX_FAILED_LINKS = 10  # failed run ids/urls kept per day, newest first
 COUNTED_CONCLUSIONS = ("success", "failure")
 FAILED_CONCLUSION = "failure"
 COUNTED_EVENTS = ("push", "pull_request", "schedule", "workflow_dispatch")
 FRAMEWORK_WORKFLOW_PREFIX = "SDLC "
-CACHED_FIELDS = ("created_at", "conclusion", "status", "event", "name", "html_url")
+CACHED_FIELDS = ("created_at", "conclusion", "status", "event", "name", "html_url", "actor")
+# The framework's default automation identity (the same value as gate/policy.py
+# DEFAULT_AUTOMATION_IDENTITY, named here rather than imported to keep this module free of gate
+# imports); the caller passes the project's sdlc.yaml automation_identity list instead.
+DEFAULT_EXCLUDED_ACTORS: tuple[str, ...] = ("github-actions[bot]",)
 ERROR_BODY_CHARS = 200
 
 
@@ -93,8 +105,30 @@ def parse_source(source: str) -> tuple[str, str | None]:
 
 
 # --- counting ---------------------------------------------------------------------------------
-def counts(run: dict[str, Any], workflow: str | None) -> bool:
-    """Whether a run enters the failure rate (see the module docstring)."""
+def _actor_login(value: Any) -> str | None:
+    """The actor's login: ``value["login"]`` for the API shape (a dict), the value itself for
+    an already-flattened cached string, else None."""
+    if isinstance(value, dict):
+        login = value.get("login")
+        return login if isinstance(login, str) else None
+    return value if isinstance(value, str) else None
+
+
+def _normalized_actors(excluded_actors: Iterable[str] | None) -> frozenset[str]:
+    actors = DEFAULT_EXCLUDED_ACTORS if excluded_actors is None else excluded_actors
+    if isinstance(actors, str):  # one login passed on its own, not a list of characters
+        actors = (actors,)
+    return frozenset(str(a).strip().casefold() for a in actors if str(a).strip())
+
+
+def counts(
+    run: dict[str, Any],
+    workflow: str | None,
+    excluded_actors: Iterable[str] | None = None,
+) -> bool:
+    """Whether a run enters the failure rate (see the module docstring). ``excluded_actors``
+    defaults to ``DEFAULT_EXCLUDED_ACTORS``; pass ``()`` to exclude no actor. A run with no
+    actor (a cache written before the actor was kept) counts."""
     if run.get("status") != "completed":
         return False
     if run.get("conclusion") not in COUNTED_CONCLUSIONS:
@@ -106,6 +140,9 @@ def counts(run: dict[str, Any], workflow: str | None) -> bool:
         return False
     if workflow is not None and name.casefold() != workflow.casefold():
         return False
+    login = _actor_login(run.get("actor"))
+    if login is not None and login.strip().casefold() in _normalized_actors(excluded_actors):
+        return False
     return True
 
 
@@ -114,14 +151,18 @@ def _day(run: dict[str, Any]) -> str:
 
 
 def daily_series(
-    runs: Iterable[dict[str, Any]], workflow: str | None, since: str
+    runs: Iterable[dict[str, Any]],
+    workflow: str | None,
+    since: str,
+    excluded_actors: Iterable[str] | None = None,
 ) -> list[Observation]:
     """One observation per UTC day on or after ``since`` with at least one counted run,
     sorted by day."""
+    excluded = _normalized_actors(excluded_actors)
     by_day: dict[str, list[dict[str, Any]]] = {}
     for run in runs:
         day = _day(run)
-        if len(day) < 10 or day < since or not counts(run, workflow):
+        if len(day) < 10 or day < since or not counts(run, workflow, excluded):
             continue
         by_day.setdefault(day, []).append(run)
     series: list[Observation] = []
@@ -258,7 +299,13 @@ def _write_cache(cache: Path, repo: str, runs: dict[str, dict[str, Any]]) -> str
 
 
 def _record(run: dict[str, Any]) -> dict[str, Any]:
-    return {key: run.get(key) for key in CACHED_FIELDS}
+    """The cached fields of a run, with ``actor`` flattened to its login (a string or None).
+    A cache written before ``actor`` was kept has no such key and its runs count as before;
+    the cache only refetches the last ``REFETCH_DAYS``, so those entries age out of the window
+    on their own."""
+    record = {key: run.get(key) for key in CACHED_FIELDS}
+    record["actor"] = _actor_login(run.get("actor"))
+    return record
 
 
 # --- fetch ------------------------------------------------------------------------------------
@@ -277,6 +324,7 @@ def fetch(
     workflow: str | None = None,
     get_pages: GetPages | None = None,
     token: str | None = None,
+    excluded_actors: Iterable[str] | None = None,
 ) -> FetchResult:
     """The daily failure-rate series of ``repo`` (``owner/name``) from ``since`` (ISO date).
 
@@ -285,6 +333,7 @@ def fetch(
     older than ``since`` - 1 day are dropped, and the cache is written back. A cache that
     cannot be written is reported in ``cache_note``, never raised. ``token`` defaults to
     ``GITHUB_TOKEN``/``GH_TOKEN``; with none the request is unauthenticated.
+    ``excluded_actors`` (default ``DEFAULT_EXCLUDED_ACTORS``) is passed to ``counts``.
     """
     owner, sep, name = (repo or "").partition("/")
     if not (owner and sep and name) or "/" in name:
@@ -321,7 +370,7 @@ def fetch(
         cache_note = _write_cache(Path(cache), repo, merged)
 
     runs = [{"id": _id_key(k), **v} for k, v in merged.items()]
-    observations = daily_series(runs, workflow, since_iso)
+    observations = daily_series(runs, workflow, since_iso, excluded_actors)
     return FetchResult(
         observations=observations,
         runs_total=sum(o["meta"]["runs"] for o in observations),
