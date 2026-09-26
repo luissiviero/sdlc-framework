@@ -24,11 +24,14 @@
 | Link | Row | What is there now | What it must become |
 |---|---|---|---|
 | sample `.github/workflows/ci.yml` (`luissiviero/sdlc-sample-python`, `main`) | lines 7–11, the `on:` block (read from the owner's paste in this sitting) | `on:`<br>`  push:`<br>`    branches: ["main"]`<br>`  pull_request:`<br>`  workflow_dispatch:` | `on:`<br>`  push:`<br>`    branches: ["main"]`<br>`  pull_request:`<br>`  schedule:`<br>`    - cron: "29 1 * * *"`<br>`  workflow_dispatch:`<br>Two lines added, the rest unchanged. Commit on `main` (a PR merged by the owner or a direct push: the commit's author becomes the scheduled runs' actor). The existing `workflow_dispatch` line is the fallback for a day the schedule misses and the way to re-enable it after GitHub's 60-day inactivity pause (NOTES §11a). |
+| sample `.github/workflows/ci.yml`, after the row above | the `Install the toolchain` step's `run:` line | `        run: python -m pip install pytest ruff` | `        run: python -m pip install pytest==X ruff==Y` — X and Y the versions in the line `Successfully installed …` of the same step in the merge run of `a0a6e5b` (the versions that just passed). A new commit on the sample's `main` (GitHub's web editor, "Commit directly to the main branch" or a new PR the owner merges); the pinned versions change only by a reviewed edit. |
+
+Applied: the first row on 2026-09-26 through sample PR #41, opened by the owner in GitHub's web editor and merged by the sample's session at the owner's request as `a0a6e5b` (the diff: the two `schedule` lines only; the PR's `CI` run 36254196602 green). That session's review, pasted into this sitting, raised the unpinned install step: a tool release can turn a nightly run red with no commit behind it, which on this road would be a false failure point in the flat baseline or an incident nobody caused — hence the second row. Neither is read from here (the sample is out of scope): session 9 reads the file on `main`, the merge run's conclusion and the first scheduled run's actor first.
 
 The proof: on 2026-09-27 the sample's Actions tab (or `actions_list` on `ci.yml` in session 9) shows a `CI` run with event `schedule`, a job that ran, and the owner's login as its actor.
 
 ## Left (this sitting)
-- The fifteen rows of `docs/ROADMAP.md`, "The path to 1.0.0", in order; row 1 (the edit above) and row 2 (the session scope) are the owner's, today and at every session start. `HANDOFF.md` is the brief for sessions 9–11.
+- The rows of `docs/ROADMAP.md`, "The path to 1.0.0", in order; row 1 is done (sample PR #41), row 1b (the version pin above) and row 2 (the session scope) are the owner's, today and at every session start. `HANDOFF.md` is the brief for sessions 9–11.
 
 ---
 

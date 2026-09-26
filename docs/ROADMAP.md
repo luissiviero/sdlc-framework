@@ -32,7 +32,8 @@ Written in the second sitting of session 8 (2026-09-26) after reading the code t
 
 | # | Step | Who | Earliest | Blocked by | Done |
 |---|---|---|---|---|---|
-| 1 | The sample's `ci.yml` runs daily: a `schedule` entry (01:29 UTC) under `on:`, beside the `workflow_dispatch` already there, on the sample's `main` (the edit table in PROGRESS) | Owner | 2026-09-26 | — | |
+| 1 | The sample's `ci.yml` runs daily: a `schedule` entry (01:29 UTC) under `on:`, beside the `workflow_dispatch` already there, on the sample's `main` (the edit table in PROGRESS) | Owner | 2026-09-26 | — | 2026-09-26: sample PR #41 (opened by the owner in GitHub's web editor), merged as `a0a6e5b`; its PR run 36254196602 green (reported by the sample's session, not read from here) |
+| 1b | The sample's `ci.yml` pins its tools: `pip install pytest==X ruff==Y`, the versions the merge run of `a0a6e5b` installed, so a new ruff or pytest release cannot turn a nightly run red with no commit behind it (a false failure point in the baseline, or an incident nobody caused) | Owner | 2026-09-26 | 1 | |
 | 2 | Start every session with both repositories selected (NOTES §16: the scope is fixed at start; `add_repo` denied twice) | Owner | each session | — | |
 | 3 | The first scheduled `CI` run has a person's `actor.login`, not `github-actions[bot]` (else D12 drops it; a fix with a test) | Session 9 | 2026-09-27 | 1, 2 | |
 | 4 | The sample's 0.2.24 upgrade PR (the twelve copies and the pin script) merged, then one dispatched detect run: the pin step's `git show … \| python -` line reads `0.2.24`, the framework checks out at `v0.2.24`, the log's `observations` equals the real count (its "insufficient baseline: N point(s)" N is that count minus today's day minus the tail) | Session 9 opens, owner merges | 2026-09-27 | 2 | |
