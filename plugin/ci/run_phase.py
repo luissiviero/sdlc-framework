@@ -106,7 +106,7 @@ from ci import fix_requests, project_setup  # noqa: E402
 from gate import artifacts as art  # noqa: E402
 from gate import diff as gate_diff  # noqa: E402
 from gate import limits  # noqa: E402
-from hooks._common import ConfigError, load_sdlc_config, matches  # noqa: E402
+from hooks._common import SDLC_FILE, ConfigError, load_sdlc_config, matches  # noqa: E402
 from state import conventions as c  # noqa: E402
 from state import status as status_mod  # noqa: E402
 
@@ -734,9 +734,39 @@ def rerun_reason(
     return None
 
 
+def _approved_config(root: Path) -> dict[str, Any]:
+    """``sdlc.yaml`` as the default branch carries it — the copy the owner approved — when
+    the checkout has that remote-tracking ref; else the checkout's copy (a by-hand run
+    without a remote, a project not yet initialised on its default branch).
+
+    The guard used to read the checkout's copy, which ``prepare_branch`` had already
+    switched to the work branch: ``paused: true`` merged on the default branch stopped
+    nothing in flight, and a branch could carry its own ``profile`` (OPERATING_MODEL
+    section 4.2: the guard reads the "base branch copy of sdlc.yaml"; 1.0.0 readiness
+    review, 2026-09-26). The default branch is named by ``SDLC_DEFAULT_BRANCH`` or guessed
+    (``state/gitops.default_branch``); a guess that lands on a framework branch is refused,
+    since a work branch's copy is not the owner's."""
+    from state import gitops, yamlish  # noqa: PLC0415
+
+    try:
+        name = gitops.default_branch(root) if gitops.is_repo(root) else ""
+    except Exception:  # noqa: BLE001 - no git, no remote: the checkout's copy is all there is
+        name = ""
+    if not name or name.startswith("sdlc/") or c.parse_branch(name):
+        return _config(root)
+    text = gate_diff.file_at(root, f"refs/remotes/origin/{name}", SDLC_FILE)
+    if text is None:
+        return _config(root)
+    try:
+        data = yamlish.loads(text)
+    except Exception:  # noqa: BLE001 - the same as an unreadable checkout copy (_config)
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
 def guard(root: Path, change_id: str, run_phase: str, repo: str, env: dict[str, str]):
     """(change_dir, status, config, skip reason)."""
-    config = _config(root)
+    config = _approved_config(root)
     if config.get("paused") is True:
         return None, None, config, "sdlc.yaml says paused: true"
     change_dir = c.find_change_dir(root, change_id)

@@ -31,6 +31,7 @@ from typing import Any
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from hooks._common import utf8_stdout  # noqa: E402
 from pr import description as desc  # noqa: E402
 from pr import github  # noqa: E402
 from state import conventions as c  # noqa: E402
@@ -225,6 +226,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    utf8_stdout()  # the description carries ``→``; a cp1252 pipe on Windows raised on it
     args = build_parser().parse_args(argv)
     handlers = {
         "description": cmd_description,

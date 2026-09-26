@@ -810,9 +810,9 @@ def check_design_scope(ctx: GateContext) -> CheckResult:
 
 # --- 12. owner-only state: accept-risk and set-iterations (build guide step 24.5) -------------
 OWNER_ACTIONS_NEED = (
-    "accept-risk and set-iterations are the owner's: apply sdlc:accept-risk or "
-    "sdlc:reset-iterations on the pull request, or run the command on your machine or in "
-    "your own session and commit; a run cannot approve itself (decision 11)."
+    "accept-risk, set-iterations and unlock-tests are the owner's: apply sdlc:accept-risk, "
+    "sdlc:reset-iterations or sdlc:unlock-tests on the pull request, or run the command on "
+    "your machine or in your own session and commit; a run cannot approve itself (decision 11)."
 )
 STATUS_HISTORY_LIMIT = "200"  # commits of status.yaml history the check walks back through
 
@@ -841,12 +841,20 @@ def _status_fields(ctx: GateContext, ref: str) -> dict[str, Any] | None:
     }
     reset_by = data.get("iterations_reset_by")
     reset_at = data.get("iterations_reset_at")
+    # the test-file lock as the hook reads it (``hooks/test_file_lock.py: is_locked``): a
+    # fix-type change whose reproducing test is committed; either field lifts it
+    locked = str(data.get("change_type", "")).strip().lower() == "fix" and (
+        data.get("tests_locked") is True
+    )
+    unlocked_by = data.get("tests_unlocked_by")
     return {
         "risk": risk,
         "iterations": iterations,
         "risk_by": risk_by,
         "reset_by": str(reset_by).strip() if isinstance(reset_by, str) else None,
         "reset_at": str(reset_at).strip() if isinstance(reset_at, str) else None,
+        "locked": locked,
+        "unlocked_by": str(unlocked_by).strip() if isinstance(unlocked_by, str) else None,
     }
 
 
@@ -893,13 +901,29 @@ def check_owner_actions(ctx: GateContext) -> CheckResult:
     identity passes when the same commit recorded the label's actor
     (``risk_accepted_by[item]``, ``iterations_reset_by``) and that actor is a person. An
     actor that is the automation identity or a ``[bot]`` account is rejected as before: a
-    run cannot un-park itself (decision 11)."""
+    run cannot un-park itself (decision 11).
+
+    The test-file lock is the third owner action (OPERATING_MODEL sections 6 and 8: "only
+    the owner unlocks"). Until 0.2.25 nothing but the hook read ``tests_locked``, so a run
+    that set it to false, or turned the change into a feature, or ran ``unlock-tests``
+    itself, edited the frozen tests unnoticed (1.0.0 readiness review, 2026-09-26). The
+    newest commit that lifted the lock is judged like a reset: a person's commit, or the
+    automation identity's with ``tests_unlocked_by`` recorded as a person in that commit."""
     if ctx.diff is None:
         return _fail("owner_actions", ctx.diff_error, "Run the gate inside the project's git repo.")
     identities = automation_identity(ctx.config)
-    empty = {"risk": set(), "iterations": 0, "risk_by": {}, "reset_by": None, "reset_at": None}
+    empty = {
+        "risk": set(),
+        "iterations": 0,
+        "risk_by": {},
+        "reset_by": None,
+        "reset_at": None,
+        "locked": False,
+        "unlocked_by": None,
+    }
     head = _status_fields(ctx, "HEAD") or empty
     tree_risk = {str(r).strip().lower() for r in ctx.status.risk_accepted if str(r).strip()}
+    tree_locked = ctx.status.change_type == "fix" and bool(ctx.status.tests_locked)
     problems: list[str] = []
     gained = sorted(tree_risk - head["risk"])
     if gained:
@@ -911,15 +935,22 @@ def check_owner_actions(ctx: GateContext) -> CheckResult:
             f"iterations dropped from {head['iterations']} to {ctx.status.iterations} in the "
             "working tree, in no commit"
         )
+    if head["locked"] and not tree_locked:
+        problems.append("the test-file lock was lifted in the working tree, in no commit")
     risk_event: tuple[str, str, str, list[str], dict[str, str]] | None = None
     drop_event: tuple[str, str, str, int, int, str | None] | None = None
+    unlock_event: tuple[str, str, str, str | None] | None = None
     for sha, email, name in _status_history(ctx):
-        if risk_event is not None and drop_event is not None:
+        if risk_event is not None and drop_event is not None and unlock_event is not None:
             break
         now = _status_fields(ctx, sha)
         if now is None:
             continue
         before = _status_fields(ctx, f"{sha}^") or empty
+        if before["locked"] and not now["locked"] and unlock_event is None:
+            # the act is recorded in this very commit when the actor changed
+            recorded = now["unlocked_by"] if now["unlocked_by"] != before["unlocked_by"] else None
+            unlock_event = (sha, email, name, recorded)
         added = sorted(now["risk"] - before["risk"])
         if added and risk_event is None:
             # the label actors this very commit recorded for the items it added
@@ -967,6 +998,20 @@ def check_owner_actions(ctx: GateContext) -> CheckResult:
                     else " and no owner label actor is recorded for it"
                 )
             )
+    if unlock_event and is_automation(unlock_event[2], unlock_event[1], identities):
+        sha, email, name, unlocked_by = unlock_event
+        if _label_actor_ok(unlocked_by, identities):
+            labels["tests_unlocked"] = unlocked_by
+        else:
+            problems.append(
+                f"the test-file lock was lifted in commit {sha[:10]}, authored by the "
+                f"automation identity ({name} <{email}>)"
+                + (
+                    f"; the recorded label actor {unlocked_by!r} is not a person"
+                    if unlocked_by
+                    else " and no owner label actor is recorded for it"
+                )
+            )
     if problems:
         return _fail(
             "owner_actions",
@@ -977,8 +1022,8 @@ def check_owner_actions(ctx: GateContext) -> CheckResult:
         )
     return _ok(
         "owner_actions",
-        "risk acceptances and iteration resets, if any, were committed by the owner or "
-        "applied by the owner's label",
+        "risk acceptances, iteration resets and test-lock lifts, if any, were committed by "
+        "the owner or applied by the owner's label",
         risk_accepted=sorted(tree_risk),
         label_actors=labels,
     )

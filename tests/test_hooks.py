@@ -1317,3 +1317,54 @@ def test_every_hook_logs_its_decision_through_run_hook(tmp_path):
     assert proc.returncode == 2
     last = json.loads(log.read_text(encoding="utf-8").splitlines()[-1])
     assert last["verdict"] == "block" and "failed closed" in last["reason"]
+
+
+# --- UTF-8 in and out whatever the console encoding (plugin 0.2.25) --------------------------
+def test_read_payload_decodes_bytes_as_utf8():
+    """Claude Code writes the payload as UTF-8; a text-mode stdin on Windows decoded it with
+    the ANSI code page, and a project path with an accented letter matched no protected
+    path (1.0.0 readiness review, 2026-09-26)."""
+    import io
+
+    payload = {"tool_name": "Edit", "tool_input": {"file_path": "C:/Users/Luís/proj/CLAUDE.md"}}
+    raw = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+    assert _common.read_payload(io.BytesIO(raw)) == payload
+    assert _common.read_payload(io.StringIO('{"a": 1}')) == {"a": 1}
+    with pytest.raises(ValueError):
+        _common.read_payload(io.BytesIO(b"  \n"))
+
+
+@pytest.mark.parametrize("encoding", ["utf-8", "cp1252"])
+def test_protected_paths_denies_under_a_non_ascii_project_path_whatever_the_console(
+    tmp_path, encoding
+):
+    """The hook reads its input from the byte stream: under a cp1252 console (Windows'
+    default for a pipe) an edit of CLAUDE.md in ``…/Luís/proj`` was allowed (exit 0)."""
+    project = tmp_path / "Luís" / "proj"
+    project.mkdir(parents=True)
+    (project / "CLAUDE.md").write_text("# x\n", encoding="utf-8")
+    subprocess.run(["git", "init", "-q"], cwd=project, check=True)
+    payload = pre("Edit", file_path=str(project / "CLAUDE.md"), old_string="x", new_string="y")
+    proc = subprocess.run(
+        [sys.executable, str(HOOKS_DIR / "protected_paths.py"), "--plugin-root", str(PLUGIN_ROOT)],
+        input=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+        capture_output=True,
+        env={**os.environ, "CLAUDE_PROJECT_DIR": str(project), "PYTHONIOENCODING": encoding},
+    )
+    assert proc.returncode == 2, (encoding, proc.stderr)
+    out = json.loads(proc.stdout.decode("utf-8"))
+    assert out["hookSpecificOutput"]["permissionDecision"] == "deny"
+
+
+def test_utf8_stdout_makes_a_cp1252_pipe_write_utf8(monkeypatch):
+    """``review/cli.py prompt``, ``panel/cli.py prompt`` and ``pr/cli.py description`` carry
+    ``≠`` and ``→``; on a cp1252 pipe they raised UnicodeEncodeError."""
+    import io
+
+    buffer = io.BytesIO()
+    monkeypatch.setattr(sys, "stdout", io.TextIOWrapper(buffer, encoding="cp1252"))
+    monkeypatch.setattr(sys, "stderr", io.StringIO())  # no reconfigure: left alone
+    _common.utf8_stdout()
+    sys.stdout.write("≠ →")
+    sys.stdout.flush()
+    assert buffer.getvalue() == "≠ →".encode()

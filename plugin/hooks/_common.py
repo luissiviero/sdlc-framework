@@ -52,7 +52,20 @@ class Decision:
 
 
 def read_payload(stream=None) -> dict[str, Any]:
-    raw = (stream or sys.stdin).read()
+    """The hook's JSON input, decoded as UTF-8 whatever the console encoding.
+
+    Claude Code writes the payload as UTF-8; a text-mode ``sys.stdin`` on Windows decodes it
+    with the ANSI code page instead, so a project path with an accented letter (``Luís``)
+    came out as other characters, no protected path matched and the protected-path hook let
+    a guardrail edit through (1.0.0 readiness review, 2026-09-26). The bytes are read from
+    ``sys.stdin.buffer``; a caller's own text or bytes stream is accepted for tests."""
+    if stream is None:
+        buffer = getattr(sys.stdin, "buffer", None)
+        raw = buffer.read() if buffer is not None else sys.stdin.read()
+    else:
+        raw = stream.read()
+    if isinstance(raw, bytes):
+        raw = raw.decode("utf-8")
     if not raw.strip():
         raise ValueError("hook received no input")
     data = json.loads(raw)
@@ -200,6 +213,24 @@ def matches(pattern: str, rel_path: str) -> bool:
 
 
 # --- output --------------------------------------------------------------------------------
+def utf8_stdout() -> None:
+    """Make stdout and stderr write UTF-8 whatever the console encoding.
+
+    The prompts and descriptions the CLIs print carry ``≠`` and ``→`` and are read by a
+    model or a pull request, never by a console; on Windows a piped stdout encodes with
+    the ANSI code page and ``review/cli.py prompt``, ``panel/cli.py prompt`` and
+    ``pr/cli.py description`` raised ``UnicodeEncodeError`` (1.0.0 readiness review,
+    2026-09-26). A stream without ``reconfigure`` (a test's StringIO) is left as it is."""
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is None:
+            continue
+        try:
+            reconfigure(encoding="utf-8")
+        except (ValueError, OSError):  # a closed or detached stream: nothing to change
+            pass
+
+
 def _deny_json(reason: str) -> str:
     return json.dumps(
         {

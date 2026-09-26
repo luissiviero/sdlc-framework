@@ -534,3 +534,17 @@ def test_cli_check_run_without_a_github_remote_reports_no_route(tmp_path, capsys
     assert run_cli(["check-run", "--root", str(root), "--id", "0001"]) == 0
     out = json.loads(capsys.readouterr().out)
     assert out == {"route": "none", "reason": "no GitHub remote: nothing to post the check run to"}
+
+
+def test_cli_prompt_writes_utf8_under_a_cp1252_console(tmp_path):
+    """0.2.25: the prompt carries ``≠``; on Windows a piped stdout encodes with the ANSI
+    code page and the command crashed (1.0.0 readiness review, 2026-09-26)."""
+    root, _change = make_project(tmp_path)
+    proc = subprocess.run(
+        [sys.executable, str(ROOT / "plugin" / "review" / "cli.py"), "prompt",
+         "--root", str(root), "--id", "0001"],
+        capture_output=True,
+        env={**os.environ, "PYTHONIOENCODING": "cp1252"},
+    )  # fmt: skip
+    assert proc.returncode == 0, proc.stderr.decode("utf-8", "replace")
+    assert "≠" in proc.stdout.decode("utf-8")

@@ -40,6 +40,14 @@ from state import conventions as c  # noqa: E402
 
 ISSUE_TITLE = "SDLC review queue"
 NOTHING_WAITING = "Nothing waiting: no open PR carries an `sdlc:` label."
+UNPROTECTED = (
+    "**The default branch `{branch}` is not protected.** Decision 4 (only the owner merges; "
+    "the automation identity has branch-only write access) is enforced by a branch ruleset "
+    "or protection rule that the framework never creates: Settings → Rules → Rulesets → New "
+    "branch ruleset on `{branch}` — restrict deletions, block force pushes, require a pull "
+    "request before merging, no bypass entry for the automation identity. Until then nothing "
+    "but convention keeps a session or a workflow from pushing to `{branch}`."
+)
 READY_SUFFIX = "-ready"
 
 
@@ -96,8 +104,31 @@ def _line(pr: dict[str, Any]) -> str:
     return f"{line}\n  - {bullet}" if bullet else line
 
 
-def render_digest(prs: list[dict[str, Any]], now: str, counters: str = "") -> str:
-    """The digest markdown. Parked first, then the phase-ready queue by phase letter, then
+def unprotected_notice(protection: dict[str, Any] | None) -> str:
+    """The warning for an unprotected default branch, or "" when it is protected or unknown.
+
+    Decision 4 (only the owner merges; the automation identity has branch-only write
+    access) is enforced by a branch ruleset or protection rule on GitHub, which the
+    framework never creates — a session must not be able to — and until 0.2.25 nothing
+    checked existed (1.0.0 readiness review, 2026-09-26: the framework's own default branch
+    was unprotected). The digest is the one place the owner reads every day, so it says so
+    there; a lookup that failed says nothing rather than something wrong."""
+    if not isinstance(protection, dict) or not protection.get("ok"):
+        return ""
+    if protection.get("protected") is not False:
+        return ""
+    branch = protection.get("branch") or "the default branch"
+    return UNPROTECTED.format(branch=branch)
+
+
+def render_digest(
+    prs: list[dict[str, Any]],
+    now: str,
+    counters: str = "",
+    protection: dict[str, Any] | None = None,
+) -> str:
+    """The digest markdown. The unprotected-branch notice first when it applies
+    (``unprotected_notice``), then parked, then the phase-ready queue by phase letter, then
     the counters section (build guide step 42.2, ``pr/counters.py``) when the caller gives
     one."""
     queue = [pr for pr in prs if sdlc_labels(pr)]
@@ -106,6 +137,9 @@ def render_digest(prs: list[dict[str, Any]], now: str, counters: str = "") -> st
     ready.sort(key=lambda pr: (_phase_of(sdlc_labels(pr)), pr.get("number") or 0))
     incidents = incident_prs(prs)
     out = [f"# {ISSUE_TITLE} — {now[:10]}", ""]
+    notice = unprotected_notice(protection)
+    if notice:
+        out += [notice, ""]
     out.append(
         f"{len(parked)} parked, {len(ready)} waiting at a gate"
         + (f", {len(incidents)} runbook or dismissal PR(s) of phase (f)" if incidents else "")
@@ -183,15 +217,17 @@ def main(argv: list[str] | None = None) -> int:
         if isinstance(data, dict):
             data = data.get("prs") or []
         prs = [pr for pr in data if isinstance(pr, dict)]
+        protection = None  # a recorded list renders offline
     else:
         prs, error = list_queue_prs(args.repo)
+        protection = github.default_branch_protection(args.repo)
 
     counters_md = ""
     if args.root:
         from pr import counters  # noqa: PLC0415
 
         counters_md = counters.render(counters.collect(Path(args.root).resolve()))
-    markdown = render_digest(prs, _now(), counters_md)
+    markdown = render_digest(prs, _now(), counters_md, protection)
     if args.dry_run:
         print(markdown, end="")
         return 0

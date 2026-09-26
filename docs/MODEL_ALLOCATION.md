@@ -278,6 +278,10 @@ explicitly) did the mechanical rows from written specs, in parallel with disjoin
 
 The sample repository was out of the session's scope (NOTES §16) and the calendar ruled out the first real detection, so the session was the three review leftovers, the origin check, and the docs. Fable did the code itself this time (four small, connected changes in `detect/cli.py`, `ci/run_phase.py`, `ci/project_setup.py`, `pr/github.py`, the new `ci/fix_requests.py`, the pin script and the workflow copies), with the tests; Opus (named `model: "opus"` explicitly) ran the fresh-context review of the diff before the commit. No model ran a phase, so no model lesson and no eval case.
 
+## 5d. Session 9 — the 1.0.0 readiness review (plugin 0.2.25)
+
+The owner asked whether the framework was ready for 1.0.0 and for every mistake to be found first. The review was three passes of sub-agents, every one named by model explicitly: seven Opus slice reviewers in parallel (each slice small enough to be read whole: the contract, the records, the gate and state code, the CI and detect code, the commands and templates, the sample, the tests and evals), then two independent passes over the consolidated findings — a Fable verifier that re-derived each item from the code and a contrarian Opus whose brief was to knock each item down — and a Fable adjudicator over both. Fable, in the main session, reproduced the six *must fix* items by hand and built them with a test each; Opus ran the fresh-context review of the diff before the commit. The record is `docs/reviews/2026-09-26-readiness-review.md`; the four remaining groups are one session each (`HANDOFF.md`). What the split showed: a single-pass review overstated about half its findings (the largest one was the design), and the contrarian pass was what caught it — keep a contrarian in every review that decides a release.
+
 ## 6. Session 2 (steps 16–21) — finished
 
 Session 2 completed on `main` (PRs #4, #5, #7, plus #8 for the editable install) before

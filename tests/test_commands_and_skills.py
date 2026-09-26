@@ -572,3 +572,43 @@ def test_sdlc_maintain_flow_matches_step_37():
     assert text.index("commit-phase") < text.index('detect/cli.py" dispatch')
     assert text.index('detect/cli.py" dispatch') < text.index(GATE_CHECK)
     assert text.index(GATE_START_RUN) < text.index(GATE_CHECK)
+
+
+def test_sdlc_init_commits_every_path_the_install_writes():
+    """0.2.25 (1.0.0 readiness review): the change-0000 commit listed neither ``.github``
+    nor ``lessons``, so a project set up by the book merged with no workflows and no pin
+    script — every pin step's ``git show`` of the script then fails. ``commit-phase``
+    commits the change folder plus ``--paths`` and nothing else."""
+    from init import sdlc_init
+
+    text = (COMMANDS / "sdlc-init.md").read_text(encoding="utf-8")
+    match = re.search(r"--paths (.+?) --start-point", text)
+    assert match, "the commit-phase call of step 5 names its --paths"
+    listed = match.group(1).split()
+    written = [
+        *sdlc_init.WORKFLOW_FILES,
+        "lessons/README.md",
+        "REVIEW.md",
+        "changes/README.md",
+        "evals/README.md",
+        "evals/cases/.gitkeep",
+        "evals/check.py",
+        "bands.yaml",
+        "sdlc.yaml",
+        ".claude/settings.json",
+        "CLAUDE.md",
+        "ruff.toml",
+    ]
+    for rel in written:
+        covered = any(rel == p or rel.startswith(p.rstrip("/") + "/") for p in listed)
+        assert covered, f"{rel} is written by the install but not committed by step 5"
+
+
+def test_sdlc_init_prescribes_the_branch_ruleset_of_decision_4():
+    """0.2.25: decision 4 is enforced by a GitHub ruleset the framework never creates; the
+    owner is told to create it, and the digest says while it is missing."""
+    text = flat(COMMANDS / "sdlc-init.md")
+    assert "branch ruleset on the default branch (decision 4" in text
+    assert "Require a pull request before merging" in text
+    assert "no bypass entry for the automation identity" in text
+    assert "The daily digest says so" in text

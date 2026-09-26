@@ -32,6 +32,7 @@ if __package__ in (None, ""):
 
 from gate import artifacts as art  # noqa: E402
 from gate import diff as diffmod  # noqa: E402
+from hooks._common import utf8_stdout  # noqa: E402
 from review import findings as fmod  # noqa: E402
 from state import conventions as c  # noqa: E402
 from state import gitops  # noqa: E402
@@ -302,6 +303,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    utf8_stdout()  # the prompt carries ``≠``; a cp1252 pipe on Windows raised on it
     args = build_parser().parse_args(argv)
     return args.fn(args)
 

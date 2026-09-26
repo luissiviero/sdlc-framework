@@ -686,3 +686,22 @@ def test_pin_script_refuses_a_claude_code_that_is_not_a_version(tmp_path):
     assert "not a version string" in proc.stderr
     ok = _pin(tmp_path, 'plugin:\n  version: "1.4.0"\n  claude_code: "latest"\n')
     assert ok.returncode == 0 and "claude_code=latest" in ok.stdout
+
+
+@pytest.mark.parametrize("name", [*PHASE_WORKFLOWS, FIX_WORKFLOW, DETECT_WORKFLOW])
+def test_every_phase_run_step_names_the_default_branch(name):
+    """0.2.25: ``SDLC_DEFAULT_BRANCH`` was set on the pin step only; the phase run's guard
+    and gate guessed the default branch from ``origin/main`` or ``origin/master``, and a
+    project whose default branch is neither parked at every gate ("no base branch"). Every
+    step that runs a phase (not the 20-second find-the-change step) names it now."""
+    data = _workflow_yaml(name)
+    steps = [
+        step
+        for job in data["jobs"].values()
+        for step in job["steps"]
+        if "run_phase.py" in step.get("run", "") and "--find-change" not in step["run"]
+    ]
+    assert steps, name
+    for step in steps:
+        assert step["env"]["SDLC_DEFAULT_BRANCH"] == DEFAULT_BRANCH_EXPR, step["name"]
+        assert step["env"]["DEFAULT_BRANCH"] == DEFAULT_BRANCH_EXPR, step["name"]

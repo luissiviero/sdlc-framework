@@ -1701,3 +1701,71 @@ def test_gate_f_parks_when_the_diagnosis_committed_source(maintain_project):
     result = gate.run_gate(root, "0002", "f")
     scope = next(ch for ch in result.checks if ch.name == "design_scope")
     assert result.result == "park" and not scope.ok and "phase (f)" in scope.need
+
+
+def _set_lock(change: Path, locked: bool, unlocked_by=None, change_type="fix") -> None:
+    st = status_mod.read_status(change)
+    st.change_type = change_type
+    st.tests_locked = locked
+    st.tests_unlocked_by = unlocked_by
+    status_mod.write_status(change, st)
+
+
+def test_owner_actions_ties_a_test_lock_lift_to_the_owner(project):
+    """0.2.25: the test-file lock is the third owner action (OPERATING_MODEL sections 6
+    and 8, "only the owner unlocks"). Until then only the hook read ``tests_locked``, so a
+    run that set it to false, turned the change into a feature, or ran ``unlock-tests``
+    itself edited the frozen tests unnoticed (1.0.0 readiness review, 2026-09-26)."""
+    root, change = project
+    _set_lock(change, True)
+    commit_all(root, "build: the reproducing test; tests locked")
+    verdict(root, "c")
+    assert "owner_actions" not in _names(gate.run_gate(root, "0001", "c", dry_run=True), False)
+    # lifted in the working tree: nobody's
+    _set_lock(change, False)
+    result = gate.run_gate(root, "0001", "c", dry_run=True)
+    oa = next(ch for ch in result.failed if ch.name == "owner_actions")
+    assert "test-file lock was lifted in the working tree" in oa.reason
+    assert "unlock-tests" in oa.need and "sdlc:unlock-tests" in oa.need
+    # lifted by the automation identity with no actor recorded: parks
+    sha = commit_all(root, "unlock the tests", author=BOT_AUTHOR)
+    verdict(root, "c")
+    result = gate.run_gate(root, "0001", "c", dry_run=True)
+    assert result.result == "park" and result.label == "sdlc:needs-human"
+    oa = next(ch for ch in result.failed if ch.name == "owner_actions")
+    assert f"test-file lock was lifted in commit {sha[:10]}" in oa.reason
+    assert "github-actions[bot]" in oa.reason and "no owner label actor" in oa.reason
+    # the run turning the fix into a feature lifts the lock the same way
+    git(root, "reset", "-q", "--hard", "HEAD~1")
+    _set_lock(change, True, change_type="feature")
+    commit_all(root, "it is a feature now", author=BOT_AUTHOR)
+    verdict(root, "c")
+    result = gate.run_gate(root, "0001", "c", dry_run=True)
+    assert "owner_actions" in _names(result, False)
+    assert (
+        "test-file lock was lifted"
+        in next(ch for ch in result.failed if ch.name == "owner_actions").reason
+    )
+    # the owner's sdlc:unlock-tests label, performed by the run and recorded: passes
+    git(root, "reset", "-q", "--hard", "HEAD~1")
+    _set_lock(change, False, unlocked_by="luissiviero")
+    commit_all(root, "apply sdlc:unlock-tests", author=BOT_AUTHOR)
+    verdict(root, "c")
+    result = gate.run_gate(root, "0001", "c", dry_run=True)
+    assert "owner_actions" not in _names(result, False), result.reason
+    oa = next(ch for ch in result.checks if ch.name == "owner_actions")
+    assert oa.details["label_actors"] == {"tests_unlocked": "luissiviero"}
+    # a recorded actor that is a bot is not a person
+    git(root, "reset", "-q", "--hard", "HEAD~1")
+    _set_lock(change, False, unlocked_by="github-actions[bot]")
+    commit_all(root, "apply sdlc:unlock-tests", author=BOT_AUTHOR)
+    verdict(root, "c")
+    result = gate.run_gate(root, "0001", "c", dry_run=True)
+    oa = next(ch for ch in result.failed if ch.name == "owner_actions")
+    assert "is not a person" in oa.reason
+    # the owner's own commit: counts
+    git(root, "reset", "-q", "--hard", "HEAD~1")
+    _set_lock(change, False)
+    commit_all(root, "owner: the test itself was wrong, unlock")
+    verdict(root, "c")
+    assert "owner_actions" not in _names(gate.run_gate(root, "0001", "c", dry_run=True), False)
