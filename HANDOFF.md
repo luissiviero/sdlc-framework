@@ -33,7 +33,7 @@ Read the first real (un-forced) detection run of the sample and record whether t
 - The number of the Milestone 1 bump (`docs/ROADMAP.md`, "How it is marked"), once the last leftover of its table is done.
 - R1 (`docs/proposals/okf-adoption.md`) and R2 (`docs/proposals/session-tooling-pdf-web.md`): accept, order, or leave proposed. R2's edit tables (a Python SessionStart hook, the permission entries, the "Tooling rules" section of `CLAUDE.md`) are the owner's to apply; nothing in them was committed.
 - The two "ask, do not build" items carried since session 5: the `accept` verb for a review finding; session 3's Windows items.
-- The three guardrail rows of PROGRESS session 7 (the root pin, the sample's pin, the `CLAUDE.md` line-3 mention of the roadmap).
+- Of the three guardrail rows of PROGRESS session 7, the root pin (0.2.23) and the `CLAUDE.md` line-3 mention of the roadmap are applied (2026-09-26); the sample's pin remains.
 
 ## Rules for this session
 - Never reopen a decision; a decision a live run shows impossible as built is documented in PROGRESS.
