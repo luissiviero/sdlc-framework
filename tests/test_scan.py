@@ -36,6 +36,10 @@ DETECT_CLI = ROOT / "plugin" / "detect" / "cli.py"
 WORKFLOW = ROOT / "template" / ".github" / "workflows" / "sdlc-scan.yml"
 REPO = "o/r"
 CLAUDE_INSTALL = 'npm install -g @anthropic-ai/claude-code@"$CLAUDE_CODE_VERSION"'
+PIN_RUN = (
+    'git show "refs/remotes/origin/$SDLC_DEFAULT_BRANCH:.github/scripts/sdlc_pin.py" '
+    '| python - --ref "refs/remotes/origin/$SDLC_DEFAULT_BRANCH"'
+)
 
 PATCH = (
     "--- a/sample_pkg/db.py\n"
@@ -817,8 +821,9 @@ def test_workflow_run_lines_call_python_only():
     for run in runs:
         assert "\n" not in run.strip(), run
         assert "${{" not in run, run
-        # the pinned Claude Code install is the one line every phase workflow shares
-        assert run.startswith("python ") or run == CLAUDE_INSTALL, run
+        # the pinned Claude Code install is the one line every phase workflow shares; the
+        # pin step pipes the default branch's copy of the pin script into python (0.2.24)
+        assert run.startswith("python ") or run in (CLAUDE_INSTALL, PIN_RUN), run
     joined = "\n".join(runs)
     assert "framework/plugin/scan/cli.py review" in joined and "--plugin-dir framework" in joined
     assert "framework/plugin/scan/cli.py route" in joined and "--max-findings 3" in joined

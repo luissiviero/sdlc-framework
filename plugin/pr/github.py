@@ -200,6 +200,8 @@ MAX_FILE_PAGES = 30  # GitHub lists at most 3000 files of a pull request
 EVENTS_OVERFLOW = (
     f"label events exceed {PER_PAGE * MAX_EVENT_PAGES}: cannot determine the last actor"
 )
+REVIEWS_OVERFLOW = f"reviews exceed {PER_PAGE * MAX_EVENT_PAGES}: cannot read them all"
+COMMENTS_OVERFLOW = f"comments exceed {PER_PAGE * MAX_EVENT_PAGES}: cannot read them all"
 
 
 def next_page_url(result: dict[str, Any]) -> str | None:
@@ -439,9 +441,10 @@ def label_actor(repo: str, number: int, label: str) -> dict[str, Any]:
 
 def issue_comments(repo: str, number: int, cwd: str | Path | None = None) -> dict[str, Any]:
     """The comments on issue or pull request ``number``, oldest first: {'ok', 'comments',
-    'reason'}; each comment is {'author', 'body', 'at'} (``GET
-    /repos/{repo}/issues/{number}/comments``, paged like the label events). Read by the
-    dismissal of gate (f): the last comment by a person before the close is the reason."""
+    'reason'}; each comment is {'id', 'author', 'type', 'association', 'body', 'at', 'url'}
+    (``GET /repos/{repo}/issues/{number}/comments``, paged like the label events, fail closed
+    past the page cap). Read by the dismissal of gate (f): the last comment by a person before
+    the close is the reason; and by the fix round (``ci/fix_requests.py``, 0.2.24)."""
 
     path = f"repos/{repo}/issues/{number}/comments"
 
@@ -453,35 +456,218 @@ def issue_comments(repo: str, number: int, cwd: str | Path | None = None) -> dic
             user = item.get("user") if isinstance(item.get("user"), dict) else {}
             out.append(
                 {
+                    "id": item.get("id"),
                     "author": user.get("login"),
                     "type": user.get("type"),
+                    "association": item.get("author_association"),
                     "body": item.get("body") or "",
                     "at": item.get("created_at"),
+                    "url": item.get("html_url"),
                 }
             )
         return out
 
     def via_api() -> dict[str, Any]:
         items, error = _get_pages(
-            f"{API_ROOT}/{path}?per_page={PER_PAGE}", MAX_EVENT_PAGES, overflow=EVENTS_OVERFLOW
+            f"{API_ROOT}/{path}?per_page={PER_PAGE}", MAX_EVENT_PAGES, overflow=COMMENTS_OVERFLOW
         )
         if error:
             return {"route": "api", "ok": False, "reason": error, "comments": []}
         return {"route": "api", "ok": True, "reason": "", "comments": _shape(items)}
 
     def via_gh() -> dict[str, Any]:
-        items: list[Any] = []
-        for page in range(1, MAX_EVENT_PAGES + 1):
-            data, error = _gh_json("api", f"{path}?per_page={PER_PAGE}&page={page}")
-            if error:
-                return {"route": "gh", "ok": False, "reason": error, "comments": []}
-            batch = data if isinstance(data, list) else []
-            items += batch
-            if len(batch) < PER_PAGE:
-                break
+        items, error = _gh_pages(path, cwd, COMMENTS_OVERFLOW)
+        if error:
+            return {"route": "gh", "ok": False, "reason": error, "comments": []}
         return {"route": "gh", "ok": True, "reason": "", "comments": _shape(items)}
 
     return _attempt(via_api, via_gh, comments=[])
+
+
+def _gh_pages(path: str, cwd: str | Path | None, overflow: str) -> tuple[list[Any], str]:
+    """Every item of a paged REST list through ``gh api``, page by page: (items, error).
+    One page past the cap is read only to see whether it exists; a non-empty one fails
+    closed with ``overflow`` (the ``label_actor`` rule)."""
+    items: list[Any] = []
+    for page in range(1, MAX_EVENT_PAGES + 2):
+        data, error = _gh_json("api", f"{path}?per_page={PER_PAGE}&page={page}", cwd=cwd)
+        if error:
+            return [], error
+        batch = data if isinstance(data, list) else []
+        if page > MAX_EVENT_PAGES:
+            return ([], overflow) if batch else (items, "")
+        items += batch
+        if len(batch) < PER_PAGE:
+            break
+    return items, ""
+
+
+def pr_reviews(repo: str, number: int, cwd: str | Path | None = None) -> dict[str, Any]:
+    """The reviews on pull request ``number``, oldest first: {'ok', 'reviews', 'reason'};
+    each review is {'id', 'author', 'type', 'association', 'state', 'body', 'at', 'url'}
+    (``GET /repos/{repo}/pulls/{number}/reviews``, paged like the label events, fail closed
+    past the page cap). Read by the fix round (``ci/fix_requests.py``, 0.2.24)."""
+
+    path = f"repos/{repo}/pulls/{number}/reviews"
+
+    def _shape(items: list[Any]) -> list[dict[str, Any]]:
+        out = []
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            user = item.get("user") if isinstance(item.get("user"), dict) else {}
+            out.append(
+                {
+                    "id": item.get("id"),
+                    "author": user.get("login"),
+                    "type": user.get("type"),
+                    "association": item.get("author_association"),
+                    "state": item.get("state"),
+                    "body": item.get("body") or "",
+                    "at": item.get("submitted_at"),
+                    "url": item.get("html_url"),
+                }
+            )
+        return out
+
+    def via_api() -> dict[str, Any]:
+        items, error = _get_pages(
+            f"{API_ROOT}/{path}?per_page={PER_PAGE}", MAX_EVENT_PAGES, overflow=REVIEWS_OVERFLOW
+        )
+        if error:
+            return {"route": "api", "ok": False, "reason": error, "reviews": []}
+        return {"route": "api", "ok": True, "reason": "", "reviews": _shape(items)}
+
+    def via_gh() -> dict[str, Any]:
+        items, error = _gh_pages(path, cwd, REVIEWS_OVERFLOW)
+        if error:
+            return {"route": "gh", "ok": False, "reason": error, "reviews": []}
+        return {"route": "gh", "ok": True, "reason": "", "reviews": _shape(items)}
+
+    return _attempt(via_api, via_gh, reviews=[])
+
+
+REVIEW_THREADS_QUERY = (
+    "query($owner:String!,$name:String!,$number:Int!,$after:String){"
+    "repository(owner:$owner,name:$name){pullRequest(number:$number){"
+    "reviewThreads(first:100,after:$after){pageInfo{hasNextPage endCursor}"
+    "nodes{id isResolved isOutdated path line comments(first:100){pageInfo{hasNextPage}"
+    "nodes{databaseId url body createdAt authorAssociation author{login __typename}}}}}}}}"
+)
+MAX_THREAD_PAGES = 10  # 1000 review threads is far past any real pull request
+THREADS_OVERFLOW = f"review threads exceed {100 * MAX_THREAD_PAGES}: cannot read them all"
+THREAD_COMMENTS_OVERFLOW = "a review thread has more than 100 comments: cannot read them all"
+
+
+def _shape_threads(nodes: list[Any]) -> list[dict[str, Any]]:
+    """GraphQL review threads in the shape ``pr_review_threads`` returns: each thread is
+    {'id', 'resolved', 'outdated', 'path', 'line', 'comments'}, each comment {'id',
+    'author', 'type', 'association', 'body', 'at', 'url'} ('type' is 'Bot' for a GitHub App
+    or bot account, as the REST ``user.type`` reads)."""
+    out = []
+    for node in nodes:
+        if not isinstance(node, dict):
+            continue
+        comments = []
+        raw = node.get("comments") if isinstance(node.get("comments"), dict) else {}
+        for item in raw.get("nodes") or []:
+            if not isinstance(item, dict):
+                continue
+            author = item.get("author") if isinstance(item.get("author"), dict) else {}
+            comments.append(
+                {
+                    "id": item.get("databaseId"),
+                    "author": author.get("login"),
+                    "type": "Bot" if author.get("__typename") == "Bot" else "User",
+                    "association": item.get("authorAssociation"),
+                    "body": item.get("body") or "",
+                    "at": item.get("createdAt"),
+                    "url": item.get("url"),
+                }
+            )
+        out.append(
+            {
+                "id": node.get("id"),
+                "resolved": bool(node.get("isResolved")),
+                "outdated": bool(node.get("isOutdated")),
+                "path": node.get("path"),
+                "line": node.get("line"),
+                "comments": comments,
+            }
+        )
+    return out
+
+
+def _threads_page(data: Any) -> tuple[list[Any], str | None, str]:
+    """(nodes, the next cursor or None, error) from one GraphQL response body."""
+    if not isinstance(data, dict):
+        return [], None, "GraphQL answered no object"
+    if data.get("errors"):
+        return [], None, json.dumps(data["errors"])
+    try:
+        threads = data["data"]["repository"]["pullRequest"]["reviewThreads"]
+        info = threads.get("pageInfo") or {}
+        cursor = info.get("endCursor") if info.get("hasNextPage") else None
+        nodes = list(threads.get("nodes") or [])
+    except (KeyError, TypeError, AttributeError):
+        return [], None, "GraphQL answered without reviewThreads"
+    for node in nodes:
+        comments = node.get("comments") if isinstance(node, dict) else None
+        if isinstance(comments, dict) and (comments.get("pageInfo") or {}).get("hasNextPage"):
+            return [], None, THREAD_COMMENTS_OVERFLOW  # never a silently truncated thread
+    return nodes, cursor, ""
+
+
+def pr_review_threads(repo: str, number: int, cwd: str | Path | None = None) -> dict[str, Any]:
+    """The review threads of pull request ``number`` with their resolved flag, which REST
+    does not carry: {'ok', 'threads', 'reason'} (GraphQL ``reviewThreads``, 100 per page,
+    fail closed past the page cap). Read by the fix round (``ci/fix_requests.py``, 0.2.24):
+    a thread the owner resolved is settled, whatever its text still asks."""
+    owner, _, name = repo.partition("/")
+    if not owner or not name:
+        return _no_route(f"not an owner/name repository: {repo!r}", threads=[])
+
+    def via_api() -> dict[str, Any]:
+        tok = token() or ""
+        nodes: list[Any] = []
+        cursor: str | None = None
+        for _page in range(MAX_THREAD_PAGES):
+            variables = {"owner": owner, "name": name, "number": int(number), "after": cursor}
+            result = _request(
+                "POST", GRAPHQL_URL, tok, {"query": REVIEW_THREADS_QUERY, "variables": variables}
+            )
+            if result.get("error"):
+                return {"route": "api", "ok": False, "reason": result["error"], "threads": []}
+            batch, cursor, error = _threads_page(result.get("data"))
+            if error:
+                return {"route": "api", "ok": False, "reason": error, "threads": []}
+            nodes += batch
+            if cursor is None:
+                return {"route": "api", "ok": True, "reason": "", "threads": _shape_threads(nodes)}
+        return {"route": "api", "ok": False, "reason": THREADS_OVERFLOW, "threads": []}
+
+    def via_gh() -> dict[str, Any]:
+        nodes: list[Any] = []
+        cursor: str | None = None
+        for _page in range(MAX_THREAD_PAGES):
+            # -f keeps owner and name raw strings (-F would type a name like `123` or read
+            # an `@` as a file path); -F types the number as the Int the query wants
+            args = ["api", "graphql", "-f", f"query={REVIEW_THREADS_QUERY}", "-f", f"owner={owner}",
+                    "-f", f"name={name}", "-F", f"number={int(number)}"]  # fmt: skip
+            if cursor:
+                args += ["-f", f"after={cursor}"]
+            data, error = _gh_json(*args, cwd=cwd)
+            if error:
+                return {"route": "gh", "ok": False, "reason": error, "threads": []}
+            batch, cursor, error = _threads_page(data)
+            if error:
+                return {"route": "gh", "ok": False, "reason": error, "threads": []}
+            nodes += batch
+            if cursor is None:
+                return {"route": "gh", "ok": True, "reason": "", "threads": _shape_threads(nodes)}
+        return {"route": "gh", "ok": False, "reason": THREADS_OVERFLOW, "threads": []}
+
+    return _attempt(via_api, via_gh, threads=[])
 
 
 def _create_pr_api(

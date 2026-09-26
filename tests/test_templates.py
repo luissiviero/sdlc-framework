@@ -212,6 +212,13 @@ REPO_WORKFLOW_DIR = TEMPLATE.parent / ".github" / "workflows"
 # the explicit default branch a detect/scan CLI step reads before its git guess (live run of
 # 2026-09-25: a checkout of a non-default ref has no origin/HEAD and no local main)
 DEFAULT_BRANCH_EXPR = "${{ github.event.repository.default_branch }}"
+# the pin step (0.2.24): the default branch's copy of the pin script, piped into python,
+# reading the pin at the fully qualified remote-tracking ref (tests/test_ci.py checks it in
+# every workflow; this is its body as YAML parses it)
+PIN_RUN = (
+    'git show "refs/remotes/origin/$SDLC_DEFAULT_BRANCH:.github/scripts/sdlc_pin.py" '
+    '| python - --ref "refs/remotes/origin/$SDLC_DEFAULT_BRANCH"'
+)
 
 
 def test_workflow_templates_exist_and_render():
@@ -494,7 +501,9 @@ def test_scan_workflow_is_weekly_reviews_routes_and_scans_in_that_order():
     assert "workflow_dispatch" in on
     job = next(iter(data["jobs"].values()))
     runs = [step["run"] for step in job["steps"] if "run" in step]
-    assert all(run.startswith("python ") or run.startswith("npm ") for run in runs), runs
+    assert all(
+        run.startswith("python ") or run.startswith("npm ") or run == PIN_RUN for run in runs
+    ), runs
     assert all("${{" not in run for run in runs)
     review = next(run for run in runs if "scan/cli.py review" in run)
     route = next(run for run in runs if "scan/cli.py route" in run)
@@ -513,14 +522,20 @@ def test_runbook_workflow_runs_the_go_once_without_a_model():
     data = _workflow_yaml(RUNBOOK_WORKFLOW)
     assert _triggers(data) == {"pull_request": {"types": ["labeled"]}}
     job = data["jobs"]["go"]
-    assert job["if"] == "${{ github.event.label.name == 'sdlc:go' }}"
+    # the incident PR's head only (0.2.24): a Go on a build PR has no incident to park and
+    # would fail the setup step's outside-changes/ check every time
+    assert job["if"] == (
+        "${{ github.event.label.name == 'sdlc:go' && "
+        "startsWith(github.event.pull_request.head.ref, 'sdlc/') && "
+        "endsWith(github.event.pull_request.head.ref, '/a') }}"
+    )
     assert job["steps"][0]["with"]["ref"] == "${{ github.event.pull_request.head.ref }}"
     runs = [step["run"] for step in job["steps"] if "run" in step]
-    assert runs[-1] == (
+    assert runs[-2] == (
         'python framework/plugin/detect/cli.py go --root . --id "$CHANGE_ID" '
         '--repo "$REPO" --pr-number "$PR_NUMBER"'
     )
-    go = [step for step in job["steps"] if "run" in step][-1]
+    go = [step for step in job["steps"] if "run" in step][-2]
     assert go["env"]["SDLC_DEFAULT_BRANCH"] == DEFAULT_BRANCH_EXPR
     # the Go step holds the runbook secrets: the install command is the default branch's,
     # never the PR head's copy of commands.setup (session-6 review finding)
@@ -531,6 +546,23 @@ def test_runbook_workflow_runs_the_go_once_without_a_model():
     )
     assert setup["env"]["SDLC_DEFAULT_BRANCH"] == DEFAULT_BRANCH_EXPR
     assert job["steps"].index(setup) < job["steps"].index(go)
+    # 0.2.24: a failed setup step is a park, not a red run - the job goes on past it, the Go
+    # runs only on a success, and the last step parks with the setup step's error line and
+    # no secret in its environment
+    assert setup["id"] == "setup" and setup["continue-on-error"] is True
+    assert go["if"] == "steps.find.outputs.change_id != '' && steps.setup.outcome == 'success'"
+    park = [step for step in job["steps"] if "run" in step][-1]
+    assert park["if"] == "steps.setup.outcome == 'failure'"
+    assert park["run"] == (
+        'python framework/plugin/detect/cli.py park --root . --id "$CHANGE_ID" '
+        '--repo "$REPO" --pr-number "$PR_NUMBER" --check setup --reason "$SETUP_ERROR"'
+    )
+    assert park["env"]["SETUP_ERROR"] == "${{ steps.setup.outputs.error }}"
+    assert park["env"]["SDLC_DEFAULT_BRANCH"] == DEFAULT_BRANCH_EXPR
+    assert not any("secrets." in str(v) for v in park["env"].values())
+    assert set(park["env"]) == {
+        "GITHUB_TOKEN", "CHANGE_ID", "REPO", "PR_NUMBER", "SDLC_DEFAULT_BRANCH", "SETUP_ERROR"
+    }  # fmt: skip
     for step in job["steps"]:
         assert "${{" not in step.get("run", ""), step["name"]
     # its own concurrency group (live, 2026-09-25): a label event also fires the fix, test and
@@ -611,16 +643,34 @@ def test_pin_script_reads_the_default_branch_s_pin_not_the_head_s(tmp_path):
         )  # fmt: skip
 
     assert "ref=v0.2.14" in pin().stdout  # the head's copy: what 0.2.16 and before read
-    proc = pin("--ref", "origin/main")
+    proc = pin("--ref", "refs/remotes/origin/main")
     assert proc.returncode == 0, proc.stderr
     assert "ref=v0.2.16" in proc.stdout and "claude_code=" in proc.stdout
-    # a ref the checkout lacks is fetched from origin
+    # a ref the checkout lacks is fetched from origin into the remote-tracking ref, and the
+    # checkout stays complete (no depth-limited fetch)
     git("update-ref", "-d", "refs/remotes/origin/main")
-    proc = pin("--ref", "origin/main")
+    proc = pin("--ref", "refs/remotes/origin/main")
     assert proc.returncode == 0, proc.stderr
     assert "ref=v0.2.16" in proc.stdout
-    proc = pin("--ref", "origin/nowhere")
-    assert proc.returncode == 1 and "cannot read sdlc.yaml at origin/nowhere" in proc.stderr
+    assert git("rev-parse", "--verify", "refs/remotes/origin/main").strip()
+    assert not (work / ".git" / "shallow").exists()
+    proc = pin("--ref", "refs/remotes/origin/nowhere")
+    assert proc.returncode == 1
+    assert "cannot read sdlc.yaml at refs/remotes/origin/nowhere" in proc.stderr
+    # 0.2.24: a tag named origin/main (anyone with write access can push one) shadows the
+    # short refname - git resolves refs/tags/<name> before refs/remotes/<name> - and the
+    # short form still reads the tag's copy; the workflows pass the qualified ref
+    (work / "sdlc.yaml").write_text("plugin:\n  version: 9.9.9\n", encoding="utf-8")
+    git("commit", "-q", "-am", "the planted pin")
+    git("tag", "origin/main")
+    git("checkout", "-q", "sdlc/0001/b")
+    assert "ref=v9.9.9" in pin("--ref", "origin/main").stdout
+    assert "ref=v0.2.16" in pin("--ref", "refs/remotes/origin/main").stdout
+    # the short form still works when no tag shadows it, and a value that reads as an
+    # option is refused
+    git("tag", "-d", "origin/main")
+    assert "ref=v0.2.16" in pin("--ref", "origin/main").stdout
+    assert pin("--ref=--output=x").returncode == 1
 
 
 def test_pin_script_does_not_double_the_v_of_a_version(tmp_path):

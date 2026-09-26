@@ -6,6 +6,7 @@ from __future__ import annotations
 import os
 import re
 import subprocess
+import tempfile
 from pathlib import Path
 
 from state import conventions
@@ -19,9 +20,31 @@ class GitError(RuntimeError):
     pass
 
 
+_NO_HOOKS_DIR: str | None = None
+
+
+def runner_args() -> list[str]:
+    """Global git options for a runner (``GITHUB_ACTIONS`` set), else []: the checkout is
+    shared with the model's session, which holds ``Bash(git *)`` and could plant a hook
+    (``.git/hooks/pre-commit``, ``core.hooksPath``) or an ``fsmonitor`` command that a later
+    step's ``git commit`` or ``git push`` would run with that step's environment (session-8
+    review). ``core.hooksPath`` points at an empty directory of this process and the
+    filesystem monitor is off. By hand nothing changes: the owner's own hooks run."""
+    global _NO_HOOKS_DIR
+    if not os.environ.get("GITHUB_ACTIONS"):
+        return []
+    if _NO_HOOKS_DIR is None or not os.path.isdir(_NO_HOOKS_DIR):
+        _NO_HOOKS_DIR = tempfile.mkdtemp(prefix="sdlc-no-hooks-")
+    return ["-c", f"core.hooksPath={_NO_HOOKS_DIR}", "-c", "core.fsmonitor=false"]
+
+
 def run(root: Path, *args: str, check: bool = True) -> str:
     proc = subprocess.run(
-        ["git", *args], cwd=str(root), capture_output=True, text=True, encoding="utf-8"
+        ["git", *runner_args(), *args],
+        cwd=str(root),
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
     )
     if check and proc.returncode != 0:
         raise GitError(f"git {' '.join(args)} failed: {proc.stderr.strip() or proc.stdout}")

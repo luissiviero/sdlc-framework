@@ -37,13 +37,17 @@ is refused too (fail closed). The check compares commits: the working tree's unc
 state is not its concern, the committed head is.
 
 Prints JSON. Exit 0 when the command exited 0 or there was nothing to run, 1 when it failed
-or timed out, 2 on a usage error.
+or timed out, 2 on a usage error. On a failure the reason is also written as the step output
+``error`` (one line, ``$GITHUB_OUTPUT``) so a later step can park the change with it: the
+runbook workflow's park step reads ``steps.setup.outputs.error`` (0.2.24; a failed setup
+step there used to be a red run the owner never saw on the PR).
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -81,7 +85,7 @@ def config_at_ref(root: Path, ref: str) -> dict[str, Any]:
         raise ValueError("not a git ref")  # never let the value read as a git option
     try:
         proc = subprocess.run(
-            ["git", "show", f"{ref}:{SDLC_FILE}"],
+            ["git", "--no-replace-objects", "show", f"{ref}:{SDLC_FILE}"],
             cwd=str(root),
             capture_output=True,
             text=True,
@@ -172,6 +176,38 @@ def run_setup(
     return result, EXIT_OK if exit_code == 0 else EXIT_FAILED
 
 
+ERROR_OUTPUT_MAX = 1000  # characters of the one-line step output
+
+
+def failure_line(result: dict[str, Any]) -> str:
+    """One line saying why the setup failed, for the ``error`` step output."""
+    if result.get("error"):
+        text = str(result["error"])
+    elif result.get("exit_code") is None and result.get("command"):
+        text = f"`{result['command']}` timed out after {result.get('timeout')} s"
+    elif result.get("command"):
+        tail = str(result.get("output") or "").strip().splitlines()
+        last = f": {tail[-1].strip()}" if tail else ""
+        text = f"`{result['command']}` exited {result.get('exit_code')}{last}"
+    else:
+        text = "the setup step failed"
+    return " ".join(text.split())[:ERROR_OUTPUT_MAX]
+
+
+def write_error_output(result: dict[str, Any], env: dict[str, str] | None = None) -> str:
+    """Append ``error=<failure_line>`` to ``$GITHUB_OUTPUT`` when the workflow set it; the
+    line written (also when there was no file to write it to)."""
+    line = failure_line(result)
+    path = (os.environ if env is None else env).get("GITHUB_OUTPUT")
+    if path:
+        try:
+            with open(path, "a", encoding="utf-8", newline="\n") as fh:
+                fh.write(f"error={line}\n")
+        except OSError:
+            pass
+    return line
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="sdlc-project-setup",
@@ -202,6 +238,8 @@ def main(argv: list[str] | None = None) -> int:
         print("--timeout must be a positive number of seconds", file=sys.stderr)
         return EXIT_USAGE
     result, code = run_setup(Path(args.root), args.timeout, ref=args.ref or None)
+    if code == EXIT_FAILED:
+        result["error_line"] = write_error_output(result)
     print(json.dumps(result, indent=2, sort_keys=True))
     return code
 
