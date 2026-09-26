@@ -274,6 +274,10 @@ explicitly) did the mechanical rows from written specs, in parallel with disjoin
 | `docs/ROADMAP.md`, `docs/proposals/session-tooling-pdf-web.md` (R2), the environment facts of NOTES §15, PROGRESS, `HANDOFF.md` | F | Judgement and precision (what Milestone 1 is; which claims of the setup prompt were true here). |
 | The fresh-context review of the diff, the final check chain, the sample's upgrade PR | O / F | As in every session (§2); the sample PR is opened by the session, merged by the owner. |
 
+## 5c. Session 8 — the session-7 review's leftovers (plugin 0.2.24)
+
+The sample repository was out of the session's scope (NOTES §16) and the calendar ruled out the first real detection, so the session was the three review leftovers, the origin check, and the docs. Fable did the code itself this time (four small, connected changes in `detect/cli.py`, `ci/run_phase.py`, `ci/project_setup.py`, `pr/github.py`, the new `ci/fix_requests.py`, the pin script and the workflow copies), with the tests; Opus (named `model: "opus"` explicitly) ran the fresh-context review of the diff before the commit. No model ran a phase, so no model lesson and no eval case.
+
 ## 6. Session 2 (steps 16–21) — finished
 
 Session 2 completed on `main` (PRs #4, #5, #7, plus #8 for the editable install) before

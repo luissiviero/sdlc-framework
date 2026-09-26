@@ -339,6 +339,11 @@ def test_sdlc_fix_covers_gate_a_and_the_owner_labels():
     # D9: only a member's review or comment reaches the round (the second security review)
     assert "`OWNER`, `MEMBER` or `COLLABORATOR`" in text
     assert "not applied: not a member of the repository" in text
+    # 0.2.24: in CI the run collected and judged them; the file is the only source
+    assert "`changes/<id>-<slug>/evidence/fix-requests.json`" in text
+    assert "it is the **only** source of reviews and comments" in text
+    assert "not applied: the thread is resolved" in text
+    assert "`git rev-parse HEAD`" in text
 
 
 def test_sdlc_init_states_the_hosting_rule_and_the_outdated_report():

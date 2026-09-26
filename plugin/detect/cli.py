@@ -246,8 +246,11 @@ def _remote_incident_dirs(root: Path) -> list[tuple[str, str]]:
 
 
 def _show(root: Path, ref: str, path: str) -> str | None:
+    """``git --no-replace-objects show <ref>:<path>``: a ``git replace`` the model's session
+    planted in the shared checkout would otherwise substitute its own blob for the approved
+    file (session-8 review)."""
     try:
-        return gitops.run(root, "show", f"{ref}:{path}")
+        return gitops.run(root, "--no-replace-objects", "show", f"{ref}:{path}")
     except (gitops.GitError, FileNotFoundError):
         return None
 
@@ -780,7 +783,38 @@ def _approved_ref(default: str) -> str:
     return f"refs/remotes/origin/{default}"
 
 
-def approved_files(root: Path, config: dict[str, Any]) -> tuple[dict[str, Any], Any, str]:
+def origin_mismatch(root: Path, expected: str | None) -> str | None:
+    """Why ``origin`` is not the repository ``expected`` (``owner/name``), or None when it is
+    or when nothing says which repository this is (a by-hand run without ``--repo``). The
+    re-fetch of the approved copies trusts the checkout's ``origin``, and the maintain session
+    that runs before ``finish`` and ``dispatch`` holds ``Bash(git *)``: a ``git remote set-url
+    origin <elsewhere>`` would make the fetch bring a stranger's copies (session-7 review,
+    carried; 0.2.24). ``$GITHUB_REPOSITORY`` (the runner's own variable) wins over
+    ``expected``, because the CLI fills a missing ``--repo`` from the origin being checked.
+    A remote URL that is not a GitHub repository at all is refused on a runner
+    (``GITHUB_ACTIONS`` set: the checkout's origin is always the repository's URL there) and
+    accepted anywhere else (the tests and a by-hand run push to a local bare repository).
+    This closes the URL rewrite only: the session shares the whole ``.git`` (a removed remote,
+    a ``git replace``, a planted hook), which ``approved_files``, ``_show`` and
+    ``gitops.runner_args`` each answer for one vector — the full answer is reading the approved
+    copies outside the checkout (PROGRESS session 8, known gaps)."""
+    expected = (os.environ.get("GITHUB_REPOSITORY") or expected or "").strip().strip("/")
+    if not expected:
+        return None
+    actual = gitops.github_repo(root)
+    if actual is None:
+        if os.environ.get("GITHUB_ACTIONS"):
+            url = gitops.remote_url(root) or "(no URL)"
+            return f"origin is not a GitHub repository URL on this runner: {url}"
+        return None
+    if actual.lower() != expected.lower():
+        return f"origin is {actual}, not {expected}"
+    return None
+
+
+def approved_files(
+    root: Path, config: dict[str, Any], repo: str | None = None
+) -> tuple[dict[str, Any], Any, str]:
     """``(sdlc.yaml, bands.yaml, where from)`` as the owner approved them: the default
     branch's copies through ``git show`` when the checkout knows the remote, else the
     checkout's only when the repository has no remote at all (a by-hand run on a local
@@ -795,12 +829,26 @@ def approved_files(root: Path, config: dict[str, Any]) -> tuple[dict[str, Any], 
     is ambiguous"), and ``git update-ref refs/remotes/origin/main <commit>`` rewrites that ref
     locally. So the fully qualified ref (``_approved_ref``) is read, after a forced fetch of
     it from origin restores what the remote holds; a failed fetch raises ``BandsError``
-    (fail closed: what the checkout has is never read)."""
+    (fail closed: what the checkout has is never read). Before the fetch, ``origin`` must be
+    the repository ``repo`` (else ``$GITHUB_REPOSITORY``) names (``origin_mismatch``): the
+    fetch trusts the remote's URL, which the same session could have rewritten."""
     default = _default_branch(root)
     ref = _approved_ref(default)
     if not gitops.is_repo(root) or not gitops.has_remote(root):
+        if os.environ.get("GITHUB_ACTIONS"):
+            # a runner's checkout always has origin: a missing one was removed by the
+            # session that shares the checkout (session-8 review), never a by-hand run
+            raise bands_mod.BandsError(
+                "the default branch's copies could not be refreshed from origin: the checkout "
+                "has no origin remote on this runner"
+            )
         # a by-hand run on a local repository: no remote holds an approved copy
         return config, bands_mod.load_project(root), "the checkout"
+    why = origin_mismatch(root, repo)
+    if why:
+        raise bands_mod.BandsError(
+            f"the default branch's copies could not be refreshed from origin: {why}"
+        )
     try:
         gitops.run(root, "fetch", "--quiet", "origin", f"+refs/heads/{default}:{ref}")
     except (gitops.GitError, FileNotFoundError) as exc:
@@ -824,7 +872,7 @@ def approved_files(root: Path, config: dict[str, Any]) -> tuple[dict[str, Any], 
     return approved_cfg, bands_mod.load_text(bands_text), ref
 
 
-def _approved_config(root: Path, config: dict[str, Any]) -> dict[str, Any]:
+def _approved_config(root: Path, config: dict[str, Any], repo: str | None = None) -> dict[str, Any]:
     """The owner's approved ``sdlc.yaml`` (``approved_files``: the default branch's copy, or
     the checkout's on a repository with no remote); raises ``BandsError`` when the remote
     copy cannot be read. ``go``, ``finish`` and ``dismiss`` decide who is a person (the
@@ -832,15 +880,21 @@ def _approved_config(root: Path, config: dict[str, Any]) -> dict[str, Any]:
     from it: the PR head's ``sdlc.yaml`` could rename the automation identity or change
     ``test_paths``, and the Go step holds the runbook secrets (session-6 review finding,
     carried to session 7)."""
-    return approved_files(root, config)[0]
+    return approved_files(root, config, repo)[0]
 
 
-def _judge(root: Path, change_dir: Path, record: dict[str, Any], config: dict[str, Any]):
+def _judge(
+    root: Path,
+    change_dir: Path,
+    record: dict[str, Any],
+    config: dict[str, Any],
+    repo: str | None = None,
+):
     proposal, why = routes.load_proposal(change_dir / art.EVIDENCE_DIR / finding.PROPOSAL_FILE)
     if proposal is None:
         return None, None, why
     try:
-        config, bands, _where = approved_files(root, config)
+        config, bands, _where = approved_files(root, config, repo)
     except bands_mod.BandsError as exc:
         return proposal, None, f"bands.yaml: {exc}"
     resolved, why = routes.validate_proposal(
@@ -856,7 +910,7 @@ def cmd_dispatch(args) -> int:
     change_dir, st = _change(root, args.id)
     record = _load_finding(change_dir)
     config = _config_or_empty(root)
-    proposal, resolved, why = _judge(root, change_dir, record, config)
+    proposal, resolved, why = _judge(root, change_dir, record, config, args.repo)
     out: dict[str, Any] = {
         "change_id": args.id,
         "tier": record["tier"],
@@ -875,7 +929,7 @@ def cmd_dispatch(args) -> int:
     try:
         # the runbook runs with the approved sdlc.yaml (test_paths, the commit identity, the
         # timeout), never the checkout's, which the model's session could have edited
-        approved = _approved_config(root, config)
+        approved = _approved_config(root, config, args.repo)
     except bands_mod.BandsError as exc:
         out.update({"acted": False, "reason": f"sdlc.yaml: {exc}"})
         _emit(out)
@@ -919,7 +973,7 @@ def cmd_finish(args) -> int:
     change_dir, st = _change(root, args.id)
     record = _load_finding(change_dir)
     config = _config_or_empty(root)
-    proposal, resolved, why = _judge(root, change_dir, record, config)
+    proposal, resolved, why = _judge(root, change_dir, record, config, args.repo)
     out: dict[str, Any] = {
         "change_id": args.id,
         "tier": record["tier"],
@@ -936,7 +990,7 @@ def cmd_finish(args) -> int:
             }
         else:
             try:
-                approved = _approved_config(root, config)
+                approved = _approved_config(root, config, args.repo)
             except bands_mod.BandsError as exc:
                 approved = None
                 out["dispatch"] = {"acted": False, "reason": f"sdlc.yaml: {exc}"}
@@ -983,7 +1037,7 @@ def cmd_go(args) -> int:
     try:
         # before the label's actor is judged: the head's copy could rename the automation
         # identity; unreadable, nothing runs and the label is left where it is (fail closed)
-        approved = _approved_config(root, config)
+        approved = _approved_config(root, config, args.repo)
     except bands_mod.BandsError as exc:
         _emit({"change_id": args.id, "performed": False, "reason": f"sdlc.yaml: {exc}"})
         return EXIT_OK
@@ -991,7 +1045,7 @@ def cmd_go(args) -> int:
     if actor is None:
         _emit({"change_id": args.id, "performed": False, "reason": why})
         return EXIT_OK
-    proposal, resolved, why = _judge(root, change_dir, record, config)
+    proposal, resolved, why = _judge(root, change_dir, record, config, args.repo)
     if resolved is None or resolved.route == routes.PULL_REQUEST:
         _emit({"change_id": args.id, "performed": False, "reason": why or "no runbook proposed"})
         return EXIT_OK
@@ -1038,6 +1092,125 @@ def cmd_go(args) -> int:
     out["label_removed"] = github.set_labels(args.repo, args.pr_number, [], [c.GO_LABEL], cwd=root)
     _gate_and_pr(root, args.id, not args.no_push, out)
     _emit(out)
+    return EXIT_OK
+
+
+# --- park: the Go could not run (a failed setup step in the runbook job; 0.2.24) -------------
+PARK_NEED = (
+    "Settle this, then apply `sdlc:go` again: the runbook job stopped before the Go step "
+    "and the label was removed (one application is one act)."
+)
+
+
+def run_url(env: dict[str, str] | None = None) -> str | None:
+    """The workflow run's page, from the runner's own variables; None by hand."""
+    env = os.environ if env is None else env
+    server, repo, run_id = (
+        env.get(k) for k in ("GITHUB_SERVER_URL", "GITHUB_REPOSITORY", "GITHUB_RUN_ID")
+    )
+    return f"{server}/{repo}/actions/runs/{run_id}" if server and repo and run_id else None
+
+
+def write_park_result(
+    change_dir: Path, st: status_mod.Status, check: str, reason: str, need: str, head: str | None
+) -> Path:
+    """``evidence/gate-f.json`` in the gate's own shape with one failed check, so the PR
+    description shows the park and its "What I need from you" block (the same shape
+    ``ci/run_phase.py`` writes for a park before a phase run; gate (f) overwrites it on the
+    next Go)."""
+    from gate.checks import CheckResult  # noqa: PLC0415
+    from gate.gate import GateResult  # noqa: PLC0415
+
+    result = GateResult(
+        change_id=st.id,
+        slug=st.slug,
+        phase="f",
+        profile=getattr(st, "profile_override", None) or "",
+        human_gate=True,
+        result="park",
+        checks=[CheckResult(name=check, ok=False, reason=reason, need=need)],
+        label=c.NEEDS_HUMAN_LABEL,
+        head=head,
+    )
+    path = change_dir / art.EVIDENCE_DIR / art.GATE_RESULT.format(phase="f")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(result.as_dict(), indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    return path
+
+
+def cmd_park(args) -> int:
+    """The runbook job's setup step failed (an unreadable default-branch ref, a head that
+    changed files outside ``changes/``, an install that exited non-zero): park the incident
+    where the owner looks instead of leaving a red run - ``status.yaml: parked_reason``,
+    ``evidence/gate-f.json`` with "What I need from you", the change folder committed and
+    pushed on the incident branch, the Go label removed (one application is one act, as
+    after a performed Go) and the intent PR refreshed with ``sdlc:needs-human``. No runbook
+    runs here and no model."""
+    root = Path(args.root).resolve()
+    change_dir, st = _change(root, args.id)
+    record, _why = finding.read(change_dir / art.EVIDENCE_DIR / finding.DETECTION_FILE)
+    if st.phase != "f" or record is None:
+        # the label can land on any PR (a build PR's head sdlc/<id>/c always fails the
+        # setup check): only an incident at phase (f) with its detection record is parked
+        _emit(
+            {
+                "change_id": args.id,
+                "performed": False,
+                "reason": f"change {args.id} is at phase {st.phase!r} with"
+                f"{'' if record else 'out'} a detection record: not an incident, nothing parked",
+            }
+        )
+        return EXIT_OK
+    reason = " ".join((args.reason or "").split()) or f"the {args.check} step failed"
+    url = run_url()
+    if url:
+        reason = f"{reason} (run: {url})"
+    reason = f"{args.check}: {reason}"
+    st.park(reason, phase="f")
+    status_mod.write_status(change_dir, st)
+    head = None
+    try:
+        head = gitops.run(root, "rev-parse", "HEAD").strip() or None
+    except (gitops.GitError, FileNotFoundError):
+        pass
+    path = write_park_result(change_dir, st, args.check, reason, PARK_NEED, head)
+    out: dict[str, Any] = {
+        "change_id": args.id,
+        "parked": reason,
+        "check": args.check,
+        "gate_result": str(path.relative_to(root)).replace("\\", "/"),
+    }
+    if args.dry_run:
+        _emit(out)
+        return EXIT_OK
+    push = not args.no_push
+    out["commit"] = _commit_change(
+        root, args.id, f"maintain({args.id}): parked, the {args.check} step failed"[:500], push
+    )
+    if args.repo and args.pr_number:
+        github = _github()
+        out["label_removed"] = github.set_labels(
+            args.repo, args.pr_number, [], [c.GO_LABEL], cwd=root
+        )
+    pr, code, err = _cli(
+        PR_CLI, ["upsert", "--root", str(root), "--id", args.id, "--phase", "f"], root
+    )
+    out["pr"] = pr or {"error": err, "exit": code}
+    _emit(out)
+    # a park nobody can find is the red run this command replaces, only green: the commit
+    # must be on the remote and the PR refreshed, else the job fails (session-8 review)
+    commit = out["commit"]
+    if not commit.get("ok") or (push and not commit.get("pushed")):
+        print(f"the park was not pushed: {commit.get('reason') or commit}", file=sys.stderr)
+        return EXIT_FAILED
+    pr = out["pr"] or {}
+    if pr.get("route") in (None, "none") and not pr.get("url"):
+        print(f"no pull request carries the park: {pr.get('reason') or pr}", file=sys.stderr)
+        return EXIT_FAILED
     return EXIT_OK
 
 
@@ -1097,7 +1270,7 @@ def cmd_dismiss(args) -> int:
             _emit({"change_id": args.id, "dismissed": False, "reason": "no --reason and no PR"})
             return EXIT_OK
         try:
-            approved = _approved_config(root, config)
+            approved = _approved_config(root, config, args.repo)
         except bands_mod.BandsError as exc:
             _emit({"change_id": args.id, "dismissed": False, "reason": f"sdlc.yaml: {exc}"})
             return EXIT_OK
@@ -1203,7 +1376,7 @@ def build_parser() -> argparse.ArgumentParser:
     r.add_argument("--no-push", action="store_true")
     r.add_argument("--dry-run", action="store_true")
 
-    for name in ("routes", "dispatch", "finish", "go", "dismiss"):
+    for name in ("routes", "dispatch", "finish", "go", "park", "dismiss"):
         s = sub.add_parser(name)
         s.add_argument("--root", default=".")
         s.add_argument("--id", required=True)
@@ -1213,8 +1386,11 @@ def build_parser() -> argparse.ArgumentParser:
             s.add_argument("--no-push", action="store_true")
         if name == "dispatch":
             s.add_argument("--commit", action="store_true", help="commit the record on the branch")
-        if name in ("go", "dismiss"):
+        if name in ("go", "park", "dismiss"):
             s.add_argument("--pr-number", type=int, default=None)
+        if name == "park":
+            s.add_argument("--check", default="setup", help="the step that failed")
+            s.add_argument("--reason", default="", help="its error line (the step output)")
         if name == "dismiss":
             s.add_argument("--reason", default=None, help="else the PR's last comment by a person")
             s.add_argument("--by", default=None)
@@ -1240,6 +1416,7 @@ def main(argv: list[str] | None = None) -> int:
         "routes": cmd_routes,
         "dispatch": cmd_dispatch,
         "go": cmd_go,
+        "park": cmd_park,
         "finish": cmd_finish,
         "dismiss": cmd_dismiss,
     }[args.command]

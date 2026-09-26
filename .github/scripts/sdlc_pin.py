@@ -4,16 +4,27 @@ Installed into the project by ``/sdlc-init`` (build guide step 30, task 30.8) an
 second step of every SDLC workflow, *before* the framework itself is checked out — which is
 why it lives in the project and imports nothing but the standard library.
 
-    python .github/scripts/sdlc_pin.py [--root .] [--file sdlc.yaml] [--ref origin/main]
+    python .github/scripts/sdlc_pin.py [--root .] [--file sdlc.yaml] \
+        [--ref refs/remotes/origin/main]
 
 ``--ref`` reads the file from that git ref instead of the working tree: the workflows pass
-``origin/<default branch>``, because the pin is the project's, not the branch's. A phase
-branch carries the ``sdlc.yaml`` it started from, and a pull request may stay open across
-several framework releases: read from the head, the branch would run the framework it was
-created under for its whole life (the first overturn rounds on the sample repository,
-2026-09-24, ran 0.2.14 on ``sdlc/0002/b`` while ``main`` pinned 0.2.16). The run's own
-configuration (review mode, limits) already comes from the base branch's copy. When the ref
-is not in the checkout, ``origin/<branch>`` is fetched with depth 1 first.
+``refs/remotes/origin/<default branch>``, because the pin is the project's, not the
+branch's. A phase branch carries the ``sdlc.yaml`` it started from, and a pull request may
+stay open across several framework releases: read from the head, the branch would run the
+framework it was created under for its whole life (the first overturn rounds on the sample
+repository, 2026-09-24, ran 0.2.14 on ``sdlc/0002/b`` while ``main`` pinned 0.2.16). The
+run's own configuration (review mode, limits) already comes from the base branch's copy.
+
+The ref is fully qualified (plugin 0.2.24): git resolves ``refs/tags/<name>`` before
+``refs/remotes/<name>``, so with the short ``origin/main`` a tag named ``origin/main``,
+pushed by anyone with write access and fetched by ``actions/checkout`` with
+``fetch-depth: 0``, would supply its own ``sdlc.yaml`` and pick the framework version (git
+only warns "refname is ambiguous"). When a ``refs/remotes/origin/<branch>`` (or
+``origin/<branch>``) ref is not in the checkout, ``refs/heads/<branch>`` is fetched from
+``origin`` into that remote-tracking ref first (a by-hand run; in a workflow the ref is
+always there, because the step's own ``git show`` of this script read it). The workflows run
+this script from the default branch's copy, not the head's (``git show
+<ref>:.github/scripts/sdlc_pin.py | python -``), for the same reason the pin is read there.
 
 It reads the ``plugin:`` block of ``sdlc.yaml`` and writes two step outputs into
 ``$GITHUB_OUTPUT`` (and prints them, so a local run shows the same two lines):
@@ -66,27 +77,43 @@ def read_key(block: str, key: str) -> str:
 
 
 def _git_show(root: Path, ref: str, file: str) -> str | None:
-    argv = ["git", "show", f"{ref}:{file}"]
+    argv = ["git", "--no-replace-objects", "show", f"{ref}:{file}"]
     proc = subprocess.run(
         argv, cwd=root, capture_output=True, text=True, encoding="utf-8", check=False
     )
     return proc.stdout if proc.returncode == 0 else None
 
 
+REMOTE_PREFIXES = ("refs/remotes/origin/", "origin/")
+
+
+def tracked_branch(ref: str) -> str | None:
+    """The branch a ``refs/remotes/origin/<branch>`` or ``origin/<branch>`` ref tracks."""
+    for prefix in REMOTE_PREFIXES:
+        if ref.startswith(prefix) and len(ref) > len(prefix):
+            return ref[len(prefix) :]
+    return None
+
+
 def read_at_ref(root: Path, ref: str, file: str) -> str | None:
-    """``file`` as committed at ``ref``; an ``origin/<branch>`` ref that the checkout lacks is
-    fetched (depth 1) and read from ``FETCH_HEAD``. None when nothing can be read."""
+    """``file`` as committed at ``ref``; a remote-tracking ref of ``origin`` that the checkout
+    lacks is fetched from ``origin`` into ``refs/remotes/origin/<branch>`` first (no depth
+    option: a depth-limited fetch would turn a full checkout shallow). None when nothing can
+    be read."""
+    if not ref or ref.startswith("-"):
+        return None  # never let the value read as a git option
     text = _git_show(root, ref, file)
-    if text is not None or not ref.startswith("origin/"):
+    branch = tracked_branch(ref)
+    if text is not None or branch is None:
         return text
-    branch = ref[len("origin/") :]
-    argv = ["git", "fetch", "--depth=1", "origin", branch]
+    tracking = f"refs/remotes/origin/{branch}"
+    argv = ["git", "fetch", "origin", f"+refs/heads/{branch}:{tracking}"]
     fetched = subprocess.run(
         argv, cwd=root, capture_output=True, text=True, encoding="utf-8", check=False
     )
     if fetched.returncode != 0:
         return None
-    return _git_show(root, "FETCH_HEAD", file)
+    return _git_show(root, tracking, file)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -94,7 +121,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--root", default=".")
     parser.add_argument("--file", default="sdlc.yaml")
     parser.add_argument(
-        "--ref", default=None, help="read the file at this git ref (workflows: origin/<default>)"
+        "--ref",
+        default=None,
+        help="read the file at this git ref (workflows: refs/remotes/origin/<default>)",
     )
     args = parser.parse_args(argv)
 

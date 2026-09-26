@@ -250,8 +250,17 @@ class RunbookSpy:
 @pytest.fixture(autouse=True)
 def _offline(monkeypatch):
     """No token reaches a subprocess (the gate and PR CLIs report ``route: none``), and no
-    ``$GITHUB_OUTPUT`` or ``$SDLC_DEFAULT_BRANCH`` leaks in from the runner."""
-    for name in ("GITHUB_TOKEN", "GH_TOKEN", "GITHUB_OUTPUT", "SDLC_DEFAULT_BRANCH"):
+    ``$GITHUB_OUTPUT``, ``$SDLC_DEFAULT_BRANCH``, ``$GITHUB_REPOSITORY`` or
+    ``$GITHUB_ACTIONS`` leaks in from the runner (the origin check of ``approved_files``
+    would otherwise refuse the tests' local bare origin)."""
+    for name in (
+        "GITHUB_TOKEN",
+        "GH_TOKEN",
+        "GITHUB_OUTPUT",
+        "SDLC_DEFAULT_BRANCH",
+        "GITHUB_REPOSITORY",
+        "GITHUB_ACTIONS",
+    ):
         monkeypatch.delenv(name, raising=False)
 
 
@@ -783,6 +792,105 @@ def test_go_needs_repo_and_pr_number(incident, capsys):
     root, _change = incident
     code, out = cli(capsys, "go", "--root", str(root), "--id", "0001", "--repo", REPO)
     assert (code, out) == (2, None)
+
+
+# --- park: the Go could not run (0.2.24) ------------------------------------------------------
+def test_park_records_the_failed_setup_step_where_the_owner_looks(
+    rollback_incident, gh, spy, capsys, monkeypatch
+):
+    """A failed setup step in the runbook job used to be a red run: the label stayed and
+    nothing wrote "what I need from you". ``park`` writes the park on the incident branch
+    (status, gate-f.json in the gate's shape, committed and pushed), removes the Go label and
+    refreshes the PR; no runbook runs."""
+    root, change = rollback_incident
+    write_proposal(change, "runbook:rollback-deploy")
+    code, out = cli(capsys, "dispatch", "--root", str(root), "--id", "0001", "--repo", REPO)
+    assert code == 0 and out["outcome"]["status"] == "go-requested", out
+    branch = gitops.current_branch(root)
+    monkeypatch.setenv("GITHUB_SERVER_URL", "https://github.com")
+    monkeypatch.setenv("GITHUB_REPOSITORY", REPO)
+    monkeypatch.setenv("GITHUB_RUN_ID", "42")
+    upserts: list = []
+    real_cli = detect_cli._cli
+
+    def fake_cli(script, argv, cwd):
+        if argv and argv[0] == "upsert":  # offline: the PR CLI would answer route none
+            upserts.append(argv)
+            return {"route": "api", "url": "https://x/pr/12", "number": 12}, 0, ""
+        return real_cli(script, argv, cwd)
+
+    monkeypatch.setattr(detect_cli, "_cli", fake_cli)
+    error = (
+        "the checkout changed files outside changes/ relative to refs/remotes/origin/main: src/x.py"
+    )
+    code, out = cli(
+        capsys, "park", "--root", str(root), "--id", "0001", "--repo", REPO,
+        "--pr-number", "12", "--check", "setup", "--reason", f"  {error}\n",
+    )  # fmt: skip
+    assert code == 0, out
+    reason = f"setup: {error} (run: https://github.com/o/r/actions/runs/42)"
+    assert out["parked"] == reason and out["check"] == "setup"
+    assert out["gate_result"] == f"changes/{change.name}/evidence/gate-f.json"
+    st = status_mod.read_status(change)
+    assert st.parked_reason == reason and st.phase == "f"
+    assert st.runbook_authorized_by is None
+    gate = json.loads((change / "evidence" / "gate-f.json").read_text(encoding="utf-8"))
+    assert gate["result"] == "park" and gate["phase"] == "f" and gate["label"] == "sdlc:needs-human"
+    [check] = gate["checks"]
+    assert check == {
+        "name": "setup",
+        "ok": False,
+        "reason": reason,
+        "need": detect_cli.PARK_NEED,
+        "details": {},
+    }
+    assert "apply `sdlc:go` again" in gate["what_i_need"]
+    assert (
+        gate["head"] == git(root, "rev-parse", "HEAD~1").strip()
+    )  # the head before the park commit
+    assert out["commit"]["ok"] and out["commit"]["pushed"] is True
+    assert "parked, the setup step failed" in git(root, "log", "-1", "--format=%s")
+    assert "parked_reason" in git(
+        root, "show", f"origin/{branch}:changes/{change.name}/status.yaml"
+    )
+    [(args, kwargs)] = gh.named("set_labels")
+    assert args[:4] == (REPO, 12, [], ["sdlc:go"])
+    assert out["label_removed"]["ok"] is True
+    assert out["pr"]["url"] == "https://x/pr/12" and upserts[0][-2:] == ["--phase", "f"]
+    assert spy.calls == [] and runbook_records(change) == ["runbook-rollback-deploy.json"]
+    # a park nobody can find is the red run this replaces: no PR route is a failure
+    monkeypatch.setattr(detect_cli, "_cli", real_cli)
+    code, out = cli(
+        capsys, "park", "--root", str(root), "--id", "0001", "--repo", REPO,
+        "--pr-number", "12", "--check", "setup", "--reason", error,
+    )  # fmt: skip
+    assert code == 1 and out["pr"]["route"] == "none"
+    monkeypatch.setattr(detect_cli, "_cli", fake_cli)
+    # by hand: no run URL, an empty reason names the step, a dry run writes the files only
+    for name in ("GITHUB_SERVER_URL", "GITHUB_REPOSITORY", "GITHUB_RUN_ID"):
+        monkeypatch.delenv(name)
+    code, out = cli(
+        capsys, "park", "--root", str(root), "--id", "0001", "--check", "setup", "--dry-run"
+    )
+    assert code == 0 and out["parked"] == "setup: the setup step failed", out
+    assert "commit" not in out and "pr" not in out and len(gh.named("set_labels")) == 2
+
+
+def test_park_refuses_a_change_that_is_not_an_incident(tmp_path, gh, capsys, monkeypatch):
+    """The label can land on any PR: a build PR's head has no detection record and is not at
+    phase (f), so nothing is parked, committed or relabelled."""
+    root = project(tmp_path)
+    change = root / "changes" / "0000-sdlc-init"
+    assert change.is_dir() and status_mod.read_status(change).phase != "f"
+    before = git(root, "rev-parse", "HEAD")
+    code, out = cli(
+        capsys, "park", "--root", str(root), "--id", "0000", "--repo", REPO,
+        "--pr-number", "3", "--check", "setup", "--reason", "src/x.py changed",
+    )  # fmt: skip
+    assert code == 0 and out["performed"] is False
+    assert "not an incident, nothing parked" in out["reason"]
+    assert git(root, "rev-parse", "HEAD") == before and gh.named("set_labels") == []
+    assert status_mod.read_status(change).parked_reason is None
 
 
 # --- dismiss ----------------------------------------------------------------------------------
@@ -1496,6 +1604,111 @@ def test_go_fails_closed_when_the_default_branch_copy_is_unreadable(
     assert spy.calls == []
     assert gh.named("set_labels") == []
     assert status_mod.read_status(change).runbook_authorized_by is None
+
+
+def test_approved_files_refuses_an_origin_that_is_not_the_repository(incident, monkeypatch):
+    """The re-fetch trusts the checkout's origin, and the session before ``finish`` holds
+    ``Bash(git *)``: an origin pointing at another GitHub repository is refused before any
+    fetch, by ``--repo`` or by ``$GITHUB_REPOSITORY``; a non-GitHub URL is refused on a
+    runner only (session-7 review, carried; 0.2.24)."""
+    root, _change = incident
+    config = detect_cli._config_or_empty(root)
+    # the tests' local bare origin: no repository named, nothing to compare
+    assert detect_cli.origin_mismatch(root, None) is None
+    assert detect_cli.origin_mismatch(root, "o/r") is None
+    _cfg, _bands, where = detect_cli.approved_files(root, config, "o/r")
+    assert where == "refs/remotes/origin/main"
+    # on a runner the origin is always the repository's URL: a local path is refused
+    monkeypatch.setenv("GITHUB_ACTIONS", "true")
+    assert "not a GitHub repository URL" in detect_cli.origin_mismatch(root, "o/r")
+    with pytest.raises(bands_mod.BandsError, match="not a GitHub repository URL"):
+        detect_cli.approved_files(root, config, "o/r")
+    monkeypatch.delenv("GITHUB_ACTIONS")
+    # a rewritten origin naming another repository is refused anywhere
+    git(root, "remote", "set-url", "origin", "https://github.com/someone/else.git")
+    assert detect_cli.origin_mismatch(root, "o/r") == "origin is someone/else, not o/r"
+    assert detect_cli.origin_mismatch(root, "Someone/Else") is None  # case does not matter
+    with pytest.raises(bands_mod.BandsError, match="origin is someone/else, not o/r"):
+        detect_cli.approved_files(root, config, "o/r")
+    monkeypatch.setenv("GITHUB_REPOSITORY", "o/r")
+    with pytest.raises(bands_mod.BandsError, match="origin is someone/else, not o/r"):
+        detect_cli.approved_files(root, config)  # the runner's own variable, no --repo
+    # the runner's variable wins over --repo: the CLI fills a missing --repo from origin
+    # itself, which would compare origin with origin
+    assert detect_cli.origin_mismatch(root, "someone/else") == "origin is someone/else, not o/r"
+    monkeypatch.delenv("GITHUB_REPOSITORY")
+    assert detect_cli.origin_mismatch(root, "someone/else") is None
+
+
+def test_approved_files_fail_closed_on_a_runner_without_a_remote(incident, monkeypatch):
+    """``git remote remove origin`` by the session that shares the checkout would otherwise
+    make the reader take the by-hand branch and trust the checkout's copies (session-8
+    review)."""
+    root, _change = incident
+    config = detect_cli._config_or_empty(root)
+    git(root, "remote", "remove", "origin")
+    assert detect_cli.approved_files(root, config)[2] == "the checkout"  # by hand
+    monkeypatch.setenv("GITHUB_ACTIONS", "true")
+    with pytest.raises(bands_mod.BandsError, match="has no origin remote on this runner"):
+        detect_cli.approved_files(root, config)
+
+
+def test_approved_reads_ignore_a_planted_replace_ref(incident):
+    """``git replace`` in the shared checkout survives the fetch and substitutes a blob for
+    the approved file; the readers pass ``--no-replace-objects`` (session-8 review)."""
+    root, _change = incident
+    from ci import project_setup
+
+    real = git(root, "rev-parse", "refs/remotes/origin/main:sdlc.yaml").strip()
+    planted = subprocess.run(
+        ["git", "hash-object", "-w", "--stdin"], cwd=root, input="planted: true\n",
+        capture_output=True, text=True, check=True,
+    ).stdout.strip()  # fmt: skip
+    git(root, "replace", real, planted)
+    assert git(root, "show", "refs/remotes/origin/main:sdlc.yaml").strip() == "planted: true"
+    text = detect_cli._show(root, "refs/remotes/origin/main", "sdlc.yaml")
+    assert "planted" not in text and "plugin:" in text
+    assert "planted" not in project_setup.config_at_ref(root, "refs/remotes/origin/main")
+    approved, _bands, _where = detect_cli.approved_files(root, detect_cli._config_or_empty(root))
+    assert "planted" not in approved
+
+
+def test_the_framework_s_git_runs_no_checkout_hook_on_a_runner(incident, monkeypatch):
+    """A hook the session planted in the shared ``.git`` would run under a later step's
+    environment (the finish step holds the runbook secrets): on a runner every git call of
+    the framework points ``core.hooksPath`` at an empty directory (session-8 review)."""
+    root, change = incident
+    hook = root / ".git" / "hooks" / "pre-commit"
+    hook.write_text("#!/bin/sh\necho planted > hook-ran\nexit 0\n", encoding="utf-8")
+    hook.chmod(0o755)
+    (change / "evidence" / "note.txt").write_text("x\n", encoding="utf-8")
+    rel = f"changes/{change.name}/evidence/note.txt"
+    monkeypatch.setenv("GITHUB_ACTIONS", "true")
+    assert gitops.runner_args()[0] == "-c" and "core.hooksPath=" in gitops.runner_args()[1]
+    assert gitops.commit_files(root, [rel], "no hook") is not None
+    assert not (root / "hook-ran").exists()
+    monkeypatch.delenv("GITHUB_ACTIONS")
+    assert gitops.runner_args() == []
+    if sys.platform != "win32":  # by hand the owner's own hooks run
+        (change / "evidence" / "note.txt").write_text("y\n", encoding="utf-8")
+        assert gitops.commit_files(root, [rel], "with hook") is not None
+        assert (root / "hook-ran").exists()
+
+
+def test_go_refuses_a_rewritten_origin_and_leaves_the_label(rollback_incident, gh, spy, capsys):
+    root, change = rollback_incident
+    write_proposal(change, "runbook:rollback-deploy")
+    code, out = cli(capsys, "dispatch", "--root", str(root), "--id", "0001", "--repo", REPO)
+    assert code == 0 and out["outcome"]["status"] == "go-requested", out
+    git(root, "remote", "set-url", "origin", "git@github.com:someone/else.git")
+    gh.actor = {"ok": True, "actor": "the-owner", "reason": ""}
+    code, out = go(capsys, root)
+    assert code == 0 and out["performed"] is False, out
+    assert out["reason"] == (
+        "sdlc.yaml: the default branch's copies could not be refreshed from origin: "
+        "origin is someone/else, not o/r"
+    )
+    assert spy.calls == [] and gh.named("set_labels") == []
 
 
 # --- the approved copies are the remote's, whatever the checkout's refs say (session 7) ------

@@ -102,7 +102,7 @@ if str(PLUGIN_DIR) not in sys.path:
 from pr.github import next_page_url  # noqa: E402, F401 - re-exported, moved there in 0.2.12
 
 from ci import auth as auth_mod  # noqa: E402
-from ci import project_setup  # noqa: E402
+from ci import fix_requests, project_setup  # noqa: E402
 from gate import artifacts as art  # noqa: E402
 from gate import diff as gate_diff  # noqa: E402
 from gate import limits  # noqa: E402
@@ -1148,12 +1148,29 @@ def run_phase(args, env: dict[str, str]) -> int:
     # and committed on the work branch, so the change request they answer (a park on a
     # risk hit, the iteration cap, a locked test) is settled when the session reads status.yaml
     labels_applied = None
+    requests_collected = None
     if phase == "fix" and not args.dry_run:
         labels_applied = apply_owner_labels(
             plugin_dir, root, change_dir, config, args.repo, getattr(args, "pr_number", None),
             gate_phase, fix_branch, env,
         )  # fmt: skip
         st = status_mod.read_status(change_dir)
+        # 0.2.24: the reviews and comments reach the session through a file the run wrote,
+        # judged by author_association here, never read from the PR by the model itself
+        requests_collected = collect_fix_requests(
+            root, change_dir, config, args.repo, getattr(args, "pr_number", None), env,
+            head_ref=fix_branch,
+        )  # fmt: skip
+        if not requests_collected.get("ok") and env.get("GITHUB_ACTIONS"):
+            # on a runner the file is the session's only source: without it the round would
+            # fall back to reading the PR itself (session-8 review), so it parks instead
+            parked = park_and_publish(
+                plugin_dir, root, change_dir, st, phase,
+                FIX_REQUESTS_PARK.format(reason=requests_collected.get("unavailable")),
+                branch=fix_branch,
+            )  # fmt: skip
+            _emit({**parked, "fix_requests": requests_collected, "branch": branch})
+            return EXIT_OK
 
     # the branch itself must be clean of guardrail edits before a run touches it (decision 6)
     guardrails = guardrail_changes(root, change_dir, config)
@@ -1281,6 +1298,7 @@ def run_phase(args, env: dict[str, str]) -> int:
             "gate_phase": gate_phase,
             "change_id": change_id,
             "owner_labels": labels_applied,
+            "fix_requests": requests_collected,
             "run_record": record,
             "result": result.get("result"),
             "label": result.get("label"),
@@ -1353,6 +1371,59 @@ def apply_owner_labels(
              *(["--branch", branch] if branch else [])],
         )  # fmt: skip
     return result
+
+
+FIX_REQUESTS_PARK = (
+    "the fix round's change requests could not be collected from the pull request: {reason}"
+)
+
+
+def collect_fix_requests(
+    root: Path,
+    change_dir: Path,
+    config: dict[str, Any],
+    repo: str,
+    pr_number: Any,
+    env: dict[str, str],
+    head_ref: str | None = None,
+) -> dict[str, Any]:
+    """Write ``evidence/fix-requests.json`` (``ci/fix_requests.py``): the PR's reviews, review
+    threads and comments, each judged by ``author_association`` before the model's session
+    starts, so ``/sdlc-fix`` step 1 reads the file and never the PR. A ``workflow_dispatch``
+    round has no event number: the open PR of ``head_ref`` supplies it. Without a route or a
+    number the file says so (``unavailable``); by hand the command then falls back to ``gh``,
+    on a runner the run parks (``run_phase``)."""
+    number = _pr_number(pr_number)
+    github = _github()
+    head = gate_diff.head_sha(root) if gate_diff.is_repo(root) else None
+    routed = github is not None and repo and (_token(env) or github.gh_path())
+    if routed and number is None and head_ref:
+        found = github.find_open_pr(repo, head_ref, cwd=root)
+        number = _pr_number(found.get("number")) if found.get("number") else None
+    if github is None or not repo:
+        reason = "no repository: the requests were not collected"
+    elif not routed:
+        reason = "no gh and no GITHUB_TOKEN/GH_TOKEN: the requests were not collected"
+    elif number is None:
+        reason = f"no pull request number and no open pull request for {head_ref or 'the head'}"
+    else:
+        return fix_requests.collect_and_write(
+            change_dir, repo, number, github, config, head, cwd=root
+        )
+    path = fix_requests.write(
+        change_dir,
+        {
+            "schema_version": fix_requests.SCHEMA_VERSION,
+            "repo": repo or None,
+            "pr_number": number,
+            "head": head,
+            "ok": False,
+            "unavailable": reason,
+            "requests": [],
+            "not_applied": [],
+        },
+    )
+    return {"ok": False, "file": path.name, "requests": 0, "not_applied": 0, "unavailable": reason}
 
 
 def hand_over(args, result: dict[str, Any], phase: str, change_id: str) -> Any:
