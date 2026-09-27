@@ -6,7 +6,7 @@ The owner's rule for this road: **each remaining group is one session** — sess
 
 ## Preconditions — check before doing anything
 1. **The session's GitHub scope holds both repositories** (NOTES §16, §17): the first act is one read of the sample (`actions_list` on `ci.yml`). Session 9 was started so and every tool answered; without it, stop the live part and say so.
-2. `main` is at plugin 0.2.25 (`.claude-plugin/plugin.json`; `git ls-remote --tags origin | sort -V -k2` ends with `v0.2.25` — `-k2`, the SHA column sorts first otherwise, NOTES §17). If session 9's PR is not merged yet, stop and say so: sessions 10–13 each bump the version and the tags must exist in order.
+2. `main` is at plugin 0.2.25 (`.claude-plugin/plugin.json`; `git ls-remote --tags origin | sort -V -k2` ends with `v0.2.25` — `-k2`, the SHA column sorts first otherwise, NOTES §17). Session 9's three PRs are merged (#57 the code, #58 the decision record, #59 the throwaway test of the mobile app's merge button — one blank line in `README.md`, removed again in #60) and `v0.2.25` exists; sessions 10–13 each bump the version and the tags must exist in order.
 3. The root `sdlc.yaml` pins the last tag (line 92) and the sample's `main` pins it too (line 77): both are the owner's guardrail edits after each tag (PROGRESS session 9, the guardrail table). The sample's workflow copies and its `.github/scripts/sdlc_pin.py` are still the **0.2.23** ones (byte-verified in session 9 against the tags): session 14 opens the upgrade PR to the latest tag, the way sessions 5–7 did (`git rm .github/workflows/sdlc-*.yml`, `plugin/init/sdlc_init.py --root <sample>`, `git restore -- sdlc.yaml`, one PR the owner merges). Until then a fix round on the sample still reads the PR itself and a Go whose setup step fails is still a red run.
 4. `python tasks.py check` green (1196 tests at the end of session 9) and `claude plugin validate .` clean; the dev tools are not in the container at start (`python -m pip install -e ".[dev]"` first; NOTES §16).
 5. Sub-agents named by model explicitly (`model: "opus"` for the review; the split of MODEL_ALLOCATION §5d).
@@ -35,6 +35,7 @@ The review's "Group A" list, in this order; each item a test in `tests/test_gate
 8. A non-boolean `paused` or `deploy.production` fails closed (`yes`/`on`/`"true"` are refused with the line named), in `gate/limits.py`, `gate/preflight.py`, `run_phase.py` and `hooks/production_gate.py`.
 9. `pr/counters.py` excludes the remote-abandoned ids as `open_incidents` does.
 10. `/sdlc-deploy.md` panel step: re-run the review pass after the panel's commit, and drop the diff-file and verdict-file sentences phase (e) has no step for.
+11. `/sdlc-init` §6 and OPERATING_MODEL §2: the bypass actor's mode is **Exempt** (NOTES §17, verified 2026-09-27: the owner merges from the GitHub mobile app, whose "Unable to merge" label ignores the bypass; a bypass audit entry is no longer written for the owner's merges; the automation stays blocked). A sentence in a command file is a plugin change, so it rides this session's bump rather than a PR of its own.
 Then: the version bump (`plugin.json` and `marketplace.json` to 0.2.26; `tests/test_scaffold.py` asserts they agree), the template's workflow copies and this repository's identical (tested), the checks of "Rules" below, a fresh-context Opus review of the diff, one draft PR against `main`; after the merge the owner checks `v0.2.26` and applies the two pins as guardrail rows. Docs: PROGRESS on top, NOTES §18 only if a fact was read, OPERATING_MODEL where the code changed, ROADMAP row 12a done, this file for session 11.
 
 ## Session 11 — group B: CI, release and detect (plugin 0.2.27)
@@ -78,7 +79,7 @@ The sample's upgrade PR with the 1.0.0 copies; the GitHub Milestone by hand; `do
 ## What the owner does on this road (nothing else is the owner's)
 | When | Act |
 |---|---|
-| ~~Now (after session 9's PR)~~ — done 2026-09-27 | PR #57 merged; `v0.2.25` tagged by `sdlc-tag.yml` on the merge commit 451d48a (run 36331471990); both pins at `0.2.25` after the tag (root `e15402d`, the sample's PR #44); the ruleset on this repository's `main` created and verified (NOTES §17). Still open, optional: the same ruleset on the sample (its classic rule does not count). |
+| ~~Now (after session 9's PR)~~ — done 2026-09-27 | PR #57 merged; `v0.2.25` tagged by `sdlc-tag.yml` on the merge commit 451d48a (run 36331471990); both pins at `0.2.25` after the tag (root `e15402d`, the sample's PR #44); the ruleset on this repository's `main` created and verified (NOTES §17). The bypass mode set to **Exempt** the same day and tested live on PR #59 (NOTES §17). Still open, optional: the same ruleset on the sample (its classic rule does not count), with the same Exempt bypass. |
 | Every session start | Start the session with both repositories selected (precondition 1). |
 | Sessions 10, 11 (and 12 if it bumps) | Merge the PR when the session asks; check the tag; apply the two pins. |
 | Session 13 | Merge the docs PR; apply the guardrail rows it lists (the root `sdlc.yaml` line 8 among them). |
