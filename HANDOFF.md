@@ -78,7 +78,7 @@ The sample's upgrade PR with the 1.0.0 copies; the GitHub Milestone by hand; `do
 ## What the owner does on this road (nothing else is the owner's)
 | When | Act |
 |---|---|
-| Now (after session 9's PR) | Merge it; check `v0.2.25` (dispatch `sdlc-tag.yml` if no run appears, NOTES §14); apply the two pins (root `sdlc.yaml` line 92 and the sample's line 77: `0.2.24` → `0.2.25`) after the tag; **create the branch ruleset on this repository's `main`**: *Restrict updates* with the repository admin as the only bypass actor, plus restrict deletions, block force pushes, require a pull request (decision 4; `/sdlc-init` §6) — the digest will say so until an `update` rule exists; the sample's classic rule does not count, so its digest says so too until the owner adds the same ruleset there. |
+| Now (after session 9's PR) | Merge it; check `v0.2.25` (dispatch `sdlc-tag.yml` if no run appears, NOTES §14); apply the two pins (root `sdlc.yaml` line 92 and the sample's line 77: `0.2.24` → `0.2.25`) after the tag; ~~create the branch ruleset on this repository's `main`~~ (done 2026-09-27, verified, NOTES §17): *Restrict updates* with the repository admin as the only bypass actor, plus restrict deletions, block force pushes, require a pull request (decision 4; `/sdlc-init` §6) — the digest will say so until an `update` rule exists; the sample's classic rule does not count, so its digest says so too until the owner adds the same ruleset there. |
 | Every session start | Start the session with both repositories selected (precondition 1). |
 | Sessions 10, 11 (and 12 if it bumps) | Merge the PR when the session asks; check the tag; apply the two pins. |
 | Session 13 | Merge the docs PR; apply the guardrail rows it lists (the root `sdlc.yaml` line 8 among them). |
