@@ -108,6 +108,42 @@ class GateError(RuntimeError):
     pass
 
 
+def approved_overrides(
+    root: Path, change_dir: Path, st: status_mod.Status, d: diffmod.Diff | None
+) -> tuple[str | None, str | None, str]:
+    """``(profile_override, review_override, note)`` as the base branch's ``status.yaml``
+    carries them at the base's tip (``d.base``, the ref the runner's guard reads too — the
+    review of the 0.2.26 diff, M3: read at the merge base, the gate and the guard disagreed
+    when the owner changed the override on the default branch after the branch forked, and
+    the run stalled without a park). ``intent.md`` stays at the merge base by design. A folder
+    not on the base (an intent PR before its merge) has no approved override; with no base
+    to compare with (no git, no default branch) the checkout's values stand, as every other
+    check then reads the working tree."""
+    if d is None or not d.merge_base or d.base == "HEAD":
+        return st.profile_override, st.review_override, ""
+    rel = f"{change_dir.name}"
+    text = diffmod.file_at(root, d.base, f"{c.CHANGES_DIR}/{rel}/{status_mod.STATUS_FILE}")
+    profile: str | None = None
+    review: str | None = None
+    if text is not None:
+        try:
+            approved = status_mod.Status.from_dict(yamlish.loads(text))
+        except Exception as exc:  # noqa: BLE001
+            raise GateError(
+                f"{rel}/{status_mod.STATUS_FILE} at {d.base} unreadable: {exc}"
+            ) from exc
+        profile, review = approved.profile_override, approved.review_override
+    ignored = [
+        f"{name} {branch!r} on the branch ignored ({expected!r} at {d.base})"
+        for name, branch, expected in (
+            ("profile_override", st.profile_override, profile),
+            ("review_override", st.review_override, review),
+        )
+        if branch != expected
+    ]
+    return profile, review, "; ".join(ignored)
+
+
 def build_context(root: Path, change_id: str, phase: str, base: str | None = None) -> GateContext:
     root = Path(root).resolve()
     if phase not in c.PHASES:
@@ -148,10 +184,17 @@ def build_context(root: Path, change_id: str, phase: str, base: str | None = Non
                 config_note = (
                     f"sdlc.yaml changed on the branch: limits and lists read from {d.base}"
                 )
-    profile = c.effective_profile(config.get("profile"), st.profile_override)
+    # the overrides only the owner sets are read from the copy the owner approved, as
+    # intent.md is (``approved_artifact``): a branch that wrote ``profile_override: standard``
+    # skipped the Full profile's (c)/(d) label gates before 0.2.26 (the 1.0.0 readiness
+    # review; choice 103). The branch's own values are ignored, with a note in the result.
+    profile_override, review_override, override_note = approved_overrides(root, change_dir, st, d)
+    if override_note:
+        config_note = "; ".join(n for n in (config_note, override_note) if n)
+    profile = c.effective_profile(config.get("profile"), profile_override)
     human = c.is_human_gate(profile, phase)
     try:
-        review_mode = c.effective_review_mode(config.get("review"), st.review_override)
+        review_mode = c.effective_review_mode(config.get("review"), review_override)
     except ValueError as exc:
         raise GateError(str(exc)) from exc
     return GateContext(

@@ -36,7 +36,7 @@ if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from hooks import plan_sync  # noqa: E402
-from hooks._common import ConfigError, load_sdlc_config  # noqa: E402
+from hooks._common import ConfigError, config_flag, load_sdlc_config  # noqa: E402
 from state import conventions as c  # noqa: E402
 from state import gitops, status, unpark  # noqa: E402
 
@@ -352,10 +352,9 @@ def _production(root: Path) -> bool:
     missing or unreadable. It only words the derived gate (e) reason (decision 13): the
     release approval itself is the release workflow's to check."""
     try:
-        deploy = load_sdlc_config(str(root)).get("deploy")
+        return config_flag(load_sdlc_config(str(root)), "deploy", "production")
     except (ConfigError, OSError):
         return False
-    return isinstance(deploy, dict) and deploy.get("production") is True
 
 
 def _derived_gate(raw: status.Status, st: status.Status, default: str | None) -> str | None:

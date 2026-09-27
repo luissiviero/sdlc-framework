@@ -106,7 +106,13 @@ from ci import fix_requests, project_setup  # noqa: E402
 from gate import artifacts as art  # noqa: E402
 from gate import diff as gate_diff  # noqa: E402
 from gate import limits  # noqa: E402
-from hooks._common import SDLC_FILE, ConfigError, load_sdlc_config, matches  # noqa: E402
+from hooks._common import (  # noqa: E402
+    SDLC_FILE,
+    ConfigError,
+    config_flag,
+    load_sdlc_config,
+    matches,
+)
 from state import conventions as c  # noqa: E402
 from state import status as status_mod  # noqa: E402
 
@@ -478,6 +484,15 @@ def _git_ok(root: Path, *args: str) -> bool:
     return True
 
 
+def gitops_current_branch(root: Path) -> str | None:
+    from state import gitops  # noqa: PLC0415
+
+    try:
+        return gitops.current_branch(root) if gitops.is_repo(root) else None
+    except Exception:  # noqa: BLE001
+        return None
+
+
 def _ref_exists(root: Path, ref: str) -> bool:
     from state import gitops
 
@@ -734,6 +749,32 @@ def rerun_reason(
     return None
 
 
+def _approved_ref(root: Path) -> str | None:
+    """The remote-tracking ref of the default branch — where the copies the owner approved
+    live — or None when the checkout has no such ref to read (a by-hand run without a remote,
+    or a remote that has no such branch; a guessed name that is a framework branch or the
+    current branch, which is nobody's approved copy). Shared by ``_approved_config`` and
+    ``approved_overrides``."""
+    from state import gitops  # noqa: PLC0415
+
+    try:
+        name = gitops.default_branch(root) if gitops.is_repo(root) else ""
+    except Exception:  # noqa: BLE001 - no git, no remote: the checkout's copy is all there is
+        name = ""
+    if not name or name.startswith("sdlc/") or c.parse_branch(name):
+        return None
+    if not gitops.explicit_default_branch() and name not in ("main", "master"):
+        # the guess fell through to the current branch (no origin/HEAD, no main or master):
+        # on a PR head such as a web session's ``claude/…`` that is the branch's own copy
+        try:
+            if name == gitops.current_branch(root):
+                return None
+        except Exception:  # noqa: BLE001
+            return None
+    ref = f"refs/remotes/origin/{name}"
+    return ref if _ref_exists(root, ref) else None
+
+
 def _approved_config(root: Path) -> dict[str, Any]:
     """``sdlc.yaml`` as the default branch carries it — the copy the owner approved — when
     the checkout has that remote-tracking ref; else the checkout's copy (a by-hand run
@@ -746,23 +787,12 @@ def _approved_config(root: Path) -> dict[str, Any]:
     review, 2026-09-26). The default branch is named by ``SDLC_DEFAULT_BRANCH`` or guessed
     (``state/gitops.default_branch``); a guess that lands on a framework branch is refused,
     since a work branch's copy is not the owner's."""
-    from state import gitops, yamlish  # noqa: PLC0415
+    from state import yamlish  # noqa: PLC0415
 
-    try:
-        name = gitops.default_branch(root) if gitops.is_repo(root) else ""
-    except Exception:  # noqa: BLE001 - no git, no remote: the checkout's copy is all there is
-        name = ""
-    if not name or name.startswith("sdlc/") or c.parse_branch(name):
+    ref = _approved_ref(root)
+    if ref is None:
         return _config(root)
-    if not gitops.explicit_default_branch() and name not in ("main", "master"):
-        # the guess fell through to the current branch (no origin/HEAD, no main or master):
-        # on a PR head such as a web session's ``claude/…`` that is the branch's own copy
-        try:
-            if name == gitops.current_branch(root):
-                return _config(root)
-        except Exception:  # noqa: BLE001
-            return _config(root)
-    text = gate_diff.file_at(root, f"refs/remotes/origin/{name}", SDLC_FILE)
+    text = gate_diff.file_at(root, ref, SDLC_FILE)
     if text is None:
         return _config(root)
     try:
@@ -772,10 +802,71 @@ def _approved_config(root: Path) -> dict[str, Any]:
     return data if isinstance(data, dict) else {}
 
 
+class ApprovedCopyUnreadable(RuntimeError):
+    """The default branch's ``status.yaml`` exists and cannot be read: fail closed (the
+    review of the 0.2.26 diff, L3 — a None here read as "no override" and dropped the
+    owner's ``profile_override: full``)."""
+
+
+def _approved_status(root: Path, change_dir: Path):
+    """The change's ``status.yaml`` as the default branch carries it (the copy the owner
+    approved at gate (a) or a later merge), or None: no remote-tracking ref (by hand) or
+    the folder not on the default branch yet (an intent PR before its merge). An unreadable
+    copy raises ``ApprovedCopyUnreadable`` (an old plugin's schema still reads: unknown keys
+    apart, ``Status.from_dict`` defaults the missing ones)."""
+    from state import yamlish  # noqa: PLC0415
+
+    ref = _approved_ref(root)
+    if ref is None:
+        return None
+    rel = f"{c.CHANGES_DIR}/{change_dir.name}/{status_mod.STATUS_FILE}"
+    text = gate_diff.file_at(root, ref, rel)
+    if text is None:
+        return None
+    try:
+        return status_mod.Status.from_dict(yamlish.loads(text))
+    except Exception as exc:  # noqa: BLE001
+        raise ApprovedCopyUnreadable(f"{rel} on the default branch is unreadable: {exc}") from exc
+
+
+def approved_overrides(
+    root: Path, change_dir: Path, st, env: dict[str, str] | None = None
+) -> tuple[str | None, str | None, str]:
+    """``(profile_override, review_override, note)`` the run judges by: the default branch's
+    copy of ``status.yaml`` when the checkout has one (choice 103; the 1.0.0 readiness
+    review: a branch that wrote ``profile_override: standard`` skipped the Full profile's
+    (c)/(d) label gates, and ``review_override: deferred`` sent the park items to the
+    panel). The branch's own values are ignored and the note says so when they differ. A
+    folder not on the default branch yet has no approved override (None). Without a
+    remote-tracking ref the checkout's values stand by hand only; on a runner
+    (``GITHUB_ACTIONS``) no override applies, since the branch's copy is nobody's approval.
+    An unreadable approved copy raises (``ApprovedCopyUnreadable``): the caller refuses."""
+    if _approved_ref(root) is None:
+        if (env if env is not None else os.environ).get("GITHUB_ACTIONS"):
+            return None, None, "no default branch ref on the runner: no override applies"
+        return st.profile_override, st.review_override, ""
+    approved = _approved_status(root, change_dir)
+    profile = approved.profile_override if approved is not None else None
+    review = approved.review_override if approved is not None else None
+    ignored = [
+        f"{name} {branch!r} on the branch ignored ({expected!r} on the default branch)"
+        for name, branch, expected in (
+            ("profile_override", st.profile_override, profile),
+            ("review_override", st.review_override, review),
+        )
+        if branch != expected
+    ]
+    return profile, review, "; ".join(ignored)
+
+
 def guard(root: Path, change_id: str, run_phase: str, repo: str, env: dict[str, str]):
     """(change_dir, status, config, skip reason)."""
     config = _approved_config(root)
-    if config.get("paused") is True:
+    try:
+        paused = config_flag(config, "paused")
+    except ConfigError as exc:
+        return None, None, config, f"{exc}: nothing runs until it is fixed"
+    if paused:
         return None, None, config, "sdlc.yaml says paused: true"
     change_dir = c.find_change_dir(root, change_id)
     if change_dir is None:
@@ -833,7 +924,15 @@ def guard(root: Path, change_id: str, run_phase: str, repo: str, env: dict[str, 
                 f"gate ({expected}) has not passed for change {change_id} "
                 f"(gate: {st.gate.phase}/{st.gate.result})",
             )
-    profile = c.effective_profile(config.get("profile"), st.profile_override)
+    # the Full profile's label gates are judged by the override the owner approved, not the
+    # branch's (0.2.26; a branch writing ``profile_override: standard`` skipped them before)
+    try:
+        profile_override, _review, note = approved_overrides(root, change_dir, st, env)
+    except ApprovedCopyUnreadable as exc:
+        return None, None, config, f"{exc}: nothing runs until it is fixed"
+    if note:
+        print(f"status.yaml: {note}", file=sys.stderr)
+    profile = c.effective_profile(config.get("profile"), profile_override)
     if profile == "full" and run_phase in APPROVAL_LABEL:
         reason = check_approval(repo, change_id, run_phase, env)
         if reason:
@@ -1277,6 +1376,37 @@ def run_phase(args, env: dict[str, str]) -> int:
 
     # only a real run creates the labels it will apply (a dry run contacts nothing)
     labels = ensure_labels(args.repo, env)
+    # choice 103: the owner-only fields as they stand when the session starts (the runner's
+    # own label handling included) and as the default branch carries them; the baseline's
+    # own entries checked against the pull request's label events, the change's remote
+    # branches noted, so a push by the session shows
+    before_st = status_mod.read_status(change_dir)
+    try:
+        approved_st = _approved_status(root, change_dir)
+    except ApprovedCopyUnreadable as exc:
+        return _skip(f"{exc}: nothing runs until it is fixed")
+    pr_for_labels = _pr_number(getattr(args, "pr_number", None))
+    if pr_for_labels is None and _github() is not None and args.repo:
+        pr_for_labels = _pr_number(
+            (_github().find_open_pr(args.repo, gitops_current_branch(root), cwd=root) or {}).get(
+                "number"
+            )
+        )
+    baseline = baseline_mismatches(
+        owner_fields(before_st),
+        owner_fields(approved_st) if approved_st is not None else None,
+        args.repo, pr_for_labels, env,
+    )  # fmt: skip
+    if baseline:
+        parked = park_and_publish(
+            plugin_dir, root, change_dir, before_st, phase,
+            OWNER_FIELDS_PARK.format(reasons="; ".join(baseline)),
+            branch=fix_branch, check=OWNER_FIELDS_CHECK, need=OWNER_FIELDS_NEED,
+        )  # fmt: skip
+        _emit({**parked, "owner_fields": {"ok": False, "mismatches": baseline}, "branch": branch})
+        return EXIT_OK
+    refs_before = change_refs(root, change_id)
+    pre_head = gate_diff.head_sha(root) if gate_diff.is_repo(root) else None
     data, raw, err, code = invoke(argv, root, env, run_timeout_seconds(config))
     result_path, stderr_path = run_record_paths(change_dir, phase)
     store_result(change_dir, phase, data, raw, result_path)
@@ -1286,6 +1416,23 @@ def run_phase(args, env: dict[str, str]) -> int:
         cost = data.get("total_cost_usd")
         if isinstance(cost, (int, float)):
             record_spend(plugin_dir, root, change_id, gate_phase, float(cost))
+    owner = verify_owner_fields(change_dir, before_st, approved_st, root, pre_head, config)
+    owner["mismatches"] += session_push_mismatches(
+        root, gitops_current_branch(root), refs_before, change_refs(root, change_id)
+    )
+    owner["ok"] = not owner["mismatches"]
+    for line in owner["overrides_changed"]:
+        print(f"status.yaml: {line}", file=sys.stderr)
+    if not owner["ok"]:
+        # before any commit of this run: the fields are restored, the park names them
+        parked = park_and_publish(
+            plugin_dir, root, change_dir, before_st, phase,
+            OWNER_FIELDS_PARK.format(reasons="; ".join(owner["mismatches"])),
+            branch=fix_branch, check=OWNER_FIELDS_CHECK, need=OWNER_FIELDS_NEED,
+        )  # fmt: skip
+        _emit({**parked, "owner_fields": owner, "claude_exit": code, "cost_usd": cost,
+               "branch": branch})  # fmt: skip
+        return EXIT_OK
     if code != 0 or not isinstance(data, dict) or data.get("is_error"):
         report_failed_run(root, change_dir, phase, data, raw, err, f"claude exited {code}")
         return EXIT_FAILED
@@ -1336,6 +1483,7 @@ def run_phase(args, env: dict[str, str]) -> int:
             "gate_phase": gate_phase,
             "change_id": change_id,
             "owner_labels": labels_applied,
+            "owner_fields": owner,
             "fix_requests": requests_collected,
             "run_record": record,
             "result": result.get("result"),
@@ -1409,6 +1557,352 @@ def apply_owner_labels(
              *(["--branch", branch] if branch else [])],
         )  # fmt: skip
     return result
+
+
+# --- the owner-only fields of status.yaml, re-verified after the session (choice 103) ---------
+# The session can write status.yaml, and the gate's ``owner_actions`` check believes a recorded
+# label actor that is a person (the 1.0.0 readiness review, group A). The runner is the one
+# reader the session cannot edit: it snapshots the fields only the owner sets right before
+# ``claude -p`` (after its own label handling, ``apply_owner_labels``) and compares them right
+# after. An entry the session added that the runner did not record and the default branch's
+# copy does not carry, an act the session performed itself (a risk item accepted, the test-file
+# lock lifted) and a counter lowered by anything but the runner's own reset park the change
+# with the field, the session's value and the expected one; the fields are restored first, so
+# no commit of the runner ever carries the session's version. The baseline itself is checked
+# too (the review of the 0.2.26 diff, M1): an entry on the branch that the default branch does
+# not carry must match a label event on the pull request, and a push by the session to any
+# other branch of the change, or a remote tip the runner's checkout does not contain, parks.
+OWNER_FIELDS_PARK = c.OWNER_FIELDS_PARK_PREFIX + "{reasons}"
+OWNER_FIELDS_NEED = (
+    "risk_accepted, risk_accepted_by, tests_locked, tests_unlocked_by, iterations_reset_by and "
+    "the counters are written by the runner from your label on the pull request "
+    "(sdlc:accept-risk, sdlc:reset-iterations, sdlc:unlock-tests) or by your own commit; the "
+    "run cannot approve itself (decision 5). The fields were restored to their pre-session "
+    "values (a test file changed under a lifted lock too); apply the label if the act is "
+    "yours, else fix the phase command that wrote them and re-run the phase."
+)
+OWNER_FIELDS_CHECK = "owner_fields"
+OWNER_LABEL_OF = {
+    "risk_accepted_by": c.ACCEPT_RISK_LABEL,
+    "iterations_reset": c.RESET_ITERATIONS_LABEL,
+    "tests_unlocked_by": c.UNLOCK_TESTS_LABEL,
+}
+
+
+def owner_fields(st) -> dict[str, Any]:
+    """The fields of ``status.yaml`` only the owner sets, in a comparable shape."""
+    return {
+        "risk_accepted": sorted(str(r).strip().lower() for r in st.risk_accepted if str(r).strip()),
+        "risk_accepted_by": sorted(
+            (str(e.get("item", "")).strip(), str(e.get("actor", "")).strip())
+            for e in st.risk_accepted_by
+            if isinstance(e, dict)
+        ),
+        "iterations_reset": (st.iterations_reset_by, st.iterations_reset_at),
+        "tests_unlocked_by": st.tests_unlocked_by,
+        # the lock as the hook and the gate read it: a fix-type change with tests_locked
+        "locked": st.change_type == "fix" and bool(st.tests_locked),
+        "iterations": st.iterations,
+        "panel_calls": st.panel_calls,
+        "profile_override": st.profile_override,
+        "review_override": st.review_override,
+    }
+
+
+def owner_field_mismatches(
+    before: dict[str, Any], after: dict[str, Any], approved: dict[str, Any] | None
+) -> list[str]:
+    """What the session changed that only the owner may: one line per field, with the
+    session's value and the expected one. Allowed after the session: what the runner
+    recorded before it (``before``), what the default branch's copy carries (``approved``: a
+    merge of the default branch into the work branch brings it), and a cleared field (a
+    dropped acceptance or a cleared actor fails closed at the gate; ``lock_tests`` clears
+    ``tests_unlocked_by`` by design). The acts are judged with the actors (the review of the
+    0.2.26 diff, H1): a risk item accepted with no entry, or the lock lifted with no actor,
+    is the session's own act whatever the commit author says. The overrides are not judged
+    here: they are restored and reported (``override_changes``)."""
+    approved = approved or {}
+    reasons: list[str] = []
+    known_items = set(before["risk_accepted"]) | set(approved.get("risk_accepted") or [])
+    known_by = set(before["risk_accepted_by"]) | set(approved.get("risk_accepted_by") or [])
+    by_item = {item.lower(): actor for item, actor in after["risk_accepted_by"]}
+    for item in after["risk_accepted"]:
+        if item not in known_items:
+            reasons.append(
+                f"risk_accepted: the session accepted {item!r}"
+                + (
+                    f" and recorded {by_item[item]!r} for it; the runner recorded no label"
+                    if item in by_item
+                    else "; only the owner's label or commit does"
+                )
+            )
+    for item, actor in after["risk_accepted_by"]:
+        if (item, actor) not in known_by and item.lower() in known_items:
+            reasons.append(
+                f"risk_accepted_by: the session recorded {actor!r} for {item!r}; the runner "
+                "recorded no label for it"
+            )
+    resets = {before["iterations_reset"], (None, None)}
+    if approved.get("iterations_reset"):
+        resets.add(tuple(approved["iterations_reset"]))
+    if after["iterations_reset"] not in resets:
+        reasons.append(
+            f"iterations_reset_by: the session recorded {after['iterations_reset'][0]!r} "
+            f"({after['iterations_reset'][1]!r}); expected {before['iterations_reset'][0]!r} "
+            f"({before['iterations_reset'][1]!r})"
+        )
+    unlocks = {before["tests_unlocked_by"], approved.get("tests_unlocked_by"), None}
+    if after["tests_unlocked_by"] not in unlocks:
+        reasons.append(
+            f"tests_unlocked_by: the session recorded {after['tests_unlocked_by']!r}; expected "
+            f"{before['tests_unlocked_by']!r}"
+        )
+    if before["locked"] and not after["locked"]:
+        reasons.append(
+            "tests_locked: the session lifted the test-file lock (tests_locked false or the "
+            "change no longer a fix); only sdlc:unlock-tests or the owner's commit does"
+        )
+    for counter in ("iterations", "panel_calls"):
+        if after[counter] < before[counter]:
+            reasons.append(
+                f"{counter}: the session lowered it from {before[counter]} to {after[counter]}; "
+                "only sdlc:reset-iterations does"
+            )
+    return reasons
+
+
+def override_changes(before: dict[str, Any], after: dict[str, Any]) -> list[str]:
+    """The overrides the session changed on the branch — restored and reported, never parked:
+    the runner and the gate read the default branch's copy whatever the branch says, and the
+    branch's value is put back so the owner's next merge does not carry it (the review of
+    the 0.2.26 diff, H2)."""
+    return [
+        f"{name}: the session set {after[name]!r} (was {before[name]!r}); restored, the "
+        "default branch's copy is what the runner and the gate read"
+        for name in ("profile_override", "review_override")
+        if after[name] != before[name]
+    ]
+
+
+def _test_files_changed_since(root: Path, pre_head: str, config: dict[str, Any]) -> list[str]:
+    """The files under ``sdlc.yaml: test_paths`` that differ between ``pre_head`` and the
+    working tree (committed by the session or not)."""
+    from hooks._common import ConfigError as _ConfigError  # noqa: PLC0415
+    from hooks.test_file_lock import test_path_patterns  # noqa: PLC0415
+
+    try:
+        patterns = test_path_patterns(config)
+    except _ConfigError:
+        return []
+    changed = gate_diff._z(
+        gate_diff._git(root, "diff", "--name-only", "-z", pre_head, check=False)
+    ) + gate_diff._z(
+        gate_diff._git(root, "ls-files", "--others", "--exclude-standard", "-z", check=False)
+    )
+    return sorted({f for f in changed if any(matches(p, f) for p in patterns)})
+
+
+def restore_test_files(root: Path, pre_head: str, files: list[str]) -> list[str]:
+    """Put the test files back as ``pre_head`` had them (a file new since then is removed):
+    the runner's restore commit would otherwise be the newest lock commit and the gate's
+    ``test_lock`` check would judge nothing before it (the review of the 0.2.26 diff, M2)."""
+    from state import gitops  # noqa: PLC0415
+
+    restored: list[str] = []
+    for rel in files:
+        if gate_diff.file_at(root, pre_head, rel) is None:
+            try:
+                (root / rel).unlink()
+            except OSError:
+                continue
+        else:
+            gitops.run(root, "checkout", pre_head, "--", rel, check=False)
+        restored.append(rel)
+    return restored
+
+
+def restore_owner_fields(change_dir: Path, before_st, after_st=None) -> None:
+    """Write the pre-session values of the owner-only fields back over what the session
+    left, keeping the session's other fields (phase, gate, evidence) when its file is
+    readable; the whole pre-session file when it is not."""
+    if after_st is None:
+        status_mod.write_status(change_dir, before_st)
+        return
+    after_st.risk_accepted = list(before_st.risk_accepted)
+    after_st.risk_accepted_by = [dict(e) for e in before_st.risk_accepted_by]
+    after_st.iterations_reset_by = before_st.iterations_reset_by
+    after_st.iterations_reset_at = before_st.iterations_reset_at
+    after_st.tests_unlocked_by = before_st.tests_unlocked_by
+    if before_st.change_type == "fix" and before_st.tests_locked:
+        after_st.change_type = "fix"
+        after_st.tests_locked = True
+    after_st.iterations = max(after_st.iterations, before_st.iterations)
+    after_st.panel_calls = max(after_st.panel_calls, before_st.panel_calls)
+    after_st.profile_override = before_st.profile_override
+    after_st.review_override = before_st.review_override
+    status_mod.write_status(change_dir, after_st)
+
+
+def change_refs(root: Path, change_id: str) -> dict[str, str]:
+    """``{branch: sha}`` of the change's branches on the remote (``origin/sdlc/<id>/*``), after
+    a fetch; empty without a remote."""
+    from state import gitops  # noqa: PLC0415
+
+    if not gitops.is_repo(root) or not gitops.has_remote(root):
+        return {}
+    gitops.run(root, "fetch", "--prune", "origin", check=False)
+    out = gitops.run(
+        root,
+        "for-each-ref",
+        "--format=%(refname:short)%00%(objectname)",
+        f"refs/remotes/origin/sdlc/{change_id}/",
+        check=False,
+    )
+    refs: dict[str, str] = {}
+    for line in out.splitlines():
+        name, _, sha = line.partition("\0")
+        if name and sha:
+            refs[name.removeprefix("origin/")] = sha
+    return refs
+
+
+def session_push_mismatches(
+    root: Path, branch: str | None, refs_before: dict[str, str], refs_after: dict[str, str]
+) -> list[str]:
+    """A push by the session outside its own branch, or a remote tip of its branch that the
+    runner's checkout does not contain (the review of the 0.2.26 diff, M1: forged fields
+    planted on the next phase's branch, or pushed and then reset locally, became the next
+    run's baseline)."""
+    from state import gitops  # noqa: PLC0415
+
+    reasons: list[str] = []
+    for name in sorted(set(refs_before) | set(refs_after)):
+        if name == branch:
+            continue
+        if refs_before.get(name) != refs_after.get(name):
+            reasons.append(
+                f"origin/{name}: the session pushed to another branch of the change "
+                f"({(refs_before.get(name) or 'absent')[:10]} -> "
+                f"{(refs_after.get(name) or 'absent')[:10]}); a run pushes its own branch only"
+            )
+    remote = refs_after.get(branch or "")
+    if remote:
+        contained = gitops.run(
+            root, "merge-base", "--is-ancestor", remote, "HEAD", check=False
+        ) == "" and _git_ok(root, "merge-base", "--is-ancestor", remote, "HEAD")
+        if not contained:
+            reasons.append(
+                f"origin/{branch}: the remote tip {remote[:10]} is not in the runner's checkout; "
+                "the session pushed and then moved its branch"
+            )
+    return reasons
+
+
+def baseline_mismatches(
+    before: dict[str, Any],
+    approved: dict[str, Any] | None,
+    repo: str,
+    pr_number: int | None,
+    env: dict[str, str],
+) -> list[str]:
+    """The pre-session entries the default branch's copy does not carry must each match a
+    ``labeled`` event on the pull request (the label, the actor) — choice 103's wording: an
+    actor the runner recorded from GitHub. On a runner with no pull request or no route to
+    read the events, such an entry parks (a by-hand run skips the read)."""
+    approved = approved or {}
+    pending: list[tuple[str, str, str]] = []  # (field, label, actor)
+    known_by = set(approved.get("risk_accepted_by") or [])
+    for item, actor in before["risk_accepted_by"]:
+        if (item, actor) not in known_by:
+            pending.append((f"risk_accepted_by[{item}]", c.ACCEPT_RISK_LABEL, actor))
+    if before["iterations_reset"][0] and tuple(before["iterations_reset"]) != tuple(
+        approved.get("iterations_reset") or (None, None)
+    ):
+        pending.append(
+            ("iterations_reset_by", c.RESET_ITERATIONS_LABEL, before["iterations_reset"][0])
+        )
+    if before["tests_unlocked_by"] and before["tests_unlocked_by"] != approved.get(
+        "tests_unlocked_by"
+    ):
+        pending.append(("tests_unlocked_by", c.UNLOCK_TESTS_LABEL, before["tests_unlocked_by"]))
+    if not pending:
+        return []
+    if not env.get("GITHUB_ACTIONS"):
+        return []
+    github = _github()
+    if github is None or pr_number is None or not repo:
+        return [
+            f"{field}: {actor!r} on the branch is not on the default branch and no pull "
+            "request can confirm the label"
+            for field, _label, actor in pending
+        ]
+    reasons: list[str] = []
+    seen: dict[str, dict[str, Any]] = {}
+    for field, label, actor in pending:
+        if label not in seen:
+            try:
+                seen[label] = github.label_actor(repo, pr_number, label)
+            except Exception as exc:  # noqa: BLE001 - no route: fail closed below
+                seen[label] = {"ok": False, "reason": str(exc)}
+        found = seen[label]
+        if not found.get("ok"):
+            reasons.append(
+                f"{field}: {actor!r} on the branch is not on the default branch and the "
+                f"{label} events of PR #{pr_number} could not be read: {found.get('reason')}"
+            )
+        elif str(found.get("actor") or "") != actor:
+            reasons.append(
+                f"{field}: {actor!r} on the branch is not on the default branch and PR "
+                f"#{pr_number} has no {label} event by that actor "
+                f"(last: {found.get('actor')!r})"
+            )
+    return reasons
+
+
+def verify_owner_fields(
+    change_dir: Path,
+    before_st,
+    approved_st,
+    root: Path | None = None,
+    pre_head: str | None = None,
+    config: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """After the session: ``{"ok", "mismatches", "overrides_changed", "test_files_restored"}``;
+    on a mismatch (or an unreadable file) the owner-only fields are restored before anything
+    is committed, and the test files changed under a lifted lock are put back; a changed
+    override is restored whatever else happened."""
+    before = owner_fields(before_st)
+    approved = owner_fields(approved_st) if approved_st is not None else None
+    try:
+        after_st = status_mod.read_status(change_dir)
+    except Exception as exc:  # noqa: BLE001 - whatever the session left, the owner's fields come back
+        restore_owner_fields(change_dir, before_st)
+        return {
+            "ok": False,
+            "mismatches": [f"status.yaml unreadable after the session: {exc}"],
+            "overrides_changed": [],
+            "test_files_restored": [],
+        }
+    after = owner_fields(after_st)
+    mismatches = owner_field_mismatches(before, after, approved)
+    overrides = override_changes(before, after)
+    if mismatches or overrides:
+        restore_owner_fields(change_dir, before_st, after_st)
+    restored: list[str] = []
+    if before["locked"] and not after["locked"] and root is not None and pre_head:
+        restored = restore_test_files(
+            root, pre_head, _test_files_changed_since(root, pre_head, config or {})
+        )
+        if restored:
+            mismatches.append(
+                "test files changed under the lifted lock, restored: " + ", ".join(restored[:10])
+            )
+    return {
+        "ok": not mismatches,
+        "mismatches": mismatches,
+        "overrides_changed": overrides,
+        "test_files_restored": restored,
+    }
 
 
 FIX_REQUESTS_PARK = (
@@ -1527,11 +2021,15 @@ def park(plugin_dir: Path, root: Path, change_id: str, reason: str) -> bool:
 PARK_CHECK = {"c": "preflight", "b": "guardrails", "d": "guardrails", "e": "guardrails"}
 
 
+PRE_RUN_NEED = "Settle this, then re-run the phase: CI stopped before the run started."
+
+
 def write_park_result(
-    root: Path, change_dir: Path, st, phase: str, check: str, reason: str
+    root: Path, change_dir: Path, st, phase: str, check: str, reason: str, need: str | None = None
 ) -> Path:
     """``evidence/gate-<phase>.json`` in the gate's own shape, so the PR description shows
-    the park and its "What I need from you" block (the gate itself overwrites it later)."""
+    the park and its "What I need from you" block (the gate itself overwrites it later).
+    ``need`` is the pre-run sentence unless the park came after the session."""
     from gate.checks import CheckResult  # noqa: PLC0415
     from gate.gate import GateResult  # noqa: PLC0415
 
@@ -1547,7 +2045,7 @@ def write_park_result(
                 name=check,
                 ok=False,
                 reason=reason,
-                need="Settle this, then re-run the phase: CI stopped before the run started.",
+                need=need or PRE_RUN_NEED,
             )
         ],
         label=c.NEEDS_HUMAN_LABEL,
@@ -1605,6 +2103,8 @@ def park_and_publish(
     phase: str,
     reason: str,
     branch: str | None = None,
+    check: str | None = None,
+    need: str | None = None,
 ) -> dict[str, Any]:
     """Park, then leave the park where the owner will find it: the change folder committed
     and pushed on the work branch, and the phase's PR carrying ``sdlc:needs-human`` and the
@@ -1619,7 +2119,9 @@ def park_and_publish(
         state_cli, ["set-phase", "--root", str(root), "--id", st.id, "--phase", branch_phase]
     )
     out["status"] = park(plugin_dir, root, st.id, reason)
-    write_park_result(root, change_dir, st, branch_phase, PARK_CHECK.get(phase, "ci"), reason)
+    write_park_result(
+        root, change_dir, st, branch_phase, check or PARK_CHECK.get(phase, "ci"), reason, need
+    )
     out["commit"] = _cli_call(
         state_cli,
         ["commit-phase", "--root", str(root), "--id", st.id, "--phase", branch_phase,

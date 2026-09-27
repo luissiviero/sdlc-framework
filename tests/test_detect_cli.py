@@ -1809,3 +1809,20 @@ def test_a_malformed_head_sdlc_yaml_does_not_stop_go_or_dismiss(
             "--pr-number", "12", "--dry-run",
         )  # fmt: skip
         assert code == 0 and out["reason"] == "a runner outage", out
+
+
+def test_finish_refuses_to_run_over_the_runner_s_owner_fields_park(incident, gh, capsys):
+    """The review of the 0.2.26 diff, M5: the runner's park after the session wrote an
+    owner-only field (choice 103) was overwritten by gate (f) in the finish step."""
+    from state import conventions as c
+
+    root, change = incident
+    st = status_mod.read_status(change)
+    st.park(c.OWNER_FIELDS_PARK_PREFIX + "risk_accepted: the session accepted 'auth'")
+    status_mod.write_status(change, st)
+    code, out = cli(capsys, "finish", "--root", str(root), "--id", "0001", "--repo", REPO)
+    assert code == 0 and out["dispatch"] == {
+        "acted": False,
+        "reason": "parked by the runner: owner-only fields written by the session",
+    }
+    assert "gate" not in out and status_mod.read_status(change).parked_reason == st.parked_reason

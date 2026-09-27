@@ -732,3 +732,10 @@ def test_apply_forced_turns_every_runbook_route_into_go_and_leaves_pull_request(
     intent = routes.Resolved("pull_request", "preapproved", "the incident intent PR")
     assert routes.apply_forced(intent, True).authorization == "preapproved"
     assert routes.apply_forced(None, True) is None
+
+
+def test_production_declared_needs_a_real_boolean():
+    assert routes.production_declared({"deploy": {"production": True}})
+    assert not routes.production_declared({"deploy": {"production": "yes"}})
+    assert not routes.production_declared({"deploy": {"production": None}})
+    assert not routes.production_declared({})

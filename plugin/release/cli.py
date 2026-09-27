@@ -57,7 +57,7 @@ PLUGIN_DIR = Path(__file__).resolve().parent.parent
 if str(PLUGIN_DIR) not in sys.path:
     sys.path.insert(0, str(PLUGIN_DIR))
 
-from hooks._common import ConfigError, load_sdlc_config  # noqa: E402
+from hooks._common import ConfigError, config_flag, load_sdlc_config  # noqa: E402
 from release import approval as approval_mod  # noqa: E402
 from state import conventions as c  # noqa: E402
 
@@ -212,7 +212,11 @@ def _release(args, env, github, git, say) -> int:
         say("error", "sdlc.yaml: deploy must be a mapping")
         return 2
     action = str(deploy.get("action") or "none").strip().lower()
-    production = deploy.get("production") is True
+    try:
+        production = config_flag(config, "deploy", "production")
+    except ConfigError as exc:
+        say("error", f"{exc}; the release fails closed")
+        return 2
     command = str(deploy.get("command") or "").strip()
     say(
         "config",

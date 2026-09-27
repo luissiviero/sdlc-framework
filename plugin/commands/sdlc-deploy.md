@@ -78,7 +78,9 @@ A change whose entry route is not `incident` skips this step.
 ## 1. Review passes in a fresh context (build guide step 26; article p.33–34)
 If `changes/<id>-<slug>/evidence/review-findings.json` already exists for HEAD (the
 merge-triggered workflow runs the review as its own `claude -p` job first), run only the
-`validate` command below and skip the delegation.
+`validate` command below and skip the delegation. When HEAD has moved since that job (the
+release artifact's commit, a panel's commit), the file is stale in CI as by hand: delegate
+below and write a new one.
 The reviewer must not be the context that wrote the code. In the merge-triggered workflow
 the review is its own `claude -p` job (`plugin/review/`); by hand, delegate to a
 general-purpose sub-agent in a fresh context with this brief: the project root, the change
@@ -151,13 +153,15 @@ judges it. Do not reword a closed concern line: the gate matches it to the ledge
 `#<n>`. Apply what the decision asks beyond that (an `escalate` decided `continue` needs
 nothing more; a fix the decision names is made now, `plan.md` in the same commit, committed
 with `commit-phase ... --phase e --message "review(<id>): panel decision <n> applied"`).
-After the last item, re-run step 1's `validate` for the new HEAD, once (a verdict never
-outlives the diff it judged, and the diff file must be regenerated first); from then on
-nothing is committed before the gate except the gate evidence, and the verdict file never
-travels in a commit with content the reviewer did not see (the first deferred run,
+After the last item, run step 1 again for the new HEAD, once — the review prompt, the
+reviewer in a fresh context, then `validate` — because the panel's commits moved HEAD and
+`validate` only re-reads `review-findings.json`, it re-reviews nothing: a findings file for
+the old HEAD is stale and gate (e) refuses it (the 1.0.0 readiness review, 2026-09-26). From
+then on nothing is committed before the gate except the gate evidence, and a findings file
+never travels in a commit with content the reviewer did not see (the first deferred run,
 2026-09-24, committed each verdict beside the content it did not judge, three times, and
-needed four commits to land one). An `escalate` with new reasons is a new item: run
-`items` once more. The panel never decides a park item, never raises a limit, never
+needed four commits to land one). An `escalate` with new reasons is a new item: run `items`
+once more. The panel never decides a park item, never raises a limit, never
 touches a guardrail file, and never asks the owner: the owner reads "Decisions taken for
 you" at the gate and overturns any line with a review comment.
 

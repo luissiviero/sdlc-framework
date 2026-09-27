@@ -124,7 +124,19 @@ files the owner should review (CLAUDE.md trim, settings). Merge = accept.
   through. Settings → Rules → Rulesets → New branch ruleset: target the default branch,
   **"Restrict updates"** with the repository admin (the owner) as the only bypass actor —
   the one rule that keeps a merge to the owner —, plus "Restrict deletions", "Block force
-  pushes" and "Require a pull request before merging". The daily digest says so at the top
+  pushes" and "Require a pull request before merging". The bypass actor's mode is
+  **Exempt** (the `…` menu of the actor's row in the bypass list): the rules do not run for
+  the owner, so a merge from the GitHub mobile app goes through on a tap — the app still
+  labels the pull request "Unable to merge", because it shows the general merge state, which
+  is `blocked` for everyone the rules apply to; under "Allow for pull requests only" the app
+  shows the same label with no bypass control and the owner merged from the web UI through
+  its bypass checkbox (both verified live on 2026-09-27, NOTES §17; whether a tap would also
+  have merged under that mode was not tested). From a terminal, `gh pr merge` refuses a
+  `blocked` pull request before asking GitHub: use the REST merge endpoint through `gh api`
+  or the web UI. The cost of Exempt is that GitHub writes no bypass audit entry for the
+  owner's merges (the merge commit and the pull request's `merged_by` remain the record);
+  the rules still run for every other actor, the workflow token included. The daily digest
+  says so at the top
   of the review queue while the default branch has no such rule (`pr/digest.py`,
   `pr/github.py default_branch_protection`: the branch's active rules must include an
   `update` rule; the classic `protected` flag is reported but does not count, since on a

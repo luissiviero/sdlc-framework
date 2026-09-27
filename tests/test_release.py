@@ -395,3 +395,15 @@ def test_command_chain_splits_on_and_and_expands_globs(tmp_path):
     chain = cli.command_chain("python -m build && twine upload dist/*", tmp_path)
     assert chain[0] == ["python", "-m", "build"]
     assert [p.replace("\\", "/") for p in chain[1]] == ["twine", "upload", "dist/a-1.0.whl"]
+
+
+def test_cli_fails_closed_on_a_production_flag_that_is_not_a_boolean(tmp_path):
+    """``production: yes`` read as "not production" and skipped the release approval (1.0.0
+    readiness review, group A)."""
+    root, _ = _repo_with_change(
+        tmp_path, sdlc_yaml="deploy:\n  action: publish package\n  production: yes\n"
+    )
+    code, lines = _run(root, FakeGitHub())
+    assert code == 2
+    assert any("deploy.production is 'yes', not a boolean" in line for line in lines)
+    assert any("fails closed" in line for line in lines)

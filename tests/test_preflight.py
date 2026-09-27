@@ -272,3 +272,10 @@ def test_preflight_cli_exit_codes(project):
 def test_no_agent_command_or_skill_mentions_bypass_as_an_option():
     text = PREFLIGHT.read_text(encoding="utf-8")
     assert "bypassPermissions" in text and "--dangerously-skip-permissions" not in text
+
+
+def test_the_pause_check_fails_closed_on_a_value_that_is_not_a_boolean():
+    """0.2.26: ``paused: yes`` no longer reads as "not paused"."""
+    assert preflight.check_not_paused({"paused": False}).ok
+    res = preflight.check_not_paused({"paused": "yes"})
+    assert not res.ok and "paused is 'yes', not a boolean" in res.reason

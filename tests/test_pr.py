@@ -1077,7 +1077,7 @@ def test_counters_over_the_change_folders_and_the_digest_section(project, tmp_pa
     st2.bump_iteration()
     status_mod.write_status(second, st2)
     third, st3 = status_mod.new_change(root, "Third", entry_route="incident", change_type="fix")
-    st3.abandon("closed")
+    st3.abandon("closed")  # 0.2.26: an abandoned folder is not an incident merged
     status_mod.write_status(third, st3)
     path = dismissals.path_for(root)
     dismissals.save(
@@ -1087,16 +1087,17 @@ def test_counters_over_the_change_folders_and_the_digest_section(project, tmp_pa
         ),
     )
     counts = counters.collect(root)
-    assert counts["changes"] == base["changes"] + 2
+    assert counts["changes"] == base["changes"] + 1 and counts["abandoned"] == 1
     assert counts["shipped"] == base["shipped"] + 2
     assert counts["first_pass_merges"] == base["first_pass_merges"] + 1
     assert counts["fix_iterations_total"] == base["fix_iterations_total"] + 2
-    assert counts["incidents_merged"] == 2 and counts["incidents_shipped"] == 1
+    assert counts["incidents_merged"] == 1 and counts["incidents_shipped"] == 1
     assert counts["dismissals"] == 1 and counts["dismissals_by_kind"] == {"detect": 1, "scan": 0}
     md = counters.render(counts)
     assert md.startswith("## Counters") and "| First-pass merge share (p.17) | " in md
-    assert "| Incidents merged (fix now) / shipped (p.45) | 2 / 1 |" in md
+    assert "| Incidents merged (fix now) / shipped (p.45) | 1 / 1 |" in md
     assert "never reach the default branch" in md
+    assert "1 change folder(s) abandoned after a merge, left out." in md
     digest = digest_mod.render_digest([], "2026-09-25T06:00:00Z", md)
     assert digest_mod.NOTHING_WAITING in digest and "## Counters" in digest
     digest = digest_mod.render_digest(QUEUE, "2026-09-25T06:00:00Z", md)
@@ -1208,3 +1209,34 @@ def test_digest_says_so_while_the_default_branch_is_unprotected():
         QUEUE, "2026-09-25T06:00:00Z", protection=failed
     )
     assert digest_mod.unprotected_notice(None) == ""
+
+
+def test_counters_leave_out_a_change_abandoned_on_its_remote_branches(project, tmp_path):
+    """The sample's rehearsal 0005: the incident PR merged (the folder on main at phase f),
+    then its design PR closed; abandon wrote the marker on ``sdlc/0005/b`` only (decision 25),
+    and the digest counted it as an incident merged until 0.2.26 (1.0.0 readiness review,
+    group A; ``detect/cli.py open_incidents`` already read the markers)."""
+    from pr import counters
+
+    root, _change = project
+    second, st2 = status_mod.new_change(root, "Second", entry_route="incident", change_type="fix")
+    st2.set_phase("f")
+    status_mod.write_status(second, st2)
+    git(root, "add", "-A")
+    git(root, "commit", "-q", "-m", "the incident PR merged")
+    bare = tmp_path / "remote.git"
+    git(tmp_path, "init", "-q", "--bare", "-b", "main", str(bare))
+    git(root, "remote", "add", "origin", str(bare))
+    git(root, "push", "-q", "-u", "origin", "main")
+    assert counters.collect(root)["incidents_merged"] == 1
+    git(root, "checkout", "-q", "-b", "sdlc/0002/b")
+    st2 = status_mod.read_status(second)
+    st2.abandon("closed: the design PR")
+    status_mod.write_status(second, st2)
+    git(root, "commit", "-q", "-am", "abandon(0002)")
+    git(root, "push", "-q", "-u", "origin", "sdlc/0002/b")
+    git(root, "checkout", "-q", "main")
+    assert not status_mod.read_status(second).abandoned  # main never learns of it
+    counts = counters.collect(root)
+    assert counts["incidents_merged"] == 0 and counts["abandoned"] == 1
+    assert "| Incidents merged (fix now) / shipped (p.45) | 0 / 0 |" in counters.render(counts)
