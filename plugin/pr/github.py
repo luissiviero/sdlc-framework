@@ -307,9 +307,18 @@ def _find_pr_api(repo: str, head_branch: str, state: str) -> dict[str, Any]:
 
 def _find_pr_gh(repo: str, head_branch: str, state: str, cwd: str | Path | None) -> dict[str, Any]:
     data, error = _gh_json(
-        "pr", "list", "--repo", repo, "--head", head_branch, "--state", state,
-        "--json", GH_PR_FIELDS, cwd=cwd,
-    )  # fmt: skip
+        "pr",
+        "list",
+        "--repo",
+        repo,
+        "--head",
+        head_branch,
+        "--state",
+        state,
+        "--json",
+        GH_PR_FIELDS,
+        cwd=cwd,
+    )
     if error:
         return {"route": "gh", "ok": False, "reason": error, "number": None}
     first = (data or [None])[0] if isinstance(data, list) else None
@@ -652,8 +661,18 @@ def pr_review_threads(repo: str, number: int, cwd: str | Path | None = None) -> 
         for _page in range(MAX_THREAD_PAGES):
             # -f keeps owner and name raw strings (-F would type a name like `123` or read
             # an `@` as a file path); -F types the number as the Int the query wants
-            args = ["api", "graphql", "-f", f"query={REVIEW_THREADS_QUERY}", "-f", f"owner={owner}",
-                    "-f", f"name={name}", "-F", f"number={int(number)}"]  # fmt: skip
+            args = [
+                "api",
+                "graphql",
+                "-f",
+                f"query={REVIEW_THREADS_QUERY}",
+                "-f",
+                f"owner={owner}",
+                "-f",
+                f"name={name}",
+                "-F",
+                f"number={int(number)}",
+            ]
             if cursor:
                 args += ["-f", f"after={cursor}"]
             data, error = _gh_json(*args, cwd=cwd)
@@ -697,9 +716,19 @@ def _create_pr_gh(
     repo: str, base: str, head: str, title: str, body: str, draft: bool, cwd: str | Path | None
 ) -> dict[str, Any]:
     args = [
-        "pr", "create", "--repo", repo, "--base", base, "--head", head,
-        "--title", title, "--body-file", "-",
-    ]  # fmt: skip
+        "pr",
+        "create",
+        "--repo",
+        repo,
+        "--base",
+        base,
+        "--head",
+        head,
+        "--title",
+        title,
+        "--body-file",
+        "-",
+    ]
     if draft:
         args.append("--draft")
     result = _gh(*args, stdin=body, cwd=cwd)
@@ -837,9 +866,17 @@ def ensure_label(
 
     def via_gh() -> dict[str, Any]:
         result = _gh(
-            "label", "create", name, "--repo", repo,
-            "--color", color, "--description", description, cwd=cwd,
-        )  # fmt: skip
+            "label",
+            "create",
+            name,
+            "--repo",
+            repo,
+            "--color",
+            color,
+            "--description",
+            description,
+            cwd=cwd,
+        )
         if not result["ok"]:
             if "already exists" in (result["err"] or "").lower():
                 return {"route": "gh", "ok": True, "label": name, "created": False}
@@ -944,9 +981,15 @@ def create_check_run(
 
     def via_gh() -> dict[str, Any]:
         result = _gh(
-            "api", "--method", "POST", f"repos/{repo}/check-runs", "--input", "-",
-            stdin=json.dumps(payload), cwd=cwd,
-        )  # fmt: skip
+            "api",
+            "--method",
+            "POST",
+            f"repos/{repo}/check-runs",
+            "--input",
+            "-",
+            stdin=json.dumps(payload),
+            cwd=cwd,
+        )
         if not result["ok"]:
             return {"route": "gh", "ok": False, "reason": _gh_error(result, "gh api check-runs")}
         try:
@@ -982,9 +1025,18 @@ def pinned_issue(repo: str, title: str, cwd: str | Path | None = None) -> dict[s
 
     def via_gh() -> dict[str, Any]:
         data, error = _gh_json(
-            "issue", "list", "--repo", repo, "--state", "open",
-            "--limit", "100", "--json", "number,title,id", cwd=cwd,
-        )  # fmt: skip
+            "issue",
+            "list",
+            "--repo",
+            repo,
+            "--state",
+            "open",
+            "--limit",
+            "100",
+            "--json",
+            "number,title,id",
+            cwd=cwd,
+        )
         if error:
             return {"route": "gh", "ok": False, "reason": error, "number": None}
         for item in data or []:
@@ -1018,9 +1070,17 @@ def create_issue(repo: str, title: str, body: str, cwd: str | Path | None = None
 
     def via_gh() -> dict[str, Any]:
         result = _gh(
-            "issue", "create", "--repo", repo, "--title", title, "--body-file", "-",
-            stdin=body, cwd=cwd,
-        )  # fmt: skip
+            "issue",
+            "create",
+            "--repo",
+            repo,
+            "--title",
+            title,
+            "--body-file",
+            "-",
+            stdin=body,
+            cwd=cwd,
+        )
         if not result["ok"]:
             return {"route": "gh", "ok": False, "reason": _gh_error(result, "gh issue create")}
         url = _gh_url(result)
@@ -1081,3 +1141,84 @@ def pin_issue(repo: str, node_id: str | None) -> dict[str, Any]:
     if result["error"] or errors:
         return {"route": "api", "ok": False, "reason": result["error"] or json.dumps(errors)}
     return {"route": "api", "ok": True}
+
+
+# --- the default branch's protection (decision 4; plugin 0.2.25) --------------------------------
+ENFORCING_RULE = "update"  # a ruleset's "Restrict updates": only its bypass actors push or merge
+
+
+def default_branch_protection(repo: str, cwd: str | Path | None = None) -> dict[str, Any]:
+    """Whether the repository's default branch keeps a merge to the owner: {'branch',
+    'protected', 'classic', 'rules', 'by'}.
+
+    Decision 4 (only the owner merges; the automation identity has branch-only write access)
+    is enforced by GitHub, never by the framework, and nothing checked it existed until the
+    1.0.0 readiness review (2026-09-26) found the framework's own default branch
+    unprotected. The one form that enforces it is a branch ruleset with *Restrict updates*
+    and only the repository admin in its bypass list: the workflow token holds
+    ``contents: write`` and the phase session ``Bash(gh *)``, so a rule that stops direct
+    pushes or requires a pull request (with no approvals) still lets ``gh pr merge`` through
+    (the review of the 0.2.25 diff, finding H1). The active rules of the branch are read from
+    ``GET /repos/{repo}/rules/branches/{branch}`` (an ``update`` rule is the one that
+    counts); the classic ``protected`` flag is reported beside them, because on a user-owned
+    repository a classic rule cannot restrict who pushes. Read-only, so the workflow token's
+    ``contents: read`` is enough; the digest renders the answer (``pr/digest.py``)."""
+
+    def _judge(route: str, branch: str, classic: Any, rules: Any) -> dict[str, Any]:
+        types = sorted(
+            {str(r.get("type")) for r in rules if isinstance(r, dict) and r.get("type")}
+            if isinstance(rules, list)
+            else set()
+        )
+        enforcing = ENFORCING_RULE in types
+        found = []
+        if classic is True:
+            found.append("classic branch protection")
+        if types:
+            found.append("rules " + ", ".join(types))
+        return {
+            "route": route,
+            "ok": True,
+            "branch": branch,
+            "protected": enforcing,
+            "classic": classic is True,
+            "rules": types,
+            "by": "ruleset: restrict updates" if enforcing else ("; ".join(found) or "nothing"),
+        }
+
+    def via_api() -> dict[str, Any]:
+        tok = token() or ""
+        result = _request("GET", f"{API_ROOT}/repos/{repo}", tok)
+        if result["error"]:
+            return {"route": "api", "ok": False, "reason": result["error"]}
+        branch = str((result["data"] or {}).get("default_branch") or "").strip()
+        if not branch:
+            reason = "the repository record names no default branch"
+            return {"route": "api", "ok": False, "reason": reason}
+        quoted = urllib.parse.quote(branch, safe="")
+        flag = _request("GET", f"{API_ROOT}/repos/{repo}/branches/{quoted}", tok)
+        if flag["error"]:
+            return {"route": "api", "ok": False, "reason": flag["error"]}
+        rules = _request("GET", f"{API_ROOT}/repos/{repo}/rules/branches/{quoted}", tok)
+        if rules["error"]:
+            return {"route": "api", "ok": False, "reason": rules["error"]}
+        return _judge("api", branch, (flag["data"] or {}).get("protected"), rules["data"])
+
+    def via_gh() -> dict[str, Any]:
+        data, error = _gh_json("api", f"repos/{repo}", cwd=cwd)
+        if error:
+            return {"route": "gh", "ok": False, "reason": error}
+        branch = str((data or {}).get("default_branch") or "").strip()
+        if not branch:
+            reason = "the repository record names no default branch"
+            return {"route": "gh", "ok": False, "reason": reason}
+        quoted = urllib.parse.quote(branch, safe="")
+        flag, error = _gh_json("api", f"repos/{repo}/branches/{quoted}", cwd=cwd)
+        if error:
+            return {"route": "gh", "ok": False, "reason": error}
+        rules, error = _gh_json("api", f"repos/{repo}/rules/branches/{quoted}", cwd=cwd)
+        if error:
+            return {"route": "gh", "ok": False, "reason": error}
+        return _judge("gh", branch, (flag or {}).get("protected"), rules)
+
+    return _attempt(via_api, via_gh)

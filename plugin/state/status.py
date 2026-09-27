@@ -237,8 +237,11 @@ class Status:
         self.record_gate(phase or self.phase, "parked", reason)
 
     def lock_tests(self) -> None:
-        """The reproducing test of a fix-type change is committed: freeze the test paths."""
+        """The reproducing test of a fix-type change is committed: freeze the test paths. A
+        recorded unlock actor is cleared, so a second unlock by the same person is a change
+        the gate's ``owner_actions`` check sees (0.2.25)."""
         self.tests_locked = True
+        self.tests_unlocked_by = None
         self.touch()
         self.validate()
 

@@ -2503,3 +2503,68 @@ def test_the_design_run_hands_the_session_a_merged_incident_at_phase_a(
     )  # fmt: skip
     assert proc.returncode == 0, proc.stderr
     assert status_mod.read_status(change).phase == "b"
+
+
+def test_guard_reads_paused_and_the_profile_from_the_default_branch_s_copy(
+    project, tmp_path, monkeypatch
+):
+    """0.2.25: ``prepare_branch`` had switched to the work branch before the guard read
+    ``sdlc.yaml``, so ``paused: true`` merged on the default branch stopped nothing in flight
+    and a branch could carry its own profile (OPERATING_MODEL section 4.2: the guard reads
+    the "base branch copy of sdlc.yaml"; 1.0.0 readiness review, 2026-09-26)."""
+    root, _change = project
+    with_remote(root, tmp_path)
+    git(root, "checkout", "-q", "-b", "sdlc/0001/b")  # its copy says paused: false
+    git(root, "checkout", "-q", "main")
+    path = root / "sdlc.yaml"
+    path.write_text(
+        path.read_text(encoding="utf-8").replace("paused: false", "paused: true"), "utf-8"
+    )
+    git(root, "commit", "-q", "-am", "owner: pause the pipeline")
+    git(root, "push", "-q", "origin", "main")
+    git(root, "checkout", "-q", "sdlc/0001/b")
+    assert "paused: false" in path.read_text(encoding="utf-8")  # the work branch's own copy
+    assert run_phase._approved_config(root)["paused"] is True
+    assert "paused" in skip_reason(root, "b")
+    # the reverse: the work branch pauses itself, the owner's copy does not — it runs
+    git(root, "checkout", "-q", "main")
+    path.write_text(
+        path.read_text(encoding="utf-8").replace("paused: true", "paused: false"), "utf-8"
+    )
+    git(root, "commit", "-q", "-am", "owner: resume")
+    git(root, "push", "-q", "origin", "main")
+    git(root, "checkout", "-q", "sdlc/0001/b")
+    path.write_text(
+        path.read_text(encoding="utf-8").replace("paused: false", "paused: true"), "utf-8"
+    )
+    git(root, "commit", "-q", "-am", "the branch pauses itself")
+    assert run_phase._approved_config(root)["paused"] is False
+    assert skip_reason(root, "b") is None
+    # a default-branch name that is a framework branch is refused (state/gitops) and the
+    # guess still finds origin/main: the owner's copy wins over the branch's
+    monkeypatch.setenv("SDLC_DEFAULT_BRANCH", "sdlc/0001/b")
+    assert run_phase._approved_config(root)["paused"] is False
+    # without a remote-tracking default branch the checkout's copy is all there is
+    git(root, "remote", "remove", "origin")
+    assert run_phase._approved_config(root)["paused"] is True
+
+
+def test_approved_config_reads_the_profile_from_the_default_branch_s_copy(project, tmp_path):
+    """The Full profile's (c) and (d) label gates read the profile the guard returns: a work
+    branch that says ``standard`` while the owner's copy says ``full`` is ignored."""
+    root, _change = project
+    with_remote(root, tmp_path)
+    path = root / "sdlc.yaml"
+    path.write_text(
+        path.read_text(encoding="utf-8").replace("profile: standard", "profile: full"), "utf-8"
+    )
+    git(root, "commit", "-q", "-am", "owner: full profile")
+    git(root, "push", "-q", "origin", "main")
+    git(root, "checkout", "-q", "-b", "sdlc/0001/c")
+    path.write_text(
+        path.read_text(encoding="utf-8").replace("profile: full", "profile: standard"), "utf-8"
+    )
+    git(root, "commit", "-q", "-am", "the branch lowers its own profile")
+    assert run_phase._approved_config(root)["profile"] == "full"
+    _dir, _st, config, _reason = run_phase.guard(root, "0001", "c", "owner/name", {})
+    assert config["profile"] == "full"

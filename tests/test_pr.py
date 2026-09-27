@@ -931,21 +931,45 @@ def test_phase_f_bullets_describe_the_finding_the_route_and_the_triage(project):
         INTENT.replace("Entry route: idea", "Entry route: incident abc")
         + "\n## Evidence\nwe1 at 3sigma; run https://x/runs/1.\n",
     )
-    verdict = {"tier": 3, "rules_hit": ["we1"], "rule": "we1", "mean": 0.05, "sigma": 0.02,
-               "sigmas": 47.5, "latest": {"at": "2026-09-24", "value": 1.0, "meta": {}},
-               "breach_start": "2026-09-24", "window_days": 30, "n_baseline": 20, "n_tail": 8,
-               "direction": "above", "reason": "one point beyond 3 sigma"}  # fmt: skip
+    verdict = {
+        "tier": 3,
+        "rules_hit": ["we1"],
+        "rule": "we1",
+        "mean": 0.05,
+        "sigma": 0.02,
+        "sigmas": 47.5,
+        "latest": {"at": "2026-09-24", "value": 1.0, "meta": {}},
+        "breach_start": "2026-09-24",
+        "window_days": 30,
+        "n_baseline": 20,
+        "n_tail": 8,
+        "direction": "above",
+        "reason": "one point beyond 3 sigma",
+    }
     finding.write(
         change / "evidence" / finding.DETECTION_FILE,
-        finding.build_record(metric="ci_test_failure_rate", source="github-actions",
-                             verdict=verdict, observations=[], action="propose",
-                             failed_run_urls=[], commits=[]),
-    )  # fmt: skip
+        finding.build_record(
+            metric="ci_test_failure_rate",
+            source="github-actions",
+            verdict=verdict,
+            observations=[],
+            action="propose",
+            failed_run_urls=[],
+            commits=[],
+        ),
+    )
     write(
         change / "evidence" / finding.PROPOSAL_FILE,
-        json.dumps({"schema_version": 1, "tier": 3, "route": "runbook:revert-pr",
-                    "args": {"sha": "0" * 40}, "rationale": "x"}),
-    )  # fmt: skip
+        json.dumps(
+            {
+                "schema_version": 1,
+                "tier": 3,
+                "route": "runbook:revert-pr",
+                "args": {"sha": "0" * 40},
+                "rationale": "x",
+            }
+        ),
+    )
     write(
         change / "evidence" / "runbook-revert-pr.json",
         json.dumps({"runbook": "revert-pr", "status": "go-requested"}),
@@ -966,10 +990,23 @@ def test_phase_f_bullets_describe_the_finding_the_route_and_the_triage(project):
     # a parked gate (Go requested) shows "What I need from you"
     write(
         change / "evidence" / "gate-f.json",
-        json.dumps({"result": "park", "label": "sdlc:needs-human", "reason": "route: Go",
-                    "checks": [{"name": "route", "ok": False, "reason": "Go requested",
-                                "need": "Apply `sdlc:go` on this PR", "details": {}}]}),
-    )  # fmt: skip
+        json.dumps(
+            {
+                "result": "park",
+                "label": "sdlc:needs-human",
+                "reason": "route: Go",
+                "checks": [
+                    {
+                        "name": "route",
+                        "ok": False,
+                        "reason": "Go requested",
+                        "need": "Apply `sdlc:go` on this PR",
+                        "details": {},
+                    }
+                ],
+            }
+        ),
+    )
     body = desc.build_description(root, "0001", "f")
     assert "What I need from you" in body and "Apply `sdlc:go`" in body
     assert desc.pr_title(status_mod.read_status(change), "f").startswith("maintain(0001): ")
@@ -987,17 +1024,35 @@ def test_phase_f_finding_of_a_rehearsal_on_an_empty_series_says_no_observation(p
     st.set_phase("f")
     status_mod.write_status(change, st)
     write(change / "intent.md", INTENT.replace("Entry route: idea", "Entry route: incident abc"))
-    verdict = {"tier": 2, "rules_hit": ["forced"], "rule": "forced", "mean": None,
-               "sigma": None, "sigmas": None, "latest": None, "breach_start": None,
-               "window_days": 30, "n_baseline": 0, "n_tail": 0, "direction": "above",
-               "reason": "tier 2 forced by workflow_dispatch (a rehearsal)"}  # fmt: skip
+    verdict = {
+        "tier": 2,
+        "rules_hit": ["forced"],
+        "rule": "forced",
+        "mean": None,
+        "sigma": None,
+        "sigmas": None,
+        "latest": None,
+        "breach_start": None,
+        "window_days": 30,
+        "n_baseline": 0,
+        "n_tail": 0,
+        "direction": "above",
+        "reason": "tier 2 forced by workflow_dispatch (a rehearsal)",
+    }
     finding.write(
         change / "evidence" / finding.DETECTION_FILE,
-        finding.build_record(metric="ci_test_failure_rate", source="github-actions",
-                             verdict=verdict, observations=[], action="diagnose",
-                             failed_run_urls=[], commits=[], forced=True,
-                             at="2026-09-25T05:41:00Z"),
-    )  # fmt: skip
+        finding.build_record(
+            metric="ci_test_failure_rate",
+            source="github-actions",
+            verdict=verdict,
+            observations=[],
+            action="diagnose",
+            failed_run_urls=[],
+            commits=[],
+            forced=True,
+            at="2026-09-25T05:41:00Z",
+        ),
+    )
     lines = bullets(desc.build_description(root, "0001", "f"))
     assert lines[0] == (
         "- **Finding**: ci_test_failure_rate at tier 2 (forced): no observation in the window "
@@ -1027,9 +1082,10 @@ def test_counters_over_the_change_folders_and_the_digest_section(project, tmp_pa
     path = dismissals.path_for(root)
     dismissals.save(
         path,
-        dismissals.add(dismissals.load(path), "a" * 16, kind="detect", reason="noise", by="o",
-                       change_id="0003"),
-    )  # fmt: skip
+        dismissals.add(
+            dismissals.load(path), "a" * 16, kind="detect", reason="noise", by="o", change_id="0003"
+        ),
+    )
     counts = counters.collect(root)
     assert counts["changes"] == base["changes"] + 2
     assert counts["shipped"] == base["shipped"] + 2
@@ -1052,8 +1108,13 @@ def test_counters_over_the_change_folders_and_the_digest_section(project, tmp_pa
 def test_digest_lists_the_runbook_and_dismissal_prs_under_the_incident_label():
     """Session-5 review: a revert, a quarantine or a dismissal PR carries `incident` and no
     gate label; decision 20 makes the digest the only place the owner meets them."""
-    revert = {"number": 31, "title": "revert(0007): fix x", "body": "- **Runbook**: revert-pr",
-              "html_url": "https://x/31", "labels": [{"name": "incident"}]}  # fmt: skip
+    revert = {
+        "number": 31,
+        "title": "revert(0007): fix x",
+        "body": "- **Runbook**: revert-pr",
+        "html_url": "https://x/31",
+        "labels": [{"name": "incident"}],
+    }
     md = digest_mod.render_digest([*QUEUE, revert], "2026-09-25T06:00:00Z")
     assert "1 runbook or dismissal PR(s) of phase (f)" in md
     assert "## Phase (f): runbook and dismissal PRs — `incident`" in md and "#31" in md
@@ -1061,3 +1122,89 @@ def test_digest_lists_the_runbook_and_dismissal_prs_under_the_incident_label():
     md = digest_mod.render_digest([revert], "2026-09-25T06:00:00Z")
     assert digest_mod.NOTHING_WAITING not in md and "#31" in md
     assert digest_mod.incident_prs(QUEUE) == []  # an intent PR has its gate label: a queue item
+
+
+# --- the default branch's protection (decision 4; plugin 0.2.25) ------------------------------
+def test_default_branch_protection_counts_a_restrict_updates_rule_only(recorder):
+    """The framework's own default branch was unprotected at the 1.0.0 readiness review
+    (2026-09-26). Only a ruleset's ``update`` rule (Restrict updates, the owner as bypass)
+    keeps the workflow token from merging: a classic flag or a pull-request rule without
+    it does not count (the review of the 0.2.25 diff, finding H1)."""
+    calls, answers = recorder
+    # the more specific fragments first: the recorder returns the first match
+    answers[("GET", "/rules/branches/main")] = {"status": 200, "data": [], "error": ""}
+    answers[("GET", "/branches/main")] = {"status": 200, "data": {"protected": False}, "error": ""}
+    answers[("GET", "/repos/o/r")] = {
+        "status": 200,
+        "data": {"default_branch": "main"},
+        "error": "",
+    }
+    result = github.default_branch_protection("o/r")
+    assert result == {
+        "route": "api", "ok": True, "branch": "main", "protected": False,
+        "classic": False, "rules": [], "by": "nothing",
+    }  # fmt: skip
+    assert [url.split("api.github.com")[1] for _m, url, _p in calls] == [
+        "/repos/o/r", "/repos/o/r/branches/main", "/repos/o/r/rules/branches/main"
+    ]  # fmt: skip
+    # a pull-request rule and a classic flag: still not enforcing
+    answers[("GET", "/rules/branches/main")]["data"] = [
+        {"type": "pull_request"},
+        {"type": "deletion"},
+    ]
+    answers[("GET", "/branches/main")]["data"]["protected"] = True
+    result = github.default_branch_protection("o/r")
+    assert result["protected"] is False and result["classic"] is True
+    assert result["rules"] == ["deletion", "pull_request"]
+    assert result["by"] == "classic branch protection; rules deletion, pull_request"
+    # the update rule: enforcing
+    answers[("GET", "/rules/branches/main")]["data"].append({"type": "update"})
+    result = github.default_branch_protection("o/r")
+    assert result["protected"] is True and result["by"] == "ruleset: restrict updates"
+    answers[("GET", "/repos/o/r")] = {"status": 404, "data": {}, "error": "Not Found"}
+    assert github.default_branch_protection("o/r")["ok"] is False
+
+
+def test_digest_main_reads_the_protection_and_renders_the_notice(monkeypatch, capsys):
+    """``main`` asks GitHub once (never with ``--input``) and hands the answer to the
+    renderer; ``--dry-run`` prints the notice at the top."""
+    monkeypatch.setattr(digest_mod, "list_queue_prs", lambda repo: (list(QUEUE), ""))
+    asked = []
+
+    def protection(repo, cwd=None):
+        asked.append(repo)
+        return {"route": "api", "ok": True, "branch": "main", "protected": False,
+                "classic": True, "rules": ["pull_request"],
+                "by": "classic branch protection; rules pull_request"}  # fmt: skip
+
+    monkeypatch.setattr(digest_mod.github, "default_branch_protection", protection)
+    assert digest_mod.main(["--repo", "o/r", "--dry-run"]) == 0
+    out = capsys.readouterr().out
+    assert asked == ["o/r"]
+    assert (
+        "does not restrict who merges** (found: classic branch protection; rules pull_request)"
+        in out
+    )
+    assert out.index("does not restrict who merges") < out.index("## Waiting")
+
+
+def test_digest_says_so_while_the_default_branch_is_unprotected():
+    unprotected = {"ok": True, "branch": "main", "protected": False, "by": "nothing"}
+    md = digest_mod.render_digest(QUEUE, "2026-09-25T06:00:00Z", protection=unprotected)
+    assert md.index(
+        "**The default branch `main` does not restrict who merges** (found: nothing)"
+    ) < md.index("## Waiting")
+    assert "Settings → Rules → Rulesets" in md and "decision 4" in md.lower()
+    assert "Restrict updates" in md and "bypass: repository admin" in md
+    md = digest_mod.render_digest([], "2026-09-25T06:00:00Z", protection=unprotected)
+    assert "does not restrict who merges" in md and digest_mod.NOTHING_WAITING in md
+    protected = {"ok": True, "branch": "main", "protected": True, "by": "ruleset: restrict updates"}
+    assert "restrict who merges" not in digest_mod.render_digest(
+        QUEUE, "2026-09-25T06:00:00Z", protection=protected
+    )
+    # a lookup that failed says nothing rather than something wrong
+    failed = {"route": "none", "ok": False, "reason": "no route"}
+    assert "restrict who merges" not in digest_mod.render_digest(
+        QUEUE, "2026-09-25T06:00:00Z", protection=failed
+    )
+    assert digest_mod.unprotected_notice(None) == ""
