@@ -27,6 +27,8 @@ What the second pass changed: the contrarian knocked down about half of the firs
 
 ## Group A — the gate and `status.yaml` (session 10)
 
+The owner decided on 2026-09-27 that the first three items are code: the runner (`plugin/ci/run_phase.py`) re-verifies after the session the owner-only fields the session could write (PROGRESS session 9, choice 103).
+
 Real defects with a small blast radius; each breaks a stated rule or fails open. File:line as read at commit 5275171.
 
 - `owner_actions` believes a recorded `risk_accepted_by` actor that is any non-bot string (`plugin/gate/checks.py:853-858`): a run can write a person's login itself. The same for `tests_unlocked_by` since 0.2.25 judges the lift (the review of the 0.2.25 diff, finding M1: a lift the run records under the owner's login passes; the `test_lock` check of 0.2.25 covers the other form, a test changed while the lock stands). The runner applied the labels (`run_phase.py:1153`) and can re-verify the recorded actor against the label event after the session.
