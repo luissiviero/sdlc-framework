@@ -24,10 +24,10 @@ The owner's rule for this road: **each remaining group is one session** — sess
 Close the readiness review's four groups, one per session, each with a test per defect and an eval case per model lesson, then walk the live-check road (sessions 14–16) to the first real detection, the 1.0.0 bump, the tag, the pins, the sample's 1.0.0 copies and the closed milestone. The `--bare` check and the owner's four questions ride along where they can and do not block.
 
 ## Session 10 — group A: the gate and `status.yaml` (plugin 0.2.26)
-The review's "Group A" list, in this order; each item a test in `tests/test_gate.py` (or the module's own test file) that asserts the wrong outcome today and the right one after.
-1. `owner_actions`: a recorded `risk_accepted_by` or `tests_unlocked_by` actor is verified, not believed — the runner applied the label (`run_phase.py apply_labels`) and re-checks the recorded actor against the label event's actor after the session; by hand, the commit author is the act as before. (0.2.25's `test_lock` check already refuses a test changed while the lock stands; the forged actor on a lift is the part left.)
-2. `owner_actions`: a `panel_calls` drop is judged like an `iterations` drop (the same label resets both).
-3. `profile_override` and `review_override` read from the base branch's `status.yaml` (the copy the owner approved), in `gate/gate.py` and `run_phase.py guard`, as `intent.md` is; the branch's own values are ignored with a note in the gate result.
+The review's "Group A" list, in this order; each item a test in `tests/test_gate.py` (or the module's own test file) that asserts the wrong outcome today and the right one after. **Items 1–3 are code, not documentation: the owner chose on 2026-09-27 that the runner re-verifies what the session recorded (PROGRESS session 9, choice 103, which specifies the three comparisons).**
+1. `owner_actions`: a recorded `risk_accepted_by` or `tests_unlocked_by` actor is verified, not believed — the runner applied the label (`run_phase.py apply_labels`) and re-checks after the session that every recorded actor is one it recorded itself from GitHub's label event (or already on the base branch's copy); a new one the session wrote parks. By hand, the commit author is the act as before. (0.2.25's `test_lock` check already refuses a test changed while the lock stands; the forged actor on a lift is the part left.)
+2. `owner_actions`: a `panel_calls` drop is judged like an `iterations` drop (the same label resets both); in CI the runner also refuses a drop below its pre-session value that its own `sdlc:reset-iterations` handling did not make.
+3. `profile_override` and `review_override` read from the base branch's `status.yaml` (the copy the owner approved), in `gate/gate.py` and `run_phase.py guard`, as `intent.md` is; the branch's own values are ignored with a note in the gate result, and the runner reports a change of them after the session.
 4. Gate (a) runs `design_scope` (with change 0000 exempt, as `guardrails` is).
 5. The `panel` check consumes each ledger `#n` once; a second closing on the same line fails.
 6. `important_findings` strips the severity before comparing.
@@ -78,7 +78,7 @@ The sample's upgrade PR with the 1.0.0 copies; the GitHub Milestone by hand; `do
 ## What the owner does on this road (nothing else is the owner's)
 | When | Act |
 |---|---|
-| Now (after session 9's PR) | Merge it; check `v0.2.25` (dispatch `sdlc-tag.yml` if no run appears, NOTES §14); apply the two pins (root `sdlc.yaml` line 92 and the sample's line 77: `0.2.24` → `0.2.25`) after the tag; **create the branch ruleset on this repository's `main`**: *Restrict updates* with the repository admin as the only bypass actor, plus restrict deletions, block force pushes, require a pull request (decision 4; `/sdlc-init` §6) — the digest will say so until an `update` rule exists; the sample's classic rule does not count, so its digest says so too until the owner adds the same ruleset there. |
+| ~~Now (after session 9's PR)~~ — done 2026-09-27 | PR #57 merged; `v0.2.25` tagged by `sdlc-tag.yml` on the merge commit 451d48a (run 36331471990); both pins at `0.2.25` after the tag (root `e15402d`, the sample's PR #44); the ruleset on this repository's `main` created and verified (NOTES §17). Still open, optional: the same ruleset on the sample (its classic rule does not count). |
 | Every session start | Start the session with both repositories selected (precondition 1). |
 | Sessions 10, 11 (and 12 if it bumps) | Merge the PR when the session asks; check the tag; apply the two pins. |
 | Session 13 | Merge the docs PR; apply the guardrail rows it lists (the root `sdlc.yaml` line 8 among them). |
@@ -86,7 +86,7 @@ The sample's upgrade PR with the 1.0.0 copies; the GitHub Milestone by hand; `do
 | 2026-10-10, before 23:59 UTC | Open the failing sample PR (session 15, step 1); no session runs that day. |
 | Session 15 | Triage the real incident; merge the 1.0.0 PR; check `v1.0.0`; apply the two pins after the tag. |
 | Session 16 | Merge the sample's 1.0.0 upgrade PR; create and close the GitHub Milestone. |
-| Any time | R1 and R2; the `accept` verb; the Windows items; the threat-model question of PROGRESS session 9 — none blocks 1.0.0. |
+| Any time | R1 and R2; the `accept` verb; the Windows items — none blocks 1.0.0. (The threat-model question of PROGRESS session 9 is answered: the runner re-verifies, choice 103.) |
 
 ## Rules for these sessions
 - Never reopen a decision; a decision a live run shows impossible as built is documented in PROGRESS. The review's "ruled not a problem" list is settled the same way.
