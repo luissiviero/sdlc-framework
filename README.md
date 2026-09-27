@@ -38,4 +38,3 @@ The files below were the input to the first build session; that session's brief 
 Testing: layer 1 = self-tests without a project or a model; layer 2 = a fixture project inside the repo (`tests/fixtures/sample-python-project/`) for integration tests of `/sdlc-init` and the phase commands; layer 3 = evals and shakedown on a real project (B5). See the current `HANDOFF.md` and `docs/PROGRESS.md`.
 
 Sessions after the first: write a new `HANDOFF.md` per session (B2 … B5, then the shakedown sessions) from `docs/PROGRESS.md`, keeping the same structure, and move the previous brief to `docs/handoffs/`.
-
