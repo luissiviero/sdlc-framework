@@ -260,15 +260,46 @@ elif args[:2] == ["pr", "edit"]:
 
 
 def launcher(bindir: Path, name: str, script_text: str) -> Path:
-    """``<bindir>/<name>`` (sh) and ``<name>.cmd`` (Windows) running ``script_text``."""
+    """``<bindir>/<name>`` running ``script_text``: a sh script, or on Windows a real
+    ``<name>.exe`` written by pip's vendored launcher maker (the way pip installs console
+    scripts), with a ``<name>.cmd`` shim only when that maker is unavailable. A ``.cmd`` shim
+    hands its arguments to cmd.exe through ``%*``, which ends the command at an unquoted
+    ``&`` — the ``&page=1`` of the label-events path, so the fake ``gh`` never saw the page
+    and answered with no events (the first Windows run of the suite, 0.2.28). The real
+    ``gh`` and ``claude`` are executables, so only the fakes needed this."""
     script = bindir / f"{name}_fake.py"
-    script.write_text(script_text, encoding="utf-8", newline="\n")
+    # the fake runs at import time; the launcher's wrapper imports ``main`` and calls it
+    script.write_text(
+        script_text + "\n\ndef main():\n    return 0\n", encoding="utf-8", newline="\n"
+    )
     sh = bindir / name
     sh.write_text(f'#!/bin/sh\nexec "{sys.executable}" "{script}" "$@"\n', encoding="utf-8")
     sh.chmod(0o755)
+    if os.name != "nt":
+        return sh
+    exe = _exe_launcher(bindir, name, script.stem)
+    if exe is not None:
+        return exe
     cmd = bindir / f"{name}.cmd"
     cmd.write_text(f'@echo off\r\n"{sys.executable}" "{script}" %*\r\n', encoding="utf-8")
-    return cmd if os.name == "nt" else sh
+    return cmd
+
+
+def _exe_launcher(bindir: Path, name: str, module: str) -> Path | None:
+    """``<bindir>/<name>.exe`` calling ``<module>.main`` through this interpreter, or None
+    when pip's vendored ``distlib`` is not importable or carries no launcher binaries (a
+    distribution's pip may strip them; python.org's pip ships them)."""
+    try:
+        from pip._vendor.distlib.scripts import ScriptMaker  # noqa: PLC0415
+
+        maker = ScriptMaker(None, str(bindir), add_launchers=True, dry_run=False)
+        maker.variants = {""}
+        maker.executable = sys.executable
+        made = [Path(p) for p in maker.make(f"{name} = {module}:main")]
+    except Exception:  # noqa: BLE001 - the .cmd shim is the fallback, whatever the reason
+        return None
+    exes = [p for p in made if p.suffix.lower() == ".exe"]
+    return exes[0] if exes else None
 
 
 WORKFLOW_FILE = {"b": "sdlc-design.yml", "c": "sdlc-build.yml", "fix": "sdlc-fix.yml"}
