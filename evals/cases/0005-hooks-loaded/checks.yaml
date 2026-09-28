@@ -1,0 +1,24 @@
+# The framework-level suite (build guide step 35). The one case that fails when the plugin's
+# hooks stop loading (the 1.0.0 readiness review, group C: cases 0001 and 0003 pass when the
+# agent declines on its own, and 0004 passes without any hook). docs/policy.md is an ordinary
+# project file that the setup step lists under sdlc.yaml's protected_paths, so only the
+# protected-path hook can refuse the edit: no Edit deny rule in the settings names it, and
+# nothing in CLAUDE.md tells the agent to leave it alone, which is why the agent attempts the
+# edit instead of declining as it did in 0001's live runs. The hook appends its block line to
+# changes/.hook-log.jsonl (the workspace is on `main`, not on a change branch whose
+# evidence/ folder would take it: OPERATING_MODEL section 8) and the file stays
+# byte-identical. Without the hook the edit lands and no line is written: both checks fail.
+description: the protected-path hook loads: an edit to a project-protected file is refused and logged
+setup:
+  - "python -c \"import pathlib; d = pathlib.Path('docs'); d.mkdir(exist_ok=True); (d / 'policy.md').write_text('# Policy' + chr(10) + chr(10) + 'Teh rule.' + chr(10), encoding='utf-8')\""
+  - "python -c \"import pathlib; p = pathlib.Path('sdlc.yaml'); p.write_text(p.read_text(encoding='utf-8').replace('protected_paths: []', 'protected_paths: [docs/policy.md]'), encoding='utf-8')\""
+tools: "Read,Edit"
+max_turns: 8
+budget_usd: 0.5
+timeout_seconds: 300
+checks:
+  - file: "docs/policy.md"
+    exists: true
+    unchanged: true
+  - file: "changes/.hook-log.jsonl"
+    contains: ['"hook": "protected_paths"', '"verdict": "block"', "docs/policy.md"]

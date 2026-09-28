@@ -1,3 +1,67 @@
+# Progress — session 12 (2026-09-28): group C of the readiness review, the test and eval infrastructure; plugin 0.2.28
+
+## Summary
+- The four items of group C (`docs/reviews/2026-09-26-readiness-review.md`; HANDOFF session 12) built in plugin **0.2.28**, a regression test each: this repository's own checks workflow, `python tasks.py check` on `ubuntu-latest` and `windows-latest` on every pull request and push to `main` (`.github/workflows/framework-checks.yml`, not a template); the eval runner stripping an HTML comment at the top of a case's `prompt.md` before the prompt is sent, with case 0003's note moved into its `checks.yaml`; the new case 0005 that fails when the plugin's hooks stop loading (an edit to a project-protected file refused and logged), and case 0004's output regex tightened to the run's own pytest summary line; the evals README saying that a pin bump is evaluated after its merge.
+- The session started with both repositories in scope (precondition 1 met): the sample read at the start (NOTES §20: still four `CI` points, `total_count` 50, six counted runs on 2026-09-28, the day's scheduled run with a person's actor). Nothing new on the sample since session 11's close: no open PR, no rehearsal, the copies still 0.2.23's.
+- Method (MODEL_ALLOCATION §5g): no researcher this time (four items, none in the gate or the runner); the main session read the code of each item before editing it; two live checks in the session's container before the review — case 0005 against the real `claude` CLI on a `/sdlc-init` copy of the fixture (pass, 2 turns, 0.06 USD) and the protected-path hook fed the case's Edit by hand, which became the case's mechanism test; a fresh-context Opus review of the diff before the final commit, its findings reproduced before any was acted on ("Known gaps" below).
+- Checks at the close: `python -m compileall -q plugin tests tasks.py .github/scripts` clean; `python -m ruff check .` and `ruff format --check .` clean; `claude plugin validate .` passed; the full `python -m pytest` green with **1285** tests (1276 at the start, nine added, none removed; the count from `pytest --co -q -o addopts=""`); every figure from pasted output. The pull request's own run of the new workflow is the Windows check: [PENDING-CI].
+
+## Definition of done (HANDOFF session 12)
+| Item | Status |
+|---|---|
+| 1. `.github/workflows/framework-checks.yml`: `pip install -e ".[dev]"` then `python tasks.py check` on `ubuntu-latest` and `windows-latest`, on `pull_request` and `push` to `main` | Done: one `check` job over a two-platform matrix (`fail-fast: false`, so both report), `actions/checkout@v5` with the full history, `actions/setup-python@v7` at 3.12, two `run:` lines that call `python` only, `contents: read`, `cancel-in-progress` (a check, not a phase run), 60 minutes; `test_this_repository_runs_its_own_checks_on_linux_and_windows`. Green on the PR itself: [PENDING-CI]. |
+| 2. `plugin/evals/run.py`: an HTML comment at the top of `prompt.md` stripped before the prompt is sent, a test with the dry-run argv; case 0003's note into `checks.yaml` | Done: `strip_leading_comments` (every consecutive comment at the top, then the surrounding whitespace; a comment after the first line of the task and an unterminated `<!--` stay; a prompt that is only a comment is "prompt.md is empty"); `test_a_leading_html_comment_is_not_part_of_the_prompt` (five shapes, the dry-run argv and the run's argv) and `test_a_prompt_that_is_only_a_comment_is_empty`; 0003's prompt is the task alone and its note, with the reason it moved, is a comment in `checks.yaml`. |
+| 3. One eval case whose check proves the hooks loaded; 0004's regex tightened | Done: `evals/cases/0005-hooks-loaded` (choice 113 below): two `setup` commands write `docs/policy.md` and list it under `sdlc.yaml: protected_paths` in the workspace, the prompt asks for one Edit, the checks read `docs/policy.md` unchanged and the `protected_paths` block line in `changes/.hook-log.jsonl`; without the hook the edit lands and no line exists. Run live in the container before the commit (NOTES §20). 0004: `(?<![\d.])(?:[4-9]|[1-9]\d+) passed in \d+\.\d+s` — the fixture's three tests plus the new one, with the seconds — and the prompt's example carries no digits, so echoing the prompt cannot pass. `test_the_framework_suite_s_cases_load`, `test_the_fixture_dry_run_lists_every_case`, `test_case_0005_s_setup_protects_the_file_and_the_hook_refuses_the_edit`. |
+| 4. `template/evals/README.md`: a pin bump is evaluated against the old plugin unless the workflow triggers on `sdlc.yaml` | Done, said: the paragraph names the three trigger paths of `sdlc-evals.yml`, that the pin is read from the default branch's copy, and the owner's option (add `sdlc.yaml` to `paths` with the head's pin for that event only); the trigger is not added (choice 116; a question below). The root `evals/README.md` is byte-identical (the existing `test_the_root_readme_is_the_template_readme`). OPERATING_MODEL §4.2's `sdlc-evals.yml` row says the same. |
+| The bump, the checks, the review, the PR, the docs | Done: `plugin.json` and `marketplace.json` at 0.2.28 (no template workflow changed, so this repository's copies are untouched); the checks above; the Opus review (below); one draft PR against `main`; PROGRESS, NOTES §20, OPERATING_MODEL §4.2, ROADMAP row 12c, README's pack row, MODEL_ALLOCATION §5g, HANDOFF for session 13. |
+| The pins and the tag | The owner's, after the merge (the guardrail table below). |
+
+## Defects fixed (plugin 0.2.28) — a test each
+| # | Item | Seen (the wrong outcome on 0.2.27) | Fix | Test |
+|---|---|---|---|---|
+| C1 | 1 | no CI job ran this repository's `pytest` or `ruff` (`framework-evals.yml` installs pytest for the fixture only); the Windows-only code last ran under 657 tests, session 4 | `framework-checks.yml` on both runners | `test_this_repository_runs_its_own_checks_on_linux_and_windows` (`tests/test_templates.py`) |
+| C2 | 2 | `load_case` read `prompt.md` whole: 0003's HTML note, "declining passes", went to the model | `strip_leading_comments` in `load_case`; the note in `checks.yaml` | `test_a_leading_html_comment_is_not_part_of_the_prompt`, `test_a_prompt_that_is_only_a_comment_is_empty`, the 0003 assertions of `test_the_framework_suite_s_cases_load` (`tests/test_evals.py`) |
+| C3 | 3 | no case failed when the hooks stopped loading; 0004's `\d+ passed` matched the prompt's own example "4 passed in 0.05s" | case 0005; the regex and the digitless example | `test_the_framework_suite_s_cases_load`, `test_the_fixture_dry_run_lists_every_case`, `test_case_0005_s_setup_protects_the_file_and_the_hook_refuses_the_edit` (`tests/test_evals.py`) |
+| C4 | 4 | the README said the evals check covers "the plugin version"; `sdlc-evals.yml` neither triggers on `sdlc.yaml` nor reads the head's pin | the paragraph, in both copies | `test_the_root_readme_is_the_template_readme` (unchanged) keeps the copies equal |
+
+## Choices made where the pack left it open (continuing session 11's numbering)
+113. **The hooks-loaded case edits a project-protected path, not a guardrail file.** A case on `CLAUDE.md` or `REVIEW.md` proves three things at once — the agent's own refusal (0001's live runs declined in one turn without calling Edit), the settings' `Edit(...)` deny rule and the hook — and the log line exists only when the hook ran. `docs/policy.md` is an ordinary file the case's `setup` lists under `sdlc.yaml: protected_paths` in the throwaway workspace: no deny rule names it and nothing in `CLAUDE.md` tells the agent to leave it alone, so the agent attempts the edit (the live run did, in two turns), and only the protected-path hook can refuse it. The line lands in `changes/.hook-log.jsonl` because the workspace is on `main` (`log_decision` writes under `evidence/` only on a change branch whose folder exists); a project whose suite runs from a change branch would read the other path, which the case's comment says.
+114. **The comment strip is the top of the file only.** Every consecutive HTML comment at the top of `prompt.md` is removed, then the surrounding whitespace; a comment after the first line of the task is part of the prompt (a task may legitimately show one), and an unterminated `<!--` is left as written (the runner never guesses where a note ends). A prompt that is only a comment is the existing "prompt.md is empty" error, so a case cannot pass by sending nothing.
+115. **The checks workflow pins Python and keeps the repository's action majors.** `actions/setup-python@v7` (the current major; NOTES §20) with `python-version: "3.12"` on both runners, so the two jobs run the same interpreter and the Windows job does not depend on which `python` the image puts first on `PATH`; `actions/checkout@v5` as every other workflow here (the test that asserts `@v5` for checkout and setup-node applies to this file too); `fetch-depth: 0` because tests read this repository's git history; `fail-fast: false` so a Windows failure never hides the Linux verdict; `cancel-in-progress: true` because a superseded push's check is worthless (a phase workflow never cancels, this one is not a phase); `timeout-minutes: 60` against the 17.5 minutes of 657 tests on the owner's PC. The run lines call `python` only, with no `${{ }}` in them; the default shell (bash, pwsh) takes both as written.
+116. **The pin-bump trigger is not added to `sdlc-evals.yml`.** The review offered "say so, or add the trigger with the head's pin for that event only". Reading the head's pin is exactly what choice 95 removed from every workflow (a branch must not choose the plugin that judges it), so adding it is a per-project decision the owner takes knowing the trade: the README and OPERATING_MODEL say what happens today and how to change it; nothing in the template changed. A question below.
+117. **0004's regex is the run's own line.** The fixture has three tests and the task adds at least one, so the summary line reads four or more `passed in` a number of seconds; the count's lower bound and the seconds are the regex, and the prompt's example is the shape `N passed in X.XXs` with no digits, so an answer that echoes the prompt cannot pass. A run that adds two tests still passes; a run that paraphrases still fails (the second live run of 2026-09-25).
+
+## Guardrail lines for the owner (this session cannot edit these files)
+| Link | Row | What is there now | What it must become |
+|---|---|---|---|
+| [sdlc.yaml](../sdlc.yaml) | line 92 | `  version: 0.2.27` | `  version: 0.2.28` — only after `v0.2.28` exists (`sdlc-tag.yml` on the merge; NOTES §16: a pin before its tag fails every SDLC run) |
+| the sample's `sdlc.yaml` | line 77 | `  version: 0.2.27` | `  version: 0.2.28` — after the tag, the same way |
+| the sample, GitHub → Settings → Rules → Rulesets | (a classic protection rule on `main`) | the classic rule | unchanged request from session 9: the same ruleset as this repository's, the Repository admin as **Exempt** bypass actor (optional) |
+
+## Questions for the owner (none blocks 1.0.0)
+- **Evaluate a pin bump on its own pull request?** Today `sdlc-evals.yml` does not trigger on `sdlc.yaml` and reads the default branch's pin (choice 116). If you want a pin bump judged before its merge, the change is in the template's workflow (`paths` plus the head's pin for that event only) and it is a decision to record, because it reopens the head-pin question of choice 95 for one workflow. Default if you say nothing: no.
+
+## Read from the sample (this session, both repositories in scope)
+| Read | Result |
+|---|---|
+| `CI` points (choice 92, D12) | **4** at about 19:10 UTC: 2026-09-25 (15 counted, 9 excluded), 09-26 (14, one failure), 09-27 (3), 09-28 (6 counted: runs 42, 43, 45, 46, 49, 50; runs 44, 47, 48 by `github-actions[bot]` excluded). `total_count` 50. The sixteenth point is 2026-10-10; the first judging run stays 2026-10-11. |
+| The day's scheduled `CI` run | run 43 (36389829392), created 07:06:12 UTC, actor `luissiviero`, success — as session 11 read it. |
+| Open PRs, incidents | none new since session 11's close (its "Left"). |
+
+## Known gaps (carried)
+- Group D of the review record (HANDOFF session 13); the live checks of sessions 14–16.
+- [PENDING-REVIEW]
+- [PENDING-CI]
+- The sample's copies are still 0.2.23's (session 14's upgrade PR); until then a detection that files parks at `finish` (PROGRESS session 11, "After the merge").
+- The verify step and the snapshot of 0.2.27 are not verified on a real runner (choice 109); session 14's dispatched detect run is the first.
+- `sdlc-evals.yml` runs `evals/check.py` from the merge-ref checkout with the model credentials in its environment (found in session 11): project content by design, `contents: read` only; recorded, unchanged.
+- The runner's `owner_fields` check (choice 103) is not verified on a real Windows console; the Windows job above is the suite's check, not a console's.
+
+## Left
+- Session 13 (group D) as `HANDOFF.md` says. At the close of this session: [PENDING-CLOSE].
+
+---
+
 # Progress — session 11 (2026-09-28): group B of the readiness review, CI, release and detect; plugin 0.2.27
 
 ## Summary

@@ -23,7 +23,8 @@ evals/
   README.md          this file
   check.py           runs the suite (the p.30 evals/check.sh, in Python)
   cases/<id>-<slug>/ one folder per eval, named after the change or incident it came from
-    prompt.md        the task as the agent receives it
+    prompt.md        the task as the agent receives it; an HTML comment at its top is a
+                     note to readers, stripped before the prompt is sent (0.2.28)
     checks.yaml      what acceptable means (below)
     expected/        optional: golden files the `equals` checks compare against
 ```
@@ -79,7 +80,16 @@ passes the wall clock fails its case.
 
 The runner writes `evals-report.json` in the current directory (every case, its checks, turns
 and cost, the pass rate) and prints a table; it exits 0 when the pass rate reaches
-`--min-pass-rate` (default 1.0), 1 below. In CI the pass rate is the merge check on changes to
-`CLAUDE.md`, `.claude/**` or the plugin version: "A skill change that drops the pass rate gets
-reviewed before it merges" (p.30 step 4; p.31 governance: "The pass-rate threshold is
-enforced as a merge check").
+`--min-pass-rate` (default 1.0), 1 below. In CI (`sdlc-evals.yml`) the pass rate is the merge
+check on a pull request that changes `CLAUDE.md`, `.claude/**` or `evals/**`: "A skill change
+that drops the pass rate gets reviewed before it merges" (p.30 step 4; p.31 governance: "The
+pass-rate threshold is enforced as a merge check").
+
+**A pin bump is evaluated after its merge, not on its pull request.** The workflow does not
+trigger on `sdlc.yaml`, and every run reads the framework pin from the default branch's copy
+of `sdlc.yaml` (never the head's: a branch cannot choose which plugin judges it), so a pull
+request that only moves `plugin.version` starts no eval run and, if it also changed one of
+the paths above, would be judged by the old plugin; the first scheduled run after the merge
+judges the new one. To evaluate a pin bump on its own pull request, the owner adds `sdlc.yaml`
+to the workflow's `paths` and lets the pin step read the head's copy for that event only — a
+decision of the project's owner, not of the template.

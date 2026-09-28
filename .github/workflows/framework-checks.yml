@@ -1,0 +1,49 @@
+# This repository's own checks (the 1.0.0 readiness review of 2026-09-26, group C): the lint
+# and the whole test suite, `python tasks.py check`, on the two platforms the framework runs
+# on. Not a template: a project gets sdlc-*.yml from the template; this workflow tests the
+# plugin, the template and the hooks themselves. The Windows job is the only Windows run of
+# the suite (the owner's PC last ran it under 657 tests, session 4): the console-encoding
+# fixes of 0.2.25, the `.cmd` launchers and every path comparison are checked there, and a
+# red Windows job on a pull request is a defect of the change, never of the runner.
+#
+# Every `run:` line calls python (CLAUDE.md: no shell scripts); the runner's default shell
+# is bash on Linux and pwsh on Windows, and both take these two lines as written. Nothing is
+# committed and nobody is notified; the job's verdict is the check on the pull request.
+name: Framework checks
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: "framework-checks-${{ github.event.pull_request.head.ref || github.ref }}"
+  cancel-in-progress: true
+
+jobs:
+  check:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Install the dev tools (pyproject's dev extra)
+        run: python -m pip install -e ".[dev]"
+
+      - name: Lint and test
+        run: python tasks.py check

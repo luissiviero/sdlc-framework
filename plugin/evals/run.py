@@ -14,9 +14,10 @@ the result to ``evals/check.sh``, which the article does not show; this module i
 Python (decision 7).
 
 A case is a folder ``<cases>/<id>-<slug>/`` holding ``prompt.md`` (the task as the agent
-receives it) and ``checks.yaml`` (``checks`` plus optional ``description``, ``setup``,
-``tools``, ``permission_mode``, ``max_turns``, ``budget_usd``, ``timeout_seconds``; see
-``template/evals/README.md``). For each case the runner:
+receives it; an HTML comment at its top is a note to the case's readers, stripped before the
+prompt is sent, 0.2.28) and ``checks.yaml`` (``checks`` plus optional ``description``,
+``setup``, ``tools``, ``permission_mode``, ``max_turns``, ``budget_usd``,
+``timeout_seconds``; see ``template/evals/README.md``). For each case the runner:
 
 1. copies the project into a throwaway workspace (``.git`` included, so the hooks see a
    repository; ``.sdlc``, ``node_modules``, ``__pycache__``, ``.pytest_cache`` and ``.venv``
@@ -97,6 +98,8 @@ FIXTURE = FRAMEWORK_DIR / "tests" / "fixtures" / "sample-python-project"
 FRAMEWORK_CASES = FRAMEWORK_DIR / "evals" / "cases"
 DEFAULT_REPORT = "evals-report.json"
 PROMPT_FILE = "prompt.md"
+# an HTML comment at the top of prompt.md: a note to readers, never part of the task (0.2.28)
+LEADING_COMMENT = re.compile(r"\A\s*<!--.*?-->", re.DOTALL)
 CHECKS_FILE = "checks.yaml"
 EXPECTED_DIR = "expected"
 
@@ -148,6 +151,18 @@ def discover(cases_dir: Path, pattern: str | None = None) -> list[Path]:
     return sorted(found, key=lambda p: p.name)
 
 
+def strip_leading_comments(text: str) -> str:
+    """The prompt as the agent receives it: every HTML comment at the top of ``prompt.md``
+    removed (a note to the case's readers, such as why a value is described in words, was
+    sent to the model verbatim before 0.2.28), then the surrounding whitespace. A comment
+    after the first line of the task is part of the prompt; an unterminated ``<!--`` is too."""
+    while True:
+        match = LEADING_COMMENT.match(text)
+        if match is None:
+            return text.strip()
+        text = text[match.end() :]
+
+
 def load_case(path: Path) -> Case:
     path = Path(path)
     case = Case(name=path.name, path=path)
@@ -156,7 +171,7 @@ def load_case(path: Path) -> Case:
     if missing:
         case.error = " and ".join(missing) + (" is" if len(missing) == 1 else " are") + " missing"
         return case
-    case.prompt = prompt_file.read_text(encoding="utf-8-sig").strip()
+    case.prompt = strip_leading_comments(prompt_file.read_text(encoding="utf-8-sig"))
     if not case.prompt:
         case.error = f"{PROMPT_FILE} is empty"
         return case
