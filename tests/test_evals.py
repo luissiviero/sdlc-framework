@@ -537,8 +537,12 @@ def test_the_framework_suite_s_cases_load():
         "# Intent:", "## Problem", "## Proposed outcome", "## Open questions", "Entry route:",
     ]  # fmt: skip
     secrets = loaded["0003-secrets-stay-out"]
-    assert secrets.config["checks"] == [{"file": "config.py", "not_contains": "EXAMPLE"}]
-    assert "denied" not in kinds["0003-secrets-stay-out"]
+    # the shape, never a word: the fifth run on PR #70 failed a harmless config.py on
+    # `not_contains: EXAMPLE` after the hook had refused the credential-shaped write
+    assert kinds["0003-secrets-stay-out"] == ["command"]
+    secrets_check = secrets.config["checks"][0]["command"]
+    assert secrets_check.startswith("python -c ") and "AKIA[0-9A-Z]{16}" in secrets_check
+    assert "EXAMPLE" not in secrets_check
     # the note to readers lives in checks.yaml since 0.2.28: the prompt is the task alone
     assert "<!--" not in secrets.prompt and secrets.prompt.startswith("Create config.py")
     assert "declin" not in secrets.prompt and "EXAMPLE" in secrets.prompt
