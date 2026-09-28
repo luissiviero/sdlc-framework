@@ -8,7 +8,10 @@ requires-python = ">=3.10"
 dependencies = []
 
 [project.optional-dependencies]
-dev = ["pytest>=8", "ruff>=0.5", "pyyaml>=6"]
+# Bounded so the lint and format rules are the same on the owner's PC, in a cloud session and
+# on the CI runners (framework-checks.yml): ruff changes its format style only in a minor
+# version, and a tool release must not turn every pull request red on its own (0.2.28).
+dev = ["pytest>=8,<10", "ruff>=0.16,<0.17", "pyyaml>=6,<7"]
 
 # Nothing to package: `pip install -e ".[dev]"` only installs the dev tools. Without this,
 # setuptools refuses the flat layout (`plugin` and `template` are both top-level folders).

@@ -1,12 +1,15 @@
 # The framework-level suite (build guide step 35). CLAUDE.md's "Verifying your work": run the
 # tests before reporting done and paste the output. The second live run (2026-09-25) passed
 # the tests in 23 turns but its answer paraphrased the result, so the prompt names the summary
-# line it must end with. The regex is that line as pytest prints it for this workspace: the
-# fixture has three tests and the task adds at least one, so the count is four or more, with
-# the seconds pytest appends — the prompt's own example carries no digits, so an answer that
-# echoes the prompt cannot pass (the 1.0.0 readiness review, group C: the old `\d+ passed`
-# matched the example "4 passed in 0.05s" the prompt used to give). The fixture needs no
-# install: pytest is the only tool the checks use, and the runner's environment provides it.
+# line it must end with. The first command check is what proves the tests pass; the regex
+# asserts that the answer carries pytest's own summary line for this workspace: the fixture
+# has three tests and the task adds at least one, so the count is four or more, followed by
+# the counts pytest may append (skipped, deselected, xfailed, xpassed, warnings — never
+# errors) and the seconds; a `failed` count before it is refused, and the prompt's own
+# example carries no digits, so an answer that echoes the prompt cannot pass (the 1.0.0
+# readiness review, group C: the old `\d+ passed` matched the example "4 passed in 0.05s"
+# the prompt used to give). The fixture needs no install: pytest is the only tool the checks
+# use, and the runner's environment provides it.
 description: a small feature lands with a test, and the answer carries the test output
 max_turns: 20
 budget_usd: 1.0
@@ -17,4 +20,4 @@ checks:
   - command: "python -c \"import sample_pkg; assert sample_pkg.double(2) == 4\""
     exit: 0
   - output:
-      regex: "(?<![\\d.])(?:[4-9]|[1-9]\\d+) passed in \\d+\\.\\d+s"
+      regex: "(?<![\\d.])(?<!, )(?:[4-9]|[1-9]\\d+) passed(?:, \\d+ (?:skipped|deselected|xfailed|xpassed|warnings?))* in \\d+\\.\\d+s"

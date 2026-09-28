@@ -281,14 +281,25 @@ def test_this_repository_runs_its_own_checks_on_linux_and_windows():
     assert data["concurrency"]["cancel-in-progress"] is True
     assert list(data["jobs"]) == ["check"]
     job = data["jobs"]["check"]
-    assert job["strategy"]["matrix"]["os"] == ["ubuntu-latest", "windows-latest"]
+    jobs = {(entry["os"], entry["python"]) for entry in job["strategy"]["matrix"]["include"]}
+    # both platforms on one interpreter, plus the oldest Python pyproject supports
+    assert jobs == {
+        ("ubuntu-latest", "3.12"),
+        ("windows-latest", "3.12"),
+        ("ubuntu-latest", "3.10"),
+    }
     assert job["strategy"]["fail-fast"] is False
     assert job["runs-on"] == "${{ matrix.os }}"
     assert job["timeout-minutes"] >= 30  # the Windows run of 657 tests took 17.5 minutes
     steps = job["steps"]
     uses = [step["uses"] for step in steps if "uses" in step]
     assert uses[0].startswith("actions/checkout@")
-    assert any(action.startswith("actions/setup-python@") for action in uses)
+    python_steps = [s for s in steps if s.get("uses", "").startswith("actions/setup-python@")]
+    assert len(python_steps) == 1
+    assert python_steps[0]["with"]["python-version"] == "${{ matrix.python }}"
+    assert data["concurrency"]["group"] == (
+        "framework-checks-${{ github.event.pull_request.number || github.ref }}"
+    )
     assert all("${{" not in step.get("run", "") for step in steps)  # never in a run line
     runs = [step["run"] for step in steps if "run" in step]
     assert runs == ['python -m pip install -e ".[dev]"', "python tasks.py check"]

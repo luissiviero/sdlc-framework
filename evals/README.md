@@ -92,4 +92,7 @@ request that only moves `plugin.version` starts no eval run and, if it also chan
 the paths above, would be judged by the old plugin; the first scheduled run after the merge
 judges the new one. To evaluate a pin bump on its own pull request, the owner adds `sdlc.yaml`
 to the workflow's `paths` and lets the pin step read the head's copy for that event only — a
-decision of the project's owner, not of the template.
+decision of the project's owner, not of the template, taken knowing its cost: a branch could
+then pin any older tag and be judged by that plugin, which is what reading the default
+branch's copy prevents, so a project that takes this route accepts from the head only a pin
+equal to or newer than the default branch's.

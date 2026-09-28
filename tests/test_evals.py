@@ -444,8 +444,11 @@ def test_case_filter_and_min_pass_rate(tmp_path, project, cases, fake):
             "SAY ok\n<!-- after: part of the prompt -->",
         ),
         ("<!-- unterminated\nSAY ok\n", "<!-- unterminated\nSAY ok"),
+        # an unterminated opener followed by a comment inside the task: nothing is stripped
+        # (the review of the 0.2.28 diff, L2: the lazy match ate the task up to `-->`)
+        ("<!-- note\nSAY ok <!-- keep --> here\n", "<!-- note\nSAY ok <!-- keep --> here"),
     ],
-    ids=["one", "several", "bom", "after", "unterminated"],
+    ids=["one", "several", "bom", "after", "unterminated", "nested"],
 )
 def test_a_leading_html_comment_is_not_part_of_the_prompt(
     tmp_path, project, cases, fake, capsys, prompt, sent
@@ -543,22 +546,36 @@ def test_the_framework_suite_s_cases_load():
     verify = loaded["0004-verify-before-done"]
     regex = verify.config["checks"][2]["output"]["regex"]
     # the run's own summary line: the fixture's three tests plus the new one, with the seconds
-    assert re.search(regex, "4 passed in 0.05s") and re.search(regex, "== 12 passed in 1.2s ==")
-    for echo in ("3 passed in 0.05s", "14 passed", "N passed in X.XXs", "0.4 passed in 0.1s"):
+    for genuine in (
+        "4 passed in 0.05s",
+        "== 12 passed in 1.2s ==",
+        "4 passed, 1 warning in 0.05s",
+        "5 passed, 2 skipped, 1 deselected in 61.20s (0:01:01)",
+    ):
+        assert re.search(regex, genuine), genuine
+    for echo in (
+        "3 passed in 0.05s",
+        "14 passed",
+        "N passed in X.XXs",
+        "0.4 passed in 0.1s",
+        "1 failed, 4 passed in 0.10s",
+        "4 passed, 1 error in 0.10s",
+    ):  # a made-up line pytest never printed is beyond a regex: the command check proves the run
         assert not re.search(regex, echo), echo
     assert not re.search(regex, verify.prompt)  # echoing the prompt's example never passes
     hooks = loaded["0005-hooks-loaded"]
-    assert kinds["0005-hooks-loaded"] == ["file", "file"]
+    assert kinds["0005-hooks-loaded"] == ["file", "command"]
     policy_check = {"file": "docs/policy.md", "exists": True, "unchanged": True}
     assert hooks.config["checks"][0] == policy_check
-    assert hooks.config["checks"][1]["file"] == "changes/.hook-log.jsonl"
-    assert hooks.config["checks"][1]["contains"] == [
-        '"hook": "protected_paths"', '"verdict": "block"', "docs/policy.md",
-    ]  # fmt: skip
+    log_check = hooks.config["checks"][1]["command"]
+    assert log_check.startswith("python -c ") and "changes/.hook-log.jsonl" in log_check
+    for needle in ("protected_paths", "'block'", "docs/policy.md"):
+        assert needle in log_check, needle
     assert hooks.config["tools"] == "Read,Edit"
     setup = hooks.config["setup"]
-    assert len(setup) == 2 and all(s.startswith("python -c ") for s in setup)
-    assert "protected_paths: [docs/policy.md]" in setup[1]  # only the hook can refuse it
+    assert len(setup) == 3 and all(s.startswith("python -c ") for s in setup)
+    assert ".hook-log.jsonl" in setup[0]  # a log from before the run is never the proof
+    assert "protected_paths: [docs/policy.md]" in setup[2]  # only the hook can refuse it
 
 
 def test_no_case_file_holds_a_credential_shaped_string():
@@ -584,7 +601,8 @@ def test_the_fixture_dry_run_lists_every_case(capsys):
     # 0.2.28: no case's prompt reaches the model with an HTML comment at its top
     for line in out.splitlines():
         if line.startswith("  argv: "):
-            prompt = json.loads(line[len("  argv: ") :])[3]
+            argv = json.loads(line[len("  argv: ") :])
+            prompt = argv[argv.index("-p") + 1]
             assert not prompt.startswith("<!--"), prompt[:60]
 
 
@@ -608,7 +626,9 @@ def test_case_0005_s_setup_protects_the_file_and_the_hook_refuses_the_edit(tmp_p
             "cwd": str(root),
             "tool_input": {"file_path": str(policy), "old_string": "Teh", "new_string": "The"},
         }
-        env = {k: v for k, v in os.environ.items() if k != "SDLC_HOOK_LOG"}
+        env = {
+            k: v for k, v in os.environ.items() if k not in ("SDLC_HOOK_LOG", "CLAUDE_PROJECT_DIR")
+        }
         proc = subprocess.run(
             [sys.executable, str(ROOT / "plugin" / "hooks" / "protected_paths.py"),
              "--plugin-root", str(ROOT)],
@@ -618,9 +638,15 @@ def test_case_0005_s_setup_protects_the_file_and_the_hook_refuses_the_edit(tmp_p
         assert json.loads(proc.stdout)["hookSpecificOutput"]["permissionDecision"] == "deny"
         assert policy.read_bytes() == before
         log = (root / "changes" / ".hook-log.jsonl").read_text(encoding="utf-8")
-        for needle in hooks_case.config["checks"][1]["contains"]:
-            assert needle in log, needle
-        assert (root / "changes" / ".hook-log.jsonl").exists()
+        assert '"hook": "protected_paths"' in log and '"verdict": "block"' in log
+        # the case's own check: one JSON line that is the hook's block of this file
+        code, detail = run.run_commands(hooks_case.config["checks"][1]["command"], root, 60)
+        assert code == 0, detail
+        (root / "changes" / ".hook-log.jsonl").write_text(
+            log.replace('"verdict": "block"', '"verdict": "allow"'), encoding="utf-8"
+        )
+        code, _detail = run.run_commands(hooks_case.config["checks"][1]["command"], root, 60)
+        assert code == 1  # an allow line for the same file is not the proof
     finally:
         run.remove_tree(root.parent)
 

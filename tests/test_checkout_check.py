@@ -54,6 +54,10 @@ def setting(tmp_path: Path):
     subprocess.run(
         ["git", "clone", "-q", "--branch", "v0.2.16", str(fw_origin), str(framework)], check=True
     )
+    # a GitHub-hosted runner has no git identity (NOTES section 14): the tests that commit
+    # in this clone set one, as init() does for the repositories it creates
+    git(framework, "config", "user.email", "owner@example.com")
+    git(framework, "config", "user.name", "Owner")
     return work, bare, fw_origin, framework
 
 

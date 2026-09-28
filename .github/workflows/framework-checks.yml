@@ -4,7 +4,11 @@
 # plugin, the template and the hooks themselves. The Windows job is the only Windows run of
 # the suite (the owner's PC last ran it under 657 tests, session 4): the console-encoding
 # fixes of 0.2.25, the `.cmd` launchers and every path comparison are checked there, and a
-# red Windows job on a pull request is a defect of the change, never of the runner.
+# red Windows job on a pull request is a defect of the change, not of the runner: the dev
+# tools are bounded to the versions whose lint and format rules are fixed (pyproject's dev
+# extra), so a tool release cannot turn every pull request red on its own. The third job is
+# the oldest Python the framework supports (pyproject's requires-python): the branches the
+# code keeps for it run nowhere else.
 #
 # Every `run:` line calls python (CLAUDE.md: no shell scripts); the runner's default shell
 # is bash on Linux and pwsh on Windows, and both take these two lines as written. Nothing is
@@ -22,7 +26,9 @@ permissions:
   contents: read
 
 concurrency:
-  group: "framework-checks-${{ github.event.pull_request.head.ref || github.ref }}"
+  # by pull request number, not head ref: two forks' branches of one name never cancel
+  # each other (the review of the 0.2.28 diff)
+  group: "framework-checks-${{ github.event.pull_request.number || github.ref }}"
   cancel-in-progress: true
 
 jobs:
@@ -30,7 +36,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        include:
+          - os: ubuntu-latest
+            python: "3.12"
+          - os: windows-latest
+            python: "3.12"
+          - os: ubuntu-latest
+            python: "3.10"
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
     steps:
@@ -40,7 +52,7 @@ jobs:
 
       - uses: actions/setup-python@v7
         with:
-          python-version: "3.12"
+          python-version: ${{ matrix.python }}
 
       - name: Install the dev tools (pyproject's dev extra)
         run: python -m pip install -e ".[dev]"

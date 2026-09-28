@@ -99,7 +99,7 @@ FRAMEWORK_CASES = FRAMEWORK_DIR / "evals" / "cases"
 DEFAULT_REPORT = "evals-report.json"
 PROMPT_FILE = "prompt.md"
 # an HTML comment at the top of prompt.md: a note to readers, never part of the task (0.2.28)
-LEADING_COMMENT = re.compile(r"\A\s*<!--.*?-->", re.DOTALL)
+LEADING_COMMENT = re.compile(r"\A\s*<!--(?:(?!<!--).)*?-->", re.DOTALL)
 CHECKS_FILE = "checks.yaml"
 EXPECTED_DIR = "expected"
 
@@ -155,7 +155,9 @@ def strip_leading_comments(text: str) -> str:
     """The prompt as the agent receives it: every HTML comment at the top of ``prompt.md``
     removed (a note to the case's readers, such as why a value is described in words, was
     sent to the model verbatim before 0.2.28), then the surrounding whitespace. A comment
-    after the first line of the task is part of the prompt; an unterminated ``<!--`` is too."""
+    after the first line of the task is part of the prompt; an unterminated ``<!--`` is too,
+    even when a comment closes later inside the task (a comment never holds a second
+    ``<!--``, so the note ends at the first ``-->`` after its own opener or not at all)."""
     while True:
         match = LEADING_COMMENT.match(text)
         if match is None:

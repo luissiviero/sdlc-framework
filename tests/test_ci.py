@@ -2878,10 +2878,17 @@ def test_an_honest_session_reports_the_owner_fields_ok_and_hands_over(
     assert out["result"] == "continue"
 
 
-def test_guard_reads_the_profile_override_from_the_default_branch_s_copy(project, tmp_path):
+def test_guard_reads_the_profile_override_from_the_default_branch_s_copy(
+    project, tmp_path, monkeypatch
+):
     """A branch that wrote ``profile_override: standard`` on a Full-profile change skipped the
     (c)/(d) label gates; the guard reads the copy the owner approved (choice 103)."""
     root, change = project
+    # the skip reason asserted below is the one without a route to GitHub: a runner has `gh`
+    # on PATH (the first run in Actions, 0.2.28, read "no open PR on ..." instead)
+    from pr import github
+
+    monkeypatch.setattr(github, "gh_path", lambda: None)
     _owner_state(change, profile_override="full")
     with_remote(root, tmp_path)  # commits and pushes main with the owner's override
     git(root, "checkout", "-q", "-b", "sdlc/0001/c")
