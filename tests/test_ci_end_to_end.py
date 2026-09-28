@@ -295,6 +295,16 @@ def _exe_launcher(bindir: Path, name: str, module: str) -> Path | None:
         maker = ScriptMaker(None, str(bindir), add_launchers=True, dry_run=False)
         maker.variants = {""}
         maker.executable = sys.executable
+        # the launcher runs its wrapper as a zipapp, so sys.path[0] is the .exe itself and
+        # the fake's folder must be added by hand (the third Windows run, 0.2.28)
+        folder = str(bindir).replace("%", "%%")
+        maker.script_template = (
+            "import sys\n"
+            f"sys.path.insert(0, {folder!r})\n"
+            "from %(module)s import %(import_name)s\n"
+            "if __name__ == '__main__':\n"
+            "    sys.exit(%(func)s())\n"
+        )
         made = [Path(p) for p in maker.make(f"{name} = {module}:main")]
     except Exception:  # noqa: BLE001 - the .cmd shim is the fallback, whatever the reason
         return None
