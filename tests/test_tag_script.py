@@ -90,6 +90,67 @@ def test_the_tag_is_created_once_and_never_moved(repo, capsys, monkeypatch):
     )
 
 
+@pytest.mark.parametrize(
+    "env, branch, expected",
+    [
+        ({"GITHUB_REF_NAME": "feature", "SDLC_DEFAULT_BRANCH": "main"}, "feature", "feature"),
+        ({}, "feature", "feature"),  # by hand: origin's HEAD names the default branch
+        ({"GITHUB_REF_NAME": "release-1.x"}, "main", "release-1.x"),  # the env wins
+    ],
+)
+def test_a_dispatch_from_another_branch_tags_nothing_and_ends_green(
+    repo, capsys, monkeypatch, env, branch, expected
+):
+    """The readiness review's group B (0.2.27): ``workflow_dispatch`` had no ref guard and
+    the script tagged HEAD, once and for good, so a dispatch from a branch would have
+    tagged unmerged code as the release. Now only the default branch is tagged; any other
+    ref ends green with ``skipped=not the default branch`` and no tag."""
+    work, bare = repo
+    git(work, "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main")
+    git(work, "checkout", "-q", "-b", branch) if branch != "main" else None
+    out_file = work.parent / "outputs.txt"
+    monkeypatch.setenv("GITHUB_OUTPUT", str(out_file))
+    for name in ("GITHUB_REF_NAME", "SDLC_DEFAULT_BRANCH"):
+        monkeypatch.delenv(name, raising=False)
+    for name, value in env.items():
+        monkeypatch.setenv(name, value)
+    assert sdlc_tag.main(["--root", str(work)]) == 0
+    captured = capsys.readouterr()
+    assert f"not the default branch: {expected} (the default branch is main)" in captured.err
+    assert "created=false" in captured.out and "skipped=not the default branch" in captured.out
+    assert "v0.2.15" not in git(work, "ls-remote", "--tags", "origin")
+    assert "skipped=not the default branch" in out_file.read_text(encoding="utf-8")
+
+
+def test_a_detached_head_the_environment_does_not_name_is_refused(repo, capsys, monkeypatch):
+    work, bare = repo
+    git(work, "checkout", "-q", "--detach")
+    for name in ("GITHUB_REF_NAME", "SDLC_DEFAULT_BRANCH"):
+        monkeypatch.delenv(name, raising=False)
+    assert sdlc_tag.main(["--root", str(work)]) == 0
+    assert "a detached HEAD" in capsys.readouterr().err
+    assert "v0.2.15" not in git(work, "ls-remote", "--tags", "origin")
+    # the workflow's push event names the branch: a detached checkout of main is tagged
+    monkeypatch.setenv("GITHUB_REF_NAME", "main")
+    monkeypatch.setenv("SDLC_DEFAULT_BRANCH", "main")
+    assert sdlc_tag.main(["--root", str(work)]) == 0
+    assert "created=true" in capsys.readouterr().out
+    assert (
+        git(bare, "rev-parse", "refs/tags/v0.2.15").strip()
+        == git(work, "rev-parse", "HEAD").strip()
+    )
+
+
+def test_the_tag_workflow_passes_the_branch_and_the_default_branch_to_the_script():
+    """The guard's inputs come from the event, not from the checkout: ``github.ref_name``
+    (what a ``workflow_dispatch`` was started from) and the repository's default branch."""
+    text = (ROOT / ".github" / "workflows" / "sdlc-tag.yml").read_text(encoding="utf-8")
+    assert "GITHUB_REF_NAME: ${{ github.ref_name }}" in text
+    assert "SDLC_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}" in text
+    assert "SKIPPED: ${{ steps.tag.outputs.skipped }}" in text
+    assert "workflow_dispatch:" in text and "branches: [main]" in text
+
+
 class _FakeResponse:
     def __init__(self, status, payload):
         self.status, self._payload = status, payload

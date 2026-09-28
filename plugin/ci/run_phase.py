@@ -575,16 +575,35 @@ def prepare_branch(
 
 # --- the guardrails on the branch (decision 6, layer iii: prevention) -------------------------
 GUARDRAIL_PARK = "guardrail file changed on the branch: {files}; CI refuses to run a phase on it"
+NO_MERGE_BASE_PARK = (
+    "no merge base with {base}: the branch shares no commit with the default branch, so its "
+    "guardrail edits cannot be judged; CI refuses to run a phase on it"
+)
+
+
+class NoMergeBase(Exception):
+    """The default branch exists but HEAD shares no history with it (an orphan branch, a
+    shallow clone that stopped short of the fork point): the committed diff is empty for
+    the wrong reason, so nothing judged on it may pass (readiness review, group B)."""
+
+    def __init__(self, base: str) -> None:
+        super().__init__(NO_MERGE_BASE_PARK.format(base=base))
+        self.base = base
 
 
 def _committed_diff(root: Path) -> tuple[list[str], str | None]:
-    """(files changed against the base branch, the merge base) — committed changes only."""
+    """(files changed against the base branch, the merge base) — committed changes only.
+    Raises ``NoMergeBase`` when a base exists and shares no commit with HEAD; with no base
+    at all (no remote, no main or master) there is nothing to compare with and the list is
+    empty, as ``gate/diff.py`` reads it."""
     from state import gitops
 
     base = gate_diff.default_base(root)
+    if base == "HEAD":
+        return [], None
     merge_base = gitops.run(root, "merge-base", base, "HEAD", check=False).strip()
     if not merge_base:
-        return [], None
+        raise NoMergeBase(base)
     out = gitops.run(root, "diff", "--name-only", merge_base, "HEAD", check=False)
     files = [line.strip().replace("\\", "/") for line in out.splitlines() if line.strip()]
     return files, merge_base
@@ -593,7 +612,8 @@ def _committed_diff(root: Path) -> tuple[list[str], str | None]:
 def guardrail_changes(root: Path, change_dir: Path, config: dict[str, Any]) -> list[str]:
     """The guardrail files this branch changes, unless intent.md says it is a framework
     change (OPERATING_MODEL section 3). The hook denies such an edit inside a run; this is
-    the same rule applied to a branch the run inherits."""
+    the same rule applied to a branch the run inherits. Raises ``NoMergeBase`` (the caller
+    parks) when the branch shares no history with the default branch."""
     from hooks import protected_paths as pp
 
     if not gate_diff.is_repo(root):
@@ -1310,16 +1330,14 @@ def run_phase(args, env: dict[str, str]) -> int:
             return EXIT_OK
 
     # the branch itself must be clean of guardrail edits before a run touches it (decision 6)
-    guardrails = guardrail_changes(root, change_dir, config)
-    if guardrails:
+    try:
+        guardrails = guardrail_changes(root, change_dir, config)
+        guardrail_park = GUARDRAIL_PARK.format(files=", ".join(guardrails)) if guardrails else ""
+    except NoMergeBase as exc:  # an empty diff for the wrong reason never passes
+        guardrail_park = str(exc)
+    if guardrail_park:
         parked = park_and_publish(
-            plugin_dir,
-            root,
-            change_dir,
-            st,
-            phase,
-            GUARDRAIL_PARK.format(files=", ".join(guardrails)),
-            branch=fix_branch,
+            plugin_dir, root, change_dir, st, phase, guardrail_park, branch=fix_branch
         )
         _emit({**parked, "branch": branch})
         return EXIT_OK
@@ -2173,7 +2191,10 @@ def upsert_outcome(call: dict[str, Any], fallback_number: int | None = None) -> 
     reason = str(data.get("reason") or call.get("reason") or "")
     if not ok and not reason:
         reason = f"pr upsert took route {route!r} and opened no pull request"
-    return {"ok": ok, "route": route, "number": number, "url": url, "reason": reason}
+    out = {"ok": ok, "route": route, "number": number, "url": url, "reason": reason}
+    if data.get("build_pr_recorded"):
+        out["build_pr_recorded"] = data["build_pr_recorded"]
+    return out
 
 
 def ensure_pr(
@@ -2213,7 +2234,17 @@ def ensure_pr(
     if branch:
         argv += ["--head", branch]
     call = _cli_call(plugin_dir / "plugin" / "pr" / "cli.py", argv)
-    return {**out, **upsert_outcome(call, fallback_number=number)}
+    outcome = {**out, **upsert_outcome(call, fallback_number=number)}
+    if outcome.get("build_pr_recorded"):
+        # the upsert wrote ``build_pr`` into status.yaml (0.2.27): the record must reach the
+        # branch, where the release approval and the default branch's copy read it
+        outcome["build_pr_commit"] = _cli_call(
+            plugin_dir / "plugin" / "state" / "cli.py",
+            ["commit-phase", "--root", str(root), "--id", change_id, "--phase", branch_phase,
+             "--message", f"run({phase}): build pull request #{outcome['build_pr_recorded']} "
+             "recorded", "--push", *(["--branch", branch] if branch else [])],
+        )  # fmt: skip
+    return outcome
 
 
 # --- CLI --------------------------------------------------------------------------------------

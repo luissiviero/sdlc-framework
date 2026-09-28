@@ -244,7 +244,11 @@ def collect(root: Path, base: str | None = None) -> Diff:
     else:
         mb = _git(root, "merge-base", base, "HEAD", check=False).strip()
         merge_base = mb or None
-        note = "" if mb else f"no merge base with {base}: comparing against HEAD"
+        # A base that shares no history with HEAD (an orphan branch, a shallow clone that
+        # stopped short of the fork point): ``merge_base`` None, ``commits`` empty and
+        # ``committed_files`` empty. The checks that judge the committed diff fail on it
+        # (``checks._no_base``), never pass on the empty list (readiness review, group B).
+        note = "" if mb else f"no merge base with {base}: the committed diff cannot be judged"
     ref = merge_base or "HEAD"
     files = _z(_git(root, "diff", "--name-only", "-z", "--diff-filter=ACMRD", ref, check=False))
     files = sorted(

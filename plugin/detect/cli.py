@@ -36,6 +36,7 @@ failure (the source unreachable, git or GitHub refused), 2 a usage error.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -199,7 +200,9 @@ def _commits_between(root: Path, since: str | None, until: str | None) -> list[d
     name); [] outside a git checkout."""
     if not since or not gitops.is_repo(root):
         return []
-    ref = f"origin/{_default_branch(root)}"
+    ref = _approved_ref(
+        _default_branch(root)
+    )  # fully qualified: a tag named origin/<default> never shadows it
     args = [
         "log",
         ref,
@@ -290,7 +293,7 @@ def open_incidents(root: Path, metric: str) -> list[dict[str, Any]]:
     ``sdlc/<id>/a`` carries a detection record for the metric), not abandoned, and not yet
     shipped (the default branch's copy of the change is not at phase e). One finding per
     metric at a time keeps the queue quiet (p.44 step 6)."""
-    default = f"origin/{_default_branch(root)}"
+    default = _approved_ref(_default_branch(root))
     found = []
     for change_id, ref in _remote_incident_dirs(root):
         # ``git show <ref>:changes`` lists a tree with one entry per line, directories with
@@ -349,21 +352,48 @@ def open_incidents(root: Path, metric: str) -> list[dict[str, Any]]:
     return found
 
 
-def _with_pending_dismissals(root: Path, store: dict[str, Any]) -> dict[str, Any]:
+def _dismissal_rejected(repo: str | None, branch: str, root: Path) -> str | None:
+    """Why the dismissal on ``branch`` no longer counts: its pull request was closed without
+    a merge (the owner rejected the dismissal), so the finding must return. None while the
+    PR is open, merged, not opened yet, or unknown (no ``--repo``: a by-hand run keeps the
+    branch's word, as before). The readiness review's group B (0.2.27): a rejected
+    ``sdlc/<id>/dismiss`` PR kept suppressing the finding for as long as its branch lived."""
+    if not repo:
+        return None
+    try:
+        found = _github().find_pr(repo, branch, state="all", cwd=root)
+    except Exception:  # noqa: BLE001 - no route: the branch's word stands, as before
+        return None
+    if not isinstance(found, dict) or not found.get("ok") or not found.get("number"):
+        return None
+    if str(found.get("state") or "").lower() == "closed" and not found.get("merged"):
+        return f"pull request #{found['number']} for {branch} was closed without a merge"
+    return None
+
+
+def _with_pending_dismissals(
+    root: Path, store: dict[str, Any], repo: str | None = None
+) -> dict[str, Any]:
     """The store plus the entries of every ``origin/sdlc/<id>/dismiss`` branch: a dismissal
     the owner has not merged yet still suppresses its finding (else the closed incident
-    would be refiled the next morning, p.47 step 4)."""
+    would be refiled the next morning, p.47 step 4) — unless its pull request was closed
+    without a merge (``_dismissal_rejected``; needs ``repo``). The refs are read fully
+    qualified: a tag named ``origin/sdlc/<id>/dismiss`` never stands in for the branch."""
     try:
-        out = gitops.run(
-            root, "for-each-ref", "--format=%(refname:short)", "refs/remotes/origin/sdlc/"
-        )
+        out = gitops.run(root, "for-each-ref", "--format=%(refname)", "refs/remotes/origin/sdlc/")
     except (gitops.GitError, FileNotFoundError):
         return store
     entries = dict(store.get("entries") or {})
-    for ref in out.split():
-        if not ref.endswith("/dismiss"):
+    rejected: dict[str, str] = {}
+    for full in out.split():
+        if not full.endswith("/dismiss") or not full.startswith("refs/remotes/"):
             continue
-        raw = _show(root, ref, f"{c.CHANGES_DIR}/{dismissals.FILE}")
+        ref = full[len("refs/remotes/") :]  # ``origin/sdlc/<id>/dismiss``, as reported
+        why = _dismissal_rejected(repo, ref[len("origin/") :], root)
+        if why:
+            rejected[ref] = why
+            continue
+        raw = _show(root, full, f"{c.CHANGES_DIR}/{dismissals.FILE}")
         if not raw:
             continue
         try:
@@ -374,7 +404,10 @@ def _with_pending_dismissals(root: Path, store: dict[str, Any]) -> dict[str, Any
         for sig, entry in (pending or {}).items():
             if isinstance(entry, dict):
                 entries.setdefault(sig, {**entry, "pending": ref})
-    return {**store, "entries": entries}
+    out_store = {**store, "entries": entries}
+    if rejected:
+        out_store["rejected_dismissals"] = rejected
+    return out_store
 
 
 def _observations_to_points(observations: list[dict[str, Any]]) -> list[stats.Point]:
@@ -446,7 +479,7 @@ def file_change(root: Path, record: dict[str, Any], *, push: bool, dry_run: bool
     change_dir = root / data["dir"]
     finding.write(change_dir / art.EVIDENCE_DIR / finding.DETECTION_FILE, record)
     default = _default_branch(root)
-    start = f"origin/{default}" if gitops.has_remote(root) else default
+    start = _approved_ref(default) if gitops.has_remote(root) else default
     argv = ["commit-phase", "--root", str(root), "--id", change_id, "--phase", "f",
             "--message", f"maintain({change_id}): detection {metric} tier {record['tier']}",
             "--start-point", start]  # fmt: skip
@@ -576,7 +609,9 @@ def cmd_run(args) -> int:
     filed: dict[str, Any] = {}
     if verdict.tier >= 2:
         store = dismissals.load(dismissals.path_for(root, c.CHANGES_DIR))
-        store = _with_pending_dismissals(root, store)
+        store = _with_pending_dismissals(root, store, args.repo)
+        if store.get("rejected_dismissals"):
+            out["rejected_dismissals"] = store["rejected_dismissals"]
         entry = dismissals.lookup(store, record["signature"])
         open_ones = open_incidents(root, metric)
         if entry:
@@ -617,6 +652,10 @@ def cmd_run(args) -> int:
             "reason": verdict.reason,
         },
     )
+    filed_dir = c.find_change_dir(root, filed["change_id"]) if filed.get("change_id") else None
+    snapshot = detection_digest(filed_dir) if filed_dir is not None else ""
+    if snapshot:
+        out["detection_sha256"] = snapshot
     _github_output(
         {
             "tier": verdict.tier,
@@ -624,6 +663,7 @@ def cmd_run(args) -> int:
             "outcome": outcome,
             "change_id": filed.get("change_id") or "",
             "head_ref": c.branch_name(filed["change_id"], "a") if filed.get("change_id") else "",
+            "detection_sha256": snapshot,
         }
     )
     _emit(out)
@@ -645,6 +685,33 @@ def _load_finding(change_dir: Path) -> dict[str, Any]:
     if record is None:
         raise SystemExit(why)
     return record
+
+
+def detection_digest(change_dir: Path) -> str:
+    """The sha256 of ``evidence/detection.json`` as it stands, "" when there is none. ``run``
+    prints it as a step output before the maintain session starts, and ``finish`` compares
+    (``--detection-sha256``): the two steps share one checkout and the session holds ``Write``
+    and ``Bash(git *)``, so it could raise the tier of the record ``finish`` judges and have a
+    pre-approved runbook run (PROGRESS session 8, "the shared checkout"; the readiness
+    review's group B, 0.2.27). A step output lives in the runner, not in the checkout."""
+    path = change_dir / art.EVIDENCE_DIR / finding.DETECTION_FILE
+    try:
+        return hashlib.sha256(path.read_bytes()).hexdigest()
+    except OSError:
+        return ""
+
+
+def _snapshot_mismatch(change_dir: Path, expected: str | None) -> str | None:
+    """Why the detection record is not the one the detect step wrote, or None."""
+    if not expected:
+        return None  # by hand, no snapshot: the record's word stands, as before
+    actual = detection_digest(change_dir)
+    if actual == expected.strip().lower():
+        return None
+    return (
+        f"sha256 {actual[:12] or 'missing'} now, {expected.strip().lower()[:12]} when the "
+        "detect step wrote it"
+    )
 
 
 def cmd_routes(args) -> int:
@@ -980,6 +1047,32 @@ def cmd_finish(args) -> int:
         dispatch = {"acted": False, "reason": why}
         _emit({"change_id": args.id, "parked": st.parked_reason, "dispatch": dispatch})
         return EXIT_OK
+    changed = _snapshot_mismatch(change_dir, getattr(args, "detection_sha256", None))
+    if changed:
+        # the session changed the record this step judges: the route is refused, the change
+        # parked where the owner will find it (the branch and its PR), the run red
+        reason = c.DETECTION_SNAPSHOT_PARK_PREFIX + changed
+        st.park(reason)
+        status_mod.write_status(change_dir, st)
+        out = {
+            "change_id": args.id,
+            "parked": reason,
+            "dispatch": {
+                "acted": False,
+                "reason": "the detection record changed after the detect step",
+            },
+            "snapshot": {"expected": args.detection_sha256, "actual": detection_digest(change_dir)},
+        }
+        if not args.dry_run:
+            out["park_commit"] = _commit_change(
+                root, args.id, f"park: {reason}"[:500], push=not args.no_push
+            )
+            pr, code, err = _cli(
+                PR_CLI, ["upsert", "--root", str(root), "--id", args.id, "--phase", "f"], root
+            )
+            out["pr"] = pr or {"error": err, "exit": code}
+        _emit(out)
+        return EXIT_FAILED
     record = _load_finding(change_dir)
     config = _config_or_empty(root)
     proposal, resolved, why = _judge(root, change_dir, record, config, args.repo)
@@ -1243,10 +1336,18 @@ def _finding_for_dismissal(change_dir: Path) -> tuple[str, str, str, int | None]
     return None
 
 
+# Whose comment may close an incident: a member of the repository, as the fix round reads
+# reviews (``ci/fix_requests.py``); on a public repository anyone can comment on the PR.
+MEMBER_ASSOCIATIONS = ("OWNER", "MEMBER", "COLLABORATOR")
+
+
 def _closing_reason(repo: str, number: int, config: dict[str, Any], root: Path):
-    """The last comment by a person on the PR: (reason, login) or (None, why). ``config`` is
-    the approved ``sdlc.yaml`` (``_approved_config``), whose automation identity is not a
-    person; a GitHub tool's attribution footer is not part of the reason."""
+    """The last comment by a member of the repository on the PR: (reason, login) or (None,
+    why). ``config`` is the approved ``sdlc.yaml`` (``_approved_config``), whose automation
+    identity is not a person; a GitHub tool's attribution footer is not part of the reason.
+    A comment whose ``author_association`` is not ``OWNER``, ``MEMBER`` or ``COLLABORATOR``
+    is skipped (the readiness review's group B, 0.2.27): on a public repository anyone can
+    comment, and that text became the dismissal's reason — and the dismissal itself."""
     result = _github().issue_comments(repo, number, cwd=root)
     if not result.get("ok"):
         return None, None, f"could not read the comments: {result.get('reason') or 'failed'}"
@@ -1257,11 +1358,17 @@ def _closing_reason(repo: str, number: int, config: dict[str, Any], root: Path):
             continue
         if is_automation(author, "", identities):
             continue
+        if str(comment.get("association") or "").upper() not in MEMBER_ASSOCIATIONS:
+            continue
         text = TOOL_FOOTER_RE.sub("", "\n" + str(comment.get("body") or "").rstrip())
         body = " ".join(text.split())
         if body:
             return body, author, ""
-    return None, None, "no comment by a person on the pull request: nothing dismissed"
+    return (
+        None,
+        None,
+        "no comment by a member of the repository on the pull request: nothing dismissed",
+    )
 
 
 def cmd_dismiss(args) -> int:
@@ -1311,9 +1418,10 @@ def cmd_dismiss(args) -> int:
             original = gitops.run(root, "rev-parse", "HEAD").strip()
     try:
         if gitops.is_repo(root):
-            start = f"origin/{default}" if gitops.has_remote(root) else default
-            if gitops.has_remote(root) and _show(root, f"origin/{branch}", ".") is not None:
-                start = f"origin/{branch}"  # a second close: continue the pending dismissal
+            start = _approved_ref(default) if gitops.has_remote(root) else default
+            pending = f"refs/remotes/origin/{branch}"
+            if gitops.has_remote(root) and _show(root, pending, ".") is not None:
+                start = pending  # a second close: continue the pending dismissal
             gitops.checkout_branch(root, branch, start)
         path = dismissals.path_for(root, c.CHANGES_DIR)
         store = dismissals.add(
@@ -1395,6 +1503,12 @@ def build_parser() -> argparse.ArgumentParser:
             s.add_argument("--no-push", action="store_true")
         if name == "dispatch":
             s.add_argument("--commit", action="store_true", help="commit the record on the branch")
+        if name == "finish":
+            s.add_argument(
+                "--detection-sha256",
+                default=None,
+                help="the digest `run` printed (detection_sha256): a changed record is refused",
+            )
         if name in ("go", "park", "dismiss"):
             s.add_argument("--pr-number", type=int, default=None)
         if name == "park":

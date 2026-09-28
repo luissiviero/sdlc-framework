@@ -244,6 +244,7 @@ _EMPTY_PR: dict[str, Any] = {
     "merged": False,
     "merge_commit_sha": None,
     "head_ref": None,
+    "head_sha": None,
     "base_ref": None,
     "labels": [],
     "html_url": None,
@@ -264,6 +265,7 @@ def _pr_from_api(item: dict[str, Any]) -> dict[str, Any]:
         "merged": bool(merged),
         "merge_commit_sha": item.get("merge_commit_sha"),
         "head_ref": (item.get("head") or {}).get("ref"),
+        "head_sha": (item.get("head") or {}).get("sha"),
         "base_ref": (item.get("base") or {}).get("ref"),
         "labels": [lb.get("name") for lb in item.get("labels") or []],
         "html_url": item.get("html_url"),
@@ -273,7 +275,7 @@ def _pr_from_api(item: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-GH_PR_FIELDS = "number,url,labels,isDraft,state,mergeCommit,headRefName,baseRefName"
+GH_PR_FIELDS = "number,url,labels,isDraft,state,mergeCommit,headRefName,headRefOid,baseRefName"
 
 
 def _pr_from_gh(item: dict[str, Any]) -> dict[str, Any]:
@@ -285,6 +287,7 @@ def _pr_from_gh(item: dict[str, Any]) -> dict[str, Any]:
         "merged": state == "merged",
         "merge_commit_sha": (item.get("mergeCommit") or {}).get("oid"),
         "head_ref": item.get("headRefName"),
+        "head_sha": item.get("headRefOid"),
         "base_ref": item.get("baseRefName"),
         "labels": [lb.get("name") for lb in item.get("labels") or []],
         "html_url": item.get("url"),
@@ -331,8 +334,9 @@ def find_pr(
     repo: str, head_branch: str, state: str = "open", cwd: str | Path | None = None
 ) -> dict[str, Any]:
     """The most recent pull request from ``head_branch`` in ``state`` (open, closed or all):
-    {'route', 'ok', 'number', 'state', 'merged', 'merge_commit_sha', 'head_ref', 'base_ref',
-    'labels', 'html_url', 'url', 'draft', 'reason'} - number None when there is none."""
+    {'route', 'ok', 'number', 'state', 'merged', 'merge_commit_sha', 'head_ref', 'head_sha',
+    'base_ref', 'labels', 'html_url', 'url', 'draft', 'reason'} - number None when there is
+    none."""
     if state not in PR_STATES:
         raise ValueError(f"state must be one of {PR_STATES}, not {state!r}")
     return _attempt(

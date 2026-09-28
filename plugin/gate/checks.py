@@ -124,17 +124,34 @@ NO_BASE_REASON = "no base branch: the committed diff cannot be judged"
 NO_BASE_NEED = (
     "Run the gate in a checkout whose default branch exists (origin/HEAD, main or master)"
 )
+NO_MERGE_BASE_REASON = "no merge base with {base}: the committed diff cannot be judged"
+NO_MERGE_BASE_NEED = (
+    "Start the branch from the default branch, or fetch its whole history (fetch-depth: 0): "
+    "a branch that shares no commit with {base} has no committed diff to judge"
+)
 
 
 def _no_base(ctx: GateContext, name: str) -> CheckResult | None:
     """The failure of a check that judges the committed diff when there is nothing to judge
     it against: ``diff.default_base`` found no default branch at all (``diff.collect`` then
     compares HEAD with itself, ``base`` "HEAD", and the committed diff is empty whatever the
-    branch carries). A checkout of the default branch itself is not this case: its merge base
-    is HEAD because nothing was committed on top of the base yet."""
-    if ctx.diff is None or ctx.diff.base != "HEAD":
+    branch carries), or the base exists and shares no history with HEAD (an orphan branch,
+    a shallow clone: ``merge_base`` None, and the committed diff is empty the same way —
+    the readiness review's group B, 0.2.27). A checkout of the default branch itself is
+    neither case: its merge base is HEAD because nothing was committed on top of the base
+    yet."""
+    if ctx.diff is None:
         return None
-    return _fail(name, NO_BASE_REASON, NO_BASE_NEED, note=ctx.diff.note)
+    if ctx.diff.base == "HEAD":
+        return _fail(name, NO_BASE_REASON, NO_BASE_NEED, note=ctx.diff.note)
+    if ctx.diff.merge_base is None:
+        return _fail(
+            name,
+            NO_MERGE_BASE_REASON.format(base=ctx.diff.base),
+            NO_MERGE_BASE_NEED.format(base=ctx.diff.base),
+            note=ctx.diff.note,
+        )
+    return None
 
 
 # --- 1. artifact exists and matches its template ---------------------------------------------

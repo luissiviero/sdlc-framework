@@ -207,6 +207,53 @@ def test_a_second_revert_run_reuses_the_branch_and_the_open_pr(project, gh):
     assert current(project) == "main" and clean(project)
 
 
+def test_a_planted_local_runbook_branch_is_refused_by_name(project, gh):
+    """The readiness review's group B (0.2.27): the maintain session runs before the
+    runbook step in the same checkout with ``Bash(git *)``; a local ``sdlc/<id>/revert-*``
+    or ``quarantine`` branch it planted was checked out and pushed as the runbook's own
+    work. A local branch that origin does not carry at the same tip is refused, naming it."""
+    sha = commit(project, {"app.py": "VALUE = 2\n"}, "change the value")
+    push(project)
+    planted = f"sdlc/0007/revert-{sha[:7]}"
+    git(project, "checkout", "-q", "-b", planted)
+    commit(project, {"app.py": "VALUE = 'planted'\n"}, "planted by the session")
+    git(project, "checkout", "-q", "main")
+    out = runbooks.revert_pr(project, "0007", {"sha": sha}, repo="o/r")
+    assert out.status == "failed"
+    assert planted in out.reason and "no such remote branch" in out.reason
+    assert "never reuses a branch it did not push" in out.reason
+    assert gh.named("create_pr") == [] and gh.named("set_labels") == []  # read, never proposed
+    assert current(project) == "main" and clean(project)
+    assert planted not in git(bare(project), "branch", "--list", planted)
+    # the same for the quarantine branch, when origin carries it at another tip
+    git(project, "checkout", "-q", "-b", "sdlc/0007/quarantine")
+    commit(project, {"note.txt": "pushed earlier\n"}, "the runbook's own earlier work")
+    git(project, "push", "-q", "-u", "origin", "sdlc/0007/quarantine")
+    commit(project, {"app.py": "VALUE = 'planted'\n"}, "planted on top")
+    git(project, "checkout", "-q", "main")
+    out = quarantine(project)
+    assert out.status == "failed" and "sdlc/0007/quarantine" in out.reason
+    assert "never reuses a branch it did not push" in out.reason
+    assert current(project) == "main" and clean(project)
+
+
+def test_a_tag_named_origin_main_never_shadows_the_default_branch(project, gh):
+    """The class 0.2.24 fixed in the pin script (NOTES section 17): git resolves
+    ``refs/tags/origin/main`` before ``refs/remotes/origin/main``. A session could plant
+    the tag on an old commit, and the runbook then judged the sha "not on the default
+    branch" (revert) or started its branch from the old commit (quarantine)."""
+    old = git(project, "rev-parse", "HEAD").strip()
+    sha = commit(project, {"app.py": "VALUE = 2\n"}, "change the value")
+    push(project)
+    git(project, "tag", "origin/main", old)
+    out = runbooks.revert_pr(project, "0007", {"sha": sha}, repo="o/r")
+    assert out.status == "ran", out.reason
+    assert git(bare(project), "rev-parse", f"{out.branch}~1").strip() == sha
+    quarantined = quarantine(project)
+    assert quarantined.status == "ran", quarantined.reason
+    assert git(bare(project), "rev-parse", "sdlc/0007/quarantine~1").strip() == sha
+
+
 def test_revert_without_a_remote_commits_on_the_branch(tmp_path, gh):
     root = make_repo(tmp_path, {"app.py": "VALUE = 1\n"}, remote=False)
     sha = commit(root, {"app.py": "VALUE = 2\n"}, "change")

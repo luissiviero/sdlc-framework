@@ -583,6 +583,44 @@ def test_check_run_without_remote_reports_route_none(project, capsys):
     assert out["name"] == "sdlc/d" and "test red" in out["summary"]
 
 
+def test_upsert_records_the_build_pr_in_status_yaml(project, capsys, recorder):
+    """The readiness review's group B (0.2.27): the release approval reads the change's own
+    build PR by the number ``status.yaml`` records; ``upsert`` writes it when the PR of the
+    work branch ``sdlc/<id>/c`` is opened or found, and leaves the other phases' PRs alone."""
+    root, change = project
+    calls, answers = recorder
+    gate_json(change, "b", "pass", c.ready_label("b"))
+    gate_json(change, "c", "park", c.NEEDS_HUMAN_LABEL)
+    answers[("GET", "/pulls?")] = {"status": 200, "data": [], "error": ""}
+    answers[("POST", "/repos/o/r/pulls")] = {
+        "status": 201,
+        "data": {"number": 41, "html_url": "https://github.com/o/r/pull/41", "node_id": "PR_41"},
+        "error": "",
+    }
+    git(root, "remote", "add", "origin", "https://github.com/o/r.git")
+    assert pr_cli.main(["upsert", "--root", str(root), "--id", "0001", "--phase", "b"]) == 0
+    out = json.loads(capsys.readouterr().out)
+    assert out["number"] == 41 and "build_pr_recorded" not in out
+    assert status_mod.read_status(change).build_pr is None  # the spec PR is not the build PR
+    assert (
+        pr_cli.main(["upsert", "--root", str(root), "--id", "0001", "--phase", "c", "--draft"]) == 0
+    )
+    out = json.loads(capsys.readouterr().out)
+    assert out["number"] == 41 and out["build_pr_recorded"] == 41
+    assert status_mod.read_status(change).build_pr == 41
+    assert "build_pr: 41" in (change / "status.yaml").read_text(encoding="utf-8")
+    # a second upsert of the same PR changes nothing
+    answers[("GET", "/pulls?")] = {
+        "status": 200,
+        "data": [{"number": 41, "html_url": "https://github.com/o/r/pull/41", "labels": []}],
+        "error": "",
+    }
+    answers[("PATCH", "/repos/o/r/pulls/41")] = {"status": 200, "data": {"number": 41}, "error": ""}
+    assert pr_cli.main(["upsert", "--root", str(root), "--id", "0001", "--phase", "d"]) == 0
+    out = json.loads(capsys.readouterr().out)
+    assert out["number"] == 41 and "build_pr_recorded" not in out
+
+
 def test_upsert_posts_the_phase_check_run_when_asked(project, capsys, monkeypatch):
     """The phase (d) runbook line is one command: upsert --check-run (build guide step 28)."""
     root, change = project

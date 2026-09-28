@@ -281,6 +281,13 @@ def _release(args, env, github, git, say) -> int:
     if st.phase != "e":
         say("skip", f"change {change_id} is at phase {st.phase}, not e")
         return 0
+    if st.build_pr is not None and int(st.build_pr) != int(args.pr):
+        # the recorded build PR is the one the approval belongs to (0.2.27)
+        say(
+            "skip",
+            f"pull request #{args.pr} is not the build PR #{st.build_pr} status.yaml records",
+        )
+        return 0
     say("phase", "e")
     # (5) the release approval (decision 13)
     if production:

@@ -38,7 +38,19 @@ install step interpolates it into a shell command; anything else stops the workf
 
 Exit codes: 0 the pin was read; 1 sdlc.yaml is missing or carries no ``plugin.version``
 (the workflow must then stop rather than silently check out the framework's default branch);
-2 ``plugin.claude_code`` is not a version string.
+2 ``plugin.claude_code`` is not a version string; 3 the framework checkout failed the
+verification below.
+
+``--verify-framework <dir> --pin-ref <ref> [--origin <url>]`` (plugin 0.2.27) runs between
+the two steps of a job that share one checkout after a model's session — the deploy job's
+review pass and phase (e), the detect job's phase (f) and ``finish`` — because the session
+holds ``Write`` and ``Bash(git *)`` there (the review of the 0.2.26 diff, M4; the 1.0.0
+readiness review, group B). It checks that the framework checkout in ``<dir>`` is clean and
+at the commit ``<ref>`` names (the pin the first step read), that the project's ``origin``
+is ``<url>`` with the default fetch refspec ``+refs/heads/*:refs/remotes/origin/*``, then
+fetches the default branch afresh into its remote-tracking ref and re-reads the pin there,
+which must equal ``<ref>``. Anything else prints every mismatch and exits 3, so the job
+stops red before the step that would have run the tampered code or read the tampered copy.
 """
 
 from __future__ import annotations
@@ -116,6 +128,78 @@ def read_at_ref(root: Path, ref: str, file: str) -> str | None:
     return _git_show(root, tracking, file)
 
 
+DEFAULT_FETCH_REFSPEC = "+refs/heads/*:refs/remotes/origin/*"
+
+
+def _git(cwd: Path, *args: str) -> tuple[int, str]:
+    proc = subprocess.run(
+        ["git", *args], cwd=cwd, capture_output=True, text=True, encoding="utf-8", check=False
+    )
+    return proc.returncode, (proc.stdout if proc.returncode == 0 else proc.stderr).strip()
+
+
+def verify_framework(
+    root: Path, framework: Path, pin_ref: str, origin: str | None, default_ref: str | None
+) -> list[str]:
+    """The mismatches between the checkouts and what the first step of the job established
+    (see the module docstring); [] when everything holds. The default branch is fetched
+    afresh before the second step reads it."""
+    problems: list[str] = []
+    if not (framework / ".git").exists() and not (framework / ".git").is_file():
+        return [f"{framework} is not a git checkout"]
+    code, dirty = _git(framework, "status", "--porcelain", "--untracked-files=all")
+    if code != 0:
+        problems.append(f"framework: git status failed: {dirty}")
+    elif dirty:
+        changed = ", ".join(line.split(maxsplit=1)[-1] for line in dirty.splitlines()[:10])
+        problems.append(f"framework checkout is not clean: {changed}")
+    code, head = _git(framework, "rev-parse", "HEAD")
+    if code != 0:
+        problems.append(f"framework: no HEAD: {head}")
+        head = ""
+    code, pinned = _git(framework, "rev-parse", "--verify", "--quiet", f"{pin_ref}^{{commit}}")
+    if code != 0:
+        code, listed = _git(
+            framework, "ls-remote", "origin", f"refs/tags/{pin_ref}^{{}}", f"refs/tags/{pin_ref}"
+        )
+        pinned = listed.split()[0] if code == 0 and listed.split() else ""
+    if not pinned:
+        problems.append(
+            f"framework: the pin {pin_ref} names no commit the checkout or origin knows"
+        )
+    elif head and head != pinned:
+        problems.append(
+            f"framework checkout is at {head[:10]}, not at the pin {pin_ref} ({pinned[:10]})"
+        )
+    code, refspec = _git(root, "config", "--get-all", "remote.origin.fetch")
+    specs = [line.strip() for line in refspec.splitlines() if line.strip()] if code == 0 else []
+    if specs != [DEFAULT_FETCH_REFSPEC]:
+        problems.append(
+            f"remote.origin.fetch is {specs or 'unset'}, not [{DEFAULT_FETCH_REFSPEC!r}]"
+        )
+    code, url = _git(root, "config", "--get", "remote.origin.url")
+    if origin:
+        expected = {origin, origin + ".git", origin.rstrip("/") + "/"}
+        if code != 0 or url not in expected:
+            problems.append(f"remote.origin.url is {url or 'unset'!r}, not {origin!r}")
+    branch = tracked_branch(default_ref or "")
+    if branch:
+        tracking = f"refs/remotes/origin/{branch}"
+        code, out = _git(root, "fetch", "origin", f"+refs/heads/{branch}:{tracking}")
+        if code != 0:
+            problems.append(f"cannot fetch the default branch {branch} from origin: {out}")
+        else:
+            text = _git_show(root, tracking, "sdlc.yaml")
+            version = read_key(plugin_block(text or ""), "version")
+            fresh = f"v{version.removeprefix('v')}" if version else ""
+            if fresh != pin_ref:
+                problems.append(
+                    f"the default branch's pin is {fresh or 'unreadable'} after a fresh fetch, "
+                    f"the job's pin is {pin_ref}"
+                )
+    return problems
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="sdlc-pin", description=__doc__.splitlines()[0])
     parser.add_argument("--root", default=".")
@@ -125,7 +209,33 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help="read the file at this git ref (workflows: refs/remotes/origin/<default>)",
     )
+    parser.add_argument(
+        "--verify-framework",
+        default=None,
+        metavar="DIR",
+        help="check the framework checkout in DIR before a job's second step (see the docstring)",
+    )
+    parser.add_argument("--pin-ref", default=None, help="with --verify-framework: the pin read")
+    parser.add_argument("--origin", default=None, help="with --verify-framework: origin's URL")
     args = parser.parse_args(argv)
+
+    if args.verify_framework:
+        if not args.pin_ref or args.pin_ref.startswith("-"):
+            print("--verify-framework needs --pin-ref v<version>", file=sys.stderr)
+            return 3
+        problems = verify_framework(
+            Path(args.root),
+            Path(args.root) / args.verify_framework,
+            args.pin_ref,
+            args.origin,
+            args.ref,
+        )
+        if problems:
+            for problem in problems:
+                print(f"framework verification failed: {problem}", file=sys.stderr)
+            return 3
+        print(f"verified={args.verify_framework}@{args.pin_ref}")
+        return 0
 
     path = Path(args.root) / args.file
     if args.ref:

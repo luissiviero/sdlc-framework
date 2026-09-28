@@ -457,8 +457,11 @@ def test_detect_workflow_is_scheduled_deterministic_and_runs_the_diagnosis_only_
     finish = steps["Dispatch the route, run gate (f) and open the intent PR"]
     assert finish["if"] == "steps.detect.outputs.change_id != ''"
     assert finish["run"] == (
-        'python framework/plugin/detect/cli.py finish --root . --id "$CHANGE_ID" --repo "$REPO"'
+        'python framework/plugin/detect/cli.py finish --root . --id "$CHANGE_ID" --repo "$REPO" '
+        '--detection-sha256 "$DETECTION_SHA256"'
     )
+    # 0.2.27: the record finish judges is the one the Detect step wrote (a step output)
+    assert finish["env"]["DETECTION_SHA256"] == "${{ steps.detect.outputs.detection_sha256 }}"
     assert "secrets." not in json.dumps(finish) and "secrets." in json.dumps(phase)
     for step in (detect, finish):
         assert step["env"]["SDLC_DEFAULT_BRANCH"] == DEFAULT_BRANCH_EXPR
@@ -671,6 +674,102 @@ def test_pin_script_reads_the_default_branch_s_pin_not_the_head_s(tmp_path):
     git("tag", "-d", "origin/main")
     assert "ref=v0.2.16" in pin("--ref", "origin/main").stdout
     assert pin("--ref=--output=x").returncode == 1
+
+
+def test_pin_script_verifies_the_framework_checkout_before_a_job_s_second_step(tmp_path):
+    """The review of the 0.2.26 diff, M4 (the readiness review's group B, 0.2.27): the deploy
+    and detect jobs run a session with Write and Bash(git *) between two steps that share
+    one checkout; the second step ran whatever ``framework/`` then held and read the
+    default branch through whatever refspec then stood. ``--verify-framework`` refuses a
+    dirty or moved framework checkout, a changed refspec or origin, and a pin the freshly
+    fetched default branch does not carry."""
+    import subprocess
+    import sys
+
+    script = TEMPLATE / ".github" / "scripts" / "sdlc_pin.py"
+
+    def git(cwd, *args):
+        return subprocess.run(
+            ["git", *args], cwd=cwd, check=True, capture_output=True, text=True
+        ).stdout.strip()
+
+    def init(path, branch="main"):
+        path.mkdir(parents=True, exist_ok=True)
+        git(path, "init", "-q", "-b", branch)
+        git(path, "config", "user.email", "owner@example.com")
+        git(path, "config", "user.name", "Owner")
+
+    # the framework's own repository, tagged v0.2.16, checked out at the tag into framework/
+    fw_origin = tmp_path / "framework-origin"
+    init(fw_origin)
+    (fw_origin / "plugin.py").write_text("PIN = 1\n", encoding="utf-8")
+    git(fw_origin, "add", ".")
+    git(fw_origin, "commit", "-q", "-m", "0.2.16")
+    git(fw_origin, "tag", "v0.2.16")
+    (fw_origin / "plugin.py").write_text("PIN = 2\n", encoding="utf-8")
+    git(fw_origin, "commit", "-q", "-am", "later")
+    # the project, with a bare origin whose main pins 0.2.16
+    bare = tmp_path / "bare.git"
+    subprocess.run(["git", "init", "-q", "--bare", "-b", "main", str(bare)], check=True)
+    work = tmp_path / "work"
+    init(work)
+    (work / "sdlc.yaml").write_text("plugin:\n  version: 0.2.16\n", encoding="utf-8")
+    git(work, "add", ".")
+    git(work, "commit", "-q", "-m", "pin 0.2.16")
+    git(work, "remote", "add", "origin", str(bare))
+    git(work, "push", "-q", "-u", "origin", "main")
+    framework = work / "framework"
+    subprocess.run(
+        ["git", "clone", "-q", "--branch", "v0.2.16", str(fw_origin), str(framework)], check=True
+    )
+    (work / ".gitignore").write_text("framework/\n", encoding="utf-8")
+
+    def verify(*extra):
+        return subprocess.run(
+            [sys.executable, str(script), "--root", str(work), "--ref", "refs/remotes/origin/main",
+             "--verify-framework", "framework", "--pin-ref", "v0.2.16", *extra],
+            capture_output=True, text=True,
+        )  # fmt: skip
+
+    proc = verify("--origin", str(bare))
+    assert proc.returncode == 0, proc.stderr
+    assert proc.stdout.strip() == "verified=framework@v0.2.16"
+    # a session edited the framework: refused, the file named
+    (framework / "plugin.py").write_text("PIN = 'planted'\n", encoding="utf-8")
+    proc = verify("--origin", str(bare))
+    assert proc.returncode == 3 and "framework checkout is not clean: plugin.py" in proc.stderr
+    git(framework, "checkout", "-q", "--", "plugin.py")
+    # a session moved the framework to another commit: refused, both commits named
+    git(framework, "checkout", "-q", "main")
+    proc = verify("--origin", str(bare))
+    assert proc.returncode == 3 and "not at the pin v0.2.16" in proc.stderr
+    git(framework, "checkout", "-q", "v0.2.16")
+    assert verify("--origin", str(bare)).returncode == 0
+    # a session changed the fetch refspec or the remote: refused
+    git(work, "config", "remote.origin.fetch", "+refs/heads/planted:refs/remotes/origin/main")
+    proc = verify("--origin", str(bare))
+    assert proc.returncode == 3 and "remote.origin.fetch is" in proc.stderr
+    git(work, "config", "remote.origin.fetch", "+refs/heads/*:refs/remotes/origin/*")
+    proc = verify("--origin", "https://github.com/o/elsewhere")
+    assert proc.returncode == 3 and "remote.origin.url is" in proc.stderr
+    # a session rewrote the remote-tracking ref to a commit with another pin: the fresh
+    # fetch restores it and the check passes; a pin origin itself no longer carries fails
+    git(work, "checkout", "-q", "-b", "planted")
+    (work / "sdlc.yaml").write_text("plugin:\n  version: 9.9.9\n", encoding="utf-8")
+    git(work, "commit", "-q", "-am", "planted pin")
+    git(work, "update-ref", "refs/remotes/origin/main", "HEAD")
+    git(work, "checkout", "-q", "main")
+    assert verify("--origin", str(bare)).returncode == 0
+    assert git(work, "show", "refs/remotes/origin/main:sdlc.yaml").strip().endswith("0.2.16")
+    git(work, "push", "-q", "origin", "planted:main", "--force")
+    proc = verify("--origin", str(bare))
+    assert proc.returncode == 3 and "the default branch's pin is v9.9.9" in proc.stderr
+    # the pin ref is required and never read as an option
+    proc = subprocess.run(
+        [sys.executable, str(script), "--root", str(work), "--verify-framework", "framework"],
+        capture_output=True, text=True,
+    )  # fmt: skip
+    assert proc.returncode == 3 and "--pin-ref" in proc.stderr
 
 
 def test_pin_script_does_not_double_the_v_of_a_version(tmp_path):

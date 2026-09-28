@@ -42,6 +42,7 @@ if str(PLUGIN_DIR) not in sys.path:
     sys.path.insert(0, str(PLUGIN_DIR))
 
 from state import conventions as c  # noqa: E402
+from state import status as status_mod  # noqa: E402
 
 RELEASE_LABEL = c.RELEASE_APPROVED_LABEL
 GIT_TIMEOUT = 30  # seconds per git call
@@ -144,24 +145,88 @@ def _repo_of(root: Path, git: GitRunner) -> str | None:
     return f"{m.group(1)}/{m.group(2)}" if m else None
 
 
-def _find_pr(
-    root: Path, repo: str, github: Any, git: GitRunner
-) -> tuple[int | None, list[str] | None, str]:
-    """(PR number, its labels, "") of the current change branch's build PR (open or merged),
-    or (None, None, why not)."""
+def _change_id_of(root: Path, git: GitRunner) -> tuple[str | None, str]:
+    """(the change id of the current branch ``sdlc/<id>/<p>``, "") or (None, why not)."""
     code, out = git(root, "rev-parse", "--abbrev-ref", "HEAD")
     branch = out.strip() if code == 0 else ""
     parsed = c.parse_branch(branch) if branch else None
     if not parsed:
-        why = f"the current branch '{branch or '?'}' is not a change branch sdlc/<id>/<p>"
-        return None, None, why
-    head = c.work_branch(parsed[0], parsed[1])
-    found = _call(github, "find_pr", repo, head, state="all", cwd=str(root))
-    if not found.get("ok"):
-        return None, None, f"cannot find the PR of {head}: {found.get('reason') or 'failed'}"
-    number = found.get("number")
+        return None, f"the current branch '{branch or '?'}' is not a change branch sdlc/<id>/<p>"
+    return parsed[0], ""
+
+
+def _recorded_pr(
+    root: Path, change_id: str, repo: str, github: Any, git: GitRunner
+) -> tuple[int | None, list[str] | None, str]:
+    """(PR number, its labels, "") of the change's build PR — the one ``status.yaml`` records
+    (``build_pr``, written by ``pr/cli.py upsert``), read from GitHub by that number and
+    accepted only while it is the change's own (head ``sdlc/<id>/c``), open at the checked-out
+    commit or merged into the checked-out commit — or (None, None, why not).
+
+    Before 0.2.27 the PR was "the most recent one from the current branch's name": a session
+    that checked out any ``sdlc/<id>/c`` (a local branch with any content) inherited that
+    change's label, and a closed-unmerged PR counted too (the 1.0.0 readiness review, group
+    B). A branch name alone finds nothing now; a change whose ``status.yaml`` records no
+    pull request is not approved (the next ``upsert`` records it).
+    """
+    change_dir = c.find_change_dir(root, change_id)
+    if change_dir is None:
+        return None, None, f"no changes/{change_id}-<slug>/ folder at {root}"
+    try:
+        st = status_mod.read_status(change_dir)
+    except Exception as exc:  # noqa: BLE001 - fail closed on a broken status.yaml
+        return None, None, f"status.yaml of change {change_id} could not be read: {exc}"
+    number = st.build_pr
     if not number:
-        return None, None, f"no pull request has the head {head}"
+        return (
+            None,
+            None,
+            (
+                f"status.yaml of change {change_id} records no build pull request (build_pr): "
+                "pr/cli.py upsert records it when the build PR is opened"
+            ),
+        )
+    found = _call(github, "pr_by_number", repo, int(number), cwd=str(root))
+    if not found.get("ok"):
+        return None, None, f"cannot read the PR #{number}: {found.get('reason') or 'failed'}"
+    head = c.work_branch(change_id, "c")
+    if found.get("head_ref") != head:
+        return (
+            None,
+            None,
+            (
+                f"#{number} (head {found.get('head_ref') or '?'}) is not the build PR {head} of "
+                f"change {change_id}"
+            ),
+        )
+    code, out = git(root, "rev-parse", "HEAD")
+    checked_out = out.strip() if code == 0 else ""
+    state = str(found.get("state") or "").lower()
+    if found.get("merged"):
+        merge_sha = str(found.get("merge_commit_sha") or "")
+        if not checked_out or not merge_sha or checked_out != merge_sha:
+            return (
+                None,
+                None,
+                (
+                    f"#{number} was merged as {merge_sha[:10] or '?'} and the checkout is at "
+                    f"{checked_out[:10] or '?'}: only the merged commit carries its approval"
+                ),
+            )
+    elif state == "open":
+        head_sha = str(found.get("head_sha") or "")
+        if not checked_out or not head_sha or checked_out != head_sha:
+            return (
+                None,
+                None,
+                (
+                    f"#{number} is at {head_sha[:10] or '?'} and the checkout is at "
+                    f"{checked_out[:10] or '?'}: only the pull request's own head carries its "
+                    "approval"
+                ),
+            )
+    else:
+        return None, None, f"#{number} was closed without a merge: its approval is void"
     labels = found.get("labels")
     return int(number), (list(labels) if isinstance(labels, list) else None), ""
 
@@ -175,11 +240,14 @@ def label_approval(
     github: Any,
     git: GitRunner,
     pr_labels: list[str] | None = None,
+    change_id: str | None = None,
 ) -> Approval:
     """The release label, applied by a person and still on the PR.
 
+    With no ``pr_number`` (the production-gate hook) the PR is the change's recorded build
+    PR (``_recorded_pr``; ``change_id`` as the hook resolved it, else the current branch's).
     ``label_actor`` reports the last application even when the label was removed later;
-    when the PR's current labels are known (``pr_labels``, or the ``find_pr`` answer), a
+    when the PR's current labels are known (``pr_labels``, or the lookup's answer), a
     removed label no longer counts."""
     if github is None:
         github, why = load_github()
@@ -191,7 +259,11 @@ def label_approval(
             False, "none", "cannot verify the label: no GitHub remote (origin)", pr_number
         )
     if pr_number is None:
-        pr_number, found_labels, why = _find_pr(root, repo, github, git)
+        if change_id is None:
+            change_id, why = _change_id_of(root, git)
+            if change_id is None:
+                return Approval(False, "none", f"cannot verify the label: {why}", None)
+        pr_number, found_labels, why = _recorded_pr(root, change_id, repo, github, git)
         if pr_number is None:
             return Approval(False, "none", f"cannot verify the label: {why}", None)
         pr_labels = pr_labels if pr_labels is not None else found_labels
@@ -225,12 +297,14 @@ def release_approval(
     git: GitRunner | None = None,
     github: Any = None,
     pr_labels: list[str] | None = None,
+    change_id: str | None = None,
 ) -> Approval:
     """The release approval of the change: the release label, applied by a person.
 
     ``env`` is accepted for the callers' symmetry and is deliberately not a source of
     approval: the label is read through the PR, never from an environment variable.
-    ``pr_labels`` (optional) are the PR's current labels when the caller already has them.
+    ``pr_labels`` (optional) are the PR's current labels when the caller already has them;
+    ``change_id`` (optional) is the change the caller resolved, for the recorded-PR lookup.
     """
     del env  # see the docstring
     root = Path(root)
@@ -244,6 +318,7 @@ def release_approval(
             github=github,
             git=git,
             pr_labels=pr_labels,
+            change_id=change_id,
         )
     except TimeoutError as exc:  # a slow GitHub or git is not an approval: fail closed
         return Approval(

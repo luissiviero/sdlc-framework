@@ -128,10 +128,13 @@ def _branch_exists_remotely(root: Path, branch: str) -> bool:
 
 
 def _base_ref(root: Path, default: str, remote: bool) -> str:
-    if remote and _git_ok(
-        root, "rev-parse", "--verify", "--quiet", f"refs/remotes/origin/{default}"
-    ):
-        return f"origin/{default}"
+    """The default branch's remote-tracking ref, fully qualified: git resolves a tag named
+    ``origin/<default>`` before the short remote ref (the class 0.2.24 fixed in the pin
+    script; the readiness review's group B, 0.2.27), and a session with ``Bash(git *)``
+    can plant one before the runbook step runs."""
+    ref = _remote_ref(default)
+    if remote and _git_ok(root, "rev-parse", "--verify", "--quiet", ref):
+        return ref
     return default
 
 
@@ -151,13 +154,34 @@ def _start_point(root: Path) -> str:
 
 
 def _switch_to(root: Path, branch: str, base: str) -> bool:
-    """Check ``branch`` out (the local one, else the remote one, else a new one from ``base``);
-    True when the branch was created from ``base`` by this call."""
+    """Check ``branch`` out (the local one when it is what ``origin`` carries, else the
+    remote one, else a new one from ``base``); True when the branch was created from
+    ``base`` by this call.
+
+    A local branch that ``origin`` does not carry at the same tip is refused, naming it: the
+    runbook step runs after a session that holds ``Bash(git *)`` in the same checkout, and a
+    branch that session planted would be pushed and proposed as the runbook's own work (the
+    readiness review's group B, 0.2.27). A branch this runbook pushed on an earlier run is
+    at the remote's tip and is reused, as before."""
     if _branch_exists_locally(root, branch):
+        local = gitops.run(root, "rev-parse", "--verify", f"refs/heads/{branch}").strip()
+        remote_tip = (
+            gitops.run(
+                root, "rev-parse", "--verify", "--quiet", _remote_ref(branch), check=False
+            ).strip()
+            if _branch_exists_remotely(root, branch)
+            else ""
+        )
+        if local != remote_tip:
+            raise RunbookError(
+                f"the branch {branch} already exists locally at {local[:10]} and is not what "
+                f"origin carries ({remote_tip[:10] or 'no such remote branch'}): a runbook "
+                "never reuses a branch it did not push; delete or rename it first"
+            )
         gitops.checkout_branch(root, branch)
         return False
     if _branch_exists_remotely(root, branch):
-        gitops.checkout_branch(root, branch, f"origin/{branch}")
+        gitops.checkout_branch(root, branch, _remote_ref(branch))
         return False
     gitops.checkout_branch(root, branch, base)
     return True

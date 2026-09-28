@@ -137,6 +137,14 @@ def cmd_upsert(args) -> int:
         return finish()
 
     number = out["number"]
+    if number and head == c.work_branch(args.id, "c") and st.build_pr != int(number):
+        # the build PR is the one the release approval reads (release/approval.py, 0.2.27):
+        # record its number in status.yaml, where the checkout and the default branch's copy
+        # carry it; the runner commits the record (run_phase.ensure_pr)
+        st.build_pr = int(number)
+        st.touch()
+        status_mod.write_status(change_dir, st)
+        out["build_pr_recorded"] = int(number)
     if label and number:
         github.ensure_label(repo, label, label_color(label), f"SDLC gate ({args.phase})", cwd=root)
     if number:
