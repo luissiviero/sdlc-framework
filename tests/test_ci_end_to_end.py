@@ -383,8 +383,10 @@ def run_phase_job(
     )
     argv = [sys.executable if a == "python" else env.get(a[1:], "") if a.startswith("$") else a
             for a in (run_line or workflow_run_line(phase, find))]  # fmt: skip
-    if os.name == "nt":
-        argv += ["--claude", str(claude)]  # CreateProcess does not resolve claude.cmd on PATH
+    if os.name == "nt" and any(a.endswith("run_phase.py") for a in argv):
+        # CreateProcess does not resolve claude.cmd on PATH; only the phase runner takes the
+        # option (the abandon line calls state/cli.py: the first Windows run, 0.2.28)
+        argv += ["--claude", str(claude)]
     proc = subprocess.run(
         argv, cwd=root, capture_output=True, text=True, encoding="utf-8", env=env, timeout=600
     )

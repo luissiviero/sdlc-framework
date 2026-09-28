@@ -53,7 +53,7 @@ for line in prompt.splitlines():
     if word == "WRITE":
         path, _, text = rest.partition(" ")
         Path(path).parent.mkdir(parents=True, exist_ok=True)
-        Path(path).write_text(text + "\n", encoding="utf-8")
+        Path(path).write_text(text + "\n", encoding="utf-8", newline="\n")
     elif word == "EDIT-CLAUDE":
         with open("CLAUDE.md", "a", encoding="utf-8") as fh:
             fh.write("- a new line\n")
