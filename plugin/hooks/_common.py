@@ -170,6 +170,30 @@ def load_sdlc_config(root: str) -> dict[str, Any]:
     return data
 
 
+def config_flag(config: dict[str, Any], *path: str, file: str = SDLC_FILE) -> bool:
+    """A boolean setting of ``sdlc.yaml`` (``config_flag(cfg, "paused")``, ``config_flag(cfg,
+    "deploy", "production")``): False when absent or null, else the boolean, and a
+    ``ConfigError`` for anything else — ``yes``, ``on``, ``"true"`` and ``1`` are not booleans
+    to YAML 1.2 (``yamlish`` reads them as strings or numbers, correctly), and every reader
+    used to test ``is True``, so ``deploy.production: yes`` turned the release approval and
+    the production gate off and ``paused: yes`` paused nothing (the 1.0.0 readiness review,
+    group A). Fail closed: the caller refuses to run, or blocks, on the error."""
+    value: Any = config
+    for key in path:
+        if not isinstance(value, dict):
+            value = None
+            break
+        value = value.get(key)
+    if value is None:
+        return False
+    if isinstance(value, bool):
+        return value
+    raise ConfigError(
+        f"{file}: {'.'.join(path)} is {value!r}, not a boolean; write true or false "
+        "(YAML 1.2: yes, on and quoted words are strings)"
+    )
+
+
 # --- glob matching, gitignore-style (case-insensitive, like norm()) -------------------------
 def glob_to_regex(pattern: str) -> re.Pattern[str]:
     p = pattern.strip().replace("\\", "/")

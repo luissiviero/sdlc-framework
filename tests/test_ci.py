@@ -1031,7 +1031,8 @@ def fake_claude(tmp_path):
     """A stand-in CLI: it ignores its arguments and prints the JSON result it is given.
     With ``FAKE_CLAUDE_WATCH`` (a path relative to its working directory, the project root)
     and ``FAKE_CLAUDE_RECORD`` set, it first copies that file as it finds it to the record:
-    what the model's session would read."""
+    what the model's session would read. With ``FAKE_CLAUDE_RUN`` (a Python file) it runs
+    that script in the project root: what the model's session would write."""
     bindir = tmp_path / "bin"
     bindir.mkdir()
     script = bindir / "claude.py"
@@ -1043,6 +1044,10 @@ def fake_claude(tmp_path):
         "if watch and record:\n"
         "    text = pathlib.Path(watch).read_text(encoding='utf-8')\n"
         "    pathlib.Path(record).write_text(text, encoding='utf-8')\n"
+        "script = os.environ.get('FAKE_CLAUDE_RUN')\n"
+        "if script:\n"
+        "    import runpy\n"
+        "    runpy.run_path(script, run_name='__main__')\n"
         "print(os.environ['FAKE_CLAUDE_RESULT'])\n",
     )
     launcher = bindir / "claude"
@@ -2568,3 +2573,440 @@ def test_approved_config_reads_the_profile_from_the_default_branch_s_copy(projec
     assert run_phase._approved_config(root)["profile"] == "full"
     _dir, _st, config, _reason = run_phase.guard(root, "0001", "c", "owner/name", {})
     assert config["profile"] == "full"
+
+
+# --- 0.2.26: the runner re-verifies the owner-only fields of status.yaml (choice 103) ---------
+def _owner_state(change: Path, **fields) -> status_mod.Status:
+    st = status_mod.read_status(change)
+    for name, value in fields.items():
+        setattr(st, name, value)
+    status_mod.write_status(change, st)
+    return st
+
+
+def test_owner_field_mismatches_name_the_field_the_session_value_and_the_expected_one(project):
+    root, change = project
+    before = _owner_state(
+        change,
+        risk_accepted=["auth"],
+        risk_accepted_by=[{"item": "auth", "actor": "luissiviero"}],
+        iterations=2,
+        panel_calls=1,
+        iterations_reset_by="luissiviero",
+        iterations_reset_at="2026-09-27T10:00:00Z",
+    )
+    snapshot = run_phase.owner_fields(before)
+    # nothing changed, or the counters went up, or a field was cleared: fine
+    after = _owner_state(change, iterations=3, panel_calls=2, tests_unlocked_by=None)
+    assert run_phase.owner_field_mismatches(snapshot, run_phase.owner_fields(after), None) == []
+    # the session records the owner's login for a new item, lifts the lock under the owner's
+    # name, resets the counters and re-stamps the reset
+    after = _owner_state(
+        change,
+        risk_accepted=["auth", "payments"],
+        risk_accepted_by=[
+            {"item": "auth", "actor": "luissiviero"},
+            {"item": "payments", "actor": "luissiviero"},
+        ],
+        iterations=0,
+        panel_calls=0,
+        iterations_reset_at="2026-09-27T11:00:00Z",
+        tests_unlocked_by="luissiviero",
+    )
+    reasons = run_phase.owner_field_mismatches(snapshot, run_phase.owner_fields(after), None)
+    assert reasons == [
+        "risk_accepted: the session accepted 'payments' and recorded 'luissiviero' for it; the "
+        "runner recorded no label",
+        "iterations_reset_by: the session recorded 'luissiviero' ('2026-09-27T11:00:00Z'); "
+        "expected 'luissiviero' ('2026-09-27T10:00:00Z')",
+        "tests_unlocked_by: the session recorded 'luissiviero'; expected None",
+        "iterations: the session lowered it from 2 to 0; only sdlc:reset-iterations does",
+        "panel_calls: the session lowered it from 1 to 0; only sdlc:reset-iterations does",
+    ]
+    # the acts are judged with the actors (the review of the 0.2.26 diff, H1): an item
+    # accepted with no entry, a lock lifted with no actor or by turning the fix into a feature
+    plain = _owner_state(
+        change, risk_accepted=["auth", "payments"], risk_accepted_by=[], change_type="fix",
+        tests_locked=False, tests_unlocked_by=None, iterations=2, panel_calls=1,
+        iterations_reset_at="2026-09-27T10:00:00Z",
+    )  # fmt: skip
+    locked = dict(snapshot, locked=True)
+    reasons = run_phase.owner_field_mismatches(locked, run_phase.owner_fields(plain), None)
+    assert reasons == [
+        "risk_accepted: the session accepted 'payments'; only the owner's label or commit does",
+        "tests_locked: the session lifted the test-file lock (tests_locked false or the change "
+        "no longer a fix); only sdlc:unlock-tests or the owner's commit does",
+    ]
+    feature = _owner_state(change, risk_accepted=["auth"], change_type="feature", tests_locked=True)
+    reasons = run_phase.owner_field_mismatches(locked, run_phase.owner_fields(feature), None)
+    assert [r.split(":")[0] for r in reasons] == ["tests_locked"]
+    # a new actor for an item already accepted
+    mallory = _owner_state(
+        change, risk_accepted=["auth"], risk_accepted_by=[{"item": "auth", "actor": "mallory"}],
+        change_type="fix", tests_locked=True,
+    )  # fmt: skip
+    reasons = run_phase.owner_field_mismatches(snapshot, run_phase.owner_fields(mallory), None)
+    assert reasons == [
+        "risk_accepted_by: the session recorded 'mallory' for 'auth'; the runner recorded no "
+        "label for it"
+    ]
+    # an entry the default branch's copy carries (a merge of the default branch brought it)
+    approved = _owner_state(
+        change,
+        risk_accepted=["auth", "payments"],
+        risk_accepted_by=[{"item": "payments", "actor": "luissiviero"}],
+        iterations_reset_at="2026-09-27T11:00:00Z",
+        tests_unlocked_by="luissiviero",
+    )
+    reasons = run_phase.owner_field_mismatches(
+        snapshot, run_phase.owner_fields(after), run_phase.owner_fields(approved)
+    )
+    assert [r.split(":")[0] for r in reasons] == ["iterations", "panel_calls"]
+    # the overrides are reported (and restored, below), never a mismatch
+    assert run_phase.override_changes(
+        run_phase.owner_fields(before),
+        run_phase.owner_fields(_owner_state(change, profile_override="standard")),
+    ) == [
+        "profile_override: the session set 'standard' (was None); restored, the default "
+        "branch's copy is what the runner and the gate read"
+    ]
+
+
+def test_verify_owner_fields_restores_the_fields_before_anything_is_committed(project):
+    root, change = project
+    before = _owner_state(change, change_type="fix", tests_locked=True, iterations=2, panel_calls=1)
+    # the session's version: the lock lifted under the owner's name, the counters reset, a
+    # risk accepted in the owner's name, and its own honest progress (the phase, a gate)
+    st = status_mod.read_status(change)
+    st.tests_locked = False
+    st.tests_unlocked_by = "luissiviero"
+    st.iterations = 0
+    st.panel_calls = 0
+    st.accept_risk("auth")
+    st.risk_accepted_by = [{"item": "auth", "actor": "luissiviero"}]
+    st.record_gate("c", "passed", None)
+    status_mod.write_status(change, st)
+    verified = run_phase.verify_owner_fields(change, before, None)
+    assert verified["ok"] is False and len(verified["mismatches"]) == 5
+    restored = status_mod.read_status(change)
+    assert restored.tests_locked is True and restored.tests_unlocked_by is None
+    assert restored.iterations == 2 and restored.panel_calls == 1
+    assert restored.risk_accepted == [] and restored.risk_accepted_by == []
+    assert restored.gate.result == "passed"  # the session's own fields are kept
+    # an honest session changes nothing the owner owns
+    assert run_phase.verify_owner_fields(change, restored, None) == {
+        "ok": True,
+        "mismatches": [],
+        "overrides_changed": [],
+        "test_files_restored": [],
+    }
+    # a changed override is restored whatever else happened (the review of the 0.2.26 diff,
+    # H2: the runner's commit carried it and the owner's merge at (b) made it the approved copy)
+    _owner_state(change, profile_override="standard", review_override="deferred")
+    verified = run_phase.verify_owner_fields(change, restored, None)
+    assert verified["ok"] is True and len(verified["overrides_changed"]) == 2
+    kept = status_mod.read_status(change)
+    assert kept.profile_override is None and kept.review_override is None
+    # a file the session left unreadable: the pre-session file comes back whole
+    (change / "status.yaml").write_text("phase: [", encoding="utf-8")
+    verified = run_phase.verify_owner_fields(change, before, None)
+    assert verified["ok"] is False and "unreadable after the session" in verified["mismatches"][0]
+    assert status_mod.read_status(change).iterations == 2
+
+
+def test_a_session_that_writes_an_owner_field_parks_with_the_fields_restored(
+    project, fake_claude, monkeypatch, capsys, tmp_path
+):
+    """The whole path: the fake session records the owner's login for a risk item it accepted
+    itself; the runner restores the field, parks the change under ``owner_fields`` with the
+    session's value and the expected one, commits and upserts, and dispatches nothing."""
+    root, change = project
+    calls = pr_route(monkeypatch)
+    script = tmp_path / "forge.py"
+    write(
+        script,
+        "import sys\n"
+        f"sys.path.insert(0, {str(ROOT / 'plugin')!r})\n"
+        "from pathlib import Path\n"
+        "from state import status\n"
+        f"change = Path({str(change)!r})\n"
+        "st = status.read_status(change)\n"
+        "st.accept_risk('auth')\n"
+        "st.risk_accepted_by = [{'item': 'auth', 'actor': 'luissiviero'}]\n"
+        "st.profile_override = 'standard'\n"
+        "status.write_status(change, st)\n",
+    )
+    monkeypatch.setenv("FAKE_CLAUDE_RUN", str(script))
+    full_run(root, change, fake_claude, monkeypatch, "b")
+    out = json.loads(capsys.readouterr().out)
+    assert out["parked"].startswith("status.yaml: the session wrote owner-only field(s): ")
+    assert (
+        "risk_accepted: the session accepted 'auth' and recorded 'luissiviero' for it; the "
+        "runner recorded no label" in out["parked"]
+    )
+    assert out["owner_fields"]["ok"] is False and "dispatched" not in out
+    assert out["owner_fields"]["overrides_changed"] == [
+        "profile_override: the session set 'standard' (was None); restored, the default "
+        "branch's copy is what the runner and the gate read"
+    ]
+    st = status_mod.read_status(change)
+    assert st.risk_accepted == [] and st.risk_accepted_by == [] and st.profile_override is None
+    assert st.parked_reason == out["parked"]
+    gate_file = json.loads((change / "evidence" / "gate-b.json").read_text(encoding="utf-8"))
+    (check,) = gate_file["checks"]
+    assert check["name"] == "owner_fields" and not check["ok"]
+    assert "the run cannot approve itself (decision 5)" in check["need"]
+    assert "restored to their pre-session values" in check["need"]
+    assert {"set-phase", "commit-phase", "upsert"} <= {a[0] for _n, a in calls if a}
+
+
+def test_an_honest_session_reports_the_owner_fields_ok_and_hands_over(
+    project, fake_claude, monkeypatch, capsys
+):
+    root, change = project
+    pr_route(monkeypatch)
+    full_run(root, change, fake_claude, monkeypatch, "b")
+    out = json.loads(capsys.readouterr().out)
+    assert out["owner_fields"] == {
+        "ok": True,
+        "mismatches": [],
+        "overrides_changed": [],
+        "test_files_restored": [],
+    }
+    assert out["result"] == "continue"
+
+
+def test_guard_reads_the_profile_override_from_the_default_branch_s_copy(project, tmp_path):
+    """A branch that wrote ``profile_override: standard`` on a Full-profile change skipped the
+    (c)/(d) label gates; the guard reads the copy the owner approved (choice 103)."""
+    root, change = project
+    _owner_state(change, profile_override="full")
+    with_remote(root, tmp_path)  # commits and pushes main with the owner's override
+    git(root, "checkout", "-q", "-b", "sdlc/0001/c")
+    set_state(change, "c", gate_phase="c", gate_result="passed")
+    _owner_state(change, profile_override="standard")
+    git(root, "commit", "-q", "-am", "the branch lowers its own profile")
+    assert run_phase.approved_overrides(root, change, status_mod.read_status(change)) == (
+        "full",
+        None,
+        "profile_override 'standard' on the branch ignored ('full' on the default branch)",
+    )
+    reason = skip_reason(root, "d")
+    assert reason and "sdlc:c-approved cannot be verified" in reason
+    # the owner's copy says standard (no override): no label is needed
+    git(root, "checkout", "-q", "main")
+    _owner_state(change, profile_override=None)
+    git(root, "commit", "-q", "-am", "owner: standard profile")
+    git(root, "push", "-q", "origin", "main")
+    git(root, "checkout", "-q", "sdlc/0001/c")
+    assert skip_reason(root, "d") is None
+    # a folder not on the default branch yet has no approved override
+    assert run_phase._approved_status(root, root / "changes" / "0009-nope") is None
+    assert run_phase.approved_overrides(
+        root, root / "changes" / "0009-nope", status_mod.read_status(change)
+    ) == (
+        None,
+        None,
+        "profile_override 'standard' on the branch ignored (None on the default branch)",
+    )
+    # an unreadable approved copy fails closed (the review of the 0.2.26 diff, L3)
+    git(root, "checkout", "-q", "main")
+    (change / "status.yaml").write_text("phase: [", encoding="utf-8")
+    git(root, "commit", "-q", "-am", "owner: a broken status.yaml")
+    git(root, "push", "-q", "origin", "main")
+    git(root, "checkout", "-q", "sdlc/0001/c")
+    with pytest.raises(run_phase.ApprovedCopyUnreadable):
+        run_phase.approved_overrides(root, change, status_mod.read_status(change))
+    reason = skip_reason(root, "d")
+    assert reason and "on the default branch is unreadable" in reason
+    # without a remote-tracking default branch the checkout's values stand by hand only;
+    # on a runner no override applies (L4)
+    git(root, "remote", "remove", "origin")
+    st = status_mod.read_status(change)
+    assert run_phase.approved_overrides(root, change, st, {}) == ("standard", None, "")
+    assert run_phase.approved_overrides(root, change, st, {"GITHUB_ACTIONS": "true"}) == (
+        None,
+        None,
+        "no default branch ref on the runner: no override applies",
+    )
+
+
+def test_guard_fails_closed_on_a_pause_flag_that_is_not_a_boolean(project):
+    root, _change = project
+    path = root / "sdlc.yaml"
+    path.write_text(
+        path.read_text(encoding="utf-8").replace("paused: false", "paused: yes"), "utf-8"
+    )
+    reason = skip_reason(root, "b")
+    assert reason and "paused is 'yes', not a boolean" in reason and "nothing runs" in reason
+
+
+def _forging_session(tmp_path: Path, change: Path, body: str) -> Path:
+    """A script the fake claude runs in the project root: what a session might do."""
+    script = tmp_path / "session.py"
+    write(
+        script,
+        "import subprocess, sys\n"
+        f"sys.path.insert(0, {str(ROOT / 'plugin')!r})\n"
+        "from pathlib import Path\n"
+        "from state import status\n"
+        f"change = Path({str(change)!r})\n"
+        "root = change.parent.parent\n"
+        "def git(*a):\n"
+        "    subprocess.run(['git', *a], cwd=root, check=True, capture_output=True)\n" + body,
+    )
+    return script
+
+
+def test_a_session_that_accepts_a_risk_under_the_owner_s_name_parks(
+    project, fake_claude, monkeypatch, capsys, tmp_path
+):
+    """The review of the 0.2.26 diff, H1: the session accepts an item with no entry and commits
+    the file as the owner (``git -c user.name``); the gate's commit-author rule would pass it,
+    the runner compares the act, not the author."""
+    root, change = project
+    pr_route(monkeypatch)
+    git(root, "add", "-A")
+    git(root, "commit", "-q", "-m", "the change folder, committed")
+    script = _forging_session(
+        tmp_path,
+        change,
+        "st = status.read_status(change)\n"
+        "st.accept_risk('auth')\n"
+        "status.write_status(change, st)\n"
+        "git('-c', 'user.name=Owner', '-c', 'user.email=owner@example.com', 'commit', '-q',"
+        " '-am', 'accept the auth risk')\n",
+    )
+    monkeypatch.setenv("FAKE_CLAUDE_RUN", str(script))
+    full_run(root, change, fake_claude, monkeypatch, "b")
+    out = json.loads(capsys.readouterr().out)
+    assert (
+        "risk_accepted: the session accepted 'auth'; only the owner's label or commit does"
+        in (out["parked"])
+    )
+    assert status_mod.read_status(change).risk_accepted == []
+
+
+def test_a_session_that_lifts_the_lock_has_its_test_edits_restored(
+    project, fake_claude, monkeypatch, capsys, tmp_path
+):
+    """The review of the 0.2.26 diff, M2: the runner's restore commit would be the newest lock
+    commit and the gate's ``test_lock`` would judge nothing before it, so the test files the
+    session changed under the lifted lock go back to their pre-session content."""
+    root, change = project
+    pr_route(monkeypatch)
+    _owner_state(change, change_type="fix", tests_locked=True)
+    git(root, "add", "-A")
+    git(root, "commit", "-q", "-m", "the lock set (as the build run does)")
+    script = _forging_session(
+        tmp_path,
+        change,
+        "st = status.read_status(change)\n"
+        "st.tests_locked = False\n"
+        "st.tests_unlocked_by = 'luissiviero'\n"
+        "status.write_status(change, st)\n"
+        "(root / 'tests' / 'test_calc.py').write_text('def test_nothing():\\n    pass\\n')\n"
+        "(root / 'tests' / 'test_new.py').write_text('def test_new():\\n    pass\\n')\n"
+        "git('add', '-A')\n"
+        "git('commit', '-q', '-m', 'weaken the tests')\n",
+    )
+    monkeypatch.setenv("FAKE_CLAUDE_RUN", str(script))
+    before = (root / "tests" / "test_calc.py").read_text(encoding="utf-8")
+    full_run(root, change, fake_claude, monkeypatch, "b")
+    out = json.loads(capsys.readouterr().out)
+    assert "tests_unlocked_by: the session recorded 'luissiviero'; expected None" in out["parked"]
+    assert "tests_locked: the session lifted the test-file lock" in out["parked"]
+    assert out["owner_fields"]["test_files_restored"] == [
+        "tests/test_calc.py",
+        "tests/test_new.py",
+    ]
+    assert (root / "tests" / "test_calc.py").read_text(encoding="utf-8") == before
+    assert not (root / "tests" / "test_new.py").exists()
+    st = status_mod.read_status(change)
+    assert st.tests_locked is True and st.tests_unlocked_by is None
+
+
+def test_a_session_that_pushes_another_branch_of_the_change_parks(
+    project, fake_claude, monkeypatch, capsys, tmp_path
+):
+    """The review of the 0.2.26 diff, M1: forged fields planted on the next phase's branch
+    would be that run's baseline; a push by the session outside its own branch parks, and so
+    does a remote tip of its branch the runner's checkout does not contain."""
+    root, change = project
+    with_remote(root, tmp_path)
+    pr_route(monkeypatch)
+    script = _forging_session(
+        tmp_path,
+        change,
+        "st = status.read_status(change)\n"
+        "st.accept_risk('auth')\n"
+        "st.risk_accepted_by = [{'item': 'auth', 'actor': 'luissiviero'}]\n"
+        "status.write_status(change, st)\n"
+        "git('commit', '-q', '-am', 'plant')\n"
+        "git('push', '-q', 'origin', 'HEAD:sdlc/0001/c')\n"
+        "git('reset', '-q', '--hard', 'HEAD~1')\n",
+    )
+    monkeypatch.setenv("FAKE_CLAUDE_RUN", str(script))
+    full_run(root, change, fake_claude, monkeypatch, "b")
+    out = json.loads(capsys.readouterr().out)
+    assert "origin/sdlc/0001/c: the session pushed to another branch of the change" in out["parked"]
+    assert "absent ->" in out["parked"]
+    # the divergence of its own branch
+    refs_before = run_phase.change_refs(root, "0001")
+    git(root, "checkout", "-q", "-b", "sdlc/0001/d-test", "sdlc/0001/b")
+    git(root, "commit", "-q", "--allow-empty", "-m", "pushed then moved")
+    git(root, "push", "-q", "origin", "sdlc/0001/d-test")
+    git(root, "reset", "-q", "--hard", "HEAD~1")
+    reasons = run_phase.session_push_mismatches(
+        root, "sdlc/0001/d-test", refs_before, run_phase.change_refs(root, "0001")
+    )
+    assert any("is not in the runner's checkout" in r for r in reasons)
+    # a push of its own branch that the checkout contains is the run's normal commit-phase
+    git(root, "push", "-q", "-f", "origin", "sdlc/0001/d-test")
+    assert run_phase.session_push_mismatches(
+        root, "sdlc/0001/d-test", run_phase.change_refs(root, "0001"),
+        run_phase.change_refs(root, "0001"),
+    ) == []  # fmt: skip
+
+
+def test_the_baseline_s_own_entries_must_match_a_label_event_on_the_runner(project, monkeypatch):
+    """Choice 103's wording: an entry the default branch does not carry was recorded by the
+    runner from a label event. A forged entry pushed by a session whose job died before the
+    check (the review of the 0.2.26 diff, M1) fails here at the next run's start."""
+    from pr import github
+
+    root, change = project
+    before = run_phase.owner_fields(
+        _owner_state(
+            change,
+            risk_accepted=["auth"],
+            risk_accepted_by=[{"item": "auth", "actor": "luissiviero"}],
+            iterations_reset_by="luissiviero",
+            iterations_reset_at="2026-09-27T10:00:00Z",
+        )
+    )
+    ci = {"GITHUB_ACTIONS": "true", "GITHUB_TOKEN": FAKE_TOKEN}
+    # nothing pending: nothing read
+    assert run_phase.baseline_mismatches(before, before, "o/r", None, ci) == []
+    # by hand the read is skipped
+    assert run_phase.baseline_mismatches(before, None, "o/r", None, {}) == []
+    # on a runner with no pull request the entries cannot be confirmed
+    reasons = run_phase.baseline_mismatches(before, None, "o/r", None, ci)
+    assert [r.split(":")[0] for r in reasons] == ["risk_accepted_by[auth]", "iterations_reset_by"]
+    assert "no pull request can confirm the label" in reasons[0]
+    # the events confirm the accept-risk actor but name another person for the reset
+    actors = {"sdlc:accept-risk": "luissiviero", "sdlc:reset-iterations": "mallory"}
+    monkeypatch.setattr(
+        github, "label_actor", lambda repo, n, label: {"ok": True, "actor": actors.get(label)}
+    )
+    reasons = run_phase.baseline_mismatches(before, None, "o/r", 7, ci)
+    assert reasons == [
+        "iterations_reset_by: 'luissiviero' on the branch is not on the default branch and PR "
+        "#7 has no sdlc:reset-iterations event by that actor (last: 'mallory')"
+    ]
+    # a failed read fails closed
+    monkeypatch.setattr(
+        github, "label_actor", lambda repo, n, label: {"ok": False, "reason": "HTTP 502"}
+    )
+    reasons = run_phase.baseline_mismatches(before, None, "o/r", 7, ci)
+    assert len(reasons) == 2 and all("could not be read: HTTP 502" in r for r in reasons)

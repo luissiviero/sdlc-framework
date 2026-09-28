@@ -113,8 +113,14 @@ def project_runbooks(config: dict[str, Any]) -> dict[str, dict[str, Any]]:
 
 
 def production_declared(config: dict[str, Any]) -> bool:
-    deploy = config.get("deploy") if isinstance(config.get("deploy"), dict) else {}
-    return deploy.get("production") is True
+    """``sdlc.yaml: deploy.production`` is true; a value that is not a boolean declares
+    nothing here (the rollback keeps its ``go``; the gate and the hook refuse it)."""
+    from hooks._common import ConfigError, config_flag  # noqa: PLC0415
+
+    try:
+        return config_flag(config, "deploy", "production")
+    except ConfigError:
+        return False
 
 
 def rehearsed(entry: dict[str, Any] | None) -> str | None:

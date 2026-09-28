@@ -168,6 +168,27 @@ def on_base(root: Path, edit, message: str = "owner change on main") -> None:
     git(root, "merge", "-q", "--no-edit", "main")
 
 
+def set_on_base(root: Path, change: Path, **fields) -> None:
+    """Set ``status.yaml`` fields the way the owner does — a commit on main merged into the
+    current branch — so the gate reads them from the copy the owner approved (0.2.26: the
+    overrides on the branch are ignored). The working tree's other changes are kept aside."""
+    branch = git(root, "rev-parse", "--abbrev-ref", "HEAD").strip()
+    dirty = bool(git(root, "status", "--porcelain").strip())
+    if dirty:
+        git(root, "stash", "push", "-q", "-u")
+    git(root, "checkout", "-q", "main")
+    st = status_mod.read_status(change)
+    for name, value in fields.items():
+        setattr(st, name, value)
+    status_mod.write_status(change, st)
+    git(root, "add", "--", str(change.relative_to(root) / "status.yaml"))
+    git(root, "commit", "-q", "-m", f"owner: {', '.join(f'{k}={v}' for k, v in fields.items())}")
+    git(root, "checkout", "-q", branch)
+    git(root, "merge", "-q", "--no-edit", "main")
+    if dirty:
+        git(root, "stash", "pop", "-q")
+
+
 def start_run(root: Path, phase: str) -> None:
     proc = run_py(
         str(GATE_CLI), "start-run", "--root", str(root), "--id", "0001", "--phase", phase, cwd=root
@@ -352,6 +373,17 @@ def test_limits_pause_flag_stops_everything(tmp_path):
     assert not res.ok and res.details["stop"] and "paused" in res.reason
 
 
+def test_limits_fail_closed_on_a_pause_flag_that_is_not_a_boolean(tmp_path):
+    """``paused: yes`` is the string "yes" to YAML 1.2 and every reader tested ``is True``:
+    the flag paused nothing (1.0.0 readiness review, group A)."""
+    for value in ("yes", "on", "true", 1):
+        res = limits.check_limits(_ctx(tmp_path, {"paused": value}))
+        assert not res.ok and res.details["stop"], value
+        assert f"sdlc.yaml: paused is {value!r}, not a boolean" in res.reason
+    assert limits.check_limits(_ctx(tmp_path, {"paused": None})).ok
+    assert limits.check_limits(_ctx(tmp_path, {"paused": False})).ok
+
+
 def test_limits_iteration_cap_default_and_non_routine(tmp_path):
     assert limits.check_limits(_ctx(tmp_path, iterations=3)).ok
     res = limits.check_limits(_ctx(tmp_path, iterations=4))
@@ -434,9 +466,7 @@ def test_gate_continues_on_a_clean_change(project):
 
 def test_gate_waits_at_a_human_gate_and_dry_run_writes_nothing(project):
     root, change = project
-    st = status_mod.read_status(change)
-    st.profile_override = "full"
-    status_mod.write_status(change, st)
+    set_on_base(root, change, profile_override="full")
     before = (change / "status.yaml").read_text(encoding="utf-8")
     result = gate.run_gate(root, "0001", "c", dry_run=True)
     assert result.result == "park"  # Full profile still needs the adversarial verdict at (c)
@@ -1824,3 +1854,224 @@ def test_lock_tests_clears_the_recorded_unlock_actor():
     assert st.tests_locked is True and st.tests_unlocked_by is None
     st.record_owner_label("sdlc:unlock-tests", "luissiviero")
     assert st.tests_unlocked_by == "luissiviero"
+
+
+# --- 0.2.26: group A of the 1.0.0 readiness review (docs/reviews/2026-09-26-readiness-review.md) --
+def test_the_overrides_are_read_from_the_base_branch_s_copy(project):
+    """A branch that wrote ``profile_override: standard`` on a Full-profile change skipped
+    the (c)/(d) label gates, and ``review_override: deferred`` sent the park items to the
+    panel: both are read from the copy the owner approved now, as intent.md is; the
+    branch's own values are ignored with a note (choice 103)."""
+    root, change = project
+    set_on_base(root, change, profile_override="full")
+    verdict(root, "c")
+    result = gate.run_gate(root, "0001", "c", dry_run=True)
+    assert result.result == "wait" and result.label == "sdlc:c-ready"
+    # the branch lowers its own profile: ignored, and the result says so
+    st = status_mod.read_status(change)
+    st.profile_override = "standard"
+    st.review_override = "deferred"
+    status_mod.write_status(change, st)
+    commit_all(root, "the run lowers its own profile and defers its review", author=BOT_AUTHOR)
+    verdict(root, "c")
+    result = gate.run_gate(root, "0001", "c", dry_run=True)
+    assert result.result == "wait" and result.label == "sdlc:c-ready", result.reason
+    assert "profile_override 'standard' on the branch ignored ('full' at" in result.config_note
+    assert "review_override 'deferred' on the branch ignored (None at" in result.config_note
+    ctx = gate.build_context(root, "0001", "c")
+    assert ctx.profile == "full" and ctx.review_mode == "parked" and not ctx.deferred
+    # the owner's own change of the override, merged, is what counts
+    git(root, "reset", "-q", "--hard", "HEAD~1")  # takes the run record with it
+    start_run(root, "c")
+    set_on_base(root, change, profile_override=None)
+    verdict(root, "c")
+    result = gate.run_gate(root, "0001", "c", dry_run=True)
+    assert result.result == "continue", result.reason
+    assert result.config_note == ""
+
+
+def test_the_gate_reads_the_overrides_at_the_base_s_tip_not_the_merge_base(project):
+    """The review of the 0.2.26 diff, M3: read at the merge base, the gate and the runner's
+    guard (the default branch's tip) disagreed when the owner changed the override on main
+    after the branch forked, and the run stalled without a park. Both read the tip."""
+    root, change = project
+    verdict(root, "c")
+    assert gate.run_gate(root, "0001", "c", dry_run=True).result == "continue"
+    # the owner raises the change to Full on main, without merging main into the branch
+    branch = git(root, "rev-parse", "--abbrev-ref", "HEAD").strip()
+    git(root, "checkout", "-q", "main")
+    st = status_mod.read_status(change)
+    st.profile_override = "full"
+    status_mod.write_status(change, st)
+    git(root, "commit", "-q", "-am", "owner: full profile for 0001")
+    git(root, "checkout", "-q", branch)
+    verdict(root, "c")
+    result = gate.run_gate(root, "0001", "c", dry_run=True)
+    assert result.result == "wait" and result.label == "sdlc:c-ready", result.reason
+    assert "profile_override None on the branch ignored ('full' at main)" in result.config_note
+
+
+def test_design_scope_exempts_change_0000_by_its_folder_and_at_gate_a_only(project):
+    """The review of the 0.2.26 diff, L2: keyed on ``status.id``, which the session writes, a
+    ``0001-x/status.yaml`` saying ``id: '0000'`` skipped the check at every phase."""
+    from gate import diff as diffmod
+
+    root, change = project
+    write(root / "sample_pkg" / "extra.py", "x = 1\n")
+    git(root, "add", "sample_pkg/extra.py")
+    git(root, "commit", "-q", "-m", "a source file")
+    st = status_mod.read_status(change)
+    st.id = "0000"  # the session's forgery; the folder is still 0001's
+    d = diffmod.collect(root, None)
+    for phase in ("a", "b", "c", "f"):
+        ctx = checks.GateContext(root, change, phase, st, {"profile": "standard"}, d, True, "")
+        assert not checks.check_design_scope(ctx).ok, phase
+
+
+def test_owner_actions_judges_every_risk_gaining_commit(project):
+    """An older self-acceptance was laundered by the owner's later acceptance of another
+    item: the walk kept the newest risk-gaining commit only."""
+    root, change = project
+    accept_risk(root, change, "auth")
+    sha = commit_all(root, "accept the auth risk", author=BOT_AUTHOR)  # the run's own act
+    accept_risk(root, change, "payments")
+    commit_all(root, "owner: accept the payments risk")  # the owner's, newer
+    verdict(root, "c")
+    result = gate.run_gate(root, "0001", "c", dry_run=True)
+    oa = next(ch for ch in result.failed if ch.name == "owner_actions")
+    assert f"risk_accepted gained auth in commit {sha[:10]}" in oa.reason
+    assert "payments" not in oa.reason
+    # the way out (the review of the 0.2.26 diff, L5): the owner's sdlc:accept-risk after the
+    # park records a person for the item in a later commit, which ratifies the old gain
+    from state import conventions as c
+
+    _label_act(change, c.ACCEPT_RISK_LABEL, "luissiviero", items=("auth",))
+    commit_all(root, "owner labels applied: sdlc:accept-risk", author=BOT_AUTHOR)
+    verdict(root, "c")
+    result = gate.run_gate(root, "0001", "c", dry_run=True)
+    assert "owner_actions" not in _names(result, False), result.reason
+    oa = next(ch for ch in result.checks if ch.name == "owner_actions")
+    assert oa.details["label_actors"] == {"risk_accepted": {"auth": "luissiviero"}}
+
+
+def test_owner_actions_judges_every_drop_and_every_lift(project):
+    """The review of the 0.2.26 diff, L6: a drop or a lift was judged on its newest commit
+    only, the laundering pattern item 7 closed for the risk items."""
+    from state import conventions as c
+
+    root, change = project
+    st = status_mod.read_status(change)
+    st.iterations = 2
+    status_mod.write_status(change, st)
+    commit_all(root, "build(0001): two fix rounds")
+    st = status_mod.read_status(change)
+    st.iterations = 0  # the run's own reset, no actor
+    status_mod.write_status(change, st)
+    sha = commit_all(root, "back to zero", author=BOT_AUTHOR)
+    st = status_mod.read_status(change)
+    st.iterations = 1
+    status_mod.write_status(change, st)
+    commit_all(root, "fix(0001): one round")
+    _label_act(change, c.RESET_ITERATIONS_LABEL, "luissiviero")  # the owner's, newer
+    commit_all(root, "owner labels applied: sdlc:reset-iterations", author=BOT_AUTHOR)
+    verdict(root, "c")
+    result = gate.run_gate(root, "0001", "c", dry_run=True)
+    oa = next(ch for ch in result.failed if ch.name == "owner_actions")
+    assert f"iterations dropped from 2 to 0 in commit {sha[:10]}" in oa.reason
+
+
+def test_owner_actions_judges_a_panel_calls_drop_like_an_iterations_drop(project):
+    """OPERATING_MODEL section 6: sdlc:reset-iterations resets "the fix-iteration and
+    panel-call counts"; the check judged the iteration count only."""
+    from state import conventions as c
+
+    root, change = project
+    st = status_mod.read_status(change)
+    st.iterations = 2
+    st.panel_calls = 3
+    status_mod.write_status(change, st)
+    commit_all(root, "build(0001): two fix rounds, three panel calls")
+    # in the working tree, in no commit
+    st = status_mod.read_status(change)
+    st.panel_calls = 0
+    status_mod.write_status(change, st)
+    verdict(root, "c")
+    result = gate.run_gate(root, "0001", "c", dry_run=True)
+    oa = next(ch for ch in result.failed if ch.name == "owner_actions")
+    assert "panel_calls dropped from 3 to 0 in the working tree, in no commit" in oa.reason
+    # in the run's own commit with no actor recorded
+    sha = commit_all(root, "panel calls back to zero", author=BOT_AUTHOR)
+    verdict(root, "c")
+    result = gate.run_gate(root, "0001", "c", dry_run=True)
+    oa = next(ch for ch in result.failed if ch.name == "owner_actions")
+    assert f"panel_calls dropped from 3 to 0 in commit {sha[:10]}" in oa.reason
+    assert "no owner label actor is recorded" in oa.reason
+    # the owner's label, performed by the run, resets both and is credited for both
+    git(root, "reset", "-q", "--hard", "HEAD~1")
+    _label_act(change, c.RESET_ITERATIONS_LABEL, "luissiviero")
+    commit_all(root, "owner labels applied: sdlc:reset-iterations", author=BOT_AUTHOR)
+    st = status_mod.read_status(change)
+    assert st.iterations == 0 and st.panel_calls == 0
+    verdict(root, "c")
+    result = gate.run_gate(root, "0001", "c", dry_run=True)
+    assert "owner_actions" not in _names(result, False), result.reason
+    oa = next(ch for ch in result.checks if ch.name == "owner_actions")
+    assert oa.details["label_actors"] == {
+        "iterations_reset": "luissiviero",
+        "panel_calls_reset": "luissiviero",
+    }
+
+
+def test_important_findings_strips_the_severity():
+    data = {"findings": [{"severity": "Important ", "summary": "x"}, {"severity": " nit"}]}
+    assert len(checks.important_findings(data)) == 1
+
+
+def _intent_branch(tmp_path) -> tuple[Path, Path]:
+    """Change 0001 at gate (a): the intent committed on ``sdlc/0001/a`` and nothing else."""
+    root, change = _initialised_fixture(tmp_path)
+    git(root, "stash", "push", "-q", "-u")  # the intent, not yet committed
+    git(root, "checkout", "-q", "-b", "sdlc/0001/a")
+    git(root, "stash", "pop", "-q")
+    git(root, "add", ".")
+    git(root, "commit", "-q", "-m", "intent(0001): percent helper")
+    return root, change
+
+
+def test_gate_a_refuses_a_source_file_on_the_intent_branch(tmp_path):
+    """OPERATING_MODEL section 4.2: the fix round at (a) is refused a source file by
+    ``design_scope``; gate (a) never ran the check (1.0.0 readiness review, group A)."""
+    root, _change = _intent_branch(tmp_path)
+    assert checks.check_design_scope in checks.CHECKS_BY_PHASE["a"]
+    result = gate.run_gate(root, "0001", "a", dry_run=True)
+    assert result.result == "wait", result.reason
+    write(root / "sample_pkg" / "percent.py", PERCENT)
+    git(root, "add", "sample_pkg/percent.py")
+    git(root, "commit", "-q", "-m", "implementation written at the intent stage")
+    result = gate.run_gate(root, "0001", "a", dry_run=True)
+    assert result.result == "park"
+    ds = next(ch for ch in result.failed if ch.name == "design_scope")
+    assert ds.details["outside"] == ["sample_pkg/percent.py"]
+    assert "phase (a) commits only changes/0001-percent-helper/" in ds.need
+    assert "the intent PR carries the intent alone" in ds.need
+
+
+def test_gate_a_exempts_change_0000_from_design_scope(tmp_path):
+    """The installation PR of /sdlc-init carries the guardrails, the workflows and the pin
+    script: outside its folder by design (section 8, layer i), as ``guardrails`` knows."""
+    root = tmp_path / "proj"
+    shutil.copytree(FIXTURE, root)
+    git(root, "init", "-q", "-b", "main")
+    git(root, "config", "user.email", "owner@example.com")
+    git(root, "config", "user.name", "Owner")
+    git(root, "add", ".")
+    git(root, "commit", "-q", "-m", "fixture")
+    git(root, "checkout", "-q", "-b", "sdlc/0000/a")
+    proc = run_py(str(INIT), "--root", str(root), "--profile", "standard", cwd=root)
+    assert proc.returncode == 0, proc.stderr
+    git(root, "add", ".")
+    git(root, "commit", "-q", "-m", "sdlc-init")
+    result = gate.run_gate(root, "0000", "a", dry_run=True)
+    ds = next(ch for ch in result.checks if ch.name == "design_scope")
+    assert ds.ok and "change 0000 installs the framework" in ds.reason
+    assert "design_scope" not in _names(result, False)

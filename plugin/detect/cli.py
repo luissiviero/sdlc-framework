@@ -971,6 +971,15 @@ def cmd_finish(args) -> int:
     the route, runs gate (f), commits the evidence and opens the intent PR."""
     root = Path(args.root).resolve()
     change_dir, st = _change(root, args.id)
+    if (st.parked_reason or "").startswith(c.OWNER_FIELDS_PARK_PREFIX):
+        # the runner parked the change after the session wrote an owner-only field (choice
+        # 103): the route is not judged and gate (f) is not run — it would overwrite the park;
+        # the pull request the runner opened carries the reason (the review of the 0.2.26
+        # diff, M5)
+        why = "parked by the runner: owner-only fields written by the session"
+        dispatch = {"acted": False, "reason": why}
+        _emit({"change_id": args.id, "parked": st.parked_reason, "dispatch": dispatch})
+        return EXIT_OK
     record = _load_finding(change_dir)
     config = _config_or_empty(root)
     proposal, resolved, why = _judge(root, change_dir, record, config, args.repo)

@@ -2,8 +2,9 @@
 p.17 "first-pass merge share ... rework cycles", p.45 "the share of findings that become
 merged fixes ... and repeat incidents of the same class").
 
-Deterministic, from the change folders of the checkout and ``changes/.dismissed.json`` only
-(no API, no model): the digest workflow renders it as a section of the review-queue issue
+Deterministic, from the change folders of the checkout, the abandon markers on the remote
+``sdlc/<id>/*`` branches and ``changes/.dismissed.json`` (no API, no model): the digest
+workflow renders it as a section of the review-queue issue
 (``pr/digest.py``), so the report is pull, not push (decision 20) and costs no commit and no
 model call. Task 42.1's two counters per PR (first-pass merge, fix iterations) stay in the
 PR description; this is their sum over the project.
@@ -23,6 +24,7 @@ if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from detect import dismissals  # noqa: E402
+from detect.cli import _remote_abandoned_ids  # noqa: E402
 
 from state import conventions as c  # noqa: E402
 from state import status as status_mod  # noqa: E402
@@ -35,11 +37,21 @@ def collect(root: Path) -> dict[str, Any]:
     root = Path(root)
     changes: list[status_mod.Status] = []
     unreadable = 0
+    abandoned = 0
+    # an abandon is written on the change's branches, never on the default branch (decision
+    # 25): the rehearsal 0005 of the sample, merged and then closed, counted as an incident
+    # merged until 0.2.26 — ``detect/cli.py open_incidents`` reads the same markers
+    remote_abandoned = _remote_abandoned_ids(root)
     for change_dir in c.list_change_dirs(root):
         try:
-            changes.append(status_mod.read_status(change_dir, on_default_branch=True))
+            st = status_mod.read_status(change_dir, on_default_branch=True)
         except (OSError, ValueError):
             unreadable += 1
+            continue
+        if st.abandoned or st.id in remote_abandoned:
+            abandoned += 1
+            continue
+        changes.append(st)
     shipped = [st for st in changes if st.phase == SHIPPED_PHASE]
     # an incident folder reaches the default branch when the owner merged its intent PR
     # (fix now): a closed one never does - its finding is in the dismissal store instead
@@ -48,6 +60,7 @@ def collect(root: Path) -> dict[str, Any]:
     first_pass = sum(1 for st in shipped if st.iterations == 0)
     return {
         "changes": len(changes),
+        "abandoned": abandoned,
         "unreadable": unreadable,
         "shipped": len(shipped),
         "first_pass_merges": first_pass,
@@ -81,7 +94,7 @@ def render(counts: dict[str, Any]) -> str:
     """The markdown section the digest carries (one table, a note on what each row means)."""
     by_kind = counts.get("dismissals_by_kind") or {}
     rows = [
-        ("Changes (folders on the default branch)", str(counts["changes"])),
+        ("Changes (folders on the default branch, not abandoned)", str(counts["changes"])),
         ("Shipped (merged at gate (e))", str(counts["shipped"])),
         (
             "First-pass merge share (p.17)",
@@ -108,8 +121,12 @@ def render(counts: dict[str, Any]) -> str:
     out.append(
         "From the change folders of the default branch and changes/.dismissed.json: a "
         "change closed without a merge, and an incident closed (dismissed) before its "
-        "intent merged, never reach the default branch and are not counted here."
+        "intent merged, never reach the default branch and are not counted here; a change "
+        "abandoned after a merge (the marker sits on its sdlc/<id>/* branches) is left out."
     )
+    if counts.get("abandoned"):
+        out.append("")
+        out.append(f"{counts['abandoned']} change folder(s) abandoned after a merge, left out.")
     if counts.get("unreadable"):
         out.append("")
         out.append(f"{counts['unreadable']} change folder(s) had an unreadable status.yaml.")

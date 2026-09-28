@@ -93,10 +93,24 @@ def _config(root: Path) -> dict[str, Any]:
         return {}
 
 
-def review_mode(config: dict[str, Any], st: status_mod.Status) -> str:
-    """The effective review mode: the change's override, else the project's, else parked."""
+def review_mode(config: dict[str, Any], st: status_mod.Status, root: Path | None = None) -> str:
+    """The effective review mode: the change's override as the base branch carries it (the
+    gate reads the same copy since 0.2.26; the branch's own value would send the items to
+    the panel and the gate would refuse the ledger), else the project's, else parked."""
+    override = st.review_override
+    if root is not None:
+        try:
+            d = diffmod.collect(root, None)
+        except diffmod.GitUnavailable:
+            d = None
+        change_dir = c.find_change_dir(root, st.id)
+        if change_dir is not None:
+            try:
+                _profile, override, _note = gate.approved_overrides(root, change_dir, st, d)
+            except gate.GateError:
+                override = None
     try:
-        return c.effective_review_mode(config.get("review"), st.review_override)
+        return c.effective_review_mode(config.get("review"), override)
     except ValueError:
         return c.DEFAULT_REVIEW_MODE
 
@@ -169,7 +183,7 @@ def cmd_mode(args) -> int:
     if loaded is None:
         return EXIT_USAGE
     root, _change_dir, st = loaded
-    _emit({"mode": review_mode(_config(root), st), "override": st.review_override})
+    _emit({"mode": review_mode(_config(root), st, root), "override": st.review_override})
     return EXIT_OK
 
 
@@ -178,7 +192,7 @@ def cmd_items(args) -> int:
     if loaded is None:
         return EXIT_USAGE
     root, change_dir, st = loaded
-    mode = review_mode(_config(root), st)
+    mode = review_mode(_config(root), st, root)
     try:
         result = gate.run_gate(root, args.id, args.phase, args.base, dry_run=True)
     except gate.GateError as exc:
@@ -274,7 +288,7 @@ def cmd_record(args) -> int:
         return EXIT_USAGE
     root, change_dir, st = loaded
     config = _config(root)
-    mode = review_mode(config, st)
+    mode = review_mode(config, st, root)
     if mode != "deferred":
         print(
             f"review mode is {mode}: the panel decides nothing; the item parks for the owner",

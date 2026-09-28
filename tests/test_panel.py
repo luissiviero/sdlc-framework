@@ -25,6 +25,7 @@ from tests.test_gate import (
     design_project,  # noqa: F401 - the fixture
     git,
     project,  # noqa: F401 - the fixture
+    set_on_base,
     verdict,
     write,
 )
@@ -41,11 +42,10 @@ DECISION = {
 
 
 def set_review(change: Path, mode: str) -> None:
-    """The per-change override (status.yaml: review_override): the project's sdlc.yaml is a
-    guardrail file, and a change on the branch would make the gate read the base's copy."""
-    st = status_mod.read_status(change)
-    st.review_override = mode
-    status_mod.write_status(change, st)
+    """The per-change override (status.yaml: review_override), set the owner's way: a commit
+    on main merged into the branch. Since 0.2.26 the gate reads the override from the copy
+    the owner approved and ignores the branch's own value (choice 103)."""
+    set_on_base(change.parent.parent, change, review_override=mode)
 
 
 def open_the_concern(change: Path) -> None:
@@ -496,3 +496,49 @@ def test_a_change_may_override_the_review_mode(tmp_path):
     with pytest.raises(ValueError):
         st.review_override = "panel"
         st.validate()
+
+
+def test_gate_panel_check_consumes_each_ledger_line_once(project):  # noqa: F811
+    """One ledger line closed several concerns: ``#n`` was matched against a set, never
+    consumed (1.0.0 readiness review, group A)."""
+    root, change = project
+    set_review(change, "deferred")
+    verdict(root, "c")
+    head = git(root, "rev-parse", "HEAD").strip()
+    item = {"kind": "concern", "key": ledger.concern_key("Rounding"), "item": "Rounding"}
+    _ledger_entry(change, "c", item, "keep half-up", head)
+    spec = (
+        (change / "spec.md")
+        .read_text(encoding="utf-8")
+        .replace(
+            "- [x] Rounding half-even vs half-up: decided half-up via round() (documented).",
+            "- decided (by panel #1): keep half-up — Rounding half-even vs half-up\n"
+            "- decided (by panel #1): keep half-up — Overflow on very large inputs",
+        )
+    )
+    write(change / "spec.md", spec)
+    result = gate.run_gate(root, "0001", "c", dry_run=True)
+    panel = next(ch for ch in result.failed if ch.name == "panel")
+    assert "closes a second concern by panel decision 1; one ledger line closes one" in panel.reason
+    assert "Overflow on very large inputs" in panel.reason
+    # one closing per line passes
+    write(
+        change / "spec.md",
+        spec.replace("\n- decided (by panel #1): keep half-up — Overflow on very large inputs", ""),
+    )
+    result = gate.run_gate(root, "0001", "c", dry_run=True)
+    assert "panel" not in _names(result, False), result.reason
+
+
+def test_the_panel_cli_reads_the_review_mode_the_gate_reads(project):  # noqa: F811
+    """The review of the 0.2.26 diff, L1: the CLI read the branch's ``review_override`` while
+    the gate reads the base's; a branch saying deferred spent panel calls the gate refused."""
+    root, change = project
+    st = status_mod.read_status(change)
+    st.review_override = "deferred"  # on the branch only
+    status_mod.write_status(change, st)
+    rc, out = run(["mode", "--root", str(root), "--id", "0001"])
+    assert rc == 0 and out == {"mode": "parked", "override": "deferred"}
+    set_review(change, "deferred")  # the owner's, merged
+    rc, out = run(["mode", "--root", str(root), "--id", "0001"])
+    assert rc == 0 and out["mode"] == "deferred"

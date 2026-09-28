@@ -33,6 +33,7 @@ if str(PLUGIN_DIR) not in sys.path:
 
 from gate import artifacts as art  # noqa: E402
 from gate.checks import CheckResult, GateContext  # noqa: E402
+from hooks._common import ConfigError, config_flag  # noqa: E402
 
 DEFAULT_MAX_ITERATIONS = 3
 DEFAULT_MAX_ITERATIONS_NON_ROUTINE = 2
@@ -114,8 +115,19 @@ def _elapsed_minutes(started_at: str | None, now: datetime | None = None) -> flo
 
 def check_limits(ctx: GateContext, now: datetime | None = None) -> CheckResult:
     details: dict[str, Any] = {}
-    # pause flag first: a paused repo runs nothing
-    if ctx.config.get("paused") is True:
+    # pause flag first: a paused repo runs nothing; a flag that is not a boolean stops it too
+    try:
+        paused = config_flag(ctx.config, "paused")
+    except ConfigError as exc:
+        return CheckResult(
+            "limits",
+            False,
+            str(exc),
+            "Fix sdlc.yaml: paused (a reviewed PR); the gate fails closed on a value it cannot "
+            "read as a boolean.",
+            {"stop": True, "paused": None},
+        )
+    if paused:
         return CheckResult(
             "limits",
             False,

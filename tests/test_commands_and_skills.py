@@ -468,6 +468,13 @@ def test_sdlc_deploy_prepares_the_release_around_the_review_and_the_gate():
     assert '"## Files that change" of `plan.md` in the same commit' in prep
     assert '--phase e --message "release(<id>): release prepared"' in prep
     assert "## 3a." not in text and "fresh review of the new HEAD" not in text
+    # 0.2.26: after the panel's commits the review pass runs again; ``validate`` alone re-reads
+    # the stale findings file and gate (e) refuses it; phase (e) has no diff or verdict file
+    panel = text[text.index("### Deferred review") : text.index("## 4. Gate (e)")]
+    assert "run step 1 again for the new HEAD, once" in panel
+    assert "`validate` only re-reads `review-findings.json`, it re-reviews nothing" in panel
+    assert "re-run step 1's `validate`" not in panel
+    assert "diff file" not in panel and "verdict file" not in panel
     notes_call = (
         'python "${CLAUDE_PLUGIN_ROOT}/plugin/release/notes.py" --root "${CLAUDE_PROJECT_DIR}" '
         "--id <id> --write"
@@ -618,3 +625,9 @@ def test_sdlc_init_prescribes_the_branch_ruleset_of_decision_4():
     )
     assert "still lets `gh pr merge` through" in text
     assert "The daily digest says so" in text
+    # 0.2.26: the bypass mode, from the owner's merges of 2026-09-27 (NOTES section 17)
+    assert "The bypass actor's mode is **Exempt**" in text
+    assert "no bypass audit entry for the owner's merges" in text
+    assert "the workflow token included" in text
+    model = (PLUGIN.parent / "docs" / "OPERATING_MODEL.md").read_text(encoding="utf-8")
+    assert "The owner's bypass mode is *Exempt*" in model

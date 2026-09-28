@@ -19,6 +19,7 @@ import re
 import signal
 import subprocess
 import sys
+from collections import Counter
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -390,7 +391,7 @@ def important_findings(data: dict[str, Any]) -> list[dict[str, Any]]:
     return [
         f
         for f in data["findings"]
-        if isinstance(f, dict) and str(f.get("severity", "")).lower() == "important"
+        if isinstance(f, dict) and str(f.get("severity", "")).strip().lower() == "important"
     ]
 
 
@@ -783,6 +784,12 @@ def check_design_scope(ctx: GateContext) -> CheckResult:
     """
     if ctx.diff is None:
         return _fail("design_scope", ctx.diff_error, "Run the gate inside the project's git repo.")
+    if ctx.phase == "a" and ctx.change_dir.name.startswith(c.INIT_CHANGE_ID + "-"):
+        # the installation PR of /sdlc-init (change 0000) is the one intent PR that carries
+        # files outside its folder: the guardrails, the workflows and the pin script it writes
+        # (OPERATING_MODEL section 8, layer i). Keyed on the folder name and gate (a) only:
+        # ``status.id`` is the session's to write (the review of the 0.2.26 diff, L2)
+        return _ok("design_scope", "change 0000 installs the framework: not judged")
     no_base = _no_base(ctx, "design_scope")
     if no_base:
         return no_base
@@ -791,17 +798,23 @@ def check_design_scope(ctx: GateContext) -> CheckResult:
     outside = [f for f in committed if not f.startswith(prefix)]
     dirty = diffmod.without_placeholders(ctx.root, diffmod.dirty_files(ctx.root))
     if outside:
+        if ctx.phase == "a":
+            why = (
+                " (the intent PR carries the intent alone; a fix round at gate (a) applies the "
+                "owner's review comments to intent.md and nothing else, decision 22)."
+            )
+        elif ctx.phase == "f":
+            why = (
+                " (the diagnosis of phase (f) is read-only, p.43 step 3; a runbook works on "
+                "a branch of its own)."
+            )
+        else:
+            why = "."
         return _fail(
             "design_scope",
             f"{len(outside)} committed file(s) outside {prefix}: " + ", ".join(outside[:10]),
             f"Revert them on the branch: phase ({ctx.phase}) commits only {prefix}; the "
-            "first run with edit tools on source is phase (c)"
-            + (
-                " (the diagnosis of phase (f) is read-only, p.43 step 3; a runbook works on "
-                "a branch of its own)."
-                if ctx.phase == "f"
-                else "."
-            ),
+            "first run with edit tools on source is phase (c)" + why,
             outside=outside[:50],
             dirty=dirty[:50],
         )
@@ -817,8 +830,28 @@ OWNER_ACTIONS_NEED = (
 STATUS_HISTORY_LIMIT = "200"  # commits of status.yaml history the check walks back through
 
 
+_STATUS_CACHE: dict[tuple[str, str, str], dict[str, Any] | None] = {}
+_SHA_RE = re.compile(r"^[0-9a-f]{40}\^?$")
+
+
 def _status_fields(ctx: GateContext, ref: str) -> dict[str, Any] | None:
-    """``risk_accepted`` and ``iterations`` of the change's status.yaml at ``ref``."""
+    """``risk_accepted`` and ``iterations`` of the change's status.yaml at ``ref``. A commit's
+    copy never changes, so a full sha (or its parent) is cached for the process: the history
+    walks of ``owner_actions`` and ``test_lock`` read the same commits (the review of the
+    0.2.26 diff, L9)."""
+    key = (str(ctx.root), ctx.change_rel, ref)
+    cacheable = bool(_SHA_RE.match(ref))
+    if cacheable and key in _STATUS_CACHE:
+        return _STATUS_CACHE[key]
+    fields = _status_fields_uncached(ctx, ref)
+    if cacheable:
+        if len(_STATUS_CACHE) > 4000:
+            _STATUS_CACHE.clear()
+        _STATUS_CACHE[key] = fields
+    return fields
+
+
+def _status_fields_uncached(ctx: GateContext, ref: str) -> dict[str, Any] | None:
     text = diffmod.file_at(ctx.root, ref, f"{ctx.change_rel}/{STATUS_FILE}")
     if text is None:
         return None
@@ -832,6 +865,9 @@ def _status_fields(ctx: GateContext, ref: str) -> dict[str, Any] | None:
     iterations = data.get("iterations")
     if isinstance(iterations, bool) or not isinstance(iterations, int):
         iterations = 0
+    panel_calls = data.get("panel_calls")
+    if isinstance(panel_calls, bool) or not isinstance(panel_calls, int):
+        panel_calls = 0
     # decision 24: the actor of the owner label that made the change, when a label did
     by = data.get("risk_accepted_by")
     risk_by = {
@@ -850,6 +886,7 @@ def _status_fields(ctx: GateContext, ref: str) -> dict[str, Any] | None:
     return {
         "risk": risk,
         "iterations": iterations,
+        "panel_calls": panel_calls,
         "risk_by": risk_by,
         "reset_by": str(reset_by).strip() if isinstance(reset_by, str) else None,
         "reset_at": str(reset_at).strip() if isinstance(reset_at, str) else None,
@@ -891,10 +928,12 @@ def check_owner_actions(ctx: GateContext) -> CheckResult:
     """A risk acceptance or an iteration reset counts only when the owner made it.
 
     ``status.yaml: risk_accepted`` and ``iterations`` were owner actions by convention only
-    (PROGRESS known gap); this ties them to the commit author. The newest commit that gained
-    a risk item and the newest that lowered the iteration count must not be the automation
-    identity, and an acceptance that sits uncommitted in the working tree belongs to nobody:
-    the owner commits theirs.
+    (PROGRESS known gap); this ties them to the commit author. Every commit that gained a
+    risk item (since 0.2.26; before, the newest only, so an earlier self-acceptance hid
+    behind the owner's later one) and the newest that lowered the iteration or the panel-call
+    count (the panel count since 0.2.26: one label resets both, decision 21) must not be the
+    automation identity, and an acceptance that sits uncommitted in the working tree belongs
+    to nobody: the owner commits theirs.
 
     Decision 24: the owner's label on the PR is the other form of the act. A CI run performs
     it and commits ``status.yaml`` under the automation identity, so a commit by that
@@ -915,6 +954,7 @@ def check_owner_actions(ctx: GateContext) -> CheckResult:
     empty = {
         "risk": set(),
         "iterations": 0,
+        "panel_calls": 0,
         "risk_by": {},
         "reset_by": None,
         "reset_at": None,
@@ -930,48 +970,73 @@ def check_owner_actions(ctx: GateContext) -> CheckResult:
         problems.append(
             f"risk_accepted gained {', '.join(gained)} in the working tree, in no commit"
         )
-    if ctx.status.iterations < head["iterations"]:
-        problems.append(
-            f"iterations dropped from {head['iterations']} to {ctx.status.iterations} in the "
-            "working tree, in no commit"
-        )
+    # decision 21: one label resets the fix-iteration and the panel-call counts, so a drop of
+    # either is the same owner act (the panel count was not judged before 0.2.26)
+    tree_counts = {"iterations": ctx.status.iterations, "panel_calls": ctx.status.panel_calls}
+    for counter, tree_value in tree_counts.items():
+        if tree_value < head[counter]:
+            problems.append(
+                f"{counter} dropped from {head[counter]} to {tree_value} in the working tree, "
+                "in no commit"
+            )
     if head["locked"] and not tree_locked:
         problems.append("the test-file lock was lifted in the working tree, in no commit")
-    risk_event: tuple[str, str, str, list[str], dict[str, str]] | None = None
-    drop_event: tuple[str, str, str, int, int, str | None] | None = None
-    unlock_event: tuple[str, str, str, str | None] | None = None
-    for sha, email, name in _status_history(ctx):
-        if risk_event is not None and drop_event is not None and unlock_event is not None:
-            break
+    # every commit that gained a risk item, lowered a counter or lifted the lock is judged,
+    # not the newest only: an earlier self-acceptance was laundered by the owner's later
+    # acceptance of another item (1.0.0 readiness review, group A; the review of the 0.2.26
+    # diff, L6, for the drops and the lifts). An unlabelled gain is ratified when a later
+    # commit recorded a person's actor for the item (the owner's sdlc:accept-risk after the
+    # park; L5: without it the park could never be cleared).
+    risk_events: list[tuple[str, str, str, list[str], dict[str, str], int]] = []
+    drop_events: list[tuple[str, str, str, str, int, int, str | None]] = []
+    unlock_events: list[tuple[str, str, str, str | None]] = []
+    ratified: dict[str, tuple[int, str]] = {}  # item -> (walk index, the actor recorded)
+    for index, (sha, email, name) in enumerate(_status_history(ctx)):
         now = _status_fields(ctx, sha)
         if now is None:
             continue
         before = _status_fields(ctx, f"{sha}^") or empty
-        if before["locked"] and not now["locked"] and unlock_event is None:
+        for item, actor in now["risk_by"].items():
+            if actor != before["risk_by"].get(item) and item not in ratified:
+                ratified[item] = (index, actor)
+        if before["locked"] and not now["locked"]:
             # the act is recorded in this very commit when the actor changed
             recorded = now["unlocked_by"] if now["unlocked_by"] != before["unlocked_by"] else None
-            unlock_event = (sha, email, name, recorded)
+            unlock_events.append((sha, email, name, recorded))
         added = sorted(now["risk"] - before["risk"])
-        if added and risk_event is None:
+        if added:
             # the label actors this very commit recorded for the items it added
             by = {
                 i: a
                 for i, a in now["risk_by"].items()
                 if i in added and a != before["risk_by"].get(i)
             }
-            risk_event = (sha, email, name, added, by)
-        if now["iterations"] < before["iterations"] and drop_event is None:
-            # the act is recorded in this very commit when the actor or the stamp changed:
-            # a second reset by the same person changes the stamp only (0.2.17)
-            recorded = now["reset_by"] != before["reset_by"] or (
-                now["reset_at"] is not None and now["reset_at"] != before["reset_at"]
-            )
-            reset_by = now["reset_by"] if recorded else None
-            drop_event = (sha, email, name, before["iterations"], now["iterations"], reset_by)
+            risk_events.append((sha, email, name, added, by, index))
+        for counter in tree_counts:
+            if now[counter] < before[counter]:
+                # the act is recorded in this very commit when the actor or the stamp changed:
+                # a second reset by the same person changes the stamp only (0.2.17)
+                recorded = now["reset_by"] != before["reset_by"] or (
+                    now["reset_at"] is not None and now["reset_at"] != before["reset_at"]
+                )
+                reset_by = now["reset_by"] if recorded else None
+                drop_events.append(
+                    (counter, sha, email, name, before[counter], now[counter], reset_by)
+                )
     labels: dict[str, Any] = {}
-    if risk_event and is_automation(risk_event[2], risk_event[1], identities):
-        sha, email, name, added, by = risk_event
-        unlabelled = [i for i in added if not _label_actor_ok(by.get(i), identities)]
+    for sha, email, name, added, by, index in risk_events:
+        if not is_automation(name, email, identities):
+            continue
+        unlabelled = [
+            i
+            for i in added
+            if not _label_actor_ok(by.get(i), identities)
+            and not (
+                i in ratified
+                and ratified[i][0] < index
+                and _label_actor_ok(ratified[i][1], identities)
+            )
+        ]
         if unlabelled:
             problems.append(
                 f"risk_accepted gained {', '.join(unlabelled)} in commit {sha[:10]}, "
@@ -983,14 +1048,17 @@ def check_owner_actions(ctx: GateContext) -> CheckResult:
                 )
             )
         else:
-            labels["risk_accepted"] = {i: by[i] for i in added}
-    if drop_event and is_automation(drop_event[2], drop_event[1], identities):
-        sha, email, name, was, now_count, reset_by = drop_event
+            labels.setdefault("risk_accepted", {}).update(
+                {i: by.get(i) or ratified[i][1] for i in added}
+            )
+    for counter, sha, email, name, was, now_count, reset_by in drop_events:
+        if not is_automation(name, email, identities):
+            continue
         if _label_actor_ok(reset_by, identities):
-            labels["iterations_reset"] = reset_by
+            labels.setdefault(f"{counter}_reset", reset_by)
         else:
             problems.append(
-                f"iterations dropped from {was} to {now_count} in commit {sha[:10]}, "
+                f"{counter} dropped from {was} to {now_count} in commit {sha[:10]}, "
                 f"authored by the automation identity ({name} <{email}>)"
                 + (
                     f"; the recorded label actor {reset_by!r} is not a person"
@@ -998,10 +1066,11 @@ def check_owner_actions(ctx: GateContext) -> CheckResult:
                     else " and no owner label actor is recorded for it"
                 )
             )
-    if unlock_event and is_automation(unlock_event[2], unlock_event[1], identities):
-        sha, email, name, unlocked_by = unlock_event
+    for sha, email, name, unlocked_by in unlock_events:
+        if not is_automation(name, email, identities):
+            continue
         if _label_actor_ok(unlocked_by, identities):
-            labels["tests_unlocked"] = unlocked_by
+            labels.setdefault("tests_unlocked", unlocked_by)
         else:
             problems.append(
                 f"the test-file lock was lifted in commit {sha[:10]}, authored by the "
@@ -1022,8 +1091,8 @@ def check_owner_actions(ctx: GateContext) -> CheckResult:
         )
     return _ok(
         "owner_actions",
-        "risk acceptances, iteration resets and test-lock lifts, if any, were committed by "
-        "the owner or applied by the owner's label",
+        "risk acceptances, iteration and panel-call resets and test-lock lifts, if any, were "
+        "committed by the owner or applied by the owner's label",
         risk_accepted=sorted(tree_risk),
         label_actors=labels,
     )
@@ -1141,17 +1210,26 @@ def check_panel(ctx: GateContext) -> CheckResult:
         for e in phase_entries
         if e.get("kind") in ("concern", "policy")
     ]
-    by_n = {e.get("n") for e in earlier}
+    # each ledger line closes one concern: a line is consumed by the first closing that names
+    # it, and a second closing on the same number is refused (1.0.0 readiness review, group A)
+    unused = Counter(e.get("n") for e in earlier)
     concern_decisions = {
         " ".join(str(e.get("decision", "")).split()).lower() for e in ledger.active(earlier)
     }
     for n, item in ledger.panel_closings(spec):
         if n is not None:
-            if n not in by_n:
+            if n not in unused:
                 problems.append(
                     f"spec.md closes a concern by panel decision {n}, which no ledger of "
                     f"phases {'/'.join(ledger.phases_up_to(ctx.phase))} carries: {item[:80]}"
                 )
+            elif unused[n] <= 0:
+                problems.append(
+                    f"spec.md closes a second concern by panel decision {n}; one ledger line "
+                    f"closes one concern: {item[:80]}"
+                )
+            else:
+                unused[n] -= 1
             continue
         text = ledger.PANEL_CLOSING_RE.sub("", item, count=1).strip().lower()
         if not any(text.startswith(d) for d in concern_decisions if d):
@@ -1347,7 +1425,9 @@ def _project_language(root: Path) -> str:
 
 
 CHECKS_BY_PHASE: dict[str, tuple[Check, ...]] = {
-    "a": (check_artifacts, check_guardrails, check_risk_list),
+    # gate (a) judges the intent PR: since 0.2.26 ``design_scope`` refuses a source file on it
+    # (OPERATING_MODEL section 4.2 promised it for the fix round at (a); change 0000 is exempt)
+    "a": (check_artifacts, check_design_scope, check_guardrails, check_risk_list),
     "b": (
         check_artifacts,
         check_design_scope,

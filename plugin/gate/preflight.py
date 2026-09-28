@@ -52,7 +52,7 @@ if str(PLUGIN_DIR) not in sys.path:
 from gate import artifacts as art  # noqa: E402
 from gate import limits  # noqa: E402
 from gate.checks import PLACEHOLDER_COMMAND_RE, CheckResult, GateContext, run_command  # noqa: E402
-from hooks._common import ConfigError, load_sdlc_config  # noqa: E402
+from hooks._common import ConfigError, config_flag, load_sdlc_config  # noqa: E402
 from state import conventions as c  # noqa: E402
 from state import status as status_mod  # noqa: E402
 
@@ -234,7 +234,11 @@ def check_settings(root: Path) -> CheckResult:
 
 # --- 5. pause flag  ------------------------------------------------------------------------------
 def check_not_paused(config: dict[str, Any]) -> CheckResult:
-    if config.get("paused") is True:
+    try:
+        paused = config_flag(config, "paused")
+    except ConfigError as exc:
+        return _fail("paused", str(exc), "Fix sdlc.yaml: paused; the preflight fails closed.")
+    if paused:
         return _fail(
             "paused",
             "the repository is paused (sdlc.yaml: paused: true)",

@@ -51,7 +51,7 @@ from gate import artifacts as art  # noqa: E402
 from gate import checks  # noqa: E402
 from gate.checks import CheckResult  # noqa: E402
 from gate.gate import GateResult  # noqa: E402
-from hooks._common import ConfigError, load_sdlc_config  # noqa: E402
+from hooks._common import ConfigError, config_flag, load_sdlc_config  # noqa: E402
 from state import conventions as c  # noqa: E402
 from state import gitops  # noqa: E402
 from state import status as status_mod  # noqa: E402
@@ -468,11 +468,9 @@ def production_declared(root: Path) -> bool:
     """``sdlc.yaml: deploy.production`` is true. An unreadable or absent file declares
     nothing (the gate, not the PR body, is where a broken sdlc.yaml parks)."""
     try:
-        config = load_sdlc_config(str(root))
+        return config_flag(load_sdlc_config(str(root)), "deploy", "production")
     except ConfigError:
         return False
-    deploy = config.get("deploy")
-    return isinstance(deploy, dict) and deploy.get("production") is True
 
 
 def release_note(change_dir: Path, intent: str) -> str:

@@ -53,6 +53,7 @@ from _common import (  # noqa: E402
     HOOK_LOG_EVIDENCE,
     ConfigError,
     Decision,
+    config_flag,
     load_sdlc_config,
     log_decision,
     project_dir,
@@ -322,7 +323,7 @@ def decide(
         deploy = config.get("deploy") or {}
         if not isinstance(deploy, dict):
             raise ConfigError("sdlc.yaml: deploy must be a mapping")
-        if deploy.get("production") is not True:
+        if not config_flag(config, "deploy", "production"):
             return Decision.allow()  # inert: no production declared, nothing logged
         action = str(deploy.get("action") or "none").strip().lower()
         patterns = guarded_patterns(action, deploy)

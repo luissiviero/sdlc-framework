@@ -1368,3 +1368,19 @@ def test_utf8_stdout_makes_a_cp1252_pipe_write_utf8(monkeypatch):
     sys.stdout.write("≠ →")
     sys.stdout.flush()
     assert buffer.getvalue() == "≠ →".encode()
+
+
+def test_production_gate_fails_closed_on_a_production_flag_that_is_not_a_boolean(tmp_path):
+    """``production: yes`` read as "no production declared" and switched the hook off (1.0.0
+    readiness review, group A); now it is a config error, which the hook blocks on."""
+    root, env, log = _gate_project(tmp_path)
+    path = root / "sdlc.yaml"
+    path.write_text(
+        path.read_text(encoding="utf-8").replace("production: true", "production: yes"),
+        encoding="utf-8",
+    )
+    with pytest.raises(_common_config_error()) as exc:
+        _gate(root, env, "twine upload dist/*")
+    assert "deploy.production is 'yes', not a boolean" in str(exc.value)
+    (line,) = _log_lines(log)
+    assert line["verdict"] == "block" and "fail closed" in line["reason"]
