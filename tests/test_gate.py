@@ -738,6 +738,25 @@ def test_the_diff_checks_fail_when_no_default_branch_exists(tmp_path):
         )
 
 
+def test_the_diff_checks_fail_when_the_branch_shares_no_history_with_the_base(tmp_path):
+    """The readiness review's group B (0.2.27): with a base that exists but has no merge
+    base with HEAD (an orphan branch, a shallow clone), ``diff.collect`` returned an empty
+    committed diff and the four checks passed on it — the silent pass M2 fixed for the
+    no-base case. Now ``merge_base`` None fails them, naming the base."""
+    root = _single_branch_repo(tmp_path, "main")
+    git(root, "checkout", "-q", "--orphan", "sdlc/0001/c")
+    git(root, "commit", "-q", "-m", "an unrelated history with the same files")
+    ctx = gate.build_context(root, "0001", "c")
+    assert ctx.diff is not None and ctx.diff.base == "main" and ctx.diff.merge_base is None
+    assert ctx.diff.commits == [] and "cannot be judged" in ctx.diff.note
+    assert checks.diffmod.committed_files(root, ctx.diff.merge_base, ctx.diff.head) == []
+    for check in DIFF_CHECKS:
+        res = check(ctx)
+        assert not res.ok, check.__name__
+        assert res.reason == "no merge base with main: the committed diff cannot be judged"
+        assert "fetch-depth: 0" in res.need and "main" in res.need
+
+
 def test_the_diff_checks_judge_a_checkout_of_the_default_branch_itself(tmp_path):
     """A single-branch repository on its default branch is not "no base": the merge base is
     HEAD because nothing was committed on top of the base yet, and the empty diff passes."""
@@ -765,12 +784,18 @@ def test_default_base_prefers_the_environment_value_when_its_remote_branch_exist
     git(root, "push", "-q", "origin", "main", "main:trunk", "main:sdlc/0001/a")
     git(root, "fetch", "-q", "origin")
     git(root, "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main")
-    assert diff.default_base(root) == "origin/main"
+    assert diff.default_base(root) == "refs/remotes/origin/main"  # qualified since 0.2.27
     monkeypatch.setenv("SDLC_DEFAULT_BRANCH", "trunk")
-    assert diff.default_base(root) == "origin/trunk"
+    assert diff.default_base(root) == "refs/remotes/origin/trunk"
     for fallthrough in ("sdlc/0001/a", "nonexistent"):
         monkeypatch.setenv("SDLC_DEFAULT_BRANCH", fallthrough)
-        assert diff.default_base(root) == "origin/main", fallthrough
+        assert diff.default_base(root) == "refs/remotes/origin/main", fallthrough
+    # the review of the 0.2.27 diff, M2: a tag named origin/main (anyone with write access
+    # can push one; a CI checkout fetches tags) used to shadow the short ref and empty the
+    # committed diff every check judges
+    monkeypatch.delenv("SDLC_DEFAULT_BRANCH")
+    git(root, "tag", "origin/main", "HEAD~0")
+    assert diff.default_base(root) == "refs/remotes/origin/main"
 
 
 def test_risk_list_reads_the_committed_spec(design_project):

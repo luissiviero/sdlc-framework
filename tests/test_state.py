@@ -140,6 +140,7 @@ def test_status_round_trip_and_schema(tmp_path):
         "tests_unlocked_by",
         "runbook_authorized_by",  # phase (f), decision 14 (plugin 0.2.19)
         "abandoned_reason",  # decision 25
+        "build_pr",  # 0.2.27: the build PR the release approval is read from
         "created_at",
         "updated_at",
         "schema_version",

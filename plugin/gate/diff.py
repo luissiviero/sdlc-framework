@@ -210,22 +210,26 @@ def head_sha(root: Path) -> str | None:
 
 
 def default_base(root: Path) -> str:
-    """origin/<default branch> when the remote has one, else main/master locally.
+    """``refs/remotes/origin/<default branch>`` when the remote has one, else main/master
+    locally. The remote-tracking ref is fully qualified (0.2.27): git resolves a tag named
+    ``origin/main`` before the short remote ref, and a tag pushed by anyone with write
+    access reaches every later CI checkout (``fetch-depth: 0``), where the short form then
+    emptied the committed diff the checks and the runner's guard judge.
 
     ``SDLC_DEFAULT_BRANCH`` (refused when it names a framework branch, see
-    ``gitops.explicit_default_branch``) wins when ``origin/<value>`` resolves."""
+    ``gitops.explicit_default_branch``) wins when ``refs/remotes/origin/<value>`` resolves."""
     explicit = gitops.explicit_default_branch()
     if explicit:
-        ref = f"origin/{explicit}"
+        ref = f"refs/remotes/origin/{explicit}"
         if _git(root, "rev-parse", "--verify", "--quiet", ref, check=False).strip():
             return ref
     try:
         ref = _git(root, "symbolic-ref", "refs/remotes/origin/HEAD").strip()
         if ref.startswith("refs/remotes/"):
-            return ref[len("refs/remotes/") :]
+            return ref
     except GitUnavailable:
         pass
-    for cand in ("origin/main", "origin/master", "main", "master"):
+    for cand in ("refs/remotes/origin/main", "refs/remotes/origin/master", "main", "master"):
         if _git(root, "rev-parse", "--verify", "--quiet", cand, check=False).strip():
             return cand
     return "HEAD"
@@ -244,7 +248,11 @@ def collect(root: Path, base: str | None = None) -> Diff:
     else:
         mb = _git(root, "merge-base", base, "HEAD", check=False).strip()
         merge_base = mb or None
-        note = "" if mb else f"no merge base with {base}: comparing against HEAD"
+        # A base that shares no history with HEAD (an orphan branch, a shallow clone that
+        # stopped short of the fork point): ``merge_base`` None, ``commits`` empty and
+        # ``committed_files`` empty. The checks that judge the committed diff fail on it
+        # (``checks._no_base``), never pass on the empty list (readiness review, group B).
+        note = "" if mb else f"no merge base with {base}: the committed diff cannot be judged"
     ref = merge_base or "HEAD"
     files = _z(_git(root, "diff", "--name-only", "-z", "--diff-filter=ACMRD", ref, check=False))
     files = sorted(

@@ -21,9 +21,19 @@ Releases page then lists every version, not only the ones made by hand (0.2.15â€
 were tags only). A release that cannot be created is reported, never fatal: the tag is
 what projects pin.
 
+Only the default branch is tagged. The workflow's ``push`` trigger is limited to ``main``,
+but a ``workflow_dispatch`` may be started from any ref, and a tag is created once and never
+moved: a dispatch from a branch would have tagged unmerged code for good (the 1.0.0
+readiness review, group B). The branch is ``GITHUB_REF_NAME`` (the workflow passes
+``github.ref_name``), else the checked-out branch; the default branch is
+``SDLC_DEFAULT_BRANCH`` (``github.event.repository.default_branch``), else ``origin``'s
+``HEAD``, else ``main``. Any other branch, or a detached HEAD the environment does not name,
+ends green with ``skipped=not the default branch`` and nothing tagged.
+
 Outputs (``$GITHUB_OUTPUT`` and stdout): ``version=<version>``, ``tag=v<version>``,
-``created=true|false``, ``release=<url>|exists|skipped|failed``. Exit 0 in all of those
-cases; 1 when the manifest is missing or carries no version; 2 when git fails.
+``created=true|false``, ``release=<url>|exists|skipped|failed``, ``skipped=<reason>|``.
+Exit 0 in all of those cases; 1 when the manifest is missing or carries no version; 2 when
+git fails.
 """
 
 from __future__ import annotations
@@ -65,6 +75,41 @@ def git(root: Path, *args: str) -> str:
     if proc.returncode != 0:
         raise SystemExit(f"git {' '.join(args)} failed: {proc.stderr.strip() or proc.stdout}")
     return proc.stdout
+
+
+def current_branch(root: Path, env: dict[str, str]) -> str:
+    """``GITHUB_REF_NAME`` when set, else the checked-out branch (``HEAD`` when detached)."""
+    named = env.get("GITHUB_REF_NAME", "").strip()
+    if named:
+        return named
+    return git(root, "rev-parse", "--abbrev-ref", "HEAD").strip()
+
+
+def default_branch(root: Path, remote: str, env: dict[str, str]) -> str:
+    """``SDLC_DEFAULT_BRANCH`` when set, else what ``refs/remotes/<remote>/HEAD`` names,
+    else ``main`` (the framework repository's own default; this script is not a template)."""
+    named = env.get("SDLC_DEFAULT_BRANCH", "").strip()
+    if named:
+        return named
+    proc = subprocess.run(
+        ["git", "symbolic-ref", "--quiet", f"refs/remotes/{remote}/HEAD"],
+        cwd=root, capture_output=True, text=True, encoding="utf-8",
+    )  # fmt: skip
+    prefix = f"refs/remotes/{remote}/"
+    if proc.returncode == 0 and proc.stdout.strip().startswith(prefix):
+        return proc.stdout.strip()[len(prefix) :]
+    return "main"
+
+
+def not_the_default_branch(root: Path, remote: str, env: dict[str, str]) -> str:
+    """Why nothing may be tagged from here, or "" on the default branch."""
+    branch = current_branch(root, env)
+    default = default_branch(root, remote, env)
+    if branch == "HEAD":
+        return f"not the default branch: a detached HEAD (the default branch is {default})"
+    if branch != default:
+        return f"not the default branch: {branch} (the default branch is {default})"
+    return ""
 
 
 def tag_exists(root: Path, tag: str, remote: str) -> bool:
@@ -126,9 +171,23 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--no-release", action="store_true", help="the tag only, no release page")
     args = p.parse_args(argv)
     root = Path(args.root).resolve()
+    env = dict(os.environ)
     try:
         version = read_version(root / MANIFEST)
         tag = tag_for(version)
+        skipped = not_the_default_branch(root, args.remote, env)
+        if skipped:
+            print(f"{skipped}; nothing tagged", file=sys.stderr)
+            write_outputs(
+                {
+                    "version": version,
+                    "tag": tag,
+                    "created": "false",
+                    "release": "skipped",
+                    "skipped": skipped,
+                }
+            )
+            return 0
         exists = tag_exists(root, tag, args.remote)
         created = False
         if not exists and not args.dry_run:
@@ -138,15 +197,21 @@ def main(argv: list[str] | None = None) -> int:
     except SystemExit as exc:
         print(str(exc), file=sys.stderr)
         return 1 if "manifest" in str(exc) else 2
-    token = os.environ.get("GITHUB_TOKEN", "").strip()
-    repo = os.environ.get("GITHUB_REPOSITORY", "").strip()
+    token = env.get("GITHUB_TOKEN", "").strip()
+    repo = env.get("GITHUB_REPOSITORY", "").strip()
     release = "skipped"
     if not args.dry_run and not args.no_release and token and repo:
         release = create_release(repo, tag, token)
         if release.startswith("failed"):
             print(f"the release page for {tag} was not created ({release})", file=sys.stderr)
     write_outputs(
-        {"version": version, "tag": tag, "created": str(created).lower(), "release": release}
+        {
+            "version": version,
+            "tag": tag,
+            "created": str(created).lower(),
+            "release": release,
+            "skipped": "",
+        }
     )
     return 0
 

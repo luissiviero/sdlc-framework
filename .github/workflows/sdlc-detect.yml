@@ -151,17 +151,48 @@ jobs:
           SDLC_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: python framework/plugin/ci/run_phase.py --root . --plugin-dir framework --phase f --id "$CHANGE_ID" --head-ref "$HEAD_REF" --repo "$REPO" --ref "$DEFAULT_BRANCH"
 
+      # The diagnosis ran a session holding Write and Bash(git *) in this same checkout
+      # (PROGRESS session 8, "the shared checkout"; the review of the 0.2.26 diff, M4):
+      # the framework checkout it could reach is removed and checked out afresh at the pin
+      # the first step read (a step output lives in the runner), then the project
+      # checkout's remote, refspec and config are verified from that fresh copy and the
+      # default branch fetched again by URL (plugin 0.2.27; plugin/ci/checkout_check.py).
+      - name: Remove the framework checkout the session could reach
+        if: steps.detect.outputs.change_id != ''
+        run: python -c "import shutil; shutil.rmtree('framework', ignore_errors=True)"
+
+      - name: Check out the pinned framework afresh (public repository, no token)
+        if: steps.detect.outputs.change_id != ''
+        uses: actions/checkout@v5
+        with:
+          repository: "luissiviero/sdlc-framework"
+          ref: ${{ steps.pin.outputs.ref }}
+          path: framework
+
+      - name: Verify the project checkout before the next step
+        if: steps.detect.outputs.change_id != ''
+        env:
+          PIN_REF: ${{ steps.pin.outputs.ref }}
+          ORIGIN_URL: ${{ github.server_url }}/${{ github.repository }}
+          FRAMEWORK_URL: ${{ github.server_url }}/luissiviero/sdlc-framework
+          SDLC_DEFAULT_BRANCH: ${{ github.event.repository.default_branch || github.ref_name }}
+        run: python framework/plugin/ci/checkout_check.py --root . --framework framework --pin-ref "$PIN_REF" --origin "$ORIGIN_URL" --framework-origin "$FRAMEWORK_URL"
+
       # 3σ "may act, though only by opening a PR into the review gate or triggering a
       # pre-approved runbook": the deterministic dispatcher, then gate (f) and the intent
       # PR. No model runs here. A project runbook's own secrets belong in this step's env:.
+      # The detection record it judges is compared with the digest the Detect step printed
+      # (a step output lives in the runner, not in the checkout): a record the session
+      # changed is refused and the change parked (plugin 0.2.27).
       - name: Dispatch the route, run gate (f) and open the intent PR
         if: steps.detect.outputs.change_id != ''
         env:
           GITHUB_TOKEN: ${{ github.token }}
           CHANGE_ID: ${{ steps.detect.outputs.change_id }}
           REPO: ${{ github.repository }}
+          DETECTION_SHA256: ${{ steps.detect.outputs.detection_sha256 }}
           SDLC_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
-        run: python framework/plugin/detect/cli.py finish --root . --id "$CHANGE_ID" --repo "$REPO"
+        run: python framework/plugin/detect/cli.py finish --root . --id "$CHANGE_ID" --repo "$REPO" --detection-sha256 "$DETECTION_SHA256"
 
       # Build guide step 41.1 (article p.39): every hook decision of the run is one line of
       # changes/<id>-<slug>/evidence/hook-log.jsonl (committed with the evidence) or of

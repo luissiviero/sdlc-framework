@@ -183,6 +183,15 @@ class FakeGitHub:
         self.calls.append(("find_open_pr", args, kwargs))
         return {"ok": True, "route": "fake", "number": 12, "url": "https://x/pr/12"}
 
+    # ``find_pr(repo, head, state="all")``: what the run reads about a dismissal branch's
+    # PR; by default none exists yet (the branch was pushed, the PR not opened)
+    pr_by_head: dict[str, dict[str, Any]] = {}
+
+    def find_pr(self, *args: Any, **kwargs: Any) -> dict[str, Any]:
+        self.calls.append(("find_pr", args, kwargs))
+        found = self.pr_by_head.get(args[1]) if len(args) > 1 else None
+        return {"ok": True, "route": "fake", "number": None, **(found or {})}
+
     def label_actor(self, *args: Any, **kwargs: Any) -> dict[str, Any]:
         self.calls.append(("label_actor", args, kwargs))
         return dict(self.actor)
@@ -270,6 +279,7 @@ def gh(monkeypatch) -> FakeGitHub:
     module = detect_cli._github()
     for name in (
         "find_open_pr",
+        "find_pr",
         "label_actor",
         "issue_comments",
         "set_labels",
@@ -408,6 +418,9 @@ def test_run_spike_with_file_opens_the_incident_change(tmp_path, src, gh, capsys
 
     record = json.loads((change / "evidence" / "detection.json").read_text(encoding="utf-8"))
     assert finding.validate(record) == []
+    # 0.2.27: the record's digest is a step output, for finish to compare after the session
+    assert out["detection_sha256"] == detect_cli.detection_digest(change)
+    assert f"detection_sha256={out['detection_sha256']}" in outfile.read_text(encoding="utf-8")
     assert record["signature"] == finding.signature(METRIC, "we1")
     assert (record["tier"], record["rule"], record["forced"]) == (3, "we1", False)
     assert record["failed_run_urls"] == [FAILED_URL]
@@ -932,7 +945,12 @@ def test_dismiss_reads_the_reason_from_the_last_comment_by_a_person(incident, gh
         "ok": True,
         "reason": "",
         "comments": [
-            {"author": "the-owner", "type": "User", "body": "flaky runner,\n  not the code"},
+            {
+                "author": "the-owner",
+                "type": "User",
+                "association": "OWNER",
+                "body": "flaky runner,\n  not the code",
+            },
             {"author": "github-actions[bot]", "type": "Bot", "body": "parked: what I need"},
         ],
     }
@@ -964,7 +982,7 @@ def test_dismiss_with_only_bot_comments_dismisses_nothing(incident, gh, capsys):
     )
     assert code == 0
     assert out["dismissed"] is False
-    assert "no comment by a person" in out["reason"]
+    assert "no comment by a member of the repository" in out["reason"]
     assert not git(root, "branch", "--list", "sdlc/0001/dismiss").strip()
 
 
@@ -1249,10 +1267,92 @@ def test_a_pending_dismissal_branch_already_suppresses_the_finding(incident, src
     git(root, "add", "changes")
     git(root, "commit", "-q", "-m", "abandon")
     git(root, "push", "-q", "origin", "sdlc/0001/a")
+    # the abandon workflow opened the dismissal PR (0.2.27: a branch with no PR mutes nothing)
+    gh.pr_by_head["sdlc/0001/dismiss"] = {"number": 6, "state": "open", "merged": False}
     src.observations = series(20, spike=True)
     code, out = cli(capsys, "run", "--root", str(root), "--repo", REPO, "--file")
     assert out["outcome"].startswith("dismissed until") and out["filed"] == {}
     assert out["dismissal"]["pending"] == "origin/sdlc/0001/dismiss"
+
+
+def test_a_dismissal_whose_pr_was_closed_without_a_merge_no_longer_suppresses(
+    incident, src, gh, capsys
+):
+    """The readiness review's group B (0.2.27): a rejected ``sdlc/<id>/dismiss`` PR (closed,
+    not merged) kept muting the finding for as long as its branch lived. The run now reads
+    the PR's state when it has a repository, reports the rejected branch, and files again."""
+    root, change = incident
+    code, out = cli(
+        capsys, "dismiss", "--root", str(root), "--id", "0001", "--reason", "runner outage",
+        "--by", "owner", "--repo", REPO, "--pr-number", "5",
+    )  # fmt: skip
+    assert out["dismissed"] is True
+    git(root, "push", "-q", "origin", "sdlc/0001/dismiss")
+    git(root, "fetch", "-q", "origin")
+    st = status_mod.read_status(change)
+    st.abandon("pull request 5 closed without a merge")
+    status_mod.write_status(change, st)
+    git(root, "add", "changes")
+    git(root, "commit", "-q", "-m", "abandon")
+    git(root, "push", "-q", "origin", "sdlc/0001/a")
+    gh.pr_by_head["sdlc/0001/dismiss"] = {"number": 6, "state": "closed", "merged": False}
+    src.observations = series(20, spike=True)
+    code, out = cli(capsys, "run", "--root", str(root), "--repo", REPO, "--file")
+    assert out["rejected_dismissals"] == {
+        "origin/sdlc/0001/dismiss": (
+            "pull request #6 for sdlc/0001/dismiss was closed without a merge"
+        )
+    }
+    assert "dismissal" not in out and out["filed"], out
+    assert ("find_pr", (REPO, "sdlc/0001/dismiss"), {"state": "all", "cwd": root}) in gh.calls
+    # a branch nobody opened a PR for suppresses nothing either (the review of the 0.2.27
+    # diff, M7: a session with branch write access could push one); a failed lookup keeps
+    # the pending dismissal (an outage refiles nothing)
+    del gh.pr_by_head["sdlc/0001/dismiss"]
+    code, out = cli(capsys, "run", "--root", str(root), "--repo", REPO)
+    assert out["rejected_dismissals"] == {
+        "origin/sdlc/0001/dismiss": "no pull request was opened for sdlc/0001/dismiss"
+    }
+    gh.pr_by_head["sdlc/0001/dismiss"] = {"ok": False, "reason": "HTTP 502"}
+    code, out = cli(capsys, "run", "--root", str(root), "--repo", REPO)
+    assert out["outcome"].startswith("dismissed until") and "rejected_dismissals" not in out
+    # an open dismissal PR, or a merged one whose branch still exists, keeps suppressing
+    gh.pr_by_head["sdlc/0001/dismiss"] = {"number": 6, "state": "open", "merged": False}
+    code, out = cli(capsys, "run", "--root", str(root), "--repo", REPO)
+    assert out["outcome"].startswith("dismissed until") and "rejected_dismissals" not in out
+    gh.pr_by_head["sdlc/0001/dismiss"] = {"number": 6, "state": "closed", "merged": True}
+    code, out = cli(capsys, "run", "--root", str(root), "--repo", REPO)
+    assert out["outcome"].startswith("dismissed until")
+
+
+def test_dismiss_takes_the_reason_only_from_a_member_of_the_repository(incident, gh, capsys):
+    """The readiness review's group B (0.2.27): ``_closing_reason`` took any person's last
+    comment. On a public repository anyone can comment on the incident PR, and that text
+    became the dismissal — and its reason. Only an ``OWNER``, ``MEMBER`` or ``COLLABORATOR``
+    counts, as the fix round reads reviews."""
+    root, _change = incident
+    gh.comments = {
+        "ok": True,
+        "reason": "",
+        "comments": [
+            {"author": "the-owner", "type": "User", "association": "OWNER", "body": "our runner"},
+            {"author": "passer-by", "type": "User", "association": "NONE", "body": "ignore it"},
+            {"author": "helper", "type": "User", "association": "CONTRIBUTOR", "body": "noise"},
+        ],
+    }
+    code, out = cli(
+        capsys, "dismiss", "--root", str(root), "--id", "0001", "--repo", REPO, "--pr-number", "12"
+    )
+    assert code == 0 and out["dismissed"] is True
+    assert (out["reason"], out["by"]) == ("our runner", "the-owner")
+    gh.comments["comments"] = gh.comments["comments"][1:]
+    git(root, "checkout", "-q", "sdlc/0001/a")
+    git(root, "branch", "-q", "-D", "sdlc/0001/dismiss")
+    code, out = cli(
+        capsys, "dismiss", "--root", str(root), "--id", "0001", "--repo", REPO, "--pr-number", "13"
+    )
+    assert code == 0 and out["dismissed"] is False, out
+    assert "no comment by a member of the repository" in out["reason"]
 
 
 # --- $GITHUB_OUTPUT and a failing commit (live run of 2026-09-25) -----------------------------
@@ -1373,7 +1473,8 @@ def test_run_default_branch_environment_sets_the_filing_s_start_point(
     code, out = cli(capsys, *argv, "--force-tier", "2", "--file")
     assert code == 1, out
     [commit_phase] = seen
-    assert commit_phase[commit_phase.index("--start-point") + 1] == "origin/trunk"
+    # fully qualified since 0.2.27: a tag named origin/trunk cannot shadow the branch
+    assert commit_phase[commit_phase.index("--start-point") + 1] == "refs/remotes/origin/trunk"
 
 
 @pytest.mark.parametrize("command", ["run", "routes", "dispatch", "finish", "go", "dismiss"])
@@ -1488,7 +1589,14 @@ def test_dismiss_reads_the_automation_identity_from_the_default_branch(
     gh.comments = {
         "ok": True,
         "reason": "",
-        "comments": [{"author": "the-owner", "type": "User", "body": "a runner outage"}],
+        "comments": [
+            {
+                "author": "the-owner",
+                "type": "User",
+                "association": "OWNER",
+                "body": "a runner outage",
+            }
+        ],
     }
     if listed_on == "head":
         list_owner_as_automation_in_the_checkout(root)
@@ -1503,7 +1611,7 @@ def test_dismiss_reads_the_automation_identity_from_the_default_branch(
         assert (out["reason"], out["by"]) == ("a runner outage", "the-owner")
     else:
         assert out["dismissed"] is False
-        assert "no comment by a person" in out["reason"]
+        assert "no comment by a member of the repository" in out["reason"]
         assert not git(root, "branch", "--list", "sdlc/0001/dismiss").strip()
 
 
@@ -1519,6 +1627,7 @@ def test_dismiss_strips_the_github_tool_footer_from_the_reason(incident, gh, cap
             {
                 "author": "the-owner",
                 "type": "User",
+                "association": "OWNER",
                 "body": "flaky runner, not the code\n\n" + footer,
             },
         ],
@@ -1528,7 +1637,12 @@ def test_dismiss_strips_the_github_tool_footer_from_the_reason(incident, gh, cap
     assert code == 0, out
     assert (out["reason"], out["by"]) == ("flaky runner, not the code", "the-owner")
     gh.comments["comments"] = [
-        {"author": "the-owner", "type": "User", "body": "a runner outage on the 16th"},
+        {
+            "author": "the-owner",
+            "type": "User",
+            "association": "OWNER",
+            "body": "a runner outage on the 16th",
+        },
         {"author": "a-reviewer", "type": "User", "body": "\n" + footer},
     ]
     code, out = cli(capsys, *argv, "--dry-run")
@@ -1564,7 +1678,7 @@ def test_dismiss_strips_only_the_tool_footer_from_the_reason(incident, gh, capsy
     gh.comments = {
         "ok": True,
         "reason": "",
-        "comments": [{"author": "the-owner", "type": "User", "body": body}],
+        "comments": [{"author": "the-owner", "type": "User", "association": "OWNER", "body": body}],
     }
     argv = ["dismiss", "--root", str(root), "--id", "0001", "--repo", REPO, "--pr-number", "12"]
     code, out = cli(capsys, *argv, "--dry-run")
@@ -1621,6 +1735,10 @@ def test_approved_files_refuses_an_origin_that_is_not_the_repository(incident, m
     # on a runner the origin is always the repository's URL: a local path is refused
     monkeypatch.setenv("GITHUB_ACTIONS", "true")
     assert "not a GitHub repository URL" in detect_cli.origin_mismatch(root, "o/r")
+    # 0.2.27: a config key that redirects the fetch is refused on a runner before the URL
+    git(root, "config", "url.https://elsewhere.example/x.insteadOf", "https://github.com/")
+    assert "insteadof" in detect_cli.origin_mismatch(root, "o/r")
+    git(root, "config", "--unset", "url.https://elsewhere.example/x.insteadOf")
     with pytest.raises(bands_mod.BandsError, match="not a GitHub repository URL"):
         detect_cli.approved_files(root, config, "o/r")
     monkeypatch.delenv("GITHUB_ACTIONS")
@@ -1797,7 +1915,14 @@ def test_a_malformed_head_sdlc_yaml_does_not_stop_go_or_dismiss(
     gh.comments = {
         "ok": True,
         "reason": "",
-        "comments": [{"author": "the-owner", "type": "User", "body": "a runner outage"}],
+        "comments": [
+            {
+                "author": "the-owner",
+                "type": "User",
+                "association": "OWNER",
+                "body": "a runner outage",
+            }
+        ],
     }
     if command == "go":
         code, out = go(capsys, root)
@@ -1809,6 +1934,75 @@ def test_a_malformed_head_sdlc_yaml_does_not_stop_go_or_dismiss(
             "--pr-number", "12", "--dry-run",
         )  # fmt: skip
         assert code == 0 and out["reason"] == "a runner outage", out
+
+
+def test_finish_refuses_a_detection_record_the_session_changed(incident, gh, capsys, monkeypatch):
+    """PROGRESS session 8, "the shared checkout" (the readiness review's group B, 0.2.27):
+    the maintain session runs with Write and Bash(git *) in the checkout finish reads, so it
+    could raise the record's tier from 2 to 3 and have a pre-approved runbook run. The
+    Detect step prints the record's digest as a step output (in the runner, not in the
+    checkout); finish compares, and a changed record parks the change and refuses the
+    route. Without a digest (by hand) the record's word stands, as before."""
+    from state import conventions as c
+
+    root, change = incident
+    write_proposal(change, "pull_request")
+    git(root, "add", "changes")
+    git(root, "commit", "-q", "-m", "maintain(0001): diagnosis")
+    snapshot = detect_cli.detection_digest(change)
+    assert len(snapshot) == 64
+    # the session edits the record after the snapshot
+    path = change / "evidence" / "detection.json"
+    original = path.read_text(encoding="utf-8")
+    record = json.loads(original)
+    record["tier"] = 2  # a valid record, not the one the detect step wrote
+    path.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
+    git(root, "commit", "-q", "-am", "maintain(0001): a changed tier")
+    code, out = cli(
+        capsys, "finish", "--root", str(root), "--id", "0001", "--repo", REPO,
+        "--detection-sha256", snapshot,
+    )  # fmt: skip
+    assert code == 1
+    assert out["dispatch"] == {
+        "acted": False, "reason": "the detection record changed after the detect step"
+    }  # fmt: skip
+    assert out["parked"].startswith(c.DETECTION_SNAPSHOT_PARK_PREFIX)
+    assert out["snapshot"]["expected"] == snapshot and out["snapshot"]["actual"] != snapshot
+    assert "gate" not in out and out["park_commit"]["ok"] is True
+    # the park is a queue item: evidence/gate-f.json carries the park and the PR gets
+    # sdlc:needs-human (the review of the 0.2.27 diff, M1)
+    gate_file = json.loads((change / "evidence" / "gate-f.json").read_text(encoding="utf-8"))
+    assert gate_file["result"] == "park" and gate_file["label"] == "sdlc:needs-human"
+    assert gate_file["checks"][0]["name"] == "detection_snapshot"
+    assert "restore the record" in gate_file["checks"][0]["need"]
+    assert out["pr"]["label"] == "sdlc:needs-human"
+    st = status_mod.read_status(change)
+    assert st.parked_reason.startswith(c.DETECTION_SNAPSHOT_PARK_PREFIX)
+    assert "when the detect step wrote it" in st.parked_reason
+    rel = f"changes/{change.name}/status.yaml"
+    assert "parked_reason: " in git(bare(root), "show", f"sdlc/0001/a:{rel}")
+    # the record the detect step wrote, with its digest: judged as before
+    path.write_text(original, encoding="utf-8")
+    git(root, "commit", "-q", "-am", "maintain(0001): the record restored")
+    st = status_mod.read_status(change)
+    st.parked_reason = None
+    status_mod.write_status(change, st)
+    assert detect_cli.detection_digest(change) == snapshot
+    code, out = cli(
+        capsys, "finish", "--root", str(root), "--id", "0001", "--repo", REPO,
+        "--detection-sha256", snapshot,
+    )  # fmt: skip
+    assert out["dispatch"]["acted"] is True and "gate" in out, out["dispatch"]
+    # no digest at all (a by-hand run): judged as before; on a runner an empty digest is a
+    # step output that did not arrive, and fails closed (the review of the 0.2.27 diff, L1)
+    code, out = cli(capsys, "finish", "--root", str(root), "--id", "0001", "--repo", REPO)
+    assert out["dispatch"]["acted"] is True
+    monkeypatch.setenv("GITHUB_ACTIONS", "true")
+    code, out = cli(
+        capsys, "finish", "--root", str(root), "--id", "0001", "--repo", REPO,
+        "--detection-sha256", "", "--dry-run",
+    )  # fmt: skip
+    assert code == 1 and "no digest reached this step" in out["parked"]
 
 
 def test_finish_refuses_to_run_over_the_runner_s_owner_fields_park(incident, gh, capsys):

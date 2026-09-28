@@ -180,17 +180,29 @@ class FakeGitHub:
         return {"ok": True, "files": self.files, "route": "api", "reason": ""}
 
     def pr_by_number(self, repo, number, cwd=None):
+        if not self.ok:
+            return {"ok": False, "number": None, "reason": "down"}
         return {
             "ok": True,
             "number": number,
             "merged": self.merged,
             "state": "closed" if self.merged else "open",
             "merge_commit_sha": "abc1234def" if self.merged else None,
+            "head_sha": "abc1234def",
             "labels": self.labels,
             "head_ref": self.head_ref,
             "base_ref": "main",
             "reason": "",
         }
+
+
+def _recorded(root: Path, number: int | None = 7) -> Path:
+    """Change 0001 whose status.yaml records ``number`` as its build PR (``pr/cli.py
+    upsert`` writes it, 0.2.27): the approval is read from that PR and no other."""
+    change_dir, st = status.new_change(root, "Export the claims report")
+    st.build_pr = number
+    status.write_status(change_dir, st)
+    return change_dir
 
 
 def fake_git(tags=(), verify_ok=False):
@@ -211,6 +223,7 @@ def fake_git(tags=(), verify_ok=False):
 
 
 def test_approval_by_the_label_of_a_person(tmp_path):
+    _recorded(tmp_path)
     a = approval.release_approval(tmp_path, {}, {}, git=fake_git(), github=FakeGitHub())
     assert a.approved and a.how == "label" and a.pr_number == 7
     assert a.detail == "label applied by owner-login"
@@ -219,6 +232,7 @@ def test_approval_by_the_label_of_a_person(tmp_path):
 @pytest.mark.parametrize("actor", ["github-actions[bot]", "dependabot[bot]", "ci-user"])
 def test_approval_refuses_the_label_of_the_automation_identity(tmp_path, actor):
     config = {"automation_identity": ["ci-user"]} if actor == "ci-user" else {}
+    _recorded(tmp_path)
     a = approval.release_approval(
         tmp_path, config, {}, git=fake_git(), github=FakeGitHub(actor=actor)
     )
@@ -229,6 +243,7 @@ def test_a_signed_tag_is_never_an_approval(tmp_path):
     """B1 (decision 11): a session allowed git can sign a tag itself, so a verified signed
     tag on the merge commit no longer approves; the label is the only route."""
     calls = []
+    _recorded(tmp_path)
     base = fake_git(tags=("v1.0.0",), verify_ok=True)
 
     def git(root, *args):
@@ -244,6 +259,7 @@ def test_a_signed_tag_is_never_an_approval(tmp_path):
 
 
 def test_no_approval_explains_the_label_route(tmp_path):
+    _recorded(tmp_path)
     a = approval.release_approval(
         tmp_path, {}, {}, git=fake_git(tags=("v1",)), github=FakeGitHub(ok=False)
     )
@@ -254,8 +270,69 @@ def test_no_approval_explains_the_label_route(tmp_path):
 
 def test_approval_never_reads_an_environment_variable(tmp_path):
     env = {"RELEASE_APPROVAL": "yes", "SDLC_RELEASE_APPROVED": "1"}
+    _recorded(tmp_path)
     a = approval.release_approval(tmp_path, {}, env, git=fake_git(), github=FakeGitHub(actor=None))
     assert not a.approved
+
+
+def test_the_approval_is_the_recorded_build_pr_not_the_branch_name(tmp_path):
+    """The readiness review's group B (0.2.27): the PR used to be "the most recent one from
+    the current branch's name", merged or not, so a checkout of any ``sdlc/<id>/c`` — a
+    local branch with any content — inherited that change's label. Now the PR is the one
+    ``status.yaml`` records, it must be the change's own build PR, and the checkout must be
+    its head (open) or its merge commit (merged)."""
+    git = fake_git()
+    # no record: a branch name alone finds nothing
+    _recorded(tmp_path, number=None)
+    a = approval.release_approval(tmp_path, {}, {}, git=git, github=FakeGitHub())
+    assert not a.approved and "records no build pull request" in a.detail
+    change_dir = tmp_path / "changes" / "0001-export-the-claims-report"
+    st = status.read_status(change_dir)
+    st.build_pr = 7
+    status.write_status(change_dir, st)
+    # the recorded PR is read by number, and its head must be this change's build branch
+    other = FakeGitHub(head_ref="sdlc/0002/c")
+    a = approval.release_approval(tmp_path, {}, {}, git=git, github=other)
+    assert not a.approved and "#7 (head sdlc/0002/c) is not the build PR sdlc/0001/c" in a.detail
+    # closed without a merge: void
+    gone = FakeGitHub(merged=False)
+    gone.pr_by_number = lambda repo, number, cwd=None: {
+        "ok": True, "number": number, "merged": False, "state": "closed", "head_sha": "abc1234def",
+        "merge_commit_sha": None, "labels": ["sdlc:release-approved"], "head_ref": "sdlc/0001/c",
+    }  # fmt: skip
+    a = approval.release_approval(tmp_path, {}, {}, git=git, github=gone)
+    assert not a.approved and "closed without a merge" in a.detail
+    # open, but the checkout is not the PR's head (a local commit on top): refused
+    moved = FakeGitHub(merged=False)
+    base = moved.pr_by_number
+    moved.pr_by_number = lambda *a, **k: {**base(*a, **k), "head_sha": "fedcba9876"}
+    a = approval.release_approval(tmp_path, {}, {}, git=git, github=moved)
+    assert not a.approved and "only the pull request's own head carries its approval" in a.detail
+    # open at the PR's head: approved; merged with the checkout at the merge commit: approved
+    a = approval.release_approval(tmp_path, {}, {}, git=git, github=FakeGitHub(merged=False))
+    assert a.approved and a.pr_number == 7
+    a = approval.release_approval(tmp_path, {}, {}, git=git, github=FakeGitHub(merged=True))
+    assert a.approved and a.pr_number == 7
+    # merged, with the checkout on the PR's own head (the by-hand deploy on sdlc/<id>/c
+    # after the owner's merge; the review of the 0.2.27 diff, M3): approved
+    at_head = FakeGitHub(merged=True)
+    base_pr = at_head.pr_by_number
+    at_head.pr_by_number = lambda *a, **k: {**base_pr(*a, **k), "merge_commit_sha": "9999999999"}
+    a = approval.release_approval(tmp_path, {}, {}, git=git, github=at_head)
+    assert a.approved and a.pr_number == 7
+    # merged, but the checkout is elsewhere (a rebuilt local branch): refused
+    elsewhere = fake_git()
+
+    def moved(root, *args):
+        return (0, "0000000000\n") if args == ("rev-parse", "HEAD") else elsewhere(root, *args)
+
+    a = approval.release_approval(tmp_path, {}, {}, git=moved, github=FakeGitHub())
+    assert not a.approved and "only the merged commit and the pull request's own head" in a.detail
+    # the change id the caller resolved wins over the branch name
+    _recorded_2 = status.new_change(tmp_path, "Another change")
+    a = approval.release_approval(tmp_path, {}, {}, git=git, github=FakeGitHub(), change_id="0002")
+    assert not a.approved and "change 0002 records no build pull request" in a.detail
+    assert not hasattr(approval, "_find_pr")
 
 
 def test_approval_on_a_real_repo_with_a_tag_but_no_label(tmp_path):
@@ -360,6 +437,22 @@ def test_cli_runs_the_release_command_after_the_label(tmp_path, capfd):
     assert "release: approval: label (label applied by owner-login)" in lines
     assert "release: exit: 0" in lines
     assert "released" in capfd.readouterr().out
+
+
+def test_cli_skips_an_event_pr_that_is_not_the_recorded_build_pr(tmp_path):
+    """0.2.27: status.yaml records the build PR; a ``labeled`` event on another PR from the
+    same head (a re-opened one) is not the change's approval."""
+    root, change_dir = _repo_with_change(tmp_path, sdlc_yaml=_yaml(production=True))
+    st = status.read_status(change_dir)
+    st.build_pr = 3
+    status.write_status(change_dir, st)
+    code, lines = _run(root, FakeGitHub())
+    assert code == 0
+    assert "release: skip: pull request #7 is not the build PR #3 status.yaml records" in lines
+    st.build_pr = 7
+    status.write_status(change_dir, st)
+    code, lines = _run(root, FakeGitHub())
+    assert code == 0 and "release: approval: label (label applied by owner-login)" in lines
 
 
 def test_cli_fails_red_when_the_release_command_fails(tmp_path):

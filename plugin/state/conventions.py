@@ -67,6 +67,9 @@ NEEDS_HUMAN_LABEL = "sdlc:needs-human"
 # the CI runner's park after a session wrote a field only the owner sets (choice 103, plugin
 # 0.2.26): ``ci/run_phase.py`` writes it, ``detect/cli.py finish`` refuses to run over it
 OWNER_FIELDS_PARK_PREFIX = "status.yaml: the session wrote owner-only field(s): "
+# The detect step's snapshot of the detection record (0.2.27): ``detect/cli.py run`` prints
+# the digest of evidence/detection.json before the maintain session, ``finish`` compares.
+DETECTION_SNAPSHOT_PARK_PREFIX = "evidence/detection.json changed after the detection step: "
 # The second act at gate (e) when `sdlc.yaml: deploy.production` is true (decision 13; build
 # guide step 29): the owner applies it on the build PR; the production-gate hook and the
 # release workflow read it through the PR, never from an environment variable.

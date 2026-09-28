@@ -457,8 +457,11 @@ def test_detect_workflow_is_scheduled_deterministic_and_runs_the_diagnosis_only_
     finish = steps["Dispatch the route, run gate (f) and open the intent PR"]
     assert finish["if"] == "steps.detect.outputs.change_id != ''"
     assert finish["run"] == (
-        'python framework/plugin/detect/cli.py finish --root . --id "$CHANGE_ID" --repo "$REPO"'
+        'python framework/plugin/detect/cli.py finish --root . --id "$CHANGE_ID" --repo "$REPO" '
+        '--detection-sha256 "$DETECTION_SHA256"'
     )
+    # 0.2.27: the record finish judges is the one the Detect step wrote (a step output)
+    assert finish["env"]["DETECTION_SHA256"] == "${{ steps.detect.outputs.detection_sha256 }}"
     assert "secrets." not in json.dumps(finish) and "secrets." in json.dumps(phase)
     for step in (detect, finish):
         assert step["env"]["SDLC_DEFAULT_BRANCH"] == DEFAULT_BRANCH_EXPR

@@ -849,11 +849,15 @@ class FakeGitHub:
         self.labels = ["sdlc:release-approved"] if labels is None else labels
         self.calls = []
 
-    def find_pr(self, repo, head, state="open", cwd=None):
-        self.calls.append(("find_pr", repo, head, state))
+    def pr_by_number(self, repo, number, cwd=None):
+        self.calls.append(("pr_by_number", repo, number))
         if not self.ok:
             return {"ok": False, "number": None, "reason": self.reason}
-        return {"ok": True, "number": self.number, "labels": self.labels, "reason": ""}
+        return {
+            "ok": True, "number": number, "state": "open", "merged": False,
+            "merge_commit_sha": None, "head_ref": "sdlc/0001/c", "head_sha": "abc1234def5678",
+            "labels": self.labels, "reason": "",
+        }  # fmt: skip
 
     def label_actor(self, repo, number, label):
         self.calls.append(("label_actor", repo, number, label))
@@ -886,6 +890,11 @@ def _gate_project(tmp_path, production=True, action="publish package", guarded=N
     if guarded is not None:
         body += "  guarded_commands:\n" + "".join(f'    - "{g}"\n' for g in guarded)
     (tmp_path / "sdlc.yaml").write_text(body, encoding="utf-8")
+    # change 0001 with its build PR recorded (pr/cli.py upsert, 0.2.27): the approval is
+    # read from that PR, never from the branch's name
+    change_dir, st = status.new_change(tmp_path, "Export the claims report")
+    st.build_pr = 7
+    status.write_status(change_dir, st)
     log = tmp_path / "hook-log.jsonl"
     return tmp_path, {"CLAUDE_PROJECT_DIR": str(tmp_path), "SDLC_HOOK_LOG": str(log)}, log
 
@@ -908,7 +917,8 @@ def test_production_gate_is_inert_without_a_declared_production(tmp_path):
     d = _gate(root, env, "twine upload dist/*")
     assert not d.block
     assert not log.exists()
-    assert not (root / "changes").exists()  # no default log either
+    assert not (root / "changes" / ".hook-log.jsonl").exists()  # no default log either
+    assert not list((root / "changes").rglob("hook-log.jsonl"))
 
 
 def test_production_gate_allows_and_logs_a_non_guarded_command(tmp_path):
@@ -935,9 +945,38 @@ def test_production_gate_allows_with_the_label_applied_by_a_person(tmp_path):
     gh = FakeGitHub(actor="luissiviero")
     d = _gate(root, env, "twine upload dist/*", github=gh)
     assert not d.block, d.reason
-    assert ("find_pr", "o/r", "sdlc/0001/c", "all") in gh.calls
+    assert ("pr_by_number", "o/r", 7) in gh.calls  # the recorded build PR, by number
     (line,) = _log_lines(log)
     assert line["verdict"] == "allow" and line["how"] == "label" and line["pr"] == 7
+
+
+def test_production_gate_reads_the_recorded_build_pr_of_the_checked_out_change(tmp_path):
+    """The readiness review's group B (0.2.27): the hook found the PR by the branch's name,
+    so a checkout of another change's ``sdlc/<id>/c`` inherited its approval. Now the hook
+    passes the change it resolved, the approval reads that change's recorded build PR, and
+    a change with no record, or a checkout that is not the PR's head, is blocked."""
+    root, env, log = _gate_project(tmp_path)
+    # another change, approved, whose branch the session could check out
+    change_dir, st = status.new_change(root, "Another change")
+    assert st.id == "0002"
+    st.build_pr = 9
+    status.write_status(change_dir, st)
+    gh = FakeGitHub(actor="luissiviero", number=9)
+    d = _gate(root, env, "twine upload dist/*", github=gh, git=gate_git(branch="sdlc/0002/c"))
+    assert d.block and "#9 (head sdlc/0001/c) is not the build PR sdlc/0002/c" in d.reason
+    assert ("pr_by_number", "o/r", 9) in gh.calls and ("pr_by_number", "o/r", 7) not in gh.calls
+    # no record at all: the branch name alone finds nothing
+    st.build_pr = None
+    status.write_status(change_dir, st)
+    d = _gate(root, env, "twine upload dist/*", github=gh, git=gate_git(branch="sdlc/0002/c"))
+    assert d.block and "records no build pull request" in d.reason
+    # change 0001 at a commit that is not its PR's head: blocked
+    gh = FakeGitHub(actor="luissiviero")
+    moved = gate_git()
+    git = lambda root, *a: (0, "1111111111\n") if a == ("rev-parse", "HEAD") else moved(root, *a)  # noqa: E731
+    d = _gate(root, env, "twine upload dist/*", github=gh, git=git)
+    assert d.block and "only the pull request's own head carries its approval" in d.reason
+    assert _log_lines(log)[-1]["verdict"] == "block"
 
 
 def test_production_gate_refuses_the_label_applied_by_the_automation_identity(tmp_path):
@@ -1026,6 +1065,70 @@ def test_production_gate_catches_a_chained_command(tmp_path):
     assert _gate(root, env, "cd dist && twine upload *").block
     assert _gate(root, env, "python -m build; python -m twine upload dist/*").block
     assert not _gate(root, env, "cd dist && ls").block
+
+
+@pytest.mark.parametrize(
+    "command, matched",
+    [
+        ("/usr/local/bin/twine upload dist/*", "twine upload*"),
+        ("C:\\Python312\\Scripts\\twine.exe upload dist/*", "twine upload*"),
+        ("twine.exe upload dist/*", "twine upload*"),
+        ("./node_modules/.bin/npm publish", "npm publish*"),
+        ("npm.cmd publish --access public", "npm publish*"),
+        ("C:\\tools\\npm.cmd publish", "npm publish*"),
+        ("terraform -chdir=infra apply -auto-approve", "terraform apply*"),
+        ("terraform -chdir infra apply", "terraform apply*"),
+        ("kubectl --context prod apply -f k8s/", "kubectl apply*"),
+        ("kubectl --context=prod --namespace=web rollout restart deploy/api", "kubectl rollout*"),
+        ("gh -R o/r release create v1.0.0", "gh release create*"),
+        ("gh --repo o/r release create v1.0.0 dist/*", "gh release create*"),
+        ("helm --kube-context prod upgrade api ./chart", "helm upgrade*"),
+        ("docker --context prod push o/api:1.0", "docker push*"),
+        # the review of the 0.2.27 diff, M8: a quoted value with a space is one token
+        ('kubectl --context "prod east" apply -f k8s/', "kubectl apply*"),
+        ("terraform -chdir='infra dir' apply", "terraform apply*"),
+    ],
+)
+def test_production_gate_reads_paths_extensions_and_options_before_the_verb(
+    tmp_path, command, matched
+):
+    """The readiness review's group B (0.2.27): ordinary spellings of a guarded command —
+    the program by its path or with a Windows extension, options between the program and
+    its verb — passed the gate, which compared whole token suffixes with the pattern."""
+    action = (
+        "deploy service"
+        if matched.split()[0] in ("terraform", "kubectl", "helm", "docker")
+        or matched.startswith("gh ")
+        else "publish package"
+    )
+    root, env, log = _gate_project(tmp_path, action=action)
+    d = _gate(root, env, command)
+    assert d.block, command
+    assert _log_lines(log)[-1]["matched"] == matched
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "pip install twine",
+        "python -m twine --version",
+        "twine check dist/*",
+        "npm --version",
+        "npm install --save-dev publish-please",
+        "kubectl get pods --context prod",
+        "terraform -chdir=infra plan",
+        "gh release list -R o/r",
+        "ls /usr/local/bin/twine",
+        "cat C:\\tools\\npm.cmd",
+    ],
+)
+def test_production_gate_still_leaves_look_alikes_alone(tmp_path, command):
+    """The new readings add no false positives on the ordinary commands a run needs."""
+    for action in ("publish package", "deploy service"):
+        project = tmp_path / action.replace(" ", "-")
+        project.mkdir()
+        root, env, _ = _gate_project(project, action=action)
+        assert not _gate(root, env, command).block, (action, command)
 
 
 @pytest.mark.parametrize(

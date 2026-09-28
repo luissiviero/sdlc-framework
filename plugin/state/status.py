@@ -81,6 +81,12 @@ class Status:
     runbook_authorized_by: str | None = None
     # Decision 25: the PR of gate (a)-(e) was closed without a merge; why, and when.
     abandoned_reason: str | None = None
+    # The build pull request (head ``sdlc/<id>/c``, the one gate (e) merges), as
+    # ``pr/cli.py upsert`` recorded it (0.2.27). The release approval is read from this PR
+    # and no other: before, ``release/approval.py`` found "the most recent PR from the
+    # current branch's name", so a checkout of any ``sdlc/<id>/c`` — a local branch with any
+    # content — inherited that change's label (the 1.0.0 readiness review, group B).
+    build_pr: int | None = None
     created_at: str = field(default_factory=_now)
     updated_at: str = field(default_factory=_now)
     schema_version: int = SCHEMA_VERSION
@@ -113,6 +119,12 @@ class Status:
             or self.iterations < 0
         ):
             raise ValueError("iterations must be a non-negative integer")
+        if self.build_pr is not None and (
+            isinstance(self.build_pr, bool)
+            or not isinstance(self.build_pr, int)
+            or self.build_pr < 1
+        ):
+            raise ValueError("build_pr must be a positive integer (a pull request number) or null")
         if (
             isinstance(self.panel_calls, bool)
             or not isinstance(self.panel_calls, int)

@@ -9,6 +9,10 @@
 #
 # Token rule: a tag pushed with this workflow's GITHUB_TOKEN starts no other workflow run,
 # which is what a release tag needs. The job needs contents: write and nothing else.
+#
+# Only the default branch is tagged: a workflow_dispatch started from any other ref ends
+# green with "not the default branch" and nothing tagged (the script reads GITHUB_REF_NAME
+# and SDLC_DEFAULT_BRANCH below), because a tag is created once and never moved.
 name: SDLC release tag
 
 on:
@@ -38,10 +42,13 @@ jobs:
         id: tag
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_REF_NAME: ${{ github.ref_name }}
+          SDLC_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: python3 .github/scripts/sdlc_tag.py
       - name: Report
         env:
           TAG: ${{ steps.tag.outputs.tag }}
           CREATED: ${{ steps.tag.outputs.created }}
           RELEASE: ${{ steps.tag.outputs.release }}
-        run: python3 -c "import os; print(os.environ['TAG'], 'created=' + os.environ['CREATED'], 'release=' + os.environ['RELEASE'])"
+          SKIPPED: ${{ steps.tag.outputs.skipped }}
+        run: python3 -c "import os; print(os.environ['TAG'], 'created=' + os.environ['CREATED'], 'release=' + os.environ['RELEASE'], os.environ['SKIPPED'])"

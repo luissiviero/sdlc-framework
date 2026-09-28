@@ -249,6 +249,28 @@ def test_sdlc_design_accepts_a_merged_incident_change_at_phase_f():
         assert token in preconditions, token
 
 
+def test_the_by_hand_re_run_reads_pr_comments_with_the_membership_filter():
+    """The readiness review's group B, item 8: the design and build re-run steps told a
+    by-hand session to read the PR's comments with no membership filter, while `/sdlc-fix`
+    step 1 keeps only reviews and comments by an `OWNER`, `MEMBER` or `COLLABORATOR`
+    (a public repository lets anyone comment: a prompt-injection channel). The prose is
+    the whole exposure — in CI `rerun_reason` refuses a re-run while an open PR carries
+    the branch."""
+    for name in ("sdlc-design", "sdlc-build"):
+        text = flat(COMMANDS / f"{name}.md")
+        step = text[text.index("## 1. Branch") : text.index("## 2.")]
+        for token in (
+            "`/sdlc-fix` step 1",
+            "`author_association` `OWNER`, `MEMBER` or `COLLABORATOR`",
+            "never a `[bot]`",
+            "not a change request",
+            "`rerun_reason`",
+        ):
+            assert token in step, f"{name}: {token}"
+    fix = flat(COMMANDS / "sdlc-fix.md")
+    assert "`OWNER`, `MEMBER` or `COLLABORATOR`, never a `[bot]`" in fix
+
+
 def test_every_unattended_command_states_the_one_command_rule():
     """The first /sdlc-fix run of 2026-09-23 chained `cd ... && python ...` and was denied
     its last step: a headless run allows only an explicit list of command prefixes, per phase
