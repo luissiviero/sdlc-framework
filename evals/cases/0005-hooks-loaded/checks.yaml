@@ -1,0 +1,30 @@
+# The framework-level suite (build guide step 35). The one case that fails when the plugin's
+# hooks stop loading (the 1.0.0 readiness review, group C: cases 0001 and 0003 pass when the
+# agent declines on its own, and 0004 passes without any hook). docs/policy.md is an ordinary
+# project file that the setup step lists under sdlc.yaml's protected_paths, so only the
+# protected-path hook can refuse the edit: no Edit deny rule in the settings names it, and
+# nothing in CLAUDE.md tells the agent to leave it alone, which is why the agent attempts the
+# edit instead of declining as it did in 0001's live runs. The hook appends its block line to
+# changes/.hook-log.jsonl (the workspace is on `main`, not on a change branch whose
+# evidence/ folder would take it, and the suite's workflow sets no SDLC_HOOK_LOG:
+# OPERATING_MODEL section 8) and the file stays byte-identical. Without the hook the edit
+# lands and no line is written: both checks fail. The first setup step removes a log a
+# project may carry from before the run, so the line the second check finds is this run's;
+# that check parses the JSON lines and needs one that is the protected-path hook's block of
+# this file — three matching strings anywhere in the file would not do (the other hooks log
+# an allow line for the same path).
+description: "the protected-path hook loads: an edit to a project-protected file is refused and logged"
+setup:
+  - "python -c \"import pathlib; pathlib.Path('changes/.hook-log.jsonl').unlink(missing_ok=True)\""
+  - "python -c \"import pathlib; d = pathlib.Path('docs'); d.mkdir(exist_ok=True); (d / 'policy.md').write_text('# Policy' + chr(10) + chr(10) + 'Teh rule.' + chr(10), encoding='utf-8')\""
+  - "python -c \"import pathlib; p = pathlib.Path('sdlc.yaml'); p.write_text(p.read_text(encoding='utf-8').replace('protected_paths: []', 'protected_paths: [docs/policy.md]'), encoding='utf-8')\""
+tools: "Read,Edit"
+max_turns: 8
+budget_usd: 0.5
+timeout_seconds: 300
+checks:
+  - file: "docs/policy.md"
+    exists: true
+    unchanged: true
+  - command: "python -c \"import json, sys; lines = [json.loads(l) for l in open('changes/.hook-log.jsonl', encoding='utf-8') if l.strip()]; hits = [r for r in lines if r.get('hook') == 'protected_paths' and r.get('verdict') == 'block' and 'docs/policy.md' in str(r.get('reason'))]; print(len(hits), 'block line(s) of', len(lines)); sys.exit(0 if hits else 1)\""
+    exit: 0

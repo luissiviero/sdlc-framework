@@ -402,11 +402,11 @@ def test_line_edits_keep_the_rest_of_the_file_byte_identical(tmp_path):
         + b"\r\n[flake8]\r\n"
     )
     one = tmp_path / "pyproject.toml"
-    one.write_text('[tool.pytest.ini_options]\naddopts = ["-q"]\n', encoding="utf-8")
+    one.write_text('[tool.pytest.ini_options]\naddopts = ["-q"]\n', encoding="utf-8", newline="\n")
     data, _ = runbooks.add_deselect(one, "[tool.pytest.ini_options]", NODE)
     assert data.decode() == f'[tool.pytest.ini_options]\naddopts = ["-q", "--deselect", "{NODE}"]\n'
     keyless = tmp_path / "tox.ini"
-    keyless.write_text("[pytest]\nmarkers = slow\n", encoding="utf-8")
+    keyless.write_text("[pytest]\nmarkers = slow\n", encoding="utf-8", newline="\n")
     data, _ = runbooks.add_deselect(keyless, "[pytest]", NODE)
     assert data.decode() == f"[pytest]\naddopts = --deselect {NODE}\nmarkers = slow\n"
 

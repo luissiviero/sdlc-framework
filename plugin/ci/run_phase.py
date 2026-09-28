@@ -1021,6 +1021,16 @@ def ci_settings_file(plugin_dir: Path, root: Path) -> Path:
     return out
 
 
+def claude_prefix(claude: str) -> list[str]:
+    """``--claude`` as an argv prefix: a ``.py`` file runs through this interpreter (the
+    tests' fake, as ``evals/run.py`` takes it since 0.2.19; on Windows a ``.cmd`` launcher
+    hands a multi-line prompt to cmd.exe, which does not carry it — the first Windows run
+    of the suite, 0.2.28); anything else is the executable as given, resolved by the OS."""
+    if claude.lower().endswith(".py"):
+        return [sys.executable, claude]
+    return [claude]
+
+
 def compose(
     *,
     claude: str,
@@ -1039,7 +1049,7 @@ def compose(
     # values, so a prompt placed after them is read as one more tool name and the CLI
     # answers "Input must be provided either through stdin or as a prompt argument"
     # (observed on the first live design run, 2026-09-21).
-    argv = [claude, "-p", prompt, *auth_mod.flags(env)]
+    argv = [*claude_prefix(claude), "-p", prompt, *auth_mod.flags(env)]
     argv += ["--plugin-dir", str(plugin_dir)]
     if root:
         settings = ci_settings_file(plugin_dir, root)

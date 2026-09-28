@@ -45,3 +45,18 @@ def test_marketplace_points_at_repo_root():
     assert entry["source"] == "./"
     manifest = json.loads((ROOT / ".claude-plugin/plugin.json").read_text(encoding="utf-8"))
     assert entry["version"] == manifest["version"], "pin: marketplace and plugin versions agree"
+
+
+def test_a_test_never_sees_the_runner_s_variables():
+    """The autouse fixture of conftest.py removes what a GitHub Actions runner sets (0.2.28:
+    the first run of the suite in Actions failed seven tests on ``GITHUB_REF_NAME``,
+    ``GITHUB_ACTIONS`` and ``GITHUB_REPOSITORY`` leaking into the scripts under test). On the
+    owner's PC and in a cloud session this passes trivially; on a runner it is the proof."""
+    import os
+
+    from tests.conftest import runner_variables
+
+    assert runner_variables() == []
+    assert "SDLC_HOOK_LOG" in os.environ  # the fixture's own setting stays
+    sample = {"GITHUB_ACTIONS": "true", "RUNNER_OS": "Linux", "CI": "true", "HOME": "/h"}
+    assert runner_variables(sample) == ["CI", "GITHUB_ACTIONS", "RUNNER_OS"]
