@@ -1,0 +1,431 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- Snapshot of https://claude.ai/artifact/WhLTjcSzJqQmUFm3aP5G6L as published on 2026-09-28 (private to the owner; the live page may be newer). Opened from the repository, the diagrams render with mermaid from jsdelivr. -->
+<style>body{margin:0}</style>
+</head>
+<body>
+<title>Playbook SDLC Workflow</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+  /* Layout: one reading column; each diagram in its own scrollable panel, citations inline. */
+  :root {
+    --bg: #f7f6f3;
+    --surface: #ffffff;
+    --ink: #1d1f22;
+    --muted: #5d6166;
+    --line: #dcdad4;
+    --accent: #b5532f;
+    --accent-soft: #f6e6de;
+    --owner-soft: #f3efe4;
+    --code-bg: #ecebe6;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --bg: #151618;
+      --surface: #1d1f22;
+      --ink: #e8e6e1;
+      --muted: #a09d97;
+      --line: #34363a;
+      --accent: #e38a64;
+      --accent-soft: #3a261d;
+      --owner-soft: #2a2721;
+      --code-bg: #2a2c30;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --bg: #151618;
+    --surface: #1d1f22;
+    --ink: #e8e6e1;
+    --muted: #a09d97;
+    --line: #34363a;
+    --accent: #e38a64;
+    --accent-soft: #3a261d;
+    --owner-soft: #2a2721;
+    --code-bg: #2a2c30;
+  }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font: 15px/1.6 "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  }
+  .wrap {
+    max-width: 1040px;
+    margin: 0 auto;
+    padding-inline: 20px;
+    padding-block: 40px 64px;
+    display: grid;
+    gap: 44px;
+  }
+  header { display: grid; gap: 12px; }
+  .eyebrow {
+    font: 500 12px/1.3 "IBM Plex Mono", ui-monospace, monospace;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+  h1 { font-size: 34px; line-height: 1.15; font-weight: 600; margin: 0; text-wrap: balance; }
+  h2 { font-size: 22px; line-height: 1.25; font-weight: 600; margin: 0; text-wrap: balance; }
+  p { margin: 0; max-width: 70ch; }
+  .lede { color: var(--muted); font-size: 16px; }
+  code {
+    font: 13px "IBM Plex Mono", ui-monospace, monospace;
+    background: var(--code-bg);
+    padding: 1px 5px;
+    border-radius: 4px;
+  }
+  .legend { display: flex; flex-wrap: wrap; gap: 10px 20px; font-size: 13px; color: var(--muted); }
+  .legend span { display: inline-flex; align-items: center; gap: 8px; }
+  .sw { width: 22px; height: 14px; border: 1.5px solid var(--ink); display: inline-block; flex: none; }
+  .sw.hex { clip-path: polygon(20% 0, 80% 0, 100% 50%, 80% 100%, 20% 100%, 0 50%); background: var(--ink); border: 0; }
+  .sw.dia { width: 14px; height: 14px; transform: rotate(45deg); margin-inline: 4px; }
+  .sw.dash { border: 0; border-top: 2px dashed var(--ink); height: 0; }
+  .modes {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 12px;
+  }
+  .mode {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 14px 16px;
+    display: grid;
+    gap: 6px;
+    align-content: start;
+  }
+  .mode .step { font: 500 12px "IBM Plex Mono", ui-monospace, monospace; color: var(--accent); letter-spacing: 0.04em; }
+  .mode p { font-size: 14px; }
+  section { display: grid; gap: 14px; min-width: 0; }
+  .diagram {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 20px;
+    overflow-x: auto;
+  }
+  .diagram pre.mermaid { margin: 0; display: flex; justify-content: center; background: transparent; }
+  .note { color: var(--muted); font-size: 14px; }
+  .note strong { color: var(--ink); font-weight: 600; }
+  blockquote {
+    margin: 0;
+    padding: 4px 0 4px 16px;
+    border-left: 3px solid var(--accent);
+    max-width: 70ch;
+  }
+  .table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+  table { border-collapse: collapse; width: 100%; min-width: 640px; font-size: 14px; }
+  th, td { text-align: left; vertical-align: top; padding: 10px 14px; border-bottom: 1px solid var(--line); }
+  tr:last-child td { border-bottom: 0; }
+  th { font-weight: 600; font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+  td:first-child { font-weight: 500; white-space: nowrap; }
+  td.human { background: var(--owner-soft); }
+  td.pg { font: 12px "IBM Plex Mono", ui-monospace, monospace; color: var(--muted); white-space: nowrap; }
+  ul.open { margin: 0; padding-left: 20px; display: grid; gap: 8px; max-width: 76ch; }
+  footer { color: var(--muted); font-size: 13px; border-top: 1px solid var(--line); padding-top: 16px; display: grid; gap: 6px; }
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="eyebrow">The AI-native SDLC playbook · Louis Claxton · August 21, 2026</div>
+    <h1>The playbook's workflow, as the article describes it</h1>
+    <p class="lede">How a project would run if it followed the article exactly: no adaptation, nothing added. Every step cites the PDF page it comes from; connector nodes such as "Closed" or a tier split carry no page. Where the article leaves a detail open, the diagrams leave it open too, and the list near the end names those gaps. The article's measurements ("How to measure it") are out of scope here.</p>
+    <div class="legend">
+      <span><i class="sw hex"></i>A human decision (review, approval, triage, authorization)</span>
+      <span><i class="sw"></i>Claude's work, or a step a person runs with Claude</span>
+      <span><i class="sw dia"></i>A branch point (a tier, a confidence gate)</span>
+      <span><i class="sw dash"></i>Conditional, optional, or an example the article gives</span>
+    </div>
+  </header>
+
+  <section>
+    <h2>How the loop comes to run itself</h2>
+    <blockquote><p>"First, you prompt each step by hand with the end state being a loop in which each accepted artifact fires the next gate. Human attention concentrates at the gates, reviewing what the agent flagged rather than starting each stage from scratch." (p.8)</p></blockquote>
+    <div class="modes">
+      <div class="mode"><span class="step">Start</span><p>Each stage is prompted by hand. Stages 1 to 5 each need "a human to launch the initial steps" (p.42).</p></div>
+      <div class="mode"><span class="step">Then (the article's example)</span><p>A step is codified: the design pass becomes "an organization-level slash command" (p.13).</p></div>
+      <div class="mode"><span class="step">End state</span><p>The accepted artifact is the trigger, e.g. "a non-interactive job that fires on the merge" runs the design pass (p.13). Stage 6 runs headless (p.42).</p></div>
+    </div>
+    <p class="note">The hand-offs, verbatim: "An accepted <code>intent.md</code> triggers the requirements and design pass, an approved <code>spec.md</code> triggers plan mode, a merged PR triggers the pipeline, and a breached control band in production writes the next <code>intent.md</code> and so the loop continues." (p.7)</p>
+  </section>
+
+  <section>
+    <h2>The whole loop, stage by stage</h2>
+    <div class="diagram"><pre class="mermaid">flowchart TB
+  subgraph P1["Stage 1 Plan"]
+    A0["A person has an idea (p.9)"] --&gt; A1["Originator brainstorms with Claude (claude.ai or Cowork);&lt;br/&gt;Claude asks scope, users, constraints, success (p.10)"]
+    A1 --&gt; A2["Claude writes intent.md with the organization's template&lt;br/&gt;(can be a skill); originator corrects, commits it&lt;br/&gt;to the intent home (p.11)"]
+    T0["A ticket is filed or an incident is surfaced&lt;br/&gt;via an alert: an agent writes intent.md (p.9, p.42, p.44)"] --&gt; T1{{"Product owner reviews and corrects the&lt;br/&gt;agent-written intent.md before it is committed;&lt;br/&gt;'regardless of whether the intent originates&lt;br/&gt;from an event trigger or an agent' (p.9)"}}
+  end
+  A2 --&gt; GA{{"Product owner approves: accept recorded as the merge,&lt;br/&gt;reject as the closing review (p.11)"}}
+  T1 --&gt; GA
+  GA -- "reject" --&gt; REJ(["Closed"])
+
+  subgraph P2["Stage 2 Design"]
+    B1["Requirements and design pass with the organization's skills:&lt;br/&gt;by hand in a product owner session at first, then an org slash command,&lt;br/&gt;then a non-interactive job that fires on the merge (p.13)"]
+    B2["Claude writes the requirements and design spec with areas of concern&lt;br/&gt;flagged; committed as spec.md, a PR in the job form (p.12-13)"]
+    B3{{"Product owner reviews the spec against the idea, resolves each&lt;br/&gt;flagged concern with its policy owner; spec.md committed&lt;br/&gt;alongside intent.md (p.14)"}}
+    B4["Front-end work, the article's example: the product owner mocks the design&lt;br/&gt;in Claude Design (beta) from the intent.md, iterates on the mock,&lt;br/&gt;then exports it to Claude Code to build (p.12-13)"]
+    B1 --&gt; B2 --&gt; B3
+    GB{{"Product owner decides whether spec + intent go to build,&lt;br/&gt;consulting a tech lead for higher risk;&lt;br/&gt;a human team mate always makes this call (p.14)"}}
+    B3 --&gt; GB
+  end
+  GA -- "accepted intent.md triggers the requirements&lt;br/&gt;and design pass (p.7)" --&gt; B1
+  GA -. "front-end work" .-&gt; B4
+
+  subgraph P3["Stage 3 Build"]
+    C1["Engineer starts Claude Code in plan mode with intent.md + spec.md;&lt;br/&gt;Claude reads the codebase without changing anything (p.15-16)"]
+    C2["Plan names the files, the order of work, the tests;&lt;br/&gt;engineer interrogates and iterates it (p.16)"]
+    GC{{"Plan approved: routine by the engineer,&lt;br/&gt;higher risk by a tech lead or architect;&lt;br/&gt;committed as plan.md (p.16-17)"}}
+    C3["Claude implements; plan.md updated in the same commit when the work&lt;br/&gt;departs from it (p.16). Hooks as guardrails (p.23); parallel sessions in&lt;br/&gt;worktrees, subagents e.g. simplifier, verifier, researcher (p.24-25);&lt;br/&gt;auto-accept becomes the default for routine work as guardrails mature (p.17)"]
+    CT{{"Example: a hook blocks edits to migrations and infra without&lt;br/&gt;an approved change ticket; a hook can ask a specific person&lt;br/&gt;to approve before the action goes ahead (p.35-37)"}}
+    C1 --&gt; C2 --&gt; GC --&gt; C3
+    C3 -.-&gt; CT
+  end
+  GB -- "approved spec.md triggers plan mode (p.7, p.14)" --&gt; C1
+  B4 -. "exported to Claude Code to build (p.13)" .-&gt; C1
+
+  subgraph P4["Stage 4 Test"]
+    D1["Feedback loop through the whole task: tests, build, screenshot diff;&lt;br/&gt;Claude iterates until the check passes (p.26-27)"]
+    D2["Bug fix: failing test written and committed first; a test-file hook,&lt;br/&gt;or review rejecting any test change, protects the check (p.28)"]
+    D3["Final check, e.g. a verifier subagent in a fresh context (one way, p.27);&lt;br/&gt;pasted output in the transcript and the PR check run (p.28-29)"]
+    D4["Evals in CI, on any change to CLAUDE.md, skills or hooks and on a schedule;&lt;br/&gt;pass rate is a merge check for configuration changes (p.29-31)"]
+    CFG{{"Configuration changes: the pass rate is a merge check, and the team that owns&lt;br/&gt;the change approves it (p.31);&lt;br/&gt;the policy owner signs off skill changes (p.22);&lt;br/&gt;code owners approve CLAUDE.md changes in PR review (p.20)"}}
+    D4 --&gt; CFG
+  end
+  C3 &lt;--&gt; D1
+  B4 -. "UI work: iterate against the mock (p.28)" .-&gt; D1
+  D2 -.-&gt; D1
+  D1 --&gt; D3
+
+  subgraph P5["Stage 5 Deploy"]
+    E1["PR: identical review passes on every PR per REVIEW.md: bugs, security,&lt;br/&gt;compliance with spec.md, plan.md, design principles; ranked by severity (p.32-34)"]
+    E2["Claude addresses the comment and pushes (claude-code-action);&lt;br/&gt;in managed Code Review, '@claude review' requests a fresh review;&lt;br/&gt;optionally, on PRs Claude opened, it babysits until green (p.33-34)"]
+    GE{{"Code owner approves through branch protection; findings do not approve&lt;br/&gt;or block on their own; the agent that wrote the code cannot approve (p.33-35).&lt;br/&gt;p.6 reserves human review for regulated and critical code (gap 2)"}}
+    F1["CI/CD: Claude runs non-interactively, sandboxed, under its own identity;&lt;br/&gt;judgment steps, adopted read-only first (triage a failed build, summarize a flaky test,&lt;br/&gt;draft the changelog); deploy, status and rollback as MCP tools per environment (p.39-41)"]
+    F2["Development: the agent deploys freely;&lt;br/&gt;staging sits in the middle (p.40)"]
+    F3["Production: the agent prepares the release (p.40)"]
+    GR{{"A named release manager authorizes; a hook enforces the production gate;&lt;br/&gt;the agent cannot pass it (p.40-41)"}}
+    E1 -. "when a reviewer or the author&lt;br/&gt;tags @claude on a review comment (p.33)" .-&gt; E2
+    E2 -.-&gt; E1
+    E1 --&gt; GE
+    GE -- "merged PR triggers the pipeline (p.7)" --&gt; F1
+    F1 --&gt; F2
+    F1 --&gt; F3
+    F3 --&gt; GR
+  end
+  D3 --&gt; E1
+
+  subgraph P6["Stage 6 Maintain: headless"]
+    M0["Production and process metrics, e.g. CI test failure rate,&lt;br/&gt;post-deploy 5xx rate, PR cycle time (p.43, p.45)"]
+    M1["Deterministic detection script; tiers 1σ log, 2σ read-only diagnose,&lt;br/&gt;3σ act only through gated routes (p.42-43).&lt;br/&gt;Other triggers: a ticket, a channel message, a schedule (p.42)"]
+    M2["Claude writes its diagnosis as intent.md in the Stage 1 format (p.44)"]
+    M3["3σ: a PR into the review gate, or a pre-approved runbook&lt;br/&gt;such as a rehearsed rollback (p.40, p.43-45)"]
+    M0 --&gt; M1
+    M1 -- "a breached control band writes the next intent.md (p.7)" --&gt; M2
+    M1 --&gt; M3
+    M4["Also: recurring codebase scans and Claude Tag on call;&lt;br/&gt;small fixes as a PR, larger work as intent.md (p.46-49; diagram 4)"]
+    GM{{"Service owner or on-call triages: fix now · schedule · dismiss;&lt;br/&gt;a service owner approves findings; product-facing findings go to the product owner (p.44)"}}
+    M2 --&gt; GM
+  end
+  GR --&gt; M0
+  M3 -- "PR" --&gt; BACKE(["Into the Stage 5 PR review gate"])
+  GM -- "fix now: the intent.md goes through the pipeline&lt;br/&gt;like anything else (p.42, p.44)" --&gt; BACKA(["Back to Stage 1 Plan: the product owner reviews the&lt;br/&gt;agent-written intent.md (p.9); the loop continues (p.7)"])
+  BACKA -. "or headless: stages pass an independent&lt;br/&gt;confidence gate (p.42; see the headless diagram)" .-&gt; HL(["Headless run between stages"])</pre></div>
+    <p class="note"><strong>Test has no stage-boundary gate of its own in the hand-prompted loop.</strong> The article replaces "QA gates at stage boundaries" with "continuous evals woven through implementation" (p.6); the feedback loop's evidence lands in the PR's check run, and the code owner reviewing the PR approves (p.29). Evals are "the AI-native equivalent of stage-gate QA" (p.29) and "give QA a gate" (p.31), but that gate is the pass rate on changes to the agent's configuration, not a gate on each product change (p.30-31). In a headless run an independent confidence gate sits between stages (p.42).</p>
+  </section>
+
+  <section>
+    <h2>The PR review loop</h2>
+    <p>Stage 5's first play. Claude both gives and receives reviews; human attention moves to "whether the change does what the plan intended and whether the risk is acceptable" (p.32).</p>
+    <div class="diagram"><pre class="mermaid">flowchart LR
+  PR["A PR: every incoming PR, and anything the agent&lt;br/&gt;writes arrives as one; no route to push to main (p.32, p.40-41)"] --&gt; REV["Identical review passes on every PR, against the&lt;br/&gt;organization's policies (managed Code Review or claude-code-action)&lt;br/&gt;REVIEW.md: Bugs · Security · Compliance with spec.md,&lt;br/&gt;plan.md and design principles; generated paths and anything&lt;br/&gt;CI already enforces are excluded (p.32-34)"]
+  REV --&gt; FIND["Findings tagged by pass, ranked by severity:&lt;br/&gt;Important vs Nit; the check run publishes&lt;br/&gt;a machine-readable severity tally (p.32-34)"]
+  FIND -. "when a reviewer or the author tags @claude&lt;br/&gt;on a review comment (p.33)" .-&gt; FIX["Claude addresses the comment and pushes the fix;&lt;br/&gt;the PR thread records both (claude-code-action).&lt;br/&gt;In managed Code Review, '@claude review' requests&lt;br/&gt;a fresh review instead (p.33)"]
+  FIND -. "optional: PRs Claude opened (p.33-34)" .-&gt; BABY["PRs Claude opened: a custom slash command sweeps unresolved&lt;br/&gt;comments and failing checks, pushes fixes (p.33-34)"]
+  BABY -- "until green and waiting only&lt;br/&gt;on code owner approval (p.34)" --&gt; CO
+  FIND -- "informs (p.35); findings do not approve or block&lt;br/&gt;a PR on their own; a platform engineer may&lt;br/&gt;gate merges on the severity tally (p.33)" --&gt; CO{{"Human reviewers judge intent and risk (p.32);&lt;br/&gt;a code owner approves through branch protection;&lt;br/&gt;the agent that wrote the code cannot approve it (p.33-35)"}}
+  CO --&gt; MERGE(["Merged PR triggers the pipeline (p.7)"])
+  FIND -. "a mistake flagged the second time" .-&gt; CMD["Correction goes into CLAUDE.md as part of that review;&lt;br/&gt;caught from the next PR on (p.34)"]
+  CMD -- "review reads CLAUDE.md (p.34)" --&gt; REV
+  TL{{"Tech lead writes REVIEW.md; monthly rates findings&lt;br/&gt;and caps Nit volume (p.33-34)"}} --&gt; REV
+  TL -- "sets the human threshold (p.33)" --&gt; CO</pre></div>
+  </section>
+
+  <section>
+    <h2>Inside a build session</h2>
+    <p>Stages 3 and 4 as one engineer's session. "Nothing is implemented without an accepted plan" (p.15), and "a session checks its own work and fixes its own mistakes before an engineer sees them" (p.26). The bug-fix discipline and parallel sessions are in the whole-loop diagram.</p>
+    <div class="diagram"><pre class="mermaid">flowchart LR
+  P0["Engineer starts Claude Code in plan mode;&lt;br/&gt;Claude reads the codebase, cannot edit (p.15-17)"] --&gt; P0b["Engineer gives intent.md + spec.md;&lt;br/&gt;Claude interviews and writes the plan:&lt;br/&gt;files that change, order of work, tests (p.15-16)"]
+  P0b --&gt; P1["Interrogate: what could break, riskiest step,&lt;br/&gt;options not chosen; iterate until an engineer who never saw&lt;br/&gt;the conversation could implement from the plan alone (p.16)"]
+  P1 --&gt; P2{{"Plan approved: routine by the engineer,&lt;br/&gt;higher risk by a tech lead or architect (p.17);&lt;br/&gt;committed as plan.md (p.16)"}}
+  P2 --&gt; I1["Claude implements, often in a single pass (p.16);&lt;br/&gt;auto-accept becomes the default for routine work as the guardrails&lt;br/&gt;mature: a tight spec.md, a small blast radius, and code&lt;br/&gt;the tests already cover (p.17)"]
+  I1 -. "on each matching action" .-&gt; H["Hooks: block protected paths, format and lint&lt;br/&gt;after edits, keep credentials out of the diff (p.23)"]
+  I1 --&gt; L["Feedback loop: run the tests, the build, take the&lt;br/&gt;screenshot; Claude iterates until the check passes (p.26-28)"]
+  L -- "check fails" --&gt; I1
+  I1 -. "departs from the plan" .-&gt; PS["Update plan.md in the same commit;&lt;br/&gt;consider a hook to enforce the sync (p.16)"]
+  I1 -. "example: after the main agent finishes" .-&gt; S["Code simplifier subagent strips&lt;br/&gt;needless complexity (p.25)"]
+  L -. "one way: once the session believes it is done" .-&gt; V["Verifier subagent in a fresh context: runs the app and&lt;br/&gt;checks behavior (p.25, p.27); the article's example also checks&lt;br/&gt;against plan.md and reports only (p.26)"]
+  V -. "before the session reports done (p.25)" .-&gt; DONE
+  L --&gt; DONE["Report done and show the output: 'Run the tests&lt;br/&gt;before reporting a task complete, and show the output';&lt;br/&gt;the example CLAUDE.md names build, test and lint (p.28)"]</pre></div>
+  </section>
+
+  <section>
+    <h2>Stage 6: the maintain loop</h2>
+    <p>"A trigger invokes Claude with no person in the invocation path, and what it finds re-enters the pipeline as <code>intent.md</code>" (p.41-42). Three parts of Stage 6 feed it: closing the loop on a control band (the play), recurring codebase scans, and Claude on call with Claude Tag.</p>
+    <div class="diagram"><pre class="mermaid">flowchart TB
+  MET["One metric with a stable rolling baseline, picked by the service owner&lt;br/&gt;or platform engineer, e.g. CI test failure rate (p.43)"] --&gt; DET["Deterministic detection script: typically mean and standard deviation&lt;br/&gt;over a rolling window, Western Electric or similar; version controlled,&lt;br/&gt;unit tested, no model involved (p.42-43)"]
+  DET -- "control band breached;&lt;br/&gt;tiers from bands.yaml (p.43-44)" --&gt; TIER{"Tier"}
+  TIER --&gt; S1["1σ: the script only logs (p.43)"]
+  TIER --&gt; S2["2σ: Claude invoked read-only to diagnose (p.43)"]
+  TIER --&gt; S3["3σ: Claude may act, only by opening a PR into the&lt;br/&gt;review gate or triggering a pre-approved runbook (p.43)"]
+  S3 --&gt; RB["Pre-approved runbook, e.g. rollback-deploy,&lt;br/&gt;rehearsed in staging (p.40, p.44-45)"]
+  S3 --&gt; PRG["PR into the review gate, e.g. quarantine the flaky&lt;br/&gt;test or a revert PR; the review gate decides (p.43, p.45)"]
+  S2 -. "which tier writes it is not stated (gap 4)" .-&gt; INT["The agent writes its diagnosis as intent.md in the Stage 1 format:&lt;br/&gt;anomaly and evidence, proposed outcome, affected systems,&lt;br/&gt;open questions (p.44)"]
+  S3 -.-&gt; INT
+  INT --&gt; TRI{{"Service owner or on-call engineer triages the queue;&lt;br/&gt;a service owner approves findings; product-facing findings go to the product owner (p.44)"}}
+  TRI -- "fix now" --&gt; PIPE["Through the pipeline like anything else (p.42, p.44)"]
+  TRI -- "schedule (p.44)" --&gt; LATER["Scheduled"]
+  TRI -- "dismiss" --&gt; BANDS["Dismissals tune the bands (p.44)"]
+  BANDS --&gt; DET
+  PIPE -- "when the fix ships" --&gt; EVAL["Add an eval for the incident (p.44)"]
+  PRG -. "if the review gate takes it and the fix ships" .-&gt; EVAL
+
+  subgraph SCANS["Recurring codebase scans (p.45-48)"]
+    SCAN["Claude Security scan on a schedule, weekly default for active services;&lt;br/&gt;each finding validated, confidence rating attached (p.46-47)"]
+    SCAN --&gt; SEC{{"Triage with the confidence rating (p.47)"}}
+    SEC -- "dismiss with a reason: it does&lt;br/&gt;not return as new (p.47)" --&gt; DIS["Dismissal recorded"]
+    SEC -- "bounded finding" --&gt; PATCH["Suggested patch reviewed in&lt;br/&gt;Claude Code on the web (p.47)"]
+    PATCH --&gt; SPR{{"PR review gate: the agent that proposed&lt;br/&gt;the fix cannot approve it (p.47-48)"}}
+    SPR --&gt; SEVAL["Fix released: add an eval for the&lt;br/&gt;vulnerability class (p.47)"]
+  end
+  SEC -- "wider than one patch" --&gt; PLAN(["intent.md in the Stage 1 format,&lt;br/&gt;started at Plan (p.47, p.49)"])
+
+  subgraph TAG["Claude on call with Claude Tag (p.48-50)"]
+    MSG["Incident message in a channel; Claude is a member&lt;br/&gt;under its own identity; anyone in the channel can&lt;br/&gt;guide and action the response (p.48-49)"]
+    MSG --&gt; DIAG["Claude diagnoses and proposes the rehearsed&lt;br/&gt;rollback: 'shall I run it?' (p.49 figure)"]
+    DIAG --&gt; GO{{"Human authorization in the channel:&lt;br/&gt;'Go.' (p.49 figure, p.50)"}}
+    GO --&gt; RUN["Claude rolls back (p.49 figure)"]
+    RUN --&gt; POST["Claude verifies the metric is back at baseline, confirms in the thread,&lt;br/&gt;writes the post-mortem to a version-controlled lessons file (p.49)"]
+    TKT["Tagged on a ticket over MCP or asked in the channel:&lt;br/&gt;Claude triages the work the same way (p.49)"]
+  end
+  TKT -- "small, well-bounded fix" --&gt; TPR{{"PR through the review gate (p.49)"}}
+  TKT -- "anything larger" --&gt; PLAN</pre></div>
+    <p class="note">The article's examples: a CI test failure rate breach at 3σ, where "the agent quarantines the flaky test or opens a revert PR, and the review gate decides"; a post-deploy 5xx breach at 3σ with a deployment in the window, where "the agent triggers the existing rollback pipeline"; and a PR cycle time that trips a drift rule, where "the agent writes a report for engineering leadership" (p.45).</p>
+  </section>
+
+  <section>
+    <h2>Headless mode between stages</h2>
+    <p>How the loop runs without a person starting it (p.42). "People triage and review that work, and no longer have to start it" (p.42). The review and production gates still hold.</p>
+    <div class="diagram"><pre class="mermaid">flowchart LR
+  TR["Trigger such as a control-band breach, a ticket, a channel&lt;br/&gt;message or a schedule; no person in the path (p.42)"] -. "for example" .-&gt; ST1["A monitoring agent creates intent.md&lt;br/&gt;off the back of a bug ticket (p.42)"]
+  ST1 --&gt; TRI{{"Service owner or on-call triages the intent.md queue (p.44);&lt;br/&gt;the product owner reviews an agent-written intent.md (p.9).&lt;br/&gt;Where these sit in a headless run is not stated (gap 9)"}}
+  TRI --&gt; CG{"Independent confidence gate:&lt;br/&gt;a deterministic check or an&lt;br/&gt;adversarial reviewing agent (p.42)"}
+  CG -- "continues" --&gt; ST2["Next stage: requirements, plan,&lt;br/&gt;build, test, review (p.42)"]
+  ST2 --&gt; CG
+  CG -- "escalated" --&gt; HU{{"A human (p.42)"}}
+  ST2 --&gt; PRG{{"Resulting changes go through the normal&lt;br/&gt;PR review gate (p.42, p.44-45)"}}
+  PRG --&gt; PROD{{"Production gate: a named release manager authorizes;&lt;br/&gt;the agent may act up to it and cannot pass it (p.41)"}}</pre></div>
+    <p class="note"><strong>How a headless run is wired (p.43-44):</strong> "The trigger layer can be a scheduled workflow in GitHub or GitLab, a webhook from the existing monitoring stack, or a Cron Job inside the network." Claude runs stateless, "either as a non-interactive step on a CI runner or as an Agent SDK service in a sandboxed container". "The tier boundaries are enforced from version-controlled config, with permissions and managed settings denying production access."</p>
+  </section>
+
+  <section>
+    <h2>The order to adopt the plays</h2>
+    <p>The article's own figure (p.8), redrawn arrow for arrow. "The plays are listed with stage; the arrows give the order to adopt them in. The two are not the same. Start with any clay play — nothing points into it, so it needs nothing first. For any other play, the arrows pointing into it are the plays to adopt before it." The top row is the clay-coloured one.</p>
+    <div class="diagram"><pre class="mermaid">flowchart TB
+  subgraph R1["1 · Start anywhere"]
+    CI["PLAN&lt;br/&gt;Capture intent"]
+    CM["BUILD&lt;br/&gt;CLAUDE.md"]
+    FL["TEST&lt;br/&gt;Feedback loop"]
+    HK["DEPLOY&lt;br/&gt;Hooks"]
+    PM["BUILD&lt;br/&gt;Plan mode"]
+  end
+  subgraph R2["2"]
+    SK["BUILD&lt;br/&gt;Skills"]
+    SA["BUILD&lt;br/&gt;Subagents"]
+    EV["TEST&lt;br/&gt;Evals"]
+  end
+  subgraph R3["3"]
+    RD["DESIGN&lt;br/&gt;Requirements &amp; design"]
+    PRR["DEPLOY&lt;br/&gt;PR review"]
+  end
+  subgraph R4["4"]
+    CICD["DEPLOY&lt;br/&gt;CI/CD"]
+  end
+  subgraph R5["5"]
+    CL["MAINTAIN&lt;br/&gt;Closing the loop"]
+  end
+  CI --&gt; RD
+  CI --&gt; CL
+  CM --&gt; SK
+  CM --&gt; SA
+  CM --&gt; EV
+  FL -.-&gt; SA
+  FL --&gt; EV
+  SK --&gt; RD
+  SK -.-&gt; PRR
+  EV --&gt; PRR
+  PRR --&gt; CICD
+  HK --&gt; CICD
+  CICD --&gt; CL
+  classDef clay fill:#d97a5b,stroke:#9c4a2e,color:#1d1f22
+  class CI,CM,FL,HK,PM clay</pre></div>
+    <p class="note">The figure draws two arrows dotted (Feedback loop to Subagents, Skills to PR review) and does not say what dotted means. The prose uses softer words for both: the feedback loop "also helps" subagents (p.24), and PR review needs skills "if the review passes enforce written policies" (p.32). The prose is just as soft for one solid arrow: for skills, "Having a CLAUDE.md helps … but a skill does not depend on it" (p.21). Some prose prerequisites have no arrow at all: PR review also lists "An updated CLAUDE.md" and "defined subagents" (p.32), and plan mode lists "The intent artifact (intent.md or spec.md) if one exists, and the CLAUDE.md file helps" (p.16). The redraw follows the figure.</p>
+  </section>
+
+  <section>
+    <h2>Who does what</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Stage</th><th>People</th><th>Claude</th><th>Pages</th></tr></thead>
+        <tbody>
+          <tr><td>Plan</td><td class="human">The originator describes the problem and corrects the draft; the product owner reviews and corrects an agent-written <code>intent.md</code> before it is committed, and approves (merge) or rejects (closing review)</td><td>Brainstorms, asks an analyst's questions, writes <code>intent.md</code> from the template</td><td class="pg">p.9-11</td></tr>
+          <tr><td>Design</td><td class="human">The product owner reviews the spec, resolves flagged concerns with each policy owner, decides whether it goes to build; a technical lead is consulted for higher risk</td><td>Writes the requirements and design spec under the organization's skills, flags concerns</td><td class="pg">p.12-14</td></tr>
+          <tr><td>Build</td><td class="human">The engineer starts plan mode, interrogates and approves the plan; a tech lead or architect approves higher-risk plans; code owners approve <code>CLAUDE.md</code> changes; the policy owner signs off skill changes</td><td>Plans in plan mode, implements, keeps <code>plan.md</code> in sync; subagents simplify, verify, research</td><td class="pg">p.15-25</td></tr>
+          <tr><td>Test</td><td class="human">The engineer sets up the loop and quantifiable targets; the platform engineer collects 20 to 50 real tasks for the eval suite; the team that owned an incident writes its eval; the team that owns a configuration change approves it against the eval pass rate</td><td>Runs tests, build, screenshots and iterates until they pass; writes the failing test first for a bug fix</td><td class="pg">p.26-31</td></tr>
+          <tr><td>Deploy</td><td class="human">A code owner approves the PR through branch protection; the tech lead owns <code>REVIEW.md</code>; engineering leadership, with change management and compliance, lists the approval gates; the release manager authorizes production</td><td>Reviews every PR, fixes on <code>@claude</code> (claude-code-action), runs judgment steps in CI, prepares the release</td><td class="pg">p.32-41</td></tr>
+          <tr><td>Maintain</td><td class="human">The service owner or platform engineer picks the metric and writes the detection script; the service owner or on-call engineer triages: fix now, schedule, dismiss; a service owner approves findings; product-facing findings go to the product owner</td><td>Diagnoses a breach read-only, writes <code>intent.md</code>, opens PRs or runs pre-approved runbooks at 3σ</td><td class="pg">p.42-45</td></tr>
+          <tr><td>Scans</td><td class="human">The security lead connects repositories and organizes them so ownership of findings is clear; findings are triaged with their confidence rating and dismissed with a reason</td><td>Scans on a schedule, validates findings, suggests patches</td><td class="pg">p.46-48</td></tr>
+          <tr><td>Claude Tag</td><td class="human">Anyone in the channel can guide and action the response; a person authorizes the fix</td><td>Responds as a first responder, diagnoses, runs the authorized fix, writes the post-mortem to a lessons file</td><td class="pg">p.48-50</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="note">Set up once or alongside the plays: the intent home is "a one-time task for the platform or engineering team", and a technical team member decides "who can write to it" (p.10); the intent template can be a skill "set up by a technical team member and signed off by a lead" (p.11); engineering leadership, with change management and compliance, "lists the human approval gates that must survive" (p.36); the platform engineer expresses each approval gate as a hook, with non-negotiable hooks in managed settings owned by the platform or IT admin (p.36).</p>
+  </section>
+
+  <section>
+    <h2>What the article leaves open</h2>
+    <p>The diagrams do not fill these gaps in.</p>
+    <ul class="open">
+      <li>Who presses merge. The intent's acceptance "is recorded as the merge" (p.11) and code PRs need a code owner's approval (p.33), but no role is named as the one who merges.</li>
+      <li>Whether human code review is universal. The stage table reserves human review "for regulated and critical code" (p.6); the PR review play says branch protection "still requires approval from a code owner" (p.33).</li>
+      <li>How an approved <code>spec.md</code> starts plan mode without a person. A headless run goes "through the requirements, plan, build test and review phases" (p.42), but only the design pass is described as a job that fires on a merge (p.13), and plan mode is started by the engineer (p.16).</li>
+      <li>Which tier writes the <code>intent.md</code>. At 2σ Claude is read-only (p.43), yet "the agent writes its diagnosis as intent.md" (p.44).</li>
+      <li>Whether a 3σ PR carries an <code>intent.md</code>, <code>spec.md</code> or <code>plan.md</code>, and whether the small PRs from scans and Claude Tag carry a <code>spec.md</code> or <code>plan.md</code>. For scans and Tag the article implies no <code>intent.md</code>: "a fix that fits in one PR goes through the review gate, and anything larger becomes an intent.md" (p.46); p.49 says the same for Claude Tag.</li>
+      <li>Which check the headless confidence gate uses at each stage, its thresholds, and which human it escalates to (p.42).</li>
+      <li>Whether the production-gate hook, which needs a named release manager for a release (p.41), exempts a rollback. At 3σ the agent triggers the pre-approved rollback itself (p.43, p.45), yet the Claude Tag example still asks "shall I run it?" and waits for "Go." (p.49).</li>
+      <li>Whether the product owner also corrects an idea-route <code>intent.md</code> before it is committed (p.9), when the idea route has the originator correct and commit it and the product owner pick it up afterwards (p.11).</li>
+      <li>Where the product owner's review before commit (p.9) and the service owner's triage (p.44), which the article applies to event-triggered intents, sit in a headless run whose stages are otherwise passed by a confidence gate (p.42).</li>
+      <li>Who triages scan findings and who reviews the suggested patch (p.47); the security lead organizes repositories "so ownership of findings is clear" (p.47) but no triage role is named. Who authorizes in a Claude Tag channel: "anyone in the channel" can guide and action the response (p.49), and no role is named.</li>
+    </ul>
+  </section>
+
+  <footer>
+    <span>Source: "The AI-native SDLC playbook" (Anthropic, August 21, 2026), read as a 53-page PDF print of the live page and checked against the live page on 28 September 2026; text and all four figures (p.3, p.5, p.8, p.49) read.</span>
+    <span>"The loop keeps running. Human judgement stays above it." (p.50)</span>
+  </footer>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11.16.1/dist/mermaid.min.js"></script>
+<script>
+  // Outside claude.ai the page renders its own diagrams.
+  mermaid.initialize({ startOnLoad: true, securityLevel: "strict", theme: window.matchMedia && matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "default" });
+</script>
+</body>
+</html>

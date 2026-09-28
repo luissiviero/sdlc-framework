@@ -1,0 +1,1603 @@
+{
+  "about": "The workflow crosswalk: every decision point of the AI-native SDLC playbook (the article, print pages of docs/reference/ai-native-sdlc-playbook.pdf) set against the sdlc framework (plugin 0.2.27, commit cf3f696). See ../2026-09-28-playbook-vs-framework.md.",
+  "seeded": "2026-09-28",
+  "fields": {
+    "id": "stable row id",
+    "stage": "Setup, Plan, Design, Build, Test, Deploy, Maintain or Across stages",
+    "step": "the decision point",
+    "pb": "what the article prescribes",
+    "pbSrc": "article print pages",
+    "fw": "what the framework does",
+    "fwSrc": "framework files",
+    "rel": "same | adapted | added | missing | diverges",
+    "why": "Dn = decision n in docs/DECISIONS.md; \"No decision\" / \"No Dn\" = no decision behind the difference",
+    "weigh": "the question for the owner",
+    "map": "per side, [lane, kind, label]: lane P person, C Claude, A pipeline; kind d decision every change needs (Setup: once per project), c decision only in some cases, w work, r same act as another row"
+  },
+  "relations": {
+    "same": "both do it the same way",
+    "adapted": "same intent, different mechanism",
+    "added": "the framework does something the article does not ask for",
+    "missing": "the article has it, the framework does not",
+    "diverges": "they point in different directions"
+  },
+  "rows": [
+    {
+      "id": "setup-home",
+      "stage": "Setup",
+      "step": "Where intents live and who sets it up",
+      "pb": "A one-time task for the platform or engineering team: a technical team member stands up the intent home and decides who can write to it; the template skill is set up by a technical team member and signed off by a lead.",
+      "pbSrc": "p.10-11",
+      "fw": "/sdlc:sdlc-init writes everything into the project repository in one change-0000 PR: sdlc.yaml, guardrails, changes/, bands.yaml, evals/, lessons/, workflows. Intents live in changes/<id>-<slug>/ next to the code.",
+      "fwSrc": "plugin/commands/sdlc-init.md",
+      "rel": "adapted",
+      "why": "D8 plugin + template · D9 the repo is the source of truth · D10 changes/<id>-<slug>/",
+      "weigh": "A dedicated intent repo only pays off when intent spans many repositories (p.10). Is that ever your case?",
+      "map": {
+        "pb": [
+          [
+            "P",
+            "w",
+            "Technical team member stands up the intent home"
+          ],
+          [
+            "P",
+            "d",
+            "A lead signs off the template skill"
+          ]
+        ],
+        "fw": [
+          [
+            "P",
+            "w",
+            "Owner runs /sdlc-init"
+          ],
+          [
+            "C",
+            "w",
+            "/sdlc-init writes the change-0000 PR"
+          ],
+          [
+            "P",
+            "d",
+            "Owner merges the 0000 PR"
+          ]
+        ]
+      }
+    },
+    {
+      "id": "setup-gates",
+      "stage": "Setup",
+      "step": "Which human approval gates exist, and where they are enforced",
+      "pb": "Engineering leadership, with change management and compliance, lists the gates that must survive; the platform engineer expresses each as a hook, with non-negotiable hooks in managed settings.",
+      "pbSrc": "p.36",
+      "fw": "The gates are fixed by the framework (profiles, labels, confidence gate); per project, sdlc.yaml adds the risk list, protected paths and, on a declared production, the release approval and guarded deploy commands. Guardrails sit in three layers: the plugin's hooks with project deny rules as a second net; a managed settings file on the owner's machine; CI loading hooks and permissions from the pinned plugin, never from the PR branch. The owner adds the 'Restrict updates' ruleset.",
+      "fwSrc": "plugin/hooks/, template/.claude/settings.json, sdlc-init.md §6",
+      "rel": "adapted",
+      "why": "D6 all three guardrail layers · D18 profiles · one owner, so no separate leadership list",
+      "weigh": "sdlc.yaml already lists the project's risk items, protected paths and guarded deploy commands. Is that your 'gates that must survive' list, or does each item need a named approver?",
+      "map": {
+        "pb": [
+          [
+            "P",
+            "d",
+            "Leadership lists the gates that must survive"
+          ],
+          [
+            "P",
+            "w",
+            "Platform engineer writes each as a hook"
+          ]
+        ],
+        "fw": [
+          [
+            "P",
+            "d",
+            "Owner picks profile, review mode, production"
+          ],
+          [
+            "A",
+            "w",
+            "Gates fixed by the framework + sdlc.yaml"
+          ],
+          [
+            "P",
+            "w",
+            "Owner adds the 'Restrict updates' ruleset"
+          ]
+        ]
+      }
+    },
+    {
+      "id": "setup-merge",
+      "stage": "Setup",
+      "step": "Who may merge to main",
+      "pb": "Not named. Intent acceptance 'is recorded as the merge'; code PRs need a code owner's approval through branch protection; the agent has no route to push to main.",
+      "pbSrc": "p.11, p.33, p.40",
+      "fw": "Only the owner merges. A ruleset with the owner as the only bypass actor; the automation identity has branch-only write access.",
+      "fwSrc": "docs/OPERATING_MODEL.md §2; sdlc-init.md",
+      "rel": "adapted",
+      "why": "D4 merge-restricted ruleset · D5 workflow token as the automation identity",
+      "weigh": "The article asks for branch protection with a code owner's approval and no agent route to main (p.33, p.40). D4 swaps the required approval for a merge restriction, because GitHub does not count the author's own approval. Who presses merge is gap 1 on the playbook page. Add a required review only if a second reviewer appears.",
+      "map": {
+        "pb": [
+          [
+            "A",
+            "w",
+            "Branch protection requires a code owner"
+          ],
+          [
+            "P",
+            "r",
+            "Code owner approves each PR"
+          ]
+        ],
+        "fw": [
+          [
+            "A",
+            "w",
+            "Ruleset: owner is the only bypass actor"
+          ],
+          [
+            "P",
+            "r",
+            "Owner's merges are gates (a), (b), (e), (f)"
+          ]
+        ]
+      }
+    },
+    {
+      "id": "plan-idea",
+      "stage": "Plan",
+      "step": "An idea becomes intent.md",
+      "pb": "The originator brainstorms with Claude in claude.ai or Cowork; Claude asks an analyst's questions and writes intent.md from the organization's template; the originator corrects and commits it.",
+      "pbSrc": "p.10-11",
+      "fw": "The owner runs /sdlc:sdlc-plan in their own Claude Code session; brainstorm, then intent.md via the intent-template skill; the session opens the intent PR on sdlc/<id>/a.",
+      "fwSrc": "plugin/commands/sdlc-plan.md",
+      "rel": "adapted",
+      "why": "The owner is the originator",
+      "weigh": "Claude Code only, not claude.ai or Cowork. Does that matter for ideas that start away from the keyboard?",
+      "map": {
+        "pb": [
+          [
+            "P",
+            "w",
+            "Originator brainstorms"
+          ],
+          [
+            "C",
+            "w",
+            "Claude writes intent.md"
+          ],
+          [
+            "P",
+            "w",
+            "Originator corrects and commits"
+          ]
+        ],
+        "fw": [
+          [
+            "P",
+            "w",
+            "Owner runs /sdlc-plan, brainstorms"
+          ],
+          [
+            "C",
+            "w",
+            "Session writes intent.md, opens PR"
+          ]
+        ]
+      }
+    },
+    {
+      "id": "plan-ticket",
+      "stage": "Plan",
+      "step": "A ticket or an alert becomes intent.md",
+      "pb": "An agent writes intent.md off the back of a ticket or an alert; the product owner reviews and corrects it before it is committed.",
+      "pbSrc": "p.9, p.42, p.44",
+      "fw": "Alerts: the detect and scan workflows write the incident intent and open an incident PR. Tickets: no trigger; the owner starts /sdlc:sdlc-plan with route 'ticket' and an external reference.",
+      "fwSrc": "plugin/detect/cli.py, plugin/scan/route.py, sdlc-plan.md",
+      "rel": "adapted",
+      "why": "Alerts: D15 (CI failure rate) and D16 (weekly security review). Tickets: no decision. D9 keeps the repo as the record, with tracker links; it does not rule out a ticket trigger.",
+      "weigh": "Is an automatic 'issue labelled X → intent PR' trigger worth adding, or do tickets stay manual?",
+      "map": {
+        "pb": [
+          [
+            "C",
+            "w",
+            "Agent writes intent from ticket or alert"
+          ],
+          [
+            "P",
+            "w",
+            "PO reviews and corrects before commit"
+          ]
+        ],
+        "fw": [
+          [
+            "A",
+            "w",
+            "Detect or scan files an incident PR"
+          ],
+          [
+            "P",
+            "w",
+            "Tickets: owner runs /sdlc-plan"
+          ]
+        ]
+      }
+    },
+    {
+      "id": "plan-accept",
+      "stage": "Plan",
+      "step": "Intent accepted or rejected",
+      "pb": "The product owner approves: acceptance is recorded as the merge, rejection as the closing review.",
+      "pbSrc": "p.11",
+      "fw": "Gate (a): the owner merges the intent PR. Closing it without a merge abandons the change (sdlc-abandon.yml).",
+      "fwSrc": "template/.github/workflows/sdlc-abandon.yml",
+      "rel": "same",
+      "why": "D25 close = abandon",
+      "weigh": "Nothing to decide unless you want a recorded rejection reason.",
+      "map": {
+        "pb": [
+          [
+            "P",
+            "d",
+            "PO accepts (merge) or rejects"
+          ]
+        ],
+        "fw": [
+          [
+            "P",
+            "d",
+            "Gate (a): owner merges or closes"
+          ]
+        ]
+      }
+    },
+    {
+      "id": "design-trigger",
+      "stage": "Design",
+      "step": "What starts the requirements and design pass",
+      "pb": "By hand in a product owner session at first, then an organization slash command, then a non-interactive job that fires on the merge.",
+      "pbSrc": "p.13",
+      "fw": "The merge of the intent PR fires sdlc-design.yml, which runs /sdlc:sdlc-design non-interactively. The command can also be run by hand.",
+      "fwSrc": "template/.github/workflows/sdlc-design.yml",
+      "rel": "same",
+      "why": "D1 hosted CI (the article's end state from the start)",
+      "weigh": "Already at the article's end state. See issue #67 for change 0000.",
+      "map": {
+        "pb": [
+          [
+            "P",
+            "w",
+            "By hand, then a slash command"
+          ],
+          [
+            "A",
+            "w",
+            "End state: a job fires on the merge"
+          ]
+        ],
+        "fw": [
+          [
+            "A",
+            "w",
+            "The merge fires sdlc-design.yml"
+          ]
+        ]
+      }
+    },
+    {
+      "id": "design-spec",
+      "stage": "Design",
+      "step": "Writing the spec",
+      "pb": "Claude produces a requirements and design spec guided by the organization's skills (brand, security, compliance, UX), with areas of concern flagged; logged with the prompt and the skill versions in force.",
+      "pbSrc": "p.12-14",
+      "fw": "/sdlc:sdlc-design applies the policy skills and writes spec.md from the spec-template skill, with a mandatory 'Flagged concerns' section and a header logging the prompt and plugin version.",
+      "fwSrc": "plugin/commands/sdlc-design.md, plugin/skills/spec-template",
+      "rel": "same",
+      "why": "D8 the plugin version records the skill versions in force",
+      "weigh": "Close match.",
+      "map": {
+        "pb": [
+          [
+            "C",
+            "w",
+            "Claude writes the spec, flags concerns"
+          ]
+        ],
+        "fw": [
+          [
+            "C",
+            "w",
+            "/sdlc-design writes spec.md"
+          ]
+        ]
+      }
+    },
+    {
+      "id": "design-mock",
+      "stage": "Design",
+      "step": "Front-end mock",
+      "pb": "For front-end work the product owner mocks the design in Claude Design (beta) from the intent.md, iterates, and exports it to Claude Code to build.",
+      "pbSrc": "p.12-13",
+      "fw": "No step makes the mock. An optional changes/<id>-<slug>/mock/ folder, committed with the spec at (b), holds an exported mock. (c) reads it before the first screen and names the screenshot in plan.md Proof; the (d) screenshot loop compares against it when plan.md Proof or spec.md Acceptance names one.",
+      "fwSrc": "template/changes/README.md, plugin/commands/sdlc-build.md, plugin/commands/sdlc-test.md",
+      "rel": "adapted",
+      "why": "No Dn; build guide step 34 (optional; built as a convention only, 0.2.19)",
+      "weigh": "The slot exists (mock/), but nothing asks for a mock. Should spec-template ask for one when a change touches a UI?",
+      "map": {
+        "pb": [
+          [
+            "P",
+            "w",
+            "PO mocks in Claude Design, exports"
+          ]
+        ],
+        "fw": [
+          [
+            "C",
+            "w",
+            "(c) and (d) use mock/ when present"
+          ]
+        ]
+      }
+    },
+    {
+      "id": "design-concerns",
+      "stage": "Design",
+      "step": "Resolving flagged concerns",
+      "pb": "The product owner works through each flagged concern with its policy owner before engineering sees the spec.",
+      "pbSrc": "p.14",
+      "fw": "An open concern parks gate (b) for the owner. With review: deferred, a three-member panel decides concerns and the PR lists 'Decisions taken for you (N)'.",
+      "fwSrc": "plugin/gate/checks.py, plugin/panel/",
+      "rel": "adapted",
+      "why": "D11 park, never page · D21 deferred review",
+      "weigh": "The panel replaces the policy owner. Which concern kinds should never go to the panel?",
+      "map": {
+        "pb": [
+          [
+            "P",
+            "d",
+            "PO resolves concerns with policy owners"
+          ]
+        ],
+        "fw": [
+          [
+            "A",
+            "w",
+            "Parked mode: an open concern parks (b)"
+          ],
+          [
+            "P",
+            "d",
+            "Parked mode: owner decides each open concern"
+          ],
+          [
+            "C",
+            "w",
+            "Deferred review: a panel decides"
+          ]
+        ]
+      }
+    },
+    {
+      "id": "design-go",
+      "stage": "Design",
+      "step": "Deciding the spec goes to build",
+      "pb": "The product owner decides, consulting a technical lead for higher risk; a human team mate always makes this call.",
+      "pbSrc": "p.14",
+      "fw": "Gate (b): the owner merges the spec+plan PR. Human in both profiles.",
+      "fwSrc": "plugin/state/conventions.py HUMAN_GATES",
+      "rel": "same",
+      "why": "D2 plan approved with the spec at one gate · D18 profiles · D21 Lite withdrawn to keep gate (b) human (p.14)",
+      "weigh": "Close match; the roles collapse into you.",
+      "map": {
+        "pb": [
+          [
+            "P",
+            "d",
+            "PO decides: go to build"
+          ]
+        ],
+        "fw": [
+          [
+            "P",
+            "d",
+            "Gate (b): owner merges spec + plan"
+          ]
+        ]
+      }
+    },
+    {
+      "id": "build-plan",
+      "stage": "Build",
+      "step": "Producing the plan",
+      "pb": "An engineer starts Claude Code in plan mode with intent.md and spec.md; Claude reads the codebase without changing anything, interviews, and proposes files, order of work and tests; the engineer interrogates it until someone who never saw the conversation could implement from it.",
+      "pbSrc": "p.15-16",
+      "fw": "A read-only planning pass at the end of the design run writes plan.md from the plan-template skill (with its interrogation prompt); spec and plan arrive in one PR.",
+      "fwSrc": "plugin/commands/sdlc-design.md, plugin/skills/plan-template",
+      "rel": "adapted",
+      "why": "D2 plan.md at the end of phase (b)",
+      "weigh": "The interrogation is by the skill's prompt, not a person. Is reading plan.md at gate (b) enough interrogation?",
+      "map": {
+        "pb": [
+          [
+            "P",
+            "w",
+            "Engineer starts plan mode"
+          ],
+          [
+            "C",
+            "w",
+            "Claude proposes the plan"
+          ],
+          [
+            "P",
+            "w",
+            "Engineer interrogates it"
+          ]
+        ],
+        "fw": [
+          [
+            "C",
+            "w",
+            "Read-only planning pass writes plan.md"
+          ]
+        ]
+      }
+    },
+    {
+      "id": "build-plan-approve",
+      "stage": "Build",
+      "step": "Approving the plan",
+      "pb": "Routine plans: the engineer. Higher-risk plans: a tech lead or architect. Committed as plan.md.",
+      "pbSrc": "p.16-17",
+      "fw": "Approved with the spec at gate (b) by the owner's merge; no separate plan gate.",
+      "fwSrc": "docs/DECISIONS.md D2",
+      "rel": "adapted",
+      "why": "D2 option A (option C, a separate plan gate, was rejected)",
+      "weigh": "One gate fewer per change. Revisit only if bad plans get through.",
+      "map": {
+        "pb": [
+          [
+            "P",
+            "d",
+            "Engineer, or tech lead for high risk, approves"
+          ]
+        ],
+        "fw": [
+          [
+            "P",
+            "r",
+            "Approved with the spec at gate (b)"
+          ]
+        ]
+      }
+    },
+    {
+      "id": "build-start",
+      "stage": "Build",
+      "step": "What starts implementation",
+      "pb": "The engineer, in the same session, once the plan is approved; auto-accept becomes the default for routine work (a tight spec.md, a small blast radius, code the tests already cover).",
+      "pbSrc": "p.16-17",
+      "fw": "The merge of the spec+plan PR fires sdlc-build.yml; /sdlc:sdlc-build runs unattended on sdlc/<id>/c and opens the build PR as a draft.",
+      "fwSrc": "template/.github/workflows/sdlc-build.yml",
+      "rel": "adapted",
+      "why": "D1 CI · D2 plan approved at (b) · D11 non-routine only tightens the gate (build guide step 18 preflight)",
+      "weigh": "Every approved plan runs unattended once the preflight's guardrail checks pass. D11 rejected escalating non-routine plans ('in a new project almost nothing is routine'); non-routine only lowers the iteration cap. Reopen D11, for example non-routine goes to Full?",
+      "map": {
+        "pb": [
+          [
+            "P",
+            "w",
+            "Engineer starts implementing"
+          ],
+          [
+            "C",
+            "w",
+            "Claude implements (auto-accept if routine)"
+          ]
+        ],
+        "fw": [
+          [
+            "A",
+            "w",
+            "The merge fires sdlc-build.yml"
+          ],
+          [
+            "C",
+            "w",
+            "/sdlc-build runs unattended"
+          ]
+        ]
+      }
+    },
+    {
+      "id": "build-hooks",
+      "stage": "Build",
+      "step": "Guardrail hooks during the session",
+      "pb": "Hooks block protected paths, format and lint after edits, and keep credentials out of the diff.",
+      "pbSrc": "p.23",
+      "fw": "Protected paths (guardrails and the plugin itself), secrets check, formatter and linter on edit, plan sync on commit, test-file lock for fixes, production gate.",
+      "fwSrc": "plugin/hooks/hooks.json",
+      "rel": "same",
+      "why": "D6 · D7 Python hooks",
+      "weigh": "The framework is a superset.",
+      "map": {
+        "pb": [
+          [
+            "A",
+            "w",
+            "Hooks: paths, format, credentials"
+          ]
+        ],
+        "fw": [
+          [
+            "A",
+            "w",
+            "Six hooks, incl. plan sync and test lock"
+          ]
+        ]
+      }
+    },
+    {
+      "id": "build-plansync",
+      "stage": "Build",
+      "step": "Keeping plan.md in step with the work",
+      "pb": "Update plan.md in the same commit when the work departs from it; consider a hook to enforce the sync.",
+      "pbSrc": "p.16",
+      "fw": "The plan-sync hook on git commit (build branch) and a plan_sync gate check.",
+      "fwSrc": "plugin/hooks/plan_sync.py",
+      "rel": "same",
+      "why": "Implements the article's suggestion",
+      "weigh": "Close match.",
+      "map": {
+        "pb": [
+          [
+            "C",
+            "w",
+            "plan.md updated in the same commit"
+          ]
+        ],
+        "fw": [
+          [
+            "C",
+            "w",
+            "Build run updates plan.md in the same commit"
+          ],
+          [
+            "A",
+            "w",
+            "Plan-sync hook + gate check"
+          ]
+        ]
+      }
+    },
+    {
+      "id": "build-subagents",
+      "stage": "Build",
+      "step": "Subagents and parallel sessions",
+      "pb": "Subagents such as a code simplifier, a verifier and a researcher; several sessions at once, each in its own worktree, added only while review keeps up.",
+      "pbSrc": "p.24-25",
+      "fw": "Four agents: code-simplifier and verifier run in (c), researcher on demand, adversarial-reviewer for the gate. No parallel worktrees yet.",
+      "fwSrc": "plugin/agents/",
+      "rel": "adapted",
+      "why": "D17 parallel worktrees later",
+      "weigh": "Parallel sessions only help if your review keeps up. Is that the bottleneck?",
+      "map": {
+        "pb": [
+          [
+            "C",
+            "w",
+            "Simplifier, verifier, researcher"
+          ],
+          [
+            "P",
+            "w",
+            "Engineer runs parallel worktrees"
+          ]
+        ],
+        "fw": [
+          [
+            "C",
+            "w",
+            "Four agents, no parallel worktrees"
+          ]
+        ]
+      }
+    },
+    {
+      "id": "build-config",
+      "stage": "Build",
+      "step": "Who approves changes to CLAUDE.md and skills",
+      "pb": "Code owners approve CLAUDE.md changes in PR review; the policy owner signs off skill changes; the eval pass rate is a merge check.",
+      "pbSrc": "p.20, p.22, p.31",
+      "fw": "CLAUDE.md, REVIEW.md, sdlc.yaml and .claude/** are guardrail files: a run that edits one parks; only the owner changes them in a reviewed PR. Skills ship in the plugin; sdlc-evals.yml runs on changes to CLAUDE.md, .claude/** and evals/**.",
+      "fwSrc": "plugin/hooks/protected_paths.py, template/.github/workflows/sdlc-evals.yml",
+      "rel": "adapted",
+      "why": "D6 · D8 · D17",
+      "weigh": "Is the eval result a merge check you actually look at, or advisory?",
+      "map": {
+        "pb": [
+          [
+            "P",
+            "d",
+            "Code owners approve CLAUDE.md changes"
+          ],
+          [
+            "P",
+            "d",
+            "Policy owner signs off skill changes"
+          ],
+          [
+            "A",
+            "w",
+            "Eval pass rate is a merge check"
+          ]
+        ],
+        "fw": [
+          [
+            "A",
+            "w",
+            "A run that edits a guardrail file parks"
+          ],
+          [
+            "A",
+            "w",
+            "sdlc-evals.yml check on these files"
+          ],
+          [
+            "P",
+            "d",
+            "Owner changes them in a reviewed PR"
+          ]
+        ]
+      }
+    },
+    {
+      "id": "build-skills",
+      "stage": "Build",
+      "step": "Who writes the policy skills, and whether a project adds its own",
+      "pb": "An engineer writes each skill from the policy owner's written source of truth, tests that it triggers by asking for the task in different ways, and the policy owner signs off changes. Skills sit in the repo's .claude/skills/ or ship organization-wide in a plugin; engineers pick up a new version automatically in their next session.",
+      "pbSrc": "p.21-22",
+      "fw": "Five generic policy skills ship in the plugin, written by the framework from the article; each says 'no owner source yet'. A project may add .claude/skills/<name>/, which the design command (not the build command) treats as replacing the plugin's, and spec.md's header records the override; .claude/** is a guardrail path, so only the owner adds one. The phase jobs pick up a new skill version only when the owner bumps the plugin pin in sdlc.yaml, and no eval checks that a policy skill triggers.",
+      "fwSrc": "plugin/skills/*/SKILL.md, plugin/commands/sdlc-design.md, plugin/skills/spec-template/SKILL.md, template/sdlc.yaml plugin.version",
+      "rel": "adapted",
+      "why": "D8 plugin + pinned version · D6 .claude/** is the owner's · build guide step 20 (generic skills, project override). Owner sources and trigger testing: no decision.",
+      "weigh": "The skills have no named source. Is there a written policy of yours (security, data) a skill should be derived from, and should each skill get one eval that asks for the task without naming the skill (p.22 step 4)?",
+      "map": {
+        "pb": [
+          [
+            "P",
+            "w",
+            "Engineer writes and trigger-tests each skill"
+          ],
+          [
+            "P",
+            "r",
+            "Policy owner signs off (config row)"
+          ]
+        ],
+        "fw": [
+          [
+            "A",
+            "w",
+            "Generic skills ship in the plugin"
+          ],
+          [
+            "P",
+            "w",
+            "Owner may add project skills"
+          ]
+        ]
+      }
+    },
+    {
+      "id": "build-risk",
+      "stage": "Build",
+      "step": "Risky edits (migrations, infra, change tickets)",
+      "pb": "Hooks can block edits to migrations and infra without an approved change ticket; the gate defines what counts as approval (an approved change ticket or the release manager's sign-off). A hook can also ask, pausing until a specific person approves, which release gating uses.",
+      "pbSrc": "p.35-37",
+      "fw": "The risk list in sdlc.yaml (auth, data migrations, money movement, production config): a hit parks the change at its next gate; the owner accepts with sdlc:accept-risk. No mid-run 'ask'.",
+      "fwSrc": "template/sdlc.yaml risk_list",
+      "rel": "adapted",
+      "why": "D11 park, never page · D24 un-park labels",
+      "weigh": "Park-at-the-gate replaces ask-mid-run. A risk item the design foresees is a flagged concern and parks at gate (b), before any code is written; one the design missed is found in the diff at the next gate, after the work.",
+      "map": {
+        "pb": [
+          [
+            "A",
+            "w",
+            "Hook blocks without a change ticket"
+          ],
+          [
+            "P",
+            "c",
+            "Change ticket approved (migrations, infra)"
+          ]
+        ],
+        "fw": [
+          [
+            "A",
+            "w",
+            "A risk-list hit parks at the gate"
+          ],
+          [
+            "P",
+            "c",
+            "On a hit: owner's sdlc:accept-risk"
+          ]
+        ]
+      }
+    },
+    {
+      "id": "test-loop",
+      "stage": "Test",
+      "step": "The feedback loop",
+      "pb": "Claude runs the tests, the build and the screenshot and iterates until the check passes; the verification commands live in CLAUDE.md.",
+      "pbSrc": "p.26-28",
+      "fw": "/sdlc:sdlc-test in a fresh CI job: collect.py runs test, build and lint into evidence/, failures are fixed and re-run, screenshot loop when a mock is named.",
+      "fwSrc": "plugin/evidence/collect.py, plugin/commands/sdlc-test.md",
+      "rel": "same",
+      "why": "",
+      "weigh": "Close match.",
+      "map": {
+        "pb": [
+          [
+            "C",
+            "w",
+            "Claude runs tests, iterates"
+          ]
+        ],
+        "fw": [
+          [
+            "C",
+            "w",
+            "/sdlc-test runs, fixes, re-runs"
+          ]
+        ]
+      }
+    },
+    {
+      "id": "test-bugfix",
+      "stage": "Test",
+      "step": "Bug fixes: the failing test first",
+      "pb": "The failing test is written and committed first; a test-file hook, or review rejecting any test change, protects the check.",
+      "pbSrc": "p.28",
+      "fw": "A fix-type change writes its failing test first, then the test-file lock hook and the test_lock gate check protect it; sdlc:unlock-tests lifts it.",
+      "fwSrc": "plugin/hooks/test_file_lock.py, plugin/gate/checks.py",
+      "rel": "same",
+      "why": "",
+      "weigh": "Close match.",
+      "map": {
+        "pb": [
+          [
+            "C",
+            "w",
+            "Failing test written first"
+          ],
+          [
+            "A",
+            "w",
+            "Test-file hook protects it"
+          ]
+        ],
+        "fw": [
+          [
+            "C",
+            "w",
+            "Failing test written first"
+          ],
+          [
+            "A",
+            "w",
+            "Test lock hook + gate check"
+          ],
+          [
+            "P",
+            "c",
+            "Exception: owner's sdlc:unlock-tests"
+          ]
+        ]
+      }
+    },
+    {
+      "id": "test-verify",
+      "stage": "Test",
+      "step": "Final check before review",
+      "pb": "One way: a verifier subagent in a fresh context once the session believes it is done; the pasted output lands in the transcript and the PR check run.",
+      "pbSrc": "p.25-29",
+      "fw": "The verifier runs in (c) and (d); the evidence logs are committed; gate (d) posts the check run sdlc/d.",
+      "fwSrc": "plugin/agents/verifier.md, plugin/pr/cli.py",
+      "rel": "same",
+      "why": "",
+      "weigh": "The check run depends on the model reaching the step that posts it.",
+      "map": {
+        "pb": [
+          [
+            "C",
+            "w",
+            "Verifier subagent, fresh context"
+          ]
+        ],
+        "fw": [
+          [
+            "C",
+            "w",
+            "Verifier; check run sdlc/d"
+          ]
+        ]
+      }
+    },
+    {
+      "id": "test-gate",
+      "stage": "Test",
+      "step": "The gates after Build and after Test",
+      "pb": "None in the hand-prompted loop; evidence goes to the PR's check run and the code owner approves the PR. In a headless run an independent confidence gate sits between stages.",
+      "pbSrc": "p.6, p.29, p.42",
+      "fw": "Confidence gates (c) and (d). Standard: continue and dispatch the next phase. Full: sdlc:c-ready, and the owner's sdlc:c-approved label starts (d); then sdlc:d-ready, and the owner's sdlc:d-approved label starts (e).",
+      "fwSrc": "plugin/gate/gate.py, template/.github/workflows/sdlc-deploy.yml",
+      "rel": "adapted",
+      "why": "D3 label on the build PR · D18 profiles",
+      "weigh": "The docs say 'approving review + label'; the code checks only the label. Which do you want?",
+      "map": {
+        "pb": [
+          [
+            "A",
+            "w",
+            "Headless run only: confidence gate"
+          ],
+          [
+            "P",
+            "r",
+            "Code owner approves the PR"
+          ]
+        ],
+        "fw": [
+          [
+            "A",
+            "w",
+            "Confidence gates (c) and (d)"
+          ],
+          [
+            "P",
+            "c",
+            "Full profile: owner's sdlc:c-approved"
+          ],
+          [
+            "P",
+            "c",
+            "Full profile: owner's sdlc:d-approved"
+          ]
+        ]
+      }
+    },
+    {
+      "id": "test-evals",
+      "stage": "Test",
+      "step": "Evals",
+      "pb": "The platform engineer collects 20 to 50 real tasks; the suite runs on any change to CLAUDE.md, skills or hooks and on a schedule; the pass rate is a merge check; each incident gets an eval.",
+      "pbSrc": "p.29-31, p.44",
+      "fw": "sdlc-evals.yml runs on changes to CLAUDE.md, .claude/** and evals/** and daily; cases under evals/cases/; an incident's (e) run is told to add one case. Skill and hook changes ship in the plugin and are tested by the framework's own suite (framework-evals.yml); a project's pin bump does not trigger its sdlc-evals.yml.",
+      "fwSrc": "template/.github/workflows/sdlc-evals.yml, template/evals/, .github/workflows/framework-evals.yml",
+      "rel": "adapted",
+      "why": "D17 evals start once real work exists",
+      "weigh": "The incident case is a prompt instruction, not a gate check. Should the gate require it?",
+      "map": {
+        "pb": [
+          [
+            "P",
+            "w",
+            "Platform engineer builds the suite"
+          ],
+          [
+            "A",
+            "w",
+            "Pass rate is a merge check"
+          ]
+        ],
+        "fw": [
+          [
+            "A",
+            "w",
+            "sdlc-evals.yml on config changes"
+          ]
+        ]
+      }
+    },
+    {
+      "id": "deploy-review",
+      "stage": "Deploy",
+      "step": "The AI review passes",
+      "pb": "Identical review passes on every PR per REVIEW.md: bugs, security, compliance with spec.md, plan.md and design principles; findings ranked Important vs Nit, a machine-readable tally.",
+      "pbSrc": "p.32-34",
+      "fw": "The REVIEW.md pass runs once per change, at (e), in a fresh-context CI job; a fix loop runs while an Important finding stands. The intent and spec PRs get no REVIEW.md pass.",
+      "fwSrc": "plugin/review/, template/.github/workflows/sdlc-deploy.yml",
+      "rel": "adapted",
+      "why": "D12 review as a CI job",
+      "weigh": "Every PR vs once per change. The (b) adversarial reviewer covers the spec; is that enough?",
+      "map": {
+        "pb": [
+          [
+            "C",
+            "w",
+            "Review passes on every PR"
+          ]
+        ],
+        "fw": [
+          [
+            "C",
+            "w",
+            "REVIEW.md pass at (e) only"
+          ]
+        ]
+      }
+    },
+    {
+      "id": "deploy-claudemd",
+      "stage": "Deploy",
+      "step": "Review findings feed CLAUDE.md",
+      "pb": "When Claude makes a mistake twice, the correction goes into CLAUDE.md. Review puts it there as part of the review that flags it the second time, and also flags when a change has made CLAUDE.md outdated. Code owners approve the edit in PR review.",
+      "pbSrc": "p.20, p.34",
+      "fw": "The (e) review records each finding's signature in changes/.review-seen.json. A finding seen again in a later change, or one about CLAUDE.md itself, becomes a proposed 'Things Claude gets wrong' line in evidence/claude-md-proposals.md, quoted in the PR description. The run cannot edit CLAUDE.md; the owner applies the line in a commit of their own.",
+      "fwSrc": "plugin/review/findings.py, plugin/review/cli.py, plugin/pr/description.py, template/REVIEW.md",
+      "rel": "adapted",
+      "why": "D6 guardrail files are the owner's edit · build guide steps 13 and 26",
+      "weigh": "A repeat is matched on an exact signature (pass, file, normalised summary), so a reworded repeat is missed, and only review findings count, not mistakes seen in a session. Should the daily digest list proposals you have not applied yet?",
+      "map": {
+        "pb": [
+          [
+            "C",
+            "w",
+            "Review writes the correction"
+          ],
+          [
+            "P",
+            "r",
+            "Approved with the PR by a code owner"
+          ]
+        ],
+        "fw": [
+          [
+            "C",
+            "w",
+            "Review proposes a CLAUDE.md line"
+          ],
+          [
+            "P",
+            "r",
+            "Owner applies it in a commit of their own"
+          ]
+        ]
+      }
+    },
+    {
+      "id": "deploy-tuning",
+      "stage": "Deploy",
+      "step": "Tuning the reviewer",
+      "pb": "Once a month the tech lead tunes the setup by rating findings so the reviewer improves and by capping Nit volume in REVIEW.md; generated paths and anything CI already enforces are excluded.",
+      "pbSrc": "p.34",
+      "fw": "REVIEW.md ships with the nit cap (at most five, the rest as a count) and a 'Do not report' list, and the tally keeps the reviewer's count of omitted nits. Nothing rates findings and no periodic tuning runs; REVIEW.md changes only by the owner's hand.",
+      "fwSrc": "template/REVIEW.md, plugin/review/findings.py",
+      "rel": "missing",
+      "why": "No Dn: build guide sub-step 26.5 (monthly tuning), recorded 'not built' (ROADMAP Milestone 1 item 1)",
+      "weigh": "Without ratings, the only tuning signal is what you notice at gate (e). The build guide planned 'a scheduled agent PR you merge or ignore' (step 26), but a run cannot edit REVIEW.md (D6), so such a job would have to propose the edit as text, like claude-md-proposals.md. Worth adding, or is tuning by hand enough for one owner?",
+      "map": {
+        "pb": [
+          [
+            "P",
+            "w",
+            "Tech lead rates findings monthly"
+          ]
+        ],
+        "fw": []
+      }
+    },
+    {
+      "id": "deploy-comments",
+      "stage": "Deploy",
+      "step": "Acting on review comments",
+      "pb": "A reviewer or the author tags @claude on a review comment; Claude addresses it and pushes. For PRs Claude opened, a slash command babysits until green.",
+      "pbSrc": "p.33-34",
+      "fw": "The owner's 'Request changes' review (or an un-park label) runs sdlc-fix.yml: comments become constraints, the phase re-runs, iterations + 1. No @claude trigger.",
+      "fwSrc": "template/.github/workflows/sdlc-fix.yml",
+      "rel": "adapted",
+      "why": "D22 'Request changes' starts the fix run · D24 un-park labels",
+      "weigh": "One comment at a time (@claude) vs one review round at a time. The framework's is coarser but cheaper to run.",
+      "map": {
+        "pb": [
+          [
+            "P",
+            "w",
+            "Reviewer tags @claude"
+          ],
+          [
+            "C",
+            "w",
+            "Claude fixes and pushes"
+          ]
+        ],
+        "fw": [
+          [
+            "P",
+            "w",
+            "Owner: 'Request changes'"
+          ],
+          [
+            "C",
+            "w",
+            "sdlc-fix re-runs the phase"
+          ]
+        ]
+      }
+    },
+    {
+      "id": "deploy-approve",
+      "stage": "Deploy",
+      "step": "Approving the code",
+      "pb": "A code owner approves through branch protection, informed by the findings; the agent that wrote the code cannot approve it. The stage table reserves human review for regulated and critical code.",
+      "pbSrc": "p.6, p.33-35",
+      "fw": "Gate (e): the owner merges the build PR, which stays a draft until sdlc:e-ready. The draft is the only guard against an early merge.",
+      "fwSrc": "plugin/ci/run_phase.py PR_DRAFT_PHASES",
+      "rel": "adapted",
+      "why": "D4 · D13 gate (e) is the merge",
+      "weigh": "See issue #66: an early merge releases unreviewed code and later releases again.",
+      "map": {
+        "pb": [
+          [
+            "P",
+            "d",
+            "Code owner approves the PR"
+          ]
+        ],
+        "fw": [
+          [
+            "P",
+            "d",
+            "Gate (e): owner merges the build PR"
+          ]
+        ]
+      }
+    },
+    {
+      "id": "deploy-ci",
+      "stage": "Deploy",
+      "step": "Judgment steps in CI",
+      "pb": "Start with read-only judgment steps: claude -p in a pipeline job to triage a failed build, summarize a flaky test or draft the changelog; then write steps.",
+      "pbSrc": "p.40",
+      "fw": "Read-only claude -p judgment jobs exist in CI: the REVIEW.md pass, the weekly security review, and the 2σ/3σ diagnosis, which reads failed runs with gh run view. The article's three example jobs (failed-build triage, flaky-test summary, changelog draft) are missing; release notes come from release/notes.py, deterministically (no model), after gate (e).",
+      "fwSrc": "template/.github/workflows/sdlc-deploy.yml, sdlc-scan.yml, template/bands.yaml, plugin/release/notes.py",
+      "rel": "adapted",
+      "why": "No decision on the three example jobs",
+      "weigh": "A 'triage failed build' job is cheap and read-only. Worth adding?",
+      "map": {
+        "pb": [
+          [
+            "C",
+            "w",
+            "Triage failed build, draft changelog"
+          ]
+        ],
+        "fw": [
+          [
+            "C",
+            "w",
+            "Review, scan and diagnosis jobs"
+          ]
+        ]
+      }
+    },
+    {
+      "id": "deploy-envs",
+      "stage": "Deploy",
+      "step": "Environments and deploy tools",
+      "pb": "Development: the agent deploys freely; staging in the middle; production: the agent prepares the release. Deploy, status and rollback exposed as MCP tools per environment.",
+      "pbSrc": "p.39-40",
+      "fw": "One deploy adapter per project (deploy.action: publish package, schedule job, regenerate report, promote to paper trading, deploy service, none) running deploy.command; deploy.production true/false is the one tier switch. Deploy, status and rollback as MCP tools are decided but not built until an adapter names a real deployment.",
+      "fwSrc": "template/sdlc.yaml deploy, plugin/release/cli.py",
+      "rel": "adapted",
+      "why": "D13 the merge is the whole gate until a real production · D19 phase adapters · build guide step 31 (tools deferred)",
+      "weigh": "Do any of your projects need a dev/staging tier before production?",
+      "map": {
+        "pb": [
+          [
+            "C",
+            "w",
+            "Agent deploys dev; prepares prod release"
+          ]
+        ],
+        "fw": [
+          [
+            "A",
+            "w",
+            "One deploy adapter per project"
+          ]
+        ]
+      }
+    },
+    {
+      "id": "deploy-release",
+      "stage": "Deploy",
+      "step": "Production release authorization",
+      "pb": "The production deploy hook blocks the release until a named release manager authorizes it; the agent cannot pass the gate.",
+      "pbSrc": "p.40-41",
+      "fw": "With deploy.production: true the owner applies sdlc:release-approved: the release workflow waits for the label (release/cli.py checks it; no Claude session runs there), and the production_gate hook blocks guarded deploy commands in any Claude session until then; it blocks, never asks. Without it the merge alone releases.",
+      "fwSrc": "plugin/hooks/production_gate.py, plugin/release/approval.py",
+      "rel": "adapted",
+      "why": "D13 option 1",
+      "weigh": "See issue #68: a parked build PR merged at (e) releases without its park reason shown again.",
+      "map": {
+        "pb": [
+          [
+            "P",
+            "d",
+            "Named release manager authorizes"
+          ],
+          [
+            "A",
+            "w",
+            "Production hook enforces it"
+          ]
+        ],
+        "fw": [
+          [
+            "P",
+            "c",
+            "Declared production: owner's sdlc:release-approved"
+          ],
+          [
+            "A",
+            "w",
+            "Release waits; the hook blocks"
+          ]
+        ]
+      }
+    },
+    {
+      "id": "maintain-detect",
+      "stage": "Maintain",
+      "step": "Metric and detection",
+      "pb": "The service owner or platform engineer picks one metric; a deterministic script (Western Electric or similar) flags breaches; tiers in bands.yaml: 1σ logs, 2σ read-only diagnosis, 3σ acts through gated routes.",
+      "pbSrc": "p.42-44",
+      "fw": "sdlc-detect.yml, daily: CI test failure rate against bands.yaml, Western Electric rules, no model; 1σ logs, 2σ and 3σ file an incident.",
+      "fwSrc": "plugin/detect/, template/bands.yaml",
+      "rel": "same",
+      "why": "D15 CI test failure rate first",
+      "weigh": "Close match. A production metric is the next step (D15).",
+      "map": {
+        "pb": [
+          [
+            "P",
+            "w",
+            "Service owner picks the metric"
+          ],
+          [
+            "A",
+            "w",
+            "Detection script, bands.yaml"
+          ]
+        ],
+        "fw": [
+          [
+            "P",
+            "w",
+            "Owner confirms the metric at /sdlc-init"
+          ],
+          [
+            "A",
+            "w",
+            "Daily detect on CI failure rate"
+          ]
+        ]
+      }
+    },
+    {
+      "id": "maintain-diagnose",
+      "stage": "Maintain",
+      "step": "Diagnosis becomes intent.md",
+      "pb": "Claude is invoked read-only to diagnose and writes its diagnosis as intent.md in the Stage 1 format.",
+      "pbSrc": "p.43-44",
+      "fw": "/sdlc:sdlc-maintain --diagnosis-only reads lessons/, investigates read-only and writes the incident intent.md and proposal.json; the detect job's finish step opens the incident PR.",
+      "fwSrc": "plugin/commands/sdlc-maintain.md, plugin/detect/cli.py",
+      "rel": "same",
+      "why": "",
+      "weigh": "Close match.",
+      "map": {
+        "pb": [
+          [
+            "C",
+            "w",
+            "Read-only diagnosis to intent.md"
+          ]
+        ],
+        "fw": [
+          [
+            "C",
+            "w",
+            "/sdlc-maintain diagnosis"
+          ],
+          [
+            "A",
+            "w",
+            "Finish step opens the incident PR"
+          ]
+        ]
+      }
+    },
+    {
+      "id": "maintain-triage",
+      "stage": "Maintain",
+      "step": "Triage",
+      "pb": "The service owner or on-call engineer triages the queue: fix now, schedule, dismiss; product-facing findings go to the product owner. Dismissals tune the bands.",
+      "pbSrc": "p.44",
+      "fw": "Gate (f): the owner triages the incident PR. Merge = fix now (it is gate (a) of the incident change); 'schedule' label = later; close with a member's comment = a dismissal PR to merge, which suppresses the finding's signature (a detection for one baseline window, a scan finding for good); tuning the bands is a separate bands.yaml PR.",
+      "fwSrc": "plugin/detect/cli.py, docs/DECISIONS.md D25",
+      "rel": "adapted",
+      "why": "D25 per-finding triage",
+      "weigh": "The dismissal needs a second merge. Is that friction worth the audit trail?",
+      "map": {
+        "pb": [
+          [
+            "P",
+            "d",
+            "Service owner triages: fix, schedule, dismiss"
+          ]
+        ],
+        "fw": [
+          [
+            "P",
+            "d",
+            "Gate (f): owner triages the incident PR"
+          ],
+          [
+            "P",
+            "w",
+            "Owner merges the dismissal PR"
+          ]
+        ]
+      }
+    },
+    {
+      "id": "maintain-act",
+      "stage": "Maintain",
+      "step": "Acting at 3σ",
+      "pb": "Claude may act only by opening a PR into the review gate or triggering a pre-approved runbook. The Claude Tag example still asks 'shall I run it?' and waits for 'Go.'.",
+      "pbSrc": "p.43-45, p.49",
+      "fw": "Split by blast radius: quarantine-flaky-test and revert-pr are pre-approved and run unattended, each opening its own PR; rollback-deploy waits for the owner's sdlc:go; a rehearsed rollback on a declared production is pre-approved.",
+      "fwSrc": "template/bands.yaml, plugin/detect/runbooks.py",
+      "rel": "adapted",
+      "why": "D14 split by blast radius · D26 rehearsed rollback pre-approved",
+      "weigh": "D26 goes one step past the article (no 'Go' for a rehearsed rollback). Still comfortable with that?",
+      "map": {
+        "pb": [
+          [
+            "C",
+            "w",
+            "PR or pre-approved runbook"
+          ],
+          [
+            "P",
+            "r",
+            "Tag example: a person says 'Go.'"
+          ]
+        ],
+        "fw": [
+          [
+            "A",
+            "w",
+            "Pre-approved runbooks open PRs"
+          ],
+          [
+            "P",
+            "r",
+            "Owner merges or closes each runbook PR"
+          ],
+          [
+            "P",
+            "c",
+            "Unrehearsed rollback: owner's sdlc:go"
+          ]
+        ]
+      }
+    },
+    {
+      "id": "maintain-learn",
+      "stage": "Maintain",
+      "step": "Learning from an incident",
+      "pb": "When the fix ships, add an eval for the incident; the post-mortem goes to a version-controlled lessons file.",
+      "pbSrc": "p.44, p.49",
+      "fw": "An incident change's (e) run is told to write lessons/<yyyy-mm>-<slug>.md and one eval case; the next diagnosis reads lessons/. No gate checks them; not yet exercised live.",
+      "fwSrc": "plugin/commands/sdlc-deploy.md",
+      "rel": "same",
+      "why": "D17",
+      "weigh": "Make the lesson and the eval case a gate check at (e) for incident changes?",
+      "map": {
+        "pb": [
+          [
+            "C",
+            "w",
+            "Eval + lessons file"
+          ]
+        ],
+        "fw": [
+          [
+            "C",
+            "w",
+            "(e) told to write lesson + eval"
+          ]
+        ]
+      }
+    },
+    {
+      "id": "maintain-scan",
+      "stage": "Maintain",
+      "step": "Recurring security scans",
+      "pb": "Claude Security on a schedule (weekly is a sensible default); each finding validated with a confidence rating; dismissed with a reason; suggested patch reviewed in Claude Code on the web; eval for the vulnerability class.",
+      "pbSrc": "p.46-48",
+      "fw": "sdlc-scan.yml, weekly: a security review plus deterministic scanners; up to 3 Important findings per run filed as incident PRs from a template intent, without a diagnosis run.",
+      "fwSrc": "template/.github/workflows/sdlc-scan.yml, plugin/scan/",
+      "rel": "adapted",
+      "why": "D16 the pattern without Claude Security",
+      "weigh": "No confidence rating and no diagnosis for scan findings. Is the finding quality good enough?",
+      "map": {
+        "pb": [
+          [
+            "C",
+            "w",
+            "Claude Security, validated findings"
+          ],
+          [
+            "P",
+            "d",
+            "Triage with the confidence rating"
+          ]
+        ],
+        "fw": [
+          [
+            "A",
+            "w",
+            "Weekly scan files incident PRs"
+          ],
+          [
+            "P",
+            "r",
+            "Owner triages each scan PR at gate (f)"
+          ]
+        ]
+      }
+    },
+    {
+      "id": "maintain-tag",
+      "stage": "Maintain",
+      "step": "Claude on call in a channel",
+      "pb": "Claude is a member of the incident channel under its own identity; anyone there can guide and action the response; a person says 'Go.'; the channel is the audit trail.",
+      "pbSrc": "p.48-50",
+      "fw": "No chat channel. The nearest equivalents are the incident PR, the sdlc:go label and lessons/.",
+      "fwSrc": "docs/BUILD_GUIDE.md step 40, docs/ROADMAP.md",
+      "rel": "missing",
+      "why": "No Dn: build guide step 40 records a chat entry route as optional and unbuilt (ROADMAP, Milestone 1 item 1). D20 rules out notifications to the owner, not a chat entry route.",
+      "weigh": "Real-time response vs no notifications. Only matters once a project runs live.",
+      "map": {
+        "pb": [
+          [
+            "C",
+            "w",
+            "Claude in the incident channel"
+          ],
+          [
+            "P",
+            "d",
+            "A person says 'Go.'"
+          ]
+        ],
+        "fw": []
+      }
+    },
+    {
+      "id": "x-headless",
+      "stage": "Across stages",
+      "step": "The gate between autonomous stages",
+      "pb": "An independent confidence gate between stages, a deterministic check or an adversarial reviewing agent, decides whether the output continues or is escalated to a human. The article does not say which check, the thresholds or which human.",
+      "pbSrc": "p.42",
+      "fw": "Run limits, then deterministic checks, then the adversarial verdict (b-d) or the REVIEW.md pass (e); outcomes continue, wait (ready label) or park (sdlc:needs-human, 'What I need from you').",
+      "fwSrc": "plugin/gate/",
+      "rel": "adapted",
+      "why": "D11 park, never page · D18 · D21",
+      "weigh": "The framework makes concrete what the article leaves open (gap 6 on the playbook page).",
+      "map": {
+        "pb": [
+          [
+            "A",
+            "w",
+            "Confidence gate between stages"
+          ],
+          [
+            "P",
+            "c",
+            "On escalation: a human decides (unnamed)"
+          ]
+        ],
+        "fw": [
+          [
+            "A",
+            "w",
+            "Run limits, deterministic checks"
+          ],
+          [
+            "C",
+            "w",
+            "Adversarial verdict (b-d), REVIEW.md pass (e)"
+          ],
+          [
+            "P",
+            "r",
+            "Owner at a ready or parked PR"
+          ]
+        ]
+      }
+    },
+    {
+      "id": "x-queue",
+      "stage": "Across stages",
+      "step": "How finished work reaches a person",
+      "pb": "Human attention concentrates at the gates, reviewing what the agent flagged. The article names a triage queue for maintain findings (p.44-45) and counts failures 'triaged without paging a human' (p.41), but describes no review queue or digest for finished work.",
+      "pbSrc": "p.8, p.41, p.44-45",
+      "fw": "Nothing notifies the owner: ready and parked PRs wait in the PR list, summarised daily in one 'SDLC review queue' issue; every PR opens with a short bulleted summary.",
+      "fwSrc": "template/.github/workflows/sdlc-digest.yml, plugin/pr/",
+      "rel": "added",
+      "why": "D11 · D20 queue + digest",
+      "weigh": "Is one daily digest enough, or do some parks deserve a ping?",
+      "map": {
+        "pb": [],
+        "fw": [
+          [
+            "A",
+            "w",
+            "Review queue + daily digest"
+          ]
+        ]
+      }
+    },
+    {
+      "id": "x-sandbox",
+      "stage": "Across stages",
+      "step": "Sandbox, tokens and identity of agent jobs",
+      "pb": "Agent jobs run in containers under a network policy with short-lived scoped tokens and no standing production credentials. Each non-interactive run acts under the agent's own identity, so the log separates what the agent did from what the person who triggered it did.",
+      "pbSrc": "p.37-41, p.44",
+      "fw": "Every phase job runs claude -p on an ephemeral GitHub runner with settings from the pinned framework: the sandbox is mandatory, the network is limited to the API, GitHub and package registries, secrets and web tools are denied and bypass is disabled. The session gets one model credential (the runner drops the other) and the workflow token, and it commits as github-actions[bot]. No phase job holds a deploy secret; the release job runs deploy.command with no Claude session.",
+      "fwSrc": "plugin/ci/settings.ci.json, plugin/ci/runner_setup.py, plugin/ci/auth.py, template/.github/workflows/sdlc-build.yml",
+      "rel": "same",
+      "why": "D1 hosted CI · D5 workflow token as the agent's identity · D6 layer iii (settings from the pinned plugin)",
+      "weigh": "The session keeps GITHUB_TOKEN (in the (b)-(e) and fix jobs: contents, pull requests, issues, checks and actions write) because it pushes and labels; the article's example strips it from sandboxed commands (p.37). Is that acceptable while the token has no route to main (D4)?",
+      "map": {
+        "pb": [
+          [
+            "A",
+            "w",
+            "Sandbox, scoped short-lived tokens"
+          ]
+        ],
+        "fw": [
+          [
+            "A",
+            "w",
+            "Sandboxed runner, bot identity"
+          ]
+        ]
+      }
+    },
+    {
+      "id": "x-limits",
+      "stage": "Across stages",
+      "step": "Run limits and cost bounds",
+      "pb": "None for runs. The article bounds what the agent may do, not how long or how much it may try; it mentions money only as 'an API key with budget for eval runs' and a spend limit set centrally for Claude Security scans.",
+      "pbSrc": "p.30, p.46-48",
+      "fw": "Each unattended run is bounded by 3 fix iterations per change (2 when non-routine), 4 panel calls per change under deferred review, 120 minutes per phase run, --max-turns 200 per session, an optional dollar cap (max_budget_usd, off by default) and a paused flag read from the default branch. An iteration, panel, clock or budget limit parks the change with its partial evidence; a pause skips every run before it starts. The owner lifts an iteration-cap park with the sdlc:reset-iterations label.",
+      "fwSrc": "plugin/gate/limits.py, template/sdlc.yaml gate, plugin/ci/run_phase.py",
+      "rel": "added",
+      "why": "D11 a limit hit parks · build guide step 19 (tagged ADDED; D1 relies on it to bound API cost)",
+      "weigh": "With the dollar cap off, only turns, iterations, panel calls and the clock bound spend. When set, the cap is compared with the last session's cost in the phase (record-spend overwrites the figure), not a sum per change as sdlc.yaml and D1 say. Set a cap, and should it be summed per change?",
+      "map": {
+        "pb": [],
+        "fw": [
+          [
+            "A",
+            "w",
+            "Iterations, clock, turns, budget"
+          ],
+          [
+            "P",
+            "c",
+            "Cap hit: owner's sdlc:reset-iterations"
+          ]
+        ]
+      }
+    },
+    {
+      "id": "x-measure",
+      "stage": "Across stages",
+      "step": "Measuring whether the plays work",
+      "pb": "Every play ends with 'How to measure it': a leading and a lagging indicator, read from records that already exist (git history, PR metadata, CI logs, the OpenTelemetry export, the incident tracker), such as time to first review, first-pass CI success rate, time waiting at each gate and DORA measures.",
+      "pbSrc": "p.7, p.11-48",
+      "fw": "Each PR description carries two counters: first-pass merge and fix iterations (plus panel calls when there are any). The daily digest adds a Counters table (first-pass merge share, fix iterations per shipped change, panel calls, incidents merged and shipped, dismissals), computed with no model. The eval report gives a pass rate, and detection.json has the breach time and tier; nothing else is computed.",
+      "fwSrc": "plugin/pr/counters.py, plugin/pr/description.py, plugin/pr/digest.py, plugin/evals/run.py, plugin/detect/finding.py",
+      "rel": "adapted",
+      "why": "No decision on which indicators to compute: build guide step 42 (two counters now, a scheduled report later). D20 sets only the channel (the digest, pull not push), not what is measured.",
+      "weigh": "Spend is recorded per run but summed nowhere, and time waiting at your gates is not counted. Which one or two indicators would change a decision of yours?",
+      "map": {
+        "pb": [
+          [
+            "P",
+            "w",
+            "Indicators read from existing records"
+          ]
+        ],
+        "fw": [
+          [
+            "A",
+            "w",
+            "Two counters + digest table"
+          ]
+        ]
+      }
+    },
+    {
+      "id": "x-audit",
+      "stage": "Across stages",
+      "step": "Logging and the audit trail",
+      "pb": "Evidence is logged in the session transcript, forwarded by OpenTelemetry, and in the PR's check run. Hook allow/block decisions and maintain invocations, findings and triage decisions are logged with a timestamp; the chain of commits is the audit trail.",
+      "pbSrc": "p.6, p.29, p.37, p.39, p.44",
+      "fw": "Each change keeps its record in git: evidence/ holds each claude -p run's JSON result (final message, turns, cost and permission denials, not the full conversation), run and gate records, verdicts, findings and the panel ledger; gate (d) and the review pass also post check runs. Every hook decision is a timestamped line in evidence/hook-log.jsonl, also uploaded as a workflow artifact, while status.yaml names who applied each un-park label and sdlc:go, and .dismissed.json who dismissed what, and when. No OpenTelemetry export.",
+      "fwSrc": "plugin/hooks/_common.py log_decision, plugin/ci/run_phase.py, plugin/gate/artifacts.py, plugin/state/status.py, plugin/detect/dismissals.py, plugin/pr/cli.py check-run",
+      "rel": "adapted",
+      "why": "D9 the repo is the record (evidence in git). OpenTelemetry export: no decision; build guide step 41 defers it ('only if you later want dashboards').",
+      "weigh": "An unattended run leaves its result and its hook log but not its full transcript. Is that enough to reconstruct what a parked run did, or should runs keep the transcript?",
+      "map": {
+        "pb": [
+          [
+            "A",
+            "w",
+            "Transcript, OpenTelemetry, timestamps"
+          ]
+        ],
+        "fw": [
+          [
+            "A",
+            "w",
+            "Evidence in git, hook log"
+          ]
+        ]
+      }
+    },
+    {
+      "id": "x-roles",
+      "stage": "Across stages",
+      "step": "Who the humans are",
+      "pb": "Distinct roles: originator, product owner, policy owners, engineer, tech lead or architect, code owner, platform engineer, release manager, service owner or on-call, security lead.",
+      "pbSrc": "p.9-50",
+      "fw": "One owner holds every human role; the framework's separation of duties is between the owner and the automation identity.",
+      "fwSrc": "docs/OPERATING_MODEL.md",
+      "rel": "diverges",
+      "why": "The framework's premise: one owner, hands-off",
+      "weigh": "The one structural question behind many rows. Where does collapsing roles lose a check you want?",
+      "map": {
+        "pb": [
+          [
+            "P",
+            "w",
+            "About ten distinct roles"
+          ]
+        ],
+        "fw": [
+          [
+            "P",
+            "w",
+            "One owner holds every role"
+          ]
+        ]
+      }
+    }
+  ]
+}
