@@ -160,14 +160,18 @@ def _recorded_pr(
 ) -> tuple[int | None, list[str] | None, str]:
     """(PR number, its labels, "") of the change's build PR — the one ``status.yaml`` records
     (``build_pr``, written by ``pr/cli.py upsert``), read from GitHub by that number and
-    accepted only while it is the change's own (head ``sdlc/<id>/c``), open at the checked-out
-    commit or merged into the checked-out commit — or (None, None, why not).
+    accepted only while it is the change's own (head ``sdlc/<id>/c``) and the checked-out
+    commit is the PR's own: its head commit (open or merged — the by-hand deploy runs on
+    ``sdlc/<id>/c`` after the owner's merge) or its merge commit (merged) — or (None, None,
+    why not).
 
     Before 0.2.27 the PR was "the most recent one from the current branch's name": a session
-    that checked out any ``sdlc/<id>/c`` (a local branch with any content) inherited that
-    change's label, and a closed-unmerged PR counted too (the 1.0.0 readiness review, group
-    B). A branch name alone finds nothing now; a change whose ``status.yaml`` records no
-    pull request is not approved (the next ``upsert`` records it).
+    that checked out any ``sdlc/<id>/c`` (a local branch rebuilt with any commits) inherited
+    that change's label, and a closed-unmerged PR counted too (the 1.0.0 readiness review,
+    group B). A branch name alone finds nothing now; a change whose ``status.yaml`` records
+    no pull request is not approved (the next ``upsert`` records it). What the commit check
+    binds is the committed content: the working tree (an untracked ``dist/``) is the
+    session's, as it always was.
     """
     change_dir = c.find_change_dir(root, change_id)
     if change_dir is None:
@@ -204,13 +208,15 @@ def _recorded_pr(
     state = str(found.get("state") or "").lower()
     if found.get("merged"):
         merge_sha = str(found.get("merge_commit_sha") or "")
-        if not checked_out or not merge_sha or checked_out != merge_sha:
+        head_sha = str(found.get("head_sha") or "")
+        if not checked_out or checked_out not in {merge_sha, head_sha} - {""}:
             return (
                 None,
                 None,
                 (
-                    f"#{number} was merged as {merge_sha[:10] or '?'} and the checkout is at "
-                    f"{checked_out[:10] or '?'}: only the merged commit carries its approval"
+                    f"#{number} was merged as {merge_sha[:10] or '?'} from "
+                    f"{head_sha[:10] or '?'} and the checkout is at {checked_out[:10] or '?'}: "
+                    "only the merged commit and the pull request's own head carry its approval"
                 ),
             )
     elif state == "open":

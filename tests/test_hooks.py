@@ -1084,6 +1084,9 @@ def test_production_gate_catches_a_chained_command(tmp_path):
         ("gh --repo o/r release create v1.0.0 dist/*", "gh release create*"),
         ("helm --kube-context prod upgrade api ./chart", "helm upgrade*"),
         ("docker --context prod push o/api:1.0", "docker push*"),
+        # the review of the 0.2.27 diff, M8: a quoted value with a space is one token
+        ('kubectl --context "prod east" apply -f k8s/', "kubectl apply*"),
+        ("terraform -chdir='infra dir' apply", "terraform apply*"),
     ],
 )
 def test_production_gate_reads_paths_extensions_and_options_before_the_verb(

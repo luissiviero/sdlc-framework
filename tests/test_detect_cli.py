@@ -1267,6 +1267,8 @@ def test_a_pending_dismissal_branch_already_suppresses_the_finding(incident, src
     git(root, "add", "changes")
     git(root, "commit", "-q", "-m", "abandon")
     git(root, "push", "-q", "origin", "sdlc/0001/a")
+    # the abandon workflow opened the dismissal PR (0.2.27: a branch with no PR mutes nothing)
+    gh.pr_by_head["sdlc/0001/dismiss"] = {"number": 6, "state": "open", "merged": False}
     src.observations = series(20, spike=True)
     code, out = cli(capsys, "run", "--root", str(root), "--repo", REPO, "--file")
     assert out["outcome"].startswith("dismissed until") and out["filed"] == {}
@@ -1303,6 +1305,17 @@ def test_a_dismissal_whose_pr_was_closed_without_a_merge_no_longer_suppresses(
     }
     assert "dismissal" not in out and out["filed"], out
     assert ("find_pr", (REPO, "sdlc/0001/dismiss"), {"state": "all", "cwd": root}) in gh.calls
+    # a branch nobody opened a PR for suppresses nothing either (the review of the 0.2.27
+    # diff, M7: a session with branch write access could push one); a failed lookup keeps
+    # the pending dismissal (an outage refiles nothing)
+    del gh.pr_by_head["sdlc/0001/dismiss"]
+    code, out = cli(capsys, "run", "--root", str(root), "--repo", REPO)
+    assert out["rejected_dismissals"] == {
+        "origin/sdlc/0001/dismiss": "no pull request was opened for sdlc/0001/dismiss"
+    }
+    gh.pr_by_head["sdlc/0001/dismiss"] = {"ok": False, "reason": "HTTP 502"}
+    code, out = cli(capsys, "run", "--root", str(root), "--repo", REPO)
+    assert out["outcome"].startswith("dismissed until") and "rejected_dismissals" not in out
     # an open dismissal PR, or a merged one whose branch still exists, keeps suppressing
     gh.pr_by_head["sdlc/0001/dismiss"] = {"number": 6, "state": "open", "merged": False}
     code, out = cli(capsys, "run", "--root", str(root), "--repo", REPO)
@@ -1722,6 +1735,10 @@ def test_approved_files_refuses_an_origin_that_is_not_the_repository(incident, m
     # on a runner the origin is always the repository's URL: a local path is refused
     monkeypatch.setenv("GITHUB_ACTIONS", "true")
     assert "not a GitHub repository URL" in detect_cli.origin_mismatch(root, "o/r")
+    # 0.2.27: a config key that redirects the fetch is refused on a runner before the URL
+    git(root, "config", "url.https://elsewhere.example/x.insteadOf", "https://github.com/")
+    assert "insteadof" in detect_cli.origin_mismatch(root, "o/r")
+    git(root, "config", "--unset", "url.https://elsewhere.example/x.insteadOf")
     with pytest.raises(bands_mod.BandsError, match="not a GitHub repository URL"):
         detect_cli.approved_files(root, config, "o/r")
     monkeypatch.delenv("GITHUB_ACTIONS")
@@ -1919,7 +1936,7 @@ def test_a_malformed_head_sdlc_yaml_does_not_stop_go_or_dismiss(
         assert code == 0 and out["reason"] == "a runner outage", out
 
 
-def test_finish_refuses_a_detection_record_the_session_changed(incident, gh, capsys):
+def test_finish_refuses_a_detection_record_the_session_changed(incident, gh, capsys, monkeypatch):
     """PROGRESS session 8, "the shared checkout" (the readiness review's group B, 0.2.27):
     the maintain session runs with Write and Bash(git *) in the checkout finish reads, so it
     could raise the record's tier from 2 to 3 and have a pre-approved runbook run. The
@@ -1952,6 +1969,13 @@ def test_finish_refuses_a_detection_record_the_session_changed(incident, gh, cap
     assert out["parked"].startswith(c.DETECTION_SNAPSHOT_PARK_PREFIX)
     assert out["snapshot"]["expected"] == snapshot and out["snapshot"]["actual"] != snapshot
     assert "gate" not in out and out["park_commit"]["ok"] is True
+    # the park is a queue item: evidence/gate-f.json carries the park and the PR gets
+    # sdlc:needs-human (the review of the 0.2.27 diff, M1)
+    gate_file = json.loads((change / "evidence" / "gate-f.json").read_text(encoding="utf-8"))
+    assert gate_file["result"] == "park" and gate_file["label"] == "sdlc:needs-human"
+    assert gate_file["checks"][0]["name"] == "detection_snapshot"
+    assert "restore the record" in gate_file["checks"][0]["need"]
+    assert out["pr"]["label"] == "sdlc:needs-human"
     st = status_mod.read_status(change)
     assert st.parked_reason.startswith(c.DETECTION_SNAPSHOT_PARK_PREFIX)
     assert "when the detect step wrote it" in st.parked_reason
@@ -1969,9 +1993,16 @@ def test_finish_refuses_a_detection_record_the_session_changed(incident, gh, cap
         "--detection-sha256", snapshot,
     )  # fmt: skip
     assert out["dispatch"]["acted"] is True and "gate" in out, out["dispatch"]
-    # no digest at all (a by-hand run): judged as before
+    # no digest at all (a by-hand run): judged as before; on a runner an empty digest is a
+    # step output that did not arrive, and fails closed (the review of the 0.2.27 diff, L1)
     code, out = cli(capsys, "finish", "--root", str(root), "--id", "0001", "--repo", REPO)
     assert out["dispatch"]["acted"] is True
+    monkeypatch.setenv("GITHUB_ACTIONS", "true")
+    code, out = cli(
+        capsys, "finish", "--root", str(root), "--id", "0001", "--repo", REPO,
+        "--detection-sha256", "", "--dry-run",
+    )  # fmt: skip
+    assert code == 1 and "no digest reached this step" in out["parked"]
 
 
 def test_finish_refuses_to_run_over_the_runner_s_owner_fields_park(incident, gh, capsys):

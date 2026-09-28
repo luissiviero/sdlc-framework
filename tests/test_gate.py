@@ -784,12 +784,18 @@ def test_default_base_prefers_the_environment_value_when_its_remote_branch_exist
     git(root, "push", "-q", "origin", "main", "main:trunk", "main:sdlc/0001/a")
     git(root, "fetch", "-q", "origin")
     git(root, "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main")
-    assert diff.default_base(root) == "origin/main"
+    assert diff.default_base(root) == "refs/remotes/origin/main"  # qualified since 0.2.27
     monkeypatch.setenv("SDLC_DEFAULT_BRANCH", "trunk")
-    assert diff.default_base(root) == "origin/trunk"
+    assert diff.default_base(root) == "refs/remotes/origin/trunk"
     for fallthrough in ("sdlc/0001/a", "nonexistent"):
         monkeypatch.setenv("SDLC_DEFAULT_BRANCH", fallthrough)
-        assert diff.default_base(root) == "origin/main", fallthrough
+        assert diff.default_base(root) == "refs/remotes/origin/main", fallthrough
+    # the review of the 0.2.27 diff, M2: a tag named origin/main (anyone with write access
+    # can push one; a CI checkout fetches tags) used to shadow the short ref and empty the
+    # committed diff every check judges
+    monkeypatch.delenv("SDLC_DEFAULT_BRANCH")
+    git(root, "tag", "origin/main", "HEAD~0")
+    assert diff.default_base(root) == "refs/remotes/origin/main"
 
 
 def test_risk_list_reads_the_committed_spec(design_project):

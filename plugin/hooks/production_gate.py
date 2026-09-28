@@ -255,17 +255,24 @@ def _suffixes(part: str) -> list[str]:
     ``.cmd``) and with the options between the program and its verb dropped (0.2.27: the
     1.0.0 readiness review found ``terraform -chdir=x apply``, ``kubectl --context p
     apply``, ``/usr/local/bin/twine upload`` and ``twine.exe upload`` unguarded)."""
-    tokens = [t for t in TOKEN_RE.split(part.lower()) if t]
+    tokenisations = [[t for t in TOKEN_RE.split(part.lower()) if t]]
+    try:  # the shell's own reading too: a quoted value with a space is one token there
+        quoted = [t for t in shlex.split(part.lower(), posix=True) if t]
+    except ValueError:
+        quoted = []
+    if quoted and quoted != tokenisations[0]:
+        tokenisations.append(quoted)
     seen: list[str] = []
-    for i in range(len(tokens)):
-        tail = tokens[i:]
-        readings = [tail, [_program(tail[0])] + tail[1:]]
-        for reading in list(readings):
-            readings.extend(_without_leading_options(reading))
-        for reading in readings:
-            joined = " ".join(reading)
-            if joined not in seen:
-                seen.append(joined)
+    for tokens in tokenisations:
+        for i in range(len(tokens)):
+            tail = tokens[i:]
+            readings = [tail, [_program(tail[0])] + tail[1:]]
+            for reading in list(readings):
+                readings.extend(_without_leading_options(reading))
+            for reading in readings:
+                joined = " ".join(reading)
+                if joined not in seen:
+                    seen.append(joined)
     return seen
 
 

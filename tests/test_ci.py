@@ -434,7 +434,7 @@ def test_a_legacy_lite_project_builds_from_the_default_branch(project, tmp_path)
 
     branch = run_phase.prepare_branch(root, "0001", "c")
     assert branch["branch"] == "sdlc/0001/c" and branch["switched"] is True
-    assert branch["from"] == "origin/main"
+    assert branch["from"] == "refs/remotes/origin/main"  # fully qualified since 0.2.27
     assert git(root, "rev-parse", "HEAD").strip() != design_head
 
 
@@ -446,7 +446,7 @@ def test_the_build_branch_starts_from_the_default_branch(project, tmp_path):
     main_head = git(root, "rev-parse", "origin/main").strip()
 
     branch = run_phase.prepare_branch(root, "0001", "c")
-    assert branch["switched"] is True and branch["from"] == "origin/main"
+    assert branch["switched"] is True and branch["from"] == "refs/remotes/origin/main"
     head = git(root, "rev-parse", "HEAD").strip()
     assert head == main_head and head != design_head
 
@@ -455,8 +455,8 @@ def test_start_point_is_the_default_branch_whatever_the_profile(project, tmp_pat
     root, _change = project
     _design_branch_left_on_the_remote(root, tmp_path, "standard")
     for profile in ("standard", "full", "lite", None):
-        assert run_phase._start_point(root, "0001", "c", profile) == "origin/main"
-        assert run_phase._start_point(root, "0001", "b", profile) == "origin/main"
+        assert run_phase._start_point(root, "0001", "c", profile) == "refs/remotes/origin/main"
+        assert run_phase._start_point(root, "0001", "b", profile) == "refs/remotes/origin/main"
     assert "b" not in run_phase.NEXT_WORKFLOW  # a design run never dispatches the build
 
 
@@ -548,12 +548,13 @@ def test_a_branch_with_no_merge_base_is_parked_not_passed(project, tmp_path, cap
     git(root, "push", "-q", "-u", "origin", "sdlc/0001/c")
     with pytest.raises(run_phase.NoMergeBase) as info:
         run_phase.guardrail_changes(root, change, {})
-    assert info.value.base == "origin/main"
+    assert info.value.base == "refs/remotes/origin/main"
 
     args = Args(root=str(root), phase="d", dry_run=False)
     assert run_phase.run_phase(args, dict(KEY_ENV)) == run_phase.EXIT_OK
     out = json.loads(capsys.readouterr().out)
-    assert "no merge base with origin/main" in out["parked"] and "refuses to run" in out["parked"]
+    assert "no merge base with refs/remotes/origin/main" in out["parked"]
+    assert "refuses to run" in out["parked"]
     assert "no merge base" in status_mod.read_status(change).parked_reason
 
 
@@ -1324,9 +1325,14 @@ PIN_STEP = (
     'run: git show "refs/remotes/origin/$SDLC_DEFAULT_BRANCH:.github/scripts/sdlc_pin.py" '
     '| python - --ref "refs/remotes/origin/$SDLC_DEFAULT_BRANCH"'
 )
-# 0.2.27: the same line with the verification arguments, between the two steps of a job
-# that share one checkout after a model's session (deploy: review → (e); detect: (f) → finish)
-VERIFY_STEP = PIN_STEP + ' --verify-framework framework --pin-ref "$PIN_REF" --origin "$ORIGIN_URL"'
+# 0.2.27: between the two steps of a job that share one checkout after a model's session
+# (deploy: review → (e); detect: (f) → finish) the framework checkout is removed, checked out
+# afresh at the pin, and the project checkout verified from that fresh copy
+REMOVE_STEP = "run: python -c \"import shutil; shutil.rmtree('framework', ignore_errors=True)\""
+CHECK_STEP = (
+    "run: python framework/plugin/ci/checkout_check.py --root . --framework framework "
+    '--pin-ref "$PIN_REF" --origin "$ORIGIN_URL" --framework-origin "$FRAMEWORK_URL"'
+)
 
 
 @pytest.mark.parametrize("name", EVERY_WORKFLOW)
@@ -1341,7 +1347,7 @@ def test_workflow_steps_are_python_or_the_pinned_cli(name):
             assert (
                 body.startswith("python ")
                 or body.startswith("npm install -g @anthropic-ai/claude-code@")
-                or stripped in (PIN_STEP, VERIFY_STEP)
+                or stripped == PIN_STEP
             ), body
 
 
@@ -1352,27 +1358,46 @@ def test_workflow_steps_are_python_or_the_pinned_cli(name):
         ("sdlc-detect.yml", "--phase f", "detect/cli.py finish"),
     ],
 )
-def test_the_framework_checkout_is_verified_between_the_two_steps_of_a_shared_checkout(
+def test_the_framework_is_checked_out_afresh_between_the_two_steps_of_a_shared_checkout(
     name, first, second
 ):
     """The review of the 0.2.26 diff, M4 (the readiness review's group B, 0.2.27): the deploy
     job's review pass and phase (e), and the detect job's phase (f) and finish, share one
-    checkout, and the session holds Write and Bash(git *): before the second step the
-    framework checkout must be clean and at the pin, origin the repository with its default
-    refspec, the default branch fetched afresh — from the default branch's own copy of the
-    script, with the pin the first step read (a step output, which lives in the runner)."""
+    checkout, and the session holds Write and Bash(git *). A check of the framework tree
+    the session controls is defeated (skip-worktree, a moved tag, a planted __pycache__, a
+    planted verifier on the local ref — the review of the 0.2.27 diff), so the tree is
+    removed and checked out again by the runner's own action at the pin the first step
+    read (a step output), and the project checkout's remote, refspec and config are
+    verified from that fresh copy before the second step."""
     text = workflow(name)
-    assert text.count(VERIFY_STEP) == 1
-    assert text.index(first) < text.index(VERIFY_STEP) < text.index(second)
-    step = text.split(VERIFY_STEP)[0].rsplit("- name:", 1)[1]
-    assert "Verify the pinned framework checkout before the next step" in step
+    for step in (REMOVE_STEP, CHECK_STEP):
+        assert text.count(step) == 1, step
+    assert text.index(first) < text.index(REMOVE_STEP) < text.index(CHECK_STEP)
+    assert text.index(CHECK_STEP) < text.index(second)
+    between = text[text.index(REMOVE_STEP) : text.index(CHECK_STEP)]
+    assert 'repository: "{{FRAMEWORK_REPO}}"' in between  # the fresh checkout
+    assert "ref: ${{ steps.pin.outputs.ref }}" in between and "path: framework" in between
+    assert text.count('repository: "{{FRAMEWORK_REPO}}"') == 2
+    step = text.split(CHECK_STEP)[0].rsplit("- name:", 1)[1]
+    assert "Verify the project checkout before the next step" in step
     assert "PIN_REF: ${{ steps.pin.outputs.ref }}" in step
     assert "ORIGIN_URL: ${{ github.server_url }}/${{ github.repository }}" in step
-    assert "shell: bash" in step
+    assert "FRAMEWORK_URL: ${{ github.server_url }}/{{FRAMEWORK_REPO}}" in step
     if name == "sdlc-detect.yml":
-        assert "if: steps.detect.outputs.change_id != ''" in step
+        for marker in (REMOVE_STEP, CHECK_STEP, 'repository: "{{FRAMEWORK_REPO}}"'):
+            second_copy = text.split(marker)[-2 if marker.startswith("repository") else 0]
+            assert (
+                "if: steps.detect.outputs.change_id != ''" in second_copy.rsplit("- name:", 1)[-1]
+            )
         assert "DETECTION_SHA256: ${{ steps.detect.outputs.detection_sha256 }}" in text
         assert '--detection-sha256 "$DETECTION_SHA256"' in text
+
+
+def test_this_repository_s_pin_script_is_the_template_s():
+    """The review of the 0.2.27 diff, H4: this repository's own workflows run
+    `.github/scripts/sdlc_pin.py` from its default branch, so the copy must be the template's."""
+    template = (ROOT / "template" / ".github" / "scripts" / "sdlc_pin.py").read_bytes()
+    assert (ROOT / ".github" / "scripts" / "sdlc_pin.py").read_bytes() == template
 
 
 @pytest.mark.parametrize("name", EVERY_WORKFLOW)

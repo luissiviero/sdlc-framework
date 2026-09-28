@@ -104,17 +104,28 @@ jobs:
         run: python framework/plugin/ci/run_phase.py --root . --plugin-dir framework --phase review --id "$CHANGE_ID" --head-ref "$HEAD_REF" --repo "$REPO" --ref "$DEFAULT_BRANCH"
 
       # The review pass ran a session holding Write and Bash(git *) in this same checkout
-      # (the review of the 0.2.26 diff, M4): before the next step runs the pinned code and
-      # reads the approved copies again, the framework checkout must be clean and at the
-      # pin, origin must be this repository with its default refspec, and the default branch
-      # is fetched afresh; anything else ends the job red here (plugin 0.2.27).
-      - name: Verify the pinned framework checkout before the next step
+      # (the review of the 0.2.26 diff, M4): the framework checkout it could reach is
+      # removed and checked out afresh at the pin the first step read (a step output lives
+      # in the runner), then the project checkout's remote, refspec and config are verified
+      # from that fresh copy and the default branch fetched again by URL; anything else
+      # ends the job red here (plugin 0.2.27; plugin/ci/checkout_check.py).
+      - name: Remove the framework checkout the session could reach
+        run: python -c "import shutil; shutil.rmtree('framework', ignore_errors=True)"
+
+      - name: Check out the pinned framework afresh (public repository, no token)
+        uses: actions/checkout@v5
+        with:
+          repository: "luissiviero/sdlc-framework"
+          ref: ${{ steps.pin.outputs.ref }}
+          path: framework
+
+      - name: Verify the project checkout before the next step
         env:
-          SDLC_DEFAULT_BRANCH: ${{ github.event.repository.default_branch || github.ref_name }}
           PIN_REF: ${{ steps.pin.outputs.ref }}
           ORIGIN_URL: ${{ github.server_url }}/${{ github.repository }}
-        shell: bash
-        run: git show "refs/remotes/origin/$SDLC_DEFAULT_BRANCH:.github/scripts/sdlc_pin.py" | python - --ref "refs/remotes/origin/$SDLC_DEFAULT_BRANCH" --verify-framework framework --pin-ref "$PIN_REF" --origin "$ORIGIN_URL"
+          FRAMEWORK_URL: ${{ github.server_url }}/luissiviero/sdlc-framework
+          SDLC_DEFAULT_BRANCH: ${{ github.event.repository.default_branch || github.ref_name }}
+        run: python framework/plugin/ci/checkout_check.py --root . --framework framework --pin-ref "$PIN_REF" --origin "$ORIGIN_URL" --framework-origin "$FRAMEWORK_URL"
 
       - name: Run phase (e)
         env:

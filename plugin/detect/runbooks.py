@@ -123,8 +123,24 @@ def _remote_ref(branch: str) -> str:
     return f"refs/remotes/origin/{branch}"
 
 
+def _origin_tip(root: Path, branch: str) -> str:
+    """The commit ``origin`` itself carries for ``branch`` (``ls-remote``), "" when none.
+    The remote-tracking ref is not asked: a session with ``Bash(git *)`` can plant one for
+    a branch origin never had, and a plain fetch does not prune it (the fresh-context review
+    of the 0.2.27 diff, H5)."""
+    try:
+        out = gitops.run(root, "ls-remote", "--heads", "origin", f"refs/heads/{branch}")
+    except gitops.GitError:
+        return ""
+    for line in out.splitlines():
+        parts = line.split()
+        if len(parts) == 2 and parts[1] == f"refs/heads/{branch}":
+            return parts[0]
+    return ""
+
+
 def _branch_exists_remotely(root: Path, branch: str) -> bool:
-    return _git_ok(root, "rev-parse", "--verify", "--quiet", _remote_ref(branch))
+    return bool(_origin_tip(root, branch))
 
 
 def _base_ref(root: Path, default: str, remote: bool) -> str:
@@ -163,15 +179,9 @@ def _switch_to(root: Path, branch: str, base: str) -> bool:
     branch that session planted would be pushed and proposed as the runbook's own work (the
     readiness review's group B, 0.2.27). A branch this runbook pushed on an earlier run is
     at the remote's tip and is reused, as before."""
+    remote_tip = _origin_tip(root, branch) if gitops.has_remote(root) else ""
     if _branch_exists_locally(root, branch):
         local = gitops.run(root, "rev-parse", "--verify", f"refs/heads/{branch}").strip()
-        remote_tip = (
-            gitops.run(
-                root, "rev-parse", "--verify", "--quiet", _remote_ref(branch), check=False
-            ).strip()
-            if _branch_exists_remotely(root, branch)
-            else ""
-        )
         if local != remote_tip:
             raise RunbookError(
                 f"the branch {branch} already exists locally at {local[:10]} and is not what "
@@ -180,8 +190,10 @@ def _switch_to(root: Path, branch: str, base: str) -> bool:
             )
         gitops.checkout_branch(root, branch)
         return False
-    if _branch_exists_remotely(root, branch):
-        gitops.checkout_branch(root, branch, _remote_ref(branch))
+    if remote_tip:
+        # origin's own commit, fetched a moment ago (never the remote-tracking ref, which a
+        # session could have planted for a branch origin does not carry)
+        gitops.checkout_branch(root, branch, remote_tip)
         return False
     gitops.checkout_branch(root, branch, base)
     return True
@@ -270,7 +282,7 @@ def _revert(
     full = gitops.run(root, "rev-parse", "--verify", f"{sha}^{{commit}}").strip()
     remote = gitops.has_remote(root)
     if remote and not dry_run:
-        gitops.run(root, "fetch", "-q", "origin", check=False)
+        gitops.run(root, "fetch", "-q", "--prune", "origin", check=False)
     default = gitops.default_branch(root)
     base = _base_ref(root, default, remote)
     if not _git_ok(root, "merge-base", "--is-ancestor", full, base):
@@ -664,7 +676,7 @@ def _quarantine(
     if dirty:
         raise RunbookError(f"the work tree has uncommitted changes: {', '.join(dirty)}")
     if remote:
-        gitops.run(root, "fetch", "-q", "origin", check=False)
+        gitops.run(root, "fetch", "-q", "--prune", "origin", check=False)
     default = gitops.default_branch(root)
     base = _base_ref(root, default, remote)
     start = _start_point(root)

@@ -364,8 +364,12 @@ def _dismissal_rejected(repo: str | None, branch: str, root: Path) -> str | None
         found = _github().find_pr(repo, branch, state="all", cwd=root)
     except Exception:  # noqa: BLE001 - no route: the branch's word stands, as before
         return None
-    if not isinstance(found, dict) or not found.get("ok") or not found.get("number"):
-        return None
+    if not isinstance(found, dict) or not found.get("ok"):
+        return None  # a failed lookup (an outage) keeps the pending dismissal, not refiled
+    if not found.get("number"):
+        # a branch nobody opened a PR for: a session with branch write access could push
+        # one and mute a finding for good (the review of the 0.2.27 diff, M7)
+        return f"no pull request was opened for {branch}"
     if str(found.get("state") or "").lower() == "closed" and not found.get("merged"):
         return f"pull request #{found['number']} for {branch} was closed without a merge"
     return None
@@ -704,6 +708,10 @@ def detection_digest(change_dir: Path) -> str:
 def _snapshot_mismatch(change_dir: Path, expected: str | None) -> str | None:
     """Why the detection record is not the one the detect step wrote, or None."""
     if not expected:
+        if os.environ.get("GITHUB_ACTIONS"):
+            # on a runner the Detect step always prints the digest of the record it filed:
+            # an empty one means the step output did not reach this step (fail closed)
+            return "no digest reached this step (detection_sha256 is empty on the runner)"
         return None  # by hand, no snapshot: the record's word stands, as before
     actual = detection_digest(change_dir)
     if actual == expected.strip().lower():
@@ -865,6 +873,13 @@ def origin_mismatch(root: Path, expected: str | None) -> str | None:
     a ``git replace``, a planted hook), which ``approved_files``, ``_show`` and
     ``gitops.runner_args`` each answer for one vector — the full answer is reading the approved
     copies outside the checkout (PROGRESS session 8, known gaps)."""
+    from ci import checkout_check  # noqa: PLC0415
+
+    denied = checkout_check.config_problems(root, scopes=checkout_check.SCOPES[:1])
+    if denied and os.environ.get("GITHUB_ACTIONS"):
+        # a url.<x>.insteadOf or a command-running key the session wrote (0.2.27): the
+        # fetch below would follow it; by hand an owner's own config is not judged
+        return "; ".join(denied)
     expected = (os.environ.get("GITHUB_REPOSITORY") or expected or "").strip().strip("/")
     if not expected:
         return None
@@ -1054,6 +1069,8 @@ def cmd_finish(args) -> int:
         reason = c.DETECTION_SNAPSHOT_PARK_PREFIX + changed
         st.park(reason)
         status_mod.write_status(change_dir, st)
+        head = gitops.run(root, "rev-parse", "HEAD", check=False).strip() or None
+        write_park_result(change_dir, st, "detection_snapshot", reason, SNAPSHOT_NEED, head)
         out = {
             "change_id": args.id,
             "parked": reason,
@@ -1201,6 +1218,11 @@ def cmd_go(args) -> int:
 PARK_NEED = (
     "Settle this, then apply `sdlc:go` again: the runbook job stopped before the Go step "
     "and the label was removed (one application is one act)."
+)
+SNAPSHOT_NEED = (
+    "The maintain session changed evidence/detection.json after the Detect step wrote it; "
+    "the route was not dispatched. Read the branch's commits, restore the record the Detect "
+    "step wrote (its digest is the step's output) or close this PR without a merge."
 )
 
 

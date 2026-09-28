@@ -313,6 +313,13 @@ def test_the_approval_is_the_recorded_build_pr_not_the_branch_name(tmp_path):
     assert a.approved and a.pr_number == 7
     a = approval.release_approval(tmp_path, {}, {}, git=git, github=FakeGitHub(merged=True))
     assert a.approved and a.pr_number == 7
+    # merged, with the checkout on the PR's own head (the by-hand deploy on sdlc/<id>/c
+    # after the owner's merge; the review of the 0.2.27 diff, M3): approved
+    at_head = FakeGitHub(merged=True)
+    base_pr = at_head.pr_by_number
+    at_head.pr_by_number = lambda *a, **k: {**base_pr(*a, **k), "merge_commit_sha": "9999999999"}
+    a = approval.release_approval(tmp_path, {}, {}, git=git, github=at_head)
+    assert a.approved and a.pr_number == 7
     # merged, but the checkout is elsewhere (a rebuilt local branch): refused
     elsewhere = fake_git()
 
@@ -320,7 +327,7 @@ def test_the_approval_is_the_recorded_build_pr_not_the_branch_name(tmp_path):
         return (0, "0000000000\n") if args == ("rev-parse", "HEAD") else elsewhere(root, *args)
 
     a = approval.release_approval(tmp_path, {}, {}, git=moved, github=FakeGitHub())
-    assert not a.approved and "only the merged commit carries its approval" in a.detail
+    assert not a.approved and "only the merged commit and the pull request's own head" in a.detail
     # the change id the caller resolved wins over the branch name
     _recorded_2 = status.new_change(tmp_path, "Another change")
     a = approval.release_approval(tmp_path, {}, {}, git=git, github=FakeGitHub(), change_id="0002")
