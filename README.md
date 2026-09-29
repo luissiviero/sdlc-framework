@@ -24,7 +24,7 @@ The files below were the input to the first build session; that session's brief 
 
 | File | What it is | Used by |
 |---|---|---|
-| `HANDOFF.md` | Brief for the **next** session (now: sessions 11 to 16 — groups B, C and D of the 1.0.0 readiness review, `docs/reviews/2026-09-26-readiness-review.md`, one session each, then the live-check road to 1.0.0; session 9 was the review itself and plugin 0.2.25, session 10 closed group A in plugin 0.2.26, session 11 closed group B in plugin 0.2.27); earlier briefs are kept in `docs/handoffs/` | the session |
+| `HANDOFF.md` | Brief for the **next** session (now: sessions 13 to 16 — group D of the 1.0.0 readiness review, `docs/reviews/2026-09-26-readiness-review.md`, then the live-check road to 1.0.0; session 9 was the review itself and plugin 0.2.25, session 10 closed group A in plugin 0.2.26, session 11 group B in plugin 0.2.27, session 12 group C in plugin 0.2.28); earlier briefs are kept in `docs/handoffs/` | the session |
 | `CLAUDE.md` | Conventions for this repo (English only, Python hooks, plugin/template layout) | every session |
 | `docs/OPERATING_MODEL.md` | The contract: phases, artifacts, profiles, gates, park-never-page, conventions (draft to finalise in step 1) | the framework itself |
 | `docs/DECISIONS.md` | The 26 settled decisions with alternatives and reasons (21–26 added 2026-09-23) | sessions, to avoid reopening them |

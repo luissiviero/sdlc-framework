@@ -248,12 +248,53 @@ def test_secrets_denied(text):
         'api_key = "<your-api-key>"',
         'secret = "${SECRET}"',
         'password = "example-password"',
-        "token = 'ghp_" + "a" * 36 + "'  # sdlc: allow-secret",
         "def test_password_field(): ...",
     ],
 )
 def test_secrets_allowed(text):
     assert not secrets_check.decide(pre("Write", file_path="/p/x.py", content=text), []).block
+
+
+def test_the_allow_secret_mark_counts_only_on_a_line_the_owner_committed(tmp_path):
+    """0.2.28: the denial message used to suggest the mark, and a live run of eval case 0003
+    saw the model add it on a retry and land the key. The mark is the owner's: a marked
+    line is skipped only when HEAD already holds it byte for byte (a reviewed PR put it
+    there); a new file, a changed line, another file and an Edit's new text are refused."""
+    root = tmp_path / "proj"
+    root.mkdir()
+    run = lambda *args: subprocess.run(  # noqa: E731
+        ["git", "-c", "user.name=Owner", "-c", "user.email=owner@example.com", *args],
+        cwd=root, check=True, capture_output=True, text=True,
+    )  # fmt: skip
+    run("init", "-q", "-b", "main")
+    marked = "token = 'ghp_" + "a" * 36 + "'  # sdlc: allow-secret"
+
+    def write(content: str, name: str = "fixture.py", tool: str = "Write") -> dict:
+        tool_input = {"file_path": str(root / name)}
+        if tool == "Write":
+            tool_input["content"] = content
+        else:
+            tool_input.update({"old_string": "x = 1", "new_string": content})
+        return {"hook_event_name": "PreToolUse", "tool_name": tool, "cwd": str(root),
+                "tool_input": tool_input}  # fmt: skip
+
+    d = secrets_check.decide(write(marked + "\n"), [], {})  # nothing committed yet
+    assert d.block and "has not committed" in d.reason and "cannot add the mark" in d.reason
+    assert "put '#" not in d.reason  # the message no longer teaches the mark
+    (root / "fixture.py").write_text(marked + "\nx = 1\n", encoding="utf-8", newline="\n")
+    run("add", "fixture.py")
+    run("commit", "-q", "-m", "the owner's fixture")
+    assert not secrets_check.decide(write(marked + "\nx = 2\n"), [], {}).block
+    assert not secrets_check.decide(write(marked, tool="Edit"), [], {}).block
+    changed = marked.replace("'ghp_a", "'ghp_b", 1)
+    assert secrets_check.decide(write(changed + "\n"), [], {}).block
+    assert secrets_check.decide(write(marked + "\n", name="other.py"), [], {}).block
+    assert secrets_check.decide(write(changed, tool="Edit"), [], {}).block
+    assert secrets_check.decide(write(marked + "\n", name="../outside.py"), [], {}).block
+    assert secrets_check.find_secrets(marked, frozenset({marked})) == []
+    assert secrets_check.find_secrets(marked) == [
+        (1, "GitHub token" + secrets_check.UNCOMMITTED_MARK)
+    ]
 
 
 def test_secrets_in_edit_new_string_and_multiedit():
@@ -667,7 +708,6 @@ def test_secrets_more_shapes_denied(text):
         "password = os.getenv('PASSWORD')",
         "PASSWORD=$SECRET_FROM_ENV",
         "password: ...",
-        "token = 'sk-ant-api03-…'  # sdlc: allow-secret",
     ],
 )
 def test_secrets_more_shapes_allowed(text):

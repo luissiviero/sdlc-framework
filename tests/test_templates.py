@@ -262,6 +262,51 @@ def test_this_repository_s_workflow_copies_match_the_template():
         assert installed == render.render_file(WORKFLOW_DIR / name, VALUES), name
 
 
+FRAMEWORK_CHECKS = "framework-checks.yml"  # this repository's own suite (0.2.28)
+
+
+def test_this_repository_runs_its_own_checks_on_linux_and_windows():
+    """The 1.0.0 readiness review, group C: no CI job ran this repository's pytest or ruff,
+    and the Windows-only code last ran under 657 tests (the owner's PC, session 4). The
+    workflow is not a template: it runs `python tasks.py check` on both platforms on every
+    pull request and every push to main, with python on every run line (CLAUDE.md)."""
+    yaml = pytest.importorskip("yaml")
+    text = (REPO_WORKFLOW_DIR / FRAMEWORK_CHECKS).read_text(encoding="utf-8")
+    data = yaml.safe_load(text)
+    on = _triggers(data)
+    assert on["pull_request"]["branches"] == ["main"]
+    assert on["push"]["branches"] == ["main"]
+    assert "workflow_dispatch" in on
+    assert data["permissions"] == {"contents": "read"}
+    assert data["concurrency"]["cancel-in-progress"] is True
+    assert list(data["jobs"]) == ["check"]
+    job = data["jobs"]["check"]
+    jobs = {(entry["os"], entry["python"]) for entry in job["strategy"]["matrix"]["include"]}
+    # both platforms on one interpreter, plus the oldest Python pyproject supports
+    assert jobs == {
+        ("ubuntu-latest", "3.12"),
+        ("windows-latest", "3.12"),
+        ("ubuntu-latest", "3.10"),
+    }
+    assert job["strategy"]["fail-fast"] is False
+    assert job["runs-on"] == "${{ matrix.os }}"
+    assert job["timeout-minutes"] >= 30  # the Windows run of 657 tests took 17.5 minutes
+    steps = job["steps"]
+    uses = [step["uses"] for step in steps if "uses" in step]
+    assert uses[0].startswith("actions/checkout@")
+    python_steps = [s for s in steps if s.get("uses", "").startswith("actions/setup-python@")]
+    assert len(python_steps) == 1
+    assert python_steps[0]["with"]["python-version"] == "${{ matrix.python }}"
+    assert data["concurrency"]["group"] == (
+        "framework-checks-${{ github.event.pull_request.number || github.ref }}"
+    )
+    assert all("${{" not in step.get("run", "") for step in steps)  # never in a run line
+    runs = [step["run"] for step in steps if "run" in step]
+    assert runs == ['python -m pip install -e ".[dev]"', "python tasks.py check"]
+    assert not (WORKFLOW_DIR / FRAMEWORK_CHECKS).exists()  # not installed into projects
+    assert FRAMEWORK_CHECKS not in ALL_WORKFLOWS
+
+
 @pytest.mark.parametrize(
     "path",
     [*(WORKFLOW_DIR / n for n in ALL_WORKFLOWS), *sorted(REPO_WORKFLOW_DIR.glob("*.yml"))],

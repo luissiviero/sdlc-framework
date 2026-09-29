@@ -10,7 +10,6 @@ origin/main --push`` works for real and ``pr/cli.py upsert`` finds no GitHub rem
 from __future__ import annotations
 
 import json
-import os
 import re
 import shutil
 import subprocess
@@ -200,11 +199,11 @@ def fake_claude(tmp_path):
         "        fh.write(os.environ['FAKE_SCAN_FINDINGS'])\n"
         "print(os.environ.get('FAKE_CLAUDE_RESULT', '{}'))\n",
     )
-    launcher = bindir / "claude"
-    write(launcher, f'#!/bin/sh\nexec "{sys.executable}" "{script}" "$@"\n')
-    launcher.chmod(0o755)
-    write(bindir / "claude.cmd", f'@echo off\r\n"{sys.executable}" "{script}" %*\r\n')
-    return str(bindir / ("claude.cmd" if os.name == "nt" else "claude"))
+    # the script itself, never a launcher: a `.cmd` launcher hands the prompt to cmd.exe,
+    # which does not carry a multi-line argument, so on Windows the fake never saw the
+    # "Output file" line and wrote nothing (the first Windows run of the suite, 0.2.28);
+    # run_phase.claude_prefix runs a `.py` through this interpreter, as evals/run.py does
+    return str(script)
 
 
 def run_cli(capsys, *argv: str) -> tuple[int, Any]:
@@ -647,6 +646,22 @@ def test_review_dry_run_composes_the_read_only_headless_call(tmp_path, capsys):
     assert flag("--plugin-dir") == str(ROOT)
     assert Path(flag("--settings")).name == "settings.ci.json"
     assert argv.count("--allowedTools") == 1 and "bypassPermissions" not in argv
+
+
+def test_a_py_claude_runs_through_this_interpreter(tmp_path, capsys, fake_claude):
+    """The fake is a script: the argv starts with this interpreter, and a real name stays
+    the executable as given (run_phase.claude_prefix, 0.2.28)."""
+    root = project(tmp_path)
+    code, out = run_cli(
+        capsys, "review", "--root", str(root), "--plugin-dir", str(ROOT), "--claude",
+        fake_claude, "--head", head_of(root), "--dry-run",
+    )  # fmt: skip
+    assert code == 0 and out["argv"][:3] == [sys.executable, fake_claude, "-p"]
+    code, out = run_cli(
+        capsys, "review", "--root", str(root), "--plugin-dir", str(ROOT), "--claude",
+        "claude", "--head", head_of(root), "--dry-run",
+    )  # fmt: skip
+    assert code == 0 and out["argv"][:2] == ["claude", "-p"]
 
 
 def test_review_runs_the_fake_claude_and_checks_the_findings(

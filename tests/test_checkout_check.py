@@ -54,6 +54,10 @@ def setting(tmp_path: Path):
     subprocess.run(
         ["git", "clone", "-q", "--branch", "v0.2.16", str(fw_origin), str(framework)], check=True
     )
+    # a GitHub-hosted runner has no git identity (NOTES section 14): the tests that commit
+    # in this clone set one, as init() does for the repositories it creates
+    git(framework, "config", "user.email", "owner@example.com")
+    git(framework, "config", "user.name", "Owner")
     return work, bare, fw_origin, framework
 
 
@@ -127,7 +131,11 @@ def test_a_redirected_or_rewired_origin_is_refused(tmp_path):
         assert proc.returncode == 3 and key.lower() in proc.stderr, key
         git(work, "config", "--unset", key)
     global_cfg = tmp_path / "gitconfig"
-    global_cfg.write_text(f'[url "{planted}"]\n\tinsteadOf = {bare}\n', encoding="utf-8")
+    # forward slashes: a backslash escapes inside a gitconfig file, and a Windows path
+    # written as is makes git refuse the whole file (the first Windows run, 0.2.28)
+    global_cfg.write_text(
+        f'[url "{planted.as_posix()}"]\n\tinsteadOf = {bare.as_posix()}\n', encoding="utf-8"
+    )
     proc = verify(work, bare, fw_origin, env={"GIT_CONFIG_GLOBAL": str(global_cfg)})
     assert proc.returncode == 3 and "global carries" in proc.stderr
     assert verify(work, bare, fw_origin).returncode == 0
