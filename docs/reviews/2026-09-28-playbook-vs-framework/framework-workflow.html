@@ -1,0 +1,282 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- Snapshot of https://claude.ai/artifact/KW8jWunfLNa9WgBSzJxw4S as published on 2026-09-28 (private to the owner; the live page may be newer). Opened from the repository, the diagrams render with mermaid from jsdelivr. -->
+<style>body{margin:0}</style>
+</head>
+<body>
+<title>SDLC Plugin Workflow</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+  /* Layout: one reading column; each diagram sits in its own scrollable panel, notes under it. */
+  :root {
+    --bg: #f6f8f8;
+    --surface: #ffffff;
+    --ink: #17222a;
+    --muted: #55656f;
+    --line: #d5dfe2;
+    --accent: #0b6e79;
+    --accent-soft: #e0f0f1;
+    --owner: #7a4b00;
+    --owner-soft: #fbf0dc;
+    --code-bg: #eaf0f1;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --bg: #10171b;
+      --surface: #172128;
+      --ink: #e4ecee;
+      --muted: #97a8b0;
+      --line: #2b3a42;
+      --accent: #5cc4cf;
+      --accent-soft: #163a3f;
+      --owner: #f0c070;
+      --owner-soft: #3a2c14;
+      --code-bg: #1f2c33;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --bg: #10171b;
+    --surface: #172128;
+    --ink: #e4ecee;
+    --muted: #97a8b0;
+    --line: #2b3a42;
+    --accent: #5cc4cf;
+    --accent-soft: #163a3f;
+    --owner: #f0c070;
+    --owner-soft: #3a2c14;
+    --code-bg: #1f2c33;
+  }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font: 15px/1.6 "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  }
+  .wrap {
+    max-width: 1040px;
+    margin: 0 auto;
+    padding-inline: 20px;
+    padding-block: 40px 64px;
+    display: grid;
+    gap: 40px;
+  }
+  header { display: grid; gap: 12px; }
+  .eyebrow {
+    font: 500 12px/1.3 "IBM Plex Mono", ui-monospace, monospace;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+  h1 { font-size: 34px; line-height: 1.15; font-weight: 600; margin: 0; text-wrap: balance; }
+  h2 { font-size: 22px; line-height: 1.25; font-weight: 600; margin: 0; text-wrap: balance; }
+  p { margin: 0; max-width: 68ch; }
+  .lede { color: var(--muted); font-size: 16px; }
+  code {
+    font: 13px "IBM Plex Mono", ui-monospace, monospace;
+    background: var(--code-bg);
+    padding: 1px 5px;
+    border-radius: 4px;
+    overflow-wrap: anywhere;
+  }
+  .legend { display: flex; flex-wrap: wrap; gap: 10px 20px; font-size: 13px; color: var(--muted); }
+  .legend span { display: inline-flex; align-items: center; gap: 8px; }
+  .sw { width: 22px; height: 14px; border: 1.5px solid var(--ink); display: inline-block; flex: none; }
+  .sw.hex { clip-path: polygon(20% 0, 80% 0, 100% 50%, 80% 100%, 20% 100%, 0 50%); background: var(--owner); border: 0; }
+  .sw.dash { border: 0; border-top: 2px dashed var(--ink); height: 0; }
+  section { display: grid; gap: 14px; min-width: 0; }
+  .diagram {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 20px;
+    overflow-x: auto;
+  }
+  .diagram pre.mermaid { margin: 0; display: flex; justify-content: center; background: transparent; }
+  .note { color: var(--muted); font-size: 14px; }
+  .note strong { color: var(--ink); font-weight: 600; }
+  ul.notes { margin: 0; padding-left: 20px; display: grid; gap: 8px; max-width: 76ch; color: var(--muted); font-size: 14px; }
+  ul.notes strong { color: var(--ink); font-weight: 600; }
+  .table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+  table { border-collapse: collapse; width: 100%; min-width: 620px; font-size: 14px; }
+  th, td { text-align: left; vertical-align: top; padding: 10px 14px; border-bottom: 1px solid var(--line); }
+  tr:last-child td { border-bottom: 0; }
+  th { font-weight: 600; font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+  td:first-child { font-weight: 500; white-space: nowrap; }
+  td.owner { background: var(--owner-soft); }
+  footer { color: var(--muted); font-size: 13px; border-top: 1px solid var(--line); padding-top: 16px; display: grid; gap: 6px; }
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="eyebrow">sdlc plugin 0.2.26 · luissiviero/sdlc-framework</div>
+    <h1>How a project uses the SDLC plugin</h1>
+    <p class="lede">What a project does once to connect, how one change travels from idea to production, and what happens when the owner does not simply merge. Drawn from the code (workflows, runner, gate, hooks); <code>docs/OPERATING_MODEL.md</code> is the contract, and the notes say where the two differ.</p>
+    <div class="legend">
+      <span><i class="sw hex"></i>The owner's act on GitHub: merge, review, label, close, a setting</span>
+      <span><i class="sw"></i>A Claude run or a workflow step. Setup and (a) run in the owner's own Claude Code session; (b) onward run unattended as <code>github-actions[bot]</code></span>
+      <span><i class="sw dash"></i>Full profile, a conditional path, or a label-triggered step</span>
+    </div>
+  </header>
+
+  <section>
+    <h2>The whole life of a project</h2>
+    <div class="diagram"><pre class="mermaid">flowchart TB
+  subgraph SETUP["Once per project"]
+    I0["Owner runs /sdlc:sdlc-init in their own session&lt;br/&gt;detects build, test, lint, setup commands&lt;br/&gt;asks profile, review mode, deploy adapter, real production?, metric source"]
+    I1["Change 0000 PR on sdlc/0000/a, opened by the owner's session&lt;br/&gt;sdlc.yaml, .claude/settings.json, CLAUDE.md, REVIEW.md, changes/, bands.yaml,&lt;br/&gt;evals/, lessons/, .github/workflows/sdlc-*.yml, .github/scripts/sdlc_pin.py"]
+    I2{{"Owner merges the 0000 PR"}}
+    I3{{"Owner, once, in GitHub: let Actions create PRs · add the Claude secret&lt;br/&gt;· ruleset 'Restrict updates' with the owner exempt · a CI workflow the metric reads"}}
+    I0 --&gt; I1 --&gt; I2 --&gt; I3
+  end
+
+  subgraph PA["(a) plan: interactive, owner's session"]
+    A1["Owner runs /sdlc:sdlc-plan 'idea'&lt;br/&gt;brainstorm, then intent.md via the intent-template skill"]
+    A2["Intent PR on sdlc/id/a, sdlc:a-ready"]
+    A1 --&gt; A2
+  end
+  I3 --&gt; A1
+  A2 --&gt; GA{{"Gate (a)&lt;br/&gt;owner merges the intent PR"}}
+
+  subgraph PB["(b) design: autonomous"]
+    B1["/sdlc:sdlc-design on sdlc/id/b&lt;br/&gt;policy skills, then spec.md&lt;br/&gt;read-only planning pass, then plan.md"]
+    B2["Confidence gate (b)&lt;br/&gt;deterministic checks + adversarial reviewer"]
+    B1 --&gt; B2
+  end
+  GA -- "merge fires sdlc-design.yml" --&gt; B1
+  B2 -- "wait: sdlc:b-ready" --&gt; GB{{"Gate (b)&lt;br/&gt;owner merges the spec+plan PR"}}
+
+  subgraph PC["(c) build: autonomous"]
+    C1["/sdlc:sdlc-build on sdlc/id/c&lt;br/&gt;preflight; a fix writes its failing test first and locks tests&lt;br/&gt;implementation under the hooks, code-simplifier, verifier"]
+    C2["Confidence gate (c)&lt;br/&gt;build PR opened as a draft"]
+    C1 --&gt; C2
+  end
+  GB -- "merge fires sdlc-build.yml" --&gt; C1
+
+  subgraph PD["(d) test: autonomous, fresh context"]
+    D1["/sdlc:sdlc-test&lt;br/&gt;collect.py runs test, build, lint into evidence/&lt;br/&gt;failures fixed and re-run, screenshot loop when a mock is named, verifier"]
+    D2["Confidence gate (d)&lt;br/&gt;check run sdlc/d"]
+    D1 --&gt; D2
+  end
+  C2 -- "Standard: continue,&lt;br/&gt;dispatches sdlc-test.yml" --&gt; D1
+  C2 -. "Full: sdlc:c-ready; the owner's&lt;br/&gt;sdlc:c-approved label starts sdlc-test.yml" .-&gt; D1
+
+  subgraph PE["(e) deploy: autonomous"]
+    E1["/sdlc:sdlc-deploy prepares the release artifact per deploy.action&lt;br/&gt;REVIEW.md pass in a fresh context&lt;br/&gt;fix loop while an Important finding stands"]
+    E2["Confidence gate (e)&lt;br/&gt;release-notes.md, PR marked ready, sdlc:e-ready (or park)"]
+    E1 --&gt; E2
+  end
+  D2 -- "Standard: continue,&lt;br/&gt;dispatches sdlc-deploy.yml" --&gt; E1
+  D2 -. "Full: sdlc:d-ready; the owner's&lt;br/&gt;sdlc:d-approved label starts sdlc-deploy.yml" .-&gt; E1
+  E2 --&gt; GE{{"Gate (e)&lt;br/&gt;owner merges the build PR once it is sdlc:e-ready"}}
+
+  GE -- "merge fires sdlc-release.yml" --&gt; R1["release/cli.py run&lt;br/&gt;the change's build PR at phase e: runs sdlc.yaml deploy.command&lt;br/&gt;(only when deploy.action is not none and a command is set;&lt;br/&gt;both are off by default)"]
+  GE -. "deploy.production: true" .-&gt; RA{{"Owner applies&lt;br/&gt;sdlc:release-approved"}}
+  RA -.-&gt; R1
+  R1 --&gt; LIVE(["Released"])
+
+  subgraph PF["(f) maintain: standing loop"]
+    F1["sdlc-detect.yml, daily cron&lt;br/&gt;CI test failure rate against bands.yaml, Western Electric rules, no model;&lt;br/&gt;1σ only logs"]
+    F2["sdlc-scan.yml, weekly&lt;br/&gt;security review + deterministic scanners"]
+    F3["/sdlc:sdlc-maintain --diagnosis-only&lt;br/&gt;reads lessons/, investigates read-only&lt;br/&gt;incident intent.md + proposal.json"]
+    F4["Scan incident: intent written from a template,&lt;br/&gt;route is the incident PR, no diagnosis run"]
+    F5["detect finish: proposed route judged against bands.yaml, gate (f),&lt;br/&gt;incident PR on sdlc/id/a, sdlc:f-ready + incident"]
+    RP["3σ pre-approved route, no human:&lt;br/&gt;quarantine-flaky-test or revert-pr runs now&lt;br/&gt;and opens a runbook PR (labelled incident)"]
+    F1 -- "2σ or 3σ breach" --&gt; F3
+    F3 --&gt; F5
+    F2 -- "Important finding, at most 3 per scan run" --&gt; F4
+    F5 -- "3σ, pre-approved" --&gt; RP
+  end
+  LIVE -. "detection runs on its own schedule" .-&gt; F1
+  F4 --&gt; GF
+  F5 --&gt; GF{{"Gate (f): owner triages the incident PR&lt;br/&gt;merge = fix now · label schedule = later · close = abandon"}}
+  GF -- "merge is gate (a) of the incident change" --&gt; B1
+  GF -. "closed with a person's comment" .-&gt; DP["Dismissal PR on sdlc/id/dismiss"]
+  DP --&gt; GD{{"Owner merges it: the dismissal is recorded&lt;br/&gt;(a metric dismissal lasts one baseline window)"}}
+  RP --&gt; GR{{"Owner merges or closes the runbook PR"}}
+  F5 -. "go route, e.g. rollback-deploy,&lt;br/&gt;or a rehearsal's runbook route: parks 'Go requested'" .-&gt; GO{{"Owner applies sdlc:go"}}
+  GO -.-&gt; RB["sdlc-runbook.yml runs the runbook once and re-runs gate (f):&lt;br/&gt;sdlc:f-ready once it ran (a failed runbook stays parked)"]
+  RB -.-&gt; GF</pre></div>
+    <ul class="notes">
+      <li>An incident change ships through (b) to (e) like any other. Its (e) run is also told to write <code>lessons/&lt;yyyy-mm&gt;-&lt;slug&gt;.md</code> and one eval case under <code>evals/cases/</code>, which the next diagnosis and <code>sdlc-evals.yml</code> read. No gate checks that these files exist.</li>
+      <li><strong>Full profile.</strong> <code>OPERATING_MODEL.md</code> asks for an approving review plus the label at (c) and (d). The code checks only that the label is on the build PR and that the workflow token did not apply it.</li>
+      <li><strong>Merge the build PR only after <code>sdlc:e-ready</code>.</strong> The draft state is the only thing that stops an earlier merge. A merge once (e) has started still releases the not-yet-reviewed code, and the running (e) job then opens a second build PR whose merge releases again. A merge during (c) or (d) releases nothing: the release needs phase e.</li>
+      <li><strong>Where <code>OPERATING_MODEL.md</code> says otherwise.</strong> It says an infrastructure failure parks (the code ends the job red) and lists a scan finding as an input of <code>/sdlc:sdlc-maintain</code> (the code files scan incidents without a diagnosis run).</li>
+      <li>Merging the 0000 PR also fires <code>sdlc-design.yml</code>. With no Claude secret yet, the job skips; once the secret exists, nothing exempts change 0000.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>When the owner does not just merge</h2>
+    <p>A phase run in CI ends in one of three gate outcomes, or in a red job when the run itself fails. Nothing notifies the owner: ready and parked PRs wait in the review queue, the PR list filtered by <code>sdlc:*-ready</code> and <code>sdlc:needs-human</code>, summarised daily by <code>sdlc-digest.yml</code> in one issue, "SDLC review queue", pinned where GitHub allows.</p>
+    <div class="diagram"><pre class="mermaid">flowchart LR
+  RUN["A phase run, (b) to (e), in CI"] --&gt; G{"Confidence gate"}
+  RUN -- "infrastructure failure or timeout" --&gt; RED["Job ends red (a failed-run record when the session failed);&lt;br/&gt;no label, not in the queue"]
+  G -- "continue" --&gt; NEXT["Dispatch the next phase workflow&lt;br/&gt;(c to d, d to e)"]
+  G -- "wait" --&gt; READY["PR labelled sdlc:phase-ready"]
+  G -- "park" --&gt; PARK["PR labelled sdlc:needs-human&lt;br/&gt;'What I need from you' in the PR body"]
+  READY --&gt; OWNR{{"Owner at a ready PR"}}
+  PARK --&gt; OWNP{{"Owner at a parked PR"}}
+  OWNR -- "merge or approval label" --&gt; ADV["The next phase starts"]
+  OWNR -- "'Request changes' review" --&gt; FIX
+  OWNP -- "'Request changes' review&lt;br/&gt;by an owner, member or collaborator" --&gt; FIX["sdlc-fix.yml runs /sdlc:sdlc-fix on the PR's own head&lt;br/&gt;comments become constraints, the phase re-runs,&lt;br/&gt;iterations + 1"]
+  OWNP -- "sdlc:accept-risk, sdlc:reset-iterations&lt;br/&gt;or sdlc:unlock-tests: recorded, then a fix round" --&gt; FIX
+  OWNP -. "merge anyway" .-&gt; STUCK["At (b) the build workflow skips a parked change;&lt;br/&gt;at (c) or (d) the release skips (phase is not e);&lt;br/&gt;at (e) the merge still releases"]
+  OWNR -- "close without merging" --&gt; AB
+  OWNP -- "close without merging" --&gt; AB["sdlc-abandon.yml&lt;br/&gt;phase: abandoned, branches kept;&lt;br/&gt;an incident PR closed with a person's comment&lt;br/&gt;also opens a dismissal PR"]
+  FIX --&gt; G</pre></div>
+    <p class="note"><strong>Always parks, in both review modes:</strong> a risk-list hit, a guardrail file change, a run limit the gate reaches (iterations, panel calls, wall clock, budget), any failed deterministic check (tests, build, lint, evidence, plan sync, test lock and the rest), and, since 0.2.26, a session that wrote the owner-only fields of <code>status.yaml</code>. A pause (<code>paused: true</code> in <code>sdlc.yaml</code>) makes the next job skip instead. With <code>review: deferred</code>, the judgment items (flagged concerns, policy calls, escalations, review findings, verifier reports) go to a three-member review panel instead of parking, and the PR carries "Decisions taken for you (N)". A "Request changes" review with a comment on the line overturns one.</p>
+  </section>
+
+  <section>
+    <h2>Inside one phase run</h2>
+    <p>The steps of <code>/sdlc:sdlc-design</code>, <code>/sdlc:sdlc-build</code> and <code>/sdlc:sdlc-test</code> in a workflow job run by <code>plugin/ci/run_phase.py</code>. <code>/sdlc:sdlc-deploy</code> has the same shape, with the REVIEW.md pass as its fresh-context check. Run by hand, a command does Register through Surface behind its own preconditions and preflight, and its hand-over only reports the next command: nothing is dispatched, so the owner starts the next phase.</p>
+    <div class="diagram"><pre class="mermaid">flowchart LR
+  S0["Guard (CI runner)&lt;br/&gt;paused, abandoned, phase, not parked,&lt;br/&gt;previous gate passed, Full label not applied by the bot;&lt;br/&gt;a guardrail edit on the branch parks"] --&gt; S1["Register&lt;br/&gt;gate/cli.py start-run"]
+  S1 --&gt; S2["Work&lt;br/&gt;the phase's own steps&lt;br/&gt;under the hooks"]
+  S2 --&gt; S3["Commit&lt;br/&gt;state/cli.py commit-phase"]
+  S3 --&gt; S4["Fresh-context check for HEAD&lt;br/&gt;adversarial verdict (b to d),&lt;br/&gt;REVIEW.md pass (e)"]
+  S4 --&gt; S5["Panel&lt;br/&gt;deferred review only"]
+  S5 --&gt; S6["Gate&lt;br/&gt;gate/cli.py check"]
+  S6 --&gt; S7["Commit the evidence"]
+  S7 --&gt; S8["Surface&lt;br/&gt;pr/cli.py upsert: 5-bullet summary + label"]
+  S8 --&gt; S9["Hand over (CI runner)&lt;br/&gt;continue dispatches; wait or park stops"]</pre></div>
+    <p class="note">Hooks active in every session on the project: protected paths (guardrail files and the plugin itself), secrets check, plan sync on <code>git commit</code> on the build branch, formatter and linter on edit (ruff, Python files), the test-file lock for fix-type changes, and the production gate, which, when <code>deploy.production</code> is true, blocks a guarded deploy command until the owner's release approval exists.</p>
+  </section>
+
+  <section>
+    <h2>Who does what</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Step</th><th>The owner</th><th>The framework</th></tr></thead>
+        <tbody>
+          <tr><td>Setup</td><td class="owner">Runs <code>/sdlc:sdlc-init</code>, answers one round of questions, merges the 0000 PR; once in GitHub, lets Actions create PRs, adds the Claude secret and the "Restrict updates" ruleset</td><td>Writes the config, guardrails, workflows and pin script into that PR</td></tr>
+          <tr><td>(a) plan</td><td class="owner">Runs <code>/sdlc:sdlc-plan</code>, brainstorms, merges the intent PR</td><td>Writes <code>intent.md</code> and opens the PR from the owner's session</td></tr>
+          <tr><td>(b) design</td><td class="owner">Merges the spec+plan PR</td><td>Writes <code>spec.md</code> and <code>plan.md</code>, runs the gate</td></tr>
+          <tr><td>(c) build, (d) test</td><td class="owner">Full profile only: applies <code>sdlc:c-approved</code>, then <code>sdlc:d-approved</code></td><td>Implements, tests, collects evidence, runs the gates</td></tr>
+          <tr><td>(e) deploy</td><td class="owner">Merges the build PR after <code>sdlc:e-ready</code>; applies <code>sdlc:release-approved</code> on a declared production</td><td>Reviews, fixes, prepares the release; after the merge, the release workflow runs <code>deploy.command</code> when <code>deploy.action</code> is not <code>none</code> and a command is set</td></tr>
+          <tr><td>(f) maintain</td><td class="owner">Triages each incident PR; applies <code>sdlc:go</code> for a go route; merges or closes runbook and dismissal PRs</td><td>Detects, scans, diagnoses detection incidents read-only, runs pre-approved runbooks, files incident PRs</td></tr>
+          <tr><td>Any gate</td><td class="owner">"Request changes", an un-park label, or closes the PR</td><td>Fix round (an un-park label is recorded first) or abandon</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <footer>
+    <span>Snapshot of the framework as of plugin 0.2.26 (28 September 2026), checked against the code.</span>
+    <span>Every phase command can also be run by hand in a Claude Code session instead of its workflow. Then nothing dispatches the next phase, the budget limit does not apply, and commits are made by the session, not by <code>github-actions[bot]</code>.</span>
+  </footer>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11.16.1/dist/mermaid.min.js"></script>
+<script>
+  // Outside claude.ai the page renders its own diagrams.
+  mermaid.initialize({ startOnLoad: true, securityLevel: "strict", theme: window.matchMedia && matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "default" });
+</script>
+</body>
+</html>
