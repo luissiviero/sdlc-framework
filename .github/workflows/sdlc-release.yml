@@ -13,7 +13,7 @@
 #     the merge alone is the approval and the release runs now;
 #   * labeled - with deploy.production: true the release also needs the label
 #     sdlc:release-approved, applied by a person on GitHub - the only route: a run cannot
-#     approve itself (decision 11), so no signed tag counts and no bot's label does. The
+#     approve itself (decision 5), so no signed tag counts and no bot's label does. The
 #     owner may apply the label after merging, when the closed event has already fired and
 #     found no approval ("waiting", a green job); the labeled event re-runs the check. A
 #     label applied before the merge fires on an open PR and is skipped here; the merge then

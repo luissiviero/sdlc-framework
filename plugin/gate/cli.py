@@ -4,7 +4,7 @@
         [--base origin/main] [--dry-run]
     python cli.py start-run --root . --id 0001 --phase c        # wall-clock start (step 19)
     python cli.py record-spend --root . --id 0001 --phase c --usd 1.25
-    python cli.py set-iterations --root . --id 0001 --count 0   # owner only (decision 11)
+    python cli.py set-iterations --root . --id 0001 --count 0   # owner only (decisions 5, 24)
     python cli.py bump-iteration --root . --id 0001             # one fix round (step 24)
     python cli.py spec-header --root . --id 0001 [--plugin-root <path>]
 

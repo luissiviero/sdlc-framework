@@ -69,7 +69,7 @@ deploy:
 maintain:
   # the watched metric and where the detection script reads it (default: CI test failure
   # rate from the CI API — decision 15). The bands and the 3-sigma tiers are bands.yaml
-  # beside this file (B5, plugin 0.2.19).
+  # beside this file (written by /sdlc-init since B2; read by the detection since B5, 0.2.19).
   metric: {{MAINTAIN_METRIC}}
   source: {{MAINTAIN_SOURCE}}
   # the project's own runbooks (plugin 0.2.19; plugin/detect/routes.py). bands.yaml names a

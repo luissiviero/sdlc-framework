@@ -1,8 +1,8 @@
 # Owner-machine managed settings (decision 6, layer ii)
 
 `managed-settings.json` in this folder is the *managed* settings file that layer (ii) of
-decision 6 puts on the owner's machine (OPERATING_MODEL §8: "a managed settings file (system
-path)"). Decision 6 calls it "a user-level managed settings file"; the docs read on 2026-09-19
+decision 6 puts on the owner's machine (OPERATING_MODEL §8: "a *managed* settings file (system
+path, see `docs/owner-machine/`)"). Decision 6 calls it "a user-level managed settings file"; the docs read on 2026-09-19
 (`docs/NOTES.md` §4) place it at a system path — the table below — with the user-writable
 `HKCU` registry value as the one per-user form, so "system path" is the right term and the
 operating model uses it; the decision's wording is the term as taken on the day, and its three
