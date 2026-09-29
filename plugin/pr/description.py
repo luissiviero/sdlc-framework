@@ -107,7 +107,7 @@ GATE_CHECKLIST = {
 }
 # Decision 13: when the project declares a real production, the merge is the first act and
 # the release label, applied by a person on GitHub, the second (the only route: a run cannot
-# approve itself, decision 11).
+# approve itself, decision 5).
 RELEASE_APPROVAL_LINE = (
     f"Release approval: apply `{c.RELEASE_APPROVED_LABEL}` on this PR after merging; the "
     "release workflow waits for it."

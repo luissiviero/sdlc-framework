@@ -67,7 +67,14 @@ transitions, the release, the fix round, the abandon rule) and the daily digest 
 installs the workflow files a newer plugin adds and reports an existing one that differs
 from this version's template as `outdated` — the owner replaces it (delete it and re-run)
 to get the newer steps, or keeps their edits. Read its JSON report and show the owner the
-file-by-file result, the `outdated` ones first. The report's `maintain.observation` line
+file-by-file result, the `outdated` ones first. The other project files the install writes
+create-only — `changes/README.md`, `evals/README.md`, `lessons/README.md`, `REVIEW.md`,
+`bands.yaml`, and the comments of `sdlc.yaml` (its missing keys are merged, its comments are
+the first install's) — are never compared with the template: the report says `kept` or
+`unchanged` for them, never `outdated`, so on an upgraded project they may still describe an
+older plugin. Whenever a workflow copy is `outdated`, say so to the owner and name the
+template copies (`template/` in the pinned framework checkout) to diff by hand; the framework
+never rewrites them. The report's `maintain.observation` line
 says whether the maintain metric will have an observation: a project whose only workflows
 are the framework's (`SDLC …`, excluded from the metric by design) has none until it
 carries its own CI workflow — say so to the owner in the report, with the one-line workflow

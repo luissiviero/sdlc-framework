@@ -1034,7 +1034,7 @@ def test_production_gate_refuses_a_label_that_was_removed_again(tmp_path):
 
 
 def test_production_gate_never_allows_on_a_signed_tag(tmp_path):
-    """B1 (decision 11): a session allowed git can sign a tag itself, so a verified signed
+    """B1 (decision 5): a session allowed git can sign a tag itself, so a verified signed
     tag is no approval; only the label a person applied on GitHub is."""
     root, env, log = _gate_project(tmp_path)
     gh = FakeGitHub(actor=None)
@@ -1066,13 +1066,13 @@ def test_production_gate_refuses_an_unsigned_tag(tmp_path):
     ],
 )
 def test_production_gate_blocks_any_command_that_names_the_release_label(tmp_path, command):
-    """B1 (decision 11): a run cannot apply the release label to itself, whatever the tool;
+    """B1 (decision 5): a run cannot apply the release label to itself, whatever the tool;
     the block holds even when an approval exists."""
     root, env, log = _gate_project(tmp_path, action="none")
     gh = FakeGitHub(actor="luissiviero")
     d = _gate(root, env, command, github=gh)
     assert d.block
-    assert "a run cannot apply the label to itself (decision 11)" in d.reason
+    assert "a run cannot apply the label to itself (decision 5)" in d.reason
     assert "the release approval is the owner's act on GitHub" in d.reason
     assert gh.calls == []  # blocked before any approval lookup
     line = _log_lines(log)[-1]
