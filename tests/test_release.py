@@ -240,7 +240,7 @@ def test_approval_refuses_the_label_of_the_automation_identity(tmp_path, actor):
 
 
 def test_a_signed_tag_is_never_an_approval(tmp_path):
-    """B1 (decision 11): a session allowed git can sign a tag itself, so a verified signed
+    """B1 (decision 5): a session allowed git can sign a tag itself, so a verified signed
     tag on the merge commit no longer approves; the label is the only route."""
     calls = []
     _recorded(tmp_path)

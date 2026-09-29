@@ -1,7 +1,12 @@
 # Owner-machine managed settings (decision 6, layer ii)
 
-`managed-settings.json` in this folder is the file the operating model calls "a user-level
-managed settings file on the owner's machine". It is **documented, not installed** by the
+`managed-settings.json` in this folder is the *managed* settings file that layer (ii) of
+decision 6 puts on the owner's machine (OPERATING_MODEL §8: "a *managed* settings file (system
+path, see `docs/owner-machine/`)"). Decision 6 calls it "a user-level managed settings file"; the docs read on 2026-09-19
+(`docs/NOTES.md` §4) place it at a system path — the table below — with the user-writable
+`HKCU` registry value as the one per-user form, so "system path" is the right term and the
+operating model uses it; the decision's wording is the term as taken on the day, and its three
+layers are unchanged. It is **documented, not installed** by the
 framework: it changes every Claude Code session on the machine, so installing it is the
 owner's act. The quotes below are from the Claude Code docs consulted on 2026-09-19
 (see `docs/NOTES.md` for the full list).

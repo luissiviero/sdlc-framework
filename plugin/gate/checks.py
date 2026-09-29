@@ -842,7 +842,7 @@ def check_design_scope(ctx: GateContext) -> CheckResult:
 OWNER_ACTIONS_NEED = (
     "accept-risk, set-iterations and unlock-tests are the owner's: apply sdlc:accept-risk, "
     "sdlc:reset-iterations or sdlc:unlock-tests on the pull request, or run the command on "
-    "your machine or in your own session and commit; a run cannot approve itself (decision 11)."
+    "your machine or in your own session and commit; a run cannot approve itself (decision 5)."
 )
 STATUS_HISTORY_LIMIT = "200"  # commits of status.yaml history the check walks back through
 

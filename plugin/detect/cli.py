@@ -903,7 +903,7 @@ def approved_files(
     repository); with a remote, an unreadable copy raises ``BandsError`` (fail closed). The
     maintain run holds Write and python (p.43: read-only on *source*), so an
     uncommitted edit of either file must never change a route's authorization (decision 14:
-    "enforced, not remembered"; decision 11: a run cannot approve itself).
+    "enforced, not remembered"; decision 5: a run cannot approve itself).
 
     The maintain session runs in the same checkout as the ``finish`` step and holds
     ``Bash(git *)`` (session-7 review): a short ``origin/<default>`` resolves a tag

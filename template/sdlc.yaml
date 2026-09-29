@@ -26,7 +26,8 @@ profile: {{PROFILE}}
 review: {{REVIEW}}
 # the model alias of the devil's advocate (a panel reduces variance, not bias: three judges
 # on one model share its blind spots, so the advocate runs on another model than the
-# reviewer); the reviewer and the conciliator inherit the session's model
+# reviewer); the reviewer and the conciliator inherit the session's model. The phase commands
+# pass this alias to the advocate sub-agent; no script reads the key
 panel_advocate_model: opus
 
 # --- feedback loop: one-command targets (build guide step 14; article p.27 step 1) --------
@@ -47,8 +48,8 @@ deploy:
   # true turns on the release label at gate (e), the production-gate hook and the approval
   # check of the release workflow (build guide step 29; decision 13). The approval is the
   # label sdlc:release-approved applied by a person on the build PR from GitHub, nothing
-  # else: a run cannot approve itself (decision 11), so no signed tag counts and the hook
-  # blocks any command that names the label
+  # else: a run cannot approve itself (decision 5, the automation identity), so no signed
+  # tag counts and the hook blocks any command that names the label
   production: {{DEPLOY_PRODUCTION}}
   # the one command the release workflow (.github/workflows/sdlc-release.yml) runs after the
   # owner's merge (and, when production is true, after the release label): e.g.
@@ -67,7 +68,8 @@ deploy:
   guarded_commands: []
 maintain:
   # the watched metric and where the detection script reads it (default: CI test failure
-  # rate from the CI API — decision 15). Bands and the 3-sigma tiers arrive in B5.
+  # rate from the CI API — decision 15). The bands and the 3-sigma tiers are bands.yaml
+  # beside this file (written by /sdlc-init since B2; read by the detection since B5, 0.2.19).
   metric: {{MAINTAIN_METRIC}}
   source: {{MAINTAIN_SOURCE}}
   # the project's own runbooks (plugin 0.2.19; plugin/detect/routes.py). bands.yaml names a
@@ -94,22 +96,26 @@ risk_list:
 
 # --- confidence gate and run limits (build guide steps 16 and 19; decision 11) ---------------
 # A gate failure or a limit hit parks the change (label sdlc:needs-human, "What I need from
-# you" in the PR); nobody is notified. The owner accepts a risk-list hit per change with
-# `state/cli.py accept-risk`. Setting `paused: true` stops every run before it starts.
+# you" in the PR); nobody is notified. The owner accepts a risk-list hit per change by
+# applying the label sdlc:accept-risk on the pull request (decision 24; the fix round records
+# the label's actor); `state/cli.py accept-risk` stays for by-hand runs, where the commit's
+# author is the act. Setting `paused: true` stops every run before it starts.
 paused: false
 gate:
   max_iterations: 3              # fix iterations per change, one counter across the phases
   max_iterations_non_routine: 2  # when the adversarial reviewer classes the plan non-routine
   max_panel_calls: 4             # panel calls per change under deferred review; not fix iterations
   max_wall_clock_minutes: 120    # per phase run, from `gate/cli.py start-run`
-  max_budget_usd: null           # per change, when the substrate reports spend; null = off
+  max_budget_usd: null           # per change; binds CI runs only (a headless run reports its
+                                 # spend, a by-hand or cloud-session run has no figure); null = off
   command_timeout: 900           # seconds per build/test/lint command run by the gate
 
-# --- automation identity (decision 11; gate check owner_actions) ---------------------------------
-# The gate honours a risk acceptance (accept-risk) or an iteration reset (set-iterations) only
-# when the commit that introduced it was not authored by the automation identity: a run cannot
-# approve itself. Default: github-actions[bot] (plugin/gate/policy.py). Override only if your
-# CI commits under another name:
+# --- automation identity (decision 5; gate check owner_actions) ----------------------------------
+# The gate honours a risk acceptance, an iteration reset or a test-lock lift only when the
+# commit that introduced it was not authored by the automation identity, or when the label
+# that made it was applied by a person (decision 24): a run cannot approve itself. Default:
+# github-actions[bot] (plugin/gate/policy.py). Override only if your CI commits under another
+# name:
 # automation_identity:
 #   - github-actions[bot]
 

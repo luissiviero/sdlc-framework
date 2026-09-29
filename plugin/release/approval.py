@@ -9,7 +9,7 @@ the change's build PR, applied by a person, and nothing else: the actor of the l
 (the article's example reads ``$RELEASE_APPROVAL``, p.36-37; an unattended run could set that
 itself). A label applied by the automation identity (``github-actions[bot]`` or ``sdlc.yaml:
 automation_identity``) or by any other ``[bot]`` account never counts: a run cannot approve
-itself (decision 11). A label removed again no longer counts either.
+itself (decision 5, the automation identity). A label removed again no longer counts either.
 
 There is deliberately no signed-tag route: a session allowed ``git`` can create a key or set
 the signing configuration and ``git tag -s`` HEAD, and on the owner's own machine the signing

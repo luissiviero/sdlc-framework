@@ -20,7 +20,7 @@ hook's own function (``release/approval.py``; article p.36-37). Every step print
 4. ``phase``: ``status.yaml`` read as on the default branch must be at phase (e) (else
    ``skip``);
 5. ``approval``: with production declared, the release label applied by a person (the only
-   route: decision 11, a run cannot approve itself); without it ``waiting`` + ``route`` and a
+   route: decision 5, a run cannot approve itself); without it ``waiting`` + ``route`` and a
    green exit (the ``labeled`` event re-runs the workflow);
 6. ``done`` / ``exit``: ``deploy.action none`` or an empty ``deploy.command`` release nothing;
    otherwise the command runs on the runner and its output streams to the log.

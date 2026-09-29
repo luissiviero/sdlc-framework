@@ -454,7 +454,7 @@ def test_release_approval_line_only_when_production_is_declared(project):
         "release workflow waits for it."
     )
     assert line in body.splitlines()
-    assert "signed tag" not in body  # decision 11: the label is the only route
+    assert "signed tag" not in body  # decision 5: the label is the only route
     assert body.index(line) > body.index(bullets(body)[-1]) and body.index(line) < body.index(
         "Links:"
     )

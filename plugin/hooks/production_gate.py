@@ -9,9 +9,9 @@ hook keeps that trigger and its exit-2 contract and changes three things:
   label ``sdlc:release-approved`` on the change's build PR, applied by a person on GitHub —
   read through ``plugin/release/approval.py``, never from an environment variable an
   unattended run could set itself, and never a signed tag (a session allowed ``git`` can sign
-  one itself; decision 11: a run cannot approve itself). For the same reason any command that
-  names the label at all (``gh pr edit --add-label``, ``gh api .../labels``, ``curl``, a
-  script) is blocked outright while production is declared;
+  one itself; decision 5, the automation identity: a run cannot approve itself). For the same
+  reason any command that names the label at all (``gh pr edit --add-label``,
+  ``gh api .../labels``, ``curl``, a script) is blocked outright while production is declared;
 * **which commands are guarded**: the article's trigger, plus the defaults of the project's
   ``sdlc.yaml: deploy.action`` adapter (``DEFAULT_GUARDED``), plus the project's own
   ``deploy.guarded_commands`` (shell-style globs, case-insensitive). The command is cut into
@@ -367,7 +367,7 @@ def label_block_text(command: str) -> str:
     return (
         f"Production gate (build guide step 29): `{shown}` names the label "
         f"`{approval_mod.RELEASE_LABEL}`: the release approval is the owner's act on GitHub; "
-        "a run cannot apply the label to itself (decision 11). Nobody has been notified."
+        "a run cannot apply the label to itself (decision 5). Nobody has been notified."
     )
 
 

@@ -94,6 +94,8 @@ Decisions 21–26 were added on 2026-09-23 after the plan was audited against th
 
 **Why:** The article's only non-advisory layer is the one "individual engineers cannot switch off" (p.36) — and in your framework the "engineer" being controlled is the agent. Option 1 turns every hook into a suggestion; option 2 still lets a run edit settings through a path the hook missed; option 3 is one extra file on your machine and one line in each workflow.
 
+*Note (session 13, 2026-09-29; not a reopening):* the managed settings file of layer (ii) lives at a system path — `docs/NOTES.md` §4, read 2026-09-19: `C:\Program Files\ClaudeCode\`, `/etc/claude-code/`, `/Library/Application Support/ClaudeCode/`, with the `HKCU` registry value as the one per-user form — so "user-level" above is the wording as decided; OPERATING_MODEL §8 and `docs/owner-machine/README.md` say "system path". The three layers stand.
+
 **Decide by / reversibility:** B2 STICKY
 
 

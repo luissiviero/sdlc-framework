@@ -536,7 +536,7 @@ def test_sdlc_deploy_prepares_the_release_around_the_review_and_the_gate():
         "after merging; the release workflow waits for it"
     )
     assert two_acts in step5
-    # decision 11: the label is the only route, a signed tag a run could make is not one
+    # decision 5: the label is the only route, a signed tag a run could make is not one
     assert "signed tag" not in text
     hand_over = text[text.index("## 6. Hand over") :]
     assert two_acts in hand_over and "Nothing else runs" in hand_over

@@ -52,7 +52,7 @@ def automation_identity(config: dict[str, Any]) -> list[str]:
 
 def is_automation(author_name: str, author_email: str, identities: list[str]) -> bool:
     """True when a commit's author is the framework's own automation identity, never the
-    owner: a run cannot approve itself (decision 11)."""
+    owner: a run cannot approve itself (decision 5, the automation identity)."""
     who = {(author_name or "").strip().lower(), (author_email or "").strip().lower()}
     who.discard("")
     if any(i.strip().lower() in who for i in identities):

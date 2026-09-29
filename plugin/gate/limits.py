@@ -14,7 +14,8 @@ Limits (sdlc.yaml ``gate:`` block, all optional; defaults here):
     the run records its start with ``cli.py start-run``;
   - ``max_budget_usd``: per-change spend where the substrate exposes one; the run writes the
     figure it observes with ``cli.py record-spend`` (a headless `claude -p` prints
-    ``total_cost_usd`` in its JSON result); absent figure = not enforced;
+    ``total_cost_usd`` in its JSON result); absent figure = not enforced, so the cap binds CI
+    runs only (a by-hand or cloud-session run has no figure; OPERATING_MODEL section 4.1);
   - pause flag: ``sdlc.yaml: paused: true`` (chosen over a PAUSE file: sdlc.yaml is already a
     protected path, so a run cannot un-pause itself).
 The outer bound for headless runs is the CLI's own ``--max-turns`` (docs/NOTES.md section 10).
