@@ -63,7 +63,7 @@ The root `sdlc.yaml` is this repository's own copy of the template and carries t
 - The root `sdlc.yaml`'s comments differ from the template's until the owner applies the rows above; the sample's the same, optional.
 
 ## Left
-- Session 14 (the live checks that need no points) as `HANDOFF.md` says. At the close of this session (2026-09-29): this PR open against `main` (draft; both jobs of `framework-checks.yml` to be green before the owner is asked to merge); `main` at 0.2.28 and no bump owed unless the owner answers yes; both pins at 0.2.28; the sample's copies still 0.2.23's; no rehearsal open; four `CI` points on the sample as of 02:02 UTC.
+- Session 14 (the live checks that need no points) as `HANDOFF.md` says. At the close of this session (2026-09-29): PR #76 open against `main` (draft; both jobs of `framework-checks.yml` to be green before the owner is asked to merge); `main` at 0.2.28 and no bump owed unless the owner answers yes; both pins at 0.2.28; the sample's copies still 0.2.23's; no rehearsal open; four `CI` points on the sample as of 02:02 UTC.
 
 ---
 
