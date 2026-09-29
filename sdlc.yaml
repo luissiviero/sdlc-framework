@@ -5,7 +5,8 @@
 # --- profile: which gates are human (OPERATING_MODEL section 3; decision 18) --------------
 # standard: owner merges at (a) intent PR, (b) spec+plan PR, (e) build PR; (c),(d) automated
 # full:     all five gates human; (c),(d) = approving review + label on the build PR
-# lite:     (a) and (e) only; (b) is confidence-gated too
+# (lite, gates (a) and (e) only, was withdrawn by decision 21 and removed in 0.2.14: a file
+# that still says lite reads as standard)
 profile: standard
 review: parked
 panel_advocate_model: opus
@@ -29,7 +30,8 @@ deploy:
   production: false
 maintain:
   # the watched metric and where the detection script reads it (default: CI test failure
-  # rate from the CI API — decision 15). Bands and the 3-sigma tiers arrive in B5.
+  # rate from the CI API — decision 15). The bands and the 3-sigma tiers are bands.yaml
+  # beside this file (written by /sdlc-init since B2; read by the detection since B5, 0.2.19).
   metric: ci_test_failure_rate
   source: github-actions
   # runbooks the 3-sigma tier may call; authorization: preapproved (CI-scoped, reversible)
@@ -45,21 +47,25 @@ risk_list:
 
 # --- confidence gate and run limits (build guide steps 16 and 19; decision 11) ---------------
 # A gate failure or a limit hit parks the change (label sdlc:needs-human, "What I need from
-# you" in the PR); nobody is notified. The owner accepts a risk-list hit per change with
-# `state/cli.py accept-risk`. Setting `paused: true` stops every run before it starts.
+# you" in the PR); nobody is notified. The owner accepts a risk-list hit per change by
+# applying the label sdlc:accept-risk on the pull request (decision 24; the fix round records
+# the label's actor); `state/cli.py accept-risk` stays for by-hand runs, where the commit's
+# author is the act. Setting `paused: true` stops every run before it starts.
 paused: false
 gate:
   max_iterations: 3              # fix iterations per change, one counter across the phases
   max_iterations_non_routine: 2  # when the adversarial reviewer classes the plan non-routine
   max_wall_clock_minutes: 120    # per phase run, from `gate/cli.py start-run`
-  max_budget_usd: null           # per change, when the substrate reports spend; null = off
+  max_budget_usd: null           # per change; binds CI runs only (a headless run reports its
+                                 # spend, a by-hand or cloud-session run has no figure); null = off
   command_timeout: 900           # seconds per build/test/lint command run by the gate
 
-# --- automation identity (decision 11; gate check owner_actions) ---------------------------------
-# The gate honours a risk acceptance (accept-risk) or an iteration reset (set-iterations) only
-# when the commit that introduced it was not authored by the automation identity: a run cannot
-# approve itself. Default: github-actions[bot] (plugin/gate/policy.py). Override only if your
-# CI commits under another name:
+# --- automation identity (decision 5; gate check owner_actions) ----------------------------------
+# The gate honours a risk acceptance, an iteration reset or a test-lock lift only when the
+# commit that introduced it was not authored by the automation identity, or when the label
+# that made it was applied by a person (decision 24): a run cannot approve itself. Default:
+# github-actions[bot] (plugin/gate/policy.py). Override only if your CI commits under another
+# name:
 # automation_identity:
 #   - github-actions[bot]
 
