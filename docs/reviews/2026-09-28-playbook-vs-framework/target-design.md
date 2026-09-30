@@ -40,6 +40,21 @@ Each entry: the owner's idea in the owner's words, the direction discussed so fa
 | Platform & release | platform engineer, release manager |
 | Operations | service owner or on-call |
 
+**Approvals with the roles and the manager (tentative).** The owner's approval points stay where they are; what reaches the owner at each one changes. The roles write briefs, the manager turns them into one recommendation, the owner decides, and the act runs on the owner's signal (above).
+
+| Gate | Role briefs | The manager brings the owner | The owner |
+|---|---|---|---|
+| (a) intent | Product (scope, success), Architect (feasibility) | accept, or the points to fix first, with the briefs linked | approves or sends corrections |
+| (b) spec + plan | Product (does the spec solve the intent), Architect (the plan), Security & policy (flagged concerns) | two recommendations in the one PR: one for the spec, one for the plan | approves both or rejects one |
+| (b), higher risk | the same, plus the Architect's full plan review | "needs your close look", with the reasons | approves separately, as the article's tech-lead step does (p.14, p.17) |
+| (e) code | Code reviewer (today's REVIEW.md pass), Platform & release | merge or request changes, with the Important findings | approves; the merge runs on the owner's signal |
+| (f) incident | Operations, Security & policy (scans) | fix now, schedule or dismiss | triages |
+
+- Separate verdicts, not separate gates: a spec verdict and a plan verdict inside the one gate (b) PR bring back the article's split (p.14, p.17) without another wait, so D2 can stay.
+- Stricter only for risk: a separate, closer approval only for a higher-risk plan, the article's own rule; today "non-routine" only lowers the iteration cap (D11).
+- Gate (a) gains the most: today it has no reviewing agent.
+- Settled decisions: D2 only if separate gates are wanted; D11 (what non-routine does); D18 (profiles); and the set above for acting in the owner's name.
+
 **Crosswalk rows it touches:** x-roles, plan-accept, design-concerns, design-go, build-plan-approve, build-config, build-skills, build-risk, deploy-approve, deploy-release, maintain-triage, maintain-scan, setup-merge.
 
 **Settled decisions it would reopen or amend:**
