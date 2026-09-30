@@ -1289,11 +1289,14 @@ def cmd_park(args) -> int:
             }
         )
         return EXIT_OK
-    reason = " ".join((args.reason or "").split()) or f"the {args.check} step failed"
+    detail = " ".join((args.reason or "").split()) or f"the {args.check} step failed"
     url = run_url()
     if url:
-        reason = f"{reason} (run: {url})"
-    reason = f"{args.check}: {reason}"
+        detail = f"{detail} (run: {url})"
+    # status.yaml names the step itself; the gate file's check carries the bare detail,
+    # because GateResult.reason and the "What I need from you" block prefix the check's
+    # name themselves (0.2.29: the live park of 2026-09-30 read "setup: setup: ...")
+    reason = f"{args.check}: {detail}"
     st.park(reason, phase="f")
     status_mod.write_status(change_dir, st)
     head = None
@@ -1301,7 +1304,7 @@ def cmd_park(args) -> int:
         head = gitops.run(root, "rev-parse", "HEAD").strip() or None
     except (gitops.GitError, FileNotFoundError):
         pass
-    path = write_park_result(change_dir, st, args.check, reason, PARK_NEED, head)
+    path = write_park_result(change_dir, st, args.check, detail, PARK_NEED, head)
     out: dict[str, Any] = {
         "change_id": args.id,
         "parked": reason,

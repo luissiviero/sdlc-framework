@@ -2147,9 +2147,12 @@ def park_and_publish(
         state_cli, ["set-phase", "--root", str(root), "--id", st.id, "--phase", branch_phase]
     )
     out["status"] = park(plugin_dir, root, st.id, reason)
-    write_park_result(
-        root, change_dir, st, branch_phase, check or PARK_CHECK.get(phase, "ci"), reason, need
-    )
+    # the gate file's check carries the reason without its own name: GateResult.reason and
+    # the "What I need from you" block prefix the check's name themselves, and the preflight
+    # park's reason starts with it (0.2.29: gate-c.json used to read "preflight: preflight:")
+    check_name = check or PARK_CHECK.get(phase, "ci")
+    detail = reason[len(check_name) + 2 :] if reason.startswith(f"{check_name}: ") else reason
+    write_park_result(root, change_dir, st, branch_phase, check_name, detail, need)
     out["commit"] = _cli_call(
         state_cli,
         ["commit-phase", "--root", str(root), "--id", st.id, "--phase", branch_phase,

@@ -500,6 +500,13 @@ def test_a_ci_park_commits_the_change_and_updates_the_pr(project, tmp_path, caps
     gate_file = json.loads((change / "evidence" / "gate-c.json").read_text(encoding="utf-8"))
     assert gate_file["result"] == "park" and gate_file["label"] == "sdlc:needs-human"
     assert "What I need from you" in gate_file["what_i_need"]
+    # the summary and the block name the check once; status.yaml keeps "preflight: ..."
+    # (0.2.29, the same doubling the runbook park showed live on 2026-09-30)
+    [check] = gate_file["checks"]
+    assert (check["name"], check["reason"]) == ("preflight", "test_target: red")
+    assert gate_file["reason"] == "preflight: test_target: red"
+    assert "- **preflight**: test_target: red" in gate_file["what_i_need"]
+    assert "preflight: preflight:" not in json.dumps(gate_file)
 
 
 def test_a_branch_that_changed_a_guardrail_file_never_runs(project, tmp_path, capsys):

@@ -841,7 +841,8 @@ def test_park_records_the_failed_setup_step_where_the_owner_looks(
         "--pr-number", "12", "--check", "setup", "--reason", f"  {error}\n",
     )  # fmt: skip
     assert code == 0, out
-    reason = f"setup: {error} (run: https://github.com/o/r/actions/runs/42)"
+    detail = f"{error} (run: https://github.com/o/r/actions/runs/42)"
+    reason = f"setup: {detail}"
     assert out["parked"] == reason and out["check"] == "setup"
     assert out["gate_result"] == f"changes/{change.name}/evidence/gate-f.json"
     st = status_mod.read_status(change)
@@ -853,10 +854,15 @@ def test_park_records_the_failed_setup_step_where_the_owner_looks(
     assert check == {
         "name": "setup",
         "ok": False,
-        "reason": reason,
+        "reason": detail,
         "need": detect_cli.PARK_NEED,
         "details": {},
     }
+    # the summary and the owner's block name the step once (the live park of 2026-09-30,
+    # session 14, read "setup: setup: the checkout changed files outside changes/ ...")
+    assert gate["reason"] == reason
+    assert f"- **setup**: {detail}" in gate["what_i_need"]
+    assert "setup: setup:" not in json.dumps(gate)
     assert "apply `sdlc:go` again" in gate["what_i_need"]
     assert (
         gate["head"] == git(root, "rev-parse", "HEAD~1").strip()
