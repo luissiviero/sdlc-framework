@@ -110,9 +110,10 @@
       },
       "target": {
         "refs": [
-          "T3"
+          "T3",
+          "T4"
         ],
-        "text": "Ideas stay in changes/<id>-<slug>/, set up by /sdlc-init. Intents can be written from Claude Code or from claude.ai / phone; you accept by merging, after the role briefs (T1). The intent template: the plugin default, overridable per project (to verify), reviewed by a Product role and approved by you. The intent gets an Examples/References section."
+        "text": "Ideas stay in changes/<id>-<slug>/, set up by /sdlc-init. Intents can be written from Claude Code or from claude.ai / phone; you accept by merging, after the role briefs (T1). The intent template: the plugin default, overridable per project (to verify), reviewed by a Product role and approved by you. The intent gets an Examples/References section. Names (T4): the folder keeps its name, changes/<id>-<slug>/ (it holds five kinds of file, not only the intent); each phase is named after what it produces or does (intent, design, build, test, deploy, maintain) instead of its letter, in branches (sdlc/0001/design rather than sdlc/0001/b), labels (sdlc:build-ready) and status.yaml (touches D3, D10)."
       }
     },
     {
@@ -253,9 +254,10 @@
       "target": {
         "refs": [
           "T2",
-          "T3"
+          "T3",
+          "T4"
         ],
-        "text": "The manager leads the interview: each role proposes the questions of its field, the manager merges them and asks a few at a time, and after the draft each role reviews the intent (T2). An intent can also be written from claude.ai / phone (T3). Open: how an intent written in claude.ai gets its change id, which plugin/state allocates (T3)."
+        "text": "The manager leads the interview: each role proposes the questions of its field, the manager merges them and asks a few at a time, and after the draft each role reviews the intent (T2). An intent can also be written from claude.ai / phone (T3). Open: how an intent written in claude.ai gets its change id, which plugin/state allocates (T3). Names (T4): stage 1 is named after what it produces: phase intent and command /sdlc-intent instead of /sdlc-plan, so 'plan' means only plan.md; intent.md loses its Status: line, and status.yaml is the one status."
       }
     },
     {
@@ -549,9 +551,10 @@
       },
       "target": {
         "refs": [
-          "T2"
+          "T2",
+          "T4"
         ],
-        "text": "Open: a second interview before the plan, as the article's plan mode interviews the engineer (p.15-16); if added, it would reopen or amend D1 and D2."
+        "text": "Open: a second interview before the plan, as the article's plan mode interviews the engineer (p.15-16); if added, it would reopen or amend D1 and D2. Names (T4): 'planning run' stays (the run is headless, not the interactive plan mode); plan.md stays an output of the design phase (D2 unchanged), and with /sdlc-plan renamed /sdlc-intent, 'plan' means only plan.md."
       }
     },
     {
@@ -813,9 +816,10 @@
       },
       "target": {
         "refs": [
-          "T1"
+          "T1",
+          "T4"
         ],
-        "text": "Sources first: you write the policies each skill derives from (each skill says 'no owner source yet'). The skill sign-off is lost today: a role would write a brief on each skill change, and you approve it."
+        "text": "Sources first: you write the policies each skill derives from (each skill says 'no owner source yet'). The skill sign-off is lost today: a role would write a brief on each skill change, and you approve it. Names (T4): ux-conventions becomes ux-and-brand, since it also carries the brand rules; security-baseline and the other skill names stay."
       }
     },
     {
@@ -1035,6 +1039,12 @@
             "sdlc-evals.yml on config changes"
           ]
         ]
+      },
+      "target": {
+        "refs": [
+          "T4"
+        ],
+        "text": "Names (T4): the project's sdlc-evals.yml becomes sdlc-agent-evals.yml, since it tests the agent's configuration; evals/cases/, check.py and evals-report.json keep their names."
       }
     },
     {
@@ -1292,9 +1302,10 @@
       },
       "target": {
         "refs": [
-          "T1"
+          "T1",
+          "T4"
         ],
-        "text": "On a declared production, a Platform & release brief (the release checklist) before your release approval."
+        "text": "On a declared production, a Platform & release brief (the release checklist) before your release approval. Names (T4): deploy.production becomes deploy.production_gate (touches D13, D19), since the key turns on the article's production gate rather than saying 'this is production'; the release manager, the article's role, applies the release label."
       }
     },
     {
@@ -1402,9 +1413,10 @@
       },
       "target": {
         "refs": [
-          "T1"
+          "T1",
+          "T4"
         ],
-        "text": "Operations brief (Security & policy for scans); the manager recommends fix now, schedule or dismiss; you triage."
+        "text": "Operations brief (Security & policy for scans); the manager recommends fix now, schedule or dismiss; you triage. Names (T4): the queue takes the article's names: its items are findings, labelled sdlc:triage and sdlc:schedule instead of incident and schedule (touches D25)."
       }
     },
     {
@@ -1448,6 +1460,12 @@
             "Unrehearsed rollback: owner's sdlc:go"
           ]
         ]
+      },
+      "target": {
+        "refs": [
+          "T4"
+        ],
+        "text": "Names (T4): the runbook authorization values become allow | ask, the article's hook verbs (p.36), instead of preapproved | go; your sdlc:go label stays (touches D14, D26)."
       }
     },
     {
@@ -1517,9 +1535,10 @@
       },
       "target": {
         "refs": [
-          "T1"
+          "T1",
+          "T4"
         ],
-        "text": "A Security & policy brief on each scan finding; the manager recommends fix now, schedule or dismiss; you triage."
+        "text": "A Security & policy brief on each scan finding; the manager recommends fix now, schedule or dismiss; you triage. Names (T4): a scan result is a finding, labelled sdlc:triage rather than incident, since it is not an incident (touches D25)."
       }
     },
     {
@@ -1760,9 +1779,10 @@
       },
       "target": {
         "refs": [
-          "T1"
+          "T1",
+          "T4"
         ],
-        "text": "Six AI roles in a first cut to adjust (Product, Architect, Code reviewer, Security & policy, Platform & release, Operations) write briefs from their own sources; one manager reads them all and recommends; you stay the only approver. Open: which models, which sources, how many roles."
+        "text": "Six AI roles in a first cut to adjust (Product, Architect, Code reviewer, Security & policy, Platform & release, Operations) write briefs from their own sources; one manager reads them all and recommends; you stay the only approver. Open: which models, which sources, how many roles. Names (T4): each decision is named by the article's role (product owner, code owner, release manager), with one sentence that one person holds every role today; the AI roles then need names that cannot be read as those people (open)."
       }
     }
   ],
@@ -1785,6 +1805,12 @@
       {
         "id": "T3",
         "title": "The intent home: in the repository, written from anywhere, with examples",
+        "status": "tentative",
+        "recorded": "2026-09-30"
+      },
+      {
+        "id": "T4",
+        "title": "Names: the phases named after what they produce, and the other names judged against the article",
         "status": "tentative",
         "recorded": "2026-09-30"
       }
