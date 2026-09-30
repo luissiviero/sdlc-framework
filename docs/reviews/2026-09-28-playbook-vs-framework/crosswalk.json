@@ -1,5 +1,5 @@
 {
-  "about": "The workflow crosswalk: every decision point of the AI-native SDLC playbook (the article, print pages of docs/reference/ai-native-sdlc-playbook.pdf) set against the sdlc framework (plugin 0.2.27, commit cf3f696). See ../2026-09-28-playbook-vs-framework.md.",
+  "about": "The workflow crosswalk: every decision point of the AI-native SDLC playbook (the article, print pages of docs/reference/ai-native-sdlc-playbook.pdf) set against the sdlc framework (plugin 0.2.27, commit cf3f696); the row setup-adopt was added on 2026-09-30 against plugin 0.2.28, commit dd308ca. See ../2026-09-28-playbook-vs-framework.md.",
   "seeded": "2026-09-28",
   "fields": {
     "id": "stable row id",
@@ -12,7 +12,8 @@
     "rel": "same | adapted | added | missing | diverges",
     "why": "Dn = decision n in docs/DECISIONS.md; \"No decision\" / \"No Dn\" = no decision behind the difference",
     "weigh": "the question for the owner",
-    "map": "per side, [lane, kind, label]: lane P person, C Claude, A pipeline; kind d decision every change needs (Setup: once per project), c decision only in some cases, w work, r same act as another row"
+    "map": "per side, [lane, kind, label]: lane P person, C Claude, A pipeline; kind d decision every change needs (Setup: once per project), c decision only in some cases, w work, r same act as another row",
+    "target": "optional: the owner's tentative proposal for this step, condensed from target-design.md; refs name its entries (T1, T2, ...)"
   },
   "relations": {
     "same": "both do it the same way",
@@ -22,6 +23,49 @@
     "diverges": "they point in different directions"
   },
   "rows": [
+    {
+      "id": "setup-adopt",
+      "stage": "Setup",
+      "step": "How much of the loop a project starts with, and in what order it grows",
+      "pb": "Adopt the plays in the order the dependency graph gives, which is not the stage order: start with any clay play (nothing points into it), and adopt any other play only after the plays whose arrows point into it. At first every step is prompted by hand; the end state is a loop in which each accepted artifact fires the next gate. For the design pass the ladder is by hand, then an organization slash command, then a job that fires on the merge. In Build, auto-accept becomes the default for routine work only as the guardrails from the later plays mature. The steps are modular, and organizations may choose to transform different stages at different times, based on their needs.",
+      "pbSrc": "p.7-8, p.13, p.17",
+      "fw": "/sdlc:sdlc-init installs the whole loop in one change-0000 PR: every phase command, hook and gate, the twelve sdlc-*.yml workflows and phase (f)'s detection and scans. The loop runs in CI once the owner adds the Claude secret and lets GitHub Actions open pull requests (sdlc-init §6); until the secret exists every phase run ends green as 'skipped' (the weekly scan fails instead) and each phase is run by hand as a slash command, all phases alike. No setting starts a project with a subset of the plays or adds them in order: the profile sets how many gates wait for the owner, the review mode whether a judgment item parks or goes to the panel, deploy.production only whether a release label is needed, and sdlc.yaml's paused flag stops every phase run at once, not a chosen few. The evals suite starts empty and fills from incidents (D17), and the detection has nothing to watch until the project has CI runs of its own; neither is an adoption step the owner orders. The p.8 order and the p.13 ladder were used to build the framework itself (build guide stages B0 to B5, step 43), not to adopt it in a project.",
+      "fwSrc": "plugin/commands/sdlc-init.md §3 and §6, plugin/init/sdlc_init.py WORKFLOW_FILES, template/.github/workflows/, plugin/ci/auth.py, plugin/ci/run_phase.py (guard), template/sdlc.yaml paused, docs/BUILD_GUIDE.md step 43",
+      "rel": "diverges",
+      "why": "No decision on how a project adopts the framework. Nearest: D1 hosted CI (the p.13 ladder was applied to building the framework: by hand in B1, CI from B3) · D19 phase adapters, so no project skips (e) or (f) · D17 evals start empty",
+      "weigh": "The article adopts the plays in the p.8 order and runs each step by hand before automating it (p.8, p.13); the framework starts a project at the end state. It has no staged start: the nearest is to hold back the Claude secret, which leaves every phase to be run by hand, all at once. For a new project, is the full loop from the first change what you want, or should the framework offer a staged start?",
+      "map": {
+        "pb": [
+          [
+            "P",
+            "w",
+            "Adopt the plays in the p.8 order"
+          ],
+          [
+            "P",
+            "w",
+            "Prompt each step by hand at first"
+          ]
+        ],
+        "fw": [
+          [
+            "P",
+            "w",
+            "Owner runs /sdlc-init once"
+          ],
+          [
+            "P",
+            "w",
+            "Owner adds the Claude secret"
+          ],
+          [
+            "A",
+            "w",
+            "Then each merge fires the next phase"
+          ]
+        ]
+      }
+    },
     {
       "id": "setup-home",
       "stage": "Setup",
@@ -63,6 +107,12 @@
             "Owner merges the 0000 PR"
           ]
         ]
+      },
+      "target": {
+        "refs": [
+          "T3"
+        ],
+        "text": "Ideas stay in changes/<id>-<slug>/, set up by /sdlc-init. Intents can be written from Claude Code or from claude.ai / phone; you accept by merging, after the role briefs (T1). The intent template: the plugin default, overridable per project (to verify), reviewed by a Product role and approved by you. The intent gets an Examples/References section."
       }
     },
     {
@@ -106,6 +156,12 @@
             "Owner adds the 'Restrict updates' ruleset"
           ]
         ]
+      },
+      "target": {
+        "refs": [
+          "T1"
+        ],
+        "text": "No new gates: (a), (b), (e) and (f) stay, with (c) and (d) in Full; sdlc.yaml's risk list, protected paths and production settings and today's enforcement stay (D6, D18 unchanged). At each gate you approve after the role briefs that gate names; a risk-list hit still parks, and the matching role's brief comes before your sdlc:accept-risk; your own edits to the gates themselves get a role's brief before you merge."
       }
     },
     {
@@ -144,6 +200,12 @@
             "Owner's merges are gates (a), (b), (e), (f)"
           ]
         ]
+      },
+      "target": {
+        "refs": [
+          "T1"
+        ],
+        "text": "You stay the only approver. The manager prepares a merge; you approve it from your account (a label or an approving review); a deterministic workflow, not a model, checks who approved and carries the merge out. sdlc-runbook.yml works this way today for the sdlc:go label, though it checks only that a person applied it, not that it was you. Would reopen or amend D4, D5, D13, D24. To verify: whether a ruleset lets a workflow merge for you, or a GitHub App is needed."
       }
     },
     {
@@ -187,6 +249,13 @@
             "Session writes intent.md, opens PR"
           ]
         ]
+      },
+      "target": {
+        "refs": [
+          "T2",
+          "T3"
+        ],
+        "text": "The manager leads the interview: each role proposes the questions of its field, the manager merges them and asks a few at a time, and after the draft each role reviews the intent (T2). An intent can also be written from claude.ai / phone (T3). Open: how an intent written in claude.ai gets its change id, which plugin/state allocates (T3)."
       }
     },
     {
@@ -253,6 +322,12 @@
             "Gate (a): owner merges or closes"
           ]
         ]
+      },
+      "target": {
+        "refs": [
+          "T1"
+        ],
+        "text": "Product and Architect briefs; the manager recommends accepting, or the points to fix first; you approve or send corrections. Gate (a) gains the most: today it has no reviewing agent."
       }
     },
     {
@@ -286,6 +361,12 @@
             "The merge fires sdlc-design.yml"
           ]
         ]
+      },
+      "target": {
+        "refs": [
+          "T2"
+        ],
+        "text": "Open: a second interview before the spec; if added, it would reopen or amend D1 and D2 (the spec and the plan are written unattended today)."
       }
     },
     {
@@ -342,6 +423,13 @@
             "(c) and (d) use mock/ when present"
           ]
         ]
+      },
+      "target": {
+        "refs": [
+          "T2",
+          "T3"
+        ],
+        "text": "An Examples/References section in the intent (T3); mock/ stays the slot for screens. Open: whether the roles read the examples (T2)."
       }
     },
     {
@@ -380,6 +468,12 @@
             "Deferred review: a panel decides"
           ]
         ]
+      },
+      "target": {
+        "refs": [
+          "T1"
+        ],
+        "text": "Flagged concerns get a brief from the role of their kind (for example Security & policy); the manager recommends; you decide. Touches D21 (who sits on the panel)."
       }
     },
     {
@@ -408,6 +502,12 @@
             "Gate (b): owner merges spec + plan"
           ]
         ]
+      },
+      "target": {
+        "refs": [
+          "T1"
+        ],
+        "text": "Product, Architect and Security & policy briefs; the manager gives two recommendations in the one PR, one for the spec and one for the plan; you approve both or reject one. Separate verdicts, not separate gates, so D2 can stay."
       }
     },
     {
@@ -446,6 +546,12 @@
             "Read-only planning pass writes plan.md"
           ]
         ]
+      },
+      "target": {
+        "refs": [
+          "T2"
+        ],
+        "text": "Open: a second interview before the plan, as the article's plan mode interviews the engineer (p.15-16); if added, it would reopen or amend D1 and D2."
       }
     },
     {
@@ -474,6 +580,12 @@
             "Approved with the spec at gate (b)"
           ]
         ]
+      },
+      "target": {
+        "refs": [
+          "T1"
+        ],
+        "text": "The plan gets its own verdict inside gate (b). A higher-risk plan gets the Architect's full review and a separate, closer approval, the article's tech-lead step; today non-routine only lowers the iteration cap (D11)."
       }
     },
     {
@@ -654,6 +766,12 @@
             "Owner changes them in a reviewed PR"
           ]
         ]
+      },
+      "target": {
+        "refs": [
+          "T1"
+        ],
+        "text": "Your own edits to CLAUDE.md, skills and sdlc.yaml have no reviewing check today; a role's brief before you merge would fill it."
       }
     },
     {
@@ -692,6 +810,12 @@
             "Owner may add project skills"
           ]
         ]
+      },
+      "target": {
+        "refs": [
+          "T1"
+        ],
+        "text": "Sources first: you write the policies each skill derives from (each skill says 'no owner source yet'). The skill sign-off is lost today: a role would write a brief on each skill change, and you approve it."
       }
     },
     {
@@ -730,6 +854,12 @@
             "On a hit: owner's sdlc:accept-risk"
           ]
         ]
+      },
+      "target": {
+        "refs": [
+          "T1"
+        ],
+        "text": "Stricter only for risk: a higher-risk plan gets the Architect's full review and a separate, closer approval at (b) (touches D11)."
       }
     },
     {
@@ -1059,6 +1189,12 @@
             "Gate (e): owner merges the build PR"
           ]
         ]
+      },
+      "target": {
+        "refs": [
+          "T1"
+        ],
+        "text": "Code reviewer (today's REVIEW.md pass) and Platform & release briefs; the manager recommends merge or request changes; you approve, and the merge runs on your signal."
       }
     },
     {
@@ -1153,6 +1289,12 @@
             "Release waits; the hook blocks"
           ]
         ]
+      },
+      "target": {
+        "refs": [
+          "T1"
+        ],
+        "text": "On a declared production, a Platform & release brief (the release checklist) before your release approval."
       }
     },
     {
@@ -1257,6 +1399,12 @@
             "Owner merges the dismissal PR"
           ]
         ]
+      },
+      "target": {
+        "refs": [
+          "T1"
+        ],
+        "text": "Operations brief (Security & policy for scans); the manager recommends fix now, schedule or dismiss; you triage."
       }
     },
     {
@@ -1366,6 +1514,12 @@
             "Owner triages each scan PR at gate (f)"
           ]
         ]
+      },
+      "target": {
+        "refs": [
+          "T1"
+        ],
+        "text": "A Security & policy brief on each scan finding; the manager recommends fix now, schedule or dismiss; you triage."
       }
     },
     {
@@ -1569,6 +1723,12 @@
             "Evidence in git, hook log"
           ]
         ]
+      },
+      "target": {
+        "refs": [
+          "T1"
+        ],
+        "text": "Role briefs (evidence/roles/) and the manager's recommendation (evidence/manager.md) are committed with the change; full transcripts are kept as workflow artifacts until they expire (GitHub's default is 90 days)."
       }
     },
     {
@@ -1597,7 +1757,37 @@
             "One owner holds every role"
           ]
         ]
+      },
+      "target": {
+        "refs": [
+          "T1"
+        ],
+        "text": "Six AI roles in a first cut to adjust (Product, Architect, Code reviewer, Security & policy, Platform & release, Operations) write briefs from their own sources; one manager reads them all and recommends; you stay the only approver. Open: which models, which sources, how many roles."
       }
     }
-  ]
+  ],
+  "targets": {
+    "source": "target-design.md",
+    "status": "tentative until the whole study is done",
+    "entries": [
+      {
+        "id": "T1",
+        "title": "AI roles that advise, and one manager that reviews for the owner",
+        "status": "tentative",
+        "recorded": "2026-09-30"
+      },
+      {
+        "id": "T2",
+        "title": "The interview: how the manager and the roles question the owner",
+        "status": "tentative",
+        "recorded": "2026-09-30"
+      },
+      {
+        "id": "T3",
+        "title": "The intent home: in the repository, written from anywhere, with examples",
+        "status": "tentative",
+        "recorded": "2026-09-30"
+      }
+    ]
+  }
 }
