@@ -6,8 +6,8 @@ The files next to this page, in `2026-09-28-playbook-vs-framework/`:
 
 | File | What it is |
 |---|---|
-| `crosswalk.json` | The 48 decision points as data: the article's version with its pages, the framework's with its files, the relation, the decision behind any difference, the question to weigh, and the map data (who does each step, and which steps are human decisions). This is the source of truth for the crosswalk. |
-| `crosswalk.html` | A snapshot of the crosswalk page (cards and a side-by-side map). Opened from the repository it is read-only; the owner's choices are saved only on the claude.ai page. |
+| `crosswalk.json` | The 48 decision points as data: the article's version with its pages, the framework's with its files, the relation, the decision behind any difference, the question to weigh, and the map data (who does each step, and which steps are human decisions); since 2026-09-30 also the owner's tentative target for the rows `target-design.md` touches (`target`, `targets`). This is the source of truth for the crosswalk. |
+| `crosswalk.html` | A snapshot of the crosswalk page (cards with a third "Target (tentative)" column, and a side-by-side map). Opened from the repository it is read-only; the owner's choices are saved only on the claude.ai page. |
 | `playbook-workflow.html` | A snapshot of the corrected page that draws the article's workflow. |
 | `framework-workflow.html` | A snapshot of the corrected page that draws this framework's workflow at 0.2.27. |
 | `target-design.md` | What the owner wants the framework to become, one entry per idea (T1, T2, …), tentative until the whole study is done; nothing in it changes the current version. |

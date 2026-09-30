@@ -8,6 +8,9 @@ Each entry: the owner's idea in the owner's words, the direction discussed so fa
 |---|---|---|---|
 | T1 | AI roles that advise, and one manager that reviews for the owner | tentative | 2026-09-30 |
 | T2 | The interview: how the manager and the roles question the owner | tentative | 2026-09-30 |
+| T3 | The intent home: in the repository, written from anywhere, with examples | tentative | 2026-09-30 |
+
+The crosswalk page (https://claude.ai/artifact/PFnRZ32pwTr4y422Gna2mz) shows each entry in a third column, "Target (tentative)", on the cards of the rows it touches; `crosswalk.json` carries the same condensed text in each row's `target` field, and the entries in `targets`.
 
 ## T1. AI roles that advise, and one manager that reviews for the owner
 
@@ -68,8 +71,8 @@ The roles keep no memory on purpose: each judges from the files alone (writer â‰
 
 | What | Where | How long |
 |---|---|---|
-| Briefs and the manager's recommendation (short, fixed format) | committed in `changes/<id>-<slug>/evidence/roles/` | for good: the record |
-| Full transcripts | a workflow artifact of the run that produced them; the brief names the run | until the artifact expires (GitHub's default retention is 90 days, set per repository); kept longer only by moving one into `evidence/` on purpose |
+| Briefs and the manager's recommendation (short, fixed format) | committed in `changes/<id>-<slug>/evidence/roles/` and `evidence/manager.md` | for good: the record |
+| Full transcripts | a workflow artifact of the run that produced them; the brief names the run | until the artifact expires (GitHub's default retention is 90 days, adjustable per repository, organization or upload); kept longer only by moving one into `evidence/` on purpose |
 
 The framework already keeps the hook log both ways: committed in `evidence/` and uploaded as a workflow artifact (crosswalk row x-audit).
 
@@ -106,4 +109,25 @@ The framework already keeps the hook log both ways: committed in `evidence/` and
 
 **Open.**
 - A second interview before the spec, or before the plan (the article's plan mode interviews the engineer, p.15-16).
-- A place in the intent for examples and references, and whether the roles read them.
+- A place in the intent for examples and references (T3 proposes a section), and whether the roles read them.
+
+## T3. The intent home: in the repository, written from anywhere, with examples
+
+**Status:** tentative. Recorded from the owner's choice on the crosswalk row setup-home (better: the framework; decision: blend).
+
+**The owner's note (saved on the crosswalk page).** "Blend: ideas stay in changes/<id>-<slug>/, set up by /sdlc-init (current). I write intents from Claude Code or from claude.ai / phone. I accept by merging, after a Product role's brief (T1). Template: the plugin default, overridable per project (to verify); a Product role reviews it and I approve (T1). The intent gets an Examples/References section (T2)."
+
+**Direction discussed (tentative).**
+- **Where:** as today, `changes/<id>-<slug>/` in the project repository: `/sdlc-init` sets up `changes/`, `/sdlc-plan` creates each folder through `plugin/state` (D8, D9, D10 unchanged; D10 chose this over the article's own advice for a single product, an `intent/` folder in the product repo, p.10).
+- **From anywhere:** an intent can also be written from claude.ai (on a computer or a phone), the article's route for contributors who are not engineers (p.10: claude.ai or Cowork, with a connector to the version-control system that lets Claude commit the file on their behalf).
+- **Accepted** by the owner's merge after the gate (a) briefs of T1 (Product, Architect).
+- **The template:** the plugin's `intent-template` by default, overridable per project; a Product role reviews a change to it and the owner approves (T1).
+- **Examples and references:** a section in the intent where the owner puts examples of what is wanted; `mock/` stays the slot for screens (T2 asks whether the roles read them). The `intent-template` skill fixes "exactly this shape", so the section is a change to the plugin's template, not only to one intent.
+
+**Crosswalk rows it touches:** setup-home, plan-idea, design-mock.
+
+**Settled decisions it would reopen or amend:** none known, provided the claude.ai route opens the intent PR on `sdlc/<id>/a` like `/sdlc-plan` and never commits to `main`: a claude.ai GitHub connector acts as the owner's account, the ruleset's only bypass actor (D4), so a direct commit would skip gate (a) (D10). The Product brief inherits T1's D11 question. To check when the plan-idea row is decided.
+
+**Open.**
+- Whether a project can override `intent-template` for `/sdlc-plan` (to verify); today only `/sdlc-design` documents a project override, for the five policy skills (`plugin/commands/sdlc-design.md`), `/sdlc-plan` names the plugin skill (`plugin/commands/sdlc-plan.md`), and gate (a) checks the plugin's `INTENT_SECTIONS` and header fields (`plugin/gate/artifacts.py`), so an override could add a section such as Examples/References but not drop or rename one.
+- How an intent written in claude.ai gets its change id and folder: the id is allocated by `plugin/state` and never invented (`plugin/skills/intent-template/SKILL.md`), which a claude.ai conversation cannot run.
