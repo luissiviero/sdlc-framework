@@ -1,9 +1,9 @@
 ---
-type: Proposal
+type: Study note
 title: Names in the framework against the playbook
 description: Every naming difference between the AI-native SDLC playbook and the framework, judged on the name alone, with the name each should carry and why.
-status: proposed
-roadmap: R4
+status: tentative
+target: T4 in target-design.md
 sources:
   - id: playbook
     resource: docs/reference/ai-native-sdlc-playbook.pdf
@@ -22,7 +22,7 @@ generated: { by: sdlc-framework-session/15, at: 2026-09-30T00:00:00Z }
 
 # Names in the framework against the playbook
 
-The owner asked why the framework keeps changes in `changes/<id>-<slug>/` when the article says `intent/`, then asked for every other naming difference, and then for a verdict on each name judged on its merit alone: which side names the thing better, regardless of whether a decision approved it, and a third name where neither is good. This file records that verdict and the reasoning behind each row. Nothing here is implemented, and no decision is reopened by this file: a row the owner accepts becomes a framework change through `changes/<id>-<slug>/intent.md` (`docs/ROADMAP.md`, "Candidates").
+The owner asked why the framework keeps changes in `changes/<id>-<slug>/` when the article says `intent/`, then asked for every other naming difference, and then for a verdict on each name judged on its merit alone: which side names the thing better, regardless of whether a decision approved it, and a third name where neither is good. This file records that verdict and the reasoning behind each row. It is part of the playbook-versus-framework study and follows the study's rule (`../2026-09-28-playbook-vs-framework.md` §7): its summary is entry T4 of `target-design.md`, tentative until the whole study is done. Nothing here is implemented and no decision is reopened; after the study, a row the owner confirms becomes a proposal under `docs/proposals/` and a candidate row in `docs/ROADMAP.md`, like every confirmed entry of `target-design.md`.
 
 ## How the verdict was reached
 
@@ -83,4 +83,4 @@ The rows that matter most are 3 and 4 together: name each phase after what it pr
 - **Timing.** Every rename also has to reach each project already on the framework: today the sample project, with six change folders and its open PRs' labels. The next project (`webapp-example`, not yet initialised) is the last point at which there is only one project to migrate.
 - **Compatibility.** A renamed config value (rows 17, 22, 23) should read the old value as the new one for a release, as `profile: lite` was read as `standard` after decision 21, so a project's `sdlc.yaml` keeps working until its owner edits it. A renamed label (rows 3, 16) needs the digest and every workflow guard to accept both names until the open PRs close.
 - **Guardrail files.** `CLAUDE.md`, `REVIEW.md`, `sdlc.yaml` and `.claude/**` in each project are the owner's edit; a change that renames something they mention lists the exact lines for the owner instead of editing them.
-- **The crosswalk.** `crosswalk.json` has no row for names; an accepted row here is recorded as a note on the crosswalk row of the same step (for example row 16 on maintain-triage), not as a new row.
+- **The crosswalk.** `crosswalk.json` has no row for names and gets none; a confirmed row here is carried into the `target` of the crosswalk row of the same step (for example row 16 into maintain-triage), with the independent review the study requires for any change to `crosswalk.json`.

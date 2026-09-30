@@ -9,6 +9,7 @@ Each entry: the owner's idea in the owner's words, the direction discussed so fa
 | T1 | AI roles that advise, and one manager that reviews for the owner | tentative | 2026-09-30 |
 | T2 | The interview: how the manager and the roles question the owner | tentative | 2026-09-30 |
 | T3 | The intent home: in the repository, written from anywhere, with examples | tentative | 2026-09-30 |
+| T4 | Names: the phases named after what they produce, and the other names judged against the article | tentative | 2026-09-30 |
 
 The crosswalk page (https://claude.ai/artifact/PFnRZ32pwTr4y422Gna2mz) shows each entry in a third column, "Target (tentative)", on the cards of the rows it touches; `crosswalk.json` carries the same condensed text in each row's `target` field, and the entries in `targets`.
 
@@ -135,3 +136,23 @@ The framework already keeps the hook log both ways: committed in `evidence/` and
 **Open.**
 - Whether a project can override `intent-template` for `/sdlc-plan` (to verify); today only `/sdlc-design` documents a project override, for the five policy skills (`plugin/commands/sdlc-design.md`), `/sdlc-plan` names the plugin skill (`plugin/commands/sdlc-plan.md`), and gate (a) checks the plugin's `INTENT_SECTIONS` and header fields (`plugin/gate/artifacts.py`), so an override could add a section such as Examples/References but not drop or rename one.
 - How an intent written in claude.ai gets its change id and folder: the id is allocated by `plugin/state` and never invented (`plugin/skills/intent-template/SKILL.md`), which a claude.ai conversation cannot run.
+
+## T4. Names: the phases named after what they produce, and the other names judged against the article
+
+**Status:** tentative. Recorded from the owner's questions of 2026-09-30: why `changes/` and not the article's `intent/`, which other names differ, and which name is better in each case, judged on the name alone, whatever decision approved it. The full table, 23 rows with the reason for each, is `naming.md` beside this page.
+
+**The owner's rule for this entry.** A name that confuses is not kept because renaming costs something: either one side's name is better, or a third name is needed. Cost and the decisions behind the current names are listed apart, for the owner to weigh after the study.
+
+**Direction discussed (tentative).**
+- **Keep the framework's name** where it says more than the article's: `changes/<id>-<slug>/` (a folder of five kinds of file, not only the intent; T3 keeps it too), "planning run" rather than "plan mode" (the run is not the interactive feature), "park" (the article's "escalate" suggests paging, which D11 rules out; the adversarial reviewer's verdict becomes `park` so one event has one word), `security-baseline`, the spec sections.
+- **Take the article's name** for the people who decide (product owner, code owner, release manager at each decision point, one person holding every role today) and for the triage queue ("findings", labels `sdlc:triage` and `sdlc:schedule`: a weekly scan result is not an incident, and those two labels are the only ones without the `sdlc:` prefix).
+- **A third name where neither is good.** The main one: name each phase after what it produces or does — `intent`, `design`, `build`, `test`, `deploy`, `maintain` — in branches, labels and `status.yaml`, instead of the letters (a)–(f). This ends the clash in which `/sdlc-plan` writes `intent.md` while `plan.md` comes out of `/sdlc-design`; the clash starts in the article, whose "Plan" stage does not produce `plan.md` either, and its own dependency graph names the play "Capture intent" (p.8). The others: no `Status:` line in `intent.md` (it stays at `draft` after the merge; `status.yaml` is the one status), `sdlc-agent-evals.yml`, `authorization: allow | ask` for runbooks (the article's hook verbs, p.36), `deploy.production_gate`, `ux-and-brand`, and a profile name that says what `full` means.
+
+**Crosswalk rows it touches:** setup-home, plan-idea, build-plan, build-skills, test-evals, maintain-triage, maintain-scan, maintain-act, deploy-release, x-roles.
+
+**Settled decisions it would reopen or amend:** none in what the framework does; the names chosen in D3 (labels), D10 (branches), D11 (the verdict's word), D13 and D19 (the production switch), D14 and D26 (runbook authorization values), D18 (profile names) and D25 (the triage labels) would change. D2 stays: `plan.md` is still written in the design phase and approved with the spec.
+
+**Open.**
+- T1's advising roles and the owner's roles: if the owner's decisions are named by the article's roles (product owner, code owner, release manager), T1's AI roles need names that cannot be read as those people — T1 already writes "security brief", never "security lead: approved"; the role names themselves (Product, Architect, …) are to be checked against this.
+- T2 and T3 name `/sdlc-plan`; under this entry it becomes `/sdlc-intent`.
+- When: every rename also has to reach each project on the framework (today the sample project); the next project, `webapp-example`, is the last point with only one project to migrate. The order and the compatibility rules are in `naming.md`, "If a row is accepted".

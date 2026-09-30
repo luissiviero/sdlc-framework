@@ -11,6 +11,7 @@ The files next to this page, in `2026-09-28-playbook-vs-framework/`:
 | `playbook-workflow.html` | A snapshot of the corrected page that draws the article's workflow. |
 | `framework-workflow.html` | A snapshot of the corrected page that draws this framework's workflow at 0.2.27. |
 | `target-design.md` | What the owner wants the framework to become, one entry per idea (T1, T2, …), tentative until the whole study is done; nothing in it changes the current version. |
+| `naming.md` | Every naming difference between the article and the framework, 23 rows, each judged on the name alone with its reason; summarized as T4 in `target-design.md`. |
 | `evidence-article.md`, `evidence-framework.md`, `evidence-source.md` | The verified findings behind sections 3 and 4: each finding with its page and quote, or its file and line, and the findings that were refuted. |
 
 The live pages, private to the owner: the playbook page (https://claude.ai/artifact/WhLTjcSzJqQmUFm3aP5G6L), the framework page (https://claude.ai/artifact/KW8jWunfLNa9WgBSzJxw4S) and the crosswalk (https://claude.ai/artifact/PFnRZ32pwTr4y422Gna2mz).
