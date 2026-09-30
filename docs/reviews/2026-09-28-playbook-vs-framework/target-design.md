@@ -55,7 +55,25 @@ Each entry: the owner's idea in the owner's words, the direction discussed so fa
 - Gate (a) gains the most: today it has no reviewing agent.
 - Settled decisions: D2 only if separate gates are wanted; D11 (what non-routine does); D18 (profiles); and the set above for acting in the owner's name.
 
-**Crosswalk rows it touches:** x-roles, plan-accept, design-concerns, design-go, build-plan-approve, build-config, build-skills, build-risk, deploy-approve, deploy-release, maintain-triage, maintain-scan, setup-merge.
+**How the roles and the manager communicate (tentative).** A sub-agent hands back only its final message; what it read and weighed is lost when it ends, and a CI runner is thrown away (the stored run result holds the final message and metadata, not the conversation, issue #72). So the roles and the manager talk through files, as the panel already does ("Each member writes exactly one file under `changes/<id>-<slug>/evidence/panel/`", `plugin/panel/prompts.py`) and as the adversarial reviewer's JSON verdict does for the gate:
+
+1. Round 1: each role runs in a fresh context, blind to the others, reads the change's files and its own sources, and writes `evidence/roles/<role>-r1.md` in a fixed shape: verdict, reasons with sources, questions for the owner, what it could not check.
+2. The manager reads every brief and writes `evidence/manager.md`: its recommendation, where the roles agree or disagree, and a link to each brief.
+3. Round 2, only on a disagreement: the manager starts the roles concerned again with the other brief as input; they write `-r2.md`. A new run, not a continued chat.
+4. Everything is committed with the change, so the exchange can be read months later.
+
+The roles keep no memory on purpose: each judges from the files alone (writer ≠ judge); a role that carried the manager's conversation would drift toward the manager's view. What is lost is a role's reasoning between reading and writing, which is why the brief must give its reasons with sources.
+
+**Full conversations: two tiers.** Useful now and then (a wrong recommendation to debug, a role card to tune), rarely read otherwise, and too large and too exposed to commit (a transcript holds every file the run read).
+
+| What | Where | How long |
+|---|---|---|
+| Briefs and the manager's recommendation (short, fixed format) | committed in `changes/<id>-<slug>/evidence/roles/` | for good: the record |
+| Full transcripts | a workflow artifact of the run that produced them; the brief names the run | until the artifact expires (GitHub's default retention is 90 days, set per repository); kept longer only by moving one into `evidence/` on purpose |
+
+The framework already keeps the hook log both ways: committed in `evidence/` and uploaded as a workflow artifact (crosswalk row x-audit).
+
+**Crosswalk rows it touches:** x-roles, x-audit, plan-accept, design-concerns, design-go, build-plan-approve, build-config, build-skills, build-risk, deploy-approve, deploy-release, maintain-triage, maintain-scan, setup-merge.
 
 **Settled decisions it would reopen or amend:**
 - D4 (only the owner merges), D5 (the automation identity), D13 (gate (e) is the merge) and D24 (the owner's labels), for the manager acting in the owner's name;
