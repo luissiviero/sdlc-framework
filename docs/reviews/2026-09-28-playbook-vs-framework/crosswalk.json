@@ -1,5 +1,5 @@
 {
-  "about": "The workflow crosswalk: every decision point of the AI-native SDLC playbook (the article, print pages of docs/reference/ai-native-sdlc-playbook.pdf) set against the sdlc framework (plugin 0.2.27, commit cf3f696). See ../2026-09-28-playbook-vs-framework.md.",
+  "about": "The workflow crosswalk: every decision point of the AI-native SDLC playbook (the article, print pages of docs/reference/ai-native-sdlc-playbook.pdf) set against the sdlc framework (plugin 0.2.27, commit cf3f696); the row setup-adopt was added on 2026-09-30 against plugin 0.2.28, commit dd308ca. See ../2026-09-28-playbook-vs-framework.md.",
   "seeded": "2026-09-28",
   "fields": {
     "id": "stable row id",
@@ -22,6 +22,49 @@
     "diverges": "they point in different directions"
   },
   "rows": [
+    {
+      "id": "setup-adopt",
+      "stage": "Setup",
+      "step": "How much of the loop a project starts with, and in what order it grows",
+      "pb": "Adopt the plays in the order the dependency graph gives, which is not the stage order: start with any clay play (nothing points into it), and adopt any other play only after the plays whose arrows point into it. At first every step is prompted by hand; the end state is a loop in which each accepted artifact fires the next gate. For the design pass the ladder is by hand, then an organization slash command, then a job that fires on the merge. In Build, auto-accept becomes the default for routine work only as the guardrails from the later plays mature. The steps are modular, and organizations may choose to transform different stages at different times, based on their needs.",
+      "pbSrc": "p.7-8, p.13, p.17",
+      "fw": "/sdlc:sdlc-init installs the whole loop in one change-0000 PR: every phase command, hook and gate, the twelve sdlc-*.yml workflows and phase (f)'s detection and scans. The loop runs in CI once the owner adds the Claude secret and lets GitHub Actions open pull requests (sdlc-init §6); until the secret exists every phase run ends green as 'skipped' (the weekly scan fails instead) and each phase is run by hand as a slash command, all phases alike. No setting starts a project with a subset of the plays or adds them in order: the profile sets how many gates wait for the owner, the review mode whether a judgment item parks or goes to the panel, deploy.production only whether a release label is needed, and sdlc.yaml's paused flag stops every phase run at once, not a chosen few. The evals suite starts empty and fills from incidents (D17), and the detection has nothing to watch until the project has CI runs of its own; neither is an adoption step the owner orders. The p.8 order and the p.13 ladder were used to build the framework itself (build guide stages B0 to B5, step 43), not to adopt it in a project.",
+      "fwSrc": "plugin/commands/sdlc-init.md §3 and §6, plugin/init/sdlc_init.py WORKFLOW_FILES, template/.github/workflows/, plugin/ci/auth.py, plugin/ci/run_phase.py (guard), template/sdlc.yaml paused, docs/BUILD_GUIDE.md step 43",
+      "rel": "diverges",
+      "why": "No decision on how a project adopts the framework. Nearest: D1 hosted CI (the p.13 ladder was applied to building the framework: by hand in B1, CI from B3) · D19 phase adapters, so no project skips (e) or (f) · D17 evals start empty",
+      "weigh": "The article adopts the plays in the p.8 order and runs each step by hand before automating it (p.8, p.13); the framework starts a project at the end state. It has no staged start: the nearest is to hold back the Claude secret, which leaves every phase to be run by hand, all at once. For a new project, is the full loop from the first change what you want, or should the framework offer a staged start?",
+      "map": {
+        "pb": [
+          [
+            "P",
+            "w",
+            "Adopt the plays in the p.8 order"
+          ],
+          [
+            "P",
+            "w",
+            "Prompt each step by hand at first"
+          ]
+        ],
+        "fw": [
+          [
+            "P",
+            "w",
+            "Owner runs /sdlc-init once"
+          ],
+          [
+            "P",
+            "w",
+            "Owner adds the Claude secret"
+          ],
+          [
+            "A",
+            "w",
+            "Then each merge fires the next phase"
+          ]
+        ]
+      }
+    },
     {
       "id": "setup-home",
       "stage": "Setup",

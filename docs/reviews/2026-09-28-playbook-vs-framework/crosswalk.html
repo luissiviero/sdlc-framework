@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<!-- Snapshot of https://claude.ai/artifact/PFnRZ32pwTr4y422Gna2mz as published on 2026-09-28 (private to the owner; the live page may be newer). Opened from the repository, the page is read-only: saving choices needs the claude.ai page. -->
+<!-- Snapshot of https://claude.ai/artifact/PFnRZ32pwTr4y422Gna2mz as published on 2026-09-30, with the adoption-order row (private to the owner; the live page may be newer). Opened from the repository, the page is read-only: saving choices needs the claude.ai page. -->
 <style>body{margin:0}</style>
 </head>
 <body>
@@ -325,6 +325,13 @@
 
   // One row per decision point. pb/pbSrc = the article (print pages); fw/fwSrc = the framework.
   var ROWS = [
+    { id: "setup-adopt", stage: "Setup", step: "How much of the loop a project starts with, and in what order it grows",
+      pb: "Adopt the plays in the order the dependency graph gives, which is not the stage order: start with any clay play (nothing points into it), and adopt any other play only after the plays whose arrows point into it. At first every step is prompted by hand; the end state is a loop in which each accepted artifact fires the next gate. For the design pass the ladder is by hand, then an organization slash command, then a job that fires on the merge. In Build, auto-accept becomes the default for routine work only as the guardrails from the later plays mature. The steps are modular, and organizations may choose to transform different stages at different times, based on their needs.",
+      pbSrc: "p.7-8, p.13, p.17",
+      fw: "/sdlc:sdlc-init installs the whole loop in one change-0000 PR: every phase command, hook and gate, the twelve sdlc-*.yml workflows and phase (f)'s detection and scans. The loop runs in CI once the owner adds the Claude secret and lets GitHub Actions open pull requests (sdlc-init §6); until the secret exists every phase run ends green as 'skipped' (the weekly scan fails instead) and each phase is run by hand as a slash command, all phases alike. No setting starts a project with a subset of the plays or adds them in order: the profile sets how many gates wait for the owner, the review mode whether a judgment item parks or goes to the panel, deploy.production only whether a release label is needed, and sdlc.yaml's paused flag stops every phase run at once, not a chosen few. The evals suite starts empty and fills from incidents (D17), and the detection has nothing to watch until the project has CI runs of its own; neither is an adoption step the owner orders. The p.8 order and the p.13 ladder were used to build the framework itself (build guide stages B0 to B5, step 43), not to adopt it in a project.",
+      fwSrc: "plugin/commands/sdlc-init.md §3 and §6, plugin/init/sdlc_init.py WORKFLOW_FILES, template/.github/workflows/, plugin/ci/auth.py, plugin/ci/run_phase.py (guard), template/sdlc.yaml paused, docs/BUILD_GUIDE.md step 43",
+      rel: "diverges", why: "No decision on how a project adopts the framework. Nearest: D1 hosted CI (the p.13 ladder was applied to building the framework: by hand in B1, CI from B3) · D19 phase adapters, so no project skips (e) or (f) · D17 evals start empty",
+      weigh: "The article adopts the plays in the p.8 order and runs each step by hand before automating it (p.8, p.13); the framework starts a project at the end state. It has no staged start: the nearest is to hold back the Claude secret, which leaves every phase to be run by hand, all at once. For a new project, is the full loop from the first change what you want, or should the framework offer a staged start?" },
     { id: "setup-home", stage: "Setup", step: "Where intents live and who sets it up",
       pb: "A one-time task for the platform or engineering team: a technical team member stands up the intent home and decides who can write to it; the template skill is set up by a technical team member and signed off by a lead.",
       pbSrc: "p.10-11",
@@ -911,6 +918,8 @@
   // (hooks, CI jobs, scripts). Kinds: d = a human decision every change needs (Setup: once per project),
   // c = a human decision only in some cases, w = work, r = the same act as another row (not counted).
   var MAP = {
+    "setup-adopt": { pb: [["P", "w", "Adopt the plays in the p.8 order"], ["P", "w", "Prompt each step by hand at first"]],
+      fw: [["P", "w", "Owner runs /sdlc-init once"], ["P", "w", "Owner adds the Claude secret"], ["A", "w", "Then each merge fires the next phase"]] },
     "setup-home": { pb: [["P", "w", "Technical team member stands up the intent home"], ["P", "d", "A lead signs off the template skill"]],
       fw: [["P", "w", "Owner runs /sdlc-init"], ["C", "w", "/sdlc-init writes the change-0000 PR"], ["P", "d", "Owner merges the 0000 PR"]] },
     "setup-gates": { pb: [["P", "d", "Leadership lists the gates that must survive"], ["P", "w", "Platform engineer writes each as a hook"]],
