@@ -10,6 +10,7 @@ The files next to this page, in `2026-09-28-playbook-vs-framework/`:
 | `crosswalk.html` | A snapshot of the crosswalk page (cards and a side-by-side map). Opened from the repository it is read-only; the owner's choices are saved only on the claude.ai page. |
 | `playbook-workflow.html` | A snapshot of the corrected page that draws the article's workflow. |
 | `framework-workflow.html` | A snapshot of the corrected page that draws this framework's workflow at 0.2.27. |
+| `target-design.md` | What the owner wants the framework to become, one entry per idea (T1, T2, …), tentative until the whole study is done; nothing in it changes the current version. |
 | `evidence-article.md`, `evidence-framework.md`, `evidence-source.md` | The verified findings behind sections 3 and 4: each finding with its page and quote, or its file and line, and the findings that were refuted. |
 
 The live pages, private to the owner: the playbook page (https://claude.ai/artifact/WhLTjcSzJqQmUFm3aP5G6L), the framework page (https://claude.ai/artifact/KW8jWunfLNa9WgBSzJxw4S) and the crosswalk (https://claude.ai/artifact/PFnRZ32pwTr4y422Gna2mz).
@@ -103,7 +104,7 @@ Two rows ask a question that reopens a settled decision, and say so: "What start
 ## 7. Open
 
 - **The owner's decisions.** None of the 48 rows is decided yet (on 2026-09-28 the crosswalk held no choices and no criteria weights). For each row the owner marks which workflow is better and what to do: keep the framework's, adopt the playbook's, blend, change both, or park for later. "Copy decisions as Markdown" on the crosswalk page exports them.
-- **Where the decisions go.** A decision that changes the framework becomes a candidate in `docs/ROADMAP.md` with its proposal; one that changes a settled decision is proposed there, never edited into `docs/DECISIONS.md` directly. The table in section 6 and `crosswalk.json` are updated in the same pull request as any change that moves a row.
+- **Where the decisions go.** The owner confirms changes only once the whole study is done (2026-09-30). Until then every change the owner wants is collected, tentative, in `target-design.md`, and nothing goes to `docs/ROADMAP.md`. After the study, a confirmed change to the framework becomes a candidate in `docs/ROADMAP.md` with its proposal; one that changes a settled decision is proposed there, never edited into `docs/DECISIONS.md` directly. The table in section 6 and `crosswalk.json` are updated in the same pull request as any change that moves a row.
 - **The two issues found by the crosswalk** (#71, #72) and the three found by the audit (#66, #67, #68) are open.
 - **The designv2 PDF** is unread; if it becomes the reference, the page numbers in the three pages and in `crosswalk.json` need a check.
 
