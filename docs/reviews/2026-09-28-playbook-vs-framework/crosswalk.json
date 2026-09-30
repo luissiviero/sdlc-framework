@@ -156,6 +156,12 @@
             "Owner adds the 'Restrict updates' ruleset"
           ]
         ]
+      },
+      "target": {
+        "refs": [
+          "T1"
+        ],
+        "text": "No new gates: (a), (b), (e) and (f) stay, with (c) and (d) in Full; sdlc.yaml's risk list, protected paths and production settings and today's enforcement stay (D6, D18 unchanged). At each gate you approve after the role briefs that gate names; a risk-list hit still parks, and the matching role's brief comes before your sdlc:accept-risk; your own edits to the gates themselves get a role's brief before you merge."
       }
     },
     {

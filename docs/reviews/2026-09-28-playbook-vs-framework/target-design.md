@@ -76,7 +76,9 @@ The roles keep no memory on purpose: each judges from the files alone (writer â‰
 
 The framework already keeps the hook log both ways: committed in `evidence/` and uploaded as a workflow artifact (crosswalk row x-audit).
 
-**Crosswalk rows it touches:** x-roles, x-audit, plan-accept, design-concerns, design-go, build-plan-approve, build-config, build-skills, build-risk, deploy-approve, deploy-release, maintain-triage, maintain-scan, setup-merge.
+**Gates (tentative, from the owner's setup-gates choice).** No new gates: (a), (b), (e) and (f) stay, with (c) and (d) in the Full profile; the project items stay in `sdlc.yaml` (risk list, protected paths, production settings) and the enforcement stays as today (D6, D18 unchanged). What changes is what reaches the owner: at each gate the owner approves after the role briefs that gate names (the approvals table above); a risk-list hit still parks, and the matching role's brief comes before the owner's `sdlc:accept-risk`; the owner's own edits to the gates themselves get a role's brief before the owner merges them.
+
+**Crosswalk rows it touches:** x-roles, x-audit, setup-gates, plan-accept, design-concerns, design-go, build-plan-approve, build-config, build-skills, build-risk, deploy-approve, deploy-release, maintain-triage, maintain-scan, setup-merge.
 
 **Settled decisions it would reopen or amend:**
 - D4 (only the owner merges), D5 (the automation identity), D13 (gate (e) is the merge) and D24 (the owner's labels), for the manager acting in the owner's name;
