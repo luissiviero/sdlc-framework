@@ -90,6 +90,8 @@ The framework already keeps the hook log both ways: committed in `evidence/` and
 - Which documentation each role reads: the five policy skills each say "no owner source yet" (`plugin/skills/*/SKILL.md`).
 - How many roles after merging.
 - To verify: whether a GitHub ruleset can let a workflow merge on the owner's behalf, or whether that needs a dedicated GitHub App.
+- The approval check must confirm the signal came from the owner, not just from a person: today `sdlc-runbook.yml` checks only that a person, not a bot or the workflow token, applied `sdlc:go` (`plugin/detect/cli.py` `_human_label_actor`); from the owner's setup-merge choice.
+- The record of a delegated merge: the merge commit, the owner's approval signal and the manager's recommendation in `evidence/` (setup-merge); with the owner's *Exempt* bypass GitHub writes no bypass audit entry for the owner's own merges.
 - Whether a role brief is advice only, or whether a missing or negative brief parks the change.
 
 ## T2. The interview: how the manager and the roles question the owner
