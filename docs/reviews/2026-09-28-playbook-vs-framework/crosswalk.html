@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<!-- Snapshot of https://claude.ai/artifact/PFnRZ32pwTr4y422Gna2mz as published on 2026-09-28 (private to the owner; the live page may be newer). Opened from the repository, the page is read-only: saving choices needs the claude.ai page. -->
+<!-- Snapshot of https://claude.ai/artifact/PFnRZ32pwTr4y422Gna2mz as published on 2026-09-30, with the target column (private to the owner; the live page may be newer). Opened from the repository, the page is read-only: saving choices needs the claude.ai page. -->
 <style>body{margin:0}</style>
 </head>
 <body>
@@ -152,6 +152,18 @@
   .side.pb .who { color: var(--pb); } .side.fw .who { color: var(--fw); }
   .side p { font-size: 14px; }
   .side .src { font: 12px var(--font-mono); color: var(--muted); overflow-wrap: anywhere; }
+  .pair.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  @media (max-width: 980px) { .pair.three { grid-template-columns: minmax(0, 1fr); } .pair.three .side + .side { border-left: 0 !important; border-top: 1px solid var(--line); } }
+  .side.tg { background: linear-gradient(to right, var(--owner-soft), transparent 70%); border-left: 1px solid var(--line); }
+  .side.tg .who { color: var(--owner); }
+  .side.tg.none p { color: var(--muted); font-style: italic; }
+  .chip.tgt { color: var(--owner); border-color: currentColor; }
+  .tlist { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+  .tlist li { display: grid; gap: 4px; }
+  .tlist b { font-weight: 600; }
+  .tlist .rowlinks { display: flex; flex-wrap: wrap; gap: 4px 6px; }
+  .linkbtn { font: 12px var(--font-mono); background: none; border: 0; padding: 0; color: var(--owner); text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
+  .mid .knot .tg { font: 500 10px var(--font-mono); letter-spacing: 0.04em; color: var(--owner); }
   .why { padding: 8px 16px; border-top: 1px dashed var(--line); display: grid; gap: 4px; font-size: 13px; }
   .why b { font-weight: 600; }
   .verdict { padding: 10px 16px 14px; border-top: 1px solid var(--line); background: var(--owner-soft); border-radius: 0 0 10px 10px; display: grid; gap: 8px; }
@@ -257,6 +269,12 @@
     </section>
   </div>
 
+  <section class="panel" aria-labelledby="tgt-h">
+    <h2 id="tgt-h">3. Your target design (tentative)</h2>
+    <p class="note">What you want the framework to become, collected as the study goes, in <code>docs/reviews/2026-09-28-playbook-vs-framework/target-design.md</code>. Nothing is confirmed until the whole study is done. Each card shows the entry for its step in a third column, "Target (tentative)".</p>
+    <ul class="tlist" id="tlist"></ul>
+  </section>
+
   <div class="tabs" role="tablist" aria-label="View">
     <button type="button" role="tab" id="tab-cards" aria-controls="rows" aria-selected="true">Cards: decide each step</button>
     <button type="button" role="tab" id="tab-map" aria-controls="mapview" aria-selected="false">Map: both workflows side by side</button>
@@ -270,6 +288,7 @@
       <option value="open">Undecided only</option>
       <option value="done">Decided only</option>
       <option value="nodecision">No decision behind the difference</option>
+      <option value="target">Rows with a target</option>
     </select></label>
     <span class="spacer"></span>
     <span class="note" id="shown"></span>
@@ -325,6 +344,13 @@
 
   // One row per decision point. pb/pbSrc = the article (print pages); fw/fwSrc = the framework.
   var ROWS = [
+    { id: "setup-adopt", stage: "Setup", step: "How much of the loop a project starts with, and in what order it grows",
+      pb: "Adopt the plays in the order the dependency graph gives, which is not the stage order: start with any clay play (nothing points into it), and adopt any other play only after the plays whose arrows point into it. At first every step is prompted by hand; the end state is a loop in which each accepted artifact fires the next gate. For the design pass the ladder is by hand, then an organization slash command, then a job that fires on the merge. In Build, auto-accept becomes the default for routine work only as the guardrails from the later plays mature. The steps are modular, and organizations may choose to transform different stages at different times, based on their needs.",
+      pbSrc: "p.7-8, p.13, p.17",
+      fw: "/sdlc:sdlc-init installs the whole loop in one change-0000 PR: every phase command, hook and gate, the twelve sdlc-*.yml workflows and phase (f)'s detection and scans. The loop runs in CI once the owner adds the Claude secret and lets GitHub Actions open pull requests (sdlc-init §6); until the secret exists every phase run ends green as 'skipped' (the weekly scan fails instead) and each phase is run by hand as a slash command, all phases alike. No setting starts a project with a subset of the plays or adds them in order: the profile sets how many gates wait for the owner, the review mode whether a judgment item parks or goes to the panel, deploy.production only whether a release label is needed, and sdlc.yaml's paused flag stops every phase run at once, not a chosen few. The evals suite starts empty and fills from incidents (D17), and the detection has nothing to watch until the project has CI runs of its own; neither is an adoption step the owner orders. The p.8 order and the p.13 ladder were used to build the framework itself (build guide stages B0 to B5, step 43), not to adopt it in a project.",
+      fwSrc: "plugin/commands/sdlc-init.md §3 and §6, plugin/init/sdlc_init.py WORKFLOW_FILES, template/.github/workflows/, plugin/ci/auth.py, plugin/ci/run_phase.py (guard), template/sdlc.yaml paused, docs/BUILD_GUIDE.md step 43",
+      rel: "diverges", why: "No decision on how a project adopts the framework. Nearest: D1 hosted CI (the p.13 ladder was applied to building the framework: by hand in B1, CI from B3) · D19 phase adapters, so no project skips (e) or (f) · D17 evals start empty",
+      weigh: "The article adopts the plays in the p.8 order and runs each step by hand before automating it (p.8, p.13); the framework starts a project at the end state. It has no staged start: the nearest is to hold back the Claude secret, which leaves every phase to be run by hand, all at once. For a new project, is the full loop from the first change what you want, or should the framework offer a staged start?" },
     { id: "setup-home", stage: "Setup", step: "Where intents live and who sets it up",
       pb: "A one-time task for the platform or engineering team: a technical team member stands up the intent home and decides who can write to it; the template skill is set up by a technical team member and signed off by a lead.",
       pbSrc: "p.10-11",
@@ -805,21 +831,29 @@
       [count("better", "playbook"), "playbook better"],
       [count("better", "framework"), "framework better"],
       [count("decision", "adopt") + count("decision", "blend") + count("decision", "change"), "changes planned"],
-      [nodec, "differences with no decision"]
+      [nodec, "differences with no decision"],
+      [Object.keys(TARGET.rows).length, "rows with a target"]
     ].forEach(function (p) { t.appendChild(el("div", { cls: "tile" }, [el("b", { text: String(p[0]) }), el("span", { text: p[1] })])); });
   }
 
   // ---- rows ----
   function rowCard(r) {
     var c = choices[r.id] || {};
+    var t = TARGET.rows[r.id];
     var head = el("div", { cls: "row-head" }, [
       el("h3", { text: r.step }),
       el("span", { cls: "chip " + r.rel, text: r.rel }),
+      t ? el("span", { cls: "chip tgt", text: "target " + t.refs.join(" ") }) : null,
       isDecided(r.id) ? el("span", { cls: "chip done", text: "decided" }) : null
     ]);
-    var pair = el("div", { cls: "pair" }, [
+    var pair = el("div", { cls: "pair three" }, [
       el("div", { cls: "side pb" }, [el("span", { cls: "who", text: "Playbook" }), el("p", { text: r.pb }), el("span", { cls: "src", text: r.pbSrc })]),
-      el("div", { cls: "side fw" }, [el("span", { cls: "who", text: "Framework" }), el("p", { text: r.fw }), el("span", { cls: "src", text: r.fwSrc })])
+      el("div", { cls: "side fw" }, [el("span", { cls: "who", text: "Framework" }), el("p", { text: r.fw }), el("span", { cls: "src", text: r.fwSrc })]),
+      el("div", { cls: "side tg" + (t ? "" : " none") }, [
+        el("span", { cls: "who", text: "Target (tentative)" }),
+        el("p", { text: t ? t.text : "No target recorded for this step yet." }),
+        t ? el("span", { cls: "src", text: t.refs.join(", ") + " · target-design.md" }) : null
+      ])
     ]);
     var why = el("div", { cls: "why" }, [
       el("span", null, [el("b", { text: "Why different: " }), document.createTextNode(r.why || (r.rel === "same" ? "They match." : "No decision"))]),
@@ -879,6 +913,7 @@
       if (st === "open" && isDecided(r.id)) return false;
       if (st === "done" && !isDecided(r.id)) return false;
       if (st === "nodecision" && !(/no decision|no dn/i.test(r.why) && r.rel !== "same")) return false;
+      if (st === "target" && !TARGET.rows[r.id]) return false;
       return true;
     });
     currentList = list;
@@ -911,6 +946,8 @@
   // (hooks, CI jobs, scripts). Kinds: d = a human decision every change needs (Setup: once per project),
   // c = a human decision only in some cases, w = work, r = the same act as another row (not counted).
   var MAP = {
+    "setup-adopt": { pb: [["P", "w", "Adopt the plays in the p.8 order"], ["P", "w", "Prompt each step by hand at first"]],
+      fw: [["P", "w", "Owner runs /sdlc-init once"], ["P", "w", "Owner adds the Claude secret"], ["A", "w", "Then each merge fires the next phase"]] },
     "setup-home": { pb: [["P", "w", "Technical team member stands up the intent home"], ["P", "d", "A lead signs off the template skill"]],
       fw: [["P", "w", "Owner runs /sdlc-init"], ["C", "w", "/sdlc-init writes the change-0000 PR"], ["P", "d", "Owner merges the 0000 PR"]] },
     "setup-gates": { pb: [["P", "d", "Leadership lists the gates that must survive"], ["P", "w", "Platform engineer writes each as a hook"]],
@@ -1006,6 +1043,61 @@
     "x-roles": { pb: [["P", "w", "About ten distinct roles"]],
       fw: [["P", "w", "One owner holds every role"]] }
   };
+  // ---- target design: the owner's tentative proposals, condensed from target-design.md
+  // (crosswalk.json: "targets" and each row's "target"). Nothing here is confirmed.
+  var TARGET = {
+    entries: [
+    { id: "T1", title: "AI roles that advise, and one manager that reviews for the owner", status: "tentative" },
+    { id: "T2", title: "The interview: how the manager and the roles question the owner", status: "tentative" },
+    { id: "T3", title: "The intent home: in the repository, written from anywhere, with examples", status: "tentative" }
+    ],
+    rows: {
+    "setup-home": { refs: ["T3"], text: "Ideas stay in changes/<id>-<slug>/, set up by /sdlc-init. Intents can be written from Claude Code or from claude.ai / phone; you accept by merging, after the role briefs (T1). The intent template: the plugin default, overridable per project (to verify), reviewed by a Product role and approved by you. The intent gets an Examples/References section." },
+    "setup-gates": { refs: ["T1"], text: "No new gates: (a), (b), (e) and (f) stay, with (c) and (d) in Full; sdlc.yaml's risk list, protected paths and production settings and today's enforcement stay (D6, D18 unchanged). At each gate you approve after the role briefs that gate names; a risk-list hit still parks, and the matching role's brief comes before your sdlc:accept-risk; your own edits to the gates themselves get a role's brief before you merge." },
+    "setup-merge": { refs: ["T1"], text: "You stay the only approver. The manager prepares a merge; you approve it from your account (a label or an approving review); a deterministic workflow, not a model, checks who approved and carries the merge out. sdlc-runbook.yml works this way today for the sdlc:go label, though it checks only that a person applied it, not that it was you. Would reopen or amend D4, D5, D13, D24. To verify: whether a ruleset lets a workflow merge for you, or a GitHub App is needed." },
+    "plan-idea": { refs: ["T2", "T3"], text: "The manager leads the interview: each role proposes the questions of its field, the manager merges them and asks a few at a time, and after the draft each role reviews the intent (T2). An intent can also be written from claude.ai / phone (T3). Open: how an intent written in claude.ai gets its change id, which plugin/state allocates (T3)." },
+    "plan-accept": { refs: ["T1"], text: "Product and Architect briefs; the manager recommends accepting, or the points to fix first; you approve or send corrections. Gate (a) gains the most: today it has no reviewing agent." },
+    "design-trigger": { refs: ["T2"], text: "Open: a second interview before the spec; if added, it would reopen or amend D1 and D2 (the spec and the plan are written unattended today)." },
+    "design-mock": { refs: ["T2", "T3"], text: "An Examples/References section in the intent (T3); mock/ stays the slot for screens. Open: whether the roles read the examples (T2)." },
+    "design-concerns": { refs: ["T1"], text: "Flagged concerns get a brief from the role of their kind (for example Security & policy); the manager recommends; you decide. Touches D21 (who sits on the panel)." },
+    "design-go": { refs: ["T1"], text: "Product, Architect and Security & policy briefs; the manager gives two recommendations in the one PR, one for the spec and one for the plan; you approve both or reject one. Separate verdicts, not separate gates, so D2 can stay." },
+    "build-plan": { refs: ["T2"], text: "Open: a second interview before the plan, as the article's plan mode interviews the engineer (p.15-16); if added, it would reopen or amend D1 and D2." },
+    "build-plan-approve": { refs: ["T1"], text: "The plan gets its own verdict inside gate (b). A higher-risk plan gets the Architect's full review and a separate, closer approval, the article's tech-lead step; today non-routine only lowers the iteration cap (D11)." },
+    "build-config": { refs: ["T1"], text: "Your own edits to CLAUDE.md, skills and sdlc.yaml have no reviewing check today; a role's brief before you merge would fill it." },
+    "build-skills": { refs: ["T1"], text: "Sources first: you write the policies each skill derives from (each skill says 'no owner source yet'). The skill sign-off is lost today: a role would write a brief on each skill change, and you approve it." },
+    "build-risk": { refs: ["T1"], text: "Stricter only for risk: a higher-risk plan gets the Architect's full review and a separate, closer approval at (b) (touches D11)." },
+    "deploy-approve": { refs: ["T1"], text: "Code reviewer (today's REVIEW.md pass) and Platform & release briefs; the manager recommends merge or request changes; you approve, and the merge runs on your signal." },
+    "deploy-release": { refs: ["T1"], text: "On a declared production, a Platform & release brief (the release checklist) before your release approval." },
+    "maintain-triage": { refs: ["T1"], text: "Operations brief (Security & policy for scans); the manager recommends fix now, schedule or dismiss; you triage." },
+    "maintain-scan": { refs: ["T1"], text: "A Security & policy brief on each scan finding; the manager recommends fix now, schedule or dismiss; you triage." },
+    "x-audit": { refs: ["T1"], text: "Role briefs (evidence/roles/) and the manager's recommendation (evidence/manager.md) are committed with the change; full transcripts are kept as workflow artifacts until they expire (GitHub's default is 90 days)." },
+    "x-roles": { refs: ["T1"], text: "Six AI roles in a first cut to adjust (Product, Architect, Code reviewer, Security & policy, Platform & release, Operations) write briefs from their own sources; one manager reads them all and recommends; you stay the only approver. Open: which models, which sources, how many roles." }
+    }
+  };
+  function renderTargets() {
+    var ul = document.getElementById("tlist");
+    if (!ul) return;
+    ul.textContent = "";
+    TARGET.entries.forEach(function (e) {
+      var ids = ROWS.filter(function (r) { var t = TARGET.rows[r.id]; return t && t.refs.indexOf(e.id) !== -1; });
+      var links = el("span", { cls: "rowlinks" });
+      ids.forEach(function (r) {
+        var b = el("button", { type: "button", cls: "linkbtn", text: r.id, title: r.step });
+        b.addEventListener("click", function () {
+          if (!document.getElementById(r.id)) {
+            [["f-stage", ""], ["f-rel", ""], ["f-state", "all"]].forEach(function (p) { document.getElementById(p[0]).value = p[1]; store(p[0], p[1]); });
+            renderRows();
+          }
+          openCard(r.id);
+        });
+        links.appendChild(b);
+      });
+      ul.appendChild(el("li", null, [
+        el("span", null, [el("b", { text: e.id + ". " }), document.createTextNode(e.title + " — " + e.status + ", " + ids.length + " row" + (ids.length === 1 ? "" : "s"))]),
+        links
+      ]));
+    });
+  }
   var LANE_NAME = { P: "Person", C: "Claude", A: "Pipeline" };
   var SYM = { same: "=", adapted: "≈", added: "+", missing: "−", diverges: "≠" };
   var currentList = ROWS;
@@ -1065,7 +1157,8 @@
           el("div", { cls: "knot" }, [
             el("span", { cls: "sym", text: SYM[r.rel] || "?", title: r.rel }),
             el("span", { cls: "nm", text: r.step }),
-            c.decision ? el("span", { cls: "vd", text: label(DECISIONS, c.decision) }) : null
+            c.decision ? el("span", { cls: "vd", text: label(DECISIONS, c.decision) }) : null,
+            TARGET.rows[r.id] ? el("span", { cls: "tg", text: "target " + TARGET.rows[r.id].refs.join(" ") }) : null
           ]),
           el("i", { cls: "arm" + (hasFw ? "" : " none") })
         ]);
@@ -1174,11 +1267,12 @@
   function toMarkdown() {
     var lines = ["# Workflow crosswalk: owner's decisions", "", "Criteria weights (0-3): " +
       CRITERIA.map(function (c) { return c.name + " " + (weights[c.id] || 0); }).join(", "), "",
-      "| Stage | Step | Relation | Why different | Better | Decision | Note |", "|---|---|---|---|---|---|---|"];
+      "| Stage | Step | Relation | Why different | Better | Decision | Note | Target |", "|---|---|---|---|---|---|---|---|"];
     ROWS.forEach(function (r) {
       var c = choices[r.id] || {};
+      var t = TARGET.rows[r.id];
       var cell = function (s) { return String(s || "").replace(/\|/g, "\\|").replace(/\n/g, " "); };
-      lines.push("| " + [r.stage, r.step, r.rel, r.why || "", label(BETTER, c.better), label(DECISIONS, c.decision), c.note].map(cell).join(" | ") + " |");
+      lines.push("| " + [r.stage, r.step, r.rel, r.why || "", label(BETTER, c.better), label(DECISIONS, c.decision), c.note, t ? t.refs.join(", ") + ": " + t.text : ""].map(cell).join(" | ") + " |");
     });
     return lines.join("\n");
   }
@@ -1200,6 +1294,7 @@
   fillSelect("f-rel", [{ v: "", t: "All" }].concat(RELATIONS.map(function (r) { return { v: r, t: r }; })), recall("f-rel"));
   (function () { var s = document.getElementById("f-state"); var v = recall("f-state"); if (v) s.value = v; s.addEventListener("change", function () { store("f-state", s.value); renderRows(); }); })();
   renderCriteria();
+  renderTargets();
   renderRows();
   (function () { var v = recall("view") || (location.hash === "#map" ? "map" : "cards"); if (v === "map") setView("map"); })();
 

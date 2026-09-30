@@ -6,10 +6,12 @@ The files next to this page, in `2026-09-28-playbook-vs-framework/`:
 
 | File | What it is |
 |---|---|
-| `crosswalk.json` | The 47 decision points as data: the article's version with its pages, the framework's with its files, the relation, the decision behind any difference, the question to weigh, and the map data (who does each step, and which steps are human decisions). This is the source of truth for the crosswalk. |
-| `crosswalk.html` | A snapshot of the crosswalk page (cards and a side-by-side map). Opened from the repository it is read-only; the owner's choices are saved only on the claude.ai page. |
+| `crosswalk.json` | The 48 decision points as data: the article's version with its pages, the framework's with its files, the relation, the decision behind any difference, the question to weigh, and the map data (who does each step, and which steps are human decisions); since 2026-09-30 also the owner's tentative target for the rows `target-design.md` touches (`target`, `targets`). This is the source of truth for the crosswalk. |
+| `crosswalk.html` | A snapshot of the crosswalk page (cards with a third "Target (tentative)" column, and a side-by-side map). Opened from the repository it is read-only; the owner's choices are saved only on the claude.ai page. |
 | `playbook-workflow.html` | A snapshot of the corrected page that draws the article's workflow. |
 | `framework-workflow.html` | A snapshot of the corrected page that draws this framework's workflow at 0.2.27. |
+| `target-design.md` | What the owner wants the framework to become, one entry per idea (T1, T2, …), tentative until the whole study is done; nothing in it changes the current version. |
+| `naming.md` | Every naming difference between the article and the framework, 23 rows, each judged on the name alone with its reason; summarized as T4 in `target-design.md`. |
 | `evidence-article.md`, `evidence-framework.md`, `evidence-source.md` | The verified findings behind sections 3 and 4: each finding with its page and quote, or its file and line, and the findings that were refuted. |
 
 The live pages, private to the owner: the playbook page (https://claude.ai/artifact/WhLTjcSzJqQmUFm3aP5G6L), the framework page (https://claude.ai/artifact/KW8jWunfLNa9WgBSzJxw4S) and the crosswalk (https://claude.ai/artifact/PFnRZ32pwTr4y422Gna2mz).
@@ -19,7 +21,7 @@ The live pages, private to the owner: the playbook page (https://claude.ai/artif
 - **The article**: "The AI-native SDLC playbook" (Louis Claxton, 21 August 2026), read as the 53-page print in `docs/reference/ai-native-sdlc-playbook.pdf` (printed 2026-09-02), with its four figures (p.3, p.5, p.8, p.49) extracted at full resolution. Page numbers everywhere are print pages.
 - **The live page** (https://claude.com/blog/the-ai-native-sdlc-playbook), fetched on 2026-09-28 and compared sentence by sentence with the print. The text is the same apart from three things: a new "Prefer a PDF? … Download the PDF" box at the top, the title now written "AI-native", and a reading-time figure that the page computes in the browser. The four figures sit in the same places (`evidence-source.md`).
 - **Not read**: the "designv2" PDF the live page now links to (uploaded 2026-09-28), and the live page's images. Both are served from `cdn.prod.website-files.com`, which the session's network policy denied. The figures were taken from the print instead. Whether the new PDF uses the same page numbers is unknown.
-- **The framework**: this repository at f2a2b29 (plugin 0.2.26) for the first pass and at cf3f696 and 11551ef (plugin 0.2.27) for everything after (plugin 0.2.28, which landed next, changes none of the 47 crosswalk rows); `docs/DECISIONS.md`, `OPERATING_MODEL.md`, `BUILD_GUIDE.md`, `ROADMAP.md` and `NOTES.md` as the documents, the code as the ground truth.
+- **The framework**: this repository at f2a2b29 (plugin 0.2.26) for the first pass and at cf3f696 and 11551ef (plugin 0.2.27) for everything after (plugin 0.2.28, which landed next, changes none of the 47 rows the crosswalk then had); `docs/DECISIONS.md`, `OPERATING_MODEL.md`, `BUILD_GUIDE.md`, `ROADMAP.md` and `NOTES.md` as the documents, the code as the ground truth.
 - **The sample project** (`luissiviero/sdlc-sample-python`): the changes 0000 to 0008, their evidence folders, the pull requests and the Actions runs, read-only, as evidence of what really happens.
 
 ## 2. Method
@@ -30,7 +32,7 @@ The same shape as the readiness review, with every pass read-only:
 2. **Two adversarial verifiers**, one per page, which re-derived every non-matching finding from the source and tried to refute it. They settled the contradictions between audits and re-rated severities. Their reports are the three evidence files.
 3. **Spot checks by the main session** of every finding rated high, before anything was reported: the p.8 graph arrow by arrow, the runbook authorizations in `template/bands.yaml`, `check_approval` in `run_phase.py`, the parked-change guard and the release filter.
 4. **One reviewer per corrected page**, before each was published: 5 corrections on the playbook page, 9 on the framework page (one of them a regression the rewrite had introduced).
-5. **The crosswalk**: 40 rows seeded from the corrected pages, checked row by row (17 corrections), then 7 rows added for the decision points no row covered (drafted with evidence, then checked: 6 corrected). The map data (who does each step, which steps are decisions) was checked on its own (29 corrections).
+5. **The crosswalk**: 40 rows seeded from the corrected pages, checked row by row (17 corrections), then 7 rows added for the decision points no row covered (drafted with evidence, then checked: 6 corrected). The map data (who does each step, which steps are decisions) was checked on its own (29 corrections). On 2026-09-30 the owner asked for a 48th row, the adoption order (`setup-adopt`), which no row covered; it was drafted against the article and plugin 0.2.28 on `main` (dd308ca) and checked by an independent reviewer before it was published.
 
 The session's own errors, caught by these passes, are recorded so they are not repeated: the design-mock row first said the framework had no mock step, but `changes/<id>-<slug>/mock/` exists since 0.2.19; issue #71 first said a re-run overwrites its phase's result file, which is true only before 0.2.16 (corrected in the issue); the first decision count read 17 against 12, which double-counted gate (b) and missed several owner labels (15 against 15 once corrected).
 
@@ -69,9 +71,10 @@ Where the documents and the code disagree and no issue was filed (`evidence-fram
 
 ## 6. The crosswalk
 
-47 decision points, one row each (Setup 3, Plan 3, Design 5, Build 9, Test 5, Deploy 8, Maintain 7, across stages 7). Relation: 13 same, 29 adapted, 2 added, 2 missing, 1 diverges.
+48 decision points, one row each (Setup 4, Plan 3, Design 5, Build 9, Test 5, Deploy 8, Maintain 7, across stages 7). Relation: 13 same, 29 adapted, 2 added, 2 missing, 2 diverges.
 
-**Where the framework differs from the article with no decision behind it** (8 rows; the place to look first):
+**Where the framework differs from the article with no decision behind it** (9 rows; the place to look first):
+- the adoption order (a project starts with the whole loop; D1, D17 and D19 touch it, none decides it);
 - a ticket becoming `intent.md` (alerts are covered by D15 and D16, tickets by nothing);
 - the front-end mock (build guide step 34, a convention only);
 - who writes the policy skills (owner sources and trigger tests);
@@ -101,8 +104,8 @@ Two rows ask a question that reopens a settled decision, and say so: "What start
 
 ## 7. Open
 
-- **The owner's decisions.** None of the 47 rows is decided yet (on 2026-09-28 the crosswalk held no choices and no criteria weights). For each row the owner marks which workflow is better and what to do: keep the framework's, adopt the playbook's, blend, change both, or park for later. "Copy decisions as Markdown" on the crosswalk page exports them.
-- **Where the decisions go.** A decision that changes the framework becomes a candidate in `docs/ROADMAP.md` with its proposal; one that changes a settled decision is proposed there, never edited into `docs/DECISIONS.md` directly. The table in section 6 and `crosswalk.json` are updated in the same pull request as any change that moves a row.
+- **The owner's decisions.** None of the 48 rows is decided yet (on 2026-09-28 the crosswalk held no choices and no criteria weights). For each row the owner marks which workflow is better and what to do: keep the framework's, adopt the playbook's, blend, change both, or park for later. "Copy decisions as Markdown" on the crosswalk page exports them.
+- **Where the decisions go.** The owner confirms changes only once the whole study is done (2026-09-30). Until then every change the owner wants is collected, tentative, in `target-design.md`, and nothing goes to `docs/ROADMAP.md`. After the study, a confirmed change to the framework becomes a candidate in `docs/ROADMAP.md` with its proposal; one that changes a settled decision is proposed there, never edited into `docs/DECISIONS.md` directly. The table in section 6 and `crosswalk.json` are updated in the same pull request as any change that moves a row.
 - **The two issues found by the crosswalk** (#71, #72) and the three found by the audit (#66, #67, #68) are open.
 - **The designv2 PDF** is unread; if it becomes the reference, the page numbers in the three pages and in `crosswalk.json` need a check.
 
@@ -110,6 +113,6 @@ Two rows ask a question that reopens a settled decision, and say so: "What start
 
 A session that should work on this study, and only on it, can be started with:
 
-> Work only on the playbook-versus-framework workflow study. Start by reading `docs/reviews/2026-09-28-playbook-vs-framework.md` and its folder: `crosswalk.json` is the source of truth for the 47 rows, and the three `.html` files are snapshots of the claude.ai pages (the crosswalk https://claude.ai/artifact/PFnRZ32pwTr4y422Gna2mz, the playbook page https://claude.ai/artifact/WhLTjcSzJqQmUFm3aP5G6L, the framework page https://claude.ai/artifact/KW8jWunfLNa9WgBSzJxw4S). My saved choices are in the crosswalk page's store; read them before anything else. Stay inside this scope: the two workflow pages, the crosswalk and its map, this review and its folder, `docs/ROADMAP.md` entries that come out of my decisions, and issues #66, #67, #68, #71 and #72. Do not change plugin or template code, `docs/DECISIONS.md`, or the guardrail files; if a step needs one of those, say so and stop. Check every claim against the article (`docs/reference/`, print pages) or the code on the current `main`, and have an independent reviewer check any change to a page or to `crosswalk.json` before it is published or committed. Keep the snapshots, `crosswalk.json` and the live pages in step. Today I want to: …
+> Work only on the playbook-versus-framework workflow study. Start by reading `docs/reviews/2026-09-28-playbook-vs-framework.md` and its folder: `crosswalk.json` is the source of truth for the 48 rows, and the three `.html` files are snapshots of the claude.ai pages (the crosswalk https://claude.ai/artifact/PFnRZ32pwTr4y422Gna2mz, the playbook page https://claude.ai/artifact/WhLTjcSzJqQmUFm3aP5G6L, the framework page https://claude.ai/artifact/KW8jWunfLNa9WgBSzJxw4S). My saved choices are in the crosswalk page's store; read them before anything else. Stay inside this scope: the two workflow pages, the crosswalk and its map, this review and its folder, `docs/ROADMAP.md` entries that come out of my decisions, and issues #66, #67, #68, #71 and #72. Do not change plugin or template code, `docs/DECISIONS.md`, or the guardrail files; if a step needs one of those, say so and stop. Check every claim against the article (`docs/reference/`, print pages) or the code on the current `main`, and have an independent reviewer check any change to a page or to `crosswalk.json` before it is published or committed. Keep the snapshots, `crosswalk.json` and the live pages in step. Today I want to: …
 
 Replace the last sentence with the task: decide a stage together, re-check the rows after a plugin release, turn decisions into ROADMAP proposals, and so on.
