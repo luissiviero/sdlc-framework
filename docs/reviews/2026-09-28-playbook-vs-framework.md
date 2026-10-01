@@ -10,11 +10,12 @@ The files next to this page, in `2026-09-28-playbook-vs-framework/`:
 | `crosswalk.html` | A snapshot of the crosswalk page (cards with a third "Target (tentative)" column, and a side-by-side map). Opened from the repository it is read-only; the owner's choices are saved only on the claude.ai page. |
 | `playbook-workflow.html` | A snapshot of the corrected page that draws the article's workflow. |
 | `framework-workflow.html` | A snapshot of the corrected page that draws this framework's workflow at 0.2.27. |
+| `target-workflow.html` | A snapshot of the third workflow page, beside the other two: the workflow as the owner wants it, drawn only from what `target-design.md` has discussed (T1–T4), all tentative. |
 | `target-design.md` | What the owner wants the framework to become, one entry per idea (T1, T2, …), tentative until the whole study is done; nothing in it changes the current version. |
 | `naming.md` | Every naming difference between the article and the framework, 23 rows, each judged on the name alone with its reason; summarized as T4 in `target-design.md`. |
 | `evidence-article.md`, `evidence-framework.md`, `evidence-source.md` | The verified findings behind sections 3 and 4: each finding with its page and quote, or its file and line, and the findings that were refuted. |
 
-The live pages, private to the owner: the playbook page (https://claude.ai/artifact/WhLTjcSzJqQmUFm3aP5G6L), the framework page (https://claude.ai/artifact/KW8jWunfLNa9WgBSzJxw4S) and the crosswalk (https://claude.ai/artifact/PFnRZ32pwTr4y422Gna2mz).
+The live pages, private to the owner: the playbook page (https://claude.ai/artifact/WhLTjcSzJqQmUFm3aP5G6L), the framework page (https://claude.ai/artifact/KW8jWunfLNa9WgBSzJxw4S), the target workflow page (https://claude.ai/artifact/13X8rzF9KsfekmeSs1w5rM) and the crosswalk (https://claude.ai/artifact/PFnRZ32pwTr4y422Gna2mz).
 
 ## 1. Sources
 
