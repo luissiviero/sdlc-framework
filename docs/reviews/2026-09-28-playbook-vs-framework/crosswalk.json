@@ -13,7 +13,8 @@
     "why": "Dn = decision n in docs/DECISIONS.md; \"No decision\" / \"No Dn\" = no decision behind the difference",
     "weigh": "the question for the owner",
     "map": "per side, [lane, kind, label]: lane P person, C Claude, A pipeline; kind d decision every change needs (Setup: once per project), c decision only in some cases, w work, r same act as another row",
-    "target": "optional: the owner's tentative proposal for this step, condensed from target-design.md; refs name its entries (T1, T2, ...)"
+    "target": "optional: the owner's tentative proposal for this step, condensed from target-design.md; refs name its entries (T1, T2, ...)",
+    "decision": "optional: the owner's saved choice, copied from the crosswalk page's store at the end of a session (better: playbook | framework | both | neither | empty; decision: keep | adopt | blend | change | later; note; saved date; status: tentative until the whole study is done); the page's store stays the live copy"
   },
   "relations": {
     "same": "both do it the same way",
@@ -113,6 +114,13 @@
           "T3"
         ],
         "text": "Ideas stay in changes/<id>-<slug>/, set up by /sdlc-init. Intents can be written from Claude Code or from claude.ai / phone; you accept by merging, after the role briefs (T1). The intent template: the plugin default, overridable per project (to verify), reviewed by a Product role and approved by you. The intent gets an Examples/References section."
+      },
+      "decision": {
+        "better": "framework",
+        "decision": "blend",
+        "note": "Blend: ideas stay in changes/<id>-<slug>/, set up by /sdlc-init (current). I write intents from Claude Code or from claude.ai / phone. I accept by merging, after a Product role's brief (T1). Template: the plugin default, overridable per project (to verify); a Product role reviews it and I approve (T1). The intent gets an Examples/References section (T2).",
+        "saved": "2026-09-30",
+        "status": "tentative"
       }
     },
     {
@@ -162,6 +170,13 @@
           "T1"
         ],
         "text": "No new gates: (a), (b), (e) and (f) stay, with (c) and (d) in Full; sdlc.yaml's risk list, protected paths and production settings and today's enforcement stay (D6, D18 unchanged). At each gate you approve after the role briefs that gate names; a risk-list hit still parks, and the matching role's brief comes before your sdlc:accept-risk; your own edits to the gates themselves get a role's brief before you merge."
+      },
+      "decision": {
+        "better": "framework",
+        "decision": "blend",
+        "note": "Blend: gates stay as today, fixed (a), (b), (e), (f), with (c) and (d) in Full; no new gates. Project items stay in sdlc.yaml (risk list, protected paths, production settings); enforcement stays as today (plugin hooks, CI's pinned settings, optional managed settings, my ruleset). At each gate I approve after the role briefs that gate names (T1 approvals table). A risk-list hit parks; the matching role's brief, then my sdlc:accept-risk. My own edits to the gates themselves get a role's brief before I merge.",
+        "saved": "2026-09-30",
+        "status": "tentative"
       }
     },
     {
@@ -206,6 +221,13 @@
           "T1"
         ],
         "text": "You stay the only approver. The manager prepares a merge; you approve it from your account (a label or an approving review); a deterministic workflow, not a model, checks who approved and carries the merge out. sdlc-runbook.yml works this way today for the sdlc:go label, though it checks only that a person applied it, not that it was you. Would reopen or amend D4, D5, D13, D24. To verify: whether a ruleset lets a workflow merge for you, or a GitHub App is needed."
+      },
+      "decision": {
+        "better": "framework",
+        "decision": "blend",
+        "note": "Blend: I approve; the manager prepares the merge; a workflow merges after checking it was me (T1). No agent route to main, as today. No required review: role briefs (Code reviewer, Platform & release) before my approval, advice not enforced. The approval signal comes from my account and is checked as me, not just 'a person' (today's sdlc:go gap). Record: merge commit + my approval signal + the manager's recommendation in evidence/. Setup as today, plus (to verify) a ruleset setting or GitHub App that lets the workflow merge. Would reopen or amend D4, D5, D13, D24.",
+        "saved": "2026-09-30",
+        "status": "tentative"
       }
     },
     {
@@ -1763,6 +1785,13 @@
           "T1"
         ],
         "text": "Six AI roles in a first cut to adjust (Product, Architect, Code reviewer, Security & policy, Platform & release, Operations) write briefs from their own sources; one manager reads them all and recommends; you stay the only approver. Open: which models, which sources, how many roles."
+      },
+      "decision": {
+        "better": "",
+        "decision": "later",
+        "note": "Direction in T1 (target-design.md); not settled.",
+        "saved": "2026-09-30",
+        "status": "tentative"
       }
     }
   ],
@@ -1789,5 +1818,18 @@
         "recorded": "2026-09-30"
       }
     ]
+  },
+  "owner": {
+    "copiedFromStore": "2026-09-30",
+    "criteriaWeights": {
+      "safety": 1,
+      "attention": 3,
+      "autonomy": 3,
+      "audit": 2,
+      "cost": 0,
+      "fidelity": 2
+    },
+    "weightsSaved": "2026-09-29",
+    "rowsWithADecision": 4
   }
 }

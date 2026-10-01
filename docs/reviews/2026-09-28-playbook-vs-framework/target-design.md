@@ -11,7 +11,7 @@ Each entry: the owner's idea in the owner's words, the direction discussed so fa
 | T3 | The intent home: in the repository, written from anywhere, with examples | tentative | 2026-09-30 |
 | T4 | Names: the phases named after what they produce, and the other names judged against the article | tentative | 2026-09-30 |
 
-The crosswalk page (https://claude.ai/artifact/PFnRZ32pwTr4y422Gna2mz) shows each entry in a third column, "Target (tentative)", on the cards of the rows it touches; `crosswalk.json` carries the same condensed text in each row's `target` field, and the entries in `targets`.
+The crosswalk page (https://claude.ai/artifact/PFnRZ32pwTr4y422Gna2mz) shows each entry in a third column, "Target (tentative)", on the cards of the rows it touches; `crosswalk.json` carries the same condensed text in each row's `target` field, and the entries in `targets` (T1 to T3 so far; T4 is still to be added, see the review record's section 7).
 
 ## T1. AI roles that advise, and one manager that reviews for the owner
 
