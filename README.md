@@ -29,13 +29,13 @@ The files below were the input to the first build session; that session's brief 
 
 | File | What it is | Used by |
 |---|---|---|
-| `HANDOFF.md` | Brief for the **next** session (now: sessions 15 and 16 — the first real detection, the 1.0.0 bump and the closed milestone, after the four groups of the 1.0.0 readiness review, `docs/reviews/2026-09-26-readiness-review.md`; session 9 was the review itself and plugin 0.2.25, sessions 10 to 12 closed groups A to C in plugins 0.2.26 to 0.2.28, session 13 closed group D, the documentation pass, with no bump, and session 14 ran the live checks that need no points, plugin 0.2.29); earlier briefs are kept in `docs/handoffs/` | the session |
+| `HANDOFF.md` | Brief for the **next** session (now: session 15 and the 0.3.x line — issue #91 fixed in plugin 0.3.0, then the five study issues, change 0001's docs split and R1, while the sample's live check runs untouched to its read, which bumps to 1.0.0; the owner's decision of 2026-10-02, PROGRESS choices 135–139. Sessions 9 to 14 were the 1.0.0 readiness review, `docs/reviews/2026-09-26-readiness-review.md`, its four groups and the live checks that need no points, plugins 0.2.25 to 0.2.29); earlier briefs are kept in `docs/handoffs/` | the session |
 | `CLAUDE.md` | Conventions for this repo (English only, Python hooks, plugin/template layout) | every session |
 | `docs/OPERATING_MODEL.md` | The contract: phases, artifacts, profiles, gates, park-never-page, conventions (draft to finalise in step 1) | the framework itself |
 | `docs/DECISIONS.md` | The 26 settled decisions with alternatives and reasons (21–26 added 2026-09-23) | sessions, to avoid reopening them |
 | `docs/BUILD_GUIDE.md` | The 47-step build plan with article citations (Markdown; step 16a added 2026-09-23) | sessions |
 | `docs/build_guide.json` | Same data, machine-readable (`id`, `group`, `where[{p,s}]`, `phase`, `importance`, …) | scripts, progress tracking |
-| `docs/ROADMAP.md` | What Milestone 1 is (the 47-step plan complete) and the candidates for what comes after it, each with its proposal under `docs/proposals/` (R1 OKF adoption, R2 session tooling for PDFs and web pages; added in session 7) | the owner, to decide what comes next |
+| `docs/ROADMAP.md` | What Milestone 1 is (the 47-step plan complete) and the candidates for what comes after it, each with its proposal under `docs/proposals/` (R1 OKF adoption, R2 session tooling for PDFs and web pages, added in session 7; R3 the fresh clone and R4 the Python language audit since) | the owner, to decide what comes next |
 | `docs/reference/ai-native-sdlc-playbook.pdf` | The source article | citations |
 | `docs/reference/ai-native-sdlc-playbook.txt` | Page-tagged text of the article (`===== PAGE N =====`) | grep-able citations |
 | `docs/reference/playbook-p8-dependency-graph.png` | The adoption-order figure (article p.8) | build order |
