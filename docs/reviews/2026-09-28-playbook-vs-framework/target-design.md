@@ -12,6 +12,7 @@ Each entry: the owner's idea in the owner's words, the direction discussed so fa
 | T4 | Names: the phases named after what they produce, and the other names judged against the article | tentative | 2026-09-30 |
 | T5 | Starting a project: the whole loop from the first change, with an optional start by hand | tentative | 2026-10-02 |
 | T6 | Tickets become intents: a GitHub issue the owner labels starts the intent PR | tentative | 2026-10-02 |
+| T7 | A rejection keeps its reason: the owner's closing comment is saved with the change | tentative | 2026-10-02 |
 
 The target workflow page (https://claude.ai/artifact/13X8rzF9KsfekmeSs1w5rM, snapshot `target-workflow.html`) draws every entry. The crosswalk page (https://claude.ai/artifact/PFnRZ32pwTr4y422Gna2mz) shows T1 to T3 in a third column, "Target (tentative)", on the cards of the rows they touch, and `crosswalk.json` carries the same condensed text in each row's `target` field and in `targets`; at the owner's request the crosswalk is not extended with later entries (the review record's section 7).
 
@@ -203,3 +204,25 @@ The framework already keeps the hook log both ways: committed in `evidence/` and
 - Whether a ticket intent gets the role-fed interview of T2; a CI run cannot interview the owner, so its questions go to "Open questions" in the PR.
 - How the run is told the issue is untrusted input, and which tools it may use (the phase jobs' sandbox and settings, as today).
 - The label's name, which T4 would judge with the other names.
+
+## T7. A rejection keeps its reason: the owner's closing comment is saved with the change
+
+**Status:** tentative. Recorded from the owner's choice on the crosswalk row plan-accept (better: the playbook; decision: blend), 2026-10-02.
+
+**The owner's note (saved on the crosswalk page).** "Blend: merge to accept and close to reject stay as today (D25). Added (T7): when I close any intent PR, my last comment on it is saved as the change's reason (status.yaml abandoned_reason) instead of the fixed 'pull request N closed without a merge'; with no comment the fixed text stays. Incidents keep today's rule (my comment becomes the dismissal reason). Already recorded: T1's Product and Architect briefs and the manager's recommendation before gate (a). No settled decision reopened."
+
+**Today.** Closing a pull request of gates (a) to (e) without a merge abandons the change (`sdlc-abandon.yml`, D25). Every closed change gets the same fixed text as its reason, "pull request N closed without a merge", in `status.yaml: abandoned_reason` on its branches. Only an incident closed at its triage records the owner's words: the last comment by a repository member becomes the finding's dismissal reason, in a dismissal PR the owner merges (`plugin/detect/cli.py dismiss`). The article records a rejection as "the closing review" (p.11).
+
+**Direction discussed (tentative).** Added; nothing replaced.
+- **When the owner closes an intent PR**, the owner's last comment on it, if there is one, becomes `abandoned_reason`; with no comment the fixed text stays. Example: the intent PR for "Export as CSV" is closed with "Not needed, the PDF export covers it", and that sentence is what the change's record says months later.
+- **The comment is optional**, so it costs the owner nothing when there is nothing to say.
+- **Incidents keep today's rule:** the comment becomes the dismissal reason as well.
+- **Accepting stays the merge** (D25), and T1's Product and Architect briefs with the manager's recommendation come before it.
+
+**Crosswalk rows it touches:** plan-accept.
+
+**Settled decisions it would reopen or amend:** none; D25 (closing abandons the change) is kept, and only what the record says changes.
+
+**Open.**
+- Whether the same applies when the owner closes a PR of gates (b) to (e), which abandons the change the same way.
+- Which comments count: the owner's own (as T1 asks of approvals), or any repository member's, as the incident rule reads today.

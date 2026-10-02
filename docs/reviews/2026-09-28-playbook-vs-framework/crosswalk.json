@@ -391,6 +391,13 @@
           "T1"
         ],
         "text": "Product and Architect briefs; the manager recommends accepting, or the points to fix first; you approve or send corrections. Gate (a) gains the most: today it has no reviewing agent."
+      },
+      "decision": {
+        "better": "playbook",
+        "decision": "blend",
+        "note": "Blend: merge to accept and close to reject stay as today (D25). Added (T7): when I close any intent PR, my last comment on it is saved as the change's reason (status.yaml abandoned_reason) instead of the fixed 'pull request N closed without a merge'; with no comment the fixed text stays. Incidents keep today's rule (my comment becomes the dismissal reason). Already recorded: T1's Product and Architect briefs and the manager's recommendation before gate (a). No settled decision reopened.",
+        "saved": "2026-10-02",
+        "status": "tentative"
       }
     },
     {
@@ -1871,6 +1878,6 @@
       "fidelity": 2
     },
     "weightsSaved": "2026-09-29",
-    "rowsWithADecision": 7
+    "rowsWithADecision": 8
   }
 }
