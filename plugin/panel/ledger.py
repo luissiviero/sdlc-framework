@@ -507,3 +507,111 @@ def new_entry(
     if isinstance(item_n, int) and not isinstance(item_n, bool):
         entry["item_n"] = item_n
     return entry
+
+
+# --- the models a run's panel ran on (0.2.30) ---------------------------------------------------
+# The devil's advocate runs on ``sdlc.yaml: panel_advocate_model`` (decision 21: a panel on one
+# model shares its blind spots). A phase run in CI ends with ``claude -p --output-format json``,
+# whose ``modelUsage`` names every model the session and its sub-agents used (the sample's
+# change 0002: the phases with panel decisions list ``claude-opus-5`` beside the session's
+# ``claude-sonnet-5``, the others the session's model only). ``run_phase.py`` checks it after a
+# run that added panel decisions and keeps the result here; the PR summary shows it.
+MODELS_FILE = "panel-models-{phase}.json"
+MODEL_FAMILIES = ("opus", "sonnet", "haiku", "fable")
+
+
+def models_path(change_dir: Path, phase: str) -> Path:
+    return Path(change_dir) / art.EVIDENCE_DIR / MODELS_FILE.format(phase=phase)
+
+
+def model_matches(wanted: str, model: str) -> bool:
+    """Does ``model`` (an id from ``modelUsage``, e.g. ``claude-opus-5``) satisfy ``wanted``
+    (an alias, ``opus``, or a full id)? A context suffix (``opus[1m]``) is ignored."""
+    want = str(wanted).strip().lower().split("[", 1)[0]
+    have = str(model).strip().lower().split("[", 1)[0]
+    if not want or not have:
+        return False
+    if want in MODEL_FAMILIES:
+        return want in have.replace("_", "-").split("-")
+    return have == want or have.startswith(want) or want.startswith(have)
+
+
+def session_model(model_usage: dict[str, Any], env_model: str | None) -> tuple[str | None, str]:
+    """The session's own model: ``SDLC_MODEL`` when the workflow set it (it is passed as
+    ``--model``), else the model with the largest output, which is the session's in every
+    run read so far (the panel's members write a few files; the session writes the rest)."""
+    if env_model:
+        return env_model, "SDLC_MODEL"
+    best, most = None, -1
+    for model, usage in model_usage.items():
+        out = usage.get("outputTokens") if isinstance(usage, dict) else None
+        count = out if isinstance(out, int) and not isinstance(out, bool) else 0
+        if count > most:
+            best, most = model, count
+    return best, "the largest output in modelUsage"
+
+
+def check_models(
+    new_decisions: int, result: Any, advocate_model: str | None, env_model: str | None
+) -> dict[str, Any] | None:
+    """The record of which models a run's panel ran on, or None when the run added no
+    panel decision. ``ok`` is False when no model of the run satisfies the advocate's
+    model: the advocate did not run where decision 21 puts it. ``warning`` says when the
+    session already runs on that model, so the panel had no second model (advice only)."""
+    if new_decisions <= 0:
+        return None
+    usage = result.get("modelUsage") if isinstance(result, dict) else None
+    usage = usage if isinstance(usage, dict) else {}
+    models = sorted(str(m) for m in usage)
+    session, source = session_model(usage, env_model)
+    alias = str(advocate_model or "").strip()
+    record: dict[str, Any] = {
+        "schema_version": SCHEMA_VERSION,
+        "new_decisions": new_decisions,
+        "advocate_model": alias or None,
+        "models": models,
+        "session_model": session,
+        "session_model_source": source,
+        "ok": True,
+        "reason": None,
+        "warning": None,
+    }
+    if not alias:
+        record["warning"] = (
+            "sdlc.yaml names no panel_advocate_model, so the devil's advocate ran on the "
+            "session's model"
+        )
+        return record
+    if not models:
+        record.update(ok=False, reason="the run reported no models (no modelUsage)")
+    elif not any(model_matches(alias, m) for m in models):
+        record.update(
+            ok=False,
+            reason=(
+                f"no model of this run is {alias} (it used {', '.join(models)}): the devil's "
+                "advocate did not run on sdlc.yaml's panel_advocate_model"
+            ),
+        )
+    elif session and model_matches(alias, session):
+        record["warning"] = (
+            f"the session itself runs on {session}, the advocate's model ({alias}), so the "
+            "panel had no second model"
+        )
+    return record
+
+
+def save_models(change_dir: Path, phase: str, record: dict[str, Any]) -> Path:
+    path = models_path(change_dir, phase)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(record, indent=2, sort_keys=True) + "\n", encoding="utf-8", newline="\n"
+    )
+    return path
+
+
+def load_models(change_dir: Path, phase: str) -> dict[str, Any] | None:
+    try:
+        data = json.loads(models_path(change_dir, phase).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    return data if isinstance(data, dict) else None

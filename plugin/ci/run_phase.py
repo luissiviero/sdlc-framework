@@ -99,6 +99,7 @@ FRAMEWORK_ROOT = PLUGIN_DIR.parent
 if str(PLUGIN_DIR) not in sys.path:
     sys.path.insert(0, str(PLUGIN_DIR))
 
+from panel import ledger as panel_ledger  # noqa: E402
 from pr.github import next_page_url  # noqa: E402, F401 - re-exported, moved there in 0.2.12
 
 from ci import auth as auth_mod  # noqa: E402
@@ -1435,6 +1436,7 @@ def run_phase(args, env: dict[str, str]) -> int:
         return EXIT_OK
     refs_before = change_refs(root, change_id)
     pre_head = gate_diff.head_sha(root) if gate_diff.is_repo(root) else None
+    panel_before = len(panel_ledger.load_ledger(change_dir, gate_phase))
     data, raw, err, code = invoke(argv, root, env, run_timeout_seconds(config))
     result_path, stderr_path = run_record_paths(change_dir, phase)
     store_result(change_dir, phase, data, raw, result_path)
@@ -1493,6 +1495,17 @@ def run_phase(args, env: dict[str, str]) -> int:
         )
         report_failed_run(root, change_dir, phase, data, raw, err, why)
         return EXIT_FAILED
+    # 0.2.30: a run that added panel decisions shows which models it used; the devil's
+    # advocate must have run on sdlc.yaml's panel_advocate_model, or the change parks
+    models = panel_models(change_dir, gate_phase, panel_before, data, config, env)
+    if models is not None and not models["ok"]:
+        parked = park_and_publish(
+            plugin_dir, root, change_dir, status_mod.read_status(change_dir), phase,
+            f"{PANEL_MODEL_CHECK}: {models['reason']}",
+            branch=fix_branch, check=PANEL_MODEL_CHECK, need=PANEL_MODEL_NEED,
+        )  # fmt: skip
+        _emit({**parked, "panel_models": models, "cost_usd": cost, "branch": branch})
+        return EXIT_OK
     # the spend is recorded after the run's own commits, so on an ephemeral runner it would
     # leave with the job (the fifth live run of 2026-09-21 pushed run-b.json with spend_usd
     # null): commit it on the work branch before the PR is brought up to date
@@ -1529,6 +1542,36 @@ def run_phase(args, env: dict[str, str]) -> int:
         print(PR_MISSING.format(reason=pr.get("reason") or "no route"), file=sys.stderr)
         return EXIT_FAILED
     return EXIT_OK
+
+
+PANEL_MODEL_CHECK = "panel_models"
+PANEL_MODEL_NEED = (
+    "The review panel's devil's advocate must run on the model sdlc.yaml's "
+    "panel_advocate_model names (decision 21: a panel on one model shares its blind spots), "
+    "and this run used no such model. Check that the phase command passes that model to the "
+    "advocate sub-agent and that the credential can reach it, then re-run the phase; "
+    "evidence/panel-models-<phase>.json lists the models the run used."
+)
+
+
+def panel_models(
+    change_dir: Path,
+    gate_phase: str,
+    before: int,
+    result: Any,
+    config: dict[str, Any],
+    env: dict[str, str],
+) -> dict[str, Any] | None:
+    """Check and keep the models of a run that added panel decisions (0.2.30): the record
+    lands in ``evidence/panel-models-<phase>.json`` and is committed with the run record or
+    the park; None when the run added no decision."""
+    added = len(panel_ledger.load_ledger(change_dir, gate_phase)) - before
+    record = panel_ledger.check_models(
+        added, result, config.get("panel_advocate_model"), env.get("SDLC_MODEL")
+    )
+    if record is not None:
+        panel_ledger.save_models(change_dir, gate_phase, record)
+    return record
 
 
 def commit_run_record(

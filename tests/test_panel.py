@@ -676,3 +676,53 @@ def test_the_panel_cli_reads_the_review_mode_the_gate_reads(project):  # noqa: F
     set_review(change, "deferred")  # the owner's, merged
     rc, out = run(["mode", "--root", str(root), "--id", "0001"])
     assert rc == 0 and out["mode"] == "deferred"
+
+
+# --- the models a panel ran on (0.2.30) -----------------------------------------------------------
+OPUS_USE = {"outputTokens": 9000}
+SONNET_USE = {"outputTokens": 120000}
+
+
+def test_check_models_parks_without_the_advocate_model_and_warns_on_one_model():
+    both = {"modelUsage": {"claude-opus-5": OPUS_USE, "claude-sonnet-5": SONNET_USE}}
+    assert ledger.check_models(0, both, "opus", None) is None  # no decision this run
+    record = ledger.check_models(2, both, "opus", None)
+    assert record["ok"] and record["warning"] is None
+    assert record["session_model"] == "claude-sonnet-5"
+    assert record["session_model_source"] == "the largest output in modelUsage"
+    # the advocate ran on the session's model: no opus anywhere in the run
+    record = ledger.check_models(1, {"modelUsage": {"claude-sonnet-5": SONNET_USE}}, "opus", None)
+    assert not record["ok"] and "no model of this run is opus" in record["reason"]
+    # no modelUsage at all: nothing proves the advocate's model, so it parks too
+    assert not ledger.check_models(1, {"total_cost_usd": 1}, "opus", None)["ok"]
+    # the session itself runs on the advocate's model: a warning, not a park
+    record = ledger.check_models(1, both, "opus", "opus")
+    assert record["ok"] and record["session_model_source"] == "SDLC_MODEL"
+    assert "the panel had no second model" in record["warning"]
+    # no advocate model configured: a warning that says so
+    record = ledger.check_models(1, both, "", None)
+    assert record["ok"] and "names no panel_advocate_model" in record["warning"]
+
+
+def test_model_matches_aliases_and_full_ids():
+    m = ledger.model_matches
+    assert m("opus", "claude-opus-5") and m("opus[1m]", "claude-opus-5-5")
+    assert m("claude-opus-5-5", "claude-opus-5-5") and m("haiku", "claude-haiku-4-5-20251001")
+    assert not m("opus", "claude-sonnet-5") and not m("", "claude-opus-5")
+    assert not m("claude-opus-5-5", "claude-sonnet-5-5")
+
+
+def test_the_pr_summary_names_the_models_and_the_warning(tmp_path):
+    change = tmp_path / "changes" / "0001-x"
+    item = {"n": 1, "kind": "escalate", "key": "escalate:x", "item": "escalate"}
+    entry = ledger.new_entry(1, "c", item, DECISION, "abc", None)
+    ledger.save_ledger(change, "c", [entry])
+    assert not any("Models of" in line for line in desc.decisions_block(change, "c"))
+    both = {"modelUsage": {"claude-opus-5": OPUS_USE, "claude-sonnet-5": SONNET_USE}}
+    ledger.save_models(change, "c", ledger.check_models(1, both, "opus", "opus"))
+    lines = desc.decisions_block(change, "c")
+    assert (
+        "Models of the (c) run: claude-opus-5, claude-sonnet-5 (the advocate's model: opus)."
+        in lines
+    )
+    assert any(line.startswith("⚠ the session itself runs on opus") for line in lines)
