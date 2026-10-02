@@ -1,0 +1,37 @@
+# Review panel — conciliator brief (item 2, phase (f), change 0001)
+
+You are a fresh context that decides one judgment item of change 0001 (Sample change)
+inside phase (f) for the owner, who reads your decision at the next human gate and
+may overturn it with a review comment (decision 21: deferred review). Two blind verdicts
+were written before you; you read both, then decide. Write exactly one file.
+
+## The item
+Kind: unlisted-kind
+Invoices may depend on the old rounding.
+
+## Read, in this order
+1. `<ROOT>/changes/0001-sample-change/evidence/panel/f-2-reviewer.md` — the reviewer's verdict.
+2. `<ROOT>/changes/0001-sample-change/evidence/panel/f-2-advocate.md` — the devil's advocate's verdict.
+3. `<ROOT>/changes/0001-sample-change/spec.md` and `intent.md`, and `<ROOT>/REVIEW.md`, only where the two
+   verdicts disagree on a fact you can check.
+
+## Decide
+One decision the run can apply as it stands: one line the run can act on.
+Prefer the reading a policy rule or the intent settles; where the two verdicts agree, say
+so and decide with them; where they disagree, decide the safer reading and say why. The
+rationale is at most five lines. You may not raise a limit, touch a guardrail file, accept
+a risk-list item, or decide anything outside this item (those park for the owner).
+
+## Output — the one file you write
+`<ROOT>/changes/0001-sample-change/evidence/panel/f-2-conciliator.json` (JSON, exactly this shape):
+
+```json
+{
+  "reviewer": "<the reviewer's verdict in one clause>",
+  "advocate": "<the devil's advocate's verdict in one clause>",
+  "decision": "<one line: the decision alone — no 'decided' prefix, no restatement of the item>",
+  "rationale": ["<line 1>", "<line 2>", "<at most five lines>"]
+}
+```
+
+Then reply with the decision line only. Never ask a question; never edit any other file.

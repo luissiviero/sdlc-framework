@@ -349,6 +349,26 @@ def test_prompts_name_the_item_the_files_and_the_blindness(design_project):  # n
     assert "panel_advocate_model" in text and "sdlc:adversarial-reviewer" in text
 
 
+BRIEF_FIXTURES = ROOT / "tests" / "fixtures" / "panel-briefs"
+
+
+@pytest.mark.parametrize("member", ledger.MEMBERS)
+@pytest.mark.parametrize(("phase", "kind"), [("b", "concern"), ("f", "unlisted-kind")])
+def test_each_brief_renders_exactly_the_recorded_text(tmp_path, member, phase, kind):
+    """The rendered brief, byte for byte, against the text recorded from the briefs as Python
+    constants: moving them into files must not change what a member reads. The unlisted kind
+    and phase exercise the fallback hints. The project root varies per machine, so it is
+    replaced by ``<ROOT>`` before the comparison."""
+    root = tmp_path / "project"
+    change_dir = root / "changes" / "0001-sample-change"
+    st = status_mod.Status(id="0001", slug="sample-change", title="Sample change")
+    item = {"n": 2, "kind": kind, "item": "Invoices may depend on the old rounding."}
+    text = panel_cli.render_prompt(member, root, change_dir, st, phase, item)
+    text = text.replace(panel_cli._posix(root), "<ROOT>")
+    expected = (BRIEF_FIXTURES / f"{member}-{phase}-{kind}.txt").read_text(encoding="utf-8")
+    assert text == expected
+
+
 # --- the gate reads the ledger --------------------------------------------------------------------
 def _ledger_entry(change: Path, phase: str, item: dict, decision: str, head: str) -> dict:
     entries = ledger.load_ledger(change, phase)
