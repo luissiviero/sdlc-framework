@@ -20,6 +20,7 @@ from pathlib import Path
 import pytest
 from ci import auth, project_setup, run_phase
 
+from gate import gate as gate_mod
 from gate import preflight
 from state import status as status_mod
 from state import yamlish
@@ -331,6 +332,25 @@ def test_guard_skips_when_the_previous_gate_did_not_pass(project):
     assert "gate (b) has not passed" in skip_reason(root, "c")
     set_state(change, "b", gate_phase="b", gate_result="passed")
     assert skip_reason(root, "c") is None
+
+
+def test_a_merged_pr_that_touches_only_change_0000_is_skipped_for_every_phase(project, monkeypatch):
+    """Issue #67 (0.3.1): change 0000 is the installation; a merged PR whose only change folder
+    is changes/0000-sdlc-init/ (the 0000 PR itself once the secret exists, an upgrade re-run
+    on sdlc/0000/a) resolved to 0000 and the design guard let it through (phase a, not
+    parked): a design run wrote a spec and plan for the installation. The guard now skips
+    0000 for every phase run."""
+    root, _change = project
+    init_dir = root / "changes" / "0000-sdlc-init"
+    assert init_dir.is_dir() and status_mod.read_status(init_dir).phase == "a"
+    _pr_files(monkeypatch, ["changes/0000-sdlc-init/status.yaml", "CLAUDE.md", "sdlc.yaml"])
+    assert run_phase.find_change("b", None, "claude/init-x", "o/r", "12", {}) == ("0000", None)
+    assert run_phase.find_change("b", None, "sdlc/0000/a", "o/r", "12", {}) == ("0000", None)
+    for phase in ("b", "c", "d", "e", "review", "fix", "f"):
+        _d, _s, _c, reason = run_phase.guard(root, "0000", phase, "owner/name", {})
+        assert reason == run_phase.INIT_CHANGE_SKIP, phase
+        assert reason.startswith("change 0000 is the installation; it has no design")
+    assert skip_reason(root, "b") is None  # change 0001 is untouched by the rule
 
 
 def test_guard_skips_an_unknown_change(project):
@@ -1055,6 +1075,20 @@ GATE_FILE = {
     "checks": [],
     "what_i_need": "",
 }
+# the record a CI session's gate writes since 0.3.0 (issue #91): the targets wait for the runner
+DEFERRED_GATE_FILE = {
+    **GATE_FILE,
+    "phase": "c",
+    "checks": [
+        {
+            "name": "commands",
+            "ok": True,
+            "reason": "deferred",
+            "need": "",
+            "details": {"deferred": True},
+        }
+    ],
+}
 
 
 @pytest.fixture
@@ -1107,7 +1141,7 @@ def pr_route(monkeypatch, number: int | None = None, **extra) -> list:
     return upsert_recorder(monkeypatch, number=number or 7, **extra)
 
 
-def test_full_run_stores_the_transcript_records_spend_and_hands_over(
+def test_full_run_stores_the_result_record_records_spend_and_hands_over(
     project, fake_claude, monkeypatch, capsys
 ):
     """A build run (c) whose gate says continue hands over to the test workflow. Since
@@ -1133,6 +1167,194 @@ def test_full_run_stores_the_transcript_records_spend_and_hands_over(
     assert stored == FAKE_RESULT
     run_file = json.loads((change / "evidence" / "run-c.json").read_text(encoding="utf-8"))
     assert run_file["spend_usd"] == 0.42 and run_file["phase"] == "c"
+    ledger = json.loads((change / "evidence" / "spend.json").read_text(encoding="utf-8"))
+    assert ledger["total_usd"] == 0.42  # issue #71: one entry per run, named by its record
+    assert [(e["run"], e["source"], e["usd"]) for e in ledger["entries"]] == [
+        ("c", "claude-c.json", 0.42)
+    ]
+
+
+def test_the_session_s_environment_leaves_the_gate_s_commands_to_the_runner():
+    """Issue #91 (0.3.0): the mark rides into the model's session with the credential, and
+    the runner waits for the three targets at the gate's own per-command timeout."""
+    from gate import checks
+
+    env = {"PATH": "/bin", **KEY_ENV}
+    marked = run_phase.session_env(env)
+    assert marked == {**env, checks.COMMANDS_RUNNER_ENV: checks.RUN_BY_RUNNER}
+    assert env == {"PATH": "/bin", **KEY_ENV}  # the runner's own environment is not marked
+    assert auth.credential_env(marked)[checks.COMMANDS_RUNNER_ENV] == checks.RUN_BY_RUNNER
+    assert run_phase.commands_timeout_seconds({}) == 3 * checks.DEFAULT_COMMAND_TIMEOUT + 300
+    assert run_phase.commands_timeout_seconds({"gate": {"command_timeout": 60}}) == 480
+    assert run_phase.commands_timeout_seconds({"gate": {"command_timeout": "x"}}) == 2700 + 300
+
+
+def test_the_commands_summary_reads_the_step_s_json():
+    assert run_phase.commands_summary({"ok": True, "output": {"ran": False}}) == {"ran": False}
+    assert run_phase.commands_summary({"ok": False, "reason": "boom"}) == {"ran": False}
+    call = {
+        "ok": True,
+        "output": {
+            "ran": True,
+            "result": "park",
+            "checks": [
+                {"name": "artifacts", "ok": True, "reason": "ok"},
+                {"name": "commands", "ok": False, "reason": "not green: test (exit 1)"},
+            ],
+        },
+    }
+    assert run_phase.commands_summary(call) == {
+        "ran": True,
+        "ran_by": "runner",
+        "ok": False,
+        "reason": "not green: test (exit 1)",
+        "result": "park",
+    }
+
+
+def test_a_run_whose_commands_step_cannot_run_is_an_infrastructure_failure(
+    project, fake_claude, monkeypatch, capsys
+):
+    """The session's gate said continue with the commands deferred; the step itself fails
+    (here: the gate CLI cannot run). The session already pushed that record and labelled the
+    PR ready, so the run parks the change (the record, status.yaml, the PR) before it exits 1:
+    a record whose targets never ran is never left reading as a pass."""
+    root, change = project
+    calls = pr_route(monkeypatch)
+    set_state(change, "b", gate_phase="b", gate_result="passed")
+    write(change / "evidence" / "gate-c.json", json.dumps(DEFERRED_GATE_FILE))
+    monkeypatch.setenv("FAKE_CLAUDE_RESULT", json.dumps(FAKE_RESULT))
+    monkeypatch.setattr(
+        run_phase, "run_gate_commands", lambda *a, **k: {"ok": False, "reason": "gate: boom"}
+    )
+    env = dict(os.environ, **KEY_ENV, GITHUB_TOKEN=FAKE_TOKEN)
+    args = Args(
+        root=str(root), phase="c", dry_run=False, no_dispatch=True, claude=fake_cli(fake_claude)
+    )
+    assert run_phase.run_phase(args, env) == run_phase.EXIT_FAILED
+    out, err = capsys.readouterr()
+    assert "the gate's commands check could not run after the session: gate: boom" in err
+    assert json.loads(out)["parked"].startswith("commands: deferred to the runner")
+    st = status_mod.read_status(change)
+    assert st.gate.result == "parked" and "never run: the gate's commands check" in st.parked_reason
+    recorded = json.loads((change / "evidence" / "gate-c.json").read_text(encoding="utf-8"))
+    assert recorded["result"] == "park" and recorded["label"] == "sdlc:needs-human"
+    cmd = next(ch for ch in recorded["checks"] if ch["name"] == "commands")
+    assert cmd["ok"] is False and "deferred to the runner and never run" in cmd["reason"]
+    assert "Re-run the phase" in cmd["need"] and "**commands**" in recorded["what_i_need"]
+    upsert = next(argv for name, argv in calls if argv and argv[0] == "upsert")
+    assert "--draft" in upsert  # the PR shows the park, not the ready label
+
+
+def test_a_session_that_fails_after_a_deferred_gate_parks_the_record(
+    project, fake_claude, monkeypatch, capsys
+):
+    """claude ends with ``is_error`` after its gate wrote and pushed a deferred record: the
+    runner parks the change on the way out instead of recommitting a record that reads as
+    passed (the first finding of the 0.3.0 review)."""
+    root, change = project
+    pr_route(monkeypatch)
+    set_state(change, "b", gate_phase="b", gate_result="passed")
+    write(change / "evidence" / "gate-c.json", json.dumps(DEFERRED_GATE_FILE))
+    monkeypatch.setenv("FAKE_CLAUDE_RESULT", json.dumps({**FAKE_RESULT, "is_error": True}))
+    env = dict(os.environ, **KEY_ENV, GITHUB_TOKEN=FAKE_TOKEN)
+    args = Args(
+        root=str(root), phase="c", dry_run=False, no_dispatch=True, claude=fake_cli(fake_claude)
+    )
+    assert run_phase.run_phase(args, env) == run_phase.EXIT_FAILED
+    out, err = capsys.readouterr()
+    assert "claude exited 0" in err
+    assert json.loads(out)["parked"].endswith("never run: claude exited 0")
+    st = status_mod.read_status(change)
+    assert st.gate.result == "parked" and st.parked_reason.startswith("commands: deferred")
+    recorded = json.loads((change / "evidence" / "gate-c.json").read_text(encoding="utf-8"))
+    assert recorded["result"] == "park" and not gate_mod.deferred_commands(recorded)
+    # the same session failing after a gate that ran its targets itself parks nothing
+    write(change / "evidence" / "gate-c.json", json.dumps({**GATE_FILE, "phase": "c"}))
+    set_state(change, "b", gate_phase="b", gate_result="passed")
+    assert run_phase.run_phase(args, env) == run_phase.EXIT_FAILED
+    assert status_mod.read_status(change).gate.result == "passed"
+
+
+def test_guard_skips_when_the_previous_gate_deferred_its_commands(project):
+    """A job killed between the session and the runner's step leaves gate (b) "passed" in
+    status.yaml with a record whose targets never ran: the build run does not start on it."""
+    root, change = project
+    set_state(change, "b", gate_phase="b", gate_result="passed")
+    assert skip_reason(root, "c") is None
+    write(change / "evidence" / "gate-b.json", json.dumps({**DEFERRED_GATE_FILE, "phase": "b"}))
+    reason = skip_reason(root, "c")
+    assert reason is not None and reason.startswith("gate (b) of change 0001 recorded")
+    assert "the runner never ran it" in reason and "re-run phase (b)" in reason
+
+
+def test_the_commands_step_runs_without_the_job_s_credentials(monkeypatch):
+    """The phase step holds both model credentials and the GitHub token (the workflows'
+    ``env:``); the targets run code the session wrote, so the step gets none of them."""
+    for name in ("ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN", "GITHUB_TOKEN", "GH_TOKEN"):
+        monkeypatch.setenv(name, "placeholder-" + name.lower())  # sdlc: allow-secret
+    monkeypatch.setenv("SDLC_PROJECT_SETTING", "kept")
+    env = run_phase.commands_env()
+    assert not {"ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN", "GITHUB_TOKEN", "GH_TOKEN"} & set(
+        env
+    )
+    assert env["SDLC_PROJECT_SETTING"] == "kept" and env["PATH"] == os.environ["PATH"]
+    seen = {}
+
+    def fake_cli_call(script, argv, timeout=600, env=None):
+        seen.update(script=Path(script).name, argv=list(argv), timeout=timeout, env=env)
+        return {"ok": True, "output": {"ran": False}}
+
+    monkeypatch.setattr(run_phase, "_cli_call", fake_cli_call)
+    run_phase.run_gate_commands(ROOT, Path("/p"), "0001", "c", {"gate": {"command_timeout": 60}})
+    assert seen["argv"][:5] == ["run-commands", "--root", str(Path("/p")), "--id", "0001"]
+    assert seen["timeout"] == 480 and "GITHUB_TOKEN" not in seen["env"]
+    assert seen["env"]["SDLC_PROJECT_SETTING"] == "kept"
+
+
+def test_a_rewritten_record_that_did_not_reach_the_branch_fails_the_run(
+    project, fake_claude, monkeypatch, capsys
+):
+    """The runner's step rewrote the record, the commit did not push: the remote still carries
+    the session's deferred record, so the run hands nothing over and exits 1."""
+    root, change = project
+    pr_route(monkeypatch)
+    set_state(change, "b", gate_phase="b", gate_result="passed")
+    write(change / "evidence" / "gate-c.json", json.dumps({**GATE_FILE, "phase": "c"}))
+    monkeypatch.setenv("FAKE_CLAUDE_RESULT", json.dumps(FAKE_RESULT))
+    ran = {"ok": True, "output": {"ran": True, "result": "continue", "checks": []}}
+    monkeypatch.setattr(run_phase, "run_gate_commands", lambda *a, **k: ran)
+    monkeypatch.setattr(
+        run_phase, "commit_run_record", lambda *a, **k: {"ok": False, "reason": "push refused"}
+    )
+    env = dict(os.environ, **KEY_ENV, GITHUB_TOKEN=FAKE_TOKEN)
+    args = Args(
+        root=str(root), phase="c", dry_run=False, no_dispatch=True, claude=fake_cli(fake_claude)
+    )
+    assert run_phase.run_phase(args, env) == run_phase.EXIT_FAILED
+    out, err = capsys.readouterr()
+    assert "was not committed and pushed: push refused" in err
+    emitted = json.loads(out)
+    assert emitted["dispatched"] is None and emitted["commands"]["ran"] is True
+
+
+def test_a_record_without_the_deferred_mark_leaves_the_commands_step_idle(
+    project, fake_claude, monkeypatch, capsys
+):
+    """A gate run by hand ran the targets itself: the step reports ``ran: false`` and the run
+    goes on as before (the full-run test above is this case; here its JSON says so)."""
+    root, change = project
+    pr_route(monkeypatch)
+    set_state(change, "b", gate_phase="b", gate_result="passed")
+    write(change / "evidence" / "gate-c.json", json.dumps({**GATE_FILE, "phase": "c"}))
+    monkeypatch.setenv("FAKE_CLAUDE_RESULT", json.dumps(FAKE_RESULT))
+    env = dict(os.environ, **KEY_ENV, GITHUB_TOKEN=FAKE_TOKEN)
+    args = Args(
+        root=str(root), phase="c", dry_run=False, no_dispatch=True, claude=fake_cli(fake_claude)
+    )
+    assert run_phase.run_phase(args, env) == run_phase.EXIT_OK
+    out = json.loads(capsys.readouterr().out)
+    assert out["commands"] == {"ran": False} and out["result"] == "continue"
 
 
 PANEL_DECISION_SCRIPT = """
@@ -1207,9 +1429,34 @@ def test_a_run_without_panel_decisions_keeps_no_models_record(project, fake_clau
     assert not (change / "evidence" / "panel-models-c.json").exists()
 
 
-def test_every_run_of_a_phase_keeps_its_own_transcript(project):
+def test_the_stored_result_is_called_a_result_record_never_a_transcript():
+    """Issue #72 (0.3.1): what the runner stores is ``claude -p --output-format json``'s single
+    result object (the final message and the run's metadata); the docs and the comments
+    called it the run's transcript, which the step-41 reading of the article's "logged in
+    the session transcript" (p.29) then took as met. The rename, and step 41's transcript
+    half marked not built."""
+    operating_model = (ROOT / "docs" / "OPERATING_MODEL.md").read_text(encoding="utf-8")
+    assert "JSON transcript" not in operating_model and "transcript per run" not in operating_model
+    assert "the JSON result record" in operating_model
+    assert "one result record per run" in operating_model
+    build_guide = (ROOT / "docs" / "BUILD_GUIDE.md").read_text(encoding="utf-8")
+    step = build_guide.split("#### Step 41 ", 1)[1].split("#### Step 42 ", 1)[0]
+    assert step.startswith("— Observability: keep run result records,")
+    assert "run's result record (`--output-format json`" in step
+    assert "**Not built** (issue #72" in step and "the transcript half of this step" in step
+    assert "keep run transcripts" not in step and "run's transcript" not in step
+    for rel in ("plugin/ci/run_phase.py", "plugin/scan/cli.py"):
+        source = (ROOT / rel).read_text(encoding="utf-8")
+        assert "JSON transcript" not in source and "only transcript" not in source, rel
+        assert "every transcript" not in source, rel
+    reviewer = (ROOT / "plugin" / "agents" / "adversarial-reviewer.md").read_text(encoding="utf-8")
+    assert "whatever transcript is committed" not in reviewer
+    assert "whatever result record is committed" in reviewer
+
+
+def test_every_run_of_a_phase_keeps_its_own_result_record(project):
     """0.2.16: the first run writes claude-<phase>.json, the next ones claude-<phase>-2.json,
-    -3, ... so the adversarial reviewer never reads an earlier run's transcript as the
+    -3, ... so the adversarial reviewer never reads an earlier run's result record as the
     current run's (the first overturn round on the sample repository, 2026-09-24)."""
     _root, change = project
     evidence = change / "evidence"
@@ -1274,6 +1521,42 @@ def test_hand_over_table_matches_operating_model_4_2():
     assert run_phase.hand_over(args, {"result": "continue"}, "e", "0001") is None  # (e) ends here
 
 
+def test_the_review_pass_commits_its_own_result_record_and_spend_entry(
+    project, fake_claude, monkeypatch, capsys
+):
+    """The review of the 0.3.1 diff, finding 6: the review pass returned before any commit,
+    so its result record, its run file and its spend entry (issue #71) lived in the working
+    tree until the (e) run's commit - and were lost when the findings file failed the pass or
+    the (e) run never came. The pass commits them itself, on the build branch at phase (d)."""
+    root, change = project
+    monkeypatch.setattr(run_phase, "review_prompt", lambda *a: ("REVIEW the diff.", ""))
+    set_state(change, "d", gate_phase="d", gate_result="passed")
+    git(root, "add", ".")
+    git(root, "commit", "-q", "-m", "as if (d) passed")
+    git(root, "checkout", "-q", "-b", "sdlc/0001/c")  # the build PR's branch, open through (e)
+    monkeypatch.setenv("FAKE_CLAUDE_RESULT", json.dumps({**FAKE_RESULT, "total_cost_usd": 0.65}))
+    # the pass "writes" a findings file that fails validation: the pass fails, the commit holds
+    write(change / "evidence" / "review-findings.json", "{not json")
+    args = Args(root=str(root), phase="review", dry_run=False, claude=fake_cli(fake_claude))
+    code = run_phase.run_phase(args, dict(os.environ, **KEY_ENV))
+    out = json.loads(capsys.readouterr().out)
+    assert code == run_phase.EXIT_FAILED and out["review"]["ok"] is False, out
+    assert out["cost_usd"] == 0.65 and out["run_record"]["ok"], out["run_record"]
+    assert git(root, "status", "--porcelain", "--", "changes").strip() == ""
+    assert git(root, "rev-parse", "--abbrev-ref", "HEAD").strip() == "sdlc/0001/c"
+    assert status_mod.read_status(change).phase == "d"  # the commit moved no phase
+    subject = git(root, "log", "-1", "--format=%s").strip()
+    assert subject == "run(review): spend recorded"
+    committed = git(root, "show", "--name-only", "--format=", "HEAD").split()
+    assert "changes/0001-percent-helper/evidence/claude-review.json" in committed
+    assert "changes/0001-percent-helper/evidence/spend.json" in committed
+    assert "changes/0001-percent-helper/evidence/run-e.json" in committed
+    ledger = json.loads((change / "evidence" / "spend.json").read_text(encoding="utf-8"))
+    assert [(e["run"], e["source"], e["usd"]) for e in ledger["entries"]] == [
+        ("review", "claude-review.json", 0.65)
+    ]
+
+
 def test_review_phase_argv_is_read_only(project, monkeypatch, capsys):
     root, change = project
     monkeypatch.setattr(run_phase, "review_prompt", lambda *a: ("REVIEW the diff.", ""))
@@ -1328,7 +1611,7 @@ def test_phase_workflow_permissions_and_concurrency(name):
     ]
     assert 'group: "sdlc-${{ inputs.head_ref || github.event.pull_request.head.ref }}"' in text
     assert "cancel-in-progress: false" in text
-    assert "timeout-minutes: 150" in text
+    assert "timeout-minutes: 200" in text  # 0.3.0: the session, then the commands step
 
 
 @pytest.mark.parametrize("name", PHASE_WORKFLOWS)
@@ -1775,7 +2058,7 @@ def upsert_recorder(monkeypatch, number: int | None = 7, route: str = "api", **e
     answer = {"route": route, "number": number, "url": f"https://github.test/o/r/pull/{number}"}
     answer.update(extra)
 
-    def fake_cli_call(script, argv, timeout=600):
+    def fake_cli_call(script, argv, timeout=600, env=None):
         calls.append((Path(script).name, list(argv)))
         if Path(script).name == "cli.py" and argv and argv[0] == "upsert":
             return {"ok": True, "reason": "", "output": dict(answer)}

@@ -60,7 +60,10 @@ jobs:
       ${{ github.event_name == 'workflow_dispatch' ||
       github.event.pull_request.merged == true }}
     runs-on: ubuntu-latest
-    timeout-minutes: 150
+    # 0.3.0: the session's wall clock (gate.max_wall_clock_minutes, 120 by default, plus
+    # 5 of grace) and then the gate's commands step, which runs the three targets after
+    # the session at gate.command_timeout each (900 s by default): 125 + 50 minutes
+    timeout-minutes: 200
     steps:
       - name: Check out the project
         uses: actions/checkout@v5

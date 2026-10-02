@@ -429,6 +429,99 @@ def test_limits_wall_clock_and_budget(tmp_path):
     assert limits.check_limits(ctx).ok
 
 
+def test_the_budget_binds_the_change_s_running_total_not_the_last_session(tmp_path):
+    """Issue #71 (0.3.1): ``max_budget_usd`` is documented per change, but the cap was compared
+    with the last session's figure, which ``start-run`` reset and ``record-spend`` overwrote:
+    sample change 0002 cost almost four times a cap of 5 with no park. Two sessions below the
+    cap whose sum exceeds it now park."""
+    ctx = _ctx(tmp_path, {"gate": {"max_budget_usd": 2}})
+    write(ctx.evidence_dir / "run-c.json", json.dumps({"spend_usd": 1.5}))
+    ledger = limits.record_spend_entry(ctx.evidence_dir, "c", "claude-c.json", 1.5)
+    assert ledger["total_usd"] == 1.5 and limits.check_limits(ctx).ok
+    ledger = limits.record_spend_entry(ctx.evidence_dir, "c", "claude-c-2.json", 1.5)
+    assert ledger["total_usd"] == 3.0
+    res = limits.check_limits(ctx)
+    assert not res.ok and res.details["stop"]
+    assert res.reason == (
+        "budget exceeded: 3.00 USD spent on the change (this run 1.50), budget 2.00 USD"
+    )
+    assert res.details["spend_usd"] == 1.5 and res.details["spend_usd_total"] == 3.0
+    assert res.details["spend_entries"] == 2
+    # the cap is the change's, not the phase's: a (b) session's spend counts at (c)
+    assert limits.read_spend_ledger(_ctx(tmp_path, phase="b").evidence_dir)["total_usd"] == 3.0
+    # without a ledger (a change recorded before 0.3.1) the run record's figure still binds
+    (ctx.evidence_dir / limits.SPEND_FILE).unlink()
+    assert limits.check_limits(ctx).ok
+    write(ctx.evidence_dir / "run-c.json", json.dumps({"spend_usd": 2.5}))
+    res = limits.check_limits(ctx)
+    assert not res.ok and res.details["spend_usd_total"] == 2.5
+    assert res.details["spend_entries"] == 0
+
+
+def test_the_review_pass_and_each_fix_round_are_their_own_spend_entries(tmp_path):
+    """Issue #71: the review pass's cost went to run-e.json and the (e) session's start-run
+    wiped it; a fix round's cost replaced the phase's. Each is an entry now, keyed by the
+    stored result, so a repeated record of one session replaces its entry, never doubles it."""
+    ctx = _ctx(tmp_path, {"gate": {"max_budget_usd": 5}}, phase="e")
+    evidence = ctx.evidence_dir
+    limits.record_spend_entry(evidence, "d", "claude-d.json", 1.0, at="2026-10-02T10:00:00Z")
+    limits.record_spend_entry(evidence, "review", "claude-review.json", 0.65)
+    limits.record_spend_entry(evidence, "e", "claude-e.json", 2.04)
+    limits.record_spend_entry(evidence, "fix", "claude-fix.json", 0.9)
+    limits.record_spend_entry(evidence, "fix", "claude-fix-2.json", 0.5)
+    ledger = limits.read_spend_ledger(evidence)
+    assert [(e["run"], e["source"]) for e in ledger["entries"]] == [
+        ("d", "claude-d.json"),
+        ("review", "claude-review.json"),
+        ("e", "claude-e.json"),
+        ("fix", "claude-fix.json"),
+        ("fix", "claude-fix-2.json"),
+    ]
+    assert ledger["total_usd"] == 5.09 and ledger["entries"][0]["at"] == "2026-10-02T10:00:00Z"
+    assert not limits.check_limits(ctx).ok
+    # the same session recorded again (a repeated step): its entry is replaced
+    ledger = limits.record_spend_entry(evidence, "fix", "claude-fix-2.json", 0.4)
+    assert len(ledger["entries"]) == 5 and ledger["total_usd"] == 4.99
+    assert limits.check_limits(ctx).ok
+    stored = json.loads((evidence / "spend.json").read_text(encoding="utf-8"))
+    assert stored["total_usd"] == 4.99 and len(stored["entries"]) == 5
+    # a ledger that is not a ledger counts nothing (the run record still does)
+    write(evidence / "spend.json", "{not json")
+    assert limits.read_spend_ledger(evidence) == {"total_usd": 0.0, "entries": []}
+
+
+def test_a_spend_figure_is_finite_and_non_negative_and_zero_counts(tmp_path):
+    """The review of the 0.3.1 diff, finding 5: Python's json reads ``NaN``, and one NaN
+    entry made the total NaN, which no cap ever exceeds; a negative entry lowered it; a
+    ``0.0`` entry was dropped. The ledger refuses the first two and keeps the third."""
+    ctx = _ctx(tmp_path, {"gate": {"max_budget_usd": 0.01}})
+    evidence = ctx.evidence_dir
+    for bad in (float("nan"), float("inf"), -1.0, "x"):
+        with pytest.raises(ValueError, match="finite, non-negative"):
+            limits.record_spend_entry(evidence, "c", "bad.json", bad)
+    assert limits.record_spend_entry(evidence, "c", "zero.json", 0.0)["entries"][0]["usd"] == 0.0
+    limits.record_spend_entry(evidence, "c", "real.json", 0.02)
+    # entries written behind the ledger's back are judged the same way on the read
+    stored = json.loads((evidence / "spend.json").read_text(encoding="utf-8"))
+    stored["entries"] += [
+        {"run": "c", "source": "nan.json", "usd": float("nan")},
+        {"run": "c", "source": "neg.json", "usd": -5},
+        {"run": "c", "source": "inf.json", "usd": float("inf")},
+    ]
+    write(evidence / "spend.json", json.dumps(stored))  # json writes NaN and Infinity
+    ledger = limits.read_spend_ledger(evidence)
+    assert [e["source"] for e in ledger["entries"]] == ["zero.json", "real.json"]
+    assert ledger["total_usd"] == 0.02
+    res = limits.check_limits(ctx)
+    assert not res.ok and "budget exceeded: 0.02 USD" in res.reason
+    status_mod.write_status(ctx.change_dir, ctx.status)  # the CLI reads the change's status
+    proc = run_py(
+        str(GATE_CLI), "record-spend", "--root", str(tmp_path), "--id", "0001", "--phase", "c",
+        "--usd", "nan", cwd=tmp_path,
+    )  # fmt: skip
+    assert proc.returncode == 2 and "finite, non-negative" in proc.stderr
+
+
 # --- the gate against the fixture --------------------------------------------------------------
 def _names(result, ok):
     return sorted(ch.name for ch in result.checks if ch.ok is ok)
@@ -510,6 +603,177 @@ def test_gate_parks_on_a_failing_test(project, monkeypatch):
     assert "test (exit 1)" in cmd.reason
     assert "SAMPLE_FAIL=1" in cmd.details["runs"]["test"]["output"]
     assert cmd.details["runs"]["build"]["exit_code"] == 0
+
+
+# --- issue #91 (0.3.0): the commands check deferred to the runner ------------------------------
+def _commands_check(result):
+    return next(ch for ch in result.checks if ch.name == "commands")
+
+
+def test_a_ci_session_s_gate_defers_the_commands_and_runs_no_target(project, monkeypatch):
+    """With the runner's mark in the environment the gate records the ``commands`` check as
+    deferred and runs nothing: a target that would fail (``SAMPLE_FAIL=1``) leaves the gate at
+    ``continue``, and the record says the check is waiting for the runner."""
+    root, change = project
+    verdict(root, "c")
+    monkeypatch.setenv("SAMPLE_FAIL", "1")
+    monkeypatch.setenv(checks.COMMANDS_RUNNER_ENV, checks.RUN_BY_RUNNER)
+    result = gate.run_gate(root, "0001", "c")
+    assert result.result == "continue", result.reason
+    cmd = _commands_check(result)
+    assert cmd.ok is True and cmd.details == {"deferred": True}
+    assert cmd.reason == checks.COMMANDS_DEFERRED_REASON and "not yet run" in cmd.reason
+    recorded = json.loads((change / "evidence" / "gate-c.json").read_text(encoding="utf-8"))
+    assert gate.deferred_commands(recorded) is True
+    # any other value of the variable, or none, runs the targets as before
+    monkeypatch.setenv(checks.COMMANDS_RUNNER_ENV, "session")
+    result = gate.run_gate(root, "0001", "c", dry_run=True)
+    assert result.result == "park" and "test (exit 1)" in _commands_check(result).reason
+
+
+def test_the_runner_s_commands_step_parks_a_red_target_and_keeps_the_record_s_shape(
+    project, monkeypatch
+):
+    root, change = project
+    verdict(root, "c")
+    monkeypatch.setenv(checks.COMMANDS_RUNNER_ENV, checks.RUN_BY_RUNNER)
+    deferred = gate.run_gate(root, "0001", "c")
+    before = json.loads((change / "evidence" / "gate-c.json").read_text(encoding="utf-8"))
+    monkeypatch.setenv("SAMPLE_FAIL", "1")
+    # the runner's own environment may carry the mark too: the step runs the targets anyway
+    result = gate.run_deferred_commands(root, "0001", "c")
+    assert result is not None and result.result == "park" and result.label == "sdlc:needs-human"
+    cmd = _commands_check(result)
+    assert cmd.ok is False and "test (exit 1)" in cmd.reason
+    assert cmd.details["ran_by"] == "runner" and "deferred" not in cmd.details
+    assert "SAMPLE_FAIL=1" in cmd.details["runs"]["test"]["output"]
+    assert cmd.details["runs"]["build"]["exit_code"] == 0
+    assert cmd.need.startswith("Make the failing target pass")
+    # the shape: the same checks in the same order, the session's head and time
+    assert [ch.name for ch in result.checks] == [ch.name for ch in deferred.checks]
+    assert result.head == before["head"] and result.at == before["at"]
+    after = json.loads((change / "evidence" / "gate-c.json").read_text(encoding="utf-8"))
+    assert after["result"] == "park" and after["reason"].startswith("commands: not green")
+    assert "**commands**" in after["what_i_need"] and "--id 0001 --phase c" in after["what_i_need"]
+    assert [ch["name"] for ch in after["checks"]] == [ch["name"] for ch in before["checks"]]
+    st = status_mod.read_status(change)
+    assert st.gate.result == "parked" and st.parked_reason.startswith("commands: not green")
+
+
+@pytest.mark.parametrize(
+    ("fixture", "phase", "expected", "label"),
+    [("project", "c", "continue", None), ("design_project", "b", "wait", "sdlc:b-ready")],
+)
+def test_a_green_target_after_the_session_leaves_the_session_s_verdict_standing(
+    request, monkeypatch, fixture, phase, expected, label
+):
+    root, change = request.getfixturevalue(fixture)
+    verdict(root, phase)
+    monkeypatch.setenv(checks.COMMANDS_RUNNER_ENV, checks.RUN_BY_RUNNER)
+    assert gate.run_gate(root, "0001", phase).result == expected
+    result = gate.run_deferred_commands(root, "0001", phase)
+    assert result is not None and result.result == expected and result.label == label
+    cmd = _commands_check(result)
+    assert cmd.ok is True and cmd.reason == "build, test and lint exit 0"
+    assert cmd.details["ran_by"] == "runner" and "deferred" not in cmd.details
+    assert {n: r["exit_code"] for n, r in cmd.details["runs"].items()} == {
+        "build": 0,
+        "test": 0,
+        "lint": 0,
+    }
+    recorded = json.loads((change / "evidence" / f"gate-{phase}.json").read_text(encoding="utf-8"))
+    assert recorded["result"] == expected and gate.deferred_commands(recorded) is False
+    st = status_mod.read_status(change)
+    assert st.gate.phase == phase and st.gate.result == "passed" and st.parked_reason is None
+
+
+def test_a_crashing_check_in_the_runner_s_step_parks_as_the_gate_does(project, monkeypatch):
+    """``evaluate`` turns a crashing check into a park; the runner's step does the same (a
+    ``gate.command_timeout`` that is not a number crashed the step and left the deferred record
+    reading as passed: the fourth finding of the 0.3.0 review)."""
+    root, change = project
+    verdict(root, "c")
+    monkeypatch.setenv(checks.COMMANDS_RUNNER_ENV, checks.RUN_BY_RUNNER)
+    assert gate.run_gate(root, "0001", "c").result == "continue"
+    original = checks.GateContext.gate_setting
+    monkeypatch.setattr(
+        checks.GateContext,
+        "gate_setting",
+        lambda self, key, default: (
+            "abc" if key == "command_timeout" else original(self, key, default)
+        ),
+    )
+    result = gate.run_deferred_commands(root, "0001", "c")
+    assert result is not None and result.result == "park"
+    cmd = _commands_check(result)
+    assert cmd.ok is False and cmd.reason.startswith("check crashed: ValueError")
+    assert cmd.details == {"ran_by": "runner"}
+    recorded = json.loads((change / "evidence" / "gate-c.json").read_text(encoding="utf-8"))
+    assert recorded["result"] == "park" and gate.deferred_commands(recorded) is False
+    assert status_mod.read_status(change).gate.result == "parked"
+
+
+def test_the_runner_s_commands_step_leaves_a_record_without_the_deferred_mark_alone(project):
+    """A gate run by hand (no mark) ran the targets itself: the step has nothing to do, and
+    the record and status.yaml are byte-for-byte what the gate wrote."""
+    root, change = project
+    verdict(root, "c")
+    gate.run_gate(root, "0001", "c")
+    record = change / "evidence" / "gate-c.json"
+    before = record.read_bytes(), (change / "status.yaml").read_bytes()
+    assert gate.run_deferred_commands(root, "0001", "c") is None
+    assert (record.read_bytes(), (change / "status.yaml").read_bytes()) == before
+    record.unlink()
+    assert gate.run_deferred_commands(root, "0001", "c") is None  # no record: nothing to run
+    assert not record.exists()
+    with pytest.raises(gate.GateError, match="no change folder"):
+        gate.run_deferred_commands(root, "0009", "c")
+
+
+def test_the_run_commands_cli_reports_the_step_and_exits_0_either_way(project, monkeypatch):
+    root, change = project
+    verdict(root, "c")
+    monkeypatch.setenv(checks.COMMANDS_RUNNER_ENV, checks.RUN_BY_RUNNER)
+    run_py(str(GATE_CLI), "check", "--root", str(root), "--id", "0001", "--phase", "c", cwd=root)
+    env = {k: v for k, v in os.environ.items() if k != checks.COMMANDS_RUNNER_ENV}
+    proc = run_py(
+        str(GATE_CLI), "run-commands", "--root", str(root), "--id", "0001", "--phase", "c",
+        cwd=root, env={**env, "SAMPLE_FAIL": "1"},
+    )  # fmt: skip
+    assert proc.returncode == 0, proc.stderr
+    out = json.loads(proc.stdout)
+    assert out["ran"] is True and out["result"] == "park" and out["schema_version"] == 1
+    assert "## What I need from you" in proc.stderr and "**commands**" in proc.stderr
+    # a second call finds the targets already run
+    proc = run_py(
+        str(GATE_CLI), "run-commands", "--root", str(root), "--id", "0001", "--phase", "c",
+        cwd=root, env=env,
+    )  # fmt: skip
+    assert proc.returncode == 0 and json.loads(proc.stdout) == {
+        "ran": False,
+        "reason": "the gate record carries no deferred commands check",
+    }
+    proc = run_py(
+        str(GATE_CLI), "run-commands", "--root", str(root), "--id", "0001", "--phase", "b",
+        cwd=root, env=env,
+    )  # fmt: skip
+    assert proc.returncode == 0 and json.loads(proc.stdout)["ran"] is False  # no gate-b.json
+    (change / "evidence" / "gate-c.json").write_text("not json", encoding="utf-8")
+    proc = run_py(
+        str(GATE_CLI), "run-commands", "--root", str(root), "--id", "0001", "--phase", "c",
+        cwd=root, env=env,
+    )  # fmt: skip
+    assert proc.returncode == 2 and "gate-c.json unreadable" in proc.stderr
+
+
+def test_a_gate_record_round_trips_through_from_dict(project):
+    root, change = project
+    verdict(root, "c")
+    result = gate.run_gate(root, "0001", "c")
+    data = json.loads((change / "evidence" / "gate-c.json").read_text(encoding="utf-8"))
+    again = gate.GateResult.from_dict(data)
+    assert again.as_dict() == data == result.as_dict()
+    assert gate.GateResult.from_dict({}).result == "park"  # an empty record fails closed
 
 
 def test_gate_parks_when_the_diff_touches_settings_json(project):
@@ -965,7 +1229,19 @@ def test_gate_cli_exit_codes_and_run_files(project):
         "0.4",
         cwd=root,
     )
-    assert proc.returncode == 0 and json.loads(proc.stdout)["spend_usd"] == 0.4
+    recorded = json.loads(proc.stdout)
+    assert proc.returncode == 0 and recorded["spend_usd"] == 0.4
+    assert recorded["spend_usd_total"] == 0.4 and recorded["spend_entries"] == 1  # issue #71
+    proc = run_py(
+        str(GATE_CLI), "record-spend", "--root", str(root), "--id", "0001", "--phase", "e",
+        "--usd", "0.65", "--run", "review", "--source", "claude-review.json", cwd=root,
+    )  # fmt: skip
+    assert proc.returncode == 0 and json.loads(proc.stdout)["spend_usd_total"] == 1.05
+    ledger = json.loads((change / "evidence" / "spend.json").read_text(encoding="utf-8"))
+    assert [(e["run"], e["source"], e["usd"]) for e in ledger["entries"]] == [
+        ("c", None, 0.4),
+        ("review", "claude-review.json", 0.65),
+    ]
     proc = run_py(
         str(GATE_CLI), "check", "--root", str(root), "--id", "0001", "--phase", "c", cwd=root
     )

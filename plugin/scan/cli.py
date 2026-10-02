@@ -10,9 +10,10 @@
 
 ``prompt`` prints the brief of the review. ``review`` composes and runs the read-only headless
 ``claude -p`` with it exactly as a phase run is composed (``ci/run_phase.py compose`` and
-``invoke``: the pinned plugin, the CI settings, one credential), stores the JSON transcript
-as ``scan-run.json`` and checks the findings file it wrote. ``route`` files every Important,
-undismissed finding (at most ``--max-findings``) as an incident intent change on
+``invoke``: the pinned plugin, the CI settings, one credential), stores the JSON result record
+(the final message and the run's metadata) as ``scan-run.json`` and checks the findings file
+it wrote. ``route`` files every Important, undismissed finding (at most ``--max-findings``) as
+an incident intent change on
 ``sdlc/<id>/a`` and opens its intent PR; it prints ``{filed, skipped, dismissed, problems}``
 and writes ``filed=<n>`` to ``$GITHUB_OUTPUT``. ``scanners`` runs pip-audit and bandit (Python)
 or npm audit (Node) and prints a markdown summary; findings there are reports, never a

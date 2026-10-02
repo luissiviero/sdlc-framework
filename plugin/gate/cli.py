@@ -2,8 +2,10 @@
 
     python "${CLAUDE_PLUGIN_ROOT}/plugin/gate/cli.py" check --root . --id 0001 --phase c \
         [--base origin/main] [--dry-run]
+    python cli.py run-commands --root . --id 0001 --phase c     # the runner, after the session
     python cli.py start-run --root . --id 0001 --phase c        # wall-clock start (step 19)
-    python cli.py record-spend --root . --id 0001 --phase c --usd 1.25
+    python cli.py record-spend --root . --id 0001 --phase c --usd 1.25 \\
+        [--run review] [--source claude-review.json]
     python cli.py set-iterations --root . --id 0001 --count 0   # owner only (decisions 5, 24)
     python cli.py bump-iteration --root . --id 0001             # one fix round (step 24)
     python cli.py spec-header --root . --id 0001 [--plugin-root <path>]
@@ -14,9 +16,24 @@ new count with the cap in force (the adversarial reviewer's routine/non-routine
 classification tightens it, step 19). It exits 3 once the count is past the cap, so a
 runbook can stop the loop before the gate parks the change.
 
+``record-spend`` writes the session's figure into ``evidence/run-<phase>.json`` (the run
+record) and adds it as one entry to the change's ledger ``evidence/spend.json`` (issue #71,
+0.3.1): ``--run`` names the run that spent it (default: the phase; the review pass and a fix
+round are their own entries), ``--source`` the stored result it was read from, which makes
+the entry unique (a repeated record of the same source replaces it). The gate's ``limits``
+check compares ``gate.max_budget_usd`` with the ledger's total, not with the last session.
+
 ``spec-header`` prints the two header lines of spec.md (step 22; article p.14: the spec, the
 prompt that produced it and the skill versions in force are logged together) as JSON, with
 the pieces it rendered them from.
+
+``run-commands`` (0.3.0, issue #91) is the CI runner's step after the model's session: when
+the session's gate recorded its ``commands`` check as deferred (the runner sets
+``SDLC_GATE_COMMANDS=runner`` in the session's environment, so the project's targets never run
+inside Claude Code's sandbox, where a nested ``.env*`` is unreadable), it runs build, test and
+lint on the working tree the session left and rewrites ``evidence/gate-<phase>.json`` and
+``status.yaml`` with the result; a red target parks the change. It prints ``{"ran": false}``
+and touches nothing when the record carries no deferred check, and exits 0 either way.
 
 ``check`` prints the gate result as JSON (result: continue | wait | park, the checks, the
 "What I need from you" block) and exits 0 on continue, 3 on wait (human gate), 4 on park,
@@ -65,6 +82,27 @@ def cmd_check(args) -> int:
     return EXIT[result.result]
 
 
+def cmd_run_commands(args) -> int:
+    """Issue #91 (0.3.0): the runner's step after the model's session. Runs the ``commands``
+    check a CI session's gate deferred and rewrites the gate record and status.yaml with the
+    result; prints ``{"ran": false}`` and changes nothing when the record carries no deferred
+    check. Exit 0 either way (the verdict is in the JSON and the gate file), 2 on a usage error
+    or an unreadable record."""
+    try:
+        result = gate.run_deferred_commands(Path(args.root), args.id, args.phase, args.base)
+    except gate.GateError as exc:
+        print(f"gate: {exc}", file=sys.stderr)
+        return 2
+    if result is None:
+        _emit({"ran": False, "reason": "the gate record carries no deferred commands check"})
+        return 0
+    _emit({"ran": True, **result.as_dict()})
+    block = result.what_i_need()
+    if block:
+        print(block, file=sys.stderr)
+    return 0
+
+
 def _change(args):
     root = Path(args.root).resolve()
     change_dir = c.find_change_dir(root, args.id)
@@ -105,9 +143,16 @@ def cmd_record_spend(args) -> int:
             data = json.loads(path.read_text(encoding="utf-8"))
         except ValueError:
             data = {}
+    try:
+        ledger = limits.record_spend_entry(
+            change_dir / "evidence", args.run or args.phase, args.source, float(args.usd)
+        )
+    except ValueError as exc:
+        print(f"gate: {exc}", file=sys.stderr)
+        return 2
     data.update({"phase": args.phase, "spend_usd": float(args.usd)})
     _write_run(path, data)
-    _emit(data)
+    _emit({**data, "spend_usd_total": ledger["total_usd"], "spend_entries": len(ledger["entries"])})
     return 0
 
 
@@ -223,6 +268,15 @@ def build_parser() -> argparse.ArgumentParser:
     ck.add_argument("--dry-run", action="store_true", help="evaluate only; write nothing")
     ck.set_defaults(fn=cmd_check)
 
+    rc = sub.add_parser(
+        "run-commands", help="run the commands check the session's gate deferred (issue #91)"
+    )
+    rc.add_argument("--root", default=".")
+    rc.add_argument("--id", required=True)
+    rc.add_argument("--phase", required=True, choices=c.PHASES)
+    rc.add_argument("--base", default=None, help="base ref for the diff (default: origin HEAD)")
+    rc.set_defaults(fn=cmd_run_commands)
+
     sr = sub.add_parser("start-run")
     sr.add_argument("--root", default=".")
     sr.add_argument("--id", required=True)
@@ -234,6 +288,8 @@ def build_parser() -> argparse.ArgumentParser:
     rs.add_argument("--id", required=True)
     rs.add_argument("--phase", required=True, choices=c.PHASES)
     rs.add_argument("--usd", required=True, type=float)
+    rs.add_argument("--run", default=None, help="the run that spent it (default: --phase)")
+    rs.add_argument("--source", default=None, help="the stored result the figure came from")
     rs.set_defaults(fn=cmd_record_spend)
 
     bi = sub.add_parser(

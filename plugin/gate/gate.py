@@ -15,6 +15,7 @@ PR summary (step 27a, B3) can show it.
 from __future__ import annotations
 
 import json
+import os
 import sys
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -102,6 +103,30 @@ class GateResult:
             "checks": [ch.as_dict() for ch in self.checks],
             "what_i_need": self.what_i_need(),
         }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> GateResult:
+        """A gate record read back from ``evidence/gate-<phase>.json``: ``as_dict`` inverted,
+        the derived fields (``reason``, ``what_i_need``) recomputed from the checks."""
+        checks_data = data.get("checks")
+        return cls(
+            change_id=str(data.get("change_id") or ""),
+            slug=str(data.get("slug") or ""),
+            phase=str(data.get("phase") or ""),
+            profile=str(data.get("profile") or "standard"),
+            human_gate=bool(data.get("human_gate")),
+            result=str(data.get("result") or "park"),
+            checks=[
+                CheckResult.from_dict(ch)
+                for ch in (checks_data if isinstance(checks_data, list) else [])
+                if isinstance(ch, dict)
+            ],
+            label=data.get("label") if isinstance(data.get("label"), str) else None,
+            head=data.get("head") if isinstance(data.get("head"), str) else None,
+            at=str(data.get("at") or _now()),
+            dry_run=bool(data.get("dry_run")),
+            config_note=str(data.get("config_note") or ""),
+        )
 
 
 class GateError(RuntimeError):
@@ -200,6 +225,8 @@ def build_context(root: Path, change_id: str, phase: str, base: str | None = Non
     return GateContext(
         root, change_dir, phase, st, config, d, human, diff_error, profile, config_note,
         review_mode,
+        # issue #91: a CI session's gate leaves the commands to the runner (checks.check_commands)
+        commands_deferred=os.environ.get(checks.COMMANDS_RUNNER_ENV) == checks.RUN_BY_RUNNER,
     )  # fmt: skip
 
 
@@ -265,4 +292,68 @@ def run_gate(
     result.dry_run = dry_run
     if not dry_run:
         apply(ctx, result)
+    return result
+
+
+# --- issue #91 (0.3.0): the commands check, run by the runner after the model's session ----------
+def deferred_commands(data: dict[str, Any]) -> bool:
+    """Whether a gate record's ``commands`` check is waiting for the runner (written by a gate
+    run inside a CI session, ``checks.check_commands``)."""
+    checks_data = data.get("checks")
+    if not isinstance(checks_data, list):
+        return False
+    return any(
+        isinstance(ch, dict)
+        and ch.get("name") == "commands"
+        and isinstance(ch.get("details"), dict)
+        and ch["details"].get("deferred") is True
+        for ch in checks_data
+    )
+
+
+def run_deferred_commands(
+    root: Path, change_id: str, phase: str, base: str | None = None
+) -> GateResult | None:
+    """Run the ``commands`` check the session's gate deferred and rewrite the gate record with
+    the result (issue #91, choice 133: the runner runs the project's targets after the model's
+    session, outside Claude Code's sandbox, on the working tree the session left).
+
+    The record keeps its shape: the same checks in the same order, the session's ``at`` and
+    ``head``; only the ``commands`` entry changes, from the deferred mark to the real runs
+    (``details.ran_by`` names the runner). A red target parks the change exactly as the
+    in-session check did (``status.yaml`` and the label); a green one leaves the session's
+    verdict (``wait`` or ``continue``) standing. Returns None, and touches nothing, when the
+    record carries no deferred check: a gate run by hand or by an older runner already ran
+    the targets itself. Raises ``GateError`` when the record or the change cannot be read."""
+    root = Path(root).resolve()
+    change_dir = c.find_change_dir(root, change_id)
+    if change_dir is None:
+        raise GateError(f"no change folder for id {change_id} under {root / c.CHANGES_DIR}")
+    path = change_dir / art.EVIDENCE_DIR / art.GATE_RESULT.format(phase=phase)
+    if not path.is_file():
+        return None
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise GateError(f"{path.name} unreadable: {exc}") from exc
+    if not isinstance(data, dict) or not deferred_commands(data):
+        return None
+    ctx = build_context(root, change_id, phase, base)
+    ctx.commands_deferred = False  # whatever the runner's own environment says
+    try:
+        check = checks.run_commands_check(ctx, ran_by=checks.RUN_BY_RUNNER)
+    except Exception as exc:  # noqa: BLE001 — a crashing check parks, as in ``evaluate``
+        check = CheckResult(
+            "commands",
+            False,
+            f"check crashed: {exc!r}",
+            "Report this to the framework owner; the gate failed closed.",
+            {"ran_by": checks.RUN_BY_RUNNER},
+        )
+    result = GateResult.from_dict(data)
+    result.checks = [check if ch.name == check.name else ch for ch in result.checks]
+    if result.failed:
+        result.result, result.label = "park", c.NEEDS_HUMAN_LABEL
+    result.dry_run = False
+    apply(ctx, result)
     return result

@@ -76,7 +76,7 @@ radius; the process around them is the gate's.
 
 The runner's own records are not evidence about the diff: `evidence/claude-<phase>*.json`,
 `claude-<phase>*.stderr.txt` and `run-<phase>.json` are what `run_phase.py` stores about a
-run *after it ends*, so whatever transcript is committed when you read the evidence belongs
+run *after it ends*, so whatever result record is committed when you read the evidence belongs
 to an earlier run than the one that produced HEAD (the first overturn round on the sample
 repository, 2026-09-24, escalated on a "proof mismatch" between the previous round's
 `claude-fix.json`, which said nothing was applied, and a diff that applied everything).
