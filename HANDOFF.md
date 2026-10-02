@@ -62,7 +62,7 @@ Session 18 builds item 3b as plugin **0.3.2** if the owner has answered its ques
 | When | Act |
 |---|---|
 | Every session start | Both repositories selected (precondition 1). |
-| After session 17's docs PR | Merge (docs only: no tag, no pin). Read the round's verdict in PROGRESS "Session 17" and NOTES §29. **Do not merge #90 yet** (choice 151). |
+| After session 17's docs PR (#105) | Merge (docs only: no tag, no pin). Read the round's verdict in PROGRESS "Session 17" and NOTES §29. **Do not merge #90 yet** (choice 151). |
 | Any day (2 minutes) | **Item 3b**: which shape — (i) the runner writes the evidence logs after the session and the verifier reads the record and the logs, or (ii) the writer and the verifier read a deferred result the runner replaces — or "your call" (then (i)). One sentence, anywhere a session reads (the brief, a comment on the session-17 PR, PR #90). |
 | Any day (5 minutes) | Item 4: the four carried questions, answered in one message. |
 | Any day (10 minutes) | Item 5: R2's edit tables; then a session verifies the PDF read. |

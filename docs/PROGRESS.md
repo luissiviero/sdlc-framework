@@ -53,7 +53,7 @@ CHAIN EXIT 0
 - Carried from sessions 14 and 16: the `--bare` check, the runner's `owner_fields` check on a real Windows console, the sample's `sdlc.yaml` comment rows, the auto-mode classifier in the default permission mode (NOTES §23), the release record on a project with a `deploy.command` and on one whose head branches auto-delete (NOTES §28).
 
 ## Left
-- At the close of this session: this PR open against `main` (draft, docs only). `framework-checks.yml` on its head is read by this session before the owner is asked to merge; the next session annotates the result here. PR #90 open at `sdlc:b-ready` on `300bb3c`, **not to be merged before `v0.3.2` is pinned** (choice 151). Session 18 as `HANDOFF.md` says: item 3b's build as 0.3.2 if the owner has answered (with F1 and F2 in the same PR), else item 5's verification (if R2's edits are in), item 9's design, and the park for 3b.
+- At the close of this session: PR #105 open against `main` (draft, docs only). `framework-checks.yml` on its final head is read by this session before the owner is asked to merge; the next session annotates the result here. PR #90 open at `sdlc:b-ready` on `300bb3c`, **not to be merged before `v0.3.2` is pinned** (choice 151). Session 18 as `HANDOFF.md` says: item 3b's build as 0.3.2 if the owner has answered (with F1 and F2 in the same PR), else item 5's verification (if R2's edits are in), item 9's design, and the park for 3b.
 
 ## Guardrail lines for the owner
 None: no tag this session (no file under `plugin/` or `template/` changed).
