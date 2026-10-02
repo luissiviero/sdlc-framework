@@ -690,7 +690,7 @@
         "refs": [
           "T1"
         ],
-        "text": "The plan gets its own verdict inside gate (b). A higher-risk plan gets the Architect's full review and a separate, closer approval, the article's tech-lead step; today non-routine only lowers the iteration cap (D11)."
+        "text": "The plan gets its own verdict inside gate (b). A higher-risk plan (non-routine, or a risk-list hit) gets the Architect's full review, in the article's tech-lead place (p.14, p.17), and a 'Needs your close look' banner on the same PR: the same approval, no separate gate (design-go); today non-routine only lowers the iteration cap (D11, D21)."
       }
     },
     {
@@ -964,7 +964,7 @@
         "refs": [
           "T1"
         ],
-        "text": "Stricter only for risk: a higher-risk plan gets the Architect's full review and a separate, closer approval at (b) (touches D11)."
+        "text": "A closer look only for risk: a risk-list hit still parks for your sdlc:accept-risk, and a higher-risk plan gets the Architect's full review and a 'Needs your close look' banner in the same gate (b) approval, no separate gate (design-go; touches D11)."
       }
     },
     {
