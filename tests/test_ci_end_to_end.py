@@ -193,6 +193,12 @@ if items["mode"] == "deferred" and items["pending"]:
         (folder / f"{phase}-{n}-advocate.md").write_text(
             "## Verdict\\nno objection\\n\\n## The case against\\nnone found.\\n", encoding="utf-8"
         )
+        # what the panel_blind hook records when the real advocate writes its file (0.2.30)
+        (folder / f"{phase}-{n}-advocate.model.json").write_text(
+            json.dumps({"agent_type": "sdlc:adversarial-reviewer", "models": ["claude-opus-5"],
+                        "reason": None}),
+            encoding="utf-8",
+        )
         (folder / f"{phase}-{n}-conciliator.json").write_text(
             json.dumps({"reviewer": "keep half-up", "advocate": "no objection",
                         "decision": "keep half-up rounding via round()",

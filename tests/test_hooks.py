@@ -1655,4 +1655,104 @@ def test_hooks_json_registers_the_panel_blindness_on_read_and_grep():
         for e in data["hooks"]["PreToolUse"]
         if any("panel_blind.py" in h["args"][0] for h in e["hooks"])
     ]
-    assert [e["matcher"] for e in entries] == ["Read|Grep"]
+    assert [e["matcher"] for e in entries] == ["Read|Grep|Bash|PowerShell|Write|Edit|MultiEdit"]
+
+
+@pytest.mark.parametrize(
+    ("command", "blocked"),
+    [
+        ("cat changes/0001-sample/evidence/panel/b-1-reviewer.md", True),
+        ("type changes\\0001-sample\\evidence\\panel\\B-1-Reviewer.md", True),
+        ("cat changes/0001-sample/evidence/panel/*", True),
+        ("git show HEAD:changes/0001-sample/evidence/panel/b-1-reviewer.md", True),
+        ("python plugin/panel/cli.py prompt --member advocate --item 1", False),
+        ("python -m pytest", False),
+        ("git status", False),
+    ],
+)
+def test_panel_blind_refuses_a_shell_command_that_names_a_verdict(panel_project, command, blocked):
+    root, _panel = panel_project
+    for tool in ("Bash", "PowerShell"):
+        decision = _blind(root, pre(tool, command=command))
+        assert decision.block is blocked, (tool, command, decision.reason)
+        if blocked:
+            assert "b-1-reviewer.md" in decision.reason
+
+
+def test_panel_blind_allows_shell_commands_outside_a_window(panel_project):
+    root, panel = panel_project
+    (panel / "b-1-advocate.md").write_text("## Verdict\nno objection\n", encoding="utf-8")
+    cmd = "cat changes/0001-sample/evidence/panel/b-1-reviewer.md"
+    assert not _blind(root, pre("Bash", command=cmd)).block
+
+
+def _transcripts(tmp_path, agent_id, models, nested=True):
+    """A session transcript and, as Claude Code 2.1.287 keeps it, the sub-agent's own one
+    beside it (NOTES section 24); ``nested=False`` puts the sub-agent's file where the hook
+    input's ``transcript_path`` points."""
+    session = tmp_path / "sessions" / "s1.jsonl"
+    session.parent.mkdir(parents=True)
+    session.write_text("{}\n", encoding="utf-8")
+    sub = (session.with_suffix("") / "subagents" if nested else session.parent) / (
+        f"agent-{agent_id}.jsonl"
+    )
+    sub.parent.mkdir(parents=True, exist_ok=True)
+    lines = [{"type": "user", "message": {"role": "user", "content": "brief"}}]
+    lines += [{"type": "assistant", "message": {"model": m, "content": []}} for m in models]
+    sub.write_text("\n".join(json.dumps(x) for x in lines) + "\n", encoding="utf-8")
+    return session if nested else sub
+
+
+@pytest.mark.parametrize("nested", [True, False])
+@pytest.mark.parametrize("tool", ["Write", "Edit", "MultiEdit"])
+def test_panel_blind_records_the_model_that_wrote_the_advocate_verdict(
+    panel_project, tmp_path, tool, nested
+):
+    root, panel = panel_project
+    transcript = _transcripts(tmp_path, "a1b2", ["claude-opus-5"], nested=nested)
+    target = str(panel / "b-1-advocate.md")
+    tool_input = (
+        {"edits": [{"file_path": target, "old_string": "a", "new_string": "b"}]}
+        if tool == "MultiEdit"
+        else {"file_path": target, "content": "## Verdict\nno objection\n"}
+    )
+    payload = {
+        **pre(tool, **tool_input),
+        "agent_id": "a1b2",
+        "agent_type": "sdlc:adversarial-reviewer",
+        "transcript_path": str(transcript),
+    }
+    assert not _blind(root, payload).block  # recording never refuses the verdict
+    record = json.loads((panel / "b-1-advocate.model.json").read_text(encoding="utf-8"))
+    assert record["models"] == ["claude-opus-5"] and record["reason"] is None
+    assert record["agent_type"] == "sdlc:adversarial-reviewer" and record["n"] == 1
+
+
+def test_panel_blind_says_why_a_model_could_not_be_recorded(panel_project, tmp_path):
+    root, panel = panel_project
+    target = str(panel / "b-1-advocate.md")
+    path = panel / "b-1-advocate.model.json"
+    # the main session wrote the advocate's file itself: no sub-agent, no advocate
+    assert not _blind(root, pre("Write", file_path=target, content="x")).block
+    record = json.loads(path.read_text(encoding="utf-8"))
+    assert record["models"] == [] and "main session" in record["reason"]
+    # a sub-agent whose transcript is nowhere to be found
+    payload = {
+        **pre("Write", file_path=target, content="x"),
+        "agent_id": "zz",
+        "agent_type": "sdlc:adversarial-reviewer",
+        "transcript_path": str(tmp_path / "nowhere" / "s.jsonl"),
+    }
+    assert not _blind(root, payload).block
+    record = json.loads(path.read_text(encoding="utf-8"))
+    assert record["models"] == [] and "transcript was not found" in record["reason"]
+
+
+def test_panel_blind_refuses_a_tool_write_of_a_model_record(panel_project):
+    root, panel = panel_project
+    for tool in ("Write", "Edit"):
+        decision = _blind(root, pre(tool, file_path=str(panel / "b-1-advocate.model.json")))
+        assert decision.block and "only the panel_blind hook writes it" in decision.reason
+    # an ordinary edit elsewhere is left alone, and writes no record
+    assert not _blind(root, pre("Write", file_path=str(root / "src" / "calc.py"))).block
+    assert not (panel / "b-1-reviewer.model.json").exists()

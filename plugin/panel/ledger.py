@@ -249,6 +249,47 @@ def member_verdicts(
     return verdicts, problems
 
 
+ADVOCATE_MODEL_FILE = "{phase}-{n}-advocate.model.json"
+ADVOCATE_AGENT = "adversarial-reviewer"  # the plugin agent ``sdlc:adversarial-reviewer``
+
+
+def advocate_model_path(change_dir: Path, phase: str, n: int) -> Path:
+    name = ADVOCATE_MODEL_FILE.format(phase=phase, n=n)
+    return Path(change_dir) / art.EVIDENCE_DIR / PANEL_DIR / name
+
+
+def advocate_model_problems(text: str | None, wanted: str | None, phase: str, n: int) -> list[str]:
+    """What is wrong with the record of which model wrote the advocate's verdict (written by
+    the ``panel_blind`` hook, 0.2.30): it must exist, name the devil's advocate as the writer
+    and, when ``sdlc.yaml: panel_advocate_model`` is set, a model that satisfies it."""
+    name = f"panel/{ADVOCATE_MODEL_FILE.format(phase=phase, n=n)}"
+    if text is None:
+        return [
+            f"{name} is missing: nothing shows which model wrote the devil's advocate's "
+            "verdict (the panel_blind hook writes it when the advocate writes its file)"
+        ]
+    try:
+        record = json.loads(text)
+    except ValueError:
+        return [f"{name} is unreadable"]
+    if not isinstance(record, dict):
+        return [f"{name} is not a JSON object"]
+    agent = str(record.get("agent_type") or "")
+    if agent.rsplit(":", 1)[-1] != ADVOCATE_AGENT:
+        writer = agent or "the main session"
+        return [f"{name}: the advocate's verdict was written by {writer}, not by the devil's "
+                f"advocate (sdlc:{ADVOCATE_AGENT})"]  # fmt: skip
+    models = [str(m) for m in record.get("models") or [] if str(m).strip()]
+    if not models:
+        why = record.get("reason") or "no model recorded"
+        return [f"{name}: the advocate's model is unproved ({why})"]
+    alias = str(wanted or "").strip()
+    if alias and not any(model_matches(alias, m) for m in models):
+        return [f"{name}: the devil's advocate ran on {', '.join(models)}, not on {alias} "
+                "(sdlc.yaml: panel_advocate_model)"]  # fmt: skip
+    return []
+
+
 def read_member_verdicts(change_dir: Path, phase: str, n: int) -> tuple[dict[str, str], list[str]]:
     """``member_verdicts`` over the files in the working tree."""
     texts = {

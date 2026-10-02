@@ -312,10 +312,6 @@ def cmd_record(args) -> int:
             str(decision.get("decision") or ""), str(item.get("item", ""))
         )
     problems = ledger.validate_decision_file(decision)
-    # the two blind verdicts must exist before a decision is taken on them (0.2.30): the
-    # ledger carries them from the members' own files, not from the conciliator's words
-    verdicts, missing = ledger.read_member_verdicts(change_dir, args.phase, args.item)
-    problems += missing
     if problems:
         print("; ".join(problems), file=sys.stderr)
         return EXIT_USAGE
@@ -324,6 +320,19 @@ def cmd_record(args) -> int:
         existing = next(e for e in ledger.active(entries) if e.get("key") == item["key"])
         _emit({"recorded": False, "reason": "already decided", "entry": existing})
         return EXIT_OK
+    # the two blind verdicts must exist before a decision is taken on them (0.2.30): the
+    # ledger carries them from the members' own files, not from the conciliator's words
+    verdicts, problems = ledger.read_member_verdicts(change_dir, args.phase, args.item)
+    # and the advocate's verdict was written by the advocate, on its model (0.2.30)
+    problems += ledger.advocate_model_problems(
+        art.read_text(ledger.advocate_model_path(change_dir, args.phase, args.item)),
+        config.get("panel_advocate_model") if isinstance(config, dict) else None,
+        args.phase,
+        args.item,
+    )
+    if problems:
+        print("; ".join(problems), file=sys.stderr)
+        return EXIT_USAGE
     # one panel call counts against gate.max_panel_calls (decision 21, amended in 0.2.15:
     # the fix iterations are another count)
     ctx = GateContext(root, change_dir, st.phase, st, config, None, True, "no diff needed")

@@ -1,4 +1,5 @@
-"""PreToolUse hook on Read and Grep: the review panel's two verdicts stay blind to each other
+"""PreToolUse hook on Read, Grep, Bash, PowerShell, Write, Edit and MultiEdit: the review
+panel's two verdicts stay blind to each other, and the advocate's model is recorded
 (decision 21; 0.2.30).
 
 The panel is "two blind verdicts and a conciliator" (``plugin/panel/briefs/advocate.md``):
@@ -11,20 +12,34 @@ while it matters: while an item has one blind verdict and not the other (the *wi
   verdict cannot be passed on inside the advocate's prompt;
 - a ``Grep`` that would search that verdict is denied: its ``path`` is the file, or a folder
   that holds it, and neither its ``type`` nor its ``glob`` rules the file out. A Grep over
-  another folder, or one limited to code (``type: py``, ``glob: "*.py"``), passes.
+  another folder, or one limited to code (``type: py``, ``glob: "*.py"``), passes;
+- a ``Bash`` or ``PowerShell`` command that names that verdict's file or the panel folder
+  (``cat …/b-1-reviewer.md``, ``cat evidence/panel/*``) is denied.
+
+When the devil's advocate writes its verdict (a Write, Edit or MultiEdit of
+``<phase>-<n>-advocate.md``), the hook writes ``<phase>-<n>-advocate.model.json`` beside it:
+the writer's ``agent_type`` and the models of its replies, read from its own transcript
+(``subagent_transcript``). ``panel/cli.py record`` and the gate's ``panel`` check require it
+to name the advocate and ``sdlc.yaml: panel_advocate_model``, so the model is proved per
+advocate call, in CI and in a run made by hand. Only the hook writes that file: a Write or
+Edit of any ``*.model.json`` in the panel folder is denied. When the transcript cannot be
+found or names no model, the record says why and ``record`` refuses the item, which then
+parks for the owner rather than passing unproved.
 
 The rule is symmetric (the advocate's verdict is equally hidden from a reviewer that runs
 second) and needs no knowledge of which agent calls: in the window only the member still to
 write, or the session that starts it, acts. Once both files exist the conciliator reads
 them freely. ``Glob`` is not hooked: it lists names, never contents.
 
-What stays open: a Bash command (``cat``) by a member that has Bash (the reviewer and the
-conciliator are general-purpose sub-agents; the advocate, ``sdlc:adversarial-reviewer``, has
-no Bash). The record (``panel/cli.py record``) and the gate's ``panel`` check still require
-both verdicts; this hook only keeps them apart while they are written.
+What stays open: a shell command that reads a verdict without naming it or the panel
+folder (``grep -r half-up .``): a command's text does not say which files it will read. The
+advocate has no Bash at all; the main session has no reason to search the project in the
+middle of a panel. A shell command could also write a ``.model.json`` file; the threat here
+is a run drifting, not one forging its own evidence.
 
-Speed: the hook fires on every Read and Grep, so it decides from the payload and a scan of
-``changes/*/evidence/panel/`` with the standard library first, and loads the shared hook
+Speed: the hook fires on every call of those tools, so it decides from the payload (and,
+for a Grep or a shell command that mentions the panel, a scan of
+``changes/*/evidence/panel/``) with the standard library first, and loads the shared hook
 plumbing only when a panel verdict is involved. It logs its blocks only (an allow line per
 Read would bury the log).
 
@@ -43,7 +58,16 @@ PANEL_FILE_RE = re.compile(
     r"(?:^|/)changes/[^/]+/evidence/panel/([a-z])-(\d+)-(reviewer|advocate)\.md$", re.IGNORECASE
 )
 OTHER = {"reviewer": "advocate", "advocate": "reviewer"}
-HOOKED_TOOLS = ("Read", "Grep")
+SHELL_TOOLS = ("Bash", "PowerShell")
+WRITE_TOOLS = ("Write", "Edit", "MultiEdit")
+HOOKED_TOOLS = ("Read", "Grep", *SHELL_TOOLS, *WRITE_TOOLS)
+ADVOCATE_FILE_RE = re.compile(
+    r"(?:^|/)changes/[^/]+/evidence/panel/([a-z])-(\d+)-advocate\.md$", re.IGNORECASE
+)
+MODEL_RECORD_RE = re.compile(r"(?:^|/)evidence/panel/[^/]*\.model\.json$", re.IGNORECASE)
+MODEL_RECORD = "{phase}-{n}-advocate.model.json"
+# a shell command that names a verdict or the panel folder: the cheap first look
+SHELL_HINT_RE = re.compile(r"panel|-reviewer\.md|-advocate\.md", re.IGNORECASE)
 # ripgrep file types whose globs never include a Markdown file: a Grep limited to one of
 # them cannot read a verdict. Any other type (markdown, txt, an unknown name) is treated as
 # possibly matching, the safe direction.
@@ -64,6 +88,15 @@ GREP_REASON = (
     "verdict on item {n} of phase ({phase}), which the {other} must not see before writing "
     "its own. Search a folder that does not contain {panel_dir}/ (for example src/ or "
     'plugin/), or limit the search to code with a type (type: py) or a glob (glob: "*.py").'
+)
+SHELL_REASON = (
+    "Review panel blindness (decision 21): this command names {what}, and {rel} is the "
+    "{member}'s verdict on item {n} of phase ({phase}), which the {other} must not see "
+    "before writing its own. Run it once both verdicts exist, or without the panel folder."
+)
+RECORD_REASON = (
+    "{rel} records which model wrote the devil's advocate's verdict; only the panel_blind "
+    "hook writes it, when the advocate writes its own file (0.2.30)."
 )
 
 
@@ -120,7 +153,101 @@ def may_concern_panel(payload: dict, env: dict[str, str] | None = None) -> bool:
         path = str(tool_input.get("file_path") or "")
         # a symlink with an innocent name is judged by the file it points to
         return any(PANEL_FILE_RE.search(_slash(p)) for p in (path, os.path.realpath(path)))
+    if tool in WRITE_TOOLS:
+        return any(
+            ADVOCATE_FILE_RE.search(_slash(p)) or MODEL_RECORD_RE.search(_slash(p))
+            for p in write_targets(tool_input)
+        )
+    if tool in SHELL_TOOLS and not SHELL_HINT_RE.search(str(tool_input.get("command") or "")):
+        return False
     return bool(one_sided(project_root(payload, env)))
+
+
+def write_targets(tool_input: dict) -> list[str]:
+    paths = [str(tool_input.get("file_path") or "")]
+    for edit in tool_input.get("edits") or []:
+        if isinstance(edit, dict) and edit.get("file_path"):
+            paths.append(str(edit["file_path"]))
+    return [p for p in dict.fromkeys(paths) if p]
+
+
+# --- which model wrote the advocate's verdict (0.2.30) ------------------------------------------
+def subagent_transcript(payload: dict) -> Path | None:
+    """The calling sub-agent's own transcript. Claude Code keeps it beside the session's,
+    ``<session>/subagents/agent-<agent_id>.jsonl`` next to ``<session>.jsonl`` (observed on
+    Claude Code 2.1.287, NOTES section 24; not documented), and the hook input carries
+    ``agent_id`` and ``transcript_path`` (documented). Either path may be the one given."""
+    agent_id = str(payload.get("agent_id") or "").strip()
+    transcript = str(payload.get("transcript_path") or "").strip()
+    if not agent_id or not transcript:
+        return None
+    given = Path(transcript)
+    name = f"agent-{agent_id}.jsonl"
+    candidates = [given] if given.name == name else []
+    candidates.append(given.with_suffix("") / "subagents" / name)
+    for candidate in candidates:
+        if candidate.is_file():
+            return candidate
+    try:
+        return next(iter(given.parent.glob(f"**/{name}")), None)
+    except OSError:
+        return None
+
+
+def transcript_models(path: Path) -> list[str]:
+    """The models of the assistant replies in a transcript (``message.model`` per line)."""
+    models: set[str] = set()
+    try:
+        with path.open(encoding="utf-8") as fh:
+            for line in fh:
+                try:
+                    entry = json.loads(line)
+                except ValueError:
+                    continue
+                message = entry.get("message") if isinstance(entry, dict) else None
+                if entry.get("type") == "assistant" and isinstance(message, dict):
+                    model = message.get("model")
+                    if isinstance(model, str) and model.strip():
+                        models.add(model.strip())
+    except OSError:
+        return []
+    return sorted(models)
+
+
+def record_advocate_model(payload: dict, verdict_path: str, phase: str, n: str) -> Path:
+    """Write ``<phase>-<n>-advocate.model.json`` beside the advocate's verdict: who wrote it
+    (``agent_type``) and on which model, read from the writer's own transcript. ``record``
+    and the gate's ``panel`` check require it; ``reason`` says why ``models`` is empty."""
+    from datetime import datetime, timezone  # noqa: PLC0415
+
+    transcript = subagent_transcript(payload)
+    models = transcript_models(transcript) if transcript else []
+    if not payload.get("agent_id"):
+        reason = "written by the main session, not by a sub-agent"
+    elif transcript is None:
+        reason = "the sub-agent's transcript was not found"
+    elif not models:
+        reason = "the sub-agent's transcript names no model"
+    else:
+        reason = None
+    record = {
+        "schema_version": 1,
+        "phase": phase,
+        "n": int(n),
+        "member": "advocate",
+        "agent_type": payload.get("agent_type"),
+        "agent_id": payload.get("agent_id"),
+        "models": models,
+        "transcript": str(transcript) if transcript else None,
+        "reason": reason,
+        "at": datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
+    }
+    path = Path(verdict_path).with_name(MODEL_RECORD.format(phase=phase, n=n))
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(record, indent=2, sort_keys=True) + "\n", encoding="utf-8", newline="\n"
+    )
+    return path
 
 
 def _grep_reads(tool_input: dict, search_root: str, target: str, common) -> bool:
@@ -173,6 +300,39 @@ def decide(payload: dict, argv: list[str], env: dict[str, str] | None = None):
                     other=OTHER[member],
                     other_rel=other_rel,
                 )  # fmt: skip
+            )
+        return common.Decision.allow()
+    if tool in WRITE_TOOLS:
+        for path in write_targets(tool_input):
+            slashed = _slash(common.fs_path(path))
+            if MODEL_RECORD_RE.search(slashed):
+                rel = common.rel_to(root, common.norm(path)) or path
+                return common.Decision.deny(RECORD_REASON.format(rel=rel))
+        for path in write_targets(tool_input):
+            m = ADVOCATE_FILE_RE.search(_slash(common.fs_path(path)))
+            if not m:
+                continue
+            try:
+                record_advocate_model(payload, common.fs_path(path), m.group(1).lower(), m.group(2))
+            except (OSError, ValueError):
+                # never refuse the verdict itself: with no record, `record` refuses the item
+                # and it parks for the owner
+                pass
+        return common.Decision.allow()
+    if tool in SHELL_TOOLS:
+        command = _slash(str(tool_input.get("command") or "")).lower()
+        for file, phase, n, member, _counterpart in one_sided(root):
+            rel = common.rel_to(root, common.norm(str(file))) or str(file)
+            if file.name.lower() in command:
+                what = file.name
+            elif "evidence/panel" in command:
+                what = "the panel folder (evidence/panel)"
+            else:
+                continue
+            return common.Decision.deny(
+                SHELL_REASON.format(
+                    what=what, rel=rel, member=member, n=n, phase=phase, other=OTHER[member]
+                )
             )
         return common.Decision.allow()
     cwd = str(payload.get("cwd") or root)

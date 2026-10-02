@@ -70,6 +70,15 @@ def write_members(change: Path, phase: str, n: int) -> None:
         f"## Verdict\n{DECISION['advocate']}\n\n## The case against\nnone found.\n",
         encoding="utf-8",
     )
+    # what the panel_blind hook writes when the advocate writes its file (0.2.30)
+    write_advocate_model(change, phase, n)
+
+
+def write_advocate_model(
+    change: Path, phase: str, n: int, agent="sdlc:adversarial-reviewer", models=("claude-opus-5",)
+) -> None:
+    record = {"agent_type": agent, "models": list(models), "reason": None if models else "x"}
+    ledger.advocate_model_path(change, phase, n).write_text(json.dumps(record), encoding="utf-8")
 
 
 def run(argv: list[str]) -> tuple[int, dict]:
@@ -351,6 +360,77 @@ def test_record_needs_both_blind_verdicts_and_takes_them_from_their_files(design
     entry = out["entry"]
     assert entry["reviewer"] == DECISION["reviewer"] and entry["advocate"] == DECISION["advocate"]
     assert entry["item_n"] == 1
+
+
+def test_record_needs_the_advocate_model_record_and_the_advocate_model(design_project):  # noqa: F811
+    """0.2.30: the verdict of the devil's advocate must have been written by the advocate,
+    on sdlc.yaml's panel_advocate_model (opus in the template), as the panel_blind hook
+    recorded it; anything else is refused and the item stays open for the owner."""
+    root, change = design_project
+    open_the_concern(change)
+    set_review(change, "deferred")
+    git(root, "add", ".")
+    git(root, "commit", "-q", "-m", "design(0001): an open concern")
+    verdict(root, "b")
+    assert run(["items", "--root", str(root), "--id", "0001", "--phase", "b"])[0] == 0
+    write_members(change, "b", 1)
+    decision = ledger.member_path(change, "b", 1, "conciliator")
+    decision.write_text(json.dumps(DECISION), encoding="utf-8")
+    argv = ["record", "--root", str(root), "--id", "0001", "--phase", "b", "--item", "1"]
+    record = ledger.advocate_model_path(change, "b", 1)
+    cases = (
+        (lambda: record.unlink(), "b-1-advocate.model.json is missing"),
+        (
+            lambda: write_advocate_model(change, "b", 1, agent="general-purpose"),
+            "written by general-purpose, not by the devil's advocate",
+        ),
+        (lambda: write_advocate_model(change, "b", 1, agent=None), "written by the main session"),
+        (
+            lambda: write_advocate_model(change, "b", 1, models=()),
+            "the advocate's model is unproved",
+        ),
+        (
+            lambda: write_advocate_model(change, "b", 1, models=("claude-sonnet-5",)),
+            "ran on claude-sonnet-5, not on opus",
+        ),
+    )
+    for arrange, message in cases:
+        arrange()
+        proc = subprocess.run(
+            [sys.executable, str(PANEL_CLI), *argv], capture_output=True, text=True,
+            encoding="utf-8",
+        )  # fmt: skip
+        assert proc.returncode == panel_cli.EXIT_USAGE, (message, proc.stdout)
+        assert message in proc.stderr, proc.stderr
+        assert ledger.load_ledger(change, "b") == []
+    write_advocate_model(change, "b", 1)
+    rc, out = run(argv)
+    assert rc == 0 and out["recorded"], out
+    # the record is committed with the decision, so the gate can re-check it in HEAD
+    tracked = git(root, "ls-files", str(record))
+    assert record.name in tracked
+    # a decided item stays decided: a re-run answers before the 0.2.30 checks, so a line
+    # recorded before 0.2.30 (no model record) is never refused on a re-run
+    record.unlink()
+    rc, out = run(argv)
+    assert rc == 0 and out["recorded"] is False and out["reason"] == "already decided"
+
+
+def test_gate_parks_a_panel_decision_whose_advocate_ran_on_another_model(project):  # noqa: F811
+    root, change = project
+    set_review(change, "deferred")
+    head = git(root, "rev-parse", "HEAD").strip()
+    reasons = ["blast radius larger than the plan says"]
+    item = {"n": 1, "kind": "escalate", "key": ledger.escalate_key(reasons), "item": "escalate"}
+    write_members(change, "c", 1)
+    write_advocate_model(change, "c", 1, models=("claude-sonnet-5",))
+    _ledger_entry(change, "c", item, "continue: the plan lists every file", head)
+    git(root, "add", ".")
+    git(root, "commit", "-q", "-m", "build(0001): panel decision 1")
+    verdict(root, "c", verdict="escalate")
+    result = gate.run_gate(root, "0001", "c", dry_run=True)
+    panel = next(ch for ch in result.failed if ch.name == "panel")
+    assert "ran on claude-sonnet-5, not on opus" in panel.reason
 
 
 def test_record_stops_at_the_iteration_cap_and_validates_the_decision(design_project):  # noqa: F811

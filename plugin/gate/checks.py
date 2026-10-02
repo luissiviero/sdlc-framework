@@ -1211,6 +1211,15 @@ def _blind_verdicts_problems(ctx: GateContext, entry: dict) -> list[str]:
         else:
             texts[member] = art.read_text(path)
     _verdicts, missing = ledger.member_verdicts(texts, phase, item_n)
+    model_path = ledger.advocate_model_path(ctx.change_dir, phase, item_n)
+    if ctx.diff is not None:
+        rel = str(model_path.relative_to(ctx.root)).replace("\\", "/")
+        model_text = diffmod.file_at(ctx.root, "HEAD", rel)
+    else:
+        model_text = art.read_text(model_path)
+    missing += ledger.advocate_model_problems(
+        model_text, ctx.config.get("panel_advocate_model"), phase, item_n
+    )
     return [f"decision {entry.get('n')}: {problem}" for problem in missing]
 
 
