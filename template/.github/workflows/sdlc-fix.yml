@@ -80,7 +80,10 @@ jobs:
       github.event.label.name == 'sdlc:reset-iterations' ||
       github.event.label.name == 'sdlc:unlock-tests')) }}
     runs-on: ubuntu-latest
-    timeout-minutes: 150
+    # 0.3.0: the session's wall clock (gate.max_wall_clock_minutes, 120 by default, plus
+    # 5 of grace) and then the gate's commands step, which runs the three targets after
+    # the session at gate.command_timeout each (900 s by default): 125 + 50 minutes
+    timeout-minutes: 200
     steps:
       # The pull request's head, not the event's default ref (a review event checks out the
       # merge ref): the round commits on the branch the PR is opened from.

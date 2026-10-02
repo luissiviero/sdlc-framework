@@ -28,7 +28,10 @@ import os
 import pytest
 
 RUNNER_PREFIXES = ("GITHUB_", "RUNNER_", "ACTIONS_")
-RUNNER_NAMES = ("CI", "SDLC_MODEL", "SDLC_DEFAULT_BRANCH")
+# ``SDLC_GATE_COMMANDS`` is the mark the runner sets in a CI session's environment (0.3.0,
+# issue #91): every process of that session inherits it, this suite included when it runs as
+# a project's test target, and two gate tests read the gate's answer to it
+RUNNER_NAMES = ("CI", "SDLC_MODEL", "SDLC_DEFAULT_BRANCH", "SDLC_GATE_COMMANDS")
 
 
 def runner_variables(environ=None) -> list[str]:

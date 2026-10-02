@@ -340,7 +340,16 @@ def run_deferred_commands(
         return None
     ctx = build_context(root, change_id, phase, base)
     ctx.commands_deferred = False  # whatever the runner's own environment says
-    check = checks.run_commands_check(ctx, ran_by=checks.RUN_BY_RUNNER)
+    try:
+        check = checks.run_commands_check(ctx, ran_by=checks.RUN_BY_RUNNER)
+    except Exception as exc:  # noqa: BLE001 — a crashing check parks, as in ``evaluate``
+        check = CheckResult(
+            "commands",
+            False,
+            f"check crashed: {exc!r}",
+            "Report this to the framework owner; the gate failed closed.",
+            {"ran_by": checks.RUN_BY_RUNNER},
+        )
     result = GateResult.from_dict(data)
     result.checks = [check if ch.name == check.name else ch for ch in result.checks]
     if result.failed:

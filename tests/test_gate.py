@@ -594,6 +594,32 @@ def test_a_green_target_after_the_session_leaves_the_session_s_verdict_standing(
     assert st.gate.phase == phase and st.gate.result == "passed" and st.parked_reason is None
 
 
+def test_a_crashing_check_in_the_runner_s_step_parks_as_the_gate_does(project, monkeypatch):
+    """``evaluate`` turns a crashing check into a park; the runner's step does the same (a
+    ``gate.command_timeout`` that is not a number crashed the step and left the deferred record
+    reading as passed: the fourth finding of the 0.3.0 review)."""
+    root, change = project
+    verdict(root, "c")
+    monkeypatch.setenv(checks.COMMANDS_RUNNER_ENV, checks.RUN_BY_RUNNER)
+    assert gate.run_gate(root, "0001", "c").result == "continue"
+    original = checks.GateContext.gate_setting
+    monkeypatch.setattr(
+        checks.GateContext,
+        "gate_setting",
+        lambda self, key, default: (
+            "abc" if key == "command_timeout" else original(self, key, default)
+        ),
+    )
+    result = gate.run_deferred_commands(root, "0001", "c")
+    assert result is not None and result.result == "park"
+    cmd = _commands_check(result)
+    assert cmd.ok is False and cmd.reason.startswith("check crashed: ValueError")
+    assert cmd.details == {"ran_by": "runner"}
+    recorded = json.loads((change / "evidence" / "gate-c.json").read_text(encoding="utf-8"))
+    assert recorded["result"] == "park" and gate.deferred_commands(recorded) is False
+    assert status_mod.read_status(change).gate.result == "parked"
+
+
 def test_the_runner_s_commands_step_leaves_a_record_without_the_deferred_mark_alone(project):
     """A gate run by hand (no mark) ran the targets itself: the step has nothing to do, and
     the record and status.yaml are byte-for-byte what the gate wrote."""

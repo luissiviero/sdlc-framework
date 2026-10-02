@@ -20,6 +20,7 @@ from pathlib import Path
 import pytest
 from ci import auth, project_setup, run_phase
 
+from gate import gate as gate_mod
 from gate import preflight
 from state import status as status_mod
 from state import yamlish
@@ -1055,6 +1056,20 @@ GATE_FILE = {
     "checks": [],
     "what_i_need": "",
 }
+# the record a CI session's gate writes since 0.3.0 (issue #91): the targets wait for the runner
+DEFERRED_GATE_FILE = {
+    **GATE_FILE,
+    "phase": "c",
+    "checks": [
+        {
+            "name": "commands",
+            "ok": True,
+            "reason": "deferred",
+            "need": "",
+            "details": {"deferred": True},
+        }
+    ],
+}
 
 
 @pytest.fixture
@@ -1177,18 +1192,13 @@ def test_a_run_whose_commands_step_cannot_run_is_an_infrastructure_failure(
     project, fake_claude, monkeypatch, capsys
 ):
     """The session's gate said continue with the commands deferred; the step itself fails
-    (here: the gate CLI cannot read the record it just wrote). Passing the record on would
-    hand the next phase a gate whose targets never ran, so the run exits 1 and says why."""
+    (here: the gate CLI cannot run). The session already pushed that record and labelled the
+    PR ready, so the run parks the change (the record, status.yaml, the PR) before it exits 1:
+    a record whose targets never ran is never left reading as a pass."""
     root, change = project
-    pr_route(monkeypatch)
+    calls = pr_route(monkeypatch)
     set_state(change, "b", gate_phase="b", gate_result="passed")
-    deferred = {
-        **GATE_FILE,
-        "phase": "c",
-        "checks": [{"name": "commands", "ok": True, "reason": "deferred", "need": "",
-                    "details": {"deferred": True}}],
-    }  # fmt: skip
-    write(change / "evidence" / "gate-c.json", json.dumps(deferred))
+    write(change / "evidence" / "gate-c.json", json.dumps(DEFERRED_GATE_FILE))
     monkeypatch.setenv("FAKE_CLAUDE_RESULT", json.dumps(FAKE_RESULT))
     monkeypatch.setattr(
         run_phase, "run_gate_commands", lambda *a, **k: {"ok": False, "reason": "gate: boom"}
@@ -1198,8 +1208,110 @@ def test_a_run_whose_commands_step_cannot_run_is_an_infrastructure_failure(
         root=str(root), phase="c", dry_run=False, no_dispatch=True, claude=fake_cli(fake_claude)
     )
     assert run_phase.run_phase(args, env) == run_phase.EXIT_FAILED
-    err = capsys.readouterr().err
+    out, err = capsys.readouterr()
     assert "the gate's commands check could not run after the session: gate: boom" in err
+    assert json.loads(out)["parked"].startswith("commands: deferred to the runner")
+    st = status_mod.read_status(change)
+    assert st.gate.result == "parked" and "never run: the gate's commands check" in st.parked_reason
+    recorded = json.loads((change / "evidence" / "gate-c.json").read_text(encoding="utf-8"))
+    assert recorded["result"] == "park" and recorded["label"] == "sdlc:needs-human"
+    cmd = next(ch for ch in recorded["checks"] if ch["name"] == "commands")
+    assert cmd["ok"] is False and "deferred to the runner and never run" in cmd["reason"]
+    assert "Re-run the phase" in cmd["need"] and "**commands**" in recorded["what_i_need"]
+    upsert = next(argv for name, argv in calls if argv and argv[0] == "upsert")
+    assert "--draft" in upsert  # the PR shows the park, not the ready label
+
+
+def test_a_session_that_fails_after_a_deferred_gate_parks_the_record(
+    project, fake_claude, monkeypatch, capsys
+):
+    """claude ends with ``is_error`` after its gate wrote and pushed a deferred record: the
+    runner parks the change on the way out instead of recommitting a record that reads as
+    passed (the first finding of the 0.3.0 review)."""
+    root, change = project
+    pr_route(monkeypatch)
+    set_state(change, "b", gate_phase="b", gate_result="passed")
+    write(change / "evidence" / "gate-c.json", json.dumps(DEFERRED_GATE_FILE))
+    monkeypatch.setenv("FAKE_CLAUDE_RESULT", json.dumps({**FAKE_RESULT, "is_error": True}))
+    env = dict(os.environ, **KEY_ENV, GITHUB_TOKEN=FAKE_TOKEN)
+    args = Args(
+        root=str(root), phase="c", dry_run=False, no_dispatch=True, claude=fake_cli(fake_claude)
+    )
+    assert run_phase.run_phase(args, env) == run_phase.EXIT_FAILED
+    out, err = capsys.readouterr()
+    assert "claude exited 0" in err
+    assert json.loads(out)["parked"].endswith("never run: claude exited 0")
+    st = status_mod.read_status(change)
+    assert st.gate.result == "parked" and st.parked_reason.startswith("commands: deferred")
+    recorded = json.loads((change / "evidence" / "gate-c.json").read_text(encoding="utf-8"))
+    assert recorded["result"] == "park" and not gate_mod.deferred_commands(recorded)
+    # the same session failing after a gate that ran its targets itself parks nothing
+    write(change / "evidence" / "gate-c.json", json.dumps({**GATE_FILE, "phase": "c"}))
+    set_state(change, "b", gate_phase="b", gate_result="passed")
+    assert run_phase.run_phase(args, env) == run_phase.EXIT_FAILED
+    assert status_mod.read_status(change).gate.result == "passed"
+
+
+def test_guard_skips_when_the_previous_gate_deferred_its_commands(project):
+    """A job killed between the session and the runner's step leaves gate (b) "passed" in
+    status.yaml with a record whose targets never ran: the build run does not start on it."""
+    root, change = project
+    set_state(change, "b", gate_phase="b", gate_result="passed")
+    assert skip_reason(root, "c") is None
+    write(change / "evidence" / "gate-b.json", json.dumps({**DEFERRED_GATE_FILE, "phase": "b"}))
+    reason = skip_reason(root, "c")
+    assert reason is not None and reason.startswith("gate (b) of change 0001 recorded")
+    assert "the runner never ran it" in reason and "re-run phase (b)" in reason
+
+
+def test_the_commands_step_runs_without_the_job_s_credentials(monkeypatch):
+    """The phase step holds both model credentials and the GitHub token (the workflows'
+    ``env:``); the targets run code the session wrote, so the step gets none of them."""
+    for name in ("ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN", "GITHUB_TOKEN", "GH_TOKEN"):
+        monkeypatch.setenv(name, "placeholder-" + name.lower())  # sdlc: allow-secret
+    monkeypatch.setenv("SDLC_PROJECT_SETTING", "kept")
+    env = run_phase.commands_env()
+    assert not {"ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN", "GITHUB_TOKEN", "GH_TOKEN"} & set(
+        env
+    )
+    assert env["SDLC_PROJECT_SETTING"] == "kept" and env["PATH"] == os.environ["PATH"]
+    seen = {}
+
+    def fake_cli_call(script, argv, timeout=600, env=None):
+        seen.update(script=Path(script).name, argv=list(argv), timeout=timeout, env=env)
+        return {"ok": True, "output": {"ran": False}}
+
+    monkeypatch.setattr(run_phase, "_cli_call", fake_cli_call)
+    run_phase.run_gate_commands(ROOT, Path("/p"), "0001", "c", {"gate": {"command_timeout": 60}})
+    assert seen["argv"][:5] == ["run-commands", "--root", str(Path("/p")), "--id", "0001"]
+    assert seen["timeout"] == 480 and "GITHUB_TOKEN" not in seen["env"]
+    assert seen["env"]["SDLC_PROJECT_SETTING"] == "kept"
+
+
+def test_a_rewritten_record_that_did_not_reach_the_branch_fails_the_run(
+    project, fake_claude, monkeypatch, capsys
+):
+    """The runner's step rewrote the record, the commit did not push: the remote still carries
+    the session's deferred record, so the run hands nothing over and exits 1."""
+    root, change = project
+    pr_route(monkeypatch)
+    set_state(change, "b", gate_phase="b", gate_result="passed")
+    write(change / "evidence" / "gate-c.json", json.dumps({**GATE_FILE, "phase": "c"}))
+    monkeypatch.setenv("FAKE_CLAUDE_RESULT", json.dumps(FAKE_RESULT))
+    ran = {"ok": True, "output": {"ran": True, "result": "continue", "checks": []}}
+    monkeypatch.setattr(run_phase, "run_gate_commands", lambda *a, **k: ran)
+    monkeypatch.setattr(
+        run_phase, "commit_run_record", lambda *a, **k: {"ok": False, "reason": "push refused"}
+    )
+    env = dict(os.environ, **KEY_ENV, GITHUB_TOKEN=FAKE_TOKEN)
+    args = Args(
+        root=str(root), phase="c", dry_run=False, no_dispatch=True, claude=fake_cli(fake_claude)
+    )
+    assert run_phase.run_phase(args, env) == run_phase.EXIT_FAILED
+    out, err = capsys.readouterr()
+    assert "was not committed and pushed: push refused" in err
+    emitted = json.loads(out)
+    assert emitted["dispatched"] is None and emitted["commands"]["ran"] is True
 
 
 def test_a_record_without_the_deferred_mark_leaves_the_commands_step_idle(
@@ -1414,7 +1526,7 @@ def test_phase_workflow_permissions_and_concurrency(name):
     ]
     assert 'group: "sdlc-${{ inputs.head_ref || github.event.pull_request.head.ref }}"' in text
     assert "cancel-in-progress: false" in text
-    assert "timeout-minutes: 150" in text
+    assert "timeout-minutes: 200" in text  # 0.3.0: the session, then the commands step
 
 
 @pytest.mark.parametrize("name", PHASE_WORKFLOWS)
@@ -1861,7 +1973,7 @@ def upsert_recorder(monkeypatch, number: int | None = 7, route: str = "api", **e
     answer = {"route": route, "number": number, "url": f"https://github.test/o/r/pull/{number}"}
     answer.update(extra)
 
-    def fake_cli_call(script, argv, timeout=600):
+    def fake_cli_call(script, argv, timeout=600, env=None):
         calls.append((Path(script).name, list(argv)))
         if Path(script).name == "cli.py" and argv and argv[0] == "upsert":
             return {"ok": True, "reason": "", "output": dict(answer)}

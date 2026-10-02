@@ -219,6 +219,10 @@ run(gate, "check", "--root", ".", "--id", change_id, "--phase", phase, ok=(0, 3,
 word = "design" if phase == "b" else "build"
 run(state, "commit-phase", "--root", ".", "--id", change_id, "--phase", phase,
     "--message", f"{word}(0001): gate ({phase}) evidence", "--push")
+if os.environ.get("FAKE_CLAUDE_MODE") == "fail-after-gate":  # the gate's record is pushed
+    print(json.dumps({"type": "result", "is_error": True, "num_turns": 9, "duration_ms": 1,
+                      "total_cost_usd": 0.5, "result": "the session hit its turn limit"}))
+    sys.exit(1)
 # the real CLI reports every model the session and its sub-agents used (NOTES section 25):
 # here the session's and, as in the sample's change 0002, the advocate's opus
 print(json.dumps({"type": "result", "is_error": False, "result": f"{word} done",
@@ -1000,3 +1004,53 @@ def test_a_target_red_after_the_session_parks_the_change_on_the_remote(checkout,
     assert "result: parked" in status and "commands: not green" in status
     edit = [c for c in calls if c[:2] == ["pr", "edit"]]
     assert edit and "sdlc:needs-human" in " ".join(edit[-1])
+
+
+def test_a_session_that_fails_after_a_deferred_gate_parks_the_change_on_the_remote(
+    checkout, tmp_path
+):
+    """The session's gate wrote the deferred record, committed it, pushed it and the session
+    then failed: the runner parks the change (the record, status.yaml, the label) on its way
+    to exit 1, so the remote never shows a ready label on targets that never ran."""
+    root, bare = checkout
+    proc, out, calls = run_phase_job(root, tmp_path, "ok", claude_mode="fail-after-gate")
+    assert proc.returncode == 1, proc.stdout + proc.stderr
+    assert "claude exited 1" in proc.stderr
+    assert out["parked"].startswith("commands: deferred to the runner and never run")
+    gate_file = json.loads(remote_file(bare, "sdlc/0001/b", f"{CHANGE}/evidence/gate-b.json"))
+    assert gate_file["result"] == "park" and gate_file["label"] == "sdlc:needs-human"
+    commands = next(ch for ch in gate_file["checks"] if ch["name"] == "commands")
+    assert commands["ok"] is False and "deferred" not in commands["details"]
+    status = remote_file(bare, "sdlc/0001/b", f"{CHANGE}/status.yaml")
+    assert "result: parked" in status and "commands: deferred to the runner" in status
+    edit = [c for c in calls if c[:2] == ["pr", "edit"]]
+    assert edit and "sdlc:needs-human" in " ".join(edit[-1])
+
+
+ENV_CHECKING_TEST = (
+    "python -c \"import os, sys; sys.exit(int(bool({'ANTHROPIC_API_KEY', "
+    "'CLAUDE_CODE_OAUTH_TOKEN', 'GITHUB_TOKEN', 'GH_TOKEN'} & set(os.environ))))\""
+)
+
+
+def test_the_commands_step_runs_the_targets_without_the_job_s_credentials(checkout, tmp_path):
+    """The job's step holds the OAuth token and the GitHub token; the runner's commands step
+    hands neither to the project's targets (the second finding of the 0.3.0 review)."""
+    root, bare = checkout
+    text = (root / "sdlc.yaml").read_text(encoding="utf-8")
+    text = re.sub(
+        r"(?m)^  test: .*$",
+        lambda _m: f"  test: {json.dumps(ENV_CHECKING_TEST)}",
+        text,
+        count=1,
+    )
+    (root / "sdlc.yaml").write_text(text, encoding="utf-8")
+    git(root, "add", ".")
+    git(root, "commit", "-q", "-m", "tests: the test target reads its env")
+    git(root, "push", "-q", "origin", "main")
+    proc, out, _calls = run_phase_job(root, tmp_path, "ok", step_env={"GH_TOKEN": "placeholder"})
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert out["result"] == "wait" and out["commands"]["ok"] is True, out
+    gate_file = json.loads(remote_file(bare, "sdlc/0001/b", f"{CHANGE}/evidence/gate-b.json"))
+    commands = next(ch for ch in gate_file["checks"] if ch["name"] == "commands")
+    assert commands["details"]["runs"]["test"]["exit_code"] == 0
