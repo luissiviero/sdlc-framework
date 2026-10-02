@@ -312,6 +312,10 @@ def cmd_record(args) -> int:
             str(decision.get("decision") or ""), str(item.get("item", ""))
         )
     problems = ledger.validate_decision_file(decision)
+    # the two blind verdicts must exist before a decision is taken on them (0.2.30): the
+    # ledger carries them from the members' own files, not from the conciliator's words
+    verdicts, missing = ledger.read_member_verdicts(change_dir, args.phase, args.item)
+    problems += missing
     if problems:
         print("; ".join(problems), file=sys.stderr)
         return EXIT_USAGE
@@ -338,7 +342,7 @@ def cmd_record(args) -> int:
     status_mod.write_status(change_dir, st)
     head = diffmod.head_sha(root) or "unknown"
     cost = float(args.cost_usd) if args.cost_usd is not None else None
-    entry = ledger.new_entry(len(entries) + 1, args.phase, item, decision, head, cost)
+    entry = ledger.new_entry(len(entries) + 1, args.phase, item, decision, head, cost, verdicts)
     entries.append(entry)
     ledger.save_ledger(change_dir, args.phase, entries)
     applied = ledger.apply_decision(change_dir, entry)

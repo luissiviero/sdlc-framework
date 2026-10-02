@@ -9,8 +9,11 @@ Files, under ``changes/<id>-<slug>/evidence/``:
 - ``decisions-<phase>.md`` — the same ledger rendered for a person, one line per decision
   (item, the two verdicts in one clause each, the decision, the rationale, the cost);
 - ``panel/<phase>-items.json`` — the items ``panel/cli.py items`` found for the phase;
-- ``panel/<phase>-<n>-reviewer.md``, ``-advocate.md``, ``-decision.json`` — what the three
-  members wrote for item ``n`` (the conciliator's file is what ``record`` reads).
+- ``panel/<phase>-<n>-reviewer.md``, ``-advocate.md``, ``-conciliator.json`` — what the
+  three members wrote for item ``n``. ``record`` reads the conciliator's decision and takes
+  the two verdicts from the members' own files (``## Verdict``), never from the
+  conciliator's restatement; it refuses an item whose two blind verdicts are not both there
+  (0.2.30), and the gate's ``panel`` check re-checks that for every ledger line.
 
 An entry::
 
@@ -20,7 +23,11 @@ An entry::
      "advocate": "<the devil's advocate's verdict, one clause>",
      "decision": "<one line>", "rationale": ["<at most five lines>"],
      "cost_usd": null, "head": "<sha>", "at": "<ISO-8601 UTC>",
-     "overturned": null | {"comment": "<the owner's words>", "at": "<ISO-8601 UTC>"}}
+     "overturned": null | {"comment": "<the owner's words>", "at": "<ISO-8601 UTC>"},
+     "item_n": 1}
+
+``item_n`` (since 0.2.30) is the item's number, which names the members' files; a line
+written before 0.2.30 has none.
 
 Kinds — the fixed list of what may go to the panel (nothing else ever does):
 
@@ -191,6 +198,63 @@ def member_path(change_dir: Path, phase: str, n: int, member: str) -> Path:
     ext = "json" if member == "conciliator" else "md"
     name = MEMBER_FILE.format(phase=phase, n=n, member=member, ext=ext)
     return Path(change_dir) / art.EVIDENCE_DIR / PANEL_DIR / name
+
+
+BLIND_MEMBERS = ("reviewer", "advocate")
+VERDICT_HEADING_RE = re.compile(r"^##\s+Verdict\s*$", re.IGNORECASE)
+
+
+def verdict_clause(text: str | None) -> str | None:
+    """The verdict a member wrote: the first paragraph under ``## Verdict``, on one line.
+    None when there is no such heading, the paragraph is empty, or it is still the brief's
+    ``<placeholder>``."""
+    if not text:
+        return None
+    lines = text.splitlines()
+    for i, line in enumerate(lines):
+        if not VERDICT_HEADING_RE.match(line.strip()):
+            continue
+        paragraph: list[str] = []
+        for following in lines[i + 1 :]:
+            stripped = following.strip()
+            if stripped.startswith("#") or (not stripped and paragraph):
+                break
+            if stripped:
+                paragraph.append(stripped)
+        clause = " ".join(" ".join(paragraph).split())
+        if not clause or (clause.startswith("<") and clause.endswith(">")):
+            return None
+        return clause
+    return None
+
+
+def member_verdicts(
+    texts: dict[str, str | None], phase: str, n: int
+) -> tuple[dict[str, str], list[str]]:
+    """The two blind verdicts of item ``n`` from the members' file texts (``texts[member]``
+    is None when the file is missing), and what is wrong when one is absent."""
+    verdicts: dict[str, str] = {}
+    problems: list[str] = []
+    for member in BLIND_MEMBERS:
+        name = MEMBER_FILE.format(phase=phase, n=n, member=member, ext="md")
+        text = texts.get(member)
+        if text is None:
+            problems.append(f"panel/{name} is missing: the {member} has not written its verdict")
+            continue
+        clause = verdict_clause(text)
+        if clause is None:
+            problems.append(f"panel/{name} has no '## Verdict' clause")
+        else:
+            verdicts[member] = clause
+    return verdicts, problems
+
+
+def read_member_verdicts(change_dir: Path, phase: str, n: int) -> tuple[dict[str, str], list[str]]:
+    """``member_verdicts`` over the files in the working tree."""
+    texts = {
+        member: art.read_text(member_path(change_dir, phase, n, member)) for member in BLIND_MEMBERS
+    }
+    return member_verdicts(texts, phase, n)
 
 
 # --- the ledger ---------------------------------------------------------------------------------
@@ -414,18 +478,24 @@ def new_entry(
     decision: dict[str, Any],
     head: str,
     cost_usd: float | None,
+    verdicts: dict[str, str] | None = None,
 ) -> dict[str, Any]:
+    """One ledger line. ``verdicts`` are the two blind verdicts read from the members' own
+    files (``read_member_verdicts``); without them the conciliator's restatement is used, as
+    before 0.2.30. ``item_n`` is the item's number, which names the members' files: the
+    gate's ``panel`` check finds them by it (a line written before 0.2.30 has none)."""
     rationale = decision.get("rationale")
     if isinstance(rationale, str):
         rationale = [line for line in rationale.splitlines() if line.strip()]
-    return {
+    verdicts = verdicts or {}
+    entry: dict[str, Any] = {
         "n": n,
         "phase": phase,
         "kind": str(item.get("kind")),
         "key": str(item.get("key")),
         "item": " ".join(str(item.get("item", "")).split()),
-        "reviewer": " ".join(str(decision.get("reviewer", "")).split()),
-        "advocate": " ".join(str(decision.get("advocate", "")).split()),
+        "reviewer": " ".join(str(verdicts.get("reviewer") or decision.get("reviewer", "")).split()),
+        "advocate": " ".join(str(verdicts.get("advocate") or decision.get("advocate", "")).split()),
         "decision": clean_decision(str(decision.get("decision", "")), str(item.get("item", ""))),
         "rationale": [" ".join(str(line).split()) for line in rationale],
         "cost_usd": cost_usd,
@@ -433,3 +503,7 @@ def new_entry(
         "at": _now(),
         "overturned": None,
     }
+    item_n = item.get("n")
+    if isinstance(item_n, int) and not isinstance(item_n, bool):
+        entry["item_n"] = item_n
+    return entry

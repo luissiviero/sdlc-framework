@@ -57,6 +57,21 @@ def open_the_concern(change: Path) -> None:
     write(change / "spec.md", spec)
 
 
+def write_members(change: Path, phase: str, n: int) -> None:
+    """The two blind verdicts, as the reviewer's and the devil's advocate's briefs make them
+    write: ``record`` refuses an item without them (0.2.30)."""
+    folder = ledger.member_path(change, phase, n, "reviewer").parent
+    folder.mkdir(parents=True, exist_ok=True)
+    ledger.member_path(change, phase, n, "reviewer").write_text(
+        f"## Verdict\n{DECISION['reviewer']}\n\n## Why\nno caller reads the old rounding.\n",
+        encoding="utf-8",
+    )
+    ledger.member_path(change, phase, n, "advocate").write_text(
+        f"## Verdict\n{DECISION['advocate']}\n\n## The case against\nnone found.\n",
+        encoding="utf-8",
+    )
+
+
 def run(argv: list[str]) -> tuple[int, dict]:
     proc = subprocess.run(
         [sys.executable, str(PANEL_CLI), *argv], capture_output=True, text=True, encoding="utf-8"
@@ -93,6 +108,22 @@ def test_validate_entry_and_decision_file():
     assert ledger.validate_decision_file({"decision": "x"}) != []
     assert ledger.validate_decision_file(dict(DECISION, rationale="one\ntwo")) == []
     assert ledger.validate_decision_file("text") == ["the decision file is not a JSON object"]
+
+
+def test_verdict_clause_is_the_first_paragraph_under_the_heading():
+    assert ledger.verdict_clause("## Verdict\nkeep half-up\n\n## Why\nx\n") == "keep half-up"
+    # wrapped over two lines: one clause; blank lines before it are skipped
+    text = "# Title\n\n## Verdict\n\nkeep half-up,\n  as round() does\n\nmore\n"
+    assert ledger.verdict_clause(text) == "keep half-up, as round() does"
+    assert ledger.verdict_clause("## verdict\nno objection\n") == "no objection"
+    for empty in (
+        None,
+        "",
+        "no heading at all\n",
+        "## Verdict\n\n## Why\nx\n",
+        "## Verdict\n<one clause: your recommendation>\n",  # the brief's placeholder, unfilled
+    ):
+        assert ledger.verdict_clause(empty) is None, empty
 
 
 def test_ledger_round_trip_render_and_cost(tmp_path):
@@ -205,6 +236,7 @@ def test_record_refuses_under_parked_and_decides_under_deferred(design_project):
     git(root, "commit", "-q", "-m", "design(0001): an open concern")
     verdict(root, "b")
     assert run(["items", "--root", str(root), "--id", "0001", "--phase", "b"])[0] == 0
+    write_members(change, "b", 1)
     decision = ledger.member_path(change, "b", 1, "conciliator")
     decision.parent.mkdir(parents=True, exist_ok=True)
     decision.write_text(json.dumps(DECISION), encoding="utf-8")
@@ -274,6 +306,53 @@ def test_record_refuses_under_parked_and_decides_under_deferred(design_project):
     assert body.splitlines()[0].startswith("**Decisions taken for you (0)** — 1 overturned")
 
 
+def test_record_needs_both_blind_verdicts_and_takes_them_from_their_files(design_project):  # noqa: F811
+    """0.2.30: a decision is recorded only when the reviewer and the devil's advocate have
+    each written a verdict, and the ledger carries those verdicts, not the conciliator's
+    restatement of them."""
+    root, change = design_project
+    open_the_concern(change)
+    set_review(change, "deferred")
+    git(root, "add", ".")
+    git(root, "commit", "-q", "-m", "design(0001): an open concern")
+    verdict(root, "b")
+    assert run(["items", "--root", str(root), "--id", "0001", "--phase", "b"])[0] == 0
+    decision = ledger.member_path(change, "b", 1, "conciliator")
+    decision.parent.mkdir(parents=True, exist_ok=True)
+    restated = dict(DECISION, reviewer="the conciliator's words", advocate="also its words")
+    decision.write_text(json.dumps(restated), encoding="utf-8")
+    argv = ["record", "--root", str(root), "--id", "0001", "--phase", "b", "--item", "1"]
+    reviewer = ledger.member_path(change, "b", 1, "reviewer")
+    advocate = ledger.member_path(change, "b", 1, "advocate")
+    cases = (
+        ({}, "b-1-reviewer.md is missing"),
+        ({"reviewer": "## Verdict\nkeep half-up\n"}, "b-1-advocate.md is missing"),
+        (
+            {"reviewer": "## Verdict\nkeep half-up\n", "advocate": "## Verdict\n\n## Why\nx\n"},
+            "b-1-advocate.md has no '## Verdict' clause",
+        ),
+    )
+    for files, message in cases:
+        for path in (reviewer, advocate):
+            path.unlink(missing_ok=True)
+        for member, text in files.items():
+            ledger.member_path(change, "b", 1, member).write_text(text, encoding="utf-8")
+        proc = subprocess.run(
+            [sys.executable, str(PANEL_CLI), *argv], capture_output=True, text=True,
+            encoding="utf-8",
+        )  # fmt: skip
+        assert proc.returncode == panel_cli.EXIT_USAGE, proc.stdout
+        assert message in proc.stderr, proc.stderr
+        assert ledger.load_ledger(change, "b") == []
+        assert status_mod.read_status(change).panel_calls == 0  # nothing was spent
+    write_members(change, "b", 1)
+    rc, out = run(argv)
+    assert rc == 0, out
+    entry = out["entry"]
+    assert entry["reviewer"] == DECISION["reviewer"] and entry["advocate"] == DECISION["advocate"]
+    assert entry["item_n"] == 1
+
+
 def test_record_stops_at_the_iteration_cap_and_validates_the_decision(design_project):  # noqa: F811
     root, change = design_project
     set_review(change, "deferred")
@@ -282,6 +361,7 @@ def test_record_stops_at_the_iteration_cap_and_validates_the_decision(design_pro
     git(root, "commit", "-q", "-m", "design(0001): an open concern")
     verdict(root, "b")
     assert run(["items", "--root", str(root), "--id", "0001", "--phase", "b"])[0] == 0
+    write_members(change, "b", 1)
     decision = ledger.member_path(change, "b", 1, "conciliator")
     decision.parent.mkdir(parents=True, exist_ok=True)
     decision.write_text(json.dumps({"decision": "x"}), encoding="utf-8")
@@ -411,6 +491,40 @@ def test_gate_accepts_an_escalate_the_panel_decided_to_continue(project):  # noq
     assert {"adversarial_review", "panel"} <= set(_names(result, False))
     panel = next(ch for ch in result.failed if ch.name == "panel")
     assert "review mode is parked" in panel.reason
+
+
+def test_gate_parks_a_panel_decision_whose_blind_verdict_is_not_committed(project):  # noqa: F811
+    """A ledger line names its item (``item_n``, 0.2.30): both member files must be in HEAD
+    with a verdict, or the gate's ``panel`` check fails; a line without ``item_n`` (written
+    before 0.2.30) is not re-judged."""
+    root, change = project
+    set_review(change, "deferred")
+    head = git(root, "rev-parse", "HEAD").strip()
+    reasons = ["blast radius larger than the plan says"]
+    item = {"n": 1, "kind": "escalate", "key": ledger.escalate_key(reasons), "item": "escalate"}
+    write_members(change, "c", 1)
+    entry = _ledger_entry(change, "c", item, "continue: the plan lists every file", head)
+    assert entry["item_n"] == 1
+    git(root, "add", ".")
+    git(root, "commit", "-q", "-m", "build(0001): panel decision 1")
+    verdict(root, "c", verdict="escalate")
+    result = gate.run_gate(root, "0001", "c", dry_run=True)
+    assert "panel" in _names(result, True), result.reason
+    # the advocate's file removed from HEAD: the decision rests on one verdict only
+    git(root, "rm", "-q", str(ledger.member_path(change, "c", 1, "advocate")))
+    git(root, "commit", "-q", "-m", "build(0001): the advocate's file removed")
+    verdict(root, "c", verdict="escalate")
+    result = gate.run_gate(root, "0001", "c", dry_run=True)
+    panel = next(ch for ch in result.failed if ch.name == "panel")
+    assert "c-1-advocate.md is missing" in panel.reason
+    # an empty verdict is no verdict either
+    write(ledger.member_path(change, "c", 1, "advocate"), "## Verdict\n\n## Why\nx\n")
+    git(root, "add", ".")
+    git(root, "commit", "-q", "-m", "build(0001): an empty advocate verdict")
+    verdict(root, "c", verdict="escalate")
+    result = gate.run_gate(root, "0001", "c", dry_run=True)
+    panel = next(ch for ch in result.failed if ch.name == "panel")
+    assert "c-1-advocate.md has no '## Verdict' clause" in panel.reason
 
 
 def test_gate_accepts_an_important_finding_the_panel_settled(project):  # noqa: F811

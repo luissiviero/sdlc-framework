@@ -1192,6 +1192,28 @@ def check_test_lock(ctx: GateContext) -> CheckResult:
 
 
 # --- 13. the decisions ledger of deferred review (decision 21; build guide step 16a) ----------
+def _blind_verdicts_problems(ctx: GateContext, entry: dict) -> list[str]:
+    """A ledger line written since 0.2.30 names its item (``item_n``); both blind verdicts
+    of that item must be committed (HEAD, the gate's rule), each with a ``## Verdict``
+    clause. A line without ``item_n`` predates the rule and is not re-judged."""
+    from panel import ledger  # noqa: PLC0415
+
+    item_n = entry.get("item_n")
+    if isinstance(item_n, bool) or not isinstance(item_n, int):
+        return []
+    phase = str(entry.get("phase") or ctx.phase)
+    texts: dict[str, str | None] = {}
+    for member in ledger.BLIND_MEMBERS:
+        path = ledger.member_path(ctx.change_dir, phase, item_n, member)
+        if ctx.diff is not None:
+            rel = str(path.relative_to(ctx.root)).replace("\\", "/")
+            texts[member] = diffmod.file_at(ctx.root, "HEAD", rel)
+        else:
+            texts[member] = art.read_text(path)
+    _verdicts, missing = ledger.member_verdicts(texts, phase, item_n)
+    return [f"decision {entry.get('n')}: {problem}" for problem in missing]
+
+
 def check_panel(ctx: GateContext) -> CheckResult:
     """Every panel decision has a ledger line and no panel decision touched a never-to-panel
     item. Passes trivially when there is no ledger and no concern closed by the panel."""
@@ -1212,6 +1234,7 @@ def check_panel(ctx: GateContext) -> CheckResult:
             problems.append(
                 f"decision {entry.get('n')}: {entry.get('kind')} never goes to the panel"
             )
+        problems += _blind_verdicts_problems(ctx, entry)
     if entries and not ctx.deferred:
         problems.append(
             f"the ledger has {len(entries)} decision(s) but the review mode is {ctx.review_mode}"
