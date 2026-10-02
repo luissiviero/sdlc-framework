@@ -18,7 +18,7 @@ The target workflow page (https://claude.ai/artifact/13X8rzF9KsfekmeSs1w5rM, sna
 
 ## T1. AI roles that advise, and one manager that reviews for the owner
 
-**Status:** tentative (the owner agrees with the direction below; the matter is not settled). Confirmed on design-concerns (better: the playbook; decision: blend, 2026-10-02): under parked review each open concern reaches the owner with the brief of the role of its kind and the manager's recommendation; under deferred review that role sits on the panel in place of the general reviewer (amends D21's panel line-up); the never-to-the-panel list stays.
+**Status:** tentative (the owner agrees with the direction below; the matter is not settled). Confirmed on design-concerns (better: the playbook; decision: blend, 2026-10-02): under parked review each open concern reaches the owner with the brief of the role of its kind and the manager's recommendation; under deferred review that role sits on the panel in place of the general reviewer (amends D21's panel line-up); the never-to-the-panel list stays. Confirmed on design-go (better: both; decision: blend, 2026-10-02): the owner's merge of the gate (b) PR stays the go to build (D2 and D18 unchanged); added: a spec verdict and a plan verdict in the one PR, and a "Needs your close look" banner, with the reasons, when the plan is classed non-routine or a risk-list item is hit; the same approval, no separate one (see the approvals table). Confirmed on build-plan (better: the playbook; decision: blend, 2026-10-02): the writer of the plan still answers the plan template's interrogation questions, and a fresh context also asks the article's three (what could break, the riskiest step, the options not chosen, p.16 step 3): the adversarial reviewer at (b) until the roles exist, then the Architect's brief, which feeds the plan verdict; the answers are committed in `evidence/`.
 
 **The owner's idea.**
 - No review made alone any more: AI roles modelled on the article's roles (p.9-50) guide the owner's decisions.
@@ -34,7 +34,7 @@ The target workflow page (https://claude.ai/artifact/13X8rzF9KsfekmeSs1w5rM, sna
 - **Sources first.** A role is only as good as what it reads: without the owner's written policies a "security lead" is the generic model under another name. Writing those sources (security, data, coding standards, UX, definition of done) is the first step and needs no code; each policy skill has a line waiting for its owner source.
 - **Where the roles help most** is where a check is lost with nothing in its place: gate (a), where the owner merges the owner's own intent after deterministic checks only, with no reviewing agent (`plugin/gate/checks.py`, `CHECKS_BY_PHASE["a"]`); the owner's own edits to CLAUDE.md, skills and `sdlc.yaml`; the skill sign-off; flagged concerns by kind at (b); higher-risk plans at (b); the release checklist on a declared production; triage at (f).
 - **Each role gets an eval** that asks for its task without naming the role and checks it stays in its lane (article p.22, step 4).
-- **Cost.** Every role is one more run per change. The owner weighs cost at 0, but the per-change dollar cap compares only the last session's cost today (issue #71).
+- **Cost.** Every role is one more run per change. The owner weighs cost at 0; the per-change dollar cap, off by default, is compared with the change's running total since plugin 0.3.1 (`evidence/spend.json`, one entry per session; issue #71).
 - **Where it lives.** The role and manager definitions are process content, so they belong in `plugin/` (agents or skills), versioned and pinned like the rest (D8). What each role reads is project content: the project's policies, product vision and constraints live in each project, with slots created by `/sdlc-init`. A separate repository only pays off if the roles are wanted outside this plugin.
 - **Fewer roles, a first cut to adjust:**
 
@@ -52,15 +52,15 @@ The target workflow page (https://claude.ai/artifact/13X8rzF9KsfekmeSs1w5rM, sna
 | Gate | Role briefs | The manager brings the owner | The owner |
 |---|---|---|---|
 | (a) intent | Product (scope, success), Architect (feasibility) | accept, or the points to fix first, with the briefs linked | approves or sends corrections |
-| (b) spec + plan | Product (does the spec solve the intent), Architect (the plan), Security & policy (flagged concerns) | two recommendations in the one PR: one for the spec, one for the plan | approves both or rejects one |
-| (b), higher risk | the same, plus the Architect's full plan review | "needs your close look", with the reasons | approves separately, as the article's tech-lead step does (p.14, p.17) |
+| (b) spec + plan | Product (does the spec solve the intent), Architect (the plan, and the article's three questions of it), Security & policy (flagged concerns) | two recommendations in the one PR: one for the spec, one for the plan | approves both or rejects one |
+| (b), higher risk: the plan classed non-routine, or a risk-list hit | the same, plus the Architect's full plan review, in the article's tech-lead place (p.14, p.17) | "needs your close look" at the top of the PR, with the reasons | the same approval, after a close look; no separate gate (design-go: a separate approval was considered and not chosen) |
 | (e) code | Code reviewer (today's REVIEW.md pass), Platform & release | merge or request changes, with the Important findings | approves; the merge runs on the owner's signal |
 | (f) incident | Operations, Security & policy (scans) | fix now, schedule or dismiss | triages |
 
-- Separate verdicts, not separate gates: a spec verdict and a plan verdict inside the one gate (b) PR bring back the article's split (p.14, p.17) without another wait, so D2 can stay.
-- Stricter only for risk: a separate, closer approval only for a higher-risk plan, the article's own rule; today "non-routine" only lowers the iteration cap (D11).
+- Separate verdicts, not separate gates: a spec verdict and a plan verdict inside the one gate (b) PR bring back the article's split (p.14, p.17) without another wait, so D2 can stay. The owner approves both or rejects one; a rejection is a "Request changes" review whose comments `/sdlc-fix` applies (D22).
+- A closer look only for risk, not a stricter gate (design-go, 2026-10-02): a higher-risk plan gets a marked close look in the same approval, not a separate one, because the owner holds both the product owner's and the tech lead's part and would wait on their own second approval. The signal exists today: the adversarial reviewer's `classification` and `classification_reasons` (`plugin/gate/checks.py`, `load_verdict`), which only lower the iteration cap (`plugin/gate/limits.py`, D11), and the risk-list check, which reads the committed diff's file paths (not their contents) and the spec's Flagged concerns, and parks for `sdlc:accept-risk`; once accepted, the item lives in `status.yaml: risk_accepted`, so the banner reads it from there. The banner needs no roles, so it can come before them.
 - Gate (a) gains the most: today it has no reviewing agent.
-- Settled decisions: D2 only if separate gates are wanted; D11 (what non-routine does); D18 (profiles); and the set above for acting in the owner's name.
+- Settled decisions: D2 and D18 stay (design-go: separate gates are not wanted); D11 and D21 keep their substance, since non-routine still never parks or notifies, but their wording that non-routine "only tightens the gate" / "only lowers the iteration cap" gains the banner; and the set above for acting in the owner's name.
 
 **How the roles and the manager communicate (tentative).** A sub-agent hands back only its final message; what it read and weighed is lost when it ends, and a CI runner is thrown away (the stored run result holds the final message and metadata, not the conversation, issue #72). So the roles and the manager talk through files, as the panel already does ("Each member writes exactly one file under `changes/<id>-<slug>/evidence/panel/`", `plugin/panel/prompts.py`) and as the adversarial reviewer's JSON verdict does for the gate:
 
@@ -82,7 +82,7 @@ The framework already keeps the hook log both ways: committed in `evidence/` and
 
 **Gates (tentative, from the owner's setup-gates choice).** No new gates: (a), (b), (e) and (f) stay, with (c) and (d) in the Full profile; the project items stay in `sdlc.yaml` (risk list, protected paths, production settings) and the enforcement stays as today (D6, D18 unchanged). What changes is what reaches the owner: at each gate the owner approves after the role briefs that gate names (the approvals table above); a risk-list hit still parks, and the matching role's brief comes before the owner's `sdlc:accept-risk`; the owner's own edits to the gates themselves get a role's brief before the owner merges them.
 
-**Crosswalk rows it touches:** x-roles, x-audit, setup-gates, plan-accept, design-concerns, design-go, build-plan-approve, build-config, build-skills, build-risk, deploy-approve, deploy-release, maintain-triage, maintain-scan, setup-merge.
+**Crosswalk rows it touches:** x-roles, x-audit, setup-gates, plan-accept, design-concerns, design-go, build-plan, build-plan-approve, build-config, build-skills, build-risk, deploy-approve, deploy-release, maintain-triage, maintain-scan, setup-merge.
 
 **Settled decisions it would reopen or amend:**
 - D4 (only the owner merges), D5 (the automation identity), D13 (gate (e) is the merge) and D24 (the owner's labels), for the manager acting in the owner's name;
@@ -97,10 +97,11 @@ The framework already keeps the hook log both ways: committed in `evidence/` and
 - The approval check must confirm the signal came from the owner, not just from a person: today `sdlc-runbook.yml` checks only that a person, not a bot or the workflow token, applied `sdlc:go` (`plugin/detect/cli.py` `_human_label_actor`); from the owner's setup-merge choice.
 - The record of a delegated merge: the merge commit, the owner's approval signal and the manager's recommendation in `evidence/` (setup-merge); with the owner's *Exempt* bypass GitHub writes no bypass audit entry for the owner's own merges.
 - Whether a role brief is advice only, or whether a missing or negative brief parks the change.
+- Where the fresh context's answers to the article's three plan questions go: a new field of `evidence/adversarial-review-b.json` (a schema change the gate reads) or a file of its own; today the reviewer writes only the verdict (`plugin/agents/adversarial-reviewer.md`).
 
 ## T2. The interview: how the manager and the roles question the owner
 
-**Status:** tentative. The owner's choice on the crosswalk row plan-idea (better: the playbook; decision: blend, 2026-10-02) takes this entry as the way an idea is interviewed: `/sdlc-plan` stays the entry point, and the role-fed interview led by the manager (T1) is added to it, nothing replaced. On design-trigger (both fine, keep, 2026-10-02) the owner chose no second interview before the spec.
+**Status:** tentative. The owner's choice on the crosswalk row plan-idea (better: the playbook; decision: blend, 2026-10-02) takes this entry as the way an idea is interviewed: `/sdlc-plan` stays the entry point, and the role-fed interview led by the manager (T1) is added to it, nothing replaced. On design-trigger (both fine, keep, 2026-10-02) the owner chose no second interview before the spec. On build-plan (better: the playbook; decision: blend, 2026-10-02) the owner chose no live interview before the plan either, but questions in writing: the planning run ends Risks with a fixed "Questions for you" list (empty if none), the gate (b) PR shows it with the plan's riskiest step under the plan verdict (until T1 exists, beside the gate (b) checklist's plan question), and the owner answers in the "Request changes" review whose comments `/sdlc-fix` applies (D22).
 
 **The owner's question.** How is the interview conducted: are the manager and the roles involved, and how is the prompt built for the model that receives it? The owner wants to explain the idea, show examples of what is wanted, and be asked questions that build the intent, the plan and the rest.
 
@@ -113,10 +114,10 @@ The framework already keeps the hook log both ways: committed in `evidence/` and
 
 **Crosswalk rows it touches:** plan-idea, design-trigger, design-mock, build-plan.
 
-**Settled decisions it would reopen or amend:** D1 and D2, only if a second interview is added before the plan (both the spec and the plan are written unattended today). Before the spec, no second interview: the owner chose so on design-trigger (2026-10-02, both fine, keep); what the design pass cannot answer goes to its "Flagged concerns", which park for the owner.
+**Settled decisions it would reopen or amend:** none. D1 and D2 would have been reopened only by a second interview before the plan, and the owner chose none: before the spec, what the design pass cannot answer goes to its "Flagged concerns", which park for the owner (design-trigger, 2026-10-02, both fine, keep); before the plan, the planning run's questions go to the "Questions for you" list on the gate (b) PR (build-plan, 2026-10-02, blend).
 
 **Open.**
-- A second interview before the plan (the article's plan mode interviews the engineer, p.15-16); to decide on the build-plan row. Before the spec: answered, none (design-trigger, 2026-10-02).
+- The exact wording of the "Questions for you" list at the end of Risks (inside `## Risks`: the plan template keeps the article's section names, `plugin/skills/plan-template/SKILL.md`), how `/sdlc-fix` marks a question answered, and the wording on the gate (b) PR.
 - A place in the intent for examples and references (T3 proposes a section), and whether the roles read them.
 
 ## T3. The intent home: in the repository, written from anywhere, with examples

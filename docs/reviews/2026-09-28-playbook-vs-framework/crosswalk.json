@@ -1,5 +1,5 @@
 {
-  "about": "The workflow crosswalk: every decision point of the AI-native SDLC playbook (the article, print pages of docs/reference/ai-native-sdlc-playbook.pdf) set against the sdlc framework (plugin 0.2.27, commit cf3f696); the row setup-adopt was added on 2026-09-30 against plugin 0.2.28, commit dd308ca. See ../2026-09-28-playbook-vs-framework.md. Re-checked on 2026-10-02 against plugin 0.2.29, commit 904f4ec: seven rows corrected for precision (setup-home, setup-gates, setup-merge, plan-idea, plan-ticket, plan-accept, x-roles); 0.2.28 and 0.2.29 change none of the others.",
+  "about": "The workflow crosswalk: every decision point of the AI-native SDLC playbook (the article, print pages of docs/reference/ai-native-sdlc-playbook.pdf) set against the sdlc framework (plugin 0.2.27, commit cf3f696); the row setup-adopt was added on 2026-09-30 against plugin 0.2.28, commit dd308ca. See ../2026-09-28-playbook-vs-framework.md. Re-checked on 2026-10-02 against plugin 0.2.29, commit 904f4ec: seven rows corrected for precision (setup-home, setup-gates, setup-merge, plan-idea, plan-ticket, plan-accept, x-roles); 0.2.28 and 0.2.29 change none of the others. Re-checked on 2026-10-02 against plugin 0.3.1 (8ec06b8): 0.2.30 changes none of the rows; 0.3.0 and 0.3.1 change seven (design-trigger, test-verify, deploy-approve, deploy-release, x-headless, x-limits, x-measure) and add a sentence to x-sandbox and x-audit.",
   "seeded": "2026-09-28",
   "fields": {
     "id": "stable row id",
@@ -406,11 +406,11 @@
       "step": "What starts the requirements and design pass",
       "pb": "By hand in a product owner session at first, then an organization slash command, then a non-interactive job that fires on the merge.",
       "pbSrc": "p.13",
-      "fw": "The merge of the intent PR fires sdlc-design.yml, which runs /sdlc:sdlc-design non-interactively. The command can also be run by hand.",
-      "fwSrc": "template/.github/workflows/sdlc-design.yml",
+      "fw": "The merge of the intent PR fires sdlc-design.yml, which runs /sdlc:sdlc-design non-interactively. The command can also be run by hand. Since 0.3.1 the runner's guard skips change 0000, the installation, so its merge starts no design run (issue #67).",
+      "fwSrc": "template/.github/workflows/sdlc-design.yml, plugin/ci/run_phase.py (guard)",
       "rel": "same",
       "why": "D1 hosted CI (the article's end state from the start)",
-      "weigh": "Already at the article's end state. See issue #67 for change 0000.",
+      "weigh": "Already at the article's end state. Issue #67 is fixed in 0.3.1: the runner's guard skips change 0000, the installation, for every phase.",
       "map": {
         "pb": [
           [
@@ -606,6 +606,13 @@
           "T1"
         ],
         "text": "Product, Architect and Security & policy briefs; the manager gives two recommendations in the one PR, one for the spec and one for the plan; you approve both or reject one. Separate verdicts, not separate gates, so D2 can stay."
+      },
+      "decision": {
+        "better": "both",
+        "decision": "blend",
+        "note": "Blend (T1), added and nothing replaced: I stay the only approver and my merge of the spec + plan PR is the go to build; the plan stays approved with the spec at gate (b) (D2, D18 unchanged); GitHub's merge record keeps who accepted (p.17; only I merge, D4). Added: (1) when the adversarial reviewer classes the plan non-routine, or a risk-list item is hit (in the diff's file paths or the spec's Flagged concerns; that already parks for my sdlc:accept-risk), the gate (b) PR opens with 'Needs your close look' and the reasons; once T1 exists the Architect brief plays the article's tech lead (p.14, p.17); same approval, no separate gate. It needs no roles: the class and its reasons are already in evidence/ and today only lower the iteration cap, so D11's and D21's 'only' gains the banner (still nothing parks or notifies). (2) Two verdicts in the one PR, one on the spec (does it solve the intent) and one on the plan; I approve both or reject one, and a rejection is a 'Request changes' review whose comments /sdlc-fix applies (D22); with T1 the manager writes them from the Product, Architect and Security & policy briefs. Considered and not chosen: a separate approval for a higher-risk plan (D2's option C narrowed to higher-risk plans; the T1 draft's 'approves separately'), because I would wait on myself.",
+        "saved": "2026-10-02",
+        "status": "tentative"
       }
     },
     {
@@ -647,9 +654,17 @@
       },
       "target": {
         "refs": [
+          "T1",
           "T2"
         ],
-        "text": "Open: a second interview before the plan, as the article's plan mode interviews the engineer (p.15-16); if added, it would reopen or amend D1 and D2."
+        "text": "Your choice on this row (2026-10-02): no live interview before the plan, as before the spec (T2). The planning run ends Risks with a 'Questions for you' list, shown on the gate (b) PR with the plan's riskiest step; you answer in your 'Request changes' review and /sdlc-fix re-plans (D22); D1 and D2 stay. A fresh context also asks the article's three interrogation questions (p.16 step 3): the adversarial reviewer before the roles exist, the Architect's brief with T1."
+      },
+      "decision": {
+        "better": "playbook",
+        "decision": "blend",
+        "note": "Blend (T1, T2), added and nothing replaced: the unattended read-only planning run at the end of the design run stays, from plan-template, spec and plan in one PR (D1, D2 unchanged); the 'never seen this conversation' test stays, in the interrogation prompt and the gate (b) checklist. Added: (1) questions in writing, no live interview: the planning run ends Risks with a fixed 'Questions for you' list (empty if none); the gate (b) PR shows it and the plan's riskiest step under the plan verdict; I answer in my 'Request changes' review and /sdlc-fix re-plans (D22). This answers T2's open question: no second interview before the plan, as before the spec (design-trigger). (2) An independent interrogation: the writer still answers the skill's questions, and a fresh context also asks the article's three (what could break, the riskiest step, the options not chosen, p.16 step 3): the adversarial reviewer at (b) before T1, the Architect's brief with T1 (the plan verdict of design-go); the answers are committed in evidence/. Considered and not chosen: a live plan-mode session with me before each plan (would reopen D1 and D2 and stop the unattended run).",
+        "saved": "2026-10-02",
+        "status": "tentative"
       }
     },
     {
@@ -683,7 +698,7 @@
         "refs": [
           "T1"
         ],
-        "text": "The plan gets its own verdict inside gate (b). A higher-risk plan gets the Architect's full review and a separate, closer approval, the article's tech-lead step; today non-routine only lowers the iteration cap (D11)."
+        "text": "The plan gets its own verdict inside gate (b). A higher-risk plan (non-routine, or a risk-list hit) gets the Architect's full review, in the article's tech-lead place (p.14, p.17), and a 'Needs your close look' banner on the same PR: the same approval, no separate gate (design-go); today non-routine only lowers the iteration cap (D11, D21)."
       }
     },
     {
@@ -957,7 +972,7 @@
         "refs": [
           "T1"
         ],
-        "text": "Stricter only for risk: a higher-risk plan gets the Architect's full review and a separate, closer approval at (b) (touches D11)."
+        "text": "A closer look only for risk: a risk-list hit still parks for your sdlc:accept-risk, and a higher-risk plan gets the Architect's full review and a 'Needs your close look' banner in the same gate (b) approval, no separate gate (design-go; touches D11)."
       }
     },
     {
@@ -1037,11 +1052,11 @@
       "step": "Final check before review",
       "pb": "One way: a verifier subagent in a fresh context once the session believes it is done; the pasted output lands in the transcript and the PR check run.",
       "pbSrc": "p.25-29",
-      "fw": "The verifier runs in (c) and (d); the evidence logs are committed; gate (d) posts the check run sdlc/d.",
-      "fwSrc": "plugin/agents/verifier.md, plugin/pr/cli.py",
+      "fw": "The verifier runs in (c) and (d); the evidence logs are committed; gate (d) posts the check run sdlc/d, and in CI the runner posts it again after it has run the gate's build, test and lint (0.3.0).",
+      "fwSrc": "plugin/agents/verifier.md, plugin/pr/cli.py, plugin/ci/run_phase.py",
       "rel": "same",
       "why": "",
-      "weigh": "The check run depends on the model reaching the step that posts it.",
+      "weigh": "Since 0.3.0 the runner re-posts sdlc/d in CI after its commands step, so the check run needs the model to reach gate (d), not the step that posts it. A by-hand run, or a gate (d) stopped early by a run limit, still depends on the model's own step.",
       "map": {
         "pb": [
           [
@@ -1267,11 +1282,11 @@
       "step": "Approving the code",
       "pb": "A code owner approves through branch protection, informed by the findings; the agent that wrote the code cannot approve it. The stage table reserves human review for regulated and critical code.",
       "pbSrc": "p.6, p.33-35",
-      "fw": "Gate (e): the owner merges the build PR, which stays a draft until sdlc:e-ready. The draft is the only guard against an early merge.",
-      "fwSrc": "plugin/ci/run_phase.py PR_DRAFT_PHASES",
+      "fw": "Gate (e): the owner merges the build PR, which stays a draft until sdlc:e-ready. The draft is the only guard against an early merge. Since 0.3.1 an early merge releases nothing: the release skips a merged copy without a gate (e) result, and releases the pull request the (e) run opens afterwards, once per change (issue #66).",
+      "fwSrc": "plugin/ci/run_phase.py PR_DRAFT_PHASES, plugin/release/cli.py",
       "rel": "adapted",
       "why": "D4 · D13 gate (e) is the merge",
-      "weigh": "See issue #66: an early merge releases unreviewed code and later releases again.",
+      "weigh": "Issue #66 is fixed in 0.3.1: an early merge no longer releases, and a change releases once (the record is in status.yaml on sdlc/<id>/c and on refs/sdlc/released/<id>). What remains: the draft is still the only guard against the merge itself, so an early merge still puts code the review has not judged on main; the review's fixes arrive only with the (e) run's second PR.",
       "map": {
         "pb": [
           [
@@ -1357,11 +1372,11 @@
       "step": "Production release authorization",
       "pb": "The production deploy hook blocks the release until a named release manager authorizes it; the agent cannot pass the gate.",
       "pbSrc": "p.40-41",
-      "fw": "With deploy.production: true the owner applies sdlc:release-approved: the release workflow waits for the label (release/cli.py checks it; no Claude session runs there), and the production_gate hook blocks guarded deploy commands in any Claude session until then; it blocks, never asks. Without it the merge alone releases.",
-      "fwSrc": "plugin/hooks/production_gate.py, plugin/release/approval.py",
+      "fw": "With deploy.production: true the owner applies sdlc:release-approved: the release workflow waits for the label (release/cli.py checks it; no Claude session runs there), and the production_gate hook blocks guarded deploy commands in any Claude session until then; it blocks, never asks. Since 0.3.1 a build PR merged while parked also waits for the label, whatever deploy.production says, and the release log prints the park reason (issue #68). Otherwise the merge alone releases.",
+      "fwSrc": "plugin/hooks/production_gate.py, plugin/release/approval.py, plugin/release/cli.py",
       "rel": "adapted",
-      "why": "D13 option 1",
-      "weigh": "See issue #68: a parked build PR merged at (e) releases without its park reason shown again.",
+      "why": "D13 option 1; the label on a parked merge is PROGRESS choice 147 (issue #68, 0.3.1)",
+      "weigh": "Issue #68 is fixed in 0.3.1: a parked build PR merged at (e) waits for sdlc:release-approved, whatever deploy.production says, and the release log names the park.",
       "map": {
         "pb": [
           [
@@ -1379,7 +1394,7 @@
           [
             "P",
             "c",
-            "Declared production: owner's sdlc:release-approved"
+            "Declared production or a parked merge: owner's sdlc:release-approved"
           ],
           [
             "A",
@@ -1653,8 +1668,8 @@
       "step": "The gate between autonomous stages",
       "pb": "An independent confidence gate between stages, a deterministic check or an adversarial reviewing agent, decides whether the output continues or is escalated to a human. The article does not say which check, the thresholds or which human.",
       "pbSrc": "p.42",
-      "fw": "Run limits, then deterministic checks, then the adversarial verdict (b-d) or the REVIEW.md pass (e); outcomes continue, wait (ready label) or park (sdlc:needs-human, 'What I need from you').",
-      "fwSrc": "plugin/gate/",
+      "fw": "Run limits, then deterministic checks, then the adversarial verdict (b-d) or the REVIEW.md pass (e); outcomes continue, wait (ready label) or park (sdlc:needs-human, 'What I need from you'). In CI the build, test and lint check comes last: since 0.3.0 the runner runs it after the model's session, outside its sandbox, and rewrites the verdict before it dispatches the next phase; a red target parks (issue #91).",
+      "fwSrc": "plugin/gate/, plugin/ci/run_phase.py (run_gate_commands)",
       "rel": "adapted",
       "why": "D11 park, never page · D18 · D21",
       "weigh": "The framework makes concrete what the article leaves open (gap 6 on the playbook page).",
@@ -1718,8 +1733,8 @@
       "step": "Sandbox, tokens and identity of agent jobs",
       "pb": "Agent jobs run in containers under a network policy with short-lived scoped tokens and no standing production credentials. Each non-interactive run acts under the agent's own identity, so the log separates what the agent did from what the person who triggered it did.",
       "pbSrc": "p.37-41, p.44",
-      "fw": "Every phase job runs claude -p on an ephemeral GitHub runner with settings from the pinned framework: the sandbox is mandatory, the network is limited to the API, GitHub and package registries, secrets and web tools are denied and bypass is disabled. The session gets one model credential (the runner drops the other) and the workflow token, and it commits as github-actions[bot]. No phase job holds a deploy secret; the release job runs deploy.command with no Claude session.",
-      "fwSrc": "plugin/ci/settings.ci.json, plugin/ci/runner_setup.py, plugin/ci/auth.py, template/.github/workflows/sdlc-build.yml",
+      "fw": "Every phase job runs claude -p on an ephemeral GitHub runner with settings from the pinned framework: the sandbox is mandatory, the network is limited to the API, GitHub and package registries, secrets and web tools are denied and bypass is disabled. The session gets one model credential (the runner drops the other) and the workflow token, and it commits as github-actions[bot]. No phase job holds a deploy secret; the release job runs deploy.command with no Claude session. Since 0.3.0 the gate's build, test and lint do not run in the session: the runner runs them after it, outside the sandbox (so without its network allow-list), with the model credentials and the workflow token removed from their environment; the token that actions/checkout leaves in .git/config stays readable (issue #91).",
+      "fwSrc": "plugin/ci/settings.ci.json, plugin/ci/runner_setup.py, plugin/ci/auth.py, template/.github/workflows/sdlc-build.yml, plugin/ci/run_phase.py (commands_env)",
       "rel": "same",
       "why": "D1 hosted CI · D5 workflow token as the agent's identity · D6 layer iii (settings from the pinned plugin)",
       "weigh": "The session keeps GITHUB_TOKEN (in the (b)-(e) and fix jobs: contents, pull requests, issues, checks and actions write) because it pushes and labels; the article's example strips it from sandboxed commands (p.37). Is that acceptable while the token has no route to main (D4)?",
@@ -1746,11 +1761,11 @@
       "step": "Run limits and cost bounds",
       "pb": "None for runs. The article bounds what the agent may do, not how long or how much it may try; it mentions money only as 'an API key with budget for eval runs' and a spend limit set centrally for Claude Security scans.",
       "pbSrc": "p.30, p.46-48",
-      "fw": "Each unattended run is bounded by 3 fix iterations per change (2 when non-routine), 4 panel calls per change under deferred review, 120 minutes per phase run, --max-turns 200 per session, an optional dollar cap (max_budget_usd, off by default) and a paused flag read from the default branch. An iteration, panel, clock or budget limit parks the change with its partial evidence; a pause skips every run before it starts. The owner lifts an iteration-cap park with the sdlc:reset-iterations label.",
+      "fw": "Each unattended run is bounded by 3 fix iterations per change (2 when non-routine), 4 panel calls per change under deferred review, 120 minutes per phase run, --max-turns 200 per session, an optional dollar cap per change (max_budget_usd, off by default; since 0.3.1 compared with the change's running total in evidence/spend.json) and a paused flag read from the default branch. An iteration, panel, clock or budget limit parks the change with its partial evidence; a pause skips every run before it starts. The owner lifts an iteration-cap park with the sdlc:reset-iterations label.",
       "fwSrc": "plugin/gate/limits.py, template/sdlc.yaml gate, plugin/ci/run_phase.py",
       "rel": "added",
       "why": "D11 a limit hit parks · build guide step 19 (tagged ADDED; D1 relies on it to bound API cost)",
-      "weigh": "With the dollar cap off, only turns, iterations, panel calls and the clock bound spend. When set, the cap is compared with the last session's cost in the phase (record-spend overwrites the figure), not a sum per change as sdlc.yaml and D1 say. Set a cap, and should it be summed per change?",
+      "weigh": "With the dollar cap off, only turns, iterations, panel calls and the clock bound spend. Since 0.3.1 (issue #71) the cap, when set, is compared with the change's running total (evidence/spend.json: every session, the review pass and each fix round included), as sdlc.yaml and D1 say. The gate reads the total at the end of each session, before that session's own cost is recorded, and each session may itself spend up to the whole cap (--max-budget-usd): the session that crosses the cap is seen only by the next session's gate, so a change can end up to about two sessions above the cap before it parks, or one session above it without parking when that session is its last. Set a cap?",
       "map": {
         "pb": [],
         "fw": [
@@ -1773,11 +1788,11 @@
       "step": "Measuring whether the plays work",
       "pb": "Every play ends with 'How to measure it': a leading and a lagging indicator, read from records that already exist (git history, PR metadata, CI logs, the OpenTelemetry export, the incident tracker), such as time to first review, first-pass CI success rate, time waiting at each gate and DORA measures.",
       "pbSrc": "p.7, p.11-48",
-      "fw": "Each PR description carries two counters: first-pass merge and fix iterations (plus panel calls when there are any). The daily digest adds a Counters table (first-pass merge share, fix iterations per shipped change, panel calls, incidents merged and shipped, dismissals), computed with no model. The eval report gives a pass rate, and detection.json has the breach time and tier; nothing else is computed.",
-      "fwSrc": "plugin/pr/counters.py, plugin/pr/description.py, plugin/pr/digest.py, plugin/evals/run.py, plugin/detect/finding.py",
+      "fw": "Each PR description carries two counters: first-pass merge and fix iterations (plus panel calls when there are any). The daily digest adds a Counters table (first-pass merge share, fix iterations per shipped change, panel calls, incidents merged and shipped, dismissals), computed with no model. The eval report gives a pass rate, detection.json has the breach time and tier, and since 0.3.1 evidence/spend.json keeps each change's spend total (the figure the budget cap is compared with; issue #71), which no PR description, digest or counter shows; nothing else is computed.",
+      "fwSrc": "plugin/pr/counters.py, plugin/pr/description.py, plugin/pr/digest.py, plugin/evals/run.py, plugin/detect/finding.py, plugin/gate/limits.py",
       "rel": "adapted",
       "why": "No decision on which indicators to compute: build guide step 42 (two counters now, a scheduled report later). D20 sets only the channel (the digest, pull not push), not what is measured.",
-      "weigh": "Spend is recorded per run but summed nowhere, and time waiting at your gates is not counted. Which one or two indicators would change a decision of yours?",
+      "weigh": "Spend is now summed per change (evidence/spend.json, 0.3.1) but shown nowhere you read unless the cap parks the change, and time waiting at your gates is not counted. Which one or two indicators would change a decision of yours?",
       "map": {
         "pb": [
           [
@@ -1801,7 +1816,7 @@
       "step": "Logging and the audit trail",
       "pb": "Evidence is logged in the session transcript, forwarded by OpenTelemetry, and in the PR's check run. Hook allow/block decisions and maintain invocations, findings and triage decisions are logged with a timestamp; the chain of commits is the audit trail.",
       "pbSrc": "p.6, p.29, p.37, p.39, p.44",
-      "fw": "Each change keeps its record in git: evidence/ holds each claude -p run's JSON result (final message, turns, cost and permission denials, not the full conversation), run and gate records, verdicts, findings and the panel ledger; gate (d) and the review pass also post check runs. Every hook decision is a timestamped line in evidence/hook-log.jsonl, also uploaded as a workflow artifact, while status.yaml names who applied each un-park label and sdlc:go, and .dismissed.json who dismissed what, and when. No OpenTelemetry export.",
+      "fw": "Each change keeps its record in git: evidence/ holds each claude -p run's JSON result (final message, turns, cost and permission denials, not the full conversation), run and gate records, the spend ledger (spend.json, 0.3.1), verdicts, findings and the panel ledger; gate (d) and the review pass also post check runs. Every hook decision is a timestamped line in evidence/hook-log.jsonl, also uploaded as a workflow artifact, while status.yaml names who applied each un-park label and sdlc:go, its copy on sdlc/<id>/c and on refs/sdlc/released/<id> records, since 0.3.1, when, from which merge commit and from which pull request the change was released (after a deploy.command that exited 0; the default branch is never written), and .dismissed.json who dismissed what, and when. No OpenTelemetry export.",
       "fwSrc": "plugin/hooks/_common.py log_decision, plugin/ci/run_phase.py, plugin/gate/artifacts.py, plugin/state/status.py, plugin/detect/dismissals.py, plugin/pr/cli.py check-run",
       "rel": "adapted",
       "why": "D9 the repo is the record (evidence in git). OpenTelemetry export: no decision; build guide step 41 defers it ('only if you later want dashboards').",
@@ -1906,6 +1921,6 @@
       "fidelity": 2
     },
     "weightsSaved": "2026-09-29",
-    "rowsWithADecision": 12
+    "rowsWithADecision": 14
   }
 }
