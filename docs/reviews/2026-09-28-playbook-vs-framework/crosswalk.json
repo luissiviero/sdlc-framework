@@ -350,6 +350,13 @@
             "Tickets: owner runs /sdlc-plan"
           ]
         ]
+      },
+      "decision": {
+        "better": "playbook",
+        "decision": "blend",
+        "note": "Blend, added and nothing replaced: alerts stay as today (detection and the weekly scan write the incident intent and open a PR; I correct it there with 'Request changes' and triage it), and /sdlc-plan with route 'ticket' stays. Added (T6): tickets arrive as GitHub issues; my label sdlc:intent on an issue starts a CI run that writes intent.md from the issue and opens the intent PR linked to it; what it cannot work out goes to Open questions; I correct and merge at gate (a) as today. Safeguards: only my own label starts a run (the workflow checks it was my account), and the issue text is read as data, never as instructions. No settled decision reopened.",
+        "saved": "2026-10-02",
+        "status": "tentative"
       }
     },
     {
@@ -1864,6 +1871,6 @@
       "fidelity": 2
     },
     "weightsSaved": "2026-09-29",
-    "rowsWithADecision": 6
+    "rowsWithADecision": 7
   }
 }

@@ -98,9 +98,9 @@
 
 <div class="wrap">
   <header>
-    <div class="eyebrow">Target design · tentative · T1–T5 of target-design.md · 2 October 2026</div>
+    <div class="eyebrow">Target design · tentative · T1–T6 of target-design.md · 2 October 2026</div>
     <h1>The workflow as you want it to become</h1>
-    <p class="lede">The third workflow beside the <a href="https://claude.ai/artifact/WhLTjcSzJqQmUFm3aP5G6L">playbook's</a> and the <a href="https://claude.ai/artifact/KW8jWunfLNa9WgBSzJxw4S">framework's</a>. It draws only what <code>docs/reviews/2026-09-28-playbook-vs-framework/target-design.md</code> has discussed so far: AI roles that advise and one manager that reviews for you (T1), the interview (T2), the intent home (T3), the names (T4) and how a project starts (T5). Steps the study has not reached yet are left out or marked "not discussed yet".</p>
+    <p class="lede">The third workflow beside the <a href="https://claude.ai/artifact/WhLTjcSzJqQmUFm3aP5G6L">playbook's</a> and the <a href="https://claude.ai/artifact/KW8jWunfLNa9WgBSzJxw4S">framework's</a>. It draws only what <code>docs/reviews/2026-09-28-playbook-vs-framework/target-design.md</code> has discussed so far: AI roles that advise and one manager that reviews for you (T1), the interview (T2), the intent home (T3), the names (T4), how a project starts (T5) and tickets that become intents (T6). Steps the study has not reached yet are left out or marked "not discussed yet".</p>
     <p class="banner"><strong>Nothing here is decided.</strong> Every entry is tentative until the whole study is done; then each confirmed entry becomes a proposal and a candidate row in <code>docs/ROADMAP.md</code>. The framework as it is today is on the framework page.</p>
     <div class="legend">
       <span><i class="sw hex"></i>Your decision or act</span>
@@ -110,7 +110,7 @@
   </header>
 
   <section>
-    <h2>One change, from idea to release <span class="refs">T1 · T3 · T4 · T5</span></h2>
+    <h2>One change, from idea to release <span class="refs">T1 · T3 · T4 · T5 · T6</span></h2>
     <p>Your approval points stay where they are today. What changes is what reaches you at each one: the roles write briefs, the manager turns them into one recommendation, you decide, and the act runs on your signal. Phases carry the names T4 proposes, with today's letter after each.</p>
     <div class="diagram"><pre class="mermaid">flowchart TB
   subgraph PREP["Before the first change"]
@@ -128,6 +128,10 @@
     N3["Briefs: Product (scope, success), Architect (feasibility)"]
     N4["Manager: accept, or the points to fix first, briefs linked"]
     N1 --> N2 --> N3 --> N4
+    T6I{{"You label a GitHub issue sdlc:intent"}}
+    T6R["A CI run checks the label is yours, writes intent.md from the issue,&lt;br/&gt;the issue text read as data; what it cannot tell goes to Open questions"]
+    T6I -. "a ticket" .-> T6R
+    T6R --> N2
   end
   P2 --> N1
   N4 --> GA{{"You approve, or send corrections"}}
@@ -175,6 +179,7 @@
       <li><strong>Decisions this would reopen or amend:</strong> D4, D5, D13 and D24 for the manager acting in your name; D21 (who sits on the panel) and D11 (whether a missing brief parks); the one-owner premise has no decision of its own yet. The names change what D3, D10, D11, D13, D14, D18, D19, D25 and D26 call things, not what the framework does.</li>
       <li><strong>Separate verdicts, not separate gates.</strong> The spec and the plan each get a verdict inside the one design PR, so plan.md is still approved with the spec.</li>
       <li><strong>How a project starts (T5): added, nothing replaced.</strong> The whole loop from the first change stays the default. Optionally you leave the Claude credential (the repository secret GitHub needs to run Claude) out at first: every automatic phase job then ends "skipped", you run each phase's command yourself, and adding the credential later turns the automation on. The weekly scan fails until then. The change-0000 intent also lists what starts empty, so nothing about the first weeks is a surprise. No settled decision changes.</li>
+      <li><strong>Tickets become intents (T6): added, nothing replaced.</strong> Tickets arrive as GitHub issues. Your label <code>sdlc:intent</code> on an issue starts a CI run that writes the intent and opens the intent PR, linked to the issue; you correct and merge it at the intent gate as today. Only your own label starts a run, and the issue text is read as data, never as instructions, since anyone can open an issue on a public repository. Alerts and <code>/sdlc-intent</code> by hand stay as they are; the repository stays the record and the issue holds the link (D9).</li>
     </ul>
   </section>
 
@@ -323,11 +328,19 @@
           <li>The exact wording of the by-hand start (<code>/sdlc-init</code> §6, README) and of the "what starts empty" list.</li>
         </ul>
       </div>
+      <div>
+        <h3>Tickets <span class="refs">T6</span></h3>
+        <ul class="notes">
+          <li>Whether a ticket intent gets the role-fed interview; a CI run cannot interview you, so its questions go to Open questions in the PR.</li>
+          <li>How the run is told the issue is untrusted input, and which tools it may use.</li>
+          <li>The label's name, judged with the other names (T4).</li>
+        </ul>
+      </div>
     </div>
   </section>
 
   <footer>
-    <span>Drawn from <code>target-design.md</code> entries T1–T5 and <code>naming.md</code>, as recorded from 30 September to 2 October 2026. Each entry lists the settled decisions (D<i>n</i>) it would reopen or amend.</span>
+    <span>Drawn from <code>target-design.md</code> entries T1–T6 and <code>naming.md</code>, as recorded from 30 September to 2 October 2026. Each entry lists the settled decisions (D<i>n</i>) it would reopen or amend.</span>
     <span>The other two pages: <a href="https://claude.ai/artifact/WhLTjcSzJqQmUFm3aP5G6L">Playbook SDLC Workflow</a> · <a href="https://claude.ai/artifact/KW8jWunfLNa9WgBSzJxw4S">SDLC Plugin Workflow</a> · and the <a href="https://claude.ai/artifact/PFnRZ32pwTr4y422Gna2mz">Workflow Crosswalk</a> that compares them.</span>
   </footer>
 </div>

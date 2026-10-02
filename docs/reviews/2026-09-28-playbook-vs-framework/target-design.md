@@ -11,6 +11,7 @@ Each entry: the owner's idea in the owner's words, the direction discussed so fa
 | T3 | The intent home: in the repository, written from anywhere, with examples | tentative | 2026-09-30 |
 | T4 | Names: the phases named after what they produce, and the other names judged against the article | tentative | 2026-09-30 |
 | T5 | Starting a project: the whole loop from the first change, with an optional start by hand | tentative | 2026-10-02 |
+| T6 | Tickets become intents: a GitHub issue the owner labels starts the intent PR | tentative | 2026-10-02 |
 
 The target workflow page (https://claude.ai/artifact/13X8rzF9KsfekmeSs1w5rM, snapshot `target-workflow.html`) draws every entry. The crosswalk page (https://claude.ai/artifact/PFnRZ32pwTr4y422Gna2mz) shows T1 to T3 in a third column, "Target (tentative)", on the cards of the rows they touch, and `crosswalk.json` carries the same condensed text in each row's `target` field and in `targets`; at the owner's request the crosswalk is not extended with later entries (the review record's section 7).
 
@@ -178,3 +179,27 @@ The framework already keeps the hook log both ways: committed in `evidence/` and
 **Open.**
 - Whether the weekly scan should end "skipped" like the phase jobs when no secret exists, instead of failing; that would be a code change, not only documentation.
 - The exact wording of both additions, written after the study with the rest.
+
+## T6. Tickets become intents: a GitHub issue the owner labels starts the intent PR
+
+**Status:** tentative. Recorded from the owner's choice on the crosswalk row plan-ticket (better: the playbook; decision: blend), 2026-10-02. The owner wants to start using GitHub issues as the place where tickets arrive.
+
+**The owner's note (saved on the crosswalk page).** "Blend, added and nothing replaced: alerts stay as today (detection and the weekly scan write the incident intent and open a PR; I correct it there with 'Request changes' and triage it), and /sdlc-plan with route 'ticket' stays. Added (T6): tickets arrive as GitHub issues; my label sdlc:intent on an issue starts a CI run that writes intent.md from the issue and opens the intent PR linked to it; what it cannot work out goes to Open questions; I correct and merge at gate (a) as today. Safeguards: only my own label starts a run (the workflow checks it was my account), and the issue text is read as data, never as instructions. No settled decision reopened."
+
+**Today.** No workflow triggers on an issue (the template workflows use `issues` only as a token permission). A ticket becomes an intent only when the owner runs `/sdlc-plan` with route `ticket` and the ticket's number as its external reference. Alerts already become intents with no person: the detection runs `/sdlc-maintain`, and the weekly scan writes an intent per Important finding it routes.
+
+**Direction discussed (tentative).** Added beside the routes of today; nothing replaced.
+- **The trigger:** the owner applies the label `sdlc:intent` to an issue. A new workflow runs on that event, checks that the label was applied from the owner's account (not merely by a person, the check T1 asks for every approval), and starts a run that writes `changes/<id>-<slug>/intent.md` with entry route `ticket` and the issue as its external reference, then opens the intent PR on `sdlc/<id>/a`, linked to the issue.
+- **What the run cannot work out** goes to the intent's "Open questions". The owner corrects the intent in the PR (review comments, or a "Request changes" review that starts the fix run) and accepts it by merging at gate (a), as today.
+- **The issue text is data, never instructions:** anyone can open an issue on a public repository, so the run treats the title and body as quoted input, and only the owner's label starts it.
+- **The record:** `intent.md` in the repository stays the record and the issue holds the link (D9's linkage rule).
+- **Example:** issue #12 "Export the report as CSV"; the owner labels it `sdlc:intent`; the run writes `changes/0010-export-csv/intent.md` and opens the intent PR linked to #12.
+
+**Crosswalk rows it touches:** plan-ticket.
+
+**Settled decisions it would reopen or amend:** none. D9 (the repository is the record, issues hold links) is followed; the new label sits beside the owner's other labels (D3, D24).
+
+**Open.**
+- Whether a ticket intent gets the role-fed interview of T2; a CI run cannot interview the owner, so its questions go to "Open questions" in the PR.
+- How the run is told the issue is untrusted input, and which tools it may use (the phase jobs' sandbox and settings, as today).
+- The label's name, which T4 would judge with the other names.
