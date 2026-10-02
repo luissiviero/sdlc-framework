@@ -1,4 +1,4 @@
-"""Layer-1 tests for the four hooks: sample tool inputs in, decisions out, plus one
+"""Layer-1 tests for the hooks: sample tool inputs in, decisions out, plus one
 end-to-end run of each script over stdin to prove the exit code and JSON contract."""
 
 from __future__ import annotations
@@ -14,6 +14,7 @@ import pytest
 from hooks import (
     _common,
     format_on_edit,
+    panel_blind,
     plan_sync,
     production_gate,
     protected_paths,
@@ -1527,3 +1528,131 @@ def test_production_gate_fails_closed_on_a_production_flag_that_is_not_a_boolean
     assert "deploy.production is 'yes', not a boolean" in str(exc.value)
     (line,) = _log_lines(log)
     assert line["verdict"] == "block" and "fail closed" in line["reason"]
+
+
+# --- the review panel's blindness (0.2.30) -------------------------------------------------
+PANEL_HOOK = HOOKS_DIR / "panel_blind.py"
+
+
+@pytest.fixture
+def panel_project(tmp_path):
+    """A project mid-panel: item 1 of phase (b) has the reviewer's verdict, not the
+    advocate's yet (the window)."""
+    (tmp_path / "sdlc.yaml").write_text("profile: standard\n", encoding="utf-8")
+    panel = tmp_path / "changes" / "0001-sample" / "evidence" / "panel"
+    panel.mkdir(parents=True)
+    (panel / "b-1-reviewer.md").write_text("## Verdict\nkeep half-up\n", encoding="utf-8")
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "calc.py").write_text("x = 1\n", encoding="utf-8")
+    return tmp_path, panel
+
+
+def _blind(root, payload):
+    return panel_blind.decide({**payload, "cwd": str(root)}, [], env=_env(root))
+
+
+def test_panel_blind_refuses_a_read_of_a_verdict_in_its_window(panel_project):
+    root, panel = panel_project
+    decision = _blind(root, pre("Read", file_path=str(panel / "b-1-reviewer.md")))
+    assert decision.block
+    assert "b-1-reviewer.md is the reviewer's verdict on item 1" in decision.reason
+    assert "b-1-advocate.md is missing" in decision.reason
+    # Windows spelling and case of the same file
+    spelled = str(panel / "B-1-Reviewer.md").replace("/", "\\")
+    assert _blind(root, pre("Read", file_path=spelled)).block or os.name != "nt"
+    # once the advocate has written, the conciliator reads both
+    (panel / "b-1-advocate.md").write_text("## Verdict\nno objection\n", encoding="utf-8")
+    assert not _blind(root, pre("Read", file_path=str(panel / "b-1-reviewer.md"))).block
+    assert not _blind(root, pre("Read", file_path=str(panel / "b-1-advocate.md"))).block
+
+
+def test_panel_blind_is_symmetric_and_leaves_other_files_alone(panel_project):
+    root, panel = panel_project
+    (panel / "b-1-reviewer.md").unlink()
+    (panel / "b-1-advocate.md").write_text("## Verdict\nno objection\n", encoding="utf-8")
+    decision = _blind(root, pre("Read", file_path=str(panel / "b-1-advocate.md")))
+    assert decision.block and "the reviewer has not written its own yet" in decision.reason
+    for other in (panel / "b-1-conciliator.json", panel / "b-items.json", root / "src/calc.py"):
+        assert not _blind(root, pre("Read", file_path=str(other))).block, other
+
+
+def test_panel_blind_follows_a_symlink_to_a_verdict(panel_project):
+    root, panel = panel_project
+    link = root / "notes.md"
+    try:
+        link.symlink_to(panel / "b-1-reviewer.md")
+    except (OSError, NotImplementedError):
+        pytest.skip("symlinks are not available here")
+    assert _blind(root, pre("Read", file_path=str(link))).block
+
+
+@pytest.mark.parametrize(
+    ("grep", "blocked"),
+    [
+        ({}, True),  # the whole project, no filter: would read the verdict
+        ({"path": "changes"}, True),
+        ({"path": "changes/0001-sample/evidence/panel/b-1-reviewer.md"}, True),
+        ({"type": "markdown"}, True),
+        ({"glob": "*.md"}, True),
+        ({"glob": "**/*.{md,py}"}, True),  # braces: not proven to exclude it
+        ({"glob": "!*.py"}, True),  # a negation: not proven to exclude it
+        ({"path": "changes", "glob": "**/evidence/panel/*.md"}, True),
+        ({"path": "src"}, False),  # another folder
+        ({"type": "py"}, False),  # limited to code
+        ({"glob": "*.py"}, False),
+        ({"glob": "**/*.json"}, False),
+    ],
+)
+def test_panel_blind_refuses_only_a_grep_that_would_read_the_verdict(panel_project, grep, blocked):
+    root, _panel = panel_project
+    decision = _blind(root, pre("Grep", pattern="half-up", **grep))
+    assert decision.block is blocked, (grep, decision.reason)
+    if blocked:
+        assert "b-1-reviewer.md" in decision.reason and 'glob: "*.py"' in decision.reason
+
+
+def test_panel_blind_allows_every_grep_outside_a_window(panel_project):
+    root, panel = panel_project
+    (panel / "b-1-advocate.md").write_text("## Verdict\nno objection\n", encoding="utf-8")
+    assert not _blind(root, pre("Grep", pattern="half-up")).block
+    # Glob lists names, never contents: not the hook's
+    assert not _blind(root, pre("Glob", pattern="**/*.md")).block
+
+
+def test_panel_blind_script_blocks_logs_and_stays_silent_otherwise(panel_project):
+    root, panel = panel_project
+    log = root / "hook-log.jsonl"
+
+    def run(payload):
+        return subprocess.run(
+            [sys.executable, str(PANEL_HOOK)],
+            input=json.dumps({**payload, "cwd": str(root)}),
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            env={**os.environ, "CLAUDE_PROJECT_DIR": str(root), "SDLC_HOOK_LOG": str(log)},
+        )
+
+    proc = run(pre("Read", file_path=str(root / "src" / "calc.py")))
+    assert proc.returncode == 0 and proc.stdout == "" and not log.exists()  # no allow lines
+    proc = run(pre("Read", file_path=str(panel / "b-1-reviewer.md")))
+    assert proc.returncode == 2, proc.stderr
+    out = json.loads(proc.stdout)["hookSpecificOutput"]
+    assert out["permissionDecision"] == "deny" and "decision 21" in out["permissionDecisionReason"]
+    (line,) = [json.loads(x) for x in log.read_text(encoding="utf-8").splitlines() if x.strip()]
+    assert line["hook"] == "panel_blind" and line["verdict"] == "block"
+    # input that is not JSON fails closed, like every PreToolUse hook
+    bad = subprocess.run(
+        [sys.executable, str(PANEL_HOOK)], input="not json", capture_output=True, text=True
+    )
+    assert bad.returncode == 2
+
+
+def test_hooks_json_registers_the_panel_blindness_on_read_and_grep():
+    data = json.loads((HOOKS_DIR / "hooks.json").read_text(encoding="utf-8"))
+    entries = [
+        e
+        for e in data["hooks"]["PreToolUse"]
+        if any("panel_blind.py" in h["args"][0] for h in e["hooks"])
+    ]
+    assert [e["matcher"] for e in entries] == ["Read|Grep"]
