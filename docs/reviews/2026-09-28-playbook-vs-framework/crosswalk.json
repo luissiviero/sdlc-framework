@@ -654,9 +654,17 @@
       },
       "target": {
         "refs": [
+          "T1",
           "T2"
         ],
-        "text": "Open: a second interview before the plan, as the article's plan mode interviews the engineer (p.15-16); if added, it would reopen or amend D1 and D2."
+        "text": "Your choice on this row (2026-10-02): no live interview before the plan, as before the spec (T2). The planning run ends Risks with a 'Questions for you' list, shown on the gate (b) PR with the plan's riskiest step; you answer in your 'Request changes' review and /sdlc-fix re-plans (D22); D1 and D2 stay. A fresh context also asks the article's three interrogation questions (p.16 step 3): the adversarial reviewer before the roles exist, the Architect's brief with T1."
+      },
+      "decision": {
+        "better": "playbook",
+        "decision": "blend",
+        "note": "Blend (T1, T2), added and nothing replaced: the unattended read-only planning run at the end of the design run stays, from plan-template, spec and plan in one PR (D1, D2 unchanged); the 'never seen this conversation' test stays, in the interrogation prompt and the gate (b) checklist. Added: (1) questions in writing, no live interview: the planning run ends Risks with a fixed 'Questions for you' list (empty if none); the gate (b) PR shows it and the plan's riskiest step under the plan verdict; I answer in my 'Request changes' review and /sdlc-fix re-plans (D22). This answers T2's open question: no second interview before the plan, as before the spec (design-trigger). (2) An independent interrogation: the writer still answers the skill's questions, and a fresh context also asks the article's three (what could break, the riskiest step, the options not chosen, p.16 step 3): the adversarial reviewer at (b) before T1, the Architect's brief with T1 (the plan verdict of design-go); the answers are committed in evidence/. Considered and not chosen: a live plan-mode session with me before each plan (would reopen D1 and D2 and stop the unattended run).",
+        "saved": "2026-10-02",
+        "status": "tentative"
       }
     },
     {
@@ -1913,6 +1921,6 @@
       "fidelity": 2
     },
     "weightsSaved": "2026-09-29",
-    "rowsWithADecision": 13
+    "rowsWithADecision": 14
   }
 }
