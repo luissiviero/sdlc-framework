@@ -10,8 +10,9 @@ Each entry: the owner's idea in the owner's words, the direction discussed so fa
 | T2 | The interview: how the manager and the roles question the owner | tentative | 2026-09-30 |
 | T3 | The intent home: in the repository, written from anywhere, with examples | tentative | 2026-09-30 |
 | T4 | Names: the phases named after what they produce, and the other names judged against the article | tentative | 2026-09-30 |
+| T5 | Starting a project: the whole loop from the first change, with an optional start by hand | tentative | 2026-10-02 |
 
-The crosswalk page (https://claude.ai/artifact/PFnRZ32pwTr4y422Gna2mz) shows each entry in a third column, "Target (tentative)", on the cards of the rows it touches; `crosswalk.json` carries the same condensed text in each row's `target` field, and the entries in `targets` (T1 to T3 so far; T4 is still to be added, see the review record's section 7).
+The target workflow page (https://claude.ai/artifact/13X8rzF9KsfekmeSs1w5rM, snapshot `target-workflow.html`) draws every entry. The crosswalk page (https://claude.ai/artifact/PFnRZ32pwTr4y422Gna2mz) shows T1 to T3 in a third column, "Target (tentative)", on the cards of the rows they touch, and `crosswalk.json` carries the same condensed text in each row's `target` field and in `targets`; at the owner's request the crosswalk is not extended with later entries (the review record's section 7).
 
 ## T1. AI roles that advise, and one manager that reviews for the owner
 
@@ -156,3 +157,24 @@ The framework already keeps the hook log both ways: committed in `evidence/` and
 - T1's advising roles and the owner's roles: if the owner's decisions are named by the article's roles (product owner, code owner, release manager), T1's AI roles need names that cannot be read as those people — T1 already writes "security brief", never "security lead: approved"; the role names themselves (Product, Architect, …) are to be checked against this.
 - T2 and T3 name `/sdlc-plan`; under this entry it becomes `/sdlc-intent`.
 - When: every rename also has to reach each project on the framework (today the sample project); the next project, `webapp-example`, is the last point with only one project to migrate. The order and the compatibility rules are in `naming.md`, "If a row is accepted".
+
+## T5. Starting a project: the whole loop from the first change, with an optional start by hand
+
+**Status:** tentative. Recorded from the owner's choice on the crosswalk row setup-adopt (better: the framework; decision: blend), 2026-10-02.
+
+**The owner's note (saved on the crosswalk page).** "Blend: the whole loop from the first change stays the default (keep: no staged adoption, no per-phase switches). Added, nothing replaced: (#2) an optional, documented by-hand start - leave the Claude secret out, each phase job ends 'skipped' and I run the phase commands myself (the weekly scan fails until then); adding the secret later turns the automation on, nothing else changes (sdlc-init §6, README). (#3) the change-0000 intent lists what starts empty: evals (D17), lessons, CLAUDE.md 'Things Claude gets wrong', and the detection, which needs a CI workflow of the project's own and about 16 days of daily CI data before its first verdict (sdlc_init.py). Counting call: the playbook's adoption choice is a Setup decision (14 + 2)."
+
+**Direction discussed (tentative).** Both additions add to the framework and replace nothing; the default stays as it is today.
+- **The default, as today:** `/sdlc-init` installs the whole loop in the change-0000 PR. There is no staged adoption in the p.8 order and no per-phase switch; `sdlc.yaml: paused` still stops every phase at once. The article adopts the plays in the p.8 order and prompts each step by hand before automating it (p.8, p.13), and makes auto-accept the default only as the guardrails mature (p.17); the framework's own guardrails were built that way (by hand in stage B1, CI from B3), so a project does not repeat it.
+- **An optional start by hand, documented:** without the repository secret (`CLAUDE_CODE_OAUTH_TOKEN` or `ANTHROPIC_API_KEY`), every phase job ends green as "skipped: no credential" (`plugin/ci/auth.py`; once the project's setup command has succeeded, since it runs first), and the owner runs each phase's command in their own Claude Code session. The weekly scan fails red instead until the secret exists. Adding the secret turns the automation on, and nothing else changes. This is the article's ladder, by hand first and then a job that fires on the merge (p.8, p.13), offered per project. Where it goes: one optional paragraph in `plugin/commands/sdlc-init.md` §6, which today presents the secret as required, and one sentence in `README.md`, "Phases by hand".
+- **What starts empty, said in one place:** the change-0000 intent that `plugin/init/sdlc_init.py` writes gains a short list. It names the evals suite (D17; `evals/README.md` already says it starts empty), `lessons/`, the "(none yet)" in CLAUDE.md's "Things Claude gets wrong", and the detection. The detection needs a CI workflow of the project's own (the install report already warns when there is none) and about 16 days of daily CI data before its first verdict: 8 baseline points before the 8 most recent points it judges (`plugin/detect/stats.py`, `MIN_BASELINE`, `TAIL`). Today each fact sits in its own file, and the intent the owner reads before merging the install names none of them.
+
+**Counting call (the same day).** On the playbook side, the organization's choice of which stages to transform first ("organizations may choose to prioritize transforming different stages at different times", p.7) counts as a once-per-project decision, so section 6 of the review record reads 14 + 2 for the playbook against the framework's 8 + 7.
+
+**Crosswalk rows it touches:** setup-adopt.
+
+**Settled decisions it would reopen or amend:** none. D1 (hosted CI) stays the default, and D17 (evals start empty) is only stated in one more place.
+
+**Open.**
+- Whether the weekly scan should end "skipped" like the phase jobs when no secret exists, instead of failing; that would be a code change, not only documentation.
+- The exact wording of both additions, written after the study with the rest.

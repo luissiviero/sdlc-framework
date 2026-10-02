@@ -70,6 +70,13 @@
             "Then each merge fires the next phase"
           ]
         ]
+      },
+      "decision": {
+        "better": "framework",
+        "decision": "blend",
+        "note": "Blend: the whole loop from the first change stays the default (keep: no staged adoption, no per-phase switches). Added, nothing replaced: (#2) an optional, documented by-hand start - leave the Claude secret out, each phase job ends 'skipped' and I run the phase commands myself (the weekly scan fails until then); adding the secret later turns the automation on, nothing else changes (sdlc-init §6, README). (#3) the change-0000 intent lists what starts empty: evals (D17), lessons, CLAUDE.md 'Things Claude gets wrong', and the detection, which needs a CI workflow of the project's own and about 16 days of daily CI data before its first verdict (sdlc_init.py). Counting call: the playbook's adoption choice is a Setup decision (14 + 2).",
+        "saved": "2026-10-02",
+        "status": "tentative"
       }
     },
     {
@@ -1840,7 +1847,7 @@
     ]
   },
   "owner": {
-    "copiedFromStore": "2026-09-30",
+    "copiedFromStore": "2026-10-02",
     "criteriaWeights": {
       "safety": 1,
       "attention": 3,
@@ -1850,6 +1857,6 @@
       "fidelity": 2
     },
     "weightsSaved": "2026-09-29",
-    "rowsWithADecision": 4
+    "rowsWithADecision": 5
   }
 }
