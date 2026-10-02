@@ -1,11 +1,11 @@
 # Intent: split the large docs with an index each
-Author: Claude, drafted for Luis Siviero (owner). Status: draft. Change id: 0001. Entry route: idea.
+Author: Claude, drafted for Luis Siviero (owner). Status: proposed. Change id: 0001. Entry route: idea.
 Framework change: yes
 
 ## Problem
 Every session in this repository is told to read three large files: `docs/NOTES.md` (1027 lines,
 23 sections of platform facts), `docs/DECISIONS.md` (411 lines, the 26 settled decisions) and
-`docs/PROGRESS.md` (1143 lines, fifteen session records, newest first). A session that needs one
+`docs/PROGRESS.md` (1143 lines, fifteen top-level records, newest first). A session that needs one
 platform fact or one decision reads a whole file, or reads a search hit without the context
 around it. The cost is context space and attention, not money. Those are the limits that matter
 for runs with a budget and a turn limit.
@@ -22,19 +22,28 @@ documentation only and does not touch the sample's live detection check before 2
 - `docs/notes/` holds one file per NOTES section. Each file name keeps the section number
   (for example `17-...md`), so every "NOTES §17" citation in code, tests and docs still points at
   one file. Each file has a short frontmatter: `title`, `sources` (the docs URL or run URL and the
-  verbatim quote it already cites), `generated.at` (the read date already in the text) and
-  `stale_after`. `docs/notes/index.md` lists every file with a one-line description.
+  verbatim quote it already cites), `generated.at` (the read date already in the text),
+  `verified_with` (the Claude Code version, plugin version and runner the facts were read under)
+  and `stale_after` (the read date plus 90 days). A file is stale when the environment no longer
+  matches `verified_with` (choice 93's rule) or when `stale_after` has passed, whichever comes
+  first. A NOTES section is one session's batch of facts with one read date (choice 93), so these
+  fields are set per file, not per fact. `docs/notes/index.md` lists every file with a one-line
+  description.
 - `docs/decisions/` holds one file per decision, named by its number. Each file has frontmatter
   with `status` (accepted or amended), `reversibility` (sticky or reversible, as the decision says
   today) and `amended_by` where an amendment exists. `docs/decisions/index.md` has one line per
   decision.
-- `docs/PROGRESS.md` keeps the current session record only; earlier sessions move to
-  `docs/progress/` (one file per session) with an `index.md`.
+- `docs/PROGRESS.md` keeps the current record only; the earlier records move to
+  `docs/progress/`, one file per existing top-level heading (a session, a sitting of a session,
+  or the workflow comparison study record), with an `index.md` that groups sittings under their
+  session.
 - Every move keeps the text unchanged (choice 126: a kept record is annotated, never rewritten).
   Only links and section references are updated.
 - `HANDOFF.md`'s reading list says "index first, then the files you need".
-- The old paths `docs/NOTES.md` and `docs/DECISIONS.md` become one-paragraph stubs that point to
-  the new index, so old links and citations in closed PRs still resolve.
+- The old paths `docs/NOTES.md` and `docs/DECISIONS.md` become short permanent stubs that point
+  to the new index, so links in closed PRs, handoffs and commit messages still resolve. The same
+  PR updates the links in the live docs (`HANDOFF.md`, `docs/ROADMAP.md`,
+  `docs/OPERATING_MODEL.md`, `README.md`) to the new paths.
 - The owner gets the guardrail edits as a table (link; row; what is there; what it must become):
   `CLAUDE.md` line 3 (the `docs/DECISIONS.md` path), line 35 (`docs/NOTES.md`), line 39
   (`docs/PROGRESS.md`), and the new pointer line after line 3 that the proposal gives.
@@ -64,15 +73,18 @@ documentation only and does not touch the sample's live detection check before 2
   the split merges.
 - English only. No decision is reopened (decisions 8, 9, 17, 7 and 20 are unchanged, per the
   proposal's table).
-- Do not merge it in a way that moves anything the sessions on the road to 1.0.0 (sessions 15 and
-  16) are told to read, unless `HANDOFF.md` is updated in the same PR.
+- Timing: nothing the sessions on the road to 1.0.0 (sessions 15 and 16) are told to read moves
+  before that road ends. The intent merges now and phase (b) writes the spec and plan; the design
+  PR is not merged until session 16 has closed the milestone, so the split itself (phase c) runs
+  after `v1.0.0`. It then also covers the records sessions 15 and 16 add to the old files.
+- `docs/BUILD_GUIDE.md` is out of scope: about 132 files cite "build guide step N", and the guide
+  becomes history at 1.0.0. Archiving it is a separate change, if wanted.
 
 ## Open questions
-- `stale_after`: one fixed period for every platform fact (for example 30 days after the read
-  date), or a date set per fact? Unknown — to be settled in design.
-- PROGRESS: one file per session, or one file per session sitting (session 14 had two sittings,
-  session 8 had two)?
-- Timing: merge before session 15 (2026-10-11), or hold until after `v1.0.0` so sessions 15 and 16
-  read the files they were briefed on?
-- `docs/BUILD_GUIDE.md` (990 lines) is not in the proposal. Split it the same way, or leave it?
-- Should the old-path stubs stay for good, or be removed after the next release?
+None. The five questions of the draft were settled with the owner on 2026-10-02 (PR #86):
+- `stale_after`: the environment the facts were read under plus a 90-day backstop, per file
+  (Proposed outcome).
+- PROGRESS: one file per existing top-level heading, so no record is merged or rewritten.
+- Timing: intent now, design now, the design PR held until after `v1.0.0` (Constraints).
+- `docs/BUILD_GUIDE.md`: left as it is (Constraints).
+- Old-path stubs: kept for good; live-doc links updated in the same PR (Proposed outcome).
