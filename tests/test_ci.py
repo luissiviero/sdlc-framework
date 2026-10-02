@@ -334,6 +334,25 @@ def test_guard_skips_when_the_previous_gate_did_not_pass(project):
     assert skip_reason(root, "c") is None
 
 
+def test_a_merged_pr_that_touches_only_change_0000_is_skipped_for_every_phase(project, monkeypatch):
+    """Issue #67 (0.3.1): change 0000 is the installation; a merged PR whose only change folder
+    is changes/0000-sdlc-init/ (the 0000 PR itself once the secret exists, an upgrade re-run
+    on sdlc/0000/a) resolved to 0000 and the design guard let it through (phase a, not
+    parked): a design run wrote a spec and plan for the installation. The guard now skips
+    0000 for every phase run."""
+    root, _change = project
+    init_dir = root / "changes" / "0000-sdlc-init"
+    assert init_dir.is_dir() and status_mod.read_status(init_dir).phase == "a"
+    _pr_files(monkeypatch, ["changes/0000-sdlc-init/status.yaml", "CLAUDE.md", "sdlc.yaml"])
+    assert run_phase.find_change("b", None, "claude/init-x", "o/r", "12", {}) == ("0000", None)
+    assert run_phase.find_change("b", None, "sdlc/0000/a", "o/r", "12", {}) == ("0000", None)
+    for phase in ("b", "c", "d", "e", "review", "fix", "f"):
+        _d, _s, _c, reason = run_phase.guard(root, "0000", phase, "owner/name", {})
+        assert reason == run_phase.INIT_CHANGE_SKIP, phase
+        assert reason.startswith("change 0000 is the installation; it has no design")
+    assert skip_reason(root, "b") is None  # change 0001 is untouched by the rule
+
+
 def test_guard_skips_an_unknown_change(project):
     root, _change = project
     _d, _s, _c, reason = run_phase.guard(root, "0099", "b", "owner/name", {})
@@ -1122,7 +1141,7 @@ def pr_route(monkeypatch, number: int | None = None, **extra) -> list:
     return upsert_recorder(monkeypatch, number=number or 7, **extra)
 
 
-def test_full_run_stores_the_transcript_records_spend_and_hands_over(
+def test_full_run_stores_the_result_record_records_spend_and_hands_over(
     project, fake_claude, monkeypatch, capsys
 ):
     """A build run (c) whose gate says continue hands over to the test workflow. Since
@@ -1148,6 +1167,11 @@ def test_full_run_stores_the_transcript_records_spend_and_hands_over(
     assert stored == FAKE_RESULT
     run_file = json.loads((change / "evidence" / "run-c.json").read_text(encoding="utf-8"))
     assert run_file["spend_usd"] == 0.42 and run_file["phase"] == "c"
+    ledger = json.loads((change / "evidence" / "spend.json").read_text(encoding="utf-8"))
+    assert ledger["total_usd"] == 0.42  # issue #71: one entry per run, named by its record
+    assert [(e["run"], e["source"], e["usd"]) for e in ledger["entries"]] == [
+        ("c", "claude-c.json", 0.42)
+    ]
 
 
 def test_the_session_s_environment_leaves_the_gate_s_commands_to_the_runner():
@@ -1405,9 +1429,34 @@ def test_a_run_without_panel_decisions_keeps_no_models_record(project, fake_clau
     assert not (change / "evidence" / "panel-models-c.json").exists()
 
 
-def test_every_run_of_a_phase_keeps_its_own_transcript(project):
+def test_the_stored_result_is_called_a_result_record_never_a_transcript():
+    """Issue #72 (0.3.1): what the runner stores is ``claude -p --output-format json``'s single
+    result object (the final message and the run's metadata); the docs and the comments
+    called it the run's transcript, which the step-41 reading of the article's "logged in
+    the session transcript" (p.29) then took as met. The rename, and step 41's transcript
+    half marked not built."""
+    operating_model = (ROOT / "docs" / "OPERATING_MODEL.md").read_text(encoding="utf-8")
+    assert "JSON transcript" not in operating_model and "transcript per run" not in operating_model
+    assert "the JSON result record" in operating_model
+    assert "one result record per run" in operating_model
+    build_guide = (ROOT / "docs" / "BUILD_GUIDE.md").read_text(encoding="utf-8")
+    step = build_guide.split("#### Step 41 ", 1)[1].split("#### Step 42 ", 1)[0]
+    assert step.startswith("— Observability: keep run result records,")
+    assert "run's result record (`--output-format json`" in step
+    assert "**Not built** (issue #72" in step and "the transcript half of this step" in step
+    assert "keep run transcripts" not in step and "run's transcript" not in step
+    for rel in ("plugin/ci/run_phase.py", "plugin/scan/cli.py"):
+        source = (ROOT / rel).read_text(encoding="utf-8")
+        assert "JSON transcript" not in source and "only transcript" not in source, rel
+        assert "every transcript" not in source, rel
+    reviewer = (ROOT / "plugin" / "agents" / "adversarial-reviewer.md").read_text(encoding="utf-8")
+    assert "whatever transcript is committed" not in reviewer
+    assert "whatever result record is committed" in reviewer
+
+
+def test_every_run_of_a_phase_keeps_its_own_result_record(project):
     """0.2.16: the first run writes claude-<phase>.json, the next ones claude-<phase>-2.json,
-    -3, ... so the adversarial reviewer never reads an earlier run's transcript as the
+    -3, ... so the adversarial reviewer never reads an earlier run's result record as the
     current run's (the first overturn round on the sample repository, 2026-09-24)."""
     _root, change = project
     evidence = change / "evidence"

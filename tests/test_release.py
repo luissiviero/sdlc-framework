@@ -48,14 +48,27 @@ None.
 """
 
 
-def _repo_with_change(tmp_path: Path, phase: str = "e", sdlc_yaml: str | None = None):
-    """A git repo: main holds change 0001; sdlc/0001/c carries two more commits."""
+def _repo_with_change(
+    tmp_path: Path,
+    phase: str = "e",
+    sdlc_yaml: str | None = None,
+    gate_result: str | None = "passed",
+    parked: str | None = None,
+):
+    """A git repo: main holds change 0001; sdlc/0001/c carries two more commits. At phase e
+    the merged copy carries gate (e)'s result as the deploy run leaves it (``gate_result``
+    None leaves the gate as a merge before the run's gate does; ``parked`` is the reason a
+    parked gate (e) recorded)."""
     root = tmp_path
     change_dir, st = status.new_change(root, "Export the claims report")
     (change_dir / "intent.md").write_text(INTENT, encoding="utf-8")
     (change_dir / "plan.md").write_text("# Plan\n", encoding="utf-8")
     if phase != "a":
         st.set_phase(phase)
+        if phase == "e" and parked:
+            st.park(parked)
+        elif phase == "e" and gate_result:
+            st.record_gate("e", gate_result, "waiting for the owner at gate (e)")
         status.write_status(change_dir, st)
     (root / "sdlc.yaml").write_text(
         sdlc_yaml or "deploy:\n  action: none\n  production: false\n", encoding="utf-8"
@@ -205,8 +218,15 @@ def _recorded(root: Path, number: int | None = 7) -> Path:
     return change_dir
 
 
-def fake_git(tags=(), verify_ok=False):
+def fake_git(tags=(), verify_ok=False, work_branch=False):
+    """``work_branch`` says the remote carries sdlc/0001/c (the record's worktree then fails,
+    so the release ran without its record); by default the branch is gone from the remote."""
+
     def git(root, *args):
+        if args[:2] == ("ls-remote", "--heads"):
+            return 0, ("abc1234def\trefs/heads/sdlc/0001/c\n" if work_branch else "")
+        if args[0] == "fetch":
+            return 0, ""
         if args[:2] == ("rev-parse", "--abbrev-ref"):
             return 0, "sdlc/0001/c\n"
         if args == ("rev-parse", "HEAD"):
@@ -437,6 +457,8 @@ def test_cli_runs_the_release_command_after_the_label(tmp_path, capfd):
     assert "release: approval: label (label applied by owner-login)" in lines
     assert "release: exit: 0" in lines
     assert "released" in capfd.readouterr().out
+    # the work branch is gone from the remote (fake_git): nothing carries the record, said
+    assert lines[-1].startswith("release: record: not stored: the work branch sdlc/0001/c is not")
 
 
 def test_cli_skips_an_event_pr_that_is_not_the_recorded_build_pr(tmp_path):
@@ -500,3 +522,146 @@ def test_cli_fails_closed_on_a_production_flag_that_is_not_a_boolean(tmp_path):
     assert code == 2
     assert any("deploy.production is 'yes', not a boolean" in line for line in lines)
     assert any("fails closed" in line for line in lines)
+
+
+# --- issue #66: one release per change, and only once gate (e) has a result (0.3.1) ---------
+def test_cli_skips_a_build_pr_merged_before_gate_e_has_a_result(tmp_path):
+    """Issue #66: the deploy run sets phase e at its start, before the REVIEW.md pass; a build
+    PR merged while it runs carries phase e and no gate (e) result. The release used to run
+    deploy.command on that merge (sample change 0002, PR #17); now it skips."""
+    (tmp_path / "fail.py").write_text("import sys\nsys.exit(3)\n", encoding="utf-8")
+    root, change_dir = _repo_with_change(
+        tmp_path, sdlc_yaml=_yaml(command="python fail.py"), gate_result=None
+    )
+    assert status.read_status(change_dir).gate.result is None  # as the merge left it
+    code, lines = _run(root, FakeGitHub())
+    assert code == 0
+    assert lines[-1].startswith(
+        "release: skip: change 0001 has no gate (e) result on the merged copy (gate: -/-)"
+    )
+    assert "before its REVIEW.md pass" in lines[-1]
+    assert not any(line.startswith(("release: run:", "release: gate:")) for line in lines)
+    # the pull request the run opens afterwards carries the result: released on its merge
+    st = status.read_status(change_dir)
+    st.record_gate("e", "passed", "waiting for the owner at gate (e)")
+    status.write_status(change_dir, st)
+    code, lines = _run(root, FakeGitHub())
+    assert "release: gate: e/passed" in lines and "release: run: python fail.py" in lines
+
+
+def _with_remote(root: Path) -> Path:
+    """A bare remote holding main and sdlc/0001/c, as GitHub does after the merge."""
+    remote = root.parent / f"{root.name}-remote.git"  # beside the project, unique per test
+    _git(root, "init", "-q", "--bare", str(remote))
+    _git(root, "remote", "add", "origin", str(remote))
+    _git(root, "push", "-q", "origin", "main", "sdlc/0001/c")
+    _git(root, "checkout", "-q", "main")  # the release checks out the merge commit
+    return remote
+
+
+def _remote_status(root: Path, branch: str = "sdlc/0001/c") -> dict:
+    text = _git(root, "show", f"origin/{branch}:changes/0001-export-the-claims-report/status.yaml")
+    from state import yamlish
+
+    return yamlish.loads(text)
+
+
+def test_cli_records_the_release_on_the_work_branch_and_never_releases_twice(tmp_path, capfd):
+    """Issue #66: the second merge of the same change (the (e) run's second build PR from the
+    same head, a label applied after the release, a dispatch) released again. The release
+    now records itself in status.yaml on sdlc/<id>/c and skips on the record, read from the
+    merged copy and from the branch."""
+    command = """python -c "print(''released'')\""""
+    root, change_dir = _repo_with_change(tmp_path, sdlc_yaml=_yaml(command=command))
+    _with_remote(root)
+    git = approval.make_git()
+    code, lines = _run(root, FakeGitHub(), git=git)
+    assert code == 0, lines
+    assert "release: done: deploy.command exited 0 (deploy.action publish package)" in lines
+    assert lines[-1].startswith("release: record: stored on sdlc/0001/c (")
+    assert capfd.readouterr().out.count("released") == 1
+    _git(root, "fetch", "-q", "origin")
+    recorded = _remote_status(root)
+    assert recorded["released_pr"] == 7 and recorded["released_sha"] == "abc1234def"
+    assert recorded["released_at"].endswith("Z")
+    assert _git(root, "log", "-1", "--format=%s", "origin/sdlc/0001/c").strip() == (
+        "release(0001): record the release of pull request #7"
+    )
+    assert _git(root, "status", "--porcelain").strip() == ""  # the checkout is untouched
+    # the labeled event, a dispatch or the second build PR's merge: the branch says released
+    code, lines = _run(root, FakeGitHub(), "--event", "labeled", git=git)
+    assert code == 0, lines
+    assert lines[-1].startswith("release: skip: change 0001 was already released as abc1234def at")
+    assert "(pull request #7)" in lines[-1]
+    assert not any(line.startswith("release: run:") for line in lines)
+    assert "released" not in capfd.readouterr().out
+    # a merged copy that carries the record (the second PR merged from the branch): the same
+    _git(root, "merge", "-q", "--no-ff", "-m", "second merge", "origin/sdlc/0001/c")
+    code, lines = _run(root, FakeGitHub(), git=git)
+    assert code == 0 and lines[-1].startswith("release: skip: change 0001 was already released")
+    assert "released" not in capfd.readouterr().out
+
+
+def test_cli_is_red_when_the_record_cannot_be_pushed(tmp_path, capfd):
+    """A release that ran without its record would release again on the next event: exit 1
+    says so (the branch is on the remote but the record's worktree, commit or push failed)."""
+    command = """python -c "print(''released'')\""""
+    root, _ = _repo_with_change(tmp_path, sdlc_yaml=_yaml(command=command))
+    code, lines = _run(root, FakeGitHub(), git=fake_git(work_branch=True))
+    assert code == 1, lines
+    assert "release: done: deploy.command exited 0 (deploy.action publish package)" in lines
+    assert lines[-1].startswith("release: record: not stored: ")
+    assert lines[-1].endswith("; the release ran without its record")
+    assert "released" in capfd.readouterr().out
+
+
+def test_cli_releases_nothing_twice_with_an_empty_command_either(tmp_path):
+    """Nothing ran, so nothing is recorded: a merged copy at phase e with an empty command
+    stays "prepared" on every event (no record commit for a release that did not happen)."""
+    root, _ = _repo_with_change(tmp_path, sdlc_yaml=_yaml())
+    _with_remote(root)
+    git = approval.make_git()
+    code, lines = _run(root, FakeGitHub(), git=git)
+    assert code == 0 and lines[-1].startswith("release: done: release prepared in the PR")
+    _git(root, "fetch", "-q", "origin")
+    assert "released_at: null" in _git(
+        root, "show", "origin/sdlc/0001/c:changes/0001-export-the-claims-report/status.yaml"
+    )
+
+
+# --- issue #68: a parked change merged at (e) waits for the label, with its reason shown ----
+def test_cli_waits_for_the_label_on_a_parked_merge_whatever_production_says(tmp_path, capfd):
+    """Issue #68: gate (e) parked (a risk-list hit, a guardrail change, the iteration cap) and
+    the owner merged anyway; without a declared production the release ran deploy.command
+    with no second look and no mention of the park. Now the park reason is printed and the
+    release waits for sdlc:release-approved, production or not."""
+    command = """python -c "print(''released'')\""""
+    reason = "risk-list hit: touches auth/"
+    root, change_dir = _repo_with_change(
+        tmp_path, sdlc_yaml=_yaml(production=False, command=command), parked=reason
+    )
+    assert status.read_status(change_dir, on_default_branch=True).parked_reason is None
+    code, lines = _run(root, FakeGitHub(actor=None, labels=()))
+    assert code == 0, lines
+    assert "release: gate: e/parked" in lines
+    assert f"release: parked: gate (e) parked change 0001: {reason}" in lines
+    waiting = [line for line in lines if line.startswith("release: waiting: ")]
+    assert waiting and f"merged while parked ({reason})" in waiting[0]
+    assert "whatever deploy.production says" in waiting[0]
+    assert "release: route: apply sdlc:release-approved on #7" in lines
+    assert not any(line.startswith("release: run:") for line in lines)
+    assert "released" not in capfd.readouterr().out
+    # the owner's label (a person's act on GitHub) releases it, with the reason in the log
+    code, lines = _run(root, FakeGitHub(), "--event", "labeled")
+    assert code == 0, lines
+    assert f"release: parked: gate (e) parked change 0001: {reason}" in lines
+    assert "release: approval: label (label applied by owner-login)" in lines
+    assert "release: exit: 0" in lines and "released" in capfd.readouterr().out
+
+
+def test_cli_refuses_the_automation_identity_s_label_on_a_parked_merge(tmp_path):
+    root, _ = _repo_with_change(tmp_path, sdlc_yaml=_yaml(command="x"), parked="cap reached")
+    code, lines = _run(root, FakeGitHub(actor="github-actions[bot]"))
+    assert code == 0
+    assert any(line.startswith("release: waiting: ") for line in lines)
+    assert not any(line.startswith("release: run:") for line in lines)

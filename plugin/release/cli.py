@@ -18,15 +18,34 @@ hook's own function (``release/approval.py``; article p.36-37). Every step print
    ``skip``: an owner's PR that touches ``changes/<id>-*/`` after the merge never releases
    again);
 4. ``phase``: ``status.yaml`` read as on the default branch must be at phase (e) (else
-   ``skip``);
-5. ``approval``: with production declared, the release label applied by a person (the only
-   route: decision 5, a run cannot approve itself); without it ``waiting`` + ``route`` and a
-   green exit (the ``labeled`` event re-runs the workflow);
+   ``skip``), and must be the change's recorded build PR;
+4a. ``released`` (0.3.1, issue #66): the merged copy, or the work branch's copy of
+   ``status.yaml`` (``sdlc/<id>/c`` on the remote), already records a release of this change
+   -> ``skip``: one release per change, whatever pull request, label or dispatch fired the
+   workflow;
+4b. ``gate`` (0.3.1, issue #66): gate (e) must have a result on the merged copy (``gate.phase``
+   ``e`` with any result). The deploy run sets phase (e) at its start, before the REVIEW.md
+   pass, so a build PR merged while that run is still running carries no gate (e) result:
+   ``skip``, never a release of code the review has not judged; the pull request the run
+   opens afterwards carries the result and is released on its merge;
+4c. ``parked`` (0.3.1, issue #68): the merged copy carries a ``parked_reason`` (gate (e)
+   parked and the owner merged anyway): the reason is printed, and the release needs the
+   release label whatever ``deploy.production`` says;
+5. ``approval``: with production declared or a park, the release label applied by a person
+   (the only route: decision 5, a run cannot approve itself); without it ``waiting`` +
+   ``route`` and a green exit (the ``labeled`` event re-runs the workflow);
 6. ``done`` / ``exit``: ``deploy.action none`` or an empty ``deploy.command`` release nothing;
-   otherwise the command runs on the runner and its output streams to the log.
+   otherwise the command runs on the runner and its output streams to the log;
+7. ``record`` (0.3.1, issue #66): after a command that exited 0, ``released_at``,
+   ``released_sha`` and ``released_pr`` are committed into ``status.yaml`` on the change's
+   work branch ``sdlc/<id>/c`` on the remote (the default branch is never written: the
+   automation identity has branch-only write access), so the next pull request from that
+   branch, the ``labeled`` event and a dispatch find the record (step 4a). A work branch
+   already deleted from the remote cannot carry it: the line says so and the job stays
+   green; a push that fails for any other reason is exit 1, so the owner knows the release
+   ran without its record.
 
-``$GITHUB_STEP_SUMMARY`` gets the same lines when it is set. Nothing is written into the
-repository (the automation identity cannot write to the default branch).
+``$GITHUB_STEP_SUMMARY`` gets the same lines when it is set.
 
 The command runs without a shell (argument lists only): one command, or several joined by
 ``&&`` that run in order and stop at the first failure; a word with ``*``, ``?`` or ``[`` is
@@ -34,8 +53,9 @@ expanded against the project root like a shell glob (kept literal when nothing m
 other shell operators (``|``, ``;``, ``||``, redirections) are refused as a configuration
 error. The executable is resolved on PATH (``.cmd``/``.exe`` shims on Windows).
 
-Exit codes: 0 done, skip or waiting · 1 the release command failed (a failed release is red:
-infrastructure, not a park) · 2 usage or configuration error.
+Exit codes: 0 done, skip or waiting · 1 the release command failed, or its record could not
+be pushed (a failed release is red: infrastructure, not a park) · 2 usage or configuration
+error.
 """
 
 from __future__ import annotations
@@ -49,6 +69,7 @@ import shlex
 import shutil
 import subprocess
 import sys
+import tempfile
 from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any
@@ -60,10 +81,15 @@ if str(PLUGIN_DIR) not in sys.path:
 from hooks._common import ConfigError, config_flag, load_sdlc_config  # noqa: E402
 from release import approval as approval_mod  # noqa: E402
 from state import conventions as c  # noqa: E402
+from state import gitops, yamlish  # noqa: E402
+from state import status as status_mod  # noqa: E402
 
 CHANGE_FILE_RE = re.compile(r"^changes/(\d{4})-[^/]+/")
 UNSUPPORTED = ("||", "|", ";", ">", ">>", "<", "&", "2>", "2>&1", "(", ")")
 DEFAULT_TIMEOUT = 900  # seconds, when sdlc.yaml has no gate.command_timeout
+RECORD_GIT_TIMEOUT = 120  # seconds per git call of the record (a fetch or a push)
+RECORD_PUSH_ATTEMPTS = 3  # a push rejected by a concurrent push is retried on the new tip
+RECORD_COMMIT = "release({id}): record the release of pull request #{pr}"
 
 
 class UsageError(RuntimeError):
@@ -160,6 +186,107 @@ def run_command(command: str, root: Path, timeout: int) -> tuple[int, str]:
         if proc.returncode != 0:
             return proc.returncode, f"{argv[0]} exited {proc.returncode}"
     return 0, "ok"
+
+
+# --- the release record (issue #66) ----------------------------------------------------------
+def _released_line(st: Any) -> str:
+    pr = f" (pull request #{st.released_pr})" if st.released_pr else ""
+    sha = f" as {st.released_sha}" if st.released_sha else ""
+    return f"released{sha} at {st.released_at or '?'}{pr}"
+
+
+def remote_branch_status(
+    root: Path, change_id: str, rel_status: str, git: Callable[..., tuple[int, str]]
+) -> tuple[Any, str]:
+    """(the work branch's ``Status`` on the remote, note). The branch is ``sdlc/<id>/c``;
+    ``rel_status`` the status file's path from the root. (None, why) when the branch is
+    not on the remote, cannot be fetched or carries no readable status.yaml."""
+    branch = c.work_branch(change_id, "c")
+    code, out = git(root, "ls-remote", "--heads", "origin", branch)
+    if code != 0:
+        return None, f"origin could not be read (git ls-remote exited {code})"
+    if not out.strip():
+        return None, f"the work branch {branch} is not on the remote"
+    code, _ = git(root, "fetch", "--quiet", "origin", f"refs/heads/{branch}")
+    if code != 0:
+        return None, f"{branch} could not be fetched (git fetch exited {code})"
+    code, text = git(root, "show", f"FETCH_HEAD:{rel_status}")
+    if code != 0:
+        return None, f"{branch} carries no {rel_status}"
+    try:
+        data = yamlish.loads(text)
+        if not isinstance(data, dict):
+            raise ValueError("not a mapping")
+        return status_mod.Status.from_dict(data), ""
+    except (ValueError, TypeError) as exc:
+        return None, f"{branch}: {rel_status} could not be read: {exc}"
+
+
+def store_release_record(
+    root: Path,
+    change_id: str,
+    rel_status: str,
+    pr_number: int,
+    merge_sha: str | None,
+    git: Callable[..., tuple[int, str]],
+) -> tuple[bool, str, bool]:
+    """Commit the release record into ``status.yaml`` on the work branch ``sdlc/<id>/c`` of
+    the remote: (stored, what happened, gone). ``gone`` says the branch is not on the
+    remote, so there is nothing to carry the record (a green outcome the caller reports);
+    any other failure is the caller's exit 1. A temporary worktree keeps the release
+    checkout (the merge commit) as it is; a push rejected by a concurrent push is retried on
+    the new tip, ``RECORD_PUSH_ATTEMPTS`` times."""
+    branch = c.work_branch(change_id, "c")
+    code, out = git(root, "ls-remote", "--heads", "origin", branch)
+    if code != 0:
+        return False, f"origin could not be read (git ls-remote exited {code})", False
+    if not out.strip():
+        return False, f"the work branch {branch} is not on the remote", True
+    why = "not attempted"
+    for _attempt in range(RECORD_PUSH_ATTEMPTS):
+        code, _ = git(root, "fetch", "--quiet", "origin", f"refs/heads/{branch}")
+        if code != 0:
+            return False, f"{branch} could not be fetched (git fetch exited {code})", False
+        worktree = Path(tempfile.mkdtemp(prefix="sdlc-release-"))
+        try:
+            code, _ = git(
+                root, "worktree", "add", "--detach", "--quiet", str(worktree), "FETCH_HEAD"
+            )
+            if code != 0:
+                return False, f"a worktree on {branch} could not be made (exit {code})", False
+            try:
+                change_dir = (worktree / rel_status).parent
+                st = status_mod.read_status(change_dir)
+            except (OSError, ValueError) as exc:
+                return False, f"{branch}: {rel_status} could not be read: {exc}", False
+            if st.released:
+                return True, f"{branch} already records it: {_released_line(st)}", False
+            st.record_release(pr_number, merge_sha)
+            status_mod.write_status(change_dir, st)
+            identity = []
+            code, name = git(worktree, "config", "user.name")
+            if code != 0 or not name.strip():
+                identity = [
+                    "-c", f"user.name={gitops.BOT_LOGIN}",
+                    "-c", f"user.email={gitops.BOT_EMAIL}",
+                ]  # fmt: skip
+            code, _ = git(worktree, "add", "--", rel_status)
+            if code == 0:
+                code, _ = git(
+                    worktree, *identity, "commit", "--quiet", "--only", "-m",
+                    RECORD_COMMIT.format(id=change_id, pr=pr_number), "--", rel_status,
+                )  # fmt: skip
+            if code != 0:
+                return False, f"the record could not be committed on {branch} (exit {code})", False
+            code, _ = git(worktree, "push", "--quiet", "origin", f"HEAD:refs/heads/{branch}")
+            if code == 0:
+                _code, sha = git(worktree, "rev-parse", "--short", "HEAD")
+                return True, f"stored on {branch} ({sha.strip() or 'pushed'})", False
+            why = f"the push to {branch} was rejected (git push exited {code})"
+        finally:
+            git(root, "worktree", "remove", "--force", str(worktree))
+            shutil.rmtree(worktree, ignore_errors=True)
+    return False, why, False
 
 
 def _summary(lines: list[str], env: Mapping[str, str]) -> None:
@@ -272,6 +399,7 @@ def _release(args, env, github, git, say) -> int:
         say("skip", f"no changes/{change_id}-<slug>/ folder at {root}")
         return 0
     try:
+        raw = status_mod.read_status(change_dir)  # the merged copy as it is: no derivation
         st, note = _read_status(change_dir, production)
     except Exception as exc:  # noqa: BLE001 - a broken status.yaml is a configuration error
         say("error", f"{change_id} status.yaml could not be read: {exc}")
@@ -289,8 +417,39 @@ def _release(args, env, github, git, say) -> int:
         )
         return 0
     say("phase", "e")
-    # (5) the release approval (decision 13)
-    if production:
+    # (4a) one release per change (issue #66): the merged copy, then the work branch's copy
+    rel_status = str(status_mod.status_path(change_dir).relative_to(root)).replace("\\", "/")
+    git = git or approval_mod.make_git(RECORD_GIT_TIMEOUT)
+    if raw.released:
+        say("skip", f"change {change_id} was already {_released_line(raw)}")
+        return 0
+    try:
+        branch_st, why = remote_branch_status(root, change_id, rel_status, git)
+    except TimeoutError as exc:
+        say("error", f"the work branch's status.yaml could not be read in time: {exc}")
+        return 2
+    if branch_st is not None and branch_st.released:
+        say("skip", f"change {change_id} was already {_released_line(branch_st)}")
+        return 0
+    if why:
+        say("note", f"no release record on the work branch: {why}")
+    # (4b) gate (e) must have a result on the merged copy (issue #66)
+    if raw.gate.phase != "e" or not raw.gate.result:
+        say(
+            "skip",
+            f"change {change_id} has no gate (e) result on the merged copy "
+            f"(gate: {raw.gate.phase or '-'}/{raw.gate.result or '-'}): the build PR was merged "
+            "while the deploy run was still running, before its REVIEW.md pass; the pull "
+            "request that run opens carries the result and releases on its merge",
+        )
+        return 0
+    say("gate", f"e/{raw.gate.result}")
+    # (4c) a parked change merged anyway (issue #68): the reason is shown, the label required
+    parked = (raw.parked_reason or "").strip()
+    if parked:
+        say("parked", f"gate ({raw.gate.phase}) parked change {change_id}: {parked}")
+    # (5) the release approval (decision 13): production, or a park the owner merged over
+    if production or parked:
         labels = pr.get("labels")
         result = approval_mod.release_approval(
             root,
@@ -303,7 +462,15 @@ def _release(args, env, github, git, say) -> int:
             pr_labels=list(labels) if isinstance(labels, list) else None,
         )
         if not result.approved:
-            say("waiting", result.detail)
+            if parked:
+                say(
+                    "waiting",
+                    f"change {change_id} was merged while parked ({parked}); a parked change "
+                    f"releases only after {approval_mod.RELEASE_LABEL}, whatever "
+                    f"deploy.production says ({result.detail})",
+                )
+            else:
+                say("waiting", result.detail)
             say("route", f"apply {approval_mod.RELEASE_LABEL} on #{args.pr}")
             return 0
         say("approval", f"{result.how} ({result.detail})")
@@ -325,7 +492,25 @@ def _release(args, env, github, git, say) -> int:
         say("failed", what)
         return 1
     say("done", f"deploy.command exited 0 (deploy.action {action})")
-    return 0
+    # (7) the record on the work branch (issue #66)
+    try:
+        stored, what, gone = store_release_record(
+            root, change_id, rel_status, int(args.pr), merge_sha, git
+        )
+    except TimeoutError as exc:
+        stored, what, gone = False, f"git took too long: {exc}", False
+    if stored:
+        say("record", what)
+        return 0
+    if gone:
+        say(
+            "record",
+            f"not stored: {what}; nothing can carry it, so a later pull request from a "
+            "recreated branch, the label or a dispatch would release this change again",
+        )
+        return 0
+    say("record", f"not stored: {what}; the release ran without its record")
+    return 1
 
 
 def build_parser() -> argparse.ArgumentParser:

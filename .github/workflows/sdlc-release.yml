@@ -23,12 +23,22 @@
 #
 # Not a phase run: no claude starts and no hook fires in this job, so release/cli.py checks
 # the approval itself with the production-gate hook's own function, then runs the command.
-# Exit 0 is done, skip or waiting; exit 1 is a failed release command (red).
+# Exit 0 is done, skip or waiting; exit 1 is a failed release command, or a release whose
+# record could not be pushed (red).
+#
+# One release per change (0.3.1, issues #66 and #68): the step releases only a merged copy
+# whose gate (e) has a result (a build PR merged while the deploy run still runs is skipped;
+# the PR that run opens afterwards releases), waits for sdlc:release-approved when the merged
+# copy was parked (the park reason is printed), and after a command that exited 0 commits
+# released_at / released_sha / released_pr into status.yaml on the change's work branch
+# sdlc/<id>/c - never on the default branch - so a second merge of the same change, the
+# label or a dispatch releases nothing again.
 #
 # Token rule: events caused by the GITHUB_TOKEN never start another workflow run - only
-# workflow_dispatch and repository_dispatch do. This workflow dispatches nothing and writes
-# nothing to the repository: read permissions only. The deploy command's own credentials are
-# the project's secrets; add them to the env: of the release step below.
+# workflow_dispatch and repository_dispatch do. This workflow dispatches nothing; the one
+# thing it writes is the release record on the work branch (contents: write, the automation
+# identity's branch-only access). The deploy command's own credentials are the project's
+# secrets; add them to the env: of the release step below.
 #
 # /sdlc-init rewrote `branches: [main]` below to this project's default branch and filled
 # in the framework repository.
@@ -45,11 +55,11 @@ on:
         required: true
         type: string
 
-# Read only: the release runs the project's own deploy.command and needs no write to the
-# repository. issues: read lets the approval check read who applied the release label (the
-# issue events of the PR).
+# contents: write for the release record on the work branch (0.3.1, issue #66) and nothing
+# else: the release runs the project's own deploy.command. issues: read lets the approval
+# check read who applied the release label (the issue events of the PR).
 permissions:
-  contents: read
+  contents: write
   pull-requests: read
   issues: read
 
@@ -101,6 +111,8 @@ jobs:
       - name: "Install the project's own toolchain (sdlc.yaml: commands.setup)"
         run: python framework/plugin/ci/project_setup.py --root .
 
+      # GITHUB_TOKEN reads the PR and its label events and pushes the release record on the
+      # work branch (the checkout keeps the job's credential for git).
       - name: Release the merged change (sdlc.yaml deploy)
         env:
           GITHUB_TOKEN: ${{ github.token }}

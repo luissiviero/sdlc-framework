@@ -328,9 +328,9 @@ def test_release_workflow_runs_the_release_cli_on_merge_and_label():
     assert on["pull_request"]["types"] == ["closed", "labeled"]
     assert on["pull_request"]["branches"] == ["main"]  # /sdlc-init rewrites it
     assert on["workflow_dispatch"]["inputs"]["pr_number"]["required"] is True
-    # read-only: the release runs the project's own deploy.command, it writes nothing
-    assert set(data["permissions"].values()) == {"read"}
-    assert {"contents", "pull-requests"} <= set(data["permissions"])
+    # the release runs the project's own deploy.command; the one write is the release record
+    # on the work branch (0.3.1, issue #66), so contents: write and nothing else
+    assert data["permissions"] == {"contents": "write", "pull-requests": "read", "issues": "read"}
     assert data["concurrency"]["group"] == (
         "sdlc-release-${{ github.event.pull_request.number || inputs.pr_number }}"
     )

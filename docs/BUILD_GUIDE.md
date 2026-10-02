@@ -921,7 +921,7 @@ ARTICLE = taken from the playbook as written · ADAPTED = article concept re-sha
 **Implementation notes.** Add later if you want to start intents from a chat app; Claude Tag is Slack-only in public beta (Teams is named only as an incident source). Any bot that can write intent.md and open the PR gives the same effect.
 
 
-#### Step 41 — Observability: keep run transcripts, hook decisions and reviewer verdicts with the change; OpenTelemetry export later
+#### Step 41 — Observability: keep run result records, hook decisions and reviewer verdicts with the change; the run transcripts and the OpenTelemetry export later
 
 - **Source tag:** ARTICLE  
 - **Phase it belongs to:** cross-cutting  
@@ -940,7 +940,7 @@ ARTICLE = taken from the playbook as written · ADAPTED = article concept re-sha
 - p.44 — Closing the loop › Governance
 - p.51 — Resources – Monitoring (OpenTelemetry), analytics dashboard, Compliance API
 
-**Implementation notes.** Minimum viable: keep each non-interactive run's transcript (`--output-format json`) and the gate's verdicts in changes/<id>/evidence/, and log hook decisions to a CI artifact. Enable the OpenTelemetry export only if you later want dashboards. Built (session 5, plugin 0.2.19; 41.1): every hook logs every decision through `_common.run_hook` (the production gate keeps its own line): the hook, the verdict, the reason, the tool and the target paths, one JSON line in `changes/<id>-<slug>/evidence/hook-log.jsonl` (else `changes/.hook-log.jsonl`); every phase workflow uploads the log as an artifact; the runs' transcripts are in `evidence/` since 0.2.16.
+**Implementation notes.** Minimum viable: keep each non-interactive run's result record (`--output-format json`: the final message and the run's metadata — cost, turns, permission denials — not the conversation) and the gate's verdicts in changes/<id>/evidence/, and log hook decisions to a CI artifact. Enable the OpenTelemetry export only if you later want dashboards. Built (session 5, plugin 0.2.19; 41.1): every hook logs every decision through `_common.run_hook` (the production gate keeps its own line): the hook, the verdict, the reason, the tool and the target paths, one JSON line in `changes/<id>-<slug>/evidence/hook-log.jsonl` (else `changes/.hook-log.jsonl`); every phase workflow uploads the log as an artifact; the runs' result records are in `evidence/` since 0.2.16 (`claude-<phase>.json`, one per run). **Not built** (issue #72, 0.3.1, the rename): the transcript half of this step — what a run read, ran and reasoned on its way to its result — is kept nowhere; `hook-log.jsonl` and the git diff are the only trace of what a run did, and the article's p.29 "logged in the session transcript" is met by the result record alone. Keeping the transcript itself (`--output-format stream-json` beside the result, or the runner's own session log as a workflow artifact, after a check of its size and that no secret lands in it) is the owner's call.
 
 
 #### Step 42 — Indicators: two counters in every PR description now; a scheduled agent report later

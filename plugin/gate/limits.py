@@ -15,7 +15,13 @@ Limits (sdlc.yaml ``gate:`` block, all optional; defaults here):
   - ``max_budget_usd``: per-change spend where the substrate exposes one; the run writes the
     figure it observes with ``cli.py record-spend`` (a headless `claude -p` prints
     ``total_cost_usd`` in its JSON result); absent figure = not enforced, so the cap binds CI
-    runs only (a by-hand or cloud-session run has no figure; OPERATING_MODEL section 4.1);
+    runs only (a by-hand or cloud-session run has no figure; OPERATING_MODEL section 4.1).
+    The cap is compared with the change's running total (issue #71, 0.3.1): every recorded
+    session is one entry of ``evidence/spend.json`` (the review pass and each fix round are
+    their own entries, named by the run and its stored result), and ``total_usd`` is their
+    sum; ``run-<phase>.json`` keeps the last session's figure for the run record. Before
+    0.3.1 the cap saw that one figure only, which ``start-run`` reset and ``record-spend``
+    overwrote, so a change spent several times the cap unless one session did;
   - pause flag: ``sdlc.yaml: paused: true`` (chosen over a PAUSE file: sdlc.yaml is already a
     protected path, so a run cannot un-pause itself).
 The outer bound for headless runs is the CLI's own ``--max-turns`` (docs/NOTES.md section 10).
@@ -41,6 +47,7 @@ DEFAULT_MAX_ITERATIONS_NON_ROUTINE = 2
 DEFAULT_MAX_PANEL_CALLS = 4
 DEFAULT_MAX_WALL_CLOCK_MINUTES = 120
 RUN_FILE = "run-{phase}.json"  # evidence/run-<phase>.json: started_at, spend_usd
+SPEND_FILE = "spend.json"  # evidence/spend.json: the change's spend ledger (issue #71)
 
 
 def _int(value: Any, default: int) -> int:
@@ -99,6 +106,47 @@ def read_run(ctx: GateContext) -> dict[str, Any]:
     except (OSError, ValueError):
         return {}
     return data if isinstance(data, dict) else {}
+
+
+def read_spend_ledger(evidence_dir: Path) -> dict[str, Any]:
+    """``evidence/spend.json``: ``{"total_usd": <sum>, "entries": [...]}``, each entry
+    ``{"run", "source", "usd", "at"}``; an absent or unreadable file is an empty ledger."""
+    import json
+
+    path = Path(evidence_dir) / SPEND_FILE
+    empty = {"total_usd": 0.0, "entries": []}
+    if not path.is_file():
+        return empty
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return empty
+    if not isinstance(data, dict) or not isinstance(data.get("entries"), list):
+        return empty
+    entries = [e for e in data["entries"] if isinstance(e, dict) and _float(e.get("usd"))]
+    return {"total_usd": round(sum(float(e["usd"]) for e in entries), 6), "entries": entries}
+
+
+def record_spend_entry(
+    evidence_dir: Path, run: str, source: str | None, usd: float, at: str | None = None
+) -> dict[str, Any]:
+    """Add one session's cost to the change's ledger and return the ledger. ``run`` names
+    the run that spent it (``c``, ``review``, ``fix``); ``source`` the stored result it was
+    read from (``claude-fix-2.json``), which makes the entry unique: a second record of the
+    same source (a repeated step) replaces its entry instead of counting it twice."""
+    import json
+
+    ledger = read_spend_ledger(evidence_dir)
+    at = at or datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    entry = {"run": run, "source": source, "usd": float(usd), "at": at}
+    entries = [e for e in ledger["entries"] if not (source and e.get("source") == source)] + [entry]
+    ledger = {"total_usd": round(sum(float(e["usd"]) for e in entries), 6), "entries": entries}
+    path = Path(evidence_dir) / SPEND_FILE
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(ledger, indent=2, sort_keys=True) + "\n", encoding="utf-8", newline="\n"
+    )
+    return ledger
 
 
 def _elapsed_minutes(started_at: str | None, now: datetime | None = None) -> float | None:
@@ -190,13 +238,26 @@ def check_limits(ctx: GateContext, now: datetime | None = None) -> CheckResult:
             {**details, "stop": True, "max_wall_clock_minutes": max_minutes},
         )
     budget = _float(ctx.gate_setting("max_budget_usd", None))
-    spend = _float(run.get("spend_usd"))
-    details.update({"spend_usd": spend, "max_budget_usd": budget})
-    if budget is not None and spend is not None and spend > budget:
+    spend = _float(run.get("spend_usd"))  # the last session of this phase (the run record)
+    ledger = read_spend_ledger(ctx.evidence_dir)
+    # the change's running total (issue #71); a change recorded before the ledger existed
+    # has only the run record's figure
+    total = ledger["total_usd"] if ledger["entries"] else spend
+    details.update(
+        {
+            "spend_usd": spend,
+            "spend_usd_total": total,
+            "spend_entries": len(ledger["entries"]),
+            "max_budget_usd": budget,
+        }
+    )
+    if budget is not None and total is not None and total > budget:
+        this_run = f" (this run {spend:.2f})" if spend is not None else ""
         return CheckResult(
             "limits",
             False,
-            f"budget exceeded: {spend:.2f} USD spent, budget {budget:.2f} USD",
+            f"budget exceeded: {total:.2f} USD spent on the change{this_run}, "
+            f"budget {budget:.2f} USD",
             "Raise `gate.max_budget_usd` in sdlc.yaml (a reviewed PR) or finish by hand.",
             {**details, "stop": True},
         )

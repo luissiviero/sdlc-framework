@@ -212,7 +212,7 @@ CLAUDE_STDERR_FILE = "claude-{phase}.stderr.txt"
 # A second run of the same phase (a fix round, a re-run by hand) keeps its own record:
 # ``claude-<phase>-2.json``, ``-3``, ... The first deferred fix round on the sample
 # repository (2026-09-24) overwrote nothing yet - the previous round's ``claude-fix.json``
-# was still the only transcript when the adversarial reviewer read the evidence, and it
+# was still the only result record when the adversarial reviewer read the evidence, and it
 # escalated on a "proof mismatch" between that older run and the diff.
 CLAUDE_RUN_FILE = "claude-{phase}-{n}.json"
 CLAUDE_RUN_STDERR_FILE = "claude-{phase}-{n}.stderr.txt"
@@ -901,6 +901,8 @@ def guard(root: Path, change_id: str, run_phase: str, repo: str, env: dict[str, 
         return None, None, config, f"{exc}: nothing runs until it is fixed"
     if paused:
         return None, None, config, "sdlc.yaml says paused: true"
+    if change_id == c.INIT_CHANGE_ID:  # issue #67: the installation, for every phase
+        return None, None, config, INIT_CHANGE_SKIP
     change_dir = c.find_change_dir(root, change_id)
     if change_dir is None:
         return None, None, config, f"no change folder for id {change_id}"
@@ -1208,6 +1210,15 @@ def commands_summary(call: dict[str, Any]) -> dict[str, Any]:
 
 
 COMMANDS_STEP_FAILED = "the gate's commands check could not run after the session: {reason}"
+# Issue #67 (0.3.1): change 0000 is the framework's own installation (``/sdlc-init`` leaves it
+# at phase a, not parked), and every merged PR fires the design workflow since the any-head
+# trigger, so a merge that touches only ``changes/0000-sdlc-init/`` - the 0000 PR with the
+# credential already in place, an upgrade re-run on ``sdlc/0000/a`` - started a design run
+# that wrote a spec and plan for the installation. No phase runs on it.
+INIT_CHANGE_SKIP = (
+    f"change {c.INIT_CHANGE_ID} is the installation; it has no design (issue #67): "
+    "no phase runs on it"
+)
 DEFERRED_GATE_SKIP = (
     "gate ({phase}) of change {id} recorded its commands check as deferred to the runner and "
     "the runner never ran it (issue #91): the gate is not passed; re-run phase ({phase})"
@@ -1261,7 +1272,8 @@ def park_deferred_record(
 def run_record_paths(change_dir: Path, phase: str) -> tuple[Path, Path]:
     """(result, stderr) paths for this run of the phase: ``claude-<phase>.json`` for the
     first run, ``claude-<phase>-<n>.json`` for the n-th, so no run's record overwrites an
-    earlier one and every transcript in ``evidence/`` says which run it belongs to."""
+    earlier one and every result record in ``evidence/`` says which run it belongs to (the
+    record is the run's final message and metadata, not a transcript; issue #72)."""
     evidence = change_dir / art.EVIDENCE_DIR
     first = evidence / CLAUDE_RESULT_FILE.format(phase=phase)
     if not first.exists():
@@ -1330,12 +1342,25 @@ def report_failed_run(
         print(f"the failed run record could not be committed: {exc}", file=sys.stderr)
 
 
-def record_spend(plugin_dir: Path, root: Path, change_id: str, phase: str, usd: float) -> bool:
+def record_spend(
+    plugin_dir: Path,
+    root: Path,
+    change_id: str,
+    phase: str,
+    usd: float,
+    run: str | None = None,
+    source: str | None = None,
+) -> bool:
+    """The session's cost into the phase's run record and the change's spend ledger (issue
+    #71, 0.3.1): ``run`` is the run that spent it as the workflow names it (``review``,
+    ``fix``, a phase letter) and ``source`` the stored result's file name, so the review
+    pass and every fix round are their own entries and the gate's cap sees the sum."""
     cli = plugin_dir / "plugin" / "gate" / "cli.py"
     argv = [
         _python(), str(cli), "record-spend",
         "--root", str(root), "--id", change_id,
         "--phase", SPEND_PHASE.get(phase, phase), "--usd", str(usd),
+        *(["--run", run] if run else []), *(["--source", source] if source else []),
     ]  # fmt: skip
     try:
         proc = subprocess.run(argv, capture_output=True, text=True, encoding="utf-8", timeout=120)
@@ -1576,7 +1601,10 @@ def run_phase(args, env: dict[str, str]) -> int:
     if isinstance(data, dict):
         cost = data.get("total_cost_usd")
         if isinstance(cost, (int, float)):
-            record_spend(plugin_dir, root, change_id, gate_phase, float(cost))
+            record_spend(
+                plugin_dir, root, change_id, gate_phase, float(cost),
+                run=phase, source=result_path.name,
+            )  # fmt: skip
     owner = verify_owner_fields(change_dir, before_st, approved_st, root, pre_head, config)
     owner["mismatches"] += session_push_mismatches(
         root, gitops_current_branch(root), refs_before, change_refs(root, change_id)
