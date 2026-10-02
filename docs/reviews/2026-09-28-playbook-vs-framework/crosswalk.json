@@ -436,7 +436,14 @@
         "refs": [
           "T2"
         ],
-        "text": "Open: a second interview before the spec; if added, it would reopen or amend D1 and D2 (the spec and the plan are written unattended today)."
+        "text": "No second interview before the spec (your choice on this row, 2026-10-02): what the design pass cannot answer goes to its Flagged concerns, which park for you; D1 and D2 stay."
+      },
+      "decision": {
+        "better": "both",
+        "decision": "keep",
+        "note": "Keep: the merge of the intent PR starts the design run unattended, already the article's end state (p.13); /sdlc-design by hand stays, and the by-hand start is T5's optional start without the Claude credential. No second interview before the spec (answers T2's open question): what the design pass cannot answer goes to Flagged concerns, which park for me (design-concerns row). Issue #67 (a design run for change 0000) is a defect, fixed outside the study.",
+        "saved": "2026-10-02",
+        "status": "tentative"
       }
     },
     {
@@ -1878,6 +1885,6 @@
       "fidelity": 2
     },
     "weightsSaved": "2026-09-29",
-    "rowsWithADecision": 8
+    "rowsWithADecision": 9
   }
 }

@@ -100,7 +100,7 @@ The framework already keeps the hook log both ways: committed in `evidence/` and
 
 ## T2. The interview: how the manager and the roles question the owner
 
-**Status:** tentative. The owner's choice on the crosswalk row plan-idea (better: the playbook; decision: blend, 2026-10-02) takes this entry as the way an idea is interviewed: `/sdlc-plan` stays the entry point, and the role-fed interview led by the manager (T1) is added to it, nothing replaced.
+**Status:** tentative. The owner's choice on the crosswalk row plan-idea (better: the playbook; decision: blend, 2026-10-02) takes this entry as the way an idea is interviewed: `/sdlc-plan` stays the entry point, and the role-fed interview led by the manager (T1) is added to it, nothing replaced. On design-trigger (both fine, keep, 2026-10-02) the owner chose no second interview before the spec.
 
 **The owner's question.** How is the interview conducted: are the manager and the roles involved, and how is the prompt built for the model that receives it? The owner wants to explain the idea, show examples of what is wanted, and be asked questions that build the intent, the plan and the rest.
 
@@ -113,10 +113,10 @@ The framework already keeps the hook log both ways: committed in `evidence/` and
 
 **Crosswalk rows it touches:** plan-idea, design-trigger, design-mock, build-plan.
 
-**Settled decisions it would reopen or amend:** D1 and D2, only if a second interview is added before the spec or the plan (both are written unattended today).
+**Settled decisions it would reopen or amend:** D1 and D2, only if a second interview is added before the plan (both the spec and the plan are written unattended today). Before the spec, no second interview: the owner chose so on design-trigger (2026-10-02, both fine, keep); what the design pass cannot answer goes to its "Flagged concerns", which park for the owner.
 
 **Open.**
-- A second interview before the spec, or before the plan (the article's plan mode interviews the engineer, p.15-16).
+- A second interview before the plan (the article's plan mode interviews the engineer, p.15-16); to decide on the build-plan row. Before the spec: answered, none (design-trigger, 2026-10-02).
 - A place in the intent for examples and references (T3 proposes a section), and whether the roles read them.
 
 ## T3. The intent home: in the repository, written from anywhere, with examples
