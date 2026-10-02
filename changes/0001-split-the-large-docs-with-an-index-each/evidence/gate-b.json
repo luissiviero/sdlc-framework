@@ -1,0 +1,136 @@
+{
+  "schema_version": 1,
+  "change_id": "0001",
+  "slug": "split-the-large-docs-with-an-index-each",
+  "phase": "b",
+  "profile": "standard",
+  "human_gate": true,
+  "result": "park",
+  "label": "sdlc:needs-human",
+  "head": "c0a7bd9fd6e19cc40af3dcfed83b8fa20d8401c3",
+  "at": "2026-10-02T10:18:53Z",
+  "dry_run": false,
+  "reason": "open_concerns: 2 flagged concern(s) still open in spec.md; commands: not green: test (exit 1)",
+  "config_note": "",
+  "checks": [
+    {
+      "name": "limits",
+      "ok": true,
+      "reason": "within the run limits",
+      "need": "",
+      "details": {
+        "iterations": 0,
+        "cap": 2,
+        "classification": "non-routine",
+        "panel_calls": 0,
+        "panel_cap": 4,
+        "elapsed_minutes": 11.4,
+        "spend_usd": null,
+        "max_budget_usd": null
+      }
+    },
+    {
+      "name": "artifacts",
+      "ok": true,
+      "reason": "every required artifact exists and has its template sections",
+      "need": "",
+      "details": {}
+    },
+    {
+      "name": "design_scope",
+      "ok": true,
+      "reason": "the committed diff stays inside changes/0001-split-the-large-docs-with-an-index-each/",
+      "need": "",
+      "details": {
+        "dirty": [
+          "changes/0001-split-the-large-docs-with-an-index-each/evidence/adversarial-review-b.json",
+          "changes/0001-split-the-large-docs-with-an-index-each/evidence/diff-b.patch",
+          "changes/0001-split-the-large-docs-with-an-index-each/evidence/hook-log.jsonl",
+          "changes/0001-split-the-large-docs-with-an-index-each/evidence/panel/b-items.json",
+          "tests/fixtures/sample-python-project/.env"
+        ]
+      }
+    },
+    {
+      "name": "open_concerns",
+      "ok": false,
+      "reason": "2 flagged concern(s) still open in spec.md",
+      "need": "Close each open item under '## Flagged concerns' with a decision (article p.14 step 4), or leave a review comment for /sdlc-fix.",
+      "details": {
+        "open": [
+          "- Guessed because the intent does not give exact file-naming slugs: the Design above fixes the",
+          "- Guessed because the intent does not say it: whether a `docs/notes/index.md` or"
+        ]
+      }
+    },
+    {
+      "name": "panel",
+      "ok": true,
+      "reason": "no panel decision at this gate",
+      "need": "",
+      "details": {}
+    },
+    {
+      "name": "commands",
+      "ok": false,
+      "reason": "not green: test (exit 1)",
+      "need": "Make the failing target pass (fix the code, not the test) and re-run the gate. The tail of each output is in the gate result.",
+      "details": {
+        "runs": {
+          "build": {
+            "command": "python -m compileall -q plugin tests tasks.py",
+            "exit_code": 0,
+            "output": ""
+          },
+          "test": {
+            "command": "python -m pytest",
+            "exit_code": 1,
+            "output": "t_refuses_when_settings_allow_bypass_or_lack_a_deny_rule - shutil.Error: [('/home/runner/work/sdlc-framework/sdlc-framework/tests/fixtures/sample-python-project/.env', '/tmp/claude-1001/pytest-of-runner/pytest-3/test_refuses_when_settings_all0/proj/.env', \"[Errno 13] Permission denied: '/home/runner/work/sdlc-framework/sdlc-framework/tests/fixtures/sample-python-project/.env'\")]\nERROR tests/test_preflight.py::test_accepts_the_bare_deny_spelling_of_an_older_install - shutil.Error: [('/home/runner/work/sdlc-framework/sdlc-framework/tests/fixtures/sample-python-project/.env', '/tmp/claude-1001/pytest-of-runner/pytest-3/test_accepts_the_bare_deny_spe0/proj/.env', \"[Errno 13] Permission denied: '/home/runner/work/sdlc-framework/sdlc-framework/tests/fixtures/sample-python-project/.env'\")]\nERROR tests/test_preflight.py::test_refuses_when_the_test_target_is_red - shutil.Error: [('/home/runner/work/sdlc-framework/sdlc-framework/tests/fixtures/sample-python-project/.env', '/tmp/claude-1001/pytest-of-runner/pytest-3/test_refuses_when_the_test_tar0/proj/.env', \"[Errno 13] Permission denied: '/home/runner/work/sdlc-framework/sdlc-framework/tests/fixtures/sample-python-project/.env'\")]\nERROR tests/test_preflight.py::test_refuses_without_python_on_path_or_hooks - shutil.Error: [('/home/runner/work/sdlc-framework/sdlc-framework/tests/fixtures/sample-python-project/.env', '/tmp/claude-1001/pytest-of-runner/pytest-3/test_refuses_without_python_on0/proj/.env', \"[Errno 13] Permission denied: '/home/runner/work/sdlc-framework/sdlc-framework/tests/fixtures/sample-python-project/.env'\")]\nERROR tests/test_preflight.py::test_classification_reported_for_a_change - shutil.Error: [('/home/runner/work/sdlc-framework/sdlc-framework/tests/fixtures/sample-python-project/.env', '/tmp/claude-1001/pytest-of-runner/pytest-3/test_classification_reported_f0/proj/.env', \"[Errno 13] Permission denied: '/home/runner/work/sdlc-framework/sdlc-framework/tests/fixtures/sample-python-project/.env'\")]\nERROR tests/test_preflight.py::test_refuses_a_parked_change - shutil.Error: [('/home/runner/work/sdlc-framework/sdlc-framework/tests/fixtures/sample-python-project/.env', '/tmp/claude-1001/pytest-of-runner/pytest-3/test_refuses_a_parked_change0/proj/.env', \"[Errno 13] Permission denied: '/home/runner/work/sdlc-framework/sdlc-framework/tests/fixtures/sample-python-project/.env'\")]\nERROR tests/test_preflight.py::test_a_park_that_a_later_gate_result_lifted_does_not_refuse - shutil.Error: [('/home/runner/work/sdlc-framework/sdlc-framework/tests/fixtures/sample-python-project/.env', '/tmp/claude-1001/pytest-of-runner/pytest-3/test_a_park_that_a_later_gate_0/proj/.env', \"[Errno 13] Permission denied: '/home/runner/work/sdlc-framework/sdlc-framework/tests/fixtures/sample-python-project/.env'\")]\nERROR tests/test_preflight.py::test_a_missing_change_refuses - shutil.Error: [('/home/runner/work/sdlc-framework/sdlc-framework/tests/fixtures/sample-python-project/.env', '/tmp/claude-1001/pytest-of-runner/pytest-3/test_a_missing_change_refuses0/proj/.env', \"[Errno 13] Permission denied: '/home/runner/work/sdlc-framework/sdlc-framework/tests/fixtures/sample-python-project/.env'\")]\nERROR tests/test_preflight.py::test_phases_d_and_e_skip_the_test_target - shutil.Error: [('/home/runner/work/sdlc-framework/sdlc-framework/tests/fixtures/sample-python-project/.env', '/tmp/claude-1001/pytest-of-runner/pytest-3/test_phases_d_and_e_skip_the_t0/proj/.env', \"[Errno 13] Permission denied: '/home/runner/work/sdlc-framework/sdlc-framework/tests/fixtures/sample-python-project/.env'\")]\nERROR tests/test_preflight.py::test_preflight_cli_exit_codes - shutil.Error: [('/home/runner/work/sdlc-framework/sdlc-framework/tests/fixtures/sample-python-project/.env', '/tmp/claude-1001/pytest-of-runner/pytest-3/test_preflight_cli_exit_codes0/proj/.env', \"[Errno 13] Permission denied: '/home/runner/work/sdlc-framework/sdlc-framework/tests/fixtures/sample-python-project/.env'\")]\n78 failed, 943 passed, 272 errors in 52.70s\n"
+          },
+          "lint": {
+            "command": "python -m ruff check .",
+            "exit_code": 0,
+            "output": "All checks passed!\n"
+          }
+        }
+      }
+    },
+    {
+      "name": "guardrails",
+      "ok": true,
+      "reason": "the diff does not touch a guardrail file",
+      "need": "",
+      "details": {}
+    },
+    {
+      "name": "risk_list",
+      "ok": true,
+      "reason": "no risk-list item touched",
+      "need": "",
+      "details": {
+        "accepted": []
+      }
+    },
+    {
+      "name": "owner_actions",
+      "ok": true,
+      "reason": "risk acceptances, iteration and panel-call resets and test-lock lifts, if any, were committed by the owner or applied by the owner's label",
+      "need": "",
+      "details": {
+        "risk_accepted": [],
+        "label_actors": {}
+      }
+    },
+    {
+      "name": "adversarial_review",
+      "ok": true,
+      "reason": "adversarial reviewer says continue",
+      "need": "",
+      "details": {
+        "classification": "non-routine",
+        "reasons": []
+      }
+    }
+  ],
+  "what_i_need": "## What I need from you\nGate (b) parked change 0001 (split-the-large-docs-with-an-index-each) on 2026-10-02T10:18:53Z.\n- **open_concerns**: 2 flagged concern(s) still open in spec.md\n  - what I need: Close each open item under '## Flagged concerns' with a decision (article p.14 step 4), or leave a review comment for /sdlc-fix.\n- **commands**: not green: test (exit 1)\n  - what I need: Make the failing target pass (fix the code, not the test) and re-run the gate. The tail of each output is in the gate result.\nWhen the item is settled, re-run the gate: `python \"${CLAUDE_PLUGIN_ROOT}/plugin/gate/cli.py\" check --root . --id 0001 --phase b` (review comments are the change request; /sdlc-fix from B3 re-runs the phase with them).\n"
+}

@@ -7,11 +7,11 @@ change_type: feature
 profile_override: null
 review_override: null
 gate:
-  phase: null
-  result: null
-  reason: null
-  at: null
-parked_reason: null
+  phase: b
+  result: parked
+  reason: "open_concerns: 2 flagged concern(s) still open in spec.md; commands: not green: test (exit 1)"
+  at: "2026-10-02T10:18:53Z"
+parked_reason: "open_concerns: 2 flagged concern(s) still open in spec.md; commands: not green: test (exit 1)"
 iterations: 0
 panel_calls: 0
 external_ref: null
@@ -25,5 +25,5 @@ runbook_authorized_by: null
 abandoned_reason: null
 build_pr: null
 created_at: "2026-10-02T09:04:23Z"
-updated_at: "2026-10-02T10:10:54Z"
+updated_at: "2026-10-02T10:18:53Z"
 schema_version: 1

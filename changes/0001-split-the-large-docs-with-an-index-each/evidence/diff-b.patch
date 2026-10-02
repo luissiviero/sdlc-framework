@@ -1,0 +1,375 @@
+ .../evidence/hook-log.jsonl                        |  14 ++
+ .../evidence/run-b.json                            |   5 +
+ .../plan.md                                        | 134 ++++++++++++++++
+ .../spec.md                                        | 170 +++++++++++++++++++++
+ .../status.yaml                                    |   4 +-
+ 5 files changed, 325 insertions(+), 2 deletions(-)
+
+diff --git a/changes/0001-split-the-large-docs-with-an-index-each/evidence/hook-log.jsonl b/changes/0001-split-the-large-docs-with-an-index-each/evidence/hook-log.jsonl
+new file mode 100644
+index 0000000..306cdbc
+--- /dev/null
++++ b/changes/0001-split-the-large-docs-with-an-index-each/evidence/hook-log.jsonl
+@@ -0,0 +1,14 @@
++{"at": "2026-10-02T10:06:23Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
++{"at": "2026-10-02T10:06:26Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
++{"at": "2026-10-02T10:06:29Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
++{"at": "2026-10-02T10:07:35Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
++{"at": "2026-10-02T10:09:55Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/sdlc-framework/sdlc-framework/changes/0001-split-the-large-docs-with-an-index-each/spec.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-10-02T10:09:55Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/sdlc-framework/sdlc-framework/changes/0001-split-the-large-docs-with-an-index-each/spec.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-10-02T10:09:55Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/sdlc-framework/sdlc-framework/changes/0001-split-the-large-docs-with-an-index-each/spec.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-10-02T10:09:55Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/sdlc-framework/sdlc-framework/changes/0001-split-the-large-docs-with-an-index-each/spec.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-10-02T10:10:40Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/sdlc-framework/sdlc-framework/changes/0001-split-the-large-docs-with-an-index-each/plan.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-10-02T10:10:40Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/sdlc-framework/sdlc-framework/changes/0001-split-the-large-docs-with-an-index-each/plan.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-10-02T10:10:40Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/sdlc-framework/sdlc-framework/changes/0001-split-the-large-docs-with-an-index-each/plan.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-10-02T10:10:40Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/sdlc-framework/sdlc-framework/changes/0001-split-the-large-docs-with-an-index-each/plan.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-10-02T10:10:42Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
++{"at": "2026-10-02T10:10:47Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
+diff --git a/changes/0001-split-the-large-docs-with-an-index-each/evidence/run-b.json b/changes/0001-split-the-large-docs-with-an-index-each/evidence/run-b.json
+new file mode 100644
+index 0000000..583f00c
+--- /dev/null
++++ b/changes/0001-split-the-large-docs-with-an-index-each/evidence/run-b.json
+@@ -0,0 +1,5 @@
++{
++  "phase": "b",
++  "spend_usd": null,
++  "started_at": "2026-10-02T10:06:37Z"
++}
+\ No newline at end of file
+diff --git a/changes/0001-split-the-large-docs-with-an-index-each/plan.md b/changes/0001-split-the-large-docs-with-an-index-each/plan.md
+new file mode 100644
+index 0000000..66e6198
+--- /dev/null
++++ b/changes/0001-split-the-large-docs-with-an-index-each/plan.md
+@@ -0,0 +1,134 @@
++# Plan: split the large docs with an index each (from intent.md 2026-10-02, spec.md 2026-10-02)
++
++## Files that change
++- `docs/notes/index.md` — new; one line per NOTES section file, in section-number order.
++- `docs/notes/<N>-<slug>.md` — new; one per `## ` section of today's `docs/NOTES.md` (23 at
++  this reading: sections 1–23). Each carries the section's text unchanged plus frontmatter
++  (`title`, `sources`, `generated.at`, `verified_with`, `stale_after`). A build-time pass
++  re-derives the exact set and slugs from whatever `## ` headings exist in `docs/NOTES.md`
++  then (sessions 15–16 may add sections 24+ before phase (c) runs; see Risks).
++- `docs/NOTES.md` — rewritten to a short stub: title plus one pointer sentence to
++  `docs/notes/index.md`.
++- `docs/decisions/index.md` — new; one line per decision file, in decision-number order.
++- `docs/decisions/<N>-<slug>.md` — new; one per numbered decision in today's
++  `docs/DECISIONS.md` (26 at this reading). Each carries the decision's text unchanged plus
++  frontmatter (`status`, `reversibility`, `amended_by`).
++- `docs/DECISIONS.md` — rewritten to a short stub: title plus one pointer sentence to
++  `docs/decisions/index.md`.
++- `docs/progress/index.md` — new; one entry per archived record, grouped by session.
++- `docs/progress/<slug>.md` — new; one per non-current top-level `# ` heading of today's
++  `docs/PROGRESS.md` (14 at this reading: everything but "session 14, second sitting").
++  Text unchanged; a build-time pass re-derives the set from whatever headings exist then
++  (sessions 15–16 append new records; see Risks).
++- `docs/PROGRESS.md` — rewritten to hold only its current top-level record (whichever one is
++  current when phase (c) runs); no stub needed, name and role unchanged.
++- `HANDOFF.md` — "Read in this order" rewritten index-first for the three split docs; every
++  existing list item's reason kept, only the target file changed from a `docs/NOTES.md §N` /
++  `docs/DECISIONS.md` / `docs/PROGRESS.md` pointer to the matching new path or index.
++- `docs/ROADMAP.md` — its `docs/DECISIONS.md` mention (the "nothing here reopens a decision"
++  line) repointed to `docs/decisions/index.md`.
++- `docs/OPERATING_MODEL.md` — its `docs/DECISIONS.md` and `docs/NOTES.md` mentions repointed
++  to the matching index.
++- `README.md` — its `docs/OPERATING_MODEL.md`/`docs/PROGRESS.md`/`docs/NOTES.md`/
++  `docs/DECISIONS.md` mentions (the overview paragraph and the two table rows) repointed to
++  the matching index where the file split (NOTES, DECISIONS); the `docs/PROGRESS.md` mention
++  is left as is (that file's name and role do not change).
++- `docs/PROGRESS.md` (the then-current record) — a new entry recording this change's own
++  work, including the `CLAUDE.md` guardrail-edit table for the owner (spec.md Acceptance),
++  per "Things Claude gets wrong".
++
++No file under `plugin/`, `template/` or `tests/` changes; `CLAUDE.md`, `.claude/**`,
++`REVIEW.md` and `sdlc.yaml` are not touched (guardrails; the owner edits `CLAUDE.md` after
++this merges, from the table this change's PROGRESS entry gives).
++
++## Order of work
++1. Re-list `docs/NOTES.md`'s `## ` sections, `docs/DECISIONS.md`'s numbered decisions and
++   `docs/PROGRESS.md`'s non-current `# ` headings as they stand at the start of phase (c)
++   (they may differ from this reading; sessions 15–16 run first). This list is the exact file
++   set for the next three steps.
++2. Split `docs/NOTES.md`: create `docs/notes/<N>-<slug>.md` per section (text moved verbatim,
++   frontmatter added from the section's existing read date and sources), then
++   `docs/notes/index.md`, then rewrite `docs/NOTES.md` to the stub. One commit.
++3. Split `docs/DECISIONS.md`: create `docs/decisions/<N>-<slug>.md` per decision (text moved
++   verbatim, frontmatter from the decision's existing Accepted/Amended/reversibility lines),
++   then `docs/decisions/index.md`, then rewrite `docs/DECISIONS.md` to the stub. One commit.
++4. Split `docs/PROGRESS.md`: create `docs/progress/<slug>.md` per non-current record (text
++   moved verbatim), then `docs/progress/index.md` grouped by session, then rewrite
++   `docs/PROGRESS.md` to hold only the current record. One commit.
++5. Update the four live docs' links/mentions: `HANDOFF.md` (the reading list, index-first),
++   `docs/ROADMAP.md`, `docs/OPERATING_MODEL.md`, `README.md`. One commit; with the Edit tool,
++   sentence by sentence, never a script (CLAUDE.md: the auto-mode classifier blocks a scripted
++   rewrite whose payload reads like instructions).
++6. Run the project's build, test and lint commands (none are expected to change, since no
++   `plugin/`/`template/`/`tests/` file moved) and record the evidence logs.
++7. Add this change's own `docs/PROGRESS.md` entry (now the current record, after step 4
++   rewrote the file) with the `CLAUDE.md` guardrail-edit table for the owner.
++
++## Risks
++- **Most of this is not implementable from this plan alone yet, by design**: the intent holds
++  the design PR unmerged until session 16 closes Milestone 1, so phase (c) starts from
++  whatever `docs/NOTES.md`, `docs/DECISIONS.md` and `docs/PROGRESS.md` contain *then*, not from
++  today's 23/26/14. Step 1 of Order of work exists for exactly this reason: it is not
++  optional busywork, it is how the plan stays correct despite the gap. The riskiest step is
++  step 1 for that reason — get the count or a slug wrong there and every later step
++  propagates it.
++- A link-update miss in one of the four live docs (step 5) is low-impact (the stub still
++  resolves the old path) but would leave a stale pointer; mitigate by grep'ing each of the
++  four files for the three old paths after editing, not just before.
++- A historical doc (`docs/handoffs/*`, `docs/reviews/*`, `docs/proposals/okf-adoption.md`)
++  is deliberately not rewritten (spec.md Requirements); someone reading one later still sees
++  `docs/NOTES.md §N`, and must follow the stub rather than a direct link. This is the chosen
++  trade-off (choice 126: a kept record is never rewritten), not an oversight — called out here
++  so a reviewer does not flag it as a missed file.
++- Nothing in `plugin/` reads these docs at runtime (confirmed by grep: only comments and one
++  user-facing reason string in `plugin/ci/auth.py` cite `docs/NOTES.md section 2`, and the
++  stub keeps that string's citation resolvable), so the build/test/lint commands are not
++  expected to change behaviour. If a future test is added that reads `docs/NOTES.md`'s content
++  directly (none exists today), it would break on the stub; nothing in today's `tests/`
++  does this.
++- Caller/consumer check (interrogation Q1): every caller of these three files is a human
++  reader or a prose citation, not code — confirmed by grepping `plugin/`, `template/`,
++  `tests/`, `.github/` for `docs/NOTES.md`, `docs/DECISIONS.md`, `docs/PROGRESS.md` literal
++  paths (10 files, all comments or an error-reason string) and for `NOTES §` / `decision N`
++  (prose citations, ~140 occurrences across the repo, none of them a code path). No data
++  shape changes; nothing is parsed from these files today.
++
++## Options not taken
++- **Split by `###` subsection too** (so `NOTES §11a` got its own file): rejected — the intent's
++  example (`17-...md` for a whole section) and the "section per session, dated" rule (choice
++  93) both treat one `##` section as the atomic, dated unit; splitting subsections would
++  separate facts that share one read date and one `verified_with` value for no benefit, since
++  every citation found in the codebase cites at most a `##`-level section or a lettered
++  subsection that stays inside it.
++- **Rewrite the historical docs' old-path citations to the new paths**: rejected — choice 126
++  forbids rewriting a kept record's sentence; the stub exists precisely so this is unnecessary.
++- **Update `docs/MODEL_ALLOCATION.md`'s two mentions along with the four live docs**: rejected
++  for this change — the intent names exactly four files; `MODEL_ALLOCATION.md`'s mentions are
++  prose, not links, and still resolve through the stub (spec.md Flagged concerns, closed).
++- **A generated, code-validated frontmatter schema** (parsed and gate-checked, as
++  `intent.md`/`spec.md`/`plan.md` are): rejected for this change — it would touch `plugin/`
++  (a version bump, out of scope per intent Constraints) for a benefit (machine validation of
++  reference docs nothing reads yet) the intent does not ask for; the OKF-adoption proposal
++  files this under "medium effort, not before `lessons/` needs it", and these three docs are
++  read by humans and by a session following a prose instruction, same as today.
++- **Do the split now, merge now**: rejected — the intent's Constraints are explicit that
++  sessions 15–16 must not have their reading list moved mid-road; the design is produced now
++  so the owner can review it early, but the design PR itself is held unmerged until session 16
++  closes the milestone.
++
++## Proof
++- `python -m compileall -q plugin tests tasks.py` — must finish with no output, exit 0
++  (sdlc.yaml `commands.build`); unaffected by a docs-only diff, confirms nothing under
++  `plugin/`/`tests/`/`tasks.py` was touched by mistake.
++- `python -m pytest` — all green (sdlc.yaml `commands.test`); no new test is added by this
++  change (nothing in `plugin/` or `tests/` changes behaviour), so this is a regression check,
++  not new coverage.
++- `python -m ruff check .` — zero warnings (sdlc.yaml `commands.lint`).
++- A manual link-resolution pass over `HANDOFF.md`, `docs/ROADMAP.md`,
++  `docs/OPERATING_MODEL.md`, `README.md` and the two stubs: every path they point at exists.
++- A grep for `docs/NOTES.md`, `docs/DECISIONS.md`, `NOTES §`, `decision ` across `plugin/`,
++  `template/`, `tests/`, `.github/`, `docs/` (excluding `docs/BUILD_GUIDE.md`,
++  `docs/build_guide.json`, `docs/handoffs/`, `docs/reviews/`, `docs/proposals/`) resolving to
++  an existing file, directly or through a stub — the spec's Acceptance target; no automated
++  test exists for this today, so it is evidence collected by hand in phase (c)/(d), not a
++  pytest name.
+diff --git a/changes/0001-split-the-large-docs-with-an-index-each/spec.md b/changes/0001-split-the-large-docs-with-an-index-each/spec.md
+new file mode 100644
+index 0000000..9856c5e
+--- /dev/null
++++ b/changes/0001-split-the-large-docs-with-an-index-each/spec.md
+@@ -0,0 +1,170 @@
++# Spec: split the large docs with an index each
++Change id: 0001. Status: proposed. Produced by: sdlc plugin 0.2.29, /sdlc-design prompt v1 (article p.14). Skills: coding-standards, security-baseline, ux-conventions, data-conventions, definition-of-done (plugin 0.2.29); overrides: none
++
++## Requirements
++- `docs/notes/` holds one file per `docs/NOTES.md` `## ` section (23 files today), named with
++  the section number first (for example `17-....md`), so every `NOTES §N` citation (about 20
++  in `plugin/`, `docs/` and `tests/`, none of them under `docs/BUILD_GUIDE.md`) still points at
++  one file; a `### 11a`/`11b`/`11c`-style subsection stays inside its parent section's file, so
++  a citation like `NOTES §11c` still resolves without a per-subsection split. Each file's
++  frontmatter carries `title`, `sources`, `generated.at` (the section's existing read date),
++  `verified_with` (Claude Code version, plugin version, runner) and `stale_after`
++  (`generated.at` + 90 days); a file is stale when `verified_with` no longer matches the
++  environment or `stale_after` has passed, whichever first (both from choice 93: one section is
++  one session's dated batch, so the fields are per file). `docs/notes/index.md` lists every
++  file with a one-line description.
++- `docs/decisions/` holds one file per decision in `docs/DECISIONS.md` (26 files), named by
++  number. Each file's frontmatter carries `status` (`accepted` or `amended`), `reversibility`
++  (`sticky` or `reversible`, as stated today) and `amended_by` where an amendment exists (for
++  example decision 18, amended by 21). `docs/decisions/index.md` has one line per decision.
++- `docs/PROGRESS.md` keeps only its current top-level record (session 14, second sitting); the
++  other 14 top-level records move to `docs/progress/`, one file per heading, with an
++  `index.md` that groups sittings under their session (the file already names the session and
++  sitting in each heading, so grouping is read off the existing text).
++- Every moved record keeps its text unchanged (choice 126: a kept record is annotated beside
++  the sentence, never rewritten); only links and section references are updated by the move,
++  never the sentence itself. This applies to every file moved by this change, not only
++  `docs/progress/`.
++- `HANDOFF.md`'s "Read in this order" list is rewritten to read the index first, then only the
++  files needed, for each of the three split docs, keeping its existing per-item explanation of
++  why that file matters.
++- `docs/NOTES.md` and `docs/DECISIONS.md` become short permanent stub files pointing at
++  `docs/notes/index.md` and `docs/decisions/index.md`; a link or citation that names the old
++  path still resolves to a file. `docs/PROGRESS.md` is not stubbed: it keeps its purpose
++  (current record) under the same name, per the Proposed outcome.
++- The same PR updates the links in `HANDOFF.md`, `docs/ROADMAP.md`, `docs/OPERATING_MODEL.md`
++  and `README.md` to the new index paths — exactly the four files the intent names. A doc not
++  on that list (for example `docs/MODEL_ALLOCATION.md`, which names `docs/PROGRESS.md` and
++  `docs/NOTES.md` once each in prose, not as a link) is left as written; see Flagged concerns.
++- A historical record that cites the old path in prose (`docs/handoffs/*.md`, `docs/reviews/*`,
++  `docs/proposals/*`, and the archived sessions inside `docs/progress/` themselves) is not
++  rewritten: it is a point-in-time record, and the stub keeps the citation resolvable (choice
++  126 applies to records, not to live reference docs).
++- No file under `plugin/` or `template/` changes. The code strings and comments that cite
++  `docs/NOTES.md section N` (for example `plugin/ci/auth.py`'s unattended-run error reason,
++  `plugin/hooks/_common.py`, `plugin/gate/limits.py`) keep resolving through the stub; they are
++  not edited, so there is no version bump, no tag and no pin (coding-standards rule 6: never
++  edit generated or out-of-scope files as a side effect; here, never touch code as a side
++  effect of a docs-only change).
++- `docs/BUILD_GUIDE.md` and `docs/build_guide.json` are not touched (intent Constraints); their
++  "NOTES §N" / "decision N" mentions are prose citations of a number, not paths, and keep
++  resolving under the new layout unchanged.
++- Checkable: every `NOTES §N`, `decision N` and `docs/NOTES.md` / `docs/DECISIONS.md` /
++  `docs/PROGRESS.md` path citation under `plugin/`, `template/`, `tests/`, `.github/` and
++  `docs/` still resolves (directly, or through a stub) to an existing file; `python -m
++  compileall -q plugin tests tasks.py`, `python -m pytest` and `python -m ruff check .` stay
++  green (sdlc.yaml commands; none of them read the moved docs, so none are expected to change
++  behaviour).
++- security-baseline, data-conventions: no secret, credential or personal/sensitive data is
++  moved or introduced; the moved text is the existing platform facts, decisions and session
++  records, unchanged (rules 3–4 of each skill do not constrain this change beyond that).
++- ux-conventions: does not apply — there is no user-facing screen, component or visible copy
++  here; the "UI changed" check has nothing to flag.
++- risk_list (`sdlc.yaml`): none of auth, data migrations, money movement or production config
++  is touched; this is a documentation-only move, so none of the four items is named under
++  Flagged concerns (spec-template rule: name only what the design touches).
++
++## Design
++- Three independent splits, same shape each time: one source file becomes one `index.md` plus
++  N small files, each keeping the source section's number in its file name and its text
++  byte-for-byte except for updated internal links/section references. No file outside
++  `docs/notes/`, `docs/decisions/`, `docs/progress/`, the two stub files, `HANDOFF.md`,
++  `docs/ROADMAP.md`, `docs/OPERATING_MODEL.md` and `README.md` changes.
++- Frontmatter is a plain YAML block per file, read by nothing today (no code parses
++  `docs/notes/*.md` or `docs/decisions/*.md` yet); it is documentation metadata only, matching
++  how `intent.md`/`spec.md`/`plan.md` already carry a prose header line rather than a validated
++  schema (OKF-adoption proposal, row 2). Nothing in `plugin/gate/artifacts.py` is changed or
++  needs to be: these files are not gated artifacts.
++- `docs/notes/<N>-<slug>.md` frontmatter fields, one block per the Requirements above:
++  `title`, `sources` (the docs URL or run URL and the verbatim quote already in the section,
++  restated as structured data, not reworded), `generated.at` (copied from the section's
++  existing read date), `verified_with`, `stale_after`. The staleness rule is unchanged from
++  choice 93, expressed as two comparable fields instead of prose ("re-test when the date is
++  older than the environment's last change").
++- `docs/decisions/<N>-<slug>.md` frontmatter: `status`, `reversibility`, `amended_by`. These
++  three values already exist in `docs/DECISIONS.md`'s "Accepted"/"Amended by"/"Decide by /
++  reversibility" lines for every decision; the frontmatter restates them, it does not decide
++  anything new.
++- `docs/progress/<slug>.md` per top-level `# ` heading of today's `docs/PROGRESS.md` (14 files
++  for the 14 non-current records); `docs/progress/index.md` groups them under their session
++  number, reading the grouping off each heading's existing "session N" / "sitting" wording.
++  `docs/PROGRESS.md` itself shrinks to the current record (session 14, second sitting) and
++  keeps its name and role: the file a session appends to next.
++- Stubs: `docs/NOTES.md` and `docs/DECISIONS.md` become a one-line title plus a pointer
++  sentence to the matching `index.md`, so an old link still opens a file and a reader lands on
++  the index one click away. `docs/PROGRESS.md` needs no stub because its name and role do not
++  change.
++- `HANDOFF.md`'s "Read in this order" keeps one list item per file it names today, each still
++  carrying its existing one-line reason; where it names `docs/NOTES.md §N` today, it names the
++  matching `docs/notes/<N>-*.md` file (or the index, for a section-agnostic pointer); same for
++  `docs/DECISIONS.md` and `docs/PROGRESS.md`'s archived sessions. The index-first instruction
++  itself ("index first, then the files you need") is a new, one-line opening note, not a
++  restructuring of the list.
++- `CLAUDE.md`'s own three references (`docs/DECISIONS.md` line 3, `docs/NOTES.md` line 35,
++  `docs/PROGRESS.md` line 39) are not touched by this change: `CLAUDE.md` is a guardrail file,
++  edited only by the owner, in a reviewed PR, after this split merges. This spec's job ends at
++  handing the owner the table of what those lines must become; `plan.md` carries the exact
++  rows (skill `plan-template`; build guide step this PR cannot take).
++- Timing (intent Constraints, carried into Design because it shapes the diff's lifetime): this
++  spec and the plan are produced now, at change 0001's phase (b); the design PR stays open,
++  unmerged, until session 16 closes the Milestone 1 roadmap. Phase (c) build — the actual file
++  moves — starts only after that merge, from whatever `docs/NOTES.md`, `docs/DECISIONS.md` and
++  `docs/PROGRESS.md` look like then (sessions 15 and 16 both still append to them). `plan.md`'s
++  "files that change" is therefore a shape (one file per section/decision/heading existing at
++  build time), not a fixed list of names — the exact count of NOTES sections, decisions and
++  PROGRESS records may have grown by the time phase (c) runs.
++
++## Open questions from intent
++Intent's "## Open questions" section states none are open; it quotes the five questions the
++owner settled on 2026-09-02 (PR #86) and gives each an answer already folded into Proposed
++outcome and Constraints above:
++- "`stale_after`: the environment the facts were read under plus a 90-day backstop, per
++  file" — carried into Requirements/Design's `docs/notes/` frontmatter above.
++- "PROGRESS: one file per existing top-level heading, so no record is merged or rewritten" —
++  carried into Requirements/Design's `docs/progress/` split above.
++- "Timing: intent now, design now, the design PR held until after `v1.0.0`" — carried into
++  Design's Timing paragraph above.
++- "`docs/BUILD_GUIDE.md`: left as it is" — carried into Requirements above (not touched).
++- "Old-path stubs: kept for good; live-doc links updated in the same PR" — carried into
++  Requirements/Design's stub and four-file link update above.
++None of the five is reopened here; all five are restated as design constraints, not decided
++again.
++
++## Flagged concerns
++- [x] `docs/MODEL_ALLOCATION.md` names `docs/PROGRESS.md` and `docs/NOTES.md` once each, in
++  prose describing what a build session produces, not as a navigational link. The intent's
++  Proposed outcome names exactly four live docs to update (`HANDOFF.md`, `docs/ROADMAP.md`,
++  `docs/OPERATING_MODEL.md`, `README.md`); `docs/MODEL_ALLOCATION.md` is not among them, and
++  its mentions still resolve through the stub, so it is left unedited per the intent's explicit
++  list (decided: follow the named scope, not every file a grep finds).
++- Guessed because the intent does not give exact file-naming slugs: the Design above fixes the
++  shape (`<N>-<slug>.md`, kebab-case from each heading) but not the literal slug text for every
++  one of the 23 NOTES sections, 26 decisions and 14 archived PROGRESS records; `plan.md` must
++  either fix each name now or say the build-time pass derives it mechanically from the
++  heading, since the exact headings may have changed again by the time phase (c) runs (see
++  Design's Timing paragraph).
++- Guessed because the intent does not say it: whether a `docs/notes/index.md` or
++  `docs/decisions/index.md` entry groups by sub-topic (the way the OKF-adoption proposal's
++  worked lessons-index example groups by tag) or lists files in section/decision-number order
++  only. Taken as number order, matching how `docs/DECISIONS.md` and `docs/NOTES.md` are
++  ordered today and how `CLAUDE.md`/`HANDOFF.md` cite them ("NOTES §17", "decision 21"); a
++  grouped index would need a taxonomy the intent does not supply.
++
++## Acceptance
++- Every `NOTES §N`, `decision N` reference and every literal `docs/NOTES.md` / `docs/DECISIONS.md`
++  / `docs/PROGRESS.md` path under `plugin/`, `template/`, `tests/`, `.github/` and `docs/`
++  (excluding `docs/BUILD_GUIDE.md`, `docs/build_guide.json`, and the historical
++  `docs/handoffs/`, `docs/reviews/`, `docs/proposals/` records) resolves to an existing file,
++  directly or through the `docs/NOTES.md` / `docs/DECISIONS.md` stub.
++- `docs/notes/index.md` lists all 23 section files; `docs/decisions/index.md` lists all 26
++  decision files; `docs/progress/index.md` lists the 14 archived records grouped by session;
++  `docs/PROGRESS.md` holds only the current record.
++- `HANDOFF.md`, `docs/ROADMAP.md`, `docs/OPERATING_MODEL.md` and `README.md` link to the new
++  index paths, not to the old file paths, wherever they cited one.
++- `python -m compileall -q plugin tests tasks.py`, `python -m pytest` and `python -m ruff
++  check .` (sdlc.yaml commands) stay green, unchanged from before the split, since no file
++  under `plugin/`, `template/` or `tests/` is edited.
++- The owner has, in `docs/PROGRESS.md` (this change's own record, per "Things Claude gets
++  wrong"), the exact `CLAUDE.md` guardrail edit: the table of link, row, current text, new
++  text, covering line 3 (`docs/DECISIONS.md` mention), line 35 (`docs/NOTES.md`), line 39
++  (`docs/PROGRESS.md`), and the new pointer line the proposal gives.
+diff --git a/changes/0001-split-the-large-docs-with-an-index-each/status.yaml b/changes/0001-split-the-large-docs-with-an-index-each/status.yaml
+index 1a71ab1..b02f4c9 100644
+--- a/changes/0001-split-the-large-docs-with-an-index-each/status.yaml
++++ b/changes/0001-split-the-large-docs-with-an-index-each/status.yaml
+@@ -1,7 +1,7 @@
+ id: "0001"
+ slug: split-the-large-docs-with-an-index-each
+ title: Split the large docs with an index each
+-phase: a
++phase: b
+ entry_route: idea
+ change_type: feature
+ profile_override: null
+@@ -25,5 +25,5 @@ runbook_authorized_by: null
+ abandoned_reason: null
+ build_pr: null
+ created_at: "2026-10-02T09:04:23Z"
+-updated_at: "2026-10-02T09:04:23Z"
++updated_at: "2026-10-02T10:10:54Z"
+ schema_version: 1
