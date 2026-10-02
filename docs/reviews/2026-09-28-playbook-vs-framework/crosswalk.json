@@ -565,6 +565,13 @@
           "T1"
         ],
         "text": "Flagged concerns get a brief from the role of their kind (for example Security & policy); the manager recommends; you decide. Touches D21 (who sits on the panel)."
+      },
+      "decision": {
+        "better": "playbook",
+        "decision": "blend",
+        "note": "Blend (T1 confirmed): both review modes stay, and the never-to-the-panel list stays (risk-list hit, guardrail file change, run limit, infrastructure failure, anything that merges to main or deploys). Added: under parked, each open concern reaches me with the brief of the role of its kind (e.g. Security & policy on a data concern) and the manager's recommendation, so I decide in one read; under deferred, the role of the concern's kind sits on the panel in place of the general reviewer (amends D21's panel line-up, nothing else). The policy owner's part is played by my written policies (T1, sources first); who writes them is the build-skills row.",
+        "saved": "2026-10-02",
+        "status": "tentative"
       }
     },
     {
@@ -1899,6 +1906,6 @@
       "fidelity": 2
     },
     "weightsSaved": "2026-09-29",
-    "rowsWithADecision": 11
+    "rowsWithADecision": 12
   }
 }

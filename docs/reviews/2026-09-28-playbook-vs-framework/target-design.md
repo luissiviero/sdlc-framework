@@ -18,7 +18,7 @@ The target workflow page (https://claude.ai/artifact/13X8rzF9KsfekmeSs1w5rM, sna
 
 ## T1. AI roles that advise, and one manager that reviews for the owner
 
-**Status:** tentative (the owner agrees with the direction below; the matter is not settled).
+**Status:** tentative (the owner agrees with the direction below; the matter is not settled). Confirmed on design-concerns (better: the playbook; decision: blend, 2026-10-02): under parked review each open concern reaches the owner with the brief of the role of its kind and the manager's recommendation; under deferred review that role sits on the panel in place of the general reviewer (amends D21's panel line-up); the never-to-the-panel list stays.
 
 **The owner's idea.**
 - No review made alone any more: AI roles modelled on the article's roles (p.9-50) guide the owner's decisions.
