@@ -18,7 +18,7 @@ The target workflow page (https://claude.ai/artifact/13X8rzF9KsfekmeSs1w5rM, sna
 
 ## T1. AI roles that advise, and one manager that reviews for the owner
 
-**Status:** tentative (the owner agrees with the direction below; the matter is not settled).
+**Status:** tentative (the owner agrees with the direction below; the matter is not settled). Confirmed on design-concerns (better: the playbook; decision: blend, 2026-10-02): under parked review each open concern reaches the owner with the brief of the role of its kind and the manager's recommendation; under deferred review that role sits on the panel in place of the general reviewer (amends D21's panel line-up); the never-to-the-panel list stays.
 
 **The owner's idea.**
 - No review made alone any more: AI roles modelled on the article's roles (p.9-50) guide the owner's decisions.
@@ -131,6 +131,7 @@ The framework already keeps the hook log both ways: committed in `evidence/` and
 - **Accepted** by the owner's merge after the gate (a) briefs of T1 (Product, Architect).
 - **The template:** the plugin's `intent-template` by default, overridable per project; a Product role reviews a change to it and the owner approves (T1).
 - **Examples and references:** a section in the intent where the owner puts examples of what is wanted; `mock/` stays the slot for screens (T2 asks whether the roles read them). The `intent-template` skill fixes "exactly this shape", so the section is a change to the plugin's template, not only to one intent.
+- **The mock (design-mock, 2026-10-02: better the playbook, decision blend).** Added, nothing replaced: when a change touches a screen, the interview asks "Do you have a mock or example screens?", and `spec.md` gets one line in its Acceptance section, "Mock: mock/<file>" or "Mock: none, screens follow the UX conventions" (the spec template's Acceptance already asks for "the screenshot or mock to match for UI"; the new part is the fixed `Mock:` line and its explicit "none"). The owner makes a mock in Claude Design when wanted; a missing mock never blocks. Considered and not chosen: making the article's front-end flow (p.12-13: the product owner mocks the design in Claude Design and exports it) a rule, a required mock for every screen change. References such as a competitor's screens go in Examples/References; the build matches the owner's mock, never those screens.
 
 **Crosswalk rows it touches:** setup-home, plan-idea, design-mock.
 
