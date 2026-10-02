@@ -60,6 +60,10 @@ import json, os, subprocess, sys
 from pathlib import Path
 
 argv = sys.argv[1:]
+sandbox = os.environ.get("FAKE_SANDBOX")
+if sandbox:  # issue #91: Claude Code's sandbox confines the session's whole process tree
+    current = os.environ.get("PYTHONPATH")
+    os.environ["PYTHONPATH"] = sandbox + (os.pathsep + current if current else "")
 if os.environ.get("FAKE_CLAUDE_MODE") == "idle":  # a session that gives up at once
     print("Ignoring 4 permissions.allow entries: this workspace has not been trusted",
           file=sys.stderr)
@@ -865,3 +869,134 @@ def test_under_deferred_review_the_panel_closes_the_concern_and_the_pr_says_so(c
     assert text.startswith("**Decisions taken for you (1)**")
     assert "[concern] Rounding half-even vs half-up" in text
     assert "0 open / 1 closed" in text  # the concern reads as closed in the bullets
+
+
+# --- issue #91: the gate's commands run after the session, outside its sandbox (0.3.0) ---------
+# What Claude Code's sandbox does under ``Read(**/.env*)``: a ``.env*`` file at any depth cannot
+# be opened by any process the session starts (change 0001's design run of 2026-10-02 on the
+# framework repository: ``78 failed, 943 passed, 272 errors``, each a ``Permission denied`` on
+# ``tests/fixtures/sample-python-project/.env``). The stand-in is a ``sitecustomize`` module
+# every Python process of the session's tree imports through ``PYTHONPATH``; the fake claude
+# sets that variable for its own subprocesses when ``FAKE_SANDBOX`` names the folder, so the
+# denial holds inside the session and nowhere else - the asymmetry the runner's step relies on.
+FAKE_SANDBOX_SITECUSTOMIZE = """
+import builtins, io, os
+
+_open = builtins.open
+
+
+def _denying_open(file, *args, **kwargs):
+    if not isinstance(file, int) and os.path.basename(os.fsdecode(file)).startswith(".env"):
+        raise PermissionError(13, "Permission denied", os.fsdecode(file))
+    return _open(file, *args, **kwargs)
+
+
+builtins.open = _denying_open
+io.open = _denying_open
+"""
+# A project whose test suite reads a nested .env: a fixture folder copied by a test, as this
+# repository's own suite copies tests/fixtures/sample-python-project/.
+NESTED_ENV = "SAMPLE_SETTING=fixture\n"
+TEST_READING_THE_NESTED_ENV = (
+    "import shutil\n"
+    "from pathlib import Path\n"
+    "\n"
+    'FIXTURES = Path(__file__).parent / "fixtures"\n'
+    "\n"
+    "\n"
+    "def test_the_fixture_folder_copies_with_its_env(tmp_path):\n"
+    '    shutil.copytree(FIXTURES, tmp_path / "fixtures")\n'
+    '    assert (tmp_path / "fixtures" / ".env").read_text(encoding="utf-8").startswith("S")\n'
+)
+
+
+def project_whose_tests_read_a_nested_env(root: Path) -> None:
+    """Commit the fixture folder and the test on main (the base the design branch starts from)."""
+    (root / "tests" / "fixtures").mkdir()
+    (root / "tests" / "fixtures" / ".env").write_text(NESTED_ENV, encoding="utf-8", newline="\n")
+    (root / "tests" / "test_env_fixture.py").write_text(
+        TEST_READING_THE_NESTED_ENV, encoding="utf-8", newline="\n"
+    )
+    git(root, "add", ".")
+    git(root, "commit", "-q", "-m", "tests: a fixture folder with a .env")
+    git(root, "push", "-q", "origin", "main")
+
+
+def fake_sandbox(tmp_path: Path) -> Path:
+    folder = tmp_path / "sandbox"
+    folder.mkdir()
+    (folder / "sitecustomize.py").write_text(
+        FAKE_SANDBOX_SITECUSTOMIZE, encoding="utf-8", newline="\n"
+    )
+    return folder
+
+
+def test_the_fake_sandbox_denies_the_project_s_test_target_as_the_real_one_did(checkout, tmp_path):
+    """The stand-in bites the way the live run's sandbox did: the project's own test target,
+    run under it, fails on the nested .env with EACCES; run outside it, the target is green."""
+    root, _bare = checkout
+    project_whose_tests_read_a_nested_env(root)
+    env = {**os.environ, "PYTHONPATH": str(fake_sandbox(tmp_path))}
+    inside = subprocess.run(
+        [sys.executable, "-m", "pytest", "-q"], cwd=root, capture_output=True, text=True, env=env
+    )
+    assert inside.returncode == 1, inside.stdout + inside.stderr
+    assert "Permission denied" in inside.stdout and ".env" in inside.stdout
+    outside = subprocess.run(
+        [sys.executable, "-m", "pytest", "-q"], cwd=root, capture_output=True, text=True
+    )
+    assert outside.returncode == 0, outside.stdout + outside.stderr
+
+
+def test_the_gate_s_commands_run_after_the_session_outside_its_sandbox(checkout, tmp_path):
+    """Issue #91 (0.3.0, choice 133): the session's gate defers the ``commands`` check and the
+    runner runs it after the session, outside the sandbox, on the tree the session left. A
+    project whose tests read a nested .env therefore passes gate (b) in CI; before the fix the
+    in-session check parked it on ``Permission denied``, as change 0001's design run did."""
+    root, bare = checkout
+    project_whose_tests_read_a_nested_env(root)
+    proc, out, _calls = run_phase_job(
+        root, tmp_path, "ok", step_env={"FAKE_SANDBOX": str(fake_sandbox(tmp_path))}
+    )
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert out["result"] == "wait" and out["label"] == "sdlc:b-ready", out
+    assert out["commands"] == {**out["commands"], "ran": True, "ran_by": "runner", "ok": True}
+    gate_file = json.loads(remote_file(bare, "sdlc/0001/b", f"{CHANGE}/evidence/gate-b.json"))
+    assert gate_file["result"] == "wait" and gate_file["label"] == "sdlc:b-ready"
+    commands = next(ch for ch in gate_file["checks"] if ch["name"] == "commands")
+    assert commands["ok"] is True and commands["details"]["ran_by"] == "runner"
+    assert "deferred" not in commands["details"]
+    assert {n: r["exit_code"] for n, r in commands["details"]["runs"].items()} == {
+        "build": 0,
+        "test": 0,
+        "lint": 0,
+    }
+    assert "Permission denied" not in commands["details"]["runs"]["test"]["output"]
+    assert "parked_reason: null" in remote_file(bare, "sdlc/0001/b", f"{CHANGE}/status.yaml")
+
+
+def test_a_target_red_after_the_session_parks_the_change_on_the_remote(checkout, tmp_path):
+    """The deferred check keeps the gate's teeth: a red target, found by the runner after the
+    session, parks the change - the record, status.yaml and the PR's label say so."""
+    root, bare = checkout
+    proc, out, calls = run_phase_job(
+        root,
+        tmp_path,
+        "ok",
+        step_env={"SAMPLE_FAIL": "1"},  # the fixture's flag-gated failure
+    )
+    assert proc.returncode == 0, proc.stdout + proc.stderr  # a park is a queue item, not red CI
+    assert out["result"] == "park" and out["label"] == "sdlc:needs-human", out
+    assert out["commands"] == {**out["commands"], "ran": True, "ran_by": "runner", "ok": False}
+    assert out["dispatched"] is None
+    gate_file = json.loads(remote_file(bare, "sdlc/0001/b", f"{CHANGE}/evidence/gate-b.json"))
+    assert gate_file["result"] == "park" and gate_file["label"] == "sdlc:needs-human"
+    commands = next(ch for ch in gate_file["checks"] if ch["name"] == "commands")
+    assert commands["ok"] is False and "test (exit 1)" in commands["reason"]
+    assert commands["details"]["ran_by"] == "runner"
+    assert "SAMPLE_FAIL=1" in commands["details"]["runs"]["test"]["output"]
+    assert "**commands**" in gate_file["what_i_need"]
+    status = remote_file(bare, "sdlc/0001/b", f"{CHANGE}/status.yaml")
+    assert "result: parked" in status and "commands: not green" in status
+    edit = [c for c in calls if c[:2] == ["pr", "edit"]]
+    assert edit and "sdlc:needs-human" in " ".join(edit[-1])

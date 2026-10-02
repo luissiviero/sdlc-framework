@@ -62,11 +62,19 @@ What one run does, in order:
 5. composes and runs the bounded headless call — the pinned plugin through ``--plugin-dir``,
    the CI settings file through ``--settings`` (bare mode reads no settings by itself),
    ``--permission-prompts none``, ``--max-turns`` / ``--max-budget-usd`` from ``sdlc.yaml``,
-   ``--output-format json`` — with exactly one credential in the environment;
+   ``--output-format json`` — with exactly one credential in the environment, and with
+   ``SDLC_GATE_COMMANDS=runner`` in it, so the gate the session runs leaves the project's
+   build, test and lint to step 6b instead of running them inside Claude Code's sandbox;
 6. stores the JSON result as ``changes/<id>-<slug>/evidence/claude-<phase>.json``, records
    ``total_cost_usd`` with ``gate/cli.py record-spend`` and commits the run record on the
    work branch (the model's session pushed before the spend was known), and validates the
    findings file after a review pass;
+6b. **runs the gate's ``commands`` check** the session deferred (``gate/cli.py
+   run-commands``; issue #91, 0.3.0): build, test and lint on the working tree the session
+   left, outside the sandbox, where a nested ``.env*`` the deny rules cover is readable
+   again; the gate record and ``status.yaml`` are rewritten with the result, so a red target
+   parks the change as the in-session check did, and the commit of step 6 carries them. A
+   record without the deferred mark (a by-hand gate ran the targets itself) is left alone;
 7. opens or updates the phase's pull request with ``pr/cli.py upsert`` (idempotent: an
    existing PR only has its body and its gate label refreshed), so a parked run is a queue
    item even when the model's session never reached that step. The upsert's own JSON says
@@ -105,6 +113,7 @@ from pr.github import next_page_url  # noqa: E402, F401 - re-exported, moved the
 from ci import auth as auth_mod  # noqa: E402
 from ci import fix_requests, project_setup  # noqa: E402
 from gate import artifacts as art  # noqa: E402
+from gate import checks as gate_checks  # noqa: E402
 from gate import diff as gate_diff  # noqa: E402
 from gate import limits  # noqa: E402
 from hooks._common import (  # noqa: E402
@@ -1126,6 +1135,72 @@ def invoke(argv: list[str], root: Path, env: dict[str, str], timeout: int) -> tu
     return data, proc.stdout, proc.stderr, proc.returncode
 
 
+# --- the gate's commands check, after the session (issue #91, 0.3.0) ------------------------------
+# The model runs ``gate/cli.py check`` through its Bash tool, so until 0.3.0 the project's
+# build, test and lint ran inside Claude Code's sandbox, where ``Read(**/.env*)`` makes a
+# nested ``.env*`` unreadable: change 0001's design run on the framework repository failed
+# its own suite on ``tests/fixtures/sample-python-project/.env`` (78 failed, 272 errors,
+# every one ``Permission denied``). The runner now marks the session's environment, the
+# gate inside the session records the check as deferred, and the runner runs the targets
+# here, after the session and outside the sandbox, on the working tree the session left;
+# the gate record keeps its shape and a red target parks the change as before. Renaming the
+# fixture (the rule matches at any depth) and narrowing the deny rule (decision 6) were not
+# chosen (PROGRESS choice 133).
+def session_env(env: dict[str, str]) -> dict[str, str]:
+    """The model's session's environment: ``env`` plus the mark that leaves the gate's
+    ``commands`` check to the runner (``gate.checks.COMMANDS_RUNNER_ENV``)."""
+    return {**env, gate_checks.COMMANDS_RUNNER_ENV: gate_checks.RUN_BY_RUNNER}
+
+
+def commands_timeout_seconds(config: dict[str, Any]) -> int:
+    """How long the runner waits for ``run-commands``: the three targets at the gate's own
+    per-command timeout (``sdlc.yaml: gate.command_timeout``), plus the grace the session
+    gets, so the gate's timeout fires before the runner's and the record says which target."""
+    per_command = _int_or(
+        _gate_settings(config).get("command_timeout"), gate_checks.DEFAULT_COMMAND_TIMEOUT
+    )
+    return 3 * per_command + GRACE_MINUTES * 60
+
+
+def run_gate_commands(
+    plugin_dir: Path, root: Path, change_id: str, phase: str, config: dict[str, Any]
+) -> dict[str, Any]:
+    """``gate/cli.py run-commands``: the deferred check, run and recorded by the gate's own
+    code in the runner's process. ``ok`` false means the step itself could not run."""
+    cli = plugin_dir / "plugin" / "gate" / "cli.py"
+    return _cli_call(
+        cli,
+        ["run-commands", "--root", str(root), "--id", change_id, "--phase", phase],
+        timeout=commands_timeout_seconds(config),
+    )
+
+
+def commands_summary(call: dict[str, Any]) -> dict[str, Any]:
+    """What the run's JSON says about the step: ``{"ran": false}`` when the session's gate ran
+    the targets itself, else who ran them and the check's verdict."""
+    output = call.get("output") if isinstance(call.get("output"), dict) else {}
+    if not output.get("ran"):
+        return {"ran": False}
+    check = next(
+        (
+            ch
+            for ch in output.get("checks", [])
+            if isinstance(ch, dict) and ch.get("name") == "commands"
+        ),
+        {},
+    )
+    return {
+        "ran": True,
+        "ran_by": gate_checks.RUN_BY_RUNNER,
+        "ok": bool(check.get("ok")),
+        "reason": check.get("reason"),
+        "result": output.get("result"),
+    }
+
+
+COMMANDS_STEP_FAILED = "the gate's commands check could not run after the session: {reason}"
+
+
 # --- spend, evidence, hand-over ------------------------------------------------------------------
 def run_record_paths(change_dir: Path, phase: str) -> tuple[Path, Path]:
     """(result, stderr) paths for this run of the phase: ``claude-<phase>.json`` for the
@@ -1437,7 +1512,7 @@ def run_phase(args, env: dict[str, str]) -> int:
     refs_before = change_refs(root, change_id)
     pre_head = gate_diff.head_sha(root) if gate_diff.is_repo(root) else None
     panel_before = len(panel_ledger.load_ledger(change_dir, gate_phase))
-    data, raw, err, code = invoke(argv, root, env, run_timeout_seconds(config))
+    data, raw, err, code = invoke(argv, root, session_env(env), run_timeout_seconds(config))
     result_path, stderr_path = run_record_paths(change_dir, phase)
     store_result(change_dir, phase, data, raw, result_path)
     store_stderr(change_dir, phase, err, stderr_path)
@@ -1495,6 +1570,19 @@ def run_phase(args, env: dict[str, str]) -> int:
         )
         report_failed_run(root, change_dir, phase, data, raw, err, why)
         return EXIT_FAILED
+    # 0.3.0 (issue #91): the commands check the session's gate deferred runs here, after the
+    # session and outside its sandbox; the gate record and status.yaml are rewritten with the
+    # real result before anything reads the verdict, and a red target parks the change
+    commands_call = run_gate_commands(plugin_dir, root, change_id, gate_phase, config)
+    if not commands_call.get("ok"):
+        # the record still says "deferred": passing it on would hand the next phase a gate
+        # whose targets never ran, so the run fails and says why
+        why = COMMANDS_STEP_FAILED.format(reason=commands_call.get("reason") or "no output")
+        report_failed_run(root, change_dir, phase, data, raw, err, why)
+        return EXIT_FAILED
+    commands = commands_summary(commands_call)
+    if commands["ran"]:
+        result = read_gate(change_dir, gate_phase) or result
     # 0.2.30: a run that added panel decisions shows which models it used; the devil's
     # advocate must have run on sdlc.yaml's panel_advocate_model, or the change parks
     models = panel_models(change_dir, gate_phase, panel_before, data, config, env)
@@ -1510,8 +1598,16 @@ def run_phase(args, env: dict[str, str]) -> int:
     # leave with the job (the fifth live run of 2026-09-21 pushed run-b.json with spend_usd
     # null): commit it on the work branch before the PR is brought up to date
     record = (
-        commit_run_record(plugin_dir, root, change_id, phase, gate_phase, fix_branch)
-        if cost is not None
+        commit_run_record(
+            plugin_dir,
+            root,
+            change_id,
+            phase,
+            gate_phase,
+            fix_branch,
+            commands_ran=commands["ran"],
+        )  # fmt: skip
+        if cost is not None or commands["ran"]
         else None
     )
     # the PR is where the owner meets the change, parked or not: open it here rather than
@@ -1526,6 +1622,7 @@ def run_phase(args, env: dict[str, str]) -> int:
             "owner_labels": labels_applied,
             "owner_fields": owner,
             "fix_requests": requests_collected,
+            "commands": commands,
             "run_record": record,
             "result": result.get("result"),
             "label": result.get("label"),
@@ -1581,16 +1678,22 @@ def commit_run_record(
     phase: str,
     branch_phase: str | None = None,
     branch: str | None = None,
+    commands_ran: bool = False,
 ) -> dict[str, Any]:
     """Commit and push the change folder after ``record_spend``: ``run-<phase>.json`` now
     carries the spend, and nothing commits after the model's session but the run itself.
     ``commit-phase`` is a no-op commit when nothing changed, so a by-hand run pays nothing.
-    A fix round names the change's phase and the PR's head (``branch``)."""
+    A fix round names the change's phase and the PR's head (``branch``). With
+    ``commands_ran`` the commit also carries the gate record and status.yaml the runner's
+    commands step rewrote (issue #91), and its message says so."""
     branch_phase = branch_phase or BRANCH_PHASE.get(phase, phase)
+    message = f"run({phase}): spend recorded"
+    if commands_ran:
+        message += "; gate commands run after the session"
     return _cli_call(
         plugin_dir / "plugin" / "state" / "cli.py",
         ["commit-phase", "--root", str(root), "--id", change_id, "--phase", branch_phase,
-         "--message", f"run({phase}): spend recorded", "--push",
+         "--message", message, "--push",
          *(["--branch", branch] if branch else [])],
     )  # fmt: skip
 

@@ -1135,6 +1135,92 @@ def test_full_run_stores_the_transcript_records_spend_and_hands_over(
     assert run_file["spend_usd"] == 0.42 and run_file["phase"] == "c"
 
 
+def test_the_session_s_environment_leaves_the_gate_s_commands_to_the_runner():
+    """Issue #91 (0.3.0): the mark rides into the model's session with the credential, and
+    the runner waits for the three targets at the gate's own per-command timeout."""
+    from gate import checks
+
+    env = {"PATH": "/bin", **KEY_ENV}
+    marked = run_phase.session_env(env)
+    assert marked == {**env, checks.COMMANDS_RUNNER_ENV: checks.RUN_BY_RUNNER}
+    assert env == {"PATH": "/bin", **KEY_ENV}  # the runner's own environment is not marked
+    assert auth.credential_env(marked)[checks.COMMANDS_RUNNER_ENV] == checks.RUN_BY_RUNNER
+    assert run_phase.commands_timeout_seconds({}) == 3 * checks.DEFAULT_COMMAND_TIMEOUT + 300
+    assert run_phase.commands_timeout_seconds({"gate": {"command_timeout": 60}}) == 480
+    assert run_phase.commands_timeout_seconds({"gate": {"command_timeout": "x"}}) == 2700 + 300
+
+
+def test_the_commands_summary_reads_the_step_s_json():
+    assert run_phase.commands_summary({"ok": True, "output": {"ran": False}}) == {"ran": False}
+    assert run_phase.commands_summary({"ok": False, "reason": "boom"}) == {"ran": False}
+    call = {
+        "ok": True,
+        "output": {
+            "ran": True,
+            "result": "park",
+            "checks": [
+                {"name": "artifacts", "ok": True, "reason": "ok"},
+                {"name": "commands", "ok": False, "reason": "not green: test (exit 1)"},
+            ],
+        },
+    }
+    assert run_phase.commands_summary(call) == {
+        "ran": True,
+        "ran_by": "runner",
+        "ok": False,
+        "reason": "not green: test (exit 1)",
+        "result": "park",
+    }
+
+
+def test_a_run_whose_commands_step_cannot_run_is_an_infrastructure_failure(
+    project, fake_claude, monkeypatch, capsys
+):
+    """The session's gate said continue with the commands deferred; the step itself fails
+    (here: the gate CLI cannot read the record it just wrote). Passing the record on would
+    hand the next phase a gate whose targets never ran, so the run exits 1 and says why."""
+    root, change = project
+    pr_route(monkeypatch)
+    set_state(change, "b", gate_phase="b", gate_result="passed")
+    deferred = {
+        **GATE_FILE,
+        "phase": "c",
+        "checks": [{"name": "commands", "ok": True, "reason": "deferred", "need": "",
+                    "details": {"deferred": True}}],
+    }  # fmt: skip
+    write(change / "evidence" / "gate-c.json", json.dumps(deferred))
+    monkeypatch.setenv("FAKE_CLAUDE_RESULT", json.dumps(FAKE_RESULT))
+    monkeypatch.setattr(
+        run_phase, "run_gate_commands", lambda *a, **k: {"ok": False, "reason": "gate: boom"}
+    )
+    env = dict(os.environ, **KEY_ENV, GITHUB_TOKEN=FAKE_TOKEN)
+    args = Args(
+        root=str(root), phase="c", dry_run=False, no_dispatch=True, claude=fake_cli(fake_claude)
+    )
+    assert run_phase.run_phase(args, env) == run_phase.EXIT_FAILED
+    err = capsys.readouterr().err
+    assert "the gate's commands check could not run after the session: gate: boom" in err
+
+
+def test_a_record_without_the_deferred_mark_leaves_the_commands_step_idle(
+    project, fake_claude, monkeypatch, capsys
+):
+    """A gate run by hand ran the targets itself: the step reports ``ran: false`` and the run
+    goes on as before (the full-run test above is this case; here its JSON says so)."""
+    root, change = project
+    pr_route(monkeypatch)
+    set_state(change, "b", gate_phase="b", gate_result="passed")
+    write(change / "evidence" / "gate-c.json", json.dumps({**GATE_FILE, "phase": "c"}))
+    monkeypatch.setenv("FAKE_CLAUDE_RESULT", json.dumps(FAKE_RESULT))
+    env = dict(os.environ, **KEY_ENV, GITHUB_TOKEN=FAKE_TOKEN)
+    args = Args(
+        root=str(root), phase="c", dry_run=False, no_dispatch=True, claude=fake_cli(fake_claude)
+    )
+    assert run_phase.run_phase(args, env) == run_phase.EXIT_OK
+    out = json.loads(capsys.readouterr().out)
+    assert out["commands"] == {"ran": False} and out["result"] == "continue"
+
+
 PANEL_DECISION_SCRIPT = """
 import json, pathlib
 path = pathlib.Path("changes/0001-percent-helper/evidence/decisions-c.json")

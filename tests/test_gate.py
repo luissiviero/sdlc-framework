@@ -512,6 +512,151 @@ def test_gate_parks_on_a_failing_test(project, monkeypatch):
     assert cmd.details["runs"]["build"]["exit_code"] == 0
 
 
+# --- issue #91 (0.3.0): the commands check deferred to the runner ------------------------------
+def _commands_check(result):
+    return next(ch for ch in result.checks if ch.name == "commands")
+
+
+def test_a_ci_session_s_gate_defers_the_commands_and_runs_no_target(project, monkeypatch):
+    """With the runner's mark in the environment the gate records the ``commands`` check as
+    deferred and runs nothing: a target that would fail (``SAMPLE_FAIL=1``) leaves the gate at
+    ``continue``, and the record says the check is waiting for the runner."""
+    root, change = project
+    verdict(root, "c")
+    monkeypatch.setenv("SAMPLE_FAIL", "1")
+    monkeypatch.setenv(checks.COMMANDS_RUNNER_ENV, checks.RUN_BY_RUNNER)
+    result = gate.run_gate(root, "0001", "c")
+    assert result.result == "continue", result.reason
+    cmd = _commands_check(result)
+    assert cmd.ok is True and cmd.details == {"deferred": True}
+    assert cmd.reason == checks.COMMANDS_DEFERRED_REASON and "not yet run" in cmd.reason
+    recorded = json.loads((change / "evidence" / "gate-c.json").read_text(encoding="utf-8"))
+    assert gate.deferred_commands(recorded) is True
+    # any other value of the variable, or none, runs the targets as before
+    monkeypatch.setenv(checks.COMMANDS_RUNNER_ENV, "session")
+    result = gate.run_gate(root, "0001", "c", dry_run=True)
+    assert result.result == "park" and "test (exit 1)" in _commands_check(result).reason
+
+
+def test_the_runner_s_commands_step_parks_a_red_target_and_keeps_the_record_s_shape(
+    project, monkeypatch
+):
+    root, change = project
+    verdict(root, "c")
+    monkeypatch.setenv(checks.COMMANDS_RUNNER_ENV, checks.RUN_BY_RUNNER)
+    deferred = gate.run_gate(root, "0001", "c")
+    before = json.loads((change / "evidence" / "gate-c.json").read_text(encoding="utf-8"))
+    monkeypatch.setenv("SAMPLE_FAIL", "1")
+    # the runner's own environment may carry the mark too: the step runs the targets anyway
+    result = gate.run_deferred_commands(root, "0001", "c")
+    assert result is not None and result.result == "park" and result.label == "sdlc:needs-human"
+    cmd = _commands_check(result)
+    assert cmd.ok is False and "test (exit 1)" in cmd.reason
+    assert cmd.details["ran_by"] == "runner" and "deferred" not in cmd.details
+    assert "SAMPLE_FAIL=1" in cmd.details["runs"]["test"]["output"]
+    assert cmd.details["runs"]["build"]["exit_code"] == 0
+    assert cmd.need.startswith("Make the failing target pass")
+    # the shape: the same checks in the same order, the session's head and time
+    assert [ch.name for ch in result.checks] == [ch.name for ch in deferred.checks]
+    assert result.head == before["head"] and result.at == before["at"]
+    after = json.loads((change / "evidence" / "gate-c.json").read_text(encoding="utf-8"))
+    assert after["result"] == "park" and after["reason"].startswith("commands: not green")
+    assert "**commands**" in after["what_i_need"] and "--id 0001 --phase c" in after["what_i_need"]
+    assert [ch["name"] for ch in after["checks"]] == [ch["name"] for ch in before["checks"]]
+    st = status_mod.read_status(change)
+    assert st.gate.result == "parked" and st.parked_reason.startswith("commands: not green")
+
+
+@pytest.mark.parametrize(
+    ("fixture", "phase", "expected", "label"),
+    [("project", "c", "continue", None), ("design_project", "b", "wait", "sdlc:b-ready")],
+)
+def test_a_green_target_after_the_session_leaves_the_session_s_verdict_standing(
+    request, monkeypatch, fixture, phase, expected, label
+):
+    root, change = request.getfixturevalue(fixture)
+    verdict(root, phase)
+    monkeypatch.setenv(checks.COMMANDS_RUNNER_ENV, checks.RUN_BY_RUNNER)
+    assert gate.run_gate(root, "0001", phase).result == expected
+    result = gate.run_deferred_commands(root, "0001", phase)
+    assert result is not None and result.result == expected and result.label == label
+    cmd = _commands_check(result)
+    assert cmd.ok is True and cmd.reason == "build, test and lint exit 0"
+    assert cmd.details["ran_by"] == "runner" and "deferred" not in cmd.details
+    assert {n: r["exit_code"] for n, r in cmd.details["runs"].items()} == {
+        "build": 0,
+        "test": 0,
+        "lint": 0,
+    }
+    recorded = json.loads((change / "evidence" / f"gate-{phase}.json").read_text(encoding="utf-8"))
+    assert recorded["result"] == expected and gate.deferred_commands(recorded) is False
+    st = status_mod.read_status(change)
+    assert st.gate.phase == phase and st.gate.result == "passed" and st.parked_reason is None
+
+
+def test_the_runner_s_commands_step_leaves_a_record_without_the_deferred_mark_alone(project):
+    """A gate run by hand (no mark) ran the targets itself: the step has nothing to do, and
+    the record and status.yaml are byte-for-byte what the gate wrote."""
+    root, change = project
+    verdict(root, "c")
+    gate.run_gate(root, "0001", "c")
+    record = change / "evidence" / "gate-c.json"
+    before = record.read_bytes(), (change / "status.yaml").read_bytes()
+    assert gate.run_deferred_commands(root, "0001", "c") is None
+    assert (record.read_bytes(), (change / "status.yaml").read_bytes()) == before
+    record.unlink()
+    assert gate.run_deferred_commands(root, "0001", "c") is None  # no record: nothing to run
+    assert not record.exists()
+    with pytest.raises(gate.GateError, match="no change folder"):
+        gate.run_deferred_commands(root, "0009", "c")
+
+
+def test_the_run_commands_cli_reports_the_step_and_exits_0_either_way(project, monkeypatch):
+    root, change = project
+    verdict(root, "c")
+    monkeypatch.setenv(checks.COMMANDS_RUNNER_ENV, checks.RUN_BY_RUNNER)
+    run_py(str(GATE_CLI), "check", "--root", str(root), "--id", "0001", "--phase", "c", cwd=root)
+    env = {k: v for k, v in os.environ.items() if k != checks.COMMANDS_RUNNER_ENV}
+    proc = run_py(
+        str(GATE_CLI), "run-commands", "--root", str(root), "--id", "0001", "--phase", "c",
+        cwd=root, env={**env, "SAMPLE_FAIL": "1"},
+    )  # fmt: skip
+    assert proc.returncode == 0, proc.stderr
+    out = json.loads(proc.stdout)
+    assert out["ran"] is True and out["result"] == "park" and out["schema_version"] == 1
+    assert "## What I need from you" in proc.stderr and "**commands**" in proc.stderr
+    # a second call finds the targets already run
+    proc = run_py(
+        str(GATE_CLI), "run-commands", "--root", str(root), "--id", "0001", "--phase", "c",
+        cwd=root, env=env,
+    )  # fmt: skip
+    assert proc.returncode == 0 and json.loads(proc.stdout) == {
+        "ran": False,
+        "reason": "the gate record carries no deferred commands check",
+    }
+    proc = run_py(
+        str(GATE_CLI), "run-commands", "--root", str(root), "--id", "0001", "--phase", "b",
+        cwd=root, env=env,
+    )  # fmt: skip
+    assert proc.returncode == 0 and json.loads(proc.stdout)["ran"] is False  # no gate-b.json
+    (change / "evidence" / "gate-c.json").write_text("not json", encoding="utf-8")
+    proc = run_py(
+        str(GATE_CLI), "run-commands", "--root", str(root), "--id", "0001", "--phase", "c",
+        cwd=root, env=env,
+    )  # fmt: skip
+    assert proc.returncode == 2 and "gate-c.json unreadable" in proc.stderr
+
+
+def test_a_gate_record_round_trips_through_from_dict(project):
+    root, change = project
+    verdict(root, "c")
+    result = gate.run_gate(root, "0001", "c")
+    data = json.loads((change / "evidence" / "gate-c.json").read_text(encoding="utf-8"))
+    again = gate.GateResult.from_dict(data)
+    assert again.as_dict() == data == result.as_dict()
+    assert gate.GateResult.from_dict({}).result == "park"  # an empty record fails closed
+
+
 def test_gate_parks_when_the_diff_touches_settings_json(project):
     root, change = project
     verdict(root, "c")
