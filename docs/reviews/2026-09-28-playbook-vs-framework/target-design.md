@@ -211,12 +211,12 @@ The framework already keeps the hook log both ways: committed in `evidence/` and
 
 **The owner's note (saved on the crosswalk page).** "Blend: merge to accept and close to reject stay as today (D25). Added (T7): when I close any intent PR, my last comment on it is saved as the change's reason (status.yaml abandoned_reason) instead of the fixed 'pull request N closed without a merge'; with no comment the fixed text stays. Incidents keep today's rule (my comment becomes the dismissal reason). Already recorded: T1's Product and Architect briefs and the manager's recommendation before gate (a). No settled decision reopened."
 
-**Today.** Closing a pull request of gates (a) to (e) without a merge abandons the change (`sdlc-abandon.yml`, D25). Every closed change gets the same fixed text as its reason, "pull request N closed without a merge", in `status.yaml: abandoned_reason` on its branches. Only an incident closed at its triage records the owner's words: the last comment by a repository member becomes the finding's dismissal reason, in a dismissal PR the owner merges (`plugin/detect/cli.py dismiss`). The article records a rejection as "the closing review" (p.11).
+**Today.** Closing a pull request of gates (a) to (e) without a merge abandons the change (`sdlc-abandon.yml`, D25). Every closed change gets the same fixed text as its reason, "pull request N closed without a merge", in `status.yaml: abandoned_reason` on its branches. Only an incident change records the owner's words: closing any of its pull requests dismisses its finding, with the last comment by a repository member (owner, member or collaborator; bots and the automation identity skipped) as the reason, in a dismissal PR the owner merges (`plugin/detect/cli.py dismiss`). The article records a rejection as "the closing review" (p.11).
 
 **Direction discussed (tentative).** Added; nothing replaced.
 - **When the owner closes an intent PR**, the owner's last comment on it, if there is one, becomes `abandoned_reason`; with no comment the fixed text stays. Example: the intent PR for "Export as CSV" is closed with "Not needed, the PDF export covers it", and that sentence is what the change's record says months later.
 - **The comment is optional**, so it costs the owner nothing when there is nothing to say.
-- **Incidents keep today's rule:** the comment becomes the dismissal reason as well.
+- **Incidents keep today's rule:** the comment also stays the dismissal reason.
 - **Accepting stays the merge** (D25), and T1's Product and Architect briefs with the manager's recommendation come before it.
 
 **Crosswalk rows it touches:** plan-accept.
