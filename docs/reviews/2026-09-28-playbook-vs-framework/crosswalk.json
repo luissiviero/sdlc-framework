@@ -513,7 +513,14 @@
           "T2",
           "T3"
         ],
-        "text": "An Examples/References section in the intent (T3); mock/ stays the slot for screens. Open: whether the roles read the examples (T2)."
+        "text": "An Examples/References section in the intent (T3); mock/ stays the slot for screens. Your choice on this row (2026-10-02): when a change touches a screen, the interview asks for a mock or example screens, and spec.md names the mock or says none; a missing mock never blocks. Open: whether the roles read the examples (T2)."
+      },
+      "decision": {
+        "better": "playbook",
+        "decision": "blend",
+        "note": "Blend, added and nothing replaced: I make a mock in Claude Design when I want one; it goes in mock/; build and test use it as today. Added: when a change touches a screen, the interview asks 'Do you have a mock or example screens?' (T3 Examples/References), and spec.md gets one line, 'Mock: mock/<file>' or 'Mock: none, screens follow the UX conventions'. A missing mock never blocks. Considered and not chosen: the playbook-style required mock for screen changes. References such as a competitor's screens go in the intent's Examples/References; the build matches my mock, never their screens.",
+        "saved": "2026-10-02",
+        "status": "tentative"
       }
     },
     {
@@ -1892,6 +1899,6 @@
       "fidelity": 2
     },
     "weightsSaved": "2026-09-29",
-    "rowsWithADecision": 10
+    "rowsWithADecision": 11
   }
 }
