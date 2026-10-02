@@ -215,7 +215,7 @@ run(gate, "check", "--root", ".", "--id", change_id, "--phase", phase, ok=(0, 3,
 word = "design" if phase == "b" else "build"
 run(state, "commit-phase", "--root", ".", "--id", change_id, "--phase", phase,
     "--message", f"{word}(0001): gate ({phase}) evidence", "--push")
-# the real CLI reports every model the session and its sub-agents used (NOTES section 24):
+# the real CLI reports every model the session and its sub-agents used (NOTES section 25):
 # here the session's and, as in the sample's change 0002, the advocate's opus
 print(json.dumps({"type": "result", "is_error": False, "result": f"{word} done",
                   "total_cost_usd": 0.5, "num_turns": 3,

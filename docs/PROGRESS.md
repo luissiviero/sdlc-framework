@@ -4,15 +4,55 @@
 - **Why.** The owner's playbook-versus-framework study parks the crosswalk row x-roles on T1 (AI roles that write briefs, `docs/reviews/2026-09-28-playbook-vs-framework/target-design.md`), and T1 builds the roles on the panel's pattern. Reading the panel's code for it showed that the two blind verdicts were asked for, not enforced. The owner asked to close that with what exists before any role is built; no decision is reopened (decision 21 is the same panel).
 - **Seven items, a test each.** (1) `panel/cli.py record` refuses an item whose reviewer or advocate file is missing or has no `## Verdict`, before a panel call is counted. (2) The ledger carries the two verdicts from those files, not the conciliator's restatement, and the item's number (`item_n`). (3) The gate's `panel` check requires both files in HEAD for every line with an `item_n`. (4) The `panel_blind` hook (PreToolUse on Read and Grep) refuses a Read of one blind verdict while the other is missing, and a Grep that would search it; a Grep over another folder or limited to code passes (the owner chose this over blocking every whole-repository Grep, logging only, or detecting afterwards). (5) A CI run that added panel decisions parks when no model in its `modelUsage` is `panel_advocate_model`. (6) A session already on that model is a warning in the PR summary, not a park (the owner's choice). (7) "Decisions taken for you" names the run's models.
 - **Changed from the plan shown to the owner.** No new eval case for the hook: case 0005 already proves `hooks.json` loads, and a deterministic test proves the registration. The blindness rule applies to every caller, not only the advocate, so it needs no agent name and covers a reversed order.
-- **Two gaps closed in the same PR, at the owner's request.** (a) The hook also refuses a Bash or PowerShell command that names a one-sided verdict or the panel folder (the main session could otherwise `cat` the reviewer's verdict into the advocate's prompt). (b) The advocate's model is proved per call, in CI and by hand: when the advocate writes its verdict, the hook reads that sub-agent's own transcript and writes `<phase>-<n>-advocate.model.json` (who wrote it, on which model); `record` and the gate require it to name the devil's advocate on `panel_advocate_model`, and only the hook may write it. The transcript layout is observed on 2.1.287, not documented: NOTES §24 asks the next CI panel run (2.1.278) to confirm it, and a different layout parks the item rather than passing it. The run-level check stays as a second net.
+- **Two gaps closed in the same PR, at the owner's request.** (a) The hook also refuses a Bash or PowerShell command that names a one-sided verdict or the panel folder (the main session could otherwise `cat` the reviewer's verdict into the advocate's prompt). (b) The advocate's model is proved per call, in CI and by hand: when the advocate writes its verdict, the hook reads that sub-agent's own transcript and writes `<phase>-<n>-advocate.model.json` (who wrote it, on which model); `record` and the gate require it to name the devil's advocate on `panel_advocate_model`, and only the hook may write it. The transcript layout is observed on 2.1.287, not documented: NOTES §25 asks the next CI panel run (2.1.278) to confirm it, and a different layout parks the item rather than passing it. The run-level check stays as a second net.
 - **What stays open.** A shell command that reads a verdict without naming it or the panel folder (`grep -r half-up .`); a shell command forging a `.model.json`. Both are recorded in the hook's docstring.
-- Docs: NOTES §24 (the hook-input quote, the `modelUsage` evidence from the sample, the hook's cost); OPERATING_MODEL §3 and the decision-21 row; README's hook list.
+- Docs: NOTES §25 (the hook-input quote, the `modelUsage` evidence from the sample, the hook's cost); OPERATING_MODEL §3 and the decision-21 row; README's hook list.
 
 ## Guardrail lines for the owner (after `v0.2.30` exists; this session cannot edit these files)
 | Link | Row | What is there now | What it must become |
 |---|---|---|---|
 | [sdlc.yaml](../sdlc.yaml) | line 98 | `  version: 0.2.29` | `  version: 0.2.30` |
 | the sample, `sdlc.yaml` | line 77 | `  version: 0.2.29` | `  version: 0.2.30` |
+
+---
+
+# Change 0001 (2026-10-02, between sessions 14 and 15): the framework's first change through its own front door; one framework defect found; docs only, no bump
+
+## Summary
+- The owner asked what is left before 1.0.0, then chose R1's step 2 (the docs split) as the first roadmap work that cannot disturb the sample's live check. It became change **0001**, the first framework change through `changes/<id>-<slug>/`. The id came from `plugin/state/cli.py new-change`; the table discussed before it called this change "0002", because no other change existed yet.
+- **The intent**: PR #86, merged by the owner. The draft's five open questions were settled before the merge:
+  - `stale_after`: per file, the environment the facts were read under plus a 90-day backstop.
+  - PROGRESS: one file per existing top-level heading.
+  - Timing: the intent and the design run now; the design PR held until after `v1.0.0`.
+  - `docs/BUILD_GUIDE.md`: out of scope.
+  - The old paths: permanent stubs.
+- **The design run** (run 36993453237, NOTES §24) wrote `spec.md` and `plan.md` on `sdlc/0001/b`. The adversarial reviewer answered `continue` (non-routine). Gate (b) parked on two checks:
+  - `open_concerns`: two guesses the spec flagged, the file-name slugs and the index order.
+  - `commands`: the test command failed.
+  The design PR was refused by the repository setting. The owner enabled the setting, and PR #90 was opened from the branch with `sdlc:needs-human`.
+- **The defect** behind the test failure is the framework's, not the design's. The gate runs the project's commands inside Claude Code's sandbox, where `Read(**/.env*)` makes a nested `.env*` unreadable. Any project whose tests read one (a `.env.example`, a fixture) fails the `commands` check. It is filed as issue #91.
+- No file under `plugin/` or `template/` changed. No tag, no pin. The sample is untouched.
+
+## The owner's choices (2026-10-02)
+133. **The 1.0.0 road is not widened for issue #91.** It is recorded as the one known gap of 1.0.0 (ROADMAP, HANDOFF session 15) and fixed in **1.0.1**, the first change after the `v1.0.0` tag. The fix: the runner runs the gate's commands after the model's session, with a test.
+    - Renaming this repository's fixture was not chosen: it hides the defect, and it may not work, because the rule matches at any depth.
+    - Narrowing the deny rule was not chosen: it loosens decision 6.
+    - Putting the fix in the 1.0.0 PR was not chosen: that PR takes the gaps the live detection finds.
+134. **Change 0001's two flagged concerns are closed by rules, not names.**
+    - Number-only file names: `docs/notes/<N>.md` and `docs/decisions/<N>.md`. Every citation already uses the number, so a renamed heading never leaves a stale file name.
+    - PROGRESS records as `docs/progress/session-<N>[-sitting-<M>].md`, read from each heading, and `docs/progress/2026-09-28-workflow-comparison-study.md` for the one record that is not a session.
+    - Each index in number order, one line per file, with the original heading as its description. Grouping by topic waits for R1's step 1 (tags).
+    - These go to PR #90 as one "Request changes" review after 1.0.1, so the fix round re-runs gate (b) on the fixed framework (HANDOFF session 16).
+
+## Read from the runs
+| Read | Result |
+|---|---|
+| The sample's `CI` points | Eight at 08:30 UTC (NOTES §24); the sixteenth point is still 2026-10-10. |
+| The design run 36993453237 | Phase (b) in 10 turns, 2.47 USD, no permission denial. 8 of gate (b)'s 10 checks passed (`design_scope`, `guardrails`, `risk_list`, `adversarial_review` among them). `open_concerns` and `commands` failed. `pr create` was refused. |
+| The test command inside the gate | `78 failed, 943 passed, 272 errors`, every one a `Permission denied` on `tests/fixtures/sample-python-project/.env` (issue #91). |
+
+## Checks (this documentation PR)
+In the "Checks" section of the PR body.
 
 ---
 

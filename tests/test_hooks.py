@@ -1688,7 +1688,7 @@ def test_panel_blind_allows_shell_commands_outside_a_window(panel_project):
 
 def _transcripts(tmp_path, agent_id, models, nested=True):
     """A session transcript and, as Claude Code 2.1.287 keeps it, the sub-agent's own one
-    beside it (NOTES section 24); ``nested=False`` puts the sub-agent's file where the hook
+    beside it (NOTES section 25); ``nested=False`` puts the sub-agent's file where the hook
     input's ``transcript_path`` points."""
     session = tmp_path / "sessions" / "s1.jsonl"
     session.parent.mkdir(parents=True)

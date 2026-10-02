@@ -175,7 +175,7 @@ def write_targets(tool_input: dict) -> list[str]:
 def subagent_transcript(payload: dict) -> Path | None:
     """The calling sub-agent's own transcript. Claude Code keeps it beside the session's,
     ``<session>/subagents/agent-<agent_id>.jsonl`` next to ``<session>.jsonl`` (observed on
-    Claude Code 2.1.287, NOTES section 24; not documented), and the hook input carries
+    Claude Code 2.1.287, NOTES section 25; not documented), and the hook input carries
     ``agent_id`` and ``transcript_path`` (documented). Either path may be the one given."""
     agent_id = str(payload.get("agent_id") or "").strip()
     transcript = str(payload.get("transcript_path") or "").strip()
