@@ -946,7 +946,7 @@
   // (hooks, CI jobs, scripts). Kinds: d = a human decision every change needs (Setup: once per project),
   // c = a human decision only in some cases, w = work, r = the same act as another row (not counted).
   var MAP = {
-    "setup-adopt": { pb: [["P", "w", "Adopt the plays in the p.8 order"], ["P", "w", "Prompt each step by hand at first"]],
+    "setup-adopt": { pb: [["P", "d", "Organization picks which stages to transform first"], ["P", "w", "Adopt the plays in the p.8 order"], ["P", "w", "Prompt each step by hand at first"]],
       fw: [["P", "w", "Owner runs /sdlc-init once"], ["P", "w", "Owner adds the Claude secret"], ["A", "w", "Then each merge fires the next phase"]] },
     "setup-home": { pb: [["P", "w", "Technical team member stands up the intent home"], ["P", "d", "A lead signs off the template skill"]],
       fw: [["P", "w", "Owner runs /sdlc-init"], ["C", "w", "/sdlc-init writes the change-0000 PR"], ["P", "d", "Owner merges the 0000 PR"]] },

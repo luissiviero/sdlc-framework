@@ -39,6 +39,11 @@
         "pb": [
           [
             "P",
+            "d",
+            "Organization picks which stages to transform first"
+          ],
+          [
+            "P",
             "w",
             "Adopt the plays in the p.8 order"
           ],

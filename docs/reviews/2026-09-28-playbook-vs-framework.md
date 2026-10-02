@@ -91,7 +91,7 @@ Two rows ask a question that reopens a settled decision, and say so: "What start
 
 | Stage | Playbook | Framework |
 |---|---|---|
-| Setup (once per project) | 2 | 2 |
+| Setup (once per project) | 3 | 2 |
 | Plan | 1 | 1 |
 | Design | 2 | 2 |
 | Build | 3 + 1 | 1 + 1 |
@@ -99,9 +99,9 @@ Two rows ask a question that reopens a settled decision, and say so: "What start
 | Deploy | 2 | 1 + 1 |
 | Maintain | 3 | 1 + 1 |
 | Across stages | 0 + 1 | 0 + 1 |
-| **Total** | **13 + 2** | **8 + 7** |
+| **Total** | **14 + 2** | **8 + 7** |
 
-(The second number counts decisions that happen only in some cases.) Both workflows have 15 decision points. The playbook makes 13 of them on every change; the framework makes 8, and its other 7 are conditional: the Full profile's two approval labels, the release label on a declared production, and the exception labels (accept-risk, unlock-tests, reset-iterations, the Go for an unrehearsed rollback). The largest gaps are Build (the plan approval folded into gate (b) by D2; no counterpart to the policy owner's sign-off on skills) and Maintain (the scan triage folded into gate (f)). The chart counts decision points, not people: the playbook spreads them over about ten roles, and the framework gives all of them to one owner. That collapse is the one structural difference behind many rows ("Who the humans are").
+(The second number counts decisions that happen only in some cases.) The playbook has 16 decision points and the framework 15. The playbook makes 14 of them on every change (Setup's three once per project; the third, added by the owner's call of 2026-10-02, is the organization's choice of which stages to transform first, p.7); the framework makes 8 (Setup's two once per project), and its other 7 are conditional: the Full profile's two approval labels, the release label on a declared production, and the exception labels (accept-risk, unlock-tests, reset-iterations, the Go for an unrehearsed rollback). The largest gaps are Build (the plan approval folded into gate (b) by D2; no counterpart to the policy owner's sign-off on skills) and Maintain (the scan triage folded into gate (f)). The chart counts decision points, not people: the playbook spreads them over about ten roles, and the framework gives all of them to one owner. That collapse is the one structural difference behind many rows ("Who the humans are").
 
 ## 7. Open
 
@@ -126,7 +126,7 @@ Two rows ask a question that reopens a settled decision, and say so: "What start
   - plan-ticket: `fwSrc` should add `plugin/commands/sdlc-maintain.md`, which writes the detect-path intent; no workflow triggers on issues.
   - plan-accept: a rejection reason is recorded only for incidents (the last member comment becomes the dismissal reason); for an idea or a ticket, `status.yaml: abandoned_reason` holds a fixed string ("pull request N closed without a merge") on the change's branches.
   - x-roles: `OPERATING_MODEL.md` §2 names seven roles (not the policy owners, the platform engineer or the security lead); separation of duties is rebuilt from three things (writer ≠ judge, the automation identity, branch rules), not only owner against automation identity; the policy-owner role is empty rather than held (the five policy skills say "no owner source yet").
-  - setup-adopt, left for the owner: whether the playbook side should count "the organization picks which plays to adopt first" as a once-per-project decision, which would move the playbook's total in section 6 from 13 + 2 to 14 + 2.
+  - setup-adopt (a counting call, not a row decision; the row stays open), made by the owner on 2026-10-02: the playbook side counts "the organization picks which stages to transform first" (p.7) as a once-per-project decision, which moves the playbook's total in section 6 from 13 + 2 to 14 + 2.
   - The page header now names plugin 0.2.29 (904f4ec); 0.2.28 changes none of the older rows, and 0.2.29 changes only how a park message names its failed step.
 - **Where the decisions go.** The owner confirms changes only once the whole study is done (said on 2026-09-30). Until then every change the owner wants is collected, tentative, in `target-design.md`, and nothing goes to `docs/ROADMAP.md`. After the study, a confirmed change to the framework becomes a candidate in `docs/ROADMAP.md` with its proposal; one that changes a settled decision is proposed there, never edited into `docs/DECISIONS.md` directly. The table in section 6 and `crosswalk.json` are updated in the same pull request as any change that moves a row.
 - **The two issues found by the crosswalk** (#71, #72) and the three found by the audit (#66, #67, #68) are open.
