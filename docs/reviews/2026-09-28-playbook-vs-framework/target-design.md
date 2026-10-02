@@ -98,7 +98,7 @@ The framework already keeps the hook log both ways: committed in `evidence/` and
 
 ## T2. The interview: how the manager and the roles question the owner
 
-**Status:** tentative.
+**Status:** tentative. The owner's choice on the crosswalk row plan-idea (better: the playbook; decision: blend, 2026-10-02) takes this entry as the way an idea is interviewed: `/sdlc-plan` stays the entry point, and the role-fed interview led by the manager (T1) is added to it, nothing replaced.
 
 **The owner's question.** How is the interview conducted: are the manager and the roles involved, and how is the prompt built for the model that receives it? The owner wants to explain the idea, show examples of what is wanted, and be asked questions that build the intent, the plan and the rest.
 
@@ -119,7 +119,7 @@ The framework already keeps the hook log both ways: committed in `evidence/` and
 
 ## T3. The intent home: in the repository, written from anywhere, with examples
 
-**Status:** tentative. Recorded from the owner's choice on the crosswalk row setup-home (better: the framework; decision: blend).
+**Status:** tentative. Recorded from the owner's choice on the crosswalk row setup-home (better: the framework; decision: blend). Confirmed on plan-idea (better: the playbook; decision: blend, 2026-10-02): the claude.ai route is a second way to write an intent, added beside `/sdlc-plan`, and it must arrive as a PR on `sdlc/<id>/a`.
 
 **The owner's note (saved on the crosswalk page).** "Blend: ideas stay in changes/<id>-<slug>/, set up by /sdlc-init (current). I write intents from Claude Code or from claude.ai / phone. I accept by merging, after a Product role's brief (T1). Template: the plugin default, overridable per project (to verify); a Product role reviews it and I approve (T1). The intent gets an Examples/References section (T2)."
 
@@ -132,7 +132,7 @@ The framework already keeps the hook log both ways: committed in `evidence/` and
 
 **Crosswalk rows it touches:** setup-home, plan-idea, design-mock.
 
-**Settled decisions it would reopen or amend:** none known, provided the claude.ai route opens the intent PR on `sdlc/<id>/a` like `/sdlc-plan` and never commits to `main`: a claude.ai GitHub connector acts as the owner's account, the ruleset's only bypass actor (D4), so a direct commit would skip gate (a) (D10). The Product brief inherits T1's D11 question. To check when the plan-idea row is decided.
+**Settled decisions it would reopen or amend:** none known, provided the claude.ai route opens the intent PR on `sdlc/<id>/a` like `/sdlc-plan` and never commits to `main`: a claude.ai GitHub connector acts as the owner's account, the ruleset's only bypass actor (D4), so a direct commit would skip gate (a) (D10). The Product brief inherits T1's D11 question. Checked on plan-idea (2026-10-02): the owner requires the PR route, so none.
 
 **Open.**
 - Whether a project can override `intent-template` for `/sdlc-plan` (to verify); today only `/sdlc-design` documents a project override, for the five policy skills (`plugin/commands/sdlc-design.md`), `/sdlc-plan` names the plugin skill (`plugin/commands/sdlc-plan.md`), and gate (a) checks the plugin's `INTENT_SECTIONS` and header fields (`plugin/gate/artifacts.py`), so an override could add a section such as Examples/References but not drop or rename one.

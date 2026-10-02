@@ -300,6 +300,13 @@
           "T3"
         ],
         "text": "The manager leads the interview: each role proposes the questions of its field, the manager merges them and asks a few at a time, and after the draft each role reviews the intent (T2). An intent can also be written from claude.ai / phone (T3). Open: how an intent written in claude.ai gets its change id, which plugin/state allocates (T3)."
+      },
+      "decision": {
+        "better": "playbook",
+        "decision": "blend",
+        "note": "Blend, added and nothing replaced: /sdlc-plan in Claude Code stays; a second route writes the intent from claude.ai on a computer or phone (T3), arriving as a PR on its branch, never a commit to main; the interview is fed by the roles and led by the manager (T1, T2). Correction and commit stay as today (they match the article). Open (T3): how a claude.ai intent gets its change id.",
+        "saved": "2026-10-02",
+        "status": "tentative"
       }
     },
     {
@@ -1857,6 +1864,6 @@
       "fidelity": 2
     },
     "weightsSaved": "2026-09-29",
-    "rowsWithADecision": 5
+    "rowsWithADecision": 6
   }
 }
