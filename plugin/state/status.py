@@ -87,6 +87,15 @@ class Status:
     # current branch's name", so a checkout of any ``sdlc/<id>/c`` — a local branch with any
     # content — inherited that change's label (the 1.0.0 readiness review, group B).
     build_pr: int | None = None
+    # The release record (0.3.1, issue #66): when, which merge commit and which build PR the
+    # release workflow released for this change. Written by ``release/cli.py`` on the
+    # change's work branch ``sdlc/<id>/c`` after ``deploy.command`` exited 0 (the default
+    # branch is never written), so a later pull request from that branch carries it and the
+    # release workflow, which reads the merged copy and the branch's copy, releases nothing
+    # a second time; the ``labeled`` event and a dispatch read the branch's copy too.
+    released_at: str | None = None
+    released_sha: str | None = None
+    released_pr: int | None = None
     created_at: str = field(default_factory=_now)
     updated_at: str = field(default_factory=_now)
     schema_version: int = SCHEMA_VERSION
@@ -119,12 +128,14 @@ class Status:
             or self.iterations < 0
         ):
             raise ValueError("iterations must be a non-negative integer")
-        if self.build_pr is not None and (
-            isinstance(self.build_pr, bool)
-            or not isinstance(self.build_pr, int)
-            or self.build_pr < 1
-        ):
-            raise ValueError("build_pr must be a positive integer (a pull request number) or null")
+        for name in ("build_pr", "released_pr"):
+            number = getattr(self, name)
+            if number is not None and (
+                isinstance(number, bool) or not isinstance(number, int) or number < 1
+            ):
+                raise ValueError(
+                    f"{name} must be a positive integer (a pull request number) or null"
+                )
         if (
             isinstance(self.panel_calls, bool)
             or not isinstance(self.panel_calls, int)
@@ -151,6 +162,8 @@ class Status:
             "iterations_reset_at",
             "tests_unlocked_by",
             "abandoned_reason",
+            "released_at",
+            "released_sha",
         ):
             value = getattr(self, name)
             if value is not None and (not isinstance(value, str) or not value.strip()):
@@ -273,6 +286,19 @@ class Status:
         self.panel_calls += 1
         self.touch()
         return self.panel_calls
+
+    def record_release(self, pr_number: int, merge_sha: str | None) -> None:
+        """The release workflow released this change (issue #66, 0.3.1): the record a later
+        merge of the same change is refused on."""
+        self.released_at = _now()
+        self.released_sha = (merge_sha or "").strip() or None
+        self.released_pr = int(pr_number)
+        self.touch()
+        self.validate()
+
+    @property
+    def released(self) -> bool:
+        return bool(self.released_at or self.released_pr)
 
     def accept_risk(self, item: str) -> None:
         """The owner accepts a risk-list hit for this change (recorded, never inferred)."""

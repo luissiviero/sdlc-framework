@@ -328,9 +328,10 @@ def test_release_workflow_runs_the_release_cli_on_merge_and_label():
     assert on["pull_request"]["types"] == ["closed", "labeled"]
     assert on["pull_request"]["branches"] == ["main"]  # /sdlc-init rewrites it
     assert on["workflow_dispatch"]["inputs"]["pr_number"]["required"] is True
-    # read-only: the release runs the project's own deploy.command, it writes nothing
-    assert set(data["permissions"].values()) == {"read"}
-    assert {"contents", "pull-requests"} <= set(data["permissions"])
+    # read-only for the release job: the project's own toolchain and deploy.command run there
+    # and must not be able to push (the review of the 0.3.1 diff, finding 4)
+    assert data["permissions"] == {"contents": "read", "pull-requests": "read", "issues": "read"}
+    assert "permissions" not in data["jobs"]["release"]
     assert data["concurrency"]["group"] == (
         "sdlc-release-${{ github.event.pull_request.number || inputs.pr_number }}"
     )
@@ -346,6 +347,28 @@ def test_release_workflow_runs_the_release_cli_on_merge_and_label():
     # I7: the documented `python -m build && twine upload dist/*` needs the project's own
     # tools on a bare runner, installed right before the release step
     assert runs[-2] == "python framework/plugin/ci/project_setup.py --root ."
+    assert job["steps"][-1]["id"] == "release"  # its outputs feed the record job
+    assert job["outputs"] == {
+        "released": "${{ steps.release.outputs.released }}",
+        "change_id": "${{ steps.release.outputs.change_id }}",
+        "pin": "${{ steps.pin.outputs.ref }}",
+    }
+    # the record job (0.3.1, issue #66): the only write token, the framework's step only
+    record = data["jobs"]["record"]
+    assert record["needs"] == "release"
+    assert record["if"] == "${{ needs.release.outputs.released == 'true' }}"
+    assert record["permissions"] == {"contents": "write"}
+    assert [step.get("uses", step.get("run", "")).split(" ")[0] for step in record["steps"]] == [
+        "actions/checkout@v5",
+        "actions/checkout@v5",
+        "python",
+    ]
+    assert record["steps"][1]["with"]["ref"] == "${{ needs.release.outputs.pin }}"
+    assert record["steps"][-1]["run"] == (
+        'python framework/plugin/release/cli.py record --root . --id "$CHANGE_ID" '
+        '--pr "$PR_NUMBER" --merge-sha "$MERGE_SHA"'
+    )
+    assert "project_setup" not in str(record) and "deploy" not in str(record["steps"])
     assert job["steps"][-2]["name"] == (
         "Install the project's own toolchain (sdlc.yaml: commands.setup)"
     )

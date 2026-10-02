@@ -429,6 +429,99 @@ def test_limits_wall_clock_and_budget(tmp_path):
     assert limits.check_limits(ctx).ok
 
 
+def test_the_budget_binds_the_change_s_running_total_not_the_last_session(tmp_path):
+    """Issue #71 (0.3.1): ``max_budget_usd`` is documented per change, but the cap was compared
+    with the last session's figure, which ``start-run`` reset and ``record-spend`` overwrote:
+    sample change 0002 cost almost four times a cap of 5 with no park. Two sessions below the
+    cap whose sum exceeds it now park."""
+    ctx = _ctx(tmp_path, {"gate": {"max_budget_usd": 2}})
+    write(ctx.evidence_dir / "run-c.json", json.dumps({"spend_usd": 1.5}))
+    ledger = limits.record_spend_entry(ctx.evidence_dir, "c", "claude-c.json", 1.5)
+    assert ledger["total_usd"] == 1.5 and limits.check_limits(ctx).ok
+    ledger = limits.record_spend_entry(ctx.evidence_dir, "c", "claude-c-2.json", 1.5)
+    assert ledger["total_usd"] == 3.0
+    res = limits.check_limits(ctx)
+    assert not res.ok and res.details["stop"]
+    assert res.reason == (
+        "budget exceeded: 3.00 USD spent on the change (this run 1.50), budget 2.00 USD"
+    )
+    assert res.details["spend_usd"] == 1.5 and res.details["spend_usd_total"] == 3.0
+    assert res.details["spend_entries"] == 2
+    # the cap is the change's, not the phase's: a (b) session's spend counts at (c)
+    assert limits.read_spend_ledger(_ctx(tmp_path, phase="b").evidence_dir)["total_usd"] == 3.0
+    # without a ledger (a change recorded before 0.3.1) the run record's figure still binds
+    (ctx.evidence_dir / limits.SPEND_FILE).unlink()
+    assert limits.check_limits(ctx).ok
+    write(ctx.evidence_dir / "run-c.json", json.dumps({"spend_usd": 2.5}))
+    res = limits.check_limits(ctx)
+    assert not res.ok and res.details["spend_usd_total"] == 2.5
+    assert res.details["spend_entries"] == 0
+
+
+def test_the_review_pass_and_each_fix_round_are_their_own_spend_entries(tmp_path):
+    """Issue #71: the review pass's cost went to run-e.json and the (e) session's start-run
+    wiped it; a fix round's cost replaced the phase's. Each is an entry now, keyed by the
+    stored result, so a repeated record of one session replaces its entry, never doubles it."""
+    ctx = _ctx(tmp_path, {"gate": {"max_budget_usd": 5}}, phase="e")
+    evidence = ctx.evidence_dir
+    limits.record_spend_entry(evidence, "d", "claude-d.json", 1.0, at="2026-10-02T10:00:00Z")
+    limits.record_spend_entry(evidence, "review", "claude-review.json", 0.65)
+    limits.record_spend_entry(evidence, "e", "claude-e.json", 2.04)
+    limits.record_spend_entry(evidence, "fix", "claude-fix.json", 0.9)
+    limits.record_spend_entry(evidence, "fix", "claude-fix-2.json", 0.5)
+    ledger = limits.read_spend_ledger(evidence)
+    assert [(e["run"], e["source"]) for e in ledger["entries"]] == [
+        ("d", "claude-d.json"),
+        ("review", "claude-review.json"),
+        ("e", "claude-e.json"),
+        ("fix", "claude-fix.json"),
+        ("fix", "claude-fix-2.json"),
+    ]
+    assert ledger["total_usd"] == 5.09 and ledger["entries"][0]["at"] == "2026-10-02T10:00:00Z"
+    assert not limits.check_limits(ctx).ok
+    # the same session recorded again (a repeated step): its entry is replaced
+    ledger = limits.record_spend_entry(evidence, "fix", "claude-fix-2.json", 0.4)
+    assert len(ledger["entries"]) == 5 and ledger["total_usd"] == 4.99
+    assert limits.check_limits(ctx).ok
+    stored = json.loads((evidence / "spend.json").read_text(encoding="utf-8"))
+    assert stored["total_usd"] == 4.99 and len(stored["entries"]) == 5
+    # a ledger that is not a ledger counts nothing (the run record still does)
+    write(evidence / "spend.json", "{not json")
+    assert limits.read_spend_ledger(evidence) == {"total_usd": 0.0, "entries": []}
+
+
+def test_a_spend_figure_is_finite_and_non_negative_and_zero_counts(tmp_path):
+    """The review of the 0.3.1 diff, finding 5: Python's json reads ``NaN``, and one NaN
+    entry made the total NaN, which no cap ever exceeds; a negative entry lowered it; a
+    ``0.0`` entry was dropped. The ledger refuses the first two and keeps the third."""
+    ctx = _ctx(tmp_path, {"gate": {"max_budget_usd": 0.01}})
+    evidence = ctx.evidence_dir
+    for bad in (float("nan"), float("inf"), -1.0, "x"):
+        with pytest.raises(ValueError, match="finite, non-negative"):
+            limits.record_spend_entry(evidence, "c", "bad.json", bad)
+    assert limits.record_spend_entry(evidence, "c", "zero.json", 0.0)["entries"][0]["usd"] == 0.0
+    limits.record_spend_entry(evidence, "c", "real.json", 0.02)
+    # entries written behind the ledger's back are judged the same way on the read
+    stored = json.loads((evidence / "spend.json").read_text(encoding="utf-8"))
+    stored["entries"] += [
+        {"run": "c", "source": "nan.json", "usd": float("nan")},
+        {"run": "c", "source": "neg.json", "usd": -5},
+        {"run": "c", "source": "inf.json", "usd": float("inf")},
+    ]
+    write(evidence / "spend.json", json.dumps(stored))  # json writes NaN and Infinity
+    ledger = limits.read_spend_ledger(evidence)
+    assert [e["source"] for e in ledger["entries"]] == ["zero.json", "real.json"]
+    assert ledger["total_usd"] == 0.02
+    res = limits.check_limits(ctx)
+    assert not res.ok and "budget exceeded: 0.02 USD" in res.reason
+    status_mod.write_status(ctx.change_dir, ctx.status)  # the CLI reads the change's status
+    proc = run_py(
+        str(GATE_CLI), "record-spend", "--root", str(tmp_path), "--id", "0001", "--phase", "c",
+        "--usd", "nan", cwd=tmp_path,
+    )  # fmt: skip
+    assert proc.returncode == 2 and "finite, non-negative" in proc.stderr
+
+
 # --- the gate against the fixture --------------------------------------------------------------
 def _names(result, ok):
     return sorted(ch.name for ch in result.checks if ch.ok is ok)
@@ -1136,7 +1229,19 @@ def test_gate_cli_exit_codes_and_run_files(project):
         "0.4",
         cwd=root,
     )
-    assert proc.returncode == 0 and json.loads(proc.stdout)["spend_usd"] == 0.4
+    recorded = json.loads(proc.stdout)
+    assert proc.returncode == 0 and recorded["spend_usd"] == 0.4
+    assert recorded["spend_usd_total"] == 0.4 and recorded["spend_entries"] == 1  # issue #71
+    proc = run_py(
+        str(GATE_CLI), "record-spend", "--root", str(root), "--id", "0001", "--phase", "e",
+        "--usd", "0.65", "--run", "review", "--source", "claude-review.json", cwd=root,
+    )  # fmt: skip
+    assert proc.returncode == 0 and json.loads(proc.stdout)["spend_usd_total"] == 1.05
+    ledger = json.loads((change / "evidence" / "spend.json").read_text(encoding="utf-8"))
+    assert [(e["run"], e["source"], e["usd"]) for e in ledger["entries"]] == [
+        ("c", None, 0.4),
+        ("review", "claude-review.json", 0.65),
+    ]
     proc = run_py(
         str(GATE_CLI), "check", "--root", str(root), "--id", "0001", "--phase", "c", cwd=root
     )

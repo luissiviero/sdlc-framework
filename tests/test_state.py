@@ -141,6 +141,9 @@ def test_status_round_trip_and_schema(tmp_path):
         "runbook_authorized_by",  # phase (f), decision 14 (plugin 0.2.19)
         "abandoned_reason",  # decision 25
         "build_pr",  # 0.2.27: the build PR the release approval is read from
+        "released_at",  # 0.3.1 (issue #66): the release record, written on the work branch
+        "released_sha",
+        "released_pr",
         "created_at",
         "updated_at",
         "schema_version",
