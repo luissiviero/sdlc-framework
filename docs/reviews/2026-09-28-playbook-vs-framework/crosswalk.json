@@ -1,5 +1,5 @@
 {
-  "about": "The workflow crosswalk: every decision point of the AI-native SDLC playbook (the article, print pages of docs/reference/ai-native-sdlc-playbook.pdf) set against the sdlc framework (plugin 0.2.27, commit cf3f696); the row setup-adopt was added on 2026-09-30 against plugin 0.2.28, commit dd308ca. See ../2026-09-28-playbook-vs-framework.md. Re-checked on 2026-10-02 against plugin 0.2.29, commit 904f4ec: seven rows corrected for precision (setup-home, setup-gates, setup-merge, plan-idea, plan-ticket, plan-accept, x-roles); 0.2.28 and 0.2.29 change none of the others. Re-checked on 2026-10-02 against plugin 0.3.1 (8ec06b8): 0.2.30 changes none of the rows; 0.3.0 and 0.3.1 change seven (design-trigger, test-verify, deploy-approve, deploy-release, x-headless, x-limits, x-measure) and add a sentence to x-sandbox and x-audit.",
+  "about": "The workflow crosswalk: every decision point of the AI-native SDLC playbook (the article, print pages of docs/reference/ai-native-sdlc-playbook.pdf) set against the sdlc framework (plugin 0.2.27, commit cf3f696); the row setup-adopt was added on 2026-09-30 against plugin 0.2.28, commit dd308ca. See ../2026-09-28-playbook-vs-framework.md. Re-checked on 2026-10-02 against plugin 0.2.29, commit 904f4ec: seven rows corrected for precision (setup-home, setup-gates, setup-merge, plan-idea, plan-ticket, plan-accept, x-roles); 0.2.28 and 0.2.29 change none of the others. Re-checked on 2026-10-02 against plugin 0.3.1 (8ec06b8): 0.2.30 changes none of the rows; 0.3.0 and 0.3.1 change seven (design-trigger, test-verify, deploy-approve, deploy-release, x-headless, x-limits, x-measure) and add a sentence to x-sandbox and x-audit. Re-checked on 2026-10-02 (third session) against main 8269d46, still plugin 0.3.1 with no plugin or template change since 8ec06b8: no row changed; build-plan-approve's framework text gained a precision (the class is in evidence only, who merged is GitHub's record only).",
   "seeded": "2026-09-28",
   "fields": {
     "id": "stable row id",
@@ -673,8 +673,8 @@
       "step": "Approving the plan",
       "pb": "Routine plans: the engineer. Higher-risk plans: a tech lead or architect. Committed as plan.md.",
       "pbSrc": "p.16-17",
-      "fw": "Approved with the spec at gate (b) by the owner's merge; no separate plan gate.",
-      "fwSrc": "docs/DECISIONS.md D2",
+      "fw": "Approved with the spec at gate (b) by the owner's merge; no separate plan gate. The gate (b) PR asks whether plan.md is implementable by someone who never saw the conversation; the adversarial reviewer's routine or non-routine class and its reasons are written in evidence/, not on the PR (a park on the iteration cap prints only the word 'non-routine'), and only lower the iteration cap; who merged is GitHub's record alone, nothing in status.yaml or evidence/ holds it.",
+      "fwSrc": "docs/DECISIONS.md D2, plugin/state/conventions.py HUMAN_GATES, plugin/pr/description.py STEP_23_CHECKLIST, plugin/gate/limits.py",
       "rel": "adapted",
       "why": "D2 option A (option C, a separate plan gate, was rejected)",
       "weigh": "One gate fewer per change. Revisit only if bad plans get through.",
@@ -698,7 +698,14 @@
         "refs": [
           "T1"
         ],
-        "text": "The plan gets its own verdict inside gate (b). A higher-risk plan (non-routine, or a risk-list hit) gets the Architect's full review, in the article's tech-lead place (p.14, p.17), and a 'Needs your close look' banner on the same PR: the same approval, no separate gate (design-go); today non-routine only lowers the iteration cap (D11, D21)."
+        "text": "Your choice on this row (2026-10-02): the plan gets its own verdict inside gate (b), the same approval, no separate gate (design-go). A higher-risk plan (non-routine, or a risk-list hit) gets the Architect's full review in the article's tech-lead place (p.14, p.17): it reads the files the plan names, answers the three questions with evidence and ends with go or fix first, quoted unchanged in the 'Needs your close look' banner (before T1, the reviewer's reasons and the risk hit). At the start of (c) the runner records who accepted the plan, when, under which class and whether the close look was shown. D2 option C is revisited only if first-pass merges or fix iterations worsen on non-routine plans."
+      },
+      "decision": {
+        "better": "both",
+        "decision": "blend",
+        "note": "Blend (T1), added and nothing replaced: I approve the plan in the same merge as the spec, with design-go's two verdicts (D2 option A and D18 unchanged; a separate plan gate, D2 option C, stays rejected); GitHub's merge record keeps who accepted (p.17; only I merge, D4). Added: (1) what a higher-risk plan gets (non-routine, or a risk-list hit): before T1, the 'Needs your close look' banner quotes the adversarial reviewer's classification reasons and the risk hit verbatim; with T1, the Architect's full review reads the code the plan's 'Files that change' names, answers the article's three questions with evidence (p.16 step 3) and ends with its own recommendation on the plan (go, or fix first), which the banner quotes unchanged, the brief one click away (T1: the manager's summary never replaces a brief); this is the article's tech lead or architect (p.14, p.17). (2) The record of acceptance: at the start of phase (c) the runner writes one line to status.yaml and the (c) evidence: plan accepted by <merge actor> on <date>, class routine or non-routine, close look shown or not, the risk items accepted; no act from me (the build workflow fires on the merged PR and the runner already reads it; the gate (a) and (e) merges are derived the same way). (3) The trigger to revisit D2 option C: only if the digest's first-pass merge share or fix iterations worsen on non-routine plans; which indicators to compute stays with x-measure. Considered and not chosen: a separate approval for higher-risk plans (D2 option C narrowed), because I would wait on myself; the Architect's recommendation parking the change (it would reopen D11's 'never parks' before T1's open question on a negative brief is settled).",
+        "saved": "2026-10-02",
+        "status": "tentative"
       }
     },
     {
@@ -1921,6 +1928,6 @@
       "fidelity": 2
     },
     "weightsSaved": "2026-09-29",
-    "rowsWithADecision": 14
+    "rowsWithADecision": 15
   }
 }
