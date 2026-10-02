@@ -606,6 +606,13 @@
           "T1"
         ],
         "text": "Product, Architect and Security & policy briefs; the manager gives two recommendations in the one PR, one for the spec and one for the plan; you approve both or reject one. Separate verdicts, not separate gates, so D2 can stay."
+      },
+      "decision": {
+        "better": "both",
+        "decision": "blend",
+        "note": "Blend (T1), added and nothing replaced: I stay the only approver and my merge of the spec + plan PR is the go to build; the plan stays approved with the spec at gate (b) (D2, D18 unchanged); GitHub's merge record keeps who accepted (p.17; only I merge, D4). Added: (1) when the adversarial reviewer classes the plan non-routine, or a risk-list item is hit (in the diff's file paths or the spec's Flagged concerns; that already parks for my sdlc:accept-risk), the gate (b) PR opens with 'Needs your close look' and the reasons; once T1 exists the Architect brief plays the article's tech lead (p.14, p.17); same approval, no separate gate. It needs no roles: the class and its reasons are already in evidence/ and today only lower the iteration cap, so D11's and D21's 'only' gains the banner (still nothing parks or notifies). (2) Two verdicts in the one PR, one on the spec (does it solve the intent) and one on the plan; I approve both or reject one, and a rejection is a 'Request changes' review whose comments /sdlc-fix applies (D22); with T1 the manager writes them from the Product, Architect and Security & policy briefs. Considered and not chosen: a separate approval for a higher-risk plan (D2's option C narrowed to higher-risk plans; the T1 draft's 'approves separately'), because I would wait on myself.",
+        "saved": "2026-10-02",
+        "status": "tentative"
       }
     },
     {
@@ -1906,6 +1913,6 @@
       "fidelity": 2
     },
     "weightsSaved": "2026-09-29",
-    "rowsWithADecision": 12
+    "rowsWithADecision": 13
   }
 }

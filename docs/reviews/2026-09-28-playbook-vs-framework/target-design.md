@@ -18,7 +18,7 @@ The target workflow page (https://claude.ai/artifact/13X8rzF9KsfekmeSs1w5rM, sna
 
 ## T1. AI roles that advise, and one manager that reviews for the owner
 
-**Status:** tentative (the owner agrees with the direction below; the matter is not settled). Confirmed on design-concerns (better: the playbook; decision: blend, 2026-10-02): under parked review each open concern reaches the owner with the brief of the role of its kind and the manager's recommendation; under deferred review that role sits on the panel in place of the general reviewer (amends D21's panel line-up); the never-to-the-panel list stays.
+**Status:** tentative (the owner agrees with the direction below; the matter is not settled). Confirmed on design-concerns (better: the playbook; decision: blend, 2026-10-02): under parked review each open concern reaches the owner with the brief of the role of its kind and the manager's recommendation; under deferred review that role sits on the panel in place of the general reviewer (amends D21's panel line-up); the never-to-the-panel list stays. Confirmed on design-go (better: both; decision: blend, 2026-10-02): the owner's merge of the gate (b) PR stays the go to build (D2 and D18 unchanged); added: a spec verdict and a plan verdict in the one PR, and a "Needs your close look" banner, with the reasons, when the plan is classed non-routine or a risk-list item is hit; the same approval, no separate one (see the approvals table).
 
 **The owner's idea.**
 - No review made alone any more: AI roles modelled on the article's roles (p.9-50) guide the owner's decisions.
@@ -53,14 +53,14 @@ The target workflow page (https://claude.ai/artifact/13X8rzF9KsfekmeSs1w5rM, sna
 |---|---|---|---|
 | (a) intent | Product (scope, success), Architect (feasibility) | accept, or the points to fix first, with the briefs linked | approves or sends corrections |
 | (b) spec + plan | Product (does the spec solve the intent), Architect (the plan), Security & policy (flagged concerns) | two recommendations in the one PR: one for the spec, one for the plan | approves both or rejects one |
-| (b), higher risk | the same, plus the Architect's full plan review | "needs your close look", with the reasons | approves separately, as the article's tech-lead step does (p.14, p.17) |
+| (b), higher risk: the plan classed non-routine, or a risk-list hit | the same, plus the Architect's full plan review, in the article's tech-lead place (p.14, p.17) | "needs your close look" at the top of the PR, with the reasons | the same approval, after a close look; no separate gate (design-go: a separate approval was considered and not chosen) |
 | (e) code | Code reviewer (today's REVIEW.md pass), Platform & release | merge or request changes, with the Important findings | approves; the merge runs on the owner's signal |
 | (f) incident | Operations, Security & policy (scans) | fix now, schedule or dismiss | triages |
 
-- Separate verdicts, not separate gates: a spec verdict and a plan verdict inside the one gate (b) PR bring back the article's split (p.14, p.17) without another wait, so D2 can stay.
-- Stricter only for risk: a separate, closer approval only for a higher-risk plan, the article's own rule; today "non-routine" only lowers the iteration cap (D11).
+- Separate verdicts, not separate gates: a spec verdict and a plan verdict inside the one gate (b) PR bring back the article's split (p.14, p.17) without another wait, so D2 can stay. The owner approves both or rejects one; a rejection is a "Request changes" review whose comments `/sdlc-fix` applies (D22).
+- A closer look only for risk, not a stricter gate (design-go, 2026-10-02): a higher-risk plan gets a marked close look in the same approval, not a separate one, because the owner holds both the product owner's and the tech lead's part and would wait on their own second approval. The signal exists today: the adversarial reviewer's `classification` and `classification_reasons` (`plugin/gate/checks.py`, `load_verdict`), which only lower the iteration cap (`plugin/gate/limits.py`, D11), and the risk-list check, which reads the committed diff's file paths (not their contents) and the spec's Flagged concerns, and parks for `sdlc:accept-risk`; once accepted, the item lives in `status.yaml: risk_accepted`, so the banner reads it from there. The banner needs no roles, so it can come before them.
 - Gate (a) gains the most: today it has no reviewing agent.
-- Settled decisions: D2 only if separate gates are wanted; D11 (what non-routine does); D18 (profiles); and the set above for acting in the owner's name.
+- Settled decisions: D2 and D18 stay (design-go: separate gates are not wanted); D11 and D21 keep their substance, since non-routine still never parks or notifies, but their wording that non-routine "only tightens the gate" / "only lowers the iteration cap" gains the banner; and the set above for acting in the owner's name.
 
 **How the roles and the manager communicate (tentative).** A sub-agent hands back only its final message; what it read and weighed is lost when it ends, and a CI runner is thrown away (the stored run result holds the final message and metadata, not the conversation, issue #72). So the roles and the manager talk through files, as the panel already does ("Each member writes exactly one file under `changes/<id>-<slug>/evidence/panel/`", `plugin/panel/prompts.py`) and as the adversarial reviewer's JSON verdict does for the gate:
 
