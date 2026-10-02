@@ -2,7 +2,7 @@
 
 ## Summary
 - The owner asked whether the framework could keep moving while the sample's sixteen-point live check runs to 2026-10-10, as if the check ran on a separate clone, and decided not to wait: what the judging run of 2026-10-11 can show (choice 136) is not worth a nine-day stop. This sitting is documentation only: no file under `plugin/` or `template/` changed, no tag, no pin, the sample untouched.
-- Read from the code (NOTES §25): the sample's workflows resolve the framework by the pin on the sample's own `main` (`ref=v0.2.29`), never by this repository's `main`; the judging run re-derives everything from the Actions API; the only state it reads across runs, the dismissal store and the open-incident scan, is clean. So this repository's `main` is free to move, and the sample is the only thing to freeze (choice 138).
+- Read from the code (NOTES §26): the sample's workflows resolve the framework by the pin on the sample's own `main` (`ref=v0.2.29`), never by this repository's `main`; the judging run re-derives everything from the Actions API; the only state it reads across runs, the dismissal store and the open-incident scan, is clean. So this repository's `main` is free to move, and the sample is the only thing to freeze (choice 138).
 - The road is re-ordered (choices 137 and 139): a **0.3.x line** between 0.2.29 and 1.0.0, with 1.0.0 still marking the detection read exactly as ROADMAP "How it is marked" says; issue #91 fixed first, in **0.3.0**; the pending work ordered in the table below, the workflow study as a parallel track. `HANDOFF.md` is rewritten for session 15; the brief it replaces is kept at `docs/handoffs/session-14-16-live-check-road.md`.
 - The question that opened the sitting, answered from the code: the upgrades from 0.2.23 to 0.2.29 during the window did not invalidate the check. The sixteen points are the sample's own `CI` runs, which no framework version touches; the judgment is computed once, on 2026-10-11, by the version pinned that day; every earlier run exited at "insufficient baseline". The upgrades ended on 2026-09-30, inside the baseline days, where an extra green run costs nothing; from 2026-10-03 the same act lands in the tail, where one red person-run files an unplanned incident.
 
@@ -46,6 +46,24 @@ Chained on the exit codes in the container, after the last edit: `python -m comp
 
 ## Left
 - Session 15 as `HANDOFF.md` says: items 1–3 of the table above. The owner's items 4 and 5 and the study's item 8 can start any day; the freeze of choice 138 holds until item 11.
+
+---
+
+# Progress — 2026-10-02, outside the session plan: the review panel's two blind verdicts enforced; plugin 0.2.30
+
+## Summary
+- **Why.** The owner's playbook-versus-framework study parks the crosswalk row x-roles on T1 (AI roles that write briefs, `docs/reviews/2026-09-28-playbook-vs-framework/target-design.md`), and T1 builds the roles on the panel's pattern. Reading the panel's code for it showed that the two blind verdicts were asked for, not enforced. The owner asked to close that with what exists before any role is built; no decision is reopened (decision 21 is the same panel).
+- **Seven items, a test each.** (1) `panel/cli.py record` refuses an item whose reviewer or advocate file is missing or has no `## Verdict`, before a panel call is counted. (2) The ledger carries the two verdicts from those files, not the conciliator's restatement, and the item's number (`item_n`). (3) The gate's `panel` check requires both files in HEAD for every line with an `item_n`. (4) The `panel_blind` hook (PreToolUse on Read and Grep) refuses a Read of one blind verdict while the other is missing, and a Grep that would search it; a Grep over another folder or limited to code passes (the owner chose this over blocking every whole-repository Grep, logging only, or detecting afterwards). (5) A CI run that added panel decisions parks when no model in its `modelUsage` is `panel_advocate_model`. (6) A session already on that model is a warning in the PR summary, not a park (the owner's choice). (7) "Decisions taken for you" names the run's models.
+- **Changed from the plan shown to the owner.** No new eval case for the hook: case 0005 already proves `hooks.json` loads, and a deterministic test proves the registration. The blindness rule applies to every caller, not only the advocate, so it needs no agent name and covers a reversed order.
+- **Two gaps closed in the same PR, at the owner's request.** (a) The hook also refuses a Bash or PowerShell command that names a one-sided verdict or the panel folder (the main session could otherwise `cat` the reviewer's verdict into the advocate's prompt). (b) The advocate's model is proved per call, in CI and by hand: when the advocate writes its verdict, the hook reads that sub-agent's own transcript and writes `<phase>-<n>-advocate.model.json` (who wrote it, on which model); `record` and the gate require it to name the devil's advocate on `panel_advocate_model`, and only the hook may write it. The transcript layout is observed on 2.1.287, not documented: NOTES §25 asks the next CI panel run (2.1.278) to confirm it, and a different layout parks the item rather than passing it. The run-level check stays as a second net.
+- **What stays open.** A shell command that reads a verdict without naming it or the panel folder (`grep -r half-up .`); a shell command forging a `.model.json`. Both are recorded in the hook's docstring.
+- Docs: NOTES §25 (the hook-input quote, the `modelUsage` evidence from the sample, the hook's cost); OPERATING_MODEL §3 and the decision-21 row; README's hook list.
+
+## Guardrail lines for the owner (after `v0.2.30` exists; this session cannot edit these files)
+| Link | Row | What is there now | What it must become |
+|---|---|---|---|
+| [sdlc.yaml](../sdlc.yaml) | line 98 | `  version: 0.2.29` | `  version: 0.2.30` |
+| the sample, `sdlc.yaml` | line 77 | `  version: 0.2.29` | `  version: 0.2.30` |
 
 ---
 

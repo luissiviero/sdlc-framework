@@ -429,6 +429,26 @@ def decisions_block(change_dir: Path, phase: str) -> list[str]:
             f"{n}. ({ledger_phase}) [{entry.get('kind')}] {item} → **{decision}** "
             f"(ledger: evidence/decisions-{ledger_phase}.md, line {entry.get('n')})"
         )
+    lines += models_lines(change_dir, phase)
+    return lines
+
+
+def models_lines(change_dir: Path, phase: str) -> list[str]:
+    """The models the panel's runs used, from ``evidence/panel-models-<phase>.json``
+    (0.2.30, written by the CI runner after a run that added decisions), and the warning
+    when the session already ran on the advocate's model. [] for a run made by hand."""
+    lines: list[str] = []
+    for ledger_phase in LEDGER_PHASES.get(phase, ()):
+        record = ledger.load_models(Path(change_dir), ledger_phase)
+        if not record:
+            continue
+        models = ", ".join(str(m) for m in record.get("models") or []) or "none reported"
+        wanted = record.get("advocate_model") or "not set"
+        lines.append(
+            f"Models of the ({ledger_phase}) run: {models} (the advocate's model: {wanted})."
+        )
+        if record.get("warning"):
+            lines.append(f"⚠ {record['warning']}.")
     return lines
 
 

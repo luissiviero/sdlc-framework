@@ -1,5 +1,5 @@
 {
-  "about": "The workflow crosswalk: every decision point of the AI-native SDLC playbook (the article, print pages of docs/reference/ai-native-sdlc-playbook.pdf) set against the sdlc framework (plugin 0.2.27, commit cf3f696); the row setup-adopt was added on 2026-09-30 against plugin 0.2.28, commit dd308ca. See ../2026-09-28-playbook-vs-framework.md.",
+  "about": "The workflow crosswalk: every decision point of the AI-native SDLC playbook (the article, print pages of docs/reference/ai-native-sdlc-playbook.pdf) set against the sdlc framework (plugin 0.2.27, commit cf3f696); the row setup-adopt was added on 2026-09-30 against plugin 0.2.28, commit dd308ca. See ../2026-09-28-playbook-vs-framework.md. Re-checked on 2026-10-02 against plugin 0.2.29, commit 904f4ec: seven rows corrected for precision (setup-home, setup-gates, setup-merge, plan-idea, plan-ticket, plan-accept, x-roles); 0.2.28 and 0.2.29 change none of the others.",
   "seeded": "2026-09-28",
   "fields": {
     "id": "stable row id",
@@ -39,6 +39,11 @@
         "pb": [
           [
             "P",
+            "d",
+            "Organization picks which stages to transform first"
+          ],
+          [
+            "P",
             "w",
             "Adopt the plays in the p.8 order"
           ],
@@ -65,19 +70,26 @@
             "Then each merge fires the next phase"
           ]
         ]
+      },
+      "decision": {
+        "better": "framework",
+        "decision": "blend",
+        "note": "Blend: the whole loop from the first change stays the default (keep: no staged adoption, no per-phase switches). Added, nothing replaced: (#2) an optional, documented by-hand start - leave the Claude secret out, each phase job ends 'skipped' and I run the phase commands myself (the weekly scan fails until then); adding the secret later turns the automation on, nothing else changes (sdlc-init §6, README). (#3) the change-0000 intent lists what starts empty: evals (D17), lessons, CLAUDE.md 'Things Claude gets wrong', and the detection, which needs a CI workflow of the project's own and about 16 days of daily CI data before its first verdict (sdlc_init.py). Counting call: the playbook's adoption choice is a Setup decision (14 + 2).",
+        "saved": "2026-10-02",
+        "status": "tentative"
       }
     },
     {
       "id": "setup-home",
       "stage": "Setup",
       "step": "Where intents live and who sets it up",
-      "pb": "A one-time task for the platform or engineering team: a technical team member stands up the intent home and decides who can write to it; the template skill is set up by a technical team member and signed off by a lead.",
+      "pb": "A one-time task for the platform or engineering team: a technical team member stands up the intent home and decides who can write to it. For a single product the simplest home is an intent/ folder in the product repo; a dedicated intent repo is only worth it when intent spans many repositories. The template, which can be encoded as a skill, is set up by a technical team member and signed off by a lead.",
       "pbSrc": "p.10-11",
-      "fw": "/sdlc:sdlc-init writes everything into the project repository in one change-0000 PR: sdlc.yaml, guardrails, changes/, bands.yaml, evals/, lessons/, workflows. Intents live in changes/<id>-<slug>/ next to the code.",
-      "fwSrc": "plugin/commands/sdlc-init.md",
+      "fw": "/sdlc:sdlc-init writes the project's files into the repository in one change-0000 PR: sdlc.yaml, guardrails, changes/, bands.yaml, evals/, lessons/, workflows. Intents live in changes/<id>-<slug>/ next to the code. Who can write to main is the branch ruleset of D4, which the owner creates by hand after the merge. The intent template is the intent-template skill, which ships in the plugin, so by default a project has no template to set up or sign off.",
+      "fwSrc": "plugin/commands/sdlc-init.md §3 and §6, plugin/skills/intent-template/SKILL.md",
       "rel": "adapted",
-      "why": "D8 plugin + template · D9 the repo is the source of truth · D10 changes/<id>-<slug>/",
-      "weigh": "A dedicated intent repo only pays off when intent spans many repositories (p.10). Is that ever your case?",
+      "why": "D8 plugin + template · D9 the repo is the source of truth · D10 changes/<id>-<slug>/ · D4 the ruleset decides who writes to main",
+      "weigh": "p.10 calls an intent/ folder in the product repo the simplest home for a single product, which is where changes/ already sits; a dedicated intent repo only pays off when intent spans many repositories. D10 says that is not your case; does that still hold?",
       "map": {
         "pb": [
           [
@@ -129,10 +141,10 @@
       "step": "Which human approval gates exist, and where they are enforced",
       "pb": "Engineering leadership, with change management and compliance, lists the gates that must survive; the platform engineer expresses each as a hook, with non-negotiable hooks in managed settings.",
       "pbSrc": "p.36",
-      "fw": "The gates are fixed by the framework (profiles, labels, confidence gate); per project, sdlc.yaml adds the risk list, protected paths and, on a declared production, the release approval and guarded deploy commands. Guardrails sit in three layers: the plugin's hooks with project deny rules as a second net; a managed settings file on the owner's machine; CI loading hooks and permissions from the pinned plugin, never from the PR branch. The owner adds the 'Restrict updates' ruleset.",
-      "fwSrc": "plugin/hooks/, template/.claude/settings.json, sdlc-init.md §6",
+      "fw": "The gates are fixed by the framework (profiles, labels, confidence gate); per project, sdlc.yaml adds the risk list, protected paths and, on a declared production, the release approval and guarded deploy commands. /sdlc-init asks for the profile, the review mode and whether production is real; the risk list is the template's default, which it does not ask about. Guardrails sit in three layers: the plugin's hooks with project deny rules as a second net; an optional managed settings file, on the owner's machine only, which neither a cloud session nor CI reads; CI loading hooks and permissions from the pinned plugin, never from the PR branch. The owner adds the 'Restrict updates' ruleset.",
+      "fwSrc": "plugin/hooks/, template/.claude/settings.json, template/sdlc.yaml risk_list, plugin/commands/sdlc-init.md §1 and §6, docs/owner-machine/README.md",
       "rel": "adapted",
-      "why": "D6 all three guardrail layers · D18 profiles · one owner, so no separate leadership list",
+      "why": "D6 all three guardrail layers (the managed settings layer documented, not installed) · D18 profiles · D21 review mode · one owner, so no separate leadership list",
       "weigh": "sdlc.yaml already lists the project's risk items, protected paths and guarded deploy commands. Is that your 'gates that must survive' list, or does each item need a named approver?",
       "map": {
         "pb": [
@@ -185,8 +197,8 @@
       "step": "Who may merge to main",
       "pb": "Not named. Intent acceptance 'is recorded as the merge'; code PRs need a code owner's approval through branch protection; the agent has no route to push to main.",
       "pbSrc": "p.11, p.33, p.40",
-      "fw": "Only the owner merges. A ruleset with the owner as the only bypass actor; the automation identity has branch-only write access.",
-      "fwSrc": "docs/OPERATING_MODEL.md §2; sdlc-init.md",
+      "fw": "Only the owner merges, once the owner has created a 'Restrict updates' ruleset on the default branch with the owner as the only bypass actor. The owner creates it by hand after the 0000 merge; the framework never creates it, and the daily digest warns while it is missing. Until it exists nothing stops the automation identity from pushing to or merging into the default branch; once it does, that identity has branch-only write access. sdlc-init §6 has the owner set the bypass mode to Exempt, so the rules, 'Require a pull request' included, do not run for the owner.",
+      "fwSrc": "docs/OPERATING_MODEL.md §2; plugin/commands/sdlc-init.md §6; plugin/pr/digest.py, plugin/pr/github.py default_branch_protection",
       "rel": "adapted",
       "why": "D4 merge-restricted ruleset · D5 workflow token as the automation identity",
       "weigh": "The article asks for branch protection with a code owner's approval and no agent route to main (p.33, p.40). D4 swaps the required approval for a merge restriction, because GitHub does not count the author's own approval. Who presses merge is gap 1 on the playbook page. Add a required review only if a second reviewer appears.",
@@ -236,8 +248,8 @@
       "step": "An idea becomes intent.md",
       "pb": "The originator brainstorms with Claude in claude.ai or Cowork; Claude asks an analyst's questions and writes intent.md from the organization's template; the originator corrects and commits it.",
       "pbSrc": "p.10-11",
-      "fw": "The owner runs /sdlc:sdlc-plan in their own Claude Code session; brainstorm, then intent.md via the intent-template skill; the session opens the intent PR on sdlc/<id>/a.",
-      "fwSrc": "plugin/commands/sdlc-plan.md",
+      "fw": "The owner runs /sdlc:sdlc-plan in their own Claude Code session; brainstorm, then intent.md via the intent-template skill; the session shows the draft in full and applies every correction the owner gives; then it commits on sdlc/<id>/a and opens the intent PR.",
+      "fwSrc": "plugin/commands/sdlc-plan.md (steps 1 to 6)",
       "rel": "adapted",
       "why": "The owner is the originator",
       "weigh": "Claude Code only, not claude.ai or Cowork. Does that matter for ideas that start away from the keyboard?",
@@ -268,7 +280,17 @@
           [
             "C",
             "w",
-            "Session writes intent.md, opens PR"
+            "Session writes intent.md"
+          ],
+          [
+            "P",
+            "w",
+            "Owner gives corrections; session applies them"
+          ],
+          [
+            "C",
+            "w",
+            "Session commits, opens PR"
           ]
         ]
       },
@@ -278,6 +300,13 @@
           "T3"
         ],
         "text": "The manager leads the interview: each role proposes the questions of its field, the manager merges them and asks a few at a time, and after the draft each role reviews the intent (T2). An intent can also be written from claude.ai / phone (T3). Open: how an intent written in claude.ai gets its change id, which plugin/state allocates (T3)."
+      },
+      "decision": {
+        "better": "playbook",
+        "decision": "blend",
+        "note": "Blend, added and nothing replaced: /sdlc-plan in Claude Code stays; a second route writes the intent from claude.ai on a computer or phone (T3), arriving as a PR on its branch, never a commit to main; the interview is fed by the roles and led by the manager (T1, T2). Correction and commit stay as today (they match the article). Open (T3): how a claude.ai intent gets its change id.",
+        "saved": "2026-10-02",
+        "status": "tentative"
       }
     },
     {
@@ -286,8 +315,8 @@
       "step": "A ticket or an alert becomes intent.md",
       "pb": "An agent writes intent.md off the back of a ticket or an alert; the product owner reviews and corrects it before it is committed.",
       "pbSrc": "p.9, p.42, p.44",
-      "fw": "Alerts: the detect and scan workflows write the incident intent and open an incident PR. Tickets: no trigger; the owner starts /sdlc:sdlc-plan with route 'ticket' and an external reference.",
-      "fwSrc": "plugin/detect/cli.py, plugin/scan/route.py, sdlc-plan.md",
+      "fw": "Alerts: the detect workflow runs /sdlc-maintain, which writes the incident intent; the scan workflow writes, without a diagnosis run, an intent for each Important finding it routes (at most max_findings, default 3, per run); each opens an incident PR. Tickets: no workflow triggers on an issue; the owner starts /sdlc:sdlc-plan with route 'ticket' and an external reference.",
+      "fwSrc": "template/.github/workflows/sdlc-detect.yml, template/.github/workflows/sdlc-scan.yml, plugin/detect/cli.py, plugin/commands/sdlc-maintain.md, plugin/scan/route.py, plugin/commands/sdlc-plan.md",
       "rel": "adapted",
       "why": "Alerts: D15 (CI failure rate) and D16 (weekly security review). Tickets: no decision. D9 keeps the repo as the record, with tracker links; it does not rule out a ticket trigger.",
       "weigh": "Is an automatic 'issue labelled X → intent PR' trigger worth adding, or do tickets stay manual?",
@@ -308,7 +337,12 @@
           [
             "A",
             "w",
-            "Detect or scan files an incident PR"
+            "Detect files the change; scan writes intent + PR"
+          ],
+          [
+            "C",
+            "w",
+            "/sdlc-maintain writes the incident intent"
           ],
           [
             "P",
@@ -316,6 +350,13 @@
             "Tickets: owner runs /sdlc-plan"
           ]
         ]
+      },
+      "decision": {
+        "better": "playbook",
+        "decision": "blend",
+        "note": "Blend, added and nothing replaced: alerts stay as today (detection and the weekly scan write the incident intent and open a PR; I correct it there with 'Request changes' and triage it), and /sdlc-plan with route 'ticket' stays. Added (T6): tickets arrive as GitHub issues; my label sdlc:intent on an issue starts a CI run that writes intent.md from the issue and opens the intent PR linked to it; what it cannot work out goes to Open questions; I correct and merge at gate (a) as today. Safeguards: only my own label starts a run (the workflow checks it was my account), and the issue text is read as data, never as instructions. No settled decision reopened.",
+        "saved": "2026-10-02",
+        "status": "tentative"
       }
     },
     {
@@ -324,11 +365,11 @@
       "step": "Intent accepted or rejected",
       "pb": "The product owner approves: acceptance is recorded as the merge, rejection as the closing review.",
       "pbSrc": "p.11",
-      "fw": "Gate (a): the owner merges the intent PR. Closing it without a merge abandons the change (sdlc-abandon.yml).",
-      "fwSrc": "template/.github/workflows/sdlc-abandon.yml",
+      "fw": "Gate (a): the owner merges the intent PR. Closing it without a merge abandons the change (sdlc-abandon.yml): every closed change gets status.yaml abandoned_reason 'pull request N closed without a merge' on its branches. An incident closed at its triage (gate (f)) also records a reason: the last comment by a repository member becomes the dismissal reason, in a dismissal PR the owner merges; with no such comment nothing is dismissed.",
+      "fwSrc": "template/.github/workflows/sdlc-abandon.yml, plugin/state/cli.py abandon, plugin/detect/cli.py dismiss",
       "rel": "same",
       "why": "D25 close = abandon",
-      "weigh": "Nothing to decide unless you want a recorded rejection reason.",
+      "weigh": "Nothing to decide unless you want a recorded rejection reason for ideas and tickets too; incidents record one when you comment before closing.",
       "map": {
         "pb": [
           [
@@ -350,6 +391,13 @@
           "T1"
         ],
         "text": "Product and Architect briefs; the manager recommends accepting, or the points to fix first; you approve or send corrections. Gate (a) gains the most: today it has no reviewing agent."
+      },
+      "decision": {
+        "better": "playbook",
+        "decision": "blend",
+        "note": "Blend: merge to accept and close to reject stay as today (D25). Added (T7): when I close any intent PR, my last comment on it is saved as the change's reason (status.yaml abandoned_reason) instead of the fixed 'pull request N closed without a merge'; with no comment the fixed text stays. Incidents keep today's rule (my comment becomes the dismissal reason). Already recorded: T1's Product and Architect briefs and the manager's recommendation before gate (a). No settled decision reopened.",
+        "saved": "2026-10-02",
+        "status": "tentative"
       }
     },
     {
@@ -388,7 +436,14 @@
         "refs": [
           "T2"
         ],
-        "text": "Open: a second interview before the spec; if added, it would reopen or amend D1 and D2 (the spec and the plan are written unattended today)."
+        "text": "No second interview before the spec (your choice on this row, 2026-10-02): what the design pass cannot answer goes to its Flagged concerns, which park for you; D1 and D2 stay."
+      },
+      "decision": {
+        "better": "both",
+        "decision": "keep",
+        "note": "Keep: the merge of the intent PR starts the design run unattended, already the article's end state (p.13); /sdlc-design by hand stays, and the by-hand start is T5's optional start without the Claude credential. No second interview before the spec (answers T2's open question): what the design pass cannot answer goes to Flagged concerns, which park for me (design-concerns row). Issue #67 (a design run for change 0000) is a defect, fixed outside the study.",
+        "saved": "2026-10-02",
+        "status": "tentative"
       }
     },
     {
@@ -417,6 +472,13 @@
             "/sdlc-design writes spec.md"
           ]
         ]
+      },
+      "decision": {
+        "better": "both",
+        "decision": "keep",
+        "note": "Keep: /sdlc-design writes spec.md from the spec template with a mandatory Flagged concerns section, and the header logs the prompt, the pinned plugin version (so the skill versions), the policy skills in force and any project override, as the article asks (p.12-14). No separate compliance skill for now; a project that needs one adds its own skill. T1 adds role briefs after the spec at gate (b), and my policy sources (T1, sources first) would guide both the spec's skills and the Security & policy role.",
+        "saved": "2026-10-02",
+        "status": "tentative"
       }
     },
     {
@@ -1759,8 +1821,8 @@
       "step": "Who the humans are",
       "pb": "Distinct roles: originator, product owner, policy owners, engineer, tech lead or architect, code owner, platform engineer, release manager, service owner or on-call, security lead.",
       "pbSrc": "p.9-50",
-      "fw": "One owner holds every human role; the framework's separation of duties is between the owner and the automation identity.",
-      "fwSrc": "docs/OPERATING_MODEL.md",
+      "fw": "One owner holds the seven roles OPERATING_MODEL.md §2 names (originator, product owner, tech lead, engineer, code owner, release manager, service owner). The policy owners, the platform engineer and the security lead are not named there, and no policy owner's source exists yet: the five policy skills are written from the article and say 'no owner source yet'. Separation of duties is rebuilt from three things: writer ≠ judge (a different agent in a fresh context reviews, and only the owner approves), an automation identity distinct from the owner's account, and branch rules that keep merges to the owner (once the owner has created the ruleset).",
+      "fwSrc": "docs/OPERATING_MODEL.md §2; plugin/skills/{coding-standards,data-conventions,definition-of-done,security-baseline,ux-conventions}/SKILL.md",
       "rel": "diverges",
       "why": "The framework's premise: one owner, hands-off",
       "weigh": "The one structural question behind many rows. Where does collapsing roles lose a check you want?",
@@ -1776,7 +1838,7 @@
           [
             "P",
             "w",
-            "One owner holds every role"
+            "One owner holds the seven named roles"
           ]
         ]
       },
@@ -1820,7 +1882,7 @@
     ]
   },
   "owner": {
-    "copiedFromStore": "2026-09-30",
+    "copiedFromStore": "2026-10-02",
     "criteriaWeights": {
       "safety": 1,
       "attention": 3,
@@ -1830,6 +1892,6 @@
       "fidelity": 2
     },
     "weightsSaved": "2026-09-29",
-    "rowsWithADecision": 4
+    "rowsWithADecision": 10
   }
 }

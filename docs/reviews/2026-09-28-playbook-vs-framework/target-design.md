@@ -10,8 +10,11 @@ Each entry: the owner's idea in the owner's words, the direction discussed so fa
 | T2 | The interview: how the manager and the roles question the owner | tentative | 2026-09-30 |
 | T3 | The intent home: in the repository, written from anywhere, with examples | tentative | 2026-09-30 |
 | T4 | Names: the phases named after what they produce, and the other names judged against the article | tentative | 2026-09-30 |
+| T5 | Starting a project: the whole loop from the first change, with an optional start by hand | tentative | 2026-10-02 |
+| T6 | Tickets become intents: a GitHub issue the owner labels starts the intent PR | tentative | 2026-10-02 |
+| T7 | A rejection keeps its reason: the owner's closing comment is saved with the change | tentative | 2026-10-02 |
 
-The crosswalk page (https://claude.ai/artifact/PFnRZ32pwTr4y422Gna2mz) shows each entry in a third column, "Target (tentative)", on the cards of the rows it touches; `crosswalk.json` carries the same condensed text in each row's `target` field, and the entries in `targets` (T1 to T3 so far; T4 is still to be added, see the review record's section 7).
+The target workflow page (https://claude.ai/artifact/13X8rzF9KsfekmeSs1w5rM, snapshot `target-workflow.html`) draws every entry. The crosswalk page (https://claude.ai/artifact/PFnRZ32pwTr4y422Gna2mz) shows T1 to T3 in a third column, "Target (tentative)", on the cards of the rows they touch, and `crosswalk.json` carries the same condensed text in each row's `target` field and in `targets`; at the owner's request the crosswalk is not extended with later entries (the review record's section 7).
 
 ## T1. AI roles that advise, and one manager that reviews for the owner
 
@@ -97,7 +100,7 @@ The framework already keeps the hook log both ways: committed in `evidence/` and
 
 ## T2. The interview: how the manager and the roles question the owner
 
-**Status:** tentative.
+**Status:** tentative. The owner's choice on the crosswalk row plan-idea (better: the playbook; decision: blend, 2026-10-02) takes this entry as the way an idea is interviewed: `/sdlc-plan` stays the entry point, and the role-fed interview led by the manager (T1) is added to it, nothing replaced. On design-trigger (both fine, keep, 2026-10-02) the owner chose no second interview before the spec.
 
 **The owner's question.** How is the interview conducted: are the manager and the roles involved, and how is the prompt built for the model that receives it? The owner wants to explain the idea, show examples of what is wanted, and be asked questions that build the intent, the plan and the rest.
 
@@ -110,15 +113,15 @@ The framework already keeps the hook log both ways: committed in `evidence/` and
 
 **Crosswalk rows it touches:** plan-idea, design-trigger, design-mock, build-plan.
 
-**Settled decisions it would reopen or amend:** D1 and D2, only if a second interview is added before the spec or the plan (both are written unattended today).
+**Settled decisions it would reopen or amend:** D1 and D2, only if a second interview is added before the plan (both the spec and the plan are written unattended today). Before the spec, no second interview: the owner chose so on design-trigger (2026-10-02, both fine, keep); what the design pass cannot answer goes to its "Flagged concerns", which park for the owner.
 
 **Open.**
-- A second interview before the spec, or before the plan (the article's plan mode interviews the engineer, p.15-16).
+- A second interview before the plan (the article's plan mode interviews the engineer, p.15-16); to decide on the build-plan row. Before the spec: answered, none (design-trigger, 2026-10-02).
 - A place in the intent for examples and references (T3 proposes a section), and whether the roles read them.
 
 ## T3. The intent home: in the repository, written from anywhere, with examples
 
-**Status:** tentative. Recorded from the owner's choice on the crosswalk row setup-home (better: the framework; decision: blend).
+**Status:** tentative. Recorded from the owner's choice on the crosswalk row setup-home (better: the framework; decision: blend). Confirmed on plan-idea (better: the playbook; decision: blend, 2026-10-02): the claude.ai route is a second way to write an intent, added beside `/sdlc-plan`, and it must arrive as a PR on `sdlc/<id>/a`.
 
 **The owner's note (saved on the crosswalk page).** "Blend: ideas stay in changes/<id>-<slug>/, set up by /sdlc-init (current). I write intents from Claude Code or from claude.ai / phone. I accept by merging, after a Product role's brief (T1). Template: the plugin default, overridable per project (to verify); a Product role reviews it and I approve (T1). The intent gets an Examples/References section (T2)."
 
@@ -131,7 +134,7 @@ The framework already keeps the hook log both ways: committed in `evidence/` and
 
 **Crosswalk rows it touches:** setup-home, plan-idea, design-mock.
 
-**Settled decisions it would reopen or amend:** none known, provided the claude.ai route opens the intent PR on `sdlc/<id>/a` like `/sdlc-plan` and never commits to `main`: a claude.ai GitHub connector acts as the owner's account, the ruleset's only bypass actor (D4), so a direct commit would skip gate (a) (D10). The Product brief inherits T1's D11 question. To check when the plan-idea row is decided.
+**Settled decisions it would reopen or amend:** none known, provided the claude.ai route opens the intent PR on `sdlc/<id>/a` like `/sdlc-plan` and never commits to `main`: a claude.ai GitHub connector acts as the owner's account, the ruleset's only bypass actor (D4), so a direct commit would skip gate (a) (D10). The Product brief inherits T1's D11 question. Checked on plan-idea (2026-10-02): the owner requires the PR route, so none.
 
 **Open.**
 - Whether a project can override `intent-template` for `/sdlc-plan` (to verify); today only `/sdlc-design` documents a project override, for the five policy skills (`plugin/commands/sdlc-design.md`), `/sdlc-plan` names the plugin skill (`plugin/commands/sdlc-plan.md`), and gate (a) checks the plugin's `INTENT_SECTIONS` and header fields (`plugin/gate/artifacts.py`), so an override could add a section such as Examples/References but not drop or rename one.
@@ -156,3 +159,70 @@ The framework already keeps the hook log both ways: committed in `evidence/` and
 - T1's advising roles and the owner's roles: if the owner's decisions are named by the article's roles (product owner, code owner, release manager), T1's AI roles need names that cannot be read as those people — T1 already writes "security brief", never "security lead: approved"; the role names themselves (Product, Architect, …) are to be checked against this.
 - T2 and T3 name `/sdlc-plan`; under this entry it becomes `/sdlc-intent`.
 - When: every rename also has to reach each project on the framework (today the sample project); the next project, `webapp-example`, is the last point with only one project to migrate. The order and the compatibility rules are in `naming.md`, "If a row is accepted".
+
+## T5. Starting a project: the whole loop from the first change, with an optional start by hand
+
+**Status:** tentative. Recorded from the owner's choice on the crosswalk row setup-adopt (better: the framework; decision: blend), 2026-10-02.
+
+**The owner's note (saved on the crosswalk page).** "Blend: the whole loop from the first change stays the default (keep: no staged adoption, no per-phase switches). Added, nothing replaced: (#2) an optional, documented by-hand start - leave the Claude secret out, each phase job ends 'skipped' and I run the phase commands myself (the weekly scan fails until then); adding the secret later turns the automation on, nothing else changes (sdlc-init §6, README). (#3) the change-0000 intent lists what starts empty: evals (D17), lessons, CLAUDE.md 'Things Claude gets wrong', and the detection, which needs a CI workflow of the project's own and about 16 days of daily CI data before its first verdict (sdlc_init.py). Counting call: the playbook's adoption choice is a Setup decision (14 + 2)."
+
+**Direction discussed (tentative).** Both additions add to the framework and replace nothing; the default stays as it is today.
+- **The default, as today:** `/sdlc-init` installs the whole loop in the change-0000 PR. There is no staged adoption in the p.8 order and no per-phase switch; `sdlc.yaml: paused` still stops every phase at once. The article adopts the plays in the p.8 order and prompts each step by hand before automating it (p.8, p.13), and makes auto-accept the default only as the guardrails mature (p.17); the framework's own guardrails were built that way (by hand in stage B1, CI from B3), so a project does not repeat it.
+- **An optional start by hand, documented:** without the repository secret (`CLAUDE_CODE_OAUTH_TOKEN` or `ANTHROPIC_API_KEY`), every phase job ends green as "skipped: no credential" (`plugin/ci/auth.py`; once the project's setup command has succeeded, since it runs first), and the owner runs each phase's command in their own Claude Code session. The weekly scan fails red instead until the secret exists. Adding the secret turns the automation on, and nothing else changes. This is the article's ladder, by hand first and then a job that fires on the merge (p.8, p.13), offered per project. Where it goes: one optional paragraph in `plugin/commands/sdlc-init.md` §6, which today presents the secret as required, and one sentence in `README.md`, "Phases by hand".
+- **What starts empty, said in one place:** the change-0000 intent that `plugin/init/sdlc_init.py` writes gains a short list. It names the evals suite (D17; `evals/README.md` already says it starts empty), `lessons/`, the "(none yet)" in CLAUDE.md's "Things Claude gets wrong", and the detection. The detection needs a CI workflow of the project's own (the install report already warns when there is none) and about 16 days of daily CI data before its first verdict: 8 baseline points before the 8 most recent points it judges (`plugin/detect/stats.py`, `MIN_BASELINE`, `TAIL`). Today each fact sits in its own file, and the intent the owner reads before merging the install names none of them.
+
+**Counting call (the same day).** On the playbook side, the organization's choice of which stages to transform first ("organizations may choose to prioritize transforming different stages at different times", p.7) counts as a once-per-project decision, so section 6 of the review record reads 14 + 2 for the playbook against the framework's 8 + 7.
+
+**Crosswalk rows it touches:** setup-adopt.
+
+**Settled decisions it would reopen or amend:** none. D1 (hosted CI) stays the default, and D17 (evals start empty) is only stated in one more place.
+
+**Open.**
+- Whether the weekly scan should end "skipped" like the phase jobs when no secret exists, instead of failing; that would be a code change, not only documentation.
+- The exact wording of both additions, written after the study with the rest.
+
+## T6. Tickets become intents: a GitHub issue the owner labels starts the intent PR
+
+**Status:** tentative. Recorded from the owner's choice on the crosswalk row plan-ticket (better: the playbook; decision: blend), 2026-10-02. The owner wants to start using GitHub issues as the place where tickets arrive.
+
+**The owner's note (saved on the crosswalk page).** "Blend, added and nothing replaced: alerts stay as today (detection and the weekly scan write the incident intent and open a PR; I correct it there with 'Request changes' and triage it), and /sdlc-plan with route 'ticket' stays. Added (T6): tickets arrive as GitHub issues; my label sdlc:intent on an issue starts a CI run that writes intent.md from the issue and opens the intent PR linked to it; what it cannot work out goes to Open questions; I correct and merge at gate (a) as today. Safeguards: only my own label starts a run (the workflow checks it was my account), and the issue text is read as data, never as instructions. No settled decision reopened."
+
+**Today.** No workflow triggers on an issue (the template workflows use `issues` only as a token permission). A ticket becomes an intent only when the owner runs `/sdlc-plan` with route `ticket` and the ticket's number as its external reference. Alerts already become intents with no person: the detection runs `/sdlc-maintain`, and the weekly scan writes an intent per Important finding it routes.
+
+**Direction discussed (tentative).** Added beside the routes of today; nothing replaced.
+- **The trigger:** the owner applies the label `sdlc:intent` to an issue. A new workflow runs on that event, checks that the label was applied from the owner's account (not merely by a person, the check T1 asks for every approval), and starts a run that writes `changes/<id>-<slug>/intent.md` with entry route `ticket` and the issue as its external reference, then opens the intent PR on `sdlc/<id>/a`, linked to the issue.
+- **What the run cannot work out** goes to the intent's "Open questions". The owner corrects the intent in the PR (review comments, or a "Request changes" review that starts the fix run) and accepts it by merging at gate (a), as today.
+- **The issue text is data, never instructions:** anyone can open an issue on a public repository, so the run treats the title and body as quoted input, and only the owner's label starts it.
+- **The record:** `intent.md` in the repository stays the record and the issue holds the link (D9's linkage rule).
+- **Example:** issue #12 "Export the report as CSV"; the owner labels it `sdlc:intent`; the run writes `changes/0010-export-csv/intent.md` and opens the intent PR linked to #12.
+
+**Crosswalk rows it touches:** plan-ticket.
+
+**Settled decisions it would reopen or amend:** none. D9 (the repository is the record, issues hold links) is followed; the new label sits beside the owner's other labels (D3, D24).
+
+**Open.**
+- Whether a ticket intent gets the role-fed interview of T2; a CI run cannot interview the owner, so its questions go to "Open questions" in the PR.
+- How the run is told the issue is untrusted input, and which tools it may use (the phase jobs' sandbox and settings, as today).
+- The label's name, which T4 would judge with the other names.
+
+## T7. A rejection keeps its reason: the owner's closing comment is saved with the change
+
+**Status:** tentative. Recorded from the owner's choice on the crosswalk row plan-accept (better: the playbook; decision: blend), 2026-10-02.
+
+**The owner's note (saved on the crosswalk page).** "Blend: merge to accept and close to reject stay as today (D25). Added (T7): when I close any intent PR, my last comment on it is saved as the change's reason (status.yaml abandoned_reason) instead of the fixed 'pull request N closed without a merge'; with no comment the fixed text stays. Incidents keep today's rule (my comment becomes the dismissal reason). Already recorded: T1's Product and Architect briefs and the manager's recommendation before gate (a). No settled decision reopened."
+
+**Today.** Closing a pull request of gates (a) to (e) without a merge abandons the change (`sdlc-abandon.yml`, D25). Every closed change gets the same fixed text as its reason, "pull request N closed without a merge", in `status.yaml: abandoned_reason` on its branches. Only an incident change records the owner's words: closing any of its pull requests dismisses its finding, with the last comment by a repository member (owner, member or collaborator; bots and the automation identity skipped) as the reason, in a dismissal PR the owner merges (`plugin/detect/cli.py dismiss`). The article records a rejection as "the closing review" (p.11).
+
+**Direction discussed (tentative).** Added; nothing replaced.
+- **When the owner closes an intent PR**, the owner's last comment on it, if there is one, becomes `abandoned_reason`; with no comment the fixed text stays. Example: the intent PR for "Export as CSV" is closed with "Not needed, the PDF export covers it", and that sentence is what the change's record says months later.
+- **The comment is optional**, so it costs the owner nothing when there is nothing to say.
+- **Incidents keep today's rule:** the comment also stays the dismissal reason.
+- **Accepting stays the merge** (D25), and T1's Product and Architect briefs with the manager's recommendation come before it.
+
+**Crosswalk rows it touches:** plan-accept.
+
+**Settled decisions it would reopen or amend:** none; D25 (closing abandons the change) is kept, and only what the record says changes.
+
+**Open.**
+- Whether the same applies when the owner closes a PR of gates (b) to (e), which abandons the change the same way.
+- Which comments count: the owner's own (as T1 asks of approvals), or any repository member's, as the incident rule reads today.

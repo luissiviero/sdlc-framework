@@ -1,5 +1,5 @@
 {
-  "description": "SDLC framework guardrails (build guide step 15) and the production gate (step 29: with sdlc.yaml deploy.production true, a guarded production command on Bash or PowerShell needs the release approval; it only allows or blocks, never asks). Exec form: `python` is spawned directly with the script path, so no shell is involved on Windows, macOS or Linux. The plugin root is the framework repository root; scripts live under plugin/hooks/.",
+  "description": "SDLC framework guardrails (build guide step 15) and the production gate (step 29: with sdlc.yaml deploy.production true, a guarded production command on Bash or PowerShell needs the release approval; it only allows or blocks, never asks) and the review panel's blindness (0.2.30: while an item has one blind verdict and not the other, a Read, Grep or shell command that would show that verdict is refused, and the devil's advocate's model is recorded beside its verdict). Exec form: `python` is spawned directly with the script path, so no shell is involved on Windows, macOS or Linux. The plugin root is the framework repository root; scripts live under plugin/hooks/.",
   "hooks": {
     "PreToolUse": [
       {
@@ -61,6 +61,17 @@
             "command": "python",
             "args": ["${CLAUDE_PLUGIN_ROOT}/plugin/hooks/production_gate.py"],
             "timeout": 60
+          }
+        ]
+      },
+      {
+        "matcher": "Read|Grep|Bash|PowerShell|Write|Edit|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python",
+            "args": ["${CLAUDE_PLUGIN_ROOT}/plugin/hooks/panel_blind.py"],
+            "timeout": 20
           }
         ]
       }
