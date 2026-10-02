@@ -42,6 +42,18 @@ from state.status import STATUS_FILE, Status  # noqa: E402
 PLACEHOLDER_COMMAND_RE = re.compile(r"^\s*echo\s+no\s+\w+\s+target\s*$", re.IGNORECASE)
 DEFAULT_COMMAND_TIMEOUT = 900  # seconds per command; sdlc.yaml: gate.command_timeout
 OUTPUT_TAIL = 4000  # characters of command output kept in the gate result
+# Issue #91 (0.3.0): the runner sets this in the model's session's environment, and the gate
+# run inside the session then records its ``commands`` check as deferred instead of running
+# the project's targets inside Claude Code's sandbox, where ``Read(**/.env*)`` makes a nested
+# ``.env*`` unreadable (change 0001's design run of 2026-10-02: ``python -m pytest`` failed on
+# this repository's own fixture ``.env``). The runner runs the check after the session,
+# outside the sandbox (``gate.run_deferred_commands``, ``cli.py run-commands``).
+COMMANDS_RUNNER_ENV = "SDLC_GATE_COMMANDS"
+RUN_BY_RUNNER = "runner"
+COMMANDS_DEFERRED_REASON = (
+    "deferred to the runner: build, test and lint run after the model's session, outside its "
+    "sandbox (issue #91); not yet run"
+)
 
 
 @dataclass
@@ -61,6 +73,18 @@ class CheckResult:
             "details": self.details,
         }
 
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> CheckResult:
+        """A check read back from ``evidence/gate-<phase>.json`` (``as_dict`` inverted)."""
+        details = data.get("details")
+        return cls(
+            str(data.get("name") or ""),
+            bool(data.get("ok")),
+            str(data.get("reason") or ""),
+            str(data.get("need") or ""),
+            dict(details) if isinstance(details, dict) else {},
+        )
+
 
 @dataclass
 class GateContext:
@@ -76,6 +100,9 @@ class GateContext:
     config_note: str = ""  # set when the config was taken from the merge base
     # decision 21: ``parked`` | ``deferred`` (sdlc.yaml: review, status.yaml: review_override)
     review_mode: str = "parked"
+    # issue #91 (0.3.0): the runner runs the ``commands`` check after the session (set from
+    # ``COMMANDS_RUNNER_ENV`` by ``gate.build_context``; a by-hand gate runs them itself)
+    commands_deferred: bool = False
 
     @property
     def deferred(self) -> bool:
@@ -306,6 +333,20 @@ def run_command(
 
 
 def check_commands(ctx: GateContext) -> CheckResult:
+    """Build, test and lint green. Since 0.3.0 (issue #91) a gate run inside a CI session
+    records the check as deferred (``ok`` with ``details.deferred``) when the runner asked for
+    it through ``COMMANDS_RUNNER_ENV``: the targets run in the runner's own process after the
+    session, outside Claude Code's sandbox, through ``run_commands_check``, and the record is
+    rewritten with the result (``gate.run_deferred_commands``). A gate run by hand, or by a
+    runner that did not set the variable, runs them here as before."""
+    if ctx.commands_deferred:
+        return _ok("commands", COMMANDS_DEFERRED_REASON, deferred=True)
+    return run_commands_check(ctx)
+
+
+def run_commands_check(ctx: GateContext, ran_by: str | None = None) -> CheckResult:
+    """Run the three targets and judge them; ``ran_by`` names who ran them when it was not
+    the gate's own process (``RUN_BY_RUNNER``), kept in the check's details."""
     cmds = _commands(ctx)
     missing = [k for k in ("build", "test", "lint") if k not in cmds]
     if missing:
@@ -319,6 +360,7 @@ def check_commands(ctx: GateContext) -> CheckResult:
         )
     timeout = int(ctx.gate_setting("command_timeout", DEFAULT_COMMAND_TIMEOUT))
     runs = {name: run_command(cmd, ctx.root, timeout) for name, cmd in cmds.items()}
+    who = {"ran_by": ran_by} if ran_by else {}
     red = {n: r for n, r in runs.items() if r["exit_code"] != 0}
     if red:
         summary = ", ".join(
@@ -331,8 +373,9 @@ def check_commands(ctx: GateContext) -> CheckResult:
             "Make the failing target pass (fix the code, not the test) and re-run the gate. "
             "The tail of each output is in the gate result.",
             runs=runs,
+            **who,
         )
-    return _ok("commands", "build, test and lint exit 0", runs=runs)
+    return _ok("commands", "build, test and lint exit 0", runs=runs, **who)
 
 
 # --- 4. evidence present (step 28) --------------------------------------------------------

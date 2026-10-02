@@ -2,6 +2,7 @@
 
     python "${CLAUDE_PLUGIN_ROOT}/plugin/gate/cli.py" check --root . --id 0001 --phase c \
         [--base origin/main] [--dry-run]
+    python cli.py run-commands --root . --id 0001 --phase c     # the runner, after the session
     python cli.py start-run --root . --id 0001 --phase c        # wall-clock start (step 19)
     python cli.py record-spend --root . --id 0001 --phase c --usd 1.25
     python cli.py set-iterations --root . --id 0001 --count 0   # owner only (decisions 5, 24)
@@ -17,6 +18,14 @@ runbook can stop the loop before the gate parks the change.
 ``spec-header`` prints the two header lines of spec.md (step 22; article p.14: the spec, the
 prompt that produced it and the skill versions in force are logged together) as JSON, with
 the pieces it rendered them from.
+
+``run-commands`` (0.3.0, issue #91) is the CI runner's step after the model's session: when
+the session's gate recorded its ``commands`` check as deferred (the runner sets
+``SDLC_GATE_COMMANDS=runner`` in the session's environment, so the project's targets never run
+inside Claude Code's sandbox, where a nested ``.env*`` is unreadable), it runs build, test and
+lint on the working tree the session left and rewrites ``evidence/gate-<phase>.json`` and
+``status.yaml`` with the result; a red target parks the change. It prints ``{"ran": false}``
+and touches nothing when the record carries no deferred check, and exits 0 either way.
 
 ``check`` prints the gate result as JSON (result: continue | wait | park, the checks, the
 "What I need from you" block) and exits 0 on continue, 3 on wait (human gate), 4 on park,
@@ -63,6 +72,27 @@ def cmd_check(args) -> int:
     if block:
         print(block, file=sys.stderr)
     return EXIT[result.result]
+
+
+def cmd_run_commands(args) -> int:
+    """Issue #91 (0.3.0): the runner's step after the model's session. Runs the ``commands``
+    check a CI session's gate deferred and rewrites the gate record and status.yaml with the
+    result; prints ``{"ran": false}`` and changes nothing when the record carries no deferred
+    check. Exit 0 either way (the verdict is in the JSON and the gate file), 2 on a usage error
+    or an unreadable record."""
+    try:
+        result = gate.run_deferred_commands(Path(args.root), args.id, args.phase, args.base)
+    except gate.GateError as exc:
+        print(f"gate: {exc}", file=sys.stderr)
+        return 2
+    if result is None:
+        _emit({"ran": False, "reason": "the gate record carries no deferred commands check"})
+        return 0
+    _emit({"ran": True, **result.as_dict()})
+    block = result.what_i_need()
+    if block:
+        print(block, file=sys.stderr)
+    return 0
 
 
 def _change(args):
@@ -222,6 +252,15 @@ def build_parser() -> argparse.ArgumentParser:
     ck.add_argument("--base", default=None, help="base ref for the diff (default: origin HEAD)")
     ck.add_argument("--dry-run", action="store_true", help="evaluate only; write nothing")
     ck.set_defaults(fn=cmd_check)
+
+    rc = sub.add_parser(
+        "run-commands", help="run the commands check the session's gate deferred (issue #91)"
+    )
+    rc.add_argument("--root", default=".")
+    rc.add_argument("--id", required=True)
+    rc.add_argument("--phase", required=True, choices=c.PHASES)
+    rc.add_argument("--base", default=None, help="base ref for the diff (default: origin HEAD)")
+    rc.set_defaults(fn=cmd_run_commands)
 
     sr = sub.add_parser("start-run")
     sr.add_argument("--root", default=".")

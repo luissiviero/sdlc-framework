@@ -306,6 +306,10 @@ A live-check sitting that reached no live check: Fable in the main session read 
 
 The live sitting: Fable in the main session re-read the brief and the records, re-checked the six preconditions (the sample's run listing counted in a short Python script over the tool's JSON), opened the sample's upgrade PR from a worktree of the `v0.2.28` tag, dispatched the two detect runs and read every job log and evidence file itself; the owner's acts (the merge, the review, the README commit and its revert, the label) came through the chat and the GitHub app. The code change, the park's doubled check name, was read in the tag's worktree and fixed in place with its test extended; the review found the same doubling in the preflight park and it was fixed the same way; no researcher (the code paths were the ones the logs named), no verifier (the park test and the full suite are the check), no phase run in this repository. The one sub-agent was the fresh-context Opus review (`model: "opus"`) of the diff before the final commit, with the standing brief: a diff is reviewed for what it claims against the code and the records, not for style. Every figure in the record comes from pasted output or a run log.
 
+## 5k. Session 15 — issue #91 fixed, plugin 0.3.0
+
+Fable in the main session: the brief and the records re-read, the six preconditions checked (the sample's run listing counted in a short Python script over the tool's JSON, nothing written to the sample), the failing end-to-end test written first and run against the 0.2.30 code, then the fix in the gate, its CLI and the runner, the unit tests, the docs and the records. One sub-agent: the fresh-context review of the diff on Opus (`model: "opus"`, read-only), its findings reproduced in the container before any was acted on (PROGRESS "Session 15", "Known gaps"). No sample run, no owner act during the session; the owner's acts after it are the merge, the tag check and the root pin row.
+
 ## 6. Session 2 (steps 16–21) — finished
 
 Session 2 completed on `main` (PRs #4, #5, #7, plus #8 for the editable install) before
