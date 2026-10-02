@@ -1,25 +1,34 @@
 # Plan: split the large docs with an index each (from intent.md 2026-10-02, spec.md 2026-10-02)
 
 ## Files that change
-- `docs/notes/index.md` — new; one line per NOTES section file, in section-number order.
-- `docs/notes/<N>-<slug>.md` — new; one per `## ` section of today's `docs/NOTES.md` (23 at
-  this reading: sections 1–23). Each carries the section's text unchanged plus frontmatter
-  (`title`, `sources`, `generated.at`, `verified_with`, `stale_after`). A build-time pass
-  re-derives the exact set and slugs from whatever `## ` headings exist in `docs/NOTES.md`
-  then (sessions 15–16 may add sections 24+ before phase (c) runs; see Risks).
+- `docs/notes/index.md` — new; one line per NOTES section file, in ascending section-number
+  order, the section's original `## ` heading as the description.
+- `docs/notes/<N>.md` — new; one per `## ` section of today's `docs/NOTES.md` (23 at this
+  reading: sections 1–23), named by number only, no slug. Each carries the section's text
+  unchanged plus frontmatter (`title`, `sources`, `generated.at`, `verified_with`,
+  `stale_after`). A build-time pass re-derives the exact set of numbers from whatever `## `
+  headings exist in `docs/NOTES.md` then (sessions 15–16 may add sections 24+ before phase
+  (c) runs; see Risks).
 - `docs/NOTES.md` — rewritten to a short stub: title plus one pointer sentence to
   `docs/notes/index.md`.
-- `docs/decisions/index.md` — new; one line per decision file, in decision-number order.
-- `docs/decisions/<N>-<slug>.md` — new; one per numbered decision in today's
-  `docs/DECISIONS.md` (26 at this reading). Each carries the decision's text unchanged plus
-  frontmatter (`status`, `reversibility`, `amended_by`).
+- `docs/decisions/index.md` — new; one line per decision file, in ascending decision-number
+  order, the decision's original heading as the description.
+- `docs/decisions/<N>.md` — new; one per numbered decision in today's `docs/DECISIONS.md` (26
+  at this reading), named by number only, no slug. Each carries the decision's text unchanged
+  plus frontmatter (`status`, `reversibility`, `amended_by`).
 - `docs/DECISIONS.md` — rewritten to a short stub: title plus one pointer sentence to
   `docs/decisions/index.md`.
-- `docs/progress/index.md` — new; one entry per archived record, grouped by session.
-- `docs/progress/<slug>.md` — new; one per non-current top-level `# ` heading of today's
-  `docs/PROGRESS.md` (14 at this reading: everything but "session 14, second sitting").
-  Text unchanged; a build-time pass re-derives the set from whatever headings exist then
-  (sessions 15–16 append new records; see Risks).
+- `docs/progress/index.md` — new; one entry per archived record, in ascending session-number
+  order, a sitting's line directly after its session's, the record's original `# ` heading as
+  the line; the study record keeps the place it has in today's `docs/PROGRESS.md` (between
+  sessions 12 and 13). No grouping by topic or tag.
+- `docs/progress/session-<N>.md` / `docs/progress/session-<N>-sitting-<M>.md` — new; one per
+  non-current top-level `# ` heading of today's `docs/PROGRESS.md` (14 at this reading:
+  everything but "session 14, second sitting"), named from the heading (so "session 14, first
+  sitting" is `session-14-sitting-1.md`); plus
+  `docs/progress/2026-09-28-workflow-comparison-study.md` for the one record that is not a
+  session. Text unchanged; a build-time pass re-derives the set from whatever headings exist
+  then (sessions 15–16 append new records; see Risks).
 - `docs/PROGRESS.md` — rewritten to hold only its current top-level record (whichever one is
   current when phase (c) runs); no stub needed, name and role unchanged.
 - `HANDOFF.md` — "Read in this order" rewritten index-first for the three split docs; every
@@ -45,16 +54,25 @@ this merges, from the table this change's PROGRESS entry gives).
 1. Re-list `docs/NOTES.md`'s `## ` sections, `docs/DECISIONS.md`'s numbered decisions and
    `docs/PROGRESS.md`'s non-current `# ` headings as they stand at the start of phase (c)
    (they may differ from this reading; sessions 15–16 run first). This list is the exact file
-   set for the next three steps.
-2. Split `docs/NOTES.md`: create `docs/notes/<N>-<slug>.md` per section (text moved verbatim,
-   frontmatter added from the section's existing read date and sources), then
-   `docs/notes/index.md`, then rewrite `docs/NOTES.md` to the stub. One commit.
-3. Split `docs/DECISIONS.md`: create `docs/decisions/<N>-<slug>.md` per decision (text moved
-   verbatim, frontmatter from the decision's existing Accepted/Amended/reversibility lines),
-   then `docs/decisions/index.md`, then rewrite `docs/DECISIONS.md` to the stub. One commit.
-4. Split `docs/PROGRESS.md`: create `docs/progress/<slug>.md` per non-current record (text
-   moved verbatim), then `docs/progress/index.md` grouped by session, then rewrite
-   `docs/PROGRESS.md` to hold only the current record. One commit.
+   set for the next three steps; it derives no slug (file names are number-only, see Files
+   that change).
+2. Split `docs/NOTES.md`: create `docs/notes/<N>.md` per section, number only, no slug (text
+   moved verbatim, frontmatter added from the section's existing read date and sources), then
+   `docs/notes/index.md` in ascending number order, one line per file, the section's original
+   `## ` heading as the description, then rewrite `docs/NOTES.md` to the stub. One commit.
+3. Split `docs/DECISIONS.md`: create `docs/decisions/<N>.md` per decision, number only, no
+   slug (text moved verbatim, frontmatter from the decision's existing
+   Accepted/Amended/reversibility lines), then `docs/decisions/index.md` in ascending number
+   order, one line per file, the decision's original heading as the description, then rewrite
+   `docs/DECISIONS.md` to the stub. One commit.
+4. Split `docs/PROGRESS.md`: create `docs/progress/session-<N>.md` /
+   `docs/progress/session-<N>-sitting-<M>.md` per non-current record, named from the heading,
+   plus `docs/progress/2026-09-28-workflow-comparison-study.md` for the one non-session record
+   (text moved verbatim), then `docs/progress/index.md` in ascending session-number order, one
+   line per file, a sitting's line directly after its session's, the study record keeping the
+   place it has in today's `docs/PROGRESS.md` (between sessions 12 and 13), the original `# `
+   heading as each line, no grouping by topic or tag, then rewrite `docs/PROGRESS.md` to hold
+   only the current record. One commit.
 5. Update the four live docs' links/mentions: `HANDOFF.md` (the reading list, index-first),
    `docs/ROADMAP.md`, `docs/OPERATING_MODEL.md`, `README.md`. One commit; with the Edit tool,
    sentence by sentence, never a script (CLAUDE.md: the auto-mode classifier blocks a scripted
@@ -70,8 +88,8 @@ this merges, from the table this change's PROGRESS entry gives).
   whatever `docs/NOTES.md`, `docs/DECISIONS.md` and `docs/PROGRESS.md` contain *then*, not from
   today's 23/26/14. Step 1 of Order of work exists for exactly this reason: it is not
   optional busywork, it is how the plan stays correct despite the gap. The riskiest step is
-  step 1 for that reason — get the count or a slug wrong there and every later step
-  propagates it.
+  step 1 for that reason — get the count wrong there and every later step propagates it (file
+  names are number-only, so a renamed heading is not a naming risk, only a count one).
 - A link-update miss in one of the four live docs (step 5) is low-impact (the stub still
   resolves the old path) but would leave a stale pointer; mitigate by grep'ing each of the
   four files for the three old paths after editing, not just before.

@@ -2,25 +2,33 @@
 Change id: 0001. Status: proposed. Produced by: sdlc plugin 0.2.29, /sdlc-design prompt v1 (article p.14). Skills: coding-standards, security-baseline, ux-conventions, data-conventions, definition-of-done (plugin 0.2.29); overrides: none
 
 ## Requirements
-- `docs/notes/` holds one file per `docs/NOTES.md` `## ` section (23 files today), named with
-  the section number first (for example `17-....md`), so every `NOTES §N` citation (about 20
-  in `plugin/`, `docs/` and `tests/`, none of them under `docs/BUILD_GUIDE.md`) still points at
-  one file; a `### 11a`/`11b`/`11c`-style subsection stays inside its parent section's file, so
-  a citation like `NOTES §11c` still resolves without a per-subsection split. Each file's
-  frontmatter carries `title`, `sources`, `generated.at` (the section's existing read date),
-  `verified_with` (Claude Code version, plugin version, runner) and `stale_after`
-  (`generated.at` + 90 days); a file is stale when `verified_with` no longer matches the
-  environment or `stale_after` has passed, whichever first (both from choice 93: one section is
-  one session's dated batch, so the fields are per file). `docs/notes/index.md` lists every
-  file with a one-line description.
-- `docs/decisions/` holds one file per decision in `docs/DECISIONS.md` (26 files), named by
-  number. Each file's frontmatter carries `status` (`accepted` or `amended`), `reversibility`
-  (`sticky` or `reversible`, as stated today) and `amended_by` where an amendment exists (for
-  example decision 18, amended by 21). `docs/decisions/index.md` has one line per decision.
+- `docs/notes/` holds one file per `docs/NOTES.md` `## ` section (23 files today), named
+  `docs/notes/<N>.md` by number only, no slug (for example `docs/notes/17.md`), so every
+  `NOTES §N` citation (about 20 in `plugin/`, `docs/` and `tests/`, none of them under
+  `docs/BUILD_GUIDE.md`) still points at one file; a `### 11a`/`11b`/`11c`-style subsection
+  stays inside its parent section's file, so a citation like `NOTES §11c` still resolves
+  without a per-subsection split. Each file's frontmatter carries `title`, `sources`,
+  `generated.at` (the section's existing read date), `verified_with` (Claude Code version,
+  plugin version, runner) and `stale_after` (`generated.at` + 90 days); a file is stale when
+  `verified_with` no longer matches the environment or `stale_after` has passed, whichever
+  first (both from choice 93: one section is one session's dated batch, so the fields are per
+  file). `docs/notes/index.md` lists every file in ascending section-number order, one line
+  each, the section's original `## ` heading as the description.
+- `docs/decisions/` holds one file per decision in `docs/DECISIONS.md` (26 files), named
+  `docs/decisions/<N>.md` by number only, no slug (for example `docs/decisions/21.md`). Each
+  file's frontmatter carries `status` (`accepted` or `amended`), `reversibility` (`sticky` or
+  `reversible`, as stated today) and `amended_by` where an amendment exists (for example
+  decision 18, amended by 21). `docs/decisions/index.md` lists every decision in ascending
+  number order, one line each, the decision's original heading as the description.
 - `docs/PROGRESS.md` keeps only its current top-level record (session 14, second sitting); the
-  other 14 top-level records move to `docs/progress/`, one file per heading, with an
-  `index.md` that groups sittings under their session (the file already names the session and
-  sitting in each heading, so grouping is read off the existing text).
+  other 14 top-level records move to `docs/progress/`, one file per heading, named from the
+  heading: `docs/progress/session-<N>.md` for a session's record, `docs/progress/session-<N>-
+  sitting-<M>.md` for a sitting (so "session 14, first sitting" is `session-14-sitting-1.md`),
+  and `docs/progress/2026-09-28-workflow-comparison-study.md` for the one record that is not a
+  session. `docs/progress/index.md` lists every record in ascending session-number order, one
+  line each, a sitting's line directly after its session's, the record's original `# ` heading
+  as the line; the study record keeps the place it has in today's `docs/PROGRESS.md`, between
+  the records of sessions 12 and 13. No grouping by topic or tag.
 - Every moved record keeps its text unchanged (choice 126: a kept record is annotated beside
   the sentence, never rewritten); only links and section references are updated by the move,
   never the sentence itself. This applies to every file moved by this change, not only
@@ -75,28 +83,32 @@ Change id: 0001. Status: proposed. Produced by: sdlc plugin 0.2.29, /sdlc-design
   how `intent.md`/`spec.md`/`plan.md` already carry a prose header line rather than a validated
   schema (OKF-adoption proposal, row 2). Nothing in `plugin/gate/artifacts.py` is changed or
   needs to be: these files are not gated artifacts.
-- `docs/notes/<N>-<slug>.md` frontmatter fields, one block per the Requirements above:
+- `docs/notes/<N>.md` frontmatter fields, one block per the Requirements above:
   `title`, `sources` (the docs URL or run URL and the verbatim quote already in the section,
   restated as structured data, not reworded), `generated.at` (copied from the section's
   existing read date), `verified_with`, `stale_after`. The staleness rule is unchanged from
   choice 93, expressed as two comparable fields instead of prose ("re-test when the date is
   older than the environment's last change").
-- `docs/decisions/<N>-<slug>.md` frontmatter: `status`, `reversibility`, `amended_by`. These
+- `docs/decisions/<N>.md` frontmatter: `status`, `reversibility`, `amended_by`. These
   three values already exist in `docs/DECISIONS.md`'s "Accepted"/"Amended by"/"Decide by /
   reversibility" lines for every decision; the frontmatter restates them, it does not decide
   anything new.
-- `docs/progress/<slug>.md` per top-level `# ` heading of today's `docs/PROGRESS.md` (14 files
-  for the 14 non-current records); `docs/progress/index.md` groups them under their session
-  number, reading the grouping off each heading's existing "session N" / "sitting" wording.
-  `docs/PROGRESS.md` itself shrinks to the current record (session 14, second sitting) and
-  keeps its name and role: the file a session appends to next.
+- `docs/progress/session-<N>.md` / `docs/progress/session-<N>-sitting-<M>.md` per top-level
+  `# ` heading of today's `docs/PROGRESS.md` (14 files for the 14 non-current records), named
+  from the heading, plus `docs/progress/2026-09-28-workflow-comparison-study.md` for the one
+  non-session record; `docs/progress/index.md` lists them in ascending session-number order,
+  one line per file, a sitting's line directly after its session's, the study record keeping
+  the place it has in today's `docs/PROGRESS.md` (between sessions 12 and 13), the original
+  `# ` heading as each line, no grouping by topic or tag. `docs/PROGRESS.md` itself shrinks to
+  the current record (session 14, second sitting) and keeps its name and role: the file a
+  session appends to next.
 - Stubs: `docs/NOTES.md` and `docs/DECISIONS.md` become a one-line title plus a pointer
   sentence to the matching `index.md`, so an old link still opens a file and a reader lands on
   the index one click away. `docs/PROGRESS.md` needs no stub because its name and role do not
   change.
 - `HANDOFF.md`'s "Read in this order" keeps one list item per file it names today, each still
   carrying its existing one-line reason; where it names `docs/NOTES.md §N` today, it names the
-  matching `docs/notes/<N>-*.md` file (or the index, for a section-agnostic pointer); same for
+  matching `docs/notes/<N>.md` file (or the index, for a section-agnostic pointer); same for
   `docs/DECISIONS.md` and `docs/PROGRESS.md`'s archived sessions. The index-first instruction
   itself ("index first, then the files you need") is a new, one-line opening note, not a
   restructuring of the list.
@@ -137,18 +149,21 @@ again.
   `docs/OPERATING_MODEL.md`, `README.md`); `docs/MODEL_ALLOCATION.md` is not among them, and
   its mentions still resolve through the stub, so it is left unedited per the intent's explicit
   list (decided: follow the named scope, not every file a grep finds).
-- Guessed because the intent does not give exact file-naming slugs: the Design above fixes the
-  shape (`<N>-<slug>.md`, kebab-case from each heading) but not the literal slug text for every
-  one of the 23 NOTES sections, 26 decisions and 14 archived PROGRESS records; `plan.md` must
-  either fix each name now or say the build-time pass derives it mechanically from the
-  heading, since the exact headings may have changed again by the time phase (c) runs (see
-  Design's Timing paragraph).
-- Guessed because the intent does not say it: whether a `docs/notes/index.md` or
-  `docs/decisions/index.md` entry groups by sub-topic (the way the OKF-adoption proposal's
-  worked lessons-index example groups by tag) or lists files in section/decision-number order
-  only. Taken as number order, matching how `docs/DECISIONS.md` and `docs/NOTES.md` are
-  ordered today and how `CLAUDE.md`/`HANDOFF.md` cite them ("NOTES §17", "decision 21"); a
-  grouped index would need a taxonomy the intent does not supply.
+- decided (PROGRESS choice 134): number-only file names, no slug. `docs/notes/<N>.md` (one
+  file per `## N.` section of `docs/NOTES.md`; a lettered subsection — `11a`/`11b`/`11c` —
+  stays inside its parent section's file); `docs/decisions/<N>.md` (one file per decision);
+  `docs/progress/session-<N>.md` for a session's record and `docs/progress/session-<N>-
+  sitting-<M>.md` for a sitting, both read from the record's heading, and
+  `docs/progress/2026-09-28-workflow-comparison-study.md` for the one record that is not a
+  session. Why: every citation already uses the number (`NOTES §17`, `decision 21`, "session
+  14, second sitting"), so a renamed heading never leaves a stale file name, and nothing
+  derives a slug at build time.
+- decided (PROGRESS choice 134): each index in number order, one line per file, the original
+  heading as its description. `docs/notes/index.md` and `docs/decisions/index.md`: ascending
+  number order. `docs/progress/index.md`: ascending session-number order, a sitting's line
+  directly after its session's, the study record keeping the place it has in today's
+  `docs/PROGRESS.md` (between sessions 12 and 13). No grouping by topic or tag in any of the
+  three indexes (that waits for R1's step 1, tags).
 
 ## Acceptance
 - Every `NOTES §N`, `decision N` reference and every literal `docs/NOTES.md` / `docs/DECISIONS.md`
@@ -157,8 +172,8 @@ again.
   `docs/handoffs/`, `docs/reviews/`, `docs/proposals/` records) resolves to an existing file,
   directly or through the `docs/NOTES.md` / `docs/DECISIONS.md` stub.
 - `docs/notes/index.md` lists all 23 section files; `docs/decisions/index.md` lists all 26
-  decision files; `docs/progress/index.md` lists the 14 archived records grouped by session;
-  `docs/PROGRESS.md` holds only the current record.
+  decision files; `docs/progress/index.md` lists the 14 archived records in session order,
+  one line per file; `docs/PROGRESS.md` holds only the current record.
 - `HANDOFF.md`, `docs/ROADMAP.md`, `docs/OPERATING_MODEL.md` and `README.md` link to the new
   index paths, not to the old file paths, wherever they cited one.
 - `python -m compileall -q plugin tests tasks.py`, `python -m pytest` and `python -m ruff
