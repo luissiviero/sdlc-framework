@@ -37,7 +37,7 @@ Every Python file in both repositories on 2026-10-02: 45,806 lines in this repos
 
 ## The owner's check: hook time on Windows
 
-Three hooks run on every Edit or Write. On the Linux container they took 75–97 ms each, about 245–285 ms per edit; a bare `python -c pass` took 16 ms, so most of the cost is module imports, not the interpreter. Windows starts Python more slowly, and the owner's PC is the only Windows host, so the number that decides this row has to come from there.
+Three hooks ran on every Edit or Write when this was written; plugin 0.2.30 adds a fourth, `panel_blind` (about 46 ms on an ordinary edit), which the snippet below includes. On the Linux container the first three took 75–97 ms each, about 245–285 ms per edit; a bare `python -c pass` took 16 ms, so most of the cost is module imports, not the interpreter. Windows starts Python more slowly, and the owner's PC is the only Windows host, so the number that decides this row has to come from there.
 
 Save these lines as `hook_timing.py` in the framework checkout on the Windows PC and run `python hook_timing.py` from that folder:
 
@@ -48,7 +48,7 @@ payload = json.dumps({"hook_event_name": "PreToolUse", "tool_name": "Edit",
                       "tool_input": {"file_path": os.path.abspath("README.md")},
                       "cwd": os.getcwd()})
 total = 0.0
-for hook in ("protected_paths", "test_file_lock", "secrets_check"):
+for hook in ("protected_paths", "test_file_lock", "secrets_check", "panel_blind"):
     args = [sys.executable, f"plugin/hooks/{hook}.py"]
     if hook == "protected_paths":
         args += ["--plugin-root", "."]
@@ -63,7 +63,7 @@ for hook in ("protected_paths", "test_file_lock", "secrets_check"):
 print(f"{'one edit':16} {total * 1000:5.0f} ms")
 ```
 
-On Linux it printed 97, 95 and 91 ms, 283 ms for one edit. Delete the file afterwards; it is not part of the repository.
+On Linux it printed 97, 95 and 91 ms, 283 ms for one edit, with the first three hooks; with `panel_blind` (0.2.30) it printed 91, 81, 80 and 44 ms, 296 ms for one edit. Delete the file afterwards; it is not part of the repository.
 
 **What the number decides** (a suggested threshold, the owner's to change):
 - **Under about 1 second per edit:** the hooks stay as they are; this row closes as "keep".
