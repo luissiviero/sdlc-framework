@@ -1,7 +1,7 @@
 id: "0001"
 slug: split-the-large-docs-with-an-index-each
 title: Split the large docs with an index each
-phase: a
+phase: b
 entry_route: idea
 change_type: feature
 profile_override: null
@@ -25,5 +25,5 @@ runbook_authorized_by: null
 abandoned_reason: null
 build_pr: null
 created_at: "2026-10-02T09:04:23Z"
-updated_at: "2026-10-02T09:04:23Z"
+updated_at: "2026-10-02T10:10:54Z"
 schema_version: 1
