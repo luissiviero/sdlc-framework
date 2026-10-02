@@ -472,6 +472,13 @@
             "/sdlc-design writes spec.md"
           ]
         ]
+      },
+      "decision": {
+        "better": "both",
+        "decision": "keep",
+        "note": "Keep: /sdlc-design writes spec.md from the spec template with a mandatory Flagged concerns section, and the header logs the prompt, the pinned plugin version (so the skill versions), the policy skills in force and any project override, as the article asks (p.12-14). No separate compliance skill for now; a project that needs one adds its own skill. T1 adds role briefs after the spec at gate (b), and my policy sources (T1, sources first) would guide both the spec's skills and the Security & policy role.",
+        "saved": "2026-10-02",
+        "status": "tentative"
       }
     },
     {
@@ -1885,6 +1892,6 @@
       "fidelity": 2
     },
     "weightsSaved": "2026-09-29",
-    "rowsWithADecision": 9
+    "rowsWithADecision": 10
   }
 }
