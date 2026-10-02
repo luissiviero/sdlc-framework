@@ -1135,6 +1135,78 @@ def test_full_run_stores_the_transcript_records_spend_and_hands_over(
     assert run_file["spend_usd"] == 0.42 and run_file["phase"] == "c"
 
 
+PANEL_DECISION_SCRIPT = """
+import json, pathlib
+path = pathlib.Path("changes/0001-percent-helper/evidence/decisions-c.json")
+path.parent.mkdir(parents=True, exist_ok=True)
+path.write_text(json.dumps({"schema_version": 1, "phase": "c", "decisions": [
+    {"n": 1, "phase": "c", "kind": "escalate", "key": "escalate:x", "item": "escalate",
+     "reviewer": "continue", "advocate": "no objection", "decision": "continue",
+     "rationale": ["the plan lists every file"], "head": "abc", "at": "2026-10-02T00:00:00Z",
+     "cost_usd": None, "overturned": None, "item_n": 1}]}), encoding="utf-8")
+"""
+OPUS = {"outputTokens": 9000, "costUSD": 0.6}
+SONNET = {"outputTokens": 120000, "costUSD": 4.7}
+
+
+@pytest.mark.parametrize(
+    ("usage", "parked"),
+    [
+        ({"claude-opus-5": OPUS, "claude-sonnet-5": SONNET}, False),  # as change 0002 ran
+        ({"claude-sonnet-5": SONNET}, True),  # the advocate ran on the session's model
+    ],
+)
+def test_a_run_that_added_panel_decisions_must_show_the_advocate_model(
+    project, fake_claude, tmp_path, monkeypatch, capsys, usage, parked
+):
+    """0.2.30: a run whose session added panel decisions keeps the models it used in
+    evidence/panel-models-<phase>.json; when none is sdlc.yaml's panel_advocate_model (opus
+    in the template) the change parks with the reason instead of handing over."""
+    root, change = project
+    pr_route(monkeypatch)
+    set_state(change, "b", gate_phase="b", gate_result="passed")
+    write(change / "evidence" / "gate-c.json", json.dumps({**GATE_FILE, "phase": "c"}))
+    script = tmp_path / "panel_run.py"
+    write(script, PANEL_DECISION_SCRIPT)
+    monkeypatch.setenv("FAKE_CLAUDE_RUN", str(script))
+    monkeypatch.setenv("FAKE_CLAUDE_RESULT", json.dumps({**FAKE_RESULT, "modelUsage": usage}))
+    env = dict(os.environ, **KEY_ENV, GITHUB_TOKEN=FAKE_TOKEN)
+    env.pop("SDLC_MODEL", None)
+    args = Args(
+        root=str(root), phase="c", dry_run=False, no_dispatch=True, claude=fake_cli(fake_claude)
+    )
+    assert run_phase.run_phase(args, env) == run_phase.EXIT_OK
+    out = json.loads(capsys.readouterr().out)
+    record = json.loads((change / "evidence" / "panel-models-c.json").read_text(encoding="utf-8"))
+    assert record["new_decisions"] == 1 and record["advocate_model"] == "opus"
+    assert record["session_model"] == "claude-sonnet-5"
+    assert record["ok"] is (not parked)
+    if parked:
+        assert "no model of this run is opus" in out["parked"]
+        gate_file = json.loads((change / "evidence" / "gate-c.json").read_text(encoding="utf-8"))
+        assert gate_file["result"] == "park"
+        assert [ch["name"] for ch in gate_file["checks"]] == ["panel_models"]
+        assert "panel_advocate_model" in gate_file["what_i_need"]
+        assert "dispatched" not in out
+    else:
+        assert out["result"] == "continue" and record["warning"] is None
+        assert out["dispatched"]["would_dispatch"] == "sdlc-test.yml"
+
+
+def test_a_run_without_panel_decisions_keeps_no_models_record(project, fake_claude, monkeypatch):
+    root, change = project
+    pr_route(monkeypatch)
+    set_state(change, "b", gate_phase="b", gate_result="passed")
+    write(change / "evidence" / "gate-c.json", json.dumps({**GATE_FILE, "phase": "c"}))
+    monkeypatch.setenv("FAKE_CLAUDE_RESULT", json.dumps(FAKE_RESULT))  # no modelUsage at all
+    args = Args(
+        root=str(root), phase="c", dry_run=False, no_dispatch=True, claude=fake_cli(fake_claude)
+    )
+    env = dict(os.environ, **KEY_ENV, GITHUB_TOKEN=FAKE_TOKEN)
+    assert run_phase.run_phase(args, env) == run_phase.EXIT_OK
+    assert not (change / "evidence" / "panel-models-c.json").exists()
+
+
 def test_every_run_of_a_phase_keeps_its_own_transcript(project):
     """0.2.16: the first run writes claude-<phase>.json, the next ones claude-<phase>-2.json,
     -3, ... so the adversarial reviewer never reads an earlier run's transcript as the

@@ -57,6 +57,30 @@ def open_the_concern(change: Path) -> None:
     write(change / "spec.md", spec)
 
 
+def write_members(change: Path, phase: str, n: int) -> None:
+    """The two blind verdicts, as the reviewer's and the devil's advocate's briefs make them
+    write: ``record`` refuses an item without them (0.2.30)."""
+    folder = ledger.member_path(change, phase, n, "reviewer").parent
+    folder.mkdir(parents=True, exist_ok=True)
+    ledger.member_path(change, phase, n, "reviewer").write_text(
+        f"## Verdict\n{DECISION['reviewer']}\n\n## Why\nno caller reads the old rounding.\n",
+        encoding="utf-8",
+    )
+    ledger.member_path(change, phase, n, "advocate").write_text(
+        f"## Verdict\n{DECISION['advocate']}\n\n## The case against\nnone found.\n",
+        encoding="utf-8",
+    )
+    # what the panel_blind hook writes when the advocate writes its file (0.2.30)
+    write_advocate_model(change, phase, n)
+
+
+def write_advocate_model(
+    change: Path, phase: str, n: int, agent="sdlc:adversarial-reviewer", models=("claude-opus-5",)
+) -> None:
+    record = {"agent_type": agent, "models": list(models), "reason": None if models else "x"}
+    ledger.advocate_model_path(change, phase, n).write_text(json.dumps(record), encoding="utf-8")
+
+
 def run(argv: list[str]) -> tuple[int, dict]:
     proc = subprocess.run(
         [sys.executable, str(PANEL_CLI), *argv], capture_output=True, text=True, encoding="utf-8"
@@ -93,6 +117,22 @@ def test_validate_entry_and_decision_file():
     assert ledger.validate_decision_file({"decision": "x"}) != []
     assert ledger.validate_decision_file(dict(DECISION, rationale="one\ntwo")) == []
     assert ledger.validate_decision_file("text") == ["the decision file is not a JSON object"]
+
+
+def test_verdict_clause_is_the_first_paragraph_under_the_heading():
+    assert ledger.verdict_clause("## Verdict\nkeep half-up\n\n## Why\nx\n") == "keep half-up"
+    # wrapped over two lines: one clause; blank lines before it are skipped
+    text = "# Title\n\n## Verdict\n\nkeep half-up,\n  as round() does\n\nmore\n"
+    assert ledger.verdict_clause(text) == "keep half-up, as round() does"
+    assert ledger.verdict_clause("## verdict\nno objection\n") == "no objection"
+    for empty in (
+        None,
+        "",
+        "no heading at all\n",
+        "## Verdict\n\n## Why\nx\n",
+        "## Verdict\n<one clause: your recommendation>\n",  # the brief's placeholder, unfilled
+    ):
+        assert ledger.verdict_clause(empty) is None, empty
 
 
 def test_ledger_round_trip_render_and_cost(tmp_path):
@@ -205,6 +245,7 @@ def test_record_refuses_under_parked_and_decides_under_deferred(design_project):
     git(root, "commit", "-q", "-m", "design(0001): an open concern")
     verdict(root, "b")
     assert run(["items", "--root", str(root), "--id", "0001", "--phase", "b"])[0] == 0
+    write_members(change, "b", 1)
     decision = ledger.member_path(change, "b", 1, "conciliator")
     decision.parent.mkdir(parents=True, exist_ok=True)
     decision.write_text(json.dumps(DECISION), encoding="utf-8")
@@ -274,6 +315,124 @@ def test_record_refuses_under_parked_and_decides_under_deferred(design_project):
     assert body.splitlines()[0].startswith("**Decisions taken for you (0)** — 1 overturned")
 
 
+def test_record_needs_both_blind_verdicts_and_takes_them_from_their_files(design_project):  # noqa: F811
+    """0.2.30: a decision is recorded only when the reviewer and the devil's advocate have
+    each written a verdict, and the ledger carries those verdicts, not the conciliator's
+    restatement of them."""
+    root, change = design_project
+    open_the_concern(change)
+    set_review(change, "deferred")
+    git(root, "add", ".")
+    git(root, "commit", "-q", "-m", "design(0001): an open concern")
+    verdict(root, "b")
+    assert run(["items", "--root", str(root), "--id", "0001", "--phase", "b"])[0] == 0
+    decision = ledger.member_path(change, "b", 1, "conciliator")
+    decision.parent.mkdir(parents=True, exist_ok=True)
+    restated = dict(DECISION, reviewer="the conciliator's words", advocate="also its words")
+    decision.write_text(json.dumps(restated), encoding="utf-8")
+    argv = ["record", "--root", str(root), "--id", "0001", "--phase", "b", "--item", "1"]
+    reviewer = ledger.member_path(change, "b", 1, "reviewer")
+    advocate = ledger.member_path(change, "b", 1, "advocate")
+    cases = (
+        ({}, "b-1-reviewer.md is missing"),
+        ({"reviewer": "## Verdict\nkeep half-up\n"}, "b-1-advocate.md is missing"),
+        (
+            {"reviewer": "## Verdict\nkeep half-up\n", "advocate": "## Verdict\n\n## Why\nx\n"},
+            "b-1-advocate.md has no '## Verdict' clause",
+        ),
+    )
+    for files, message in cases:
+        for path in (reviewer, advocate):
+            path.unlink(missing_ok=True)
+        for member, text in files.items():
+            ledger.member_path(change, "b", 1, member).write_text(text, encoding="utf-8")
+        proc = subprocess.run(
+            [sys.executable, str(PANEL_CLI), *argv], capture_output=True, text=True,
+            encoding="utf-8",
+        )  # fmt: skip
+        assert proc.returncode == panel_cli.EXIT_USAGE, proc.stdout
+        assert message in proc.stderr, proc.stderr
+        assert ledger.load_ledger(change, "b") == []
+        assert status_mod.read_status(change).panel_calls == 0  # nothing was spent
+    write_members(change, "b", 1)
+    rc, out = run(argv)
+    assert rc == 0, out
+    entry = out["entry"]
+    assert entry["reviewer"] == DECISION["reviewer"] and entry["advocate"] == DECISION["advocate"]
+    assert entry["item_n"] == 1
+
+
+def test_record_needs_the_advocate_model_record_and_the_advocate_model(design_project):  # noqa: F811
+    """0.2.30: the verdict of the devil's advocate must have been written by the advocate,
+    on sdlc.yaml's panel_advocate_model (opus in the template), as the panel_blind hook
+    recorded it; anything else is refused and the item stays open for the owner."""
+    root, change = design_project
+    open_the_concern(change)
+    set_review(change, "deferred")
+    git(root, "add", ".")
+    git(root, "commit", "-q", "-m", "design(0001): an open concern")
+    verdict(root, "b")
+    assert run(["items", "--root", str(root), "--id", "0001", "--phase", "b"])[0] == 0
+    write_members(change, "b", 1)
+    decision = ledger.member_path(change, "b", 1, "conciliator")
+    decision.write_text(json.dumps(DECISION), encoding="utf-8")
+    argv = ["record", "--root", str(root), "--id", "0001", "--phase", "b", "--item", "1"]
+    record = ledger.advocate_model_path(change, "b", 1)
+    cases = (
+        (lambda: record.unlink(), "b-1-advocate.model.json is missing"),
+        (
+            lambda: write_advocate_model(change, "b", 1, agent="general-purpose"),
+            "written by general-purpose, not by the devil's advocate",
+        ),
+        (lambda: write_advocate_model(change, "b", 1, agent=None), "written by the main session"),
+        (
+            lambda: write_advocate_model(change, "b", 1, models=()),
+            "the advocate's model is unproved",
+        ),
+        (
+            lambda: write_advocate_model(change, "b", 1, models=("claude-sonnet-5",)),
+            "ran on claude-sonnet-5, not on opus",
+        ),
+    )
+    for arrange, message in cases:
+        arrange()
+        proc = subprocess.run(
+            [sys.executable, str(PANEL_CLI), *argv], capture_output=True, text=True,
+            encoding="utf-8",
+        )  # fmt: skip
+        assert proc.returncode == panel_cli.EXIT_USAGE, (message, proc.stdout)
+        assert message in proc.stderr, proc.stderr
+        assert ledger.load_ledger(change, "b") == []
+    write_advocate_model(change, "b", 1)
+    rc, out = run(argv)
+    assert rc == 0 and out["recorded"], out
+    # the record is committed with the decision, so the gate can re-check it in HEAD
+    tracked = git(root, "ls-files", str(record))
+    assert record.name in tracked
+    # a decided item stays decided: a re-run answers before the 0.2.30 checks, so a line
+    # recorded before 0.2.30 (no model record) is never refused on a re-run
+    record.unlink()
+    rc, out = run(argv)
+    assert rc == 0 and out["recorded"] is False and out["reason"] == "already decided"
+
+
+def test_gate_parks_a_panel_decision_whose_advocate_ran_on_another_model(project):  # noqa: F811
+    root, change = project
+    set_review(change, "deferred")
+    head = git(root, "rev-parse", "HEAD").strip()
+    reasons = ["blast radius larger than the plan says"]
+    item = {"n": 1, "kind": "escalate", "key": ledger.escalate_key(reasons), "item": "escalate"}
+    write_members(change, "c", 1)
+    write_advocate_model(change, "c", 1, models=("claude-sonnet-5",))
+    _ledger_entry(change, "c", item, "continue: the plan lists every file", head)
+    git(root, "add", ".")
+    git(root, "commit", "-q", "-m", "build(0001): panel decision 1")
+    verdict(root, "c", verdict="escalate")
+    result = gate.run_gate(root, "0001", "c", dry_run=True)
+    panel = next(ch for ch in result.failed if ch.name == "panel")
+    assert "ran on claude-sonnet-5, not on opus" in panel.reason
+
+
 def test_record_stops_at_the_iteration_cap_and_validates_the_decision(design_project):  # noqa: F811
     root, change = design_project
     set_review(change, "deferred")
@@ -282,6 +441,7 @@ def test_record_stops_at_the_iteration_cap_and_validates_the_decision(design_pro
     git(root, "commit", "-q", "-m", "design(0001): an open concern")
     verdict(root, "b")
     assert run(["items", "--root", str(root), "--id", "0001", "--phase", "b"])[0] == 0
+    write_members(change, "b", 1)
     decision = ledger.member_path(change, "b", 1, "conciliator")
     decision.parent.mkdir(parents=True, exist_ok=True)
     decision.write_text(json.dumps({"decision": "x"}), encoding="utf-8")
@@ -411,6 +571,40 @@ def test_gate_accepts_an_escalate_the_panel_decided_to_continue(project):  # noq
     assert {"adversarial_review", "panel"} <= set(_names(result, False))
     panel = next(ch for ch in result.failed if ch.name == "panel")
     assert "review mode is parked" in panel.reason
+
+
+def test_gate_parks_a_panel_decision_whose_blind_verdict_is_not_committed(project):  # noqa: F811
+    """A ledger line names its item (``item_n``, 0.2.30): both member files must be in HEAD
+    with a verdict, or the gate's ``panel`` check fails; a line without ``item_n`` (written
+    before 0.2.30) is not re-judged."""
+    root, change = project
+    set_review(change, "deferred")
+    head = git(root, "rev-parse", "HEAD").strip()
+    reasons = ["blast radius larger than the plan says"]
+    item = {"n": 1, "kind": "escalate", "key": ledger.escalate_key(reasons), "item": "escalate"}
+    write_members(change, "c", 1)
+    entry = _ledger_entry(change, "c", item, "continue: the plan lists every file", head)
+    assert entry["item_n"] == 1
+    git(root, "add", ".")
+    git(root, "commit", "-q", "-m", "build(0001): panel decision 1")
+    verdict(root, "c", verdict="escalate")
+    result = gate.run_gate(root, "0001", "c", dry_run=True)
+    assert "panel" in _names(result, True), result.reason
+    # the advocate's file removed from HEAD: the decision rests on one verdict only
+    git(root, "rm", "-q", str(ledger.member_path(change, "c", 1, "advocate")))
+    git(root, "commit", "-q", "-m", "build(0001): the advocate's file removed")
+    verdict(root, "c", verdict="escalate")
+    result = gate.run_gate(root, "0001", "c", dry_run=True)
+    panel = next(ch for ch in result.failed if ch.name == "panel")
+    assert "c-1-advocate.md is missing" in panel.reason
+    # an empty verdict is no verdict either
+    write(ledger.member_path(change, "c", 1, "advocate"), "## Verdict\n\n## Why\nx\n")
+    git(root, "add", ".")
+    git(root, "commit", "-q", "-m", "build(0001): an empty advocate verdict")
+    verdict(root, "c", verdict="escalate")
+    result = gate.run_gate(root, "0001", "c", dry_run=True)
+    panel = next(ch for ch in result.failed if ch.name == "panel")
+    assert "c-1-advocate.md has no '## Verdict' clause" in panel.reason
 
 
 def test_gate_accepts_an_important_finding_the_panel_settled(project):  # noqa: F811
@@ -562,3 +756,53 @@ def test_the_panel_cli_reads_the_review_mode_the_gate_reads(project):  # noqa: F
     set_review(change, "deferred")  # the owner's, merged
     rc, out = run(["mode", "--root", str(root), "--id", "0001"])
     assert rc == 0 and out["mode"] == "deferred"
+
+
+# --- the models a panel ran on (0.2.30) -----------------------------------------------------------
+OPUS_USE = {"outputTokens": 9000}
+SONNET_USE = {"outputTokens": 120000}
+
+
+def test_check_models_parks_without_the_advocate_model_and_warns_on_one_model():
+    both = {"modelUsage": {"claude-opus-5": OPUS_USE, "claude-sonnet-5": SONNET_USE}}
+    assert ledger.check_models(0, both, "opus", None) is None  # no decision this run
+    record = ledger.check_models(2, both, "opus", None)
+    assert record["ok"] and record["warning"] is None
+    assert record["session_model"] == "claude-sonnet-5"
+    assert record["session_model_source"] == "the largest output in modelUsage"
+    # the advocate ran on the session's model: no opus anywhere in the run
+    record = ledger.check_models(1, {"modelUsage": {"claude-sonnet-5": SONNET_USE}}, "opus", None)
+    assert not record["ok"] and "no model of this run is opus" in record["reason"]
+    # no modelUsage at all: nothing proves the advocate's model, so it parks too
+    assert not ledger.check_models(1, {"total_cost_usd": 1}, "opus", None)["ok"]
+    # the session itself runs on the advocate's model: a warning, not a park
+    record = ledger.check_models(1, both, "opus", "opus")
+    assert record["ok"] and record["session_model_source"] == "SDLC_MODEL"
+    assert "the panel had no second model" in record["warning"]
+    # no advocate model configured: a warning that says so
+    record = ledger.check_models(1, both, "", None)
+    assert record["ok"] and "names no panel_advocate_model" in record["warning"]
+
+
+def test_model_matches_aliases_and_full_ids():
+    m = ledger.model_matches
+    assert m("opus", "claude-opus-5") and m("opus[1m]", "claude-opus-5-5")
+    assert m("claude-opus-5-5", "claude-opus-5-5") and m("haiku", "claude-haiku-4-5-20251001")
+    assert not m("opus", "claude-sonnet-5") and not m("", "claude-opus-5")
+    assert not m("claude-opus-5-5", "claude-sonnet-5-5")
+
+
+def test_the_pr_summary_names_the_models_and_the_warning(tmp_path):
+    change = tmp_path / "changes" / "0001-x"
+    item = {"n": 1, "kind": "escalate", "key": "escalate:x", "item": "escalate"}
+    entry = ledger.new_entry(1, "c", item, DECISION, "abc", None)
+    ledger.save_ledger(change, "c", [entry])
+    assert not any("Models of" in line for line in desc.decisions_block(change, "c"))
+    both = {"modelUsage": {"claude-opus-5": OPUS_USE, "claude-sonnet-5": SONNET_USE}}
+    ledger.save_models(change, "c", ledger.check_models(1, both, "opus", "opus"))
+    lines = desc.decisions_block(change, "c")
+    assert (
+        "Models of the (c) run: claude-opus-5, claude-sonnet-5 (the advocate's model: opus)."
+        in lines
+    )
+    assert any(line.startswith("⚠ the session itself runs on opus") for line in lines)

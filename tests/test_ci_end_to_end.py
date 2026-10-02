@@ -193,6 +193,12 @@ if items["mode"] == "deferred" and items["pending"]:
         (folder / f"{phase}-{n}-advocate.md").write_text(
             "## Verdict\\nno objection\\n\\n## The case against\\nnone found.\\n", encoding="utf-8"
         )
+        # what the panel_blind hook records when the real advocate writes its file (0.2.30)
+        (folder / f"{phase}-{n}-advocate.model.json").write_text(
+            json.dumps({"agent_type": "sdlc:adversarial-reviewer", "models": ["claude-opus-5"],
+                        "reason": None}),
+            encoding="utf-8",
+        )
         (folder / f"{phase}-{n}-conciliator.json").write_text(
             json.dumps({"reviewer": "keep half-up", "advocate": "no objection",
                         "decision": "keep half-up rounding via round()",
@@ -209,8 +215,12 @@ run(gate, "check", "--root", ".", "--id", change_id, "--phase", phase, ok=(0, 3,
 word = "design" if phase == "b" else "build"
 run(state, "commit-phase", "--root", ".", "--id", change_id, "--phase", phase,
     "--message", f"{word}(0001): gate ({phase}) evidence", "--push")
+# the real CLI reports every model the session and its sub-agents used (NOTES section 25):
+# here the session's and, as in the sample's change 0002, the advocate's opus
 print(json.dumps({"type": "result", "is_error": False, "result": f"{word} done",
-                  "total_cost_usd": 0.5, "num_turns": 3}))
+                  "total_cost_usd": 0.5, "num_turns": 3,
+                  "modelUsage": {"claude-sonnet-5": {"outputTokens": 120000},
+                                 "claude-opus-5": {"outputTokens": 9000}}}))
 """
 
 # The fake gh: every call is logged; `pr list` finds nothing (or PR #7 when its --head is
@@ -828,6 +838,10 @@ def test_under_deferred_review_the_panel_closes_the_concern_and_the_pr_says_so(c
     assert out["result"] == "wait" and out["label"] == "sdlc:b-ready"
     spec = remote_file(bare, "sdlc/0001/b", f"{CHANGE}/spec.md")
     assert "- decided (by panel #1): keep half-up rounding via round() — Rounding" in spec
+    # 0.2.30: the run that took the decision shows the advocate's model, committed with it
+    models = json.loads(remote_file(bare, "sdlc/0001/b", f"{CHANGE}/evidence/panel-models-b.json"))
+    assert models["ok"] and models["new_decisions"] == 1 and models["advocate_model"] == "opus"
+    assert models["models"] == ["claude-opus-5", "claude-sonnet-5"]
     ledger_md = remote_file(bare, "sdlc/0001/b", f"{CHANGE}/evidence/decisions-b.md")
     assert "1. [concern] Rounding" in ledger_md and "cost: $0.09" in ledger_md
     ledger_json = json.loads(
