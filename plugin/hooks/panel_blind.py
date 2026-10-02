@@ -56,7 +56,8 @@ READ_REASON = (
     "Review panel blindness (decision 21): {rel} is the {member}'s verdict on item {n} of "
     "phase ({phase}), and the {other} has not written its own yet "
     "({other_rel} is missing). The two verdicts are blind to each other; the conciliator "
-    "reads both once both exist. Judge the item from the change's files and your own sources."
+    "reads both once both exist. Judge the item from the change's files and your own sources. "
+    "If you wrote this file yourself, it is saved: there is no need to read it back."
 )
 GREP_REASON = (
     "Review panel blindness (decision 21): this search would read {rel}, the {member}'s "
