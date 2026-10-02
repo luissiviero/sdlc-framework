@@ -143,11 +143,15 @@ def cmd_record_spend(args) -> int:
             data = json.loads(path.read_text(encoding="utf-8"))
         except ValueError:
             data = {}
+    try:
+        ledger = limits.record_spend_entry(
+            change_dir / "evidence", args.run or args.phase, args.source, float(args.usd)
+        )
+    except ValueError as exc:
+        print(f"gate: {exc}", file=sys.stderr)
+        return 2
     data.update({"phase": args.phase, "spend_usd": float(args.usd)})
     _write_run(path, data)
-    ledger = limits.record_spend_entry(
-        change_dir / "evidence", args.run or args.phase, args.source, float(args.usd)
-    )
     _emit({**data, "spend_usd_total": ledger["total_usd"], "spend_entries": len(ledger["entries"])})
     return 0
 

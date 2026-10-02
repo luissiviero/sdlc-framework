@@ -29,6 +29,7 @@ The outer bound for headless runs is the CLI's own ``--max-turns`` (docs/NOTES.m
 
 from __future__ import annotations
 
+import math
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -108,9 +109,20 @@ def read_run(ctx: GateContext) -> dict[str, Any]:
     return data if isinstance(data, dict) else {}
 
 
+def _spend(value: Any) -> float | None:
+    """A spend figure: a finite, non-negative number (``0.0`` counts); anything else - a
+    NaN, which would make the total NaN and the cap never bind, an infinity, a negative
+    figure, a string - is None."""
+    n = _float(value)
+    if n is None or not math.isfinite(n) or n < 0:
+        return None
+    return n
+
+
 def read_spend_ledger(evidence_dir: Path) -> dict[str, Any]:
     """``evidence/spend.json``: ``{"total_usd": <sum>, "entries": [...]}``, each entry
-    ``{"run", "source", "usd", "at"}``; an absent or unreadable file is an empty ledger."""
+    ``{"run", "source", "usd", "at"}``; an absent or unreadable file is an empty ledger,
+    and an entry whose ``usd`` is not a finite, non-negative number is left out."""
     import json
 
     path = Path(evidence_dir) / SPEND_FILE
@@ -123,7 +135,9 @@ def read_spend_ledger(evidence_dir: Path) -> dict[str, Any]:
         return empty
     if not isinstance(data, dict) or not isinstance(data.get("entries"), list):
         return empty
-    entries = [e for e in data["entries"] if isinstance(e, dict) and _float(e.get("usd"))]
+    entries = [
+        e for e in data["entries"] if isinstance(e, dict) and _spend(e.get("usd")) is not None
+    ]
     return {"total_usd": round(sum(float(e["usd"]) for e in entries), 6), "entries": entries}
 
 
@@ -136,6 +150,8 @@ def record_spend_entry(
     same source (a repeated step) replaces its entry instead of counting it twice."""
     import json
 
+    if _spend(usd) is None:
+        raise ValueError(f"a spend figure must be a finite, non-negative number, not {usd!r}")
     ledger = read_spend_ledger(evidence_dir)
     at = at or datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
     entry = {"run": run, "source": source, "usd": float(usd), "at": at}

@@ -490,6 +490,38 @@ def test_the_review_pass_and_each_fix_round_are_their_own_spend_entries(tmp_path
     assert limits.read_spend_ledger(evidence) == {"total_usd": 0.0, "entries": []}
 
 
+def test_a_spend_figure_is_finite_and_non_negative_and_zero_counts(tmp_path):
+    """The review of the 0.3.1 diff, finding 5: Python's json reads ``NaN``, and one NaN
+    entry made the total NaN, which no cap ever exceeds; a negative entry lowered it; a
+    ``0.0`` entry was dropped. The ledger refuses the first two and keeps the third."""
+    ctx = _ctx(tmp_path, {"gate": {"max_budget_usd": 0.01}})
+    evidence = ctx.evidence_dir
+    for bad in (float("nan"), float("inf"), -1.0, "x"):
+        with pytest.raises(ValueError, match="finite, non-negative"):
+            limits.record_spend_entry(evidence, "c", "bad.json", bad)
+    assert limits.record_spend_entry(evidence, "c", "zero.json", 0.0)["entries"][0]["usd"] == 0.0
+    limits.record_spend_entry(evidence, "c", "real.json", 0.02)
+    # entries written behind the ledger's back are judged the same way on the read
+    stored = json.loads((evidence / "spend.json").read_text(encoding="utf-8"))
+    stored["entries"] += [
+        {"run": "c", "source": "nan.json", "usd": float("nan")},
+        {"run": "c", "source": "neg.json", "usd": -5},
+        {"run": "c", "source": "inf.json", "usd": float("inf")},
+    ]
+    write(evidence / "spend.json", json.dumps(stored))  # json writes NaN and Infinity
+    ledger = limits.read_spend_ledger(evidence)
+    assert [e["source"] for e in ledger["entries"]] == ["zero.json", "real.json"]
+    assert ledger["total_usd"] == 0.02
+    res = limits.check_limits(ctx)
+    assert not res.ok and "budget exceeded: 0.02 USD" in res.reason
+    status_mod.write_status(ctx.change_dir, ctx.status)  # the CLI reads the change's status
+    proc = run_py(
+        str(GATE_CLI), "record-spend", "--root", str(tmp_path), "--id", "0001", "--phase", "c",
+        "--usd", "nan", cwd=tmp_path,
+    )  # fmt: skip
+    assert proc.returncode == 2 and "finite, non-negative" in proc.stderr
+
+
 # --- the gate against the fixture --------------------------------------------------------------
 def _names(result, ok):
     return sorted(ch.name for ch in result.checks if ch.ok is ok)

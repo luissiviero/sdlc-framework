@@ -1521,6 +1521,42 @@ def test_hand_over_table_matches_operating_model_4_2():
     assert run_phase.hand_over(args, {"result": "continue"}, "e", "0001") is None  # (e) ends here
 
 
+def test_the_review_pass_commits_its_own_result_record_and_spend_entry(
+    project, fake_claude, monkeypatch, capsys
+):
+    """The review of the 0.3.1 diff, finding 6: the review pass returned before any commit,
+    so its result record, its run file and its spend entry (issue #71) lived in the working
+    tree until the (e) run's commit - and were lost when the findings file failed the pass or
+    the (e) run never came. The pass commits them itself, on the build branch at phase (d)."""
+    root, change = project
+    monkeypatch.setattr(run_phase, "review_prompt", lambda *a: ("REVIEW the diff.", ""))
+    set_state(change, "d", gate_phase="d", gate_result="passed")
+    git(root, "add", ".")
+    git(root, "commit", "-q", "-m", "as if (d) passed")
+    git(root, "checkout", "-q", "-b", "sdlc/0001/c")  # the build PR's branch, open through (e)
+    monkeypatch.setenv("FAKE_CLAUDE_RESULT", json.dumps({**FAKE_RESULT, "total_cost_usd": 0.65}))
+    # the pass "writes" a findings file that fails validation: the pass fails, the commit holds
+    write(change / "evidence" / "review-findings.json", "{not json")
+    args = Args(root=str(root), phase="review", dry_run=False, claude=fake_cli(fake_claude))
+    code = run_phase.run_phase(args, dict(os.environ, **KEY_ENV))
+    out = json.loads(capsys.readouterr().out)
+    assert code == run_phase.EXIT_FAILED and out["review"]["ok"] is False, out
+    assert out["cost_usd"] == 0.65 and out["run_record"]["ok"], out["run_record"]
+    assert git(root, "status", "--porcelain", "--", "changes").strip() == ""
+    assert git(root, "rev-parse", "--abbrev-ref", "HEAD").strip() == "sdlc/0001/c"
+    assert status_mod.read_status(change).phase == "d"  # the commit moved no phase
+    subject = git(root, "log", "-1", "--format=%s").strip()
+    assert subject == "run(review): spend recorded"
+    committed = git(root, "show", "--name-only", "--format=", "HEAD").split()
+    assert "changes/0001-percent-helper/evidence/claude-review.json" in committed
+    assert "changes/0001-percent-helper/evidence/spend.json" in committed
+    assert "changes/0001-percent-helper/evidence/run-e.json" in committed
+    ledger = json.loads((change / "evidence" / "spend.json").read_text(encoding="utf-8"))
+    assert [(e["run"], e["source"], e["usd"]) for e in ledger["entries"]] == [
+        ("review", "claude-review.json", 0.65)
+    ]
+
+
 def test_review_phase_argv_is_read_only(project, monkeypatch, capsys):
     root, change = project
     monkeypatch.setattr(run_phase, "review_prompt", lambda *a: ("REVIEW the diff.", ""))

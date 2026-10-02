@@ -1642,12 +1642,22 @@ def run_phase(args, env: dict[str, str]) -> int:
 
     review = validate_review(plugin_dir, root, change_id) if phase == "review" else None
     if phase == "review":
+        # the pass's result record and its spend entry (issue #71) are committed here, on the
+        # build branch at the change's phase (d), whatever the findings file said: the (e)
+        # run's commit used to be the only one, so a failed review pass or a skipped (e) run
+        # left the review's cost uncounted and its record uncommitted
+        record = (
+            commit_run_record(plugin_dir, root, change_id, phase, branch_phase="d")
+            if cost is not None
+            else None
+        )
         _emit(
             {
                 "phase": phase,
                 "change_id": change_id,
                 "cost_usd": cost,
                 "review": review,
+                "run_record": record,
                 "labels": labels,
                 "setup": setup,
             }

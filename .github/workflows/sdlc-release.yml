@@ -26,17 +26,21 @@
 # Exit 0 is done, skip or waiting; exit 1 is a failed release command, or a release whose
 # record could not be pushed (red).
 #
-# One release per change (0.3.1, issues #66 and #68): the step releases only a merged copy
-# whose gate (e) has a result (a build PR merged while the deploy run still runs is skipped;
-# the PR that run opens afterwards releases), waits for sdlc:release-approved when the merged
-# copy was parked (the park reason is printed), and after a command that exited 0 commits
-# released_at / released_sha / released_pr into status.yaml on the change's work branch
-# sdlc/<id>/c - never on the default branch - so a second merge of the same change, the
-# label or a dispatch releases nothing again.
+# One release per change (0.3.1, issues #66 and #68): the release step releases only a
+# merged copy whose gate (e) has a result and whose gate record the runner's commands step
+# completed (a build PR merged while the deploy run still runs is skipped; the PR that run
+# opens afterwards releases), waits for sdlc:release-approved when the merged copy was parked
+# (the park reason is printed), and skips a change whose release is already recorded. After
+# a command that exited 0 the second job, record, commits released_at / released_sha /
+# released_pr into status.yaml on the change's work branch sdlc/<id>/c and on the ref
+# refs/sdlc/released/<id> (which no branch deletion removes) - never on the default branch -
+# so a second merge of the same change, the label or a dispatch releases nothing again.
 #
 # Token rule: events caused by the GITHUB_TOKEN never start another workflow run - only
-# workflow_dispatch and repository_dispatch do. This workflow dispatches nothing; the one
-# thing it writes is the release record on the work branch (contents: write, the automation
+# workflow_dispatch and repository_dispatch do. This workflow dispatches nothing. The release
+# job holds a read-only token: the project's own toolchain (commands.setup) and
+# deploy.command run there, and neither may push. Only the record job, which runs the
+# framework's record step and nothing of the project's, holds contents: write (the automation
 # identity's branch-only access). The deploy command's own credentials are the project's
 # secrets; add them to the env: of the release step below.
 #
@@ -55,11 +59,11 @@ on:
         required: true
         type: string
 
-# contents: write for the release record on the work branch (0.3.1, issue #66) and nothing
-# else: the release runs the project's own deploy.command. issues: read lets the approval
-# check read who applied the release label (the issue events of the PR).
+# Read only for the release job: it runs the project's own deploy.command and must not be
+# able to push. issues: read lets the approval check read who applied the release label (the
+# issue events of the PR). The record job below declares its own contents: write.
 permissions:
-  contents: write
+  contents: read
   pull-requests: read
   issues: read
 
@@ -81,6 +85,12 @@ jobs:
     # environment: production
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    # The record job reads these: whether deploy.command ran and exited 0, which change, and
+    # the framework ref the pin step read.
+    outputs:
+      released: ${{ steps.release.outputs.released }}
+      change_id: ${{ steps.release.outputs.change_id }}
+      pin: ${{ steps.pin.outputs.ref }}
     steps:
       # The merge commit itself, not the event's default ref: a label applied long after
       # the merge must release what was merged. A dispatch releases the default branch.
@@ -111,9 +121,10 @@ jobs:
       - name: "Install the project's own toolchain (sdlc.yaml: commands.setup)"
         run: python framework/plugin/ci/project_setup.py --root .
 
-      # GITHUB_TOKEN reads the PR and its label events and pushes the release record on the
-      # work branch (the checkout keeps the job's credential for git).
+      # GITHUB_TOKEN reads the PR and its label events (read-only). The step writes
+      # released=true and change_id=<id> to its outputs after a command that exited 0.
       - name: Release the merged change (sdlc.yaml deploy)
+        id: release
         env:
           GITHUB_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
@@ -121,3 +132,36 @@ jobs:
           EVENT_ACTION: ${{ github.event.action || 'closed' }}
           MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
         run: python framework/plugin/release/cli.py run --root . --repo "$REPO" --pr "$PR_NUMBER" --event "$EVENT_ACTION" --merge-sha "$MERGE_SHA"
+
+  # The release record (0.3.1, issue #66): the only job with a write token, and it runs the
+  # framework's record step and nothing of the project's (no toolchain, no deploy.command).
+  # It commits released_at / released_sha / released_pr into status.yaml on the work branch
+  # sdlc/<id>/c (when still there) and on refs/sdlc/released/<id>; the release step reads
+  # both before releasing. A push that fails is red: the release ran without its record.
+  record:
+    needs: release
+    if: ${{ needs.release.outputs.released == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - name: Check out the project
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.merge_commit_sha || github.sha }}
+          fetch-depth: 0
+
+      - name: Check out the pinned framework (public repository, no token)
+        uses: actions/checkout@v5
+        with:
+          repository: "luissiviero/sdlc-framework"
+          ref: ${{ needs.release.outputs.pin }}
+          path: framework
+
+      - name: Record the release (status.yaml on the work branch and refs/sdlc/released)
+        env:
+          CHANGE_ID: ${{ needs.release.outputs.change_id }}
+          PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr_number }}
+          MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
+        run: python framework/plugin/release/cli.py record --root . --id "$CHANGE_ID" --pr "$PR_NUMBER" --merge-sha "$MERGE_SHA"
