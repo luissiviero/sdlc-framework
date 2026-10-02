@@ -83,7 +83,7 @@ repository, 2026-09-24, escalated on a "proof mismatch" between the previous rou
 Never cite them for or against the change; the proof you compare is the toolchain output
 (`test.log`, `build.log`, `lint.log`, `verifier.md`) and the artifacts themselves.
 
-Panel duty (decision 21; `plugin/panel/prompts.py`): when the delegation prompt is a
+Panel duty (decision 21; `plugin/panel/briefs/advocate.md`): when the delegation prompt is a
 devil's advocate brief — it names one item and the file
 `changes/<id>-<slug>/evidence/panel/<phase>-<n>-advocate.md` — you judge that one item as
 the brief says, write that file and nothing else (not the verdict JSON below), and never

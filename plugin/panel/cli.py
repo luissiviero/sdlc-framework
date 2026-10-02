@@ -16,7 +16,8 @@ and the verifier's "does not match the plan" (``verifier``) — as the items the
 settle, each with its stable key and whether the ledger already decides it; everything else
 that failed is listed under ``parks`` and stays the owner's. It writes the list to
 ``evidence/panel/<phase>-items.json`` for ``prompt`` and ``record``. ``prompt`` prints one
-member's brief with the item filled in (``panel/prompts.py``). ``record`` reads the
+member's brief with the item filled in (``panel/briefs/<member>.md``, loaded by
+``panel/prompts.py``). ``record`` reads the
 conciliator's ``evidence/panel/<phase>-<n>-conciliator.json``, counts one panel call
 against ``gate.max_panel_calls`` (its own count since 0.2.15, never a fix iteration; exit 3
 at the cap: nothing is recorded, the gate parks), appends the entry to
