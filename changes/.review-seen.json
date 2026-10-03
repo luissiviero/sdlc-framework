@@ -1,0 +1,42 @@
+{
+  "52f49924705bd8e8": {
+    "count": 1,
+    "file": "docs/PROGRESS.md",
+    "first_change": "0001",
+    "last_change": "0001",
+    "last_seen": "2026-10-03T21:32:24Z",
+    "summary": "The new top-level record's summary says the split covered \"docs/NOTES.md (30 sections)\", but docs/notes/ holds 32 section files (1-32) and docs/notes/index.md lists 32, so the record's own prose undercounts by two."
+  },
+  "af228dac9a462c15": {
+    "count": 1,
+    "file": "docs/PROGRESS.md",
+    "first_change": "0001",
+    "last_change": "0001",
+    "last_seen": "2026-10-03T21:32:24Z",
+    "summary": "The new record's CLAUDE.md guardrail table has 3 rows (line 3, new-line-after-3, line 35); spec.md's Acceptance says the table should cover line 39 too, but line 39 is only addressed in a prose sentence in the Summary, not as a table row."
+  },
+  "ce45a2c4192ba2cc": {
+    "count": 1,
+    "file": "docs/notes/1.md",
+    "first_change": "0001",
+    "last_change": "0001",
+    "last_seen": "2026-10-03T21:32:24Z",
+    "summary": "Doubt: the sources frontmatter field holds only the docs URL/section names, not the verbatim quote alongside it; spec.md's Design line describes sources as \"the docs URL or run URL and the verbatim quote already in the section, restated as structured data\", which could mean the quote belongs in the field too."
+  },
+  "cfa7b7a31045a690": {
+    "count": 1,
+    "file": "docs/PROGRESS.md",
+    "first_change": "0001",
+    "last_change": "0001",
+    "last_seen": "2026-10-03T21:32:24Z",
+    "summary": "Doubt: docs/PROGRESS.md currently holds four top-level records (the new split entry plus three \"session 18\" sittings), not just the one current record spec.md's Requirements describe; the change's own verifier.md traces the extra two sittings to a later merge of main into this branch, not to this change's own split commits, so it may not be this diff's defect."
+  },
+  "f3566379af405bb6": {
+    "count": 1,
+    "file": "docs/notes/2.md",
+    "first_change": "0001",
+    "last_change": "0001",
+    "last_seen": "2026-10-03T21:32:24Z",
+    "summary": "verified_with in the docs/notes/<N>.md frontmatter carries only the Claude Code version in 30 of 32 files (and never a runner value in any of the 32), not the three-part \"Claude Code version, plugin version, runner\" the spec requires."
+  }
+}

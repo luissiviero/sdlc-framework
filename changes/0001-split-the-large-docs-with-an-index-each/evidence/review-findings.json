@@ -1,30 +1,57 @@
 {
-  "at": "2026-10-03T21:00:00Z",
+  "at": "2026-10-03T21:22:43Z",
   "findings": [
     {
-      "file": "docs/PROGRESS.md",
-      "line": 190,
+      "file": "docs/notes/2.md",
+      "line": 5,
       "pass": "compliance",
-      "rule": "plan.md step 7 ('Add this change's own docs/PROGRESS.md entry (now the current record, after step 4 rewrote the file) with the CLAUDE.md guardrail-edit table') and spec.md Acceptance ('The owner has, in docs/PROGRESS.md (this change's own record) ... the exact CLAUDE.md guardrail edit'); diffed against refs/remotes/origin/main, the base record for 'session 18' ends right after its own 'Guardrail lines for the owner (after v0.3.2 exists ...)' table (one sdlc.yaml row) and a '---' separator before 'Session 17' \u2014 this diff inserts the new '## Change 0001, phase (c)' section and a second, merged 'Guardrail lines for the owner (after v0.3.2 exists ...)' table (sdlc.yaml row + the three new CLAUDE.md rows) between that old table and the separator, rather than adding a new '# ' heading above 'session 18, third sitting' (the file's actual current record). An owner reading PROGRESS.md top-down for 'this change's own record' will reach three newer session-18 sittings about unrelated plugin fixes before finding the guardrail table buried at the bottom of the oldest one, merged with an unrelated version-pin instruction.",
+      "rule": "spec.md Requirements (docs/notes/ frontmatter: \"verified_with (Claude Code version, plugin version, runner)\") and Design (same, restated); the change's own verifier.md flags this same gap independently.",
       "severity": "important",
-      "signature": "bff0a5d2efedf80a",
-      "summary": "This change's own PROGRESS entry (the docs-split record and the CLAUDE.md guardrail-edit table) was spliced mid-document into the oldest, already-superseded 'session 18' record instead of becoming the new current top-level record, and it merged its new guardrail rows into that old record's unrelated sdlc.yaml-version-pin table."
+      "signature": "f3566379af405bb6",
+      "summary": "verified_with in the docs/notes/<N>.md frontmatter carries only the Claude Code version in 30 of 32 files (and never a runner value in any of the 32), not the three-part \"Claude Code version, plugin version, runner\" the spec requires."
     },
     {
-      "file": "docs/notes/24.md",
+      "file": "docs/notes/1.md",
       "line": 3,
       "pass": "compliance",
-      "rule": "spec.md Requirements, docs/notes/<N>.md frontmatter fields",
+      "rule": "spec.md Design (docs/notes/<N>.md frontmatter: sources).",
       "severity": "nit",
-      "signature": "32c86a996d397cce",
-      "summary": "The per-file `sources` frontmatter is represented inconsistently across docs/notes/*.md \u2014 some files write `sources: null` explicitly, others write `sources:` with no inline value (YAML-equivalent but visually inconsistent) \u2014 a stylistic doubt, not a resolution failure."
+      "signature": "ce45a2c4192ba2cc",
+      "summary": "Doubt: the sources frontmatter field holds only the docs URL/section names, not the verbatim quote alongside it; spec.md's Design line describes sources as \"the docs URL or run URL and the verbatim quote already in the section, restated as structured data\", which could mean the quote belongs in the field too."
+    },
+    {
+      "file": "docs/PROGRESS.md",
+      "line": 1,
+      "pass": "compliance",
+      "rule": "spec.md Requirements (\"docs/PROGRESS.md keeps only its current top-level record\").",
+      "severity": "nit",
+      "signature": "cfa7b7a31045a690",
+      "summary": "Doubt: docs/PROGRESS.md currently holds four top-level records (the new split entry plus three \"session 18\" sittings), not just the one current record spec.md's Requirements describe; the change's own verifier.md traces the extra two sittings to a later merge of main into this branch, not to this change's own split commits, so it may not be this diff's defect."
+    },
+    {
+      "file": "docs/PROGRESS.md",
+      "line": 4,
+      "pass": "compliance",
+      "rule": "spec.md Acceptance (the record must give the owner an exact account of the split); factual accuracy of a just-added record.",
+      "severity": "nit",
+      "signature": "52f49924705bd8e8",
+      "summary": "The new top-level record's summary says the split covered \"docs/NOTES.md (30 sections)\", but docs/notes/ holds 32 section files (1-32) and docs/notes/index.md lists 32, so the record's own prose undercounts by two."
+    },
+    {
+      "file": "docs/PROGRESS.md",
+      "line": 24,
+      "pass": "compliance",
+      "rule": "spec.md Acceptance: \"the exact CLAUDE.md guardrail edit: the table of link, row, current text, new text, covering line 3 ..., line 35 ..., line 39 ..., and the new pointer line\".",
+      "severity": "nit",
+      "signature": "af228dac9a462c15",
+      "summary": "The new record's CLAUDE.md guardrail table has 3 rows (line 3, new-line-after-3, line 35); spec.md's Acceptance says the table should cover line 39 too, but line 39 is only addressed in a prose sentence in the Summary, not as a table row."
     }
   ],
-  "head": "8f978073fbdd5c4e0c0da59c92abfe492ff341b4",
+  "head": "0f2b8d3447d2169313ac45599f6306a9fd3040d6",
   "schema_version": 1,
   "tally": {
     "important": 1,
-    "nit": 1,
+    "nit": 4,
     "nits_omitted": 0
   }
 }
