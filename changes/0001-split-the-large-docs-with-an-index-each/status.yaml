@@ -1,18 +1,18 @@
 id: "0001"
 slug: split-the-large-docs-with-an-index-each
 title: Split the large docs with an index each
-phase: d
+phase: e
 entry_route: idea
 change_type: feature
 profile_override: null
 review_override: null
 gate:
-  phase: d
-  result: passed
-  reason: null
-  at: "2026-10-03T20:35:08Z"
-parked_reason: null
-iterations: 2
+  phase: e
+  result: parked
+  reason: "limits: iteration cap reached: 3 fix iterations, cap 2 (non-routine)"
+  at: "2026-10-03T20:53:04Z"
+parked_reason: "limits: iteration cap reached: 3 fix iterations, cap 2 (non-routine)"
+iterations: 3
 panel_calls: 0
 external_ref: null
 risk_accepted: []
@@ -28,5 +28,5 @@ released_at: null
 released_sha: null
 released_pr: null
 created_at: "2026-10-02T09:04:23Z"
-updated_at: "2026-10-03T20:35:08Z"
+updated_at: "2026-10-03T20:53:04Z"
 schema_version: 1

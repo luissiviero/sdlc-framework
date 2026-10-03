@@ -1,0 +1,2 @@
+<!-- Proposed CLAUDE.md lines under "Things Claude gets wrong" (article p.34 step 5). The PR description quotes this file; only the owner edits CLAUDE.md. -->
+- This change's own PROGRESS entry (the docs-split record and the CLAUDE.md guardrail-edit table) was spliced mid-document into the oldest, already-superseded 'session 18' record instead of becoming the new current top-level record, and it merged its new guardrail rows into that old record's unrelated sdlc.yaml-version-pin table (change 0001; the owner edits CLAUDE.md)

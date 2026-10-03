@@ -1,20 +1,29 @@
 {
-  "at": "2026-10-03T20:43:02Z",
+  "at": "2026-10-03T21:00:00Z",
   "findings": [
     {
-      "file": "docs/notes/12.md",
-      "line": 5,
+      "file": "docs/PROGRESS.md",
+      "line": 190,
       "pass": "compliance",
-      "rule": "spec.md Requirements/Design: \"verified_with (Claude Code version, plugin version, runner)\"",
+      "rule": "plan.md step 7 ('Add this change's own docs/PROGRESS.md entry (now the current record, after step 4 rewrote the file) with the CLAUDE.md guardrail-edit table') and spec.md Acceptance ('The owner has, in docs/PROGRESS.md (this change's own record) ... the exact CLAUDE.md guardrail edit'); diffed against refs/remotes/origin/main, the base record for 'session 18' ends right after its own 'Guardrail lines for the owner (after v0.3.2 exists ...)' table (one sdlc.yaml row) and a '---' separator before 'Session 17' \u2014 this diff inserts the new '## Change 0001, phase (c)' section and a second, merged 'Guardrail lines for the owner (after v0.3.2 exists ...)' table (sdlc.yaml row + the three new CLAUDE.md rows) between that old table and the separator, rather than adding a new '# ' heading above 'session 18, third sitting' (the file's actual current record). An owner reading PROGRESS.md top-down for 'this change's own record' will reach three newer session-18 sittings about unrelated plugin fixes before finding the guardrail table buried at the bottom of the oldest one, merged with an unrelated version-pin instruction.",
+      "severity": "important",
+      "signature": "bff0a5d2efedf80a",
+      "summary": "This change's own PROGRESS entry (the docs-split record and the CLAUDE.md guardrail-edit table) was spliced mid-document into the oldest, already-superseded 'session 18' record instead of becoming the new current top-level record, and it merged its new guardrail rows into that old record's unrelated sdlc.yaml-version-pin table."
+    },
+    {
+      "file": "docs/notes/24.md",
+      "line": 3,
+      "pass": "compliance",
+      "rule": "spec.md Requirements, docs/notes/<N>.md frontmatter fields",
       "severity": "nit",
-      "signature": "a09259a133818fb6",
-      "summary": "All 32 `docs/notes/<N>.md` files carry `verified_with` as a single component (e.g. `\"Claude Code 2.1.278\"` or, here, just `\"plugin 0.2.10\"`) instead of the three spec.md calls for; only `docs/notes/25.md` combines two of the three, and none names a runner, so the environment-mismatch half of the staleness rule (choice 93) can't be checked from the field as populated."
+      "signature": "32c86a996d397cce",
+      "summary": "The per-file `sources` frontmatter is represented inconsistently across docs/notes/*.md \u2014 some files write `sources: null` explicitly, others write `sources:` with no inline value (YAML-equivalent but visually inconsistent) \u2014 a stylistic doubt, not a resolution failure."
     }
   ],
-  "head": "5825bac51b51e0e1e8a7e6c12a3535e2b48ef0a0",
+  "head": "8f978073fbdd5c4e0c0da59c92abfe492ff341b4",
   "schema_version": 1,
   "tally": {
-    "important": 0,
+    "important": 1,
     "nit": 1,
     "nits_omitted": 0
   }
