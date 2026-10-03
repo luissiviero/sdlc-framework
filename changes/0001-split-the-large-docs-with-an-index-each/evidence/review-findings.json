@@ -1,57 +1,39 @@
 {
-  "at": "2026-10-03T21:59:39Z",
+  "at": "2026-10-03T22:42:47Z",
   "findings": [
     {
-      "file": "docs/notes/2.md",
-      "line": 5,
-      "pass": "compliance",
-      "rule": "spec.md Requirements (docs/notes/<N>.md frontmatter: \"verified_with (Claude Code version, plugin version, runner)\").",
-      "severity": "important",
-      "signature": "7cd11e55e64ea40f",
-      "summary": "verified_with still does not carry all three parts spec.md Requirements asks for (Claude Code version, plugin version, runner) for any of the 32 docs/notes/<N>.md files: this fix round added a plugin version to notes/27.md-32.md (sessions 15-18), but no file -- including those six -- carries a runner value, so the field a later session reads to judge staleness (spec.md Requirements, choice 93) is still incomplete across the whole corpus, now a third occurrence of the same open gap."
-    },
-    {
-      "file": "docs/notes/1.md",
+      "file": "CLAUDE.md",
       "line": 3,
       "pass": "compliance",
-      "rule": "spec.md Design (docs/notes/<N>.md frontmatter: sources).",
-      "severity": "nit",
-      "signature": "b14ce5d3b68496d8",
-      "summary": "Unchanged from the previous three rounds: doubt that sources should also hold the verbatim quote; spec.md's Design line describing sources as \"the docs URL or run URL and the verbatim quote already in the section, restated as structured data\" could be read as requiring the quote in the field itself, though the file only carries the URL."
+      "rule": "REVIEW.md Framework rules: \"Flag when the change has made CLAUDE.md outdated.\" (The change already proposes the exact replacement lines to the owner in docs/PROGRESS.md's guardrail table, per CLAUDE.md's own \"Things Claude gets wrong\" rule \u2014 noted here because the framework rule is unconditional, not because the fix is missing.)",
+      "severity": "important",
+      "signature": "27da52344010278e",
+      "summary": "The split turns `docs/DECISIONS.md` and `docs/NOTES.md` into pointer stubs, so CLAUDE.md line 3 (`docs/DECISIONS.md` records the 26 settled choices) and line 35 (record the answer in `docs/NOTES.md`) now name files that no longer hold the content they describe."
     },
     {
       "file": "docs/PROGRESS.md",
-      "line": 1,
+      "line": 30,
       "pass": "compliance",
-      "rule": "spec.md Requirements (\"docs/PROGRESS.md keeps only its current top-level record\").",
-      "severity": "nit",
-      "signature": "0e061f02130c88ce",
-      "summary": "Unchanged from the previous three rounds: docs/PROGRESS.md still holds four top-level records (the split entry plus three \"session 18\" sittings), not just the one current record spec.md's Requirements describe; traced, as before (verifier.md's own investigation of the split commit), to a later merge of main bringing in sessions this change's own commits never touched, not to this round's edits."
+      "rule": "spec.md line 184 (Acceptance: \"`docs/PROGRESS.md` holds only the current record\"); plan.md step 4/7 (\"rewrite `docs/PROGRESS.md` to hold only the current record\" before the new entry is added)",
+      "severity": "important",
+      "signature": "65fcfd3d367f9a77",
+      "summary": "docs/PROGRESS.md still carries four top-level records (the new Change 0001 entry plus the session-18 'third sitting', 'second sitting' and plain 'session 18' records) instead of only the current one, unmet against spec.md's own Acceptance text."
     },
     {
-      "file": "docs/PROGRESS.md",
-      "line": 4,
+      "file": "docs/notes/index.md",
+      "line": 8,
       "pass": "compliance",
-      "rule": "spec.md Acceptance (the record must give the owner an exact account of the split); factual accuracy of the record's own prose.",
+      "rule": "cosmetic drift from spec.md's amended Requirements line 11-13 wording; not required by spec, doubt noted",
       "severity": "nit",
-      "signature": "3534444a4c1cb752",
-      "summary": "Unchanged from the previous three rounds: the current top-level record's summary still says the split covered \"docs/NOTES.md (30 sections)\"; docs/notes/ holds 32 section files and docs/notes/index.md lists 32, so the prose still undercounts by two."
-    },
-    {
-      "file": "docs/PROGRESS.md",
-      "line": 24,
-      "pass": "compliance",
-      "rule": "spec.md Acceptance (\"the exact CLAUDE.md guardrail edit: the table of link, row, current text, new text, covering line 3 ..., line 35 ..., line 39 ..., and the new pointer line\").",
-      "severity": "nit",
-      "signature": "d740fb94f64dfc94",
-      "summary": "Unchanged from the previous three rounds: the CLAUDE.md guardrail table still has only 3 rows (lines 3, new-line-after-3, 35); spec.md's Acceptance text also names line 39, addressed only in the Summary's prose (explaining no edit is needed there), never as a table row."
+      "signature": "207bfd1e53b9fc40",
+      "summary": "The index's one-line description of the frontmatter fields still just says `verified_with` with no note that a runner value is deliberately omitted, so it reads as if the field still matches the pre-round-4 three-part wording."
     }
   ],
-  "head": "a831578baf115a2903a4d5fedfa926aa04621e3b",
+  "head": "69923c7489d1b95bec04114dd8a34885fc587a08",
   "schema_version": 1,
   "tally": {
-    "important": 1,
-    "nit": 4,
+    "important": 2,
+    "nit": 1,
     "nits_omitted": 0
   }
 }

@@ -94,3 +94,40 @@
 No other Important finding stands. The previously-flagged splice (this change's own
 `docs/PROGRESS.md` entry merged into an old, superseded record) was fixed this round —
 see the commit-phase message — and the same review pass confirmed it independently.
+
+# Review response — phase (e), round 2 (head `69923c7489d1b95bec04114dd8a34885fc587a08`)
+
+The owner's waiver (`evidence/fix-response.md`'s round 4) closed the `verified_with`
+finding this section tracked through three rounds: `spec.md` now says a runner is not
+required, and the live frontmatter already matched that rule. A fresh review pass on the
+new head finds none of that family open, but reclassifies two long-standing items this
+change's own prior rounds treated as non-blocking nits:
+
+- **Important — `CLAUDE.md:3` (and line 35): outdated by the split, per REVIEW.md's
+  unconditional framework rule.** Not fixed: `CLAUDE.md` is a guardrail file this session
+  cannot edit (CLAUDE.md "Things Claude gets wrong"; `.claude/**` protection). The exact
+  replacement text has been in `docs/PROGRESS.md`'s "Guardrail lines for the owner" table
+  since the build, and `evidence/claude-md-proposals.md` carries the same two lines again
+  for the PR body. Nothing new for the owner beyond applying that table after merging.
+
+- **Important — `docs/PROGRESS.md:30`: four top-level records, not the one `spec.md`'s
+  Acceptance line 184 asks for.** Not fixed this round. This is the same gap round 1's
+  review response described under `docs/PROGRESS.md:1` and judged "already resolved
+  reasoning, no action needed" (traced to `1923176`, "Merge main into sdlc/0001/c: the
+  docs appended since the split" — three records this change's own commits never wrote,
+  carrying session 18's second and third sittings and a plain "session 18" entry, each
+  itself a record of this same change's own earlier build attempts on `main`). This
+  round's review pass does not accept that reasoning and calls it Important instead of a
+  nit; checked directly, `docs/PROGRESS.md` does still hold those three records plus the
+  current one. Not fixed here because archiving them is a bigger step than this round's
+  request: it would mean moving records a later `main` merge brought in after this
+  branch's own split already ran, on a file sessions on `main` are still actively
+  appending to — a real risk of colliding with work in progress, and a scope beyond
+  "waive `verified_with`, fix the section count" the owner actually asked for this round.
+  Left for the owner: waive it (read `spec.md`'s "current record" invariant as checked at
+  the design/build boundary, not re-checked after every later merge), or ask for it as its
+  own fix request, naming which of the three records to archive.
+
+- **Nit — `docs/notes/index.md:8`: not fixed in this loop** (article p.34: nits are
+  listed, not fixed). The index's one-line field description was not reworded for round
+  4's amended `verified_with` rule; cosmetic only.

@@ -1,2 +1,2 @@
 <!-- Proposed CLAUDE.md lines under "Things Claude gets wrong" (article p.34 step 5). The PR description quotes this file; only the owner edits CLAUDE.md. -->
-- Unchanged from the previous three rounds: the CLAUDE.md guardrail table still has only 3 rows (lines 3, new-line-after-3, 35); spec.md's Acceptance text also names line 39, addressed only in the Summary's prose (explaining no edit is needed there), never as a table row (change 0001; the owner edits CLAUDE.md)
+- The split turns `docs/DECISIONS.md` and `docs/NOTES.md` into pointer stubs, so CLAUDE.md line 3 (`docs/DECISIONS.md` records the 26 settled choices) and line 35 (record the answer in `docs/NOTES.md`) now name files that no longer hold the content they describe (change 0001; the owner edits CLAUDE.md)

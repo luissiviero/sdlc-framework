@@ -7,6 +7,22 @@
     "last_seen": "2026-10-03T22:00:14Z",
     "summary": "Unchanged from the previous three rounds: docs/PROGRESS.md still holds four top-level records (the split entry plus three \"session 18\" sittings), not just the one current record spec.md's Requirements describe; traced, as before (verifier.md's own investigation of the split commit), to a later merge of main bringing in sessions this change's own commits never touched, not to this round's edits."
   },
+  "207bfd1e53b9fc40": {
+    "count": 1,
+    "file": "docs/notes/index.md",
+    "first_change": "0001",
+    "last_change": "0001",
+    "last_seen": "2026-10-03T22:45:42Z",
+    "summary": "The index's one-line description of the frontmatter fields still just says `verified_with` with no note that a runner value is deliberately omitted, so it reads as if the field still matches the pre-round-4 three-part wording."
+  },
+  "27da52344010278e": {
+    "count": 1,
+    "file": "CLAUDE.md",
+    "first_change": "0001",
+    "last_change": "0001",
+    "last_seen": "2026-10-03T22:45:42Z",
+    "summary": "The split turns `docs/DECISIONS.md` and `docs/NOTES.md` into pointer stubs, so CLAUDE.md line 3 (`docs/DECISIONS.md` records the 26 settled choices) and line 35 (record the answer in `docs/NOTES.md`) now name files that no longer hold the content they describe."
+  },
   "2d3ce8f257de8348": {
     "count": 1,
     "file": "docs/PROGRESS.md",
@@ -38,6 +54,14 @@
     "last_change": "0001",
     "last_seen": "2026-10-03T21:32:24Z",
     "summary": "The new top-level record's summary says the split covered \"docs/NOTES.md (30 sections)\", but docs/notes/ holds 32 section files (1-32) and docs/notes/index.md lists 32, so the record's own prose undercounts by two."
+  },
+  "65fcfd3d367f9a77": {
+    "count": 1,
+    "file": "docs/PROGRESS.md",
+    "first_change": "0001",
+    "last_change": "0001",
+    "last_seen": "2026-10-03T22:45:42Z",
+    "summary": "docs/PROGRESS.md still carries four top-level records (the new Change 0001 entry plus the session-18 'third sitting', 'second sitting' and plain 'session 18' records) instead of only the current one, unmet against spec.md's own Acceptance text."
   },
   "6d0d986b5ebb09bb": {
     "count": 1,
