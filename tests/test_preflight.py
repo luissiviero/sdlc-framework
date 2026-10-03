@@ -279,3 +279,28 @@ def test_the_pause_check_fails_closed_on_a_value_that_is_not_a_boolean():
     assert preflight.check_not_paused({"paused": False}).ok
     res = preflight.check_not_paused({"paused": "yes"})
     assert not res.ok and "paused is 'yes', not a boolean" in res.reason
+
+
+# --- item 3b (0.3.2): inside a CI session the test target is the runner's, never run here --
+def test_inside_a_ci_session_the_preflight_leaves_the_test_target_to_the_runner(
+    project, monkeypatch
+):
+    """With the runner's mark in the environment nothing runs the test target (a target that
+    would fail, ``SAMPLE_FAIL=1``, is not started): the session exists only because the
+    runner's own preflight, outside the sandbox, ran it and allowed, and the runner's
+    commands step runs it again after the session. Without the mark the target runs here,
+    as before - the runner's own call has no mark."""
+    from gate import checks
+
+    monkeypatch.setenv("SAMPLE_FAIL", "1")
+    monkeypatch.setenv(checks.COMMANDS_RUNNER_ENV, checks.RUN_BY_RUNNER)
+    report = preflight.run_preflight(project, ROOT, phase="c")
+    assert report["allow"] is True, report["reasons"]
+    check = report["checks"][-1]
+    assert check["name"] == "test_target" and check["details"] == {"ran_by": "runner"}
+    assert check["reason"].startswith("not run inside this session")
+    assert "SAMPLE_FAIL" not in json.dumps(report)  # the target was never started
+    monkeypatch.delenv(checks.COMMANDS_RUNNER_ENV)
+    report = preflight.run_preflight(project, ROOT, phase="c")
+    assert report["allow"] is False and "not green (exit 1)" in report["reasons"][0]
+    assert "ran_by" not in report["checks"][-1]["details"]

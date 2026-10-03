@@ -36,7 +36,9 @@ final commit to `cd ... && python ...`).
   The permission mode it prints is the one the unattended job runs under (`acceptEdits`
   at most; `bypassPermissions` never); by hand the session's own mode applies.
 - The three `sdlc.yaml` commands (`build`, `test`, `lint`) must exist; the gate refuses (c)
-  without them (build guide step 14). Preflight already checked the test target.
+  without them (build guide step 14). Preflight already checked the test target (in CI the
+  runner's own preflight ran it before this session, outside the sandbox, and the
+  in-session call reports that instead of running it again; plugin 0.3.2, item 3b).
 
 ## 1. Branch and run registration
 - Default branch as in `/sdlc-design` step 0. `git fetch origin`.
@@ -94,7 +96,10 @@ behaviour and tests unchanged, re-run the touched tests, commit as
 
 ## 6. Verify in a fresh context (agent `sdlc:verifier`, article p.25–27)
 Delegate to `sdlc:verifier` with the change id: it runs the changed behaviour and the two
-nearest neighbouring flows and reports. Store its report verbatim as
+nearest neighbouring flows and reports (in CI it reads gate (b)'s `commands` entry — never
+`gate-c.json`, which on a re-run or a fix round is an earlier round's — instead of running
+the targets, which the runner runs after this session — its brief says when; plugin 0.3.2,
+item 3b). Store its report verbatim as
 `changes/<id>-<slug>/evidence/verifier.md`. If it reports behaviour that does not match
 `plan.md`, fix it (step 4 again, bounded by the iteration cap from the preflight; under
 deferred review a mismatch you cannot resolve is a panel item of step 7: run

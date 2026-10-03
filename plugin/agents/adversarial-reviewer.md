@@ -37,7 +37,12 @@ Attack the output from these angles and record what you tried:
    `# <command> — exit <code> — ...`) and `evidence/verifier.md` against the tests in the
    diff: do the logs name the tests the diff adds, does the verifier report exercise the
    changed behavior? You run nothing: the verifier (article p.27) already ran the toolchain
-   in a fresh context.
+   in a fresh context. A log whose first line reads `# <command> — deferred to the runner —
+   <time>` is not missing proof and not a claim (plugin 0.3.2, item 3b): inside a CI
+   session the writer runs no target, the runner runs build, test and lint once after the
+   session and replaces the three logs and the gate's `commands` and `evidence` entries,
+   and a red target parks the change there; a verifier report that says "read, not run"
+   is the same case. Judge the diff and the artifacts; leave those logs to the runner.
 4. **Blast radius** — callers, data shapes, configuration, migrations, anything on the
    `risk_list` in `sdlc.yaml`, guardrail files (`.claude/**`, `CLAUDE.md`, `REVIEW.md`,
    `sdlc.yaml`) in the diff.

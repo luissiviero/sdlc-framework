@@ -23,7 +23,10 @@ know what its author assumed. Report only; fix nothing; write exactly one file.
    replaces the plugin's): re-check every rule the spec cited and every rule the diff
    touches.
 5. `{change_dir}/evidence/` — the toolchain output (`test.log`, `build.log`, `lint.log`),
-   `verifier.md`, the adversarial verdicts. Evidence is the literal output, not a claim.
+   `verifier.md`, the adversarial verdicts. Evidence is the literal output, not a claim. A
+   log whose first line reads `— deferred to the runner —` is neither: inside a CI session
+   the targets run after the session, outside the sandbox (plugin 0.3.2, item 3b), and the
+   runner replaces the log; do not count it as missing or failed proof.
 
 ## The three passes (article p.34)
 - **Bugs**: logic errors, broken edge cases, subtle regressions; a test that would pass

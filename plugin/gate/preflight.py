@@ -39,6 +39,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shutil
 import sys
 from pathlib import Path
@@ -51,7 +52,14 @@ if str(PLUGIN_DIR) not in sys.path:
 
 from gate import artifacts as art  # noqa: E402
 from gate import limits  # noqa: E402
-from gate.checks import PLACEHOLDER_COMMAND_RE, CheckResult, GateContext, run_command  # noqa: E402
+from gate.checks import (  # noqa: E402
+    COMMANDS_RUNNER_ENV,
+    PLACEHOLDER_COMMAND_RE,
+    RUN_BY_RUNNER,
+    CheckResult,
+    GateContext,
+    run_command,
+)
 from hooks._common import ConfigError, config_flag, load_sdlc_config  # noqa: E402
 from state import conventions as c  # noqa: E402
 from state import status as status_mod  # noqa: E402
@@ -272,10 +280,27 @@ def check_not_parked(root: Path, change_id: str) -> CheckResult:
 
 
 # --- 7. the test target is green  ----------------------------------------------------------------
-def check_test_target(root: Path, config: dict[str, Any]) -> CheckResult:
+TEST_TARGET_NEED = (
+    "Auto-accept needs a green suite to lean on (article p.18); fix the project first."
+)
+TEST_TARGET_RUNNER_REASON = (
+    "not run inside this session: the runner's own preflight ran the test target before the "
+    "session, outside Claude Code's sandbox (a nested .env* is unreadable inside it, issue "
+    "#91), and the runner's commands step runs it again after the session"
+)
+
+
+def check_test_target(
+    root: Path, config: dict[str, Any], change_id: str | None = None
+) -> CheckResult:
     cmds = _commands(config)
     if "test" not in cmds:
         return _fail("test_target", "no usable test target", "Re-run /sdlc-init (step 14).")
+    if os.environ.get(COMMANDS_RUNNER_ENV) == RUN_BY_RUNNER:
+        # item 3b (0.3.2): a CI session exists only because ``run_phase`` ran this preflight
+        # in the runner's process first (the mark is in the session's environment alone) and
+        # it allowed; running the target here again would fail on the sandbox, not the code
+        return _ok("test_target", TEST_TARGET_RUNNER_REASON, ran_by=RUN_BY_RUNNER)
     gate_cfg = config.get("gate") if isinstance(config.get("gate"), dict) else {}
     try:
         timeout = int(gate_cfg.get("command_timeout", 900))
@@ -287,7 +312,7 @@ def check_test_target(root: Path, config: dict[str, Any]) -> CheckResult:
             "test_target",
             "the test target is not green"
             + (" (timed out)" if run["exit_code"] is None else f" (exit {run['exit_code']})"),
-            "Auto-accept needs a green suite to lean on (article p.18); fix the project first.",
+            TEST_TARGET_NEED,
             run=run,
         )
     return _ok("test_target", "the test target exits 0", run=run)
@@ -340,7 +365,8 @@ def run_preflight(
     if not cfg_error:
         checks.append(check_not_paused(config))
         if phase in PHASES_WITH_TEST_TARGET and all(ch.ok for ch in checks):
-            checks.append(check_test_target(root, config))  # the slow one, only when the rest holds
+            # the slow one, only when the rest holds (a CI session leaves it to the runner)
+            checks.append(check_test_target(root, config, change_id))
     allow = all(ch.ok for ch in checks)
     return {
         "schema_version": 1,

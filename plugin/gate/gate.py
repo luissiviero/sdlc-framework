@@ -296,35 +296,102 @@ def run_gate(
 
 
 # --- issue #91 (0.3.0): the commands check, run by the runner after the model's session ----------
-def deferred_commands(data: dict[str, Any]) -> bool:
-    """Whether a gate record's ``commands`` check is waiting for the runner (written by a gate
-    run inside a CI session, ``checks.check_commands``)."""
+DEFERRABLE_CHECKS = ("commands", "evidence")  # the checks a CI session's gate leaves to the runner
+
+
+def deferred_checks(data: dict[str, Any]) -> list[str]:
+    """The names of the checks a gate record left to the runner: ``commands`` (0.3.0, the
+    targets themselves) and ``evidence`` (0.3.2, item 3b: the three command logs the writer
+    marked instead of writing), each written ``ok`` with ``details.deferred`` by a gate run
+    inside a CI session."""
     checks_data = data.get("checks")
     if not isinstance(checks_data, list):
-        return False
-    return any(
-        isinstance(ch, dict)
-        and ch.get("name") == "commands"
+        return []
+    return [
+        ch["name"]
+        for ch in checks_data
+        if isinstance(ch, dict)
+        and ch.get("name") in DEFERRABLE_CHECKS
         and isinstance(ch.get("details"), dict)
         and ch["details"].get("deferred") is True
-        for ch in checks_data
+    ]
+
+
+def deferred_commands(data: dict[str, Any]) -> bool:
+    """Whether a gate record is still waiting for the runner's commands step: its
+    ``commands`` check or its ``evidence`` check carries the deferred mark
+    (``deferred_checks``). Such a record is not a pass, whatever its ``result`` says."""
+    return bool(deferred_checks(data))
+
+
+def deferred_logs(evidence_dir: Path) -> dict[str, Path]:
+    """The command logs under ``evidence/`` that still carry the session's deferred mark
+    (``artifacts.parse_deferred_header``), by target name."""
+    found: dict[str, Path] = {}
+    for target, name in art.EVIDENCE_TARGETS.items():
+        path = evidence_dir / name
+        if not path.is_file():
+            continue
+        try:
+            text = path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        if art.parse_deferred_header(text) is not None:
+            found[target] = path
+    return found
+
+
+def write_deferred_logs(
+    evidence_dir: Path,
+    runs: dict[str, dict[str, Any]],
+    at: str | None = None,
+    all_targets: bool = False,
+) -> list[str]:
+    """Write the logs from ``runs`` (``checks.run_targets``): the header ``evidence/collect.py``
+    would have written, then the literal output. The marked logs always; with ``all_targets``
+    (a gate that reads the logs, (d) and (e)) the three logs whatever their first line, so a
+    log of an older tree never stands beside the runner's run of this one. Returns the file
+    names written. A log whose target did not run (no entry in ``runs``) is left as it is:
+    a mark the gate then refuses (``artifacts.DEFERRED_NEVER_REPLACED``)."""
+    written: list[str] = []
+    stamp = at or _now()
+    targets = (
+        {t: evidence_dir / n for t, n in art.EVIDENCE_TARGETS.items()}
+        if all_targets
+        else deferred_logs(evidence_dir)
     )
+    for target, path in targets.items():
+        run = runs.get(target)
+        if not isinstance(run, dict):
+            continue
+        header = art.render_evidence_header(
+            str(run.get("command") or ""),
+            run.get("exit_code"),
+            float(run.get("seconds") or 0.0),
+            stamp,
+        )
+        art.write_evidence_log(path, header, str(run.get("output") or ""))
+        written.append(path.name)
+    return written
 
 
 def run_deferred_commands(
     root: Path, change_id: str, phase: str, base: str | None = None
 ) -> GateResult | None:
-    """Run the ``commands`` check the session's gate deferred and rewrite the gate record with
-    the result (issue #91, choice 133: the runner runs the project's targets after the model's
-    session, outside Claude Code's sandbox, on the working tree the session left).
+    """Run the targets the session's gate deferred and rewrite the gate record with the
+    result (issue #91, choice 133: the runner runs the project's targets after the model's
+    session, outside Claude Code's sandbox, on the working tree the session left; item 3b,
+    0.3.2: the three evidence logs the session marked come from the same run).
 
     The record keeps its shape: the same checks in the same order, the session's ``at`` and
-    ``head``; only the ``commands`` entry changes, from the deferred mark to the real runs
-    (``details.ran_by`` names the runner). A red target parks the change exactly as the
+    ``head``; the ``commands`` entry changes from the deferred mark to the real runs
+    (``details.ran_by`` names the runner), and the ``evidence`` entry is judged again when
+    it was deferred or the step wrote a log. A red target parks the change exactly as the
     in-session check did (``status.yaml`` and the label); a green one leaves the session's
     verdict (``wait`` or ``continue``) standing. Returns None, and touches nothing, when the
-    record carries no deferred check: a gate run by hand or by an older runner already ran
-    the targets itself. Raises ``GateError`` when the record or the change cannot be read."""
+    record carries no check deferred to the runner: a gate run by hand or by an older runner
+    already ran the targets itself. Raises ``GateError`` when the record or the change
+    cannot be read."""
     root = Path(root).resolve()
     change_dir = c.find_change_dir(root, change_id)
     if change_dir is None:
@@ -340,20 +407,58 @@ def run_deferred_commands(
         return None
     ctx = build_context(root, change_id, phase, base)
     ctx.commands_deferred = False  # whatever the runner's own environment says
+    pending = deferred_checks(data)
+    replaced: dict[str, CheckResult] = {}
+    written: list[str] = []
     try:
-        check = checks.run_commands_check(ctx, ran_by=checks.RUN_BY_RUNNER)
+        # one run of the three targets: the record's ``commands`` entry and, at (d) and (e),
+        # the three logs come from it, so they agree by construction (item 3b)
+        missing = checks.missing_targets(ctx)
+        if missing is not None:
+            replaced["commands"] = missing
+        else:
+            runs = checks.run_targets(ctx)
+            replaced["commands"] = checks.judge_targets(runs, ran_by=checks.RUN_BY_RUNNER)
+            written = write_deferred_logs(
+                ctx.evidence_dir, runs, all_targets=phase in checks.HEADER_REQUIRED_AT
+            )
     except Exception as exc:  # noqa: BLE001 — a crashing check parks, as in ``evaluate``
-        check = CheckResult(
+        replaced["commands"] = CheckResult(
             "commands",
             False,
             f"check crashed: {exc!r}",
             "Report this to the framework owner; the gate failed closed.",
             {"ran_by": checks.RUN_BY_RUNNER},
         )
+    if "evidence" in pending or written:
+        # judged again without the deferral, on the logs the step wrote: a marked log the
+        # step did not replace fails it (``DEFERRED_NEVER_REPLACED``), a red log parks as it
+        # always did, and a stale log the step replaced no longer counts
+        pending = [*pending, "evidence"] if "evidence" not in pending else pending
+        try:
+            replaced["evidence"] = checks.check_evidence(ctx)
+        except Exception as exc:  # noqa: BLE001
+            replaced["evidence"] = CheckResult(
+                "evidence",
+                False,
+                f"check crashed: {exc!r}",
+                "Report this to the framework owner; the gate failed closed.",
+            )
     result = GateResult.from_dict(data)
-    result.checks = [check if ch.name == check.name else ch for ch in result.checks]
+    # a record whose ``commands`` entry was the session's own run (not deferred) keeps it:
+    # only the entries the session left to the runner are replaced
+    result.checks = [
+        replaced[ch.name] if ch.name in replaced and ch.name in pending else ch
+        for ch in result.checks
+    ]
     if result.failed:
         result.result, result.label = "park", c.NEEDS_HUMAN_LABEL
+    elif result.result == "park":
+        # the session parked on a log the step has now replaced (item 3b): every check is
+        # green on the logs of this run, so the verdict is the gate's, as ``evaluate`` gives it
+        result.result, result.label = (
+            ("wait", c.ready_label(ctx.phase)) if ctx.human_gate else ("continue", None)
+        )
     result.dry_run = False
     apply(ctx, result)
     return result

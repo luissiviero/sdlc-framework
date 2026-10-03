@@ -102,10 +102,50 @@ EVIDENCE_HEADER_RE = re.compile(
 )
 
 
+# Item 3b (0.3.2): inside a CI session the evidence writer runs no target (the sandbox denies
+# a nested ``.env*``, issue #91) and leaves this first line instead:
+#   # <command> — deferred to the runner — <ISO-8601 UTC>
+# The runner's commands step replaces the whole file with the target's own output after the
+# session (``gate.run_deferred_commands``); the gate accepts the mark only while that step
+# is still to come (``checks.check_evidence`` with the runner's mark in the environment).
+EVIDENCE_DEFERRED = "deferred to the runner"
+EVIDENCE_DEFERRED_RE = re.compile(
+    rf"^#\s+(?P<command>.+?)\s+—\s+{EVIDENCE_DEFERRED}\s+—\s+(?P<at>\S+)\s*$"
+)
+EVIDENCE_DEFERRED_BODY = (
+    "The target did not run inside the model's session: build, test and lint run after the "
+    "session, outside its sandbox (issue #91), and the runner replaces this file with the "
+    "target's own output. A file still reading this line was never replaced: the targets "
+    "did not run, and the gate does not pass on it.\n"
+)
+
+
 def render_evidence_header(command: str, exit_code: int | None, seconds: float, at: str) -> str:
     """The first line of test.log / build.log / lint.log."""
     code = EVIDENCE_TIMEOUT if exit_code is None else int(exit_code)
     return f"# {command} — exit {code} — {seconds:.1f}s — {at}"
+
+
+def render_deferred_header(command: str, at: str) -> str:
+    """The first line of a log the session left to the runner (item 3b)."""
+    return f"# {command} — {EVIDENCE_DEFERRED} — {at}"
+
+
+def parse_deferred_header(text: str) -> dict[str, str] | None:
+    """{'command', 'at'} when the log's first line is the deferred mark, else None."""
+    first = (text or "").splitlines()[:1]
+    if not first:
+        return None
+    m = EVIDENCE_DEFERRED_RE.match(first[0])
+    return m.groupdict() if m else None
+
+
+def write_evidence_log(path: Path, header: str, output: str) -> None:
+    """A command log: the header line, then the literal output (``evidence/collect.py`` in
+    the session, ``gate.run_deferred_commands`` on the runner)."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    body = output if output.endswith("\n") or not output else output + "\n"
+    path.write_text(f"{header}\n{body}", encoding="utf-8", newline="\n")
 
 
 def parse_evidence_header(text: str) -> dict[str, str] | None:
@@ -119,6 +159,10 @@ def parse_evidence_header(text: str) -> dict[str, str] | None:
 
 
 MISSING_HEADER = "evidence log without the collector header: re-run evidence/collect.py"
+DEFERRED_NEVER_REPLACED = (
+    "evidence log still carries the session's deferred mark: the runner never replaced it "
+    "with the target's output (issue #91); re-run evidence/collect.py"
+)
 
 
 def evidence_failure(text: str, *, require_header: bool = False) -> str | None:
@@ -130,6 +174,9 @@ def evidence_failure(text: str, *, require_header: bool = False) -> str | None:
     """
     header = parse_evidence_header(text)
     if header is None:
+        if parse_deferred_header(text) is not None:
+            # a mark the runner never replaced is no evidence at any gate (item 3b)
+            return DEFERRED_NEVER_REPLACED
         return MISSING_HEADER if require_header else None
     if header["exit"] == EVIDENCE_TIMEOUT:
         return f"`{header['command']}` timed out after {header['seconds']}s"

@@ -730,6 +730,267 @@ def test_the_runner_s_commands_step_leaves_a_record_without_the_deferred_mark_al
         gate.run_deferred_commands(root, "0009", "c")
 
 
+# --- item 3b (0.3.2): the evidence logs deferred to the runner's same step -------------------
+def _at_phase_d(root: Path, change: Path) -> None:
+    """The project fixture moved to phase (d) with its run registered and its verdict written:
+    the state gate (d) judges, before the evidence writer has run."""
+    set_phase(change, "d")
+    start_run(root, "d")
+    verdict(root, "d")
+
+
+def _check(result, name):
+    return next(ch for ch in result.checks if ch.name == name)
+
+
+def write_marked_logs(root: Path, change: Path) -> None:
+    """The three logs as ``evidence/collect.py`` leaves them inside a CI session."""
+    from evidence import collect as collect_mod
+
+    report, code = collect_mod.collect(root, "0001")
+    assert code == 0 and report["deferred"] is True, report
+
+
+def test_a_ci_session_s_gate_at_d_accepts_the_marked_logs_only_while_the_deferral_holds(
+    project, monkeypatch
+):
+    """Item 3b: with the runner's mark in the environment the evidence writer leaves a mark in
+    each log and the gate's ``evidence`` check accepts it (``ok`` with ``details.deferred``),
+    beside the deferred ``commands`` check; the same record read without the deferral - a
+    gate run by hand on a tree whose logs were never replaced - fails the evidence check."""
+    root, change = project
+    _at_phase_d(root, change)
+    write(change / "evidence" / "verifier.md", "# Verifier\nread, not run\n")
+    monkeypatch.setenv("SAMPLE_FAIL", "1")  # a target that would fail: nothing runs it here
+    monkeypatch.setenv(checks.COMMANDS_RUNNER_ENV, checks.RUN_BY_RUNNER)
+    write_marked_logs(root, change)
+    result = gate.run_gate(root, "0001", "d")
+    assert result.result == "continue", result.reason
+    ev = _check(result, "evidence")
+    assert ev.ok is True and ev.details == {
+        "deferred": True,
+        "deferred_logs": ["test.log", "build.log", "lint.log"],
+    }
+    assert ev.reason.startswith("deferred to the runner") and "not yet written" in ev.reason
+    assert _check(result, "commands").details == {"deferred": True}
+    recorded = json.loads((change / "evidence" / "gate-d.json").read_text(encoding="utf-8"))
+    assert gate.deferred_checks(recorded) == ["commands", "evidence"]
+    assert gate.deferred_commands(recorded) is True
+    # the mark is no evidence once the deferral is off: 0.3.1's gate parked on it as a log
+    # without the collector header; 0.3.2's names the mark the runner never replaced
+    monkeypatch.delenv(checks.COMMANDS_RUNNER_ENV)
+    by_hand = gate.run_gate(root, "0001", "d", dry_run=True)
+    assert by_hand.result == "park"
+    ev = _check(by_hand, "evidence")
+    assert ev.ok is False and ev.details["red_files"] == ["test.log", "build.log", "lint.log"]
+    assert "the runner never replaced it" in ev.reason
+
+
+def test_the_runner_s_step_writes_the_three_logs_from_its_one_run_and_re_judges_the_gate(
+    project, monkeypatch
+):
+    """After the session the runner's ``run-commands`` step runs the targets once: the
+    ``commands`` entry and the three logs come from that run (they agree by construction),
+    and the ``evidence`` check is judged again without the deferral; a green run leaves the
+    session's verdict standing, a red target parks on both checks with the red log named."""
+    root, change = project
+    _at_phase_d(root, change)
+    write(change / "evidence" / "verifier.md", "# Verifier\nread, not run\n")
+    monkeypatch.setenv(checks.COMMANDS_RUNNER_ENV, checks.RUN_BY_RUNNER)
+    write_marked_logs(root, change)
+    deferred = gate.run_gate(root, "0001", "d")
+    before = json.loads((change / "evidence" / "gate-d.json").read_text(encoding="utf-8"))
+    result = gate.run_deferred_commands(root, "0001", "d")
+    assert result is not None and result.result == "continue" and result.label is None
+    cmd, ev = _check(result, "commands"), _check(result, "evidence")
+    assert cmd.ok and cmd.details["ran_by"] == "runner" and "deferred" not in cmd.details
+    assert (
+        ev.ok
+        and ev.details == {}
+        and ev.reason == ("evidence present: test.log, build.log, lint.log, verifier.md")
+    )
+    assert [ch.name for ch in result.checks] == [ch.name for ch in deferred.checks]
+    assert result.head == before["head"] and result.at == before["at"]
+    for target, name in art.EVIDENCE_TARGETS.items():
+        text = (change / "evidence" / name).read_text(encoding="utf-8")
+        header = art.parse_evidence_header(text)
+        assert header is not None and header["exit"] == "0", text[:200]
+        assert header["command"] == cmd.details["runs"][target]["command"]
+        assert float(header["seconds"]) >= 0 and header["at"].endswith("Z")
+        assert art.parse_deferred_header(text) is None
+    assert "passed" in (change / "evidence" / "test.log").read_text(encoding="utf-8")
+    recorded = json.loads((change / "evidence" / "gate-d.json").read_text(encoding="utf-8"))
+    assert gate.deferred_checks(recorded) == [] and recorded["result"] == "continue"
+    assert status_mod.read_status(change).gate.result == "passed"
+    # the record's runs keep the tail of the output; the log keeps it whole
+    assert "seconds" not in cmd.details["runs"]["test"]
+    # a second step finds nothing deferred
+    assert gate.run_deferred_commands(root, "0001", "d") is None
+
+    # the red case: the mark again, the target fails after the session
+    write_marked_logs(root, change)
+    gate.run_gate(root, "0001", "d")
+    monkeypatch.setenv("SAMPLE_FAIL", "1")
+    result = gate.run_deferred_commands(root, "0001", "d")
+    assert result is not None and result.result == "park" and result.label == "sdlc:needs-human"
+    cmd, ev = _check(result, "commands"), _check(result, "evidence")
+    assert cmd.ok is False and "test (exit 1)" in cmd.reason
+    assert ev.ok is False and ev.details["red_files"] == ["test.log"]
+    assert "exited 1" in ev.reason and "deferred" not in ev.details
+    test_log = (change / "evidence" / "test.log").read_text(encoding="utf-8")
+    assert art.parse_evidence_header(test_log)["exit"] == "1" and "SAMPLE_FAIL=1" in test_log
+    assert (
+        art.parse_evidence_header((change / "evidence" / "build.log").read_text("utf-8"))["exit"]
+        == "0"
+    )
+    st = status_mod.read_status(change)
+    assert st.gate.result == "parked" and st.parked_reason.startswith("commands: not green")
+    assert "evidence/test.log" in st.parked_reason
+
+
+def test_a_marked_log_the_step_could_not_replace_fails_the_record(project, monkeypatch):
+    """A crashing targets run (``gate.command_timeout`` not a number) leaves the marks in
+    place: the ``commands`` entry parks on the crash and the ``evidence`` entry, judged without
+    the deferral, refuses the marks the runner never replaced - never a pass on them."""
+    root, change = project
+    _at_phase_d(root, change)
+    write(change / "evidence" / "verifier.md", "# Verifier\nread, not run\n")
+    monkeypatch.setenv(checks.COMMANDS_RUNNER_ENV, checks.RUN_BY_RUNNER)
+    write_marked_logs(root, change)
+    assert gate.run_gate(root, "0001", "d").result == "continue"
+    original = checks.GateContext.gate_setting
+    monkeypatch.setattr(
+        checks.GateContext,
+        "gate_setting",
+        lambda self, key, default: (
+            "abc" if key == "command_timeout" else original(self, key, default)
+        ),
+    )
+    result = gate.run_deferred_commands(root, "0001", "d")
+    assert result is not None and result.result == "park"
+    assert _check(result, "commands").reason.startswith("check crashed: ValueError")
+    ev = _check(result, "evidence")
+    assert ev.ok is False and ev.details["red_files"] == ["test.log", "build.log", "lint.log"]
+    assert "the runner never replaced it" in ev.reason
+    assert art.parse_deferred_header((change / "evidence" / "test.log").read_text("utf-8"))
+    recorded = json.loads((change / "evidence" / "gate-d.json").read_text(encoding="utf-8"))
+    assert gate.deferred_checks(recorded) == [] and recorded["result"] == "park"
+
+
+def test_the_runner_s_step_at_c_writes_the_marked_logs_it_finds_and_leaves_the_rest(
+    project, monkeypatch
+):
+    """At (c) no log is required, so only ``commands`` is deferred; a log the build session
+    marked all the same (``collect.py --only test``) is written from the step's run, a log
+    it did not mark is left as it is (the review of the 0.3.2 diff, finding 9)."""
+    from evidence import collect as collect_mod
+
+    root, change = project
+    verdict(root, "c")
+    write_logs(change, red="build")  # an older tree's logs, the build one red
+    monkeypatch.setenv(checks.COMMANDS_RUNNER_ENV, checks.RUN_BY_RUNNER)
+    report, code = collect_mod.collect(root, "0001", only=["test"])
+    assert code == 0 and report["deferred"] is True
+    assert gate.run_gate(root, "0001", "c").result == "continue"
+    recorded = json.loads((change / "evidence" / "gate-c.json").read_text(encoding="utf-8"))
+    assert gate.deferred_checks(recorded) == ["commands"]
+    result = gate.run_deferred_commands(root, "0001", "c")
+    assert result is not None and result.result == "continue"
+    test_log = (change / "evidence" / "test.log").read_text(encoding="utf-8")
+    assert art.parse_evidence_header(test_log)["exit"] == "0" and "passed" in test_log
+    build_log = (change / "evidence" / "build.log").read_text(encoding="utf-8")
+    assert art.parse_evidence_header(build_log)["exit"] == "1"  # untouched at (c)
+    assert (
+        _check(result, "evidence").ok and _check(result, "commands").details["ran_by"] == "runner"
+    )
+
+
+def test_the_runner_s_step_at_d_writes_all_three_logs_and_lifts_a_park_on_a_stale_one(
+    project, monkeypatch
+):
+    """At (d) the gate reads the three logs, so the step writes all three from its run,
+    marked or not: a red log of an older tree no longer stands beside the runner's green
+    run, and a session that parked on it is re-judged on the logs of this run (the review
+    of the 0.3.2 diff, finding 8)."""
+    from evidence import collect as collect_mod
+
+    root, change = project
+    _at_phase_d(root, change)
+    write(change / "evidence" / "verifier.md", "# Verifier\nread, not run\n")
+    write_logs(change, red="build")  # an older tree's logs, the build one red
+    monkeypatch.setenv(checks.COMMANDS_RUNNER_ENV, checks.RUN_BY_RUNNER)
+    report, code = collect_mod.collect(root, "0001", only=["test"])
+    assert code == 0 and report["deferred"] is True
+    session = gate.run_gate(root, "0001", "d")
+    assert session.result == "park" and _check(session, "evidence").details["red_files"] == [
+        "build.log"
+    ]
+    recorded = json.loads((change / "evidence" / "gate-d.json").read_text(encoding="utf-8"))
+    assert gate.deferred_checks(recorded) == ["commands"]
+    result = gate.run_deferred_commands(root, "0001", "d")
+    assert result is not None and result.result == "continue" and result.label is None
+    for name in art.EVIDENCE_TARGETS.values():
+        text = (change / "evidence" / name).read_text(encoding="utf-8")
+        assert art.parse_evidence_header(text)["exit"] == "0", (name, text[:120])
+    ev = _check(result, "evidence")
+    assert ev.ok and ev.reason.startswith("evidence present")
+    st = status_mod.read_status(change)
+    assert st.gate.result == "passed" and st.parked_reason is None
+
+
+def test_a_record_whose_evidence_alone_is_deferred_keeps_the_session_s_commands_entry(
+    project, monkeypatch
+):
+    """Only the entries the session left to the runner are replaced: a ``commands`` entry the
+    session ran itself stays, while the marked logs are written and the ``evidence`` entry
+    judged again (the ``pending`` guard; the review of the 0.3.2 diff, finding 9)."""
+    root, change = project
+    _at_phase_d(root, change)
+    write(change / "evidence" / "verifier.md", "# Verifier\nread, not run\n")
+    monkeypatch.setenv(checks.COMMANDS_RUNNER_ENV, checks.RUN_BY_RUNNER)
+    write_marked_logs(root, change)
+    gate.run_gate(root, "0001", "d")
+    path = change / "evidence" / "gate-d.json"
+    recorded = json.loads(path.read_text(encoding="utf-8"))
+    for ch in recorded["checks"]:
+        if ch["name"] == "commands":
+            ch["reason"], ch["details"] = "build, test and lint exit 0", {"runs": {"test": {}}}
+    path.write_text(json.dumps(recorded), encoding="utf-8")
+    assert gate.deferred_checks(recorded) == ["evidence"]
+    result = gate.run_deferred_commands(root, "0001", "d")
+    assert result is not None and result.result == "continue"
+    cmd = _check(result, "commands")
+    assert cmd.details == {"runs": {"test": {}}} and "ran_by" not in cmd.details
+    ev = _check(result, "evidence")
+    assert ev.ok and ev.details == {} and gate.deferred_checks(result.as_dict()) == []
+    text = (change / "evidence" / "test.log").read_text(encoding="utf-8")
+    assert art.parse_evidence_header(text)["exit"] == "0"
+
+
+def test_the_deferred_mark_readers_cover_the_evidence_entry_too():
+    record = {"checks": [{"name": "evidence", "ok": True, "details": {"deferred": True}}]}
+    assert gate.deferred_checks(record) == ["evidence"] and gate.deferred_commands(record)
+    record = {"checks": [{"name": "evidence", "ok": True, "details": {"deferred_logs": []}}]}
+    assert gate.deferred_checks(record) == [] and not gate.deferred_commands(record)
+    assert gate.deferred_checks({"checks": "x"}) == [] and not gate.deferred_commands({})
+
+
+def test_a_by_hand_gate_at_d_with_real_logs_is_untouched_by_3b(project, monkeypatch):
+    """Without the runner's mark the writer runs the targets and the gate reads the headers
+    as it always did; a step after it has nothing to do."""
+    root, change = project
+    _at_phase_d(root, change)
+    write(change / "evidence" / "verifier.md", "# Verifier\nran\n")
+    monkeypatch.delenv(checks.COMMANDS_RUNNER_ENV, raising=False)
+    from evidence import collect as collect_mod
+
+    report, code = collect_mod.collect(root, "0001")
+    assert code == 0 and report["all_green"] is True and "deferred" not in report
+    result = gate.run_gate(root, "0001", "d")
+    assert result.result == "continue" and _check(result, "evidence").details == {}
+    assert gate.run_deferred_commands(root, "0001", "d") is None
+
+
 def test_the_run_commands_cli_reports_the_step_and_exits_0_either_way(project, monkeypatch):
     root, change = project
     verdict(root, "c")
@@ -751,7 +1012,7 @@ def test_the_run_commands_cli_reports_the_step_and_exits_0_either_way(project, m
     )  # fmt: skip
     assert proc.returncode == 0 and json.loads(proc.stdout) == {
         "ran": False,
-        "reason": "the gate record carries no deferred commands check",
+        "reason": "the gate record carries no check deferred to the runner",
     }
     proc = run_py(
         str(GATE_CLI), "run-commands", "--root", str(root), "--id", "0001", "--phase", "b",

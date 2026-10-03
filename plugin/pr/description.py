@@ -184,6 +184,10 @@ def log_state(path: Path) -> str:
             first = fh.readline().strip()
     except OSError:
         return "missing"
+    if art.parse_deferred_header(first) is not None:
+        # item 3b: the session's mark, replaced by the runner's step after the session (read
+        # before the exit regex: a command's own text may carry "exit 0")
+        return "deferred to the runner"
     m = EXIT_RE.search(first)
     if not m:
         return "unknown"

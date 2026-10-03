@@ -1210,6 +1210,14 @@ def test_the_commands_summary_reads_the_step_s_json():
         "reason": "not green: test (exit 1)",
         "result": "park",
     }
+    # item 3b: the evidence entry the step judged again shows beside the commands verdict
+    call["output"]["checks"].append(
+        {"name": "evidence", "ok": False, "reason": "evidence/test.log: `x` exited 1"}
+    )
+    assert run_phase.commands_summary(call)["evidence"] == {
+        "ok": False,
+        "reason": "evidence/test.log: `x` exited 1",
+    }
 
 
 def test_a_run_whose_commands_step_cannot_run_is_an_infrastructure_failure(
@@ -1286,6 +1294,27 @@ def test_guard_skips_when_the_previous_gate_deferred_its_commands(project):
     reason = skip_reason(root, "c")
     assert reason is not None and reason.startswith("gate (b) of change 0001 recorded")
     assert "the runner never ran it" in reason and "re-run phase (b)" in reason
+
+
+def test_guard_skips_when_the_previous_gate_deferred_its_evidence_logs(project):
+    """Item 3b (0.3.2): a (d) record whose three logs still carry the session's mark (the
+    ``evidence`` check deferred) is no more a pass than one whose targets never ran."""
+    root, change = project
+    set_state(change, "d", gate_phase="d", gate_result="passed")
+    assert skip_reason(root, "e") is None
+    marked = {
+        **GATE_FILE,
+        "phase": "d",
+        "checks": [
+            {"name": "commands", "ok": True, "reason": "ran", "need": "", "details": {"runs": {}}},
+            {"name": "evidence", "ok": True, "reason": "deferred", "need": "",
+             "details": {"deferred": True, "deferred_logs": ["test.log"]}},
+        ],
+    }  # fmt: skip
+    write(change / "evidence" / "gate-d.json", json.dumps(marked))
+    reason = skip_reason(root, "e")
+    assert reason is not None and reason.startswith("gate (d) of change 0001 recorded")
+    assert "command logs" in reason and "re-run phase (d)" in reason
 
 
 def test_the_commands_step_runs_without_the_job_s_credentials(monkeypatch):
@@ -2453,6 +2482,49 @@ def test_apply_owner_labels_performs_commits_and_reports(project, tmp_path, monk
     # without a route or a number nothing is read
     out = run_phase.apply_owner_labels(ROOT, root, change, {}, "owner/name", "", "b", None, {})
     assert out["ok"] is False and "labels not read" in out["reason"]
+    assert out["reason"].startswith("no pull request number and no open pull request for the head")
+    # a dispatched round carries no number: the open PR of the round's head supplies it
+    # (0.3.2, PROGRESS "Session 17" F1: the first dispatched round read no label)
+    looked_up = []
+    monkeypatch.setattr(
+        github,
+        "find_open_pr",
+        lambda repo, head, cwd=None: (
+            looked_up.append(head) or {"ok": True, "number": 7 if head == "sdlc/0001/b" else None}
+        ),
+    )
+    st = status_mod.read_status(change)
+    st.iterations = 2
+    status_mod.write_status(change, st)
+    out = run_phase.apply_owner_labels(
+        ROOT, root, change, {}, "owner/name", "", "b", "sdlc/0001/b", {"GITHUB_TOKEN": FAKE_TOKEN}
+    )
+    assert looked_up == ["sdlc/0001/b"]
+    assert out["ok"] and out["performed"] == [
+        {"label": "sdlc:reset-iterations", "actor": "luissiviero"}
+    ]
+    assert out["commit"]["ok"] and status_mod.read_status(change).iterations == 0
+    out = run_phase.apply_owner_labels(
+        ROOT,
+        root,
+        change,
+        {},
+        "owner/name",
+        "",
+        "b",
+        "sdlc/0001/gone",
+        {"GITHUB_TOKEN": FAKE_TOKEN},
+    )
+    assert out["ok"] is False and out["reason"] == (
+        "no pull request number and no open pull request for sdlc/0001/gone: labels not read"
+    )
+    monkeypatch.setattr(
+        github, "find_open_pr", lambda repo, head, cwd=None: {"ok": False, "reason": "boom"}
+    )
+    out = run_phase.apply_owner_labels(
+        ROOT, root, change, {}, "owner/name", "", "b", "sdlc/0001/b", {"GITHUB_TOKEN": FAKE_TOKEN}
+    )
+    assert out["reason"] == "cannot look up the pull request of sdlc/0001/b: boom: labels not read"
     monkeypatch.setattr(github, "gh_path", lambda: None)
     out = run_phase.apply_owner_labels(ROOT, root, change, {}, "owner/name", "7", "b", None, {})
     assert out["ok"] is False and "no gh and no GITHUB_TOKEN" in out["reason"]
