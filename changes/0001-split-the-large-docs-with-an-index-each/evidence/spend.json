@@ -1,0 +1,11 @@
+{
+  "entries": [
+    {
+      "at": "2026-10-02T21:35:27Z",
+      "run": "fix",
+      "source": "claude-fix.json",
+      "usd": 1.7358693999999995
+    }
+  ],
+  "total_usd": 1.735869
+}
