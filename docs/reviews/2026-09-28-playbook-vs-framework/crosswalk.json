@@ -1,5 +1,5 @@
 {
-  "about": "The workflow crosswalk: every decision point of the AI-native SDLC playbook (the article, print pages of docs/reference/ai-native-sdlc-playbook.pdf) set against the sdlc framework (plugin 0.2.27, commit cf3f696); the row setup-adopt was added on 2026-09-30 against plugin 0.2.28, commit dd308ca. See ../2026-09-28-playbook-vs-framework.md. Re-checked on 2026-10-02 against plugin 0.2.29, commit 904f4ec: seven rows corrected for precision (setup-home, setup-gates, setup-merge, plan-idea, plan-ticket, plan-accept, x-roles); 0.2.28 and 0.2.29 change none of the others. Re-checked on 2026-10-02 against plugin 0.3.1 (8ec06b8): 0.2.30 changes none of the rows; 0.3.0 and 0.3.1 change seven (design-trigger, test-verify, deploy-approve, deploy-release, x-headless, x-limits, x-measure) and add a sentence to x-sandbox and x-audit. Re-checked on 2026-10-02 (third session) against main 8269d46, still plugin 0.3.1 with no plugin or template change since 8ec06b8: no row changed; build-plan-approve's framework text gained a precision (the class is in evidence only, who merged is GitHub's record only).",
+  "about": "The workflow crosswalk: every decision point of the AI-native SDLC playbook (the article, print pages of docs/reference/ai-native-sdlc-playbook.pdf) set against the sdlc framework (plugin 0.2.27, commit cf3f696); the row setup-adopt was added on 2026-09-30 against plugin 0.2.28, commit dd308ca. See ../2026-09-28-playbook-vs-framework.md. Re-checked on 2026-10-02 against plugin 0.2.29, commit 904f4ec: seven rows corrected for precision (setup-home, setup-gates, setup-merge, plan-idea, plan-ticket, plan-accept, x-roles); 0.2.28 and 0.2.29 change none of the others. Re-checked on 2026-10-02 against plugin 0.3.1 (8ec06b8): 0.2.30 changes none of the rows; 0.3.0 and 0.3.1 change seven (design-trigger, test-verify, deploy-approve, deploy-release, x-headless, x-limits, x-measure) and add a sentence to x-sandbox and x-audit. Re-checked on 2026-10-02 (third session) against main 8269d46, still plugin 0.3.1 with no plugin or template change since 8ec06b8: no row changed; build-plan-approve's framework text gained a precision (the class is in evidence only, who merged is GitHub's record only). Re-checked on 2026-10-03 against main f899cc6, still plugin 0.3.1 with no plugin or template change since 8ec06b8: no row changed; build-start's framework text gained precisions (the preflight and its permission mode, the draft PR, the Standard and Full continuation, the per-change profile_override) and a map node.",
   "seeded": "2026-09-28",
   "fields": {
     "id": "stable row id",
@@ -714,8 +714,8 @@
       "step": "What starts implementation",
       "pb": "The engineer, in the same session, once the plan is approved; auto-accept becomes the default for routine work (a tight spec.md, a small blast radius, code the tests already cover).",
       "pbSrc": "p.16-17",
-      "fw": "The merge of the spec+plan PR fires sdlc-build.yml; /sdlc:sdlc-build runs unattended on sdlc/<id>/c and opens the build PR as a draft.",
-      "fwSrc": "template/.github/workflows/sdlc-build.yml",
+      "fw": "The merge of the spec+plan PR fires sdlc-build.yml; the runner finds the change from the merged PR's folder and runs the preflight, which allows the build under acceptEdits (never bypass) when its guardrail checks pass (CLAUDE.md targets, policy skills, loadable hooks, deny rules and no bypass, not paused, not parked, tests green) and parks the change otherwise; the routine or non-routine class is reported there but never changes the mode. /sdlc:sdlc-build runs unattended on sdlc/<id>/c and opens the build PR as a draft; Standard continues to (d) on its own, Full waits for sdlc:c-approved. A per-change profile_override exists in status.yaml, asked at /sdlc-plan and read from the default branch's copy.",
+      "fwSrc": "template/.github/workflows/sdlc-build.yml, plugin/gate/preflight.py, plugin/ci/run_phase.py, plugin/commands/sdlc-build.md §0, plugin/commands/sdlc-plan.md",
       "rel": "adapted",
       "why": "D1 CI · D2 plan approved at (b) · D11 non-routine only tightens the gate (build guide step 18 preflight)",
       "weigh": "Every approved plan runs unattended once the preflight's guardrail checks pass. D11 rejected escalating non-routine plans ('in a new project almost nothing is routine'); non-routine only lowers the iteration cap. Reopen D11, for example non-routine goes to Full?",
@@ -739,11 +739,29 @@
             "The merge fires sdlc-build.yml"
           ],
           [
+            "A",
+            "w",
+            "Preflight: acceptEdits when the guardrails pass, else park"
+          ],
+          [
             "C",
             "w",
             "/sdlc-build runs unattended"
           ]
         ]
+      },
+      "target": {
+        "refs": [
+          "T1"
+        ],
+        "text": "Your choice on this row (2026-10-03): the unattended start stays the default (D1, D2, D11, D18 unchanged); the class in the 'Needs your close look' banner is what you decide with at the gate (b) merge. Added: a per-change switch to Full at that merge, your label on the design PR before merging (name judged with T4), read by the build runner as profile_override: full for that change, so (c) and (d) wait for your labels; nothing happens without the label."
+      },
+      "decision": {
+        "better": "framework",
+        "decision": "blend",
+        "note": "Blend (T1), added and nothing replaced: my gate (b) merge still fires the build, which starts unattended from the merged plan in a fresh CI job, under acceptEdits when the preflight's guardrail checks pass (never bypass), and opens the build PR as a draft; the Standard profile continues to (d) on its own (D1, D2, D11 and D18 unchanged). The article's 'auto-accept only for routine work' (p.17) is not applied as written: unattended there is no per-edit approver to fall back to, so the guardrails stay the condition (build guide step 18) and the routine test becomes the class in the 'Needs your close look' banner at gate (b), where I decide with it in view (build-plan-approve). The fresh job in place of the article's same session is what p.16 step 4 prepares the plan for. Added: (1) a per-change switch to Full I can flip at that merge: my label on the design PR before merging (its name judged with T4), read by the build runner from the merged PR's label events as the owner's profile_override: full for that change, so (c) and (d) wait for my labels as in the Full profile. Today the override exists but is asked at /sdlc-plan, before any class exists, and the runs judge by the default branch's copy. Nothing happens unless I label: the autonomous start stays the default. Considered and not chosen: non-routine plans automatically to Full, or a park before the build (would reopen D11 and stop almost every change in a new project); auto-accept for routine work only (meaningless unattended).",
+        "saved": "2026-10-03",
+        "status": "tentative"
       }
     },
     {
@@ -1918,7 +1936,7 @@
     ]
   },
   "owner": {
-    "copiedFromStore": "2026-10-02",
+    "copiedFromStore": "2026-10-03",
     "criteriaWeights": {
       "safety": 1,
       "attention": 3,
@@ -1928,6 +1946,6 @@
       "fidelity": 2
     },
     "weightsSaved": "2026-09-29",
-    "rowsWithADecision": 15
+    "rowsWithADecision": 16
   }
 }
