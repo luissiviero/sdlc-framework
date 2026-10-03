@@ -44,7 +44,7 @@ CHAIN EXIT 0
 - Carried from the first sitting and before: the tag-push probe, the `--bare` check, the runner's `owner_fields` check on Windows, the sample's comment rows, the classifier in the default mode, the release record on a project with a `deploy.command`, the reviewer's `at` field.
 
 ## Left
-- At the close of this sitting: PR2_NUMBER_LINE PR #90 merged; change 0001 at phase (c) on `sdlc/0001/c` with no gate, waiting for the re-run on 0.3.3. The owner's steps, in order: merge the 0.3.3 PR; check `v0.3.3`; apply the root pin row below; then `workflow_dispatch` of `sdlc-build.yml` with `change_id` 0001 (Actions → SDLC build (c) → Run workflow). Session 19 reads that run.
+- At the close of this sitting: PR #110 open against `main` (draft; the 0.3.3 PR, first commit `f812f1f`, then this docs commit naming it). `framework-checks.yml` on its final head is read by this sitting before the owner is asked to merge; the next session annotates the result here. PR #90 merged; change 0001 at phase (c) on `sdlc/0001/c` with no gate, waiting for the re-run on 0.3.3. The owner's steps, in order: merge PR #110; check `v0.3.3`; apply the root pin row below; then `workflow_dispatch` of `sdlc-build.yml` with `change_id` 0001 (Actions → SDLC build (c) → Run workflow). Session 19 reads that run.
 
 ## Guardrail lines for the owner (after `v0.3.3` exists; this session cannot edit these files)
 | Link | Row | What is there now | What it must become |
