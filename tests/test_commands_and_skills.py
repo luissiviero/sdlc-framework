@@ -280,6 +280,24 @@ def test_every_unattended_command_states_the_one_command_rule():
         assert "One shell command per Bash call" in flat(COMMANDS / f"{name}.md"), name
 
 
+# the maintain run has no Agent tool (``detect/cli.py maintain_tools``): it cannot delegate
+DELEGATING = tuple(name for name in UNATTENDED if name != "sdlc-maintain.md")
+
+
+@pytest.mark.parametrize("name", DELEGATING)
+def test_every_delegating_command_keeps_its_sub_agents_in_the_foreground(name):
+    """Plugin 0.3.3: a headless run has no next turn, so a sub-agent delegated in the
+    background and waited for ends the run (change 0001's first build run, 2026-10-03:
+    terminated after ten minutes with two agents mid-write, no gate). Every command that
+    delegates says so beside its one-command rule, naming the runner's switch."""
+    text = (COMMANDS / name).read_text(encoding="utf-8")
+    assert "CLAUDE_CODE_DISABLE_BACKGROUND_TASKS" in text, name
+    assert "`run_in_background`, set it to false" in text, name
+    assert "never end a turn to wait for a sub-agent" in text, name
+    assert text.index("Sub-agents run in the foreground") < text.index("## 0."), name
+    assert "elegate to" in text, name  # it does delegate
+
+
 def test_sdlc_build_flow_matches_step_24():
     text = flat(COMMANDS / "sdlc-build.md")
     for token in [

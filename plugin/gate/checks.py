@@ -867,12 +867,18 @@ def check_clean_tree(ctx: GateContext) -> CheckResult:
         return _fail("clean_tree", ctx.diff_error, "Run the gate inside the project's git repo.")
     prefix = ctx.change_rel + "/"
     tree = diffmod.dirty_files(ctx.root)
-    # two kinds of entry are nobody's work: the sandbox's empty placeholders, and the paths
-    # the sandbox masks (.env, .idea, .vscode and friends — diffmod.SANDBOX_MASKED)
-    ignored = sorted(
-        set(diffmod.sandbox_placeholders(ctx.root, tree)) | set(diffmod.sandbox_masked(tree))
-    )
-    dirty = [f for f in tree if f not in set(ignored) and not f.startswith(prefix)]
+    # three kinds of entry are nobody's work: the sandbox's empty placeholders, the root
+    # names it masks (.env, .idea, .vscode and friends — diffmod.SANDBOX_MASKED) and, inside
+    # a CI session only, what it has mounted over at any depth (diffmod.sandbox_mounted,
+    # 0.3.4; the mark the runner sets says the gate runs inside the sandbox, and by hand a
+    # mount over a tracked path is nobody's mask)
+    ignored = set(diffmod.sandbox_placeholders(ctx.root, tree)) | set(diffmod.sandbox_masked(tree))
+    dirty = [f for f in tree if f not in ignored and not f.startswith(prefix)]
+    if dirty and ctx.commands_deferred:
+        mounted = set(diffmod.sandbox_mounted(ctx.root, dirty))
+        ignored |= mounted
+        dirty = [f for f in dirty if f not in mounted]
+    ignored = sorted(ignored)
     if dirty:
         return _fail(
             "clean_tree",

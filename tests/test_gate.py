@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import os
 import shutil
+import stat
 import subprocess
 import sys
 from datetime import datetime, timedelta, timezone
@@ -1674,6 +1675,87 @@ def test_gate_b_judges_the_committed_diff_not_the_working_tree(design_project):
     assert "design_scope" not in _names(result, False), result.reason
     ds = next(ch for ch in result.checks if ch.name == "design_scope")
     assert "stray.py" in ds.details["dirty"]
+
+
+def test_the_sandbox_s_mask_is_read_from_its_mounts(tmp_path):
+    """A file the sandbox masks is /dev/null bound over it, a mount point whose entry is a
+    character device; a directory it masks is a tmpfs mount (reproduced with ``mount
+    --bind`` in the container, 2026-10-03). A character device that is no mount point is
+    not a mask: a session can make one with ``os.mknod`` (a 0:0 device, no privilege needed
+    on current kernels) over a tracked file or directory, and the review of the 0.3.4 diff
+    showed pytest then skips it while git reads it as modified or deleted — it stays
+    reported. A plain file, a plain directory and a missing path are not masked."""
+    plain = tmp_path / "plain.txt"
+    plain.write_text("x", encoding="utf-8")
+    assert checks.diffmod._mount_masked(plain) is False
+    assert checks.diffmod._mount_masked(tmp_path) is False
+    assert checks.diffmod._mount_masked(tmp_path / "missing") is False
+    if os.name != "nt":
+        assert checks.diffmod._mount_masked(Path("/dev/null")) is False  # a device, no mount
+        assert checks.diffmod._mount_masked(Path("/")) is True  # a mount point, a directory
+        forged = tmp_path / "forged.env"
+        try:
+            os.mknod(forged, stat.S_IFCHR | 0o644, 0)  # a 0:0 character device
+        except (PermissionError, OSError):
+            pytest.skip("mknod of a 0:0 character device not allowed here")
+        assert checks.diffmod._mount_masked(forged) is False
+
+
+def test_clean_tree_ignores_a_nested_env_the_sandbox_mounted_over(project, monkeypatch):
+    """Change 0001's second build run on 0.3.3 (2026-10-03, run 37138722554): inside the
+    session the sandbox mounts /dev/null over every ``.env*`` the deny rule names, at any
+    depth, so this repository's tracked ``tests/fixtures/sample-python-project/.env`` read
+    as modified and gate (c) parked on ``clean_tree`` with every other check green. What the
+    sandbox mounted over is its view, not the change's (0.3.4), inside a CI session only; a
+    nested ``.env.local`` the session wrote, with no mount over it, is still the session's
+    uncommitted work, and the checkout's root is never a mask."""
+    root, _change = project
+    nested = root / "tests" / "fixtures" / "inner" / ".env"
+    nested.parent.mkdir(parents=True)
+    nested.write_text("FIXTURE=1\n", encoding="utf-8")
+    secret = root / "config" / "secrets" / "README.md"
+    secret.parent.mkdir(parents=True)
+    secret.write_text("kept\n", encoding="utf-8")
+    git(root, "add", "tests/fixtures/inner/.env", "config/secrets/README.md")
+    git(root, "commit", "-q", "-m", "a nested fixture .env and a secrets folder, tracked")
+    nested.write_text("", encoding="utf-8")  # what the mask looks like to git: modified
+    secret.unlink()  # under a tmpfs-masked directory: deleted
+    masked = {root / "tests" / "fixtures" / "inner" / ".env", root / "config" / "secrets", root}
+    monkeypatch.setattr(checks.diffmod, "_mount_masked", lambda path: Path(path) in masked)
+    monkeypatch.setenv(checks.COMMANDS_RUNNER_ENV, checks.RUN_BY_RUNNER)  # a CI session
+    verdict(root, "c")
+    result = gate.run_gate(root, "0001", "c", dry_run=True)
+    assert "clean_tree" not in _names(result, False), result.reason
+    ct = next(ch for ch in result.checks if ch.name == "clean_tree")
+    assert ct.details["ignored"] == ["config/secrets/README.md", "tests/fixtures/inner/.env"]
+    # an untracked nested .env.local with content, not mounted over: the session's work
+    # (the root being a mount point, as in a container, masks nothing below it)
+    write(root / "tests" / "fixtures" / "inner" / ".env.local", "X=1\n")
+    result = gate.run_gate(root, "0001", "c", dry_run=True)
+    ct = next(ch for ch in result.failed if ch.name == "clean_tree")
+    assert ct.details["dirty"] == ["tests/fixtures/inner/.env.local"]
+    (root / "tests" / "fixtures" / "inner" / ".env.local").unlink()
+    # by hand (no mark) a mount over a tracked path is nobody's mask: everything is reported
+    monkeypatch.delenv(checks.COMMANDS_RUNNER_ENV)
+    result = gate.run_gate(root, "0001", "c", dry_run=True)
+    ct = next(ch for ch in result.failed if ch.name == "clean_tree")
+    assert ct.details["dirty"] == ["config/secrets/README.md", "tests/fixtures/inner/.env"]
+    # and inside a CI session with nothing mounted over, the same
+    monkeypatch.setenv(checks.COMMANDS_RUNNER_ENV, checks.RUN_BY_RUNNER)
+    monkeypatch.setattr(checks.diffmod, "_mount_masked", lambda path: False)
+    result = gate.run_gate(root, "0001", "c", dry_run=True)
+    ct = next(ch for ch in result.failed if ch.name == "clean_tree")
+    assert ct.details["dirty"] == ["config/secrets/README.md", "tests/fixtures/inner/.env"]
+
+
+def test_dirty_files_reads_a_staged_rename_as_two_paths(project):
+    """``git status --porcelain -z`` writes a rename as two records, the second without a
+    status prefix (the review of the 0.3.4 diff, finding 6)."""
+    root, _change = project
+    git(root, "mv", "sample_pkg/calc.py", "sample_pkg/calc_renamed.py")
+    dirty = checks.diffmod.dirty_files(root)
+    assert "sample_pkg/calc.py" in dirty and "sample_pkg/calc_renamed.py" in dirty
+    assert not any(f.startswith("mple_pkg") for f in dirty)
 
 
 def test_gate_b_parks_on_a_stray_file_the_branch_committed(design_project):

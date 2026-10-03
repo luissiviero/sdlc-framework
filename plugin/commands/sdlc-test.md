@@ -21,6 +21,14 @@ and this command's `allowed-tools`), Claude Code checks each part of a chained c
 against that list on its own, and a chain with one part the list does not cover is denied
 whole, so the step it carried is lost (the first `/sdlc-fix` run of 2026-09-23 lost its
 final commit to `cd ... && python ...`).
+Sub-agents run in the foreground: in CI the runner disables background tasks for the
+session (`CLAUDE_CODE_DISABLE_BACKGROUND_TASKS`, plugin 0.3.3), and by hand, when the Agent
+tool offers `run_in_background`, set it to false; read the report in the same turn, and
+never end a turn to wait for a sub-agent's notification. A headless run has no next turn —
+when the turn ends with a sub-agent still running, the CLI waits a fixed time (ten minutes
+by default) and terminates the run, its work uncommitted and nothing after it done (change
+0001's first build run on plugin 0.3.2, 2026-10-03: two background agents splitting the
+docs were killed mid-write and the run ended with no gate; this rule since 0.3.3).
 
 ## 0. Preconditions
 - Change id `$ARGUMENTS` (or the single change whose `status.phase` is `c` with gate

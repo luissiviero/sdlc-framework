@@ -7,6 +7,8 @@ with uncommitted leftovers see the same thing the PR would show.
 
 from __future__ import annotations
 
+import os
+import stat
 import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -92,9 +94,20 @@ def dirty_files(root: Path) -> list[str]:
     """Paths with uncommitted changes (modified, staged or untracked), forward slashes."""
     out = _git(root, "status", "--porcelain", "-z", "--untracked-files=all", check=False)
     files = []
-    for entry in out.split("\0"):
-        if len(entry) > 3:
-            files.append(entry[3:].replace("\\", "/"))
+    records = out.split("\0")
+    i = 0
+    while i < len(records):
+        entry = records[i]
+        i += 1
+        if len(entry) <= 3:
+            continue
+        files.append(entry[3:].replace("\\", "/"))
+        if "R" in entry[:2] or "C" in entry[:2]:
+            # a rename or copy is followed by one more record, the original path, with
+            # no status prefix (the review of the 0.3.4 diff, finding 6)
+            if i < len(records) and records[i]:
+                files.append(records[i].replace("\\", "/"))
+            i += 1
     return sorted(set(files))
 
 
@@ -153,7 +166,8 @@ def without_placeholders(root: Path, files: list[str]) -> list[str]:
 # cannot come from a run at all (the CI settings deny reading it, and the guardrail and
 # secrets checks cover it), so the gate looks past them wherever it happens to run. Names
 # only: they are matched at the root of the checkout, so a project's own ``src/.env`` is
-# untouched.
+# untouched here — what the sandbox masks deeper down is found by its mounts instead
+# (``sandbox_mounted``, 0.3.4).
 SANDBOX_MASKED = frozenset(
     {
         ".env",
@@ -180,6 +194,53 @@ def sandbox_masked(files: list[str]) -> list[str]:
     view, not the change's.
     """
     return sorted({f for f in files if f.split("/", 1)[0] in SANDBOX_MASKED})
+
+
+# Claude Code's sandbox enforces the settings' read denials (``Read(**/.env*)``,
+# ``Read(**/secrets/**)``, …) at any depth by mounting over the paths: ``/dev/null`` bound
+# over a file, a tmpfs over a directory. To git inside the session a tracked file so masked
+# is modified (a character device where a regular file was) and a tracked file under a
+# masked directory is deleted; neither is the session's work. Change 0001's second build
+# run on 0.3.3 (2026-10-03, run 37138722554) parked gate (c) on ``clean_tree`` for this
+# repository's fixture ``tests/fixtures/sample-python-project/.env`` with every other check
+# green. The mount is what identifies the mask (``os.path.ismount``: the entry's device
+# differs from its parent's), and the mount alone: a character device by itself is not a
+# mask, because a session can make one with ``os.mknod`` (a 0:0 device needs no privilege
+# on current kernels — the review of the 0.3.4 diff reproduced it as an unprivileged user —
+# and ``git status`` then reads a tracked file or directory it replaced as modified or
+# deleted, while pytest skips the device). ``lstat`` needs no read access, so the signal is
+# readable inside the sandbox; the caller applies it inside a CI session only (``checks``),
+# because on an owner's machine or in a dev container a volume over a tracked directory
+# is nobody's mask.
+def _mount_masked(path: Path) -> bool:
+    """Whether ``path`` is what the sandbox put there: a mount point whose entry is a
+    character device (``/dev/null`` bound over a file) or a directory (a tmpfs)."""
+    try:
+        if not os.path.ismount(path):
+            return False
+        mode = os.lstat(path).st_mode
+        return stat.S_ISCHR(mode) or stat.S_ISDIR(mode)
+    except OSError:
+        return False
+
+
+def sandbox_mounted(root: Path, files: list[str]) -> list[str]:
+    """The entries of ``files`` that the sandbox masks by a mount: the entry itself, or a
+    directory above it inside ``root`` (a tracked file under a masked directory); the root
+    itself is never tested. One ``lstat`` walk per directory, cached across the entries."""
+    root = Path(root)
+    seen: dict[str, bool] = {}
+    out = []
+    for f in files:
+        parts = f.rstrip("/").split("/")
+        for depth in range(len(parts), 0, -1):
+            key = "/".join(parts[:depth])
+            if key not in seen:
+                seen[key] = _mount_masked(root.joinpath(*parts[:depth]))
+            if seen[key]:
+                out.append(f)
+                break
+    return sorted(set(out))
 
 
 def committed_files(root: Path, merge_base: str | None, head: str | None = None) -> list[str]:
