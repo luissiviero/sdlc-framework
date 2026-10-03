@@ -70,6 +70,15 @@
     sittings) to a later merge of `main` bringing in sessions this change's own commits
     never touched, not to this round's edit — already resolved reasoning, no action needed.
 
+- **Important — `evidence/claude-md-proposals.md:2`: the second-occurrence framework rule
+  (REVIEW.md) was triggered by the open `verified_with` gap recurring across review rounds,
+  but a prior commit in this round left the proposals file untouched.**
+  No action needed: `review/cli.py validate` (run as part of this round, after the fix
+  above) regenerates `evidence/claude-md-proposals.md` itself from the current findings
+  every time it runs — it is not a file this round edits by hand, and nothing is ever
+  written to `CLAUDE.md` directly (protected path; the owner applies the line). The file
+  now carries the proposed line for the recurring gap, written by that run.
+
 No other Important finding stands. The previously-flagged splice (this change's own
 `docs/PROGRESS.md` entry merged into an old, superseded record) was fixed this round —
 see the commit-phase message — and the same review pass confirmed it independently.
