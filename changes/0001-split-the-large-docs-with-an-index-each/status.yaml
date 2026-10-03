@@ -7,11 +7,11 @@ change_type: feature
 profile_override: null
 review_override: null
 gate:
-  phase: b
-  result: passed
-  reason: waiting for the owner at gate (b)
-  at: "2026-10-02T21:39:07Z"
-parked_reason: null
+  phase: c
+  result: parked
+  reason: "clean_tree: 1 uncommitted file(s) outside the change folder: tests/fixtures/sample-python-project/.env"
+  at: "2026-10-03T18:00:26Z"
+parked_reason: "clean_tree: 1 uncommitted file(s) outside the change folder: tests/fixtures/sample-python-project/.env"
 iterations: 1
 panel_calls: 0
 external_ref: null
@@ -28,5 +28,5 @@ released_at: null
 released_sha: null
 released_pr: null
 created_at: "2026-10-02T09:04:23Z"
-updated_at: "2026-10-03T17:01:26Z"
+updated_at: "2026-10-03T18:00:26Z"
 schema_version: 1

@@ -1,0 +1,24 @@
+{
+  "decided": 0,
+  "gate": "park",
+  "items": [],
+  "iterations": {
+    "cap": 2,
+    "left": 1,
+    "used": 1
+  },
+  "mode": "parked",
+  "panel_calls": {
+    "cap": 4,
+    "left": 4,
+    "used": 0
+  },
+  "parks": [
+    {
+      "check": "clean_tree",
+      "reason": "1 uncommitted file(s) outside the change folder: tests/fixtures/sample-python-project/.env"
+    }
+  ],
+  "pending": [],
+  "phase": "c"
+}

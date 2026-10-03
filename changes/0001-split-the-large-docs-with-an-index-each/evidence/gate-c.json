@@ -1,0 +1,148 @@
+{
+  "schema_version": 1,
+  "change_id": "0001",
+  "slug": "split-the-large-docs-with-an-index-each",
+  "phase": "c",
+  "profile": "standard",
+  "human_gate": false,
+  "result": "park",
+  "label": "sdlc:needs-human",
+  "head": "6eecf3c3e17e83da4551826430a8f25ad1cb80e4",
+  "at": "2026-10-03T18:00:26Z",
+  "dry_run": false,
+  "reason": "clean_tree: 1 uncommitted file(s) outside the change folder: tests/fixtures/sample-python-project/.env",
+  "config_note": "",
+  "checks": [
+    {
+      "name": "limits",
+      "ok": true,
+      "reason": "within the run limits",
+      "need": "",
+      "details": {
+        "iterations": 1,
+        "cap": 2,
+        "classification": "non-routine",
+        "panel_calls": 0,
+        "panel_cap": 4,
+        "elapsed_minutes": 59.1,
+        "spend_usd": null,
+        "spend_usd_total": 8.670635,
+        "spend_entries": 2,
+        "max_budget_usd": null
+      }
+    },
+    {
+      "name": "clean_tree",
+      "ok": false,
+      "reason": "1 uncommitted file(s) outside the change folder: tests/fixtures/sample-python-project/.env",
+      "need": "Commit (or discard) the work first: the adversarial verdict and the PR judge HEAD, not the working tree.",
+      "details": {
+        "dirty": [
+          "tests/fixtures/sample-python-project/.env"
+        ],
+        "ignored": []
+      }
+    },
+    {
+      "name": "artifacts",
+      "ok": true,
+      "reason": "every required artifact exists and has its template sections",
+      "need": "",
+      "details": {}
+    },
+    {
+      "name": "open_concerns",
+      "ok": true,
+      "reason": "no open flagged concern",
+      "need": "",
+      "details": {}
+    },
+    {
+      "name": "panel",
+      "ok": true,
+      "reason": "no panel decision at this gate",
+      "need": "",
+      "details": {}
+    },
+    {
+      "name": "commands",
+      "ok": true,
+      "reason": "deferred to the runner: build, test and lint run after the model's session, outside its sandbox (issue #91); not yet run",
+      "need": "",
+      "details": {
+        "deferred": true
+      }
+    },
+    {
+      "name": "evidence",
+      "ok": true,
+      "reason": "evidence present: verifier.md",
+      "need": "",
+      "details": {}
+    },
+    {
+      "name": "findings",
+      "ok": true,
+      "reason": "no review findings yet (the review pass runs in phase e)",
+      "need": "",
+      "details": {}
+    },
+    {
+      "name": "plan_sync",
+      "ok": true,
+      "reason": "every committed source file is in plan.md",
+      "need": "",
+      "details": {
+        "planned_but_unchanged": [
+          "docs/notes/<N>.md",
+          "docs/decisions/<N>.md",
+          "docs/progress/session-<N>.md"
+        ]
+      }
+    },
+    {
+      "name": "guardrails",
+      "ok": true,
+      "reason": "the diff does not touch a guardrail file",
+      "need": "",
+      "details": {}
+    },
+    {
+      "name": "risk_list",
+      "ok": true,
+      "reason": "no risk-list item touched",
+      "need": "",
+      "details": {
+        "accepted": []
+      }
+    },
+    {
+      "name": "owner_actions",
+      "ok": true,
+      "reason": "risk acceptances, iteration and panel-call resets and test-lock lifts, if any, were committed by the owner or applied by the owner's label",
+      "need": "",
+      "details": {
+        "risk_accepted": [],
+        "label_actors": {}
+      }
+    },
+    {
+      "name": "test_lock",
+      "ok": true,
+      "reason": "not a fix-type change: no test-file lock",
+      "need": "",
+      "details": {}
+    },
+    {
+      "name": "adversarial_review",
+      "ok": true,
+      "reason": "adversarial reviewer says continue",
+      "need": "",
+      "details": {
+        "classification": "non-routine",
+        "reasons": []
+      }
+    }
+  ],
+  "what_i_need": "## What I need from you\nGate (c) parked change 0001 (split-the-large-docs-with-an-index-each) on 2026-10-03T18:00:26Z.\n- **clean_tree**: 1 uncommitted file(s) outside the change folder: tests/fixtures/sample-python-project/.env\n  - what I need: Commit (or discard) the work first: the adversarial verdict and the PR judge HEAD, not the working tree.\nWhen the item is settled, re-run the gate: `python \"${CLAUDE_PLUGIN_ROOT}/plugin/gate/cli.py\" check --root . --id 0001 --phase c` (review comments are the change request; /sdlc-fix from B3 re-runs the phase with them).\n"
+}
