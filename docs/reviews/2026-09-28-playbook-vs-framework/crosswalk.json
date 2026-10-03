@@ -1,5 +1,5 @@
 {
-  "about": "The workflow crosswalk: every decision point of the AI-native SDLC playbook (the article, print pages of docs/reference/ai-native-sdlc-playbook.pdf) set against the sdlc framework (plugin 0.2.27, commit cf3f696); the row setup-adopt was added on 2026-09-30 against plugin 0.2.28, commit dd308ca. See ../2026-09-28-playbook-vs-framework.md. Re-checked on 2026-10-02 against plugin 0.2.29, commit 904f4ec: seven rows corrected for precision (setup-home, setup-gates, setup-merge, plan-idea, plan-ticket, plan-accept, x-roles); 0.2.28 and 0.2.29 change none of the others. Re-checked on 2026-10-02 against plugin 0.3.1 (8ec06b8): 0.2.30 changes none of the rows; 0.3.0 and 0.3.1 change seven (design-trigger, test-verify, deploy-approve, deploy-release, x-headless, x-limits, x-measure) and add a sentence to x-sandbox and x-audit. Re-checked on 2026-10-02 (third session) against main 8269d46, still plugin 0.3.1 with no plugin or template change since 8ec06b8: no row changed; build-plan-approve's framework text gained a precision (the class is in evidence only, who merged is GitHub's record only). Re-checked on 2026-10-03 against main f899cc6, still plugin 0.3.1 with no plugin or template change since 8ec06b8: no row changed; build-start's framework text gained precisions (the preflight and its permission mode, the draft PR, the Standard and Full continuation, the per-change profile_override) and a map node.",
+  "about": "The workflow crosswalk: every decision point of the AI-native SDLC playbook (the article, print pages of docs/reference/ai-native-sdlc-playbook.pdf) set against the sdlc framework (plugin 0.2.27, commit cf3f696); the row setup-adopt was added on 2026-09-30 against plugin 0.2.28, commit dd308ca. See ../2026-09-28-playbook-vs-framework.md. Re-checked on 2026-10-02 against plugin 0.2.29, commit 904f4ec: seven rows corrected for precision (setup-home, setup-gates, setup-merge, plan-idea, plan-ticket, plan-accept, x-roles); 0.2.28 and 0.2.29 change none of the others. Re-checked on 2026-10-02 against plugin 0.3.1 (8ec06b8): 0.2.30 changes one row, build-hooks (its panel-blindness hook, panel_blind.py), which that re-check missed and which was corrected on 2026-10-03; 0.3.0 and 0.3.1 change seven (design-trigger, test-verify, deploy-approve, deploy-release, x-headless, x-limits, x-measure) and add a sentence to x-sandbox and x-audit. Re-checked on 2026-10-02 (third session) against main 8269d46, still plugin 0.3.1 with no plugin or template change since 8ec06b8: no row changed; build-plan-approve's framework text gained a precision (the class is in evidence only, who merged is GitHub's record only). Re-checked on 2026-10-03 against main f899cc6, still plugin 0.3.1 with no plugin or template change since 8ec06b8: no row changed; build-start's framework text gained precisions (the preflight and its permission mode, the draft PR, the Standard and Full continuation, the per-change profile_override) and a map node. Re-checked on 2026-10-03 (second session) against main 02d89c3, still plugin 0.3.1 with no plugin or template change since 8ec06b8: build-hooks corrected (seven hooks, not six; the formatter covers Python files only; relation adapted, not same). The same day, before build-plansync was decided: no row changed; build-plansync's texts gained precisions (the three layers: the hook, the gate check at (c) to (e) and the REVIEW.md pass; the file-names-only rule). The same day, before build-subagents was decided: no relation changed; build-subagents' framework text gained precisions (where each agent runs, the panel's sub-agents, parallel changes in separate CI jobs serialized per branch, no cap on changes in flight) and the row a T1 target. The same day, before build-config was decided: no relation changed; build-config's framework text gained precisions (the eval check is advisory: no required status check in the ruleset, the owner's Exempt bypass, an empty suite passes; no review pass on the owner's own guardrail PRs). The build-subagents note was corrected at the owner's request.",
   "seeded": "2026-09-28",
   "fields": {
     "id": "stable row id",
@@ -768,13 +768,13 @@
       "id": "build-hooks",
       "stage": "Build",
       "step": "Guardrail hooks during the session",
-      "pb": "Hooks block protected paths, format and lint after edits, and keep credentials out of the diff.",
+      "pb": "Hooks block edits to protected paths, run the formatter and linter after file edits, keep credentials out of the diff, and back any skill whose policy has to hold without exception; they should be fast and scoped to the file that changed, with heavier checks such as the full test suite at the commit or the PR; a hook that asks a person belongs with the Deploy gates, not the build.",
       "pbSrc": "p.23",
-      "fw": "Protected paths (guardrails and the plugin itself), secrets check, formatter and linter on edit, plan sync on commit, test-file lock for fixes, production gate.",
-      "fwSrc": "plugin/hooks/hooks.json",
-      "rel": "same",
-      "why": "D6 · D7 Python hooks",
-      "weigh": "The framework is a superset.",
+      "fw": "Seven hooks, all deterministic, none asks; every block is logged, and every allow except the panel-blindness hook's (it logs blocks only) and the production gate's while no production is declared (it is inert then): protected paths (the guardrail files, the plugin itself and sdlc.yaml protected_paths), secrets check on every edit, formatter and linter on the changed file, plan sync on commit, test-file lock for fixes, panel blindness (0.2.30: while the review panel writes its two blind verdicts, neither can be read, and the advocate's model is recorded) and the production gate. The formatter and linter act on Python files only (ruff); other file types are not checked, although /sdlc-init also sets up Node projects, so there a lint problem first shows when the verifier runs the lint target at the end of the session, and at the latest at the gate's lint target, run after the session, where a red target parks. In CI the hooks load from the pinned plugin.",
+      "fwSrc": "plugin/hooks/hooks.json, plugin/hooks/format_on_edit.py PY_SUFFIXES, plugin/hooks/panel_blind.py, plugin/hooks/_common.py run_hook, plugin/init/detect.py, plugin/agents/verifier.md",
+      "rel": "adapted",
+      "why": "D6 (CI loads the hooks from the pinned plugin) · D7 Python hooks · the formatter's Python-only scope: no decision ('in this version', format_on_edit.py)",
+      "weigh": "A superset of the article's three examples, narrower in one place: on a non-Python project nothing formats or lints on edit. Extend the formatter hook to the project's languages?",
       "map": {
         "pb": [
           [
@@ -787,22 +787,29 @@
           [
             "A",
             "w",
-            "Six hooks, incl. plan sync and test lock"
+            "Seven hooks, incl. plan sync, test lock and panel blindness"
           ]
         ]
+      },
+      "decision": {
+        "better": "framework",
+        "decision": "blend",
+        "note": "Blend (T8), added and nothing replaced: the seven hooks stay as they are (protected paths, secrets check, formatter and linter on edit, plan sync, test-file lock, panel blindness, production gate), deterministic, every block logged (the panel-blindness hook logs only its blocks, the production gate nothing while inert), none asks (D6, D7 unchanged). Added (T8): the formatter hook follows the project's languages: per file type, the project's own format and lint commands in sdlc.yaml, run on the changed file only, failing open as today; ruff for Python stays the default; /sdlc-init proposes prettier/eslint for Node when package.json has them and rustfmt for Rust; only checks that are cheap per file go in the hook (clippy and other whole-project checks stay at the gate's lint, p.23); a file type with no command passes, so no default for HTML, CSS, Markdown, JSON or YAML (a project already on prettier may add them). Timing: recorded now, built after the study. Open in T8: full Rust support (detection of its targets, the test-file lock for tests inside source files, crates.io in the CI sandbox), revisited at test-bugfix; npm's .cmd shims on Windows. 'Back any skill whose policy has to hold' is decided with build-skills. Corrections approved: seven hooks, not six (panel_blind.py, 0.2.30, so 0.2.30 changes this row); relation adapted, not same (the formatter covers Python files only).",
+        "saved": "2026-10-03",
+        "status": "tentative"
       }
     },
     {
       "id": "build-plansync",
       "stage": "Build",
       "step": "Keeping plan.md in step with the work",
-      "pb": "Update plan.md in the same commit when the work departs from it; consider a hook to enforce the sync.",
-      "pbSrc": "p.16",
-      "fw": "The plan-sync hook on git commit (build branch) and a plan_sync gate check.",
-      "fwSrc": "plugin/hooks/plan_sync.py",
+      "pb": "Update plan.md in the same commit when the work departs from it; consider a hook to enforce the sync. The PR review checks the diff against plan.md, and the play's lagging indicator is how often the merged diff still matches it.",
+      "pbSrc": "p.16-17, p.33",
+      "fw": "Three layers. The plan-sync hook on git commit on the build branch sdlc/<id>/c, which (d) and (e) share, denies a commit that changes a source file not listed under plan.md's 'Files that change' unless plan.md is in the same commit (changes/** and plan_sync.exempt are not source); state/cli.py commit-phase, through which the phase commands commit, applies the same rule first. The plan_sync gate check at (c), (d) and (e) requires every committed source file to be listed and re-applies the hook's rule to every commit on the branch. The REVIEW.md pass at (e) checks that plan.md reflects the diff (files, order of work, risks, proof). The hook and the gate judge a departure by file names only: a change of approach inside listed files is left to model judgment: the verifier and the adversarial reviewer at (c) and (d), and the REVIEW.md pass at (e); a planned file never touched is only reported.",
+      "fwSrc": "plugin/hooks/plan_sync.py, plugin/state/cli.py commit-phase, plugin/gate/checks.py check_plan_sync, plugin/agents/verifier.md, plugin/agents/adversarial-reviewer.md, template/REVIEW.md",
       "rel": "same",
       "why": "Implements the article's suggestion",
-      "weigh": "Close match.",
+      "weigh": "Close match, with more layers than the article asks. The rule is by file names; the article's measure (how often the merged diff still matches plan.md) is not computed (row x-measure).",
       "map": {
         "pb": [
           [
@@ -820,9 +827,16 @@
           [
             "A",
             "w",
-            "Plan-sync hook + gate check"
+            "Plan-sync hook, gate check (c)-(e), review at (e)"
           ]
         ]
+      },
+      "decision": {
+        "better": "framework",
+        "decision": "keep",
+        "note": "Keep: plan.md stays in step through three layers, which already do more than the article asks (p.16 step 7: update plan.md in the same commit when the work departs; consider a hook): the plan-sync hook on git commit on the build branch, which (d) and (e) share, blocks a commit that changes a source file the plan's 'Files that change' does not list unless plan.md is in the same commit; the plan_sync gate check at (c), (d) and (e) requires every committed source file to be listed and re-checks every commit by the hook's rule; the REVIEW.md pass at (e) checks that plan.md reflects the diff (files, order of work, risks, proof). The hook and the gate judge a departure by file names only: a change of approach inside listed files is left to model judgment (the verifier and the adversarial reviewer at (c) and (d), the REVIEW.md pass at (e)); a planned file never touched is only reported. Row corrected to name the three layers and the file-names-only rule (relation stays same). The article's measure, how often the merged diff still matches plan.md (p.17), goes to x-measure.",
+        "saved": "2026-10-03",
+        "status": "tentative"
       }
     },
     {
@@ -831,11 +845,11 @@
       "step": "Subagents and parallel sessions",
       "pb": "Subagents such as a code simplifier, a verifier and a researcher; several sessions at once, each in its own worktree, added only while review keeps up.",
       "pbSrc": "p.24-25",
-      "fw": "Four agents: code-simplifier and verifier run in (c), researcher on demand, adversarial-reviewer for the gate. No parallel worktrees yet.",
-      "fwSrc": "plugin/agents/",
+      "fw": "Four agents in the pinned plugin, all on the session's model (model: inherit): code-simplifier in (c) and in a build fix round, verifier in (c), (d) and a build fix round, adversarial reviewer for the gate's verdict at (b), (c) and (d), researcher available to any session (no command calls it by name); under deferred review the panel's three members also run as sub-agents, in any phase. Parallel work exists across changes: each change runs in its own CI job on its own branch, and the phase workflows serialize runs per branch only, so several changes progress at once on separate runners. No worktree split of one change into parallel tasks, and no cap on changes in flight: the owner's gate (a) merges are the only throttle.",
+      "fwSrc": "plugin/agents/, plugin/commands/sdlc-build.md, sdlc-test.md, sdlc-design.md, sdlc-fix.md, plugin/panel/briefs/, template/.github/workflows/sdlc-*.yml concurrency",
       "rel": "adapted",
       "why": "D17 parallel worktrees later",
-      "weigh": "Parallel sessions only help if your review keeps up. Is that the bottleneck?",
+      "weigh": "Parallel changes already run in separate CI jobs, without worktrees; nothing caps them but your merges. Is your review the bottleneck the article warns about?",
       "map": {
         "pb": [
           [
@@ -853,9 +867,27 @@
           [
             "C",
             "w",
-            "Four agents, no parallel worktrees"
+            "Four agents in fixed places, plus the panel"
+          ],
+          [
+            "A",
+            "w",
+            "Changes run in parallel CI jobs"
           ]
         ]
+      },
+      "target": {
+        "refs": [
+          "T1"
+        ],
+        "text": "Your choice on this row (2026-10-03): keep, with T1's direction: the workers stay sub-agents (verifier, code-simplifier, researcher); the judges become roles (the adversarial reviewer at (b) grows into the Architect, the REVIEW.md pass becomes the Code reviewer, the panel member of a concern's kind becomes that role); at (c) and (d) the adversarial reviewer stays a checker for the gate. One agent catalogue: every agent, role or sub-agent, created the same way (mission, reports to, model, skills and documents read, tools, output, its own eval); build-skills decides the documents and x-roles the list, reporting lines and models."
+      },
+      "decision": {
+        "better": "framework",
+        "decision": "keep",
+        "note": "Keep (D17, D1 unchanged), with T1's direction (c1). Today: four agents in the pinned plugin, all on the session's model: code-simplifier in (c) and a build fix round, verifier in (c) and (d), adversarial reviewer at (b), (c) and (d), researcher available (no command calls it by name); under deferred review the panel's three members also run as sub-agents. Parallel work already exists across changes: each change runs in its own CI job on its own branch, serialized per branch only; there is no worktree split inside a change and no cap on changes in flight, my gate (a) merges being the throttle. (c1): the workers stay sub-agents (verifier, code-simplifier, researcher, which the roles may use to read code); the judges become roles: at (b) the adversarial reviewer grows into the Architect (as build-plan decided), at (e) the REVIEW.md pass becomes the Code reviewer, and the panel member of a concern's kind becomes that role (design-concerns). Today the adversarial reviewer asks 'should this output continue?' from six angles (intent, spec and plan, proof, blast radius, policies, tests), so its questions overlap the REVIEW.md pass; the direction chosen: the Code reviewer asks 'is the code good', and the adversarial reviewer, which at (c) and (d) stays a checker reporting to the gate, centres on 'is the claim that it is done proven'; how far its angles narrow is open. Two jobs, separated by the output, a fresh context and, ideally, the model. One agent catalogue for all of them: every agent, role or sub-agent, is created the same way (mission, reports to, model, skills and documents read, tools, output format, its own eval); build-skills decides the documents and x-roles the list, the reporting lines and the models, for every entry; the documents and cards are written after the study, sources first. The article's 'concurrent sessions while review quality holds' goes to x-measure.",
+        "saved": "2026-10-03",
+        "status": "tentative"
       }
     },
     {
@@ -864,11 +896,11 @@
       "step": "Who approves changes to CLAUDE.md and skills",
       "pb": "Code owners approve CLAUDE.md changes in PR review; the policy owner signs off skill changes; the eval pass rate is a merge check.",
       "pbSrc": "p.20, p.22, p.31",
-      "fw": "CLAUDE.md, REVIEW.md, sdlc.yaml and .claude/** are guardrail files: a run that edits one parks; only the owner changes them in a reviewed PR. Skills ship in the plugin; sdlc-evals.yml runs on changes to CLAUDE.md, .claude/** and evals/**.",
-      "fwSrc": "plugin/hooks/protected_paths.py, template/.github/workflows/sdlc-evals.yml",
+      "fw": "CLAUDE.md, REVIEW.md, sdlc.yaml and .claude/** are guardrail files: a run that edits one is denied by the protected-paths hook, and one that reaches the committed diff parks at the gate; only the owner changes them, in a PR of the owner's own, which no review pass reads (the REVIEW.md pass runs only at (e) on a change's build PR). Skills ship in the pinned plugin; a project override under .claude/skills/ is the owner's to add. sdlc-evals.yml runs on pull requests that change CLAUDE.md, .claude/** or evals/**, nightly and on dispatch, but the check is advisory: the ruleset /sdlc-init asks for has no required status check and the owner's bypass is Exempt, so a red run never blocks the merge, and an empty suite passes with the note 'no cases' (D17).",
+      "fwSrc": "plugin/hooks/protected_paths.py, plugin/commands/sdlc-init.md §6 (the ruleset), template/.github/workflows/sdlc-evals.yml, plugin/evals/run.py (an empty suite passes), template/evals/README.md",
       "rel": "adapted",
-      "why": "D6 · D8 · D17",
-      "weigh": "Is the eval result a merge check you actually look at, or advisory?",
+      "why": "D6 the guardrails are the owner's · D8 skills in the plugin · D17 evals start empty · D4 the ruleset (its Exempt bypass mode, sdlc-init §6), so no status check can bind the owner",
+      "weigh": "The eval check is advisory and empty at first; nobody reviews the owner's own guardrail PRs. Should the eval result reach you where you decide, rather than become a merge check your bypass skips?",
       "map": {
         "pb": [
           [
@@ -896,7 +928,7 @@
           [
             "A",
             "w",
-            "sdlc-evals.yml check on these files"
+            "sdlc-evals.yml runs on these files (advisory)"
           ],
           [
             "P",
@@ -909,7 +941,14 @@
         "refs": [
           "T1"
         ],
-        "text": "Your own edits to CLAUDE.md, skills and sdlc.yaml have no reviewing check today; a role's brief before you merge would fill it."
+        "text": "Your own edits to CLAUDE.md, skills and sdlc.yaml have no reviewing check today; a role's brief before you merge would fill it. Your choice on this row (2026-10-03): the rules stay (D6, D8, your Exempt bypass); added: that brief quotes the eval result (pass rate, failing cases, or 'no cases yet'), since the eval check is advisory and passes while the suite is empty; a required status check was considered and not chosen, your bypass would skip it."
+      },
+      "decision": {
+        "better": "framework",
+        "decision": "blend",
+        "note": "Blend (T1), added and nothing replaced: CLAUDE.md, REVIEW.md, sdlc.yaml and .claude/** stay guardrail files that only I change, in my own PR (a run that edits one parks; D6 unchanged); skills ship in the pinned plugin, a project override in .claude/skills/ is mine to add (D8); my Exempt bypass on the ruleset stays (D4). Today the eval check (sdlc-evals.yml on PRs that change CLAUDE.md, .claude/** or evals/**, and nightly) is advisory: the ruleset /sdlc-init asks for has no required status check and my bypass skips the rules anyway, so a red run never blocks my merge, and an empty suite passes with 'no cases' (D17), so the check says nothing until incidents add cases; nobody reviews my own guardrail and skill PRs (the REVIEW.md pass runs only at (e) on a change's build PR). Added: T1's role brief on my own guardrail and skill PRs (already recorded in T1) quotes the eval result: the pass rate, the failing cases, or 'no cases yet'. Considered and not chosen: making the eval check a required status check, which my Exempt bypass would skip anyway. Row corrected: the check is advisory and passes while the suite is empty.",
+        "saved": "2026-10-03",
+        "status": "tentative"
       }
     },
     {
@@ -1946,6 +1985,6 @@
       "fidelity": 2
     },
     "weightsSaved": "2026-09-29",
-    "rowsWithADecision": 16
+    "rowsWithADecision": 20
   }
 }
