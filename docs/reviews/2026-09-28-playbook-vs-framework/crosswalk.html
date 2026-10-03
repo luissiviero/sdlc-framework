@@ -245,10 +245,10 @@
 
 <div class="wrap">
   <header>
-    <div class="eyebrow"><b class="pb">Playbook</b> (the article) · <b class="fw">Framework</b> (sdlc plugin 0.3.3) · owner's decisions</div>
+    <div class="eyebrow"><b class="pb">Playbook</b> (the article) · <b class="fw">Framework</b> (sdlc plugin 0.3.4) · owner's decisions</div>
     <h1>Workflow Crosswalk</h1>
     <p class="lede">Every decision point of the two workflows, one row each: what the article prescribes, what the framework does, how they relate, and why they differ. Pick which is better at each step and what you will do about it; your choices are saved with the page.</p>
-    <p class="note">Sources: <a href="https://claude.ai/artifact/WhLTjcSzJqQmUFm3aP5G6L">Playbook SDLC Workflow</a> (pages are the 53-page print of the article) and <a href="https://claude.ai/artifact/KW8jWunfLNa9WgBSzJxw4S">SDLC Plugin Workflow</a> (files are in <code>luissiviero/sdlc-framework</code> at 2dcfe70, plugin 0.3.3 (re-checked on 3 October 2026: 0.3.2 corrects six rows, build-hooks, test-loop, test-verify, x-sandbox, x-headless and deploy-comments, and 0.3.3 adds a sentence to build-subagents); the rows were first checked at 0.2.27, cf3f696, 0.2.28 and 0.2.29 change none of them, 0.2.30 changes build-hooks (its panel-blindness hook, corrected on 3 October 2026), and 0.3.0 and 0.3.1 change seven: design-trigger, test-verify, deploy-approve, deploy-release, x-headless, x-limits and x-measure, and add a sentence to x-sandbox and x-audit). "D<i>n</i>" is decision <i>n</i> in <code>docs/DECISIONS.md</code>; a difference with a decision behind it is deliberate, and one marked "no decision" is where to look first.</p>
+    <p class="note">Sources: <a href="https://claude.ai/artifact/WhLTjcSzJqQmUFm3aP5G6L">Playbook SDLC Workflow</a> (pages are the 53-page print of the article) and <a href="https://claude.ai/artifact/KW8jWunfLNa9WgBSzJxw4S">SDLC Plugin Workflow</a> (files are in <code>luissiviero/sdlc-framework</code> at 89090dd, plugin 0.3.4 (re-checked on 3 October 2026: 0.3.4 changes no row, only the gate's clean_tree check; 0.3.2 corrects six rows, build-hooks, test-loop, test-verify, x-sandbox, x-headless and deploy-comments, and 0.3.3 adds a sentence to build-subagents; before the Test stage was decided, test-loop and test-verify moved from same to adapted); the rows were first checked at 0.2.27, cf3f696, 0.2.28 and 0.2.29 change none of them, 0.2.30 changes build-hooks (its panel-blindness hook, corrected on 3 October 2026), and 0.3.0 and 0.3.1 change seven: design-trigger, test-verify, deploy-approve, deploy-release, x-headless, x-limits and x-measure, and add a sentence to x-sandbox and x-audit). "D<i>n</i>" is decision <i>n</i> in <code>docs/DECISIONS.md</code>; a difference with a decision behind it is deliberate, and one marked "no decision" is where to look first.</p>
   </header>
 
   <div class="top">
@@ -501,36 +501,36 @@
     { id: "test-loop", stage: "Test", step: "The feedback loop",
       pb: "Claude runs the tests, the build and the screenshot and iterates until the check passes; the verification commands live in CLAUDE.md.",
       pbSrc: "p.26-28",
-      fw: "/sdlc:sdlc-test in a fresh CI job. By hand, collect.py runs test, build and lint into evidence/ and failures are fixed and re-run; in CI (0.3.2) it runs nothing and marks each log 'deferred to the runner', the fix loop is skipped, and after the session the runner runs the three targets once, writes the logs and parks the change on a red target. Screenshot loop when a mock is named.",
-      fwSrc: "plugin/evidence/collect.py, plugin/commands/sdlc-test.md, plugin/gate/gate.py",
-      rel: "same", why: "",
-      weigh: "Close match." },
+      fw: "/sdlc:sdlc-test in a fresh CI job. By hand, collect.py runs test, build and lint into evidence/ and failures are fixed and re-run within the iteration cap. In CI (0.3.2) no project target runs in the (d) session: collect.py marks each log 'deferred to the runner', the fix loop is skipped, and after the session the runner runs the three targets once, outside the sandbox, writes the logs and parks the change on a red target; the next round is the owner's 'Request changes' review (sdlc-fix.yml, iterations + 1), so in CI the re-runs need the owner between rounds. The (c) build session is still told to run the tests each step touches (sdlc-build.md step 4, with no CI exception; the CI allow-list has python, pytest and npm), inside the sandbox, where a test that reads a nested .env fails. Screenshot loop when a mock is named.",
+      fwSrc: "plugin/evidence/collect.py, plugin/commands/sdlc-test.md §1-2, plugin/commands/sdlc-build.md step 4, plugin/gate/gate.py run_deferred_commands, plugin/ci/run_phase.py (run_gate_commands, IMPLEMENT_ALLOWED_TOOLS), docs/PROGRESS.md choice 154",
+      rel: "adapted", why: "PROGRESS choice 154, the owner's choice of item 3b's shape (i) in 0.3.2, on issue #91: one run of the targets per phase, after the session and outside the sandbox, and 'the owner's /sdlc-fix is the round'; not a Dn in DECISIONS.md. Nearest: D1 hosted CI, sandboxed · D11 a failed check parks · D22 'Request changes' starts the fix run",
+      weigh: "In CI the run, fix and re-run loop is spread over sessions, with your 'Request changes' between rounds, so what reaches you on a red target has not passed the check. Should a red target start the next round by itself, within the iteration cap?" },
     { id: "test-bugfix", stage: "Test", step: "Bug fixes: the failing test first",
       pb: "The failing test is written and committed first; a test-file hook, or review rejecting any test change, protects the check.",
       pbSrc: "p.28",
-      fw: "A fix-type change writes its failing test first, then the test-file lock hook and the test_lock gate check protect it; sdlc:unlock-tests lifts it.",
-      fwSrc: "plugin/hooks/test_file_lock.py, plugin/gate/checks.py",
+      fw: "A fix-type change writes its failing test first (sdlc-build.md step 3: run only that test, confirm it fails, paste the output into evidence/failing-test.log, commit the test), then runs lock-tests; from then on the test-file lock hook denies edits under test_paths and the test_lock gate check fails any test file changed after the lock commit; only the owner lifts the lock (sdlc:unlock-tests, judged by the owner_actions check). The lock exists only if the session runs lock-tests itself: gate (c) passes a fix-type change that never set it, and nothing checks that the test was committed before the fix or that it failed (failing-test.log is a prompt instruction, not required evidence). The article's alternative also runs: the adversarial reviewer at (c) and (d) and the REVIEW.md pass at (e) reject a weakened test. Path globs cannot freeze a test written inside a source file (Rust's #[cfg(test)]).",
+      fwSrc: "plugin/commands/sdlc-build.md step 3, plugin/hooks/test_file_lock.py, plugin/gate/checks.py check_test_lock and owner_actions, plugin/gate/artifacts.py REQUIRED_EVIDENCE, plugin/agents/adversarial-reviewer.md, template/REVIEW.md",
       rel: "same", why: "",
-      weigh: "Close match." },
+      weigh: "Close match in mechanism, but the proof that the test failed first, and the lock itself, rest on the session's own steps. Should the gate check them?" },
     { id: "test-verify", stage: "Test", step: "Final check before review",
       pb: "One way: a verifier subagent in a fresh context once the session believes it is done; the pasted output lands in the transcript and the PR check run.",
       pbSrc: "p.25-29",
-      fw: "The verifier runs in (c) and (d): by hand it runs build, test and lint; in CI (0.3.2) it runs none of them and reads the previous phase's gate record and the logs, exercising the change through direct calls only. The evidence logs are committed; in CI the runner writes them from its own run after the session, the three at (d) and (e) and any still marked deferred at (b) and (c); gate (d) posts the check run sdlc/d, and in CI the runner posts it again after that run (0.3.0).",
-      fwSrc: "plugin/agents/verifier.md, plugin/pr/cli.py, plugin/ci/run_phase.py",
-      rel: "same", why: "",
-      weigh: "Since 0.3.0 the runner re-posts sdlc/d in CI after its commands step, so the check run needs the model to reach gate (d), not the step that posts it. A by-hand run, or a gate (d) stopped early by a run limit, still depends on the model's own step." },
+      fw: "The verifier runs in a fresh context in (c) and (d): by hand it runs build, test and lint and exercises the change; in CI (0.3.2) it runs none of them and never starts the test runner: it quotes the runner's record of the previous phase (gate-b.json at the end of (c), gate-c.json at (d): the run on the tree the phase started from) and the logs, each marked 'read, not run', and exercises the change through direct calls only. The suite on the final tree is the runner's step after the session, which writes the evidence logs (the three at (d) and (e), any still marked deferred at (b) and (c)) and parks on a red target; gate (d) posts the check run sdlc/d, and in CI the runner posts it again after that run (0.3.0).",
+      fwSrc: "plugin/agents/verifier.md, plugin/commands/sdlc-test.md §4, plugin/pr/cli.py, plugin/ci/run_phase.py, docs/PROGRESS.md choice 154",
+      rel: "adapted", why: "PROGRESS choice 154, the owner's choice of item 3b's shape (i) in 0.3.2: the verifier reads the runner's record instead of running the targets; not a Dn in DECISIONS.md. Nearest: D1 hosted CI, sandboxed",
+      weigh: "In CI the verifier's command results are the previous phase's, of the tree the phase started from; the final tree's are the runner's, in sdlc/d, which the runner re-posts after its commands step (0.3.0). A by-hand run, or a gate (d) stopped early by a run limit, still depends on the model's own step. Is the split clear enough on the record?" },
     { id: "test-gate", stage: "Test", step: "The gates after Build and after Test",
       pb: "None in the hand-prompted loop; evidence goes to the PR's check run and the code owner approves the PR. In a headless run an independent confidence gate sits between stages.",
       pbSrc: "p.6, p.29, p.42",
-      fw: "Confidence gates (c) and (d). Standard: continue and dispatch the next phase. Full: sdlc:c-ready, and the owner's sdlc:c-approved label starts (d); then sdlc:d-ready, and the owner's sdlc:d-approved label starts (e).",
-      fwSrc: "plugin/gate/gate.py, template/.github/workflows/sdlc-deploy.yml",
+      fw: "Confidence gates (c) and (d). Standard: continue and dispatch the next phase. Full: sdlc:c-ready, and the owner's sdlc:c-approved label starts (d); then sdlc:d-ready, and the owner's sdlc:d-approved label starts (e). The runner checks that the label is on the build PR and that the last 'labeled' event's actor is not the workflow token (github-actions[bot]); with no token the actor is not checked; who applied it is recorded only in GitHub's label event. D3, OPERATING_MODEL.md §4 and the commands' hand-over text ask for 'approving review + label'; the code checks the label only.",
+      fwSrc: "plugin/gate/gate.py, plugin/ci/run_phase.py check_approval, template/.github/workflows/sdlc-test.yml, template/.github/workflows/sdlc-deploy.yml, docs/OPERATING_MODEL.md §4",
       rel: "adapted", why: "D3 label on the build PR · D18 profiles",
       weigh: "The docs say 'approving review + label'; the code checks only the label. Which do you want?" },
     { id: "test-evals", stage: "Test", step: "Evals",
       pb: "The platform engineer collects 20 to 50 real tasks; the suite runs on any change to CLAUDE.md, skills or hooks and on a schedule; the pass rate is a merge check; each incident gets an eval.",
       pbSrc: "p.29-31, p.44",
-      fw: "sdlc-evals.yml runs on changes to CLAUDE.md, .claude/** and evals/** and daily; cases under evals/cases/; an incident's (e) run is told to add one case. Skill and hook changes ship in the plugin and are tested by the framework's own suite (framework-evals.yml); a project's pin bump does not trigger its sdlc-evals.yml.",
-      fwSrc: "template/.github/workflows/sdlc-evals.yml, template/evals/, .github/workflows/framework-evals.yml",
+      fw: "sdlc-evals.yml runs on pull requests that change CLAUDE.md, .claude/** or evals/**, daily and on dispatch; cases under evals/cases/; a pass rate below the threshold fails the job, but no required status check binds the merge, and an empty suite passes ('no cases'). An incident's (e) run is told to add one case; no gate checks it. The suite starts empty (D17) and its README names incidents and findings that recur as its sources; nothing seeds it once about 20 changes exist, as D17 says. Skill and hook changes ship in the plugin and are tested by the framework's own suite (framework-evals.yml); a project's pin bump (sdlc.yaml) does not trigger its sdlc-evals.yml.",
+      fwSrc: "template/.github/workflows/sdlc-evals.yml, template/evals/README.md, plugin/evals/run.py, plugin/commands/sdlc-deploy.md, .github/workflows/framework-evals.yml",
       rel: "adapted", why: "D17 evals start once real work exists",
       weigh: "The incident case is a prompt instruction, not a gate check. Should the gate require it?" },
 
@@ -989,11 +989,11 @@
     "build-risk": { pb: [["A", "w", "Hook blocks without a change ticket"], ["P", "c", "Change ticket approved (migrations, infra)"]],
       fw: [["A", "w", "A risk-list hit parks at the gate"], ["P", "c", "On a hit: owner's sdlc:accept-risk"]] },
     "test-loop": { pb: [["C", "w", "Claude runs tests, iterates"]],
-      fw: [["C", "w", "/sdlc-test runs, fixes, re-runs"]] },
+      fw: [["C", "w", "By hand: /sdlc-test runs, fixes, re-runs"], ["A", "w", "CI: the runner runs the targets once after the session; red parks"], ["P", "r", "Red in CI: owner's 'Request changes' starts the next round"]] },
     "test-bugfix": { pb: [["C", "w", "Failing test written first"], ["A", "w", "Test-file hook protects it"]],
       fw: [["C", "w", "Failing test written first"], ["A", "w", "Test lock hook + gate check"], ["P", "c", "Exception: owner's sdlc:unlock-tests"]] },
     "test-verify": { pb: [["C", "w", "Verifier subagent, fresh context"]],
-      fw: [["C", "w", "Verifier; check run sdlc/d"]] },
+      fw: [["C", "w", "Verifier, fresh context (in CI it reads the runner's record)"], ["A", "w", "Runner's run on the final tree; check run sdlc/d"]] },
     "test-gate": { pb: [["A", "w", "Headless run only: confidence gate"], ["P", "r", "Code owner approves the PR"]],
       fw: [["A", "w", "Confidence gates (c) and (d)"], ["P", "c", "Full profile: owner's sdlc:c-approved"], ["P", "c", "Full profile: owner's sdlc:d-approved"]] },
     "test-evals": { pb: [["P", "w", "Platform engineer builds the suite"], ["A", "w", "Pass rate is a merge check"]],
@@ -1137,7 +1137,7 @@
     if (!phone) {
       map.appendChild(el("div", { cls: "grouphead pb", text: "Playbook (the article)" }));
       map.appendChild(el("div", { cls: "grouphead mid" }));
-      map.appendChild(el("div", { cls: "grouphead fw", text: "Framework (sdlc plugin 0.3.3)" }));
+      map.appendChild(el("div", { cls: "grouphead fw", text: "Framework (sdlc plugin 0.3.4)" }));
     }
     heads.forEach(function (h) { map.appendChild(el("div", { cls: "lanehead " + h[1], role: "columnheader", text: h[0] })); });
     STAGES.forEach(function (stg) {
