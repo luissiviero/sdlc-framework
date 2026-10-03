@@ -1,15 +1,6 @@
 {
-  "at": "2026-10-03T22:30:00Z",
+  "at": "2026-10-03T21:59:39Z",
   "findings": [
-    {
-      "file": "changes/0001-split-the-large-docs-with-an-index-each/evidence/claude-md-proposals.md",
-      "line": 2,
-      "pass": "compliance",
-      "rule": "REVIEW.md Framework rules (\"The second occurrence of the same finding across reviews produces a one-line entry in CLAUDE.md under 'Things Claude gets wrong', proposed in the review for the owner\").",
-      "severity": "important",
-      "signature": "6d0d986b5ebb09bb",
-      "summary": "REVIEW.md's second-occurrence framework rule (\"The second occurrence of the same finding across reviews produces a one-line entry in CLAUDE.md under 'Things Claude gets wrong', proposed in the review for the owner\") was triggered by the previous review round (head dbc04ce, which stated explicitly \"this is the same gap the previous review round (head 0f2b8d3) flagged Important, now recurring a second round\" and that no CLAUDE.md entry had been proposed for it), but this fix round (de19e54) left evidence/claude-md-proposals.md untouched: it still holds only the unrelated line-39 guardrail-table nit, with no line proposed about the recurring verified_with gap. The rule is still unmet at this head, and the gap (see the next finding) is now a third occurrence."
-    },
     {
       "file": "docs/notes/2.md",
       "line": 5,
@@ -17,7 +8,7 @@
       "rule": "spec.md Requirements (docs/notes/<N>.md frontmatter: \"verified_with (Claude Code version, plugin version, runner)\").",
       "severity": "important",
       "signature": "7cd11e55e64ea40f",
-      "summary": "verified_with still does not carry all three parts spec.md Requirements asks for (Claude Code version, plugin version, runner) for any of the 32 docs/notes/<N>.md files: partially fixed this round, not fully fixed. Verified directly: plugin version is now present for notes/27.md-32.md (sessions 15-18) but runner is absent from all 32 files, including those six. The round's one real action was removing the mistaken runner value \"a CI session\" it had wrongly set on notes/30.md-32.md last round (confirmed: those three files' verified_with lines now end after the plugin version, with no runner clause) rather than fabricating a correct one. review-response.md's reasoning for leaving runner blank on notes/27.md-32.md holds up under independent check: each of the six matching docs/progress/session-{15,16,17}.md and docs/PROGRESS.md \"Session 18\"/\"second sitting\"/\"third sitting\" records' own \"## Checks\" section runs compileall/pytest/ruff directly \"in the container\" with a literal, non-deferred \"CHAIN EXIT 0\" -- the signature of an interactive session reporting its own commands, not of the CI gate's \"SDLC_GATE_COMMANDS=runner\"/\"deferred to the runner\" mechanism -- which does rule out a CI-session identity for all six. But grepping notes/27.md-32.md themselves for any direct statement of the session's own environment (cloud session vs. owner's local machine) finds none (unlike notes/3.md, 15.md, 16.md and 17.md for earlier sessions, which do say \"in one Claude Code cloud session\" directly), so cloud-vs-local genuinely stays unconfirmed rather than merely asserted. Leaving the field incomplete rather than guessing is the sounder choice, but the underlying spec.md requirement is still not met for the whole corpus."
+      "summary": "verified_with still does not carry all three parts spec.md Requirements asks for (Claude Code version, plugin version, runner) for any of the 32 docs/notes/<N>.md files: this fix round added a plugin version to notes/27.md-32.md (sessions 15-18), but no file -- including those six -- carries a runner value, so the field a later session reads to judge staleness (spec.md Requirements, choice 93) is still incomplete across the whole corpus, now a third occurrence of the same open gap."
     },
     {
       "file": "docs/notes/1.md",
@@ -25,8 +16,8 @@
       "pass": "compliance",
       "rule": "spec.md Design (docs/notes/<N>.md frontmatter: sources).",
       "severity": "nit",
-      "signature": "d983e401c2e30433",
-      "summary": "Unchanged from the previous two rounds: doubt that sources should also hold the verbatim quote; spec.md's Design line describing sources as \"the docs URL or run URL and the verbatim quote already in the section, restated as structured data\" could be read as requiring the quote in the field itself, though the file only carries the URL."
+      "signature": "b14ce5d3b68496d8",
+      "summary": "Unchanged from the previous three rounds: doubt that sources should also hold the verbatim quote; spec.md's Design line describing sources as \"the docs URL or run URL and the verbatim quote already in the section, restated as structured data\" could be read as requiring the quote in the field itself, though the file only carries the URL."
     },
     {
       "file": "docs/PROGRESS.md",
@@ -34,8 +25,8 @@
       "pass": "compliance",
       "rule": "spec.md Requirements (\"docs/PROGRESS.md keeps only its current top-level record\").",
       "severity": "nit",
-      "signature": "91431ef90e9be76d",
-      "summary": "Unchanged from the previous two rounds: docs/PROGRESS.md still holds four top-level records (the split entry plus three \"session 18\" sittings), not just the one current record spec.md's Requirements describe; traced, as before, to a later merge of main bringing in sessions this change's own commits never touched, not to this round's edits."
+      "signature": "0e061f02130c88ce",
+      "summary": "Unchanged from the previous three rounds: docs/PROGRESS.md still holds four top-level records (the split entry plus three \"session 18\" sittings), not just the one current record spec.md's Requirements describe; traced, as before (verifier.md's own investigation of the split commit), to a later merge of main bringing in sessions this change's own commits never touched, not to this round's edits."
     },
     {
       "file": "docs/PROGRESS.md",
@@ -43,8 +34,8 @@
       "pass": "compliance",
       "rule": "spec.md Acceptance (the record must give the owner an exact account of the split); factual accuracy of the record's own prose.",
       "severity": "nit",
-      "signature": "4a9f19fa06c35455",
-      "summary": "Unchanged from the previous two rounds: the current top-level record's summary still says the split covered \"docs/NOTES.md (30 sections)\"; docs/notes/ holds 32 section files and docs/notes/index.md lists 32, so the prose still undercounts by two."
+      "signature": "3534444a4c1cb752",
+      "summary": "Unchanged from the previous three rounds: the current top-level record's summary still says the split covered \"docs/NOTES.md (30 sections)\"; docs/notes/ holds 32 section files and docs/notes/index.md lists 32, so the prose still undercounts by two."
     },
     {
       "file": "docs/PROGRESS.md",
@@ -52,14 +43,14 @@
       "pass": "compliance",
       "rule": "spec.md Acceptance (\"the exact CLAUDE.md guardrail edit: the table of link, row, current text, new text, covering line 3 ..., line 35 ..., line 39 ..., and the new pointer line\").",
       "severity": "nit",
-      "signature": "2d3ce8f257de8348",
-      "summary": "Unchanged from the previous two rounds: the CLAUDE.md guardrail table still has only 3 rows (lines 3, new-line-after-3, 35); spec.md's Acceptance text also names line 39, addressed only in the Summary's prose (explaining no edit is needed there), never as a table row."
+      "signature": "d740fb94f64dfc94",
+      "summary": "Unchanged from the previous three rounds: the CLAUDE.md guardrail table still has only 3 rows (lines 3, new-line-after-3, 35); spec.md's Acceptance text also names line 39, addressed only in the Summary's prose (explaining no edit is needed there), never as a table row."
     }
   ],
-  "head": "de19e54881567c170188b4f1eefbb4711f9dd1ca",
+  "head": "a831578baf115a2903a4d5fedfa926aa04621e3b",
   "schema_version": 1,
   "tally": {
-    "important": 2,
+    "important": 1,
     "nit": 4,
     "nits_omitted": 0
   }

@@ -1,4 +1,12 @@
 {
+  "0e061f02130c88ce": {
+    "count": 1,
+    "file": "docs/PROGRESS.md",
+    "first_change": "0001",
+    "last_change": "0001",
+    "last_seen": "2026-10-03T22:00:14Z",
+    "summary": "Unchanged from the previous three rounds: docs/PROGRESS.md still holds four top-level records (the split entry plus three \"session 18\" sittings), not just the one current record spec.md's Requirements describe; traced, as before (verifier.md's own investigation of the split commit), to a later merge of main bringing in sessions this change's own commits never touched, not to this round's edits."
+  },
   "2d3ce8f257de8348": {
     "count": 1,
     "file": "docs/PROGRESS.md",
@@ -6,6 +14,14 @@
     "last_change": "0001",
     "last_seen": "2026-10-03T21:52:04Z",
     "summary": "Unchanged from the previous two rounds: the CLAUDE.md guardrail table still has only 3 rows (lines 3, new-line-after-3, 35); spec.md's Acceptance text also names line 39, addressed only in the Summary's prose (explaining no edit is needed there), never as a table row."
+  },
+  "3534444a4c1cb752": {
+    "count": 1,
+    "file": "docs/PROGRESS.md",
+    "first_change": "0001",
+    "last_change": "0001",
+    "last_seen": "2026-10-03T22:00:14Z",
+    "summary": "Unchanged from the previous three rounds: the current top-level record's summary still says the split covered \"docs/NOTES.md (30 sections)\"; docs/notes/ holds 32 section files and docs/notes/index.md lists 32, so the prose still undercounts by two."
   },
   "4a9f19fa06c35455": {
     "count": 1,
@@ -32,12 +48,12 @@
     "summary": "REVIEW.md's second-occurrence framework rule (\"The second occurrence of the same finding across reviews produces a one-line entry in CLAUDE.md under 'Things Claude gets wrong', proposed in the review for the owner\") was triggered by the previous review round (head dbc04ce, which stated explicitly \"this is the same gap the previous review round (head 0f2b8d3) flagged Important, now recurring a second round\" and that no CLAUDE.md entry had been proposed for it), but this fix round (de19e54) left evidence/claude-md-proposals.md untouched: it still holds only the unrelated line-39 guardrail-table nit, with no line proposed about the recurring verified_with gap. The rule is still unmet at this head, and the gap (see the next finding) is now a third occurrence."
   },
   "7cd11e55e64ea40f": {
-    "count": 1,
+    "count": 2,
     "file": "docs/notes/2.md",
     "first_change": "0001",
     "last_change": "0001",
-    "last_seen": "2026-10-03T21:52:04Z",
-    "summary": "verified_with still does not carry all three parts spec.md Requirements asks for (Claude Code version, plugin version, runner) for any of the 32 docs/notes/<N>.md files: partially fixed this round, not fully fixed. Verified directly: plugin version is now present for notes/27.md-32.md (sessions 15-18) but runner is absent from all 32 files, including those six. The round's one real action was removing the mistaken runner value \"a CI session\" it had wrongly set on notes/30.md-32.md last round (confirmed: those three files' verified_with lines now end after the plugin version, with no runner clause) rather than fabricating a correct one. review-response.md's reasoning for leaving runner blank on notes/27.md-32.md holds up under independent check: each of the six matching docs/progress/session-{15,16,17}.md and docs/PROGRESS.md \"Session 18\"/\"second sitting\"/\"third sitting\" records' own \"## Checks\" section runs compileall/pytest/ruff directly \"in the container\" with a literal, non-deferred \"CHAIN EXIT 0\" -- the signature of an interactive session reporting its own commands, not of the CI gate's \"SDLC_GATE_COMMANDS=runner\"/\"deferred to the runner\" mechanism -- which does rule out a CI-session identity for all six. But grepping notes/27.md-32.md themselves for any direct statement of the session's own environment (cloud session vs. owner's local machine) finds none (unlike notes/3.md, 15.md, 16.md and 17.md for earlier sessions, which do say \"in one Claude Code cloud session\" directly), so cloud-vs-local genuinely stays unconfirmed rather than merely asserted. Leaving the field incomplete rather than guessing is the sounder choice, but the underlying spec.md requirement is still not met for the whole corpus."
+    "last_seen": "2026-10-03T22:00:14Z",
+    "summary": "verified_with still does not carry all three parts spec.md Requirements asks for (Claude Code version, plugin version, runner) for any of the 32 docs/notes/<N>.md files: this fix round added a plugin version to notes/27.md-32.md (sessions 15-18), but no file -- including those six -- carries a runner value, so the field a later session reads to judge staleness (spec.md Requirements, choice 93) is still incomplete across the whole corpus, now a third occurrence of the same open gap."
   },
   "91431ef90e9be76d": {
     "count": 1,
@@ -55,6 +71,14 @@
     "last_seen": "2026-10-03T21:32:24Z",
     "summary": "The new record's CLAUDE.md guardrail table has 3 rows (line 3, new-line-after-3, line 35); spec.md's Acceptance says the table should cover line 39 too, but line 39 is only addressed in a prose sentence in the Summary, not as a table row."
   },
+  "b14ce5d3b68496d8": {
+    "count": 1,
+    "file": "docs/notes/1.md",
+    "first_change": "0001",
+    "last_change": "0001",
+    "last_seen": "2026-10-03T22:00:14Z",
+    "summary": "Unchanged from the previous three rounds: doubt that sources should also hold the verbatim quote; spec.md's Design line describing sources as \"the docs URL or run URL and the verbatim quote already in the section, restated as structured data\" could be read as requiring the quote in the field itself, though the file only carries the URL."
+  },
   "ce45a2c4192ba2cc": {
     "count": 1,
     "file": "docs/notes/1.md",
@@ -70,6 +94,14 @@
     "last_change": "0001",
     "last_seen": "2026-10-03T21:32:24Z",
     "summary": "Doubt: docs/PROGRESS.md currently holds four top-level records (the new split entry plus three \"session 18\" sittings), not just the one current record spec.md's Requirements describe; the change's own verifier.md traces the extra two sittings to a later merge of main into this branch, not to this change's own split commits, so it may not be this diff's defect."
+  },
+  "d740fb94f64dfc94": {
+    "count": 1,
+    "file": "docs/PROGRESS.md",
+    "first_change": "0001",
+    "last_change": "0001",
+    "last_seen": "2026-10-03T22:00:14Z",
+    "summary": "Unchanged from the previous three rounds: the CLAUDE.md guardrail table still has only 3 rows (lines 3, new-line-after-3, 35); spec.md's Acceptance text also names line 39, addressed only in the Summary's prose (explaining no edit is needed there), never as a table row."
   },
   "d983e401c2e30433": {
     "count": 1,

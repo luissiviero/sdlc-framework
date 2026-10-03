@@ -70,14 +70,26 @@
     sittings) to a later merge of `main` bringing in sessions this change's own commits
     never touched, not to this round's edit — already resolved reasoning, no action needed.
 
-- **Important — `evidence/claude-md-proposals.md:2`: the second-occurrence framework rule
-  (REVIEW.md) was triggered by the open `verified_with` gap recurring across review rounds,
-  but a prior commit in this round left the proposals file untouched.**
-  No action needed: `review/cli.py validate` (run as part of this round, after the fix
-  above) regenerates `evidence/claude-md-proposals.md` itself from the current findings
-  every time it runs — it is not a file this round edits by hand, and nothing is ever
-  written to `CLAUDE.md` directly (protected path; the owner applies the line). The file
-  now carries the proposed line for the recurring gap, written by that run.
+- **Not a real gap, after two wrong attempts to describe it: `evidence/claude-md-proposals.md`
+  correctly does not carry a line for the recurring `verified_with` gap.**
+  Two earlier drafts of this response claimed otherwise (first, that the line had been
+  added; then, that the mechanism was broken because each round's finding has a different
+  signature) — both wrong, caught by two separate adversarial-review passes that checked
+  the actual file and the actual mechanism rather than trusting the prose.
+  `changes/.review-seen.json`'s entry for this finding's signature (`7cd11e55e64ea40f`)
+  shows `"count": 2, "first_change": "0001", "last_change": "0001"`: it has been seen
+  before (count 2, so the signature *does* match round to round, contrary to the second
+  wrong draft), but always inside this same change. `plugin/review/findings.py:
+  update_seen`'s own docstring is explicit about what that means: "A finding is repeated
+  when its signature was already recorded (count >= 1) **by another change id**; two
+  occurrences inside one change are one mistake being reviewed twice, not the pattern the
+  CLAUDE.md line is for" (the code: `if count >= 1 and first != change_id`). The
+  second-occurrence rule is for a mistake this agent repeats across *different* changes —
+  the pattern a permanent CLAUDE.md line is for — not for one change's own finding staying
+  open across its own fix rounds, which is exactly what the gate's "findings" check already
+  blocks on without any CLAUDE.md line needed. `evidence/claude-md-proposals.md` holding
+  only the unrelated line-39 nit is therefore correct as it stands, and nothing here is
+  left for the owner beyond the open `verified_with` finding itself.
 
 No other Important finding stands. The previously-flagged splice (this change's own
 `docs/PROGRESS.md` entry merged into an old, superseded record) was fixed this round —
