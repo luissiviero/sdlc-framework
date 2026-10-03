@@ -1,5 +1,5 @@
 {
-  "about": "The workflow crosswalk: every decision point of the AI-native SDLC playbook (the article, print pages of docs/reference/ai-native-sdlc-playbook.pdf) set against the sdlc framework (plugin 0.2.27, commit cf3f696); the row setup-adopt was added on 2026-09-30 against plugin 0.2.28, commit dd308ca. See ../2026-09-28-playbook-vs-framework.md. Re-checked on 2026-10-02 against plugin 0.2.29, commit 904f4ec: seven rows corrected for precision (setup-home, setup-gates, setup-merge, plan-idea, plan-ticket, plan-accept, x-roles); 0.2.28 and 0.2.29 change none of the others. Re-checked on 2026-10-02 against plugin 0.3.1 (8ec06b8): 0.2.30 changes one row, build-hooks (its panel-blindness hook, panel_blind.py), which that re-check missed and which was corrected on 2026-10-03; 0.3.0 and 0.3.1 change seven (design-trigger, test-verify, deploy-approve, deploy-release, x-headless, x-limits, x-measure) and add a sentence to x-sandbox and x-audit. Re-checked on 2026-10-02 (third session) against main 8269d46, still plugin 0.3.1 with no plugin or template change since 8ec06b8: no row changed; build-plan-approve's framework text gained a precision (the class is in evidence only, who merged is GitHub's record only). Re-checked on 2026-10-03 against main f899cc6, still plugin 0.3.1 with no plugin or template change since 8ec06b8: no row changed; build-start's framework text gained precisions (the preflight and its permission mode, the draft PR, the Standard and Full continuation, the per-change profile_override) and a map node. Re-checked on 2026-10-03 (second session) against main 02d89c3, still plugin 0.3.1 with no plugin or template change since 8ec06b8: build-hooks corrected (seven hooks, not six; the formatter covers Python files only; relation adapted, not same). The same day, before build-plansync was decided: no row changed; build-plansync's texts gained precisions (the three layers: the hook, the gate check at (c) to (e) and the REVIEW.md pass; the file-names-only rule).",
+  "about": "The workflow crosswalk: every decision point of the AI-native SDLC playbook (the article, print pages of docs/reference/ai-native-sdlc-playbook.pdf) set against the sdlc framework (plugin 0.2.27, commit cf3f696); the row setup-adopt was added on 2026-09-30 against plugin 0.2.28, commit dd308ca. See ../2026-09-28-playbook-vs-framework.md. Re-checked on 2026-10-02 against plugin 0.2.29, commit 904f4ec: seven rows corrected for precision (setup-home, setup-gates, setup-merge, plan-idea, plan-ticket, plan-accept, x-roles); 0.2.28 and 0.2.29 change none of the others. Re-checked on 2026-10-02 against plugin 0.3.1 (8ec06b8): 0.2.30 changes one row, build-hooks (its panel-blindness hook, panel_blind.py), which that re-check missed and which was corrected on 2026-10-03; 0.3.0 and 0.3.1 change seven (design-trigger, test-verify, deploy-approve, deploy-release, x-headless, x-limits, x-measure) and add a sentence to x-sandbox and x-audit. Re-checked on 2026-10-02 (third session) against main 8269d46, still plugin 0.3.1 with no plugin or template change since 8ec06b8: no row changed; build-plan-approve's framework text gained a precision (the class is in evidence only, who merged is GitHub's record only). Re-checked on 2026-10-03 against main f899cc6, still plugin 0.3.1 with no plugin or template change since 8ec06b8: no row changed; build-start's framework text gained precisions (the preflight and its permission mode, the draft PR, the Standard and Full continuation, the per-change profile_override) and a map node. Re-checked on 2026-10-03 (second session) against main 02d89c3, still plugin 0.3.1 with no plugin or template change since 8ec06b8: build-hooks corrected (seven hooks, not six; the formatter covers Python files only; relation adapted, not same). The same day, before build-plansync was decided: no row changed; build-plansync's texts gained precisions (the three layers: the hook, the gate check at (c) to (e) and the REVIEW.md pass; the file-names-only rule). The same day, before build-subagents was decided: no relation changed; build-subagents' framework text gained precisions (where each agent runs, the panel's sub-agents, parallel changes in separate CI jobs serialized per branch, no cap on changes in flight) and the row a T1 target.",
   "seeded": "2026-09-28",
   "fields": {
     "id": "stable row id",
@@ -834,7 +834,7 @@
       "decision": {
         "better": "framework",
         "decision": "keep",
-        "note": "Keep: plan.md stays in step through three layers, which already do more than the article asks (p.16 step 7: update plan.md in the same commit when the work departs; consider a hook): the plan-sync hook on git commit on the build branch, which (d) and (e) share, blocks a commit that changes a source file the plan's 'Files that change' does not list unless plan.md is in the same commit; the plan_sync gate check at (c), (d) and (e) requires every committed source file to be listed and re-checks every commit by the hook's rule; the REVIEW.md pass at (e) checks that plan.md reflects the diff (files, order of work, risks, proof). The hook and the gate judge a departure by file names only: a change of approach inside listed files is caught only by the review pass at (e), a model's judgment; a planned file never touched is only reported. Row corrected to name the three layers and the file-names-only rule (relation stays same). The article's measure, how often the merged diff still matches plan.md (p.17), goes to x-measure.",
+        "note": "Keep: plan.md stays in step through three layers, which already do more than the article asks (p.16 step 7: update plan.md in the same commit when the work departs; consider a hook): the plan-sync hook on git commit on the build branch, which (d) and (e) share, blocks a commit that changes a source file the plan's 'Files that change' does not list unless plan.md is in the same commit; the plan_sync gate check at (c), (d) and (e) requires every committed source file to be listed and re-checks every commit by the hook's rule; the REVIEW.md pass at (e) checks that plan.md reflects the diff (files, order of work, risks, proof). The hook and the gate judge a departure by file names only: a change of approach inside listed files is left to model judgment (the verifier and the adversarial reviewer at (c) and (d), the REVIEW.md pass at (e)); a planned file never touched is only reported. Row corrected to name the three layers and the file-names-only rule (relation stays same). The article's measure, how often the merged diff still matches plan.md (p.17), goes to x-measure.",
         "saved": "2026-10-03",
         "status": "tentative"
       }
@@ -845,11 +845,11 @@
       "step": "Subagents and parallel sessions",
       "pb": "Subagents such as a code simplifier, a verifier and a researcher; several sessions at once, each in its own worktree, added only while review keeps up.",
       "pbSrc": "p.24-25",
-      "fw": "Four agents: code-simplifier and verifier run in (c), researcher on demand, adversarial-reviewer for the gate. No parallel worktrees yet.",
-      "fwSrc": "plugin/agents/",
+      "fw": "Four agents in the pinned plugin, all on the session's model (model: inherit): code-simplifier in (c) and in a build fix round, verifier in (c), (d) and a build fix round, adversarial reviewer for the gate's verdict at (b), (c) and (d), researcher available to any session (no command calls it by name); under deferred review the panel's three members also run as sub-agents, in any phase. Parallel work exists across changes: each change runs in its own CI job on its own branch, and the phase workflows serialize runs per branch only, so several changes progress at once on separate runners. No worktree split of one change into parallel tasks, and no cap on changes in flight: the owner's gate (a) merges are the only throttle.",
+      "fwSrc": "plugin/agents/, plugin/commands/sdlc-build.md, sdlc-test.md, sdlc-design.md, sdlc-fix.md, plugin/panel/briefs/, template/.github/workflows/sdlc-*.yml concurrency",
       "rel": "adapted",
       "why": "D17 parallel worktrees later",
-      "weigh": "Parallel sessions only help if your review keeps up. Is that the bottleneck?",
+      "weigh": "Parallel changes already run in separate CI jobs, without worktrees; nothing caps them but your merges. Is your review the bottleneck the article warns about?",
       "map": {
         "pb": [
           [
@@ -867,9 +867,27 @@
           [
             "C",
             "w",
-            "Four agents, no parallel worktrees"
+            "Four agents in fixed places, plus the panel"
+          ],
+          [
+            "A",
+            "w",
+            "Changes run in parallel CI jobs"
           ]
         ]
+      },
+      "target": {
+        "refs": [
+          "T1"
+        ],
+        "text": "Your choice on this row (2026-10-03): keep, with T1's direction: the workers stay sub-agents (verifier, code-simplifier, researcher); the judges become roles (the adversarial reviewer at (b) grows into the Architect, the REVIEW.md pass becomes the Code reviewer, the panel member of a concern's kind becomes that role); at (c) and (d) the adversarial reviewer stays a checker for the gate. One agent catalogue: every agent, role or sub-agent, created the same way (mission, reports to, model, skills and documents read, tools, output, its own eval); build-skills decides the documents and x-roles the list, reporting lines and models."
+      },
+      "decision": {
+        "better": "framework",
+        "decision": "keep",
+        "note": "Keep (D17, D1 unchanged), with T1's direction (c1). Today: four agents in the pinned plugin, all on the session's model: code-simplifier in (c) and a build fix round, verifier in (c) and (d), adversarial reviewer at (b), (c) and (d), researcher available (no command calls it by name); under deferred review the panel's three members also run as sub-agents. Parallel work already exists across changes: each change runs in its own CI job on its own branch, serialized per branch only; there is no worktree split inside a change and no cap on changes in flight, my gate (a) merges being the throttle. (c1): the workers stay sub-agents (verifier, code-simplifier, researcher, which the roles may use to read code); the judges become roles: at (b) the adversarial reviewer grows into the Architect (as build-plan decided), at (e) the REVIEW.md pass becomes the Code reviewer, and the panel member of a concern's kind becomes that role (design-concerns). At (c) and (d) the adversarial reviewer stays a checker reporting to the gate ('is the proof real'), separate from the Code reviewer ('is the code good'): two jobs, separated by the question, the output, a fresh context and, ideally, the model. One agent catalogue for all of them: every agent, role or sub-agent, is created the same way (mission, reports to, model, skills and documents read, tools, output format, its own eval); build-skills decides the documents and x-roles the list, the reporting lines and the models, for every entry; the documents and cards are written after the study, sources first. The article's 'concurrent sessions while review quality holds' goes to x-measure.",
+        "saved": "2026-10-03",
+        "status": "tentative"
       }
     },
     {
@@ -1960,6 +1978,6 @@
       "fidelity": 2
     },
     "weightsSaved": "2026-09-29",
-    "rowsWithADecision": 18
+    "rowsWithADecision": 19
   }
 }

@@ -276,6 +276,11 @@
         </tbody>
       </table>
     </div>
+    <ul class="notes">
+      <li><strong>One agent catalogue (your choice on build-subagents, 3 October).</strong> Today's sub-agents stay and the roles join them in one catalogue: different jobs, the same way of making each. The workers stay sub-agents (the verifier, the code-simplifier, the researcher, which the roles may use to read code). The judges become roles: the adversarial reviewer at design grows into the Architect, the review pass at deploy becomes the Code reviewer, and the panel member of a concern's kind becomes that role.</li>
+      <li><strong>Two reviewers, two questions.</strong> Today the adversarial reviewer gives the gate its verdict at design, build and test, asking "should this continue?" from six angles, policies and the code against the plan included; the review pass gives you ranked findings at deploy. Their questions overlap today. The direction: the Code reviewer asks "is the code good?" and gives you ranked findings at the merge; the adversarial reviewer centres on "is the claim that it is done proven?" and, at build and test, stays a checker for the gate that writes to you only when the change parks. How far its angles narrow is still open. A fresh context each, and ideally a different model.</li>
+      <li><strong>The same card for every agent:</strong> mission, who it reports to (you through the manager, the session, or the gate), model, the skills and documents it reads, tools, output and its own eval. The skills row of the study decides the documents and the roles row the list, reporting lines and models; the cards are written after the study, sources first.</li>
+    </ul>
   </section>
 
   <section>
@@ -310,6 +315,8 @@
         <ul class="notes">
           <li>To do: decide which model each role and each sub-agent runs on. Today all four agents run on the session's own model and so share its blind spots, so each brings a second perspective, not a second accountability; the panel's devil's advocate already runs on a different model for that reason. Start with the agents that judge.</li>
           <li>Which documentation each role reads: the five policy skills each say "no owner source yet".</li>
+          <li>How far the adversarial reviewer's angles narrow once the Code reviewer exists; today it also checks the policies, the spec and plan at design, and the code against them at build and test, where no code reviewer runs.</li>
+          <li>The agent catalogue's table, one line per agent (mission, who it reports to, model, documents read): documents decided at the skills row, list, reporting lines and models at the roles row; written after the study.</li>
           <li>How many roles after merging.</li>
           <li>Whether a ruleset can let a workflow merge on your behalf, or a dedicated GitHub App is needed.</li>
           <li>The approval check must confirm the signal came from you, not just from a person.</li>
