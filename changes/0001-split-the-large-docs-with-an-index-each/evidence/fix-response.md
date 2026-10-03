@@ -18,3 +18,18 @@
   touched (decision 22).
 
 No requests were left unapplied.
+
+# Fix response — phase (c), round 2
+
+- luissiviero (OWNER), review https://github.com/luissiviero/sdlc-framework/pull/112#pullrequestreview-5402438162:
+  applied. Re-ran gate (c) as asked (commit 1183760). No code change: the prior park
+  (`clean_tree: 1 uncommitted file(s) outside the change folder: tests/fixtures/sample-python-project/.env`)
+  was the CI sandbox masking that fixture file by mounting `/dev/null` over it, not a real
+  uncommitted change — `plugin/gate/checks.py`'s `clean_tree` check already looks past a
+  sandbox-mounted path inside a CI session (plugin 0.3.4) and confirmed it this round
+  (`"ignored": ["tests/fixtures/sample-python-project/.env"]`). The adversarial reviewer
+  verdict is `continue`, non-routine; gate (c) result is `continue`.
+- luissiviero (OWNER), review https://github.com/luissiviero/sdlc-framework/pull/112#pullrequestreview-5402516760:
+  applied. Same request, same round and result as above (duplicate re-run instruction).
+
+No requests were left unapplied.

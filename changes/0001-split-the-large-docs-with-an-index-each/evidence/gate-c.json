@@ -5,12 +5,12 @@
   "phase": "c",
   "profile": "standard",
   "human_gate": false,
-  "result": "park",
-  "label": "sdlc:needs-human",
-  "head": "6eecf3c3e17e83da4551826430a8f25ad1cb80e4",
-  "at": "2026-10-03T18:00:26Z",
+  "result": "continue",
+  "label": null,
+  "head": "11837600850452e6179301890c9248523da55c28",
+  "at": "2026-10-03T20:13:13Z",
   "dry_run": false,
-  "reason": "clean_tree: 1 uncommitted file(s) outside the change folder: tests/fixtures/sample-python-project/.env",
+  "reason": "",
   "config_note": "",
   "checks": [
     {
@@ -19,28 +19,27 @@
       "reason": "within the run limits",
       "need": "",
       "details": {
-        "iterations": 1,
+        "iterations": 2,
         "cap": 2,
         "classification": "non-routine",
         "panel_calls": 0,
         "panel_cap": 4,
-        "elapsed_minutes": 59.1,
+        "elapsed_minutes": 4.1,
         "spend_usd": null,
-        "spend_usd_total": 8.670635,
-        "spend_entries": 2,
+        "spend_usd_total": 25.056635,
+        "spend_entries": 3,
         "max_budget_usd": null
       }
     },
     {
       "name": "clean_tree",
-      "ok": false,
-      "reason": "1 uncommitted file(s) outside the change folder: tests/fixtures/sample-python-project/.env",
-      "need": "Commit (or discard) the work first: the adversarial verdict and the PR judge HEAD, not the working tree.",
+      "ok": true,
+      "reason": "no uncommitted change outside the change folder",
+      "need": "",
       "details": {
-        "dirty": [
+        "ignored": [
           "tests/fixtures/sample-python-project/.env"
-        ],
-        "ignored": []
+        ]
       }
     },
     {
@@ -67,27 +66,10 @@
     {
       "name": "commands",
       "ok": true,
-      "reason": "build, test and lint exit 0",
+      "reason": "deferred to the runner: build, test and lint run after the model's session, outside its sandbox (issue #91); not yet run",
       "need": "",
       "details": {
-        "runs": {
-          "build": {
-            "command": "python -m compileall -q plugin tests tasks.py",
-            "exit_code": 0,
-            "output": ""
-          },
-          "test": {
-            "command": "python -m pytest",
-            "exit_code": 0,
-            "output": "........................................................................ [  5%]\n........................................................................ [ 10%]\n........................................................................ [ 15%]\n........................................................................ [ 20%]\n........................................................................ [ 25%]\n........................................................................ [ 31%]\n........................................................................ [ 36%]\n........................................................................ [ 41%]\n........................................................................ [ 46%]\n........................................................................ [ 51%]\n........................................................................ [ 56%]\n........................................................................ [ 62%]\n........................................................................ [ 67%]\n........................................................................ [ 72%]\n........................................................................ [ 77%]\n........................................................................ [ 82%]\n........................................................................ [ 87%]\n........................................................................ [ 93%]\n........................................................................ [ 98%]\n.......................                                                  [100%]\n1391 passed in 204.48s (0:03:24)\n"
-          },
-          "lint": {
-            "command": "python -m ruff check .",
-            "exit_code": 0,
-            "output": "All checks passed!\n"
-          }
-        },
-        "ran_by": "runner"
+        "deferred": true
       }
     },
     {
@@ -161,5 +143,5 @@
       }
     }
   ],
-  "what_i_need": "## What I need from you\nGate (c) parked change 0001 (split-the-large-docs-with-an-index-each) on 2026-10-03T18:00:26Z.\n- **clean_tree**: 1 uncommitted file(s) outside the change folder: tests/fixtures/sample-python-project/.env\n  - what I need: Commit (or discard) the work first: the adversarial verdict and the PR judge HEAD, not the working tree.\nWhen the item is settled, re-run the gate: `python \"${CLAUDE_PLUGIN_ROOT}/plugin/gate/cli.py\" check --root . --id 0001 --phase c` (review comments are the change request; /sdlc-fix from B3 re-runs the phase with them).\n"
+  "what_i_need": ""
 }
