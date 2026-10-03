@@ -9,25 +9,33 @@
   deliberately-deferred gap, not a regression this round introduced. The adversarial
   reviewer's verdict on this round's first attempt (escalate) pointed out, correctly, that
   the six files for `generated.at` 2026-10-02/10-03 (`docs/notes/27.md`–`32.md`, sessions
-  15–18) have their plugin version, and for sessions 18's three sittings (`30.md`–`32.md`)
-  also their runner, stated directly and unambiguously in their own text (e.g. `32.md`:
-  "The container (verified): the chained checks green on the 0.3.4 code") and in
-  `docs/PROGRESS.md`/`docs/progress/session-{15,16,17}.md` — so leaving even those untouched
-  was not justified. Fixed now: `27.md` → "Claude Code 2.1.287; plugin 0.3.0"; `28.md` →
-  "Claude Code 2.1.287; plugin 0.3.1"; `29.md` → "Claude Code 2.1.288; plugin 0.3.1"; `30.md`
-  → "Claude Code 2.1.288; plugin 0.3.2; a CI session"; `31.md` → "Claude Code 2.1.288; plugin
-  0.3.3; a CI session"; `32.md` → "Claude Code 2.1.288; plugin 0.3.4; a CI session" (each
+  15–18) have their plugin version stated directly and unambiguously in their own text
+  (e.g. `32.md`: "The container (verified): the chained checks green on the 0.3.4 code")
+  — so leaving even those untouched was not justified. Fixed now: `27.md` → "Claude Code
+  2.1.287; plugin 0.3.0"; `28.md` → "Claude Code 2.1.287; plugin 0.3.1"; `29.md` → "Claude
+  Code 2.1.288; plugin 0.3.1"; `30.md` → "Claude Code 2.1.288; plugin 0.3.2"; `31.md` →
+  "Claude Code 2.1.288; plugin 0.3.3"; `32.md` → "Claude Code 2.1.288; plugin 0.3.4" (each
   plugin version taken from that session's own "built/lives/fix lives since <version>,
   read from the code written this session" sentence, i.e. the version the session's own
   fact was verified against, not the version at the session's start).
-  Sessions 15–17 (`27.md`–`29.md`) are framework-development sessions, not SDLC-phase CI
-  runs, and — checked directly in `docs/progress/session-15.md`, `session-16.md` and
-  `session-17.md` — none of the three states its own runner (cloud session versus the
-  owner's local machine) in those words anywhere; a CI-session identity is ruled out (none
-  carries `SDLC_GATE_COMMANDS=runner` or a workflow run id for its own execution, unlike
-  `30.md`–`32.md`, which cite workflow run URLs, job ids and `sandbox_applies: true`
-  directly), but cloud versus local is not. The runner for these three is left out rather
-  than guessed.
+  A first attempt at this fix also set `30.md`–`32.md`'s runner to "a CI session", reading
+  the GitHub Actions workflow-run details (job ids, `sandbox_applies: true`) these notes
+  quote as proof of the note-writing session's own environment. A second, independent
+  review pass on that attempt caught the conflation: those workflow-run details describe a
+  *separate* thing each note is reporting on — change 0001's own automated, pinned-2.1.278
+  build run, read from its job log — not the interactive 2.1.288 session that wrote the
+  note. The same session's own "## Checks" section in `docs/PROGRESS.md` (session 18, each
+  sitting) shows `compileall`/`pytest`/`ruff` run directly, with a literal `CHAIN EXIT 0`,
+  which is how an interactive session reports its own commands, not how a CI session's
+  deferred-to-the-runner mark reads — so the note-writing session is not itself the CI run
+  it describes. The wrong "a CI session" value was removed before this round's commit, and
+  sessions 15–18 (`27.md`–`32.md`) are treated alike: plugin version filled in, runner left
+  out. None of the six states, in its own words, whether the session that wrote it ran on
+  the owner's local machine or in a cloud session (checked directly in
+  `docs/progress/session-{15,16,17}.md` and the matching parts of `docs/PROGRESS.md`); a
+  CI-session identity is the one thing ruled out for all six, by the direct, non-deferred
+  `CHAIN EXIT 0` evidence, but cloud versus local is not, so the runner field stays out
+  rather than guessed.
   The remaining 26 files (sessions 1–14, `generated.at` 2026-09-19 through 2026-09-30) are
   left untouched: several of their dates each cover two to six different sittings with
   different plugin versions, so the date alone does not identify the session (the note's

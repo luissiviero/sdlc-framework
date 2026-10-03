@@ -1,57 +1,56 @@
 {
-  "at": "2026-10-03T21:22:43Z",
+  "schema_version": 1,
+  "head": "dbc04ce92883c741ebd11359dae388970c6c27af",
   "findings": [
     {
+      "pass": "compliance",
+      "severity": "important",
+      "file": "docs/notes/30.md",
+      "line": 5,
+      "summary": "This round's fix set verified_with's runner to \"a CI session\" for docs/notes/30.md, 31.md and 32.md, but each file's own text (and the matching docs/PROGRESS.md \"Session 18\" / \"second sitting\" / \"third sitting\" records) shows the session that produced that NOTES file is the opposite of a CI session: its Checks section runs `python -m compileall`/`pytest`/`ruff` directly in-session with a non-deferred \"CHAIN EXIT 0\", and session 18's own Summary states \"the default permission mode, no refusal this session. The session's GitHub identity is the owner's (`get_me`: luissiviero)\" — the exact markers review-response.md itself uses to justify leaving 27.md-29.md's runner blank. The workflow run URLs, job ids and `sandbox_applies: true` these three files cite (e.g. 30.md bullet 4, 31.md bullet 2, 32.md bullets 1-2) describe a separate thing being observed and verified by the session — change 0001's own automated build-pipeline run (pinned Claude Code 2.1.278) — not the interactive session itself (Claude Code 2.1.288, the value these same files' verified_with correctly carries). Conflating the two writes an incorrect provenance value into the field spec.md says a later session reads to judge staleness, which is worse than the gap it was meant to close.",
+      "rule": "spec.md Requirements (docs/notes/<N>.md frontmatter: verified_with is Claude Code version, plugin version, runner, stated directly and unambiguously); review-response.md's own stated principle (\"writing an inferred, unconfirmed value into it is worse than leaving the field incomplete\")."
+    },
+    {
+      "pass": "compliance",
+      "severity": "important",
       "file": "docs/notes/2.md",
       "line": 5,
-      "pass": "compliance",
-      "rule": "spec.md Requirements (docs/notes/ frontmatter: \"verified_with (Claude Code version, plugin version, runner)\") and Design (same, restated); the change's own verifier.md flags this same gap independently.",
-      "severity": "important",
-      "signature": "f3566379af405bb6",
-      "summary": "verified_with in the docs/notes/<N>.md frontmatter carries only the Claude Code version in 30 of 32 files (and never a runner value in any of the 32), not the three-part \"Claude Code version, plugin version, runner\" the spec requires."
+      "summary": "verified_with is still missing plugin version and runner for 26 of 32 docs/notes/<N>.md files (sessions 1-14); this is the same gap the previous review round (head 0f2b8d3) flagged Important, now recurring a second round with the fix only narrowing its scope (6 of 32 files closed). Per REVIEW.md's framework rules a second occurrence of the same finding across reviews should produce a proposed one-line docs/CLAUDE.md \"Things Claude gets wrong\" entry for the owner; none is proposed here. Suggested line: \"Leaving a reference-doc metadata gap (e.g. verified_with) open across two review rounds while only partially filling it: finish every file a fix round touches, or state explicitly in that same round which files are deferred and why, instead of letting the same Important finding recur.\"",
+      "rule": "spec.md Requirements (verified_with: Claude Code version, plugin version, runner, all three); REVIEW.md Framework rules (\"The second occurrence of the same finding across reviews produces a one-line entry in CLAUDE.md under 'Things Claude gets wrong', proposed in the review for the owner\")."
     },
     {
-      "file": "docs/notes/1.md",
-      "line": 3,
       "pass": "compliance",
-      "rule": "spec.md Design (docs/notes/<N>.md frontmatter: sources).",
       "severity": "nit",
-      "signature": "ce45a2c4192ba2cc",
-      "summary": "Doubt: the sources frontmatter field holds only the docs URL/section names, not the verbatim quote alongside it; spec.md's Design line describes sources as \"the docs URL or run URL and the verbatim quote already in the section, restated as structured data\", which could mean the quote belongs in the field too."
-    },
-    {
-      "file": "docs/PROGRESS.md",
-      "line": 1,
-      "pass": "compliance",
-      "rule": "spec.md Requirements (\"docs/PROGRESS.md keeps only its current top-level record\").",
-      "severity": "nit",
-      "signature": "cfa7b7a31045a690",
-      "summary": "Doubt: docs/PROGRESS.md currently holds four top-level records (the new split entry plus three \"session 18\" sittings), not just the one current record spec.md's Requirements describe; the change's own verifier.md traces the extra two sittings to a later merge of main into this branch, not to this change's own split commits, so it may not be this diff's defect."
-    },
-    {
       "file": "docs/PROGRESS.md",
       "line": 4,
-      "pass": "compliance",
-      "rule": "spec.md Acceptance (the record must give the owner an exact account of the split); factual accuracy of a just-added record.",
-      "severity": "nit",
-      "signature": "52f49924705bd8e8",
-      "summary": "The new top-level record's summary says the split covered \"docs/NOTES.md (30 sections)\", but docs/notes/ holds 32 section files (1-32) and docs/notes/index.md lists 32, so the record's own prose undercounts by two."
+      "summary": "The current top-level record's summary still says the split covered \"docs/NOTES.md (30 sections)\", unchanged from the previous round; docs/notes/ holds 32 section files (1-32) and docs/notes/index.md lists 32, so the prose still undercounts by two.",
+      "rule": "spec.md Acceptance (the record must give the owner an exact account of the split); factual accuracy of the record's own prose."
     },
     {
+      "pass": "compliance",
+      "severity": "nit",
       "file": "docs/PROGRESS.md",
       "line": 24,
+      "summary": "The CLAUDE.md guardrail table still has only 3 rows (lines 3, new-line-after-3, 35); spec.md's Acceptance text names line 39 as part of the table too, and line 39 is still addressed only in the Summary's prose (lines 16-19), not as a table row, unchanged from the previous round's nit.",
+      "rule": "spec.md Acceptance (\"the exact CLAUDE.md guardrail edit: the table of link, row, current text, new text, covering line 3 ..., line 35 ..., line 39 ..., and the new pointer line\")."
+    },
+    {
       "pass": "compliance",
-      "rule": "spec.md Acceptance: \"the exact CLAUDE.md guardrail edit: the table of link, row, current text, new text, covering line 3 ..., line 35 ..., line 39 ..., and the new pointer line\".",
       "severity": "nit",
-      "signature": "af228dac9a462c15",
-      "summary": "The new record's CLAUDE.md guardrail table has 3 rows (line 3, new-line-after-3, line 35); spec.md's Acceptance says the table should cover line 39 too, but line 39 is only addressed in a prose sentence in the Summary, not as a table row."
+      "file": "docs/notes/1.md",
+      "line": 3,
+      "summary": "Doubt, unchanged from the previous round: the sources frontmatter field holds only the docs URL, not the verbatim quote alongside it; spec.md's Design line describing sources as \"the docs URL or run URL and the verbatim quote already in the section, restated as structured data\" could be read as requiring the quote in the field too.",
+      "rule": "spec.md Design (docs/notes/<N>.md frontmatter: sources)."
+    },
+    {
+      "pass": "compliance",
+      "severity": "nit",
+      "file": "docs/PROGRESS.md",
+      "line": 1,
+      "summary": "Doubt, unchanged from the previous round: docs/PROGRESS.md still holds four top-level records (the split entry plus three \"session 18\" sittings), not just the one current record spec.md's Requirements describe; traced (as before) to a later merge of main bringing in sessions this change's own commits never touched, not to this round's edits.",
+      "rule": "spec.md Requirements (\"docs/PROGRESS.md keeps only its current top-level record\")."
     }
   ],
-  "head": "0f2b8d3447d2169313ac45599f6306a9fd3040d6",
-  "schema_version": 1,
-  "tally": {
-    "important": 1,
-    "nit": 4,
-    "nits_omitted": 0
-  }
+  "tally": {"important": 2, "nit": 4, "nits_omitted": 0},
+  "at": "2026-10-03T22:10:00Z"
 }
