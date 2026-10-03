@@ -1,5 +1,5 @@
 {
-  "about": "The workflow crosswalk: every decision point of the AI-native SDLC playbook (the article, print pages of docs/reference/ai-native-sdlc-playbook.pdf) set against the sdlc framework (plugin 0.2.27, commit cf3f696); the row setup-adopt was added on 2026-09-30 against plugin 0.2.28, commit dd308ca. See ../2026-09-28-playbook-vs-framework.md. Re-checked on 2026-10-02 against plugin 0.2.29, commit 904f4ec: seven rows corrected for precision (setup-home, setup-gates, setup-merge, plan-idea, plan-ticket, plan-accept, x-roles); 0.2.28 and 0.2.29 change none of the others. Re-checked on 2026-10-02 against plugin 0.3.1 (8ec06b8): 0.2.30 changes one row, build-hooks (its panel-blindness hook, panel_blind.py), which that re-check missed and which was corrected on 2026-10-03; 0.3.0 and 0.3.1 change seven (design-trigger, test-verify, deploy-approve, deploy-release, x-headless, x-limits, x-measure) and add a sentence to x-sandbox and x-audit. Re-checked on 2026-10-02 (third session) against main 8269d46, still plugin 0.3.1 with no plugin or template change since 8ec06b8: no row changed; build-plan-approve's framework text gained a precision (the class is in evidence only, who merged is GitHub's record only). Re-checked on 2026-10-03 against main f899cc6, still plugin 0.3.1 with no plugin or template change since 8ec06b8: no row changed; build-start's framework text gained precisions (the preflight and its permission mode, the draft PR, the Standard and Full continuation, the per-change profile_override) and a map node. Re-checked on 2026-10-03 (second session) against main 02d89c3, still plugin 0.3.1 with no plugin or template change since 8ec06b8: build-hooks corrected (seven hooks, not six; the formatter covers Python files only; relation adapted, not same).",
+  "about": "The workflow crosswalk: every decision point of the AI-native SDLC playbook (the article, print pages of docs/reference/ai-native-sdlc-playbook.pdf) set against the sdlc framework (plugin 0.2.27, commit cf3f696); the row setup-adopt was added on 2026-09-30 against plugin 0.2.28, commit dd308ca. See ../2026-09-28-playbook-vs-framework.md. Re-checked on 2026-10-02 against plugin 0.2.29, commit 904f4ec: seven rows corrected for precision (setup-home, setup-gates, setup-merge, plan-idea, plan-ticket, plan-accept, x-roles); 0.2.28 and 0.2.29 change none of the others. Re-checked on 2026-10-02 against plugin 0.3.1 (8ec06b8): 0.2.30 changes one row, build-hooks (its panel-blindness hook, panel_blind.py), which that re-check missed and which was corrected on 2026-10-03; 0.3.0 and 0.3.1 change seven (design-trigger, test-verify, deploy-approve, deploy-release, x-headless, x-limits, x-measure) and add a sentence to x-sandbox and x-audit. Re-checked on 2026-10-02 (third session) against main 8269d46, still plugin 0.3.1 with no plugin or template change since 8ec06b8: no row changed; build-plan-approve's framework text gained a precision (the class is in evidence only, who merged is GitHub's record only). Re-checked on 2026-10-03 against main f899cc6, still plugin 0.3.1 with no plugin or template change since 8ec06b8: no row changed; build-start's framework text gained precisions (the preflight and its permission mode, the draft PR, the Standard and Full continuation, the per-change profile_override) and a map node. Re-checked on 2026-10-03 (second session) against main 02d89c3, still plugin 0.3.1 with no plugin or template change since 8ec06b8: build-hooks corrected (seven hooks, not six; the formatter covers Python files only; relation adapted, not same). The same day, before build-plansync was decided: no row changed; build-plansync's texts gained precisions (the three layers: the hook, the gate check at (c) to (e) and the REVIEW.md pass; the file-names-only rule).",
   "seeded": "2026-09-28",
   "fields": {
     "id": "stable row id",
@@ -794,7 +794,7 @@
       "decision": {
         "better": "framework",
         "decision": "blend",
-        "note": "Blend (T8), added and nothing replaced: the seven hooks stay as they are (protected paths, secrets check, formatter and linter on edit, plan sync, test-file lock, panel blindness, production gate), deterministic, every decision logged, none asks (D6, D7 unchanged). Added (T8): the formatter hook follows the project's languages: per file type, the project's own format and lint commands in sdlc.yaml, run on the changed file only, failing open as today; ruff for Python stays the default; /sdlc-init proposes prettier/eslint for Node when package.json has them and rustfmt for Rust; only checks that are cheap per file go in the hook (clippy and other whole-project checks stay at the gate's lint, p.23); a file type with no command passes, so no default for HTML, CSS, Markdown, JSON or YAML (a project already on prettier may add them). Timing: recorded now, built after the study. Open in T8: full Rust support (detection of its targets, the test-file lock for tests inside source files, crates.io in the CI sandbox), revisited at test-bugfix; npm's .cmd shims on Windows. 'Back any skill whose policy has to hold' is decided with build-skills. Corrections approved: seven hooks, not six (panel_blind.py, 0.2.30, so 0.2.30 changes this row); relation adapted, not same (the formatter covers Python files only).",
+        "note": "Blend (T8), added and nothing replaced: the seven hooks stay as they are (protected paths, secrets check, formatter and linter on edit, plan sync, test-file lock, panel blindness, production gate), deterministic, every block logged (the panel-blindness hook logs only its blocks, the production gate nothing while inert), none asks (D6, D7 unchanged). Added (T8): the formatter hook follows the project's languages: per file type, the project's own format and lint commands in sdlc.yaml, run on the changed file only, failing open as today; ruff for Python stays the default; /sdlc-init proposes prettier/eslint for Node when package.json has them and rustfmt for Rust; only checks that are cheap per file go in the hook (clippy and other whole-project checks stay at the gate's lint, p.23); a file type with no command passes, so no default for HTML, CSS, Markdown, JSON or YAML (a project already on prettier may add them). Timing: recorded now, built after the study. Open in T8: full Rust support (detection of its targets, the test-file lock for tests inside source files, crates.io in the CI sandbox), revisited at test-bugfix; npm's .cmd shims on Windows. 'Back any skill whose policy has to hold' is decided with build-skills. Corrections approved: seven hooks, not six (panel_blind.py, 0.2.30, so 0.2.30 changes this row); relation adapted, not same (the formatter covers Python files only).",
         "saved": "2026-10-03",
         "status": "tentative"
       }
@@ -803,13 +803,13 @@
       "id": "build-plansync",
       "stage": "Build",
       "step": "Keeping plan.md in step with the work",
-      "pb": "Update plan.md in the same commit when the work departs from it; consider a hook to enforce the sync.",
-      "pbSrc": "p.16",
-      "fw": "The plan-sync hook on git commit (build branch) and a plan_sync gate check.",
-      "fwSrc": "plugin/hooks/plan_sync.py",
+      "pb": "Update plan.md in the same commit when the work departs from it; consider a hook to enforce the sync. The PR review checks the diff against plan.md, and the play's lagging indicator is how often the merged diff still matches it.",
+      "pbSrc": "p.16-17, p.33",
+      "fw": "Three layers. The plan-sync hook on git commit on the build branch sdlc/<id>/c, which (d) and (e) share, denies a commit that changes a source file not listed under plan.md's 'Files that change' unless plan.md is in the same commit (changes/** and plan_sync.exempt are not source); state/cli.py commit-phase, through which the phase commands commit, applies the same rule first. The plan_sync gate check at (c), (d) and (e) requires every committed source file to be listed and re-applies the hook's rule to every commit on the branch. The REVIEW.md pass at (e) checks that plan.md reflects the diff (files, order of work, risks, proof). The hook and the gate judge a departure by file names only: a change of approach inside listed files is left to model judgment: the verifier and the adversarial reviewer at (c) and (d), and the REVIEW.md pass at (e); a planned file never touched is only reported.",
+      "fwSrc": "plugin/hooks/plan_sync.py, plugin/state/cli.py commit-phase, plugin/gate/checks.py check_plan_sync, plugin/agents/verifier.md, plugin/agents/adversarial-reviewer.md, template/REVIEW.md",
       "rel": "same",
       "why": "Implements the article's suggestion",
-      "weigh": "Close match.",
+      "weigh": "Close match, with more layers than the article asks. The rule is by file names; the article's measure (how often the merged diff still matches plan.md) is not computed (row x-measure).",
       "map": {
         "pb": [
           [
@@ -827,9 +827,16 @@
           [
             "A",
             "w",
-            "Plan-sync hook + gate check"
+            "Plan-sync hook, gate check (c)-(e), review at (e)"
           ]
         ]
+      },
+      "decision": {
+        "better": "framework",
+        "decision": "keep",
+        "note": "Keep: plan.md stays in step through three layers, which already do more than the article asks (p.16 step 7: update plan.md in the same commit when the work departs; consider a hook): the plan-sync hook on git commit on the build branch, which (d) and (e) share, blocks a commit that changes a source file the plan's 'Files that change' does not list unless plan.md is in the same commit; the plan_sync gate check at (c), (d) and (e) requires every committed source file to be listed and re-checks every commit by the hook's rule; the REVIEW.md pass at (e) checks that plan.md reflects the diff (files, order of work, risks, proof). The hook and the gate judge a departure by file names only: a change of approach inside listed files is caught only by the review pass at (e), a model's judgment; a planned file never touched is only reported. Row corrected to name the three layers and the file-names-only rule (relation stays same). The article's measure, how often the merged diff still matches plan.md (p.17), goes to x-measure.",
+        "saved": "2026-10-03",
+        "status": "tentative"
       }
     },
     {
@@ -1953,6 +1960,6 @@
       "fidelity": 2
     },
     "weightsSaved": "2026-09-29",
-    "rowsWithADecision": 17
+    "rowsWithADecision": 18
   }
 }
