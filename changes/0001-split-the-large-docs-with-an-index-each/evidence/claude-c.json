@@ -1,0 +1,107 @@
+{
+  "api_error_status": null,
+  "duration_api_ms": 1801053,
+  "duration_ms": 584613,
+  "fast_mode_disabled_reason": "sdk_opt_in_required",
+  "fast_mode_state": "off",
+  "first_content_frame_ms": 4192,
+  "is_error": false,
+  "modelUsage": {
+    "claude-sonnet-5": {
+      "cacheCreationInputTokens": 652831,
+      "cacheReadInputTokens": 14825675,
+      "canonicalModel": "claude-sonnet-5",
+      "contextWindow": 1000000,
+      "costBasis": "list",
+      "costUSD": 6.9347655,
+      "inputTokens": 204,
+      "maxOutputTokens": 64000,
+      "outputTokens": 210466,
+      "provider": "firstParty",
+      "thinkingTokens": 77718,
+      "webSearchRequests": 0
+    }
+  },
+  "num_turns": 62,
+  "permission_denials": [
+    {
+      "tool_input": {
+        "command": "for n in 983 1054 1128 1204 1319 1456; do echo \"=== around $n ===\"; sed -n \"$((n-2)),$((n+3))p\" docs/PROGRESS.md; done"
+      },
+      "tool_name": "Bash",
+      "tool_use_id": "toolu_01LfgtCGj5bxYyja5D3wrVFf"
+    }
+  ],
+  "queued_turn_count": 0,
+  "result": "That tool isn't applicable here (no active `/loop`). I'll just wait for the two background agents' completion notifications before continuing \u2014 no further action needed from me until then.",
+  "result_index": 0,
+  "session_id": "4185e464-cc62-4800-b6ec-6fa57bdff410",
+  "stop_reason": "end_turn",
+  "subagent_stats": {
+    "by_type": {
+      "general-purpose": 2
+    },
+    "completed": 0,
+    "failed": 0,
+    "killed": {
+      "parent": 0,
+      "system": 2,
+      "user": 0
+    },
+    "max_depth": 1,
+    "refused": {
+      "budget": 0,
+      "concurrency_limit": 0,
+      "depth_limit": 0
+    },
+    "requested": {
+      "background": 0,
+      "foreground": 0,
+      "unset": 2
+    },
+    "spawned": 2,
+    "spawned_by_subagents": 0,
+    "started_in_background": 2
+  },
+  "subtype": "success",
+  "terminal_reason": "completed",
+  "time_to_request_ms": 74,
+  "total_cost_usd": 6.9347655,
+  "ttft_ms": 4403,
+  "ttft_stream_ms": 4192,
+  "type": "result",
+  "usage": {
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 154990,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "cache_creation_input_tokens": 154990,
+    "cache_read_input_tokens": 2658060,
+    "inference_geo": "not_available",
+    "input_tokens": 64,
+    "iterations": [
+      {
+        "cache_creation": {
+          "ephemeral_1h_input_tokens": 298,
+          "ephemeral_5m_input_tokens": 0
+        },
+        "cache_creation_input_tokens": 298,
+        "cache_read_input_tokens": 175316,
+        "input_tokens": 2,
+        "output_tokens": 180,
+        "type": "message"
+      }
+    ],
+    "output_tokens": 59188,
+    "output_tokens_details": {
+      "thinking_tokens": 33719
+    },
+    "server_tool_use": {
+      "web_fetch_requests": 0,
+      "web_search_requests": 0
+    },
+    "service_tier": "standard",
+    "speed": "standard"
+  },
+  "uuid": "53ff7e70-4578-4ea8-a807-15d5c4d57896"
+}
