@@ -1,6 +1,6 @@
 {
-  "collected_at": "2026-10-03T21:09:02+00:00",
-  "head": "428cbbdb744ee98b393bdbd6541b2c5ea8a991ab",
+  "collected_at": "2026-10-03T22:32:33+00:00",
+  "head": "5adc2a7a3a26404bb24fc9b924393448fe92ac30",
   "not_applied": [],
   "ok": true,
   "pr_number": 112,
@@ -25,6 +25,16 @@
       "kind": "review",
       "state": "CHANGES_REQUESTED",
       "url": "https://github.com/luissiviero/sdlc-framework/pull/112#pullrequestreview-5402516760"
+    },
+    {
+      "association": "OWNER",
+      "at": "2026-10-03T22:31:53Z",
+      "author": "luissiviero",
+      "body": "Waived: verified_with keeps the Claude Code version each section names, plus the plugin version where the section records one; a runner is not required. Amend spec.md Requirements to say so and record it under Flagged concerns as a closed decision. Also count 32 sections in the PROGRESS summary (the index lists 32).",
+      "id": 5403131990,
+      "kind": "review",
+      "state": "CHANGES_REQUESTED",
+      "url": "https://github.com/luissiviero/sdlc-framework/pull/112#pullrequestreview-5403131990"
     }
   ],
   "route": "api",

@@ -59,3 +59,40 @@ decides staleness is worse than leaving it incomplete). Gate (e) parked again, o
 finding and the adversarial reviewer's `escalate` — a different reason than the round's
 starting park, so this round stops here per step 5: the next round, fix or waiver, is the
 owner's.
+
+# Fix response — phase (e), round 4
+
+`evidence/fix-requests.json` (collected 2026-10-03T22:32:33Z, head `5adc2a7`) lists three
+reviews:
+
+- luissiviero (OWNER), reviews
+  https://github.com/luissiviero/sdlc-framework/pull/112#pullrequestreview-5402438162 and
+  https://github.com/luissiviero/sdlc-framework/pull/112#pullrequestreview-5402516760
+  ("re-run gate (c): the park was the sandbox's view of the fixture `.env`"): already
+  applied, in round 2 (and read again, unchanged, in round 3's response) — nothing new to
+  apply from them this round.
+- luissiviero (OWNER), review
+  https://github.com/luissiviero/sdlc-framework/pull/112#pullrequestreview-5403131990:
+  applied. The owner waived the `verified_with` gap round 3 left open
+  (`evidence/review-response.md`'s round-1 paragraph: 26 of the 32 `docs/notes/<N>.md`
+  files cannot state their own writing session's environment, so a runner value would be
+  inferred, not read) — "verified_with keeps the Claude Code version each section names,
+  plus the plugin version where the section records one; a runner is not required."
+  `spec.md` Requirements line 11 now says that, replacing "Claude Code version, plugin
+  version, runner", and a new item under `## Flagged concerns` records it as
+  `decided (owner, PR #112 review 2026-10-03, fix round 4): ...` with the owner's
+  reasoning. This closes the one open Important finding (`docs/notes/2.md:5`, signature
+  `7cd11e55e64ea40f`): the live frontmatter across all 32 files already matches the
+  now-decided rule (Claude Code version everywhere, plugin version on the six files that
+  state it directly, no file claims a runner), so no frontmatter edit was needed, only the
+  spec.
+  The same comment also asked to "count 32 sections in the PROGRESS summary (the index
+  lists 32)": `docs/PROGRESS.md:4` ("`docs/NOTES.md` (30 sections)") corrected to "32
+  sections", closing the matching nit (signature `3534444a4c1cb752`).
+
+No requests were left unapplied this round. Not touched (not asked for, and still the same
+open items from `evidence/review-findings.json`'s remaining nits, each with its own
+accepted reasoning already in `evidence/review-response.md`): the four archived
+`docs/PROGRESS.md` top-level records (traced to a later `main` merge, not this change's own
+edits), the `docs/notes/1.md` `sources` doubt, and the `CLAUDE.md` guardrail table's
+3-vs-4 rows.

@@ -1,7 +1,7 @@
 # Change 0001 (2026-10-03, session 18): the docs split — `docs/NOTES.md`, `docs/DECISIONS.md` and `docs/PROGRESS.md`'s archived records each moved to a file per section/decision/record with an index; docs only, no bump
 
 ## Summary
-- `docs/NOTES.md` (30 sections), `docs/DECISIONS.md` (26 decisions) and `docs/PROGRESS.md`'s 21
+- `docs/NOTES.md` (32 sections), `docs/DECISIONS.md` (26 decisions) and `docs/PROGRESS.md`'s 21
   then-archived records (everything but the then-current record) each moved to one file per
   section/decision/record, number- or heading-named, under `docs/notes/`, `docs/decisions/`
   and `docs/progress/` respectively, with an `index.md` each in ascending order (the study

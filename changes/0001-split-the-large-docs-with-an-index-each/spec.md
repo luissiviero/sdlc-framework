@@ -8,8 +8,10 @@ Change id: 0001. Status: proposed. Produced by: sdlc plugin 0.2.29, /sdlc-design
   `docs/BUILD_GUIDE.md`) still points at one file; a `### 11a`/`11b`/`11c`-style subsection
   stays inside its parent section's file, so a citation like `NOTES §11c` still resolves
   without a per-subsection split. Each file's frontmatter carries `title`, `sources`,
-  `generated.at` (the section's existing read date), `verified_with` (Claude Code version,
-  plugin version, runner) and `stale_after` (`generated.at` + 90 days); a file is stale when
+  `generated.at` (the section's existing read date), `verified_with` (the Claude Code
+  version each section names, plus the plugin version where the section records one; a
+  runner is not required — decided under Flagged concerns) and `stale_after`
+  (`generated.at` + 90 days); a file is stale when
   `verified_with` no longer matches the environment or `stale_after` has passed, whichever
   first (both from choice 93: one section is one session's dated batch, so the fields are per
   file). `docs/notes/index.md` lists every file in ascending section-number order, one line
@@ -164,6 +166,12 @@ again.
   directly after its session's, the study record keeping the place it has in today's
   `docs/PROGRESS.md` (between sessions 12 and 13). No grouping by topic or tag in any of the
   three indexes (that waits for R1's step 1, tags).
+- decided (owner, PR #112 review 2026-10-03, fix round 4): `verified_with` keeps the Claude
+  Code version each section names, plus the plugin version where the section records one; a
+  runner is not required. Why: sessions 1-14's own text never states, directly, whether the
+  session that wrote it ran on the owner's machine or in a cloud session, so the field would
+  otherwise need an inferred, unconfirmed value — worse than a field with two of its three
+  parts (`evidence/review-response.md`, phase (e) round 1).
 
 ## Acceptance
 - Every `NOTES §N`, `decision N` reference and every literal `docs/NOTES.md` / `docs/DECISIONS.md`
