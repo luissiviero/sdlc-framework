@@ -98,9 +98,9 @@
 
 <div class="wrap">
   <header>
-    <div class="eyebrow">Target design · tentative · T1–T8 of target-design.md · 3 October 2026</div>
+    <div class="eyebrow">Target design · tentative · T1–T9 of target-design.md · 3 October 2026</div>
     <h1>The workflow as you want it to become</h1>
-    <p class="lede">The third workflow beside the <a href="https://claude.ai/artifact/WhLTjcSzJqQmUFm3aP5G6L">playbook's</a> and the <a href="https://claude.ai/artifact/KW8jWunfLNa9WgBSzJxw4S">framework's</a>. It draws only what <code>docs/reviews/2026-09-28-playbook-vs-framework/target-design.md</code> has discussed so far: AI roles that advise and one manager that reviews for you (T1), the interview (T2), the intent home (T3), the names (T4), how a project starts (T5), tickets that become intents (T6), the reason a rejection keeps (T7) and a formatter that follows your languages (T8). Steps the study has not reached yet are left out or marked "not discussed yet".</p>
+    <p class="lede">The third workflow beside the <a href="https://claude.ai/artifact/WhLTjcSzJqQmUFm3aP5G6L">playbook's</a> and the <a href="https://claude.ai/artifact/KW8jWunfLNa9WgBSzJxw4S">framework's</a>. It draws only what <code>docs/reviews/2026-09-28-playbook-vs-framework/target-design.md</code> has discussed so far: AI roles that advise and one manager that reviews for you (T1), the interview (T2), the intent home (T3), the names (T4), how a project starts (T5), tickets that become intents (T6), the reason a rejection keeps (T7), a formatter that follows your languages (T8) and a risk-list hit that your merge accepts (T9). Steps the study has not reached yet are left out or marked "not discussed yet".</p>
     <p class="banner"><strong>Nothing here is decided.</strong> Every entry is tentative until the whole study is done; then each confirmed entry becomes a proposal and a candidate row in <code>docs/ROADMAP.md</code>. The framework as it is today is on the framework page.</p>
     <div class="legend">
       <span><i class="sw hex"></i>Your decision or act</span>
@@ -110,13 +110,13 @@
   </header>
 
   <section>
-    <h2>One change, from idea to release <span class="refs">T1 · T3 · T4 · T5 · T6 · T7 · T8</span></h2>
+    <h2>One change, from idea to release <span class="refs">T1 · T3 · T4 · T5 · T6 · T7 · T8 · T9</span></h2>
     <p>Your approval points stay where they are today. What changes is what reaches you at each one: the roles write briefs, the manager turns them into one recommendation, you decide, and the act runs on your signal. Phases carry the names T4 proposes, with today's letter after each.</p>
     <div class="diagram"><pre class="mermaid">flowchart TB
   subgraph PREP["Before the first change"]
     P0["/sdlc-init installs the whole loop, as today&lt;br/&gt;the change-0000 intent lists what starts empty:&lt;br/&gt;evals, lessons, CLAUDE.md 'Things Claude gets wrong',&lt;br/&gt;detection (about 16 days of daily CI data first)"]
-    P1["/sdlc-init creates the slots for the project's sources&lt;br/&gt;policies, product vision, constraints"]
-    P2{{"You write the policy sources the roles read&lt;br/&gt;security, data, coding standards, UX, definition of done"}}
+    P1["/sdlc-init creates the slots for the project's sources&lt;br/&gt;a policies/ folder, one file per policy skill (a guardrail path),&lt;br/&gt;product vision, constraints; the risk list with its paths, for you to confirm"]
+    P2{{"You write the policy sources the skills and the roles read&lt;br/&gt;security, data, coding standards, UX, definition of done&lt;br/&gt;(Claude may draft one in a PR you merge)"}}
     P0 --> P1 --> P2
     P0 -. "optional: run each phase yourself at first,&lt;br/&gt;with the Claude credential left out of GitHub" .-> PS{{"You add the Claude credential to GitHub&lt;br/&gt;and the automation starts"}}
   end
@@ -144,13 +144,13 @@
     D1 --> D2 --> D3
   end
   GA -- "your signal; a workflow checks it and merges (to verify)" --> D1
-  D3 --> GB{{"You approve both, or reject one:&lt;br/&gt;your merge is the go to build"}}
-  D3 -. "higher-risk plan: non-routine, or a risk-list hit" .-> CL["The Architect's full review: reads the files the plan names,&lt;br/&gt;answers the three questions, ends with go or fix first;&lt;br/&gt;the PR opens with 'Needs your close look', quoting it"]
+  D3 --> GB{{"You approve both, or reject one:&lt;br/&gt;your merge is the go to build&lt;br/&gt;and accepts the risk items shown"}}
+  D3 -. "higher-risk plan: non-routine, or a risk-list hit" .-> CL["The Architect's full review: reads the files the plan names,&lt;br/&gt;answers the three questions, ends with go or fix first;&lt;br/&gt;the PR opens with 'Needs your close look', quoting it,&lt;br/&gt;and the reviewer's brief on each risk item hit (T9)"]
   CL -. "the same approval, no separate gate" .-> GB
   D3 -. "questions to answer, or a change you want" .-> GQ{{"You answer in a 'Request changes' review"}}
   GQ -. "/sdlc-fix applies your answers, as today" .-> D1
 
-  BT["build: starts on its own from the merged plan, as today&lt;br/&gt;(preflight, acceptEdits, draft PR); the seven hooks as today,&lt;br/&gt;the formatter on each edit in your project's languages (T8);&lt;br/&gt;test: not discussed yet"]
+  BT["build: starts on its own from the merged plan, as today&lt;br/&gt;(preflight, acceptEdits, draft PR); the seven hooks as today,&lt;br/&gt;the formatter on each edit in your project's languages (T8);&lt;br/&gt;a risk-list hit found here does not stop it: it goes to the build PR's banner (T9);&lt;br/&gt;test: not discussed yet"]
   GB -. "your label on the design PR before merging:&lt;br/&gt;Full for this change" .-> FULL["build and test wait for your labels,&lt;br/&gt;as in the Full profile; nothing without the label"]
   FULL -.-> BT
   GB -- "your signal" --> REC["The build runner records: plan accepted by whom and when,&lt;br/&gt;routine or non-routine, close look shown or not"]
@@ -162,7 +162,7 @@
     E1 --> E2
   end
   BT --> E1
-  E2 --> GE{{"You approve the code"}}
+  E2 --> GE{{"You approve the code,&lt;br/&gt;and the risk items its banner shows"}}
   GE -- "your signal; a workflow checks it and merges (to verify)" --> LIVE(["Merged"])
   GE -. "declared production: deploy.production_gate" .-> RL["The release checklist: where roles help most&lt;br/&gt;which role, and when: not discussed yet"]
   RL -.-> GR{{"You, as release manager,&lt;br/&gt;apply the release label"}}
@@ -179,12 +179,12 @@
     <ul class="notes">
       <li><strong>You stay the only approver.</strong> The manager prepares an act; you approve it from your own account (a label or an approving review); a deterministic workflow, not a model, checks that the approval came from you and carries the act out. <code>sdlc-runbook.yml</code> already works this way for <code>sdlc:go</code>, though it checks only that a person applied the label, not that it was you.</li>
       <li><strong>No new gates.</strong> Intent, design, deploy and maintain keep their gates, with build and test in the Full profile. <code>sdlc.yaml</code> keeps the risk list, protected paths and production settings, and the enforcement stays as today.</li>
-      <li><strong>A risk-list hit still parks.</strong> The brief of the matching role comes before your <code>sdlc:accept-risk</code>.</li>
-      <li><strong>Your own edits to the gates</strong> get a role's brief before you merge them. Your edits to CLAUDE.md, skills and <code>sdlc.yaml</code>, and the skill sign-off, are where the roles would help most; the details are not discussed yet.</li>
+      <li><strong>A risk-list hit no longer parks (T9).</strong> It is a line of the "Needs your close look" banner on the PR you merge anyway, the design PR or the build PR, with the reviewer's brief on it; your merge is the acceptance.</li>
+      <li><strong>Your own edits to the gates</strong> get a role's brief before you merge them. Your edits to CLAUDE.md, skills, your policy sources and <code>sdlc.yaml</code> get a brief that quotes the eval result; that brief and your merge are the skill sign-off.</li>
       <li><strong>The manager never touches the project.</strong> Its job is a reviewer's. The intent gate gains the most: today it has no reviewing agent, only deterministic checks.</li>
       <li><strong>Decisions this would reopen or amend:</strong> D4, D5, D13 and D24 for the manager acting in your name; D21 (who sits on the panel) and D11 (whether a missing brief parks); the one-owner premise has no decision of its own yet. The names change what D3, D10, D11, D13, D14, D18, D19, D25 and D26 call things, not what the framework does.</li>
       <li><strong>Separate verdicts, not separate gates.</strong> The spec and the plan each get a verdict inside the one design PR, so plan.md is still approved with the spec. You approve both or reject one; a rejection is a "Request changes" review whose comments <code>/sdlc-fix</code> applies, as today.</li>
-      <li><strong>The go to build: a close look, not a second approval.</strong> When the adversarial reviewer classes the plan non-routine, or a risk-list item is hit (that still parks for your <code>sdlc:accept-risk</code>), the design PR opens with "Needs your close look" and the reasons. You decide in the same merge; a separate approval for a higher-risk plan was considered and not chosen, since you would wait on yourself. The banner needs no roles: the class and its reasons are already written for the gate and today only lower the iteration cap, so it can come before the roles do. Before the roles exist the banner quotes the reviewer's reasons and the risk hit; with them, the Architect's full review reads the files the plan names, answers the article's three questions with evidence and ends with go or fix first, which the banner quotes unchanged, the brief one click away: the article's tech lead (p.14, p.17).</li>
+      <li><strong>The go to build: a close look, not a second approval.</strong> When the adversarial reviewer classes the plan non-routine, or a risk-list item is hit (no longer a park, T9), the design PR opens with "Needs your close look" and the reasons. You decide in the same merge; a separate approval for a higher-risk plan was considered and not chosen, since you would wait on yourself. The banner needs no roles: the class and its reasons are already written for the gate and today only lower the iteration cap, so it can come before the roles do. Before the roles exist the banner quotes the reviewer's reasons and the risk hit; with them, the Architect's full review reads the files the plan names, answers the article's three questions with evidence and ends with go or fix first, which the banner quotes unchanged, the brief one click away: the article's tech lead (p.14, p.17).</li>
       <li><strong>The build starts on its own, as today.</strong> Your design merge fires the build; the preflight allows auto-accept when the guardrails are in place (CLAUDE.md targets, policy skills, hooks, deny rules, tests green) and parks otherwise; the build PR opens as a draft and the Standard profile continues to test on its own. The article's "auto-accept only for routine work" cannot be applied unattended, since nobody is there to approve each edit; the routine test is the class in the "Needs your close look" banner, which you decide with. Added: when you want a change watched through build and test, you label the design PR before merging and that change runs under the Full profile, its build and test gates waiting for your labels. Without the label nothing changes. Sending non-routine plans to Full automatically, or stopping before the build, was considered and not chosen: it would stop almost every change in a new project.</li>
       <li><strong>Who accepted the plan is on the record.</strong> The article logs the plan "along with who accepted it" (p.17); today only GitHub's merge record knows. At the start of the build phase the runner, which already reads the merged design PR, writes one line to <code>status.yaml</code> and the build evidence: plan accepted by whom and when, routine or non-routine, close look shown or not, the risk items accepted. No act from you. A separate plan gate (D2 option C) is reconsidered only if the digest's first-pass merge share or fix iterations worsen on non-routine plans.</li>
       <li><strong>The plan: questions in writing, and a second pair of eyes.</strong> The plan is still written unattended, with no live interview. What the planning run would have asked you ends its Risks as "Questions for you"; the design PR shows them with the plan's riskiest step, and you answer in your "Request changes" review, whose comments <code>/sdlc-fix</code> applies to the plan, as today (D22). The writer still interrogates its own plan, and a fresh context asks the article's three questions of it as well (what could break, the riskiest step, the options not chosen): the adversarial reviewer until the roles exist, then the Architect's brief. D1 and D2 stay.</li>
@@ -192,6 +192,8 @@
       <li><strong>Tickets become intents (T6): added, nothing replaced.</strong> Tickets arrive as GitHub issues. Your label <code>sdlc:intent</code> on an issue starts a CI run that writes the intent and opens the intent PR, linked to the issue; you correct and merge it at the intent gate as today. Only your own label starts a run, and the issue text is read as data, never as instructions, since anyone can open an issue on a public repository. Alerts and <code>/sdlc-intent</code> by hand stay as they are; the repository stays the record and the issue holds the link (D9).</li>
       <li><strong>A rejection keeps its reason (T7): added, nothing replaced.</strong> Closing an intent PR still abandons the change (D25). Your last comment on it, if there is one, becomes the change's recorded reason instead of the fixed "pull request N closed without a merge"; with no comment the fixed text stays. Incidents keep today's rule.</li>
       <li><strong>The formatter follows your languages (T8): added, nothing replaced.</strong> The seven guardrail hooks stay as they are: deterministic, every block logged, none asks. Today the formatter and linter on edit act on Python files only. Added: per file type, your project's own format and lint commands in <code>sdlc.yaml</code>, run on the changed file only and never blocking when a tool is missing; ruff stays the default for Python, and <code>/sdlc-init</code> proposes prettier and eslint for Node when <code>package.json</code> has them, and rustfmt for Rust. Checks that compile the whole project, such as clippy, stay at the gate's lint, as the article puts heavier checks at the commit or the PR (p.23). A file type with no command passes, so HTML, CSS, Markdown, JSON and YAML get no default. Recorded now, built after the study. No settled decision changes.</li>
+      <li><strong>Your policy sources (build-skills): added, nothing replaced.</strong> The five generic policy skills stay in the pinned plugin, a project override stays yours to add, and a new skill version still needs your pin bump. Added: you write one policy source per skill in the project's <code>policies/</code> folder (name judged with T4), a guardrail path that no run may edit; Claude may draft one in a PR you merge. Each skill reads its source, which wins where they differ, so the next run picks up your edit. Each policy skill gets a trigger eval on each plugin release: three requests that do not name the skill, passing when it loads (article p.22 step 4); an override gets the same case in your <code>evals/</code>. The spec header records which version of your source judged the change. Each skill's backing line will list, rule by rule, what a hook or the gate enforces and what only the review pass re-checks. Touches D6 (the guardrail list).</li>
+      <li><strong>A risk-list hit is a line in the banner (T9): the park and the label go.</strong> Today a hit parks the change; your <code>sdlc:accept-risk</code> label starts a fix round, and then you merge. Instead the hit is shown in the "Needs your close look" banner of the PR you merge anyway, with the reviewer's brief on each item (what the change does to it, what could break, how to undo it), and your merge is the acceptance, recorded with your name. A risk the design missed no longer stops the build; nothing is released before your merge, and on a declared production the release still needs your release label. Each risk item gains the paths it covers, proposed by <code>/sdlc-init</code> and confirmed by you once, because today's item names miss most real paths (a migrations folder, infrastructure, production configuration). The reviewer never accepts a risk for you. Amends D11, D21 and D24.</li>
     </ul>
   </section>
 
@@ -249,12 +251,12 @@
         <tbody>
           <tr><td>intent (a)</td><td>Product (scope, success), Architect (feasibility)</td><td class="tgt">Accept, or the points to fix first, with the briefs linked</td><td class="owner">Approve, or send corrections</td></tr>
           <tr><td>design (b): spec and plan</td><td>Product (does the spec solve the intent), Architect (the plan, and the article's three questions of it), Security &amp; policy (flagged concerns)</td><td class="tgt">Two recommendations in the one PR: one for the spec, one for the plan</td><td class="owner">Approve both, or reject one</td></tr>
-          <tr><td>design (b), higher risk: the plan classed non-routine, or a risk-list hit</td><td>The same, plus the Architect's full plan review, in the article's tech-lead place (p.14, p.17): it reads the files the plan names, answers the three questions with evidence and ends with go or fix first</td><td class="tgt">"Needs your close look" at the top of the PR, with the reasons: the reviewer's reasons and the risk hit before the roles exist, the Architect's recommendation quoted unchanged with them</td><td class="owner">The same approval, after a close look; no separate gate</td></tr>
+          <tr><td>design (b), higher risk: the plan classed non-routine, or a risk-list hit</td><td>The same, plus the Architect's full plan review, in the article's tech-lead place (p.14, p.17): it reads the files the plan names, answers the three questions with evidence and ends with go or fix first; the reviewer's brief on each risk item hit</td><td class="tgt">"Needs your close look" at the top of the PR, with the reasons: the reviewer's reasons and the risk hit before the roles exist, the Architect's recommendation quoted unchanged with them; each risk item with its brief</td><td class="owner">The same approval, after a close look; no separate gate; your merge also accepts the risk items shown</td></tr>
           <tr><td>design (b), a plan you want watched through build and test</td><td>The same</td><td class="tgt">The class and its reasons, in the banner</td><td class="owner">Label the design PR before merging: the change runs under the Full profile; without the label the build starts on its own</td></tr>
           <tr><td>deploy (e): the code</td><td>Code reviewer (today's REVIEW.md pass), Platform &amp; release</td><td class="tgt">Merge, or request changes, with the Important findings</td><td class="owner">Approve; the merge runs on your signal</td></tr>
           <tr><td>Release, on a declared production</td><td>The release checklist is where roles help most; which role: not discussed yet</td><td class="tgt">Not discussed yet</td><td class="owner">Apply the release label, as release manager</td></tr>
           <tr><td>maintain (f): a finding</td><td>Operations; Security &amp; policy for scans</td><td class="tgt">Fix now, schedule or dismiss</td><td class="owner">Triage</td></tr>
-          <tr><td>Your edits to guardrails and skills</td><td>A role's brief (which role: not discussed yet), reading the eval run</td><td class="tgt">The brief, quoting the eval result: pass rate, failing cases, or "no cases yet" (today the eval check is advisory and passes while the suite is empty)</td><td class="owner">Approve</td></tr>
+          <tr><td>Your edits to guardrails, skills and policy sources</td><td>A role's brief (which role: not discussed yet), reading the eval run</td><td class="tgt">The brief, quoting the eval result: pass rate, failing cases, or "no cases yet" (today the eval check is advisory and passes while the suite is empty)</td><td class="owner">Approve</td></tr>
         </tbody>
       </table>
     </div>
@@ -279,8 +281,27 @@
     <ul class="notes">
       <li><strong>One agent catalogue (your choice on build-subagents, 3 October).</strong> Today's sub-agents stay and the roles join them in one catalogue: different jobs, the same way of making each. The workers stay sub-agents (the verifier, the code-simplifier, the researcher, which the roles may use to read code). The judges become roles: the adversarial reviewer at design grows into the Architect, the review pass at deploy becomes the Code reviewer, and the panel member of a concern's kind becomes that role.</li>
       <li><strong>Two reviewers, two questions.</strong> Today the adversarial reviewer gives the gate its verdict at design, build and test, asking "should this continue?" from six angles, policies and the code against the plan included; the review pass gives you ranked findings at deploy. Their questions overlap today. The direction: the Code reviewer asks "is the code good?" and gives you ranked findings at the merge; the adversarial reviewer centres on "is the claim that it is done proven?" and, at build and test, stays a checker for the gate that writes to you only when the change parks. How far its angles narrow is still open. A fresh context each, and ideally a different model.</li>
-      <li><strong>The same card for every agent:</strong> mission, who it reports to (you through the manager, the session, or the gate), model, the skills and documents it reads, tools, output and its own eval. The skills row of the study decides the documents and the roles row the list, reporting lines and models; the cards are written after the study, sources first.</li>
+      <li><strong>The same card for every agent:</strong> mission, who it reports to (you through the manager, the session, or the gate), model, the skills and documents it reads, tools, output and its own eval. The skills row decided the documents (below); the roles row decides the list, reporting lines and models; the cards are written after the study, sources first.</li>
     </ul>
+    <p class="note"><strong>What each agent reads (build-skills, 3 October).</strong> Only the skills on its card and, through them, your sources.</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Agent</th><th>Reads today</th><th>Reads (target)</th></tr></thead>
+        <tbody>
+          <tr><td>Product</td><td>—</td><td class="tgt">The intent, the intent template, your product source (vision, users, constraints)</td></tr>
+          <tr><td>Architect</td><td>As the adversarial reviewer at design: the change's files, the diff, the evidence, REVIEW.md, the policy skills, the risk list</td><td class="tgt">The same, plus the plan template, coding standards and data conventions with your sources</td></tr>
+          <tr><td>Code reviewer</td><td>As the review pass: REVIEW.md, the change's files, the diff, the five policy skills, the evidence</td><td class="tgt">Unchanged; the skills now carry your sources</td></tr>
+          <tr><td>Security &amp; policy</td><td>—</td><td class="tgt">Security baseline and data conventions, with your security and data sources</td></tr>
+          <tr><td>Platform &amp; release</td><td>—</td><td class="tgt">Definition of done, the deploy settings, the release checklist</td></tr>
+          <tr><td>Operations</td><td>—</td><td class="tgt"><code>bands.yaml</code>, the runbooks, <code>lessons/</code>, the incident</td></tr>
+          <tr><td>Manager</td><td>—</td><td class="tgt">Every brief, plus intent, spec and plan; no policy skill</td></tr>
+          <tr><td>Adversarial reviewer at build and test</td><td>As at design</td><td class="tgt">Unchanged (how far its angles narrow stays open)</td></tr>
+          <tr><td>Verifier</td><td>The commands, spec, plan, the gate records and logs</td><td class="tgt">The same, plus definition of done</td></tr>
+          <tr><td>Code-simplifier</td><td>plan.md and the files it lists, CLAUDE.md, coding standards</td><td class="tgt">Unchanged</td></tr>
+          <tr><td>Researcher</td><td>The code</td><td class="tgt">Unchanged</td></tr>
+        </tbody>
+      </table>
+    </div>
   </section>
 
   <section>
@@ -314,9 +335,8 @@
         <h3>The roles and the manager <span class="refs">T1</span></h3>
         <ul class="notes">
           <li>To do: decide which model each role and each sub-agent runs on. Today all four agents run on the session's own model and so share its blind spots, so each brings a second perspective, not a second accountability; the panel's devil's advocate already runs on a different model for that reason. Start with the agents that judge.</li>
-          <li>Which documentation each role reads: the five policy skills each say "no owner source yet".</li>
           <li>How far the adversarial reviewer's angles narrow once the Code reviewer exists; today it also checks the policies, the spec and plan at design, and the code against them at build and test, where no code reviewer runs.</li>
-          <li>The agent catalogue's table, one line per agent (mission, who it reports to, model, documents read): documents decided at the skills row, list, reporting lines and models at the roles row; written after the study.</li>
+          <li>The agent catalogue's table, one line per agent (mission, who it reports to, model, documents read): the documents are decided (above); list, reporting lines and models at the roles row; written after the study.</li>
           <li>How many roles after merging.</li>
           <li>Whether a ruleset can let a workflow merge on your behalf, or a dedicated GitHub App is needed.</li>
           <li>The approval check must confirm the signal came from you, not just from a person.</li>
@@ -372,14 +392,21 @@
           <li>Full Rust support, beyond the formatter: detecting its build, test and lint commands; the test-file lock, which cannot freeze unit tests written inside source files (to revisit at the bug-fix test row); crates.io and <code>cargo</code> in the CI sandbox, which allows neither today.</li>
           <li>On Windows npm's tools are <code>.cmd</code> shims, which cannot be started without a shell; whether the hook starts them through the shell, as the gate already does, is to verify.</li>
           <li>The exact shape of the setting in <code>sdlc.yaml</code>.</li>
-          <li>Whether a project adds its own hooks behind its policy skills (the article's "back any skill"): decided with the skills row.</li>
+          </ul>
+      </div>
+      <div>
+        <h3>A risk-list hit <span class="refs">T9</span></h3>
+        <ul class="notes">
+          <li>The shape of a risk item with its paths in <code>sdlc.yaml</code>, and what <code>/sdlc-init</code> proposes for each kind of project.</li>
+          <li>Where the reviewer's brief on a risk item is kept, and how the review pass gives one at deploy.</li>
+          <li>In the Full profile, whether your build or test label also accepts a hit first found there, or only the deploy merge does.</li>
         </ul>
       </div>
     </div>
   </section>
 
   <footer>
-    <span>Drawn from <code>target-design.md</code> entries T1–T8 and <code>naming.md</code>, as recorded from 30 September to 3 October 2026. Each entry lists the settled decisions (D<i>n</i>) it would reopen or amend.</span>
+    <span>Drawn from <code>target-design.md</code> entries T1–T9 and <code>naming.md</code>, as recorded from 30 September to 3 October 2026. Each entry lists the settled decisions (D<i>n</i>) it would reopen or amend.</span>
     <span>The other two pages: <a href="https://claude.ai/artifact/WhLTjcSzJqQmUFm3aP5G6L">Playbook SDLC Workflow</a> · <a href="https://claude.ai/artifact/KW8jWunfLNa9WgBSzJxw4S">SDLC Plugin Workflow</a> · and the <a href="https://claude.ai/artifact/PFnRZ32pwTr4y422Gna2mz">Workflow Crosswalk</a> that compares them.</span>
   </footer>
 </div>

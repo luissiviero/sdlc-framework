@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<!-- Snapshot of https://claude.ai/artifact/KW8jWunfLNa9WgBSzJxw4S as published on 2026-10-02 (private to the owner; the live page may be newer). Opened from the repository, the diagrams render with mermaid from jsdelivr. -->
+<!-- Snapshot of https://claude.ai/artifact/KW8jWunfLNa9WgBSzJxw4S as published on 2026-10-03 (private to the owner; the live page may be newer). Opened from the repository, the diagrams render with mermaid from jsdelivr. -->
 <style>body{margin:0}</style>
 </head>
 <body>
@@ -114,7 +114,7 @@
 
 <div class="wrap">
   <header>
-    <div class="eyebrow">sdlc plugin 0.3.1 · luissiviero/sdlc-framework</div>
+    <div class="eyebrow">sdlc plugin 0.3.3 · luissiviero/sdlc-framework</div>
     <h1>How a project uses the SDLC plugin</h1>
     <p class="lede">What a project does once to connect, how one change travels from idea to production, and what happens when the owner does not simply merge. Drawn from the code (workflows, runner, gate, hooks); <code>docs/OPERATING_MODEL.md</code> is the contract, and the notes say where the two differ.</p>
     <div class="legend">
@@ -160,7 +160,7 @@
   GB -- "merge fires sdlc-build.yml" --&gt; C1
 
   subgraph PD["(d) test: autonomous, fresh context"]
-    D1["/sdlc:sdlc-test&lt;br/&gt;collect.py runs test, build, lint into evidence/&lt;br/&gt;failures fixed and re-run, screenshot loop when a mock is named, verifier"]
+    D1["/sdlc:sdlc-test&lt;br/&gt;in CI each evidence log is marked 'deferred to the runner' (0.3.2);&lt;br/&gt;by hand collect.py runs test, build, lint into evidence/ and failures are fixed and re-run&lt;br/&gt;screenshot loop when a mock is named; verifier (in CI it reads the records, runs no target)"]
     D2["Confidence gate (d)&lt;br/&gt;check run sdlc/d"]
     D1 --&gt; D2
   end
@@ -239,14 +239,14 @@
     <p>The steps of <code>/sdlc:sdlc-design</code>, <code>/sdlc:sdlc-build</code> and <code>/sdlc:sdlc-test</code> in a workflow job run by <code>plugin/ci/run_phase.py</code>. <code>/sdlc:sdlc-deploy</code> has the same shape, with the REVIEW.md pass as its fresh-context check. Run by hand, a command does Register through Surface behind its own preconditions and preflight, and its hand-over only reports the next command: nothing is dispatched, so the owner starts the next phase. Run by hand, the gate runs build, test and lint itself.</p>
     <div class="diagram"><pre class="mermaid">flowchart LR
   S0["Guard (CI runner)&lt;br/&gt;paused, abandoned, phase, not parked,&lt;br/&gt;previous gate passed, Full label not applied by the bot;&lt;br/&gt;a guardrail edit on the branch parks;&lt;br/&gt;change 0000 skipped; a previous gate whose commands never ran refused"] --&gt; S1["Register&lt;br/&gt;gate/cli.py start-run"]
-  S1 --&gt; S2["Work&lt;br/&gt;the phase's own steps&lt;br/&gt;under the hooks"]
+  S1 --&gt; S2["Work&lt;br/&gt;the phase's own steps&lt;br/&gt;under the hooks;&lt;br/&gt;in CI no project target runs (0.3.2)&lt;br/&gt;and sub-agents run in the foreground (0.3.3)"]
   S2 --&gt; S3["Commit&lt;br/&gt;state/cli.py commit-phase"]
   S3 --&gt; S4["Fresh-context check for HEAD&lt;br/&gt;adversarial verdict (b to d),&lt;br/&gt;REVIEW.md pass (e)"]
   S4 --&gt; S5["Panel&lt;br/&gt;deferred review only"]
   S5 --&gt; S6["Gate&lt;br/&gt;gate/cli.py check&lt;br/&gt;(in CI: build, test, lint left to the runner)"]
   S6 --&gt; S7["Commit the evidence"]
   S7 --&gt; S8["Surface&lt;br/&gt;pr/cli.py upsert: 5-bullet summary + label"]
-  S8 --&gt; S8b["Gate's commands (CI runner, after the session)&lt;br/&gt;gate/cli.py run-commands: build, test, lint&lt;br/&gt;outside the sandbox, no model credential or token in the environment;&lt;br/&gt;a red target parks; record, spend and PR refreshed, sdlc/d re-posted"]
+  S8 --&gt; S8b["Gate's commands (CI runner, after the session)&lt;br/&gt;gate/cli.py run-commands: build, test, lint,&lt;br/&gt;also writing the evidence logs (0.3.2): the three at (d) and (e),&lt;br/&gt;any still marked deferred at (b) and (c);&lt;br/&gt;outside the sandbox, no model credential or token in the environment;&lt;br/&gt;a red target parks; record, spend and PR refreshed, sdlc/d re-posted"]
   S8b --&gt; S9["Hand over (CI runner)&lt;br/&gt;continue dispatches; wait or park stops"]</pre></div>
     <p class="note">Hooks active in every session on the project: protected paths (guardrail files and the plugin itself), secrets check, plan sync on <code>git commit</code> on the build branch, formatter and linter on edit (ruff, Python files), the test-file lock for fix-type changes, the panel blindness hook (0.2.30: while the review panel writes its two blind verdicts, neither can read the other, and the advocate's model is recorded), and the production gate, which, when <code>deploy.production</code> is true, blocks a guarded deploy command until the owner's release approval exists.</p>
   </section>
@@ -270,7 +270,7 @@
   </section>
 
   <footer>
-    <span>Snapshot of the framework as of plugin 0.3.1 (2 October 2026), checked against the code.</span>
+    <span>Snapshot of the framework as of plugin 0.3.3 (3 October 2026), checked against the code.</span>
     <span>Every phase command can also be run by hand in a Claude Code session instead of its workflow. Then nothing dispatches the next phase, the session's own cost is not recorded (the budget limit still compares the CI sessions' recorded total with the cap), and commits are made by the session, not by <code>github-actions[bot]</code>.</span>
   </footer>
 </div>
