@@ -1,0 +1,21 @@
+{
+  "at": "2026-10-03T20:43:02Z",
+  "findings": [
+    {
+      "file": "docs/notes/12.md",
+      "line": 5,
+      "pass": "compliance",
+      "rule": "spec.md Requirements/Design: \"verified_with (Claude Code version, plugin version, runner)\"",
+      "severity": "nit",
+      "signature": "a09259a133818fb6",
+      "summary": "All 32 `docs/notes/<N>.md` files carry `verified_with` as a single component (e.g. `\"Claude Code 2.1.278\"` or, here, just `\"plugin 0.2.10\"`) instead of the three spec.md calls for; only `docs/notes/25.md` combines two of the three, and none names a runner, so the environment-mismatch half of the staleness rule (choice 93) can't be checked from the field as populated."
+    }
+  ],
+  "head": "5825bac51b51e0e1e8a7e6c12a3535e2b48ef0a0",
+  "schema_version": 1,
+  "tally": {
+    "important": 0,
+    "nit": 1,
+    "nits_omitted": 0
+  }
+}
