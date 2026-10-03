@@ -94,7 +94,7 @@ def cmd_run_commands(args) -> int:
         print(f"gate: {exc}", file=sys.stderr)
         return 2
     if result is None:
-        _emit({"ran": False, "reason": "the gate record carries no deferred commands check"})
+        _emit({"ran": False, "reason": "the gate record carries no check deferred to the runner"})
         return 0
     _emit({"ran": True, **result.as_dict()})
     block = result.what_i_need()

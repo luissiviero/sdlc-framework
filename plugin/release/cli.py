@@ -581,9 +581,10 @@ def _release(args, env, github, git, record_git, say) -> int:
     if gate_mod.deferred_commands(gate_record):
         say(
             "skip",
-            f"gate (e) of change {change_id} recorded its commands check as deferred to the "
-            "runner and the runner never ran it (issue #91): the gate is not passed; re-run "
-            "phase (e), then merge the pull request it opens",
+            f"gate (e) of change {change_id} recorded its commands check (or its evidence "
+            "logs, item 3b) as deferred to the runner and the runner never ran it (issue "
+            "#91): the gate is not passed; re-run phase (e), then merge the pull request it "
+            "opens",
         )
         return 0
     say("gate", f"e/{raw.gate.result}")

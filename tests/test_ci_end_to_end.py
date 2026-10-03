@@ -26,6 +26,8 @@ from pathlib import Path
 
 import pytest
 
+from gate import artifacts as art
+from gate import gate as gate_mod
 from state import status as status_mod
 from tests.test_ci import (
     FIXTURE,
@@ -73,7 +75,8 @@ if os.environ.get("FAKE_CLAUDE_MODE") == "idle":  # a session that gives up at o
     sys.exit(0)
 plugin = Path(argv[argv.index("--plugin-dir") + 1])
 command, change_id = argv[argv.index("-p") + 1].split()
-phase = {"/sdlc:sdlc-design": "b", "/sdlc:sdlc-build": "c", "/sdlc:sdlc-fix": "fix"}[command]
+phase = {"/sdlc:sdlc-design": "b", "/sdlc:sdlc-build": "c", "/sdlc:sdlc-test": "d",
+         "/sdlc:sdlc-fix": "fix"}[command]
 root = Path.cwd()
 state = str(plugin / "plugin" / "state" / "cli.py")
 gate = str(plugin / "plugin" / "gate" / "cli.py")
@@ -138,7 +141,22 @@ if phase == "c":
         give_up("Phase (c) cannot start: preflight refused: " + "; ".join(report["reasons"]))
 
 run(gate, "start-run", "--root", ".", "--id", change_id, "--phase", phase)
-if phase == "b":  # steps 5-7 of /sdlc-design
+if phase == "d":  # steps 1 and 4 of /sdlc-test: the evidence writer, then the verifier
+    run(state, "set-phase", "--root", ".", "--id", change_id, "--phase", "d")
+    collect = str(plugin / "plugin" / "evidence" / "collect.py")
+    summary = json.loads(run(collect, "--root", ".", "--id", change_id, ok=(0, 1)))
+    if summary.get("deferred"):  # a CI session: nothing to read until the runner's step
+        report = ("# Verifier\\n- **Commands run** — read, not run: gate-c.json's commands "
+                  "entry (ran_by runner, exit 0); the three logs carry the deferred mark\\n"
+                  "- **Verdict** — matches the plan\\n")
+    elif not summary["all_green"]:  # the writer ran the targets here and one failed
+        report = "# Verifier\\n- **Verdict** — does not match the plan\\n"
+    else:
+        report = "# Verifier\\n- **Commands run** — the three targets, exit 0\\n"
+    (change / "evidence" / "verifier.md").write_text(report, encoding="utf-8")
+    run(state, "commit-phase", "--root", ".", "--id", change_id, "--phase", "d",
+        "--message", "test(0001): evidence", "--push")
+elif phase == "b":  # steps 5-7 of /sdlc-design
     header = json.loads(run(gate, "spec-header", "--root", ".", "--id", change_id))["header"]
     (change / "spec.md").write_text(
         header + "\\n" + os.environ["FAKE_SPEC_BODY"], encoding="utf-8"
@@ -216,7 +234,7 @@ if items["mode"] == "deferred" and items["pending"]:
         "--message", f"{word}(0001): panel decisions", "--push")
     write_verdict()  # a verdict never outlives the diff it judged
 run(gate, "check", "--root", ".", "--id", change_id, "--phase", phase, ok=(0, 3, 4))
-word = "design" if phase == "b" else "build"
+word = {"b": "design", "c": "build", "d": "test"}[phase]
 run(state, "commit-phase", "--root", ".", "--id", change_id, "--phase", phase,
     "--message", f"{word}(0001): gate ({phase}) evidence", "--push")
 if os.environ.get("FAKE_CLAUDE_MODE") == "fail-after-gate":  # the gate's record is pushed
@@ -330,7 +348,12 @@ def _exe_launcher(bindir: Path, name: str, module: str) -> Path | None:
     return exes[0] if exes else None
 
 
-WORKFLOW_FILE = {"b": "sdlc-design.yml", "c": "sdlc-build.yml", "fix": "sdlc-fix.yml"}
+WORKFLOW_FILE = {
+    "b": "sdlc-design.yml",
+    "c": "sdlc-build.yml",
+    "d": "sdlc-test.yml",
+    "fix": "sdlc-fix.yml",
+}
 
 
 def workflow_run_line(phase: str = "b", find: bool = False) -> list[str]:
@@ -1054,3 +1077,150 @@ def test_the_commands_step_runs_the_targets_without_the_job_s_credentials(checko
     gate_file = json.loads(remote_file(bare, "sdlc/0001/b", f"{CHANGE}/evidence/gate-b.json"))
     commands = next(ch for ch in gate_file["checks"] if ch["name"] == "commands")
     assert commands["details"]["runs"]["test"]["exit_code"] == 0
+
+
+# --- item 3b (0.3.2): the evidence writer and the verifier inside the session ----------------
+def _built_change(root: Path, bare: Path, tmp_path: Path) -> None:
+    """Change 0001 through (b), the owner's merge, and the build job (c): the state the test
+    workflow starts from, with the project's test suite reading a nested .env since (b)."""
+    project_whose_tests_read_a_nested_env(root)
+    sandbox = {"FAKE_SANDBOX": str(fake_sandbox(tmp_path))}
+    proc, out, _calls = run_phase_job(root, tmp_path / "design", "ok", step_env=sandbox)
+    assert proc.returncode == 0 and out["result"] == "wait", proc.stdout + proc.stderr
+    git(root, "checkout", "-q", "main")
+    git(root, "merge", "-q", "--no-edit", "sdlc/0001/b")  # gate (b): the owner's merge
+    git(root, "push", "-q", "origin", "main")
+    proc, out, _calls = run_phase_job(root, tmp_path / "build", "ok", phase="c", step_env=sandbox)
+    assert proc.returncode == 0 and out["result"] == "continue", proc.stdout + proc.stderr
+    assert out["commands"]["ran_by"] == "runner" and out["commands"]["ok"]
+    gate_c = json.loads(remote_file(bare, "sdlc/0001/c", f"{CHANGE}/evidence/gate-c.json"))
+    assert gate_c["result"] == "continue"
+
+
+def _test_job(root: Path, tmp_path: Path, claude_mode: str = "test", **env: str) -> tuple:
+    step_env = {"CHANGE_ID": "0001", "HEAD_REF": "sdlc/0001/c", **env}
+    return run_phase_job(
+        root, tmp_path, "ok", phase="d", step_env=step_env, claude_mode=claude_mode
+    )
+
+
+def _commit_of(bare: Path, branch: str, subject: str) -> str:
+    log = git(bare, "log", "--format=%H|%s", f"refs/heads/{branch}")
+    return next(line.split("|")[0] for line in log.splitlines() if line.endswith(subject))
+
+
+def test_the_evidence_logs_are_written_by_the_runner_after_the_session_outside_its_sandbox(
+    checkout, tmp_path
+):
+    """Item 3b (0.3.2): at (d) the session's evidence writer leaves a deferred mark in the
+    three logs instead of running the targets inside the sandbox, the gate accepts the marks
+    while the deferral holds, and the runner's commands step after the session writes the
+    logs from its own run and re-judges the gate - so a project whose tests read a nested
+    .env passes gate (d) in CI with green, runner-written logs. On 0.3.1 the writer ran the
+    targets inside the sandbox, test.log recorded the EACCES failure and gate (d) parked."""
+    root, bare = checkout
+    _built_change(root, bare, tmp_path)
+    proc, out, _calls = _test_job(root, tmp_path / "test", FAKE_SANDBOX=str(tmp_path / "sandbox"))
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert out["result"] == "continue" and out["gate_phase"] == "d", out
+    assert out["commands"] == {**out["commands"], "ran": True, "ran_by": "runner", "ok": True}
+    # what the session pushed: the marks, and a record that accepted them as deferred
+    session_commit = _commit_of(bare, "sdlc/0001/c", "test(0001): gate (d) evidence")
+    marked = git(bare, "show", f"{session_commit}:{CHANGE}/evidence/test.log")
+    mark = art.parse_deferred_header(marked)
+    assert mark is not None and mark["command"] == "python -m pytest", marked[:200]
+    assert "Permission denied" not in marked
+    assert art.evidence_failure(marked, require_header=True) == art.DEFERRED_NEVER_REPLACED
+    session_record = json.loads(
+        git(bare, "show", f"{session_commit}:{CHANGE}/evidence/gate-d.json")
+    )
+    assert session_record["result"] == "continue"
+    assert gate_mod.deferred_checks(session_record) == ["commands", "evidence"]
+    evidence = next(ch for ch in session_record["checks"] if ch["name"] == "evidence")
+    assert evidence["ok"] is True and evidence["details"]["deferred_logs"] == [
+        "test.log", "build.log", "lint.log"
+    ]  # fmt: skip
+    # what the runner left on the branch: the logs from its run, the record judged on them
+    gate_file = json.loads(remote_file(bare, "sdlc/0001/c", f"{CHANGE}/evidence/gate-d.json"))
+    assert gate_file["result"] == "continue" and gate_mod.deferred_checks(gate_file) == []
+    commands = next(ch for ch in gate_file["checks"] if ch["name"] == "commands")
+    assert commands["ok"] is True and commands["details"]["ran_by"] == "runner"
+    evidence = next(ch for ch in gate_file["checks"] if ch["name"] == "evidence")
+    assert evidence["ok"] is True and "deferred" not in evidence["details"]
+    assert evidence["reason"] == "evidence present: test.log, build.log, lint.log, verifier.md"
+    for target, name in art.EVIDENCE_TARGETS.items():
+        text = remote_file(bare, "sdlc/0001/c", f"{CHANGE}/evidence/{name}")
+        header = art.parse_evidence_header(text)
+        assert header is not None and header["exit"] == "0", (name, text[:200])
+        assert header["command"] == commands["details"]["runs"][target]["command"]
+    test_log = remote_file(bare, "sdlc/0001/c", f"{CHANGE}/evidence/test.log")
+    assert "passed" in test_log and "Permission denied" not in test_log
+    assert "read, not run" in remote_file(bare, "sdlc/0001/c", f"{CHANGE}/evidence/verifier.md")
+    status = remote_file(bare, "sdlc/0001/c", f"{CHANGE}/status.yaml")
+    assert "phase: d" in status and "parked_reason: null" in status
+    assert git(bare, "log", "--format=%s", "-1", "refs/heads/sdlc/0001/c").startswith("run(d)")
+
+
+def test_a_session_that_dies_before_the_runner_s_step_leaves_the_marked_logs_parked(
+    checkout, tmp_path
+):
+    """The session pushed the marks and the record that accepted them, then failed: the
+    runner parks the change on its way out, so the marks never stand for a green run."""
+    root, bare = checkout
+    _built_change(root, bare, tmp_path)
+    proc, out, calls = _test_job(
+        root,
+        tmp_path / "test",
+        claude_mode="fail-after-gate",
+        FAKE_SANDBOX=str(tmp_path / "sandbox"),
+    )
+    assert proc.returncode == 1, proc.stdout + proc.stderr
+    assert out["parked"].startswith("commands: deferred to the runner and never run")
+    gate_file = json.loads(remote_file(bare, "sdlc/0001/c", f"{CHANGE}/evidence/gate-d.json"))
+    assert gate_file["result"] == "park" and gate_mod.deferred_checks(gate_file) == []
+    marked = remote_file(bare, "sdlc/0001/c", f"{CHANGE}/evidence/test.log")
+    assert art.parse_deferred_header(marked) is not None  # never replaced, and never a pass
+    status = remote_file(bare, "sdlc/0001/c", f"{CHANGE}/status.yaml")
+    assert "result: parked" in status and "commands: deferred to the runner" in status
+    edit = [c for c in calls if c[:2] == ["pr", "edit"]]
+    assert edit and "sdlc:needs-human" in " ".join(edit[-1])
+
+
+# --- F1 (PROGRESS "Session 17"): a dispatched fix round reads the owner's labels -------------
+def test_a_dispatched_round_reads_the_owner_s_labels_from_the_pull_request_of_the_head_ref(
+    checkout, tmp_path
+):
+    """A ``workflow_dispatch`` round carries no pull request number (change 0001's round of
+    2026-10-02 read ``labels not read``): the open PR of the head branch supplies it, as it
+    does for the requests, and the owner's un-park label is performed and committed."""
+    root, bare = checkout
+    _design_pr(root, tmp_path)
+    git(root, "checkout", "-q", "sdlc/0001/b")
+    change = root / CHANGE
+    st = status_mod.read_status(change)
+    st.iterations = 3
+    status_mod.write_status(change, st)
+    git(root, "add", f"{CHANGE}/status.yaml")
+    git(root, "commit", "-q", "-m", "fix(0001): three rounds")
+    git(root, "push", "-q", "origin", "sdlc/0001/b")
+    events = [{"event": "labeled", "label": {"name": "sdlc:reset-iterations"},
+               "actor": {"login": "luissiviero"}}]  # fmt: skip
+    proc, out, calls = _fix_job(
+        root,
+        tmp_path / "fix",
+        PR_NUMBER="",  # the dispatch: change_id and head_ref only
+        FAKE_PR_LABELS=json.dumps(["sdlc:b-ready", "sdlc:reset-iterations"]),
+        FAKE_LABEL_EVENTS=json.dumps(events),
+    )
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    labels = out["owner_labels"]
+    assert labels["ok"] and labels["performed"] == [
+        {"label": "sdlc:reset-iterations", "actor": "luissiviero"}
+    ]
+    assert labels["removed"] == ["sdlc:reset-iterations"] and labels["commit"]["ok"]
+    assert out["pr"] == {**out["pr"], "ok": True, "number": 7, "head": "sdlc/0001/b"}
+    assert out["result"] == "wait"  # the round ran and the gate passed: no park at the cap
+    status = remote_file(bare, "sdlc/0001/b", f"{CHANGE}/status.yaml")
+    assert "iterations: 1" in status and "iterations_reset_by: luissiviero" in status
+    lookups = [c for c in calls if c[:2] == ["pr", "list"] and "--head" in c]
+    assert lookups and all(c[c.index("--head") + 1] == "sdlc/0001/b" for c in lookups)

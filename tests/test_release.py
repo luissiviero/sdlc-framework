@@ -590,6 +590,21 @@ def test_cli_skips_a_gate_e_record_whose_commands_never_ran(tmp_path):
     assert lines[-1].startswith("release: skip: gate (e) of change 0001 recorded its commands")
     assert "the runner never ran it (issue #91)" in lines[-1]
     assert not any(line.startswith(("release: run:", "release: gate:")) for line in lines)
+    # item 3b (0.3.2): a record whose evidence logs alone are still deferred is no pass either
+    gate_file.write_text(
+        json.dumps({
+            **gate_record(deferred=False),
+            "checks": [
+                *gate_record(deferred=False)["checks"],
+                {"name": "evidence", "ok": True, "reason": "deferred",
+                 "details": {"deferred": True, "deferred_logs": ["test.log"]}},
+            ],
+        }),
+        encoding="utf-8",
+    )  # fmt: skip
+    code, lines = _run(root, FakeGitHub())
+    assert code == 0 and "or its evidence logs" in lines[-1] and "re-run phase (e)" in lines[-1]
+    assert not any(line.startswith("release: run:") for line in lines)
     # no record at all: nothing to judge, the same skip family
     gate_file.unlink()
     code, lines = _run(root, FakeGitHub())

@@ -1200,13 +1200,26 @@ def commands_summary(call: dict[str, Any]) -> dict[str, Any]:
         ),
         {},
     )
-    return {
+    summary = {
         "ran": True,
         "ran_by": gate_checks.RUN_BY_RUNNER,
         "ok": bool(check.get("ok")),
         "reason": check.get("reason"),
         "result": output.get("result"),
     }
+    evidence = next(
+        (
+            ch
+            for ch in output.get("checks", [])
+            if isinstance(ch, dict) and ch.get("name") == "evidence"
+        ),
+        None,
+    )
+    if evidence is not None:
+        # item 3b: the step rewrote the logs and judged the evidence entry again; a park on
+        # a log the step could not replace shows here beside the commands verdict
+        summary["evidence"] = {"ok": bool(evidence.get("ok")), "reason": evidence.get("reason")}
+    return summary
 
 
 COMMANDS_STEP_FAILED = "the gate's commands check could not run after the session: {reason}"
@@ -1220,14 +1233,16 @@ INIT_CHANGE_SKIP = (
     "no phase runs on it"
 )
 DEFERRED_GATE_SKIP = (
-    "gate ({phase}) of change {id} recorded its commands check as deferred to the runner and "
-    "the runner never ran it (issue #91): the gate is not passed; re-run phase ({phase})"
+    "gate ({phase}) of change {id} recorded its commands check (or its command logs, item 3b) "
+    "as deferred to the runner and the runner never ran it (issue #91): the gate is not "
+    "passed; re-run phase ({phase})"
 )
 DEFERRED_PARK_CHECK = "commands"
 DEFERRED_PARK_REASON = "deferred to the runner and never run: {why}"
 DEFERRED_PARK_NEED = (
-    "The session's gate left build, test and lint to the runner (issue #91) and the runner "
-    "could not run them, so the record says nothing about the project's targets. Re-run the "
+    "The session's gate left build, test and lint (and, at (d) and (e), the three evidence "
+    "logs) to the runner (issue #91) and the runner could not run them, so the record says "
+    "nothing about the project's targets. Re-run the "
     "phase (the un-park label, or a workflow_dispatch with the change id); the job log names "
     "the step that failed."
 )
@@ -1838,15 +1853,33 @@ def apply_owner_labels(
 ) -> dict[str, Any]:
     """Perform the owner's labels on the change's PR (``state/unpark.py``) and commit
     ``status.yaml`` on the work branch, so the session and the gate read the settled state.
-    A run without a GitHub route or without the PR's number reads nothing and says so."""
+    A ``workflow_dispatch`` round carries no event number: the open PR of ``branch`` (the
+    round's head) supplies it, as ``collect_fix_requests`` does (0.3.2; the first dispatched
+    round, 2026-10-02, read no label: PROGRESS "Session 17", F1). A run without a GitHub
+    route, or without a number and an open PR, reads nothing and says so."""
     from state import unpark  # noqa: PLC0415
 
     number = _pr_number(pr_number)
     github = _github()
-    if github is None or number is None or not repo:
+    if github is None or not repo:
         return {"ok": False, "reason": "no pull request number or repository: labels not read"}
     if not _token(env) and not github.gh_path():
         return {"ok": False, "reason": "no gh and no GITHUB_TOKEN/GH_TOKEN: labels not read"}
+    if number is None and branch:
+        found = github.find_open_pr(repo, branch, cwd=root)
+        if not found.get("ok"):
+            return {
+                "ok": False,
+                "reason": f"cannot look up the pull request of {branch}: "
+                f"{found.get('reason') or 'failed'}: labels not read",
+            }
+        number = _pr_number(found.get("number")) if found.get("number") else None
+    if number is None:
+        return {
+            "ok": False,
+            "reason": "no pull request number and no open pull request for "
+            f"{branch or 'the head'}: labels not read",
+        }
     result = unpark.apply_from_pr(root, change_dir, config, repo, number, github=github)
     if result.get("performed"):
         names = ", ".join(p["label"] for p in result["performed"])

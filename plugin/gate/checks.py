@@ -19,6 +19,7 @@ import re
 import signal
 import subprocess
 import sys
+import time
 from collections import Counter
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -344,22 +345,47 @@ def check_commands(ctx: GateContext) -> CheckResult:
     return run_commands_check(ctx)
 
 
-def run_commands_check(ctx: GateContext, ran_by: str | None = None) -> CheckResult:
-    """Run the three targets and judge them; ``ran_by`` names who ran them when it was not
-    the gate's own process (``RUN_BY_RUNNER``), kept in the check's details."""
+def missing_targets(ctx: GateContext) -> CheckResult | None:
     cmds = _commands(ctx)
     missing = [k for k in ("build", "test", "lint") if k not in cmds]
-    if missing:
-        return _fail(
-            "commands",
-            f"sdlc.yaml has no usable {', '.join(missing)} target",
-            "Give the project one-command build/test/lint targets in sdlc.yaml "
-            "(re-run /sdlc-init or edit sdlc.yaml in a reviewed PR); the framework does not "
-            "enter phase (c) without them (article p.27 step 1).",
-            missing=missing,
-        )
+    if not missing:
+        return None
+    return _fail(
+        "commands",
+        f"sdlc.yaml has no usable {', '.join(missing)} target",
+        "Give the project one-command build/test/lint targets in sdlc.yaml "
+        "(re-run /sdlc-init or edit sdlc.yaml in a reviewed PR); the framework does not "
+        "enter phase (c) without them (article p.27 step 1).",
+        missing=missing,
+    )
+
+
+def run_targets(ctx: GateContext) -> dict[str, dict[str, Any]]:
+    """Run the three targets once, keeping the literal output and the seconds each took:
+    ``{name: {"command", "exit_code", "output", "seconds"[, "timeout"]}}``. The gate's record
+    keeps the tail of the output (``judge_targets``); the evidence logs keep it whole (item
+    3b: the runner writes ``test.log``, ``build.log`` and ``lint.log`` from this same run)."""
     timeout = int(ctx.gate_setting("command_timeout", DEFAULT_COMMAND_TIMEOUT))
-    runs = {name: run_command(cmd, ctx.root, timeout) for name, cmd in cmds.items()}
+    runs: dict[str, dict[str, Any]] = {}
+    for name, cmd in _commands(ctx).items():
+        started = time.monotonic()
+        run = run_command(cmd, ctx.root, timeout, tail=None)
+        run["seconds"] = round(time.monotonic() - started, 1)
+        runs[name] = run
+    return runs
+
+
+def judge_targets(runs: dict[str, dict[str, Any]], ran_by: str | None = None) -> CheckResult:
+    """The ``commands`` check from the targets' runs; ``ran_by`` names who ran them when it
+    was not the gate's own process (``RUN_BY_RUNNER``), kept in the check's details."""
+    runs = {
+        name: {
+            k: (_tail(v, OUTPUT_TAIL) if k == "output" else v)
+            for k, v in run.items()
+            if k != "seconds"
+        }
+        for name, run in runs.items()
+    }
     who = {"ran_by": ran_by} if ran_by else {}
     red = {n: r for n, r in runs.items() if r["exit_code"] != 0}
     if red:
@@ -378,9 +404,21 @@ def run_commands_check(ctx: GateContext, ran_by: str | None = None) -> CheckResu
     return _ok("commands", "build, test and lint exit 0", runs=runs, **who)
 
 
+def run_commands_check(ctx: GateContext, ran_by: str | None = None) -> CheckResult:
+    """Run the three targets and judge them (``run_targets`` then ``judge_targets``)."""
+    missing = missing_targets(ctx)
+    if missing is not None:
+        return missing
+    return judge_targets(run_targets(ctx), ran_by)
+
+
 # --- 4. evidence present (step 28) --------------------------------------------------------
 COMMAND_LOGS = tuple(art.EVIDENCE_TARGETS.values())  # test.log, build.log, lint.log
 HEADER_REQUIRED_AT = ("d", "e")  # the gates that read the toolchain's own output
+EVIDENCE_DEFERRED_REASON = (
+    "deferred to the runner: the session wrote no command log, the runner writes {logs} "
+    "from its build, test and lint after the model's session (issue #91); not yet written"
+)
 
 
 def check_evidence(ctx: GateContext) -> CheckResult:
@@ -390,11 +428,22 @@ def check_evidence(ctx: GateContext) -> CheckResult:
     missing = []
     red: list[str] = []
     red_names: list[str] = []
+    deferred: list[str] = []
     for name in required:
         path = ctx.evidence_dir / name
         text = path.read_text(encoding="utf-8", errors="replace") if path.is_file() else ""
         if not text.strip():
             missing.append(name)
+            continue
+        if (
+            ctx.commands_deferred
+            and name in COMMAND_LOGS
+            and art.parse_deferred_header(text) is not None
+        ):
+            # item 3b: inside a CI session the writer left the mark and the runner writes
+            # the real log after the session; the mark is accepted only while that step is
+            # still to come (``run_deferred_commands`` re-judges this check without it)
+            deferred.append(name)
             continue
         # logs written by evidence/collect.py carry their exit code on the first line; a log
         # that records a failure is evidence of a red run, whatever a later re-run says, and
@@ -426,6 +475,13 @@ def check_evidence(ctx: GateContext) -> CheckResult:
             f"{ctx.status.id}` so {files} records a green run.",
             red=red,
             red_files=red_names,
+        )
+    if deferred:
+        return _ok(
+            "evidence",
+            EVIDENCE_DEFERRED_REASON.format(logs=", ".join(deferred)),
+            deferred=True,
+            deferred_logs=deferred,
         )
     return _ok("evidence", f"evidence present: {', '.join(required)}")
 

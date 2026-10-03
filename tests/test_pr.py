@@ -1278,3 +1278,22 @@ def test_counters_leave_out_a_change_abandoned_on_its_remote_branches(project, t
     counts = counters.collect(root)
     assert counts["incidents_merged"] == 0 and counts["abandoned"] == 1
     assert "| Incidents merged (fix now) / shipped (p.45) | 0 / 0 |" in counters.render(counts)
+
+
+def test_log_state_names_a_log_the_session_left_to_the_runner(tmp_path):
+    """Item 3b (0.3.2): a marked log reads "deferred to the runner" in the PR body during the
+    window before the runner's step, even when the command's own text says "exit 0" (the
+    review of the 0.3.2 diff, finding 5)."""
+    from gate import artifacts as art
+
+    path = tmp_path / "test.log"
+    art.write_evidence_log(
+        path,
+        art.render_deferred_header("pytest -x || exit 0", "2026-10-03T12:00:00Z"),
+        art.EVIDENCE_DEFERRED_BODY,
+    )
+    assert desc.log_state(path) == "deferred to the runner"
+    art.write_evidence_log(
+        path, art.render_evidence_header("pytest -x || exit 0", 0, 1.0, "2026-10-03T12:00:00Z"), ""
+    )
+    assert desc.log_state(path) == "green"

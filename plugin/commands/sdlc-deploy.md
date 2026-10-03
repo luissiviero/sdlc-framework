@@ -109,7 +109,8 @@ While `tally.important` > 0:
    `evidence/review-response.md` (the owner decides at the gate); under `review: deferred`
    it is a panel item of the deferred-review step below, which may settle it (`settled: ...`) so the gate passes
    with the finding recorded.
-3. Re-collect the evidence (`evidence/collect.py`), commit
+3. Re-collect the evidence (`evidence/collect.py`; in CI it leaves the deferred mark the
+   runner's step after this session replaces, as at (d) — `/sdlc-test` step 1), commit
    (`commit-phase ... --phase e --message "review(<id>): fix <finding>" --paths <files>`),
    push, and re-run step 1 for a fresh verdict on the new HEAD.
 Nits are not fixed in this loop; the reviewer lists at most five and the owner reads them.

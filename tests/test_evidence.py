@@ -141,3 +141,51 @@ def test_evidence_header_round_trip():
     assert "timed out" in art.evidence_failure(art.render_evidence_header("x", None, 1.0, "t"))
     # a hand-written log has no header and is accepted as it is (the gate only checks it exists)
     assert art.parse_evidence_header("ok\n") is None and art.evidence_failure("ok\n") is None
+
+
+# --- item 3b (0.3.2): inside a CI session the writer leaves a mark, never runs a target -------
+def test_inside_a_ci_session_the_writer_leaves_the_deferred_mark_and_runs_nothing(project):
+    """The runner marks the session (``SDLC_GATE_COMMANDS=runner``); the writer then runs no
+    target - a test target that would fail (``SAMPLE_FAIL=1``) is not even started - and
+    leaves each log's first line as the mark the runner's step replaces after the session."""
+    from gate import checks
+
+    root, change = project
+    env = {**os.environ, "SAMPLE_FAIL": "1", checks.COMMANDS_RUNNER_ENV: checks.RUN_BY_RUNNER}
+    proc, out = run_collect(root, env=env)
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert out["deferred"] is True and out["all_green"] is None
+    assert sorted(out["results"]) == ["build", "lint", "test"]
+    for target in ("test", "build", "lint"):
+        result = out["results"][target]
+        assert result["exit"] == collect_mod.DEFERRED and result["timed_out"] is False
+        log = change / "evidence" / art.EVIDENCE_TARGETS[target]
+        assert result["log"] == f"changes/0001-percent-helper/evidence/{log.name}"
+        text = log.read_text(encoding="utf-8")
+        mark = art.parse_deferred_header(text)
+        assert mark is not None and mark["at"].endswith("Z") and mark["command"]
+        assert art.parse_evidence_header(text) is None  # not a run, and never read as one
+        assert "SAMPLE_FAIL" not in text and "runner replaces this file" in text
+        # a mark nobody replaced is no evidence at any gate, with or without the header rule
+        assert art.evidence_failure(text, require_header=True) == art.DEFERRED_NEVER_REPLACED
+        assert art.evidence_failure(text) == art.DEFERRED_NEVER_REPLACED
+    assert (change / "evidence" / "screenshots" / ".gitkeep").is_file()
+    # ``--only`` marks the named target alone; any other value of the variable runs as before
+    (change / "evidence" / "lint.log").unlink()
+    proc, out = run_collect(root, "--only", "lint", env=env)
+    assert proc.returncode == 0 and list(out["results"]) == ["lint"] and out["deferred"]
+    proc, out = run_collect(root, env={**env, checks.COMMANDS_RUNNER_ENV: "session"})
+    assert proc.returncode == 1 and "deferred" not in out and out["all_green"] is False
+    assert header_of(change / "evidence" / "test.log")["exit"] == "1"
+
+
+def test_a_missing_command_is_still_a_usage_error_inside_a_ci_session(project):
+    from gate import checks
+
+    root, change = project
+    set_command(root, "lint", "")
+    env = {**os.environ, checks.COMMANDS_RUNNER_ENV: checks.RUN_BY_RUNNER}
+    proc, out = run_collect(root, env=env)
+    assert proc.returncode == 2 and out["all_green"] is False and out["deferred"] is True
+    assert out["results"]["lint"]["exit"] == collect_mod.MISSING
+    assert art.parse_deferred_header((change / "evidence" / "test.log").read_text("utf-8"))

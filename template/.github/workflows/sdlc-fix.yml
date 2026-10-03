@@ -16,6 +16,12 @@
 # the job condition refuses a [bot] reviewer besides. The job holds no deploy secret and no
 # production credential (article p.40).
 #
+# By-hand rule: GitHub refuses "Request changes" on the reviewer's own pull request, so a
+# pull request the owner opened by hand (one the automation identity could not open) never
+# fires the review trigger for the owner's words - there the review is a comment review and
+# a workflow_dispatch with the change id and the head branch is the round (0.3.2; the
+# framework's change 0001, 2026-10-02).
+#
 # Reviewer rule: a review starts a round only when its author is a member of the repository
 # (author_association OWNER, MEMBER or COLLABORATOR): on a public repository anyone with read
 # access can request changes, and the review's words reach this privileged run. A live

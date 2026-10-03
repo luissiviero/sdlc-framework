@@ -24,12 +24,25 @@ without the three commands anyway, build guide step 14).
 The commands run through ``gate/checks.py: run_command``: the platform shell, the timeout of
 ``sdlc.yaml: gate.command_timeout`` (or ``--timeout``) and a process-group kill on a hang, so
 a wedged test suite cannot hold the run open on Windows or Linux.
+
+Inside a CI session (item 3b, 0.3.2; issue #91) nothing runs here: the runner marks the
+session's environment (``SDLC_GATE_COMMANDS=runner``, the mark the gate's ``commands`` check
+reads too), and each selected log gets the first line
+
+    # <command> — deferred to the runner — <ISO-8601 UTC>
+
+and a sentence saying so. The runner's commands step after the session runs the three
+targets once, outside the sandbox, writes their output into these logs and re-judges the
+gate; the gate accepts the mark only while that step is still to come. The summary then reads
+``{"all_green": null, "deferred": true, "results": {"test": {"exit": "deferred", ...}}}``,
+exit 0: the session has nothing to fix or to read until the runner has run the targets.
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import time
 from datetime import datetime, timezone
@@ -46,16 +59,17 @@ from state import conventions as c  # noqa: E402
 
 TARGETS = ("test", "build", "lint")  # the order the logs are produced in
 MISSING = "none"  # the exit field of a target sdlc.yaml does not define
+DEFERRED = "deferred"  # the exit field inside a CI session: the runner runs the target later
 
 
 def _now() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
-def _write_log(path: Path, header: str, output: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    body = output if output.endswith("\n") or not output else output + "\n"
-    path.write_text(f"{header}\n{body}", encoding="utf-8", newline="\n")
+def deferred_to_runner() -> bool:
+    """Whether this process runs inside a CI session whose targets the runner runs after it
+    (``gate.checks.COMMANDS_RUNNER_ENV``; item 3b)."""
+    return os.environ.get(checks.COMMANDS_RUNNER_ENV) == checks.RUN_BY_RUNNER
 
 
 def ensure_screenshots_dir(evidence_dir: Path) -> Path:
@@ -98,6 +112,7 @@ def collect(
     ensure_screenshots_dir(evidence_dir)
     results: dict[str, dict] = {}
     all_green, usage_error = True, False
+    deferred = deferred_to_runner()
     for target in selected:
         log = evidence_dir / art.EVIDENCE_TARGETS[target]
         rel = str(log.relative_to(root)).replace("\\", "/")
@@ -106,12 +121,19 @@ def collect(
             all_green, usage_error = False, True
             results[target] = {"exit": MISSING, "seconds": 0.0, "log": None, "timed_out": False}
             continue
+        if deferred:
+            # a CI session: the mark, never the target (the runner writes the real log)
+            art.write_evidence_log(
+                log, art.render_deferred_header(command, _now()), art.EVIDENCE_DEFERRED_BODY
+            )
+            results[target] = {"exit": DEFERRED, "seconds": 0.0, "log": rel, "timed_out": False}
+            continue
         started = time.monotonic()
         run = checks.run_command(command, root, timeout, tail=None)
         seconds = round(time.monotonic() - started, 1)
         exit_code = run["exit_code"]
         timed_out = "timeout" in run
-        _write_log(
+        art.write_evidence_log(
             log,
             art.render_evidence_header(command, exit_code, seconds, _now()),
             run["output"] or "",
@@ -124,7 +146,11 @@ def collect(
             "log": rel,
             "timed_out": timed_out,
         }
-    report = {"all_green": all_green, "results": results}
+    report: dict = {"all_green": all_green, "results": results}
+    if deferred:
+        # nothing ran: the verdict is the runner's, and the summary says so
+        report["all_green"] = None if not usage_error else False
+        report["deferred"] = True
     if usage_error:
         report["error"] = (
             "sdlc.yaml defines no "

@@ -43,9 +43,17 @@ It runs the three `sdlc.yaml` commands (`test`, `build`, `lint`) with the gate's
 writes the literal output to `changes/<id>-<slug>/evidence/test.log`, `build.log`,
 `lint.log` (exit code and duration in the first line) and prints a JSON summary with
 `all_green`. Read the summary, not the logs, unless something failed.
+In CI (plugin 0.3.2, item 3b; issue #91) the summary says `"deferred": true` and
+`all_green` is null: the runner marked this session (`SDLC_GATE_COMMANDS=runner`), the
+writer ran no target and left a deferred mark as each log's first line, and the runner
+runs the three targets once after this session, outside the sandbox — it writes their
+output into the three logs, rewrites gate (d)'s `commands` and `evidence` entries and parks
+the change on a red target. Then skip step 2 (there is nothing to read yet) and go on to
+step 3; a target that fails after the session is the owner's change request through
+`/sdlc-fix`. By hand, without the mark, the writer runs the targets as before.
 
 ## 2. Fix loop, bounded (article p.28: "two or three rounds is normal")
-While `all_green` is false:
+While `all_green` is false (never when the summary says `deferred`):
 1. `python "${CLAUDE_PLUGIN_ROOT}/plugin/gate/cli.py" bump-iteration --root "${CLAUDE_PROJECT_DIR}" --id <id>`
    — if it reports the cap reached (`gate.max_iterations`, or
    `max_iterations_non_routine` when the verdict classed the plan non-routine), stop:
@@ -70,7 +78,9 @@ the plan asked for screenshots.
 ## 4. Verify in a fresh context (agent `sdlc:verifier`)
 Delegate to `sdlc:verifier` with the change id. Store its report as
 `changes/<id>-<slug>/evidence/verifier.md` (overwrite the (c) report: this one covers the
-full suite). Commit the evidence:
+full suite; in CI the verifier reads gate (c)'s `commands` entry and the logs instead of
+running the targets — never an earlier round's `gate-d.json`; its brief says when). Commit
+the evidence:
 `commit-phase ... --phase d --message "test(<id>): evidence"` and push
 (`git push origin sdlc/<id>/c`).
 
@@ -128,8 +138,10 @@ you" at the gate and overturns any line with a review comment.
 
 Then the gate:
 `python "${CLAUDE_PLUGIN_ROOT}/plugin/gate/cli.py" check --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase d`
-(it requires `test.log`, `build.log`, `lint.log` and `verifier.md`, green; exit 0 continue ·
-3 wait · 4 park). Commit: `commit-phase ... --phase d --message "test(<id>): gate (d) evidence" --push`.
+(it requires `test.log`, `build.log`, `lint.log` and `verifier.md`, green — in CI the three
+logs may carry the session's deferred mark, which the gate accepts until the runner's step
+replaces them; exit 0 continue · 3 wait · 4 park). Commit:
+`commit-phase ... --phase d --message "test(<id>): gate (d) evidence" --push`.
 
 ## 6. Update the build PR and the check run
 ```
