@@ -33,3 +33,29 @@ No requests were left unapplied.
   applied. Same request, same round and result as above (duplicate re-run instruction).
 
 No requests were left unapplied.
+
+# Fix response — phase (e), round 3
+
+`evidence/fix-requests.json` (collected 2026-10-03T21:09:02Z, head `428cbbd`) lists the same
+two reviews as round 2 (`#pullrequestreview-5402438162`, `#pullrequestreview-5402516760`,
+both "re-run gate (c): the park was the sandbox's view of the fixture `.env`"): applied
+already, in round 2 — nothing new to apply from them this round. `status.yaml`'s
+`parked_reason` was the iteration cap at gate (e) (3 fix iterations, cap 2), which the
+owner cleared with the `sdlc:reset-iterations` label before this round started
+(`iterations_reset_by: luissiviero`); that label is itself a change request (decision 24)
+and is what let this round run at all.
+
+With the cap reset, this round registered (`gate/cli.py start-run`, `bump-iteration`:
+iterations 0 → 1 of 2) and moved to the substance the review pass at phase (e) had found
+pending: one Important finding (this change's own `docs/PROGRESS.md` entry spliced into an
+old, superseded session record instead of becoming its own new top-level record — fixed,
+independently confirmed by a fresh review pass) and a second Important finding
+(`docs/notes/<N>.md` frontmatter's `verified_with` missing the plugin-version/runner parts
+spec.md Requirements asks for) that was only partly fixed: plugin version filled in for the
+6 of 32 files whose own text states it directly (`docs/notes/27.md`–`32.md`), runner left
+out for those six and the whole fix left out for the other 26, each reasoned in
+`evidence/review-response.md` (writing an inferred, unconfirmed value into the field that
+decides staleness is worse than leaving it incomplete). Gate (e) parked again, on the open
+finding and the adversarial reviewer's `escalate` — a different reason than the round's
+starting park, so this round stops here per step 5: the next round, fix or waiver, is the
+owner's.
