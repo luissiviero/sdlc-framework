@@ -1156,10 +1156,27 @@ def invoke(argv: list[str], root: Path, env: dict[str, str], timeout: int) -> tu
 # the gate record keeps its shape and a red target parks the change as before. Renaming the
 # fixture (the rule matches at any depth) and narrowing the deny rule (decision 6) were not
 # chosen (PROGRESS choice 133).
+# Change 0001's first build run on 0.3.2 (2026-10-03, run 37132688917): the session delegated
+# two splits to background sub-agents and ended its turn "to wait for their completion
+# notifications"; ``claude -p`` waited its default ten minutes for the background tasks, then
+# terminated the run with the agents mid-write - no gate, the work lost, 6.93 USD. The Agent
+# tool runs sub-agents in the background by default unless the CLI's switch below is set
+# (``--bare`` sets the same condition, which is why the API-key runs never showed it); the
+# commands tell the session to delegate in the foreground as well. The CLI's wait ceiling
+# (``CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS``) is left at its default: it counts from the end
+# of the turn, so a ceiling at the runner's timeout could never fire before the runner's own
+# kill, which drops the result record (the review of the 0.3.3 diff, finding 1).
+BACKGROUND_TASKS_ENV = "CLAUDE_CODE_DISABLE_BACKGROUND_TASKS"
+
+
 def session_env(env: dict[str, str]) -> dict[str, str]:
     """The model's session's environment: ``env`` plus the mark that leaves the gate's
-    ``commands`` check to the runner (``gate.checks.COMMANDS_RUNNER_ENV``)."""
-    return {**env, gate_checks.COMMANDS_RUNNER_ENV: gate_checks.RUN_BY_RUNNER}
+    ``commands`` check to the runner (``gate.checks.COMMANDS_RUNNER_ENV``) and the switch
+    that keeps every sub-agent in the foreground (``BACKGROUND_TASKS_ENV``; a value the
+    workflow's ``env:`` already carries is kept)."""
+    marked = {**env, gate_checks.COMMANDS_RUNNER_ENV: gate_checks.RUN_BY_RUNNER}
+    marked.setdefault(BACKGROUND_TASKS_ENV, "1")
+    return marked
 
 
 def commands_timeout_seconds(config: dict[str, Any]) -> int:

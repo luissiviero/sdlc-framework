@@ -1181,9 +1181,19 @@ def test_the_session_s_environment_leaves_the_gate_s_commands_to_the_runner():
 
     env = {"PATH": "/bin", **KEY_ENV}
     marked = run_phase.session_env(env)
-    assert marked == {**env, checks.COMMANDS_RUNNER_ENV: checks.RUN_BY_RUNNER}
+    assert marked == {
+        **env,
+        checks.COMMANDS_RUNNER_ENV: checks.RUN_BY_RUNNER,
+        run_phase.BACKGROUND_TASKS_ENV: "1",
+    }
     assert env == {"PATH": "/bin", **KEY_ENV}  # the runner's own environment is not marked
     assert auth.credential_env(marked)[checks.COMMANDS_RUNNER_ENV] == checks.RUN_BY_RUNNER
+    # 0.3.3: every sub-agent of the session runs in the foreground (change 0001's first build
+    # run ended waiting for two background agents); a value the workflow set is kept
+    assert auth.credential_env(marked)[run_phase.BACKGROUND_TASKS_ENV] == "1"
+    kept = run_phase.session_env({**env, run_phase.BACKGROUND_TASKS_ENV: "0"})
+    assert kept[run_phase.BACKGROUND_TASKS_ENV] == "0"
+    assert "CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS" not in marked  # the CLI's default ceiling
     assert run_phase.commands_timeout_seconds({}) == 3 * checks.DEFAULT_COMMAND_TIMEOUT + 300
     assert run_phase.commands_timeout_seconds({"gate": {"command_timeout": 60}}) == 480
     assert run_phase.commands_timeout_seconds({"gate": {"command_timeout": "x"}}) == 2700 + 300
