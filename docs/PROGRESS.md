@@ -46,7 +46,7 @@ CHAIN EXIT 0
 - Carried from the first and second sittings: the tag-push probe, the `--bare` check, the runner's `owner_fields` check on Windows, the sample's comment rows, the classifier in the default mode, the release record on a project with a `deploy.command`, the reviewer's `at` field.
 
 ## Left
-- At the close of this sitting: PR3_NUMBER_LINE Change 0001 at phase (c) on `sdlc/0001/c`, parked on `clean_tree`, PR #112 open. The owner's steps, in order: merge the 0.3.4 PR; check `v0.3.4`; apply the root pin row below; then a "Request changes" review on PR #112 with one line ("re-run gate (c)"). Session 19 reads the fix round and phase (d).
+- At the close of this sitting: PR #113 open against `main` (draft; the 0.3.4 PR, first commit `c56ac7e`, then this docs commit naming it). `framework-checks.yml` on its final head is read by this sitting before the owner is asked to merge; the next session annotates the result here. Change 0001 at phase (c) on `sdlc/0001/c`, parked on `clean_tree`, PR #112 open. The owner's steps, in order: merge PR #113; check `v0.3.4`; apply the root pin row below; then a "Request changes" review on PR #112 with one line ("re-run gate (c)"). Session 19 reads the fix round and phase (d).
 
 ## Guardrail lines for the owner (after `v0.3.4` exists; this session cannot edit these files)
 | Link | Row | What is there now | What it must become |
