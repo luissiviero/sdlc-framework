@@ -75,10 +75,30 @@ CHAIN EXIT 0
 ## Left
 - At the close of this session: PR #107 open against `main` (draft; the 0.3.2 PR, first commit `78f69fd`, then this docs commit naming it). `framework-checks.yml` on its final head is read by this session before the owner is asked to merge; the next session annotates the result here. The owner asked mid-session why a session cannot create the tag: NOTES §3b's fact (the cloud session's git proxy refused a tag push with HTTP 403 on 2026-09-24; the session's GitHub tools have no tag or release call) is the answer and `sdlc-tag.yml` the mechanism; a probe of the proxy today was refused by the permission classifier twice — the push-and-delete as `Git Destructive`, the push alone (retried on the owner's say-so) as `Auto-Mode Bypass` — so whether the 403 still stands is unread; `.claude/settings.json` already allows `Bash(git *)`, so no settings row is owed, and the probe is a session the owner can answer the classifier's prompt in (NOTES §30 has the three commands). PR #90 open at `sdlc:b-ready` on `300bb3c`, **merged by the owner only after `v0.3.2` is pinned** (choice 151; HANDOFF's owner table: merge the 0.3.2 PR, check `v0.3.2`, the pin row, then PR #90). Session 19 as `HANDOFF.md` says: the read of change 0001's phases (c) and (d) on 0.3.2, then item 9's design.
 
+## Change 0001, phase (c) (2026-10-03): the docs split
+`docs/NOTES.md` (30 sections), `docs/DECISIONS.md` (26 decisions) and `docs/PROGRESS.md`'s 21
+then-archived records (everything but this current record) each moved to one file per
+section/decision/record, number- or heading-named, under `docs/notes/`, `docs/decisions/`
+and `docs/progress/` respectively, with an `index.md` each in ascending order (the study
+record keeping its place between sessions 12 and 13). `docs/NOTES.md` and `docs/DECISIONS.md`
+are now short stubs pointing at their index; `docs/PROGRESS.md` keeps its name and
+current-record role unstubbed. `HANDOFF.md`'s "Read in this order", `docs/ROADMAP.md`,
+`docs/OPERATING_MODEL.md` and `README.md` are repointed to the new indexes wherever they
+named one of the split files; `docs/PROGRESS.md` mentions were left as is. Every moved
+record's text is unchanged (choice 126); the splitting tool-calls used Read/Write, never a
+script, per "Things Claude gets wrong". No file under `plugin/`, `template/` or `tests/`
+changed, so no version bump; build/test/lint deferred to the runner as every CI session's
+does (issue #91). The owner's `CLAUDE.md` guardrail edits this split needs are below,
+alongside session 18's pin row.
+
 ## Guardrail lines for the owner (after `v0.3.2` exists; this session cannot edit these files)
 | Link | Row | What is there now | What it must become |
 |---|---|---|---|
 | [sdlc.yaml](../sdlc.yaml) | line 98 | `  version: 0.3.1` | `  version: 0.3.2` |
+| [CLAUDE.md](../CLAUDE.md) | line 3 | `...` is the build plan; `` `docs/DECISIONS.md` `` records the 26 settled choices — do not reopen them without asking. `docs/ROADMAP.md` is what comes after Milestone 1: ... | same sentence with `` `docs/DECISIONS.md` `` replaced by `` `docs/decisions/index.md` `` |
+| [CLAUDE.md](../CLAUDE.md) | new line after line 3 (line 4 is blank today) | — | Insert: "Indexes first: `docs/notes/index.md` lists every verified platform fact, `docs/decisions/index.md` every settled decision; read the index, then only the files you need." (`docs/proposals/okf-adoption.md`'s table, "Point to the indexes from `CLAUDE.md`") |
+| [CLAUDE.md](../CLAUDE.md) | line 35 | `- Verify how Claude Code on Windows invokes hook commands before writing the first hook; record the answer in `` `docs/NOTES.md` ``.` | same sentence with `` `docs/NOTES.md` `` replaced by `` `docs/notes/1.md` `` (NOTES §1 is that exact fact) |
+| [CLAUDE.md](../CLAUDE.md) | line 39 | `- Editing a guardrail file (CLAUDE.md, .claude/**, REVIEW.md, sdlc.yaml) from a session: the tools are denied; propose the exact lines in docs/PROGRESS.md and leave the edit to the owner.` | unchanged — `docs/PROGRESS.md` keeps its name and role, so this line needs no edit |
 
 ---
 
