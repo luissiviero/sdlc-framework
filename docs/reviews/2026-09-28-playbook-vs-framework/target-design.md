@@ -95,7 +95,7 @@ The framework already keeps the hook log both ways: committed in `evidence/` and
 - no Dn states the one-owner premise today (`docs/OPERATING_MODEL.md` §2, build guide step 5); the roles would need a decision of their own.
 
 **Open.**
-- Which model each role runs on.
+- To do: decide which model each role and each sub-agent runs on (owner's request, 2026-10-03, while weighing build-subagents). Today all four agents run on the session's own model (`model: inherit`, `plugin/agents/*.md`) and so share its blind spots, so a role or a reviewing agent brings a second perspective, not a second accountability; D21 already puts the panel's devil's advocate on a different model for that reason (`sdlc.yaml: panel_advocate_model`). Start with the agents that judge (the adversarial reviewer, the Architect, the Code reviewer), where a different model matters most.
 - Which documentation each role reads: the five policy skills each say "no owner source yet" (`plugin/skills/*/SKILL.md`).
 - How many roles after merging.
 - To verify: whether a GitHub ruleset can let a workflow merge on the owner's behalf, or whether that needs a dedicated GitHub App.
