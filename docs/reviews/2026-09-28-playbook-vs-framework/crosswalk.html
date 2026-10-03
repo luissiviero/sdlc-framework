@@ -248,7 +248,7 @@
     <div class="eyebrow"><b class="pb">Playbook</b> (the article) · <b class="fw">Framework</b> (sdlc plugin 0.3.1) · owner's decisions</div>
     <h1>Workflow Crosswalk</h1>
     <p class="lede">Every decision point of the two workflows, one row each: what the article prescribes, what the framework does, how they relate, and why they differ. Pick which is better at each step and what you will do about it; your choices are saved with the page.</p>
-    <p class="note">Sources: <a href="https://claude.ai/artifact/WhLTjcSzJqQmUFm3aP5G6L">Playbook SDLC Workflow</a> (pages are the 53-page print of the article) and <a href="https://claude.ai/artifact/KW8jWunfLNa9WgBSzJxw4S">SDLC Plugin Workflow</a> (files are in <code>luissiviero/sdlc-framework</code> at f899cc6, plugin 0.3.1 (re-checked on 3 October 2026: nothing in the plugin or the template changed since 8ec06b8); the rows were first checked at 0.2.27, cf3f696, 0.2.28 to 0.2.30 change none of them, and 0.3.0 and 0.3.1 change seven: design-trigger, test-verify, deploy-approve, deploy-release, x-headless, x-limits and x-measure, and add a sentence to x-sandbox and x-audit). "D<i>n</i>" is decision <i>n</i> in <code>docs/DECISIONS.md</code>; a difference with a decision behind it is deliberate, and one marked "no decision" is where to look first.</p>
+    <p class="note">Sources: <a href="https://claude.ai/artifact/WhLTjcSzJqQmUFm3aP5G6L">Playbook SDLC Workflow</a> (pages are the 53-page print of the article) and <a href="https://claude.ai/artifact/KW8jWunfLNa9WgBSzJxw4S">SDLC Plugin Workflow</a> (files are in <code>luissiviero/sdlc-framework</code> at 02d89c3, plugin 0.3.1 (re-checked on 3 October 2026: nothing in the plugin or the template changed since 8ec06b8); the rows were first checked at 0.2.27, cf3f696, 0.2.28 and 0.2.29 change none of them, 0.2.30 changes build-hooks (its panel-blindness hook, corrected on 3 October 2026), and 0.3.0 and 0.3.1 change seven: design-trigger, test-verify, deploy-approve, deploy-release, x-headless, x-limits and x-measure, and add a sentence to x-sandbox and x-audit). "D<i>n</i>" is decision <i>n</i> in <code>docs/DECISIONS.md</code>; a difference with a decision behind it is deliberate, and one marked "no decision" is where to look first.</p>
   </header>
 
   <div class="top">
@@ -453,12 +453,12 @@
       rel: "adapted", why: "D1 CI · D2 plan approved at (b) · D11 non-routine only tightens the gate (build guide step 18 preflight)",
       weigh: "Every approved plan runs unattended once the preflight's guardrail checks pass. D11 rejected escalating non-routine plans ('in a new project almost nothing is routine'); non-routine only lowers the iteration cap. Reopen D11, for example non-routine goes to Full?" },
     { id: "build-hooks", stage: "Build", step: "Guardrail hooks during the session",
-      pb: "Hooks block protected paths, format and lint after edits, and keep credentials out of the diff.",
+      pb: "Hooks block edits to protected paths, run the formatter and linter after file edits, keep credentials out of the diff, and back any skill whose policy has to hold without exception; they should be fast and scoped to the file that changed, with heavier checks such as the full test suite at the commit or the PR; a hook that asks a person belongs with the Deploy gates, not the build.",
       pbSrc: "p.23",
-      fw: "Protected paths (guardrails and the plugin itself), secrets check, formatter and linter on edit, plan sync on commit, test-file lock for fixes, production gate.",
-      fwSrc: "plugin/hooks/hooks.json",
-      rel: "same", why: "D6 · D7 Python hooks",
-      weigh: "The framework is a superset." },
+      fw: "Seven hooks, all deterministic, none asks; every block is logged, and every allow except the panel-blindness hook's (it logs blocks only) and the production gate's while no production is declared (it is inert then): protected paths (the guardrail files, the plugin itself and sdlc.yaml protected_paths), secrets check on every edit, formatter and linter on the changed file, plan sync on commit, test-file lock for fixes, panel blindness (0.2.30: while the review panel writes its two blind verdicts, neither can be read, and the advocate's model is recorded) and the production gate. The formatter and linter act on Python files only (ruff); other file types are not checked, although /sdlc-init also sets up Node projects, so there a lint problem first shows when the verifier runs the lint target at the end of the session, and at the latest at the gate's lint target, run after the session, where a red target parks. In CI the hooks load from the pinned plugin.",
+      fwSrc: "plugin/hooks/hooks.json, plugin/hooks/format_on_edit.py PY_SUFFIXES, plugin/hooks/panel_blind.py, plugin/hooks/_common.py run_hook, plugin/init/detect.py, plugin/agents/verifier.md",
+      rel: "adapted", why: "D6 (CI loads the hooks from the pinned plugin) · D7 Python hooks · the formatter's Python-only scope: no decision ('in this version', format_on_edit.py)",
+      weigh: "A superset of the article's three examples, narrower in one place: on a non-Python project nothing formats or lints on edit. Extend the formatter hook to the project's languages?" },
     { id: "build-plansync", stage: "Build", step: "Keeping plan.md in step with the work",
       pb: "Update plan.md in the same commit when the work departs from it; consider a hook to enforce the sync.",
       pbSrc: "p.16",
@@ -977,7 +977,7 @@
     "build-start": { pb: [["P", "w", "Engineer starts implementing"], ["C", "w", "Claude implements (auto-accept if routine)"]],
       fw: [["A", "w", "The merge fires sdlc-build.yml"], ["A", "w", "Preflight: acceptEdits when the guardrails pass, else park"], ["C", "w", "/sdlc-build runs unattended"]] },
     "build-hooks": { pb: [["A", "w", "Hooks: paths, format, credentials"]],
-      fw: [["A", "w", "Six hooks, incl. plan sync and test lock"]] },
+      fw: [["A", "w", "Seven hooks, incl. plan sync, test lock and panel blindness"]] },
     "build-plansync": { pb: [["C", "w", "plan.md updated in the same commit"]],
       fw: [["C", "w", "Build run updates plan.md in the same commit"], ["A", "w", "Plan-sync hook + gate check"]] },
     "build-subagents": { pb: [["C", "w", "Simplifier, verifier, researcher"], ["P", "w", "Engineer runs parallel worktrees"]],

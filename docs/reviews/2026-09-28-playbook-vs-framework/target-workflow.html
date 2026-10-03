@@ -98,9 +98,9 @@
 
 <div class="wrap">
   <header>
-    <div class="eyebrow">Target design · tentative · T1–T7 of target-design.md · 2 October 2026</div>
+    <div class="eyebrow">Target design · tentative · T1–T8 of target-design.md · 3 October 2026</div>
     <h1>The workflow as you want it to become</h1>
-    <p class="lede">The third workflow beside the <a href="https://claude.ai/artifact/WhLTjcSzJqQmUFm3aP5G6L">playbook's</a> and the <a href="https://claude.ai/artifact/KW8jWunfLNa9WgBSzJxw4S">framework's</a>. It draws only what <code>docs/reviews/2026-09-28-playbook-vs-framework/target-design.md</code> has discussed so far: AI roles that advise and one manager that reviews for you (T1), the interview (T2), the intent home (T3), the names (T4), how a project starts (T5), tickets that become intents (T6) and the reason a rejection keeps (T7). Steps the study has not reached yet are left out or marked "not discussed yet".</p>
+    <p class="lede">The third workflow beside the <a href="https://claude.ai/artifact/WhLTjcSzJqQmUFm3aP5G6L">playbook's</a> and the <a href="https://claude.ai/artifact/KW8jWunfLNa9WgBSzJxw4S">framework's</a>. It draws only what <code>docs/reviews/2026-09-28-playbook-vs-framework/target-design.md</code> has discussed so far: AI roles that advise and one manager that reviews for you (T1), the interview (T2), the intent home (T3), the names (T4), how a project starts (T5), tickets that become intents (T6), the reason a rejection keeps (T7) and a formatter that follows your languages (T8). Steps the study has not reached yet are left out or marked "not discussed yet".</p>
     <p class="banner"><strong>Nothing here is decided.</strong> Every entry is tentative until the whole study is done; then each confirmed entry becomes a proposal and a candidate row in <code>docs/ROADMAP.md</code>. The framework as it is today is on the framework page.</p>
     <div class="legend">
       <span><i class="sw hex"></i>Your decision or act</span>
@@ -110,7 +110,7 @@
   </header>
 
   <section>
-    <h2>One change, from idea to release <span class="refs">T1 · T3 · T4 · T5 · T6 · T7</span></h2>
+    <h2>One change, from idea to release <span class="refs">T1 · T3 · T4 · T5 · T6 · T7 · T8</span></h2>
     <p>Your approval points stay where they are today. What changes is what reaches you at each one: the roles write briefs, the manager turns them into one recommendation, you decide, and the act runs on your signal. Phases carry the names T4 proposes, with today's letter after each.</p>
     <div class="diagram"><pre class="mermaid">flowchart TB
   subgraph PREP["Before the first change"]
@@ -150,7 +150,7 @@
   D3 -. "questions to answer, or a change you want" .-> GQ{{"You answer in a 'Request changes' review"}}
   GQ -. "/sdlc-fix applies your answers, as today" .-> D1
 
-  BT["build: starts on its own from the merged plan, as today&lt;br/&gt;(preflight, acceptEdits, draft PR); test: not discussed yet"]
+  BT["build: starts on its own from the merged plan, as today&lt;br/&gt;(preflight, acceptEdits, draft PR); the seven hooks as today,&lt;br/&gt;the formatter on each edit in your project's languages (T8);&lt;br/&gt;test: not discussed yet"]
   GB -. "your label on the design PR before merging:&lt;br/&gt;Full for this change" .-> FULL["build and test wait for your labels,&lt;br/&gt;as in the Full profile; nothing without the label"]
   FULL -.-> BT
   GB -- "your signal" --> REC["The build runner records: plan accepted by whom and when,&lt;br/&gt;routine or non-routine, close look shown or not"]
@@ -191,6 +191,7 @@
       <li><strong>How a project starts (T5): added, nothing replaced.</strong> The whole loop from the first change stays the default. Optionally you leave the Claude credential (the repository secret GitHub needs to run Claude) out at first: every automatic phase job then ends "skipped", you run each phase's command yourself, and adding the credential later turns the automation on. The weekly scan fails until then. The change-0000 intent also lists what starts empty, so nothing about the first weeks is a surprise. No settled decision changes.</li>
       <li><strong>Tickets become intents (T6): added, nothing replaced.</strong> Tickets arrive as GitHub issues. Your label <code>sdlc:intent</code> on an issue starts a CI run that writes the intent and opens the intent PR, linked to the issue; you correct and merge it at the intent gate as today. Only your own label starts a run, and the issue text is read as data, never as instructions, since anyone can open an issue on a public repository. Alerts and <code>/sdlc-intent</code> by hand stay as they are; the repository stays the record and the issue holds the link (D9).</li>
       <li><strong>A rejection keeps its reason (T7): added, nothing replaced.</strong> Closing an intent PR still abandons the change (D25). Your last comment on it, if there is one, becomes the change's recorded reason instead of the fixed "pull request N closed without a merge"; with no comment the fixed text stays. Incidents keep today's rule.</li>
+      <li><strong>The formatter follows your languages (T8): added, nothing replaced.</strong> The seven guardrail hooks stay as they are: deterministic, every block logged, none asks. Today the formatter and linter on edit act on Python files only. Added: per file type, your project's own format and lint commands in <code>sdlc.yaml</code>, run on the changed file only and never blocking when a tool is missing; ruff stays the default for Python, and <code>/sdlc-init</code> proposes prettier and eslint for Node when <code>package.json</code> has them, and rustfmt for Rust. Checks that compile the whole project, such as clippy, stay at the gate's lint, as the article puts heavier checks at the commit or the PR (p.23). A file type with no command passes, so HTML, CSS, Markdown, JSON and YAML get no default. Recorded now, built after the study. No settled decision changes.</li>
     </ul>
   </section>
 
@@ -358,11 +359,20 @@
           <li>Which comments count: only yours, or any repository member's, as the incident rule reads today.</li>
         </ul>
       </div>
+      <div>
+        <h3>The formatter <span class="refs">T8</span></h3>
+        <ul class="notes">
+          <li>Full Rust support, beyond the formatter: detecting its build, test and lint commands; the test-file lock, which cannot freeze unit tests written inside source files (to revisit at the bug-fix test row); crates.io and <code>cargo</code> in the CI sandbox, which allows neither today.</li>
+          <li>On Windows npm's tools are <code>.cmd</code> shims, which cannot be started without a shell; whether the hook starts them through the shell, as the gate already does, is to verify.</li>
+          <li>The exact shape of the setting in <code>sdlc.yaml</code>.</li>
+          <li>Whether a project adds its own hooks behind its policy skills (the article's "back any skill"): decided with the skills row.</li>
+        </ul>
+      </div>
     </div>
   </section>
 
   <footer>
-    <span>Drawn from <code>target-design.md</code> entries T1–T7 and <code>naming.md</code>, as recorded from 30 September to 2 October 2026. Each entry lists the settled decisions (D<i>n</i>) it would reopen or amend.</span>
+    <span>Drawn from <code>target-design.md</code> entries T1–T8 and <code>naming.md</code>, as recorded from 30 September to 3 October 2026. Each entry lists the settled decisions (D<i>n</i>) it would reopen or amend.</span>
     <span>The other two pages: <a href="https://claude.ai/artifact/WhLTjcSzJqQmUFm3aP5G6L">Playbook SDLC Workflow</a> · <a href="https://claude.ai/artifact/KW8jWunfLNa9WgBSzJxw4S">SDLC Plugin Workflow</a> · and the <a href="https://claude.ai/artifact/PFnRZ32pwTr4y422Gna2mz">Workflow Crosswalk</a> that compares them.</span>
   </footer>
 </div>
