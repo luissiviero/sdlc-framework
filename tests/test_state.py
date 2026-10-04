@@ -1000,3 +1000,61 @@ def test_read_status_on_the_default_branch_reads_a_merged_incident_as_gate_a(tmp
     assert (change_dir / "status.yaml").read_text(encoding="utf-8") == before
     raw = status.read_status(change_dir)
     assert raw.parked_reason == "route: Go requested" and raw.gate.result == "parked"
+
+
+def test_commit_phase_carries_the_review_pass_s_record(repo, capsys):
+    """``changes/.review-seen.json`` (the review pass's record, one file per project, outside
+    the change folder) goes into every commit-phase commit at (d) and (e) in which it
+    changed, with no --paths needed: until 0.3.5 a round that re-ran ``review/cli.py
+    validate`` after its last commit left it uncommitted, and gate (e)'s clean_tree parked on
+    it (change 0001's fix rounds 3 and 4, 2026-10-03). Its siblings under changes/ still need
+    --paths; at (a) and (b) it is not carried (a committed file outside the folder fails
+    design_scope); a deleted record or a directory of that name is not it (the review of the
+    0.3.5 diff)."""
+    root = repo
+    assert cli.main(["new-change", "--root", str(root), "--title", "Percent helper"]) == 0
+    capsys.readouterr()
+    change = c.find_change_dir(root, "0001")
+    rel = "changes/0001-percent-helper"
+    (change / "intent.md").write_text("# Intent\n", encoding="utf-8")
+    rc, out, _ = _commit_phase(root, "a", "intent(0001): percent helper", capsys)
+    assert rc == 0 and out["commit"]
+    _git(root, "checkout", "-q", "-b", "sdlc/0001/c")  # the build branch (d) and (e) commit on
+
+    seen = root / c.review_seen_rel()
+    seen.write_text('{"27da52344010278e": {"count": 1}}\n', encoding="utf-8")  # untracked
+    (change / "intent.md").write_text("# Intent v2\n", encoding="utf-8")
+    rc, out, _ = _commit_phase(root, "a", "fix(0001): intent", capsys)  # (a): not carried
+    assert rc == 0 and _committed(root) == [f"M {rel}/intent.md"]
+    assert _git(root, "status", "--porcelain", "--", "changes/.review-seen.json").startswith("??")
+
+    (root / "changes" / "scratch.json").write_text("{}\n", encoding="utf-8")
+    (change / "spec.md").write_text("# Spec\n", encoding="utf-8")
+    rc, out, _ = _commit_phase(root, "e", "review(0001): findings", capsys)
+    assert rc == 0 and out["commit"] and out["branch"] == "sdlc/0001/c"
+    assert _committed(root) == sorted(  # status.yaml: the phase moved to (e)
+        ["A changes/.review-seen.json", f"A {rel}/spec.md", f"M {rel}/status.yaml"]
+    )
+    assert _git(root, "status", "--porcelain", "--", "changes/scratch.json").startswith("??")
+
+    seen.write_text('{"27da52344010278e": {"count": 2}}\n', encoding="utf-8")  # modified
+    rc, out, _ = _commit_phase(root, "e", "review(0001): second pass", capsys)
+    assert rc == 0 and out["commit"]
+    assert _committed(root) == ["M changes/.review-seen.json"]
+
+    rc, out, _ = _commit_phase(root, "e", "review(0001): again", capsys)  # unchanged
+    assert rc == 0 and out["commit"] is None
+
+    seen.unlink()  # a deleted record is left for the gate to report
+    (change / "spec.md").write_text("# Spec v2\n", encoding="utf-8")
+    rc, out, _ = _commit_phase(root, "e", "review(0001): deletion stays out", capsys)
+    assert rc == 0 and _committed(root) == [f"M {rel}/spec.md"]
+    assert _git(root, "status", "--porcelain", "--", "changes/.review-seen.json").startswith(" D")
+
+    _git(root, "checkout", "-q", "--", "changes/.review-seen.json")
+    seen.unlink()
+    seen.mkdir()  # a directory of that name is not the record
+    (seen / "payload.py").write_text("x = 1\n", encoding="utf-8")
+    (change / "spec.md").write_text("# Spec v3\n", encoding="utf-8")
+    rc, out, _ = _commit_phase(root, "e", "review(0001): a directory is not it", capsys)
+    assert rc == 0 and _committed(root) == [f"M {rel}/spec.md"]

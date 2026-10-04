@@ -1795,6 +1795,63 @@ def test_clean_tree_ignores_the_placeholders_and_the_masked_paths(project):
     assert ct.details["dirty"] == ["sample_pkg/calc.py"]
 
 
+def test_clean_tree_sets_aside_the_review_pass_s_record(project):
+    """``changes/.review-seen.json`` is written by ``review/cli.py validate`` right before the
+    gate reads the findings beside it, and lives outside the change folder (one file per
+    project): until 0.3.5 the gate read it as uncommitted work, and every fix round of change
+    0001 at gate (e) parked on it (2026-10-03, PROGRESS "Session 19"). At (d) and (e),
+    untracked or modified, it is set aside and listed under ``ignored``; a sibling under
+    changes/ is still work, and so is anything at that path that is not the record's shape."""
+    root, change = project
+
+    def clean_tree_at(phase: str):
+        st = status_mod.read_status(change)
+        st.set_phase(phase)  # the gate refuses a phase status.yaml does not carry
+        status_mod.write_status(change, st)
+        result = gate.run_gate(root, "0001", phase, dry_run=True)
+        return next(ch for ch in result.checks if ch.name == "clean_tree")
+
+    seen = root / "changes" / ".review-seen.json"
+    write(seen, '{"27da52344010278e": {"count": 1, "first_change": "0001"}}\n')  # untracked
+    verdict(root, "c")
+    ct = clean_tree_at("c")  # (c): the review pass never runs there
+    assert not ct.ok and ct.details["dirty"] == ["changes/.review-seen.json"]
+    for phase in ("d", "e"):
+        ct = clean_tree_at(phase)
+        assert ct.ok, ct.reason
+        assert ct.details["ignored"] == ["changes/.review-seen.json"]
+
+    git(root, "add", "changes/.review-seen.json")
+    git(root, "commit", "-q", "-m", "review record")
+    write(seen, '{"27da52344010278e": {"count": 2, "first_change": "0001"}}\n')  # modified
+    ct = clean_tree_at("e")
+    assert ct.ok, ct.reason
+    assert ct.details["ignored"] == ["changes/.review-seen.json"]
+
+    write(root / "changes" / "scratch.json", "{}\n")  # any other file under changes/ is work
+    ct = clean_tree_at("e")
+    assert not ct.ok
+    assert ct.details["dirty"] == ["changes/scratch.json"]
+    assert ct.details["ignored"] == ["changes/.review-seen.json"]
+    (root / "changes" / "scratch.json").unlink()
+
+    # the review of the 0.3.5 diff: only the record's own shape is set aside — a deleted
+    # record, a non-JSON payload or a symlink at that path is work the gate reports
+    seen.write_text("not json\n", encoding="utf-8")
+    ct = clean_tree_at("e")
+    assert not ct.ok
+    assert ct.details["dirty"] == ["changes/.review-seen.json"] and ct.details["ignored"] == []
+    seen.unlink()
+    ct = clean_tree_at("e")
+    assert not ct.ok
+    assert ct.details["dirty"] == ["changes/.review-seen.json"]
+    if os.name != "nt":
+        seen.symlink_to(root / "sample_pkg" / "calc.py")
+        ct = clean_tree_at("e")
+        assert not ct.ok
+        assert ct.details["dirty"] == ["changes/.review-seen.json"]
+
+
 def test_a_committed_empty_file_is_still_part_of_the_diff(design_project):
     """Only untracked entries are treated as placeholders: an empty file the phase committed
     is a change like any other (ctx.diff.files keeps its meaning for committed work)."""
