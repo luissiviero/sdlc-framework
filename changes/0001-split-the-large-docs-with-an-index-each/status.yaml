@@ -1,32 +1,32 @@
 id: "0001"
 slug: split-the-large-docs-with-an-index-each
 title: Split the large docs with an index each
-phase: b
+phase: e
 entry_route: idea
 change_type: feature
 profile_override: null
 review_override: null
 gate:
-  phase: b
-  result: passed
-  reason: waiting for the owner at gate (b)
-  at: "2026-10-02T21:39:07Z"
-parked_reason: null
+  phase: e
+  result: parked
+  reason: "clean_tree: 1 uncommitted file(s) outside the change folder: changes/.review-seen.json; findings: 2 Important review finding(s) open; adversarial_review: adversarial reviewer says escalate: spec.md's Acceptance text ('docs/PROGRESS.md holds only the current record') is unmet on this HEAD, verified directly against the live file: `docs/PROGRESS.md` carries four top-level `# ` headings (the new 'Change 0001' entry plus 'session 18, third sitting', 'session 18, second sitting' and plain 'session 18'), not one. evidence/verifier.md (an earlier, independent pass) traces the extra three to a 'Merge main into sdlc/0001/c' that landed after this change's own split commits ran, not to this change's own edits — so the cause is understood and is not round 4's doing — but round 4's diff (the only thing I was asked to judge) touches only spec.md's verified_with wording and one PROGRESS prose line; it neither closes this gap nor records a decision for it in spec.md's Flagged concerns, unlike the verified_with gap, which this same round did close properly with an owner decision. REVIEW.md's own compliance pass ('the change matches spec.md, plan.md and our design principles') makes a spec/plan mismatch Important by this project's own rule, independent of any reviewer's say-so, and the fix the review-response contemplates (archiving the extra records) is non-trivial — it risks colliding with still-active edits on `main` — so this is a real, open judgment call that belongs in front of the owner, not something a fix round that was never asked to touch it can be read as having settled.; As a secondary, already-expected blast-radius note (not an independent reason to escalate): CLAUDE.md lines 3 and 35 now name `docs/DECISIONS.md` and `docs/NOTES.md`, which this change turned into one-line stub files (verified directly: both now read '# Decisions/Notes — moved ...'). This is an unavoidable, direct consequence of the split and is handled correctly — left unedited (guardrail file this session cannot touch) and proposed via docs/PROGRESS.md's table and evidence/claude-md-proposals.md — so it does not by itself change the verdict, but it is part of what the owner is being asked to read in one sitting alongside the PROGRESS.md gap above."
+  at: "2026-10-03T22:56:09Z"
+parked_reason: "clean_tree: 1 uncommitted file(s) outside the change folder: changes/.review-seen.json; findings: 2 Important review finding(s) open; adversarial_review: adversarial reviewer says escalate: spec.md's Acceptance text ('docs/PROGRESS.md holds only the current record') is unmet on this HEAD, verified directly against the live file: `docs/PROGRESS.md` carries four top-level `# ` headings (the new 'Change 0001' entry plus 'session 18, third sitting', 'session 18, second sitting' and plain 'session 18'), not one. evidence/verifier.md (an earlier, independent pass) traces the extra three to a 'Merge main into sdlc/0001/c' that landed after this change's own split commits ran, not to this change's own edits — so the cause is understood and is not round 4's doing — but round 4's diff (the only thing I was asked to judge) touches only spec.md's verified_with wording and one PROGRESS prose line; it neither closes this gap nor records a decision for it in spec.md's Flagged concerns, unlike the verified_with gap, which this same round did close properly with an owner decision. REVIEW.md's own compliance pass ('the change matches spec.md, plan.md and our design principles') makes a spec/plan mismatch Important by this project's own rule, independent of any reviewer's say-so, and the fix the review-response contemplates (archiving the extra records) is non-trivial — it risks colliding with still-active edits on `main` — so this is a real, open judgment call that belongs in front of the owner, not something a fix round that was never asked to touch it can be read as having settled.; As a secondary, already-expected blast-radius note (not an independent reason to escalate): CLAUDE.md lines 3 and 35 now name `docs/DECISIONS.md` and `docs/NOTES.md`, which this change turned into one-line stub files (verified directly: both now read '# Decisions/Notes — moved ...'). This is an unavoidable, direct consequence of the split and is handled correctly — left unedited (guardrail file this session cannot touch) and proposed via docs/PROGRESS.md's table and evidence/claude-md-proposals.md — so it does not by itself change the verdict, but it is part of what the owner is being asked to read in one sitting alongside the PROGRESS.md gap above."
 iterations: 1
 panel_calls: 0
 external_ref: null
 risk_accepted: []
 tests_locked: false
 risk_accepted_by: []
-iterations_reset_by: null
-iterations_reset_at: null
+iterations_reset_by: luissiviero
+iterations_reset_at: "2026-10-03T22:32:30Z"
 tests_unlocked_by: null
 runbook_authorized_by: null
 abandoned_reason: null
-build_pr: null
+build_pr: 112
 released_at: null
 released_sha: null
 released_pr: null
 created_at: "2026-10-02T09:04:23Z"
-updated_at: "2026-10-02T21:39:07Z"
+updated_at: "2026-10-03T22:56:09Z"
 schema_version: 1

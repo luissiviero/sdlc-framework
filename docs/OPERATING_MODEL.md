@@ -2,7 +2,7 @@
 
 > The loop keeps running. Human judgement stays above it. — *The AI-Native SDLC playbook*, p.50
 
-This file is the first artifact of the framework (build guide step 1; finalised in session 1). It states what the framework does, which artifact every phase commits, when a human is involved, and how change requests flow. Everything else in the repo implements it. Rationale and article citations live in `docs/BUILD_GUIDE.md`; the choices behind it in `docs/DECISIONS.md`; platform facts verified against the Claude Code docs in `docs/NOTES.md`.
+This file is the first artifact of the framework (build guide step 1; finalised in session 1). It states what the framework does, which artifact every phase commits, when a human is involved, and how change requests flow. Everything else in the repo implements it. Rationale and article citations live in `docs/BUILD_GUIDE.md`; the choices behind it in `docs/decisions/index.md`, one file per decision; platform facts verified against the Claude Code docs in `docs/notes/index.md`, one file per section.
 
 ## 1. Purpose
 

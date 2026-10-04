@@ -1,0 +1,133 @@
+# Review response — phase (e), round 1 (head `0f2b8d3447d2169313ac45599f6306a9fd3040d6`)
+
+- **Important — `docs/notes/2.md:5` (and 28 of the other 31 `docs/notes/<N>.md` files): `verified_with` carries only the Claude Code version, never the plugin version or the runner, though spec.md Requirements line 11 asks for all three.**
+  Partly fixed this round, left open overall. The phase (c)/(d) verifier already found and
+  recorded this exact gap (`evidence/verifier.md`: "30 of 32 files carry only
+  `Claude Code X.Y.Z` ... none carries a `runner` value") and judged it "a minor,
+  mechanically-checkable documentation-metadata shortfall that nothing in
+  `plugin/`/`tests/` reads today ... it should be noted for a follow-up fix" — a known,
+  deliberately-deferred gap, not a regression this round introduced. The adversarial
+  reviewer's verdict on this round's first attempt (escalate) pointed out, correctly, that
+  the six files for `generated.at` 2026-10-02/10-03 (`docs/notes/27.md`–`32.md`, sessions
+  15–18) have their plugin version stated directly and unambiguously in their own text
+  (e.g. `32.md`: "The container (verified): the chained checks green on the 0.3.4 code")
+  — so leaving even those untouched was not justified. Fixed now: `27.md` → "Claude Code
+  2.1.287; plugin 0.3.0"; `28.md` → "Claude Code 2.1.287; plugin 0.3.1"; `29.md` → "Claude
+  Code 2.1.288; plugin 0.3.1"; `30.md` → "Claude Code 2.1.288; plugin 0.3.2"; `31.md` →
+  "Claude Code 2.1.288; plugin 0.3.3"; `32.md` → "Claude Code 2.1.288; plugin 0.3.4" (each
+  plugin version taken from that session's own "built/lives/fix lives since <version>,
+  read from the code written this session" sentence, i.e. the version the session's own
+  fact was verified against, not the version at the session's start).
+  A first attempt at this fix also set `30.md`–`32.md`'s runner to "a CI session", reading
+  the GitHub Actions workflow-run details (job ids, `sandbox_applies: true`) these notes
+  quote as proof of the note-writing session's own environment. A second, independent
+  review pass on that attempt caught the conflation: those workflow-run details describe a
+  *separate* thing each note is reporting on — change 0001's own automated, pinned-2.1.278
+  build run, read from its job log — not the interactive 2.1.288 session that wrote the
+  note. The same session's own "## Checks" section in `docs/PROGRESS.md` (session 18, each
+  sitting) shows `compileall`/`pytest`/`ruff` run directly, with a literal `CHAIN EXIT 0`,
+  which is how an interactive session reports its own commands, not how a CI session's
+  deferred-to-the-runner mark reads — so the note-writing session is not itself the CI run
+  it describes. The wrong "a CI session" value was removed before this round's commit, and
+  sessions 15–18 (`27.md`–`32.md`) are treated alike: plugin version filled in, runner left
+  out. None of the six states, in its own words, whether the session that wrote it ran on
+  the owner's local machine or in a cloud session (checked directly in
+  `docs/progress/session-{15,16,17}.md` and the matching parts of `docs/PROGRESS.md`); a
+  CI-session identity is the one thing ruled out for all six, by the direct, non-deferred
+  `CHAIN EXIT 0` evidence, but cloud versus local is not, so the runner field stays out
+  rather than guessed.
+  The remaining 26 files (sessions 1–14, `generated.at` 2026-09-19 through 2026-09-30) are
+  left untouched: several of their dates each cover two to six different sittings with
+  different plugin versions, so the date alone does not identify the session (the note's
+  own title does); even once that correction is made, no file in that range states its own
+  plugin version or runner in the same direct way sessions 15–18 do — reconstructing them
+  would mean inferring from an indirect mechanism note (NOTES §16, about a cloud session's
+  GitHub scope) rather than reading a direct citation. `verified_with` is the field a later
+  session reads to decide whether a fact is stale (spec.md Requirements line 12-13); writing
+  an inferred, unconfirmed value into it is worse than leaving the field incomplete, since it
+  would read as settled provenance it is not.
+  The owner can waive the remaining gap in a review comment (review: parked, so the gate's
+  "findings" check is the owner's to settle), or ask for a follow-up change once sessions
+  1–14's environment is identified from the owner's own memory of which ran locally versus
+  in a cloud session.
+
+- **Nits (4) — not fixed in this loop (article p.34: nits are listed, not fixed):**
+  - `docs/PROGRESS.md:4` — the new top-level record's summary says "`docs/NOTES.md` (30
+    sections)"; 32 section files are indexed. A wording slip in prose, not a structural
+    defect; left for the owner to ask for by name.
+  - `docs/PROGRESS.md:24` — the new record's guardrail table has 3 rows (CLAUDE.md lines 3,
+    new-line-after-3, 35); spec.md's Acceptance text also names line 39, but line 39 needs
+    no edit (unchanged, "docs/PROGRESS.md keeps its name and current-record role
+    unstubbed" — stated in the record's own prose, just not as a fourth table row). Not
+    fixed: adding a "no change" row would contradict the table's own "What it must become"
+    column, which only ever lists an edit.
+  - `docs/notes/1.md:3` — doubt about whether `sources` should also hold the verbatim quote;
+    spec.md's Design section does not require the quote in frontmatter (quotes stay in the
+    file body), so this is believed not to be a real gap; left as the reviewer's own stated
+    doubt.
+  - `docs/PROGRESS.md:1` — doubt about four top-level records instead of one "current"
+    record; the reviewer's own note attributes the extra two (session 18, second and third
+    sittings) to a later merge of `main` bringing in sessions this change's own commits
+    never touched, not to this round's edit — already resolved reasoning, no action needed.
+
+- **Not a real gap, after two wrong attempts to describe it: `evidence/claude-md-proposals.md`
+  correctly does not carry a line for the recurring `verified_with` gap.**
+  Two earlier drafts of this response claimed otherwise (first, that the line had been
+  added; then, that the mechanism was broken because each round's finding has a different
+  signature) — both wrong, caught by two separate adversarial-review passes that checked
+  the actual file and the actual mechanism rather than trusting the prose.
+  `changes/.review-seen.json`'s entry for this finding's signature (`7cd11e55e64ea40f`)
+  shows `"count": 2, "first_change": "0001", "last_change": "0001"`: it has been seen
+  before (count 2, so the signature *does* match round to round, contrary to the second
+  wrong draft), but always inside this same change. `plugin/review/findings.py:
+  update_seen`'s own docstring is explicit about what that means: "A finding is repeated
+  when its signature was already recorded (count >= 1) **by another change id**; two
+  occurrences inside one change are one mistake being reviewed twice, not the pattern the
+  CLAUDE.md line is for" (the code: `if count >= 1 and first != change_id`). The
+  second-occurrence rule is for a mistake this agent repeats across *different* changes —
+  the pattern a permanent CLAUDE.md line is for — not for one change's own finding staying
+  open across its own fix rounds, which is exactly what the gate's "findings" check already
+  blocks on without any CLAUDE.md line needed. `evidence/claude-md-proposals.md` holding
+  only the unrelated line-39 nit is therefore correct as it stands, and nothing here is
+  left for the owner beyond the open `verified_with` finding itself.
+
+No other Important finding stands. The previously-flagged splice (this change's own
+`docs/PROGRESS.md` entry merged into an old, superseded record) was fixed this round —
+see the commit-phase message — and the same review pass confirmed it independently.
+
+# Review response — phase (e), round 2 (head `69923c7489d1b95bec04114dd8a34885fc587a08`)
+
+The owner's waiver (`evidence/fix-response.md`'s round 4) closed the `verified_with`
+finding this section tracked through three rounds: `spec.md` now says a runner is not
+required, and the live frontmatter already matched that rule. A fresh review pass on the
+new head finds none of that family open, but reclassifies two long-standing items this
+change's own prior rounds treated as non-blocking nits:
+
+- **Important — `CLAUDE.md:3` (and line 35): outdated by the split, per REVIEW.md's
+  unconditional framework rule.** Not fixed: `CLAUDE.md` is a guardrail file this session
+  cannot edit (CLAUDE.md "Things Claude gets wrong"; `.claude/**` protection). The exact
+  replacement text has been in `docs/PROGRESS.md`'s "Guardrail lines for the owner" table
+  since the build, and `evidence/claude-md-proposals.md` carries the same two lines again
+  for the PR body. Nothing new for the owner beyond applying that table after merging.
+
+- **Important — `docs/PROGRESS.md:30`: four top-level records, not the one `spec.md`'s
+  Acceptance line 184 asks for.** Not fixed this round. This is the same gap round 1's
+  review response described under `docs/PROGRESS.md:1` and judged "already resolved
+  reasoning, no action needed" (traced to `1923176`, "Merge main into sdlc/0001/c: the
+  docs appended since the split" — three records this change's own commits never wrote,
+  carrying session 18's second and third sittings and a plain "session 18" entry, each
+  itself a record of this same change's own earlier build attempts on `main`). This
+  round's review pass does not accept that reasoning and calls it Important instead of a
+  nit; checked directly, `docs/PROGRESS.md` does still hold those three records plus the
+  current one. Not fixed here because archiving them is a bigger step than this round's
+  request: it would mean moving records a later `main` merge brought in after this
+  branch's own split already ran, on a file sessions on `main` are still actively
+  appending to — a real risk of colliding with work in progress, and a scope beyond
+  "waive `verified_with`, fix the section count" the owner actually asked for this round.
+  Left for the owner: waive it (read `spec.md`'s "current record" invariant as checked at
+  the design/build boundary, not re-checked after every later merge), or ask for it as its
+  own fix request, naming which of the three records to archive.
+
+- **Nit — `docs/notes/index.md:8`: not fixed in this loop** (article p.34: nits are
+  listed, not fixed). The index's one-line field description was not reworded for round
+  4's amended `verified_with` rule; cosmetic only.

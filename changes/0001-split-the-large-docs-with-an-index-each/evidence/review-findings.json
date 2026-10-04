@@ -1,0 +1,39 @@
+{
+  "at": "2026-10-03T22:42:47Z",
+  "findings": [
+    {
+      "file": "CLAUDE.md",
+      "line": 3,
+      "pass": "compliance",
+      "rule": "REVIEW.md Framework rules: \"Flag when the change has made CLAUDE.md outdated.\" (The change already proposes the exact replacement lines to the owner in docs/PROGRESS.md's guardrail table, per CLAUDE.md's own \"Things Claude gets wrong\" rule \u2014 noted here because the framework rule is unconditional, not because the fix is missing.)",
+      "severity": "important",
+      "signature": "27da52344010278e",
+      "summary": "The split turns `docs/DECISIONS.md` and `docs/NOTES.md` into pointer stubs, so CLAUDE.md line 3 (`docs/DECISIONS.md` records the 26 settled choices) and line 35 (record the answer in `docs/NOTES.md`) now name files that no longer hold the content they describe."
+    },
+    {
+      "file": "docs/PROGRESS.md",
+      "line": 30,
+      "pass": "compliance",
+      "rule": "spec.md line 184 (Acceptance: \"`docs/PROGRESS.md` holds only the current record\"); plan.md step 4/7 (\"rewrite `docs/PROGRESS.md` to hold only the current record\" before the new entry is added)",
+      "severity": "important",
+      "signature": "65fcfd3d367f9a77",
+      "summary": "docs/PROGRESS.md still carries four top-level records (the new Change 0001 entry plus the session-18 'third sitting', 'second sitting' and plain 'session 18' records) instead of only the current one, unmet against spec.md's own Acceptance text."
+    },
+    {
+      "file": "docs/notes/index.md",
+      "line": 8,
+      "pass": "compliance",
+      "rule": "cosmetic drift from spec.md's amended Requirements line 11-13 wording; not required by spec, doubt noted",
+      "severity": "nit",
+      "signature": "207bfd1e53b9fc40",
+      "summary": "The index's one-line description of the frontmatter fields still just says `verified_with` with no note that a runner value is deliberately omitted, so it reads as if the field still matches the pre-round-4 three-part wording."
+    }
+  ],
+  "head": "69923c7489d1b95bec04114dd8a34885fc587a08",
+  "schema_version": 1,
+  "tally": {
+    "important": 2,
+    "nit": 1,
+    "nits_omitted": 0
+  }
+}

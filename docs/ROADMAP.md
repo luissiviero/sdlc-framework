@@ -1,6 +1,6 @@
 # Roadmap
 
-Written in session 7 (2026-09-25) as the handoff asked. The owner calls the version that completes the current 47-step plan **Milestone 1**; what comes after it is discussed first and ordered later. This page says what Milestone 1 is, how it is marked, and which candidates are on the table for what follows. Nothing here reopens a decision (`docs/DECISIONS.md`).
+Written in session 7 (2026-09-25) as the handoff asked. The owner calls the version that completes the current 47-step plan **Milestone 1**; what comes after it is discussed first and ordered later. This page says what Milestone 1 is, how it is marked, and which candidates are on the table for what follows. Nothing here reopens a decision (`docs/decisions/index.md`).
 
 ## Milestone 1 — the 47-step plan complete
 

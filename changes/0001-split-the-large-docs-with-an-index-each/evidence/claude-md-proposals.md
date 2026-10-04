@@ -1,0 +1,2 @@
+<!-- Proposed CLAUDE.md lines under "Things Claude gets wrong" (article p.34 step 5). The PR description quotes this file; only the owner edits CLAUDE.md. -->
+- The split turns `docs/DECISIONS.md` and `docs/NOTES.md` into pointer stubs, so CLAUDE.md line 3 (`docs/DECISIONS.md` records the 26 settled choices) and line 35 (record the answer in `docs/NOTES.md`) now name files that no longer hold the content they describe (change 0001; the owner edits CLAUDE.md)

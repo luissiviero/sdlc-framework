@@ -1,0 +1,26 @@
+# Progress archive
+
+Every earlier top-level record of `docs/PROGRESS.md` lives here, one file per record, in
+chronological order (oldest first). The current record stays in `docs/PROGRESS.md`.
+
+- [Session 3 record (B3: first autonomous phases, gates, merge-triggered plumbing; steps 22–30) — kept as written at the end of session 3](session-3.md)
+- [Session 4 record (B4: release gate, deploy adapters, decisions 21–26; steps 29, 31, 32, 16a) — kept as written at the end of session 4 (B4: release gate, deploy adapters, then decisions 21–26; steps 29, 31, 32, 16a)](session-4.md)
+- [Session 5 record (B5: closing the loop — phase (f) maintain, evals, scans, gate (f), observability; steps 33–43; decision 26) — kept as written at the end of session 5](session-5.md)
+- [Session 6 record (the phase (f) shakedown: live checks 16–23 and the owed 8 on the sample repository; plugin 0.2.20) — kept as written at the end of session 6](session-6.md)
+- [Session 7 record (the shakedown's gaps closed, the metric source corrected, the roadmap and two proposals; plugin 0.2.23) — kept as written at the end of session 7](session-7.md)
+- [Session 8, first sitting (the session-7 review's leftovers closed; the sample out of the session's reach; plugin 0.2.24) — kept as written](session-8-sitting-1.md)
+- [Session 8, second sitting (2026-09-26): the plan to 1.0.0 (docs only; plugin stays 0.2.24) — kept as written](session-8-sitting-2.md)
+- [Progress — session 9 (2026-09-26): the 1.0.0 readiness review; six defects fixed in plugin 0.2.25; the road re-planned as one session per group](session-9.md)
+- [Progress — session 10 (2026-09-27): group A of the readiness review, the gate and `status.yaml`; plugin 0.2.26](session-10.md)
+- [Progress — session 11 (2026-09-28): group B of the readiness review, CI, release and detect; plugin 0.2.27](session-11.md)
+- [Progress — session 12 (2026-09-28): group C of the readiness review, the test and eval infrastructure; plugin 0.2.28](session-12.md)
+- [Workflow comparison study (2026-09-28): the playbook and the framework compared; docs only, written against plugin 0.2.27](2026-09-28-workflow-comparison-study.md)
+- [Progress — session 13 (2026-09-29): group D of the readiness review, the documentation pass; no bump](session-13.md)
+- [Progress — session 14, first sitting (2026-09-29): the live checks that need no points — parked at step 2, the sample's upgrade PR](session-14-sitting-1.md)
+- [Progress — session 14, second sitting (2026-09-29 to 2026-09-30): the live checks that need no points — steps 2 to 5 done live; plugin 0.2.29 (the park names the failed step once)](session-14-sitting-2.md)
+- [Change 0001 (2026-10-02, between sessions 14 and 15): the framework's first change through its own front door; one framework defect found; docs only, no bump](2026-10-02-change-0001-first-change.md)
+- [Progress — 2026-10-02, outside the session plan: the review panel's two blind verdicts enforced; plugin 0.2.30](2026-10-02-review-panel-blind-verdicts.md)
+- [Between sessions 14 and 15, second sitting (2026-10-02): the road re-ordered — the framework moves on at 0.3.x while the sample's live check runs untouched; docs only, no bump](2026-10-02-between-sessions-14-15-sitting-2.md)
+- [Progress — session 15 (2026-10-02): issue #91 fixed — the runner runs the gate's commands after the model's session; plugin 0.3.0](session-15.md)
+- [Progress — session 16 (2026-10-02): the five study issues fixed — the release runs once per change and only on a copy gate (e) judged, a parked merge waits for the label, no phase runs on change 0000, the budget cap binds the change's total, the stored result is a result record; plugin 0.3.1](session-16.md)
+- [Progress — session 17 (2026-10-02): change 0001's review round on plugin 0.3.1 — the first live proof that the runner runs the gate's commands after the model's session, inside the real sandbox's run; the review went in by the dispatch route; docs only, no bump](session-17.md)

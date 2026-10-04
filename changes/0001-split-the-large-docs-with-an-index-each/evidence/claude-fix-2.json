@@ -1,0 +1,99 @@
+{
+  "api_error_status": null,
+  "duration_api_ms": 375954,
+  "duration_ms": 393579,
+  "fast_mode_disabled_reason": "sdk_opt_in_required",
+  "fast_mode_state": "off",
+  "first_content_frame_ms": 2527,
+  "is_error": false,
+  "modelUsage": {
+    "claude-sonnet-5": {
+      "cacheCreationInputTokens": 165796,
+      "cacheReadInputTokens": 3417465,
+      "canonicalModel": "claude-sonnet-5",
+      "contextWindow": 1000000,
+      "costBasis": "list",
+      "costUSD": 1.5585340000000005,
+      "inputTokens": 114,
+      "maxOutputTokens": 64000,
+      "outputTokens": 33858,
+      "provider": "firstParty",
+      "thinkingTokens": 17907,
+      "webSearchRequests": 0
+    }
+  },
+  "num_turns": 41,
+  "permission_denials": [],
+  "queued_turn_count": 0,
+  "result": "Gate passed, `parked_reason` cleared. Done.\n\n**Report:** PR https://github.com/luissiviero/sdlc-framework/pull/112 \u2014 gate (c) result: **continue** (passed), `sdlc:needs-human` label removed. Iterations used: 2 of 2 (cap reached, so the next round, if any, is the owner's). No requests left open \u2014 both reviews asked only to re-run the gate, which confirmed the prior `clean_tree` park was the CI sandbox's masked view of `tests/fixtures/sample-python-project/.env`, not a real change.",
+  "result_index": 0,
+  "session_id": "5e9e3445-d22c-4b7b-97e2-2bdc58a52aac",
+  "stop_reason": "end_turn",
+  "subagent_stats": {
+    "by_type": {
+      "sdlc:adversarial-reviewer": 1
+    },
+    "completed": 1,
+    "failed": 0,
+    "killed": {
+      "parent": 0,
+      "system": 0,
+      "user": 0
+    },
+    "max_depth": 1,
+    "refused": {
+      "budget": 0,
+      "concurrency_limit": 0,
+      "depth_limit": 0
+    },
+    "requested": {
+      "background": 0,
+      "foreground": 0,
+      "unset": 1
+    },
+    "spawned": 1,
+    "spawned_by_subagents": 0,
+    "started_in_background": 0
+  },
+  "subtype": "success",
+  "terminal_reason": "completed",
+  "time_to_request_ms": 99,
+  "total_cost_usd": 1.5585340000000005,
+  "ttft_ms": 3305,
+  "ttft_stream_ms": 2527,
+  "type": "result",
+  "usage": {
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 81162,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "cache_creation_input_tokens": 81162,
+    "cache_read_input_tokens": 2343281,
+    "inference_geo": "not_available",
+    "input_tokens": 74,
+    "iterations": [
+      {
+        "cache_creation": {
+          "ephemeral_1h_input_tokens": 713,
+          "ephemeral_5m_input_tokens": 0
+        },
+        "cache_creation_input_tokens": 713,
+        "cache_read_input_tokens": 80449,
+        "input_tokens": 2,
+        "output_tokens": 194,
+        "type": "message"
+      }
+    ],
+    "output_tokens": 16322,
+    "output_tokens_details": {
+      "thinking_tokens": 8698
+    },
+    "server_tool_use": {
+      "web_fetch_requests": 0,
+      "web_search_requests": 0
+    },
+    "service_tier": "standard",
+    "speed": "standard"
+  },
+  "uuid": "6192d069-4192-43ec-8f82-d8d3e8d35f48"
+}

@@ -1,6 +1,6 @@
 # SDLC framework
 
-A Claude Code plugin (`plugin/`) plus a project template (`template/`) that drives any project through plan → design → build → test → deploy → maintain with profile-based human gates. `docs/OPERATING_MODEL.md` is the contract; `docs/PROGRESS.md` says what exists after each build session; `docs/NOTES.md` holds the platform facts verified against the Claude Code docs; `docs/MODEL_ALLOCATION.md` says which build-session tasks run on Fable and which on Opus sub-agents.
+A Claude Code plugin (`plugin/`) plus a project template (`template/`) that drives any project through plan → design → build → test → deploy → maintain with profile-based human gates. `docs/OPERATING_MODEL.md` is the contract; `docs/PROGRESS.md` says what exists after each build session; `docs/notes/index.md` holds the platform facts verified against the Claude Code docs, one file per section; `docs/MODEL_ALLOCATION.md` says which build-session tasks run on Fable and which on Opus sub-agents.
 
 - Tests and lint: `python tasks.py check` (or `test` / `lint` / `format`).
 - Try the plugin in a project: `claude --plugin-dir <path-to-this-repo>` (the repository root is the plugin root; `.claude-plugin/plugin.json` points at `plugin/`), then `/sdlc:sdlc-init`.
@@ -32,7 +32,7 @@ The files below were the input to the first build session; that session's brief 
 | `HANDOFF.md` | Brief for the **next** session (now: session 17 and the 0.3.x line — issue #91 fixed in plugin 0.3.0 and the five study issues in 0.3.1, then change 0001's review round and docs split, the evidence writer at (d) and (e), and R1, while the sample's live check runs untouched to its read, which bumps to 1.0.0; the owner's decision of 2026-10-02, PROGRESS choices 135–139. Sessions 9 to 14 were the 1.0.0 readiness review, `docs/reviews/2026-09-26-readiness-review.md`, its four groups and the live checks that need no points, plugins 0.2.25 to 0.2.29); earlier briefs are kept in `docs/handoffs/` | the session |
 | `CLAUDE.md` | Conventions for this repo (English only, Python hooks, plugin/template layout) | every session |
 | `docs/OPERATING_MODEL.md` | The contract: phases, artifacts, profiles, gates, park-never-page, conventions (draft to finalise in step 1) | the framework itself |
-| `docs/DECISIONS.md` | The 26 settled decisions with alternatives and reasons (21–26 added 2026-09-23) | sessions, to avoid reopening them |
+| `docs/decisions/index.md` | The 26 settled decisions with alternatives and reasons, one file per decision (21–26 added 2026-09-23) | sessions, to avoid reopening them |
 | `docs/BUILD_GUIDE.md` | The 47-step build plan with article citations (Markdown; step 16a added 2026-09-23) | sessions |
 | `docs/build_guide.json` | Same data, machine-readable (`id`, `group`, `where[{p,s}]`, `phase`, `importance`, …) | scripts, progress tracking |
 | `docs/ROADMAP.md` | What Milestone 1 is (the 47-step plan complete) and the candidates for what comes after it, each with its proposal under `docs/proposals/` (R1 OKF adoption, R2 session tooling for PDFs and web pages, added in session 7; R3 the fresh clone and R4 the Python language audit since) | the owner, to decide what comes next |
