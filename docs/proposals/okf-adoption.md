@@ -186,6 +186,113 @@ Today it reads every lesson file. With the index, it reads one short page first,
 
 A small Python script that rebuilds the index; `/sdlc-deploy` step 0b writing the frontmatter and running that script in the same fix PR; and updates to the lesson shape in `template/lessons/README.md` and to the `/sdlc-maintain` prompt.[^analysis]
 
+## R1 on `lessons/`: the design (session 19, 2026-10-04; plugin 0.3.6)
+
+Step 1 of "What it would take", narrowed to `lessons/` (the eval cases keep their shape: the
+link to the case is enough for the lesson, and `evals/README.md` is a later row), turned into
+the shape of a change: what each frontmatter field is and where its value comes from, who
+writes `lessons/index.md` and when, what `status` and `stale_after` mean for a lesson, and
+the links. Nothing here is decided; it is the proposal an `intent.md` through the front door
+(`Entry route: idea`, `Framework change: yes`) carries, and the design pass of phase (b)
+writes the spec from it. The sharing question below stays item 4's (decisions 8 and 9).
+
+### The frontmatter and where each value is read from
+
+The incident's fix writes the lesson in `/sdlc-deploy` step 0b, in the (e) run of a change
+whose `status.yaml: entry_route` is `incident`. Every field is read from a file that run
+already has; none is typed in by the model when a source exists, and none is filled in later.
+
+| Field | Value | Read from |
+|---|---|---|
+| `type` | `Lesson` | constant |
+| `title` | the incident change's title | `status.yaml: title` |
+| `description` | one sentence: what went wrong, in the terms of the metric | written by the (e) run; the index line repeats it |
+| `tags` | the metric, the runbook if one ran, then the class the run names (`flaky-test`, `dependencies`, `time`, …) | `evidence/detection.json: metric`; `evidence/proposal.json` / `status.yaml: runbook_authorized_by`; the run |
+| `change` | the change id | `status.yaml: id` |
+| `detected` | `{at, metric, tier, rule}` | `evidence/detection.json` (`at` is the detection record's own stamp) |
+| `fixed` | `{pr}` — the build PR; no `at`: the merge happens after the lesson is written, and `status.yaml: released_at` holds the release when there is one | `status.yaml: build_pr` |
+| `runbook` | the runbook that ran, or absent | `evidence/proposal.json: route` when it was performed (`status.yaml: runbook_authorized_by`) |
+| `supersedes` | an earlier lesson's file name when this incident repeats its class | the run, which must cite the earlier lesson in the body anyway (`lessons/README.md`) |
+| `generated` | `{by: sdlc-plugin/<version>, at}` | `sdlc.yaml: plugin.version`; the run's clock |
+| `status` | `stable` at writing | constant; see below |
+| `stale_after` | `generated.at` plus twelve months (`sdlc.yaml: lessons.stale_after_months` when the owner sets it; the key is optional, so no project's guardrail file needs an edit) | computed once, at writing |
+| `sources` | `[{id, resource}]`: `detection` (`evidence/detection.json`), `eval` (`evals/cases/<id>-<slug>/`), `fix-pr` (the PR URL), one `run-<n>` per failed run URL the detection record lists | the paths and URLs the run already cites in the body |
+
+The four body sections stay those of `template/lessons/README.md` (what happened, root cause,
+fix, prevention) with keyed footnotes (`[^detection]`, `[^fix-pr]`) where the body cites a
+source. The `Change: … · Detected: … · Fixed: …` header line goes: the frontmatter carries it.
+
+### Who writes `lessons/index.md`, and when
+
+One writer: `plugin/lessons/index.py` (Python, standard library), with two commands.
+`build --root .` reads every `lessons/*.md` frontmatter and rewrites `lessons/index.md` —
+a heading per first tag, one line per lesson (`* [title](file) - description. Tier n, Mon
+yyyy.`), newest first within a heading, a `## Retired` heading last for `status: retired`,
+and `(stale)` appended to a line whose `stale_after` is past; `check --root .` exits 1 when
+the index on disk differs from what `build` would write, and prints the difference.
+
+- `/sdlc-deploy` step 0b runs `build` right after writing the lesson, in the same commit
+  (`commit-phase … --paths lessons evals --push`, as today). The index is generated content
+  and is never edited by hand; a hand edit is undone by the next `build`.
+- `/sdlc-maintain` step 1.2 reads `lessons/index.md` first and opens only the lessons whose
+  tags name the metric or the rule in `detection.json`, plus `## Retired` for a lesson that
+  says the code is gone; it runs `check` first and, when the index is stale or missing,
+  reads every file as today and writes one line about it into the intent's Evidence section
+  (the maintain run is read-only on source and commits nothing but the intent, so it never
+  rebuilds the index itself).
+- The gate's `artifacts` check, for a change whose entry route is `incident`, at (e):
+  the lesson file exists with the frontmatter fields above, the eval case folder exists, and
+  `check` passes — three deterministic checks beside the existing ones (`plugin/gate/
+  checks.py`), each with its "what I need from you" line. A lesson with a `supersedes` entry
+  whose target does not exist, or a `status` outside `stable | retired`, fails the same check.
+
+### What `status` and `stale_after` mean for a lesson
+
+- `status: stable` — the code the lesson describes is current. Every lesson is written so.
+- `status: retired` — the code is gone or the lesson was superseded. Two writers only: the
+  owner by hand (project content, reviewed in a PR like any other file), or step 0b of a
+  later incident change whose lesson carries `supersedes: <file>` — it sets the earlier
+  lesson's `status` to `retired` and adds `retired_by: <the new file>` in the same commit.
+  Nothing else edits a lesson (choice 126 applied to lessons: a kept record is annotated,
+  never rewritten).
+- Staleness is not a status. `stale_after` is written once; whether a lesson is stale is
+  computed at read time (the index line's `(stale)`, the maintain run's reading), so no file
+  changes when a date passes. A stale lesson is still read; the maintain run says it relied
+  on a stale lesson when it did. The owner refreshes one by re-reading it and moving
+  `stale_after` in a PR, or retires it.
+
+### The links
+
+`change` → `changes/<id>-<slug>/` (the intent with its Evidence section, the detection
+record, the proposal, the gate records); `sources.eval` → the eval case that is the lesson's
+executable half; `sources.fix-pr` → the build PR; `sources.run-<n>` → the failed runs the
+detection listed; `supersedes` / `retired_by` → the earlier and the later lesson. The index
+line links the file. Nothing links back from the change folder to the lesson: the lesson's
+file name is the change's slug with the month in front, as today (`lessons/README.md`).
+
+### Files, version, tests
+
+`plugin/lessons/index.py` (new); `plugin/commands/sdlc-deploy.md` step 0b (the frontmatter,
+the `build` call, the `supersedes` rule); `plugin/commands/sdlc-maintain.md` step 1.2 (index
+first, `check`, the fallback); `plugin/gate/checks.py` (`artifacts` for an incident change);
+`template/lessons/README.md` (the shape, with the frontmatter and the footnote convention;
+`/sdlc-init` copies it); tests under `tests/` for the index builder (ordering, the retired
+heading, the stale marker, `check` on a drifted index, a lesson without frontmatter is listed
+under `## Unsorted` and reported by `check`), for the gate check and for the two command files'
+instructions where a test reads them today. Plugin **0.3.6** (0.3.5 is session 19's fix of
+the review record at the gate). No existing lesson file exists in this repository or in the
+sample, so there is no migration; a project that already has lessons in today's shape keeps
+them readable: a file without frontmatter is listed under `## Unsorted` with its first
+heading as the title, and the maintain run reads it as today.
+
+### What this design does not decide
+
+- The sharing of lessons across projects: item 4's question (decisions 8 and 9), below.
+- Frontmatter for eval cases (`evals/cases/<id>-<slug>/`): a later row; the lesson links the
+  case, which is enough for the maintain run.
+- `status` and `stale_after` on NOTES facts: done by change 0001's frontmatter (`docs/notes/
+  <N>.md` carries `verified_with` and `stale_after`), outside this row.
+
 ## Sharing lessons across projects
 
 OKF's idea of sharing is simple: a bundle is a folder in an agreed format, so another team, project or tool can take it and read it without translation. The framework already splits its knowledge into two kinds (decision 8), and only one of them travels.[^analysis]

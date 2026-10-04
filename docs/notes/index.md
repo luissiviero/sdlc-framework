@@ -39,6 +39,7 @@ One file per NOTES section, number only, no slug (`docs/notes/<N>.md`); each car
 30. [Facts read in session 18 (2026-10-03): the sample's points, PR #105's merged head, where the evidence logs and the verifier's verdict come from since 0.3.2](30.md)
 31. [Facts read in session 18, second sitting (2026-10-03): 0.3.2 merged, tagged and pinned; PR #90 merged; change 0001's first build run terminated waiting for background sub-agents](31.md)
 32. [Facts read in session 18, third sitting (2026-10-03): 0.3.3 merged, tagged and pinned; change 0001's build run on 0.3.3 — the foreground rule and item 3b verified live at (c); the park on the sandbox-masked fixture `.env`](32.md)
+33. [Facts read in session 19 (2026-10-04): change 0001's fix round on 0.3.4, phase (d), the (e) run and its fix rounds, the owner's merge and the release — item 3b verified live at (d); the (e) rounds parked on `changes/.review-seen.json`](33.md)
 
 Sessions are append-only: a later session's file may correct or supersede an earlier one's
 reading (each says so inline, e.g. "corrected by §17"); read the latest file on a topic
