@@ -98,9 +98,9 @@
 
 <div class="wrap">
   <header>
-    <div class="eyebrow">Target design · tentative · T1–T13 of target-design.md · 3 October 2026</div>
+    <div class="eyebrow">Target design · tentative · T1–T14 of target-design.md · 4 October 2026</div>
     <h1>The workflow as you want it to become</h1>
-    <p class="lede">The third workflow beside the <a href="https://claude.ai/artifact/WhLTjcSzJqQmUFm3aP5G6L">playbook's</a> and the <a href="https://claude.ai/artifact/KW8jWunfLNa9WgBSzJxw4S">framework's</a>. It draws only what <code>docs/reviews/2026-09-28-playbook-vs-framework/target-design.md</code> has discussed so far: AI roles that advise and one manager that reviews for you (T1), the interview (T2), the intent home (T3), the names (T4), how a project starts (T5), tickets that become intents (T6), the reason a rejection keeps (T7), a formatter that follows your languages (T8), a risk-list hit that your merge accepts (T9), a test loop that closes by itself in CI (T10), a fix that proves itself (T11), build and test approvals recorded by the runner (T12) and an eval suite that grows (T13). Steps the study has not reached yet are left out or marked "not discussed yet".</p>
+    <p class="lede">The third workflow beside the <a href="https://claude.ai/artifact/WhLTjcSzJqQmUFm3aP5G6L">playbook's</a> and the <a href="https://claude.ai/artifact/KW8jWunfLNa9WgBSzJxw4S">framework's</a>. It draws only what <code>docs/reviews/2026-09-28-playbook-vs-framework/target-design.md</code> has discussed so far: AI roles that advise and one manager that reviews for you (T1), the interview (T2), the intent home (T3), the names (T4), how a project starts (T5), tickets that become intents (T6), the reason a rejection keeps (T7), a formatter that follows your languages (T8), a risk-list hit that your merge accepts (T9), a test loop that closes by itself in CI (T10), a fix that proves itself (T11), build and test approvals recorded by the runner (T12), an eval suite that grows (T13) and a review pass on the runbook PRs (T14). Steps the study has not reached yet are left out or marked "not discussed yet".</p>
     <p class="banner"><strong>Nothing here is decided.</strong> Every entry is tentative until the whole study is done; then each confirmed entry becomes a proposal and a candidate row in <code>docs/ROADMAP.md</code>. The framework as it is today is on the framework page.</p>
     <div class="legend">
       <span><i class="sw hex"></i>Your decision or act</span>
@@ -110,7 +110,7 @@
   </header>
 
   <section>
-    <h2>One change, from idea to release <span class="refs">T1 · T3 · T4 · T5 · T6 · T7 · T8 · T9 · T10 · T11 · T12</span></h2>
+    <h2>One change, from idea to release <span class="refs">T1 · T3 · T4 · T5 · T6 · T7 · T8 · T9 · T10 · T11 · T12 · T14</span></h2>
     <p>Your approval points stay where they are today. What changes is what reaches you at each one: the roles write briefs, the manager turns them into one recommendation, you decide, and the act runs on your signal. Phases carry the names T4 proposes, with today's letter after each.</p>
     <div class="diagram"><pre class="mermaid">flowchart TB
   subgraph PREP["Before the first change"]
@@ -177,6 +177,8 @@
   end
   F3 --> GF{{"You triage: fix now, sdlc:schedule, or dismiss"}}
   F1 -. "runbook with authorization: ask" .-> GO{{"You apply sdlc:go"}}
+  F1 -. "3σ, pre-approved: revert-pr or quarantine-flaky-test" .-> RBP["The runbook opens its PR;&lt;br/&gt;the review pass runs on it, its findings on the PR (T14)"]
+  RBP --> GRB{{"You merge or close the runbook PR"}}
   GR ~~~ F1</pre></div>
     <ul class="notes">
       <li><strong>You stay the only approver.</strong> The manager prepares an act; you approve it from your own account (a label or an approving review); a deterministic workflow, not a model, checks that the approval came from you and carries the act out. <code>sdlc-runbook.yml</code> already works this way for <code>sdlc:go</code>, though it checks only that a person applied the label, not that it was you.</li>
@@ -200,6 +202,7 @@
       <li><strong>A fix proves itself (T11).</strong> For a fix, the gate requires the test lock, committed together with the test in a first commit of test files only (today the lock rides in the next commit, so the build command's step 3 changes), and the runner runs the tests at that commit (they must fail) and at the end (they must pass), both on the record: the article's "proof the bug is gone" (p.28), no longer resting on the session's own word. Freezing a Rust test written inside a source file stays open (T8).</li>
       <li><strong>Build and test approvals (T12).</strong> Under the Full profile your label alone approves build and test, as the code does today; D3's "approving review + label" is amended and the docs corrected. The runner records who applied each label and when, beside the plan-acceptance line. A risk-list hit first found in build or test shows in the waiting PR's banner, and only your deploy merge accepts it.</li>
       <li><strong>The eval suite grows (T13).</strong> The suite still starts empty (D17). It also runs on <code>sdlc.yaml</code> (the plugin pin bump), reading the pin from the pull request on such a change so a new pin is evaluated before you merge it, and on your <code>policies/</code>. The deploy gate of an incident change requires its eval case. Once the twentieth change has merged, a run drafts eval cases from merged changes in a PR you merge, D17's own trigger given a step. No required status check: your bypass would skip it, so the result reaches you in the brief on your own configuration PRs.</li>
+      <li><strong>The runbook PRs get the review pass (T14).</strong> The review pass at deploy stays as it is: at deploy, re-run on each new version there, and an Important finding still holds the change until it is fixed (the article's findings do not block on their own, p.33; with the fix loop already run, what reaches you has had its fixes). Added: the same pass on the PRs that a pre-approved runbook opens at 3σ (a revert, or a flaky test deselected), the one kind of automated code change that reaches your merge with no review today; its findings show on the PR. Intent and spec PRs keep the roles' briefs and the design reviewer; your own configuration PRs keep their brief.</li>
     </ul>
   </section>
 
@@ -455,11 +458,19 @@
           <li>The workflow's name, judged with the other names (T4).</li>
         </ul>
       </div>
+      <div>
+        <h3>Runbook reviews <span class="refs">T14</span></h3>
+        <ul class="notes">
+          <li>Whether a runbook PR's Important finding only informs you or holds the PR; a revert is meant to land fast.</li>
+          <li>Which job runs the pass: the detection job after it opens the PR, or a job dispatched for it.</li>
+          <li>Whether a project runbook that changes files gets the same pass.</li>
+        </ul>
+      </div>
     </div>
   </section>
 
   <footer>
-    <span>Drawn from <code>target-design.md</code> entries T1–T13 and <code>naming.md</code>, as recorded from 30 September to 3 October 2026. Each entry lists the settled decisions (D<i>n</i>) it would reopen or amend.</span>
+    <span>Drawn from <code>target-design.md</code> entries T1–T14 and <code>naming.md</code>, as recorded from 30 September to 4 October 2026. Each entry lists the settled decisions (D<i>n</i>) it would reopen or amend.</span>
     <span>The other two pages: <a href="https://claude.ai/artifact/WhLTjcSzJqQmUFm3aP5G6L">Playbook SDLC Workflow</a> · <a href="https://claude.ai/artifact/KW8jWunfLNa9WgBSzJxw4S">SDLC Plugin Workflow</a> · and the <a href="https://claude.ai/artifact/PFnRZ32pwTr4y422Gna2mz">Workflow Crosswalk</a> that compares them.</span>
   </footer>
 </div>

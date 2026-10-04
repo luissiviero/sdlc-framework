@@ -19,6 +19,7 @@ Each entry: the owner's idea in the owner's words, the direction discussed so fa
 | T11 | A fix proves itself: the gate requires the lock, and the runner shows the test red at the lock commit and green at HEAD | tentative | 2026-10-03 |
 | T12 | The build and test approvals: the label alone, recorded by the runner | tentative | 2026-10-03 |
 | T13 | The eval suite grows: more triggers, the incident case checked, a first set drafted after twenty changes | tentative | 2026-10-03 |
+| T14 | The runbook PRs get the review pass: every automated code change the owner merges has been reviewed | tentative | 2026-10-04 |
 
 The target workflow page (https://claude.ai/artifact/13X8rzF9KsfekmeSs1w5rM, snapshot `target-workflow.html`) draws every entry. The crosswalk page (https://claude.ai/artifact/PFnRZ32pwTr4y422Gna2mz) shows T1 to T3 in a third column, "Target (tentative)", on the cards of the rows they touch, and `crosswalk.json` carries the same condensed text in each row's `target` field and in `targets`; at the owner's request the crosswalk is not extended with later entries (the review record's section 7).
 
@@ -418,3 +419,25 @@ The framework already keeps the hook log both ways: committed in `evidence/` and
 - What counts as "a real check" for the incident case, deterministically.
 - How the twentieth change is counted (merged changes, incident changes included or not), and whether the draft run repeats later.
 - The workflow's name, judged with T4 (`sdlc-agent-evals.yml`).
+
+## T14. The runbook PRs get the review pass: every automated code change the owner merges has been reviewed
+
+**Status:** tentative. Recorded from the owner's choice on the crosswalk row deploy-review (better: both; decision: blend), 2026-10-04.
+
+**The owner's note (saved on the crosswalk page).** "Blend (T14): the REVIEW.md pass at (e) stays (a fresh-context CI job, D12; bugs, security, compliance; the sdlc/review check run with its tally), once per change before my merge, and it stays blocking on an Important finding (the gate parks, or the panel settles it under deferred review), so what reaches me has had its fixes; the article lets findings neither approve nor block (p.33). Added: the same pass on the runbook PRs (revert-pr and quarantine-flaky-test change code, and I merge their PRs with no review pass today). Intent and spec PRs stay covered by T1's briefs and the adversarial reviewer at (b), and my own configuration PRs by build-config's brief; no extra pass on each fix round's PR. Row corrected: the check run and its tally, the blocking Important finding, and the PRs no review pass reads (runbook, intent, spec, my own)."
+
+**Today.** The REVIEW.md pass runs at (e) only, as its own fresh-context CI job, re-run on each new HEAD there and in each fix round at (e) (`plugin/commands/sdlc-fix.md`) (`template/.github/workflows/sdlc-deploy.yml`, `run_phase.py --phase review`, D12): three passes (bugs, security, compliance with `spec.md`, `plan.md` and design principles), findings ranked Important or Nit, at most five nits (`template/REVIEW.md`), written to `evidence/review-findings.json` and published as the `sdlc/review` check run with a machine-readable tally (`plugin/review/cli.py check-run`), which the (e) session posts itself. A fix loop runs within the iteration cap while an Important finding stands (`plugin/commands/sdlc-deploy.md` §2), and gate (e) fails on an open one (`plugin/gate/checks.py` `check_findings`): the change parks, or under deferred review the panel may settle one the run cannot fix. The article differs there: "Findings do not approve or block a PR on their own"; a platform engineer who wants to gate merges reads the tally (p.33). No other PR gets a REVIEW.md pass. The runbook PRs are the one kind of automated PR that carries a code change to the owner's merge without a review pass: at 3σ the detect job runs `revert-pr` (a `git revert` of one commit of the default branch) or `quarantine-flaky-test` (a `--deselect` line in pytest's configuration) and opens a PR labelled `incident` (`plugin/detect/runbooks.py`, `template/.github/workflows/sdlc-detect.yml`), with no review step. The article runs "an identical set of review passes" on all PRs (p.32-33).
+
+**Direction discussed (tentative).** Added; the (e) pass stays as it is.
+- **The runbook PRs get the same pass.** After the detect job opens a runbook PR, the REVIEW.md pass runs on it in a fresh-context job, as at (e), and publishes its findings and the `sdlc/review` check run on that PR, so the owner merges a revert or a quarantine with its findings in front of them. The article's 3σ route is "a PR into the review gate" (p.43-45).
+- **Blocking stays at (e).** An open Important finding still fails gate (e); the framework keeps that departure from the article because the owner looks in once or twice a day and the fix loop has already run when the PR reaches them.
+- **The other PRs stay as they are:** intent and spec+plan PRs are covered by T1's briefs and the adversarial reviewer at (b); the owner's own configuration PRs by build-config's brief with the eval result (T1); a fix round's push on the build PR is judged by the (e) pass that follows.
+
+**Crosswalk rows it touches:** deploy-review; maintain-act (the runbook PRs).
+
+**Settled decisions it would reopen or amend:** none. D12 (the review pass is a CI job) is applied to one more kind of PR; D14 and D26 (which runbooks run without a person) are unchanged.
+
+**Open.**
+- What a runbook PR's findings do: inform the owner only, as the article's findings do, or hold the PR when one is Important; a revert is meant to land fast.
+- Which workflow runs the pass: the detect job after it opens the PR, or a job it dispatches (the PR and its `incident` label are both made with the workflow token, so neither starts a workflow).
+- Whether a project runbook (`maintain.runbooks[]` with a command) that changes files gets the same pass.
