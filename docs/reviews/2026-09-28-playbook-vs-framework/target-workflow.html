@@ -98,9 +98,9 @@
 
 <div class="wrap">
   <header>
-    <div class="eyebrow">Target design · tentative · T1–T14 of target-design.md · 4 October 2026</div>
+    <div class="eyebrow">Target design · tentative · T1–T15 of target-design.md · 5 October 2026</div>
     <h1>The workflow as you want it to become</h1>
-    <p class="lede">The third workflow beside the <a href="https://claude.ai/artifact/WhLTjcSzJqQmUFm3aP5G6L">playbook's</a> and the <a href="https://claude.ai/artifact/KW8jWunfLNa9WgBSzJxw4S">framework's</a>. It draws only what <code>docs/reviews/2026-09-28-playbook-vs-framework/target-design.md</code> has discussed so far: AI roles that advise and one manager that reviews for you (T1), the interview (T2), the intent home (T3), the names (T4), how a project starts (T5), tickets that become intents (T6), the reason a rejection keeps (T7), a formatter that follows your languages (T8), a risk-list hit that your merge accepts (T9), a test loop that closes by itself in CI (T10), a fix that proves itself (T11), build and test approvals recorded by the runner (T12), an eval suite that grows (T13) and a review pass on the runbook PRs (T14). Steps the study has not reached yet are left out or marked "not discussed yet".</p>
+    <p class="lede">The third workflow beside the <a href="https://claude.ai/artifact/WhLTjcSzJqQmUFm3aP5G6L">playbook's</a> and the <a href="https://claude.ai/artifact/KW8jWunfLNa9WgBSzJxw4S">framework's</a>. It draws only what <code>docs/reviews/2026-09-28-playbook-vs-framework/target-design.md</code> has discussed so far: AI roles that advise and one manager that reviews for you (T1), the interview (T2), the intent home (T3), the names (T4), how a project starts (T5), tickets that become intents (T6), the reason a rejection keeps (T7), a formatter that follows your languages (T8), a risk-list hit that your merge accepts (T9), a test loop that closes by itself in CI (T10), a fix that proves itself (T11), build and test approvals recorded by the runner (T12), an eval suite that grows (T13), a review pass on the runbook PRs (T14) and review corrections that reach CLAUDE.md through one standing PR (T15). Steps the study has not reached yet are left out or marked "not discussed yet".</p>
     <p class="banner"><strong>Nothing here is decided.</strong> Every entry is tentative until the whole study is done; then each confirmed entry becomes a proposal and a candidate row in <code>docs/ROADMAP.md</code>. The framework as it is today is on the framework page.</p>
     <div class="legend">
       <span><i class="sw hex"></i>Your decision or act</span>
@@ -110,7 +110,7 @@
   </header>
 
   <section>
-    <h2>One change, from idea to release <span class="refs">T1 · T3 · T4 · T5 · T6 · T7 · T8 · T9 · T10 · T11 · T12 · T14</span></h2>
+    <h2>One change, from idea to release <span class="refs">T1 · T3 · T4 · T5 · T6 · T7 · T8 · T9 · T10 · T11 · T12 · T14 · T15</span></h2>
     <p>Your approval points stay where they are today. What changes is what reaches you at each one: the roles write briefs, the manager turns them into one recommendation, you decide, and the act runs on your signal. Phases carry the names T4 proposes, with today's letter after each.</p>
     <div class="diagram"><pre class="mermaid">flowchart TB
   subgraph PREP["Before the first change"]
@@ -166,6 +166,8 @@
   TT --> E1
   E2 --> GE{{"You approve the code,&lt;br/&gt;and the risk items its banner shows"}}
   GE -- "your signal; a workflow checks it and merges (to verify)" --> LIVE(["Merged"])
+  LIVE -. "the review proposed a CLAUDE.md line" .-> CM["A deterministic step adds it to one standing PR,&lt;br/&gt;'CLAUDE.md: Things Claude gets wrong' (T15)"]
+  CM -.-> GCM{{"You merge that PR when you choose,&lt;br/&gt;one act for many lines"}}
   GE -. "declared production: deploy.production_gate" .-> RL["The release checklist: where roles help most&lt;br/&gt;which role, and when: not discussed yet"]
   RL -.-> GR{{"You, as release manager,&lt;br/&gt;apply the release label"}}
 
@@ -203,6 +205,7 @@
       <li><strong>Build and test approvals (T12).</strong> Under the Full profile your label alone approves build and test, as the code does today; D3's "approving review + label" is amended and the docs corrected. The runner records who applied each label and when, beside the plan-acceptance line. A risk-list hit first found in build or test shows in the waiting PR's banner, and only your deploy merge accepts it.</li>
       <li><strong>The eval suite grows (T13).</strong> The suite still starts empty (D17). It also runs on <code>sdlc.yaml</code> (the plugin pin bump), reading the pin from the pull request on such a change so a new pin is evaluated before you merge it, and on your <code>policies/</code>. The deploy gate of an incident change requires its eval case. Once the twentieth change has merged, a run drafts eval cases from merged changes in a PR you merge, D17's own trigger given a step. No required status check: your bypass would skip it, so the result reaches you in the brief on your own configuration PRs.</li>
       <li><strong>The runbook PRs get the review pass (T14).</strong> The review pass at deploy stays as it is: at deploy, re-run on each new version there, and an Important finding still holds the change until it is fixed (the article's findings do not block on their own, p.33; with the fix loop already run, what reaches you has had its fixes). Added: the same pass on the PRs that a pre-approved runbook opens at 3σ (a revert, or a flaky test deselected), the one kind of automated code change that reaches your merge with no review today; its findings show on the PR. Intent and spec PRs keep the roles' briefs and the design reviewer; your own configuration PRs keep their brief.</li>
+      <li><strong>Review corrections reach CLAUDE.md through one standing PR (T15).</strong> When the deploy review finds a mistake an earlier change already made, or that CLAUDE.md is outdated, it proposes a "Things Claude gets wrong" line, as today. Instead of you writing each line in a commit of your own, a deterministic step, no model, adds it to one standing pull request; you merge that PR whenever you choose, one act for many lines, with the role brief and the eval result that any change to CLAUDE.md gets; since a pull request the automation opens starts no workflow, the step starts the eval run and the brief itself after each update. Nothing notifies you; the daily digest shows how many lines wait. The review can also tag a mistake described in new words as a repeat, so it still counts. No run ever edits CLAUDE.md itself (D6): a finding's text comes from a model reading code, and CLAUDE.md steers every later run.</li>
     </ul>
   </section>
 
@@ -459,6 +462,16 @@
         </ul>
       </div>
       <div>
+        <h3>CLAUDE.md corrections <span class="refs">T15</span></h3>
+        <ul class="notes">
+          <li>How the standing PR handles a line already there, a line you edit, and a line you reject, so a rejected line is not proposed again.</li>
+          <li>Whether the step runs after each deploy merge or on the digest's schedule.</li>
+          <li>How the review's "repeat of" tag is carried and checked: it needs a field of its own, and the reviewer is a model.</li>
+          <li>That merging the standing PR starts no phase run (each run should skip a pull request with no change folder).</li>
+          <li>How the step starts the eval run and the brief for the standing PR (which workflow, on which branch).</li>
+        </ul>
+      </div>
+      <div>
         <h3>Runbook reviews <span class="refs">T14</span></h3>
         <ul class="notes">
           <li>Whether a runbook PR's Important finding only informs you or holds the PR; a revert is meant to land fast.</li>
@@ -470,7 +483,7 @@
   </section>
 
   <footer>
-    <span>Drawn from <code>target-design.md</code> entries T1–T14 and <code>naming.md</code>, as recorded from 30 September to 4 October 2026. Each entry lists the settled decisions (D<i>n</i>) it would reopen or amend.</span>
+    <span>Drawn from <code>target-design.md</code> entries T1–T15 and <code>naming.md</code>, as recorded from 30 September to 5 October 2026. Each entry lists the settled decisions (D<i>n</i>) it would reopen or amend.</span>
     <span>The other two pages: <a href="https://claude.ai/artifact/WhLTjcSzJqQmUFm3aP5G6L">Playbook SDLC Workflow</a> · <a href="https://claude.ai/artifact/KW8jWunfLNa9WgBSzJxw4S">SDLC Plugin Workflow</a> · and the <a href="https://claude.ai/artifact/PFnRZ32pwTr4y422Gna2mz">Workflow Crosswalk</a> that compares them.</span>
   </footer>
 </div>
