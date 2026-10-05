@@ -114,7 +114,7 @@
 
 <div class="wrap">
   <header>
-    <div class="eyebrow">sdlc plugin 0.3.3 · luissiviero/sdlc-framework</div>
+    <div class="eyebrow">sdlc plugin 0.3.4 · luissiviero/sdlc-framework</div>
     <h1>How a project uses the SDLC plugin</h1>
     <p class="lede">What a project does once to connect, how one change travels from idea to production, and what happens when the owner does not simply merge. Drawn from the code (workflows, runner, gate, hooks); <code>docs/OPERATING_MODEL.md</code> is the contract, and the notes say where the two differ.</p>
     <div class="legend">
@@ -270,7 +270,7 @@
   </section>
 
   <footer>
-    <span>Snapshot of the framework as of plugin 0.3.3 (3 October 2026), checked against the code.</span>
+    <span>Snapshot of the framework as of plugin 0.3.4 (3 October 2026), checked against the code; 0.3.4 changes nothing drawn here (only the gate's clean_tree check, inside a CI session).</span>
     <span>Every phase command can also be run by hand in a Claude Code session instead of its workflow. Then nothing dispatches the next phase, the session's own cost is not recorded (the budget limit still compares the CI sessions' recorded total with the cap), and commits are made by the session, not by <code>github-actions[bot]</code>.</span>
   </footer>
 </div>

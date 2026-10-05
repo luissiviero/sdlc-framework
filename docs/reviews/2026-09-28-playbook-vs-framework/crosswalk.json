@@ -1,5 +1,5 @@
 {
-  "about": "The workflow crosswalk: every decision point of the AI-native SDLC playbook (the article, print pages of docs/reference/ai-native-sdlc-playbook.pdf) set against the sdlc framework (plugin 0.2.27, commit cf3f696); the row setup-adopt was added on 2026-09-30 against plugin 0.2.28, commit dd308ca. See ../2026-09-28-playbook-vs-framework.md. Re-checked on 2026-10-02 against plugin 0.2.29, commit 904f4ec: seven rows corrected for precision (setup-home, setup-gates, setup-merge, plan-idea, plan-ticket, plan-accept, x-roles); 0.2.28 and 0.2.29 change none of the others. Re-checked on 2026-10-02 against plugin 0.3.1 (8ec06b8): 0.2.30 changes one row, build-hooks (its panel-blindness hook, panel_blind.py), which that re-check missed and which was corrected on 2026-10-03; 0.3.0 and 0.3.1 change seven (design-trigger, test-verify, deploy-approve, deploy-release, x-headless, x-limits, x-measure) and add a sentence to x-sandbox and x-audit. Re-checked on 2026-10-02 (third session) against main 8269d46, still plugin 0.3.1 with no plugin or template change since 8ec06b8: no row changed; build-plan-approve's framework text gained a precision (the class is in evidence only, who merged is GitHub's record only). Re-checked on 2026-10-03 against main f899cc6, still plugin 0.3.1 with no plugin or template change since 8ec06b8: no row changed; build-start's framework text gained precisions (the preflight and its permission mode, the draft PR, the Standard and Full continuation, the per-change profile_override) and a map node. Re-checked on 2026-10-03 (second session) against main 02d89c3, still plugin 0.3.1 with no plugin or template change since 8ec06b8: build-hooks corrected (seven hooks, not six; the formatter covers Python files only; relation adapted, not same). The same day, before build-plansync was decided: no row changed; build-plansync's texts gained precisions (the three layers: the hook, the gate check at (c) to (e) and the REVIEW.md pass; the file-names-only rule). The same day, before build-subagents was decided: no relation changed; build-subagents' framework text gained precisions (where each agent runs, the panel's sub-agents, parallel changes in separate CI jobs serialized per branch, no cap on changes in flight) and the row a T1 target. The same day, before build-config was decided: no relation changed; build-config's framework text gained precisions (the eval check is advisory: no required status check in the ruleset, the owner's Exempt bypass, an empty suite passes; no review pass on the owner's own guardrail PRs). The build-subagents note was corrected at the owner's request. Re-checked on 2026-10-03 (third session) against main 2dcfe70, plugin 0.3.3: 0.3.2 (78f69fd; in a CI session no project target runs, the runner runs them after the session and writes the evidence logs) corrects build-hooks, test-loop, test-verify, x-sandbox, x-headless and deploy-comments, and 0.3.3 (f812f1f; sub-agents of a headless session run in the foreground) adds a sentence to build-subagents; none of the owner's notes is made untrue. Before build-skills and build-risk were decided, both rows' framework texts were corrected: build-skills (where the project override is honoured, the advisory check scripts, no trigger test) and build-risk (the check matches item words in paths and Flagged concerns, and misses most real migration, infrastructure and production-config paths with the default items).",
+  "about": "The workflow crosswalk: every decision point of the AI-native SDLC playbook (the article, print pages of docs/reference/ai-native-sdlc-playbook.pdf) set against the sdlc framework (plugin 0.2.27, commit cf3f696); the row setup-adopt was added on 2026-09-30 against plugin 0.2.28, commit dd308ca. See ../2026-09-28-playbook-vs-framework.md. Re-checked on 2026-10-02 against plugin 0.2.29, commit 904f4ec: seven rows corrected for precision (setup-home, setup-gates, setup-merge, plan-idea, plan-ticket, plan-accept, x-roles); 0.2.28 and 0.2.29 change none of the others. Re-checked on 2026-10-02 against plugin 0.3.1 (8ec06b8): 0.2.30 changes one row, build-hooks (its panel-blindness hook, panel_blind.py), which that re-check missed and which was corrected on 2026-10-03; 0.3.0 and 0.3.1 change seven (design-trigger, test-verify, deploy-approve, deploy-release, x-headless, x-limits, x-measure) and add a sentence to x-sandbox and x-audit. Re-checked on 2026-10-02 (third session) against main 8269d46, still plugin 0.3.1 with no plugin or template change since 8ec06b8: no row changed; build-plan-approve's framework text gained a precision (the class is in evidence only, who merged is GitHub's record only). Re-checked on 2026-10-03 against main f899cc6, still plugin 0.3.1 with no plugin or template change since 8ec06b8: no row changed; build-start's framework text gained precisions (the preflight and its permission mode, the draft PR, the Standard and Full continuation, the per-change profile_override) and a map node. Re-checked on 2026-10-03 (second session) against main 02d89c3, still plugin 0.3.1 with no plugin or template change since 8ec06b8: build-hooks corrected (seven hooks, not six; the formatter covers Python files only; relation adapted, not same). The same day, before build-plansync was decided: no row changed; build-plansync's texts gained precisions (the three layers: the hook, the gate check at (c) to (e) and the REVIEW.md pass; the file-names-only rule). The same day, before build-subagents was decided: no relation changed; build-subagents' framework text gained precisions (where each agent runs, the panel's sub-agents, parallel changes in separate CI jobs serialized per branch, no cap on changes in flight) and the row a T1 target. The same day, before build-config was decided: no relation changed; build-config's framework text gained precisions (the eval check is advisory: no required status check in the ruleset, the owner's Exempt bypass, an empty suite passes; no review pass on the owner's own guardrail PRs). The build-subagents note was corrected at the owner's request. Re-checked on 2026-10-03 (third session) against main 2dcfe70, plugin 0.3.3: 0.3.2 (78f69fd; in a CI session no project target runs, the runner runs them after the session and writes the evidence logs) corrects build-hooks, test-loop, test-verify, x-sandbox, x-headless and deploy-comments, and 0.3.3 (f812f1f; sub-agents of a headless session run in the foreground) adds a sentence to build-subagents; none of the owner's notes is made untrue. Before build-skills and build-risk were decided, both rows' framework texts were corrected: build-skills (where the project override is honoured, the advisory check scripts, no trigger test) and build-risk (the check matches item words in paths and Flagged concerns, and misses most real migration, infrastructure and production-config paths with the default items). Re-checked on 2026-10-03 (fourth session) against main 89090dd, plugin 0.3.4 (c56ac7e): 0.3.4 changes only the gate's clean_tree check, which no row describes, so no row changed for it. Before the Test stage was decided its five rows were re-checked: test-loop and test-verify move from same to adapted (since 0.3.2, in CI, the targets run once after the session and a red target waits for the owner's 'Request changes', and the verifier reads the previous phase's runner record; PROGRESS choice 154), and test-loop, test-bugfix, test-verify, test-gate and test-evals gained precisions (the build session still runs touched tests in CI; the lock and the failing test rest on the session's own steps; the approval label's actor is checked, not recorded; the evals' threshold binds no merge and nothing seeds the suite). After an independent review the test-gate fw text was narrowed (the actor is checked only against the workflow token), and the test-gate and test-evals notes were corrected at the owner's request. Re-checked on 2026-10-04 against main 8050b92, still plugin 0.3.4 (no plugin or template change since 89090dd): before deploy-review was decided its framework text gained precisions (the sdlc/review check run and its tally, gate (e) failing on an open Important finding, and the PRs no review pass reads: intent, spec, runbook and the owner's own).",
   "seeded": "2026-09-28",
   "fields": {
     "id": "stable row id",
@@ -1055,11 +1055,11 @@
       "step": "The feedback loop",
       "pb": "Claude runs the tests, the build and the screenshot and iterates until the check passes; the verification commands live in CLAUDE.md.",
       "pbSrc": "p.26-28",
-      "fw": "/sdlc:sdlc-test in a fresh CI job. By hand, collect.py runs test, build and lint into evidence/ and failures are fixed and re-run; in CI (0.3.2) it runs nothing and marks each log 'deferred to the runner', the fix loop is skipped, and after the session the runner runs the three targets once, writes the logs and parks the change on a red target. Screenshot loop when a mock is named.",
-      "fwSrc": "plugin/evidence/collect.py, plugin/commands/sdlc-test.md, plugin/gate/gate.py",
-      "rel": "same",
-      "why": "",
-      "weigh": "Close match.",
+      "fw": "/sdlc:sdlc-test in a fresh CI job. By hand, collect.py runs test, build and lint into evidence/ and failures are fixed and re-run within the iteration cap. In CI (0.3.2) no project target runs in the (d) session: collect.py marks each log 'deferred to the runner', the fix loop is skipped, and after the session the runner runs the three targets once, outside the sandbox, writes the logs and parks the change on a red target; the next round is the owner's 'Request changes' review (sdlc-fix.yml, iterations + 1), so in CI the re-runs need the owner between rounds. The (c) build session is still told to run the tests each step touches (sdlc-build.md step 4, with no CI exception; the CI allow-list has python, pytest and npm), inside the sandbox, where a test that reads a nested .env fails. Screenshot loop when a mock is named.",
+      "fwSrc": "plugin/evidence/collect.py, plugin/commands/sdlc-test.md §1-2, plugin/commands/sdlc-build.md step 4, plugin/gate/gate.py run_deferred_commands, plugin/ci/run_phase.py (run_gate_commands, IMPLEMENT_ALLOWED_TOOLS), docs/PROGRESS.md choice 154",
+      "rel": "adapted",
+      "why": "PROGRESS choice 154, the owner's choice of item 3b's shape (i) in 0.3.2, on issue #91: one run of the targets per phase, after the session and outside the sandbox, and 'the owner's /sdlc-fix is the round'; not a Dn in DECISIONS.md. Nearest: D1 hosted CI, sandboxed · D11 a failed check parks · D22 'Request changes' starts the fix run",
+      "weigh": "In CI the run, fix and re-run loop is spread over sessions, with your 'Request changes' between rounds, so what reaches you on a red target has not passed the check. Should a red target start the next round by itself, within the iteration cap?",
       "map": {
         "pb": [
           [
@@ -1072,9 +1072,26 @@
           [
             "C",
             "w",
-            "/sdlc-test runs, fixes, re-runs"
+            "By hand: /sdlc-test runs, fixes, re-runs"
+          ],
+          [
+            "A",
+            "w",
+            "CI: the runner runs the targets once after the session; red parks"
+          ],
+          [
+            "P",
+            "r",
+            "Red in CI: owner's 'Request changes' starts the next round"
           ]
         ]
+      },
+      "decision": {
+        "better": "playbook",
+        "decision": "blend",
+        "note": "Blend (T10): the runner's one run of build, test and lint after the session stays (outside the sandbox, the evidence logs written from that run). Added: in CI a red target starts the next fix round by itself: the runner dispatches it with the failing logs as the round's constraint, the iteration count goes up by one, and the change parks only at the iteration cap (3, or 2 for a non-routine plan), so what reaches me has passed the check or used up its rounds. Amends D11 (a red target no longer parks at once) and PROGRESS choice 154 ('the owner's /sdlc-fix is the round'), proposed after the study. Considered and not chosen: running the targets inside the sandbox again (choices 133 and 154), and a helper that runs the targets for the session outside the sandbox (a hole in the sandbox). Row corrected: relation adapted, not same (in CI the run-fix-re-run loop needs my 'Request changes' between rounds); the (c) build session is still told to run the tests each step touches, inside the sandbox, where a test that reads a nested .env fails.",
+        "saved": "2026-10-03",
+        "status": "tentative"
       }
     },
     {
@@ -1083,11 +1100,11 @@
       "step": "Bug fixes: the failing test first",
       "pb": "The failing test is written and committed first; a test-file hook, or review rejecting any test change, protects the check.",
       "pbSrc": "p.28",
-      "fw": "A fix-type change writes its failing test first, then the test-file lock hook and the test_lock gate check protect it; sdlc:unlock-tests lifts it.",
-      "fwSrc": "plugin/hooks/test_file_lock.py, plugin/gate/checks.py",
+      "fw": "A fix-type change writes its failing test first (sdlc-build.md step 3: run only that test, confirm it fails, paste the output into evidence/failing-test.log, commit the test), then runs lock-tests; from then on the test-file lock hook denies edits under test_paths and the test_lock gate check fails any test file changed after the lock commit; only the owner lifts the lock (sdlc:unlock-tests, judged by the owner_actions check). The lock exists only if the session runs lock-tests itself: gate (c) passes a fix-type change that never set it, and nothing checks that the test was committed before the fix or that it failed (failing-test.log is a prompt instruction, not required evidence). The article's alternative also runs: the adversarial reviewer at (c) and (d) and the REVIEW.md pass at (e) reject a weakened test. Path globs cannot freeze a test written inside a source file (Rust's #[cfg(test)]).",
+      "fwSrc": "plugin/commands/sdlc-build.md step 3, plugin/hooks/test_file_lock.py, plugin/gate/checks.py check_test_lock and owner_actions, plugin/gate/artifacts.py REQUIRED_EVIDENCE, plugin/agents/adversarial-reviewer.md, template/REVIEW.md",
       "rel": "same",
       "why": "",
-      "weigh": "Close match.",
+      "weigh": "Close match in mechanism, but the proof that the test failed first, and the lock itself, rest on the session's own steps. Should the gate check them?",
       "map": {
         "pb": [
           [
@@ -1118,6 +1135,13 @@
             "Exception: owner's sdlc:unlock-tests"
           ]
         ]
+      },
+      "decision": {
+        "better": "playbook",
+        "decision": "blend",
+        "note": "Blend (T11): the failing test first, the test-file lock hook, the test_lock gate check, sdlc:unlock-tests and the reviews that reject a weakened test all stay. Added, a proof the gate checks: for a fix-type change gate (c) requires the lock, and a lock commit that changes test files only; the runner runs the test target at the lock commit (red expected; the build preflight already found the base green) and at HEAD (green), and records both runs in the gate record, the article's 'proof the bug is gone'. Freezing a Rust test written inside a source file stays open in T8; the red/green proof covers it. Row corrected: today the lock exists only if the session runs lock-tests itself, gate (c) passes a fix-type change that never set it, and nothing checks that the test was committed first or failed (failing-test.log is a prompt instruction).",
+        "saved": "2026-10-03",
+        "status": "tentative"
       }
     },
     {
@@ -1126,11 +1150,11 @@
       "step": "Final check before review",
       "pb": "One way: a verifier subagent in a fresh context once the session believes it is done; the pasted output lands in the transcript and the PR check run.",
       "pbSrc": "p.25-29",
-      "fw": "The verifier runs in (c) and (d): by hand it runs build, test and lint; in CI (0.3.2) it runs none of them and reads the previous phase's gate record and the logs, exercising the change through direct calls only. The evidence logs are committed; in CI the runner writes them from its own run after the session, the three at (d) and (e) and any still marked deferred at (b) and (c); gate (d) posts the check run sdlc/d, and in CI the runner posts it again after that run (0.3.0).",
-      "fwSrc": "plugin/agents/verifier.md, plugin/pr/cli.py, plugin/ci/run_phase.py",
-      "rel": "same",
-      "why": "",
-      "weigh": "Since 0.3.0 the runner re-posts sdlc/d in CI after its commands step, so the check run needs the model to reach gate (d), not the step that posts it. A by-hand run, or a gate (d) stopped early by a run limit, still depends on the model's own step.",
+      "fw": "The verifier runs in a fresh context in (c) and (d): by hand it runs build, test and lint and exercises the change; in CI (0.3.2) it runs none of them and never starts the test runner: it quotes the runner's record of the previous phase (gate-b.json at the end of (c), gate-c.json at (d): the run on the tree the phase started from) and the logs, each marked 'read, not run', and exercises the change through direct calls only. The suite on the final tree is the runner's step after the session, which writes the evidence logs (the three at (d) and (e), any still marked deferred at (b) and (c)) and parks on a red target; gate (d) posts the check run sdlc/d, and in CI the runner posts it again after that run (0.3.0).",
+      "fwSrc": "plugin/agents/verifier.md, plugin/commands/sdlc-test.md §4, plugin/pr/cli.py, plugin/ci/run_phase.py, docs/PROGRESS.md choice 154",
+      "rel": "adapted",
+      "why": "PROGRESS choice 154, the owner's choice of item 3b's shape (i) in 0.3.2: the verifier reads the runner's record instead of running the targets; not a Dn in DECISIONS.md. Nearest: D1 hosted CI, sandboxed",
+      "weigh": "In CI the verifier's command results are the previous phase's, of the tree the phase started from; the final tree's are the runner's, in sdlc/d, which the runner re-posts after its commands step (0.3.0). A by-hand run, or a gate (d) stopped early by a run limit, still depends on the model's own step. Is the split clear enough on the record?",
       "map": {
         "pb": [
           [
@@ -1143,9 +1167,21 @@
           [
             "C",
             "w",
-            "Verifier; check run sdlc/d"
+            "Verifier, fresh context (in CI it reads the runner's record)"
+          ],
+          [
+            "A",
+            "w",
+            "Runner's run on the final tree; check run sdlc/d"
           ]
         ]
+      },
+      "decision": {
+        "better": "both",
+        "decision": "blend",
+        "note": "Blend (T10, small): the split stays, the fresh-context verifier for behaviour and the runner for the suite on the final tree. Added: in CI the verifier's report names the record it read (its phase and commit) and says that the final tree's result is the runner's, shown in the check run sdlc/d, so nobody reading verifier.md later takes the earlier tree's results for the final ones. Row corrected: relation adapted, not same (in CI the verifier runs no target and quotes the previous phase's runner record, of the tree the phase started from).",
+        "saved": "2026-10-03",
+        "status": "tentative"
       }
     },
     {
@@ -1154,8 +1190,8 @@
       "step": "The gates after Build and after Test",
       "pb": "None in the hand-prompted loop; evidence goes to the PR's check run and the code owner approves the PR. In a headless run an independent confidence gate sits between stages.",
       "pbSrc": "p.6, p.29, p.42",
-      "fw": "Confidence gates (c) and (d). Standard: continue and dispatch the next phase. Full: sdlc:c-ready, and the owner's sdlc:c-approved label starts (d); then sdlc:d-ready, and the owner's sdlc:d-approved label starts (e).",
-      "fwSrc": "plugin/gate/gate.py, template/.github/workflows/sdlc-deploy.yml",
+      "fw": "Confidence gates (c) and (d). Standard: continue and dispatch the next phase. Full: sdlc:c-ready, and the owner's sdlc:c-approved label starts (d); then sdlc:d-ready, and the owner's sdlc:d-approved label starts (e). The runner checks that the label is on the build PR and that the last 'labeled' event's actor is not the workflow token (github-actions[bot]); with no token the actor is not checked; who applied it is recorded only in GitHub's label event. D3, OPERATING_MODEL.md §4 and the commands' hand-over text ask for 'approving review + label'; the code checks the label only.",
+      "fwSrc": "plugin/gate/gate.py, plugin/ci/run_phase.py check_approval, template/.github/workflows/sdlc-test.yml, template/.github/workflows/sdlc-deploy.yml, docs/OPERATING_MODEL.md §4",
       "rel": "adapted",
       "why": "D3 label on the build PR · D18 profiles",
       "weigh": "The docs say 'approving review + label'; the code checks only the label. Which do you want?",
@@ -1189,6 +1225,13 @@
             "Full profile: owner's sdlc:d-approved"
           ]
         ]
+      },
+      "decision": {
+        "better": "framework",
+        "decision": "blend",
+        "note": "Blend (T12): the label alone stays as the code does it (sdlc:c-approved and sdlc:d-approved under the Full profile, the actor checked not to be the workflow token, github-actions[bot]; with no token it is not checked); D3 ('approving review + label') is amended and the docs corrected, proposed after the study. Added: the runner records who applied each approval label and when, in status.yaml, like build-plan-approve's acceptance line. Settles T9's open item: under Full, a risk-list hit first found at (c) or (d) shows in the banner of the waiting PR, but only my (e) merge accepts it.",
+        "saved": "2026-10-03",
+        "status": "tentative"
       }
     },
     {
@@ -1197,8 +1240,8 @@
       "step": "Evals",
       "pb": "The platform engineer collects 20 to 50 real tasks; the suite runs on any change to CLAUDE.md, skills or hooks and on a schedule; the pass rate is a merge check; each incident gets an eval.",
       "pbSrc": "p.29-31, p.44",
-      "fw": "sdlc-evals.yml runs on changes to CLAUDE.md, .claude/** and evals/** and daily; cases under evals/cases/; an incident's (e) run is told to add one case. Skill and hook changes ship in the plugin and are tested by the framework's own suite (framework-evals.yml); a project's pin bump does not trigger its sdlc-evals.yml.",
-      "fwSrc": "template/.github/workflows/sdlc-evals.yml, template/evals/, .github/workflows/framework-evals.yml",
+      "fw": "sdlc-evals.yml runs on pull requests that change CLAUDE.md, .claude/** or evals/**, daily and on dispatch; cases under evals/cases/; a pass rate below the threshold fails the job, but no required status check binds the merge, and an empty suite passes ('no cases'). An incident's (e) run is told to add one case; no gate checks it. The suite starts empty (D17) and its README names incidents and findings that recur as its sources; nothing seeds it once about 20 changes exist, as D17 says. Skill and hook changes ship in the plugin and are tested by the framework's own suite (framework-evals.yml); a project's pin bump (sdlc.yaml) does not trigger its sdlc-evals.yml.",
+      "fwSrc": "template/.github/workflows/sdlc-evals.yml, template/evals/README.md, plugin/evals/run.py, plugin/commands/sdlc-deploy.md, .github/workflows/framework-evals.yml",
       "rel": "adapted",
       "why": "D17 evals start once real work exists",
       "weigh": "The incident case is a prompt instruction, not a gate check. Should the gate require it?",
@@ -1222,6 +1265,13 @@
             "sdlc-evals.yml on config changes"
           ]
         ]
+      },
+      "decision": {
+        "better": "playbook",
+        "decision": "blend",
+        "note": "Blend (T13): D17 stays (the suite starts empty and fills from incidents), and a required status check stays not chosen (build-config). Added: (1) sdlc-evals.yml also runs on sdlc.yaml (the pin bump, through which new skills and hooks reach the project), reading the pin from the pull request's head on such a change so the bump is evaluated with the new framework before it merges (an exception to the pin-from-the-default-branch rule), and on policies/** (build-skills); (2) gate (e) of an incident change requires its eval case under evals/cases/ with at least one check (the row's question: yes); (3) D17's 'after ~20 real changes' gets a step: once the 20th change has merged, a run drafts eval cases from merged changes in a PR I merge.",
+        "saved": "2026-10-03",
+        "status": "tentative"
       }
     },
     {
@@ -1230,11 +1280,11 @@
       "step": "The AI review passes",
       "pb": "Identical review passes on every PR per REVIEW.md: bugs, security, compliance with spec.md, plan.md and design principles; findings ranked Important vs Nit, a machine-readable tally.",
       "pbSrc": "p.32-34",
-      "fw": "The REVIEW.md pass runs once per change, at (e), in a fresh-context CI job; a fix loop runs while an Important finding stands. The intent and spec PRs get no REVIEW.md pass.",
-      "fwSrc": "plugin/review/, template/.github/workflows/sdlc-deploy.yml",
+      "fw": "The REVIEW.md pass runs at (e) only, in a fresh-context CI job (sdlc-deploy.yml, run_phase.py --phase review), re-run on each new HEAD there and in each fix round at (e): three passes (bugs, security, compliance with spec.md, plan.md and design principles), findings ranked Important or Nit with at most five nits, written to evidence/review-findings.json and published as the sdlc/review check run with a machine-readable tally, which the (e) session posts itself. A fix loop runs within the iteration cap while an Important finding stands, and gate (e) fails on an open Important finding: the change parks, or under deferred review the panel may settle one the run cannot fix. No other PR gets a REVIEW.md pass: not the intent or spec+plan PRs, not the runbook PRs that revert-pr and quarantine-flaky-test open with code changes for the owner to merge, and not the owner's own PRs.",
+      "fwSrc": "plugin/review/ (cli.py check-run, findings.py), template/REVIEW.md, template/.github/workflows/sdlc-deploy.yml, plugin/ci/run_phase.py (--phase review), plugin/gate/checks.py check_findings, plugin/commands/sdlc-deploy.md §2, plugin/detect/runbooks.py, template/.github/workflows/sdlc-detect.yml",
       "rel": "adapted",
       "why": "D12 review as a CI job",
-      "weigh": "Every PR vs once per change. The (b) adversarial reviewer covers the spec; is that enough?",
+      "weigh": "Every PR vs once per change, and the framework's Important finding blocks where the article's findings do not block on their own, unless a platform engineer gates merges on the tally (p.33). The (b) adversarial reviewer covers the spec; the runbook PRs, which change code, get no review pass. Is that enough?",
       "map": {
         "pb": [
           [
@@ -1250,6 +1300,13 @@
             "REVIEW.md pass at (e) only"
           ]
         ]
+      },
+      "decision": {
+        "better": "both",
+        "decision": "blend",
+        "note": "Blend (T14): the REVIEW.md pass at (e) stays (a fresh-context CI job, D12; bugs, security, compliance; the sdlc/review check run with its tally), once per change before my merge, and it stays blocking on an Important finding (the gate parks, or the panel settles it under deferred review), so what reaches me has had its fixes; the article lets findings neither approve nor block (p.33). Added: the same pass on the runbook PRs (revert-pr and quarantine-flaky-test change code, and I merge their PRs with no review pass today). Intent and spec PRs stay covered by T1's briefs and the adversarial reviewer at (b), and my own configuration PRs by build-config's brief; no extra pass on each fix round's PR. Row corrected: the check run and its tally, the blocking Important finding, and the PRs no review pass reads (runbook, intent, spec, my own).",
+        "saved": "2026-10-04",
+        "status": "tentative"
       }
     },
     {
@@ -1995,6 +2052,6 @@
       "fidelity": 2
     },
     "weightsSaved": "2026-09-29",
-    "rowsWithADecision": 22
+    "rowsWithADecision": 28
   }
 }

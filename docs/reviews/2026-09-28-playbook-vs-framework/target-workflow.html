@@ -98,9 +98,9 @@
 
 <div class="wrap">
   <header>
-    <div class="eyebrow">Target design · tentative · T1–T9 of target-design.md · 3 October 2026</div>
+    <div class="eyebrow">Target design · tentative · T1–T14 of target-design.md · 4 October 2026</div>
     <h1>The workflow as you want it to become</h1>
-    <p class="lede">The third workflow beside the <a href="https://claude.ai/artifact/WhLTjcSzJqQmUFm3aP5G6L">playbook's</a> and the <a href="https://claude.ai/artifact/KW8jWunfLNa9WgBSzJxw4S">framework's</a>. It draws only what <code>docs/reviews/2026-09-28-playbook-vs-framework/target-design.md</code> has discussed so far: AI roles that advise and one manager that reviews for you (T1), the interview (T2), the intent home (T3), the names (T4), how a project starts (T5), tickets that become intents (T6), the reason a rejection keeps (T7), a formatter that follows your languages (T8) and a risk-list hit that your merge accepts (T9). Steps the study has not reached yet are left out or marked "not discussed yet".</p>
+    <p class="lede">The third workflow beside the <a href="https://claude.ai/artifact/WhLTjcSzJqQmUFm3aP5G6L">playbook's</a> and the <a href="https://claude.ai/artifact/KW8jWunfLNa9WgBSzJxw4S">framework's</a>. It draws only what <code>docs/reviews/2026-09-28-playbook-vs-framework/target-design.md</code> has discussed so far: AI roles that advise and one manager that reviews for you (T1), the interview (T2), the intent home (T3), the names (T4), how a project starts (T5), tickets that become intents (T6), the reason a rejection keeps (T7), a formatter that follows your languages (T8), a risk-list hit that your merge accepts (T9), a test loop that closes by itself in CI (T10), a fix that proves itself (T11), build and test approvals recorded by the runner (T12), an eval suite that grows (T13) and a review pass on the runbook PRs (T14). Steps the study has not reached yet are left out or marked "not discussed yet".</p>
     <p class="banner"><strong>Nothing here is decided.</strong> Every entry is tentative until the whole study is done; then each confirmed entry becomes a proposal and a candidate row in <code>docs/ROADMAP.md</code>. The framework as it is today is on the framework page.</p>
     <div class="legend">
       <span><i class="sw hex"></i>Your decision or act</span>
@@ -110,7 +110,7 @@
   </header>
 
   <section>
-    <h2>One change, from idea to release <span class="refs">T1 · T3 · T4 · T5 · T6 · T7 · T8 · T9</span></h2>
+    <h2>One change, from idea to release <span class="refs">T1 · T3 · T4 · T5 · T6 · T7 · T8 · T9 · T10 · T11 · T12 · T14</span></h2>
     <p>Your approval points stay where they are today. What changes is what reaches you at each one: the roles write briefs, the manager turns them into one recommendation, you decide, and the act runs on your signal. Phases carry the names T4 proposes, with today's letter after each.</p>
     <div class="diagram"><pre class="mermaid">flowchart TB
   subgraph PREP["Before the first change"]
@@ -150,8 +150,10 @@
   D3 -. "questions to answer, or a change you want" .-> GQ{{"You answer in a 'Request changes' review"}}
   GQ -. "/sdlc-fix applies your answers, as today" .-> D1
 
-  BT["build: starts on its own from the merged plan, as today&lt;br/&gt;(preflight, acceptEdits, draft PR); the seven hooks as today,&lt;br/&gt;the formatter on each edit in your project's languages (T8);&lt;br/&gt;a risk-list hit found here does not stop it: it goes to the build PR's banner (T9);&lt;br/&gt;test: not discussed yet"]
-  GB -. "your label on the design PR before merging:&lt;br/&gt;Full for this change" .-> FULL["build and test wait for your labels,&lt;br/&gt;as in the Full profile; nothing without the label"]
+  BT["build: starts on its own from the merged plan, as today&lt;br/&gt;(preflight, acceptEdits, draft PR); the seven hooks as today,&lt;br/&gt;the formatter on each edit in your project's languages (T8);&lt;br/&gt;a risk-list hit found here does not stop it: it goes to the build PR's banner (T9);&lt;br/&gt;a fix: the gate requires the test lock (T11)"]
+  TT["test: in CI the runner runs build, test and lint after the session;&lt;br/&gt;a red target starts the next fix round by itself, parking only at the cap (T10);&lt;br/&gt;a fix: the test shown red at the lock commit, green at the end (T11);&lt;br/&gt;the details: 'Build and test in CI', below"]
+  BT --> TT
+  GB -. "your label on the design PR before merging:&lt;br/&gt;Full for this change" .-> FULL["build and test wait for your labels,&lt;br/&gt;as in the Full profile; nothing without the label;&lt;br/&gt;the runner records who applied each label, and when (T12)"]
   FULL -.-> BT
   GB -- "your signal" --> REC["The build runner records: plan accepted by whom and when,&lt;br/&gt;routine or non-routine, close look shown or not"]
   REC --> BT
@@ -161,7 +163,7 @@
     E2["Manager: merge, or request changes, with the Important findings"]
     E1 --> E2
   end
-  BT --> E1
+  TT --> E1
   E2 --> GE{{"You approve the code,&lt;br/&gt;and the risk items its banner shows"}}
   GE -- "your signal; a workflow checks it and merges (to verify)" --> LIVE(["Merged"])
   GE -. "declared production: deploy.production_gate" .-> RL["The release checklist: where roles help most&lt;br/&gt;which role, and when: not discussed yet"]
@@ -175,6 +177,8 @@
   end
   F3 --> GF{{"You triage: fix now, sdlc:schedule, or dismiss"}}
   F1 -. "runbook with authorization: ask" .-> GO{{"You apply sdlc:go"}}
+  F1 -. "3σ, pre-approved: revert-pr or quarantine-flaky-test" .-> RBP["The runbook opens its PR;&lt;br/&gt;the review pass runs on it, its findings on the PR (T14)"]
+  RBP --> GRB{{"You merge or close the runbook PR"}}
   GR ~~~ F1</pre></div>
     <ul class="notes">
       <li><strong>You stay the only approver.</strong> The manager prepares an act; you approve it from your own account (a label or an approving review); a deterministic workflow, not a model, checks that the approval came from you and carries the act out. <code>sdlc-runbook.yml</code> already works this way for <code>sdlc:go</code>, though it checks only that a person applied the label, not that it was you.</li>
@@ -194,7 +198,27 @@
       <li><strong>The formatter follows your languages (T8): added, nothing replaced.</strong> The seven guardrail hooks stay as they are: deterministic, every block logged, none asks. Today the formatter and linter on edit act on Python files only. Added: per file type, your project's own format and lint commands in <code>sdlc.yaml</code>, run on the changed file only and never blocking when a tool is missing; ruff stays the default for Python, and <code>/sdlc-init</code> proposes prettier and eslint for Node when <code>package.json</code> has them, and rustfmt for Rust. Checks that compile the whole project, such as clippy, stay at the gate's lint, as the article puts heavier checks at the commit or the PR (p.23). A file type with no command passes, so HTML, CSS, Markdown, JSON and YAML get no default. Recorded now, built after the study. No settled decision changes.</li>
       <li><strong>Your policy sources (build-skills): added, nothing replaced.</strong> The five generic policy skills stay in the pinned plugin, a project override stays yours to add, and a new skill version still needs your pin bump. Added: you write one policy source per skill in the project's <code>policies/</code> folder (name judged with T4), a guardrail path that no run may edit; Claude may draft one in a PR you merge. Each skill reads its source, which wins where they differ, so the next run picks up your edit. Each policy skill gets a trigger eval on each plugin release: three requests that do not name the skill, passing when it loads (article p.22 step 4); an override gets the same case in your <code>evals/</code>. The spec header records which version of your source judged the change. Each skill's backing line will list, rule by rule, what a hook or the gate enforces and what only the review pass re-checks. Touches D6 (the guardrail list).</li>
       <li><strong>A risk-list hit is a line in the banner (T9): the park and the label go.</strong> Today a hit parks the change; your <code>sdlc:accept-risk</code> label starts a fix round, and then you merge. Instead the hit is shown in the "Needs your close look" banner of the PR you merge anyway, with the reviewer's brief on each item (what the change does to it, what could break, how to undo it), and your merge is the acceptance, recorded with your name. A risk the design missed no longer stops the build; nothing is released before your merge, and on a declared production the release still needs your release label. Each risk item gains the paths it covers, proposed by <code>/sdlc-init</code> and confirmed by you once, because today's item names miss most real paths (a migrations folder, infrastructure, production configuration). The reviewer never accepts a risk for you. Amends D11, D21 and D24.</li>
+      <li><strong>The test loop closes by itself in CI (T10).</strong> Since plugin 0.3.2 the CI test session runs none of your project's targets: the runner runs build, test and lint once after the session, outside the sandbox, and a red target parks until you start the next round ("Request changes", a dispatch of the fix workflow, or an un-park label). Instead, a red target starts the next fix round by itself, with the failing logs as its constraint and one more iteration counted, and the change parks only at the iteration cap. What reaches you has then passed the check or used up its rounds, as the article asks (p.27). The verifier, which in CI quotes the runner's record of the previous phase, names that record and says the final result is the runner's. Amends D11 and your choice of 0.3.2 (PROGRESS choice 154).</li>
+      <li><strong>A fix proves itself (T11).</strong> For a fix, the gate requires the test lock, committed together with the test in a first commit of test files only (today the lock rides in the next commit, so the build command's step 3 changes), and the runner runs the tests at that commit (they must fail) and at the end (they must pass), both on the record: the article's "proof the bug is gone" (p.28), no longer resting on the session's own word. Freezing a Rust test written inside a source file stays open (T8).</li>
+      <li><strong>Build and test approvals (T12).</strong> Under the Full profile your label alone approves build and test, as the code does today; D3's "approving review + label" is amended and the docs corrected. The runner records who applied each label and when, beside the plan-acceptance line. A risk-list hit first found in build or test shows in the waiting PR's banner, and only your deploy merge accepts it.</li>
+      <li><strong>The eval suite grows (T13).</strong> The suite still starts empty (D17). It also runs on <code>sdlc.yaml</code> (the plugin pin bump), reading the pin from the pull request on such a change so a new pin is evaluated before you merge it, and on your <code>policies/</code>. The deploy gate of an incident change requires its eval case. Once the twentieth change has merged, a run drafts eval cases from merged changes in a PR you merge, D17's own trigger given a step. No required status check: your bypass would skip it, so the result reaches you in the brief on your own configuration PRs.</li>
+      <li><strong>The runbook PRs get the review pass (T14).</strong> The review pass at deploy stays as it is: at deploy, re-run on each new version there, and an Important finding still holds the change until it is fixed (the article's findings do not block on their own, p.33; with the fix loop already run, what reaches you has had its fixes). Added: the same pass on the PRs that a pre-approved runbook opens at 3σ (a revert, or a flaky test deselected), the one kind of automated code change that reaches your merge with no review today; its findings show on the PR. Intent and spec PRs keep the roles' briefs and the design reviewer; your own configuration PRs keep their brief.</li>
     </ul>
+  </section>
+
+  <section>
+    <h2>Build and test in CI <span class="refs">T10 · T11 · T12</span></h2>
+    <p>What happens after the build or test session in a CI job. The session works inside the sandbox, which hides nested <code>.env</code> files from every process it starts, so the project's targets run on the runner after it, as since plugin 0.3.2. What changes is what a red target does.</p>
+    <div class="diagram"><pre class="mermaid">flowchart LR
+  S["The build or test session works in the sandbox&lt;br/&gt;(build also runs the tests each step touches);&lt;br/&gt;the verifier names the runner record it read (T10)"] --> R["The runner, after the session, outside the sandbox:&lt;br/&gt;build, test and lint once,&lt;br/&gt;the evidence logs written from that run"]
+  R -- "green" --> G["Gate passes: Standard continues on its own"]
+  R -- "red, rounds left" --> FX["A fix round starts by itself (T10):&lt;br/&gt;the failing logs as its constraint, iterations + 1"]
+  FX --> S
+  R -. "red at the iteration cap" .-> PK{{"Parked for you: 'Request changes',&lt;br/&gt;an un-park label, or close"}}
+  R -. "a fix-type change" .-> PF["The gate requires the lock; the runner runs the tests&lt;br/&gt;at the lock commit (red) and at the end (green),&lt;br/&gt;both on the record (T11)"]
+  PF -.-> G
+  G -. "Full profile, or your label on the design PR" .-> LB{{"You apply the build or test label;&lt;br/&gt;the runner records who and when (T12)"}}</pre></div>
+    <p class="note"><strong>Today:</strong> a red target found by the runner parks the change, and only an act of yours starts the next round ("Request changes", a dispatch of the fix workflow, or an un-park label), each one an iteration; nothing checks that a fix's test failed first or that the lock was set; the approval label's actor is checked only against the workflow token and not recorded. Running the targets inside the sandbox again, or a helper outside it that the session could call, were considered and not chosen.</p>
   </section>
 
   <section>
@@ -253,6 +277,7 @@
           <tr><td>design (b): spec and plan</td><td>Product (does the spec solve the intent), Architect (the plan, and the article's three questions of it), Security &amp; policy (flagged concerns)</td><td class="tgt">Two recommendations in the one PR: one for the spec, one for the plan</td><td class="owner">Approve both, or reject one</td></tr>
           <tr><td>design (b), higher risk: the plan classed non-routine, or a risk-list hit</td><td>The same, plus the Architect's full plan review, in the article's tech-lead place (p.14, p.17): it reads the files the plan names, answers the three questions with evidence and ends with go or fix first; the reviewer's brief on each risk item hit</td><td class="tgt">"Needs your close look" at the top of the PR, with the reasons: the reviewer's reasons and the risk hit before the roles exist, the Architect's recommendation quoted unchanged with them; each risk item with its brief</td><td class="owner">The same approval, after a close look; no separate gate; your merge also accepts the risk items shown</td></tr>
           <tr><td>design (b), a plan you want watched through build and test</td><td>The same</td><td class="tgt">The class and its reasons, in the banner</td><td class="owner">Label the design PR before merging: the change runs under the Full profile; without the label the build starts on its own</td></tr>
+          <tr><td>build (c) and test (d), Full profile or your label on the design PR</td><td>None (the adversarial reviewer stays a checker for the gate)</td><td class="tgt">The gate's result; a risk-list hit found here, in the banner</td><td class="owner">Apply the build or test label; the runner records who and when; only your deploy merge accepts a risk shown</td></tr>
           <tr><td>deploy (e): the code</td><td>Code reviewer (today's REVIEW.md pass), Platform &amp; release</td><td class="tgt">Merge, or request changes, with the Important findings</td><td class="owner">Approve; the merge runs on your signal</td></tr>
           <tr><td>Release, on a declared production</td><td>The release checklist is where roles help most; which role: not discussed yet</td><td class="tgt">Not discussed yet</td><td class="owner">Apply the release label, as release manager</td></tr>
           <tr><td>maintain (f): a finding</td><td>Operations; Security &amp; policy for scans</td><td class="tgt">Fix now, schedule or dismiss</td><td class="owner">Triage</td></tr>
@@ -399,14 +424,53 @@
         <ul class="notes">
           <li>The shape of a risk item with its paths in <code>sdlc.yaml</code>, and what <code>/sdlc-init</code> proposes for each kind of project.</li>
           <li>Where the reviewer's brief on a risk item is kept, and how the review pass gives one at deploy.</li>
-          <li>In the Full profile, whether your build or test label also accepts a hit first found there, or only the deploy merge does.</li>
+          <li>In the Full profile, whether your build or test label also accepts a hit first found there, or only the deploy merge does. Settled at the test-gate row: only the deploy merge (T12).</li>
+        </ul>
+      </div>
+      <div>
+        <h3>The test loop <span class="refs">T10</span></h3>
+        <ul class="notes">
+          <li>Whether the automatic rounds share the iteration cap with your own "Request changes" rounds, or get a count of their own.</li>
+          <li>Whether a target the session cannot fix (missing, timed out, an infrastructure failure) starts a round at all, or parks at once.</li>
+          <li>The verifier's exact wording, and whether the PR summary also names the run its evidence came from.</li>
+        </ul>
+      </div>
+      <div>
+        <h3>A fix's proof <span class="refs">T11</span></h3>
+        <ul class="notes">
+          <li>Where the two runs go in the gate record, and what a wrong result tells you in "What I need from you".</li>
+          <li>Whether the run at the lock commit uses the whole test target or only the tests that commit added.</li>
+          <li>Whether the session still writes its own failing-test log once the runner's two runs are the proof.</li>
+        </ul>
+      </div>
+      <div>
+        <h3>Approvals <span class="refs">T12</span></h3>
+        <ul class="notes">
+          <li>The exact fields of the approval line, shared with the plan-acceptance and risk-acceptance lines.</li>
+        </ul>
+      </div>
+      <div>
+        <h3>Evals <span class="refs">T13</span></h3>
+        <ul class="notes">
+          <li>What counts as a real check for the incident case, deterministically.</li>
+          <li>How the twentieth change is counted, and whether the draft run repeats later.</li>
+          <li>How the pin is read from the pull request safely, since that pin names the framework the job runs with the Claude credential: whether only your own pull requests may do it.</li>
+          <li>The workflow's name, judged with the other names (T4).</li>
+        </ul>
+      </div>
+      <div>
+        <h3>Runbook reviews <span class="refs">T14</span></h3>
+        <ul class="notes">
+          <li>Whether a runbook PR's Important finding only informs you or holds the PR; a revert is meant to land fast.</li>
+          <li>Which job runs the pass: the detection job after it opens the PR, or a job dispatched for it.</li>
+          <li>Whether a project runbook that changes files gets the same pass.</li>
         </ul>
       </div>
     </div>
   </section>
 
   <footer>
-    <span>Drawn from <code>target-design.md</code> entries T1–T9 and <code>naming.md</code>, as recorded from 30 September to 3 October 2026. Each entry lists the settled decisions (D<i>n</i>) it would reopen or amend.</span>
+    <span>Drawn from <code>target-design.md</code> entries T1–T14 and <code>naming.md</code>, as recorded from 30 September to 4 October 2026. Each entry lists the settled decisions (D<i>n</i>) it would reopen or amend.</span>
     <span>The other two pages: <a href="https://claude.ai/artifact/WhLTjcSzJqQmUFm3aP5G6L">Playbook SDLC Workflow</a> · <a href="https://claude.ai/artifact/KW8jWunfLNa9WgBSzJxw4S">SDLC Plugin Workflow</a> · and the <a href="https://claude.ai/artifact/PFnRZ32pwTr4y422Gna2mz">Workflow Crosswalk</a> that compares them.</span>
   </footer>
 </div>
