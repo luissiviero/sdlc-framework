@@ -129,6 +129,10 @@ Nits are not fixed in this loop; the reviewer lists at most five and the owner r
 before, it prints the one-line `CLAUDE.md` entry to propose under "Things Claude gets
 wrong". Put those lines in the PR description's "Proposed CLAUDE.md lines" block; never
 edit `CLAUDE.md` yourself (protected path: the owner applies the line in the PR review).
+The record lives outside the change folder (one file per project); at (d) and (e) every
+`commit-phase` carries it when it changed and the gate's `clean_tree` sets it aside, so
+`validate` may run right before the gate (0.3.5: until then each fix round at gate (e)
+parked on it). A deleted or malformed record is still uncommitted work to the gate.
 
 ### Deferred review — the panel settles the judgment items (decision 21; build guide step 16a)
 ```

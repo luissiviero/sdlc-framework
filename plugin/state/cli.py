@@ -139,7 +139,15 @@ def cmd_commit_phase(args) -> int:
     # alone with ``git commit --only``, so a file staged beforehand by a hook, an earlier
     # partial command or the session stays out of it. A --paths entry that matches nothing
     # (e.g. ruff.toml when it was not created) contributes nothing; a deleted one is recorded.
+    # The review pass's record (changes/.review-seen.json) rides along whenever it changed,
+    # at (d) and (e) where the review pass runs: it is the change's own record too, outside
+    # the folder only because it is one file per project (0.3.5; until then a round that
+    # forgot --paths left it uncommitted, and the gate's clean_tree parked on it). The file
+    # itself only: a directory of that name is not it, and a deleted record is left for the
+    # gate to report (the review of the 0.3.5 diff).
     files = gitops.changed_files(root, [rel, *args.paths])
+    if args.phase in ("d", "e"):
+        files = sorted(set(files) | set(_review_record_changed(root)))
     # The plan-sync rule, applied here because this command is how the phase commands
     # commit and the hook only sees ``git *`` shell commands (NOTES section 9): a commit on
     # sdlc/<id>/c that departs from plan.md without updating it is refused now, not found
@@ -170,6 +178,16 @@ def cmd_commit_phase(args) -> int:
         }
     )
     return 0
+
+
+def _review_record_changed(root: Path) -> list[str]:
+    """``changes/.review-seen.json`` when it changed and is a regular file (not a symlink,
+    not a directory of that name, not deleted): the one entry commit-phase adds on its own."""
+    seen = c.review_seen_rel()
+    path = root / seen
+    if path.is_symlink() or not path.is_file():
+        return []
+    return [f for f in gitops.changed_files(root, [seen]) if f == seen or f.endswith("/" + seen)]
 
 
 def _load(args) -> tuple[Path, status.Status] | None:

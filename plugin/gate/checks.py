@@ -862,17 +862,37 @@ def check_adversarial_verdict(ctx: GateContext) -> CheckResult:
 
 
 # --- 10. committed work only: the verdict and the PR cover HEAD, not the working tree -----------
+def _is_review_record(path: Path) -> bool:
+    """A regular file (no symlink) whose text is a JSON object of objects: the shape
+    ``review/findings.py update_seen`` writes. Anything else at that path is work."""
+    if path.is_symlink() or not path.is_file():
+        return False
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, ValueError):
+        return False
+    return isinstance(data, dict) and all(isinstance(v, dict) for v in data.values())
+
+
 def check_clean_tree(ctx: GateContext) -> CheckResult:
     if ctx.diff is None:
         return _fail("clean_tree", ctx.diff_error, "Run the gate inside the project's git repo.")
     prefix = ctx.change_rel + "/"
     tree = diffmod.dirty_files(ctx.root)
-    # three kinds of entry are nobody's work: the sandbox's empty placeholders, the root
-    # names it masks (.env, .idea, .vscode and friends — diffmod.SANDBOX_MASKED) and, inside
-    # a CI session only, what it has mounted over at any depth (diffmod.sandbox_mounted,
-    # 0.3.4; the mark the runner sets says the gate runs inside the sandbox, and by hand a
-    # mount over a tracked path is nobody's mask)
+    # four kinds of entry are nobody's work: the sandbox's empty placeholders, the root
+    # names it masks (.env, .idea, .vscode and friends — diffmod.SANDBOX_MASKED), the review
+    # pass's own record at (d) and (e) (changes/.review-seen.json, written by ``review/cli.py
+    # validate`` right before this gate reads the findings file in the change's evidence/,
+    # and committed with the evidence after it by ``commit-phase``, 0.3.5: change 0001's fix
+    # rounds at gate (e) parked on it — a regular file holding a JSON object, so a deleted,
+    # replaced or malformed record is still reported) and, inside a CI session only, what the
+    # sandbox has mounted over at any depth (diffmod.sandbox_mounted, 0.3.4; the mark the
+    # runner sets says the gate runs inside the sandbox, and by hand a mount over a tracked
+    # path is nobody's mask)
     ignored = set(diffmod.sandbox_placeholders(ctx.root, tree)) | set(diffmod.sandbox_masked(tree))
+    seen = c.review_seen_rel()
+    if ctx.phase in ("d", "e") and seen in tree and _is_review_record(ctx.root / seen):
+        ignored.add(seen)
     dirty = [f for f in tree if f not in ignored and not f.startswith(prefix)]
     if dirty and ctx.commands_deferred:
         mounted = set(diffmod.sandbox_mounted(ctx.root, dirty))

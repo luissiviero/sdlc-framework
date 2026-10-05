@@ -145,6 +145,20 @@ def work_branch(change_id: str, phase: str) -> str:
 
 # --- change folder ------------------------------------------------------------------------
 CHANGES_DIR = "changes"
+REVIEW_SEEN_FILE = ".review-seen.json"  # changes/.review-seen.json: the review pass's record
+
+
+def review_seen_rel() -> str:
+    """``changes/.review-seen.json`` relative to the project root: the project's record of
+    review findings, written by ``review/cli.py validate`` right before the gate whose
+    ``findings`` check reads the findings file in the change's ``evidence/``. It lives
+    outside the change folder (one file per project), so until 0.3.5 the gate's
+    ``clean_tree`` read it as uncommitted work and every fix round of change 0001 at gate (e)
+    parked on it (2026-10-03). Now, at (d) and (e), ``commit-phase`` carries it with the
+    change folder and ``clean_tree`` sets it aside."""
+    return f"{CHANGES_DIR}/{REVIEW_SEEN_FILE}"
+
+
 ID_RE = re.compile(r"^\d{4}$")
 INIT_CHANGE_ID = "0000"  # reserved for the framework's own installation PR (step 21)
 DIR_RE = re.compile(r"^(?P<id>\d{4})-(?P<slug>[a-z0-9]+(?:-[a-z0-9]+)*)$")

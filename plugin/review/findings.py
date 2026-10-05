@@ -38,7 +38,7 @@ SEVERITIES = ("important", "nit")
 PASSES = ("bugs", "security", "compliance")
 REQUIRED_FIELDS = ("pass", "severity", "file", "summary")
 
-SEEN_FILE = ".review-seen.json"  # changes/.review-seen.json: the project's record of findings
+SEEN_FILE = c.REVIEW_SEEN_FILE  # changes/.review-seen.json: the project's record of findings
 PROPOSALS_FILE = "claude-md-proposals.md"  # evidence/: the lines the PR description quotes
 CHECK_RUN_NAME = "sdlc/review"
 
@@ -266,8 +266,9 @@ def framework_findings(
 
 # --- the record of findings already seen (article p.34 step 5) -------------------------------
 def seen_record_path(root: Path) -> Path:
-    """``changes/.review-seen.json``: one file per project, committed with the change."""
-    return Path(root) / c.CHANGES_DIR / SEEN_FILE
+    """``changes/.review-seen.json``: one file per project, committed with the change
+    (``commit-phase`` carries it whenever it changed, 0.3.5)."""
+    return Path(root) / c.review_seen_rel()
 
 
 def update_seen(
