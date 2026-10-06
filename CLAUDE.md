@@ -1,6 +1,7 @@
 # SDLC framework repo
 
-This repository builds a Claude Code plugin + project template that drives any project through plan → design → build → test → deploy → maintain with profile-based human gates. Read `docs/OPERATING_MODEL.md` first; it is the contract. `docs/BUILD_GUIDE.md` (47 steps, article-cited) is the build plan; `docs/DECISIONS.md` records the 26 settled choices — do not reopen them without asking. `docs/ROADMAP.md` is what comes after Milestone 1: candidates with a proposal each, never a decision.
+This repository builds a Claude Code plugin + project template that drives any project through plan → design → build → test → deploy → maintain with profile-based human gates. Read `docs/OPERATING_MODEL.md` first; it is the contract. `docs/BUILD_GUIDE.md` (47 steps, article-cited) is the build plan; `docs/decisions/index.md` records the 26 settled choices — do not reopen them without asking. `docs/ROADMAP.md` is what comes after Milestone 1: candidates with a proposal each, never a decision.
+Indexes first: `docs/notes/index.md` lists every verified platform fact, `docs/decisions/index.md` every settled decision; read the index, then only the files you need.
 
 ## Commands
 - Test: `python -m pytest` (all green; never skip or delete a failing test)
@@ -32,7 +33,7 @@ Run tests and lint before reporting any task complete, and paste the output. If 
 - Events caused by the CI workflow token do not start workflow runs (except workflow_dispatch / repository_dispatch): automated phase transitions dispatch the next workflow explicitly.
 - Escalation means park (label `sdlc:needs-human`, write "what I need from you"), never a notification.
 - The plan.md run is read-only (Read/Grep/Glob); the first run with edit tools is phase (c).
-- Verify how Claude Code on Windows invokes hook commands before writing the first hook; record the answer in `docs/NOTES.md`.
+- Verify how Claude Code on Windows invokes hook commands before writing the first hook; record the answer in `docs/notes/1.md`.
 
 ## Things Claude gets wrong
 <!-- One line per recurring mistake; added when a review flags the same finding twice. -->
