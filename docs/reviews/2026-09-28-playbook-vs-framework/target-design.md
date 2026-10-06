@@ -22,6 +22,7 @@ Each entry: the owner's idea in the owner's words, the direction discussed so fa
 | T14 | The runbook PRs get the review pass: every automated code change the owner merges has been reviewed | tentative | 2026-10-04 |
 | T15 | Review corrections reach CLAUDE.md through one standing PR the owner merges when they choose | tentative | 2026-10-05 |
 | T16 | The reviewer is tuned twice a month from signals already on record, through a standing REVIEW.md PR | tentative | 2026-10-05 |
+| T17 | The owner's @claude comment starts a fix round, beside the 'Request changes' review | tentative | 2026-10-06 |
 
 The target workflow page (https://claude.ai/artifact/13X8rzF9KsfekmeSs1w5rM, snapshot `target-workflow.html`) draws every entry. The crosswalk page (https://claude.ai/artifact/PFnRZ32pwTr4y422Gna2mz) shows T1 to T3 in a third column, "Target (tentative)", on the cards of the rows they touch, and `crosswalk.json` carries the same condensed text in each row's `target` field and in `targets`; at the owner's request the crosswalk is not extended with later entries (the review record's section 7).
 
@@ -494,3 +495,29 @@ The framework already keeps the hook log both ways: committed in `evidence/` and
 - What the eval run on the REVIEW.md PR can show: `sdlc-evals.yml` does not list `REVIEW.md` among its paths, and today's eval cases run tasks with `claude -p`, not the review pass, so the run tests nothing the PR changed until review-pass cases exist.
 - What the run may propose: wording and nit-cap changes only, or also the "Do not report" list and the passes.
 - Whether the run and T15's step share one workflow, and the two schedule days.
+
+## T17. The owner's @claude comment starts a fix round, beside the "Request changes" review
+
+**Status:** tentative. Recorded from the owner's choice on the crosswalk row deploy-comments (better: the framework; decision: blend), 2026-10-06.
+
+**The owner's note (saved on the crosswalk page).** "Blend (T17): the review round stays (D22): my 'Request changes' review, or an un-park label, starts sdlc-fix.yml, the comments become constraints, the phase re-runs, iterations + 1. Added: my comment starting with '@claude' on a change's PR starts the same fix round, with all the PR's unresolved comments as constraints; the workflow checks the comment came from my account (not just any person) and reads its text as data. It replaces the manual workflow_dispatch on PRs I opened by hand, where GitHub refuses my own 'Request changes'. The babysitting is mostly covered already: T10's automatic round on a red target, and the (e) fix loop while an Important finding stands. Considered and not chosen: a separate round per comment (more runs, many small pushes to follow). D22 stays and gains one trigger."
+
+**Today.** A "Request changes" review by the owner, a member or a collaborator, or one of the owner's un-park labels, starts `sdlc-fix.yml` (`pull_request_review: submitted`, `pull_request: labeled`, D22, D24): the run collects the PR's reviews and comments before the session (`evidence/fix-requests.json`), applies only those by the repository's owner, members and collaborators, never a bot (`plugin/ci/fix_requests.py`), and re-runs the phase with them as constraints, one iteration more. On a pull request the owner opened by hand, GitHub refuses the owner's own "Request changes", so the owner writes a comment review and dispatches `sdlc-fix.yml` with the change id and the head branch (`plugin/commands/sdlc-fix.md`). No workflow runs on a comment. The article: a reviewer or the author tags @claude on a review comment and Claude addresses it and pushes; for PRs Claude opened, a slash command babysits the PR until it is green and waits only on the code owner's approval (p.33-34).
+
+**Direction discussed (tentative).** Added; the review round stays.
+- **An @claude comment from the owner starts the round.** A comment on a change's PR that starts with `@claude` starts the same fix round as a "Request changes" review: all the PR's unresolved comments become the round's constraints, collected and filtered as today. The workflow checks that the comment came from the owner's account, not merely from a person (the check T1 asks of every approval), and the comment text is read as data, never as instructions.
+- **No more manual dispatch.** On a PR the owner opened by hand, the comment replaces the `workflow_dispatch` of `sdlc-fix.yml`.
+- **Babysitting:** a red target starts the next round by itself (T10), and at (e) the fix loop runs while an Important finding stands; so the round the owner starts is for what only the owner can ask.
+
+**Considered and not chosen.** A separate round per comment, as the article's per-comment @claude: more runs, and many small pushes for the owner to follow.
+
+**Crosswalk rows it touches:** deploy-comments; test-loop (T10), deploy-review (the (e) fix loop).
+
+**Settled decisions it would reopen or amend:** D22 gains one trigger (the owner's @claude comment) beside the "Request changes" review; its substance stays.
+
+**Open.**
+- Which comments count: a PR comment, a review comment on a line, or both; and whether a comment on an intent or design PR starts a round too.
+- How the owner's account is known to the workflow (a setting in `sdlc.yaml`, or the repository owner), shared with T1's approval check.
+- Whether the @claude comment counts against the iteration cap like any round.
+- The asymmetry with today's review path: a "Request changes" review by any owner, member or collaborator starts a round (`sdlc-fix.yml`), while the @claude comment would count only from the owner's account; whether the review path becomes owner-only too.
+- How an @claude round avoids re-applying PR comments a previous round already handled: a PR comment, unlike a review thread, cannot be resolved, and today each round re-reads them all (`plugin/ci/fix_requests.py`).

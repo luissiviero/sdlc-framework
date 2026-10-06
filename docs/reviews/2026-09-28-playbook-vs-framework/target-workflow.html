@@ -98,9 +98,9 @@
 
 <div class="wrap">
   <header>
-    <div class="eyebrow">Target design · tentative · T1–T16 of target-design.md · 5 October 2026</div>
+    <div class="eyebrow">Target design · tentative · T1–T17 of target-design.md · 6 October 2026</div>
     <h1>The workflow as you want it to become</h1>
-    <p class="lede">The third workflow beside the <a href="https://claude.ai/artifact/WhLTjcSzJqQmUFm3aP5G6L">playbook's</a> and the <a href="https://claude.ai/artifact/KW8jWunfLNa9WgBSzJxw4S">framework's</a>. It draws only what <code>docs/reviews/2026-09-28-playbook-vs-framework/target-design.md</code> has discussed so far: AI roles that advise and one manager that reviews for you (T1), the interview (T2), the intent home (T3), the names (T4), how a project starts (T5), tickets that become intents (T6), the reason a rejection keeps (T7), a formatter that follows your languages (T8), a risk-list hit that your merge accepts (T9), a test loop that closes by itself in CI (T10), a fix that proves itself (T11), build and test approvals recorded by the runner (T12), an eval suite that grows (T13), a review pass on the runbook PRs (T14), review corrections that reach CLAUDE.md through one standing PR (T15) and a reviewer tuned twice a month (T16). Steps the study has not reached yet are left out or marked "not discussed yet".</p>
+    <p class="lede">The third workflow beside the <a href="https://claude.ai/artifact/WhLTjcSzJqQmUFm3aP5G6L">playbook's</a> and the <a href="https://claude.ai/artifact/KW8jWunfLNa9WgBSzJxw4S">framework's</a>. It draws only what <code>docs/reviews/2026-09-28-playbook-vs-framework/target-design.md</code> has discussed so far: AI roles that advise and one manager that reviews for you (T1), the interview (T2), the intent home (T3), the names (T4), how a project starts (T5), tickets that become intents (T6), the reason a rejection keeps (T7), a formatter that follows your languages (T8), a risk-list hit that your merge accepts (T9), a test loop that closes by itself in CI (T10), a fix that proves itself (T11), build and test approvals recorded by the runner (T12), an eval suite that grows (T13), a review pass on the runbook PRs (T14), review corrections that reach CLAUDE.md through one standing PR (T15), a reviewer tuned twice a month (T16) and fix rounds you can start with an @claude comment (T17). Steps the study has not reached yet are left out or marked "not discussed yet".</p>
     <p class="banner"><strong>Nothing here is decided.</strong> Every entry is tentative until the whole study is done; then each confirmed entry becomes a proposal and a candidate row in <code>docs/ROADMAP.md</code>. The framework as it is today is on the framework page.</p>
     <div class="legend">
       <span><i class="sw hex"></i>Your decision or act</span>
@@ -110,7 +110,7 @@
   </header>
 
   <section>
-    <h2>One change, from idea to release <span class="refs">T1 · T3 · T4 · T5 · T6 · T7 · T8 · T9 · T10 · T11 · T12 · T14 · T15 · T16</span></h2>
+    <h2>One change, from idea to release <span class="refs">T1 · T3 · T4 · T5 · T6 · T7 · T8 · T9 · T10 · T11 · T12 · T14 · T15 · T16 · T17</span></h2>
     <p>Your approval points stay where they are today. What changes is what reaches you at each one: the roles write briefs, the manager turns them into one recommendation, you decide, and the act runs on your signal. Phases carry the names T4 proposes, with today's letter after each.</p>
     <div class="diagram"><pre class="mermaid">flowchart TB
   subgraph PREP["Before the first change"]
@@ -163,6 +163,8 @@
     E2["Manager: merge, or request changes, with the Important findings"]
     E1 --> E2
   end
+  E2 -. "you want changes" .-> GC{{"You request changes: a 'Request changes' review,&lt;br/&gt;or your comment starting with @claude (T17)"}}
+  GC -. "the fix round re-runs the phase with your comments" .-> E1
   TT --> E1
   E2 --> GE{{"You approve the code,&lt;br/&gt;and the risk items its banner shows"}}
   GE -- "your signal; a workflow checks it and merges (to verify)" --> LIVE(["Merged"])
@@ -208,6 +210,7 @@
       <li><strong>The runbook PRs get the review pass (T14).</strong> The review pass at deploy stays as it is: at deploy, re-run on each new version there, and an Important finding still holds the change until it is fixed (the article's findings do not block on their own, p.33; with the fix loop already run, what reaches you has had its fixes). Added: the same pass on the PRs that a pre-approved runbook opens at 3σ (a revert, or a flaky test deselected), the one kind of automated code change that reaches your merge with no review today; its findings show on the PR. Intent and spec PRs keep the roles' briefs and the design reviewer; your own configuration PRs keep their brief.</li>
       <li><strong>Review corrections reach CLAUDE.md through one standing PR (T15).</strong> When the deploy review finds a mistake an earlier change already made, or that CLAUDE.md is outdated, it proposes a "Things Claude gets wrong" line, as today. Instead of you writing each line in a commit of your own, a deterministic step, no model, adds it to one standing pull request; you merge that PR whenever you choose, one act for many lines, with the role brief and the eval result that any change to CLAUDE.md gets; since a pull request the automation opens starts no workflow, the step starts the eval run and the brief itself after each update. Nothing notifies you; the daily digest shows how many lines wait. The review can also tag a mistake described in new words as a repeat, so it still counts. No run ever edits CLAUDE.md itself (D6): a finding's text comes from a model reading code, and CLAUDE.md steers every later run.</li>
       <li><strong>The reviewer is tuned twice a month (T16).</strong> The article's tech lead tunes the review monthly by rating findings. Instead, a read-only run twice a month reads what is already on record, so you rate nothing: findings you waived or overturned, findings the panel settled, repeats, nit volume against the cap, and findings in paths CI already enforces. It writes a short report and proposes <code>REVIEW.md</code> edits in one standing pull request, as for CLAUDE.md (T15), which you merge when you choose. <code>REVIEW.md</code> stays yours (D6).</li>
+      <li><strong>An @claude comment starts a fix round (T17).</strong> Your "Request changes" review still starts the round that applies your comments (D22). Added: your comment starting with <code>@claude</code> on a change's pull request starts the same round, with all the unresolved comments as its constraints; the workflow checks that the comment is yours and reads it as data. On a pull request you opened yourself, where GitHub refuses your own "Request changes", it replaces the manual dispatch. With T10's automatic rounds on a red target and the deploy fix loop, the rounds you start are only for what you alone can ask. A separate round per comment was considered and not chosen.</li>
     </ul>
   </section>
 
@@ -464,6 +467,16 @@
         </ul>
       </div>
       <div>
+        <h3>@claude comments <span class="refs">T17</span></h3>
+        <ul class="notes">
+          <li>Which comments count (a pull-request comment, a comment on a line, or both), and on which pull requests.</li>
+          <li>How the workflow knows your account, shared with the approval check of the roles (T1).</li>
+          <li>Whether the round counts against the iteration cap like any other.</li>
+          <li>Whether a "Request changes" review should also count only from you, as the @claude comment would (today any member's does).</li>
+          <li>How a round avoids applying again the comments an earlier round already handled.</li>
+        </ul>
+      </div>
+      <div>
         <h3>Reviewer tuning <span class="refs">T16</span></h3>
         <ul class="notes">
           <li>Where your waivers and overturns are read from: a waived finding lives in your review comment today (copied into the change's evidence), not in a structured record.</li>
@@ -494,7 +507,7 @@
   </section>
 
   <footer>
-    <span>Drawn from <code>target-design.md</code> entries T1–T16 and <code>naming.md</code>, as recorded from 30 September to 5 October 2026. Each entry lists the settled decisions (D<i>n</i>) it would reopen or amend.</span>
+    <span>Drawn from <code>target-design.md</code> entries T1–T17 and <code>naming.md</code>, as recorded from 30 September to 6 October 2026. Each entry lists the settled decisions (D<i>n</i>) it would reopen or amend.</span>
     <span>The other two pages: <a href="https://claude.ai/artifact/WhLTjcSzJqQmUFm3aP5G6L">Playbook SDLC Workflow</a> · <a href="https://claude.ai/artifact/KW8jWunfLNa9WgBSzJxw4S">SDLC Plugin Workflow</a> · and the <a href="https://claude.ai/artifact/PFnRZ32pwTr4y422Gna2mz">Workflow Crosswalk</a> that compares them.</span>
   </footer>
 </div>
