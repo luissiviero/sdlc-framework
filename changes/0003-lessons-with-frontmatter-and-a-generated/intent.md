@@ -130,7 +130,8 @@ One question for the design pass:
 Two questions are not this change's and have a named owner; the design pass carries them forward
 with that owner and does not answer them:
 - Sharing lessons across projects (`docs/proposals/okf-adoption.md`, "Sharing lessons across
-  projects"): the owner decides it as item 4 of `HANDOFF.md`, because it touches decisions 8 and
-  9. Until then every lesson lives in its project's `lessons/`, which is what this change builds.
+  projects"): the owner decides it as item 4 of `HANDOFF.md`, because it touches decisions 8
+  and 9. Until then every lesson lives in its project's `lessons/`, which is what this change
+  builds.
 - Frontmatter for eval cases (`evals/cases/<id>-<slug>/`): a later R1 row through its own
   intent. The lesson's link to the case is enough for the maintain run.
