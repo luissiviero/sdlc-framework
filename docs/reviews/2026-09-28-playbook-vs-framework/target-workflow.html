@@ -98,9 +98,9 @@
 
 <div class="wrap">
   <header>
-    <div class="eyebrow">Target design · tentative · T1–T26 of target-design.md · 7 October 2026</div>
+    <div class="eyebrow">Target design · tentative · T1–T27 of target-design.md · 7 October 2026</div>
     <h1>The workflow as you want it to become</h1>
-    <p class="lede">The third workflow beside the <a href="https://claude.ai/artifact/WhLTjcSzJqQmUFm3aP5G6L">playbook's</a> and the <a href="https://claude.ai/artifact/KW8jWunfLNa9WgBSzJxw4S">framework's</a>. It draws only what <code>docs/reviews/2026-09-28-playbook-vs-framework/target-design.md</code> has discussed so far: AI roles that advise and one manager that reviews for you (T1), the interview (T2), the intent home (T3), the names (T4), how a project starts (T5), tickets that become intents (T6), the reason a rejection keeps (T7), a formatter that follows your languages (T8), a risk-list hit that your merge accepts (T9), a test loop that closes by itself in CI (T10), a fix that proves itself (T11), build and test approvals recorded by the runner (T12), an eval suite that grows (T13), a review pass on the runbook PRs (T14), review corrections that reach CLAUDE.md through one standing PR (T15), a reviewer tuned twice a month (T16), fix rounds you can start with an @claude comment (T17), a deploy gate that is your approving review, merged for you by a GitHub App (T18), failed CI runs that explain themselves, with release notes that gain a plain-words paragraph (T19), an optional preview environment with a rollback rehearsed there on a schedule (T20), and a release label you give in the same visit as your approval, with a waiting or failed release in the digest (T21), a detection whose state reaches the digest, with the next metric a project setting (T22), a triage where a dismissal is one act (T23), 3σ routes whose Go is yours alone and whose rollback needs a release in the window (T24), an incident whose lesson is checked and whose metric is followed back to baseline (T25), and a weekly scan that validates its findings, applies its patch and reaches the digest (T26). Steps the study has not reached yet are left out or marked "not discussed yet".</p>
+    <p class="lede">The third workflow beside the <a href="https://claude.ai/artifact/WhLTjcSzJqQmUFm3aP5G6L">playbook's</a> and the <a href="https://claude.ai/artifact/KW8jWunfLNa9WgBSzJxw4S">framework's</a>. It draws only what <code>docs/reviews/2026-09-28-playbook-vs-framework/target-design.md</code> has discussed so far: AI roles that advise and one manager that reviews for you (T1), the interview (T2), the intent home (T3), the names (T4), how a project starts (T5), tickets that become intents (T6), the reason a rejection keeps (T7), a formatter that follows your languages (T8), a risk-list hit that your merge accepts (T9), a test loop that closes by itself in CI (T10), a fix that proves itself (T11), build and test approvals recorded by the runner (T12), an eval suite that grows (T13), a review pass on the runbook PRs (T14), review corrections that reach CLAUDE.md through one standing PR (T15), a reviewer tuned twice a month (T16), fix rounds you can start with an @claude comment (T17), a deploy gate that is your approving review, merged for you by a GitHub App (T18), failed CI runs that explain themselves, with release notes that gain a plain-words paragraph (T19), an optional preview environment with a rollback rehearsed there on a schedule (T20), and a release label you give in the same visit as your approval, with a waiting or failed release in the digest (T21), a detection whose state reaches the digest, with the next metric a project setting (T22), a triage where a dismissal is one act (T23), 3σ routes whose Go is yours alone and whose rollback needs a release in the window (T24), an incident whose lesson is checked and whose metric is followed back to baseline (T25), a weekly scan that validates its findings, applies its patch and reaches the digest (T26), and guidance at every step: what you can do on each pull request, in the digest and on request (T27). Steps the study has not reached yet are left out or marked "not discussed yet".</p>
     <p class="banner"><strong>Nothing here is decided.</strong> Every entry is tentative until the whole study is done; then each confirmed entry becomes a proposal and a candidate row in <code>docs/ROADMAP.md</code>. The framework as it is today is on the framework page.</p>
     <div class="legend">
       <span><i class="sw hex"></i>Your decision or act</span>
@@ -110,7 +110,7 @@
   </header>
 
   <section>
-    <h2>One change, from idea to release <span class="refs">T1 · T3 · T4 · T5 · T6 · T7 · T8 · T9 · T10 · T11 · T12 · T14 · T15 · T16 · T17 · T18 · T20 · T21 · T22 · T23 · T24 · T25 · T26</span></h2>
+    <h2>One change, from idea to release <span class="refs">T1 · T3 · T4 · T5 · T6 · T7 · T8 · T9 · T10 · T11 · T12 · T14 · T15 · T16 · T17 · T18 · T20 · T21 · T22 · T23 · T24 · T25 · T26 · T27</span></h2>
     <p>Your approval points stay where they are today. What changes is what reaches you at each one: the roles write briefs, the manager turns them into one recommendation, you decide, and the act runs on your signal. Phases carry the names T4 proposes, with today's letter after each.</p>
     <div class="diagram"><pre class="mermaid">flowchart TB
   subgraph PREP["Before the first change"]
@@ -236,6 +236,8 @@
       <li><strong>Acting at 3σ (T24).</strong> D14's split by blast radius and D26's pre-approved rehearsed rollback stay, with T20's fresh rehearsal. Added: <code>sdlc:go</code> counts only from your own account (today any person's label runs the runbook); a rollback is pre-approved only when the breach window holds a release, read from the release record (the article's "with a deployment in the window", p.45), else it waits for your Go; and a route you change by comment is dispatched by the runner's own step after the session, not inside it, so a project runbook keeps its secrets out of the model's session. The quarantine runbook for Node and Rust was considered and left to T8.</li>
       <li><strong>Learning from an incident (T25).</strong> The fix of an incident still ships with its lesson and its eval case, written before the review pass. Added: the deploy gate requires the lesson in the README's shape beside T13's eval case (as ROADMAP's R1 designs it); after the fix ships, the Detection line follows the metric since the fix ("fixed on <date>: N days, all within 1σ", or still breaching), read from the log on the ref, and the next diagnosis of the same metric reads it, the article's "verifies the metric is back at baseline" with no agent; a scan incident's lesson names the finding's class. Nothing here has run live yet: no incident has reached the deploy gate.</li>
       <li><strong>The weekly scan (T26).</strong> D16 stays: the read-only review with the security-baseline skill, at most three Important findings filed as incidents, the deterministic scanners as reports. Added: each Important finding carries the exploit path traced and a confidence of high or medium (low stays a nit), into the intent and the Security &amp; policy brief, so you triage with the rating in hand; the build run of a bounded finding applies the suggested patch after the failing test (promised today, read by no command); and a "Scan" line in the daily digest, with the scan in the "Failed runs" line. A diagnosis run for scan findings and Claude Security itself were considered and not chosen.</li>
+      <li><strong>What you can do, at every step (T27).</strong> Every pull request the framework opens, the runbook and dismissal pull requests included, gains a "What you can do here" block after its summary, generated from the same tables as today's one "What needs you" line: each act available at that point and what it starts (merge, "Request changes", an <code>@claude</code> comment, each label that applies, close with a comment, <code>sdlc:go</code> when Go is requested, the release label on a declared production), and what happens if you do nothing. The daily digest gets the same text as a "Next for you" line per item, and a guide command you run by hand reads the project and says where each change stands and what you can do, also before the first pull request exists. No model writes it, so it cannot drift from what the code does; the manager quotes it once it exists (T1). A Guide role, or the manager alone, were considered and not chosen. No settled decision changes; nothing pushes to you (D20).</li>
+      <li><strong>The gate between stages stays (x-headless, kept).</strong> Run limits, then the deterministic checks, then the adversarial verdict at design, build and test (the review pass's findings at deploy); continue, wait for you, or park, and nobody is notified. Settled here: a role's brief is advice and never parks, so the roles add no parks. Running the adversarial reviewer on a second model is carried to the roles row, where every agent's model is decided.</li>
       <li><strong>No chat channel (maintain-tag, kept).</strong> The incident PR thread is the channel: your review or <code>@claude</code> comment (T17) steers the diagnosis, <code>sdlc:go</code> is the Go, the PR is the audit trail, <code>lessons/</code> the memory. A chat entry route stays build guide step 40's option, outside D23's GitHub-only scope.</li>
     </ul>
   </section>
@@ -398,14 +400,13 @@
       <div>
         <h3>The roles and the manager <span class="refs">T1</span></h3>
         <ul class="notes">
-          <li>To do: decide which model each role and each sub-agent runs on. Today all four agents run on the session's own model and so share its blind spots, so each brings a second perspective, not a second accountability; the panel's devil's advocate already runs on a different model for that reason. Start with the agents that judge.</li>
+          <li>To do: decide which model each role and each sub-agent runs on. Today all four agents run on the session's own model and so share its blind spots, so each brings a second perspective, not a second accountability; the panel's devil's advocate already runs on a different model for that reason. Start with the agents that judge; the adversarial reviewer on a second model was carried here from the gate row.</li>
           <li>How far the adversarial reviewer's angles narrow once the Code reviewer exists; today it also checks the policies, the spec and plan at design, and the code against them at build and test, where no code reviewer runs.</li>
           <li>The agent catalogue's table, one line per agent (mission, who it reports to, model, documents read): the documents are decided (above); list, reporting lines and models at the roles row; written after the study.</li>
           <li>How many roles after merging.</li>
           <li>Whether a ruleset can let a workflow merge on your behalf, or a dedicated GitHub App is needed.</li>
-          <li>The approval check must confirm the signal came from you, not just from a person.</li>
+          <li>The approval check must confirm the signal came from you, not just from a person (decided for <code>sdlc:go</code> at acting at 3σ, T24; open for the approvals the roles add).</li>
           <li>The record of a merge made on your behalf: the merge commit, your approval signal and the manager's recommendation in <code>evidence/</code>.</li>
-          <li>Whether a brief is advice only, or a missing or negative brief parks the change.</li>
           <li>Where the fresh context's answers to the three plan questions are kept: a field of the adversarial reviewer's verdict file, or a file of their own.</li>
           <li>The exact fields of the plan-acceptance line, and where in the build evidence it goes.</li>
           <li>The name of the per-change Full label (judged with the other names, T4), and how the build runner reads it from the merged design PR.</li>
@@ -543,6 +544,14 @@
         </ul>
       </div>
       <div>
+        <h3>Guidance <span class="refs">T27</span></h3>
+        <ul class="notes">
+          <li>The block's wording per gate, profile and park reason, from one table shared with "What needs you", and how it follows the new acts (T17, T18, T21, T23, T24) as each is built.</li>
+          <li>The guide command's name (T4), and whether it can run from claude.ai or the phone, since it needs a checkout of the project.</li>
+          <li>Whether the block shows acts that need a setting the project has not made, or only the ones that apply.</li>
+        </ul>
+      </div>
+      <div>
         <h3>The release <span class="refs">T21</span></h3>
         <ul class="notes">
           <li>How the digest finds a release waiting for your label: the recent closed build PRs read against the release record, or a record the release step writes when it waits.</li>
@@ -620,7 +629,7 @@
   </section>
 
   <footer>
-    <span>Drawn from <code>target-design.md</code> entries T1–T26 and <code>naming.md</code>, as recorded from 30 September to 7 October 2026. Each entry lists the settled decisions (D<i>n</i>) it would reopen or amend.</span>
+    <span>Drawn from <code>target-design.md</code> entries T1–T27 and <code>naming.md</code>, as recorded from 30 September to 7 October 2026. Each entry lists the settled decisions (D<i>n</i>) it would reopen or amend.</span>
     <span>The other two pages: <a href="https://claude.ai/artifact/WhLTjcSzJqQmUFm3aP5G6L">Playbook SDLC Workflow</a> · <a href="https://claude.ai/artifact/KW8jWunfLNa9WgBSzJxw4S">SDLC Plugin Workflow</a> · and the <a href="https://claude.ai/artifact/PFnRZ32pwTr4y422Gna2mz">Workflow Crosswalk</a> that compares them.</span>
   </footer>
 </div>
