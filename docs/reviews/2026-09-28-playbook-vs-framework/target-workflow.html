@@ -98,9 +98,9 @@
 
 <div class="wrap">
   <header>
-    <div class="eyebrow">Target design · tentative · T1–T18 of target-design.md · 6 October 2026</div>
+    <div class="eyebrow">Target design · tentative · T1–T19 of target-design.md · 7 October 2026</div>
     <h1>The workflow as you want it to become</h1>
-    <p class="lede">The third workflow beside the <a href="https://claude.ai/artifact/WhLTjcSzJqQmUFm3aP5G6L">playbook's</a> and the <a href="https://claude.ai/artifact/KW8jWunfLNa9WgBSzJxw4S">framework's</a>. It draws only what <code>docs/reviews/2026-09-28-playbook-vs-framework/target-design.md</code> has discussed so far: AI roles that advise and one manager that reviews for you (T1), the interview (T2), the intent home (T3), the names (T4), how a project starts (T5), tickets that become intents (T6), the reason a rejection keeps (T7), a formatter that follows your languages (T8), a risk-list hit that your merge accepts (T9), a test loop that closes by itself in CI (T10), a fix that proves itself (T11), build and test approvals recorded by the runner (T12), an eval suite that grows (T13), a review pass on the runbook PRs (T14), review corrections that reach CLAUDE.md through one standing PR (T15), a reviewer tuned twice a month (T16), fix rounds you can start with an @claude comment (T17) and a deploy gate that is your approving review, merged for you by a GitHub App (T18). Steps the study has not reached yet are left out or marked "not discussed yet".</p>
+    <p class="lede">The third workflow beside the <a href="https://claude.ai/artifact/WhLTjcSzJqQmUFm3aP5G6L">playbook's</a> and the <a href="https://claude.ai/artifact/KW8jWunfLNa9WgBSzJxw4S">framework's</a>. It draws only what <code>docs/reviews/2026-09-28-playbook-vs-framework/target-design.md</code> has discussed so far: AI roles that advise and one manager that reviews for you (T1), the interview (T2), the intent home (T3), the names (T4), how a project starts (T5), tickets that become intents (T6), the reason a rejection keeps (T7), a formatter that follows your languages (T8), a risk-list hit that your merge accepts (T9), a test loop that closes by itself in CI (T10), a fix that proves itself (T11), build and test approvals recorded by the runner (T12), an eval suite that grows (T13), a review pass on the runbook PRs (T14), review corrections that reach CLAUDE.md through one standing PR (T15), a reviewer tuned twice a month (T16), fix rounds you can start with an @claude comment (T17), a deploy gate that is your approving review, merged for you by a GitHub App (T18), and failed CI runs that explain themselves, with release notes that gain a plain-words paragraph (T19). Steps the study has not reached yet are left out or marked "not discussed yet".</p>
     <p class="banner"><strong>Nothing here is decided.</strong> Every entry is tentative until the whole study is done; then each confirmed entry becomes a proposal and a candidate row in <code>docs/ROADMAP.md</code>. The framework as it is today is on the framework page.</p>
     <div class="legend">
       <span><i class="sw hex"></i>Your decision or act</span>
@@ -212,22 +212,28 @@
       <li><strong>The reviewer is tuned twice a month (T16).</strong> The article's tech lead tunes the review monthly by rating findings. Instead, a read-only run twice a month reads what is already on record, so you rate nothing: findings you waived or overturned, findings the panel settled, repeats, nit volume against the cap, and findings in paths CI already enforces. It writes a short report and proposes <code>REVIEW.md</code> edits in one standing pull request, as for CLAUDE.md (T15), which you merge when you choose. <code>REVIEW.md</code> stays yours (D6).</li>
       <li><strong>An @claude comment starts a fix round (T17).</strong> Your "Request changes" review still starts the round that applies your comments (D22). Added: your comment starting with <code>@claude</code> on a change's pull request starts the same round, with all the unresolved comments as its constraints; the workflow checks that the comment is yours and reads it as data. On a pull request you opened yourself, where GitHub refuses your own "Request changes", it replaces the manual dispatch. With T10's automatic rounds on a red target and the deploy fix loop, the rounds you start are only for what you alone can ask. A separate round per comment was considered and not chosen.</li>
       <li><strong>The deploy gate is your approval (T18).</strong> As in the article, you approve the build PR, informed by the review's findings, and that approval is your only act: a workflow checks it is yours and that the review check is green, then a dedicated GitHub App merges; the runner posts the review check again on the build PR's last commit, and the merge step checks that commit against the review's findings. A second rule requires only the green review check, and every pull request that is not a build PR gets a passing check on each new commit (posted by the automation's own steps on the pull requests it opens, since those start no workflow, and by a small workflow on yours), so intent, design, incident and your own pull requests merge as today, from the phone too; merging a build PR before its review is green needs a deliberate bypass on the web. If a check posted by the automation cannot satisfy that rule, there is no second rule and an early merge is flagged instead; if the App proves impractical, you merge after approving (one more click). The runner records your approval and the merge either way. One-time setup per project: create the App and add it to the merge rule. Amends D4, D5 and D13.</li>
+      <li><strong>A failed CI run explains itself (T19).</strong> The framework already has a read-only triage step that reads a CI log and says what failed, the likely cause and the first thing to check; no workflow runs it today. It becomes an automatic step in the phase, review, fix and merge workflows, run when a job fails and also when the run parked (a park ends the job green, so a step on failure alone would miss it), and also says whether the failure looks flaky or real, as in the article (p.41). On a park, a red target at the iteration cap among them, its lines go into the "What I need from you" block of the parked pull request; a failed run with no park (a setup failure) gets a "Failed runs" line of the daily digest; a lost job, where no step can run, gets the digest line alone, and so may a timed-out one (to verify). No comment, nothing notifies you. The release notes keep their deterministic list, which stays the record, and gain a short paragraph in plain words on what changed, under its own heading, marked as model-written and kept on a re-run unless the code changed; you read it when you approve (T18). No settled decision changes.</li>
     </ul>
   </section>
 
   <section>
-    <h2>Build and test in CI <span class="refs">T10 · T11 · T12</span></h2>
-    <p>What happens after the build or test session in a CI job. The session works inside the sandbox, which hides nested <code>.env</code> files from every process it starts, so the project's targets run on the runner after it, as since plugin 0.3.2. What changes is what a red target does.</p>
+    <h2>Build and test in CI <span class="refs">T10 · T11 · T12 · T19</span></h2>
+    <p>What happens after the build or test session in a CI job. The session works inside the sandbox, which hides nested <code>.env</code> files from every process it starts, so the project's targets run on the runner after it, as since plugin 0.3.2. What changes is what a red target does, and that a failed run explains itself (T19).</p>
     <div class="diagram"><pre class="mermaid">flowchart LR
   S["The build or test session works in the sandbox&lt;br/&gt;(build also runs the tests each step touches);&lt;br/&gt;the verifier names the runner record it read (T10)"] --> R["The runner, after the session, outside the sandbox:&lt;br/&gt;build, test and lint once,&lt;br/&gt;the evidence logs written from that run"]
   R -- "green" --> G["Gate passes: Standard continues on its own"]
   R -- "red, rounds left" --> FX["A fix round starts by itself (T10):&lt;br/&gt;the failing logs as its constraint, iterations + 1"]
   FX --> S
   R -. "red at the iteration cap" .-> PK{{"Parked for you: 'Request changes',&lt;br/&gt;an un-park label, or close"}}
+  R -. "parked: the job ends green" .-> TR
   R -. "a fix-type change" .-> PF["The gate requires the lock; the runner runs the tests&lt;br/&gt;at the lock commit (red) and at the end (green),&lt;br/&gt;both on the record (T11)"]
   PF -.-> G
-  G -. "Full profile, or your label on the design PR" .-> LB{{"You apply the build or test label;&lt;br/&gt;the runner records who and when (T12)"}}</pre></div>
-    <p class="note"><strong>Today:</strong> a red target found by the runner parks the change, and only an act of yours starts the next round ("Request changes", a dispatch of the fix workflow, or an un-park label), each one an iteration; nothing checks that a fix's test failed first or that the lock was set; the approval label's actor is checked only against the workflow token and not recorded. Running the targets inside the sandbox again, or a helper outside it that the session could call, were considered and not chosen.</p>
+  G -. "Full profile, or your label on the design PR" .-> LB{{"You apply the build or test label;&lt;br/&gt;the runner records who and when (T12)"}}
+  FL["A CI step fails: setup or install before the session,&lt;br/&gt;the session, or the runner's step cannot run"] -.-> TR["Triage, read-only, on the failed step's log:&lt;br/&gt;what failed, flaky or real, the first thing to check (T19)"]
+  TR -. "a park" .-> PK
+  TR -. "no park" .-> DG["A 'Failed runs' line in the daily digest"]
+  LJ["A lost or timed-out job, a failed checkout:&lt;br/&gt;no triage can run (to verify)"] -.-> DG</pre></div>
+    <p class="note"><strong>Today:</strong> a red target found by the runner parks the change, and only an act of yours starts the next round ("Request changes", a dispatch of the fix workflow, or an un-park label), each one an iteration; nothing checks that a fix's test failed first or that the lock was set; the approval label's actor is checked only against the workflow token and not recorded. A run that ends without a park, such as a setup failure, shows only as a failed run in Actions, and the framework's triage step, which would explain it, is never run. Running the targets inside the sandbox again, or a helper outside it that the session could call, were considered and not chosen.</p>
   </section>
 
   <section>
@@ -468,6 +474,15 @@
         </ul>
       </div>
       <div>
+        <h3>Failed runs and release notes <span class="refs">T19</span></h3>
+        <ul class="notes">
+          <li>To verify: how each failed step's output is saved to a file the triage step can read, and whether a separate job is needed to explain a failed checkout or a cancelled job.</li>
+          <li>Which failures triage reads, and how the "Failed runs" line reaches the digest, which lists only the queue today.</li>
+          <li>The paragraph's heading (the notes already have a "What changed" section), its length and place, and how a re-run tells that the code changed.</li>
+          <li>Keeping the triage step's model credential out of the step that runs your project's commands, and the GitHub token and deploy secrets out of the triage session.</li>
+        </ul>
+      </div>
+      <div>
         <h3>The deploy approval <span class="refs">T18</span></h3>
         <ul class="notes">
           <li>To verify: that your approval counts on a pull request the automation opened, that a check posted by the automation satisfies the second rule, and that the web bypass is logged.</li>
@@ -518,7 +533,7 @@
   </section>
 
   <footer>
-    <span>Drawn from <code>target-design.md</code> entries T1–T18 and <code>naming.md</code>, as recorded from 30 September to 6 October 2026. Each entry lists the settled decisions (D<i>n</i>) it would reopen or amend.</span>
+    <span>Drawn from <code>target-design.md</code> entries T1–T19 and <code>naming.md</code>, as recorded from 30 September to 7 October 2026. Each entry lists the settled decisions (D<i>n</i>) it would reopen or amend.</span>
     <span>The other two pages: <a href="https://claude.ai/artifact/WhLTjcSzJqQmUFm3aP5G6L">Playbook SDLC Workflow</a> · <a href="https://claude.ai/artifact/KW8jWunfLNa9WgBSzJxw4S">SDLC Plugin Workflow</a> · and the <a href="https://claude.ai/artifact/PFnRZ32pwTr4y422Gna2mz">Workflow Crosswalk</a> that compares them.</span>
   </footer>
 </div>
