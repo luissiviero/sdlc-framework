@@ -263,9 +263,10 @@ Change id: 0003. Status: proposed. Produced by: sdlc plugin 0.3.5, /sdlc-design 
   malformed-frontmatter file listed under `## Unsorted` with no crash, a zero-lesson index,
   `check`'s exit 1 and diff on a drifted index (a CRLF copy of a correct index must pass);
   the gate's new `lesson_and_eval` check at phase (e) only, with one test per fail case
-  (missing lesson, missing eval case, failing `index.py check`, a dangling `supersedes`, a
-  `supersedes` target whose `status` did not actually move to `retired`, an out-of-enum
-  `status`) asserting the rendered "what I need from you" text carries one line per case,
+  (missing lesson, missing a required frontmatter field, missing eval case, failing
+  `index.py check`, a dangling `supersedes`, a `supersedes` target whose `status` did not
+  actually move to `retired`, an out-of-enum `status`) asserting the rendered "what I need
+  from you" text carries one line per case,
   plus the existing gate (f) test
   (`test_gate_f_waits_for_the_owner_s_triage_with_the_finding_and_its_route`) still passing
   unchanged; the updated instructions in `plugin/commands/sdlc-deploy.md` and
