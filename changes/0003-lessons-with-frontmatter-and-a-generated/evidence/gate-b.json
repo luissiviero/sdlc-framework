@@ -1,0 +1,121 @@
+{
+  "schema_version": 1,
+  "change_id": "0003",
+  "slug": "lessons-with-frontmatter-and-a-generated",
+  "phase": "b",
+  "profile": "standard",
+  "human_gate": true,
+  "result": "park",
+  "label": "sdlc:needs-human",
+  "head": "543f3b911c6a6f1db4fa43e529d75569b4efc8eb",
+  "at": "2026-10-07T02:12:43Z",
+  "dry_run": false,
+  "reason": "open_concerns: 1 flagged concern(s) still open in spec.md",
+  "config_note": "",
+  "checks": [
+    {
+      "name": "limits",
+      "ok": true,
+      "reason": "within the run limits",
+      "need": "",
+      "details": {
+        "iterations": 0,
+        "cap": 2,
+        "classification": "non-routine",
+        "panel_calls": 0,
+        "panel_cap": 4,
+        "elapsed_minutes": 15.7,
+        "spend_usd": null,
+        "spend_usd_total": null,
+        "spend_entries": 0,
+        "max_budget_usd": null
+      }
+    },
+    {
+      "name": "artifacts",
+      "ok": true,
+      "reason": "every required artifact exists and has its template sections",
+      "need": "",
+      "details": {}
+    },
+    {
+      "name": "design_scope",
+      "ok": true,
+      "reason": "the committed diff stays inside changes/0003-lessons-with-frontmatter-and-a-generated/",
+      "need": "",
+      "details": {
+        "dirty": [
+          "changes/0003-lessons-with-frontmatter-and-a-generated/evidence/adversarial-review-b.json",
+          "changes/0003-lessons-with-frontmatter-and-a-generated/evidence/diff-b.patch",
+          "changes/0003-lessons-with-frontmatter-and-a-generated/evidence/hook-log.jsonl",
+          "changes/0003-lessons-with-frontmatter-and-a-generated/evidence/panel/b-items.json",
+          "tests/fixtures/sample-python-project/.env"
+        ]
+      }
+    },
+    {
+      "name": "open_concerns",
+      "ok": false,
+      "reason": "1 flagged concern(s) still open in spec.md",
+      "need": "Close each open item under '## Flagged concerns' with a decision (article p.14 step 4), or leave a review comment for /sdlc-fix.",
+      "details": {
+        "open": [
+          "- The `class` part of `tags` is free text the (e) run names at write time, with no controlled"
+        ]
+      }
+    },
+    {
+      "name": "panel",
+      "ok": true,
+      "reason": "no panel decision at this gate",
+      "need": "",
+      "details": {}
+    },
+    {
+      "name": "commands",
+      "ok": true,
+      "reason": "deferred to the runner: build, test and lint run after the model's session, outside its sandbox (issue #91); not yet run",
+      "need": "",
+      "details": {
+        "deferred": true
+      }
+    },
+    {
+      "name": "guardrails",
+      "ok": true,
+      "reason": "the diff does not touch a guardrail file",
+      "need": "",
+      "details": {}
+    },
+    {
+      "name": "risk_list",
+      "ok": true,
+      "reason": "no risk-list item touched",
+      "need": "",
+      "details": {
+        "accepted": []
+      }
+    },
+    {
+      "name": "owner_actions",
+      "ok": true,
+      "reason": "risk acceptances, iteration and panel-call resets and test-lock lifts, if any, were committed by the owner or applied by the owner's label",
+      "need": "",
+      "details": {
+        "risk_accepted": [],
+        "label_actors": {}
+      }
+    },
+    {
+      "name": "adversarial_review",
+      "ok": true,
+      "reason": "adversarial reviewer says continue",
+      "need": "",
+      "details": {
+        "classification": "non-routine",
+        "reasons": []
+      }
+    }
+  ],
+  "what_i_need": "## What I need from you\nGate (b) parked change 0003 (lessons-with-frontmatter-and-a-generated) on 2026-10-07T02:12:43Z.\n- **open_concerns**: 1 flagged concern(s) still open in spec.md\n  - what I need: Close each open item under '## Flagged concerns' with a decision (article p.14 step 4), or leave a review comment for /sdlc-fix.\nWhen the item is settled, re-run the gate: `python \"${CLAUDE_PLUGIN_ROOT}/plugin/gate/cli.py\" check --root . --id 0003 --phase b` (review comments are the change request; /sdlc-fix from B3 re-runs the phase with them).\n"
+}

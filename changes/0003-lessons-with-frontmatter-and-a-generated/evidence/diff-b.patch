@@ -1,0 +1,429 @@
+ .../evidence/hook-log.jsonl                        |  15 ++
+ .../evidence/run-b.json                            |   5 +
+ .../plan.md                                        | 162 +++++++++++++++++
+ .../spec.md                                        | 195 +++++++++++++++++++++
+ .../status.yaml                                    |   4 +-
+ 5 files changed, 379 insertions(+), 2 deletions(-)
+
+diff --git a/changes/0003-lessons-with-frontmatter-and-a-generated/evidence/hook-log.jsonl b/changes/0003-lessons-with-frontmatter-and-a-generated/evidence/hook-log.jsonl
+new file mode 100644
+index 0000000..328d332
+--- /dev/null
++++ b/changes/0003-lessons-with-frontmatter-and-a-generated/evidence/hook-log.jsonl
+@@ -0,0 +1,15 @@
++{"at": "2026-10-07T01:56:15Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
++{"at": "2026-10-07T01:56:15Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
++{"at": "2026-10-07T01:56:25Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
++{"at": "2026-10-07T01:56:48Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
++{"at": "2026-10-07T01:56:50Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
++{"at": "2026-10-07T01:59:49Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
++{"at": "2026-10-07T02:00:03Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
++{"at": "2026-10-07T02:05:31Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/sdlc-framework/sdlc-framework/changes/0003-lessons-with-frontmatter-and-a-generated/spec.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-10-07T02:05:31Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/sdlc-framework/sdlc-framework/changes/0003-lessons-with-frontmatter-and-a-generated/spec.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-10-07T02:05:31Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/sdlc-framework/sdlc-framework/changes/0003-lessons-with-frontmatter-and-a-generated/spec.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-10-07T02:05:31Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/sdlc-framework/sdlc-framework/changes/0003-lessons-with-frontmatter-and-a-generated/spec.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-10-07T02:07:51Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/sdlc-framework/sdlc-framework/changes/0003-lessons-with-frontmatter-and-a-generated/plan.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-10-07T02:07:51Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/sdlc-framework/sdlc-framework/changes/0003-lessons-with-frontmatter-and-a-generated/plan.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-10-07T02:07:51Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/sdlc-framework/sdlc-framework/changes/0003-lessons-with-frontmatter-and-a-generated/plan.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-10-07T02:07:51Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/sdlc-framework/sdlc-framework/changes/0003-lessons-with-frontmatter-and-a-generated/plan.md"], "reason": "", "tool": "Write", "verdict": "allow"}
+diff --git a/changes/0003-lessons-with-frontmatter-and-a-generated/evidence/run-b.json b/changes/0003-lessons-with-frontmatter-and-a-generated/evidence/run-b.json
+new file mode 100644
+index 0000000..157335a
+--- /dev/null
++++ b/changes/0003-lessons-with-frontmatter-and-a-generated/evidence/run-b.json
+@@ -0,0 +1,5 @@
++{
++  "phase": "b",
++  "spend_usd": null,
++  "started_at": "2026-10-07T01:57:02Z"
++}
+\ No newline at end of file
+diff --git a/changes/0003-lessons-with-frontmatter-and-a-generated/plan.md b/changes/0003-lessons-with-frontmatter-and-a-generated/plan.md
+new file mode 100644
+index 0000000..d140df0
+--- /dev/null
++++ b/changes/0003-lessons-with-frontmatter-and-a-generated/plan.md
+@@ -0,0 +1,162 @@
++# Plan: lessons with frontmatter and a generated index (from intent.md 2026-10-06, spec.md 2026-10-07)
++
++## Files that change
++- `plugin/lessons/index.py` (new) — the frontmatter split (the same `^---\n...\n---\n` pattern
++  already used for `SKILL.md`, `tests/test_policy_skills.py:28`) plus `plugin/state/yamlish.py`
++  read/write; `build --root <path>` (rewrite `lessons/index.md` from every `lessons/*.md`
++  frontmatter) and `check --root <path>` (exit 1 and the diff on drift), mirroring the CLI
++  shape of `plugin/evals/case.py`.
++- `plugin/gate/artifacts.py` — new constants beside `SPEC_SECTIONS`/`REQUIRED_ARTIFACTS`
++  (`artifacts.py:33-39,76-88`) naming the lesson's required frontmatter fields and the eval
++  case's required files, for the incident-only sub-checks to read.
++- `plugin/gate/checks.py` — extend `check_artifacts`'s `entry_route == "incident"` branch
++  (today `checks.py:205-211`) with: lesson file exists and carries every required frontmatter
++  field; `evals/cases/<id>-<slug>/` exists; `plugin/lessons/index.py check` passes; a
++  `supersedes` target that does not exist fails; a `status` outside `stable | retired` fails.
++  Each appends to the existing `problems` list, so each becomes its own "what I need from
++  you" line through the existing `_fail(name, reason, need, **details)` path — no change to
++  `CHECKS_BY_PHASE` (`checks.py:1646-1648`) or the `CheckResult` shape.
++- `plugin/commands/sdlc-deploy.md` — step 0b (today `sdlc-deploy.md:66-84`): write the
++  frontmatter block with the field/source mapping of spec.md Design, then run
++  `plugin/lessons/index.py build` in the same commit as the lesson and the eval (today's
++  commit convention at `sdlc-deploy.md:82-83` stays, with the `build` call added before it).
++- `plugin/commands/sdlc-maintain.md` — step 1 (today `sdlc-maintain.md:40-50`, specifically
++  the "every file under `lessons/`" line at `sdlc-maintain.md:45`): read `lessons/index.md`
++  first, run `check` first, open only the lessons whose tags name the metric or the rule in
++  `detection.json` plus `## Retired`; on a stale or missing index, read every file as today
++  and log that fact in the intent's `## Evidence` section.
++- `template/lessons/README.md` — rewritten: the frontmatter block and its fields replace the
++  prose header line (today `template/lessons/README.md:21`); the four body headings
++  (`:23-34`) stay with a footnote convention added; one paragraph on `## Unsorted` for a file
++  without frontmatter.
++- `template/sdlc.yaml` — one new commented row documenting `lessons.stale_after_months`
++  (default twelve months, read only when set), in the style of the existing
++  `automation_identity` commented rows (`template/sdlc.yaml:113-120`).
++- `docs/OPERATING_MODEL.md` — one sentence added to the `lessons/` bullet
++  (`docs/OPERATING_MODEL.md:144`) naming the frontmatter and the generated index.
++- `.claude-plugin/plugin.json` — `version`: `0.3.5` → `0.3.6` (`plugin.json:4`).
++- `.claude-plugin/marketplace.json` — the `plugins[0].version` entry: `0.3.5` → `0.3.6`
++  (`marketplace.json:11`), kept equal to `plugin.json` (cross-checked by
++  `tests/test_scaffold.py::test_marketplace_points_at_repo_root`, `test_scaffold.py:41-47`).
++- `tests/test_lessons.py` (new) — the index builder: ordering by first tag, newest-first
++  within a heading, `## Retired` last, `## Unsorted` for a frontmatter-less file, the
++  `(stale)` marker, `check`'s exit 0/1 and diff.
++- `tests/test_gate.py` — extends the existing incident/`entry_route`/`artifacts` coverage
++  (today around `test_gate.py:2346-2364`) with the new sub-checks' pass and fail cases.
++- `tests/test_commands_and_skills.py` — extends the instruction-shape tests to cover the
++  updated `sdlc-deploy.md` step 0b and `sdlc-maintain.md` step 1 text.
++
++No change to `plugin/evals/case.py` (its shape is only linked to, per spec.md and decision
++17), to `plugin/detect/**`, `plugin/ci/run_phase.py`, the detect/runbook/fix workflow
++templates, or the sample repository (frozen, `HANDOFF.md` precondition 6, choice 138); no
++change to this repository's own `sdlc.yaml`, `CLAUDE.md`, `REVIEW.md` or `.claude/**` (the
++root pin to 0.3.6 is the owner's guardrail-row edit after the tag, per intent Constraints).
++
++## Order of work
++1. `plugin/lessons/index.py` with its frontmatter split, `build` and `check`, and
++   `tests/test_lessons.py` in the same commit (coding-standards rule 4: no behavior change
++   without a test that fails without it).
++2. `plugin/gate/artifacts.py` + `plugin/gate/checks.py`'s three new incident sub-checks, and
++   the matching new cases in `tests/test_gate.py`, in the same commit — this is the riskiest
++   step (see Risks) and should land as its own reviewable unit, not folded into step 1 or 3.
++3. `plugin/commands/sdlc-deploy.md` step 0b and `plugin/commands/sdlc-maintain.md` step 1,
++   and the matching additions to `tests/test_commands_and_skills.py`, in the same commit.
++4. `template/lessons/README.md` and `template/sdlc.yaml`'s new row; confirm
++   `tests/test_templates.py` still passes unchanged (it renders and parses `sdlc.yaml` but
++   asserts no specific key count that a new commented row would break).
++5. `docs/OPERATING_MODEL.md`'s one new sentence at line 144.
++6. `.claude-plugin/plugin.json` and `.claude-plugin/marketplace.json` to `0.3.6`, last, so
++   every preceding commit's tests ran against the version the change actually ships.
++7. Full verification: `python -m compileall -q plugin tests tasks.py`, `python -m pytest`,
++   `python -m ruff check .`, `python -m ruff format --check .`, `claude plugin validate .`.
++
++## Risks
++1. **What this could break.** Every project pinned to this plugin version going forward:
++   `/sdlc-deploy` step 0b (writes a lesson differently), `/sdlc-maintain` step 1 (reads
++   `lessons/` differently), and gate (e) for any `entry_route: incident` change (three new
++   ways to park). No caller is touched retroactively: a project stays on its pinned version
++   until it bumps it (decision 8), and the sample repository is frozen at 0.2.30 until item
++   11 of `HANDOFF.md` — not a caller of this version at all right now. No database schema or
++   stored row is touched; the only data shapes are the markdown frontmatter block (new) and
++   `lessons/index.md` (new, generated, never hand-edited). A project-level skill override
++   under `.claude/skills/` for any of the five policy skills is unaffected, since this change
++   does not touch the policy skills themselves.
++2. **Riskiest step: step 2, the gate sub-checks.** A mistake here either blocks every future
++   incident change at gate (e) with a wrong "what I need from you" line, or — worse — silently
++   stops requiring the lesson/eval it was meant to enforce, which would not fail loudly; it
++   would just quietly stop protecting the invariant the whole change exists for. Mitigation:
++   `tests/test_gate.py` must cover both the all-present pass case and every new fail case
++   (missing lesson, missing a required frontmatter field, missing eval case folder, a failing
++   `index.py check`, a dangling `supersedes`, an out-of-enum `status`) individually, alongside
++   the existing `## Evidence`-section case it already covers (`test_gate.py:2363-2364`), so a
++   regression in any one sub-check fails its own assertion, not just the suite in general.
++3. **The maintain-run fallback path.** Step 1's new "stale or missing index → read every
++   file" branch is the safety net for a corrupted or hand-edited index; if its test coverage
++   only exercises the happy (fresh index) path, a bug in the fallback would silently cause the
++   diagnosis to miss lessons rather than error loudly. Mitigation: test the fallback
++   explicitly (a deliberately stale index, a missing index, a lesson with malformed
++   frontmatter) and assert the intent's `## Evidence` section says the fallback happened.
++4. **Two-manifest version bump.** `plugin.json` and `marketplace.json` must move together;
++   `tests/test_scaffold.py::test_marketplace_points_at_repo_root` already cross-checks them,
++   so a partial bump fails the suite immediately rather than shipping a mismatch — this risk
++   is self-mitigating given the existing test, provided step 6 changes both files in one
++   commit.
++5. **`yamlish` reuse for a two-marker document.** `plugin/state/yamlish.py` has only ever
++   parsed a document with one leading `---` (`yamlish.py:122-123` skips exactly one); a
++   lesson's frontmatter is bounded by a leading **and** a trailing `---`. The split into "the
++   YAML between the two markers" vs. "the body after the second marker" must happen in
++   `plugin/lessons/index.py` before the result is handed to `yamlish.loads` — exactly as the
++   existing `SKILL.md` frontmatter reader already does it (`tests/test_policy_skills.py:28`)
++   — `yamlish` itself needs no change. Getting this wrong would make `yamlish.loads` try to
++   parse the lesson's body prose as YAML and raise `YamlishError`; `tests/test_lessons.py`
++   must include a lesson with a non-trivial body (one containing a line that looks like
++   `key: value`) to catch a reader that does not stop at the second `---`.
++6. **No existing lesson file to migrate.** Confirmed: `lessons/` in this repository holds
++   only `README.md`, and the sample is frozen, so there is no migration step and no risk of
++   breaking a real lesson in this change; the `## Unsorted` handling is only proven by a
++   synthetic frontmatter-less fixture in `tests/test_lessons.py`, not a real file.
++
++## Options not taken
++- **A third-party YAML dependency (e.g. PyYAML) for the frontmatter.** Not chosen:
++  `sdlc.yaml`'s own constraint and `plugin/state/yamlish.py`'s documented reason (a missing
++  import exits 1, which Claude Code treats as non-blocking, so a guardrail could switch
++  itself off silently) already rule this out, and `yamlish` already supports every shape the
++  fields need (nested mappings, lists of mappings, flow lists).
++- **A separate `plugin/lessons/frontmatter.py` module, split from `index.py`.** Considered,
++  not chosen for this change: `index.py` is the only script-level consumer today (the write
++  side is the (e) run itself, writing with Write/Edit, not a script call); splitting the
++  parser out is easy later if a second consumer appears, and a premature split would be an
++  abstraction this change does not need.
++- **A controlled vocabulary for the `class` tag (e.g. an enum in `bands.yaml`).** Considered,
++  not chosen: the intent does not ask for one, and inventing a vocabulary is a separate,
++  larger decision; left as the open, owner-visible concern spec.md records rather than
++  decided unprompted here.
++- **Migrating existing lesson files as part of this change.** Not applicable: none exist in
++  this repository or the (frozen) sample to migrate.
++
++## Proof
++- `tests/test_lessons.py` (new, to be written): ordering by first tag, newest-first within a
++  heading, `## Retired` last, `## Unsorted` for a frontmatter-less file, the `(stale)` marker,
++  `check` exit 0 on a built index and exit 1 with a diff on a drifted one, and a lesson whose
++  body contains a `key: value`-shaped line to prove the frontmatter split stops at the second
++  `---`.
++- `tests/test_gate.py` (existing file, new cases to be written): extends the incident-artifact
++  coverage at `test_gate.py:2346-2364` with the all-present pass case and each new fail case
++  (missing lesson, missing frontmatter field, missing eval case folder, failing `index.py
++  check`, dangling `supersedes`, out-of-enum `status`).
++- `tests/test_commands_and_skills.py` (existing file, new cases to be written): the updated
++  `sdlc-deploy.md` step 0b and `sdlc-maintain.md` step 1 instructions pass their existing
++  instruction-shape assertions.
++- `tests/test_scaffold.py::test_marketplace_points_at_repo_root` (existing, already runnable
++  today at 0.3.5): must keep passing with both manifests at `0.3.6`.
++- Full suite, literal output pasted into evidence per spec.md Acceptance:
++  `python -m compileall -q plugin tests tasks.py` (exit 0, no output), `python -m pytest`
++  (all green), `python -m ruff check .` (zero warnings), `python -m ruff format --check .`
++  (clean), `claude plugin validate .` (clean).
++
++An engineer who has not seen this conversation can implement from this plan and spec.md
++alone: every file is named with what changes in it, the order is small commits each with
++its own test, and the field/source mapping and file:line anchors live in spec.md Design. The
++one thing deliberately left for the owner rather than decided here is the `class` tag's
++vocabulary (spec.md Flagged concerns) — the plan does not ask the implementer to guess it
++silently.
+diff --git a/changes/0003-lessons-with-frontmatter-and-a-generated/spec.md b/changes/0003-lessons-with-frontmatter-and-a-generated/spec.md
+new file mode 100644
+index 0000000..6656608
+--- /dev/null
++++ b/changes/0003-lessons-with-frontmatter-and-a-generated/spec.md
+@@ -0,0 +1,195 @@
++# Spec: lessons with frontmatter and a generated index
++Change id: 0003. Status: proposed. Produced by: sdlc plugin 0.3.5, /sdlc-design prompt v1 (article p.14). Skills: coding-standards, security-baseline, ux-conventions, data-conventions, definition-of-done (plugin 0.3.5); overrides: none
++
++## Requirements
++- Every lesson `/sdlc-deploy` step 0b writes opens with a frontmatter block whose fields are
++  read from a file the (e) run already has, never typed in when a source exists: `type`
++  (`Lesson`), `title` (`status.yaml: title`), `description` (one sentence, written by the
++  run), `tags` (class, metric, runbook — see Open questions), `change` (`status.yaml: id`),
++  `detected` (`{at, metric, tier, rule}` from `evidence/detection.json`), `fixed` (`{pr}` from
++  `status.yaml: build_pr`), `runbook` (from `evidence/proposal.json` /
++  `status.yaml: runbook_authorized_by`, absent when none ran), `supersedes` (an earlier
++  lesson's file name, when this incident repeats its class), `generated` (`{by:
++  sdlc-plugin/<version>, at}`), `status` (`stable` at writing), `stale_after`
++  (`generated.at` + 12 months, or `sdlc.yaml: lessons.stale_after_months`) and `sources`
++  (`[{id, resource}]` for `detection`, `eval`, `fix-pr`, one `run-<n>` per failed run
++  `detection.json` lists). The four body sections of today's shape stay (`## What happened`,
++  `## Root cause`, `## Fix`, `## Prevention`, `template/lessons/README.md:23-34`), with keyed
++  footnotes where the body cites a source; the prose header line
++  (`template/lessons/README.md:21`) moves into frontmatter and is dropped from the body.
++  Filename convention is unchanged: `lessons/<yyyy-mm>-<slug>.md`
++  (`template/lessons/README.md:14`).
++- `lessons/index.md` has exactly one writer: a new module `plugin/lessons/index.py` (Python,
++  standard library only), with `build --root <path>` (rewrites the index from every
++  `lessons/*.md` frontmatter — a heading per first tag, one line per lesson newest-first
++  within a heading, `## Retired` last, `## Unsorted` for a file without a frontmatter block,
++  `(stale)` appended when `stale_after` is past) and `check --root <path>` (exit 1 and the
++  diff when the index on disk is not what `build` would write). `/sdlc-deploy` step 0b runs
++  `build` in the same commit as the lesson and the eval (extending the commit convention
++  already at `plugin/commands/sdlc-deploy.md:82-83`).
++- `/sdlc-maintain` step 1 (today: "Every file under `lessons/`",
++  `plugin/commands/sdlc-maintain.md:45`) instead reads `lessons/index.md` first, runs `check`
++  first, and opens only the lessons whose tags name the metric or the rule in
++  `detection.json`, plus `## Retired`. When the index is stale or missing it reads every file
++  as today and says so in one line of the intent's `## Evidence` section. The maintain run
++  commits nothing but the intent (unchanged), so it never rebuilds the index itself.
++- `status` is `stable` or `retired`, nothing else. The only two writers of `retired`: the
++  owner by hand in a reviewed PR, or step 0b of a later incident change whose lesson carries
++  `supersedes: <file>` — which sets the earlier lesson's `status: retired` and adds
++  `retired_by: <the new file>` in the same commit. No other writer edits an existing lesson
++  (choice 126 applied to lessons, `docs/proposals/okf-adoption.md:256-257`). `stale_after` is
++  written once, at creation; staleness is computed when a lesson is read (the index line's
++  `(stale)`, the maintain run's reading) — no kept lesson is ever rewritten by a date passing.
++- Links a script can follow, unchanged from intent: `change` → `changes/<id>-<slug>/`,
++  `sources.eval` → `evals/cases/<id>-<slug>/`, `sources.fix-pr` → the build PR,
++  `sources.run-<n>` → the failed runs, `supersedes`/`retired_by` between lessons, the index
++  line → the file. Nothing links back from the change folder.
++- Gate (e)'s `check_artifacts` (`plugin/gate/checks.py:186-227`, already special-cased for
++  `entry_route == "incident"` at `checks.py:205-211`, wired into phase `e` at
++  `checks.py:1646-1648`) gains, in that same branch, three more checks for an incident
++  change: the lesson file exists with every required frontmatter field, the eval case folder
++  (`evals/cases/<id>-<slug>/`, shape fixed by `plugin/evals/case.py`) exists, and
++  `plugin/lessons/index.py check` passes. A `supersedes` target that does not exist, or a
++  `status` outside `stable | retired`, fails the same check. Each failure is one more entry
++  in the existing `problems` list, so each gets its own "what I need from you" line through
++  the existing `_fail(name, reason, need, **details)` plumbing — no new check-registration
++  machinery.
++- `template/lessons/README.md` is rewritten to describe the new shape (the frontmatter, the
++  footnote convention, the index) in place of the prose header line. A project that already
++  has lessons in today's shape keeps them readable: a file without frontmatter is listed
++  under `## Unsorted` with its first heading as its title, reported by `check`, and read by
++  the maintain run as today.
++- `template/sdlc.yaml` gains one commented row, in the style of the existing
++  `automation_identity` commented row (`template/sdlc.yaml:113-120`), documenting the
++  optional key `lessons.stale_after_months` and its default of twelve months; read only when
++  a project sets it.
++- `docs/OPERATING_MODEL.md` §9's `lessons/` bullet (`docs/OPERATING_MODEL.md:144`) gains one
++  sentence naming the frontmatter and the generated index.
++- No item of `sdlc.yaml: risk_list` applies: this change adds no authentication, no money
++  movement and no production-config path, and "data migrations" names a migration of stored,
++  queried data — a new markdown frontmatter convention on a project-content file is not that
++  (data-conventions rule 3). None of the four is named under Flagged concerns.
++- Checkable, per intent: tests under `tests/` for the index builder (ordering by first tag,
++  the `## Retired` heading, the stale marker, `check` on a drifted index, a file without
++  frontmatter under `## Unsorted`), for the new gate sub-checks, and for the two command
++  files' instructions (the existing pattern of `tests/test_evals.py:701-767` and the
++  instruction tests in `tests/test_commands_and_skills.py`); `python -m compileall`,
++  `python -m pytest`, `python -m ruff check .` and `python -m ruff format --check .` green;
++  `claude plugin validate .` clean; both manifests (`.claude-plugin/plugin.json:4`,
++  `.claude-plugin/marketplace.json:11`, cross-checked by
++  `tests/test_scaffold.py:41-47`) at **0.3.6**.
++
++## Design
++- New module `plugin/lessons/index.py`, mirroring the CLI shape `plugin/evals/case.py`
++  already uses in this plugin (argparse `main(argv)`, subcommands, JSON or plain-text stdout,
++  non-zero exit on failure) rather than inventing a new command convention.
++- Frontmatter is a `---`-delimited YAML block at the top of the lesson file, parsed with the
++  same split this repo already uses for `SKILL.md` frontmatter
++  (`^---\n(.*?)\n---\n(.*)$`, `tests/test_policy_skills.py:28`) and then read/written with
++  `plugin/state/yamlish.py` — the dependency-free YAML subset `status.yaml` and `sdlc.yaml`
++  already use. `yamlish` already supports everything the fields need: nested mappings
++  (`detected`, `fixed`, `generated`), lists of mappings (`sources`), and a leading `---`
++  document marker is already skipped by its reader (`plugin/state/yamlish.py:122-123`). No
++  new parser and no third-party dependency (`sdlc.yaml`'s own constraint,
++  `plugin/state/yamlish.py:1-6`: a missing import must not turn a guardrail off silently).
++  `yamlish.dump_file` writes with an explicit `newline="\n"`
++  (`plugin/state/yamlish.py:309-310`) on every platform, so the index `build`/`check` byte
++  comparison is stable on Windows and Linux without extra normalization code.
++- Precedent and its limit: `docs/notes/*.md` already carry a comparable frontmatter
++  (`title`, `sources`, `generated.at`, `verified_with`, `stale_after` —
++  `docs/notes/1.md:1-6`), so the shape is not a new idea in this codebase. But
++  `docs/notes/index.md` is hand-written prose (no script builds or checks it; a repo-wide
++  search for an index-generator under `plugin/` found none) — `plugin/lessons/index.py` is
++  the first generated index in this codebase, not a port of an existing one.
++- Field sources, exact to the intent's table: `status.yaml` fields `id` (`status.py:36`),
++  `title` (`status.py:38`), `entry_route` (`status.py:44`), `build_pr` (`status.py:89`),
++  `runbook_authorized_by` (`status.py:81`); `evidence/detection.json`, built by
++  `plugin/detect/finding.py:build_record` (`finding.py:40-80`), carrying `metric`
++  (`finding.py:58`), `tier` (`finding.py:62`), `rule` (`finding.py:54,64`), `at`
++  (`finding.py:61`); `evidence/proposal.json`, shaped by `Proposal`
++  (`plugin/detect/routes.py:80-98`, fields `route`, `tier`, `args`, `rationale`) and resolved
++  by `Resolved` (`routes.py:55-77`, fields `route`, `runbook`) — the lesson's `runbook` field
++  should read the *resolved* route/runbook (what actually ran), not the proposed one, since a
++  proposal can be overridden before it runs.
++- Gate wiring stays inside the existing `check_artifacts` function and its `problems` list
++  (`checks.py:186-227`); no new entry in `CHECKS_BY_PHASE` and no new `CheckResult` shape.
++  This keeps the new checks subject to the same "what I need from you" rendering
++  (`plugin/gate/gate.py:76-79`) every other artifact failure already uses — satisfying
++  ux-conventions rule 4 (error text says what happened and what to do next) without new copy.
++- `plugin/evals/case.py`'s case folder (`prompt.md`, `checks.yaml`) is the only shape the
++  gate can check mechanically; it cannot verify that `checks.yaml` "asserts something real"
++  (the command text's own caution, `plugin/commands/sdlc-deploy.md:66-84`). That judgment
++  stays with the review passes and the adversarial reviewer, matching how this plugin already
++  splits deterministic gate checks from advisory judgment elsewhere (skill
++  `definition-of-done`: "the gate itself is the enforcement; this skill is advisory").
++- `template/sdlc.yaml` and `docs/OPERATING_MODEL.md` are plugin-shipped content, not this
++  repository's own guardrails: CLAUDE.md's guardrail list is `.claude/**`, `CLAUDE.md`,
++  `REVIEW.md` and this repository's own root `sdlc.yaml` — `template/sdlc.yaml` is the
++  template a project's `/sdlc-init` copies, and `docs/OPERATING_MODEL.md` is not on the
++  guardrail list at all. Both are edited with the Edit tool like any other plugin file in
++  phase (c); this repository's own `sdlc.yaml`/`CLAUDE.md`/`REVIEW.md`/`.claude/**` stay
++  untouched, exactly as the intent's Constraints already say.
++- No stored personal or sensitive field is added (data-conventions rule 1): every new
++  frontmatter field is a constant, a date, a tag, or a link to an internal, non-personal
++  identifier (change id, PR number, run URL) — the same class of data a lesson's prose body
++  already carries today.
++
++## Open questions from intent
++- "Which tag comes first, and how are tags spelled? ... Proposed answer: the class first,
++  then the metric, then the runbook; kebab-case, so one class is one heading." — Answered:
++  adopt the intent's proposed order (class, then metric, then runbook; kebab-case), confirmed
++  from the codebase rather than only from the proposal: a project configures exactly one
++  `maintain.metric` (`sdlc.yaml:35`: `metric: ci_test_failure_rate`), so metric-first grouping
++  would put every lesson of a typical project under a single heading until that project
++  starts watching more than one metric — the exact failure mode the intent's own reasoning
++  anticipated. Class is free text the (e) run names (no enum field in `detection.json`
++  supplies it structurally, except that a security-scan finding's `metric` string already
++  embeds a class, e.g. `"security: <class>"`, `plugin/detect/finding.py:158`); see Flagged
++  concerns.
++- "Sharing lessons across projects ... the owner decides it as item 4 of `HANDOFF.md`,
++  because it touches decisions 8 and 9. Until then every lesson lives in its project's
++  `lessons/`, which is what this change builds." — Carried forward, as the intent directs:
++  not this change's decision (`HANDOFF.md:60-61`, item 4; decisions 8 `docs/decisions/8.md`
++  and 9 `docs/decisions/9.md` unchanged).
++- "Frontmatter for eval cases ... a later R1 row through its own intent. The lesson's link
++  to the case is enough for the maintain run." — Carried forward, as the intent directs: this
++  change links to `evals/cases/<id>-<slug>/` (`plugin/evals/case.py`'s existing shape) and
++  changes nothing inside it.
++
++## Flagged concerns
++- The `class` part of `tags` is free text the (e) run names at write time, with no controlled
++  vocabulary and no normalization beyond kebab-case: a spelling drift (`flaky-test` one month,
++  `flaky_test` or `flakytest` the next) silently creates a second index heading for the same
++  class, and nothing in this design catches it. Assumption made because the intent assigns
++  naming "the class" to the run but does not say whether a fixed vocabulary is needed; left
++  open for the owner — a controlled list (e.g. a short enum in `sdlc.yaml` or
++  `bands.yaml`) is a possible answer but is not this spec's to decide unprompted.
++- [x] Eval-case content quality is not something the deterministic gate check can verify:
++  decided — the new check confirms only that `evals/cases/<id>-<slug>/{prompt.md,checks.yaml}`
++  exist, per the existing split between deterministic gate checks and advisory review
++  (skill `definition-of-done`, "the gate itself is the enforcement; this skill is advisory").
++  Whether the eval "asserts something real" is a review-pass and adversarial-reviewer
++  judgment, as it already is for every other eval case in this plugin.
++- [x] Cross-platform stability of the generated index's byte comparison (the owner works on
++  Windows; `check` must not false-positive on a line-ending difference): decided —
++  `plugin/lessons/index.py` writes through `plugin/state/yamlish.py`'s `dump_file`, which
++  already forces `newline="\n"` on every platform (`plugin/state/yamlish.py:309-310`), the
++  same convention `status.yaml`/`sdlc.yaml` rely on today.
++
++## Acceptance
++- `python -m compileall -q plugin tests tasks.py`, `python -m pytest`,
++  `python -m ruff check .` and `python -m ruff format --check .` all green;
++  `claude plugin validate .` clean.
++- New tests pass: the index builder's ordering (first tag, newest-first within a heading),
++  the `## Retired` heading, the `(stale)` marker, `check`'s exit 1 and diff on a drifted
++  index, a frontmatter-less file listed under `## Unsorted`; the gate's three new incident
++  sub-checks (missing lesson, missing eval case, failing `index.py check`, a dangling
++  `supersedes`, an out-of-enum `status`) each produce their own "what I need from you" line;
++  the updated instructions in `plugin/commands/sdlc-deploy.md` and
++  `plugin/commands/sdlc-maintain.md` pass their existing instruction tests.
++- `tests/test_scaffold.py`'s manifest cross-check passes with both
++  `.claude-plugin/plugin.json` and `.claude-plugin/marketplace.json` at `0.3.6`.
++- `docs/OPERATING_MODEL.md:144` carries the new sentence; `template/lessons/README.md`
++  describes the frontmatter, footnote and index shape; `template/sdlc.yaml` documents
++  `lessons.stale_after_months`. No lesson file exists in this repository or the sample to
++  migrate, so acceptance does not include a migration step.
+diff --git a/changes/0003-lessons-with-frontmatter-and-a-generated/status.yaml b/changes/0003-lessons-with-frontmatter-and-a-generated/status.yaml
+index 3ef1ccd..a0daf0b 100644
+--- a/changes/0003-lessons-with-frontmatter-and-a-generated/status.yaml
++++ b/changes/0003-lessons-with-frontmatter-and-a-generated/status.yaml
+@@ -1,7 +1,7 @@
+ id: "0003"
+ slug: lessons-with-frontmatter-and-a-generated
+ title: Lessons with frontmatter and a generated index
+-phase: a
++phase: b
+ entry_route: idea
+ change_type: feature
+ profile_override: null
+@@ -28,5 +28,5 @@ released_at: null
+ released_sha: null
+ released_pr: null
+ created_at: "2026-10-06T03:12:18Z"
+-updated_at: "2026-10-06T03:12:18Z"
++updated_at: "2026-10-07T02:07:54Z"
+ schema_version: 1
