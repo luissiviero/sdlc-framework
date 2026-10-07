@@ -41,6 +41,7 @@ One file per NOTES section, number only, no slug (`docs/notes/<N>.md`); each car
 32. [Facts read in session 18, third sitting (2026-10-03): 0.3.3 merged, tagged and pinned; change 0001's build run on 0.3.3 — the foreground rule and item 3b verified live at (c); the park on the sandbox-masked fixture `.env`](32.md)
 33. [Facts read in session 19 (2026-10-04): change 0001's fix round on 0.3.4, phase (d), the (e) run and its fix rounds, the owner's merge and the release — item 3b verified live at (d); the (e) rounds parked on `changes/.review-seen.json`](33.md)
 34. [Facts read in session 20 (2026-10-06 to 2026-10-07): the sample's points, change 0003 through the front door on plugin 0.3.5 — the intent PR by the API route, the design run started by the merge, gate (b) parked on one flagged concern; the scan's change 0002 (PR #118); GitHub's 500 on every review creation for PR #124](34.md)
+35. [Facts read in session 21 (2026-10-07): the sample's points, change 0003's fix round on plugin 0.3.5 — the owner's twenty-item review applied, gate (b) `wait` with `sdlc:b-ready`](35.md)
 
 Sessions are append-only: a later session's file may correct or supersede an earlier one's
 reading (each says so inline, e.g. "corrected by §17"); read the latest file on a topic
