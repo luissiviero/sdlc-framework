@@ -245,10 +245,10 @@
 
 <div class="wrap">
   <header>
-    <div class="eyebrow"><b class="pb">Playbook</b> (the article) · <b class="fw">Framework</b> (sdlc plugin 0.3.4) · owner's decisions</div>
+    <div class="eyebrow"><b class="pb">Playbook</b> (the article) · <b class="fw">Framework</b> (sdlc plugin 0.3.5) · owner's decisions</div>
     <h1>Workflow Crosswalk</h1>
     <p class="lede">Every decision point of the two workflows, one row each: what the article prescribes, what the framework does, how they relate, and why they differ. Pick which is better at each step and what you will do about it; your choices are saved with the page.</p>
-    <p class="note">Sources: <a href="https://claude.ai/artifact/WhLTjcSzJqQmUFm3aP5G6L">Playbook SDLC Workflow</a> (pages are the 53-page print of the article) and <a href="https://claude.ai/artifact/KW8jWunfLNa9WgBSzJxw4S">SDLC Plugin Workflow</a> (files are in <code>luissiviero/sdlc-framework</code> at 8050b92, plugin 0.3.4 (re-checked on 3 and 4 October 2026: 0.3.4 changes no row, only the gate's clean_tree check; 0.3.2 corrects six rows, build-hooks, test-loop, test-verify, x-sandbox, x-headless and deploy-comments, and 0.3.3 adds a sentence to build-subagents; before the Test stage was decided, test-loop and test-verify moved from same to adapted); the rows were first checked at 0.2.27, cf3f696, 0.2.28 and 0.2.29 change none of them, 0.2.30 changes build-hooks (its panel-blindness hook, corrected on 3 October 2026), and 0.3.0 and 0.3.1 change seven: design-trigger, test-verify, deploy-approve, deploy-release, x-headless, x-limits and x-measure, and add a sentence to x-sandbox and x-audit). "D<i>n</i>" is decision <i>n</i> in <code>docs/DECISIONS.md</code>; a difference with a decision behind it is deliberate, and one marked "no decision" is where to look first.</p>
+    <p class="note">Sources: <a href="https://claude.ai/artifact/WhLTjcSzJqQmUFm3aP5G6L">Playbook SDLC Workflow</a> (pages are the 53-page print of the article) and <a href="https://claude.ai/artifact/KW8jWunfLNa9WgBSzJxw4S">SDLC Plugin Workflow</a> (files are in <code>luissiviero/sdlc-framework</code> at 1169cc0, plugin 0.3.5 (re-checked on 3 to 7 October 2026: 0.3.5 adds a sentence to deploy-claudemd (the review record committed with the change); deploy-ci's text was corrected on 7 October 2026 (the triage step exists but no workflow runs it); 0.3.4 changes no row, only the gate's clean_tree check; 0.3.2 corrects six rows, build-hooks, test-loop, test-verify, x-sandbox, x-headless and deploy-comments, and 0.3.3 adds a sentence to build-subagents; before the Test stage was decided, test-loop and test-verify moved from same to adapted); the rows were first checked at 0.2.27, cf3f696, 0.2.28 and 0.2.29 change none of them, 0.2.30 changes build-hooks (its panel-blindness hook, corrected on 3 October 2026), and 0.3.0 and 0.3.1 change seven: design-trigger, test-verify, deploy-approve, deploy-release, x-headless, x-limits and x-measure, and add a sentence to x-sandbox and x-audit). "D<i>n</i>" is decision <i>n</i> in <code>docs/DECISIONS.md</code>; a difference with a decision behind it is deliberate, and one marked "no decision" is where to look first.</p>
   </header>
 
   <div class="top">
@@ -502,7 +502,7 @@
       pb: "Claude runs the tests, the build and the screenshot and iterates until the check passes; the verification commands live in CLAUDE.md.",
       pbSrc: "p.26-28",
       fw: "/sdlc:sdlc-test in a fresh CI job. By hand, collect.py runs test, build and lint into evidence/ and failures are fixed and re-run within the iteration cap. In CI (0.3.2) no project target runs in the (d) session: collect.py marks each log 'deferred to the runner', the fix loop is skipped, and after the session the runner runs the three targets once, outside the sandbox, writes the logs and parks the change on a red target; the next round is the owner's 'Request changes' review (sdlc-fix.yml, iterations + 1), so in CI the re-runs need the owner between rounds. The (c) build session is still told to run the tests each step touches (sdlc-build.md step 4, with no CI exception; the CI allow-list has python, pytest and npm), inside the sandbox, where a test that reads a nested .env fails. Screenshot loop when a mock is named.",
-      fwSrc: "plugin/evidence/collect.py, plugin/commands/sdlc-test.md §1-2, plugin/commands/sdlc-build.md step 4, plugin/gate/gate.py run_deferred_commands, plugin/ci/run_phase.py (run_gate_commands, IMPLEMENT_ALLOWED_TOOLS), docs/PROGRESS.md choice 154",
+      fwSrc: "plugin/evidence/collect.py, plugin/commands/sdlc-test.md §1-2, plugin/commands/sdlc-build.md step 4, plugin/gate/gate.py run_deferred_commands, plugin/ci/run_phase.py (run_gate_commands, IMPLEMENT_ALLOWED_TOOLS), docs/progress/session-18.md choice 154",
       rel: "adapted", why: "PROGRESS choice 154, the owner's choice of item 3b's shape (i) in 0.3.2, on issue #91: one run of the targets per phase, after the session and outside the sandbox, and 'the owner's /sdlc-fix is the round'; not a Dn in DECISIONS.md. Nearest: D1 hosted CI, sandboxed · D11 a failed check parks · D22 'Request changes' starts the fix run",
       weigh: "In CI the run, fix and re-run loop is spread over sessions, with your 'Request changes' between rounds, so what reaches you on a red target has not passed the check. Should a red target start the next round by itself, within the iteration cap?" },
     { id: "test-bugfix", stage: "Test", step: "Bug fixes: the failing test first",
@@ -516,7 +516,7 @@
       pb: "One way: a verifier subagent in a fresh context once the session believes it is done; the pasted output lands in the transcript and the PR check run.",
       pbSrc: "p.25-29",
       fw: "The verifier runs in a fresh context in (c) and (d): by hand it runs build, test and lint and exercises the change; in CI (0.3.2) it runs none of them and never starts the test runner: it quotes the runner's record of the previous phase (gate-b.json at the end of (c), gate-c.json at (d): the run on the tree the phase started from) and the logs, each marked 'read, not run', and exercises the change through direct calls only. The suite on the final tree is the runner's step after the session, which writes the evidence logs (the three at (d) and (e), any still marked deferred at (b) and (c)) and parks on a red target; gate (d) posts the check run sdlc/d, and in CI the runner posts it again after that run (0.3.0).",
-      fwSrc: "plugin/agents/verifier.md, plugin/commands/sdlc-test.md §4, plugin/pr/cli.py, plugin/ci/run_phase.py, docs/PROGRESS.md choice 154",
+      fwSrc: "plugin/agents/verifier.md, plugin/commands/sdlc-test.md §4, plugin/pr/cli.py, plugin/ci/run_phase.py, docs/progress/session-18.md choice 154",
       rel: "adapted", why: "PROGRESS choice 154, the owner's choice of item 3b's shape (i) in 0.3.2: the verifier reads the runner's record instead of running the targets; not a Dn in DECISIONS.md. Nearest: D1 hosted CI, sandboxed",
       weigh: "In CI the verifier's command results are the previous phase's, of the tree the phase started from; the final tree's are the runner's, in sdlc/d, which the runner re-posts after its commands step (0.3.0). A by-hand run, or a gate (d) stopped early by a run limit, still depends on the model's own step. Is the split clear enough on the record?" },
     { id: "test-gate", stage: "Test", step: "The gates after Build and after Test",
@@ -541,15 +541,12 @@
       fwSrc: "plugin/review/ (cli.py check-run, findings.py), template/REVIEW.md, template/.github/workflows/sdlc-deploy.yml, plugin/ci/run_phase.py (--phase review), plugin/gate/checks.py check_findings, plugin/commands/sdlc-deploy.md §2, plugin/detect/runbooks.py, template/.github/workflows/sdlc-detect.yml",
       rel: "adapted", why: "D12 review as a CI job",
       weigh: "Every PR vs once per change, and the framework's Important finding blocks where the article's findings do not block on their own, unless a platform engineer gates merges on the tally (p.33). The (b) adversarial reviewer covers the spec; the runbook PRs, which change code, get no review pass. Is that enough?" },
-    { id: "deploy-claudemd",
-      stage: "Deploy",
-      step: "Review findings feed CLAUDE.md",
+    { id: "deploy-claudemd", stage: "Deploy", step: "Review findings feed CLAUDE.md",
       pb: "When Claude makes a mistake twice, the correction goes into CLAUDE.md. Review puts it there as part of the review that flags it the second time, and also flags when a change has made CLAUDE.md outdated. Code owners approve the edit in PR review.",
       pbSrc: "p.20, p.34",
-      fw: "The (e) review records each finding's signature in changes/.review-seen.json. A finding seen again in a later change, or one about CLAUDE.md itself, becomes a proposed 'Things Claude gets wrong' line in evidence/claude-md-proposals.md, quoted in the PR description. The run cannot edit CLAUDE.md; the owner applies the line in a commit of their own.",
-      fwSrc: "plugin/review/findings.py, plugin/review/cli.py, plugin/pr/description.py, template/REVIEW.md",
-      rel: "adapted",
-      why: "D6 guardrail files are the owner's edit · build guide steps 13 and 26",
+      fw: "The (e) review records each finding's signature (pass, file and normalised summary, no line number) in changes/.review-seen.json, one file per project outside the change folder; since 0.3.5 every commit-phase commit at (d) and (e) carries it when it changed, and the gate's clean_tree sets it aside while it is a well-formed record (a deleted, symlinked or malformed record is still uncommitted work). A finding whose signature an earlier change already recorded (occurrences inside one change never count as a repeat), or one about CLAUDE.md itself (proposed the first time it is seen), becomes a proposed 'Things Claude gets wrong' line in evidence/claude-md-proposals.md, quoted in the build PR's description. The run cannot edit CLAUDE.md (a protected path); the owner applies the line by hand ('in the PR review', as the deploy command and the description code say). Nothing lists the proposals not yet applied (the daily digest does not), and the article's repeat indicator is not computed.",
+      fwSrc: "plugin/review/findings.py (signature, update_seen, claude_md_first_time_lines), plugin/review/cli.py, plugin/pr/description.py, plugin/pr/digest.py, template/REVIEW.md, plugin/state/conventions.py review_seen_rel, plugin/gate/checks.py check_clean_tree",
+      rel: "adapted", why: "D6 guardrail files are the owner's edit · build guide steps 13 and 26",
       weigh: "A repeat is matched on an exact signature (pass, file, normalised summary), so a reworded repeat is missed, and only review findings count, not mistakes seen in a session. Should the daily digest list proposals you have not applied yet?" },
     { id: "deploy-tuning",
       stage: "Deploy",
@@ -564,22 +561,22 @@
     { id: "deploy-comments", stage: "Deploy", step: "Acting on review comments",
       pb: "A reviewer or the author tags @claude on a review comment; Claude addresses it and pushes. For PRs Claude opened, a slash command babysits until green.",
       pbSrc: "p.33-34",
-      fw: "The owner's 'Request changes' review (or an un-park label) runs sdlc-fix.yml: comments become constraints, the phase re-runs, iterations + 1. On a pull request the owner opened by hand, where GitHub refuses the owner's own 'Request changes', the owner writes a comment review and a workflow_dispatch of sdlc-fix.yml with the change id and head branch is the round; since 0.3.2 such a dispatched round also reads the owner's un-park labels. No @claude trigger.",
-      fwSrc: "template/.github/workflows/sdlc-fix.yml, plugin/commands/sdlc-fix.md, plugin/ci/run_phase.py (find_open_pr)",
+      fw: "A 'Request changes' review by the owner, a member or a collaborator (or one of the owner's un-park labels) runs sdlc-fix.yml: comments become constraints (only reviews and comments by the repository's owner, members and collaborators, never a bot; plugin/ci/fix_requests.py), the phase re-runs, iterations + 1. On a pull request the owner opened by hand, where GitHub refuses the owner's own 'Request changes', the owner writes a comment review and a workflow_dispatch of sdlc-fix.yml with the change id and head branch is the round; since 0.3.2 such a dispatched round also reads the owner's un-park labels. No @claude trigger.",
+      fwSrc: "template/.github/workflows/sdlc-fix.yml, plugin/commands/sdlc-fix.md, plugin/ci/run_phase.py (find_open_pr), plugin/ci/fix_requests.py",
       rel: "adapted", why: "D22 'Request changes' starts the fix run · D24 un-park labels",
       weigh: "One comment at a time (@claude) vs one review round at a time. The framework's is coarser but cheaper to run." },
     { id: "deploy-approve", stage: "Deploy", step: "Approving the code",
       pb: "A code owner approves through branch protection, informed by the findings; the agent that wrote the code cannot approve it. The stage table reserves human review for regulated and critical code.",
       pbSrc: "p.6, p.33-35",
-      fw: "Gate (e): the owner merges the build PR, which stays a draft until sdlc:e-ready. The draft is the only guard against an early merge. Since 0.3.1 an early merge releases nothing: the release skips a merged copy without a gate (e) result, and releases the pull request the (e) run opens afterwards, once per change (issue #66).",
-      fwSrc: "plugin/ci/run_phase.py PR_DRAFT_PHASES, plugin/release/cli.py",
+      fw: "Gate (e): the owner merges the build PR, which stays a draft until sdlc:e-ready. The draft is the only guard against an early merge. Since 0.3.1 an early merge releases nothing: the release skips a merged copy without a gate (e) result, and releases the pull request the (e) run opens afterwards, once per change (issue #66). Who merged at (e) is GitHub's record only: the merged copy's status.yaml reads gate (e) passed by derivation (merged_at_gate_e), and the release record names the merge commit and the pull request, not the actor. Nothing requires an approving review; the owner's Exempt bypass means no ruleset rule runs for the owner's merge.",
+      fwSrc: "plugin/ci/run_phase.py PR_DRAFT_PHASES, plugin/release/cli.py, plugin/state/status.py merged_at_gate_e, plugin/commands/sdlc-init.md §6 (the ruleset and its Exempt bypass)",
       rel: "adapted", why: "D4 · D13 gate (e) is the merge",
       weigh: "Issue #66 is fixed in 0.3.1: an early merge no longer releases, and a change releases once (the record is in status.yaml on sdlc/<id>/c and on refs/sdlc/released/<id>). What remains: the draft is still the only guard against the merge itself, so an early merge still puts code the review has not judged on main; the review's fixes arrive only with the (e) run's second PR." },
     { id: "deploy-ci", stage: "Deploy", step: "Judgment steps in CI",
       pb: "Start with read-only judgment steps: claude -p in a pipeline job to triage a failed build, summarize a flaky test or draft the changelog; then write steps.",
       pbSrc: "p.40",
-      fw: "Read-only claude -p judgment jobs exist in CI: the REVIEW.md pass, the weekly security review, and the 2σ/3σ diagnosis, which reads failed runs with gh run view. The article's three example jobs (failed-build triage, flaky-test summary, changelog draft) are missing; release notes come from release/notes.py, deterministically (no model), after gate (e).",
-      fwSrc: "template/.github/workflows/sdlc-deploy.yml, sdlc-scan.yml, template/bands.yaml, plugin/release/notes.py",
+      fw: "Read-only claude -p judgment jobs exist in CI: the weekly security review and the 2σ/3σ diagnosis, which reads failed runs with gh run view; the REVIEW.md pass is read-only but for the one findings file it writes. A failed-build triage step exists (run_phase.py --phase triage --log <file>: the Read tool only, at most five lines on what failed, the likely cause and the first thing to check, after p.41), but no workflow runs it, and a run that ends without a park (a toolchain setup failure) shows only as a failed run in Actions. The flaky-test summary and the changelog draft are missing; release notes come from release/notes.py, deterministically (no model), written by the (e) session after the gate (e) check, before the merge.",
+      fwSrc: "template/.github/workflows/sdlc-deploy.yml, sdlc-scan.yml, template/bands.yaml, plugin/ci/run_phase.py (run_triage, REVIEW_ALLOWED_TOOLS), plugin/release/notes.py, plugin/commands/sdlc-deploy.md §4",
       rel: "adapted", why: "No decision on the three example jobs",
       weigh: "A 'triage failed build' job is cheap and read-only. Worth adding?" },
     { id: "deploy-envs", stage: "Deploy", step: "Environments and deploy tools",
@@ -1137,7 +1134,7 @@
     if (!phone) {
       map.appendChild(el("div", { cls: "grouphead pb", text: "Playbook (the article)" }));
       map.appendChild(el("div", { cls: "grouphead mid" }));
-      map.appendChild(el("div", { cls: "grouphead fw", text: "Framework (sdlc plugin 0.3.4)" }));
+      map.appendChild(el("div", { cls: "grouphead fw", text: "Framework (sdlc plugin 0.3.5)" }));
     }
     heads.forEach(function (h) { map.appendChild(el("div", { cls: "lanehead " + h[1], role: "columnheader", text: h[0] })); });
     STAGES.forEach(function (stg) {
