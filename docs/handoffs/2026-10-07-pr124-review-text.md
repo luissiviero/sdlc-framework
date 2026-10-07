@@ -1,6 +1,6 @@
 # The owner's review on PR #124 (design(0003)), as approved on 2026-10-07
 
-<!-- Session 20 wrote this text with two fresh-context Opus reviews of spec.md and plan.md (PROGRESS "Session 20", NOTES §34). The owner approved it in full. GitHub answered HTTP 500 to every attempt to create the review on 2026-10-07 between 15:08 and 15:11 UTC (NOTES §34), so the text is kept here: post it as one "Request changes" review on https://github.com/luissiviero/sdlc-framework/pull/124 if it is not there yet (the fix round reads the review body; keep the numbering). -->
+<!-- Session 20 wrote this text with two fresh-context Opus reviews of spec.md and plan.md (PROGRESS "Session 20", NOTES §34). The owner approved it in full. GitHub answered HTTP 500 to six attempts to create the review on 2026-10-07 between 15:08 and 15:17 UTC, and the sixth created it anyway: review 5444369078 (CHANGES_REQUESTED, 15:16:54 UTC) on https://github.com/luissiviero/sdlc-framework/pull/124, which fired fix run 37642485487; a seventh attempt made a duplicate (5444556016), dismissed (NOTES §34). This file is the record of what the owner asked the fix round to change. -->
 
 Request changes on PR #124 (design(0003)). Re-run the design pass with the decision and the corrections below; keep intent.md unchanged.
 
