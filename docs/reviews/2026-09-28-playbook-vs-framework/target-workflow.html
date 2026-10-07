@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<!-- Snapshot of the target workflow page https://claude.ai/artifact/13X8rzF9KsfekmeSs1w5rM as published on 2026-10-03 (private to the owner; the live page may be newer). Opened from the repository, the diagrams render with mermaid from jsdelivr. -->
+<!-- Snapshot of the target workflow page https://claude.ai/artifact/13X8rzF9KsfekmeSs1w5rM as last published on 2026-10-07 (private to the owner; the live page may be newer). Opened from the repository, the diagrams render with mermaid from jsdelivr. -->
 <style>body{margin:0}</style>
 </head>
 <body>
@@ -98,9 +98,9 @@
 
 <div class="wrap">
   <header>
-    <div class="eyebrow">Target design · tentative · T1–T14 of target-design.md · 4 October 2026</div>
+    <div class="eyebrow">Target design · tentative · T1–T22 of target-design.md · 7 October 2026</div>
     <h1>The workflow as you want it to become</h1>
-    <p class="lede">The third workflow beside the <a href="https://claude.ai/artifact/WhLTjcSzJqQmUFm3aP5G6L">playbook's</a> and the <a href="https://claude.ai/artifact/KW8jWunfLNa9WgBSzJxw4S">framework's</a>. It draws only what <code>docs/reviews/2026-09-28-playbook-vs-framework/target-design.md</code> has discussed so far: AI roles that advise and one manager that reviews for you (T1), the interview (T2), the intent home (T3), the names (T4), how a project starts (T5), tickets that become intents (T6), the reason a rejection keeps (T7), a formatter that follows your languages (T8), a risk-list hit that your merge accepts (T9), a test loop that closes by itself in CI (T10), a fix that proves itself (T11), build and test approvals recorded by the runner (T12), an eval suite that grows (T13) and a review pass on the runbook PRs (T14). Steps the study has not reached yet are left out or marked "not discussed yet".</p>
+    <p class="lede">The third workflow beside the <a href="https://claude.ai/artifact/WhLTjcSzJqQmUFm3aP5G6L">playbook's</a> and the <a href="https://claude.ai/artifact/KW8jWunfLNa9WgBSzJxw4S">framework's</a>. It draws only what <code>docs/reviews/2026-09-28-playbook-vs-framework/target-design.md</code> has discussed so far: AI roles that advise and one manager that reviews for you (T1), the interview (T2), the intent home (T3), the names (T4), how a project starts (T5), tickets that become intents (T6), the reason a rejection keeps (T7), a formatter that follows your languages (T8), a risk-list hit that your merge accepts (T9), a test loop that closes by itself in CI (T10), a fix that proves itself (T11), build and test approvals recorded by the runner (T12), an eval suite that grows (T13), a review pass on the runbook PRs (T14), review corrections that reach CLAUDE.md through one standing PR (T15), a reviewer tuned twice a month (T16), fix rounds you can start with an @claude comment (T17), a deploy gate that is your approving review, merged for you by a GitHub App (T18), failed CI runs that explain themselves, with release notes that gain a plain-words paragraph (T19), an optional preview environment with a rollback rehearsed there on a schedule (T20), and a release label you give in the same visit as your approval, with a waiting or failed release in the digest (T21), and a detection whose state reaches the digest, with the next metric a project setting (T22). Steps the study has not reached yet are left out or marked "not discussed yet".</p>
     <p class="banner"><strong>Nothing here is decided.</strong> Every entry is tentative until the whole study is done; then each confirmed entry becomes a proposal and a candidate row in <code>docs/ROADMAP.md</code>. The framework as it is today is on the framework page.</p>
     <div class="legend">
       <span><i class="sw hex"></i>Your decision or act</span>
@@ -110,7 +110,7 @@
   </header>
 
   <section>
-    <h2>One change, from idea to release <span class="refs">T1 · T3 · T4 · T5 · T6 · T7 · T8 · T9 · T10 · T11 · T12 · T14</span></h2>
+    <h2>One change, from idea to release <span class="refs">T1 · T3 · T4 · T5 · T6 · T7 · T8 · T9 · T10 · T11 · T12 · T14 · T15 · T16 · T17 · T18 · T20 · T21 · T22</span></h2>
     <p>Your approval points stay where they are today. What changes is what reaches you at each one: the roles write briefs, the manager turns them into one recommendation, you decide, and the act runs on your signal. Phases carry the names T4 proposes, with today's letter after each.</p>
     <div class="diagram"><pre class="mermaid">flowchart TB
   subgraph PREP["Before the first change"]
@@ -163,14 +163,25 @@
     E2["Manager: merge, or request changes, with the Important findings"]
     E1 --> E2
   end
+  E2 -. "you want changes" .-> GC{{"You request changes: a 'Request changes' review,&lt;br/&gt;or your comment starting with @claude (T17)"}}
+  GC -. "the fix round re-runs the phase with your comments" .-> E1
   TT --> E1
-  E2 --> GE{{"You approve the code,&lt;br/&gt;and the risk items its banner shows"}}
-  GE -- "your signal; a workflow checks it and merges (to verify)" --> LIVE(["Merged"])
-  GE -. "declared production: deploy.production_gate" .-> RL["The release checklist: where roles help most&lt;br/&gt;which role, and when: not discussed yet"]
-  RL -.-> GR{{"You, as release manager,&lt;br/&gt;apply the release label"}}
+  E1 -. "a preview command is set (T20)" .-> PV["Preview: the build PR's head deployed to a preview environment,&lt;br/&gt;in its own job with the preview secrets and no agent;&lt;br/&gt;the result in your banner; red: a fix round, as for a red target (T10)"]
+  PV -.-> E2
+  E2 --> GE{{"You approve the build PR: your only act (T18),&lt;br/&gt;which also accepts the risk items its banner shows"}}
+  GE -- "a workflow checks your approval and the green review check,&lt;br/&gt;then a GitHub App merges (T18; to verify)" --> LIVE(["Merged"])
+  LIVE -. "the review proposed a CLAUDE.md line" .-> CM["A deterministic step adds it to one standing PR,&lt;br/&gt;'CLAUDE.md: Things Claude gets wrong' (T15)"]
+  CM -.-> GCM{{"You merge that PR when you choose,&lt;br/&gt;one act for many lines"}}
+  LIVE -. "twice a month, on a schedule" .-> TN["A read-only run reads the period's findings and your waivers,&lt;br/&gt;and proposes REVIEW.md edits in a standing PR (T16)"] -.-> GTN{{"You merge that PR when you choose"}}
+  GE -. "declared production (deploy.production: true)" .-> RL["Platform &amp; release brief: the release checklist (T1);&lt;br/&gt;the banner says to apply the release label with your approval (T21)"]
+  RL -.-> GR{{"You, as release manager, apply the release label,&lt;br/&gt;in the same visit as your approval (T21)"}}
+  LIVE -- "the merge starts the release workflow&lt;br/&gt;(for the App's merge: to verify, T21)" --> REL["The release runs deploy.command on the runner, no agent,&lt;br/&gt;on a declared production only after your label; records who applied it (T21);&lt;br/&gt;a release waiting for your label, or failed: a digest line (T21)"]
+  GR -.-> REL
 
   subgraph MT["maintain (today: f)"]
+    DT["Daily detection, deterministic as today;&lt;br/&gt;its last verdict and the 1σ events in the digest, the log kept on a ref;&lt;br/&gt;the next metric: your project's own script, no agent (T22)"]
     F1["Findings from detection and the weekly scan,&lt;br/&gt;labelled sdlc:triage"]
+    DT --> F1
     F2["Briefs: Operations; Security &amp; policy for scan findings"]
     F3["Manager: fix now, schedule or dismiss"]
     F1 --> F2 --> F3
@@ -179,6 +190,9 @@
   F1 -. "runbook with authorization: ask" .-> GO{{"You apply sdlc:go"}}
   F1 -. "3σ, pre-approved: revert-pr or quarantine-flaky-test" .-> RBP["The runbook opens its PR;&lt;br/&gt;the review pass runs on it, its findings on the PR (T14)"]
   RBP --> GRB{{"You merge or close the runbook PR"}}
+  F1 -. "3σ rollback on a declared production" .-> RBK["Pre-approved only with your rehearsed_at and a passing&lt;br/&gt;rehearsal within N days (T20); otherwise it waits for your Go"]
+  RH["Weekly: the rollback rehearsed in the preview environment,&lt;br/&gt;no agent, the result recorded on a ref (T20)"] -.-> RBK
+  RBK -. "not pre-approved" .-> GO
   GR ~~~ F1</pre></div>
     <ul class="notes">
       <li><strong>You stay the only approver.</strong> The manager prepares an act; you approve it from your own account (a label or an approving review); a deterministic workflow, not a model, checks that the approval came from you and carries the act out. <code>sdlc-runbook.yml</code> already works this way for <code>sdlc:go</code>, though it checks only that a person applied the label, not that it was you.</li>
@@ -203,22 +217,35 @@
       <li><strong>Build and test approvals (T12).</strong> Under the Full profile your label alone approves build and test, as the code does today; D3's "approving review + label" is amended and the docs corrected. The runner records who applied each label and when, beside the plan-acceptance line. A risk-list hit first found in build or test shows in the waiting PR's banner, and only your deploy merge accepts it.</li>
       <li><strong>The eval suite grows (T13).</strong> The suite still starts empty (D17). It also runs on <code>sdlc.yaml</code> (the plugin pin bump), reading the pin from the pull request on such a change so a new pin is evaluated before you merge it, and on your <code>policies/</code>. The deploy gate of an incident change requires its eval case. Once the twentieth change has merged, a run drafts eval cases from merged changes in a PR you merge, D17's own trigger given a step. No required status check: your bypass would skip it, so the result reaches you in the brief on your own configuration PRs.</li>
       <li><strong>The runbook PRs get the review pass (T14).</strong> The review pass at deploy stays as it is: at deploy, re-run on each new version there, and an Important finding still holds the change until it is fixed (the article's findings do not block on their own, p.33; with the fix loop already run, what reaches you has had its fixes). Added: the same pass on the PRs that a pre-approved runbook opens at 3σ (a revert, or a flaky test deselected), the one kind of automated code change that reaches your merge with no review today; its findings show on the PR. Intent and spec PRs keep the roles' briefs and the design reviewer; your own configuration PRs keep their brief.</li>
+      <li><strong>Review corrections reach CLAUDE.md through one standing PR (T15).</strong> When the deploy review finds a mistake an earlier change already made, or that CLAUDE.md is outdated, it proposes a "Things Claude gets wrong" line, as today. Instead of you writing each line in a commit of your own, a deterministic step, no model, adds it to one standing pull request; you merge that PR whenever you choose, one act for many lines, with the role brief and the eval result that any change to CLAUDE.md gets; since a pull request the automation opens starts no run that proceeds without your approval, the step starts the eval run and the brief itself after each update. Nothing notifies you; the daily digest shows how many lines wait. The review can also tag a mistake described in new words as a repeat, so it still counts. No run ever edits CLAUDE.md itself (D6): a finding's text comes from a model reading code, and CLAUDE.md steers every later run.</li>
+      <li><strong>The reviewer is tuned twice a month (T16).</strong> The article's tech lead tunes the review monthly by rating findings. Instead, a read-only run twice a month reads what is already on record, so you rate nothing: findings you waived or overturned, findings the panel settled, repeats, nit volume against the cap, and findings in paths CI already enforces. It writes a short report and proposes <code>REVIEW.md</code> edits in one standing pull request, as for CLAUDE.md (T15), which you merge when you choose. <code>REVIEW.md</code> stays yours (D6).</li>
+      <li><strong>An @claude comment starts a fix round (T17).</strong> Your "Request changes" review still starts the round that applies your comments (D22). Added: your comment starting with <code>@claude</code> on a change's pull request starts the same round, with all the unresolved comments as its constraints; the workflow checks that the comment is yours and reads it as data. On a pull request you opened yourself, where GitHub refuses your own "Request changes", it replaces the manual dispatch. With T10's automatic rounds on a red target and the deploy fix loop, the rounds you start are only for what you alone can ask. A separate round per comment was considered and not chosen.</li>
+      <li><strong>The deploy gate is your approval (T18).</strong> As in the article, you approve the build PR, informed by the review's findings, and that approval is your only act: a workflow checks it is yours and that the review check is green, then a dedicated GitHub App merges; the runner posts the review check again on the build PR's last commit, and the merge step checks that commit against the review's findings. A second rule requires only the green review check, and every pull request that is not a build PR gets a passing check on each new commit (posted by the automation's own steps on the pull requests it opens, since those start no run that proceeds without your approval, and by a small workflow on yours; a runbook pull request carries the review pass's own check, T14), so intent, design, incident and your own pull requests merge as today, from the phone too; merging a build PR before its review is green needs a deliberate bypass on the web. If a check posted by the automation cannot satisfy that rule, there is no second rule and an early merge is flagged instead; if the App proves impractical, you merge after approving (one more click). The runner records your approval and the merge either way. One-time setup per project: create the App and add it to the merge rule. Amends D4, D5 and D13.</li>
+      <li><strong>A failed CI run explains itself (T19).</strong> The framework already has a read-only triage step that reads a CI log and says what failed, the likely cause and the first thing to check; no workflow runs it today. It becomes an automatic step in the phase workflows (the deploy job's review step among them), the fix workflow and the merge workflow, run when a job fails and also when the run parked (a park normally ends the job green, so a step on failure alone would miss most parks), and also says whether the failure looks flaky or real, as in the article (p.41). On a park, a red target at the iteration cap among them, its lines go into the "What I need from you" block of the parked pull request; a failed run with no park (a setup failure) gets a "Failed runs" line of the daily digest; a lost job, where no step can run, gets the digest line alone, and so may a timed-out one (to verify). No comment, nothing notifies you. The release notes keep their deterministic list, which stays the record, and gain a short paragraph in plain words on what changed, under its own heading, marked as model-written and kept on a re-run unless the code changed; you read it when you approve (T18). No settled decision changes.</li>
+      <li><strong>A preview before your approval, and a rollback rehearsed on a schedule (T20).</strong> Today one switch, <code>deploy.production</code>, separates "no production" from production, with nothing in between, and a rollback runbook, once you add one, is pre-approved on a declared production as soon as you set its <code>rehearsed_at</code>, a date that never expires (D26). Added, both optional and off by default: a preview environment, the article's development tier (p.40), where the build PR's head is deployed at each new head in the deploy phase, fix rounds included, after the review pass, by the runner in a job of its own with the preview environment's secrets and no agent; its result is a line of the banner you read before approving, and a red preview starts a fix round as a red target does (T10). There the rollback is rehearsed weekly, with no agent, and the result is recorded; the rollback is then pre-approved only with your <code>rehearsed_at</code> and a passing rehearsal within a set number of days, and otherwise waits for your Go. The cost: the preview credentials reach code the model wrote before you approve it, scoped to the preview environment, as the article lets the agent deploy freely in development. Deploy, status and rollback as tools for the agent stay deferred: no agent deploys here. Amends D26.</li>
+      <li><strong>The release label in the same visit (T21).</strong> On a declared production the release still takes your approval and your <code>sdlc:release-approved</code> label, two acts as the article's code owner and release manager (D13), and a bot's label never counts, so the merging App can never release on its own. The banner now says to apply the label with your approval, which already works today (a label applied before the merge counts), so both acts take one visit, from the phone too. A release waiting for your label, or a failed one, shows in the daily digest (today it shows nowhere you look, since the merged pull request is closed), and the release record keeps who applied the label and when (today no framework record does: the release log prints it, and GitHub's timeline keeps the event). A release log gets no triage, since it can print the project's secrets. One cost to settle: while the labeled pull request is still open, the production gate lets a Claude session at its head run guarded deploy commands; the gate could accept the label only once the pull request is merged. No settled decision changes.</li>
+      <li><strong>The detection's state reaches you (T22).</strong> The daily detection stays as it is: one metric per project, deterministic, the Western Electric rules, the tiers in <code>bands.yaml</code> (D15, D19). Today the only metric source the code accepts is GitHub Actions' runs, so a production or project metric would be a framework change, and the 1σ log and the "insufficient baseline" state (about 16 counted days before a first verdict) live only in Actions: the job log and an artifact that expires. Added: a <code>command</code> source, your project's own script printing the day's value on the runner with no agent, so the next metric is a setting; a "Detection" line in the daily digest (the last verdict, the baseline's size or the days until it fills, the 1σ events since the last digest); the daily log line kept on a ref, so the breach history outlives the artifact; and the detect workflow in the "Failed runs" line (T19). Several metrics per project was considered and not chosen. No settled decision changes.</li>
     </ul>
   </section>
 
   <section>
-    <h2>Build and test in CI <span class="refs">T10 · T11 · T12</span></h2>
-    <p>What happens after the build or test session in a CI job. The session works inside the sandbox, which hides nested <code>.env</code> files from every process it starts, so the project's targets run on the runner after it, as since plugin 0.3.2. What changes is what a red target does.</p>
+    <h2>Build and test in CI <span class="refs">T10 · T11 · T12 · T19</span></h2>
+    <p>What happens after the build or test session in a CI job. The session works inside the sandbox, which hides nested <code>.env</code> files from every process it starts, so the project's targets run on the runner after it, as since plugin 0.3.2. What changes is what a red target does, and that a failed run explains itself (T19).</p>
     <div class="diagram"><pre class="mermaid">flowchart LR
   S["The build or test session works in the sandbox&lt;br/&gt;(build also runs the tests each step touches);&lt;br/&gt;the verifier names the runner record it read (T10)"] --> R["The runner, after the session, outside the sandbox:&lt;br/&gt;build, test and lint once,&lt;br/&gt;the evidence logs written from that run"]
   R -- "green" --> G["Gate passes: Standard continues on its own"]
   R -- "red, rounds left" --> FX["A fix round starts by itself (T10):&lt;br/&gt;the failing logs as its constraint, iterations + 1"]
   FX --> S
   R -. "red at the iteration cap" .-> PK{{"Parked for you: 'Request changes',&lt;br/&gt;an un-park label, or close"}}
+  R -. "parked: the job ends green" .-> TR
   R -. "a fix-type change" .-> PF["The gate requires the lock; the runner runs the tests&lt;br/&gt;at the lock commit (red) and at the end (green),&lt;br/&gt;both on the record (T11)"]
   PF -.-> G
-  G -. "Full profile, or your label on the design PR" .-> LB{{"You apply the build or test label;&lt;br/&gt;the runner records who and when (T12)"}}</pre></div>
-    <p class="note"><strong>Today:</strong> a red target found by the runner parks the change, and only an act of yours starts the next round ("Request changes", a dispatch of the fix workflow, or an un-park label), each one an iteration; nothing checks that a fix's test failed first or that the lock was set; the approval label's actor is checked only against the workflow token and not recorded. Running the targets inside the sandbox again, or a helper outside it that the session could call, were considered and not chosen.</p>
+  G -. "Full profile, or your label on the design PR" .-> LB{{"You apply the build or test label;&lt;br/&gt;the runner records who and when (T12)"}}
+  FL["A CI step fails: setup or install before the session,&lt;br/&gt;the session, or the runner's step cannot run"] -.-> TR["Triage, read-only, on the failed step's log:&lt;br/&gt;what failed, flaky or real, the first thing to check (T19)"]
+  TR -. "a park" .-> PK
+  TR -. "no park" .-> DG["A 'Failed runs' line in the daily digest"]
+  LJ["A lost or timed-out job, a failed checkout:&lt;br/&gt;no triage can run (to verify)"] -.-> DG</pre></div>
+    <p class="note"><strong>Today:</strong> a red target found by the runner parks the change, and only an act of yours starts the next round ("Request changes", a dispatch of the fix workflow, or an un-park label), each one an iteration; nothing checks that a fix's test failed first or that the lock was set; the approval label's actor is checked only against the workflow token and not recorded. A run that ends without a park, such as a setup failure, shows only as a failed run in Actions, and the framework's triage step, which would explain it, is never run. Running the targets inside the sandbox again, or a helper outside it that the session could call, were considered and not chosen.</p>
   </section>
 
   <section>
@@ -279,7 +306,7 @@
           <tr><td>design (b), a plan you want watched through build and test</td><td>The same</td><td class="tgt">The class and its reasons, in the banner</td><td class="owner">Label the design PR before merging: the change runs under the Full profile; without the label the build starts on its own</td></tr>
           <tr><td>build (c) and test (d), Full profile or your label on the design PR</td><td>None (the adversarial reviewer stays a checker for the gate)</td><td class="tgt">The gate's result; a risk-list hit found here, in the banner</td><td class="owner">Apply the build or test label; the runner records who and when; only your deploy merge accepts a risk shown</td></tr>
           <tr><td>deploy (e): the code</td><td>Code reviewer (today's REVIEW.md pass), Platform &amp; release</td><td class="tgt">Merge, or request changes, with the Important findings</td><td class="owner">Approve; the merge runs on your signal</td></tr>
-          <tr><td>Release, on a declared production</td><td>The release checklist is where roles help most; which role: not discussed yet</td><td class="tgt">Not discussed yet</td><td class="owner">Apply the release label, as release manager</td></tr>
+          <tr><td>Release, on a declared production</td><td>Platform &amp; release: the release checklist, where roles help most</td><td class="tgt">Not discussed yet</td><td class="owner">Apply the release label, as release manager, in the same visit as your approval (T21)</td></tr>
           <tr><td>maintain (f): a finding</td><td>Operations; Security &amp; policy for scans</td><td class="tgt">Fix now, schedule or dismiss</td><td class="owner">Triage</td></tr>
           <tr><td>Your edits to guardrails, skills and policy sources</td><td>A role's brief (which role: not discussed yet), reading the eval run</td><td class="tgt">The brief, quoting the eval result: pass rate, failing cases, or "no cases yet" (today the eval check is advisory and passes while the suite is empty)</td><td class="owner">Approve</td></tr>
         </tbody>
@@ -459,6 +486,81 @@
         </ul>
       </div>
       <div>
+        <h3>Detection <span class="refs">T22</span></h3>
+        <ul class="notes">
+          <li>The <code>command</code> source's contract: one value for the day or a dated series, a missing day, the secrets the step holds.</li>
+          <li>Whether <code>direction</code> and <code>min_sigma</code> in <code>bands.yaml</code> suffice for a metric whose good side is high, or the source declares it.</li>
+          <li>The ref's name and record shape, shared with the rehearsal record (T20), and how the digest reads the last verdict.</li>
+          <li>To verify: the workflow artifact's retention (90 days by default, from the model's knowledge).</li>
+        </ul>
+      </div>
+      <div>
+        <h3>The release <span class="refs">T21</span></h3>
+        <ul class="notes">
+          <li>How the digest finds a release waiting for your label: the recent closed build PRs read against the release record, or a record the release step writes when it waits.</li>
+          <li>To verify: that a merge by a GitHub App starts the release workflow; if not, the merge workflow starts it explicitly.</li>
+          <li>The fields of the approver line, shared with the other approval lines.</li>
+          <li>Whether the production gate should honour the release label only on a merged pull request, and how the digest tells "no label yet" from "the label could not be checked" (today both are a quiet wait).</li>
+        </ul>
+      </div>
+      <div>
+        <h3>Preview and rehearsal <span class="refs">T20</span></h3>
+        <ul class="notes">
+          <li>How many days a passing rehearsal keeps the rollback pre-approved, and the schedule (weekly is the proposal).</li>
+          <li>Where the preview job sits, how its result reaches the banner, how a red preview fails a deploy gate already recorded, and whether the merge step needs it green.</li>
+          <li>What a preview that cannot start does (the environment down, a missing secret), and whether a preview is torn down after the merge; one preview environment shared by several changes in flight.</li>
+          <li>To verify: that the preview environment's secrets reach only the job that names it.</li>
+        </ul>
+      </div>
+      <div>
+        <h3>Failed runs and release notes <span class="refs">T19</span></h3>
+        <ul class="notes">
+          <li>To verify: how each failed step's output is saved to a file the triage step can read, and whether a separate job is needed to explain a failed checkout or a cancelled job.</li>
+          <li>Which failures triage reads, and how the "Failed runs" line reaches the digest, which lists only the queue today.</li>
+          <li>The paragraph's heading (the notes already have a "What changed" section), its length and place, and how a re-run tells that the code changed.</li>
+          <li>Keeping the triage step's model credential out of the step that runs your project's commands, and the GitHub token and deploy secrets out of the triage session.</li>
+        </ul>
+      </div>
+      <div>
+        <h3>The deploy approval <span class="refs">T18</span></h3>
+        <ul class="notes">
+          <li>To verify: that your approval counts on a pull request the automation opened, that a check posted by the automation satisfies the second rule, and that the web bypass is logged.</li>
+          <li>To verify: the GitHub App allowed to merge, its workflow, and where its key lives, out of reach of workflow files a pull request can change.</li>
+          <li>Whether a push after your approval dismisses it.</li>
+          <li>To verify: that a required check binds the pull request's last commit.</li>
+          <li>How a build PR is told from the rest, and what happens while the passing check has not yet posted.</li>
+        </ul>
+      </div>
+      <div>
+        <h3>@claude comments <span class="refs">T17</span></h3>
+        <ul class="notes">
+          <li>Which comments count (a pull-request comment, a comment on a line, or both), and on which pull requests.</li>
+          <li>How the workflow knows your account, shared with the approval check of the roles (T1).</li>
+          <li>Whether the round counts against the iteration cap like any other.</li>
+          <li>Whether a "Request changes" review should also count only from you, as the @claude comment would (today any member's does).</li>
+          <li>How a round avoids applying again the comments an earlier round already handled.</li>
+        </ul>
+      </div>
+      <div>
+        <h3>Reviewer tuning <span class="refs">T16</span></h3>
+        <ul class="notes">
+          <li>Where your waivers and overturns are read from: a waived finding lives in your review comment today (copied into the change's evidence), not in a structured record.</li>
+          <li>What the eval run on the REVIEW.md PR can show, since today's eval cases do not exercise the review pass.</li>
+          <li>What the run may propose: wording and the nit cap only, or also the "Do not report" list and the passes.</li>
+          <li>Whether the run and the CLAUDE.md step share one workflow, and on which days.</li>
+        </ul>
+      </div>
+      <div>
+        <h3>CLAUDE.md corrections <span class="refs">T15</span></h3>
+        <ul class="notes">
+          <li>How the standing PR handles a line already there, a line you edit, and a line you reject, so a rejected line is not proposed again.</li>
+          <li>Whether the step runs after each deploy merge or on the digest's schedule.</li>
+          <li>How the review's "repeat of" tag is carried and checked: it needs a field of its own, and the reviewer is a model.</li>
+          <li>That merging the standing PR starts no phase run (each run should skip a pull request with no change folder).</li>
+          <li>How the step starts the eval run and the brief for the standing PR (which workflow, on which branch).</li>
+        </ul>
+      </div>
+      <div>
         <h3>Runbook reviews <span class="refs">T14</span></h3>
         <ul class="notes">
           <li>Whether a runbook PR's Important finding only informs you or holds the PR; a revert is meant to land fast.</li>
@@ -470,7 +572,7 @@
   </section>
 
   <footer>
-    <span>Drawn from <code>target-design.md</code> entries T1–T14 and <code>naming.md</code>, as recorded from 30 September to 4 October 2026. Each entry lists the settled decisions (D<i>n</i>) it would reopen or amend.</span>
+    <span>Drawn from <code>target-design.md</code> entries T1–T22 and <code>naming.md</code>, as recorded from 30 September to 7 October 2026. Each entry lists the settled decisions (D<i>n</i>) it would reopen or amend.</span>
     <span>The other two pages: <a href="https://claude.ai/artifact/WhLTjcSzJqQmUFm3aP5G6L">Playbook SDLC Workflow</a> · <a href="https://claude.ai/artifact/KW8jWunfLNa9WgBSzJxw4S">SDLC Plugin Workflow</a> · and the <a href="https://claude.ai/artifact/PFnRZ32pwTr4y422Gna2mz">Workflow Crosswalk</a> that compares them.</span>
   </footer>
 </div>
