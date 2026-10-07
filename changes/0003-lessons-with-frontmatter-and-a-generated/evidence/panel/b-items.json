@@ -1,19 +1,11 @@
 {
   "decided": 0,
-  "gate": "park",
-  "items": [
-    {
-      "decided": false,
-      "item": "The `class` part of `tags` is free text the (e) run names at write time, with no controlled",
-      "key": "concern:a531d4988692093e",
-      "kind": "concern",
-      "n": 1
-    }
-  ],
+  "gate": "wait",
+  "items": [],
   "iterations": {
     "cap": 2,
-    "left": 2,
-    "used": 0
+    "left": 1,
+    "used": 1
   },
   "mode": "parked",
   "panel_calls": {
@@ -22,8 +14,6 @@
     "used": 0
   },
   "parks": [],
-  "pending": [
-    1
-  ],
+  "pending": [],
   "phase": "b"
 }
