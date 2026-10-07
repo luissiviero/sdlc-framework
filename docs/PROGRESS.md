@@ -58,6 +58,6 @@ CHAIN EXIT 0
 
 ## Left
 - **Change 0003 at gate (b), `sdlc:b-ready`, with a second review proposed.** The owner reads `docs/handoffs/2026-10-07-pr124-review-2-text.md`, amends what they disagree with, and posts it as "Request changes" on PR #124 (iteration 2 of 2; `mergeable_state` was `blocked`, not `dirty`, so the round fires; after a 500, read `get_reviews` before retrying). Or merges PR #124 as it stands, taking the gaps into the build (choice 164 says why not). The round that follows is read as this session read the first (NOTES §35's shape), then the merge, the build run, (d), (e), the merge of the build PR, `v0.3.6` and the root pin row — HANDOFF "The next session".
-- This record's PR is a draft against `main` from the session branch; `Framework checks` on its final head is read before the owner is asked to merge it (a docs-only PR, no bump).
+- This record's PR is **#128**, a draft against `main` from the session branch (first commit `f90172d`, then the one naming it); `Framework checks` on its final head is read before the owner is asked to merge it (a docs-only PR, no bump).
 - PR #118 (change 0002) stays `sdlc:f-ready` until 0003 merges (choice 159).
 - No guardrail row this session: no tag was cut (the pin row comes with `v0.3.6`).
