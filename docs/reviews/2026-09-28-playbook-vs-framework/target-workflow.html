@@ -98,9 +98,9 @@
 
 <div class="wrap">
   <header>
-    <div class="eyebrow">Target design · tentative · T1–T21 of target-design.md · 7 October 2026</div>
+    <div class="eyebrow">Target design · tentative · T1–T22 of target-design.md · 7 October 2026</div>
     <h1>The workflow as you want it to become</h1>
-    <p class="lede">The third workflow beside the <a href="https://claude.ai/artifact/WhLTjcSzJqQmUFm3aP5G6L">playbook's</a> and the <a href="https://claude.ai/artifact/KW8jWunfLNa9WgBSzJxw4S">framework's</a>. It draws only what <code>docs/reviews/2026-09-28-playbook-vs-framework/target-design.md</code> has discussed so far: AI roles that advise and one manager that reviews for you (T1), the interview (T2), the intent home (T3), the names (T4), how a project starts (T5), tickets that become intents (T6), the reason a rejection keeps (T7), a formatter that follows your languages (T8), a risk-list hit that your merge accepts (T9), a test loop that closes by itself in CI (T10), a fix that proves itself (T11), build and test approvals recorded by the runner (T12), an eval suite that grows (T13), a review pass on the runbook PRs (T14), review corrections that reach CLAUDE.md through one standing PR (T15), a reviewer tuned twice a month (T16), fix rounds you can start with an @claude comment (T17), a deploy gate that is your approving review, merged for you by a GitHub App (T18), failed CI runs that explain themselves, with release notes that gain a plain-words paragraph (T19), an optional preview environment with a rollback rehearsed there on a schedule (T20), and a release label you give in the same visit as your approval, with a waiting or failed release in the digest (T21). Steps the study has not reached yet are left out or marked "not discussed yet".</p>
+    <p class="lede">The third workflow beside the <a href="https://claude.ai/artifact/WhLTjcSzJqQmUFm3aP5G6L">playbook's</a> and the <a href="https://claude.ai/artifact/KW8jWunfLNa9WgBSzJxw4S">framework's</a>. It draws only what <code>docs/reviews/2026-09-28-playbook-vs-framework/target-design.md</code> has discussed so far: AI roles that advise and one manager that reviews for you (T1), the interview (T2), the intent home (T3), the names (T4), how a project starts (T5), tickets that become intents (T6), the reason a rejection keeps (T7), a formatter that follows your languages (T8), a risk-list hit that your merge accepts (T9), a test loop that closes by itself in CI (T10), a fix that proves itself (T11), build and test approvals recorded by the runner (T12), an eval suite that grows (T13), a review pass on the runbook PRs (T14), review corrections that reach CLAUDE.md through one standing PR (T15), a reviewer tuned twice a month (T16), fix rounds you can start with an @claude comment (T17), a deploy gate that is your approving review, merged for you by a GitHub App (T18), failed CI runs that explain themselves, with release notes that gain a plain-words paragraph (T19), an optional preview environment with a rollback rehearsed there on a schedule (T20), and a release label you give in the same visit as your approval, with a waiting or failed release in the digest (T21), and a detection whose state reaches the digest, with the next metric a project setting (T22). Steps the study has not reached yet are left out or marked "not discussed yet".</p>
     <p class="banner"><strong>Nothing here is decided.</strong> Every entry is tentative until the whole study is done; then each confirmed entry becomes a proposal and a candidate row in <code>docs/ROADMAP.md</code>. The framework as it is today is on the framework page.</p>
     <div class="legend">
       <span><i class="sw hex"></i>Your decision or act</span>
@@ -110,7 +110,7 @@
   </header>
 
   <section>
-    <h2>One change, from idea to release <span class="refs">T1 · T3 · T4 · T5 · T6 · T7 · T8 · T9 · T10 · T11 · T12 · T14 · T15 · T16 · T17 · T18 · T20 · T21</span></h2>
+    <h2>One change, from idea to release <span class="refs">T1 · T3 · T4 · T5 · T6 · T7 · T8 · T9 · T10 · T11 · T12 · T14 · T15 · T16 · T17 · T18 · T20 · T21 · T22</span></h2>
     <p>Your approval points stay where they are today. What changes is what reaches you at each one: the roles write briefs, the manager turns them into one recommendation, you decide, and the act runs on your signal. Phases carry the names T4 proposes, with today's letter after each.</p>
     <div class="diagram"><pre class="mermaid">flowchart TB
   subgraph PREP["Before the first change"]
@@ -179,7 +179,9 @@
   GR -.-> REL
 
   subgraph MT["maintain (today: f)"]
+    DT["Daily detection, deterministic as today;&lt;br/&gt;its last verdict and the 1σ events in the digest, the log kept on a ref;&lt;br/&gt;the next metric: your project's own script, no agent (T22)"]
     F1["Findings from detection and the weekly scan,&lt;br/&gt;labelled sdlc:triage"]
+    DT --> F1
     F2["Briefs: Operations; Security &amp; policy for scan findings"]
     F3["Manager: fix now, schedule or dismiss"]
     F1 --> F2 --> F3
@@ -222,6 +224,7 @@
       <li><strong>A failed CI run explains itself (T19).</strong> The framework already has a read-only triage step that reads a CI log and says what failed, the likely cause and the first thing to check; no workflow runs it today. It becomes an automatic step in the phase workflows (the deploy job's review step among them), the fix workflow and the merge workflow, run when a job fails and also when the run parked (a park normally ends the job green, so a step on failure alone would miss most parks), and also says whether the failure looks flaky or real, as in the article (p.41). On a park, a red target at the iteration cap among them, its lines go into the "What I need from you" block of the parked pull request; a failed run with no park (a setup failure) gets a "Failed runs" line of the daily digest; a lost job, where no step can run, gets the digest line alone, and so may a timed-out one (to verify). No comment, nothing notifies you. The release notes keep their deterministic list, which stays the record, and gain a short paragraph in plain words on what changed, under its own heading, marked as model-written and kept on a re-run unless the code changed; you read it when you approve (T18). No settled decision changes.</li>
       <li><strong>A preview before your approval, and a rollback rehearsed on a schedule (T20).</strong> Today one switch, <code>deploy.production</code>, separates "no production" from production, with nothing in between, and a rollback runbook, once you add one, is pre-approved on a declared production as soon as you set its <code>rehearsed_at</code>, a date that never expires (D26). Added, both optional and off by default: a preview environment, the article's development tier (p.40), where the build PR's head is deployed at each new head in the deploy phase, fix rounds included, after the review pass, by the runner in a job of its own with the preview environment's secrets and no agent; its result is a line of the banner you read before approving, and a red preview starts a fix round as a red target does (T10). There the rollback is rehearsed weekly, with no agent, and the result is recorded; the rollback is then pre-approved only with your <code>rehearsed_at</code> and a passing rehearsal within a set number of days, and otherwise waits for your Go. The cost: the preview credentials reach code the model wrote before you approve it, scoped to the preview environment, as the article lets the agent deploy freely in development. Deploy, status and rollback as tools for the agent stay deferred: no agent deploys here. Amends D26.</li>
       <li><strong>The release label in the same visit (T21).</strong> On a declared production the release still takes your approval and your <code>sdlc:release-approved</code> label, two acts as the article's code owner and release manager (D13), and a bot's label never counts, so the merging App can never release on its own. The banner now says to apply the label with your approval, which already works today (a label applied before the merge counts), so both acts take one visit, from the phone too. A release waiting for your label, or a failed one, shows in the daily digest (today it shows nowhere you look, since the merged pull request is closed), and the release record keeps who applied the label and when (today no framework record does: the release log prints it, and GitHub's timeline keeps the event). A release log gets no triage, since it can print the project's secrets. One cost to settle: while the labeled pull request is still open, the production gate lets a Claude session at its head run guarded deploy commands; the gate could accept the label only once the pull request is merged. No settled decision changes.</li>
+      <li><strong>The detection's state reaches you (T22).</strong> The daily detection stays as it is: one metric per project, deterministic, the Western Electric rules, the tiers in <code>bands.yaml</code> (D15, D19). Today the only metric source the code accepts is GitHub Actions' runs, so a production or project metric would be a framework change, and the 1σ log and the "insufficient baseline" state (about 16 counted days before a first verdict) live only in Actions: the job log and an artifact that expires. Added: a <code>command</code> source, your project's own script printing the day's value on the runner with no agent, so the next metric is a setting; a "Detection" line in the daily digest (the last verdict, the baseline's size or the days until it fills, the 1σ events since the last digest); the daily log line kept on a ref, so the breach history outlives the artifact; and the detect workflow in the "Failed runs" line (T19). Several metrics per project was considered and not chosen. No settled decision changes.</li>
     </ul>
   </section>
 
@@ -483,6 +486,15 @@
         </ul>
       </div>
       <div>
+        <h3>Detection <span class="refs">T22</span></h3>
+        <ul class="notes">
+          <li>The <code>command</code> source's contract: one value for the day or a dated series, a missing day, the secrets the step holds.</li>
+          <li>Whether <code>direction</code> and <code>min_sigma</code> in <code>bands.yaml</code> suffice for a metric whose good side is high, or the source declares it.</li>
+          <li>The ref's name and record shape, shared with the rehearsal record (T20), and how the digest reads the last verdict.</li>
+          <li>To verify: the workflow artifact's retention (90 days by default, from the model's knowledge).</li>
+        </ul>
+      </div>
+      <div>
         <h3>The release <span class="refs">T21</span></h3>
         <ul class="notes">
           <li>How the digest finds a release waiting for your label: the recent closed build PRs read against the release record, or a record the release step writes when it waits.</li>
@@ -560,7 +572,7 @@
   </section>
 
   <footer>
-    <span>Drawn from <code>target-design.md</code> entries T1–T21 and <code>naming.md</code>, as recorded from 30 September to 7 October 2026. Each entry lists the settled decisions (D<i>n</i>) it would reopen or amend.</span>
+    <span>Drawn from <code>target-design.md</code> entries T1–T22 and <code>naming.md</code>, as recorded from 30 September to 7 October 2026. Each entry lists the settled decisions (D<i>n</i>) it would reopen or amend.</span>
     <span>The other two pages: <a href="https://claude.ai/artifact/WhLTjcSzJqQmUFm3aP5G6L">Playbook SDLC Workflow</a> · <a href="https://claude.ai/artifact/KW8jWunfLNa9WgBSzJxw4S">SDLC Plugin Workflow</a> · and the <a href="https://claude.ai/artifact/PFnRZ32pwTr4y422Gna2mz">Workflow Crosswalk</a> that compares them.</span>
   </footer>
 </div>
