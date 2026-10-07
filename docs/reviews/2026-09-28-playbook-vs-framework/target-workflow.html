@@ -98,9 +98,9 @@
 
 <div class="wrap">
   <header>
-    <div class="eyebrow">Target design · tentative · T1–T17 of target-design.md · 6 October 2026</div>
+    <div class="eyebrow">Target design · tentative · T1–T18 of target-design.md · 6 October 2026</div>
     <h1>The workflow as you want it to become</h1>
-    <p class="lede">The third workflow beside the <a href="https://claude.ai/artifact/WhLTjcSzJqQmUFm3aP5G6L">playbook's</a> and the <a href="https://claude.ai/artifact/KW8jWunfLNa9WgBSzJxw4S">framework's</a>. It draws only what <code>docs/reviews/2026-09-28-playbook-vs-framework/target-design.md</code> has discussed so far: AI roles that advise and one manager that reviews for you (T1), the interview (T2), the intent home (T3), the names (T4), how a project starts (T5), tickets that become intents (T6), the reason a rejection keeps (T7), a formatter that follows your languages (T8), a risk-list hit that your merge accepts (T9), a test loop that closes by itself in CI (T10), a fix that proves itself (T11), build and test approvals recorded by the runner (T12), an eval suite that grows (T13), a review pass on the runbook PRs (T14), review corrections that reach CLAUDE.md through one standing PR (T15), a reviewer tuned twice a month (T16) and fix rounds you can start with an @claude comment (T17). Steps the study has not reached yet are left out or marked "not discussed yet".</p>
+    <p class="lede">The third workflow beside the <a href="https://claude.ai/artifact/WhLTjcSzJqQmUFm3aP5G6L">playbook's</a> and the <a href="https://claude.ai/artifact/KW8jWunfLNa9WgBSzJxw4S">framework's</a>. It draws only what <code>docs/reviews/2026-09-28-playbook-vs-framework/target-design.md</code> has discussed so far: AI roles that advise and one manager that reviews for you (T1), the interview (T2), the intent home (T3), the names (T4), how a project starts (T5), tickets that become intents (T6), the reason a rejection keeps (T7), a formatter that follows your languages (T8), a risk-list hit that your merge accepts (T9), a test loop that closes by itself in CI (T10), a fix that proves itself (T11), build and test approvals recorded by the runner (T12), an eval suite that grows (T13), a review pass on the runbook PRs (T14), review corrections that reach CLAUDE.md through one standing PR (T15), a reviewer tuned twice a month (T16), fix rounds you can start with an @claude comment (T17) and a deploy gate that is your approving review, merged for you by a GitHub App (T18). Steps the study has not reached yet are left out or marked "not discussed yet".</p>
     <p class="banner"><strong>Nothing here is decided.</strong> Every entry is tentative until the whole study is done; then each confirmed entry becomes a proposal and a candidate row in <code>docs/ROADMAP.md</code>. The framework as it is today is on the framework page.</p>
     <div class="legend">
       <span><i class="sw hex"></i>Your decision or act</span>
@@ -110,7 +110,7 @@
   </header>
 
   <section>
-    <h2>One change, from idea to release <span class="refs">T1 · T3 · T4 · T5 · T6 · T7 · T8 · T9 · T10 · T11 · T12 · T14 · T15 · T16 · T17</span></h2>
+    <h2>One change, from idea to release <span class="refs">T1 · T3 · T4 · T5 · T6 · T7 · T8 · T9 · T10 · T11 · T12 · T14 · T15 · T16 · T17 · T18</span></h2>
     <p>Your approval points stay where they are today. What changes is what reaches you at each one: the roles write briefs, the manager turns them into one recommendation, you decide, and the act runs on your signal. Phases carry the names T4 proposes, with today's letter after each.</p>
     <div class="diagram"><pre class="mermaid">flowchart TB
   subgraph PREP["Before the first change"]
@@ -166,8 +166,8 @@
   E2 -. "you want changes" .-> GC{{"You request changes: a 'Request changes' review,&lt;br/&gt;or your comment starting with @claude (T17)"}}
   GC -. "the fix round re-runs the phase with your comments" .-> E1
   TT --> E1
-  E2 --> GE{{"You approve the code,&lt;br/&gt;and the risk items its banner shows"}}
-  GE -- "your signal; a workflow checks it and merges (to verify)" --> LIVE(["Merged"])
+  E2 --> GE{{"You approve the build PR: your only act (T18),&lt;br/&gt;which also accepts the risk items its banner shows"}}
+  GE -- "a workflow checks your approval and the green review check,&lt;br/&gt;then a GitHub App merges (T18; to verify)" --> LIVE(["Merged"])
   LIVE -. "the review proposed a CLAUDE.md line" .-> CM["A deterministic step adds it to one standing PR,&lt;br/&gt;'CLAUDE.md: Things Claude gets wrong' (T15)"]
   CM -.-> GCM{{"You merge that PR when you choose,&lt;br/&gt;one act for many lines"}}
   LIVE -. "twice a month, on a schedule" .-> TN["A read-only run reads the period's findings and your waivers,&lt;br/&gt;and proposes REVIEW.md edits in a standing PR (T16)"] -.-> GTN{{"You merge that PR when you choose"}}
@@ -211,6 +211,7 @@
       <li><strong>Review corrections reach CLAUDE.md through one standing PR (T15).</strong> When the deploy review finds a mistake an earlier change already made, or that CLAUDE.md is outdated, it proposes a "Things Claude gets wrong" line, as today. Instead of you writing each line in a commit of your own, a deterministic step, no model, adds it to one standing pull request; you merge that PR whenever you choose, one act for many lines, with the role brief and the eval result that any change to CLAUDE.md gets; since a pull request the automation opens starts no workflow, the step starts the eval run and the brief itself after each update. Nothing notifies you; the daily digest shows how many lines wait. The review can also tag a mistake described in new words as a repeat, so it still counts. No run ever edits CLAUDE.md itself (D6): a finding's text comes from a model reading code, and CLAUDE.md steers every later run.</li>
       <li><strong>The reviewer is tuned twice a month (T16).</strong> The article's tech lead tunes the review monthly by rating findings. Instead, a read-only run twice a month reads what is already on record, so you rate nothing: findings you waived or overturned, findings the panel settled, repeats, nit volume against the cap, and findings in paths CI already enforces. It writes a short report and proposes <code>REVIEW.md</code> edits in one standing pull request, as for CLAUDE.md (T15), which you merge when you choose. <code>REVIEW.md</code> stays yours (D6).</li>
       <li><strong>An @claude comment starts a fix round (T17).</strong> Your "Request changes" review still starts the round that applies your comments (D22). Added: your comment starting with <code>@claude</code> on a change's pull request starts the same round, with all the unresolved comments as its constraints; the workflow checks that the comment is yours and reads it as data. On a pull request you opened yourself, where GitHub refuses your own "Request changes", it replaces the manual dispatch. With T10's automatic rounds on a red target and the deploy fix loop, the rounds you start are only for what you alone can ask. A separate round per comment was considered and not chosen.</li>
+      <li><strong>The deploy gate is your approval (T18).</strong> As in the article, you approve the build PR, informed by the review's findings, and that approval is your only act: a workflow checks it is yours and that the review check is green, then a dedicated GitHub App merges; the runner posts the review check again on the build PR's last commit, and the merge step checks that commit against the review's findings. A second rule requires only the green review check, and every pull request that is not a build PR gets a passing check on each new commit (posted by the automation's own steps on the pull requests it opens, since those start no workflow, and by a small workflow on yours), so intent, design, incident and your own pull requests merge as today, from the phone too; merging a build PR before its review is green needs a deliberate bypass on the web. If a check posted by the automation cannot satisfy that rule, there is no second rule and an early merge is flagged instead; if the App proves impractical, you merge after approving (one more click). The runner records your approval and the merge either way. One-time setup per project: create the App and add it to the merge rule. Amends D4, D5 and D13.</li>
     </ul>
   </section>
 
@@ -467,6 +468,16 @@
         </ul>
       </div>
       <div>
+        <h3>The deploy approval <span class="refs">T18</span></h3>
+        <ul class="notes">
+          <li>To verify: that your approval counts on a pull request the automation opened, that a check posted by the automation satisfies the second rule, and that the web bypass is logged.</li>
+          <li>To verify: the GitHub App allowed to merge, its workflow, and where its key lives, out of reach of workflow files a pull request can change.</li>
+          <li>Whether a push after your approval dismisses it.</li>
+          <li>To verify: that a required check binds the pull request's last commit.</li>
+          <li>How a build PR is told from the rest, and what happens while the passing check has not yet posted.</li>
+        </ul>
+      </div>
+      <div>
         <h3>@claude comments <span class="refs">T17</span></h3>
         <ul class="notes">
           <li>Which comments count (a pull-request comment, a comment on a line, or both), and on which pull requests.</li>
@@ -507,7 +518,7 @@
   </section>
 
   <footer>
-    <span>Drawn from <code>target-design.md</code> entries T1–T17 and <code>naming.md</code>, as recorded from 30 September to 6 October 2026. Each entry lists the settled decisions (D<i>n</i>) it would reopen or amend.</span>
+    <span>Drawn from <code>target-design.md</code> entries T1–T18 and <code>naming.md</code>, as recorded from 30 September to 6 October 2026. Each entry lists the settled decisions (D<i>n</i>) it would reopen or amend.</span>
     <span>The other two pages: <a href="https://claude.ai/artifact/WhLTjcSzJqQmUFm3aP5G6L">Playbook SDLC Workflow</a> · <a href="https://claude.ai/artifact/KW8jWunfLNa9WgBSzJxw4S">SDLC Plugin Workflow</a> · and the <a href="https://claude.ai/artifact/PFnRZ32pwTr4y422Gna2mz">Workflow Crosswalk</a> that compares them.</span>
   </footer>
 </div>
