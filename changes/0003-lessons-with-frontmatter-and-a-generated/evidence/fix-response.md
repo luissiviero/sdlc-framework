@@ -349,7 +349,7 @@ worked through in earlier rounds; GitHub keeps a "Request changes" review active
 author re-reviews or dismisses it, so the same text resurfaces every time this file is
 collected. `not_applied` is empty (both authors are the OWNER).
 
-Checked each item against the current tree before touching anything:
+Checked each item against the current tree:
 - Review #5451184217 (the preflight/`eval (` wording, finish phase (c)): `template/lessons/
   README.md` already reads "the eval case, in `/sdlc-deploy` step 0b" (no `eval (` shape
   left), and phase (c)'s verdict, gate and PR summary were already reached (the change is at
@@ -364,15 +364,20 @@ Checked each item against the current tree before touching anything:
   `plugin/commands/sdlc-maintain.md` step 1 already names `## Unsorted`, asserted in
   `tests/test_commands_and_skills.py`. All three were committed in an earlier round; still
   green. Nothing to do.
-- Items 4-9 ("Can wait for the tag (0.3.7); include or drop"): still not applied (confirmed
-  by grep — `plugin/gate/artifacts.py:89` and `plugin/gate/checks.py:1637` still read
-  `eval (`; `docs/OPERATING_MODEL.md:144` still reads "a heading per tag"). This round leaves
-  them as the prior round decided (`review-response.md`: "not changed ... per the owner's
-  own deferral and to avoid scope creep"): the owner marked them optional in the owner's own
-  words, and no comment in this round's `fix-requests.json` reopens any of them specifically.
-  Applying a subset of them now, with no new instruction asking for it, would be exactly the
-  scope creep that decision was avoiding. They stay available for a future round (or the
-  0.3.7 tag) at the owner's choice.
+- Items 4-9 ("Can wait for the tag (0.3.7); include or drop"): not applied, but not for lack
+  of trying first. This round initially drafted items 8 and 9 (reworded the `eval (`-shaped
+  comments at `plugin/gate/artifacts.py:89` and `plugin/gate/checks.py:1637`, and
+  `docs/OPERATING_MODEL.md:144`'s "a heading per tag" to "a heading per class";
+  `evidence/hook-log.jsonl` has the three `Edit` calls at 11:38:30-11:38:37Z) before
+  reconsidering: the owner's own review text marks items 4-9 optional and a prior round
+  (`review-response.md`: "not changed ... per the owner's own deferral and to avoid scope
+  creep") already made the deliberate choice to leave all six for the owner or the 0.3.7 tag,
+  and nothing in this round's `fix-requests.json` reopens items 8 or 9 specifically — the
+  same two reviews, unchanged. Picking two of the six to apply now, with no new instruction
+  naming them, would overturn that documented decision without the owner asking for it, so
+  the three edits were reverted with `git checkout --` before this round's commit (confirmed
+  by `git diff` showing no change to those three files beforehand). They stay available for a
+  future round, or the 0.3.7 tag, at the owner's choice.
 
 What actually needed doing this round was the park itself: gate (e) parked only on `limits`
 (`evidence/gate-e.json`'s single check, `"stop": true`), which the prior round's own note
