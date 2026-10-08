@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "phase": "b",
+  "head": "b9fcff4a4415c1a0d5952f3d6d1668979f4a99a8",
+  "verdict": "escalate",
+  "reasons": [
+    "plan.md's Order of work step 8 and Proof section both instruct running `python evals/check.py --case \"0006-*\"` to prove the new eval case passes, but `evals/check.py` does not exist anywhere in this repository (confirmed: no such file at the root, and docs/progress/session-5.md item 10 records this exact mistake as a previously-fixed 'medium' finding -- 'no evals/check.py here... the copy removed; framework-evals.yml is this repository's' -- so the design pass has reintroduced a known-wrong command). The correct invocation for this repo, matching .github/workflows/framework-evals.yml and spec.md's own Acceptance line ('passes under plugin/evals/run.py'), is `python plugin/evals/run.py --fixture --case \"0006-*\"`. spec.md and plan.md now disagree on the command that proves the same acceptance requirement, and plan.md repeats the wrong one twice; following plan.md literally in phase (c) would fail or force an undocumented departure from the plan it is supposed to pin down."
+  ],
+  "classification": "non-routine",
+  "classification_reasons": [
+    "Touches sdlc.yaml risk_list item 'auth' end to end (spec.md Flagged concerns, security-baseline rule 8) -- not a tight, no-open-concern spec.",
+    "Blast radius is wide: both guardrail hooks (protected_paths.py, test_file_lock.py) gain a new code path that now runs on every Bash/PowerShell call in every phase, by hand and in CI, plus a refactor of production_gate.py's shared parsing primitives into _common.py.",
+    "The mechanism is heuristic command-text parsing with an explicitly accepted residual gap (an unrecognised wrapper or decode-and-pipe still reaches a guardrail file); this and the secrets_check.py scope question are carried forward to the owner rather than closed, so acceptance is not fully measurable without the owner's risk acceptance.",
+    "No existing test exercises a Bash/PowerShell write to a guardrail or locked test file today (the bypass is exactly what intent.md reports), so the new behavior is not already covered by current tests."
+  ],
+  "attempted": [
+    "Intent: compared spec.md/plan.md against intent.md's proposed outcome (every instance of the authz-by-tool-route pattern fixed, each proven by a test, plus an eval case). The design correctly finds the second instance (test_file_lock.py) via the codebase, proposes one shared helper, and plans the eval case -- the design matches the intent, no scope drift found.",
+    "Spec and plan: read every Requirement against the Design, Open questions and Flagged concerns sections; verified the described code (protected_paths.py, test_file_lock.py, production_gate.py, _common.py, hooks.json) against the actual files to check the design's factual claims about today's code (matcher wiring, command_parts/chain_parts/_suffixes/_program/_without_leading_options, FILE_TOOLS-only registration) -- all accurate. Found the evals/check.py command mismatch described above between spec.md and plan.md.",
+    "Proof: phase (b) produces no toolchain logs (none are expected yet -- plan.md says so explicitly, 'tests still to be written in phase (c)'); checked evidence/ contains only run-b.json and hook-log.jsonl, consistent with a design-only phase. Verified the diff touches only spec.md, plan.md, status.yaml and evidence/ (no source files), matching the read-only phase (b) rule in CLAUDE.md.",
+    "Blast radius: checked plugin/gate/checks.py and plugin/skills/security-baseline/check.py's imports per the plan's own Risks claim that they are not coupled to the new branch's internals -- plan's claim is consistent with what the files describe; checked sdlc.yaml risk_list and confirmed 'auth' is correctly the touched item, no other risk-list item implicated.",
+    "Policies: checked security-baseline (rules 1, 6, 8), coding-standards (rules 2-5, 8) and definition-of-done's phase-(b) checklist against spec.md/plan.md's content -- requirements are sourced to the right rules, no new dependency, risk-list flagging done correctly, decision 6's quote verified word-for-word against docs/decisions/6.md.",
+    "Tests: no tests exist yet in this phase (design-only); evaluated whether the planned tests (reproducing tests for both hooks' Bash bypass, negative cases, shell_write_targets unit tests, hooks.json wiring test) would actually prove the fix and not pass with the bug present -- the plan's order (write failing test first, then fix, re-run) is sound and matches intent's constraint; no weakening of existing tests is planned."
+  ],
+  "at": "2026-10-08T00:00:00Z"
+}

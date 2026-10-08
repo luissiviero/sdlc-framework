@@ -1,0 +1,130 @@
+{
+  "schema_version": 1,
+  "change_id": "0002",
+  "slug": "security-authz-the-guardrail-self-protec",
+  "phase": "b",
+  "profile": "standard",
+  "human_gate": true,
+  "result": "park",
+  "label": "sdlc:needs-human",
+  "head": "b9fcff4a4415c1a0d5952f3d6d1668979f4a99a8",
+  "at": "2026-10-08T16:38:34Z",
+  "dry_run": false,
+  "reason": "open_concerns: 3 flagged concern(s) still open in spec.md; risk_list: risk-list hit: 'auth' in spec.md Flagged concerns: text; adversarial_review: adversarial reviewer says escalate: plan.md's Order of work step 8 and Proof section both instruct running `python evals/check.py --case \"0006-*\"` to prove the new eval case passes, but `evals/check.py` does not exist anywhere in this repository (confirmed: no such file at the root, and docs/progress/session-5.md item 10 records this exact mistake as a previously-fixed 'medium' finding -- 'no evals/check.py here... the copy removed; framework-evals.yml is this repository's' -- so the design pass has reintroduced a known-wrong command). The correct invocation for this repo, matching .github/workflows/framework-evals.yml and spec.md's own Acceptance line ('passes under plugin/evals/run.py'), is `python plugin/evals/run.py --fixture --case \"0006-*\"`. spec.md and plan.md now disagree on the command that proves the same acceptance requirement, and plan.md repeats the wrong one twice; following plan.md literally in phase (c) would fail or force an undocumented departure from the plan it is supposed to pin down.",
+  "config_note": "",
+  "checks": [
+    {
+      "name": "limits",
+      "ok": true,
+      "reason": "within the run limits",
+      "need": "",
+      "details": {
+        "iterations": 0,
+        "cap": 2,
+        "classification": "non-routine",
+        "panel_calls": 0,
+        "panel_cap": 4,
+        "elapsed_minutes": 19.5,
+        "spend_usd": null,
+        "spend_usd_total": null,
+        "spend_entries": 0,
+        "max_budget_usd": null
+      }
+    },
+    {
+      "name": "artifacts",
+      "ok": true,
+      "reason": "every required artifact exists and has its template sections",
+      "need": "",
+      "details": {}
+    },
+    {
+      "name": "design_scope",
+      "ok": true,
+      "reason": "the committed diff stays inside changes/0002-security-authz-the-guardrail-self-protec/",
+      "need": "",
+      "details": {
+        "dirty": [
+          "changes/0002-security-authz-the-guardrail-self-protec/evidence/adversarial-review-b.json",
+          "changes/0002-security-authz-the-guardrail-self-protec/evidence/diff-b.patch",
+          "changes/0002-security-authz-the-guardrail-self-protec/evidence/hook-log.jsonl",
+          "changes/0002-security-authz-the-guardrail-self-protec/evidence/panel/b-items.json",
+          "tests/fixtures/sample-python-project/.env"
+        ]
+      }
+    },
+    {
+      "name": "open_concerns",
+      "ok": false,
+      "reason": "3 flagged concern(s) still open in spec.md",
+      "need": "Close each open item under '## Flagged concerns' with a decision (article p.14 step 4), or leave a review comment for /sdlc-fix.",
+      "details": {
+        "open": [
+          "- Risk list: **auth**. This change is an authorization control top to bottom (closing a gap",
+          "- `secrets_check.py` is examined but not changed here. Its control is a content scan",
+          "- The fix is heuristic command-text parsing, the same kind `production_gate.py` already"
+        ]
+      }
+    },
+    {
+      "name": "panel",
+      "ok": true,
+      "reason": "no panel decision at this gate",
+      "need": "",
+      "details": {}
+    },
+    {
+      "name": "commands",
+      "ok": true,
+      "reason": "deferred to the runner: build, test and lint run after the model's session, outside its sandbox (issue #91); not yet run",
+      "need": "",
+      "details": {
+        "deferred": true
+      }
+    },
+    {
+      "name": "guardrails",
+      "ok": true,
+      "reason": "the diff does not touch a guardrail file",
+      "need": "",
+      "details": {}
+    },
+    {
+      "name": "risk_list",
+      "ok": false,
+      "reason": "risk-list hit: 'auth' in spec.md Flagged concerns: text",
+      "need": "Review the change with the risk in mind. To let it continue, accept the item for this change: `python \"${CLAUDE_PLUGIN_ROOT}/plugin/state/cli.py\" accept-risk --root . --id 0002 --item \"<item>\"` (recorded in status.yaml).",
+      "details": {
+        "hits": {
+          "auth": [
+            "spec.md Flagged concerns: text"
+          ]
+        },
+        "accepted": []
+      }
+    },
+    {
+      "name": "owner_actions",
+      "ok": true,
+      "reason": "risk acceptances, iteration and panel-call resets and test-lock lifts, if any, were committed by the owner or applied by the owner's label",
+      "need": "",
+      "details": {
+        "risk_accepted": [],
+        "label_actors": {}
+      }
+    },
+    {
+      "name": "adversarial_review",
+      "ok": false,
+      "reason": "adversarial reviewer says escalate: plan.md's Order of work step 8 and Proof section both instruct running `python evals/check.py --case \"0006-*\"` to prove the new eval case passes, but `evals/check.py` does not exist anywhere in this repository (confirmed: no such file at the root, and docs/progress/session-5.md item 10 records this exact mistake as a previously-fixed 'medium' finding -- 'no evals/check.py here... the copy removed; framework-evals.yml is this repository's' -- so the design pass has reintroduced a known-wrong command). The correct invocation for this repo, matching .github/workflows/framework-evals.yml and spec.md's own Acceptance line ('passes under plugin/evals/run.py'), is `python plugin/evals/run.py --fixture --case \"0006-*\"`. spec.md and plan.md now disagree on the command that proves the same acceptance requirement, and plan.md repeats the wrong one twice; following plan.md literally in phase (c) would fail or force an undocumented departure from the plan it is supposed to pin down.",
+      "need": "Read the reviewer's reasons and decide: fix and re-run, or accept in review.",
+      "details": {
+        "reasons": [
+          "plan.md's Order of work step 8 and Proof section both instruct running `python evals/check.py --case \"0006-*\"` to prove the new eval case passes, but `evals/check.py` does not exist anywhere in this repository (confirmed: no such file at the root, and docs/progress/session-5.md item 10 records this exact mistake as a previously-fixed 'medium' finding -- 'no evals/check.py here... the copy removed; framework-evals.yml is this repository's' -- so the design pass has reintroduced a known-wrong command). The correct invocation for this repo, matching .github/workflows/framework-evals.yml and spec.md's own Acceptance line ('passes under plugin/evals/run.py'), is `python plugin/evals/run.py --fixture --case \"0006-*\"`. spec.md and plan.md now disagree on the command that proves the same acceptance requirement, and plan.md repeats the wrong one twice; following plan.md literally in phase (c) would fail or force an undocumented departure from the plan it is supposed to pin down."
+        ],
+        "classification": "non-routine"
+      }
+    }
+  ],
+  "what_i_need": "## What I need from you\nGate (b) parked change 0002 (security-authz-the-guardrail-self-protec) on 2026-10-08T16:38:34Z.\n- **open_concerns**: 3 flagged concern(s) still open in spec.md\n  - what I need: Close each open item under '## Flagged concerns' with a decision (article p.14 step 4), or leave a review comment for /sdlc-fix.\n- **risk_list**: risk-list hit: 'auth' in spec.md Flagged concerns: text\n  - what I need: Review the change with the risk in mind. To let it continue, accept the item for this change: `python \"${CLAUDE_PLUGIN_ROOT}/plugin/state/cli.py\" accept-risk --root . --id 0002 --item \"<item>\"` (recorded in status.yaml).\n- **adversarial_review**: adversarial reviewer says escalate: plan.md's Order of work step 8 and Proof section both instruct running `python evals/check.py --case \"0006-*\"` to prove the new eval case passes, but `evals/check.py` does not exist anywhere in this repository (confirmed: no such file at the root, and docs/progress/session-5.md item 10 records this exact mistake as a previously-fixed 'medium' finding -- 'no evals/check.py here... the copy removed; framework-evals.yml is this repository's' -- so the design pass has reintroduced a known-wrong command). The correct invocation for this repo, matching .github/workflows/framework-evals.yml and spec.md's own Acceptance line ('passes under plugin/evals/run.py'), is `python plugin/evals/run.py --fixture --case \"0006-*\"`. spec.md and plan.md now disagree on the command that proves the same acceptance requirement, and plan.md repeats the wrong one twice; following plan.md literally in phase (c) would fail or force an undocumented departure from the plan it is supposed to pin down.\n  - what I need: Read the reviewer's reasons and decide: fix and re-run, or accept in review.\nWhen the item is settled, re-run the gate: `python \"${CLAUDE_PLUGIN_ROOT}/plugin/gate/cli.py\" check --root . --id 0002 --phase b` (review comments are the change request; /sdlc-fix from B3 re-runs the phase with them).\n"
+}

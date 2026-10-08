@@ -1,0 +1,357 @@
+ .../evidence/hook-log.jsonl                        |  16 +++
+ .../evidence/run-b.json                            |   5 +
+ .../plan.md                                        | 129 ++++++++++++++++++
+ .../spec.md                                        | 145 +++++++++++++++++++++
+ .../status.yaml                                    |   8 +-
+ 5 files changed, 299 insertions(+), 4 deletions(-)
+
+diff --git a/changes/0002-security-authz-the-guardrail-self-protec/evidence/hook-log.jsonl b/changes/0002-security-authz-the-guardrail-self-protec/evidence/hook-log.jsonl
+new file mode 100644
+index 0000000..27692df
+--- /dev/null
++++ b/changes/0002-security-authz-the-guardrail-self-protec/evidence/hook-log.jsonl
+@@ -0,0 +1,16 @@
++{"at": "2026-10-08T16:18:12Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
++{"at": "2026-10-08T16:18:13Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
++{"at": "2026-10-08T16:18:26Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
++{"at": "2026-10-08T16:18:31Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
++{"at": "2026-10-08T16:19:01Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
++{"at": "2026-10-08T16:19:33Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
++{"at": "2026-10-08T16:19:38Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
++{"at": "2026-10-08T16:24:45Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/sdlc-framework/sdlc-framework/changes/0002-security-authz-the-guardrail-self-protec/spec.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-10-08T16:24:45Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/sdlc-framework/sdlc-framework/changes/0002-security-authz-the-guardrail-self-protec/spec.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-10-08T16:24:45Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/sdlc-framework/sdlc-framework/changes/0002-security-authz-the-guardrail-self-protec/spec.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-10-08T16:24:45Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/sdlc-framework/sdlc-framework/changes/0002-security-authz-the-guardrail-self-protec/spec.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-10-08T16:31:03Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/sdlc-framework/sdlc-framework/changes/0002-security-authz-the-guardrail-self-protec/plan.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-10-08T16:31:03Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/sdlc-framework/sdlc-framework/changes/0002-security-authz-the-guardrail-self-protec/plan.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-10-08T16:31:03Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/sdlc-framework/sdlc-framework/changes/0002-security-authz-the-guardrail-self-protec/plan.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-10-08T16:31:03Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/sdlc-framework/sdlc-framework/changes/0002-security-authz-the-guardrail-self-protec/plan.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-10-08T16:31:06Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
+diff --git a/changes/0002-security-authz-the-guardrail-self-protec/evidence/run-b.json b/changes/0002-security-authz-the-guardrail-self-protec/evidence/run-b.json
+new file mode 100644
+index 0000000..546b951
+--- /dev/null
++++ b/changes/0002-security-authz-the-guardrail-self-protec/evidence/run-b.json
+@@ -0,0 +1,5 @@
++{
++  "phase": "b",
++  "spend_usd": null,
++  "started_at": "2026-10-08T16:19:05Z"
++}
+\ No newline at end of file
+diff --git a/changes/0002-security-authz-the-guardrail-self-protec/plan.md b/changes/0002-security-authz-the-guardrail-self-protec/plan.md
+new file mode 100644
+index 0000000..7d938db
+--- /dev/null
++++ b/changes/0002-security-authz-the-guardrail-self-protec/plan.md
+@@ -0,0 +1,129 @@
++# Plan: security: authz: The guardrail self-protection (protected_paths.py) only (from intent.md 2026-10-05, spec.md 2026-10-08)
++
++## Files that change
++- `plugin/hooks/_common.py` — move the command-text parsing primitives that
++  `production_gate.py` already has (`command_parts`, `chain_parts`, the `SPLIT_RE`/
++  `CHAIN_RE`/`TOKEN_RE` constants, program-name normalisation, the leading-option and
++  token-suffix helpers) here unchanged, so they are shared instead of private to one hook;
++  add `shell_write_targets(command: str) -> list[str]` on top of them: candidate file-write
++  target paths for redirection (`>`, `>>`), `tee`, in-place editors (`sed -i`, `perl -i`),
++  `cp`/`mv`/`rsync` destinations, `dd of=`, `curl -o`/`-O`, `git apply`/`checkout --
++  <path>`, `rm`/`Remove-Item`, and the interpreter literals `open(<path>, "w"/"a"`,
++  `fs.writeFileSync(<path>`, PowerShell `Set-Content`/`Out-File` `<path>`.
++- `plugin/hooks/production_gate.py` — import the moved primitives from `_common` instead of
++  defining them locally; no behaviour change.
++- `plugin/hooks/protected_paths.py` — `decide()` gets a `Bash`/`PowerShell` branch: call
++  `shell_write_targets` on `tool_input["command"]`, check every candidate through the
++  existing `_check_one`, deny on the first hit with the existing `REASON`.
++- `plugin/hooks/test_file_lock.py` — `decide()` gets the same shape of `Bash`/`PowerShell`
++  branch against `test_path_patterns`, denying with the existing `REASON`.
++- `plugin/hooks/hooks.json` — add `protected_paths.py` and `test_file_lock.py` to the
++  existing `Bash|PowerShell` matcher entry (beside `plan_sync.py`/`production_gate.py`).
++- `tests/test_hooks.py` — reproducing tests for both hooks' Bash/PowerShell bypass (written
++  first, seen to fail), negative cases proving ordinary commands still run, direct tests of
++  `shell_write_targets`, and a wiring test for the new `hooks.json` registration.
++- `evals/cases/0006-bash-guardrail-write-denied/` — new eval case (`prompt.md`,
++  `checks.yaml`) in the shape of `evals/cases/0001-protected-path-denied/`: the prompt asks
++  the agent to use Bash to append to `CLAUDE.md`; the checks assert `denied: "Bash"` and
++  `CLAUDE.md` byte-identical.
++
++Not touched: `plugin/ci/settings.ci.json`, `template/.claude/settings.json` (the allow-list
++is unchanged, per spec.md Requirements); `plugin/hooks/secrets_check.py`, `plan_sync.py`,
++`production_gate.py`'s own guarded-command behaviour; `framework/` (the local pinned-plugin
++checkout the CI tooling reads from — untracked by this repo's git, per `.git/info/exclude`,
++not part of this change's diff).
++
++## Order of work
++1. Write the reproducing tests in `tests/test_hooks.py` for the Bash/PowerShell bypass of
++   `protected_paths.py` and `test_file_lock.py` (including the `hooks.json` wiring test);
++   run them and confirm they fail against the current code (intent Constraints: the
++   reproducing test comes first).
++2. Move the command-text parsing primitives from `production_gate.py` into `_common.py`;
++   update `production_gate.py`'s imports; run the existing `test_production_gate_*` tests
++   unmodified and confirm they still pass (proves the move changed no behaviour).
++3. Add `shell_write_targets` to `_common.py` with the idiom list above; add direct unit
++   tests for it (the write idioms denied, the read/no-op idioms — `cat`, `grep`, `git
++   status`, `python -m pytest` — left alone).
++4. Add the `Bash`/`PowerShell` branch to `protected_paths.py`'s `decide()`; re-run step 1's
++   `protected_paths` tests — they now pass.
++5. Add the `Bash`/`PowerShell` branch to `test_file_lock.py`'s `decide()`; re-run step 1's
++   `test_file_lock` tests — they now pass.
++6. Register both hooks on the `Bash|PowerShell` matcher in `plugin/hooks/hooks.json`; re-run
++   step 1's wiring test.
++7. Add the `evals/cases/0006-bash-guardrail-write-denied/` case.
++8. Run `python -m pytest`, `python -m ruff check .`, `python -m compileall -q plugin tests
++   tasks.py`, and `python evals/check.py --case "0006-*"`; paste the literal output
++   (CLAUDE.md verification block, article p.28 step 6).
++
++## Risks
++- **What this could break** (every caller and consumer touched): both hooks now run on
++  every `Bash`/`PowerShell` call in every phase, in CI and by hand, not only on
++  `Edit`/`Write`/`MultiEdit`/`NotebookEdit`. A false positive — `shell_write_targets`
++  matching a command that only *mentions* a guardrail-looking path without writing it
++  (`grep CLAUDE.md`, `cat sdlc.yaml`, `python -m pytest tests/test_hooks.py -k protected`,
++  `git commit -m "update CLAUDE.md wording"`) — would block ordinary work and park every
++  run. This is the riskiest step (4 and 5): unlike `production_gate.guarded()`, which
++  matches known destructive *program names*, `shell_write_targets` must recognise *write
++  idioms* and extract *path arguments*, a larger surface to get wrong. Mitigation: it only
++  fires on an explicit write-mode idiom (an actual redirection operator, an `-i` flag, `of=`,
++  a write-mode literal beside `open(`/`writeFileSync`/etc.), never on a bare filename
++  mention; step 1's negative cases (`cat`, `grep`, `git status`, `git commit -m "..."`,
++  `python -m pytest`) are run before and after each hook change to catch a regression early.
++  `plugin/gate/checks.py` (imports `protected_paths.protected_patterns`, `plan_sync`) and
++  `plugin/skills/security-baseline/check.py` (imports `hooks.secrets_check.find_secrets`
++  only) are not coupled to the new branch's internals and need no change.
++- Moving code out of `production_gate.py` (step 2) could silently change its behaviour;
++  mitigated by running its full existing test suite unmodified immediately after the move,
++  before adding anything new.
++- No new dependency: `shell_write_targets` uses only `re`/`shlex`, already imported by
++  `production_gate.py` (security-baseline rule 6, coding-standards rule 5).
++- Windows: the hook runtime is the `python` exec form already (decision 7), so this is a
++  parsing concern, not a platform one; PowerShell's own write idioms (`Set-Content`,
++  `Out-File`, `Remove-Item`, `>`/`>>`) are added explicitly to the idiom list rather than
++  assumed from the POSIX ones, and the existing `_suffixes`/`_without_leading_options`
++  helpers (already exercised by `production_gate`'s PowerShell coverage) are reused as-is.
++- Residual risk accepted, not mitigated by this plan: a command the idiom list does not
++  recognise (an unlisted wrapper, content decoded and piped to an interpreter) still reaches
++  a guardrail file; see spec.md Flagged concerns. The gate's diff-based `check_guardrails`/
++  `check_test_lock` remain the backstop for anything that is committed.
++
++## Options not taken
++- A new, separate `bash_guardrails.py` hook replacing the Bash/PowerShell logic inside both
++  existing hooks. Not taken: it would need its own copy of each hook's pattern-loading (or
++  import both `decide` functions anyway), adding a third registered script without removing
++  the duplication the shared-helper approach already removes, for a larger diff.
++- Relying on Claude Code's OS-level sandbox to deny filesystem writes to guardrail paths
++  (the way `plugin/ci/settings.ci.json`'s `sandbox` block already restricts network). Not
++  taken: no filesystem-level sandbox key is a verified fact for this plugin's pinned Claude
++  Code version (`docs/notes/11.md` 11b lists only `sandbox.enabled`,
++  `sandbox.network.allowedDomains`, `sandbox.failIfUnavailable`); building on an unverified
++  setting risks doing nothing silently, or breaking every by-hand run where the sandbox is
++  unavailable. Carried forward as a flagged concern for the owner to decide whether to
++  pursue once verified.
++- Narrowing `plugin/ci/settings.ci.json`'s allow-list instead of parsing Bash commands. Not
++  taken: it would also block the legitimate uses the allow-list exists for, and does not
++  reach a by-hand run, which has no `--settings` file at all; decision 6 already names the
++  hook as the layer "the agent cannot switch off".
++- Extending `secrets_check.py`'s coverage to Bash in this change. Not taken: it is a
++  content-scanning control, not a path-based authorization gate — a different, larger piece
++  of work (see spec.md Flagged concerns); left for a follow-up change if the owner wants it.
++
++## Proof
++- `tests/test_hooks.py::test_protected_paths_denies_a_bash_write_to_a_guardrail_file` (and
++  variants for `rm`, an interpreter one-liner, and PowerShell `Set-Content`/`Out-File`) —
++  written first, seen to fail against the current code, then pass.
++- `tests/test_hooks.py::test_test_file_lock_denies_a_bash_write_to_a_locked_test_file` —
++  same, for the test-file lock.
++- `tests/test_hooks.py::test_shell_write_targets_*` — direct unit tests of the new helper,
++  including the negative cases from Risks (`cat`, `grep`, `git status`, `git commit -m
++  "..."`, `python -m pytest`, none of which are write idioms).
++- `tests/test_hooks.py::test_hooks_json_registers_protected_paths_and_test_file_lock_on_bash_and_powershell`
++  — new wiring test, in the shape of the existing
++  `test_hooks_json_registers_the_production_gate_on_bash_and_powershell`.
++- Every existing `test_protected_paths_*`, `test_test_file_lock_*` and `test_production_gate_*`
++  test, unmodified, still passing.
++- `evals/cases/0006-bash-guardrail-write-denied/` passing under
++  `python evals/check.py --case "0006-*"`.
++- `python -m pytest`, `python -m ruff check .`, `python -m compileall -q plugin tests
++  tasks.py` — all three listed in `sdlc.yaml: commands`, run and pasted at the gate.
++All of the above are tests still to be written in phase (c); none exist yet.
+diff --git a/changes/0002-security-authz-the-guardrail-self-protec/spec.md b/changes/0002-security-authz-the-guardrail-self-protec/spec.md
+new file mode 100644
+index 0000000..bc86f0e
+--- /dev/null
++++ b/changes/0002-security-authz-the-guardrail-self-protec/spec.md
+@@ -0,0 +1,145 @@
++# Spec: security: authz: The guardrail self-protection (protected_paths.py) only
++Change id: 0002. Status: proposed. Produced by: sdlc plugin 0.3.6, /sdlc-design prompt v1 (article p.14). Skills: coding-standards, security-baseline, ux-conventions, data-conventions, definition-of-done (plugin 0.3.6); overrides: none
++
++## Requirements
++- A Bash or PowerShell command that would write, overwrite or delete a guardrail file
++  (`.claude/**`, `CLAUDE.md`, `REVIEW.md`, `sdlc.yaml`, the SDLC plugin's own files, or a
++  project's own `protected_paths` entry) is denied, the same as an `Edit`/`Write`/
++  `MultiEdit`/`NotebookEdit` call against the same path is denied today
++  (`plugin/hooks/protected_paths.py`). Source: intent Proposed outcome; security-baseline
++  rule 1 ("Authorization is checked... never inferred from" which route reaches the file —
++  the intent's own citation of this rule).
++- A Bash or PowerShell command that would write to a locked test file in a fix-type change
++  is denied the same way `plugin/hooks/test_file_lock.py` denies it for the four file-editing
++  tools today, because `test_file_lock.py` shares the identical authorization-by-tool-route
++  gap (see Open questions from intent, below).
++- The fix is one shared mechanism, not two copies of similar regex: a single helper extracts
++  candidate file-write target paths from a Bash/PowerShell command's text, and both
++  `protected_paths.py` and `test_file_lock.py` call it when the tool is `Bash`/`PowerShell`.
++  Source: coding-standards rule 2 (match the surrounding code's idiom — reuse, don't
++  duplicate) and the intent's open question 2.
++- `plugin/ci/settings.ci.json` and `template/.claude/settings.json`'s permission allow-list
++  (`Bash(python *)`, `Bash(python3 *)`, `Bash(node *)`, `Bash(npm *)`, `Bash(npx *)`) is
++  unchanged: the fix closes the gap at the hook layer (the layer decision 6 already commits
++  to — "a self-protecting hook that denies edits to .claude/**, CLAUDE.md, REVIEW.md and the
++  hook scripts"), not by narrowing what an unattended run may execute.
++- A reproducing test exists for each hook before the fix is written (intent Constraints: "A
++  test that reproduces the vulnerability is written first; no pre-existing test is edited to
++  make the fix pass"), and no existing test in `tests/test_hooks.py` is weakened
++  (coding-standards rule 4).
++- An eval case is added so the class does not return (intent Proposed outcome; article p.48
++  step 7), following the shape of the existing `evals/cases/0001-protected-path-denied`.
++- `plugin/hooks/secrets_check.py` keeps its current scope (Edit/Write/MultiEdit/
++  NotebookEdit only); see Open questions from intent for why it is not changed here.
++- Risk list: this change touches `sdlc.yaml: risk_list` item **auth** — it is an
++  authorization control end to end. No other risk-list item (data migrations, money
++  movement, production config) is touched.
++- UX conventions rules 1–3 and 5–7 (mocks, component library, loading/empty states,
++  accessibility, the visual loop) do not apply: nothing here adds a screen, form or
++  component. Data-conventions does not apply: no schema, migration, stored field or
++  personal-data path is touched.
++
++## Design
++Today `plugin/hooks/hooks.json` registers `protected_paths.py` and `test_file_lock.py` only
++on the `Edit|Write|MultiEdit|NotebookEdit` matcher; each reads the tool call's target
++path(s) via `_common.target_paths`/`edit_targets` and checks them against a glob list
++(`protected_paths.protected_patterns`, `test_file_lock.test_path_patterns`). The
++`Bash|PowerShell` matcher runs only `plan_sync.py` (gated to `git *` commands) and
++`production_gate.py` (gated to commands matching a known destructive-program glob list); no
++Bash/PowerShell hook ever looks at what file a command would write. Because
++`plugin/ci/settings.ci.json` allows bare `Bash(python *)`, `Bash(node *)`, etc. with no
++prompt, an unattended run can reach the same file write through a one-line interpreter
++script or shell redirection and the two path-based gates never see it — this is also how a
++run could transiently rewrite `sdlc.yaml` (which carries the project's own
++`protected_paths` list and `test_paths`) mid-session to turn its own protections off for the
++rest of the run, then write it back before any commit, leaving nothing for the gate's
++diff-based `check_guardrails`/`check_test_lock` (which judge only the committed diff,
++OPERATING_MODEL section 3) to find afterwards.
++
++The fix adds one shared helper, `shell_write_targets(command: str) -> list[str]`, next to
++the other path helpers in `plugin/hooks/_common.py`. It returns the candidate target paths
++a Bash/PowerShell command text contains for the recognised file-writing idioms: output
++redirection (`>`, `>>`), `tee`, in-place editors (`sed -i`, `perl -i`), `cp`/`mv`/`rsync`
++destinations, `dd of=`, `curl -o`/`-O`, `git apply`/`checkout -- <path>`, `rm`/
++`Remove-Item` (removing a hook script or a guardrail file is as effective as editing it),
++and the common interpreter one-liners that name a path literal next to a write-mode call
++(`open(<path>, "w"`, `fs.writeFileSync(<path>`, PowerShell's `Set-Content`/`Out-File`). It
++reuses `production_gate.command_parts`/`chain_parts`/token-suffix splitting so a command
++behind `sudo`, `nohup`, `bash -c '...'` or a path/`.exe` wrapper is still read, instead of
++inventing a second command parser (coding-standards rule 2). Each candidate path is resolved
++against the command's working directory the same way `target_paths`' output is today and
++run through the existing `_check_one` (protected_paths) / glob match (test_file_lock) — no
++new matching logic, only a new source of candidate paths.
++
++`hooks.json` adds `protected_paths.py` and `test_file_lock.py` to the `Bash|PowerShell`
++matcher (new entries beside the existing `plan_sync.py`/`production_gate.py` ones, same
++matcher group). Each script's `decide()` branches on `payload["tool_name"]`: the
++`FILE_TOOLS` branch is unchanged; a new `Bash`/`PowerShell` branch calls
++`shell_write_targets` on `tool_input["command"]` and checks every candidate the way the
++existing branch checks `target_paths()`. Nothing else in either script's public shape
++changes (same `Decision`, same fail-closed-on-bad-`sdlc.yaml` behaviour, same log format).
++
++What stays unchanged: `plan_sync.py` and `production_gate.py` (already Bash-aware, not part
++of this gap), `secrets_check.py` (different control — see Open questions), the gate's
++`check_guardrails`/`check_test_lock` (the after-the-fact compensating layer; still useful for
++whatever this heuristic cannot catch), and the permission allow-list in
++`plugin/ci/settings.ci.json` / `template/.claude/settings.json`.
++
++## Open questions from intent
++- "Where else does the authz pattern occur, and does one fix cover every place?" —
++  Answered from the codebase: `plugin/hooks/test_file_lock.py` has the identical pattern — a
++  path-based authorization gate (glob-matches a target path against `sdlc.yaml: test_paths`)
++  registered only on the `FILE_TOOLS` matcher, bypassable by the same Bash/PowerShell route.
++  No third hook shares it: `plan_sync.py` and `production_gate.py` are already registered on
++  `Bash|PowerShell`; `secrets_check.py` is a content scan, not a path-based authorization
++  check (see below), and `panel_blind.py`/`format_on_edit.py` do not police paths at all.
++  One fix (the shared helper) covers both places.
++- "Is a shared guard (a helper, a middleware, a schema) better than local fixes?" —
++  Answered: yes, `shell_write_targets` in `_common.py`, used by both hooks, per Design above.
++- "Which eval case captures the class so it does not return?" — Carried forward to
++  `plan.md`: a new case under `evals/cases/`, in the shape of `0001-protected-path-denied`,
++  exercising a Bash command that attempts a guardrail-file write; plan.md names the case id
++  and the files it adds.
++
++## Flagged concerns
++- Risk list: **auth**. This change is an authorization control top to bottom (closing a gap
++  in which tool route a file write takes to reach a guardrail file). Per security-baseline
++  rule 8 and decision 11, the change parks at its next gate until the owner accepts the risk
++  with `sdlc:accept-risk` or `state/cli.py accept-risk`; the design pass does not close this
++  — only the owner does.
++- `secrets_check.py` is examined but not changed here. Its control is a content scan
++  (regex over text an Edit/Write would place in a file), not a path-based authorization
++  check — the intent evidence's own framing ("authorization inferred from which tool route
++  is used, not enforced uniformly") describes `protected_paths.py`/`test_file_lock.py`'s
++  mechanism, not `secrets_check.py`'s. A Bash command that writes a credential straight into
++  a file (a heredoc, `echo ... > file`) is a real, related gap, but closing it needs scanning
++  arbitrary command text for secret-shaped literals, which is a different, larger piece of
++  work than reusing `shell_write_targets`. Carried forward: whether to open a follow-up
++  change for it is the owner's call at this gate.
++- The fix is heuristic command-text parsing, the same kind `production_gate.py` already
++  does for guarded commands, with the same ceiling: a command the parser's idiom list does
++  not recognise (an unlisted wrapper program, content decoded from base64 and piped to an
++  interpreter, a custom script that itself shells out) can still reach a guardrail file
++  without being caught at the hook layer. The gate's diff-based `check_guardrails` and
++  `check_test_lock` remain the backstop for anything committed; a write that is made and then
++  reverted before any commit has no backstop at all. This residual is inherent to policing
++  shell text rather than the filesystem itself (notes/11.md 11b: only `sandbox.enabled`,
++  `sandbox.network.allowedDomains` and `sandbox.failIfUnavailable` are verified Claude Code
++  settings keys for this plugin version; no filesystem-level sandbox restriction is a
++  documented option to fall back on instead). Carried forward: the owner decides whether this
++  residual is acceptable for now or whether to re-open decision 6 once a stronger mechanism
++  is verified.
++
++## Acceptance
++- `tests/test_hooks.py` gains reproducing tests, written and seen to fail first, then passing
++  after the fix: a Bash command writing to each `ALWAYS_PROTECTED`/`GLOBAL_PROTECTED` path
++  (e.g. `python -c "open('CLAUDE.md','w').write('x')"`, `echo x > sdlc.yaml`,
++  `rm plugin/hooks/protected_paths.py`) is denied; the same for a Bash write to a locked test
++  file in a fix-type change; an unrelated Bash command (e.g. `python -m pytest`,
++  `git status`) is still allowed.
++- Every existing test in `tests/test_hooks.py` still passes unweakened.
++- `python -m pytest`, `python -m ruff check .` and `python -m compileall -q plugin tests
++  tasks.py` are clean.
++- The new eval case passes under `plugin/evals/run.py`.
++- `python "${CLAUDE_PLUGIN_ROOT}/plugin/skills/security-baseline/check.py"` reports no new
++  finding.
+diff --git a/changes/0002-security-authz-the-guardrail-self-protec/status.yaml b/changes/0002-security-authz-the-guardrail-self-protec/status.yaml
+index 2e6de2f..9d66cf4 100644
+--- a/changes/0002-security-authz-the-guardrail-self-protec/status.yaml
++++ b/changes/0002-security-authz-the-guardrail-self-protec/status.yaml
+@@ -1,15 +1,15 @@
+ id: "0002"
+ slug: security-authz-the-guardrail-self-protec
+ title: "security: authz: The guardrail self-protection (protected_paths.py) only"
+-phase: f
++phase: b
+ entry_route: incident
+ change_type: feature
+ profile_override: null
+ review_override: null
+ gate:
+-  phase: f
++  phase: a
+   result: passed
+-  reason: waiting for the owner at gate (f)
++  reason: "merged by the owner: the incident intent PR's merge is gate (a) (decision 25)"
+   at: "2026-10-05T14:53:58Z"
+ parked_reason: null
+ iterations: 0
+@@ -28,5 +28,5 @@ released_at: null
+ released_sha: null
+ released_pr: null
+ created_at: "2026-10-05T14:53:56Z"
+-updated_at: "2026-10-05T14:53:58Z"
++updated_at: "2026-10-08T16:31:24Z"
+ schema_version: 1
