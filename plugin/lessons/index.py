@@ -101,19 +101,54 @@ def _missing_render_fields(fm: dict[str, Any]) -> list[str]:
     return problems
 
 
+def _read_text(path: Path) -> tuple[str | None, str]:
+    try:
+        return path.read_text(encoding="utf-8-sig"), ""
+    except OSError as exc:
+        return None, str(exc)
+
+
+def _split(text: str) -> tuple[str, str] | None:
+    """(frontmatter text, body) on a leading-and-trailing ``---``, or None: the one place
+    that owns the split (as ``SKILL.md``'s reader does, ``tests/test_policy_skills.py:28``),
+    so the body (which may itself contain ``key: value``-shaped prose) is never handed to
+    the YAML reader."""
+    m = FRONTMATTER_RE.match(text)
+    return (m.group(1), m.group(2)) if m else None
+
+
+def read_frontmatter(path: Path) -> tuple[dict[str, Any] | None, str]:
+    """(the frontmatter mapping, "") or (None, why): unreadable, no frontmatter block, a
+    YAML error, or a document that is not a mapping. No render-field validation — the caller
+    (``read_entry`` for the index, ``gate.checks.lesson_and_eval`` for the full required set)
+    decides what it needs."""
+    text, why = _read_text(path)
+    if text is None:
+        return None, why
+    split = _split(text)
+    if split is None:
+        return None, "no frontmatter block"
+    try:
+        fm = yamlish.loads(split[0])
+    except yamlish.YamlishError as exc:
+        return None, str(exc)
+    if not isinstance(fm, dict):
+        return None, "frontmatter is not a mapping"
+    return fm, ""
+
+
 def read_entry(path: Path) -> Entry:
     """A lesson file read into an ``Entry``. Never raises: a bad file is sent to
     ``## Unsorted`` with the reason, not a crash."""
-    try:
-        text = path.read_text(encoding="utf-8-sig")
-    except OSError as exc:
-        return Entry(path.name, ok=False, error=str(exc), heading=path.stem)
-    m = FRONTMATTER_RE.match(text)
-    if not m:
+    text, why = _read_text(path)
+    if text is None:
+        return Entry(path.name, ok=False, error=why, heading=path.stem)
+    split = _split(text)
+    if split is None:
         return Entry(
             path.name, ok=False, error="no frontmatter block", heading=_first_heading(text)
         )
-    fm_text, body = m.group(1), m.group(2)
+    fm_text, body = split
     try:
         fm = yamlish.loads(fm_text)
     except yamlish.YamlishError as exc:
