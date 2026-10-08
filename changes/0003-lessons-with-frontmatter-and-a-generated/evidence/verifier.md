@@ -1,34 +1,89 @@
-# Verifier report — change 0003, phase (d)
-
-**This is a phase (d) deferred-CI verification.** `SDLC_GATE_COMMANDS=runner` is set in this session's environment, so the build/test/lint targets were never run here and must not be run here (plugin 0.3.2 item 3b; issue #91). Per the deferred-CI rule, this report compares the committed diff and the new/changed tests against plan.md's "Files that change"/"Proof" sections and spec.md's Requirements/Design/Acceptance sections, and reads gate (c)'s record (the phase before this one) plus the three evidence logs as they stand now, instead of re-running the toolchain.
+# Verifier report — change 0003, phase (e) fix round, HEAD `00ddfc7e177c2bdb289e0ec10fbf7fca9e9824e5`
 
 ## Commands run
-None run in this session (by design, per the CI-deferred rule). Read instead:
 
-- `changes/0003-lessons-with-frontmatter-and-a-generated/evidence/gate-c.json` (the record of the phase before this one, phase (c), head `bfe078b69dc691ecfd226d2872cff41dcb1b8360`) — `commands` check: `"ok": true`, `"reason": "build, test and lint exit 0"`, `"details.ran_by": "runner"`:
-  - build: `python -m compileall -q plugin tests tasks.py` → exit 0, output `""`.
-  - test: `python -m pytest` → exit 0, tail: `1429 passed in 276.02s (0:04:36)`.
-  - lint: `python -m ruff check .` → exit 0, output `All checks passed!`.
-  No `details.deferred: true` anywhere in gate-c.json; the `evidence` check there is also `ok: true` with `verifier.md` present. This is a passed, non-deferred gate.
-- `evidence/test.log` first line (read, not run): `# python -m pytest — deferred to the runner — 2026-10-08T04:22:45Z` — this session's own marker, written minutes ago by the evidence collector; not a failure, the runner replaces it.
-- `evidence/build.log` first line (read, not run): `# python -m compileall -q plugin tests tasks.py — deferred to the runner — 2026-10-08T04:22:45Z` — same, not a failure.
-- `evidence/lint.log` first line (read, not run): `# python -m ruff check . — deferred to the runner — 2026-10-08T04:22:45Z` — same, not a failure.
-- No `evidence/gate-d.json` exists yet in this tree (the runner writes it after this session ends), so there was no phase-(d) record to judge — consistent with the instructions.
+This is a CI session (`SDLC_GATE_COMMANDS=runner`), so per the verifier's brief the build/test/lint
+targets were not run here. Read instead, not run:
+
+- `changes/0003-lessons-with-frontmatter-and-a-generated/evidence/gate-d.json` (the record of
+  phase (d), the phase before this one — phase (e)'s own record is an earlier round's and is
+  not judged here). Its `commands` check:
+  - `ok: true`, `"reason": "build, test and lint exit 0"`, `"details.ran_by": "runner"`
+  - build: `python -m compileall -q plugin tests tasks.py` → exit 0, output `""`
+  - test: `python -m pytest` → exit 0, tail `"1429 passed in 282.13s (0:04:42)\n"`
+  - lint: `python -m ruff check .` → exit 0, output `"All checks passed!\n"`
+- `evidence/build.log`, `evidence/test.log`, `evidence/lint.log`: each file's first line reads
+  `# python -m <target> — deferred to the runner — 2026-10-08T06:39:40Z`. This is not a
+  failure — this round's session wrote these placeholder files minutes ago and the runner
+  will replace them after this session; read, not run.
+- `gate-e.json` present (own phase, `result: park`, an earlier round's `findings.ok: false`)
+  is this phase's own earlier-round record and is not judged here either.
+
+By-hand: build/test/lint were not invoked in this session (correctly withheld per the CI rule).
 
 ## Behavior exercised
-No test runner, CLI, or script was invoked in this sandboxed session (the CI-deferred rule also forbids starting the test runner here, even with `-k`). Instead the change was exercised by reading:
 
-- `plugin/lessons/index.py` in full (314 lines): `build`, `check`, `read_entry`, `read_frontmatter`, `normalise_class`, `_sort_entries`, `build_index_text`, and the CLI `main()`. Traced: first-tag grouping with alphabetical heading order; newest-first-then-filename-ascending sort (two stable sorts, the second with `reverse=True`, which preserves the first sort's tie order under Python's stable sort); `## Retired` grouped by `status` regardless of tag; `## Unsorted` last, built from a file with no frontmatter block, a YAML error, a non-mapping document, or a missing render field, never raising; `(stale)` appended/stripped around `stale_after` vs. `--today`; zero-lesson output (`"# Lessons\n\nNo lessons yet.\n"`); CRLF-safe `check` (universal-newline read) vs. byte-identical `\n`-only `write_text`.
-- `plugin/gate/artifacts.py` (`LESSON_REQUIRED_FIELDS`, `LESSON_STATUSES`, `EVAL_PROMPT`, `EVAL_CHECKS`, `lesson_glob`) and `plugin/gate/checks.py`'s `lesson_and_eval` (guard `ctx.status.entry_route == "incident" and ctx.phase == "e"`; glob-match count; frontmatter field presence; `supersedes` target existence and retirement; out-of-enum `status`; eval file presence; `index.py check`; problems joined with `"\n    "`) and its registration — confirmed present only in `CHECKS_BY_PHASE["e"]` and absent from `CHECKS_BY_PHASE["f"]`.
-- `tests/test_lessons.py` (14 tests): each test body exercises exactly what plan.md's Proof section names — first-tag ordering/alphabetical headings, newest-first/filename-ascending tie-break, `## Retired` before `## Unsorted`, `README.md`/`index.md` exclusion, malformed-frontmatter and missing-render-field files routed to `## Unsorted` with no crash, zero-lesson tree, the frontmatter split stopping at the second `---` (a body containing a `key: value`-shaped line), the `(stale)` marker and its removal before `check` compares, a real drift's diff, a CRLF copy passing `check`, and the two CLI entry points.
-- `tests/test_gate.py`'s new section (lines ~2440–2587): one test per fail case named in plan.md/spec.md (missing lesson, two files matching the glob, missing frontmatter field, missing `prompt.md`, missing `checks.yaml`, failing `index.py check`, a dangling `supersedes`, a `supersedes` target not retired, an out-of-enum `status`), a pass case, a guard test calling `lesson_and_eval` directly at phase (f) asserting it still passes (`test_lesson_and_eval_guard_holds_even_called_directly_at_phase_f`), a test asserting the whole rendered "what I need from you" block with each problem on its own indented line (`test_lesson_and_eval_renders_every_problem_on_its_own_indented_line`), and confirmed `test_gate_f_waits_for_the_owner_s_triage_with_the_finding_and_its_route` (line 2343) is unchanged, still asserting gate (f)'s check list with no `lesson_and_eval` in it.
-- `tests/test_commands_and_skills.py`: confirmed new/extended assertions on `sdlc-deploy.md` step 0b's text and `allowed-tools`, and `sdlc-maintain.md` step 1's text and `allowed-tools`, both naming `Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/lessons/index.py" *)`.
-- `plugin/commands/sdlc-deploy.md` step 0b and `plugin/commands/sdlc-maintain.md` step 1, `template/lessons/README.md`, `template/sdlc.yaml`'s new `stale_after_months` row, `docs/OPERATING_MODEL.md`'s `lessons/` bullet, and both manifests' `0.3.6` version: read in full and compared field-by-field against spec.md's Design/Requirements mapping.
-- Confirmed by directory listing: no root `lessons/` directory exists in this repository (only `template/lessons/README.md`), matching plan.md Risk 6 / spec.md Acceptance's "no lesson file exists ... to migrate."
-- `git diff --stat origin/main...HEAD` for `plugin tests template docs .claude-plugin` confirms the changed-file set is exactly plan.md's "Files that change" list: `plugin/lessons/__init__.py` (new, empty), `plugin/lessons/index.py` (new, 314 lines), `plugin/gate/artifacts.py` (+30), `plugin/gate/checks.py` (+86), `plugin/commands/sdlc-deploy.md` (+47/-), `plugin/commands/sdlc-maintain.md` (+18/-), `template/lessons/README.md` (+83/-), `template/sdlc.yaml` (+7), `docs/OPERATING_MODEL.md` (+2/-1), `.claude-plugin/plugin.json` and `marketplace.json` (both to 0.3.6), `tests/test_lessons.py` (new, 223 lines), `tests/test_gate.py` (+155), `tests/test_commands_and_skills.py` (+59). Nothing is missing from, or extra to, the plan's file list.
+A throwaway script (deleted after use) imported `plugin/gate/checks.py`'s
+`_supersedes_problem` and `plugin/lessons/index.py`'s `build`/`check` directly and called
+them with the inputs this round's fix targets:
+
+1. **`_supersedes_problem`** (`plugin/gate/checks.py:1612`), called directly with a
+   `lessons_dir` and `fm["supersedes"]` set to:
+   - `/etc/passwd` (absolute) → `"2026-01-caller.md: supersedes must name a lesson file in lessons/"`
+   - `../secrets.md` (climbs outside `lessons/`) → same message
+   - `2026-01-self.md` (self-reference, lesson named the same) → same message
+   - `2026-01-other.md` (well-shaped but nonexistent, a control) →
+     `"...supersedes target '2026-01-other.md' does not exist"` (different, correct code path)
+   - An absolute path to a real file containing `"TOP-SECRET-CONTENT..."` and unparsable YAML
+     → same `"must name a lesson file in lessons/"` message; checked programmatically that
+     neither `"TOP-SECRET"` nor `"secret.md"` appear in the result — no leak of the target's
+     content or path.
+
+2. **`plugin/lessons/index.py` `build`/`check`**, called directly on a temp `lessons/` with
+   three malformed files plus a `README.md` (which must stay excluded):
+   - `stale_after: 2027` (int, wrong type)
+   - `detected.at: "2026-13-01"` (month 13, out of range)
+   - a file written as raw non-UTF-8 bytes (`\xff\xfe\x00...`)
+   - Result: `build()` did not raise; notes returned were
+     `"...bad-month.md: detected.at '2026-13-01' is not a date"`,
+     `"...bad-stale-type.md: stale_after 2027 is not a date"`,
+     `"...not-utf8.md: 'utf-8' codec can't decode byte 0xff..."`; generated text placed all
+     three under `## Unsorted`, `README.md` excluded. Writing that text to `lessons/index.md`
+     and calling `check()` returned `ok=True` (no false drift).
+   - Control case: a well-shaped lesson (`detected.at: "2026-01-05"`, string `stale_after`
+     absent) built cleanly into a normal `## flaky-test` heading line, not `## Unsorted` —
+     confirming the bad-shape detection does not over-fire.
+
+3. **`plugin/commands/sdlc-maintain.md` step 1** — read directly (not executable, so read is
+   the correct exercise): confirmed the text now reads *"open only the lessons whose heading
+   or `Tags:` clause names this finding's metric or the rule that fired, plus every lesson
+   under `## Retired`, plus every lesson under `## Unsorted`..."*.
+
+`DATE_SHAPE_RE` and `_SUPERSEDES_NAME_RE` were also sanity-checked by hand against a handful
+of valid/invalid date and filename shapes; both match the spec's stated regex.
 
 ## Mismatches with plan.md / spec.md
-None found.
+
+None found. Specifically:
+- spec.md's "fails with one line that never repeats the target file's own content or parser
+  error" (Requirements, PR #132 note) — confirmed by direct test.
+- spec.md's "`detected.at` or `stale_after` value that is present but not a date-shaped
+  string ... go to `## Unsorted`" and "a file that is not valid UTF-8 ... go to `## Unsorted`"
+  — confirmed, no crash.
+- plan.md's `sdlc-maintain.md` step 1 update (now also opens `## Unsorted`) — confirmed
+  present in the file text.
 
 ## Verdict
-**matches the plan**
+
+`matches the plan`
+
+Relevant files:
+- `plugin/gate/checks.py` (`_supersedes_problem` at line 1612)
+- `plugin/lessons/index.py` (`_bad_field_shapes` line 107, `_read_text` line 124, `build`/`check`
+  lines 277/287)
+- `plugin/commands/sdlc-maintain.md` (step 1)
+- `changes/0003-lessons-with-frontmatter-and-a-generated/plan.md`, `spec.md`
+- `changes/0003-lessons-with-frontmatter-and-a-generated/evidence/gate-d.json` (previous-phase
+  record, read)
+- `changes/0003-lessons-with-frontmatter-and-a-generated/evidence/{build,test,lint}.log`
+  (deferred-to-runner placeholders, read)

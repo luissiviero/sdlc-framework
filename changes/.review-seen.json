@@ -55,6 +55,14 @@
     "last_seen": "2026-10-03T21:52:04Z",
     "summary": "Unchanged from the previous two rounds: the current top-level record's summary still says the split covered \"docs/NOTES.md (30 sections)\"; docs/notes/ holds 32 section files and docs/notes/index.md lists 32, so the prose still undercounts by two."
   },
+  "514b1334dbca839f": {
+    "count": 1,
+    "file": "plugin/gate/checks.py",
+    "first_change": "0003",
+    "last_change": "0003",
+    "last_seen": "2026-10-08T06:48:59Z",
+    "summary": "`_lesson_field_problems` reports a `status` value that is present but not a string (e.g. a list or number) as \"missing frontmatter field 'status'\" rather than naming the actual problem (wrong type), which could read oddly in the gate's park message."
+  },
   "52f49924705bd8e8": {
     "count": 1,
     "file": "docs/PROGRESS.md",
@@ -62,6 +70,14 @@
     "last_change": "0001",
     "last_seen": "2026-10-03T21:32:24Z",
     "summary": "The new top-level record's summary says the split covered \"docs/NOTES.md (30 sections)\", but docs/notes/ holds 32 section files (1-32) and docs/notes/index.md lists 32, so the record's own prose undercounts by two."
+  },
+  "63e3fc60697aaf84": {
+    "count": 1,
+    "file": "plugin/gate/checks.py",
+    "first_change": "0003",
+    "last_change": "0003",
+    "last_seen": "2026-10-08T06:48:59Z",
+    "summary": "`from lessons import index as lessons_mod` is still duplicated in `_supersedes_problem` (line 1616) and `lesson_and_eval` (line 1644) instead of imported once; `changes/.review-seen.json` already records this exact finding at count 2 (first seen during this change's gate-(e) round, repeated unaddressed in the b94e362 review), so this third occurrence is the point the framework rule requires a one-line `CLAUDE.md` entry, which no review has proposed yet."
   },
   "63ff93b40ff8364f": {
     "count": 2,
@@ -87,6 +103,14 @@
     "last_seen": "2026-10-03T21:52:04Z",
     "summary": "REVIEW.md's second-occurrence framework rule (\"The second occurrence of the same finding across reviews produces a one-line entry in CLAUDE.md under 'Things Claude gets wrong', proposed in the review for the owner\") was triggered by the previous review round (head dbc04ce, which stated explicitly \"this is the same gap the previous review round (head 0f2b8d3) flagged Important, now recurring a second round\" and that no CLAUDE.md entry had been proposed for it), but this fix round (de19e54) left evidence/claude-md-proposals.md untouched: it still holds only the unrelated line-39 guardrail-table nit, with no line proposed about the recurring verified_with gap. The rule is still unmet at this head, and the gap (see the next finding) is now a third occurrence."
   },
+  "72cf69865e11c2b2": {
+    "count": 1,
+    "file": "template/lessons/README.md",
+    "first_change": "0003",
+    "last_change": "0003",
+    "last_seen": "2026-10-08T06:48:59Z",
+    "summary": "The example frontmatter's `sources` list (lines 45-51) still shows only `detection`, `eval` and `fix-pr`, with no sample `run-<n>` entry, even though spec.md's Requirements say `sources` includes \"one `run-<n>` per failed run `detection.json` lists\"; `changes/.review-seen.json` already records this exact finding at count 2, so this is the third occurrence with still no `CLAUDE.md` line proposed."
+  },
   "7cd11e55e64ea40f": {
     "count": 2,
     "file": "docs/notes/2.md",
@@ -94,6 +118,14 @@
     "last_change": "0001",
     "last_seen": "2026-10-03T22:00:14Z",
     "summary": "verified_with still does not carry all three parts spec.md Requirements asks for (Claude Code version, plugin version, runner) for any of the 32 docs/notes/<N>.md files: this fix round added a plugin version to notes/27.md-32.md (sessions 15-18), but no file -- including those six -- carries a runner value, so the field a later session reads to judge staleness (spec.md Requirements, choice 93) is still incomplete across the whole corpus, now a third occurrence of the same open gap."
+  },
+  "8904b4484e9ea0a6": {
+    "count": 1,
+    "file": "plugin/lessons/index.py",
+    "first_change": "0003",
+    "last_change": "0003",
+    "last_seen": "2026-10-08T06:48:59Z",
+    "summary": "`build()` still unconditionally runs `lessons_dir.mkdir(parents=True, exist_ok=True)`, so the read-only `check()` (and `lesson_and_eval`'s call into it) still creates `lessons/` as a side effect on a project that has none yet; `changes/.review-seen.json` records this exact finding at count 2 already, so this is the third occurrence with no `CLAUDE.md` line proposed (the owner's own fix-response marked it optional for 0.3.7, but the recurrence rule is about repetition, not about whether a fix was required)."
   },
   "91431ef90e9be76d": {
     "count": 1,
@@ -142,6 +174,14 @@
     "last_change": "0001",
     "last_seen": "2026-10-03T21:32:24Z",
     "summary": "Doubt: docs/PROGRESS.md currently holds four top-level records (the new split entry plus three \"session 18\" sittings), not just the one current record spec.md's Requirements describe; the change's own verifier.md traces the extra two sittings to a later merge of main into this branch, not to this change's own split commits, so it may not be this diff's defect."
+  },
+  "d4b1309e16dd99e0": {
+    "count": 1,
+    "file": "plugin/lessons/index.py",
+    "first_change": "0003",
+    "last_change": "0003",
+    "last_seen": "2026-10-08T06:48:59Z",
+    "summary": "`_render_line`/`_render_unsorted_line` (lines 231-242) still interpolate `title`/`description`/the first heading into a markdown link with no escaping of `]`/`(`, so such a value would still break the generated link; `changes/.review-seen.json` records this exact finding at count 2 already, so this is the third occurrence with no `CLAUDE.md` line proposed."
   },
   "d740fb94f64dfc94": {
     "count": 1,
