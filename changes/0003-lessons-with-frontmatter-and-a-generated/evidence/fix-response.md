@@ -175,3 +175,56 @@ plan.md's enumerations — see "Self-found gap" above); continue, non-routine, a
 `sdlc:b-ready`, no park. Iterations: 2 of 2 (non-routine cap) — the next round, if the owner
 requests more changes, is the owner's to start and the owner's `sdlc:reset-iterations`
 label to re-open iterations here.
+
+---
+
+# Fix response — change 0003, phase (c)
+
+Source: `evidence/fix-requests.json`, PR #132 review #5451184217 (OWNER, `CHANGES_REQUESTED`,
+2026-10-08). `not_applied` in the source file was empty.
+
+Before this round could start, the owner applied `sdlc:reset-iterations` (iterations and
+panel-call count reset; `status.yaml: iterations_reset_by: luissiviero`), since gate (c) had
+parked on the wall-clock/iteration limit from the prior run that hit the 200-turn cap.
+
+1. `template/lessons/README.md` line 87 reworded from "the lesson and the eval
+   (`/sdlc-deploy` step 0b)" to "the lesson and the eval case, in `/sdlc-deploy` step 0b", so
+   the word "eval" is never directly followed by an opening parenthesis (the
+   security-baseline scanner's `eval\s*\(` pattern was matching the prose, not code).
+   `plugin/commands/sdlc-deploy.md`'s heading "## 0b. An incident's fix ships with its
+   lesson and its eval (build guide steps 36, 37; ...)" had the same shape and was reworded
+   to "... and its eval case (build guide steps 36, 37; ...)". Checked the rest of
+   `template/lessons/README.md`, `plugin/commands/sdlc-deploy.md` and
+   `plugin/commands/sdlc-maintain.md` for the same shape (grep for `eval` in all three,
+   tested each hit against the scanner's exact regex): no other occurrence matches —
+   `lesson_and_eval` and `` `eval` `` (backtick-delimited identifiers) are not followed by
+   `(`, and "eval case"/"an eval for" are not followed by `(` either. Commit `bfe078b`.
+2. Finished phase (c): wrote `evidence/diff-c.patch` (`origin/main...HEAD` at
+   `bfe078b69dc691ecfd226d2872cff41dcb1b8360`), ran the adversarial reviewer (verdict:
+   continue, non-routine — no reasons found; it independently traced the preflight failure
+   to the same `eval\s*\(` match and confirmed no occurrence remains), then gate (c):
+   `continue`. The prior run's verifier evidence (`evidence/verifier.md`) stood; nothing in
+   this round's diff touched the code the verifier already exercised.
+
+## Not applied
+(none — `fix-requests.json: not_applied` was empty)
+
+## Verification note
+This session's sandbox denies read access to `tests/fixtures/sample-python-project/.env`,
+which a large share of the test suite copies as part of an autouse project fixture; every
+such test errors on `shutil.Error: Permission denied` in this sandbox regardless of this
+change, including `tests/test_policy_skills.py` itself. This is a sandbox limitation of this
+agent session, not a code defect: `python -m ruff check .` and
+`python -m compileall -q plugin tests tasks.py` both ran clean, and the exact failure the
+owner described was independently reproduced and confirmed fixed by (a) testing the
+scanner's own `eval\s*\(` regex against the before/after lines directly, and (b) manually
+replaying the `test_security_baseline_check_finds_secrets_and_dangerous_calls` fixture setup
+(fixture copy minus the unreadable `.env`, `git init`/`commit`, real `/sdlc-init`, real
+`security-baseline/check.py`) end to end: `rc 0`, "nothing found". The CI runner, which does
+not carry this sandbox restriction, should see the test target go green.
+
+## Verdict and gate (phase c)
+Adversarial review (phase c): continue, non-routine, at HEAD `bfe078b69dc691ecfd226d2872cff41dcb1b8360`.
+Panel: review mode is `parked` (not `deferred`), so no panel items apply at a fix round.
+Gate (c): `continue`. Iterations: 1 of 2 (non-routine cap), after the owner's
+`sdlc:reset-iterations`.
