@@ -1,0 +1,150 @@
+{
+  "duration_api_ms": 2062761,
+  "duration_ms": 2356034,
+  "errors": [
+    "Reached maximum number of turns (200)"
+  ],
+  "fast_mode_disabled_reason": "sdk_opt_in_required",
+  "fast_mode_state": "off",
+  "is_error": true,
+  "modelUsage": {
+    "claude-sonnet-5": {
+      "cacheCreationInputTokens": 504953,
+      "cacheReadInputTokens": 47524434,
+      "canonicalModel": "claude-sonnet-5",
+      "contextWindow": 1000000,
+      "costBasis": "list",
+      "costUSD": 12.858396800000012,
+      "inputTokens": 508,
+      "maxOutputTokens": 64000,
+      "outputTokens": 157336,
+      "provider": "firstParty",
+      "thinkingTokens": 77038,
+      "webSearchRequests": 0
+    }
+  },
+  "num_turns": 201,
+  "permission_denials": [
+    {
+      "tool_input": {
+        "command": "for f in plugin/gate/__init__.py plugin/state/__init__.py plugin/hooks/__init__.py plugin/detect/__init__.py; do echo \"== $f ==\"; cat \"$f\" 2>/dev/null | head -5; echo \"(len: $(wc -c < \"$f\" 2>/dev/null))\"; done",
+        "description": "Check if subpackage inits are truly empty"
+      },
+      "tool_name": "Bash",
+      "tool_use_id": "toolu_01QfATdSN6MA9JfHQGJ6Y4AT"
+    },
+    {
+      "tool_input": {
+        "command": "python -c \"\nimport sys\nsys.path.insert(0, 'plugin')\nimport tempfile, os\nfrom pathlib import Path\nfrom lessons import index as idx\n\nroot = Path(tempfile.mkdtemp())\n(root / 'lessons').mkdir()\n(root / 'lessons' / 'README.md').write_text('# readme\\n')\ntext, notes = idx.build(root, today='2026-10-08')\nprint(repr(text))\nprint(notes)\n\nlesson = '''---\ntype: \\\"Lesson\\\"\ntitle: \\\"CI flaked on checkout\\\"\ndescription: \\\"ci_test_failure_rate tripped we1\\\"\ntags: [flaky-test, ci_test_failure_rate]\nchange: \\\"0002\\\"\ndetected:\n  at: \\\"2026-09-20T10:00:00Z\\\"\n  metric: \\\"ci_test_failure_rate\\\"\n  tier: 3\n  rule: \\\"we1\\\"\nfixed:\n  pr: 42\ngenerated:\n  by: \\\"sdlc-plugin/0.3.6\\\"\n  at: \\\"2026-09-21T10:00:00Z\\\"\nstatus: \\\"stable\\\"\nstale_after: \\\"2027-09-21\\\"\nsources:\n  - id: \\\"detection\\\"\n    resource: \\\"evidence/detection.json\\\"\n---\n## What happened\nkey: value\nnot real yaml\n'''\n(root / 'lessons' / '2026-09-checkout-cache.md').write_text(lesson)\ntext, notes = idx.build(root, today='2026-10-08')\nprint(text)\nprint('notes', notes)\nok, diff, notes = idx.check(root, today='2026-10-08')\nprint('check ok', ok, diff)\n(root / 'lessons' / 'index.md').write_text(text, encoding='utf-8', newline='\\n')\nok, diff, notes = idx.check(root, today='2026-10-08')\nprint('check2 ok', ok, diff)\n\"\n",
+        "description": "Manual sanity test of lessons/index.py build and check"
+      },
+      "tool_name": "Bash",
+      "tool_use_id": "toolu_01PZi7ahoCPaz6zBeeKrq1cH"
+    },
+    {
+      "tool_input": {
+        "command": "grep -n \"in [0-9.]*s ===\" \"$TMPDIR/full_test_run.log\" | tail -3",
+        "description": "Search for pytest final timing summary line"
+      },
+      "tool_name": "Bash",
+      "tool_use_id": "toolu_019B1SiVRXq6Qnzidrzg4CrU"
+    },
+    {
+      "tool_input": {
+        "command": "cd /home/runner/work/sdlc-framework/sdlc-framework/changes/0003-lessons-with-frontmatter-and-a-generated/evidence\necho \"=== gate-b.json ===\"\ncat gate-b.json\necho\necho \"=== logs present? ===\"\nls -la | grep -iE 'test.log|build.log|lint.log'\n"
+      },
+      "tool_name": "Bash",
+      "tool_use_id": "toolu_01LcUgeQSzWEAEY7uctpdJr3"
+    },
+    {
+      "tool_input": {
+        "command": "set -e\nWORK=$(mktemp -d)\nmkdir -p \"$WORK/lessons\"\ncat > \"$WORK/lessons/2026-01-test-flaky.md\" <<'EOF'\n---\ntype: \"Lesson\"\ntitle: \"Flaky test in CI\"\ndescription: \"the suite flaked on a race in test_foo\"\ntags:\n  - \"Flaky Test\"\n  - \"ci_test_failure_rate\"\nchange: \"changes/0001-foo/\"\ndetected:\n  at: \"2026-01-15T00:00:00Z\"\n  metric: \"ci_test_failure_rate\"\n  tier: 2\n  rule: \"r1\"\nfixed:\n  pr: \"123\"\ngenerated:\n  by: \"sdlc-plugin/0.3.6\"\n  at: \"2026-01-16T00:00:00Z\"\nstatus: \"stable\"\nstale_after: \"2027-01-16\"\nsources:\n  - id: \"detection\"\n    resource: \"evidence/detection.json\"\n---\n## What happened\nSomething.\n\n## Root cause\nA race.\n\n## Fix\nFixed it.\n\n## Prevention\nAdded a retry.\nEOF\ncat > \"$WORK/lessons/2026-02-test-flaky2.md\" <<'EOF'\n---\ntype: \"Lesson\"\ntitle: \"Flaky test again\"\ndescription: \"the same flaky-test class recurred\"\ntags:\n  - \"flaky-test\"\n  - \"ci_test_failure_rate\"\nchange: \"changes/0002-foo/\"\ndetected:\n  at: \"2026-02-15T00:00:00Z\"\n  metric: \"ci_test_failure_rate\"\n  tier: 2\n  rule: \"r1\"\nfixed:\n  pr: \"124\"\ngenerated:\n  by: \"sdlc-plugin/0.3.6\"\n  at: \"2026-02-16T00:00:00Z\"\nstatus: \"stable\"\nstale_after: \"2025-01-01\"\nsources:\n  - id: \"detection\"\n    resource: \"evidence/detection.json\"\n---\nbody\nEOF\ncat > \"$WORK/lessons/2026-03-bad.md\" <<'EOF'\n# Some heading\nNo frontmatter here, key: value looking line in body.\nEOF\necho \"WORK=$WORK\"\npython3 /home/runner/work/sdlc-framework/sdlc-framework/plugin/lessons/index.py build --root \"$WORK\" --today 2026-10-08\necho \"---- index.md ----\"\ncat \"$WORK/lessons/index.md\"\n"
+      },
+      "tool_name": "Bash",
+      "tool_use_id": "toolu_016umdVcoGxcGcs3RWiVVN5i"
+    },
+    {
+      "tool_input": {
+        "command": "echo \"TMPDIR=$TMPDIR\"\nWORK=\"$TMPDIR/verify0003\"\nmkdir -p \"$WORK/lessons\"\necho \"$WORK\""
+      },
+      "tool_name": "Bash",
+      "tool_use_id": "toolu_016MzMTZXaTWZ5MCCQaiRxYr"
+    },
+    {
+      "tool_input": {
+        "command": "python3 plugin/lessons/index.py build --root /tmp/claude-1001/verify0003 --today 2026-10-08\npython3 -c \"\npath = '/tmp/claude-1001/verify0003/lessons/index.md'\ntext = open(path, 'rb').read().decode('utf-8')\nopen(path, 'wb').write(text.replace('\\n', '\\r\\n').encode('utf-8'))\n\"\npython3 plugin/lessons/index.py check --root /tmp/claude-1001/verify0003 --today 2026-10-08\necho \"exit: $?\""
+      },
+      "tool_name": "Bash",
+      "tool_use_id": "toolu_01NZCZDvouDWaQdZovCD3kB6"
+    }
+  ],
+  "queued_turn_count": 0,
+  "result_index": 0,
+  "session_id": "e3615430-333f-4b85-adf5-93639c218478",
+  "stop_reason": "tool_use",
+  "subagent_stats": {
+    "by_type": {
+      "sdlc:code-simplifier": 1,
+      "sdlc:verifier": 1
+    },
+    "completed": 2,
+    "failed": 0,
+    "killed": {
+      "parent": 0,
+      "system": 0,
+      "user": 0
+    },
+    "max_depth": 1,
+    "refused": {
+      "budget": 0,
+      "concurrency_limit": 0,
+      "depth_limit": 0
+    },
+    "requested": {
+      "background": 0,
+      "foreground": 0,
+      "unset": 2
+    },
+    "spawned": 2,
+    "spawned_by_subagents": 0,
+    "started_in_background": 0
+  },
+  "subtype": "error_max_turns",
+  "terminal_reason": "max_turns",
+  "total_cost_usd": 12.858396800000012,
+  "type": "result",
+  "usage": {
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 344501,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "cache_creation_input_tokens": 344501,
+    "cache_read_input_tokens": 44612553,
+    "inference_geo": "not_available",
+    "input_tokens": 400,
+    "iterations": [
+      {
+        "cache_creation": {
+          "ephemeral_1h_input_tokens": 3301,
+          "ephemeral_5m_input_tokens": 0
+        },
+        "cache_creation_input_tokens": 3301,
+        "cache_read_input_tokens": 341200,
+        "input_tokens": 2,
+        "output_tokens": 442,
+        "type": "message"
+      }
+    ],
+    "output_tokens": 128644,
+    "output_tokens_details": {
+      "thinking_tokens": 64606
+    },
+    "server_tool_use": {
+      "web_fetch_requests": 0,
+      "web_search_requests": 0
+    },
+    "service_tier": "standard",
+    "speed": "standard"
+  },
+  "uuid": "e7fd2bd1-c316-4f13-8b06-6fd4bbea4725"
+}
