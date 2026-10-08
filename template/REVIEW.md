@@ -24,8 +24,10 @@ Report at most five nits per review; summarize the rest as a count.
   files that existed before the fix; the failing test written first is the proof.
 - `plan.md` must reflect the diff: files that change, order of work, risks, proof. A diff
   that departs from the plan without a plan.md update in the same commit is non-compliant.
-- The second occurrence of the same finding across reviews produces a one-line entry in
-  `CLAUDE.md` under "Things Claude gets wrong", proposed in the review for the owner.
+- The second occurrence of the same finding across changes produces a one-line entry in
+  `CLAUDE.md` under "Things Claude gets wrong", proposed in the review for the owner (the
+  framework counts repeats in `changes/.review-seen.json` and writes the proposal; a
+  repeated finding keeps its own severity).
 - Flag when the change has made `CLAUDE.md` outdated.
 
 ## Do not report

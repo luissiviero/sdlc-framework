@@ -443,6 +443,33 @@ def test_review_prompt_passes_severity_and_json_shape():
         assert key in text, key
 
 
+def test_review_prompt_keeps_a_repeated_nit_a_nit():
+    """Change 0003's (e) fix round (NOTES §35, run 37734768551): the reviewer read
+    `changes/.review-seen.json`, saw four nits of the earlier pass at count 2, graded them
+    Important as a breach of REVIEW.md's second-occurrence rule and cited that rule in each
+    finding's `rule` field, so `validate` proposed four CLAUDE.md lines and the gate parked.
+    The rule is the framework's own mechanism (`review/cli.py validate`, `update_seen`: a
+    repeat counts across changes only), never a breach by the diff: the brief says so even
+    against REVIEW.md's wording, forbids reading the record and citing the rule, and keeps a
+    repeated finding's own severity; the template REVIEW.md says "across changes" and that a
+    repeated finding keeps its own severity."""
+    text = " ".join(REVIEW_PROMPT.read_text(encoding="utf-8").split())
+    for token in [
+        "except for how its second-occurrence rule is read",
+        "Do not read `changes/.review-seen.json`",
+        "do not grade a finding by how often it was reported",
+        "never cite that rule in a finding's `rule` field",
+        "whatever REVIEW.md's wording: a repeated nit is a nit",
+        "counts a finding's occurrences across changes",
+    ]:
+        assert token in text, token
+    review_md = " ".join(
+        (PLUGIN.parent / "template" / "REVIEW.md").read_text(encoding="utf-8").split()
+    )
+    assert "across changes produces a one-line entry" in review_md
+    assert "a repeated finding keeps its own severity" in review_md
+
+
 def test_review_prompt_renders_with_str_format():
     """cli.py prompt fills the placeholders with str.format, so the JSON braces must be
     doubled: a single brace would raise KeyError or IndexError here."""
