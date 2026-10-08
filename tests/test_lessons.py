@@ -35,8 +35,8 @@ DEFAULT_FRONTMATTER = {
 
 def write_lesson(path: Path, body: str = "\n## What happened\nSomething broke.\n", **overrides):
     fm = {**DEFAULT_FRONTMATTER, **overrides}
-    for key in list(fm):
-        if overrides.get(key) is None and key in overrides:
+    for key, value in overrides.items():
+        if value is None:
             del fm[key]
     text = "---\n" + yamlish.dumps(fm) + "---\n" + body
     path.parent.mkdir(parents=True, exist_ok=True)

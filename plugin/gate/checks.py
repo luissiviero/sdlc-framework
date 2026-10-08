@@ -1601,17 +1601,17 @@ def _lesson_field_problems(lesson_name: str, fm: dict[str, Any]) -> list[str]:
         if not present:
             problems.append(f"{lesson_name}: missing frontmatter field {name!r}")
     status = fm.get("status")
-    if status not in art.LESSON_STATUSES:
+    if isinstance(status, str) and status.strip() and status not in art.LESSON_STATUSES:
         problems.append(f"{lesson_name}: status {status!r} is not one of {art.LESSON_STATUSES}")
     return problems
 
 
-def _supersedes_problem(
-    lessons_mod, lessons_dir: Path, lesson_name: str, fm: dict[str, Any]
-) -> str | None:
+def _supersedes_problem(lessons_dir: Path, lesson_name: str, fm: dict[str, Any]) -> str | None:
     supersedes = fm.get("supersedes")
     if not (isinstance(supersedes, str) and supersedes.strip()):
         return None
+    from lessons import index as lessons_mod  # noqa: PLC0415
+
     target = lessons_dir / supersedes
     if not target.is_file():
         return f"{lesson_name}: supersedes target {supersedes!r} does not exist"
@@ -1650,7 +1650,7 @@ def lesson_and_eval(ctx: GateContext) -> CheckResult:
             problems.append(f"{lesson_path.name}: {why}")
         else:
             problems += _lesson_field_problems(lesson_path.name, fm)
-            supersedes_problem = _supersedes_problem(lessons_mod, lessons_dir, lesson_path.name, fm)
+            supersedes_problem = _supersedes_problem(lessons_dir, lesson_path.name, fm)
             if supersedes_problem:
                 problems.append(supersedes_problem)
 
