@@ -4,10 +4,13 @@ The text below is proposed for the owner to post as a "Request changes" review o
 (decision 22: the review is the owner's; the fix round it fires applies the items). It carries
 the findings of session 22's fresh-context Opus review of the build PR's diff (head `f93762f`,
 the fourteen files of plan.md), each reproduced in the container before it was kept
-(PROGRESS "Session 22", NOTES §36). Post it once gate (e) has reached `wait` (`sdlc:e-ready`),
-so the round does not race the (d) → (e) dispatch on the branch's concurrency group; read
-`mergeable_state` first (precondition 7), and apply `sdlc:reset-iterations` with it if the
-counter is at its cap by then (it was 1 of 2 after the (c) round).
+(PROGRESS "Session 22", NOTES §36). Gate (e) reached `wait` at 04:53 UTC (`sdlc:e-ready`, PR #132 marked ready, head `da73180`,
+`mergeable_state: blocked`, not `dirty` — precondition 7 read at 04:59 UTC). The counter is
+**1 of 2**: one round fits without a reset, but the (e) loop's own `bump-iteration` on an
+Important finding would take it past the cap, so apply `sdlc:reset-iterations` together with
+the review, as for change 0001 (NOTES §33). The (e) review pass of run 37728296004 found 0
+Important and 4 nits; its nit on `build()`'s `mkdir` is item 7 below and its nit on the
+unescaped markdown link is item 15.
 
 ```text
 Request changes on PR #132 (build(0003)). A fresh-context review of the diff found these; each was reproduced on the branch. Fix them in the files plan.md already lists, with a test each where one is named; no change to spec.md (choice 164), plan.md only where the file list or a step changes.
@@ -26,6 +29,7 @@ Request changes on PR #132 (build(0003)). A fresh-context review of the diff fou
 12. The eight fail-case tests assert a substring of `need`; spec.md's Acceptance asks each to assert the rendered "what I need from you" block. One helper comparing `GateResult.what_i_need()` with the full expected text, used in every fail case.
 13. State in `template/lessons/README.md` and step 0b whether the `runbook` frontmatter field keeps the route's `runbook:` prefix as `evidence/proposal.json: route` carries it (`detect/routes.py: RUNBOOK_PREFIX`) while the tag is the bare runbook name; today the three places disagree.
 14. Wording: `docs/OPERATING_MODEL.md` line 144 "a heading per tag" → "a heading per first tag (the class)"; the `index.py` docstring repeats the spec's contradictory "`## Retired` last … `## Unsorted` after that" — say "`## Retired`, then `## Unsorted` last".
+15. index.py `_render_line` and `_render_unsorted_line` put `title`, `description` and the first heading into a markdown link unescaped, so a `]` or `(` in a title breaks the link (the (e) review pass's nit); escape `]` and `)` in the link text and target, or reject such a title into `## Unsorted`.
 
 Not asked for here (the owner's call, carried as a known gap): the maintain step's "or the rule that fired" cannot be matched on the index line, which carries tags only; adding `detected.rule` to the line is a spec change.
 ```
