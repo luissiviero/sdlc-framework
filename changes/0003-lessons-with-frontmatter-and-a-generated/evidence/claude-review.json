@@ -1,0 +1,97 @@
+{
+  "api_error_status": null,
+  "duration_api_ms": 375600,
+  "duration_ms": 495439,
+  "fast_mode_disabled_reason": "sdk_opt_in_required",
+  "fast_mode_state": "off",
+  "first_content_frame_ms": 2265,
+  "is_error": false,
+  "modelUsage": {
+    "claude-sonnet-5": {
+      "cacheCreationInputTokens": 153453,
+      "cacheReadInputTokens": 3427919,
+      "canonicalModel": "claude-sonnet-5",
+      "contextWindow": 1000000,
+      "costBasis": "list",
+      "costUSD": 1.5697938,
+      "inputTokens": 64,
+      "maxOutputTokens": 64000,
+      "outputTokens": 27027,
+      "provider": "firstParty",
+      "thinkingTokens": 18189,
+      "webSearchRequests": 0
+    }
+  },
+  "num_turns": 50,
+  "permission_denials": [],
+  "queued_turn_count": 0,
+  "result": "## Review summary \u2014 change 0003 at `48f38e9`\n\n**Tally:** 0 important, 4 nits.\n\n**Important findings:** none.\n\n**Nits (4):**\n- `plugin/lessons/index.py:256` \u2014 `check()`'s call into `build()` always `mkdir`s `lessons/` as a side effect, even on a failed/drifted check; every other gate check is read-only on disk (doubt stated: low impact, git doesn't track empty dirs).\n- `plugin/lessons/index.py:207` \u2014 `title`/`description`/heading are interpolated into `[text](file)` with no escaping; a value containing `]` or `(` would break the generated link (doubt stated: not exercised by any test or real file today).\n- `plugin/gate/checks.py:1613,1635` \u2014 `from lessons import index as lessons_mod` is imported separately in two functions instead of once (doubt stated: matches the file's existing lazy-import convention elsewhere).\n- `template/lessons/README.md:45` \u2014 the example frontmatter's `sources` list has no sample `run-<n>` entry even though spec.md requires one per failed run (doubt stated: doc completeness only).\n\n**Plan conformance:** the diff touches exactly the files `plan.md`'s \"Files that change\" lists, in the committed order, with both manifests bumped to 0.3.6 and no guardrail file (`.claude/**`, root `CLAUDE.md`/`REVIEW.md`/`sdlc.yaml`) touched; `compileall`, `ruff check`, and the new/changed tests (`test_lessons.py`, the new `test_gate.py::*lesson*` cases, the new `test_commands_and_skills.py` cases) all pass locally, consistent with the evidence log's \"1429 passed.\"\n\nOne note: my local `pytest` run hit `shutil.Error: Permission denied` on `tests/fixtures/sample-python-project/.env` across many unrelated tests \u2014 this is a sandbox read restriction in my review environment (also hit and documented by the implementing session itself, per `evidence/fix-response.md`'s \"Verification note\"), not a defect in this diff; `evidence/test.log` shows the real run going green.\n\nFindings written to `changes/0003-lessons-with-frontmatter-and-a-generated/evidence/review-findings.json`.",
+  "result_index": 0,
+  "session_id": "2e1461ec-adc0-4b12-a87d-41649bab14db",
+  "stop_reason": "end_turn",
+  "subagent_stats": {
+    "by_type": {},
+    "completed": 0,
+    "failed": 0,
+    "killed": {
+      "parent": 0,
+      "system": 0,
+      "user": 0
+    },
+    "max_depth": 0,
+    "refused": {
+      "budget": 0,
+      "concurrency_limit": 0,
+      "depth_limit": 0
+    },
+    "requested": {
+      "background": 0,
+      "foreground": 0,
+      "unset": 0
+    },
+    "spawned": 0,
+    "spawned_by_subagents": 0,
+    "started_in_background": 0
+  },
+  "subtype": "success",
+  "terminal_reason": "completed",
+  "time_to_request_ms": 77,
+  "total_cost_usd": 1.5697938,
+  "ttft_ms": 3388,
+  "ttft_stream_ms": 2265,
+  "type": "result",
+  "usage": {
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 153453,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "cache_creation_input_tokens": 153453,
+    "cache_read_input_tokens": 3427919,
+    "inference_geo": "not_available",
+    "input_tokens": 64,
+    "iterations": [
+      {
+        "cache_creation": {
+          "ephemeral_1h_input_tokens": 1132,
+          "ephemeral_5m_input_tokens": 0
+        },
+        "cache_creation_input_tokens": 1132,
+        "cache_read_input_tokens": 152321,
+        "input_tokens": 2,
+        "output_tokens": 767,
+        "type": "message"
+      }
+    ],
+    "output_tokens": 27027,
+    "output_tokens_details": {
+      "thinking_tokens": 18189
+    },
+    "server_tool_use": {
+      "web_fetch_requests": 0,
+      "web_search_requests": 0
+    },
+    "service_tier": "standard",
+    "speed": "standard"
+  },
+  "uuid": "42815a34-cea9-4713-a76a-e380a0a0090c"
+}
