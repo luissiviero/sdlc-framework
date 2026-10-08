@@ -62,7 +62,7 @@ The next session takes **change 0003** from gate (b) to its merge and the **0.3.
 | When | Act |
 |---|---|
 | Every session start | Both repositories selected (precondition 1). |
-| Now | Merge PR #124 (gate (b): both reviews applied, `sdlc:b-ready`, iteration 2 of 2); the build run starts on the merge. Merge session 21's second record PR (a draft against `main`) once its three `Framework checks` jobs are green. |
+| Now | Merge PR #124 (gate (b): both reviews applied, `sdlc:b-ready`, iteration 2 of 2); the build run starts on the merge. Merge session 21's second record PR (#129, a draft against `main`) once its three `Framework checks` jobs are green. |
 | When the build PR parks on `limits` | The change's counter is at its cap (2 of 2): apply `sdlc:reset-iterations` on the build PR together with your review, as for change 0001 (NOTES §33). |
 | When the build PR is at gate (e) | As for change 0001: read the summary, review or merge; a "Request changes" only once the PR is mergeable (precondition 7); `sdlc:release-approved` is not needed (`deploy.action: none`). After the merge: check `v0.3.6`, apply the root pin row the session's record gives. |
 | After 0003 merges | Item 2b: triage PR #118 (merge = fix now, `schedule` = later, close with a comment = dismiss). |

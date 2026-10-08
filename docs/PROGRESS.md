@@ -61,6 +61,6 @@ CHAIN EXIT 0
 
 ## Left
 - **Change 0003 at gate (b), `sdlc:b-ready`, ready to merge** (head `18d78bd`, iterations 2 of 2, the second review applied). The owner merges PR #124; the merge starts the build run (`sdlc-build.yml` on `pull_request closed`), read as change 0001's was (NOTES §32, §33), then (d), (e), the merge of the build PR, `v0.3.6` and the root pin row — HANDOFF "The next session". The review's residuals go on the build PR as the owner's review if the build does not absorb them.
-- This record's first PR was **#128** (merged `385d597`); the second sitting's record is a new draft PR against `main` from the same branch name restarted on `main`; `Framework checks` on its final head is read before the owner is asked to merge it (a docs-only PR, no bump).
+- This record's first PR was **#128** (merged `385d597`); the second sitting's record is **PR #129**, a draft against `main` from the same branch name restarted on `main` (first commit `bd49269`, then the one naming it); `Framework checks` on its final head is read before the owner is asked to merge it (a docs-only PR, no bump).
 - PR #118 (change 0002) stays `sdlc:f-ready` until 0003 merges (choice 159).
 - No guardrail row this session: no tag was cut (the pin row comes with `v0.3.6`).
