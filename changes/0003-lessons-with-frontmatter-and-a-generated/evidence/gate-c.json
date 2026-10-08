@@ -1,0 +1,25 @@
+{
+  "at": "2026-10-08T03:56:51Z",
+  "change_id": "0003",
+  "checks": [
+    {
+      "details": {},
+      "name": "preflight",
+      "need": "Settle this, then re-run the phase: CI stopped before the run started.",
+      "ok": false,
+      "reason": "test_target: the test target is not green (exit 1)"
+    }
+  ],
+  "config_note": "",
+  "dry_run": false,
+  "head": "ffebacc284965ad144c27da245f17a5ee258d916",
+  "human_gate": true,
+  "label": "sdlc:needs-human",
+  "phase": "c",
+  "profile": "",
+  "reason": "preflight: test_target: the test target is not green (exit 1)",
+  "result": "park",
+  "schema_version": 1,
+  "slug": "lessons-with-frontmatter-and-a-generated",
+  "what_i_need": "## What I need from you\nGate (c) parked change 0003 (lessons-with-frontmatter-and-a-generated) on 2026-10-08T03:56:51Z.\n- **preflight**: test_target: the test target is not green (exit 1)\n  - what I need: Settle this, then re-run the phase: CI stopped before the run started.\nWhen the item is settled, re-run the gate: `python \"${CLAUDE_PLUGIN_ROOT}/plugin/gate/cli.py\" check --root . --id 0003 --phase c` (review comments are the change request; /sdlc-fix from B3 re-runs the phase with them).\n"
+}
