@@ -361,10 +361,12 @@ def test_findings_and_verdict_readers(tmp_path):
 
 
 # --- run limits (step 19) with a bare context -------------------------------------------------
-def _ctx(tmp_path, config=None, iterations=0, phase="c"):
+def _ctx(tmp_path, config=None, iterations=0, phase="c", entry_route="idea"):
     change_dir = tmp_path / "changes" / "0001-x"
     (change_dir / "evidence").mkdir(parents=True, exist_ok=True)
-    st = status_mod.Status(id="0001", slug="x", title="x", phase=phase, iterations=iterations)
+    st = status_mod.Status(
+        id="0001", slug="x", title="x", phase=phase, iterations=iterations, entry_route=entry_route
+    )
     # human_gate=True: these unit tests isolate the caps; run registration is tested on the fixture
     return checks.GateContext(tmp_path, change_dir, phase, st, config or {}, None, True, "no git")
 
@@ -2433,6 +2435,195 @@ def test_gate_f_parks_when_the_diagnosis_committed_source(maintain_project):
     result = gate.run_gate(root, "0002", "f")
     scope = next(ch for ch in result.checks if ch.name == "design_scope")
     assert result.result == "park" and not scope.ok and "phase (f)" in scope.need
+
+
+# --- lesson and eval, gate (e) only (change 0003) ---------------------------------------------
+from lessons import index as lessons_index  # noqa: E402
+
+from tests.test_lessons import write_lesson  # noqa: E402
+
+LESSON_SLUG = "x"  # matches _ctx's Status(slug="x")
+
+
+def _lesson_setup(
+    tmp_path,
+    lesson_overrides=None,
+    write_lesson_file=True,
+    write_index=True,
+    write_eval=True,
+    missing_eval_file=None,
+    extra_lesson_name=None,
+):
+    """Everything ``lesson_and_eval`` reads for change 0001-x, each piece switchable so a
+    fail case can drop exactly one thing."""
+    if write_lesson_file:
+        write_lesson(tmp_path / "lessons" / f"2026-10-{LESSON_SLUG}.md", **(lesson_overrides or {}))
+    if extra_lesson_name:
+        write_lesson(tmp_path / "lessons" / extra_lesson_name)
+    if write_index:
+        text, _notes = lessons_index.build(tmp_path, today="2026-10-08")
+        write(tmp_path / "lessons" / "index.md", text)
+    if write_eval:
+        eval_dir = tmp_path / "evals" / "cases" / f"0001-{LESSON_SLUG}"
+        if missing_eval_file != "prompt.md":
+            write(eval_dir / "prompt.md", "Incident 0001: x.\n")
+        if missing_eval_file != "checks.yaml":
+            write(eval_dir / "checks.yaml", "checks:\n  - command: pytest\n    exit: 0\n")
+    return tmp_path
+
+
+def _e_ctx(tmp_path):
+    return _ctx(tmp_path, phase="e", entry_route="incident")
+
+
+def test_lesson_and_eval_passes_when_everything_is_present(tmp_path):
+    _lesson_setup(tmp_path)
+    res = checks.lesson_and_eval(_e_ctx(tmp_path))
+    assert res.ok, res.reason
+
+
+def test_lesson_and_eval_does_not_run_outside_an_incident_change_at_gate_e(tmp_path):
+    assert checks.lesson_and_eval(_ctx(tmp_path, phase="e", entry_route="idea")).ok
+    assert checks.lesson_and_eval(_ctx(tmp_path, phase="c", entry_route="incident")).ok
+
+
+def test_lesson_and_eval_guard_holds_even_called_directly_at_phase_f(tmp_path):
+    """The guard itself, not only its absence from CHECKS_BY_PHASE['f']: an incident change
+    at phase (f) has neither the lesson nor the eval yet, and the check must still pass."""
+    res = checks.lesson_and_eval(_ctx(tmp_path, phase="f", entry_route="incident"))
+    assert res.ok, res.reason
+    assert "lesson_and_eval" not in [fn.__name__ for fn in checks.CHECKS_BY_PHASE["f"]]
+
+
+def test_lesson_and_eval_fails_on_a_missing_lesson_file(tmp_path):
+    _lesson_setup(tmp_path, write_lesson_file=False, write_index=False)
+    res = checks.lesson_and_eval(_e_ctx(tmp_path))
+    assert not res.ok
+    assert any("no lesson file matches" in p for p in res.need.split("\n    "))
+
+
+def test_lesson_and_eval_fails_on_two_lesson_files_matching_the_glob(tmp_path):
+    _lesson_setup(tmp_path, extra_lesson_name=f"2026-11-{LESSON_SLUG}.md")
+    res = checks.lesson_and_eval(_e_ctx(tmp_path))
+    assert not res.ok
+    assert any("2 lesson files match" in p for p in res.need.split("\n    "))
+
+
+def test_lesson_and_eval_fails_on_a_missing_required_frontmatter_field(tmp_path):
+    _lesson_setup(tmp_path, lesson_overrides={"change": None}, write_index=False)
+    res = checks.lesson_and_eval(_e_ctx(tmp_path))
+    assert not res.ok
+    assert any("'change' missing or not a scalar" in p for p in res.need.split("\n    "))
+
+
+def test_lesson_and_eval_fails_on_a_wrong_type_frontmatter_field(tmp_path):
+    """A field that is present but the wrong shape (here a scalar where ``tags`` wants a
+    list) is reported with the same wording as an absent one, not as "missing"."""
+    _lesson_setup(tmp_path, lesson_overrides={"tags": "flaky-test"}, write_index=False)
+    res = checks.lesson_and_eval(_e_ctx(tmp_path))
+    assert not res.ok
+    assert any("'tags' missing or not a list" in p for p in res.need.split("\n    "))
+
+
+def test_lesson_and_eval_fails_when_prompt_or_checks_yaml_is_missing(tmp_path):
+    _lesson_setup(tmp_path, missing_eval_file="prompt.md")
+    res = checks.lesson_and_eval(_e_ctx(tmp_path))
+    assert not res.ok
+    assert any("prompt.md is missing" in p for p in res.need.split("\n    "))
+
+    (tmp_path / "evals" / "cases" / f"0001-{LESSON_SLUG}" / "checks.yaml").unlink()
+    write(tmp_path / "evals" / "cases" / f"0001-{LESSON_SLUG}" / "prompt.md", "Incident 0001: x.\n")
+    res = checks.lesson_and_eval(_e_ctx(tmp_path))
+    assert not res.ok
+    assert any("checks.yaml is missing" in p for p in res.need.split("\n    "))
+
+
+def test_lesson_and_eval_fails_on_a_failing_index_check(tmp_path):
+    _lesson_setup(tmp_path, write_index=False)
+    write(tmp_path / "lessons" / "index.md", "# Lessons\n\nhand-edited, wrong\n")
+    res = checks.lesson_and_eval(_e_ctx(tmp_path))
+    assert not res.ok
+    assert any("lessons/index.md is not what" in p for p in res.need.split("\n    "))
+
+
+def test_lesson_and_eval_fails_on_a_dangling_supersedes(tmp_path):
+    _lesson_setup(tmp_path, lesson_overrides={"supersedes": "2099-01-ghost.md"}, write_index=False)
+    res = checks.lesson_and_eval(_e_ctx(tmp_path))
+    assert not res.ok
+    assert any(
+        "supersedes target '2099-01-ghost.md' does not exist" in p for p in res.need.split("\n    ")
+    )
+
+
+def test_lesson_and_eval_fails_on_a_supersedes_path_outside_lessons(tmp_path):
+    _lesson_setup(tmp_path, lesson_overrides={"supersedes": "../secret.txt"}, write_index=False)
+    res = checks.lesson_and_eval(_e_ctx(tmp_path))
+    assert not res.ok
+    assert any(
+        "supersedes must name a lesson file in lessons/" in p for p in res.need.split("\n    ")
+    )
+
+
+def test_lesson_and_eval_fails_on_an_absolute_supersedes_path(tmp_path):
+    target = tmp_path / "lessons" / f"2026-09-earlier-{LESSON_SLUG}.md"
+    write_lesson(target, status="retired")
+    _lesson_setup(tmp_path, lesson_overrides={"supersedes": str(target)}, write_index=False)
+    res = checks.lesson_and_eval(_e_ctx(tmp_path))
+    assert not res.ok
+    assert any(
+        "supersedes must name a lesson file in lessons/" in p for p in res.need.split("\n    ")
+    )
+
+
+def test_lesson_and_eval_fails_on_a_lesson_that_supersedes_itself(tmp_path):
+    _lesson_setup(
+        tmp_path, lesson_overrides={"supersedes": f"2026-10-{LESSON_SLUG}.md"}, write_index=False
+    )
+    res = checks.lesson_and_eval(_e_ctx(tmp_path))
+    assert not res.ok
+    assert any(
+        "supersedes must name a lesson file in lessons/" in p for p in res.need.split("\n    ")
+    )
+
+
+def test_lesson_and_eval_fails_when_the_supersedes_target_was_never_retired(tmp_path):
+    write_lesson(tmp_path / "lessons" / f"2026-09-earlier-{LESSON_SLUG}.md")  # status: stable
+    _lesson_setup(
+        tmp_path,
+        lesson_overrides={"supersedes": f"2026-09-earlier-{LESSON_SLUG}.md"},
+        write_index=False,
+    )
+    res = checks.lesson_and_eval(_e_ctx(tmp_path))
+    assert not res.ok
+    assert any(
+        f"supersedes target '2026-09-earlier-{LESSON_SLUG}.md' has not been retired" in p
+        for p in res.need.split("\n    ")
+    )
+
+
+def test_lesson_and_eval_fails_on_an_out_of_enum_status(tmp_path):
+    _lesson_setup(tmp_path, lesson_overrides={"status": "archived"}, write_index=False)
+    res = checks.lesson_and_eval(_e_ctx(tmp_path))
+    assert not res.ok
+    assert any("status 'archived' is not one of" in p for p in res.need.split("\n    "))
+
+
+def test_lesson_and_eval_renders_every_problem_on_its_own_indented_line(tmp_path):
+    """The whole "what I need from you" block, not just substrings: ``gate.GateResult`` is
+    what the PR description actually shows the owner."""
+    _lesson_setup(tmp_path, write_lesson_file=False, write_index=False, write_eval=False)
+    res = checks.lesson_and_eval(_e_ctx(tmp_path))
+    assert not res.ok and len(res.need.split("\n    ")) >= 3
+    result = gate.GateResult(
+        "0001", "x", "e", "standard", True, "park", [res], "sdlc:needs-human", "a" * 40
+    )
+    block = result.what_i_need()
+    bullet = f"- **lesson_and_eval**: {res.reason}"
+    problems = res.need.split("\n    ")
+    need_lines = [f"  - what I need: {problems[0]}"] + [f"    {p}" for p in problems[1:]]
+    assert bullet in block
+    for line in need_lines:
+        assert line in block.splitlines()
 
 
 def _set_lock(change: Path, locked: bool, unlocked_by=None, change_type="fix") -> None:
