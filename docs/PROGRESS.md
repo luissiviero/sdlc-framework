@@ -31,5 +31,5 @@ claude plugin validate .                                         passed, the one
 
 ## Left
 - Change 0002 through its phases from the design run already started (the owner reviews gate (b)); then R5, R6 and the 0.3.7 gaps in that order (`docs/handoffs/2026-10-08-owner-answers.md`). R6's ROADMAP row is added by the session that merges after PR #143.
-- The next session reads change 0002's design run as PR #130's live check (`branch.branch`, `owner_fields.ok`) and records it in NOTES §37.
+- The next session reads change 0002's design run as PR #130's live check (`branch.branch`, `owner_fields.ok`) and records it in NOTES §37. The design run 37807603086 ended at 16:43 UTC parked at gate (b) on PR #144 (`sdlc:needs-human`: three open concerns, the `auth` risk hit, the adversarial reviewer's escalate on a `python evals/check.py` step that names a file this repository does not have and an eval case folder named `0006-*`). The starting prompt for session 23 is `docs/handoffs/2026-10-08-session-23-prompt.md`.
 - No guardrail row this session: the pin is at 0.3.6 already (`0672873`).
