@@ -1,48 +1,56 @@
 {
-  "at": "2026-10-08T04:52:52Z",
+  "schema_version": 1,
+  "head": "b0e778a559fe985426eaea0e5d52f267034e9b36",
   "findings": [
     {
-      "file": "plugin/gate/checks.py",
-      "line": 1613,
       "pass": "compliance",
-      "rule": "coding-standards rule 7 (no dead/duplicated code) \u2014 doubt stated, since this mirrors the file's existing lazy-import convention for other sibling packages",
-      "severity": "nit",
-      "signature": "34ada9808bfe9220",
-      "summary": "`from lessons import index as lessons_mod` is imported separately in both `_supersedes_problem` (line 1613) and `lesson_and_eval` (line 1635) instead of once and passed through."
+      "severity": "important",
+      "file": "changes/0003-lessons-with-frontmatter-and-a-generated/plan.md",
+      "line": 144,
+      "summary": "This fix round's diff adds three new `lesson_and_eval` fail cases (a `supersedes` value outside `lessons/`, an absolute `supersedes` path, and a lesson superseding itself, all collapsed into one problem line in `plugin/gate/checks.py:_supersedes_problem`, with three new tests in `tests/test_gate.py`), but plan.md's Risk 2 (line 144), Order of work step 2 (line 110) and Proof (line 232) still each enumerate exactly \"eight fail cases\" by name, and plan.md was not touched in this fix commit (`b0e778a`) or any later one; spec.md's Acceptance list is equally stale.",
+      "rule": "REVIEW.md framework rule: \"plan.md must reflect the diff: ... A diff that departs from the plan without a plan.md update in the same commit is non-compliant.\""
     },
     {
+      "pass": "bugs",
+      "severity": "nit",
+      "file": "plugin/lessons/index.py",
+      "line": 280,
+      "summary": "`build()` (and therefore `check()`, which calls it) always runs `lessons_dir.mkdir(parents=True, exist_ok=True)`, so the read-only `index.py check` (and `lesson_and_eval`'s call to it) creates `lessons/` as a side effect even when it only reports drift or failure; carried over from the prior review round (owner's fix-requests.json item 7, explicitly deferred to 0.3.7, still present at this HEAD).",
+      "rule": "doubt stated: low impact (an untracked empty directory is never committed), but every other gate check in plugin/gate/checks.py is read-only on the filesystem"
+    },
+    {
+      "pass": "bugs",
+      "severity": "nit",
+      "file": "plugin/lessons/index.py",
+      "line": 234,
+      "summary": "`_render_line`'s `Tags:` clause joins the raw `fm[\"tags\"]` list as the author wrote it, while the heading grouping uses `normalise_class(e.tags[0])`; an unnormalised class (e.g. \"Flaky Test\") renders under heading `## flaky-test` with a line that still reads `Tags: Flaky Test, ...`, inconsistent with the spec's determinism bullet (\"Tags: class, metric, runbook\" is meant to be the normalised class); owner's fix-requests.json item 5, explicitly deferred to 0.3.7.",
+      "rule": "doubt stated: owner already triaged this as can-wait; spec.md's determinism bullet is the rule it falls short of"
+    },
+    {
+      "pass": "bugs",
+      "severity": "nit",
       "file": "plugin/lessons/index.py",
       "line": 207,
-      "pass": "bugs",
-      "rule": "doubt stated: spec.md's determinism bullet does not call for escaping, and no source file or test exercises such a title today",
-      "severity": "nit",
-      "signature": "fc1a14330d8dd702",
-      "summary": "`_render_line`/`_render_unsorted_line` interpolate `title`/`description`/the first heading into a markdown link with no escaping, so a value containing `]` or `(` would break the generated link in `lessons/index.md`."
+      "summary": "`_render_line`/`_render_unsorted_line` interpolate `title`/`description`/the first heading into a markdown link with no escaping, so a value containing `]` or `(` would break the generated link in `lessons/index.md`; carried over unaddressed from the prior review round's findings for commit 37e2dfad6c.",
+      "rule": "doubt stated: spec.md's determinism bullet does not call for escaping, and no source file or test exercises such a title today"
     },
     {
-      "file": "plugin/lessons/index.py",
-      "line": 256,
-      "pass": "bugs",
-      "rule": "doubt stated: low impact since an untracked empty directory is never committed, but every other gate check in plugin/gate/checks.py is read-only on the filesystem",
+      "pass": "compliance",
       "severity": "nit",
-      "signature": "950660319abebb54",
-      "summary": "`build()` (called by `check()`) always runs `lessons_dir.mkdir(parents=True, exist_ok=True)`, so the read-only `index.py check` (and `lesson_and_eval`'s call to it) creates `lessons/` as a side effect even when it only reports drift or failure."
+      "file": "plugin/gate/checks.py",
+      "line": 1616,
+      "summary": "`from lessons import index as lessons_mod` is imported separately in both `_supersedes_problem` (line 1616) and `lesson_and_eval` (line 1644) instead of once and passed through; carried over unaddressed from the prior review round's findings for commit 37e2dfad6c.",
+      "rule": "coding-standards rule 7 (no dead/duplicated code) — doubt stated, since this mirrors the file's existing lazy-import convention for other sibling packages"
     },
     {
+      "pass": "compliance",
+      "severity": "nit",
       "file": "template/lessons/README.md",
       "line": 45,
-      "pass": "compliance",
-      "rule": "spec.md Requirements, first bullet (sources field) \u2014 doubt stated: documentation completeness only, the rule itself is stated in prose just above the example",
-      "severity": "nit",
-      "signature": "63ff93b40ff8364f",
-      "summary": "The example frontmatter's `sources` list omits a sample `run-<n>` entry even though spec.md's Requirements say `sources` includes \"one `run-<n>` per failed run `detection.json` lists\"."
+      "summary": "The example frontmatter's `sources` list (lines 45-51) omits a sample `run-<n>` entry even though spec.md's Requirements say `sources` includes \"one `run-<n>` per failed run `detection.json` lists\"; carried over unaddressed from the prior review round's findings for commit 37e2dfad6c.",
+      "rule": "spec.md Requirements, first bullet (sources field) — doubt stated: documentation completeness only, the rule itself is stated in prose just above the example"
     }
   ],
-  "head": "37e2dfad6c81cc5353d7eeb8da04ee44f40a2fd1",
-  "schema_version": 1,
-  "tally": {
-    "important": 0,
-    "nit": 4,
-    "nits_omitted": 0
-  }
+  "tally": {"important": 1, "nit": 5, "nits_omitted": 5},
+  "at": "2026-10-08T06:29:01Z"
 }

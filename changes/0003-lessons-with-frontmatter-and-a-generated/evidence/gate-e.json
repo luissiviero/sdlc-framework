@@ -5,12 +5,12 @@
   "phase": "e",
   "profile": "standard",
   "human_gate": true,
-  "result": "wait",
-  "label": "sdlc:e-ready",
-  "head": "37e2dfad6c81cc5353d7eeb8da04ee44f40a2fd1",
-  "at": "2026-10-08T04:53:33Z",
+  "result": "park",
+  "label": "sdlc:needs-human",
+  "head": "b0e778a559fe985426eaea0e5d52f267034e9b36",
+  "at": "2026-10-08T06:21:43Z",
   "dry_run": false,
-  "reason": "",
+  "reason": "findings: findings are for commit 37e2dfad6c, HEAD is b0e778a559",
   "config_note": "",
   "checks": [
     {
@@ -19,15 +19,15 @@
       "reason": "within the run limits",
       "need": "",
       "details": {
-        "iterations": 1,
+        "iterations": 2,
         "cap": 2,
         "classification": "non-routine",
         "panel_calls": 0,
         "panel_cap": 4,
-        "elapsed_minutes": 7.5,
+        "elapsed_minutes": 23.1,
         "spend_usd": null,
-        "spend_usd_total": 35.115266,
-        "spend_entries": 7,
+        "spend_usd_total": 36.591469,
+        "spend_entries": 8,
         "max_budget_usd": null
       }
     },
@@ -38,7 +38,6 @@
       "need": "",
       "details": {
         "ignored": [
-          "changes/.review-seen.json",
           "tests/fixtures/sample-python-project/.env"
         ]
       }
@@ -67,27 +66,10 @@
     {
       "name": "commands",
       "ok": true,
-      "reason": "build, test and lint exit 0",
+      "reason": "deferred to the runner: build, test and lint run after the model's session, outside its sandbox (issue #91); not yet run",
       "need": "",
       "details": {
-        "runs": {
-          "build": {
-            "command": "python -m compileall -q plugin tests tasks.py",
-            "exit_code": 0,
-            "output": ""
-          },
-          "test": {
-            "command": "python -m pytest",
-            "exit_code": 0,
-            "output": "........................................................................ [  5%]\n........................................................................ [ 10%]\n........................................................................ [ 15%]\n........................................................................ [ 20%]\n........................................................................ [ 25%]\n........................................................................ [ 30%]\n........................................................................ [ 35%]\n........................................................................ [ 40%]\n........................................................................ [ 45%]\n........................................................................ [ 50%]\n........................................................................ [ 55%]\n........................................................................ [ 60%]\n........................................................................ [ 65%]\n........................................................................ [ 70%]\n........................................................................ [ 75%]\n........................................................................ [ 80%]\n........................................................................ [ 85%]\n........................................................................ [ 90%]\n........................................................................ [ 95%]\n.............................................................            [100%]\n1429 passed in 279.52s (0:04:39)\n"
-          },
-          "lint": {
-            "command": "python -m ruff check .",
-            "exit_code": 0,
-            "output": "All checks passed!\n"
-          }
-        },
-        "ran_by": "runner"
+        "deferred": true
       }
     },
     {
@@ -99,15 +81,11 @@
     },
     {
       "name": "findings",
-      "ok": true,
-      "reason": "no Important review finding",
-      "need": "",
+      "ok": false,
+      "reason": "findings are for commit 37e2dfad6c, HEAD is b0e778a559",
+      "need": "Re-run the review pass on the current HEAD.",
       "details": {
-        "tally": {
-          "important": 0,
-          "nit": 4,
-          "nits_omitted": 0
-        }
+        "stale": true
       }
     },
     {
@@ -157,10 +135,13 @@
     {
       "name": "adversarial_review",
       "ok": true,
-      "reason": "no adversarial verdict required at gate (e)",
+      "reason": "adversarial reviewer says continue",
       "need": "",
-      "details": {}
+      "details": {
+        "classification": "non-routine",
+        "reasons": []
+      }
     }
   ],
-  "what_i_need": ""
+  "what_i_need": "## What I need from you\nGate (e) parked change 0003 (lessons-with-frontmatter-and-a-generated) on 2026-10-08T06:21:43Z.\n- **findings**: findings are for commit 37e2dfad6c, HEAD is b0e778a559\n  - what I need: Re-run the review pass on the current HEAD.\nWhen the item is settled, re-run the gate: `python \"${CLAUDE_PLUGIN_ROOT}/plugin/gate/cli.py\" check --root . --id 0003 --phase e` (review comments are the change request; /sdlc-fix from B3 re-runs the phase with them).\n"
 }

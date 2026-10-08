@@ -107,11 +107,13 @@
    split, `build` and `check`, and
    `tests/test_lessons.py` in the same commit (coding-standards rule 4: no behavior change
    without a test that fails without it).
-2. `plugin/gate/artifacts.py` + `plugin/gate/checks.py`'s new `lesson_and_eval` check (eight
+2. `plugin/gate/artifacts.py` + `plugin/gate/checks.py`'s new `lesson_and_eval` check (nine
    fail cases: missing lesson, two lesson files matching the glob, missing a required
    frontmatter field, `prompt.md` or
    `checks.yaml` missing, a failing `index.py check`, a dangling `supersedes`, a `supersedes` target whose
-   `status` did not move to `retired`, an out-of-enum `status`), and the matching new cases
+   `status` did not move to `retired`, an out-of-enum `status`, a `supersedes` value that is
+   not a bare lesson file name — outside `lessons/`, absolute, or the lesson's own name —
+   fix round, PR #132), and the matching new cases
    in `tests/test_gate.py`, in the same commit — this is the riskiest step (see Risks) and
    should land as its own reviewable unit, not folded into step 1 or 3.
 3. `plugin/commands/sdlc-deploy.md` step 0b and `plugin/commands/sdlc-maintain.md` step 1,
@@ -129,7 +131,7 @@
 1. **What this could break.** Every project pinned to this plugin version going forward:
    `/sdlc-deploy` step 0b (writes a lesson differently), `/sdlc-maintain` step 1 (reads
    `lessons/` differently), and gate (e) for any `entry_route: incident` change (one new way
-   to park, with up to eight reasons). No caller is touched retroactively: a project stays
+   to park, with up to nine reasons). No caller is touched retroactively: a project stays
    on its pinned version until it bumps it (decision 8), and the sample repository is frozen
    at 0.2.30 until item 11 of `HANDOFF.md` — not a caller of this version at all right now.
    No database schema or stored row is touched; the only data shapes are the markdown
@@ -153,7 +155,8 @@
    field, `prompt.md` or `checks.yaml`
    missing, a failing
    `index.py check`, a dangling `supersedes`, a `supersedes` target whose `status` did not
-   move to `retired`, an out-of-enum `status`) individually, plus the existing gate (f) case
+   move to `retired`, an out-of-enum `status`, a `supersedes` value that is not a bare
+   lesson file name) individually, plus the existing gate (f) case
    (`test_gate_f_waits_for_the_owner_s_triage_with_the_finding_and_its_route`,
    `test_gate.py:2341-2354`) still passing unchanged, so a regression in the new check or its
    guard fails its own assertion, not just the suite in general.
@@ -223,7 +226,8 @@
 ## Proof
 - `tests/test_lessons.py` (new, to be written): ordering by first tag, newest-first within a
   heading, `## Retired` before `## Unsorted`, `README.md`/`index.md` excluded, a malformed
-  frontmatter file under `## Unsorted` with no crash, a zero-lesson tree, the `(stale)`
+  frontmatter file, a non-UTF-8 lesson file and a bad-shaped `detected.at`/`stale_after`
+  value each under `## Unsorted` with no crash, a zero-lesson tree, the `(stale)`
   marker with `--today` and its removal before comparing, `check` exit 0 on a built index
   (CRLF included) and exit 1 with a diff on a drifted one, class normalisation
   (`flaky-test`/`flaky_test`/`Flaky Test` sharing one heading), and a lesson
@@ -234,7 +238,9 @@
   all-present pass case and each new fail case (missing lesson, two lesson files matching
   the glob, missing frontmatter field,
   `prompt.md` or `checks.yaml` missing, failing `index.py check`, dangling `supersedes`, a `supersedes`
-  target whose `status` did not move to `retired`, out-of-enum `status`), each asserting the
+  target whose `status` did not move to `retired`, out-of-enum `status`, and a `supersedes`
+  value that is not a bare lesson file name — outside `lessons/`, absolute, or the lesson's
+  own name), each asserting the
   whole rendered "what I need from you" block with one problem per indented line; one unit
   test calling `lesson_and_eval` directly with a phase-(f) incident context asserting it
   passes, proving the guard itself and not only its registration; plus confirming
