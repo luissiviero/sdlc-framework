@@ -13,7 +13,16 @@
 - This repository: the runs and files of NOTES §36; `main` at `2058a27` at the start and `3cd27b1` at the resume; the tags `v0.3.5` (`22ff82c`) and `v0.3.6` (`eca1af2`); PR #143 open (draft) at the resume, so R6's row is not added here.
 
 ## Checks (this repository)
-Chained on the exit codes with `set -o pipefail`, on the final tree (see "Checks on the final tree" below; the start-of-session run on `2058a27`: `1401 passed in 591.44s`, `CHAIN EXIT 0`, `claude plugin validate .` the one `CLAUDE.md` warning; Claude Code 2.1.293, Python 3.13.16).
+Chained on the exit codes with `set -o pipefail` in the container, on the final tree (`main` `3cd27b1` merged in; Claude Code 2.1.293, Python 3.13.16; the start-of-session run on `2058a27` gave `1401 passed in 591.44s`, `CHAIN EXIT 0`):
+```
+python -m compileall -q plugin tests tasks.py .github/scripts   (no output; exit 0)
+python tasks.py check:
+  python -m ruff check .                                         All checks passed!
+  python -m ruff format --check .                                180 files already formatted
+  python -m pytest                                               1454 passed in 695.72s (0:11:35)
+CHAIN EXIT 0
+claude plugin validate .                                         passed, the one CLAUDE.md-at-the-root warning
+```
 
 ## Known gaps (carried)
 - The 0.3.7 candidates from this session: the turn cap's sizing and failure shape (above); the ten uncovered review items (`docs/handoffs/2026-10-08-pr132-review-3-text.md`). The adversarial reviewer's wrong `at` stamp recurred three times in these runs (00:00:00Z at the (c) round, 05:10:00Z at (d)).
