@@ -290,5 +290,52 @@ touched by this round (`tests/test_gate.py -k "supersedes or lesson_and_eval or
 month_label or date_only"`, all of `tests/test_lessons.py`, all of
 `tests/test_commands_and_skills.py`) passed in isolation from the masked fixture.
 
+## Self-found gaps (not from the owner)
+1. The plan.md/spec.md sync fix above (applying items 1-3) left two "Files that change"
+   bullets and the Acceptance list behind: `checks.py`'s and `test_gate.py`'s bullets still
+   enumerated the old eight fail cases, and `test_lessons.py`'s bullet still said only
+   "malformed frontmatter" (missing the non-UTF-8 and bad-date-shape cases). A re-review
+   caught it; fixed in commit `00ddfc7`, re-reviewed clean.
+2. The first adversarial pass at HEAD `00ddfc7` escalated because `evidence/verifier.md`
+   was still the phase (d) report — stale for this round's code changes. A fresh
+   `sdlc:verifier` sub-agent ran and exercised `_supersedes_problem` and
+   `plugin/lessons/index.py build`/`check` directly (path-traversal, absolute, self-
+   reference and secret-content inputs for the first; wrong-type `stale_after`,
+   out-of-range `detected.at`, non-UTF-8 file for the second); this session then failed to
+   write its report to `evidence/verifier.md` (the verifier agent has no Write tool — the
+   calling session persists its report, and this round's session initially did not).
+   Caught on the next adversarial pass; `evidence/verifier.md` written from the sub-agent's
+   actual report, re-reviewed: `continue`.
+
+## Iteration cap: a process error, not a content problem
+`/sdlc-fix` step 2 already bumped the iteration counter once for this round (1 → 2, at the
+cap, not over it) before any work started. Resolving the phase (e) `findings` check's
+staleness (the review pass needed to run on this round's new HEAD; see "Self-found gaps"
+above) led this session to also call `/sdlc-deploy` step 2's own `bump-iteration` — a second
+bump within the same already-registered `/sdlc-fix` round, which pushed the counter to 3
+against the non-routine cap of 2. There is no self-service undo (only the owner's
+`sdlc:reset-iterations` label, or `set-iterations` by hand, lifts it), so gate (e) now parks
+on `limits` regardless of the content above, all of which is otherwise complete and green:
+the three owner-requested fixes, the two self-found plan/spec sync gaps, the refreshed
+review pass, and the fresh verifier evidence.
+
+## The 4 Important findings on this round's final review pass
+Documented separately in `evidence/review-response.md`: the framework's second-occurrence
+rule fired on four pre-existing nits (three of them the owner's own PR #132 review already
+marked "can wait for the tag (0.3.7)") because this round's own extra review re-runs (to
+chase the plan.md sync gaps above) crossed the recurrence threshold inside one round rather
+than across separate historical ones. The rule's actual remedy — proposing the one-line
+`CLAUDE.md` entries — is satisfied (`evidence/claude-md-proposals.md`, carried into the PR
+body by `pr/cli.py upsert`); the underlying code is not changed, per the owner's own
+deferral and to avoid scope creep beyond what either the owner or this round's intent asked
+for.
+
 ## Verdict and gate (phase e)
-See `evidence/gate-e.json` and the adversarial review recorded for this round's HEAD.
+Adversarial review: `continue` (at HEAD `00ddfc7e177c2bdb289e0ec10fbf7fca9e9824e5`, after the
+verifier-evidence gap above was closed). Panel: mode `parked`, no pending items. Gate (e):
+`park` — `limits: iteration cap reached: 3 fix iterations, cap 2 (non-routine)`, label
+`sdlc:needs-human`. What's needed from the owner: `sdlc:reset-iterations` (or
+`set-iterations --count 0`) to open another round, if one is wanted; otherwise the three
+requested fixes, the plan/spec sync, and the fresh verifier/review evidence all stand as
+committed and green, and the four proposed `CLAUDE.md` lines are ready to apply from the PR
+body.
