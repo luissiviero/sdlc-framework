@@ -351,6 +351,44 @@ def test_sdlc_deploy_flow_matches_step_26():
     assert text.index("## 0a.") < text.index("## 0b.") < text.index("## 1. Review passes")
 
 
+def test_sdlc_deploy_writes_the_lesson_s_frontmatter_and_rebuilds_the_index():
+    """Change 0003: the lesson's frontmatter fields, each from a named source, the
+    ``supersedes``/``retired_by`` edit to the earlier lesson, and the index rebuild in the
+    same commit as the lesson and the eval."""
+    path = COMMANDS / "sdlc-deploy.md"
+    text = flat(path)
+    step = text[text.index("## 0b.") : text.index("## 1. Review passes")]
+    for token in [
+        "type",
+        "`title`",
+        "status.yaml: title",
+        "description",
+        "tags",
+        "status.yaml: id",
+        "detected",
+        "evidence/detection.json",
+        "evidence/scan-finding.json",
+        "fixed",
+        "status.yaml: build_pr",
+        "runbook",
+        "evidence/proposal.json: route",
+        "supersedes",
+        "status: retired",
+        "retired_by",
+        "generated",
+        "stale_after",
+        "lessons.stale_after_months",
+        "sources",
+        'lessons/index.py" build',
+        "never hand-edit",
+        "lesson_and_eval",
+    ]:
+        assert token in step, token
+    assert step.index('evals/case.py" new') < step.index('lessons/index.py" build')
+    fm = frontmatter(path)
+    assert 'Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/lessons/index.py" *)' in fm["allowed-tools"]
+
+
 def test_sdlc_fix_flow_matches_the_change_request_loop():
     text = flat(COMMANDS / "sdlc-fix.md")
     for token in ["bump-iteration", "park", "decided", "upsert", "Never merge"]:
@@ -619,6 +657,27 @@ def test_sdlc_maintain_flow_matches_step_37():
     assert text.index("commit-phase") < text.index('detect/cli.py" dispatch')
     assert text.index('detect/cli.py" dispatch') < text.index(GATE_CHECK)
     assert text.index(GATE_START_RUN) < text.index(GATE_CHECK)
+
+
+def test_sdlc_maintain_reads_the_generated_index_first():
+    """Change 0003: the diagnosis reads ``lessons/index.md`` and opens only the lessons its
+    tags name, falling back to every file when the index is stale or missing, and never
+    rebuilds the index itself (that is `/sdlc-deploy` step 0b)."""
+    path = COMMANDS / "sdlc-maintain.md"
+    text = flat(path)
+    fm = frontmatter(path)
+    assert 'Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/lessons/index.py" *)' in fm["allowed-tools"]
+    for token in [
+        "lessons/index.md",
+        'lessons/index.py" check',
+        "Tags",
+        "## Retired",
+        "stale or missing",
+        "## Evidence",
+        "(stale)",
+        "never rebuild",
+    ]:
+        assert token in text, token
 
 
 def test_sdlc_init_commits_every_path_the_install_writes():
