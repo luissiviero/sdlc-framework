@@ -1,5 +1,5 @@
 {
-  "at": "2026-10-08T04:45:03Z",
+  "at": "2026-10-08T04:52:52Z",
   "findings": [
     {
       "file": "plugin/gate/checks.py",
@@ -17,16 +17,16 @@
       "rule": "doubt stated: spec.md's determinism bullet does not call for escaping, and no source file or test exercises such a title today",
       "severity": "nit",
       "signature": "fc1a14330d8dd702",
-      "summary": "`_render_line`/`_render_unsorted_line` interpolate `title`/`description`/the first heading into `[text](file)` with no escaping, so a value containing `]` or `(` would break the generated markdown link."
+      "summary": "`_render_line`/`_render_unsorted_line` interpolate `title`/`description`/the first heading into a markdown link with no escaping, so a value containing `]` or `(` would break the generated link in `lessons/index.md`."
     },
     {
       "file": "plugin/lessons/index.py",
       "line": 256,
       "pass": "bugs",
-      "rule": "doubt stated: low impact since an empty directory is not tracked by git and nothing commits it, but every other gate check in plugin/gate/checks.py is read-only on the filesystem",
+      "rule": "doubt stated: low impact since an untracked empty directory is never committed, but every other gate check in plugin/gate/checks.py is read-only on the filesystem",
       "severity": "nit",
       "signature": "950660319abebb54",
-      "summary": "`build()` (called by `check()`) always runs `lessons_dir.mkdir(parents=True, exist_ok=True)`, so the read-only `index.py check` (and `lesson_and_eval`'s call to it) creates `lessons/` as a side effect even when it reports drift or failure."
+      "summary": "`build()` (called by `check()`) always runs `lessons_dir.mkdir(parents=True, exist_ok=True)`, so the read-only `index.py check` (and `lesson_and_eval`'s call to it) creates `lessons/` as a side effect even when it only reports drift or failure."
     },
     {
       "file": "template/lessons/README.md",
@@ -38,7 +38,7 @@
       "summary": "The example frontmatter's `sources` list omits a sample `run-<n>` entry even though spec.md's Requirements say `sources` includes \"one `run-<n>` per failed run `detection.json` lists\"."
     }
   ],
-  "head": "48f38e9502de89af968423cb29d3df90f643868e",
+  "head": "37e2dfad6c81cc5353d7eeb8da04ee44f40a2fd1",
   "schema_version": 1,
   "tally": {
     "important": 0,

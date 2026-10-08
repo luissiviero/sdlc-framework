@@ -1,16 +1,16 @@
 id: "0003"
 slug: lessons-with-frontmatter-and-a-generated
 title: Lessons with frontmatter and a generated index
-phase: d
+phase: e
 entry_route: idea
 change_type: feature
 profile_override: null
 review_override: null
 gate:
-  phase: d
+  phase: e
   result: passed
-  reason: null
-  at: "2026-10-08T04:36:24Z"
+  reason: waiting for the owner at gate (e)
+  at: "2026-10-08T04:53:33Z"
 parked_reason: null
 iterations: 1
 panel_calls: 0
@@ -28,5 +28,5 @@ released_at: null
 released_sha: null
 released_pr: null
 created_at: "2026-10-06T03:12:18Z"
-updated_at: "2026-10-08T04:36:24Z"
+updated_at: "2026-10-08T04:53:33Z"
 schema_version: 1

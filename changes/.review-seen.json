@@ -32,11 +32,11 @@
     "summary": "Unchanged from the previous two rounds: the CLAUDE.md guardrail table still has only 3 rows (lines 3, new-line-after-3, 35); spec.md's Acceptance text also names line 39, addressed only in the Summary's prose (explaining no edit is needed there), never as a table row."
   },
   "34ada9808bfe9220": {
-    "count": 1,
+    "count": 2,
     "file": "plugin/gate/checks.py",
     "first_change": "0003",
     "last_change": "0003",
-    "last_seen": "2026-10-08T04:45:25Z",
+    "last_seen": "2026-10-08T04:53:25Z",
     "summary": "`from lessons import index as lessons_mod` is imported separately in both `_supersedes_problem` (line 1613) and `lesson_and_eval` (line 1635) instead of once and passed through."
   },
   "3534444a4c1cb752": {
@@ -64,11 +64,11 @@
     "summary": "The new top-level record's summary says the split covered \"docs/NOTES.md (30 sections)\", but docs/notes/ holds 32 section files (1-32) and docs/notes/index.md lists 32, so the record's own prose undercounts by two."
   },
   "63ff93b40ff8364f": {
-    "count": 1,
+    "count": 2,
     "file": "template/lessons/README.md",
     "first_change": "0003",
     "last_change": "0003",
-    "last_seen": "2026-10-08T04:45:25Z",
+    "last_seen": "2026-10-08T04:53:25Z",
     "summary": "The example frontmatter's `sources` list omits a sample `run-<n>` entry even though spec.md's Requirements say `sources` includes \"one `run-<n>` per failed run `detection.json` lists\"."
   },
   "65fcfd3d367f9a77": {
@@ -104,12 +104,12 @@
     "summary": "Unchanged from the previous two rounds: docs/PROGRESS.md still holds four top-level records (the split entry plus three \"session 18\" sittings), not just the one current record spec.md's Requirements describe; traced, as before, to a later merge of main bringing in sessions this change's own commits never touched, not to this round's edits."
   },
   "950660319abebb54": {
-    "count": 1,
+    "count": 2,
     "file": "plugin/lessons/index.py",
     "first_change": "0003",
     "last_change": "0003",
-    "last_seen": "2026-10-08T04:45:25Z",
-    "summary": "`build()` (called by `check()`) always runs `lessons_dir.mkdir(parents=True, exist_ok=True)`, so the read-only `index.py check` (and `lesson_and_eval`'s call to it) creates `lessons/` as a side effect even when it reports drift or failure."
+    "last_seen": "2026-10-08T04:53:25Z",
+    "summary": "`build()` (called by `check()`) always runs `lessons_dir.mkdir(parents=True, exist_ok=True)`, so the read-only `index.py check` (and `lesson_and_eval`'s call to it) creates `lessons/` as a side effect even when it only reports drift or failure."
   },
   "af228dac9a462c15": {
     "count": 1,
@@ -168,11 +168,11 @@
     "summary": "verified_with in the docs/notes/<N>.md frontmatter carries only the Claude Code version in 30 of 32 files (and never a runner value in any of the 32), not the three-part \"Claude Code version, plugin version, runner\" the spec requires."
   },
   "fc1a14330d8dd702": {
-    "count": 1,
+    "count": 2,
     "file": "plugin/lessons/index.py",
     "first_change": "0003",
     "last_change": "0003",
-    "last_seen": "2026-10-08T04:45:25Z",
-    "summary": "`_render_line`/`_render_unsorted_line` interpolate `title`/`description`/the first heading into `[text](file)` with no escaping, so a value containing `]` or `(` would break the generated markdown link."
+    "last_seen": "2026-10-08T04:53:25Z",
+    "summary": "`_render_line`/`_render_unsorted_line` interpolate `title`/`description`/the first heading into a markdown link with no escaping, so a value containing `]` or `(` would break the generated link in `lessons/index.md`."
   }
 }
