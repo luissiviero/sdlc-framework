@@ -304,7 +304,8 @@ Change id: 0003. Status: proposed. Produced by: sdlc plugin 0.3.5, /sdlc-design 
   excluded from the build, a malformed-frontmatter file listed under `## Unsorted` with no
   crash, a zero-lesson index, `check`'s exit 1 and diff on a drifted index (a CRLF copy of a
   correct index must pass); the gate's new `lesson_and_eval` check at phase (e) only, with
-  one test per fail case (missing lesson, missing a required frontmatter field, `prompt.md`
+  one test per fail case (missing lesson, two lesson files matching the glob, missing a
+  required frontmatter field, `prompt.md`
   or `checks.yaml` missing, failing `index.py check`, a dangling `supersedes`, a `supersedes`
   target whose `status` did not actually move to `retired`, an out-of-enum `status`)
   asserting the whole rendered "what I need from you" block, each problem on its own

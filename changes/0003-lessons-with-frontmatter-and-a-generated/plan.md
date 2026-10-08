@@ -31,7 +31,9 @@
   `ctx.status.entry_route == "incident" and ctx.phase == "e"` (not inside
   `check_artifacts`'s `entry_route == "incident"` branch, `checks.py:205-211`, which every
   gate from `a` to `f` runs and would otherwise require the lesson and the eval at gate (f)
-  too, before either exists): lesson file exists and carries every required frontmatter
+  too, before either exists): exactly one lesson file matches the glob
+  `lessons/[0-9][0-9][0-9][0-9]-[0-9][0-9]-<slug>.md` (zero matches fails as "missing
+  lesson", more than one match fails too) and it carries every required frontmatter
   field; `evals/cases/<id>-<slug>/prompt.md` and `checks.yaml` both exist;
   `plugin/lessons/index.py check` passes; a
   `supersedes` target that does not exist fails, and so does one whose `status` did not
@@ -85,7 +87,8 @@
   (`_ctx(tmp_path, phase="e")`, the existing helper at `test_gate.py:364`, with the route
   set), since no (e) incident fixture exists yet (the one at `test_gate.py:2306-2338`,
   `maintain_project`, is phase (f)); the all-present pass case and one test per fail case
-  (missing lesson, missing a required frontmatter field, `prompt.md` or `checks.yaml`
+  (missing lesson, two lesson files matching the glob, missing a required frontmatter
+  field, `prompt.md` or `checks.yaml`
   missing, a failing
   `index.py check`, a dangling `supersedes`, a `supersedes` target whose `status` did not
   move to `retired`, an out-of-enum `status`), each asserting the whole rendered "what I
@@ -104,8 +107,9 @@
    split, `build` and `check`, and
    `tests/test_lessons.py` in the same commit (coding-standards rule 4: no behavior change
    without a test that fails without it).
-2. `plugin/gate/artifacts.py` + `plugin/gate/checks.py`'s new `lesson_and_eval` check (seven
-   fail cases: missing lesson, missing a required frontmatter field, `prompt.md` or
+2. `plugin/gate/artifacts.py` + `plugin/gate/checks.py`'s new `lesson_and_eval` check (eight
+   fail cases: missing lesson, two lesson files matching the glob, missing a required
+   frontmatter field, `prompt.md` or
    `checks.yaml` missing, a failing `index.py check`, a dangling `supersedes`, a `supersedes` target whose
    `status` did not move to `retired`, an out-of-enum `status`), and the matching new cases
    in `tests/test_gate.py`, in the same commit — this is the riskiest step (see Risks) and
@@ -125,7 +129,7 @@
 1. **What this could break.** Every project pinned to this plugin version going forward:
    `/sdlc-deploy` step 0b (writes a lesson differently), `/sdlc-maintain` step 1 (reads
    `lessons/` differently), and gate (e) for any `entry_route: incident` change (one new way
-   to park, with up to seven reasons). No caller is touched retroactively: a project stays
+   to park, with up to eight reasons). No caller is touched retroactively: a project stays
    on its pinned version until it bumps it (decision 8), and the sample repository is frozen
    at 0.2.30 until item 11 of `HANDOFF.md` — not a caller of this version at all right now.
    No database schema or stored row is touched; the only data shapes are the markdown
@@ -145,7 +149,8 @@
    gate (f) before the lesson or the eval exists (the first draft of this plan made exactly
    that mistake; the guard is `entry_route == "incident" and ctx.phase == "e"`). Mitigation:
    `tests/test_gate.py` must cover both the all-present pass case and every new fail case
-   (missing lesson, missing a required frontmatter field, `prompt.md` or `checks.yaml`
+   (missing lesson, two lesson files matching the glob, missing a required frontmatter
+   field, `prompt.md` or `checks.yaml`
    missing, a failing
    `index.py check`, a dangling `supersedes`, a `supersedes` target whose `status` did not
    move to `retired`, an out-of-enum `status`) individually, plus the existing gate (f) case
@@ -226,7 +231,8 @@
   second `---`.
 - `tests/test_gate.py` (existing file, new cases to be written): a new phase-(e)-incident
   fixture (none exists today; the one at `test_gate.py:2306-2338` is phase (f)) carrying the
-  all-present pass case and each new fail case (missing lesson, missing frontmatter field,
+  all-present pass case and each new fail case (missing lesson, two lesson files matching
+  the glob, missing frontmatter field,
   `prompt.md` or `checks.yaml` missing, failing `index.py check`, dangling `supersedes`, a `supersedes`
   target whose `status` did not move to `retired`, out-of-enum `status`), each asserting the
   whole rendered "what I need from you" block with one problem per indented line; one unit
