@@ -71,3 +71,107 @@ was empty, so every line below is applied.
 Adversarial review (phase b): continue, non-routine, at HEAD `22ef512` (after the one
 reviewer-noted 6-vs-7 count fix, re-reviewed). Panel: mode `parked`, no pending items.
 Gate (b): `wait`, label `sdlc:b-ready`, no park.
+
+---
+
+# Fix response — change 0003, phase (b), round 2
+
+Source: `evidence/fix-requests.json`, PR #124 review #5449795190 (OWNER,
+`CHANGES_REQUESTED`, "iteration 2 of 2", 2026-10-07). All 17 items were from a repository
+member and are applied below. One item in the source file's `not_applied` was left out:
+review #5444556016 (OWNER) — not applied: the review was dismissed.
+
+**What changes the build**
+1. `flakytest` replaced with `Flaky Test` (the decided normalisation rule maps `flakytest`
+   to itself, not to `flaky-test`, so it did not demonstrate the rule) in spec.md Flagged
+   concerns and plan.md's `test_lessons.py` item; also added to plan.md/spec.md's Proof and
+   Acceptance mentions of the class-normalisation test for consistency. Commit `ac1ce30`.
+2. Index line now ends with a `Tags:` clause (class, metric, runbook; runbook omitted when
+   absent); `/sdlc-maintain` step 1 opens the lessons whose heading **or** tags name the
+   metric or rule. spec.md's determinism bullet and `/sdlc-maintain` bullet; plan.md's
+   `index.py` and `sdlc-maintain.md` items. Commit `ac1ce30`.
+3. `CheckResult.need` now joins problems with `"\n    "` (newline + four spaces), not `"\n"`,
+   so later problems render indented under the gate's one `  - what I need: <need>` bullet
+   instead of at column 0; tests assert the whole rendered block. spec.md Requirements,
+   Design and Acceptance; plan.md's `checks.py` item, `test_gate.py` item and Proof. Commit
+   `ac1ce30`.
+4. `prompt.md`/`checks.yaml` are now constants in `plugin/gate/artifacts.py` itself (with a
+   comment naming `case.py:178` as the writer that must agree), not imported from
+   `plugin/evals/case.py`; the conditional dropped, `case.py` stays untouched. plan.md's
+   `artifacts.py` item. Commit `ac1ce30`.
+5. "Prompt.md and checks.yaml both exist" used everywhere instead of "the eval case folder
+   exists"; the fail case renamed "`prompt.md` or `checks.yaml` missing" throughout spec.md
+   and plan.md. Commit `ac1ce30`.
+
+**spec.md: sentences the first review asked for, restored as their own bullets**
+6. New Requirements bullet: the index is written with `Path.write_text(...,
+   newline="\n")`, `check` compares in universal-newline mode, every link uses the native
+   path's `.as_posix()` (`Path(...).as_posix()`, as `case.py:181` does — not
+   `PurePosixPath(str(p)).as_posix()`, which keeps a Windows path's backslashes
+   unconverted). Also corrected in Design and in Flagged concern 3, which had the wrong
+   call. Commit `ac1ce30`.
+7. Added the sentence: `check` exits 0 with `## Unsorted` entries present and prints one
+   note line per `## Unsorted` file; only a drift of the generated text is exit 1. Reworded
+   the README bullet to say the same. Commit `ac1ce30`.
+8. Acceptance now names `--today` fixing the clock alongside the class-normalisation test.
+   Commit `ac1ce30`.
+9. The `sources` sentence now states the `detection` resource is `evidence/detection.json`
+   or `evidence/scan-finding.json`; "read through `plugin/detect/finding.read_any`" replaced
+   with "with the mapping `finding.read_any` implements (`finding.py:150-160`)" in
+   Requirements and in Design's Field sources bullet (step 0b is instruction text; nothing
+   in the plan calls that function). Commit `ac1ce30`.
+10. New Requirements bullet naming the `allowed-tools` addition
+    (`Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/lessons/index.py" *)`) on both command
+    files. Commit `ac1ce30`.
+11. Seven restored intent sentences split into their own Requirements bullets: `description`
+    is one sentence in the metric's terms; a stale lesson is still read and logged when
+    relied on; a hand edit of the index is undone by the next `build`; `/sdlc-init` copies
+    the README unchanged; no workflow template changes; the sample stays frozen; decisions
+    8, 9, 17 unchanged (previously folded into other bullets). Commit `ac1ce30`.
+
+**spec.md: determinism the build would otherwise guess**
+12. Determinism bullet rewritten: index opens with `# Lessons`, no frontmatter; tag
+    headings ordered alphabetically by normalised class; `file` is the name relative to
+    `lessons/`; "Mon yyyy" is `detected.at`'s month; `description` carries no trailing
+    period; `## Unsorted` line is `* [first heading](file)` only; `## Retired` line has the
+    same shape as a normal line; `(stale)` appended at the end of the line, on `## Retired`
+    lines too. Commit `ac1ce30`.
+13. Required-field exception list corrected to `runbook`, `supersedes` **and**
+    `retired_by` (the prior wording would have made `retired_by` required on every new
+    lesson). Commit `ac1ce30`.
+14. Gate's glob corrected to `lessons/[0-9][0-9][0-9][0-9]-[0-9][0-9]-<slug>.md` (so a slug
+    ending in another change's slug does not also match) and "more than one match fails the
+    check" stated. Commit `ac1ce30`.
+
+**plan.md**
+15. Order of work step 1 now names `plugin/lessons/__init__.py`. Commit `ac1ce30`.
+16. Added a direct unit test calling `lesson_and_eval` with a phase-(f) incident context and
+    asserting it passes, proving the guard itself rather than only its registration in
+    `CHECKS_BY_PHASE`. Commit `ac1ce30`.
+17. Citations corrected: `HANDOFF.md:42` → `HANDOFF.md`, item 4 (no line number, since line
+    42 is now item 2b on `main`); `CHECKS_BY_PHASE["e"]` → `checks.py:1646-1660` (was
+    `:1646-1648`); Risk 5's `yamlish` description corrected ("skips every `---` line before
+    the first content line; a `---` after content raises `expected 'key: value'`", not
+    "skips exactly one"). Commit `ac1ce30`.
+
+## Self-found gap (not from the owner)
+The adversarial reviewer's first pass at this round's HEAD (`ac1ce30`) escalated: item 14's
+new glob states "more than one match fails the check", but none of plan.md's four fail-case
+enumerations (the `checks.py` file item, Order of work step 2, Risk 2, Proof's
+`test_gate.py` item) included a test for that path — all four still listed the same seven
+cases. Added "two lesson files matching the glob" as an eighth fail case to all four
+plan.md enumerations, to spec.md's `checks.py` bullet and Acceptance list, and bumped every
+"seven"/"up to seven reasons" count to "eight". Commit `31ca678`. Re-reviewed at HEAD
+`31ca678`: continue.
+
+## Not applied (round 2)
+(none — every item in `requests` was applied; the one `not_applied` entry, a dismissed
+review, carries no text to apply)
+
+## Verdict and gate (round 2)
+Adversarial review (phase b): escalate at HEAD `ac1ce30` (the eighth fail case missing from
+plan.md's enumerations — see "Self-found gap" above); continue, non-routine, at HEAD
+`31ca678` after the fix. Panel: mode `parked`, no pending items. Gate (b): `wait`, label
+`sdlc:b-ready`, no park. Iterations: 2 of 2 (non-routine cap) — the next round, if the owner
+requests more changes, is the owner's to start and the owner's `sdlc:reset-iterations`
+label to re-open iterations here.

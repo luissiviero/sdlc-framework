@@ -7,8 +7,8 @@
   "human_gate": true,
   "result": "wait",
   "label": "sdlc:b-ready",
-  "head": "22ef512afdd3f47260ead634e901f07e2d625521",
-  "at": "2026-10-07T15:44:39Z",
+  "head": "31ca678e88cb536e694ff513b1b623f387ca17fe",
+  "at": "2026-10-08T00:33:14Z",
   "dry_run": false,
   "reason": "",
   "config_note": "",
@@ -19,15 +19,15 @@
       "reason": "within the run limits",
       "need": "",
       "details": {
-        "iterations": 1,
+        "iterations": 2,
         "cap": 2,
         "classification": "non-routine",
         "panel_calls": 0,
         "panel_cap": 4,
-        "elapsed_minutes": 22.7,
+        "elapsed_minutes": 20.5,
         "spend_usd": null,
-        "spend_usd_total": 3.500148,
-        "spend_entries": 1,
+        "spend_usd_total": 9.34181,
+        "spend_entries": 2,
         "max_budget_usd": null
       }
     },
@@ -48,7 +48,6 @@
           "changes/0003-lessons-with-frontmatter-and-a-generated/evidence/adversarial-review-b.json",
           "changes/0003-lessons-with-frontmatter-and-a-generated/evidence/diff-b.patch",
           "changes/0003-lessons-with-frontmatter-and-a-generated/evidence/hook-log.jsonl",
-          "changes/0003-lessons-with-frontmatter-and-a-generated/evidence/panel/b-items.json",
           "tests/fixtures/sample-python-project/.env"
         ]
       }
@@ -70,27 +69,10 @@
     {
       "name": "commands",
       "ok": true,
-      "reason": "build, test and lint exit 0",
+      "reason": "deferred to the runner: build, test and lint run after the model's session, outside its sandbox (issue #91); not yet run",
       "need": "",
       "details": {
-        "runs": {
-          "build": {
-            "command": "python -m compileall -q plugin tests tasks.py",
-            "exit_code": 0,
-            "output": ""
-          },
-          "test": {
-            "command": "python -m pytest",
-            "exit_code": 0,
-            "output": "........................................................................ [  5%]\n........................................................................ [ 10%]\n........................................................................ [ 15%]\n........................................................................ [ 20%]\n........................................................................ [ 25%]\n........................................................................ [ 30%]\n........................................................................ [ 35%]\n........................................................................ [ 41%]\n........................................................................ [ 46%]\n........................................................................ [ 51%]\n........................................................................ [ 56%]\n........................................................................ [ 61%]\n........................................................................ [ 66%]\n........................................................................ [ 71%]\n........................................................................ [ 77%]\n........................................................................ [ 82%]\n........................................................................ [ 87%]\n........................................................................ [ 92%]\n........................................................................ [ 97%]\n.................................                                        [100%]\n1401 passed in 331.00s (0:05:31)\n"
-          },
-          "lint": {
-            "command": "python -m ruff check .",
-            "exit_code": 0,
-            "output": "All checks passed!\n"
-          }
-        },
-        "ran_by": "runner"
+        "deferred": true
       }
     },
     {
