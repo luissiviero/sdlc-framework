@@ -84,7 +84,7 @@ still opens it.
 
 ## The generated index
 `lessons/index.md` is written by `plugin/lessons/index.py build`, run in the same commit as
-the lesson and the eval (`/sdlc-deploy` step 0b): a heading per first tag, normalised so a
+the lesson and the eval case, in `/sdlc-deploy` step 0b: a heading per first tag, normalised so a
 spelling drift cannot split one class across two headings (`flaky-test`, `flaky_test` and
 `Flaky Test` all become one `## flaky-test`); one line per lesson, newest first within a
 heading; `## Retired` for a lesson whose `status` is `retired`, grouped there regardless of

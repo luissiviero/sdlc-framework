@@ -63,7 +63,7 @@ to commit):
 `python "${CLAUDE_PLUGIN_ROOT}/plugin/state/cli.py" commit-phase --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase e --message "release(<id>): release prepared" --paths <files> --push`
 (`--paths` names the artifact files and `plan.md` is in the change folder).
 
-## 0b. An incident's fix ships with its lesson and its eval (build guide steps 36, 37; article p.44 step 7, p.49)
+## 0b. An incident's fix ships with its lesson and its eval case (build guide steps 36, 37; article p.44 step 7, p.49)
 When `status.yaml: entry_route` is `incident` (the change was filed by phase (f)), the fix
 carries its record — before the review, so the review pass reads them too:
 - `lessons/<yyyy-mm>-<slug>.md` (`<yyyy-mm>` is this month, `<slug>` the change's; the
