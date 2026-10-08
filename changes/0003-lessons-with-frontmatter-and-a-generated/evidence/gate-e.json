@@ -5,12 +5,12 @@
   "phase": "e",
   "profile": "standard",
   "human_gate": true,
-  "result": "park",
-  "label": "sdlc:needs-human",
-  "head": "b508863c03026485800c5790198f9be50bb022a5",
-  "at": "2026-10-08T11:54:13Z",
+  "result": "wait",
+  "label": "sdlc:e-ready",
+  "head": "b335a2f137e95683326b36fc10cdaaf62f2b1746",
+  "at": "2026-10-08T12:09:51Z",
   "dry_run": false,
-  "reason": "findings: findings are for commit 00ddfc7e17, HEAD is b508863c03",
+  "reason": "",
   "config_note": "",
   "checks": [
     {
@@ -24,7 +24,7 @@
         "classification": "non-routine",
         "panel_calls": 0,
         "panel_cap": 4,
-        "elapsed_minutes": 13.6,
+        "elapsed_minutes": 29.2,
         "spend_usd": null,
         "spend_usd_total": 51.489646,
         "spend_entries": 9,
@@ -38,6 +38,7 @@
       "need": "",
       "details": {
         "ignored": [
+          "changes/.review-seen.json",
           "tests/fixtures/sample-python-project/.env"
         ]
       }
@@ -88,11 +89,15 @@
     },
     {
       "name": "findings",
-      "ok": false,
-      "reason": "findings are for commit 00ddfc7e17, HEAD is b508863c03",
-      "need": "Re-run the review pass on the current HEAD.",
+      "ok": true,
+      "reason": "no Important review finding",
+      "need": "",
       "details": {
-        "stale": true
+        "tally": {
+          "important": 0,
+          "nit": 5,
+          "nits_omitted": 2
+        }
       }
     },
     {
@@ -150,5 +155,5 @@
       }
     }
   ],
-  "what_i_need": "## What I need from you\nGate (e) parked change 0003 (lessons-with-frontmatter-and-a-generated) on 2026-10-08T11:54:13Z.\n- **findings**: findings are for commit 00ddfc7e17, HEAD is b508863c03\n  - what I need: Re-run the review pass on the current HEAD.\nWhen the item is settled, re-run the gate: `python \"${CLAUDE_PLUGIN_ROOT}/plugin/gate/cli.py\" check --root . --id 0003 --phase e` (review comments are the change request; /sdlc-fix from B3 re-runs the phase with them).\n"
+  "what_i_need": ""
 }

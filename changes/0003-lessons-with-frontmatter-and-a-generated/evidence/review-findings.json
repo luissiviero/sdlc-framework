@@ -1,5 +1,5 @@
 {
-  "at": "2026-10-08T11:59:50Z",
+  "at": "2026-10-08T12:04:48Z",
   "findings": [
     {
       "file": "docs/OPERATING_MODEL.md",
@@ -47,7 +47,7 @@
       "summary": "The example frontmatter's `sources` list shows only `detection`, `eval` and `fix-pr`, with no sample `run-<n>` entry, even though spec.md's Requirements say `sources` includes \"one `run-<n>` per failed run `detection.json` lists\"."
     }
   ],
-  "head": "b508863c03026485800c5790198f9be50bb022a5",
+  "head": "b335a2f137e95683326b36fc10cdaaf62f2b1746",
   "schema_version": 1,
   "tally": {
     "important": 0,
