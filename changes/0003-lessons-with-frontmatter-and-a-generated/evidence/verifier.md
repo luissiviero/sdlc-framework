@@ -1,28 +1,34 @@
-**Commands run** (CI session — build/test/lint not run directly; read from the runner's record)
+# Verifier report — change 0003, phase (d)
 
-Per the brief, for phase (c) the record to read is `evidence/gate-b.json` (phase before mine). `evidence/test.log`, `evidence/build.log`, `evidence/lint.log` are not present in `changes/0003-lessons-with-frontmatter-and-a-generated/evidence/` (none to quote; not "deferred" placeholders either, simply absent at this point).
+**This is a phase (d) deferred-CI verification.** `SDLC_GATE_COMMANDS=runner` is set in this session's environment, so the build/test/lint targets were never run here and must not be run here (plugin 0.3.2 item 3b; issue #91). Per the deferred-CI rule, this report compares the committed diff and the new/changed tests against plan.md's "Files that change"/"Proof" sections and spec.md's Requirements/Design/Acceptance sections, and reads gate (c)'s record (the phase before this one) plus the three evidence logs as they stand now, instead of re-running the toolchain.
 
-From `changes/0003-lessons-with-frontmatter-and-a-generated/evidence/gate-b.json` (`commands` check, `details.ran_by: "runner"`, `ok: true`):
-- `build`: `python -m compileall -q plugin tests tasks.py` — exit 0, output `""`
-- `test`: `python -m pytest` — exit 0, tail: `.................................  [100%]\n1401 passed in 296.73s (0:04:56)\n`
-- `lint`: `python -m ruff check .` — exit 0, output `All checks passed!\n`
+## Commands run
+None run in this session (by design, per the CI-deferred rule). Read instead:
 
-No `details.deferred: true` on this record; gate-b itself resolved `"result": "wait"` (human gate, label `sdlc:b-ready`) with every check `ok: true`, including `commands`, `artifacts`, `design_scope`, `open_concerns`, `panel`, `guardrails`, `risk_list`, `owner_actions`, `adversarial_review`. This is a prior phase's green record, read not run, per the CI-session rule.
+- `changes/0003-lessons-with-frontmatter-and-a-generated/evidence/gate-c.json` (the record of the phase before this one, phase (c), head `bfe078b69dc691ecfd226d2872cff41dcb1b8360`) — `commands` check: `"ok": true`, `"reason": "build, test and lint exit 0"`, `"details.ran_by": "runner"`:
+  - build: `python -m compileall -q plugin tests tasks.py` → exit 0, output `""`.
+  - test: `python -m pytest` → exit 0, tail: `1429 passed in 276.02s (0:04:36)`.
+  - lint: `python -m ruff check .` → exit 0, output `All checks passed!`.
+  No `details.deferred: true` anywhere in gate-c.json; the `evidence` check there is also `ok: true` with `verifier.md` present. This is a passed, non-deferred gate.
+- `evidence/test.log` first line (read, not run): `# python -m pytest — deferred to the runner — 2026-10-08T04:22:45Z` — this session's own marker, written minutes ago by the evidence collector; not a failure, the runner replaces it.
+- `evidence/build.log` first line (read, not run): `# python -m compileall -q plugin tests tasks.py — deferred to the runner — 2026-10-08T04:22:45Z` — same, not a failure.
+- `evidence/lint.log` first line (read, not run): `# python -m ruff check . — deferred to the runner — 2026-10-08T04:22:45Z` — same, not a failure.
+- No `evidence/gate-d.json` exists yet in this tree (the runner writes it after this session ends), so there was no phase-(d) record to judge — consistent with the instructions.
 
-**Behavior exercised** (direct script/CLI calls only, no `.env*`, no test runner)
+## Behavior exercised
+No test runner, CLI, or script was invoked in this sandboxed session (the CI-deferred rule also forbids starting the test runner here, even with `-k`). Instead the change was exercised by reading:
 
-1. `plugin/lessons/index.py build`/`check` against a scratch `lessons/` tree (`/tmp/claude-1001/verify0003`) with: two lessons sharing a class spelled three ways (`Flaky Test`, `flaky-test`) → correctly merged into one normalised heading `## flaky-test`, newest-first ordering (Feb before Jan), stale marker applied only to the lesson whose `stale_after` (2025-01-01) is before `--today` (2026-10-08); a frontmatter-less file → routed to `## Unsorted` with a `## Unsorted: <file>: no frontmatter block` note, no crash.
-   - `check` on the freshly built index: exit 0, no diff.
-   - `check` after hand-editing the index to garbage: exit 1 with a correct unified diff (`lessons/index.md (on disk)` vs `(built)`).
-   - `check` against a CRLF copy of the correct index: exit 0, no diff (confirms the universal-newline tolerance spec.md requires).
-2. `plugin/gate/checks.py:lesson_and_eval` called directly with a hand-built `GateContext`/`Status` (no pytest):
-   - Full pass case (`entry_route="incident"`, `phase="e"`, a complete lesson file matching the glob plus `evals/cases/<id>-<slug>/{prompt.md,checks.yaml}` plus a clean `index.py check`): `ok=True`, `reason="the lesson, its frontmatter and the eval case are all present"`.
-   - `phase="f"` with the same `entry_route="incident"` and a nonexistent root: `ok=True`, `reason="not an incident change at gate (e): nothing to check"` — the guard short-circuits before touching the filesystem, confirming the plan's "never runs at gate (f)" requirement by direct call, not just by registration.
-   - Missing lesson file: `ok=False`, `need="no lesson file matches lessons/[0-9][0-9][0-9][0-9]-[0-9][0-9]-missing-lesson.md"`.
-   - Dangling `supersedes` target: `ok=False`, `need="2026-10-supersede-slug.md: supersedes target '2026-01-earlier.md' does not exist"`.
-3. Read `plugin/gate/artifacts.py`'s new constants (`LESSON_REQUIRED_FIELDS`, `LESSON_STATUSES`, `lesson_glob`, `EVAL_PROMPT`, `EVAL_CHECKS`) and confirmed the field list is exactly spec.md's Requirements-bullet-one set minus `runbook`/`supersedes`/`retired_by`, and `CHECKS_BY_PHASE["e"]` carries `lesson_and_eval` while `CHECKS_BY_PHASE["f"]` does not (matches plan.md's step 2 and spec.md's registration requirement).
+- `plugin/lessons/index.py` in full (314 lines): `build`, `check`, `read_entry`, `read_frontmatter`, `normalise_class`, `_sort_entries`, `build_index_text`, and the CLI `main()`. Traced: first-tag grouping with alphabetical heading order; newest-first-then-filename-ascending sort (two stable sorts, the second with `reverse=True`, which preserves the first sort's tie order under Python's stable sort); `## Retired` grouped by `status` regardless of tag; `## Unsorted` last, built from a file with no frontmatter block, a YAML error, a non-mapping document, or a missing render field, never raising; `(stale)` appended/stripped around `stale_after` vs. `--today`; zero-lesson output (`"# Lessons\n\nNo lessons yet.\n"`); CRLF-safe `check` (universal-newline read) vs. byte-identical `\n`-only `write_text`.
+- `plugin/gate/artifacts.py` (`LESSON_REQUIRED_FIELDS`, `LESSON_STATUSES`, `EVAL_PROMPT`, `EVAL_CHECKS`, `lesson_glob`) and `plugin/gate/checks.py`'s `lesson_and_eval` (guard `ctx.status.entry_route == "incident" and ctx.phase == "e"`; glob-match count; frontmatter field presence; `supersedes` target existence and retirement; out-of-enum `status`; eval file presence; `index.py check`; problems joined with `"\n    "`) and its registration — confirmed present only in `CHECKS_BY_PHASE["e"]` and absent from `CHECKS_BY_PHASE["f"]`.
+- `tests/test_lessons.py` (14 tests): each test body exercises exactly what plan.md's Proof section names — first-tag ordering/alphabetical headings, newest-first/filename-ascending tie-break, `## Retired` before `## Unsorted`, `README.md`/`index.md` exclusion, malformed-frontmatter and missing-render-field files routed to `## Unsorted` with no crash, zero-lesson tree, the frontmatter split stopping at the second `---` (a body containing a `key: value`-shaped line), the `(stale)` marker and its removal before `check` compares, a real drift's diff, a CRLF copy passing `check`, and the two CLI entry points.
+- `tests/test_gate.py`'s new section (lines ~2440–2587): one test per fail case named in plan.md/spec.md (missing lesson, two files matching the glob, missing frontmatter field, missing `prompt.md`, missing `checks.yaml`, failing `index.py check`, a dangling `supersedes`, a `supersedes` target not retired, an out-of-enum `status`), a pass case, a guard test calling `lesson_and_eval` directly at phase (f) asserting it still passes (`test_lesson_and_eval_guard_holds_even_called_directly_at_phase_f`), a test asserting the whole rendered "what I need from you" block with each problem on its own indented line (`test_lesson_and_eval_renders_every_problem_on_its_own_indented_line`), and confirmed `test_gate_f_waits_for_the_owner_s_triage_with_the_finding_and_its_route` (line 2343) is unchanged, still asserting gate (f)'s check list with no `lesson_and_eval` in it.
+- `tests/test_commands_and_skills.py`: confirmed new/extended assertions on `sdlc-deploy.md` step 0b's text and `allowed-tools`, and `sdlc-maintain.md` step 1's text and `allowed-tools`, both naming `Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/lessons/index.py" *)`.
+- `plugin/commands/sdlc-deploy.md` step 0b and `plugin/commands/sdlc-maintain.md` step 1, `template/lessons/README.md`, `template/sdlc.yaml`'s new `stale_after_months` row, `docs/OPERATING_MODEL.md`'s `lessons/` bullet, and both manifests' `0.3.6` version: read in full and compared field-by-field against spec.md's Design/Requirements mapping.
+- Confirmed by directory listing: no root `lessons/` directory exists in this repository (only `template/lessons/README.md`), matching plan.md Risk 6 / spec.md Acceptance's "no lesson file exists ... to migrate."
+- `git diff --stat origin/main...HEAD` for `plugin tests template docs .claude-plugin` confirms the changed-file set is exactly plan.md's "Files that change" list: `plugin/lessons/__init__.py` (new, empty), `plugin/lessons/index.py` (new, 314 lines), `plugin/gate/artifacts.py` (+30), `plugin/gate/checks.py` (+86), `plugin/commands/sdlc-deploy.md` (+47/-), `plugin/commands/sdlc-maintain.md` (+18/-), `template/lessons/README.md` (+83/-), `template/sdlc.yaml` (+7), `docs/OPERATING_MODEL.md` (+2/-1), `.claude-plugin/plugin.json` and `marketplace.json` (both to 0.3.6), `tests/test_lessons.py` (new, 223 lines), `tests/test_gate.py` (+155), `tests/test_commands_and_skills.py` (+59). Nothing is missing from, or extra to, the plan's file list.
 
-**Mismatches with plan.md / spec.md**
-- none found in the behavior exercised.
+## Mismatches with plan.md / spec.md
+None found.
 
-**Verdict**: matches the plan
+## Verdict
+**matches the plan**
