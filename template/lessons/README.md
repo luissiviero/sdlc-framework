@@ -45,6 +45,8 @@ stale_after: "<ISO date>"  # generated.at + 12 months, or sdlc.yaml: lessons.sta
 sources:
   - id: "detection"
     resource: "evidence/detection.json"
+  - id: "run-1"
+    resource: "<the failed run's URL>"
   - id: "eval"
     resource: "evals/cases/<id>-<slug>/"
   - id: "fix-pr"
@@ -69,6 +71,9 @@ CLAUDE.md line proposed, if any>
 [^eval]: evals/cases/<id>-<slug>/
 [^fix-pr]: the build PR
 ```
+
+One `run-<n>` per failed run `evidence/detection.json` lists; a scan-filed incident has no
+failed run and so no `run-<n>` source.
 
 Every nested field (`detected`, `fixed`, `generated`, each item of `sources`) is written in
 block style, never a flow mapping (`{a: b}` — the reader, `plugin/state/yamlish.py`, refuses

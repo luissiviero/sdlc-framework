@@ -30,6 +30,8 @@ PLUGIN_DIR = Path(__file__).resolve().parent.parent
 if str(PLUGIN_DIR) not in sys.path:
     sys.path.insert(0, str(PLUGIN_DIR))
 
+from lessons import index as lessons_mod  # noqa: E402
+
 from gate import artifacts as art  # noqa: E402
 from gate import diff as diffmod  # noqa: E402
 from gate.diff import Diff  # noqa: E402
@@ -1599,7 +1601,7 @@ def _lesson_field_problems(lesson_name: str, fm: dict[str, Any]) -> list[str]:
             or (kind == "mapping" and isinstance(value, dict) and value)
         )
         if not present:
-            problems.append(f"{lesson_name}: missing frontmatter field {name!r}")
+            problems.append(f"{lesson_name}: frontmatter field {name!r} missing or not a {kind}")
     status = fm.get("status")
     if isinstance(status, str) and status.strip() and status not in art.LESSON_STATUSES:
         problems.append(f"{lesson_name}: status {status!r} is not one of {art.LESSON_STATUSES}")
@@ -1613,7 +1615,6 @@ def _supersedes_problem(lessons_dir: Path, lesson_name: str, fm: dict[str, Any])
     supersedes = fm.get("supersedes")
     if not (isinstance(supersedes, str) and supersedes.strip()):
         return None
-    from lessons import index as lessons_mod  # noqa: PLC0415
 
     if (
         Path(supersedes).name != supersedes
@@ -1641,7 +1642,6 @@ def lesson_and_eval(ctx: GateContext) -> CheckResult:
     there (the regression guard is ``test_gate_f_waits_for_the_owner_s_triage...``)."""
     if not (ctx.status.entry_route == "incident" and ctx.phase == "e"):
         return _ok("lesson_and_eval", "not an incident change at gate (e): nothing to check")
-    from lessons import index as lessons_mod  # noqa: PLC0415
 
     problems: list[str] = []
     lessons_dir = ctx.root / "lessons"

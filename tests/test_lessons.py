@@ -212,6 +212,26 @@ def test_stale_marker_from_today_and_its_removal_before_check_compares(tmp_path)
     assert ok and diff == ""
 
 
+def test_a_title_with_markdown_link_characters_renders_as_one_link(tmp_path):
+    """``\\``, ``[`` and ``]`` in the title and ``(``, ``)`` and a space in the file name
+    would otherwise end the markdown link early or split it in two."""
+    lessons = tmp_path / "lessons"
+    write_lesson(lessons / "2026-09-retry (flaky).md", title="Retry [flaky] (twice)")
+    text, notes = les.build(tmp_path, today="2026-10-08")
+    assert notes == []
+    line = next(line for line in text.splitlines() if line.startswith("* ["))
+    assert line == (
+        "* [Retry \\[flaky\\] (twice)](2026-09-retry%20%28flaky%29.md) - "
+        "ci_test_failure_rate tripped we1. Tier 3, Sep 2026. "
+        "Tags: flaky-test, ci_test_failure_rate."
+    )
+
+
+def test_check_on_a_root_without_lessons_leaves_no_lessons_behind(tmp_path):
+    les.check(tmp_path, today="2026-10-08")
+    assert not (tmp_path / "lessons").exists()
+
+
 def test_check_reports_a_real_drift_with_a_diff(tmp_path):
     lessons = tmp_path / "lessons"
     write_lesson(lessons / "2026-09-x.md")

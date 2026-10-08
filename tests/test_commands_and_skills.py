@@ -379,6 +379,7 @@ def test_sdlc_deploy_writes_the_lesson_s_frontmatter_and_rebuilds_the_index():
         "stale_after",
         "lessons.stale_after_months",
         "sources",
+        "run-<n>",
         'lessons/index.py" build',
         "never hand-edit",
         "lesson_and_eval",
@@ -387,6 +388,16 @@ def test_sdlc_deploy_writes_the_lesson_s_frontmatter_and_rebuilds_the_index():
     assert step.index('evals/case.py" new') < step.index('lessons/index.py" build')
     fm = frontmatter(path)
     assert 'Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/lessons/index.py" *)' in fm["allowed-tools"]
+
+
+def test_lessons_readme_sources_example_includes_a_run_n_entry():
+    """The ``sources`` example must show the one case `/sdlc-deploy` step 0b actually
+    writes for a failed run (spec.md: one `run-<n>` per failed run `detection.json`
+    lists), not only the always-present `detection`/`eval`/`fix-pr` ids."""
+    template = Path(__file__).resolve().parents[1] / "template"
+    text = (template / "lessons" / "README.md").read_text(encoding="utf-8")
+    assert '- id: "run-1"' in text
+    assert "run-<n>` per failed run" in text
 
 
 def test_sdlc_fix_flow_matches_the_change_request_loop():

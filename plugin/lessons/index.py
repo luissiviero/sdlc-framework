@@ -228,9 +228,22 @@ def _sort_entries(entries: list[Entry]) -> list[Entry]:
     return sorted(by_file, key=lambda e: e.detected_at, reverse=True)
 
 
+def _escape_link_text(value: str) -> str:
+    """Markdown link text: a literal ``\\``, ``[`` or ``]`` would otherwise end the link
+    early or nest another one."""
+    return value.replace("\\", "\\\\").replace("[", "\\[").replace("]", "\\]")
+
+
+def _escape_link_target(value: str) -> str:
+    """Markdown link target: a literal ``(``, ``)`` or space would otherwise end the link
+    target early or split it in two."""
+    return value.replace("(", "%28").replace(")", "%29").replace(" ", "%20")
+
+
 def _render_line(e: Entry, today: str) -> str:
+    link = f"[{_escape_link_text(e.title)}]({_escape_link_target(e.file_name)})"
     line = (
-        f"* [{e.title}]({e.file_name}) - {e.description}. Tier {e.tier}, "
+        f"* {link} - {e.description}. Tier {e.tier}, "
         f"{_month_label(e.detected_at)}. Tags: {', '.join(e.tags)}."
     )
     if is_stale(e.stale_after, today):
@@ -239,7 +252,8 @@ def _render_line(e: Entry, today: str) -> str:
 
 
 def _render_unsorted_line(e: Entry) -> str:
-    return f"* [{e.heading or e.file_name}]({e.file_name})"
+    text = e.heading or e.file_name
+    return f"* [{_escape_link_text(text)}]({_escape_link_target(e.file_name)})"
 
 
 def build_index_text(entries: list[Entry], today: str) -> str:
@@ -277,7 +291,6 @@ def _read_entries(lessons_dir: Path) -> list[Entry]:
 def build(root: Path, today: str | None = None) -> tuple[str, list[str]]:
     """The index text and one note per ``## Unsorted`` file (``"<file>: <reason>"``)."""
     lessons_dir = Path(root) / LESSONS_DIR
-    lessons_dir.mkdir(parents=True, exist_ok=True)
     entries = _read_entries(lessons_dir)
     text = build_index_text(entries, today or date.today().isoformat())
     notes = [f"{e.file_name}: {e.error}" for e in entries if not e.ok]
@@ -319,6 +332,7 @@ def main(argv: list[str] | None = None) -> int:
     root = Path(args.root)
     if args.command == "build":
         text, notes = build(root, args.today)
+        (root / LESSONS_DIR).mkdir(parents=True, exist_ok=True)
         index_path = root / LESSONS_DIR / INDEX_FILE
         index_path.write_text(text, encoding="utf-8", newline="\n")
         for note in notes:

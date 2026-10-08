@@ -2513,7 +2513,16 @@ def test_lesson_and_eval_fails_on_a_missing_required_frontmatter_field(tmp_path)
     _lesson_setup(tmp_path, lesson_overrides={"change": None}, write_index=False)
     res = checks.lesson_and_eval(_e_ctx(tmp_path))
     assert not res.ok
-    assert any("missing frontmatter field 'change'" in p for p in res.need.split("\n    "))
+    assert any("'change' missing or not a scalar" in p for p in res.need.split("\n    "))
+
+
+def test_lesson_and_eval_fails_on_a_wrong_type_frontmatter_field(tmp_path):
+    """A field that is present but the wrong shape (here a scalar where ``tags`` wants a
+    list) is reported with the same wording as an absent one, not as "missing"."""
+    _lesson_setup(tmp_path, lesson_overrides={"tags": "flaky-test"}, write_index=False)
+    res = checks.lesson_and_eval(_e_ctx(tmp_path))
+    assert not res.ok
+    assert any("'tags' missing or not a list" in p for p in res.need.split("\n    "))
 
 
 def test_lesson_and_eval_fails_when_prompt_or_checks_yaml_is_missing(tmp_path):

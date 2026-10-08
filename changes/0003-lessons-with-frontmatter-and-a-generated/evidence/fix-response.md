@@ -400,3 +400,83 @@ change's code. `tests/test_gate.py::test_the_sandbox_s_mask_is_read_from_its_mou
 fails here (`_mount_masked(Path("/dev/null"))` is `True` in this container, where the test
 expects `False`); `plugin/gate/diff.py` was last touched by plugin 0.3.4, not by this change,
 so this is a pre-existing environment difference, not a regression from this round.
+
+---
+
+# Fix response — change 0003, phase (e), round 2 (the 4 Important findings)
+
+Source: `evidence/fix-requests.json`, PR #132 review #5455893201 (OWNER, `CHANGES_REQUESTED`,
+2026-10-08T11:32:34Z). `not_applied` in the source file was empty. This review is the
+owner's direct reply to `evidence/review-response.md`'s "4 Important findings" and "1 nit"
+sections above: it overturns the earlier deferral ("can wait for the tag (0.3.7)") on three
+of the four and asks for all four plus the nit, each with a test. Before this round,
+`sdlc:reset-iterations` had already reset the counter (`status.yaml:
+iterations_reset_by: luissiviero`, `iterations_reset_at: 2026-10-08T11:27:20Z`); this round's
+`gate/cli.py start-run` then `bump-iteration` brought it to 2 of 2 (non-routine cap), not
+over it.
+
+1. `plugin/gate/checks.py`: the two local `from lessons import index as lessons_mod`
+   imports (in `_supersedes_problem` and `lesson_and_eval`) are removed; a single
+   module-level import now sits beside the module's other first-party imports (no import
+   cycle: `plugin/lessons/index.py` imports only `state.yamlish`). The formatter places it
+   in its own import group, separated by a blank line, because `lessons` is not in
+   `pyproject.toml`'s `[tool.ruff.lint.isort] known-first-party` list — the same shape
+   `plugin/ci/run_phase.py` already uses for `panel` and `pr`, which aren't in that list
+   either; left as the formatter renders it rather than fighting an established convention.
+2. `plugin/lessons/index.py` `_render_line` and `_render_unsorted_line`: two new helpers,
+   `_escape_link_text` (backslash-escapes `\`, `[`, `]`) and `_escape_link_target`
+   (percent-encodes `(`, `)` and a space), applied to the title/heading and the file name
+   before they go into the markdown link. New test in `tests/test_lessons.py`: a lesson
+   titled `Retry [flaky] (twice)` in a file named `2026-09-retry (flaky).md` renders one
+   exact index line a markdown parser reads as a single link.
+3. `plugin/lessons/index.py` `build()`: the `lessons_dir.mkdir(...)` call is removed (
+   `_read_entries` already returns `[]` for a directory that does not exist — verified
+   directly: `Path(...).glob("*.md")` on a missing directory raises nothing). `main`'s
+   `build` branch now creates `lessons/` itself, right before `index_path.write_text`, so
+   only the command that actually writes the index creates the directory; the read-only
+   `check()` (and the gate's `lesson_and_eval`, which never calls `build()` at all) no
+   longer does. New test in `tests/test_lessons.py`: `check()` on a root with no `lessons/`
+   leaves none behind.
+4. `template/lessons/README.md`: the `sources` example gets a `- id: "run-1"` /
+   `resource: "<the failed run's URL>"` entry after `detection`, plus a sentence stating one
+   `run-<n>` per failed run `evidence/detection.json` lists, none for a scan-filed incident
+   (`plugin/commands/sdlc-deploy.md` step 0b already states this correctly — line 88-89
+   already reads "one `run-<n>` per failed run `evidence/detection.json` lists" — so no
+   change was needed there). New assertions in `tests/test_commands_and_skills.py`: a
+   dedicated test reads the README directly for the `run-1` example and the explanatory
+   sentence, and `run-<n>` was added to the existing step-0b token list for
+   `plugin/commands/sdlc-deploy.md`.
+5. The optional nit: `plugin/gate/checks.py` `_lesson_field_problems` now reports
+   `"<lesson>: frontmatter field '<name>' missing or not a <kind>"` instead of
+   `"... missing frontmatter field '<name>'"`, so a present-but-wrong-type value is worded
+   the same as an absent one. The existing `tests/test_gate.py` case for a missing `change`
+   field is updated to the new wording, and a new case asserts the wrong-type path (`tags`
+   set to a scalar instead of a list).
+
+Commit: see the commit message below.
+
+## Not applied
+(none — `fix-requests.json: not_applied` was empty)
+
+## Verification note
+As in earlier rounds, this session's sandbox denies read access to
+`tests/fixtures/sample-python-project/.env`; every test that copies that fixture tree
+(directly or through the autouse project fixture) hits a `Permission denied` on that one
+file, unrelated to this round's code (confirmed unchanged before any edit this round). A
+full `python -m pytest` run: 1045 passed, 81 failed, 314 errors; of the 395 failing/erroring
+items, 394 are that one `.env` denial (`shutil.Error` from the autouse fixture, or the same
+`[Errno 13]` surfacing through `plugin/evals/run.py`'s own fixture copy in
+`test_fixture_runs_a_case_against_the_initialised_project`), and the last is
+`tests/test_gate.py::test_the_sandbox_s_mask_is_read_from_its_mounts`, already named as a
+pre-existing environment difference in the phase (e) round above. Every test this round
+added or touched — `tests/test_lessons.py`, `tests/test_gate.py -k "lesson or supersedes"`,
+`tests/test_commands_and_skills.py` — passes. `python -m ruff check .` and
+`python -m compileall -q plugin tests tasks.py` both ran clean.
+
+## Plan/spec sync
+No change to `spec.md` (the owner's own instruction: "No change to spec.md (choice 164)").
+`plan.md`'s "Files that change" already lists `plugin/gate/checks.py`, `plugin/lessons/
+index.py`, `template/lessons/README.md`, `tests/test_gate.py`, `tests/test_lessons.py` and
+`tests/test_commands_and_skills.py` from earlier rounds; this round's file list is a subset
+of that, so no edit was needed there either, matching the owner's "it should not" (the file
+list does not change).
