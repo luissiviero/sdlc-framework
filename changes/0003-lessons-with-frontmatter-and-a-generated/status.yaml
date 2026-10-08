@@ -9,9 +9,9 @@ review_override: null
 gate:
   phase: e
   result: parked
-  reason: "limits: iteration cap reached: 3 fix iterations, cap 2 (non-routine)"
-  at: "2026-10-08T07:08:54Z"
-parked_reason: "limits: iteration cap reached: 3 fix iterations, cap 2 (non-routine)"
+  reason: "findings: findings are for commit 00ddfc7e17, HEAD is b508863c03"
+  at: "2026-10-08T11:54:13Z"
+parked_reason: "findings: findings are for commit 00ddfc7e17, HEAD is b508863c03"
 iterations: 1
 panel_calls: 0
 external_ref: null
@@ -28,5 +28,5 @@ released_at: null
 released_sha: null
 released_pr: null
 created_at: "2026-10-06T03:12:18Z"
-updated_at: "2026-10-08T11:40:42Z"
+updated_at: "2026-10-08T11:54:13Z"
 schema_version: 1

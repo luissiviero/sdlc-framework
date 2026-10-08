@@ -47,6 +47,14 @@
     "last_seen": "2026-10-03T22:00:14Z",
     "summary": "Unchanged from the previous three rounds: the current top-level record's summary still says the split covered \"docs/NOTES.md (30 sections)\"; docs/notes/ holds 32 section files and docs/notes/index.md lists 32, so the prose still undercounts by two."
   },
+  "3536fdcd54c4649b": {
+    "count": 1,
+    "file": "template/lessons/README.md",
+    "first_change": "0003",
+    "last_change": "0003",
+    "last_seen": "2026-10-08T12:00:21Z",
+    "summary": "The example frontmatter's `sources` list shows only `detection`, `eval` and `fix-pr`, with no sample `run-<n>` entry, even though spec.md's Requirements say `sources` includes \"one `run-<n>` per failed run `detection.json` lists\"."
+  },
   "4a9f19fa06c35455": {
     "count": 1,
     "file": "docs/PROGRESS.md",
@@ -95,6 +103,22 @@
     "last_seen": "2026-10-03T22:45:42Z",
     "summary": "docs/PROGRESS.md still carries four top-level records (the new Change 0001 entry plus the session-18 'third sitting', 'second sitting' and plain 'session 18' records) instead of only the current one, unmet against spec.md's own Acceptance text."
   },
+  "68391c290d2c2066": {
+    "count": 1,
+    "file": "docs/OPERATING_MODEL.md",
+    "first_change": "0003",
+    "last_change": "0003",
+    "last_seen": "2026-10-08T12:00:21Z",
+    "summary": "The new sentence says the generated index carries \"a heading per tag\", but `plugin/lessons/index.py` groups only by the first tag (`tags[0]`), so a lesson with several tags gets one heading, not one per tag; a reader could expect the opposite."
+  },
+  "68c603a585c7aa94": {
+    "count": 1,
+    "file": "plugin/gate/checks.py",
+    "first_change": "0003",
+    "last_change": "0003",
+    "last_seen": "2026-10-08T12:00:21Z",
+    "summary": "`_supersedes_problem` only validates `supersedes` when its value is already a string (`isinstance(supersedes, str)`); a present-but-non-string value (a list or a number) returns `None` and is silently treated as \"no supersedes\" instead of being reported as malformed."
+  },
   "6d0d986b5ebb09bb": {
     "count": 1,
     "file": "changes/0001-split-the-large-docs-with-an-index-each/evidence/claude-md-proposals.md",
@@ -142,6 +166,14 @@
     "last_change": "0003",
     "last_seen": "2026-10-08T04:53:25Z",
     "summary": "`build()` (called by `check()`) always runs `lessons_dir.mkdir(parents=True, exist_ok=True)`, so the read-only `index.py check` (and `lesson_and_eval`'s call to it) creates `lessons/` as a side effect even when it only reports drift or failure."
+  },
+  "a372dc968947c483": {
+    "count": 1,
+    "file": "plugin/lessons/index.py",
+    "first_change": "0003",
+    "last_change": "0003",
+    "last_seen": "2026-10-08T12:00:21Z",
+    "summary": "`build()` unconditionally runs `lessons_dir.mkdir(parents=True, exist_ok=True)`, so the read-only `check()` (and `lesson_and_eval`'s call into it) creates `lessons/` as a side effect on a project that has none yet, e.g. when no lesson file matches the gate's glob at all."
   },
   "af228dac9a462c15": {
     "count": 1,
@@ -206,6 +238,14 @@
     "last_change": "0001",
     "last_seen": "2026-10-03T21:32:24Z",
     "summary": "verified_with in the docs/notes/<N>.md frontmatter carries only the Claude Code version in 30 of 32 files (and never a runner value in any of the 32), not the three-part \"Claude Code version, plugin version, runner\" the spec requires."
+  },
+  "fae254b0a97e5724": {
+    "count": 1,
+    "file": "plugin/lessons/index.py",
+    "first_change": "0003",
+    "last_change": "0003",
+    "last_seen": "2026-10-08T12:00:21Z",
+    "summary": "`_render_line`/`_render_unsorted_line` interpolate `title`, `description` and the first heading into a markdown link (`[text](file)`) with no escaping of `]`/`(`/`)`, so a value containing one of those characters breaks the generated link in `lessons/index.md`."
   },
   "fc1a14330d8dd702": {
     "count": 2,

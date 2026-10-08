@@ -1,57 +1,57 @@
 {
-  "at": "2026-10-08T06:47:21Z",
+  "at": "2026-10-08T11:59:50Z",
   "findings": [
     {
-      "file": "plugin/gate/checks.py",
-      "line": 1616,
+      "file": "docs/OPERATING_MODEL.md",
+      "line": 144,
       "pass": "compliance",
-      "rule": "REVIEW.md framework rule: \"The second occurrence of the same finding across reviews produces a one-line entry in CLAUDE.md under 'Things Claude gets wrong', proposed in the review for the owner.\" Proposed line: \"Duplicating a lazy `from <pkg> import <mod>` in two functions of the same file instead of importing once at the top of the module or in one shared helper: hoist it.\"",
-      "severity": "important",
-      "signature": "63e3fc60697aaf84",
-      "summary": "`from lessons import index as lessons_mod` is still duplicated in `_supersedes_problem` (line 1616) and `lesson_and_eval` (line 1644) instead of imported once; `changes/.review-seen.json` already records this exact finding at count 2 (first seen during this change's gate-(e) round, repeated unaddressed in the b94e362 review), so this third occurrence is the point the framework rule requires a one-line `CLAUDE.md` entry, which no review has proposed yet."
+      "rule": "spec.md Determinism: \"tag headings ordered alphabetically by normalised class\" (the first tag only) \u2014 doubt stated: the owner's own PR #132 review (item 9) already named this exact wording gap and marked it optional for the 0.3.7 tag.",
+      "severity": "nit",
+      "signature": "68391c290d2c2066",
+      "summary": "The new sentence says the generated index carries \"a heading per tag\", but `plugin/lessons/index.py` groups only by the first tag (`tags[0]`), so a lesson with several tags gets one heading, not one per tag; a reader could expect the opposite."
+    },
+    {
+      "file": "plugin/gate/checks.py",
+      "line": 1614,
+      "pass": "bugs",
+      "rule": "doubt stated: narrow edge case \u2014 step 0b's instructions only ever write `supersedes` as a bare file name or omit it, so this path is unlikely to be hit in practice.",
+      "severity": "nit",
+      "signature": "68c603a585c7aa94",
+      "summary": "`_supersedes_problem` only validates `supersedes` when its value is already a string (`isinstance(supersedes, str)`); a present-but-non-string value (a list or a number) returns `None` and is silently treated as \"no supersedes\" instead of being reported as malformed."
     },
     {
       "file": "plugin/lessons/index.py",
       "line": 231,
-      "pass": "compliance",
-      "rule": "REVIEW.md framework rule: \"The second occurrence of the same finding across reviews produces a one-line entry in CLAUDE.md...\" Proposed line: \"Interpolating a free-text field into a generated markdown link (`[text](file)`) without escaping `]`/`(`/`)` in the text: escape or reject those characters before writing.\"",
-      "severity": "important",
-      "signature": "d4b1309e16dd99e0",
-      "summary": "`_render_line`/`_render_unsorted_line` (lines 231-242) still interpolate `title`/`description`/the first heading into a markdown link with no escaping of `]`/`(`, so such a value would still break the generated link; `changes/.review-seen.json` records this exact finding at count 2 already, so this is the third occurrence with no `CLAUDE.md` line proposed."
+      "pass": "bugs",
+      "rule": "doubt stated: cosmetic breakage of a generated markdown file, not a functional break \u2014 `/sdlc-maintain` matches lessons by heading/tags, not by parsing the link text.",
+      "severity": "nit",
+      "signature": "fae254b0a97e5724",
+      "summary": "`_render_line`/`_render_unsorted_line` interpolate `title`, `description` and the first heading into a markdown link (`[text](file)`) with no escaping of `]`/`(`/`)`, so a value containing one of those characters breaks the generated link in `lessons/index.md`."
     },
     {
       "file": "plugin/lessons/index.py",
       "line": 280,
-      "pass": "compliance",
-      "rule": "REVIEW.md framework rule: \"The second occurrence of the same finding across reviews produces a one-line entry in CLAUDE.md...\" Proposed line: \"A function named `check`/read-only must never call a `build`/write helper that has a filesystem side effect (e.g. `mkdir`) \u2014 split the side effect out so a dry-run check never touches disk.\"",
-      "severity": "important",
-      "signature": "8904b4484e9ea0a6",
-      "summary": "`build()` still unconditionally runs `lessons_dir.mkdir(parents=True, exist_ok=True)`, so the read-only `check()` (and `lesson_and_eval`'s call into it) still creates `lessons/` as a side effect on a project that has none yet; `changes/.review-seen.json` records this exact finding at count 2 already, so this is the third occurrence with no `CLAUDE.md` line proposed (the owner's own fix-response marked it optional for 0.3.7, but the recurrence rule is about repetition, not about whether a fix was required)."
+      "pass": "bugs",
+      "rule": "doubt stated: a harmless side effect (an empty directory), not data loss or a wrong result; the owner's own PR #132 review (item 7) already named this and marked it optional for the 0.3.7 tag.",
+      "severity": "nit",
+      "signature": "a372dc968947c483",
+      "summary": "`build()` unconditionally runs `lessons_dir.mkdir(parents=True, exist_ok=True)`, so the read-only `check()` (and `lesson_and_eval`'s call into it) creates `lessons/` as a side effect on a project that has none yet, e.g. when no lesson file matches the gate's glob at all."
     },
     {
       "file": "template/lessons/README.md",
       "line": 45,
       "pass": "compliance",
-      "rule": "REVIEW.md framework rule: \"The second occurrence of the same finding across reviews produces a one-line entry in CLAUDE.md...\" Proposed line: \"A template/README example for a field that can take N shapes (e.g. lessons/README.md's `sources`) must show all N in the worked example, not a subset.\"",
-      "severity": "important",
-      "signature": "72cf69865e11c2b2",
-      "summary": "The example frontmatter's `sources` list (lines 45-51) still shows only `detection`, `eval` and `fix-pr`, with no sample `run-<n>` entry, even though spec.md's Requirements say `sources` includes \"one `run-<n>` per failed run `detection.json` lists\"; `changes/.review-seen.json` already records this exact finding at count 2, so this is the third occurrence with still no `CLAUDE.md` line proposed."
-    },
-    {
-      "file": "plugin/gate/checks.py",
-      "line": 1598,
-      "pass": "bugs",
-      "rule": "doubt stated: low impact, matches the same scalar/list/mapping presence test every other required field already uses, and no test or spec line calls for a distinct wrong-type message",
+      "rule": "spec.md Requirements, first bullet (`sources` field).",
       "severity": "nit",
-      "signature": "514b1334dbca839f",
-      "summary": "`_lesson_field_problems` reports a `status` value that is present but not a string (e.g. a list or number) as \"missing frontmatter field 'status'\" rather than naming the actual problem (wrong type), which could read oddly in the gate's park message."
+      "signature": "3536fdcd54c4649b",
+      "summary": "The example frontmatter's `sources` list shows only `detection`, `eval` and `fix-pr`, with no sample `run-<n>` entry, even though spec.md's Requirements say `sources` includes \"one `run-<n>` per failed run `detection.json` lists\"."
     }
   ],
-  "head": "00ddfc7e177c2bdb289e0ec10fbf7fca9e9824e5",
+  "head": "b508863c03026485800c5790198f9be50bb022a5",
   "schema_version": 1,
   "tally": {
-    "important": 4,
-    "nit": 1,
-    "nits_omitted": 0
+    "important": 0,
+    "nit": 5,
+    "nits_omitted": 2
   }
 }
