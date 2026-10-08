@@ -1,7 +1,20 @@
 {
-  "collected_at": "2026-10-07T15:21:16+00:00",
-  "head": "5d4c6cbb7ede865c587f017db2d654db7e12a24f",
-  "not_applied": [],
+  "collected_at": "2026-10-07T23:55:28+00:00",
+  "head": "ace2c6e7ffb96e34619e89ac32266f8b0e0fac81",
+  "not_applied": [
+    {
+      "association": "OWNER",
+      "at": "2026-10-07T15:31:10Z",
+      "author": "luissiviero",
+      "body": null,
+      "chars": 8546,
+      "id": 5444556016,
+      "kind": "review",
+      "state": "DISMISSED",
+      "url": "https://github.com/luissiviero/sdlc-framework/pull/124#pullrequestreview-5444556016",
+      "why": "not applied: the review was dismissed"
+    }
+  ],
   "ok": true,
   "pr_number": 124,
   "repo": "luissiviero/sdlc-framework",
@@ -15,6 +28,16 @@
       "kind": "review",
       "state": "CHANGES_REQUESTED",
       "url": "https://github.com/luissiviero/sdlc-framework/pull/124#pullrequestreview-5444369078"
+    },
+    {
+      "association": "OWNER",
+      "at": "2026-10-07T23:54:52Z",
+      "author": "luissiviero",
+      "body": "Request changes on PR #124 (design(0003)), iteration 2 of 2. Re-run the design pass with the corrections below; keep intent.md unchanged. Items 1 to 5 change what the build would do; the rest are the sentences the first review asked for and the fix round left out, plus determinism the build would otherwise guess.\n\n**What changes the build**\n1. Concern 1 and `tests/test_lessons.py` (spec.md Flagged concerns, plan.md's `test_lessons.py` item and Proof): the example `flakytest` does not follow the decided rule (lower-case; spaces and underscores to hyphens map `flakytest` to `flakytest`, not to `flaky-test`), so the planned \"class normalisation\" test cannot pass as written. Replace `flakytest` with `Flaky Test` in all three places.\n2. Maintain from the index (spec.md Requirements, the `/sdlc-maintain` bullet; plan.md's `sdlc-maintain.md` and `index.py` items): the index line carries the title, the file, the description, the tier and the month under a heading per first tag (the class), so the metric and the runbook tags are not in the index and the maintain run cannot pick lessons \"whose tags name the metric or the rule\" without opening every file. Decided: every index line ends with its tags \u2014 `* [title](file) - description. Tier n, Mon yyyy. Tags: class, metric, runbook.` (the runbook omitted when there is none) \u2014 and step 1 opens the lessons whose heading or tags name `detection.json`'s metric or rule, plus `## Retired`. Write the line shape once, under the determinism bullet.\n3. The rendered \"what I need from you\" text (spec.md Requirements and Design, the `lesson_and_eval` bullet; plan.md's `checks.py` item): `GateResult.what_i_need` prints `  - what I need: <need>` for one line, so with `need` joined by `\\n` the second and later problems land at column 0, outside the bullet. Decided: `lesson_and_eval` joins the problems with `\"\\n    \"` (a newline and four spaces), and the test asserts the whole rendered block, each problem on its own indented line.\n4. The eval case's file names (plan.md's `artifacts.py` item): `plugin/evals/case.py` names `prompt.md` and `checks.yaml` as locals (`case.py:178`), not as constants, so \"import them if that module already names them as constants\" falls back to duplicating them, and adding constants to `case.py` would be a commit the plan-sync hook denies (it is not under \"## Files that change\", and Risk 1 says it does not change). Decided: the two names are constants in `plugin/gate/artifacts.py` beside the lesson's required fields, with a one-line comment naming `case.py:178` as the writer that must agree; `case.py` stays untouched. Drop the conditional.\n5. The eval case in every section (spec.md Design, Acceptance; plan.md's `checks.py` and `test_gate.py` items, Order of work step 2, Risk 2, Proof): Requirements say \"both `prompt.md` and `checks.yaml` exist\", the other sections say \"the eval case folder exists\" and the fail case is \"missing eval case folder\". Use the Requirements meaning everywhere; the fail case is \"`prompt.md` or `checks.yaml` missing\".\n\n**spec.md: the sentences the first review asked for**\n6. Item 7 asked for a requirement: add one Requirements bullet stating that the index is written with `write_text(..., newline=\"\\n\")`, that `check` compares text read in universal-newline mode, and that every link is rendered with the native path's `.as_posix()` (`Path(...).as_posix()`, as `case.py:181` does; `PurePosixPath(str(p)).as_posix()` keeps a backslash from a Windows path).\n7. Item 5 asked that an `## Unsorted` entry does not fail `check`: add the sentence \u2014 `check` exits 0 with `## Unsorted` entries present and prints one note line per Unsorted file; only a drift of the generated text is exit 1. Reword the README bullet's \"reported by `check`\" to say the same.\n8. Item 4 asked for `--today` under Acceptance: add it there, with the class-normalisation test.\n9. Item 9 asked that the `detection` source points at whichever file exists: in the `sources` sentence of Requirements bullet 1, say the `detection` resource is `evidence/detection.json`, or `evidence/scan-finding.json` for an incident the weekly scan filed. Replace \"read through `plugin/detect/finding.read_any`\" with \"with the mapping `finding.read_any` implements (`finding.py:150-160`)\": step 0b is instruction text for the model, nothing in the plan calls that function.\n10. Item 13 asked for the `allowed-tools` lines in spec.md too: one Requirements bullet naming `Bash(python \"${CLAUDE_PLUGIN_ROOT}/plugin/lessons/index.py\" *)` for both command files and the body's call quoted the same way.\n11. Item 11 asked for one Requirements bullet per restored sentence; they are present but folded into other bullets. Give each its own bullet.\n\n**spec.md: determinism the build would otherwise guess**\n12. Write down: the index opens with `# Lessons` and no frontmatter (nothing reads one); tag headings are ordered alphabetically by the normalised class; the link is the file name relative to `lessons/` (`(2026-10-<slug>.md)`); \"Mon yyyy\" is `detected.at`'s month; `description` carries no trailing period (the line adds it); an `## Unsorted` line is `* [first heading](file)` and a `## Retired` line has the tag line's shape; `(stale)` is appended at the end of the line, on `## Retired` lines too.\n13. The required frontmatter fields, by name: `type`, `title`, `description`, `tags`, `change`, `detected`, `fixed`, `generated`, `status`, `stale_after`, `sources`; `runbook`, `supersedes` and `retired_by` are optional (the current sentence \"every field named in the first Requirements bullet except `runbook` and `supersedes`\" would make `retired_by` required on every new lesson).\n14. The gate's glob: `lessons/[0-9][0-9][0-9][0-9]-[0-9][0-9]-<slug>.md`, so a slug that ends in another change's slug does not match; more than one match fails the check.\n\n**plan.md**\n15. Order of work step 1 names `plugin/lessons/__init__.py` (it is why the file was added).\n16. `tests/test_gate.py`: one unit test calls `lesson_and_eval` with a phase (f) incident context and asserts it passes, so the guard itself is proven, not only the registration.\n17. Citations: `HANDOFF.md:42` is item 2b on `main` since PR #126 (item 4 is line 39) \u2014 cite it as \"HANDOFF.md, item 4\" with no line; `CHECKS_BY_PHASE[\"e\"]` is `checks.py:1646-1660`; Risk 5's \"skips exactly one\" is wrong (`yamlish.loads` skips every `---` before the first content line, and a `---` after content raises `expected 'key: value'`), the conclusion stands.\n\n---\n_Generated by [Claude Code](https://claude.ai/code)_",
+      "id": 5449795190,
+      "kind": "review",
+      "state": "CHANGES_REQUESTED",
+      "url": "https://github.com/luissiviero/sdlc-framework/pull/124#pullrequestreview-5449795190"
     }
   ],
   "route": "api",
