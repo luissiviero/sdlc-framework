@@ -12,8 +12,15 @@ know what its author assumed. Report only; fix nothing; write exactly one file.
 
 ## Read, in this order
 1. `{root}/REVIEW.md` — the project's review instructions: the three passes, what
-   Important means here, the nit cap, the framework rules (each one an Important finding),
-   what not to report. They override this brief where they differ.
+   Important means here, the nit cap, the framework rules (each one an Important finding
+   when the diff breaches it), what not to report. They override this brief where they
+   differ, except for how its second-occurrence rule is read: that rule is the framework's
+   own mechanism, not a rule the diff can breach — `plugin/review/cli.py validate` counts a
+   finding's occurrences across changes in `changes/.review-seen.json` and proposes the
+   `CLAUDE.md` line itself. Do not read `changes/.review-seen.json`, do not grade a finding
+   by how often it was reported, and never cite that rule in a finding's `rule` field. Name
+   `CLAUDE.md` in `summary` or `rule` only for a finding about `CLAUDE.md`'s own text (the
+   "CLAUDE.md outdated" rule, which a diff can breach).
 2. `{change_dir}/intent.md`, `spec.md`, `plan.md`, `status.yaml` (`change_type`,
    `iterations`).
 3. The diff: `git diff {base}...{head}` and `git diff --stat {base}...{head}`; the files it
@@ -43,7 +50,10 @@ know what its author assumed. Report only; fix nothing; write exactly one file.
 ## Severity
 Important = would break behaviour, leak data, or breach a policy or a framework rule.
 Everything else is a nit: report at most five, summarize the rest as a count. A finding you
-are not sure about is a nit with the doubt stated, not an Important finding.
+are not sure about is a nit with the doubt stated, not an Important finding. A finding an
+earlier pass already reported keeps the severity it earns on its own, whatever REVIEW.md's
+wording: a repeated nit is a nit (article p.34: the second occurrence feeds `CLAUDE.md`);
+repetition never raises a finding.
 
 ## Output — the one file you write
 `{change_dir}/evidence/review-findings.json`, exactly this shape (`head` is mandatory and

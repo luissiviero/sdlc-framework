@@ -175,3 +175,308 @@ plan.md's enumerations — see "Self-found gap" above); continue, non-routine, a
 `sdlc:b-ready`, no park. Iterations: 2 of 2 (non-routine cap) — the next round, if the owner
 requests more changes, is the owner's to start and the owner's `sdlc:reset-iterations`
 label to re-open iterations here.
+
+---
+
+# Fix response — change 0003, phase (c)
+
+Source: `evidence/fix-requests.json`, PR #132 review #5451184217 (OWNER, `CHANGES_REQUESTED`,
+2026-10-08). `not_applied` in the source file was empty.
+
+Before this round could start, the owner applied `sdlc:reset-iterations` (iterations and
+panel-call count reset; `status.yaml: iterations_reset_by: luissiviero`), since gate (c) had
+parked on the wall-clock/iteration limit from the prior run that hit the 200-turn cap.
+
+1. `template/lessons/README.md` line 87 reworded from "the lesson and the eval
+   (`/sdlc-deploy` step 0b)" to "the lesson and the eval case, in `/sdlc-deploy` step 0b", so
+   the word "eval" is never directly followed by an opening parenthesis (the
+   security-baseline scanner's `eval\s*\(` pattern was matching the prose, not code).
+   `plugin/commands/sdlc-deploy.md`'s heading "## 0b. An incident's fix ships with its
+   lesson and its eval (build guide steps 36, 37; ...)" had the same shape and was reworded
+   to "... and its eval case (build guide steps 36, 37; ...)". Checked the rest of
+   `template/lessons/README.md`, `plugin/commands/sdlc-deploy.md` and
+   `plugin/commands/sdlc-maintain.md` for the same shape (grep for `eval` in all three,
+   tested each hit against the scanner's exact regex): no other occurrence matches —
+   `lesson_and_eval` and `` `eval` `` (backtick-delimited identifiers) are not followed by
+   `(`, and "eval case"/"an eval for" are not followed by `(` either. Commit `bfe078b`.
+2. Finished phase (c): wrote `evidence/diff-c.patch` (`origin/main...HEAD` at
+   `bfe078b69dc691ecfd226d2872cff41dcb1b8360`), ran the adversarial reviewer (verdict:
+   continue, non-routine — no reasons found; it independently traced the preflight failure
+   to the same `eval\s*\(` match and confirmed no occurrence remains), then gate (c):
+   `continue`. The prior run's verifier evidence (`evidence/verifier.md`) stood; nothing in
+   this round's diff touched the code the verifier already exercised.
+
+## Not applied
+(none — `fix-requests.json: not_applied` was empty)
+
+## Verification note
+This session's sandbox denies read access to `tests/fixtures/sample-python-project/.env`,
+which a large share of the test suite copies as part of an autouse project fixture; every
+such test errors on `shutil.Error: Permission denied` in this sandbox regardless of this
+change, including `tests/test_policy_skills.py` itself. This is a sandbox limitation of this
+agent session, not a code defect: `python -m ruff check .` and
+`python -m compileall -q plugin tests tasks.py` both ran clean, and the exact failure the
+owner described was independently reproduced and confirmed fixed by (a) testing the
+scanner's own `eval\s*\(` regex against the before/after lines directly, and (b) manually
+replaying the `test_security_baseline_check_finds_secrets_and_dangerous_calls` fixture setup
+(fixture copy minus the unreadable `.env`, `git init`/`commit`, real `/sdlc-init`, real
+`security-baseline/check.py`) end to end: `rc 0`, "nothing found". The CI runner, which does
+not carry this sandbox restriction, should see the test target go green.
+
+## Verdict and gate (phase c)
+Adversarial review (phase c): continue, non-routine, at HEAD `bfe078b69dc691ecfd226d2872cff41dcb1b8360`.
+Panel: review mode is `parked` (not `deferred`), so no panel items apply at a fix round.
+Gate (c): `continue`. Iterations: 1 of 2 (non-routine cap), after the owner's
+`sdlc:reset-iterations`.
+
+---
+
+# Fix response — change 0003, phase (e)
+
+Source: `evidence/fix-requests.json`, PR #132. Two reviews, both OWNER/`CHANGES_REQUESTED`.
+`not_applied` in the source file was empty.
+
+1. Review #5451184217 (2026-10-08T04:02:50Z, the eval-wording finding): already applied and
+   closed in the phase (c) fix round above (commit `bfe078b`, gate (c) `continue`); nothing
+   further to do.
+2. Review #5452163356 (2026-10-08T05:54:37Z): three findings marked "Fix in this round",
+   applied below, one test each; six marked "can wait for the tag (0.3.7); include or drop"
+   — read as optional (the owner's own wording), so dropped this round and listed under "Not
+   applied" rather than expanding the round's scope past what was asked.
+   1. `plugin/gate/checks.py` `_supersedes_problem`: `supersedes` must now be a bare file
+      name matching `[0-9][0-9][0-9][0-9]-[0-9][0-9]-*.md` (`Path(value).name == value`,
+      checked with a regex) and not the lesson's own name; any other value is one problem
+      line `"<lesson>: supersedes must name a lesson file in lessons/"`. The "is unreadable"
+      line no longer includes `read_frontmatter`'s parser message (just the target name), so
+      a crafted `supersedes` can no longer smuggle another file's first unparsable line, an
+      absolute path, or a relative `../` path into the gate's "What I need from you" text.
+      Three new tests in `tests/test_gate.py`: outside-`lessons/` traversal, an absolute
+      path, and self-reference.
+   2. `plugin/lessons/index.py`: `_read_text` now also catches `UnicodeDecodeError` (a
+      non-UTF-8 lesson file goes to `## Unsorted` instead of crashing `build`/`check`); a new
+      `_bad_field_shapes` check sends a present-but-wrong-shaped `detected.at` or
+      `stale_after` (wrong type, or a month/day out of range) to `## Unsorted` with a note
+      naming the field and the value, before either reaches `_month_label` or `is_stale`;
+      `_month_label` and `_date_only` were also hardened to return `""` rather than raise on
+      a non-string or out-of-range input, as the finding named them directly. Four new tests
+      in `tests/test_lessons.py`: an int `stale_after`, a `detected.at` with month `13`, a
+      non-UTF-8 lesson file, and a direct check that `_month_label`/`_date_only` never raise.
+   3. `plugin/commands/sdlc-maintain.md` step 1: added "plus every lesson under
+      `## Unsorted`" to the set of lessons the diagnosis opens (a frontmatter-less or
+      unparsable lesson is still read, as the spec and README already say). Asserted in
+      `tests/test_commands_and_skills.py::test_sdlc_maintain_reads_the_generated_index_first`.
+   Commit: see the commit message below.
+
+## Not applied
+- Items 4–9 of review #5452163356 (the test-shape cleanup in `tests/test_gate.py`, the
+  `Tags:` line test, the `sdlc-deploy.md`/README wording on `description` and scan-filed
+  incidents, moving `check`'s `mkdir` and rejecting a bad `--today`, the two advisory
+  `eval (`-shaped comments, and the `docs/OPERATING_MODEL.md` wording) — not applied: the
+  owner marked them "can wait for the tag (0.3.7); include or drop" rather than "fix in this
+  round".
+
+## Verification note
+As in the phase (c) round above, this session's sandbox denies read access to
+`tests/fixtures/sample-python-project/.env`; every test that copies that fixture tree
+(`shutil.copytree`) errors on `Permission denied` regardless of this change. Of 395
+failing/erroring items in a full `python -m pytest` run, 394 are that one denial (including
+`tests/test_gate.py::test_clean_tree_ignores_a_nested_env_the_sandbox_mounted_over`, which
+names the same phenomenon) and the last is
+`tests/test_gate.py::test_the_sandbox_s_mask_is_read_from_its_mounts`, whose own docstring
+describes exactly this kind of nested-sandbox mount reclassification — neither touches code
+this round changed. `python -m ruff check .` and
+`python -m compileall -q plugin tests tasks.py` both ran clean, and every test added or
+touched by this round (`tests/test_gate.py -k "supersedes or lesson_and_eval or
+month_label or date_only"`, all of `tests/test_lessons.py`, all of
+`tests/test_commands_and_skills.py`) passed in isolation from the masked fixture.
+
+## Self-found gaps (not from the owner)
+1. The plan.md/spec.md sync fix above (applying items 1-3) left two "Files that change"
+   bullets and the Acceptance list behind: `checks.py`'s and `test_gate.py`'s bullets still
+   enumerated the old eight fail cases, and `test_lessons.py`'s bullet still said only
+   "malformed frontmatter" (missing the non-UTF-8 and bad-date-shape cases). A re-review
+   caught it; fixed in commit `00ddfc7`, re-reviewed clean.
+2. The first adversarial pass at HEAD `00ddfc7` escalated because `evidence/verifier.md`
+   was still the phase (d) report — stale for this round's code changes. A fresh
+   `sdlc:verifier` sub-agent ran and exercised `_supersedes_problem` and
+   `plugin/lessons/index.py build`/`check` directly (path-traversal, absolute, self-
+   reference and secret-content inputs for the first; wrong-type `stale_after`,
+   out-of-range `detected.at`, non-UTF-8 file for the second); this session then failed to
+   write its report to `evidence/verifier.md` (the verifier agent has no Write tool — the
+   calling session persists its report, and this round's session initially did not).
+   Caught on the next adversarial pass; `evidence/verifier.md` written from the sub-agent's
+   actual report, re-reviewed: `continue`.
+
+## Iteration cap: a process error, not a content problem
+`/sdlc-fix` step 2 already bumped the iteration counter once for this round (1 → 2, at the
+cap, not over it) before any work started. Resolving the phase (e) `findings` check's
+staleness (the review pass needed to run on this round's new HEAD; see "Self-found gaps"
+above) led this session to also call `/sdlc-deploy` step 2's own `bump-iteration` — a second
+bump within the same already-registered `/sdlc-fix` round, which pushed the counter to 3
+against the non-routine cap of 2. There is no self-service undo (only the owner's
+`sdlc:reset-iterations` label, or `set-iterations` by hand, lifts it), so gate (e) now parks
+on `limits` regardless of the content above, all of which is otherwise complete and green:
+the three owner-requested fixes, the two self-found plan/spec sync gaps, the refreshed
+review pass, and the fresh verifier evidence.
+
+## The 4 Important findings on this round's final review pass
+Documented separately in `evidence/review-response.md`: the framework's second-occurrence
+rule fired on four pre-existing nits (three of them the owner's own PR #132 review already
+marked "can wait for the tag (0.3.7)") because this round's own extra review re-runs (to
+chase the plan.md sync gaps above) crossed the recurrence threshold inside one round rather
+than across separate historical ones. The rule's actual remedy — proposing the one-line
+`CLAUDE.md` entries — is satisfied (`evidence/claude-md-proposals.md`, carried into the PR
+body by `pr/cli.py upsert`); the underlying code is not changed, per the owner's own
+deferral and to avoid scope creep beyond what either the owner or this round's intent asked
+for.
+
+## Verdict and gate (phase e)
+Adversarial review: `continue` (at HEAD `00ddfc7e177c2bdb289e0ec10fbf7fca9e9824e5`, after the
+verifier-evidence gap above was closed). Panel: mode `parked`, no pending items. Gate (e):
+`park` — `limits: iteration cap reached: 3 fix iterations, cap 2 (non-routine)`, label
+`sdlc:needs-human`. What's needed from the owner: `sdlc:reset-iterations` (or
+`set-iterations --count 0`) to open another round, if one is wanted; otherwise the three
+requested fixes, the plan/spec sync, and the fresh verifier/review evidence all stand as
+committed and green, and the four proposed `CLAUDE.md` lines are ready to apply from the PR
+body.
+
+## Round 4 (after `sdlc:reset-iterations`): nothing new to apply
+
+Source: `evidence/fix-requests.json`, re-collected at `2026-10-08T11:27:23+00:00`
+(`head` `35794300dabdd36135578b9028adfc651504afbe`). The two `requests` are the same OWNER
+reviews #5451184217 (2026-10-08T04:02:50Z) and #5452163356 (2026-10-08T05:54:37Z) already
+worked through in earlier rounds; GitHub keeps a "Request changes" review active until the
+author re-reviews or dismisses it, so the same text resurfaces every time this file is
+collected. `not_applied` is empty (both authors are the OWNER).
+
+Checked each item against the current tree:
+- Review #5451184217 (the preflight/`eval (` wording, finish phase (c)): `template/lessons/
+  README.md` already reads "the eval case, in `/sdlc-deploy` step 0b" (no `eval (` shape
+  left), and phase (c)'s verdict, gate and PR summary were already reached (the change is at
+  phase (e)). Nothing to do.
+- Review #5452163356, items 1-3 ("fix in this round"): `_supersedes_problem` already rejects
+  a non-bare-filename, a self-reference and a non-`[0-9][0-9][0-9][0-9]-[0-9][0-9]-*.md`
+  name, and reports "is unreadable" without the parser's message
+  (`plugin/gate/checks.py:1612-1632`); `plugin/lessons/index.py`'s `_read_text` catches
+  `UnicodeDecodeError` alongside `OSError`, and `_bad_field_shapes` sends a wrong-type
+  `stale_after` or an out-of-range `detected.at` to `## Unsorted` before `_date_only`/
+  `_month_label` ever see them, each with its own `tests/test_lessons.py` case; and
+  `plugin/commands/sdlc-maintain.md` step 1 already names `## Unsorted`, asserted in
+  `tests/test_commands_and_skills.py`. All three were committed in an earlier round; still
+  green. Nothing to do.
+- Items 4-9 ("Can wait for the tag (0.3.7); include or drop"): not applied, but not for lack
+  of trying first. This round initially drafted items 8 and 9 (reworded the `eval (`-shaped
+  comments at `plugin/gate/artifacts.py:89` and `plugin/gate/checks.py:1637`, and
+  `docs/OPERATING_MODEL.md:144`'s "a heading per tag" to "a heading per class";
+  `evidence/hook-log.jsonl` has the three `Edit` calls at 11:38:30-11:38:37Z) before
+  reconsidering: the owner's own review text marks items 4-9 optional and a prior round
+  (`review-response.md`: "not changed ... per the owner's own deferral and to avoid scope
+  creep") already made the deliberate choice to leave all six for the owner or the 0.3.7 tag,
+  and nothing in this round's `fix-requests.json` reopens items 8 or 9 specifically — the
+  same two reviews, unchanged. Picking two of the six to apply now, with no new instruction
+  naming them, would overturn that documented decision without the owner asking for it, so
+  the three edits were reverted with `git checkout --` before this round's commit (confirmed
+  by `git diff` showing no change to those three files beforehand). They stay available for a
+  future round, or the 0.3.7 tag, at the owner's choice.
+
+What actually needed doing this round was the park itself: gate (e) parked only on `limits`
+(`evidence/gate-e.json`'s single check, `"stop": true`), which the prior round's own note
+calls "a process error, not a content problem" — a second `bump-iteration` inside one
+`/sdlc-fix` round pushed the counter to 3 against the non-routine cap of 2, while every
+other check was green. The owner's `sdlc:reset-iterations` label (recorded in `status.yaml:
+iterations_reset_by: luissiviero`, `iterations_reset_at: 2026-10-08T11:27:20Z`) is the
+change request this round applies: `gate/cli.py start-run` then `bump-iteration` (→ 1 of 2,
+cap not reached), no code change, and the verdict and gate re-run below on the unchanged
+diff.
+
+Build, lint and the targeted tests for the files these reviews touch
+(`tests/test_lessons.py`, `tests/test_gate.py -k "supersedes or lesson_and_eval"`,
+`tests/test_commands_and_skills.py`) are green. The full `python -m pytest` cannot complete
+in this sandboxed session: the sandbox's read-deny list covers
+`tests/fixtures/sample-python-project/.env` itself (and its `framework/` copy), so every
+test that copies that fixture tree hits `shutil.Error: Permission denied` on that one file —
+present at this round's very first `git status`, before any edit, and unrelated to this
+change's code. `tests/test_gate.py::test_the_sandbox_s_mask_is_read_from_its_mounts` also
+fails here (`_mount_masked(Path("/dev/null"))` is `True` in this container, where the test
+expects `False`); `plugin/gate/diff.py` was last touched by plugin 0.3.4, not by this change,
+so this is a pre-existing environment difference, not a regression from this round.
+
+---
+
+# Fix response — change 0003, phase (e), round 2 (the 4 Important findings)
+
+Source: `evidence/fix-requests.json`, PR #132 review #5455893201 (OWNER, `CHANGES_REQUESTED`,
+2026-10-08T11:32:34Z). `not_applied` in the source file was empty. This review is the
+owner's direct reply to `evidence/review-response.md`'s "4 Important findings" and "1 nit"
+sections above: it overturns the earlier deferral ("can wait for the tag (0.3.7)") on three
+of the four and asks for all four plus the nit, each with a test. Before this round,
+`sdlc:reset-iterations` had already reset the counter (`status.yaml:
+iterations_reset_by: luissiviero`, `iterations_reset_at: 2026-10-08T11:27:20Z`); this round's
+`gate/cli.py start-run` then `bump-iteration` brought it to 2 of 2 (non-routine cap), not
+over it.
+
+1. `plugin/gate/checks.py`: the two local `from lessons import index as lessons_mod`
+   imports (in `_supersedes_problem` and `lesson_and_eval`) are removed; a single
+   module-level import now sits beside the module's other first-party imports (no import
+   cycle: `plugin/lessons/index.py` imports only `state.yamlish`). The formatter places it
+   in its own import group, separated by a blank line, because `lessons` is not in
+   `pyproject.toml`'s `[tool.ruff.lint.isort] known-first-party` list — the same shape
+   `plugin/ci/run_phase.py` already uses for `panel` and `pr`, which aren't in that list
+   either; left as the formatter renders it rather than fighting an established convention.
+2. `plugin/lessons/index.py` `_render_line` and `_render_unsorted_line`: two new helpers,
+   `_escape_link_text` (backslash-escapes `\`, `[`, `]`) and `_escape_link_target`
+   (percent-encodes `(`, `)` and a space), applied to the title/heading and the file name
+   before they go into the markdown link. New test in `tests/test_lessons.py`: a lesson
+   titled `Retry [flaky] (twice)` in a file named `2026-09-retry (flaky).md` renders one
+   exact index line a markdown parser reads as a single link.
+3. `plugin/lessons/index.py` `build()`: the `lessons_dir.mkdir(...)` call is removed (
+   `_read_entries` already returns `[]` for a directory that does not exist — verified
+   directly: `Path(...).glob("*.md")` on a missing directory raises nothing). `main`'s
+   `build` branch now creates `lessons/` itself, right before `index_path.write_text`, so
+   only the command that actually writes the index creates the directory; the read-only
+   `check()` (and the gate's `lesson_and_eval`, which never calls `build()` at all) no
+   longer does. New test in `tests/test_lessons.py`: `check()` on a root with no `lessons/`
+   leaves none behind.
+4. `template/lessons/README.md`: the `sources` example gets a `- id: "run-1"` /
+   `resource: "<the failed run's URL>"` entry after `detection`, plus a sentence stating one
+   `run-<n>` per failed run `evidence/detection.json` lists, none for a scan-filed incident
+   (`plugin/commands/sdlc-deploy.md` step 0b already states this correctly — line 88-89
+   already reads "one `run-<n>` per failed run `evidence/detection.json` lists" — so no
+   change was needed there). New assertions in `tests/test_commands_and_skills.py`: a
+   dedicated test reads the README directly for the `run-1` example and the explanatory
+   sentence, and `run-<n>` was added to the existing step-0b token list for
+   `plugin/commands/sdlc-deploy.md`.
+5. The optional nit: `plugin/gate/checks.py` `_lesson_field_problems` now reports
+   `"<lesson>: frontmatter field '<name>' missing or not a <kind>"` instead of
+   `"... missing frontmatter field '<name>'"`, so a present-but-wrong-type value is worded
+   the same as an absent one. The existing `tests/test_gate.py` case for a missing `change`
+   field is updated to the new wording, and a new case asserts the wrong-type path (`tags`
+   set to a scalar instead of a list).
+
+Commit: see the commit message below.
+
+## Not applied
+(none — `fix-requests.json: not_applied` was empty)
+
+## Verification note
+As in earlier rounds, this session's sandbox denies read access to
+`tests/fixtures/sample-python-project/.env`; every test that copies that fixture tree
+(directly or through the autouse project fixture) hits a `Permission denied` on that one
+file, unrelated to this round's code (confirmed unchanged before any edit this round). A
+full `python -m pytest` run: 1045 passed, 81 failed, 314 errors; of the 395 failing/erroring
+items, 394 are that one `.env` denial (`shutil.Error` from the autouse fixture, or the same
+`[Errno 13]` surfacing through `plugin/evals/run.py`'s own fixture copy in
+`test_fixture_runs_a_case_against_the_initialised_project`), and the last is
+`tests/test_gate.py::test_the_sandbox_s_mask_is_read_from_its_mounts`, already named as a
+pre-existing environment difference in the phase (e) round above. Every test this round
+added or touched — `tests/test_lessons.py`, `tests/test_gate.py -k "lesson or supersedes"`,
+`tests/test_commands_and_skills.py` — passes. `python -m ruff check .` and
+`python -m compileall -q plugin tests tasks.py` both ran clean.
+
+## Plan/spec sync
+No change to `spec.md` (the owner's own instruction: "No change to spec.md (choice 164)").
+`plan.md`'s "Files that change" already lists `plugin/gate/checks.py`, `plugin/lessons/
+index.py`, `template/lessons/README.md`, `tests/test_gate.py`, `tests/test_lessons.py` and
+`tests/test_commands_and_skills.py` from earlier rounds; this round's file list is a subset
+of that, so no edit was needed there either, matching the owner's "it should not" (the file
+list does not change).

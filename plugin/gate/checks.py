@@ -30,6 +30,8 @@ PLUGIN_DIR = Path(__file__).resolve().parent.parent
 if str(PLUGIN_DIR) not in sys.path:
     sys.path.insert(0, str(PLUGIN_DIR))
 
+from lessons import index as lessons_mod  # noqa: E402
+
 from gate import artifacts as art  # noqa: E402
 from gate import diff as diffmod  # noqa: E402
 from gate.diff import Diff  # noqa: E402
@@ -1589,6 +1591,98 @@ def check_route(ctx: GateContext) -> CheckResult:
     )
 
 
+def _lesson_field_problems(lesson_name: str, fm: dict[str, Any]) -> list[str]:
+    problems = []
+    for name, kind in art.LESSON_REQUIRED_FIELDS.items():
+        value = fm.get(name)
+        present = (
+            (kind == "scalar" and isinstance(value, str) and value.strip())
+            or (kind == "list" and isinstance(value, list) and value)
+            or (kind == "mapping" and isinstance(value, dict) and value)
+        )
+        if not present:
+            problems.append(f"{lesson_name}: frontmatter field {name!r} missing or not a {kind}")
+    status = fm.get("status")
+    if isinstance(status, str) and status.strip() and status not in art.LESSON_STATUSES:
+        problems.append(f"{lesson_name}: status {status!r} is not one of {art.LESSON_STATUSES}")
+    return problems
+
+
+_SUPERSEDES_NAME_RE = re.compile(r"^[0-9]{4}-[0-9]{2}-.+\.md$")
+
+
+def _supersedes_problem(lessons_dir: Path, lesson_name: str, fm: dict[str, Any]) -> str | None:
+    supersedes = fm.get("supersedes")
+    if not (isinstance(supersedes, str) and supersedes.strip()):
+        return None
+
+    if (
+        Path(supersedes).name != supersedes
+        or not _SUPERSEDES_NAME_RE.match(supersedes)
+        or supersedes == lesson_name
+    ):
+        return f"{lesson_name}: supersedes must name a lesson file in lessons/"
+    target = lessons_dir / supersedes
+    if not target.is_file():
+        return f"{lesson_name}: supersedes target {supersedes!r} does not exist"
+    target_fm, _why = lessons_mod.read_frontmatter(target)
+    if target_fm is None:
+        return f"{lesson_name}: supersedes target {supersedes!r} is unreadable"
+    if target_fm.get("status") != "retired":
+        return f"{lesson_name}: supersedes target {supersedes!r} has not been retired"
+    return None
+
+
+# --- lesson and eval, gate (e) only (build guide: change 0003) -------------------------------
+def lesson_and_eval(ctx: GateContext) -> CheckResult:
+    """An incident change's fix ships with its lesson and its eval (spec.md change 0003).
+    Guarded on ``ctx.phase == "e"`` as well as the route, not only registered for phase "e" in
+    ``CHECKS_BY_PHASE``: the same ``entry_route == "incident"`` holds all the way through
+    phase (f) too, before either the lesson or the eval exists, and this check must never run
+    there (the regression guard is ``test_gate_f_waits_for_the_owner_s_triage...``)."""
+    if not (ctx.status.entry_route == "incident" and ctx.phase == "e"):
+        return _ok("lesson_and_eval", "not an incident change at gate (e): nothing to check")
+
+    problems: list[str] = []
+    lessons_dir = ctx.root / "lessons"
+    pattern = art.lesson_glob(ctx.status.slug)
+    matches = sorted(ctx.root.glob(pattern))
+    if not matches:
+        problems.append(f"no lesson file matches {pattern}")
+    elif len(matches) > 1:
+        names = ", ".join(m.relative_to(ctx.root).as_posix() for m in matches)
+        problems.append(f"{len(matches)} lesson files match {pattern}: {names}")
+    else:
+        lesson_path = matches[0]
+        fm, why = lessons_mod.read_frontmatter(lesson_path)
+        if fm is None:
+            problems.append(f"{lesson_path.name}: {why}")
+        else:
+            problems += _lesson_field_problems(lesson_path.name, fm)
+            supersedes_problem = _supersedes_problem(lessons_dir, lesson_path.name, fm)
+            if supersedes_problem:
+                problems.append(supersedes_problem)
+
+    eval_dir = ctx.root / "evals" / "cases" / f"{ctx.status.id}-{ctx.status.slug}"
+    eval_rel = eval_dir.relative_to(ctx.root).as_posix()
+    for name in (art.EVAL_PROMPT, art.EVAL_CHECKS):
+        if not (eval_dir / name).is_file():
+            problems.append(f"{eval_rel}/{name} is missing")
+
+    index_ok, _diff, _notes = lessons_mod.check(ctx.root)
+    if not index_ok:
+        problems.append("lessons/index.md is not what `plugin/lessons/index.py build` would write")
+
+    if problems:
+        return _fail(
+            "lesson_and_eval",
+            "; ".join(problems),
+            "\n    ".join(problems),
+            problems=problems,
+        )
+    return _ok("lesson_and_eval", "the lesson, its frontmatter and the eval case are all present")
+
+
 def _project_language(root: Path) -> str:
     try:
         from init import detect as detect_mod  # noqa: PLC0415
@@ -1656,6 +1750,7 @@ CHECKS_BY_PHASE: dict[str, tuple[Check, ...]] = {
         check_risk_list,
         check_owner_actions,
         check_test_lock,
+        lesson_and_eval,
         check_adversarial_verdict,
     ),
     # gate (f) = the owner's triage of the incident intent PR (decision 25): the intent in

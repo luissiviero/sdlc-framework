@@ -86,6 +86,36 @@ REQUIRED_EVIDENCE = {
     "d": (EVIDENCE_TEST, EVIDENCE_BUILD, EVIDENCE_LINT, EVIDENCE_VERIFIER),
     "e": (EVIDENCE_TEST, EVIDENCE_BUILD, EVIDENCE_LINT, EVIDENCE_VERIFIER),
 }
+# The incident's lesson and eval (change 0003; docs/proposals/okf-adoption.md R1), checked
+# only at gate (e) by gate/checks.py:lesson_and_eval. The field names and order are spec.md
+# Requirements' first bullet, minus the three optional fields (runbook, supersedes,
+# retired_by); the value names what a present field must not be to count as missing.
+LESSON_REQUIRED_FIELDS = {
+    "type": "scalar",
+    "title": "scalar",
+    "description": "scalar",
+    "tags": "list",
+    "change": "scalar",
+    "detected": "mapping",
+    "fixed": "mapping",
+    "generated": "mapping",
+    "status": "scalar",
+    "stale_after": "scalar",
+    "sources": "list",
+}
+LESSON_STATUSES = ("stable", "retired")
+# The eval case's two files: plugin/evals/case.py:178 is the only writer and must agree.
+EVAL_PROMPT = "prompt.md"
+EVAL_CHECKS = "checks.yaml"
+
+
+def lesson_glob(slug: str) -> str:
+    """The glob a change's lesson file must match, year and month free, slug fixed (a looser
+    ``lessons/*-<slug>.md`` would also match a file whose name merely ends in another
+    change's slug)."""
+    return f"lessons/[0-9][0-9][0-9][0-9]-[0-9][0-9]-{slug}.md"
+
+
 # The review passes (step 26, phase e) publish review-findings.json; the gate refuses to pass
 # gate (e) without it, and reads it at (c)/(d) whenever it is present.
 FINDINGS_REQUIRED_AT = ("e",)
