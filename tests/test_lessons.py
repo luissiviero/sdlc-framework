@@ -147,6 +147,43 @@ def test_a_lesson_missing_a_render_field_goes_to_unsorted(tmp_path):
     assert "[What happened](2026-09-no-tags.md)" in text
 
 
+def test_a_stale_after_of_the_wrong_type_goes_to_unsorted_without_crashing(tmp_path):
+    lessons = tmp_path / "lessons"
+    write_lesson(lessons / "2026-09-x.md", stale_after=2027)
+    text, notes = les.build(tmp_path, today="2026-10-08")
+    assert notes == ["2026-09-x.md: stale_after 2027 is not a date"]
+    assert "## Unsorted" in text
+
+
+def test_a_detected_at_with_an_out_of_range_month_goes_to_unsorted_without_crashing(tmp_path):
+    lessons = tmp_path / "lessons"
+    write_lesson(
+        lessons / "2026-09-x.md",
+        detected={"at": "2026-13-01T00:00:00Z", "metric": "m", "tier": 2, "rule": "we1"},
+    )
+    text, notes = les.build(tmp_path, today="2026-10-08")
+    assert notes == ["2026-09-x.md: detected.at '2026-13-01T00:00:00Z' is not a date"]
+    assert "## Unsorted" in text
+
+
+def test_a_non_utf8_lesson_file_goes_to_unsorted_without_crashing(tmp_path):
+    lessons = tmp_path / "lessons"
+    lessons.mkdir(parents=True)
+    bad = lessons / "2026-09-bad.md"
+    bad.write_bytes(b"---\ntitle: broken bytes \xff\n---\nbody\n")
+    text, notes = les.build(tmp_path, today="2026-10-08")
+    assert len(notes) == 1 and notes[0].startswith("2026-09-bad.md:")
+    assert "## Unsorted" in text
+
+
+def test_month_label_and_date_only_never_raise_on_a_bad_shape():
+    assert les._month_label(2027) == ""
+    assert les._month_label("2026-13-01") == ""
+    assert les._month_label(None) == ""
+    assert les._date_only(2027) == ""
+    assert les._date_only(None) == ""
+
+
 def test_the_frontmatter_split_stops_at_the_second_marker(tmp_path):
     """A lesson body containing a ``key: value``-shaped line must not be handed to the YAML
     reader: the split is on the first two ``---`` markers only."""

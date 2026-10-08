@@ -228,3 +228,67 @@ Adversarial review (phase c): continue, non-routine, at HEAD `bfe078b69dc691ecfd
 Panel: review mode is `parked` (not `deferred`), so no panel items apply at a fix round.
 Gate (c): `continue`. Iterations: 1 of 2 (non-routine cap), after the owner's
 `sdlc:reset-iterations`.
+
+---
+
+# Fix response — change 0003, phase (e)
+
+Source: `evidence/fix-requests.json`, PR #132. Two reviews, both OWNER/`CHANGES_REQUESTED`.
+`not_applied` in the source file was empty.
+
+1. Review #5451184217 (2026-10-08T04:02:50Z, the eval-wording finding): already applied and
+   closed in the phase (c) fix round above (commit `bfe078b`, gate (c) `continue`); nothing
+   further to do.
+2. Review #5452163356 (2026-10-08T05:54:37Z): three findings marked "Fix in this round",
+   applied below, one test each; six marked "can wait for the tag (0.3.7); include or drop"
+   — read as optional (the owner's own wording), so dropped this round and listed under "Not
+   applied" rather than expanding the round's scope past what was asked.
+   1. `plugin/gate/checks.py` `_supersedes_problem`: `supersedes` must now be a bare file
+      name matching `[0-9][0-9][0-9][0-9]-[0-9][0-9]-*.md` (`Path(value).name == value`,
+      checked with a regex) and not the lesson's own name; any other value is one problem
+      line `"<lesson>: supersedes must name a lesson file in lessons/"`. The "is unreadable"
+      line no longer includes `read_frontmatter`'s parser message (just the target name), so
+      a crafted `supersedes` can no longer smuggle another file's first unparsable line, an
+      absolute path, or a relative `../` path into the gate's "What I need from you" text.
+      Three new tests in `tests/test_gate.py`: outside-`lessons/` traversal, an absolute
+      path, and self-reference.
+   2. `plugin/lessons/index.py`: `_read_text` now also catches `UnicodeDecodeError` (a
+      non-UTF-8 lesson file goes to `## Unsorted` instead of crashing `build`/`check`); a new
+      `_bad_field_shapes` check sends a present-but-wrong-shaped `detected.at` or
+      `stale_after` (wrong type, or a month/day out of range) to `## Unsorted` with a note
+      naming the field and the value, before either reaches `_month_label` or `is_stale`;
+      `_month_label` and `_date_only` were also hardened to return `""` rather than raise on
+      a non-string or out-of-range input, as the finding named them directly. Four new tests
+      in `tests/test_lessons.py`: an int `stale_after`, a `detected.at` with month `13`, a
+      non-UTF-8 lesson file, and a direct check that `_month_label`/`_date_only` never raise.
+   3. `plugin/commands/sdlc-maintain.md` step 1: added "plus every lesson under
+      `## Unsorted`" to the set of lessons the diagnosis opens (a frontmatter-less or
+      unparsable lesson is still read, as the spec and README already say). Asserted in
+      `tests/test_commands_and_skills.py::test_sdlc_maintain_reads_the_generated_index_first`.
+   Commit: see the commit message below.
+
+## Not applied
+- Items 4–9 of review #5452163356 (the test-shape cleanup in `tests/test_gate.py`, the
+  `Tags:` line test, the `sdlc-deploy.md`/README wording on `description` and scan-filed
+  incidents, moving `check`'s `mkdir` and rejecting a bad `--today`, the two advisory
+  `eval (`-shaped comments, and the `docs/OPERATING_MODEL.md` wording) — not applied: the
+  owner marked them "can wait for the tag (0.3.7); include or drop" rather than "fix in this
+  round".
+
+## Verification note
+As in the phase (c) round above, this session's sandbox denies read access to
+`tests/fixtures/sample-python-project/.env`; every test that copies that fixture tree
+(`shutil.copytree`) errors on `Permission denied` regardless of this change. Of 395
+failing/erroring items in a full `python -m pytest` run, 394 are that one denial (including
+`tests/test_gate.py::test_clean_tree_ignores_a_nested_env_the_sandbox_mounted_over`, which
+names the same phenomenon) and the last is
+`tests/test_gate.py::test_the_sandbox_s_mask_is_read_from_its_mounts`, whose own docstring
+describes exactly this kind of nested-sandbox mount reclassification — neither touches code
+this round changed. `python -m ruff check .` and
+`python -m compileall -q plugin tests tasks.py` both ran clean, and every test added or
+touched by this round (`tests/test_gate.py -k "supersedes or lesson_and_eval or
+month_label or date_only"`, all of `tests/test_lessons.py`, all of
+`tests/test_commands_and_skills.py`) passed in isolation from the masked fixture.
+
+## Verdict and gate (phase e)
+See `evidence/gate-e.json` and the adversarial review recorded for this round's HEAD.

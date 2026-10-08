@@ -46,8 +46,10 @@ One shell command per Bash call (an unattended run denies a chained command whol
    through): run
    `python "${CLAUDE_PLUGIN_ROOT}/plugin/lessons/index.py" check --root "${CLAUDE_PROJECT_DIR}"`
    first. When it exits 0, open only the lessons whose heading or `Tags:` clause names this
-   finding's metric or the rule that fired, plus every lesson under `## Retired` (the index
-   line carries the tags, so this never requires opening every file under `lessons/`). On a
+   finding's metric or the rule that fired, plus every lesson under `## Retired`, plus every
+   lesson under `## Unsorted` (a frontmatter-less or unparsable lesson is still read by the
+   diagnosis; the index line carries the tags for the others, so this never requires opening
+   every file under `lessons/`). On a
    stale or missing index (`check` exits 1, or `lessons/index.md` does not exist), read
    every file under `lessons/` instead, as before (you never rebuild the index yourself:
    that is step 0b of the fix this diagnosis may lead to), and say so in one line of the

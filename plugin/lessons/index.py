@@ -17,7 +17,9 @@ is appended to a line when ``stale_after`` is before ``--today`` (default: the r
 ``check`` exits 1 with a unified diff when the index on disk is not what ``build`` would
 write, comparing with any ``(stale)`` suffix stripped from both sides first (so a lesson
 crossing ``stale_after`` between two runs is not reported as drift); it prints one note line
-per ``## Unsorted`` file either way.
+per ``## Unsorted`` file either way. A ``detected.at`` or ``stale_after`` that is present but
+not a date-shaped string (wrong type, or a month/day out of range) also sends the file to
+``## Unsorted`` rather than raising, and a lesson file that is not UTF-8 does too.
 
 The frontmatter is split the same way ``SKILL.md``'s is (``tests/test_policy_skills.py:28``):
 a leading and a trailing ``---`` line, read with ``utf-8-sig`` to strip a BOM, then the text
@@ -59,6 +61,7 @@ FRONTMATTER_RE = re.compile(r"^---\n(.*?)\n---\n(.*)$", re.S)
 HEADING_RE = re.compile(r"^#{1,6}\s+(\S.*)$")
 STALE_SUFFIX_RE = re.compile(r" \(stale\)$", re.MULTILINE)
 DATE_RE = re.compile(r"^(\d{4})-(\d{2})")
+DATE_SHAPE_RE = re.compile(r"^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])")
 
 
 @dataclass
@@ -101,10 +104,27 @@ def _missing_render_fields(fm: dict[str, Any]) -> list[str]:
     return problems
 
 
+def _bad_field_shapes(fm: dict[str, Any]) -> list[str]:
+    """Fields that are present but not the date-shaped string a render needs (wrong type, or
+    a month/day out of range): caught here so a bad value sends the file to ``## Unsorted``
+    instead of raising later in ``_month_label`` or ``is_stale``."""
+    problems = []
+    detected = fm.get("detected")
+    at = detected.get("at") if isinstance(detected, dict) else None
+    if at is not None and not (isinstance(at, str) and DATE_SHAPE_RE.match(at)):
+        problems.append(f"detected.at {at!r} is not a date")
+    stale_after = fm.get("stale_after")
+    if stale_after is not None and not (
+        isinstance(stale_after, str) and DATE_SHAPE_RE.match(stale_after)
+    ):
+        problems.append(f"stale_after {stale_after!r} is not a date")
+    return problems
+
+
 def _read_text(path: Path) -> tuple[str | None, str]:
     try:
         return path.read_text(encoding="utf-8-sig"), ""
-    except OSError as exc:
+    except (OSError, UnicodeDecodeError) as exc:
         return None, str(exc)
 
 
@@ -157,7 +177,7 @@ def read_entry(path: Path) -> Entry:
         return Entry(
             path.name, ok=False, error="frontmatter is not a mapping", heading=_first_heading(body)
         )
-    problems = _missing_render_fields(fm)
+    problems = _missing_render_fields(fm) + _bad_field_shapes(fm)
     if problems:
         return Entry(path.name, ok=False, error="; ".join(problems), heading=_first_heading(body))
     detected = fm["detected"]
@@ -180,16 +200,20 @@ def normalise_class(value: str) -> str:
     return re.sub(r"[ _]+", "-", value.strip().lower())
 
 
-def _month_label(at: str) -> str:
-    m = DATE_RE.match(at or "")
+def _month_label(at: Any) -> str:
+    if not isinstance(at, str):
+        return ""
+    m = DATE_RE.match(at)
     if not m:
         return ""
     year, month = int(m.group(1)), int(m.group(2))
+    if not 1 <= month <= 12:
+        return ""
     return f"{calendar.month_abbr[month]} {year}"
 
 
-def _date_only(value: str | None) -> str:
-    return (value or "")[:10]
+def _date_only(value: Any) -> str:
+    return value[:10] if isinstance(value, str) else ""
 
 
 def is_stale(stale_after: str | None, today: str) -> bool:

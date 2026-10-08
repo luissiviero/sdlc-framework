@@ -1606,18 +1606,27 @@ def _lesson_field_problems(lesson_name: str, fm: dict[str, Any]) -> list[str]:
     return problems
 
 
+_SUPERSEDES_NAME_RE = re.compile(r"^[0-9]{4}-[0-9]{2}-.+\.md$")
+
+
 def _supersedes_problem(lessons_dir: Path, lesson_name: str, fm: dict[str, Any]) -> str | None:
     supersedes = fm.get("supersedes")
     if not (isinstance(supersedes, str) and supersedes.strip()):
         return None
     from lessons import index as lessons_mod  # noqa: PLC0415
 
+    if (
+        Path(supersedes).name != supersedes
+        or not _SUPERSEDES_NAME_RE.match(supersedes)
+        or supersedes == lesson_name
+    ):
+        return f"{lesson_name}: supersedes must name a lesson file in lessons/"
     target = lessons_dir / supersedes
     if not target.is_file():
         return f"{lesson_name}: supersedes target {supersedes!r} does not exist"
-    target_fm, why = lessons_mod.read_frontmatter(target)
+    target_fm, _why = lessons_mod.read_frontmatter(target)
     if target_fm is None:
-        return f"{lesson_name}: supersedes target {supersedes!r} is unreadable: {why}"
+        return f"{lesson_name}: supersedes target {supersedes!r} is unreadable"
     if target_fm.get("status") != "retired":
         return f"{lesson_name}: supersedes target {supersedes!r} has not been retired"
     return None

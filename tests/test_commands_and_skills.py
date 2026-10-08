@@ -672,6 +672,7 @@ def test_sdlc_maintain_reads_the_generated_index_first():
         'lessons/index.py" check',
         "Tags",
         "## Retired",
+        "## Unsorted",
         "stale or missing",
         "## Evidence",
         "(stale)",

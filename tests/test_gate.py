@@ -2546,6 +2546,37 @@ def test_lesson_and_eval_fails_on_a_dangling_supersedes(tmp_path):
     )
 
 
+def test_lesson_and_eval_fails_on_a_supersedes_path_outside_lessons(tmp_path):
+    _lesson_setup(tmp_path, lesson_overrides={"supersedes": "../secret.txt"}, write_index=False)
+    res = checks.lesson_and_eval(_e_ctx(tmp_path))
+    assert not res.ok
+    assert any(
+        "supersedes must name a lesson file in lessons/" in p for p in res.need.split("\n    ")
+    )
+
+
+def test_lesson_and_eval_fails_on_an_absolute_supersedes_path(tmp_path):
+    target = tmp_path / "lessons" / f"2026-09-earlier-{LESSON_SLUG}.md"
+    write_lesson(target, status="retired")
+    _lesson_setup(tmp_path, lesson_overrides={"supersedes": str(target)}, write_index=False)
+    res = checks.lesson_and_eval(_e_ctx(tmp_path))
+    assert not res.ok
+    assert any(
+        "supersedes must name a lesson file in lessons/" in p for p in res.need.split("\n    ")
+    )
+
+
+def test_lesson_and_eval_fails_on_a_lesson_that_supersedes_itself(tmp_path):
+    _lesson_setup(
+        tmp_path, lesson_overrides={"supersedes": f"2026-10-{LESSON_SLUG}.md"}, write_index=False
+    )
+    res = checks.lesson_and_eval(_e_ctx(tmp_path))
+    assert not res.ok
+    assert any(
+        "supersedes must name a lesson file in lessons/" in p for p in res.need.split("\n    ")
+    )
+
+
 def test_lesson_and_eval_fails_when_the_supersedes_target_was_never_retired(tmp_path):
     write_lesson(tmp_path / "lessons" / f"2026-09-earlier-{LESSON_SLUG}.md")  # status: stable
     _lesson_setup(
