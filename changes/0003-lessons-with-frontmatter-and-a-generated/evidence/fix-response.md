@@ -339,3 +339,59 @@ verifier-evidence gap above was closed). Panel: mode `parked`, no pending items.
 requested fixes, the plan/spec sync, and the fresh verifier/review evidence all stand as
 committed and green, and the four proposed `CLAUDE.md` lines are ready to apply from the PR
 body.
+
+## Round 4 (after `sdlc:reset-iterations`): nothing new to apply
+
+Source: `evidence/fix-requests.json`, re-collected at `2026-10-08T11:27:23+00:00`
+(`head` `35794300dabdd36135578b9028adfc651504afbe`). The two `requests` are the same OWNER
+reviews #5451184217 (2026-10-08T04:02:50Z) and #5452163356 (2026-10-08T05:54:37Z) already
+worked through in earlier rounds; GitHub keeps a "Request changes" review active until the
+author re-reviews or dismisses it, so the same text resurfaces every time this file is
+collected. `not_applied` is empty (both authors are the OWNER).
+
+Checked each item against the current tree before touching anything:
+- Review #5451184217 (the preflight/`eval (` wording, finish phase (c)): `template/lessons/
+  README.md` already reads "the eval case, in `/sdlc-deploy` step 0b" (no `eval (` shape
+  left), and phase (c)'s verdict, gate and PR summary were already reached (the change is at
+  phase (e)). Nothing to do.
+- Review #5452163356, items 1-3 ("fix in this round"): `_supersedes_problem` already rejects
+  a non-bare-filename, a self-reference and a non-`[0-9][0-9][0-9][0-9]-[0-9][0-9]-*.md`
+  name, and reports "is unreadable" without the parser's message
+  (`plugin/gate/checks.py:1612-1632`); `plugin/lessons/index.py`'s `_read_text` catches
+  `UnicodeDecodeError` alongside `OSError`, and `_bad_field_shapes` sends a wrong-type
+  `stale_after` or an out-of-range `detected.at` to `## Unsorted` before `_date_only`/
+  `_month_label` ever see them, each with its own `tests/test_lessons.py` case; and
+  `plugin/commands/sdlc-maintain.md` step 1 already names `## Unsorted`, asserted in
+  `tests/test_commands_and_skills.py`. All three were committed in an earlier round; still
+  green. Nothing to do.
+- Items 4-9 ("Can wait for the tag (0.3.7); include or drop"): still not applied (confirmed
+  by grep — `plugin/gate/artifacts.py:89` and `plugin/gate/checks.py:1637` still read
+  `eval (`; `docs/OPERATING_MODEL.md:144` still reads "a heading per tag"). This round leaves
+  them as the prior round decided (`review-response.md`: "not changed ... per the owner's
+  own deferral and to avoid scope creep"): the owner marked them optional in the owner's own
+  words, and no comment in this round's `fix-requests.json` reopens any of them specifically.
+  Applying a subset of them now, with no new instruction asking for it, would be exactly the
+  scope creep that decision was avoiding. They stay available for a future round (or the
+  0.3.7 tag) at the owner's choice.
+
+What actually needed doing this round was the park itself: gate (e) parked only on `limits`
+(`evidence/gate-e.json`'s single check, `"stop": true`), which the prior round's own note
+calls "a process error, not a content problem" — a second `bump-iteration` inside one
+`/sdlc-fix` round pushed the counter to 3 against the non-routine cap of 2, while every
+other check was green. The owner's `sdlc:reset-iterations` label (recorded in `status.yaml:
+iterations_reset_by: luissiviero`, `iterations_reset_at: 2026-10-08T11:27:20Z`) is the
+change request this round applies: `gate/cli.py start-run` then `bump-iteration` (→ 1 of 2,
+cap not reached), no code change, and the verdict and gate re-run below on the unchanged
+diff.
+
+Build, lint and the targeted tests for the files these reviews touch
+(`tests/test_lessons.py`, `tests/test_gate.py -k "supersedes or lesson_and_eval"`,
+`tests/test_commands_and_skills.py`) are green. The full `python -m pytest` cannot complete
+in this sandboxed session: the sandbox's read-deny list covers
+`tests/fixtures/sample-python-project/.env` itself (and its `framework/` copy), so every
+test that copies that fixture tree hits `shutil.Error: Permission denied` on that one file —
+present at this round's very first `git status`, before any edit, and unrelated to this
+change's code. `tests/test_gate.py::test_the_sandbox_s_mask_is_read_from_its_mounts` also
+fails here (`_mount_masked(Path("/dev/null"))` is `True` in this container, where the test
+expects `False`); `plugin/gate/diff.py` was last touched by plugin 0.3.4, not by this change,
+so this is a pre-existing environment difference, not a regression from this round.

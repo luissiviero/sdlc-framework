@@ -12,7 +12,7 @@ gate:
   reason: "limits: iteration cap reached: 3 fix iterations, cap 2 (non-routine)"
   at: "2026-10-08T07:08:54Z"
 parked_reason: "limits: iteration cap reached: 3 fix iterations, cap 2 (non-routine)"
-iterations: 0
+iterations: 1
 panel_calls: 0
 external_ref: null
 risk_accepted: []
@@ -28,5 +28,5 @@ released_at: null
 released_sha: null
 released_pr: null
 created_at: "2026-10-06T03:12:18Z"
-updated_at: "2026-10-08T11:27:20Z"
+updated_at: "2026-10-08T11:40:42Z"
 schema_version: 1
