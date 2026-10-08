@@ -488,18 +488,23 @@ def fix_branch_for(
     if head:
         return head, phase
     branch = c.work_branch(change_id, phase if phase in FIX_PHASES else "a")
-    found = dispatch_head(root, branch, repo, pr_number) if repo else None
+    found = dispatch_head(root, change_id, branch, repo, pr_number) if repo else None
     return found or branch, phase
 
 
-def dispatch_head(root: Path, branch: str, repo: str, pr_number: Any = None) -> str | None:
+def dispatch_head(
+    root: Path, change_id: str, branch: str, repo: str, pr_number: Any = None
+) -> str | None:
     """The head a dispatched fix round (no ``--head-ref``) runs on when the phase's work
     branch ``branch`` exists neither locally nor on origin: the pull request ``--pr-number``
     names, else the open pull request of the branch the checkout is on (a ``workflow_dispatch``
-    run from the pull request's head checks that head out, ``github.ref``). None when the
-    work branch exists, when there is no route to GitHub or when no pull request is found:
-    the round then runs on ``branch`` as before and ``prepare_branch`` reports the missing head.
-    Until this lookup the round took ``sdlc/<id>/a`` for such a PR and collected no requests."""
+    run from the pull request's head checks that head out, ``github.ref``) — in both cases
+    only when that pull request's files carry the change's own folder (``pr_files``, as
+    ``find_change`` reads a merged pull request), so a dispatch from another change's branch
+    never runs this change's round there. None when the work branch exists, when there is no
+    route to GitHub or when no such pull request is found: the round then runs on ``branch``
+    as before and ``prepare_branch`` reports the missing head. Until this lookup the round
+    took ``sdlc/<id>/a`` for such a PR and collected no requests."""
     from state import gitops  # noqa: PLC0415
 
     if not gitops.is_repo(root):
@@ -518,14 +523,33 @@ def dispatch_head(root: Path, branch: str, repo: str, pr_number: Any = None) -> 
         if number is not None:
             found = github.pr_by_number(repo, number, cwd=root)
             head = found.get("head_ref") if found.get("ok") else None
-            return str(head) if head else None
+            if not head or not _pr_carries_change(github, repo, number, change_id, root):
+                return None
+            return str(head)
         current = gitops_current_branch(root)
         if not current or current == "HEAD" or current == gitops.default_branch(root):
             return None
+        parsed = c.parse_branch(current)
+        if parsed is not None and parsed[0] != change_id:
+            return None  # another change's framework branch
         found = github.find_open_pr(repo, current, cwd=root)
-        return current if found.get("number") else None
+        number = _pr_number(found.get("number"))
+        if number is None or not _pr_carries_change(github, repo, number, change_id, root):
+            return None
+        return current
     except Exception:  # noqa: BLE001 - no route: the work branch, as before
         return None
+
+
+def _pr_carries_change(github, repo: str, number: int, change_id: str, root: Path) -> bool:
+    """Whether the pull request's files include the change's ``changes/<id>-<slug>/`` folder."""
+    listed = github.pr_files(repo, number, cwd=root)
+    if not listed.get("ok"):
+        return False
+    return any(
+        (m := CHANGE_FOLDER_RE.match(str(f))) is not None and m.group(1) == change_id
+        for f in listed.get("files") or []
+    )
 
 
 def _git_ok(root: Path, *args: str) -> bool:
@@ -1682,29 +1706,50 @@ def run_phase(args, env: dict[str, str]) -> int:
                 run=phase, source=result_path.name,
             )  # fmt: skip
     owner = verify_owner_fields(change_dir, before_st, approved_st, root, pre_head, config)
-    # the session's own branch is the one the runner prepared, never the one it ends on (the
-    # review of 2026-10-08: with the current branch here, a session that switched to another
-    # of the change's branches, pushed it and stayed was not parked)
-    owner["mismatches"] += session_branch_mismatches(root, branch["branch"])
-    owner["mismatches"] += session_push_mismatches(
-        root, branch["branch"], refs_before, change_refs(root, change_id)
-    )
     owner["ok"] = not owner["mismatches"]
     for line in owner["overrides_changed"]:
         print(f"status.yaml: {line}", file=sys.stderr)
-    if not owner["ok"]:
-        # before any commit of this run: the fields are restored, the park names them, and
-        # the checkout is back on the prepared branch so the park is committed there
-        returned = return_to_branch(root, branch["branch"])
-        if returned is not None:
-            branch = {**branch, "returned": returned}
+    # the session's own branch is the one the runner prepared, never the one it ends on (the
+    # review of 2026-10-08: with the current branch here, a session that switched to another
+    # of the change's branches, pushed it and stayed was not parked). A session that left
+    # its branch is brought back first, so the park is committed on the prepared branch and
+    # the push check reads that branch's tip against the right checkout
+    left = session_branch_mismatches(root, branch["branch"])
+    if left:
+        returned = return_to_branch(root, branch["branch"], pre_head)
+        branch = {**branch, "returned": returned}
+        if not returned.get("ok"):
+            left.append(CHECKOUT_NOT_RETURNED.format(branch=branch["branch"]))
+        else:
+            # the run's own records again: a forced checkout reset the tracked files the
+            # session's branch carried, this run's result record and spend entry among them
+            # (the entry is keyed by its source, so the ledger counts it once)
+            store_result(change_dir, phase, data, raw, result_path)
+            store_stderr(change_dir, phase, err, stderr_path)
+            if isinstance(cost, (int, float)):
+                record_spend(
+                    plugin_dir, root, change_id, gate_phase, float(cost),
+                    run=phase, source=result_path.name,
+                )  # fmt: skip
+    pushed = session_push_mismatches(
+        root, branch["branch"], refs_before, change_refs(root, change_id)
+    )
+    session_branch = {"ok": not (left or pushed), "mismatches": left + pushed}
+    if not owner["ok"] or not session_branch["ok"]:
+        # before any commit of this run: the fields are restored, the park names what moved
+        if session_branch["ok"]:
+            reason = OWNER_FIELDS_PARK.format(reasons="; ".join(owner["mismatches"]))
+            check, need = OWNER_FIELDS_CHECK, OWNER_FIELDS_NEED
+        else:
+            reasons = session_branch["mismatches"] + owner["mismatches"]
+            reason = SESSION_BRANCH_PARK.format(branch=branch["branch"], reasons="; ".join(reasons))
+            check, need = SESSION_BRANCH_CHECK, SESSION_BRANCH_NEED.format(branch=branch["branch"])
         parked = park_and_publish(
-            plugin_dir, root, change_dir, before_st, phase,
-            OWNER_FIELDS_PARK.format(reasons="; ".join(owner["mismatches"])),
-            branch=fix_branch, check=OWNER_FIELDS_CHECK, need=OWNER_FIELDS_NEED,
+            plugin_dir, root, change_dir, before_st, phase, reason,
+            branch=fix_branch, check=check, need=need,
         )  # fmt: skip
-        _emit({**parked, "owner_fields": owner, "claude_exit": code, "cost_usd": cost,
-               "branch": branch})  # fmt: skip
+        _emit({**parked, "owner_fields": owner, "session_branch": session_branch,
+               "claude_exit": code, "cost_usd": cost, "branch": branch})  # fmt: skip
         return EXIT_OK
     if code != 0 or not isinstance(data, dict) or data.get("is_error"):
         # a session that failed after its gate pushed a record whose commands check waits for
@@ -2172,9 +2217,24 @@ def change_refs(root: Path, change_id: str) -> dict[str, str]:
     return refs
 
 
+SESSION_BRANCH_CHECK = "session_branch"
+SESSION_BRANCH_PARK = SESSION_BRANCH_CHECK + ": the run's own branch is {branch}; {reasons}"
+SESSION_BRANCH_NEED = (
+    "A run ends on the branch the runner prepared ({branch}) and pushes no other branch of the "
+    "change (decision 5: the run cannot act outside its mandate); the reasons above say what "
+    "moved, and the checkout was put back on {branch} before this park was committed. For each "
+    "origin/sdlc/<id>/... branch named above, reset it to the tip it had before the run (the "
+    "sha before the arrow) or delete it when it was absent, unless the push is yours; a next "
+    "phase's run starts from what that branch carries. Then fix the phase command that left "
+    "its branch and re-run the phase."
+)
 SESSION_BRANCH_MISMATCH = (
     "the session ended on {current}, not on {branch}, the branch the runner prepared; "
     "a run ends on its own branch"
+)
+CHECKOUT_NOT_RETURNED = (
+    "the checkout could not be put back on {branch}; this park was committed where the "
+    "session left the checkout"
 )
 
 
@@ -2193,20 +2253,29 @@ def session_branch_mismatches(root: Path, branch: str | None) -> list[str]:
     return [SESSION_BRANCH_MISMATCH.format(current=current, branch=branch)]
 
 
-def return_to_branch(root: Path, branch: str | None) -> dict[str, Any] | None:
+def return_to_branch(
+    root: Path, branch: str | None, pre_head: str | None = None
+) -> dict[str, Any] | None:
     """Put the checkout back on ``branch`` when the session left it elsewhere, so the park
     that follows is committed and pushed on the prepared branch, where its pull request is:
-    a plain checkout first, then one that drops the session's uncommitted files (they sit
-    on the wrong branch, and the park says so). None when nothing had to move."""
+    a plain checkout first; then one that drops the session's uncommitted files (they sit on
+    the wrong branch, and the park says so; the run's own records are written again by the
+    caller); then, when the session deleted the branch, one that recreates it at
+    ``pre_head``, its tip before the session. None when nothing had to move."""
     if not branch:
         return None
     current = gitops_current_branch(root)
     if current is None or current == branch:
         return None
-    out: dict[str, Any] = {"from": current, "to": branch, "forced": False}
+    out: dict[str, Any] = {"from": current, "to": branch, "forced": False, "recreated": False}
     if _git_ok(root, "checkout", branch):
         return {**out, "ok": True}
-    return {**out, "forced": True, "ok": _git_ok(root, "checkout", "-f", branch)}
+    out["forced"] = True
+    if _git_ok(root, "checkout", "-f", branch):
+        return {**out, "ok": True}
+    if pre_head and _git_ok(root, "checkout", "-f", "-B", branch, pre_head):
+        return {**out, "recreated": True, "ok": True}
+    return {**out, "ok": False}
 
 
 def session_push_mismatches(

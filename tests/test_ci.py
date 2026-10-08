@@ -3522,16 +3522,24 @@ def test_a_session_that_pushes_another_branch_of_the_change_parks(
     ) == []  # fmt: skip
 
 
+@pytest.mark.parametrize("stays_with_the_plant", [True, False])
 def test_a_session_that_switches_to_another_branch_of_the_change_and_stays_parks(
-    project, fake_claude, monkeypatch, capsys, tmp_path
+    project, fake_claude, monkeypatch, capsys, tmp_path, stays_with_the_plant
 ):
     """The 0.2.26 review's M1 as the review of 2026-10-08 re-read it: the session switches
     to the next phase's branch, plants its fields, pushes and stays there. The runner took
     the branch the session ended on as the session's own, so neither the switch nor the push
-    was seen; the session's branch is the one the runner prepared, and the park is committed
-    there after the checkout is put back."""
+    was seen: with the plant left in the checkout the owner-field check still parked, but a
+    session that reverted the plant locally after pushing it passed, and the forged tip on
+    origin became the next run's baseline. The session's branch is the one the runner
+    prepared; the park is committed there after the checkout is put back, and the run's own
+    records survive the forced checkout."""
     root, change = project
-    with_remote(root, tmp_path)
+    ledger = {"total_usd": 1.0, "entries": [
+        {"run": "a", "source": "claude-a.json", "usd": 1.0, "at": "2026-10-08T00:00:00Z"},
+    ]}  # fmt: skip
+    write(change / "evidence" / "spend.json", json.dumps(ledger))
+    with_remote(root, tmp_path)  # the ledger is committed on main, so on sdlc/0001/b too
     calls = pr_route(monkeypatch)
     script = _forging_session(
         tmp_path,
@@ -3542,26 +3550,47 @@ def test_a_session_that_switches_to_another_branch_of_the_change_and_stays_parks
         "st.risk_accepted_by = [{'item': 'auth', 'actor': 'luissiviero'}]\n"
         "status.write_status(change, st)\n"
         "git('commit', '-q', '-am', 'plant')\n"
-        "git('push', '-q', 'origin', 'sdlc/0001/c')\n",
+        "git('push', '-q', 'origin', 'sdlc/0001/c')\n"
+        + ("" if stays_with_the_plant else "git('revert', '--no-edit', 'HEAD')\n"),
     )
     monkeypatch.setenv("FAKE_CLAUDE_RUN", str(script))
     full_run(root, change, fake_claude, monkeypatch, "b")
     out = json.loads(capsys.readouterr().out)
+    assert out["claude_exit"] == 0  # the forging script ran to its end
+    assert out["parked"].startswith("session_branch: the run's own branch is sdlc/0001/b; ")
     assert (
         "the session ended on sdlc/0001/c, not on sdlc/0001/b, the branch the runner prepared"
         in out["parked"]
     )
     assert "origin/sdlc/0001/c: the session pushed to another branch of the change" in out["parked"]
-    assert out["owner_fields"]["ok"] is False
-    # the checkout went back to the prepared branch before the park was committed on it
+    assert "is not in the runner's checkout" not in out["parked"]  # nothing of b was pushed
+    assert out["session_branch"]["ok"] is False and len(out["session_branch"]["mismatches"]) == 2
+    # the owner-field check alone saw the plant only while it stayed in the checkout
+    assert out["owner_fields"]["ok"] is (not stays_with_the_plant)
+    # the checkout went back to the prepared branch before the park was committed on it; with
+    # the plant in the checkout the plain checkout is refused and the forced one runs (and so
+    # it does after the revert, on the runner's own pre-session status.yaml edits, which the
+    # session's commit carried away and the revert brought back as a modification)
     assert out["branch"]["branch"] == "sdlc/0001/b"
     returned = out["branch"]["returned"]
     assert (returned["from"], returned["to"]) == ("sdlc/0001/c", "sdlc/0001/b")
-    assert returned["ok"] is True
+    assert returned["ok"] is True and returned["recreated"] is False
+    if stays_with_the_plant:
+        assert returned["forced"] is True
     assert git(root, "rev-parse", "--abbrev-ref", "HEAD").strip() == "sdlc/0001/b"
     [commit] = [argv for name, argv in calls if name == "cli.py" and argv[0] == "commit-phase"]
     assert commit[commit.index("--phase") + 1] == "b" and "--branch" not in commit
     assert status_mod.read_status(change).risk_accepted == []
+    # the run's result record and its spend entry are on the prepared tree, counted once
+    assert (change / "evidence" / "claude-b.json").is_file()
+    ledger = json.loads((change / "evidence" / "spend.json").read_text(encoding="utf-8"))
+    assert [(e["source"], e["usd"]) for e in ledger["entries"]] == [
+        ("claude-a.json", 1.0), ("claude-b.json", 0.42),
+    ]  # fmt: skip
+    assert ledger["total_usd"] == 1.42
+    gate = json.loads((change / "evidence" / "gate-b.json").read_text(encoding="utf-8"))
+    assert [chk["name"] for chk in gate["checks"]] == ["session_branch"]
+    assert "reset it to the tip it had before the run" in gate["what_i_need"]
     # the direct check: the current branch after the session is compared with the prepared one
     assert run_phase.session_branch_mismatches(root, "sdlc/0001/b") == []
     assert run_phase.session_branch_mismatches(root, "sdlc/0001/c") == [
@@ -3572,6 +3601,31 @@ def test_a_session_that_switches_to_another_branch_of_the_change_and_stays_parks
     assert run_phase.return_to_branch(root, "sdlc/0001/b") is None  # nothing to move
 
 
+def test_a_session_that_only_leaves_its_branch_is_parked_for_that_alone(
+    project, fake_claude, monkeypatch, capsys, tmp_path
+):
+    """The review of this diff, finding 3: the containment check reads the prepared branch's
+    remote tip against HEAD, which after the session is wherever it ended; the checkout is
+    put back first, so a session that only switched away is not also accused of a push."""
+    root, change = project
+    with_remote(root, tmp_path)
+    git(root, "checkout", "-q", "-b", "sdlc/0001/b")  # an earlier run left the branch on origin
+    git(root, "push", "-q", "-u", "origin", "sdlc/0001/b")
+    git(root, "checkout", "-q", "main")
+    git(root, "branch", "-q", "-D", "sdlc/0001/b")
+    pr_route(monkeypatch)
+    script = _forging_session(tmp_path, change, "git('checkout', '-q', 'main')\n")
+    monkeypatch.setenv("FAKE_CLAUDE_RUN", str(script))
+    full_run(root, change, fake_claude, monkeypatch, "b")
+    out = json.loads(capsys.readouterr().out)
+    assert out["session_branch"]["mismatches"] == [
+        "the session ended on main, not on sdlc/0001/b, the branch the runner prepared; "
+        "a run ends on its own branch"
+    ]
+    assert out["owner_fields"]["ok"] is True and out["branch"]["returned"]["forced"] is False
+    assert git(root, "rev-parse", "--abbrev-ref", "HEAD").strip() == "sdlc/0001/b"
+
+
 def test_return_to_branch_drops_what_the_session_left_on_the_wrong_branch(project, tmp_path):
     """A plain checkout first; when the session's uncommitted files stand in the way (they
     sit on the wrong branch, and the park says so), the forced one."""
@@ -3580,27 +3634,48 @@ def test_return_to_branch_drops_what_the_session_left_on_the_wrong_branch(projec
     git(root, "checkout", "-q", "-b", "sdlc/0001/b")
     git(root, "checkout", "-q", "-b", "sdlc/0001/c")
     assert run_phase.return_to_branch(root, "sdlc/0001/b") == {
-        "from": "sdlc/0001/c", "to": "sdlc/0001/b", "forced": False, "ok": True,
+        "from": "sdlc/0001/c", "to": "sdlc/0001/b", "forced": False, "recreated": False,
+        "ok": True,
     }  # fmt: skip
     git(root, "checkout", "-q", "sdlc/0001/c")
     write(change / "status.yaml", (change / "status.yaml").read_text(encoding="utf-8") + "# c\n")
     git(root, "commit", "-q", "-am", "the branches differ on status.yaml")
     write(change / "status.yaml", (change / "status.yaml").read_text(encoding="utf-8") + "# x\n")
     returned = run_phase.return_to_branch(root, "sdlc/0001/b")
-    assert returned == {"from": "sdlc/0001/c", "to": "sdlc/0001/b", "forced": True, "ok": True}
+    assert returned == {
+        "from": "sdlc/0001/c", "to": "sdlc/0001/b", "forced": True, "recreated": False,
+        "ok": True,
+    }  # fmt: skip
     assert git(root, "rev-parse", "--abbrev-ref", "HEAD").strip() == "sdlc/0001/b"
     assert git(root, "status", "--porcelain", "--", "changes").strip() == ""
     assert "# x" not in (change / "status.yaml").read_text(encoding="utf-8")
+    # the session deleted the prepared branch: recreated at its tip before the session
+    pre_head = git(root, "rev-parse", "HEAD").strip()
+    git(root, "checkout", "-q", "sdlc/0001/c")
+    git(root, "branch", "-q", "-D", "sdlc/0001/b")
+    assert run_phase.return_to_branch(root, "sdlc/0001/b") == {
+        "from": "sdlc/0001/c", "to": "sdlc/0001/b", "forced": True, "recreated": False,
+        "ok": False,
+    }  # fmt: skip
+    returned = run_phase.return_to_branch(root, "sdlc/0001/b", pre_head)
+    assert returned["recreated"] is True and returned["ok"] is True
+    assert git(root, "rev-parse", "--abbrev-ref", "HEAD").strip() == "sdlc/0001/b"
+    assert git(root, "rev-parse", "HEAD").strip() == pre_head
 
 
 class _PullRequestGitHub(FixGitHub):
     """``FixGitHub`` plus the pull request lookups a round makes: one open pull request,
     on ``head``, numbered ``number``."""
 
-    def __init__(self, head: str = "sdlc/0001/b", number: int = 7):
+    def __init__(self, head: str = "sdlc/0001/b", number: int = 7, files=None):
         super().__init__()
         self.head = head
         self.number = number
+        self.files = ["changes/0001-percent-helper/intent.md"] if files is None else list(files)
+
+    def pr_files(self, repo, number, cwd=None):
+        self.calls.append(("pr_files", repo, number))
+        return {"route": "api", "ok": number == self.number, "reason": "", "files": self.files}
 
     def find_open_pr(self, repo, head_branch, cwd=None):
         self.calls.append(("find_open_pr", repo, head_branch))
@@ -3714,13 +3789,14 @@ def test_the_phase_commands_end_on_the_branch_the_runner_prepares():
 def test_a_dispatched_fix_round_with_no_head_ref_runs_on_the_open_pull_request_s_head(
     project, fake_claude, monkeypatch, capsys, tmp_path
 ):
-    """sdlc-fix.yml dispatched by hand with no head_ref, from the ``claude/...`` branch of a
+    """sdlc-fix.yml dispatched with no head_ref, from the ``claude/...`` branch of a
     web-session intent PR: ``fix_branch_for`` answered sdlc/<id>/a, which exists nowhere, so
-    ``prepare_branch`` reported the head gone, the requests were collected for no pull
-    request and the session switched to the head itself (sdlc-fix.md step 0), which the
-    branch check would now park. The open pull request of the checkout's branch, or the one
-    ``--pr-number`` names, gives the head; without a repository, or when the work branch
-    exists, the answer is the old one."""
+    ``prepare_branch`` reported the head gone and the requests were collected for no pull
+    request — a park before the session on a runner, and by hand a session that switched to
+    the head itself (sdlc-fix.md step 0), which the branch check would now park. The open
+    pull request of the checkout's branch, or the one ``--pr-number`` names, gives the head
+    when its files carry the change; without a repository, when the work branch exists, or
+    when the pull request is another change's, the answer is the old one."""
     root, change = project
     with_remote(root, tmp_path)
     git(root, "checkout", "-q", "-b", "claude/relaxed-x")
@@ -3743,6 +3819,20 @@ def test_a_dispatched_fix_round_with_no_head_ref_runs_on_the_open_pull_request_s
     nothing_open = _PullRequestGitHub(head="elsewhere", number=3)
     monkeypatch.setattr(run_phase, "_github", lambda: nothing_open)
     assert run_phase.fix_branch_for(root, "0001", "", "owner/name") == ("sdlc/0001/a", "a")
+    # the review of this diff, finding 2: a pull request that does not carry the change's
+    # folder is another change's, whatever branch the owner dispatched from
+    other = _PullRequestGitHub(head="claude/relaxed-x", number=12, files=["changes/0002-x/a.md"])
+    monkeypatch.setattr(run_phase, "_github", lambda: other)
+    assert run_phase.fix_branch_for(root, "0001", "", "owner/name") == ("sdlc/0001/a", "a")
+    assert run_phase.fix_branch_for(root, "0001", "", "owner/name", "12") == ("sdlc/0001/a", "a")
+    assert ("pr_files", "owner/name", 12) in other.calls
+    git(root, "checkout", "-q", "-b", "sdlc/0002/b")
+    another = _PullRequestGitHub(head="sdlc/0002/b", number=21)
+    monkeypatch.setattr(run_phase, "_github", lambda: another)
+    assert run_phase.fix_branch_for(root, "0001", "", "owner/name") == ("sdlc/0001/a", "a")
+    assert another.calls == []  # another change's framework branch: no lookup at all
+    git(root, "checkout", "-q", "claude/relaxed-x")
+    git(root, "branch", "-q", "-D", "sdlc/0002/b")
     git(root, "checkout", "-q", "main")
     assert run_phase.fix_branch_for(root, "0001", "", "owner/name") == ("sdlc/0001/a", "a")
     assert ("find_open_pr", "owner/name", "main") not in nothing_open.calls  # never the default
