@@ -1,57 +1,30 @@
 {
-  "at": "2026-10-08T12:04:48Z",
+  "at": "2026-10-08T12:48:14Z",
   "findings": [
     {
       "file": "docs/OPERATING_MODEL.md",
       "line": 144,
       "pass": "compliance",
-      "rule": "spec.md Determinism: \"tag headings ordered alphabetically by normalised class\" (the first tag only) \u2014 doubt stated: the owner's own PR #132 review (item 9) already named this exact wording gap and marked it optional for the 0.3.7 tag.",
+      "rule": "doubt stated: wording only, already raised by the owner's PR #132 review and deferred to the 0.3.7 tag; spec.md Determinism says \"a heading per first tag\".",
       "severity": "nit",
       "signature": "68391c290d2c2066",
-      "summary": "The new sentence says the generated index carries \"a heading per tag\", but `plugin/lessons/index.py` groups only by the first tag (`tags[0]`), so a lesson with several tags gets one heading, not one per tag; a reader could expect the opposite."
+      "summary": "The new sentence says the generated index carries \"a heading per tag\", but `plugin/lessons/index.py` groups only by the first tag (`tags[0]`), so a lesson with several tags gets one heading, not one per tag."
     },
     {
       "file": "plugin/gate/checks.py",
-      "line": 1614,
+      "line": 80,
       "pass": "bugs",
-      "rule": "doubt stated: narrow edge case \u2014 step 0b's instructions only ever write `supersedes` as a bare file name or omit it, so this path is unlikely to be hit in practice.",
+      "rule": "doubt stated: narrow edge case, already raised and deferred by the owner for the 0.3.7 tag \u2014 step 0b's instructions only ever write `supersedes` as a bare file name or omit it.",
       "severity": "nit",
-      "signature": "68c603a585c7aa94",
-      "summary": "`_supersedes_problem` only validates `supersedes` when its value is already a string (`isinstance(supersedes, str)`); a present-but-non-string value (a list or a number) returns `None` and is silently treated as \"no supersedes\" instead of being reported as malformed."
-    },
-    {
-      "file": "plugin/lessons/index.py",
-      "line": 231,
-      "pass": "bugs",
-      "rule": "doubt stated: cosmetic breakage of a generated markdown file, not a functional break \u2014 `/sdlc-maintain` matches lessons by heading/tags, not by parsing the link text.",
-      "severity": "nit",
-      "signature": "fae254b0a97e5724",
-      "summary": "`_render_line`/`_render_unsorted_line` interpolate `title`, `description` and the first heading into a markdown link (`[text](file)`) with no escaping of `]`/`(`/`)`, so a value containing one of those characters breaks the generated link in `lessons/index.md`."
-    },
-    {
-      "file": "plugin/lessons/index.py",
-      "line": 280,
-      "pass": "bugs",
-      "rule": "doubt stated: a harmless side effect (an empty directory), not data loss or a wrong result; the owner's own PR #132 review (item 7) already named this and marked it optional for the 0.3.7 tag.",
-      "severity": "nit",
-      "signature": "a372dc968947c483",
-      "summary": "`build()` unconditionally runs `lessons_dir.mkdir(parents=True, exist_ok=True)`, so the read-only `check()` (and `lesson_and_eval`'s call into it) creates `lessons/` as a side effect on a project that has none yet, e.g. when no lesson file matches the gate's glob at all."
-    },
-    {
-      "file": "template/lessons/README.md",
-      "line": 45,
-      "pass": "compliance",
-      "rule": "spec.md Requirements, first bullet (`sources` field).",
-      "severity": "nit",
-      "signature": "3536fdcd54c4649b",
-      "summary": "The example frontmatter's `sources` list shows only `detection`, `eval` and `fix-pr`, with no sample `run-<n>` entry, even though spec.md's Requirements say `sources` includes \"one `run-<n>` per failed run `detection.json` lists\"."
+      "signature": "1e0d289bcbd1daec",
+      "summary": "`_supersedes_problem` only validates `supersedes` when it is already a string; a present-but-non-string value (a list or a number) returns `None` and is silently treated as \"no supersedes\" instead of being reported as malformed."
     }
   ],
-  "head": "b335a2f137e95683326b36fc10cdaaf62f2b1746",
+  "head": "edb086aa3c103e2bb0815270b008a85e090d59a2",
   "schema_version": 1,
   "tally": {
     "important": 0,
-    "nit": 5,
-    "nits_omitted": 2
+    "nit": 2,
+    "nits_omitted": 0
   }
 }

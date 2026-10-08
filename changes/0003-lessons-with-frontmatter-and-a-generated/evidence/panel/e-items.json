@@ -5,7 +5,7 @@
   "iterations": {
     "cap": 2,
     "left": 0,
-    "used": 3
+    "used": 2
   },
   "mode": "parked",
   "panel_calls": {
@@ -15,8 +15,8 @@
   },
   "parks": [
     {
-      "check": "limits",
-      "reason": "iteration cap reached: 3 fix iterations, cap 2 (non-routine)"
+      "check": "findings",
+      "reason": "findings are for commit b335a2f137, HEAD is edb086aa3c"
     }
   ],
   "pending": [],
