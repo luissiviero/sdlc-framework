@@ -86,3 +86,5 @@ CHAIN EXIT 0
 | Link | Row | What is there | What it must become |
 |---|---|---|---|
 | [`REVIEW.md`](../REVIEW.md) | lines 27–28 | `- The second occurrence of the same finding across reviews produces a one-line entry in` / `  \`CLAUDE.md\` under "Things Claude gets wrong", proposed in the review for the owner.` | `- The second occurrence of the same finding across changes produces a one-line entry in` / `  \`CLAUDE.md\` under "Things Claude gets wrong", proposed in the review for the owner (the` / `  framework counts repeats in \`changes/.review-seen.json\` and writes the proposal; a` / `  repeated finding keeps its own severity).` — the same four lines as `template/REVIEW.md` 27–30 on PR #133 |
+
+*[Applied by the owner on 2026-10-08 (PR #136 or #140, `main` `e467f82`): the root `REVIEW.md` now carries the four lines, verified by diff (NOTES §35). The pin on `sdlc.yaml` line 98 went to 0.3.6 and back to 0.3.5 the same afternoon (PRs #138, #139): it stays 0.3.5 until `v0.3.6` exists.]*
