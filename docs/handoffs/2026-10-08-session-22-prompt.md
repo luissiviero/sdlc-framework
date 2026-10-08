@@ -1,0 +1,24 @@
+# Starting prompt for session 22 (written 2026-10-08 by the one-fix session of PR #130)
+
+The text below is the prompt the owner gives the next session. It was written after change 0003's
+build run 37719938824 ended on its turn cap and after the owner's word on the versions (change 0003
+keeps 0.3.6; PR #130 takes 0.3.7 after `v0.3.6`). The record of the session that wrote it is
+`docs/progress/2026-10-08-runner-push-check.md`; the handoff is `HANDOFF.md` on PR #130's branch.
+
+```text
+Take change 0003 (R1 on `lessons/`, plugin 0.3.6) from its failed build run to the `v0.3.6` tag, then release the runner's push-check fix (PR #130) as 0.3.7. Do not touch the playbook-versus-framework study (PR #127, `docs/reviews/2026-09-28-playbook-vs-framework*`).
+
+Start by reading HANDOFF.md on PR #130's branch `ccr-f473cb70-c143s3` (it is the current handoff: preconditions 1–8, the version plan, the sample's freeze), then `docs/progress/2026-10-08-runner-push-check.md` on that branch, `docs/notes/index.md`, `docs/decisions/index.md`, and NOTES §32–§35 for how change 0001's and 0003's runs were read.
+
+The version plan is decided (2026-10-08): change 0003 keeps 0.3.6 — its accepted intent and merged spec name it — and PR #130 takes 0.3.7 after `v0.3.6` is tagged; the three carried gaps of session 20 become 0.3.8. Never merge PR #130 before it is bumped.
+
+Step 1 — read change 0003's build run 37719938824 (`sdlc-build.yml`, started by PR #124's merge `d0620d3`, pin `v0.3.5`): `claude exited 1`, `subtype error_max_turns`, 201 turns, 2 356 s, 12.86 USD, no `gate-c.json`, no build PR. `sdlc/0003/c` (`ffebacc`) carries ten build commits (`plugin/lessons/index.py`, the (e) check `lesson_and_eval`, the command and template edits, `build(0003): plugin 0.3.6`, simplify, verifier evidence) and the runner's `run(c): failed run record`. Read `claude-c.json` (the seven permission denials are chained shell commands), `verifier.md`, `diff-c.patch`, `spend.json`. Decide, with evidence, whether the turn cap is a framework gap (how `run_phase.compose` sets `--max-turns`; whether a 2 789-line build can reach its gate in 200 turns; how change 0001's build runs spent theirs, NOTES §32–§33) or the session's own spending; a gap that changes a verdict gets a fix with a test in a 0.3.x PR before the next phase (choice 88), one that does not waits for the tag (choice 163). Report to me before re-running.
+
+Step 2 — re-run the build: `sdlc-build.yml` by `workflow_dispatch` with `change_id` 0003 (allowed: no open PR carries `sdlc/0003/c`, `rerun_reason`); verify first that `prepare_branch` continues from `origin/sdlc/0003/c` and that the guard accepts phase c on that branch. Read the run as NOTES §32/§33 read change 0001's: the pin step, the preflight, the evidence writer's marks, the verifier's read, `gate-c.json` with the runner's `commands` entry, `clean_tree`, the build PR. Run a fresh-context Opus review of the build PR's diff (model "opus", foreground, MODEL_ALLOCATION §5k; reproduce each finding). Then (d) and (e): 0.3.5's rule live (`changes/.review-seen.json` carried and set aside, `details.ignored`). Before asking me for a "Request changes" review, read `mergeable_state` (precondition 7). The counter is at 2 of 2: a fix round needs `sdlc:reset-iterations` with my review. I merge at gate (e); `v0.3.6` by `sdlc-tag.yml`; give me the root pin row in the owner's table format.
+
+Step 3 — after `v0.3.6` exists: on `ccr-f473cb70-c143s3`, merge `main` in (a merge commit), bump `.claude-plugin/plugin.json` and `.claude-plugin/marketplace.json` to 0.3.7, bring the record's and HANDOFF's version lines in step, run `python -m compileall -q plugin tests tasks.py .github/scripts`, `python tasks.py check`, `claude plugin validate .` (paste the output), push, update PR #130's body, read its three `Framework checks` jobs, then tell me it is ready to merge. After my merge: check `v0.3.7`, give me the root pin row to 0.3.7.
+
+Step 4 — the record: PROGRESS "Session 22" (archive session 21's record first), NOTES §36 with the run URLs and the files quoted, the port list (PR #130 touches `plugin/ci/run_phase.py`), HANDOFF rewritten for the session after; the live check of PR #130's normal path is the first phase run after `v0.3.7` (`branch.branch` and `owner_fields.ok` in its result JSON). T29's "Open" item on PR #127 is the study session's to annotate, not yours.
+
+Rules: do not edit `.claude/**`, `CLAUDE.md`, `REVIEW.md` or `sdlc.yaml`; propose guardrail edits in the owner's table format (link; row; what is there; what it needs to be). Respect the sample's freeze (precondition 6): nothing written to the sample until the first scheduled detect run after 2026-10-10 has filed. Do not merge, close or push to PR #118. Every PR: the chained checks green before the push, a fresh-context Opus review of any diff touching `plugin/` or `template/`, a draft PR against `main`.
+```
