@@ -1,0 +1,23 @@
+{
+  "entries": [
+    {
+      "at": "2026-10-07T02:12:57Z",
+      "run": "b",
+      "source": "claude-b.json",
+      "usd": 3.5001476000000005
+    },
+    {
+      "at": "2026-10-07T15:45:45Z",
+      "run": "fix",
+      "source": "claude-fix.json",
+      "usd": 5.841662600000002
+    },
+    {
+      "at": "2026-10-08T00:43:15Z",
+      "run": "fix",
+      "source": "claude-fix-2.json",
+      "usd": 6.773545700000003
+    }
+  ],
+  "total_usd": 16.115356
+}
