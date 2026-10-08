@@ -2,7 +2,7 @@
 description: Phase (f) maintain — the diagnosis of a control-band breach the deterministic detection script filed (or, by hand, run the detection first), read-only on source, from the project's lessons and the failed runs, written as an incident intent.md with its Evidence section and a proposed route (the intent PR itself, or at 3σ a listed runbook), dispatched through the route's authorization (pre-approved runs now; go parks with "Go" requested), then gate (f): the intent PR opens with sdlc:f-ready and incident and waits for the owner's triage — merge (fix now), label schedule, or close with a reason (dismiss). Re-runnable.
 argument-hint: [change id, e.g. 0007; empty = run the detection first]
 disable-model-invocation: true
-allowed-tools: Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/state/cli.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/gate/cli.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/detect/cli.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/pr/cli.py" *), Bash(git *), Bash(gh run view *), Bash(gh run list *), Read, Glob, Grep, Write
+allowed-tools: Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/state/cli.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/gate/cli.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/detect/cli.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/pr/cli.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/lessons/index.py" *), Bash(git *), Bash(gh run view *), Bash(gh run list *), Read, Glob, Grep, Write
 ---
 
 # /sdlc-maintain — phase (f)
@@ -42,9 +42,21 @@ One shell command per Bash call (an unattended run denies a chained command whol
    fired, mean and sigma of the baseline, the latest observation and the tail, the failed
    runs' URLs, the default branch's commits in the breach window, and `forced` (a
    rehearsal). It is the record; never edit it.
-2. Every file under `lessons/` (start with `lessons/README.md`): the post-mortems of earlier
-   incidents. A second incident of a class is cheaper than the first only if you read the
-   first; cite the lesson you relied on in the intent's Evidence section.
+2. `lessons/index.md`, the generated index (start with `lessons/README.md` the first time
+   through): run
+   `python "${CLAUDE_PLUGIN_ROOT}/plugin/lessons/index.py" check --root "${CLAUDE_PROJECT_DIR}"`
+   first. When it exits 0, open only the lessons whose heading or `Tags:` clause names this
+   finding's metric or the rule that fired, plus every lesson under `## Retired`, plus every
+   lesson under `## Unsorted` (a frontmatter-less or unparsable lesson is still read by the
+   diagnosis; the index line carries the tags for the others, so this never requires opening
+   every file under `lessons/`). On a
+   stale or missing index (`check` exits 1, or `lessons/index.md` does not exist), read
+   every file under `lessons/` instead, as before (you never rebuild the index yourself:
+   that is step 0b of the fix this diagnosis may lead to), and say so in one line of the
+   intent's `## Evidence` section. A
+   second incident of a class is cheaper than the first only if you read the first; cite the
+   lesson you relied on in the intent's Evidence section, and note there when it carried
+   `(stale)`.
 3. `python "${CLAUDE_PLUGIN_ROOT}/plugin/detect/cli.py" routes --root "${CLAUDE_PROJECT_DIR}" --id <id>`
    — the routes you may propose at this tier, their resolved authorization, the arguments
    each runbook takes, and which are unsupported for this project's language.

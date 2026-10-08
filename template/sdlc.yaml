@@ -87,6 +87,13 @@ maintain:
   #   rehearsed_at: null       # e.g. 2026-09-24, set by you after the rehearsal
   runbooks: []
 
+# --- lessons (change 0003; plugin/lessons/index.py) -----------------------------------------
+# How long a lesson a fix writes (/sdlc-deploy step 0b) stays fresh before the generated
+# index marks its line (stale): default twelve months, written once at the lesson's creation.
+# Read only when you set it here; an existing lesson's own stale_after is never rewritten.
+# lessons:
+#   stale_after_months: 12
+
 # --- risk list (build guide step 5; a hit parks the change at its next gate) ---------------
 risk_list:
   - auth

@@ -1,0 +1,30 @@
+{
+  "at": "2026-10-08T12:48:14Z",
+  "findings": [
+    {
+      "file": "docs/OPERATING_MODEL.md",
+      "line": 144,
+      "pass": "compliance",
+      "rule": "doubt stated: wording only, already raised by the owner's PR #132 review and deferred to the 0.3.7 tag; spec.md Determinism says \"a heading per first tag\".",
+      "severity": "nit",
+      "signature": "68391c290d2c2066",
+      "summary": "The new sentence says the generated index carries \"a heading per tag\", but `plugin/lessons/index.py` groups only by the first tag (`tags[0]`), so a lesson with several tags gets one heading, not one per tag."
+    },
+    {
+      "file": "plugin/gate/checks.py",
+      "line": 80,
+      "pass": "bugs",
+      "rule": "doubt stated: narrow edge case, already raised and deferred by the owner for the 0.3.7 tag \u2014 step 0b's instructions only ever write `supersedes` as a bare file name or omit it.",
+      "severity": "nit",
+      "signature": "1e0d289bcbd1daec",
+      "summary": "`_supersedes_problem` only validates `supersedes` when it is already a string; a present-but-non-string value (a list or a number) returns `None` and is silently treated as \"no supersedes\" instead of being reported as malformed."
+    }
+  ],
+  "head": "edb086aa3c103e2bb0815270b008a85e090d59a2",
+  "schema_version": 1,
+  "tally": {
+    "important": 0,
+    "nit": 2,
+    "nits_omitted": 0
+  }
+}

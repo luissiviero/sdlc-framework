@@ -1,0 +1,162 @@
+{
+  "schema_version": 1,
+  "change_id": "0003",
+  "slug": "lessons-with-frontmatter-and-a-generated",
+  "phase": "c",
+  "profile": "standard",
+  "human_gate": false,
+  "result": "continue",
+  "label": null,
+  "head": "bfe078b69dc691ecfd226d2872cff41dcb1b8360",
+  "at": "2026-10-08T04:15:41Z",
+  "dry_run": false,
+  "reason": "",
+  "config_note": "",
+  "checks": [
+    {
+      "name": "limits",
+      "ok": true,
+      "reason": "within the run limits",
+      "need": "",
+      "details": {
+        "iterations": 1,
+        "cap": 2,
+        "classification": "non-routine",
+        "panel_calls": 0,
+        "panel_cap": 4,
+        "elapsed_minutes": 10.9,
+        "spend_usd": null,
+        "spend_usd_total": 28.973753,
+        "spend_entries": 4,
+        "max_budget_usd": null
+      }
+    },
+    {
+      "name": "clean_tree",
+      "ok": true,
+      "reason": "no uncommitted change outside the change folder",
+      "need": "",
+      "details": {
+        "ignored": [
+          "tests/fixtures/sample-python-project/.env"
+        ]
+      }
+    },
+    {
+      "name": "artifacts",
+      "ok": true,
+      "reason": "every required artifact exists and has its template sections",
+      "need": "",
+      "details": {}
+    },
+    {
+      "name": "open_concerns",
+      "ok": true,
+      "reason": "no open flagged concern",
+      "need": "",
+      "details": {}
+    },
+    {
+      "name": "panel",
+      "ok": true,
+      "reason": "no panel decision at this gate",
+      "need": "",
+      "details": {}
+    },
+    {
+      "name": "commands",
+      "ok": true,
+      "reason": "build, test and lint exit 0",
+      "need": "",
+      "details": {
+        "runs": {
+          "build": {
+            "command": "python -m compileall -q plugin tests tasks.py",
+            "exit_code": 0,
+            "output": ""
+          },
+          "test": {
+            "command": "python -m pytest",
+            "exit_code": 0,
+            "output": "........................................................................ [  5%]\n........................................................................ [ 10%]\n........................................................................ [ 15%]\n........................................................................ [ 20%]\n........................................................................ [ 25%]\n........................................................................ [ 30%]\n........................................................................ [ 35%]\n........................................................................ [ 40%]\n........................................................................ [ 45%]\n........................................................................ [ 50%]\n........................................................................ [ 55%]\n........................................................................ [ 60%]\n........................................................................ [ 65%]\n........................................................................ [ 70%]\n........................................................................ [ 75%]\n........................................................................ [ 80%]\n........................................................................ [ 85%]\n........................................................................ [ 90%]\n........................................................................ [ 95%]\n.............................................................            [100%]\n1429 passed in 276.02s (0:04:36)\n"
+          },
+          "lint": {
+            "command": "python -m ruff check .",
+            "exit_code": 0,
+            "output": "All checks passed!\n"
+          }
+        },
+        "ran_by": "runner"
+      }
+    },
+    {
+      "name": "evidence",
+      "ok": true,
+      "reason": "evidence present: verifier.md",
+      "need": "",
+      "details": {}
+    },
+    {
+      "name": "findings",
+      "ok": true,
+      "reason": "no review findings yet (the review pass runs in phase e)",
+      "need": "",
+      "details": {}
+    },
+    {
+      "name": "plan_sync",
+      "ok": true,
+      "reason": "every committed source file is in plan.md",
+      "need": "",
+      "details": {
+        "planned_but_unchanged": []
+      }
+    },
+    {
+      "name": "guardrails",
+      "ok": true,
+      "reason": "the diff does not touch a guardrail file",
+      "need": "",
+      "details": {}
+    },
+    {
+      "name": "risk_list",
+      "ok": true,
+      "reason": "no risk-list item touched",
+      "need": "",
+      "details": {
+        "accepted": []
+      }
+    },
+    {
+      "name": "owner_actions",
+      "ok": true,
+      "reason": "risk acceptances, iteration and panel-call resets and test-lock lifts, if any, were committed by the owner or applied by the owner's label",
+      "need": "",
+      "details": {
+        "risk_accepted": [],
+        "label_actors": {
+          "iterations_reset": "luissiviero"
+        }
+      }
+    },
+    {
+      "name": "test_lock",
+      "ok": true,
+      "reason": "not a fix-type change: no test-file lock",
+      "need": "",
+      "details": {}
+    },
+    {
+      "name": "adversarial_review",
+      "ok": true,
+      "reason": "adversarial reviewer says continue",
+      "need": "",
+      "details": {
+        "classification": "non-routine",
+        "reasons": []
+      }
+    }
+  ],
+  "what_i_need": ""
+}

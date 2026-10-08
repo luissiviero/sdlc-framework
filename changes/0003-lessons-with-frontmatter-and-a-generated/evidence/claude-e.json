@@ -1,0 +1,108 @@
+{
+  "api_error_status": null,
+  "duration_api_ms": 490518,
+  "duration_ms": 504012,
+  "fast_mode_disabled_reason": "sdk_opt_in_required",
+  "fast_mode_state": "off",
+  "first_content_frame_ms": 1555,
+  "is_error": false,
+  "modelUsage": {
+    "claude-sonnet-5": {
+      "cacheCreationInputTokens": 164878,
+      "cacheReadInputTokens": 3327628,
+      "canonicalModel": "claude-sonnet-5",
+      "contextWindow": 1000000,
+      "costBasis": "list",
+      "costUSD": 1.4762030999999998,
+      "inputTokens": 96,
+      "maxOutputTokens": 64000,
+      "outputTokens": 34665,
+      "provider": "firstParty",
+      "thinkingTokens": 22356,
+      "webSearchRequests": 0
+    }
+  },
+  "num_turns": 21,
+  "permission_denials": [
+    {
+      "tool_input": {
+        "command": "if [ -n \"$GITHUB_TOKEN\" ] || [ -n \"$GH_TOKEN\" ]; then echo \"token present\"; else echo \"no token\"; fi",
+        "description": "Check whether a GitHub token is present in the environment"
+      },
+      "tool_name": "Bash",
+      "tool_use_id": "toolu_01PkF9gcXLfv7U3mfitpCYor"
+    }
+  ],
+  "queued_turn_count": 0,
+  "result": "Phase (e) deploy is complete for change 0003.\n\n**PR:** https://github.com/luissiviero/sdlc-framework/pull/132 (labeled `sdlc:e-ready`)\n\n- `deploy.action` is `none` in `sdlc.yaml`, so no release artifact was prepared, and entry route is `idea` (not `incident`), so no lesson/eval was required.\n- The stale review (head `48f38e9`) was re-run in a fresh sub-agent context against the real HEAD `37e2dfa` \u2014 result: 0 Important findings, 4 nits, no second-occurrence `CLAUDE.md` proposals.\n- Panel mode was `parked` with no pending items, so the deferred-review panel was skipped.\n- Gate (e) returned `wait` (the normal human-gate outcome) with every check passing; release notes were generated and committed as evidence (`971c7a7`).\n- The review tally was published as a GitHub check run.\n\ngate (e): merge = approve; a review comment is the change request (`/sdlc-fix 0003`).",
+  "result_index": 0,
+  "session_id": "db1f437c-96a3-41cc-839c-f5726ef92746",
+  "stop_reason": "end_turn",
+  "subagent_stats": {
+    "by_type": {
+      "general-purpose": 1
+    },
+    "completed": 1,
+    "failed": 0,
+    "killed": {
+      "parent": 0,
+      "system": 0,
+      "user": 0
+    },
+    "max_depth": 1,
+    "refused": {
+      "budget": 0,
+      "concurrency_limit": 0,
+      "depth_limit": 0
+    },
+    "requested": {
+      "background": 0,
+      "foreground": 0,
+      "unset": 1
+    },
+    "spawned": 1,
+    "spawned_by_subagents": 0,
+    "started_in_background": 0
+  },
+  "subtype": "success",
+  "terminal_reason": "completed",
+  "time_to_request_ms": 116,
+  "total_cost_usd": 1.4762030999999998,
+  "ttft_ms": 2318,
+  "ttft_stream_ms": 1554,
+  "type": "result",
+  "usage": {
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 34427,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "cache_creation_input_tokens": 34427,
+    "cache_read_input_tokens": 1020603,
+    "inference_geo": "not_available",
+    "input_tokens": 42,
+    "iterations": [
+      {
+        "cache_creation": {
+          "ephemeral_1h_input_tokens": 534,
+          "ephemeral_5m_input_tokens": 0
+        },
+        "cache_creation_input_tokens": 534,
+        "cache_read_input_tokens": 58853,
+        "input_tokens": 2,
+        "output_tokens": 404,
+        "type": "message"
+      }
+    ],
+    "output_tokens": 8022,
+    "output_tokens_details": {
+      "thinking_tokens": 2480
+    },
+    "server_tool_use": {
+      "web_fetch_requests": 0,
+      "web_search_requests": 0
+    },
+    "service_tier": "standard",
+    "speed": "standard"
+  },
+  "uuid": "0da2a101-ff87-4e6b-a4e5-573fe0fe1d92"
+}
