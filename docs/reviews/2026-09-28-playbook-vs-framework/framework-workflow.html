@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<!-- Snapshot of https://claude.ai/artifact/KW8jWunfLNa9WgBSzJxw4S as published on 2026-10-03 (private to the owner; the live page may be newer). Opened from the repository, the diagrams render with mermaid from jsdelivr. -->
+<!-- Snapshot of https://claude.ai/artifact/KW8jWunfLNa9WgBSzJxw4S as published on 2026-10-09 (private to the owner; the live page may be newer). Opened from the repository, the diagrams render with mermaid from jsdelivr. -->
 <style>body{margin:0}</style>
 </head>
 <body>
@@ -114,7 +114,7 @@
 
 <div class="wrap">
   <header>
-    <div class="eyebrow">sdlc plugin 0.3.5 · luissiviero/sdlc-framework</div>
+    <div class="eyebrow">sdlc plugin 0.3.6 · luissiviero/sdlc-framework</div>
     <h1>How a project uses the SDLC plugin</h1>
     <p class="lede">What a project does once to connect, how one change travels from idea to production, and what happens when the owner does not simply merge. Drawn from the code (workflows, runner, gate, hooks); <code>docs/OPERATING_MODEL.md</code> is the contract, and the notes say where the two differ.</p>
     <div class="legend">
@@ -204,7 +204,7 @@
   GO -.-&gt; RB["sdlc-runbook.yml runs the runbook once and re-runs gate (f):&lt;br/&gt;sdlc:f-ready once it ran (a failed runbook stays parked)"]
   RB -.-&gt; GF</pre></div>
     <ul class="notes">
-      <li>An incident change ships through (b) to (e) like any other. Its (e) run is also told to write <code>lessons/&lt;yyyy-mm&gt;-&lt;slug&gt;.md</code> and one eval case under <code>evals/cases/</code>, which the next diagnosis and <code>sdlc-evals.yml</code> read. No gate checks that these files exist.</li>
+      <li>An incident change ships through (b) to (e) like any other. Its (e) run is also told to write <code>lessons/&lt;yyyy-mm&gt;-&lt;slug&gt;.md</code> and one eval case under <code>evals/cases/</code>, which the next diagnosis and <code>sdlc-evals.yml</code> read. Since 0.3.6 (change 0003) the lesson opens with a frontmatter block, the (e) run rebuilds the generated <code>lessons/index.md</code>, which the diagnosis reads first, and gate (e)'s <code>lesson_and_eval</code> check parks an incident change whose lesson, index or eval case is missing or malformed.</li>
       <li><strong>Full profile.</strong> <code>OPERATING_MODEL.md</code> asks for an approving review plus the label at (c) and (d). The code checks only that the label is on the build PR and that the workflow token did not apply it.</li>
       <li><strong>Merge the build PR only after <code>sdlc:e-ready</code>.</strong> The draft state is the only thing that stops an earlier merge. Since 0.3.1 an earlier merge releases nothing: a merge during (c) or (d) is skipped because the phase is not e, and one during (e) because the merged copy is not yet at phase e or has no gate (e) result yet; the running (e) job then opens a second build PR, whose merge releases. Each change releases once: after <code>deploy.command</code> exits 0, the release workflow's record job writes the release into <code>status.yaml</code> on <code>sdlc/&lt;id&gt;/c</code> and on <code>refs/sdlc/released/&lt;id&gt;</code>. The early merge still puts unreviewed code on the default branch.</li>
       <li><strong>Where <code>OPERATING_MODEL.md</code> says otherwise.</strong> It says an infrastructure failure parks (the code ends the job red) and lists a scan finding as an input of <code>/sdlc:sdlc-maintain</code> (the code files scan incidents without a diagnosis run).</li>
@@ -231,7 +231,7 @@
   OWNR -- "close without merging" --&gt; AB
   OWNP -- "close without merging" --&gt; AB["sdlc-abandon.yml&lt;br/&gt;phase: abandoned, branches kept;&lt;br/&gt;an incident PR closed with a person's comment&lt;br/&gt;also opens a dismissal PR"]
   FIX --&gt; G</pre></div>
-    <p class="note"><strong>Always parks, in both review modes:</strong> a risk-list hit, a guardrail file change, a run limit the gate reaches (iterations, panel calls, wall clock, budget), any failed deterministic check (tests, build, lint, evidence, plan sync, test lock and the rest), a gate commands step that could not run after the session, and, since 0.2.26, a session that wrote the owner-only fields of <code>status.yaml</code>. A pause (<code>paused: true</code> in <code>sdlc.yaml</code>) makes the next job skip instead. With <code>review: deferred</code>, the judgment items (flagged concerns, policy calls, escalations, review findings, verifier reports) go to a three-member review panel instead of parking, and the PR carries "Decisions taken for you (N)". A "Request changes" review with a comment on the line overturns one.</p>
+    <p class="note"><strong>Always parks, in both review modes:</strong> a risk-list hit, a guardrail file change, a run limit the gate reaches (iterations, panel calls, wall clock, budget), any failed deterministic check (tests, build, lint, evidence, plan sync, test lock and the rest), a gate commands step that could not run after the session, since 0.2.26, a session that wrote the owner-only fields of <code>status.yaml</code>, and a session that pushed to another of the change's branches or, since 0.3.6, ended on another branch than the one the runner prepared (both under one check, the checkout put back first). A pause (<code>paused: true</code> in <code>sdlc.yaml</code>) makes the next job skip instead. With <code>review: deferred</code>, the judgment items (flagged concerns, policy calls, escalations, review findings, verifier reports) go to a three-member review panel instead of parking, and the PR carries "Decisions taken for you (N)". A "Request changes" review with a comment on the line overturns one.</p>
   </section>
 
   <section>
@@ -270,7 +270,7 @@
   </section>
 
   <footer>
-    <span>Snapshot of the framework as of plugin 0.3.5 (5 October 2026), checked against the code; 0.3.4 and 0.3.5 change nothing drawn here (the gate's clean_tree check inside a CI session, and the review pass's record committed with the change).</span>
+    <span>Snapshot of the framework as of plugin 0.3.6 (9 October 2026), checked against the code; 0.3.4 and 0.3.5 changed nothing drawn here (the gate's clean_tree check inside a CI session, and the review pass's record committed with the change); 0.3.6 adds the lesson check at gate (e) and the runner's branch check, both in the notes above, and tells the reviewer that a repeated finding keeps its own severity.</span>
     <span>Every phase command can also be run by hand in a Claude Code session instead of its workflow. Then nothing dispatches the next phase, the session's own cost is not recorded (the budget limit still compares the CI sessions' recorded total with the cap), and commits are made by the session, not by <code>github-actions[bot]</code>.</span>
   </footer>
 </div>
