@@ -189,3 +189,59 @@ faithfully reflected in `spec.md`/`plan.md`, spot-checked a sample of the design
 citations directly against the code with no mismatch found, and returned `continue`
 (non-routine). It also noted this response file had no round-3 entry at the time it ran —
 this entry closes that gap; the design itself was unaffected.
+
+# Fix response — PR #152, phase (c), round 4 (wall-clock retry; no new review comments)
+
+Source: `evidence/fix-requests.json` (`unavailable: null`, `head` matched HEAD at collection;
+`requests: []`, `not_applied: []` — no review or comment is on the build PR this round).
+The only change request this round is the gate's own park, per `status.yaml: parked_reason`
+and `evidence/gate-c.json`'s prior "What I need from you": `limits: wall-clock limit
+exceeded: 218 min elapsed, limit 120 min` — every other check was green at that park. The
+owner cleared it with `sdlc:reset-iterations` (`status.yaml: iterations_reset_by:
+luissiviero`, applied before this session started).
+
+1. Wall-clock park (the change request): `gate/cli.py start-run` restarted the clock and
+   `gate/cli.py bump-iteration` recorded iteration 1 of 2. No code was changed in response —
+   the park carried no content defect of its own.
+2. Re-ran the verdict required for this phase run (the adversarial reviewer, fresh context,
+   HEAD `08f5e65`) before touching anything else, per the fix command's own step 5. It found
+   the round's one applied code fix (commit `3a90bd0`, the `git -C` chain-leak) sound, but
+   also found that the *other* two findings from the same prior review
+   (`evidence/adversarial-review-c.json` at HEAD `ec837ed`) were never fixed: `_part_targets`'s
+   git-verb branch in `plugin/hooks/shell_guard.py` reads the subcommand from the fixed
+   position `words[1]` with no flag-skipping (`git -c k=v rm CLAUDE.md` is allowed, not
+   denied), and `_inner_shell_command` only matches the exact adjacent pair (`bash --norc -c
+   '...'` is allowed, not denied). `verifier.md`'s scope for this round was explicitly limited
+   to the `git -C` fix only; these two were left open.
+3. Under `sdlc.yaml: review: deferred`, the reviewer's `escalate` on this round is itself a
+   panel item (build guide step 16a; decision 21): ran all three panel members on item 1
+   (`evidence/panel/c-1-reviewer.md`, blind reviewer, recommends escalate/Important;
+   `evidence/panel/c-1-advocate.md`, devil's advocate on `opus` per `sdlc.yaml:
+   panel_advocate_model`, argued the gaps fold into the named-open residual and the owner's
+   existing `risk_accepted: [auth]` — a real, considered dissent, not a rubber stamp;
+   `evidence/panel/c-1-conciliator.json`, reads both, decides `park`: spec.md Design names
+   `git rm`/`restore`/`checkout --`/`apply` and `bash -c`/`sh -c` recursion as covered idioms
+   with no flag-position qualification, and the named open residual is a different shape
+   — pathspec-less verbs and genuinely unlisted wrapper words, not a flag shifting an
+   already-recognised idiom). `panel/cli.py record` committed the decision
+   (`evidence/decisions-c.json`, commit `7bc5ef2`); 1 of 4 panel calls used.
+4. Regenerated `diff-c.patch` and re-ran the adversarial reviewer once more for the new HEAD
+   (`7bc5ef2`, per the fix command's "the verdict never outlives the diff it judged"):
+   independently re-traced both repros against the unchanged source and confirmed they are
+   still live; wrote a fresh `escalate` verdict matching the panel's settled item.
+5. Ran the gate (`gate/cli.py check --phase c`): every check is green except
+   `adversarial_review`, which parks on the panel-upheld escalate — exit 4, label
+   `sdlc:needs-human`. This is a different park reason than the round's starting one
+   (content, not wall-clock), so per the fix command's own rule this round stops here; fixing
+   the two bugs themselves is not a change request on file for this round (not in
+   `fix-requests.json`, not the owner's park reason), and the iteration/panel-call budget
+   (1 of 2, 1 of 4) is better spent on the owner's actual direction than on a guess at the
+   right fix for the project's own authorization gate.
+
+**Note for the owner**: `evidence/gate-c.json`'s "What I need from you" asks you to read the
+reviewer's reasons and decide: fix and re-run (a further `/sdlc-fix` round once the bugs are
+addressed — likely `_nonflag`-style flag-skipping before the fixed-position reads in both
+`_part_targets`'s git branch and `_inner_shell_command`, plus tests for `git -c ... rm` and
+`bash --norc -c '...'`), or accept in review (the panel already weighed and rejected folding
+this into the named residual, so accepting it here would be an explicit overturn of that
+panel decision, not a default). Either instruction applies cleanly on the next round.
