@@ -35,7 +35,13 @@
       "run": "c",
       "source": "claude-c.json",
       "usd": 17.064525699999994
+    },
+    {
+      "at": "2026-10-09T07:49:56Z",
+      "run": "c",
+      "source": "claude-c-2.json",
+      "usd": 0.5019698
     }
   ],
-  "total_usd": 29.43282
+  "total_usd": 29.934789
 }
