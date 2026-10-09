@@ -44,6 +44,7 @@ One file per NOTES section, number only, no slug (`docs/notes/<N>.md`); each car
 35. [Facts read in session 21 (2026-10-07 to 2026-10-08): the sample's points, change 0003's two fix rounds on plugin 0.3.5 — the owner's twenty-item and seventeen-item reviews applied, PR #124 merged; the build run on the 200-turn cap, the re-run's preflight park on a red test, PR #132; the (c) round, (d), (e) and the (e) round parked on the iteration cap by the reviewer's reading of the second-occurrence rule](35.md)
 36. [Facts read in session 22 (2026-10-08): the sample's points, change 0003's build read to its gate on plugin 0.3.5 — the turn cap's shape, the fix round that finished phase (c), phase (d) with the deferred marks, the fresh-context review of the build diff](36.md)
 37. [Facts read in session 23 (2026-10-08): change 0002's design run on plugin 0.3.6 — PR #130's push check verified live, gate (b) parked on three checks, PR #144 read; the sandbox's filesystem keys in the docs; the fresh-context review of the design](37.md)
+38. [Facts read in session 24 (2026-10-09): the sample's points, the open pull requests merged for real in a scratch worktree, change 0002's turn-capped build run on plugin 0.3.6 and its re-run](38.md)
 
 Sessions are append-only: a later session's file may correct or supersede an earlier one's
 reading (each says so inline, e.g. "corrected by §17"); read the latest file on a topic
