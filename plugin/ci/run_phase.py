@@ -1087,13 +1087,37 @@ def _absolute_rule(rule: str, base: str) -> str:
     return f"{m.group(1)}({base}/{m.group(2)})" if m else rule
 
 
+def _deny_write_entries(root: Path, config: dict[str, Any]) -> tuple[list[str], list[str]]:
+    """Absolute ``sandbox.filesystem.denyWrite`` paths for the project's own
+    ``sdlc.yaml: protected_paths`` plain entries, and the glob entries left out (``*``, ``?``
+    or ``[``: the sandbox does not support a glob character in a ``denyWrite`` entry on Linux,
+    change 0002 spec.md Requirements) — noted in the second return value, not silently dropped."""
+    base = Path(root).resolve()
+    entries: list[str] = []
+    skipped: list[str] = []
+    for raw in config.get("protected_paths") or []:
+        text = str(raw).strip()
+        if not text:
+            continue
+        if any(ch in text for ch in "*?["):
+            skipped.append(text)
+            continue
+        entries.append(str(base / text.lstrip("/\\")))
+    return entries, skipped
+
+
 def ci_settings_file(plugin_dir: Path, root: Path) -> Path:
     """``settings.ci.json`` with its ``/``-anchored path rules resolved against the project
     root, written to a temporary copy. A ``/path`` rule anchors at the directory of the
     settings file that defines it, and for a ``--settings`` file that is the file's own
     directory (the permissions reference), so ``Edit(/CLAUDE.md)`` left in the framework
     checkout would guard ``plugin/ci/CLAUDE.md``, not the project's guardrail file. The copy
-    carries ``Edit(//<absolute project root>/CLAUDE.md)`` instead; every other rule is kept."""
+    carries ``Edit(//<absolute project root>/CLAUDE.md)`` instead; every other rule is kept.
+
+    ``sandbox.filesystem.denyWrite`` (change 0002) is rewritten the same way, but to a plain
+    absolute filesystem path (a leading ``/`` is absolute, not the ``//``-anchored spelling the
+    permission rules above use), and gains the project's own ``protected_paths`` plain-path
+    entries appended."""
     source = Path(plugin_dir).joinpath(*SETTINGS_REL)
     data = json.loads(source.read_text(encoding="utf-8"))
     base = _absolute_rule_root(root)
@@ -1101,6 +1125,17 @@ def ci_settings_file(plugin_dir: Path, root: Path) -> Path:
     for key in ("deny", "ask", "allow"):
         if isinstance(perms.get(key), list):
             perms[key] = [_absolute_rule(r, base) for r in perms[key]]
+    sandbox = data.get("sandbox") or {}
+    fs = sandbox.get("filesystem") or {}
+    if isinstance(fs.get("denyWrite"), list):
+        fs_base = Path(root).resolve()
+        rewritten = [str(fs_base / str(entry).lstrip("/\\")) for entry in fs["denyWrite"]]
+        extra, skipped = _deny_write_entries(root, _config(root))
+        fs["denyWrite"] = rewritten + extra
+        if skipped:
+            fs["_denyWriteSkipped"] = skipped
+        sandbox["filesystem"] = fs
+        data["sandbox"] = sandbox
     out = Path(tempfile.mkdtemp(prefix="sdlc-ci-")) / source.name
     out.write_text(json.dumps(data, indent=2), encoding="utf-8")
     return out

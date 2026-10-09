@@ -602,7 +602,12 @@ def test_ci_settings_are_rendered_against_the_project_root(tmp_path):
     for rule in ("Read(.env*)", "Read(**/.env*)", "WebFetch", "Bash(curl *)"):
         assert rule in deny  # relative and tool-level rules untouched
     assert data["permissions"]["allow"] == source["permissions"]["allow"]
-    assert data["sandbox"] == source["sandbox"]
+    assert data["sandbox"]["network"] == source["sandbox"]["network"]
+    fs_base = tmp_path.resolve()
+    assert data["sandbox"]["filesystem"]["denyWrite"] == [
+        str(fs_base / name)
+        for name in (".claude", "framework", "CLAUDE.md", "REVIEW.md", "sdlc.yaml")
+    ]
     # the spelling Claude Code documents for Windows and POSIX roots
     assert run_phase._posix_root("C:/work/proj") == "//c/work/proj"
     assert run_phase._posix_root("C:\\work\\proj\\") == "//c/work/proj"
@@ -610,6 +615,42 @@ def test_ci_settings_are_rendered_against_the_project_root(tmp_path):
     assert run_phase._absolute_rule("Edit(/CLAUDE.md)", "//c/p") == "Edit(//c/p/CLAUDE.md)"
     assert run_phase._absolute_rule("Read(//etc/passwd)", "//c/p") == "Read(//etc/passwd)"
     assert run_phase._absolute_rule("Edit(docs/**)", "//c/p") == "Edit(docs/**)"
+
+
+def test_ci_settings_file_rewrites_the_sandbox_filesystem_deny_write_list(tmp_path):
+    """change 0002: the sandbox's second layer beside the shell_guard hook. The project's own
+    ``protected_paths`` plain entries are appended, absolute; a glob entry among them is
+    skipped (the sandbox does not support a glob character in a denyWrite entry on Linux) and
+    noted rather than silently dropped."""
+    (tmp_path / "sdlc.yaml").write_text(
+        "profile: standard\nprotected_paths:\n  - poetry.lock\n  - /Makefile\n  - src/gen/**\n",
+        encoding="utf-8",
+    )
+    out = run_phase.ci_settings_file(ROOT, tmp_path)
+    data = json.loads(out.read_text(encoding="utf-8"))
+    fs_base = tmp_path.resolve()
+    assert data["sandbox"]["filesystem"]["denyWrite"] == [
+        str(fs_base / name)
+        for name in (
+            ".claude",
+            "framework",
+            "CLAUDE.md",
+            "REVIEW.md",
+            "sdlc.yaml",
+            "poetry.lock",
+            "Makefile",
+        )
+    ]
+    assert data["sandbox"]["filesystem"]["_denyWriteSkipped"] == ["src/gen/**"]
+
+
+def test_ci_settings_file_denies_writing_a_protected_path_with_no_project_sdlc_yaml(tmp_path):
+    """A project with no ``protected_paths`` entry at all (or no sdlc.yaml yet) still gets the
+    five always-protected denyWrite entries, with nothing appended and nothing skipped."""
+    out = run_phase.ci_settings_file(ROOT, tmp_path)
+    data = json.loads(out.read_text(encoding="utf-8"))
+    assert len(data["sandbox"]["filesystem"]["denyWrite"]) == 5
+    assert "_denyWriteSkipped" not in data["sandbox"]["filesystem"]
 
 
 def test_a_nested_guardrail_name_is_not_a_guardrail_change(project, tmp_path):
