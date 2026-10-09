@@ -1,0 +1,144 @@
+{
+  "schema_version": 1,
+  "change_id": "0002",
+  "slug": "security-authz-the-guardrail-self-protec",
+  "phase": "b",
+  "profile": "standard",
+  "human_gate": true,
+  "result": "wait",
+  "label": "sdlc:b-ready",
+  "head": "34a62beb3c099170d0849cf397ae1a4058fef7ab",
+  "at": "2026-10-09T03:37:51Z",
+  "dry_run": false,
+  "reason": "",
+  "config_note": "",
+  "checks": [
+    {
+      "name": "limits",
+      "ok": true,
+      "reason": "within the run limits",
+      "need": "",
+      "details": {
+        "iterations": 1,
+        "cap": 2,
+        "classification": "non-routine",
+        "panel_calls": 0,
+        "panel_cap": 4,
+        "elapsed_minutes": 9.4,
+        "spend_usd": null,
+        "spend_usd_total": 7.773126,
+        "spend_entries": 4,
+        "max_budget_usd": null
+      }
+    },
+    {
+      "name": "artifacts",
+      "ok": true,
+      "reason": "every required artifact exists and has its template sections",
+      "need": "",
+      "details": {}
+    },
+    {
+      "name": "design_scope",
+      "ok": true,
+      "reason": "the committed diff stays inside changes/0002-security-authz-the-guardrail-self-protec/",
+      "need": "",
+      "details": {
+        "dirty": [
+          "changes/0002-security-authz-the-guardrail-self-protec/evidence/adversarial-review-b.json",
+          "changes/0002-security-authz-the-guardrail-self-protec/evidence/diff-b.patch",
+          "changes/0002-security-authz-the-guardrail-self-protec/evidence/gate-b.json",
+          "changes/0002-security-authz-the-guardrail-self-protec/evidence/hook-log.jsonl",
+          "changes/0002-security-authz-the-guardrail-self-protec/status.yaml",
+          "tests/fixtures/sample-python-project/.env"
+        ]
+      }
+    },
+    {
+      "name": "open_concerns",
+      "ok": true,
+      "reason": "no open flagged concern",
+      "need": "",
+      "details": {}
+    },
+    {
+      "name": "panel",
+      "ok": true,
+      "reason": "no panel decision at this gate",
+      "need": "",
+      "details": {}
+    },
+    {
+      "name": "commands",
+      "ok": true,
+      "reason": "build, test and lint exit 0",
+      "need": "",
+      "details": {
+        "runs": {
+          "build": {
+            "command": "python -m compileall -q plugin tests tasks.py",
+            "exit_code": 0,
+            "output": ""
+          },
+          "test": {
+            "command": "python -m pytest",
+            "exit_code": 0,
+            "output": "........................................................................ [  4%]\n........................................................................ [  9%]\n........................................................................ [ 14%]\n........................................................................ [ 19%]\n........................................................................ [ 24%]\n........................................................................ [ 29%]\n........................................................................ [ 34%]\n........................................................................ [ 39%]\n........................................................................ [ 44%]\n........................................................................ [ 49%]\n........................................................................ [ 54%]\n........................................................................ [ 59%]\n........................................................................ [ 64%]\n........................................................................ [ 69%]\n........................................................................ [ 74%]\n........................................................................ [ 79%]\n........................................................................ [ 84%]\n........................................................................ [ 89%]\n........................................................................ [ 94%]\n........................................................................ [ 99%]\n..............                                                           [100%]\n1454 passed in 314.66s (0:05:14)\n"
+          },
+          "lint": {
+            "command": "python -m ruff check .",
+            "exit_code": 0,
+            "output": "All checks passed!\n"
+          }
+        },
+        "ran_by": "runner"
+      }
+    },
+    {
+      "name": "guardrails",
+      "ok": true,
+      "reason": "the diff does not touch a guardrail file",
+      "need": "",
+      "details": {}
+    },
+    {
+      "name": "risk_list",
+      "ok": true,
+      "reason": "no risk-list item touched",
+      "need": "",
+      "details": {
+        "accepted": [
+          "auth"
+        ]
+      }
+    },
+    {
+      "name": "owner_actions",
+      "ok": true,
+      "reason": "risk acceptances, iteration and panel-call resets and test-lock lifts, if any, were committed by the owner or applied by the owner's label",
+      "need": "",
+      "details": {
+        "risk_accepted": [
+          "auth"
+        ],
+        "label_actors": {
+          "risk_accepted": {
+            "auth": "luissiviero"
+          },
+          "iterations_reset": "luissiviero"
+        }
+      }
+    },
+    {
+      "name": "adversarial_review",
+      "ok": true,
+      "reason": "adversarial reviewer says continue",
+      "need": "",
+      "details": {
+        "classification": "non-routine",
+        "reasons": []
+      }
+    }
+  ],
+  "what_i_need": ""
+}

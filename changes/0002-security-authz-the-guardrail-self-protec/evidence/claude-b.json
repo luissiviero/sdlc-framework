@@ -1,0 +1,99 @@
+{
+  "api_error_status": null,
+  "duration_api_ms": 1238890,
+  "duration_ms": 1250639,
+  "fast_mode_disabled_reason": "sdk_opt_in_required",
+  "fast_mode_state": "off",
+  "first_content_frame_ms": 1788,
+  "is_error": false,
+  "modelUsage": {
+    "claude-sonnet-5": {
+      "cacheCreationInputTokens": 240589,
+      "cacheReadInputTokens": 4870436,
+      "canonicalModel": "claude-sonnet-5",
+      "contextWindow": 1000000,
+      "costBasis": "list",
+      "costUSD": 2.3968262,
+      "inputTokens": 122,
+      "maxOutputTokens": 64000,
+      "outputTokens": 59120,
+      "provider": "firstParty",
+      "thinkingTokens": 35074,
+      "webSearchRequests": 0
+    }
+  },
+  "num_turns": 66,
+  "permission_denials": [],
+  "queued_turn_count": 0,
+  "result": "PR #144 opened and labeled `sdlc:needs-human`, parked for the owner.\n\n**Report:** PR [#144](https://github.com/luissiviero/sdlc-framework/pull/144) \u2014 gate (b) result: **park**. 3 open flagged concerns (risk-list `auth` hit, `secrets_check.py` scope-out, residual heuristic-parsing risk), plus the adversarial reviewer's escalate (non-routine): `plan.md` cites a nonexistent `evals/check.py` command that conflicts with `spec.md`'s correct `plugin/evals/run.py` reference. No panel ran (`review: parked` mode). The owner needs to close the concerns, accept or reject the `auth` risk, and decide whether to fix the eval-command mismatch via a review comment or accept it as-is.",
+  "result_index": 0,
+  "session_id": "6f5cbaf9-6f08-460d-909c-5eacfab65031",
+  "stop_reason": "end_turn",
+  "subagent_stats": {
+    "by_type": {
+      "sdlc:adversarial-reviewer": 1
+    },
+    "completed": 1,
+    "failed": 0,
+    "killed": {
+      "parent": 0,
+      "system": 0,
+      "user": 0
+    },
+    "max_depth": 1,
+    "refused": {
+      "budget": 0,
+      "concurrency_limit": 0,
+      "depth_limit": 0
+    },
+    "requested": {
+      "background": 0,
+      "foreground": 0,
+      "unset": 1
+    },
+    "spawned": 1,
+    "spawned_by_subagents": 0,
+    "started_in_background": 0
+  },
+  "subtype": "success",
+  "terminal_reason": "completed",
+  "time_to_request_ms": 74,
+  "total_cost_usd": 2.3968262,
+  "ttft_ms": 4161,
+  "ttft_stream_ms": 1788,
+  "type": "result",
+  "usage": {
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 153215,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "cache_creation_input_tokens": 153215,
+    "cache_read_input_tokens": 3695638,
+    "inference_geo": "not_available",
+    "input_tokens": 82,
+    "iterations": [
+      {
+        "cache_creation": {
+          "ephemeral_1h_input_tokens": 507,
+          "ephemeral_5m_input_tokens": 0
+        },
+        "cache_creation_input_tokens": 507,
+        "cache_read_input_tokens": 152708,
+        "input_tokens": 2,
+        "output_tokens": 275,
+        "type": "message"
+      }
+    ],
+    "output_tokens": 43325,
+    "output_tokens_details": {
+      "thinking_tokens": 26089
+    },
+    "server_tool_use": {
+      "web_fetch_requests": 0,
+      "web_search_requests": 0
+    },
+    "service_tier": "standard",
+    "speed": "standard"
+  },
+  "uuid": "c78d5f9a-3b64-45c5-b499-6f114e94a1f7"
+}
