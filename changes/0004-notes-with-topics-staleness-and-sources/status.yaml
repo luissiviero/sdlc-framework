@@ -1,0 +1,32 @@
+id: "0004"
+slug: notes-with-topics-staleness-and-sources
+title: Notes with topics, staleness and sources
+phase: a
+entry_route: idea
+change_type: feature
+profile_override: null
+review_override: null
+gate:
+  phase: null
+  result: null
+  reason: null
+  at: null
+parked_reason: null
+iterations: 0
+panel_calls: 0
+external_ref: null
+risk_accepted: []
+tests_locked: false
+risk_accepted_by: []
+iterations_reset_by: null
+iterations_reset_at: null
+tests_unlocked_by: null
+runbook_authorized_by: null
+abandoned_reason: null
+build_pr: null
+released_at: null
+released_sha: null
+released_pr: null
+created_at: "2026-10-09T02:37:02Z"
+updated_at: "2026-10-09T02:37:02Z"
+schema_version: 1
