@@ -23,6 +23,14 @@
     "last_seen": "2026-10-03T22:45:42Z",
     "summary": "The index's one-line description of the frontmatter fields still just says `verified_with` with no note that a runner value is deliberately omitted, so it reads as if the field still matches the pre-round-4 three-part wording."
   },
+  "21dea75189a498b1": {
+    "count": 1,
+    "file": "tests/test_hooks.py",
+    "first_change": "0002",
+    "last_change": "0002",
+    "last_seen": "2026-10-09T11:15:39Z",
+    "summary": "The diff imports `shell_guard` at module scope in tests/test_hooks.py, but plan.md's Order of work step 1 and Files-that-change section require it 'imported inside the test functions, never at module top-level, so a failure in the new tests cannot abort collection of the rest of the file', and plan.md was never updated in any commit on this branch to reflect the departure."
+  },
   "27da52344010278e": {
     "count": 1,
     "file": "CLAUDE.md",
@@ -199,6 +207,22 @@
     "last_seen": "2026-10-03T22:00:14Z",
     "summary": "Unchanged from the previous three rounds: doubt that sources should also hold the verbatim quote; spec.md's Design line describing sources as \"the docs URL or run URL and the verbatim quote already in the section, restated as structured data\" could be read as requiring the quote in the field itself, though the file only carries the URL."
   },
+  "b198cc9356580ee9": {
+    "count": 1,
+    "file": "tests/test_evals.py",
+    "first_change": "0002",
+    "last_change": "0002",
+    "last_seen": "2026-10-09T11:15:39Z",
+    "summary": "Since `FRAMEWORK_SUITE` (line 32) is now itself `tuple(p.name for p in run.discover(FRAMEWORK_CASES))`, the pre-existing assertion `names == list(FRAMEWORK_SUITE)` compares `run.discover`'s output against itself and is tautological \u2014 a bug in `run.discover` (e.g. a skipped or duplicated case folder) would no longer be caught by this line, though each case is still individually validated below it."
+  },
+  "c34d57d9ad183995": {
+    "count": 1,
+    "file": "plugin/ci/run_phase.py",
+    "first_change": "0002",
+    "last_change": "0002",
+    "last_seen": "2026-10-09T11:15:39Z",
+    "summary": "`_absolute_rule_root` is left in production code but, after `ci_settings_file` was rewritten to call `_posix_root(root_resolved.as_posix())` directly, it has no remaining production caller (only tests/test_ci.py:189,596 still call it)."
+  },
   "ce45a2c4192ba2cc": {
     "count": 1,
     "file": "docs/notes/1.md",
@@ -238,6 +262,14 @@
     "last_change": "0001",
     "last_seen": "2026-10-03T21:52:04Z",
     "summary": "Unchanged from the previous two rounds: doubt that sources should also hold the verbatim quote; spec.md's Design line describing sources as \"the docs URL or run URL and the verbatim quote already in the section, restated as structured data\" could be read as requiring the quote in the field itself, though the file only carries the URL."
+  },
+  "eb785655ad27959d": {
+    "count": 1,
+    "file": "plugin/hooks/shell_guard.py",
+    "first_change": "0002",
+    "last_change": "0002",
+    "last_seen": "2026-10-09T11:15:39Z",
+    "summary": "The new hook script is 985 lines, nearly double the coding-standards check's 500-line advisory threshold for a single source file."
   },
   "f3566379af405bb6": {
     "count": 1,
