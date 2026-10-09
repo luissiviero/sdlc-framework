@@ -23,6 +23,14 @@
     "last_seen": "2026-10-03T22:45:42Z",
     "summary": "The index's one-line description of the frontmatter fields still just says `verified_with` with no note that a runner value is deliberately omitted, so it reads as if the field still matches the pre-round-4 three-part wording."
   },
+  "21dea75189a498b1": {
+    "count": 1,
+    "file": "tests/test_hooks.py",
+    "first_change": "0002",
+    "last_change": "0002",
+    "last_seen": "2026-10-09T11:15:39Z",
+    "summary": "The diff imports `shell_guard` at module scope in tests/test_hooks.py, but plan.md's Order of work step 1 and Files-that-change section require it 'imported inside the test functions, never at module top-level, so a failure in the new tests cannot abort collection of the rest of the file', and plan.md was never updated in any commit on this branch to reflect the departure."
+  },
   "27da52344010278e": {
     "count": 1,
     "file": "CLAUDE.md",
@@ -38,6 +46,14 @@
     "last_change": "0001",
     "last_seen": "2026-10-03T21:52:04Z",
     "summary": "Unchanged from the previous two rounds: the CLAUDE.md guardrail table still has only 3 rows (lines 3, new-line-after-3, 35); spec.md's Acceptance text also names line 39, addressed only in the Summary's prose (explaining no edit is needed there), never as a table row."
+  },
+  "3384bdbb6b1fbfa5": {
+    "count": 1,
+    "file": "plugin/ci/run_phase.py",
+    "first_change": "0002",
+    "last_change": "0002",
+    "last_seen": "2026-10-09T15:45:40Z",
+    "summary": "ci_settings_file writes the diagnostic keys _denyWriteSkipped/_denyWriteNarrowed directly into sandbox.filesystem of the temporary settings.ci.json copy that is passed to the live claude -p --settings invocation, not just returned to the caller, and it is not verified live whether Claude Code's sandbox config loader tolerates an unrecognised key under sandbox.filesystem."
   },
   "34ada9808bfe9220": {
     "count": 2,
@@ -175,6 +191,14 @@
     "last_seen": "2026-10-08T04:53:25Z",
     "summary": "`build()` (called by `check()`) always runs `lessons_dir.mkdir(parents=True, exist_ok=True)`, so the read-only `index.py check` (and `lesson_and_eval`'s call to it) creates `lessons/` as a side effect even when it only reports drift or failure."
   },
+  "9f7af49dece452de": {
+    "count": 1,
+    "file": "plugin/hooks/shell_guard.py",
+    "first_change": "0002",
+    "last_change": "0002",
+    "last_seen": "2026-10-09T11:22:33Z",
+    "summary": "The new hook script is 985 lines, nearly double the coding-standards advisory limit of 500 lines for a single source file, with no split proposed in plan.md."
+  },
   "a372dc968947c483": {
     "count": 2,
     "file": "plugin/lessons/index.py",
@@ -182,6 +206,14 @@
     "last_change": "0003",
     "last_seen": "2026-10-08T12:06:32Z",
     "summary": "`build()` unconditionally runs `lessons_dir.mkdir(parents=True, exist_ok=True)`, so the read-only `check()` (and `lesson_and_eval`'s call into it) creates `lessons/` as a side effect on a project that has none yet, e.g. when no lesson file matches the gate's glob at all."
+  },
+  "adcf7a1b9e91cd94": {
+    "count": 1,
+    "file": "plugin/ci/run_phase.py",
+    "first_change": "0002",
+    "last_change": "0002",
+    "last_seen": "2026-10-09T11:22:33Z",
+    "summary": "_absolute_rule_root has no remaining production caller after ci_settings_file was rewritten to call _posix_root(root_resolved.as_posix()) directly; only tests/test_ci.py still calls it, so it is now dead code in the shipped module."
   },
   "af228dac9a462c15": {
     "count": 1,
@@ -198,6 +230,38 @@
     "last_change": "0001",
     "last_seen": "2026-10-03T22:00:14Z",
     "summary": "Unchanged from the previous three rounds: doubt that sources should also hold the verbatim quote; spec.md's Design line describing sources as \"the docs URL or run URL and the verbatim quote already in the section, restated as structured data\" could be read as requiring the quote in the field itself, though the file only carries the URL."
+  },
+  "b198cc9356580ee9": {
+    "count": 1,
+    "file": "tests/test_evals.py",
+    "first_change": "0002",
+    "last_change": "0002",
+    "last_seen": "2026-10-09T11:15:39Z",
+    "summary": "Since `FRAMEWORK_SUITE` (line 32) is now itself `tuple(p.name for p in run.discover(FRAMEWORK_CASES))`, the pre-existing assertion `names == list(FRAMEWORK_SUITE)` compares `run.discover`'s output against itself and is tautological \u2014 a bug in `run.discover` (e.g. a skipped or duplicated case folder) would no longer be caught by this line, though each case is still individually validated below it."
+  },
+  "b5a283b4ec19a447": {
+    "count": 1,
+    "file": "tests/test_hooks.py",
+    "first_change": "0002",
+    "last_change": "0002",
+    "last_seen": "2026-10-09T11:22:33Z",
+    "summary": "shell_guard is imported at module scope in tests/test_hooks.py, but plan.md's Order of work step 1 (and its Files-that-change entry for this file) requires the import be placed inside each test function specifically so a failure in the new tests cannot abort collection of the rest of the file, and plan.md was never updated in any commit on this branch to reflect that the diff does the opposite."
+  },
+  "c34d57d9ad183995": {
+    "count": 1,
+    "file": "plugin/ci/run_phase.py",
+    "first_change": "0002",
+    "last_change": "0002",
+    "last_seen": "2026-10-09T11:15:39Z",
+    "summary": "`_absolute_rule_root` is left in production code but, after `ci_settings_file` was rewritten to call `_posix_root(root_resolved.as_posix())` directly, it has no remaining production caller (only tests/test_ci.py:189,596 still call it)."
+  },
+  "c36c64e4b9cb1c69": {
+    "count": 1,
+    "file": "tests/test_evals.py",
+    "first_change": "0002",
+    "last_change": "0002",
+    "last_seen": "2026-10-09T11:22:33Z",
+    "summary": "Now that FRAMEWORK_SUITE (line 32) is itself tuple(p.name for p in run.discover(FRAMEWORK_CASES)), the assertion names == list(FRAMEWORK_SUITE) compares two calls to the same discovery function against each other and is tautological, so a bug in run.discover (a skipped or duplicated case folder) would no longer be caught by this line."
   },
   "ce45a2c4192ba2cc": {
     "count": 1,
@@ -238,6 +302,14 @@
     "last_change": "0001",
     "last_seen": "2026-10-03T21:52:04Z",
     "summary": "Unchanged from the previous two rounds: doubt that sources should also hold the verbatim quote; spec.md's Design line describing sources as \"the docs URL or run URL and the verbatim quote already in the section, restated as structured data\" could be read as requiring the quote in the field itself, though the file only carries the URL."
+  },
+  "eb785655ad27959d": {
+    "count": 1,
+    "file": "plugin/hooks/shell_guard.py",
+    "first_change": "0002",
+    "last_change": "0002",
+    "last_seen": "2026-10-09T11:15:39Z",
+    "summary": "The new hook script is 985 lines, nearly double the coding-standards check's 500-line advisory threshold for a single source file."
   },
   "f3566379af405bb6": {
     "count": 1,

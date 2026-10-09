@@ -1,5 +1,5 @@
 {
-  "_comment": "Settings passed with --settings to every unattended `claude -p` phase run in GitHub Actions (build guide step 30; article p.40: containers under a network policy, short-lived scoped tokens, no production credentials). Bare mode (API-key path) reads no settings by itself, so this file is always passed explicitly. It mirrors template/.claude/settings.json (decision 6 layer iii: hooks and permissions come from the pinned framework, never from the PR branch) with the differences a runner allows: the sandbox is mandatory (failIfUnavailable true; the job installs bubblewrap and socat first), the allowed domains are the API, GitHub and the package registries, and the allow-list covers the framework's own scripts so the run never waits on a prompt (--permission-prompts none denies anything else). The four Edit deny rules are spelled with a leading slash, the project-root anchor of a project settings file; because a /path rule in a --settings file anchors at that file's own directory, run_phase.ci_settings_file passes a temporary copy with them rewritten to //<absolute project root>/... (NOTES sections 6 and 12).",
+  "_comment": "Settings passed with --settings to every unattended `claude -p` phase run in GitHub Actions (build guide step 30; article p.40: containers under a network policy, short-lived scoped tokens, no production credentials). Bare mode (API-key path) reads no settings by itself, so this file is always passed explicitly. It mirrors template/.claude/settings.json (decision 6 layer iii: hooks and permissions come from the pinned framework, never from the PR branch) with the differences a runner allows: the sandbox is mandatory (failIfUnavailable true; the job installs bubblewrap and socat first), the allowed domains are the API, GitHub and the package registries, and the allow-list covers the framework's own scripts so the run never waits on a prompt (--permission-prompts none denies anything else). The four Edit deny rules are spelled with a leading slash, the project-root anchor of a project settings file; because a /path rule in a --settings file anchors at that file's own directory, run_phase.ci_settings_file passes a temporary copy with them rewritten to //<absolute project root>/... (NOTES sections 6 and 12). The sandbox.filesystem.denyWrite list (change 0002) is the second layer beside the shell_guard hook (decision 6 layer iii carrying one more block): .claude and framework are directories (a glob entry is skipped on Linux), CLAUDE.md/REVIEW.md/sdlc.yaml are the project-root guardrail files; run_phase.ci_settings_file rewrites each entry to an absolute filesystem path (a leading / is absolute, not the //-anchored spelling the permission block's Edit rules use) and appends the project's own sdlc.yaml: protected_paths plain-path entries.",
   "permissions": {
     "deny": [
       "Read(.env*)",
@@ -50,6 +50,9 @@
         "files.pythonhosted.org",
         "registry.npmjs.org"
       ]
+    },
+    "filesystem": {
+      "denyWrite": [".claude", "framework", "CLAUDE.md", "REVIEW.md", "sdlc.yaml"]
     }
   }
 }

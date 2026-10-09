@@ -1,0 +1,12 @@
+{
+  "reviewer": "Escalate: the flag-position gap defeats git rm and bash -c, both named without qualification as covered idioms in spec.md Design, through the CI-allowed, fully literal Bash(git *) route the change exists to close.",
+  "advocate": "No escalation: both bugs are real but fold into the named-open residual (pathspec-less git verbs, unlisted wrapper forms) and the owner's existing risk_accepted: [auth], so it is a follow-up nit, not Important.",
+  "decision": "park",
+  "rationale": [
+    "Both verdicts agree the two traces are correct and reproducible; they disagree only on whether the gap is inside or outside the accepted residual.",
+    "spec.md Design names 'git rm', 'git restore', 'git checkout --', 'git apply' and 'bash -c'/'sh -c' recursion as covered idioms with no flag-position qualification; the named open residual (c) is a different shape: pathspec-less verbs (reset --hard, merge, pull, cherry-pick, checkout <branch>) that carry no path argument at all, not a path-taking listed idiom defeated by a leading flag.",
+    "plan.md's accepted wrapper residual is an unlisted wrapper word; bash/sh/cmd/pwsh are already the listed words, so --norc is a flag-shift on a recognized wrapper, not an unlisted one.",
+    "Both commands are fully literal (no $VAR/$()/glob), so the fail-closed rule never engages, and plugin/ci/settings.ci.json already allows Bash(git *) bare -- this is the exact route and exact idiom intent.md names, so it meets REVIEW.md's Important bar (breaches the policy this change is the vehicle for) and the compliance pass (diff vs spec.md's unqualified Design claim).",
+    "Safer reading: treat as a missed closing of committed scope, not an extension of the acknowledged heuristic ceiling; escalate rather than let it pass as a nit."
+  ]
+}

@@ -1,0 +1,1 @@
+# python -m compileall -q plugin tests tasks.py — exit 0 — 0.3s — 2026-10-09T11:08:49Z

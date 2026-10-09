@@ -189,3 +189,273 @@ faithfully reflected in `spec.md`/`plan.md`, spot-checked a sample of the design
 citations directly against the code with no mismatch found, and returned `continue`
 (non-routine). It also noted this response file had no round-3 entry at the time it ran —
 this entry closes that gap; the design itself was unaffected.
+
+# Fix response — PR #152, phase (c), round 4 (wall-clock retry; no new review comments)
+
+Source: `evidence/fix-requests.json` (`unavailable: null`, `head` matched HEAD at collection;
+`requests: []`, `not_applied: []` — no review or comment is on the build PR this round).
+The only change request this round is the gate's own park, per `status.yaml: parked_reason`
+and `evidence/gate-c.json`'s prior "What I need from you": `limits: wall-clock limit
+exceeded: 218 min elapsed, limit 120 min` — every other check was green at that park. The
+owner cleared it with `sdlc:reset-iterations` (`status.yaml: iterations_reset_by:
+luissiviero`, applied before this session started).
+
+1. Wall-clock park (the change request): `gate/cli.py start-run` restarted the clock and
+   `gate/cli.py bump-iteration` recorded iteration 1 of 2. No code was changed in response —
+   the park carried no content defect of its own.
+2. Re-ran the verdict required for this phase run (the adversarial reviewer, fresh context,
+   HEAD `08f5e65`) before touching anything else, per the fix command's own step 5. It found
+   the round's one applied code fix (commit `3a90bd0`, the `git -C` chain-leak) sound, but
+   also found that the *other* two findings from the same prior review
+   (`evidence/adversarial-review-c.json` at HEAD `ec837ed`) were never fixed: `_part_targets`'s
+   git-verb branch in `plugin/hooks/shell_guard.py` reads the subcommand from the fixed
+   position `words[1]` with no flag-skipping (`git -c k=v rm CLAUDE.md` is allowed, not
+   denied), and `_inner_shell_command` only matches the exact adjacent pair (`bash --norc -c
+   '...'` is allowed, not denied). `verifier.md`'s scope for this round was explicitly limited
+   to the `git -C` fix only; these two were left open.
+3. Under `sdlc.yaml: review: deferred`, the reviewer's `escalate` on this round is itself a
+   panel item (build guide step 16a; decision 21): ran all three panel members on item 1
+   (`evidence/panel/c-1-reviewer.md`, blind reviewer, recommends escalate/Important;
+   `evidence/panel/c-1-advocate.md`, devil's advocate on `opus` per `sdlc.yaml:
+   panel_advocate_model`, argued the gaps fold into the named-open residual and the owner's
+   existing `risk_accepted: [auth]` — a real, considered dissent, not a rubber stamp;
+   `evidence/panel/c-1-conciliator.json`, reads both, decides `park`: spec.md Design names
+   `git rm`/`restore`/`checkout --`/`apply` and `bash -c`/`sh -c` recursion as covered idioms
+   with no flag-position qualification, and the named open residual is a different shape
+   — pathspec-less verbs and genuinely unlisted wrapper words, not a flag shifting an
+   already-recognised idiom). `panel/cli.py record` committed the decision
+   (`evidence/decisions-c.json`, commit `7bc5ef2`); 1 of 4 panel calls used.
+4. Regenerated `diff-c.patch` and re-ran the adversarial reviewer once more for the new HEAD
+   (`7bc5ef2`, per the fix command's "the verdict never outlives the diff it judged"):
+   independently re-traced both repros against the unchanged source and confirmed they are
+   still live; wrote a fresh `escalate` verdict matching the panel's settled item.
+5. Ran the gate (`gate/cli.py check --phase c`): every check is green except
+   `adversarial_review`, which parks on the panel-upheld escalate — exit 4, label
+   `sdlc:needs-human`. This is a different park reason than the round's starting one
+   (content, not wall-clock), so per the fix command's own rule this round stops here; fixing
+   the two bugs themselves is not a change request on file for this round (not in
+   `fix-requests.json`, not the owner's park reason), and the iteration/panel-call budget
+   (1 of 2, 1 of 4) is better spent on the owner's actual direction than on a guess at the
+   right fix for the project's own authorization gate.
+
+**Note for the owner**: `evidence/gate-c.json`'s "What I need from you" asks you to read the
+reviewer's reasons and decide: fix and re-run (a further `/sdlc-fix` round once the bugs are
+addressed — likely `_nonflag`-style flag-skipping before the fixed-position reads in both
+`_part_targets`'s git branch and `_inner_shell_command`, plus tests for `git -c ... rm` and
+`bash --norc -c '...'`), or accept in review (the panel already weighed and rejected folding
+this into the named residual, so accepting it here would be an explicit overturn of that
+panel decision, not a default). Either instruction applies cleanly on the next round.
+
+# Fix response — PR #152, phase (c), round 5 (iteration 2 of 2)
+
+Source: `evidence/fix-requests.json` (`unavailable: null`, `head` matched HEAD at collection;
+one review, `not_applied: []` — no other review or comment is on the PR). The owner's review
+is a comment review with 21 numbered findings plus 4 nits (18–21), directed at
+`plugin/hooks/shell_guard.py`; items 1 and 2 are the same pair the panel upheld as `escalate`
+in round 4 — this round closes them along with the rest the owner found in the same file.
+This is the last round before the iteration cap (2 of 2); `gate/cli.py bump-iteration`
+confirmed `cap_reached: false` at 2.
+
+1. `_part_targets`'s git branch and `_git_dash_c` now locate the subcommand with
+   `_git_global_scan`, skipping `-c`, `-C`, `--git-dir`, `--work-tree`, `--namespace` and
+   `--exec-path` (and their values) in any combination before the verb — `git -c
+   core.fileMode=false rm CLAUDE.md`, `git --git-dir=.git rm CLAUDE.md` and a `-C` preceded by
+   another global option are now denied/resolved correctly.
+2. `_inner_shell_command` scans for the interpreter's own `-c`/`/c`/`-Command` token past any
+   flags (`bash --norc -c '...'`, `cmd /d /c '...'`, `pwsh -NoProfile -Command '...'`).
+3. New ancestor check (`_protected_roots`/`_is_ancestor_of_protected` in `decide()`): a
+   resolved target that is an ancestor of a protected pattern's anchored fixed prefix, or of
+   the plugin root, is denied even though the directory's own name never matches a file
+   pattern — closes `shutil.rmtree('.claude')`, `git rm -r -q .claude`,
+   `Remove-Item -Recurse -Force .claude` and deleting an ancestor of a `protected_paths` entry
+   like `docs/policy.md`.
+4. `shutil.copy/copy2/copyfile/move`, `os.rename/replace`, node
+   `copyFileSync/copyFile/renameSync/rename/cpSync` and `[IO.File]::Copy/Move` now take the
+   last literal argument (the destination), the same convention the `cp`/`mv` shell branch
+   already used.
+5. Python `open(...)` write-mode detection rewritten (`_open_is_write`): a `mode=` keyword, a
+   raw-string path prefix (`open(r'CLAUDE.md','w')`), `Path(...).open(...)`, and
+   `os.open(..., os.O_WRONLY|os.O_TRUNC)` are all recognised; a mode held in a variable
+   (`m='w'; open('CLAUDE.md', m)`) fails closed since it cannot be verified read-only.
+6. `_chain_parts_tokenized` takes a `powershell` flag (set from `tool_name == "PowerShell"` in
+   `decide()`): backslash stays literal and the backtick is the escape character, instead of
+   the POSIX backslash-escape rule swallowing `.\CLAUDE.md` into `.CLAUDE.md`.
+7. `_powershell_targets` rewritten to collect positionals and skip the *value* of every
+   unrecognised named parameter (not just the known path flags), and to parse the `-Path:x`
+   colon form — `Set-Content -Value x CLAUDE.md`, `Out-File -Encoding utf8 CLAUDE.md` and
+   `New-Item -ItemType File CLAUDE.md` no longer mis-pick the flag's value as the path.
+8. `_dir_change_target` rewritten: skips a leading flag (`cd -P dir`), recognises `sl`,
+   `chdir`, `Push-Location`, `Pop-Location`, and fails closed (a `_NonLiteralDir` sentinel,
+   not a path) on `cd -`, a bare `cd`/`pushd`/`Set-Location`, `popd` and `Pop-Location` — none
+   of these is a directory the hook tracks.
+9. The tokenizer now splits on a lone `&` (distinguished from a redirect's own `2>&1`/`>&2` fd
+   form via a `just_emitted_redir` flag so the split never fires mid-operator), treats `(`/`)`
+   as invisible grouping punctuation, and `_strip_prefix` additionally strips a standalone
+   `{`/`}` (brace *grouping*, as opposed to `{a,b}` brace *expansion*, which stays inside the
+   word) and a `NAME=value` assignment prefix, in any order and combination with the existing
+   keyword/wrapper stripping.
+10. `_find_heredoc_terminator` replaces the old regex-based heredoc scan with a quote-aware
+    character loop: a `<<WORD` written inside a quoted string (`git log --format='<<EOF'`) is
+    not a heredoc, and `<<<` (a here-string) is excluded explicitly.
+11. `{` added to `_NONLITERAL_RE` (brace expansion fails closed); `_is_literal` also fails
+    closed on a token starting with `:` (git pathspec magic — `:(icase)claude.md`, `:/CLAUDE.md`).
+12. The redirect-target loop in `_part_targets` strips a leading `&` from a non-fd target
+    (`>&CLAUDE.md` → `CLAUDE.md`), while still skipping the genuine fd-dup forms (`2>&1`, `>&2`).
+13. New git-branch cases for `config --file`/`-f` and `diff --output[=]`; `checkout` without
+    `--` now takes every non-flag argument after the first (the ref) as a path; new branches
+    for `python -m json.tool <in> <out>`, `python -m pytest --basetemp=...` and
+    `gh release download ... -O/--output ...`. A negative test pins the framework's own
+    `git diff --stat --patch --output=changes/.../evidence/diff-c.patch` as still allowed.
+14. `_resolve` maps a Git-Bash-style `/c/...` absolute path onto a `C:/...`-rooted project
+    (`_GIT_BASH_ABS_RE`), only when the project root itself has a drive letter, so a Linux
+    root's own absolute paths are never reinterpreted.
+15. `_interpreter_code_argument` locates the actual `-c`/`-e`/`-Command` code argument by
+    position in the tokenized words (not a raw-text regex scan), so `git commit -m "...
+    open('CLAUDE.md','w') ..."`, a `gh pr comment` body and a `grep` pattern quoting the same
+    text are never mistaken for code the hook runs; a `[IO.File]::...` static call is still
+    matched directly against the part's preserved raw text (`_ps_static_targets`), since that
+    one *is* the whole command PowerShell runs, not a quoted mention. An unquoted `#` (`not
+    cur` at the point it is seen) now starts a comment that runs to the end of the line.
+16. `_is_literal` treats `$null` (case-insensitively) as the null device, PowerShell's
+    `> /dev/null` spelling, instead of failing closed on its `$`.
+17. `tests/test_ci.py::test_ci_settings_are_rendered_against_the_project_root`'s sandbox
+    assertion widened from comparing only `network` to full equality with `filesystem`
+    substituted (`data["sandbox"] == {**source["sandbox"], "filesystem": {...}}`), so a future
+    `ci_settings_file` change that drops `enabled`/`failIfUnavailable`/
+    `allowUnsandboxedCommands` would fail this test.
+18. `decide()` now computes every write-target candidate first and returns `allow()`
+    immediately when there are none — the config load, the branch lookup and the test-file-lock
+    query (which could fail closed on an unreadable change folder) never run for a command with
+    nothing to check, so `git status` is never denied by them.
+19. A block's `log_decision` call now passes `default_path` (computed from the same branch
+    `decide()` already looked up once, carried via `Decision.extra`, never read by `emit()` for
+    a PreToolUse hook) instead of letting the log make its own second `git rev-parse` call — a
+    hung git no longer risks two sequential ~20s calls against the hook's 30s timeout (a
+    timed-out PreToolUse hook does not block at all).
+20. `plugin/ci/run_phase.py:_deny_write_entries` now returns `(entries, skipped, narrowed)`:
+    rejects a non-list `protected_paths` outright (previously iterated character by character);
+    drops an entry that resolves to the project root itself (`.`) or escapes it
+    (`../outside.txt`), noted under `_denyWriteSkipped`; notes a bare, unanchored name
+    (`poetry.lock`) under a new `_denyWriteNarrowed` key — it is still appended (the sandbox can
+    only pin the one root copy), but the narrowing from the hook's own anywhere-match is now
+    visible rather than silent. `/Makefile` (anchored by its own leading slash) is not narrowed.
+21. The wiring test (`test_hooks_json_registers_shell_guard_on_bash_and_powershell`) now also
+    asserts `timeout == 30`. The module-top `shell_guard` import in `tests/test_hooks.py:22`
+    (plan step 1 says "imported inside the test functions") was left as it already stood from
+    an earlier round — moving ~25 call sites to a per-function import is not cheap for this
+    round's remaining budget, and every shell_guard test in the file already passes with it at
+    module scope; flagging it here rather than touching it blind.
+
+Every new or changed behaviour above has a dedicated test in `tests/test_hooks.py` (prefixed
+by the item it closes) or `tests/test_ci.py`; the pre-existing idiom-list row for
+`shutil.move('CLAUDE.md', 'x')` was changed to `shutil.move('x', 'CLAUDE.md')` since item 4
+makes the destination, not the source, the candidate — the same convention `cp`/`mv` already
+used, so the parser-level assertion now exercises the fixed direction instead of the one the
+review named as wrong.
+
+`python -m pytest`, `python -m ruff check .` and `python -m compileall -q plugin tests
+tasks.py` all pass on `tests/test_hooks.py`, `tests/test_ci.py` (its `ci_settings`-prefixed
+tests; the rest of the file, like most of this repository's suite in this session's sandbox,
+cannot build its fixture project — see the note below) and the full repository for lint and
+compile. No panel item is pending (`panel/cli.py items` recorded nothing new this round; the
+round 4 panel decision on items 1–2 is now moot since both are fixed, not just weighed).
+
+**Note for the owner — a sandbox restriction blocks most of this session's own test run, not
+your review**: this session's sandbox denies reading
+`tests/fixtures/sample-python-project/.env` (by design — it is the secrets-fixture file
+`Read(.env*)` is meant to deny), and the sandbox enforces that by bind-mounting a character
+device over the file. `shutil.copytree`, used by every test that builds a project from this
+fixture (`test_gate.py`, `test_panel.py`, `test_pr.py`, `test_preflight.py`,
+`test_policy_skills.py`, `test_evals.py`, `test_evidence.py`, `test_ci.py`'s fixture-based
+tests, and more — none of them touched by this change), cannot copy a character-device file
+and raises `shutil.Error` before the test body ever runs. This pre-dates this round (the file
+already showed as modified, as this device node, in `git status` before this session's first
+command) and reproduces with `git stash`/`git show HEAD:...` refusing to even hash the path.
+I verified it is unrelated to this change by confirming every one of the affected tests is in
+a file this round (and the whole of change 0002) never touches, and by running the full suite
+once to completion: the only two failures outside the `.env`-fixture cascade were
+`test_gate.py::test_the_sandbox_s_mask_is_read_from_its_mounts` (a test *of* this exact
+sandbox-masking mechanism, sensitive to how this particular container mounts `/`) and
+`test_evals.py::test_fixture_runs_a_case_against_the_initialised_project` (its own fixture
+build fails the same way) — both environment-dependent, neither touching
+`shell_guard.py`/`run_phase.py`/the files this round changed. I cannot change the sandbox
+configuration from within a run; raising it here per CLAUDE.md's instruction for a blocked
+sandbox restriction, not working around it.
+
+# Fix response — PR #152, review #5469970014 (@luissiviero, OWNER, CHANGES_REQUESTED), gate (e)
+
+Source: `evidence/fix-requests.json` (`unavailable: null`, `head` matched HEAD at collection,
+two reviews, `not_applied` empty). The round registered against the gate's iteration counter
+(`gate/cli.py bump-iteration`) read `iterations: 3` already on the change (set by the prior
+round, `gate (e)` parked on it at 2026-10-09T11:22:57Z) and advanced it to 4, past
+`gate.max_panel_calls`'s sibling cap of 2 for a non-routine change — `cap_reached: true`.
+`state/cli.py apply-labels --id 0002 --pr 152` found no owner un-park label on the pull
+request (only `sdlc:needs-human`), so `status.yaml: iterations` was not reset before the
+bump; the review's own prose ("The round resets the counter") describes an un-park action
+this run has no record of being taken — `set-iterations` is owner-only (decisions 5, 24) and
+is not something this run performs on a comment's say-so without the matching label. Nothing
+below was applied; the gate parked again on the cap (`evidence/gate-e.json`,
+2026-10-09T12:27:17Z) before any of the three items could be touched.
+
+1. Not applied: iteration cap reached. `tests/test_hooks.py:22` import placement
+   (module-level vs. inside each test, per plan.md step 1) is untouched.
+2. Not applied: iteration cap reached. `plugin/ci/run_phase.py:1081` `_absolute_rule_root`
+   (dead code outside `tests/test_ci.py`) is untouched.
+3. Not applied: iteration cap reached. `tests/test_evals.py:519`'s tautological
+   `names == list(FRAMEWORK_SUITE)` assertion is untouched.
+
+To allow another round: apply the `sdlc:reset-iterations` label to PR #152 (resets the panel-
+call count too), or run `gate/cli.py set-iterations --root . --id 0002 --count 0` by hand.
+
+# Fix response — PR #152, review #5469970014 (@luissiviero, OWNER, CHANGES_REQUESTED), gate (e), round 2
+
+Source: `evidence/fix-requests.json` (`unavailable: null`, `head` matched HEAD at collection,
+two reviews, `not_applied` empty). The owner applied `sdlc:reset-iterations` to PR #152
+(`status.yaml: iterations_reset_by: luissiviero`, `iterations_reset_at:
+2026-10-09T15:15:47Z`), recorded by `state/cli.py apply-labels` before this run started;
+`gate/cli.py bump-iteration` read `iterations: 0` and advanced it to 1, `cap_reached: false`
+(cap 2, non-routine). The three items review #5469970014 asked for, left untouched by the
+previous round (cap reached first), are applied now. Review #5468359227's 21 items were
+already applied in an earlier round (`fix(0002): git/inner-shell global-option bypass...`)
+and are unaffected by this one.
+
+1. `tests/test_hooks.py:22` — removed `shell_guard` from the module-top `from hooks import
+   (...)` block; added `from hooks import shell_guard` as the first statement of every test
+   function whose body calls `shell_guard.decide`/`shell_write_targets`/`_resolve` (46
+   functions), after a docstring where one is present. A failure in one of these tests can no
+   longer abort collection of the rest of the file. `tests/test_hooks.py` (all 368 cases)
+   passes; `test_hooks_json_registers_shell_guard_on_bash_and_powershell`'s `timeout == 30`
+   assertion is unchanged.
+2. `plugin/ci/run_phase.py:1081` `_absolute_rule_root` (no production caller; only
+   `tests/test_ci.py` used it) removed. Both call sites
+   (`test_dry_run_argv_per_phase` and `test_ci_settings_are_rendered_against_the_project_root`)
+   now call `run_phase._posix_root`
+   directly on the same `Path(...).resolve().as_posix()` the removed wrapper computed, so
+   their assertions are unchanged.
+3. `tests/test_evals.py:519` — `test_the_framework_suite_s_cases_load`'s
+   `names == list(FRAMEWORK_SUITE)` compared `run.discover(FRAMEWORK_CASES)` against a value
+   also derived from `run.discover`, so a bug in `discover` (a skipped or duplicated case
+   folder) would pass both sides identically. Replaced with a literal list of the five
+   `evals/cases/` folder names. `FRAMEWORK_SUITE` itself, and
+   `test_the_fixture_dry_run_lists_every_case` which derives its expectation from it, are
+   unchanged (round 3 review, item 1, decision 1 — that assertion still intentionally grows
+   with the folder, not a literal).
+
+`plan.md` updated in the same commit (Files that change, Order of work, Design-decisions
+rationale, Proof) to record the reversal on item 3: `test_the_framework_suite_s_cases_load`
+now asserts a literal list instead of deriving from folder discovery, while
+`test_the_fixture_dry_run_lists_every_case` still does. No change to spec.md (review did not
+touch it; choice 164 still applies).
+
+`python -m pytest`, `python -m ruff check .` and `python -m compileall -q plugin tests
+tasks.py`: compile and lint are clean; `tests/test_hooks.py`, the two touched
+`tests/test_ci.py` tests and `tests/test_evals.py::test_the_framework_suite_s_cases_load` all
+pass in isolation. The full-suite run in this session reproduces the same pre-existing,
+environment-only cascade documented in the previous round's note (the sandbox denies reading
+`tests/fixtures/sample-python-project/.env`, so every test using the `project`/fixture-copy
+fixture errors in setup) plus the same two environment-dependent failures named there
+(`test_gate.py::test_the_sandbox_s_mask_is_read_from_its_mounts`,
+`test_evals.py::test_fixture_runs_a_case_against_the_initialised_project`); none of the three
+files this round changed appear in either list. I cannot change the sandbox configuration
+from within a run; not working around it, per CLAUDE.md's instruction for a blocked sandbox
+restriction.

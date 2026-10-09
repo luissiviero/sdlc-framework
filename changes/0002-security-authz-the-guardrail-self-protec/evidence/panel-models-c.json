@@ -1,0 +1,14 @@
+{
+  "advocate_model": "opus",
+  "models": [
+    "claude-opus-5",
+    "claude-sonnet-5"
+  ],
+  "new_decisions": 1,
+  "ok": true,
+  "reason": null,
+  "schema_version": 1,
+  "session_model": "claude-sonnet-5",
+  "session_model_source": "the largest output in modelUsage",
+  "warning": null
+}

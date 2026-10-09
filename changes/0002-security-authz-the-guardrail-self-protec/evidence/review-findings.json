@@ -1,0 +1,21 @@
+{
+  "at": "2026-10-09T15:45:16Z",
+  "findings": [
+    {
+      "file": "plugin/ci/run_phase.py",
+      "line": 134,
+      "pass": "compliance",
+      "rule": "spec.md Requirements (\"a glob entry among them is skipped ... noted in ci_settings_file's result\")",
+      "severity": "nit",
+      "signature": "3384bdbb6b1fbfa5",
+      "summary": "ci_settings_file writes the diagnostic keys _denyWriteSkipped/_denyWriteNarrowed directly into sandbox.filesystem of the temporary settings.ci.json copy that is passed to the live claude -p --settings invocation, not just returned to the caller, and it is not verified live whether Claude Code's sandbox config loader tolerates an unrecognised key under sandbox.filesystem."
+    }
+  ],
+  "head": "55ce5f770c0b8b6bf68580fdc065c519883f18c0",
+  "schema_version": 1,
+  "tally": {
+    "important": 0,
+    "nit": 1,
+    "nits_omitted": 0
+  }
+}

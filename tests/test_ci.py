@@ -186,7 +186,7 @@ def test_dry_run_argv_per_phase(capsys, project, phase, command, mode):
     assert settings.name == "settings.ci.json" and settings.is_file()
     assert settings != ROOT / "plugin" / "ci" / "settings.ci.json"
     rendered = json.loads(settings.read_text(encoding="utf-8"))
-    base = run_phase._absolute_rule_root(root)
+    base = run_phase._posix_root(Path(root).resolve().as_posix())
     assert f"Edit({base}/CLAUDE.md)" in rendered["permissions"]["deny"]
     assert argv[argv.index("--output-format") + 1] == "json"
     assert int(argv[argv.index("--max-turns") + 1]) == run_phase.DEFAULT_MAX_TURNS
@@ -593,7 +593,7 @@ def test_ci_settings_are_rendered_against_the_project_root(tmp_path):
     out = run_phase.ci_settings_file(ROOT, tmp_path)
     assert out != ROOT / "plugin" / "ci" / "settings.ci.json"
     data = json.loads(out.read_text(encoding="utf-8"))
-    base = run_phase._absolute_rule_root(tmp_path)
+    base = run_phase._posix_root(tmp_path.resolve().as_posix())
     assert base.startswith("//") and not base.startswith("///") and ":" not in base
     deny = data["permissions"]["deny"]
     for name in (".claude/**", "CLAUDE.md", "REVIEW.md", "sdlc.yaml"):
@@ -602,7 +602,19 @@ def test_ci_settings_are_rendered_against_the_project_root(tmp_path):
     for rule in ("Read(.env*)", "Read(**/.env*)", "WebFetch", "Bash(curl *)"):
         assert rule in deny  # relative and tool-level rules untouched
     assert data["permissions"]["allow"] == source["permissions"]["allow"]
-    assert data["sandbox"] == source["sandbox"]
+    fs_base = tmp_path.resolve()
+    rewritten_deny_write = [
+        str(fs_base / name)
+        for name in (".claude", "framework", "CLAUDE.md", "REVIEW.md", "sdlc.yaml")
+    ]
+    assert data["sandbox"]["filesystem"]["denyWrite"] == rewritten_deny_write
+    # every other sandbox key (enabled, failIfUnavailable, allowUnsandboxedCommands, network)
+    # is carried over unchanged — round 4 fix-request item 17: the prior assertion compared
+    # only `network`, so `ci_settings_file` silently dropping one of the others would pass
+    assert data["sandbox"] == {
+        **source["sandbox"],
+        "filesystem": {"denyWrite": rewritten_deny_write},
+    }
     # the spelling Claude Code documents for Windows and POSIX roots
     assert run_phase._posix_root("C:/work/proj") == "//c/work/proj"
     assert run_phase._posix_root("C:\\work\\proj\\") == "//c/work/proj"
@@ -610,6 +622,76 @@ def test_ci_settings_are_rendered_against_the_project_root(tmp_path):
     assert run_phase._absolute_rule("Edit(/CLAUDE.md)", "//c/p") == "Edit(//c/p/CLAUDE.md)"
     assert run_phase._absolute_rule("Read(//etc/passwd)", "//c/p") == "Read(//etc/passwd)"
     assert run_phase._absolute_rule("Edit(docs/**)", "//c/p") == "Edit(docs/**)"
+
+
+def test_ci_settings_file_rewrites_the_sandbox_filesystem_deny_write_list(tmp_path):
+    """change 0002: the sandbox's second layer beside the shell_guard hook. The project's own
+    ``protected_paths`` plain entries are appended, absolute; a glob entry among them is
+    skipped (the sandbox does not support a glob character in a denyWrite entry on Linux) and
+    noted rather than silently dropped."""
+    (tmp_path / "sdlc.yaml").write_text(
+        "profile: standard\nprotected_paths:\n  - poetry.lock\n  - /Makefile\n  - src/gen/**\n",
+        encoding="utf-8",
+    )
+    out = run_phase.ci_settings_file(ROOT, tmp_path)
+    data = json.loads(out.read_text(encoding="utf-8"))
+    fs_base = tmp_path.resolve()
+    assert data["sandbox"]["filesystem"]["denyWrite"] == [
+        str(fs_base / name)
+        for name in (
+            ".claude",
+            "framework",
+            "CLAUDE.md",
+            "REVIEW.md",
+            "sdlc.yaml",
+            "poetry.lock",
+            "Makefile",
+        )
+    ]
+    assert data["sandbox"]["filesystem"]["_denyWriteSkipped"] == ["src/gen/**"]
+    # `poetry.lock` is a bare name (the hook protects it in every directory); the sandbox can
+    # only pin the one absolute path, so it is noted as narrowed even though it is still
+    # appended. `/Makefile` is already anchored to the root by its own leading slash, so
+    # resolving it to one absolute path narrows nothing (round 4 fix-request item 20).
+    assert data["sandbox"]["filesystem"]["_denyWriteNarrowed"] == ["poetry.lock"]
+
+
+@pytest.mark.parametrize(
+    ("protected_paths_yaml", "expected_skipped"),
+    [
+        ("protected_paths: docs/x.md\n", ["protected_paths is not a list: 'docs/x.md'"]),
+        ("protected_paths:\n  - .\n", ["."]),
+        ("protected_paths:\n  - ../outside.txt\n", ["../outside.txt"]),
+    ],
+)
+def test_ci_settings_file_rejects_a_bad_protected_paths_entry(
+    tmp_path, protected_paths_yaml, expected_skipped
+):
+    """round 4 fix-request item 20: a non-list ``protected_paths`` used to be iterated
+    character by character (each character becoming its own nonsense denyWrite entry, ``.``
+    and ``-`` resolving to the project root itself, widening the sandbox's denyWrite to the
+    whole project); every one of these is now rejected and noted, not silently included."""
+    (tmp_path / "sdlc.yaml").write_text(
+        "profile: standard\n" + protected_paths_yaml, encoding="utf-8"
+    )
+    out = run_phase.ci_settings_file(ROOT, tmp_path)
+    data = json.loads(out.read_text(encoding="utf-8"))
+    fs_base = tmp_path.resolve()
+    assert data["sandbox"]["filesystem"]["denyWrite"] == [
+        str(fs_base / name)
+        for name in (".claude", "framework", "CLAUDE.md", "REVIEW.md", "sdlc.yaml")
+    ]
+    assert data["sandbox"]["filesystem"]["_denyWriteSkipped"] == expected_skipped
+    assert "_denyWriteNarrowed" not in data["sandbox"]["filesystem"]
+
+
+def test_ci_settings_file_denies_writing_a_protected_path_with_no_project_sdlc_yaml(tmp_path):
+    """A project with no ``protected_paths`` entry at all (or no sdlc.yaml yet) still gets the
+    five always-protected denyWrite entries, with nothing appended and nothing skipped."""
+    out = run_phase.ci_settings_file(ROOT, tmp_path)
+    data = json.loads(out.read_text(encoding="utf-8"))
+    assert len(data["sandbox"]["filesystem"]["denyWrite"]) == 5
+    assert "_denyWriteSkipped" not in data["sandbox"]["filesystem"]
 
 
 def test_a_nested_guardrail_name_is_not_a_guardrail_change(project, tmp_path):

@@ -26,13 +26,10 @@ from state import yamlish
 ROOT = Path(__file__).resolve().parents[1]
 FRAMEWORK_CASES = ROOT / "evals" / "cases"
 TEMPLATE_CHECK = ROOT / "template" / "evals" / "check.py"
-FRAMEWORK_SUITE = (
-    "0001-protected-path-denied",
-    "0002-intent-skill-shape",
-    "0003-secrets-stay-out",
-    "0004-verify-before-done",
-    "0005-hooks-loaded",
-)
+# The suite's own case names and count, derived from the folders under evals/cases/ instead of
+# a literal tuple (round 3 review of change 0002, item 1, decision 1): the suite grows when a
+# phase (e) run adds a case folder, with nothing here to edit.
+FRAMEWORK_SUITE = tuple(p.name for p in run.discover(FRAMEWORK_CASES))
 
 FAKE_CLAUDE = r"""
 import json, os, sys, time
@@ -519,7 +516,13 @@ AWS_KEY_ID = re.compile(r"AKIA[0-9A-Z]{16}")
 
 def test_the_framework_suite_s_cases_load():
     names = [p.name for p in run.discover(FRAMEWORK_CASES)]
-    assert names == list(FRAMEWORK_SUITE)
+    assert names == [
+        "0001-protected-path-denied",
+        "0002-intent-skill-shape",
+        "0003-secrets-stay-out",
+        "0004-verify-before-done",
+        "0005-hooks-loaded",
+    ]
     loaded = {name: run.load_case(FRAMEWORK_CASES / name) for name in names}
     for name, case in loaded.items():
         assert case.error == "", (name, case.error)

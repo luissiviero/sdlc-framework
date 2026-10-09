@@ -1756,3 +1756,630 @@ def test_panel_blind_refuses_a_tool_write_of_a_model_record(panel_project):
     # an ordinary edit elsewhere is left alone, and writes no record
     assert not _blind(root, pre("Write", file_path=str(root / "src" / "calc.py"))).block
     assert not (panel / "b-1-reviewer.model.json").exists()
+
+
+# --- shell guard (change 0002: protected_paths.py and test_file_lock.py police Edit/Write/
+# MultiEdit/NotebookEdit only; shell_guard.py closes the identical Bash/PowerShell bypass) ----
+GUARD_HOOK = HOOKS_DIR / "shell_guard.py"
+
+
+def _bash(command: str, cwd: str) -> dict:
+    return {**pre("Bash", command=command), "cwd": cwd}
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "python -c \"open('CLAUDE.md','w').write('x')\"",
+        "echo x > sdlc.yaml",
+        "echo x >> REVIEW.md",
+        "cp notes.txt CLAUDE.md",
+        "Set-Content -Path CLAUDE.md -Value x",
+        "Remove-Item sdlc.yaml",
+        '[IO.File]::WriteAllText("CLAUDE.md","x")',
+    ],
+)
+def test_shell_guard_denies_a_bash_write_to_a_guardrail_file(project, command):
+    from hooks import shell_guard
+    d = shell_guard.decide(_bash(command, str(project)), [], env=_env(project))
+    assert d.block, command
+    assert "Protected path" in d.reason
+
+
+def test_shell_guard_covers_the_powershell_tool_too(project):
+    from hooks import shell_guard
+    payload = {**_bash("Remove-Item CLAUDE.md", str(project)), "tool_name": "PowerShell"}
+    d = shell_guard.decide(payload, [], env=_env(project))
+    assert d.block and "Protected path" in d.reason
+
+
+def test_shell_guard_denies_the_plugin_root_form_only_through_plugin_root(project):
+    from hooks import shell_guard
+    command = "rm plugin/hooks/protected_paths.py"
+    without = shell_guard.decide(_bash(command, str(project)), [], env=_env(project))
+    assert not without.block
+    withit = shell_guard.decide(
+        _bash(command, str(project)), ["--plugin-root", str(project)], env=_env(project)
+    )
+    assert withit.block and "SDLC plugin" in withit.reason
+
+
+def test_shell_guard_denies_a_sdlc_yaml_protected_paths_entry(project):
+    from hooks import shell_guard
+    d = shell_guard.decide(_bash("echo x > src/gen/model.py", str(project)), [], env=_env(project))
+    assert d.block and "src/gen" in d.reason
+
+
+def test_shell_guard_denies_a_bash_write_to_a_locked_test_file(tmp_path):
+    from hooks import shell_guard
+    root, _ = _lock_project(tmp_path)
+    payload = _bash("echo x > tests/test_calc.py", str(root))
+    d = shell_guard.decide(payload, [], env={"CLAUDE_PROJECT_DIR": str(root)})
+    assert d.block and "Test-file lock" in d.reason and "tests/test_calc.py" in d.reason
+
+
+def test_shell_guard_ignores_a_locked_test_file_outside_a_fix(tmp_path):
+    from hooks import shell_guard
+    root, _ = _lock_project(tmp_path, change_type="feature")
+    payload = _bash("echo x > tests/test_calc.py", str(root))
+    d = shell_guard.decide(payload, [], env={"CLAUDE_PROJECT_DIR": str(root)})
+    assert not d.block
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        'git commit -m "note: echo x > CLAUDE.md"',
+        'echo "> CLAUDE.md"',
+        "grep -n x CLAUDE.md",
+        "cat sdlc.yaml",
+        "python -m pytest tests/test_hooks.py -k protected",
+        "cmd 2>&1",
+        "cmd > /dev/null",
+        "git status",
+        "npm run build",
+        "npx some-package",
+    ],
+)
+def test_shell_guard_allows_ordinary_commands(project, command):
+    from hooks import shell_guard
+    d = shell_guard.decide(_bash(command, str(project)), [], env=_env(project))
+    assert not d.block, command
+
+
+def test_shell_guard_allows_a_heredoc_blockquote_mentioning_a_guardrail_path(project):
+    from hooks import shell_guard
+    command = (
+        "gh pr comment --body \"$(cat <<'EOF'\na blockquote mentioning > CLAUDE.md here\nEOF\n)\""
+    )
+    d = shell_guard.decide(_bash(command, str(project)), [], env=_env(project))
+    assert not d.block
+
+
+def test_shell_guard_resolves_a_relative_target_against_cwd(project):
+    from hooks import shell_guard
+    (project / "sub").mkdir()
+    d = shell_guard.decide(_bash("echo x > CLAUDE.md", str(project / "sub")), [], env=_env(project))
+    assert not d.block  # sub/CLAUDE.md is project content, not the root guardrail file
+
+
+def test_shell_guard_resolves_after_a_cd_in_the_same_chain(project):
+    from hooks import shell_guard
+    (project / "sub").mkdir()
+    allowed = shell_guard.decide(
+        _bash("cd sub && echo x > CLAUDE.md", str(project)), [], env=_env(project)
+    )
+    assert not allowed.block  # sub/CLAUDE.md, not the root guardrail file
+    denied = shell_guard.decide(
+        _bash(f"cd sub && cd {project} && echo x > CLAUDE.md", str(project)), [], env=_env(project)
+    )
+    assert denied.block
+
+
+def test_shell_guard_resolves_a_git_dash_c_target(tmp_path, project):
+    from hooks import shell_guard
+    other = tmp_path / "other"
+    other.mkdir()
+    elsewhere = shell_guard.decide(
+        _bash(f"git -C {other} rm CLAUDE.md", str(project)), [], env=_env(project)
+    )
+    assert not elsewhere.block  # CLAUDE.md under `other`, not the project root
+    here = shell_guard.decide(
+        _bash(f"git -C {project} rm CLAUDE.md", str(other)), [], env=_env(project)
+    )
+    assert here.block
+
+
+def test_shell_guard_git_dash_c_does_not_leak_into_a_later_chain_part(tmp_path, project):
+    """Round 4 review finding: unlike `cd`, `git -C <dir>` changes the directory of that one
+    git process only — it never persists to a later part of the same chain. A command that
+    only *looks* like it writes under `other/` after a `git -C other ...` actually writes to
+    the real cwd's CLAUDE.md, and the hook must deny it."""
+    from hooks import shell_guard
+    other = tmp_path / "other"
+    other.mkdir()
+    leaked = shell_guard.decide(
+        _bash(f"git -C {other} status && echo x > CLAUDE.md", str(project)), [], env=_env(project)
+    )
+    assert leaked.block  # the echo writes the real project root's CLAUDE.md, not other/CLAUDE.md
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "echo x > $VAR",
+        "echo x > $(name)",
+        "echo x > `name`",
+        "echo x > ~/CLAUDE.md",
+        "echo x > CLAUDE.md*",
+        "cd $DIR && echo x > CLAUDE.md",
+    ],
+)
+def test_shell_guard_fails_closed_on_a_nonliteral_write_target(project, command):
+    from hooks import shell_guard
+    d = shell_guard.decide(_bash(command, str(project)), [], env=_env(project))
+    assert d.block and "not a literal path" in d.reason
+
+
+def test_shell_guard_allows_a_cd_to_a_nonliteral_directory_with_no_write_after_it(project):
+    from hooks import shell_guard
+    d = shell_guard.decide(_bash("cd $DIR", str(project)), [], env=_env(project))
+    assert not d.block
+
+
+# --- round 4 fix-request: the escalated git/inner-shell global-option bypasses (items 1-2) ----
+@pytest.mark.parametrize(
+    "command",
+    [
+        "git -c core.fileMode=false rm CLAUDE.md",
+        "git --git-dir=.git rm CLAUDE.md",
+        "git --work-tree=. checkout -- CLAUDE.md",
+    ],
+)
+def test_shell_guard_sees_the_git_verb_after_a_global_option(project, command):
+    from hooks import shell_guard
+    d = shell_guard.decide(_bash(command, str(project)), [], env=_env(project))
+    assert d.block, command
+
+
+def test_shell_guard_sees_a_dash_c_preceded_by_another_global_option(tmp_path, project):
+    from hooks import shell_guard
+    other = tmp_path / "other"
+    other.mkdir()
+    elsewhere = shell_guard.decide(
+        _bash(f"git -c x=y -C {other} rm CLAUDE.md", str(project)), [], env=_env(project)
+    )
+    assert not elsewhere.block  # CLAUDE.md under `other`, not the project root
+    here = shell_guard.decide(
+        _bash(f"git -c x=y -C {project} rm CLAUDE.md", str(other)), [], env=_env(project)
+    )
+    assert here.block
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "bash --norc -c 'echo x > CLAUDE.md'",
+        "sh --posix -c 'echo x > CLAUDE.md'",
+        "pwsh -NoProfile -Command 'Remove-Item CLAUDE.md'",
+        "cmd /d /c 'echo x > CLAUDE.md'",
+    ],
+)
+def test_shell_write_targets_sees_through_a_flag_before_the_inner_shell_s_c_token(command):
+    from hooks import shell_guard
+    assert shell_guard.shell_write_targets(command) == ["CLAUDE.md"]
+
+
+# --- round 4 fix-request item 3: an ancestor directory of a guardrail is protected too --------
+@pytest.mark.parametrize(
+    ("command", "tool_name"),
+    [
+        ("rm -r -q .claude", "Bash"),
+        ("git rm -r -q .claude", "Bash"),
+        ("python -c \"import shutil; shutil.rmtree('.claude')\"", "Bash"),
+        ("Remove-Item -Recurse -Force .claude", "PowerShell"),
+    ],
+)
+def test_shell_guard_denies_deleting_a_directory_that_contains_a_guardrail(
+    project, command, tool_name
+):
+    from hooks import shell_guard
+    payload = {**_bash(command, str(project)), "tool_name": tool_name}
+    d = shell_guard.decide(payload, [], env=_env(project))
+    assert d.block, command
+
+
+def test_shell_guard_denies_deleting_an_ancestor_of_a_sdlc_yaml_protected_paths_entry(tmp_path):
+    from hooks import shell_guard
+    (tmp_path / "sdlc.yaml").write_text(
+        "profile: standard\nprotected_paths:\n  - docs/policy.md\n", encoding="utf-8"
+    )
+    d = shell_guard.decide(
+        _bash("git rm -r -q docs", str(tmp_path)), [], env={"CLAUDE_PROJECT_DIR": str(tmp_path)}
+    )
+    assert d.block and "docs" in d.reason
+
+
+# --- round 4 fix-request item 6-7: PowerShell backslash paths and named-parameter values ------
+def test_shell_write_targets_keeps_backslash_literal_on_powershell():
+    from hooks import shell_guard
+    assert shell_guard.shell_write_targets("Set-Content .\\CLAUDE.md x", powershell=True) == [
+        ".\\CLAUDE.md"
+    ]
+    assert shell_guard.shell_write_targets("Set-Content .\\CLAUDE.md x") == [".CLAUDE.md"]
+
+
+def test_shell_guard_reads_a_backslash_path_on_powershell(project):
+    from hooks import shell_guard
+    payload = {**_bash("Set-Content .\\CLAUDE.md x", str(project)), "tool_name": "PowerShell"}
+    d = shell_guard.decide(payload, [], env=_env(project))
+    assert d.block
+
+
+@pytest.mark.parametrize(
+    ("command", "expected"),
+    [
+        ("Set-Content -Value x CLAUDE.md", ["CLAUDE.md"]),
+        ('"x" | Out-File -Encoding utf8 CLAUDE.md', ["CLAUDE.md"]),
+        ("Set-Content -Path:CLAUDE.md -Value x", ["CLAUDE.md"]),
+        ("New-Item -ItemType File CLAUDE.md", ["CLAUDE.md"]),
+    ],
+)
+def test_shell_write_targets_powershell_skips_a_named_parameter_s_value(command, expected):
+    from hooks import shell_guard
+    assert shell_guard.shell_write_targets(command) == expected
+
+
+# --- round 4 fix-request item 8: the directory-change parser ----------------------------------
+def test_shell_guard_resolves_cd_with_a_flag_before_the_directory(project):
+    from hooks import shell_guard
+    d = shell_guard.decide(
+        _bash("cd -P .claude && python -c 1 > settings.json", str(project)), [], env=_env(project)
+    )
+    assert d.block
+
+
+def test_shell_guard_fails_closed_on_cd_dash(project):
+    from hooks import shell_guard
+    d = shell_guard.decide(
+        _bash("cd docs && cd - && echo x > CLAUDE.md", str(project)), [], env=_env(project)
+    )
+    assert d.block and "not a literal path" in d.reason
+
+
+def test_shell_guard_recognises_sl_alias_and_skips_set_location_flags(project):
+    from hooks import shell_guard
+    d = shell_guard.decide(
+        _bash("Set-Location -Path .claude; Set-Content settings.json x", str(project)),
+        [],
+        env=_env(project),
+    )
+    assert d.block
+
+
+def test_shell_guard_fails_closed_on_popd_and_pop_location(project):
+    from hooks import shell_guard
+    d = shell_guard.decide(
+        _bash("pushd docs && popd && echo x > CLAUDE.md", str(project)), [], env=_env(project)
+    )
+    assert d.block and "not a literal path" in d.reason
+
+
+# --- round 4 fix-request item 9: shell structure that hides the head word ---------------------
+@pytest.mark.parametrize(
+    "command",
+    [
+        "git status & git rm -q CLAUDE.md",
+        "(git rm -q CLAUDE.md)",
+        "{ git rm -q CLAUDE.md; }",
+        "if true; then git rm -q CLAUDE.md; fi",
+        "GIT_TRACE=0 git rm -q CLAUDE.md",
+    ],
+)
+def test_shell_write_targets_sees_through_subshells_groups_and_assignments(command):
+    from hooks import shell_guard
+    assert shell_guard.shell_write_targets(command) == ["CLAUDE.md"]
+
+
+def test_shell_guard_denies_a_write_inside_a_subshell_cd(project):
+    from hooks import shell_guard
+    d = shell_guard.decide(
+        _bash("(cd .claude && python -c 1 > settings.json)", str(project)), [], env=_env(project)
+    )
+    assert d.block
+
+
+# --- round 4 fix-request item 10: heredocs and here-strings, quote-aware ----------------------
+def test_shell_write_targets_a_heredoc_word_inside_a_quote_is_not_a_heredoc():
+    from hooks import shell_guard
+    assert shell_guard.shell_write_targets("git log -1 --format='<<EOF'\ngit rm -q CLAUDE.md") == [
+        "CLAUDE.md"
+    ]
+
+
+def test_shell_write_targets_a_here_string_is_not_a_heredoc():
+    from hooks import shell_guard
+    assert shell_guard.shell_write_targets('python -c 1 <<< "x"\ngit rm -q CLAUDE.md') == [
+        "CLAUDE.md"
+    ]
+
+
+# --- round 4 fix-request item 11: brace expansion and git pathspec magic ----------------------
+def test_shell_guard_fails_closed_on_brace_expansion(project):
+    from hooks import shell_guard
+    d = shell_guard.decide(
+        _bash("git rm -q {CLAUDE,README}.md", str(project)), [], env=_env(project)
+    )
+    assert d.block and "not a literal path" in d.reason
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "git rm -q ':(icase)claude.md'",
+        "git rm -q ':/CLAUDE.md'",
+    ],
+)
+def test_shell_guard_fails_closed_on_git_pathspec_magic(project, command):
+    from hooks import shell_guard
+    d = shell_guard.decide(_bash(command, str(project)), [], env=_env(project))
+    assert d.block and "not a literal path" in d.reason
+
+
+# --- round 4 fix-request item 12: `>&WORD` is a file redirect, not only an fd dup -------------
+def test_shell_write_targets_parses_ampersand_word_as_a_file_redirect():
+    from hooks import shell_guard
+    assert shell_guard.shell_write_targets("python -c 1 >&CLAUDE.md") == ["CLAUDE.md"]
+    assert shell_guard.shell_write_targets("cmd 2>&1") == []
+    assert shell_guard.shell_write_targets("cmd >&2") == []
+
+
+# --- round 4 fix-request item 13: more programs that write a named file via their options ----
+@pytest.mark.parametrize(
+    ("command", "expected"),
+    [
+        ("git diff --output=CLAUDE.md", ["CLAUDE.md"]),
+        ("git checkout main CLAUDE.md", ["CLAUDE.md"]),
+        ("git config --file sdlc.yaml a.b c", ["sdlc.yaml"]),
+        ("python -m json.tool x.json sdlc.yaml", ["sdlc.yaml"]),
+        ("python -m pytest --basetemp=.claude", [".claude"]),
+        ("gh release download 1 -O CLAUDE.md", ["CLAUDE.md"]),
+    ],
+)
+def test_shell_write_targets_more_idioms(command, expected):
+    from hooks import shell_guard
+    assert shell_guard.shell_write_targets(command) == expected
+
+
+def test_shell_write_targets_plain_pytest_run_is_not_a_write():
+    from hooks import shell_guard
+    assert shell_guard.shell_write_targets("python -m pytest") == []
+
+
+def test_shell_guard_allows_the_framework_s_own_evidence_diff_command(project):
+    from hooks import shell_guard
+    command = "git diff --stat --patch --output=changes/0002-slug/evidence/diff-c.patch main...HEAD"
+    d = shell_guard.decide(_bash(command, str(project)), [], env=_env(project))
+    assert not d.block
+
+
+# --- round 4 fix-request item 14: a Git Bash absolute path maps onto a drive-letter root ------
+def test_resolve_maps_a_git_bash_absolute_path_onto_a_drive_letter_root():
+    from hooks import shell_guard
+    assert shell_guard._resolve("C:/p", "/c/p/CLAUDE.md") == "c:/p/CLAUDE.md"
+    assert shell_guard._resolve("C:/p", "/c/p") == "c:/p"
+    assert shell_guard._resolve("/home/u/proj", "/etc/passwd") == "/etc/passwd"
+
+
+# --- round 4 fix-request item 15: scan only the interpreter's own code argument ---------------
+@pytest.mark.parametrize(
+    "command",
+    [
+        "git commit -m \"deny open('CLAUDE.md','w') via Bash\"",
+        "gh pr comment 144 --body \"fs.writeFileSync('sdlc.yaml','x')\"",
+        "grep -n \"open('CLAUDE.md','w')\" tests/test_hooks.py",
+        "git status # then > CLAUDE.md",
+    ],
+)
+def test_shell_guard_does_not_false_deny_text_that_merely_mentions_a_write_call(project, command):
+    from hooks import shell_guard
+    d = shell_guard.decide(_bash(command, str(project)), [], env=_env(project))
+    assert not d.block, command
+
+
+# --- round 4 fix-request item 16: PowerShell's $null is the null device ----------------------
+@pytest.mark.parametrize("command", ["git fetch origin 2>$null", "python -m pytest > $null"])
+def test_shell_guard_allows_null_on_powershell(project, command):
+    from hooks import shell_guard
+    payload = {**_bash(command, str(project)), "tool_name": "PowerShell"}
+    d = shell_guard.decide(payload, [], env=_env(project))
+    assert not d.block, command
+
+
+# --- round 4 fix-request item 4: two-argument interpreter calls check the destination ---------
+@pytest.mark.parametrize(
+    ("command", "expected"),
+    [
+        ("python -c \"shutil.copy('README.md', 'CLAUDE.md')\"", ["CLAUDE.md"]),
+        ("python -c \"os.rename('a.txt', 'CLAUDE.md')\"", ["CLAUDE.md"]),
+        ("python -c \"os.replace('a.txt', 'CLAUDE.md')\"", ["CLAUDE.md"]),
+        ("node -e \"fs.copyFileSync('a.txt', 'CLAUDE.md')\"", ["CLAUDE.md"]),
+        ("node -e \"fs.renameSync('a.txt', 'CLAUDE.md')\"", ["CLAUDE.md"]),
+        ("node -e \"fs.cpSync('a.txt', 'CLAUDE.md')\"", ["CLAUDE.md"]),
+        ('[IO.File]::Copy("a.txt","CLAUDE.md")', ["CLAUDE.md"]),
+        ('[IO.File]::Move("a.txt","CLAUDE.md")', ["CLAUDE.md"]),
+    ],
+)
+def test_shell_write_targets_two_argument_calls_take_the_destination(command, expected):
+    from hooks import shell_guard
+    assert shell_guard.shell_write_targets(command) == expected
+
+
+# --- round 4 fix-request item 5: python open() write-mode edge cases --------------------------
+@pytest.mark.parametrize(
+    "command",
+    [
+        "python -c \"open('CLAUDE.md', mode='w').write('x')\"",
+        "python -c \"m='w'; open('CLAUDE.md', m).write('x')\"",
+        "python -c \"open(r'CLAUDE.md','w').write('x')\"",
+        "python -c \"Path('CLAUDE.md').open('w').write('x')\"",
+        "python -c \"os.open('CLAUDE.md', os.O_WRONLY|os.O_TRUNC)\"",
+    ],
+)
+def test_shell_write_targets_python_open_write_forms(command):
+    from hooks import shell_guard
+    assert shell_guard.shell_write_targets(command) == ["CLAUDE.md"]
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "python -c \"open('CLAUDE.md').read()\"",
+        "python -c \"open('CLAUDE.md', encoding='utf-8').read()\"",
+        "python -c \"Path('CLAUDE.md').open().read()\"",
+    ],
+)
+def test_shell_write_targets_python_open_read_forms_are_not_writes(command):
+    from hooks import shell_guard
+    assert shell_guard.shell_write_targets(command) == []
+
+
+@pytest.mark.parametrize(
+    ("command", "expected"),
+    [
+        ("echo x > CLAUDE.md", ["CLAUDE.md"]),
+        ("echo x >> CLAUDE.md", ["CLAUDE.md"]),
+        ("echo x >| CLAUDE.md", ["CLAUDE.md"]),
+        ("cmd &> CLAUDE.md", ["CLAUDE.md"]),
+        ("cmd &>> CLAUDE.md", ["CLAUDE.md"]),
+        ("cmd <> CLAUDE.md", ["CLAUDE.md"]),
+        ("tee CLAUDE.md", ["CLAUDE.md"]),
+        ("tee -a CLAUDE.md", ["CLAUDE.md"]),
+        ("cp a.txt CLAUDE.md", ["CLAUDE.md"]),
+        ("mv a.txt CLAUDE.md", ["CLAUDE.md"]),
+        ("install a.txt CLAUDE.md", ["CLAUDE.md"]),
+        ("ln -s a.txt CLAUDE.md", ["CLAUDE.md"]),
+        ("rsync a.txt CLAUDE.md", ["CLAUDE.md"]),
+        ("rm CLAUDE.md", ["CLAUDE.md"]),
+        ("truncate -s0 CLAUDE.md", ["CLAUDE.md"]),
+        ("touch CLAUDE.md", ["CLAUDE.md"]),
+        ("sed -i s/a/b/ CLAUDE.md", ["CLAUDE.md"]),
+        ("perl -i -pe s/a/b/ CLAUDE.md", ["CLAUDE.md"]),
+        ("dd of=CLAUDE.md", ["CLAUDE.md"]),
+        ("git checkout -- CLAUDE.md", ["CLAUDE.md"]),
+        ("git restore CLAUDE.md", ["CLAUDE.md"]),
+        ("git rm CLAUDE.md", ["CLAUDE.md"]),
+        ("git mv a.txt CLAUDE.md", ["a.txt", "CLAUDE.md"]),
+        ("git apply CLAUDE.md", ["CLAUDE.md"]),
+        ("python -c \"open('CLAUDE.md','w').write('x')\"", ["CLAUDE.md"]),
+        ("python -c \"Path('CLAUDE.md').write_text('x')\"", ["CLAUDE.md"]),
+        ("python -c \"os.remove('CLAUDE.md')\"", ["CLAUDE.md"]),
+        ("python -c \"shutil.move('x', 'CLAUDE.md')\"", ["CLAUDE.md"]),
+        ("node -e \"fs.writeFileSync('CLAUDE.md', 'x')\"", ["CLAUDE.md"]),
+        ("Set-Content -Path CLAUDE.md -Value x", ["CLAUDE.md"]),
+        ("Add-Content CLAUDE.md x", ["CLAUDE.md"]),
+        ("Out-File -FilePath CLAUDE.md", ["CLAUDE.md"]),
+        ("New-Item CLAUDE.md", ["CLAUDE.md"]),
+        ("Copy-Item a.txt -Destination CLAUDE.md", ["CLAUDE.md"]),
+        ("Move-Item a.txt CLAUDE.md", ["a.txt", "CLAUDE.md"]),
+        ("Remove-Item CLAUDE.md", ["CLAUDE.md"]),
+        ('[IO.File]::WriteAllText("CLAUDE.md","x")', ["CLAUDE.md"]),
+    ],
+)
+def test_shell_write_targets_idioms(command, expected):
+    from hooks import shell_guard
+    assert shell_guard.shell_write_targets(command) == expected
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        'git commit -m "note: echo x > CLAUDE.md"',
+        'echo "> CLAUDE.md"',
+        "grep -n x CLAUDE.md",
+        "cat sdlc.yaml",
+        "python -m pytest tests/test_hooks.py -k protected",
+        "cmd 2>&1",
+        "git status",
+        "npm run build",
+    ],
+)
+def test_shell_write_targets_negative_list(command):
+    from hooks import shell_guard
+    assert shell_guard.shell_write_targets(command) == []
+
+
+def test_shell_write_targets_sees_through_wrappers_and_inner_shells():
+    from hooks import shell_guard
+    for command in (
+        "sudo rm CLAUDE.md",
+        "nohup rm CLAUDE.md",
+        "time rm CLAUDE.md",
+        "env rm CLAUDE.md",
+        'bash -c "echo x > CLAUDE.md"',
+        "sh -c 'echo x > CLAUDE.md'",
+        'cmd /c "echo x > CLAUDE.md"',
+        "pwsh -Command 'Remove-Item CLAUDE.md'",
+    ):
+        assert shell_guard.shell_write_targets(command) == ["CLAUDE.md"], command
+
+
+def test_shell_write_targets_splits_a_chain_only_on_the_documented_operators():
+    from hooks import shell_guard
+    assert shell_guard.shell_write_targets("rm a.txt; echo x > CLAUDE.md") == [
+        "a.txt",
+        "CLAUDE.md",
+    ]
+    assert shell_guard.shell_write_targets("rm a.txt && echo x > CLAUDE.md") == [
+        "a.txt",
+        "CLAUDE.md",
+    ]
+    assert shell_guard.shell_write_targets("rm a.txt || echo x > CLAUDE.md") == [
+        "a.txt",
+        "CLAUDE.md",
+    ]
+    assert shell_guard.shell_write_targets("rm a.txt | rm CLAUDE.md") == ["a.txt", "CLAUDE.md"]
+
+
+def test_shell_guard_end_to_end_blocks_with_exit_2(project, tmp_path):
+    log_path = tmp_path / "hook-log.jsonl"
+    proc = subprocess.run(
+        [sys.executable, str(GUARD_HOOK)],
+        input=json.dumps(_bash("echo x > sdlc.yaml", str(project))),
+        capture_output=True,
+        text=True,
+        env={**os.environ, "CLAUDE_PROJECT_DIR": str(project), "SDLC_HOOK_LOG": str(log_path)},
+    )
+    assert proc.returncode == 2, proc.stderr
+    out = json.loads(proc.stdout)
+    assert out["hookSpecificOutput"]["permissionDecision"] == "deny"
+    assert "Protected path" in proc.stderr
+    log_line = json.loads(log_path.read_text("utf-8").strip())
+    assert log_line["hook"] == "shell_guard" and log_line["verdict"] == "block"
+
+
+def test_shell_guard_end_to_end_is_silent_when_allowed(project, tmp_path):
+    log_path = tmp_path / "hook-log.jsonl"
+    proc = subprocess.run(
+        [sys.executable, str(GUARD_HOOK)],
+        input=json.dumps(_bash("echo hi", str(project))),
+        capture_output=True,
+        text=True,
+        env={**os.environ, "CLAUDE_PROJECT_DIR": str(project), "SDLC_HOOK_LOG": str(log_path)},
+    )
+    assert proc.returncode == 0 and proc.stdout == "" and proc.stderr == ""
+    assert not log_path.exists()
+
+
+def test_hooks_json_registers_shell_guard_on_bash_and_powershell():
+    data = json.loads((HOOKS_DIR / "hooks.json").read_text(encoding="utf-8"))
+    entries = [
+        e
+        for e in data["hooks"]["PreToolUse"]
+        if any("shell_guard.py" in h["args"][0] for h in e["hooks"])
+    ]
+    assert len(entries) == 1 and entries[0]["matcher"] == "Bash|PowerShell"
+    (handler,) = entries[0]["hooks"]
+    assert "if" not in handler
+    assert handler["args"][1:] == ["--plugin-root", "${CLAUDE_PLUGIN_ROOT}"]
+    assert handler["timeout"] == 30
