@@ -1,0 +1,24 @@
+{
+  "decided": 0,
+  "gate": "park",
+  "items": [],
+  "iterations": {
+    "cap": 2,
+    "left": 0,
+    "used": 2
+  },
+  "mode": "deferred",
+  "panel_calls": {
+    "cap": 4,
+    "left": 4,
+    "used": 0
+  },
+  "parks": [
+    {
+      "check": "limits",
+      "reason": "wall-clock limit exceeded: 218 min elapsed, limit 120 min"
+    }
+  ],
+  "pending": [],
+  "phase": "c"
+}

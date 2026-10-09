@@ -1,0 +1,34 @@
+{
+  "schema_version": 1,
+  "change_id": "0002",
+  "slug": "security-authz-the-guardrail-self-protec",
+  "phase": "c",
+  "profile": "standard",
+  "human_gate": false,
+  "result": "park",
+  "label": "sdlc:needs-human",
+  "head": "d9c0ba1ca810858b4908bf5d5be3def1699c17cf",
+  "at": "2026-10-09T07:48:59Z",
+  "dry_run": false,
+  "reason": "limits: wall-clock limit exceeded: 218 min elapsed, limit 120 min",
+  "config_note": "",
+  "checks": [
+    {
+      "name": "limits",
+      "ok": false,
+      "reason": "wall-clock limit exceeded: 218 min elapsed, limit 120 min",
+      "need": "The phase ran too long: inspect the partial evidence and start a fresh run (`cli.py start-run` resets the clock).",
+      "details": {
+        "iterations": 2,
+        "cap": 2,
+        "classification": "non-routine",
+        "panel_calls": 0,
+        "panel_cap": 4,
+        "elapsed_minutes": 218.5,
+        "stop": true,
+        "max_wall_clock_minutes": 120
+      }
+    }
+  ],
+  "what_i_need": "## What I need from you\nGate (c) parked change 0002 (security-authz-the-guardrail-self-protec) on 2026-10-09T07:48:59Z.\n- **limits**: wall-clock limit exceeded: 218 min elapsed, limit 120 min\n  - what I need: The phase ran too long: inspect the partial evidence and start a fresh run (`cli.py start-run` resets the clock).\nWhen the item is settled, re-run the gate: `python \"${CLAUDE_PLUGIN_ROOT}/plugin/gate/cli.py\" check --root . --id 0002 --phase c` (review comments are the change request; /sdlc-fix from B3 re-runs the phase with them).\n"
+}
