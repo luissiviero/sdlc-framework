@@ -15,7 +15,8 @@ parked_reason: "status.yaml: the session wrote owner-only field(s): risk_accepte
 iterations: 1
 panel_calls: 0
 external_ref: null
-risk_accepted: []
+risk_accepted:
+  - auth
 tests_locked: false
 risk_accepted_by: []
 iterations_reset_by: null
