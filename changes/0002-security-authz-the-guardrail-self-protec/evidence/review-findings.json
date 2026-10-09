@@ -1,32 +1,32 @@
 {
-  "at": "2026-10-09T11:15:16Z",
+  "at": "2026-10-09T12:00:00Z",
   "findings": [
     {
       "file": "tests/test_hooks.py",
       "line": 22,
       "pass": "compliance",
-      "rule": "REVIEW.md framework rule: 'plan.md must reflect the diff ... a diff that departs from the plan without a plan.md update in the same commit is non-compliant'; coding-standards rule 3 ('the diff stays inside plan.md's Files that change; a departure updates plan.md in the same commit')",
+      "rule": "REVIEW.md framework rule: plan.md must reflect the diff; a diff that departs from the plan without a plan.md update in the same commit is non-compliant (coding-standards rule 3: a departure updates plan.md in the same commit).",
       "severity": "important",
-      "signature": "21dea75189a498b1",
-      "summary": "The diff imports `shell_guard` at module scope in tests/test_hooks.py, but plan.md's Order of work step 1 and Files-that-change section require it 'imported inside the test functions, never at module top-level, so a failure in the new tests cannot abort collection of the rest of the file', and plan.md was never updated in any commit on this branch to reflect the departure."
+      "signature": "b5a283b4ec19a447",
+      "summary": "shell_guard is imported at module scope in tests/test_hooks.py, but plan.md's Order of work step 1 (and its Files-that-change entry for this file) requires the import be placed inside each test function specifically so a failure in the new tests cannot abort collection of the rest of the file, and plan.md was never updated in any commit on this branch to reflect that the diff does the opposite."
     },
     {
       "file": "plugin/ci/run_phase.py",
       "line": 1081,
       "pass": "bugs",
-      "rule": "coding-standards rule 7 (no dead code)",
+      "rule": "coding-standards rule 7 (no dead code).",
       "severity": "nit",
-      "signature": "c34d57d9ad183995",
-      "summary": "`_absolute_rule_root` is left in production code but, after `ci_settings_file` was rewritten to call `_posix_root(root_resolved.as_posix())` directly, it has no remaining production caller (only tests/test_ci.py:189,596 still call it)."
+      "signature": "adcf7a1b9e91cd94",
+      "summary": "_absolute_rule_root has no remaining production caller after ci_settings_file was rewritten to call _posix_root(root_resolved.as_posix()) directly; only tests/test_ci.py still calls it, so it is now dead code in the shipped module."
     },
     {
       "file": "plugin/hooks/shell_guard.py",
       "line": 1,
       "pass": "compliance",
-      "rule": "plugin/skills/coding-standards/check.py: LONG_FILE = 500",
+      "rule": "coding-standards rule 7 (small functions; plugin/skills/coding-standards/check.py's LONG_FILE=500 advisory).",
       "severity": "nit",
-      "signature": "eb785655ad27959d",
-      "summary": "The new hook script is 985 lines, nearly double the coding-standards check's 500-line advisory threshold for a single source file."
+      "signature": "9f7af49dece452de",
+      "summary": "The new hook script is 985 lines, nearly double the coding-standards advisory limit of 500 lines for a single source file, with no split proposed in plan.md."
     },
     {
       "file": "tests/test_evals.py",
@@ -34,11 +34,11 @@
       "pass": "bugs",
       "rule": "",
       "severity": "nit",
-      "signature": "b198cc9356580ee9",
-      "summary": "Since `FRAMEWORK_SUITE` (line 32) is now itself `tuple(p.name for p in run.discover(FRAMEWORK_CASES))`, the pre-existing assertion `names == list(FRAMEWORK_SUITE)` compares `run.discover`'s output against itself and is tautological \u2014 a bug in `run.discover` (e.g. a skipped or duplicated case folder) would no longer be caught by this line, though each case is still individually validated below it."
+      "signature": "c36c64e4b9cb1c69",
+      "summary": "Now that FRAMEWORK_SUITE (line 32) is itself tuple(p.name for p in run.discover(FRAMEWORK_CASES)), the assertion names == list(FRAMEWORK_SUITE) compares two calls to the same discovery function against each other and is tautological, so a bug in run.discover (a skipped or duplicated case folder) would no longer be caught by this line."
     }
   ],
-  "head": "beab9d4cc85e9183d8530b4ec346737b8ebe1133",
+  "head": "70163395245131a140d23a4e2c03c9ebaeba0fa9",
   "schema_version": 1,
   "tally": {
     "important": 1,

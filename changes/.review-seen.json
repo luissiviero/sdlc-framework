@@ -183,6 +183,14 @@
     "last_seen": "2026-10-08T04:53:25Z",
     "summary": "`build()` (called by `check()`) always runs `lessons_dir.mkdir(parents=True, exist_ok=True)`, so the read-only `index.py check` (and `lesson_and_eval`'s call to it) creates `lessons/` as a side effect even when it only reports drift or failure."
   },
+  "9f7af49dece452de": {
+    "count": 1,
+    "file": "plugin/hooks/shell_guard.py",
+    "first_change": "0002",
+    "last_change": "0002",
+    "last_seen": "2026-10-09T11:22:33Z",
+    "summary": "The new hook script is 985 lines, nearly double the coding-standards advisory limit of 500 lines for a single source file, with no split proposed in plan.md."
+  },
   "a372dc968947c483": {
     "count": 2,
     "file": "plugin/lessons/index.py",
@@ -190,6 +198,14 @@
     "last_change": "0003",
     "last_seen": "2026-10-08T12:06:32Z",
     "summary": "`build()` unconditionally runs `lessons_dir.mkdir(parents=True, exist_ok=True)`, so the read-only `check()` (and `lesson_and_eval`'s call into it) creates `lessons/` as a side effect on a project that has none yet, e.g. when no lesson file matches the gate's glob at all."
+  },
+  "adcf7a1b9e91cd94": {
+    "count": 1,
+    "file": "plugin/ci/run_phase.py",
+    "first_change": "0002",
+    "last_change": "0002",
+    "last_seen": "2026-10-09T11:22:33Z",
+    "summary": "_absolute_rule_root has no remaining production caller after ci_settings_file was rewritten to call _posix_root(root_resolved.as_posix()) directly; only tests/test_ci.py still calls it, so it is now dead code in the shipped module."
   },
   "af228dac9a462c15": {
     "count": 1,
@@ -215,6 +231,14 @@
     "last_seen": "2026-10-09T11:15:39Z",
     "summary": "Since `FRAMEWORK_SUITE` (line 32) is now itself `tuple(p.name for p in run.discover(FRAMEWORK_CASES))`, the pre-existing assertion `names == list(FRAMEWORK_SUITE)` compares `run.discover`'s output against itself and is tautological \u2014 a bug in `run.discover` (e.g. a skipped or duplicated case folder) would no longer be caught by this line, though each case is still individually validated below it."
   },
+  "b5a283b4ec19a447": {
+    "count": 1,
+    "file": "tests/test_hooks.py",
+    "first_change": "0002",
+    "last_change": "0002",
+    "last_seen": "2026-10-09T11:22:33Z",
+    "summary": "shell_guard is imported at module scope in tests/test_hooks.py, but plan.md's Order of work step 1 (and its Files-that-change entry for this file) requires the import be placed inside each test function specifically so a failure in the new tests cannot abort collection of the rest of the file, and plan.md was never updated in any commit on this branch to reflect that the diff does the opposite."
+  },
   "c34d57d9ad183995": {
     "count": 1,
     "file": "plugin/ci/run_phase.py",
@@ -222,6 +246,14 @@
     "last_change": "0002",
     "last_seen": "2026-10-09T11:15:39Z",
     "summary": "`_absolute_rule_root` is left in production code but, after `ci_settings_file` was rewritten to call `_posix_root(root_resolved.as_posix())` directly, it has no remaining production caller (only tests/test_ci.py:189,596 still call it)."
+  },
+  "c36c64e4b9cb1c69": {
+    "count": 1,
+    "file": "tests/test_evals.py",
+    "first_change": "0002",
+    "last_change": "0002",
+    "last_seen": "2026-10-09T11:22:33Z",
+    "summary": "Now that FRAMEWORK_SUITE (line 32) is itself tuple(p.name for p in run.discover(FRAMEWORK_CASES)), the assertion names == list(FRAMEWORK_SUITE) compares two calls to the same discovery function against each other and is tautological, so a bug in run.discover (a skipped or duplicated case folder) would no longer be caught by this line."
   },
   "ce45a2c4192ba2cc": {
     "count": 1,

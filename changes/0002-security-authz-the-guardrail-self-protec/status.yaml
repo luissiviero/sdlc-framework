@@ -1,18 +1,18 @@
 id: "0002"
 slug: security-authz-the-guardrail-self-protec
 title: "security: authz: The guardrail self-protection (protected_paths.py) only"
-phase: d
+phase: e
 entry_route: incident
 change_type: feature
 profile_override: null
 review_override: null
 gate:
-  phase: d
-  result: passed
-  reason: null
-  at: "2026-10-09T11:08:49Z"
-parked_reason: null
-iterations: 2
+  phase: e
+  result: parked
+  reason: "limits: iteration cap reached: 3 fix iterations, cap 2 (non-routine)"
+  at: "2026-10-09T11:22:57Z"
+parked_reason: "limits: iteration cap reached: 3 fix iterations, cap 2 (non-routine)"
+iterations: 3
 panel_calls: 1
 external_ref: null
 risk_accepted:
@@ -29,5 +29,5 @@ released_at: null
 released_sha: null
 released_pr: null
 created_at: "2026-10-05T14:53:56Z"
-updated_at: "2026-10-09T11:08:49Z"
+updated_at: "2026-10-09T11:22:57Z"
 schema_version: 1
