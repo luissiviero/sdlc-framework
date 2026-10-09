@@ -1,7 +1,7 @@
 id: "0002"
 slug: security-authz-the-guardrail-self-protec
 title: "security: authz: The guardrail self-protection (protected_paths.py) only"
-phase: c
+phase: d
 entry_route: incident
 change_type: feature
 profile_override: null
@@ -29,5 +29,5 @@ released_at: null
 released_sha: null
 released_pr: null
 created_at: "2026-10-05T14:53:56Z"
-updated_at: "2026-10-09T10:56:28Z"
+updated_at: "2026-10-09T10:57:44Z"
 schema_version: 1

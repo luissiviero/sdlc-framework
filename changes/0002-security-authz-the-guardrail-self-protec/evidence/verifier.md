@@ -1,41 +1,89 @@
-## Verifier report — change 0002, re-verification of the `git -C` chain-leak fix (commit 3a90bd0)
+# Verifier report — change 0002, phase (d) test
 
-**CI session note:** `SDLC_GATE_COMMANDS=runner` is set in this environment, so per the verifier's standing instructions I did not run `python -m pytest`, `python -m ruff check .`, or `python -m compileall ...` directly in this session — those are the three `sdlc.yaml: commands` gate targets, and a nested `.env*` deny in this sandbox would fail them regardless of code correctness. I read the record of the phase before mine instead.
+## Verification summary — read-only check
 
-### Commands run
-- **`git -C <other> status && echo x > CLAUDE.md`** (exact repro, direct subprocess call to `plugin/hooks/shell_guard.py`, payload `cwd`=temp project root, `CLAUDE_PROJECT_DIR`=temp project root): exit **2**, deny — `"Protected path: claude.md matches '/CLAUDE.md' ..."`. This is the required behavior change (previously exit 0 / allow).
-- **`git -C <other> rm CLAUDE.md`** alone, cwd=real project: exit **0**, allow (unchanged — resolves under `<other>`, not root).
-- **`git -C <project> rm CLAUDE.md`** alone, cwd=`<other>`: exit **2**, deny (unchanged — git -C argument points at real root).
-- **Gate commands (read, not run — CI session):** `changes/0002-security-authz-the-guardrail-self-protec/evidence/gate-b.json` (the phase-before-mine record, phase b, `"ran_by": "runner"`) — `commands` check `ok: true`: `build` exit 0 (empty output), `test` exit 0 (`"1454 passed in 314.66s (0:05:14)"`), `lint` exit 0 (`"All checks passed!"`). No `deferred: true` on any check. No `test.log`/`build.log`/`lint.log` or `gate-c.json` exist yet in this change's evidence (expected — those are written at phases d/e, not b/c).
+This is a CI session (`SDLC_GATE_COMMANDS=runner`), so per standing instructions the
+verifier read the previous phase's recorded evidence instead of invoking the test/build/
+lint targets itself.
 
-### Behavior exercised
-Ran `plugin/hooks/shell_guard.py` as a real subprocess (stdin JSON payload, `Bash` tool), the three cases above, plus read the diff of commit `3a90bd0` itself:
-```
-dirarg2, rest = git_c
-if _is_literal(dirarg2):
--   current = _resolve(current, dirarg2)
--   nonliteral = False
-+   base, base_nl = _resolve(current, dirarg2), False
-else:
--   nonliteral = True
-+   base, base_nl = current, True
-for target in _part_targets(rest, raw_text):
--   yield target, current, nonliteral
-+   yield target, base, base_nl
-```
-This computes a part-local `base`/`base_nl` for the `git -C` branch and no longer writes into the ambient `current`/`nonliteral` that the rest of `_resolution_walk`'s chain loop reads — exactly the fix spec.md Requirements/Design and plan.md describe. The same commit adds `tests/test_hooks.py::test_shell_guard_git_dash_c_does_not_leak_into_a_later_chain_part`, matching the sibling test `test_shell_guard_resolves_a_git_dash_c_target` already present for the non-chained cases; both pairs match my direct subprocess results above.
+**Commands read (not run — CI session)**
+- `changes/0002-security-authz-the-guardrail-self-protec/evidence/gate-c.json` (the
+  phase-before-this record; `head: 22697f2a...`, `phase: c`, `result: continue`, no check
+  has `ok: false`, none carries `details.deferred: true`):
+  - `build`: `python -m compileall -q plugin tests tasks.py` — exit `0`, output `""`
+  - `test`: `python -m pytest` — exit `0`, tail: `"1609 passed in 299.88s (0:04:59)"`
+  - `lint`: `python -m ruff check .` — exit `0`, output `"All checks passed!"`
+  - `details.ran_by: "runner"` on all three.
+- `changes/0002-security-authz-the-guardrail-self-protec/evidence/{build,test,lint}.log`
+  (this phase's own, phase d): each first line reads
+  `# ... — deferred to the runner — 2026-10-09T10:57:53Z` — written by this session's own
+  evidence-collect step minutes ago; the runner replaces them after this session ends. Not
+  a failure, not yet available.
+- `status.yaml`: `phase: d`, `gate: {phase: c, result: passed}` — consistent with
+  gate-c.json's green state.
 
-Per CI-session rules I did not invoke `pytest -k shell_guard` here (that is the test runner, denied even with `-k`); its result is carried by `gate-b.json`'s green `test` entry quoted above, covering the full suite including this file.
+**Behavior exercised**
+- Diff `git diff $(git merge-base main HEAD) HEAD`: changed files are exactly plan.md's
+  "Files that change" list — `plugin/hooks/shell_guard.py` (new, 985 lines),
+  `plugin/hooks/hooks.json`, `plugin/ci/settings.ci.json`, `plugin/ci/run_phase.py`,
+  `tests/test_hooks.py`, `tests/test_ci.py`, `tests/test_evals.py`,
+  `docs/OPERATING_MODEL.md`, `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json`
+  (both `0.3.6`→`0.3.7`), plus the change's own `changes/.../evidence/*` and `status.yaml`
+  (process artifacts, expected). No undeclared file.
+- Read `plugin/hooks/shell_guard.py` in full: `shell_write_targets`/
+  `_chain_parts_tokenized` is a standalone shlex-style tokenizer (no import from
+  `production_gate.py`); `decide()` imports `protected_paths.protected_patterns`/
+  `_check_one` and `test_file_lock.locked_change_id`/`is_locked`/`test_path_patterns`/
+  `REASON` as spec.md Design requires; fail-closed path (`REASON_NONLITERAL`) on
+  `$VAR`/`$(...)`/backtick/`~`/glob/brace/git-pathspec-magic and on `cd -`/bare `cd`/
+  `popd` with a later write idiom; `git -C` resolved locally per chain part without
+  leaking into later parts (matches spec.md Design's chain-part description and the fix
+  history visible in git log).
+- Read `plugin/hooks/hooks.json`: one new `Bash|PowerShell` matcher entry,
+  `--plugin-root ${CLAUDE_PLUGIN_ROOT}`, `timeout: 30` — matches plan.md.
+- Read `plugin/ci/settings.ci.json`: `sandbox.filesystem.denyWrite` =
+  `[".claude", "framework", "CLAUDE.md", "REVIEW.md", "sdlc.yaml"]` — matches spec.md
+  Requirements (directories named, not globbed).
+- Read `plugin/ci/run_phase.py`'s new `_deny_write_entries`/`ci_settings_file` changes:
+  rewrites denyWrite entries to absolute paths and appends `sdlc.yaml: protected_paths`
+  plain entries, skipping globs/escapes/root — matches spec.md/plan.md.
+- Grepped `tests/test_hooks.py`: ~45 new `test_shell_guard_*`/`test_shell_write_targets_*`
+  tests covering the Proof section's list (guardrail file, plugin-root form,
+  protected_paths entry, locked test file in fix fixture, PowerShell forms, cwd/`cd`/
+  `pushd`/`Set-Location`/`git -C` resolution incl. the git-C chain-leak case, fail-closed
+  cases including brace expansion/pathspec-magic/`popd`, negative list incl. `2>&1`/
+  `> /dev/null`/heredoc blockquote, inner-shell recursion and wrapper words, hooks.json
+  wiring test `test_hooks_json_registers_shell_guard_on_bash_and_powershell`).
+- Grepped `tests/test_ci.py`:
+  `test_ci_settings_file_rewrites_the_sandbox_filesystem_deny_write_list` (new) and
+  `test_ci_settings_are_rendered_against_the_project_root` (updated) both present.
+- Grepped `tests/test_evals.py`:
+  `FRAMEWORK_SUITE = tuple(p.name for p in run.discover(FRAMEWORK_CASES))` — no longer a
+  literal tuple, as plan.md step 5 specifies.
+- Read `docs/OPERATING_MODEL.md` diff: layer (i) and (iii) sentences updated exactly as
+  plan.md describes.
+- Read `changes/.../evidence/adversarial-review-c.json` (head `22697f2`, verdict
+  `continue`): independently re-traced two previously-escalated bypasses (git
+  global-option-before-verb, inner-shell flag-before-`-c`) against the current source and
+  confirmed both fixed; noted one disclosed non-blocking plan deviation (test imports left
+  at module scope rather than inside test functions) and flagged that the previous
+  `verifier.md` on disk was scoped to an earlier, superseded commit (`3a90bd0`), not to
+  this round.
+- Read the previous `changes/.../evidence/verifier.md`: confirmed it was stale (a
+  re-verification note for commit `3a90bd0`'s `git -C` chain-leak fix, referencing
+  `gate-b.json`), consistent with the adversarial review's observation — it was from an
+  earlier round, not phase (c) proper, and is superseded by this report.
 
-### Mismatches with plan.md / spec.md
-None found.
+**Mismatches with plan.md / spec.md**
+- None found in the diff, hook implementation, hooks.json wiring, CI settings/
+  run_phase.py, or the test additions against plan.md's Files-that-change/Order-of-work/
+  Proof and spec.md's Requirements/Design/Acceptance.
+- Pre-existing, already-disclosed deviation (not new, not blocking): plan.md's
+  Order-of-work step 1 asked for the `shell_guard` import inside test functions;
+  `fix-response.md` round 5 discloses it remains at module scope. Noted, not a
+  code-correctness issue.
 
-### Verdict
-**matches the plan.** The fix in `plugin/hooks/shell_guard.py` (commit 3a90bd0) correctly stops `git -C`'s directory from leaking into a later chain part — confirmed live by direct subprocess call with the exact finding repro (now denies, was allowed) — and does not regress either of the two previously-passing `git -C` cases (allow when the target resolves under the `-C` directory; deny when it resolves to the real root). No new false-allow or false-deny observed.
-
-Relevant paths:
-- `/home/runner/work/sdlc-framework/sdlc-framework/plugin/hooks/shell_guard.py` (lines 399–438, `_resolution_walk`)
-- `/home/runner/work/sdlc-framework/sdlc-framework/tests/test_hooks.py` (lines 1870–1893)
-- `/home/runner/work/sdlc-framework/sdlc-framework/changes/0002-security-authz-the-guardrail-self-protec/plan.md`
-- `/home/runner/work/sdlc-framework/sdlc-framework/changes/0002-security-authz-the-guardrail-self-protec/spec.md`
-- `/home/runner/work/sdlc-framework/sdlc-framework/changes/0002-security-authz-the-guardrail-self-protec/evidence/gate-b.json`
+**Verdict:** matches the plan. Build/test/lint evidence for phase (d) is currently
+deferred to the CI runner (expected under `SDLC_GATE_COMMANDS=runner`) and not yet
+available; the runner will replace `evidence/{build,test,lint}.log` after this session
+ends.
