@@ -105,3 +105,87 @@ is unchanged from this round; these are the two new items.
    `.claude-plugin/marketplace.json` bullet is now two bullets, each naming exactly one
    path, so `plan_sync.py`'s one-path-per-item parser picks up both manifest bumps. Checked
    every other bullet in the section already names exactly one path.
+
+# Fix response — PR #144, review #5465295155 (@luissiviero, OWNER, CHANGES_REQUESTED), round 3
+
+Source: `evidence/fix-requests.json` (`unavailable: null`, `head` matched HEAD at collection;
+three reviews, `not_applied` empty — no other review or comment is on the PR). Rounds 1 and 2
+above are unchanged from this round; this round applies all 13 items of the third review (5
+decisions plus spec.md items 6–9 and plan.md items 10–13) to `spec.md` and `plan.md`.
+
+1. Three pre-existing tests updated for a contract this design changes on purpose (decision
+   1): `plan.md` Files that change/Order of work/Risks/Proof now name
+   `test_ci_settings_are_rendered_against_the_project_root` (`tests/test_ci.py:605`, whose
+   `data["sandbox"] == source["sandbox"]` assertion cannot hold once `ci_settings_file`
+   rewrites the sandbox paths) and `test_the_framework_suite_s_cases_load`/
+   `test_the_fixture_dry_run_lists_every_case` (`tests/test_evals.py:522,602`, which derive
+   `FRAMEWORK_SUITE` from `evals/cases/`'s folders instead of the literal tuple at line 29),
+   with the reasoning that both are deliberate contract changes, not a weakening.
+2. `template/.claude/settings.json` dropped from this change (decision 2): `spec.md`
+   Requirements' sandbox bullet, the third Flagged concern and `plan.md` Files that
+   change/Order of work/Not touched no longer propose editing it; the hook already denies a
+   session that path, so it is the owner's edit after the build, per CLAUDE.md's "Things
+   Claude gets wrong" table convention.
+3. `.github/workflows/framework-evals.yml` and `evals/cases/0006-sandbox-write-deny/` dropped
+   as a follow-up PR (decision 3): `spec.md` Requirements, Open questions, the third Flagged
+   concern and Acceptance, and `plan.md` Files that change/Order of work/Not touched/Proof,
+   all rewritten to say the sandbox layer's live proof is a separate PR — a build run's own
+   `GITHUB_TOKEN` cannot push a workflow-file change.
+4. Eval case `evals/cases/0002-security-authz-the-guardrail-self-protec/` created at phase
+   (e), not phase (c) (decision 4): `spec.md` Requirements, Open questions and Acceptance
+   rewritten so phase (c) writes no case folder at all and the Acceptance section's case
+   shape (now `tools: "Read,Bash(python *)"`, a `python -c` append, "says not to work around
+   a refusal") is what the (e) session completes `case.py new --id 0002`'s skeleton from;
+   `plan.md` drops the case from Files that change/Order of work/Not touched, and Proof's
+   `Framework evals` line now runs after the merge, once (e) adds the case.
+5. The parser is its own, no import from `production_gate.py` (decision 5): `spec.md`
+   Design's `shell_write_targets` paragraph rewritten for a `shlex`-style tokenizer with
+   heredoc-skipping, quote-aware chain-splitting, case preserved, wrapper-word skipping
+   (`sudo`/`nohup`/`time`/`env`) and recursive `bash -c`/`sh -c`/`cmd /c`/`pwsh -Command`
+   parsing, reproducing why `production_gate.command_parts`/`chain_parts` cannot be reused
+   (quote-cutting, suffix-stripping, heredoc-blockquote capture, case-lowering); `plan.md`
+   Files that change/Order of work/Risks/Options not taken/Proof updated to match, and the
+   "Options not taken" entry for moving the primitives to `_common.py` rewritten to also
+   cover reusing them directly.
+6. `spec.md` Requirements' sandbox bullet rewritten (item 6): `.claude` and `framework` named
+   as directories, not "the four guardrail files"; `ci_settings_file`'s rewrite described as
+   a second rule beside `_ANCHORED_RULE` (`run_phase.py:1067`), bare/`./`-relative entries
+   becoming the absolute filesystem path (a leading `/`, not `//`), `protected_paths` entries
+   appended the same way, a glob entry skipped with a note in the result; `tests/test_ci.py`
+   named as asserting the exact rendered list.
+7. `spec.md` Acceptance's test-lines sentence rewritten to say "none of the scanner's three
+   dangerous-call patterns (`check.py`'s `DANGEROUS` patterns)" instead of writing `eval(`,
+   `exec(` and `shell=True` literally (item 7) — the literal tokens would have tripped the
+   same scanner against the spec's own diff.
+8. `spec.md` Requirements' test-file-lock bullet gained the explicit sentence that the scan's
+   classification of an unbounded finding as `feature` (`route.py:468`) is a framework item
+   for 0.3.x, not this change (item 8).
+9. `spec.md` Requirements' candidate-resolution bullet gained the clause that a `cd`/`pushd`/
+   `Set-Location`/`git -C` to a non-literal directory with no write idiom after it in the
+   chain is allowed (item 9); the Design section's negative-list paragraph gained `2>&1` and
+   `> /dev/null`; Acceptance names these cases as their own tests, matching plan.md's Proof.
+10. `plan.md` Files that change rewritten per the corrected list (item 10): drops
+    `template/.claude/settings.json`, `.github/workflows/framework-evals.yml`,
+    `evals/cases/0006-sandbox-write-deny/` and `evals/cases/0002-.../` (moved to Not touched,
+    created at (e) instead); adds `tests/test_evals.py`; the `hooks.json` bullet now says
+    `--plugin-root ${CLAUDE_PLUGIN_ROOT}`; the `run_phase.py` bullet notes it is on the
+    detect path's port list.
+11. `plan.md` Order of work renumbered (item 11): the verification step reads `pytest`,
+    `ruff check .`, `compileall` only, with nothing about eval cases; step 1's tests still
+    import inside the test functions; the `framework-evals.yml`/case-0006 steps are gone.
+12. `plan.md` Risks gained the items the round asked for (item 12): the fail-closed rule's
+    cost to a session, the sandbox block against a guardrail-rewriting `git` command (the
+    intended outcome; `prepare_branch` runs outside the session), the ~60ms per-call cost,
+    and the three updated tests with their reasoning.
+13. `plan.md` Proof rewritten (item 13): one test per idiom class per protected set (a
+    guardrail file, the plugin-root form, a `protected_paths` entry, a locked test file in a
+    fix-type fixture), the PowerShell forms, the relative-path/`cd` and fail-closed cases,
+    the negative list, the wiring test, the `ci_settings_file` test with its exact rendered
+    list, the three updated tests, and the `Framework evals` run after the merge as the live
+    proof of the hook through case 0002.
+
+Gate (b)'s adversarial reviewer (fresh context) confirmed the round's 13 items are fully and
+faithfully reflected in `spec.md`/`plan.md`, spot-checked a sample of the design's factual
+citations directly against the code with no mismatch found, and returned `continue`
+(non-routine). It also noted this response file had no round-3 entry at the time it ran —
+this entry closes that gap; the design itself was unaffected.
