@@ -602,12 +602,19 @@ def test_ci_settings_are_rendered_against_the_project_root(tmp_path):
     for rule in ("Read(.env*)", "Read(**/.env*)", "WebFetch", "Bash(curl *)"):
         assert rule in deny  # relative and tool-level rules untouched
     assert data["permissions"]["allow"] == source["permissions"]["allow"]
-    assert data["sandbox"]["network"] == source["sandbox"]["network"]
     fs_base = tmp_path.resolve()
-    assert data["sandbox"]["filesystem"]["denyWrite"] == [
+    rewritten_deny_write = [
         str(fs_base / name)
         for name in (".claude", "framework", "CLAUDE.md", "REVIEW.md", "sdlc.yaml")
     ]
+    assert data["sandbox"]["filesystem"]["denyWrite"] == rewritten_deny_write
+    # every other sandbox key (enabled, failIfUnavailable, allowUnsandboxedCommands, network)
+    # is carried over unchanged — round 4 fix-request item 17: the prior assertion compared
+    # only `network`, so `ci_settings_file` silently dropping one of the others would pass
+    assert data["sandbox"] == {
+        **source["sandbox"],
+        "filesystem": {"denyWrite": rewritten_deny_write},
+    }
     # the spelling Claude Code documents for Windows and POSIX roots
     assert run_phase._posix_root("C:/work/proj") == "//c/work/proj"
     assert run_phase._posix_root("C:\\work\\proj\\") == "//c/work/proj"
@@ -642,6 +649,40 @@ def test_ci_settings_file_rewrites_the_sandbox_filesystem_deny_write_list(tmp_pa
         )
     ]
     assert data["sandbox"]["filesystem"]["_denyWriteSkipped"] == ["src/gen/**"]
+    # `poetry.lock` is a bare name (the hook protects it in every directory); the sandbox can
+    # only pin the one absolute path, so it is noted as narrowed even though it is still
+    # appended. `/Makefile` is already anchored to the root by its own leading slash, so
+    # resolving it to one absolute path narrows nothing (round 4 fix-request item 20).
+    assert data["sandbox"]["filesystem"]["_denyWriteNarrowed"] == ["poetry.lock"]
+
+
+@pytest.mark.parametrize(
+    ("protected_paths_yaml", "expected_skipped"),
+    [
+        ("protected_paths: docs/x.md\n", ["protected_paths is not a list: 'docs/x.md'"]),
+        ("protected_paths:\n  - .\n", ["."]),
+        ("protected_paths:\n  - ../outside.txt\n", ["../outside.txt"]),
+    ],
+)
+def test_ci_settings_file_rejects_a_bad_protected_paths_entry(
+    tmp_path, protected_paths_yaml, expected_skipped
+):
+    """round 4 fix-request item 20: a non-list ``protected_paths`` used to be iterated
+    character by character (each character becoming its own nonsense denyWrite entry, ``.``
+    and ``-`` resolving to the project root itself, widening the sandbox's denyWrite to the
+    whole project); every one of these is now rejected and noted, not silently included."""
+    (tmp_path / "sdlc.yaml").write_text(
+        "profile: standard\n" + protected_paths_yaml, encoding="utf-8"
+    )
+    out = run_phase.ci_settings_file(ROOT, tmp_path)
+    data = json.loads(out.read_text(encoding="utf-8"))
+    fs_base = tmp_path.resolve()
+    assert data["sandbox"]["filesystem"]["denyWrite"] == [
+        str(fs_base / name)
+        for name in (".claude", "framework", "CLAUDE.md", "REVIEW.md", "sdlc.yaml")
+    ]
+    assert data["sandbox"]["filesystem"]["_denyWriteSkipped"] == expected_skipped
+    assert "_denyWriteNarrowed" not in data["sandbox"]["filesystem"]
 
 
 def test_ci_settings_file_denies_writing_a_protected_path_with_no_project_sdlc_yaml(tmp_path):

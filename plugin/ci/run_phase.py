@@ -1087,23 +1087,53 @@ def _absolute_rule(rule: str, base: str) -> str:
     return f"{m.group(1)}({base}/{m.group(2)})" if m else rule
 
 
-def _deny_write_entries(base: Path, config: dict[str, Any]) -> tuple[list[str], list[str]]:
+def _deny_write_entries(
+    base: Path, config: dict[str, Any]
+) -> tuple[list[str], list[str], list[str]]:
     """Absolute ``sandbox.filesystem.denyWrite`` paths for the project's own
-    ``sdlc.yaml: protected_paths`` plain entries, and the glob entries left out (``*``, ``?``
-    or ``[``: the sandbox does not support a glob character in a ``denyWrite`` entry on Linux,
-    change 0002 spec.md Requirements) — noted in the second return value, not silently dropped.
+    ``sdlc.yaml: protected_paths`` plain entries. Returns ``(entries, skipped, narrowed)``:
+    ``skipped`` is every entry left out, and why — a glob character the sandbox does not
+    support in a denyWrite entry on Linux; a non-list ``protected_paths`` (iterated character
+    by character otherwise); an entry that resolves to the project root itself or escapes it
+    (``.``, ``-``, ``../outside.txt``) — noted rather than silently dropped or crashing.
+    ``narrowed`` is a bare name (``policy.md``, which the hook protects in every directory)
+    that *is* appended to ``entries``, but only denies the one copy at the project root: a
+    real narrowing of what the hook protects, worth noting on its own rather than folded into
+    ``skipped``, which is for an entry dropped outright (round 4 fix-request item 20).
     ``base`` is the project root, already resolved."""
     entries: list[str] = []
     skipped: list[str] = []
-    for raw in config.get("protected_paths") or []:
+    narrowed: list[str] = []
+    raw_list = config.get("protected_paths")
+    if raw_list is None:
+        raw_list = []
+    if not isinstance(raw_list, list):
+        return entries, [f"protected_paths is not a list: {raw_list!r}"], narrowed
+    for raw in raw_list:
         text = str(raw).strip()
         if not text:
             continue
         if any(ch in text for ch in "*?["):
             skipped.append(text)
             continue
-        entries.append(str(base / text.lstrip("/\\")))
-    return entries, skipped
+        candidate = text.lstrip("/\\")
+        if not candidate or candidate in (".", "./"):
+            skipped.append(text)
+            continue
+        resolved = (base / candidate).resolve()
+        try:
+            resolved.relative_to(base)
+        except ValueError:
+            skipped.append(text)  # escapes the project root (`../outside.txt`)
+            continue
+        if resolved == base:
+            skipped.append(text)
+            continue
+        anchored = "/" in text.rstrip("/\\").replace("\\", "/")  # gitignore's own anchoring rule
+        if not anchored:
+            narrowed.append(text)
+        entries.append(str(resolved))
+    return entries, skipped, narrowed
 
 
 def ci_settings_file(plugin_dir: Path, root: Path) -> Path:
@@ -1130,10 +1160,12 @@ def ci_settings_file(plugin_dir: Path, root: Path) -> Path:
     fs = sandbox.get("filesystem") or {}
     if isinstance(fs.get("denyWrite"), list):
         rewritten = [str(root_resolved / str(entry).lstrip("/\\")) for entry in fs["denyWrite"]]
-        extra, skipped = _deny_write_entries(root_resolved, _config(root))
+        extra, skipped, narrowed = _deny_write_entries(root_resolved, _config(root))
         fs["denyWrite"] = rewritten + extra
         if skipped:
             fs["_denyWriteSkipped"] = skipped
+        if narrowed:
+            fs["_denyWriteNarrowed"] = narrowed
         sandbox["filesystem"] = fs
         data["sandbox"] = sandbox
     out = Path(tempfile.mkdtemp(prefix="sdlc-ci-")) / source.name
