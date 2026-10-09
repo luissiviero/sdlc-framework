@@ -1,6 +1,6 @@
 {
-  "collected_at": "2026-10-09T09:58:25+00:00",
-  "head": "4e19b1fc48dcbbe2d3cda0ee2025e5c37be07459",
+  "collected_at": "2026-10-09T12:25:13+00:00",
+  "head": "1bc4e3b2671f3efe0153d526c7cf35c2bb8166fc",
   "not_applied": [],
   "ok": true,
   "pr_number": 152,
@@ -15,6 +15,16 @@
       "kind": "review",
       "state": "CHANGES_REQUESTED",
       "url": "https://github.com/luissiviero/sdlc-framework/pull/152#pullrequestreview-5468359227"
+    },
+    {
+      "association": "OWNER",
+      "at": "2026-10-09T12:24:35Z",
+      "author": "luissiviero",
+      "body": "Request changes on PR #152 (build(0002)), gate (e). The round resets the counter and settles the review pass's one Important finding and two of its nits; no change to spec.md (choice 164).\n\n1. `tests/test_hooks.py:22` imports `shell_guard` at module scope. plan.md step 1 and its files-that-change entry say the import goes inside each test, so a failure in the new tests cannot abort collection of the rest of the file. Move the import inside the tests as the plan says (do not change plan.md to match the diff); keep the `timeout == 30` assertion in the wiring test.\n2. `plugin/ci/run_phase.py:1081` `_absolute_rule_root` has no production caller since `ci_settings_file` calls `_posix_root` directly; only `tests/test_ci.py` uses it. Remove it and the test lines that call it.\n3. `tests/test_evals.py:519` `names == list(FRAMEWORK_SUITE)` compares two calls of the same discovery against each other. Assert against a literal list of the case folder names so a skipped or duplicated case is caught.\n\nThe 985-line length of `plugin/hooks/shell_guard.py` is accepted for this change; a split is a 0.3.x candidate.",
+      "id": 5469970014,
+      "kind": "review",
+      "state": "CHANGES_REQUESTED",
+      "url": "https://github.com/luissiviero/sdlc-framework/pull/152#pullrequestreview-5469970014"
     }
   ],
   "route": "api",

@@ -9,10 +9,10 @@ review_override: null
 gate:
   phase: e
   result: parked
-  reason: "limits: iteration cap reached: 3 fix iterations, cap 2 (non-routine)"
-  at: "2026-10-09T11:22:57Z"
-parked_reason: "limits: iteration cap reached: 3 fix iterations, cap 2 (non-routine)"
-iterations: 3
+  reason: "limits: iteration cap reached: 4 fix iterations, cap 2 (non-routine)"
+  at: "2026-10-09T12:27:17Z"
+parked_reason: "limits: iteration cap reached: 4 fix iterations, cap 2 (non-routine)"
+iterations: 4
 panel_calls: 1
 external_ref: null
 risk_accepted:
@@ -29,5 +29,5 @@ released_at: null
 released_sha: null
 released_pr: null
 created_at: "2026-10-05T14:53:56Z"
-updated_at: "2026-10-09T11:22:57Z"
+updated_at: "2026-10-09T12:27:17Z"
 schema_version: 1

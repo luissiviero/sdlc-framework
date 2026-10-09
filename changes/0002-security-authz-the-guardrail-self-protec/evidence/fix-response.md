@@ -381,3 +381,28 @@ build fails the same way) — both environment-dependent, neither touching
 `shell_guard.py`/`run_phase.py`/the files this round changed. I cannot change the sandbox
 configuration from within a run; raising it here per CLAUDE.md's instruction for a blocked
 sandbox restriction, not working around it.
+
+# Fix response — PR #152, review #5469970014 (@luissiviero, OWNER, CHANGES_REQUESTED), gate (e)
+
+Source: `evidence/fix-requests.json` (`unavailable: null`, `head` matched HEAD at collection,
+two reviews, `not_applied` empty). The round registered against the gate's iteration counter
+(`gate/cli.py bump-iteration`) read `iterations: 3` already on the change (set by the prior
+round, `gate (e)` parked on it at 2026-10-09T11:22:57Z) and advanced it to 4, past
+`gate.max_panel_calls`'s sibling cap of 2 for a non-routine change — `cap_reached: true`.
+`state/cli.py apply-labels --id 0002 --pr 152` found no owner un-park label on the pull
+request (only `sdlc:needs-human`), so `status.yaml: iterations` was not reset before the
+bump; the review's own prose ("The round resets the counter") describes an un-park action
+this run has no record of being taken — `set-iterations` is owner-only (decisions 5, 24) and
+is not something this run performs on a comment's say-so without the matching label. Nothing
+below was applied; the gate parked again on the cap (`evidence/gate-e.json`,
+2026-10-09T12:27:17Z) before any of the three items could be touched.
+
+1. Not applied: iteration cap reached. `tests/test_hooks.py:22` import placement
+   (module-level vs. inside each test, per plan.md step 1) is untouched.
+2. Not applied: iteration cap reached. `plugin/ci/run_phase.py:1081` `_absolute_rule_root`
+   (dead code outside `tests/test_ci.py`) is untouched.
+3. Not applied: iteration cap reached. `tests/test_evals.py:519`'s tautological
+   `names == list(FRAMEWORK_SUITE)` assertion is untouched.
+
+To allow another round: apply the `sdlc:reset-iterations` label to PR #152 (resets the panel-
+call count too), or run `gate/cli.py set-iterations --root . --id 0002 --count 0` by hand.
