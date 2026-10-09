@@ -270,8 +270,8 @@
   </div>
 
   <section class="panel" aria-labelledby="tgt-h">
-    <h2 id="tgt-h">3. Your target design (tentative)</h2>
-    <p class="note">What you want the framework to become, collected as the study goes, in <code>docs/reviews/2026-09-28-playbook-vs-framework/target-design.md</code>. Nothing is confirmed until the whole study is done. Each card shows the entry for its step in a third column, "Target (tentative)".</p>
+    <h2 id="tgt-h">3. Your target design (confirmed at the close of the study, 9 October 2026)</h2>
+    <p class="note">What you want the framework to become, collected as the study goes, in <code>docs/reviews/2026-09-28-playbook-vs-framework/target-design.md</code>. With every row decided, on 9 October 2026 you confirmed all 32 entries as recommended (the record's sections 7 and 8); each becomes a proposal under <code>docs/proposals/</code> and a candidate row in <code>docs/ROADMAP.md</code> as the files are written. Each card shows the entry for its step in a third column, "Target (confirmed)".</p>
     <ul class="tlist" id="tlist"></ul>
   </section>
 
@@ -847,7 +847,7 @@
       el("div", { cls: "side pb" }, [el("span", { cls: "who", text: "Playbook" }), el("p", { text: r.pb }), el("span", { cls: "src", text: r.pbSrc })]),
       el("div", { cls: "side fw" }, [el("span", { cls: "who", text: "Framework" }), el("p", { text: r.fw }), el("span", { cls: "src", text: r.fwSrc })]),
       el("div", { cls: "side tg" + (t ? "" : " none") }, [
-        el("span", { cls: "who", text: "Target (tentative)" }),
+        el("span", { cls: "who", text: "Target (confirmed)" }),
         el("p", { text: t ? t.text : "No target recorded for this step yet." }),
         t ? el("span", { cls: "src", text: t.refs.join(", ") + " · target-design.md" }) : null
       ])
@@ -1040,13 +1040,13 @@
     "x-roles": { pb: [["P", "w", "About ten distinct roles"]],
       fw: [["P", "w", "One owner holds the seven named roles"]] }
   };
-  // ---- target design: the owner's tentative proposals, condensed from target-design.md
-  // (crosswalk.json: "targets" and each row's "target"). Nothing here is confirmed.
+  // ---- target design: the owner's proposals, condensed from target-design.md
+  // (crosswalk.json: "targets" and each row's "target"). Confirmed at the close of the study, 2026-10-09.
   var TARGET = {
     entries: [
-    { id: "T1", title: "AI roles that advise, and one manager that reviews for the owner", status: "tentative" },
-    { id: "T2", title: "The interview: how the manager and the roles question the owner", status: "tentative" },
-    { id: "T3", title: "The intent home: in the repository, written from anywhere, with examples", status: "tentative" }
+    { id: "T1", title: "AI roles that advise, and one manager that reviews for the owner", status: "confirmed 2026-10-09" },
+    { id: "T2", title: "The interview: how the manager and the roles question the owner", status: "confirmed 2026-10-09" },
+    { id: "T3", title: "The intent home: in the repository, written from anywhere, with examples", status: "confirmed 2026-10-09" }
     ],
     rows: {
     "setup-home": { refs: ["T3"], text: "Ideas stay in changes/<id>-<slug>/, set up by /sdlc-init. Intents can be written from Claude Code or from claude.ai / phone; you accept by merging, after the role briefs (T1). The intent template: the plugin default, overridable per project (to verify), reviewed by a Product role and approved by you. The intent gets an Examples/References section." },
