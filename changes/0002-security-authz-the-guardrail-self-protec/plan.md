@@ -41,10 +41,12 @@
   command that would write to the same paths" so it says the hook covers shell writes too;
   layer (iii)'s sentence names the new sandbox `filesystem.denyWrite` block alongside hooks
   and permissions as pinned-plugin content.
-- `.claude-plugin/plugin.json` and `.claude-plugin/marketplace.json` — version `0.3.6` →
-  `0.3.7`. Required in the same commit as the source changes: `plan_sync.exempt` is only
-  `changes/**` and `*.md` (`sdlc.yaml`), so a commit that bumps these two JSON files without
-  listing them here is denied at the commit (`plugin/hooks/plan_sync.py`).
+- `.claude-plugin/plugin.json` — version `0.3.6` → `0.3.7`. Required in the same commit as
+  the source changes: `plan_sync.exempt` is only `changes/**` and `*.md` (`sdlc.yaml`), so a
+  commit that bumps this file without listing it here is denied at the commit
+  (`plugin/hooks/plan_sync.py`).
+- `.claude-plugin/marketplace.json` — version `0.3.6` → `0.3.7`, same commit and same reason
+  as `.claude-plugin/plugin.json` above.
 
 Not touched: `plugin/hooks/_common.py`, `plugin/hooks/production_gate.py`,
 `plugin/hooks/protected_paths.py`, `plugin/hooks/test_file_lock.py` (no shared-helper move
