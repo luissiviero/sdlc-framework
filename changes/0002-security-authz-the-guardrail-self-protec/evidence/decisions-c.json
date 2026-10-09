@@ -1,29 +1,28 @@
 {
-  "decided": 0,
-  "gate": "park",
-  "items": [
+  "decisions": [
     {
-      "decided": false,
+      "advocate": "No escalation on this item: the two flag-position gaps are real but sit inside the residual this spec names and the owner risk-accepted; record them as a follow-up, do not park.",
+      "at": "2026-10-09T09:50:47Z",
+      "cost_usd": null,
+      "decision": "park",
+      "head": "08f5e65113e7670cb709cdd6b7a47b42451b0abc",
       "item": "adversarial reviewer says escalate: plugin/hooks/shell_guard.py's git-verb detection in _part_targets (the `elif headl == \"git\" and len(words) >= 2:` branch, lines 370-376 at this HEAD) reads the subcommand from the fixed position words[1] with no flag-skipping (unlike cp/mv/rm/tee, which run _nonflag first). A real git global option before the subcommand -- `-c <name>=<value>`, `--git-dir=<path>`, `--work-tree=<path>`, etc. -- defeats it. Traced `git -c core.fileMode=false rm CLAUDE.md` by hand through decide()/_resolution_walk/_part_targets: words = ['git','-c','core.fileMode=false','rm','CLAUDE.md']; sub = words[1].lower() = '-c', which matches none of 'checkout'/'restore'/'rm'/'mv'/'apply', so _part_targets yields no candidate at all and decide() reaches Decision.allow() -- while the real `git rm CLAUDE.md` (a path-taking git verb the Design section itself lists as a covered write idiom) genuinely removes the guardrail file from the working tree and index. No token in this command is non-literal ($VAR/$()/glob), so the fail-closed rule never fires either. This is a fully literal, ordinary invocation that plugin/ci/settings.ci.json's allow-list already permits bare (Bash(git *)).; The same fixed-position assumption defeats _inner_shell_command (lines 235-238 at this HEAD): `if len(words) >= 3 and (words[0].lower(), words[1].lower()) in _INNER_SHELL_PAIRS: return words[2]`, which only recognises the exact adjacent pair. Traced `bash --norc -c 'echo x > CLAUDE.md'`: words = ['bash','--norc','-c', pair ('bash','--norc') is not in _INNER_SHELL_PAIRS, so the quoted inner command is never recursed into; the outer dispatch (_part_targets with headl='bash') matches none of the recognised idioms (the '>' is inside the single-quoted token, correctly treated as literal text, not a chain-level operator), so shell_write_targets returns [] and decide() allows. Again a fully literal command with no non-literal token to trip the fail-closed rule.; Both gaps are the exact class of vulnerability intent.md and this change exist to close (an unattended Bash call reaching a guardrail file while the path-based gate sees nothing). They are reachable in CI with the allow-listed Bash(git *); the only remaining layer there is plugin/ci/settings.ci.json's sandbox.filesystem.denyWrite (also added by this diff), but spec.md's own Flagged concerns state a by-hand run, native Windows, or any host with no sandbox has 'the hook alone' -- on such a host both bypasses are complete and silent.; No test in the diff or in tests/test_hooks.py exercises a git invocation with a global option before the subcommand, or an inner-shell call with a flag between the interpreter and its -c/-Command token: tests/test_hooks.py's existing git -c coverage (line 625, 'git -c user.name=x commit -m y') belongs to test_plan_sync_detects_commit_in_any_position, a different hook, not shell_guard; the shell_guard wrapper/inner-shell test (test_shell_write_targets_sees_through_wrappers_and_inner_shells, line 1980) only exercises the bare 'bash -c'/'sh -c'/'cmd /c'/'pwsh -Command' pairs with no extra flag. plan.md's own named residual ('an unlisted wrapper, content decoded and piped to an interpreter') is a different shape from a documented git/shell flag shifting a recognised idiom's argument position by one slot -- this was missed, not weighed and accepted.; This diff itself carries the evidence of the gap: changes/0002-security-authz-the-guardrail-self-protec/evidence/adversarial-review-c.json (committed at an earlier HEAD, ec837ed, in this same diff) already found and described both bugs in detail. The only code commit in this round after that review, 3a90bd0, fixed solely the third, unrelated finding in the same report (git -C's directory leaking into a later chain part -- confirmed below, correctly fixed). The git-verb and inner-shell argument-position bugs were left unaddressed: fix-requests.json shows empty requests/not_applied, and verifier.md's scope for this round is explicitly 're-verification of the git -C chain-leak fix (commit 3a90bd0)' only -- it does not re-examine or close the other two findings from the same prior review.; Verified separately that the git -C chain-leak finding is correctly fixed at this HEAD: _resolution_walk's git -C branch (lines 416-430) now computes a part-local base/base_nl and no longer reassigns the shared current/nonliteral the rest of the chain loop reads, matching the new tests test_shell_guard_git_dash_c_does_not_leak_into_a_later_chain_part and test_shell_guard_resolves_a_git_dash_c_target and verifier.md's live subprocess runs. That part of the fix is sound and is not grounds for escalation by itself; the escalation rests on the other two, still-open gaps from the same review round.",
+      "item_n": 1,
       "key": "escalate:028dfe02711f22f2",
       "kind": "escalate",
-      "n": 1
+      "n": 1,
+      "overturned": null,
+      "phase": "c",
+      "rationale": [
+        "Both verdicts agree the two traces are correct and reproducible; they disagree only on whether the gap is inside or outside the accepted residual.",
+        "spec.md Design names 'git rm', 'git restore', 'git checkout --', 'git apply' and 'bash -c'/'sh -c' recursion as covered idioms with no flag-position qualification; the named open residual (c) is a different shape: pathspec-less verbs (reset --hard, merge, pull, cherry-pick, checkout <branch>) that carry no path argument at all, not a path-taking listed idiom defeated by a leading flag.",
+        "plan.md's accepted wrapper residual is an unlisted wrapper word; bash/sh/cmd/pwsh are already the listed words, so --norc is a flag-shift on a recognized wrapper, not an unlisted one.",
+        "Both commands are fully literal (no $VAR/$()/glob), so the fail-closed rule never engages, and plugin/ci/settings.ci.json already allows Bash(git *) bare -- this is the exact route and exact idiom intent.md names, so it meets REVIEW.md's Important bar (breaches the policy this change is the vehicle for) and the compliance pass (diff vs spec.md's unqualified Design claim).",
+        "Safer reading: treat as a missed closing of committed scope, not an extension of the acknowledged heuristic ceiling; escalate rather than let it pass as a nit."
+      ],
+      "reviewer": "Escalate."
     }
   ],
-  "iterations": {
-    "cap": 2,
-    "left": 1,
-    "used": 1
-  },
-  "mode": "deferred",
-  "panel_calls": {
-    "cap": 4,
-    "left": 4,
-    "used": 0
-  },
-  "parks": [],
-  "pending": [
-    1
-  ],
-  "phase": "c"
+  "phase": "c",
+  "schema_version": 1
 }
