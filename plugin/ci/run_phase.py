@@ -1087,12 +1087,12 @@ def _absolute_rule(rule: str, base: str) -> str:
     return f"{m.group(1)}({base}/{m.group(2)})" if m else rule
 
 
-def _deny_write_entries(root: Path, config: dict[str, Any]) -> tuple[list[str], list[str]]:
+def _deny_write_entries(base: Path, config: dict[str, Any]) -> tuple[list[str], list[str]]:
     """Absolute ``sandbox.filesystem.denyWrite`` paths for the project's own
     ``sdlc.yaml: protected_paths`` plain entries, and the glob entries left out (``*``, ``?``
     or ``[``: the sandbox does not support a glob character in a ``denyWrite`` entry on Linux,
-    change 0002 spec.md Requirements) — noted in the second return value, not silently dropped."""
-    base = Path(root).resolve()
+    change 0002 spec.md Requirements) — noted in the second return value, not silently dropped.
+    ``base`` is the project root, already resolved."""
     entries: list[str] = []
     skipped: list[str] = []
     for raw in config.get("protected_paths") or []:
@@ -1120,7 +1120,8 @@ def ci_settings_file(plugin_dir: Path, root: Path) -> Path:
     entries appended."""
     source = Path(plugin_dir).joinpath(*SETTINGS_REL)
     data = json.loads(source.read_text(encoding="utf-8"))
-    base = _absolute_rule_root(root)
+    root_resolved = Path(root).resolve()
+    base = _posix_root(root_resolved.as_posix())
     perms = data.get("permissions") or {}
     for key in ("deny", "ask", "allow"):
         if isinstance(perms.get(key), list):
@@ -1128,9 +1129,8 @@ def ci_settings_file(plugin_dir: Path, root: Path) -> Path:
     sandbox = data.get("sandbox") or {}
     fs = sandbox.get("filesystem") or {}
     if isinstance(fs.get("denyWrite"), list):
-        fs_base = Path(root).resolve()
-        rewritten = [str(fs_base / str(entry).lstrip("/\\")) for entry in fs["denyWrite"]]
-        extra, skipped = _deny_write_entries(root, _config(root))
+        rewritten = [str(root_resolved / str(entry).lstrip("/\\")) for entry in fs["denyWrite"]]
+        extra, skipped = _deny_write_entries(root_resolved, _config(root))
         fs["denyWrite"] = rewritten + extra
         if skipped:
             fs["_denyWriteSkipped"] = skipped

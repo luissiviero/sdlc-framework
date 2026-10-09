@@ -379,31 +379,13 @@ def _part_targets(words: list[str], raw: str = "") -> list[str]:
     return list(dict.fromkeys(targets))
 
 
-def _logical_parts(command: str):
-    """Yields each chain part's ``(words, raw)``, wrapper-stripped, with ``git -C <dir> ...``
-    rewritten to ``git ...`` and a recognised inner-shell call (``bash -c``, ``sh -c``,
-    ``cmd /c``, ``pwsh -Command``) expanded by recursing into its quoted argument."""
-    for words, raw in _chain_parts_tokenized(command):
-        plain = _strip_wrappers(words)
-        if not plain:
-            continue
-        git_c = _git_dash_c(plain)
-        if git_c is not None:
-            yield git_c[1], raw
-            continue
-        inner = _inner_shell_command(plain)
-        if inner is not None:
-            yield from _logical_parts(inner)
-            continue
-        yield plain, raw
-
-
 def shell_write_targets(command: str) -> list[str]:
     """Every write-target candidate the command names anywhere in its chain, unresolved
-    against any working directory (``decide()`` resolves each one, below)."""
-    out: list[str] = []
-    for words, raw in _logical_parts(command):
-        out.extend(_part_targets(words, raw))
+    against any working directory. A thin projection of ``_resolution_walk`` (below), which
+    does the identical chain-part dispatch (wrapper-stripping, ``git -C``, inner-shell
+    recursion) while also tracking the directory each candidate resolves against; the
+    ``cwd`` passed here is never read since only the target itself is kept."""
+    out = [target for target, _base, _nonliteral in _resolution_walk(command, "")]
     return list(dict.fromkeys(out))
 
 
@@ -435,13 +417,12 @@ def _resolution_walk(command: str, cwd: str):
         if git_c is not None:
             dirarg2, rest = git_c
             if _is_literal(dirarg2):
-                base, base_nl = _resolve(current, dirarg2), False
-                current, nonliteral = base, False
+                current = _resolve(current, dirarg2)
+                nonliteral = False
             else:
-                base, base_nl = None, True
                 nonliteral = True
             for target in _part_targets(rest, raw_text):
-                yield target, base, base_nl
+                yield target, current, nonliteral
             continue
         inner = _inner_shell_command(plain)
         if inner is not None:
