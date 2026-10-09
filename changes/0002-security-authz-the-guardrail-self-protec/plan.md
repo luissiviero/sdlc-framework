@@ -46,10 +46,14 @@
   decision 1); a new test asserts the exact rendered `sandbox.filesystem.denyWrite` list,
   not just that the key exists.
 - `tests/test_evals.py` — `FRAMEWORK_SUITE` (line 29) stops being a literal tuple of case
-  names; `test_the_framework_suite_s_cases_load` (line 522) and
-  `test_the_fixture_dry_run_lists_every_case` (line 602) derive the expected names and count
-  from the folders under `evals/cases/` instead (round 3 review, item 1, decision 1), so the
-  suite grows without editing a literal.
+  names; `test_the_fixture_dry_run_lists_every_case` (line 602) derives the expected names
+  and count from the folders under `evals/cases/` instead (round 3 review, item 1, decision
+  1), so the suite grows without editing a literal.
+  `test_the_framework_suite_s_cases_load` (line 522) was changed the same way in round 3,
+  then reverted to a literal list of case names in the phase (e) fix round (review
+  #5469970014, item 3): comparing `run.discover(FRAMEWORK_CASES)` against `FRAMEWORK_SUITE`
+  checked `run.discover` against itself, so a skipped or duplicated case would pass
+  silently; the literal list is ground truth the other assertion still doesn't have to be.
 - `docs/OPERATING_MODEL.md` (line 121) — layer (i)'s sentence gains "and a Bash/PowerShell
   command that would write to the same paths" so it says the hook covers shell writes too;
   layer (iii)'s sentence names the new sandbox `filesystem.denyWrite` block in
@@ -100,9 +104,11 @@ run's `GITHUB_TOKEN` cannot push a workflow-file change).
    `test_ci_settings_are_rendered_against_the_project_root`'s `sandbox` assertion for the
    rewritten list and add the new `ci_settings_file` test in `tests/test_ci.py` (round 3
    review, item 1, decision 1).
-5. Make `tests/test_evals.py`'s `FRAMEWORK_SUITE` and the two assertions that use it derive
-   the suite's case names and count from the folders under `evals/cases/` instead of the
-   literal tuple (round 3 review, item 1, decision 1).
+5. Make `tests/test_evals.py`'s `FRAMEWORK_SUITE` and `test_the_fixture_dry_run_lists_every_case`
+   derive the suite's case names and count from the folders under `evals/cases/` instead of
+   the literal tuple (round 3 review, item 1, decision 1). `test_the_framework_suite_s_cases_load`
+   asserts a literal list of case names instead (phase (e) fix round, review #5469970014,
+   item 3).
 6. Update `docs/OPERATING_MODEL.md:121` (the two sentences named in Files that change).
 7. Bump `.claude-plugin/plugin.json` and `.claude-plugin/marketplace.json` to `0.3.7` in the
    same commit as the files above that are not exempt from `plan_sync`.
@@ -162,9 +168,13 @@ run's `GITHUB_TOKEN` cannot push a workflow-file change).
 - `tests/test_ci.py`'s and `tests/test_evals.py`'s updated assertions (round 3 review,
   item 1, decision 1, steps 4–5): the first can no longer assert the sandbox block is
   unchanged by `ci_settings_file`, since this change makes that function rewrite it on
-  purpose; the second stops hard-coding the eval suite's case names so the suite can grow
-  without a literal edit. Both are contract changes this design makes on purpose, not a
-  weakening of either test (coding-standards rule 4; intent Constraints).
+  purpose; `test_the_fixture_dry_run_lists_every_case` stops hard-coding the eval suite's
+  case names so the suite can grow without a literal edit. Both are contract changes this
+  design makes on purpose, not a weakening of either test (coding-standards rule 4; intent
+  Constraints). `test_the_framework_suite_s_cases_load` went the other way in the phase (e)
+  fix round (review #5469970014, item 3): it had come to compare `run.discover` against a
+  value also derived from `run.discover`, catching nothing a bug in `discover` itself could
+  not also hide; a literal list of case names is the ground truth that assertion needs.
 - The hand-over of the eval case from this spec's Acceptance to `/sdlc-deploy` step 0b
   (round 3 review, item 4): phase (c) writes no `evals/cases/0002-...` folder at all, so
   `case.py new --id 0002` at (e) is never blocked by an existing case; the case's exact
@@ -238,11 +248,13 @@ run's `GITHUB_TOKEN` cannot push a workflow-file change).
 - `tests/test_ci.py::test_ci_settings_file_rewrites_the_sandbox_filesystem_deny_write_list`
   (name indicative) — asserts the exact rendered `sandbox.filesystem.denyWrite` list
   (absolute rewrite, appended `protected_paths` entries, a skipped glob noted).
-- The three updated tests (round 3 review, item 1, decision 1):
+- The updated tests (round 3 review, item 1, decision 1):
   `test_ci_settings_are_rendered_against_the_project_root`'s `sandbox` assertion matching
-  the rewritten list, and `test_the_framework_suite_s_cases_load` /
-  `test_the_fixture_dry_run_lists_every_case` deriving `FRAMEWORK_SUITE` from
-  `evals/cases/`'s folders.
+  the rewritten list, and `test_the_fixture_dry_run_lists_every_case` deriving
+  `FRAMEWORK_SUITE` from `evals/cases/`'s folders. `test_the_framework_suite_s_cases_load`
+  instead asserts a literal list of case names (phase (e) fix round, review #5469970014,
+  item 3), so a skipped or duplicated case folder is caught rather than passing against
+  another copy of the same `run.discover` call.
 - Every existing `test_protected_paths_*`, `test_test_file_lock_*` and `test_production_gate_*`
   test, unmodified, still passing.
 - `python -m pytest`, `python -m ruff check .`, `python -m compileall -q plugin tests

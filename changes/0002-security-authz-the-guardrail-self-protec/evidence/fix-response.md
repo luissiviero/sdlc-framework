@@ -406,3 +406,56 @@ below was applied; the gate parked again on the cap (`evidence/gate-e.json`,
 
 To allow another round: apply the `sdlc:reset-iterations` label to PR #152 (resets the panel-
 call count too), or run `gate/cli.py set-iterations --root . --id 0002 --count 0` by hand.
+
+# Fix response — PR #152, review #5469970014 (@luissiviero, OWNER, CHANGES_REQUESTED), gate (e), round 2
+
+Source: `evidence/fix-requests.json` (`unavailable: null`, `head` matched HEAD at collection,
+two reviews, `not_applied` empty). The owner applied `sdlc:reset-iterations` to PR #152
+(`status.yaml: iterations_reset_by: luissiviero`, `iterations_reset_at:
+2026-10-09T15:15:47Z`), recorded by `state/cli.py apply-labels` before this run started;
+`gate/cli.py bump-iteration` read `iterations: 0` and advanced it to 1, `cap_reached: false`
+(cap 2, non-routine). The three items review #5469970014 asked for, left untouched by the
+previous round (cap reached first), are applied now. Review #5468359227's 21 items were
+already applied in an earlier round (`fix(0002): git/inner-shell global-option bypass...`)
+and are unaffected by this one.
+
+1. `tests/test_hooks.py:22` — removed `shell_guard` from the module-top `from hooks import
+   (...)` block; added `from hooks import shell_guard` as the first statement of every test
+   function whose body calls `shell_guard.decide`/`shell_write_targets`/`_resolve` (46
+   functions), after a docstring where one is present. A failure in one of these tests can no
+   longer abort collection of the rest of the file. `tests/test_hooks.py` (all 368 cases)
+   passes; `test_hooks_json_registers_shell_guard_on_bash_and_powershell`'s `timeout == 30`
+   assertion is unchanged.
+2. `plugin/ci/run_phase.py:1081` `_absolute_rule_root` (no production caller; only
+   `tests/test_ci.py` used it) removed. Both call sites
+   (`test_dry_run_argv_per_phase` and `test_ci_settings_are_rendered_against_the_project_root`)
+   now call `run_phase._posix_root`
+   directly on the same `Path(...).resolve().as_posix()` the removed wrapper computed, so
+   their assertions are unchanged.
+3. `tests/test_evals.py:519` — `test_the_framework_suite_s_cases_load`'s
+   `names == list(FRAMEWORK_SUITE)` compared `run.discover(FRAMEWORK_CASES)` against a value
+   also derived from `run.discover`, so a bug in `discover` (a skipped or duplicated case
+   folder) would pass both sides identically. Replaced with a literal list of the five
+   `evals/cases/` folder names. `FRAMEWORK_SUITE` itself, and
+   `test_the_fixture_dry_run_lists_every_case` which derives its expectation from it, are
+   unchanged (round 3 review, item 1, decision 1 — that assertion still intentionally grows
+   with the folder, not a literal).
+
+`plan.md` updated in the same commit (Files that change, Order of work, Design-decisions
+rationale, Proof) to record the reversal on item 3: `test_the_framework_suite_s_cases_load`
+now asserts a literal list instead of deriving from folder discovery, while
+`test_the_fixture_dry_run_lists_every_case` still does. No change to spec.md (review did not
+touch it; choice 164 still applies).
+
+`python -m pytest`, `python -m ruff check .` and `python -m compileall -q plugin tests
+tasks.py`: compile and lint are clean; `tests/test_hooks.py`, the two touched
+`tests/test_ci.py` tests and `tests/test_evals.py::test_the_framework_suite_s_cases_load` all
+pass in isolation. The full-suite run in this session reproduces the same pre-existing,
+environment-only cascade documented in the previous round's note (the sandbox denies reading
+`tests/fixtures/sample-python-project/.env`, so every test using the `project`/fixture-copy
+fixture errors in setup) plus the same two environment-dependent failures named there
+(`test_gate.py::test_the_sandbox_s_mask_is_read_from_its_mounts`,
+`test_evals.py::test_fixture_runs_a_case_against_the_initialised_project`); none of the three
+files this round changed appear in either list. I cannot change the sandbox configuration
+from within a run; not working around it, per CLAUDE.md's instruction for a blocked sandbox
+restriction.

@@ -186,7 +186,7 @@ def test_dry_run_argv_per_phase(capsys, project, phase, command, mode):
     assert settings.name == "settings.ci.json" and settings.is_file()
     assert settings != ROOT / "plugin" / "ci" / "settings.ci.json"
     rendered = json.loads(settings.read_text(encoding="utf-8"))
-    base = run_phase._absolute_rule_root(root)
+    base = run_phase._posix_root(Path(root).resolve().as_posix())
     assert f"Edit({base}/CLAUDE.md)" in rendered["permissions"]["deny"]
     assert argv[argv.index("--output-format") + 1] == "json"
     assert int(argv[argv.index("--max-turns") + 1]) == run_phase.DEFAULT_MAX_TURNS
@@ -593,7 +593,7 @@ def test_ci_settings_are_rendered_against_the_project_root(tmp_path):
     out = run_phase.ci_settings_file(ROOT, tmp_path)
     assert out != ROOT / "plugin" / "ci" / "settings.ci.json"
     data = json.loads(out.read_text(encoding="utf-8"))
-    base = run_phase._absolute_rule_root(tmp_path)
+    base = run_phase._posix_root(tmp_path.resolve().as_posix())
     assert base.startswith("//") and not base.startswith("///") and ":" not in base
     deny = data["permissions"]["deny"]
     for name in (".claude/**", "CLAUDE.md", "REVIEW.md", "sdlc.yaml"):

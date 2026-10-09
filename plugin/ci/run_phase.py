@@ -1078,10 +1078,6 @@ def _posix_root(resolved: str) -> str:
     return "/" + p
 
 
-def _absolute_rule_root(root: Path) -> str:
-    return _posix_root(Path(root).resolve().as_posix())
-
-
 def _absolute_rule(rule: str, base: str) -> str:
     m = _ANCHORED_RULE.match(rule)
     return f"{m.group(1)}({base}/{m.group(2)})" if m else rule

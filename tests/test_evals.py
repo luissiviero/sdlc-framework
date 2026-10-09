@@ -516,7 +516,13 @@ AWS_KEY_ID = re.compile(r"AKIA[0-9A-Z]{16}")
 
 def test_the_framework_suite_s_cases_load():
     names = [p.name for p in run.discover(FRAMEWORK_CASES)]
-    assert names == list(FRAMEWORK_SUITE)
+    assert names == [
+        "0001-protected-path-denied",
+        "0002-intent-skill-shape",
+        "0003-secrets-stay-out",
+        "0004-verify-before-done",
+        "0005-hooks-loaded",
+    ]
     loaded = {name: run.load_case(FRAMEWORK_CASES / name) for name in names}
     for name, case in loaded.items():
         assert case.error == "", (name, case.error)
