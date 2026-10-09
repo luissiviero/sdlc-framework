@@ -12,7 +12,7 @@ gate:
   reason: "limits: wall-clock limit exceeded: 218 min elapsed, limit 120 min"
   at: "2026-10-09T07:48:59Z"
 parked_reason: "limits: wall-clock limit exceeded: 218 min elapsed, limit 120 min"
-iterations: 2
+iterations: 0
 panel_calls: 0
 external_ref: null
 risk_accepted:
@@ -20,7 +20,7 @@ risk_accepted:
 tests_locked: false
 risk_accepted_by: []
 iterations_reset_by: luissiviero
-iterations_reset_at: "2026-10-09T03:12:27Z"
+iterations_reset_at: "2026-10-09T09:33:12Z"
 tests_unlocked_by: null
 runbook_authorized_by: null
 abandoned_reason: null
@@ -29,5 +29,5 @@ released_at: null
 released_sha: null
 released_pr: null
 created_at: "2026-10-05T14:53:56Z"
-updated_at: "2026-10-09T07:49:32Z"
+updated_at: "2026-10-09T09:33:12Z"
 schema_version: 1
