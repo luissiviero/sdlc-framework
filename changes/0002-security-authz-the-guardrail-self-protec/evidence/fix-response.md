@@ -88,3 +88,20 @@ citing the target-design.md row instead, which I could verify directly. If a `do
 verified platform fact, the way `docs/notes/1.md` records the Windows hook-invocation
 answer), it is not part of this change's diff; add it separately if you want the index to
 carry it.
+
+# Fix response — PR #144, review #5465042586 (@luissiviero, OWNER, CHANGES_REQUESTED), round 2 of 2
+
+Source: `evidence/fix-requests.json` (`unavailable: null`, `head` matched HEAD at collection;
+two reviews, `not_applied` empty — no other review or comment is on the PR). Round 1 above
+is unchanged from this round; these are the two new items.
+
+1. The `auth` acceptance: nothing written. `status.yaml: risk_accepted` already carries
+   `auth` from your own commit (`626a4c0`, decision 24's by-hand route); `risk_accepted_by`
+   stays `[]` as that route leaves it — the gate's `owner_actions` check judges the commit
+   author for an ungained-by-automation event, not the label-actor field, and it passes.
+   `apply-labels` was not run. Gate (b) re-run on the committed state: every check `ok`,
+   result `wait`, label `sdlc:b-ready`.
+2. `plan.md` "Files that change": the shared `.claude-plugin/plugin.json` /
+   `.claude-plugin/marketplace.json` bullet is now two bullets, each naming exactly one
+   path, so `plan_sync.py`'s one-path-per-item parser picks up both manifest bumps. Checked
+   every other bullet in the section already names exactly one path.
