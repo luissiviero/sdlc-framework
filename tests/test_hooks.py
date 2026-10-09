@@ -19,6 +19,7 @@ from hooks import (
     production_gate,
     protected_paths,
     secrets_check,
+    shell_guard,
     test_file_lock,
 )
 from state import status
@@ -1756,3 +1757,281 @@ def test_panel_blind_refuses_a_tool_write_of_a_model_record(panel_project):
     # an ordinary edit elsewhere is left alone, and writes no record
     assert not _blind(root, pre("Write", file_path=str(root / "src" / "calc.py"))).block
     assert not (panel / "b-1-reviewer.model.json").exists()
+
+
+# --- shell guard (change 0002: protected_paths.py and test_file_lock.py police Edit/Write/
+# MultiEdit/NotebookEdit only; shell_guard.py closes the identical Bash/PowerShell bypass) ----
+GUARD_HOOK = HOOKS_DIR / "shell_guard.py"
+
+
+def _bash(command: str, cwd: str) -> dict:
+    return {**pre("Bash", command=command), "cwd": cwd}
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "python -c \"open('CLAUDE.md','w').write('x')\"",
+        "echo x > sdlc.yaml",
+        "echo x >> REVIEW.md",
+        "cp notes.txt CLAUDE.md",
+        "Set-Content -Path CLAUDE.md -Value x",
+        "Remove-Item sdlc.yaml",
+        '[IO.File]::WriteAllText("CLAUDE.md","x")',
+    ],
+)
+def test_shell_guard_denies_a_bash_write_to_a_guardrail_file(project, command):
+    d = shell_guard.decide(_bash(command, str(project)), [], env=_env(project))
+    assert d.block, command
+    assert "Protected path" in d.reason
+
+
+def test_shell_guard_covers_the_powershell_tool_too(project):
+    payload = {**_bash("Remove-Item CLAUDE.md", str(project)), "tool_name": "PowerShell"}
+    d = shell_guard.decide(payload, [], env=_env(project))
+    assert d.block and "Protected path" in d.reason
+
+
+def test_shell_guard_denies_the_plugin_root_form_only_through_plugin_root(project):
+    command = "rm plugin/hooks/protected_paths.py"
+    without = shell_guard.decide(_bash(command, str(project)), [], env=_env(project))
+    assert not without.block
+    withit = shell_guard.decide(
+        _bash(command, str(project)), ["--plugin-root", str(project)], env=_env(project)
+    )
+    assert withit.block and "SDLC plugin" in withit.reason
+
+
+def test_shell_guard_denies_a_sdlc_yaml_protected_paths_entry(project):
+    d = shell_guard.decide(_bash("echo x > src/gen/model.py", str(project)), [], env=_env(project))
+    assert d.block and "src/gen" in d.reason
+
+
+def test_shell_guard_denies_a_bash_write_to_a_locked_test_file(tmp_path):
+    root, _ = _lock_project(tmp_path)
+    payload = _bash("echo x > tests/test_calc.py", str(root))
+    d = shell_guard.decide(payload, [], env={"CLAUDE_PROJECT_DIR": str(root)})
+    assert d.block and "Test-file lock" in d.reason and "tests/test_calc.py" in d.reason
+
+
+def test_shell_guard_ignores_a_locked_test_file_outside_a_fix(tmp_path):
+    root, _ = _lock_project(tmp_path, change_type="feature")
+    payload = _bash("echo x > tests/test_calc.py", str(root))
+    d = shell_guard.decide(payload, [], env={"CLAUDE_PROJECT_DIR": str(root)})
+    assert not d.block
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        'git commit -m "note: echo x > CLAUDE.md"',
+        'echo "> CLAUDE.md"',
+        "grep -n x CLAUDE.md",
+        "cat sdlc.yaml",
+        "python -m pytest tests/test_hooks.py -k protected",
+        "cmd 2>&1",
+        "cmd > /dev/null",
+        "git status",
+        "npm run build",
+        "npx some-package",
+    ],
+)
+def test_shell_guard_allows_ordinary_commands(project, command):
+    d = shell_guard.decide(_bash(command, str(project)), [], env=_env(project))
+    assert not d.block, command
+
+
+def test_shell_guard_allows_a_heredoc_blockquote_mentioning_a_guardrail_path(project):
+    command = (
+        "gh pr comment --body \"$(cat <<'EOF'\na blockquote mentioning > CLAUDE.md here\nEOF\n)\""
+    )
+    d = shell_guard.decide(_bash(command, str(project)), [], env=_env(project))
+    assert not d.block
+
+
+def test_shell_guard_resolves_a_relative_target_against_cwd(project):
+    (project / "sub").mkdir()
+    d = shell_guard.decide(_bash("echo x > CLAUDE.md", str(project / "sub")), [], env=_env(project))
+    assert not d.block  # sub/CLAUDE.md is project content, not the root guardrail file
+
+
+def test_shell_guard_resolves_after_a_cd_in_the_same_chain(project):
+    (project / "sub").mkdir()
+    allowed = shell_guard.decide(
+        _bash("cd sub && echo x > CLAUDE.md", str(project)), [], env=_env(project)
+    )
+    assert not allowed.block  # sub/CLAUDE.md, not the root guardrail file
+    denied = shell_guard.decide(
+        _bash(f"cd sub && cd {project} && echo x > CLAUDE.md", str(project)), [], env=_env(project)
+    )
+    assert denied.block
+
+
+def test_shell_guard_resolves_a_git_dash_c_target(tmp_path, project):
+    other = tmp_path / "other"
+    other.mkdir()
+    elsewhere = shell_guard.decide(
+        _bash(f"git -C {other} rm CLAUDE.md", str(project)), [], env=_env(project)
+    )
+    assert not elsewhere.block  # CLAUDE.md under `other`, not the project root
+    here = shell_guard.decide(
+        _bash(f"git -C {project} rm CLAUDE.md", str(other)), [], env=_env(project)
+    )
+    assert here.block
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "echo x > $VAR",
+        "echo x > $(name)",
+        "echo x > `name`",
+        "echo x > ~/CLAUDE.md",
+        "echo x > CLAUDE.md*",
+        "cd $DIR && echo x > CLAUDE.md",
+    ],
+)
+def test_shell_guard_fails_closed_on_a_nonliteral_write_target(project, command):
+    d = shell_guard.decide(_bash(command, str(project)), [], env=_env(project))
+    assert d.block and "not a literal path" in d.reason
+
+
+def test_shell_guard_allows_a_cd_to_a_nonliteral_directory_with_no_write_after_it(project):
+    d = shell_guard.decide(_bash("cd $DIR", str(project)), [], env=_env(project))
+    assert not d.block
+
+
+@pytest.mark.parametrize(
+    ("command", "expected"),
+    [
+        ("echo x > CLAUDE.md", ["CLAUDE.md"]),
+        ("echo x >> CLAUDE.md", ["CLAUDE.md"]),
+        ("echo x >| CLAUDE.md", ["CLAUDE.md"]),
+        ("cmd &> CLAUDE.md", ["CLAUDE.md"]),
+        ("cmd &>> CLAUDE.md", ["CLAUDE.md"]),
+        ("cmd <> CLAUDE.md", ["CLAUDE.md"]),
+        ("tee CLAUDE.md", ["CLAUDE.md"]),
+        ("tee -a CLAUDE.md", ["CLAUDE.md"]),
+        ("cp a.txt CLAUDE.md", ["CLAUDE.md"]),
+        ("mv a.txt CLAUDE.md", ["CLAUDE.md"]),
+        ("install a.txt CLAUDE.md", ["CLAUDE.md"]),
+        ("ln -s a.txt CLAUDE.md", ["CLAUDE.md"]),
+        ("rsync a.txt CLAUDE.md", ["CLAUDE.md"]),
+        ("rm CLAUDE.md", ["CLAUDE.md"]),
+        ("truncate -s0 CLAUDE.md", ["CLAUDE.md"]),
+        ("touch CLAUDE.md", ["CLAUDE.md"]),
+        ("sed -i s/a/b/ CLAUDE.md", ["CLAUDE.md"]),
+        ("perl -i -pe s/a/b/ CLAUDE.md", ["CLAUDE.md"]),
+        ("dd of=CLAUDE.md", ["CLAUDE.md"]),
+        ("git checkout -- CLAUDE.md", ["CLAUDE.md"]),
+        ("git restore CLAUDE.md", ["CLAUDE.md"]),
+        ("git rm CLAUDE.md", ["CLAUDE.md"]),
+        ("git mv a.txt CLAUDE.md", ["a.txt", "CLAUDE.md"]),
+        ("git apply CLAUDE.md", ["CLAUDE.md"]),
+        ("python -c \"open('CLAUDE.md','w').write('x')\"", ["CLAUDE.md"]),
+        ("python -c \"Path('CLAUDE.md').write_text('x')\"", ["CLAUDE.md"]),
+        ("python -c \"os.remove('CLAUDE.md')\"", ["CLAUDE.md"]),
+        ("python -c \"shutil.move('CLAUDE.md', 'x')\"", ["CLAUDE.md"]),
+        ("node -e \"fs.writeFileSync('CLAUDE.md', 'x')\"", ["CLAUDE.md"]),
+        ("Set-Content -Path CLAUDE.md -Value x", ["CLAUDE.md"]),
+        ("Add-Content CLAUDE.md x", ["CLAUDE.md"]),
+        ("Out-File -FilePath CLAUDE.md", ["CLAUDE.md"]),
+        ("New-Item CLAUDE.md", ["CLAUDE.md"]),
+        ("Copy-Item a.txt -Destination CLAUDE.md", ["CLAUDE.md"]),
+        ("Move-Item a.txt CLAUDE.md", ["a.txt", "CLAUDE.md"]),
+        ("Remove-Item CLAUDE.md", ["CLAUDE.md"]),
+        ('[IO.File]::WriteAllText("CLAUDE.md","x")', ["CLAUDE.md"]),
+    ],
+)
+def test_shell_write_targets_idioms(command, expected):
+    assert shell_guard.shell_write_targets(command) == expected
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        'git commit -m "note: echo x > CLAUDE.md"',
+        'echo "> CLAUDE.md"',
+        "grep -n x CLAUDE.md",
+        "cat sdlc.yaml",
+        "python -m pytest tests/test_hooks.py -k protected",
+        "cmd 2>&1",
+        "git status",
+        "npm run build",
+    ],
+)
+def test_shell_write_targets_negative_list(command):
+    assert shell_guard.shell_write_targets(command) == []
+
+
+def test_shell_write_targets_sees_through_wrappers_and_inner_shells():
+    for command in (
+        "sudo rm CLAUDE.md",
+        "nohup rm CLAUDE.md",
+        "time rm CLAUDE.md",
+        "env rm CLAUDE.md",
+        'bash -c "echo x > CLAUDE.md"',
+        "sh -c 'echo x > CLAUDE.md'",
+        'cmd /c "echo x > CLAUDE.md"',
+        "pwsh -Command 'Remove-Item CLAUDE.md'",
+    ):
+        assert shell_guard.shell_write_targets(command) == ["CLAUDE.md"], command
+
+
+def test_shell_write_targets_splits_a_chain_only_on_the_documented_operators():
+    assert shell_guard.shell_write_targets("rm a.txt; echo x > CLAUDE.md") == [
+        "a.txt",
+        "CLAUDE.md",
+    ]
+    assert shell_guard.shell_write_targets("rm a.txt && echo x > CLAUDE.md") == [
+        "a.txt",
+        "CLAUDE.md",
+    ]
+    assert shell_guard.shell_write_targets("rm a.txt || echo x > CLAUDE.md") == [
+        "a.txt",
+        "CLAUDE.md",
+    ]
+    assert shell_guard.shell_write_targets("rm a.txt | rm CLAUDE.md") == ["a.txt", "CLAUDE.md"]
+
+
+def test_shell_guard_end_to_end_blocks_with_exit_2(project, tmp_path):
+    log_path = tmp_path / "hook-log.jsonl"
+    proc = subprocess.run(
+        [sys.executable, str(GUARD_HOOK)],
+        input=json.dumps(_bash("echo x > sdlc.yaml", str(project))),
+        capture_output=True,
+        text=True,
+        env={**os.environ, "CLAUDE_PROJECT_DIR": str(project), "SDLC_HOOK_LOG": str(log_path)},
+    )
+    assert proc.returncode == 2, proc.stderr
+    out = json.loads(proc.stdout)
+    assert out["hookSpecificOutput"]["permissionDecision"] == "deny"
+    assert "Protected path" in proc.stderr
+    log_line = json.loads(log_path.read_text("utf-8").strip())
+    assert log_line["hook"] == "shell_guard" and log_line["verdict"] == "block"
+
+
+def test_shell_guard_end_to_end_is_silent_when_allowed(project, tmp_path):
+    log_path = tmp_path / "hook-log.jsonl"
+    proc = subprocess.run(
+        [sys.executable, str(GUARD_HOOK)],
+        input=json.dumps(_bash("echo hi", str(project))),
+        capture_output=True,
+        text=True,
+        env={**os.environ, "CLAUDE_PROJECT_DIR": str(project), "SDLC_HOOK_LOG": str(log_path)},
+    )
+    assert proc.returncode == 0 and proc.stdout == "" and proc.stderr == ""
+    assert not log_path.exists()
+
+
+def test_hooks_json_registers_shell_guard_on_bash_and_powershell():
+    data = json.loads((HOOKS_DIR / "hooks.json").read_text(encoding="utf-8"))
+    entries = [
+        e
+        for e in data["hooks"]["PreToolUse"]
+        if any("shell_guard.py" in h["args"][0] for h in e["hooks"])
+    ]
+    assert len(entries) == 1 and entries[0]["matcher"] == "Bash|PowerShell"
+    (handler,) = entries[0]["hooks"]
+    assert "if" not in handler
+    assert handler["args"][1:] == ["--plugin-root", "${CLAUDE_PLUGIN_ROOT}"]
