@@ -1,0 +1,97 @@
+{
+  "api_error_status": null,
+  "duration_api_ms": 144290,
+  "duration_ms": 152697,
+  "fast_mode_disabled_reason": "sdk_opt_in_required",
+  "fast_mode_state": "off",
+  "first_content_frame_ms": 886,
+  "is_error": false,
+  "modelUsage": {
+    "claude-sonnet-5": {
+      "cacheCreationInputTokens": 71334,
+      "cacheReadInputTokens": 1190325,
+      "canonicalModel": "claude-sonnet-5",
+      "contextWindow": 1000000,
+      "costBasis": "list",
+      "costUSD": 0.6421490000000002,
+      "inputTokens": 44,
+      "maxOutputTokens": 64000,
+      "outputTokens": 11866,
+      "provider": "firstParty",
+      "thinkingTokens": 7580,
+      "webSearchRequests": 0
+    }
+  },
+  "num_turns": 22,
+  "permission_denials": [],
+  "queued_turn_count": 0,
+  "result": "Fix round complete. The new review (PR #152, review #5469970014, gate phase e) arrived with 3 change requests, but the iteration cap was already exhausted before this round started.\n\n**Report:**\n- PR: https://github.com/luissiviero/sdlc-framework/pull/152\n- Gate (e): **parked** \u2014 \"iteration cap reached: 4 fix iterations, cap 2 (non-routine)\"\n- Iterations: 4 of cap 2 (no `sdlc:reset-iterations` label was present on the PR, so none of this round's 3 requests were applied \u2014 only `evidence/fix-response.md` was updated to record that and the owner needs to either apply that label or run `set-iterations --count 0` to allow another round)\n- Requests left open: all 3 (test_hooks.py import placement, dead `_absolute_rule_root` removal, tautological test_evals.py assertion)\n\nNothing was merged or notified; the PR stays labeled `sdlc:needs-human`.",
+  "result_index": 0,
+  "session_id": "e096e0af-840e-45a6-8af1-c7d8796501d0",
+  "stop_reason": "end_turn",
+  "subagent_stats": {
+    "by_type": {},
+    "completed": 0,
+    "failed": 0,
+    "killed": {
+      "parent": 0,
+      "system": 0,
+      "user": 0
+    },
+    "max_depth": 0,
+    "refused": {
+      "budget": 0,
+      "concurrency_limit": 0,
+      "depth_limit": 0
+    },
+    "requested": {
+      "background": 0,
+      "foreground": 0,
+      "unset": 0
+    },
+    "spawned": 0,
+    "spawned_by_subagents": 0,
+    "started_in_background": 0
+  },
+  "subtype": "success",
+  "terminal_reason": "completed",
+  "time_to_request_ms": 128,
+  "total_cost_usd": 0.6421490000000002,
+  "ttft_ms": 1492,
+  "ttft_stream_ms": 886,
+  "type": "result",
+  "usage": {
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 71334,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "cache_creation_input_tokens": 71334,
+    "cache_read_input_tokens": 1190325,
+    "inference_geo": "global",
+    "input_tokens": 44,
+    "iterations": [
+      {
+        "cache_creation": {
+          "ephemeral_1h_input_tokens": 254,
+          "ephemeral_5m_input_tokens": 0
+        },
+        "cache_creation_input_tokens": 254,
+        "cache_read_input_tokens": 71080,
+        "input_tokens": 2,
+        "output_tokens": 488,
+        "type": "message"
+      }
+    ],
+    "output_tokens": 11866,
+    "output_tokens_details": {
+      "thinking_tokens": 7580
+    },
+    "server_tool_use": {
+      "web_fetch_requests": 0,
+      "web_search_requests": 0
+    },
+    "service_tier": "standard",
+    "speed": "standard"
+  },
+  "uuid": "9bc88841-5284-41f0-8d6b-74cb25f729ff"
+}
