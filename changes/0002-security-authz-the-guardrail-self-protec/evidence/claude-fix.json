@@ -1,0 +1,99 @@
+{
+  "api_error_status": null,
+  "duration_api_ms": 926215,
+  "duration_ms": 964210,
+  "fast_mode_disabled_reason": "sdk_opt_in_required",
+  "fast_mode_state": "off",
+  "first_content_frame_ms": 1704,
+  "is_error": false,
+  "modelUsage": {
+    "claude-sonnet-5": {
+      "cacheCreationInputTokens": 297562,
+      "cacheReadInputTokens": 7869325,
+      "canonicalModel": "claude-sonnet-5",
+      "contextWindow": 1000000,
+      "costBasis": "list",
+      "costUSD": 3.3359129999999992,
+      "inputTokens": 152,
+      "maxOutputTokens": 64000,
+      "outputTokens": 77039,
+      "provider": "firstParty",
+      "thinkingTokens": 38080,
+      "webSearchRequests": 0
+    }
+  },
+  "num_turns": 76,
+  "permission_denials": [],
+  "queued_turn_count": 0,
+  "result": "Confirmed.\n\n## Report\n\n**PR:** https://github.com/luissiviero/sdlc-framework/pull/144 \u2014 now labeled `sdlc:b-ready` (un-parked from `sdlc:needs-human`)\n**Gate result:** `continue`/`wait` \u2014 every check passed (limits, artifacts, design_scope, open_concerns, guardrails, risk_list, owner_actions, adversarial_review all `ok: true`); human_gate awaits the owner's merge\n**Iterations used:** 1 of 2 (cap not reached)\n**Requests left open:** none \u2014 all 19 of the owner's change requests were applied to spec.md/plan.md; `sdlc:accept-risk` was applied via `state/cli.py apply-labels`, recorded in `status.yaml`\n\nOne note for the owner, written in `evidence/fix-response.md`: item 3's \"NOTES \u00a737\" citation doesn't resolve to an existing file (`docs/notes/` runs 3\u201335 plus index, no 37); I applied the decision as given and cited the verifiable source instead (`docs/reviews/2026-09-28-playbook-vs-framework/target-design.md`'s x-sandbox/T29 row, which does exist and says the same thing) \u2014 flagging in case a `docs/notes/37.md` was meant to exist and is missing from this diff.",
+  "result_index": 0,
+  "session_id": "32e87d6e-57c1-4290-8134-a2e4258ab76e",
+  "stop_reason": "end_turn",
+  "subagent_stats": {
+    "by_type": {
+      "sdlc:adversarial-reviewer": 1
+    },
+    "completed": 1,
+    "failed": 0,
+    "killed": {
+      "parent": 0,
+      "system": 0,
+      "user": 0
+    },
+    "max_depth": 1,
+    "refused": {
+      "budget": 0,
+      "concurrency_limit": 0,
+      "depth_limit": 0
+    },
+    "requested": {
+      "background": 0,
+      "foreground": 0,
+      "unset": 1
+    },
+    "spawned": 1,
+    "spawned_by_subagents": 0,
+    "started_in_background": 0
+  },
+  "subtype": "success",
+  "terminal_reason": "completed",
+  "time_to_request_ms": 107,
+  "total_cost_usd": 3.3359129999999992,
+  "ttft_ms": 2532,
+  "ttft_stream_ms": 1704,
+  "type": "result",
+  "usage": {
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 164966,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "cache_creation_input_tokens": 164966,
+    "cache_read_input_tokens": 6030029,
+    "inference_geo": "not_available",
+    "input_tokens": 112,
+    "iterations": [
+      {
+        "cache_creation": {
+          "ephemeral_1h_input_tokens": 356,
+          "ephemeral_5m_input_tokens": 0
+        },
+        "cache_creation_input_tokens": 356,
+        "cache_read_input_tokens": 164610,
+        "input_tokens": 2,
+        "output_tokens": 445,
+        "type": "message"
+      }
+    ],
+    "output_tokens": 60235,
+    "output_tokens_details": {
+      "thinking_tokens": 29853
+    },
+    "server_tool_use": {
+      "web_fetch_requests": 0,
+      "web_search_requests": 0
+    },
+    "service_tier": "standard",
+    "speed": "standard"
+  },
+  "uuid": "db8e80e7-68c4-4f5e-9a0c-2566d1039926"
+}
