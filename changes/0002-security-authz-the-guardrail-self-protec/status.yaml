@@ -8,10 +8,10 @@ profile_override: null
 review_override: null
 gate:
   phase: b
-  result: parked
-  reason: "open_concerns: 3 flagged concern(s) still open in spec.md; risk_list: risk-list hit: 'auth' in spec.md Flagged concerns: text; adversarial_review: adversarial reviewer says escalate: plan.md's Order of work step 8 and Proof section both instruct running `python evals/check.py --case \"0006-*\"` to prove the new eval case passes, but `evals/check.py` does not exist anywhere in this repository (confirmed: no such file at the root, and docs/progress/session-5.md item 10 records this exact mistake as a previously-fixed 'medium' finding -- 'no evals/check.py here... the copy removed; framework-evals.yml is this repository's' -- so the design pass has reintroduced a known-wrong command). The correct invocation for this repo, matching .github/workflows/framework-evals.yml and spec.md's own Acceptance line ('passes under plugin/evals/run.py'), is `python plugin/evals/run.py --fixture --case \"0006-*\"`. spec.md and plan.md now disagree on the command that proves the same acceptance requirement, and plan.md repeats the wrong one twice; following plan.md literally in phase (c) would fail or force an undocumented departure from the plan it is supposed to pin down."
-  at: "2026-10-08T16:43:16Z"
-parked_reason: "open_concerns: 3 flagged concern(s) still open in spec.md; risk_list: risk-list hit: 'auth' in spec.md Flagged concerns: text; adversarial_review: adversarial reviewer says escalate: plan.md's Order of work step 8 and Proof section both instruct running `python evals/check.py --case \"0006-*\"` to prove the new eval case passes, but `evals/check.py` does not exist anywhere in this repository (confirmed: no such file at the root, and docs/progress/session-5.md item 10 records this exact mistake as a previously-fixed 'medium' finding -- 'no evals/check.py here... the copy removed; framework-evals.yml is this repository's' -- so the design pass has reintroduced a known-wrong command). The correct invocation for this repo, matching .github/workflows/framework-evals.yml and spec.md's own Acceptance line ('passes under plugin/evals/run.py'), is `python plugin/evals/run.py --fixture --case \"0006-*\"`. spec.md and plan.md now disagree on the command that proves the same acceptance requirement, and plan.md repeats the wrong one twice; following plan.md literally in phase (c) would fail or force an undocumented departure from the plan it is supposed to pin down."
+  result: passed
+  reason: waiting for the owner at gate (b)
+  at: "2026-10-09T02:11:32Z"
+parked_reason: null
 iterations: 1
 panel_calls: 0
 external_ref: null
@@ -31,5 +31,5 @@ released_at: null
 released_sha: null
 released_pr: null
 created_at: "2026-10-05T14:53:56Z"
-updated_at: "2026-10-09T01:57:33Z"
+updated_at: "2026-10-09T02:11:32Z"
 schema_version: 1
