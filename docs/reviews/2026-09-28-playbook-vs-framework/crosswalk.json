@@ -13,8 +13,8 @@
     "why": "Dn = decision n in docs/DECISIONS.md; \"No decision\" / \"No Dn\" = no decision behind the difference",
     "weigh": "the question for the owner",
     "map": "per side, [lane, kind, label]: lane P person, C Claude, A pipeline; kind d decision every change needs (Setup: once per project), c decision only in some cases, w work, r same act as another row",
-    "target": "optional: the owner's tentative proposal for this step, condensed from target-design.md; refs name its entries (T1, T2, ...)",
-    "decision": "optional: the owner's saved choice, copied from the crosswalk page's store at the end of a session (better: playbook | framework | both | neither | empty; decision: keep | adopt | blend | change | later; note; saved date; status: tentative until the whole study is done); the page's store stays the live copy"
+    "target": "optional: the owner's proposal for this step (tentative until the close of the study, confirmed on 2026-10-09), condensed from target-design.md; refs name its entries (T1, T2, ...)",
+    "decision": "optional: the owner's saved choice, copied from the crosswalk page's store at the end of a session (better: playbook | framework | both | neither | empty; decision: keep | adopt | blend | change | later; note; saved date; status: tentative until the whole study is done; the study closed on 2026-10-09 with every row decided and every entry confirmed, and the per-row value is kept as saved); the page's store stays the live copy"
   },
   "relations": {
     "same": "both do it the same way",
@@ -2163,24 +2163,24 @@
   ],
   "targets": {
     "source": "target-design.md",
-    "status": "tentative until the whole study is done",
+    "status": "confirmed at the close of the study, 2026-10-09 (all 32 entries of target-design.md; proposal files and ROADMAP rows follow)",
     "entries": [
       {
         "id": "T1",
         "title": "AI roles that advise, and one manager that reviews for the owner",
-        "status": "tentative",
+        "status": "confirmed 2026-10-09",
         "recorded": "2026-09-30"
       },
       {
         "id": "T2",
         "title": "The interview: how the manager and the roles question the owner",
-        "status": "tentative",
+        "status": "confirmed 2026-10-09",
         "recorded": "2026-09-30"
       },
       {
         "id": "T3",
         "title": "The intent home: in the repository, written from anywhere, with examples",
-        "status": "tentative",
+        "status": "confirmed 2026-10-09",
         "recorded": "2026-09-30"
       }
     ]
