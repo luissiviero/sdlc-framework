@@ -1,25 +1,124 @@
 {
-  "at": "2026-10-09T02:12:02Z",
+  "schema_version": 1,
   "change_id": "0002",
+  "slug": "security-authz-the-guardrail-self-protec",
+  "phase": "b",
+  "profile": "standard",
+  "human_gate": true,
+  "result": "wait",
+  "label": "sdlc:b-ready",
+  "head": "985ac9d92fdec48ddac395d7796d68ee0bdc8ea8",
+  "at": "2026-10-09T02:35:25Z",
+  "dry_run": false,
+  "reason": "",
+  "config_note": "",
   "checks": [
     {
-      "details": {},
-      "name": "owner_fields",
-      "need": "risk_accepted, risk_accepted_by, tests_locked, tests_unlocked_by, iterations_reset_by and the counters are written by the runner from your label on the pull request (sdlc:accept-risk, sdlc:reset-iterations, sdlc:unlock-tests) or by your own commit; the run cannot approve itself (decision 5). The fields were restored to their pre-session values (a test file changed under a lifted lock too); apply the label if the act is yours, else fix the phase command that wrote them and re-run the phase.",
-      "ok": false,
-      "reason": "status.yaml: the session wrote owner-only field(s): risk_accepted: the session accepted 'auth' and recorded 'luissiviero' for it; the runner recorded no label"
+      "name": "limits",
+      "ok": true,
+      "reason": "within the run limits",
+      "need": "",
+      "details": {
+        "iterations": 2,
+        "cap": 2,
+        "classification": "non-routine",
+        "panel_calls": 0,
+        "panel_cap": 4,
+        "elapsed_minutes": 5.3,
+        "spend_usd": null,
+        "spend_usd_total": 5.732739,
+        "spend_entries": 2,
+        "max_budget_usd": null
+      }
+    },
+    {
+      "name": "artifacts",
+      "ok": true,
+      "reason": "every required artifact exists and has its template sections",
+      "need": "",
+      "details": {}
+    },
+    {
+      "name": "design_scope",
+      "ok": true,
+      "reason": "the committed diff stays inside changes/0002-security-authz-the-guardrail-self-protec/",
+      "need": "",
+      "details": {
+        "dirty": [
+          "changes/0002-security-authz-the-guardrail-self-protec/evidence/adversarial-review-b.json",
+          "changes/0002-security-authz-the-guardrail-self-protec/evidence/diff-b.patch",
+          "changes/0002-security-authz-the-guardrail-self-protec/evidence/hook-log.jsonl",
+          "tests/fixtures/sample-python-project/.env"
+        ]
+      }
+    },
+    {
+      "name": "open_concerns",
+      "ok": true,
+      "reason": "no open flagged concern",
+      "need": "",
+      "details": {}
+    },
+    {
+      "name": "panel",
+      "ok": true,
+      "reason": "no panel decision at this gate",
+      "need": "",
+      "details": {}
+    },
+    {
+      "name": "commands",
+      "ok": true,
+      "reason": "deferred to the runner: build, test and lint run after the model's session, outside its sandbox (issue #91); not yet run",
+      "need": "",
+      "details": {
+        "deferred": true
+      }
+    },
+    {
+      "name": "guardrails",
+      "ok": true,
+      "reason": "the diff does not touch a guardrail file",
+      "need": "",
+      "details": {}
+    },
+    {
+      "name": "risk_list",
+      "ok": true,
+      "reason": "no risk-list item touched",
+      "need": "",
+      "details": {
+        "accepted": [
+          "auth"
+        ]
+      }
+    },
+    {
+      "name": "owner_actions",
+      "ok": true,
+      "reason": "risk acceptances, iteration and panel-call resets and test-lock lifts, if any, were committed by the owner or applied by the owner's label",
+      "need": "",
+      "details": {
+        "risk_accepted": [
+          "auth"
+        ],
+        "label_actors": {
+          "risk_accepted": {
+            "auth": "luissiviero"
+          }
+        }
+      }
+    },
+    {
+      "name": "adversarial_review",
+      "ok": true,
+      "reason": "adversarial reviewer says continue",
+      "need": "",
+      "details": {
+        "classification": "non-routine",
+        "reasons": []
+      }
     }
   ],
-  "config_note": "",
-  "dry_run": false,
-  "head": "f9f4873252fe3b42c525a9d3db5006771c17f35b",
-  "human_gate": true,
-  "label": "sdlc:needs-human",
-  "phase": "b",
-  "profile": "",
-  "reason": "owner_fields: status.yaml: the session wrote owner-only field(s): risk_accepted: the session accepted 'auth' and recorded 'luissiviero' for it; the runner recorded no label",
-  "result": "park",
-  "schema_version": 1,
-  "slug": "security-authz-the-guardrail-self-protec",
-  "what_i_need": "## What I need from you\nGate (b) parked change 0002 (security-authz-the-guardrail-self-protec) on 2026-10-09T02:12:02Z.\n- **owner_fields**: status.yaml: the session wrote owner-only field(s): risk_accepted: the session accepted 'auth' and recorded 'luissiviero' for it; the runner recorded no label\n  - what I need: risk_accepted, risk_accepted_by, tests_locked, tests_unlocked_by, iterations_reset_by and the counters are written by the runner from your label on the pull request (sdlc:accept-risk, sdlc:reset-iterations, sdlc:unlock-tests) or by your own commit; the run cannot approve itself (decision 5). The fields were restored to their pre-session values (a test file changed under a lifted lock too); apply the label if the act is yours, else fix the phase command that wrote them and re-run the phase.\nWhen the item is settled, re-run the gate: `python \"${CLAUDE_PLUGIN_ROOT}/plugin/gate/cli.py\" check --root . --id 0002 --phase b` (review comments are the change request; /sdlc-fix from B3 re-runs the phase with them).\n"
+  "what_i_need": ""
 }
