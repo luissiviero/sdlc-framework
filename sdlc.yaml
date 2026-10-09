@@ -8,7 +8,7 @@
 # (lite, gates (a) and (e) only, was withdrawn by decision 21 and removed in 0.2.14: a file
 # that still says lite reads as standard)
 profile: standard
-review: parked
+review: deferred
 panel_advocate_model: opus
 
 # --- feedback loop: one-command targets (build guide step 14; article p.27 step 1) --------
