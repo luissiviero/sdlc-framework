@@ -415,14 +415,18 @@ def _resolution_walk(command: str, cwd: str):
             continue
         git_c = _git_dash_c(plain)
         if git_c is not None:
+            # `git -C <dir>` changes the working directory of that one git process only; unlike
+            # `cd`, it never persists to a later part of the same chain (round 4 review finding:
+            # `git -C docs status && echo x > CLAUDE.md` writes the real root CLAUDE.md, not
+            # docs/CLAUDE.md, no matter what the git invocation's own directory was) — so `base`
+            # is local to this part and `current`/`nonliteral` are left untouched.
             dirarg2, rest = git_c
             if _is_literal(dirarg2):
-                current = _resolve(current, dirarg2)
-                nonliteral = False
+                base, base_nl = _resolve(current, dirarg2), False
             else:
-                nonliteral = True
+                base, base_nl = current, True
             for target in _part_targets(rest, raw_text):
-                yield target, current, nonliteral
+                yield target, base, base_nl
             continue
         inner = _inner_shell_command(plain)
         if inner is not None:

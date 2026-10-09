@@ -1880,6 +1880,19 @@ def test_shell_guard_resolves_a_git_dash_c_target(tmp_path, project):
     assert here.block
 
 
+def test_shell_guard_git_dash_c_does_not_leak_into_a_later_chain_part(tmp_path, project):
+    """Round 4 review finding: unlike `cd`, `git -C <dir>` changes the directory of that one
+    git process only — it never persists to a later part of the same chain. A command that
+    only *looks* like it writes under `other/` after a `git -C other ...` actually writes to
+    the real cwd's CLAUDE.md, and the hook must deny it."""
+    other = tmp_path / "other"
+    other.mkdir()
+    leaked = shell_guard.decide(
+        _bash(f"git -C {other} status && echo x > CLAUDE.md", str(project)), [], env=_env(project)
+    )
+    assert leaked.block  # the echo writes the real project root's CLAUDE.md, not other/CLAUDE.md
+
+
 @pytest.mark.parametrize(
     "command",
     [
