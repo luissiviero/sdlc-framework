@@ -47,6 +47,14 @@
     "last_seen": "2026-10-03T21:52:04Z",
     "summary": "Unchanged from the previous two rounds: the CLAUDE.md guardrail table still has only 3 rows (lines 3, new-line-after-3, 35); spec.md's Acceptance text also names line 39, addressed only in the Summary's prose (explaining no edit is needed there), never as a table row."
   },
+  "3384bdbb6b1fbfa5": {
+    "count": 1,
+    "file": "plugin/ci/run_phase.py",
+    "first_change": "0002",
+    "last_change": "0002",
+    "last_seen": "2026-10-09T15:45:40Z",
+    "summary": "ci_settings_file writes the diagnostic keys _denyWriteSkipped/_denyWriteNarrowed directly into sandbox.filesystem of the temporary settings.ci.json copy that is passed to the live claude -p --settings invocation, not just returned to the caller, and it is not verified live whether Claude Code's sandbox config loader tolerates an unrecognised key under sandbox.filesystem."
+  },
   "34ada9808bfe9220": {
     "count": 2,
     "file": "plugin/gate/checks.py",

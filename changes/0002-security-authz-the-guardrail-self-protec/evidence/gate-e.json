@@ -1,30 +1,25 @@
 {
-  "schema_version": 1,
+  "at": "2026-10-09T15:54:39Z",
   "change_id": "0002",
-  "slug": "security-authz-the-guardrail-self-protec",
-  "phase": "e",
-  "profile": "standard",
-  "human_gate": true,
-  "result": "park",
-  "label": "sdlc:needs-human",
-  "head": "1bc4e3b2671f3efe0153d526c7cf35c2bb8166fc",
-  "at": "2026-10-09T12:27:17Z",
-  "dry_run": false,
-  "reason": "limits: iteration cap reached: 4 fix iterations, cap 2 (non-routine)",
-  "config_note": "",
   "checks": [
     {
-      "name": "limits",
+      "details": {},
+      "name": "commands",
+      "need": "The session's gate left build, test and lint (and, at (d) and (e), the three evidence logs) to the runner (issue #91) and the runner could not run them, so the record says nothing about the project's targets. Re-run the phase (the un-park label, or a workflow_dispatch with the change id); the job log names the step that failed.",
       "ok": false,
-      "reason": "iteration cap reached: 4 fix iterations, cap 2 (non-routine)",
-      "need": "Look at the partial evidence, then either fix by hand, or reset the count with `cli.py set-iterations --root . --id 0002 --count 0` to allow another round.",
-      "details": {
-        "iterations": 4,
-        "cap": 2,
-        "classification": "non-routine",
-        "stop": true
-      }
+      "reason": "deferred to the runner and never run: claude exited 1"
     }
   ],
-  "what_i_need": "## What I need from you\nGate (e) parked change 0002 (security-authz-the-guardrail-self-protec) on 2026-10-09T12:27:17Z.\n- **limits**: iteration cap reached: 4 fix iterations, cap 2 (non-routine)\n  - what I need: Look at the partial evidence, then either fix by hand, or reset the count with `cli.py set-iterations --root . --id 0002 --count 0` to allow another round.\nWhen the item is settled, re-run the gate: `python \"${CLAUDE_PLUGIN_ROOT}/plugin/gate/cli.py\" check --root . --id 0002 --phase e` (review comments are the change request; /sdlc-fix from B3 re-runs the phase with them).\n"
+  "config_note": "",
+  "dry_run": false,
+  "head": "55ce5f770c0b8b6bf68580fdc065c519883f18c0",
+  "human_gate": true,
+  "label": "sdlc:needs-human",
+  "phase": "e",
+  "profile": "",
+  "reason": "commands: deferred to the runner and never run: claude exited 1",
+  "result": "park",
+  "schema_version": 1,
+  "slug": "security-authz-the-guardrail-self-protec",
+  "what_i_need": "## What I need from you\nGate (e) parked change 0002 (security-authz-the-guardrail-self-protec) on 2026-10-09T15:54:39Z.\n- **commands**: deferred to the runner and never run: claude exited 1\n  - what I need: The session's gate left build, test and lint (and, at (d) and (e), the three evidence logs) to the runner (issue #91) and the runner could not run them, so the record says nothing about the project's targets. Re-run the phase (the un-park label, or a workflow_dispatch with the change id); the job log names the step that failed.\nWhen the item is settled, re-run the gate: `python \"${CLAUDE_PLUGIN_ROOT}/plugin/gate/cli.py\" check --root . --id 0002 --phase e` (review comments are the change request; /sdlc-fix from B3 re-runs the phase with them).\n"
 }

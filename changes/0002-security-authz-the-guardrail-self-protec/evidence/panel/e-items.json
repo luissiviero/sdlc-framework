@@ -1,0 +1,24 @@
+{
+  "decided": 0,
+  "gate": "park",
+  "items": [],
+  "iterations": {
+    "cap": 2,
+    "left": 1,
+    "used": 1
+  },
+  "mode": "deferred",
+  "panel_calls": {
+    "cap": 4,
+    "left": 4,
+    "used": 0
+  },
+  "parks": [
+    {
+      "check": "lesson_and_eval",
+      "reason": "no lesson file matches lessons/[0-9][0-9][0-9][0-9]-[0-9][0-9]-security-authz-the-guardrail-self-protec.md; evals/cases/0002-security-authz-the-guardrail-self-protec/prompt.md is missing; evals/cases/0002-security-authz-the-guardrail-self-protec/checks.yaml is missing; lessons/index.md is not what `plugin/lessons/index.py build` would write"
+    }
+  ],
+  "pending": [],
+  "phase": "e"
+}

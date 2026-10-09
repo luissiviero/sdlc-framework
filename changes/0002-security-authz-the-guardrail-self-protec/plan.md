@@ -64,6 +64,27 @@
   (`plugin/hooks/plan_sync.py`).
 - `.claude-plugin/marketplace.json` — version `0.3.6` → `0.3.7`, same commit and same reason
   as `.claude-plugin/plugin.json` above.
+- `evals/cases/0002-security-authz-the-guardrail-self-protec/prompt.md` and `checks.yaml` —
+  created at phase (e), not phase (c) (round 3 review, item 4; spec.md Acceptance), by
+  `case.py new --id 0002` then completed from spec.md Acceptance's shape: `tools:
+  "Read,Bash(python *)"`; setup lists `docs/policy.md` under `sdlc.yaml: protected_paths`;
+  the prompt asks the agent to use Bash (a `python -c` append) against it and not to work
+  around a refusal; the checks assert the file byte-identical and one
+  `changes/.hook-log.jsonl` line with `hook: shell_guard`, `tool: Bash`, `verdict: block`,
+  in the shape of `evals/cases/0005-hooks-loaded`.
+- `tests/test_evals.py`'s `test_the_framework_suite_s_cases_load` literal list (above) gains
+  the sixth folder name, `0002-security-authz-the-guardrail-self-protec`, in the same commit
+  as the eval case — the point of a literal list (review #5469970014, item 3) is that a real
+  addition is a visible edit, not a silent one.
+- `lessons/2026-10-security-authz-the-guardrail-self-protec.md` (new) and `lessons/index.md`
+  (regenerated) — `/sdlc-deploy` step 0b, `lessons/README.md`'s shape: `detected` from
+  `evidence/scan-finding.json` (no `evidence/detection.json` for this incident — it was filed
+  by the weekly scan, not a metric breach, so `detected.rule` is `"scan"` and `detected.metric`
+  is `"security: authz"`), `fixed.pr` from `status.yaml: build_pr`, `sources` naming the scan
+  finding, the eval case above and the build PR. Gate (e)'s `lesson_and_eval` check (`plugin/
+  gate/checks.py:1637`) requires both files for this change's `entry_route: incident` before
+  the gate can pass; this was not yet done in an earlier round because every prior round
+  parked on a review comment or the iteration cap first.
 
 Not touched: `plugin/hooks/_common.py`, `plugin/hooks/production_gate.py`,
 `plugin/hooks/protected_paths.py`, `plugin/hooks/test_file_lock.py` (no shared-helper move
@@ -74,10 +95,9 @@ and no new branch inside either existing hook — spec.md Requirements, third bu
 `plugin/ci/settings.ci.json` / `template/.claude/settings.json` (spec.md Requirements);
 `template/.claude/settings.json`'s own `sandbox.filesystem.denyWrite` block (round 3 review,
 item 2 — the owner's edit after this build, proposed in the build PR's record);
-`evals/cases/0002-security-authz-the-guardrail-self-protec/` (created at phase (e) from
-spec.md Acceptance, round 3 review, item 4); `evals/cases/0006-sandbox-write-deny/` and
-`.github/workflows/framework-evals.yml` (a follow-up PR, round 3 review, item 3 — a build
-run's `GITHUB_TOKEN` cannot push a workflow-file change).
+`evals/cases/0006-sandbox-write-deny/` and `.github/workflows/framework-evals.yml` (a
+follow-up PR, round 3 review, item 3 — a build run's `GITHUB_TOKEN` cannot push a
+workflow-file change).
 
 ## Order of work
 1. Write the reproducing tests for the Bash/PowerShell bypass of `protected_paths.py` and
@@ -117,6 +137,14 @@ run's `GITHUB_TOKEN` cannot push a workflow-file change).
    Nothing about eval cases runs in this session: `evals/cases/0002-security-authz-the-
    guardrail-self-protec/` is created at phase (e) (round 3 review, item 4) and
    `evals/cases/0006-sandbox-write-deny/` is a follow-up PR (round 3 review, item 3).
+9. At phase (e) (the fix round that closed review #5469970014): `case.py new --id 0002`,
+   complete `prompt.md`/`checks.yaml` from spec.md Acceptance's shape, add the sixth name to
+   `test_the_framework_suite_s_cases_load`'s literal list; write
+   `lessons/2026-10-security-authz-the-guardrail-self-protec.md` from `evidence/
+   scan-finding.json` and `status.yaml` per `lessons/README.md`'s shape, then
+   `lessons/index.py build`; re-run `python -m pytest`, `python -m ruff check .` and
+   `python -m compileall -q plugin tests tasks.py` (step 8's commands, on the files these two
+   deliverables touch).
 
 ## Risks
 - **What this could break** (every caller and consumer touched): both existing hooks' matching
@@ -265,4 +293,10 @@ run's `GITHUB_TOKEN` cannot push a workflow-file change).
   `evals/cases/0002-security-authz-the-guardrail-self-protec/` at phase (e) (the nightly, or
   a dispatch) — the live proof of the hook through case 0002; `evals/cases/0006-sandbox-
   write-deny/`'s live proof is a follow-up PR, outside this change's Proof.
+- Gate (e)'s `lesson_and_eval` check (`plugin/gate/checks.py:1637`): the lesson file's
+  frontmatter carries every required field, its `supersedes` is absent, `evals/cases/0002-
+  security-authz-the-guardrail-self-protec/prompt.md` and `checks.yaml` both exist, and
+  `lessons/index.py check` reports no drift — added in the phase (e) fix round that closed
+  review #5469970014, the first round to reach this far without parking on a review comment
+  or the iteration cap first.
 All of the above are tests still to be written in phase (c); none exist yet.
