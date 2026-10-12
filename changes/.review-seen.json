@@ -215,6 +215,14 @@
     "last_seen": "2026-10-08T12:06:32Z",
     "summary": "`build()` unconditionally runs `lessons_dir.mkdir(parents=True, exist_ok=True)`, so the read-only `check()` (and `lesson_and_eval`'s call into it) creates `lessons/` as a side effect on a project that has none yet, e.g. when no lesson file matches the gate's glob at all."
   },
+  "a86777bfdebeabd3": {
+    "count": 1,
+    "file": "plugin/hooks/shell_guard.py",
+    "first_change": "0002",
+    "last_change": "0002",
+    "last_seen": "2026-10-12T11:17:37Z",
+    "summary": "_git_global_scan only remembers the last `-C <dir>` it sees instead of composing successive `-C` values the way git itself does, so a chained `git -C <dir1> -C <dir2> ...` that git resolves back onto (or past) a protected directory is instead resolved by the hook relative to the original cwd and can fall outside the project root, letting the write through."
+  },
   "aa36e112787ae720": {
     "count": 1,
     "file": "tests/test_evals.py",

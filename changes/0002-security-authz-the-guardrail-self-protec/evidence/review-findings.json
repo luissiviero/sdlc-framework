@@ -1,10 +1,20 @@
 {
-  "at": "2026-10-12T10:30:00Z",
-  "findings": [],
-  "head": "9d19208a6693f2c036a2c2ab0c97c122e127107c",
+  "at": "2026-10-12T11:14:18Z",
+  "findings": [
+    {
+      "file": "plugin/hooks/shell_guard.py",
+      "line": 400,
+      "pass": "security",
+      "rule": "spec.md Requirements bullet 1 / security-baseline rule 1 (authorization must not depend on which parsed form of the command reaches the check) \u2014 this reopens the class of Bash-route bypass shell_guard.py exists to close",
+      "severity": "important",
+      "signature": "a86777bfdebeabd3",
+      "summary": "_git_global_scan only remembers the last `-C <dir>` it sees instead of composing successive `-C` values the way git itself does, so a chained `git -C <dir1> -C <dir2> ...` that git resolves back onto (or past) a protected directory is instead resolved by the hook relative to the original cwd and can fall outside the project root, letting the write through."
+    }
+  ],
+  "head": "be38e2797c0dc164940fa5d3f4cc3c960e3a84f3",
   "schema_version": 1,
   "tally": {
-    "important": 0,
+    "important": 1,
     "nit": 0,
     "nits_omitted": 0
   }

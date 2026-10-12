@@ -1903,6 +1903,24 @@ def test_shell_guard_resolves_a_git_dash_c_target(tmp_path, project):
     assert here.block
 
 
+def test_shell_guard_composes_chained_git_dash_c_targets(project):
+    """Fresh review pass (fix round after round 4, 2026-10-12): git composes successive
+    `-C <dir>` the way `cd` composes directory changes, each relative to the one before it
+    — `git -C docs -C .. rm CLAUDE.md` run from the project root resolves back to the root,
+    not to `docs/..` read against the root directly, and must still be denied."""
+    from hooks import shell_guard
+
+    (project / "sub").mkdir()
+    back_to_root = shell_guard.decide(
+        _bash("git -C sub -C .. rm CLAUDE.md", str(project)), [], env=_env(project)
+    )
+    assert back_to_root.block
+    stays_under_sub = shell_guard.decide(
+        _bash("git -C sub -C . rm CLAUDE.md", str(project)), [], env=_env(project)
+    )
+    assert not stays_under_sub.block  # sub/CLAUDE.md, not the root guardrail file
+
+
 def test_shell_guard_git_dash_c_does_not_leak_into_a_later_chain_part(tmp_path, project):
     """Round 4 review finding: unlike `cd`, `git -C <dir>` changes the directory of that one
     git process only — it never persists to a later part of the same chain. A command that

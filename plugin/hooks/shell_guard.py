@@ -399,10 +399,13 @@ _GIT_GLOBAL_VALUE_OPTS = {"-c", "-C", "--git-dir", "--work-tree", "--namespace",
 
 def _git_global_scan(words: list[str]) -> tuple[int, str | None]:
     """From ``words[1:]`` (``words[0]`` is ``git``), skip every global option and its value,
-    returning the index of the subcommand (``len(words)`` when there is none) and the directory
-    of the last ``-C <dir>`` seen — so a global option before the verb (``git -c x=y rm f``) or
-    before ``-C`` (``git -c x=y -C dir rm f``) is no longer mistaken for the verb itself (round
-    4 fix-request item 1)."""
+    returning the index of the subcommand (``len(words)`` when there is none) and the
+    directory of every ``-C <dir>`` seen, composed the way git itself composes them: each
+    successive ``-C`` is relative to the one before it, so ``git -C docs -C .. rm f``
+    resolves back to the original cwd, not to ``docs/..`` read against the cwd directly
+    (the fresh review pass of the fix round after round 4, 2026-10-12) — a global option
+    before the verb (``git -c x=y rm f``) or before ``-C`` (``git -c x=y -C dir rm f``) is
+    no longer mistaken for the verb itself (round 4 fix-request item 1)."""
     i = 1
     n = len(words)
     dash_c: str | None = None
@@ -416,11 +419,12 @@ def _git_global_scan(words: list[str]) -> tuple[int, str | None]:
         if name in _GIT_GLOBAL_VALUE_OPTS:
             if has_eq:
                 if name == "-C":
-                    dash_c = value
+                    dash_c = value if dash_c is None else str(Path(dash_c) / value)
                 i += 1
             else:
                 if name == "-C" and i + 1 < n:
-                    dash_c = words[i + 1]
+                    nxt = words[i + 1]
+                    dash_c = nxt if dash_c is None else str(Path(dash_c) / nxt)
                 i += 2
             continue
         i += 1
