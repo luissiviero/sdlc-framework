@@ -31,6 +31,14 @@
     "last_seen": "2026-10-09T11:15:39Z",
     "summary": "The diff imports `shell_guard` at module scope in tests/test_hooks.py, but plan.md's Order of work step 1 and Files-that-change section require it 'imported inside the test functions, never at module top-level, so a failure in the new tests cannot abort collection of the rest of the file', and plan.md was never updated in any commit on this branch to reflect the departure."
   },
+  "260725ad8b09d157": {
+    "count": 1,
+    "file": "changes/0002-security-authz-the-guardrail-self-protec/evidence/test.log",
+    "first_change": "0002",
+    "last_change": "0002",
+    "last_seen": "2026-10-12T08:17:00Z",
+    "summary": "The committed test.log/lint.log are timestamped 2026-10-09T11:08:49Z, before this round's commit (2026-10-12) added the eval case and lesson files, so the pasted \"all green\" pytest output does not cover the current tree (consistent with gate-e.json's own \"deferred to the runner and never run\" park reason)."
+  },
   "27da52344010278e": {
     "count": 1,
     "file": "CLAUDE.md",
@@ -207,6 +215,14 @@
     "last_seen": "2026-10-08T12:06:32Z",
     "summary": "`build()` unconditionally runs `lessons_dir.mkdir(parents=True, exist_ok=True)`, so the read-only `check()` (and `lesson_and_eval`'s call into it) creates `lessons/` as a side effect on a project that has none yet, e.g. when no lesson file matches the gate's glob at all."
   },
+  "aa36e112787ae720": {
+    "count": 1,
+    "file": "tests/test_evals.py",
+    "first_change": "0002",
+    "last_change": "0002",
+    "last_seen": "2026-10-12T08:17:00Z",
+    "summary": "python -m pytest fails at HEAD: test_the_framework_suite_s_cases_load's literal case-name list was not updated to include the new evals/cases/0002-security-authz-the-guardrail-self-protec folder this round added, so run.discover(FRAMEWORK_CASES) now returns 6 names against a hard-coded list of 5."
+  },
   "adcf7a1b9e91cd94": {
     "count": 1,
     "file": "plugin/ci/run_phase.py",
@@ -304,12 +320,12 @@
     "summary": "Unchanged from the previous two rounds: doubt that sources should also hold the verbatim quote; spec.md's Design line describing sources as \"the docs URL or run URL and the verbatim quote already in the section, restated as structured data\" could be read as requiring the quote in the field itself, though the file only carries the URL."
   },
   "eb785655ad27959d": {
-    "count": 1,
+    "count": 2,
     "file": "plugin/hooks/shell_guard.py",
     "first_change": "0002",
     "last_change": "0002",
-    "last_seen": "2026-10-09T11:15:39Z",
-    "summary": "The new hook script is 985 lines, nearly double the coding-standards check's 500-line advisory threshold for a single source file."
+    "last_seen": "2026-10-12T08:17:00Z",
+    "summary": "The new hook script is 985 lines, nearly double the coding-standards check's 500-line advisory threshold for a single source file, with no split proposed in plan.md's Options not taken."
   },
   "f3566379af405bb6": {
     "count": 1,

@@ -9,10 +9,10 @@ review_override: null
 gate:
   phase: e
   result: parked
-  reason: "commands: deferred to the runner and never run: claude exited 1"
-  at: "2026-10-09T15:54:39Z"
-parked_reason: "commands: deferred to the runner and never run: claude exited 1"
-iterations: 2
+  reason: "limits: iteration cap reached: 3 fix iterations, cap 2 (non-routine)"
+  at: "2026-10-12T08:19:08Z"
+parked_reason: "limits: iteration cap reached: 3 fix iterations, cap 2 (non-routine)"
+iterations: 3
 panel_calls: 0
 external_ref: null
 risk_accepted:
@@ -29,5 +29,5 @@ released_at: null
 released_sha: null
 released_pr: null
 created_at: "2026-10-05T14:53:56Z"
-updated_at: "2026-10-12T08:03:46Z"
+updated_at: "2026-10-12T08:19:08Z"
 schema_version: 1

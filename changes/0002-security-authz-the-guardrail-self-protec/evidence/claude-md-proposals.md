@@ -1,0 +1,2 @@
+<!-- Proposed CLAUDE.md lines under "Things Claude gets wrong" (article p.34 step 5). The PR description quotes this file; only the owner edits CLAUDE.md. -->
+- python -m pytest fails at HEAD: test_the_framework_suite_s_cases_load's literal case-name list was not updated to include the new evals/cases/0002-security-authz-the-guardrail-self-protec folder this round added, so run.discover(FRAMEWORK_CASES) now returns 6 names against a hard-coded list of 5 (change 0002; the owner edits CLAUDE.md)
