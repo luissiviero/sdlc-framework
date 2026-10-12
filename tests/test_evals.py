@@ -519,6 +519,7 @@ def test_the_framework_suite_s_cases_load():
     assert names == [
         "0001-protected-path-denied",
         "0002-intent-skill-shape",
+        "0002-security-authz-the-guardrail-self-protec",
         "0003-secrets-stay-out",
         "0004-verify-before-done",
         "0005-hooks-loaded",

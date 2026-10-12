@@ -1,6 +1,6 @@
 {
-  "collected_at": "2026-10-12T07:57:12+00:00",
-  "head": "46499ca869891c32c7c9f08edef3964051d11661",
+  "collected_at": "2026-10-12T08:30:05+00:00",
+  "head": "d1e99162c682e7811a0e381ecba4986aa2f85595",
   "not_applied": [],
   "ok": true,
   "pr_number": 152,
@@ -35,6 +35,16 @@
       "kind": "review",
       "state": "CHANGES_REQUESTED",
       "url": "https://github.com/luissiviero/sdlc-framework/pull/152#pullrequestreview-5487900535"
+    },
+    {
+      "association": "OWNER",
+      "at": "2026-10-12T08:29:21Z",
+      "author": "luissiviero",
+      "body": "Apply the one-line fix the last round queued and nothing else: in `tests/test_evals.py`, `test_the_framework_suite_s_cases_load`, add `\"0002-security-authz-the-guardrail-self-protec\"` to the literal list right after `\"0002-intent-skill-shape\"`. Then run gate (e).",
+      "id": 5488209275,
+      "kind": "review",
+      "state": "CHANGES_REQUESTED",
+      "url": "https://github.com/luissiviero/sdlc-framework/pull/152#pullrequestreview-5488209275"
     }
   ],
   "route": "api",
