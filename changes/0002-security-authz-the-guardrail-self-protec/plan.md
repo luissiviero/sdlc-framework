@@ -79,6 +79,15 @@
   the sixth folder name, `0002-security-authz-the-guardrail-self-protec`, in the same commit
   as the eval case — the point of a literal list (review #5469970014, item 3) is that a real
   addition is a visible edit, not a silent one.
+- `pyproject.toml` — `[tool.ruff.lint.isort]`'s `known-first-party` gains `"lessons"` (the
+  phase (e) fix round's lint fix, review #5488970969): the new root `lessons/` folder was
+  read by ruff's isort as third-party, mis-ordering every import that names it.
+- `plugin/gate/checks.py` — import block re-sorted by `ruff check --fix` for the
+  `known-first-party` change above; no behavior change (lint fix, review #5488970969).
+- `tests/test_gate.py` — import block re-sorted by `ruff check --fix`, same cause and same
+  round as the two bullets above; no behavior change.
+- `tests/test_lessons.py` — import block re-sorted by `ruff check --fix`, same cause and
+  same round as the two bullets above; no behavior change.
 - `lessons/2026-10-security-authz-the-guardrail-self-protec.md` (new) and `lessons/index.md`
   (regenerated) — `/sdlc-deploy` step 0b, `lessons/README.md`'s shape: `detected` from
   `evidence/scan-finding.json` (no `evidence/detection.json` for this incident — it was filed
@@ -92,9 +101,11 @@
 Not touched: `plugin/hooks/_common.py`, `plugin/hooks/production_gate.py`,
 `plugin/hooks/protected_paths.py`, `plugin/hooks/test_file_lock.py` (no shared-helper move
 and no new branch inside either existing hook — spec.md Requirements, third bullet);
-`plugin/hooks/secrets_check.py`, `plan_sync.py`; `plugin/gate/checks.py` (its imports of
+`plugin/hooks/secrets_check.py`, `plan_sync.py` (its imports of
 `protected_paths.protected_patterns` and `test_file_lock.test_path_patterns` are unaffected
-— spec.md Design, "what stays unchanged"); the permission allow-list in
+— spec.md Design, "what stays unchanged"; `plugin/gate/checks.py` moved to Files that
+change above for the phase (e) lint fix's import re-sort only, review #5488970969); the
+permission allow-list in
 `plugin/ci/settings.ci.json` / `template/.claude/settings.json` (spec.md Requirements);
 `template/.claude/settings.json`'s own `sandbox.filesystem.denyWrite` block (round 3 review,
 item 2 — the owner's edit after this build, proposed in the build PR's record);

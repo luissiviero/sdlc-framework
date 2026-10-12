@@ -1,6 +1,6 @@
 {
-  "collected_at": "2026-10-12T08:30:05+00:00",
-  "head": "d1e99162c682e7811a0e381ecba4986aa2f85595",
+  "collected_at": "2026-10-12T09:41:05+00:00",
+  "head": "9f104a81f1cd473a2fb5404727c4d74ba2fa4496",
   "not_applied": [],
   "ok": true,
   "pr_number": 152,
@@ -45,6 +45,16 @@
       "kind": "review",
       "state": "CHANGES_REQUESTED",
       "url": "https://github.com/luissiviero/sdlc-framework/pull/152#pullrequestreview-5488209275"
+    },
+    {
+      "association": "OWNER",
+      "at": "2026-10-12T09:40:20Z",
+      "author": "luissiviero",
+      "body": "Lint only, nothing else:\n1. `python -m ruff check .` fails with I001 in `plugin/gate/checks.py`, `tests/test_gate.py` and `tests/test_lessons.py`: the new root `lessons/` folder makes ruff's isort read `lessons` as first-party. In `pyproject.toml`, `[tool.ruff.lint.isort]`, add `\"lessons\"` to `known-first-party`, then run `python -m ruff check --fix .`.\n2. `python -m ruff format --check .` fails on `tests/test_hooks.py` (a blank line after `from hooks import shell_guard` in 46 tests): run `python -m ruff format tests/test_hooks.py`.\nList each of the five files in plan.md's \"Files that change\", one path per bullet. Then run gate (e).",
+      "id": 5488970969,
+      "kind": "review",
+      "state": "CHANGES_REQUESTED",
+      "url": "https://github.com/luissiviero/sdlc-framework/pull/152#pullrequestreview-5488970969"
     }
   ],
   "route": "api",

@@ -10,7 +10,6 @@ from __future__ import annotations
 from pathlib import Path
 
 from lessons import index as les
-
 from state import yamlish
 
 DEFAULT_FRONTMATTER = {

@@ -30,14 +30,13 @@ PLUGIN_DIR = Path(__file__).resolve().parent.parent
 if str(PLUGIN_DIR) not in sys.path:
     sys.path.insert(0, str(PLUGIN_DIR))
 
-from lessons import index as lessons_mod  # noqa: E402
-
 from gate import artifacts as art  # noqa: E402
 from gate import diff as diffmod  # noqa: E402
 from gate.diff import Diff  # noqa: E402
 from gate.policy import automation_identity, is_automation  # noqa: E402
 from hooks import plan_sync, protected_paths  # noqa: E402
 from hooks._common import matches  # noqa: E402
+from lessons import index as lessons_mod  # noqa: E402
 from state import conventions as c  # noqa: E402
 from state import yamlish  # noqa: E402
 from state.status import STATUS_FILE, Status  # noqa: E402

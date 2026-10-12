@@ -2439,7 +2439,6 @@ def test_gate_f_parks_when_the_diagnosis_committed_source(maintain_project):
 
 # --- lesson and eval, gate (e) only (change 0003) ---------------------------------------------
 from lessons import index as lessons_index  # noqa: E402
-
 from tests.test_lessons import write_lesson  # noqa: E402
 
 LESSON_SLUG = "x"  # matches _ctx's Status(slug="x")
