@@ -27,14 +27,31 @@ No instance of this authz weakness remains in the codebase: the case at `plugin/
 - 98a1212 test(0002): gate (d) evidence
 - beab9d4 run(d): spend recorded; gate commands run after the session
 - 7016339 run(review): spend recorded
+- b805353 review(0002): gate (e) evidence
+- 8231743 fix(0002): cap reached before review #5469970014 could be applied
+- 09d3b69 owner labels applied: sdlc:reset-iterations
+- 55ce5f7 fix(0002): module-scope shell_guard import, dead _absolute_rule_root, tautological eval-suite assertion
+- 46499ca park: commands: deferred to the runner and never run: claude exited 1
+- 1a6cf11 fix(0002): incident lesson, eval case and rebuilt lessons index
+- 5c4c6c8 fix(0002): gate (e) parked on the iteration cap; pytest fix queued, not applied
+- d1e9916 owner labels applied: sdlc:reset-iterations
+- 00c215b fix(0002): add the new eval case to the framework suite's literal list
+- 27acd1a fix(0002): fresh review pass and adversarial verdict at HEAD 00c215b
+- 9f104a8 run(fix): spend recorded; gate commands run after the session
+- 9d19208 fix(0002): lint fix for review #5488970969 (isort known-first-party, ruff format)
+- b38dde0 fix(0002): fresh review pass, adversarial verdict and gate (e) at HEAD 9d19208, fix-response
+- ddac29b run(fix): spend recorded; gate commands run after the session
+- f0250b1 owner labels applied: sdlc:reset-iterations
+- be38e27 fix(0002): use as_posix() for Windows-path test commands (review #5489774399)
+- 7764e7a review(0002): fix git -C chaining in shell_guard (composes successive -C the way git does)
 
 ## Evidence
 
-test green, build green, lint green, verifier.md present, 1 screenshot(s)
+test deferred to the runner, build deferred to the runner, lint deferred to the runner, verifier.md present, 1 screenshot(s)
 
 ## Review findings
 
-1 Important, 3 nits
+0 Important, 0 nits
 
 ## Links
 
