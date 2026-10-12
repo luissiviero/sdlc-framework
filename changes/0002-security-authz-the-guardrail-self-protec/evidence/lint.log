@@ -1,2 +1,76 @@
-# python -m ruff check . — exit 0 — 0.1s — 2026-10-09T11:08:49Z
-All checks passed!
+# python -m ruff check . — exit 1 — 0.0s — 2026-10-12T09:06:07Z
+I001 [*] Import block is un-sorted or un-formatted
+  --> plugin/gate/checks.py:33:1
+   |
+31 |       sys.path.insert(0, str(PLUGIN_DIR))
+32 |
+33 | / from lessons import index as lessons_mod  # noqa: E402
+34 | |
+35 | | from gate import artifacts as art  # noqa: E402
+36 | | from gate import diff as diffmod  # noqa: E402
+37 | | from gate.diff import Diff  # noqa: E402
+38 | | from gate.policy import automation_identity, is_automation  # noqa: E402
+39 | | from hooks import plan_sync, protected_paths  # noqa: E402
+40 | | from hooks._common import matches  # noqa: E402
+41 | | from state import conventions as c  # noqa: E402
+42 | | from state import yamlish  # noqa: E402
+43 | | from state.status import STATUS_FILE, Status  # noqa: E402
+   | |____________________________________________^
+44 |
+45 |   PLACEHOLDER_COMMAND_RE = re.compile(r"^\s*echo\s+no\s+\w+\s+target\s*$", re.IGNORECASE)
+   |
+help: Organize imports
+   |
+32 |
+   - from lessons import index as lessons_mod  # noqa: E402
+   -
+33 | from gate import artifacts as art  # noqa: E402
+--------------------------------------------------------------------------------
+38 | from hooks._common import matches  # noqa: E402
+39 + from lessons import index as lessons_mod  # noqa: E402
+40 | from state import conventions as c  # noqa: E402
+   |
+
+I001 [*] Import block is un-sorted or un-formatted
+    --> tests/test_gate.py:2441:1
+     |
+2440 |   # --- lesson and eval, gate (e) only (change 0003) ---------------------------------------------
+2441 | / from lessons import index as lessons_index  # noqa: E402
+2442 | |
+2443 | | from tests.test_lessons import write_lesson  # noqa: E402
+     | |___________________________________________^
+2444 |
+2445 |   LESSON_SLUG = "x"  # matches _ctx's Status(slug="x")
+     |
+help: Organize imports
+     |
+2441 | from lessons import index as lessons_index  # noqa: E402
+     -
+2442 | from tests.test_lessons import write_lesson  # noqa: E402
+     |
+
+I001 [*] Import block is un-sorted or un-formatted
+  --> tests/test_lessons.py:8:1
+   |
+ 6 |   looks like YAML."""
+ 7 |
+ 8 | / from __future__ import annotations
+ 9 | |
+10 | | from pathlib import Path
+11 | |
+12 | | from lessons import index as les
+13 | |
+14 | | from state import yamlish
+   | |_________________________^
+15 |
+16 |   DEFAULT_FRONTMATTER = {
+   |
+help: Organize imports
+   |
+12 | from lessons import index as les
+   -
+13 | from state import yamlish
+   |
+
+Found 3 errors.
+[*] 3 fixable with the `--fix` option.

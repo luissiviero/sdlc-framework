@@ -16,7 +16,11 @@
   "parks": [
     {
       "check": "findings",
-      "reason": "findings are for commit 1a6cf117e2, HEAD is 00c215b1fc"
+      "reason": "findings are for commit 00c215b1fc, HEAD is 764b987a7f"
+    },
+    {
+      "check": "adversarial_review",
+      "reason": "verdict is for commit 00c215b1fc, HEAD is 764b987a7f"
     }
   ],
   "pending": [],

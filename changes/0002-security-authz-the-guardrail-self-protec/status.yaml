@@ -8,10 +8,10 @@ profile_override: null
 review_override: null
 gate:
   phase: e
-  result: passed
-  reason: waiting for the owner at gate (e)
-  at: "2026-10-12T08:59:24Z"
-parked_reason: null
+  result: parked
+  reason: "commands: not green: lint (exit 1); evidence: evidence/lint.log: `python -m ruff check .` exited 1"
+  at: "2026-10-12T09:06:07Z"
+parked_reason: "commands: not green: lint (exit 1); evidence: evidence/lint.log: `python -m ruff check .` exited 1"
 iterations: 1
 panel_calls: 0
 external_ref: null
@@ -29,5 +29,5 @@ released_at: null
 released_sha: null
 released_pr: null
 created_at: "2026-10-05T14:53:56Z"
-updated_at: "2026-10-12T08:59:24Z"
+updated_at: "2026-10-12T09:06:07Z"
 schema_version: 1
