@@ -21,14 +21,14 @@ On 2026-10-08, after the PR audit (`docs/handoffs/2026-10-08-pr-audit.md`), the 
 | **The study** (item 8) | One study session once change 0002's design run is under way: record T32 (x-audit's option B), annotate T29's "Open" item with PR #130 (merged `4d8f267`, released in `v0.3.6`), decide x-roles, the last row | The study's own resume prompt is section 8 of `docs/reviews/2026-09-28-playbook-vs-framework.md`. With x-roles decided the study ends, and its confirmed entries become ROADMAP proposals (item 14). |
 | **The failed digest run** 37785997563 | Not re-run | The scheduled run of 2026-10-09 at 06:17 UTC refreshes the issue. |
 | **ROADMAP R5** (the pin-bump pull request) | Accepted | Recorded by session 22's prompt (ROADMAP R5's status); its intent follows change 0002. |
-| **The version plan** | Option (a) | `v0.3.6` carries change 0003, PR #130 and PR #133; the carried gaps are 0.3.7 (`docs/handoffs/2026-10-08-pr-audit.md`, section 0). |
+| **The version plan** | Option (a) | `v0.3.6` carries change 0003, PR #130 and PR #133; the carried gaps are 0.3.7 (`docs/handoffs/2026-10-08-pr-audit.md`, section 0). *[Session 24, 2026-10-09: overtaken — change 0002's build bumps to 0.3.7 (its branch `sdlc/0002/c`); the proposed line after it is 0.3.8 the runs PR (the label race, the turn cap, the template sandbox block), 0.3.9 R7, 0.3.10 R6, 0.3.11 the carried gaps (PROGRESS "Session 24", decision point 1).]* |
 
 ## The order of the work after today
 
 1. Change 0002 through its phases, from the design run already started: the owner reviews gate (b) and later merges the build PR at gate (e).
 2. R5, the pin-bump pull request, through the front door (its intent after 0002).
 3. R6, the `accept` verb: its decision, then its intent.
-4. The carried 0.3.7 gaps (session 20's three and session 21's), as a session finds them in its order.
+4. The carried 0.3.7 gaps (session 20's three and session 21's), as a session finds them in its order. *[Session 24: the owner's newer order of 2026-10-09 (PR #149) is 0002 → R7 → R5 → R6 → the carried gaps, and the gaps' number is 0.3.11 in the proposed line (PROGRESS "Session 24").]*
 5. In parallel, whenever the owner is free: R2's edit, the Windows sitting, one study session.
 6. Fixed dates: the provocation on 2026-10-10 before 23:59 UTC; item 11 after the first scheduled detect run that follows it.
 
