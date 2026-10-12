@@ -5,12 +5,12 @@
   "phase": "e",
   "profile": "standard",
   "human_gate": true,
-  "result": "park",
-  "label": "sdlc:needs-human",
-  "head": "00c215b1fcb8a24674f696f43b892b0ecf1ae041",
-  "at": "2026-10-12T08:59:24Z",
+  "result": "wait",
+  "label": "sdlc:e-ready",
+  "head": "9d19208a6693f2c036a2c2ab0c97c122e127107c",
+  "at": "2026-10-12T09:57:17Z",
   "dry_run": false,
-  "reason": "commands: not green: lint (exit 1); evidence: evidence/lint.log: `python -m ruff check .` exited 1",
+  "reason": "",
   "config_note": "",
   "checks": [
     {
@@ -19,15 +19,15 @@
       "reason": "within the run limits",
       "need": "",
       "details": {
-        "iterations": 1,
+        "iterations": 2,
         "cap": 2,
         "classification": "non-routine",
         "panel_calls": 0,
         "panel_cap": 4,
-        "elapsed_minutes": 27.5,
+        "elapsed_minutes": 14.0,
         "spend_usd": null,
-        "spend_usd_total": 67.504161,
-        "spend_entries": 15,
+        "spend_usd_total": 72.679966,
+        "spend_entries": 16,
         "max_budget_usd": null
       }
     },
@@ -65,40 +65,23 @@
     },
     {
       "name": "commands",
-      "ok": false,
-      "reason": "not green: lint (exit 1)",
-      "need": "Make the failing target pass (fix the code, not the test) and re-run the gate. The tail of each output is in the gate result.",
+      "ok": true,
+      "reason": "deferred to the runner: build, test and lint run after the model's session, outside its sandbox (issue #91); not yet run",
+      "need": "",
       "details": {
-        "runs": {
-          "build": {
-            "command": "python -m compileall -q plugin tests tasks.py",
-            "exit_code": 0,
-            "output": ""
-          },
-          "test": {
-            "command": "python -m pytest",
-            "exit_code": 0,
-            "output": "........................................................................ [  4%]\n........................................................................ [  8%]\n........................................................................ [ 13%]\n........................................................................ [ 17%]\n........................................................................ [ 22%]\n........................................................................ [ 26%]\n........................................................................ [ 31%]\n........................................................................ [ 35%]\n........................................................................ [ 40%]\n........................................................................ [ 44%]\n........................................................................ [ 49%]\n........................................................................ [ 53%]\n........................................................................ [ 58%]\n........................................................................ [ 62%]\n........................................................................ [ 67%]\n........................................................................ [ 71%]\n........................................................................ [ 76%]\n........................................................................ [ 80%]\n........................................................................ [ 85%]\n........................................................................ [ 89%]\n........................................................................ [ 93%]\n........................................................................ [ 98%]\n.........................                                                [100%]\n1609 passed in 291.46s (0:04:51)\n"
-          },
-          "lint": {
-            "command": "python -m ruff check .",
-            "exit_code": 1,
-            "output": "I001 [*] Import block is un-sorted or un-formatted\n  --> plugin/gate/checks.py:33:1\n   |\n31 |       sys.path.insert(0, str(PLUGIN_DIR))\n32 |\n33 | / from lessons import index as lessons_mod  # noqa: E402\n34 | |\n35 | | from gate import artifacts as art  # noqa: E402\n36 | | from gate import diff as diffmod  # noqa: E402\n37 | | from gate.diff import Diff  # noqa: E402\n38 | | from gate.policy import automation_identity, is_automation  # noqa: E402\n39 | | from hooks import plan_sync, protected_paths  # noqa: E402\n40 | | from hooks._common import matches  # noqa: E402\n41 | | from state import conventions as c  # noqa: E402\n42 | | from state import yamlish  # noqa: E402\n43 | | from state.status import STATUS_FILE, Status  # noqa: E402\n   | |____________________________________________^\n44 |\n45 |   PLACEHOLDER_COMMAND_RE = re.compile(r\"^\\s*echo\\s+no\\s+\\w+\\s+target\\s*$\", re.IGNORECASE)\n   |\nhelp: Organize imports\n   |\n32 |\n   - from lessons import index as lessons_mod  # noqa: E402\n   -\n33 | from gate import artifacts as art  # noqa: E402\n--------------------------------------------------------------------------------\n38 | from hooks._common import matches  # noqa: E402\n39 + from lessons import index as lessons_mod  # noqa: E402\n40 | from state import conventions as c  # noqa: E402\n   |\n\nI001 [*] Import block is un-sorted or un-formatted\n    --> tests/test_gate.py:2441:1\n     |\n2440 |   # --- lesson and eval, gate (e) only (change 0003) ---------------------------------------------\n2441 | / from lessons import index as lessons_index  # noqa: E402\n2442 | |\n2443 | | from tests.test_lessons import write_lesson  # noqa: E402\n     | |___________________________________________^\n2444 |\n2445 |   LESSON_SLUG = \"x\"  # matches _ctx's Status(slug=\"x\")\n     |\nhelp: Organize imports\n     |\n2441 | from lessons import index as lessons_index  # noqa: E402\n     -\n2442 | from tests.test_lessons import write_lesson  # noqa: E402\n     |\n\nI001 [*] Import block is un-sorted or un-formatted\n  --> tests/test_lessons.py:8:1\n   |\n 6 |   looks like YAML.\"\"\"\n 7 |\n 8 | / from __future__ import annotations\n 9 | |\n10 | | from pathlib import Path\n11 | |\n12 | | from lessons import index as les\n13 | |\n14 | | from state import yamlish\n   | |_________________________^\n15 |\n16 |   DEFAULT_FRONTMATTER = {\n   |\nhelp: Organize imports\n   |\n12 | from lessons import index as les\n   -\n13 | from state import yamlish\n   |\n\nFound 3 errors.\n[*] 3 fixable with the `--fix` option.\n"
-          }
-        },
-        "ran_by": "runner"
+        "deferred": true
       }
     },
     {
       "name": "evidence",
-      "ok": false,
-      "reason": "evidence/lint.log: `python -m ruff check .` exited 1",
-      "need": "Fix the failing target (fix the code, not the test), then re-run `python \"${CLAUDE_PLUGIN_ROOT}/plugin/evidence/collect.py\" --root . --id 0002` so changes/0002-security-authz-the-guardrail-self-protec/evidence/lint.log records a green run.",
+      "ok": true,
+      "reason": "deferred to the runner: the session wrote no command log, the runner writes test.log, build.log, lint.log from its build, test and lint after the model's session (issue #91); not yet written",
+      "need": "",
       "details": {
-        "red": [
-          "evidence/lint.log: `python -m ruff check .` exited 1"
-        ],
-        "red_files": [
+        "deferred": true,
+        "deferred_logs": [
+          "test.log",
+          "build.log",
           "lint.log"
         ]
       }
@@ -190,5 +173,5 @@
       }
     }
   ],
-  "what_i_need": "## What I need from you\nGate (e) parked change 0002 (security-authz-the-guardrail-self-protec) on 2026-10-12T08:59:24Z.\n- **commands**: not green: lint (exit 1)\n  - what I need: Make the failing target pass (fix the code, not the test) and re-run the gate. The tail of each output is in the gate result.\n- **evidence**: evidence/lint.log: `python -m ruff check .` exited 1\n  - what I need: Fix the failing target (fix the code, not the test), then re-run `python \"${CLAUDE_PLUGIN_ROOT}/plugin/evidence/collect.py\" --root . --id 0002` so changes/0002-security-authz-the-guardrail-self-protec/evidence/lint.log records a green run.\nWhen the item is settled, re-run the gate: `python \"${CLAUDE_PLUGIN_ROOT}/plugin/gate/cli.py\" check --root . --id 0002 --phase e` (review comments are the change request; /sdlc-fix from B3 re-runs the phase with them).\n"
+  "what_i_need": ""
 }

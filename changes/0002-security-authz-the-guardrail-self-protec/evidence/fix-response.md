@@ -588,3 +588,67 @@ this round and are outside the scope the owner's review asked for. The targeted 
 (`tests/test_evals.py::test_the_framework_suite_s_cases_load`) passes in isolation.
 
 The merge is the owner's.
+
+# Fix response — PR #152, review #5488970969 (@luissiviero, OWNER, CHANGES_REQUESTED), gate (e), round 5
+
+Source: `evidence/fix-requests.json` (`unavailable: null`, `head` matched HEAD at collection
+(`9f104a8`); five reviews, `not_applied: []` — no other review or comment is on the PR). The
+prior session (commit `9f104a8`, "spend recorded; gate commands run after the session") ran
+the runner's deferred `build`/`test`/`lint` targets for real and found lint red
+(`evidence/lint.log`, `python -m ruff check .` exit 1, three `I001` import-order errors), so
+gate (e) parked on `commands`/`evidence` with that exact output; the owner's review #5488970969
+is the lint-only fix for it. `gate/cli.py bump-iteration` read `iterations: 1` (reset by the
+owner's `sdlc:reset-iterations` before an earlier round) and advanced it to 2 of 2 —
+`cap_reached: false`.
+
+1. Reproduced the three `I001` errors exactly as the gate recorded them
+   (`plugin/gate/checks.py:33`, `tests/test_gate.py:2441`, `tests/test_lessons.py:8`, all
+   caused by ruff's isort reading the new root `lessons/` folder as third-party). Added
+   `"lessons"` to `pyproject.toml`'s `[tool.ruff.lint.isort].known-first-party`, then ran
+   `python -m ruff check --fix .` — 3 fixed, 0 remaining, import order only, no behavior
+   change.
+2. Reproduced the `ruff format --check .` failure on `tests/test_hooks.py` (a missing blank
+   line after `from hooks import shell_guard` in 46 test functions), then ran
+   `python -m ruff format tests/test_hooks.py` — 1 file reformatted, 192 files already
+   formatted; confirmed no non-whitespace line changed.
+3. `plan.md`'s "Files that change" gained one bullet each for `pyproject.toml`,
+   `plugin/gate/checks.py`, `tests/test_gate.py` and `tests/test_lessons.py` (one path per
+   bullet, per the review's instruction); `tests/test_hooks.py` already had its own bullet.
+   `plugin/gate/checks.py` was moved out of the "Not touched" paragraph, with a note that it
+   is now touched only for this round's import re-sort. No change to `spec.md`.
+4. Gate (e) re-run per the review's instruction. Committed the code fix as `9d19208`
+   (`pyproject.toml`, `plugin/gate/checks.py`, `tests/test_gate.py`, `tests/test_hooks.py`,
+   `tests/test_lessons.py`, `plan.md`, plus `evidence/fix-requests.json`/`run-e.json`/
+   `status.yaml` from this round's own bookkeeping). `panel/cli.py items` found no pending
+   item. Wrote a fresh diff (`evidence/diff-e.patch`, base `origin/main`, HEAD `9d19208`) and
+   delegated to `sdlc:adversarial-reviewer`: **continue**, classification **non-routine**, no
+   escalate reasons — confirmed the three I001 fixes and the 46 formatting-only changes match
+   the review's own count, and that nothing else in the round's diff changed behavior.
+5. The gate's `findings` check required `evidence/review-findings.json`'s `head` to match the
+   new HEAD (the committed file was still keyed to `00c215b`, round 4's commit); ran a fresh
+   review pass on HEAD `9d19208` in a context that did not write the code (decision 12).
+   Result: **0 Important, 0 nits** — independently re-ran `ruff check`/`ruff format --check`/
+   `compileall`, the targeted test files, and a line-level diff of `tests/test_hooks.py`
+   isolating only non-blank-line hunks (empty), confirming no logic change.
+6. `gate/cli.py check --phase e`: every check passes (`limits`, `clean_tree`, `artifacts`,
+   `open_concerns`, `panel`, `commands`/`evidence` deferred — the runner has not yet run this
+   round's `build`/`test`/`lint`, `findings`, `plan_sync`, `guardrails`, `risk_list`,
+   `owner_actions`, `test_lock`, `lesson_and_eval`, `adversarial_review`). Result **wait**
+   (exit 3): phase (e) is a human gate; `parked_reason` is now cleared. `pr/cli.py upsert`
+   refreshes PR #152: label `sdlc:needs-human` removed, `sdlc:e-ready` applied.
+
+`python -m ruff check .` and `python -m ruff format --check .`: both clean in this session
+(`All checks passed!`; `192 files already formatted`). `python -m compileall -q plugin tests
+tasks.py`: clean, exit 0, no output. `python -m pytest` (targeted: `tests/test_gate.py
+tests/test_lessons.py tests/test_hooks.py`, then the full suite): no failure or error in
+`tests/test_hooks.py` or `tests/test_lessons.py`; the full-suite run reproduces the same
+pre-existing, environment-only cascade every prior round documented (this session's sandbox
+denies reading `tests/fixtures/sample-python-project/.env`, so every test using the
+fixture-copy fixture errors in setup) plus the same two environment-dependent failures named
+in every round since round 3 (`test_gate.py::test_the_sandbox_s_mask_is_read_from_its_mounts`,
+`test_evals.py::test_fixture_runs_a_case_against_the_initialised_project`) — neither touching
+a file this round changed. The authoritative `build`/`test`/`lint` run is the runner's
+deferred pass outside this sandbox (issue #91), which replaces `evidence/{build,test,lint}.log`
+after this session ends.
+
+The merge is the owner's.

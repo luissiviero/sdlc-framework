@@ -4,8 +4,8 @@
   "items": [],
   "iterations": {
     "cap": 2,
-    "left": 1,
-    "used": 1
+    "left": 0,
+    "used": 2
   },
   "mode": "deferred",
   "panel_calls": {
@@ -16,11 +16,7 @@
   "parks": [
     {
       "check": "findings",
-      "reason": "findings are for commit 00c215b1fc, HEAD is 764b987a7f"
-    },
-    {
-      "check": "adversarial_review",
-      "reason": "verdict is for commit 00c215b1fc, HEAD is 764b987a7f"
+      "reason": "findings are for commit 00c215b1fc, HEAD is 9d19208a66"
     }
   ],
   "pending": [],
