@@ -1,6 +1,6 @@
 {
-  "collected_at": "2026-10-12T09:41:05+00:00",
-  "head": "9f104a81f1cd473a2fb5404727c4d74ba2fa4496",
+  "collected_at": "2026-10-12T10:59:10+00:00",
+  "head": "f0250b122640ad1d08ebae45bcf6ad2e6d718f99",
   "not_applied": [],
   "ok": true,
   "pr_number": 152,
@@ -55,6 +55,16 @@
       "kind": "review",
       "state": "CHANGES_REQUESTED",
       "url": "https://github.com/luissiviero/sdlc-framework/pull/152#pullrequestreview-5488970969"
+    },
+    {
+      "association": "OWNER",
+      "at": "2026-10-12T10:58:26Z",
+      "author": "luissiviero",
+      "body": "Tests only, nothing else. Three new shell_guard tests fail on the Windows job (run 38233846423): `test_shell_guard_resolves_after_a_cd_in_the_same_chain`, `test_shell_guard_resolves_a_git_dash_c_target`, `test_shell_guard_sees_a_dash_c_preceded_by_another_global_option`. Each puts an unquoted Windows path (`{project}`, `{other}`) into a Bash command, and the shell's backslash escape turns `C:\\Users\\...` into `C:Users...`, as Git Bash itself would; the hook is right. In those three tests use `project.as_posix()` and `other.as_posix()` in the command strings, and keep every assertion unchanged. Then run gate (e).",
+      "id": 5489774399,
+      "kind": "review",
+      "state": "CHANGES_REQUESTED",
+      "url": "https://github.com/luissiviero/sdlc-framework/pull/152#pullrequestreview-5489774399"
     }
   ],
   "route": "api",

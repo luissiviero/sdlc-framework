@@ -1881,7 +1881,9 @@ def test_shell_guard_resolves_after_a_cd_in_the_same_chain(project):
     )
     assert not allowed.block  # sub/CLAUDE.md, not the root guardrail file
     denied = shell_guard.decide(
-        _bash(f"cd sub && cd {project} && echo x > CLAUDE.md", str(project)), [], env=_env(project)
+        _bash(f"cd sub && cd {project.as_posix()} && echo x > CLAUDE.md", str(project)),
+        [],
+        env=_env(project),
     )
     assert denied.block
 
@@ -1892,11 +1894,11 @@ def test_shell_guard_resolves_a_git_dash_c_target(tmp_path, project):
     other = tmp_path / "other"
     other.mkdir()
     elsewhere = shell_guard.decide(
-        _bash(f"git -C {other} rm CLAUDE.md", str(project)), [], env=_env(project)
+        _bash(f"git -C {other.as_posix()} rm CLAUDE.md", str(project)), [], env=_env(project)
     )
     assert not elsewhere.block  # CLAUDE.md under `other`, not the project root
     here = shell_guard.decide(
-        _bash(f"git -C {project} rm CLAUDE.md", str(other)), [], env=_env(project)
+        _bash(f"git -C {project.as_posix()} rm CLAUDE.md", str(other)), [], env=_env(project)
     )
     assert here.block
 
@@ -1963,11 +1965,11 @@ def test_shell_guard_sees_a_dash_c_preceded_by_another_global_option(tmp_path, p
     other = tmp_path / "other"
     other.mkdir()
     elsewhere = shell_guard.decide(
-        _bash(f"git -c x=y -C {other} rm CLAUDE.md", str(project)), [], env=_env(project)
+        _bash(f"git -c x=y -C {other.as_posix()} rm CLAUDE.md", str(project)), [], env=_env(project)
     )
     assert not elsewhere.block  # CLAUDE.md under `other`, not the project root
     here = shell_guard.decide(
-        _bash(f"git -c x=y -C {project} rm CLAUDE.md", str(other)), [], env=_env(project)
+        _bash(f"git -c x=y -C {project.as_posix()} rm CLAUDE.md", str(other)), [], env=_env(project)
     )
     assert here.block
 
