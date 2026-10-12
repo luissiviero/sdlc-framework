@@ -1,0 +1,125 @@
+{
+  "api_error_status": null,
+  "duration_api_ms": 919214,
+  "duration_ms": 1033305,
+  "fast_mode_disabled_reason": "sdk_opt_in_required",
+  "fast_mode_state": "off",
+  "first_content_frame_ms": 2285,
+  "is_error": false,
+  "modelUsage": {
+    "claude-sonnet-5": {
+      "cacheCreationInputTokens": 358957,
+      "cacheReadInputTokens": 11485247,
+      "canonicalModel": "claude-sonnet-5",
+      "contextWindow": 1000000,
+      "costBasis": "list",
+      "costUSD": 4.081536400000001,
+      "inputTokens": 212,
+      "maxOutputTokens": 64000,
+      "outputTokens": 64012,
+      "provider": "firstParty",
+      "thinkingTokens": 32055,
+      "webSearchRequests": 0
+    }
+  },
+  "num_turns": 83,
+  "permission_denials": [
+    {
+      "tool_input": {
+        "command": "grep -n \"====\" \"$TMPDIR/pytest_targeted.log\" | tail -5; echo ---; wc -l \"$TMPDIR/pytest_targeted.log\"",
+        "description": "Find summary separator lines in the pytest log"
+      },
+      "tool_name": "Bash",
+      "tool_use_id": "toolu_011MUBKAkdFhCc5nrePWiHNH"
+    },
+    {
+      "tool_input": {
+        "command": "python -m ruff check . 2>&1 | tail -30; echo \"EXIT=$?\"",
+        "description": "Run ruff check locally to verify lint is clean"
+      },
+      "tool_name": "Bash",
+      "tool_use_id": "toolu_014jkiTsiCh6mGy7FyyjM2HN"
+    },
+    {
+      "tool_input": {
+        "command": "python -m compileall -q plugin tests tasks.py; echo \"compileall exit=$?\"",
+        "description": "Run compileall to verify build is clean"
+      },
+      "tool_name": "Bash",
+      "tool_use_id": "toolu_01Kgr2uKeyfNNXvCxrhXmX8M"
+    }
+  ],
+  "queued_turn_count": 0,
+  "result": "PR #152 refreshed: `sdlc:needs-human` removed, `sdlc:e-ready` applied.\n\n## Report\n\n- PR: https://github.com/luissiviero/sdlc-framework/pull/152\n- Gate (e) result: **wait** (every check passes; the lint-triggered park is cleared) \u2014 label `sdlc:e-ready`\n- Iterations used: 2 of 2 (cap reached \u2014 no further `/sdlc-fix` round without another owner un-park label)\n- Requests left open: none \u2014 all five reviews on file were applied; this round closed the last one (the lint-only fix, review #5488970969)\n\nApplied review #5488970969 exactly as asked: `pyproject.toml`'s `known-first-party` gained `\"lessons\"`, `ruff check --fix .` re-sorted imports in `plugin/gate/checks.py`/`tests/test_gate.py`/`tests/test_lessons.py`, `ruff format` fixed the 46-line blank-line issue in `tests/test_hooks.py`, and `plan.md` now lists all five touched files. Ran a fresh adversarial-reviewer verdict (continue, non-routine) and a fresh review pass (0 Important, 0 nits) at the new HEAD, then the gate \u2014 all green except `commands`/`evidence`, which stay deferred to the runner's post-session pass, by design. The merge is the owner's.",
+  "result_index": 0,
+  "session_id": "82cfcbfc-3955-4759-99b9-e35c9150d3b0",
+  "stop_reason": "end_turn",
+  "subagent_stats": {
+    "by_type": {
+      "general-purpose": 1,
+      "sdlc:adversarial-reviewer": 1
+    },
+    "completed": 2,
+    "failed": 0,
+    "killed": {
+      "parent": 0,
+      "system": 0,
+      "user": 0
+    },
+    "max_depth": 1,
+    "refused": {
+      "budget": 0,
+      "concurrency_limit": 0,
+      "depth_limit": 0
+    },
+    "requested": {
+      "background": 0,
+      "foreground": 0,
+      "unset": 2
+    },
+    "spawned": 2,
+    "spawned_by_subagents": 0,
+    "started_in_background": 0
+  },
+  "subtype": "success",
+  "terminal_reason": "completed",
+  "time_to_request_ms": 83,
+  "total_cost_usd": 4.081536400000001,
+  "ttft_ms": 4489,
+  "ttft_stream_ms": 2284,
+  "type": "result",
+  "usage": {
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 164367,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "cache_creation_input_tokens": 164367,
+    "cache_read_input_tokens": 9173597,
+    "inference_geo": "global",
+    "input_tokens": 142,
+    "iterations": [
+      {
+        "cache_creation": {
+          "ephemeral_1h_input_tokens": 527,
+          "ephemeral_5m_input_tokens": 0
+        },
+        "cache_creation_input_tokens": 527,
+        "cache_read_input_tokens": 188804,
+        "input_tokens": 2,
+        "output_tokens": 463,
+        "type": "message"
+      }
+    ],
+    "output_tokens": 35697,
+    "output_tokens_details": {
+      "thinking_tokens": 16505
+    },
+    "server_tool_use": {
+      "web_fetch_requests": 0,
+      "web_search_requests": 0
+    },
+    "service_tier": "standard",
+    "speed": "standard"
+  },
+  "uuid": "92174d59-91b9-45af-838a-9bad434d38c0"
+}
