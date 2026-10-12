@@ -528,3 +528,63 @@ length... is accepted for this change; a split is a 0.3.x candidate").
 To allow another round: apply `sdlc:reset-iterations` to PR #152 (resets the panel-call
 count too), or run `gate/cli.py set-iterations --root . --id 0002 --count 0` by hand; the
 next round's first action should be the one-line fix named above.
+
+# Fix response — PR #152, review #5488209275 (@luissiviero, OWNER, CHANGES_REQUESTED), gate (e), round 4
+
+Source: `evidence/fix-requests.json` (`unavailable: null`, `head` matched HEAD at
+collection; one review, `not_applied: []` — no other review or comment is on the PR). The
+owner's un-park label `sdlc:reset-iterations` was applied before this round started
+(`status.yaml: iterations_reset_by: luissiviero`, `iterations_reset_at:
+2026-10-12T08:29:59Z`), lifting the iteration-cap park from round 3.
+
+1. The one-line fix the owner asked for, verbatim and nothing else: in `tests/test_evals.py`,
+   `test_the_framework_suite_s_cases_load`, added
+   `"0002-security-authz-the-guardrail-self-protec"` to the literal list, right after
+   `"0002-intent-skill-shape"` and before `"0003-secrets-stay-out"` (alphabetical order,
+   matching `evals/cases/`'s actual six folders and `run.discover()`'s sort). Reproduced the
+   failure first (`AssertionError` at `tests/test_evals.py:519`), then confirmed the fix
+   turns `test_the_framework_suite_s_cases_load` and its sibling
+   `test_the_fixture_dry_run_lists_every_case` green in isolation. No other file changed; no
+   change to `spec.md` or `plan.md` (the plan already named this exact edit in an earlier,
+   settled round). Committed as `00c215b`.
+
+2. Gate (e) re-run per the review's instruction. Under `review: deferred`, checked
+   `panel/cli.py items` first: `pending` was empty (nothing for the panel to settle this
+   round). Wrote a fresh diff (`evidence/diff-e.patch`, base `origin/main`, HEAD `00c215b`)
+   and delegated to `sdlc:adversarial-reviewer` for a fresh verdict: **continue**,
+   classification **non-routine** (the change's overall blast radius — the new
+   `shell_guard.py` hook, the sandbox `denyWrite` layer — is unchanged by this one-line
+   round); no escalate reasons. Written to `evidence/adversarial-review-e.json` at HEAD
+   `00c215b`.
+
+3. The gate's `findings` check requires `evidence/review-findings.json`'s `head` to match
+   current HEAD; the committed file was still keyed to `1a6cf117e2` (round 3's commit,
+   before this round's fix), so a fresh review pass was run on HEAD `00c215b` in a context
+   that did not write the code (decision 12). Result: **0 Important, 0 nits** — the prior
+   round's one Important finding (the literal-list mismatch) is confirmed resolved, nothing
+   new found. `plugin/review/cli.py validate` recorded it; `claude-md-proposals.md` is
+   removed (nothing to propose with zero findings).
+
+4. `gate/cli.py check --phase e`: every check passes (`limits`, `clean_tree`, `artifacts`,
+   `open_concerns`, `panel`, `commands` deferred, `evidence`, `findings`, `plan_sync`,
+   `guardrails`, `risk_list`, `owner_actions`, `test_lock`, `lesson_and_eval`,
+   `adversarial_review`). Result `passed` / `wait`: phase (e) is a human gate, so the gate
+   itself does not merge — `parked_reason` is now cleared. `pr/cli.py upsert` refreshed PR
+   #152: label `sdlc:needs-human` removed, `sdlc:e-ready` applied.
+
+`python -m pytest`, `python -m ruff check .` and `python -m compileall -q plugin tests
+tasks.py`: compile is clean (exit 0, no output). Lint is clean except three pre-existing
+`I001` import-order findings in `plugin/gate/checks.py`, `tests/test_gate.py` and
+`tests/test_lessons.py` — none in a file this round touched, left as the owner's "No other
+file changes" instruction requires; not fixed here. The full-suite pytest run reproduces the
+same pre-existing, environment-only cascade the previous two rounds documented and that I
+cannot change from within a run (CLAUDE.md's instruction for a blocked sandbox restriction):
+the sandbox denies reading `tests/fixtures/sample-python-project/.env`, so every test using
+the fixture-copy fixture errors in setup (326 errors, all citing that exact path), plus the
+same two environment-dependent failures named in round 3
+(`test_gate.py::test_the_sandbox_s_mask_is_read_from_its_mounts`,
+`test_evals.py::test_fixture_runs_a_case_against_the_initialised_project`) — both pre-exist
+this round and are outside the scope the owner's review asked for. The targeted test
+(`tests/test_evals.py::test_the_framework_suite_s_cases_load`) passes in isolation.
+
+The merge is the owner's.
