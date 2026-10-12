@@ -1,39 +1,11 @@
 {
-  "at": "2026-10-12T08:12:41Z",
-  "findings": [
-    {
-      "file": "tests/test_evals.py",
-      "line": 519,
-      "pass": "bugs",
-      "rule": "plan.md Files that change / Order of work step 9: \"tests/test_evals.py's test_the_framework_suite_s_cases_load literal list (above) gains the sixth folder name, 0002-security-authz-the-guardrail-self-protec, in the same commit as the eval case\"; CLAUDE.md/definition-of-done: `python -m pytest` must be all green before reporting done.",
-      "severity": "important",
-      "signature": "aa36e112787ae720",
-      "summary": "python -m pytest fails at HEAD: test_the_framework_suite_s_cases_load's literal case-name list was not updated to include the new evals/cases/0002-security-authz-the-guardrail-self-protec folder this round added, so run.discover(FRAMEWORK_CASES) now returns 6 names against a hard-coded list of 5."
-    },
-    {
-      "file": "changes/0002-security-authz-the-guardrail-self-protec/evidence/test.log",
-      "line": 1,
-      "pass": "compliance",
-      "rule": "definition-of-done: evidence is literal output of the toolchain run against the diff being reported, not a claim carried over from an earlier commit.",
-      "severity": "nit",
-      "signature": "260725ad8b09d157",
-      "summary": "The committed test.log/lint.log are timestamped 2026-10-09T11:08:49Z, before this round's commit (2026-10-12) added the eval case and lesson files, so the pasted \"all green\" pytest output does not cover the current tree (consistent with gate-e.json's own \"deferred to the runner and never run\" park reason)."
-    },
-    {
-      "file": "plugin/hooks/shell_guard.py",
-      "line": 1,
-      "pass": "compliance",
-      "rule": "coding-standards rule 7 (small functions, no dead code) / check.py's file-size advisory.",
-      "severity": "nit",
-      "signature": "eb785655ad27959d",
-      "summary": "The new hook script is 985 lines, nearly double the coding-standards check's 500-line advisory threshold for a single source file, with no split proposed in plan.md's Options not taken."
-    }
-  ],
-  "head": "1a6cf117e2d53a480dde6b12bac941f1fba8e808",
+  "at": "2026-10-12T08:58:56Z",
+  "findings": [],
+  "head": "00c215b1fcb8a24674f696f43b892b0ecf1ae041",
   "schema_version": 1,
   "tally": {
-    "important": 1,
-    "nit": 2,
+    "important": 0,
+    "nit": 0,
     "nits_omitted": 0
   }
 }
