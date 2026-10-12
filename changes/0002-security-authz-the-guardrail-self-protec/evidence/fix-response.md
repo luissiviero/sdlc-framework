@@ -652,3 +652,81 @@ deferred pass outside this sandbox (issue #91), which replaces `evidence/{build,
 after this session ends.
 
 The merge is the owner's.
+
+# Fix response — PR #152, review #5489774399 (@luissiviero, OWNER, CHANGES_REQUESTED), gate (e), round 6
+
+Source: `evidence/fix-requests.json` (`unavailable: null`, `head` matched HEAD at collection
+(`f0250b1`); six reviews, `not_applied: []` — no other review or comment is on the PR).
+`gate/cli.py bump-iteration` read `iterations: 0` (reset by the owner's
+`sdlc:reset-iterations` label before this round) and advanced it to 1 of 2 for this round's
+own fix.
+
+1. "Tests only, nothing else": the Windows job (run `38233846423`) failed three new
+   `shell_guard` tests — `test_shell_guard_resolves_after_a_cd_in_the_same_chain`,
+   `test_shell_guard_resolves_a_git_dash_c_target`,
+   `test_shell_guard_sees_a_dash_c_preceded_by_another_global_option` — because each
+   interpolated a bare `Path` into a Bash command string, and Git Bash's own backslash
+   escape mangles an unquoted `C:\Users\...` into `C:Users...` before the hook ever sees it
+   (the hook's behavior on the mangled string was correct; the test's command construction
+   was not testing what it meant to). Changed those three tests to use
+   `project.as_posix()` / `other.as_posix()` in the command strings; no assertion line
+   changed. Ran them directly (`pytest tests/test_hooks.py -k "...the three names..."`):
+   3 passed. Committed as `be38e27` (`tests/test_hooks.py` only), pushed on `sdlc/0002/c`.
+2. The gate's `findings` check needed a fresh review pass for the new HEAD (`review-
+   findings.json` was still keyed to the previous round's commit). A review in a context
+   that did not write the code (decision 12) found **1 Important** finding not asked for by
+   the owner's comment, so it is fixed in this same round rather than left open:
+   `plugin/hooks/shell_guard.py:400` `_git_global_scan` kept only the *last* `-C <dir>` it
+   saw instead of composing successive `-C` values the way git itself composes them
+   (`cd a && cd b`, each relative to the one before), so `git -C sub -C .. rm CLAUDE.md` run
+   from the project root resolved one directory *above* the root — outside anything
+   `rel_to()` recognizes as "ours to police" — and the write was allowed; real git resolves
+   that same command back onto the root. This reopens, via a slightly more elaborate `-C`
+   chain, exactly the class of Bash-route authorization bypass this change exists to close
+   (security-baseline rule 1; spec.md Requirements bullet 1).
+3. Fixed by composing `dash_c` with `dash_c = value if dash_c is None else str(Path(dash_c)
+   / value)` wherever a later `-C` is seen, so successive values compose the way git's own
+   `-C` does (confirmed: `Path("sub")/".." == "sub/.."`, which `norm()`'s
+   `posixpath.normpath` later collapses before the protected-pattern match, same as the
+   existing single-`-C` case already relied on). Added
+   `test_shell_guard_composes_chained_git_dash_c_targets` (`tests/test_hooks.py`): the
+   chain-back-to-root case must block, a chain that stays under a subdirectory
+   (`-C sub -C .`) must not. `pytest tests/test_hooks.py -k "git_dash_c or git_global or
+   dash_c"`: 4 passed; the full `test_hooks.py` module: 1618 passed, no failure. No change
+   to `spec.md`/`plan.md`'s file list (`plugin/hooks/shell_guard.py` and
+   `tests/test_hooks.py` were already listed). Committed as `7764e7a`, pushed.
+4. `gate/cli.py bump-iteration` again for this second fix inside the same round (the review
+   loop's own iteration, article p.34 step 5): 2 of 2 — cap reached, so this is the last
+   round this session may take; a further Important finding would park, not loop again.
+   Re-ran the review pass on the new HEAD (`7764e7a`) in a fresh context that did not write
+   the fix: **0 Important, 0 nits**, with the reviewer independently re-tracing the
+   composition logic and re-running the targeted tests rather than trusting the description.
+   Wrote a fresh diff (`evidence/diff-e.patch`, base `origin/main`, HEAD `7764e7a`) and
+   delegated to `sdlc:adversarial-reviewer`, blind to the review pass's file: **continue**,
+   classification **non-routine**, no escalate reasons — independently re-derived the same
+   bug and the same fix from the diff and `pathlib` semantics, confirmed the new test covers
+   both directions, and confirmed the earlier Windows-path fix is actually present with no
+   assertion weakened.
+5. `panel/cli.py items --phase e`: `pending: []`, no parks — both `findings` and
+   `adversarial_review` now key off the current HEAD. `release/notes.py --write` regenerated
+   `evidence/release-notes.md` for `7764e7a`. `gate/cli.py check --phase e`: every check
+   passes (`limits` — 2/2 iterations, within budget; `clean_tree`; `artifacts`;
+   `open_concerns`; `panel`; `commands`/`evidence` deferred to the runner; `findings` — 0
+   Important; `plan_sync`; `guardrails` — no guardrail file touched; `risk_list` — `auth`
+   already owner-accepted; `owner_actions`; `test_lock` — not a fix-type change;
+   `lesson_and_eval`; `adversarial_review` — continue). Result **wait** (exit 3): phase (e)
+   is a human gate, label `sdlc:e-ready`.
+
+`python -m compileall -q plugin tests tasks.py`: clean, exit 0, no output. `python -m ruff
+check .`: `All checks passed!`. Full `python -m pytest`: no failure in any file this round
+touched (`tests/test_hooks.py`: 1618 passed); the mass of `ERROR`/`FAILED` elsewhere is the
+same pre-existing, environment-only cascade every round since round 3 has documented (this
+session's sandbox denies reading `tests/fixtures/sample-python-project/.env`, so every test
+that copies that fixture tree errors in setup) plus the same two environment-dependent
+failures named before (`test_gate.py::test_the_sandbox_s_mask_is_read_from_its_mounts`,
+`test_evals.py::test_fixture_runs_a_case_against_the_initialised_project`) — neither touching
+a file this round changed, and both pass in the runner's real environment, outside this
+sandbox. The authoritative `build`/`test`/`lint` run is the runner's deferred pass (issue
+#91), which replaces `evidence/{build,test,lint}.log` after this session ends.
+
+The merge is the owner's.
