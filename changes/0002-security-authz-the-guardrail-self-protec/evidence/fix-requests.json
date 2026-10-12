@@ -1,6 +1,6 @@
 {
-  "collected_at": "2026-10-09T15:15:50+00:00",
-  "head": "09d3b699e4c91572d31a8946ccaeabf18ca39360",
+  "collected_at": "2026-10-12T07:57:12+00:00",
+  "head": "46499ca869891c32c7c9f08edef3964051d11661",
   "not_applied": [],
   "ok": true,
   "pr_number": 152,
@@ -25,6 +25,16 @@
       "kind": "review",
       "state": "CHANGES_REQUESTED",
       "url": "https://github.com/luissiviero/sdlc-framework/pull/152#pullrequestreview-5469970014"
+    },
+    {
+      "association": "OWNER",
+      "at": "2026-10-12T07:56:29Z",
+      "author": "luissiviero",
+      "body": "Request changes on PR #152 (build(0002)), gate (e). The code is done: the last review pass on 55ce5f7 found 0 Important findings. Gate (e) parked on `lesson_and_eval` (run 37950329833, 15:46 UTC), and the round then hit the turn cap before writing anything.\n\nWrite only what `/sdlc-deploy` step 0b requires for this incident-route change, then run gate (e):\n1. `lessons/2026-10-security-authz-the-guardrail-self-protec.md`, following `lessons/README.md`. The `detected` block comes from `evidence/scan-finding.json` (`metric: \"security: authz\"`, `rule: \"scan\"`, `tier: 3`), and `fixed.pr` is 152.\n2. `evals/cases/0002-security-authz-the-guardrail-self-protec/prompt.md` and `checks.yaml`, reproducing the Bash write to a guardrail file that the shell guard now denies.\n3. `lessons/index.md` rebuilt with `plugin/lessons/index.py build`.\n\nNo other file changes. The open nit (the `_denyWrite*` diagnostic keys in the rendered settings file) stays as it is for this change.",
+      "id": 5487900535,
+      "kind": "review",
+      "state": "CHANGES_REQUESTED",
+      "url": "https://github.com/luissiviero/sdlc-framework/pull/152#pullrequestreview-5487900535"
     }
   ],
   "route": "api",
