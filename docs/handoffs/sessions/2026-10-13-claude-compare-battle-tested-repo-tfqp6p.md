@@ -15,7 +15,7 @@ This session ran the ArtCraft-versus-framework study at the owner's request. It 
 |---|---|
 | A1 the drive target and the plan's Proof | Accepted as R14; intent change 0004, PR #173, waits for R10 (carried) |
 | A2 every figure says how it was obtained | Narrowed and accepted; no proposal of its own. The residue lands in T27 and T28 (model judgments labelled), T30 (an estimate shows its inputs), `HANDOFF.md` line 27 (done, #178) and R10 (the "Not exercised" section, annotated) |
-| A3 the bar is lowered only by the owner | Prompt ready (PR #175); not checked yet |
+| A3 the bar is lowered only by the owner | Part 1 done by the session of `ccr-c6d8a9c3-3s7q61`, which ran this session's prompt from PR #175's branch: `docs/reviews/2026-10-13-artcraft-vs-framework/a3-revision.md`, draft PR #177, independently reviewed, twelve divergences D1 to D12 waiting for the owner's answers (read on its branch at `d608578`, not on `main`). Its main correction: the bar is a measured count against the merge base's own value, not a deleted file, and a skip-marker list never parks |
 | A4 to A10 | Recorded in the study (section 8.1); not broken down, not accepted |
 
 ## Preconditions of the moment
@@ -27,7 +27,7 @@ The standing ones are in `HANDOFF.md`. Carried from `2026-10-13-ccr-0dad187c-vi8
 3. **The 0.3.8 runs PR.** Carried, unchanged.
 4. **Then the 2026-10-09 order:** R7, R5, R6 and R10, the carried gaps, R9 part 1; R8 after R7 on two changes; then R11, then R12 and R13 together. Carried, unchanged.
 5. **R14 after R10.** Carried: the owner corrects and merges PR #173 at gate (a) once R10 is built.
-6. **The A3 session, in parallel, any time.** Start a new session with the prompt in PR #175, read from its branch until it merges. Part 1 is documentation only and needs no read of the sample. Part 2 drafts an intent: its change id comes from `plugin/state` at that moment, the next after 0004.
+6. **The A3 session continues, in parallel.** Its Part 1 is PR #177; the owner answers D1 to D12 there, then its Part 2 writes `docs/proposals/ratchets.md`, the ROADMAP row and the first intent, whose change id comes from `plugin/state` at that moment, the next after 0004. Merge PR #175 before Part 2 annotates the record's row A3: that row sits on the line after row A2, which #175 annotates, and git conflicts on adjacent changed lines.
 7. **After the read: the owner's triage** of the sample's #55, #56, #57, then the stale sample branches. Carried.
 8. **After the read: the study's next proposal batch** (T17, T19, T27, T28). Carried. T27 and T28 now also carry A2's labelled model judgments, beside R14's per-item Proof line.
 9. **When the owner wants them: A4 to A10 broken down** one by one, as A1 to A3 were, each with its sources re-read before the breakdown.
@@ -36,7 +36,7 @@ The standing ones are in `HANDOFF.md`. Carried from `2026-10-13-ccr-0dad187c-vi8
 | Item | Where | What is left | Who acts | Blocks 1.0.0 |
 |---|---|---|---|---|
 | PR #175 (the A3 prompt, A2's annotations, R10's annotation, this file) | framework | Merge | owner | no |
-| The A3 session | framework | Part 1 (`a3-revision.md`, reviewed), the owner's answers, Part 2 (`docs/proposals/ratchets.md`, the ROADMAP row, the intent) | a session, then the owner | no |
+| The A3 session (PR #177) | framework | The owner's answers to D1 to D12, then Part 2 (`docs/proposals/ratchets.md`, the ROADMAP row, the intent) | the owner, then that session | no |
 | A4 to A10 of the ArtCraft study | framework | Breakdown and acceptance, one at a time | the owner chooses when | no |
 | A2's residue in T27, T28 and T30 | framework | Written into those entries' proposals when they are written | a study session | no |
 | Item 11, the read and the 1.0.0 bump | both | Carried: 2026-10-14 after about 12:40 UTC | a session, then the owner | yes |
@@ -63,7 +63,7 @@ Done since the file this builds on, dropped from the table: that session's last 
 | When | Act |
 |---|---|
 | Now | Merge PR #175 (approve its bot-started runs first). |
-| Any time, in parallel | Start the A3 session with the prompt in PR #175; answer its Part 1 row by row. |
+| Any time, in parallel | Answer the A3 session's D1 to D12 (PR #177); merge #175 before its Part 2 edits the record. |
 | 2026-10-14, about 12:40 UTC | Carried: check the sample's detect run and start the item-11 session with both repositories in scope. |
 | After the item-11 PR | Carried: merge it; check `v1.0.0`; both pin rows; the sample's upgrade PR; the Milestone. |
 | When R10 is built | Carried: read, correct and merge PR #173 at gate (a). |
