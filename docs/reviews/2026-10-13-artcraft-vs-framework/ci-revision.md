@@ -118,5 +118,5 @@ A general-purpose agent in a fresh context was given the record's rows A5, A10 a
 | C3 | A10: `main` runs never cancelled (10.1), one line in `framework-checks.yml`, a plain PR | accept |
 | C4 | A10: the Windows job skipped on documentation-only PRs (10.2), a small `.github/scripts/` file with its test and a separate Windows job with a job-level `if:`, in the same plain PR after 10.1; your HANDOFF edit (section 7) in the same visit. Also: does `changes/**` join the skip list (22 of 36 merges instead of 18)? | accept; skip list `docs/**`, `HANDOFF.md`, `README.md`, without `changes/**` |
 | C5 | A10's caches, `full-ci` label and the record's path list (10.3, 10.4, 10.6) | reject |
-| C6 | 10.8: superseded PR runs of `framework-evals.yml` cancelled, keyed by PR number; the nightly run never cancelled | your call (subscription minutes against one less pass rate on record); lean accept, in the same plain PR |
+| C6 | 10.8: superseded PR runs of `framework-evals.yml` cancelled, keyed by PR number; the nightly run never cancelled | your call (subscription minutes against one less pass rate on record); lean accept, in the same plain PR *[2026-10-13: accepted by the owner]* |
 | C7 | Where the accepted rows go: plain PRs in the CI-speed line of PR #167, not proposal files or ROADMAP rows; the record's rows A5, A10 and G5 annotated saying so | accept |
