@@ -22,7 +22,7 @@ generated: { by: sdlc-framework-session/ccr-1578d710-8r04sw, at: 2026-10-09T16:0
 
 # The state of the work in the repository
 
-**Status: accepted by the owner on 2026-10-09 (roadmap R9).** Nothing is built. Part 1 is a change through the front door; part 2 is a documentation PR, which a session opens at a session boundary.
+**Status: accepted by the owner on 2026-10-09 (roadmap R9).** Nothing is built. *[2026-10-13: part 2 applied in its amended shape, one file per session ("Amendment of 2026-10-13" below); part 1 is still not built.]* Part 1 is a change through the front door; part 2 is a documentation PR, which a session opens at a session boundary.
 
 ## The problem
 
@@ -47,7 +47,21 @@ A project that runs the framework has decision 20's queue (the pull requests fil
 - What stays: the preconditions a session must check, as a short list; the queue of work (pointers to `docs/ROADMAP.md` and to `changes/index.md`, in the owner's order); the working rules; the current starting prompt.
 - What moves: per-change state goes to the change folder and the index, history to `docs/PROGRESS.md` and `docs/notes/`, decisions to `docs/decisions/` or the proposal they belong to.
 - A limit like `CLAUDE.md`'s: under a page. A session that needs more writes it where it belongs and links it.
-- Opened at a session boundary, by the session that would rewrite `HANDOFF.md` anyway, so it does not conflict with a parallel session.
+- Opened at a session boundary, by the session that would rewrite `HANDOFF.md` anyway, so it does not conflict with a parallel session. *[2026-10-13: amended by the owner — a one-page file that every session rewrites still conflicts whenever two sessions run in parallel; see "Amendment of 2026-10-13" below.]*
+
+## Amendment of 2026-10-13: one file per session
+
+**Status: applied by the owner's request of 2026-10-13 (session on branch `ccr-7da93fc5-33f691`).** It replaces the shape of part 2; part 1 is unchanged.
+
+**Why.** Part 2 as accepted kept the rule that every session rewrites `HANDOFF.md`, and avoided conflicts only by assuming sessions do not overlap. They do. Eight merge commits touched `HANDOFF.md` up to 2026-10-13; in at least four of them two sessions had rewritten it in parallel, and the merging session kept one side and re-applied the other's lines by hand: `50324e6` ("PR #129's handoff kept, this PR's lines re-applied"), `324fbb6` (`# Conflicts: HANDOFF.md`, no note of what was kept), `a33e20e` (main's text kept, the session's annotations re-applied), `0fdb114` ("resolved on session 26's rewrite with this session's four edits re-applied", the step numbers replaced because the rewrite had renumbered them). Git does not lose a line silently, but a hand resolution can, and nothing checks it. A shorter file has fewer lines to conflict on, not fewer conflicts.
+
+**What changes.**
+- `HANDOFF.md` becomes a stable page with no state: where the state lives, how a session starts, how it ends, the skeleton of a session file, the standing preconditions and the rules. It changes only when the process changes, in a PR of its own.
+- Each session writes one new file, `docs/handoffs/sessions/<YYYY-MM-DD>-<branch>.md`, at its end, and never edits another session's file. The branch makes the name unique, so two parallel sessions add two files and their PRs cannot conflict on the handoff. The file carries the state as that session left it (where the project stands, the preconditions of the moment, the next steps, every open item, what the owner does) and names the session files it built on.
+- The next session reads the newest file and every file a parallel session wrote that the newest one did not build on, and reconciles them by reading, never by resolving a merge. No index file: a generated or hand-kept index would be a shared file again; the listing sorted by name is the index.
+- Session 26's brief moved unchanged to `docs/handoffs/sessions/2026-10-13-session-26.md`; the briefs before it stay where they are.
+
+**Left for the owner.** `docs/PROGRESS.md` follows the same pattern (the newest record only, rewritten by every session, the previous one archived) and so carries the same risk. The amendment leaves it as it is; folding the record into the session file, or giving `docs/progress/` a file per session from the start, is the owner's call.
 
 ## How it is judged
 
