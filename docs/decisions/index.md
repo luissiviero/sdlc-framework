@@ -32,5 +32,6 @@ One file per decision, number only, no slug (`docs/decisions/<N>.md`); each carr
 24. [The owner's un-park verbs are labels](24.md)
 25. [Gate (f) is per-finding triage; closing a PR at (a)–(e) abandons the change](25.md)
 26. [Rollback authorization on a declared production (amends 14)](26.md)
+27. [Gates (c) and (d) are approved by the label alone, recorded with its actor (amends 3)](27.md)
 
 Sticky decisions (2, 6, 7, 8, 10, 19) shape files and conventions every later step writes to.
