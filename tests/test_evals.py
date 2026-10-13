@@ -668,6 +668,12 @@ def test_the_fixture_is_an_initialised_repository():
             ["git", "status", "--porcelain"], cwd=root, capture_output=True, text=True, check=True
         ).stdout
         assert status == ""
+        # no detached auto maintenance may write a lock while run_case copies the fixture
+        auto = subprocess.run(
+            ["git", "config", "--get", "maintenance.auto"],
+            cwd=root, capture_output=True, text=True, check=True,
+        ).stdout  # fmt: skip
+        assert auto.strip() == "false"
     finally:
         run.remove_tree(root.parent)
 

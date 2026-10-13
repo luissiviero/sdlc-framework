@@ -698,6 +698,9 @@ def build_fixture(source: Path = FIXTURE) -> Path:
     gitops.run(root, "config", "user.name", "sdlc-evals")
     gitops.run(root, "config", "user.email", "sdlc-evals@example.com")
     gitops.run(root, "config", "commit.gpgsign", "false")
+    # git 2.5x runs the auto maintenance after a commit detached, so it can create and delete
+    # .git/objects/maintenance.lock while run_case copies the fixture (shutil.Error on CI)
+    gitops.run(root, "config", "maintenance.auto", "false")
     gitops.run(root, "add", "-A")
     gitops.run(root, "commit", "-q", "-m", "The sample project")
     with contextlib.redirect_stdout(io.StringIO()):
