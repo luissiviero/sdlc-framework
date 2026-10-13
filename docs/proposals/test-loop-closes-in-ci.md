@@ -56,7 +56,7 @@ Decision 11, since a red target found by the runner no longer parks at once (a l
 
 ## Order
 
-Accepted by the owner on 2026-10-09 to run before 1.0.0, after R6 and before the carried gaps (ROADMAP R10). `HANDOFF.md`'s current order puts it after the 1.0.0 read; decision 29 records the question.
+Accepted by the owner on 2026-10-09 to run before 1.0.0, after R6 and before the carried gaps (ROADMAP R10). The session-26 handoff's order (`docs/handoffs/sessions/2026-10-13-session-26.md`, step 4; in `HANDOFF.md` until PR #170) puts it after the 1.0.0 read; decision 29 records the question.
 
 [^playbook]: `docs/reference/ai-native-sdlc-playbook.pdf` p.27.
 [^choice-154]: `docs/progress/session-18.md`, choice 154.
