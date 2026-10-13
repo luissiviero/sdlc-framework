@@ -42,7 +42,7 @@ The standing ones are in `HANDOFF.md`. Carried from the file this builds on, not
    - C3: `cancel-in-progress: ${{ github.event_name == 'pull_request' }}` in `framework-checks.yml`;
    - C4: a separate Windows job with a job-level `if:` from a `.github/scripts/` file and its test, skipping only when every changed path is `docs/**`, `HANDOFF.md` or `README.md`. Nothing blocks it. Ruleset 24077592 has no `required_status_checks` rule (verified from the ruleset JSON the owner pasted; `ci-revision.md` section 2). The `HANDOFF.md` edit of `ci-revision.md` section 7 is on `main` (PR #185, `a1f504e`, verified by `git diff`). Until this PR lands, that precondition describes a skip that does not happen yet, so every job still runs and must be green;
    - C6: `framework-evals.yml` PR runs keyed by PR number and cancelled when superseded, the nightly run never.
-8. **Batches `templates` and `planning`:** one session each, with the same prompt, changing the batch name on its first line.
+8. **Batches `templates`, then `planning`:** one session each. `templates` starts from `docs/handoffs/2026-10-13-artcraft-templates-prompt.md` (written by this session). `planning` starts from the rows prompt, with the same additions.
 9. **After the read:** the owner's triage of sample PRs #55, #56 and #57, then the stale sample branches. Carried.
 10. **After the read: the study's next proposal batch** (T17, T19, T27, T28). Carried.
 11. **The CI-speed line's step 2** (prebuilt fixture repositories), and step 3 only if still needed. Carried from `docs/PROGRESS.md`, not re-verified. C4, if accepted, removes most of step 3's reason on documentation-only PRs.
@@ -81,7 +81,7 @@ Done since the file this builds on, dropped from the table: PR #175 (merged); th
 |---|---|
 | Now | Merge PR #184 (C1 to C7 answered: every recommendation accepted). |
 | When you want the CI changes | Ask a session for batch `ci`'s plain PR. Nothing is left to do before it: the `HANDOFF.md` edit is done (PR #185), and the ruleset requires no check. |
-| Any time | Start the `templates` or `planning` batch session with the rows prompt. |
+| After merging #184 | Start the `templates` session with `docs/handoffs/2026-10-13-artcraft-templates-prompt.md`, then the `planning` one. |
 | 2026-10-14, about 12:40 UTC | Carried: check the sample's detect run and start the item-11 session with both repositories in scope. |
 | After the item-11 PR | Carried: merge it; check `v1.0.0`; both pin rows; the sample's upgrade PR; the Milestone. |
 | When R10 is built | Carried: read, correct and merge PR #173 at gate (a). |
