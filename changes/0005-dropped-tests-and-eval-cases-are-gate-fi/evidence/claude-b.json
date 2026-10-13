@@ -1,0 +1,115 @@
+{
+  "api_error_status": null,
+  "duration_api_ms": 2497040,
+  "duration_ms": 2303213,
+  "fast_mode_disabled_reason": "sdk_opt_in_required",
+  "fast_mode_state": "off",
+  "first_content_frame_ms": 1723,
+  "is_error": false,
+  "modelUsage": {
+    "claude-opus-5": {
+      "cacheCreationInputTokens": 89914,
+      "cacheReadInputTokens": 445831,
+      "canonicalModel": "claude-opus-5",
+      "contextWindow": 1000000,
+      "costBasis": "list",
+      "costUSD": 1.2513729999999998,
+      "inputTokens": 34,
+      "maxOutputTokens": 64000,
+      "outputTokens": 18653,
+      "provider": "firstParty",
+      "thinkingTokens": 12586,
+      "webSearchRequests": 0
+    },
+    "claude-sonnet-5": {
+      "cacheCreationInputTokens": 747172,
+      "cacheReadInputTokens": 13646658,
+      "canonicalModel": "claude-sonnet-5",
+      "contextWindow": 1000000,
+      "costBasis": "list",
+      "costUSD": 6.7620556,
+      "inputTokens": 306,
+      "maxOutputTokens": 64000,
+      "outputTokens": 181680,
+      "provider": "firstParty",
+      "thinkingTokens": 87545,
+      "webSearchRequests": 0
+    }
+  },
+  "num_turns": 101,
+  "permission_denials": [],
+  "queued_turn_count": 0,
+  "result": "PR created and labeled `sdlc:b-ready`.\n\n**PR:** https://github.com/luissiviero/sdlc-framework/pull/186\n**Gate result:** `wait` (human gate, every check passed)\n**Flagged concerns:** 0 open, 6 closed (5 by design, 1 by panel decision #1)\n**Panel decisions (deferred review):** 2 \u2014 #1 closed the `framework/`-scope concern as confirmed (not just assumed); #2 fixed a real design gap the adversarial reviewer caught (the eval-case drop rule couldn't distinguish a partial multi-file deletion from a full drop using diff records alone) by adding a `tree_files` HEAD-tree helper, applied to spec.md and plan.md before the final `continue` verdict.\n\nPhase (c) is not started \u2014 gate (b) is the owner's merge in every profile.",
+  "result_index": 0,
+  "session_id": "2376debf-9ab4-4deb-863c-4c232993e8ec",
+  "stop_reason": "end_turn",
+  "subagent_stats": {
+    "by_type": {
+      "general-purpose": 4,
+      "sdlc:adversarial-reviewer": 5,
+      "sdlc:researcher": 1
+    },
+    "completed": 10,
+    "failed": 0,
+    "killed": {
+      "parent": 0,
+      "system": 0,
+      "user": 0
+    },
+    "max_depth": 1,
+    "refused": {
+      "budget": 0,
+      "concurrency_limit": 0,
+      "depth_limit": 0
+    },
+    "requested": {
+      "background": 0,
+      "foreground": 0,
+      "unset": 10
+    },
+    "spawned": 10,
+    "spawned_by_subagents": 0,
+    "started_in_background": 0
+  },
+  "subtype": "success",
+  "terminal_reason": "completed",
+  "time_to_request_ms": 97,
+  "total_cost_usd": 8.0134286,
+  "ttft_ms": 3213,
+  "ttft_stream_ms": 1723,
+  "type": "result",
+  "usage": {
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 231588,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "cache_creation_input_tokens": 231588,
+    "cache_read_input_tokens": 9869273,
+    "inference_geo": "global",
+    "input_tokens": 140,
+    "iterations": [
+      {
+        "cache_creation": {
+          "ephemeral_1h_input_tokens": 510,
+          "ephemeral_5m_input_tokens": 0
+        },
+        "cache_creation_input_tokens": 510,
+        "cache_read_input_tokens": 231078,
+        "input_tokens": 2,
+        "output_tokens": 291,
+        "type": "message"
+      }
+    ],
+    "output_tokens": 81958,
+    "output_tokens_details": {
+      "thinking_tokens": 28833
+    },
+    "server_tool_use": {
+      "web_fetch_requests": 0,
+      "web_search_requests": 0
+    },
+    "service_tier": "standard",
+    "speed": "standard"
+  },
+  "uuid": "d2e003a4-c338-43fb-9538-8fc390ae640d"
+}
