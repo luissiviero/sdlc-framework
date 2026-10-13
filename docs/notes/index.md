@@ -46,6 +46,7 @@ One file per NOTES section, number only, no slug (`docs/notes/<N>.md`); each car
 37. [Facts read in session 23 (2026-10-08): change 0002's design run on plugin 0.3.6 — PR #130's push check verified live, gate (b) parked on three checks, PR #144 read; the sandbox's filesystem keys in the docs; the fresh-context review of the design](37.md)
 38. [Facts read in session 24 (2026-10-09): the sample's points, the open pull requests merged for real in a scratch worktree, change 0002's turn-capped build run on plugin 0.3.6 and its re-run](38.md)
 39. [Facts read in session 25 (2026-10-12 to 2026-10-13): the consolidation read of both repositories, the missed provocation and the quiet detect run, change 0002's last four rounds on plugin 0.3.6, its merge and v0.3.7](39.md)
+40. [Facts read in session 26 (2026-10-13): the provocation of 2026-10-13 as session 25 read it on GitHub (PR #58 merged by accident and reverted by #59, four counted runs), the gate's command strings proven to go through the platform shell, the branches left on origin after PR #157](40.md)
 
 Sessions are append-only: a later session's file may correct or supersede an earlier one's
 reading (each says so inline, e.g. "corrected by §17"); read the latest file on a topic
