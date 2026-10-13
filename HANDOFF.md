@@ -34,7 +34,7 @@ Every session starts here. This file holds the preconditions, the state, every o
 | R2's tables (SessionStart hook, `WebSearch`, "Tooling rules") | framework guardrails | Not applied | owner | no |
 | Windows sitting (hook timing, test-file lock, watch setting; the `&&` chain through `run_command` on `cmd.exe`, NOTES §40) | owner's PC | Not done | owner | no |
 | Notes-index work | framework | Session 26's PR 2, **PR #160**: open, checks green on its head, ready for the owner's review | owner | no |
-| Study batch T17, T19, T27, T28 | framework | After the read | a study session | no |
+| Study batch T17, T19, T27, T28 | framework | After the read; `docs/handoffs/2026-10-13-study-line-start-table.md` (PR #159, merged 09:40 UTC on 2026-10-13) is the step table a checking session verifies row by row first | a study session | no |
 
 ## What the owner does
 | When | Act |
