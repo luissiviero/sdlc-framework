@@ -30,14 +30,14 @@ The standing ones are in `HANDOFF.md`. Carried from `2026-10-13-ccr-0dad187c-vi8
 6. **The A3 session continues, in parallel.** Its Part 1 is PR #177; the owner answers D1 to D12 there, then its Part 2 writes `docs/proposals/ratchets.md`, the ROADMAP row and the first intent, whose change id comes from `plugin/state` at that moment, the next after 0004. Merge PR #175 before Part 2 annotates the record's row A3: that row sits on the line after row A2, which #175 annotates, and git conflicts on adjacent changed lines.
 7. **After the read: the owner's triage** of the sample's #55, #56, #57, then the stale sample branches. Carried.
 8. **After the read: the study's next proposal batch** (T17, T19, T27, T28). Carried. T27 and T28 now also carry A2's labelled model judgments, beside R14's per-item Proof line.
-9. **When the owner wants them: A4 to A10 broken down** one by one, as A1 to A3 were, each with its sources re-read before the breakdown.
+9. **When the owner wants them: A4 to A10 broken down** one by one, as A1 to A3 were, each with its sources re-read before the breakdown. *[2026-10-13, later the same day: the prompt is `docs/handoffs/2026-10-13-artcraft-rows-prompt.md`, three batches (ci: A5, A10; templates: A7, A8, A9; planning: A4, A6), one session each, reading only the files its rows name.]*
 
 ## Every open item
 | Item | Where | What is left | Who acts | Blocks 1.0.0 |
 |---|---|---|---|---|
 | PR #175 (the A3 prompt, A2's annotations, R10's annotation, this file) | framework | Merge | owner | no |
 | The A3 session (PR #177) | framework | The owner's answers to D1 to D12, then Part 2 (`docs/proposals/ratchets.md`, the ROADMAP row, the intent) | the owner, then that session | no |
-| A4 to A10 of the ArtCraft study | framework | Breakdown and acceptance, one at a time | the owner chooses when | no |
+| A4 to A10 of the ArtCraft study | framework | Breakdown and acceptance in three batches, with `docs/handoffs/2026-10-13-artcraft-rows-prompt.md` | the owner chooses when | no |
 | A2's residue in T27, T28 and T30 | framework | Written into those entries' proposals when they are written | a study session | no |
 | Item 11, the read and the 1.0.0 bump | both | Carried: 2026-10-14 after about 12:40 UTC | a session, then the owner | yes |
 | Sandbox proof, then the pin to the newest tag | framework | Carried | a session, then the owner's pin row | no |
