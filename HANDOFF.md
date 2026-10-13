@@ -24,7 +24,7 @@ The skeleton of a session file:
 - **Where the project stands** — the plugin version on `main`, the tags, the pin, what happened since the files it builds on.
 - **Preconditions of the moment** — the ones that are not standing (the repositories in scope, the expected `main`, tags and pin, any freeze).
 - **Next steps, in order**, **Every open item** (item, where, what is left, who acts, blocks 1.0.0) and **What the owner does** (when, act).
-- Each fact carried from another file without re-reading it is cited as "carried from <file>, not re-verified".
+- Each fact carried from another file without re-reading it is cited as "carried from <file>, not re-verified". A figure that differs from the one in the file it builds on names the evidence that moved it (a run URL, a file or command output), or says "re-measured" with its source.
 
 ## Standing preconditions
 1. **The local checks green before any PR.** `python -m pip install -e ".[dev]"`, then chained with `set -o pipefail`: `python -m compileall -q plugin tests tasks.py .github/scripts`, `python -m ruff check .`, `python -m ruff format --check .`, `python -m pytest`; `claude plugin validate .` clean but for the `CLAUDE.md`-at-the-root warning. All three `Framework checks` jobs, Windows included, must be green on a PR's final head before the owner is asked to merge; a bot-pushed head waits at `action_required` until the owner approves its runs.
