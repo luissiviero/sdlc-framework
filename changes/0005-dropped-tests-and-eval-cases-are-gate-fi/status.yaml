@@ -1,7 +1,7 @@
 id: "0005"
 slug: dropped-tests-and-eval-cases-are-gate-fi
 title: Dropped tests and eval cases are gate findings
-phase: a
+phase: b
 entry_route: idea
 change_type: feature
 profile_override: null
@@ -28,5 +28,5 @@ released_at: null
 released_sha: null
 released_pr: null
 created_at: "2026-10-13T21:22:06Z"
-updated_at: "2026-10-13T21:22:06Z"
+updated_at: "2026-10-13T22:33:00Z"
 schema_version: 1
