@@ -2,7 +2,7 @@
 
 Written on 2026-10-13 by the session that ran the ArtCraft-versus-framework study (session file `docs/handoffs/sessions/2026-10-13-claude-compare-battle-tested-repo-tfqp6p.md`). A1 is R14, A2 is narrowed and folded, A3 has its revision (`a3-revision.md`, PR #177) and waits for the owner's answers in its own session. This prompt covers what is left. It keeps each session's context small: a session takes one batch, reads only the files its rows name below, and never loads the whole study, the crosswalk or `target-design.md` end to end.
 
-Paste everything below the line into a new session started with `luissiviero/sdlc-framework` in scope, and replace `<BATCH>` with one batch name from the table.
+Paste everything below the line into a new session started with `luissiviero/sdlc-framework` in scope, and replace `<BATCH>` with one batch name from the table. *[2026-10-13, later: batch `ci` is done (`ci-revision.md`, PR #184). For batch `templates`, use `docs/handoffs/2026-10-13-artcraft-templates-prompt.md`, which is this prompt with the batch filled in and what batch `ci` learned. Batch `planning` uses this prompt, with the same additions.]*
 
 ---
 
