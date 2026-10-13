@@ -34,6 +34,6 @@ One file per decision, number only, no slug (`docs/decisions/<N>.md`); each carr
 26. [Rollback authorization on a declared production (amends 14)](26.md)
 27. [Gates (c) and (d) are approved by the label alone, recorded with its actor (amends 3)](27.md)
 28. [The owner accepts the Important review findings of a head with one label (amends 24)](28.md)
-29. [In CI a red target starts the next fix round by itself (amends 11 and PROGRESS choice 154) — the mechanism accepted, two settle questions pending](29.md)
+29. [In CI a red target starts the next fix round by itself (amends 11 and PROGRESS choice 154)](29.md)
 
 Sticky decisions (2, 6, 7, 8, 10, 19) shape files and conventions every later step writes to.

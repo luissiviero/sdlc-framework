@@ -48,7 +48,7 @@ The article's loop is run, fix and re-run until the check passes, "so what reach
 
 ## What to settle before building
 
-The three open points of T10, with this PR's recommendations in decision 29: whether the automatic rounds share the iteration cap with the owner's own rounds; whether a target that cannot be fixed from the session (a missing target, a timeout, an infrastructure failure) starts a round or parks at once; the verifier's exact wording, and whether the PR's summary also says which run its evidence came from.
+The three open points of T10, settled in decision 29 on 2026-10-13: the automatic rounds share the iteration cap with the owner's own rounds, with T30's one judged reset at the cap; a timeout starts a round, an infrastructure failure gets one automatic re-run and then parks, a missing target parks at once; the verifier's exact wording is settled in the design, and the PR's summary names the run its evidence came from.
 
 ## Decisions it touches
 
@@ -56,7 +56,7 @@ Decision 11, since a red target found by the runner no longer parks at once (a l
 
 ## Order
 
-Accepted by the owner on 2026-10-09 to run before 1.0.0, after R6 and before the carried gaps (ROADMAP R10). The session-26 handoff's order (`docs/handoffs/sessions/2026-10-13-session-26.md`, step 4; in `HANDOFF.md` until PR #170) puts it after the 1.0.0 read; decision 29 records the question.
+Accepted by the owner on 2026-10-09 to run before 1.0.0, after R6 and before the carried gaps (ROADMAP R10). The session-26 handoff's order (`docs/handoffs/sessions/2026-10-13-session-26.md`, step 4; in `HANDOFF.md` until PR #170) puts it after the 1.0.0 read; the owner settled it on 2026-10-13 (decision 29): after the read.
 
 [^playbook]: `docs/reference/ai-native-sdlc-playbook.pdf` p.27.
 [^choice-154]: `docs/progress/session-18.md`, choice 154.
