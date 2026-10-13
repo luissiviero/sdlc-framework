@@ -1208,6 +1208,34 @@ def fake_cli(bindir: Path) -> str:
     return str(bindir / ("claude.cmd" if os.name == "nt" else "claude"))
 
 
+@pytest.fixture
+def fake_gh(tmp_path, monkeypatch):
+    """A ``gh`` first on PATH that reaches nothing: every call gets what the runner's own
+    ``gh`` gives a run with no credential (the sign-in hint on stderr, exit 4), and the token
+    variables are removed so the token route is not tried either. A full phase run with no
+    fake route (``pr_route``) asks GitHub for the branch's open pull request through
+    ``pr/github.py``, and with a token in the environment creates every label first: the
+    three tests that run one called the real ``gh``, one failing request per call (the CI
+    timing work of 2026-10-13)."""
+    bindir = tmp_path / "gh-bin"
+    bindir.mkdir()
+    script = bindir / "gh.py"
+    write(
+        script,
+        "import sys\n"
+        "print('To get started with GitHub CLI, please run:  gh auth login', file=sys.stderr)\n"
+        "sys.exit(4)\n",
+    )
+    launcher = bindir / "gh"
+    write(launcher, f'#!/bin/sh\nexec "{sys.executable}" "{script}" "$@"\n')
+    launcher.chmod(0o755)
+    write(bindir / "gh.cmd", f'@echo off\r\n"{sys.executable}" "{script}" %*\r\n')
+    monkeypatch.setenv("PATH", str(bindir) + os.pathsep + os.environ.get("PATH", ""))
+    for var in run_phase.TOKEN_VARS:
+        monkeypatch.delenv(var, raising=False)
+    return bindir
+
+
 def pr_route(monkeypatch, number: int | None = None, **extra) -> list:
     """The hand-over asks GitHub whether the phase's PR is open and then calls ``pr/cli.py
     upsert``; in a test nothing may leave the machine, so both are answered here. The
@@ -1598,7 +1626,7 @@ def test_every_run_of_a_phase_keeps_its_own_result_record(project):
 
 
 def test_a_run_that_leaves_no_gate_file_is_an_infrastructure_failure(
-    project, fake_claude, monkeypatch, capsys
+    project, fake_claude, fake_gh, monkeypatch, capsys
 ):
     root, _change = project
     monkeypatch.setenv("FAKE_CLAUDE_RESULT", json.dumps(FAKE_RESULT))
@@ -1610,7 +1638,7 @@ def test_a_run_that_leaves_no_gate_file_is_an_infrastructure_failure(
 
 
 def test_a_failing_claude_run_exits_1_with_its_text_on_stderr(
-    project, fake_claude, monkeypatch, capsys
+    project, fake_claude, fake_gh, monkeypatch, capsys
 ):
     root, _change = project
     monkeypatch.setenv(
@@ -1643,7 +1671,7 @@ def test_hand_over_table_matches_operating_model_4_2():
 
 
 def test_the_review_pass_commits_its_own_result_record_and_spend_entry(
-    project, fake_claude, monkeypatch, capsys
+    project, fake_claude, fake_gh, monkeypatch, capsys
 ):
     """The review of the 0.3.1 diff, finding 6: the review pass returned before any commit,
     so its result record, its run file and its spend entry (issue #71) lived in the working

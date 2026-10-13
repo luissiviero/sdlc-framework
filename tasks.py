@@ -10,6 +10,7 @@ this process: it rewrites ``docs/notes/index.md`` from the notes' frontmatter.
 
 from __future__ import annotations
 
+import importlib.util
 import re
 import subprocess
 import sys
@@ -26,8 +27,17 @@ def _run(*args: str) -> int:
 
 
 def task_test() -> int:
-    """Run the self-tests (layer 1) and the fixture integration tests (layer 2)."""
-    return _run("pytest")
+    """Run the self-tests (layer 1) and the fixture integration tests (layer 2), on every core."""
+    # pytest-xdist (pyproject's dev extra, 2026-10-13): the suite spends its time launching
+    # processes (git, python, the fakes), not computing, and the Windows job of
+    # framework-checks.yml paid about six times the Linux jobs' time for it; `-n auto` spreads
+    # the tests over the runner's cores. It stays out of pyproject's addopts so that plain
+    # `python -m pytest` keeps working where the dev extra is not reinstalled yet, and this
+    # task falls back to one core there too.
+    if importlib.util.find_spec("xdist") is None:
+        print("pytest-xdist is not installed: running the suite on one core", flush=True)
+        return _run("pytest")
+    return _run("pytest", "-n", "auto")
 
 
 def task_lint() -> int:
