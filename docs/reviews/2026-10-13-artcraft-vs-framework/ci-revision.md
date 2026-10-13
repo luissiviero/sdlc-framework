@@ -111,6 +111,8 @@ A general-purpose agent in a fresh context was given the record's rows A5, A10 a
 
 ## 9. What the owner decides
 
+*[2026-10-13, later: the owner accepted every recommendation below, so C1, C3, C4, C6 and C7 are accepted and C2 and C5 rejected. The record's rows A5, A10 and G5 carry the annotation (Part 2, PR #184). The code waits for the plain PR the owner asks for. C4 waits for the owner's ruleset check and the `HANDOFF.md` edit of section 7.]*
+
 | # | Question | Recommended |
 |---|---|---|
 | C1 | A5: one layer-2 test for this repository's `lessons/index.md` (5.2), as a plain PR (no change id, no bump: only `tests/`); no CI step, no template change | accept |

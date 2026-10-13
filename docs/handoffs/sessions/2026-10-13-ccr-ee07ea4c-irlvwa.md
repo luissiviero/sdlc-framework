@@ -23,7 +23,7 @@ This session ran the starting prompt `docs/handoffs/2026-10-13-artcraft-rows-pro
 | A1 | Accepted as R14; change 0004, PR #173, waits for R10 (carried) |
 | A2 | Narrowed and accepted; residue in T27, T28, T30 and R10 (carried) |
 | A3 | Accepted as R15 (#179); change 0005's intent merged (#180). The state of its design run was not read |
-| A5, A10 | Part 1 done here: `ci-revision.md`, C1 to C7 waiting for the owner |
+| A5, A10 | Done here (Parts 1 and 2, PR #184). The owner accepted every recommendation of `ci-revision.md` (C1, C3, C4, C6, C7; C2 and C5 rejected), and the record's rows A5, A10 and G5 are annotated. The code waits for a plain PR the owner asks for |
 | A7, A8, A9 (batch `templates`) | Not started |
 | A4, A6 (batch `planning`) | Not started |
 
@@ -37,10 +37,11 @@ The standing ones are in `HANDOFF.md`. Carried from the file this builds on, not
 4. **Then the 2026-10-09 order:** R7, R5, R6 and R10, the carried gaps, R9 part 1; R8 after R7; then R11, then R12 and R13. Carried.
 5. **R14 after R10** (PR #173). Carried.
 6. **R15's change 0005 continues through its phases.** Its intent merged in #180; not read further here.
-7. **Batch `ci`, Part 2, once the owner answers C1 to C7:**
-   - annotate the record's rows A5, A10 and G5 (choice 126);
-   - for an accepted row, a plain PR the owner asks for (no change id, no bump; `tests/` and `.github/` only), in the CI-speed line of PR #167;
-   - the owner's `HANDOFF.md` edit (`ci-revision.md` section 7) if C4 is accepted.
+7. **Batch `ci`'s plain PR, when the owner asks for it** (no change id, no bump; `tests/` and `.github/` only), in the CI-speed line of PR #167:
+   - C1: one layer-2 test, `les.check(ROOT)` in `tests/test_lessons.py`;
+   - C3: `cancel-in-progress: ${{ github.event_name == 'pull_request' }}` in `framework-checks.yml`;
+   - C4: a separate Windows job with a job-level `if:` from a `.github/scripts/` file and its test, skipping only when every changed path is `docs/**`, `HANDOFF.md` or `README.md`. This comes after the owner's ruleset check and `HANDOFF.md` edit (`ci-revision.md` section 7);
+   - C6: `framework-evals.yml` PR runs keyed by PR number and cancelled when superseded, the nightly run never.
 8. **Batches `templates` and `planning`:** one session each, with the same prompt, changing the batch name on its first line.
 9. **After the read:** the owner's triage of sample PRs #55, #56 and #57, then the stale sample branches. Carried.
 10. **After the read: the study's next proposal batch** (T17, T19, T27, T28). Carried.
@@ -49,8 +50,9 @@ The standing ones are in `HANDOFF.md`. Carried from the file this builds on, not
 ## Every open item
 | Item | Where | What is left | Who acts | Blocks 1.0.0 |
 |---|---|---|---|---|
-| Batch `ci` (this PR) | framework | The owner's answers to C1 to C7, then Part 2 | owner, then a session | no |
-| `main` runs cancel each other, so tags can name unchecked commits | framework `.github/` | C3: one line in `framework-checks.yml` | owner decides; a plain PR | no |
+| Batch `ci` (this PR) | framework | Merge | owner | no |
+| Batch `ci`'s plain PR (C1, C3, C4, C6) | framework `tests/`, `.github/` | Build when the owner asks. C3 first: `main` runs cancel each other, so tags can name unchecked commits | owner asks; a session builds | no |
+| `HANDOFF.md` standing precondition 1, for C4 | framework guardrail | The owner's edit (`ci-revision.md` section 7), after checking whether ruleset 24077592 requires the Windows job | owner | no |
 | Batches `templates` (A7, A8, A9) and `planning` (A4, A6) | framework | Part 1 each | the owner chooses when | no |
 | R15, change 0005 | framework | Its phases after gate (a) | the pipeline; owner at gates | no |
 | A2's residue in T27, T28 and T30 | framework | Carried | a study session | no |
@@ -78,8 +80,8 @@ Done since the file this builds on, dropped from the table: PR #175 (merged); th
 ## What the owner does
 | When | Act |
 |---|---|
-| Now | Answer C1 to C7 in `ci-revision.md` section 9 (this PR), then merge it (approve its bot-started runs first, if any). |
-| Before C4 | Check whether ruleset 24077592 on `main` requires the `check (windows-latest, 3.12)` job by name. |
+| Now | Merge PR #184 (C1 to C7 answered: every recommendation accepted). |
+| When you want the CI changes | Ask a session for batch `ci`'s plain PR. Before its C4 part: check whether ruleset 24077592 on `main` requires `check (windows-latest, 3.12)` by name, and make the `HANDOFF.md` edit of `ci-revision.md` section 7. |
 | Any time | Start the `templates` or `planning` batch session with the rows prompt. |
 | 2026-10-14, about 12:40 UTC | Carried: check the sample's detect run and start the item-11 session with both repositories in scope. |
 | After the item-11 PR | Carried: merge it; check `v1.0.0`; both pin rows; the sample's upgrade PR; the Milestone. |
