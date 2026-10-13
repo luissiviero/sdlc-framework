@@ -21,8 +21,10 @@ Change id: 0005. Status: proposed. Produced by: sdlc plugin 0.3.6, /sdlc-design 
   `plugin/evals/run.py:821` already defaults to, read with no new `sdlc.yaml` key — with one
   addition: an `R` whose destination folder name starts with `.` is a drop, because
   `discover` excludes a hidden folder with no deletion in the diff (`run.py:142-151`). A
-  case is dropped when nothing is left under its folder at HEAD; files moving within the
-  same case folder are not a drop.
+  case is dropped when no path remains, at HEAD's committed tree, under its folder — decided
+  from HEAD's tree, not from the diff's records alone, so that one file dropped out of a
+  multi-file case while a sibling survives is never mistaken for the whole case's drop (panel
+  decision #2, phase b; see Design). Files moving within the same case folder are not a drop.
 - The check names every dropped file and case path in its `details` on failure.
 - **A drop the approved plan declares is not a finding.** The plan is read as committed at
   the merge base, via `GateContext.approved_artifact("plan.md")` (`checks.py:124-135`),
@@ -109,11 +111,23 @@ Change id: 0005. Status: proposed. Produced by: sdlc plugin 0.3.6, /sdlc-design 
   base>...HEAD` into typed records (status letter, one or two paths), since the existing
   `_z` only flattens a `--name-only` file list and cannot carry a rename's source and
   destination; it is invoked through the module's existing `_git` argument-list helper.
-- The test-path and eval-case drop rule (D under a glob; R whose source matches and
-  destination does not; the eval case's dot-prefixed-destination addition; "nothing left
-  under the case folder at HEAD") is one small pure function taking the parsed records and
-  returning two path lists — dropped test files, dropped eval cases — so it is unit-testable
-  without git.
+  A second new helper, `tree_files(root, ref, prefix) -> list[str]`, lists every path HEAD's
+  committed tree holds under `prefix` (`git ls-tree -r --name-only <ref> -- <prefix>`, the
+  same argument-list, no-shell-string convention). It exists because the diff's records
+  alone cannot tell an eval case's survivor from its drop: a file under a case's folder that
+  the diff never touches carries no record at all, so one file's deletion out of a
+  multi-file case would be indistinguishable from the whole case's drop without also reading
+  what the committed tree still holds at `ctx.diff.head` (panel decision #2, phase b).
+- The test-path drop rule (D under a glob; R whose source matches and destination does not)
+  is one small pure function taking only the parsed `--name-status` records, so it stays
+  unit-testable without live git. The eval-case drop rule is a second pure function taking
+  the same records **and** the case's survivor paths — the list `tree_files` reads at
+  `ctx.diff.head` for `evals/cases/<name>/` — so that "a case is dropped" is decided from
+  what the committed tree still holds, not from which paths the diff happened to touch: a
+  case is dropped only when its survivor list is empty (after the dot-prefixed-rename
+  addition is applied to the records). Both rules return a path list; `tree_files`'s own
+  call is the only part that touches git, so the rules themselves still take plain arguments
+  in their tests.
 - Declaration is checked against `ctx.approved_artifact("plan.md")` (the merge-base commit,
   `checks.py:124-135`), using `art.planned_files` and `plan_sync.is_planned` for the
   "## Files that change" match, and a plain text search of the "## Proof" section for
@@ -135,7 +149,7 @@ Change id: 0005. Status: proposed. Produced by: sdlc plugin 0.3.6, /sdlc-design 
 - The skip-marker scan reuses the committed diff's added lines only (a unified-diff `+`
   line, not the whole file), matched against the fixed per-language token list by a simple
   anchored substring/regex check per line, scoped to the file-glob/filename list in
-  Requirements; it is a separate pure function from the drop rule, called by `check_ratchets`
+  Requirements; it is a separate pure function from the drop rules, called by `check_ratchets`
   and folded into the same `CheckResult.details`.
 - `plugin/agents/adversarial-reviewer.md`'s new angle and `template/REVIEW.md`'s new bullet
   are prose additions read by the reviewer and the owner respectively; neither reads the
@@ -211,7 +225,12 @@ Change id: 0005. Status: proposed. Produced by: sdlc plugin 0.3.6, /sdlc-design 
   its path listed in the approved plan's "## Files that change" is `ok`; the same `D` with a
   `- ratchet: tests may fall, because <why>` Proof line in the approved plan is `ok`.
 - A unit test proves the same three outcomes for a dropped `evals/cases/<name>/` folder
-  (emptied at HEAD) and for an `R` whose destination starts with `.`.
+  (empty of survivors at HEAD's committed tree) and for an `R` whose destination starts
+  with `.`.
+- A unit test proves a partial, multi-file eval-case deletion — one file under the case
+  folder dropped while `tree_files` still lists a sibling file under the same folder at
+  HEAD — is not a drop (`test_ratchets_eval_case_partial_delete_is_not_a_drop`, panel
+  decision #2, phase b).
 - A unit test proves an `R` from one `test_paths` match to another is `ok` (a rename, not a
   drop), and that moving files within one eval case folder is not a drop.
 - A unit test proves an accepted ratchet hit (`status.yaml: risk_accepted` containing

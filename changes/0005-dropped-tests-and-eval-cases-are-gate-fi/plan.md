@@ -5,10 +5,15 @@
 - `plugin/gate/diff.py` — a parser for `git diff --name-status -M -z <merge base>...HEAD`
   into typed records (status letter, source path, and destination path for a rename), beside
   the existing `_z`/`committed_files`; invoked through the module's own `_git` argument-list
-  helper, no shell string.
+  helper, no shell string. A second new helper, `tree_files(root, ref, prefix)`, lists every
+  path HEAD's committed tree holds under a prefix (`git ls-tree -r --name-only <ref> --
+  <prefix>`, same argument-list convention), so the eval-case drop rule can tell a survivor
+  from a drop (panel decision #2, phase b).
 - `plugin/gate/checks.py` — a new `check_ratchets(ctx) -> CheckResult` beside
-  `check_test_lock`; a small pure drop-rule function (test-path and eval-case D/R rule, the
-  dot-prefix addition for eval renames); a pure skip-marker scan function over added lines;
+  `check_test_lock`; a small pure drop-rule function for test files (D/R over the parsed
+  `--name-status` records alone) and a second pure drop-rule function for eval cases (the
+  same records plus the `tree_files` survivor list at `ctx.diff.head`, with the dot-prefix
+  addition for a renamed-to-hidden case); a pure skip-marker scan function over added lines;
   `CHECKS_BY_PHASE["c"]`, `["d"]`, `["e"]` gain `check_ratchets`. `check_risk_list`,
   `check_plan_sync`, `check_test_lock` and every other check are unchanged.
 - `plugin/state/unpark.py` — `risk_hits` reads a check named `ratchets` beside `risk_list`
@@ -28,11 +33,13 @@
   description of what `sdlc:accept-risk` accepts gains a clause that a ratchet hit is
   included. Edited sentence by sentence (CLAUDE.md: no scripted rewrite of documentation).
 - `.claude-plugin/plugin.json` — the `version` field, bumped (decision 8).
-- `tests/test_gate.py` — `check_ratchets`: the drop rule (D, R-not-a-rename, R-is-a-rename),
-  the eval-case addition (dot-prefixed rename, emptied folder), declaration via "## Files
+- `tests/test_gate.py` — `check_ratchets`: the test-file drop rule (D, R-not-a-rename,
+  R-is-a-rename), the eval-case drop rule (dot-prefixed rename, folder emptied of survivors
+  at HEAD, a partial multi-file deletion that leaves a survivor), declaration via "## Files
   that change", declaration via the `- ratchet:` Proof item, an accepted hit passing on a
   later run, the skip-marker scan never affecting `ok`, and `CHECKS_BY_PHASE` membership at
-  (a)/(b)/(c)/(d)/(e)/(f). Also the new `diff.py` `--name-status -M` parser, directly.
+  (a)/(b)/(c)/(d)/(e)/(f). Also the new `diff.py` `--name-status -M` parser and `tree_files`
+  helper, directly.
 - `tests/test_state.py` — `unpark.risk_hits` reading a `ratchets`-only gate record (no
   `risk_list` check present or failing) and returning its hit keys.
 - `tests/test_pr.py` — `_conformance_line`'s declared-drops clause, present when
@@ -53,13 +60,16 @@ the hooks, the panel, `sdlc.yaml` and this repository's own root `REVIEW.md`.
 
 ## Order of work
 
-1. `plugin/gate/diff.py`: add the `--name-status -M` record parser and its direct unit
-   tests in `tests/test_gate.py` (no behavior elsewhere depends on it yet, so it lands and is
-   provably correct on its own).
-2. `plugin/gate/checks.py`: add the pure drop-rule function (test-path and eval-case D/R
-   rule) and its unit tests, using the parser from step 1 as a fixture input, not live git —
-   proves the rule in isolation from the check and the gate.
-3. `plugin/gate/checks.py`: add `check_ratchets` wiring the drop rule to
+1. `plugin/gate/diff.py`: add the `--name-status -M` record parser and the `tree_files`
+   helper, with their direct unit tests in `tests/test_gate.py` (no behavior elsewhere
+   depends on either yet, so both land and are provably correct on their own).
+2. `plugin/gate/checks.py`: add the pure test-file drop-rule function (D/R over the parsed
+   records alone) and the pure eval-case drop-rule function (the same records plus a
+   survivor-path argument), with unit tests using step 1's parser and a plain survivor-list
+   argument as fixtures, not live git — proving both rules in isolation from the check and
+   the gate, including the partial-multi-file-deletion case (panel decision #2, phase b).
+3. `plugin/gate/checks.py`: add `check_ratchets` wiring the two drop rules — the eval-case
+   one supplied with `tree_files(ctx.root, ctx.diff.head, "evals/cases")` — to
    `ctx.approved_artifact("plan.md")` for declaration (reusing `art.planned_files` /
    `plan_sync.is_planned`, and a plain search for the `- ratchet:` Proof line) and to
    `ctx.status.risk_accepted` for acceptance; add it to `CHECKS_BY_PHASE["c"/"d"/"e"]`; tests
@@ -91,13 +101,24 @@ the hooks, the panel, `sdlc.yaml` and this repository's own root `REVIEW.md`.
   defeating the point of the check. Mitigation: a test that commits a `plan.md` edit
   declaring a drop *after* the merge base, with no such declaration at the merge base, and
   asserts `check_ratchets` still fails.
+- **A `--name-status -M` diff cannot tell an eval case's survivor from its drop on its own**
+  (found by the adversarial reviewer and the panel at phase (b), decision #2): a file under
+  a case folder that the diff never touches carries no record, so a diff-records-only rule
+  cannot distinguish a partial, multi-file deletion (a sibling survives) from the whole
+  case's drop. Mitigation: the eval-case drop rule additionally takes the survivor-path list
+  `tree_files` reads at `ctx.diff.head`, and step 2's test suite includes the
+  partial-deletion case directly (`test_ratchets_eval_case_partial_delete_is_not_a_drop`).
+  The test-file drop rule has no such gap: a test file is either present at HEAD or it is
+  not, with no "folder" grouping to lose a sibling under.
 - **A `--name-status -M` parser is new to this codebase**: every existing diff-reading check
   uses `--name-only`, which cannot carry a rename's source and destination. A rename record's
   two paths must not be mistaken for two separate files (a false double-count or a false
   "both dropped"). Mitigation: the parser's own direct unit tests in step 1, including a
   rename whose destination also matches a `test_paths` glob (not a drop) and one whose
   destination does not (a drop).
-  Mitigation: the detail text uses the literal key `"ratchet: tests"` / `"ratchet: evals"`
+- **The `ratchet: <name>` hit key could be confused with a configured `risk_list` item of
+  the bare name** (for example a project that lists `tests` on its own risk list). Mitigation:
+  the detail text uses the literal key `"ratchet: tests"` / `"ratchet: evals"`
   (never the bare word), and a test with `risk_list: ["tests"]` configured alongside an
   undeclared test-file drop proves the two hits stay in separate `details` and neither
   satisfies the other's acceptance.
@@ -129,12 +150,14 @@ the hooks, the panel, `sdlc.yaml` and this repository's own root `REVIEW.md`.
      skip-marker list to the reviewer's prompt, which is a gap this plan accepts because
      spec.md's Design says the delegation prompt, already built, is what carries findings to
      every existing angle the same way).
-  2. The riskiest step is 3, as above.
+  2. The riskiest step is 3, as above; the survivor-vs-drop gap in the eval-case rule
+     (second risk bullet) is the second riskiest, and is now closed by the design, not left
+     open.
   3. See "Options not taken" below.
-  4. Yes: steps 1-10 name every file and every test by path, the exact detail-dict shape is
-     in spec.md's Design section, and the token list and glob-matching helpers to reuse
-     (`test_path_patterns`, `art.planned_files`, `plan_sync.is_planned`) are named by
-     file:line in spec.md.
+  4. Yes: steps 1-10 name every file and every test by path, the exact detail-dict shape and
+     the two-drop-rule split are in spec.md's Design section, and the token list and
+     glob-matching helpers to reuse (`test_path_patterns`, `art.planned_files`,
+     `plan_sync.is_planned`) are named by file:line in spec.md.
   5. Every Proof item below names a test to be written in this plan's own order of work (none
      exists yet); none claims an existing test already covers this behavior.
 
@@ -164,6 +187,12 @@ the hooks, the panel, `sdlc.yaml` and this repository's own root `REVIEW.md`.
   `framework/` as a separate, independently-pinned checkout outside this change's named
   scope (intent.md's own file list is root-only); re-pinning it is the project's existing
   release process, not a step this plan performs.
+- **Keeping the eval-case drop rule as a records-only pure function** (the original draft
+  of this plan). Not chosen: the adversarial reviewer and the phase-(b) panel (decision #2)
+  showed a records-only rule cannot distinguish a case's partial deletion from its full drop,
+  since an untouched sibling file leaves no diff record at all; the fix (a `tree_files`
+  survivor-path argument read at `ctx.diff.head`) stays inside the files this plan already
+  lists and adds exactly one test.
 
 ## Proof
 
@@ -177,9 +206,12 @@ the hooks, the panel, `sdlc.yaml` and this repository's own root `REVIEW.md`.
 - `tests/test_gate.py::test_ratchets_rename_within_test_paths_is_not_a_drop` — an `R` whose
   source and destination both match a `test_paths` glob is `ok`.
 - `tests/test_gate.py::test_ratchets_drop_eval_case_folder_emptied_fails` — an eval case
-  folder with nothing left under it at HEAD fails with `"ratchet: evals"`.
+  folder with no survivor in `tree_files`'s list at HEAD fails with `"ratchet: evals"`.
 - `tests/test_gate.py::test_ratchets_drop_eval_case_dot_rename_fails` — an `R` whose
   destination folder name starts with `.` fails the same way.
+- `tests/test_gate.py::test_ratchets_eval_case_partial_delete_is_not_a_drop` — one file
+  under a multi-file eval case is dropped while `tree_files` still lists a sibling file
+  under the same case folder at HEAD; `ok` (panel decision #2, phase b).
 - `tests/test_gate.py::test_ratchets_eval_case_internal_move_is_not_a_drop` — files moving
   within one case folder is `ok`.
 - `tests/test_gate.py::test_ratchets_accepted_hit_passes_on_later_run` — `status.yaml:
@@ -193,7 +225,9 @@ the hooks, the panel, `sdlc.yaml` and this repository's own root `REVIEW.md`.
 - `tests/test_gate.py::test_checks_by_phase_ratchets_membership` — `check_ratchets` is in the
   (c), (d), (e) tuples and absent from (a), (b), (f).
 - `tests/test_gate.py::test_diff_name_status_rename_detection_parses_rename` (and a sibling
-  for a plain delete) — the new `diff.py` parser's own unit tests.
+  for a plain delete) — the new `diff.py` `--name-status -M` parser's own unit tests.
+- `tests/test_gate.py::test_diff_tree_files_lists_committed_paths_under_prefix` — the new
+  `diff.py: tree_files` helper's own unit test.
 - `tests/test_state.py::test_risk_hits_reads_ratchets_check_when_risk_list_absent` —
   `unpark.risk_hits` returns the `ratchets` check's hit keys from a gate record with no
   `risk_list` check present.
