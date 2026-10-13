@@ -41,7 +41,7 @@ The production deploy hook blocks the release until a named release manager auth
 
 ## What the framework does today
 
-Read at `main` 71e4da7, plugin 0.3.6[^crosswalk].
+Read at `main` 71e4da7, plugin 0.3.6[^crosswalk]. *[Re-read at `main` 269fbe2, plugin 0.3.7 (the last plugin change 9783278, `v0.3.7`), on 2026-10-13: 0.3.7 (change 0002, the shell-guard hook and the CI sandbox's write-deny list) changes none of the files this section cites, so nothing here moves.]*
 
 - `sdlc-release.yml` runs on a pull request `closed` or `labeled` into the default branch (the labeled event only for that label on a merged PR) and on a `workflow_dispatch`; its release job holds a read-only token and runs no Claude session. `release/cli.py` checks the approval with the production-gate hook's own function (`plugin/release/approval.py` `release_approval`): the actor of the label's last `labeled` event, read from GitHub, never the automation identity or any `[bot]` account (`is_automation_actor`); a label removed again no longer counts; no route to GitHub fails closed ("cannot verify the label", a green "waiting")[^code].
 - A label on the open build PR also opens the production-gate hook for a Claude session whose checkout is that PR's head (`approval.py` accepts an open PR's approval at its head); the "after merging" wording avoids that today.
