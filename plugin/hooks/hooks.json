@@ -65,6 +65,21 @@
         ]
       },
       {
+        "matcher": "Bash|PowerShell",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python",
+            "args": [
+              "${CLAUDE_PLUGIN_ROOT}/plugin/hooks/shell_guard.py",
+              "--plugin-root",
+              "${CLAUDE_PLUGIN_ROOT}"
+            ],
+            "timeout": 30
+          }
+        ]
+      },
+      {
         "matcher": "Read|Grep|Bash|PowerShell|Write|Edit|MultiEdit",
         "hooks": [
           {

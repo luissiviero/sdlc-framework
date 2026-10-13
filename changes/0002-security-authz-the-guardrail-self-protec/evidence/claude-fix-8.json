@@ -1,0 +1,112 @@
+{
+  "duration_api_ms": 1881736,
+  "duration_ms": 2323608,
+  "errors": [
+    "Reached maximum number of turns (200)"
+  ],
+  "fast_mode_disabled_reason": "sdk_opt_in_required",
+  "fast_mode_state": "off",
+  "is_error": true,
+  "modelUsage": {
+    "claude-sonnet-5": {
+      "cacheCreationInputTokens": 550156,
+      "cacheReadInputTokens": 39453688,
+      "canonicalModel": "claude-sonnet-5",
+      "contextWindow": 1000000,
+      "costBasis": "list",
+      "costUSD": 11.000252100000004,
+      "inputTokens": 524,
+      "maxOutputTokens": 64000,
+      "outputTokens": 131024,
+      "provider": "firstParty",
+      "thinkingTokens": 73945,
+      "webSearchRequests": 0
+    }
+  },
+  "num_turns": 201,
+  "permission_denials": [
+    {
+      "tool_input": {
+        "command": "grep -E \"^[0-9]+ (passed|failed)|short test summary|= .* =\" \"$TMPDIR/pytest_full.log\" | tail -5\nsed -n '/short test summary info/,/^=/p' \"$TMPDIR/pytest_full.log\" | tail -5"
+      },
+      "tool_name": "Bash",
+      "tool_use_id": "toolu_01FjojGCvsdCyXjGeDZN43S1"
+    },
+    {
+      "tool_input": {
+        "command": "awk '/^FAILED/ && !/shutil\\.Error/' \"$TMPDIR/pytest_round2.log\""
+      },
+      "tool_name": "Bash",
+      "tool_use_id": "toolu_017BAABD9z3FEJTQSzwL9EvJ"
+    }
+  ],
+  "queued_turn_count": 0,
+  "result_index": 0,
+  "session_id": "fc53dc9a-712a-46c9-bacc-8064fe66ecc6",
+  "stop_reason": "tool_use",
+  "subagent_stats": {
+    "by_type": {
+      "general-purpose": 1,
+      "sdlc:adversarial-reviewer": 1
+    },
+    "completed": 2,
+    "failed": 0,
+    "killed": {
+      "parent": 0,
+      "system": 0,
+      "user": 0
+    },
+    "max_depth": 1,
+    "refused": {
+      "budget": 0,
+      "concurrency_limit": 0,
+      "depth_limit": 0
+    },
+    "requested": {
+      "background": 0,
+      "foreground": 0,
+      "unset": 2
+    },
+    "spawned": 2,
+    "spawned_by_subagents": 0,
+    "started_in_background": 0
+  },
+  "subtype": "error_max_turns",
+  "terminal_reason": "max_turns",
+  "total_cost_usd": 11.000252100000004,
+  "type": "result",
+  "usage": {
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 281891,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "cache_creation_input_tokens": 281891,
+    "cache_read_input_tokens": 33848722,
+    "inference_geo": "global",
+    "input_tokens": 400,
+    "iterations": [
+      {
+        "cache_creation": {
+          "ephemeral_1h_input_tokens": 451,
+          "ephemeral_5m_input_tokens": 0
+        },
+        "cache_creation_input_tokens": 451,
+        "cache_read_input_tokens": 281440,
+        "input_tokens": 2,
+        "output_tokens": 129,
+        "type": "message"
+      }
+    ],
+    "output_tokens": 83027,
+    "output_tokens_details": {
+      "thinking_tokens": 42127
+    },
+    "server_tool_use": {
+      "web_fetch_requests": 0,
+      "web_search_requests": 0
+    },
+    "service_tier": "standard",
+    "speed": "standard"
+  },
+  "uuid": "cc2ee1c4-683b-4602-9ada-d79fffa4ee30"
+}
