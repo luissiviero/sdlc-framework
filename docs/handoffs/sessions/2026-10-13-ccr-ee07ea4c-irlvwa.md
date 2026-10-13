@@ -40,7 +40,7 @@ The standing ones are in `HANDOFF.md`. Carried from the file this builds on, not
 7. **Batch `ci`'s plain PR, when the owner asks for it** (no change id, no bump; `tests/` and `.github/` only), in the CI-speed line of PR #167:
    - C1: one layer-2 test, `les.check(ROOT)` in `tests/test_lessons.py`;
    - C3: `cancel-in-progress: ${{ github.event_name == 'pull_request' }}` in `framework-checks.yml`;
-   - C4: a separate Windows job with a job-level `if:` from a `.github/scripts/` file and its test, skipping only when every changed path is `docs/**`, `HANDOFF.md` or `README.md`. This comes after the owner's ruleset check. The `HANDOFF.md` edit of `ci-revision.md` section 7 is on `main` (PR #185, `a1f504e`, verified by `git diff`). Until this PR lands, that precondition describes a skip that does not happen yet, so every job still runs and must be green;
+   - C4: a separate Windows job with a job-level `if:` from a `.github/scripts/` file and its test, skipping only when every changed path is `docs/**`, `HANDOFF.md` or `README.md`. Nothing blocks it. Ruleset 24077592 has no `required_status_checks` rule (verified from the ruleset JSON the owner pasted; `ci-revision.md` section 2). The `HANDOFF.md` edit of `ci-revision.md` section 7 is on `main` (PR #185, `a1f504e`, verified by `git diff`). Until this PR lands, that precondition describes a skip that does not happen yet, so every job still runs and must be green;
    - C6: `framework-evals.yml` PR runs keyed by PR number and cancelled when superseded, the nightly run never.
 8. **Batches `templates` and `planning`:** one session each, with the same prompt, changing the batch name on its first line.
 9. **After the read:** the owner's triage of sample PRs #55, #56 and #57, then the stale sample branches. Carried.
@@ -52,7 +52,6 @@ The standing ones are in `HANDOFF.md`. Carried from the file this builds on, not
 |---|---|---|---|---|
 | Batch `ci` (this PR) | framework | Merge | owner | no |
 | Batch `ci`'s plain PR (C1, C3, C4, C6) | framework `tests/`, `.github/` | Build when the owner asks. C3 first: `main` runs cancel each other, so tags can name unchecked commits | owner asks; a session builds | no |
-| Ruleset 24077592 and the Windows job, for C4 | framework settings | Check whether it requires `check (windows-latest, 3.12)` by name. This session's API read was refused | owner | no |
 | Batches `templates` (A7, A8, A9) and `planning` (A4, A6) | framework | Part 1 each | the owner chooses when | no |
 | R15, change 0005 | framework | Its phases after gate (a) | the pipeline; owner at gates | no |
 | A2's residue in T27, T28 and T30 | framework | Carried | a study session | no |
@@ -81,7 +80,7 @@ Done since the file this builds on, dropped from the table: PR #175 (merged); th
 | When | Act |
 |---|---|
 | Now | Merge PR #184 (C1 to C7 answered: every recommendation accepted). |
-| When you want the CI changes | Ask a session for batch `ci`'s plain PR. Before its C4 part: check whether ruleset 24077592 on `main` requires `check (windows-latest, 3.12)` by name. The `HANDOFF.md` edit is done (PR #185). |
+| When you want the CI changes | Ask a session for batch `ci`'s plain PR. Nothing is left to do before it: the `HANDOFF.md` edit is done (PR #185), and the ruleset requires no check. |
 | Any time | Start the `templates` or `planning` batch session with the rows prompt. |
 | 2026-10-14, about 12:40 UTC | Carried: check the sample's detect run and start the item-11 session with both repositories in scope. |
 | After the item-11 PR | Carried: merge it; check `v1.0.0`; both pin rows; the sample's upgrade PR; the Milestone. |
