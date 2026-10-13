@@ -6,7 +6,7 @@ This session ran the starting prompt `docs/handoffs/2026-10-13-artcraft-rows-pro
 
 ## Where the project stands
 - Plugin **0.3.7** on `main` (verified, `.claude-plugin/plugin.json:4`). Newest tag `v0.3.7` and root pin 0.3.6 are carried from the file this builds on, not re-verified.
-- Merged since the file this builds on (verified, `git log --merges` to `3efb45f`):
+- Merged since the file this builds on (verified, `git log --merges` to `4d4cc23`). The last two are the owner's own edits: #183 (the README's count of settled decisions) and #185 (`HANDOFF.md` standing precondition 1, batch `ci`'s C4 sentence). Before them:
   - #175 (the A3 prompt and A2's annotations);
   - #177 (A3's revision);
   - #181 (the rows prompt);
@@ -40,7 +40,7 @@ The standing ones are in `HANDOFF.md`. Carried from the file this builds on, not
 7. **Batch `ci`'s plain PR, when the owner asks for it** (no change id, no bump; `tests/` and `.github/` only), in the CI-speed line of PR #167:
    - C1: one layer-2 test, `les.check(ROOT)` in `tests/test_lessons.py`;
    - C3: `cancel-in-progress: ${{ github.event_name == 'pull_request' }}` in `framework-checks.yml`;
-   - C4: a separate Windows job with a job-level `if:` from a `.github/scripts/` file and its test, skipping only when every changed path is `docs/**`, `HANDOFF.md` or `README.md`. This comes after the owner's ruleset check and `HANDOFF.md` edit (`ci-revision.md` section 7);
+   - C4: a separate Windows job with a job-level `if:` from a `.github/scripts/` file and its test, skipping only when every changed path is `docs/**`, `HANDOFF.md` or `README.md`. This comes after the owner's ruleset check. The `HANDOFF.md` edit of `ci-revision.md` section 7 is on `main` (PR #185, `a1f504e`, verified by `git diff`). Until this PR lands, that precondition describes a skip that does not happen yet, so every job still runs and must be green;
    - C6: `framework-evals.yml` PR runs keyed by PR number and cancelled when superseded, the nightly run never.
 8. **Batches `templates` and `planning`:** one session each, with the same prompt, changing the batch name on its first line.
 9. **After the read:** the owner's triage of sample PRs #55, #56 and #57, then the stale sample branches. Carried.
@@ -52,7 +52,7 @@ The standing ones are in `HANDOFF.md`. Carried from the file this builds on, not
 |---|---|---|---|---|
 | Batch `ci` (this PR) | framework | Merge | owner | no |
 | Batch `ci`'s plain PR (C1, C3, C4, C6) | framework `tests/`, `.github/` | Build when the owner asks. C3 first: `main` runs cancel each other, so tags can name unchecked commits | owner asks; a session builds | no |
-| `HANDOFF.md` standing precondition 1, for C4 | framework guardrail | The owner's edit (`ci-revision.md` section 7), after checking whether ruleset 24077592 requires the Windows job | owner | no |
+| Ruleset 24077592 and the Windows job, for C4 | framework settings | Check whether it requires `check (windows-latest, 3.12)` by name. This session's API read was refused | owner | no |
 | Batches `templates` (A7, A8, A9) and `planning` (A4, A6) | framework | Part 1 each | the owner chooses when | no |
 | R15, change 0005 | framework | Its phases after gate (a) | the pipeline; owner at gates | no |
 | A2's residue in T27, T28 and T30 | framework | Carried | a study session | no |
@@ -81,7 +81,7 @@ Done since the file this builds on, dropped from the table: PR #175 (merged); th
 | When | Act |
 |---|---|
 | Now | Merge PR #184 (C1 to C7 answered: every recommendation accepted). |
-| When you want the CI changes | Ask a session for batch `ci`'s plain PR. Before its C4 part: check whether ruleset 24077592 on `main` requires `check (windows-latest, 3.12)` by name, and make the `HANDOFF.md` edit of `ci-revision.md` section 7. |
+| When you want the CI changes | Ask a session for batch `ci`'s plain PR. Before its C4 part: check whether ruleset 24077592 on `main` requires `check (windows-latest, 3.12)` by name. The `HANDOFF.md` edit is done (PR #185). |
 | Any time | Start the `templates` or `planning` batch session with the rows prompt. |
 | 2026-10-14, about 12:40 UTC | Carried: check the sample's detect run and start the item-11 session with both repositories in scope. |
 | After the item-11 PR | Carried: merge it; check `v1.0.0`; both pin rows; the sample's upgrade PR; the Milestone. |
