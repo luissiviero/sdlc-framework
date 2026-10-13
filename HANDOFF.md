@@ -17,12 +17,12 @@ Every session starts here. This file holds the preconditions, the state, every o
 3. **The 0.3.8 runs PR** (choice 180; a session's PR, a test per gap, a fresh-context Opus review). It fixes the turn cap as a hard park with a higher (c) default, the label race, a re-run keeping the capped run's wall clock, the (e) park text, and the counter bumped before a round's own review pass. The template sandbox block rides here as the owner's own commit, after step 2.
 4. **Then the 2026-10-09 order, renumbered by choice 180:** R7 (change 0004, 0.3.9), then R5 (a plain PR, no bump), then R6 and R10 (their decision files first, one owner review for both; R6 is change 0005), then the carried gaps (two plain PRs), then R9 part 1. R8 starts after R7 has run on two changes.
 5. **After the read: the owner's triage** of the sample's scan incidents #55 (0010), #56 (0011) and #57 (0012), then the 18 stale sample branches.
-6. **In parallel:** the notes-index work is session 26's PR 2 (`docs/handoffs/2026-10-09-notes-index-prompt.md`; before its merge it merges `main` again, gives any newer note the three fields and reruns the task). After the read: the study's next proposal batch (T17, T19, T27, T28).
+6. **In parallel:** the notes-index work is session 26's PR 2, **PR #160** (`docs/handoffs/2026-10-09-notes-index-prompt.md`; §40 carries its three fields in this PR, so the two merge in either order; every later note carries `description`, `tags` and `sources` and runs `python tasks.py notes-index` in the same commit). After the read: the study's next proposal batch (T17, T19, T27, T28).
 
 ## Every open item
 | Item | Where | What is left | Who acts | Blocks 1.0.0 |
 |---|---|---|---|---|
-| Session 26's PR 1 (this file, PROGRESS, NOTES §40) | framework | Merge before 12:00 UTC on 2026-10-14 | owner | yes (the item-11 session edits the same files) |
+| Session 26's PR 1, **PR #158** (this file, PROGRESS, NOTES §40) | framework | Merge before 12:00 UTC on 2026-10-14 | owner | yes (the item-11 session edits the same files) |
 | Item 11, the read and the 1.0.0 bump | both | Not started; 2026-10-14 after about 12:40 UTC | a session, then the owner | yes |
 | Sandbox proof, then the pin to the newest tag | framework | Case 0006 and the evals runner step | a session, then the owner's pin row | no |
 | 0.3.8 runs PR | framework | Not started (`docs/progress/session-25.md`, known gaps) | a session | no |
@@ -33,7 +33,7 @@ Every session starts here. This file holds the preconditions, the state, every o
 | 18 stale sample branches | sample | Delete after the read (the two of the provocation added) | owner | no |
 | R2's tables (SessionStart hook, `WebSearch`, "Tooling rules") | framework guardrails | Not applied | owner | no |
 | Windows sitting (hook timing, test-file lock, watch setting; the `&&` chain through `run_command` on `cmd.exe`, NOTES §40) | owner's PC | Not done | owner | no |
-| Notes-index work | framework | Session 26's PR 2 (its number is in the session's closing message and the PR list) | a session, then the owner | no |
+| Notes-index work | framework | Session 26's PR 2, **PR #160**: open, checks green on its head, ready for the owner's review | owner | no |
 | Study batch T17, T19, T27, T28 | framework | After the read | a study session | no |
 
 ## What the owner does
