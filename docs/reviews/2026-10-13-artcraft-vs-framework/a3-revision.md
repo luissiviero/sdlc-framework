@@ -99,7 +99,7 @@ The reviewer read the same photocraft files and agreed with section 3: `FLOOR` i
 
 ## 8. Found on the way (not part of A3)
 
-- `plugin/commands/sdlc-test.md:69-71` says a feature change may change a test "only when `plan.md` Proof says so"; no gate check reads Proof for that, and the test-lock check returns `ok` for every non-fix change (`checks.py:1276-1277`).
+- `plugin/commands/sdlc-test.md:69-71` says a feature change may change a test "only when `plan.md` Proof says so"; no gate check reads Proof for that, and the test-lock check returns `ok` for every non-fix change (`checks.py:1282-1283`).
 - This repository's `pyproject.toml:31` sets `addopts = "-q"`, so the `-q` the test command adds silences pytest's summary line; the framework's own logs carry no `N passed` line (`tests/test_detect_runbooks.py` → `.... [100%]`).
 - `plugin/pr/description.py` has no "Needs your close look" banner; T9 is confirmed with no proposal file, so every sentence that says "under T9 … the banner" rides on an entry without an R number.
 - `check_test_lock` judges from the lock commit, and the reproducing test is committed before the lock (T11 "Direction"): a deletion riding in that first commit is not judged today.
@@ -109,7 +109,7 @@ The reviewer read the same photocraft files and agreed with section 3: `FLOOR` i
 
 ## 9. What I need from you
 
-One answer per row: accept, reject or amend. The accepted rows become the proposal's text (Part 2), since no proposal exists yet to annotate.
+One answer per row: accept, reject or amend. The accepted rows become the proposal's text (Part 2), since no proposal exists yet to annotate. *[2026-10-13: the owner accepted D1 to D12 as recommended; written up as `docs/proposals/ratchets.md`, ROADMAP **R15**.]*
 
 | # | Divergence | My recommendation |
 |---|---|---|
