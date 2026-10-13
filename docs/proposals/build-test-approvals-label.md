@@ -39,7 +39,7 @@ The hand-run loop has no gate after build or test: the engineer runs the session
 
 ## What the framework does today
 
-Read at `main` 71e4da7, plugin 0.3.6[^crosswalk].
+Read at `main` 71e4da7, plugin 0.3.6[^crosswalk]. *[Re-read at `main` 269fbe2, plugin 0.3.7 (the last plugin change 9783278, `v0.3.7`), on 2026-10-13: 0.3.7 (change 0002, the shell-guard hook and the CI sandbox's write-deny list) touches `plugin/ci/run_phase.py` only in `ci_settings_file`; `check_approval` and `label_applied_by_a_human` are unchanged, so nothing here moves.]*
 
 - Under the Standard profile gates (c) and (d) continue on their own. Under Full (the project's profile, or the change's `profile_override` in `status.yaml`; study entry T1 adds a per-change switch at the gate (b) merge) gate (c) labels the build PR `sdlc:c-ready` and the owner's `sdlc:c-approved` starts (d); gate (d) labels it `sdlc:d-ready` and `sdlc:d-approved` starts (e).
 - The runner checks that the label is on the build PR and that the last `labeled` event's actor is not `github-actions[bot]` (`check_approval`, `label_applied_by_a_human`); another bot account would pass, and with no token the actor is not checked. The actor is not written anywhere in git.
