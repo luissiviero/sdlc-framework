@@ -1,0 +1,131 @@
+{
+  "schema_version": 1,
+  "change_id": "0005",
+  "slug": "dropped-tests-and-eval-cases-are-gate-fi",
+  "phase": "b",
+  "profile": "standard",
+  "human_gate": true,
+  "result": "wait",
+  "label": "sdlc:b-ready",
+  "head": "9d4301b05c78d06f16a0d7595022b5a34d9b7f94",
+  "at": "2026-10-13T22:57:02Z",
+  "dry_run": false,
+  "reason": "",
+  "config_note": "",
+  "checks": [
+    {
+      "name": "limits",
+      "ok": true,
+      "reason": "within the run limits",
+      "need": "",
+      "details": {
+        "iterations": 0,
+        "cap": 2,
+        "classification": "non-routine",
+        "panel_calls": 2,
+        "panel_cap": 4,
+        "elapsed_minutes": 37.6,
+        "spend_usd": null,
+        "spend_usd_total": null,
+        "spend_entries": 0,
+        "max_budget_usd": null
+      }
+    },
+    {
+      "name": "artifacts",
+      "ok": true,
+      "reason": "every required artifact exists and has its template sections",
+      "need": "",
+      "details": {}
+    },
+    {
+      "name": "design_scope",
+      "ok": true,
+      "reason": "the committed diff stays inside changes/0005-dropped-tests-and-eval-cases-are-gate-fi/",
+      "need": "",
+      "details": {
+        "dirty": [
+          "changes/0005-dropped-tests-and-eval-cases-are-gate-fi/evidence/adversarial-review-b.json",
+          "changes/0005-dropped-tests-and-eval-cases-are-gate-fi/evidence/diff-b.patch",
+          "changes/0005-dropped-tests-and-eval-cases-are-gate-fi/evidence/hook-log.jsonl",
+          "changes/0005-dropped-tests-and-eval-cases-are-gate-fi/evidence/panel/b-items.json",
+          "tests/fixtures/sample-python-project/.env"
+        ]
+      }
+    },
+    {
+      "name": "open_concerns",
+      "ok": true,
+      "reason": "no open flagged concern",
+      "need": "",
+      "details": {}
+    },
+    {
+      "name": "panel",
+      "ok": true,
+      "reason": "2 panel decision(s) recorded",
+      "need": "",
+      "details": {
+        "decisions": [
+          {
+            "n": 1,
+            "kind": "concern",
+            "decision": "Closed as confirmed rather than assumed: `framework/` is root-excluded from every phase job's checkout via `plugin/ci/run_phase.py`'s RUNNER_EXCLUDES (`/framework/` in `.git/info/exclude`), and `git diff --name-status -M <merge base>...HEAD` lists only committed paths, so it structurally cannot appear in `check_ratchets`' input; the design's scope boundary stands unchanged."
+          },
+          {
+            "n": 2,
+            "kind": "escalate",
+            "decision": "Continue phase (b): spec.md Design's drop-rule bullet now says the function also takes a survivor-path list for the eval-case rule, read via a new plugin/gate/diff.py helper tree_files(root, ref, prefix) built on git ls-tree -r --name-only <ref> -- <prefix> (argument-list, no shell=True) called at ctx.diff.head; plan.md's Proof list gains test_ratchets_eval_case_partial_delete_is_not_a_drop."
+          }
+        ],
+        "cost_usd": 0.0
+      }
+    },
+    {
+      "name": "commands",
+      "ok": true,
+      "reason": "deferred to the runner: build, test and lint run after the model's session, outside its sandbox (issue #91); not yet run",
+      "need": "",
+      "details": {
+        "deferred": true
+      }
+    },
+    {
+      "name": "guardrails",
+      "ok": true,
+      "reason": "the diff does not touch a guardrail file",
+      "need": "",
+      "details": {}
+    },
+    {
+      "name": "risk_list",
+      "ok": true,
+      "reason": "no risk-list item touched",
+      "need": "",
+      "details": {
+        "accepted": []
+      }
+    },
+    {
+      "name": "owner_actions",
+      "ok": true,
+      "reason": "risk acceptances, iteration and panel-call resets and test-lock lifts, if any, were committed by the owner or applied by the owner's label",
+      "need": "",
+      "details": {
+        "risk_accepted": [],
+        "label_actors": {}
+      }
+    },
+    {
+      "name": "adversarial_review",
+      "ok": true,
+      "reason": "adversarial reviewer says continue",
+      "need": "",
+      "details": {
+        "classification": "non-routine",
+        "reasons": []
+      }
+    }
+  ],
+  "what_i_need": ""
+}
