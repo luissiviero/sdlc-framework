@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "phase": "b",
+  "head": "91c4f4e435a8d428640f38a28397d970cdf5cc78",
+  "verdict": "continue",
+  "reasons": [],
+  "classification": "non-routine",
+  "classification_reasons": [
+    "Blast radius is not small: the plan touches core gate infrastructure (plugin/gate/checks.py, plugin/gate/diff.py, plugin/state/unpark.py, plugin/pr/description.py) that runs for every project on the plugin at phases (c)/(d)/(e), plus the adversarial-reviewer agent, two templates/skills and OPERATING_MODEL docs; roughly 17 files across plugin, template, docs and tests, well above 'few files'.",
+    "The spec is not fully tight: 'Flagged concerns' leaves the framework/ pinned-checkout scope as an explicit assumption ('if that assumption is wrong, the owner says so at this gate') rather than a closed decision, so one open concern remains for the owner to confirm at this gate.",
+    "The code this plan would add (a new --name-status -M rename-aware diff parser, a new gate check, cross-check union logic in unpark.py) has no existing test coverage at all today -- it is wholly new behavior, not something the current suite already exercises."
+  ],
+  "attempted": [
+    "Intent: compared intent.md's Proposed outcome bullet-by-bullet against spec.md's Requirements; every bullet (phase membership, drop rule for tests and eval cases, plan-declared exemption, risk-list-shaped hit, accept-risk reuse, skip-marker listing, reviewer/REVIEW.md angles, 'what I need from you' wording, version bump) is covered, nothing substituted or dropped.",
+    "Spec and plan: verified the file:line citations spec.md and plan.md make against the actual code (plugin/gate/checks.py CHECKS_BY_PHASE at 1694-1767, check_test_lock at 1268-1305, check_plan_sync at 601-646, check_risk_list at 732-770+, GateContext.approved_artifact at 121-135; plugin/hooks/test_file_lock.py test_path_patterns at 103-109; plugin/evals/run.py discover()/cases_dir default at 142-151 and 810-824; plugin/state/unpark.py risk_hits at 68-84; plugin/pr/description.py _conformance_line at 249-259; plugin/gate/diff.py's current _z/_git/committed_files, confirming no --name-status/-M parser exists yet). All citations check out precisely, including the ones pinned to specific line numbers; all five open questions from intent.md are answered and closed in 'Flagged concerns' (four with [x], the framework/ scope left as a flagged assumption for the owner). plan.md's Proof section maps 1:1 onto spec.md's Acceptance section.",
+    "Proof: not applicable yet -- phase (b) is the read-only design run (Read/Grep/Glob only per decision 2 and plan-template/SKILL.md); the diff contains only spec.md, plan.md, status.yaml and evidence/ (hook-log.jsonl, run-b.json), no source or test changes, matching OPERATING_MODEL's 'first run with edit tools is phase (c)'. No test.log/build.log/lint.log are expected or present at this phase, and none is claimed.",
+    "Blast radius: checked sdlc.yaml's risk_list (auth, data migrations, money movement, production config) and confirmed none is touched by this design (security-baseline rule 8, as spec.md itself states); checked that no guardrail file (.claude/**, CLAUDE.md, REVIEW.md, sdlc.yaml) is edited by this diff (only this repository's root REVIEW.md receives a proposed line via docs/PROGRESS.md later, per plan step 8, consistent with CLAUDE.md's 'Things Claude gets wrong' rule on guardrail edits); confirmed template/REVIEW.md currently mirrors the root REVIEW.md exactly, consistent with the plan's intended template bullet.",
+    "Policies: confirmed spec.md's 'Does not apply' bullet correctly scopes out data-conventions (no stored field/schema/PII) and most ux-conventions rules (no UI), and correctly invokes security-baseline rules 2/6 (argument-list subprocess calls, no shell=True) for the new diff.py helper, matching the existing _git helper's actual implementation (subprocess.run with an args list, no shell=True).",
+    "Tests: not yet written (phase (b) is plan-only); checked that plan.md's Proof section names a specific new test per behavior (no claim that an existing test already covers any of this), and that the plan explicitly protects existing tests ('no existing test is skipped, weakened or deleted') and gives a concrete mitigation (using this repo's own nine --deselect lines as a regression fixture) for the one requirement most likely to produce a false park (the skip-marker scan)."
+  ],
+  "at": "2026-10-13T23:05:00Z"
+}

@@ -13,7 +13,7 @@ gate:
   at: null
 parked_reason: null
 iterations: 0
-panel_calls: 0
+panel_calls: 1
 external_ref: null
 risk_accepted: []
 tests_locked: false
@@ -28,5 +28,5 @@ released_at: null
 released_sha: null
 released_pr: null
 created_at: "2026-10-13T21:22:06Z"
-updated_at: "2026-10-13T22:33:00Z"
+updated_at: "2026-10-13T22:41:46Z"
 schema_version: 1

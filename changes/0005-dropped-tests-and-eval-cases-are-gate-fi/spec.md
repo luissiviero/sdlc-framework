@@ -195,7 +195,7 @@ Change id: 0005. Status: proposed. Produced by: sdlc plugin 0.3.6, /sdlc-design 
   `evals`.
 - [x] Plan-conformance clause wording (open question 5, above): decided — the exact string
   intent.md's own context gives; the banner line is carried forward to T9, out of scope here.
-- Assumption, because intent.md and the Proposed outcome's file list (its lines 77-80) are
+- decided (by panel #1): Closed as confirmed rather than assumed: `framework/` is root-excluded from every phase job's checkout via `plugin/ci/run_phase.py`'s RUNNER_EXCLUDES (`/framework/` in `.git/info/exclude`), and `git diff --name-status -M <merge base>...HEAD` lists only committed paths, so it structurally cannot appear in `check_ratchets`' input; the design's scope boundary stands unchanged. — Assumption, because intent.md and the Proposed outcome's file list (its lines 77-80) are
   both silent on it: `framework/` — a second, independently-versioned checkout of this same
   plugin that `docs/OPERATING_MODEL.md` §6 says the CI runner loads "from the pinned
   framework checkout the session cannot edit", so that a run cannot weaken its own gate — is

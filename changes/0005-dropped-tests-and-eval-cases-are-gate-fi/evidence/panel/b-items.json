@@ -1,0 +1,29 @@
+{
+  "decided": 0,
+  "gate": "park",
+  "items": [
+    {
+      "decided": false,
+      "item": "Assumption, because intent.md and the Proposed outcome's file list (its lines 77-80) are",
+      "key": "concern:91af540addf22370",
+      "kind": "concern",
+      "n": 1
+    }
+  ],
+  "iterations": {
+    "cap": 2,
+    "left": 2,
+    "used": 0
+  },
+  "mode": "deferred",
+  "panel_calls": {
+    "cap": 4,
+    "left": 4,
+    "used": 0
+  },
+  "parks": [],
+  "pending": [
+    1
+  ],
+  "phase": "b"
+}

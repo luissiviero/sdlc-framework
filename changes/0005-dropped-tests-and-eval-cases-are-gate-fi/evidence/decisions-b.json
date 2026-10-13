@@ -1,0 +1,27 @@
+{
+  "decisions": [
+    {
+      "advocate": "Close the concern only after it is split: the file-scope half is provably right, but \"`framework/` is out of scope\" is currently carrying two unstated consequences \u2014 no gate ever runs this check before a pin bump, and the \"nothing left at HEAD\" rule has no committed source of truth.",
+      "at": "2026-10-13T22:41:46Z",
+      "cost_usd": null,
+      "decision": "Closed as confirmed rather than assumed: `framework/` is root-excluded from every phase job's checkout via `plugin/ci/run_phase.py`'s RUNNER_EXCLUDES (`/framework/` in `.git/info/exclude`), and `git diff --name-status -M <merge base>...HEAD` lists only committed paths, so it structurally cannot appear in `check_ratchets`' input; the design's scope boundary stands unchanged.",
+      "head": "91c4f4e435a8d428640f38a28397d970cdf5cc78",
+      "item": "Assumption, because intent.md and the Proposed outcome's file list (its lines 77-80) are",
+      "item_n": 1,
+      "key": "concern:91af540addf22370",
+      "kind": "concern",
+      "n": 1,
+      "overturned": null,
+      "phase": "b",
+      "rationale": [
+        "Both verdicts agree the core claim is right: reviewer calls it a correctly scoped boundary, and advocate's own point 1 says framework/ can never appear in this check's input \u2014 no false positive, no false negative.",
+        "The stronger, checkable reason (RUNNER_EXCLUDES + diff --name-status's committed-paths-only semantics, verified in plugin/ci/run_phase.py:366-387) replaces 'assumption' with a structural guarantee, so the item closes rather than staying an open assumption for the owner to bless.",
+        "The advocate's other two points (pin/release enforcement timing for this change's own gate; whether the eval-case 'emptied at HEAD' rule reads git ls-tree or the filesystem) are not about whether framework/ is in scope \u2014 they are separate design/requirement gaps outside this one item.",
+        "Per the brief's limits, adding a requirement, accepting a risk, or deciding those two points is not available here; they park for the owner as their own finding rather than being folded into this concern's closure."
+      ],
+      "reviewer": "Accept the assumption as correct: `framework/` is properly out of scope; no fix needed to spec.md or plan.md."
+    }
+  ],
+  "phase": "b",
+  "schema_version": 1
+}
