@@ -33,7 +33,7 @@ Suggested order: **ci**, then **templates**, then **planning**. ci is the smalle
 
 ## Part 2: after my answers
 
-- A row I accept as a fold (no change of its own) gets one dated annotation beside the target entry it lands in, in `target-design.md` or in that entry's proposal file, never rewriting the text (choice 126). The record's row gets an annotation saying where it went.
+- A row I accept as a fold (no change of its own) gets one dated annotation beside the target entry it lands in, in `target-design.md` or in that entry's proposal file, never rewriting the text (choice 126). The record's row gets an annotation saying where it went. *[2026-10-13, later the same day, at the owner's request so that neither copy is read alone: the note goes in both places, beside the entry's status in `target-design.md` with a mark in its index table's status column, and, when the entry already has a proposal file (T10 is R10, T12 is R12, T21 is R13, T32 is R11), also beside the point it changes in that file. The A1, A2 and A3 notes were brought into line this way.]*
 - A row I accept as a change of its own gets a proposal file in the format of `docs/proposals/drive-target-and-proof.md`, and a ROADMAP candidate row in the shape of R14 with the next free number. Ask me before drafting any intent.
 - A row I reject gets one annotation on the record's row saying why.
 - A guardrail edit (`CLAUDE.md`, `REVIEW.md`, `sdlc.yaml`, `.claude/**`, `HANDOFF.md`'s skeleton) is mine: give it as a table with link, row, what is there now, what it must become, and stop.
