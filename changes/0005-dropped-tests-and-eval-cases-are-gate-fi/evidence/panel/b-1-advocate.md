@@ -1,9 +1,38 @@
 ## Verdict
-Close the concern only after it is split: the file-scope half is provably right, but "`framework/` is out of scope" is currently carrying two unstated consequences — no gate ever runs this check before a pin bump, and the "nothing left at HEAD" rule has no committed source of truth.
+Do not park on this: downgrade it to a build-phase instruction (a survivor-set argument plus one missing acceptance test), because the "unimplementable design" claim rests on reading a testability sentence as an interface contract and on one consequence that cannot occur.
 
 ## The case against
-1. Half the assumption is better than stated and should be closed with its reason, not as an assumption: `framework/` can never appear in this check's input. It is an untracked nested repository, root-anchored as `/framework/` in `.git/info/exclude` by `plugin/ci/run_phase.py:366-387` (RUNNER_EXCLUDES), and `git diff --name-status -M <merge base>...HEAD` lists committed paths only. No false positive, no false negative. Say that at the gate so nobody re-derives it.
-2. The other half is a real consequence dressed as a non-issue. The gate that judges 0005's own (c), (d) and (e) loads `plugin/gate/checks.py` from `framework/` at the pin (`sdlc.yaml: plugin.version 0.3.6`; `framework/.git/refs/tags/v0.3.6`), so `check_ratchets` executes at no gate of this change, or any change, until the owner tags and re-pins. Every Proof item in plan.md calls the function directly or asserts a dict literal; nothing exercises it under a real `GateContext` with a real merge base. The change therefore ships with zero in-situ proof, and its first live run lands on this repository and every project that bumps at once, with "park" as the failure mode and `sdlc:accept-risk` — itself new, also only synthetically proven — as the only escape. plan.md's "riskiest step" names the merge-base read, not this.
-3. A concrete bug the synthetic tests pass with, and it is the `framework/`-shaped one. spec.md:24 and plan.md:180 require "nothing is left under its folder at HEAD", but spec.md's Design (112-116) makes the drop rule "one small pure function taking the parsed records" — and `--name-status` records list only *changed* paths, so they cannot tell whether an untouched file survives under the case folder. The implementer must list HEAD; `plugin/gate/diff.py` offers no `ls-tree` helper (only `ls-files --others`, `rev-parse`), so the nearest tool at hand is the filesystem — the working tree that in a phase job also holds `framework/evals/cases/`, and that intent.md's own Constraints and OPERATING_MODEL §3 forbid the gate to judge. `test_ratchets_drop_eval_case_folder_emptied_fails` passes either way: in a clean fixture `Path.exists()` and `git ls-tree HEAD` agree.
-4. What I would decide instead: (a) close the file-scope half with the `run_phase.py` exclusion as its reason; (b) add a requirement that the emptied-case determination reads HEAD through `diff.py`'s `_git` (`ls-tree -r --name-only HEAD <folder>`), never the filesystem, plus an acceptance test that leaves an *uncommitted* file under the dropped case folder and still fails the check; (c) record the pin consequence as a requirement line, so the owner approves at (b) knowing the first enforcement is post-release.
-5. I would accept the plain "out of scope, no action" resolution if spec.md named the HEAD listing as the emptied-folder source with a working-tree-vs-HEAD test, and either stated the pin/release timing as an approved requirement or added one end-to-end step (`gate/cli.py check` over a temp repo with real commits) so the check is proven to fire before it fires everywhere.
+1. The premise is a misreading. "One small pure function taking the parsed records ... so it is
+   unit-testable without git" is a testability statement, not a signature. `drop_rule(records,
+   survivors)` is still one small pure function, still unit-testable without git — the caller
+   passes the survivor set in. Nothing in spec.md's Design or plan.md step 2 forbids a second
+   parameter; step 2 only says the test input is a fixture, "not live git".
+2. The survivor source is already the codebase's idiom and already in scope. Every diff-reading
+   check calls `diffmod.committed_files(ctx.root, ctx.diff.merge_base, ctx.diff.head)`
+   (`plugin/gate/checks.py:614, 663, 746, 940`), so the HEAD ref is at hand in `GateContext`; a
+   `tree_files(root, ref, prefix)` built on `_git(root, "ls-tree", "-r", "--name-only", ref, "--",
+   prefix)` is argument-list only (security-baseline rules 2 and 6, like `file_at`/`_cat_ok`) and
+   lands in `plugin/gate/diff.py`, a file plan.md's "## Files that change" already lists. No spec
+   amendment, and no `plan_sync`/`design_scope` finding: those checks match paths, not prose.
+3. Half the stated consequence is factually wrong. "Under-detect real drops spread across several
+   commits" cannot happen: the source is `git diff --name-status -M <merge base>...HEAD`, a
+   three-dot diff over the whole branch, so a case deleted across three commits shows three `D`
+   records. An escalation the owner must read twice should not carry an impossibility as evidence.
+4. What survives is narrower than the verdict: a partial delete (one file of a multi-file case, the
+   rest untouched) is a real false-positive risk, but it is a missing acceptance test, not a broken
+   design. spec.md's Acceptance pins the emptied folder and the internal move; neither forces the
+   survivor read. Escalating the whole design buries that one actionable item.
+5. Cost: a park here returns 0005 to design over a sentence the build phase resolves in its own
+   step 2, with intent, requirements and blast radius untouched.
+
+What I would decide instead: continue phase (b) with two build-phase conditions written into the
+item — the drop rule takes the survivor listing as an argument, read at `ctx.diff.head` through a
+new `diff.py` argument-list helper (no `shell=True`, same ref the records came from, never the
+working tree); and spec.md Acceptance / plan.md Proof gain one case:
+`test_ratchets_eval_case_partial_delete_is_not_a_drop`.
+
+What would make me accept the escalation: if plan.md or spec.md pinned `drop_rule`'s signature to
+records only, or declared `diff.py` closed to anything but the `--name-status` parser, or if the
+survivor read had no committed ref to stand on (`ctx.diff.head` absent at these gates) — then the
+requirement really would be unsatisfiable by the prescribed design and the owner would have to
+choose.

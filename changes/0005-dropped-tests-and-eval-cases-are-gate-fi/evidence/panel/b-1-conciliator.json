@@ -1,11 +1,12 @@
 {
-  "reviewer": "Accept the assumption as correct as stated; no fix needed to spec.md or plan.md.",
-  "advocate": "Close the file-scope half as confirmed (not assumed), but only after splitting off two unstated consequences — pin/release timing and a HEAD-vs-filesystem detection gap — as separate requirements.",
-  "decision": "Closed as confirmed rather than assumed: `framework/` is root-excluded from every phase job's checkout via `plugin/ci/run_phase.py`'s RUNNER_EXCLUDES (`/framework/` in `.git/info/exclude`), and `git diff --name-status -M <merge base>...HEAD` lists only committed paths, so it structurally cannot appear in `check_ratchets`' input; the design's scope boundary stands unchanged.",
+  "reviewer": "escalate: a drop-rule function over --name-status diff records alone cannot tell a partial multi-file deletion (sibling file untouched) from a full case drop, so the design as specced is unimplementable",
+  "advocate": "continue: add a survivor-path argument to the drop rule, sourced through the existing committed-ref idiom already in scope, plus one missing acceptance test, rather than park on a testability sentence",
+  "decision": "Continue phase (b): spec.md Design's drop-rule bullet now says the function also takes a survivor-path list for the eval-case rule, read via a new plugin/gate/diff.py helper tree_files(root, ref, prefix) built on git ls-tree -r --name-only <ref> -- <prefix> (argument-list, no shell=True) called at ctx.diff.head; plan.md's Proof list gains test_ratchets_eval_case_partial_delete_is_not_a_drop.",
   "rationale": [
-    "Both verdicts agree the core claim is right: reviewer calls it a correctly scoped boundary, and advocate's own point 1 says framework/ can never appear in this check's input — no false positive, no false negative.",
-    "The stronger, checkable reason (RUNNER_EXCLUDES + diff --name-status's committed-paths-only semantics, verified in plugin/ci/run_phase.py:366-387) replaces 'assumption' with a structural guarantee, so the item closes rather than staying an open assumption for the owner to bless.",
-    "The advocate's other two points (pin/release enforcement timing for this change's own gate; whether the eval-case 'emptied at HEAD' rule reads git ls-tree or the filesystem) are not about whether framework/ is in scope — they are separate design/requirement gaps outside this one item.",
-    "Per the brief's limits, adding a requirement, accepting a risk, or deciding those two points is not available here; they park for the owner as their own finding rather than being folded into this concern's closure."
+    "Both verdicts agree on the fact: a records-only pure function cannot distinguish a partial multi-file eval-case deletion from a full drop, since an untouched sibling file leaves no diff record at all.",
+    "They disagree only on remedy: the advocate's fix is concrete and scoped to a file plan.md already lists (diff.py), reuses the codebase's existing committed-ref pattern (ctx.diff.head, the same ref file_at/_cat_ok already read), and adds no shell string or new scope.",
+    "Half the reviewer's stated harm is wrong: a three-dot diff already lists every D across multiple commits, so 'under-detect drops spread across commits' cannot occur; this weakens the case for a full park.",
+    "Safer reading favors applying the fix now: a park returns the whole change to design over a sentence this commit can correct, while continuing with the design edit above closes the real gap and adds the missing test the advocate names.",
+    "Nothing here touches a guardrail file, a limit, or a risk-list item; the drop-rule signature and the one test are the only changes, both inside spec.md/plan.md which this phase owns."
   ]
 }

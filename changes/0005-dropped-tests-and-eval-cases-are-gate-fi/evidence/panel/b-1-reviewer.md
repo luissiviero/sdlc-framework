@@ -1,25 +1,11 @@
 ## Verdict
-Accept the assumption as correct: `framework/` is properly out of scope; no fix needed to spec.md or plan.md.
+Escalate confirmed: send the design back — the eval-case drop rule as specced cannot be implemented by a pure function over `--name-status` diff records alone.
 
 ## Why
-- `spec-template/SKILL.md`: "Concerns fail closed... every list item... is an open concern
-  unless it starts with `[x]`, `closed`, `resolved` or `decided`... the design pass opens
-  them and may close only the ones the policy text itself settles." The five other concerns
-  cite intent.md text that settles them and are `[x]`'d; this one says intent.md is "silent"
-  on `framework/`, so it correctly stays open as a genuine assumption for this gate (decision
-  21, deferred review) rather than being closed by the design pass itself.
-- The assumption itself is sound. intent.md's Constraints: "No runner code. Nothing in
-  `plugin/ci/run_phase.py` or the workflow templates changes" and its Proposed outcome's file
-  list (lines 77-80) names only root-level `plugin/`, `template/`, `docs/` paths — `framework/`
-  is absent from both.
-- Decision 8 (Framework distribution, sticky): the plugin is pinned per project by version;
-  `framework/` is this repo's own pinned checkout of itself (dogfooding), and OPERATING_MODEL
-  §6/§8 describe CI loading enforcement from that pinned checkout, never the PR branch, as
-  deliberate self-protection — a session's own diff must not immediately strengthen the gate
-  judging it. Propagation is the existing pin/release process, not an in-diff edit.
-- plan.md's "Options not taken" already considered and rejected editing `framework/` directly,
-  for the same reason; `plan.md`'s "Not touched" list names it explicitly, so plan and spec
-  agree.
-- Per REVIEW.md, "Important" is reserved for findings that break behavior, leak data or
-  breach policy; this is none of those — it is a correctly scoped, correctly flagged
-  boundary, not a defect.
+- Confirmed against the code: `plugin/gate/diff.py` has no tree-listing primitive. `file_at`/`_cat_ok` test a *single named path's* existence at a ref; nothing lists a directory's contents at HEAD (e.g. `git ls-tree -r --name-only HEAD <folder>`). Grep for `ls-tree` across `plugin/` returns nothing.
+- Confirmed against real data: every case under `evals/cases/` (`0001-protected-path-denied`, `0002-intent-skill-shape`, `0003-secrets-stay-out`, `0004-verify-before-done`, `0005-hooks-loaded`) has exactly two files, `checks.yaml` + `prompt.md`. Deleting one and leaving the other untouched is the realistic case, not a hypothetical.
+- A `--name-status` diff only lists paths the diff touched. If `checks.yaml` is deleted (`D`) and `prompt.md` is never touched, `prompt.md` has **no record at all** — not an `M`, not anything. Two different real states (case now empty vs. case still half-alive) produce the identical record set `{D evals/cases/x/checks.yaml}`. No function of that record set alone can distinguish them; this is not an edge case to patch, it is a missing-information problem.
+- spec.md's Design says the drop-rule function takes "the parsed records ... so it is unit-testable without git" (spec.md Design, diff.py/checks.py bullets) — i.e. diff records are its only input. spec.md's Requirements/Acceptance require "nothing left under its folder at HEAD" (spec.md Requirements, Acceptance bullet 2). These two bullets are mutually unsatisfiable for a multi-file case with a partial, untouched-file-preserving deletion.
+- plan.md's Proof list has no test for "partial deletion, sibling file untouched, case survives" — the gap is not just unimplemented, it is untested, so step 1-2's "provably correct in isolation" claim (plan.md Order of work, steps 1-2) would not catch it.
+- Not barred by OPERATING_MODEL §3 ("gate judges committed work, never the working tree"): `git ls-tree -r --name-only HEAD <folder>` reads a committed ref via git plumbing, not the filesystem — the same category as `file_at`/`_cat_ok`, which already do this. So the fix (add a tree-listing helper, feed it to `check_ratchets` alongside the diff records) is available and compliant; it is simply missing from plan.md's file list for `diff.py` today.
+- REVIEW.md Compliance pass: "the change matches spec.md, plan.md and our design principles" — here spec.md's own Requirements/Design are internally inconsistent, which is what Important/escalate is for before build starts.
