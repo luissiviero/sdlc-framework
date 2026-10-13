@@ -14,11 +14,13 @@ This session ran on the owner's prompt of 2026-10-13 with only `luissiviero/sdlc
 None this session: the owner's prompt set the work and no decision was reopened.
 
 ## Checks (this repository)
-On this PR's tree, in a scratch virtual environment with the dev extra plus `pytest-xdist 3.8.0` (Python 3.13.16; `ruff` and `pytest` on PATH by name): `python -m compileall -q plugin tests tasks.py` (no output), `python -m pytest` serial (`1618 passed in 713.02s`), `python tasks.py check` (`All checks passed!`, `193 files already formatted`, `1618 passed in 244.32s`), `python -m ruff check .` (`All checks passed!`); the output is pasted in the pull request body. The pull request's own `Framework checks` run is the first parallel run of the suite on Windows; its time against the 29-minute baseline is recorded there.
+On this PR's tree, in a scratch virtual environment with the dev extra plus `pytest-xdist 3.8.0` (Python 3.13.16; `ruff` and `pytest` on PATH by name): `python -m compileall -q plugin tests tasks.py` (no output), `python -m pytest` serial (`1618 passed in 713.02s`), `python tasks.py check` (`All checks passed!`, `193 files already formatted`, `1618 passed in 244.32s`), `python -m ruff check .` (`All checks passed!`); the output is pasted in the pull request body (PR #167).
+
+**The Windows number.** The pull request's own `Framework checks` run (#411, `38405930041`) is the first parallel run of the suite on Windows; all three jobs green. The `Lint and test` step against run #398: `ubuntu-latest` 3.12 from 5 min 12 s to 2 min 17 s (`1618 passed in 137.08s`), `ubuntu-latest` 3.10 from 5 min 07 s to 1 min 48 s, `windows-latest` 3.12 from 28 min 57 s (`1610 passed in 1736.25s`) to **16 min 04 s** (`1618 passed in 962.53s`). Windows gained 1.8x where Linux gained 2.3x; the workflow's wall time went from about 30 min to about 17 min. For step 2 to read: on Windows the last 4 % of the suite took four minutes (93 % at 13:46:13, 97 % at 13:50:08 UTC), a tail where one worker runs alone; `--dist loadfile`/`worksteal` or the prebuilt fixture repositories may flatten it.
 
 ## Known gaps
 - **`GH_TOKEN` reaches the tests in a cloud container** (above): `conftest.py` strips `GITHUB_*`, `RUNNER_*`, `ACTIONS_*`, `CI`, `SDLC_MODEL`, `SDLC_DEFAULT_BRANCH` and `SDLC_GATE_COMMANDS`, not `GH_TOKEN`. Only the three tests above reached GitHub with it, and they no longer do; adding `GH_TOKEN` to `RUNNER_NAMES` is a one-line candidate for step 2's PR, not done here because it changes every test's environment.
 
 ## Left
 - **The owner**: read this PR's Windows job time; merge; reinstall the dev extra (`pip install -e ".[dev]"`) so `python tasks.py test` runs on every core on the PC too.
-- **A later session**: step 2 as its own PR once the Windows number is in, step 3 only if still needed.
+- **A later session**: step 2 as its own PR now that the Windows number is in (16 min 04 s), step 3 only if still needed.
