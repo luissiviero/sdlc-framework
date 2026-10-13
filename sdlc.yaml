@@ -16,7 +16,7 @@ panel_advocate_model: opus
 commands:
   build: "python -m compileall -q plugin tests tasks.py"
   test: "python -m pytest"
-  lint: "python -m ruff check ."
+  lint: "python -m ruff check . && python -m ruff format --check ."
   # one command that installs what test/build/lint need; the CI phase jobs run it before
   # the phase; empty = nothing to install
   setup: "python -m pip install -e \".[dev]\""
