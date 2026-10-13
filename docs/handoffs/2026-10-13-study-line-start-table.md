@@ -44,6 +44,10 @@ Checked against `main` 269fbe2 (plugin 0.3.7; the last plugin change 9783278, `v
 - **4b.** Facts hold; the precedent named (change 0003's intent, PR #123, drafted by a session). Criteria right; answers complete.
 - **4c.** Facts hold. Noted the HANDOFF sequencing (both pin rows after the item-11 PR, the proof the precondition for the root pin). Answers: the "with 1.0.0's pin rows after the proof" case added.
 
+## The owner's answers of 2026-10-13
+
+Given in the checking session and recorded in `docs/ROADMAP.md` (R11, R12, R13), `HANDOFF.md` (step 5, step 7, the open-items table) and the record's section 8; PR #162. 1a: accept now. 1b: accept now; the amendment of decision 3 written at the owner's word as `docs/decisions/27.md`, before the intent; the runner's line with R11; the risk-hit line with T9. 1c: accept now, with the hook's "merged PR only" rule settled as recommended. 1d: R11 on its own first, then R12 and R13 together as one change. 2b: after the read, as choice 181 says. Every other row as recommended: the owner's surface next (2a), three or four files per PR (2c), T10's file with R10's decision file (2d), the line after the queue of HANDOFF steps 3 to 5 (3), a session drafts the intents (4b), the root pin stays until the sandbox proof (4c).
+
 ## What the checking session verifies, row by row
 
 - **The facts each row rests on.** R11 to R13 are "proposed" with a blank order (`docs/ROADMAP.md`); each proposal's "Decisions it touches" section (R12 amends decision 3; R11 and R13 amend none); HANDOFF's "Next steps, in order" and its placement of the study's next batch (step 7, after the read; PROGRESS choice 181); the root pin's value and its reason (`sdlc.yaml`, HANDOFF "Where the project stands"); R6 and R10's decision files to be written before their intents (ROADMAP's R6 and R10 rows, HANDOFF step 5); the claim in row 3 that R11 changes the runner's un-park step and `status.yaml` (`docs/proposals/approvals-list.md`, "The proposal"); the claim in row 1c that an open labeled PR opens the production-gate hook (`docs/proposals/release-label-same-visit.md`, "What the framework does today", and `plugin/release/approval.py`).

@@ -16,9 +16,9 @@ Every session starts here. This file holds the preconditions, the state, every o
 2. **2026-10-14, after about 12:40 UTC: the item-11 session.** The detect cron is 05:41 UTC, but its runs start between 10:16 and 12:39 UTC, so read the run's `created_at` first. Expect `detection.json` with `forced: false`, rule `we1`, tier 3, and an incident PR for change **0013** (the scan took 0011 and 0012 on 2026-10-12). Follow `docs/handoffs/session-14-16-live-check-road.md`, sections "Session 15" and "Session 16", with 1.0.0 as the bump: the read, each gap with a test, the 1.0.0 bump in the same PR, then `v1.0.0`, both pins, the sample's upgrade PR with one dispatched detect run, the GitHub Milestone, ROADMAP closed. If the run does not file, record why, fix it in 0.3.x and repeat the provocation the next day.
 3. **After the read: the sandbox proof** (a session's plain PR). It adds `evals/cases/0006-sandbox-write-deny/` and the `runner_setup.py` step in `.github/workflows/framework-evals.yml`. One sandboxed `Framework evals` run with case 0006 green is the precondition for moving the root pin; the pin then moves straight to the newest tag.
 4. **The 0.3.8 runs PR** (choice 180; a session's PR, a test per gap, a fresh-context Opus review). It fixes the turn cap as a hard park with a higher (c) default, the label race, a re-run keeping the capped run's wall clock, the (e) park text, and the counter bumped before a round's own review pass. The template sandbox block rides here as the owner's own commit, after step 3.
-5. **Then the 2026-10-09 order, renumbered by choice 180:** R7 (change 0004, 0.3.9), then R5 (a plain PR, no bump), then R6 and R10 (their decision files first, one owner review for both; R6 is change 0005), then the carried gaps (two plain PRs), then R9 part 1. R8 starts after R7 has run on two changes.
+5. **Then the 2026-10-09 order, renumbered by choice 180:** R7 (change 0004, 0.3.9), then R5 (a plain PR, no bump), then R6 and R10 (their decision files first, one owner review for both; R6 is change 0005), then the carried gaps (two plain PRs), then R9 part 1. R8 starts after R7 has run on two changes. **Then the study's line** (accepted 2026-10-13, PR #162): R11 on its own first, then R12 and R13 together as one change; R12's decision file is `docs/decisions/27.md` (on `main` once PR #162 merges); a session drafts each intent from its proposal file, the owner corrects and merges at gate (a). T10's proposal file (for uniformity) is written in the PR that carries R6's and R10's decision files.
 6. **After the read: the owner's triage** of the sample's scan incidents #55 (0010), #56 (0011) and #57 (0012), then the 16 stale sample branches.
-7. **Any time, in parallel:** the notes-index work (`docs/handoffs/2026-10-09-notes-index-prompt.md`). After the read: the study's next proposal batch (T17, T19, T27, T28).
+7. **Any time, in parallel:** the notes-index work (`docs/handoffs/2026-10-09-notes-index-prompt.md`). After the read: the study's next proposal batch (T17, T19, T27, T28), kept there by the owner on 2026-10-13 (choice 181 reaffirmed in the checking session, PR #162); three or four files per PR, in the order of the record's section 8.
 
 ## Every open item
 | Item | Where | What is left | Who acts | Blocks 1.0.0 |
@@ -35,7 +35,8 @@ Every session starts here. This file holds the preconditions, the state, every o
 | R2's tables (SessionStart hook, `WebSearch`, "Tooling rules") | framework guardrails | Not applied | owner | no |
 | Windows sitting (hook timing, test-file lock, watch setting) | owner's PC | Not done | owner | no |
 | Notes-index work | framework | Prompt saved; not started | a session | no |
-| Study batch T17, T19, T27, T28 | framework | After the read | a study session | no |
+| Study batch T17, T19, T27, T28 | framework | After the read (choice 181, reaffirmed 2026-10-13) | a study session | no |
+| The study's line R11, then R12 + R13 | framework | Accepted 2026-10-13 (PR #162); after R9 part 1; R12's decision file 27 in PR #162; no intent yet | sessions draft the intents; the owner merges | no |
 
 ## What the owner does
 | When | Act |
@@ -47,6 +48,7 @@ Every session starts here. This file holds the preconditions, the state, every o
 | Before merging any PR | Approve the bot-started `Framework checks` and `Framework evals` runs on the final head; merge only when all four jobs are green. |
 | Any time | Delete these 26 framework branches: `fix/live-run-blockers`, `claude/vigilant-mccarthy-4a8xx4`, `claude/happy-galileo-v3979m`, `fix/editable-install`, `claude/session-2-handoff-review-b8kju3`, `claude/handoff-review-planning-cjdn46`, `fix/stale-park-after-gate`, `fix/build-run-observability`, `fix/stale-park-single-reader`, `fix/plan-sync-committed-diff`, `claude/project-concept-comparison-r5rsnf`, `anchor-edit-deny-rules`, `owner/anchor-root-settings`, `claude/find-project-plan-artifact-ykj4cx`, `owner/pin-0.2.12`, `owner/pin-0.2.10`, `claude/b4-release-gate`, `claude/session-recovery-dead-pc-cbsm7h`, `claude/plugin-workflow-diagram-o1fgxh`, `claude/session-objectives-table-vzcqrm`, `claude/documentation-review-08tyam`, `claude/phase-f-shakedown-vbr2c6`, `claude/session-8-handoff-8v3zrm`, `claude/okf-benefits-analysis-6pzoez`, `claude/roadmap-1-0-0-pi7pmo`, `luissiviero-patch-1`. |
 | Any time | R2's tables; the Windows sitting; the guardrail row in PROGRESS "Session 25". |
+| Any time | Merge PR #162 (the study line's start table checked, decision 27, the owner's answers of 2026-10-13); it carries the one `docs/decisions/` change, written at the owner's word. |
 
 ## Rules for every session
 - Never reopen a settled decision (`docs/decisions/index.md`, the numbered choices in PROGRESS) without asking the owner.

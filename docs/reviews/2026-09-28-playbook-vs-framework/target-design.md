@@ -17,7 +17,7 @@ Each entry: the owner's idea in the owner's words, the direction discussed so fa
 | T9 | A risk-list hit is a line in the close-look banner: the merge accepts it, the reviewer briefs it, the paths are the project's | confirmed 2026-10-09 | 2026-10-03 |
 | T10 | The test loop closes by itself in CI: a red target starts the next round, and the verifier says which tree it read | confirmed 2026-10-09, already R10 | 2026-10-03 |
 | T11 | A fix proves itself: the gate requires the lock, and the runner shows the test red at the lock commit and green at HEAD | confirmed 2026-10-09 | 2026-10-03 |
-| T12 | The build and test approvals: the label alone, recorded by the runner | confirmed 2026-10-09; R12, `docs/proposals/build-test-approvals-label.md` | 2026-10-03 |
+| T12 | The build and test approvals: the label alone, recorded by the runner | confirmed 2026-10-09; R12, `docs/proposals/build-test-approvals-label.md`; accepted 2026-10-13, decision 27 | 2026-10-03 |
 | T13 | The eval suite grows: more triggers, the incident case checked, a first set drafted after twenty changes | confirmed 2026-10-09 | 2026-10-03 |
 | T14 | The runbook PRs get the review pass: every automated code change the owner merges has been reviewed | confirmed 2026-10-09 | 2026-10-04 |
 | T15 | Review corrections reach CLAUDE.md through one standing PR the owner merges when they choose | confirmed 2026-10-09 | 2026-10-05 |
@@ -26,7 +26,7 @@ Each entry: the owner's idea in the owner's words, the direction discussed so fa
 | T18 | Gate (e) is the owner's approving review; a GitHub App merges on it, and a rule holds unreviewed build PRs | confirmed 2026-10-09 | 2026-10-06 |
 | T19 | A failed CI run explains itself, and the release notes gain a plain-words paragraph beside the deterministic list | confirmed 2026-10-09 | 2026-10-07 |
 | T20 | An optional preview environment before the approval, and a rollback rehearsed there on a schedule | confirmed 2026-10-09 | 2026-10-07 |
-| T21 | The release label stays a second act, given in the same visit; a waiting or failed release reaches the digest, and the approver is recorded | confirmed 2026-10-09; R13, `docs/proposals/release-label-same-visit.md` | 2026-10-07 |
+| T21 | The release label stays a second act, given in the same visit; a waiting or failed release reaches the digest, and the approver is recorded | confirmed 2026-10-09; R13, `docs/proposals/release-label-same-visit.md`; accepted 2026-10-13 | 2026-10-07 |
 | T22 | The detection's state reaches the digest and a ref, and the next metric is a project setting | confirmed 2026-10-09 | 2026-10-07 |
 | T23 | Triage: a dismissal is one act, the band change has its number, a scheduled incident says what it mutes | confirmed 2026-10-09 | 2026-10-07 |
 | T24 | Acting at 3σ: the Go is the owner's own, a rollback needs a release in the window, a route changed by comment is dispatched by the runner | confirmed 2026-10-09 | 2026-10-07 |
@@ -37,7 +37,7 @@ Each entry: the owner's idea in the owner's words, the direction discussed so fa
 | T29 | The sandbox closes what is open: shell writes to the hooks and the protected paths denied, the model credential hidden from shell commands, the workflow token kept | confirmed 2026-10-09 | 2026-10-07 |
 | T30 | The weekly window is guarded: every limit parks, a weekly ceiling and a budget per change, the spend visible, overspends learned from without raising budgets by themselves | confirmed 2026-10-09 | 2026-10-08 |
 | T31 | Measures that change a decision: true definitions, first-pass split by the plan's class, repeats per CLAUDE.md line, and DORA | confirmed 2026-10-09 | 2026-10-08 |
-| T32 | The record answers who, when and why: one approvals list, the run on every record, a line per round, the transcript as an artifact | confirmed 2026-10-09; R11, `docs/proposals/approvals-list.md` | 2026-10-09 |
+| T32 | The record answers who, when and why: one approvals list, the run on every record, a line per round, the transcript as an artifact | confirmed 2026-10-09; R11, `docs/proposals/approvals-list.md`; accepted 2026-10-13 | 2026-10-09 |
 
 The target workflow page (https://claude.ai/artifact/13X8rzF9KsfekmeSs1w5rM, snapshot `target-workflow.html`) draws every entry. The crosswalk page (https://claude.ai/artifact/PFnRZ32pwTr4y422Gna2mz) shows T1 to T3 in a third column, "Target (tentative)", on the cards of the rows they touch, and `crosswalk.json` carries the same condensed text in each row's `target` field and in `targets`; at the owner's request the crosswalk is not extended with later entries (the review record's section 7).
 
