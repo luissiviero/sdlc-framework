@@ -1,18 +1,23 @@
 # Session of 2026-10-13 to 2026-10-14 on branch `ccr-bddc73de-kyyw0b`: the ArtCraft study's batch `templates` (A7, A8, A9), Parts 1 and 2
 
-**Builds on:** `docs/handoffs/sessions/2026-10-13-ccr-ee07ea4c-irlvwa.md`, the newest file. It builds on `2026-10-13-claude-compare-battle-tested-repo-tfqp6p.md` and, through that, on the files before it. `2026-10-13-ccr-c6d8a9c3-3s7q61.md` is not named in its header and is not older than the file it names, so it was read too (HANDOFF step 3); its open items are carried below. No other session file exists on `main` at `ca0a5bb` (verified with `ls docs/handoffs/sessions/`).
+**Builds on:** `docs/handoffs/sessions/2026-10-13-ccr-ee07ea4c-irlvwa.md`, the newest file. It builds on `2026-10-13-claude-compare-battle-tested-repo-tfqp6p.md` and, through that, on the files before it. `2026-10-13-ccr-c6d8a9c3-3s7q61.md` is not named in its header and is not older than the file it names, so it was read too (HANDOFF step 3); its open items are carried below. No other session file exists on `main` at `ca0a5bb` (verified with `ls docs/handoffs/sessions/`). On 2026-10-14 `main` moved to `1c4b3bb` with PR #188, which added `2026-10-13-ccr-fca4dc87-j6ox9z.md`, a session that ran in parallel; it was read and merged into this branch, and its open items are carried below too.
 
 This session ran the starting prompt `docs/handoffs/2026-10-13-artcraft-templates-prompt.md` for batch **templates**. No PR had started it (verified with `list_pull_requests`, the 15 newest PRs of every state). Only `luissiviero/sdlc-framework` was in scope, plus read-only sparse clones of filmcraft `cee1feb`, pdfcraft `3f044b6` (the study's `7437bde` read after a deeper blobless fetch) and effectcraft `549e9d8`.
 
 ## Where the project stands
 - Plugin **0.3.7** on `main` (verified, `.claude-plugin/plugin.json:4`); root pin **0.3.6** (verified, `sdlc.yaml:98`). Newest tag `v0.3.7`: carried from `2026-10-13-ccr-ee07ea4c-irlvwa.md`, not re-verified. This session changed nothing under `plugin/`, `template/` or `.github/`.
-- `main` is at `ca0a5bb` (verified, `git fetch origin main`, again on 2026-10-14): PR #184 (batch `ci`, Parts 1 and 2) is merged since the file this builds on.
+- `main` is at `1c4b3bb` (verified, `git fetch origin main` on 2026-10-14). Merged since the file this builds on: PR #184 (batch `ci`, Parts 1 and 2), then PR #188 (session `ccr-fca4dc87-j6ox9z`). PR #188 put each ArtCraft fold note in both places, beside the entry in `target-design.md` with a mark in its index table, and beside the point in the entry's proposal file when one exists. It also noted that rule on this batch's prompt. `main` was merged into this branch; the one conflict, T28's status line, keeps both notes (A2's, then A9's).
 - Open PRs seen: #186 (change 0005's design PR, `sdlc/0005/b`, not read) and #173 (change 0004's intent, carried).
 - **This session's work, in PR #189:** `docs/reviews/2026-10-13-artcraft-vs-framework/templates-revision.md`, independently reviewed, with the reason for each recommendation in its section 10. On 2026-10-14 the owner accepted every recommendation: E1, E2, E3, E4, E6 and E8 accepted; E5, E7 and E9 rejected. Its findings:
   - A7 is mostly covered already: flagged concerns, the panel's "Decisions taken for you", "Options not taken", departures under Risks. The residue is one line for phase (c), a plain PR (E2).
   - A8 confirms T11 (not built); keep `failing-test.log` when T11 is built (E4). The extension is not taken (E5).
   - A9's sources rank the backlog fourth (pdfcraft) and crash reports third (effectcraft), not first. Today the digest lists incident intents last. The residue is an `incident`-first sort key in T28 (E6).
-- **Part 2, annotations only (choice 126):** the record's rows A7, A8, A9 and gap G7; T2, T11 and T28 in `docs/reviews/2026-09-28-playbook-vs-framework/target-design.md`; section 9 of the revision. No proposal file and no ROADMAP row (E8).
+- **Part 2, annotations only (choice 126):**
+  - the record's rows A7, A8, A9 and gap G7;
+  - T2, T11 and T28 in `docs/reviews/2026-09-28-playbook-vs-framework/target-design.md`, each beside its status and marked in the index table's status column ("folded from A7/A8/A9, 2026-10-14"), as PR #188's rule asks;
+  - section 9 of the revision.
+
+  None of the three entries has a proposal file yet, so there is no second place to annotate. No proposal file and no ROADMAP row (E8). The next free ROADMAP number stays **R16** (carried from `2026-10-13-ccr-fca4dc87-j6ox9z.md`).
 - **The ArtCraft rows:**
 
 | Row | Where it stands |
@@ -54,7 +59,7 @@ The standing ones are in `HANDOFF.md`. Carried from `2026-10-13-ccr-ee07ea4c-irl
 | The runner measures the working tree, not HEAD | framework | Carried from `2026-10-13-ccr-c6d8a9c3-3s7q61.md`: a 0.3.x fix or inside R15's second change | owner decides; a session builds | no |
 | Three small defects (`sdlc-test.md:69-71`, `lesson_and_eval` loading, test globs) | framework | Carried from `2026-10-13-ccr-c6d8a9c3-3s7q61.md` | a session, any 0.3.x PR | no |
 | R15's second change (the measured counts) | framework | Carried: after R10 | a session | no |
-| A2's residue in T27, T28 and T30 | framework | Carried | a study session | no |
+| A2's residue in T27, T28 and T30 | framework | Carried from `2026-10-13-ccr-fca4dc87-j6ox9z.md`: noted beside each entry; still to be written into those entries' proposals when they are written. T28's proposal also carries A9's `incident`-first key | a study session | no |
 | Item 11, the read and the 1.0.0 bump | both | Carried: 2026-10-14 after about 12:40 UTC | a session, then the owner | yes |
 | Sandbox proof, then the pin to the newest tag | framework | Carried | a session, then the owner's pin row | no |
 | 0.3.8 runs PR | framework | Carried | a session | no |
@@ -67,14 +72,14 @@ The standing ones are in `HANDOFF.md`. Carried from `2026-10-13-ccr-ee07ea4c-irl
 | CI-speed line, steps 2 and 3 | framework | Carried | a session | no |
 | `docs/PROGRESS.md` rewritten by every session | framework | Carried: the owner decides | owner | no |
 | Sample PRs #55, #56, #57 | sample | Carried | owner | no |
-| Merged branches left on origin | framework | Carried; `ccr-ee07ea4c-irlvwa` joins the list (#184 merged) | owner | no |
+| Merged branches left on origin | framework | Carried; `ccr-ee07ea4c-irlvwa` (#184) and `ccr-fca4dc87-j6ox9z` (#188) join the list | owner | no |
 | 18 stale sample branches | sample | Carried | owner | no |
 | R2's tables | framework guardrails | Carried | owner | no |
 | Windows sitting | owner's PC | Carried | owner | no |
 | Study batch T17, T19, T27, T28 | framework | Carried: after the read (choice 181) | a study session | no |
 | The study's line R11, then R12 + R13 | framework | Carried | sessions draft; the owner merges | no |
 
-Done since the files this builds on, dropped from the table: batch `ci` (PR #184 merged); batch `templates` Parts 1 and 2 (PR #189).
+Done since the files this builds on, dropped from the table: batch `ci` (PR #184 merged); the notes in both places (PR #188 merged); batch `templates` Parts 1 and 2 (PR #189).
 
 ## What the owner does
 | When | Act |

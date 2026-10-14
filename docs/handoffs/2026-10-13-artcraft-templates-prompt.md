@@ -53,7 +53,7 @@ Never load the whole study, the crosswalk or `target-design.md` end to end.
 
 ## Part 2: after my answers
 
-- A row I accept as a fold gets one dated annotation beside the target entry it lands in, in `target-design.md` or in that entry's proposal file, never rewriting the text (choice 126). The record's row gets an annotation saying where it went.
+- A row I accept as a fold gets one dated annotation beside the target entry it lands in, in `target-design.md` or in that entry's proposal file, never rewriting the text (choice 126). The record's row gets an annotation saying where it went. *[2026-10-13, later the same day, at the owner's request so that neither copy is read alone (PR #188, which notes the same rule in `2026-10-13-artcraft-rows-prompt.md`): the note goes in both places, beside the entry's status in `target-design.md` with a mark in its index table's status column, and, when the entry already has a proposal file (T10 is R10, T12 is R12, T21 is R13, T32 is R11), also beside the point it changes in that file. T11 and T28, this batch's likely folds, have no proposal file yet, so for them the note goes in `target-design.md` and its index table only.]*
 - A row I accept as a change of its own gets a proposal file in the format of `docs/proposals/drive-target-and-proof.md`, and a ROADMAP candidate row in the shape of R14 with the next free number. Ask me before drafting any intent.
 - A row I accept as a plain PR (a template or skill line, with no change id) gets an annotation on the record's row and an item in your session file. A change under `plugin/` or `template/` carries a version bump.
 - A row I reject gets one annotation on the record's row saying why.
