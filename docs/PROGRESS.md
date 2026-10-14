@@ -52,8 +52,8 @@ PR #199 merged at 09:55:34 UTC as `e02e085`. Part 3 ran on the owner's word, in 
 192. **The six contradiction recommendations of `2026-10-14-ccr-5b7d20dc-ot5xgy.md` (C1 to C6) are accepted** (that file, line 35, "the owner accepted every recommendation", on `main` since the owner merged PR #201 at `efb6c62`). C1, C2 and C6 are the annotations of choice 190; C3 closed with PR #200; C4 is choice 188; C5 closed when Part 3 read the digest.
 
 ## Part 3, the end (2026-10-14, 15:00 UTC)
-- **Merged:** PR #202 (Part 3's records, 14:40 UTC), with #203 (the study batch's starting prompt) and #204 (session `ccr-5b7d20dc-ot5xgy`'s last section). The milestone holds 191 PRs (the 188 of the list above, then #200, #201 and #202), attached by this session on the owner's word; closing it is the owner's.
-- **Change 0014** (sample PR #62): the duplicate filed by the owner's dispatch of 13:54 UTC (NOTES §43). The owner closes #62 without a comment, as #60.
+- **Merged:** PR #202 (Part 3's records, 14:40 UTC), with #203 (the study batch's starting prompt) and #204 (session `ccr-5b7d20dc-ot5xgy`'s last section). The milestone holds 191 PRs (the 188 of the list above, then #200, #201 and #202), attached by this session on the owner's word, and the owner closed it at 14:22:22 UTC (verified, the milestones API).
+- **Change 0014** (sample PR #62): the duplicate filed by the owner's dispatch of 13:54 UTC (NOTES §43), closed by the owner without a comment at 14:46:54 UTC; the abandon run 38583585036 marked 0014 abandoned (`460c931`), and no dismissal branch exists.
 - **This PR** closes ROADMAP's 1.0.0 tables (rows 8 to 15 marked done, "reached on 2026-10-14, `v1.0.0`") and adds the starting prompt of the 1.0.1 fix (`docs/handoffs/2026-10-14-gh-cache-1.0.1-prompt.md`).
 
 ## The owner's decisions (2026-10-14, the end of Part 3)
