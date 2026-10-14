@@ -118,6 +118,8 @@ A general-purpose agent in a fresh context was given the record's rows A7, A8, A
 
 ## 9. What the owner decides
 
+*[2026-10-14: the owner accepted every recommendation below. E1, E2, E3, E4, E6 and E8 are accepted; E5, E7 and E9 are rejected. Part 2 (PR #189) annotated the record's rows A7, A8, A9 and gap G7, and T2, T11 and T28 in `target-design.md`. E2's rule line waits for the plain PR the owner asks for.]*
+
 | # | Question | Recommended |
 |---|---|---|
 | E1 | A7: no "Decisions taken alone" section in `spec.md` or `plan.md`, and no change to the reviewer's card (7.3, 7.6). The spec's flagged concerns and the panel's "Decisions taken for you" stay the record of the design's guesses | accept |

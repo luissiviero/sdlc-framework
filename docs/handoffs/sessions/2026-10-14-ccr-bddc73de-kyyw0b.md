@@ -1,4 +1,4 @@
-# Session of 2026-10-13 on branch `ccr-bddc73de-kyyw0b`: the ArtCraft study's batch `templates` (A7, A8, A9), Part 1
+# Session of 2026-10-13 to 2026-10-14 on branch `ccr-bddc73de-kyyw0b`: the ArtCraft study's batch `templates` (A7, A8, A9), Parts 1 and 2
 
 **Builds on:** `docs/handoffs/sessions/2026-10-13-ccr-ee07ea4c-irlvwa.md`, the newest file. It builds on `2026-10-13-claude-compare-battle-tested-repo-tfqp6p.md` and, through that, on the files before it. `2026-10-13-ccr-c6d8a9c3-3s7q61.md` is not named in its header and is not older than the file it names, so it was read too (HANDOFF step 3); its open items are carried below. No other session file exists on `main` at `ca0a5bb` (verified with `ls docs/handoffs/sessions/`).
 
@@ -6,12 +6,13 @@ This session ran the starting prompt `docs/handoffs/2026-10-13-artcraft-template
 
 ## Where the project stands
 - Plugin **0.3.7** on `main` (verified, `.claude-plugin/plugin.json:4`); root pin **0.3.6** (verified, `sdlc.yaml:98`). Newest tag `v0.3.7`: carried from `2026-10-13-ccr-ee07ea4c-irlvwa.md`, not re-verified. This session changed nothing under `plugin/`, `template/` or `.github/`.
-- `main` is at `ca0a5bb` (verified, `git fetch origin main`): PR #184 (batch `ci`, Parts 1 and 2) is merged since the file this builds on.
+- `main` is at `ca0a5bb` (verified, `git fetch origin main`, again on 2026-10-14): PR #184 (batch `ci`, Parts 1 and 2) is merged since the file this builds on.
 - Open PRs seen: #186 (change 0005's design PR, `sdlc/0005/b`, not read) and #173 (change 0004's intent, carried).
-- **This session's work, in this branch's PR:** `docs/reviews/2026-10-13-artcraft-vs-framework/templates-revision.md`, independently reviewed. It waits for the owner's answers to E1 to E9. Its findings:
-  - A7 is mostly covered already: flagged concerns, the panel's "Decisions taken for you", "Options not taken", departures under Risks. The residue is one line for phase (c).
-  - A8 confirms T11 (not built). Its extension has nothing to read.
-  - A9's sources rank regressions sixth and second, not first. The residue is an `incident`-first sort key in T28.
+- **This session's work, in PR #189:** `docs/reviews/2026-10-13-artcraft-vs-framework/templates-revision.md`, independently reviewed, with the reason for each recommendation in its section 10. On 2026-10-14 the owner accepted every recommendation: E1, E2, E3, E4, E6 and E8 accepted; E5, E7 and E9 rejected. Its findings:
+  - A7 is mostly covered already: flagged concerns, the panel's "Decisions taken for you", "Options not taken", departures under Risks. The residue is one line for phase (c), a plain PR (E2).
+  - A8 confirms T11 (not built); keep `failing-test.log` when T11 is built (E4). The extension is not taken (E5).
+  - A9's sources rank the backlog fourth (pdfcraft) and crash reports third (effectcraft), not first. Today the digest lists incident intents last. The residue is an `incident`-first sort key in T28 (E6).
+- **Part 2, annotations only (choice 126):** the record's rows A7, A8, A9 and gap G7; T2, T11 and T28 in `docs/reviews/2026-09-28-playbook-vs-framework/target-design.md`; section 9 of the revision. No proposal file and no ROADMAP row (E8).
 - **The ArtCraft rows:**
 
 | Row | Where it stands |
@@ -20,7 +21,7 @@ This session ran the starting prompt `docs/handoffs/2026-10-13-artcraft-template
 | A2 | Narrowed and accepted; residue in T27, T28, T30 and R10 (carried) |
 | A3 | Accepted as R15; change 0005's intent merged (#180), its design PR #186 open (not read) |
 | A5, A10 | Done (PR #184). The code waits for a plain PR the owner asks for (carried) |
-| A7, A8, A9 (batch `templates`) | Part 1 done here; waits for the owner's answers E1 to E9 |
+| A7, A8, A9 (batch `templates`) | Done here (Parts 1 and 2, PR #189). A7's rule line waits for a plain PR the owner asks for |
 | A4, A6 (batch `planning`) | Not started |
 
 ## Preconditions of the moment
@@ -35,15 +36,16 @@ The standing ones are in `HANDOFF.md`. Carried from `2026-10-13-ccr-ee07ea4c-irl
 6. **R15's change 0005:** its design PR #186 waits at gate (b) or has parked (not read here). Carried from `2026-10-13-ccr-c6d8a9c3-3s7q61.md`: before its build, the owner places its version against item 11 and the 0.3.8 runs PR.
 7. **R15's second change after R10** (the measured counts). Carried from `2026-10-13-ccr-c6d8a9c3-3s7q61.md`.
 8. **Batch `ci`'s plain PR when the owner asks for it** (C1, C3, C4, C6). Carried.
-9. **Batch `templates` Part 2**, on this PR, after the owner answers E1 to E9: annotations only (T2, T11, T28 and the record's rows A7, A8, A9 and G7). If E2 is accepted, its plain PR (one line in `plan-template` and in `sdlc-build.md`, with a version bump) waits until the owner asks for it.
+9. **Batch `templates`' plain PR when the owner asks for it** (E2): one sentence in `plugin/skills/plan-template/SKILL.md` Rules and one in `plugin/commands/sdlc-build.md` step 2, "a choice the spec and the plan leave open is one line under Risks, `Decided alone: <choice>, not <alternative>, because <reason>`, in the commit that makes it", with a version bump (`plugin/`). Its version slot is the owner's to place against item 11 and the 0.3.8 runs PR, as change 0005's is.
 10. **Batch `planning` (A4, A6):** one session, from the rows prompt with the same additions. Carried.
 11. **After the read:** the owner's triage of sample PRs #55, #56 and #57, then the stale sample branches; the study's next proposal batch (T17, T19, T27, T28); the CI-speed line's steps 2 and 3. Carried.
 
 ## Every open item
 | Item | Where | What is left | Who acts | Blocks 1.0.0 |
 |---|---|---|---|---|
-| Batch `templates` (this PR) | framework | The owner's answers E1 to E9, then Part 2 on this PR, then merge | owner, then this session | no |
-| Batch `templates`' plain PR (E2, if accepted) | framework `plugin/` | One rule line in `plan-template` and `sdlc-build.md` step 2, with a version bump | owner asks; a session builds | no |
+| Batch `templates` (PR #189) | framework | Merge | owner | no |
+| Batch `templates`' plain PR (E2) | framework `plugin/` | One rule line in `plan-template` and `sdlc-build.md` step 2, with a version bump | owner asks; a session builds | no |
+| T28's `incident`-first key (E6) and T11's `failing-test.log` (E4) | framework | Annotated; built with those entries' own proposals | a study session | no |
 | Batch `ci`'s plain PR (C1, C3, C4, C6) | framework `tests/`, `.github/` | Carried: build when the owner asks; C3 first | owner asks; a session builds | no |
 | Batch `planning` (A4, A6) | framework | Part 1 | the owner chooses when | no |
 | R15, change 0005 | framework | Carried: design PR #186 at gate (b), then the build with a version bump | the pipeline; owner at gates | no |
@@ -72,14 +74,13 @@ The standing ones are in `HANDOFF.md`. Carried from `2026-10-13-ccr-ee07ea4c-irl
 | Study batch T17, T19, T27, T28 | framework | Carried: after the read (choice 181) | a study session | no |
 | The study's line R11, then R12 + R13 | framework | Carried | sessions draft; the owner merges | no |
 
-Done since the files this builds on, dropped from the table: batch `ci` (PR #184 merged); batch `templates` Part 1 (this PR).
+Done since the files this builds on, dropped from the table: batch `ci` (PR #184 merged); batch `templates` Parts 1 and 2 (PR #189).
 
 ## What the owner does
 | When | Act |
 |---|---|
-| Now | Answer E1 to E9 in `templates-revision.md` section 9; this session then writes Part 2 on the same PR. |
-| After Part 2 | Approve the bot-started runs on the final head; merge when every job is green. |
-| When you want them | Ask a session for the plain PRs: batch `ci`'s (C1, C3, C4, C6) and, if E2 is accepted, batch `templates`' rule line. |
+| Now | Mark PR #189 ready, approve its bot-started runs on the final head, and merge when every job is green. |
+| When you want them | Ask a session for the plain PRs: batch `ci`'s (C1, C3, C4, C6) and batch `templates`' rule line (E2). |
 | When change 0005's design PR (#186) is ready | Carried: read its spec and plan at gate (b), or its park. |
 | 2026-10-14, about 12:40 UTC | Carried: check the sample's detect run and start the item-11 session with both repositories in scope. |
 | After the item-11 PR | Carried: merge it; check `v1.0.0`; both pin rows; the sample's upgrade PR; the Milestone. |
