@@ -381,6 +381,7 @@ RUNNER_EXCLUDES = (
     "/.mcp.json",
     "/.profile",
     "/.ripgreprc",
+    "/.sdlc-cache",  # the session's cache folder (``SESSION_CACHE_DIR``, 1.0.1)
     "/.vscode",
     "/.zprofile",
     "/.zshrc",
@@ -1295,15 +1296,27 @@ def invoke(argv: list[str], root: Path, env: dict[str, str], timeout: int) -> tu
 # of the turn, so a ceiling at the runner's timeout could never fire before the runner's own
 # kill, which drops the result record (the review of the 0.3.3 diff, finding 1).
 BACKGROUND_TASKS_ENV = "CLAUDE_CODE_DISABLE_BACKGROUND_TASKS"
+# Change 0014's diagnosis on the sample (1.0.0, NOTES §43) could not read a failed run's log:
+# ``gh run view --log-failed`` stores the log zip under ``$XDG_CACHE_HOME/gh``, else
+# ``~/.cache/gh``, and aborts when it cannot create that folder; the sandbox leaves ``$HOME``
+# read-only, and a ``VAR=... gh`` the model writes itself does not match ``Bash(gh *)``. The
+# runner points the cache into the checkout, a default write root of the sandbox, so the
+# session may write nowhere new (choice 194, option A; NOTES §44). The folder is excluded
+# from git with the runner's other entries (``RUNNER_EXCLUDES``) and never committed.
+CACHE_HOME_ENV = "XDG_CACHE_HOME"
+SESSION_CACHE_DIR = ".sdlc-cache"
 
 
-def session_env(env: dict[str, str]) -> dict[str, str]:
+def session_env(env: dict[str, str], root: Path) -> dict[str, str]:
     """The model's session's environment: ``env`` plus the mark that leaves the gate's
-    ``commands`` check to the runner (``gate.checks.COMMANDS_RUNNER_ENV``) and the switch
+    ``commands`` check to the runner (``gate.checks.COMMANDS_RUNNER_ENV``), the switch
     that keeps every sub-agent in the foreground (``BACKGROUND_TASKS_ENV``; a value the
-    workflow's ``env:`` already carries is kept)."""
+    workflow's ``env:`` already carries is kept) and the cache folder under ``root``
+    (``CACHE_HOME_ENV``; a value the workflow carries is replaced, since only the checkout is
+    known to be writable)."""
     marked = {**env, gate_checks.COMMANDS_RUNNER_ENV: gate_checks.RUN_BY_RUNNER}
     marked.setdefault(BACKGROUND_TASKS_ENV, "1")
+    marked[CACHE_HOME_ENV] = str(Path(root) / SESSION_CACHE_DIR)
     return marked
 
 
@@ -1756,7 +1769,7 @@ def run_phase(args, env: dict[str, str]) -> int:
     refs_before = change_refs(root, change_id)
     pre_head = gate_diff.head_sha(root) if gate_diff.is_repo(root) else None
     panel_before = len(panel_ledger.load_ledger(change_dir, gate_phase))
-    data, raw, err, code = invoke(argv, root, session_env(env), run_timeout_seconds(config))
+    data, raw, err, code = invoke(argv, root, session_env(env, root), run_timeout_seconds(config))
     result_path, stderr_path = run_record_paths(change_dir, phase)
     store_result(change_dir, phase, data, raw, result_path)
     store_stderr(change_dir, phase, err, stderr_path)

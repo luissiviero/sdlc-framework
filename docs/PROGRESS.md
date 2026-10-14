@@ -1,62 +1,35 @@
-# Progress — item 11 (2026-10-14): the sample's first real detection read (change 0013, filed by the owner's dispatch), one gap fixed with its tests, plugin **1.0.0**
+# Progress — 1.0.1 (2026-10-14): a writable cache folder for `gh` in the CI sandbox, plugin **1.0.1**
 
-This session ran the item-11 prompt (`docs/handoffs/2026-10-14-item-11-prompt.md`, on `main` since PR #197) with both repositories in scope, on branch `ccr-4a548fe6-7cqzlo`, PR #199. The sample was only read: nothing was pushed to it, no run on it was approved or dispatched, and none of its PRs was commented on or closed. The freeze of choice 138 ends when PR #199 merges (the owner's ruling D3).
+This session ran the 1.0.1 prompt (`docs/handoffs/2026-10-14-gh-cache-1.0.1-prompt.md`, choice 194) on branch `ccr-03233066-k1441l`. The previous record, item 11's, is now `docs/progress/2026-10-14-item-11.md`, unchanged. The sample was not touched: nothing was pushed to it, no run on it was dispatched or approved, and none of its PRs was commented on or closed.
 
 ## Summary
-- **The read (ROADMAP row 10)**, in full in `docs/handoffs/2026-10-14-item-11-part-1-read.md` and as facts in NOTES §42. Change 0013 was filed by the owner's `workflow_dispatch` run 38498439762 (`forced: false`, tier 3, `we1`, 18.27 sigma, 11 baseline points, 2 of 5 runs failed on 2026-10-13), which opened the sample's PR #60 (`sdlc:f-ready`, `incident`). The tier-3 diagnosis named the cause right (ruff `PLR0133` at the `Lint` step, `Test` skipped) and chose the route `pull_request`, ruling out all three runbooks with reasons; gate (f) `wait`, all seven checks ok. No runbook ran, so check 19 (a rollback live) is not proven.
-- **The duplicate check** (the owner's dispatch run 38531213086, PR #60 open): tier 3 logged, `filed: {}`, 0013 named as the open incident. The scheduled run of 2026-10-14 and the first digest after the detection had not run when the read was made.
-- **`gh run view --log-failed`**: the hook log keeps the diagnosis's two calls (01:58:11 and 01:58:16 UTC); no file keeps their output, so the denied host stays the diagnosis's own words (NOTES §41, §42).
-- **G1, fixed in this PR**: the incident PR's "Proposed outcome" stopped at the first line's end (PR #60: "… the commit that caused the breach was already"). `_first_sentence` in `plugin/pr/description.py` and its copy in `plugin/release/notes.py` now read the first paragraph or list item whole. A code fence ends the paragraph and a leading fenced block is skipped (found by the fresh-context review: joining lines would have pulled a fence after a spec's first sentence into it). Tests: `test_phase_f_proposed_outcome_keeps_a_sentence_wrapped_over_lines` and `test_first_sentence_reads_the_whole_first_paragraph` (nine cases, run against both helpers) in `tests/test_pr.py`, `test_notes_what_changed_keeps_a_sentence_wrapped_over_lines` in `tests/test_release.py`; the wrapped cases failed on 0.3.8's code, the fence cases on the first version of the fix, and all pass on 1.0.0.
-- **G2, not in 1.0.0**: the breach-window commits keep the committer's `-03:00` while every other time is UTC. The owner chose to count the detection's days in their own offset instead, after 1.0.0: ROADMAP **R16**, `docs/proposals/detect-local-day.md`.
-- **The bump**: `.claude-plugin/plugin.json` and `.claude-plugin/marketplace.json` from 0.3.8 to **1.0.0**. Files under `plugin/`: `plugin/pr/description.py`, `plugin/release/notes.py`. Nothing under `template/`.
-- **Port list (choice 138)** and what the read did not exercise: the Part 1 file, section 4. The sample ran 0.2.30; `plugin/detect/` and the detect and runbook workflow templates are identical in 0.2.30 and 1.0.0. Not exercised: the `run_phase.py` changes of PRs #98, #101, #107, #110, #130 and #152, the `sdlc-fix.yml` changes of #98 and #107, and the CI sandbox's log host of PR #194 (0.3.8). This PR touches nothing on the detect path.
+- **Part 1, the reading**, in full in `docs/handoffs/2026-10-14-gh-cache-1.0.1-part-1.md`, and as facts in NOTES §44:
+  - A sandboxed command may write the working directory and a per-user temp folder, not `$HOME`.
+  - The runner's environment reaches sandboxed commands.
+  - `gh run view --log-failed` writes one thing: the run's log zip under `$XDG_CACHE_HOME/gh`, else `~/.cache/gh`. It aborts when it cannot create that folder.
+  - The model's own `XDG_CACHE_HOME=… gh …` was denied because an allow rule does not match past a leading variable assignment.
+  - Two research passes ran in fresh contexts. This session then re-checked the sandboxing page's lines on write roots, `$TMPDIR` and the environment against the page itself.
+- **The fix (option A, choice 195)**, in `plugin/ci/run_phase.py`:
+  - `session_env(env, root)` sets `XDG_CACHE_HOME` to `<root>/.sdlc-cache`, replacing any value the workflow set.
+  - `RUNNER_EXCLUDES` gains `/.sdlc-cache`.
+  - The session may write nowhere new: there is no sandbox or permission entry, and `plugin/ci/settings.ci.json` is unchanged.
+- **The tests**, in `tests/test_ci.py`; each failed on 1.0.0's code and passes on 1.0.1:
+  - `test_the_session_s_gh_cache_is_a_folder_the_sandbox_lets_it_write`, which is new;
+  - `test_the_session_s_environment_leaves_the_gate_s_commands_to_the_runner`, whose expected environment gains the one new key, a deliberate change of `session_env`'s contract;
+  - `test_the_run_excludes_the_runner_s_own_untracked_entries_once`, which now also checks that a cached log zip is not untracked.
+- **The bump**: `.claude-plugin/plugin.json` and `.claude-plugin/marketplace.json` from 1.0.0 to **1.0.1** (choice 184: the next free patch number). Under `plugin/`, only `plugin/ci/run_phase.py` changes. Nothing under `template/` changes.
+- **Port list (choice 138)**: this PR touches `plugin/ci/run_phase.py`, not `plugin/ci/settings.ci.json`.
+  - It changes the environment of every phase session: (b), (c), (d), (e), (f), review and fix.
+  - It does not change the weekly scan's read-only `claude -p` (`plugin/scan/`), which is started outside `run_phase.py`.
+- **The live proof is not this session's.** It is the next real diagnosis on the sample at 1.0.1 that reads a failed run's log. That needs the sample's pin moved to 1.0.1 (a guardrail row for the owner, given after the tag) and a real breach. Until then, whether 0.3.8's `results-receiver.actions.githubusercontent.com` entry lets the download through stays unknown (NOTES §41, §43).
 
 ## The owner's decisions (2026-10-14)
-183. **Sample PR #60 is closed without a comment**, by the owner, after PR #199 merges and before the sample's upgrade PR (choice 69). A close with a comment would write a dismissal, and a detect signature carries no date (`detect|metric|rule`), so it would mute `ci_test_failure_rate`/`we1` for a baseline window; labelling it `schedule` or merging it would keep the metric muted through `open_incidents`. Either would stop the next provocation from filing. No runbook PR exists.
-184. **No version number is reserved after 1.0.0.** Each PR that changes `plugin/` or `template/` takes the next free patch number when it is the next to merge (1.0.1, 1.0.2, …); the order of the work stays in ROADMAP's Order column. This replaces choice 180's "the runs PR as 0.3.8, R7 as 0.3.9" (0.3.8 went to PR #194). A red `main` run on the 1.0.0 merge takes the next number as its fix.
-185. **The 1.0.0 PR carries G1 only.** G2 does not go in, because it would change `plugin/detect/`, which the read certified unchanged since 0.2.30.
-186. **Detection days in the owner's offset (-03:00) become ROADMAP R16**, after 1.0.0 (the owner's answer to G2). Its order is not placed.
-187. **The root pin waits for the sandbox proof** (reading B, as the session recommended). After `v1.0.0` the root pin (`sdlc.yaml:98`) stays at 0.3.6 until one sandboxed `Framework evals` run passes with case 0006 (the sandbox proof, a plain PR after the read), then moves straight to the newest tag. 0.3.7's deny-write rewrite and 0.3.8's log host are not yet proven in a live sandboxed run here, and change 0005's build is this repository's next phase run. The sample's pin moves to 1.0.0 in its upgrade PR (ROADMAP row 13) as planned. ROADMAP row 12 is annotated, not rewritten.
+195. **`gh`'s cache goes into the checkout (option A of the Part 1 file).** The runner sets `XDG_CACHE_HOME` to `<root>/.sdlc-cache` in `session_env`, and the folder joins `RUNNER_EXCLUDES`. Option B (`allowWrite: ["~/.cache/gh"]` in `settings.ci.json`) and option C (a folder under `RUNNER_TEMP` with a run-time `allowWrite`) each widen what the session may write by one folder outside the checkout, so neither was chosen.
 
 ## Checks (this repository)
-On the final head, in a virtual environment with `pip install -e ".[dev]"`, chained with `set -o pipefail`: the four commands of `HANDOFF.md`'s standing precondition 1, their output in the PR.
-
-## The Milestone's PR list (ROADMAP row 14)
-Read on 2026-10-14 with `list_pull_requests`, `state: all`, on both repositories.
-
-| Repository | Merged | Closed without a merge | Open |
-|---|---|---|---|
-| `luissiviero/sdlc-framework` (187 merged before this PR) | #1–#23, #25–#45, #47–#65, #69–#70, #73–#90, #92–#147, #149–#172, #174–#185, #187–#198, and #199 (this PR) when it merges | #46, #148 | #173 (change 0004's intent, draft), #186 (change 0005's design, `sdlc:b-ready`) |
-| `luissiviero/sdlc-sample-python` (46 merged) | #2–#7, #9–#19, #21–#24, #27–#29, #31–#33, #36–#46, #48–#50, #52–#54, #58–#59 | #1, #25, #26, #30, #34, #35, #47, #51 | #55, #56, #57, #60 (incident intents at `sdlc:f-ready`) |
-
-The numbers missing from each list are issues (framework: #24, #66, #67, #68, #71, #72, #91; sample: #8, #20). A GitHub Milestone holds one repository's PRs: the framework's list is the Milestone's; the sample's stays here.
+On the final head, in a virtual environment with `pip install -e ".[dev]"`, chained with `set -o pipefail`: the four commands of `HANDOFF.md`'s standing precondition 1. Their output is in the PR.
 
 ## Left
-- **The owner**: approve PR #199's runs if they wait; merge it when all three `Framework checks` jobs are green on its final head and the branch is up to date with `main`; then close sample PR #60 without a comment (choice 183).
-- **Part 3, after the merge** (ROADMAP rows 12, 13 and 15): `v1.0.0` on the merge commit, the `main` run of the merge green, the sample's pin row (the root pin waits for the sandbox proof, choice 187), the sample's upgrade PR with one dispatched detect run at `v1.0.0`, the 1.0.0 tables closed. Row 14 (the Milestone) is the owner's.
-
-## Part 3 (2026-10-14, from 11:50 UTC): after the merge
-PR #199 merged at 09:55:34 UTC as `e02e085`. Part 3 ran on the owner's word, in the order of their rulings D-A to D-D (`docs/handoffs/sessions/2026-10-14-ccr-5b7d20dc-ot5xgy.md`, PR #201).
-
-- **`v1.0.0`** is on `e02e085` (verified, `git ls-remote --tags origin`), tagged by run https://github.com/luissiviero/sdlc-framework/actions/runs/38545917596 (read by session `ccr-5b7d20dc-ot5xgy`). The `main` run of `e02e085`, https://github.com/luissiviero/sdlc-framework/actions/runs/38545917551, ended `success` at 10:12:31 UTC (verified, `get_workflow_run`). No 1.0.1 is owed.
-- **Today's scheduled detect run** (verified, https://github.com/luissiviero/sdlc-sample-python/actions/runs/38550795354, job 115807971304, created 10:36:49 UTC, `ref=v0.2.30`): tier 3, `we1`, `forced: false`, `filed: {}`, `open_incidents` 0013, `outcome: "open incident 0013 already carries ci_test_failure_rate"`. NOTES §43.
-- **Today's digest and the close of #60** (verified, NOTES §43): the digest run https://github.com/luissiviero/sdlc-sample-python/actions/runs/38560274588 (11:57:36 UTC) lists #60 in issue #8. Session `ccr-5b7d20dc-ot5xgy` closed #60 without a comment at 12:09:10 UTC on the owner's word; the abandon run 38561684100 marked 0013 abandoned (`ad31f50`), and no dismissal branch was opened.
-- **The sample's upgrade PR** https://github.com/luissiviero/sdlc-sample-python/pull/61, opened after the close, merged by the owner at 12:59:44 UTC as `0beba95` with the pin (`sdlc.yaml:77`, `1.0.0`) and the `REVIEW.md` rule as the owner's commits on its branch; `CI` green on every head and on the merge (NOTES §43). ROADMAP row 13's upgrade is done; its detect run at `v1.0.0` waits for 2026-10-15 (choice 189).
-- **The sample's upgrade, as prepared before the push**: its fourteen SDLC files are unedited 0.2.30 copies; seven change at 1.0.0 (the build, deploy, design, fix, release and test workflows and `lessons/README.md`). 1.0.0's own `sdlc_init.py`, run on a scratch copy, reports the same workflows outdated, `sdlc.yaml` changed only on the pin line, leaves `.claude/settings.json` and `CLAUDE.md` unchanged, and keeps `REVIEW.md` (create-only), whose one changed rule at 1.0.0 is the owner's guardrail edit. The sample's build, test and lint pass on the upgraded tree (`9 passed`, `All checks passed!`). NOTES §43.
-
-## The owner's decisions (2026-10-14, Part 3)
-188. **Sample PR #60 is closed after today's scheduled detect run and today's digest have both run** (D-A), and before the sample's upgrade PR (choice 183). A close before the detect run would have let it judge 2026-10-13 with no open incident and file a duplicate; a close before the digest leaves #60 out of every digest.
-189. **ROADMAP row 13's dispatched detect run at `v1.0.0` happens on 2026-10-15 or later** (D-B), after #60 is closed. Expected: no rule fires and nothing is filed (2026-10-14's counted runs passed). *[Amended the same day by choice 193: the owner dispatched it at 13:54 UTC on 2026-10-14; it filed the duplicate 0014, and the owner counts it as row 13's run.]*
-190. **The item-11 session annotates the stale lines in its ROADMAP-closing PR** (D-C): `docs/ROADMAP.md` lines 66, 76, 77 and 81 and `docs/decisions/28.md:27` (the "0.3.8 runs PR" and "R7 ships as 0.3.9", superseded by choice 184); `docs/notes/39.md:55` (the detect start window); `docs/ROADMAP.md:51`'s "was denied by the CI sandbox" (not verified). Done in this PR, beside each sentence (choice 126).
-191. **PR #200, then PR #201, are merged** (D-D) before the ROADMAP-closing PR.
-192. **The six contradiction recommendations of `2026-10-14-ccr-5b7d20dc-ot5xgy.md` (C1 to C6) are accepted** (that file, line 35, "the owner accepted every recommendation", on `main` since the owner merged PR #201 at `efb6c62`). C1, C2 and C6 are the annotations of choice 190; C3 closed with PR #200; C4 is choice 188; C5 closed when Part 3 read the digest.
-
-## Part 3, the end (2026-10-14, 15:00 UTC)
-- **Merged:** PR #202 (Part 3's records, 14:40 UTC), with #203 (the study batch's starting prompt) and #204 (session `ccr-5b7d20dc-ot5xgy`'s last section). The milestone holds 191 PRs (the 188 of the list above, then #200, #201 and #202), attached by this session on the owner's word, and the owner closed it at 14:22:22 UTC (verified, the milestones API).
-- **Change 0014** (sample PR #62): the duplicate filed by the owner's dispatch of 13:54 UTC (NOTES §43), closed by the owner without a comment at 14:46:54 UTC; the abandon run 38583585036 marked 0014 abandoned (`460c931`), and no dismissal branch exists.
-- **This PR** closes ROADMAP's 1.0.0 tables (rows 8 to 15 marked done, "reached on 2026-10-14, `v1.0.0`") and adds the starting prompt of the 1.0.1 fix (`docs/handoffs/2026-10-14-gh-cache-1.0.1-prompt.md`).
-
-## The owner's decisions (2026-10-14, the end of Part 3)
-193. **ROADMAP row 13's dispatched run is run 38575743057** (13:54 UTC, `ref=v1.0.0`, end to end). It amends choice 189 (D-B): the run came a day early and filed the duplicate 0014, so the expected "nothing filed" is shown by the next scheduled detect run, which judges 2026-10-14, and no dispatch is owed. Until that scheduled run has run, nothing dispatches detect on the sample after #62 is closed, and no red `CI` run lands on the sample.
-194. **The `gh` cache gap is fixed as 1.0.1, in a new session, before change 0005's build and the runs PR.** The runner gives the CI session a writable cache folder for `gh` (for example `XDG_CACHE_HOME` in `session_env`, `plugin/ci/run_phase.py`), after the session has verified which folders the sandbox lets a session write; a test proves the variable is set; the live proof is the next real diagnosis that reads a log (NOTES §43). Its version is the next free patch number (choice 184).
-195. **The work after item 11 runs in new sessions**, each from its own starting prompt: the 1.0.1 fix (this PR's prompt), the study's owner-surface batch (#203's prompt), then the rest in the order of `HANDOFF.md`'s newest session file and ROADMAP's Order column. This session ends with this PR.
+- **The owner**: approve the PR's runs if they wait at `action_required`; merge once the branch is up to date with `main` and all three `Framework checks` jobs are green on its final head. The tag `v1.0.1` is created on the merge itself.
+- **After `v1.0.1`**: the sample's pin row (`sdlc.yaml`, `1.0.0` → `1.0.1`), a guardrail edit given to the owner as a table. The root pin stays at 0.3.6 until the sandbox proof (choice 187).
+- **Then**, as before: change 0005's build and the runs PR (choice 194), each with the next free patch number.
