@@ -1,6 +1,6 @@
 # Item 11, Part 1: the read of the sample's first real detection (change 0013)
 
-Written on 2026-10-14 by the item-11 session (branch `ccr-4a548fe6-7cqzlo`), from `docs/handoffs/2026-10-14-item-11-prompt.md` (on `main` since PR #197) and the owner's rulings D1 to D3 (`docs/handoffs/sessions/2026-10-14-ccr-15574406-xqm2bq.md`). Read only: nothing was pushed to the sample, no run was approved or dispatched on it, and none of its PRs was commented on or closed. Nothing under `plugin/` or `template/` changed. Times are UTC.
+Written on 2026-10-14 by the item-11 session (branch `ccr-4a548fe6-7cqzlo`), from `docs/handoffs/2026-10-14-item-11-prompt.md` (on `main` since PR #197) and the owner's rulings D1 to D3 (`docs/handoffs/sessions/2026-10-14-ccr-15574406-xqm2bq.md`). Read only: nothing was pushed to the sample, no run was approved or dispatched on it, and none of its PRs was commented on or closed. Nothing under `plugin/` or `template/` changed in Part 1 *[Part 2, in the same PR, changes `plugin/pr/description.py` and `plugin/release/notes.py` (G1) and bumps the plugin to 1.0.0]*. Times are UTC.
 
 ## 1. Before anything else
 

@@ -75,11 +75,18 @@ def _first_sentence(body: str) -> str:
     # the first paragraph or list item read whole: a hard-wrapped sentence is not cut at the
     # first line's end (item 11's read)
     parts: list[str] = []
+    fenced = False
     for raw in (body or "").splitlines():
         line = raw.strip()
+        fence = line.startswith(("```", "~~~"))
+        if fence and not parts:
+            fenced = not fenced  # a leading code block is skipped, never read as prose
+            continue
+        if fenced:
+            continue
         item = LIST_ITEM_RE.match(line) if line else None
         skip = not line or line.startswith(("#", ">", "|"))
-        if parts and (skip or item):
+        if parts and (skip or item or fence):
             break
         if not skip:
             parts.append(item.group("text").strip() if item else line)

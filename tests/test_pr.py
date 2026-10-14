@@ -466,10 +466,17 @@ def test_phase_f_proposed_outcome_keeps_a_sentence_wrapped_over_lines(project):
         ("- An item with no end mark\n- Another item.\n", "An item with no end mark"),
         ("Stops at a list\n- item.\n", "Stops at a list"),
         ("> a quote\n\nThe text\nafter it.\n", "The text after it."),
+        ("A signature:\n```python\ndef f(x):\n    return x\n```\n", "A signature:"),
+        ("```\ncode line\n```\nThe text\nafter it.\n", "The text after it."),
     ],
 )
-def test_first_sentence_reads_the_whole_first_paragraph(body, sentence):
-    assert desc._first_sentence(body) == sentence
+@pytest.mark.parametrize("helper", ["pr", "release"])
+def test_first_sentence_reads_the_whole_first_paragraph(helper, body, sentence):
+    # the PR body's helper and the release note's copy read a section the same way
+    from release import notes
+
+    first_sentence = desc._first_sentence if helper == "pr" else notes._first_sentence
+    assert first_sentence(body) == sentence
 
 
 def _declare_production(root: Path, value: str) -> None:
