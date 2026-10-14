@@ -624,6 +624,18 @@ def test_ci_settings_are_rendered_against_the_project_root(tmp_path):
     assert run_phase._absolute_rule("Edit(docs/**)", "//c/p") == "Edit(docs/**)"
 
 
+def test_ci_sandbox_reaches_the_actions_log_host_and_no_blob_wildcard():
+    """The (f) diagnosis runs `gh run view --log-failed`; the logs API redirects the run's log
+    archive to results-receiver.actions.githubusercontent.com, which the sandbox denied in the
+    first real detection (sample change 0013, 2026-10-14, NOTES section 41). The per-job
+    redirect host (productionresultssa*.blob.core.windows.net) stays out: a
+    *.blob.core.windows.net wildcard would let a session write to any Azure storage account."""
+    source = json.loads((ROOT / "plugin" / "ci" / "settings.ci.json").read_text("utf-8"))
+    domains = source["sandbox"]["network"]["allowedDomains"]
+    assert "results-receiver.actions.githubusercontent.com" in domains
+    assert not any(d.endswith("blob.core.windows.net") for d in domains)
+
+
 def test_ci_settings_file_rewrites_the_sandbox_filesystem_deny_write_list(tmp_path):
     """change 0002: the sandbox's second layer beside the shell_guard hook. The project's own
     ``protected_paths`` plain entries are appended, absolute; a glob entry among them is
