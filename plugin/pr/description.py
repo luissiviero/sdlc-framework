@@ -152,17 +152,28 @@ def _section(text: str | None, heading: str) -> str:
 
 
 def _first_sentence(text: str) -> str:
-    """The first sentence of a section body, list markers and blank lines removed."""
+    """The first sentence of a section body, list markers and blank lines removed. The first
+    paragraph or list item is read whole, so a sentence hard-wrapped over several lines is not
+    cut at the first line's end (item 11's read: the sample's PR #60)."""
+    parts: list[str] = []
+    fenced = False
     for raw in (text or "").splitlines():
         line = raw.strip()
-        if not line or line.startswith(("#", ">", "|")):
+        fence = line.startswith(("```", "~~~"))
+        if fence and not parts:
+            fenced = not fenced  # a leading code block is skipped, never read as prose
             continue
-        m = LIST_ITEM_RE.match(line)
-        if m:
-            line = m.group("text").strip()
-        m = SENTENCE_RE.match(line)
-        return (m.group(1) if m else line).strip()
-    return ""
+        if fenced:
+            continue
+        item = LIST_ITEM_RE.match(line) if line else None
+        skip = not line or line.startswith(("#", ">", "|"))
+        if parts and (skip or item or fence):
+            break
+        if not skip:
+            parts.append(item.group("text").strip() if item else line)
+    joined = " ".join(parts)
+    m = SENTENCE_RE.match(joined)
+    return (m.group(1) if m else joined).strip()
 
 
 def _list_items(body: str) -> list[str]:
