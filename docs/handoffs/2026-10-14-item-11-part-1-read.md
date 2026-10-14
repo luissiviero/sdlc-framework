@@ -69,6 +69,8 @@ The content diff agrees: `plugin/detect/`, `sdlc-detect.yml` and `sdlc-runbook.y
 
 ## 5. Decisions for the owner
 
+*Answered on 2026-10-14: decisions 2, 3 and 4 as recommended, and G2 moved to ROADMAP R16 (days counted in the owner's -03:00 offset, after 1.0.0); the root pin was asked again. The record is `docs/PROGRESS.md`, choices 183 to 187.*
+
 | # | Decision | Options | My recommendation |
 |---|---|---|---|
 | 1 | **The root pin** (`sdlc.yaml:98`, now 0.3.6) after `v1.0.0` | **Reading A**, ROADMAP row 12: both pins to 1.0.0 right after the tag (the root's line 98 and the sample's line 77). **Reading B**, the session files since session 26 (`2026-10-13-session-26.md`, line 16): the root pin stays at 0.3.6 until the sandbox proof (evals case 0006 green in one sandboxed `Framework evals` run, a plain PR after the read), then moves straight to the newest tag; the sample's pin moves in row 13's upgrade PR either way. A runs this repository's own phase runs on 0.3.7's deny-write rewrite and 0.3.8's log host before either is proven live; B keeps ROADMAP row 12's text wrong until annotated | None, as the prompt asks. Whichever you pick, I annotate ROADMAP row 12 to match in Part 2 |

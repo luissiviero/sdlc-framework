@@ -120,6 +120,20 @@ def test_notes_are_deterministic_and_list_commits_and_links(tmp_path):
     assert "test missing" in first  # the evidence status line of the PR summary
 
 
+def test_notes_what_changed_keeps_a_sentence_wrapped_over_lines(tmp_path):
+    # item 11's read: only the first line of a hard-wrapped paragraph was read
+    root, change_dir = _repo_with_change(tmp_path)
+    (change_dir / "intent.md").write_text(
+        INTENT.replace(
+            "Owners download the claims report as CSV. Later we add more formats.",
+            "Owners download the claims report\nas CSV. Later we add more formats.",
+        ),
+        encoding="utf-8",
+    )
+    text = notes.build_notes(root, "0001", base="main")
+    assert "## What changed\n\nOwners download the claims report as CSV.\n" in text
+
+
 def test_notes_leave_out_evidence_only_commits(tmp_path):
     """M1: the commit that stores the notes (or any other evidence-only commit) is not listed,
     so writing the notes does not change them; a commit that also touches code still is."""

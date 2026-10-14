@@ -428,6 +428,50 @@ def test_phase_e_release_note_falls_back_to_the_intent_outcome(project):
     assert "returns a rounded percentage" in body.split("## Release note")[1]
 
 
+def test_phase_f_proposed_outcome_keeps_a_sentence_wrapped_over_lines(project):
+    # item 11's read: the sample's PR #60 showed "... the commit that caused the breach was
+    # already" because only the first line of a hard-wrapped paragraph was read
+    root, change = project
+    st = status_mod.read_status(change)
+    st.entry_route, st.change_type = "incident", "fix"
+    st.set_phase("f")
+    status_mod.write_status(change, st)
+    outcome = (
+        "No design-phase code change is required: the commit that caused the breach was already\n"
+        "reverted on `main`, before this diagnosis ran (see Evidence).\n"
+        "`main` is green.\n"
+    )
+    write(
+        change / "intent.md",
+        INTENT.replace("Entry route: idea", "Entry route: incident abc").replace(
+            "`sample_pkg.percent(part, whole)` returns a rounded percentage; covered by tests.\n",
+            outcome,
+        ),
+    )
+    lines = bullets(desc.build_description(root, "0001", "f"))
+    assert lines[1] == (
+        "- **Proposed outcome**: Percent helper: No design-phase code change is required: the "
+        "commit that caused the breach was already reverted on `main`, before this diagnosis "
+        "ran (see Evidence)."
+    )
+
+
+@pytest.mark.parametrize(
+    "body, sentence",
+    [
+        ("One line. Two.\n", "One line."),
+        ("Wrapped over\ntwo lines. Then more.\n", "Wrapped over two lines."),
+        ("No end mark\non two lines\n\nNext paragraph.\n", "No end mark on two lines"),
+        ("- An item\n  that wraps. Rest.\n- Another item.\n", "An item that wraps."),
+        ("- An item with no end mark\n- Another item.\n", "An item with no end mark"),
+        ("Stops at a list\n- item.\n", "Stops at a list"),
+        ("> a quote\n\nThe text\nafter it.\n", "The text after it."),
+    ],
+)
+def test_first_sentence_reads_the_whole_first_paragraph(body, sentence):
+    assert desc._first_sentence(body) == sentence
+
+
 def _declare_production(root: Path, value: str) -> None:
     config = root / "sdlc.yaml"
     text = config.read_text(encoding="utf-8")
