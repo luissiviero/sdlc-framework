@@ -1,6 +1,6 @@
 # Session prompt: the playbook study's next proposal batch, the owner's surface (T17, T19, T27, T28)
 
-Written on 2026-10-14 by the session on branch `ccr-5c89bfa5-v2zq2a`, at the owner's request, after plugin 1.0.0 merged (PR #199); Part 3 of item 11 opened PR #202 the same day. It follows the close of the study (`docs/reviews/2026-09-28-playbook-vs-framework.md`, section 8, part 2) and the first batch (R11 to R13, PR #156). Four independent reviewers checked it against the repository before it merged; their verified findings are folded in. It adds what has happened since the entries were written:
+Written on 2026-10-14 by the session on branch `ccr-5c89bfa5-v2zq2a`, at the owner's request, after plugin 1.0.0 merged (PR #199); Part 3 of item 11 opened PR #202 the same day. It follows the close of the study (`docs/reviews/2026-09-28-playbook-vs-framework.md`, section 8, part 2) and the first batch (R11 to R13, PR #156). Its first version merged in PR #203 (`7f89b62`) while four independent reviewers were checking it against the repository. It had never been used, so this text replaces it, with their verified findings folded in, and a fifth reviewer checked the result. It adds what has happened since the entries were written:
 - **The ArtCraft notes:** folded into T27 and T28 (T17 and T19 carry none). They must reach the proposals.
 - **Decisions 28 and 29** (accepted 2026-10-13) and **proposals R10 to R16**: several already settle or carry points of these four entries.
 - **ROADMAP:** Part 3 of item 11 has a claim on it until its PR merges.
