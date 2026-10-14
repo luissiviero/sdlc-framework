@@ -1296,29 +1296,46 @@ def test_full_run_stores_the_result_record_records_spend_and_hands_over(
     ]
 
 
-def test_the_session_s_environment_leaves_the_gate_s_commands_to_the_runner():
+def test_the_session_s_environment_leaves_the_gate_s_commands_to_the_runner(tmp_path):
     """Issue #91 (0.3.0): the mark rides into the model's session with the credential, and
     the runner waits for the three targets at the gate's own per-command timeout."""
     from gate import checks
 
     env = {"PATH": "/bin", **KEY_ENV}
-    marked = run_phase.session_env(env)
+    marked = run_phase.session_env(env, tmp_path)
     assert marked == {
         **env,
         checks.COMMANDS_RUNNER_ENV: checks.RUN_BY_RUNNER,
         run_phase.BACKGROUND_TASKS_ENV: "1",
+        run_phase.CACHE_HOME_ENV: str(tmp_path / run_phase.SESSION_CACHE_DIR),  # 1.0.1
     }
     assert env == {"PATH": "/bin", **KEY_ENV}  # the runner's own environment is not marked
     assert auth.credential_env(marked)[checks.COMMANDS_RUNNER_ENV] == checks.RUN_BY_RUNNER
     # 0.3.3: every sub-agent of the session runs in the foreground (change 0001's first build
     # run ended waiting for two background agents); a value the workflow set is kept
     assert auth.credential_env(marked)[run_phase.BACKGROUND_TASKS_ENV] == "1"
-    kept = run_phase.session_env({**env, run_phase.BACKGROUND_TASKS_ENV: "0"})
+    kept = run_phase.session_env({**env, run_phase.BACKGROUND_TASKS_ENV: "0"}, tmp_path)
     assert kept[run_phase.BACKGROUND_TASKS_ENV] == "0"
     assert "CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS" not in marked  # the CLI's default ceiling
     assert run_phase.commands_timeout_seconds({}) == 3 * checks.DEFAULT_COMMAND_TIMEOUT + 300
     assert run_phase.commands_timeout_seconds({"gate": {"command_timeout": 60}}) == 480
     assert run_phase.commands_timeout_seconds({"gate": {"command_timeout": "x"}}) == 2700 + 300
+
+
+def test_the_session_s_gh_cache_is_a_folder_the_sandbox_lets_it_write(tmp_path):
+    """1.0.1 (choices 194 and 196, NOTES §44): ``gh run view --log-failed`` stores the run's log zip
+    under ``$XDG_CACHE_HOME/gh`` and aborts when it cannot create that folder; ``~/.cache`` is
+    read-only in the sandbox (change 0014's diagnosis on the sample). The runner points the
+    cache into the checkout, already a default write root, and a value the workflow set is
+    replaced: only the checkout is known to be writable."""
+    root = tmp_path.resolve()
+    cache = str(root / run_phase.SESSION_CACHE_DIR)
+    assert run_phase.session_env({"PATH": "/bin"}, root)[run_phase.CACHE_HOME_ENV] == cache
+    replaced = run_phase.session_env({run_phase.CACHE_HOME_ENV: "/home/runner/.cache"}, root)
+    assert replaced[run_phase.CACHE_HOME_ENV] == cache
+    assert run_phase.CACHE_HOME_ENV == "XDG_CACHE_HOME"
+    # the folder is untracked and nobody's change: the gate never sees it
+    assert f"/{run_phase.SESSION_CACHE_DIR}" in run_phase.RUNNER_EXCLUDES
 
 
 def test_the_commands_summary_reads_the_step_s_json():
@@ -2022,11 +2039,14 @@ def test_the_run_excludes_the_runner_s_own_untracked_entries_once(project):
     (root / ".idea").write_text("a file, not a directory\n", encoding="utf-8")
     (root / "framework").mkdir()
     (root / "framework" / "README.md").write_text("pinned framework\n", encoding="utf-8")
+    (root / ".sdlc-cache" / "gh").mkdir(parents=True)  # gh's log cache (1.0.1)
+    (root / ".sdlc-cache" / "gh" / "run-log-1-2.zip").write_bytes(b"PK\x05\x06" + b"\0" * 18)
     from gate import diff as gate_diff
 
     untracked = gate_diff.untracked_files(root)
     assert ".bashrc" not in untracked and "framework/" not in untracked
     assert ".idea" not in untracked
+    assert not [path for path in untracked if path.startswith(".sdlc-cache")]
 
 
 def test_write_git_exclude_outside_a_repository_is_a_no_op(tmp_path):
