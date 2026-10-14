@@ -32,7 +32,10 @@
 - `docs/OPERATING_MODEL.md` — §3's list of diff-reading checks gains `ratchets`; §6's
   description of what `sdlc:accept-risk` accepts gains a clause that a ratchet hit is
   included. Edited sentence by sentence (CLAUDE.md: no scripted rewrite of documentation).
-- `.claude-plugin/plugin.json` — the `version` field, bumped (decision 8).
+- `.claude-plugin/plugin.json` and `.claude-plugin/marketplace.json` — the `version` field in
+  each, bumped together to the same value, the next free patch number when this change
+  merges (decision 8). `tests/test_scaffold.py:47` asserts the two stay equal; bumping only
+  `plugin.json` fails that test.
 - `tests/test_gate.py` — `check_ratchets`: the test-file drop rule (D, R-not-a-rename,
   R-is-a-rename), the eval-case drop rule (dot-prefixed rename, folder emptied of survivors
   at HEAD, a partial multi-file deletion that leaves a survivor), declaration via "## Files
@@ -85,7 +88,8 @@ the hooks, the panel, `sdlc.yaml` and this repository's own root `REVIEW.md`.
    `template/REVIEW.md`, `docs/OPERATING_MODEL.md`: the prose edits, each with the matching
    content-assertion test from "Files that change" updated in the same commit.
 8. `docs/PROGRESS.md`: append the proposed root-`REVIEW.md` row.
-9. `.claude-plugin/plugin.json`: bump the version, last, once every other file in the diff is
+9. `.claude-plugin/plugin.json` and `.claude-plugin/marketplace.json`: bump the version in
+   both, to the same next-free-patch value, last, once every other file in the diff is
    settled.
 10. Full `python -m compileall -q plugin tests tasks.py`, `python -m pytest`,
     `python -m ruff check .`; paste the output.
@@ -203,6 +207,10 @@ the hooks, the panel, `sdlc.yaml` and this repository's own root `REVIEW.md`.
   same `D`, with its path listed in the approved plan's "## Files that change", is `ok`.
 - `tests/test_gate.py::test_ratchets_drop_test_file_declared_in_proof_ok` — the same `D`,
   with `- ratchet: tests may fall, because <why>` in the approved plan's "## Proof", is `ok`.
+- `tests/test_gate.py::test_ratchets_plan_edited_after_merge_base_does_not_excuse_drop` — the
+  same `D`, with the declaration committed only after the merge base (absent from the
+  approved, merge-base copy of `plan.md`), still fails: proves `check_ratchets` reads
+  `ctx.approved_artifact("plan.md")`, not `ctx.artifact("plan.md")` (riskiest step, step 3).
 - `tests/test_gate.py::test_ratchets_rename_within_test_paths_is_not_a_drop` — an `R` whose
   source and destination both match a `test_paths` glob is `ok`.
 - `tests/test_gate.py::test_ratchets_drop_eval_case_folder_emptied_fails` — an eval case
@@ -216,9 +224,16 @@ the hooks, the panel, `sdlc.yaml` and this repository's own root `REVIEW.md`.
   within one case folder is `ok`.
 - `tests/test_gate.py::test_ratchets_accepted_hit_passes_on_later_run` — `status.yaml:
   risk_accepted` containing `"ratchet: tests"` makes the same undeclared drop `ok`.
-- `tests/test_gate.py::test_ratchets_skip_markers_listed_never_fail` — at least one hit per
-  listed token appears in `details.skip_markers` with file and line; `ok` is unaffected when
-  only skip markers, no drop, are present.
+- `tests/test_gate.py::test_ratchets_risk_list_tests_configured_does_not_satisfy_ratchet_hit`
+  — `sdlc.yaml: risk_list` configured with `["tests"]` alongside the same undeclared
+  test-file drop: `check_ratchets` still fails with `details.hits["ratchet: tests"]`, and
+  `check_risk_list`'s own bare-`"tests"` hit stays in its own check's `details`; neither
+  check's acceptance satisfies the other's hit key.
+- `tests/test_gate.py::test_ratchets_skip_markers_listed_never_fail` — run over this
+  repository's own runbook test files as the fixture (the `--deselect` lines the Risks
+  section counts, nine of them), not a synthetic one: at least one hit per listed token
+  appears in `details.skip_markers` with file and line; `ok` is unaffected when only skip
+  markers, no drop, are present.
 - `tests/test_gate.py::test_ratchets_declaring_unknown_ratchet_name_is_inert` — a Proof line
   `- ratchet: docs may fall, because ...` declares nothing and does not change the verdict of
   an unrelated undeclared drop.
