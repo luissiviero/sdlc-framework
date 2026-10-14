@@ -69,7 +69,7 @@ The content diff agrees: `plugin/detect/`, `sdlc-detect.yml` and `sdlc-runbook.y
 
 ## 5. Decisions for the owner
 
-*Answered on 2026-10-14: decisions 2, 3 and 4 as recommended, and G2 moved to ROADMAP R16 (days counted in the owner's -03:00 offset, after 1.0.0); the root pin was asked again. The record is `docs/PROGRESS.md`, choices 183 to 187.*
+*Answered on 2026-10-14: decisions 2, 3 and 4 as recommended, G2 moved to ROADMAP R16 (days counted in the owner's -03:00 offset, after 1.0.0), and the root pin as reading B, on the session's recommendation. The record is `docs/PROGRESS.md`, choices 183 to 187.*
 
 | # | Decision | Options | My recommendation |
 |---|---|---|---|

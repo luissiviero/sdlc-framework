@@ -16,7 +16,7 @@ This session ran the item-11 prompt (`docs/handoffs/2026-10-14-item-11-prompt.md
 184. **No version number is reserved after 1.0.0.** Each PR that changes `plugin/` or `template/` takes the next free patch number when it is the next to merge (1.0.1, 1.0.2, …); the order of the work stays in ROADMAP's Order column. This replaces choice 180's "the runs PR as 0.3.8, R7 as 0.3.9" (0.3.8 went to PR #194). A red `main` run on the 1.0.0 merge takes the next number as its fix.
 185. **The 1.0.0 PR carries G1 only.** G2 does not go in, because it would change `plugin/detect/`, which the read certified unchanged since 0.2.30.
 186. **Detection days in the owner's offset (-03:00) become ROADMAP R16**, after 1.0.0 (the owner's answer to G2). Its order is not placed.
-187. **The root pin** (`sdlc.yaml:98`, 0.3.6) after `v1.0.0`: asked; the session recommended reading B (the root pin waits for the sandbox proof, then moves to the newest tag). Recorded here when the owner answers.
+187. **The root pin waits for the sandbox proof** (reading B, as the session recommended). After `v1.0.0` the root pin (`sdlc.yaml:98`) stays at 0.3.6 until one sandboxed `Framework evals` run passes with case 0006 (the sandbox proof, a plain PR after the read), then moves straight to the newest tag. 0.3.7's deny-write rewrite and 0.3.8's log host are not yet proven in a live sandboxed run here, and change 0005's build is this repository's next phase run. The sample's pin moves to 1.0.0 in its upgrade PR (ROADMAP row 13) as planned. ROADMAP row 12 is annotated, not rewritten.
 
 ## Checks (this repository)
 On the final head, in a virtual environment with `pip install -e ".[dev]"`, chained with `set -o pipefail`: the four commands of `HANDOFF.md`'s standing precondition 1, their output in the PR.
@@ -32,5 +32,5 @@ Read on 2026-10-14 with `list_pull_requests`, `state: all`, on both repositories
 The numbers missing from each list are issues (framework: #24, #66, #67, #68, #71, #72, #91; sample: #8, #20). A GitHub Milestone holds one repository's PRs: the framework's list is the Milestone's; the sample's stays here.
 
 ## Left
-- **The owner**: answer the root pin (decision 187); approve PR #199's runs if they wait; merge it when all three `Framework checks` jobs are green on its final head and the branch is up to date with `main`; then close sample PR #60 without a comment (choice 183).
-- **Part 3, after the merge** (ROADMAP rows 12, 13 and 15): `v1.0.0` on the merge commit, the `main` run of the merge green, the pin rows, the sample's upgrade PR with one dispatched detect run at `v1.0.0`, the 1.0.0 tables closed. Row 14 (the Milestone) is the owner's.
+- **The owner**: approve PR #199's runs if they wait; merge it when all three `Framework checks` jobs are green on its final head and the branch is up to date with `main`; then close sample PR #60 without a comment (choice 183).
+- **Part 3, after the merge** (ROADMAP rows 12, 13 and 15): `v1.0.0` on the merge commit, the `main` run of the merge green, the sample's pin row (the root pin waits for the sandbox proof, choice 187), the sample's upgrade PR with one dispatched detect run at `v1.0.0`, the 1.0.0 tables closed. Row 14 (the Milestone) is the owner's.
