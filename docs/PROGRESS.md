@@ -9,7 +9,7 @@ This session ran the 1.0.1 prompt (`docs/handoffs/2026-10-14-gh-cache-1.0.1-prom
   - `gh run view --log-failed` writes one thing: the run's log zip under `$XDG_CACHE_HOME/gh`, else `~/.cache/gh`. It aborts when it cannot create that folder.
   - The model's own `XDG_CACHE_HOME=… gh …` was denied because an allow rule does not match past a leading variable assignment.
   - Two research passes ran in fresh contexts. This session then re-checked the sandboxing page's lines on write roots, `$TMPDIR` and the environment against the page itself.
-- **The fix (option A, choice 195)**, in `plugin/ci/run_phase.py`:
+- **The fix (option A, choice 196)**, in `plugin/ci/run_phase.py`:
   - `session_env(env, root)` sets `XDG_CACHE_HOME` to `<root>/.sdlc-cache`, replacing any value the workflow set.
   - `RUNNER_EXCLUDES` gains `/.sdlc-cache`.
   - The session may write nowhere new: there is no sandbox or permission entry, and `plugin/ci/settings.ci.json` is unchanged.
@@ -24,7 +24,7 @@ This session ran the 1.0.1 prompt (`docs/handoffs/2026-10-14-gh-cache-1.0.1-prom
 - **The live proof is not this session's.** It is the next real diagnosis on the sample at 1.0.1 that reads a failed run's log. That needs the sample's pin moved to 1.0.1 (a guardrail row for the owner, given after the tag) and a real breach. Until then, whether 0.3.8's `results-receiver.actions.githubusercontent.com` entry lets the download through stays unknown (NOTES §41, §43).
 
 ## The owner's decisions (2026-10-14)
-195. **`gh`'s cache goes into the checkout (option A of the Part 1 file).** The runner sets `XDG_CACHE_HOME` to `<root>/.sdlc-cache` in `session_env`, and the folder joins `RUNNER_EXCLUDES`. Option B (`allowWrite: ["~/.cache/gh"]` in `settings.ci.json`) and option C (a folder under `RUNNER_TEMP` with a run-time `allowWrite`) each widen what the session may write by one folder outside the checkout, so neither was chosen.
+196. **`gh`'s cache goes into the checkout (option A of the Part 1 file).** The runner sets `XDG_CACHE_HOME` to `<root>/.sdlc-cache` in `session_env`, and the folder joins `RUNNER_EXCLUDES`. Option B (`allowWrite: ["~/.cache/gh"]` in `settings.ci.json`) and option C (a folder under `RUNNER_TEMP` with a run-time `allowWrite`) each widen what the session may write by one folder outside the checkout, so neither was chosen.
 
 ## Checks (this repository)
 On the final head, in a virtual environment with `pip install -e ".[dev]"`, chained with `set -o pipefail`: the four commands of `HANDOFF.md`'s standing precondition 1. Their output is in the PR.

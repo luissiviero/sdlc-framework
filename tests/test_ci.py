@@ -1323,7 +1323,7 @@ def test_the_session_s_environment_leaves_the_gate_s_commands_to_the_runner(tmp_
 
 
 def test_the_session_s_gh_cache_is_a_folder_the_sandbox_lets_it_write(tmp_path):
-    """1.0.1 (choices 194 and 195, NOTES §44):``gh run view --log-failed`` stores the run's log zip
+    """1.0.1 (choices 194 and 196, NOTES §44): ``gh run view --log-failed`` stores the run's log zip
     under ``$XDG_CACHE_HOME/gh`` and aborts when it cannot create that folder; ``~/.cache`` is
     read-only in the sandbox (change 0014's diagnosis on the sample). The runner points the
     cache into the checkout, already a default write root, and a value the workflow set is
