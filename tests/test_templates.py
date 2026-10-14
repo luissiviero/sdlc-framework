@@ -316,6 +316,21 @@ def test_main_runs_of_this_repository_s_checks_are_never_cancelled():
     }
 
 
+def test_a_superseded_pull_request_run_of_the_framework_evals_is_cancelled():
+    """The batch ci revision, 10.8: keyed by head ref with no cancelling, three pushes to a
+    plugin pull request ran the paid suite three times in a row, two of them on heads nobody
+    merges. A pull request's runs are keyed by its number and cancel each other; the nightly
+    and dispatched runs are keyed by their commit and never cancelled."""
+    yaml = pytest.importorskip("yaml")
+    text = (REPO_WORKFLOW_DIR / "framework-evals.yml").read_text(encoding="utf-8")
+    data = yaml.safe_load(text)
+    assert "schedule" in _triggers(data)
+    assert data["concurrency"] == {
+        "group": "framework-evals-${{ github.event.pull_request.number || github.sha }}",
+        "cancel-in-progress": "${{ github.event_name == 'pull_request' }}",
+    }
+
+
 @pytest.mark.parametrize(
     "path",
     [*(WORKFLOW_DIR / n for n in ALL_WORKFLOWS), *sorted(REPO_WORKFLOW_DIR.glob("*.yml"))],

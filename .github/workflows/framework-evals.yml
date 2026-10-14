@@ -24,8 +24,12 @@ permissions:
   contents: read
 
 concurrency:
-  group: "framework-evals-${{ github.event.pull_request.head.ref || github.ref }}"
-  cancel-in-progress: false
+  # A pull request's runs are keyed by its number (two forks' branches of one name never
+  # share a group), and a new push cancels the paid run it supersedes, whose verdict would
+  # judge a head nobody merges. The nightly and dispatched runs are keyed by their commit and
+  # never cancelled (the batch ci revision, 10.8).
+  group: "framework-evals-${{ github.event.pull_request.number || github.sha }}"
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   evals:
