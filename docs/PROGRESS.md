@@ -30,6 +30,6 @@ This session ran the 1.0.1 prompt (`docs/handoffs/2026-10-14-gh-cache-1.0.1-prom
 On the final head, in a virtual environment with `pip install -e ".[dev]"`, chained with `set -o pipefail`: the four commands of `HANDOFF.md`'s standing precondition 1. Their output is in the PR.
 
 ## Left
-- **The owner**: approve the PR's runs if they wait at `action_required`; merge once the branch is up to date with `main` and all three `Framework checks` jobs are green on its final head. The tag `v1.0.1` is created on the merge itself.
-- **After `v1.0.1`**: the sample's pin row (`sdlc.yaml`, `1.0.0` → `1.0.1`), a guardrail edit given to the owner as a table. The root pin stays at 0.3.6 until the sandbox proof (choice 187).
+- **The owner**: approve the PR's runs if they wait at `action_required`; merge once the branch is up to date with `main` and all three `Framework checks` jobs are green on its final head. The tag `v1.0.1` is created on the merge itself. *[2026-10-14: done. PR #209 merged as `d0db700`, `v1.0.1` is on it, and its `main` run passed (the session file's 20:30 section).]*
+- **After `v1.0.1`**: the sample's pin row (`sdlc.yaml`, `1.0.0` → `1.0.1`), a guardrail edit given to the owner as a table. The root pin stays at 0.3.6 until the sandbox proof (choice 187). *[2026-10-14: done. The owner applied it in sample PR #63, merged at 20:29:06 UTC as `f88b262`.]*
 - **Then**, as before: change 0005's build and the runs PR (choice 194), each with the next free patch number.
