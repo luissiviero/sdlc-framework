@@ -278,7 +278,6 @@ def test_this_repository_runs_its_own_checks_on_linux_and_windows():
     assert on["push"]["branches"] == ["main"]
     assert "workflow_dispatch" in on
     assert data["permissions"] == {"contents": "read"}
-    assert data["concurrency"]["cancel-in-progress"] is True
     assert list(data["jobs"]) == ["check"]
     job = data["jobs"]["check"]
     jobs = {(entry["os"], entry["python"]) for entry in job["strategy"]["matrix"]["include"]}
@@ -297,14 +296,24 @@ def test_this_repository_runs_its_own_checks_on_linux_and_windows():
     python_steps = [s for s in steps if s.get("uses", "").startswith("actions/setup-python@")]
     assert len(python_steps) == 1
     assert python_steps[0]["with"]["python-version"] == "${{ matrix.python }}"
-    assert data["concurrency"]["group"] == (
-        "framework-checks-${{ github.event.pull_request.number || github.ref }}"
-    )
     assert all("${{" not in step.get("run", "") for step in steps)  # never in a run line
     runs = [step["run"] for step in steps if "run" in step]
     assert runs == ['python -m pip install -e ".[dev]"', "python tasks.py check"]
     assert not (WORKFLOW_DIR / FRAMEWORK_CHECKS).exists()  # not installed into projects
     assert FRAMEWORK_CHECKS not in ALL_WORKFLOWS
+
+
+def test_main_runs_of_this_repository_s_checks_are_never_cancelled():
+    """The batch ci revision, 10.1: a merge cancelled the run of the merge before it, so the
+    suite never finished on the commit v0.3.6 names (run #279). A pull request's runs are
+    keyed by its number and cancel each other; every other run is keyed by its commit and
+    never cancelled, so a third merge cannot replace the second's pending run either."""
+    yaml = pytest.importorskip("yaml")
+    data = yaml.safe_load((REPO_WORKFLOW_DIR / FRAMEWORK_CHECKS).read_text(encoding="utf-8"))
+    assert data["concurrency"] == {
+        "group": "framework-checks-${{ github.event.pull_request.number || github.sha }}",
+        "cancel-in-progress": "${{ github.event_name == 'pull_request' }}",
+    }
 
 
 @pytest.mark.parametrize(

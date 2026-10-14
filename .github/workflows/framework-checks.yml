@@ -26,10 +26,15 @@ permissions:
   contents: read
 
 concurrency:
-  # by pull request number, not head ref: two forks' branches of one name never cancel
-  # each other (the review of the 0.2.28 diff)
-  group: "framework-checks-${{ github.event.pull_request.number || github.ref }}"
-  cancel-in-progress: true
+  # A pull request's runs are keyed by its number, not its head ref (two forks' branches of
+  # one name never cancel each other; the review of the 0.2.28 diff), and a new push cancels
+  # the run it supersedes. Every other run (a push to main, a dispatch) is keyed by its
+  # commit and never cancelled: a merge used to cancel the run of the merge before it, so
+  # the suite never finished on some main commits, one of them the commit v0.3.6 names
+  # (run #279; the batch ci revision, 10.1). Keying by commit, not by ref, matters too: a
+  # group holds one pending run, and a third merge would replace the second's pending run.
+  group: "framework-checks-${{ github.event.pull_request.number || github.sha }}"
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   check:
