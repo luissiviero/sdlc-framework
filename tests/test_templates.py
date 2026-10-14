@@ -278,27 +278,36 @@ def test_this_repository_runs_its_own_checks_on_linux_and_windows():
     assert on["push"]["branches"] == ["main"]
     assert "workflow_dispatch" in on
     assert data["permissions"] == {"contents": "read"}
-    assert list(data["jobs"]) == ["check"]
+    assert list(data["jobs"]) == ["platforms", "check", "check-windows"]
     job = data["jobs"]["check"]
+    windows = data["jobs"]["check-windows"]
     jobs = {(entry["os"], entry["python"]) for entry in job["strategy"]["matrix"]["include"]}
+    python = windows["steps"][1]["with"]["python-version"]
+    jobs.add((windows["runs-on"], python))
     # both platforms on one interpreter, plus the oldest Python pyproject supports
     assert jobs == {
         ("ubuntu-latest", "3.12"),
         ("windows-latest", "3.12"),
         ("ubuntu-latest", "3.10"),
     }
+    assert windows["name"] == "check (windows-latest, 3.12)"  # the matrix job's old name
     assert job["strategy"]["fail-fast"] is False
     assert job["runs-on"] == "${{ matrix.os }}"
-    assert job["timeout-minutes"] >= 30  # the Windows run of 657 tests took 17.5 minutes
-    steps = job["steps"]
-    uses = [step["uses"] for step in steps if "uses" in step]
-    assert uses[0].startswith("actions/checkout@")
-    python_steps = [s for s in steps if s.get("uses", "").startswith("actions/setup-python@")]
-    assert len(python_steps) == 1
-    assert python_steps[0]["with"]["python-version"] == "${{ matrix.python }}"
-    assert all("${{" not in step.get("run", "") for step in steps)  # never in a run line
-    runs = [step["run"] for step in steps if "run" in step]
-    assert runs == ['python -m pip install -e ".[dev]"', "python tasks.py check"]
+    for each in (job, windows):
+        assert each["timeout-minutes"] >= 30  # the Windows run of 657 tests took 17.5 minutes
+        steps = each["steps"]
+        uses = [step["uses"] for step in steps if "uses" in step]
+        assert uses[0].startswith("actions/checkout@")
+        setup = [s for s in steps if s.get("uses", "").startswith("actions/setup-python@")]
+        assert len(setup) == 1
+        assert all("${{" not in step.get("run", "") for step in steps)  # never in a run line
+        runs = [step["run"] for step in steps if "run" in step]
+        assert runs == ['python -m pip install -e ".[dev]"', "python tasks.py check"]
+    assert job["steps"][1]["with"]["python-version"] == "${{ matrix.python }}"
+    assert windows["steps"] == [
+        {**s, "with": {"python-version": "3.12"}} if "setup-python" in s.get("uses", "") else s
+        for s in job["steps"]
+    ]
     assert not (WORKFLOW_DIR / FRAMEWORK_CHECKS).exists()  # not installed into projects
     assert FRAMEWORK_CHECKS not in ALL_WORKFLOWS
 
@@ -314,6 +323,31 @@ def test_main_runs_of_this_repository_s_checks_are_never_cancelled():
         "group": "framework-checks-${{ github.event.pull_request.number || github.sha }}",
         "cancel-in-progress": "${{ github.event_name == 'pull_request' }}",
     }
+
+
+def test_the_windows_job_is_skipped_only_on_a_documentation_only_pull_request():
+    """The batch ci revision, 10.2: Windows is the whole wait of a pull request, and half the
+    merges touch only documentation. The platforms job runs the selector; the Windows job is
+    a job of its own whose `if:` reads it, so a skip reports the check as skipped. It runs on
+    every other event, and when the pick failed (an empty output is never 'false'). The
+    Linux jobs wait for nothing."""
+    yaml = pytest.importorskip("yaml")
+    data = yaml.safe_load((REPO_WORKFLOW_DIR / FRAMEWORK_CHECKS).read_text(encoding="utf-8"))
+    pick = data["jobs"]["platforms"]
+    assert pick["runs-on"] == "ubuntu-latest"
+    assert pick["outputs"] == {"windows": "${{ steps.pick.outputs.windows }}"}
+    assert pick["steps"][0]["with"]["fetch-depth"] == 2  # the merge commit and its parents
+    step = pick["steps"][-1]
+    assert step["id"] == "pick"
+    assert step["run"] == "python3 .github/scripts/framework_checks_windows.py"
+    assert (REPO_WORKFLOW_DIR.parent / "scripts" / "framework_checks_windows.py").is_file()
+    windows = data["jobs"]["check-windows"]
+    assert windows["needs"] == "platforms"
+    assert windows["if"] == (
+        "${{ !cancelled() && (github.event_name != 'pull_request' || "
+        "needs.platforms.outputs.windows != 'false') }}"
+    )
+    assert "needs" not in data["jobs"]["check"] and "if" not in data["jobs"]["check"]
 
 
 def test_a_superseded_pull_request_run_of_the_framework_evals_is_cancelled():
