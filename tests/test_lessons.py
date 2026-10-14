@@ -277,3 +277,15 @@ def test_check_cli_exits_1_on_a_missing_index(tmp_path):
     write_lesson(lessons / "2026-09-x.md")
     code = les.main(["check", "--root", str(tmp_path), "--today", "2026-10-08"])
     assert code == 1
+
+
+# --- layer 2: this repository's lessons and index --------------------------------------------
+
+
+def test_this_repository_s_lessons_index_is_what_the_generator_would_write():
+    """The batch ci revision, 5.2: gate (e) checks a project's index on an incident change,
+    but nothing checked this repository's own, so a hand edit of a lesson's frontmatter left
+    it stale with nothing red. The shape of the notes index's layer-2 test."""
+    ok, diff, notes = les.check(Path(__file__).resolve().parents[1])
+    assert ok, diff
+    assert notes == []

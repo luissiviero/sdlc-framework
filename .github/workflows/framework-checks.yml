@@ -8,10 +8,12 @@
 # tools are bounded to the versions whose lint and format rules are fixed (pyproject's dev
 # extra), so a tool release cannot turn every pull request red on its own. The third job is
 # the oldest Python the framework supports (pyproject's requires-python): the branches the
-# code keeps for it run nowhere else.
+# code keeps for it run nowhere else. The Windows job always runs on main and on dispatch;
+# on a pull request it is skipped when every changed path is documentation (the platforms
+# job below), and reports the check as skipped.
 #
 # Every `run:` line calls python (CLAUDE.md: no shell scripts); the runner's default shell
-# is bash on Linux and pwsh on Windows, and both take these two lines as written. Nothing is
+# is bash on Linux and pwsh on Windows, and both take these lines as written. Nothing is
 # committed and nobody is notified; the job's verdict is the check on the pull request.
 name: Framework checks
 
@@ -26,20 +28,41 @@ permissions:
   contents: read
 
 concurrency:
-  # by pull request number, not head ref: two forks' branches of one name never cancel
-  # each other (the review of the 0.2.28 diff)
-  group: "framework-checks-${{ github.event.pull_request.number || github.ref }}"
-  cancel-in-progress: true
+  # A pull request's runs are keyed by its number, not its head ref (two forks' branches of
+  # one name never cancel each other; the review of the 0.2.28 diff), and a new push cancels
+  # the run it supersedes. Every other run (a push to main, a dispatch) is keyed by its
+  # commit and never cancelled: a merge used to cancel the run of the merge before it, so
+  # the suite never finished on some main commits, one of them the commit v0.3.6 names
+  # (run #279; the batch ci revision, 10.1). Keying by commit, not by ref, matters too: a
+  # group holds one pending run, and a third merge would replace the second's pending run.
+  group: "framework-checks-${{ github.event.pull_request.number || github.sha }}"
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  # Whether the Windows job runs: on a pull request only when a changed path is not
+  # documentation (docs/**, HANDOFF.md, README.md); on main and on dispatch always
+  # (.github/scripts/framework_checks_windows.py; the batch ci revision, 10.2).
+  platforms:
+    name: Pick the platforms
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      windows: ${{ steps.pick.outputs.windows }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 2
+
+      - name: Run Windows unless every changed path is documentation
+        id: pick
+        run: python3 .github/scripts/framework_checks_windows.py
+
   check:
     strategy:
       fail-fast: false
       matrix:
         include:
           - os: ubuntu-latest
-            python: "3.12"
-          - os: windows-latest
             python: "3.12"
           - os: ubuntu-latest
             python: "3.10"
@@ -53,6 +76,30 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python }}
+
+      - name: Install the dev tools (pyproject's dev extra)
+        run: python -m pip install -e ".[dev]"
+
+      - name: Lint and test
+        run: python tasks.py check
+
+  # A job of its own, not a matrix entry, so that a skip reports the check as skipped
+  # instead of leaving it out. It runs when the pick failed too (its output is then empty,
+  # never 'false'), and never on a cancelled run.
+  check-windows:
+    name: check (windows-latest, 3.12)
+    needs: platforms
+    if: ${{ !cancelled() && (github.event_name != 'pull_request' || needs.platforms.outputs.windows != 'false') }}
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
 
       - name: Install the dev tools (pyproject's dev extra)
         run: python -m pip install -e ".[dev]"
