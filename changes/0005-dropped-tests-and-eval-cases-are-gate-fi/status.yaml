@@ -1,17 +1,17 @@
 id: "0005"
 slug: dropped-tests-and-eval-cases-are-gate-fi
 title: Dropped tests and eval cases are gate findings
-phase: b
+phase: c
 entry_route: idea
 change_type: feature
 profile_override: null
 review_override: null
 gate:
-  phase: b
-  result: passed
-  reason: waiting for the owner at gate (b)
-  at: "2026-10-14T15:44:28Z"
-parked_reason: null
+  phase: c
+  result: parked
+  reason: "preflight: claude_md: CLAUDE.md does not name the lint command of sdlc.yaml"
+  at: "2026-10-14T20:00:34Z"
+parked_reason: "preflight: claude_md: CLAUDE.md does not name the lint command of sdlc.yaml"
 iterations: 1
 panel_calls: 3
 external_ref: null
@@ -28,5 +28,5 @@ released_at: null
 released_sha: null
 released_pr: null
 created_at: "2026-10-13T21:22:06Z"
-updated_at: "2026-10-14T15:44:28Z"
+updated_at: "2026-10-14T20:00:34Z"
 schema_version: 1
