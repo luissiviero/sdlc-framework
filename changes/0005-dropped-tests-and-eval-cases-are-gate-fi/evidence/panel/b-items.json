@@ -1,15 +1,7 @@
 {
-  "decided": 2,
+  "decided": 3,
   "gate": "park",
-  "items": [
-    {
-      "decided": false,
-      "item": "adversarial reviewer says escalate: spec.md's Acceptance says a unit test proves 'the same three outcomes' (undeclared fails, declared-via-Files-that-change ok, declared-via-Proof-item ok) for the eval-case drop, but plan.md's Proof list only names test_ratchets_drop_eval_case_folder_emptied_fails and test_ratchets_drop_eval_case_dot_rename_fails \u2014 both prove only the undeclared-fail outcome. No test anywhere in the Proof list proves that a plan-declared eval-case drop (via 'Files that change' listing the case folder, including the trailing-slash directory match Design calls out, or via a '- ratchet: evals' Proof line) is ok. This is the one declaration path most likely to carry its own bug (directory-level matching instead of single-file matching) and it ships with zero test coverage, contradicting spec.md Requirements' own rule 'every behavior above ships with a test that fails without it.'; spec.md Requirements defines a dropped test file as 'a D ... or an R whose source matches a glob and whose destination matches none.' Only the D case (test_ratchets_drop_test_file_undeclared_fails) and the rename-that-is-NOT-a-drop case (test_ratchets_rename_within_test_paths_is_not_a_drop) are in plan.md's Proof; spec.md's own Acceptance section never asks for, and plan.md's Proof never supplies, a test where an R's destination does NOT match any test_paths glob and is therefore a drop. A bug that silently exempts a renamed-away test file from the drop rule would pass every listed test.; The skip-marker scan's Requirements name two scan surfaces: files under test_paths, and the test-runner's own configuration files (pytest.ini, pyproject.toml's pytest section, setup.cfg, tox.ini, conftest.py, package.json's jest block, jest.config.*). plan.md's Proof (test_ratchets_skip_markers_listed_never_fail) only exercises the first surface, using this repository's own runbook test files as fixture; no test exercises the configuration-file scanning path at all, even though that path needs separate per-format parsing (a jest block inside package.json, a pytest section inside pyproject.toml) that the test-file path does not.",
-      "key": "escalate:308d92cd3ed7d1db",
-      "kind": "escalate",
-      "n": 1
-    }
-  ],
+  "items": [],
   "iterations": {
     "cap": 2,
     "left": 1,
@@ -18,12 +10,15 @@
   "mode": "deferred",
   "panel_calls": {
     "cap": 4,
-    "left": 2,
-    "used": 2
+    "left": 1,
+    "used": 3
   },
-  "parks": [],
-  "pending": [
-    1
+  "parks": [
+    {
+      "check": "adversarial_review",
+      "reason": "verdict is for commit 6c6f002c7c, HEAD is 76f1b228e0"
+    }
   ],
+  "pending": [],
   "phase": "b"
 }

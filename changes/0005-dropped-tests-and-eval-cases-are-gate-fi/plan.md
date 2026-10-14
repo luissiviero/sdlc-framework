@@ -213,10 +213,19 @@ the hooks, the panel, `sdlc.yaml` and this repository's own root `REVIEW.md`.
   `ctx.approved_artifact("plan.md")`, not `ctx.artifact("plan.md")` (riskiest step, step 3).
 - `tests/test_gate.py::test_ratchets_rename_within_test_paths_is_not_a_drop` — an `R` whose
   source and destination both match a `test_paths` glob is `ok`.
+- `tests/test_gate.py::test_ratchets_rename_out_of_test_paths_is_a_drop` — an `R` whose
+  source matches a `test_paths` glob and whose destination matches none fails with
+  `details.hits["ratchet: tests"]` naming the file (panel decision #3, phase b).
 - `tests/test_gate.py::test_ratchets_drop_eval_case_folder_emptied_fails` — an eval case
   folder with no survivor in `tree_files`'s list at HEAD fails with `"ratchet: evals"`.
 - `tests/test_gate.py::test_ratchets_drop_eval_case_dot_rename_fails` — an `R` whose
   destination folder name starts with `.` fails the same way.
+- `tests/test_gate.py::test_ratchets_drop_eval_case_declared_in_files_that_change_ok` — the
+  same emptied-case drop, with the case folder's path listed (trailing `/`) in the approved
+  plan's "## Files that change", is `ok` (panel decision #3, phase b).
+- `tests/test_gate.py::test_ratchets_drop_eval_case_declared_in_proof_ok` — the same
+  emptied-case drop, with `- ratchet: evals may fall, because <why>` in the approved plan's
+  "## Proof", is `ok` (panel decision #3, phase b).
 - `tests/test_gate.py::test_ratchets_eval_case_partial_delete_is_not_a_drop` — one file
   under a multi-file eval case is dropped while `tree_files` still lists a sibling file
   under the same case folder at HEAD; `ok` (panel decision #2, phase b).
