@@ -1,0 +1,12 @@
+{
+  "reviewer": "Escalate stands on all three reasons: Proof never proves the eval-case declared-ok outcomes, the test-file R-is-a-drop outcome, or the config-file skip-marker surface.",
+  "advocate": "Escalate on reason 1 only (reworded as a design ambiguity in the directory-vs-case-path match, not just a missing test id); reasons 2 and 3 are false positives plan.md and spec.md's Design already close.",
+  "decision": "park",
+  "rationale": [
+    "Both verdicts agree reason 1 is real: spec.md Acceptance (227-229) requires the same three outcomes for the eval-case drop that it requires for the test-file drop; plan.md's Proof supplies only the undeclared-fail outcome. That alone confirms park.",
+    "Direct check of spec.md settles reason 2 against the advocate: Acceptance (234-235) requires only the R-not-a-drop test for test-path renames, never a test for the R-is-a-drop outcome Requirements' own drop definition implies, and plan.md's Proof names no such test either; the advocate's plan.md:120-122 citation tests diff.py's parser, not the drop-rule function, so it does not close the gap.",
+    "Reason 3 is weaker: spec.md Design (149-153) fixes the scan as one generic per-line regex scoped to a filename list, so there is no per-format parsing to test, as the advocate says; but the Proof's only named test still never exercises the second scan surface (test-runner config files) Requirements names explicitly, so it survives as a nit under REVIEW.md, not an independent park.",
+    "Net: the safer reading treats reasons 1 and 2 as confirmed, objective Proof-vs-Acceptance gaps (coding-standards rule 4); reason 3 reinforces but is not load-bearing on its own.",
+    "What the run changes first: add Proof items for the eval-case declared-via-Files-that-change and declared-via-Proof-item outcomes, and for the test-file R-is-a-drop outcome, before re-running gate (b)."
+  ]
+}

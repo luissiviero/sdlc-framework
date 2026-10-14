@@ -1,0 +1,152 @@
+{
+  "schema_version": 1,
+  "change_id": "0005",
+  "slug": "dropped-tests-and-eval-cases-are-gate-fi",
+  "phase": "b",
+  "profile": "standard",
+  "human_gate": true,
+  "result": "wait",
+  "label": "sdlc:b-ready",
+  "head": "aff21b0dde6c97648eaffe9084b030b0670f3f0a",
+  "at": "2026-10-14T15:38:57Z",
+  "dry_run": false,
+  "reason": "",
+  "config_note": "",
+  "checks": [
+    {
+      "name": "limits",
+      "ok": true,
+      "reason": "within the run limits",
+      "need": "",
+      "details": {
+        "iterations": 1,
+        "cap": 2,
+        "classification": "non-routine",
+        "panel_calls": 3,
+        "panel_cap": 4,
+        "elapsed_minutes": 13.8,
+        "spend_usd": null,
+        "spend_usd_total": 8.013429,
+        "spend_entries": 1,
+        "max_budget_usd": null
+      }
+    },
+    {
+      "name": "artifacts",
+      "ok": true,
+      "reason": "every required artifact exists and has its template sections",
+      "need": "",
+      "details": {}
+    },
+    {
+      "name": "design_scope",
+      "ok": true,
+      "reason": "the committed diff stays inside changes/0005-dropped-tests-and-eval-cases-are-gate-fi/",
+      "need": "",
+      "details": {
+        "dirty": [
+          "changes/0005-dropped-tests-and-eval-cases-are-gate-fi/evidence/adversarial-review-b.json",
+          "changes/0005-dropped-tests-and-eval-cases-are-gate-fi/evidence/diff-b.patch",
+          "changes/0005-dropped-tests-and-eval-cases-are-gate-fi/evidence/hook-log.jsonl",
+          "tests/fixtures/sample-python-project/.env"
+        ]
+      }
+    },
+    {
+      "name": "open_concerns",
+      "ok": true,
+      "reason": "no open flagged concern",
+      "need": "",
+      "details": {}
+    },
+    {
+      "name": "panel",
+      "ok": true,
+      "reason": "3 panel decision(s) recorded",
+      "need": "",
+      "details": {
+        "decisions": [
+          {
+            "n": 1,
+            "kind": "concern",
+            "decision": "Closed as confirmed rather than assumed: `framework/` is root-excluded from every phase job's checkout via `plugin/ci/run_phase.py`'s RUNNER_EXCLUDES (`/framework/` in `.git/info/exclude`), and `git diff --name-status -M <merge base>...HEAD` lists only committed paths, so it structurally cannot appear in `check_ratchets`' input; the design's scope boundary stands unchanged."
+          },
+          {
+            "n": 2,
+            "kind": "escalate",
+            "decision": "Continue phase (b): spec.md Design's drop-rule bullet now says the function also takes a survivor-path list for the eval-case rule, read via a new plugin/gate/diff.py helper tree_files(root, ref, prefix) built on git ls-tree -r --name-only <ref> -- <prefix> (argument-list, no shell=True) called at ctx.diff.head; plan.md's Proof list gains test_ratchets_eval_case_partial_delete_is_not_a_drop."
+          },
+          {
+            "n": 3,
+            "kind": "escalate",
+            "decision": "park"
+          }
+        ],
+        "cost_usd": 0.0
+      }
+    },
+    {
+      "name": "commands",
+      "ok": true,
+      "reason": "build, test and lint exit 0",
+      "need": "",
+      "details": {
+        "runs": {
+          "build": {
+            "command": "python -m compileall -q plugin tests tasks.py",
+            "exit_code": 0,
+            "output": ""
+          },
+          "test": {
+            "command": "python -m pytest",
+            "exit_code": 0,
+            "output": "........................................................................ [  4%]\n........................................................................ [  8%]\n........................................................................ [ 13%]\n........................................................................ [ 17%]\n........................................................................ [ 22%]\n........................................................................ [ 26%]\n........................................................................ [ 31%]\n........................................................................ [ 35%]\n........................................................................ [ 40%]\n........................................................................ [ 44%]\n........................................................................ [ 48%]\n........................................................................ [ 53%]\n........................................................................ [ 57%]\n........................................................................ [ 62%]\n........................................................................ [ 66%]\n........................................................................ [ 71%]\n........................................................................ [ 75%]\n........................................................................ [ 80%]\n........................................................................ [ 84%]\n........................................................................ [ 88%]\n........................................................................ [ 93%]\n........................................................................ [ 97%]\n..................................                                       [100%]\n1618 passed in 297.33s (0:04:57)\n"
+          },
+          "lint": {
+            "command": "python -m ruff check . && python -m ruff format --check .",
+            "exit_code": 0,
+            "output": "All checks passed!\n200 files already formatted\n"
+          }
+        },
+        "ran_by": "runner"
+      }
+    },
+    {
+      "name": "guardrails",
+      "ok": true,
+      "reason": "the diff does not touch a guardrail file",
+      "need": "",
+      "details": {}
+    },
+    {
+      "name": "risk_list",
+      "ok": true,
+      "reason": "no risk-list item touched",
+      "need": "",
+      "details": {
+        "accepted": []
+      }
+    },
+    {
+      "name": "owner_actions",
+      "ok": true,
+      "reason": "risk acceptances, iteration and panel-call resets and test-lock lifts, if any, were committed by the owner or applied by the owner's label",
+      "need": "",
+      "details": {
+        "risk_accepted": [],
+        "label_actors": {}
+      }
+    },
+    {
+      "name": "adversarial_review",
+      "ok": true,
+      "reason": "adversarial reviewer says continue",
+      "need": "",
+      "details": {
+        "classification": "non-routine",
+        "reasons": []
+      }
+    }
+  ],
+  "what_i_need": ""
+}
