@@ -7,8 +7,8 @@
   "human_gate": true,
   "result": "wait",
   "label": "sdlc:b-ready",
-  "head": "9d4301b05c78d06f16a0d7595022b5a34d9b7f94",
-  "at": "2026-10-13T22:57:02Z",
+  "head": "aff21b0dde6c97648eaffe9084b030b0670f3f0a",
+  "at": "2026-10-14T15:38:57Z",
   "dry_run": false,
   "reason": "",
   "config_note": "",
@@ -19,15 +19,15 @@
       "reason": "within the run limits",
       "need": "",
       "details": {
-        "iterations": 0,
+        "iterations": 1,
         "cap": 2,
         "classification": "non-routine",
-        "panel_calls": 2,
+        "panel_calls": 3,
         "panel_cap": 4,
-        "elapsed_minutes": 37.6,
+        "elapsed_minutes": 13.8,
         "spend_usd": null,
-        "spend_usd_total": null,
-        "spend_entries": 0,
+        "spend_usd_total": 8.013429,
+        "spend_entries": 1,
         "max_budget_usd": null
       }
     },
@@ -48,7 +48,6 @@
           "changes/0005-dropped-tests-and-eval-cases-are-gate-fi/evidence/adversarial-review-b.json",
           "changes/0005-dropped-tests-and-eval-cases-are-gate-fi/evidence/diff-b.patch",
           "changes/0005-dropped-tests-and-eval-cases-are-gate-fi/evidence/hook-log.jsonl",
-          "changes/0005-dropped-tests-and-eval-cases-are-gate-fi/evidence/panel/b-items.json",
           "tests/fixtures/sample-python-project/.env"
         ]
       }
@@ -63,7 +62,7 @@
     {
       "name": "panel",
       "ok": true,
-      "reason": "2 panel decision(s) recorded",
+      "reason": "3 panel decision(s) recorded",
       "need": "",
       "details": {
         "decisions": [
@@ -76,6 +75,11 @@
             "n": 2,
             "kind": "escalate",
             "decision": "Continue phase (b): spec.md Design's drop-rule bullet now says the function also takes a survivor-path list for the eval-case rule, read via a new plugin/gate/diff.py helper tree_files(root, ref, prefix) built on git ls-tree -r --name-only <ref> -- <prefix> (argument-list, no shell=True) called at ctx.diff.head; plan.md's Proof list gains test_ratchets_eval_case_partial_delete_is_not_a_drop."
+          },
+          {
+            "n": 3,
+            "kind": "escalate",
+            "decision": "park"
           }
         ],
         "cost_usd": 0.0
@@ -84,27 +88,10 @@
     {
       "name": "commands",
       "ok": true,
-      "reason": "build, test and lint exit 0",
+      "reason": "deferred to the runner: build, test and lint run after the model's session, outside its sandbox (issue #91); not yet run",
       "need": "",
       "details": {
-        "runs": {
-          "build": {
-            "command": "python -m compileall -q plugin tests tasks.py",
-            "exit_code": 0,
-            "output": ""
-          },
-          "test": {
-            "command": "python -m pytest",
-            "exit_code": 0,
-            "output": "........................................................................ [  4%]\n........................................................................ [  8%]\n........................................................................ [ 13%]\n........................................................................ [ 17%]\n........................................................................ [ 22%]\n........................................................................ [ 26%]\n........................................................................ [ 31%]\n........................................................................ [ 35%]\n........................................................................ [ 40%]\n........................................................................ [ 44%]\n........................................................................ [ 48%]\n........................................................................ [ 53%]\n........................................................................ [ 57%]\n........................................................................ [ 62%]\n........................................................................ [ 66%]\n........................................................................ [ 71%]\n........................................................................ [ 75%]\n........................................................................ [ 80%]\n........................................................................ [ 84%]\n........................................................................ [ 88%]\n........................................................................ [ 93%]\n........................................................................ [ 97%]\n..................................                                       [100%]\n1618 passed in 294.63s (0:04:54)\n"
-          },
-          "lint": {
-            "command": "python -m ruff check . && python -m ruff format --check .",
-            "exit_code": 0,
-            "output": "All checks passed!\n199 files already formatted\n"
-          }
-        },
-        "ran_by": "runner"
+        "deferred": true
       }
     },
     {
