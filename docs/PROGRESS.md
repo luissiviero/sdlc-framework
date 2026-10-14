@@ -34,3 +34,16 @@ The numbers missing from each list are issues (framework: #24, #66, #67, #68, #7
 ## Left
 - **The owner**: approve PR #199's runs if they wait; merge it when all three `Framework checks` jobs are green on its final head and the branch is up to date with `main`; then close sample PR #60 without a comment (choice 183).
 - **Part 3, after the merge** (ROADMAP rows 12, 13 and 15): `v1.0.0` on the merge commit, the `main` run of the merge green, the sample's pin row (the root pin waits for the sandbox proof, choice 187), the sample's upgrade PR with one dispatched detect run at `v1.0.0`, the 1.0.0 tables closed. Row 14 (the Milestone) is the owner's.
+
+## Part 3 (2026-10-14, from 11:50 UTC): after the merge
+PR #199 merged at 09:55:34 UTC as `e02e085`. Part 3 ran on the owner's word, in the order of their rulings D-A to D-D (`docs/handoffs/sessions/2026-10-14-ccr-5b7d20dc-ot5xgy.md`, PR #201).
+
+- **`v1.0.0`** is on `e02e085` (verified, `git ls-remote --tags origin`), tagged by run https://github.com/luissiviero/sdlc-framework/actions/runs/38545917596 (read by session `ccr-5b7d20dc-ot5xgy`). The `main` run of `e02e085`, https://github.com/luissiviero/sdlc-framework/actions/runs/38545917551, ended `success` at 10:12:31 UTC (verified, `get_workflow_run`). No 1.0.1 is owed.
+- **Today's scheduled detect run** (verified, https://github.com/luissiviero/sdlc-sample-python/actions/runs/38550795354, job 115807971304, created 10:36:49 UTC, `ref=v0.2.30`): tier 3, `we1`, `forced: false`, `filed: {}`, `open_incidents` 0013, `outcome: "open incident 0013 already carries ci_test_failure_rate"`. NOTES §43.
+- **The sample's upgrade, prepared and not pushed**: its fourteen SDLC files are unedited 0.2.30 copies; seven change at 1.0.0 (the build, deploy, design, fix, release and test workflows and `lessons/README.md`). 1.0.0's own `sdlc_init.py`, run on a scratch copy, reports the same workflows outdated, `sdlc.yaml` changed only on the pin line, leaves `.claude/settings.json` and `CLAUDE.md` unchanged, and keeps `REVIEW.md` (create-only), whose one changed rule at 1.0.0 is the owner's guardrail edit. The sample's build, test and lint pass on the upgraded tree (`9 passed`, `All checks passed!`). NOTES §43.
+
+## The owner's decisions (2026-10-14, Part 3)
+188. **Sample PR #60 is closed after today's scheduled detect run and today's digest have both run** (D-A), and before the sample's upgrade PR (choice 183). A close before the detect run would have let it judge 2026-10-13 with no open incident and file a duplicate; a close before the digest leaves #60 out of every digest.
+189. **ROADMAP row 13's dispatched detect run at `v1.0.0` happens on 2026-10-15 or later** (D-B), after #60 is closed. Expected: no rule fires and nothing is filed (2026-10-14's counted runs passed).
+190. **The item-11 session annotates the stale lines in its ROADMAP-closing PR** (D-C): `docs/ROADMAP.md` lines 66, 76, 77 and 81 and `docs/decisions/28.md:27` (the "0.3.8 runs PR" and "R7 ships as 0.3.9", superseded by choice 184); `docs/notes/39.md:55` (the detect start window); `docs/ROADMAP.md:51`'s "was denied by the CI sandbox" (not verified). Done in this PR, beside each sentence (choice 126).
+191. **PR #200, then PR #201, are merged** (D-D) before the ROADMAP-closing PR.
