@@ -43,6 +43,9 @@ Part 1 of the batch `planning` prompt (the owner's starting prompt of 2026-10-14
 | 4.1 the Order column | = | **down**: the order is read in one cell instead of being rebuilt from four places, one of them stale. The owner states an order once | = | **+**: ROADMAP's history shows when the order moved and who moved it; a moved id is one edit | = | = to +: the playbook names one system as the source of truth (p.18, as `state-index.md` cites it) | **yes**, small |
 | 4.2 session files name candidates by number | = | **down**: each file loses most of its "Carried" rows; the owner reads the open items that are not on ROADMAP | = | = (one home per item; the file still says what it changed) | = | = | **yes, if 4.1**. Risk: a stale Order column now misleads every session. The owner sets the order, so it changes only when the owner speaks |
 | 6.1 to 6.4 the table in T30 | = | **down** when T30 is built: a suggested budget with its rows to accept or edit, instead of a number to invent. Nothing changes before T30 | = (it suggests; it parks nothing new) | **+**: the suggestion shows its inputs and arithmetic (A2's fold), and a reset cannot hide the rounds | = (weight 0) | = (the article sets no run bounds; T30 "Today") | **yes**, as a fold |
+| P3, P5, P6 (added 2026-10-14, at the owner's question) | = | = (taking the opposite of P3 or P5 would be a small **up**: longer ROADMAP rows, a third unchecked copy of the done-when, and figures no decision reads) | = | = (P6: a small **+**, the record says where each row went) | = | = | neutral |
+
+*[2026-10-14, at the owner's question: on autonomy, 6.1 to 6.4 are "= to slightly down" once T30 is built, not "=". A budget built from real-size rows only is tighter, so a change that hits a defect parks on its budget sooner instead of spending more. That is T30's intent ("an overspend never raises a budget by itself").]*
 
 ## 4. Target entries and settled decisions
 
@@ -109,6 +112,8 @@ A general-purpose agent in a fresh context was given the record's rows A4, A6, G
 | 15 | Neither row touches a settled decision; the friction is with page rules and T30's text | agrees with section 4 | none |
 
 ## 8. What the owner decides
+
+*[2026-10-14: the owner accepted every recommendation below. P1, P2, P4 and P6 are accepted; P3's columns and P5's figures are not taken. Part 2 (PR #191): ROADMAP's Order column filled with the draft values, and its two keeping notes annotated. T30 in `target-design.md` annotated, with its mark in the index table. The record's rows A4 and A6, gaps G4 and G6, and section 11's question annotated. P2's sentence in `HANDOFF.md` is the owner's edit, given as a table in the session file.]*
 
 | # | Question | Recommended |
 |---|---|---|
