@@ -71,7 +71,7 @@ Part 1 of `docs/handoffs/2026-10-13-artcraft-templates-prompt.md`, batch **templ
 | filmcraft `docs/agents.md:293-307` | agree: section 6 "Decision rules" (`:293`), the behaviour rule (`:297-300`) and the list (`:301-307`). The recording rule is about undocumented product behaviour, and the record goes in the crate README, not in a change record |
 | pdfcraft `CLAUDE.md:36` | agree, at `7437bde` and `3f044b6` |
 | "every crash fix ships a test that panicked before" | uncited by the row: the wording is filmcraft `CLAUDE.md:13` ("a regression test that panicked before"; study A §5 also gives designcraft `AGENTS.md:18`, not re-read); pdfcraft's own line is `CLAUDE.md:32` |
-| pdfcraft `docs/gaps.md:139` | agree for the quotation; it is the Impact line of gap 6, ranked sixth (`:126`) |
+| pdfcraft `docs/gaps.md:139` | agree for the quotation; it is the Impact line of gap 6, the fourth open gap (`:28-33`, `:126`) |
 | effectcraft `docs/gaps.md:208` | agree: the second line of G2's done-when (`:207-208`) |
 
 ## 7. Corrections to the record
