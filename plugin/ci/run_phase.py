@@ -1301,7 +1301,7 @@ BACKGROUND_TASKS_ENV = "CLAUDE_CODE_DISABLE_BACKGROUND_TASKS"
 # ``~/.cache/gh``, and aborts when it cannot create that folder; the sandbox leaves ``$HOME``
 # read-only, and a ``VAR=... gh`` the model writes itself does not match ``Bash(gh *)``. The
 # runner points the cache into the checkout, a default write root of the sandbox, so the
-# session may write nowhere new (choice 194, option A; NOTES §44). The folder is excluded
+# session may write nowhere new (choice 195, option A; NOTES §44). The folder is excluded
 # from git with the runner's other entries (``RUNNER_EXCLUDES``) and never committed.
 CACHE_HOME_ENV = "XDG_CACHE_HOME"
 SESSION_CACHE_DIR = ".sdlc-cache"

@@ -20,7 +20,7 @@ This session ran the 1.0.1 prompt (`docs/handoffs/2026-10-14-gh-cache-1.0.1-prom
 - **The bump**: `.claude-plugin/plugin.json` and `.claude-plugin/marketplace.json` from 1.0.0 to **1.0.1** (choice 184: the next free patch number). Under `plugin/`, only `plugin/ci/run_phase.py` changes. Nothing under `template/` changes.
 - **Port list (choice 138)**: this PR touches `plugin/ci/run_phase.py`, not `plugin/ci/settings.ci.json`.
   - It changes the environment of every phase session: (b), (c), (d), (e), (f), review and fix.
-  - It does not change the weekly scan's read-only `claude -p` (`plugin/scan/`), which is started outside `run_phase.py`.
+  - It does not change the weekly scan's read-only `claude -p` (`plugin/scan/cli.py`) or the triage run. Both are composed and invoked through `run_phase.compose` and `invoke`, but not through `session_env`, and neither runs `gh`.
 - **The live proof is not this session's.** It is the next real diagnosis on the sample at 1.0.1 that reads a failed run's log. That needs the sample's pin moved to 1.0.1 (a guardrail row for the owner, given after the tag) and a real breach. Until then, whether 0.3.8's `results-receiver.actions.githubusercontent.com` entry lets the download through stays unknown (NOTES §41, §43).
 
 ## The owner's decisions (2026-10-14)
