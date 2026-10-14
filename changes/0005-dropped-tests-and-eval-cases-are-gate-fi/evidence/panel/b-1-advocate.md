@@ -1,38 +1,31 @@
 ## Verdict
-Do not park on this: downgrade it to a build-phase instruction (a survivor-set argument plus one missing acceptance test), because the "unimplementable design" claim rests on reading a testability sentence as an interface contract and on one consequence that cannot occur.
+Escalate on reason 1 only, reworded: reasons 2 and 3 do not hold, and reason 1 is a design
+ambiguity (not just a missing test) the owner must settle at (b).
 
 ## The case against
-1. The premise is a misreading. "One small pure function taking the parsed records ... so it is
-   unit-testable without git" is a testability statement, not a signature. `drop_rule(records,
-   survivors)` is still one small pure function, still unit-testable without git — the caller
-   passes the survivor set in. Nothing in spec.md's Design or plan.md step 2 forbids a second
-   parameter; step 2 only says the test input is a fixture, "not live git".
-2. The survivor source is already the codebase's idiom and already in scope. Every diff-reading
-   check calls `diffmod.committed_files(ctx.root, ctx.diff.merge_base, ctx.diff.head)`
-   (`plugin/gate/checks.py:614, 663, 746, 940`), so the HEAD ref is at hand in `GateContext`; a
-   `tree_files(root, ref, prefix)` built on `_git(root, "ls-tree", "-r", "--name-only", ref, "--",
-   prefix)` is argument-list only (security-baseline rules 2 and 6, like `file_at`/`_cat_ok`) and
-   lands in `plugin/gate/diff.py`, a file plan.md's "## Files that change" already lists. No spec
-   amendment, and no `plan_sync`/`design_scope` finding: those checks match paths, not prose.
-3. Half the stated consequence is factually wrong. "Under-detect real drops spread across several
-   commits" cannot happen: the source is `git diff --name-status -M <merge base>...HEAD`, a
-   three-dot diff over the whole branch, so a case deleted across three commits shows three `D`
-   records. An escalation the owner must read twice should not carry an impossibility as evidence.
-4. What survives is narrower than the verdict: a partial delete (one file of a multi-file case, the
-   rest untouched) is a real false-positive risk, but it is a missing acceptance test, not a broken
-   design. spec.md's Acceptance pins the emptied folder and the internal move; neither forces the
-   survivor read. Escalating the whole design buries that one actionable item.
-5. Cost: a park here returns 0005 to design over a sentence the build phase resolves in its own
-   step 2, with intent, requirements and blast radius untouched.
-
-What I would decide instead: continue phase (b) with two build-phase conditions written into the
-item — the drop rule takes the survivor listing as an argument, read at `ctx.diff.head` through a
-new `diff.py` argument-list helper (no `shell=True`, same ref the records came from, never the
-working tree); and spec.md Acceptance / plan.md Proof gain one case:
-`test_ratchets_eval_case_partial_delete_is_not_a_drop`.
-
-What would make me accept the escalation: if plan.md or spec.md pinned `drop_rule`'s signature to
-records only, or declared `diff.py` closed to anything but the `--name-status` parser, or if the
-survivor read had no committed ref to stand on (`ctx.diff.head` absent at these gates) — then the
-requirement really would be unsatisfiable by the prescribed design and the owner would have to
-choose.
+1. Reason 2 is contradicted by plan.md itself. "Files that change" lists the test inventory
+   as "the test-file drop rule (D, R-not-a-rename, R-is-a-rename)" (plan.md:39) and the third
+   Risk bullet commits to parser tests "including a rename whose destination also matches a
+   `test_paths` glob (not a drop) and one whose destination does not (a drop)"
+   (plan.md:120-122). The R-that-is-a-drop behavior is planned and proofed; only a test *id*
+   is missing from the Proof index. Parking the owner to look for a hole the plan fills is
+   the kind of false positive the gate's own history warns about.
+2. Reason 3 misreads the design. spec.md Design:149-153 fixes the scan as "a simple anchored
+   substring/regex check per line" over the diff's added `+` lines, "scoped to the
+   file-glob/filename list in Requirements" — there is no toml/json per-format parsing to
+   test; the config surface is one filename list. Requirements:65 also fixes the scan as
+   never changing `ok`/fail. The worst a bug there can do is shorten an advisory list: no
+   behavior broken, no data leaked, no policy breached — a nit by REVIEW.md's own definition
+   of Important, and REVIEW.md caps nits rather than parking on them.
+3. Reason 1 survives and is worse than stated, which is why I still escalate. spec.md reuses
+   `plan_sync.is_planned` for declaration; that helper's directory rule is
+   `changed.startswith(planned)` (plugin/hooks/plan_sync.py:133-136), so a plan listing
+   `evals/cases/foo/` matches a deleted *file* under it but never the *case path*
+   `evals/cases/foo` that the hit reports — and spec.md never says whether declaration is
+   tested per deleted file or per case path (nor which path declares a dot-rename drop).
+   Both readings sit in the text, they disagree, and no Proof item forces a choice.
+4. What I would decide: approve (b) with one narrowed finding — spec.md must say which path
+   the eval-case declaration is matched on, and plan.md must add the two missing eval Proof
+   ids (declared via "Files that change", declared via `- ratchet: evals`). I would accept
+   the obvious resolution (park on all three) only if the design claimed per-format config
+   parsing, or if plan.md's test inventory did not already name the R-is-a-drop case.

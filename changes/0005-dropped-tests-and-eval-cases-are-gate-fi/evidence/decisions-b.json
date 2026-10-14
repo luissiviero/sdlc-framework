@@ -42,6 +42,28 @@
         "Nothing here touches a guardrail file, a limit, or a risk-list item; the drop-rule signature and the one test are the only changes, both inside spec.md/plan.md which this phase owns."
       ],
       "reviewer": "Escalate confirmed: send the design back \u2014 the eval-case drop rule as specced cannot be implemented by a pure function over `--name-status` diff records alone."
+    },
+    {
+      "advocate": "Escalate on reason 1 only, reworded: reasons 2 and 3 do not hold, and reason 1 is a design ambiguity (not just a missing test) the owner must settle at (b).",
+      "at": "2026-10-14T15:34:25Z",
+      "cost_usd": null,
+      "decision": "park",
+      "head": "6c6f002c7ca640aed538f32a6e9f906275779031",
+      "item": "adversarial reviewer says escalate: spec.md's Acceptance says a unit test proves 'the same three outcomes' (undeclared fails, declared-via-Files-that-change ok, declared-via-Proof-item ok) for the eval-case drop, but plan.md's Proof list only names test_ratchets_drop_eval_case_folder_emptied_fails and test_ratchets_drop_eval_case_dot_rename_fails \u2014 both prove only the undeclared-fail outcome. No test anywhere in the Proof list proves that a plan-declared eval-case drop (via 'Files that change' listing the case folder, including the trailing-slash directory match Design calls out, or via a '- ratchet: evals' Proof line) is ok. This is the one declaration path most likely to carry its own bug (directory-level matching instead of single-file matching) and it ships with zero test coverage, contradicting spec.md Requirements' own rule 'every behavior above ships with a test that fails without it.'; spec.md Requirements defines a dropped test file as 'a D ... or an R whose source matches a glob and whose destination matches none.' Only the D case (test_ratchets_drop_test_file_undeclared_fails) and the rename-that-is-NOT-a-drop case (test_ratchets_rename_within_test_paths_is_not_a_drop) are in plan.md's Proof; spec.md's own Acceptance section never asks for, and plan.md's Proof never supplies, a test where an R's destination does NOT match any test_paths glob and is therefore a drop. A bug that silently exempts a renamed-away test file from the drop rule would pass every listed test.; The skip-marker scan's Requirements name two scan surfaces: files under test_paths, and the test-runner's own configuration files (pytest.ini, pyproject.toml's pytest section, setup.cfg, tox.ini, conftest.py, package.json's jest block, jest.config.*). plan.md's Proof (test_ratchets_skip_markers_listed_never_fail) only exercises the first surface, using this repository's own runbook test files as fixture; no test exercises the configuration-file scanning path at all, even though that path needs separate per-format parsing (a jest block inside package.json, a pytest section inside pyproject.toml) that the test-file path does not.",
+      "item_n": 1,
+      "key": "escalate:308d92cd3ed7d1db",
+      "kind": "escalate",
+      "n": 3,
+      "overturned": null,
+      "phase": "b",
+      "rationale": [
+        "Both verdicts agree reason 1 is real: spec.md Acceptance (227-229) requires the same three outcomes for the eval-case drop that it requires for the test-file drop; plan.md's Proof supplies only the undeclared-fail outcome. That alone confirms park.",
+        "Direct check of spec.md settles reason 2 against the advocate: Acceptance (234-235) requires only the R-not-a-drop test for test-path renames, never a test for the R-is-a-drop outcome Requirements' own drop definition implies, and plan.md's Proof names no such test either; the advocate's plan.md:120-122 citation tests diff.py's parser, not the drop-rule function, so it does not close the gap.",
+        "Reason 3 is weaker: spec.md Design (149-153) fixes the scan as one generic per-line regex scoped to a filename list, so there is no per-format parsing to test, as the advocate says; but the Proof's only named test still never exercises the second scan surface (test-runner config files) Requirements names explicitly, so it survives as a nit under REVIEW.md, not an independent park.",
+        "Net: the safer reading treats reasons 1 and 2 as confirmed, objective Proof-vs-Acceptance gaps (coding-standards rule 4); reason 3 reinforces but is not load-bearing on its own.",
+        "What the run changes first: add Proof items for the eval-case declared-via-Files-that-change and declared-via-Proof-item outcomes, and for the test-file R-is-a-drop outcome, before re-running gate (b)."
+      ],
+      "reviewer": "Confirm the escalate: plan.md's Proof list must gain tests for the eval-case declared-drop-ok outcomes before gate (b) can pass."
     }
   ],
   "phase": "b",

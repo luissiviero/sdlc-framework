@@ -1,12 +1,12 @@
 {
-  "reviewer": "escalate: a drop-rule function over --name-status diff records alone cannot tell a partial multi-file deletion (sibling file untouched) from a full case drop, so the design as specced is unimplementable",
-  "advocate": "continue: add a survivor-path argument to the drop rule, sourced through the existing committed-ref idiom already in scope, plus one missing acceptance test, rather than park on a testability sentence",
-  "decision": "Continue phase (b): spec.md Design's drop-rule bullet now says the function also takes a survivor-path list for the eval-case rule, read via a new plugin/gate/diff.py helper tree_files(root, ref, prefix) built on git ls-tree -r --name-only <ref> -- <prefix> (argument-list, no shell=True) called at ctx.diff.head; plan.md's Proof list gains test_ratchets_eval_case_partial_delete_is_not_a_drop.",
+  "reviewer": "Escalate stands on all three reasons: Proof never proves the eval-case declared-ok outcomes, the test-file R-is-a-drop outcome, or the config-file skip-marker surface.",
+  "advocate": "Escalate on reason 1 only (reworded as a design ambiguity in the directory-vs-case-path match, not just a missing test id); reasons 2 and 3 are false positives plan.md and spec.md's Design already close.",
+  "decision": "park",
   "rationale": [
-    "Both verdicts agree on the fact: a records-only pure function cannot distinguish a partial multi-file eval-case deletion from a full drop, since an untouched sibling file leaves no diff record at all.",
-    "They disagree only on remedy: the advocate's fix is concrete and scoped to a file plan.md already lists (diff.py), reuses the codebase's existing committed-ref pattern (ctx.diff.head, the same ref file_at/_cat_ok already read), and adds no shell string or new scope.",
-    "Half the reviewer's stated harm is wrong: a three-dot diff already lists every D across multiple commits, so 'under-detect drops spread across commits' cannot occur; this weakens the case for a full park.",
-    "Safer reading favors applying the fix now: a park returns the whole change to design over a sentence this commit can correct, while continuing with the design edit above closes the real gap and adds the missing test the advocate names.",
-    "Nothing here touches a guardrail file, a limit, or a risk-list item; the drop-rule signature and the one test are the only changes, both inside spec.md/plan.md which this phase owns."
+    "Both verdicts agree reason 1 is real: spec.md Acceptance (227-229) requires the same three outcomes for the eval-case drop that it requires for the test-file drop; plan.md's Proof supplies only the undeclared-fail outcome. That alone confirms park.",
+    "Direct check of spec.md settles reason 2 against the advocate: Acceptance (234-235) requires only the R-not-a-drop test for test-path renames, never a test for the R-is-a-drop outcome Requirements' own drop definition implies, and plan.md's Proof names no such test either; the advocate's plan.md:120-122 citation tests diff.py's parser, not the drop-rule function, so it does not close the gap.",
+    "Reason 3 is weaker: spec.md Design (149-153) fixes the scan as one generic per-line regex scoped to a filename list, so there is no per-format parsing to test, as the advocate says; but the Proof's only named test still never exercises the second scan surface (test-runner config files) Requirements names explicitly, so it survives as a nit under REVIEW.md, not an independent park.",
+    "Net: the safer reading treats reasons 1 and 2 as confirmed, objective Proof-vs-Acceptance gaps (coding-standards rule 4); reason 3 reinforces but is not load-bearing on its own.",
+    "What the run changes first: add Proof items for the eval-case declared-via-Files-that-change and declared-via-Proof-item outcomes, and for the test-file R-is-a-drop outcome, before re-running gate (b)."
   ]
 }
