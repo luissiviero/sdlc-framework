@@ -23,7 +23,7 @@ The skeleton of a session file:
 - A title line naming the session, its date and its branch, then **Builds on:** the session files it read.
 - **Where the project stands** — the plugin version on `main`, the tags, the pin, what happened since the files it builds on.
 - **Preconditions of the moment** — the ones that are not standing (the repositories in scope, the expected `main`, tags and pin, any freeze).
-- **Next steps, in order**, **Every open item** (item, where, what is left, who acts, blocks 1.0.0) and **What the owner does** (when, act).
+- **Next steps, in order**, **Every open item** (item, where, what is left, who acts, blocks 1.0.0) and **What the owner does** (when, act). A ROADMAP candidate is named by its number only ("the ROADMAP candidates, in its Order column"): its order and state are read in docs/ROADMAP.md, not restated, and the open items carry only what ROADMAP does not hold.
 - Each fact carried from another file without re-reading it is cited as "carried from <file>, not re-verified". A figure that differs from the one in the file it builds on names the evidence that moved it (a run URL, a file or command output), or says "re-measured" with its source.
 
 ## Standing preconditions

@@ -46,6 +46,7 @@
         "github.com",
         "*.github.com",
         "objects.githubusercontent.com",
+        "results-receiver.actions.githubusercontent.com",
         "pypi.org",
         "files.pythonhosted.org",
         "registry.npmjs.org"
