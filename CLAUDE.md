@@ -5,7 +5,7 @@ Indexes first: `docs/notes/index.md` lists every verified platform fact, `docs/d
 
 ## Commands
 - Test: `python -m pytest` (all green; never skip or delete a failing test)
-- Lint: `ruff check .` (zero warnings)
+- Lint: `python -m ruff check . && python -m ruff format --check .` (zero warnings)
 - Task runner: `python tasks.py <task>` — must work on Windows and Linux
 Run tests and lint before reporting any task complete, and paste the output. If a test fails, fix the code, not the test.
 
@@ -52,6 +52,6 @@ Run tests and lint before reporting any task complete, and paste the output. If 
 <!-- Verbatim structure of the article's verification block (p.28). -->
 - Build: `python -m compileall -q plugin tests tasks.py` (must finish with no output and exit code 0)
 - Test: `python -m pytest` (all green; never skip or delete a failing test)
-- Lint: `python -m ruff check .` (zero warnings)
+- Lint: `python -m ruff check . && python -m ruff format --check .` (zero warnings)
 Run all three before reporting any task complete, and paste the output.
 If a test fails, fix the code, not the test.
