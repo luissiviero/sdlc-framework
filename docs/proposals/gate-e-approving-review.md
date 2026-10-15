@@ -1,0 +1,155 @@
+---
+type: Proposal
+title: Gate (e) is the owner's approving review; a GitHub App merges on it, and a rule holds unreviewed build PRs
+description: The owner's approving review on the build PR becomes gate (e) and the owner's only act there; a deterministic workflow with no model checks that the approval is the owner's, that the PR is a framework build PR at sdlc:e-ready and that the review of its head is green, then merges through a dedicated GitHub App that is a bypass actor of "Restrict updates"; a second ruleset requires only the sdlc/review check, which every other pull request receives as a passing "not a build PR", so an unreviewed build-PR merge needs a deliberate web bypass while every other PR merges as today.
+status: proposed
+roadmap: R22
+sources:
+  - id: study-entry
+    resource: docs/reviews/2026-09-28-playbook-vs-framework/target-design.md
+    title: "T18, confirmed at the close of the study on 2026-10-09 (the close table: 'yes; whether the App works as designed is verified when built'); from the crosswalk row deploy-approve (better: the playbook; decision: blend, option C4), 2026-10-06; the owner's note as corrected after the second independent review"
+  - id: crosswalk
+    resource: docs/reviews/2026-09-28-playbook-vs-framework/crosswalk.json
+    title: "Row deploy-approve whole; the decision and target fields of setup-merge, x-roles (T1), deploy-release (T21), build-config and x-audit (T32)"
+  - id: record
+    resource: docs/reviews/2026-09-28-playbook-vs-framework.md
+    title: "Section 7, first bullet (the close, 'T18 with the App verified when built'); section 8, part 1 (the close table row T18) and part 2 (the confirmed order: the gate changes T18, T23, T9, T30, T31)"
+  - id: playbook
+    resource: docs/reference/ai-native-sdlc-playbook.pdf
+    title: "p.6: human review reserved for regulated and critical code, and the chain of commits records who approved it; p.33 (prerequisites and step 3): branch protection requires a code owner's approval, findings do not approve or block on their own; p.34-35: the agent that wrote the code has no way to approve it, approval comes from a human through branch protection, informed by the findings; p.40 step 2 and p.41: no route to push to main, each run under the agent's own identity"
+  - id: decision-13
+    resource: docs/decisions/13.md
+    title: "Decision 13: gate (e) is the merge, plus a release label on a declared production (amended: the approval becomes the gate)"
+  - id: decision-4
+    resource: docs/decisions/4.md
+    title: "Decision 4: only the owner's account may merge to main, no required review (amended: a second actor, the App, merges only on the owner's approval; a ruleset gains a required check, not a required approval)"
+  - id: decision-5
+    resource: docs/decisions/5.md
+    title: "Decision 5: the built-in workflow token, 'GitHub App only when its limits bite' (amended: that fallback is taken for the merge)"
+  - id: decisions-27-29
+    resource: docs/decisions/27.md, docs/decisions/28.md, docs/decisions/29.md
+    title: "Decisions 27 (the owner-account question left to T17, T18 and T24), 28 (sdlc:accept-findings at gate (e)) and 29 (the runner's fix rounds and last commit), read; none amended"
+  - id: notes
+    resource: docs/notes/17.md, docs/notes/11.md
+    title: "§17: the bypass modes tried live on PRs #58 and #59 (Exempt merges from the mobile app on a tap; 'for pull requests only' shows no bypass control in the app); §11a: token events, the approval-required runs, check runs posted only by an app"
+  - id: later-proposals
+    resource: docs/proposals/approvals-list.md, docs/proposals/release-label-same-visit.md, docs/proposals/claude-comment-fix-round.md, docs/proposals/failed-run-explains-itself.md, docs/proposals/what-you-can-do-here.md, docs/proposals/digest-needs-you-first.md, docs/proposals/desktop-only-acts.md
+    title: "R11, R13, R17, R18, R19, R20 and R21: the parts of this entry they already place or settle"
+  - id: code
+    resource: plugin/commands/sdlc-deploy.md
+    title: "Steps 4 to 6 (the check run, sdlc:e-ready, 'Never merge'); plugin/review/cli.py cmd_check_run; plugin/ci/run_phase.py PR_DRAFT_PHASES, the gate-(d) check-run call and commit_run_record; plugin/state/status.py merged_at_gate_e and the Status fields; plugin/state/unpark.py is_automation_actor; plugin/release/cli.py; plugin/pr/description.py; plugin/commands/sdlc-init.md step 6; template/.github/workflows/*.yml triggers; read at main 5542406, plugin 1.0.1"
+generated: { by: sdlc-framework-session/ccr-01de3f80-ilnomi, at: 2026-10-15T20:00:00Z }
+---
+
+# Gate (e) is the owner's approving review; a GitHub App merges on it, and a rule holds unreviewed build PRs
+
+**Status: proposed (roadmap R22), from study entry T18, confirmed by the owner on 2026-10-09, option C4 of the crosswalk row deploy-approve (the letters are the row's own: C3 and C1 are its fallbacks, B's record is kept).** Nothing is built. It amends decisions 13, 4 and 5; the decision file comes before the intent, in a documentation PR of its own, never with the intent; this proposal writes none and reserves no number. Whether the App works as designed is verified when built, as the close confirmed. It is the first of the gate-changes batch (T18, T23, T9, T30, T31); R23 (T23) reuses its App, its merge workflow and its `sdlc/review` check for the dismissal PR; the owner check both use is R17's.
+
+## The problem
+
+Gate (e) is the owner's merge of the build PR (decision 13)[^decision-13]. The draft state is the only guard against an early merge: the build PR opens as a draft at (c) and is marked ready with `sdlc:e-ready` at (e). Since 0.3.1 an early merge releases nothing and a change releases once (issue #66), but an early merge still puts code the review has not judged on the default branch, and the review's fixes then arrive only with the (e) run's second PR. Nothing requires an approving review, and who merged at (e) is GitHub's record only: the framework's own record names the merge commit and the pull request, never the actor[^crosswalk].
+
+The owner preferred the article's version, an approval informed by the findings, and asked for a form with no extra click. The owner first chose C2; after the independent review found that C2's second ruleset would apply to every pull request into the default branch and block intent, design and incident PRs, the owner chose between two corrected forms and took C4, under which those PRs merge as today.
+
+## What the article says
+
+A code owner approves through branch protection, informed by the findings: "Findings do not approve or block a PR on their own, and branch protection still requires approval from a code owner"; a platform engineer who wants to gate merges on findings "can read the severity counts that the check run publishes as a machine-readable tally" (p.33 step 3; the prerequisites call such branch protection "worthwhile"). "Separation of duties is preserved, because the agent that wrote the code has no way to approve it" (p.34), and "Approval comes from a human through branch protection, informed by the findings" (p.35). The stage table reserves human review for regulated and critical code, and the chain of commits records "who approved it" (p.6). Anything the agent writes arrives as a PR, with no route to push to main, and each non-interactive run acts under the agent's own identity (p.40 step 2, p.41)[^playbook].
+
+## What the framework does today
+
+Read at `main` 5542406, plugin 1.0.1. The entry's "Today" was read at 619f01a (0.3.5); `git diff --stat 619f01a 5542406` over `plugin/ci`, `plugin/review`, `plugin/state`, `plugin/release`, `plugin/pr`, `plugin/gate`, `plugin/commands/sdlc-init.md`, `template/.github/workflows` and `template/sdlc.yaml` touches `run_phase.py`, `settings.ci.json`, `gate/artifacts.py`, `gate/checks.py`, `pr/description.py`, `release/notes.py`, `review/REVIEW_PROMPT.md` and `template/sdlc.yaml` only; `plugin/commands/sdlc-deploy.md` changed too (`git diff --stat 619f01a 5542406 -- plugin/commands/sdlc-deploy.md`: 47 lines), in its allowed-tools line and step 0b only, not in the steps cited below; each line below was re-read at 5542406[^code].
+
+- **The (e) run never merges, and the merge is the gate.** `/sdlc-deploy` posts the review tally as the `sdlc/review` check run, then marks the PR ready with `sdlc:e-ready`: "merge = gate (e) passed" (`plugin/commands/sdlc-deploy.md:221-235`), and ends "Never merge" (`:247`). The PR body says the same (`plugin/pr/description.py:105-106`), and on a declared production "apply `sdlc:release-approved` on this PR after merging" (`:112`). Only (c) opens as a draft (`run_phase.py:2749`, `:2808-2809`).
+- **`sdlc/review` is green only with no Important finding, and names the reviewed commit.** `review/cli.py:220-266` posts it with conclusion `success` when the tally's `important` is 0, else `failure` (`:235`), on the `head` that `review-findings.json` names (`:238`). The session posts it once, after pushing the evidence commit (`sdlc-deploy.md:218-223`), so the check sits on the reviewed commit while the evidence commit and the runner's run record land after it.
+- **The runner re-posts a check at (d) only, and before its last commit.** After its commands step the runner re-posts `sdlc/d` at gate (d) (`run_phase.py:1900-1907`), then commits the run record (`:1922-1934`), so even `sdlc/d` ends one commit below the head it leaves; nothing is re-posted at (e).
+- **No workflow runs on an approving review.** The only `pull_request_review` trigger is `sdlc-fix.yml`'s (`:51-52`), and its job runs on `changes_requested` alone (`:79`). The workflows that follow a merge or a close (design, build, abandon, release) run on `pull_request` `closed`.
+- **One ruleset, the owner Exempt.** `/sdlc-init` step 6 asks for "Restrict updates" with the owner as the only bypass actor, plus "Restrict deletions", "Block force pushes" and "Require a pull request before merging", the bypass mode Exempt, so a merge from the GitHub mobile app goes through on a tap, at the cost of no bypass audit entry (`plugin/commands/sdlc-init.md:126-148`; verified live on 2026-09-27 on PRs #58 and #59, `docs/notes/17.md`). Under "Allow for pull requests only" the app showed no bypass control and the owner merged through the web UI's checkbox (the same note). Step 6 also asks the owner to turn on "Allow GitHub Actions to create and approve pull requests" (`sdlc-init.md:120-125`), so the automation could approve pull requests in general, though not the build PR it authored.
+- **Gate (e) is derived from the merge.** `merged_at_gate_e` reads gate (e) passed for any change at phase e on the default branch, a parked one included (`plugin/state/status.py:346-368`). `status.yaml` has no field for an (e) approval or for who merged (`status.py:35-100`, the whole `Status` class); the release record holds `released_at`, `released_sha` and `released_pr` (`:96-98`), and the release log prints the PR and the merge commit (`plugin/release/cli.py:532-533`). The build PR's number is recorded as `build_pr` (`status.py:89`).
+- **A `[bot]` never counts as a human act.** `is_automation_actor` rejects the automation identity and any `<app>[bot]` (`plugin/state/unpark.py:59-65`; the same rule as `plugin/release/approval.py:116`), so a GitHub App's acts would never count as the owner's. No key names the owner: `git grep -n "owner:" 5542406 -- template/sdlc.yaml` finds nothing.
+
+## The proposal
+
+The owner's choice, condensed; nothing added to it.
+
+1. **The approval is the gate.** Gate (e) becomes the owner's approving review on the build PR, informed by the REVIEW.md findings and the banner (R24, T9), as in the article (amends decision 13). The agent cannot approve it, because the automation identity authored it. On a declared production the release label stays the second act, given in the same visit (R13).
+2. **The approval is the only act.** A review the owner submits starts workflows (only the workflow token's events do not, decision 5, `docs/notes/11.md` §11a), so the approval fires a merge workflow by itself. A deterministic step, with no model, checks that the approval is the owner's, that the PR is a framework build PR at `sdlc:e-ready`, and that `sdlc/review` is green on the head it merges; and it checks that head against the review findings, not the check alone, since a phase session can post a check: `review-findings.json` names the reviewed commit, and no commit after it may be anything but evidence and the run record. Then it merges through a dedicated GitHub App that is a bypass actor of "Restrict updates" (T1's direction; amends decisions 4 and 5: a second actor may merge, only on the owner's approval). The workflow token is never a bypass actor (decision 4).
+3. **The check on the final head.** The runner posts `sdlc/review` again on the build PR's final head, after its own last commit; today it re-posts only `sdlc/d`, and before that commit.
+4. **Approving early.** If the owner approves before the check is green, the (e) run starts the merge workflow explicitly when the check turns green, as the runner already dispatches the next phase. A merge that cannot happen (a red check, a conflict) leaves the PR open and shows in the digest; nothing notifies the owner (decisions 11 and 20).
+5. **Two rulesets.** Ruleset 1 stays as today: "Restrict updates", the owner's bypass Exempt, so only the owner and the App can merge, from the phone too. Ruleset 2 is new and requires only the `sdlc/review` check, with no required approval (decision 4's reason holds: the owner's own intent PRs could not pass one); the owner's bypass in it is "for pull requests only". Every pull request that is not a framework build PR gets a passing `sdlc/review` ("not a build PR") on each new head. The steps that open or update an automation PR (design, incident, dismissal, the standing PRs, ticket intents, fix-round pushes to a PR that is not a build PR) post it themselves, since the workflow token's PRs and pushes start no workflow run that proceeds by itself (their `pull_request` runs wait for approval); a runbook PR carries its own `sdlc/review` (R36, T14); a small workflow posts it on the pull requests and pushes people make. So intent, design, incident and the owner's own PRs merge as today, from the phone too, while merging a build PR whose review is not green needs the web UI's bypass checkbox: a deliberate act.
+6. **One-time setup per project,** listed in `/sdlc-init` step 6 with the other steps: create and install the App, store its key as a repository secret, add the App as a bypass actor of ruleset 1, create ruleset 2.
+7. **Fallbacks.** C3, if a check posted by the automation cannot satisfy a required check: no ruleset 2; the App still merges on the approval, and an early merge by hand stays possible and is flagged (the digest, and the (e) run's second PR). C1, if the App proves impractical: the owner merges after approving, one more click.
+8. **B's record, in every form.** The runner records the (e) approval and the merge (who, when, the findings tally, the banner shown) beside the plan acceptance and the (c) and (d) labels: lines of R11's approvals list, whose one shape settles the fields (T32).
+
+What it meets elsewhere, not proposed here: the App's `[bot]` account can never authorize a release (R13, T21); the merge workflow's failures are triaged and listed in "Failed runs" (R18, T19); the act's row in "What you can do here" (R19, T27); the Code reviewer and Platform & release briefs and the manager's recommendation before the approval (R28, T1).
+
+Three parts the other proposals leave to this one, each a row of "What to settle" and of "Order": whether the App's merge starts the release, else the merge workflow dispatches `sdlc-release.yml` (accepted R13 hands it here); the digest line for an approved build PR not yet merged (accepted R20 places lines and does not name T18 among their sources); the App, its key, ruleset 2 and the web bypass as desktop-only acts (R21 lists three acts and none of these).
+
+## How it is judged
+
+The measures are this proposal's, from the entry's aims. On the first three build PRs at (e) after it is built: the owner's acts at (e) stay at one (the approval; plus the label on a declared production, in the same visit); every (e) merge carries an approval line by the owner's account and a merge line by the App; no build PR reaches the default branch with a red or missing `sdlc/review` except through the web bypass. Over the same weeks, no intent, design, incident, runbook, standing or owner PR waits on ruleset 2 (each gets its passing check), and the owner's own PRs still merge from the phone. A merge by the App without the owner's approval, or a non-build PR held by ruleset 2, is the failure.
+
+## What to settle before building
+
+The entry's open items first, then this proposal's own recommendations, marked "(this proposal's)".
+
+| Question | Recommended |
+|---|---|
+| Whether the owner's approval counts on a PR the automation opened | To verify on the sample before the design, recorded in `docs/notes/`; if it does not, C1 |
+| Whether a check posted by the automation's token satisfies a required check, and whether a required check binds the head commit, so each new head needs it again | To verify on the sample; if the first fails, C3 |
+| Whether a bypass in "for pull requests only" mode is logged | To verify |
+| The App as a bypass actor of "Restrict updates", and its merge workflow; which workflow file a review-triggered run uses (`docs/notes/16.md` unverified, `docs/notes/3.md` §3c, `docs/notes/11.md` §11a); the App's key usable only by a definition the PR branch cannot change; whether the workflow token can push workflow files | To verify; the design holds either way. (This proposal's) the review-triggered workflow holds no key and only dispatches a merge workflow on the default branch, whose job reads the key from a GitHub environment limited to the default branch and re-checks everything from the API, as R17's dispatcher keeps the round off the PR's head; that an environment so limited refuses a run from another ref is to verify |
+| Whether a push after the owner's approval (a release artifact, a panel commit at (e)) dismisses it | To verify; ruleset 2 requires no approval, so its dismissal setting may not apply; the merge step's own rule (below) decides either way |
+| An approval given before the runner's last commit names an older head (a review names its commit, unverified) | The entry's rule (its Open list, confirmed with the entry): the merge step accepts it only when every later commit is evidence or the run record. The owner's note gives the rule for the review findings' commit with evidence only; "and the run record" is the entry's direction. The run-record commit carries `run-<phase>.json`, plus the gate record and `status.yaml` when the runner's commands step ran (`run_phase.py:2009`, `:2022-2023`). That a review names its commit is to verify |
+| How the steps and the small workflow tell a build PR from the rest, and what happens while the check has not posted | The merge step reads the review findings and gate (e)'s record for the head, not the check, so a wrong classification is caught there. (This proposal's) a build PR is the PR that `status.yaml: build_pr` names on a `sdlc/<id>/c` head; anything else gets "not a build PR"; while the check is pending the PR waits |
+| The exact fields of the (e) approval line | Settled at x-audit (T32): R11's one shape. Which step writes the merge line is settled by R11 (accepted 2026-10-13, its point 1): the release workflow's record job, made unconditional, so it runs on every (e) merge. (This proposal's) the same post-merge job writes the approval line too, so nothing is committed to the head between the approval and the merge |
+| How the owner's account is known | Settled by R17 (accepted 2026-10-14, PR #208): the repository owner, or `sdlc.yaml: owner` on an organization repository; one `is_owner_actor`, shared with this merge step, fail closed |
+| Whether the small workflow's runs that wait for approval on the automation's PRs add a pending entry that holds the required check | To verify (`docs/notes/33.md`: such runs ended `failure` with no job, why unverified) |
+| Whether ruleset 2 blocks the owner's direct pushes | To verify (`docs/notes/17.md`: "Always allow" differs from "for pull requests only" by direct pushes only) |
+| Whether an approval on a conflicted PR starts the merge workflow | To verify; if not, the digest lists approved, unmerged build PRs (the line below) |
+| The digest line for an approved build PR not yet merged (the owner's note: "a blocked merge shows in the digest") | The PR keeps `sdlc:e-ready`, so it already falls under R20's "Needs you — Waiting at a human gate" (its row 3). (This proposal's) its line adds "approved <date>, not merged: <reason>", the reason being a red or missing `sdlc/review`, a conflict, or waiting for the check; this proposal defines the line and R20 places it, a line R20 did not foresee |
+| Whether the App's merge starts `pull_request: closed` workflows, so the release follows | Settled by R13 (accepted 2026-10-13): verified when this is built; if not, the merge workflow dispatches `sdlc-release.yml` |
+| The App, its key, ruleset 2 and the web bypass as desktop-only acts | (This proposal's) added to R21's table when both are built: the mobile app showed no bypass control under "for pull requests only" (`docs/notes/17.md`); that the App's creation, its key and a ruleset need a browser follows R21's reading of repository settings, not verified for the App |
+| Runbook PRs under ruleset 2 before R36 is built (`revert-pr` and `quarantine-flaky-test` open PRs today, `plugin/detect/routes.py:38-44`, with no `sdlc/review`) | (This proposal's) ruleset 2 is not created in any project before R36's check posts on runbook PRs, so R36 is built before or with ruleset 2, as R36 also recommends |
+| An (e) head whose Important findings the owner accepted with `sdlc:accept-findings` (decision 28, R6) | (This proposal's) `sdlc/review` today is `failure` on any Important finding (`review/cli.py:235`), so the App would never merge it: the check's conclusion follows the accepted signatures as `check_findings` does once R6 is built, and the merge step reads them from `status.yaml` |
+| Whether the GitHub mobile app can submit an approving review | (This proposal's) to verify on the owner's phone; a "Request changes" review from the app is recorded in `docs/notes/23.md` |
+| Whether the App's merge of a dismissal PR needs the passing check | R23's own open item; the owner's note here names the dismissal step among those that post it |
+| Whether the merge step requires a green preview when a preview command is set | R39's (T20) open item, decided there; R39 recommends that it does and places that part here. (This proposal's) if it is kept, whichever of R22 and R39 is built second builds it |
+| One decision file or three | (This proposal's) one file amending 13, 4 and 5, as decision 29 amends 11 and choice 154 |
+
+## Considered and not chosen
+
+- A, the merge alone with no required approval; B alone, which only records and flags an early merge.
+- C2, a second ruleset requiring an approval and the check: a branch ruleset applies to every pull request into the branch, so it would block every intent, design, incident and standing PR, and the owner's own intent PRs (decision 4's reason); only the web bypass would merge them, never from the phone.
+- A required check under the owner's Exempt bypass: no rule runs for the owner.
+- GitHub's auto-merge: it merges as whoever enabled it (not verified), so the automation's token would be blocked by ruleset 1, and the owner enabling it is a click again.
+- An automatic revert PR on an early merge: noise, while the release already holds back.
+
+## Decisions it touches
+
+13 is amended: gate (e) becomes the owner's approving review, on which the App merges; on a declared production the release label stays the second act (R13). 4 is amended: a second actor, the App, may merge, only on the owner's approval; a ruleset gains a required check, not the required approval decision 4 rejected; the workflow token stays branch-only. 5 is amended: its own fallback, "GitHub App only when its limits bite", is taken for the merge; the workflow token stays the automation identity everywhere else. The decision file is written before the intent, in a documentation PR the owner reviews on its own, never with the intent; this proposal writes no decision file and reserves no number. 11 and 20 are kept (a blocked merge leaves the PR open and notifies no one; it shows in the digest). 27 is read (the owner-account question it left to T17, T18 and T24 is answered for this merge by R17's shared check). 28 and 29 are kept. Along T1's direction: the one-owner premise, whose decision file comes with R28.
+
+## Order
+
+Eighth of the study's proposals in the confirmed order (the record, section 8: T32, T12, T21, then T17, T19, T27, T28, then the gate changes T18, T23, T9, T30, T31). It changes `plugin/` and `template/`, so it ships as a plugin version with tests and reaches a project through `/sdlc-init`'s workflow copies and its step 6. It comes after R11, whose list holds its lines, and meets R13 (built with R12 after R11) at the release; It comes after R17 (accepted 2026-10-14, built after R13), which builds `is_owner_actor`; this merge step only calls it. R23 comes after it (the same App). The parts it takes:
+
+| Part | Where | When |
+|---|---|---|
+| The decision file amending 13, 4 and 5 | `docs/decisions/` | Before the intent, in its own documentation PR |
+| The live checks of the "To verify" rows, which choose C4, C3 or C1 | the sample; `docs/notes/` | Before the design |
+| `sdlc/review` re-posted on the final head after the runner's last commit | `plugin/ci/run_phase.py`, `plugin/review/cli.py` | Now; harmless alone; after R10 if R10 lands first, since its rounds move the last commit |
+| The passing "not a build PR" check on every other PR, and the small workflow for people's PRs | `plugin/pr/cli.py upsert`, the incident and dismissal steps, `template/.github/workflows/` | Now, before ruleset 2 exists in any project; R31, R36, R37 and R38 post it on their PRs as they arrive |
+| The merge workflow, its deterministic step, the App and ruleset 2 in `/sdlc-init` step 6 | `template/.github/workflows/`, `plugin/`, `plugin/commands/sdlc-init.md` | After the checks above; ruleset 2 last, and not before R36's check on runbook PRs (this proposal's) |
+| The live check that the App's merge starts the release; else the merge workflow dispatches `sdlc-release.yml` | the sample; the merge workflow | With the merge workflow (R13 leaves it here) |
+| The wording: approve = gate (e) | `sdlc-deploy.md` steps 5 and 6, `pr/description.py`, `docs/OPERATING_MODEL.md` §3 and §4 | With the merge workflow; the release wording with R13 |
+| The approval and merge lines | R11 | With R11; until then the merge workflow's log |
+| The merge workflow's triage and "Failed runs" line | R18 | With R18 |
+| The act's row | R19 | With R19 |
+| The digest line for an approved, unmerged build PR, defined here | `plugin/pr/digest.py`, placed by R20 | With the merge workflow, after R20's order |
+| The App, its key, ruleset 2 and the web bypass in R21's table (this proposal's) | R21's table | With whichever of R22 and R21 is built second |
+| The merge step's green-preview requirement, if R39 keeps it | the merge step | With whichever of R22 and R39 is built second |
+| The App's merge of a dismissal PR | R23 | With R23 |
+
+[^decision-13]: `docs/decisions/13.md`; `docs/decisions/4.md`; `docs/decisions/5.md`.
+[^crosswalk]: `docs/reviews/2026-09-28-playbook-vs-framework/crosswalk.json`, row deploy-approve (`fw`, `weigh`), and `target-design.md` T18 ("Today").
+[^playbook]: `docs/reference/ai-native-sdlc-playbook.pdf` p.6, p.33-35, p.40-41.
+[^code]: `plugin/commands/sdlc-deploy.md`; `plugin/review/cli.py`; `plugin/ci/run_phase.py`; `plugin/state/status.py`; `plugin/state/unpark.py`; `plugin/release/cli.py`, `plugin/release/approval.py`; `plugin/pr/description.py`; `plugin/commands/sdlc-init.md`; `template/.github/workflows/sdlc-fix.yml`; read at `main` 5542406 (plugin 1.0.1).
