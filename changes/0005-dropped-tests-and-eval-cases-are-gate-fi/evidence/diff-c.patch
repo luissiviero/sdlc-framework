@@ -1,7 +1,202 @@
- .../evidence/gate-c.json                           | 25 ++++++++++++++++++++++
- .../status.yaml                                    | 22 +++++++++----------
- 2 files changed, 36 insertions(+), 11 deletions(-)
+ .../evidence/adversarial-review-c.json             | 23 ++++++
+ .../evidence/diff-c.patch                          | 82 ++++++++++++++++++++++
+ .../evidence/fix-requests.json                     | 19 ++---
+ .../evidence/fix-response.md                       | 32 +++++++++
+ .../evidence/gate-c.json                           | 25 +++++++
+ .../evidence/hook-log.jsonl                        | 17 +++++
+ .../evidence/panel/c-items.json                    | 24 +++++++
+ .../evidence/run-c.json                            |  5 ++
+ .../status.yaml                                    | 20 +++---
+ 9 files changed, 222 insertions(+), 25 deletions(-)
 
+diff --git a/changes/0005-dropped-tests-and-eval-cases-are-gate-fi/evidence/adversarial-review-c.json b/changes/0005-dropped-tests-and-eval-cases-are-gate-fi/evidence/adversarial-review-c.json
+new file mode 100644
+index 0000000..d869389
+--- /dev/null
++++ b/changes/0005-dropped-tests-and-eval-cases-are-gate-fi/evidence/adversarial-review-c.json
+@@ -0,0 +1,23 @@
++{
++  "schema_version": 1,
++  "phase": "c",
++  "head": "09921cb723a05d6c2ef37f1ae55a117de62d1e7e",
++  "verdict": "continue",
++  "reasons": [],
++  "classification": "non-routine",
++  "classification_reasons": [
++    "The change's own plan.md touches core gate enforcement (plugin/gate/checks.py, CHECKS_BY_PHASE, plugin/gate/diff.py, plugin/state/unpark.py, plugin/pr/description.py) and prose in docs/OPERATING_MODEL.md, affecting every project that runs the plugin, not just this repository (intent.md 'Affected users and systems').",
++    "No code for the new ratchets check exists yet (this diff is pre-implementation bookkeeping), so no existing test can be said to already cover it; the plan itself lists 20+ new unit tests still to be written.",
++    "Blast radius is wide by design: a new deterministic check runs at three gates (c, d, e) for every change type and interacts with the existing risk-list accept-risk label path across every project on the plugin."
++  ],
++  "attempted": [
++    "Intent: confirmed this diff is not the feature work at all. It is the committed record of a CI preflight park (evidence/gate-c.json: check 'claude_md', reason 'CLAUDE.md does not name the lint command of sdlc.yaml') plus status.yaml's transition from phase b/passed to phase c/parked, and then the owner's sdlc:reset-iterations label being performed (iterations 1->0, panel_calls 3->0, iterations_reset_by/at set). This matches plugin/state/status.py's record_owner_label for RESET_ITERATIONS_LABEL exactly (it only zeroes the two counters and stamps the actor/time; it does not and should not touch parked_reason or gate.result), so the committed state is internally consistent with the code that produced it.",
++    "Spec/plan conformance: not applicable yet — plan.md's 'Files that change' and 'Order of work' name plugin/gate/diff.py, checks.py, unpark.py, pr/description.py, the skills/agent/template prose and the tests; none of those files appear in this diff, matching the task framing that no implementation session has started.",
++    "Proof: no test.log/build.log/lint.log/verifier.md changes are expected or present, because the phase (c) session that would produce them never started (preflight refused it before the session). Nothing in the diff claims a result that isn't backed by a toolchain run.",
++    "Blast radius: the two changed paths (evidence/gate-c.json, status.yaml) are both inside the change's own folder; no guardrail file (.claude/**, CLAUDE.md, REVIEW.md, sdlc.yaml) is touched in this diff. I checked the actual root cause independently: sdlc.yaml's lint command is 'python -m ruff check . && python -m ruff format --check .' and CLAUDE.md's current text only contains 'python -m ruff check .' (no '&&' form), so plugin/gate/preflight.py:check_claude_md will still fail on the next run — but the diff does not misrepresent this: it does not edit CLAUDE.md (a guardrail file a run must never edit) and status.yaml's parked_reason is left exactly as the preflight produced it, so the record is honest about remaining blocked rather than papering over it.",
++    "Policies: CLAUDE.md's own rule ('Editing a guardrail file ... propose the exact lines ... leave the edit to the owner') is respected — the diff contains no CLAUDE.md edit; the actual proposal lives in the uncommitted fix-response.md draft, outside this diff, which is the correct place for it.",
++    "Tests: none added, removed or weakened in this diff; nothing to check against existing coverage.",
++    "Checked whether the owner's sdlc:reset-iterations label application was a legitimate act rather than a workaround: plugin/state/unpark.py's is_automation_actor/rejection logic and status.yaml's iterations_reset_by: luissiviero confirm a human actor (not the automation identity), matching decision 11/24's rule that a run cannot un-park itself."
++  ],
++  "at": "2026-10-15T00:00:00Z"
++}
+diff --git a/changes/0005-dropped-tests-and-eval-cases-are-gate-fi/evidence/diff-c.patch b/changes/0005-dropped-tests-and-eval-cases-are-gate-fi/evidence/diff-c.patch
+new file mode 100644
+index 0000000..7ded152
+--- /dev/null
++++ b/changes/0005-dropped-tests-and-eval-cases-are-gate-fi/evidence/diff-c.patch
+@@ -0,0 +1,82 @@
++ .../evidence/gate-c.json                           | 25 ++++++++++++++++++++++
++ .../status.yaml                                    | 22 +++++++++----------
++ 2 files changed, 36 insertions(+), 11 deletions(-)
++
++diff --git a/changes/0005-dropped-tests-and-eval-cases-are-gate-fi/evidence/gate-c.json b/changes/0005-dropped-tests-and-eval-cases-are-gate-fi/evidence/gate-c.json
++new file mode 100644
++index 0000000..f0ba816
++--- /dev/null
+++++ b/changes/0005-dropped-tests-and-eval-cases-are-gate-fi/evidence/gate-c.json
++@@ -0,0 +1,25 @@
+++{
+++  "at": "2026-10-14T20:00:34Z",
+++  "change_id": "0005",
+++  "checks": [
+++    {
+++      "details": {},
+++      "name": "preflight",
+++      "need": "Settle this, then re-run the phase: CI stopped before the run started.",
+++      "ok": false,
+++      "reason": "claude_md: CLAUDE.md does not name the lint command of sdlc.yaml"
+++    }
+++  ],
+++  "config_note": "",
+++  "dry_run": false,
+++  "head": "e38f24596d51e258da592ae855dd4737b1a2c46a",
+++  "human_gate": true,
+++  "label": "sdlc:needs-human",
+++  "phase": "c",
+++  "profile": "",
+++  "reason": "preflight: claude_md: CLAUDE.md does not name the lint command of sdlc.yaml",
+++  "result": "park",
+++  "schema_version": 1,
+++  "slug": "dropped-tests-and-eval-cases-are-gate-fi",
+++  "what_i_need": "## What I need from you\nGate (c) parked change 0005 (dropped-tests-and-eval-cases-are-gate-fi) on 2026-10-14T20:00:34Z.\n- **preflight**: claude_md: CLAUDE.md does not name the lint command of sdlc.yaml\n  - what I need: Settle this, then re-run the phase: CI stopped before the run started.\nWhen the item is settled, re-run the gate: `python \"${CLAUDE_PLUGIN_ROOT}/plugin/gate/cli.py\" check --root . --id 0005 --phase c` (review comments are the change request; /sdlc-fix from B3 re-runs the phase with them).\n"
+++}
++diff --git a/changes/0005-dropped-tests-and-eval-cases-are-gate-fi/status.yaml b/changes/0005-dropped-tests-and-eval-cases-are-gate-fi/status.yaml
++index 2214da9..05449a2 100644
++--- a/changes/0005-dropped-tests-and-eval-cases-are-gate-fi/status.yaml
+++++ b/changes/0005-dropped-tests-and-eval-cases-are-gate-fi/status.yaml
++@@ -1,25 +1,25 @@
++ id: "0005"
++ slug: dropped-tests-and-eval-cases-are-gate-fi
++ title: Dropped tests and eval cases are gate findings
++-phase: b
+++phase: c
++ entry_route: idea
++ change_type: feature
++ profile_override: null
++ review_override: null
++ gate:
++-  phase: b
++-  result: passed
++-  reason: waiting for the owner at gate (b)
++-  at: "2026-10-14T15:44:28Z"
++-parked_reason: null
++-iterations: 1
++-panel_calls: 3
+++  phase: c
+++  result: parked
+++  reason: "preflight: claude_md: CLAUDE.md does not name the lint command of sdlc.yaml"
+++  at: "2026-10-14T20:00:34Z"
+++parked_reason: "preflight: claude_md: CLAUDE.md does not name the lint command of sdlc.yaml"
+++iterations: 0
+++panel_calls: 0
++ external_ref: null
++ risk_accepted: []
++ tests_locked: false
++ risk_accepted_by: []
++-iterations_reset_by: null
++-iterations_reset_at: null
+++iterations_reset_by: luissiviero
+++iterations_reset_at: "2026-10-15T15:48:51Z"
++ tests_unlocked_by: null
++ runbook_authorized_by: null
++ abandoned_reason: null
++@@ -28,5 +28,5 @@ released_at: null
++ released_sha: null
++ released_pr: null
++ created_at: "2026-10-13T21:22:06Z"
++-updated_at: "2026-10-14T15:44:28Z"
+++updated_at: "2026-10-15T15:48:51Z"
++ schema_version: 1
+diff --git a/changes/0005-dropped-tests-and-eval-cases-are-gate-fi/evidence/fix-requests.json b/changes/0005-dropped-tests-and-eval-cases-are-gate-fi/evidence/fix-requests.json
+index fa4fc33..fd0f257 100644
+--- a/changes/0005-dropped-tests-and-eval-cases-are-gate-fi/evidence/fix-requests.json
++++ b/changes/0005-dropped-tests-and-eval-cases-are-gate-fi/evidence/fix-requests.json
+@@ -1,22 +1,11 @@
+ {
+-  "collected_at": "2026-10-14T15:19:00+00:00",
+-  "head": "486fd017d5d21fd7aa6d6e3eeb1811f92ce6cd31",
++  "collected_at": "2026-10-15T15:48:54+00:00",
++  "head": "09921cb723a05d6c2ef37f1ae55a117de62d1e7e",
+   "not_applied": [],
+   "ok": true,
+-  "pr_number": 186,
++  "pr_number": 211,
+   "repo": "luissiviero/sdlc-framework",
+-  "requests": [
+-    {
+-      "association": "OWNER",
+-      "at": "2026-10-14T15:18:16Z",
+-      "author": "luissiviero",
+-      "body": "Two changes before the build:\n1. plan.md step 9 (lines 88\u201389) and \"Files that change\" (line 35): bump `.claude-plugin/marketplace.json` together with `plugin.json`. `tests/test_scaffold.py:47` asserts the two versions are equal, so bumping only `plugin.json` fails the suite. The version is the next free patch number when this merges (choice 184).\n2. plan.md Proof list (lines 199\u2013246): add the tests the Risks section promises at lines 101\u2013103 (a plan edited after the merge base), 121\u2013124 (`risk_list: [\"tests\"]` configured) and 133\u2013135 (the runbook-file fixture).\nOptional: `spec.md:2` and `intent.md:10` name 0.3.6 and 0.3.7; `spec.md:41` cites `description.py` lines that #199 moved.",
+-      "id": 5520261177,
+-      "kind": "review",
+-      "state": "CHANGES_REQUESTED",
+-      "url": "https://github.com/luissiviero/sdlc-framework/pull/186#pullrequestreview-5520261177"
+-    }
+-  ],
++  "requests": [],
+   "route": "api",
+   "schema_version": 1,
+   "unavailable": null
+diff --git a/changes/0005-dropped-tests-and-eval-cases-are-gate-fi/evidence/fix-response.md b/changes/0005-dropped-tests-and-eval-cases-are-gate-fi/evidence/fix-response.md
+index 81f42d7..0d7ed32 100644
+--- a/changes/0005-dropped-tests-and-eval-cases-are-gate-fi/evidence/fix-response.md
++++ b/changes/0005-dropped-tests-and-eval-cases-are-gate-fi/evidence/fix-response.md
+@@ -45,3 +45,35 @@ Source: `evidence/fix-requests.json` (collected at 2026-10-14T15:19:00+00:00, he
+ 
+ `gh pr checks 186`: three `check` jobs (ubuntu 3.10, ubuntu 3.12, windows) all `pass`; `fix`
+ was `pending` (this round).
++
++# Fix response — round 2 (phase c)
++
++Source: `status.yaml: parked_reason` (the CI preflight park of 2026-10-14T20:00:34Z,
++written before the phase (c) session started — `evidence/gate-c.json`) and
++`evidence/fix-requests.json` (collected 2026-10-15T15:48:54+00:00, head
++`09921cb723a05d6c2ef37f1ae55a117de62d1e7e`, PR #211): no reviews or comments
++(`requests: []`, `not_applied: []`).
++
++## Not applied — guardrail-file edit, proposed for the owner
++
++- **preflight: `claude_md`.** `sdlc.yaml`'s lint command (line 19) is
++  `python -m ruff check . && python -m ruff format --check .`; `CLAUDE.md`'s "Verifying your
++  work" section (line 55) still reads `python -m ruff check .`, so that exact string never
++  appears in `CLAUDE.md` and `plugin/gate/preflight.py`'s `check_claude_md` refuses to start
++  the phase (c) session ("CLAUDE.md does not name the lint command of sdlc.yaml"). This
++  repo's own rules ("Editing a guardrail file ... the tools are denied, propose the exact
++  lines"; "Never edit ... CLAUDE.md ... in a run") both apply: not applied here, proposed
++  below instead.
++
++| File | Line | What is there now | What it must become |
++|---|---|---|---|
++| `CLAUDE.md` | 55 | `` - Lint: `python -m ruff check .` (zero warnings) `` | `` - Lint: `python -m ruff check . && python -m ruff format --check .` (zero warnings) `` |
++
++No build work happened this round: the phase (c) session that would write code never
++started (the same preflight park), so there is no diff to re-verify and nothing else to fix.
++Re-running the gate below is expected to park again on the same `preflight` reason once the
++owner applies the line above and a fresh (non-fix) phase (c) run is dispatched.
++
++## Checks
++
++Not run this round: nothing besides the park reason changed.
 diff --git a/changes/0005-dropped-tests-and-eval-cases-are-gate-fi/evidence/gate-c.json b/changes/0005-dropped-tests-and-eval-cases-are-gate-fi/evidence/gate-c.json
 new file mode 100644
 index 0000000..f0ba816
@@ -33,8 +228,75 @@ index 0000000..f0ba816
 +  "slug": "dropped-tests-and-eval-cases-are-gate-fi",
 +  "what_i_need": "## What I need from you\nGate (c) parked change 0005 (dropped-tests-and-eval-cases-are-gate-fi) on 2026-10-14T20:00:34Z.\n- **preflight**: claude_md: CLAUDE.md does not name the lint command of sdlc.yaml\n  - what I need: Settle this, then re-run the phase: CI stopped before the run started.\nWhen the item is settled, re-run the gate: `python \"${CLAUDE_PLUGIN_ROOT}/plugin/gate/cli.py\" check --root . --id 0005 --phase c` (review comments are the change request; /sdlc-fix from B3 re-runs the phase with them).\n"
 +}
+diff --git a/changes/0005-dropped-tests-and-eval-cases-are-gate-fi/evidence/hook-log.jsonl b/changes/0005-dropped-tests-and-eval-cases-are-gate-fi/evidence/hook-log.jsonl
+index 4cc0027..accdf70 100644
+--- a/changes/0005-dropped-tests-and-eval-cases-are-gate-fi/evidence/hook-log.jsonl
++++ b/changes/0005-dropped-tests-and-eval-cases-are-gate-fi/evidence/hook-log.jsonl
+@@ -118,3 +118,20 @@
+ {"at": "2026-10-14T15:38:39Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/sdlc-framework/sdlc-framework/changes/0005-dropped-tests-and-eval-cases-are-gate-fi/evidence/adversarial-review-b.json"], "reason": "", "tool": "Write", "verdict": "allow"}
+ {"at": "2026-10-14T15:38:39Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/sdlc-framework/sdlc-framework/changes/0005-dropped-tests-and-eval-cases-are-gate-fi/evidence/adversarial-review-b.json"], "reason": "", "tool": "Write", "verdict": "allow"}
+ {"at": "2026-10-14T15:39:04Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
++{"at": "2026-10-15T15:49:08Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
++{"at": "2026-10-15T15:49:12Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
++{"at": "2026-10-15T15:49:17Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
++{"at": "2026-10-15T15:49:24Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
++{"at": "2026-10-15T15:49:37Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
++{"at": "2026-10-15T15:52:25Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
++{"at": "2026-10-15T15:54:27Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/sdlc-framework/sdlc-framework/changes/0005-dropped-tests-and-eval-cases-are-gate-fi/evidence/fix-response.md"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-10-15T15:54:27Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/sdlc-framework/sdlc-framework/changes/0005-dropped-tests-and-eval-cases-are-gate-fi/evidence/fix-response.md"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-10-15T15:54:27Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/sdlc-framework/sdlc-framework/changes/0005-dropped-tests-and-eval-cases-are-gate-fi/evidence/fix-response.md"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-10-15T15:54:27Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/sdlc-framework/sdlc-framework/changes/0005-dropped-tests-and-eval-cases-are-gate-fi/evidence/fix-response.md"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-10-15T15:54:37Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
++{"at": "2026-10-15T15:54:41Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
++{"at": "2026-10-15T15:58:38Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/sdlc-framework/sdlc-framework/changes/0005-dropped-tests-and-eval-cases-are-gate-fi/evidence/adversarial-review-c.json"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-10-15T15:58:38Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/sdlc-framework/sdlc-framework/changes/0005-dropped-tests-and-eval-cases-are-gate-fi/evidence/adversarial-review-c.json"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-10-15T15:58:38Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/sdlc-framework/sdlc-framework/changes/0005-dropped-tests-and-eval-cases-are-gate-fi/evidence/adversarial-review-c.json"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-10-15T15:58:39Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/sdlc-framework/sdlc-framework/changes/0005-dropped-tests-and-eval-cases-are-gate-fi/evidence/adversarial-review-c.json"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-10-15T15:59:08Z", "cwd": "/home/runner/work/sdlc-framework/sdlc-framework", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
+diff --git a/changes/0005-dropped-tests-and-eval-cases-are-gate-fi/evidence/panel/c-items.json b/changes/0005-dropped-tests-and-eval-cases-are-gate-fi/evidence/panel/c-items.json
+new file mode 100644
+index 0000000..6911ac2
+--- /dev/null
++++ b/changes/0005-dropped-tests-and-eval-cases-are-gate-fi/evidence/panel/c-items.json
+@@ -0,0 +1,24 @@
++{
++  "decided": 0,
++  "gate": "park",
++  "items": [],
++  "iterations": {
++    "cap": 2,
++    "left": 1,
++    "used": 1
++  },
++  "mode": "deferred",
++  "panel_calls": {
++    "cap": 4,
++    "left": 4,
++    "used": 0
++  },
++  "parks": [
++    {
++      "check": "evidence",
++      "reason": "evidence/ lacks verifier.md"
++    }
++  ],
++  "pending": [],
++  "phase": "c"
++}
+diff --git a/changes/0005-dropped-tests-and-eval-cases-are-gate-fi/evidence/run-c.json b/changes/0005-dropped-tests-and-eval-cases-are-gate-fi/evidence/run-c.json
+new file mode 100644
+index 0000000..218f04f
+--- /dev/null
++++ b/changes/0005-dropped-tests-and-eval-cases-are-gate-fi/evidence/run-c.json
+@@ -0,0 +1,5 @@
++{
++  "phase": "c",
++  "spend_usd": null,
++  "started_at": "2026-10-15T15:53:40Z"
++}
+\ No newline at end of file
 diff --git a/changes/0005-dropped-tests-and-eval-cases-are-gate-fi/status.yaml b/changes/0005-dropped-tests-and-eval-cases-are-gate-fi/status.yaml
-index 2214da9..05449a2 100644
+index 2214da9..c5f0bec 100644
 --- a/changes/0005-dropped-tests-and-eval-cases-are-gate-fi/status.yaml
 +++ b/changes/0005-dropped-tests-and-eval-cases-are-gate-fi/status.yaml
 @@ -1,25 +1,25 @@
@@ -53,14 +315,13 @@ index 2214da9..05449a2 100644
 -  reason: waiting for the owner at gate (b)
 -  at: "2026-10-14T15:44:28Z"
 -parked_reason: null
--iterations: 1
--panel_calls: 3
 +  phase: c
 +  result: parked
 +  reason: "preflight: claude_md: CLAUDE.md does not name the lint command of sdlc.yaml"
 +  at: "2026-10-14T20:00:34Z"
 +parked_reason: "preflight: claude_md: CLAUDE.md does not name the lint command of sdlc.yaml"
-+iterations: 0
+ iterations: 1
+-panel_calls: 3
 +panel_calls: 0
  external_ref: null
  risk_accepted: []
@@ -78,5 +339,5 @@ index 2214da9..05449a2 100644
  released_pr: null
  created_at: "2026-10-13T21:22:06Z"
 -updated_at: "2026-10-14T15:44:28Z"
-+updated_at: "2026-10-15T15:48:51Z"
++updated_at: "2026-10-15T15:53:43Z"
  schema_version: 1
