@@ -109,7 +109,7 @@ The entry's open items first, then the session's own recommendations, marked as 
 
 ## Decisions it touches
 
-None amended. 6 is kept (CI loads the hooks, this one included, from the pinned plugin; `sdlc.yaml` stays a guardrail file). 7 is kept (the hook is Python and calls the project's tools). 29 is kept: once R10 is built, a red lint target starts a fix round by itself, and this hook catches part of what would have started one. No decision file is written and no number is reserved.
+None amended. 6 is kept (CI loads the hooks, this one included, from the pinned plugin). `sdlc.yaml` stays a guardrail file the owner changes in a reviewed PR; decision 6 does not name it, the protected-paths hook protects it (`plugin/hooks/protected_paths.py:46`). 7 is kept (the hook is Python and calls the project's tools). 29 is kept: once R10 is built, a red lint target starts a fix round by itself, and this hook catches part of what would have started one. No decision file is written and no number is reserved.
 
 ## Order
 

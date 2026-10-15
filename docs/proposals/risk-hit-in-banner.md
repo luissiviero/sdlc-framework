@@ -137,7 +137,7 @@ Tenth of the study's proposals in the confirmed order (the record, section 8: T3
 - After **R15's first change (0005)**: its ratchet hits move from the label to the banner here, and `unpark.risk_hits` reads them. Meets R15's second change: the measured fall recorded as a hit at the cap (see "What to settle").
 - Meets **R13** (the banner's release line) and **R22** (the (e) act, informed by the banner).
 - Meets **R19**: its acts table drops the label.
-- Meets **R28**: the Security & policy brief, written by the adversarial reviewer until then. R28's catalogue gives that role (b) flagged concerns, (f) scan findings, the interview and a policy source's PR, not the brief per hit item at (c) to (e) that the owner's note gives it; R28's row gains it there.
+- Meets **R28**: the Security & policy brief, written by the adversarial reviewer until then. R28 already gives that role the brief on each risk-list item hit at (b) to (e), as the owner's note does (`docs/proposals/roles-and-manager.md`, its catalogue row and its (b) higher-risk and (e) gate rows), so R28 needs no change for it.
 - Meets **R30** and **R33**: `/sdlc-init` proposing per stack.
 - Meets **R45**: the banner's and the item key's names.
 
