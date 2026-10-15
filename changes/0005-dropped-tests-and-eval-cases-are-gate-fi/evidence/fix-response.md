@@ -77,3 +77,92 @@ owner applies the line above and a fresh (non-fix) phase (c) run is dispatched.
 ## Checks
 
 Not run this round: nothing besides the park reason changed.
+
+# Fix response — round 3 (phase c)
+
+Source: `evidence/fix-requests.json` (collected 2026-10-15T16:11:03+00:00, head
+`dddd5fb346344327667d0cf99781af2cb14e82bd`, PR #211): one review, `OWNER`,
+`CHANGES_REQUESTED` — "Re-run phase (c) per plan.md; the preflight park is settled."
+
+## Applied
+
+The preflight park (round 1) was settled by the owner's own commit on `main`
+(`7320476`, "Update lint command to include format check") before this round started; the
+missing-`verifier.md` park (round 2) was the gate's own evidence check, with no build work
+behind it yet (round 2's response above says so explicitly). This round is the first one
+that actually implements plan.md's "Order of work" steps 1–9, since no earlier round had:
+
+1. `plugin/gate/diff.py` — `NameStatusRecord`, `parse_name_status` (the `--name-status -M`
+   parser, pure) and `name_status`/`tree_files` (the git-backed wrappers).
+2. `plugin/gate/checks.py` — `dropped_test_files` and `dropped_eval_cases`, the two pure
+   drop-rule functions (step 2), including the partial-multi-file-deletion and dot-rename
+   cases panel decision #2 (phase b) asked for.
+3. `plugin/gate/checks.py` — `check_ratchets`, wired into `CHECKS_BY_PHASE["c"/"d"/"e"]`;
+   declaration checked against `ctx.approved_artifact("plan.md")` (the merge base, never the
+   working tree — the riskiest step, proven by
+   `test_ratchets_plan_edited_after_merge_base_does_not_excuse_drop`).
+4. `plugin/gate/checks.py` — `skip_marker_hits`, folded into `check_ratchets`'s
+   `details.skip_markers`; never affects `ok`.
+5. `plugin/state/unpark.py` — `risk_hits` now unions the `risk_list` and `ratchets` checks'
+   hit keys, so `sdlc:accept-risk` accepts a ratchet hit with no new label.
+6. `plugin/pr/description.py` — `_conformance_line` appends `"declared drops: ... (plan)"`
+   at phases (c)/(d)/(e) when `details.declared` is non-empty.
+7. `plugin/skills/plan-template/SKILL.md`, `plugin/agents/adversarial-reviewer.md`,
+   `template/REVIEW.md`, `docs/OPERATING_MODEL.md` — the prose additions (the Proof item
+   form, the new attack angle 7, the new Framework-rules bullet, §3's and §6's clauses),
+   each with its own content-assertion test.
+8. `docs/PROGRESS.md` — the proposed root-`REVIEW.md` row (a guardrail file this session
+   does not edit; the owner applies it by hand, table below — unchanged from this file's own
+   convention for the round-2 preflight proposal).
+9. `.claude-plugin/plugin.json` and `.claude-plugin/marketplace.json` — bumped `1.0.0` ->
+   `1.0.2` (`1.0.1` was already taken by the `gh`-cache fix merged to `main` ahead of this
+   branch's merge base).
+
+Every new test plan.md's Proof section names was added in `tests/test_gate.py`,
+`tests/test_state.py`, `tests/test_pr.py`, `tests/test_agents.py`,
+`tests/test_commands_and_skills.py` and `tests/test_templates.py`. The code-simplifier ran
+on the new code (per `/sdlc-build` steps 4–6, re-run because code changed) and found three
+small redundancies (an unreachable dict-default fallback, a re-derived candidate set a
+helper already computed, and a no-op line-skip in the patch scanner); all three were applied
+with no behavior change, confirmed by re-running the new tests. The verifier ran a second
+time in a fresh context, now that the implementation exists, and returned `matches the
+plan` (`evidence/verifier.md`).
+
+## Not applied — guardrail-file edit, proposed for the owner
+
+- **This repository's own root `REVIEW.md`.** It gains the same bullet `template/REVIEW.md`
+  gained in this change; proposed in `docs/PROGRESS.md` (table: file, line, what is there
+  now, what it must become), not written here.
+
+## A known gap in this session's own verification
+
+`python -m pytest` could not be run to completion inside this interactive session:
+`tests/fixtures/sample-python-project/.env` is denied to every process the sandbox starts
+(`Read(**/.env*)`), so every test that copies that fixture — the large majority of
+`tests/test_gate.py`, `test_pr.py`, `test_preflight.py` and others, unrelated to this
+change — fails on `shutil.Error: ... Permission denied` in this session specifically (the
+same limitation `plugin/gate/checks.py: COMMANDS_RUNNER_ENV` and `evidence/collect.py`
+already document: inside a CI session the three targets are deferred to the runner, outside
+the sandbox, which is why `gate-b.json`'s `commands` check — not this round's own — is what
+the verifier reads). What this session did verify directly, inside the sandbox: every new
+test that does not depend on the fixture copy (34 of them, covering `diff.py`'s parser and
+`tree_files`, the two pure drop-rule functions, `skip_marker_hits`, `risk_hits`,
+`_conformance_line` and the content-assertion tests) passes; the 16 `check_ratchets`
+integration tests, written against a minimal bare-git fixture built without the
+sample-python-project copy specifically to avoid the `.env` restriction, all pass too (25
+ratchet-related tests total); `python -m compileall -q plugin tests tasks.py`,
+`python -m ruff check .` and `python -m ruff format --check .` are green over the whole
+repository. A manual audit of every existing `git rm`/`git mv`/`.unlink()` in the test suite
+found none that drops or renames a path under a `test_paths` glob or `evals/cases/` through
+a commit while also exercising the full gate at phase (c)/(d)/(e), so no regression from
+`check_ratchets`'s addition to `CHECKS_BY_PHASE` is expected; the runner's own real
+`python -m pytest` run, outside the sandbox, is the authoritative check for this round, as
+it already is for every round (`gate-<phase>.json`'s `commands`, `ran_by: "runner"`).
+
+## Checks
+
+`python -m compileall -q plugin tests tasks.py`: no output, exit 0.
+`python -m ruff check .`: `All checks passed!`
+`python -m ruff format --check .`: `203 files already formatted`.
+`python -m pytest`: not completed inside this session (see above); the runner's run after
+this session, recorded in `evidence/gate-c.json`'s `commands` check, is authoritative.

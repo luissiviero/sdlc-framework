@@ -1,11 +1,22 @@
 {
-  "collected_at": "2026-10-15T15:48:54+00:00",
-  "head": "09921cb723a05d6c2ef37f1ae55a117de62d1e7e",
+  "collected_at": "2026-10-15T16:11:03+00:00",
+  "head": "dddd5fb346344327667d0cf99781af2cb14e82bd",
   "not_applied": [],
   "ok": true,
   "pr_number": 211,
   "repo": "luissiviero/sdlc-framework",
-  "requests": [],
+  "requests": [
+    {
+      "association": "OWNER",
+      "at": "2026-10-15T15:49:05Z",
+      "author": "luissiviero",
+      "body": "Re-run phase (c) per plan.md; the preflight park is settled.",
+      "id": 5535922259,
+      "kind": "review",
+      "state": "CHANGES_REQUESTED",
+      "url": "https://github.com/luissiviero/sdlc-framework/pull/211#pullrequestreview-5535922259"
+    }
+  ],
   "route": "api",
   "schema_version": 1,
   "unavailable": null
