@@ -50,6 +50,10 @@ Attack the output from these angles and record what you tried:
    done) applied or silently skipped?
 6. **The tests** — could the tests pass with the bug still present? were pre-existing tests
    weakened (a fix-type change must not touch them)?
+7. **Skip markers** (phases (c) and (d); the gate's `ratchets` check runs then, not at (b)) —
+   each added skip marker the gate's `ratchets` check listed in `details.skip_markers`, and
+   the plan line that declares it, or "none": a listed marker is not itself a park, but an
+   undeclared one quietly narrowing what the suite actually runs is.
 
 The deterministic checks are not yours to repeat. You cannot run `gate/cli.py check`, the
 definition-of-done `check.py` or any policy skill's `check.py` (you have no shell), you must

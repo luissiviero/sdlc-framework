@@ -1317,6 +1317,238 @@ def check_test_lock(ctx: GateContext) -> CheckResult:
     )
 
 
+# --- 12b. dropped test files and eval cases are a gate finding (intent.md change 1) -----------
+EVAL_CASES_PREFIX = "evals/cases/"
+RATCHET_KEYS = {"tests": "ratchet: tests", "evals": "ratchet: evals"}
+RATCHET_PROOF_RE = re.compile(r"(?im)^[ \t]*[-*][ \t]*ratchet:[ \t]*(tests|evals)\b")
+
+# intent.md's own fixed token list (open question 2): never anchored beyond the plain
+# substring itself, so a test that only mentions a token in a string is listed, never parked
+# on (the measured ratchets, ROADMAP R15, is what would tell the two apart).
+SKIP_MARKER_TOKENS = (
+    "@pytest.mark.skip",
+    "@pytest.mark.xfail",
+    "pytest.skip(",
+    "--deselect",
+    "--ignore",
+    "-k",
+    "testpaths",
+    "norecursedirs",
+    "collect_ignore",
+    "it.skip(",
+    "describe.skip(",
+    "xit(",
+    ".only(",
+    "test.todo(",
+    "#[ignore]",
+)
+# The test runner's own configuration files (Requirements), read the same way ``matches``
+# reads every other glob in this module - no new ``sdlc.yaml`` key.
+SKIP_MARKER_CONFIG_GLOBS = (
+    "**/pytest.ini",
+    "**/pyproject.toml",
+    "**/setup.cfg",
+    "**/tox.ini",
+    "**/conftest.py",
+    "**/package.json",
+    "**/jest.config.*",
+)
+
+
+def dropped_test_files(records: list[diffmod.NameStatusRecord], patterns: list[str]) -> list[str]:
+    """A ``D`` under a ``test_paths`` glob, or an ``R``/``C`` whose source matches a glob and
+    destination matches none (a rename within the globs is not a drop; panel decision #3,
+    phase b). Pure: takes the parsed ``--name-status`` records, no live git."""
+    dropped: set[str] = set()
+    for rec in records:
+        if rec.status == "D":
+            if any(matches(p, rec.path) for p in patterns):
+                dropped.add(rec.path)
+        elif rec.status in ("R", "C") and rec.new_path is not None:
+            if any(matches(p, rec.path) for p in patterns) and not any(
+                matches(p, rec.new_path) for p in patterns
+            ):
+                dropped.add(rec.path)
+    return sorted(dropped)
+
+
+def dropped_eval_cases(
+    records: list[diffmod.NameStatusRecord],
+    survivors: list[str],
+    prefix: str = EVAL_CASES_PREFIX,
+) -> list[str]:
+    """Case folders under ``prefix`` with no survivor left in ``survivors`` (``tree_files`` at
+    ``ctx.diff.head``), plus every case renamed to a dot-prefixed destination folder (``discover``
+    excludes a hidden folder with no deletion in the diff). A case is decided from what the
+    committed tree still holds, not from the diff's records alone, so a partial multi-file
+    deletion with a surviving sibling is never mistaken for the whole case's drop (panel
+    decision #2, phase b). Pure but for its two list arguments."""
+
+    def case_of(path: str) -> str | None:
+        if not path.startswith(prefix):
+            return None
+        rest = path[len(prefix) :]
+        return rest.split("/", 1)[0] if "/" in rest else None
+
+    touched: set[str] = set()
+    dot_dropped: set[str] = set()
+    for rec in records:
+        src_case = case_of(rec.path)
+        if src_case:
+            touched.add(src_case)
+        if rec.status in ("R", "C") and rec.new_path is not None:
+            dst_case = case_of(rec.new_path)
+            if dst_case:
+                touched.add(dst_case)
+                if dst_case.startswith(".") and src_case and src_case != dst_case:
+                    dot_dropped.add(src_case)
+
+    survivor_cases = {name for path in survivors if (name := case_of(path))}
+    dropped = set(dot_dropped) | {
+        case for case in touched if case not in dot_dropped and case not in survivor_cases
+    }
+    return sorted(f"{prefix}{case}/" for case in dropped)
+
+
+_HUNK_RE = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@")
+
+
+def _added_lines(diff_text: str) -> list[tuple[str, int, str]]:
+    """``[(file, line, content)]`` for every added line of a ``--unified=0`` diff (never the
+    whole file): the new-file path from each ``+++ b/<path>`` header and the new line number
+    from each ``@@ ... +<n> ...@@`` hunk header, advanced one per added line."""
+    out: list[tuple[str, int, str]] = []
+    current_file = ""
+    next_line = 0
+    for raw in diff_text.splitlines():
+        if raw.startswith("+++ "):
+            current_file = raw[len("+++ b/") :] if raw.startswith("+++ b/") else ""
+            continue
+        if raw.startswith("@@"):
+            m = _HUNK_RE.match(raw)
+            next_line = int(m.group(1)) if m else 0
+            continue
+        if raw.startswith("+"):  # not "+++", already consumed above
+            if current_file:
+                out.append((current_file, next_line, raw[1:]))
+            next_line += 1
+    return out
+
+
+def skip_marker_hits(ctx: GateContext, test_patterns: list[str]) -> list[dict[str, Any]]:
+    """``[{file, line, token}]`` for every ``SKIP_MARKER_TOKENS`` occurrence on an added line
+    of a file under ``test_paths`` or a test-runner configuration file (``SKIP_MARKER_CONFIG_
+    GLOBS``). Never affects ``ok`` - listed only (open question 2)."""
+    if ctx.diff is None or not ctx.diff.merge_base:
+        return []
+    committed = diffmod.committed_files(ctx.root, ctx.diff.merge_base, ctx.diff.head)
+    scanned = sorted(
+        f
+        for f in committed
+        if any(matches(p, f) for p in test_patterns)
+        or any(matches(g, f) for g in SKIP_MARKER_CONFIG_GLOBS)
+    )
+    if not scanned:
+        return []
+    ref = f"{ctx.diff.merge_base}...{ctx.diff.head or 'HEAD'}"
+    text = diffmod._git(ctx.root, "diff", "-M", "--unified=0", ref, "--", *scanned, check=False)
+    hits = []
+    for file, line, content in _added_lines(text):
+        for token in SKIP_MARKER_TOKENS:
+            if token in content:
+                hits.append({"file": file, "line": line, "token": token})
+    return hits
+
+
+def _declared_ratchets(plan_text: str) -> set[str]:
+    """The ratchet names a '## Proof' item declares wholesale (``- ratchet: tests may fall,
+    because <why>``); a name other than ``tests``/``evals`` is inert (open question 4)."""
+    proof = art.split_sections(plan_text).get("## Proof", "")
+    return {m.group(1).lower() for m in RATCHET_PROOF_RE.finditer(proof)}
+
+
+def _ratchet_need(change_id: str) -> str:
+    return (
+        "A dropped test file or eval case is not excused by anything else: a test emptied of "
+        "its own tests, a dropped test inside a file that still exists, or an edited "
+        "test-runner configuration line is not caught by this check (the measured ratchets, "
+        "ROADMAP R15, is the change that would catch those). Declare this drop - list its "
+        "path under plan.md's '## Files that change', or add '- ratchet: <name> may fall, "
+        "because <why>' under '## Proof' - before the next run, or accept it: "
+        '`python "${CLAUDE_PLUGIN_ROOT}/plugin/state/cli.py" accept-risk --root . --id '
+        f'{change_id} --item "<item>"`.'
+    )
+
+
+def check_ratchets(ctx: GateContext) -> CheckResult:
+    """A dropped test file or eval case, undeclared by the approved plan, is a risk-list-
+    shaped gate finding (intent.md change 1; spec.md Requirements/Design). The approved plan
+    is read at the merge base (``ctx.approved_artifact``), never the working tree, so a
+    commit cannot excuse its own drop by editing plan.md alongside it (the riskiest step,
+    spec.md Design/Risks). Added skip markers are listed in ``details.skip_markers``, never
+    affecting ``ok``."""
+    from hooks._common import ConfigError  # noqa: PLC0415
+    from hooks.test_file_lock import test_path_patterns  # noqa: PLC0415
+
+    if ctx.diff is None:
+        return _fail("ratchets", ctx.diff_error, "Run the gate inside the project's git repo.")
+    no_base = _no_base(ctx, "ratchets")
+    if no_base:
+        return no_base
+    try:
+        patterns = test_path_patterns(ctx.config)
+    except ConfigError as exc:
+        return _fail("ratchets", str(exc), "Fix sdlc.yaml: test_paths (a list of globs).")
+
+    records = diffmod.name_status(ctx.root, ctx.diff.merge_base, ctx.diff.head)
+    dropped_tests = dropped_test_files(records, patterns)
+    survivors = diffmod.tree_files(ctx.root, ctx.diff.head, EVAL_CASES_PREFIX)
+    dropped_cases = dropped_eval_cases(records, survivors, EVAL_CASES_PREFIX)
+
+    plan = ctx.approved_artifact("plan.md") or ""
+    planned = art.planned_files(plan)
+    declared_ratchets = _declared_ratchets(plan)
+    accepted = {a.lower().strip() for a in ctx.status.risk_accepted}
+
+    hits: dict[str, list[str]] = {}
+    declared: list[str] = []
+    for name, dropped in (("tests", dropped_tests), ("evals", dropped_cases)):
+        key = RATCHET_KEYS[name]
+        for path in dropped:
+            # a case path is a directory ("evals/cases/bar/"), never a file itself: is_planned's
+            # directory-prefix branch only matches something strictly under the prefix, so a
+            # synthetic file name under it lets a plan.md entry that lists the folder with its
+            # trailing slash (check_plan_sync's own convention) match the folder's own drop.
+            probe = f"{path}." if path.endswith("/") else path
+            if name in declared_ratchets or any(plan_sync.is_planned(probe, p) for p in planned):
+                declared.append(f"{path} (plan)")
+            elif key.lower() in accepted:
+                continue
+            else:
+                hits.setdefault(key, []).append(path)
+
+    skip_markers = skip_marker_hits(ctx, patterns)
+    need = _ratchet_need(ctx.status.id)
+    if hits:
+        return _fail(
+            "ratchets",
+            "dropped-ratchet hit: "
+            + "; ".join(f"'{k}': {', '.join(v[:5])}" for k, v in hits.items()),
+            need,
+            hits=hits,
+            declared=declared,
+            skip_markers=skip_markers,
+            accepted=sorted(accepted),
+        )
+    return _ok(
+        "ratchets",
+        "no undeclared test file or eval case drop",
+        declared=declared,
+        skip_markers=skip_markers,
+        accepted=sorted(accepted),
+    )
+
+
 # --- 13. the decisions ledger of deferred review (decision 21; build guide step 16a) ----------
 def _blind_verdicts_problems(ctx: GateContext, entry: dict) -> list[str]:
     """A ledger line written since 0.2.30 names its item (``item_n``); both blind verdicts
@@ -1719,6 +1951,7 @@ CHECKS_BY_PHASE: dict[str, tuple[Check, ...]] = {
         check_risk_list,
         check_owner_actions,
         check_test_lock,
+        check_ratchets,
         check_adversarial_verdict,
     ),
     "d": (
@@ -1734,6 +1967,7 @@ CHECKS_BY_PHASE: dict[str, tuple[Check, ...]] = {
         check_risk_list,
         check_owner_actions,
         check_test_lock,
+        check_ratchets,
         check_adversarial_verdict,
     ),
     "e": (
@@ -1749,6 +1983,7 @@ CHECKS_BY_PHASE: dict[str, tuple[Check, ...]] = {
         check_risk_list,
         check_owner_actions,
         check_test_lock,
+        check_ratchets,
         lesson_and_eval,
         check_adversarial_verdict,
     ),

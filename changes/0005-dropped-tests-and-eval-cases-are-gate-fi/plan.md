@@ -32,10 +32,14 @@
 - `docs/OPERATING_MODEL.md` — §3's list of diff-reading checks gains `ratchets`; §6's
   description of what `sdlc:accept-risk` accepts gains a clause that a ratchet hit is
   included. Edited sentence by sentence (CLAUDE.md: no scripted rewrite of documentation).
-- `.claude-plugin/plugin.json` and `.claude-plugin/marketplace.json` — the `version` field in
-  each, bumped together to the same value, the next free patch number when this change
-  merges (decision 8). `tests/test_scaffold.py:47` asserts the two stay equal; bumping only
-  `plugin.json` fails that test.
+- `.claude-plugin/plugin.json` — the `version` field, bumped to the next free patch number
+  when this change merges (decision 8).
+- `.claude-plugin/marketplace.json` — its `version` field, bumped to the same value in the
+  same commit. `tests/test_scaffold.py:47` asserts the two stay equal; bumping only
+  `plugin.json` fails that test. (Split into its own bullet from the combined one two fix
+  rounds wrote: `art.planned_files` takes only the first backtick span of a list item, so
+  the combined bullet declared `plugin.json` alone to `plan_sync` and parked this commit on
+  `marketplace.json` as undeclared.)
 - `tests/test_gate.py` — `check_ratchets`: the test-file drop rule (D, R-not-a-rename,
   R-is-a-rename), the eval-case drop rule (dot-prefixed rename, folder emptied of survivors
   at HEAD, a partial multi-file deletion that leaves a survivor), declaration via "## Files

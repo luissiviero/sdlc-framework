@@ -60,3 +60,9 @@ PR #199 merged at 09:55:34 UTC as `e02e085`. Part 3 ran on the owner's word, in 
 193. **ROADMAP row 13's dispatched run is run 38575743057** (13:54 UTC, `ref=v1.0.0`, end to end). It amends choice 189 (D-B): the run came a day early and filed the duplicate 0014, so the expected "nothing filed" is shown by the next scheduled detect run, which judges 2026-10-14, and no dispatch is owed. Until that scheduled run has run, nothing dispatches detect on the sample after #62 is closed, and no red `CI` run lands on the sample.
 194. **The `gh` cache gap is fixed as 1.0.1, in a new session, before change 0005's build and the runs PR.** The runner gives the CI session a writable cache folder for `gh` (for example `XDG_CACHE_HOME` in `session_env`, `plugin/ci/run_phase.py`), after the session has verified which folders the sandbox lets a session write; a test proves the variable is set; the live proof is the next real diagnosis that reads a log (NOTES §43). Its version is the next free patch number (choice 184).
 195. **The work after item 11 runs in new sessions**, each from its own starting prompt: the 1.0.1 fix (this PR's prompt), the study's owner-surface batch (#203's prompt), then the rest in the order of `HANDOFF.md`'s newest session file and ROADMAP's Order column. This session ends with this PR.
+
+## Proposed edit for the owner (change 0005; this repository's own root `REVIEW.md` is a guardrail file)
+
+| File | Line | What is there now | What it must become |
+|---|---|---|---|
+| `REVIEW.md` | 26 (after the `plan.md` bullet) | (nothing; the next bullet is "The second occurrence of the same finding …") | `- Each added skip marker the gate's \`ratchets\` check listed at gate (e) (\`evidence/gate-e.json\`'s \`details.skip_markers\`) must be declared in \`plan.md\` or explained in the PR; an undeclared one quietly narrowing what the suite actually runs is non-compliant.` |

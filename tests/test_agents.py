@@ -107,6 +107,14 @@ def test_adversarial_reviewer_has_no_shell_and_reads_the_given_diff_and_sha():
     assert "2026-09-21" in text  # the fifth live run's example stays
 
 
+def test_adversarial_reviewer_skip_marker_angle_present():
+    _, body = frontmatter(AGENTS / "adversarial-reviewer.md")
+    text = " ".join(body.split())
+    assert "7. **Skip markers**" in text
+    assert "ratchets" in text and "details.skip_markers" in text
+    assert "phases (c) and (d)" in text
+
+
 def test_adversarial_verdict_still_carries_head(tmp_path):
     """The verdict keeps its mandatory `head`: without it the gate rejects the file."""
     _, body = frontmatter(AGENTS / "adversarial-reviewer.md")

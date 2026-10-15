@@ -150,6 +150,13 @@ def test_plan_skill_sections_and_interrogation():
     assert "read-only" in body.lower() and "Read/Grep/Glob" in body
 
 
+def test_plan_template_ratchet_proof_item_present():
+    body = (PLUGIN / "skills" / "plan-template" / "SKILL.md").read_text(encoding="utf-8")
+    assert "- ratchet: <name> may fall, because <why>" in body
+    text = " ".join(body.split())
+    assert "`tests` or `evals`" in text
+
+
 def test_no_portuguese_in_process_content():
     """CLAUDE.md: English only in every file. PLUGIN.rglob covers plugin/review/*.md too
     (REVIEW_PROMPT.md is a prompt file, not a skill); the assertion below keeps it covered."""

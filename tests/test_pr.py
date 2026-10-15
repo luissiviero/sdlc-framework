@@ -566,6 +566,37 @@ def test_plan_conformance_reports_the_failed_check(project):
     assert "2 changed file(s) not listed in plan.md" in lines[3]
 
 
+def test_conformance_line_declared_drops_clause_present():
+    gate_json_data = {
+        "checks": [
+            {
+                "name": "plan_sync",
+                "ok": True,
+                "reason": "every committed source file is in plan.md",
+            },
+            {"name": "ratchets", "ok": True, "details": {"declared": ["tests/x.py (plan)"]}},
+        ]
+    }
+    line = desc._conformance_line(gate_json_data, "", "c")
+    assert line == "diff matches plan.md; declared drops: tests/x.py (plan)"
+
+
+def test_conformance_line_declared_drops_clause_absent():
+    gate_json_data = {
+        "checks": [
+            {
+                "name": "plan_sync",
+                "ok": True,
+                "reason": "every committed source file is in plan.md",
+            },
+            {"name": "ratchets", "ok": True, "details": {"declared": []}},
+        ]
+    }
+    assert desc._conformance_line(gate_json_data, "", "c") == "diff matches plan.md"
+    # unchanged at (a)/(b): no `ratchets` check runs there
+    assert desc._conformance_line(None, "", "b").startswith("open questions from intent")
+
+
 def test_no_gate_file_means_nothing_needed(project):
     root, _change = project
     lines = bullets(desc.build_description(root, "0001", "c"))

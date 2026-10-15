@@ -1230,6 +1230,7 @@ DIFF_CHECKS = (
     checks.check_design_scope,
     checks.check_guardrails,
     checks.check_risk_list,
+    checks.check_ratchets,
 )
 
 
@@ -1324,6 +1325,340 @@ def test_default_base_prefers_the_environment_value_when_its_remote_branch_exist
     monkeypatch.delenv("SDLC_DEFAULT_BRANCH")
     git(root, "tag", "origin/main", "HEAD~0")
     assert diff.default_base(root) == "refs/remotes/origin/main"
+
+
+# --- ratchets: a dropped test file or eval case (intent.md change 1; spec.md change 5) --------
+NS = checks.diffmod.NameStatusRecord
+
+
+def _plain_repo(tmp_path: Path) -> Path:
+    root = tmp_path / "plain"
+    root.mkdir()
+    git(root, "init", "-q", "-b", "main")
+    git(root, "config", "user.email", "owner@example.com")
+    git(root, "config", "user.name", "Owner")
+    return root
+
+
+def test_diff_name_status_rename_detection_parses_rename(tmp_path):
+    root = _plain_repo(tmp_path)
+    write(root / "tests" / "test_a.py", "def test_a(): pass\n")
+    git(root, "add", ".")
+    git(root, "commit", "-q", "-m", "base")
+    base = git(root, "rev-parse", "HEAD").strip()
+    git(root, "mv", "tests/test_a.py", "tests/test_b.py")
+    git(root, "commit", "-q", "-m", "rename")
+    records = checks.diffmod.name_status(root, base, "HEAD")
+    assert records == [NS("R", "tests/test_a.py", "tests/test_b.py")]
+
+
+def test_diff_name_status_delete_parses_as_d(tmp_path):
+    root = _plain_repo(tmp_path)
+    write(root / "tests" / "test_a.py", "def test_a(): pass\n")
+    git(root, "add", ".")
+    git(root, "commit", "-q", "-m", "base")
+    base = git(root, "rev-parse", "HEAD").strip()
+    (root / "tests" / "test_a.py").unlink()
+    git(root, "add", ".")
+    git(root, "commit", "-q", "-m", "drop")
+    records = checks.diffmod.name_status(root, base, "HEAD")
+    assert records == [NS("D", "tests/test_a.py")]
+
+
+def test_diff_tree_files_lists_committed_paths_under_prefix(tmp_path):
+    root = _plain_repo(tmp_path)
+    write(root / "evals" / "cases" / "foo" / "a.yaml", "a: 1\n")
+    write(root / "evals" / "cases" / "foo" / "b.yaml", "b: 1\n")
+    write(root / "evals" / "cases" / "bar" / "c.yaml", "c: 1\n")
+    write(root / "README.md", "x\n")
+    git(root, "add", ".")
+    git(root, "commit", "-q", "-m", "base")
+    head = git(root, "rev-parse", "HEAD").strip()
+    assert checks.diffmod.tree_files(root, head, "evals/cases") == [
+        "evals/cases/bar/c.yaml",
+        "evals/cases/foo/a.yaml",
+        "evals/cases/foo/b.yaml",
+    ]
+    assert checks.diffmod.tree_files(root, None, "evals/cases") == []
+
+
+def test_dropped_test_files_and_eval_cases_pure():
+    """The two drop-rule functions over the parsed records alone (plus a plain survivor
+    list for the eval-case rule), not live git (plan.md step 2)."""
+    patterns = ["tests/**"]
+    records = [
+        NS("D", "tests/test_a.py"),
+        NS("D", "sample_pkg/util.py"),  # not under test_paths: not reported
+        NS("R", "tests/test_b.py", "tests/test_c.py"),  # rename within the globs: not a drop
+        NS("R", "tests/test_d.py", "sample_pkg/test_d.py"),  # out of scope: a drop
+        NS("R", "sample_pkg/x.py", "tests/test_e.py"),  # into scope: a new test, not a drop
+    ]
+    assert checks.dropped_test_files(records, patterns) == ["tests/test_a.py", "tests/test_d.py"]
+
+    case_records = [
+        NS("D", "evals/cases/bar/only.yaml"),  # the whole case: dropped
+        NS("D", "evals/cases/foo/a.yaml"),  # one of two: a survivor remains
+        NS("R", "evals/cases/baz/x.yaml", "evals/cases/.baz/x.yaml"),  # hidden rename: dropped
+        NS("R", "evals/cases/qux/a.yaml", "evals/cases/qux/a2.yaml"),  # internal move: kept
+    ]
+    survivors = ["evals/cases/foo/b.yaml", "evals/cases/qux/a2.yaml"]
+    assert checks.dropped_eval_cases(case_records, survivors) == [
+        "evals/cases/bar/",
+        "evals/cases/baz/",
+    ]
+
+
+RATCHET_SDLC_YAML = "risk_list:\n  - auth\n"
+BASE_PLAN = "# Plan: x\n\n## Files that change\n- none\n\n## Proof\nnone\n"
+PLAN_FILES_DECLARES_TEST = (
+    "# Plan: x\n\n## Files that change\n- `tests/test_keep.py` — removed\n\n## Proof\nnone\n"
+)
+PLAN_PROOF_DECLARES_TESTS = (
+    "# Plan: x\n\n## Files that change\n- none\n\n## Proof\n"
+    "- ratchet: tests may fall, because the helper is retired\n"
+)
+PLAN_FILES_DECLARES_BAR = (
+    "# Plan: x\n\n## Files that change\n- `evals/cases/bar/` — retired\n\n## Proof\nnone\n"
+)
+PLAN_PROOF_DECLARES_EVALS = (
+    "# Plan: x\n\n## Files that change\n- none\n\n## Proof\n"
+    "- ratchet: evals may fall, because the case is obsolete\n"
+)
+PLAN_PROOF_UNKNOWN_RATCHET = (
+    "# Plan: x\n\n## Files that change\n- none\n\n## Proof\n"
+    "- ratchet: docs may fall, because nothing\n"
+)
+
+
+def _ratchet_repo(tmp_path: Path, plan_body: str, sdlc_yaml: str = RATCHET_SDLC_YAML):
+    """A one-branch repo ('main') with the given plan.md committed as approved, a
+    tests/test_keep.py file, a two-file eval case ('foo') and a one-file eval case ('bar');
+    checked out on 'sdlc/0001/c' for the test's own commit."""
+    root = tmp_path / "repo"
+    write(root / "sdlc.yaml", sdlc_yaml)
+    write(root / "tests" / "test_keep.py", "def test_keep():\n    assert True\n")
+    write(root / "evals" / "cases" / "foo" / "a.yaml", "a: 1\n")
+    write(root / "evals" / "cases" / "foo" / "b.yaml", "b: 1\n")
+    write(root / "evals" / "cases" / "bar" / "only.yaml", "c: 1\n")
+    git(root, "init", "-q", "-b", "main")
+    git(root, "config", "user.email", "owner@example.com")
+    git(root, "config", "user.name", "Owner")
+    change_dir, st = status_mod.new_change(root, "x", change_id="0001")
+    write(change_dir / "plan.md", plan_body)
+    st.set_phase("c")
+    status_mod.write_status(change_dir, st)
+    git(root, "add", ".")
+    git(root, "commit", "-q", "-m", "base (as if the a and b PRs merged)")
+    git(root, "checkout", "-q", "-b", "sdlc/0001/c")
+    return root, change_dir
+
+
+def test_ratchets_drop_test_file_undeclared_fails(tmp_path):
+    root, _change = _ratchet_repo(tmp_path, BASE_PLAN)
+    (root / "tests" / "test_keep.py").unlink()
+    git(root, "add", ".")
+    git(root, "commit", "-q", "-m", "drop a test")
+    res = checks.check_ratchets(gate.build_context(root, "0001", "c"))
+    assert not res.ok
+    assert res.details["hits"]["ratchet: tests"] == ["tests/test_keep.py"]
+
+
+def test_ratchets_drop_test_file_declared_in_files_that_change_ok(tmp_path):
+    root, _change = _ratchet_repo(tmp_path, PLAN_FILES_DECLARES_TEST)
+    (root / "tests" / "test_keep.py").unlink()
+    git(root, "add", ".")
+    git(root, "commit", "-q", "-m", "drop a test, declared")
+    res = checks.check_ratchets(gate.build_context(root, "0001", "c"))
+    assert res.ok, res.reason
+    assert "tests/test_keep.py (plan)" in res.details["declared"]
+
+
+def test_ratchets_drop_test_file_declared_in_proof_ok(tmp_path):
+    root, _change = _ratchet_repo(tmp_path, PLAN_PROOF_DECLARES_TESTS)
+    (root / "tests" / "test_keep.py").unlink()
+    git(root, "add", ".")
+    git(root, "commit", "-q", "-m", "drop a test, declared via proof")
+    res = checks.check_ratchets(gate.build_context(root, "0001", "c"))
+    assert res.ok, res.reason
+
+
+def test_ratchets_plan_edited_after_merge_base_does_not_excuse_drop(tmp_path):
+    root, change_dir = _ratchet_repo(tmp_path, BASE_PLAN)
+    (root / "tests" / "test_keep.py").unlink()
+    write(change_dir / "plan.md", PLAN_FILES_DECLARES_TEST)  # edited only on this branch
+    git(root, "add", ".")
+    git(root, "commit", "-q", "-m", "drop a test and edit plan.md in the same commit")
+    res = checks.check_ratchets(gate.build_context(root, "0001", "c"))
+    assert not res.ok
+    assert res.details["hits"]["ratchet: tests"] == ["tests/test_keep.py"]
+
+
+def test_ratchets_rename_within_test_paths_is_not_a_drop(tmp_path):
+    root, _change = _ratchet_repo(tmp_path, BASE_PLAN)
+    git(root, "mv", "tests/test_keep.py", "tests/test_renamed.py")
+    git(root, "commit", "-q", "-m", "rename within test_paths")
+    res = checks.check_ratchets(gate.build_context(root, "0001", "c"))
+    assert res.ok, res.reason
+
+
+def test_ratchets_rename_out_of_test_paths_is_a_drop(tmp_path):
+    root, _change = _ratchet_repo(tmp_path, BASE_PLAN)
+    git(root, "mv", "tests/test_keep.py", "renamed_out_of_scope.py")
+    git(root, "commit", "-q", "-m", "rename out of test_paths")
+    res = checks.check_ratchets(gate.build_context(root, "0001", "c"))
+    assert not res.ok
+    assert res.details["hits"]["ratchet: tests"] == ["tests/test_keep.py"]
+
+
+def test_ratchets_drop_eval_case_folder_emptied_fails(tmp_path):
+    root, _change = _ratchet_repo(tmp_path, BASE_PLAN)
+    (root / "evals" / "cases" / "bar" / "only.yaml").unlink()
+    git(root, "add", ".")
+    git(root, "commit", "-q", "-m", "empty the bar case")
+    res = checks.check_ratchets(gate.build_context(root, "0001", "c"))
+    assert not res.ok
+    assert res.details["hits"]["ratchet: evals"] == ["evals/cases/bar/"]
+
+
+def test_ratchets_drop_eval_case_dot_rename_fails(tmp_path):
+    root, _change = _ratchet_repo(tmp_path, BASE_PLAN)
+    # git mv needs the destination directory to pre-exist; move by hand so git still sees it
+    # as a rename (-M) once the content is unchanged
+    dest = root / "evals" / "cases" / ".bar" / "only.yaml"
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    (root / "evals" / "cases" / "bar" / "only.yaml").rename(dest)
+    git(root, "add", "-A")
+    git(root, "commit", "-q", "-m", "hide the bar case")
+    res = checks.check_ratchets(gate.build_context(root, "0001", "c"))
+    assert not res.ok
+    assert res.details["hits"]["ratchet: evals"] == ["evals/cases/bar/"]
+
+
+def test_ratchets_drop_eval_case_declared_in_files_that_change_ok(tmp_path):
+    root, _change = _ratchet_repo(tmp_path, PLAN_FILES_DECLARES_BAR)
+    (root / "evals" / "cases" / "bar" / "only.yaml").unlink()
+    git(root, "add", ".")
+    git(root, "commit", "-q", "-m", "empty the bar case, declared")
+    res = checks.check_ratchets(gate.build_context(root, "0001", "c"))
+    assert res.ok, res.reason
+    assert "evals/cases/bar/ (plan)" in res.details["declared"]
+
+
+def test_ratchets_drop_eval_case_declared_in_proof_ok(tmp_path):
+    root, _change = _ratchet_repo(tmp_path, PLAN_PROOF_DECLARES_EVALS)
+    (root / "evals" / "cases" / "bar" / "only.yaml").unlink()
+    git(root, "add", ".")
+    git(root, "commit", "-q", "-m", "empty the bar case, declared via proof")
+    res = checks.check_ratchets(gate.build_context(root, "0001", "c"))
+    assert res.ok, res.reason
+
+
+def test_ratchets_eval_case_partial_delete_is_not_a_drop(tmp_path):
+    root, _change = _ratchet_repo(tmp_path, BASE_PLAN)
+    (root / "evals" / "cases" / "foo" / "a.yaml").unlink()
+    git(root, "add", ".")
+    git(root, "commit", "-q", "-m", "drop one file of a multi-file case")
+    res = checks.check_ratchets(gate.build_context(root, "0001", "c"))
+    assert res.ok, res.reason
+
+
+def test_ratchets_eval_case_internal_move_is_not_a_drop(tmp_path):
+    root, _change = _ratchet_repo(tmp_path, BASE_PLAN)
+    git(root, "mv", "evals/cases/foo/a.yaml", "evals/cases/foo/a2.yaml")
+    git(root, "commit", "-q", "-m", "move within the same case")
+    res = checks.check_ratchets(gate.build_context(root, "0001", "c"))
+    assert res.ok, res.reason
+
+
+def test_ratchets_accepted_hit_passes_on_later_run(tmp_path):
+    root, change_dir = _ratchet_repo(tmp_path, BASE_PLAN)
+    (root / "tests" / "test_keep.py").unlink()
+    git(root, "add", ".")
+    git(root, "commit", "-q", "-m", "drop a test")
+    st = status_mod.read_status(change_dir)
+    st.accept_risk("ratchet: tests")
+    status_mod.write_status(change_dir, st)
+    git(root, "add", ".")
+    git(root, "commit", "-q", "-m", "accept the risk")
+    res = checks.check_ratchets(gate.build_context(root, "0001", "c"))
+    assert res.ok, res.reason
+    assert res.details["accepted"] == ["ratchet: tests"]
+
+
+def test_ratchets_risk_list_tests_configured_does_not_satisfy_ratchet_hit(tmp_path):
+    root, change_dir = _ratchet_repo(
+        tmp_path, BASE_PLAN, sdlc_yaml="risk_list:\n  - auth\n  - tests\n"
+    )
+    (root / "tests" / "test_keep.py").unlink()
+    git(root, "add", ".")
+    git(root, "commit", "-q", "-m", "drop a test")
+    st = status_mod.read_status(change_dir)
+    st.accept_risk("tests")  # accepts risk_list's bare item, not the ratchet
+    status_mod.write_status(change_dir, st)
+    git(root, "add", ".")
+    git(root, "commit", "-q", "-m", "accept the bare risk-list item")
+    ctx = gate.build_context(root, "0001", "c")
+    ratchets_res = checks.check_ratchets(ctx)
+    risk_res = checks.check_risk_list(ctx)
+    assert not ratchets_res.ok
+    assert ratchets_res.details["hits"]["ratchet: tests"] == ["tests/test_keep.py"]
+    assert risk_res.ok, risk_res.reason
+
+
+def test_ratchets_skip_markers_listed_never_fail(tmp_path):
+    """Skip markers are listed, never parked on (open question 2). The ``--deselect`` lines
+    are this repository's own runbook test file, not a synthetic one — nine of them, the
+    count the Risks section names; a small supplement covers the remaining fixed tokens."""
+    runbook_test_text = (ROOT / "tests" / "test_detect_runbooks.py").read_text(encoding="utf-8")
+    assert runbook_test_text.count("--deselect") == 9
+    supplement = (
+        "@pytest.mark.skip\n"
+        "@pytest.mark.xfail\n"
+        'pytest.skip("reason")\n'
+        "--ignore=tests/slow\n"
+        "-k not slow\n"
+        "norecursedirs = build\n"
+        'collect_ignore = ["setup.py"]\n'
+        'it.skip("x", () => {})\n'
+        'describe.skip("y", () => {})\n'
+        '.only("z")\n'
+        'test.todo("w")\n'
+        "#[ignore]\n"
+    )
+    root, _change = _ratchet_repo(tmp_path, BASE_PLAN)
+    write(root / "tests" / "test_detect_runbooks.py", "")
+    write(root / "tests" / "test_skip_marker_supplement.py", "")
+    git(root, "add", ".")
+    git(root, "commit", "-q", "-m", "empty placeholders")
+    write(root / "tests" / "test_detect_runbooks.py", runbook_test_text)
+    write(root / "tests" / "test_skip_marker_supplement.py", supplement)
+    git(root, "add", ".")
+    git(root, "commit", "-q", "-m", "the real runbook test file and the token supplement")
+    res = checks.check_ratchets(gate.build_context(root, "0001", "c"))
+    assert res.ok, res.reason
+    hit_tokens = {h["token"] for h in res.details["skip_markers"]}
+    assert hit_tokens == set(checks.SKIP_MARKER_TOKENS)
+    deselect_hits = [h for h in res.details["skip_markers"] if h["token"] == "--deselect"]
+    assert len(deselect_hits) == 9
+    assert all(h["file"] == "tests/test_detect_runbooks.py" for h in deselect_hits)
+
+
+def test_ratchets_declaring_unknown_ratchet_name_is_inert(tmp_path):
+    root, _change = _ratchet_repo(tmp_path, PLAN_PROOF_UNKNOWN_RATCHET)
+    (root / "tests" / "test_keep.py").unlink()
+    git(root, "add", ".")
+    git(root, "commit", "-q", "-m", "drop a test, unrelated proof line present")
+    res = checks.check_ratchets(gate.build_context(root, "0001", "c"))
+    assert not res.ok
+    assert res.details["hits"]["ratchet: tests"] == ["tests/test_keep.py"]
+
+
+def test_checks_by_phase_ratchets_membership():
+    assert checks.check_ratchets in checks.CHECKS_BY_PHASE["c"]
+    assert checks.check_ratchets in checks.CHECKS_BY_PHASE["d"]
+    assert checks.check_ratchets in checks.CHECKS_BY_PHASE["e"]
+    for phase in ("a", "b", "f"):
+        assert checks.check_ratchets not in checks.CHECKS_BY_PHASE[phase]
 
 
 def test_risk_list_reads_the_committed_spec(design_project):

@@ -243,6 +243,68 @@ def sandbox_mounted(root: Path, files: list[str]) -> list[str]:
     return sorted(set(out))
 
 
+@dataclass
+class NameStatusRecord:
+    """One record of ``git diff --name-status -M -z``: a status letter (``D``, ``M``, ``A``,
+    or ``R``/``C`` with the percentage stripped), ``path`` (the source path, or the only path
+    when it is not a rename/copy) and ``new_path`` (the destination, ``R``/``C`` only)."""
+
+    status: str
+    path: str
+    new_path: str | None = None
+
+
+def parse_name_status(out: str) -> list[NameStatusRecord]:
+    """``git diff --name-status -M -z`` output (NUL-separated) into typed records: a rename
+    or copy record is three fields (status, old path, new path), every other status is two
+    (status, path) — the gate's existing ``_z`` only flattens a ``--name-only`` list and
+    cannot carry a rename's two paths (spec.md Design; ``check_ratchets``'s rename rule)."""
+    records: list[NameStatusRecord] = []
+    fields = [f for f in out.split("\0") if f != ""]
+    i = 0
+    while i < len(fields):
+        status = fields[i]
+        i += 1
+        letter = status[0] if status else ""
+        if letter in ("R", "C"):
+            if i + 1 >= len(fields):
+                break
+            old, new = fields[i], fields[i + 1]
+            i += 2
+            records.append(NameStatusRecord(letter, old.replace("\\", "/"), new.replace("\\", "/")))
+        else:
+            if i >= len(fields):
+                break
+            path = fields[i]
+            i += 1
+            records.append(NameStatusRecord(letter, path.replace("\\", "/")))
+    return records
+
+
+def name_status(
+    root: Path, merge_base: str | None, head: str | None = None
+) -> list[NameStatusRecord]:
+    """``git diff --name-status -M -z <merge_base>...<head>`` parsed into records; ``-M``
+    named explicitly (spec.md Requirements), so rename detection does not depend on the
+    running machine's git configuration. ``[]`` with no merge base, as ``committed_files``."""
+    if not merge_base:
+        return []
+    ref = f"{merge_base}...{head or 'HEAD'}"
+    out = _git(root, "diff", "--name-status", "-M", "-z", ref, check=False)
+    return parse_name_status(out)
+
+
+def tree_files(root: Path, ref: str | None, prefix: str) -> list[str]:
+    """Every path ``ref``'s committed tree holds under ``prefix`` (``git ls-tree -r
+    --name-only -z <ref> -- <prefix>``). Used to tell an eval case's survivor from its drop:
+    a file under a case folder the diff never touches carries no ``--name-status`` record at
+    all (panel decision #2, phase b)."""
+    if not ref:
+        return []
+    out = _git(root, "ls-tree", "-r", "--name-only", "-z", ref, "--", prefix, check=False)
+    return _z(out)
+
+
 def committed_files(root: Path, merge_base: str | None, head: str | None = None) -> list[str]:
     """The files the branch carries: ``git diff --name-only <merge_base>...HEAD``.
 
