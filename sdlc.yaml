@@ -59,6 +59,7 @@ gate:
   max_budget_usd: null           # per change; binds CI runs only (a headless run reports its
                                  # spend, a by-hand or cloud-session run has no figure); null = off
   command_timeout: 900           # seconds per build/test/lint command run by the gate
+    max_turns: 400               # turns per phase session; unset = the runner's 200
 
 # --- automation identity (decision 5; gate check owner_actions) ----------------------------------
 # The gate honours a risk acceptance, an iteration reset or a test-lock lift only when the
