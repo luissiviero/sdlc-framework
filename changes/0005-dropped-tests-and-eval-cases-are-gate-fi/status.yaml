@@ -12,7 +12,7 @@ gate:
   reason: "preflight: claude_md: CLAUDE.md does not name the lint command of sdlc.yaml"
   at: "2026-10-14T20:00:34Z"
 parked_reason: "preflight: claude_md: CLAUDE.md does not name the lint command of sdlc.yaml"
-iterations: 0
+iterations: 1
 panel_calls: 0
 external_ref: null
 risk_accepted: []
@@ -28,5 +28,5 @@ released_at: null
 released_sha: null
 released_pr: null
 created_at: "2026-10-13T21:22:06Z"
-updated_at: "2026-10-15T15:48:51Z"
+updated_at: "2026-10-15T15:53:43Z"
 schema_version: 1

@@ -45,3 +45,35 @@ Source: `evidence/fix-requests.json` (collected at 2026-10-14T15:19:00+00:00, he
 
 `gh pr checks 186`: three `check` jobs (ubuntu 3.10, ubuntu 3.12, windows) all `pass`; `fix`
 was `pending` (this round).
+
+# Fix response — round 2 (phase c)
+
+Source: `status.yaml: parked_reason` (the CI preflight park of 2026-10-14T20:00:34Z,
+written before the phase (c) session started — `evidence/gate-c.json`) and
+`evidence/fix-requests.json` (collected 2026-10-15T15:48:54+00:00, head
+`09921cb723a05d6c2ef37f1ae55a117de62d1e7e`, PR #211): no reviews or comments
+(`requests: []`, `not_applied: []`).
+
+## Not applied — guardrail-file edit, proposed for the owner
+
+- **preflight: `claude_md`.** `sdlc.yaml`'s lint command (line 19) is
+  `python -m ruff check . && python -m ruff format --check .`; `CLAUDE.md`'s "Verifying your
+  work" section (line 55) still reads `python -m ruff check .`, so that exact string never
+  appears in `CLAUDE.md` and `plugin/gate/preflight.py`'s `check_claude_md` refuses to start
+  the phase (c) session ("CLAUDE.md does not name the lint command of sdlc.yaml"). This
+  repo's own rules ("Editing a guardrail file ... the tools are denied, propose the exact
+  lines"; "Never edit ... CLAUDE.md ... in a run") both apply: not applied here, proposed
+  below instead.
+
+| File | Line | What is there now | What it must become |
+|---|---|---|---|
+| `CLAUDE.md` | 55 | `` - Lint: `python -m ruff check .` (zero warnings) `` | `` - Lint: `python -m ruff check . && python -m ruff format --check .` (zero warnings) `` |
+
+No build work happened this round: the phase (c) session that would write code never
+started (the same preflight park), so there is no diff to re-verify and nothing else to fix.
+Re-running the gate below is expected to park again on the same `preflight` reason once the
+owner applies the line above and a fresh (non-fix) phase (c) run is dispatched.
+
+## Checks
+
+Not run this round: nothing besides the park reason changed.

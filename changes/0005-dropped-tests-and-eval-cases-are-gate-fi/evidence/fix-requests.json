@@ -1,22 +1,11 @@
 {
-  "collected_at": "2026-10-14T15:19:00+00:00",
-  "head": "486fd017d5d21fd7aa6d6e3eeb1811f92ce6cd31",
+  "collected_at": "2026-10-15T15:48:54+00:00",
+  "head": "09921cb723a05d6c2ef37f1ae55a117de62d1e7e",
   "not_applied": [],
   "ok": true,
-  "pr_number": 186,
+  "pr_number": 211,
   "repo": "luissiviero/sdlc-framework",
-  "requests": [
-    {
-      "association": "OWNER",
-      "at": "2026-10-14T15:18:16Z",
-      "author": "luissiviero",
-      "body": "Two changes before the build:\n1. plan.md step 9 (lines 88\u201389) and \"Files that change\" (line 35): bump `.claude-plugin/marketplace.json` together with `plugin.json`. `tests/test_scaffold.py:47` asserts the two versions are equal, so bumping only `plugin.json` fails the suite. The version is the next free patch number when this merges (choice 184).\n2. plan.md Proof list (lines 199\u2013246): add the tests the Risks section promises at lines 101\u2013103 (a plan edited after the merge base), 121\u2013124 (`risk_list: [\"tests\"]` configured) and 133\u2013135 (the runbook-file fixture).\nOptional: `spec.md:2` and `intent.md:10` name 0.3.6 and 0.3.7; `spec.md:41` cites `description.py` lines that #199 moved.",
-      "id": 5520261177,
-      "kind": "review",
-      "state": "CHANGES_REQUESTED",
-      "url": "https://github.com/luissiviero/sdlc-framework/pull/186#pullrequestreview-5520261177"
-    }
-  ],
+  "requests": [],
   "route": "api",
   "schema_version": 1,
   "unavailable": null
