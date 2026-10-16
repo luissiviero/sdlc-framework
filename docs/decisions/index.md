@@ -35,5 +35,9 @@ One file per decision, number only, no slug (`docs/decisions/<N>.md`); each carr
 27. [Gates (c) and (d) are approved by the label alone, recorded with its actor (amends 3)](27.md)
 28. [The owner accepts the Important review findings of a head with one label (amends 24)](28.md)
 29. [In CI a red target starts the next fix round by itself (amends 11 and PROGRESS choice 154)](29.md)
+30. [The fast lane: the owner's own intent needs no gate (a), gate (b) only for a non-routine plan (amends 2 and 18)](30.md)
+31. [A pull request that waits for the owner requests the owner's review (amends 11 and 20)](31.md)
+32. [Deferred review is the default (amends 21)](32.md)
+33. [The automation pushes and opens pull requests as a GitHub App (amends 5)](33.md)
 
 Sticky decisions (2, 6, 7, 8, 10, 19) shape files and conventions every later step writes to.
