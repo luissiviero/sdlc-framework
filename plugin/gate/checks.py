@@ -1382,7 +1382,10 @@ def dropped_eval_cases(
     excludes a hidden folder with no deletion in the diff). A case is decided from what the
     committed tree still holds, not from the diff's records alone, so a partial multi-file
     deletion with a surviving sibling is never mistaken for the whole case's drop (panel
-    decision #2, phase b). Pure but for its two list arguments."""
+    decision #2, phase b) — but the dot-prefixed-rename rule is evaluated independently of
+    that survivor check, deliberately: a surviving sibling never excuses a dot-prefixed
+    rename, since the rename is itself how a case would be hidden from discovery (panel
+    decision #1, phase c fix round). Pure but for its two list arguments."""
 
     def case_of(path: str) -> str | None:
         if not path.startswith(prefix):

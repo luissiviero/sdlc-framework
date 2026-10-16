@@ -20,11 +20,14 @@ Change id: 0005. Status: proposed. Produced by: sdlc plugin 0.3.6, /sdlc-design 
 - A **dropped eval case**: the same rule over `evals/cases/` — the fixed path
   `plugin/evals/run.py:821` already defaults to, read with no new `sdlc.yaml` key — with one
   addition: an `R` whose destination folder name starts with `.` is a drop, because
-  `discover` excludes a hidden folder with no deletion in the diff (`run.py:142-151`). A
-  case is dropped when no path remains, at HEAD's committed tree, under its folder — decided
-  from HEAD's tree, not from the diff's records alone, so that one file dropped out of a
-  multi-file case while a sibling survives is never mistaken for the whole case's drop (panel
-  decision #2, phase b; see Design). Files moving within the same case folder are not a drop.
+  `discover` excludes a hidden folder with no deletion in the diff (`run.py:142-151`), and
+  this dot-prefixed-rename rule is evaluated independently of the survivor rule below — a
+  surviving sibling never excuses it (panel decision #1, phase c fix round; see Design). A
+  case with no dot-prefixed rename is dropped when no path remains, at HEAD's committed
+  tree, under its folder — decided from HEAD's tree, not from the diff's records alone, so
+  that one file dropped out of a multi-file case while a sibling survives is never mistaken
+  for the whole case's drop (panel decision #2, phase b; see Design). Files moving within
+  the same case folder are not a drop.
 - The check names every dropped file and case path in its `details` on failure.
 - **A drop the approved plan declares is not a finding.** The plan is read as committed at
   the merge base, via `GateContext.approved_artifact("plan.md")` (`checks.py:124-135`),

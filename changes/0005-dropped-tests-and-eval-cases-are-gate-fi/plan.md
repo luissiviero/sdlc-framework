@@ -117,7 +117,11 @@ the hooks, the panel, `sdlc.yaml` and this repository's own root `REVIEW.md`.
   `tree_files` reads at `ctx.diff.head`, and step 2's test suite includes the
   partial-deletion case directly (`test_ratchets_eval_case_partial_delete_is_not_a_drop`).
   The test-file drop rule has no such gap: a test file is either present at HEAD or it is
-  not, with no "folder" grouping to lose a sibling under.
+  not, with no "folder" grouping to lose a sibling under. A narrower sub-case — a sibling
+  surviving a *dot-prefixed rename* of another file in the same case, rather than a plain
+  deletion — surfaced in the phase c fix round and was settled separately (panel decision
+  #1, phase c fix round): the dot-prefixed-rename rule stays independent of this survivor
+  check by design, pinned by `test_ratchets_eval_case_dot_rename_wins_over_a_surviving_sibling`.
 - **A `--name-status -M` parser is new to this codebase**: every existing diff-reading check
   uses `--name-only`, which cannot carry a rename's source and destination. A rename record's
   two paths must not be mistaken for two separate files (a false double-count or a false
