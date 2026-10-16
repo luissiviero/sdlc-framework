@@ -1,0 +1,12 @@
+{
+  "reviewer": "escalate: dot_dropped's unconditional union bypasses survivor_cases, so a dot-renamed file in a multi-file case marks the whole case dropped even though a sibling survives, contradicting the survivor-emptiness invariant.",
+  "advocate": "continue: the scenario is the fail-closed reading of a spec that never settles the intersection, and the reviewer's fix would let an agent evade the ratchet entirely by leaving one harmless sibling behind a dot-renamed file.",
+  "decision": "continue; file a spec-ambiguity note and add a pinning test before the change closes, do not change dropped_eval_cases's behavior",
+  "rationale": [
+    "Spec's dot clause ('an R whose destination starts with \".\" is a drop') reads as unconditional; the survivor-emptiness sentence that follows explains the general rule's HEAD-tree rationale, not an exception to the dot clause — the intersection is genuinely unspecified, not a proven contradiction.",
+    "Both verdicts agree the current code is undertested for this exact case; they disagree only on which direction the gap should resolve.",
+    "The safer reading for a gate check built to stop an agent lowering the bar is fail-closed: a false-positive park costs one owner label (declare in plan or accept-risk), while the reviewer's proposed filter creates a real evasion — rename the targeted file to a dot folder, leave any sibling in place, and the whole-case hit vanishes.",
+    "Decision 11/21 already treats a failed deterministic check as a park the owner clears cheaply, so the current over-inclusive behavior is within the designed cost asymmetry, not a defect that must block this build.",
+    "Next: add a test pinning dot-rename-with-surviving-sibling as a drop, and one spec.md sentence stating the dot rule is evaluated independently of the survivor rule, so the semantics are settled for future rounds."
+  ]
+}

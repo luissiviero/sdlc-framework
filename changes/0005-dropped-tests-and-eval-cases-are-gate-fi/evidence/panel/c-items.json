@@ -1,7 +1,15 @@
 {
   "decided": 0,
-  "gate": "continue",
-  "items": [],
+  "gate": "park",
+  "items": [
+    {
+      "decided": false,
+      "item": "adversarial reviewer says escalate: plugin/gate/checks.py: dropped_eval_cases's new `dot_dropped` set (introduced by this exact round's fix) is unioned into the result unconditionally -- `dropped = set(dot_dropped) | {...filtered by survivor_cases...}` -- never filtered against `survivor_cases`. So when one file of a multi-file eval case is renamed to a dot-prefixed destination while a sibling file in the same, original (visible) case folder is left untouched, the whole case is reported as a drop even though the sibling still exists and is visible at HEAD. Traced with real `tree_files` semantics (git ls-tree lists every blob, dot-prefixed or not, so the sibling's path, e.g. `evals/cases/foo/b.yaml`, is genuinely a survivor and `case_of()` maps it back to `foo`): the source case name still lands in `survivor_cases`, yet the unconditional `set(dot_dropped)` union reports it dropped anyway.; This directly contradicts the design invariant both spec.md ('A case is dropped when no path remains, at HEAD's committed tree, under its folder ... so that one file dropped out of a multi-file case while a sibling survives is never mistaken for the whole case's drop') and plan.md's Risks section state for this exact function -- the invariant is honored for a plain `D` (proven by `test_ratchets_eval_case_partial_delete_is_not_a_drop`) but not for a dot-prefixed rename of one file in a multi-file case, which has no test at all.; This is a false-positive in the gate's own deterministic ratchets check (the subject of this whole change), which runs at phases (c)/(d)/(e) for every change, in every project the plugin drives (intent.md's own 'Affected users and systems' -- wide blast radius). A legitimate partial reorganisation of a multi-file eval case that happens to dot-rename one file would incorrectly park the change on an undeclared 'ratchet: evals' hit for the whole case, not just the renamed file.; Confirmed this is newly introduced by the code under review, not a pre-existing accepted gap: before this round's fix there was no separate `dot_dropped` set at all (the owner's bug report was about the destination also being added to `touched`); the fix replaced that with a `dot_dropped` set that bypasses the same survivor-based filtering `touched` otherwise goes through, which is what creates the gap.; No existing or added test exercises this scenario (a dot-rename of one case file alongside an untouched, surviving sibling in the same source case folder), so the whole suite (including this round's own two targeted fixes) passes with this bug present -- angle 6 (the tests) finds nothing here that would catch it.",
+      "key": "escalate:c709679b93575a9e",
+      "kind": "escalate",
+      "n": 1
+    }
+  ],
   "iterations": {
     "cap": 2,
     "left": 1,
@@ -14,6 +22,8 @@
     "used": 0
   },
   "parks": [],
-  "pending": [],
+  "pending": [
+    1
+  ],
   "phase": "c"
 }
