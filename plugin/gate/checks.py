@@ -1399,9 +1399,10 @@ def dropped_eval_cases(
         if rec.status in ("R", "C") and rec.new_path is not None:
             dst_case = case_of(rec.new_path)
             if dst_case:
-                touched.add(dst_case)
                 if dst_case.startswith(".") and src_case and src_case != dst_case:
                     dot_dropped.add(src_case)
+                else:
+                    touched.add(dst_case)
 
     survivor_cases = {name for path in survivors if (name := case_of(path))}
     dropped = set(dot_dropped) | {

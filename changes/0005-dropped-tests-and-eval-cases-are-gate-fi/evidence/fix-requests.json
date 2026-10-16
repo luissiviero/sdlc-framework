@@ -1,6 +1,6 @@
 {
-  "collected_at": "2026-10-16T11:28:04+00:00",
-  "head": "aae41fa5282ddedc1a8e4f391c35f1f96372f3dd",
+  "collected_at": "2026-10-16T18:22:20+00:00",
+  "head": "7be5f77f0c27ed84ecc664c9f1307a4edd1a1720",
   "not_applied": [],
   "ok": true,
   "pr_number": 211,
@@ -45,6 +45,16 @@
       "kind": "review",
       "state": "CHANGES_REQUESTED",
       "url": "https://github.com/luissiviero/sdlc-framework/pull/211#pullrequestreview-5547148338"
+    },
+    {
+      "association": "OWNER",
+      "at": "2026-10-16T18:21:37Z",
+      "author": "luissiviero",
+      "body": "Apply the same two fixes again and commit them before anything else: (1) in checks.dropped_eval_cases, record a dot-prefixed rename destination only as the dropped source case, never as a case of its own (test_dropped_test_files_and_eval_cases_pure); (2) add \"ratchets\" to the expected check set in test_gate_continues_on_a_clean_change (tests/test_gate.py:540). Then run the gate. In CI the gate's commands run on the runner after the session, outside the sandbox (SDLC_GATE_COMMANDS=runner), so the .env read denial inside the session does not affect the gate. Do not stop to ask; this round is unattended.",
+      "id": 5552003512,
+      "kind": "review",
+      "state": "CHANGES_REQUESTED",
+      "url": "https://github.com/luissiviero/sdlc-framework/pull/211#pullrequestreview-5552003512"
     }
   ],
   "route": "api",

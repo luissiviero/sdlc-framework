@@ -552,6 +552,7 @@ def test_gate_continues_on_a_clean_change(project):
         "owner_actions",
         "test_lock",
         "adversarial_review",
+        "ratchets",
     }
     st = status_mod.read_status(change)
     assert st.gate.phase == "c" and st.gate.result == "passed" and st.parked_reason is None
