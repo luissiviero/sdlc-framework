@@ -1,6 +1,6 @@
 {
-  "collected_at": "2026-10-16T02:17:10+00:00",
-  "head": "39dbee88c0dbf85cdb07db31268aaff207af4e91",
+  "collected_at": "2026-10-16T11:28:04+00:00",
+  "head": "aae41fa5282ddedc1a8e4f391c35f1f96372f3dd",
   "not_applied": [],
   "ok": true,
   "pr_number": 211,
@@ -35,6 +35,16 @@
       "kind": "review",
       "state": "CHANGES_REQUESTED",
       "url": "https://github.com/luissiviero/sdlc-framework/pull/211#pullrequestreview-5542229374"
+    },
+    {
+      "association": "OWNER",
+      "at": "2026-10-16T11:27:25Z",
+      "author": "luissiviero",
+      "body": "Gate (c) parked on two failing tests. (1) checks.dropped_eval_cases must not report a dot-prefixed destination folder as a dropped case: test_dropped_test_files_and_eval_cases_pure expects [\"evals/cases/bar/\", \"evals/cases/baz/\"] and gets evals/cases/.baz/ as well \u2014 fix the code. (2) test_gate_continues_on_a_clean_change (tests/test_gate.py:540) lists gate (c)'s checks; add ratchets to its expected set, since this change adds that check to phase (c) on purpose.",
+      "id": 5547148338,
+      "kind": "review",
+      "state": "CHANGES_REQUESTED",
+      "url": "https://github.com/luissiviero/sdlc-framework/pull/211#pullrequestreview-5547148338"
     }
   ],
   "route": "api",
