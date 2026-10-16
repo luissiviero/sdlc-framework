@@ -237,6 +237,10 @@ the hooks, the panel, `sdlc.yaml` and this repository's own root `REVIEW.md`.
 - `tests/test_gate.py::test_ratchets_eval_case_partial_delete_is_not_a_drop` — one file
   under a multi-file eval case is dropped while `tree_files` still lists a sibling file
   under the same case folder at HEAD; `ok` (panel decision #2, phase b).
+- `tests/test_gate.py::test_ratchets_eval_case_dot_rename_wins_over_a_surviving_sibling` —
+  one file under a multi-file eval case is dot-prefix-renamed while `tree_files` still lists
+  a sibling file under the same case folder at HEAD; fails with `details.hits["ratchet:
+  evals"]` naming the case (panel decision #1, phase c fix round).
 - `tests/test_gate.py::test_ratchets_eval_case_internal_move_is_not_a_drop` — files moving
   within one case folder is `ok`.
 - `tests/test_gate.py::test_ratchets_accepted_hit_passes_on_later_run` — `status.yaml:
