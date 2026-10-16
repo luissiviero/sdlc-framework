@@ -1,6 +1,6 @@
 {
   "decided": 0,
-  "gate": "park",
+  "gate": "continue",
   "items": [],
   "iterations": {
     "cap": 2,
@@ -13,12 +13,7 @@
     "left": 4,
     "used": 0
   },
-  "parks": [
-    {
-      "check": "evidence",
-      "reason": "evidence/ lacks verifier.md"
-    }
-  ],
+  "parks": [],
   "pending": [],
   "phase": "c"
 }
