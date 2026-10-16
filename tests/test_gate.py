@@ -1535,6 +1535,21 @@ def test_ratchets_drop_eval_case_dot_rename_fails(tmp_path):
     assert res.details["hits"]["ratchet: evals"] == ["evals/cases/bar/"]
 
 
+def test_ratchets_eval_case_dot_rename_wins_over_a_surviving_sibling(tmp_path):
+    """Pins panel decision #1 (phase c fix round): the dot-prefixed-rename rule is
+    evaluated independently of the survivor-emptiness rule, so a sibling left in place
+    under the same case folder does not excuse the rename (spec.md Design)."""
+    root, _change = _ratchet_repo(tmp_path, BASE_PLAN)
+    dest = root / "evals" / "cases" / ".foo" / "a.yaml"
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    (root / "evals" / "cases" / "foo" / "a.yaml").rename(dest)
+    git(root, "add", "-A")
+    git(root, "commit", "-q", "-m", "hide one file of the foo case, b.yaml survives")
+    res = checks.check_ratchets(gate.build_context(root, "0001", "c"))
+    assert not res.ok
+    assert res.details["hits"]["ratchet: evals"] == ["evals/cases/foo/"]
+
+
 def test_ratchets_drop_eval_case_declared_in_files_that_change_ok(tmp_path):
     root, _change = _ratchet_repo(tmp_path, PLAN_FILES_DECLARES_BAR)
     (root / "evals" / "cases" / "bar" / "only.yaml").unlink()
