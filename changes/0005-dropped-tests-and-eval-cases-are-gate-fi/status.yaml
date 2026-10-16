@@ -12,7 +12,7 @@ gate:
   reason: "evidence: evidence/ lacks verifier.md"
   at: "2026-10-15T16:10:19Z"
 parked_reason: "evidence: evidence/ lacks verifier.md"
-iterations: 0
+iterations: 1
 panel_calls: 0
 external_ref: null
 risk_accepted: []
@@ -28,5 +28,5 @@ released_at: null
 released_sha: null
 released_pr: null
 created_at: "2026-10-13T21:22:06Z"
-updated_at: "2026-10-15T17:07:55Z"
+updated_at: "2026-10-16T02:18:57Z"
 schema_version: 1
