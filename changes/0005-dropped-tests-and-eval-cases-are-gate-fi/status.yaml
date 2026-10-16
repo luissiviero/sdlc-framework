@@ -12,14 +12,14 @@ gate:
   reason: "commands: not green: test (exit 1)"
   at: "2026-10-16T02:42:55Z"
 parked_reason: "commands: not green: test (exit 1)"
-iterations: 2
+iterations: 0
 panel_calls: 0
 external_ref: null
 risk_accepted: []
 tests_locked: false
 risk_accepted_by: []
 iterations_reset_by: luissiviero
-iterations_reset_at: "2026-10-15T17:07:55Z"
+iterations_reset_at: "2026-10-16T18:22:17Z"
 tests_unlocked_by: null
 runbook_authorized_by: null
 abandoned_reason: null
@@ -28,5 +28,5 @@ released_at: null
 released_sha: null
 released_pr: null
 created_at: "2026-10-13T21:22:06Z"
-updated_at: "2026-10-16T11:28:28Z"
+updated_at: "2026-10-16T18:22:17Z"
 schema_version: 1
