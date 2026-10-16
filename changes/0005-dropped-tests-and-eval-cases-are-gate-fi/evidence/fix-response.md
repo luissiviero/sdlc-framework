@@ -166,3 +166,55 @@ it already is for every round (`gate-<phase>.json`'s `commands`, `ran_by: "runne
 `python -m ruff format --check .`: `203 files already formatted`.
 `python -m pytest`: not completed inside this session (see above); the runner's run after
 this session, recorded in `evidence/gate-c.json`'s `commands` check, is authoritative.
+
+# Fix response — round 4 (phase c)
+
+Source: `evidence/fix-requests.json` (collected 2026-10-16T02:17:10+00:00, head
+`39dbee88c0dbf85cdb07db31268aaff207af4e91`, PR #211): two reviews, both `OWNER`,
+`CHANGES_REQUESTED`, same text — "The build is committed in 7d4e472; finish phase (c):
+verifier, adversarial review, gate." (The first request in the file, "Re-run phase (c) per
+plan.md; the preflight park is settled.", was already applied in round 3 above; nothing
+further to do for it.)
+
+Two interactive sessions between round 3 and this one hit the 200-turn cap mid-task (`run(fix):
+failed run record` commits `3f6b4ea` and `d0ee26f`) without finishing the verifier,
+adversarial review or gate steps the owner is now asking for explicitly, leaving
+`evidence/verifier.md`, `evidence/adversarial-review-c.json` and `evidence/gate-c.json` all
+stamped for a commit before the actual build (`7d4e472`) — stale.
+
+## Applied
+
+1. **Verifier, fresh context, for the current build.** Re-ran `sdlc:verifier` against the
+   code at `7d4e472` (no code changed this round). It read `evidence/gate-b.json`'s
+   `commands` check (build/test/lint green, nothing deferred) rather than running the suite
+   itself (CI session, `SDLC_GATE_COMMANDS=runner`), then exercised `check_ratchets` and its
+   two drop-rule functions directly against disposable git fixtures: eleven scenarios, all
+   matching plan.md/spec.md, including the merge-base-only plan read and the skip-marker
+   scan never affecting `ok`. Verdict: matches the plan. Stored verbatim in
+   `evidence/verifier.md`.
+2. **Adversarial review, re-stamped for the current HEAD, twice.** The first run's verdict
+   (for commit `332b399`) was invalidated by this round's own verifier-evidence commit
+   advancing HEAD before the gate ran (a process error in this round, not a code change); the
+   review was re-run a second time against the regenerated diff for the actual next HEAD
+   (`14e7bcf`) so the verdict in `evidence/adversarial-review-c.json` matches what the gate
+   actually checks. Verdict: continue, non-routine (wide blast radius: `check_ratchets` runs
+   at every phase (c)/(d)/(e) gate in every project the plugin drives). One non-Important nit
+   noted (not a reason to escalate): `tests/test_templates.py`'s new
+   `test_review_md_skip_marker_rule_present` is inserted mid-body of the pre-existing
+   `test_review_md_structure`, so three of that test's original assertions are now attributed
+   to the new function name; both sets of assertions still run and pass, so no coverage is
+   lost — left as-is since fixing test attribution is not something the owner's comment asked
+   for and it changes no behavior.
+3. **Gate (c).** `gate/cli.py check` passed every check (`continue`, Standard profile): no
+   open concerns, no guardrail file touched, plan in sync, no risk-list or ratchet hit,
+   adversarial reviewer says continue. `commands` is `deferred: true` as always at (c) — the
+   runner's own build/test/lint run, outside the sandbox, happens after this session and
+   writes the authoritative result into this same `evidence/gate-c.json`.
+
+## Checks
+
+`gh pr checks 211`: not queried this round (the review comments and the park reason were the
+only sources this round needed, per `/sdlc-fix` step 1). The gate's own `commands` check is
+`deferred: true`, as it is at every phase (c) gate; the runner's run after this session is
+authoritative. No source file changed this round, so no new local build/test/lint run was
+needed beyond what round 3 already recorded.
