@@ -218,3 +218,70 @@ only sources this round needed, per `/sdlc-fix` step 1). The gate's own `command
 `deferred: true`, as it is at every phase (c) gate; the runner's run after this session is
 authoritative. No source file changed this round, so no new local build/test/lint run was
 needed beyond what round 3 already recorded.
+
+# Fix response — round 5 (phase c)
+
+Source: `evidence/fix-requests.json` (collected 2026-10-16T18:22:20+00:00, head
+`7be5f77f0c27ed84ecc664c9f1307a4edd1a1720`, PR #211): the gate's own park (two reviews
+quoting the same `gate-c.json` reason, "commands: not green: test (exit 1)") plus the
+owner's latest review — "Apply the same two fixes again and commit them before anything
+else ... Then run the gate." `not_applied: []`. Owner action already applied before this
+session started: `sdlc:reset-iterations` (`iterations_reset_by: luissiviero`).
+
+## Applied
+
+1. **`checks.dropped_eval_cases`: a dot-prefixed rename destination is no longer its own
+   dropped case.** `plugin/gate/checks.py`: the destination case name is now added to
+   `touched` only when it is *not* a dot-prefixed hiding of its source (the `else` branch);
+   when it is, only the source case lands in `dot_dropped`. Fixes
+   `test_dropped_test_files_and_eval_cases_pure`, which expected
+   `["evals/cases/bar/", "evals/cases/baz/"]` and previously also got
+   `"evals/cases/.baz/"`.
+2. **`test_gate_continues_on_a_clean_change`: `"ratchets"` added to the expected check-name
+   set** (`tests/test_gate.py`), matching `check_ratchets`, already wired into
+   `CHECKS_BY_PHASE["c"]` by this change's own build round.
+3. **Adversarial review found a real gap in fix (1) and a three-member panel settled it**
+   (panel decision #1, `evidence/decisions-c.json`): `dropped_eval_cases`'s dot-prefixed-
+   rename rule reported a whole case dropped even when a sibling file of that case survived
+   untouched, bypassing the survivor-emptiness filtering the rest of the function applies.
+   The panel kept the existing (fail-closed) behavior — a surviving sibling must not excuse
+   a dot-prefixed rename, since the rename is itself a way to hide a case from discovery —
+   and asked for a pinning test plus a spec.md clarification. Applied:
+   - Added `test_ratchets_eval_case_dot_rename_wins_over_a_surviving_sibling`
+     (`tests/test_gate.py`), pinning the panel's chosen behavior.
+   - `spec.md`'s Requirements and Design sections now both state the dot-prefixed-rename
+     rule is evaluated independently of the survivor rule, citing panel decision #1.
+   - `dropped_eval_cases`'s docstring (`plugin/gate/checks.py`) states the same, with its
+     rationale.
+   - `plan.md`'s Risks section notes the dot-rename sub-case was settled separately by
+     panel decision #1, and its Proof section now gives the new pinning test its own
+     dedicated bullet (every other test in that list already had one).
+   Two further adversarial-review passes checked this reconciliation for completeness
+   (nothing reopens panel decision #1 itself) before a final `continue` verdict.
+4. **Gate (c).** `gate/cli.py check` passed every check (`continue`, Standard profile): no
+   open concerns, no guardrail file touched, plan in sync, 1 panel decision recorded,
+   adversarial reviewer says continue. `commands` is `deferred: true` as always at (c) — the
+   runner's own build/test/lint run, outside the sandbox, happens after this session.
+
+## A known gap in this session's own verification
+
+As in round 3: `python -m pytest` could not be run to completion inside this interactive
+session (`tests/fixtures/sample-python-project/.env` denied to every process the sandbox
+starts), so most of `tests/test_gate.py` and other suites that copy that fixture fail on
+`shutil.Error: ... Permission denied` in this session specifically — not a regression, the
+same documented, pre-existing sandbox limitation (`SDLC_GATE_COMMANDS=runner`). Verified
+directly inside the sandbox instead: `test_dropped_test_files_and_eval_cases_pure` and
+`test_ratchets_eval_case_dot_rename_wins_over_a_surviving_sibling` (both pure or built on a
+minimal bare-git fixture, no `.env` copy) pass, along with every other `ratchets`-named
+test in `tests/test_gate.py` (18 total). `python -m compileall -q plugin tests tasks.py`,
+`python -m ruff check .` and `python -m ruff format --check .` are green over the whole
+repository. The runner's own `python -m pytest` run after this session, recorded in
+`evidence/gate-c.json`'s `commands` check, is authoritative.
+
+## Checks
+
+`python -m compileall -q plugin tests tasks.py`: no output, exit 0.
+`python -m ruff check .`: `All checks passed!`
+`python -m ruff format --check .`: `206 files already formatted`.
+`python -m pytest`: not completed inside this session (see above); the runner's run after
+this session, recorded in `evidence/gate-c.json`'s `commands` check, is authoritative.
