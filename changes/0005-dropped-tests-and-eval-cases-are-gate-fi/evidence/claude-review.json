@@ -1,0 +1,114 @@
+{
+  "api_error_status": null,
+  "duration_api_ms": 311713,
+  "duration_ms": 316138,
+  "fast_mode_disabled_reason": "sdk_opt_in_required",
+  "fast_mode_state": "off",
+  "first_content_frame_ms": 1846,
+  "is_error": false,
+  "modelUsage": {
+    "claude-sonnet-5": {
+      "cacheCreationInputTokens": 135964,
+      "cacheReadInputTokens": 3047360,
+      "canonicalModel": "claude-sonnet-5",
+      "contextWindow": 1000000,
+      "costBasis": "list",
+      "costUSD": 1.4056600000000001,
+      "inputTokens": 66,
+      "maxOutputTokens": 64000,
+      "outputTokens": 25220,
+      "provider": "firstParty",
+      "thinkingTokens": 17428,
+      "webSearchRequests": 0
+    }
+  },
+  "num_turns": 42,
+  "permission_denials": [
+    {
+      "tool_input": {
+        "command": "for f in changes/0005-dropped-tests-and-eval-cases-are-gate-fi/evidence/test.log changes/0005-dropped-tests-and-eval-cases-are-gate-fi/evidence/build.log changes/0005-dropped-tests-and-eval-cases-are-gate-fi/evidence/lint.log; do echo \"=== $f ===\"; cat \"$f\"; echo; done",
+        "description": "Print evidence logs for test/build/lint"
+      },
+      "tool_name": "Bash",
+      "tool_use_id": "toolu_01Jc1aT7gswABwXyEGRv2La1"
+    },
+    {
+      "tool_input": {
+        "command": "for f in .claude-plugin/marketplace.json .claude-plugin/plugin.json docs/PROGRESS.md; do echo \"=== $f (main) ===\"; git show refs/remotes/origin/main:\"$f\" | tail -c 50 | xxd | tail -5; echo \"=== $f (head) ===\"; git show 83ce2b386d3bcf20d1e47ca4d5b898a64bef752e:\"$f\" | tail -c 50 | xxd | tail -5; done",
+        "description": "Check trailing newline presence at main vs head for the three files"
+      },
+      "tool_name": "Bash",
+      "tool_use_id": "toolu_01MSwkkMwN1pNyxiQWdE5REN"
+    }
+  ],
+  "queued_turn_count": 0,
+  "result": "## Review summary \u2014 change 0005, head `83ce2b3`\n\n**Tally:** 0 important, 2 nits, 0 omitted.\n\nNo Important findings. The three passes:\n\n- **Bugs**: The core logic (`dropped_test_files`, `dropped_eval_cases`, the `-M` name-status parser, `tree_files`, the merge-base plan read, skip-marker scan) traces correctly through every edge case the spec calls out \u2014 rename-within-globs, rename-out-of-globs, dot-prefixed rename vs. a surviving sibling, partial multi-file eval-case deletion, declared-vs-undeclared drops, accepted-vs-configured risk-list collision. I hand-traced each against `plugin/hooks/plan_sync.is_planned` and the actual git invocations; nothing diverges from spec.md's Design.\n- **Security**: All diff-reading git calls go through `diff.py`'s argument-list `_git` helper (`-M` named explicitly), no shell strings, no new outbound calls, no secrets. Matches security-baseline rules 2 and 6.\n- **Compliance**: Diff matches `plan.md`'s \"Files that change\" exactly (confirmed via `git diff --stat`), every Acceptance case in spec.md has a named test, all Flagged concerns are closed, no guardrail file (`CLAUDE.md`, root `REVIEW.md`, `.claude/**`, `sdlc.yaml`) is touched \u2014 the one guardrail-adjacent edit is correctly proposed as a table row in `docs/PROGRESS.md` rather than written directly. `plugin.json`/`marketplace.json` versions bumped together. Evidence (`test.log`, `build.log`, `lint.log`) carries the `deferred to the runner` marker correctly per the CI-session convention, with the real green run already recorded in `gate-c.json` (1694 passed, exit 0 all three).\n\n**Nits:**\n1. `tests/test_templates.py:92` \u2014 `test_review_md_skip_marker_rule_present` carries three assertions that logically belong to `test_review_md_structure` (a leftover splice from an earlier fix round); already surfaced and accepted as non-Important before, so it stays a nit.\n2. `.claude-plugin/marketplace.json` (and `plugin.json`, `docs/PROGRESS.md`) \u2014 this diff drops the trailing newline those files had before the edit.\n\nPlan conformance: the diff tracks `plan.md`'s file list, order of work and Proof section point for point, including the two mid-flight corrections (the `plugin.json`/`marketplace.json` bullet split, the dot-rename-vs-sibling pinning test) both reflected in the same commits that made them necessary.\n\nFindings written to `changes/0005-dropped-tests-and-eval-cases-are-gate-fi/evidence/review-findings.json`.",
+  "result_index": 0,
+  "session_id": "94c19aa5-d3cf-4c18-a1bc-a3cafade001a",
+  "stop_reason": "end_turn",
+  "subagent_stats": {
+    "by_type": {},
+    "completed": 0,
+    "failed": 0,
+    "killed": {
+      "parent": 0,
+      "system": 0,
+      "user": 0
+    },
+    "max_depth": 0,
+    "refused": {
+      "budget": 0,
+      "concurrency_limit": 0,
+      "depth_limit": 0
+    },
+    "requested": {
+      "background": 0,
+      "foreground": 0,
+      "unset": 0
+    },
+    "spawned": 0,
+    "spawned_by_subagents": 0,
+    "started_in_background": 0
+  },
+  "subtype": "success",
+  "terminal_reason": "completed",
+  "time_to_request_ms": 84,
+  "total_cost_usd": 1.4056600000000001,
+  "ttft_ms": 2458,
+  "ttft_stream_ms": 1846,
+  "type": "result",
+  "usage": {
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 135964,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "cache_creation_input_tokens": 135964,
+    "cache_read_input_tokens": 3047360,
+    "inference_geo": "global",
+    "input_tokens": 66,
+    "iterations": [
+      {
+        "cache_creation": {
+          "ephemeral_1h_input_tokens": 918,
+          "ephemeral_5m_input_tokens": 0
+        },
+        "cache_creation_input_tokens": 918,
+        "cache_read_input_tokens": 135046,
+        "input_tokens": 2,
+        "output_tokens": 961,
+        "type": "message"
+      }
+    ],
+    "output_tokens": 25220,
+    "output_tokens_details": {
+      "thinking_tokens": 17428
+    },
+    "server_tool_use": {
+      "web_fetch_requests": 0,
+      "web_search_requests": 0
+    },
+    "service_tier": "standard",
+    "speed": "standard"
+  },
+  "uuid": "eb6ca301-325b-4f7b-ab49-a25e708d5cd7"
+}

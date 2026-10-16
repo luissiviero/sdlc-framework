@@ -1,0 +1,30 @@
+{
+  "at": "2026-10-16T20:00:00Z",
+  "findings": [
+    {
+      "file": ".claude-plugin/marketplace.json",
+      "line": 14,
+      "pass": "compliance",
+      "rule": "",
+      "severity": "nit",
+      "signature": "e351f74e83708319",
+      "summary": "This diff's edit drops the trailing newline that .claude-plugin/marketplace.json, .claude-plugin/plugin.json and docs/PROGRESS.md had before (git diff shows \"\\ No newline at end of file\" only on the new side), a minor hygiene regression on three touched files."
+    },
+    {
+      "file": "tests/test_templates.py",
+      "line": 92,
+      "pass": "compliance",
+      "rule": "coding-standards rule 2 (small, clearly named functions) \u2014 doubt noted; already surfaced and accepted as a non-Important nit in an earlier fix round per evidence/adversarial-review-d.json, so it keeps that severity here",
+      "severity": "nit",
+      "signature": "63af8b4df4ab4526",
+      "summary": "test_review_md_skip_marker_rule_present's body ends with a trailing comment and three assertions (`.claude/**`, \"must not modify test files\", `plan.md`) that test template/REVIEW.md's general structure, not the skip-marker rule the function name promises; they used to sit inside test_review_md_structure."
+    }
+  ],
+  "head": "83ce2b386d3bcf20d1e47ca4d5b898a64bef752e",
+  "schema_version": 1,
+  "tally": {
+    "important": 0,
+    "nit": 2,
+    "nits_omitted": 0
+  }
+}

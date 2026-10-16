@@ -111,6 +111,14 @@
     "last_seen": "2026-10-03T21:32:24Z",
     "summary": "The new top-level record's summary says the split covered \"docs/NOTES.md (30 sections)\", but docs/notes/ holds 32 section files (1-32) and docs/notes/index.md lists 32, so the record's own prose undercounts by two."
   },
+  "63af8b4df4ab4526": {
+    "count": 1,
+    "file": "tests/test_templates.py",
+    "first_change": "0005",
+    "last_change": "0005",
+    "last_seen": "2026-10-16T19:21:04Z",
+    "summary": "test_review_md_skip_marker_rule_present's body ends with a trailing comment and three assertions (`.claude/**`, \"must not modify test files\", `plan.md`) that test template/REVIEW.md's general structure, not the skip-marker rule the function name promises; they used to sit inside test_review_md_structure."
+  },
   "63e3fc60697aaf84": {
     "count": 1,
     "file": "plugin/gate/checks.py",
@@ -326,6 +334,14 @@
     "last_change": "0001",
     "last_seen": "2026-10-03T21:52:04Z",
     "summary": "Unchanged from the previous two rounds: doubt that sources should also hold the verbatim quote; spec.md's Design line describing sources as \"the docs URL or run URL and the verbatim quote already in the section, restated as structured data\" could be read as requiring the quote in the field itself, though the file only carries the URL."
+  },
+  "e351f74e83708319": {
+    "count": 1,
+    "file": ".claude-plugin/marketplace.json",
+    "first_change": "0005",
+    "last_change": "0005",
+    "last_seen": "2026-10-16T19:21:04Z",
+    "summary": "This diff's edit drops the trailing newline that .claude-plugin/marketplace.json, .claude-plugin/plugin.json and docs/PROGRESS.md had before (git diff shows \"\\ No newline at end of file\" only on the new side), a minor hygiene regression on three touched files."
   },
   "eb785655ad27959d": {
     "count": 2,
