@@ -5,12 +5,12 @@
   "phase": "c",
   "profile": "standard",
   "human_gate": false,
-  "result": "continue",
-  "label": null,
+  "result": "park",
+  "label": "sdlc:needs-human",
   "head": "14e7bcf650883f0d6c6ad51b9912552093e14164",
   "at": "2026-10-16T02:36:15Z",
   "dry_run": false,
-  "reason": "",
+  "reason": "commands: not green: test (exit 1)",
   "config_note": "",
   "checks": [
     {
@@ -68,11 +68,28 @@
     },
     {
       "name": "commands",
-      "ok": true,
-      "reason": "deferred to the runner: build, test and lint run after the model's session, outside its sandbox (issue #91); not yet run",
-      "need": "",
+      "ok": false,
+      "reason": "not green: test (exit 1)",
+      "need": "Make the failing target pass (fix the code, not the test) and re-run the gate. The tail of each output is in the gate result.",
       "details": {
-        "deferred": true
+        "runs": {
+          "build": {
+            "command": "python -m compileall -q plugin tests tasks.py",
+            "exit_code": 0,
+            "output": ""
+          },
+          "test": {
+            "command": "python -m pytest",
+            "exit_code": 1,
+            "output": "[ 93%]\n........................................................................ [ 97%]\n.....................................                                    [100%]\n=================================== FAILURES ===================================\n____________________ test_gate_continues_on_a_clean_change _____________________\n\nproject = (PosixPath('/tmp/pytest-of-runner/pytest-0/test_gate_continues_on_a_clean0/proj'), PosixPath('/tmp/pytest-of-runner/pytest-0/test_gate_continues_on_a_clean0/proj/changes/0001-percent-helper'))\n\n    def test_gate_continues_on_a_clean_change(project):\n        root, change = project\n        verdict(root, \"c\")\n        result = gate.run_gate(root, \"0001\", \"c\")\n        assert result.result == \"continue\", result.reason\n        assert result.label is None and result.human_gate is False and result.profile == \"standard\"\n        assert _names(result, False) == []\n>       assert set(_names(result, True)) == {\n            \"limits\",\n            \"clean_tree\",\n            \"artifacts\",\n            \"open_concerns\",\n            \"panel\",\n            \"commands\",\n            \"evidence\",\n            \"findings\",\n            \"plan_sync\",\n            \"guardrails\",\n            \"risk_list\",\n            \"owner_actions\",\n            \"test_lock\",\n            \"adversarial_review\",\n        }\nE       AssertionError: assert {'adversarial...indings', ...} == {'adversarial...indings', ...}\nE         \nE         Extra items in the left set:\nE         'ratchets'\nE         Use -v to get more diff\n\ntests/test_gate.py:540: AssertionError\n_________________ test_dropped_test_files_and_eval_cases_pure __________________\n\n    def test_dropped_test_files_and_eval_cases_pure():\n        \"\"\"The two drop-rule functions over the parsed records alone (plus a plain survivor\n        list for the eval-case rule), not live git (plan.md step 2).\"\"\"\n        patterns = [\"tests/**\"]\n        records = [\n            NS(\"D\", \"tests/test_a.py\"),\n            NS(\"D\", \"sample_pkg/util.py\"),  # not under test_paths: not reported\n            NS(\"R\", \"tests/test_b.py\", \"tests/test_c.py\"),  # rename within the globs: not a drop\n            NS(\"R\", \"tests/test_d.py\", \"sample_pkg/test_d.py\"),  # out of scope: a drop\n            NS(\"R\", \"sample_pkg/x.py\", \"tests/test_e.py\"),  # into scope: a new test, not a drop\n        ]\n        assert checks.dropped_test_files(records, patterns) == [\"tests/test_a.py\", \"tests/test_d.py\"]\n    \n        case_records = [\n            NS(\"D\", \"evals/cases/bar/only.yaml\"),  # the whole case: dropped\n            NS(\"D\", \"evals/cases/foo/a.yaml\"),  # one of two: a survivor remains\n            NS(\"R\", \"evals/cases/baz/x.yaml\", \"evals/cases/.baz/x.yaml\"),  # hidden rename: dropped\n            NS(\"R\", \"evals/cases/qux/a.yaml\", \"evals/cases/qux/a2.yaml\"),  # internal move: kept\n        ]\n        survivors = [\"evals/cases/foo/b.yaml\", \"evals/cases/qux/a2.yaml\"]\n>       assert checks.dropped_eval_cases(case_records, survivors) == [\n            \"evals/cases/bar/\",\n            \"evals/cases/baz/\",\n        ]\nE       AssertionError: assert ['evals/cases...s/cases/baz/'] == ['evals/cases...s/cases/baz/']\nE         \nE         At index 0 diff: 'evals/cases/.baz/' != 'evals/cases/bar/'\nE         Left contains one more item: 'evals/cases/baz/'\nE         Use -v to get more diff\n\ntests/test_gate.py:1405: AssertionError\n=========================== short test summary info ============================\nFAILED tests/test_gate.py::test_gate_continues_on_a_clean_change - AssertionError: assert {'adversarial...indings', ...} == {'adversarial...indings', ...}\n  \n  Extra items in the left set:\n  'ratchets'\n  Use -v to get more diff\nFAILED tests/test_gate.py::test_dropped_test_files_and_eval_cases_pure - AssertionError: assert ['evals/cases...s/cases/baz/'] == ['evals/cases...s/cases/baz/']\n  \n  At index 0 diff: 'evals/cases/.baz/' != 'evals/cases/bar/'\n  Left contains one more item: 'evals/cases/baz/'\n  Use -v to get more diff\n2 failed, 1691 passed in 300.66s (0:05:00)\n"
+          },
+          "lint": {
+            "command": "python -m ruff check . && python -m ruff format --check .",
+            "exit_code": 0,
+            "output": "All checks passed!\n203 files already formatted\n"
+          }
+        },
+        "ran_by": "runner"
       }
     },
     {
@@ -145,5 +162,5 @@
       }
     }
   ],
-  "what_i_need": ""
+  "what_i_need": "## What I need from you\nGate (c) parked change 0005 (dropped-tests-and-eval-cases-are-gate-fi) on 2026-10-16T02:36:15Z.\n- **commands**: not green: test (exit 1)\n  - what I need: Make the failing target pass (fix the code, not the test) and re-run the gate. The tail of each output is in the gate result.\nWhen the item is settled, re-run the gate: `python \"${CLAUDE_PLUGIN_ROOT}/plugin/gate/cli.py\" check --root . --id 0005 --phase c` (review comments are the change request; /sdlc-fix from B3 re-runs the phase with them).\n"
 }
