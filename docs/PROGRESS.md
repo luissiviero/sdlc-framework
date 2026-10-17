@@ -1,41 +1,41 @@
-# Progress — 1.0.1 (2026-10-14): a writable cache folder for `gh` in the CI sandbox, plugin **1.0.1**
+# Progress — the item-11 follow-ups (2026-10-14 to 2026-10-17): change 0005 from gate (b) to plugin **1.0.2**, the sample's detect run of 2026-10-15, eight gaps recorded
 
-This session ran the 1.0.1 prompt (`docs/handoffs/2026-10-14-gh-cache-1.0.1-prompt.md`, choice 194) on branch `ccr-03233066-k1441l`. The previous record, item 11's, is now `docs/progress/2026-10-14-item-11.md`, unchanged. The sample was not touched: nothing was pushed to it, no run on it was dispatched or approved, and none of its PRs was commented on or closed.
+This session ran the item-11 follow-ups hand-over (written by session `ccr-4a548fe6-7cqzlo`, whose context was full) on branch `ccr-f21be30b-5d5dpz`, with both repositories in scope. The previous record, 1.0.1's, is now `docs/progress/2026-10-14-1.0.1.md`, unchanged. The sample was only read: nothing was pushed to it, no run on it was dispatched or approved, and none of its PRs was commented on or closed. This session pushed no code: change 0005 was built by its own phase runs, and every act on `main`, on #186 and on #211 was the owner's.
 
 ## Summary
-- **Part 1, the reading**, in full in `docs/handoffs/2026-10-14-gh-cache-1.0.1-part-1.md`, and as facts in NOTES §44:
-  - A sandboxed command may write the working directory and a per-user temp folder, not `$HOME`.
-  - The runner's environment reaches sandboxed commands.
-  - `gh run view --log-failed` writes one thing: the run's log zip under `$XDG_CACHE_HOME/gh`, else `~/.cache/gh`. It aborts when it cannot create that folder.
-  - The model's own `XDG_CACHE_HOME=… gh …` was denied because an allow rule does not match past a leading variable assignment.
-  - Two research passes ran in fresh contexts. This session then re-checked the sandboxing page's lines on write roots, `$TMPDIR` and the environment against the page itself.
-- **The fix (option A, choice 196)**, in `plugin/ci/run_phase.py`:
-  - `session_env(env, root)` sets `XDG_CACHE_HOME` to `<root>/.sdlc-cache`, replacing any value the workflow set.
-  - `RUNNER_EXCLUDES` gains `/.sdlc-cache`.
-  - The session may write nowhere new: there is no sandbox or permission entry, and `plugin/ci/settings.ci.json` is unchanged.
-- **The tests**, in `tests/test_ci.py`; each failed on 1.0.0's code and passes on 1.0.1:
-  - `test_the_session_s_gh_cache_is_a_folder_the_sandbox_lets_it_write`, which is new;
-  - `test_the_session_s_environment_leaves_the_gate_s_commands_to_the_runner`, whose expected environment gains the one new key, a deliberate change of `session_env`'s contract;
-  - `test_the_run_excludes_the_runner_s_own_untracked_entries_once`, which now also checks that a cached log zip is not untracked.
-- **The bump**: `.claude-plugin/plugin.json` and `.claude-plugin/marketplace.json` from 1.0.0 to **1.0.1** (choice 184: the next free patch number). Under `plugin/`, only `plugin/ci/run_phase.py` changes. Nothing under `template/` changes.
-- **Port list (choice 138)**: this PR touches `plugin/ci/run_phase.py`, not `plugin/ci/settings.ci.json`.
-  - It changes the environment of every phase session: (b), (c), (d), (e), (f), review and fix.
-  - It does not change the weekly scan's read-only `claude -p` (`plugin/scan/cli.py`) or the triage run. Both are composed and invoked through `run_phase.compose` and `invoke`, but not through `session_env`, and neither runs `gh`.
-- **The live proof is not this session's.** It is the next real diagnosis on the sample at 1.0.1 that reads a failed run's log. That needs the sample's pin moved to 1.0.1 (a guardrail row for the owner, given after the tag) and a real breach. Until then, whether 0.3.8's `results-receiver.actions.githubusercontent.com` entry lets the download through stays unknown (NOTES §41, §43).
+- **Change 0005 is merged and released as `v1.0.2`** (PR #211, `807c5f6`, 2026-10-17 13:41 UTC). The facts and the run links are in NOTES §45.
+  - Gate (b): the fix round on #186 applied the owner's two asks; the owner merged #186 on the session's recommendation (choice 197).
+  - Phase (c) took six fix rounds and three guardrail edits by the owner (choices 198 and 199) before gate (c) said `continue`; (d) and (e) followed without a park.
+  - The change cost 56.30 USD (`evidence/spend.json`), 42.88 of it in the seven fix rounds. *[2026-10-17, verification session `ccr-d96dbb91-v12amc`: 42.89; the seven `run: fix` entries of `spend.json` at `807c5f6` sum to 42.8915211 (NOTES §45, annotated).]*
+- **The sample's scheduled detect run of 2026-10-15** (run 38719318852): `ref=v1.0.1`, latest point 2026-10-14 at 0, no rule fired, `filed: {}`, as choice 193 expected.
+- **Eight gaps**, each traced in the code at `807c5f6` (NOTES §45, "The gaps"): the panel `park` that does not park; a build parked at the preflight that nothing can restart while its PR is open; fix-round work lost at the turn cap and at a question; an unattended session that asked a question; the 200-turn default; an `sdlc.yaml` that does not parse failing open *[2026-10-17, verification: in the runner only; the gate fails closed on it, NOTES §45 gap 6, annotated]*; a PR in conflict that starts no workflow; the tag workflow tagging a version that `main`'s own checks fail. None is fixed here: each needs the owner's choice of route (below, "Left").
+- **Undone on `main`:** the owner's PR #217 (`plugin.json` alone at 1.0.2) and the `v1.0.2` tag and release it caused (choice 201).
 
-## The owner's decisions (2026-10-14)
-196. **`gh`'s cache goes into the checkout (option A of the Part 1 file).** The runner sets `XDG_CACHE_HOME` to `<root>/.sdlc-cache` in `session_env`, and the folder joins `RUNNER_EXCLUDES`. Option B (`allowWrite: ["~/.cache/gh"]` in `settings.ci.json`) and option C (a folder under `RUNNER_TEMP` with a run-time `allowWrite`) each widen what the session may write by one folder outside the checkout, so neither was chosen.
+## The owner's decisions (2026-10-14 to 2026-10-17)
+197. **PR #186 is merged at gate (b) without a second "Request changes" review.** A second review would have spent the last fix round of the change's counter (non-routine cap 2, one counter across the phases). The test the spec's skip-marker requirement implies for the test-runner's configuration files (`spec.md:58-61` and `:91` against Acceptance `:242-244`) stays without its own Proof item; the panel had judged it a nit.
+198. **`CLAUDE.md` names `sdlc.yaml`'s lint command exactly** (PR #213, `2c6d31d`): lines 8 and 55 read `python -m ruff check . && python -m ruff format --check .`.
+199. **The root `sdlc.yaml` sets `gate.max_turns: 400`** (PR #214, re-indented by PR #216, `0fddc29`; `sdlc.yaml:62`).
+200. **Panel decision 1 of change 0005 at (c) stands** (2026-10-17): a dot-prefixed rename of one file of an eval case drops the whole case even when a sibling stays, and `test_ratchets_eval_case_dot_rename_wins_over_a_surviving_sibling` pins it. It fails closed; an unwanted hit is lifted with `sdlc:accept-risk` or a declaration in the change's `plan.md`.
+201. **The `v1.0.2` made from PR #217 is undone:** PR #218 reverted it (`53e56e7`), and the owner deleted the tag and its release. Change 0005 keeps 1.0.2.
+202. **PR #211 is merged at gate (e)** (2026-10-17, `807c5f6`), with its three review nits left for a later change.
 
-## Checks (this repository)
-On the final head, in a virtual environment with `pip install -e ".[dev]"`, chained with `set -o pipefail`: the four commands of `HANDOFF.md`'s standing precondition 1. Their output is in the PR.
-
-## Left
-- **The owner**: approve the PR's runs if they wait at `action_required`; merge once the branch is up to date with `main` and all three `Framework checks` jobs are green on its final head. The tag `v1.0.1` is created on the merge itself. *[2026-10-14: done. PR #209 merged as `d0db700`, `v1.0.1` is on it, and its `main` run passed (the session file's 20:30 section).]*
-- **After `v1.0.1`**: the sample's pin row (`sdlc.yaml`, `1.0.0` → `1.0.1`), a guardrail edit given to the owner as a table. The root pin stays at 0.3.6 until the sandbox proof (choice 187). *[2026-10-14: done. The owner applied it in sample PR #63, merged at 20:29:06 UTC as `f88b262`.]*
-- **Then**, as before: change 0005's build and the runs PR (choice 194), each with the next free patch number.
-
-## Proposed edit for the owner (change 0005; this repository's own root `REVIEW.md` is a guardrail file)
+## Proposed edit for the owner
+Carried from change 0005 (its `plan.md` step 8; the 1.0.1 record, now `docs/progress/2026-10-14-1.0.1.md`). This repository's own root `REVIEW.md` is a guardrail file.
 
 | File | Line | What is there now | What it must become |
 |---|---|---|---|
-| `REVIEW.md` | 26 (after the `plan.md` bullet) | (nothing; the next bullet is "The second occurrence of the same finding …") | `- Each added skip marker the gate's \`ratchets\` check listed at gate (e) (\`evidence/gate-e.json\`'s \`details.skip_markers\`) must be declared in \`plan.md\` or explained in the PR; an undeclared one quietly narrowing what the suite actually runs is non-compliant.` |
+| [`REVIEW.md`](https://github.com/luissiviero/sdlc-framework/blob/main/REVIEW.md#L26) | after 26 (the end of the `plan.md` bullet) | nothing; line 27 starts "- The second occurrence of the same finding …" | `- Each added skip marker the gate's \`ratchets\` check listed at gate (e) (\`evidence/gate-e.json\`'s \`details.skip_markers\`) must be declared in \`plan.md\` or explained in the PR; an undeclared one quietly narrowing what the suite actually runs is non-compliant.` (the same bullet `template/REVIEW.md:27-30` carries since 1.0.2) |
+
+## Checks (this repository)
+On the final head, after `python -m pip install -e ".[dev]"`, chained with `set -o pipefail`: the four commands of `HANDOFF.md`'s standing precondition 1. Their output is in the PR.
+
+## Left
+- **The eight gaps** wait for the owner's route (a ROADMAP candidate with a proposal, a framework change under `changes/`, or a plain fix PR). The session's recommended order, by what each risks: *[2026-10-17, after PR #221 merged: superseded by the mapping onto ROADMAP's Order (PR #215's pipeline sprint, R10 to R49) in `docs/handoffs/sessions/2026-10-17-ccr-f21be30b-5d5dpz.md`, section "After #221 merged"; the order below is kept as written (choice 126).]*
+  1. Gap 6, the `sdlc.yaml` that fails open: a broken file turns off `paused` and the risk list without a word. *[2026-10-17, verification: not the risk list, which the gate reads itself and fails closed on; it turns off `paused`, the Full-profile approval label, the owner's `protected_paths`, `max_budget_usd` and the turn cap (NOTES §45 gap 6, annotated).]*
+  2. Gap 8, the tag workflow: a tag on a commit whose own checks fail.
+  3. Gaps 3 and 4, lost work and the unattended question in a fix round.
+  4. Gap 2, the build that cannot be restarted.
+  5. Gap 1, the panel `park`.
+  6. Gap 7, the PR in conflict (GitHub's rule; a note in the owner's surface may be enough).
+  7. Gap 5 is settled for this repository by choice 199; whether the template's default should rise too is part of gap 3's route.
+- **The sample's pin to 1.0.2**: under `template/`, 1.0.2 changes only `REVIEW.md` (verified, `git diff --name-only v1.0.1 v1.0.2 -- template`), so the sample needs its pin row and, if wanted, the new `REVIEW.md` bullet. Both are guardrail rows for the owner, given when the owner asks.
