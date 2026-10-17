@@ -825,6 +825,55 @@ def test_unpark_perform_honours_a_person_and_rejects_the_automation_identity(tmp
     assert performed == [] and rejected[0]["actor"] == "ci-robot"
 
 
+def test_risk_hits_reads_ratchets_check_when_risk_list_absent(tmp_path):
+    from state import unpark
+
+    change_dir, _st = status.new_change(tmp_path, "Ratchet")
+    gate_file = change_dir / "evidence" / "gate-c.json"
+    gate_file.write_text(
+        json.dumps(
+            {
+                "checks": [
+                    {
+                        "name": "ratchets",
+                        "ok": False,
+                        "details": {"hits": {"ratchet: tests": ["tests/test_a.py"]}},
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    assert unpark.risk_hits(change_dir, "c") == ["ratchet: tests"]
+
+
+def test_risk_hits_unions_risk_list_and_ratchets(tmp_path):
+    from state import unpark
+
+    change_dir, _st = status.new_change(tmp_path, "Ratchet")
+    gate_file = change_dir / "evidence" / "gate-c.json"
+    gate_file.write_text(
+        json.dumps(
+            {
+                "checks": [
+                    {
+                        "name": "risk_list",
+                        "ok": False,
+                        "details": {"hits": {"auth": ["src/auth"]}},
+                    },
+                    {
+                        "name": "ratchets",
+                        "ok": False,
+                        "details": {"hits": {"ratchet: tests": ["tests/test_a.py"]}},
+                    },
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    assert unpark.risk_hits(change_dir, "c") == ["auth", "ratchet: tests"]
+
+
 class _FakeGitHub:
     """The three calls ``unpark.apply_from_pr`` makes, answered from recorded payloads."""
 

@@ -1,0 +1,39 @@
+{
+  "at": "2026-10-16T19:32:56Z",
+  "findings": [
+    {
+      "file": ".claude-plugin/plugin.json",
+      "line": 19,
+      "pass": "compliance",
+      "rule": "",
+      "severity": "nit",
+      "signature": "5c8c0b6d77fb918c",
+      "summary": "plugin.json and marketplace.json lost their trailing newline at end of file when the version bump was applied, inconsistent with every other file in the repo (including their own prior revision)."
+    },
+    {
+      "file": "plugin/gate/checks.py",
+      "line": 1365,
+      "pass": "bugs",
+      "rule": "coding-standards rule 7 (no dead code) \u2014 low confidence: NameStatusRecord/parse_name_status is a general-purpose parser whose own docstring documents C as a possible status, so this may be deliberate defensiveness rather than dead code.",
+      "severity": "nit",
+      "signature": "54ca8ca15099a391",
+      "summary": "dropped_test_files and dropped_eval_cases both branch on rec.status in (\"R\", \"C\"), but the only git invocation that feeds them (diff.name_status, which calls `git diff --name-status -M -z`, no `-C`) can never produce a \"C\" record, so that half of the branch is unreachable from this check's own call site."
+    },
+    {
+      "file": "tests/test_templates.py",
+      "line": 85,
+      "pass": "bugs",
+      "rule": "coding-standards rule 2 (match the surrounding structure; a rename/move of assertions is not a side effect of an unrelated change) \u2014 already flagged and accepted as a non-Important nit by this change's own phase (d) adversarial review, re-confirmed independently here; no coverage is actually lost.",
+      "severity": "nit",
+      "signature": "c627961e64752a5b",
+      "summary": "Three assertions that belong to test_review_md_structure (the .claude/** / test-lock / plan.md conformance checks) were moved into the newly added test_review_md_skip_marker_rule_present instead of staying in their own function, so the comment at the bottom of the old function ('# rules added by the guide...') now sits under an unrelated test name."
+    }
+  ],
+  "head": "ded6f365cf4249358d6b7075e9e3f2ed442c3000",
+  "schema_version": 1,
+  "tally": {
+    "important": 0,
+    "nit": 3,
+    "nits_omitted": 0
+  }
+}

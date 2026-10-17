@@ -33,3 +33,9 @@ On the final head, in a virtual environment with `pip install -e ".[dev]"`, chai
 - **The owner**: approve the PR's runs if they wait at `action_required`; merge once the branch is up to date with `main` and all three `Framework checks` jobs are green on its final head. The tag `v1.0.1` is created on the merge itself. *[2026-10-14: done. PR #209 merged as `d0db700`, `v1.0.1` is on it, and its `main` run passed (the session file's 20:30 section).]*
 - **After `v1.0.1`**: the sample's pin row (`sdlc.yaml`, `1.0.0` → `1.0.1`), a guardrail edit given to the owner as a table. The root pin stays at 0.3.6 until the sandbox proof (choice 187). *[2026-10-14: done. The owner applied it in sample PR #63, merged at 20:29:06 UTC as `f88b262`.]*
 - **Then**, as before: change 0005's build and the runs PR (choice 194), each with the next free patch number.
+
+## Proposed edit for the owner (change 0005; this repository's own root `REVIEW.md` is a guardrail file)
+
+| File | Line | What is there now | What it must become |
+|---|---|---|---|
+| `REVIEW.md` | 26 (after the `plan.md` bullet) | (nothing; the next bullet is "The second occurrence of the same finding …") | `- Each added skip marker the gate's \`ratchets\` check listed at gate (e) (\`evidence/gate-e.json\`'s \`details.skip_markers\`) must be declared in \`plan.md\` or explained in the PR; an undeclared one quietly narrowing what the suite actually runs is non-compliant.` |

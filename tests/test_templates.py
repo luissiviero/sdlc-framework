@@ -87,6 +87,12 @@ def test_review_md_structure():
         in text
     )
     assert "Report at most five nits per review" in text
+
+
+def test_review_md_skip_marker_rule_present():
+    text = (TEMPLATE / "REVIEW.md").read_text(encoding="utf-8")
+    assert "ratchets" in text and "details.skip_markers" in text
+    assert "gate (e)" in text
     # rules added by the guide (step 26 notes; step 7 (iv); step 25; step 12)
     flat = " ".join(text.split())
     assert ".claude/**" in flat and "must not modify test files" in flat and "plan.md" in flat

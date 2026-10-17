@@ -65,10 +65,16 @@ def is_automation_actor(actor: str, identities: list[str]) -> bool:
     return any(who == i.strip().lower() for i in identities)
 
 
+RISK_HIT_CHECKS = ("risk_list", "ratchets")
+
+
 def risk_hits(change_dir: Path, phase: str | None) -> list[str]:
-    """The risk-list items the last gate of ``phase`` reported (the keys of the ``risk_list``
-    check's ``details.hits``), or []. The gate file is the record the owner read in the PR's
-    "What I need from you" block, so it is what the label answers."""
+    """The risk-list items the last gate of ``phase`` reported: the union of the ``risk_list``
+    and ``ratchets`` checks' ``details.hits`` keys (spec.md change 5: a dropped test file or
+    eval case, undeclared by the plan, is a risk-list-shaped hit of its own check, read here
+    too, so ``sdlc:accept-risk`` is not rejected as "nothing to accept" when only a ratchet
+    hit is reported), or []. The gate file is the record the owner read in the PR's "What I
+    need from you" block, so it is what the label answers."""
     if not phase or phase not in c.PHASES:
         return []
     path = Path(change_dir) / GATE_FILE.format(phase=phase)
@@ -76,12 +82,14 @@ def risk_hits(change_dir: Path, phase: str | None) -> list[str]:
         data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return []
+    hit_keys: set[str] = set()
     for check in (data.get("checks") if isinstance(data, dict) else None) or []:
-        if isinstance(check, dict) and check.get("name") == "risk_list":
-            hits = (check.get("details") or {}).get("hits")
-            if isinstance(hits, dict):
-                return [str(k) for k in hits if str(k).strip()]
-    return []
+        if not isinstance(check, dict) or check.get("name") not in RISK_HIT_CHECKS:
+            continue
+        hits = (check.get("details") or {}).get("hits")
+        if isinstance(hits, dict):
+            hit_keys.update(str(k) for k in hits if str(k).strip())
+    return sorted(hit_keys)
 
 
 def perform(

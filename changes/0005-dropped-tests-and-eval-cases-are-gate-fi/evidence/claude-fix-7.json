@@ -1,0 +1,123 @@
+{
+  "api_error_status": null,
+  "duration_api_ms": 1564325,
+  "duration_ms": 1850615,
+  "fast_mode_disabled_reason": "sdk_opt_in_required",
+  "fast_mode_state": "off",
+  "first_content_frame_ms": 838,
+  "is_error": false,
+  "modelUsage": {
+    "claude-opus-5": {
+      "cacheCreationInputTokens": 52498,
+      "cacheReadInputTokens": 219006,
+      "canonicalModel": "claude-opus-5",
+      "contextWindow": 1000000,
+      "costBasis": "list",
+      "costUSD": 0.6663355000000001,
+      "inputTokens": 14,
+      "maxOutputTokens": 64000,
+      "outputTokens": 9146,
+      "provider": "firstParty",
+      "thinkingTokens": 6481,
+      "webSearchRequests": 0
+    },
+    "claude-sonnet-5": {
+      "cacheCreationInputTokens": 559685,
+      "cacheReadInputTokens": 15664875,
+      "canonicalModel": "claude-sonnet-5",
+      "contextWindow": 1000000,
+      "costBasis": "list",
+      "costUSD": 6.149134,
+      "inputTokens": 354,
+      "maxOutputTokens": 64000,
+      "outputTokens": 133685,
+      "provider": "firstParty",
+      "thinkingTokens": 74321,
+      "webSearchRequests": 0
+    }
+  },
+  "num_turns": 102,
+  "permission_denials": [
+    {
+      "tool_input": {
+        "command": "grep -n \"short test summary\\|^=.*=$\\|passed\\|failed in\" \"$TMPDIR/pytest_full.log\" | tail -20",
+        "description": "Find the pytest summary line"
+      },
+      "tool_name": "Bash",
+      "tool_use_id": "toolu_01DwZLCrKrGR9EQHuMb8WD72"
+    }
+  ],
+  "queued_turn_count": 0,
+  "result": "The gate passed and the branch is clean (aside from the unreadable `.env` sandbox artifact, which is not touched). Here's the report:\n\n**PR:** https://github.com/luissiviero/sdlc-framework/pull/211\n**Gate:** phase (c) \u2014 `continue` (passed), no open park\n**Iterations:** 1 of 2 used\n**Panel calls:** 1 of 4 used (panel decision #1: kept `dropped_eval_cases`'s fail-closed dot-rename behavior, required a pinning test + spec/plan/docstring reconciliation \u2014 all applied)\n**Open requests:** none\n\nSummary of this round: fixed the dot-prefixed-rename double-count in `checks.dropped_eval_cases`, added `\"ratchets\"` to the expected check set in `test_gate_continues_on_a_clean_change`, then worked through four adversarial-review passes \u2014 the first caught a real survivor-filtering gap the panel settled by keeping current (fail-closed) behavior, and the next two caught incomplete documentation reconciliation (spec.md, the `checks.py` docstring, and plan.md's Risks/Proof sections) until the diff converged on a clean `continue`.",
+  "result_index": 0,
+  "session_id": "58251944-3795-4ed2-bd45-86c1070e1fa2",
+  "stop_reason": "end_turn",
+  "subagent_stats": {
+    "by_type": {
+      "general-purpose": 2,
+      "sdlc:adversarial-reviewer": 5
+    },
+    "completed": 7,
+    "failed": 0,
+    "killed": {
+      "parent": 0,
+      "system": 0,
+      "user": 0
+    },
+    "max_depth": 1,
+    "refused": {
+      "budget": 0,
+      "concurrency_limit": 0,
+      "depth_limit": 0
+    },
+    "requested": {
+      "background": 0,
+      "foreground": 0,
+      "unset": 7
+    },
+    "spawned": 7,
+    "spawned_by_subagents": 0,
+    "started_in_background": 0
+  },
+  "subtype": "success",
+  "terminal_reason": "completed",
+  "time_to_request_ms": 127,
+  "total_cost_usd": 6.815469500000001,
+  "ttft_ms": 1775,
+  "ttft_stream_ms": 838,
+  "type": "result",
+  "usage": {
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 186259,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "cache_creation_input_tokens": 186259,
+    "cache_read_input_tokens": 12165580,
+    "inference_geo": "global",
+    "input_tokens": 202,
+    "iterations": [
+      {
+        "cache_creation": {
+          "ephemeral_1h_input_tokens": 567,
+          "ephemeral_5m_input_tokens": 0
+        },
+        "cache_creation_input_tokens": 567,
+        "cache_read_input_tokens": 185692,
+        "input_tokens": 2,
+        "output_tokens": 398,
+        "type": "message"
+      }
+    ],
+    "output_tokens": 47301,
+    "output_tokens_details": {
+      "thinking_tokens": 15890
+    },
+    "server_tool_use": {
+      "web_fetch_requests": 0,
+      "web_search_requests": 0
+    },
+    "service_tier": "standard",
+    "speed": "standard"
+  },
+  "uuid": "2e608178-45f6-47c4-a49f-daab5089dd63"
+}

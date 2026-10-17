@@ -266,8 +266,14 @@ def _conformance_line(gate_json: dict[str, Any] | None, spec_text: str, phase: s
         return f"open questions from intent: {answered} answered / {len(carried)} carried forward"
     check = _gate_check(gate_json, "plan_sync")
     if check is None:
-        return "plan conformance not checked at this gate"
-    return "diff matches plan.md" if check.get("ok") else str(check.get("reason", "")).strip()
+        base = "plan conformance not checked at this gate"
+    else:
+        base = "diff matches plan.md" if check.get("ok") else str(check.get("reason", "")).strip()
+    ratchets = _gate_check(gate_json, "ratchets")
+    declared = (ratchets or {}).get("details", {}).get("declared") if ratchets else None
+    if isinstance(declared, list) and declared:
+        base += "; declared drops: " + ", ".join(str(d) for d in declared)
+    return base
 
 
 # --- bullet 5: what needs the owner ----------------------------------------------------------
