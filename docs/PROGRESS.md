@@ -6,9 +6,9 @@ This session ran the item-11 follow-ups hand-over (written by session `ccr-4a548
 - **Change 0005 is merged and released as `v1.0.2`** (PR #211, `807c5f6`, 2026-10-17 13:41 UTC). The facts and the run links are in NOTES §45.
   - Gate (b): the fix round on #186 applied the owner's two asks; the owner merged #186 on the session's recommendation (choice 197).
   - Phase (c) took six fix rounds and three guardrail edits by the owner (choices 198 and 199) before gate (c) said `continue`; (d) and (e) followed without a park.
-  - The change cost 56.30 USD (`evidence/spend.json`), 42.88 of it in the seven fix rounds.
+  - The change cost 56.30 USD (`evidence/spend.json`), 42.88 of it in the seven fix rounds. *[2026-10-17, verification session `ccr-d96dbb91-v12amc`: 42.89; the seven `run: fix` entries of `spend.json` at `807c5f6` sum to 42.8915211 (NOTES §45, annotated).]*
 - **The sample's scheduled detect run of 2026-10-15** (run 38719318852): `ref=v1.0.1`, latest point 2026-10-14 at 0, no rule fired, `filed: {}`, as choice 193 expected.
-- **Eight gaps**, each traced in the code at `807c5f6` (NOTES §45, "The gaps"): the panel `park` that does not park; a build parked at the preflight that nothing can restart while its PR is open; fix-round work lost at the turn cap and at a question; an unattended session that asked a question; the 200-turn default; an `sdlc.yaml` that does not parse failing open; a PR in conflict that starts no workflow; the tag workflow tagging a version that `main`'s own checks fail. None is fixed here: each needs the owner's choice of route (below, "Left").
+- **Eight gaps**, each traced in the code at `807c5f6` (NOTES §45, "The gaps"): the panel `park` that does not park; a build parked at the preflight that nothing can restart while its PR is open; fix-round work lost at the turn cap and at a question; an unattended session that asked a question; the 200-turn default; an `sdlc.yaml` that does not parse failing open *[2026-10-17, verification: in the runner only; the gate fails closed on it, NOTES §45 gap 6, annotated]*; a PR in conflict that starts no workflow; the tag workflow tagging a version that `main`'s own checks fail. None is fixed here: each needs the owner's choice of route (below, "Left").
 - **Undone on `main`:** the owner's PR #217 (`plugin.json` alone at 1.0.2) and the `v1.0.2` tag and release it caused (choice 201).
 
 ## The owner's decisions (2026-10-14 to 2026-10-17)
@@ -30,8 +30,8 @@ Carried from change 0005 (its `plan.md` step 8; the 1.0.1 record, now `docs/prog
 On the final head, after `python -m pip install -e ".[dev]"`, chained with `set -o pipefail`: the four commands of `HANDOFF.md`'s standing precondition 1. Their output is in the PR.
 
 ## Left
-- **The eight gaps** wait for the owner's route (a ROADMAP candidate with a proposal, a framework change under `changes/`, or a plain fix PR). The session's recommended order, by what each risks:
-  1. Gap 6, the `sdlc.yaml` that fails open: a broken file turns off `paused` and the risk list without a word.
+- **The eight gaps** wait for the owner's route (a ROADMAP candidate with a proposal, a framework change under `changes/`, or a plain fix PR). The session's recommended order, by what each risks: *[2026-10-17, after PR #221 merged: superseded by the mapping onto ROADMAP's Order (PR #215's pipeline sprint, R10 to R49) in `docs/handoffs/sessions/2026-10-17-ccr-f21be30b-5d5dpz.md`, section "After #221 merged"; the order below is kept as written (choice 126).]*
+  1. Gap 6, the `sdlc.yaml` that fails open: a broken file turns off `paused` and the risk list without a word. *[2026-10-17, verification: not the risk list, which the gate reads itself and fails closed on; it turns off `paused`, the Full-profile approval label, the owner's `protected_paths`, `max_budget_usd` and the turn cap (NOTES §45 gap 6, annotated).]*
   2. Gap 8, the tag workflow: a tag on a commit whose own checks fail.
   3. Gaps 3 and 4, lost work and the unattended question in a fix round.
   4. Gap 2, the build that cannot be restarted.
