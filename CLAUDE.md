@@ -1,6 +1,6 @@
 # SDLC framework repo
 
-This repository builds a Claude Code plugin + project template that drives any project through plan → design → build → test → deploy → maintain with profile-based human gates. Read `docs/OPERATING_MODEL.md` first; it is the contract. `docs/BUILD_GUIDE.md` (47 steps, article-cited) is the build plan; `docs/decisions/index.md` records the 29 settled choices — do not reopen them without asking. `docs/ROADMAP.md` is what comes after Milestone 1: candidates with a proposal each, never a decision.
+This repository builds a Claude Code plugin + project template that drives any project through plan → design → build → test → deploy → maintain with profile-based human gates. Read `docs/OPERATING_MODEL.md` first; it is the contract. `docs/BUILD_GUIDE.md` (47 steps, article-cited) is the build plan; `docs/decisions/index.md` records the 33 settled choices — do not reopen them without asking. `docs/ROADMAP.md` is what comes after Milestone 1: candidates with a proposal each, never a decision.
 Indexes first: `docs/notes/index.md` lists every verified platform fact, `docs/decisions/index.md` every settled decision; read the index, then only the files you need.
 
 ## Commands
@@ -31,7 +31,7 @@ Run tests and lint before reporting any task complete, and paste the output. If 
 ## Things to get right
 - Only the owner merges to `main`; the automation identity has branch-only write access. Never use bypass-permissions mode.
 - Events caused by the CI workflow token do not start workflow runs (except workflow_dispatch / repository_dispatch): automated phase transitions dispatch the next workflow explicitly.
-- Escalation means park (label `sdlc:needs-human`, write "what I need from you"), never a notification.
+- Escalation means park (label `sdlc:needs-human`, write "what I need from you"); the only notification is the review request on a PR that waits for the owner (decision 31).
 - The plan.md run is read-only (Read/Grep/Glob); the first run with edit tools is phase (c).
 - Verify how Claude Code on Windows invokes hook commands before writing the first hook; record the answer in `docs/notes/1.md`.
 
@@ -46,7 +46,7 @@ Run tests and lint before reporting any task complete, and paste the output. If 
   phase branches are `sdlc/<id>/<phase>`; see `changes/README.md`.
 - Never edit `.claude/**`, `CLAUDE.md`, `REVIEW.md` or `sdlc.yaml` in a run: they are
   guardrails the owner changes in a reviewed PR. Never use bypass-permissions mode.
-- When a run cannot finish, park: write "what I need from you", never notify.
+- When a run cannot finish, park: write "what I need from you"; notify only by the review request of decision 31.
 
 ## Verifying your work
 <!-- Verbatim structure of the article's verification block (p.28). -->
