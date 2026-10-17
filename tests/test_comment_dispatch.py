@@ -331,7 +331,12 @@ def test_a_422_for_the_trigger_input_is_sent_again_without_it(tmp_path, capsys):
 @pytest.mark.parametrize(
     "answers",
     [
-        [{"ok": False, "status": 422, "reason": "x"}, {"ok": False, "status": 422, "reason": "y"}],
+        [
+            {"ok": False, "status": 422, "reason": "Unexpected inputs provided"},
+            {"ok": False, "status": 422, "reason": "y"},
+        ],
+        # a 422 that is not about the inputs (a missing ref) is never retried as one
+        [{"ok": False, "status": 422, "reason": "No ref found for: main"}],
         [{"ok": False, "status": 403, "reason": "Resource not accessible"}],
         [{"ok": False, "status": 500, "reason": "boom"}],
     ],

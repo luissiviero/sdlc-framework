@@ -444,6 +444,17 @@ def test_the_session_s_applied_marks_are_kept_and_nothing_else(project):
         ("comment", 32),
     ]
 
+    def thread_mark(data):  # step 6 asks for a mark on every applied entry, threads too
+        legit(data)
+        for entry in data["requests"]:
+            if entry["kind"] == "review_comment":
+                entry["applied"] = True
+
+    _session_edit(change, thread_mark)
+    assert fix_requests.keep_marks_only(change, snap) is None  # not a forgery: left as written
+    kept = json.loads((change / "evidence" / "fix-requests.json").read_text("utf-8"))
+    assert any(r["kind"] == "review_comment" and r.get("applied") for r in kept["requests"])
+
     def forged(data):
         legit(data)
         data["applied_earlier"] = [{"kind": "comment", "id": 31}]  # hides the @claude ask

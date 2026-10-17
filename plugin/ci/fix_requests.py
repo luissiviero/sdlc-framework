@@ -295,10 +295,25 @@ def snapshot(change_dir: Path) -> dict[str, Any] | None:
     return data if isinstance(data, dict) else None
 
 
+def _without_uncarried_marks(data: Any) -> Any:
+    """``data`` with ``"applied": true`` dropped from every entry that is never carried."""
+    if not isinstance(data, dict) or not isinstance(data.get("requests"), list):
+        return data
+    copy = json.loads(json.dumps(data))
+    for entry in copy["requests"]:
+        if (
+            isinstance(entry, dict)
+            and entry.get("applied") is True
+            and _carried_key(entry.get("kind"), entry.get("id")) is None
+        ):
+            del entry["applied"]
+    return copy
+
+
 def keep_marks_only(change_dir: Path, before: dict[str, Any] | None) -> str | None:
     """After the session: the only change the session may make to the file is ``"applied":
-    true`` on a review or PR comment request (``/sdlc-fix`` step 6). Anything else (an edited
-    ``applied_earlier``, an added, removed or edited entry, a mark on a thread comment) puts
+    true`` on a request (``/sdlc-fix`` step 6); only the marks on a review or PR comment are
+    carried. Anything else (an edited ``applied_earlier``, an added, removed or edited entry) puts
     the runner's copy back with the legitimate marks kept, and returns the one line the run
     logs; None when the file is as allowed. A forged mark would hide an owner's request from
     every later round."""
@@ -317,7 +332,9 @@ def keep_marks_only(change_dir: Path, before: dict[str, Any] | None) -> str | No
     for entry in expected.get("requests") or []:
         if isinstance(entry, dict) and _carried_key(entry.get("kind"), entry.get("id")) in marks:
             entry["applied"] = True
-    if after == expected:
+    if _without_uncarried_marks(after) == _without_uncarried_marks(expected):
+        # a mark on a thread comment or the red-targets request is what step 6 asks for
+        # too; it is never carried, so it is left as written and is not a forgery
         return None
     write(change_dir, expected)
     kept = sum(

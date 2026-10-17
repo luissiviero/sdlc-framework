@@ -205,7 +205,12 @@ def run(root: Path, repo: str, env: Mapping[str, str], github: Any = None, send:
         extra = {"trigger": found["trigger"]} if found["trigger"] else None
         args = (repo, auto_round.FIX_WORKFLOW, ref, found["change_id"], found["head_ref"])
         sent = send(*args, extra)
-        if extra and not sent.get("ok") and sent.get("status") == UNDECLARED_INPUT_STATUS:
+        if (
+            extra
+            and not sent.get("ok")
+            and sent.get("status") == UNDECLARED_INPUT_STATUS
+            and "input" in str(sent.get("reason") or "").lower()
+        ):
             # an upgraded project keeps its older sdlc-fix.yml (/sdlc-init never overwrites),
             # and GitHub refuses an input the workflow does not declare: the round still runs
             sent = send(*args, None)
