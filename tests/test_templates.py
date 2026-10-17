@@ -202,11 +202,13 @@ DETECT_WORKFLOW = "sdlc-detect.yml"  # build guide step 37, decisions 14/15/26 (
 RUNBOOK_WORKFLOW = "sdlc-runbook.yml"  # the owner's Go on a runbook (plugin 0.2.19)
 EVALS_WORKFLOW = "sdlc-evals.yml"  # build guide step 35 (plugin 0.2.19)
 SCAN_WORKFLOW = "sdlc-scan.yml"  # build guide step 38, decision 16 (plugin 0.2.19)
+COMMENT_WORKFLOW = "sdlc-comment.yml"  # the owner's @claude comment (decision 34, R17)
 ALL_WORKFLOWS = (
     *PHASE_WORKFLOWS,
     "sdlc-digest.yml",
     RELEASE_WORKFLOW,
     FIX_WORKFLOW,
+    COMMENT_WORKFLOW,
     ABANDON_WORKFLOW,
     DETECT_WORKFLOW,
     RUNBOOK_WORKFLOW,
@@ -263,6 +265,12 @@ def test_this_repository_s_workflow_copies_match_the_template():
             # has no evals/check.py: the per-project workflow is not installed here
             assert not (REPO_WORKFLOW_DIR / name).exists()
             assert (REPO_WORKFLOW_DIR / "framework-evals.yml").is_file()
+            continue
+        if name == COMMENT_WORKFLOW:
+            # R17 (decision 34): the dispatcher calls plugin/ci/comment_dispatch.py, which the
+            # framework this repository's sdlc.yaml pins does not ship, and framework changes
+            # are not run through the pipeline here: the copy is installed with the pin
+            assert not (REPO_WORKFLOW_DIR / name).exists()
             continue
         installed = (REPO_WORKFLOW_DIR / name).read_text(encoding="utf-8")
         assert installed == render.render_file(WORKFLOW_DIR / name, VALUES), name
@@ -511,6 +519,85 @@ def test_fix_workflow_starts_on_request_changes_and_on_the_owner_labels():
     assert job["concurrency"]["group"] == (
         "sdlc-${{ inputs.head_ref || github.event.pull_request.head.ref }}"
     )
+
+
+def test_fix_workflow_refuses_fork_heads_and_takes_the_comment_s_link():
+    """Decision 34 (R17): the review and the label path refuse a head in another repository
+    in the job's `if:`; the find step reads the owner from the default branch's sdlc.yaml
+    (it names that branch); the `trigger` input reaches the round through env only."""
+    data = _workflow_yaml(FIX_WORKFLOW)
+    job = data["jobs"]["fix"]
+    fork = "github.event.pull_request.head.repo.full_name == github.repository"
+    assert job["if"].count(fork) == 2
+    review, label = job["if"].split("github.event_name == 'pull_request' &&", 1)
+    assert fork in review.split("github.event_name == 'pull_request_review'", 1)[1]
+    assert fork in label
+    trigger = _triggers(data)["workflow_dispatch"]["inputs"]["trigger"]
+    assert trigger["required"] is False and trigger["type"] == "string"
+    assert "@claude" in trigger["description"] and "decision 34" in trigger["description"]
+    find = next(step for step in job["steps"] if step.get("id") == "find")
+    assert find["env"]["SDLC_DEFAULT_BRANCH"] == DEFAULT_BRANCH_EXPR
+    phase_step = [step for step in job["steps"] if "run" in step][-1]
+    assert phase_step["env"]["SDLC_TRIGGER"] == "${{ inputs.trigger }}"
+    assert "inputs.trigger" not in phase_step["run"] and "SDLC_TRIGGER" not in phase_step["run"]
+    text = (WORKFLOW_DIR / FIX_WORKFLOW).read_text(encoding="utf-8")
+    assert "the owner's account" in text and "decision 34" in text  # the reviewer rule
+
+
+def test_comment_workflow_dispatches_the_fix_round_without_a_model():
+    """Decision 34 (R17), NOTES section 46: on a new pull request comment only, a coarse
+    `if:`, the default branch checked out (never the PR's head), the pin and the pinned
+    framework as the fix workflow takes them, then one Python step; the comment's text
+    appears in the `if:` and nowhere else; the token holds three scopes."""
+    data = _workflow_yaml(COMMENT_WORKFLOW)
+    assert data["name"] == "SDLC comment (fix round)"  # the prefix keeps it out of the metric
+    assert _triggers(data) == {"issue_comment": {"types": ["created"]}}
+    assert data["permissions"] == {
+        "actions": "write",
+        "contents": "read",
+        "pull-requests": "read",
+    }
+    assert "concurrency" not in data
+    assert list(data["jobs"]) == ["dispatch"]
+    job = data["jobs"]["dispatch"]
+    assert "permissions" not in job and "concurrency" not in job
+    for clause in (
+        "github.event.issue.pull_request",
+        "startsWith(github.event.comment.body, '@claude')",
+        "!endsWith(github.event.comment.user.login, '[bot]')",
+        "github.event.comment.author_association == 'OWNER'",
+        "github.event.comment.author_association == 'MEMBER'",
+        "github.event.comment.author_association == 'COLLABORATOR'",
+    ):
+        assert clause in job["if"], clause
+    for refused in ("CONTRIBUTOR'", "FIRST_TIME", "'NONE'"):
+        assert refused not in job["if"], refused
+    steps = job["steps"]
+    assert steps[0]["uses"] == "actions/checkout@v5"
+    assert steps[0]["with"]["ref"] == DEFAULT_BRANCH_EXPR
+    assert "head" not in str(steps[0])
+    assert steps[1]["id"] == "pin" and steps[1]["run"] == PIN_RUN
+    fix = _workflow_yaml(FIX_WORKFLOW)["jobs"]["fix"]["steps"]
+    assert steps[1] == next(step for step in fix if step.get("id") == "pin")
+    assert steps[2] == next(step for step in fix if step.get("with", {}).get("path") == "framework")
+    assert len(steps) == 4
+    run = steps[3]
+    assert run["run"] == 'python framework/plugin/ci/comment_dispatch.py --root . --repo "$REPO"'
+    assert run["env"] == {
+        "GITHUB_TOKEN": "${{ github.token }}",
+        "REPO": "${{ github.repository }}",
+        "DEFAULT_BRANCH": DEFAULT_BRANCH_EXPR,
+    }
+    # the body only inside the job's if: never in env, with or run, nor anywhere in steps
+    assert "comment.body" not in str(steps)
+    text = (WORKFLOW_DIR / COMMENT_WORKFLOW).read_text(encoding="utf-8")
+    assert text.count("github.event.comment.body") == 1
+    # no model, no secret
+    for absent in ("secrets.", "claude-code@", "run_phase.py", "setup-node", "project_setup"):
+        assert absent not in text, absent
+    for cited in ("decision 34", "NOTES section 46", "p.33", "default branch"):
+        assert cited in text, cited
+    assert (TEMPLATE.parent / "plugin" / "ci" / "comment_dispatch.py").is_file()
 
 
 def test_abandon_workflow_records_the_end_state_without_a_model():

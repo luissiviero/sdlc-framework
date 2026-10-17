@@ -37,7 +37,15 @@ ALL_WORKFLOWS = (*PHASE_WORKFLOWS, "sdlc-digest.yml")
 RELEASE_WORKFLOW = "sdlc-release.yml"
 # the fix round and the abandon rule (decisions 22, 24, 25; plugin 0.2.13) cite step 30 too
 FIX_WORKFLOW, ABANDON_WORKFLOW = "sdlc-fix.yml", "sdlc-abandon.yml"
-EVERY_WORKFLOW = (*ALL_WORKFLOWS, RELEASE_WORKFLOW, FIX_WORKFLOW, ABANDON_WORKFLOW)
+# the comment dispatcher (decision 34, R17) takes the generic checks; its header cites p.33
+COMMENT_WORKFLOW = "sdlc-comment.yml"
+EVERY_WORKFLOW = (
+    *ALL_WORKFLOWS,
+    RELEASE_WORKFLOW,
+    FIX_WORKFLOW,
+    ABANDON_WORKFLOW,
+    COMMENT_WORKFLOW,
+)
 
 KEY_VAR, TOKEN_VAR = auth.API_KEY_VAR, auth.OAUTH_TOKEN_VAR
 FAKE_KEY = "placeholder-key"  # sdlc: allow-secret
@@ -364,7 +372,9 @@ def test_full_profile_needs_a_human_applied_approval_label(project, monkeypatch)
     text = (root / "sdlc.yaml").read_text(encoding="utf-8")
     (root / "sdlc.yaml").write_text(text.replace("profile: standard", "profile: full"), "utf-8")
     set_state(change, "c", gate_phase="c", gate_result="passed")
-    env = {"GITHUB_TOKEN": FAKE_TOKEN}
+    # decision 34 (amends 27): the label counts from the owner's account only, the
+    # repository owner here (tests/test_owner_rounds.py covers who else is refused)
+    env = {"GITHUB_TOKEN": FAKE_TOKEN, "GITHUB_REPOSITORY_OWNER": "luissiviero"}
     from pr import github
 
     monkeypatch.setattr(github, "gh_path", lambda: None)

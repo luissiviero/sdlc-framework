@@ -96,7 +96,7 @@ it, keeping the label; say in the PR body that the framework branch is `sdlc/000
 python "${CLAUDE_PLUGIN_ROOT}/plugin/state/cli.py" commit-phase --root "${CLAUDE_PROJECT_DIR}" --id 0000 --phase a --message "sdlc-init: connect the SDLC framework" --paths sdlc.yaml .claude/settings.json REVIEW.md CLAUDE.md changes ruff.toml evals bands.yaml lessons .github/workflows .github/scripts --start-point <default branch> --push
 ```
 (paths that do not exist, such as an uncreated `ruff.toml`, are skipped; `.github/workflows`
-and `.github/scripts` carry the twelve `sdlc-*.yml` workflows and `sdlc_pin.py` the install
+and `.github/scripts` carry the thirteen `sdlc-*.yml` workflows and `sdlc_pin.py` the install
 wrote — without them the merged project has no automation, and every pin step's `git show` of
 the script fails; a project's own workflow file already there rides along only if it was
 uncommitted, so commit the project's own work first). Then open the PR exactly as
@@ -123,6 +123,9 @@ files the owner should review (CLAUDE.md trim, settings). Merge = accept.
   Without it every phase job ends with "GitHub Actions is not permitted to create or
   approve pull requests" after the phase has run. The workflows also need the repository
   secret `CLAUDE_CODE_OAUTH_TOKEN` or `ANTHROPIC_API_KEY` (NOTES §2).
+- On an organization repository, set `owner: <your login>` in `sdlc.yaml` (decision 34);
+  otherwise no `@claude` comment or "Request changes" review starts a round and no
+  `sdlc:c-approved` or `sdlc:d-approved` label counts. A personal repository needs nothing.
 - The branch ruleset on the default branch (decision 4: only the owner merges; the
   automation identity has branch-only write access). The framework never creates it — a
   session must not be able to — and nothing but this rule keeps a session or a workflow

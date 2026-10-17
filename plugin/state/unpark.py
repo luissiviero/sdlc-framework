@@ -20,6 +20,10 @@ Rules:
 - the gate's ``owner_actions`` check (``plugin/gate/checks.py``) reads the recorded actor when
   the commit that carries the state change was authored by the automation identity.
 
+``is_owner_actor`` (decision 34) sits beside ``is_automation_actor``: the one rule, fail
+closed, for who starts a fix round (the ``@claude`` comment and the "Request changes"
+review) and who approves gates (c) and (d); the un-park labels keep the person rule above.
+
 ``github`` is injectable: an object with ``pr_by_number``, ``label_actor`` and ``set_labels``
 like ``plugin/pr/github.py``. No shell, no third-party dependency.
 """
@@ -27,7 +31,9 @@ like ``plugin/pr/github.py``. No shell, no third-party dependency.
 from __future__ import annotations
 
 import json
+import os
 import sys
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
@@ -63,6 +69,37 @@ def is_automation_actor(actor: str, identities: list[str]) -> bool:
     if not who or who.endswith("[bot]"):
         return True
     return any(who == i.strip().lower() for i in identities)
+
+
+def owner_login(config: dict[str, Any], env: Mapping[str, str] | None = None) -> str | None:
+    """The owner's account (decision 34, point 3): ``sdlc.yaml: owner`` when it names one (an
+    organization repository sets it), else the repository owner from the runner's
+    environment (``GITHUB_REPOSITORY_OWNER``, else the part of ``GITHUB_REPOSITORY`` before
+    ``/``), else None. ``config`` is the default branch's copy, the owner's guardrail."""
+    env = os.environ if env is None else env
+    named = (config or {}).get("owner")
+    if isinstance(named, str) and named.strip():
+        return named.strip()
+    owner = str(env.get("GITHUB_REPOSITORY_OWNER") or "").strip()
+    if owner:
+        return owner
+    repo = str(env.get("GITHUB_REPOSITORY") or "").strip()
+    head = repo.split("/", 1)[0].strip() if "/" in repo else ""
+    return head or None
+
+
+def is_owner_actor(
+    actor: str | None, config: dict[str, Any], env: Mapping[str, str] | None = None
+) -> bool:
+    """True only for the owner's account (decision 34): the one rule for who starts a fix
+    round and who approves gates (c) and (d). Fails closed: an empty actor, a ``[bot]`` or
+    the automation identity (even when ``owner:`` names it) and an unknown owner are False;
+    a workflow's ``if:`` keeps only a coarse check."""
+    who = str(actor or "").strip()
+    if not who or is_automation_actor(who, automation_identities(config or {})):
+        return False
+    owner = owner_login(config, env)
+    return owner is not None and who.lower() == owner.lower()
 
 
 def is_runner_reset(actor: str | None) -> bool:

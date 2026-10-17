@@ -22,7 +22,16 @@ judges each one by the same rule, and writes ``changes/<id>-<slug>/evidence/fix-
   A review without text is neither: its comments come through its threads;
 - ``head``: the commit the run started from, so a by-hand round reads the file only while it
   is current; ``unavailable``: the reason when a reader failed (the command then falls back
-  to ``gh`` with the same rule, as before).
+  to ``gh`` with the same rule, as before);
+- ``applied_earlier`` (decision 34, point 6): a PR comment cannot be resolved and a comment
+  review cannot be dismissed, so the round marks each request it applied with ``"applied":
+  true`` (``/sdlc-fix`` step 6) and the next round, before it rewrites the file, carries
+  every marked ``id`` and the earlier file's own ``applied_earlier`` forward: a review or a
+  PR comment with such an ``id`` goes to ``not_applied`` (``… applied by an earlier
+  round``), without its text. Review threads keep the resolved rule and are never carried;
+- ``trigger``: the link of the owner's ``@claude`` comment that started the round (the
+  dispatcher's ``trigger`` input, ``SDLC_TRIGGER``), null otherwise; until R11 the round's
+  record of what started it.
 
 The command's step 1 reads that file only, so the non-member's text is not in what the
 session reads; the session still holds ``Bash(gh *)``, so "read none from the PR yourself"
@@ -57,6 +66,8 @@ A_BOT = "not applied: a bot"
 AUTOMATION = "not applied: the automation identity"
 RESOLVED = "not applied: the thread is resolved"
 DISMISSED = "not applied: the review was dismissed"
+APPLIED_EARLIER = "not applied: applied by an earlier round"
+CARRIED_KINDS = ("review", "comment")  # what cannot be resolved or dismissed (decision 34)
 EXIT_OK, EXIT_FAILED, EXIT_USAGE = 0, 1, 2
 
 
@@ -87,14 +98,57 @@ def _entry(kind: str, item: dict[str, Any], **extra: Any) -> dict[str, Any]:
     }
 
 
+def _id_key(value: Any) -> str:
+    return str(value).strip()
+
+
+def applied_earlier(change_dir: Path) -> list[Any]:
+    """The ids an earlier round applied (decision 34, point 6), read from the committed
+    ``evidence/fix-requests.json`` before this round rewrites it: every review or PR comment
+    request marked ``"applied": true`` plus the file's own ``applied_earlier``. An absent or
+    unreadable file is an empty list: the first round reads everything."""
+    path = Path(change_dir) / art.EVIDENCE_DIR / FILE
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return []
+    if not isinstance(data, dict):
+        return []
+    found: dict[str, Any] = {}
+    earlier = data.get("applied_earlier")
+    for value in earlier if isinstance(earlier, list) else []:
+        if isinstance(value, (int, str)) and not isinstance(value, bool) and _id_key(value):
+            found.setdefault(_id_key(value), value)
+    requests = data.get("requests")
+    for entry in requests if isinstance(requests, list) else []:
+        if (
+            isinstance(entry, dict)
+            and entry.get("applied") is True
+            and entry.get("kind") in CARRIED_KINDS
+            and isinstance(entry.get("id"), (int, str))
+            and not isinstance(entry.get("id"), bool)
+            and _id_key(entry["id"])
+        ):
+            found.setdefault(_id_key(entry["id"]), entry["id"])
+    return sorted(found.values(), key=lambda v: (len(_id_key(v)), _id_key(v)))
+
+
 def partition(
     reviews: list[dict[str, Any]],
     threads: list[dict[str, Any]],
     comments: list[dict[str, Any]],
     identities: list[str],
+    carried: list[Any] | None = None,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """(requests, not_applied) from the three listings, in their own order: reviews, then
-    the threads' comments, then the PR comments."""
+    the threads' comments, then the PR comments. A review or PR comment whose ``id`` is in
+    ``carried`` (``applied_earlier``) is not applied again; a thread is never carried."""
+    done = {_id_key(value) for value in carried or []}
+
+    def earlier(item: dict[str, Any]) -> str | None:
+        ident = item.get("id")
+        return APPLIED_EARLIER if ident is not None and _id_key(ident) in done else None
+
     keep: list[dict[str, Any]] = []
     drop: list[dict[str, Any]] = []
 
@@ -116,7 +170,7 @@ def partition(
         judge(
             _entry("review", review, state=state),
             review,
-            DISMISSED if state == "DISMISSED" else None,
+            DISMISSED if state == "DISMISSED" else earlier(review),
         )
     for thread in threads:
         for comment in thread.get("comments") or []:
@@ -130,12 +184,17 @@ def partition(
             )
             judge(entry, comment, RESOLVED if thread.get("resolved") else None)
     for comment in comments:
-        judge(_entry("comment", comment), comment)
+        judge(_entry("comment", comment), comment, earlier(comment))
     return keep, drop
 
 
 def collect(
-    repo: str, number: int, github: Any, config: dict[str, Any], cwd: Path | None = None
+    repo: str,
+    number: int,
+    github: Any,
+    config: dict[str, Any],
+    cwd: Path | None = None,
+    carried: list[Any] | None = None,
 ) -> dict[str, Any]:
     """The three listings read and judged: {'ok', 'requests', 'not_applied', 'unavailable',
     'route'}. A reader that fails makes the whole collection unavailable (never a partial
@@ -150,7 +209,7 @@ def collect(
             return {"ok": False, "unavailable": reason, "requests": [], "not_applied": []}
     keep, drop = partition(
         reviews.get("reviews") or [], threads.get("threads") or [], comments.get("comments") or [],
-        identities,
+        identities, carried,
     )  # fmt: skip
     return {
         "ok": True,
@@ -201,6 +260,16 @@ def add_request(change_dir: Path, entry: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def round_fields(change_dir: Path, trigger: str | None = None) -> dict[str, Any]:
+    """What every rewrite of the file carries (decision 34): the ids earlier rounds applied,
+    read from the file about to be replaced, and the link of the comment that started this
+    round (null when the round was started another way)."""
+    return {
+        "applied_earlier": applied_earlier(change_dir),
+        "trigger": str(trigger).strip() if trigger and str(trigger).strip() else None,
+    }
+
+
 def collect_and_write(
     change_dir: Path,
     repo: str,
@@ -209,15 +278,18 @@ def collect_and_write(
     config: dict[str, Any],
     head: str | None,
     cwd: Path | None = None,
+    trigger: str | None = None,
 ) -> dict[str, Any]:
     """Collect, write the file and return a summary for the run's own output."""
-    result = collect(repo, number, github, config, cwd=cwd)
+    carried = round_fields(change_dir, trigger)
+    result = collect(repo, number, github, config, cwd=cwd, carried=carried["applied_earlier"])
     data = {
         "schema_version": SCHEMA_VERSION,
         "repo": repo,
         "pr_number": int(number),
         "head": head,
         "collected_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        **carried,
         **result,
     }
     path = write(change_dir, data)
