@@ -71,11 +71,14 @@ def is_automation_actor(actor: str, identities: list[str]) -> bool:
     return any(who == i.strip().lower() for i in identities)
 
 
-def owner_login(config: dict[str, Any], env: Mapping[str, str] | None = None) -> str | None:
+def owner_login(
+    config: dict[str, Any], env: Mapping[str, str] | None = None, repo: str | None = None
+) -> str | None:
     """The owner's account (decision 34, point 3): ``sdlc.yaml: owner`` when it names one (an
     organization repository sets it), else the repository owner from the runner's
     environment (``GITHUB_REPOSITORY_OWNER``, else the part of ``GITHUB_REPOSITORY`` before
-    ``/``), else None. ``config`` is the default branch's copy, the owner's guardrail."""
+    ``/``), else the owner part of ``repo`` (the caller's ``owner/name``), else None.
+    ``config`` is the default branch's copy, the owner's guardrail."""
     env = os.environ if env is None else env
     named = (config or {}).get("owner")
     if isinstance(named, str) and named.strip():
@@ -83,13 +86,19 @@ def owner_login(config: dict[str, Any], env: Mapping[str, str] | None = None) ->
     owner = str(env.get("GITHUB_REPOSITORY_OWNER") or "").strip()
     if owner:
         return owner
-    repo = str(env.get("GITHUB_REPOSITORY") or "").strip()
-    head = repo.split("/", 1)[0].strip() if "/" in repo else ""
-    return head or None
+    for full in (env.get("GITHUB_REPOSITORY"), repo):
+        text = str(full or "").strip()
+        head = text.split("/", 1)[0].strip() if "/" in text else ""
+        if head:
+            return head
+    return None
 
 
 def is_owner_actor(
-    actor: str | None, config: dict[str, Any], env: Mapping[str, str] | None = None
+    actor: str | None,
+    config: dict[str, Any],
+    env: Mapping[str, str] | None = None,
+    repo: str | None = None,
 ) -> bool:
     """True only for the owner's account (decision 34): the one rule for who starts a fix
     round and who approves gates (c) and (d). Fails closed: an empty actor, a ``[bot]`` or
@@ -98,7 +107,7 @@ def is_owner_actor(
     who = str(actor or "").strip()
     if not who or is_automation_actor(who, automation_identities(config or {})):
         return False
-    owner = owner_login(config, env)
+    owner = owner_login(config, env, repo)
     return owner is not None and who.lower() == owner.lower()
 
 

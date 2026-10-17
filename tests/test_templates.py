@@ -532,6 +532,16 @@ def test_fix_workflow_refuses_fork_heads_and_takes_the_comment_s_link():
     review, label = job["if"].split("github.event_name == 'pull_request' &&", 1)
     assert fork in review.split("github.event_name == 'pull_request_review'", 1)[1]
     assert fork in label
+    # the R17 review: a refused review must not enter the concurrency group and displace a
+    # pending round, so on a personal repository the condition names the owner itself; an
+    # organization's owner is named in sdlc.yaml, which an expression cannot read
+    exact = (
+        "(github.event.review.user.login == github.repository_owner || "
+        "github.event.repository.owner.type == 'Organization')"
+    )
+    assert exact in review and exact not in label
+    text = (WORKFLOW_DIR / FIX_WORKFLOW).read_text(encoding="utf-8")
+    assert "a known limit" in text and "Known limit (decision 34)" in text
     trigger = _triggers(data)["workflow_dispatch"]["inputs"]["trigger"]
     assert trigger["required"] is False and trigger["type"] == "string"
     assert "@claude" in trigger["description"] and "decision 34" in trigger["description"]

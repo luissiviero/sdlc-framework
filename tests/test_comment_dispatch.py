@@ -300,3 +300,59 @@ def test_pr_by_number_shapes_the_head_repository(monkeypatch):
     assert github.pr_by_number(REPO, 7)["head_repo"] == "someone/app"
     answer["head"]["repo"] = None  # the head repository was deleted
     assert github.pr_by_number(REPO, 7)["head_repo"] is None
+
+
+# --- an upgraded project's older sdlc-fix.yml has no trigger input ------------------------------
+def _sender(answers):
+    sent = []
+
+    def send(repo, workflow, ref, change_id, head_ref, extra_inputs=None):
+        sent.append(extra_inputs)
+        return answers[len(sent) - 1]
+
+    return sent, send
+
+
+def test_a_422_for_the_trigger_input_is_sent_again_without_it(tmp_path, capsys):
+    root = checkout(tmp_path)
+    env = environment(tmp_path, payload())
+    sent, send = _sender(
+        [{"ok": False, "status": 422, "reason": "Unexpected inputs provided"}, {"ok": True}]
+    )
+    capsys.readouterr()
+    assert cd.run(root, REPO, env, FakeGitHub(), send) == cd.EXIT_OK
+    assert sent == [{"trigger": LINK}, None]
+    assert capsys.readouterr().out.strip() == (
+        "comment-dispatch: dispatched sdlc-fix.yml for 0003 on claude/intent-x (trigger not "
+        "recorded: this project's sdlc-fix.yml predates the trigger input; reinstall it)"
+    )
+
+
+@pytest.mark.parametrize(
+    "answers",
+    [
+        [{"ok": False, "status": 422, "reason": "x"}, {"ok": False, "status": 422, "reason": "y"}],
+        [{"ok": False, "status": 403, "reason": "Resource not accessible"}],
+        [{"ok": False, "status": 500, "reason": "boom"}],
+    ],
+)
+def test_any_other_dispatch_failure_stays_red(tmp_path, capsys, answers):
+    root = checkout(tmp_path)
+    sent, send = _sender(answers)
+    capsys.readouterr()
+    assert cd.run(root, REPO, environment(tmp_path, payload()), FakeGitHub(), send) == 1
+    assert len(sent) == len(answers)  # one retry, and only on a 422 with the trigger
+    assert "comment-dispatch: failed: sdlc-fix.yml could not be dispatched" in (
+        capsys.readouterr().err
+    )
+
+
+def test_run_phase_dispatch_reports_the_http_status(monkeypatch):
+    from pr import github
+
+    monkeypatch.setattr(github, "token", lambda: "placeholder-token")  # sdlc: allow-secret
+    monkeypatch.setattr(
+        github, "_request", lambda *a, **k: {"status": 422, "error": "Unexpected inputs"}
+    )
+    out = run_phase.dispatch(REPO, "sdlc-fix.yml", "main", "0003", "x", {"trigger": LINK})
+    assert out == {"ok": False, "status": 422, "reason": "Unexpected inputs"}

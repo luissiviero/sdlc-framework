@@ -382,10 +382,10 @@ def check_approval(
     if not ok:
         return f"{label} on PR #{number}: {who}"
     try:
-        config = _approved_config(root)
+        config = owner_config(root, env)
     except ConfigError as exc:  # fail closed, as the guard refuses on it
         return f"{label} on PR #{number} cannot be judged: {exc}"
-    if not is_owner_actor(who, config, env):
+    if not is_owner_actor(who, config, env, repo):
         return (
             f"{label} on PR #{number} was applied by {who}, not by the owner's account "
             "(decision 34)"
@@ -865,10 +865,10 @@ def review_refusal(root: Path, repo: str, env: dict[str, str]) -> str | None:
     user = review.get("user") if isinstance(review.get("user"), dict) else {}
     login = str(user.get("login") or "")
     try:
-        config = _approved_config(root)
+        config = owner_config(root, env)
     except ConfigError as exc:
-        return f"{exc}: nothing runs until it is fixed"
-    if not is_owner_actor(login, config, env):
+        return f"the review cannot be judged: {exc}"
+    if not is_owner_actor(login, config, env, repo):
         who = login or "an unknown account"
         return f"the review is by {who}, not the owner's account (decision 34)"
     pull = payload.get("pull_request") if isinstance(payload.get("pull_request"), dict) else {}
@@ -994,6 +994,26 @@ def _approved_config(root: Path) -> dict[str, Any]:
     if not isinstance(data, dict):
         raise ConfigError(f"{SDLC_FILE} on the default branch is not a mapping")
     return data
+
+
+OWNER_COPY_MISSING = (
+    "the default branch's sdlc.yaml cannot be located on the runner, so the owner's account "
+    "cannot be judged (decision 34)"
+)
+
+
+def owner_config(root: Path, env: dict[str, str]) -> dict[str, Any]:
+    """The ``sdlc.yaml`` the owner check reads (decision 34): ``_approved_config``, but on a
+    runner (``GITHUB_ACTIONS``) only the default branch's copy counts. Where that copy cannot
+    be located (no remote-tracking ref, or no ``sdlc.yaml`` on it) ``_approved_config`` falls
+    back to the checkout's copy, which on a review or label run is the pull request's head:
+    a head writing ``owner: <itself>`` would name its own approver. That case raises
+    ``ConfigError`` (fail closed); ``_approved_config``'s other callers are unchanged."""
+    if env.get("GITHUB_ACTIONS"):
+        ref = _approved_ref(root)
+        if ref is None or gate_diff.file_at(root, ref, SDLC_FILE) is None:
+            raise ConfigError(OWNER_COPY_MISSING)
+    return _approved_config(root)
 
 
 class ApprovedCopyUnreadable(RuntimeError):
@@ -1916,6 +1936,9 @@ def _run_phase(args, env: dict[str, str], track: dict[str, Any]) -> int:
     panel_before = len(panel_ledger.load_ledger(change_dir, gate_phase))
     # decision 29: the runner's own round and reset records, which the session must not write
     runner_files = auto_round.snapshot_runner_files(change_dir)
+    # decision 34: the round's requests file as the runner wrote it; the session may only
+    # mark the requests it applied (``fix_requests.keep_marks_only`` after the session)
+    requests_before = fix_requests.snapshot(change_dir) if phase == "fix" else None
     data, raw, err, code = invoke(argv, root, session_env(env, root), run_timeout_seconds(config))
     result_path, stderr_path = run_record_paths(change_dir, phase)
     store_result(change_dir, phase, data, raw, result_path)
@@ -1936,6 +1959,9 @@ def _run_phase(args, env: dict[str, str], track: dict[str, Any]) -> int:
     # and parked on when the session created, changed or deleted one
     owner["mismatches"] += auto_round.runner_file_mismatches(change_dir, runner_files)
     owner["ok"] = not owner["mismatches"]
+    marks_note = fix_requests.keep_marks_only(change_dir, requests_before)
+    if marks_note:  # restored, not a park: the round's own work stands
+        print(marks_note, file=sys.stderr)
     for line in owner["overrides_changed"]:
         print(f"status.yaml: {line}", file=sys.stderr)
     # the session's own branch is the one the runner prepared, never the one it ends on (the
@@ -1956,6 +1982,7 @@ def _run_phase(args, env: dict[str, str], track: dict[str, Any]) -> int:
             store_result(change_dir, phase, data, raw, result_path)
             store_stderr(change_dir, phase, err, stderr_path)
             auto_round.runner_file_mismatches(change_dir, runner_files)  # restored again
+            fix_requests.keep_marks_only(change_dir, requests_before)
             if isinstance(cost, (int, float)):
                 record_spend(
                     plugin_dir, root, change_id, gate_phase, float(cost),
@@ -2749,11 +2776,20 @@ def collect_fix_requests(
 
     Decision 34: the link of the owner's ``@claude`` comment that started the round
     (``SDLC_TRIGGER``, the dispatcher's ``trigger`` input) is written as the file's
-    ``trigger`` and printed once; the ids earlier rounds applied are carried forward as
-    ``applied_earlier`` on every rewrite, an unavailable one included."""
-    trigger = str(env.get("SDLC_TRIGGER") or "").strip() or None
+    ``trigger`` and printed once, only when it is a comment link of ``repo``
+    (``fix_requests.trigger_link``; anything else is dropped with a note and never printed);
+    what earlier rounds applied is carried forward as ``applied_earlier`` on every rewrite,
+    an unavailable one included."""
+    given = str(env.get("SDLC_TRIGGER") or "").strip()
+    trigger = fix_requests.trigger_link(given, repo)
     if trigger:
         print(f"fix round started by {trigger}", file=sys.stderr)
+    elif given:
+        print(
+            "the trigger input is not a comment link of this repository's pull requests: "
+            "dropped, not recorded (decision 34)",
+            file=sys.stderr,
+        )
     number = _pr_number(pr_number)
     github = _github()
     head = gate_diff.head_sha(root) if gate_diff.is_repo(root) else None

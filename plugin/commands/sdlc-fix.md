@@ -224,7 +224,8 @@ never removed by it. **Never post a PR comment, reply, review or
 write `changes/<id>-<slug>/evidence/fix-response.md`: one line per request — what changed
 and the commit, or why it was not applied — and commit it with the evidence; it is in the
 PR diff and the report. In `evidence/fix-requests.json`, set `"applied": true` on each entry
-of `requests` you applied and commit the file with the evidence: a PR comment cannot be
+of `requests` you applied, change nothing else in it (in CI the runner puts back any other
+change), and commit the file with the evidence: a PR comment cannot be
 resolved and a comment review cannot be dismissed, so the next round lists them under
 `not_applied` by that mark (decision 34). Resolve nothing on the owner's behalf. The second
 occurrence of a review finding is detected by `review/cli.py validate` and lands in the PR's "Proposed

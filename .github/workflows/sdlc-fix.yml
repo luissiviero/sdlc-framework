@@ -29,12 +29,15 @@
 # with the change id and the head branch (0.3.2; the framework's change 0001, 2026-10-02).
 #
 # Reviewer rule: a review starts a round only when its author is the owner's account
-# (decision 34), and never on a head in another repository (a fork). The job condition keeps
-# the coarse member check (author_association OWNER, MEMBER or COLLABORATOR) because on an
-# organization repository the owner's association is not always OWNER; the exact check is
-# the find step's (run_phase.py --find-change reads the review's author from the event
-# payload and judges it with is_owner_actor against the default branch's sdlc.yaml), so a
-# refused round installs nothing and runs no model. On a public repository anyone with read
+# (decision 34), and never on a head in another repository (a fork). On a personal
+# repository the job condition already requires the repository owner, so a refused review
+# never enters the concurrency group (the 1.0.3 promise below). On an organization
+# repository the condition keeps only the member check (author_association OWNER, MEMBER or
+# COLLABORATOR: the owner's association is not always OWNER, and the owner's account is named
+# in sdlc.yaml, which an expression cannot read); there a member's review enters the group,
+# a known limit. The exact check is the find step's on both (run_phase.py --find-change
+# reads the review's author from the event payload and judges it with is_owner_actor against
+# the default branch's sdlc.yaml), so a refused round installs nothing and runs no model. On a public repository anyone with read
 # access can request changes, and the review's words would reach this privileged run (the
 # sample repository's weekly security review, 2026-09-25); a label already needs triage or
 # write permission.
@@ -83,8 +86,10 @@ jobs:
     # A review counts when it asks for changes and a person who is a member of the
     # repository submitted it (the review's state is lower-case in the event payload; a
     # `[bot]` reviewer never starts a round; CONTRIBUTOR, FIRST_TIME_CONTRIBUTOR, FIRST_TIMER
-    # and NONE are refused): the coarse filter, the owner's account is checked by the find
-    # step (decision 34). A review or a label on a head in another repository (a fork) never
+    # and NONE are refused). Decision 34: on a personal repository the reviewer must be the
+    # repository owner here already; on an organization repository (whose owner names an
+    # account in sdlc.yaml: owner) any member passes this filter and the find step makes the
+    # exact check. A review or a label on a head in another repository (a fork) never
     # counts. A label counts only when it is one of the owner's three un-park verbs; the gate
     # labels sdlc:c-approved and sdlc:d-approved have their own workflows.
     if: >-
@@ -93,6 +98,8 @@ jobs:
       github.event.pull_request.head.repo.full_name == github.repository &&
       github.event.review.state == 'changes_requested' &&
       !endsWith(github.event.review.user.login, '[bot]') &&
+      (github.event.review.user.login == github.repository_owner ||
+      github.event.repository.owner.type == 'Organization') &&
       (github.event.review.author_association == 'OWNER' ||
       github.event.review.author_association == 'MEMBER' ||
       github.event.review.author_association == 'COLLABORATOR')) ||
@@ -103,8 +110,12 @@ jobs:
       github.event.label.name == 'sdlc:unlock-tests')) }}
     # 1.0.3 (decision 29): the group is the job's, not the workflow's, so an event whose job
     # is skipped by the condition above (a comment-only review, another label) never enters
-    # it and cannot cancel a pending run - the automatic fix round the runner dispatched
-    # among them. Job and workflow groups of one name are one group in the repository.
+    # it and cannot cancel a pending run - the automatic fix round the runner dispatched, or
+    # a round an @claude comment dispatched (decision 34), among them. Job and workflow
+    # groups of one name are one group in the repository. Known limit (decision 34): on an
+    # organization repository a member's "Request changes" review passes the condition,
+    # enters the group and may displace a pending run before the find step refuses it; on
+    # a personal repository only the owner's review enters it.
     concurrency:
       group: "sdlc-${{ inputs.head_ref || github.event.pull_request.head.ref }}"
       cancel-in-progress: false

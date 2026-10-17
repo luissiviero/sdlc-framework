@@ -20,6 +20,7 @@ from tests.test_ci import FAKE_TOKEN, Args, FixGitHub, set_state, skip_reason
 # the fixture of tests/test_ci.py, used here by name
 project = ci_tests.project
 
+REVIEW_2, COMMENT_31 = {"kind": "review", "id": 2}, {"kind": "comment", "id": 31}
 OWNER_ENV = {"GITHUB_REPOSITORY_OWNER": "luissiviero", "GITHUB_REPOSITORY": "luissiviero/app"}
 
 
@@ -280,7 +281,7 @@ def test_a_request_an_earlier_round_applied_is_not_applied_again(project):
     # round 1 applied the review, the PR comment 31 and the thread comment 11; not 32
     _mark_applied(change, {("review", 2), ("comment", 31), ("review_comment", 11)})
     second = _round(change, gh)
-    assert second["applied_earlier"] == [2, 31]
+    assert second["applied_earlier"] == [COMMENT_31, REVIEW_2]
     assert [(r["kind"], r["id"]) for r in second["requests"]] == [
         ("review_comment", 11),  # an unresolved thread stays a request: threads are not carried
         ("review_comment", 31),  # a thread comment is never carried, whatever its id
@@ -295,7 +296,7 @@ def test_a_request_an_earlier_round_applied_is_not_applied_again(project):
     assert second["not_applied"][1]["chars"] == len("@claude fix the docs")
     # round 2 marks nothing; round 3 still skips 2 and 31 through applied_earlier
     third = _round(change, gh)
-    assert third["applied_earlier"] == [2, 31]
+    assert third["applied_earlier"] == [COMMENT_31, REVIEW_2]
     assert [r["id"] for r in third["not_applied"]] == [2, 31]
     assert fix_requests.APPLIED_EARLIER == "not applied: applied by an earlier round"
 
@@ -331,12 +332,14 @@ def test_the_round_records_the_comment_that_started_it(project, monkeypatch, cap
     _mark_applied(change, {("comment", 31)})
     run_phase.collect_fix_requests(root, change, {}, "owner/name", "7", {"GITHUB_TOKEN": "t"})
     data = json.loads(path.read_text(encoding="utf-8"))
-    assert data["trigger"] is None and data["applied_earlier"] == [31]
+    assert data["trigger"] is None and data["applied_earlier"] == [COMMENT_31]
     # no route: the file says unavailable and still carries what earlier rounds applied
-    out = run_phase.collect_fix_requests(root, change, {}, "", "7", {"SDLC_TRIGGER": link})
+    out = run_phase.collect_fix_requests(
+        root, change, {}, "owner/name", "7", {"SDLC_TRIGGER": link}
+    )
     data = json.loads(path.read_text(encoding="utf-8"))
     assert out["ok"] is False and data["unavailable"] == out["unavailable"]
-    assert data["applied_earlier"] == [31] and data["trigger"] == link
+    assert data["applied_earlier"] == [COMMENT_31] and data["trigger"] == link
 
 
 # --- the dispatch carries extra inputs without changing the existing call ----------------------
@@ -363,3 +366,217 @@ def test_dispatch_adds_extra_inputs_and_keeps_the_two_it_always_sends(monkeypatc
         "head_ref": "sdlc/0001/c",
         "trigger": "https://x/1",
     }
+
+
+# --- the review round's fix: a request is carried by its kind and id ------------------------
+def test_a_carried_comment_id_does_not_skip_a_review_with_the_same_id(project):
+    """Review ids and comment ids come from separate sequences: a PR comment applied earlier
+    never hides a review that happens to share its number."""
+    _root, change = project
+    gh = _gh_with_requests()
+    _round(change, gh)
+    _mark_applied(change, {("comment", 31)})
+    gh.reviews["reviews"].append(
+        {"id": 31, "author": "luissiviero", "type": "User", "association": "OWNER",
+         "state": "COMMENTED", "body": "a review numbered 31", "at": "t", "url": "u-r31"}
+    )  # fmt: skip
+    data = _round(change, gh)
+    assert data["applied_earlier"] == [COMMENT_31]
+    assert ("review", 31) in [(r["kind"], r["id"]) for r in data["requests"]]
+    assert [(r["kind"], r["id"]) for r in data["not_applied"]] == [("comment", 31)]
+    # an earlier file in the first round's id-only shape carries nothing
+    path = change / "evidence" / "fix-requests.json"
+    path.write_text(json.dumps({"applied_earlier": [31, "2"], "requests": []}), "utf-8")
+    assert fix_requests.applied_earlier(change) == []
+
+
+# --- the trigger is a comment link of this repository, or nothing ---------------------------
+def test_a_trigger_that_is_not_this_repository_s_comment_link_is_dropped_unprinted(
+    project, monkeypatch, capsys
+):
+    _root, change = project
+    monkeypatch.setattr(run_phase, "_github", lambda: _gh_with_requests())
+    path = change / "evidence" / "fix-requests.json"
+    for bad in (
+        "https://github.com/other/repo/pull/7#issuecomment-31",
+        "https://github.com/owner/name/pull/7",
+        "::warning::forged https://github.com/owner/name/pull/7#issuecomment-31",
+        "https://github.com/owner/name/pull/7#issuecomment-31\n::set-output name=x::y",
+        "javascript:alert(1)",
+    ):
+        env = {"GITHUB_TOKEN": FAKE_TOKEN, "SDLC_TRIGGER": bad}
+        capsys.readouterr()
+        run_phase.collect_fix_requests(_root, change, {}, "owner/name", "7", env)
+        err = capsys.readouterr().err
+        assert bad not in err and "::" not in err and "other/repo" not in err, bad
+        assert "the trigger input is not a comment link" in err
+        assert json.loads(path.read_text(encoding="utf-8"))["trigger"] is None
+    good = "https://github.com/Owner/Name/pull/7#issuecomment-31"
+    assert fix_requests.trigger_link(good, "owner/name") == good
+    assert fix_requests.trigger_link(good, "") is None
+
+
+# --- the session may only mark what it applied ------------------------------------------------
+def _session_edit(change, edit) -> None:
+    path = change / "evidence" / "fix-requests.json"
+    data = json.loads(path.read_text(encoding="utf-8"))
+    edit(data)
+    path.write_text(json.dumps(data, indent=4), encoding="utf-8")
+
+
+def test_the_session_s_applied_marks_are_kept_and_nothing_else(project):
+    _root, change = project
+    gh = _gh_with_requests()
+    before = _round(change, gh)
+    snap = fix_requests.snapshot(change)
+    assert snap == before
+
+    def legit(data):  # step 6: marks on a review and a PR comment, reformatted
+        for entry in data["requests"]:
+            if (entry["kind"], entry["id"]) in {("review", 2), ("comment", 32)}:
+                entry["applied"] = True
+
+    _session_edit(change, legit)
+    assert fix_requests.keep_marks_only(change, snap) is None
+    marked = json.loads((change / "evidence" / "fix-requests.json").read_text("utf-8"))
+    assert [(r["kind"], r["id"]) for r in marked["requests"] if r.get("applied")] == [
+        ("review", 2),
+        ("comment", 32),
+    ]
+
+    def forged(data):
+        legit(data)
+        data["applied_earlier"] = [{"kind": "comment", "id": 31}]  # hides the @claude ask
+        data["requests"] = [r for r in data["requests"] if r["id"] != 11]  # drops a thread
+        data["requests"][0]["body"] = "rewritten"
+        for entry in data["requests"]:
+            if entry["kind"] == "review_comment":
+                entry["applied"] = True  # a thread is never marked
+        data["requests"].append({"kind": "comment", "id": 99, "applied": True})
+
+    _session_edit(change, forged)
+    line = fix_requests.keep_marks_only(change, snap)
+    assert line == (
+        "evidence/fix-requests.json: the session changed more than the applied marks; the "
+        "runner's copy is restored with 2 mark(s) kept (decision 34)"
+    )
+    restored = json.loads((change / "evidence" / "fix-requests.json").read_text("utf-8"))
+    expected = json.loads(json.dumps(snap))
+    for entry in expected["requests"]:
+        if (entry["kind"], entry["id"]) in {("review", 2), ("comment", 32)}:
+            entry["applied"] = True
+    assert restored == expected
+    # a deleted or broken file comes back too
+    (change / "evidence" / "fix-requests.json").write_text("{broken", encoding="utf-8")
+    assert fix_requests.keep_marks_only(change, snap)
+    assert fix_requests.snapshot(change) == snap
+    assert fix_requests.keep_marks_only(change, None) is None  # nothing written before
+
+
+def test_the_fix_round_restores_a_forged_requests_file_after_the_session(
+    project, tmp_path, monkeypatch, capsys
+):
+    """The runner snapshots the file it wrote before the session and, after the session and
+    before anything is committed, keeps only the session's legitimate marks."""
+    import os
+
+    root, change = project
+    order = ci_tests._fix_round(root, change, tmp_path, monkeypatch)
+    gh = _gh_with_requests()
+    monkeypatch.setattr(run_phase, "_github", lambda: gh)
+    path = change / "evidence" / "fix-requests.json"
+
+    def session(argv, root_, env, timeout):
+        order.append("invoke")
+        data = json.loads(path.read_text(encoding="utf-8"))
+        for entry in data["requests"]:
+            if (entry["kind"], entry["id"]) == ("comment", 32):
+                entry["applied"] = True
+        data["applied_earlier"] = [{"kind": "comment", "id": 31}]
+        path.write_text(json.dumps(data), encoding="utf-8")
+        return (None, "", "boom", 1)
+
+    monkeypatch.setattr(run_phase, "invoke", session)
+    args = Args(root=str(root), phase="fix", head_ref="sdlc/0001/b", pr_number="7", dry_run=False)
+    env = dict(os.environ, **ci_tests.KEY_ENV, GITHUB_TOKEN=FAKE_TOKEN)
+    env.pop("GITHUB_ACTIONS", None)
+    capsys.readouterr()
+    assert run_phase.run_phase(args, env) == run_phase.EXIT_FAILED  # the fake session failed
+    assert "invoke" in order
+    assert "the session changed more than the applied marks" in capsys.readouterr().err
+    data = json.loads(path.read_text(encoding="utf-8"))
+    assert data["applied_earlier"] == []
+    assert [(r["kind"], r["id"]) for r in data["requests"] if r.get("applied")] == [("comment", 32)]
+
+
+# --- the owner check reads the default branch's sdlc.yaml, never the head's --------------------
+def _head_names_its_own_owner(root, tmp_path):
+    ci_tests.with_remote(root, tmp_path)  # main carries sdlc.yaml without an owner key
+    ci_tests.git(root, "checkout", "-q", "-b", "sdlc/0001/b")
+    text = (root / "sdlc.yaml").read_text(encoding="utf-8")
+    (root / "sdlc.yaml").write_text(text + "\nowner: colleague\n", "utf-8")
+    ci_tests.git(root, "commit", "-q", "-am", "the head names its own owner")
+
+
+def test_a_head_s_owner_key_is_ignored_by_the_review_check(project, tmp_path, capsys):
+    root, _change = project
+    _head_names_its_own_owner(root, tmp_path)
+    event = _review_event(tmp_path, "colleague", "owner/name")
+    env = {
+        **OWNER_ENV,
+        "GITHUB_ACTIONS": "true",
+        "GITHUB_EVENT_NAME": "pull_request_review",
+        "GITHUB_EVENT_PATH": str(event),
+    }
+    _code, printed, output = _find(root, tmp_path, env, capsys)
+    assert output == "change_id=\n"
+    assert "the review is by colleague, not the owner's account" in printed
+
+
+def test_on_a_runner_without_the_default_branch_s_copy_the_owner_is_not_judged(
+    project, tmp_path, capsys, monkeypatch
+):
+    """No remote-tracking ref: ``_approved_config`` would read the checkout's copy, the PR
+    head's on a review run. On a runner the owner check refuses instead; by hand it reads
+    the checkout as before."""
+    root, change = project
+    text = (root / "sdlc.yaml").read_text(encoding="utf-8")
+    (root / "sdlc.yaml").write_text(text + "\nowner: colleague\n", "utf-8")
+    event = _review_event(tmp_path, "colleague", "owner/name")
+    review = {"GITHUB_EVENT_NAME": "pull_request_review", "GITHUB_EVENT_PATH": str(event)}
+    _code, printed, output = _find(root, tmp_path, {**review, "GITHUB_ACTIONS": "true"}, capsys)
+    assert output == "change_id=\n"
+    assert "the review cannot be judged: " + run_phase.OWNER_COPY_MISSING in printed
+    _code, _printed, output = _find(root, tmp_path, review, capsys)
+    assert output == "change_id=0001\n"  # by hand: the checkout's copy is the owner's
+    # the (c)/(d) label is judged the same way
+    (root / "sdlc.yaml").write_text(text, "utf-8")
+    _full_profile_with_label(root, change, monkeypatch, "luissiviero")
+    env = {"GITHUB_TOKEN": FAKE_TOKEN, "GITHUB_ACTIONS": "true", **OWNER_ENV}
+    reason = run_phase.check_approval(root, "owner/name", "0001", "d", env)
+    assert reason == f"sdlc:c-approved on PR #7 cannot be judged: {run_phase.OWNER_COPY_MISSING}"
+
+
+def test_an_unreadable_sdlc_yaml_refuses_the_review_and_the_label(
+    project, tmp_path, capsys, monkeypatch
+):
+    root, change = project
+    _full_profile_with_label(root, change, monkeypatch, "luissiviero")
+    (root / "sdlc.yaml").write_text("profile: full\n  max_turns: 5\n", "utf-8")
+    env = {"GITHUB_TOKEN": FAKE_TOKEN, **OWNER_ENV}
+    reason = run_phase.check_approval(root, "owner/name", "0001", "d", env)
+    assert reason.startswith("sdlc:c-approved on PR #7 cannot be judged: sdlc.yaml")
+    event = _review_event(tmp_path, "luissiviero", "owner/name")
+    review = {**OWNER_ENV, "GITHUB_EVENT_NAME": "pull_request_review"}
+    _code, printed, output = _find(
+        root, tmp_path, {**review, "GITHUB_EVENT_PATH": str(event)}, capsys
+    )
+    assert output == "change_id=\n" and "the review cannot be judged: sdlc.yaml" in printed
+
+
+def test_the_owner_falls_back_to_the_repository_the_caller_names():
+    assert unpark.owner_login({}, {}, "luissiviero/app") == "luissiviero"
+    assert unpark.owner_login({}, {"GITHUB_REPOSITORY_OWNER": "x"}, "luissiviero/app") == "x"
+    assert unpark.owner_login({"owner": "alice"}, {}, "luissiviero/app") == "alice"
+    assert unpark.is_owner_actor("luissiviero", {}, {}, "luissiviero/app") is True
+    assert unpark.is_owner_actor("luissiviero", {}, {}, "no-slash") is False

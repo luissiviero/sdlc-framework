@@ -29,6 +29,9 @@ Then it dispatches ``sdlc-fix.yml`` on the default branch with ``change_id``, ``
 
 Output: one line, ``comment-dispatch: skipped: <reason>`` or ``comment-dispatch: dispatched
 sdlc-fix.yml for <id> on <head>``, on stdout and in ``$GITHUB_STEP_SUMMARY``; exit 0. A
+project's older ``sdlc-fix.yml`` without the ``trigger`` input (``/sdlc-init`` never
+overwrites a workflow) answers the dispatch with HTTP 422: it is sent once more without the
+input, and the line says the trigger was not recorded. A
 payload that cannot be read, an unreadable ``sdlc.yaml`` or a failed API call (the pull
 request, its files, the dispatch) exits 1: a red run, never a silent skip.
 """
@@ -56,6 +59,10 @@ EXIT_OK, EXIT_FAILED, EXIT_USAGE = 0, 1, 2
 EVENT = "issue_comment"
 PREFIX_RE = re.compile(r"@claude(?!\w)", re.IGNORECASE)
 LINE = "comment-dispatch: {what}"
+UNDECLARED_INPUT_STATUS = 422  # GitHub's answer to a dispatch input the workflow lacks
+TRIGGER_NOT_RECORDED = (
+    " (trigger not recorded: this project's sdlc-fix.yml predates the trigger input; reinstall it)"
+)
 
 
 class DispatchError(RuntimeError):
@@ -116,7 +123,7 @@ def decide(
         return {"skip": refused}
     comment = _dict(payload.get("comment"))
     login = str(_dict(comment.get("user")).get("login") or "")
-    if not is_owner_actor(login, config, env):
+    if not is_owner_actor(login, config, env, repo):
         return {"skip": "the comment is not the owner's account's (decision 34)"}
     number = run_phase._pr_number(_dict(payload.get("issue")).get("number"))
     if number is None:
@@ -196,9 +203,15 @@ def run(root: Path, repo: str, env: Mapping[str, str], github: Any = None, send:
         if not ref:
             raise DispatchError("no default branch to dispatch sdlc-fix.yml on")
         extra = {"trigger": found["trigger"]} if found["trigger"] else None
-        sent = send(
-            repo, auto_round.FIX_WORKFLOW, ref, found["change_id"], found["head_ref"], extra
-        )
+        args = (repo, auto_round.FIX_WORKFLOW, ref, found["change_id"], found["head_ref"])
+        sent = send(*args, extra)
+        if extra and not sent.get("ok") and sent.get("status") == UNDECLARED_INPUT_STATUS:
+            # an upgraded project keeps its older sdlc-fix.yml (/sdlc-init never overwrites),
+            # and GitHub refuses an input the workflow does not declare: the round still runs
+            sent = send(*args, None)
+            note = TRIGGER_NOT_RECORDED
+        else:
+            note = ""
         if not sent.get("ok"):
             why = sent.get("reason") or sent.get("status") or "failed"
             raise DispatchError(f"{auto_round.FIX_WORKFLOW} could not be dispatched: {why}")
@@ -206,7 +219,7 @@ def run(root: Path, repo: str, env: Mapping[str, str], github: Any = None, send:
         _say(f"failed: {exc}", env, stream=sys.stderr)
         return EXIT_FAILED
     head = found["head_ref"]
-    _say(f"dispatched {auto_round.FIX_WORKFLOW} for {found['change_id']} on {head}", env)
+    _say(f"dispatched {auto_round.FIX_WORKFLOW} for {found['change_id']} on {head}{note}", env)
     return EXIT_OK
 
 
