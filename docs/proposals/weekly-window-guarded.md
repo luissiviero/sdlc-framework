@@ -1,0 +1,136 @@
+---
+type: Proposal
+title: The weekly window is guarded — every limit parks, a weekly ceiling and a budget per change, the spend visible, overspends learned from without raising budgets by themselves
+description: The gate's limits and the owner's reset label stay; every outer bound (the turn limit, the CLI's budget stop, the runner's timeout) parks the change like the gate's limits instead of a red run; a weekly ceiling in sdlc.yaml bounds the estimated spend of all CI runs over a rolling 7 days, and a budget per change, suggested by a deterministic step from past real-size spend, is accepted or edited in the design approval; each session gets what is left of the two; the spend is shown on the PR and in the digest; an overspend writes a lesson whose cause the owner sets, and only real size feeds a later suggestion; the manager may reset the iteration count once per change when decision 29's automatic rounds reach the cap.
+status: proposed
+roadmap: R25
+sources:
+  - id: study-entry
+    resource: docs/reviews/2026-09-28-playbook-vs-framework/target-design.md
+    title: "T30, confirmed at the close of the study on 2026-10-09; from the crosswalk row x-limits (better: the framework; decision: blend, option B), 2026-10-08; the owner's word of 2026-10-09 on the manager's one reset; annotations of 2026-10-13 (A2) and 2026-10-14 (A6)"
+  - id: crosswalk
+    resource: docs/reviews/2026-09-28-playbook-vs-framework/crosswalk.json
+    title: "Row x-limits (whole); the decision fields of x-measure, x-queue, design-go, maintain-learn, test-loop and x-headless"
+  - id: artcraft
+    resource: docs/reviews/2026-10-13-artcraft-vs-framework/planning-revision.md
+    title: "A6 sections 6.1 to 6.5 and P4 (accepted 2026-10-14): the budget suggestion's table; sections 6.6 and 6.7 and P5 (rejected 2026-10-14): the hours, the parallel share, the 'needs a human' list and calendar time; the record docs/reviews/2026-10-13-artcraft-vs-framework.md, rows A2 (narrowed and accepted 2026-10-13: an estimate shows its inputs and its arithmetic) and A6, gaps G6 and G9"
+  - id: playbook
+    resource: docs/reference/ai-native-sdlc-playbook.pdf
+    title: "p.30: an API key with budget for eval runs; p.42: the headless gate continues or escalates to a human; p.46-48: Claude Security's spend limit, set centrally to the size and number of repositories; p.49: the lessons file future investigations read"
+  - id: decision-11
+    resource: docs/decisions/11.md
+    title: "Decision 11: park, never page (amended here: the outer bounds park too)"
+  - id: decision-24
+    resource: docs/decisions/24.md
+    title: "Decision 24: the owner's un-park verbs are labels (amended here: the manager's one reset at the iteration cap)"
+  - id: decision-29
+    resource: docs/decisions/29.md
+    title: "Decision 29: one iteration counter for every round, with T30's one reset at the cap (read, not amended)"
+  - id: decision-1
+    resource: docs/decisions/1.md
+    title: "Decision 1: the API cost bounded per change by step 19's limits (kept; the weekly ceiling becomes the main bound)"
+  - id: code
+    resource: plugin/gate/limits.py
+    title: "check_limits and the spend ledger; plugin/ci/run_phase.py DEFAULT_MAX_TURNS, GRACE_MINUTES, run_timeout_seconds, build_argv's --max-turns and --max-budget-usd, invoke, park_deferred_record, report_failed_run; plugin/state/status.py record_owner_label; plugin/gate/cli.py set-iterations; plugin/state/unpark.py is_automation_actor; template/sdlc.yaml gate; template/.github/workflows/sdlc-*.yml timeout-minutes; sdlc.yaml; read at main 5542406, plugin 1.0.1"
+generated: { by: sdlc-framework-session/ccr-01de3f80-ilnomi, at: 2026-10-15T20:00:00Z }
+---
+
+# The weekly window is guarded: every limit parks, a weekly ceiling and a budget per change, the spend visible, overspends learned from without raising budgets by themselves
+
+**Status: proposed (roadmap R25), from study entry T30, confirmed by the owner on 2026-10-09, option B of the crosswalk row x-limits (the letters are the row's own).** Nothing is built. It amends decision 11 (a limit hit parks, extended to the outer bounds) and decision 24 (the un-park verbs are a person's labels, with one exception: the manager's one reset at the iteration cap); the decision file comes before the intent, in a documentation PR of its own; this proposal writes no decision file and reserves no number. Decision 29 already shares one iteration counter with this reset, and decision 11's text already names it. This proposal is the fourth of the gate changes, after R22 (T18), R23 (T23) and R24 (T9) and before R26 (T31), which reads the reset's mark and leaves the spend here; R20 places its two digest lines, and R19 lists its acts.
+
+## The problem
+
+On the subscription token the CI runs draw on the owner's own plan window, which Anthropic caps in usage, not in dollars (`docs/notes/2.md:70-73`)[^notes]. The framework bounds each run, but nothing bounds the week, and what bounds a run does not always reach the owner:
+
+- **The outer bounds make a red run, not a park.** A session ended by `--max-turns`, by `--max-budget-usd` or by the runner's timeout exits 1: the subtype and the cost are printed to the job log and the failed run record is committed on the work branch, but the change is parked only when the session had already written a deferred gate record. A job's `timeout-minutes` cuts the runner with nothing recorded for the session it cuts.
+- **The dollar cap is off by default and too loose when on.** `max_budget_usd` is `null`, and each session may spend the whole cap, so a change can end about two sessions above it before it parks (the crosswalk row's own reading).
+- **Nobody sees the spend.** Every session's cost is in `evidence/spend.json`, and no PR line, digest line or counter shows it, except the park reason when the budget cap parks a change.
+- **No budget learns from history, and none must learn from a defect.** This repository's three changes at phase (e) on the default branch, none of them released (`released_at: null`) and 0001's gate (e) parked, have ledger totals of 50.69, 84.69 and 66.00 USD (`changes/000{1,2,3}-*/evidence/spend.json` at 5542406); 0001's ledger leaves out its (b) session (`claude-b.json`, 2.47 USD), so counted alike its total is 53.17; two of them hit the turn limit, the signal of a likely error, not of a large task[^artcraft].
+- **At the iteration cap only the owner can continue.** Today only the owner's `sdlc:reset-iterations` label continues a change at the cap. Decision 29 accepted the manager's one reset for its automatic rounds, but nothing builds it yet; without it, every change that uses those rounds would wait for the owner's label, the owner's involvement the 2026-10-09 word set out to reduce.
+
+## What the article says
+
+The article sets no run bounds. It names money twice: "CI that can run Claude Code non-interactively, and an API key with budget for eval runs" (p.30), and, for Claude Security, "Extra Usage turned on with a spend limit set", billed on consumption "so the spend limit should match the size and number of repositories" (p.46-47), a limit "set centrally" under the organization's admin controls (p.48). Its headless gate decides "whether the previous stage's output continues or is escalated to a human" (p.42), which is what every limit here does: it parks for the owner. Its lessons file is one "that future investigations can read" (p.49), the shape the overspend lesson borrows[^playbook].
+
+## What the framework does today
+
+Read at `main` 5542406, plugin 1.0.1. The entry's "Today" was read at 619f01a (0.3.5). `git diff --stat 619f01a 5542406` over `plugin/gate/limits.py`, `plugin/gate/cli.py`, `plugin/gate/gate.py`, `plugin/state`, `plugin/pr/counters.py`, `plugin/pr/digest.py` and the template workflows is empty; `plugin/ci/run_phase.py` moved (304 lines) and `template/sdlc.yaml` gained a commented `lessons:` block, so each claim below was re-read at 5542406[^code].
+
+- **The gate's limits park.** `check_limits` (`plugin/gate/limits.py:181-280`) parks with the partial evidence on the pause flag (`:184-202`), more fix iterations than the cap (3, or 2 when the reviewer classes the plan non-routine, `:69-77`, `:208-218`), more panel calls than 4 (`:221-230`), no `evidence/run-<phase>.json` at (b) to (d) outside a human gate (`:232-241`), more than 120 minutes since `start-run` (`:242-255`), or a running total above `max_budget_usd` (`:256-279`). The clock and the total are read when the gate runs. In CI the runner skips a paused run before the session (`run_phase.py:962-969`).
+- **The outer bounds end the session.** The runner passes `--max-turns` from `gate.max_turns`, default 200 (`run_phase.py:227`, `:1211`), and `--max-budget-usd` as the whole `max_budget_usd`, to every session (`:1212-1214`); its own timeout is the gate's wall clock plus 5 minutes (`:228`, `:270-276`). A session that ends with a non-zero exit or `is_error` (the `error_max_turns` and `error_max_budget_usd` subtypes among them) is parked only when its gate record is still deferred (`park_deferred_record`, `:1422-1441`, called at `:1834`); in every case `report_failed_run` prints the subtype and the cost to the job log, commits the stored result and stderr on the work branch and pushes them (`:1485-1515`, the commit at `:1511`), and the runner exits 1 (`:1839-1840`). A session that changed an owner-only field is parked first, exit 0 (`:1814-1829`). A timed-out session returns no result (`invoke`, `:1266-1267`), so its cost is never recorded (`:1776-1784` records it only from the result). The jobs' `timeout-minutes` are 200 (design, build, test, deploy, fix) and 150 (detect); the deploy job runs the review session and the (e) session in one job (`sdlc-deploy.yml:57`, `:107`, `:143`), each with the runner's 125-minute timeout.
+- **`gate.max_turns` is read but not listed** in the template's `gate:` block (`template/sdlc.yaml:111-118`). This repository's own `sdlc.yaml` gained `max_turns: 400` on 2026-10-15 (PR #214, `sdlc.yaml:62`), indented four spaces under `command_timeout`; the plugin's loader rejects the file ("bad indentation", the output of `state/yamlish.loads` and `hooks/_common.load_sdlc_config` on `git show 5542406:sdlc.yaml`), and the runner reads an unreadable `sdlc.yaml` as no settings at all (`run_phase.py:251-255`, `:897-900`). Verified by command output; the fix is the owner's edit of a guardrail file, outside this proposal.
+- **The spend is recorded and shown nowhere.** Every session that returns its result is an entry of `evidence/spend.json` (`limits.py:122-165`); `plugin/pr/counters.py`, `plugin/pr/digest.py` and `plugin/pr/description.py` contain no `spend` (grep at 5542406). The scan and the evals keep their cost in their workflow artifacts (`plugin/scan/cli.py:199`, `scan-run.json`; `plugin/evals/run.py:661`, `evals-report.json`).
+- **The reset.** The owner's `sdlc:reset-iterations` label zeroes both counts and stamps `iterations_reset_by` and `iterations_reset_at` (`Status.record_owner_label`, `plugin/state/status.py:236-240`); the by-hand `gate/cli.py set-iterations` sets the counts (the panel's with `--panel-calls`) and stamps no `iterations_reset_by` or `iterations_reset_at` (`plugin/gate/cli.py:159-169`); a reset by the automation identity or a `[bot]` is refused (`plugin/state/unpark.py:59-65`; the runner's owner-field check, `run_phase.py:2172-2179`). Decision 29 is accepted and R10 is not built at 5542406.
+- **The figures are the CLI's estimate.** `--max-budget-usd` stops a session on a client-side estimate (`docs/notes/2.md:83-86`, under the API key; `total_cost_usd` is the "client-side estimates" of `docs/notes/10.md` 10b), documented for print mode only; the docs say nothing on the credential, and it is not verified on a token run[^notes].
+
+## The proposal
+
+The iteration, panel, clock and turn limits, the pause flag and `sdlc:reset-iterations` stay (decision 11). The guard is the runs' estimated spend. Added, in the owner's order:
+
+1. **Every outer bound parks.** A session ended by `error_max_turns`, `error_max_budget_usd` or the runner's timeout parks the change with the reason ("stopped at 200 turns") and the partial evidence, like the gate's limits, instead of a red run; it lands in "Needs you" with what the owner can do (R19, R20).
+2. **A weekly ceiling.** One setting in `sdlc.yaml` bounds the estimated spend of all CI runs over a rolling 7 days, read from the spend records of every change and of the runs outside a change (scan, evals). Each session's `--max-budget-usd` is what is left of it. Once it is used no new run starts: the change waits in "Needs you" with the reason ("this week's CI budget is used: 60.20 of 60") until older runs leave the window or the owner applies a label to run it now.
+3. **A budget per change, set at the design approval.** The design run suggests a budget from the plan's size and the spend of past changes whose overspend was real size; the owner accepts or edits it in the design approval already given (the design PR's merge, design-go). Each session's `--max-budget-usd` is the smaller of what is left of the two. The suggestion (A6, accepted 2026-10-14) comes from a deterministic step that reads the committed `evidence/spend.json` of past changes when the design runs: each row shows the total, the sessions by kind, the fix sessions before and after (c), the turn-limit stops, and the plan's class as a column, not as the key. A row counts only once its cause is real size; a row with a code signal is shown and marked, not counted. Below a minimum of real-size rows (three, the design to confirm) there is no suggestion, and the reason is given. It never reads `status.yaml` `iterations`, which a reset erases, and no `calibration.json` is stored (the digest cannot commit). Like every estimate here, it shows its inputs and its arithmetic (A2, accepted 2026-10-13)[^artcraft].
+4. **The spend visible.** Each change's running total on its PR; the week's total against the ceiling in the digest (R20's "State — Spend"); a line in "Needs you" only when the owner's numbers look wrong (the ceiling reached in 3 of the last 4 weeks, never near it, or several changes parked on budget), with a suggested value (R20's row 5). No scheduled budget review.
+5. **Overspends learned from, never absorbed.** When a change parks on its budget or ends at twice it, the runner writes an overspend lesson in `lessons/` (T25's shape, R42) with the facts from the run records: which session spent most, the fix rounds, the turn limit hit. Its cause is unconfirmed by default; code signals mark it likely error (the turn limit, the same test failing every round, the iteration cap hit, a repeated error); the owner's act at the budget park sets it to error (a fix intent opens) or real size (this change's budget raised). Only real-size lessons feed the budget suggestion, so an overspend never raises a budget by itself, and the same error cause three times opens a fix intent.
+6. **`gate.max_turns`** listed in the template `sdlc.yaml` with its default.
+7. **The manager's one reset at the cap** (the owner's word of 2026-10-09, to reduce the owner's involvement). When decision 29's automatic rounds reach the cap, the manager reads the rounds and may reset the count once per change on its own judgment, with its reasons in the park's record, the reset marked as the label's is (`iterations_reset_by` naming the manager's run, `iterations_reset_at`); the second cap parks for the owner as today. A wrong "continue" costs rounds, not harm: the gate's checks and the owner's merge still stand between the code and `main`. Decision 29 accepted this reset for the one counter its automatic rounds share (its first settle row), and words the reader as "a fresh-context agent"; T1's manager is R28[^decision-29]. The owner's word of 2026-10-09 names no kind of round (T1, T30); R17, accepted on 2026-10-14 (PR #208), keeps the reset to decision 29's automatic rounds: a cap reached by a round the owner started (a "Request changes" review or an `@claude` comment) parks with "iteration cap reached" as today, and the owner's `sdlc:reset-iterations` label is then the round (`claude-comment-fix-round.md`, point 5).
+
+With the session's budget the smaller of what is left, the crosswalk row's gap closes: a session can no longer spend the whole cap on top of a total that already reached it.
+
+## How it is judged
+
+On the sample and on this repository, once built: no red run is left by a turn limit, a budget stop or the runner's timeout, each such stop being a park with its reason and partial evidence; no run starts while the rolling 7-day estimate is at the ceiling, unless the owner's run-now label is on the change; every PR shows its running total and the digest the week's total against the ceiling; a suggested budget lists its rows, n and arithmetic, or says why there is none; a change that overspends because of a defect leaves the next suggestion unchanged until the owner marks its lesson real size; a change whose automatic rounds reach the cap reaches the owner only after the one reset, at twice the cap, and a cap reached by a round the owner started parks for the owner's label as today. The measures are read from git: the parks' reasons, the ledgers, the lessons' causes and the reset marks.
+
+## What to settle before building
+
+| Question | Recommended |
+|---|---|
+| The ceiling's and the suggested budget's first values, before any history exists, and how the design run sizes a plan | **Partly settled by A6 (accepted 2026-10-14, `planning-revision.md` P4):** the suggestion's step, its rows, real-size rows only, no suggestion below a minimum (three, the design to confirm) with the reason given. Today no row is eligible (0002 and 0003 hit the turn limit; no change has parked on a budget), so no change gets a suggestion yet; what a change without one carries was not decided. *Mine:* until three real-size rows exist, the owner writes a budget at the design approval or leaves it unset, the change then bounded by the weekly ceiling alone; the ceiling ships unset in the template like `max_budget_usd`, the digest's "State — Spend" line shows the week's total from the first run and, while the ceiling is unset, a suggested first value with its arithmetic (no "Needs you" line is added for it, the owner's three conditions stand); the size measure is chosen when real-size rows exist, the class shown beside each row meanwhile |
+| Where the weekly ledger lives, and how a waiting run is restarted when the window frees | *Mine:* one small spend record per session on a ref of its own under one prefix (the name with R45, T4), written by the runner, the scan and the evals, as R18's failed-run records are written, so concurrent workflows never race on one ref; the runner sums the records inside the window before each session, and the digest the same with its `contents: read`. The restart from the digest's run, oldest change first, through a dispatch job of its own in the digest workflow (`actions: write` only, the change id and head ref as inputs, as the runner's phase dispatch sends them, `run_phase.py:1578`), modelled on R20's separate dispatch job but not that job (R20's takes no inputs, sits in the phase, detect and abandon templates and leaves the digest's permissions unchanged); not a schedule of its own |
+| The label that runs a waiting change now, and whether it counts against next week | *Mine:* one label, named with R45 (T4), applied by a person and recorded with its actor (decision 24, R11's approvals list); its spend counts like any run's, so it stays in the rolling window for 7 days |
+| The two acts at a budget park (labels or a comment), and the threshold for "ends at twice it" | *Mine:* two labels, as decision 24 makes every un-park verb a label, each recorded with its actor (R11); "real size" raises this change's budget by its first value (doubles it), shown in the park block; "ends at twice it" is the total at the (e) merge, at or above twice the accepted budget |
+| Whether a timed-out session's cost can be estimated, since it returns no result today | To verify whether `claude -p` writes a result when the runner kills it. *Mine:* never invented; the ledger gets an entry with no figure and the reason "timed out", counted as unknown on the PR and in the digest |
+| The mark the manager's reset leaves, and what the manager reads to decide | **The mark is settled by decision 29** (first settle row): `iterations_reset_by` naming the run and `iterations_reset_at`, one accepted exception to `is_automation_actor` and the runner's owner-field check, on the fix-round line, not R11's approvals list of human acts; R26 (T31) reads it so a reset change never counts as first-pass. *Mine:* the manager reads the rounds' gate records, the failing logs, R11's fix-round lines and R18's triage text, and writes its reasons in the park's record before the count is reset |
+| Which candidate builds the reset | **Not settled.** Decision 29 (accepted 2026-10-13) accepts the reset with R10's mechanism ("one counter and T30's one reset at the cap") and says what the code must learn, but names no candidate to build it; R10's accepted proposal lists no reset among its four parts and only cites decision 29's settle row (`test-loop-closes-in-ci.md:51`). *Mine:* R10 builds the reset with its automatic rounds, and this proposal, ordered after R10, only reads it. **R17 (accepted 2026-10-14)** keeps the reset to those rounds: a cap reached by a round the owner started parks for the owner's label as today |
+| Where the change's budget is stored, and who may change it | *Mine:* a field written by the design run and merged at gate (b), protected as an owner-only field by the runner's check, so no session can raise its own budget; "real size" is the only other writer |
+| An overspend lesson beside the incident lessons in `lessons/` | *Mine:* a tag of its own (`overspend`), so the maintain diagnosis, which reads `lessons/index.md` by tag, never takes it for an incident class; the shape is settled with R42 |
+| The deploy job's two sessions and its 200 minutes | *Mine:* the job's `timeout-minutes` covers the sessions it holds (the review and (e) can take 125 minutes each, `sdlc-deploy.yml:57`), so the runner's timeout, which parks under point 1, fires before the job's, which records nothing |
+| Which bound stopped a session when both apply | *Mine:* the park reason names it; a stop on the change's budget is the budget park (point 5's acts), a stop on the week's remainder is the wait of point 2 |
+| Whether `--max-budget-usd` stops a session on the subscription token | To verify on a token run (`docs/notes/10.md` 10b documents it for print mode only and says nothing on the credential); the ceiling and the budget rest on it |
+
+## Considered and not chosen
+
+- A, the x-limits text completed only.
+- C, B plus a fixed default cap per change (for example 50 USD), too much or too little depending on the task.
+- A scheduled budget review, a chore with nothing to act on most weeks.
+- An overspend raising the next suggestion by itself, which could mask a defect as normal cost.
+- A separate API key in its own Console workspace with a monthly spend limit, the only cap enforced by Anthropic, kept in reserve.
+- A6's landing as written: a `calibration.json` the digest regenerates from every shipped change; it would count overspends T30 excludes, read rounds a reset erases, and needs a writer the digest is not (`planning-revision.md` 6.2 to 6.5)[^artcraft].
+- A6's hours per item, parallel share, "needs a human" list and calendar time (`planning-revision.md` 6.6 and 6.7, P5, rejected by the owner on 2026-10-14): the framework runs one change at a time and spends dollars, not agent-hours, and the wait on each item is T28's (R20)[^artcraft].
+
+## Decisions it touches
+
+- **11, amended:** a limit hit parks, extended to the outer bounds (the turn limit, the CLI's budget stop, the runner's timeout). Its text already names the one judged reset at the cap, through decision 29.
+- **24, amended:** the un-park verbs are a person's labels, with one exception, the manager's one reset at the iteration cap, marked as the label's is.
+- The decision file for 11 and 24 comes before the intent, in a documentation PR of its own; no number is reserved here.
+- **29, read, not amended:** one counter for every round, with this reset at the cap; the reset's mark.
+- **1, kept:** its reliance on step 19 to bound cost, with the weekly ceiling as its main bound.
+- **20, kept:** the digest stays pull; R20 places the spend lines. **2 and 18, kept:** the budget is accepted in the design approval already given, no new gate. **6, kept:** the ceiling is an `sdlc.yaml` setting, changed in a reviewed PR.
+
+## Order
+
+A decision file for 11 and 24 first. Then after R10, whose automatic rounds and runner step this proposal bounds, and which, as this proposal recommends, builds decision 29's reset; `run_phase.py` is on the port list, so each part that touches it ships as a plugin version with tests. The parts:
+
+1. **The outer bounds park, and `gate.max_turns` in the template** (`run_phase.py`'s failure branch, `template/sdlc.yaml`): after R10.
+2. **The spend on the PR** (`plugin/pr/description.py`): buildable on its own; the digest's two lines with R20.
+3. **The weekly ceiling** (the ledger, each session's remainder, the wait, the run-now label, the restart through the digest workflow's own dispatch job, modelled on R20's): after R20's part 2; the label's name with R45.
+4. **The budget per change** (the design run's deterministic step with its rows and arithmetic, the protected field, the smaller remainder): after part 3.
+5. **The overspend lessons and the two acts at the budget park**: after part 4 and R42's lesson shape; the acts listed by R19 and recorded by R11.
+6. **The manager's one reset**: accepted by decision 29 for R10's automatic rounds; built by R10, as this proposal recommends (not settled), and read here; R26 reads its mark; R28 is T1's manager, the reader the owner's word names.
+
+[^notes]: `docs/notes/2.md:70-73` (the plan window, no cap in dollars); `docs/notes/2.md:83-86` (`--max-budget-usd`, a client-side estimate); `docs/notes/10.md` 10b (`--max-turns`, `--max-budget-usd`, `total_cost_usd`).
+[^playbook]: `docs/reference/ai-native-sdlc-playbook.pdf` p.30, p.42, p.46-48, p.49.
+[^artcraft]: `docs/reviews/2026-10-13-artcraft-vs-framework/planning-revision.md`, sections 6.1 to 6.7, corrections 10, 13 and 14, P4 and P5; the record `docs/reviews/2026-10-13-artcraft-vs-framework.md`, rows A2 and A6, gaps G6 and G9; `target-design.md` T30, the annotations of 2026-10-13 and 2026-10-14.
+[^decision-29]: `docs/decisions/29.md`, the first settle row (one counter, with T30's one reset at the cap; what the code must learn).
+[^code]: `plugin/gate/limits.py`; `plugin/ci/run_phase.py`; `plugin/state/status.py`; `plugin/gate/cli.py`; `plugin/state/unpark.py`; `template/sdlc.yaml`; `template/.github/workflows/sdlc-*.yml`; `sdlc.yaml`; all at 5542406 (plugin 1.0.1); the crosswalk row x-limits and `target-design.md` T30 ("Today").
