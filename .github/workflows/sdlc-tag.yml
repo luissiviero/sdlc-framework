@@ -51,6 +51,7 @@ jobs:
           SDLC_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: python3 .github/scripts/sdlc_tag.py
       - name: Report
+        if: always()
         env:
           TAG: ${{ steps.tag.outputs.tag }}
           CREATED: ${{ steps.tag.outputs.created }}

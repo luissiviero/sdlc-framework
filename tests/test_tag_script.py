@@ -279,9 +279,10 @@ def test_nothing_is_tagged_while_the_two_manifests_disagree(repo, capsys):
 def test_an_unreadable_marketplace_or_one_without_the_plugin_tags_nothing(repo, capsys):
     work, bare = repo
     path = work / ".claude-plugin" / "marketplace.json"
-    path.write_text("{not json", encoding="utf-8")
-    assert sdlc_tag.main(["--root", str(work), "--no-release"]) == 1
-    assert "cannot read the marketplace manifest" in capsys.readouterr().err
+    for broken in ("{not json", json.dumps({"plugins": 5})):
+        path.write_text(broken, encoding="utf-8")
+        assert sdlc_tag.main(["--root", str(work), "--no-release"]) == 1
+        assert "cannot read the marketplace manifest" in capsys.readouterr().err
     path.write_text(json.dumps({"plugins": [{"name": "other", "version": "0.2.15"}]}), "utf-8")
     assert sdlc_tag.main(["--root", str(work), "--no-release"]) == 1
     assert "no entry for the plugin 'sdlc'" in capsys.readouterr().err

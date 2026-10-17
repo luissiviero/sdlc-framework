@@ -3,11 +3,17 @@
 This session ran on branch `ccr-d96dbb91-v12amc`. It first verified the item-11 follow-ups' records (PR #222, merged as `cd8baf7`), then, after PR #220 (R10, 1.0.3) and PR #223 merged, built the safety PR the owner approved. The previous record, R21 to R49 and 1.0.3, is now `docs/progress/2026-10-17-r21-r49-and-1.0.3.md`, unchanged. Only `luissiviero/sdlc-framework` was changed; the sample was read, never touched. The session's own file is `docs/handoffs/sessions/2026-10-17-ccr-d96dbb91-v12amc.md`.
 
 ## Summary
-- **Gap 6, the runner's fail-open `sdlc.yaml`, is fixed.** `_approved_config` (`plugin/ci/run_phase.py`) used to read an unparseable default-branch copy as `{}`. It now raises `ConfigError`, and so does an unreadable checkout copy when there is no default-branch ref. The guard refuses to run with "<the error>: nothing runs until it is fixed", the same refusal as `paused: yes`. Before, a broken file dropped `paused`, the profile, `protected_paths`, `max_budget_usd` and the turn cap without a word. Two tests in `tests/test_ci.py` replay PR #214's indentation, and both fail on the old code.
+- **Gap 6, the runner's fail-open `sdlc.yaml`, is fixed.** `_approved_config` (`plugin/ci/run_phase.py`) used to read an unparseable default-branch copy as `{}`. It now raises `ConfigError`. The guard also reads the checkout's copy, which the session settings use, and refuses with "<the error>: nothing runs until it is fixed" on either one, the same refusal as `paused: yes`. Before, a broken file dropped `paused`, the profile, `protected_paths`, `max_budget_usd` and the turn cap without a word. Three tests in `tests/test_ci.py` replay PR #214's indentation: on the default branch, on a work branch that kept it after the default branch was fixed, and without a remote.
 - **The root `sdlc.yaml` is now read by a test** (`tests/test_scaffold.py::test_the_root_sdlc_yaml_parses`). The same loader refuses PR #214's copy (`git show 5542406:sdlc.yaml`): "bad indentation".
 - **Gap 8, the tag on a broken bump, is fixed.** `.github/scripts/sdlc_tag.py` tags nothing while `marketplace.json` names another version than `plugin.json`, or cannot be read, or has no entry for the plugin; the run then ends red. `sdlc-tag.yml` also runs on a push that touches `marketplace.json`, so the commit that brings the two back into agreement gets the tag. Four tests; each fails on the old script. Waiting for `Framework checks` before tagging stays with R5.
 - **Gap 7 and the validator's README warning:** `README.md` now says to merge `main` into a conflicted PR's branch before a review, and gives the install line `/plugin install sdlc --marketplace luissiviero/sdlc-framework`. `claude plugin validate .` now gives only the `CLAUDE.md`-at-the-root warning.
 - **Plugin 1.0.4** (both manifests; choice 184's next free patch).
+- **An independent review** (a fresh-context agent, report only) found nothing blocking. Three of its findings were fixed:
+  - the work branch that keeps an unreadable copy (should-fix);
+  - a non-list `plugins` in `marketplace.json` raised instead of refusing (nit);
+  - the tag workflow's Report step now runs when the tag step fails (nit).
+
+  One finding is left as it is: an automatic fix round refused on an unreadable `sdlc.yaml` parks the change, like any unfinished round. That park is how the owner is told.
 
 ## The owner's decisions (2026-10-17)
 The owner approved the session's revised decision table in full ("Approve all; build the safety PR in #1").

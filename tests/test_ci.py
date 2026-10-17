@@ -3564,6 +3564,21 @@ def test_guard_refuses_an_unreadable_sdlc_yaml_on_the_default_branch(project, tm
     assert "nothing runs until it is fixed" in reason
 
 
+def test_guard_refuses_a_work_branch_that_kept_an_unreadable_copy(project, tmp_path):
+    """The independent review of 1.0.4: a work branch cut while the default branch's copy
+    was unreadable keeps that copy after the owner fixes it; the session settings read it
+    (``_config`` reads ``{}``: no ``protected_paths`` in ``denyWrite``), so it is refused."""
+    root, _change = project
+    with_remote(root, tmp_path)
+    git(root, "checkout", "-q", "-b", "sdlc/0001/b")
+    _indent_max_turns_under_command_timeout(root / "sdlc.yaml")
+    git(root, "commit", "-q", "-am", "the branch inherits PR #214's slip")
+    assert run_phase._approved_config(root)  # the default branch's copy reads
+    reason = skip_reason(root, "b")
+    assert reason and "sdlc.yaml could not be read" in reason and "nothing runs" in reason
+    assert "on the default branch" not in reason
+
+
 def test_guard_refuses_an_unreadable_checkout_copy_without_a_default_branch(project):
     """Without a remote-tracking default branch the checkout's copy is all there is: an
     unreadable one is refused the same way, never read as no settings at all."""

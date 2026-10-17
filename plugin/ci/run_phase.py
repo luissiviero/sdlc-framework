@@ -995,6 +995,9 @@ def guard(root: Path, change_id: str, run_phase: str, repo: str, env: dict[str, 
     config: dict[str, Any] = {}
     try:
         config = _approved_config(root)
+        # the checkout's copy too: the session settings read it (_config), and a work branch
+        # cut while the default branch's copy was unreadable keeps that copy after the fix
+        load_sdlc_config(str(root))
         paused = config_flag(config, "paused")
     except ConfigError as exc:
         return None, None, config, f"{exc}: nothing runs until it is fixed"

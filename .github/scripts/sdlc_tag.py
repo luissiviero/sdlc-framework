@@ -81,9 +81,9 @@ def manifests_disagree(root: Path, version: str) -> str:
     try:
         name = json.loads((root / MANIFEST).read_text(encoding="utf-8")).get("name")
         plugins = json.loads(path.read_text(encoding="utf-8")).get("plugins") or []
-    except (OSError, ValueError, AttributeError) as exc:
+        entry = next((p for p in plugins if isinstance(p, dict) and p.get("name") == name), None)
+    except (OSError, ValueError, AttributeError, TypeError) as exc:
         return f"{MARKETPLACE.as_posix()}: cannot read the marketplace manifest: {exc}"
-    entry = next((p for p in plugins if isinstance(p, dict) and p.get("name") == name), None)
     if entry is None:
         return f"{MARKETPLACE.as_posix()} has no entry for the plugin {name!r}"
     listed = str(entry.get("version") or "").strip()
