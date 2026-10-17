@@ -41,3 +41,4 @@ chronological order (oldest first). The current record stays in `docs/PROGRESS.m
 - [Progress — item 11 (2026-10-14): the sample's first real detection read (change 0013, filed by the owner's dispatch), one gap fixed with its tests, plugin **1.0.0**; Part 3 after the merge, `v1.0.0`, the sample's upgrade, choices 183 to 195](2026-10-14-item-11.md)
 - [Progress — 1.0.1 (2026-10-14): a writable cache folder for `gh` in the CI sandbox, plugin **1.0.1**; choice 196, and change 0005's proposed root `REVIEW.md` row](2026-10-14-1.0.1.md)
 - [Progress — the item-11 follow-ups (2026-10-14 to 2026-10-17): change 0005 from gate (b) to plugin **1.0.2**, the sample's detect run of 2026-10-15, eight gaps recorded](2026-10-17-item-11-follow-ups.md)
+- [Progress — the study's proposals R21 to R45, the pipeline's speed (decisions 30 to 33, R46 to R49), and R10 as plugin **1.0.3** (2026-10-15 to 2026-10-17)](2026-10-17-r21-r49-and-1.0.3.md)

@@ -912,20 +912,25 @@ def _approved_config(root: Path) -> dict[str, Any]:
     section 4.2: the guard reads the "base branch copy of sdlc.yaml"; 1.0.0 readiness
     review, 2026-09-26). The default branch is named by ``SDLC_DEFAULT_BRANCH`` or guessed
     (``state/gitops.default_branch``); a guess that lands on a framework branch is refused,
-    since a work branch's copy is not the owner's."""
+    since a work branch's copy is not the owner's.
+
+    A copy that cannot be read raises ``ConfigError`` (NOTES §45 gap 6: PR #214's indented
+    ``max_turns`` made the copy unreadable, and the ``{}`` returned here then dropped
+    ``paused``, the profile, ``protected_paths``, ``max_budget_usd`` and the turn cap without
+    a word); the guard refuses to run on it."""
     from state import yamlish  # noqa: PLC0415
 
     ref = _approved_ref(root)
-    if ref is None:
-        return _config(root)
-    text = gate_diff.file_at(root, ref, SDLC_FILE)
+    text = gate_diff.file_at(root, ref, SDLC_FILE) if ref is not None else None
     if text is None:
-        return _config(root)
+        return load_sdlc_config(str(root)) or {}
     try:
         data = yamlish.loads(text)
-    except Exception:  # noqa: BLE001 - the same as an unreadable checkout copy (_config)
-        return {}
-    return data if isinstance(data, dict) else {}
+    except Exception as exc:  # noqa: BLE001
+        raise ConfigError(f"{SDLC_FILE} on the default branch could not be read: {exc}") from exc
+    if not isinstance(data, dict):
+        raise ConfigError(f"{SDLC_FILE} on the default branch is not a mapping")
+    return data
 
 
 class ApprovedCopyUnreadable(RuntimeError):
@@ -987,8 +992,12 @@ def approved_overrides(
 
 def guard(root: Path, change_id: str, run_phase: str, repo: str, env: dict[str, str]):
     """(change_dir, status, config, skip reason)."""
-    config = _approved_config(root)
+    config: dict[str, Any] = {}
     try:
+        config = _approved_config(root)
+        # the checkout's copy too: the session settings read it (_config), and a work branch
+        # cut while the default branch's copy was unreadable keeps that copy after the fix
+        load_sdlc_config(str(root))
         paused = config_flag(config, "paused")
     except ConfigError as exc:
         return None, None, config, f"{exc}: nothing runs until it is fixed"

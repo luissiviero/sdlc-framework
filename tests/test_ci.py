@@ -3536,6 +3536,58 @@ def test_guard_fails_closed_on_a_pause_flag_that_is_not_a_boolean(project):
     assert reason and "paused is 'yes', not a boolean" in reason and "nothing runs" in reason
 
 
+def _indent_max_turns_under_command_timeout(path: Path) -> None:
+    """PR #214's slip (NOTES §45 gap 6): ``max_turns`` indented four spaces under
+    ``command_timeout``, which ``yamlish`` refuses ("bad indentation")."""
+    text = path.read_text(encoding="utf-8")
+    broken = re.sub(r"(\n  command_timeout:[^\n]*)", r"\1\n    max_turns: 400", text, count=1)
+    assert broken != text
+    path.write_text(broken, "utf-8")
+
+
+def test_guard_refuses_an_unreadable_sdlc_yaml_on_the_default_branch(project, tmp_path):
+    """NOTES §45 gap 6: the guard read an unparseable default-branch copy as ``{}`` and ran
+    with every default: ``paused`` false, the standard profile, no ``protected_paths``, no
+    budget and 200 turns. It now refuses to run until the owner fixes the file."""
+    root, _change = project
+    with_remote(root, tmp_path)
+    git(root, "checkout", "-q", "-b", "sdlc/0001/b")  # its own copy stays readable
+    git(root, "checkout", "-q", "main")
+    _indent_max_turns_under_command_timeout(root / "sdlc.yaml")
+    git(root, "commit", "-q", "-am", "owner: max_turns, indented by four spaces")
+    git(root, "push", "-q", "origin", "main")
+    git(root, "checkout", "-q", "sdlc/0001/b")
+    with pytest.raises(run_phase.ConfigError, match="on the default branch could not be read"):
+        run_phase._approved_config(root)
+    reason = skip_reason(root, "b")
+    assert reason and "on the default branch could not be read" in reason
+    assert "nothing runs until it is fixed" in reason
+
+
+def test_guard_refuses_a_work_branch_that_kept_an_unreadable_copy(project, tmp_path):
+    """The independent review of 1.0.4: a work branch cut while the default branch's copy
+    was unreadable keeps that copy after the owner fixes it; the session settings read it
+    (``_config`` reads ``{}``: no ``protected_paths`` in ``denyWrite``), so it is refused."""
+    root, _change = project
+    with_remote(root, tmp_path)
+    git(root, "checkout", "-q", "-b", "sdlc/0001/b")
+    _indent_max_turns_under_command_timeout(root / "sdlc.yaml")
+    git(root, "commit", "-q", "-am", "the branch inherits PR #214's slip")
+    assert run_phase._approved_config(root)  # the default branch's copy reads
+    reason = skip_reason(root, "b")
+    assert reason and "sdlc.yaml could not be read" in reason and "nothing runs" in reason
+    assert "on the default branch" not in reason
+
+
+def test_guard_refuses_an_unreadable_checkout_copy_without_a_default_branch(project):
+    """Without a remote-tracking default branch the checkout's copy is all there is: an
+    unreadable one is refused the same way, never read as no settings at all."""
+    root, _change = project
+    _indent_max_turns_under_command_timeout(root / "sdlc.yaml")
+    reason = skip_reason(root, "b")
+    assert reason and "sdlc.yaml could not be read" in reason and "nothing runs" in reason
+
+
 def _forging_session(tmp_path: Path, change: Path, body: str) -> Path:
     """A script the fake claude runs in the project root: what a session might do."""
     script = tmp_path / "session.py"

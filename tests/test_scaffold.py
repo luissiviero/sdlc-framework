@@ -47,6 +47,17 @@ def test_marketplace_points_at_repo_root():
     assert entry["version"] == manifest["version"], "pin: marketplace and plugin versions agree"
 
 
+def test_the_root_sdlc_yaml_parses():
+    """NOTES §45 gap 6: PR #214 indented ``max_turns`` four spaces, the root ``sdlc.yaml``
+    stopped parsing, and every check stayed green because no test read the file."""
+    from hooks._common import config_flag, load_sdlc_config
+
+    config = load_sdlc_config(str(ROOT))
+    assert config, "the root sdlc.yaml exists and is a mapping"
+    assert config_flag(config, "paused") in (True, False)
+    assert isinstance(config.get("gate"), dict)
+
+
 def test_a_test_never_sees_the_runner_s_variables():
     """The autouse fixture of conftest.py removes what a GitHub Actions runner sets (0.2.28:
     the first run of the suite in Actions failed seven tests on ``GITHUB_REF_NAME``,

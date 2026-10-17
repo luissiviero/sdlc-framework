@@ -30,10 +30,16 @@ readiness review, group B). The branch is ``GITHUB_REF_NAME`` (the workflow pass
 ``HEAD``, else ``main``. Any other branch, or a detached HEAD the environment does not name,
 ends green with ``skipped=not the default branch`` and nothing tagged.
 
+Nothing is tagged while ``.claude-plugin/marketplace.json`` names another version for the
+plugin than ``plugin.json`` does: the run ends red with ``skipped=<the disagreement>``.
+PR #217 set ``plugin.json`` alone to 1.0.2 on ``main``; this script tagged ``v1.0.2`` and
+made its release while ``main``'s own checks failed on the mismatch
+(``tests/test_scaffold.py``), and both had to be deleted by hand (NOTES §45 gap 8).
+
 Outputs (``$GITHUB_OUTPUT`` and stdout): ``version=<version>``, ``tag=v<version>``,
 ``created=true|false``, ``release=<url>|exists|skipped|failed``, ``skipped=<reason>|``.
-Exit 0 in all of those cases; 1 when the manifest is missing or carries no version; 2 when
-git fails.
+Exit 0 in all of those cases but the disagreement; 1 when the manifest is missing or
+carries no version, or the two manifests disagree; 2 when git fails.
 """
 
 from __future__ import annotations
@@ -50,6 +56,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 MANIFEST = Path(".claude-plugin") / "plugin.json"
+MARKETPLACE = Path(".claude-plugin") / "marketplace.json"
 VERSION_RE = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?$")
 
 
@@ -62,6 +69,30 @@ def read_version(manifest: Path) -> str:
     if not VERSION_RE.match(version):
         raise SystemExit(f"{manifest}: 'version' is missing or not a version: {version!r}")
     return version
+
+
+def manifests_disagree(root: Path, version: str) -> str:
+    """Why ``marketplace.json`` and ``plugin.json`` disagree on the version, or "" when they
+    agree or there is no marketplace manifest to disagree. An unreadable marketplace
+    manifest, or one without the plugin's entry, is a disagreement: nothing is tagged."""
+    path = root / MARKETPLACE
+    if not path.is_file():
+        return ""
+    try:
+        name = json.loads((root / MANIFEST).read_text(encoding="utf-8")).get("name")
+        plugins = json.loads(path.read_text(encoding="utf-8")).get("plugins") or []
+        entry = next((p for p in plugins if isinstance(p, dict) and p.get("name") == name), None)
+    except (OSError, ValueError, AttributeError, TypeError) as exc:
+        return f"{MARKETPLACE.as_posix()}: cannot read the marketplace manifest: {exc}"
+    if entry is None:
+        return f"{MARKETPLACE.as_posix()} has no entry for the plugin {name!r}"
+    listed = str(entry.get("version") or "").strip()
+    if listed != version:
+        return (
+            f"{MARKETPLACE.as_posix()} names {name} {listed or 'without a version'} and "
+            f"{MANIFEST.as_posix()} names {version}: the two manifests disagree"
+        )
+    return ""
 
 
 def tag_for(version: str) -> str:
@@ -188,6 +219,19 @@ def main(argv: list[str] | None = None) -> int:
                 }
             )
             return 0
+        disagree = manifests_disagree(root, version)
+        if disagree:
+            print(f"{disagree}; nothing tagged", file=sys.stderr)
+            write_outputs(
+                {
+                    "version": version,
+                    "tag": tag,
+                    "created": "false",
+                    "release": "skipped",
+                    "skipped": disagree,
+                }
+            )
+            return 1
         exists = tag_exists(root, tag, args.remote)
         created = False
         if not exists and not args.dry_run:
