@@ -20,11 +20,14 @@ Change id: 0005. Status: proposed. Produced by: sdlc plugin 0.3.6, /sdlc-design 
 - A **dropped eval case**: the same rule over `evals/cases/` — the fixed path
   `plugin/evals/run.py:821` already defaults to, read with no new `sdlc.yaml` key — with one
   addition: an `R` whose destination folder name starts with `.` is a drop, because
-  `discover` excludes a hidden folder with no deletion in the diff (`run.py:142-151`). A
-  case is dropped when no path remains, at HEAD's committed tree, under its folder — decided
-  from HEAD's tree, not from the diff's records alone, so that one file dropped out of a
-  multi-file case while a sibling survives is never mistaken for the whole case's drop (panel
-  decision #2, phase b; see Design). Files moving within the same case folder are not a drop.
+  `discover` excludes a hidden folder with no deletion in the diff (`run.py:142-151`), and
+  this dot-prefixed-rename rule is evaluated independently of the survivor rule below — a
+  surviving sibling never excuses it (panel decision #1, phase c fix round; see Design). A
+  case with no dot-prefixed rename is dropped when no path remains, at HEAD's committed
+  tree, under its folder — decided from HEAD's tree, not from the diff's records alone, so
+  that one file dropped out of a multi-file case while a sibling survives is never mistaken
+  for the whole case's drop (panel decision #2, phase b; see Design). Files moving within
+  the same case folder are not a drop.
 - The check names every dropped file and case path in its `details` on failure.
 - **A drop the approved plan declares is not a finding.** The plan is read as committed at
   the merge base, via `GateContext.approved_artifact("plan.md")` (`checks.py:124-135`),
@@ -125,9 +128,13 @@ Change id: 0005. Status: proposed. Produced by: sdlc plugin 0.3.6, /sdlc-design 
   `ctx.diff.head` for `evals/cases/<name>/` — so that "a case is dropped" is decided from
   what the committed tree still holds, not from which paths the diff happened to touch: a
   case is dropped only when its survivor list is empty (after the dot-prefixed-rename
-  addition is applied to the records). Both rules return a path list; `tree_files`'s own
-  call is the only part that touches git, so the rules themselves still take plain arguments
-  in their tests.
+  addition is applied to the records). The dot-prefixed-rename rule is evaluated
+  independently of the survivor-emptiness rule: a source case with any file renamed to a
+  dot-prefixed destination is a drop even if a sibling file of that same case still
+  survives at HEAD (panel decision #1, phase c fix round — a fail-closed reading, since the
+  alternative lets a rename hide a case behind an untouched sibling). Both rules return a
+  path list; `tree_files`'s own call is the only part that touches git, so the rules
+  themselves still take plain arguments in their tests.
 - Declaration is checked against `ctx.approved_artifact("plan.md")` (the merge-base commit,
   `checks.py:124-135`), using `art.planned_files` and `plan_sync.is_planned` for the
   "## Files that change" match, and a plain text search of the "## Proof" section for

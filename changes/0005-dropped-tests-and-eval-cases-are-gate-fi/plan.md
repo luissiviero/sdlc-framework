@@ -32,10 +32,14 @@
 - `docs/OPERATING_MODEL.md` — §3's list of diff-reading checks gains `ratchets`; §6's
   description of what `sdlc:accept-risk` accepts gains a clause that a ratchet hit is
   included. Edited sentence by sentence (CLAUDE.md: no scripted rewrite of documentation).
-- `.claude-plugin/plugin.json` and `.claude-plugin/marketplace.json` — the `version` field in
-  each, bumped together to the same value, the next free patch number when this change
-  merges (decision 8). `tests/test_scaffold.py:47` asserts the two stay equal; bumping only
-  `plugin.json` fails that test.
+- `.claude-plugin/plugin.json` — the `version` field, bumped to the next free patch number
+  when this change merges (decision 8).
+- `.claude-plugin/marketplace.json` — its `version` field, bumped to the same value in the
+  same commit. `tests/test_scaffold.py:47` asserts the two stay equal; bumping only
+  `plugin.json` fails that test. (Split into its own bullet from the combined one two fix
+  rounds wrote: `art.planned_files` takes only the first backtick span of a list item, so
+  the combined bullet declared `plugin.json` alone to `plan_sync` and parked this commit on
+  `marketplace.json` as undeclared.)
 - `tests/test_gate.py` — `check_ratchets`: the test-file drop rule (D, R-not-a-rename,
   R-is-a-rename), the eval-case drop rule (dot-prefixed rename, folder emptied of survivors
   at HEAD, a partial multi-file deletion that leaves a survivor), declaration via "## Files
@@ -113,7 +117,11 @@ the hooks, the panel, `sdlc.yaml` and this repository's own root `REVIEW.md`.
   `tree_files` reads at `ctx.diff.head`, and step 2's test suite includes the
   partial-deletion case directly (`test_ratchets_eval_case_partial_delete_is_not_a_drop`).
   The test-file drop rule has no such gap: a test file is either present at HEAD or it is
-  not, with no "folder" grouping to lose a sibling under.
+  not, with no "folder" grouping to lose a sibling under. A narrower sub-case — a sibling
+  surviving a *dot-prefixed rename* of another file in the same case, rather than a plain
+  deletion — surfaced in the phase c fix round and was settled separately (panel decision
+  #1, phase c fix round): the dot-prefixed-rename rule stays independent of this survivor
+  check by design, pinned by `test_ratchets_eval_case_dot_rename_wins_over_a_surviving_sibling`.
 - **A `--name-status -M` parser is new to this codebase**: every existing diff-reading check
   uses `--name-only`, which cannot carry a rename's source and destination. A rename record's
   two paths must not be mistaken for two separate files (a false double-count or a false
@@ -229,6 +237,10 @@ the hooks, the panel, `sdlc.yaml` and this repository's own root `REVIEW.md`.
 - `tests/test_gate.py::test_ratchets_eval_case_partial_delete_is_not_a_drop` — one file
   under a multi-file eval case is dropped while `tree_files` still lists a sibling file
   under the same case folder at HEAD; `ok` (panel decision #2, phase b).
+- `tests/test_gate.py::test_ratchets_eval_case_dot_rename_wins_over_a_surviving_sibling` —
+  one file under a multi-file eval case is dot-prefix-renamed while `tree_files` still lists
+  a sibling file under the same case folder at HEAD; fails with `details.hits["ratchet:
+  evals"]` naming the case (panel decision #1, phase c fix round).
 - `tests/test_gate.py::test_ratchets_eval_case_internal_move_is_not_a_drop` — files moving
   within one case folder is `ok`.
 - `tests/test_gate.py::test_ratchets_accepted_hit_passes_on_later_run` — `status.yaml:

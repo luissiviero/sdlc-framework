@@ -30,7 +30,9 @@ tools is phase (c). `/sdlc-design` (B3) is the command that uses this skill.
 
 ## Proof
 <the tests that prove it, by name; the quantifiable target from the spec (p.27 step 3); for UI,
-the mock or screenshot to match>
+the mock or screenshot to match; a dropped test file or eval case this plan's own work
+requires, declared with `- ratchet: <name> may fall, because <why>` (`<name>` is `tests` or
+`evals`; the gate's `ratchets` check reads this line)>
 ```
 
 ## Interrogation prompt (article p.16 step 3; answers land in Risks and Options not taken)
