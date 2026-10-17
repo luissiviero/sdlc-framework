@@ -235,6 +235,70 @@ def test_main_reports_the_release_and_skips_it_without_a_token(repo, capsys, mon
     assert "release=failed:403" in captured.out and "was not created" in captured.err
 
 
+def _write_marketplace(work: Path, version: str) -> None:
+    (work / ".claude-plugin" / "marketplace.json").write_text(
+        json.dumps({"name": "sdlc-framework", "plugins": [{"name": "sdlc", "version": version}]}),
+        encoding="utf-8",
+    )
+
+
+def test_nothing_is_tagged_while_the_two_manifests_disagree(repo, capsys):
+    """NOTES §45 gap 8: PR #217 set ``plugin.json`` alone to 1.0.2; the tag run tagged
+    ``v1.0.2`` and made its release while main's checks failed on the mismatch."""
+    work, bare = repo
+    _write_marketplace(work, "0.2.15")
+    git(work, "add", ".")
+    git(work, "commit", "-q", "-m", "marketplace 0.2.15")
+    git(work, "push", "-q", "origin", "main")
+    # the PR #217 slip: plugin.json bumped, marketplace.json not
+    (work / ".claude-plugin" / "plugin.json").write_text(
+        json.dumps({"name": "sdlc", "version": "0.2.16"}), encoding="utf-8"
+    )
+    git(work, "add", ".")
+    git(work, "commit", "-q", "-m", "plugin.json alone at 0.2.16")
+    git(work, "push", "-q", "origin", "main")
+    assert sdlc_tag.main(["--root", str(work), "--no-release"]) == 1
+    captured = capsys.readouterr()
+    assert "created=false" in captured.out
+    assert "the two manifests disagree" in captured.out
+    assert "names sdlc 0.2.15" in captured.err and "nothing tagged" in captured.err
+    assert "v0.2.16" not in git(bare, "tag", "--list")
+    # the commit that brings marketplace.json into agreement gets the tag
+    _write_marketplace(work, "0.2.16")
+    git(work, "add", ".")
+    git(work, "commit", "-q", "-m", "marketplace 0.2.16")
+    git(work, "push", "-q", "origin", "main")
+    assert sdlc_tag.main(["--root", str(work), "--no-release"]) == 0
+    assert "created=true" in capsys.readouterr().out
+    assert (
+        git(bare, "rev-parse", "refs/tags/v0.2.16").strip()
+        == git(work, "rev-parse", "HEAD").strip()
+    )
+
+
+def test_an_unreadable_marketplace_or_one_without_the_plugin_tags_nothing(repo, capsys):
+    work, bare = repo
+    path = work / ".claude-plugin" / "marketplace.json"
+    path.write_text("{not json", encoding="utf-8")
+    assert sdlc_tag.main(["--root", str(work), "--no-release"]) == 1
+    assert "cannot read the marketplace manifest" in capsys.readouterr().err
+    path.write_text(json.dumps({"plugins": [{"name": "other", "version": "0.2.15"}]}), "utf-8")
+    assert sdlc_tag.main(["--root", str(work), "--no-release"]) == 1
+    assert "no entry for the plugin 'sdlc'" in capsys.readouterr().err
+    assert "v0.2.15" not in git(bare, "tag", "--list")
+
+
+def test_the_tag_workflow_runs_when_either_manifest_changes():
+    text = (ROOT / ".github" / "workflows" / "sdlc-tag.yml").read_text(encoding="utf-8")
+    assert '- ".claude-plugin/plugin.json"' in text
+    assert '- ".claude-plugin/marketplace.json"' in text
+
+
+def test_the_repository_s_own_manifests_agree_for_the_tag_script():
+    version = sdlc_tag.read_version(ROOT / sdlc_tag.MANIFEST)
+    assert sdlc_tag.manifests_disagree(ROOT, version) == ""
+
+
 def test_a_missing_manifest_is_exit_1(tmp_path, capsys):
     assert sdlc_tag.main(["--root", str(tmp_path)]) == 1
     assert "manifest" in capsys.readouterr().err

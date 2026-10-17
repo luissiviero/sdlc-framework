@@ -1,37 +1,39 @@
-# Progress — the study's proposals R21 to R45, the pipeline's speed (decisions 30 to 33, R46 to R49), and R10 as plugin **1.0.3** (2026-10-15 to 2026-10-17)
+# Progress — the safety fixes of NOTES §45 (gaps 6, 7 and 8) as plugin **1.0.4**, and the owner's choices 203 to 213 on the gaps' routes (2026-10-17)
 
-This session ran on branch `ccr-01de3f80-ilnomi`, at the owner's word, from a question about when the plugin is ready for an outside project. The previous record, the item-11 follow-ups', is now `docs/progress/2026-10-17-item-11-follow-ups.md`, unchanged. Only `luissiviero/sdlc-framework` was changed; the sample was read, never touched. The session's own file is `docs/handoffs/sessions/2026-10-15-ccr-01de3f80-ilnomi.md`.
+This session ran on branch `ccr-d96dbb91-v12amc`. It first verified the item-11 follow-ups' records (PR #222, merged as `cd8baf7`), then, after PR #220 (R10, 1.0.3) and PR #223 merged, built the safety PR the owner approved. The previous record, R21 to R49 and 1.0.3, is now `docs/progress/2026-10-17-r21-r49-and-1.0.3.md`, unchanged. Only `luissiviero/sdlc-framework` was changed; the sample was read, never touched. The session's own file is `docs/handoffs/sessions/2026-10-17-ccr-d96dbb91-v12amc.md`.
 
 ## Summary
-- **R21** (the owner's request): desktop-only acts — say when the GitHub mobile app cannot do an act, and give the link (`docs/proposals/desktop-only-acts.md`).
-- **R22 to R45**: one proposal for each of the study's 24 remaining confirmed entries, in the confirmed order. The order is the gate changes, then the roles (T1's two proposals, T2 inside the second), then the rest, with T4 last. Each was written by an Opus agent and checked by two independent agents, one for the owner's intent and one for the facts. Each finding was verified before it was applied. The proposals were then cross-checked against each other (53 findings) and given a last verify-and-fix round. The ROADMAP rows, the R numbers beside the entries and the record's annotations were added. PR #215, merged as `d54c35e`.
-- **The decision table** (`docs/handoffs/2026-10-15-decision-table-r21-r45.md`): R21 to R45 accepted on 2026-10-16, with the owner's answers recorded in the ROADMAP and the session file.
-- **The pipeline's speed.** The gate records showed 0.3 to 6.4 model hours per change against 1.8 to 7.4 days elapsed. The owner approved the table of what made it slow. That gave decisions 30 to 33:
-  - 30, the fast lane (amends 2 and 18);
-  - 31, a review request when a PR waits for the owner (amends 11 and 20);
-  - 32, deferred review and higher build caps by default (amends 21);
-  - 33, a GitHub App identity (amends 5).
+- **Gap 6, the runner's fail-open `sdlc.yaml`, is fixed.** `_approved_config` (`plugin/ci/run_phase.py`) used to read an unparseable default-branch copy as `{}`. It now raises `ConfigError`, and so does an unreadable checkout copy when there is no default-branch ref. The guard refuses to run with "<the error>: nothing runs until it is fixed", the same refusal as `paused: yes`. Before, a broken file dropped `paused`, the profile, `protected_paths`, `max_budget_usd` and the turn cap without a word. Two tests in `tests/test_ci.py` replay PR #214's indentation, and both fail on the old code.
+- **The root `sdlc.yaml` is now read by a test** (`tests/test_scaffold.py::test_the_root_sdlc_yaml_parses`). The same loader refuses PR #214's copy (`git show 5542406:sdlc.yaml`): "bad indentation".
+- **Gap 8, the tag on a broken bump, is fixed.** `.github/scripts/sdlc_tag.py` tags nothing while `marketplace.json` names another version than `plugin.json`, or cannot be read, or has no entry for the plugin; the run then ends red. `sdlc-tag.yml` also runs on a push that touches `marketplace.json`, so the commit that brings the two back into agreement gets the tag. Four tests; each fails on the old script. Waiting for `Framework checks` before tagging stays with R5.
+- **Gap 7 and the validator's README warning:** `README.md` now says to merge `main` into a conflicted PR's branch before a review, and gives the install line `/plugin install sdlc --marketplace luissiviero/sdlc-framework`. `claude plugin validate .` now gives only the `CLAUDE.md`-at-the-root warning.
+- **Plugin 1.0.4** (both manifests; choice 184's next free patch).
 
-  Their candidates are R46 to R49 (`docs/proposals/pipeline-speed.md`). Framework candidates are now built as session PRs with an independent review, not through the framework's own pipeline. The ROADMAP Order was rewritten with the pipeline sprint first. The owner's `CLAUDE.md` rows for decision 31 and the count of 33 decisions went in through PR #219.
-- **R10, plugin 1.0.3.** A red target found by the runner starts the next fix round by itself. At the cap, a read-only agent in a fresh context may reset the count once per change; the owner chose on 2026-10-17 that R10 builds it. An infrastructure failure gets one re-run, then parks. A missing target parks at once. The verifier names the record it read. It was built by an Opus agent and reviewed independently twice (9 findings, then 4, all verified and fixed or rejected with a reason). PR #220, merged as `571bc22`; `v1.0.3` is on it.
+## The owner's decisions (2026-10-17)
+The owner approved the session's revised decision table in full ("Approve all; build the safety PR in #1").
+203. **Gaps 6 and 8 ship first, as one safety PR before R17**, built by this session: the runner refuses an unparseable `sdlc.yaml`, a test reads the root `sdlc.yaml`, and the tag script refuses disagreeing manifests. This is plugin 1.0.4.
+204. **Gaps 2, 3 and 4 go into one fix-round robustness PR after R17**, before the sample moves past 1.0.1 or the trial project starts. R10 runs nowhere yet: the root pin is 0.3.6 and the sample's is 1.0.1.
+205. **Gaps 1 and 5 go into R48.** A panel `park` must park (fail closed), with a test. R48 also raises the template's turn default. The sprint prompt carries the line (annotated beside R48).
+206. **Gap 7 is a line in `README.md`**, in 203's PR.
+207. **The sample moves to the newest release once 204 has landed**, skipping 1.0.2. The upgrade includes the four workflow copies (build, test, fix, deploy) that 1.0.3 changed. A session prepares that PR and gives the pin row and the `REVIEW.md` bullet as guardrail rows.
+208. **The root `REVIEW.md` skip-marker bullet is applied by the owner** (the table below).
+209. **"Small defects" and "E2":** the owner tells a session in one line what they were; until then they stay the owner's open item.
+210. **The README install line** goes in 203's PR.
+211. **PR #173 (change 0004, R14) waits for R14's turn** in ROADMAP's Order; the sprint comes first.
+212. **The sprint (R17 first) starts after 203's PR merges**, so R17 takes the next patch number after 1.0.4.
+213. **R28's timing and cost and R44's timing are answered after the sprint**, as `docs/progress/2026-10-17-r21-r49-and-1.0.3.md` says.
 
-## The owner's decisions (2026-10-15 to 2026-10-17)
-- Only the study's entries go onto the ROADMAP; the carried small items wait. One PR for R22 to R45, one commit per batch. Opus writes the proposals; Fable and Opus review them (from 2026-10-15 Opus only, at the owner's word).
-- R21 to R45 accepted, with the recommendations of the decision table. The trial project starts after a short core, not after all of wave 1.
-- The pipeline-speed table approved in full (decisions 30 to 33, R46 to R49), the pipeline sprint first.
-- R10 builds decision 29's reset. R17 moves to 2nd in the sprint, because R46 and R47 need its owner check. The sprint is R10, R17, R46, R47, R48, R49.
+## Proposed edit for the owner
+Carried from `docs/progress/2026-10-17-item-11-follow-ups.md` (choice 208).
+
+| File | Line | What is there now | What it must become |
+|---|---|---|---|
+| [`REVIEW.md`](https://github.com/luissiviero/sdlc-framework/blob/main/REVIEW.md#L26) | after 26 (the end of the `plan.md` bullet) | nothing; line 27 starts "- The second occurrence of the same finding …" | `- Each added skip marker the gate's \`ratchets\` check listed at gate (e) (\`evidence/gate-e.json\`'s \`details.skip_markers\`) must be declared in \`plan.md\` or explained in the PR; an undeclared one quietly narrowing what the suite actually runs is non-compliant.` (the same bullet `template/REVIEW.md:27-30` carries since 1.0.2) |
 
 ## Checks (this repository)
-On PR #220's final head `bc2cb6e`: `compileall` clean, `ruff check` "All checks passed!", `ruff format --check` "209 files already formatted", `pytest` "1742 passed in 791.44s". All `Framework checks` jobs (Linux 3.10 and 3.12, Windows) and the evals were green.
+On the final head, after `python -m pip install -e ".[dev]"`, chained with `set -o pipefail`: the four commands of `HANDOFF.md`'s standing precondition 1. Their output is in the PR.
 
 ## Left
-- **Next: R17**, then R46, R47, R48 and R49, each a session PR with an independent review and the next free patch version. The starting prompt is `docs/handoffs/2026-10-17-pipeline-sprint-prompt.md`.
-- **Not verified live:**
-  - R10's real judge call and real dispatch;
-  - that a job skipped by its `if` never enters its concurrency group.
-
-  The first red target on the sample or the trial project shows them.
-- **Left out of R10 by its review:**
-  - a check of the runner's reset against the Actions API;
-  - re-running only the targets that did not start after a crash.
-- **The owner's open answers:** R28's timing and cost; R44's timing.
+- **Next: the sprint**, from `docs/handoffs/2026-10-17-pipeline-sprint-prompt.md` (choice 212), once this PR has merged and `v1.0.4` is tagged.
+- **Then the fix-round robustness PR** (choice 204), then the sample's upgrade (choice 207).
+- **Port list:** this PR touches `plugin/ci/run_phase.py`. `HANDOFF.md`'s port-list rule runs "until the 1.0.0 read", which item 11 made (`docs/progress/2026-10-14-item-11.md`), so it is named here only for the trail.

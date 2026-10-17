@@ -11,7 +11,7 @@ This session builds the rest of the pipeline sprint, one session PR per candidat
 - `2026-10-17-ccr-d96dbb91-v12amc.md`;
 - `2026-10-17-ccr-f21be30b-5d5dpz.md`.
 
-Check that `main` carries `v1.0.3` and that no open PR touches the files the candidate changes.
+Check that `main` carries `v1.0.3` and that no open PR touches the files the candidate changes. *[2026-10-17, choice 212: the sprint starts after the safety PR (plugin 1.0.4) merges, so check for `v1.0.4` instead.]*
 
 **How each candidate is built** (the owner's choice of 2026-10-16, decisions 30 to 33):
 1. Write a precise spec from the candidate's proposal, its decision file and the code.
@@ -27,6 +27,6 @@ Do not run the work through the framework's own pipeline. Never edit guardrail f
 
 **The candidates:**
 - **R17** — `docs/proposals/claude-comment-fix-round.md`. It is accepted. Decision 22's amendment needs its decision file first, in a documentation PR of its own. It also builds `is_owner_actor`, which R46 and R47 need, and the narrowing of the (c)/(d) labels to the owner's account (the owner agreed on 2026-10-16).
-- **R46, R47, R48, R49** — `docs/proposals/pipeline-speed.md`, decisions 30 to 33. R49 needs my one-time GitHub App setup in a desktop browser: give me the exact steps when you reach it.
+- **R46, R47, R48, R49** — `docs/proposals/pipeline-speed.md`, decisions 30 to 33. *[2026-10-17, the owner's choice 205 (`docs/PROGRESS.md`): R48 also covers NOTES §45 gap 1 (a panel `park` must park, fail closed, with a test) and gap 5 (the template's turn default).]* R49 needs my one-time GitHub App setup in a desktop browser: give me the exact steps when you reach it.
 
 **Rules.** Keep tokens lean: a session PR is one builder and one reviewer, not a fan-out. End by writing your session file as `HANDOFF.md` says.

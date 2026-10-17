@@ -13,6 +13,10 @@
 # Only the default branch is tagged: a workflow_dispatch started from any other ref ends
 # green with "not the default branch" and nothing tagged (the script reads GITHUB_REF_NAME
 # and SDLC_DEFAULT_BRANCH below), because a tag is created once and never moved.
+#
+# Nothing is tagged while .claude-plugin/marketplace.json names another version than
+# plugin.json: the run ends red (NOTES §45 gap 8). A push that touches either manifest runs
+# it, so the commit that brings the two back into agreement gets the tag.
 name: SDLC release tag
 
 on:
@@ -20,6 +24,7 @@ on:
     branches: [main]
     paths:
       - ".claude-plugin/plugin.json"
+      - ".claude-plugin/marketplace.json"
   workflow_dispatch:
 
 permissions:
