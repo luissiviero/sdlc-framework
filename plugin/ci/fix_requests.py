@@ -170,6 +170,37 @@ def write(change_dir: Path, data: dict[str, Any]) -> Path:
     return path
 
 
+def add_request(change_dir: Path, entry: dict[str, Any]) -> dict[str, Any]:
+    """Add one request the run itself makes to ``evidence/fix-requests.json`` (decision 29:
+    the ``red-targets`` request of an automatic round, built by ``ci/auto_round.py`` from the
+    runner's own record, never from the PR). A request with the same ``kind`` and ``id`` is
+    replaced, so a repeated step adds it once. Returns the summary the run prints."""
+    path = Path(change_dir) / art.EVIDENCE_DIR / FILE
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        data = None
+    if not isinstance(data, dict):
+        data = {"schema_version": SCHEMA_VERSION, "ok": True, "requests": [], "not_applied": []}
+    kept = [
+        r
+        for r in data.get("requests") or []
+        if not (
+            isinstance(r, dict)
+            and r.get("kind") == entry.get("kind")
+            and r.get("id") == entry.get("id")
+        )
+    ]
+    data["requests"] = [*kept, entry]
+    write(change_dir, data)
+    return {
+        "file": FILE,
+        "kind": entry.get("kind"),
+        "id": entry.get("id"),
+        "requests": len(data["requests"]),
+    }
+
+
 def collect_and_write(
     change_dir: Path,
     repo: str,

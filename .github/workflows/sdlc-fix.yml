@@ -2,7 +2,10 @@
 # review on any phase's pull request starts /sdlc-fix on that PR's own head branch, and so
 # does one of the owner's un-park labels (decision 24: sdlc:accept-risk,
 # sdlc:reset-iterations, sdlc:unlock-tests), which the run performs first. Intent, design and
-# build PRs alike; nothing notifies anyone (OPERATING_MODEL section 5).
+# build PRs alike; nothing notifies anyone (OPERATING_MODEL section 5). Since plugin 1.0.3
+# (decision 29) the phase runner also dispatches this workflow itself when its commands step
+# finds a red target below the iteration cap: the round applies the failing targets as its
+# constraint (a red-targets request), and the change parks for the owner only at the cap.
 #
 # Contract: docs/OPERATING_MODEL.md section 4.2 (the trigger and dispatch table) and 5, build
 # guide step 30, article p.33-34 ("Claude addresses the comment and pushes the fix"; "let
@@ -61,11 +64,8 @@ permissions:
   actions: write
 
 # One run at a time per pull request head: a fix round shares the group of the phase runs of
-# the same branch (OPERATING_MODEL section 4.2), so it never races a dispatched phase.
-concurrency:
-  group: "sdlc-${{ inputs.head_ref || github.event.pull_request.head.ref }}"
-  cancel-in-progress: false
-
+# the same branch (OPERATING_MODEL section 4.2), so it never races a dispatched phase; the
+# group is set on the job below.
 jobs:
   fix:
     # A review counts when it asks for changes and a person who is a member of the
@@ -85,10 +85,18 @@ jobs:
       (github.event.label.name == 'sdlc:accept-risk' ||
       github.event.label.name == 'sdlc:reset-iterations' ||
       github.event.label.name == 'sdlc:unlock-tests')) }}
+    # 1.0.3 (decision 29): the group is the job's, not the workflow's, so an event whose job
+    # is skipped by the condition above (a comment-only review, another label) never enters
+    # it and cannot cancel a pending run - the automatic fix round the runner dispatched
+    # among them. Job and workflow groups of one name are one group in the repository.
+    concurrency:
+      group: "sdlc-${{ inputs.head_ref || github.event.pull_request.head.ref }}"
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     # 0.3.0: the session's wall clock (gate.max_wall_clock_minutes, 120 by default, plus
     # 5 of grace) and then the gate's commands step, which runs the three targets after
-    # the session at gate.command_timeout each (900 s by default): 125 + 50 minutes
+    # the session at gate.command_timeout each (900 s by default): 125 + 50 minutes;
+    # 1.0.3 (decision 29): + 10 for the judge at the iteration cap
     timeout-minutes: 200
     steps:
       # The pull request's head, not the event's default ref (a review event checks out the

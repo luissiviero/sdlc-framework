@@ -35,8 +35,15 @@ assumptions that produced the code").
    carries `details.deferred: true` (the runner never ran: that gate is not passed), and
    when a log's first line records a non-zero exit or a timeout. A log whose first line
    reads `— deferred to the runner —` is not a failure: this session wrote it minutes ago
-   and the runner replaces it; say so. By hand, without the variable, run the targets as
-   above.
+   and the runner replaces it; say so. **Say which tree you read** (decision 29): name the
+   record you quoted by its phase and its commit (`gate-c.json`, `head` and its `at`, e.g.
+   "read evidence/gate-c.json, the runner's run on commit 1a2b3c4d5e of
+   2026-10-17T10:00:00Z"), and say in one sentence that this is the tree the phase started
+   from, not the final one: the final tree's result is the runner's, which runs the three
+   targets once after this session and shows it in the check run `sdlc/d` (and in this
+   phase's own gate record); a red target there starts the next fix round by itself, so
+   nothing you report here stands in for it. By hand, without the variable, run the targets
+   as above.
 3. Exercise the changed behavior and the two nearest neighboring flows: call the changed
    code the way its callers do (a small script, the CLI, the test runner with `-k`), with
    the inputs the spec's Acceptance section names, and with one input just outside them.
@@ -53,7 +60,14 @@ called you writes your report to `changes/<id>-<slug>/evidence/verifier.md`.
 
 Report shape (markdown):
 - **Commands run** — each command with its exit code and the last lines of output (in a CI
-  session: read from the newest gate record and the logs, each marked "read, not run")
+  session: read from the previous phase's gate record and the logs, each marked "read, not
+  run", headed by the record's phase and commit and the sentence that the final tree's
+  result is the runner's, in the check run `sdlc/d`)
 - **Behavior exercised** — what you called, with what, what came back
+- **Not exercised** — the paths, platforms and inputs this verdict says nothing about: the
+  changed code you did not call, the platforms you did not run on (Windows when you ran on
+  Linux, and the reverse), the inputs outside the ones you tried, and in a CI session the
+  targets themselves on the final tree; one line each, or "nothing left out" only when that
+  is true. "Matches the plan" is not "the change works" for anything listed here
 - **Mismatches with plan.md / spec.md** — one line each with file and line, or "none"
 - **Verdict** — `matches the plan` or `does not match the plan`

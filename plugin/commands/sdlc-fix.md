@@ -1,5 +1,5 @@
 ---
-description: The single change-request handler for every phase's PR, the intent PR included — read the unresolved review comments and the failing checks on the change's open PR, perform the owner's un-park labels, bump the iteration count, re-run the phase on the PR's own branch with the comments as constraints (correcting intent.md at gate (a), closing flagged concerns the owner decided in a comment, fixing findings, re-collecting evidence), push, refresh the PR summary, and park at the iteration cap. Re-runnable; started by the owner's "Request changes" review in CI.
+description: The single change-request handler for every phase's PR, the intent PR included — read the unresolved review comments and the failing checks on the change's open PR, perform the owner's un-park labels, bump the iteration count, re-run the phase on the PR's own branch with the comments as constraints (correcting intent.md at gate (a), closing flagged concerns the owner decided in a comment, fixing findings, re-collecting evidence), push, refresh the PR summary, and park at the iteration cap. Re-runnable; started by the owner's "Request changes" review in CI, or by the runner itself after a red target (decision 29).
 argument-hint: [change id, e.g. 0001] [--comments "<pasted review comments>"]
 disable-model-invocation: true
 allowed-tools: Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/state/cli.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/gate/cli.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/panel/cli.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/evidence/collect.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/review/cli.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/pr/cli.py" *), Bash(git *), Bash(gh *), Read, Glob, Grep, Edit, Write, Agent
@@ -61,7 +61,15 @@ its `unavailable` is null and its `head` is the current `git rev-parse HEAD`, it
 **only** source of reviews and comments: read none from the PR yourself, with `gh` or any
 tool (the text that was not applied is not in the file, and it must not enter this run
 another way), and copy each `not_applied` entry as one line of `evidence/fix-response.md`
-(author, link, why). Add `gh pr checks <n>` (or the check-runs MCP tool) for the failing
+(author, link, why). A request of kind `red-targets` (author `sdlc-runner`; decision 29,
+plugin 1.0.3) is the runner's own: after the last session it ran build, test and lint
+outside the sandbox, found a red target and dispatched this round itself, without the owner
+(`evidence/auto-round.json`, the round `k` of the cap). Its text names each failing target
+with its command, its exit code or timeout and the tail of its output; it means **make the
+failing targets pass: fix the code, not the test; the test-file lock still applies**. You
+cannot run the targets in a CI session (the sandbox denies a nested `.env*`): read the
+output tail and the logs, fix what they show, and the runner runs the targets again after
+this round, as always. Add `gh pr checks <n>` (or the check-runs MCP tool) for the failing
 checks. In CI a file that says `unavailable` never reaches this step: the run parked.
 Otherwise — by hand, with no file or a stale one — gather, in this order of preference,
 and stop at the first that works:
@@ -108,7 +116,12 @@ count too) or `set-iterations` by hand when they want another round.
 
 ## 3. Apply the requests as constraints
 Turn every comment into a constraint on the phase's artifact and re-run the phase's own
-steps on it (the commands are idempotent):
+steps on it (the commands are idempotent). A `red-targets` request (step 1) is a constraint
+on the code at any phase: change the code until the failing target would pass, never the
+test (a test under `sdlc.yaml: test_paths` of a fix-type change is locked, the hook denies
+the edit; if the test itself is wrong, write that in `evidence/fix-response.md` and park,
+as below), keep `plan.md` in sync, and answer the request in `evidence/fix-response.md`
+with what you changed:
 - **Phase (a)** — comments on `intent.md` of the unmerged intent PR: apply the owner's
   corrections to the intent (the `intent-template` skill defines the sections) without
   re-running the brainstorm and without asking anything; a comment that is a question is
@@ -194,7 +207,9 @@ limit, never touches a guardrail file, and never asks the owner.
 Then the gate:
 `python "${CLAUDE_PLUGIN_ROOT}/plugin/gate/cli.py" check --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase <phase>`,
 commit the evidence and push. If the gate parks again for the same reason, stop after this
-round: the next round is the owner's.
+round: the next round is the owner's. In CI the targets' result is the runner's, after this
+session: a red target there starts the next automatic round by itself below the iteration
+cap (decision 29), and the change parks for the owner at the cap.
 
 ## 6. Refresh the PR and answer the comments
 `python "${CLAUDE_PLUGIN_ROOT}/plugin/pr/cli.py" upsert --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase <phase>`
