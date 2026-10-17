@@ -126,6 +126,13 @@ gate:
 # automation_identity:
 #   - github-actions[bot]
 
+# --- the owner's account (decision 34) -------------------------------------------------------
+# The account whose comments, reviews and approval labels count: unset on a personal repository
+# (its owner), set on an organization one; a guardrail edit, read from the default branch.
+# On a personal repository another login here would not work: the fix workflow's condition
+# lets only the repository owner's "Request changes" review through.
+# owner: your-login
+
 # --- test-file lock (build guide step 25; OPERATING_MODEL section 8) -------------------------
 # Globs of the project's test files. In a fix-type change the build run commits the reproducing
 # test first and locks these paths (status.yaml: tests_locked) for the rest of the change; the

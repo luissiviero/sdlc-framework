@@ -6,6 +6,9 @@
 # (decision 29) the phase runner also dispatches this workflow itself when its commands step
 # finds a red target below the iteration cap: the round applies the failing targets as its
 # constraint (a red-targets request), and the change parks for the owner only at the cap.
+# Since R17 (decision 34) the owner's pull request comment that starts with @claude starts
+# the same round: sdlc-comment.yml checks it and dispatches this workflow with the change
+# id, the head branch and the comment's link (the trigger input).
 #
 # Contract: docs/OPERATING_MODEL.md section 4.2 (the trigger and dispatch table) and 5, build
 # guide step 30, article p.33-34 ("Claude addresses the comment and pushes the fix"; "let
@@ -22,14 +25,22 @@
 # By-hand rule: GitHub refuses "Request changes" on the reviewer's own pull request, so a
 # pull request the owner opened by hand (one the automation identity could not open) never
 # fires the review trigger for the owner's words - there the review is a comment review and
-# a workflow_dispatch with the change id and the head branch is the round (0.3.2; the
-# framework's change 0001, 2026-10-02).
+# the round is one PR comment starting with @claude (decision 34), or a workflow_dispatch
+# with the change id and the head branch (0.3.2; the framework's change 0001, 2026-10-02).
 #
-# Reviewer rule: a review starts a round only when its author is a member of the repository
-# (author_association OWNER, MEMBER or COLLABORATOR): on a public repository anyone with read
-# access can request changes, and the review's words reach this privileged run. A live
-# finding of the sample repository's weekly security review (2026-09-25); a label already
-# needs triage or write permission.
+# Reviewer rule: a review starts a round only when its author is the owner's account
+# (decision 34), and never on a head in another repository (a fork). On a personal
+# repository the job condition already requires the repository owner, so a refused review
+# never enters the concurrency group (the 1.0.3 promise below). On an organization
+# repository the condition keeps only the member check (author_association OWNER, MEMBER or
+# COLLABORATOR: the owner's association is not always OWNER, and the owner's account is named
+# in sdlc.yaml, which an expression cannot read); there a member's review enters the group,
+# a known limit. The exact check is the find step's on both (run_phase.py --find-change
+# reads the review's author from the event payload and judges it with is_owner_actor against
+# the default branch's sdlc.yaml), so a refused round installs nothing and runs no model. On a public repository anyone with read
+# access can request changes, and the review's words would reach this privileged run (the
+# sample repository's weekly security review, 2026-09-25); a label already needs triage or
+# write permission.
 #
 # The change is found from the pull request's own files (its changes/<id>-<slug>/ folder),
 # never from the head name alone: a web-session intent PR carries a claude/... head, and an
@@ -49,6 +60,10 @@ on:
         type: string
       head_ref:
         description: "The pull request's head branch, e.g. sdlc/0001/c; it keys the concurrency group"
+        required: false
+        type: string
+      trigger:
+        description: "The link of the owner's @claude comment that started this round (decision 34)"
         required: false
         type: string
   pull_request_review:
@@ -71,24 +86,36 @@ jobs:
     # A review counts when it asks for changes and a person who is a member of the
     # repository submitted it (the review's state is lower-case in the event payload; a
     # `[bot]` reviewer never starts a round; CONTRIBUTOR, FIRST_TIME_CONTRIBUTOR, FIRST_TIMER
-    # and NONE are refused). A label counts only when it is one of the owner's three un-park
-    # verbs; the gate labels sdlc:c-approved and sdlc:d-approved have their own workflows.
+    # and NONE are refused). Decision 34: on a personal repository the reviewer must be the
+    # repository owner here already; on an organization repository (whose owner names an
+    # account in sdlc.yaml: owner) any member passes this filter and the find step makes the
+    # exact check. A review or a label on a head in another repository (a fork) never
+    # counts. A label counts only when it is one of the owner's three un-park verbs; the gate
+    # labels sdlc:c-approved and sdlc:d-approved have their own workflows.
     if: >-
       ${{ github.event_name == 'workflow_dispatch' ||
       (github.event_name == 'pull_request_review' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
       github.event.review.state == 'changes_requested' &&
       !endsWith(github.event.review.user.login, '[bot]') &&
+      (github.event.review.user.login == github.repository_owner ||
+      github.event.repository.owner.type == 'Organization') &&
       (github.event.review.author_association == 'OWNER' ||
       github.event.review.author_association == 'MEMBER' ||
       github.event.review.author_association == 'COLLABORATOR')) ||
       (github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
       (github.event.label.name == 'sdlc:accept-risk' ||
       github.event.label.name == 'sdlc:reset-iterations' ||
       github.event.label.name == 'sdlc:unlock-tests')) }}
     # 1.0.3 (decision 29): the group is the job's, not the workflow's, so an event whose job
     # is skipped by the condition above (a comment-only review, another label) never enters
-    # it and cannot cancel a pending run - the automatic fix round the runner dispatched
-    # among them. Job and workflow groups of one name are one group in the repository.
+    # it and cannot cancel a pending run - the automatic fix round the runner dispatched, or
+    # a round an @claude comment dispatched (decision 34), among them. Job and workflow
+    # groups of one name are one group in the repository. Known limit (decision 34): on an
+    # organization repository a member's "Request changes" review passes the condition,
+    # enters the group and may displace a pending run before the find step refuses it; on
+    # a personal repository only the owner's review enters it.
     concurrency:
       group: "sdlc-${{ inputs.head_ref || github.event.pull_request.head.ref }}"
       cancel-in-progress: false
@@ -124,7 +151,10 @@ jobs:
           path: framework
 
       # --id wins (a dispatch), then a head sdlc/<id>/<phase>, then the one changes/<id>-<slug>/
-      # folder the pull request touches. An empty change_id skips every step below.
+      # folder the pull request touches. An empty change_id skips every step below. On a
+      # review the step first refuses a reviewer who is not the owner's account, or a head in
+      # another repository (decision 34), reading the review from GITHUB_EVENT_PATH and the
+      # owner from the default branch's sdlc.yaml.
       - name: Find the change this pull request carries
         id: find
         env:
@@ -133,6 +163,7 @@ jobs:
           HEAD_REF: ${{ inputs.head_ref || github.event.pull_request.head.ref }}
           REPO: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
+          SDLC_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: python framework/plugin/ci/run_phase.py --root . --plugin-dir framework --phase fix --id "$CHANGE_ID" --head-ref "$HEAD_REF" --repo "$REPO" --pr-number "$PR_NUMBER" --find-change
 
       - if: steps.find.outputs.change_id != ''
@@ -168,6 +199,9 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
           SDLC_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          # decision 34: the owner's @claude comment the dispatcher passed, written into
+          # evidence/fix-requests.json as the round's trigger; an input, never in a run line
+          SDLC_TRIGGER: ${{ inputs.trigger }}
         run: python framework/plugin/ci/run_phase.py --root . --plugin-dir framework --phase fix --id "$CHANGE_ID" --head-ref "$HEAD_REF" --repo "$REPO" --pr-number "$PR_NUMBER" --ref "$DEFAULT_BRANCH"
 
       # Build guide step 41.1 (article p.39): every hook decision of the run is one line of

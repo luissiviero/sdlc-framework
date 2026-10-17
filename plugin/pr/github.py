@@ -255,10 +255,13 @@ _EMPTY_PR: dict[str, Any] = {
 
 def _pr_from_api(item: dict[str, Any]) -> dict[str, Any]:
     """One REST pull request (single or listed) in the shape every lookup returns. A listed
-    item has no ``merged`` field, only ``merged_at``."""
+    item has no ``merged`` field, only ``merged_at``. ``head_repo`` is the head repository's
+    ``owner/name`` (decision 34: the comment dispatcher refuses a fork's head), None when
+    that repository was deleted; the ``gh`` route does not shape it (None, refused)."""
     merged = item.get("merged")
     if merged is None:
         merged = bool(item.get("merged_at"))
+    head_repo = (item.get("head") or {}).get("repo")
     return {
         "number": item.get("number"),
         "state": item.get("state"),
@@ -266,6 +269,7 @@ def _pr_from_api(item: dict[str, Any]) -> dict[str, Any]:
         "merge_commit_sha": item.get("merge_commit_sha"),
         "head_ref": (item.get("head") or {}).get("ref"),
         "head_sha": (item.get("head") or {}).get("sha"),
+        "head_repo": head_repo.get("full_name") if isinstance(head_repo, dict) else None,
         "base_ref": (item.get("base") or {}).get("ref"),
         "labels": [lb.get("name") for lb in item.get("labels") or []],
         "html_url": item.get("html_url"),

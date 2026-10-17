@@ -504,6 +504,7 @@ WORKFLOWS = (
     ".github/workflows/sdlc-digest.yml",
     ".github/workflows/sdlc-release.yml",  # build guide step 32.3 (plugin 0.2.12)
     ".github/workflows/sdlc-fix.yml",  # decisions 22 and 24 (plugin 0.2.13)
+    ".github/workflows/sdlc-comment.yml",  # the owner's @claude comment (decision 34, R17)
     ".github/workflows/sdlc-abandon.yml",  # decision 25 (plugin 0.2.13)
     ".github/workflows/sdlc-detect.yml",  # build guide step 37 (plugin 0.2.19)
     ".github/workflows/sdlc-runbook.yml",  # the owner's Go on a runbook (plugin 0.2.19)

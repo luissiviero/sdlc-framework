@@ -267,6 +267,8 @@ WORKFLOW_FILES = (
     # the fix round on a "Request changes" review or an un-park label (decisions 22 and 24)
     # and the end state of a PR closed without a merge (decision 25); plugin 0.2.13
     ".github/workflows/sdlc-fix.yml",
+    # the owner's @claude comment dispatches that round (decision 34, ROADMAP R17)
+    ".github/workflows/sdlc-comment.yml",
     ".github/workflows/sdlc-abandon.yml",
     # phase (f): the scheduled detection and the owner's Go on a runbook (build guide step
     # 37; decisions 14, 25, 26); plugin 0.2.19

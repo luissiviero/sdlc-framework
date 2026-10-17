@@ -188,8 +188,9 @@ paste. Do not retry with other means.
 ## 9. Hand over
 - `continue` (Standard): report "gate (c) passed → /sdlc-test <id>". In the
   merge-triggered workflow the job dispatches the test workflow itself. Do not run (d) here.
-- `wait` (Full): report the PR URL and "gate (c): approving review + `sdlc:c-approved`
-  starts the test phase; review comments are the change request (`/sdlc-fix`)".
+- `wait` (Full): report the PR URL and "gate (c): approving review + `sdlc:c-approved`,
+  applied by the owner's account (decision 34), starts the test phase; review comments are
+  the change request (`/sdlc-fix`)".
 - `park`: report the PR URL and the gate's "What I need from you" block.
 
 Never edit `.claude/**`, `CLAUDE.md`, `REVIEW.md`, `sdlc.yaml` or `intent.md`. Never use

@@ -138,6 +138,7 @@ from hooks._common import (  # noqa: E402
 )
 from state import conventions as c  # noqa: E402
 from state import status as status_mod  # noqa: E402
+from state.unpark import is_owner_actor  # noqa: E402
 
 EXIT_OK, EXIT_FAILED, EXIT_USAGE = 0, 1, 2
 
@@ -353,8 +354,12 @@ def label_applied_by_a_human(repo: str, number: int, label: str) -> tuple[bool, 
     return True, actor
 
 
-def check_approval(repo: str, change_id: str, run_phase: str, env: dict[str, str]) -> str | None:
-    """Full profile: the skip reason when the owner's approval is not on the build PR."""
+def check_approval(
+    root: Path, repo: str, change_id: str, run_phase: str, env: dict[str, str]
+) -> str | None:
+    """Full profile: the skip reason when the owner's approval is not on the build PR. The
+    label counts only from the owner's account (decision 34, amending 27), judged by
+    ``state/unpark.py is_owner_actor`` against the default branch's ``sdlc.yaml``."""
     label = c.approved_label(APPROVAL_LABEL[run_phase])
     github = _github()
     if github is None:
@@ -374,7 +379,18 @@ def check_approval(repo: str, change_id: str, run_phase: str, env: dict[str, str
         print(f"note: no token, so the actor of {label} is not checked", file=sys.stderr)
         return None
     ok, who = label_applied_by_a_human(repo, int(number), label)
-    return None if ok else f"{label} on PR #{number}: {who}"
+    if not ok:
+        return f"{label} on PR #{number}: {who}"
+    try:
+        config = owner_config(root, env)
+    except ConfigError as exc:  # fail closed, as the guard refuses on it
+        return f"{label} on PR #{number} cannot be judged: {exc}"
+    if not is_owner_actor(who, config, env, repo):
+        return (
+            f"{label} on PR #{number} was applied by {who}, not by the owner's account "
+            "(decision 34)"
+        )
+    return None
 
 
 # --- what the runner leaves in the working directory (first live design run, 2026-09-21) -----
@@ -767,6 +783,12 @@ def resolve_change_id(change_id: str | None, head_ref: str | None, run_phase: st
 CHANGE_FOLDER_RE = re.compile(r"^changes/(\d{4})-[^/]+/")
 
 
+def change_ids_in(files: list[Any]) -> list[str]:
+    """The sorted change ids of the ``changes/<id>-<slug>/`` folders among ``files`` (a pull
+    request's paths); shared with the comment dispatcher (``ci/comment_dispatch.py``)."""
+    return sorted({m.group(1) for f in files if (m := CHANGE_FOLDER_RE.match(str(f)))})
+
+
 def _pr_number(value: Any) -> int | None:
     text = str(value or "").strip().lstrip("#")
     return int(text) if text.isdigit() and int(text) > 0 else None
@@ -813,9 +835,7 @@ def find_change(
     if not listed.get("ok"):
         why = listed.get("reason") or "failed"
         return None, f"the files of pull request #{number} could not be read: {why}"
-    ids = sorted(
-        {m.group(1) for f in listed.get("files") or [] if (m := CHANGE_FOLDER_RE.match(str(f)))}
-    )
+    ids = change_ids_in(listed.get("files") or [])
     if not ids:
         return None, f"pull request #{number} touches no changes/<id>-<slug>/ folder"
     if len(ids) > 1:
@@ -826,13 +846,56 @@ def find_change(
     return ids[0], None
 
 
+def review_refusal(root: Path, repo: str, env: dict[str, str]) -> str | None:
+    """The exact check of the "Request changes" path (decision 34): None when the event is
+    not a ``pull_request_review``, or when the review is the owner's account's
+    (``is_owner_actor`` against the default branch's ``sdlc.yaml``) on a head in ``repo``;
+    else the reason the round is refused. The workflow's ``if:`` keeps a coarse member
+    check (an organization owner's association is not always ``OWNER``). Fail closed: a
+    payload that cannot be read refuses."""
+    if env.get("GITHUB_EVENT_NAME") != "pull_request_review":
+        return None
+    try:
+        payload = json.loads(Path(env.get("GITHUB_EVENT_PATH") or "").read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        return f"the review event's payload could not be read ({type(exc).__name__}): refused"
+    if not isinstance(payload, dict):
+        return "the review event's payload is not an object: refused"
+    review = payload.get("review") if isinstance(payload.get("review"), dict) else {}
+    user = review.get("user") if isinstance(review.get("user"), dict) else {}
+    login = str(user.get("login") or "")
+    try:
+        config = owner_config(root, env)
+    except ConfigError as exc:
+        return f"the review cannot be judged: {exc}"
+    if not is_owner_actor(login, config, env, repo):
+        who = login or "an unknown account"
+        return f"the review is by {who}, not the owner's account (decision 34)"
+    pull = payload.get("pull_request") if isinstance(payload.get("pull_request"), dict) else {}
+    head = pull.get("head") if isinstance(pull.get("head"), dict) else {}
+    head_repo = head.get("repo") if isinstance(head.get("repo"), dict) else {}
+    full_name = str(head_repo.get("full_name") or "")
+    if not repo or full_name.lower() != repo.lower():
+        return (
+            f"the pull request's head is in {full_name or 'no repository'}, not in "
+            f"{repo or 'the repository'}: a fork's head never starts a round (decision 34)"
+        )
+    return None
+
+
 def print_found_change(args, env: dict[str, str]) -> int:
     """``--find-change``: the workflow's first step. Prints ``change_id=<id or empty>`` and
     ``reason=<...>`` and appends ``change_id=<id>`` to ``$GITHUB_OUTPUT``, so every later
-    step can be skipped for a merge that carries no change (about 20 s of a green job)."""
-    change_id, reason = find_change(
-        args.phase, args.id, args.head_ref, args.repo, getattr(args, "pr_number", None), env
-    )
+    step can be skipped for a merge that carries no change (about 20 s of a green job). A
+    review that is not the owner's, or on a fork's head, is refused here the same way
+    (``review_refusal``), so a refused round installs nothing and runs no model."""
+    refused = review_refusal(Path(args.root).resolve(), args.repo, env)
+    if refused:
+        change_id, reason = None, refused
+    else:
+        change_id, reason = find_change(
+            args.phase, args.id, args.head_ref, args.repo, getattr(args, "pr_number", None), env
+        )
     found = change_id or ""
     print(f"change_id={found}")
     print("reason=" + " ".join(str(reason or "").split()))
@@ -931,6 +994,26 @@ def _approved_config(root: Path) -> dict[str, Any]:
     if not isinstance(data, dict):
         raise ConfigError(f"{SDLC_FILE} on the default branch is not a mapping")
     return data
+
+
+OWNER_COPY_MISSING = (
+    "the default branch's sdlc.yaml cannot be located on the runner, so the owner's account "
+    "cannot be judged (decision 34)"
+)
+
+
+def owner_config(root: Path, env: dict[str, str]) -> dict[str, Any]:
+    """The ``sdlc.yaml`` the owner check reads (decision 34): ``_approved_config``, but on a
+    runner (``GITHUB_ACTIONS``) only the default branch's copy counts. Where that copy cannot
+    be located (no remote-tracking ref, or no ``sdlc.yaml`` on it) ``_approved_config`` falls
+    back to the checkout's copy, which on a review or label run is the pull request's head:
+    a head writing ``owner: <itself>`` would name its own approver. That case raises
+    ``ConfigError`` (fail closed); ``_approved_config``'s other callers are unchanged."""
+    if env.get("GITHUB_ACTIONS"):
+        ref = _approved_ref(root)
+        if ref is None or gate_diff.file_at(root, ref, SDLC_FILE) is None:
+            raise ConfigError(OWNER_COPY_MISSING)
+    return _approved_config(root)
 
 
 class ApprovedCopyUnreadable(RuntimeError):
@@ -1076,7 +1159,7 @@ def guard(root: Path, change_id: str, run_phase: str, repo: str, env: dict[str, 
         print(f"status.yaml: {note}", file=sys.stderr)
     profile = c.effective_profile(config.get("profile"), profile_override)
     if profile == "full" and run_phase in APPROVAL_LABEL:
-        reason = check_approval(repo, change_id, run_phase, env)
+        reason = check_approval(root, repo, change_id, run_phase, env)
         if reason:
             return None, None, config, reason
     return change_dir, st, config, None
@@ -1605,13 +1688,22 @@ def read_gate(change_dir: Path, phase: str) -> dict[str, Any] | None:
         return None
 
 
-def dispatch(repo: str, workflow: str, ref: str, change_id: str, head_ref: str) -> dict[str, Any]:
+def dispatch(
+    repo: str,
+    workflow: str,
+    ref: str,
+    change_id: str,
+    head_ref: str,
+    extra_inputs: dict[str, str] | None = None,
+) -> dict[str, Any]:
     """``POST /repos/{repo}/actions/workflows/{file}/dispatches`` — 204 means accepted.
 
     ``workflow_dispatch`` is one of the two events GitHub still starts a run for when the
     workflow token causes it, which is why every automated transition goes through here.
     ``head_ref`` is the work branch of the phase being dispatched; the workflow keys its
     concurrency group on it, so every run of one change serialises (section 4.2).
+    ``extra_inputs`` adds inputs the target workflow declares (the comment dispatcher's
+    ``trigger``, decision 34); ``change_id`` and ``head_ref`` are never overridden by it.
     """
     github = _github()
     if github is None:
@@ -1620,7 +1712,7 @@ def dispatch(repo: str, workflow: str, ref: str, change_id: str, head_ref: str) 
     if not tok:
         return {"ok": False, "reason": "no GITHUB_TOKEN/GH_TOKEN to dispatch with"}
     url = f"{github.API_ROOT}/repos/{repo}/actions/workflows/{workflow}/dispatches"
-    inputs = {"change_id": change_id, "head_ref": head_ref}
+    inputs = {**(extra_inputs or {}), "change_id": change_id, "head_ref": head_ref}
     result = github._request("POST", url, tok, {"ref": ref, "inputs": inputs})
     ok = result.get("status") == 204 or not result.get("error")
     return {"ok": ok, "status": result.get("status"), "reason": result.get("error", "")}
@@ -1844,6 +1936,9 @@ def _run_phase(args, env: dict[str, str], track: dict[str, Any]) -> int:
     panel_before = len(panel_ledger.load_ledger(change_dir, gate_phase))
     # decision 29: the runner's own round and reset records, which the session must not write
     runner_files = auto_round.snapshot_runner_files(change_dir)
+    # decision 34: the round's requests file as the runner wrote it; the session may only
+    # mark the requests it applied (``fix_requests.keep_marks_only`` after the session)
+    requests_before = fix_requests.snapshot(change_dir) if phase == "fix" else None
     data, raw, err, code = invoke(argv, root, session_env(env, root), run_timeout_seconds(config))
     result_path, stderr_path = run_record_paths(change_dir, phase)
     store_result(change_dir, phase, data, raw, result_path)
@@ -1864,6 +1959,9 @@ def _run_phase(args, env: dict[str, str], track: dict[str, Any]) -> int:
     # and parked on when the session created, changed or deleted one
     owner["mismatches"] += auto_round.runner_file_mismatches(change_dir, runner_files)
     owner["ok"] = not owner["mismatches"]
+    marks_note = fix_requests.keep_marks_only(change_dir, requests_before)
+    if marks_note:  # restored, not a park: the round's own work stands
+        print(marks_note, file=sys.stderr)
     for line in owner["overrides_changed"]:
         print(f"status.yaml: {line}", file=sys.stderr)
     # the session's own branch is the one the runner prepared, never the one it ends on (the
@@ -1884,6 +1982,7 @@ def _run_phase(args, env: dict[str, str], track: dict[str, Any]) -> int:
             store_result(change_dir, phase, data, raw, result_path)
             store_stderr(change_dir, phase, err, stderr_path)
             auto_round.runner_file_mismatches(change_dir, runner_files)  # restored again
+            fix_requests.keep_marks_only(change_dir, requests_before)
             if isinstance(cost, (int, float)):
                 record_spend(
                     plugin_dir, root, change_id, gate_phase, float(cost),
@@ -2673,7 +2772,24 @@ def collect_fix_requests(
     starts, so ``/sdlc-fix`` step 1 reads the file and never the PR. A ``workflow_dispatch``
     round has no event number: the open PR of ``head_ref`` supplies it. Without a route or a
     number the file says so (``unavailable``); by hand the command then falls back to ``gh``,
-    on a runner the run parks (``run_phase``)."""
+    on a runner the run parks (``run_phase``).
+
+    Decision 34: the link of the owner's ``@claude`` comment that started the round
+    (``SDLC_TRIGGER``, the dispatcher's ``trigger`` input) is written as the file's
+    ``trigger`` and printed once, only when it is a comment link of ``repo``
+    (``fix_requests.trigger_link``; anything else is dropped with a note and never printed);
+    what earlier rounds applied is carried forward as ``applied_earlier`` on every rewrite,
+    an unavailable one included."""
+    given = str(env.get("SDLC_TRIGGER") or "").strip()
+    trigger = fix_requests.trigger_link(given, repo)
+    if trigger:
+        print(f"fix round started by {trigger}", file=sys.stderr)
+    elif given:
+        print(
+            "the trigger input is not a comment link of this repository's pull requests: "
+            "dropped, not recorded (decision 34)",
+            file=sys.stderr,
+        )
     number = _pr_number(pr_number)
     github = _github()
     head = gate_diff.head_sha(root) if gate_diff.is_repo(root) else None
@@ -2689,7 +2805,7 @@ def collect_fix_requests(
         reason = f"no pull request number and no open pull request for {head_ref or 'the head'}"
     else:
         return fix_requests.collect_and_write(
-            change_dir, repo, number, github, config, head, cwd=root
+            change_dir, repo, number, github, config, head, cwd=root, trigger=trigger
         )
     path = fix_requests.write(
         change_dir,
@@ -2698,6 +2814,7 @@ def collect_fix_requests(
             "repo": repo or None,
             "pr_number": number,
             "head": head,
+            **fix_requests.round_fields(change_dir, trigger),
             "ok": False,
             "unavailable": reason,
             "requests": [],

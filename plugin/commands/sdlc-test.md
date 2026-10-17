@@ -163,8 +163,8 @@ when a token is available, posts the phase (d) check run with the evidence summa
 ## 7. Hand over
 - `continue` (Standard): report "gate (d) passed → /sdlc-deploy <id>"; the workflow
   dispatches the review job itself. Do not run (e) here.
-- `wait` (Full): report the PR URL and "gate (d): approving review + `sdlc:d-approved`
-  starts the review phase".
+- `wait` (Full): report the PR URL and "gate (d): approving review + `sdlc:d-approved`,
+  applied by the owner's account (decision 34), starts the review phase".
 - `park`: report the PR URL and the gate's "What I need from you" block.
 
 Never edit `.claude/**`, `CLAUDE.md`, `REVIEW.md`, `sdlc.yaml`, `intent.md` or `spec.md`.
