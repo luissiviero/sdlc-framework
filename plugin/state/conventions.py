@@ -91,6 +91,19 @@ UNPARK_LABELS = (ACCEPT_RISK_LABEL, RESET_ITERATIONS_LABEL, UNLOCK_TESTS_LABEL)
 INCIDENT_LABEL = "incident"
 SCHEDULE_LABEL = "schedule"
 GO_LABEL = "sdlc:go"
+# Decision 29 (plugin 1.0.3, ROADMAP R10): a red target the CI runner finds after the session
+# starts the next fix round by itself. While that round runs the PR carries ``sdlc:fixing``
+# instead of ``sdlc:needs-human`` (the gate record keeps its failing checks and its ``park``,
+# and the check run ``sdlc/<phase>`` stays red): nothing is needed from the owner until the
+# iteration cap. ``evidence/auto-round.json`` is the round the runner dispatched;
+# ``evidence/auto-reset.json`` the one judged reset of the count at the cap, whose
+# ``iterations_reset_by`` names the runner with ``RUNNER_RESET_PREFIX`` (never a label actor).
+FIXING_LABEL = "sdlc:fixing"
+AUTO_ROUND_FILE = "auto-round.json"
+AUTO_RESET_FILE = "auto-reset.json"
+RUNNER_RESET_PREFIX = "sdlc-runner:"
+# the start of ``status.yaml: parked_reason`` while an automatic round runs
+FIXING_PARK_PREFIX = "automatic fix round "
 
 
 def ready_label(phase: str) -> str:
@@ -103,6 +116,13 @@ def approved_label(phase: str) -> str:
     """Full profile only: the owner's approving review + this label passes gate (c)/(d)."""
     _check_phase(phase)
     return f"{LABEL_PREFIX}{phase}-approved"
+
+
+def runner_labels() -> list[str]:
+    """The labels only the CI runner applies, beside the gate and owner set of ``all_labels``
+    (decision 29: ``sdlc:fixing`` while an automatic fix round runs). ``ensure_labels`` creates
+    both; ``state/cli.py labels`` prints the documented set."""
+    return [FIXING_LABEL]
 
 
 def all_labels() -> list[str]:

@@ -15,11 +15,15 @@ Layout of the body, in order:
      comment on any of them overturns it (/sdlc-fix);
   1. the five bullets, one line each (a fixed order, so the owner reads the same shape every
      time); when the gate parked, the fifth bullet points at the "What I need from you" block
-     and the block itself follows the list verbatim (it is multi-line, a bullet is not). At
+     and the block itself follows the list verbatim (it is multi-line, a bullet is not) -
+     unless the record carries ``sdlc:fixing`` (decision 29): then the runner's automatic
+     fix round k of the cap is running, the fifth bullet says so and nothing is asked. At
      phase (a) the intent PR has no spec, no diff and no gate file, so the middle bullets
      describe the intent instead: entry route, affected users and systems, open questions;
   2. ``Links:`` intent, spec, plan and the gate result, as blob links on the head branch when
      the GitHub remote lets us build the URL, else as plain repository paths;
+  2a. ``Run:`` the workflow run the phase's evidence came from, when ``evidence/run-<phase>.json``
+     names one (decision 29's third answer; nothing by hand);
   3. ``Counters:`` the two indicators of step 42 - first-pass merge yes/no and fix iterations;
   4. the proposed ``CLAUDE.md`` lines when the review pass left them (never applied here:
      ``CLAUDE.md`` is a protected path, the owner applies the line in the PR review);
@@ -311,8 +315,67 @@ def what_i_need_block(gate_json: dict[str, Any]) -> str:
     return result.what_i_need().strip("\n")
 
 
-def _owner_line(gate_json: dict[str, Any] | None, phase: str) -> str:
+# Decision 29 (1.0.3): while the runner's automatic fix round runs, the record keeps its park
+# (the tree is red) and carries ``sdlc:fixing``; the owner is needed only at the cap.
+AUTO_ROUND_LINE = (
+    "nothing: the runner found a red target ({targets}) and automatic fix round {round} of "
+    "{cap} is running (decision 29); the change waits for you only if the iteration cap is "
+    "reached"
+)
+
+
+def auto_round_state(change_dir: Path, gate_json: dict[str, Any] | None) -> dict[str, Any] | None:
+    """The automatic fix round the record is marked with (label ``sdlc:fixing``), read from
+    ``evidence/auto-round.json``; None when the record carries no such mark."""
+    if not gate_json or gate_json.get("label") != c.FIXING_LABEL:
+        return None
+    path = Path(change_dir) / art.EVIDENCE_DIR / c.AUTO_ROUND_FILE
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        data = None
+    marked = gate_json.get("auto_round") if isinstance(gate_json.get("auto_round"), dict) else {}
+    data = data if isinstance(data, dict) else {}
+    return {
+        "round": data.get("round", marked.get("round")),
+        "cap": data.get("cap", marked.get("cap")),
+        "targets": [t for t in data.get("targets") or [] if isinstance(t, dict)],
+    }
+
+
+def _auto_round_line(auto: dict[str, Any]) -> str:
+    def state(t: dict[str, Any]) -> str:
+        return "timed out" if t.get("timed_out") else f"exit {t.get('exit_code')}"
+
+    targets = ", ".join(f"{t.get('target')} ({state(t)})" for t in auto["targets"])
+    return AUTO_ROUND_LINE.format(
+        targets=targets or "see the gate record", round=auto.get("round"), cap=auto.get("cap")
+    )
+
+
+def run_line(change_dir: Path, phase: str) -> str:
+    """Decision 29's third answer: the workflow run the phase's evidence came from, read from
+    ``evidence/run-<phase>.json`` (the runner names it there, ``github_run``); "" when the
+    record names no run (a by-hand run)."""
+    path = Path(change_dir) / art.EVIDENCE_DIR / f"run-{phase}.json"
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return ""
+    run = data.get("github_run") if isinstance(data, dict) else None
+    if not isinstance(run, dict) or not str(run.get("id") or "").strip():
+        return ""
+    label = f"workflow run {run['id']}"
+    shown = f"[{label}]({run['url']})" if run.get("url") else label
+    return f"Run: the evidence and the gate record of phase ({phase}) come from {shown}."
+
+
+def _owner_line(
+    gate_json: dict[str, Any] | None, phase: str, auto: dict[str, Any] | None = None
+) -> str:
     result = (gate_json or {}).get("result")
+    if auto is not None:
+        return _auto_round_line(auto)
     if result == "park":
         return (
             f'parked at gate ({phase}) - see "What I need from you" below; '
@@ -581,12 +644,13 @@ def build_description(root: Path, change_id: str, phase: str) -> str:
     else:
         findings = _findings_line(change_dir)
 
+    auto = auto_round_state(change_dir, gate_json)
     bullets = [
         f"- **What changed and why**: {what}".rstrip(),
         f"- **Evidence**: {evidence_status(change_dir, phase)}",
         f"- **Review findings**: {findings}",
         f"- **Plan conformance**: {_conformance_line(gate_json, spec, phase)}",
-        f"- **What needs you**: {_owner_line(gate_json, phase)}",
+        f"- **What needs you**: {_owner_line(gate_json, phase, auto)}",
     ]
     out: list[str] = []
     decisions = decisions_block(change_dir, phase)
@@ -594,13 +658,17 @@ def build_description(root: Path, change_id: str, phase: str) -> str:
         out += [*decisions, ""]
     out += [" ".join(b.split()) for b in bullets]
 
-    if (gate_json or {}).get("result") == "park":
+    if (gate_json or {}).get("result") == "park" and auto is None:
         block = what_i_need_block(gate_json)
         if block:
             out += ["", block]
     if phase == "e" and production_declared(root):
         out += ["", RELEASE_APPROVAL_LINE]
-    out += ["", _links_line(root, change_dir, change_id, phase), "", _counters_line(st)]
+    out += ["", _links_line(root, change_dir, change_id, phase)]
+    run = run_line(change_dir, phase)
+    if run:
+        out += ["", run]
+    out += ["", _counters_line(st)]
 
     proposals = art.read_text(change_dir / art.EVIDENCE_DIR / CLAUDE_MD_PROPOSALS)
     if proposals and proposals.strip():

@@ -72,9 +72,18 @@ What one run does, in order:
 6b. **runs the gate's ``commands`` check** the session deferred (``gate/cli.py
    run-commands``; issue #91, 0.3.0): build, test and lint on the working tree the session
    left, outside the sandbox, where a nested ``.env*`` the deny rules cover is readable
-   again; the gate record and ``status.yaml`` are rewritten with the result, so a red target
-   parks the change as the in-session check did, and the commit of step 6 carries them. A
-   record without the deferred mark (a by-hand gate ran the targets itself) is left alone;
+   again; the gate record and ``status.yaml`` are rewritten with the result, and the commit
+   of step 6 carries them. A record without the deferred mark (a by-hand gate ran the
+   targets itself) is left alone;
+6c. **a red target starts the next fix round** (decision 29, 1.0.3; ``ci/auto_round.py``):
+   when the rewritten record parks on red targets only (a non-zero exit or a timeout; a
+   missing target and an infrastructure failure park as before), below the iteration cap the
+   run writes ``evidence/auto-round.json``, labels the record ``sdlc:fixing`` (its failing
+   checks and its park stay, so the check run stays red) and, after step 7, dispatches
+   ``sdlc-fix.yml`` on the PR's head; at the cap a read-only judge may reset the count once
+   per change (``evidence/auto-reset.json``) and the round follows, else the change parks
+   for the owner with the cap and the judge's reasons. A fix round takes the pending round's
+   failing targets as a ``red-targets`` request (``take_red_targets``);
 7. opens or updates the phase's pull request with ``pr/cli.py upsert`` (idempotent: an
    existing PR only has its body and its gate label refreshed), so a parked run is a queue
    item even when the model's session never reached that step. The upsert's own JSON says
@@ -113,7 +122,7 @@ from panel import ledger as panel_ledger  # noqa: E402
 from pr.github import next_page_url  # noqa: E402, F401 - re-exported, moved there in 0.2.12
 
 from ci import auth as auth_mod  # noqa: E402
-from ci import fix_requests, project_setup  # noqa: E402
+from ci import auto_round, fix_requests, project_setup  # noqa: E402
 from gate import artifacts as art  # noqa: E402
 from gate import checks as gate_checks  # noqa: E402
 from gate import diff as gate_diff  # noqa: E402
@@ -200,6 +209,11 @@ MAINTAIN_DISALLOWED_TOOLS = "Edit,MultiEdit,NotebookEdit,WebFetch,WebSearch"
 # The p.41 read-only triage step: it reads a log and says what it thinks; it fixes nothing.
 TRIAGE_ALLOWED_TOOLS = "Read"
 TRIAGE_DISALLOWED_TOOLS = "Edit,Write,Bash"
+# Decision 29 (1.0.3): the fresh-context judge of the one automatic reset at the iteration cap
+# reads the rounds and writes nothing (``auto_round.JUDGE_PROMPT``).
+JUDGE_ALLOWED_TOOLS = "Read,Grep,Glob"
+JUDGE_DISALLOWED_TOOLS = "Edit,MultiEdit,NotebookEdit,Write,Bash,WebFetch,WebSearch"
+JUDGE_TIMEOUT_SECONDS = 20 * 60
 TRIAGE_PROMPT = (
     "Read the CI log at {log}. In at most five lines say what failed, the likely cause and "
     "the first thing to check. Do not fix anything."
@@ -222,6 +236,7 @@ BOT_LOGIN = "github-actions[bot]"
 BOT_EMAIL = "41898282+github-actions[bot]@users.noreply.github.com"
 LABEL_COLOR_GATE = "0E8A16"  # the *-ready and *-approved labels
 LABEL_COLOR_HUMAN = "D93F0B"  # sdlc:needs-human
+LABEL_COLOR_FIXING = "FBCA04"  # sdlc:fixing: an automatic fix round runs (decision 29)
 TOKEN_VARS = ("GITHUB_TOKEN", "GH_TOKEN")
 
 DEFAULT_MAX_TURNS = 200
@@ -293,19 +308,23 @@ def _token(env: dict[str, str]) -> str | None:
 
 
 def ensure_labels(repo: str, env: dict[str, str]) -> dict[str, Any]:
-    """Create every label of ``conventions.all_labels()``; an existing one (422) is success."""
+    """Create every label of ``conventions.all_labels()`` and ``runner_labels()`` (decision
+    29's ``sdlc:fixing``); an existing one (422) is success."""
     github = _github()
     if github is None or not repo or not _token(env):
         return {"ensured": 0, "note": "no token in the environment: labels not created"}
     created, failed = [], []
-    for name in c.all_labels():
-        color = LABEL_COLOR_HUMAN if name == c.NEEDS_HUMAN_LABEL else LABEL_COLOR_GATE
+    names = [*c.all_labels(), *c.runner_labels()]
+    for name in names:
+        color = {c.NEEDS_HUMAN_LABEL: LABEL_COLOR_HUMAN, c.FIXING_LABEL: LABEL_COLOR_FIXING}.get(
+            name, LABEL_COLOR_GATE
+        )
         result = github.ensure_label(repo, name, color, f"SDLC framework: {name}")
         if not result.get("ok"):
             failed.append(name)
         elif result.get("created"):
             created.append(name)
-    return {"ensured": len(c.all_labels()), "created": created, "failed": failed}
+    return {"ensured": len(names), "created": created, "failed": failed}
 
 
 def label_applied_by_a_human(repo: str, number: int, label: str) -> tuple[bool, str]:
@@ -1234,6 +1253,9 @@ def compose(
     elif phase == "triage":
         argv += ["--allowedTools", TRIAGE_ALLOWED_TOOLS]
         argv += ["--disallowedTools", TRIAGE_DISALLOWED_TOOLS]
+    elif phase == "judge":
+        argv += ["--allowedTools", JUDGE_ALLOWED_TOOLS]
+        argv += ["--disallowedTools", JUDGE_DISALLOWED_TOOLS]
     return argv
 
 
@@ -1671,6 +1693,9 @@ def run_phase(args, env: dict[str, str]) -> int:
             )  # fmt: skip
             _emit({**parked, "fix_requests": requests_collected, "branch": branch})
             return EXIT_OK
+        # decision 29 (1.0.3): a round the runner dispatched on a red target applies the
+        # failing targets as its constraint, taken once from the pending auto-round.json
+        requests_collected = {**requests_collected, **take_red_targets(root, change_dir, env)}
 
     # the branch itself must be clean of guardrail edits before a run touches it (decision 6)
     try:
@@ -1756,7 +1781,7 @@ def run_phase(args, env: dict[str, str]) -> int:
     baseline = baseline_mismatches(
         owner_fields(before_st),
         owner_fields(approved_st) if approved_st is not None else None,
-        args.repo, pr_for_labels, env,
+        args.repo, pr_for_labels, env, change_dir=change_dir,
     )  # fmt: skip
     if baseline:
         parked = park_and_publish(
@@ -1916,6 +1941,18 @@ def run_phase(args, env: dict[str, str]) -> int:
         )  # fmt: skip
         _emit({**parked, "panel_models": models, "cost_usd": cost, "branch": branch})
         return EXIT_OK
+    # decision 29 (1.0.3): a park on red targets only starts the next fix round by itself
+    # below the iteration cap, and once per change after the judged reset at the cap; the
+    # record and status.yaml are marked here and committed with the run record below
+    auto = (
+        auto_fix_round(args, plugin_dir, root, change_dir, change_id, gate_phase, config, env)
+        if commands["ran"]
+        else None
+    )
+    if auto is not None:
+        result = read_gate(change_dir, gate_phase) or result
+    # decision 29's third answer: the run record names the workflow run its evidence came from
+    stamp_run_record(change_dir, gate_phase, env)
     # the spend is recorded after the run's own commits, so on an ephemeral runner it would
     # leave with the job (the fifth live run of 2026-09-21 pushed run-b.json with spend_usd
     # null): commit it on the work branch before the PR is brought up to date
@@ -1928,6 +1965,7 @@ def run_phase(args, env: dict[str, str]) -> int:
             gate_phase,
             fix_branch,
             commands_ran=commands["ran"],
+            note=auto_note(auto),
         )  # fmt: skip
         if cost is not None or commands["ran"]
         else None
@@ -1945,6 +1983,20 @@ def run_phase(args, env: dict[str, str]) -> int:
     handed = (
         hand_over(args, result, gate_phase, change_id) if pr.get("ok") and not not_pushed else None
     )
+    if auto is not None and auto.get("action") == "round":
+        auto["dispatched"] = (
+            dispatch_fix_round(args, change_id, pr.get("head") or branch["branch"])
+            if pr.get("ok") and not not_pushed
+            else {"ok": False, "reason": not_pushed or pr.get("reason") or "no pull request"}
+        )
+        if not (auto["dispatched"].get("ok") or auto["dispatched"].get("would_dispatch")):
+            # a round marked as running that nobody started would leave the change waiting
+            # for nothing: the change parks for the owner instead, with the reason
+            auto["parked"] = park_undispatched(
+                plugin_dir, root, change_dir, change_id, phase, gate_phase, fix_branch,
+                args.repo, env, auto["dispatched"],
+            )  # fmt: skip
+            pr = auto["parked"].get("pr") or pr
     _emit(
         {
             "phase": phase,
@@ -1959,6 +2011,7 @@ def run_phase(args, env: dict[str, str]) -> int:
             "label": result.get("label"),
             "cost_usd": cost,
             "dispatched": handed,
+            "auto_round": auto,
             "labels": labels,
             "setup": setup,
             "pr": pr,
@@ -2014,17 +2067,21 @@ def commit_run_record(
     branch_phase: str | None = None,
     branch: str | None = None,
     commands_ran: bool = False,
+    note: str = "",
 ) -> dict[str, Any]:
     """Commit and push the change folder after ``record_spend``: ``run-<phase>.json`` now
     carries the spend, and nothing commits after the model's session but the run itself.
     ``commit-phase`` is a no-op commit when nothing changed, so a by-hand run pays nothing.
     A fix round names the change's phase and the PR's head (``branch``). With
     ``commands_ran`` the commit also carries the gate record and status.yaml the runner's
-    commands step rewrote (issue #91), and its message says so."""
+    commands step rewrote (issue #91), and its message says so; ``note`` ends the message
+    (decision 29: the automatic fix round the commit carries, ``auto_note``)."""
     branch_phase = branch_phase or BRANCH_PHASE.get(phase, phase)
     message = f"run({phase}): spend recorded"
     if commands_ran:
         message += "; gate commands run after the session"
+    if note:
+        message += f"; {note}"
     return _cli_call(
         plugin_dir / "plugin" / "state" / "cli.py",
         ["commit-phase", "--root", str(root), "--id", change_id, "--phase", branch_phase,
@@ -2392,39 +2449,54 @@ def baseline_mismatches(
     repo: str,
     pr_number: int | None,
     env: dict[str, str],
+    change_dir: Path | None = None,
 ) -> list[str]:
     """The pre-session entries the default branch's copy does not carry must each match a
     ``labeled`` event on the pull request (the label, the actor) — choice 103's wording: an
     actor the runner recorded from GitHub. On a runner with no pull request or no route to
-    read the events, such an entry parks (a by-hand run skips the read)."""
+    read the events, such an entry parks (a by-hand run skips the read).
+
+    One exception (decision 29, 1.0.3): an ``iterations_reset_by`` that names the runner
+    (``sdlc-runner:<run>``) is the judged reset at the iteration cap; it has no label event,
+    and it stands when ``evidence/auto-reset.json`` in ``change_dir`` records that same actor
+    and stamp (``unpark.runner_reset_recorded``). A runner-named reset without that record is
+    a forgery and parks, by hand too: no route to GitHub is needed to judge it."""
+    from state.unpark import is_runner_reset, runner_reset_recorded  # noqa: PLC0415
+
     approved = approved or {}
     pending: list[tuple[str, str, str]] = []  # (field, label, actor)
+    forged: list[str] = []
     known_by = set(approved.get("risk_accepted_by") or [])
     for item, actor in before["risk_accepted_by"]:
         if (item, actor) not in known_by:
             pending.append((f"risk_accepted_by[{item}]", c.ACCEPT_RISK_LABEL, actor))
-    if before["iterations_reset"][0] and tuple(before["iterations_reset"]) != tuple(
+    reset_by, reset_at = before["iterations_reset"]
+    if reset_by and tuple(before["iterations_reset"]) != tuple(
         approved.get("iterations_reset") or (None, None)
     ):
-        pending.append(
-            ("iterations_reset_by", c.RESET_ITERATIONS_LABEL, before["iterations_reset"][0])
-        )
+        if not is_runner_reset(reset_by):
+            pending.append(("iterations_reset_by", c.RESET_ITERATIONS_LABEL, reset_by))
+        elif change_dir is None or not runner_reset_recorded(change_dir, reset_by, reset_at):
+            forged.append(
+                f"iterations_reset_by: {reset_by!r} ({reset_at!r}) names the runner's automatic "
+                f"reset and evidence/{c.AUTO_RESET_FILE} records no such reset (decision 29)"
+            )
     if before["tests_unlocked_by"] and before["tests_unlocked_by"] != approved.get(
         "tests_unlocked_by"
     ):
         pending.append(("tests_unlocked_by", c.UNLOCK_TESTS_LABEL, before["tests_unlocked_by"]))
     if not pending:
-        return []
+        return forged
     if not env.get("GITHUB_ACTIONS"):
-        return []
+        return forged
     github = _github()
     if github is None or pr_number is None or not repo:
-        return [
+        return forged + [
             f"{field}: {actor!r} on the branch is not on the default branch and no pull "
             "request can confirm the label"
             for field, _label, actor in pending
         ]
-    reasons: list[str] = []
+    reasons: list[str] = list(forged)
     seen: dict[str, dict[str, Any]] = {}
     for field, label, actor in pending:
         if label not in seen:
@@ -2544,6 +2616,268 @@ def collect_fix_requests(
         },
     )
     return {"ok": False, "file": path.name, "requests": 0, "not_applied": 0, "unavailable": reason}
+
+
+# --- decision 29 (1.0.3, ROADMAP R10): a red target starts the next fix round -------------------
+# Until 1.0.3 a red target found by the commands step parked the change and the owner's act was
+# the round (PROGRESS choice 154). The runner now dispatches the round itself with the failing
+# targets as its constraint (``ci/auto_round.py``); the change parks only at the iteration cap,
+# after the one judged reset of the count a fresh-context judge may make per change.
+CAP_PARK = (
+    "iteration cap reached after the automatic fix rounds: {iterations} of {cap}, the targets "
+    "still red ({targets})"
+)
+CAP_NEED = (
+    "The runner's automatic fix rounds (decision 29) used up the iteration cap and the "
+    "targets are still red; the partial evidence is in this record, evidence/auto-round.json "
+    "and evidence/fix-response.md. Fix it by hand, apply sdlc:reset-iterations for another "
+    "set of rounds (it resets the panel-call count too), or ask for changes in a review: your "
+    "comments start a round of their own."
+)
+UNDISPATCHED_PARK = "the automatic fix round {round} could not be dispatched: {reason}"
+UNDISPATCHED_NEED = (
+    "The runner found a red target and could not start the automatic fix round (decision 29). "
+    "Start it yourself with a workflow_dispatch of sdlc-fix.yml with the change id and this "
+    "pull request's head branch, or ask for changes in a review; the job log says why the "
+    "dispatch failed."
+)
+
+
+def iteration_cap_for(
+    root: Path, change_dir: Path, st, phase: str, config: dict[str, Any]
+) -> tuple[int, str | None]:
+    """``(cap, classification)`` as ``gate/cli.py bump-iteration`` reads them: the default
+    branch's ``sdlc.yaml`` limits, tightened by the adversarial reviewer's classification."""
+    from gate.checks import GateContext  # noqa: PLC0415
+
+    ctx = GateContext(Path(root), change_dir, phase, st, config, None, True, "no diff needed")
+    classification = limits.classification_for(ctx)
+    return limits.iteration_cap(ctx, classification), classification
+
+
+def run_reset_judge(
+    args,
+    plugin_dir: Path,
+    root: Path,
+    change_dir: Path,
+    change_id: str,
+    phase: str,
+    config: dict[str, Any],
+    env: dict[str, str],
+    iterations: int,
+    cap: int,
+    targets: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """The fresh-context, read-only judge of decision 29 at the iteration cap: a bounded
+    ``claude -p`` with Read, Grep and Glob only, on ``sdlc.yaml: panel_advocate_model`` (the
+    adversarial reviewer's model) when set, else the session's model. Its result record is
+    ``evidence/claude-judge.json`` and its cost one entry of the spend ledger. Returns
+    ``{"ok", "reset", "reasons"}`` or ``{"ok": False, "reason"}`` (a judge that failed or
+    whose answer cannot be read never resets)."""
+    if auth_mod.choose_auth(env)["auth"] is None:
+        return {"ok": False, "reason": "no model credential for the judge"}
+    try:
+        rel = Path(change_dir).resolve().relative_to(Path(root).resolve()).as_posix()
+    except ValueError:
+        rel = str(change_dir)
+    judge_env = dict(env)
+    model = config.get("panel_advocate_model")
+    if isinstance(model, str) and model.strip():
+        judge_env["SDLC_MODEL"] = model.strip()
+    argv = compose(
+        claude=args.claude,
+        plugin_dir=plugin_dir,
+        phase="judge",
+        prompt=auto_round.judge_prompt(change_id, rel, phase, iterations, cap, targets),
+        permission_mode="default",
+        config=config,
+        env=judge_env,
+        root=root,
+    )
+    data, raw, err, code = invoke(argv, root, judge_env, JUDGE_TIMEOUT_SECONDS)
+    result_path, stderr_path = run_record_paths(change_dir, "judge")
+    store_result(change_dir, "judge", data, raw, result_path)
+    store_stderr(change_dir, "judge", err, stderr_path)
+    out: dict[str, Any] = {"source": result_path.name, "model": judge_env.get("SDLC_MODEL")}
+    cost = data.get("total_cost_usd") if isinstance(data, dict) else None
+    if isinstance(cost, (int, float)) and not isinstance(cost, bool):
+        try:
+            limits.record_spend_entry(
+                change_dir / art.EVIDENCE_DIR, "judge", result_path.name, float(cost)
+            )
+            out["cost_usd"] = cost
+        except ValueError:
+            pass
+    if code != 0 or not isinstance(data, dict) or data.get("is_error"):
+        return {**out, "ok": False, "reason": f"the judge did not finish (claude exited {code})"}
+    verdict = auto_round.parse_verdict(data.get("result"))
+    if verdict is None:
+        return {**out, "ok": False, "reason": "the judge's answer holds no reset verdict"}
+    return {**out, "ok": True, **verdict}
+
+
+def auto_fix_round(
+    args,
+    plugin_dir: Path,
+    root: Path,
+    change_dir: Path,
+    change_id: str,
+    phase: str,
+    config: dict[str, Any],
+    env: dict[str, str],
+) -> dict[str, Any] | None:
+    """After the commands step: None when the rewritten record is not a park on red targets
+    only (``auto_round.red_targets``; a missing target, an infrastructure failure or any
+    other failed check parks as before), or when the gate is not (c), (d) or (e), whose
+    rounds alone may change the code (``auto_round.AUTO_ROUND_PHASES``). Else the round:
+    below the cap (``iterations`` < cap, so the round's own bump keeps the count within it)
+    ``auto-round.json`` is written
+    and the record and status marked ``sdlc:fixing`` (``action: round``); at the cap the
+    judge decides the one automatic reset (``auto-reset.json``, then the round), and a
+    declined, failed or second reset parks for the owner (``action: park``)."""
+    from state.unpark import is_runner_reset  # noqa: PLC0415
+
+    if phase not in auto_round.AUTO_ROUND_PHASES:
+        return None  # a design or intent round may not touch the code: parks as before
+    targets = auto_round.red_targets(read_gate(change_dir, phase))
+    if targets is None:
+        return None
+    st = status_mod.read_status(change_dir)
+    cap, classification = iteration_cap_for(root, change_dir, st, phase, config)
+    head = gate_diff.head_sha(root) if gate_diff.is_repo(root) else None
+    summary = auto_round.targets_summary(targets)
+    out: dict[str, Any] = {
+        "targets": summary,
+        "iterations": st.iterations,
+        "cap": cap,
+        "classification": classification,
+    }
+    if st.iterations >= cap:
+        used = auto_round.reset_used(root, change_dir, st)
+        if used:
+            why = f"the one automatic reset of this change is spent ({used})"
+        else:
+            judged = run_reset_judge(
+                args, plugin_dir, root, change_dir, change_id, phase, config, env,
+                st.iterations, cap, targets,
+            )  # fmt: skip
+            out["judge"] = judged
+            if not judged.get("ok"):
+                why = f"the judge could not decide on a reset: {judged.get('reason')}"
+            elif not judged.get("reset"):
+                why = f"the judge declined a reset: {judged.get('reasons') or 'no reasons given'}"
+            else:
+                why = ""
+        if why:
+            reason = CAP_PARK.format(iterations=st.iterations, cap=cap, targets=summary)
+            reason += f"; {why}"
+            auto_round.park_record(change_dir, phase, reason, CAP_NEED, {"decision": 29})
+            return {**out, "action": "park", "reason": reason}
+        reset = auto_round.write_reset(
+            change_dir, phase, judged, cap, env, head,
+            judge={k: judged.get(k) for k in ("source", "model", "cost_usd")},
+        )  # fmt: skip
+        out["reset"] = {"actor": reset["actor"], "at": reset["at"], "reasons": reset["reasons"]}
+        st = status_mod.read_status(change_dir)
+    data = auto_round.start_round(
+        change_dir, phase, st.iterations, cap, targets, head, env,
+        after_reset=is_runner_reset(st.iterations_reset_by),
+    )  # fmt: skip
+    auto_round.mark_fixing(change_dir, phase, data)
+    return {**out, "action": "round", "round": data["round"]}
+
+
+def auto_note(auto: dict[str, Any] | None) -> str:
+    """The end of the run record's commit message for what ``auto_fix_round`` did."""
+    if not auto:
+        return ""
+    if auto.get("action") == "round":
+        note = f"automatic fix round {auto.get('round')} of {auto.get('cap')} (decision 29)"
+        return ("judged reset; " + note) if auto.get("reset") else note
+    return "parked at the iteration cap (decision 29)"
+
+
+def dispatch_fix_round(args, change_id: str, head: str) -> dict[str, Any]:
+    """``sdlc-fix.yml`` with the change id and the pull request's head (the only start the
+    workflow token's events allow; ``head_ref`` keys the round's concurrency group, so it
+    waits for this run). ``--no-dispatch`` and ``--dry-run`` send nothing and say what would
+    have been sent."""
+    ref = args.ref or default_ref(Path(args.root))
+    if args.no_dispatch or args.dry_run:
+        return {
+            "would_dispatch": auto_round.FIX_WORKFLOW,
+            "ref": ref,
+            "change_id": change_id,
+            "head_ref": head,
+        }
+    return {
+        "workflow": auto_round.FIX_WORKFLOW,
+        "ref": ref,
+        "head_ref": head,
+        **dispatch(args.repo, auto_round.FIX_WORKFLOW, ref, change_id, head),
+    }
+
+
+def park_undispatched(
+    plugin_dir: Path,
+    root: Path,
+    change_dir: Path,
+    change_id: str,
+    phase: str,
+    gate_phase: str,
+    fix_branch: str | None,
+    repo: str,
+    env: dict[str, str],
+    dispatched: dict[str, Any],
+) -> dict[str, Any]:
+    """The round was marked as running and nobody started it: the change parks for the owner
+    with the reason (``auto-round.json`` says ``not-dispatched``), committed and shown on the
+    pull request as any park is."""
+    data = auto_round.read_round(change_dir) or {}
+    reason = UNDISPATCHED_PARK.format(
+        round=data.get("round"), reason=dispatched.get("reason") or dispatched.get("status")
+    )
+    auto_round.set_round_status(change_dir, auto_round.NOT_DISPATCHED, reason=reason)
+    auto_round.park_record(change_dir, gate_phase, reason, UNDISPATCHED_NEED, {"decision": 29})
+    commit = commit_run_record(
+        plugin_dir, root, change_id, phase, gate_phase, fix_branch,
+        note="the automatic fix round was not dispatched (decision 29)",
+    )  # fmt: skip
+    pr = ensure_pr(plugin_dir, root, change_id, phase, repo, env, gate_phase, fix_branch)
+    print(reason, file=sys.stderr)
+    return {"reason": reason, "commit": commit, "pr": pr}
+
+
+def take_red_targets(root: Path, change_dir: Path, env: dict[str, str]) -> dict[str, Any]:
+    """The fix round's side of decision 29: the pending ``auto-round.json`` whose head matches
+    becomes one ``red-targets`` request in ``evidence/fix-requests.json`` and is marked
+    ``taken`` by this run, so a later round (the owner's) does not apply it again."""
+    request, note = auto_round.take_pending(root, change_dir, env)
+    if request is None:
+        return {"red_targets": None, "red_targets_note": note}
+    return {"red_targets": fix_requests.add_request(change_dir, request)}
+
+
+def stamp_run_record(change_dir: Path, phase: str, env: dict[str, str]) -> dict[str, Any] | None:
+    """Decision 29's third answer: ``evidence/run-<phase>.json`` names the GitHub Actions run
+    the evidence of this run came from (``github_run``: id and URL), which the PR summary
+    shows; by hand there is no run and nothing is written. Only a record the run already has
+    (``start-run``, ``record-spend``) is stamped: a record this step created would read as a
+    registered start to the gate's ``limits`` check."""
+    run = auto_round.github_run(env)
+    name = limits.RUN_FILE.format(phase=SPEND_PHASE.get(phase, phase))
+    path = change_dir / art.EVIDENCE_DIR / name
+    if run is None or not path.is_file():
+        return None
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if not isinstance(data, dict):
+        return None
+    data["github_run"] = run
+    path.write_text(json.dumps(data, indent=2, sort_keys=True), encoding="utf-8", newline="\n")
+    return run
 
 
 def hand_over(args, result: dict[str, Any], phase: str, change_id: str) -> Any:

@@ -1041,9 +1041,15 @@ def _status_fields_uncached(ctx: GateContext, ref: str) -> dict[str, Any] | None
 def _label_actor_ok(actor: str | None, identities: list[str]) -> bool:
     """A recorded label actor that is a person: not empty, not the automation identity, not
     a ``[bot]`` account (``state/unpark.py`` applies the same rule before recording)."""
-    from state.unpark import is_automation_actor  # noqa: PLC0415
+    from state.unpark import is_automation_actor, is_runner_reset  # noqa: PLC0415
 
-    return bool(actor) and not is_automation_actor(str(actor), identities)
+    # decision 29: the runner's marked reset is not a person's act; it counts only through
+    # ``runner_reset_recorded`` (``check_owner_actions``), never as a label actor
+    return (
+        bool(actor)
+        and not is_runner_reset(actor)
+        and not is_automation_actor(str(actor), identities)
+    )
 
 
 def _status_history(ctx: GateContext) -> list[tuple[str, str, str]]:
@@ -1131,7 +1137,7 @@ def check_owner_actions(ctx: GateContext) -> CheckResult:
     # commit recorded a person's actor for the item (the owner's sdlc:accept-risk after the
     # park; L5: without it the park could never be cleared).
     risk_events: list[tuple[str, str, str, list[str], dict[str, str], int]] = []
-    drop_events: list[tuple[str, str, str, str, int, int, str | None]] = []
+    drop_events: list[tuple[str, str, str, str, int, int, str | None, str | None]] = []
     unlock_events: list[tuple[str, str, str, str | None]] = []
     ratified: dict[str, tuple[int, str]] = {}  # item -> (walk index, the actor recorded)
     for index, (sha, email, name) in enumerate(_status_history(ctx)):
@@ -1163,10 +1169,14 @@ def check_owner_actions(ctx: GateContext) -> CheckResult:
                     now["reset_at"] is not None and now["reset_at"] != before["reset_at"]
                 )
                 reset_by = now["reset_by"] if recorded else None
+                reset_at = now["reset_at"] if recorded else None
                 drop_events.append(
-                    (counter, sha, email, name, before[counter], now[counter], reset_by)
+                    (counter, sha, email, name, before[counter], now[counter], reset_by, reset_at)
                 )
+    from state.unpark import runner_reset_recorded  # noqa: PLC0415
+
     labels: dict[str, Any] = {}
+    runner_resets: dict[str, Any] = {}
     for sha, email, name, added, by, index in risk_events:
         if not is_automation(name, email, identities):
             continue
@@ -1194,11 +1204,15 @@ def check_owner_actions(ctx: GateContext) -> CheckResult:
             labels.setdefault("risk_accepted", {}).update(
                 {i: by.get(i) or ratified[i][1] for i in added}
             )
-    for counter, sha, email, name, was, now_count, reset_by in drop_events:
+    for counter, sha, email, name, was, now_count, reset_by, reset_at in drop_events:
         if not is_automation(name, email, identities):
             continue
         if _label_actor_ok(reset_by, identities):
             labels.setdefault(f"{counter}_reset", reset_by)
+        elif runner_reset_recorded(ctx.change_dir, reset_by, reset_at):
+            # decision 29: the runner's one judged reset at the cap, marked as the label's is
+            # and recorded in evidence/auto-reset.json; on the fix-round line, not a person's
+            runner_resets.setdefault(f"{counter}_reset", reset_by)
         else:
             problems.append(
                 f"{counter} dropped from {was} to {now_count} in commit {sha[:10]}, "
@@ -1238,6 +1252,7 @@ def check_owner_actions(ctx: GateContext) -> CheckResult:
         "committed by the owner or applied by the owner's label",
         risk_accepted=sorted(tree_risk),
         label_actors=labels,
+        **({"runner_resets": runner_resets} if runner_resets else {}),
     )
 
 

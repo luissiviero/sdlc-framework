@@ -65,6 +65,39 @@ def is_automation_actor(actor: str, identities: list[str]) -> bool:
     return any(who == i.strip().lower() for i in identities)
 
 
+def is_runner_reset(actor: str | None) -> bool:
+    """True for an ``iterations_reset_by`` that names the CI runner's one judged reset at the
+    cap (decision 29: ``sdlc-runner:<run id or 'local'>``), never a label actor: such a value
+    is not a person and counts only with ``runner_reset_recorded``."""
+    return str(actor or "").strip().startswith(c.RUNNER_RESET_PREFIX)
+
+
+def read_auto_reset(change_dir: Path) -> dict[str, Any] | None:
+    """``evidence/auto-reset.json`` (decision 29), or None when absent or unreadable."""
+    path = Path(change_dir) / "evidence" / c.AUTO_RESET_FILE
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def runner_reset_recorded(change_dir: Path, actor: str | None, at: str | None) -> bool:
+    """The marked reset of decision 29 is the one exception the owner-field guards accept:
+    ``actor`` names the runner and ``evidence/auto-reset.json`` records a reset by that same
+    actor at that same stamp. Anything else (no file, another actor or stamp, a verdict that
+    was not a reset) is not accepted; ``is_automation_actor`` is left as it is."""
+    if not is_runner_reset(actor) or not at:
+        return False
+    data = read_auto_reset(change_dir)
+    if data is None or data.get("reset") is not True:
+        return False
+    return (
+        str(data.get("actor") or "") == str(actor).strip()
+        and str(data.get("at") or "") == str(at).strip()
+    )
+
+
 RISK_HIT_CHECKS = ("risk_list", "ratchets")
 
 

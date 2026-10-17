@@ -717,6 +717,64 @@ def test_a_crashing_check_in_the_runner_s_step_parks_as_the_gate_does(project, m
     assert status_mod.read_status(change).gate.result == "parked"
 
 
+def test_an_infrastructure_failure_of_the_runner_s_step_is_re_run_once(project, monkeypatch):
+    """Decision 29 (1.0.3): a crash of the targets' run is an infrastructure failure, not a
+    red target: the step re-runs the targets once, not counted as a fix round, and parks
+    with the reason saying it retried only when the second run crashes too."""
+    root, change = project
+    verdict(root, "c")
+    monkeypatch.setenv(checks.COMMANDS_RUNNER_ENV, checks.RUN_BY_RUNNER)
+    assert gate.run_gate(root, "0001", "c").result == "continue"
+    deferred = (change / "evidence" / "gate-c.json").read_text(encoding="utf-8")
+    original = checks.run_targets
+    calls: list[int] = []
+
+    def flaky(ctx, fail_times):
+        calls.append(1)
+        if len(calls) <= fail_times:
+            raise OSError("runner lost its disk")
+        return original(ctx)
+
+    monkeypatch.setattr(checks, "run_targets", lambda ctx: flaky(ctx, 1))
+    result = gate.run_deferred_commands(root, "0001", "c")
+    assert len(calls) == 2 and result.result == "continue", result.reason
+    cmd = _commands_check(result)
+    assert cmd.ok is True and cmd.details["retried"] == 1
+    # twice: parked, the reason says the step was re-run once, the iteration count untouched
+    (change / "evidence" / "gate-c.json").write_text(deferred, encoding="utf-8")
+    calls.clear()
+    monkeypatch.setattr(checks, "run_targets", lambda ctx: flaky(ctx, 5))
+    result = gate.run_deferred_commands(root, "0001", "c")
+    assert len(calls) == 2 and result.result == "park"
+    cmd = _commands_check(result)
+    assert cmd.reason.startswith("check crashed: OSError")
+    assert "after one automatic re-run of the commands step, decision 29" in cmd.reason
+    assert "failed twice" in cmd.need and "runs" not in cmd.details
+    assert status_mod.read_status(change).iterations == 0
+
+
+def test_a_target_that_did_not_start_is_re_run_once_and_never_read_as_red(project, monkeypatch):
+    root, change = project
+    verdict(root, "c")
+    monkeypatch.setenv(checks.COMMANDS_RUNNER_ENV, checks.RUN_BY_RUNNER)
+    assert gate.run_gate(root, "0001", "c").result == "continue"
+    calls: list[int] = []
+
+    def no_shell(ctx):
+        calls.append(1)
+        return {
+            name: {"command": cmd, "exit_code": None, "output": "OSError()", "seconds": 0.0}
+            for name, cmd in (("build", "b"), ("test", "t"), ("lint", "l"))
+        }
+
+    monkeypatch.setattr(checks, "run_targets", no_shell)
+    result = gate.run_deferred_commands(root, "0001", "c")
+    assert len(calls) == 2 and result.result == "park"
+    cmd = _commands_check(result)
+    assert cmd.details["not_started"] == ["build", "test", "lint"]
+    assert "did not start (after one automatic re-run, decision 29)" in cmd.reason
+
+
 def test_the_runner_s_commands_step_leaves_a_record_without_the_deferred_mark_alone(project):
     """A gate run by hand (no mark) ran the targets itself: the step has nothing to do, and
     the record and status.yaml are byte-for-byte what the gate wrote."""
@@ -2558,6 +2616,42 @@ def test_owner_actions_honours_a_second_reset_by_the_same_person(project):
     verdict(root, "c")
     result = gate.run_gate(root, "0001", "c", dry_run=True)
     assert "owner_actions" in _names(result, False)
+
+
+def test_owner_actions_accepts_the_runner_s_marked_reset_only_with_its_record(project):
+    """Decision 29 (1.0.3): the runner's one judged reset at the cap is marked
+    ``sdlc-runner:<run>`` and recorded in evidence/auto-reset.json; the check accepts that
+    drop on the record's word, lists it apart from the owner's label acts, and refuses the
+    same marking without the record (before 1.0.3 any non-bot string passed as a person)."""
+    from state import conventions as c
+
+    root, change = project
+    st = status_mod.read_status(change)
+    st.iterations = 3
+    status_mod.write_status(change, st)
+    commit_all(root, "build(0001): three automatic rounds")
+    st = status_mod.read_status(change)
+    st.iterations = 0
+    st.panel_calls = 0
+    st.iterations_reset_by = "sdlc-runner:777"
+    st.iterations_reset_at = "2026-10-17T10:00:00Z"
+    status_mod.write_status(change, st)
+    sha = commit_all(root, "run(c): judged reset (decision 29)", author=BOT_AUTHOR)
+    verdict(root, "c")
+    result = gate.run_gate(root, "0001", "c", dry_run=True)
+    oa = next(ch for ch in result.failed if ch.name == "owner_actions")
+    assert f"iterations dropped from 3 to 0 in commit {sha[:10]}" in oa.reason
+    assert "'sdlc-runner:777' is not a person" in oa.reason
+    record = {"reset": True, "actor": "sdlc-runner:777", "at": "2026-10-17T10:00:00Z"}
+    write(change / "evidence" / c.AUTO_RESET_FILE, json.dumps(record))
+    result = gate.run_gate(root, "0001", "c", dry_run=True)
+    assert "owner_actions" not in _names(result, False), result.reason
+    oa = next(ch for ch in result.checks if ch.name == "owner_actions")
+    assert oa.details["runner_resets"] == {"iterations_reset": "sdlc-runner:777"}
+    assert oa.details["label_actors"] == {}  # not a person's act
+    # a record of another stamp is not this reset
+    write(change / "evidence" / c.AUTO_RESET_FILE, json.dumps({**record, "at": "2026-10-18"}))
+    assert "owner_actions" in _names(gate.run_gate(root, "0001", "c", dry_run=True), False)
 
 
 def test_owner_actions_rejects_a_label_actor_that_is_the_automation_identity(project):

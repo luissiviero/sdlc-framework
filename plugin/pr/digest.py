@@ -2,7 +2,8 @@
 
 The queue is the open PR list filtered by the ``sdlc:`` labels of OPERATING_MODEL section 8:
 the parked ones (``sdlc:needs-human``) first, then the ones waiting at a human gate
-(``sdlc:<phase>-ready``), each with the first bullet of its generated summary.
+(``sdlc:<phase>-ready``), each with the first bullet of its generated summary; a PR whose
+automatic fix round runs (``sdlc:fixing``, decision 29) is listed apart, as nothing it needs.
 Each line shows every label of the PR, the ``sdlc:`` ones first, because in the live run of
 2026-09-25 the ``schedule`` label the owner applied to an incident intent PR was invisible
 (defect D11).
@@ -137,7 +138,9 @@ def render_digest(
     one."""
     queue = [pr for pr in prs if sdlc_labels(pr)]
     parked = [pr for pr in queue if c.NEEDS_HUMAN_LABEL in sdlc_labels(pr)]
-    ready = [pr for pr in queue if pr not in parked]
+    # decision 29: a PR whose automatic fix round runs waits for nobody
+    fixing = [pr for pr in queue if pr not in parked and c.FIXING_LABEL in sdlc_labels(pr)]
+    ready = [pr for pr in queue if pr not in parked and pr not in fixing]
     ready.sort(key=lambda pr: (_phase_of(sdlc_labels(pr)), pr.get("number") or 0))
     incidents = incident_prs(prs)
     out = [f"# {ISSUE_TITLE} — {now[:10]}", ""]
@@ -146,11 +149,12 @@ def render_digest(
         out += [notice, ""]
     out.append(
         f"{len(parked)} parked, {len(ready)} waiting at a gate"
+        + (f", {len(fixing)} in an automatic fix round" if fixing else "")
         + (f", {len(incidents)} runbook or dismissal PR(s) of phase (f)" if incidents else "")
         + ". Nothing here notified you; this issue is rewritten once a day (decision 20)."
     )
     out.append("")
-    if not parked and not ready and not incidents:
+    if not parked and not ready and not incidents and not fixing:
         out.append(NOTHING_WAITING)
         if counters:
             out += ["", counters.rstrip("\n")]
@@ -162,6 +166,13 @@ def render_digest(
     if ready:
         out += ["## Waiting at a human gate", ""]
         out += [_line(pr) for pr in ready]
+        out.append("")
+    if fixing:
+        out += [
+            f"## Automatic fix round running — `{c.FIXING_LABEL}` (nothing needed from you)",
+            "",
+        ]
+        out += [_line(pr) for pr in fixing]
         out.append("")
     if incidents:
         out += [f"## Phase (f): runbook and dismissal PRs — `{c.INCIDENT_LABEL}`", ""]

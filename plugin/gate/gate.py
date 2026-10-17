@@ -297,6 +297,27 @@ def run_gate(
 
 # --- issue #91 (0.3.0): the commands check, run by the runner after the model's session ----------
 DEFERRABLE_CHECKS = ("commands", "evidence")  # the checks a CI session's gate leaves to the runner
+# decision 29: the commands step runs the targets at most this many times when it crashes
+# (one automatic re-run of an infrastructure failure, not counted as a fix round)
+COMMANDS_ATTEMPTS = 2
+COMMANDS_CRASH_NEED = (
+    "The runner's commands step failed twice for a reason outside the project's code (a "
+    "crash, or a target whose command did not start; one automatic re-run, decision 29: an "
+    "infrastructure failure is not a fix round), so the record says nothing about the "
+    "project's targets. Read the job log for the error, then re-run the phase (the un-park "
+    "label, or a workflow_dispatch with the change id); report it to the framework owner when "
+    "it is the framework's own failure."
+)
+
+
+def not_started(runs: dict[str, dict[str, Any]]) -> list[str]:
+    """The targets whose command never started (``checks.run_command`` could not spawn the
+    shell: no exit code and no timeout): an infrastructure failure, not a red target."""
+    return [
+        name
+        for name, run in runs.items()
+        if isinstance(run, dict) and run.get("exit_code") is None and run.get("timeout") is None
+    ]
 
 
 def deferred_checks(data: dict[str, Any]) -> list[str]:
@@ -388,7 +409,10 @@ def run_deferred_commands(
     (``details.ran_by`` names the runner), and the ``evidence`` entry is judged again when
     it was deferred or the step wrote a log. A red target parks the change exactly as the
     in-session check did (``status.yaml`` and the label); a green one leaves the session's
-    verdict (``wait`` or ``continue``) standing. Returns None, and touches nothing, when the
+    verdict (``wait`` or ``continue``) standing. An infrastructure failure - the targets'
+    run crashed, or a target's command did not start - gets one automatic re-run of the
+    targets, not counted as a fix round (decision 29, plugin 1.0.3); a second one parks
+    with the reason saying so. Returns None, and touches nothing, when the
     record carries no check deferred to the runner: a gate run by hand or by an older runner
     already ran the targets itself. Raises ``GateError`` when the record or the change
     cannot be read."""
@@ -410,6 +434,7 @@ def run_deferred_commands(
     pending = deferred_checks(data)
     replaced: dict[str, CheckResult] = {}
     written: list[str] = []
+    attempts = 0
     try:
         # one run of the three targets: the record's ``commands`` entry and, at (d) and (e),
         # the three logs come from it, so they agree by construction (item 3b)
@@ -417,17 +442,47 @@ def run_deferred_commands(
         if missing is not None:
             replaced["commands"] = missing
         else:
-            runs = checks.run_targets(ctx)
+            # decision 29: an infrastructure failure (the step itself crashed, not a target
+            # that ran red) gets one automatic re-run of the commands step, not counted as a
+            # fix round; a second crash parks below with the reason saying it was retried
+            while True:
+                attempts += 1
+                try:
+                    runs = checks.run_targets(ctx)
+                except Exception:  # noqa: BLE001
+                    if attempts >= COMMANDS_ATTEMPTS:
+                        raise
+                    continue
+                if not not_started(runs) or attempts >= COMMANDS_ATTEMPTS:
+                    break
             replaced["commands"] = checks.judge_targets(runs, ran_by=checks.RUN_BY_RUNNER)
+            if attempts > 1:
+                replaced["commands"].details["retried"] = attempts - 1
+            unstarted = not_started(runs)
+            if unstarted:
+                judged = replaced["commands"]
+                judged.details["not_started"] = unstarted
+                judged.reason += f"; {', '.join(unstarted)} did not start" + (
+                    " (after one automatic re-run, decision 29)" if attempts > 1 else ""
+                )
+                judged.need = COMMANDS_CRASH_NEED
             written = write_deferred_logs(
                 ctx.evidence_dir, runs, all_targets=phase in checks.HEADER_REQUIRED_AT
             )
     except Exception as exc:  # noqa: BLE001 — a crashing check parks, as in ``evaluate``
+        retried = attempts > 1
         replaced["commands"] = CheckResult(
             "commands",
             False,
-            f"check crashed: {exc!r}",
-            "Report this to the framework owner; the gate failed closed.",
+            f"check crashed: {exc!r}"
+            + (
+                " (after one automatic re-run of the commands step, decision 29)" if retried else ""
+            ),
+            COMMANDS_CRASH_NEED
+            if retried
+            else "Report this to the framework owner; the gate failed closed.",
+            # the same details as before 1.0.3: no ``runs``, so the runner never reads a crash
+            # as a red target (``ci/auto_round.red_targets``); the reason says it was retried
             {"ran_by": checks.RUN_BY_RUNNER},
         )
     if "evidence" in pending or written:

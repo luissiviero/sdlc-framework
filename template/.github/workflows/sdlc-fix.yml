@@ -2,7 +2,10 @@
 # review on any phase's pull request starts /sdlc-fix on that PR's own head branch, and so
 # does one of the owner's un-park labels (decision 24: sdlc:accept-risk,
 # sdlc:reset-iterations, sdlc:unlock-tests), which the run performs first. Intent, design and
-# build PRs alike; nothing notifies anyone (OPERATING_MODEL section 5).
+# build PRs alike; nothing notifies anyone (OPERATING_MODEL section 5). Since plugin 1.0.3
+# (decision 29) the phase runner also dispatches this workflow itself when its commands step
+# finds a red target below the iteration cap: the round applies the failing targets as its
+# constraint (a red-targets request), and the change parks for the owner only at the cap.
 #
 # Contract: docs/OPERATING_MODEL.md section 4.2 (the trigger and dispatch table) and 5, build
 # guide step 30, article p.33-34 ("Claude addresses the comment and pushes the fix"; "let

@@ -40,6 +40,7 @@ from state import status as status_mod  # noqa: E402
 
 READY_COLOR = "0E8A16"  # green: the run finished and waits at a human gate
 NEEDS_HUMAN_COLOR = "D93F0B"  # orange-red: parked, waiting for a decision
+FIXING_COLOR = "FBCA04"  # yellow: an automatic fix round runs, nothing waits (decision 29)
 CHECK_RUN_NAME = "sdlc/{phase}"
 # the owner's labels: applied by a person, read by the release workflow and the next run,
 # never swept away when the gate label changes
@@ -51,6 +52,8 @@ def _emit(obj: Any) -> None:
 
 
 def label_color(label: str) -> str:
+    if label == c.FIXING_LABEL:
+        return FIXING_COLOR
     return NEEDS_HUMAN_COLOR if label == c.NEEDS_HUMAN_LABEL else READY_COLOR
 
 
