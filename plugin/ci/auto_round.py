@@ -49,6 +49,9 @@ FIX_WORKFLOW = "sdlc-fix.yml"
 REQUEST_KIND = "red-targets"
 DISPATCHED, TAKEN, NOT_DISPATCHED = "dispatched", "taken", "not-dispatched"
 OUTPUT_TAIL_CHARS = 3000
+REASONS_CHARS = 1000  # the judge's reasons go into status.yaml, the gate record and the PR body
+NOT_STARTED_EXITS = (126, 127)  # the shell's "cannot execute" and "not found" (gate.not_started)
+RUNNER_FILES = (c.AUTO_ROUND_FILE, c.AUTO_RESET_FILE)
 HISTORY_LIMIT = 10
 # The gates whose fix round may change the code (build, test, deploy): at (a), (b) and (f) the
 # gate's design_scope check refuses a source file, so a round could not fix a red target there
@@ -123,8 +126,8 @@ def red_targets(record: dict[str, Any] | None) -> list[dict[str, Any]] | None:
             continue
         code = run.get("exit_code")
         timed_out = code is None and run.get("timeout") is not None
-        if code is None and not timed_out:
-            return None  # the command did not start: not the change's failure
+        if (code is None and not timed_out) or code in NOT_STARTED_EXITS:
+            return None  # the command did not run (no shell, 126, 127): not the change's failure
         if timed_out or (isinstance(code, int) and not isinstance(code, bool) and code != 0):
             output = str(run.get("output") or "")
             red.append(
@@ -426,10 +429,10 @@ def parse_verdict(text: Any) -> dict[str, Any] | None:
             continue
         if isinstance(data, dict) and isinstance(data.get("reset"), bool):
             reasons = data.get("reasons")
-            return {
-                "reset": data["reset"],
-                "reasons": " ".join(str(reasons).split()) if reasons is not None else "",
-            }
+            text = " ".join(str(reasons).split()) if reasons is not None else ""
+            if len(text) > REASONS_CHARS:
+                text = text[: REASONS_CHARS - 1].rstrip() + "…"
+            return {"reset": data["reset"], "reasons": text}
     return None
 
 
@@ -501,3 +504,58 @@ def write_reset(
     status_mod.write_status(change_dir, st)
     write_json(reset_path(change_dir), data)
     return data
+
+
+# --- 6. the runner's own files are not the session's ---------------------------------------------
+def snapshot_runner_files(change_dir: Path) -> dict[str, bytes | None]:
+    """``auto-round.json`` and ``auto-reset.json`` as they stand right before the session:
+    the runner writes them, the session must not (a planted pending round would reach the
+    next round as the runner's own request; a planted reset record would pass the owner-field
+    guards)."""
+    out: dict[str, bytes | None] = {}
+    for name in RUNNER_FILES:
+        path = Path(change_dir) / art.EVIDENCE_DIR / name
+        try:
+            out[name] = path.read_bytes() if path.is_file() else None
+        except OSError:
+            out[name] = None
+    return out
+
+
+def runner_file_mismatches(change_dir: Path, before: dict[str, bytes | None]) -> list[str]:
+    """After the session: each runner file the session created, changed or deleted is put
+    back as it was, and named (the caller parks, as for the owner-only fields)."""
+    reasons: list[str] = []
+    for name, was in before.items():
+        path = Path(change_dir) / art.EVIDENCE_DIR / name
+        try:
+            now = path.read_bytes() if path.is_file() else None
+        except OSError:
+            now = None
+        if now == was:
+            continue
+        what = "created" if was is None else ("deleted" if now is None else "changed")
+        reasons.append(f"evidence/{name}: the session {what} it; only the runner writes it")
+        if was is None:
+            path.unlink(missing_ok=True)
+        else:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(was)
+    return reasons
+
+
+# --- 7. the count the rounds reached -----------------------------------------------------------
+def last_taken_round(change_dir: Path, phase: str, since: str | None = None) -> int | None:
+    """The number of the last automatic round a fix run took for ``phase``: the count that
+    round's own bump must have reached. None when there is none, or when the round was
+    dispatched before ``since`` (the last reset of the count, the owner's label or the
+    runner's judged reset: a number given before it counts no more)."""
+    data = read_round(change_dir)
+    if not data or data.get("status") != TAKEN or data.get("phase") != phase:
+        return None
+    if since and str(data.get("at") or "") < str(since):
+        return None
+    try:
+        return int(data.get("round"))
+    except (TypeError, ValueError):
+        return None

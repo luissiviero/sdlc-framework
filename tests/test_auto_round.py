@@ -21,6 +21,7 @@ from state import conventions as c
 from state import status as status_mod
 from tests import test_ci as ci_tests
 from tests.test_ci import (
+    DEFERRED_GATE_FILE,
     FAKE_RESULT,
     FAKE_TOKEN,
     GATE_FILE,
@@ -121,6 +122,8 @@ def test_anything_else_is_not_a_red_target():
         red_record(commands_details={"missing": ["lint"]}),  # an sdlc.yaml gap
         red_record(commands_details={"ran_by": "runner"}),  # the step crashed: no runs
         red_record(run_map=did_not_start),
+        red_record(run_map=runs(test_exit=127)),  # a tool missing on the runner
+        red_record(run_map=runs(test_exit=126)),
         red_record(commands_details={"ran_by": "runner", "runs": runs(), "not_started": ["x"]}),
         {**red_record(), "result": "continue"},
         None,
@@ -138,6 +141,9 @@ def test_parse_verdict_reads_the_judge_s_json_and_nothing_else():
     assert auto_round.parse_verdict(fenced) == {"reset": False, "reasons": "same failure"}
     for text in ("", "yes, reset", '{"reset": "yes"}', None, '{"reasons": "x"}'):
         assert auto_round.parse_verdict(text) is None, text
+    # the reasons reach status.yaml, the gate record and the PR body: capped
+    long = auto_round.parse_verdict(json.dumps({"reset": False, "reasons": "x " * 5000}))
+    assert len(long["reasons"]) == auto_round.REASONS_CHARS and long["reasons"].endswith("…")
 
 
 def test_the_run_is_named_from_the_runner_s_variables():
@@ -197,8 +203,24 @@ def dispatch_recorder(monkeypatch, answer=None) -> list:
     return sent
 
 
-def build_run(project, fake_claude, monkeypatch, iterations=0, extra_env=None, **args_kw):
+PAST = "2026-10-01T00:00:00Z"
+
+
+def taken_round(change: Path, k: int, phase: str = "c", at: str = PAST) -> None:
+    """``auto-round.json`` as a fix run that took automatic round ``k`` leaves it."""
+    write(
+        change / "evidence" / c.AUTO_ROUND_FILE,
+        json.dumps({"round": k, "cap": 3, "phase": phase, "head": "abc", "at": at,
+                    "status": "taken", "targets": [], "history": []}),
+    )  # fmt: skip
+
+
+def build_run(
+    project, fake_claude, monkeypatch, iterations=0, extra_env=None, taken=None, **args_kw
+):
     root, change = project
+    if taken is not None:
+        taken_round(change, taken)
     calls = pr_route(monkeypatch)
     # nothing leaves the machine: the labels the run would create are not created
     monkeypatch.setattr(run_phase, "ensure_labels", lambda repo, env: {"ensured": 0})
@@ -267,22 +289,27 @@ def test_a_red_target_below_the_cap_dispatches_the_next_fix_round(
     assert run_file["github_run"]["id"] == "777"
 
 
-@pytest.mark.parametrize("flag", ["no_dispatch"])
-def test_no_dispatch_sends_nothing_and_says_what_it_would_send(
-    project, fake_claude, monkeypatch, capsys, flag
+def test_no_dispatch_sends_nothing_says_what_it_would_send_and_parks(
+    project, fake_claude, monkeypatch, capsys
 ):
-    args, env, _calls = build_run(project, fake_claude, monkeypatch, **{flag: True})
+    """Under --no-dispatch no round runs, so the change is not left saying one does."""
+    root, change = project
+    args, env, _calls = build_run(project, fake_claude, monkeypatch, no_dispatch=True)
     red_commands_step(monkeypatch)
     sent = dispatch_recorder(monkeypatch)
     assert run_phase.run_phase(args, env) == run_phase.EXIT_OK
     out = json.loads(capsys.readouterr().out)
     assert sent == []
-    assert out["auto_round"]["dispatched"] == {
+    dispatched = out["auto_round"]["dispatched"]
+    assert {k: dispatched[k] for k in ("would_dispatch", "ref", "change_id", "head_ref")} == {
         "would_dispatch": "sdlc-fix.yml",
         "ref": "main",
         "change_id": "0001",
         "head_ref": "sdlc/0001/c",
     }
+    assert gate_c(change)["label"] == c.NEEDS_HUMAN_LABEL
+    data = json.loads((change / "evidence" / c.AUTO_ROUND_FILE).read_text(encoding="utf-8"))
+    assert data["status"] == "not-dispatched" and "--no-dispatch" in data["reason"]
 
 
 def test_a_dry_run_dispatches_no_fix_round(monkeypatch):
@@ -358,7 +385,7 @@ def test_at_the_cap_a_judged_reset_restarts_the_rounds_once(
     project, fake_claude, monkeypatch, capsys
 ):
     root, change = project
-    args, env, _calls = build_run(project, fake_claude, monkeypatch, 3, extra_env=RUN_ENV)
+    args, env, _calls = build_run(project, fake_claude, monkeypatch, 3, extra_env=RUN_ENV, taken=3)
     st = status_mod.read_status(change)
     st.panel_calls = 2
     status_mod.write_status(change, st)
@@ -398,7 +425,7 @@ def test_at_the_cap_a_declined_or_failed_judge_parks_for_the_owner(
     project, fake_claude, monkeypatch, capsys, answer, expected
 ):
     root, change = project
-    args, env, _calls = build_run(project, fake_claude, monkeypatch, 3)
+    args, env, _calls = build_run(project, fake_claude, monkeypatch, 3, taken=3)
     red_commands_step(monkeypatch)
     sent = dispatch_recorder(monkeypatch)
     judge(monkeypatch, answer)
@@ -421,7 +448,7 @@ def test_at_the_cap_a_declined_or_failed_judge_parks_for_the_owner(
 
 def test_the_second_cap_parks_without_asking_the_judge(project, fake_claude, monkeypatch, capsys):
     root, change = project
-    args, env, _calls = build_run(project, fake_claude, monkeypatch, 3)
+    args, env, _calls = build_run(project, fake_claude, monkeypatch, 3, taken=3)
     write(
         change / "evidence" / c.AUTO_RESET_FILE,
         json.dumps({"reset": True, "actor": "sdlc-runner:1", "at": "2026-10-17T10:00:00Z"}),
@@ -434,6 +461,59 @@ def test_the_second_cap_parks_without_asking_the_judge(project, fake_claude, mon
     assert out["auto_round"]["action"] == "park" and sent == []
     assert "the one automatic reset of this change is spent" in out["auto_round"]["reason"]
     assert gate_c(change)["label"] == c.NEEDS_HUMAN_LABEL
+
+
+@pytest.mark.parametrize("taken", [None, 2])
+def test_a_cap_the_automatic_rounds_did_not_reach_parks_without_the_judge(
+    project, fake_claude, monkeypatch, capsys, taken
+):
+    """Decision 29: the judge reads the automatic rounds when they reach the cap; a count the
+    owner's rounds (or another phase's) used up parks as before."""
+    root, change = project
+    args, env, _calls = build_run(project, fake_claude, monkeypatch, 3, taken=taken)
+    red_commands_step(monkeypatch)
+    sent = dispatch_recorder(monkeypatch)
+    judge(monkeypatch, None)  # raises if called
+    assert run_phase.run_phase(args, env) == run_phase.EXIT_OK
+    out = json.loads(capsys.readouterr().out)
+    assert out["auto_round"]["action"] == "park" and sent == []
+    assert "not reached by the runner's automatic rounds" in out["auto_round"]["reason"]
+    assert gate_c(change)["label"] == c.NEEDS_HUMAN_LABEL
+
+
+def test_the_runner_enforces_the_count_a_session_did_not_bump(project, monkeypatch):
+    """A fix session that skipped bump-iteration does not get the same round number again:
+    the round it took counts (raised, never lowered), and an owner's reset after the round
+    was dispatched is not undone."""
+    root, change = project
+    write(change / "evidence" / "gate-c.json", json.dumps(red_record("c")))
+    set_state(change, "c", gate_phase="c", gate_result="parked", parked="red")
+    taken_round(change, 2)
+    args = Args(root=str(root), dry_run=False)
+    got = run_phase.auto_fix_round(args, ROOT, root, change, "0001", "c", {}, {})
+    assert got["count_enforced"] == {"from": 0, "to": 2} and got["round"] == 3
+    assert status_mod.read_status(change).iterations == 2
+    # the session that took round 3 did not bump either: at the cap now, by automatic rounds
+    data = json.loads((change / "evidence" / c.AUTO_ROUND_FILE).read_text(encoding="utf-8"))
+    data["status"] = "taken"
+    write(change / "evidence" / c.AUTO_ROUND_FILE, json.dumps(data))
+    judge_calls: list = []
+    judge(monkeypatch, {"ok": True, "reset": False, "reasons": "no progress"}, judge_calls)
+    got = run_phase.auto_fix_round(args, ROOT, root, change, "0001", "c", {}, {})
+    assert got["action"] == "park" and len(judge_calls) == 1
+    assert status_mod.read_status(change).iterations == 3
+    # the owner's reset after the round was dispatched: the round's number no longer counts
+    st = status_mod.read_status(change)
+    st.iterations, st.iterations_reset_by, st.iterations_reset_at = (
+        0,
+        "owner",
+        "2026-10-20T00:00:00Z",
+    )
+    status_mod.write_status(change, st)
+    taken_round(change, 3, at="2026-10-19T00:00:00Z")
+    write(change / "evidence" / "gate-c.json", json.dumps(red_record("c")))
+    got = run_phase.auto_fix_round(args, ROOT, root, change, "0001", "c", {}, {})
+    assert "count_enforced" not in got and got["round"] == 1
 
 
 def test_a_reset_deleted_from_the_branch_is_still_spent(project):
@@ -458,20 +538,24 @@ def test_the_judge_is_read_only_on_the_advocate_s_model(project, monkeypatch):
     seen = {}
 
     def fake_invoke(argv, cwd, env, timeout):
-        seen.update(argv=argv, timeout=timeout, model=env.get("SDLC_MODEL"))
+        seen.update(argv=argv, timeout=timeout, model=env.get("SDLC_MODEL"), env=env)
         return {"result": '{"reset": true, "reasons": "r"}', "total_cost_usd": 0.1}, "", "", 0
 
     monkeypatch.setattr(run_phase, "invoke", fake_invoke)
     targets = auto_round.red_targets(red_record())
     got = run_phase.run_reset_judge(
         Args(root=str(root)), ROOT, root, change, "0001", "c",
-        {"panel_advocate_model": "opus"}, dict(KEY_ENV), 3, 3, targets,
+        {"panel_advocate_model": "opus"}, {**KEY_ENV, "GITHUB_TOKEN": FAKE_TOKEN,
+        "GH_TOKEN": FAKE_TOKEN}, 3, 3, targets,
     )  # fmt: skip
     assert got["ok"] is True and got["reset"] is True and got["reasons"] == "r"
+    assert not {"GITHUB_TOKEN", "GH_TOKEN"} & set(seen["env"])  # no GitHub token
+    assert seen["timeout"] == 600  # within the job's budget
     argv = seen["argv"]
     assert argv[argv.index("--allowedTools") + 1] == "Read,Grep,Glob"
     denied = argv[argv.index("--disallowedTools") + 1].split(",")
-    assert {"Edit", "Write", "Bash", "MultiEdit"} <= set(denied)
+    assert {"Edit", "Write", "Bash", "MultiEdit", "Agent", "Task", "Skill"} <= set(denied)
+    assert {"SlashCommand", "TodoWrite"} <= set(denied)
     assert argv[argv.index("--model") + 1] == "opus" and seen["model"] == "opus"
     prompt = argv[argv.index("-p") + 1]
     assert "changes/0001-percent-helper/evidence/gate-c.json" in prompt
@@ -500,7 +584,7 @@ def test_the_judge_is_read_only_on_the_advocate_s_model(project, monkeypatch):
 # --- 4. the dispatched round takes its constraint once --------------------------------------------
 def pending_round(root: Path, change: Path) -> dict:
     git(root, "add", ".")
-    git(root, "commit", "-q", "-m", "the tree the runner found red")
+    git(root, "commit", "-q", "--allow-empty", "-m", "the tree the runner found red")
     head = git(root, "rev-parse", "HEAD").strip()
     data = auto_round.start_round(change, "c", 0, 3, auto_round.red_targets(red_record()), head, {})
     git(root, "add", ".")
@@ -706,3 +790,165 @@ def test_a_red_target_at_a_gate_whose_round_cannot_change_the_code_parks(project
     set_state(change, "c", gate_phase="c", gate_result="parked", parked="red")
     got = run_phase.auto_fix_round(args, ROOT, root, change, "0001", "c", {}, {})
     assert got["action"] == "round" and got["round"] == 1
+
+
+# --- 7. the review of 0ac8c9f: the fix round end to end, the runner's files, the re-run ----------
+PLANT = """
+import json, pathlib
+path = pathlib.Path("changes/0001-percent-helper/evidence/auto-round.json")
+path.write_text(json.dumps({"round": 1, "status": "dispatched", "head": "x"}), encoding="utf-8")
+"""
+
+
+def test_a_session_that_writes_the_runner_s_files_parks_and_they_are_put_back(
+    project, fake_claude, tmp_path, monkeypatch, capsys
+):
+    root, change = project
+    script = tmp_path / "plant.py"
+    write(script, PLANT)
+    monkeypatch.setenv("FAKE_CLAUDE_RUN", str(script))  # before the run's environment is built
+    args, env, _calls = build_run(project, fake_claude, monkeypatch, extra_env=RUN_ENV)
+    red_commands_step(monkeypatch)
+    sent = dispatch_recorder(monkeypatch)
+    assert run_phase.run_phase(args, env) == run_phase.EXIT_OK
+    out = json.loads(capsys.readouterr().out)
+    assert out["parked"].startswith(c.OWNER_FIELDS_PARK_PREFIX) and sent == []
+    assert "evidence/auto-round.json: the session created it" in out["parked"]
+    assert not (change / "evidence" / c.AUTO_ROUND_FILE).exists()
+    # the park commits a run record that names the workflow run (stamped on every path)
+    run_file = json.loads((change / "evidence" / "run-c.json").read_text(encoding="utf-8"))
+    assert run_file["github_run"]["id"] == "777"
+
+
+def fix_run(project, fake_claude, monkeypatch, tmp_path):
+    """A dispatched fix round on the build branch: the gate record says sdlc:fixing and
+    auto-round.json holds the pending round 1, as the runner left them."""
+    root, change = project
+    pr_route(monkeypatch)
+    monkeypatch.setattr(run_phase, "ensure_labels", lambda repo, env: {"ensured": 0})
+    monkeypatch.setattr(run_phase, "apply_owner_labels", lambda *a, **k: {"ok": True})
+
+    def collect(root, change_dir, *a, **k):
+        from ci import fix_requests
+
+        fix_requests.write(change_dir, {"schema_version": 1, "ok": True, "requests": [],
+                                        "not_applied": []})  # fmt: skip
+        return {"ok": True, "requests": 0}
+
+    monkeypatch.setattr(run_phase, "collect_fix_requests", collect)
+    set_state(change, "c", gate_phase="c", gate_result="parked", parked="red")
+    git(root, "add", ".")  # the installation and the change, as merged on the default branch
+    git(root, "commit", "-q", "-m", "sdlc-init and change 0001")
+    git(root, "checkout", "-q", "-b", "sdlc/0001/c")
+    data = pending_round(root, change)
+    auto_round.mark_fixing(change, "c", data)
+    git(root, "add", ".")
+    git(root, "commit", "-q", "-m", "run(c): automatic fix round 1 of 3")
+    seen = tmp_path / "seen-requests.json"
+    monkeypatch.setenv(
+        "FAKE_CLAUDE_WATCH", "changes/0001-percent-helper/evidence/fix-requests.json"
+    )
+    monkeypatch.setenv("FAKE_CLAUDE_RECORD", str(seen))
+    monkeypatch.setenv("FAKE_CLAUDE_RESULT", json.dumps(FAKE_RESULT))
+    env = dict(os.environ, **KEY_ENV, GITHUB_TOKEN=FAKE_TOKEN, **RUN_ENV)
+    args = Args(root=str(root), phase="fix", head_ref="sdlc/0001/c", dry_run=False,
+                claude=fake_cli(fake_claude))  # fmt: skip
+    return root, change, args, env, seen
+
+
+def test_a_dispatched_fix_round_takes_its_request_and_the_runner_counts_the_round(
+    project, fake_claude, monkeypatch, tmp_path, capsys
+):
+    """End to end on ``--phase fix``: the session reads the red-targets request, does not run
+    bump-iteration, the targets are red again, and the runner counts round 1 itself, so the
+    next round is round 2 (the review of 0ac8c9f: "round 1" again forever)."""
+    root, change, args, env, seen = fix_run(project, fake_claude, monkeypatch, tmp_path)
+    red_commands_step(monkeypatch)
+    sent = dispatch_recorder(monkeypatch)
+    assert run_phase.run_phase(args, env) == run_phase.EXIT_OK
+    out = json.loads(capsys.readouterr().out)
+    requests = json.loads(seen.read_text(encoding="utf-8"))["requests"]
+    assert [r["kind"] for r in requests] == ["red-targets"] and requests[0]["round"] == 1
+    assert out["fix_requests"]["red_targets"]["kind"] == "red-targets"
+    assert out["auto_round"]["count_enforced"] == {"from": 0, "to": 1}
+    assert out["auto_round"]["round"] == 2
+    assert status_mod.read_status(change).iterations == 1
+    assert sent == [("owner/name", "sdlc-fix.yml", "main", "0001", "sdlc/0001/c")]
+    assert gate_c(change)["label"] == c.FIXING_LABEL
+
+
+@pytest.mark.parametrize("how", ["exit", "timeout"])
+def test_a_fix_round_that_does_not_finish_parks_for_the_owner(
+    project, fake_claude, monkeypatch, tmp_path, capsys, how
+):
+    root, change, args, env, _seen = fix_run(project, fake_claude, monkeypatch, tmp_path)
+    if how == "exit":
+        script = tmp_path / "die.py"
+        write(script, "import sys\nsys.exit(1)\n")
+        env["FAKE_CLAUDE_RUN"] = str(script)  # the session's own environment
+        expected = "claude exited 1"
+    else:
+        monkeypatch.setattr(
+            run_phase, "invoke", lambda *a, **k: (None, "", "claude did not finish", 124)
+        )
+        expected = "claude exited 124"
+    sent = dispatch_recorder(monkeypatch)
+    assert run_phase.run_phase(args, env) == run_phase.EXIT_FAILED
+    err = capsys.readouterr().err
+    assert "the automatic fix round 1 did not finish" in err and sent == []
+    record = gate_c(change)
+    assert record["label"] == c.NEEDS_HUMAN_LABEL and record["result"] == "park"
+    rounds = next(ch for ch in record["checks"] if ch["name"] == "fix_rounds")
+    assert expected in rounds["reason"] and "workflow_dispatch of sdlc-fix.yml" in rounds["need"]
+    data = json.loads((change / "evidence" / c.AUTO_ROUND_FILE).read_text(encoding="utf-8"))
+    assert data["status"] == "unfinished"
+    assert "did not finish" in status_mod.read_status(change).parked_reason
+
+
+def test_a_fix_round_that_is_skipped_parks_for_the_owner(
+    project, fake_claude, monkeypatch, tmp_path, capsys
+):
+    root, change, args, env, _seen = fix_run(project, fake_claude, monkeypatch, tmp_path)
+    monkeypatch.setattr(
+        run_phase, "guard", lambda *a, **k: (None, None, {}, "sdlc.yaml says paused: true")
+    )
+    assert run_phase.run_phase(args, env) == run_phase.EXIT_OK
+    assert "the fix run was skipped: sdlc.yaml says paused" in capsys.readouterr().err
+    assert gate_c(change)["label"] == c.NEEDS_HUMAN_LABEL
+
+
+def test_the_runner_re_runs_a_commands_step_that_failed_once(
+    project, fake_claude, monkeypatch, capsys
+):
+    root, change = project
+    args, env, _calls = build_run(project, fake_claude, monkeypatch)
+    write(change / "evidence" / "gate-c.json", json.dumps(DEFERRED_GATE_FILE))
+    calls: list = []
+    answers = [{"ok": False, "reason": "gate: boom"}]
+
+    def step(plugin_dir, root, change_id, phase, config):
+        calls.append(phase)
+        if answers:
+            return answers.pop(0)
+        return {"ok": True, "output": {"ran": False}}
+
+    monkeypatch.setattr(run_phase, "run_gate_commands", step)
+    assert run_phase.run_phase(args, env) == run_phase.EXIT_OK
+    capsys.readouterr()
+    assert calls == ["c", "c"]
+    # failed twice: parked, the reason says it was re-run
+    calls.clear()
+    answers[:] = [{"ok": False, "reason": "gate: boom"}, {"ok": False, "reason": "gate: bang"}]
+    write(change / "evidence" / "gate-c.json", json.dumps(DEFERRED_GATE_FILE))
+    set_state(change, "b", gate_phase="b", gate_result="passed")
+    assert run_phase.run_phase(args, env) == run_phase.EXIT_FAILED
+    err = capsys.readouterr().err
+    assert calls == ["c", "c"] and "after one automatic re-run of the step" in err
+    # a step that timed out is not re-run: a second one would outlast the job
+    calls.clear()
+    answers[:] = [{"ok": False, "reason": "Command '...' timed out after 3000 seconds"}]
+    write(change / "evidence" / "gate-c.json", json.dumps(DEFERRED_GATE_FILE))
+    set_state(change, "b", gate_phase="b", gate_result="passed")
+    assert run_phase.run_phase(args, env) == run_phase.EXIT_FAILED
+    capsys.readouterr()
+    assert calls == ["c"]

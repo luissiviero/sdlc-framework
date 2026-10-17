@@ -729,21 +729,21 @@ def test_an_infrastructure_failure_of_the_runner_s_step_is_re_run_once(project, 
     original = checks.run_targets
     calls: list[int] = []
 
-    def flaky(ctx, fail_times):
-        calls.append(1)
+    def flaky(ctx, fail_times, only=None):
+        calls.append(only)
         if len(calls) <= fail_times:
             raise OSError("runner lost its disk")
-        return original(ctx)
+        return original(ctx, only=only)
 
-    monkeypatch.setattr(checks, "run_targets", lambda ctx: flaky(ctx, 1))
+    monkeypatch.setattr(checks, "run_targets", lambda ctx, only=None: flaky(ctx, 1, only))
     result = gate.run_deferred_commands(root, "0001", "c")
-    assert len(calls) == 2 and result.result == "continue", result.reason
+    assert calls == [None, None] and result.result == "continue", result.reason
     cmd = _commands_check(result)
     assert cmd.ok is True and cmd.details["retried"] == 1
     # twice: parked, the reason says the step was re-run once, the iteration count untouched
     (change / "evidence" / "gate-c.json").write_text(deferred, encoding="utf-8")
     calls.clear()
-    monkeypatch.setattr(checks, "run_targets", lambda ctx: flaky(ctx, 5))
+    monkeypatch.setattr(checks, "run_targets", lambda ctx, only=None: flaky(ctx, 5, only))
     result = gate.run_deferred_commands(root, "0001", "c")
     assert len(calls) == 2 and result.result == "park"
     cmd = _commands_check(result)
@@ -753,25 +753,33 @@ def test_an_infrastructure_failure_of_the_runner_s_step_is_re_run_once(project, 
     assert status_mod.read_status(change).iterations == 0
 
 
-def test_a_target_that_did_not_start_is_re_run_once_and_never_read_as_red(project, monkeypatch):
+@pytest.mark.parametrize("code", [None, 126, 127])
+def test_a_target_that_did_not_start_is_re_run_once_and_never_read_as_red(
+    project, monkeypatch, code
+):
+    """No shell (no exit code, no timeout) or the shell's 126/127 (a tool missing on the
+    runner) is an infrastructure failure (decision 29): only that target runs again, once."""
     root, change = project
     verdict(root, "c")
     monkeypatch.setenv(checks.COMMANDS_RUNNER_ENV, checks.RUN_BY_RUNNER)
     assert gate.run_gate(root, "0001", "c").result == "continue"
-    calls: list[int] = []
+    calls: list = []
 
-    def no_shell(ctx):
-        calls.append(1)
-        return {
-            name: {"command": cmd, "exit_code": None, "output": "OSError()", "seconds": 0.0}
-            for name, cmd in (("build", "b"), ("test", "t"), ("lint", "l"))
+    def no_tool(ctx, only=None):
+        calls.append(only)
+        runs = {
+            "build": {"command": "b", "exit_code": 0, "output": "", "seconds": 0.0},
+            "test": {"command": "t", "exit_code": code, "output": "t: not found", "seconds": 0.0},
+            "lint": {"command": "l", "exit_code": 0, "output": "", "seconds": 0.0},
         }
+        return {n: r for n, r in runs.items() if only is None or n in only}
 
-    monkeypatch.setattr(checks, "run_targets", no_shell)
+    monkeypatch.setattr(checks, "run_targets", no_tool)
     result = gate.run_deferred_commands(root, "0001", "c")
-    assert len(calls) == 2 and result.result == "park"
+    assert calls == [None, ["test"]] and result.result == "park"
     cmd = _commands_check(result)
-    assert cmd.details["not_started"] == ["build", "test", "lint"]
+    assert cmd.details["not_started"] == ["test"]
+    assert cmd.details["runs"]["build"]["exit_code"] == 0
     assert "did not start (after one automatic re-run, decision 29)" in cmd.reason
 
 

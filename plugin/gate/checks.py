@@ -361,14 +361,18 @@ def missing_targets(ctx: GateContext) -> CheckResult | None:
     )
 
 
-def run_targets(ctx: GateContext) -> dict[str, dict[str, Any]]:
+def run_targets(ctx: GateContext, only: list[str] | None = None) -> dict[str, dict[str, Any]]:
     """Run the three targets once, keeping the literal output and the seconds each took:
     ``{name: {"command", "exit_code", "output", "seconds"[, "timeout"]}}``. The gate's record
     keeps the tail of the output (``judge_targets``); the evidence logs keep it whole (item
-    3b: the runner writes ``test.log``, ``build.log`` and ``lint.log`` from this same run)."""
+    3b: the runner writes ``test.log``, ``build.log`` and ``lint.log`` from this same run).
+    ``only`` names the targets to run (decision 29: the re-run of the targets that did not
+    start), all three when None."""
     timeout = int(ctx.gate_setting("command_timeout", DEFAULT_COMMAND_TIMEOUT))
     runs: dict[str, dict[str, Any]] = {}
     for name, cmd in _commands(ctx).items():
+        if only is not None and name not in only:
+            continue
         started = time.monotonic()
         run = run_command(cmd, ctx.root, timeout, tail=None)
         run["seconds"] = round(time.monotonic() - started, 1)

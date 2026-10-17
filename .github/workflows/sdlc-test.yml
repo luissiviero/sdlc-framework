@@ -52,7 +52,8 @@ jobs:
     runs-on: ubuntu-latest
     # 0.3.0: the session's wall clock (gate.max_wall_clock_minutes, 120 by default, plus
     # 5 of grace) and then the gate's commands step, which runs the three targets after
-    # the session at gate.command_timeout each (900 s by default): 125 + 50 minutes
+    # the session at gate.command_timeout each (900 s by default): 125 + 50 minutes;
+    # 1.0.3 (decision 29): + 10 for the judge at the iteration cap
     timeout-minutes: 200
     steps:
       - name: Check out the project

@@ -310,13 +310,23 @@ COMMANDS_CRASH_NEED = (
 )
 
 
+# 126 and 127 are the shell's own answers: the command was found but cannot run, or was not
+# found (a tool missing on the runner) - nothing the change's code makes a target say
+NOT_STARTED_EXITS = (126, 127)
+
+
 def not_started(runs: dict[str, dict[str, Any]]) -> list[str]:
-    """The targets whose command never started (``checks.run_command`` could not spawn the
-    shell: no exit code and no timeout): an infrastructure failure, not a red target."""
+    """The targets whose command never ran (``checks.run_command`` could not spawn the shell:
+    no exit code and no timeout; or the shell's 126/127): an infrastructure failure, not a
+    red target (decision 29)."""
     return [
         name
         for name, run in runs.items()
-        if isinstance(run, dict) and run.get("exit_code") is None and run.get("timeout") is None
+        if isinstance(run, dict)
+        and (
+            (run.get("exit_code") is None and run.get("timeout") is None)
+            or run.get("exit_code") in NOT_STARTED_EXITS
+        )
     ]
 
 
@@ -445,13 +455,18 @@ def run_deferred_commands(
             # decision 29: an infrastructure failure (the step itself crashed, not a target
             # that ran red) gets one automatic re-run of the commands step, not counted as a
             # fix round; a second crash parks below with the reason saying it was retried
+            runs: dict[str, dict[str, Any]] = {}
             while True:
                 attempts += 1
                 try:
-                    runs = checks.run_targets(ctx)
+                    # the re-run runs only the targets that did not start, so it stays
+                    # within the step's timeout; after a crash all three run again
+                    again = not_started(runs) if runs else None
+                    runs = {**runs, **checks.run_targets(ctx, only=again)}
                 except Exception:  # noqa: BLE001
                     if attempts >= COMMANDS_ATTEMPTS:
                         raise
+                    runs = {}
                     continue
                 if not not_started(runs) or attempts >= COMMANDS_ATTEMPTS:
                     break
