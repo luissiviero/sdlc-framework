@@ -39,5 +39,6 @@ One file per decision, number only, no slug (`docs/decisions/<N>.md`); each carr
 31. [A pull request that waits for the owner requests the owner's review (amends 11 and 20)](31.md)
 32. [Deferred review is the default (amends 21)](32.md)
 33. [The automation pushes and opens pull requests as a GitHub App (amends 5)](33.md)
+34. [The owner's `@claude` comment starts a fix round, and only the owner's account starts a round or approves (c) and (d) (amends 22 and 27)](34.md)
 
 Sticky decisions (2, 6, 7, 8, 10, 19) shape files and conventions every later step writes to.
