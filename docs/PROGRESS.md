@@ -30,7 +30,7 @@ Carried from change 0005 (its `plan.md` step 8; the 1.0.1 record, now `docs/prog
 On the final head, after `python -m pip install -e ".[dev]"`, chained with `set -o pipefail`: the four commands of `HANDOFF.md`'s standing precondition 1. Their output is in the PR.
 
 ## Left
-- **The eight gaps** wait for the owner's route (a ROADMAP candidate with a proposal, a framework change under `changes/`, or a plain fix PR). The session's recommended order, by what each risks:
+- **The eight gaps** wait for the owner's route (a ROADMAP candidate with a proposal, a framework change under `changes/`, or a plain fix PR). The session's recommended order, by what each risks: *[2026-10-17, after PR #221 merged: superseded by the mapping onto ROADMAP's Order (PR #215's pipeline sprint, R10 to R49) in `docs/handoffs/sessions/2026-10-17-ccr-f21be30b-5d5dpz.md`, section "After #221 merged"; the order below is kept as written (choice 126).]*
   1. Gap 6, the `sdlc.yaml` that fails open: a broken file turns off `paused` and the risk list without a word.
   2. Gap 8, the tag workflow: a tag on a commit whose own checks fail.
   3. Gaps 3 and 4, lost work and the unattended question in a fix round.
