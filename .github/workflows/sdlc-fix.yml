@@ -64,11 +64,8 @@ permissions:
   actions: write
 
 # One run at a time per pull request head: a fix round shares the group of the phase runs of
-# the same branch (OPERATING_MODEL section 4.2), so it never races a dispatched phase.
-concurrency:
-  group: "sdlc-${{ inputs.head_ref || github.event.pull_request.head.ref }}"
-  cancel-in-progress: false
-
+# the same branch (OPERATING_MODEL section 4.2), so it never races a dispatched phase; the
+# group is set on the job below.
 jobs:
   fix:
     # A review counts when it asks for changes and a person who is a member of the
@@ -88,6 +85,13 @@ jobs:
       (github.event.label.name == 'sdlc:accept-risk' ||
       github.event.label.name == 'sdlc:reset-iterations' ||
       github.event.label.name == 'sdlc:unlock-tests')) }}
+    # 1.0.3 (decision 29): the group is the job's, not the workflow's, so an event whose job
+    # is skipped by the condition above (a comment-only review, another label) never enters
+    # it and cannot cancel a pending run - the automatic fix round the runner dispatched
+    # among them. Job and workflow groups of one name are one group in the repository.
+    concurrency:
+      group: "sdlc-${{ inputs.head_ref || github.event.pull_request.head.ref }}"
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     # 0.3.0: the session's wall clock (gate.max_wall_clock_minutes, 120 by default, plus
     # 5 of grace) and then the gate's commands step, which runs the three targets after

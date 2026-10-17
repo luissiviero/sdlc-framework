@@ -39,17 +39,21 @@ permissions:
 # One change at a time, keyed on the change's own branch: sdlc/<id>/b for the design PR
 # merge, sdlc/<id>/c for build, test and deploy — the runs that must serialise
 # (OPERATING_MODEL section 4.2). run_phase.py passes head_ref on every dispatch, so an
-# automated hop lands in the same group as the PR-fired run of the same branch.
-concurrency:
-  group: "sdlc-${{ inputs.head_ref || github.event.pull_request.head.ref }}"
-  cancel-in-progress: false
-
+# automated hop lands in the same group as the PR-fired run of the same branch. The group
+# is set on the job below.
 jobs:
   deploy:
     # Only the gate (d) approval label starts this workflow from a PR event; run_phase.py
     # also checks that a human, not the workflow token, applied it. The review pass and
     # phase (e) are two steps of one job, in that order.
     if: ${{ github.event_name != 'pull_request' || github.event.label.name == 'sdlc:d-approved' }}
+    # 1.0.3 (decision 29): the group is the job's, not the workflow's, so an event whose job
+    # is skipped by the condition above (a comment-only review, another label) never enters
+    # it and cannot cancel a pending run - the automatic fix round the runner dispatched
+    # among them. Job and workflow groups of one name are one group in the repository.
+    concurrency:
+      group: "sdlc-${{ inputs.head_ref || github.event.pull_request.head.ref }}"
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     # 0.3.0: the session's wall clock (gate.max_wall_clock_minutes, 120 by default, plus
     # 5 of grace) and then the gate's commands step, which runs the three targets after

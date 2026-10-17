@@ -505,7 +505,10 @@ def test_fix_workflow_starts_on_request_changes_and_on_the_owner_labels():
     phase_step = [step for step in job["steps"] if "run" in step][-1]
     assert phase_step["env"]["PR_NUMBER"] == "${{ github.event.pull_request.number }}"
     assert job["steps"][-1]["name"] == "Keep the hook log"  # step 41.1
-    assert data["concurrency"]["group"] == (
+    # 1.0.3 (decision 29): the group is the job's, so a run whose job is skipped never enters
+    # it and cannot cancel the automatic fix round pending there
+    assert "concurrency" not in data
+    assert job["concurrency"]["group"] == (
         "sdlc-${{ inputs.head_ref || github.event.pull_request.head.ref }}"
     )
 

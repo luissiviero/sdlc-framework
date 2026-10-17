@@ -41,6 +41,7 @@ if str(PLUGIN_DIR) not in sys.path:
     sys.path.insert(0, str(PLUGIN_DIR))
 
 from gate import artifacts as art  # noqa: E402
+from gate.gate import NOT_STARTED_EXITS  # noqa: E402 - the shell's 126/127 (gate.not_started)
 from state import conventions as c  # noqa: E402
 from state import status as status_mod  # noqa: E402
 
@@ -50,7 +51,6 @@ REQUEST_KIND = "red-targets"
 DISPATCHED, TAKEN, NOT_DISPATCHED = "dispatched", "taken", "not-dispatched"
 OUTPUT_TAIL_CHARS = 3000
 REASONS_CHARS = 1000  # the judge's reasons go into status.yaml, the gate record and the PR body
-NOT_STARTED_EXITS = (126, 127)  # the shell's "cannot execute" and "not found" (gate.not_started)
 RUNNER_FILES = (c.AUTO_ROUND_FILE, c.AUTO_RESET_FILE)
 HISTORY_LIMIT = 10
 # The gates whose fix round may change the code (build, test, deploy): at (a), (b) and (f) the
@@ -373,9 +373,14 @@ def take_pending(
             f"{str(data.get('head'))[:10]}, which is not what this round starts from"
         )
     request = red_targets_request(data)
+    # the count as this round starts from it (the owner's labels already performed): the
+    # runner counts the round from here, whatever reset came before, by label or by hand
+    at_take = status_mod.read_status(change_dir).iterations
     set_round_status(
-        change_dir, TAKEN, taken_by={"run": github_run(env) or "local"}, taken_at=now()
-    )
+        change_dir, TAKEN, taken_by={"run": github_run(env) or "local"}, taken_at=now(),
+        iterations_at_take=at_take,
+    )  # fmt: skip
+    request["iterations_at_take"] = at_take
     return request, ""
 
 
@@ -542,20 +547,3 @@ def runner_file_mismatches(change_dir: Path, before: dict[str, bytes | None]) ->
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes(was)
     return reasons
-
-
-# --- 7. the count the rounds reached -----------------------------------------------------------
-def last_taken_round(change_dir: Path, phase: str, since: str | None = None) -> int | None:
-    """The number of the last automatic round a fix run took for ``phase``: the count that
-    round's own bump must have reached. None when there is none, or when the round was
-    dispatched before ``since`` (the last reset of the count, the owner's label or the
-    runner's judged reset: a number given before it counts no more)."""
-    data = read_round(change_dir)
-    if not data or data.get("status") != TAKEN or data.get("phase") != phase:
-        return None
-    if since and str(data.get("at") or "") < str(since):
-        return None
-    try:
-        return int(data.get("round"))
-    except (TypeError, ValueError):
-        return None

@@ -110,6 +110,7 @@ import re
 import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
 from typing import Any
 
@@ -741,6 +742,9 @@ def guardrail_changes(root: Path, change_dir: Path, config: dict[str, Any]) -> l
 
 
 # --- the guard --------------------------------------------------------------------------------
+PAUSED_SKIP = "sdlc.yaml says paused: true"
+
+
 def resolve_change_id(change_id: str | None, head_ref: str | None, run_phase: str) -> tuple:
     """(change id, skip reason). The id comes from ``--id`` or from ``sdlc/<id>/<phase>``."""
     if change_id:
@@ -989,7 +993,7 @@ def guard(root: Path, change_id: str, run_phase: str, repo: str, env: dict[str, 
     except ConfigError as exc:
         return None, None, config, f"{exc}: nothing runs until it is fixed"
     if paused:
-        return None, None, config, "sdlc.yaml says paused: true"
+        return None, None, config, PAUSED_SKIP
     if change_id == c.INIT_CHANGE_ID:  # issue #67: the installation, for every phase
         return None, None, config, INIT_CHANGE_SKIP
     change_dir = c.find_change_dir(root, change_id)
@@ -1357,15 +1361,21 @@ def commands_timeout_seconds(config: dict[str, Any]) -> int:
 
 
 def run_gate_commands(
-    plugin_dir: Path, root: Path, change_id: str, phase: str, config: dict[str, Any]
+    plugin_dir: Path,
+    root: Path,
+    change_id: str,
+    phase: str,
+    config: dict[str, Any],
+    timeout: int | None = None,
 ) -> dict[str, Any]:
     """``gate/cli.py run-commands``: the deferred check, run and recorded by the gate's own
-    code in the runner's process. ``ok`` false means the step itself could not run."""
+    code in the runner's process. ``ok`` false means the step itself could not run.
+    ``timeout`` replaces the step's own (decision 29: the re-run gets what is left)."""
     cli = plugin_dir / "plugin" / "gate" / "cli.py"
     return _cli_call(
         cli,
         ["run-commands", "--root", str(root), "--id", change_id, "--phase", phase],
-        timeout=commands_timeout_seconds(config),
+        timeout=timeout or commands_timeout_seconds(config),
         env=commands_env(),
     )
 
@@ -1687,6 +1697,7 @@ def _run_phase(args, env: dict[str, str], track: dict[str, Any]) -> int:
     change_dir, st, config, reason = guard(root, change_id, phase, args.repo, env)
     if reason:
         track["why"] = f"the fix run was skipped: {reason}"
+        track["paused"] = reason == PAUSED_SKIP  # a paused repository writes nothing
         return _skip(reason)
     if auth_mod.choose_auth(env)["auth"] is None and not args.dry_run:
         return _skip(auth_mod.choose_auth(env)["reason"])
@@ -1947,13 +1958,20 @@ def _run_phase(args, env: dict[str, str], track: dict[str, Any]) -> int:
     # 0.3.0 (issue #91): the commands check the session's gate deferred runs here, after the
     # session and outside its sandbox; the gate record and status.yaml are rewritten with the
     # real result before anything reads the verdict, and a red target parks the change
+    step_started = time.monotonic()
     commands_call = run_gate_commands(plugin_dir, root, change_id, gate_phase, config)
-    if not commands_call.get("ok") and commands_retryable(commands_call, change_dir, gate_phase):
+    step_budget = commands_timeout_seconds(config)
+    step_left = int(step_budget - (time.monotonic() - step_started))
+    if not commands_call.get("ok") and commands_retryable(
+        commands_call, change_dir, gate_phase, step_left, step_budget
+    ):
         # decision 29: an infrastructure failure of the step (the gate CLI crashed, a
-        # GateError) gets one automatic re-run, not counted as a fix round; a step that timed
-        # out is not re-run, since a second one would outlast the job
+        # GateError) gets one automatic re-run, not counted as a fix round, within the
+        # step's own budget: both runs together stay inside the job's timeout-minutes
         first = commands_call.get("reason") or "no output"
-        commands_call = run_gate_commands(plugin_dir, root, change_id, gate_phase, config)
+        commands_call = run_gate_commands(
+            plugin_dir, root, change_id, gate_phase, config, timeout=step_left
+        )
         if not commands_call.get("ok"):
             commands_call["reason"] = (
                 f"{commands_call.get('reason') or 'no output'} (after one automatic re-run of "
@@ -1996,7 +2014,17 @@ def _run_phase(args, env: dict[str, str], track: dict[str, Any]) -> int:
     # below the iteration cap, and once per change after the judged reset at the cap; the
     # record and status.yaml are marked here and committed with the run record below
     auto = (
-        auto_fix_round(args, plugin_dir, root, change_dir, change_id, gate_phase, config, env)
+        auto_fix_round(
+            args,
+            plugin_dir,
+            root,
+            change_dir,
+            change_id,
+            gate_phase,
+            config,
+            env,
+            took=(requests_collected or {}).get("red_targets_took"),
+        )
         if commands["ran"]
         else None
     )
@@ -2778,6 +2806,7 @@ def auto_fix_round(
     phase: str,
     config: dict[str, Any],
     env: dict[str, str],
+    took: dict[str, Any] | None = None,
 ) -> dict[str, Any] | None:
     """After the commands step: None when the rewritten record is not a park on red targets
     only (``auto_round.red_targets``; a missing target, an infrastructure failure or any
@@ -2790,9 +2819,13 @@ def auto_fix_round(
     the owner's or another phase's rounds used, a declined or failed judge or a second reset
     parks for the owner (``action: park``).
 
-    The runner enforces the count: a round the last fix run took for this gate counts as
-    its number even when that session never ran ``bump-iteration`` (a session that skipped
-    it would otherwise get "round 1" again and again); the count is only ever raised."""
+    ``took`` is the automatic round this same run took before its session
+    (``take_red_targets``). The runner enforces the count: that round counts one from the
+    count it started from (``iterations_at_take``), even when the session never ran
+    ``bump-iteration`` (it would otherwise get "round 1" again and again); the count is only
+    ever raised, and a reset made before the take, by label or by hand, stands. The judge is
+    asked only when that round brought the count to the cap: the automatic rounds reached
+    it."""
     from state.unpark import is_runner_reset  # noqa: PLC0415
 
     if phase not in auto_round.AUTO_ROUND_PHASES:
@@ -2810,16 +2843,16 @@ def auto_fix_round(
         "cap": cap,
         "classification": classification,
     }
-    taken = auto_round.last_taken_round(change_dir, phase, since=st.iterations_reset_at)
-    if taken is not None and st.iterations < taken:
-        out["count_enforced"] = {"from": st.iterations, "to": taken}
-        st.iterations = taken
+    counted = _took_count(took)
+    if counted is not None and st.iterations < counted:
+        out["count_enforced"] = {"from": st.iterations, "to": counted}
+        st.iterations = counted
         st.touch()
         status_mod.write_status(change_dir, st)
-        out["iterations"] = taken
+        out["iterations"] = counted
     if st.iterations >= cap:
         used = auto_round.reset_used(root, change_dir, st)
-        if taken is None or taken < cap:
+        if counted is None:
             why = (
                 "the count was not reached by the runner's automatic rounds (the owner's or "
                 "another phase's rounds used it), so no automatic reset is judged"
@@ -2857,6 +2890,16 @@ def auto_fix_round(
     return {**out, "action": "round", "round": data["round"]}
 
 
+def _took_count(took: dict[str, Any] | None) -> int | None:
+    """The count the round this run took must have reached: one more than it started from."""
+    if not isinstance(took, dict):
+        return None
+    try:
+        return int(took.get("iterations_at_take")) + 1
+    except (TypeError, ValueError):
+        return None
+
+
 UNFINISHED_NEED = (
     "The runner's automatic fix round (decision 29) ended before the runner ran the targets "
     "again, so nothing is running for this change now. Read the job log, then start a round "
@@ -2865,11 +2908,21 @@ UNFINISHED_NEED = (
 )
 
 
-def commands_retryable(call: dict[str, Any], change_dir: Path, phase: str) -> bool:
+def commands_retryable(
+    call: dict[str, Any],
+    change_dir: Path,
+    phase: str,
+    left: int | None = None,
+    budget: int | None = None,
+) -> bool:
     """Whether a failed commands step gets its one automatic re-run (decision 29): the record
-    still waits for the runner (nothing was rewritten) and the step did not time out (a
-    second full run would outlast the job's ``timeout-minutes``)."""
+    still waits for the runner (nothing was rewritten), the step did not time out, and at
+    least half of the step's budget is left (``left`` of ``budget`` seconds; the re-run gets
+    only what is left, so the two runs together never outlast the job's
+    ``timeout-minutes``)."""
     if "timed out" in str(call.get("reason") or ""):
+        return False
+    if left is not None and budget and left < budget / 2:
         return False
     record = read_gate(change_dir, phase)
     return record is not None and gate_mod.deferred_commands(record)
@@ -2883,8 +2936,10 @@ def release_unfinished_round(
     setup failed, the run was skipped, the session failed or timed out, no gate record).
     The record and status are parked with the reason, ``auto-round.json`` says
     ``unfinished``, and the park is committed and shown on the pull request. None when there
-    is nothing to release."""
-    if track.get("new_round"):
+    is nothing to release, and when the repository is paused: a paused repository runs and
+    writes nothing (``limits``), so the record keeps its mark until the pause is lifted and
+    the next run reads it."""
+    if track.get("new_round") or track.get("paused"):
         return None
     root = Path(args.root).resolve()
     plugin_dir = Path(args.plugin_dir).resolve()
@@ -2986,7 +3041,14 @@ def take_red_targets(root: Path, change_dir: Path, env: dict[str, str]) -> dict[
     request, note = auto_round.take_pending(root, change_dir, env)
     if request is None:
         return {"red_targets": None, "red_targets_note": note}
-    return {"red_targets": fix_requests.add_request(change_dir, request)}
+    return {
+        "red_targets": fix_requests.add_request(change_dir, request),
+        # what this run took, for ``auto_fix_round`` after the session: the round counts one
+        "red_targets_took": {
+            "round": request.get("round"),
+            "iterations_at_take": request.get("iterations_at_take"),
+        },
+    }
 
 
 def stamp_run_record(change_dir: Path, phase: str, env: dict[str, str]) -> dict[str, Any] | None:
