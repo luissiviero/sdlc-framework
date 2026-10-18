@@ -38,9 +38,11 @@ close the first; the road to 1.0.0 records it as a candidate.
 from __future__ import annotations
 
 import argparse
+import os
 import re
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 if __package__ in (None, ""):
@@ -64,6 +66,8 @@ DENIED_CONFIG = (
     r"^alias\..*$",
     r"^gpg\..*program$",
     r"^diff\..*command$",
+    r"^diff\.external$",
+    r"^diff\..*\.(textconv|command)$",
     r"^merge\..*driver$",
     r"^filter\..*\.(clean|smudge|process)$",
     # R49 review: a per-worktree config file (``.git/config.worktree``) is one more place to
@@ -78,14 +82,25 @@ CLEAN_ENV = {
 }
 
 
-def git(cwd: Path, *args: str, env: dict[str, str] | None = None) -> tuple[int, str]:
-    import os
+_NO_HOOKS_DIR: str | None = None
 
+
+def hardening() -> list[str]:
+    """``-c core.hooksPath=<an empty directory> -c core.fsmonitor=false`` on every call (the
+    R49 review: a fetch runs the ``reference-transaction`` hook, and a session could have
+    planted one in the checkout it shared), as ``state/gitops.py runner_args`` does."""
+    global _NO_HOOKS_DIR
+    if _NO_HOOKS_DIR is None or not os.path.isdir(_NO_HOOKS_DIR):
+        _NO_HOOKS_DIR = tempfile.mkdtemp(prefix="sdlc-no-hooks-")
+    return ["-c", f"core.hooksPath={_NO_HOOKS_DIR}", "-c", "core.fsmonitor=false"]
+
+
+def git(cwd: Path, *args: str, env: dict[str, str] | None = None) -> tuple[int, str]:
     merged = dict(os.environ)
     merged.update(env or {})
     proc = subprocess.run(
-        ["git", *args], cwd=cwd, capture_output=True, text=True, encoding="utf-8",
-        check=False, env=merged,
+        ["git", *hardening(), *args], cwd=cwd, capture_output=True, text=True,
+        encoding="utf-8", check=False, env=merged,
     )  # fmt: skip
     return proc.returncode, (proc.stdout if proc.returncode == 0 else proc.stderr)
 
@@ -98,17 +113,12 @@ DENIED_GLOBAL = DENIED_CONFIG[:3]
 
 # The scopes judged, as ``git config --show-scope`` names them: the worktree's own file
 # (``.git/config.worktree``, read once ``extensions.worktreeConfig`` is set) is judged as the
-# local one. ``system`` and ``command`` stay out: the image's and the runner's own.
-SCOPES = (("local", DENIED_CONFIG), ("worktree", DENIED_CONFIG), ("global", DENIED_GLOBAL))
-# Decision 33 (R49): before the runner hands the App's token back to a checkout a model's
-# session could write (``app_token.session_credential``), the keys that would send the next
-# push elsewhere or unprotected count at the global scope too (the session can write
-# ~/.gitconfig as well): a proxy, and TLS verification or its CA.
-CREDENTIAL_SCOPES = (
-    ("local", DENIED_CONFIG),
-    ("worktree", DENIED_CONFIG),
-    ("global", (*DENIED_GLOBAL, *[p for p in DENIED_CONFIG if p.startswith("^(http|https)")])),
-)
+# local one; the global one (``~/.gitconfig``, ``$XDG_CONFIG_HOME/git/config``) by the redirect
+# keys and, since R49, the proxy and TLS keys (a session can write it too, and the fetch
+# below carries the token). ``system`` and ``command`` stay out: the image's and the runner's
+# own.
+GLOBAL_DENIED = (*DENIED_GLOBAL, *[p for p in DENIED_CONFIG if p.startswith("^(http|https)")])
+SCOPES = (("local", DENIED_CONFIG), ("worktree", DENIED_CONFIG), ("global", GLOBAL_DENIED))
 
 
 def config_problems(root: Path, scopes=SCOPES) -> list[str]:
@@ -218,10 +228,12 @@ def default_branch_problems(root: Path, origin: str | None, branch: str, pin_ref
     if not source:
         return ["no origin URL to fetch the default branch from"]
     tracking = f"refs/remotes/origin/{branch}"
-    # decision 33 (R49): past 50 minutes the fetch goes out on the workflow token, not the
-    # App's, whose hour may have run out (the step's env carries SDLC_WORKFLOW_TOKEN)
-    app_token.fall_back_if_stale(root)
-    code, out = git(root, "fetch", source, f"+refs/heads/{branch}:{tracking}", env=CLEAN_ENV)
+    # decision 33 (R49): the credential in this fetch's environment only (no checkout
+    # persists one): the App's token while fresh, else the workflow token
+    auth = app_token.git_auth_env()
+    code, out = git(
+        root, "fetch", source, f"+refs/heads/{branch}:{tracking}", env={**auth, **CLEAN_ENV}
+    )
     if code != 0:
         return [f"cannot fetch the default branch {branch} from {source}: {out.strip()}"]
     code, text = git(root, "--no-replace-objects", "show", f"{tracking}:sdlc.yaml")

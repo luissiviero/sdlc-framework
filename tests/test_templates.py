@@ -880,10 +880,6 @@ STAMP_STEP = {
     ),
 }
 WORKFLOW_TOKEN = "${{ github.token }}"
-WORKFLOW_TOKEN_ONLY_STEPS = (
-    "Weekly security review (read-only claude -p)",
-    "Verify the project checkout before the next step",
-)
 
 
 def _header(name: str) -> str:
@@ -928,18 +924,39 @@ def test_a_workflow_that_pushes_mints_the_app_token_first(name):
         if key in ("GITHUB_TOKEN", "GH_TOKEN")
     ]
     assert tokens and set(tokens) == {APP_TOKEN}
-    # the workflow token beside the App's, for the fallback after 50 minutes, and in the
-    # steps that run a session or fetch after one with no GitHub token of their own (the
-    # scan's review: the session's git credential; the checkout check's fetch)
+    # the workflow token beside the App's, for the fallback after 50 minutes, and nowhere
+    # else (fix round 4: the checkout check's fetch takes both, like every other step)
     for step in steps:
         env = dict(step.get("env") or {})
-        if "GITHUB_TOKEN" in env or step.get("name") in WORKFLOW_TOKEN_ONLY_STEPS:
+        if "GITHUB_TOKEN" in env:
             assert env.pop("SDLC_WORKFLOW_TOKEN") == WORKFLOW_TOKEN, step.get("name")
         assert "SDLC_WORKFLOW_TOKEN" not in env and WORKFLOW_TOKEN not in json.dumps(env)
     # the token rule names the App and keeps the fallback's explicit dispatch
     header = _header(name)
     assert "Token rule (decision 33)" in header and "SDLC_APP_ID" in header
     assert "events the App causes do start workflow runs" in header
+
+
+@pytest.mark.parametrize("name", ALL_WORKFLOWS)
+def test_no_checkout_persists_a_credential(name):
+    """R49 fix round 4: ``.git/config`` holds no token after any checkout, so neither
+    project code (the commands step's targets, the toolchain install), a planted hook nor a
+    planted config key can reach one; each git network call of the runner takes it in its
+    own environment (``ci/app_token.py git_auth_env``)."""
+    data = _workflow_yaml(name)
+    checkouts = [
+        step
+        for job in data["jobs"].values()
+        for step in job["steps"]
+        if step.get("uses", "").startswith("actions/checkout@")
+    ]
+    assert checkouts, name
+    for step in checkouts:
+        assert step["with"]["persist-credentials"] is False, (name, step.get("name"))
+    if name == RELEASE_WORKFLOW:
+        # the record job's push takes the job's token from its step's environment
+        [record] = [s for s in data["jobs"]["record"]["steps"] if "run" in s]
+        assert record["env"]["GITHUB_TOKEN"] == "${{ github.token }}"
 
 
 @pytest.mark.parametrize("name", APP_WORKFLOWS)

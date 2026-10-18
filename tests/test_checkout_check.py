@@ -196,3 +196,37 @@ def test_a_git_that_cannot_list_the_scopes_is_a_problem(tmp_path, monkeypatch):
     assert checkout_check.config_problems(tmp_path) == [
         "git config --list --show-scope failed (exit 129): error: unknown option"
     ]
+
+
+def test_keys_reached_through_an_include_or_the_global_files_are_found(tmp_path, monkeypatch):
+    """R49 fix round 4, N3: an ``include.path`` that pulls a proxy into the local scope, a
+    global ``http.sslVerify`` and the same in ``$XDG_CONFIG_HOME/git/config`` (git's other
+    global file) are all judged - one listing reads what git reads."""
+    work = tmp_path / "work"
+    subprocess.run(["git", "init", "-q", str(work)], check=True)
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(tmp_path / "no-such-gitconfig"))
+    included = tmp_path / "included.config"
+    included.write_text("[http]\n\tproxy = http://proxy.invalid:3128\n", encoding="utf-8")
+    git(work, "config", "include.path", included.as_posix())
+    assert set(checkout_check.config_findings(work)) == {
+        ("local", "include.path"),
+        ("local", "http.proxy"),
+    }
+    git(work, "config", "--unset", "include.path")
+    global_cfg = tmp_path / "gitconfig"
+    global_cfg.write_text("[http]\n\tsslVerify = false\n", encoding="utf-8")
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(global_cfg))
+    assert checkout_check.config_findings(work) == [("global", "http.sslverify")]
+    # without GIT_CONFIG_GLOBAL, git reads ~/.gitconfig and $XDG_CONFIG_HOME/git/config
+    monkeypatch.delenv("GIT_CONFIG_GLOBAL")
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+    (tmp_path / "xdg" / "git").mkdir(parents=True)
+    (tmp_path / "xdg" / "git" / "config").write_text(
+        "[http]\n\tproxy = http://proxy.invalid:3128\n", encoding="utf-8"
+    )
+    assert checkout_check.config_findings(work) == [("global", "http.proxy")]
+    for key in ("diff.external", "diff.foo.textconv", "diff.foo.command"):
+        git(work, "config", key, "x")
+    found = {name for _scope, name in checkout_check.config_findings(work)}
+    assert {"diff.external", "diff.foo.textconv", "diff.foo.command"} <= found

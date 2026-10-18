@@ -65,6 +65,7 @@ jobs:
       - name: Check out the pull request's head
         uses: actions/checkout@v5
         with:
+          persist-credentials: false
           ref: ${{ github.event.pull_request.head.ref }}
           fetch-depth: 0
 
@@ -80,6 +81,7 @@ jobs:
       - name: Check out the pinned framework (public repository, no token)
         uses: actions/checkout@v5
         with:
+          persist-credentials: false
           repository: "luissiviero/sdlc-framework"
           ref: ${{ steps.pin.outputs.ref }}
           path: framework

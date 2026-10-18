@@ -69,6 +69,8 @@ def make_git(timeout: float = GIT_TIMEOUT) -> GitRunner:
     closed with "cannot verify the approval in time")."""
 
     def run(root: str | Path, *args: str) -> tuple[int, str]:
+        from state.gitops import network_env  # noqa: PLC0415
+
         try:
             proc = subprocess.run(
                 ["git", *args],
@@ -78,6 +80,9 @@ def make_git(timeout: float = GIT_TIMEOUT) -> GitRunner:
                 encoding="utf-8",
                 errors="replace",
                 timeout=timeout,
+                # a fetch, ls-remote or push gets the credential in its environment only
+                # (decision 33, R49: no checkout persists one in .git/config)
+                env=network_env(args),
             )
         except subprocess.TimeoutExpired as exc:
             raise TimeoutError(f"git {' '.join(args[:2])} took over {timeout}s") from exc

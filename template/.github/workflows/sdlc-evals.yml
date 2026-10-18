@@ -52,6 +52,7 @@ jobs:
       - name: Check out the project
         uses: actions/checkout@v5
         with:
+          persist-credentials: false
           fetch-depth: 0
 
       - name: Read the framework pin from the default branch's sdlc.yaml, with its script
@@ -66,6 +67,7 @@ jobs:
       - name: Check out the pinned framework (public repository, no token)
         uses: actions/checkout@v5
         with:
+          persist-credentials: false
           repository: "{{FRAMEWORK_REPO}}"
           ref: ${{ steps.pin.outputs.ref }}
           path: framework

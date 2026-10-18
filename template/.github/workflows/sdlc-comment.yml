@@ -65,6 +65,7 @@ jobs:
       - name: Check out the default branch
         uses: actions/checkout@v5
         with:
+          persist-credentials: false
           ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 0
 
@@ -80,6 +81,7 @@ jobs:
       - name: Check out the pinned framework (public repository, no token)
         uses: actions/checkout@v5
         with:
+          persist-credentials: false
           repository: "{{FRAMEWORK_REPO}}"
           ref: ${{ steps.pin.outputs.ref }}
           path: framework

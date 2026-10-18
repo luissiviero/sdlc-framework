@@ -98,6 +98,7 @@ jobs:
       - name: Check out the project
         uses: actions/checkout@v5
         with:
+          persist-credentials: false
           token: ${{ steps.app.outputs.token || github.token }}
           fetch-depth: 0
 
@@ -113,6 +114,7 @@ jobs:
       - name: Check out the pinned framework (public repository, no token)
         uses: actions/checkout@v5
         with:
+          persist-credentials: false
           repository: "luissiviero/sdlc-framework"
           ref: ${{ steps.pin.outputs.ref }}
           path: framework
@@ -195,6 +197,7 @@ jobs:
         if: steps.detect.outputs.change_id != ''
         uses: actions/checkout@v5
         with:
+          persist-credentials: false
           repository: "luissiviero/sdlc-framework"
           ref: ${{ steps.pin.outputs.ref }}
           path: framework
@@ -203,7 +206,9 @@ jobs:
         if: steps.detect.outputs.change_id != ''
         env:
           PIN_REF: ${{ steps.pin.outputs.ref }}
-          # R49: past 50 minutes the fetch below uses the workflow token (ci/app_token.py)
+          # R49: the fetch's credential, in its environment only (ci/app_token.py
+          # git_auth_env): the App's token while fresh, else the workflow token
+          GITHUB_TOKEN: ${{ steps.app.outputs.token || github.token }}
           SDLC_WORKFLOW_TOKEN: ${{ github.token }}
           ORIGIN_URL: ${{ github.server_url }}/${{ github.repository }}
           FRAMEWORK_URL: ${{ github.server_url }}/luissiviero/sdlc-framework

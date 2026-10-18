@@ -383,13 +383,14 @@ def _github():
 _RUN_ENV: dict[str, str] | None = None
 
 
-def live_token(root: Path | None = None, env: dict[str, str] | None = None) -> dict[str, Any]:
+def live_token(env: dict[str, str] | None = None) -> dict[str, Any]:
     """Decision 33 (R49): before a publication, the App's token gives way to the workflow
-    token once it is older than 50 minutes - in ``os.environ``, in the run's env dict and in
-    the checkout's persisted git credential (``ci/app_token.py``). Idempotent and cheap; a
-    no-op without the App. ``pr/github.py`` and ``state/gitops.py`` make the same check before
-    every request and network git command; this one also switches the run's env dict."""
-    return app_token.fall_back_if_stale(root, env if env is not None else _RUN_ENV)
+    token once it is older than 50 minutes - in ``os.environ`` and in the run's env dict
+    (``ci/app_token.py``); git takes whichever is current through its environment
+    (``git_auth_env``). Idempotent and cheap; a no-op without the App. ``pr/github.py`` and
+    ``state/gitops.py`` make the same check before every request and network git command;
+    this one also switches the run's env dict."""
+    return app_token.fall_back_if_stale(env if env is not None else _RUN_ENV)
 
 
 def _token(env: dict[str, str]) -> str | None:
@@ -1987,19 +1988,13 @@ def maintain_allowed_tools(root: Path | None) -> str:
 def invoke(argv: list[str], root: Path, env: dict[str, str], timeout: int) -> tuple:
     """(result dict or None, stdout, stderr, exit code).
 
-    Decision 33 (R49): the session never holds the App's token. ``SDLC_WORKFLOW_TOKEN``
-    never reaches it as such, and while it runs the checkout's persisted git credential
-    carries the workflow token (``ci/app_token.py session_credential``, restored afterwards
-    in a ``finally``): the session's own pushes start no workflow run without the owner's
-    approval, as before decision 33, and outlive the App token's hour."""
+    Decision 33 (R49): ``SDLC_WORKFLOW_TOKEN`` never reaches a session as such; the session
+    holds what ``session_env`` gave it (the workflow token and its git header), and no
+    checkout persists a credential in ``.git/config``."""
     run_env = {
         k: v for k, v in auth_mod.credential_env(env).items() if k != app_token.WORKFLOW_TOKEN_ENV
     }
-    try:
-        with app_token.session_credential(root, _RUN_ENV if _RUN_ENV is not None else env):
-            return _run_session(argv, root, run_env, timeout)
-    except app_token.CredentialError as exc:  # never a session holding the App's token
-        return None, "", str(exc), 1
+    return _run_session(argv, root, run_env, timeout)
 
 
 def _run_session(argv: list[str], root: Path, env: dict[str, str], timeout: int) -> tuple:
@@ -2065,12 +2060,22 @@ def session_env(env: dict[str, str], root: Path, phase: str | None = None) -> di
     (``CACHE_HOME_ENV``; a value the workflow carries is replaced, since only the checkout is
     known to be writable) and, for a fix round, ``SDLC_RUN=fix`` (``limits.RUN_KIND_ENV``),
     which makes the session's ``start-run`` record the build caps (decision 32); any other
-    session drops a value the workflow carries. Decision 33 (R49): when the workflow hands
-    over its own token (``SDLC_WORKFLOW_TOKEN``) the session gets it as ``GITHUB_TOKEN`` and
-    ``GH_TOKEN``, never the App's (``ci/app_token.py session_tokens``)."""
-    marked = {**env, gate_checks.COMMANDS_RUNNER_ENV: gate_checks.RUN_BY_RUNNER}
+    session drops a value the workflow carries. Decision 33 (R49): the session's GitHub token
+    is the workflow token, never the App's - as ``GITHUB_TOKEN`` and ``GH_TOKEN``
+    (``ci/app_token.py session_tokens``) and as git's header in the environment
+    (``git_auth_env``, on a runner), so its own pushes work (no checkout persists a
+    credential) and start no run without the owner's approval. A job that minted the App's
+    token without handing over the workflow token leaves the session no GitHub token."""
+    marked = app_token.strip_git_auth(env)
+    marked[gate_checks.COMMANDS_RUNNER_ENV] = gate_checks.RUN_BY_RUNNER
     marked.update(app_token.session_tokens(env))
     marked.pop(app_token.WORKFLOW_TOKEN_ENV, None)
+    if env.get(app_token.MINTED_AT_ENV) and not env.get(app_token.WORKFLOW_TOKEN_ENV):
+        for var in TOKEN_VARS:  # the App's: never the session's
+            marked.pop(var, None)
+    token = next((marked[var] for var in TOKEN_VARS if marked.get(var)), None)
+    if token:
+        marked.update(app_token.git_auth_env(marked, token=token))
     marked.setdefault(BACKGROUND_TASKS_ENV, "1")
     marked[CACHE_HOME_ENV] = str(Path(root) / SESSION_CACHE_DIR)
     marked.pop(limits.RUN_KIND_ENV, None)
@@ -2177,11 +2182,13 @@ COMMIT_NOT_PUSHED = (
 
 def commands_env() -> dict[str, str]:
     """The environment of the runner's commands step: the runner's own, without the model
-    credentials and the GitHub token the phase step holds. The targets run code the session
+    credentials, the GitHub tokens the phase step holds and any git credential handed
+    through the environment (``app_token.strip_git_auth``). The targets run code the session
     just wrote; inside the sandbox they had one credential and a network allow-list, and
-    outside it they get neither credential (``commands.setup`` runs the same way)."""
+    outside it they get none (``commands.setup`` runs the same way); no checkout persists a
+    credential in ``.git/config`` either (decision 33, R49)."""
     hidden = {*auth_mod.CREDENTIAL_VARS, "GITHUB_TOKEN", "GH_TOKEN", app_token.WORKFLOW_TOKEN_ENV}
-    return {k: v for k, v in os.environ.items() if k not in hidden}
+    return app_token.strip_git_auth({k: v for k, v in os.environ.items() if k not in hidden})
 
 
 def park_deferred_record(
@@ -2995,7 +3002,7 @@ def commit_run_record(
     ``commands_ran`` the commit also carries the gate record and status.yaml the runner's
     commands step rewrote (issue #91), and its message says so; ``note`` ends the message
     (decision 29: the automatic fix round the commit carries, ``auto_note``)."""
-    live_token(root)
+    live_token()
     branch_phase = branch_phase or BRANCH_PHASE.get(phase, phase)
     message = f"run({phase}): spend recorded"
     if commands_ran:
@@ -3630,9 +3637,9 @@ def run_reset_judge(
     except ValueError:
         rel = str(change_dir)
     # the judge reads files and answers: it gets the model credential and no GitHub token
-    judge_env = {
-        k: v for k, v in env.items() if k not in (*TOKEN_VARS, app_token.WORKFLOW_TOKEN_ENV)
-    }
+    judge_env = app_token.strip_git_auth(
+        {k: v for k, v in env.items() if k not in (*TOKEN_VARS, app_token.WORKFLOW_TOKEN_ENV)}
+    )
     model = config.get("panel_advocate_model")
     if isinstance(model, str) and model.strip():
         judge_env["SDLC_MODEL"] = model.strip()
@@ -4390,7 +4397,7 @@ def park_and_publish(
     and pushed on the work branch, and the phase's PR carrying ``sdlc:needs-human`` and the
     "What I need from you" block (OPERATING_MODEL section 5: a park is a queue item). A fix
     round parks the change's own phase on the PR's head (``branch``)."""
-    live_token(root)
+    live_token()
     branch_phase = st.phase if phase == "fix" else BRANCH_PHASE.get(phase, phase)
     state_cli = plugin_dir / "plugin" / "state" / "cli.py"
     out: dict[str, Any] = {"parked": reason, "phase": phase, "change_id": st.id}
@@ -4481,7 +4488,7 @@ def ensure_pr(
     request now carries the phase, whatever the CLI's exit code was. A fix round passes the
     change's phase and the PR's head (``branch``): the PR is the one the review was left on.
     """
-    live_token(root, env)
+    live_token(env)
     branch_phase = branch_phase or BRANCH_PHASE.get(phase, phase)
     head = branch or work_branch_for(change_id, phase)
     out: dict[str, Any] = {"head": head, "phase": branch_phase, "existed": None}
