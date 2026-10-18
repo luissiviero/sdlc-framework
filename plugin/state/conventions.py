@@ -104,6 +104,11 @@ AUTO_RESET_FILE = "auto-reset.json"
 RUNNER_RESET_PREFIX = "sdlc-runner:"
 # the start of ``status.yaml: parked_reason`` while an automatic round runs
 FIXING_PARK_PREFIX = "automatic fix round "
+# Decision 30 (the fast lane, ROADMAP R46): the runner closes the owner's intent PR once the
+# design PR carries it, and the design PR once the build PR carries it, each after labelling
+# it ``sdlc:superseded`` (no comment, decision 20). ``sdlc-abandon.yml`` skips a closed PR
+# with this label, so a close that supersedes never abandons the change (decision 25).
+SUPERSEDED_LABEL = "sdlc:superseded"
 
 
 def ready_label(phase: str) -> str:
@@ -272,3 +277,16 @@ def effective_review_mode(project_mode: str | None, override: str | None) -> str
 def is_human_gate(profile: str, phase: str) -> bool:
     _check_phase(phase)
     return phase in HUMAN_GATES[effective_profile(profile, None)]
+
+
+# Decision 30: the profiles whose gates (a) and (b) the fast lane may pass without a merge
+# (every profile but Full; Lite reads as Standard). On Full both stay the owner's merges.
+FAST_LANE_PROFILES = frozenset({"standard"})
+
+
+def fast_lane_profile(profile: str | None) -> bool:
+    """Whether the fast lane applies on ``profile`` (as ``effective_profile`` reads it)."""
+    try:
+        return effective_profile(profile, None) in FAST_LANE_PROFILES
+    except ValueError:
+        return False

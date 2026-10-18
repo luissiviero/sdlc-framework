@@ -835,6 +835,33 @@ def _set_ready_api(repo: str, number: int) -> dict[str, Any]:
     return {"route": "api", "ok": True, "number": number}
 
 
+def close_pr(repo: str, number: int, cwd: str | Path | None = None) -> dict[str, Any]:
+    """Close a pull request without merging and without a comment (decision 30: the fast
+    lane supersedes the intent and design PRs; decision 20: no notification). The REST
+    route sets ``state: closed``; ``gh pr close`` is the fallback."""
+
+    def via_api() -> dict[str, Any]:
+        result = _request(
+            "PATCH", f"{API_ROOT}/repos/{repo}/pulls/{number}", token() or "", {"state": "closed"}
+        )
+        if result["error"]:
+            return {"route": "api", "ok": False, "reason": result["error"], "number": number}
+        return {"route": "api", "ok": True, "number": number}
+
+    def via_gh() -> dict[str, Any]:
+        result = _gh("pr", "close", str(number), "--repo", repo, cwd=cwd)
+        if not result["ok"]:
+            return {
+                "route": "gh",
+                "ok": False,
+                "reason": _gh_error(result, "gh pr close"),
+                "number": number,
+            }
+        return {"route": "gh", "ok": True, "number": number}
+
+    return _attempt(via_api, via_gh, number=number)
+
+
 def set_ready(repo: str, number: int, cwd: str | Path | None = None) -> dict[str, Any]:
     """Mark a draft PR ready for review (phase (e)). REST has no such field: the GraphQL
     mutation ``markPullRequestReadyForReview`` takes the PR's node id."""

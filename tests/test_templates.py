@@ -619,7 +619,11 @@ def test_abandon_workflow_records_the_end_state_without_a_model():
     # pull-requests: write since 0.2.19: the dismissal of gate (f) opens a pull request
     assert data["permissions"] == {"contents": "write", "pull-requests": "write"}
     job = data["jobs"]["abandon"]
-    assert job["if"] == "${{ github.event.pull_request.merged == false }}"
+    # decision 30: a PR the fast lane superseded (labelled by the runner first) is not an abandon
+    assert job["if"] == (
+        "${{ github.event.pull_request.merged == false && "
+        "!contains(github.event.pull_request.labels.*.name, 'sdlc:superseded') }}"
+    )
     assert job["steps"][0]["with"]["ref"] == "${{ github.event.pull_request.head.ref }}"
     runs = [step["run"] for step in job["steps"] if "run" in step]
     assert runs[-2] == (

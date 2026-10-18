@@ -1,6 +1,15 @@
 # Phase (b) design, fired by the merge of the intent PR: the merged pull request that carries
 # the change's changes/<id>-<slug>/ folder, whatever its head branch is called.
 #
+# The fast lane (decision 30): on every profile but Full, an intent PR your own account opens
+# (or reopens) starts the design at once, without a merge - writing and pushing the intent is
+# your acceptance. The design branch is cut from the PR's head, and once the design PR exists
+# the intent PR is labelled sdlc:superseded and closed (no comment). The find step judges it
+# exactly (your account as the author and as the one who opened or reopened it, the profile,
+# one change folder at phase a and nothing else, no design PR yet) and skips green otherwise; a
+# collaborator's or a bot's intent PR or reopen, a draft and a fork's head keep gate (a), the
+# merge.
+#
 # Contract: docs/OPERATING_MODEL.md section 4.2 (the trigger and dispatch table), build guide
 # step 30, article p.39-41 ("Run Claude Code non-interactively inside the CI/CD pipeline,
 # sandbox the execution"). Installed into this project by /sdlc-init from the framework's
@@ -28,7 +37,7 @@ on:
         required: false
         type: string
   pull_request:
-    types: [closed]
+    types: [opened, reopened, closed]
     branches: [main]
 
 permissions:
@@ -53,10 +62,18 @@ jobs:
     # /sdlc-plan's intent to a branch of its own (claude/...), and the old sdlc/ head rule
     # never fired for it (HANDOFF 4(a)). The first step finds the change from the merged
     # pull request's changes/<id>-<slug>/ folder instead; a merge that carries none costs one
-    # green job of about 20 s, and every later step is skipped.
+    # green job of about 20 s, and every later step is skipped. Decision 30: an opened or
+    # reopened intent PR runs too when its head is in this repository, neither its author
+    # nor the event's sender is a [bot] and it is not a draft (a coarse check; the find
+    # step's is the exact one).
     if: >-
       ${{ github.event_name == 'workflow_dispatch' ||
-      github.event.pull_request.merged == true }}
+      github.event.pull_request.merged == true ||
+      ((github.event.action == 'opened' || github.event.action == 'reopened') &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      !endsWith(github.event.pull_request.user.login, '[bot]') &&
+      !endsWith(github.event.sender.login, '[bot]') &&
+      github.event.pull_request.draft == false) }}
     runs-on: ubuntu-latest
     # 0.3.0: the session's wall clock (gate.max_wall_clock_minutes, 120 by default, plus
     # 5 of grace) and then the gate's commands step, which runs the three targets after
@@ -86,6 +103,8 @@ jobs:
 
       # --id wins (a dispatch), then a head sdlc/<id>/a, then the one changes/<id>-<slug>/
       # folder the merged pull request touches. An empty change_id skips every step below.
+      # An opened intent PR (decision 30) is judged from the event payload and the default
+      # branch's sdlc.yaml; it also outputs start_point (the PR's head) and intent_pr.
       - name: Find the change this merge carries
         id: find
         env:
@@ -94,6 +113,7 @@ jobs:
           HEAD_REF: ${{ inputs.head_ref || github.event.pull_request.head.ref }}
           REPO: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
+          SDLC_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: python framework/plugin/ci/run_phase.py --root . --plugin-dir framework --phase b --id "$CHANGE_ID" --head-ref "$HEAD_REF" --repo "$REPO" --pr-number "$PR_NUMBER" --find-change
 
       - if: steps.find.outputs.change_id != ''
@@ -128,6 +148,11 @@ jobs:
           REPO: ${{ github.repository }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
           SDLC_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          # decision 30: set only for an intent PR on the fast lane (empty otherwise). Passed in
+          # the environment, never as flags: a framework pinned before the fast lane rejects an
+          # unknown flag and ignores an unknown variable
+          SDLC_START_POINT: ${{ steps.find.outputs.start_point }}
+          SDLC_INTENT_PR: ${{ steps.find.outputs.intent_pr }}
         run: python framework/plugin/ci/run_phase.py --root . --plugin-dir framework --phase b --id "$CHANGE_ID" --head-ref "$HEAD_REF" --repo "$REPO" --ref "$DEFAULT_BRANCH"
 
       # Build guide step 41.1 (article p.39): every hook decision of the run is one line of

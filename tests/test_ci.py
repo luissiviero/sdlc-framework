@@ -1777,7 +1777,9 @@ def test_phase_workflow_triggers(name):
     assert re.search(r"(?m)^  workflow_dispatch:\n    inputs:\n      change_id:", text)
     assert "required: true" in text
     if name in ("sdlc-design.yml", "sdlc-build.yml"):
-        assert re.search(r"(?m)^    types: \[closed\]$", text)
+        # decision 30: the design also starts on the owner's opened intent PR (the fast lane)
+        types = "opened, reopened, closed" if name == "sdlc-design.yml" else "closed"
+        assert re.search(rf"(?m)^    types: \[{types}\]$", text)
         assert re.search(r"(?m)^    branches: \[main\]$", text)
         assert "github.event.pull_request.merged == true" in text
     else:
