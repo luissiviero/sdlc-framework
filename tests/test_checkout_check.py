@@ -165,3 +165,34 @@ def test_a_pin_the_default_branch_no_longer_carries_is_refused(tmp_path, monkeyp
     )
     monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(tmp_path / "gitconfig"))
     assert checkout_check.config_problems(work) == []
+
+
+def test_the_config_is_judged_as_git_resolves_it_worktree_included(tmp_path, monkeypatch):
+    """R49 fix round 3: a key hidden in ``.git/config.worktree`` (``extensions.worktreeConfig``
+    on, ``git config --worktree``) is invisible to ``git config --local --list``; one
+    ``git config --list --show-scope`` reads every scope, and the switch itself is refused."""
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(tmp_path / "no-such-gitconfig"))
+    work = tmp_path / "work"
+    subprocess.run(["git", "init", "-q", str(work)], check=True)
+    assert checkout_check.config_problems(work) == []
+    git(work, "config", "extensions.worktreeConfig", "true")
+    git(work, "config", "--worktree", "http.proxy", "http://proxy.invalid:3128")
+    git(work, "config", "--worktree", "credential.helper", "store")
+    git(work, "config", "--worktree", "http.sslVerify", "false")
+    found = checkout_check.config_findings(work)
+    assert sorted(found) == sorted(
+        [
+            ("local", "extensions.worktreeconfig"),
+            ("worktree", "http.proxy"),
+            ("worktree", "credential.helper"),
+            ("worktree", "http.sslverify"),
+        ]
+    )
+    assert "git config worktree carries http.proxy" in checkout_check.config_problems(work)
+
+
+def test_a_git_that_cannot_list_the_scopes_is_a_problem(tmp_path, monkeypatch):
+    monkeypatch.setattr(checkout_check, "git", lambda cwd, *a, **k: (129, "error: unknown option"))
+    assert checkout_check.config_problems(tmp_path) == [
+        "git config --list --show-scope failed (exit 129): error: unknown option"
+    ]

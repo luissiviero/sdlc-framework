@@ -66,6 +66,9 @@ DENIED_CONFIG = (
     r"^diff\..*command$",
     r"^merge\..*driver$",
     r"^filter\..*\.(clean|smudge|process)$",
+    # R49 review: a per-worktree config file (``.git/config.worktree``) is one more place to
+    # hide a key in; ``config_problems`` reads the worktree scope too, and the switch is refused
+    r"^extensions\.worktreeconfig$",
 )
 EXIT_REFUSED = 3
 CLEAN_ENV = {
@@ -93,30 +96,52 @@ def git(cwd: Path, *args: str, env: dict[str, str] | None = None) -> tuple[int, 
 DENIED_GLOBAL = DENIED_CONFIG[:3]
 
 
-SCOPES = (("--local", DENIED_CONFIG), ("--global", DENIED_GLOBAL))
+# The scopes judged, as ``git config --show-scope`` names them: the worktree's own file
+# (``.git/config.worktree``, read once ``extensions.worktreeConfig`` is set) is judged as the
+# local one. ``system`` and ``command`` stay out: the image's and the runner's own.
+SCOPES = (("local", DENIED_CONFIG), ("worktree", DENIED_CONFIG), ("global", DENIED_GLOBAL))
 # Decision 33 (R49): before the runner hands the App's token back to a checkout a model's
 # session could write (``app_token.session_credential``), the keys that would send the next
 # push elsewhere or unprotected count at the global scope too (the session can write
 # ~/.gitconfig as well): a proxy, and TLS verification or its CA.
 CREDENTIAL_SCOPES = (
-    ("--local", DENIED_CONFIG),
-    ("--global", (*DENIED_GLOBAL, *[p for p in DENIED_CONFIG if p.startswith("^(http|https)")])),
+    ("local", DENIED_CONFIG),
+    ("worktree", DENIED_CONFIG),
+    ("global", (*DENIED_GLOBAL, *[p for p in DENIED_CONFIG if p.startswith("^(http|https)")])),
 )
 
 
 def config_problems(root: Path, scopes=SCOPES) -> list[str]:
-    """The denied keys in the local git config (the checkout the runner made: the whole
-    denylist) and the global one (``DENIED_GLOBAL``), each named with its scope."""
-    problems: list[str] = []
-    for scope, patterns in scopes:
-        code, out = git(root, "config", scope, "--list", "--name-only")
-        if code != 0:
-            continue  # no config at that scope
-        for name in out.split():
-            low = name.lower()
-            if any(re.match(pattern, low) for pattern in patterns):
-                problems.append(f"git config {scope.lstrip('-')} carries {name}")
-    return problems
+    """The denied keys of the git config as git resolves it in ``root``, each named with its
+    scope: one ``git config --list --show-scope --name-only`` (git 2.26+) over every file git
+    reads, so a key hidden in ``.git/config.worktree`` or an included file is seen where
+    ``git config --local --list`` would miss it (the R49 review). A git that refuses the
+    listing is itself a problem (fail safe: the caller refuses, or stays on the workflow
+    token)."""
+    return [
+        name if scope == UNLISTED else f"git config {scope} carries {name}"
+        for scope, name in config_findings(root, scopes)
+    ]
+
+
+UNLISTED = "unlisted"  # the scope of the one finding a failed listing gives
+
+
+def config_findings(root: Path, scopes=SCOPES) -> list[tuple[str, str]]:
+    """``config_problems`` as (scope, key) pairs; a listing git refused is the one pair
+    (``UNLISTED``, what git said)."""
+    code, out = git(root, "config", "--list", "--show-scope", "--name-only")
+    if code != 0:
+        first = (out.strip().splitlines() or [""])[0]
+        return [(UNLISTED, f"git config --list --show-scope failed (exit {code}): {first}")]
+    patterns_of = dict(scopes)
+    found: list[tuple[str, str]] = []
+    for line in out.splitlines():
+        scope, _, name = line.partition("\t")
+        patterns = patterns_of.get(scope)
+        if patterns and any(re.match(pattern, name.lower()) for pattern in patterns):
+            found.append((scope, name))
+    return found
 
 
 def origin_problems(root: Path, origin: str | None) -> list[str]:

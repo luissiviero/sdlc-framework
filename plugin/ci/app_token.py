@@ -207,14 +207,40 @@ class CredentialError(RuntimeError):
     before a session: the session does not start (it would hold the App's token)."""
 
 
-def _credential_config_problems(root: Path) -> list[str]:
-    """The keys of the git config that would redirect or unprotect the runner's next push
-    (``ci/checkout_check.py config_problems``: a proxy, TLS verification switched off or
-    another CA, a URL rewrite, an include, a credential helper...). The runner image's own
-    global proxy, if it has one, reads the same: the run then stays on the workflow token."""
+def _credential_config_problem(root: Path) -> str:
+    """ "the git config carries <key> (<scope>), ..." for the keys of the git config, as git
+    resolves it in ``root`` (worktree, local and global scopes), that would redirect or
+    unprotect the runner's next push, or what git said when it refused the listing; "" when
+    there is none
+    (``ci/checkout_check.py config_findings``: a proxy, TLS verification switched off or
+    another CA, a URL rewrite, an include, a credential helper, a worktree config...). The
+    runner image's own global proxy, if it has one, reads the same: the run then stays on
+    the workflow token, which is why the line names the key and its scope, not the session."""
     from ci import checkout_check  # noqa: PLC0415 - checkout_check imports this module
 
-    return checkout_check.config_problems(root, checkout_check.CREDENTIAL_SCOPES)
+    found = checkout_check.config_findings(root, checkout_check.CREDENTIAL_SCOPES)
+    if not found:
+        return ""
+    if found[0][0] == checkout_check.UNLISTED:
+        return found[0][1]
+    return "the git config carries " + ", ".join(f"{name} ({scope})" for scope, name in found)
+
+
+def _settle(checkout: Path, value: str) -> str:
+    """Write the credential after a session; a write that fails (a planted placeholder, a
+    locked file) removes the key rather than leave a bare placeholder, and says so: the
+    runner's pushes from this checkout then fail visibly instead of going out wrong."""
+    result = _set_credential(checkout, value, create=True)
+    if result in ("replaced", "already", "none"):
+        return result
+    code, why = _git(checkout, "config", "--local", "--unset-all", credential_key())
+    left = "removed" if code == 0 else f"left as it is (git config exited {code}: {why.strip()})"
+    print(
+        f"the checkout's git credential could not be written after the session ({result}): "
+        f"the key is {left}; the runner's pushes from this checkout have no credential",
+        file=sys.stderr,
+    )
+    return result
 
 
 @contextlib.contextmanager
@@ -228,11 +254,13 @@ def session_credential(
     and does not expire with the App's. Afterwards the App's header comes back while that
     token is fresh; once it is stale the run stays on the workflow token
     (``fall_back_if_stale``). Restored in a ``finally``, so a session that crashed or timed
-    out restores too. The App's header comes back only into a git config the session left
-    clean (``_credential_config_problems``): a session that wrote a proxy, switched TLS
-    verification off or named another CA keeps the run on the workflow token, with one
-    stderr line naming the key, and the project's CI on that head waits for the owner's
-    approval, as in the fallback. A no-op without ``SDLC_WORKFLOW_TOKEN`` or without a
+    out restores too. The App's header comes back only into a clean git config, judged as
+    git resolves it (``_credential_config_problem``: worktree, local and global scopes): a
+    proxy, TLS verification off or another CA, wherever it was written (by the session, or
+    the runner image's own global config), keeps the run on the workflow token, with one
+    stderr line naming the key and its scope, and the project's CI on that head waits for
+    the owner's approval, as in the fallback. A write that fails after the session removes
+    the key and says so (``_settle``). A no-op without ``SDLC_WORKFLOW_TOKEN`` or without a
     persisted credential. Raises ``CredentialError`` before the session when the credential
     can neither be switched nor removed."""
     workflow = _lookup(WORKFLOW_TOKEN_ENV, env)
@@ -256,21 +284,22 @@ def session_credential(
         yield {"session_credential": during}
     finally:
         _replaced.discard((str(checkout.resolve()), credential_key()))
-        problems = _credential_config_problems(checkout)
-        if problems:
+        problem = _credential_config_problem(checkout)
+        if problem:
             print(
-                f"the session changed the checkout's git config ({problems[0]}): the workflow "
-                "token publishes this run (decision 33); the project's CI on this head waits "
-                "for the owner's approval",
+                f"{problem}: the workflow token publishes this run (decision 33); the "
+                "project's CI on this head waits for the owner's approval",
                 file=sys.stderr,
             )
             _switch_env(workflow, env)
-            _set_credential(checkout, credential_value(workflow), create=True)
+            _settle(checkout, credential_value(workflow))
         elif is_stale(env):
-            _set_credential(checkout, credential_value(workflow), create=True)
-            fall_back_if_stale(checkout, env)
+            if _settle(checkout, credential_value(workflow)) in ("replaced", "already"):
+                fall_back_if_stale(checkout, env)
+            else:
+                _switch_env(workflow, env)
         else:
-            _set_credential(checkout, before[-1], create=True)  # the App's header, still fresh
+            _settle(checkout, before[-1])  # the App's header, still fresh
 
 
 def session_tokens(env: Mapping[str, str]) -> dict[str, str]:

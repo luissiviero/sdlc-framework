@@ -289,23 +289,31 @@ def test_the_checkout_check_fetch_checks_the_token_first(tmp_path, monkeypatch):
 
 # --- R49 fix round 2: a git config the session altered keeps the workflow token -------------
 @pytest.mark.parametrize(
-    "key, value",
+    "scope, key, value",
     [
-        ("http.proxy", "http://proxy.invalid:3128"),
-        ("http.sslVerify", "false"),
-        ("http.https://github.com/.sslCAInfo", "/tmp/other-ca.pem"),
+        ("local", "http.proxy", "http://proxy.invalid:3128"),
+        ("local", "http.sslVerify", "false"),
+        ("local", "http.https://github.com/.sslCAInfo", "/tmp/other-ca.pem"),
+        # fix round 3: hidden in .git/config.worktree, which `git config --local` never reads
+        ("worktree", "http.proxy", "http://proxy.invalid:3128"),
+        ("worktree", "http.sslVerify", "false"),
+        ("worktree", "credential.helper", "store"),
     ],
 )
 def test_a_session_that_redirects_the_next_push_leaves_the_workflow_header(
-    app_run, tmp_path, monkeypatch, capsys, key, value
+    app_run, tmp_path, monkeypatch, capsys, scope, key, value
 ):
     """The App's header never goes back into a config that would send the next push
-    through a proxy or without TLS verification; the run carries on with the workflow token."""
+    through a proxy or without TLS verification; the run carries on with the workflow token.
+    The config is judged as git resolves it, the per-worktree file included."""
     monkeypatch.setattr(app_token.time, "time", lambda: NOW + 60)
     root = _checkout(tmp_path, _basic(APP))
 
     def meddling_session(argv, cwd, env, timeout):
-        subprocess.run(["git", "-C", str(root), "config", "--local", key, value], check=True)
+        config = ["git", "-C", str(root), "config"]
+        if scope == "worktree":
+            subprocess.run([*config, "extensions.worktreeConfig", "true"], check=True)
+        subprocess.run([*config, f"--{scope}", key, value], check=True)
         return None, "", "", 0
 
     monkeypatch.setattr(run_phase, "_run_session", meddling_session)
@@ -313,7 +321,52 @@ def test_a_session_that_redirects_the_next_push_leaves_the_workflow_header(
     assert _headers(root) == [_basic(WORKFLOW)]
     assert os.environ["GITHUB_TOKEN"] == WORKFLOW and os.environ["GH_TOKEN"] == WORKFLOW
     err = capsys.readouterr().err
-    assert f"carries {key.lower()}" in err.lower() and "the workflow token publishes" in err
+    assert err.startswith("the git config carries ") and "the workflow token publishes" in err
+    assert f"{key.lower()} ({scope})" in err.lower()
+
+
+def test_a_listing_git_refuses_keeps_the_workflow_token(app_run, tmp_path, monkeypatch, capsys):
+    """A git older than 2.26 has no --show-scope: fail safe, the run stays on the workflow
+    token."""
+    from ci import checkout_check
+
+    monkeypatch.setattr(app_token.time, "time", lambda: NOW + 60)
+    root = _checkout(tmp_path, _basic(APP))
+    real = checkout_check.git
+    monkeypatch.setattr(
+        checkout_check,
+        "git",
+        lambda cwd, *a, **k: (
+            (129, "error: unknown option `show-scope'")
+            if "--show-scope" in a
+            else real(cwd, *a, **k)
+        ),
+    )
+    _session_seen(root, monkeypatch)
+    assert _headers(root) == [_basic(WORKFLOW)]
+    assert "--show-scope failed (exit 129)" in capsys.readouterr().err
+
+
+def test_a_credential_the_runner_cannot_write_back_is_removed(
+    app_run, tmp_path, monkeypatch, capsys
+):
+    """N1/N2: a session that planted the placeholder string makes the restore's file edit
+    fail; the key is removed, never left as a bare placeholder, and stderr says so."""
+    monkeypatch.setattr(app_token.time, "time", lambda: NOW + 60)
+    root = _checkout(tmp_path, _basic(APP))
+
+    def planting_session(argv, cwd, env, timeout):
+        subprocess.run(
+            ["git", "-C", str(root), "config", "--local", "sdlc.note", app_token.PLACEHOLDER],
+            check=True,
+        )
+        return None, "", "", 0
+
+    monkeypatch.setattr(run_phase, "_run_session", planting_session)
+    run_phase.invoke(["claude"], root, run_phase.session_env(dict(os.environ), root), 60)
+    assert _headers(root) == []
+    err = capsys.readouterr().err
+    assert "could not be written after the session" in err and "the key is removed" in err
 
 
 def test_a_legitimate_push_u_still_gets_the_app_header_back(app_run, tmp_path, monkeypatch):
