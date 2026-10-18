@@ -98,6 +98,13 @@ def give_up(message):  # the session stops in step 0 and reports, as the prose t
     sys.exit(0)
 
 
+def classification(of_phase):
+    # decision 30: a routine design takes the fast lane; the recorded design runs keep
+    # today's gate (b) unless the test asks for the fast lane (FAKE_CLASSIFICATION)
+    default = "non-routine" if of_phase == "b" else "routine"
+    return os.environ.get("FAKE_CLASSIFICATION") or default
+
+
 # step 0: /sdlc-design reads the change and stops on a park; /sdlc-build asks the preflight
 shown = json.loads(run(state, "show", "--root", ".", "--id", change_id))["status"]
 if phase == "fix":  # the recorded fix round of /sdlc-fix: one comment, applied literally
@@ -120,8 +127,8 @@ if phase == "fix":  # the recorded fix round of /sdlc-fix: one comment, applied 
     if fix_phase != "a":
         head = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=root, text=True).strip()
         verdict = {"schema_version": 1, "phase": fix_phase, "head": head, "verdict": "continue",
-                   "reasons": [], "classification": "routine", "classification_reasons": [],
-                   "at": "2026-09-24T10:00:00Z"}
+                   "reasons": [], "classification": classification(fix_phase),
+                   "classification_reasons": [], "at": "2026-09-24T10:00:00Z"}
         (change / "evidence" / f"adversarial-review-{fix_phase}.json").write_text(
             json.dumps(verdict), encoding="utf-8"
         )
@@ -191,8 +198,8 @@ panel = str(plugin / "plugin" / "panel" / "cli.py")
 def write_verdict():
     head = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=root, text=True).strip()
     verdict = {"schema_version": 1, "phase": phase, "head": head, "verdict": "continue",
-               "reasons": [], "classification": "routine", "classification_reasons": [],
-               "at": "2026-09-21T10:00:00Z"}
+               "reasons": [], "classification": classification(phase),
+               "classification_reasons": [], "at": "2026-09-21T10:00:00Z"}
     (change / "evidence" / f"adversarial-review-{phase}.json").write_text(
         json.dumps(verdict), encoding="utf-8"
     )
@@ -514,6 +521,26 @@ def test_the_design_job_pushes_the_evidence_and_opens_the_pr(checkout, tmp_path)
     assert create[create.index("--head") + 1] == "sdlc/0001/b"
     assert create[create.index("--title") + 1].startswith("design(0001)")
     assert "--draft" not in create  # (b) opens plain; the owner's merge is gate (b)
+
+
+def test_a_routine_design_takes_the_fast_lane_to_the_build(checkout, tmp_path):
+    """Decision 30: the same job with a plan the adversarial reviewer classes routine passes
+    gate (b) without the owner's merge, records fast_lane.b on the branch it pushes, opens
+    the design PR unlabelled and hands over to the build on sdlc/0001/c."""
+    root, bare = checkout
+    proc, out, _calls = run_phase_job(
+        root, tmp_path, "ok", step_env={"FAKE_CLASSIFICATION": "routine"}
+    )
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert out["result"] == "continue" and out["label"] is None
+    assert out["fast_lane"]["recorded"] is True
+    assert out["dispatched"]["workflow"] == "sdlc-build.yml"
+    assert out["dispatched"]["head_ref"] == "sdlc/0001/c"
+    status = remote_file(bare, "sdlc/0001/b", f"{CHANGE}/status.yaml")
+    recorded = r'(?m)^fast_lane:\n  b:\n    sha: "?[0-9a-f]{40}"?\n    classification: routine$'
+    assert re.search(recorded, status), status
+    gate_file = json.loads(remote_file(bare, "sdlc/0001/b", f"{CHANGE}/evidence/gate-b.json"))
+    assert gate_file["result"] == "continue" and gate_file["fast_lane"] is True
 
 
 def test_the_design_job_is_red_when_github_refuses_the_pr(checkout, tmp_path):

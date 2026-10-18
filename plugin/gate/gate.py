@@ -8,6 +8,12 @@ Result:
   - ``park``      a check failed: ``Status.park(reason)``, the ``sdlc:needs-human`` label and
                   the "What I need from you" block for the PR description. Nobody is notified
                   (decision 11).
+The fast lane (decision 30, ROADMAP R46): at gate (b), in a session the CI runner runs, on
+every profile but Full, a gate whose only reason to wait is that (b) is a human gate and whose
+adversarial reviewer classed the plan ``routine`` says ``continue`` (``fast_lane`` true, no
+label): the runner records it in ``status.yaml: fast_lane.b`` and dispatches the build. A
+``non-routine`` or missing classification, a park, the Full profile and a gate run by hand
+wait at (b) as before.
 The result is also written to ``changes/<id>-<slug>/evidence/gate-<phase>.json`` so the
 PR summary (step 27a, B3) can show it.
 """
@@ -56,6 +62,8 @@ class GateResult:
     at: str = field(default_factory=_now)
     dry_run: bool = False
     config_note: str = ""
+    # decision 30: gate (b) passed on the fast lane (a routine plan, not Full, in CI)
+    fast_lane: bool = False
 
     @property
     def failed(self) -> list[CheckResult]:
@@ -86,7 +94,7 @@ class GateResult:
         return "\n".join(lines) + "\n"
 
     def as_dict(self) -> dict[str, Any]:
-        return {
+        data = {
             "schema_version": 1,
             "change_id": self.change_id,
             "slug": self.slug,
@@ -103,6 +111,9 @@ class GateResult:
             "checks": [ch.as_dict() for ch in self.checks],
             "what_i_need": self.what_i_need(),
         }
+        if self.fast_lane:  # decision 30; a record off the fast lane keeps its shape
+            data["fast_lane"] = True
+        return data
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> GateResult:
@@ -126,6 +137,7 @@ class GateResult:
             at=str(data.get("at") or _now()),
             dry_run=bool(data.get("dry_run")),
             config_note=str(data.get("config_note") or ""),
+            fast_lane=data.get("fast_lane") is True,
         )
 
 
@@ -230,6 +242,49 @@ def build_context(root: Path, change_id: str, phase: str, base: str | None = Non
     )  # fmt: skip
 
 
+FAST_LANE_PHASE = "b"
+FAST_LANE_REASON = (
+    "passed on the fast lane (decision 30): the adversarial reviewer classed the plan routine, "
+    "so the build starts without a merge of the design PR"
+)
+
+
+def verdict_classification(results: list[CheckResult]) -> str | None:
+    """The adversarial reviewer's classification as ``checks.check_adversarial_verdict``
+    validated it (``routine`` or ``non-routine``), or None when the check is absent or
+    carries none (a missing or malformed verdict file fails the check without one)."""
+    found = next((r for r in results if r.name == "adversarial_review"), None)
+    value = found.details.get("classification") if found is not None else None
+    return value if value in ("routine", "non-routine") else None
+
+
+def settled_by_panel(results: list[CheckResult]) -> bool:
+    """Whether the adversarial reviewer said ``escalate`` and the review panel settled it
+    (``check_adversarial_verdict``'s ``settled_by_panel``): the gate passes, but the
+    reviewer's own verdict was not ``continue``."""
+    found = next((r for r in results if r.name == "adversarial_review"), None)
+    return found is not None and found.details.get("settled_by_panel") is not None
+
+
+def fast_lane_applies(
+    phase: str, profile: str, human_gate: bool, results: list[CheckResult], in_runner: bool
+) -> bool:
+    """Decision 30: gate (b) does not wait for the owner when every check passed, the only
+    reason to wait is that (b) is a human gate, the profile is not Full, the adversarial
+    reviewer said ``continue`` itself (an ``escalate`` the panel settled waits) and classed
+    the plan exactly ``routine``, and the CI runner runs the session (it alone records the
+    fast lane and dispatches the build; a gate run by hand waits)."""
+    return (
+        phase == FAST_LANE_PHASE
+        and human_gate
+        and in_runner
+        and c.fast_lane_profile(profile)
+        and all(r.ok for r in results)
+        and not settled_by_panel(results)
+        and verdict_classification(results) == status_mod.FAST_LANE_CLASSIFICATION
+    )
+
+
 def evaluate(ctx: GateContext) -> GateResult:
     """Run every check for the phase; no side effects."""
     results: list[CheckResult] = [limits.check_limits(ctx)]
@@ -249,9 +304,11 @@ def evaluate(ctx: GateContext) -> GateResult:
                 )
     failed = [r for r in results if not r.ok]
     profile = ctx.profile
+    # decision 30: the commands mark says the runner runs this session (``build_context``)
+    fast = fast_lane_applies(ctx.phase, profile, ctx.human_gate, results, ctx.commands_deferred)
     if failed:
         result, label = "park", c.NEEDS_HUMAN_LABEL
-    elif ctx.human_gate:
+    elif ctx.human_gate and not fast:
         result, label = "wait", c.ready_label(ctx.phase)
     else:
         result, label = "continue", None
@@ -266,14 +323,19 @@ def evaluate(ctx: GateContext) -> GateResult:
         label=label,
         head=ctx.diff.head if ctx.diff else None,
         config_note=ctx.config_note,
+        fast_lane=fast and not failed,
     )
 
 
 def apply(ctx: GateContext, result: GateResult) -> None:
-    """Record the verdict: status.yaml (park or passed) and evidence/gate-<phase>.json."""
+    """Record the verdict: status.yaml (park or passed) and evidence/gate-<phase>.json. The
+    fast lane's ``status.yaml: fast_lane.b`` is the runner's to write after the session
+    (decision 30), never the gate's: a session may not write it."""
     st = ctx.status
     if result.result == "park":
         st.park(result.reason, phase=ctx.phase)
+    elif result.result == "continue" and result.fast_lane:
+        st.record_gate(ctx.phase, "passed", FAST_LANE_REASON)
     elif result.result == "continue":
         st.record_gate(ctx.phase, "passed")
     else:
@@ -523,11 +585,18 @@ def run_deferred_commands(
     ]
     if result.failed:
         result.result, result.label = "park", c.NEEDS_HUMAN_LABEL
+        result.fast_lane = False
     elif result.result == "park":
         # the session parked on a log the step has now replaced (item 3b): every check is
         # green on the logs of this run, so the verdict is the gate's, as ``evaluate`` gives it
+        # (decision 30's fast lane included: this step runs in the CI runner only)
+        result.fast_lane = fast_lane_applies(
+            ctx.phase, ctx.profile, ctx.human_gate, result.checks, in_runner=True
+        )
         result.result, result.label = (
-            ("wait", c.ready_label(ctx.phase)) if ctx.human_gate else ("continue", None)
+            ("wait", c.ready_label(ctx.phase))
+            if ctx.human_gate and not result.fast_lane
+            else ("continue", None)
         )
     result.dry_run = False
     apply(ctx, result)

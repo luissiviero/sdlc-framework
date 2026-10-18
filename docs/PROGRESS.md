@@ -1,45 +1,58 @@
-# Progress — the safety fixes of NOTES §45 (gaps 6, 7 and 8) as plugin **1.0.4**, and the owner's choices 203 to 213 on the gaps' routes (2026-10-17)
+# Progress — the pipeline sprint, part 1: R17 (decision 34) as plugin **1.0.5**, R46 (decision 30) as plugin **1.0.6**, and the owner's choices 214 to 217 (2026-10-17 to 2026-10-18)
 
-This session ran on branch `ccr-d96dbb91-v12amc`. It first verified the item-11 follow-ups' records (PR #222, merged as `cd8baf7`), then, after PR #220 (R10, 1.0.3) and PR #223 merged, built the safety PR the owner approved. The previous record, R21 to R49 and 1.0.3, is now `docs/progress/2026-10-17-r21-r49-and-1.0.3.md`, unchanged. Only `luissiviero/sdlc-framework` was changed; the sample was read, never touched. The session's own file is `docs/handoffs/sessions/2026-10-17-ccr-d96dbb91-v12amc.md`.
+This session ran on branch `ccr-4900ade8-1qc1s9`, from the starting prompt `docs/handoffs/2026-10-17-pipeline-sprint-prompt.md`. The previous record (1.0.4 and choices 203 to 213) is now `docs/progress/2026-10-17-1.0.4-and-choices-203-213.md`, unchanged. Both repositories were in scope; the sample was changed only by the owner's merges of the probe PRs #64 and #65. The session's own file is `docs/handoffs/sessions/2026-10-18-ccr-4900ade8-1qc1s9.md`.
 
 ## Summary
-- **Gap 6, the runner's fail-open `sdlc.yaml`, is fixed.** `_approved_config` (`plugin/ci/run_phase.py`) used to read an unparseable default-branch copy as `{}`. It now raises `ConfigError`. The guard also reads the checkout's copy, which the session settings use, and refuses with "<the error>: nothing runs until it is fixed" on either one, the same refusal as `paused: yes`. Before, a broken file dropped `paused`, the profile, `protected_paths`, `max_budget_usd` and the turn cap without a word. Three tests in `tests/test_ci.py` replay PR #214's indentation: on the default branch, on a work branch that kept it after the default branch was fixed, and without a remote.
-- **The root `sdlc.yaml` is now read by a test** (`tests/test_scaffold.py::test_the_root_sdlc_yaml_parses`). The same loader refuses PR #214's copy (`git show 5542406:sdlc.yaml`): "bad indentation".
-- **Gap 8, the tag on a broken bump, is fixed.** `.github/scripts/sdlc_tag.py` tags nothing while `marketplace.json` names another version than `plugin.json`, or cannot be read, or has no entry for the plugin; the run then ends red. `sdlc-tag.yml` also runs on a push that touches `marketplace.json`, so the commit that brings the two back into agreement gets the tag. Four tests; each fails on the old script. Waiting for `Framework checks` before tagging stays with R5.
-- **Gap 7 and the validator's README warning:** `README.md` now says to merge `main` into a conflicted PR's branch before a review, and gives the install line `/plugin install sdlc --marketplace luissiviero/sdlc-framework`. `claude plugin validate .` now gives only the `CLAUDE.md`-at-the-root warning.
-- **Plugin 1.0.4** (both manifests; choice 184's next free patch).
-- **An independent review** (a fresh-context agent, report only) found nothing blocking. Three of its findings were fixed:
-  - the work branch that keeps an unreadable copy (should-fix);
-  - a non-list `plugins` in `marketplace.json` raised instead of refusing (nit);
-  - the tag workflow's Report step now runs when the tag step fails (nit).
+- **Decision 34** (PR #225, `docs/decisions/34.md`): the owner's `@claude` comment starts a fix round, and only the owner's account starts a round or approves (c) and (d). It amends 22 and 27. The owner updated `CLAUDE.md`'s count to 34 in PR #226.
+- **The live check of an `issue_comment` run** (NOTES §46, sample PRs #64 and #65), verified:
+  - the run uses the default branch's workflow file and commit;
+  - the owner's comment arrives as `OWNER`;
+  - the payload has no PR head;
+  - the token holds the job's `permissions:` block;
+  - a `workflow_dispatch` sent with it starts a run;
+  - a refused comment still creates a skipped run.
 
-  One finding is left as it is: an automatic fix round refused on an unreadable `sdlc.yaml` parks the change, like any unfinished round. That park is how the owner is told.
+  The fork token was not verified.
+- **R17 as plugin 1.0.5** (PR #227, `56896c5`, `v1.0.5`):
+  - `is_owner_actor`;
+  - the dispatcher `sdlc-comment.yml` with `comment_dispatch.py`;
+  - the owner-only "Request changes" path and (c)/(d) labels;
+  - the `trigger` input;
+  - the `applied` carry-forward;
+  - the optional `sdlc.yaml: owner` key.
+
+  One review round (four should-fix findings, all fixed) and one re-review (one low finding, fixed).
+- **R46 as plugin 1.0.6** (PR #228):
+  - the owner's own intent PR starts the design on a branch cut from its head;
+  - a routine design continues to a build stacked on the design head;
+  - the recorded commits are the approved base while unmerged;
+  - superseded PRs are labelled and closed with no comment;
+  - every profile but Full.
+
+  Three review rounds: 2 blocking and 8 should-fix findings, then 3 should-fix findings, then none. Every fix has a test that fails without it. Full suite 1901 passed at `3121fdb`; CI green on `630ffea`.
 
 ## The owner's decisions (2026-10-17)
-The owner approved the session's revised decision table in full ("Approve all; build the safety PR in #1").
-203. **Gaps 6 and 8 ship first, as one safety PR before R17**, built by this session: the runner refuses an unparseable `sdlc.yaml`, a test reads the root `sdlc.yaml`, and the tag script refuses disagreeing manifests. This is plugin 1.0.4.
-204. **Gaps 2, 3 and 4 go into one fix-round robustness PR after R17**, before the sample moves past 1.0.1 or the trial project starts. R10 runs nowhere yet: the root pin is 0.3.6 and the sample's is 1.0.1.
-205. **Gaps 1 and 5 go into R48.** A panel `park` must park (fail closed), with a test. R48 also raises the template's turn default. The sprint prompt carries the line (annotated beside R48).
-206. **Gap 7 is a line in `README.md`**, in 203's PR.
-207. **The sample moves to the newest release once 204 has landed**, skipping 1.0.2. The upgrade includes the four workflow copies (build, test, fix, deploy) that 1.0.3 changed. A session prepares that PR and gives the pin row and the `REVIEW.md` bullet as guardrail rows.
-208. **The root `REVIEW.md` skip-marker bullet is applied by the owner** (the table below).
-209. **"Small defects" and "E2":** the owner tells a session in one line what they were; until then they stay the owner's open item.
-210. **The README install line** goes in 203's PR.
-211. **PR #173 (change 0004, R14) waits for R14's turn** in ROADMAP's Order; the sprint comes first.
-212. **The sprint (R17 first) starts after 203's PR merges**, so R17 takes the next patch number after 1.0.4.
-213. **R28's timing and cost and R44's timing are answered after the sprint**, as `docs/progress/2026-10-17-r21-r49-and-1.0.3.md` says.
+214. **The live `issue_comment` check runs on the sample before R17's spec** (the session's recommendation, "Go ahead"), with two owner merges: the probe (#64) and its removal (#65).
+215. **R46's gate (a) is stacked on the intent PR**: an intent PR the owner's account opens starts the design at once, cut from its head; the intent PR is closed as superseded once the design PR exists.
+216. **R46's gate (b) is a stacked build**: a routine design continues to a build cut from the design head, the commit gate (b) passed on being the approved copy; the owner sees intent, spec, plan and code in one (e) PR.
+217. **The fast lane applies to every existing profile but Full** ("Not full profile, but any other existing profile").
 
 ## Proposed edit for the owner
-Carried from `docs/progress/2026-10-17-item-11-follow-ups.md` (choice 208).
+Carried from `docs/progress/2026-10-17-1.0.4-and-choices-203-213.md` (choice 208); not yet applied (`grep -n 'skip marker' REVIEW.md` finds nothing on `main` at `56896c5`).
 
 | File | Line | What is there now | What it must become |
 |---|---|---|---|
 | [`REVIEW.md`](https://github.com/luissiviero/sdlc-framework/blob/main/REVIEW.md#L26) | after 26 (the end of the `plan.md` bullet) | nothing; line 27 starts "- The second occurrence of the same finding …" | `- Each added skip marker the gate's \`ratchets\` check listed at gate (e) (\`evidence/gate-e.json\`'s \`details.skip_markers\`) must be declared in \`plan.md\` or explained in the PR; an undeclared one quietly narrowing what the suite actually runs is non-compliant.` (the same bullet `template/REVIEW.md:27-30` carries since 1.0.2) |
 
-## Checks (this repository)
-On the final head, after `python -m pip install -e ".[dev]"`, chained with `set -o pipefail`: the four commands of `HANDOFF.md`'s standing precondition 1. Their output is in the PR.
-
 ## Left
-- **Next: the sprint**, from `docs/handoffs/2026-10-17-pipeline-sprint-prompt.md` (choice 212), once this PR has merged and `v1.0.4` is tagged.
-- **Then the fix-round robustness PR** (choice 204), then the sample's upgrade (choice 207).
-- **Port list:** this PR touches `plugin/ci/run_phase.py`. `HANDOFF.md`'s port-list rule runs "until the 1.0.0 read", which item 11 made (`docs/progress/2026-10-14-item-11.md`), so it is named here only for the trail.
+- **The un-park labels** (`sdlc:accept-risk`, `sdlc:reset-iterations`, `sdlc:unlock-tests`) and a by-hand `workflow_dispatch` still start a fix round from any member: decision 34 covers the review and comment paths only. The owner decides whether to narrow them too.
+- **R17's known limit:** on an organization repository a member's "Request changes" review still enters the fix workflow's concurrency group (the `if:` cannot read `sdlc.yaml`).
+- **R46's known limits:**
+  - the session writes `gate-b.json` and the verdict file (the same trust as (c)/(d), bounded by the runner's confirmation and the post-gate diff check);
+  - commits pushed to the intent PR after the design started are not picked up;
+  - a draft marked ready later keeps gate (a);
+  - the round-3 nits: a red run after an owner close mid-session, the optional tightening of a lookup that fails open, a demotion push that fails, and a park before the R1 check that still opens a PR.
+- **This repository's own pin is 0.3.6**, so neither R17 nor R46 runs here until the pin moves. The root `sdlc-design.yml` passes R46's start point through `env:`, so 0.3.6 ignores it.
+
+## Checks (this repository)
+On #228's final head, after `python -m pip install -e ".[dev]"`, chained with `set -o pipefail`: the four commands of `HANDOFF.md`'s standing precondition 1. Their output is in the PR.

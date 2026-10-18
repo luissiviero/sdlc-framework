@@ -51,7 +51,11 @@ docs were killed mid-write and the run ended with no gate; this rule since 0.3.3
 ## 1. Branch and run registration
 - Default branch as in `/sdlc-design` step 0. `git fetch origin`.
 - Start point: the default branch (gate (b) is the owner's merge in every profile). First
-  run: `git switch -c sdlc/<id>/c origin/<default>`. Re-run: `git switch sdlc/<id>/c` and
+  run: `git switch -c sdlc/<id>/c origin/<default>`. On the fast lane (decision 30; CI
+  only) the runner has already cut `sdlc/<id>/c` from `origin/sdlc/<id>/b`, whose gate
+  passed on a routine plan without a merge (`status.yaml: fast_lane.b`): the spec and plan
+  on the branch are the approved ones, and the build PR will carry the intent, spec and plan
+  with the code. Never write `fast_lane`: it is the runner's record. Re-run: `git switch sdlc/<id>/c` and
   `git pull --ff-only origin sdlc/<id>/c`; the existing diff and the PR's unresolved review
   comments are the starting point, gathered as `/sdlc-fix` step 1 gathers them (the reviews
   and comments, and the inline threads from `gh api repos/<repo>/pulls/<n>/comments`) and
@@ -188,6 +192,8 @@ paste. Do not retry with other means.
 ## 9. Hand over
 - `continue` (Standard): report "gate (c) passed → /sdlc-test <id>". In the
   merge-triggered workflow the job dispatches the test workflow itself. Do not run (d) here.
+  On the fast lane the runner also closes the design PR as `sdlc:superseded` once this PR
+  exists (no comment); the owner reviews intent, spec, plan and code together at (e).
 - `wait` (Full): report the PR URL and "gate (c): approving review + `sdlc:c-approved`,
   applied by the owner's account (decision 34), starts the test phase; review comments are
   the change request (`/sdlc-fix`)".

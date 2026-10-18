@@ -38,7 +38,9 @@ What one run does, in order:
    works on (``sdlc/<id>/b`` for a design run, ``sdlc/<id>/c`` for build, test, deploy and
    the review pass), creating it for (b) and (c) from the default branch (the owner's merge
    at gate (b) put the approved spec and plan there). When there is nothing to switch to,
-   the current checkout is used;
+   the current checkout is used. On the fast lane (decision 30) a design branch is cut from
+   the owner's open intent PR (``--start-point``, ``--intent-pr``; ``fast_lane.a``) and a
+   build branch from the design branch whose gate passed on a routine plan (``fast_lane.b``);
 1c. **installs the project's own toolchain** — ``sdlc.yaml: commands.setup`` through
    ``ci/project_setup.py``. A GitHub-hosted runner carries none of the project's tools, and
    the installed workflow file may be an older copy without that step (the third live design
@@ -91,7 +93,10 @@ What one run does, in order:
    because a phase result nobody can find in the queue is not a hand-over;
 8. reads ``evidence/gate-<phase>.json`` and, on ``continue``, dispatches the next workflow
    with the change id and the next phase's work branch as ``head_ref`` (the only hand-over
-   GitHub allows from the workflow token; ``head_ref`` keys the concurrency group).
+   GitHub allows from the workflow token; ``head_ref`` keys the concurrency group). A gate
+   (b) that passed on the fast lane (decision 30) is confirmed and recorded first
+   (``record_fast_lane_b``) and dispatches the build; once the run's own PR exists, the PR
+   it carries forward (the intent PR, the design PR) is closed as ``sdlc:superseded``.
 
 Exit codes: 0 the run finished, was skipped or parked (a park is a queue item, not a CI
 failure); 1 an infrastructure failure — the setup command failed, the CLI exited non-zero,
@@ -171,11 +176,17 @@ APPROVAL_LABEL = {"d": "c", "e": "d", "review": "d"}  # run phase -> phase whose
 APPROVAL_BRANCH_PHASE = "c"  # the build PR, which lives on sdlc/<id>/c through (d) and (e)
 # Hand-over (section 4.2, "Hands over" column). A `wait` or a `park` dispatches nothing;
 # gate (b) is the owner's merge in every profile since the Lite removal (plugin 0.2.14), so
-# a design run never dispatches the build.
+# a design run never dispatches the build - except on the fast lane below.
 NEXT_WORKFLOW = {"c": "sdlc-test.yml", "d": "sdlc-deploy.yml"}
 # The phase the dispatched workflow runs; its work branch is the dispatch's ``head_ref``
 # input, which keys the workflow's concurrency group on the change's own branch.
 NEXT_PHASE = {"c": "d", "d": "e"}
+# Decision 30 (the fast lane, ROADMAP R46): a design whose gate passed on a routine plan, on
+# every profile but Full, continues to the build without the owner's merge. The hand-over
+# is taken only on a record the runner itself confirmed (``record_fast_lane_b``), so a
+# plain ``continue`` at (b) still dispatches nothing.
+FAST_LANE_WORKFLOW = {"b": "sdlc-build.yml"}
+FAST_LANE_NEXT_PHASE = {"b": "c"}
 # Permission mode per phase; (c) asks the preflight instead (step 18, never bypass).
 PERMISSION_MODE = {
     "b": "default",
@@ -243,6 +254,7 @@ BOT_EMAIL = "41898282+github-actions[bot]@users.noreply.github.com"
 LABEL_COLOR_GATE = "0E8A16"  # the *-ready and *-approved labels
 LABEL_COLOR_HUMAN = "D93F0B"  # sdlc:needs-human
 LABEL_COLOR_FIXING = "FBCA04"  # sdlc:fixing: an automatic fix round runs (decision 29)
+LABEL_COLOR_SUPERSEDED = "BFD4F2"  # sdlc:superseded: a later PR carries it (decision 30)
 TOKEN_VARS = ("GITHUB_TOKEN", "GH_TOKEN")
 
 DEFAULT_MAX_TURNS = 200
@@ -637,16 +649,188 @@ def checkout_profile(root: Path, change_id: str) -> str | None:
         return None
 
 
+def _status_at(root: Path, ref: str, change_id: str):
+    """The change's ``status.yaml`` as ``ref`` carries it (its folder found in that tree), or
+    None: no such ref, no folder there, or a copy that does not parse."""
+    from state import yamlish  # noqa: PLC0415
+
+    pattern = re.compile(rf"^{c.CHANGES_DIR}/{change_id}-[^/]+/{status_mod.STATUS_FILE}$")
+    try:
+        listed = gate_diff.tree_files(root, ref, f"{c.CHANGES_DIR}/")
+        paths = [f for f in listed if pattern.match(f)]
+    except gate_diff.GitUnavailable:
+        return None
+    text = gate_diff.file_at(root, ref, paths[0]) if len(paths) == 1 else None
+    if text is None:
+        return None
+    try:
+        return status_mod.Status.from_dict(yamlish.loads(text))
+    except Exception:  # noqa: BLE001 - an unreadable copy is no fast lane: today's path
+        return None
+
+
+def fast_lane_verdict_refusal(verdict: dict[str, Any] | None, error: str, head: str) -> str | None:
+    """Why the adversarial verdict of (b) does not carry the fast lane, or None (decision 30):
+    the reviewer itself said ``continue`` (an ``escalate`` the panel settled waits at (b)),
+    classed the plan ``routine``, and judged ``head``, the commit gate (b) passed on. The
+    runner's confirmation after the design run and the build's start point read it alike."""
+    if verdict is None:
+        return f"the adversarial verdict is {error}"
+    if verdict.get("verdict") != "continue":
+        return f"the adversarial reviewer said {verdict.get('verdict')}, not continue"
+    if verdict.get("classification") != status_mod.FAST_LANE_CLASSIFICATION:
+        return f"the adversarial reviewer classed the plan {verdict.get('classification')}"
+    if not head or not head.startswith(str(verdict.get("head"))):
+        return "the adversarial verdict is not for the commit the gate judged"
+    return None
+
+
+def fast_lane_after_gate(root: Path, change_rel: str, sha: str, tip: str) -> str | None:
+    """Why the commits from ``sha`` (gate (b)'s commit) to ``tip`` break the fast lane, or
+    None: after the gate only the change folder's ``evidence/`` and ``status.yaml`` may move
+    (the evidence commit, the run record, the runner's own record). A spec, plan or source
+    file changed after the gate is not what the gate and the reviewer judged."""
+    from state import gitops  # noqa: PLC0415
+
+    try:
+        out = gitops.run(root, "diff", "--name-only", "-z", sha, tip)
+    except (gitops.GitError, OSError) as exc:  # fail closed: an unread diff is not an empty one
+        return f"the commits after the gate's commit cannot be read: {exc}"
+    files = [f for f in out.split("\0") if f]
+    allowed = (f"{change_rel}/{art.EVIDENCE_DIR}/", f"{change_rel}/{status_mod.STATUS_FILE}")
+    outside = [f for f in files if not (f.startswith(allowed[0]) or f == allowed[1])]
+    if outside:
+        return f"commits after the gate's commit changed {', '.join(outside[:5])}"
+    return None
+
+
+def stacked_design(root: Path, change_id: str) -> str | None:
+    """Decision 30: the design branch a new build branch is cut from on the fast lane, or
+    None (the default branch, as before; the (c) guard then refuses a design nobody
+    merged). Fail closed: anyone with write access to the branch could push a record, so
+    ``origin/sdlc/<id>/b`` counts only when all of these hold:
+
+    - its ``status.yaml`` records ``fast_lane.b`` at a commit it carries and the default
+      branch does not (``fast_lane_sha``), and the default branch's copy of the change is not
+      past (a) (a design PR the owner merged by hand takes the default branch);
+    - the profile is not Full, read as the guard reads it (the default branch's
+      ``sdlc.yaml`` and its override for the change);
+    - its ``evidence/gate-b.json`` records the fast lane's ``continue``;
+    - its adversarial verdict for (b) is ``continue`` and ``routine`` at ``fast_lane.b.sha``
+      (``fast_lane_verdict_refusal``, as the runner confirmed it);
+    - after that commit only the change folder's evidence and ``status.yaml`` moved
+      (``fast_lane_after_gate``)."""
+    design = f"refs/remotes/origin/{c.branch_name(change_id, 'b')}"
+    if not _ref_exists(root, design):
+        return None
+    base = gate_diff.default_base(root)
+    st = _status_at(root, design, change_id)
+    sha = gate_diff.fast_lane_sha(root, st.fast_lane, "c", base, head=design) if st else None
+    if st is None or not sha:
+        return None
+    merged = _status_at(root, base, change_id) if base != "HEAD" else None
+    if merged is not None and merged.phase not in ("a", "f"):
+        return None
+    try:
+        config = _approved_config(root)
+        override = merged.profile_override if merged is not None else None
+        if not c.fast_lane_profile(c.effective_profile(config.get("profile"), override)):
+            return None
+    except (ConfigError, ValueError):
+        return None
+    rel = f"{c.CHANGES_DIR}/{c.change_dir_name(st.id, st.slug)}"
+    evidence = f"{rel}/{art.EVIDENCE_DIR}"
+    try:
+        gate_b = json.loads(
+            gate_diff.file_at(root, design, f"{evidence}/{art.GATE_RESULT.format(phase='b')}")
+            or "{}"
+        )
+    except ValueError:
+        return None
+    if not isinstance(gate_b, dict) or gate_b.get("result") != "continue":
+        return None
+    if gate_b.get("fast_lane") is not True:
+        return None
+    verdict, error = gate_checks.parse_verdict(
+        gate_diff.file_at(root, design, f"{evidence}/{art.ADVERSARIAL_VERDICT.format(phase='b')}")
+    )
+    if fast_lane_verdict_refusal(verdict, error, sha) or fast_lane_after_gate(
+        root, rel, sha, design
+    ):
+        return None
+    return design
+
+
 def _start_point(root: Path, change_id: str, phase: str, profile: str | None) -> str | None:
     """Where a missing work branch starts: the default branch, in every profile. The owner's
     merge at gate (b) put the approved spec and plan there, and a design branch left behind
     after that merge lacks the default branch's later commits and may carry commits made
     after the merge (PROGRESS known gaps, ninth live run; HANDOFF 6(a)). Until 0.2.14 the
     Lite profile started ``sdlc/<id>/c`` from ``sdlc/<id>/b``; Lite is gone (decision 21).
-    ``change_id``, ``phase`` and ``profile`` are kept for the callers' symmetry."""
-    del change_id, phase, profile
+    One exception since decision 30: a build on the fast lane starts from the design branch
+    whose gate passed on a routine plan (``stacked_design``), since no merge put the spec
+    and plan on the default branch. ``profile`` is kept for the callers' symmetry: the fast
+    lane was judged by the design run's gate and the runner on the profile they read."""
+    del profile
+    if phase == "c":
+        stacked = stacked_design(root, change_id)
+        if stacked:
+            return stacked
     base = gate_diff.default_base(root)
     return base if base and _ref_exists(root, base) else None
+
+
+SHA_RE = re.compile(r"^[0-9a-f]{40}$")
+# Decision 30: the design workflow's run step passes the find step's two outputs here, never
+# as flags: a framework pinned before the fast lane rejects an unknown flag (exit 2) and
+# ignores an unknown variable
+START_POINT_ENV = "SDLC_START_POINT"
+INTENT_PR_ENV = "SDLC_INTENT_PR"
+FAST_LANE_A_MESSAGE = "run(b): fast lane from intent PR #{pr} at {sha} (decision 30)"
+
+
+def start_from_intent_pr(
+    root: Path, change_id: str, branch: str, start_point: str, intent_pr: int | None
+) -> dict[str, Any]:
+    """Decision 30: cut the design branch from the head of the owner's open intent PR and
+    record ``status.yaml: fast_lane.a`` (that commit and the PR's number) in one local
+    commit. Nothing is pushed here, before the setup and the guard (a paused repository, a
+    refused change): the session's own push, or a park's, carries it. The record is the
+    runner's: the gate reads the intent approved at that commit, and a session may not
+    change it (``owner_fields``). A start point that is not a full sha of a commit the
+    checkout can reach is refused, never guessed."""
+    from state import gitops  # noqa: PLC0415
+
+    out: dict[str, Any] = {"branch": branch, "switched": False, "from": start_point}
+    if not SHA_RE.match(start_point or "") or intent_pr is None:
+        return {**out, "refused": "the fast lane needs the intent PR's head sha and its number"}
+    if gitops.has_remote(root):
+        gitops.run(root, "fetch", "origin", start_point, check=False)
+    if not _ref_exists(root, f"{start_point}^{{commit}}"):
+        return {**out, "refused": f"the intent PR's head {start_point[:10]} is not in the checkout"}
+    if not _git_ok(root, "checkout", "-b", branch, start_point):
+        return {**out, "refused": f"{branch} could not be created at {start_point[:10]}"}
+    out["switched"] = True
+    # no session runs on a fast-lane branch without its record (the caller skips green)
+    change_dir = c.find_change_dir(root, change_id)
+    if change_dir is None:
+        return {**out, "refused": "no change folder at the intent PR's head: nothing recorded"}
+    try:
+        st = status_mod.read_status(change_dir)
+        st.fast_lane = {"a": {"sha": start_point, "pr": int(intent_pr)}}
+        status_mod.write_status(change_dir, st)
+    except (OSError, ValueError) as exc:
+        return {**out, "refused": f"status.yaml unreadable at the intent PR's head: {exc}"}
+    rel = change_dir.relative_to(Path(root).resolve()).as_posix()
+    message = FAST_LANE_A_MESSAGE.format(pr=intent_pr, sha=start_point[:10])
+    try:
+        out["commit"] = gitops.commit_paths(root, [f"{rel}/{status_mod.STATUS_FILE}"], message)
+    except gitops.GitError as exc:
+        return {**out, "refused": f"the fast-lane record was not committed: {exc}"}
+    if not out["commit"]:
+        return {**out, "refused": "the fast-lane record was not committed: nothing to commit"}
+    out["fast_lane"] = st.fast_lane
+    return out
 
 
 def prepare_branch(
@@ -655,6 +839,8 @@ def prepare_branch(
     phase: str,
     profile: str | None = None,
     branch: str | None = None,
+    start_point: str | None = None,
+    intent_pr: int | None = None,
 ) -> dict[str, Any]:
     """Put the checkout on the branch this phase works on, creating it for (b) and (c).
 
@@ -663,6 +849,10 @@ def prepare_branch(
     where a new ``sdlc/<id>/c`` starts (``_start_point``); when it is not given it is read
     from the checkout before anything is switched (``checkout_profile``). ``branch`` names
     the branch outright (a fix round: the PR's own head), which is never created.
+    ``start_point`` and ``intent_pr`` (phase (b) only, decision 30) cut a new design branch
+    from the owner's open intent PR instead (``start_from_intent_pr``); a branch that
+    already exists is switched to as before. A ``refused`` key means no branch was made and
+    the run must not go on.
     """
     from state import gitops
 
@@ -686,6 +876,8 @@ def prepare_branch(
         return {**out, "note": f"{branch} does not exist: the pull request's head is gone"}
     if phase not in CREATES_ITS_BRANCH:
         return {**out, "note": f"{branch} does not exist: the build phase has not run yet"}
+    if phase == "b" and start_point:
+        return start_from_intent_pr(root, change_id, branch, start_point, intent_pr)
     start = _start_point(root, change_id, phase, profile)
     if start is None:
         return {**out, "note": "no base branch to create the work branch from"}
@@ -728,11 +920,15 @@ def _committed_diff(root: Path) -> tuple[list[str], str | None]:
     return files, merge_base
 
 
-def guardrail_changes(root: Path, change_dir: Path, config: dict[str, Any]) -> list[str]:
+def guardrail_changes(
+    root: Path, change_dir: Path, config: dict[str, Any], phase: str | None = None
+) -> list[str]:
     """The guardrail files this branch changes, unless intent.md says it is a framework
     change (OPERATING_MODEL section 3). The hook denies such an edit inside a run; this is
     the same rule applied to a branch the run inherits. Raises ``NoMergeBase`` (the caller
-    parks) when the branch shares no history with the default branch."""
+    parks) when the branch shares no history with the default branch. The intent is read as
+    the owner approved it: at the merge base, or on the fast lane (decision 30) at the
+    commit ``status.yaml: fast_lane`` records for ``phase`` (``gate_diff.fast_lane_sha``)."""
     from hooks import protected_paths as pp
 
     if not gate_diff.is_repo(root):
@@ -751,7 +947,14 @@ def guardrail_changes(root: Path, change_dir: Path, config: dict[str, Any]) -> l
         rel = Path(change_dir).resolve().relative_to(Path(root).resolve()).as_posix()
     except ValueError:
         rel = ""
-    base_intent = gate_diff.file_at(root, merge_base, f"{rel}/intent.md") if rel else None
+    approved = merge_base
+    if phase:
+        try:
+            fast_lane = status_mod.read_status(change_dir).fast_lane
+        except (OSError, ValueError):
+            fast_lane = None
+        approved = gate_diff.approved_base(root, fast_lane, phase, merge_base)
+    base_intent = gate_diff.file_at(root, approved, f"{rel}/intent.md") if rel else None
     if base_intent and art.is_framework_change(base_intent):
         return []
     return hits
@@ -883,15 +1086,322 @@ def review_refusal(root: Path, repo: str, env: dict[str, str]) -> str | None:
     return None
 
 
+# --- the fast lane's start (decision 30, ROADMAP R46) ------------------------------------------
+# An intent PR the owner's account opens (or reopens) starts the design at once, cut from the
+# PR's head commit: the owner wrote and pushed the intent, and that act accepts it. The design
+# workflow's job ``if:`` keeps a coarse check (the action, a head in this repository, no
+# ``[bot]`` author, no draft); the exact one is here, before anything is installed, and every
+# refusal is a green skip with its reason, as ``review_refusal``'s.
+INTENT_PR_ACTIONS = ("opened", "reopened")
+FAST_LANE_FOLDER_RE = re.compile(r"^changes/((\d{4})-[^/]+)/")
+
+
+def read_event_payload(env: dict[str, str]) -> tuple[dict[str, Any] | None, str]:
+    """The event payload at ``GITHUB_EVENT_PATH`` as an object, or (None, why)."""
+    try:
+        payload = json.loads(Path(env.get("GITHUB_EVENT_PATH") or "").read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        return None, type(exc).__name__
+    if not isinstance(payload, dict):
+        return None, "not an object"
+    return payload, ""
+
+
+def _mapping(value: Any) -> dict[str, Any]:
+    return value if isinstance(value, dict) else {}
+
+
+def _fast_lane_profile(root: Path, config: dict[str, Any], folder: str, head: Any) -> str:
+    """The profile the fast lane is judged by, as the gate reads it: the default branch's
+    ``sdlc.yaml`` and the default branch's ``profile_override`` for the change (none for an
+    unmerged change). A ``profile_override: full`` the owner wrote on the PR head counts too:
+    it can only keep gate (a) (decision 30's Full rule), never skip it. Raises ``ValueError``
+    on an unknown profile or an unreadable approved copy."""
+    from state import yamlish  # noqa: PLC0415
+
+    override = None
+    ref = _approved_ref(root)
+    rel = f"{c.CHANGES_DIR}/{folder}/{status_mod.STATUS_FILE}"
+    text = gate_diff.file_at(root, ref, rel) if ref is not None else None
+    if text is not None:
+        override = status_mod.Status.from_dict(yamlish.loads(text)).profile_override
+    profile = c.effective_profile(config.get("profile"), override)
+    if (
+        getattr(head, "profile_override", None)
+        and c.effective_profile(None, head.profile_override) == "full"
+    ):
+        return "full"
+    return profile
+
+
+def intent_pr_start(
+    root: Path, repo: str, payload: dict[str, Any], env: dict[str, str]
+) -> tuple[str | None, str | None, dict[str, str]]:
+    """(change id, refusal, outputs) for an ``opened``/``reopened`` intent PR (decision 30).
+    It starts the design only when the PR is not a draft, its head is in ``repo``, both its
+    author and the event's sender (who opened or reopened it) are the owner's account
+    (``is_owner_actor`` against the default branch's ``sdlc.yaml``, decision 34's one rule),
+    the profile is not Full, its files are all inside exactly one ``changes/<id>-<slug>/``
+    folder whose ``intent.md`` exists at the PR's head and whose ``status.yaml`` there is at
+    phase (a), and no open pull request has the head ``sdlc/<id>/b`` yet (a reopened PR whose
+    design PR exists; a pushed design branch with no PR may run again, ``rerun_reason``).
+    The outputs are the head sha (``start_point``) and the PR's number (``intent_pr``)."""
+    from state import gitops, yamlish  # noqa: PLC0415
+
+    pull = _mapping(payload.get("pull_request"))
+    number = _pr_number(pull.get("number"))
+    if number is None:
+        return None, "the pull request event names no pull request: refused", {}
+    labels = [str(_mapping(lb).get("name") or "") for lb in pull.get("labels") or []]
+    if c.SUPERSEDED_LABEL in labels:
+        return (
+            None,
+            (
+                f"pull request #{number} was superseded by its design PR: reopening it starts no "
+                "second design (decision 30)"
+            ),
+            {},
+        )
+    if pull.get("draft"):
+        return None, f"pull request #{number} is a draft: the fast lane waits for it", {}
+    head = _mapping(pull.get("head"))
+    full_name = str(_mapping(head.get("repo")).get("full_name") or "")
+    if not repo or full_name.lower() != repo.lower():
+        return (
+            None,
+            (
+                f"the head of pull request #{number} is in {full_name or 'no repository'}, not in "
+                f"{repo or 'the repository'}: a fork's intent never starts a design (decision 30)"
+            ),
+            {},
+        )
+    login = str(_mapping(pull.get("user")).get("login") or "")
+    try:
+        config = owner_config(root, env)
+    except ConfigError as exc:
+        return None, f"the intent PR's author cannot be judged: {exc}", {}
+    if not is_owner_actor(login, config, env, repo):
+        return (
+            None,
+            (
+                f"intent PR #{number} is by {login or 'an unknown account'}, not the owner's "
+                "account: gate (a) is the merge (decision 30)"
+            ),
+            {},
+        )
+    # a reopen is the sender's act, not the author's: both must be the owner's account
+    sender = str(_mapping(payload.get("sender")).get("login") or "")
+    if not is_owner_actor(sender, config, env, repo):
+        return (
+            None,
+            (
+                f"intent PR #{number} was {payload.get('action') or 'opened'} by "
+                f"{sender or 'an unknown account'}, not the owner's account: gate (a) is the "
+                "merge (decision 30)"
+            ),
+            {},
+        )
+    github = _github()
+    if github is None:
+        return None, "plugin/pr/github.py is not available", {}
+    listed = github.pr_files(repo, number)
+    if not listed.get("ok"):
+        why = listed.get("reason") or "failed"
+        return None, f"the files of pull request #{number} could not be read: {why}", {}
+    folders = sorted(
+        {m.group(1) for f in listed.get("files") or [] if (m := FAST_LANE_FOLDER_RE.match(str(f)))}
+    )
+    if len(folders) != 1:
+        return (
+            None,
+            (
+                f"pull request #{number} touches {len(folders)} change folders: the fast lane "
+                "starts one intent PR with exactly one"
+            ),
+            {},
+        )
+    folder = folders[0]
+    change_id = folder[:4]
+    outside = [
+        str(f) for f in listed.get("files") or [] if not str(f).startswith(f"changes/{folder}/")
+    ]
+    if outside:
+        return (
+            None,
+            (
+                f"pull request #{number} changes {len(outside)} file(s) outside changes/{folder}/ "
+                f"({', '.join(outside[:3])}): the fast lane takes an intent PR that carries the "
+                "intent alone, gate (a) is the merge"
+            ),
+            {},
+        )
+    sha = str(head.get("sha") or "")
+    if not SHA_RE.match(sha):
+        return None, f"the head of pull request #{number} names no commit: refused", {}
+    if gitops.is_repo(root) and gitops.has_remote(root):
+        gitops.run(root, "fetch", "origin", sha, check=False)
+    if gate_diff.file_at(root, sha, f"{c.CHANGES_DIR}/{folder}/intent.md") is None:
+        return None, f"changes/{folder}/intent.md is not at the head of #{number}", {}
+    text = gate_diff.file_at(root, sha, f"{c.CHANGES_DIR}/{folder}/{status_mod.STATUS_FILE}")
+    try:
+        st = status_mod.Status.from_dict(yamlish.loads(text or ""))
+    except Exception as exc:  # noqa: BLE001
+        return None, f"changes/{folder}/status.yaml at the head of #{number}: {exc}", {}
+    if st.id != change_id or st.phase != "a":
+        return (
+            None,
+            (
+                f"change {change_id} is at phase {st.phase} at the head of #{number}, not a: only "
+                "an intent at gate (a) takes the fast lane"
+            ),
+            {},
+        )
+    try:
+        profile = _fast_lane_profile(root, config, folder, st)
+    except Exception as exc:  # noqa: BLE001 - fail closed on an unreadable approved copy
+        return None, f"the profile cannot be read: {exc}", {}
+    if not c.fast_lane_profile(profile):
+        return None, f"the profile is {profile}: gate (a) is the merge of the intent PR", {}
+    carried = carried_forward(root, change_id)
+    if carried:
+        return None, carried, {}
+    design = c.branch_name(change_id, "b")
+    found = github.find_open_pr(repo, design, cwd=root)
+    if not found.get("ok", True):
+        why = found.get("reason") or "failed"
+        return None, f"the pull request of {design} cannot be looked up ({why}): refused", {}
+    if found.get("number"):
+        return (
+            None,
+            (
+                f"pull request #{found['number']} carries {design}: the design of change "
+                f"{change_id} has started"
+            ),
+            {},
+        )
+    return change_id, None, {"start_point": sha, "intent_pr": str(number)}
+
+
+def carried_forward(root: Path, change_id: str) -> str | None:
+    """The refusal when the change already went past its design on the fast lane: origin's
+    ``sdlc/<id>/b`` records ``fast_lane.b``, or ``sdlc/<id>/c`` exists (the remote-tracking
+    refs, after a fetch)."""
+    from state import gitops  # noqa: PLC0415
+
+    if gitops.is_repo(root) and gitops.has_remote(root):
+        gitops.run(root, "fetch", "origin", check=False)
+    design = f"refs/remotes/origin/{c.branch_name(change_id, 'b')}"
+    st = _status_at(root, design, change_id) if _ref_exists(root, design) else None
+    if st is not None and (st.fast_lane or {}).get("b"):
+        return (
+            f"{c.branch_name(change_id, 'b')} records gate (b) on the fast lane: the design "
+            f"of change {change_id} is done, no second design (decision 30)"
+        )
+    if _ref_exists(root, f"refs/remotes/origin/{c.branch_name(change_id, 'c')}"):
+        return (
+            f"{c.branch_name(change_id, 'c')} exists: change {change_id} is past its design, "
+            "no second design (decision 30)"
+        )
+    return None
+
+
+def fast_lane_started(root: Path, repo: str, change_id: str) -> str | None:
+    """The skip reason of a merged intent PR whose design already started on the fast lane
+    (``origin/sdlc/<id>/b`` records ``fast_lane.a`` and an open pull request carries that
+    branch), else None: no second design. A pushed design branch with no pull request may
+    run again (the guard's ``rerun_reason``); a lookup that fails skips (fail closed)."""
+    from state import gitops  # noqa: PLC0415
+
+    if gitops.is_repo(root) and gitops.has_remote(root):
+        gitops.run(root, "fetch", "origin", check=False)
+    carried = carried_forward(root, change_id)
+    if carried:
+        return carried
+    design = c.branch_name(change_id, "b")
+    ref = f"refs/remotes/origin/{design}"
+    st = _status_at(root, ref, change_id) if _ref_exists(root, ref) else None
+    entry = (st.fast_lane or {}).get("a") if st is not None else None
+    if not entry:
+        return None
+    github = _github()
+    found = github.find_open_pr(repo, design, cwd=root) if github is not None and repo else {}
+    if found.get("ok", False) and not found.get("number"):
+        return None
+    return (
+        f"the design of change {change_id} already started on the fast lane from intent PR "
+        f"#{entry.get('pr')} (decision 30): no second design"
+    )
+
+
+def build_started_on_fast_lane(root: Path, change_id: str) -> str | None:
+    """The skip reason of a merged design PR whose build already started on the fast lane
+    (``origin/sdlc/<id>/b`` records ``fast_lane.b``, which the runner writes only after it
+    confirmed the gate, and ``origin/sdlc/<id>/c`` exists), else None: no second build."""
+    from state import gitops  # noqa: PLC0415
+
+    if gitops.is_repo(root) and gitops.has_remote(root):
+        gitops.run(root, "fetch", "origin", check=False)
+    design = f"refs/remotes/origin/{c.branch_name(change_id, 'b')}"
+    st = _status_at(root, design, change_id) if _ref_exists(root, design) else None
+    if st is None or not (st.fast_lane or {}).get("b"):
+        return None
+    if not _ref_exists(root, f"refs/remotes/origin/{c.branch_name(change_id, 'c')}"):
+        return None
+    return (
+        f"the build of change {change_id} already started on the fast lane from "
+        f"{c.branch_name(change_id, 'b')} (decision 30): no second build"
+    )
+
+
+def find_design_event(
+    root: Path, args, env: dict[str, str]
+) -> tuple[str | None, str | None, dict[str, str]]:
+    """The design workflow's ``pull_request`` event (decision 30): an opened or reopened
+    intent PR takes the fast lane's exact check (``intent_pr_start``); a merge finds the
+    change as before (``find_change``) and skips when its design already started on the
+    fast lane; any other action, or a payload that cannot be read, is refused (fail closed:
+    the action is only in the payload)."""
+    payload, why = read_event_payload(env)
+    if payload is None:
+        return None, f"the pull request event's payload could not be read ({why}): refused", {}
+    action = str(payload.get("action") or "")
+    if action in INTENT_PR_ACTIONS:
+        return intent_pr_start(root, args.repo, payload, env)
+    if action != "closed" or _mapping(payload.get("pull_request")).get("merged") is not True:
+        return None, f"a pull request {action or 'event'} without a merge starts no design", {}
+    change_id, reason = find_change(
+        args.phase, args.id, args.head_ref, args.repo, getattr(args, "pr_number", None), env
+    )
+    if change_id:
+        started = fast_lane_started(root, args.repo, change_id)
+        if started:
+            return None, started, {}
+    return change_id, reason, {}
+
+
 def print_found_change(args, env: dict[str, str]) -> int:
     """``--find-change``: the workflow's first step. Prints ``change_id=<id or empty>`` and
     ``reason=<...>`` and appends ``change_id=<id>`` to ``$GITHUB_OUTPUT``, so every later
     step can be skipped for a merge that carries no change (about 20 s of a green job). A
     review that is not the owner's, or on a fork's head, is refused here the same way
-    (``review_refusal``), so a refused round installs nothing and runs no model."""
-    refused = review_refusal(Path(args.root).resolve(), args.repo, env)
+    (``review_refusal``), so a refused round installs nothing and runs no model. The design
+    workflow's ``pull_request`` event goes through ``find_design_event`` (decision 30): an
+    intent PR that takes the fast lane also prints and writes ``start_point`` (its head sha)
+    and ``intent_pr`` (its number), which the run step passes on."""
+    root = Path(args.root).resolve()
+    outputs: dict[str, str] = {}
+    refused = review_refusal(root, args.repo, env)
     if refused:
         change_id, reason = None, refused
+    elif args.phase == "b" and env.get("GITHUB_EVENT_NAME") == "pull_request":
+        change_id, reason, outputs = find_design_event(root, args, env)
+    elif args.phase == "c" and env.get("GITHUB_EVENT_NAME") == "pull_request":
+        change_id, reason = find_change(
+            args.phase, args.id, args.head_ref, args.repo, getattr(args, "pr_number", None), env
+        )
+        started = build_started_on_fast_lane(root, change_id) if change_id else None
+        if started:
+            change_id, reason = None, started
     else:
         change_id, reason = find_change(
             args.phase, args.id, args.head_ref, args.repo, getattr(args, "pr_number", None), env
@@ -899,11 +1409,15 @@ def print_found_change(args, env: dict[str, str]) -> int:
     found = change_id or ""
     print(f"change_id={found}")
     print("reason=" + " ".join(str(reason or "").split()))
+    for key, value in outputs.items():
+        print(f"{key}={value}")
     output = env.get("GITHUB_OUTPUT")
     if output:
         try:
             with open(output, "a", encoding="utf-8", newline="\n") as handle:
                 handle.write(f"change_id={found}\n")
+                for key, value in outputs.items():
+                    handle.write(f"{key}={value}\n")
         except OSError as exc:  # later steps would be skipped silently: say so, fail
             print(f"could not write {output}: {exc}", file=sys.stderr)
             return EXIT_FAILED
@@ -1766,6 +2280,14 @@ def run_phase(args, env: dict[str, str]) -> int:
                 release_unfinished_round(args, env, track, code)
             except Exception as exc:  # noqa: BLE001 - never mask the run's own outcome
                 print(f"the unfinished automatic round could not be parked: {exc}", file=sys.stderr)
+        if not args.dry_run and track.get("change_dir"):
+            # decision 30: the PR this run's PR carries forward is closed as superseded
+            try:
+                superseded = supersede_earlier_pr(args, env, track)
+                if superseded is not None:
+                    print(json.dumps({"superseded": superseded}, sort_keys=True), file=sys.stderr)
+            except Exception as exc:  # noqa: BLE001 - a supersede never fails the run
+                print(f"the earlier pull request was not superseded: {exc}", file=sys.stderr)
 
 
 def _run_phase(args, env: dict[str, str], track: dict[str, Any]) -> int:
@@ -1787,7 +2309,20 @@ def _run_phase(args, env: dict[str, str], track: dict[str, Any]) -> int:
         pr_number = getattr(args, "pr_number", None)
         fix_branch = fix_branch_for(root, change_id, args.head_ref, args.repo, pr_number)[0]
     track["fix_branch"] = fix_branch
-    branch = prepare_branch(root, change_id, phase, branch=fix_branch)
+    # decision 30: a design started by the owner's open intent PR is cut from its head
+    # (the workflow passes them in the environment, which an older pinned framework ignores;
+    # the flags are for a run by hand)
+    start_point = (
+        getattr(args, "start_point", None) or env.get(START_POINT_ENV) or ""
+    ).strip() or None
+    intent_pr = _pr_number(getattr(args, "intent_pr", None) or env.get(INTENT_PR_ENV))
+    branch = prepare_branch(
+        root, change_id, phase, branch=fix_branch,
+        start_point=start_point if phase == "b" else None,
+        intent_pr=intent_pr,
+    )  # fmt: skip
+    if branch.get("refused"):
+        return _skip(f"the fast lane's design branch was not created: {branch['refused']}")
     setup, setup_ok = install_toolchain(root, args.dry_run)
     if not setup_ok:
         reason = setup_failure_reason(setup)
@@ -1839,7 +2374,7 @@ def _run_phase(args, env: dict[str, str], track: dict[str, Any]) -> int:
 
     # the branch itself must be clean of guardrail edits before a run touches it (decision 6)
     try:
-        guardrails = guardrail_changes(root, change_dir, config)
+        guardrails = guardrail_changes(root, change_dir, config, gate_phase)
         guardrail_park = GUARDRAIL_PARK.format(files=", ".join(guardrails)) if guardrails else ""
     except NoMergeBase as exc:  # an empty diff for the wrong reason never passes
         guardrail_park = str(exc)
@@ -2138,9 +2673,34 @@ def _run_phase(args, env: dict[str, str], track: dict[str, Any]) -> int:
     )
     if auto is not None:
         result = read_gate(change_dir, gate_phase) or result
+    # decision 30: the owner closed the PR this run carries forward (the intent PR, or the
+    # design PR of a stacked build) while the run's own branch was not on origin yet, so the
+    # abandon workflow could not mark it: the close is recorded here, and nothing follows
+    closed = earlier_pr_closed(root, change_dir, phase, args.repo, env)  # never a fix round's
+    if closed:
+        abandoned = abandon_on_the_work_branch(plugin_dir, root, change_id, closed)
+        _emit({"phase": phase, "change_id": change_id, "abandoned": abandoned,
+               "cost_usd": cost, "branch": branch})  # fmt: skip
+        return EXIT_OK if abandoned.get("ok") else EXIT_FAILED
+    # decision 30: a gate (b) that passed on the fast lane is confirmed by the runner itself
+    # and recorded in status.yaml (fast_lane.b), committed with the run record below; a
+    # record the runner does not confirm waits at (b) as before
+    fast_lane = None
+    if gate_phase == "b" and result.get("result") == "continue" and result.get("fast_lane"):
+        if phase == "fix":
+            # the fast lane is the design run's: a round at (b), the owner's or automatic,
+            # ends waiting for the owner's merge as before
+            demote_fast_lane(change_dir, FAST_LANE_FIX_REFUSAL)
+            fast_lane = {"recorded": False, "reason": FAST_LANE_FIX_REFUSAL}
+        else:
+            fast_lane = record_fast_lane_b(root, change_dir, result, config, env, args.repo)
+        result = read_gate(change_dir, gate_phase) or result
     # the spend is recorded after the run's own commits, so on an ephemeral runner it would
     # leave with the job (the fifth live run of 2026-09-21 pushed run-b.json with spend_usd
     # null): commit it on the work branch before the PR is brought up to date
+    note = auto_note(auto)
+    if fast_lane is not None:
+        note = "; ".join(n for n in (note, fast_lane_note(fast_lane)) if n)
     record = (
         commit_run_record(
             plugin_dir,
@@ -2150,21 +2710,42 @@ def _run_phase(args, env: dict[str, str], track: dict[str, Any]) -> int:
             gate_phase,
             fix_branch,
             commands_ran=commands["ran"],
-            note=auto_note(auto),
+            note=note,
         )  # fmt: skip
-        if cost is not None or commands["ran"] or stamped
+        if cost is not None or commands["ran"] or stamped or fast_lane is not None
         else None
     )
     # the PR is where the owner meets the change, parked or not: open it here rather than
     # trusting the run to have done it (the parked run of 2026-09-21 did not)
     # the rewritten record must reach the branch: the session pushed the deferred one, and
     # a next phase or an owner reading the remote would take that one for a pass
+    # (decision 30: so must the fast lane's record, or the build would not find it)
     not_pushed = (
         COMMIT_NOT_PUSHED.format(reason=(record or {}).get("reason") or "no commit")
-        if commands["ran"] and not (record or {}).get("ok")
+        if (commands["ran"] or (fast_lane or {}).get("recorded")) and not (record or {}).get("ok")
         else None
     )
     pr = ensure_pr(plugin_dir, root, change_id, phase, args.repo, env, gate_phase, fix_branch)
+    if (fast_lane or {}).get("recorded") and pr.get("ok") and not not_pushed:
+        # the design PR's number, for the build PR's body; the PR may have opened just now
+        fast_lane["pr_recorded"] = record_design_pr(
+            plugin_dir, root, change_dir, change_id, phase, gate_phase, fix_branch, pr
+        )
+        # the build cuts its branch only where its own check holds on what was pushed (a
+        # sweep of uncommitted spec or plan edits into the run record, a profile turned Full
+        # since): when it refuses, the design waits at (b) with its label, nothing dispatched
+        refused = stacked_refusal(root, change_id)
+        if refused:
+            fast_lane.update(recorded=False, reason=refused)
+            demote_fast_lane(change_dir, refused, drop_record=True)
+            fast_lane["demoted"] = commit_run_record(
+                plugin_dir, root, change_id, phase, gate_phase, fix_branch,
+                note="fast lane refused by the build's check, gate (b) waits (decision 30)",
+            )  # fmt: skip
+            result = read_gate(change_dir, gate_phase) or result
+            pr = ensure_pr(
+                plugin_dir, root, change_id, phase, args.repo, env, gate_phase, fix_branch
+            )
     handed = (
         hand_over(args, result, gate_phase, change_id) if pr.get("ok") and not not_pushed else None
     )
@@ -2199,6 +2780,7 @@ def _run_phase(args, env: dict[str, str], track: dict[str, Any]) -> int:
             "label": result.get("label"),
             "cost_usd": cost,
             "dispatched": handed,
+            "fast_lane": fast_lane,
             "auto_round": auto,
             "labels": labels,
             "setup": setup,
@@ -2351,7 +2933,8 @@ OWNER_FIELDS_NEED = (
     "(sdlc:accept-risk, sdlc:reset-iterations, sdlc:unlock-tests) or by your own commit; the "
     "run cannot approve itself (decision 5). The fields were restored to their pre-session "
     "values (a test file changed under a lifted lock too); apply the label if the act is "
-    "yours, else fix the phase command that wrote them and re-run the phase."
+    "yours, else fix the phase command that wrote them and re-run the phase. fast_lane is "
+    "the runner's own record of decision 30's fast lane: no session writes it."
 )
 OWNER_FIELDS_CHECK = "owner_fields"
 OWNER_LABEL_OF = {
@@ -2378,6 +2961,8 @@ def owner_fields(st) -> dict[str, Any]:
         "panel_calls": st.panel_calls,
         "profile_override": st.profile_override,
         "review_override": st.review_override,
+        # decision 30: the runner's record of the commits the fast lane cut branches from
+        "fast_lane": json.dumps(st.fast_lane, sort_keys=True) if st.fast_lane else None,
     }
 
 
@@ -2440,6 +3025,13 @@ def owner_field_mismatches(
                 f"{counter}: the session lowered it from {before[counter]} to {after[counter]}; "
                 "only sdlc:reset-iterations does"
             )
+    # decision 30: the approved base of every later gate; the runner alone records it (a
+    # merge of the default branch into the work branch may bring the default branch's copy)
+    if after.get("fast_lane") not in (before.get("fast_lane"), approved.get("fast_lane")):
+        reasons.append(
+            f"fast_lane: the session recorded {after.get('fast_lane')}; expected "
+            f"{before.get('fast_lane')} (the runner's record of the fast lane, decision 30)"
+        )
     return reasons
 
 
@@ -2512,6 +3104,7 @@ def restore_owner_fields(change_dir: Path, before_st, after_st=None) -> None:
     after_st.panel_calls = max(after_st.panel_calls, before_st.panel_calls)
     after_st.profile_override = before_st.profile_override
     after_st.review_override = before_st.review_override
+    after_st.fast_lane = before_st.fast_lane
     status_mod.write_status(change_dir, after_st)
 
 
@@ -3199,12 +3792,299 @@ def stamp_run_record(change_dir: Path, phase: str, env: dict[str, str]) -> dict[
     return run
 
 
+# --- the fast lane after the design's gate (decision 30, ROADMAP R46) -----------------------------
+FAST_LANE_WAIT_REASON = "waiting for the owner at gate (b)"
+FAST_LANE_FIX_REFUSAL = "a fix round at (b) waits for the owner's merge (decision 30)"
+
+
+def fast_lane_refusal(
+    root: Path, change_dir: Path, result: dict[str, Any], config: dict[str, Any], env
+) -> tuple[str | None, str | None]:
+    """(refusal, full sha): the runner's own confirmation of a gate (b) that says it passed
+    on the fast lane, read from what the runner trusts rather than the record alone - the
+    profile from the default branch's ``sdlc.yaml`` and override (the guard's reading, not
+    Full), the adversarial verdict for the record's commit, ``continue`` and ``routine``
+    (``fast_lane_verdict_refusal``), that commit in the branch the run prepared, and no
+    commit after it outside the change folder's evidence and ``status.yaml``
+    (``fast_lane_after_gate``)."""
+    try:
+        st = status_mod.read_status(change_dir)
+        override, _review, _note = approved_overrides(root, change_dir, st, env)
+        profile = c.effective_profile(config.get("profile"), override)
+    except (OSError, ValueError, ApprovedCopyUnreadable) as exc:
+        return f"the profile cannot be read: {exc}", None
+    if not c.fast_lane_profile(profile):
+        return f"the profile is {profile}: gate (b) is the owner's merge", None
+    verdict, error = gate_checks.load_verdict(
+        change_dir / art.EVIDENCE_DIR / art.ADVERSARIAL_VERDICT.format(phase="b")
+    )
+    head = str(result.get("head") or "")
+    refused = fast_lane_verdict_refusal(verdict, error, head)
+    if refused:
+        return refused, None
+    from state import gitops  # noqa: PLC0415
+
+    sha = gitops.run(root, "rev-parse", "--verify", "--quiet", f"{head}^{{commit}}", check=False)
+    sha = sha.strip()
+    if not SHA_RE.match(sha) or not gate_diff.is_ancestor(root, sha, "HEAD"):
+        return f"the commit the gate judged ({head[:10]}) is not on the design branch", None
+    rel = change_dir.resolve().relative_to(Path(root).resolve()).as_posix()
+    after = fast_lane_after_gate(root, rel, sha, "HEAD")
+    if after:
+        return after, None
+    return None, sha
+
+
+def record_fast_lane_b(
+    root: Path,
+    change_dir: Path,
+    result: dict[str, Any],
+    config: dict[str, Any],
+    env: dict[str, str],
+    repo: str,
+) -> dict[str, Any]:
+    """Record ``status.yaml: fast_lane.b`` - the commit gate (b) passed on, ``routine``, and
+    the design PR's number when one is open - once the runner confirmed it
+    (``fast_lane_refusal``). A record the runner does not confirm is put back to today's
+    ``wait`` at (b): ``sdlc:b-ready``, the owner's merge starts the build."""
+    why, sha = fast_lane_refusal(root, change_dir, result, config, env)
+    if why or not sha:
+        demote_fast_lane(change_dir, why or "not confirmed")
+        print(f"fast lane refused, gate (b) waits for the owner: {why}", file=sys.stderr)
+        return {"recorded": False, "reason": why}
+    entry: dict[str, Any] = {"sha": sha, "classification": status_mod.FAST_LANE_CLASSIFICATION}
+    github = _github()
+    if github is not None and repo and (_token(env) or github.gh_path()):
+        try:
+            st0 = status_mod.read_status(change_dir)
+            found = github.find_open_pr(repo, c.branch_name(st0.id, "b"), cwd=root)
+            number = _pr_number(found.get("number"))
+            if number is not None:
+                entry["pr"] = number
+        except Exception:  # noqa: BLE001 - the number is for the PR text only
+            pass
+    st = status_mod.read_status(change_dir)
+    st.fast_lane = {**(st.fast_lane or {}), "b": entry}
+    st.touch()
+    status_mod.write_status(change_dir, st)
+    return {"recorded": True, "b": entry}
+
+
+def earlier_pr_closed(
+    root: Path, change_dir: Path, phase: str, repo: str, env: dict[str, str]
+) -> str | None:
+    """Decision 30 with decision 25: the reason to abandon when the PR this run carries
+    forward on the fast lane - the intent PR at (b) (``fast_lane.a.pr``), the design PR at
+    (c) (``fast_lane.b.pr``, else the latest PR of ``sdlc/<id>/b``) - was closed without a
+    merge and without ``sdlc:superseded`` (the runner's own close carries the label): the
+    owner's close is the act that abandons the change, and the run's branch, not yet on
+    origin when ``sdlc-abandon.yml`` ran, had no copy to mark. None otherwise, and when
+    GitHub cannot be asked (the run goes on as before). The design and build runs only: a
+    fix round runs on a PR that exists, and its earlier PR's close is not the run's to read."""
+    if phase not in ("b", "c") or not repo:
+        return None
+    try:
+        st = status_mod.read_status(change_dir)
+    except (OSError, ValueError):
+        return None
+    if st.abandoned or not gate_diff.fast_lane_sha(root, st.fast_lane, phase):
+        return None
+    entry = (st.fast_lane or {}).get("a" if phase == "b" else "b") or {}
+    github = _github()
+    if github is None or (not _token(env) and not github.gh_path()):
+        return None
+    try:
+        number = _pr_number(entry.get("pr"))
+        if number is None and phase == "c":
+            latest = github.find_pr(repo, c.branch_name(st.id, "b"), "all", cwd=root)
+            number = _pr_number(latest.get("number")) if latest.get("ok") else None
+        found = github.pr_by_number(repo, number, cwd=root) if number is not None else {}
+    except Exception:  # noqa: BLE001 - no answer: the run goes on as before
+        return None
+    if not found.get("ok") or found.get("state") != "closed" or found.get("merged"):
+        return None
+    if c.SUPERSEDED_LABEL in (found.get("labels") or []):
+        return None
+    return f"pull request #{number} closed without a merge"
+
+
+def abandon_on_the_work_branch(
+    plugin_dir: Path, root: Path, change_id: str, reason: str
+) -> dict[str, Any]:
+    """``state/cli.py abandon`` on the run's own branch and every branch of the change on
+    origin, pushed, exactly as ``sdlc-abandon.yml`` runs it (decision 25)."""
+    call = _cli_call(
+        plugin_dir / "plugin" / "state" / "cli.py",
+        ["abandon", "--root", str(root), "--id", change_id, "--reason", reason,
+         "--push", "--all-branches"],
+    )  # fmt: skip
+    print(f"change {change_id} abandoned: {reason} (decision 25)", file=sys.stderr)
+    return {**call, "reason": reason}
+
+
+def stacked_refusal(root: Path, change_id: str) -> str | None:
+    """Why the build would not stack on the design branch as pushed (``stacked_design`` on
+    a fresh fetch), or None."""
+    from state import gitops  # noqa: PLC0415
+
+    if gitops.is_repo(root) and gitops.has_remote(root):
+        gitops.run(root, "fetch", "origin", check=False)
+    if stacked_design(root, change_id):
+        return None
+    return "the build's own check of the pushed design branch refused it"
+
+
+def record_design_pr(
+    plugin_dir: Path,
+    root: Path,
+    change_dir: Path,
+    change_id: str,
+    phase: str,
+    gate_phase: str,
+    fix_branch: str | None,
+    pr: dict[str, Any],
+) -> dict[str, Any] | None:
+    """Write the design PR's number into ``fast_lane.b.pr`` when the record lacks it and
+    ``ensure_pr`` named one, and commit it before the build is dispatched (the build branch
+    is cut from the pushed design branch); None when there is nothing to add."""
+    number = _pr_number(pr.get("number"))
+    st = status_mod.read_status(change_dir)
+    entry = dict((st.fast_lane or {}).get("b") or {})
+    if number is None or not entry or entry.get("pr") == number:
+        return None
+    entry["pr"] = number
+    st.fast_lane = {**(st.fast_lane or {}), "b": entry}
+    st.touch()
+    status_mod.write_status(change_dir, st)
+    return commit_run_record(
+        plugin_dir, root, change_id, phase, gate_phase, fix_branch,
+        note=f"design pull request #{number} recorded on the fast lane (decision 30)",
+    )  # fmt: skip
+
+
+def demote_fast_lane(change_dir: Path, why: str, drop_record: bool = False) -> None:
+    """Rewrite a fast-lane gate (b) record to today's ``wait``: the gate record's result,
+    label and mark, and ``status.yaml``'s gate reason (``gate.apply``'s ``wait``); with
+    ``drop_record`` the runner's own ``fast_lane.b`` goes too."""
+    path = change_dir / art.EVIDENCE_DIR / art.GATE_RESULT.format(phase="b")
+    data = read_gate(change_dir, "b") or {}
+    data.pop("fast_lane", None)
+    data.update(result="wait", label=c.ready_label("b"))
+    data["config_note"] = "; ".join(
+        n for n in (str(data.get("config_note") or ""), f"fast lane refused: {why}") if n
+    )
+    path.write_text(json.dumps(data, indent=2), encoding="utf-8", newline="\n")
+    st = status_mod.read_status(change_dir)
+    st.record_gate("b", "passed", FAST_LANE_WAIT_REASON)
+    if drop_record and st.fast_lane:
+        st.fast_lane = {k: v for k, v in st.fast_lane.items() if k != "b"} or None
+    status_mod.write_status(change_dir, st)
+
+
+def fast_lane_note(fast_lane: dict[str, Any]) -> str:
+    """The end of the run record's commit message for what ``record_fast_lane_b`` did."""
+    if fast_lane.get("recorded"):
+        return "gate (b) passed on the fast lane, the build follows (decision 30)"
+    return "fast lane refused, gate (b) waits for the owner (decision 30)"
+
+
+def supersede_pr(
+    repo: str, number: int, by: int | None, expected_head: str | None = None
+) -> dict[str, Any]:
+    """Label pull request ``number`` ``sdlc:superseded`` and close it with the workflow
+    token, no comment (decision 20: no notification); ``by`` is the PR that now carries it.
+    The label comes first and the close only after it, so a close never lacks the label
+    ``sdlc-abandon.yml`` skips on (decision 25). Left as it is: a PR that is not open; a PR
+    that already carries the label (the owner reopened it: never closed again); and, with
+    ``expected_head`` (the intent PR's ``fast_lane.a.sha``), a PR whose head moved since
+    (the owner pushed after the design started: their commits are not dropped). A failure
+    leaves it open and says why, never failing the run."""
+    github = _github()
+    if github is None:
+        return {"ok": False, "number": number, "reason": "plugin/pr/github.py is not available"}
+    found = github.pr_by_number(repo, number)
+    if not found.get("ok"):
+        return {"ok": False, "number": number, "reason": found.get("reason") or "not found"}
+    if found.get("state") != "open":
+        return {"ok": True, "number": number, "skipped": f"pull request #{number} is not open"}
+    if c.SUPERSEDED_LABEL in (found.get("labels") or []):
+        return {
+            "ok": True,
+            "number": number,
+            "skipped": f"pull request #{number} was reopened after it was superseded: left open",
+        }
+    head = str(found.get("head_sha") or "")
+    if expected_head and head != expected_head:
+        why = (
+            f"pull request #{number} moved to {head[:10] or 'an unknown head'} after the design "
+            f"started from {expected_head[:10]}: left open, its later commits are yours to carry"
+        )
+        print(why, file=sys.stderr)
+        return {"ok": False, "number": number, "reason": why}
+    github.ensure_label(
+        repo, c.SUPERSEDED_LABEL, LABEL_COLOR_SUPERSEDED, "SDLC fast lane: a later PR carries it"
+    )
+    labelled = github.set_labels(repo, number, [c.SUPERSEDED_LABEL], [])
+    if not labelled.get("ok"):
+        why = labelled.get("reason") or "failed"
+        return {"ok": False, "number": number, "reason": f"not labelled, left open: {why}"}
+    closed = github.close_pr(repo, number)
+    out = {"ok": bool(closed.get("ok")), "number": number, "by": by, "labelled": True}
+    if not closed.get("ok"):
+        out["reason"] = f"labelled but not closed: {closed.get('reason') or 'failed'}"
+    return out
+
+
+SUPERSEDE_PHASES = ("b", "c", "d", "e")
+
+
+def supersede_earlier_pr(args, env: dict[str, str], track: dict[str, Any]) -> Any:
+    """Decision 30: once this run's pull request carries the change, the earlier one is
+    closed as superseded - the owner's intent PR by the design PR (``fast_lane.a.pr``), the
+    design PR by the build PR (``fast_lane.b.pr``, else the open PR of ``sdlc/<id>/b``). Only
+    while the fast lane's record stands on this branch (``fast_lane_sha``); None when there
+    is nothing to supersede. Never raises for a GitHub failure (the caller logs it)."""
+    gate_phase = track.get("gate_phase")
+    change_dir = track.get("change_dir")
+    if gate_phase not in SUPERSEDE_PHASES or change_dir is None or not args.repo:
+        return None
+    root = Path(args.root).resolve()
+    st = status_mod.read_status(change_dir)
+    if st.abandoned or not gate_diff.fast_lane_sha(root, st.fast_lane, gate_phase):
+        return None
+    github = _github()
+    if github is None or (not _token(env) and not github.gh_path()):
+        return {"ok": False, "reason": "no GitHub route: nothing superseded"}
+    expected_head = None
+    if gate_phase == "b":
+        earlier = _pr_number((st.fast_lane or {}).get("a", {}).get("pr"))
+        expected_head = (st.fast_lane or {}).get("a", {}).get("sha")
+    else:
+        earlier = _pr_number((st.fast_lane or {}).get("b", {}).get("pr"))
+        if earlier is None:
+            design = github.find_open_pr(args.repo, c.branch_name(st.id, "b"), cwd=root)
+            earlier = _pr_number(design.get("number"))
+    if earlier is None:
+        return None
+    head = track.get("fix_branch") or work_branch_for(st.id, gate_phase)
+    current = github.find_open_pr(args.repo, head, cwd=root)
+    by = _pr_number(current.get("number"))
+    if by is None:
+        return {"ok": False, "number": earlier, "reason": f"no open pull request on {head} yet"}
+    if by == earlier:
+        return None
+    return supersede_pr(args.repo, earlier, by, expected_head)
+
+
 def hand_over(args, result: dict[str, Any], phase: str, change_id: str) -> Any:
-    workflow = NEXT_WORKFLOW.get(phase)
+    workflow, next_phase = NEXT_WORKFLOW.get(phase), NEXT_PHASE.get(phase)
+    if result.get("fast_lane") is True and phase in FAST_LANE_WORKFLOW:
+        # decision 30: the build, on sdlc/<id>/c, cut from the design branch
+        workflow, next_phase = FAST_LANE_WORKFLOW[phase], FAST_LANE_NEXT_PHASE[phase]
     if result.get("result") != "continue" or not workflow:
         return None
     ref = args.ref or default_ref(Path(args.root))
-    head_ref = work_branch_for(change_id, NEXT_PHASE[phase])
+    head_ref = work_branch_for(change_id, next_phase)
     if args.no_dispatch:
         return {
             "would_dispatch": workflow,
@@ -3503,6 +4383,17 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="only print change_id=<id or empty> and reason=<...> (and append change_id to "
         "$GITHUB_OUTPUT); exits 0 unless $GITHUB_OUTPUT cannot be written",
+    )
+    p.add_argument(
+        "--start-point",
+        default=None,
+        help="--phase b: the head sha of the owner's open intent PR the design branch is cut "
+        "from (decision 30, the fast lane; printed by --find-change)",
+    )
+    p.add_argument(
+        "--intent-pr",
+        default=None,
+        help="--phase b: the number of that intent PR, recorded and later superseded",
     )
     p.add_argument("--repo", default="", help="owner/name, for labels and the hand-over")
     p.add_argument("--ref", default=None, help="default branch the dispatch targets")

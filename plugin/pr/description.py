@@ -34,7 +34,9 @@ Layout of the body, in order:
 
 At phase (e), when ``sdlc.yaml: deploy.production`` is true, one more line follows the
 bullets (like the counters line, not a sixth bullet): the release approval, the second act
-of gate (e) (decision 13).
+of gate (e) (decision 13). On the fast lane (decision 30) a line of the same kind says what
+this PR carries and which earlier PR it superseded: the design PR carries the owner's
+intent (the intent PR is closed), the build PR the intent, spec and plan with the code.
 """
 
 from __future__ import annotations
@@ -53,6 +55,7 @@ from panel import ledger  # noqa: E402
 
 from gate import artifacts as art  # noqa: E402
 from gate import checks  # noqa: E402
+from gate import diff as diffmod  # noqa: E402
 from gate.checks import CheckResult  # noqa: E402
 from gate.gate import GateResult  # noqa: E402
 from hooks._common import ConfigError, config_flag, load_sdlc_config  # noqa: E402
@@ -595,6 +598,38 @@ def release_note(change_dir: Path, intent: str) -> str:
     return " ".join(outcome.split()) if outcome else ""
 
 
+def fast_lane_line(root: Path, st: Status, phase: str) -> str:
+    """Decision 30: what this PR carries on the fast lane and the PR it superseded, or "".
+    Read only while the record stands on the checkout (``diff.fast_lane_sha``: a PR the
+    owner merged after all is not superseded)."""
+    lane = st.fast_lane or {}
+    try:
+        live = diffmod.fast_lane_sha(Path(root), lane, phase)
+    except Exception:  # noqa: BLE001 - a missing git is not a reason to lose the summary
+        live = None
+    if not live:
+        return ""
+    intent_pr = (lane.get("a") or {}).get("pr")
+    if phase == "b":
+        return (
+            "Fast lane (decision 30): this PR carries your intent too, accepted when you "
+            f"opened intent PR #{intent_pr}, which it supersedes (closed, not merged)."
+        )
+    design_pr = (lane.get("b") or {}).get("pr")
+    superseded = [
+        f"{name} #{number}"
+        for name, number in (("intent PR", intent_pr), ("design PR", design_pr))
+        if number
+    ]
+    line = (
+        "Fast lane (decision 30): the adversarial reviewer classed the plan routine, so the "
+        "intent, spec and plan are in this PR with the code; review them here"
+    )
+    if superseded:
+        line += f" (superseded: {', '.join(superseded)})"
+    return line + "."
+
+
 def _counters_line(st: Status) -> str:
     first_pass = "yes" if st.iterations == 0 else "no"
     line = f"Counters: first-pass merge: {first_pass} · fix iterations: {st.iterations}"
@@ -664,6 +699,9 @@ def build_description(root: Path, change_id: str, phase: str) -> str:
             out += ["", block]
     if phase == "e" and production_declared(root):
         out += ["", RELEASE_APPROVAL_LINE]
+    lane = fast_lane_line(root, st, phase)
+    if lane:
+        out += ["", lane]
     out += ["", _links_line(root, change_dir, change_id, phase)]
     run = run_line(change_dir, phase)
     if run:

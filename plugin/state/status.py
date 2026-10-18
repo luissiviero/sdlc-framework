@@ -96,6 +96,15 @@ class Status:
     released_at: str | None = None
     released_sha: str | None = None
     released_pr: int | None = None
+    # Decision 30 (the fast lane, ROADMAP R46): the runner's record of the commits the change's
+    # later phases were cut from without a merge. ``a``: ``{sha, pr}``, the head of the owner's
+    # intent PR the design branch was cut from; ``b``: ``{sha, classification}`` (and ``pr``,
+    # the design PR, when known), the design commit whose gate passed on a routine plan, which
+    # the build branch was cut from. Each sha is the "approved copy" of the phases after it
+    # (``gate/diff.py approved_base``). Written by ``ci/run_phase.py`` only: a session that
+    # changes it parks like any owner-only field. Absent (and not written) on every change
+    # that never took the fast lane, so its file reads as before.
+    fast_lane: dict[str, dict[str, Any]] | None = None
     created_at: str = field(default_factory=_now)
     updated_at: str = field(default_factory=_now)
     schema_version: int = SCHEMA_VERSION
@@ -157,6 +166,7 @@ class Status:
             for e in self.risk_accepted_by
         ):
             raise ValueError("risk_accepted_by must be a list of {item, actor} entries")
+        _validate_fast_lane(self.fast_lane)
         for name in (
             "iterations_reset_by",
             "iterations_reset_at",
@@ -173,6 +183,8 @@ class Status:
     def to_dict(self) -> dict[str, Any]:
         d = asdict(self)
         d["gate"] = asdict(self.gate)
+        if not self.fast_lane:
+            del d["fast_lane"]  # decision 30: a change off the fast lane keeps its file as before
         return d
 
     @classmethod
@@ -307,6 +319,37 @@ class Status:
             self.risk_accepted.append(item)
         self.touch()
         self.validate()
+
+
+# Decision 30: the entries of ``status.yaml: fast_lane`` and the keys each one carries.
+FAST_LANE_KEYS = {"a": ("sha", "pr"), "b": ("sha", "classification", "pr")}
+FAST_LANE_REQUIRED = {"a": ("sha", "pr"), "b": ("sha", "classification")}
+FAST_LANE_CLASSIFICATION = "routine"
+_SHA_CHARS = frozenset("0123456789abcdef")
+
+
+def _validate_fast_lane(value: Any) -> None:
+    """``fast_lane`` is null or a mapping of ``a`` and/or ``b``: each entry a full commit sha
+    and its pull request number (``a``), or the sha and the classification ``routine`` and,
+    optionally, the design PR's number (``b``)."""
+    if value is None:
+        return
+    if not isinstance(value, dict) or not value or not set(value) <= set(FAST_LANE_KEYS):
+        raise ValueError("fast_lane must be null or a mapping of 'a' and/or 'b'")
+    for key, entry in value.items():
+        if not isinstance(entry, dict) or not set(entry) <= set(FAST_LANE_KEYS[key]):
+            raise ValueError(f"fast_lane.{key} must be a mapping of {FAST_LANE_KEYS[key]}")
+        missing = [k for k in FAST_LANE_REQUIRED[key] if entry.get(k) is None]
+        if missing:
+            raise ValueError(f"fast_lane.{key} lacks {', '.join(missing)}")
+        sha = entry["sha"]
+        if not isinstance(sha, str) or len(sha) != 40 or not set(sha) <= _SHA_CHARS:
+            raise ValueError(f"fast_lane.{key}.sha must be a full commit sha")
+        pr = entry.get("pr")
+        if pr is not None and (isinstance(pr, bool) or not isinstance(pr, int) or pr < 1):
+            raise ValueError(f"fast_lane.{key}.pr must be a pull request number")
+        if key == "b" and entry["classification"] != FAST_LANE_CLASSIFICATION:
+            raise ValueError(f"fast_lane.b.classification must be {FAST_LANE_CLASSIFICATION!r}")
 
 
 def stale_park(st: Status) -> str | None:

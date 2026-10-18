@@ -52,6 +52,11 @@ docs were killed mid-write and the run ended with no gate; this rule since 0.3.3
 ## 1. Branch (idempotent; re-run rule, build guide step 8)
 - First run: `git switch -c sdlc/<id>/b origin/<default>` (or `<default>` when there is no
   remote). The intent is read from that branch: it is what the owner merged.
+- The fast lane (decision 30): in CI, an intent PR the owner's own account opened starts this
+  run without a merge, and the runner has already cut `sdlc/<id>/b` from that PR's head and
+  recorded it in `status.yaml: fast_lane.a`. The intent on the branch is what the owner
+  pushed, accepted by that act; read it as the merged one. Never write `fast_lane`: it is
+  the runner's record, and a session that changes it parks.
 - Re-run (the branch already exists locally or on `origin`): `git switch sdlc/<id>/b`
   and `git pull --ff-only origin sdlc/<id>/b` when the remote has it. Read the existing
   `spec.md` and `plan.md`; they are the starting point, not a blank page. Read the review
@@ -191,14 +196,23 @@ you" at the gate and overturns any line with a review comment.
 ```
 python "${CLAUDE_PLUGIN_ROOT}/plugin/gate/cli.py" check --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase b
 ```
-Exit 3 = `wait` (gate (b) is a human gate in every profile), 4 = `park`. It writes `status.yaml` and `evidence/gate-b.json`, and prints the label to apply
+Exit 3 = `wait` (gate (b) is a human gate in every profile), 4 = `park`, 0 = `continue`
+(the fast lane, decision 30: in CI only, on every profile but Full, when every check passed
+and the adversarial reviewer classed the plan `routine`; by hand the gate waits). It writes `status.yaml` and `evidence/gate-b.json`, and prints the label to apply
 and, when parked, the "What I need from you" block. Then commit the evidence:
 ```
 python "${CLAUDE_PLUGIN_ROOT}/plugin/state/cli.py" commit-phase --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase b --message "design(<id>): gate (b) evidence" --push
 ```
 
 ## 8. Outcome
-**`wait` or `park` — open or update the spec+plan PR.**
+**`wait`, `park` or the fast lane's `continue` — open or update the spec+plan PR.** On
+`continue` there is no label and the fifth bullet says nothing is needed: the runner
+confirms the fast lane (the profile; the reviewer's own `continue` and routine
+classification; no commit after the judged one outside the change folder's `evidence/` and
+`status.yaml`; never in a fix round, which waits at `sdlc:b-ready`), records it in
+`status.yaml: fast_lane.b`, dispatches the build on `sdlc/<id>/c` cut from this branch, and
+closes this PR as `sdlc:superseded` once the build PR carries the spec and plan; a record it
+does not confirm waits with `sdlc:b-ready` as before.
 ```
 python "${CLAUDE_PLUGIN_ROOT}/plugin/pr/cli.py" upsert --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase b
 ```
@@ -224,7 +238,8 @@ with other means.
 ## 9. Report
 One line: the PR URL (or the compare URL), the gate result, the number of open concerns
 and, under deferred review, the number of panel decisions. Nothing else is started.
-Do not start phase (c) here: gate (b) is the owner's merge in every profile.
+Do not start phase (c) here: gate (b) is the owner's merge in every profile, except on the
+fast lane, where the CI runner (never this session) dispatches the build.
 
 Never edit `.claude/**`, `CLAUDE.md`, `REVIEW.md`, `sdlc.yaml`, `intent.md` or any file
 outside `changes/<id>-<slug>/`. Never use bypass-permissions mode. Never notify anyone.

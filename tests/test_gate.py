@@ -665,14 +665,19 @@ def test_the_runner_s_commands_step_parks_a_red_target_and_keeps_the_record_s_sh
 
 
 @pytest.mark.parametrize(
-    ("fixture", "phase", "expected", "label"),
-    [("project", "c", "continue", None), ("design_project", "b", "wait", "sdlc:b-ready")],
+    ("fixture", "phase", "expected", "label", "classification"),
+    [
+        ("project", "c", "continue", None, "routine"),
+        ("design_project", "b", "wait", "sdlc:b-ready", "non-routine"),
+        # decision 30: a routine plan in a CI session passes gate (b) on the fast lane
+        ("design_project", "b", "continue", None, "routine"),
+    ],
 )
 def test_a_green_target_after_the_session_leaves_the_session_s_verdict_standing(
-    request, monkeypatch, fixture, phase, expected, label
+    request, monkeypatch, fixture, phase, expected, label, classification
 ):
     root, change = request.getfixturevalue(fixture)
-    verdict(root, phase)
+    verdict(root, phase, classification=classification)
     monkeypatch.setenv(checks.COMMANDS_RUNNER_ENV, checks.RUN_BY_RUNNER)
     assert gate.run_gate(root, "0001", phase).result == expected
     result = gate.run_deferred_commands(root, "0001", phase)

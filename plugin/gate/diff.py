@@ -358,6 +358,73 @@ def default_base(root: Path) -> str:
     return "HEAD"
 
 
+def is_ancestor(root: Path, commit: str, ref: str) -> bool:
+    """``git merge-base --is-ancestor <commit> <ref>``: False on any error (an unknown sha)."""
+    try:
+        proc = subprocess.run(
+            ["git", "merge-base", "--is-ancestor", commit, ref],
+            cwd=str(root),
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return proc.returncode == 0
+
+
+# Decision 30 (the fast lane, ROADMAP R46): the ``status.yaml: fast_lane`` entry whose commit
+# is the approved copy of a phase. Phase (b) was cut from the owner's unmerged intent PR (entry
+# ``a``); the build branch, and the test, deploy and review runs and the fix rounds on it,
+# from the design commit whose gate passed on a routine plan (entry ``b``). Every other phase
+# (the intent PR's own rounds at (a), phase (f)) reads the merge base as before.
+FAST_LANE_ENTRY = {"b": "a", "c": "b", "d": "b", "e": "b", "review": "b"}
+
+
+def fast_lane_sha(
+    root: Path,
+    fast_lane: dict | None,
+    phase: str,
+    base: str | None = None,
+    head: str = "HEAD",
+) -> str | None:
+    """The commit ``fast_lane`` records for ``phase`` while it stands, else None: it must be
+    an ancestor of ``head`` (the branch was cut from it) and not of the default branch
+    ``base`` (its pull request was not merged). A merge of that PR (its commit then on the
+    default branch), a squash merge (the next branch then cut from the default branch, the
+    commit not in it) and a change that never took the fast lane all give None, and the
+    caller reads the merge base exactly as before."""
+    key = FAST_LANE_ENTRY.get(phase)
+    entry = (fast_lane or {}).get(key) if key and isinstance(fast_lane, dict) else None
+    sha = entry.get("sha") if isinstance(entry, dict) else None
+    if not isinstance(sha, str) or not sha:
+        return None
+    base = base or default_base(root)
+    if base == "HEAD" or not is_ancestor(root, sha, head) or is_ancestor(root, sha, base):
+        return None
+    return sha
+
+
+def approved_base(
+    root: Path,
+    fast_lane: dict | None,
+    phase: str,
+    merge_base: str | None,
+    base: str | None = None,
+    head: str = "HEAD",
+) -> str | None:
+    """The one rule for the commit a phase's "approved copies" (``intent.md``, ``plan.md``)
+    and its "changed since the last gate" diff are read at: the fast lane's recorded commit
+    for the phase (``fast_lane_sha``) while it stands, else ``merge_base`` (the merge base
+    of HEAD with the default branch, None when there is none), as before decision 30. The
+    gate (``GateContext.approved_base``) and the runner (``guardrail_changes``) both call it.
+    The PR's own diff (``committed_files`` from the merge base) is unchanged: the owner sees
+    intent, spec, plan and code together at (e)."""
+    if not merge_base:
+        return None
+    return fast_lane_sha(Path(root), fast_lane, phase, base, head) or merge_base
+
+
 def collect(root: Path, base: str | None = None) -> Diff:
     root = Path(root)
     if not is_repo(root):

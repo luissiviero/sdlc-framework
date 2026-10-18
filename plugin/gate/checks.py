@@ -121,13 +121,30 @@ class GateContext:
     def artifact(self, name: str) -> str | None:
         return art.read_text(self.change_dir / name)
 
+    def approved_base(self) -> str | None:
+        """The commit the approved copies are read at: the merge base with the default
+        branch, or, on the fast lane (decision 30), the commit ``status.yaml: fast_lane``
+        records for this phase while it stands (``diff.fast_lane_sha``: the owner's unmerged
+        intent PR head for (b), the design commit gate (b) passed on for (c) to (e)). None
+        when there is no base to compare with."""
+        if self.diff is None:
+            return None
+        return diffmod.approved_base(
+            self.root,
+            self.status.fast_lane,
+            self.phase,
+            self.diff.merge_base,
+            self.diff.base,
+            self.diff.head or "HEAD",
+        )
+
     def approved_artifact(self, name: str) -> str | None:
-        """The artifact as committed on the base branch (what the owner approved), falling
-        back to the working tree only when there is no base to compare with."""
-        if self.diff is not None and self.diff.merge_base:
-            committed = diffmod.file_at(
-                self.root, self.diff.merge_base, f"{self.change_rel}/{name}"
-            )
+        """The artifact as committed on the base branch (what the owner approved; on the
+        fast lane, at the commit ``approved_base`` names), falling back to the working tree
+        only when there is no base to compare with."""
+        base = self.approved_base()
+        if self.diff is not None and base:
+            committed = diffmod.file_at(self.root, base, f"{self.change_rel}/{name}")
             if committed is not None:
                 return committed
             if f"{self.change_rel}/{name}" in self.diff.files:
@@ -668,7 +685,15 @@ def check_guardrails(ctx: GateContext) -> CheckResult:
     patterns = protected_paths.protected_patterns(ctx.config)
     touched = [f for f in committed if any(matches(p, f) for p in patterns)]
     intent_rel = f"{ctx.change_rel}/intent.md"
-    if ctx.phase not in ("a", "f") and intent_rel in committed:
+    # decision 30: on the fast lane the intent was accepted at the owner's unmerged intent PR
+    # head, which the branch was cut from; "changed after gate (a)" is read since that commit
+    approved = ctx.approved_base()
+    since_gate = (
+        committed
+        if approved == ctx.diff.merge_base
+        else diffmod.committed_files(ctx.root, approved, ctx.diff.head)
+    )
+    if ctx.phase not in ("a", "f") and intent_rel in since_gate:
         # the intent was accepted at gate (a): a later phase may not rewrite it (it is what
         # the guardrail exemption and the risk acceptance are judged against). Phase (f)
         # writes the incident intent itself (p.44 step 5): its PR is the intent PR of that
@@ -792,8 +817,20 @@ def load_verdict(path: Path) -> tuple[dict[str, Any] | None, str]:
     if not path.is_file():
         return None, "missing"
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError) as exc:
+        text = path.read_text(encoding="utf-8")
+    except OSError as exc:
+        return None, f"unreadable: {exc}"
+    return parse_verdict(text)
+
+
+def parse_verdict(text: str | None) -> tuple[dict[str, Any] | None, str]:
+    """``load_verdict``'s validation of the verdict file's text (the runner reads the file
+    at a commit of the design branch too, decision 30): (data, "") or (None, why)."""
+    if text is None:
+        return None, "missing"
+    try:
+        data = json.loads(text)
+    except ValueError as exc:
         return None, f"unreadable: {exc}"
     if not isinstance(data, dict) or data.get("verdict") not in ("continue", "escalate"):
         return None, "malformed: 'verdict' must be 'continue' or 'escalate'"
@@ -1506,7 +1543,8 @@ def _ratchet_need(change_id: str) -> str:
 def check_ratchets(ctx: GateContext) -> CheckResult:
     """A dropped test file or eval case, undeclared by the approved plan, is a risk-list-
     shaped gate finding (intent.md change 1; spec.md Requirements/Design). The approved plan
-    is read at the merge base (``ctx.approved_artifact``), never the working tree, so a
+    is read at the merge base (``ctx.approved_artifact``; on the fast lane, decision 30, at the
+    design commit gate (b) passed on), never the working tree, so a
     commit cannot excuse its own drop by editing plan.md alongside it (the riskiest step,
     spec.md Design/Risks). Added skip markers are listed in ``details.skip_markers``, never
     affecting ``ok``."""

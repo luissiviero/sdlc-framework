@@ -1,5 +1,5 @@
 ---
-description: Phase (a) plan — brainstorm a change with the owner, write changes/<id>-<slug>/intent.md via the intent-template skill, let the owner correct it, commit on sdlc/<id>/a and open the intent PR. Gate (a) = the owner merges that PR.
+description: Phase (a) plan — brainstorm a change with the owner, write changes/<id>-<slug>/intent.md via the intent-template skill, let the owner correct it, commit on sdlc/<id>/a and open the intent PR. Gate (a) = the owner merges that PR; on a non-Full profile, an intent PR the owner's own account opens starts the design at once (the fast lane, decision 30).
 argument-hint: [one-line description of the idea, ticket or incident]
 disable-model-invocation: true
 allowed-tools: Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/state/cli.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/pr/cli.py" *), Bash(git *), Bash(gh *), Read, Write, Edit, Glob, Grep, AskUserQuestion
@@ -75,7 +75,12 @@ with other means.
 
 ## 7. Report
 One line: the PR URL (or the compare URL), and "gate (a): merge the PR to approve; review
-comments are the change request (then run `/sdlc-fix`)". Do not start
+comments are the change request (then run `/sdlc-fix`)". On every profile but Full, add
+that an intent PR opened from the owner's own account takes the fast lane (decision 30):
+opening it accepts the intent, the design workflow starts at once without a merge, and the
+intent PR is closed as `sdlc:superseded` once the design PR carries the intent. On Full,
+and for a PR opened (or reopened) as a draft or by any other account, or one that changes
+anything outside its change folder, the merge stays gate (a). Do not start
 phase (b).
 
 Never edit `.claude/**`, `CLAUDE.md`, `REVIEW.md` or `sdlc.yaml`. Never use bypass-permissions
