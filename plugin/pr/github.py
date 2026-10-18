@@ -48,7 +48,16 @@ def gh_path() -> str | None:
     return shutil.which("gh")
 
 
+def _app_token_fallback() -> None:
+    """Decision 33 (R49): once the App's token is older than 50 minutes, the run publishes
+    with the workflow token (``ci/app_token.py``); a no-op without the App."""
+    from ci import app_token  # noqa: PLC0415 - stdlib only, imported when first needed
+
+    app_token.fall_back_if_stale()
+
+
 def token() -> str | None:
+    _app_token_fallback()
     for var in TOKEN_VARS:
         value = os.environ.get(var)
         if value:
@@ -141,6 +150,7 @@ def _gh(*args: str, stdin: str | None = None, cwd: str | Path | None = None) -> 
     exe = gh_path()
     if not exe:
         return {"ok": False, "code": 127, "out": "", "err": "gh not found"}
+    _app_token_fallback()  # gh reads GH_TOKEN / GITHUB_TOKEN from the environment
     try:
         proc = subprocess.run(
             [exe, *args],

@@ -30,8 +30,17 @@ import pytest
 RUNNER_PREFIXES = ("GITHUB_", "RUNNER_", "ACTIONS_")
 # ``SDLC_GATE_COMMANDS`` is the mark the runner sets in a CI session's environment (0.3.0,
 # issue #91): every process of that session inherits it, this suite included when it runs as
-# a project's test target, and two gate tests read the gate's answer to it
-RUNNER_NAMES = ("CI", "SDLC_MODEL", "SDLC_DEFAULT_BRANCH", "SDLC_GATE_COMMANDS")
+# a project's test target, and two gate tests read the gate's answer to it; the App token's
+# mint time and the workflow token the eight App workflows export (decision 33, R49) would
+# switch the tokens of a test process
+RUNNER_NAMES = (
+    "CI",
+    "SDLC_MODEL",
+    "SDLC_DEFAULT_BRANCH",
+    "SDLC_GATE_COMMANDS",
+    "SDLC_APP_TOKEN_MINTED_AT",
+    "SDLC_WORKFLOW_TOKEN",
+)
 
 
 def runner_variables(environ=None) -> list[str]:

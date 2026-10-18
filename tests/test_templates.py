@@ -526,8 +526,8 @@ def test_fix_workflow_starts_on_request_changes_and_on_the_owner_labels():
         assert f"github.event.label.name == '{label}'" in job["if"], label
     assert "sdlc:c-approved" not in job["if"] and "sdlc:d-approved" not in job["if"]
     # the checkout is the PR's head, never the review event's merge ref (after the App's mint
-    # step, R49)
-    checkout = job["steps"][1]
+    # step and its time, R49)
+    checkout = job["steps"][2]
     assert checkout["with"]["ref"] == (
         "${{ inputs.head_ref || github.event.pull_request.head.ref || github.ref }}"
     )
@@ -799,8 +799,8 @@ def test_runbook_workflow_runs_the_go_once_without_a_model():
         "startsWith(github.event.pull_request.head.ref, 'sdlc/') && "
         "endsWith(github.event.pull_request.head.ref, '/a') }}"
     )
-    # the project checkout follows the App's mint step (R49)
-    assert job["steps"][1]["with"]["ref"] == "${{ github.event.pull_request.head.ref }}"
+    # the project checkout follows the App's mint step and its time (R49)
+    assert job["steps"][2]["with"]["ref"] == "${{ github.event.pull_request.head.ref }}"
     runs = [step["run"] for step in job["steps"] if "run" in step]
     assert runs[-2] == (
         'python framework/plugin/detect/cli.py go --root . --id "$CHANGE_ID" '
@@ -832,7 +832,8 @@ def test_runbook_workflow_runs_the_go_once_without_a_model():
     assert park["env"]["SDLC_DEFAULT_BRANCH"] == DEFAULT_BRANCH_EXPR
     assert not any("secrets." in str(v) for v in park["env"].values())
     assert set(park["env"]) == {
-        "GITHUB_TOKEN", "CHANGE_ID", "REPO", "PR_NUMBER", "SDLC_DEFAULT_BRANCH", "SETUP_ERROR"
+        "GITHUB_TOKEN", "CHANGE_ID", "REPO", "PR_NUMBER", "SDLC_DEFAULT_BRANCH", "SETUP_ERROR",
+        "SDLC_WORKFLOW_TOKEN",  # R49: the fallback after 50 minutes
     }  # fmt: skip
     for step in job["steps"]:
         assert "${{" not in step.get("run", ""), step["name"]
@@ -867,6 +868,18 @@ MINT_STEP = {
         "private-key": "${{ secrets.SDLC_APP_PRIVATE_KEY }}",
     },
 }
+# the scopes the App holds (sdlc-init step 6) and so may narrow to the job's permissions:
+APP_SCOPES = ("contents", "pull-requests", "issues", "checks", "actions")
+# the mint time the runner's 50-minute fallback counts from (plugin/ci/app_token.py)
+STAMP_STEP = {
+    "name": "Record when the App token was minted",
+    "if": "steps.app.outcome == 'success'",
+    "run": (
+        "python -c \"import os, time; f = open(os.environ['GITHUB_ENV'], 'a'); "
+        "f.write('SDLC_APP_TOKEN_MINTED_AT=%d\\n' % time.time()); f.close()\""
+    ),
+}
+WORKFLOW_TOKEN = "${{ github.token }}"
 
 
 def _header(name: str) -> str:
@@ -889,15 +902,19 @@ def test_a_workflow_that_pushes_mints_the_app_token_first(name):
     data = _workflow_yaml(name)
     [job] = data["jobs"].values()
     steps = job["steps"]
-    assert steps[0] == MINT_STEP
+    # the token carries no more than this job's permissions: block grants the workflow token
+    narrowed = {
+        f"permission-{s}": data["permissions"][s] for s in APP_SCOPES if s in data["permissions"]
+    }
+    assert steps[0] == {**MINT_STEP, "with": {**MINT_STEP["with"], **narrowed}}
     # the private key: in the mint step's with: and nowhere else, never in an env:
     text = (WORKFLOW_DIR / name).read_text(encoding="utf-8")
     assert text.count("SDLC_APP_PRIVATE_KEY") == 1
     assert "SDLC_APP_PRIVATE_KEY" not in json.dumps([data.get("env"), job.get("env"), steps[1:]])
     checkouts = [s for s in steps if s.get("uses", "").startswith("actions/checkout@")]
     project = [s for s in checkouts if s["with"].get("path") != "framework"]
-    assert project == [steps[1]]  # the project checkout follows the mint step
-    assert steps[1]["with"]["token"] == APP_TOKEN  # pushes go out on its persisted token
+    assert project == [steps[2]]  # the project checkout follows the mint step and its time
+    assert steps[2]["with"]["token"] == APP_TOKEN  # pushes go out on its persisted token
     for framework in checkouts[1:]:
         assert "token" not in framework["with"]  # a public read, as before
     tokens = [
@@ -907,11 +924,25 @@ def test_a_workflow_that_pushes_mints_the_app_token_first(name):
         if key in ("GITHUB_TOKEN", "GH_TOKEN")
     ]
     assert tokens and set(tokens) == {APP_TOKEN}
-    assert "${{ github.token }}" not in json.dumps(steps)
+    # the workflow token only beside the App's, for the fallback after 50 minutes
+    for step in steps:
+        env = dict(step.get("env") or {})
+        if "GITHUB_TOKEN" in env:
+            assert env.pop("SDLC_WORKFLOW_TOKEN") == WORKFLOW_TOKEN, step.get("name")
+        assert "SDLC_WORKFLOW_TOKEN" not in env and WORKFLOW_TOKEN not in json.dumps(env)
     # the token rule names the App and keeps the fallback's explicit dispatch
     header = _header(name)
     assert "Token rule (decision 33)" in header and "SDLC_APP_ID" in header
     assert "events the App causes do start workflow runs" in header
+
+
+@pytest.mark.parametrize("name", APP_WORKFLOWS)
+def test_a_workflow_that_mints_the_app_token_records_when(name):
+    """The installation token expires an hour after it is minted; the step after the mint
+    writes the time to $GITHUB_ENV for the runner's 50-minute fallback, and only when the
+    mint ran (without the App the fallback has nothing to count from and stays a no-op)."""
+    [job] = _workflow_yaml(name)["jobs"].values()
+    assert job["steps"][1] == STAMP_STEP
 
 
 @pytest.mark.parametrize("name", TOKEN_WORKFLOWS)

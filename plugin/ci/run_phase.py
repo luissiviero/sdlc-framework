@@ -130,8 +130,8 @@ if str(PLUGIN_DIR) not in sys.path:
 from panel import ledger as panel_ledger  # noqa: E402
 from pr.github import next_page_url  # noqa: E402, F401 - re-exported, moved there in 0.2.12
 
+from ci import app_token, auto_round, fix_requests, project_setup  # noqa: E402
 from ci import auth as auth_mod  # noqa: E402
-from ci import auto_round, fix_requests, project_setup  # noqa: E402
 from gate import artifacts as art  # noqa: E402
 from gate import checks as gate_checks  # noqa: E402
 from gate import diff as gate_diff  # noqa: E402
@@ -376,6 +376,19 @@ def _github():
     except ImportError:  # pragma: no cover - only when the plugin install is incomplete
         return None
     return github
+
+
+# the env dict ``main`` hands the run (a copy of ``os.environ``), switched with it below
+_RUN_ENV: dict[str, str] | None = None
+
+
+def live_token(root: Path | None = None, env: dict[str, str] | None = None) -> dict[str, Any]:
+    """Decision 33 (R49): before a publication, the App's token gives way to the workflow
+    token once it is older than 50 minutes - in ``os.environ``, in the run's env dict and in
+    the checkout's persisted git credential (``ci/app_token.py``). Idempotent and cheap; a
+    no-op without the App. ``pr/github.py`` and ``state/gitops.py`` make the same check before
+    every request and network git command; this one also switches the run's env dict."""
+    return app_token.fall_back_if_stale(root, env if env is not None else _RUN_ENV)
 
 
 def _token(env: dict[str, str]) -> str | None:
@@ -2032,8 +2045,12 @@ def session_env(env: dict[str, str], root: Path, phase: str | None = None) -> di
     (``CACHE_HOME_ENV``; a value the workflow carries is replaced, since only the checkout is
     known to be writable) and, for a fix round, ``SDLC_RUN=fix`` (``limits.RUN_KIND_ENV``),
     which makes the session's ``start-run`` record the build caps (decision 32); any other
-    session drops a value the workflow carries."""
+    session drops a value the workflow carries. Decision 33 (R49): when the workflow hands
+    over its own token (``SDLC_WORKFLOW_TOKEN``) the session gets it as ``GITHUB_TOKEN`` and
+    ``GH_TOKEN``, never the App's (``ci/app_token.py session_tokens``)."""
     marked = {**env, gate_checks.COMMANDS_RUNNER_ENV: gate_checks.RUN_BY_RUNNER}
+    marked.update(app_token.session_tokens(env))
+    marked.pop(app_token.WORKFLOW_TOKEN_ENV, None)
     marked.setdefault(BACKGROUND_TASKS_ENV, "1")
     marked[CACHE_HOME_ENV] = str(Path(root) / SESSION_CACHE_DIR)
     marked.pop(limits.RUN_KIND_ENV, None)
@@ -2143,7 +2160,7 @@ def commands_env() -> dict[str, str]:
     credentials and the GitHub token the phase step holds. The targets run code the session
     just wrote; inside the sandbox they had one credential and a network allow-list, and
     outside it they get neither credential (``commands.setup`` runs the same way)."""
-    hidden = {*auth_mod.CREDENTIAL_VARS, "GITHUB_TOKEN", "GH_TOKEN"}
+    hidden = {*auth_mod.CREDENTIAL_VARS, "GITHUB_TOKEN", "GH_TOKEN", app_token.WORKFLOW_TOKEN_ENV}
     return {k: v for k, v in os.environ.items() if k not in hidden}
 
 
@@ -2305,6 +2322,7 @@ def dispatch(
     ``extra_inputs`` adds inputs the target workflow declares (the comment dispatcher's
     ``trigger``, decision 34); ``change_id`` and ``head_ref`` are never overridden by it.
     """
+    live_token()
     github = _github()
     if github is None:
         return {"ok": False, "reason": "plugin/pr/github.py is not available"}
@@ -2951,6 +2969,7 @@ def commit_run_record(
     ``commands_ran`` the commit also carries the gate record and status.yaml the runner's
     commands step rewrote (issue #91), and its message says so; ``note`` ends the message
     (decision 29: the automatic fix round the commit carries, ``auto_note``)."""
+    live_token(root)
     branch_phase = branch_phase or BRANCH_PHASE.get(phase, phase)
     message = f"run({phase}): spend recorded"
     if commands_ran:
@@ -3585,7 +3604,9 @@ def run_reset_judge(
     except ValueError:
         rel = str(change_dir)
     # the judge reads files and answers: it gets the model credential and no GitHub token
-    judge_env = {k: v for k, v in env.items() if k not in TOKEN_VARS}
+    judge_env = {
+        k: v for k, v in env.items() if k not in (*TOKEN_VARS, app_token.WORKFLOW_TOKEN_ENV)
+    }
     model = config.get("panel_advocate_model")
     if isinstance(model, str) and model.strip():
         judge_env["SDLC_MODEL"] = model.strip()
@@ -4105,6 +4126,7 @@ def supersede_pr(
     ``expected_head`` (the intent PR's ``fast_lane.a.sha``), a PR whose head moved since
     (the owner pushed after the design started: their commits are not dropped). A failure
     leaves it open and says why, never failing the run."""
+    live_token()
     github = _github()
     if github is None:
         return {"ok": False, "number": number, "reason": "plugin/pr/github.py is not available"}
@@ -4340,6 +4362,7 @@ def park_and_publish(
     and pushed on the work branch, and the phase's PR carrying ``sdlc:needs-human`` and the
     "What I need from you" block (OPERATING_MODEL section 5: a park is a queue item). A fix
     round parks the change's own phase on the PR's head (``branch``)."""
+    live_token(root)
     branch_phase = st.phase if phase == "fix" else BRANCH_PHASE.get(phase, phase)
     state_cli = plugin_dir / "plugin" / "state" / "cli.py"
     out: dict[str, Any] = {"parked": reason, "phase": phase, "change_id": st.id}
@@ -4430,6 +4453,7 @@ def ensure_pr(
     request now carries the phase, whatever the CLI's exit code was. A fix round passes the
     change's phase and the PR's head (``branch``): the PR is the one the review was left on.
     """
+    live_token(root, env)
     branch_phase = branch_phase or BRANCH_PHASE.get(phase, phase)
     head = branch or work_branch_for(change_id, phase)
     out: dict[str, Any] = {"head": head, "phase": branch_phase, "existed": None}
@@ -4513,8 +4537,9 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    global _RUN_ENV
     args = build_parser().parse_args(argv)
-    env = dict(os.environ)
+    env = _RUN_ENV = dict(os.environ)
     if args.phase == "triage":
         return run_triage(args, env)
     if args.find_change:

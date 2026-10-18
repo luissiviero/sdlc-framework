@@ -38,7 +38,17 @@ def runner_args() -> list[str]:
     return ["-c", f"core.hooksPath={_NO_HOOKS_DIR}", "-c", "core.fsmonitor=false"]
 
 
+# the git commands that reach the remote with the checkout's persisted credential
+NETWORK_COMMANDS = ("push", "fetch", "pull", "ls-remote")
+
+
 def run(root: Path, *args: str, check: bool = True) -> str:
+    if args and args[0] in NETWORK_COMMANDS:
+        # decision 33 (R49): past 50 minutes the App's token gives way to the workflow token,
+        # in the environment and in the credential actions/checkout left in .git/config
+        from ci import app_token  # noqa: PLC0415 - stdlib only
+
+        app_token.fall_back_if_stale(root)
     proc = subprocess.run(
         ["git", *runner_args(), *args],
         cwd=str(root),
