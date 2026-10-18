@@ -333,7 +333,11 @@ def test_the_checkout_check_fetch_takes_the_credential_in_its_environment(app_ru
 
 def test_a_hook_the_session_planted_never_runs_in_the_checkout_check(tmp_path):
     root = _repo(tmp_path)
-    subprocess.run(["git", "-C", str(root), "commit", "-q", "--allow-empty", "-m", "x"], check=True)
+    subprocess.run(
+        ["git", "-C", str(root), "-c", "user.name=t", "-c", "user.email=t@example.invalid",
+         "commit", "-q", "--allow-empty", "-m", "x"],
+        check=True,
+    )  # fmt: skip
     marker = tmp_path / "hook-ran"
     hook = root / ".git" / "hooks" / "reference-transaction"
     hook.write_text(f"#!/bin/sh\ntouch '{marker.as_posix()}'\n", encoding="utf-8")
