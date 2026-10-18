@@ -43,3 +43,4 @@ chronological order (oldest first). The current record stays in `docs/PROGRESS.m
 - [Progress — the item-11 follow-ups (2026-10-14 to 2026-10-17): change 0005 from gate (b) to plugin **1.0.2**, the sample's detect run of 2026-10-15, eight gaps recorded](2026-10-17-item-11-follow-ups.md)
 - [Progress — the study's proposals R21 to R45, the pipeline's speed (decisions 30 to 33, R46 to R49), and R10 as plugin **1.0.3** (2026-10-15 to 2026-10-17)](2026-10-17-r21-r49-and-1.0.3.md)
 - [Progress — the safety fixes of NOTES §45 (gaps 6, 7 and 8) as plugin **1.0.4**, and the owner's choices 203 to 213 on the gaps' routes (2026-10-17)](2026-10-17-1.0.4-and-choices-203-213.md)
+- [Progress — the pipeline sprint, part 1: R17 (decision 34) as plugin **1.0.5**, R46 (decision 30) as plugin **1.0.6**, and the owner's choices 214 to 218 (2026-10-17 to 2026-10-18)](2026-10-18-r17-r46-and-choices-214-218.md)
