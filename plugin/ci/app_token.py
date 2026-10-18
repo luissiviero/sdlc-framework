@@ -136,12 +136,13 @@ def _persisted(root: Path) -> list[str] | None:
     return out.splitlines() if code == 0 else None  # exit 1: the key is not set
 
 
-def _set_credential(root: Path, value: str) -> str:
+def _set_credential(root: Path, value: str, create: bool = False) -> str:
     """Make ``value`` the key's one value, as actions/checkout writes it (a placeholder
-    through ``git config``, then the file edited: the token never on a command line)."""
+    through ``git config``, then the file edited: the token never on a command line). A key
+    that is not set is left unset ("none") unless ``create``."""
     key = credential_key()
     values = _persisted(root)
-    if values is None:
+    if values is None and not create:
         return "none"
     if values == [value]:
         return "already"
@@ -179,13 +180,7 @@ def fall_back_if_stale(
     if not is_stale(env, now):
         return {"switched": False}
     workflow = _lookup(WORKFLOW_TOKEN_ENV, env)
-    targets: list[MutableMapping[str, str]] = [os.environ]
-    if env is not None and env is not os.environ:
-        targets.append(env)
-    for mapping in targets:
-        for var in TOKEN_VARS:
-            if mapping.get(var) != workflow:
-                mapping[var] = workflow
+    _switch_env(workflow, env)
     out: dict[str, Any] = {"switched": True}
     if root is not None:
         out["git_credential"] = replace_git_credential(Path(root), workflow)
@@ -193,6 +188,33 @@ def fall_back_if_stale(
         print(SWITCH_NOTE, file=sys.stderr)
         _noted = True
     return out
+
+
+def _switch_env(workflow: str, env: MutableMapping[str, str] | None) -> None:
+    """``GITHUB_TOKEN`` and ``GH_TOKEN`` become the workflow token in ``os.environ`` and in
+    ``env`` (when given)."""
+    targets: list[MutableMapping[str, str]] = [os.environ]
+    if env is not None and env is not os.environ:
+        targets.append(env)
+    for mapping in targets:
+        for var in TOKEN_VARS:
+            if mapping.get(var) != workflow:
+                mapping[var] = workflow
+
+
+class CredentialError(RuntimeError):
+    """The checkout's credential could neither be pointed at the workflow token nor removed
+    before a session: the session does not start (it would hold the App's token)."""
+
+
+def _credential_config_problems(root: Path) -> list[str]:
+    """The keys of the git config that would redirect or unprotect the runner's next push
+    (``ci/checkout_check.py config_problems``: a proxy, TLS verification switched off or
+    another CA, a URL rewrite, an include, a credential helper...). The runner image's own
+    global proxy, if it has one, reads the same: the run then stays on the workflow token."""
+    from ci import checkout_check  # noqa: PLC0415 - checkout_check imports this module
+
+    return checkout_check.config_problems(root, checkout_check.CREDENTIAL_SCOPES)
 
 
 @contextlib.contextmanager
@@ -206,8 +228,13 @@ def session_credential(
     and does not expire with the App's. Afterwards the App's header comes back while that
     token is fresh; once it is stale the run stays on the workflow token
     (``fall_back_if_stale``). Restored in a ``finally``, so a session that crashed or timed
-    out restores too. A no-op without
-    ``SDLC_WORKFLOW_TOKEN`` or without a persisted credential."""
+    out restores too. The App's header comes back only into a git config the session left
+    clean (``_credential_config_problems``): a session that wrote a proxy, switched TLS
+    verification off or named another CA keeps the run on the workflow token, with one
+    stderr line naming the key, and the project's CI on that head waits for the owner's
+    approval, as in the fallback. A no-op without ``SDLC_WORKFLOW_TOKEN`` or without a
+    persisted credential. Raises ``CredentialError`` before the session when the credential
+    can neither be switched nor removed."""
     workflow = _lookup(WORKFLOW_TOKEN_ENV, env)
     checkout = Path(root) if root is not None else None
     before = _persisted(checkout) if workflow and checkout is not None else None
@@ -215,14 +242,35 @@ def session_credential(
         yield {"session_credential": "unchanged"}
         return
     during = _set_credential(checkout, credential_value(workflow))
+    if during not in ("replaced", "already"):
+        # fail closed: the session starts with no persisted credential at all and cannot
+        # push; the runner publishes after it, so nothing is lost but the session's own pushes
+        code, why = _git(checkout, "config", "--local", "--unset-all", credential_key())
+        if code != 0:
+            raise CredentialError(
+                f"the session's git credential could not be switched ({during}) nor removed "
+                f"(git config exited {code}: {why.strip()}): the session does not start"
+            )
+        during = "removed"
     try:
         yield {"session_credential": during}
     finally:
         _replaced.discard((str(checkout.resolve()), credential_key()))
-        if is_stale(env):
+        problems = _credential_config_problems(checkout)
+        if problems:
+            print(
+                f"the session changed the checkout's git config ({problems[0]}): the workflow "
+                "token publishes this run (decision 33); the project's CI on this head waits "
+                "for the owner's approval",
+                file=sys.stderr,
+            )
+            _switch_env(workflow, env)
+            _set_credential(checkout, credential_value(workflow), create=True)
+        elif is_stale(env):
+            _set_credential(checkout, credential_value(workflow), create=True)
             fall_back_if_stale(checkout, env)
         else:
-            _set_credential(checkout, before[-1])  # the App's header, still fresh
+            _set_credential(checkout, before[-1], create=True)  # the App's header, still fresh
 
 
 def session_tokens(env: Mapping[str, str]) -> dict[str, str]:

@@ -1995,8 +1995,11 @@ def invoke(argv: list[str], root: Path, env: dict[str, str], timeout: int) -> tu
     run_env = {
         k: v for k, v in auth_mod.credential_env(env).items() if k != app_token.WORKFLOW_TOKEN_ENV
     }
-    with app_token.session_credential(root, _RUN_ENV if _RUN_ENV is not None else env):
-        return _run_session(argv, root, run_env, timeout)
+    try:
+        with app_token.session_credential(root, _RUN_ENV if _RUN_ENV is not None else env):
+            return _run_session(argv, root, run_env, timeout)
+    except app_token.CredentialError as exc:  # never a session holding the App's token
+        return None, "", str(exc), 1
 
 
 def _run_session(argv: list[str], root: Path, env: dict[str, str], timeout: int) -> tuple:
@@ -2377,7 +2380,10 @@ def run_triage(args, env: dict[str, str]) -> int:
     if args.dry_run:
         _emit({"phase": "triage", "argv": argv})
         return EXIT_OK
-    data, raw, err, code = invoke(argv, root, env, run_timeout_seconds(_config(root), "triage"))
+    # the session's environment, as every session gets it (the workflow token, never the App's)
+    data, raw, err, code = invoke(
+        argv, root, session_env(env, root), run_timeout_seconds(_config(root), "triage")
+    )
     text = (data or {}).get("result") if isinstance(data, dict) else raw
     print(text or raw)
     if code != 0 or (isinstance(data, dict) and data.get("is_error")):

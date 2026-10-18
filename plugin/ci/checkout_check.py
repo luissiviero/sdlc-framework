@@ -57,6 +57,8 @@ DENIED_CONFIG = (
     r"^core\.(hookspath|fsmonitor|sshcommand|gitproxy|askpass|pager|editor)$",
     r"^(http|https)\..*proxy$",
     r"^(http|https)\.proxy$",
+    # R49 review: TLS verification off or another CA would expose the next push's token
+    r"^(http|https)\..*ssl(verify|cainfo|capath|cert|key)$",
     r"^remote\..*\.(proxy|pushurl|uploadpack|receivepack|vcs)$",
     r"^credential\..*helper$",
     r"^alias\..*$",
@@ -92,6 +94,14 @@ DENIED_GLOBAL = DENIED_CONFIG[:3]
 
 
 SCOPES = (("--local", DENIED_CONFIG), ("--global", DENIED_GLOBAL))
+# Decision 33 (R49): before the runner hands the App's token back to a checkout a model's
+# session could write (``app_token.session_credential``), the keys that would send the next
+# push elsewhere or unprotected count at the global scope too (the session can write
+# ~/.gitconfig as well): a proxy, and TLS verification or its CA.
+CREDENTIAL_SCOPES = (
+    ("--local", DENIED_CONFIG),
+    ("--global", (*DENIED_GLOBAL, *[p for p in DENIED_CONFIG if p.startswith("^(http|https)")])),
+)
 
 
 def config_problems(root: Path, scopes=SCOPES) -> list[str]:

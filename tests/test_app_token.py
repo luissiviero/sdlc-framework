@@ -35,6 +35,8 @@ def app_run(monkeypatch):
     monkeypatch.setenv("GH_TOKEN", APP)
     monkeypatch.setenv(app_token.WORKFLOW_TOKEN_ENV, WORKFLOW)
     monkeypatch.setenv(app_token.MINTED_AT_ENV, str(int(NOW)))
+    # the machine's own ~/.gitconfig is not the test's: an empty global config
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", os.devnull)
 
 
 def _checkout(tmp_path: Path, credential: str | None) -> Path:
@@ -283,3 +285,99 @@ def test_the_checkout_check_fetch_checks_the_token_first(tmp_path, monkeypatch):
     monkeypatch.setattr(app_token, "fall_back_if_stale", _stop)
     with pytest.raises(_Checked):
         checkout_check.default_branch_problems(tmp_path, "https://github.com/o/r", "main", "v1")
+
+
+# --- R49 fix round 2: a git config the session altered keeps the workflow token -------------
+@pytest.mark.parametrize(
+    "key, value",
+    [
+        ("http.proxy", "http://proxy.invalid:3128"),
+        ("http.sslVerify", "false"),
+        ("http.https://github.com/.sslCAInfo", "/tmp/other-ca.pem"),
+    ],
+)
+def test_a_session_that_redirects_the_next_push_leaves_the_workflow_header(
+    app_run, tmp_path, monkeypatch, capsys, key, value
+):
+    """The App's header never goes back into a config that would send the next push
+    through a proxy or without TLS verification; the run carries on with the workflow token."""
+    monkeypatch.setattr(app_token.time, "time", lambda: NOW + 60)
+    root = _checkout(tmp_path, _basic(APP))
+
+    def meddling_session(argv, cwd, env, timeout):
+        subprocess.run(["git", "-C", str(root), "config", "--local", key, value], check=True)
+        return None, "", "", 0
+
+    monkeypatch.setattr(run_phase, "_run_session", meddling_session)
+    run_phase.invoke(["claude"], root, run_phase.session_env(dict(os.environ), root), 60)
+    assert _headers(root) == [_basic(WORKFLOW)]
+    assert os.environ["GITHUB_TOKEN"] == WORKFLOW and os.environ["GH_TOKEN"] == WORKFLOW
+    err = capsys.readouterr().err
+    assert f"carries {key.lower()}" in err.lower() and "the workflow token publishes" in err
+
+
+def test_a_legitimate_push_u_still_gets_the_app_header_back(app_run, tmp_path, monkeypatch):
+    """The check reads keys, not bytes: a session's ``git push -u`` writes branch keys."""
+    monkeypatch.setattr(app_token.time, "time", lambda: NOW + 60)
+    root = _checkout(tmp_path, _basic(APP))
+
+    def pushing_session(argv, cwd, env, timeout):
+        for k, v in (("branch.sdlc/0001/c.remote", "origin"), ("branch.sdlc/0001/c.merge", "x")):
+            subprocess.run(["git", "-C", str(root), "config", "--local", k, v], check=True)
+        return None, "", "", 0
+
+    monkeypatch.setattr(run_phase, "_run_session", pushing_session)
+    run_phase.invoke(["claude"], root, run_phase.session_env(dict(os.environ), root), 60)
+    assert _headers(root) == [_basic(APP)]
+
+
+def test_a_failed_switch_starts_the_session_with_no_credential(app_run, tmp_path, monkeypatch):
+    """Fail closed: when the workflow header cannot be written, the key is removed before
+    the session (it cannot push; the runner publishes after it) and comes back after."""
+    monkeypatch.setattr(app_token.time, "time", lambda: NOW + 60)
+    root = _checkout(tmp_path, _basic(APP))
+    real = app_token._set_credential
+    calls = {"n": 0}
+
+    def failing_first(root_, value, create=False):
+        calls["n"] += 1
+        return "failed: test" if calls["n"] == 1 else real(root_, value, create)
+
+    monkeypatch.setattr(app_token, "_set_credential", failing_first)
+    seen = _session_seen(root, monkeypatch)
+    assert seen["headers"] == [] and _basic(APP) not in seen["config"]
+    assert _headers(root) == [_basic(APP)]
+
+
+def test_a_credential_that_can_be_neither_switched_nor_removed_starts_no_session(
+    app_run, tmp_path, monkeypatch
+):
+    root = _checkout(tmp_path, _basic(APP))
+    monkeypatch.setattr(app_token, "_set_credential", lambda *a, **k: "failed: test")
+    real_git = app_token._git
+    monkeypatch.setattr(
+        app_token,
+        "_git",
+        lambda r, *args: (5, "locked") if "--unset-all" in args else real_git(r, *args),
+    )
+    ran = []
+    monkeypatch.setattr(run_phase, "_run_session", lambda *a: ran.append(1))
+    data, _raw, err, code = run_phase.invoke(["claude"], root, {}, 60)
+    assert ran == [] and code == 1 and "does not start" in err
+
+
+def test_the_triage_session_gets_the_session_environment(app_run, tmp_path, monkeypatch):
+    from tests.test_ci import KEY_ENV, Args
+
+    seen = {}
+
+    def fake_session(argv, cwd, env, timeout):
+        seen.update(env)
+        return None, "it failed", "", 0
+
+    monkeypatch.setattr(run_phase, "_run_session", fake_session)
+    env = {**KEY_ENV, "GITHUB_TOKEN": APP, "GH_TOKEN": APP, app_token.WORKFLOW_TOKEN_ENV: WORKFLOW}
+    args = Args(root=str(tmp_path), phase="triage", log="build.log", id=None, dry_run=False)
+    assert run_phase.run_triage(args, env) == run_phase.EXIT_OK
+    assert seen["GITHUB_TOKEN"] == WORKFLOW and seen["GH_TOKEN"] == WORKFLOW
+    assert app_token.WORKFLOW_TOKEN_ENV not in seen
