@@ -30,7 +30,7 @@ Run tests and lint before reporting any task complete, and paste the output. If 
 
 ## Things to get right
 - Only the owner merges to `main`; the automation identity has branch-only write access. Never use bypass-permissions mode.
-- Events caused by the CI workflow token do not start workflow runs (except workflow_dispatch / repository_dispatch): automated phase transitions dispatch the next workflow explicitly.
+- Events caused by the CI workflow token do not start workflow runs (except workflow_dispatch / repository_dispatch): automated phase transitions dispatch the next workflow explicitly. With vars.SDLC_APP_ID the automation pushes as the project's GitHub App, whose events do start runs (decision 33); the explicit dispatch stays for the fallback.
 - Escalation means park (label `sdlc:needs-human`, write "what I need from you"); the only notification is the review request on a PR that waits for the owner (decision 31).
 - The plan.md run is read-only (Read/Grep/Glob); the first run with edit tools is phase (c).
 - Verify how Claude Code on Windows invokes hook commands before writing the first hook; record the answer in `docs/notes/1.md`.
