@@ -7,7 +7,8 @@
 # Token rule: events caused by this workflow's GITHUB_TOKEN never start another workflow run
 # - only workflow_dispatch and repository_dispatch do. This workflow starts nothing; it edits
 # the body of one long-lived issue, which sends no notification. It holds no deploy secret
-# and needs no model credential.
+# and needs no model credential. It keeps the workflow token, not the App's (decision 33):
+# it pushes nothing.
 #
 # Since plugin 0.2.19 the digest ends with the counters of build guide step 42.2
 # (pr/counters.py: first-pass merge share, fix iterations, incidents, dismissals), computed
@@ -43,6 +44,7 @@ jobs:
       - name: Check out the project
         uses: actions/checkout@v5
         with:
+          persist-credentials: false
           fetch-depth: 0
 
       - name: Read the framework pin from the default branch's sdlc.yaml, with its script
@@ -57,6 +59,7 @@ jobs:
       - name: Check out the pinned framework (public repository, no token)
         uses: actions/checkout@v5
         with:
+          persist-credentials: false
           repository: "luissiviero/sdlc-framework"
           ref: ${{ steps.pin.outputs.ref }}
           path: framework

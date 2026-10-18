@@ -542,7 +542,10 @@ def cmd_run(args) -> int:
         # D12 (live, 2026-09-25): a run by the automation identity never ran a job. Those
         # zero-job runs are caused by the workflow token, so they are always by its login
         # (source.DEFAULT_EXCLUDED_ACTORS), never by sdlc.yaml's automation_identity: a PAT
-        # or App identity listed there runs real tests, which are observations.
+        # or App identity listed there runs real tests, which are observations. Since 1.0.9
+        # (decision 33, R49) the project's CI also runs by itself on the automation's work
+        # branches, under the App's login: source.counts leaves out every run on an sdlc/...
+        # head, so a fix loop's intended red heads file no false incident.
         fetched = source.fetch(
             args.repo,
             since=since,

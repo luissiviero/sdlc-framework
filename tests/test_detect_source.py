@@ -129,6 +129,28 @@ def test_counts_skips_the_framework_workflows(name, expected):
     assert source.counts(run(1, "2026-09-01T10:00:00Z", name=name), None) is expected
 
 
+@pytest.mark.parametrize(
+    ("head_branch", "expected"),
+    [
+        ("sdlc/0001/c", False),
+        ("sdlc/0009/a", False),
+        ("sdlc/0009/dismiss", False),
+        ("main", True),
+        ("feature/sdlc/x", True),
+        ("claude/intent-web", True),
+        (None, True),
+    ],
+)
+def test_counts_skips_the_automation_s_work_branches(head_branch, expected):
+    """R49 review, N5: with the GitHub App (decision 33) the project's CI runs by itself on the
+    automation's heads, under the App's login; a fix loop's intended red heads must not read
+    as the CI failure rate. Any run on an sdlc/ head is left out, whoever the actor."""
+    r = {**run(1, "2026-09-01T10:00:00Z", "failure"), "head_branch": head_branch}
+    r["actor"] = {"login": "sdlc-luissiviero[bot]"}
+    assert source.counts(r, None) is expected
+    assert "head_branch" in source.CACHED_FIELDS and source.CACHE_SCHEMA_VERSION == 3
+
+
 def test_counts_workflow_filter_is_case_insensitive_and_exact():
     r = run(1, "2026-09-01T10:00:00Z", name="Unit Tests")
     assert source.counts(r, "unit tests")

@@ -15,7 +15,8 @@ runner (``ci/run_phase.py``) reads the rewritten gate record with the helpers he
   marks the record and ``status.yaml`` (``mark_fixing``: the PR carries ``sdlc:fixing``
   instead of ``sdlc:needs-human``; the record keeps its failing checks and its ``park``, so the
   check run ``sdlc/<phase>`` stays red), commits them with the run record, refreshes the PR and
-  dispatches ``sdlc-fix.yml`` (the workflow token starts no run but by ``workflow_dispatch``);
+  dispatches ``sdlc-fix.yml`` (the workflow token starts no run but by ``workflow_dispatch``,
+  and the fix job skips a label the App applied, decision 33);
 - the dispatched round (``run_phase.py --phase fix``) turns the pending ``auto-round.json``
   whose head matches into one request of kind ``red-targets`` in ``evidence/fix-requests.json``
   and marks the file ``taken`` (``take_pending``), so a later round does not reuse it;

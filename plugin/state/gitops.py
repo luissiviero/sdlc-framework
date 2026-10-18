@@ -38,6 +38,26 @@ def runner_args() -> list[str]:
     return ["-c", f"core.hooksPath={_NO_HOOKS_DIR}", "-c", "core.fsmonitor=false"]
 
 
+# the git commands that reach the remote, and so take a credential
+NETWORK_COMMANDS = ("push", "fetch", "pull", "ls-remote", "clone")
+
+
+def network_env(
+    args: tuple[str, ...] | list[str], root: Path | str | None = None
+) -> dict[str, str] | None:
+    """The environment of a git call in ``root``: for a network command on a runner, the
+    process's own plus the credential in git's command-scope config (``ci/app_token.py
+    git_auth_env``, which judges ``root``'s git config before handing out the App's token;
+    decision 33, R49: no checkout persists one in ``.git/config``); None otherwise (the
+    process's own, unchanged)."""
+    if not args or args[0] not in NETWORK_COMMANDS:
+        return None
+    from ci import app_token  # noqa: PLC0415 - stdlib only
+
+    auth = app_token.git_auth_env(root=root)
+    return {**os.environ, **auth} if auth else None
+
+
 def run(root: Path, *args: str, check: bool = True) -> str:
     proc = subprocess.run(
         ["git", *runner_args(), *args],
@@ -45,6 +65,7 @@ def run(root: Path, *args: str, check: bool = True) -> str:
         capture_output=True,
         text=True,
         encoding="utf-8",
+        env=network_env(args, root),
     )
     if check and proc.returncode != 0:
         raise GitError(f"git {' '.join(args)} failed: {proc.stderr.strip() or proc.stdout}")

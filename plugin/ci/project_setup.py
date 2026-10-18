@@ -134,11 +134,16 @@ def paths_changed_outside_changes(root: Path, ref: str) -> list[str]:
 
 
 def run_setup(
-    root: Path, timeout: int = TIMEOUT_SECONDS, ref: str | None = None
+    root: Path,
+    timeout: int = TIMEOUT_SECONDS,
+    ref: str | None = None,
+    env: dict[str, str] | None = None,
 ) -> tuple[dict[str, Any], int]:
     """(result, exit code). A project with no setup command is skipped, not failed. With
     ``ref``, the command comes from that ref's ``sdlc.yaml``, a head that changed files outside
-    ``changes/`` relative to it runs nothing, and the result names the ref."""
+    ``changes/`` relative to it runs nothing, and the result names the ref. ``env`` is the
+    command's environment when given (``run_phase.commands_env``: no GitHub token and no
+    model credential), else the process's own."""
     root = Path(root).resolve()
     extra: dict[str, Any] = {"ref": ref} if ref else {}
     if ref:
@@ -163,7 +168,7 @@ def run_setup(
     command = setup_command(config)
     if not command:
         return {"skipped": NOTHING_TO_RUN, **extra}, EXIT_OK
-    run = run_command(command, root, timeout, tail=OUTPUT_TAIL)
+    run = run_command(command, root, timeout, tail=OUTPUT_TAIL, env=env)
     exit_code = run.get("exit_code")
     result = {
         "command": command,

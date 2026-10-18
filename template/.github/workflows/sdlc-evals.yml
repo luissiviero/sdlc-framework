@@ -15,7 +15,8 @@
 # The report is an artifact; nothing is committed and nobody is notified.
 #
 # Token rule: events caused by this workflow's GITHUB_TOKEN never start another workflow run.
-# This workflow starts nothing and writes nothing.
+# This workflow starts nothing and writes nothing, so it keeps the workflow token, not the
+# App's (decision 33).
 #
 # Schedule note: cron is UTC, runs on the default branch, and an off-the-hour minute is less
 # delayed than :00. GitHub disables schedules in a public repository after 60 days without
@@ -51,6 +52,7 @@ jobs:
       - name: Check out the project
         uses: actions/checkout@v5
         with:
+          persist-credentials: false
           fetch-depth: 0
 
       - name: Read the framework pin from the default branch's sdlc.yaml, with its script
@@ -65,6 +67,7 @@ jobs:
       - name: Check out the pinned framework (public repository, no token)
         uses: actions/checkout@v5
         with:
+          persist-credentials: false
           repository: "{{FRAMEWORK_REPO}}"
           ref: ${{ steps.pin.outputs.ref }}
           path: framework

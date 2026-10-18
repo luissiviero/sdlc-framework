@@ -17,9 +17,12 @@
 # project runbook with a command runs with the repository's own secrets (add them to the
 # env: of the Go step below).
 #
-# Token rule: events caused by this workflow's GITHUB_TOKEN never start another workflow run
-# - only workflow_dispatch and repository_dispatch do. Your label fires this workflow
-# normally; the commits and the runbook's pull request start nothing.
+# Token rule (decision 33): with the repository variable SDLC_APP_ID set, the job pushes and
+# opens the runbook's pull request with the project's GitHub App token, and the events the App
+# causes do start workflow runs (the project's CI on its head). Without it the job falls back
+# to the workflow token, and its commits and pull requests never start another workflow run.
+# Your label fires this workflow normally; the job skips a label a [bot] applied. The App's
+# private key reaches the mint step only.
 #
 # /sdlc-init filled in the framework repository.
 name: SDLC runbook (Go)
@@ -43,16 +46,42 @@ concurrency:
 jobs:
   go:
     # the incident PR's head only: a Go label on a build PR (sdlc/<id>/c) would fail the
-    # setup step's outside-changes/ check every time and has no incident to park
-    if: ${{ github.event.label.name == 'sdlc:go' && startsWith(github.event.pull_request.head.ref, 'sdlc/') && endsWith(github.event.pull_request.head.ref, '/a') }}
+    # setup step's outside-changes/ check every time and has no incident to park. A Go a
+    # [bot] applied never runs (R49: the App's own labels start workflows); detect/cli.py go
+    # checks the actor again.
+    if: ${{ github.event.label.name == 'sdlc:go' && !endsWith(github.event.sender.login, '[bot]') && startsWith(github.event.pull_request.head.ref, 'sdlc/') && endsWith(github.event.pull_request.head.ref, '/a') }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
+      # Decision 33: the automation pushes and opens pull requests as the project's GitHub
+      # App. Without the repository variable SDLC_APP_ID this step is skipped and every step
+      # below falls back to the workflow token. The private key is read here only.
+      - name: Mint the App token (decision 33; skipped without vars.SDLC_APP_ID)
+        id: app
+        if: ${{ vars.SDLC_APP_ID != '' }}
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ vars.SDLC_APP_ID }}
+          private-key: ${{ secrets.SDLC_APP_PRIVATE_KEY }}
+          # no more than this job's permissions: block grants the workflow token
+          permission-contents: write
+          permission-pull-requests: write
+          permission-issues: write
+
+      # The token expires an hour after it is minted (the action's README); past 50
+      # minutes the runner publishes with the workflow token instead (ci/app_token.py),
+      # counted from this time.
+      - name: Record when the App token was minted
+        if: steps.app.outcome == 'success'
+        run: python -c "import os, time; f = open(os.environ['GITHUB_ENV'], 'a'); f.write('SDLC_APP_TOKEN_MINTED_AT=%d\n' % time.time()); f.close()"
+
       # The incident PR's head: sdlc/<id>/a, which carries the detection record, the
       # proposal and status.yaml.
       - name: Check out the pull request's head
         uses: actions/checkout@v5
         with:
+          persist-credentials: false
+          token: ${{ steps.app.outputs.token || github.token }}
           ref: ${{ github.event.pull_request.head.ref }}
           fetch-depth: 0
 
@@ -68,6 +97,7 @@ jobs:
       - name: Check out the pinned framework (public repository, no token)
         uses: actions/checkout@v5
         with:
+          persist-credentials: false
           repository: "luissiviero/sdlc-framework"
           ref: ${{ steps.pin.outputs.ref }}
           path: framework
@@ -75,7 +105,8 @@ jobs:
       - name: Find the change this pull request carries
         id: find
         env:
-          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ steps.app.outputs.token || github.token }}
+          SDLC_WORKFLOW_TOKEN: ${{ github.token }}
           CHANGE_ID: ""
           HEAD_REF: ${{ github.event.pull_request.head.ref }}
           REPO: ${{ github.repository }}
@@ -99,7 +130,8 @@ jobs:
       - name: Go — run the proposed runbook once, as the label's actor authorized
         if: steps.find.outputs.change_id != '' && steps.setup.outcome == 'success'
         env:
-          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ steps.app.outputs.token || github.token }}
+          SDLC_WORKFLOW_TOKEN: ${{ github.token }}
           CHANGE_ID: ${{ steps.find.outputs.change_id }}
           REPO: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
@@ -113,7 +145,8 @@ jobs:
       - name: Park the incident when the setup step failed
         if: steps.setup.outcome == 'failure'
         env:
-          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ steps.app.outputs.token || github.token }}
+          SDLC_WORKFLOW_TOKEN: ${{ github.token }}
           CHANGE_ID: ${{ steps.find.outputs.change_id }}
           REPO: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number }}

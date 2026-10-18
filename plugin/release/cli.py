@@ -289,10 +289,10 @@ def store_release_record(
     release checked out; it is pushed to the branch (when there) and always to the ref
     ``refs/sdlc/released/<id>``, which no branch deletion touches. A temporary worktree keeps
     the checkout as it is; a push rejected by a concurrent push is retried on the new tip,
-    ``RECORD_PUSH_ATTEMPTS`` times. The push relies on the credential the job's checkout
-    left in the shared ``.git/config`` (``actions/checkout``'s ``extraheader``), which a
-    worktree shares; a checkout that moved it to a per-directory include would need a
-    ``git -c`` here. A record already there, on the ref or the branch, is "stored".
+    ``RECORD_PUSH_ATTEMPTS`` times. The push takes its credential from its environment
+    (``approval.make_git`` → ``state/gitops.py network_env``, the job's ``GITHUB_TOKEN``):
+    no checkout persists one in ``.git/config`` (decision 33, R49), so a worktree needs
+    nothing of its own. A record already there, on the ref or the branch, is "stored".
     """
     branch = c.work_branch(change_id, "c")
     ref = RELEASED_REF.format(id=change_id)

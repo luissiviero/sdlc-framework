@@ -11,7 +11,8 @@
 # Token rule: events caused by this workflow's GITHUB_TOKEN never start another workflow run
 # - only workflow_dispatch and repository_dispatch do. The owner's close fires this workflow
 # normally; the commits it pushes to the change's branches start nothing. Not a phase run: no
-# claude starts, no model credential is read, no deploy secret is held.
+# claude starts, no model credential is read, no deploy secret is held. It keeps the workflow
+# token, not the App's (decision 33): an end state and a dismissal record need no CI run.
 #
 # The change is found from the pull request's own files (its changes/<id>-<slug>/ folder),
 # never from the head name alone (a web-session intent PR carries a claude/... head). A
@@ -64,6 +65,7 @@ jobs:
       - name: Check out the pull request's head
         uses: actions/checkout@v5
         with:
+          persist-credentials: false
           ref: ${{ github.event.pull_request.head.ref }}
           fetch-depth: 0
 
@@ -79,6 +81,7 @@ jobs:
       - name: Check out the pinned framework (public repository, no token)
         uses: actions/checkout@v5
         with:
+          persist-credentials: false
           repository: "{{FRAMEWORK_REPO}}"
           ref: ${{ steps.pin.outputs.ref }}
           path: framework
