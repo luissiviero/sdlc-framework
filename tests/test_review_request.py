@@ -151,11 +151,16 @@ def test_a_github_failure_is_a_reason_never_an_exception(fail, pending, label):
 @pytest.fixture
 def fake_routes(monkeypatch):
     """Every client function ``upsert`` calls, answered offline; review calls recorded."""
-    state = {"existing": None, "calls": []}
+    state = {"existing": None, "calls": [], "reviewers": []}
 
-    def find_open_pr(repo, head, cwd=None):
+    def find_open_pr(repo, head, cwd=None, reviewers=False):
+        state["reviewers"].append(("find", reviewers))
         existing = state["existing"]
         return {"route": "api", "ok": True, **(existing or {"number": None, "labels": []})}
+
+    def pr_by_number(repo, number, cwd=None, reviewers=False):
+        state["reviewers"].append(("by_number", reviewers))
+        return {"route": "api", "ok": True, **pr(), "number": 9}
 
     def record(name):
         def call(repo, number, logins, cwd=None):
@@ -178,7 +183,7 @@ def fake_routes(monkeypatch):
     monkeypatch.setattr(
         github,
         "pr_by_number",
-        lambda *a, **k: {"route": "api", "ok": True, **pr(), "number": 9},
+        pr_by_number,
     )
     monkeypatch.setattr(github, "ensure_label", lambda *a, **k: {"ok": True})
     monkeypatch.setattr(github, "set_labels", lambda *a, **k: {"ok": True})
@@ -201,9 +206,12 @@ def test_upsert_requests_the_review_only_with_the_flag(project, capsys, fake_rou
     out = upsert(capsys, root)
     assert out["created"] is True and "review_request" not in out
     assert fake_routes["calls"] == []  # the model's in-session upserts request nothing
+    assert fake_routes["reviewers"] == [("find", False)]  # the plain lookup, as before
     out = upsert(capsys, root, "--request-review")
     assert out["review_request"]["action"] == "requested"
     assert fake_routes["calls"] == [("request", 9, [OWNER])]
+    # the sync's lookups ask for the author and the pending reviewers
+    assert fake_routes["reviewers"][1:] == [("find", True), ("by_number", True)]
     # a later publication on the same PR, now carrying sdlc:fixing: the request is withdrawn
     fake_routes["calls"].clear()
     fake_routes["existing"] = {**pr(pending=True), "number": 9, "labels": [c.ready_label("b")]}
@@ -255,6 +263,56 @@ def test_on_a_runner_the_default_branch_names_the_owner(project, capsys, fake_ro
     out = upsert(capsys, root, "--request-review")
     assert out["review_request"]["owner"] == "realowner"
     assert fake_routes["calls"] == [("request", 9, ["realowner"])]
+
+
+def test_on_a_runner_a_default_copy_without_owner_falls_to_the_repository_owner(
+    project, capsys, fake_routes, monkeypatch
+):
+    """The default branch's copy names no owner while the head writes ``owner: intruder``:
+    the owner is the repository owner from the runner's environment, never the head's."""
+    root, change = project
+    git(root, "remote", "add", "origin", "https://github.com/o/r.git")
+    git(root, "update-ref", "refs/remotes/origin/main", "HEAD")
+    git(root, "checkout", "-q", "-b", "sdlc/0001/b")
+    sdlc = root / "sdlc.yaml"
+    sdlc.write_text(sdlc.read_text(encoding="utf-8") + "owner: intruder\n", encoding="utf-8")
+    git(root, "commit", "-q", "-am", "the head names its own owner")
+    monkeypatch.setenv("GITHUB_ACTIONS", "true")
+    monkeypatch.setenv("SDLC_DEFAULT_BRANCH", "main")
+    gate_json(change, "b", "park", c.NEEDS_HUMAN_LABEL)
+    out = upsert(capsys, root, "--request-review")
+    assert out["review_request"]["owner"] == OWNER
+    assert fake_routes["calls"] == [("request", 9, [OWNER])]
+
+
+def test_a_new_pr_that_cannot_be_read_back_is_requested_as_nobody_s(
+    project, capsys, fake_routes, monkeypatch
+):
+    """The re-read of a just-created PR failed: it is open and nobody is requested yet."""
+    root, change = project
+    git(root, "remote", "add", "origin", "https://github.com/o/r.git")
+    gate_json(change, "b", "wait", c.ready_label("b"))
+    monkeypatch.setattr(github, "pr_by_number", lambda *a, **k: {"ok": False, "reason": "HTTP 502"})
+    out = upsert(capsys, root, "--request-review")
+    assert out["created"] is True and out["review_request"]["action"] == "requested"
+    assert fake_routes["calls"] == [("request", 9, [OWNER])]
+
+
+def test_an_error_in_the_sync_never_changes_the_upsert(project, capsys, fake_routes, monkeypatch):
+    root, change = project
+    git(root, "remote", "add", "origin", "https://github.com/o/r.git")
+    gate_json(change, "b", "park", c.NEEDS_HUMAN_LABEL)
+
+    def boom(*_a, **_k):
+        raise RuntimeError("unexpected")
+
+    monkeypatch.setattr(pr_cli.review_request, "sync_owner_review", boom)
+    out = upsert(capsys, root, "--request-review")
+    assert out["route"] == "api" and out["number"] == 9
+    assert out["review_request"] == {
+        "ok": False,
+        "reason": "review request: RuntimeError: unexpected",
+    }
 
 
 def test_on_a_runner_without_the_default_branch_copy_nobody_is_requested(
@@ -334,7 +392,6 @@ def test_the_pr_shape_carries_author_and_requested_reviewers():
         }
     )
     assert gh["author"] == "app/github-actions" and gh["requested_reviewers"] == [OWNER]
-    assert "author" in github.GH_PR_FIELDS and "reviewRequests" in github.GH_PR_FIELDS
     assert github._EMPTY_PR["requested_reviewers"] == [] and github._EMPTY_PR["author"] is None
 
 
@@ -358,3 +415,46 @@ def test_request_and_remove_reviewers_use_the_rest_route(monkeypatch):
         ("POST", path, {"reviewers": [OWNER]}),
         ("DELETE", path, {"reviewers": [OWNER]}),
     ]
+
+
+def test_remove_reviewers_gh_route(monkeypatch):
+    seen: list[tuple] = []
+
+    def fake_gh(*args, stdin=None, cwd=None):
+        seen.append(args)
+        return {"ok": True, "code": 0, "out": "", "err": ""}
+
+    monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+    monkeypatch.delenv("GH_TOKEN", raising=False)
+    monkeypatch.setattr(github, "gh_path", lambda: "/usr/bin/gh")
+    monkeypatch.setattr(github, "_gh", fake_gh)
+    assert github.remove_reviewers(REPO, 5, [OWNER])["route"] == "gh"
+    assert github.request_reviewers(REPO, 5, [OWNER])["ok"] is True
+    assert seen == [
+        ("pr", "edit", "5", "--repo", REPO, "--remove-reviewer", OWNER),
+        ("pr", "edit", "5", "--repo", REPO, "--add-reviewer", OWNER),
+    ]
+
+
+def test_only_the_sync_s_lookups_ask_gh_for_review_requests(monkeypatch):
+    """A team's review request can fail ``reviewRequests`` under a workflow token: every
+    other lookup keeps the narrow field set."""
+    seen: list[str] = []
+
+    def fake_gh_json(*args, cwd=None):
+        seen.append(args[args.index("--json") + 1])
+        return ({"number": 1, "state": "OPEN"} if args[1] == "view" else []), ""
+
+    monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+    monkeypatch.delenv("GH_TOKEN", raising=False)
+    monkeypatch.setattr(github, "gh_path", lambda: "/usr/bin/gh")
+    monkeypatch.setattr(github, "_gh_json", fake_gh_json)
+    github.find_open_pr(REPO, "sdlc/0001/b")
+    github.pr_by_number(REPO, 1)
+    github.find_pr(REPO, "sdlc/0001/b", "all")
+    assert seen == [github.GH_PR_FIELDS] * 3 and "reviewRequests" not in github.GH_PR_FIELDS
+    seen.clear()
+    github.find_open_pr(REPO, "sdlc/0001/b", reviewers=True)
+    github.pr_by_number(REPO, 1, reviewers=True)
+    assert seen == [github.GH_REVIEW_FIELDS] * 2
+    assert "author" in github.GH_REVIEW_FIELDS and "reviewRequests" in github.GH_REVIEW_FIELDS

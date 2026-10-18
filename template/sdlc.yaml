@@ -106,9 +106,9 @@ risk_list:
 
 # --- confidence gate and run limits (build guide steps 16 and 19; decision 11) ---------------
 # A gate failure or a limit hit parks the change (label sdlc:needs-human, "What I need from
-# you" in the PR); nobody is notified. The owner accepts a risk-list hit per change by
-# applying the label sdlc:accept-risk on the pull request (decision 24; the fix round records
-# the label's actor); `state/cli.py accept-risk` stays for by-hand runs, where the commit's
+# you" in the PR) and requests the owner's review on the PR, the only notification. The owner
+# accepts a risk-list hit per change by applying the label sdlc:accept-risk on the pull request
+# (decision 24; the fix round records the label's actor); `state/cli.py accept-risk` stays for by-hand runs, where the commit's
 # author is the act. Setting `paused: true` stops every run before it starts.
 paused: false
 gate:

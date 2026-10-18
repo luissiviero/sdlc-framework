@@ -1,8 +1,9 @@
 """The owner's review request on a pull request that waits (decision 31; OPERATING_MODEL
-section 5): the one notification the framework sends.
+sections 6 and 7): the one notification the framework sends.
 
-Every automated publication (``pr/cli.py upsert --request-review``: the runner and the detect
-workflow) brings the owner's review request in line with the label the gate printed:
+Every automated publication (``pr/cli.py upsert --request-review``: the runner, the detect
+workflow and the weekly scan) brings the owner's review request in line with the label the
+gate printed:
 - a waiting label (``sdlc:needs-human``, ``sdlc:<phase>-ready``) requests the owner's review;
   a request still pending from an earlier wait (an ``@claude`` comment or an approval label
   does not clear it) is removed and requested again, so every new wait gives one fresh push;

@@ -16,9 +16,10 @@ success, 2 on a usage error; a missing GitHub route is not an error - it prints 
 the owner. ``--head`` names the PR's head branch when it is not the phase's framework branch
 (a fix round on an intent PR a web session pushed from ``claude/...``, decision 22).
 ``--request-review`` marks the automation's own publication (the runner, the detect
-workflow): after the labels it requests the owner's review when the PR waits and withdraws it
-when it does not (decision 31, ``pr/review_request.py``); the result is ``review_request`` in
-the summary and never changes the exit code. Without it nothing is requested.
+workflow, the weekly scan): after the labels it requests the owner's review when the PR waits
+and withdraws it when it does not (decision 31, ``pr/review_request.py``); the result is
+``review_request`` in the summary and never changes the exit code. Without it nothing is
+requested.
 
 Labels: the PR carries one gate label at a time (``sdlc:<phase>-ready``,
 ``sdlc:<phase>-approved``, ``sdlc:needs-human``); the owner's own labels - the release
@@ -99,7 +100,12 @@ def owner_review(
         config = run_phase.owner_config(root, dict(os.environ))
     except Exception as exc:  # noqa: BLE001 - an unreadable copy (ConfigError), no git
         return {"ok": True, "skipped": f"no review request: {exc}"}
-    return review_request.sync_owner_review(github, repo, number, label, config, os.environ, found)
+    try:
+        return review_request.sync_owner_review(
+            github, repo, number, label, config, os.environ, found
+        )
+    except Exception as exc:  # noqa: BLE001 - never the upsert's exit code or route
+        return {"ok": False, "reason": f"review request: {type(exc).__name__}: {exc}"}
 
 
 def cmd_description(args) -> int:
@@ -148,7 +154,9 @@ def cmd_upsert(args) -> int:
         out.update({"route": "none", "url": None, "reason": "no GitHub remote", "body": body})
         return finish()
 
-    found = github.find_open_pr(repo, head, cwd=root)
+    # the review-request sync reads the PR's author and pending reviewers (decision 31)
+    review = {"reviewers": True} if getattr(args, "request_review", False) else {}
+    found = github.find_open_pr(repo, head, cwd=root, **review)
     number = found.get("number")
     if number:
         result = github.update_pr(repo, int(number), body, title, cwd=root)
@@ -195,7 +203,7 @@ def cmd_upsert(args) -> int:
         if getattr(args, "request_review", False):
             if out["created"]:
                 # a new PR: read back its author and its (empty) review requests
-                got = github.pr_by_number(repo, int(number), cwd=root)
+                got = github.pr_by_number(repo, int(number), cwd=root, reviewers=True)
                 found = got if got.get("ok") else {"state": "open", "requested_reviewers": []}
             out["review_request"] = owner_review(root, repo, int(number), label, found)
     return finish()

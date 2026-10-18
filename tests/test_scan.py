@@ -505,6 +505,25 @@ def test_file_findings_opens_one_incident_change_per_finding(tmp_path):
     assert patch == PATCH
 
 
+def test_the_incident_intent_pr_requests_the_owner_s_review(tmp_path, monkeypatch):
+    """Decision 31: the scan's intent PR is the automation's publication, so its upsert asks
+    for the owner's review when the PR waits."""
+    root = project(tmp_path)
+    findings = _loaded(tmp_path, BOUNDED)
+    chosen, _ = route_mod.select(findings, dismissals.empty(), 1)
+    upserts: list[list[str]] = []
+    real_cli = route_mod._cli
+
+    def spy(script, argv, cwd):
+        if argv and argv[0] == "upsert":
+            upserts.append(list(argv))
+        return real_cli(script, argv, cwd)
+
+    monkeypatch.setattr(route_mod, "_cli", spy)
+    route_mod.file_findings(root, chosen, head=head_of(root), repo=REPO, push=True, dry_run=False)
+    assert len(upserts) == 1 and upserts[0][-3:] == ["--phase", "f", "--request-review"]
+
+
 def test_file_findings_without_push_allocates_distinct_ids(tmp_path):
     root = project(tmp_path)
     chosen = _loaded(tmp_path, BOUNDED, WIDE)

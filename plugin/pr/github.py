@@ -283,10 +283,10 @@ def _pr_from_api(item: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-GH_PR_FIELDS = (
-    "number,url,labels,isDraft,state,mergeCommit,headRefName,headRefOid,baseRefName,"
-    "author,reviewRequests"
-)
+GH_PR_FIELDS = "number,url,labels,isDraft,state,mergeCommit,headRefName,headRefOid,baseRefName"
+# the review-request sync's lookups only (decision 31): with a workflow token a team's review
+# request can fail the GraphQL read of ``reviewRequests``, so no other lookup asks for it
+GH_REVIEW_FIELDS = f"{GH_PR_FIELDS},author,reviewRequests"
 
 
 def _logins(items: Any) -> list[str]:
@@ -326,7 +326,9 @@ def _find_pr_api(repo: str, head_branch: str, state: str) -> dict[str, Any]:
     return {"route": "api", "ok": True, "reason": "", **_pr_from_api(items[0])}
 
 
-def _find_pr_gh(repo: str, head_branch: str, state: str, cwd: str | Path | None) -> dict[str, Any]:
+def _find_pr_gh(
+    repo: str, head_branch: str, state: str, cwd: str | Path | None, fields: str = GH_PR_FIELDS
+) -> dict[str, Any]:
     data, error = _gh_json(
         "pr",
         "list",
@@ -337,7 +339,7 @@ def _find_pr_gh(repo: str, head_branch: str, state: str, cwd: str | Path | None)
         "--state",
         state,
         "--json",
-        GH_PR_FIELDS,
+        fields,
         cwd=cwd,
     )
     if error:
@@ -349,30 +351,42 @@ def _find_pr_gh(repo: str, head_branch: str, state: str, cwd: str | Path | None)
 
 
 def find_pr(
-    repo: str, head_branch: str, state: str = "open", cwd: str | Path | None = None
+    repo: str,
+    head_branch: str,
+    state: str = "open",
+    cwd: str | Path | None = None,
+    reviewers: bool = False,
 ) -> dict[str, Any]:
     """The most recent pull request from ``head_branch`` in ``state`` (open, closed or all):
     {'route', 'ok', 'number', 'state', 'merged', 'merge_commit_sha', 'head_ref', 'head_sha',
     'base_ref', 'labels', 'html_url', 'url', 'draft', 'author', 'requested_reviewers',
     'reason'} - number None when there is none; ``requested_reviewers`` lists the users whose
-    review is pending (teams are left out)."""
+    review is pending (teams are left out). The ``gh`` route reads ``author`` and
+    ``requested_reviewers`` only with ``reviewers`` (``GH_REVIEW_FIELDS``)."""
     if state not in PR_STATES:
         raise ValueError(f"state must be one of {PR_STATES}, not {state!r}")
     return _attempt(
         lambda: _find_pr_api(repo, head_branch, state),
-        lambda: _find_pr_gh(repo, head_branch, state, cwd),
+        lambda: _find_pr_gh(
+            repo, head_branch, state, cwd, GH_REVIEW_FIELDS if reviewers else GH_PR_FIELDS
+        ),
         number=None,
     )
 
 
-def find_open_pr(repo: str, head_branch: str, cwd: str | Path | None = None) -> dict[str, Any]:
+def find_open_pr(
+    repo: str, head_branch: str, cwd: str | Path | None = None, reviewers: bool = False
+) -> dict[str, Any]:
     """{'route', 'number', 'url', 'labels', 'draft'} - number None when there is none."""
-    return find_pr(repo, head_branch, "open", cwd=cwd)
+    return find_pr(repo, head_branch, "open", cwd=cwd, reviewers=reviewers)
 
 
-def pr_by_number(repo: str, number: int, cwd: str | Path | None = None) -> dict[str, Any]:
-    """One pull request by number, in ``find_pr``'s shape; ``ok`` False with a reason when it
-    cannot be read (no route, not found)."""
+def pr_by_number(
+    repo: str, number: int, cwd: str | Path | None = None, reviewers: bool = False
+) -> dict[str, Any]:
+    """One pull request by number, in ``find_pr``'s shape (``reviewers`` as there); ``ok``
+    False with a reason when it cannot be read (no route, not found)."""
+    fields = GH_REVIEW_FIELDS if reviewers else GH_PR_FIELDS
 
     def via_api() -> dict[str, Any]:
         result = _request("GET", f"{API_ROOT}/repos/{repo}/pulls/{number}", token() or "")
@@ -382,9 +396,7 @@ def pr_by_number(repo: str, number: int, cwd: str | Path | None = None) -> dict[
         return {"route": "api", "ok": True, "reason": "", **_pr_from_api(result["data"])}
 
     def via_gh() -> dict[str, Any]:
-        data, error = _gh_json(
-            "pr", "view", str(number), "--repo", repo, "--json", GH_PR_FIELDS, cwd=cwd
-        )
+        data, error = _gh_json("pr", "view", str(number), "--repo", repo, "--json", fields, cwd=cwd)
         if error or not isinstance(data, dict):
             reason = error or "gh pr view printed no pull request"
             return {"route": "gh", "ok": False, "reason": reason, "number": None}
