@@ -129,7 +129,7 @@ def test_init_on_fixture_copy_is_idempotent(tmp_path):
     }
     cfg = yamlish.load_file(root / "sdlc.yaml")
     assert cfg["profile"] == "full" and cfg["commands"]["test"] == "python -m pytest"
-    assert cfg["review"] == "parked"  # decision 21: off by default
+    assert cfg["review"] == "deferred"  # decision 32 (1.0.8): the default /sdlc-init proposes
     assert cfg["test_paths"] == detect.TEST_PATHS["python"]  # step 25: the test-file lock
     assert cfg["plugin"]["version"] == sdlc_init.plugin_version()
     settings = json.loads((root / ".claude" / "settings.json").read_text(encoding="utf-8"))

@@ -1643,8 +1643,12 @@ def _blind_verdicts_problems(ctx: GateContext, entry: dict) -> list[str]:
 
 
 def check_panel(ctx: GateContext) -> CheckResult:
-    """Every panel decision has a ledger line and no panel decision touched a never-to-panel
-    item. Passes trivially when there is no ledger and no concern closed by the panel."""
+    """Every panel decision has a ledger line, no panel decision touched a never-to-panel
+    item, and no standing ``escalate`` decision upholds the adversarial reviewer's verdict:
+    one that does not start with ``continue`` (``park``, empty, anything else) fails the
+    check, so the gate parks (NOTES 45 gap 1, choice 205; an overturned line is the owner's
+    act and is left alone). Passes trivially when there is no ledger and no concern closed
+    by the panel."""
     from panel import ledger  # noqa: PLC0415
 
     error = ledger.ledger_error(ctx.change_dir, ctx.phase)
@@ -1668,6 +1672,12 @@ def check_panel(ctx: GateContext) -> CheckResult:
             f"the ledger has {len(entries)} decision(s) but the review mode is {ctx.review_mode}"
         )
     standing = ledger.active(entries)
+    upheld = [e for e in standing if e.get("kind") == "escalate" and not ledger.decides_continue(e)]
+    for entry in upheld:
+        problems.append(
+            f"decision {entry.get('n')}: the panel upheld the adversarial reviewer's escalate "
+            f"({str(entry.get('decision') or '').strip()[:80] or 'no decision'!r})"
+        )
     # a closing names its ledger line (``decided (by panel #n):``, 0.2.15), so the words after
     # it may be tidied; the 0.2.14 form without the number is matched on the decision text.
     # The line may live in an earlier phase's ledger: a concern closed at (b) stays closed
@@ -1709,8 +1719,17 @@ def check_panel(ctx: GateContext) -> CheckResult:
             "panel",
             "; ".join(problems),
             "Every panel decision is one ledger line in evidence/decisions-<phase>.json (panel/"
-            "cli.py record writes it); a never-to-panel item parks for the owner.",
+            "cli.py record writes it); a never-to-panel item parks for the owner."
+            + (
+                " The panel upheld the adversarial reviewer's escalate (decision "
+                + ", ".join(str(e.get("n")) for e in upheld)
+                + "): read the reviewer's reasons and the panel's rationale, then settle the "
+                "item on the PR (a review comment starts the fix round)."
+                if upheld
+                else ""
+            ),
             problems=problems,
+            upheld=[e.get("n") for e in upheld],
         )
     return _ok(
         "panel",

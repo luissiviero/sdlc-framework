@@ -3,7 +3,7 @@
     python "${CLAUDE_PLUGIN_ROOT}/plugin/gate/cli.py" check --root . --id 0001 --phase c \
         [--base origin/main] [--dry-run]
     python cli.py run-commands --root . --id 0001 --phase c     # the runner, after the session
-    python cli.py start-run --root . --id 0001 --phase c        # wall-clock start (step 19)
+    python cli.py start-run --root . --id 0001 --phase c [--run build|fix]  # step 19
     python cli.py record-spend --root . --id 0001 --phase c --usd 1.25 \\
         [--run review] [--source claude-review.json]
     python cli.py set-iterations --root . --id 0001 --count 0   # owner only (decisions 5, 24)
@@ -22,6 +22,12 @@ record) and adds it as one entry to the change's ledger ``evidence/spend.json`` 
 round are their own entries), ``--source`` the stored result it was read from, which makes
 the entry unique (a repeated record of the same source replaces it). The gate's ``limits``
 check compares ``gate.max_budget_usd`` with the ledger's total, not with the last session.
+
+``start-run`` writes ``evidence/run-<phase>.json`` with the run's start (the wall clock).
+The build run (``--phase c``) and a fix round, whatever the change's phase, also record
+``"run": "build"``, which gives them the build caps (decision 32, 1.0.8:
+``gate.build_max_wall_clock_minutes``): the runner marks a fix session with ``SDLC_RUN=fix``
+in its environment, and ``--run fix|build`` says the same for a by-hand run.
 
 ``spec-header`` prints the two header lines of spec.md (step 22; article p.14: the spec, the
 prompt that produced it and the skill versions in force are logged together) as JSON, with
@@ -45,6 +51,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -127,6 +134,13 @@ def cmd_start_run(args) -> int:
         return 2
     now = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
     data = {"phase": args.phase, "started_at": now, "spend_usd": None}
+    # decision 32: the build run and every fix round get the build caps (limits.run_caps)
+    if (
+        args.phase == "c"
+        or args.run in ("build", "fix")
+        or os.environ.get(limits.RUN_KIND_ENV) == limits.FIX_RUN
+    ):
+        data["run"] = limits.BUILD_RUN
     _write_run(_run_file(change_dir, args.phase), data)
     _emit(data)
     return 0
@@ -281,6 +295,12 @@ def build_parser() -> argparse.ArgumentParser:
     sr.add_argument("--root", default=".")
     sr.add_argument("--id", required=True)
     sr.add_argument("--phase", required=True, choices=c.PHASES)
+    sr.add_argument(
+        "--run",
+        default=None,
+        choices=("build", "fix"),
+        help="the run is the build or a fix round: the build caps apply (decision 32)",
+    )
     sr.set_defaults(fn=cmd_start_run)
 
     rs = sub.add_parser("record-spend")

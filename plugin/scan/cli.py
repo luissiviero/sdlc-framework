@@ -186,7 +186,9 @@ def cmd_review(args, env: dict[str, str] | None = None) -> int:
         return EXIT_OK
     if out_path.exists():
         out_path.unlink()  # a findings file left from an earlier run is never read as this one
-    data, raw, err, code = run_phase.invoke(argv, root, env, run_phase.run_timeout_seconds(config))
+    data, raw, err, code = run_phase.invoke(
+        argv, root, env, run_phase.run_timeout_seconds(config, "scan")
+    )
     record = _resolve(root, args.run_record)
     run_phase.store_result(root, "scan", data, raw, record)
     if (err or "").strip():

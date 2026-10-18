@@ -53,9 +53,10 @@ HUMAN_GATES = {
 # before 0.2.14). ``deferred``: the run puts it to the review panel (reviewer, devil's
 # advocate, conciliator, each in a fresh context) and continues; the owner reads the panel's
 # decisions once, at the phase's end. Per project in ``sdlc.yaml: review``, per change in
-# ``status.yaml: review_override``.
+# ``status.yaml: review_override``. Decision 32 (1.0.8): ``deferred`` is the default
+# ``/sdlc-init`` proposes and the template carries; ``parked`` stays available.
 REVIEW_MODES = ("parked", "deferred")
-DEFAULT_REVIEW_MODE = "parked"
+DEFAULT_REVIEW_MODE = "deferred"
 
 CHANGE_TYPES = ("feature", "fix")
 ENTRY_ROUTES = ("idea", "ticket", "incident")  # article p.9: idea / ticket / incident

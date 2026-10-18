@@ -200,6 +200,37 @@ def test_dry_run_argv_per_phase(capsys, project, phase, command, mode):
     assert int(argv[argv.index("--max-turns") + 1]) == run_phase.DEFAULT_MAX_TURNS
 
 
+def test_the_build_run_and_a_fix_round_get_the_build_caps(capsys, project):
+    """Decision 32 (1.0.8): ``--max-turns`` 400 and a (180 + 5)-minute subprocess timeout for
+    the build run and every fix round; 200 turns and (120 + 5) minutes for every other run;
+    a general ``max_turns: 400`` (this repository's root ``sdlc.yaml``) applies to (b) too."""
+
+    def turns(phase: str, config: dict) -> int:
+        argv = run_phase.compose(
+            claude="claude", plugin_dir=ROOT, phase=phase, prompt="x",
+            permission_mode="default", config=config, env=dict(KEY_ENV),
+        )  # fmt: skip
+        return int(argv[argv.index("--max-turns") + 1])
+
+    for phase in ("c", "fix"):
+        assert turns(phase, {}) == 400, phase
+        assert run_phase.run_timeout_seconds({}, phase) == (180 + 5) * 60
+    for phase in ("b", "d", "e", "review", "triage"):
+        assert turns(phase, {}) == 200, phase
+        assert run_phase.run_timeout_seconds({}, phase) == (120 + 5) * 60
+    root_config = {"gate": {"max_turns": 400, "max_wall_clock_minutes": 120}}
+    assert turns("b", root_config) == 400 and turns("c", root_config) == 400
+    assert run_phase.run_timeout_seconds(root_config, "b") == (120 + 5) * 60
+    owner = {"gate": {"build_max_turns": 600, "build_max_wall_clock_minutes": 200}}
+    assert turns("fix", owner) == 600 and turns("d", owner) == 200
+    assert run_phase.run_timeout_seconds(owner, "c") == (200 + 5) * 60
+    # the template's own keys reach the build run's argv through /sdlc-init's sdlc.yaml
+    root, _change = project
+    argv = dry_run_argv(capsys, root, "c")
+    assert int(argv[argv.index("--max-turns") + 1]) == 400
+    assert argv[argv.index("--max-budget-usd") + 1] == "150"
+
+
 def test_design_phase_argv_cannot_edit_a_file(capsys, project):
     """Phase (b) writes spec.md and plan.md; it never edits code (decision 6, layer iii)."""
     root, _change = project
@@ -1332,6 +1363,21 @@ def test_the_session_s_environment_leaves_the_gate_s_commands_to_the_runner(tmp_
     assert run_phase.commands_timeout_seconds({"gate": {"command_timeout": "x"}}) == 2700 + 300
 
 
+def test_the_fix_session_s_environment_says_it_is_a_fix_round(tmp_path):
+    """Decision 32 (1.0.8): a fix round's gate runs at the change's phase, so the session's
+    ``start-run`` learns from ``SDLC_RUN=fix`` that the build caps apply; no other session
+    carries the mark, not even one the workflow's ``env:`` set."""
+    from gate import limits
+
+    env = {"PATH": "/bin", **KEY_ENV}
+    assert run_phase.session_env(env, tmp_path, "fix")[limits.RUN_KIND_ENV] == "fix"
+    assert limits.RUN_KIND_ENV == "SDLC_RUN"
+    for phase in ("b", "c", "d", "e", "review", None):
+        marked = run_phase.session_env({**env, limits.RUN_KIND_ENV: "fix"}, tmp_path, phase)
+        assert limits.RUN_KIND_ENV not in marked, phase
+    assert auth.credential_env(run_phase.session_env(env, tmp_path, "fix"))["SDLC_RUN"] == "fix"
+
+
 def test_the_session_s_gh_cache_is_a_folder_the_sandbox_lets_it_write(tmp_path):
     """1.0.1 (choices 194 and 196, NOTES §44): ``gh run view --log-failed`` stores the run's log zip
     under ``$XDG_CACHE_HOME/gh`` and aborts when it cannot create that folder; ``~/.cache`` is
@@ -1801,7 +1847,10 @@ def test_phase_workflow_permissions_and_concurrency(name):
     ]
     assert 'group: "sdlc-${{ inputs.head_ref || github.event.pull_request.head.ref }}"' in text
     assert "cancel-in-progress: false" in text
-    assert "timeout-minutes: 200" in text  # 0.3.0: the session, then the commands step
+    # 0.3.0: the session, then the commands step; 1.0.8 (decision 32): the build's wall clock
+    # is gate.build_max_wall_clock_minutes (180), so its job allows 260
+    minutes = 260 if name == "sdlc-build.yml" else 200
+    assert f"timeout-minutes: {minutes}\n" in text
 
 
 @pytest.mark.parametrize("name", PHASE_WORKFLOWS)
@@ -3086,6 +3135,33 @@ def test_the_fix_run_collects_the_requests_after_the_labels_and_before_the_sessi
     args = Args(root=str(root), phase="fix", head_ref="sdlc/0001/b", pr_number="7")
     assert run_phase.run_phase(args, dict(KEY_ENV)) == run_phase.EXIT_OK
     assert order == [] and json.loads(capsys.readouterr().out)["argv"]
+
+
+def test_the_fix_session_runs_with_the_fix_mark_and_the_build_timeout(
+    project, tmp_path, monkeypatch, capsys
+):
+    """Decision 32 (1.0.8): the runner hands the fix session ``SDLC_RUN=fix`` (its
+    ``start-run`` then records the build caps at the change's phase) and waits for it as
+    long as for a build: (180 + 5) minutes with no setting."""
+    root, change = project
+    _fix_round(root, change, tmp_path, monkeypatch)
+    monkeypatch.setattr(run_phase, "_github", lambda: FixGitHub())
+    seen: dict = {}
+
+    def invoke(argv, root, env, timeout):
+        seen.update(argv=argv, env=env, timeout=timeout)
+        return None, "", "boom", 1
+
+    monkeypatch.setattr(run_phase, "invoke", invoke)
+    args = Args(root=str(root), phase="fix", head_ref="sdlc/0001/b", pr_number="7", dry_run=False)
+    env = dict(os.environ, **KEY_ENV, GITHUB_TOKEN=FAKE_TOKEN)
+    env.pop("GITHUB_ACTIONS", None)
+    env.pop("SDLC_RUN", None)
+    assert run_phase.run_phase(args, env) == run_phase.EXIT_FAILED  # the fake session failed
+    assert seen["env"]["SDLC_RUN"] == "fix" and "SDLC_RUN" not in env
+    assert seen["timeout"] == (180 + 5) * 60
+    assert int(seen["argv"][seen["argv"].index("--max-turns") + 1]) == 400
+    capsys.readouterr()
 
 
 def test_the_fix_run_parks_on_a_runner_when_the_requests_are_unavailable(

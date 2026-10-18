@@ -30,10 +30,11 @@ and pass `--setup ""` when the project has nothing to install.
 ## 1. Ask the owner (one question round, defaults in brackets)
 - profile [standard]: standard (owner merges at a, b, e) · full (all five gates). (Lite,
   gates a and e only, was withdrawn by decision 21 and is gone since 0.2.14.)
-- review [parked]: parked (a judgment item inside a phase parks the change for the owner)
-  · deferred (a review panel decides it in fresh contexts and the run continues; the owner
-  reads "Decisions taken for you" at the next gate and overturns any of them with a review
-  comment; decision 21). A risk-list hit, a guardrail file change, a run limit, an
+- review [deferred]: deferred (a review panel decides a judgment item inside a phase in
+  fresh contexts and the run continues; the owner reads "Decisions taken for you" at the
+  next gate and overturns any of them with a review comment; decisions 21 and 32) · parked
+  (a judgment item inside a phase parks the change for the owner; still available per
+  project and per change). A risk-list hit, a guardrail file change, a run limit, an
   infrastructure failure, a merge to main and a deploy still park in both modes.
 - deploy action [none]: what makes a merged change live — publish package · schedule job ·
   regenerate report · promote to paper trading · deploy service · none

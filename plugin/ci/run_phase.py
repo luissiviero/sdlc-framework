@@ -63,10 +63,12 @@ What one run does, in order:
 4b. creates the ``sdlc:*`` labels the runs apply (422 = the label already exists);
 5. composes and runs the bounded headless call — the pinned plugin through ``--plugin-dir``,
    the CI settings file through ``--settings`` (bare mode reads no settings by itself),
-   ``--permission-prompts none``, ``--max-turns`` / ``--max-budget-usd`` from ``sdlc.yaml``,
+   ``--permission-prompts none``, ``--max-turns`` / ``--max-budget-usd`` from ``sdlc.yaml``
+   (the build run and a fix round take the build caps, decision 32: ``run_caps``),
    ``--output-format json`` — with exactly one credential in the environment, and with
    ``SDLC_GATE_COMMANDS=runner`` in it, so the gate the session runs leaves the project's
-   build, test and lint to step 6b instead of running them inside Claude Code's sandbox;
+   build, test and lint to step 6b instead of running them inside Claude Code's sandbox
+   (a fix session also carries ``SDLC_RUN=fix``, so its ``start-run`` records the build caps);
 6. stores the JSON result as ``changes/<id>-<slug>/evidence/claude-<phase>.json``, records
    ``total_cost_usd`` with ``gate/cli.py record-spend`` and commits the run record on the
    work branch (the model's session pushed before the spend was known), and validates the
@@ -257,7 +259,9 @@ LABEL_COLOR_FIXING = "FBCA04"  # sdlc:fixing: an automatic fix round runs (decis
 LABEL_COLOR_SUPERSEDED = "BFD4F2"  # sdlc:superseded: a later PR carries it (decision 30)
 TOKEN_VARS = ("GITHUB_TOKEN", "GH_TOKEN")
 
-DEFAULT_MAX_TURNS = 200
+DEFAULT_MAX_TURNS = limits.DEFAULT_MAX_TURNS
+# decision 32 (1.0.8): the build run and every fix round get the build caps (limits.run_caps)
+BUILD_CAP_PHASES = ("c", "fix")
 GRACE_MINUTES = 5  # the subprocess timeout sits this far above the gate's wall clock
 
 
@@ -301,11 +305,14 @@ def _int_or(value: Any, default: int) -> int:
     return n if n > 0 else default
 
 
-def run_timeout_seconds(config: dict[str, Any]) -> int:
-    minutes = _int_or(
-        _gate_settings(config).get("max_wall_clock_minutes"),
-        limits.DEFAULT_MAX_WALL_CLOCK_MINUTES,
-    )
+def run_caps(config: dict[str, Any], phase: str) -> tuple[int, int]:
+    """(turns, wall-clock minutes) of a run of ``phase``: the build caps for the build run
+    and a fix round, the general caps for every other (decision 32; ``limits.run_caps``)."""
+    return limits.run_caps(_gate_settings(config), phase in BUILD_CAP_PHASES)
+
+
+def run_timeout_seconds(config: dict[str, Any], phase: str) -> int:
+    _turns, minutes = run_caps(config, phase)
     return (minutes + GRACE_MINUTES) * 60
 
 
@@ -1841,7 +1848,7 @@ def compose(
     argv += ["--permission-mode", permission_mode]
     argv += ["--permission-prompts", "none"]  # nobody is there to answer (NOTES 10b)
     gate_cfg = _gate_settings(config)
-    argv += ["--max-turns", str(_int_or(gate_cfg.get("max_turns"), DEFAULT_MAX_TURNS))]
+    argv += ["--max-turns", str(run_caps(config, phase)[0])]
     budget = gate_cfg.get("max_budget_usd")
     if budget not in (None, "", "null"):
         argv += ["--max-budget-usd", str(budget)]
@@ -1943,16 +1950,21 @@ CACHE_HOME_ENV = "XDG_CACHE_HOME"
 SESSION_CACHE_DIR = ".sdlc-cache"
 
 
-def session_env(env: dict[str, str], root: Path) -> dict[str, str]:
+def session_env(env: dict[str, str], root: Path, phase: str | None = None) -> dict[str, str]:
     """The model's session's environment: ``env`` plus the mark that leaves the gate's
     ``commands`` check to the runner (``gate.checks.COMMANDS_RUNNER_ENV``), the switch
     that keeps every sub-agent in the foreground (``BACKGROUND_TASKS_ENV``; a value the
-    workflow's ``env:`` already carries is kept) and the cache folder under ``root``
+    workflow's ``env:`` already carries is kept), the cache folder under ``root``
     (``CACHE_HOME_ENV``; a value the workflow carries is replaced, since only the checkout is
-    known to be writable)."""
+    known to be writable) and, for a fix round, ``SDLC_RUN=fix`` (``limits.RUN_KIND_ENV``),
+    which makes the session's ``start-run`` record the build caps (decision 32); any other
+    session drops a value the workflow carries."""
     marked = {**env, gate_checks.COMMANDS_RUNNER_ENV: gate_checks.RUN_BY_RUNNER}
     marked.setdefault(BACKGROUND_TASKS_ENV, "1")
     marked[CACHE_HOME_ENV] = str(Path(root) / SESSION_CACHE_DIR)
+    marked.pop(limits.RUN_KIND_ENV, None)
+    if phase == "fix":
+        marked[limits.RUN_KIND_ENV] = limits.FIX_RUN
     return marked
 
 
@@ -2253,7 +2265,7 @@ def run_triage(args, env: dict[str, str]) -> int:
     if args.dry_run:
         _emit({"phase": "triage", "argv": argv})
         return EXIT_OK
-    data, raw, err, code = invoke(argv, root, env, run_timeout_seconds(_config(root)))
+    data, raw, err, code = invoke(argv, root, env, run_timeout_seconds(_config(root), "triage"))
     text = (data or {}).get("result") if isinstance(data, dict) else raw
     print(text or raw)
     if code != 0 or (isinstance(data, dict) and data.get("is_error")):
@@ -2474,7 +2486,9 @@ def _run_phase(args, env: dict[str, str], track: dict[str, Any]) -> int:
     # decision 34: the round's requests file as the runner wrote it; the session may only
     # mark the requests it applied (``fix_requests.keep_marks_only`` after the session)
     requests_before = fix_requests.snapshot(change_dir) if phase == "fix" else None
-    data, raw, err, code = invoke(argv, root, session_env(env, root), run_timeout_seconds(config))
+    data, raw, err, code = invoke(
+        argv, root, session_env(env, root, phase), run_timeout_seconds(config, phase)
+    )
     result_path, stderr_path = run_record_paths(change_dir, phase)
     store_result(change_dir, phase, data, raw, result_path)
     store_stderr(change_dir, phase, err, stderr_path)
