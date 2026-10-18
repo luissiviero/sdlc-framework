@@ -1,5 +1,6 @@
 """Run limits for unattended phases (build guide step 19): every limit parks through the gate
-with the partial evidence attached; never a silent stop, never a notification.
+with the partial evidence attached; never a silent stop, and no notification but the runner's
+review request on the parked PR (decision 31).
 
 Limits (sdlc.yaml ``gate:`` block, all optional; defaults here):
   - ``max_iterations``: fix iterations per change, one counter across the phases

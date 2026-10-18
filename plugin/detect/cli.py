@@ -1029,6 +1029,12 @@ def cmd_dispatch(args) -> int:
     return EXIT_OK
 
 
+def _upsert_argv(root: Path, change_id: str) -> list[str]:
+    """The intent PR's upsert: the automation's publication, so ``--request-review`` requests
+    the owner's review when the PR waits and withdraws it when it does not (decision 31)."""
+    return ["upsert", "--root", str(root), "--id", change_id, "--phase", "f", "--request-review"]
+
+
 def _gate_and_pr(root: Path, change_id: str, push: bool, out: dict[str, Any]) -> dict[str, Any]:
     """Gate (f) on the branch, the evidence commit, the intent PR (what the maintain command
     does by hand in its steps 7 and 8)."""
@@ -1039,9 +1045,7 @@ def _gate_and_pr(root: Path, change_id: str, push: bool, out: dict[str, Any]) ->
     out["evidence_commit"] = _commit_change(
         root, change_id, f"maintain({change_id}): gate (f) evidence", push=push
     )
-    pr, code, err = _cli(
-        PR_CLI, ["upsert", "--root", str(root), "--id", change_id, "--phase", "f"], root
-    )
+    pr, code, err = _cli(PR_CLI, _upsert_argv(root, change_id), root)
     out["pr"] = pr or {"error": err, "exit": code}
     return out
 
@@ -1084,9 +1088,7 @@ def cmd_finish(args) -> int:
             out["park_commit"] = _commit_change(
                 root, args.id, f"park: {reason}"[:500], push=not args.no_push
             )
-            pr, code, err = _cli(
-                PR_CLI, ["upsert", "--root", str(root), "--id", args.id, "--phase", "f"], root
-            )
+            pr, code, err = _cli(PR_CLI, _upsert_argv(root, args.id), root)
             out["pr"] = pr or {"error": err, "exit": code}
         _emit(out)
         return EXIT_FAILED
@@ -1323,9 +1325,7 @@ def cmd_park(args) -> int:
         out["label_removed"] = github.set_labels(
             args.repo, args.pr_number, [], [c.GO_LABEL], cwd=root
         )
-    pr, code, err = _cli(
-        PR_CLI, ["upsert", "--root", str(root), "--id", args.id, "--phase", "f"], root
-    )
+    pr, code, err = _cli(PR_CLI, _upsert_argv(root, args.id), root)
     out["pr"] = pr or {"error": err, "exit": code}
     _emit(out)
     # a park nobody can find is the red run this command replaces, only green: the commit

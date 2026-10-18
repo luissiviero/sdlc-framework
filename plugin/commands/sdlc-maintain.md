@@ -132,7 +132,8 @@ this change (decision 25) and the design workflow reads a merged change at `f` a
 — head `sdlc/<id>/a`, title `maintain(<id>): <title>`, the summary (the finding, the
 proposed outcome, the route and its state, what needs the owner), labels `sdlc:f-ready` (or
 `sdlc:needs-human` with "What I need from you": Go requested, or a failed check) and
-`incident`. Nothing merges, nothing deploys, nobody is notified.
+`incident`. Nothing merges, nothing deploys, and you notify nobody (in CI the finish step
+requests the owner's review on the PR, decision 31).
 
 ## 9. Report
 One line: the PR URL and "gate (f): merge = fix now (the design run starts); label

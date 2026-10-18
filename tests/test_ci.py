@@ -2285,7 +2285,9 @@ def test_the_hand_over_opens_the_phase_pr_when_the_run_left_none(
     assert pr["head"] == "sdlc/0001/b" and pr["existed"] is False and pr["ok"] is True
     assert pr["route"] == "api" and pr["number"] == 7  # read from the upsert's own JSON
     upserts = [argv for name, argv in calls if name == "cli.py" and argv[0] == "upsert"]
-    assert upserts == [["upsert", "--root", str(root), "--id", "0001", "--phase", "b"]]
+    assert upserts == [
+        ["upsert", "--root", str(root), "--id", "0001", "--phase", "b", "--request-review"]
+    ]
     assert "--draft" not in upserts[0] and "--ready" not in upserts[0]
 
 
@@ -2304,7 +2306,7 @@ def test_the_hand_over_still_upserts_when_the_pr_is_already_open(
     pr = json.loads(capsys.readouterr().out)["pr"]
     assert pr["existed"] is True and pr["number"] == 12 and pr["ok"] is True
     upserts = [argv for name, argv in calls if name == "cli.py" and argv[0] == "upsert"]
-    assert upserts[-1][-1] == "--draft"  # the build PR opens as a draft; (b) does not
+    assert "--draft" in upserts[-1]  # the build PR opens as a draft; (b) does not
     assert "--ready" not in upserts[-1]
 
 
@@ -3200,7 +3202,9 @@ def test_the_design_run_hands_the_session_a_merged_incident_at_phase_a(
     assert out["pr"]["head"] == "sdlc/0001/b" and out["pr"]["ok"] is True
     assert out["dispatched"] is None  # a design run hands over nothing (decision 21)
     upserts = [argv for name, argv in calls if name == "cli.py" and argv[0] == "upsert"]
-    assert upserts == [["upsert", "--root", str(root), "--id", "0001", "--phase", "b"]]
+    assert upserts == [
+        ["upsert", "--root", str(root), "--id", "0001", "--phase", "b", "--request-review"]
+    ]
     # the session's own commit-phase --phase b moves the change on from a
     proc = run_py(
         str(STATE_CLI), "commit-phase", "--root", str(root), "--id", "0001", "--phase", "b",

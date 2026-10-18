@@ -380,10 +380,7 @@ def _owner_line(
     if auto is not None:
         return _auto_round_line(auto)
     if result == "park":
-        return (
-            f'parked at gate ({phase}) - see "What I need from you" below; '
-            "nobody was notified (decision 11)"
-        )
+        return f'parked at gate ({phase}) - see "What I need from you" below'
     if result == "wait" or phase in ("a", "f"):  # (a) and (f) are human in every profile
         return GATE_CHECKLIST.get(phase, "the owner's review is the gate")
     return NOTHING_NEEDED

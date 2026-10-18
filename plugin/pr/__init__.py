@@ -2,5 +2,6 @@
 
 ``description`` renders the pull-request body (pure), ``github`` talks to GitHub through the
 ``gh`` CLI, the REST API or not at all, ``cli`` is what the phase commands call, and
-``digest`` builds the daily review-queue digest. Nothing here ever notifies anyone.
+``digest`` builds the daily review-queue digest. ``review_request`` requests the owner's
+review on a PR that waits (decision 31), the one notification; nothing else here notifies.
 """

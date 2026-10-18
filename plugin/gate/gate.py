@@ -6,8 +6,8 @@ Result:
   - ``wait``      every check passed but the gate is human (Standard: a, b, e; Full: all):
                   the run stops with the ``sdlc:<phase>-ready`` label;
   - ``park``      a check failed: ``Status.park(reason)``, the ``sdlc:needs-human`` label and
-                  the "What I need from you" block for the PR description. Nobody is notified
-                  (decision 11).
+                  the "What I need from you" block for the PR description. The gate notifies
+                  nobody; the runner's publication requests the owner's review (decision 31).
 The fast lane (decision 30, ROADMAP R46): at gate (b), in a session the CI runner runs, on
 every profile but Full, a gate whose only reason to wait is that (b) is a human gate and whose
 adversarial reviewer classed the plan ``routine`` says ``continue`` (``fast_lane`` true, no

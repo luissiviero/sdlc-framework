@@ -543,7 +543,7 @@ def test_parked_body_carries_what_i_need_from_you(project):
     body = desc.build_description(root, "0001", "c")
     lines = bullets(body)
     assert len(lines) == 5
-    assert "parked at gate (c)" in lines[4] and "nobody was notified" in lines[4]
+    assert lines[4].endswith('parked at gate (c) - see "What I need from you" below')
     assert data["what_i_need"].strip() in body
     assert "the diff touches the risk-list item 'auth'" in body
     assert "what I need: Accept the risk with state/cli.py accept-risk" in body

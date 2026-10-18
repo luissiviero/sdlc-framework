@@ -513,9 +513,10 @@ def file_one(
     if push:
         evidence_argv.append("--push")
     _cli(STATE_CLI, evidence_argv, root)
-    upsert, code, err = _cli(
-        PR_CLI, ["upsert", "--root", str(root), "--id", change_id, "--phase", "f"], root
-    )
+    # the automation's publication: the owner's review when the PR waits (decision 31)
+    upsert_argv = ["upsert", "--root", str(root), "--id", change_id, "--phase", "f",
+                   "--request-review"]  # fmt: skip
+    upsert, code, err = _cli(PR_CLI, upsert_argv, root)
     out: dict[str, Any] = {
         "signature": sig,
         "change_id": change_id,

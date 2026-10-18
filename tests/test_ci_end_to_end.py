@@ -1053,7 +1053,9 @@ def test_a_target_red_after_the_session_parks_the_change_on_the_remote(checkout,
     status = remote_file(bare, "sdlc/0001/b", f"{CHANGE}/status.yaml")
     assert "result: parked" in status and "commands: not green" in status
     edit = [c for c in calls if c[:2] == ["pr", "edit"]]
-    assert edit and "sdlc:needs-human" in " ".join(edit[-1])
+    labelled = [c for c in edit if "--add-label" in c]
+    assert labelled and "sdlc:needs-human" in " ".join(labelled[-1])
+    assert edit[-1][-2:] == ["--add-reviewer", "owner"]  # the park requests the owner's review
 
 
 def test_a_session_that_fails_after_a_deferred_gate_parks_the_change_on_the_remote(
@@ -1074,7 +1076,9 @@ def test_a_session_that_fails_after_a_deferred_gate_parks_the_change_on_the_remo
     status = remote_file(bare, "sdlc/0001/b", f"{CHANGE}/status.yaml")
     assert "result: parked" in status and "commands: deferred to the runner" in status
     edit = [c for c in calls if c[:2] == ["pr", "edit"]]
-    assert edit and "sdlc:needs-human" in " ".join(edit[-1])
+    labelled = [c for c in edit if "--add-label" in c]
+    assert labelled and "sdlc:needs-human" in " ".join(labelled[-1])
+    assert edit[-1][-2:] == ["--add-reviewer", "owner"]  # the park requests the owner's review
 
 
 ENV_CHECKING_TEST = (
@@ -1210,7 +1214,9 @@ def test_a_session_that_dies_before_the_runner_s_step_leaves_the_marked_logs_par
     status = remote_file(bare, "sdlc/0001/c", f"{CHANGE}/status.yaml")
     assert "result: parked" in status and "commands: deferred to the runner" in status
     edit = [c for c in calls if c[:2] == ["pr", "edit"]]
-    assert edit and "sdlc:needs-human" in " ".join(edit[-1])
+    labelled = [c for c in edit if "--add-label" in c]
+    assert labelled and "sdlc:needs-human" in " ".join(labelled[-1])
+    assert edit[-1][-2:] == ["--add-reviewer", "owner"]  # the park requests the owner's review
 
 
 # --- F1 (PROGRESS "Session 17"): a dispatched fix round reads the owner's labels -------------

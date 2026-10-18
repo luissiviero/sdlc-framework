@@ -220,7 +220,8 @@ cap (decision 29), and the change parks for the owner at the cap.
 (with `--head <head>` when the PR's head is not the phase's framework branch) regenerates
 the summary and the label; the owner's own labels (release approval, un-park verbs) are
 never removed by it. **Never post a PR comment, reply, review or
-@mention** (decision 20: nothing pushes to the owner; a comment is a notification). Instead
+@mention** (a comment is a notification, and the runner's review request is the only push
+to the owner, decision 31). Instead
 write `changes/<id>-<slug>/evidence/fix-response.md`: one line per request — what changed
 and the commit, or why it was not applied — and commit it with the evidence; it is in the
 PR diff and the report. In `evidence/fix-requests.json`, set `"applied": true` on each entry

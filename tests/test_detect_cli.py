@@ -875,7 +875,8 @@ def test_park_records_the_failed_setup_step_where_the_owner_looks(
     [(args, kwargs)] = gh.named("set_labels")
     assert args[:4] == (REPO, 12, [], ["sdlc:go"])
     assert out["label_removed"]["ok"] is True
-    assert out["pr"]["url"] == "https://x/pr/12" and upserts[0][-2:] == ["--phase", "f"]
+    assert out["pr"]["url"] == "https://x/pr/12"
+    assert upserts[0][-3:] == ["--phase", "f", "--request-review"]  # decision 31
     assert spy.calls == [] and runbook_records(change) == ["runbook-rollback-deploy.json"]
     # a park nobody can find is the red run this replaces: no PR route is a failure
     monkeypatch.setattr(detect_cli, "_cli", real_cli)

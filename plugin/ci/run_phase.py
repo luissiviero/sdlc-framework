@@ -4268,6 +4268,7 @@ def park_and_publish(
                 branch_phase,
                 "--draft",
                 *(["--head", branch] if branch else []),
+                "--request-review",
             ],
         )  # fmt: skip
     )
@@ -4342,6 +4343,7 @@ def ensure_pr(
         argv.append("--draft")
     if branch:
         argv += ["--head", branch]
+    argv.append("--request-review")  # the owner's review when the PR waits (decision 31)
     call = _cli_call(plugin_dir / "plugin" / "pr" / "cli.py", argv)
     outcome = {**out, **upsert_outcome(call, fallback_number=number)}
     if outcome.get("build_pr_recorded"):
