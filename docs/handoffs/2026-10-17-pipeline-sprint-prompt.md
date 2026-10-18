@@ -4,7 +4,7 @@ Written by the session on branch `ccr-01de3f80-ilnomi` at its close, after R10 m
 
 ---
 
-This session builds the rest of the pipeline sprint, one session PR per candidate, in ROADMAP's Order: **R17, R46, R47, R48, R49**. Start with R17 and stop after each PR for my merge unless I say to go on. Write in English only, and start every report with at most five bullets.
+This session builds the rest of the pipeline sprint, one session PR per candidate, in ROADMAP's Order: **R17, R46, R47, R48, R49**. Start with R17 and stop after each PR for my merge unless I say to go on. *[2026-10-18, session `ccr-4900ade8-1qc1s9`: R17 is built as plugin 1.0.5 (PR #227) and R46 as plugin 1.0.6 (PR #228); start at R47, check for `v1.0.6`, and read that session's file, `docs/handoffs/sessions/2026-10-18-ccr-4900ade8-1qc1s9.md`, besides the three below.]* Write in English only, and start every report with at most five bullets.
 
 **Before anything else.** Read `HANDOFF.md` and follow it. Then read these session files:
 - the newest one, `docs/handoffs/sessions/2026-10-15-ccr-01de3f80-ilnomi.md` (its last section);
