@@ -65,7 +65,7 @@ R49's rows (open):
   - a dry run on a change with no budget left parks and publishes, as the guardrail and preflight parks already do;
   - gates (d) and (e) do not re-check a (c) panel `park` recorded before 1.0.8.
 - **A project that pins 1.0.8 keeps the general caps** until it replaces `sdlc-build.yml` and `sdlc-fix.yml` with the 1.0.8 copies (`/sdlc-init` says so). The sample's upgrade (choice 207) includes them.
-- **R49 not verified live** (choice 225): that an App push starts the sample's CI with no approval; that a `permission-*`-narrowed installation token still reads metadata; that the App's PRs, labels and review requests behave as the workflow token's. The owner's App setup (`sdlc-init.md` step 6) and the sample's upgrade to 1.0.9 come first.
+- **R49 not verified live** (choice 225): that a sandboxed session cannot read the runner's process through `/proc` (its own process namespace); that an App push starts the sample's CI with no approval; that a `permission-*`-narrowed installation token still reads metadata; that the App's PRs, labels and review requests behave as the workflow token's. The owner's App setup (`sdlc-init.md` step 6) and the sample's upgrade to 1.0.9 come first.
 - **R49's known limits:**
   - runs longer than 50 minutes publish with the workflow token, so CI on their final head waits for the owner's approval (choice 226);
   - an unsandboxed process the runner starts can read the App token from the runner's initial environment through `/proc` (choice 227, left to R44);
