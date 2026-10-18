@@ -45,6 +45,7 @@ import sys
 import time
 import urllib.parse
 from collections.abc import Mapping, MutableMapping
+from pathlib import Path
 from typing import Any
 
 MINTED_AT_ENV = "SDLC_APP_TOKEN_MINTED_AT"
@@ -61,10 +62,16 @@ COUNT_ENV = "GIT_CONFIG_COUNT"
 KEY_ENV = "GIT_CONFIG_KEY_{n}"
 VALUE_ENV = "GIT_CONFIG_VALUE_{n}"
 MIN_GIT = (2, 31)  # GIT_CONFIG_COUNT and its pairs (git 2.31.0 release notes)
+# GitAuthError is deliberately not a ``state/gitops.py GitError``: callers that catch a
+# failed git command and carry on (``check=False``, a park) must not swallow it - a git that
+# cannot take its credential fails the run loudly, closed, before anything is pushed.
 EXTRAHEADER_RE = re.compile(r"^https?\..*extraheader$", re.IGNORECASE)
 
 _noted = False
 _git_version: tuple[int, int] | None = None
+# the git config finding that took this process off the App's token (never a clean result:
+# the session could plant a key later)
+_tainted: str | None = None
 
 
 class GitAuthError(RuntimeError):
@@ -109,7 +116,16 @@ def fall_back_if_stale(
     global _noted
     if not is_stale(env, now):
         return {"switched": False}
-    workflow = _lookup(WORKFLOW_TOKEN_ENV, env)
+    _switch_env(_lookup(WORKFLOW_TOKEN_ENV, env), env)
+    if not _noted:
+        print(SWITCH_NOTE, file=sys.stderr)
+        _noted = True
+    return {"switched": True}
+
+
+def _switch_env(workflow: str, env: MutableMapping[str, str] | None) -> None:
+    """``GITHUB_TOKEN`` and ``GH_TOKEN`` become the workflow token in ``os.environ`` and in
+    ``env`` (when given)."""
     targets: list[MutableMapping[str, str]] = [os.environ]
     if env is not None and env is not os.environ:
         targets.append(env)
@@ -117,10 +133,22 @@ def fall_back_if_stale(
         for var in TOKEN_VARS:
             if mapping.get(var) != workflow:
                 mapping[var] = workflow
-    if not _noted:
-        print(SWITCH_NOTE, file=sys.stderr)
-        _noted = True
-    return {"switched": True}
+
+
+def _config_finding(root: Path) -> str:
+    """ "the git config carries <key> (<scope>), ..." for the keys of the git config, as git
+    resolves it in ``root`` (worktree, local and global scopes; ``ci/checkout_check.py
+    config_findings``), that would send a push elsewhere or unprotected - a proxy, TLS
+    verification off or another CA, a URL rewrite, an include, a credential helper - or what
+    git said when it refused the listing; "" when there is none."""
+    from ci import checkout_check  # noqa: PLC0415 - checkout_check imports this module
+
+    found = checkout_check.config_findings(root)
+    if not found:
+        return ""
+    if found[0][0] == checkout_check.UNLISTED:
+        return found[0][1]
+    return "the git config carries " + ", ".join(f"{name} ({scope})" for scope, name in found)
 
 
 def credential_key(server_url: str | None = None) -> str:
@@ -157,20 +185,51 @@ def _require_git_config_env() -> None:
         )
 
 
-def git_auth_env(env: Mapping[str, str] | None = None, token: str | None = None) -> dict[str, str]:
-    """The environment entries that hand git its credential for one call, to merge into
-    ``env`` (``os.environ`` when None) - never written to a file. ``token`` is the token
-    to hand out; without it, the App's while fresh, else the workflow token
-    (``fall_back_if_stale``), else ``GITHUB_TOKEN``/``GH_TOKEN`` as the job set them.
+def git_auth_env(
+    env: Mapping[str, str] | None = None,
+    token: str | None = None,
+    root: Path | str | None = None,
+) -> dict[str, str]:
+    """The environment entries that hand git its credential for one call in ``root`` (the
+    working directory when None), to merge into ``env`` (``os.environ`` when None) - never
+    written to a file. ``token`` is the token to hand out; without it, the App's while fresh
+    and while the git config is clean, else the workflow token (``fall_back_if_stale``),
+    else ``GITHUB_TOKEN``/``GH_TOKEN`` as the job set them.
+
+    The App's token goes out only through a clean git config (the R49 review, fix round 5):
+    a session can plant ``http.<url>.proxy`` or ``sslVerify=false`` in ``.git/config``, an
+    include or the worktree file, and a command-scope value cannot reliably beat a more
+    specific URL subsection. So before handing out the App's token the config is judged as
+    git resolves it (one ``git config --list --show-scope``, every call: the session could
+    plant a key later); a finding, or a listing git refused, hands out the workflow token
+    instead, switches ``GITHUB_TOKEN`` and ``GH_TOKEN`` with it (the API calls follow) and
+    sticks for the process, with one stderr line naming the key and its scope.
+
     Appends to the ``GIT_CONFIG_COUNT`` entries ``env`` already carries. {} by hand (no
     ``GITHUB_ACTIONS``) and without a token. Raises ``GitAuthError`` when git is older than
     2.31."""
+    global _tainted
     base = os.environ if env is None else env
     if not str(base.get("GITHUB_ACTIONS") or "").strip():
         return {}
+    mutable = env if isinstance(env, MutableMapping) else None
     if token is None:
-        fall_back_if_stale(env if isinstance(env, MutableMapping) else None)
+        fall_back_if_stale(mutable)
+        workflow = _lookup(WORKFLOW_TOKEN_ENV, env)
         token = _lookup("GITHUB_TOKEN", env) or _lookup("GH_TOKEN", env)
+        app_in_use = bool(_lookup(MINTED_AT_ENV, env) and workflow and token != workflow)
+        if app_in_use:
+            finding = _tainted or _config_finding(Path(root) if root is not None else Path.cwd())
+            if finding:
+                if _tainted is None:
+                    print(
+                        f"{finding}: the workflow token publishes this run (decision 33); the "
+                        "project's CI on this head waits for the owner's approval",
+                        file=sys.stderr,
+                    )
+                _tainted = finding
+                _switch_env(workflow, mutable)
+                token = workflow
     if not token:
         return {}
     _require_git_config_env()

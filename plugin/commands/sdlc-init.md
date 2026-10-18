@@ -137,9 +137,9 @@ files the owner should review (CLAUDE.md trim, settings). Merge = accept.
   **secret** `SDLC_APP_PRIVATE_KEY` (Settings → Secrets and variables → Actions). Never add
   the App to a ruleset's bypass list (R22 will settle its merge step). Without the variable
   every workflow runs on the workflow token as before. On an upgrade to 1.0.9 or later,
-  replace the eight workflows that mint the App's token: sdlc-design.yml, sdlc-build.yml,
-  sdlc-test.yml, sdlc-deploy.yml, sdlc-fix.yml, sdlc-detect.yml, sdlc-runbook.yml and
-  sdlc-scan.yml (delete each and re-run /sdlc-init).
+  replace all thirteen `sdlc-*.yml` workflows (delete each and re-run /sdlc-init) and bump
+  the pin in `sdlc.yaml` to 1.0.9 in the same pull request: the 1.0.9 copies persist no git
+  credential in the checkout, and an older pinned framework would then push with none.
 - On an organization repository, set `owner: <your login>` in `sdlc.yaml` (decision 34);
   otherwise no `@claude` comment or "Request changes" review starts a round and no
   `sdlc:c-approved` or `sdlc:d-approved` label counts. A personal repository needs nothing.

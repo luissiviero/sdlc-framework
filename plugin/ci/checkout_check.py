@@ -230,7 +230,7 @@ def default_branch_problems(root: Path, origin: str | None, branch: str, pin_ref
     tracking = f"refs/remotes/origin/{branch}"
     # decision 33 (R49): the credential in this fetch's environment only (no checkout
     # persists one): the App's token while fresh, else the workflow token
-    auth = app_token.git_auth_env()
+    auth = app_token.git_auth_env(root=root)
     code, out = git(
         root, "fetch", source, f"+refs/heads/{branch}:{tracking}", env={**auth, **CLEAN_ENV}
     )

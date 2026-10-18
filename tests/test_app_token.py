@@ -34,6 +34,7 @@ def app_run(monkeypatch):
     """A runner job that minted the App token: both tokens are the App's, the workflow token
     waits; no command-scope git config of its own."""
     monkeypatch.setattr(app_token, "_noted", False)
+    monkeypatch.setattr(app_token, "_tainted", None)
     monkeypatch.setenv("GITHUB_ACTIONS", "true")
     monkeypatch.setenv("GITHUB_TOKEN", APP)
     monkeypatch.setenv("GH_TOKEN", APP)
@@ -319,13 +320,22 @@ def test_each_publishing_helper_checks_the_token_before_anything_else(tmp_path, 
 
 
 # --- checkout_check: its fetch's credential and its hardening (S-B) -------------------------
-def test_the_checkout_check_fetch_takes_the_credential_in_its_environment(app_run, monkeypatch):
+def test_the_checkout_check_fetch_takes_the_credential_in_its_environment(
+    app_run, tmp_path, monkeypatch
+):
     monkeypatch.setattr(app_token.time, "time", lambda: NOW + 60)
+    root = _repo(tmp_path)
     calls = []
-    monkeypatch.setattr(
-        checkout_check, "git", lambda cwd, *a, env=None: (calls.append((a, env)), (1, "no"))[1]
-    )
-    checkout_check.default_branch_problems(Path("."), "https://github.com/o/r", "main", "v1")
+    real = checkout_check.git
+
+    def fake(cwd, *a, env=None):
+        if a[0] != "fetch":
+            return real(cwd, *a, env=env)  # the config listing runs for real
+        calls.append((a, env))
+        return 1, "no"
+
+    monkeypatch.setattr(checkout_check, "git", fake)
+    checkout_check.default_branch_problems(root, "https://github.com/o/r", "main", "v1")
     [(args, env)] = [c for c in calls if c[0][0] == "fetch"]
     assert (KEY, _basic(APP)) in _pairs(env)
     assert env["GIT_CONFIG_GLOBAL"] == "/dev/null"  # CLEAN_ENV still applies
@@ -349,3 +359,91 @@ def test_a_hook_the_session_planted_never_runs_in_the_checkout_check(tmp_path):
     if os.name != "nt":  # the same command without the hardening runs the hook
         subprocess.run(["git", "-C", str(root), "update-ref", "refs/heads/other", "HEAD"])
         assert marker.exists()
+
+
+# --- R49 fix round 5: the App's token goes out only through a clean git config -------------
+def _committed(tmp_path: Path, server: str) -> Path:
+    root = _repo(tmp_path)
+    subprocess.run(
+        ["git", "-C", str(root), "-c", "user.name=t", "-c", "user.email=t@example.invalid",
+         "commit", "-q", "--allow-empty", "-m", "x"],
+        check=True,
+    )  # fmt: skip
+    subprocess.run(["git", "-C", str(root), "remote", "add", "origin", f"{server}/o/r.git"])
+    return root
+
+
+@pytest.mark.parametrize("planted", ["url-proxy", "include-ssl", "worktree-proxy"])
+def test_a_planted_redirect_makes_the_push_carry_the_workflow_header(
+    app_run, tmp_path, server, monkeypatch, capsys, planted
+):
+    """S-1: a session can plant a URL-specific proxy, an include holding ``sslVerify=false``
+    or a worktree proxy, and a command-scope value cannot reliably beat a more specific URL
+    subsection; the App's token then never goes out: the push carries the workflow header,
+    the API tokens follow, and the decision sticks for the process."""
+    monkeypatch.setattr(app_token.time, "time", lambda: NOW + 60)
+    root = _committed(tmp_path, server)
+    config = ["git", "-C", str(root), "config"]
+    if planted == "url-proxy":
+        subprocess.run([*config, "http.https://github.com/o/r.proxy", "http://p.invalid:1"])
+        expected = "http.https://github.com/o/r.proxy (local)"
+    elif planted == "include-ssl":
+        included = tmp_path / "included.config"
+        included.write_text("[http]\n\tsslVerify = false\n", encoding="utf-8")
+        subprocess.run([*config, "include.path", included.as_posix()])
+        expected = "http.sslverify (local)"
+    else:
+        subprocess.run([*config, "extensions.worktreeConfig", "true"])
+        subprocess.run(
+            [*config, "--worktree", "http.https://github.com/.proxy", "http://p.invalid:1"]
+        )
+        expected = "http.https://github.com/.proxy (worktree)"
+    gitops.run(root, "push", "origin", "HEAD", check=False)
+    assert _Recorder.seen and _Recorder.seen[0] == [_basic(WORKFLOW).split(": ", 1)[1]]
+    assert os.environ["GITHUB_TOKEN"] == WORKFLOW and os.environ["GH_TOKEN"] == WORKFLOW
+    err = capsys.readouterr().err
+    assert expected.lower() in err.lower() and "the workflow token publishes this run" in err
+    # sticky: the planted key gone, the process stays on the workflow token, silently
+    monkeypatch.setenv("GITHUB_TOKEN", APP)
+    assert _pairs(app_token.git_auth_env(root=root))[-1][1] == _basic(WORKFLOW)
+    assert capsys.readouterr().err == ""
+
+
+def test_a_clean_config_is_judged_again_on_every_call(app_run, tmp_path, monkeypatch):
+    """A clean result is never remembered: the session could plant a key afterwards."""
+    monkeypatch.setattr(app_token.time, "time", lambda: NOW + 60)
+    root = _repo(tmp_path)
+    assert _pairs(app_token.git_auth_env(root=root))[-1] == (KEY, _basic(APP))
+    subprocess.run(["git", "-C", str(root), "config", "http.sslVerify", "false"], check=True)
+    assert _pairs(app_token.git_auth_env(root=root))[-1] == (KEY, _basic(WORKFLOW))
+
+
+def test_without_the_app_the_config_is_not_judged(monkeypatch, tmp_path):
+    """No App, nothing to protect beyond what the workflow token always had: no listing."""
+    monkeypatch.setenv("GITHUB_ACTIONS", "true")
+    monkeypatch.setenv("GITHUB_TOKEN", WORKFLOW)
+    monkeypatch.setattr(app_token, "_config_finding", _stop)
+    assert app_token.git_auth_env(root=tmp_path)
+
+
+def test_the_release_git_runner_takes_network_env_on_its_calls(tmp_path, monkeypatch):
+    """N4: ``release/approval.make_git`` (the release's fetch, ls-remote and record push)
+    passes ``state/gitops.py network_env`` to every git call it starts."""
+    from release import approval
+
+    seen = []
+    monkeypatch.setattr(
+        gitops, "network_env", lambda args, root=None: {"MARK": f"{args[0]}@{root}"}
+    )
+
+    def fake_run(argv, **kwargs):
+        seen.append((argv[1], kwargs.get("env")))
+        return subprocess.CompletedProcess(argv, 0, "", "")
+
+    monkeypatch.setattr(approval.subprocess, "run", fake_run)
+    git = approval.make_git()
+    for verb in ("fetch", "ls-remote", "push", "status"):
+        git(tmp_path, verb)
+    assert seen == [
+        (verb, {"MARK": f"{verb}@{tmp_path}"}) for verb in ("fetch", "ls-remote", "push", "status")
+    ]

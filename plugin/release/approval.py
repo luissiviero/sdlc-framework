@@ -82,7 +82,7 @@ def make_git(timeout: float = GIT_TIMEOUT) -> GitRunner:
                 timeout=timeout,
                 # a fetch, ls-remote or push gets the credential in its environment only
                 # (decision 33, R49: no checkout persists one in .git/config)
-                env=network_env(args),
+                env=network_env(args, root),
             )
         except subprocess.TimeoutExpired as exc:
             raise TimeoutError(f"git {' '.join(args[:2])} took over {timeout}s") from exc
