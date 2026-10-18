@@ -13,7 +13,7 @@
 profile: {{PROFILE}}
 
 # --- review mode inside a phase (OPERATING_MODEL sections 3 and 6; decisions 21, 32) ---------
-# deferred is the default (decision 32); parked stays available, here or per change.
+# deferred is what /sdlc-init proposes (decision 32); an unset key reads as parked.
 # parked:   a judgment item parks the change and waits for you (an open flagged concern in
 #           spec.md, contradicting policies, an escalate verdict of the adversarial reviewer,
 #           an Important review finding whose fix the run cannot determine, a verifier

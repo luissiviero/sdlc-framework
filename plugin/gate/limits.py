@@ -203,10 +203,12 @@ BUDGET_NEED = "Raise `gate.max_budget_usd` in sdlc.yaml (a reviewed PR) or finis
 
 
 def budget_reason(total: float, budget: float, this_run: float | None = None) -> str:
-    """The park reason of a spent per-change budget: the gate's ``limits`` check, and the
-    runner when nothing is left before a session starts (1.0.8)."""
+    """The park reason of a spent per-change budget: the gate's ``limits`` check (``total``
+    above ``budget``: exceeded), and the runner when nothing is left before a session starts
+    (1.0.8; ``total`` equal to ``budget``: reached)."""
     run = f" (this run {this_run:.2f})" if this_run is not None else ""
-    return f"budget exceeded: {total:.2f} USD spent on the change{run}, budget {budget:.2f} USD"
+    word = "exceeded" if total > budget else "reached"
+    return f"budget {word}: {total:.2f} USD spent on the change{run}, budget {budget:.2f} USD"
 
 
 def budget_left(gate_settings: Any, evidence_dir: Path) -> tuple[float, float, float] | None:

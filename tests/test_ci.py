@@ -248,9 +248,17 @@ def test_a_job_too_short_for_the_build_caps_keeps_the_general_caps(capsys, proje
     assert run_phase.build_caps_refusal({}, {run_phase.JOB_TIMEOUT_ENV: "245"}) is None
     why = run_phase.build_caps_refusal({}, {run_phase.JOB_TIMEOUT_ENV: "244"})
     assert "SDLC_JOB_TIMEOUT_MINUTES=244" in why and "need 245 minutes" in why
-    # a longer gate.command_timeout needs a longer job: 180 + 5 + 3 x 30 + 5 + 10
+    assert "replace sdlc-build.yml and sdlc-fix.yml" in why
+    # a longer gate.command_timeout needs a longer job: 180 + 5 + 3 x 30 + 5 + 10; the job
+    # holds the defaults, so the line says what the project's own settings ask for
     slow = {"gate": {"command_timeout": 1800}}
-    assert "need 290 minutes" in run_phase.build_caps_refusal(slow, JOB_ENV)
+    why = run_phase.build_caps_refusal(slow, JOB_ENV)
+    assert "this project's build caps need 290 minutes" in why
+    assert "raise timeout-minutes and SDLC_JOB_TIMEOUT_MINUTES together" in why
+    assert "lower gate.build_max_wall_clock_minutes or gate.command_timeout" in why
+    assert "replace sdlc-build.yml" not in why
+    longer = {"gate": {"build_max_wall_clock_minutes": 200}}
+    assert "need 265 minutes" in run_phase.build_caps_refusal(longer, JOB_ENV)
     assert _turns("c", slow, JOB_ENV) == 200
     root, change = project
     set_state(change, "b", gate_phase="b", gate_result="passed")
@@ -641,6 +649,10 @@ def test_a_session_gets_what_is_left_of_the_change_s_budget(capsys, project):
     assert budget(change_dir=change) == "1"
     limits.record_spend_entry(evidence, "c", "claude-c-2.json", 0.42)
     assert budget(change_dir=change) == "0.58"
+    # no exponent form, and never 0 for a positive amount left
+    assert run_phase._usd(0.00001) == "0.0001" and run_phase._usd(149.99999) == "150"
+    assert run_phase._usd(1e-7) == "0.0001" and run_phase._usd(12.5) == "12.5"
+    assert limits.budget_reason(151, 150).startswith("budget exceeded: 151.00 USD")
     # the template's cap through a real dry run
     (evidence / limits.SPEND_FILE).unlink()
     limits.record_spend_entry(evidence, "b", "claude-b.json", 149.0)
@@ -661,7 +673,7 @@ def test_a_change_with_no_budget_left_parks_before_the_session(project, monkeypa
     assert run_phase.run_phase(args, dict(KEY_ENV)) == run_phase.EXIT_OK
     out = json.loads(capsys.readouterr().out)
     assert invoked == []
-    reason = "limits: budget exceeded: 150.00 USD spent on the change, budget 150.00 USD"
+    reason = "limits: budget reached: 150.00 USD spent on the change, budget 150.00 USD"
     assert out["parked"] == reason
     assert status_mod.read_status(change).parked_reason == reason
     assert [a[0] for _n, a in calls if a and a[0] in ("park", "upsert")]

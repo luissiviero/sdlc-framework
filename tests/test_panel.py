@@ -642,6 +642,7 @@ def test_the_owner_s_overturn_of_a_panel_park_lets_the_phase_continue(request, p
     assert result.result == ("wait" if phase == "b" else "continue"), result.reason
     adv = next(ch for ch in result.checks if ch.name == "adversarial_review")
     assert adv.ok and adv.details["settled_by_owner"] == 1
+    assert gate.settled_by_panel(result.checks)  # not the reviewer's own continue: no fast lane
     assert "the owner overturned the panel's decision 1" in adv.reason
     rc, out = run(["items", "--root", str(root), "--id", "0001", "--phase", phase])
     assert rc == 0 and out["items"] == [] and out["pending"] == []
@@ -900,3 +901,16 @@ def test_the_pr_summary_names_the_models_and_the_warning(tmp_path):
         in lines
     )
     assert any(line.startswith("⚠ the session itself runs on opus") for line in lines)
+
+
+def test_the_panel_cli_fails_closed_on_an_unreadable_approved_status(project, monkeypatch):  # noqa: F811
+    """1.0.8: when the approved copy cannot be read, the panel settles nothing (``parked``),
+    whatever the project's own mode says."""
+    root, change = project
+
+    def unreadable(*_a, **_k):
+        raise gate.GateError("the approved status.yaml cannot be read")
+
+    monkeypatch.setattr(gate, "approved_overrides", unreadable)
+    st = status_mod.read_status(change)
+    assert panel_cli.review_mode({"review": "deferred"}, st, root) == "parked"

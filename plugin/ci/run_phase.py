@@ -313,22 +313,38 @@ def _int_or(value: Any, default: int) -> int:
     return n if n > 0 else default
 
 
-def build_caps_refusal(config: dict[str, Any], env: dict[str, str] | None) -> str | None:
-    """Why the job cannot hold the build caps, or None when it can: its ``timeout-minutes``
-    (``JOB_TIMEOUT_ENV``) must cover the build session's wall clock, the grace, the commands
-    step and the judge (the arithmetic above ``JUDGE_TIMEOUT_SECONDS``)."""
+def build_caps_minutes_needed(config: dict[str, Any]) -> int:
+    """The job minutes the build caps need: the build session's wall clock, the grace, the
+    commands step and the judge (the arithmetic above ``JUDGE_TIMEOUT_SECONDS``); 245 with
+    the defaults."""
     _turns, minutes = limits.run_caps(_gate_settings(config), True)
-    needed = (
+    return (
         minutes
         + GRACE_MINUTES
         + math.ceil(commands_timeout_seconds(config) / 60)
         + math.ceil(JUDGE_TIMEOUT_SECONDS / 60)
     )
+
+
+def build_caps_refusal(config: dict[str, Any], env: dict[str, str] | None) -> str | None:
+    """Why the job cannot hold the build caps, or None when it can: its ``timeout-minutes``
+    (``JOB_TIMEOUT_ENV``) must cover the build session's wall clock, the grace, the commands
+    step and the judge (the arithmetic above ``JUDGE_TIMEOUT_SECONDS``)."""
+    needed = build_caps_minutes_needed(config)
     raw = (env or {}).get(JOB_TIMEOUT_ENV)
     job = _int_or(raw, 0)
     if job >= needed:
         return None
     said = f"{JOB_TIMEOUT_ENV}={raw}" if raw else f"no {JOB_TIMEOUT_ENV}"
+    if job >= build_caps_minutes_needed({}):
+        # the job holds the defaults: the project raised its build wall clock or its
+        # command_timeout past what the job allows
+        return (
+            f"the general caps apply: the job says {said}, and this project's build caps "
+            f"need {needed} minutes (raise timeout-minutes and {JOB_TIMEOUT_ENV} together in "
+            "sdlc-build.yml and sdlc-fix.yml, or lower gate.build_max_wall_clock_minutes or "
+            "gate.command_timeout; decision 32)"
+        )
     return (
         f"the general caps apply: the job says {said}, and the build caps need {needed} "
         "minutes (replace sdlc-build.yml and sdlc-fix.yml with the template copies of this "
@@ -1896,7 +1912,7 @@ def compose(
             if change_dir is not None
             else None
         )
-        argv += ["--max-budget-usd", f"{round(left[2], 4):g}" if left else str(budget)]
+        argv += ["--max-budget-usd", _usd(left[2]) if left else str(budget)]
     argv += ["--output-format", "json"]
     model = env.get("SDLC_MODEL")
     if model:
@@ -1923,6 +1939,12 @@ def compose(
         argv += ["--allowedTools", JUDGE_ALLOWED_TOOLS]
         argv += ["--disallowedTools", JUDGE_DISALLOWED_TOOLS]
     return argv
+
+
+def _usd(amount: float) -> str:
+    """A ``--max-budget-usd`` figure: no exponent form, and never 0 for a positive amount
+    (a session with nothing left never starts: the runner parks first)."""
+    return f"{max(amount, 0.0001):.4f}".rstrip("0").rstrip(".")
 
 
 def maintain_allowed_tools(root: Path | None) -> str:
@@ -3569,6 +3591,7 @@ def run_reset_judge(
         config=config,
         env=judge_env,
         root=root,
+        change_dir=change_dir,
     )
     data, raw, err, code = invoke(argv, root, judge_env, JUDGE_TIMEOUT_SECONDS)
     result_path, stderr_path = run_record_paths(change_dir, "judge")

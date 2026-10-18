@@ -148,7 +148,9 @@ def test_sdlc_yaml_carries_decision_32_s_defaults():
     assert sdlc_init.build_parser().parse_args([]).review == "deferred"
     text = render.render_file(TEMPLATE / "sdlc.yaml", VALUES)
     review_block = text.split("# --- review mode", 1)[1].split("\nreview:", 1)[0]
-    assert "deferred is the default (decision 32); parked stays available" in review_block
+    assert "deferred is what /sdlc-init proposes (decision 32); an unset key reads as parked" in (
+        review_block
+    )
     gate = yamlish.loads(text)["gate"]
     assert gate["max_turns"] == 200 and gate["max_wall_clock_minutes"] == 120
     assert gate["build_max_turns"] == 400 and gate["build_max_wall_clock_minutes"] == 180
