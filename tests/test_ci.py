@@ -21,7 +21,7 @@ import pytest
 from ci import auth, project_setup, run_phase
 
 from gate import gate as gate_mod
-from gate import preflight
+from gate import limits, preflight
 from state import status as status_mod
 from state import yamlish
 
@@ -200,35 +200,66 @@ def test_dry_run_argv_per_phase(capsys, project, phase, command, mode):
     assert int(argv[argv.index("--max-turns") + 1]) == run_phase.DEFAULT_MAX_TURNS
 
 
+JOB_ENV = {"SDLC_JOB_TIMEOUT_MINUTES": "260"}  # what the 1.0.8 build and fix jobs export
+
+
+def _turns(phase: str, config: dict, env: dict) -> int:
+    argv = run_phase.compose(
+        claude="claude", plugin_dir=ROOT, phase=phase, prompt="x",
+        permission_mode="default", config=config, env={**KEY_ENV, **env},
+    )  # fmt: skip
+    return int(argv[argv.index("--max-turns") + 1])
+
+
 def test_the_build_run_and_a_fix_round_get_the_build_caps(capsys, project):
     """Decision 32 (1.0.8): ``--max-turns`` 400 and a (180 + 5)-minute subprocess timeout for
     the build run and every fix round; 200 turns and (120 + 5) minutes for every other run;
     a general ``max_turns: 400`` (this repository's root ``sdlc.yaml``) applies to (b) too."""
-
-    def turns(phase: str, config: dict) -> int:
-        argv = run_phase.compose(
-            claude="claude", plugin_dir=ROOT, phase=phase, prompt="x",
-            permission_mode="default", config=config, env=dict(KEY_ENV),
-        )  # fmt: skip
-        return int(argv[argv.index("--max-turns") + 1])
-
     for phase in ("c", "fix"):
-        assert turns(phase, {}) == 400, phase
-        assert run_phase.run_timeout_seconds({}, phase) == (180 + 5) * 60
+        assert _turns(phase, {}, JOB_ENV) == 400, phase
+        assert run_phase.run_timeout_seconds({}, phase, JOB_ENV) == (180 + 5) * 60
     for phase in ("b", "d", "e", "review", "triage"):
-        assert turns(phase, {}) == 200, phase
-        assert run_phase.run_timeout_seconds({}, phase) == (120 + 5) * 60
+        assert _turns(phase, {}, JOB_ENV) == 200, phase
+        assert run_phase.run_timeout_seconds({}, phase, JOB_ENV) == (120 + 5) * 60
     root_config = {"gate": {"max_turns": 400, "max_wall_clock_minutes": 120}}
-    assert turns("b", root_config) == 400 and turns("c", root_config) == 400
-    assert run_phase.run_timeout_seconds(root_config, "b") == (120 + 5) * 60
+    assert _turns("b", root_config, JOB_ENV) == 400 and _turns("c", root_config, JOB_ENV) == 400
+    assert run_phase.run_timeout_seconds(root_config, "b", JOB_ENV) == (120 + 5) * 60
     owner = {"gate": {"build_max_turns": 600, "build_max_wall_clock_minutes": 200}}
-    assert turns("fix", owner) == 600 and turns("d", owner) == 200
-    assert run_phase.run_timeout_seconds(owner, "c") == (200 + 5) * 60
+    longer = {run_phase.JOB_TIMEOUT_ENV: "265"}  # 200 + 5 + 50 (commands) + 10 (judge)
+    assert _turns("fix", owner, longer) == 600 and _turns("d", owner, longer) == 200
+    assert run_phase.run_timeout_seconds(owner, "c", longer) == (200 + 5) * 60
     # the template's own keys reach the build run's argv through /sdlc-init's sdlc.yaml
     root, _change = project
-    argv = dry_run_argv(capsys, root, "c")
+    argv = dry_run_argv(capsys, root, "c", env={**KEY_ENV, **JOB_ENV})
     assert int(argv[argv.index("--max-turns") + 1]) == 400
     assert argv[argv.index("--max-budget-usd") + 1] == "150"
+
+
+def test_a_job_too_short_for_the_build_caps_keeps_the_general_caps(capsys, project):
+    """A 1.0.8 pin with the older sdlc-build.yml / sdlc-fix.yml (200 minutes, no
+    ``SDLC_JOB_TIMEOUT_MINUTES``): a 185-minute session and the commands step would outlast
+    the job, and GitHub would kill it with no park. Such a job keeps the general caps, and
+    the run says why on stderr, once."""
+    for env in ({}, {run_phase.JOB_TIMEOUT_ENV: "200"}, {run_phase.JOB_TIMEOUT_ENV: "x"}):
+        for phase in ("c", "fix"):
+            assert _turns(phase, {}, env) == 200, (env, phase)
+            assert run_phase.run_timeout_seconds({}, phase, env) == (120 + 5) * 60
+    assert run_phase.build_caps_refusal({}, JOB_ENV) is None
+    assert run_phase.build_caps_refusal({}, {run_phase.JOB_TIMEOUT_ENV: "245"}) is None
+    why = run_phase.build_caps_refusal({}, {run_phase.JOB_TIMEOUT_ENV: "244"})
+    assert "SDLC_JOB_TIMEOUT_MINUTES=244" in why and "need 245 minutes" in why
+    # a longer gate.command_timeout needs a longer job: 180 + 5 + 3 x 30 + 5 + 10
+    slow = {"gate": {"command_timeout": 1800}}
+    assert "need 290 minutes" in run_phase.build_caps_refusal(slow, JOB_ENV)
+    assert _turns("c", slow, JOB_ENV) == 200
+    root, change = project
+    set_state(change, "b", gate_phase="b", gate_result="passed")
+    assert run_phase.run_phase(Args(root=str(root), phase="c"), dict(KEY_ENV)) == 0
+    out, err = capsys.readouterr()
+    argv = json.loads(out)["argv"]
+    assert int(argv[argv.index("--max-turns") + 1]) == 200
+    assert err.count("the general caps apply: the job says no SDLC_JOB_TIMEOUT_MINUTES") == 1
+    assert "replace sdlc-build.yml and sdlc-fix.yml" in err
 
 
 def test_design_phase_argv_cannot_edit_a_file(capsys, project):
@@ -587,6 +618,53 @@ def test_a_branch_that_changed_a_guardrail_file_never_runs(project, tmp_path, ca
     out = json.loads(capsys.readouterr().out)
     assert "CLAUDE.md" in out["parked"] and "refuses to run" in out["parked"]
     assert "guardrail" in status_mod.read_status(change).parked_reason
+
+
+def test_a_session_gets_what_is_left_of_the_change_s_budget(capsys, project):
+    """1.0.8: ``gate.max_budget_usd`` is per change, and each session was handed the whole
+    cap as its ``--max-budget-usd``, so a change could spend about twice the cap before the
+    gate saw it. The session gets the cap minus the change's recorded total."""
+    root, change = project
+    evidence = change / "evidence"
+    config = {"gate": {"max_budget_usd": 150}}
+
+    def budget(**kw) -> str:
+        argv = run_phase.compose(
+            claude="claude", plugin_dir=ROOT, phase="d", prompt="x",
+            permission_mode="default", config=config, env=dict(KEY_ENV), **kw,
+        )  # fmt: skip
+        return argv[argv.index("--max-budget-usd") + 1]
+
+    assert budget() == "150" and budget(change_dir=change) == "150"  # nothing spent yet
+    limits.record_spend_entry(evidence, "b", "claude-b.json", 100.0)
+    limits.record_spend_entry(evidence, "c", "claude-c.json", 49.0)
+    assert budget(change_dir=change) == "1"
+    limits.record_spend_entry(evidence, "c", "claude-c-2.json", 0.42)
+    assert budget(change_dir=change) == "0.58"
+    # the template's cap through a real dry run
+    (evidence / limits.SPEND_FILE).unlink()
+    limits.record_spend_entry(evidence, "b", "claude-b.json", 149.0)
+    argv = dry_run_argv(capsys, root, "d")
+    assert argv[argv.index("--max-budget-usd") + 1] == "1"
+
+
+def test_a_change_with_no_budget_left_parks_before_the_session(project, monkeypatch, capsys):
+    """1.0.8: with the change's total at the cap, no session starts: the runner parks with
+    the budget reason of the gate's ``limits`` check and never invokes the CLI."""
+    root, change = project
+    set_state(change, "c", gate_phase="c", gate_result="passed")
+    limits.record_spend_entry(change / "evidence", "c", "claude-c.json", 150.0)
+    invoked: list = []
+    monkeypatch.setattr(run_phase, "invoke", lambda *a, **k: invoked.append(a) or (None, "", "", 1))
+    calls = upsert_recorder(monkeypatch)
+    args = Args(root=str(root), phase="d", dry_run=False)
+    assert run_phase.run_phase(args, dict(KEY_ENV)) == run_phase.EXIT_OK
+    out = json.loads(capsys.readouterr().out)
+    assert invoked == []
+    reason = "limits: budget exceeded: 150.00 USD spent on the change, budget 150.00 USD"
+    assert out["parked"] == reason
+    assert status_mod.read_status(change).parked_reason == reason
+    assert [a[0] for _n, a in calls if a and a[0] in ("park", "upsert")]
 
 
 def test_a_framework_change_may_touch_the_guardrails(project, tmp_path):
@@ -3154,7 +3232,7 @@ def test_the_fix_session_runs_with_the_fix_mark_and_the_build_timeout(
 
     monkeypatch.setattr(run_phase, "invoke", invoke)
     args = Args(root=str(root), phase="fix", head_ref="sdlc/0001/b", pr_number="7", dry_run=False)
-    env = dict(os.environ, **KEY_ENV, GITHUB_TOKEN=FAKE_TOKEN)
+    env = dict(os.environ, **KEY_ENV, **JOB_ENV, GITHUB_TOKEN=FAKE_TOKEN)
     env.pop("GITHUB_ACTIONS", None)
     env.pop("SDLC_RUN", None)
     assert run_phase.run_phase(args, env) == run_phase.EXIT_FAILED  # the fake session failed

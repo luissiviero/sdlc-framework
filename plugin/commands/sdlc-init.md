@@ -76,7 +76,9 @@ for them (`created` on a first install), never `outdated`; and `sdlc.yaml` repor
 (only `updated (… comments dropped)` loses them). So on an upgraded project these files may
 still describe an older plugin. Whenever a workflow copy is `outdated`, say so to the owner
 and name the template copies (`${CLAUDE_PLUGIN_ROOT}/template/`) to diff by hand; the
-framework never rewrites them. The report's `maintain.observation` line
+framework never rewrites them. For an outdated `sdlc-build.yml` or `sdlc-fix.yml`, also say:
+replace sdlc-build.yml and sdlc-fix.yml to get the build caps (decision 32; an older copy
+keeps the build and every fix round on the general caps). The report's `maintain.observation` line
 says whether the maintain metric will have an observation: a project whose only workflows
 are the framework's (`SDLC …`, excluded from the metric by design) has none until it
 carries its own CI workflow — say so to the owner in the report, with the one-line workflow

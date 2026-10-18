@@ -606,7 +606,12 @@ def test_a_panel_park_on_an_escalate_parks_the_gate_fail_closed(request, phase, 
         panel = next(ch for ch in result.failed if ch.name == "panel")
         assert panel.name in ledger.NEVER_TO_PANEL and panel.details["upheld"] == [1]
         assert "decision 1: the panel upheld the adversarial reviewer's escalate" in panel.reason
-        assert "The panel upheld the adversarial reviewer's escalate (decision 1)" in panel.need
+        upheld = (
+            "The panel upheld the adversarial reviewer's escalate "
+            f"(decision 1 of evidence/decisions-{phase}.md)"
+        )
+        assert upheld in panel.need
+        assert "overturns it - the fix round marks the ledger line overturned" in panel.need
     result = _gate_with_escalate_decision(root, change, phase, "park")
     assert "('park')" in next(ch for ch in result.failed if ch.name == "panel").reason
     assert "upheld" in result.what_i_need()
@@ -620,6 +625,45 @@ def test_a_panel_park_on_an_escalate_parks_the_gate_fail_closed(request, phase, 
     result = _gate_with_escalate_decision(root, change, phase, "park", overturned=overturned)
     assert "panel" in _names(result, True), result.reason
     assert result.result == ("wait" if phase == "b" else "continue"), result.reason
+
+
+@pytest.mark.parametrize(("phase", "fixture"), [("b", "design_project"), ("c", "project")])
+def test_the_owner_s_overturn_of_a_panel_park_lets_the_phase_continue(request, phase, fixture):
+    """The way out of a gap-1 park (1.0.8): the owner overturns the panel's ``park`` with a
+    review comment (``sdlc-fix.md``: the owner's word replaces the panel's), so the reviewer
+    escalating again on the same reasons is settled and the panel does not take it again; an
+    escalate on new reasons is a new item, which the panel takes or the gate parks on."""
+    root, change = request.getfixturevalue(fixture)
+    set_review(change, "deferred")
+    overturned = {"comment": "go on: the blast radius is fine", "at": "2026-10-18T10:00:00Z"}
+    _gate_with_escalate_decision(root, change, phase, "park", overturned=overturned)
+    verdict(root, phase, verdict="escalate")  # the same reasons as the overturned line
+    result = gate.run_gate(root, "0001", phase, dry_run=True)
+    assert result.result == ("wait" if phase == "b" else "continue"), result.reason
+    adv = next(ch for ch in result.checks if ch.name == "adversarial_review")
+    assert adv.ok and adv.details["settled_by_owner"] == 1
+    assert "the owner overturned the panel's decision 1" in adv.reason
+    rc, out = run(["items", "--root", str(root), "--id", "0001", "--phase", phase])
+    assert rc == 0 and out["items"] == [] and out["pending"] == []
+    # without the overturn the same verdict parks, as before
+    entries = ledger.load_ledger(change, phase)
+    entries[0]["overturned"] = None
+    ledger.save_ledger(change, phase, entries)
+    git(root, "commit", "-q", "-am", "the overturn undone")
+    verdict(root, phase, verdict="escalate")
+    assert gate.run_gate(root, "0001", phase, dry_run=True).result == "park"
+    # new reasons are a new item: the panel takes it, and the gate parks until it does
+    entries[0]["overturned"] = overturned
+    ledger.save_ledger(change, phase, entries)
+    git(root, "commit", "-q", "-am", "the overturn again")
+    path = verdict(root, phase, verdict="escalate")
+    data = json.loads(path.read_text(encoding="utf-8"))
+    path.write_text(json.dumps({**data, "reasons": ["a new risk"]}), encoding="utf-8")
+    result = gate.run_gate(root, "0001", phase, dry_run=True)
+    assert result.result == "park" and "adversarial_review" in _names(result, False)
+    rc, out = run(["items", "--root", str(root), "--id", "0001", "--phase", phase])
+    assert [(i["kind"], i["decided"]) for i in out["items"]] == [("escalate", False)]
+    assert out["items"][0]["key"] == ledger.escalate_key(["a new risk"])
 
 
 def test_gate_parks_a_panel_decision_whose_blind_verdict_is_not_committed(project):  # noqa: F811

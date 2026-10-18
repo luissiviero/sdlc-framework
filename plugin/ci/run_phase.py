@@ -112,6 +112,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import re
 import subprocess
@@ -231,7 +232,9 @@ JUDGE_DISALLOWED_TOOLS = (
     "Edit,MultiEdit,NotebookEdit,Write,Bash,WebFetch,WebSearch,Agent,Task,Skill,SlashCommand,"
     "TodoWrite"
 )
-# within the job's budget: session 125 + commands step 50 + judge 10 < timeout-minutes 200
+# within the job's budget: session 125 + commands step 50 + judge 10 < timeout-minutes 200;
+# for the build run and a fix round (decision 32, 1.0.8) session 185 + 50 + 10 < 260
+# (``build_caps_refusal`` checks the job's own figure, ``JOB_TIMEOUT_ENV``)
 JUDGE_TIMEOUT_SECONDS = 10 * 60
 TRIAGE_PROMPT = (
     "Read the CI log at {log}. In at most five lines say what failed, the likely cause and "
@@ -262,6 +265,11 @@ TOKEN_VARS = ("GITHUB_TOKEN", "GH_TOKEN")
 DEFAULT_MAX_TURNS = limits.DEFAULT_MAX_TURNS
 # decision 32 (1.0.8): the build run and every fix round get the build caps (limits.run_caps)
 BUILD_CAP_PHASES = ("c", "fix")
+# The job's ``timeout-minutes`` as the 1.0.8 sdlc-build.yml and sdlc-fix.yml export it. An
+# older copy (200 minutes) exports nothing: a 185-minute session and the commands step would
+# outlast it, and GitHub would kill the job with no park and no label, so such a job keeps
+# the general caps.
+JOB_TIMEOUT_ENV = "SDLC_JOB_TIMEOUT_MINUTES"
 GRACE_MINUTES = 5  # the subprocess timeout sits this far above the gate's wall clock
 
 
@@ -305,14 +313,43 @@ def _int_or(value: Any, default: int) -> int:
     return n if n > 0 else default
 
 
-def run_caps(config: dict[str, Any], phase: str) -> tuple[int, int]:
+def build_caps_refusal(config: dict[str, Any], env: dict[str, str] | None) -> str | None:
+    """Why the job cannot hold the build caps, or None when it can: its ``timeout-minutes``
+    (``JOB_TIMEOUT_ENV``) must cover the build session's wall clock, the grace, the commands
+    step and the judge (the arithmetic above ``JUDGE_TIMEOUT_SECONDS``)."""
+    _turns, minutes = limits.run_caps(_gate_settings(config), True)
+    needed = (
+        minutes
+        + GRACE_MINUTES
+        + math.ceil(commands_timeout_seconds(config) / 60)
+        + math.ceil(JUDGE_TIMEOUT_SECONDS / 60)
+    )
+    raw = (env or {}).get(JOB_TIMEOUT_ENV)
+    job = _int_or(raw, 0)
+    if job >= needed:
+        return None
+    said = f"{JOB_TIMEOUT_ENV}={raw}" if raw else f"no {JOB_TIMEOUT_ENV}"
+    return (
+        f"the general caps apply: the job says {said}, and the build caps need {needed} "
+        "minutes (replace sdlc-build.yml and sdlc-fix.yml with the template copies of this "
+        "plugin version to get them; decision 32)"
+    )
+
+
+def run_caps(
+    config: dict[str, Any], phase: str, env: dict[str, str] | None = None
+) -> tuple[int, int]:
     """(turns, wall-clock minutes) of a run of ``phase``: the build caps for the build run
-    and a fix round, the general caps for every other (decision 32; ``limits.run_caps``)."""
-    return limits.run_caps(_gate_settings(config), phase in BUILD_CAP_PHASES)
+    and a fix round when the job allows them (``build_caps_refusal``), the general caps for
+    every other run (decision 32; ``limits.run_caps``)."""
+    build = phase in BUILD_CAP_PHASES and build_caps_refusal(config, env) is None
+    return limits.run_caps(_gate_settings(config), build)
 
 
-def run_timeout_seconds(config: dict[str, Any], phase: str) -> int:
-    _turns, minutes = run_caps(config, phase)
+def run_timeout_seconds(
+    config: dict[str, Any], phase: str, env: dict[str, str] | None = None
+) -> int:
+    _turns, minutes = run_caps(config, phase, env)
     return (minutes + GRACE_MINUTES) * 60
 
 
@@ -1830,10 +1867,13 @@ def compose(
     config: dict[str, Any],
     env: dict[str, str],
     root: Path | None = None,
+    change_dir: Path | None = None,
 ) -> list[str]:
     """The full argv of one headless run. It carries no secret, so it is safe to print.
     With ``root`` the CI settings are rendered against the project (``ci_settings_file``);
-    without it the file is passed as is."""
+    without it the file is passed as is. With ``change_dir`` the session's
+    ``--max-budget-usd`` is what the change has left of ``gate.max_budget_usd`` (1.0.8: the
+    cap is per change; each session was given the whole cap again)."""
     # The prompt goes right after -p: --allowedTools / --disallowedTools take a list of
     # values, so a prompt placed after them is read as one more tool name and the CLI
     # answers "Input must be provided either through stdin or as a prompt argument"
@@ -1848,10 +1888,15 @@ def compose(
     argv += ["--permission-mode", permission_mode]
     argv += ["--permission-prompts", "none"]  # nobody is there to answer (NOTES 10b)
     gate_cfg = _gate_settings(config)
-    argv += ["--max-turns", str(run_caps(config, phase)[0])]
+    argv += ["--max-turns", str(run_caps(config, phase, env)[0])]
     budget = gate_cfg.get("max_budget_usd")
     if budget not in (None, "", "null"):
-        argv += ["--max-budget-usd", str(budget)]
+        left = (
+            limits.budget_left(gate_cfg, Path(change_dir) / art.EVIDENCE_DIR)
+            if change_dir is not None
+            else None
+        )
+        argv += ["--max-budget-usd", f"{round(left[2], 4):g}" if left else str(budget)]
     argv += ["--output-format", "json"]
     model = env.get("SDLC_MODEL")
     if model:
@@ -2397,6 +2442,22 @@ def _run_phase(args, env: dict[str, str], track: dict[str, Any]) -> int:
         _emit({**parked, "branch": branch})
         return EXIT_OK
 
+    # 1.0.8: the per-change budget is spent - no session starts on what is not left
+    budget = limits.budget_left(_gate_settings(config), change_dir / art.EVIDENCE_DIR)
+    if budget is not None and budget[2] <= 0:
+        cap, spent, _left = budget
+        parked = park_and_publish(
+            plugin_dir, root, change_dir, st, phase,
+            "limits: " + limits.budget_reason(spent, cap),
+            branch=fix_branch, check="limits", need=limits.BUDGET_NEED,
+        )  # fmt: skip
+        _emit({**parked, "branch": branch})
+        return EXIT_OK
+    if phase in BUILD_CAP_PHASES:
+        refusal = build_caps_refusal(config, env)
+        if refusal:
+            print(f"run_phase: {refusal}", file=sys.stderr)
+
     # phase (c): the preflight decides the permission mode, or parks the change (step 18)
     permission_mode = PERMISSION_MODE.get(phase, "default")
     if phase == "c":
@@ -2433,6 +2494,7 @@ def _run_phase(args, env: dict[str, str], track: dict[str, Any]) -> int:
         config=config,
         env=env,
         root=root,
+        change_dir=change_dir,
     )
     if args.dry_run:
         _emit(
@@ -2487,7 +2549,7 @@ def _run_phase(args, env: dict[str, str], track: dict[str, Any]) -> int:
     # mark the requests it applied (``fix_requests.keep_marks_only`` after the session)
     requests_before = fix_requests.snapshot(change_dir) if phase == "fix" else None
     data, raw, err, code = invoke(
-        argv, root, session_env(env, root, phase), run_timeout_seconds(config, phase)
+        argv, root, session_env(env, root, phase), run_timeout_seconds(config, phase, env)
     )
     result_path, stderr_path = run_record_paths(change_dir, phase)
     store_result(change_dir, phase, data, raw, result_path)

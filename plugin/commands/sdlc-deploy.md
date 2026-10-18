@@ -191,7 +191,7 @@ in `spec.md` as `decided (by panel #<n>): <decision> — <concern>`, and commits
 folder itself (`review(<id>): panel decision <n>`), so the decision is in HEAD before anyone
 judges it. Do not reword a closed concern line: the gate matches it to the ledger by
 `#<n>`. Apply what the decision asks beyond that (an `escalate` decided `continue` needs
-nothing more; a fix the decision names is made now, `plan.md` in the same commit, committed
+nothing more; an `escalate` decided `park`: go straight to the gate, it parks; a fix the decision names is made now, `plan.md` in the same commit, committed
 with `commit-phase ... --phase e --message "review(<id>): panel decision <n> applied"`).
 After the last item, run step 1 again for the new HEAD, once — the review prompt, the
 reviewer in a fresh context, then `validate` — because the panel's commits moved HEAD and

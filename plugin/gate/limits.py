@@ -199,6 +199,29 @@ def record_spend_entry(
     return ledger
 
 
+BUDGET_NEED = "Raise `gate.max_budget_usd` in sdlc.yaml (a reviewed PR) or finish by hand."
+
+
+def budget_reason(total: float, budget: float, this_run: float | None = None) -> str:
+    """The park reason of a spent per-change budget: the gate's ``limits`` check, and the
+    runner when nothing is left before a session starts (1.0.8)."""
+    run = f" (this run {this_run:.2f})" if this_run is not None else ""
+    return f"budget exceeded: {total:.2f} USD spent on the change{run}, budget {budget:.2f} USD"
+
+
+def budget_left(gate_settings: Any, evidence_dir: Path) -> tuple[float, float, float] | None:
+    """(cap, spent, left) of the change's budget (``gate.max_budget_usd``, the total of
+    ``evidence/spend.json``), or None when no cap is set. The runner passes ``left`` as the
+    session's ``--max-budget-usd``: the cap is per change, so a session gets what the change
+    has not spent yet, never the whole cap again (1.0.8)."""
+    cfg = gate_settings if isinstance(gate_settings, dict) else {}
+    cap = _spend(cfg.get("max_budget_usd"))
+    if cap is None:
+        return None
+    spent = read_spend_ledger(evidence_dir)["total_usd"]
+    return cap, spent, round(max(cap - spent, 0.0), 6)
+
+
 def _elapsed_minutes(started_at: str | None, now: datetime | None = None) -> float | None:
     if not started_at:
         return None
@@ -302,13 +325,11 @@ def check_limits(ctx: GateContext, now: datetime | None = None) -> CheckResult:
         }
     )
     if budget is not None and total is not None and total > budget:
-        this_run = f" (this run {spend:.2f})" if spend is not None else ""
         return CheckResult(
             "limits",
             False,
-            f"budget exceeded: {total:.2f} USD spent on the change{this_run}, "
-            f"budget {budget:.2f} USD",
-            "Raise `gate.max_budget_usd` in sdlc.yaml (a reviewed PR) or finish by hand.",
+            budget_reason(total, budget, spend),
+            BUDGET_NEED,
             {**details, "stop": True},
         )
     return CheckResult("limits", True, "within the run limits", details=details)

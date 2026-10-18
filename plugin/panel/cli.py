@@ -97,9 +97,9 @@ def _config(root: Path) -> dict[str, Any]:
 def review_mode(config: dict[str, Any], st: status_mod.Status, root: Path | None = None) -> str:
     """The effective review mode: the change's override as the base branch carries it (the
     gate reads the same copy since 0.2.26; the branch's own value would send the items to
-    the panel and the gate would refuse the ledger), else the project's, else the default
-    (``deferred`` since 1.0.8, decision 32). A mode it cannot read is ``parked``: the panel
-    settles nothing on it (the gate refuses the same value)."""
+    the panel and the gate would refuse the ledger), else the project's, else parked. A
+    mode or an approved status it cannot read is ``parked``: the panel settles nothing on it
+    (the gate refuses the same copy)."""
     override = st.review_override
     if root is not None:
         try:
@@ -111,7 +111,7 @@ def review_mode(config: dict[str, Any], st: status_mod.Status, root: Path | None
             try:
                 _profile, override, _note = gate.approved_overrides(root, change_dir, st, d)
             except gate.GateError:
-                override = None
+                return "parked"
     try:
         return c.effective_review_mode(config.get("review"), override)
     except ValueError:

@@ -45,8 +45,9 @@ def test_profiles_and_human_gates():
     # decision 21 (0.2.14): a file that still says lite reads as standard
     assert c.effective_profile("standard", "lite") == "standard"
     assert c.effective_profile("lite", None) == "standard"
-    assert c.effective_review_mode(None, None) == "deferred"  # decision 32 (1.0.8)
-    assert c.effective_review_mode("parked", None) == "parked"  # still available per project
+    # decision 32 (1.0.8): /sdlc-init proposes deferred; an unset key still reads as parked
+    assert c.effective_review_mode(None, None) == "parked" and c.INIT_REVIEW_MODE == "deferred"
+    assert c.effective_review_mode("deferred", None) == "deferred"
     assert c.effective_review_mode("parked", "deferred") == "deferred"
     with pytest.raises(ValueError):
         c.effective_review_mode("panel", None)
