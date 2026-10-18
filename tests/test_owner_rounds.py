@@ -113,6 +113,25 @@ def test_an_approval_label_applied_by_a_collaborator_does_not_start_the_next_pha
     assert "not by the owner's account" in skip_reason(root, "d", {"GITHUB_TOKEN": FAKE_TOKEN})
 
 
+def test_an_approval_label_the_app_applied_is_the_automation_s_not_a_person_s(project, monkeypatch):
+    """R49 (decision 33): the project's App labels as ``<slug>[bot]``, not
+    ``github-actions[bot]``; its label, and one by the identity ``sdlc.yaml:
+    automation_identity`` lists, is refused as the automation's before the owner check."""
+    root, change = project
+    events = _full_profile_with_label(root, change, monkeypatch, "sdlc-luissiviero[bot]")
+    env = {"GITHUB_TOKEN": FAKE_TOKEN, **OWNER_ENV}
+    assert skip_reason(root, "d", env) == (
+        "sdlc:c-approved on PR #7: sdlc:c-approved was applied by sdlc-luissiviero[bot], "
+        "not by a human"
+    )
+    text = (root / "sdlc.yaml").read_text(encoding="utf-8")
+    (root / "sdlc.yaml").write_text(text + "\nautomation_identity:\n  - ci-machine\n", "utf-8")
+    events[0]["actor"]["login"] = "ci-machine"
+    assert skip_reason(root, "d", env) == (
+        "sdlc:c-approved on PR #7: sdlc:c-approved was applied by ci-machine, not by a human"
+    )
+
+
 def test_an_organization_repository_s_owner_key_names_the_approver(project, monkeypatch):
     root, change = project
     _full_profile_with_label(root, change, monkeypatch, "alice")

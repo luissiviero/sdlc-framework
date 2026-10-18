@@ -146,7 +146,7 @@ from hooks._common import (  # noqa: E402
 )
 from state import conventions as c  # noqa: E402
 from state import status as status_mod  # noqa: E402
-from state.unpark import is_owner_actor  # noqa: E402
+from state.unpark import automation_identities, is_automation_actor, is_owner_actor  # noqa: E402
 
 EXIT_OK, EXIT_FAILED, EXIT_USAGE = 0, 1, 2
 
@@ -405,12 +405,17 @@ def ensure_labels(repo: str, env: dict[str, str]) -> dict[str, Any]:
     return {"ensured": len(names), "created": created, "failed": failed}
 
 
-def label_applied_by_a_human(repo: str, number: int, label: str) -> tuple[bool, str]:
+def label_applied_by_a_human(
+    repo: str, number: int, label: str, identities: list[str] | None = None
+) -> tuple[bool, str]:
     """Say whether a person applied ``label`` last: (True, login) or (False, reason).
 
     The timeline is read by ``pr/github.py label_actor`` (the paging lives there since
-    0.2.12); the workflow token's own label would be ``github-actions[bot]`` and must never
-    pass a human gate (OPERATING_MODEL section 4.2, "actor not the token").
+    0.2.12); the automation's own label must never pass a human gate (OPERATING_MODEL
+    section 4.2, "actor not the token"). Since R49 (decision 33) that label may be the
+    project's GitHub App's (``<slug>[bot]``), not ``github-actions[bot]``: the actor is
+    judged by ``state/unpark.py is_automation_actor``, which rejects any ``[bot]`` and
+    ``identities`` (``sdlc.yaml: automation_identity``; the policy default when None).
     """
     github = _github()
     if github is None:
@@ -421,7 +426,9 @@ def label_applied_by_a_human(repo: str, number: int, label: str) -> tuple[bool, 
     actor = found.get("actor")
     if not actor:
         return False, f"no `labeled` event for {label}"
-    if actor == BOT_LOGIN:
+    if identities is None:
+        identities = automation_identities({})
+    if is_automation_actor(actor, identities):
         return False, f"{label} was applied by {actor}, not by a human"
     return True, actor
 
@@ -450,13 +457,13 @@ def check_approval(
     if not _token(env):
         print(f"note: no token, so the actor of {label} is not checked", file=sys.stderr)
         return None
-    ok, who = label_applied_by_a_human(repo, int(number), label)
-    if not ok:
-        return f"{label} on PR #{number}: {who}"
     try:
         config = owner_config(root, env)
     except ConfigError as exc:  # fail closed, as the guard refuses on it
         return f"{label} on PR #{number} cannot be judged: {exc}"
+    ok, who = label_applied_by_a_human(repo, int(number), label, automation_identities(config))
+    if not ok:
+        return f"{label} on PR #{number}: {who}"
     if not is_owner_actor(who, config, env, repo):
         return (
             f"{label} on PR #{number} was applied by {who}, not by the owner's account "

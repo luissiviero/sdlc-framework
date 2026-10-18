@@ -48,6 +48,9 @@ EVERY_WORKFLOW = (
 )
 
 KEY_VAR, TOKEN_VAR = auth.API_KEY_VAR, auth.OAUTH_TOKEN_VAR
+# R49 (decision 33): the workflows of this module that push or open pull requests mint the
+# App's token
+APP_WORKFLOWS = (*PHASE_WORKFLOWS, FIX_WORKFLOW)
 FAKE_KEY = "placeholder-key"  # sdlc: allow-secret
 FAKE_TOKEN = "placeholder-token"  # sdlc: allow-secret
 KEY_ENV = {KEY_VAR: FAKE_KEY}
@@ -1197,6 +1200,29 @@ def test_label_applied_by_a_human_wraps_label_actor(monkeypatch):
     assert run_phase.next_page_url is github.next_page_url  # the re-export
 
 
+def test_label_applied_by_a_human_rejects_every_automation_actor(monkeypatch):
+    """R49 (decision 33): the App's label reads ``<slug>[bot]``, never the workflow token's
+    login; any ``[bot]`` and the configured automation identity are rejected, a person
+    passes (``state/unpark.py is_automation_actor``)."""
+    from pr import github
+
+    answers = {"ok": True, "actor": "", "reason": ""}
+    monkeypatch.setattr(github, "label_actor", lambda repo, number, label: dict(answers))
+    for bot in ("github-actions[bot]", "sdlc-luissiviero[bot]", "Sdlc-Other[BOT]"):
+        answers["actor"] = bot
+        ok, why = run_phase.label_applied_by_a_human("o/r", 7, "x")
+        assert ok is False and why == f"x was applied by {bot}, not by a human", bot
+    answers["actor"] = "ci-machine"
+    ok, why = run_phase.label_applied_by_a_human("o/r", 7, "x", ["ci-machine"])
+    assert ok is False and why == "x was applied by ci-machine, not by a human"
+    assert run_phase.label_applied_by_a_human("o/r", 7, "x") == (True, "ci-machine")
+    answers["actor"] = "luissiviero"
+    assert run_phase.label_applied_by_a_human("o/r", 7, "x", ["ci-machine"]) == (
+        True,
+        "luissiviero",
+    )
+
+
 def test_pr_by_number_reads_the_merge_through_either_route(monkeypatch):
     from pr import github
 
@@ -1995,7 +2021,8 @@ def test_merge_fired_workflows_find_the_change_from_the_merged_pr(name):
     assert "Keep the hook log" in after[-1]
     find_step = steps[find:].split("\n      - ")[0]
     assert "CHANGE_ID: ${{ inputs.change_id }}" in find_step
-    assert "GITHUB_TOKEN: ${{ github.token }}" in find_step
+    # R49 (decision 33): the App's token when minted, else the workflow token
+    assert "GITHUB_TOKEN: ${{ steps.app.outputs.token || github.token }}" in find_step
 
 
 def test_digest_workflow_is_scheduled_and_needs_no_model_credential():
@@ -2094,7 +2121,10 @@ def test_this_repository_s_pin_script_is_the_template_s():
 @pytest.mark.parametrize("name", EVERY_WORKFLOW)
 def test_workflow_uses_no_other_secret(name):
     text = workflow(name)
-    assert set(re.findall(r"secrets\.([A-Za-z_][A-Za-z0-9_]*)", text)) <= {KEY_VAR, TOKEN_VAR}
+    # R49 (decision 33): a workflow that pushes also reads the App's key, in its mint step
+    app = {"SDLC_APP_PRIVATE_KEY"} if name in APP_WORKFLOWS else set()
+    allowed = {KEY_VAR, TOKEN_VAR} | app
+    assert set(re.findall(r"secrets\.([A-Za-z_][A-Za-z0-9_]*)", text)) <= allowed
     assert "github.token" in text or "sdlc-digest" not in text
     assert "${{ secrets.GITHUB_TOKEN }}" not in text  # github.token is the documented form
 

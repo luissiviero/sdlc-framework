@@ -17,7 +17,8 @@
 # - only workflow_dispatch and repository_dispatch do, which is why the round is dispatched
 # explicitly (its actor is github-actions[bot], so the dispatch carries the comment's link).
 # The token holds exactly the permissions below (NOTES section 46): actions: write for the
-# dispatch, read elsewhere. No model, no secret but the workflow token.
+# dispatch, read elsewhere. No model, no secret but the workflow token. It keeps the workflow
+# token, not the App's (decision 33): it pushes nothing, and a dispatch starts a run anyway.
 #
 # Why the default branch: an issue_comment run uses the default branch's workflow file and
 # commit, never the pull request's head, and its payload carries no head (NOTES section 46).

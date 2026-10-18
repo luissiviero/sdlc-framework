@@ -42,7 +42,8 @@
 # deploy.command run there, and neither may push. Only the record job, which runs the
 # framework's record step and nothing of the project's, holds contents: write (the automation
 # identity's branch-only access). The deploy command's own credentials are the project's
-# secrets; add them to the env: of the release step below.
+# secrets; add them to the env: of the release step below. It keeps the workflow token, not
+# the App's (decision 33): the release record needs no CI run.
 #
 # /sdlc-init rewrote `branches: [main]` below to this project's default branch and filled
 # in the framework repository.

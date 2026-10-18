@@ -126,6 +126,20 @@ files the owner should review (CLAUDE.md trim, settings). Merge = accept.
   Without it every phase job ends with "GitHub Actions is not permitted to create or
   approve pull requests" after the phase has run. The workflows also need the repository
   secret `CLAUDE_CODE_OAUTH_TOKEN` or `ANTHROPIC_API_KEY` (NOTES §2).
+- The GitHub App the automation pushes and opens pull requests as (decision 33), so the
+  project's CI runs on its heads with no approval click and the events it causes start
+  workflow runs. Create a GitHub App on the owner's account (Settings → Developer settings →
+  GitHub Apps → New GitHub App) with the webhook turned off and these repository
+  permissions: Actions, Checks, Contents, Issues and Pull requests read and write; Metadata
+  read; Workflows **no access**, so the App can never change a workflow file. Generate a
+  private key and install the App on this repository only. Store the App ID as the
+  repository **variable** `SDLC_APP_ID` and the `.pem` file's content as the repository
+  **secret** `SDLC_APP_PRIVATE_KEY` (Settings → Secrets and variables → Actions). Never add
+  the App to a ruleset's bypass list (R22 will settle its merge step). Without the variable
+  every workflow runs on the workflow token as before. On an upgrade to 1.0.9 or later,
+  replace the eight workflows that mint the App's token: sdlc-design.yml, sdlc-build.yml,
+  sdlc-test.yml, sdlc-deploy.yml, sdlc-fix.yml, sdlc-detect.yml, sdlc-runbook.yml and
+  sdlc-scan.yml (delete each and re-run /sdlc-init).
 - On an organization repository, set `owner: <your login>` in `sdlc.yaml` (decision 34);
   otherwise no `@claude` comment or "Request changes" review starts a round and no
   `sdlc:c-approved` or `sdlc:d-approved` label counts. A personal repository needs nothing.

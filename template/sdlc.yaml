@@ -128,8 +128,9 @@ gate:
 # The gate honours a risk acceptance, an iteration reset or a test-lock lift only when the
 # commit that introduced it was not authored by the automation identity, or when the label
 # that made it was applied by a person (decision 24): a run cannot approve itself. Default:
-# github-actions[bot] (plugin/gate/policy.py). Override only if your CI commits under another
-# name:
+# github-actions[bot] (plugin/gate/policy.py). Any <app>[bot] account, the project's GitHub
+# App included (decision 33), counts as the automation whatever this lists. Override only if
+# your CI commits under another name:
 # automation_identity:
 #   - github-actions[bot]
 
