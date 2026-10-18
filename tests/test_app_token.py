@@ -277,8 +277,14 @@ def test_a_target_the_commands_step_runs_finds_no_token(app_run, tmp_path, monke
     """S-A: code the session wrote runs outside the sandbox in the commands step; it finds
     no token in its environment and none in ``.git/config``."""
     monkeypatch.setattr(app_token.time, "time", lambda: NOW + 60)
-    for key, value in app_token.git_auth_env().items():  # as if the runner's env had it
-        monkeypatch.setenv(key, value)
+    # as if the runner's env had the credential; the empty reset value is left out, since
+    # setting an empty variable deletes it on Windows (the runner passes the pairs in a
+    # subprocess env dict, where an empty value survives)
+    auth = app_token.git_auth_env()
+    n = int(auth[app_token.COUNT_ENV]) - 1
+    monkeypatch.setenv(app_token.COUNT_ENV, "1")
+    monkeypatch.setenv(app_token.KEY_ENV.format(n=0), auth[app_token.KEY_ENV.format(n=n)])
+    monkeypatch.setenv(app_token.VALUE_ENV.format(n=0), auth[app_token.VALUE_ENV.format(n=n)])
     root = _repo(tmp_path)
     probe = (
         "import os, pathlib, sys; seen = ' '.join(os.environ.values()) + "
