@@ -53,7 +53,10 @@ What one run does, in order:
    guard prints ``{"skipped": ...}`` and exits 0, so a duplicate trigger is harmless. One
    exception: a (b) or (c) run whose work branch already carries this phase but has no open
    pull request is a re-run of an attempt that never reached the queue, and it proceeds with
-   the earlier park cleared (``rerun_reason``);
+   the earlier park cleared (``rerun_reason``). So does a build parked at the runner's
+   preflight before any session ran, its pull request open or not (``pre_run_park``; gap 2
+   of NOTES §45): the restart merges the default branch into the work branch first
+   (``merge_default_branch``), and a conflict parks it again;
 3. refuses to run on a branch that changed a guardrail file (``.claude/**``, ``CLAUDE.md``,
    ``REVIEW.md``, ``sdlc.yaml``, ``protected_paths``) unless intent.md says
    ``Framework change: yes``; a park commits the change folder on the work branch and
@@ -72,7 +75,10 @@ What one run does, in order:
 6. stores the JSON result as ``changes/<id>-<slug>/evidence/claude-<phase>.json``, records
    ``total_cost_usd`` with ``gate/cli.py record-spend`` and commits the run record on the
    work branch (the model's session pushed before the spend was known), and validates the
-   findings file after a review pass;
+   findings file after a review pass. A fix round that ended before its gate (the session
+   failed, or exited 0 without writing this round's gate record) commits the session's
+   uncommitted work with the change folder on the PR's head, not gated, and parks
+   (``park_unfinished_round``; gaps 3 and 4 of NOTES §45);
 6b. **runs the gate's ``commands`` check** the session deferred (``gate/cli.py
    run-commands``; issue #91, 0.3.0): build, test and lint on the working tree the session
    left, outside the sandbox, where a nested ``.env*`` the deny rules cover is readable
@@ -200,11 +206,16 @@ PERMISSION_MODE = {
     "review": "default",
     "fix": "acceptEdits",
 }
+# Gap 4 of NOTES §45 (choice 231): an unattended session has nobody to answer a question, so
+# the design, build, test, deploy and fix sessions are denied the tool that asks one (the
+# name ``sdlc-plan.md`` and ``sdlc-init.md`` allow for their interactive runs); round 5 of
+# change 0005 ended its turn with a question all the same, which the runner now parks on.
+ASK_TOOL = "AskUserQuestion"
 # Phase (b) writes spec.md and plan.md and nothing else: it may create files, never edit one.
 # Write cannot be path-scoped (NOTES section 6), so the gate's design_scope check stays the
 # net for a source file a Write overwrote.
 DESIGN_ALLOWED_TOOLS = "Read,Grep,Glob,Write,Bash(python *),Bash(git *)"
-DESIGN_DISALLOWED_TOOLS = "Edit,MultiEdit,NotebookEdit,WebFetch,WebSearch"
+DESIGN_DISALLOWED_TOOLS = "Edit,MultiEdit,NotebookEdit,WebFetch,WebSearch," + ASK_TOOL
 # Phases (c), (d) and (e) edit code and run the toolchain. The tools are named explicitly,
 # as for (b): the project's allow rules are ignored in an untrusted checkout (NOTES section
 # 3) and whether a --settings allow-list counts is undocumented; the eighth live run
@@ -214,7 +225,7 @@ IMPLEMENT_ALLOWED_TOOLS = (
     "Read,Grep,Glob,Edit,MultiEdit,Write,Agent,Bash(git *),Bash(gh *),Bash(python *),"
     "Bash(python3 *),Bash(pytest *),Bash(ruff *),Bash(npm *),Bash(npx *),Bash(node *)"
 )
-IMPLEMENT_DISALLOWED_TOOLS = "WebFetch,WebSearch"
+IMPLEMENT_DISALLOWED_TOOLS = "WebFetch,WebSearch," + ASK_TOOL
 # The review pass is read-only but for the one file it writes (decision 12).
 REVIEW_ALLOWED_TOOLS = "Read,Grep,Glob,Bash(git *),Write"
 REVIEW_DISALLOWED_TOOLS = "Edit,WebFetch,WebSearch"
@@ -1004,6 +1015,19 @@ def _committed_diff(root: Path) -> tuple[list[str], str | None]:
     return files, merge_base
 
 
+def guardrail_hits(files: list[str], config: dict[str, Any]) -> list[str]:
+    """The entries of ``files`` that are guardrail paths: ``.claude/**``, ``CLAUDE.md``,
+    ``REVIEW.md``, ``sdlc.yaml`` and the owner's ``protected_paths`` (the protected-paths
+    hook's own patterns; an unreadable ``protected_paths`` leaves the four)."""
+    from hooks import protected_paths as pp  # noqa: PLC0415
+
+    try:
+        patterns = pp.protected_patterns(config)
+    except ConfigError:
+        patterns = list(pp.ALWAYS_PROTECTED)
+    return sorted({f for f in files if any(matches(p, f) for p in patterns)})
+
+
 def guardrail_changes(
     root: Path, change_dir: Path, config: dict[str, Any], phase: str | None = None
 ) -> list[str]:
@@ -1013,18 +1037,12 @@ def guardrail_changes(
     parks) when the branch shares no history with the default branch. The intent is read as
     the owner approved it: at the merge base, or on the fast lane (decision 30) at the
     commit ``status.yaml: fast_lane`` records for ``phase`` (``gate_diff.fast_lane_sha``)."""
-    from hooks import protected_paths as pp
-
     if not gate_diff.is_repo(root):
         return []
     files, merge_base = _committed_diff(root)
     if not files:
         return []
-    try:
-        patterns = pp.protected_patterns(config)
-    except ConfigError:
-        patterns = list(pp.ALWAYS_PROTECTED)
-    hits = sorted({f for f in files if any(matches(p, f) for p in patterns)})
+    hits = guardrail_hits(files, config)
     if not hits:
         return []
     try:
@@ -1527,6 +1545,11 @@ def rerun_reason(
         return f"{at}, and no GitHub route can tell whether its pull request exists"
     found = github.find_open_pr(repo, head, cwd=root)
     if found.get("number"):
+        if pre_run_park(root, change_id, run_phase):
+            # gap 2 of NOTES §45 (choice 228): a build parked at the runner's preflight never
+            # started a session, so its open PR carries no work to review; a by-hand dispatch
+            # of SDLC build starts it again (closing the PR would abandon the change)
+            return None
         return (
             f"{at}; pull request #{found['number']} carries it (review comments go through "
             "/sdlc-fix, not a second run)"
@@ -1534,6 +1557,110 @@ def rerun_reason(
     if not found.get("ok", True) and found.get("reason"):
         return f"{at}, and the pull request lookup failed: {found['reason']}"
     return None
+
+
+PREFLIGHT_PARK = "preflight: "  # the reason prefix of the runner's preflight park at (c)
+SESSION_RESULT_GLOBS = ("claude-c.json", "claude-c-*.json", "claude-fix.json", "claude-fix-*.json")
+
+
+def pre_run_park(root: Path, change_id: str, run_phase: str) -> bool:
+    """True when the change is parked at the runner's preflight of (c) and no session has
+    run on its work branch since (gap 2 of NOTES §45, choice 228): ``status.yaml`` parked
+    with a reason that starts with ``preflight: ``, ``evidence/gate-c.json`` a park whose
+    only failed check is ``preflight`` (``write_park_result``'s shape), and no result record
+    of a build or fix session that the branch added. The result records are the authority:
+    every session stores one (``store_result``, even when it reported no cost), while the
+    spend ledger's entries name the run but not the phase it spent on, and a fix round at
+    (b) is already on the default branch. A record the merge base carries (the design's fix
+    rounds) does not count; with no merge base every fix record counts (fail closed)."""
+    if run_phase != "c":
+        return False
+    change_dir = c.find_change_dir(root, change_id)
+    if change_dir is None:
+        return False
+    try:
+        st = status_mod.read_status(change_dir)
+    except (OSError, ValueError):
+        return False
+    if not (st.parked_reason or "").startswith(PREFLIGHT_PARK):
+        return False
+    record = read_gate(change_dir, "c")
+    if not record or record.get("result") != "park":
+        return False
+    failed = [
+        ch.get("name")
+        for ch in record.get("checks") or []
+        if isinstance(ch, dict) and not ch.get("ok")
+    ]
+    if failed != [PARK_CHECK["c"]]:
+        return False
+    evidence = change_dir / art.EVIDENCE_DIR
+    found = sorted({p.name for pattern in SESSION_RESULT_GLOBS for p in evidence.glob(pattern)})
+    if any(name.startswith("claude-c") for name in found):
+        return False
+    base = gate_diff.default_base(root) if gate_diff.is_repo(root) else "HEAD"
+    merge_base = (
+        gate_diff._git(root, "merge-base", base, "HEAD", check=False).strip()
+        if base != "HEAD"
+        else ""
+    )
+    rel = f"{c.CHANGES_DIR}/{change_dir.name}/{art.EVIDENCE_DIR}"
+    return all(
+        merge_base and gate_diff.file_at(root, merge_base, f"{rel}/{name}") is not None
+        for name in found
+    )
+
+
+MERGE_BEFORE_PREFLIGHT = "run(c): {base} merged before the restarted preflight (gap 2)"
+MERGE_CONFLICT_PARK = PREFLIGHT_PARK + "the default branch does not merge into {branch}: {files}"
+MERGE_CONFLICT_NEED = (
+    "The runner merged the default branch into {branch} before the restarted preflight and "
+    "the merge conflicts, so it was aborted. Merge the default branch into {branch} by hand "
+    '(the pull request\'s "Update branch"), then dispatch SDLC build (Actions → SDLC build → '
+    "Run workflow) with change id {id} again."
+)
+
+
+def merge_default_branch(root: Path) -> dict[str, Any]:
+    """Merge the default branch (``gate_diff.default_base``, the ref the gate diffs against)
+    into the checkout's branch with a merge commit: never a rebase, a reset or a force-push
+    (gap 2 of NOTES §45, choice 229). The branch of a build parked at the preflight was cut
+    before the owner's fix on the default branch, and the preflight reads the checkout's
+    ``CLAUDE.md``, ``sdlc.yaml`` and ``.claude/settings.json``. ``{"ok", "merged", ...}``:
+    ``merged`` is the new commit, None when the branch was already up to date; on a
+    conflict the merge is aborted and ``conflicts`` names the files. The commit is pushed by
+    the run's next push (the park's or the session's); ``guardrail_changes`` diffs against
+    the merge base, which the merge moves to the default branch's tip, so the owner's own
+    guardrail fix on it is not the branch's change."""
+    from state import gitops  # noqa: PLC0415
+
+    base = gate_diff.default_base(root)
+    out: dict[str, Any] = {"base": base, "merged": None}
+    if base == "HEAD" or not gitops.is_repo(root):
+        return {**out, "ok": True, "note": "no default branch to merge"}
+    name = base.removeprefix("refs/remotes/")
+    before = gate_diff.head_sha(root)
+    message = MERGE_BEFORE_PREFLIGHT.format(base=name)
+    proc = subprocess.run(
+        ["git", *gitops.identity_args(root), "merge", "--no-ff", "--no-edit", "-m", message, base],
+        cwd=root,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+    if proc.returncode != 0:
+        conflicts = gate_diff._z(
+            gate_diff._git(root, "diff", "--name-only", "-z", "--diff-filter=U", check=False)
+        )
+        gitops.run(root, "merge", "--abort", check=False)
+        why = (proc.stderr or proc.stdout or "").strip().splitlines()
+        return {
+            **out,
+            "ok": False,
+            "conflicts": conflicts or [why[-1] if why else "git merge failed"],
+        }
+    after = gate_diff.head_sha(root)
+    return {**out, "ok": True, "merged": after if after != before else None}
 
 
 def _approved_ref(root: Path) -> str | None:
@@ -1705,11 +1832,18 @@ def guard(root: Path, change_id: str, run_phase: str, repo: str, env: dict[str, 
     expected = PREVIOUS_PHASE[run_phase]
     if st.phase == run_phase and run_phase in CREATES_ITS_BRANCH:
         # the work branch already carries this phase: a re-run, allowed only when no pull
-        # request carries it (the earlier attempt never reached the queue)
+        # request carries it (the earlier attempt never reached the queue), or the build
+        # parked at the runner's preflight before any session (gap 2 of NOTES §45)
+        restart = pre_run_park(root, change_id, run_phase)
         reason = rerun_reason(root, change_id, run_phase, repo, env)
         if reason:
             return None, None, config, reason
         st.set_phase(run_phase)  # clears the earlier attempt's park; the phase is unchanged
+        if restart:
+            # the preflight park replaced the gate (b) record this guard found passed before
+            # the preflight ran, and nothing has run since (``pre_run_park``): it is put back,
+            # or the check below would refuse the restart on the park's own record
+            st.record_gate(expected, "passed")
         status_mod.write_status(change_dir, st)
     else:
         accepted = PHASE_BEFORE.get(run_phase, (expected,))
@@ -2255,11 +2389,22 @@ def store_stderr(change_dir: Path, phase: str, err: str, path: Path | None = Non
 
 
 def report_failed_run(
-    root: Path, change_dir: Path, phase: str, data: Any, raw: str, err: str, why: str
-) -> None:
+    root: Path,
+    change_dir: Path,
+    phase: str,
+    data: Any,
+    raw: str,
+    err: str,
+    why: str,
+    work: list[str] | None = None,
+    message: str | None = None,
+) -> str | None:
     """A run that ends without its gate is an infrastructure failure: say why, show the
     CLI's last message, its counters and its stderr, and commit the stored result and
-    stderr on the work branch so they outlive the runner."""
+    stderr on the work branch so they outlive the runner. An unfinished fix round (gap 3 of
+    NOTES §45) passes ``work``, the session's uncommitted paths outside the change folder
+    that ``unfinished_work`` kept, and its own ``message``: they go into the same commit as
+    the change folder, whose ``.env*`` files stay out. Returns the commit's sha, or None."""
     print(why, file=sys.stderr)
     if isinstance(data, dict):
         counters = {
@@ -2277,14 +2422,163 @@ def report_failed_run(
     from state import gitops
 
     if not gitops.is_repo(root):
-        return
+        return None
+    message = message or f"run({phase}): failed run record"
     try:
         rel = str(change_dir.relative_to(root)).replace("\\", "/")
-        sha = gitops.commit_paths(root, [rel], f"run({phase}): failed run record")
-        if sha and gitops.has_remote(root):
-            gitops.push(root, gitops.current_branch(root))
+        if work is None:
+            sha = gitops.commit_paths(root, [rel], message)
+        else:
+            record = [f for f in gitops.changed_files(root, [rel]) if not is_env_file(f)]
+            sha = gitops.commit_files(root, [*record, *work], message)
     except (gitops.GitError, OSError) as exc:
         print(f"the failed run record could not be committed: {exc}", file=sys.stderr)
+        return None
+    try:
+        if sha and gitops.has_remote(root):
+            live_token()
+            gitops.push(root, gitops.current_branch(root))
+    except (gitops.GitError, OSError) as exc:
+        print(f"the failed run record could not be pushed: {exc}", file=sys.stderr)
+    return sha
+
+
+# --- an unfinished fix round (gaps 3 and 4 of NOTES §45, choices 230 and 231) ------------------
+# A fix round that ended before its gate lost the session's uncommitted work with the runner
+# (change 0005's round 2 at the turn cap: ``3f6b4ea`` kept the change folder only), and one
+# that ended its turn with a question to the owner was handed over on the previous round's
+# gate record as if this round had written it (round 5: ``e53be48``). The runner now commits
+# what the session left, not gated, on the PR's head and parks the change on the PR.
+UNFINISHED_CHECK = "fix"
+UNFINISHED_PARK = UNFINISHED_CHECK + ": the round ended before its gate ({why})"
+NO_GATE_PARK = UNFINISHED_CHECK + ": the session ended without reaching its gate"
+WORK_KEPT = "; its work is kept in {sha}, not gated"
+WORK_NOT_COMMITTED = "; its work could not be committed and stays uncommitted on the runner"
+WORK_LEFT_OUT = "; left out of the commit: {paths}"
+WORK_MESSAGE = "run(fix): unfinished round's work kept, not gated (gap 3): {why}"
+UNFINISHED_NEED = (
+    "The round's uncommitted work is committed on the branch but no gate judged it. Review "
+    "it, then start the next round (a review, an @claude comment or sdlc:reset-iterations); "
+    "that round's gate judges the whole branch."
+)
+NO_WORK_NEED = (
+    "The round left no uncommitted work and no gate judged it. Answer what it needs, then "
+    "start the next round (a review, an @claude comment or sdlc:reset-iterations); that "
+    "round's gate judges the whole branch."
+)
+LAST_MESSAGE_CHARS = 1500
+
+
+def is_env_file(path: str) -> bool:
+    """A ``.env*`` file at any depth: the CI settings deny reading it (``Read(**/.env*)``),
+    and no runner commit carries one."""
+    return path.replace("\\", "/").rsplit("/", 1)[-1].startswith(".env")
+
+
+def gate_record_bytes(change_dir: Path, phase: str) -> bytes | None:
+    """The bytes of ``evidence/gate-<phase>.json``, or None when it is absent: the snapshot
+    taken right before the session that ``gate_record_fresh`` compares with."""
+    try:
+        return (change_dir / art.EVIDENCE_DIR / art.GATE_RESULT.format(phase=phase)).read_bytes()
+    except OSError:
+        return None
+
+
+def gate_record_fresh(change_dir: Path, phase: str, before: bytes | None) -> bool:
+    """Gap 4 of NOTES §45 (choice 231): the session wrote this round's gate record only when
+    the record exists and its bytes differ from the snapshot taken before ``invoke``; the
+    previous round's record read as this round's verdict is how round 5 of change 0005 was
+    handed over after a question to the owner."""
+    after = gate_record_bytes(change_dir, phase)
+    return after is not None and after != before
+
+
+def unfinished_work(
+    root: Path, change_dir: Path, config: dict[str, Any], pre_head: str | None, before_st
+) -> tuple[list[str], list[str]]:
+    """``(kept, left_out)``: the session's uncommitted paths outside the change folder (the
+    change folder is committed whole, as the failed run record always was), tracked changes
+    and untracked files git does not ignore (the runner's ``.git/info/exclude`` included).
+    Left out, and left uncommitted: a guardrail path (``guardrail_hits``, the hook's own
+    patterns with the owner's ``protected_paths`` of the approved ``config``), a ``.env*``
+    file at any depth, and under a standing test-file lock the test files the session
+    changed (``_test_files_changed_since``). The owner fields, the runner's own files and
+    the test files of a lifted lock were restored before this runs, or the round parked on
+    them and keeps no work."""
+    from state import gitops  # noqa: PLC0415
+
+    if not gitops.is_repo(root):
+        return [], []
+    rel = str(change_dir.relative_to(root)).replace("\\", "/")
+    outside = [
+        f for f in gitops.changed_files(root, ["."]) if f != rel and not f.startswith(rel + "/")
+    ]
+    out = set(guardrail_hits(outside, config))
+    out.update(f for f in outside if is_env_file(f))
+    if getattr(before_st, "tests_locked", False) and pre_head:
+        out.update(f for f in _test_files_changed_since(root, pre_head, config) if f in outside)
+    return sorted(f for f in outside if f not in out), sorted(out)
+
+
+def last_message_block(data: Any, raw: str) -> str:
+    """The session's last message, its last ``LAST_MESSAGE_CHARS`` characters, as a quoted
+    block under the need line of the park (indented to sit inside its list item)."""
+    text = str(data.get("result") or "") if isinstance(data, dict) else str(raw or "")
+    text = text.strip()[-LAST_MESSAGE_CHARS:]
+    if not text:
+        return ""
+    quoted = "\n".join(f"    > {line}".rstrip() for line in text.splitlines())
+    return "\n\n    The session stopped with:\n\n" + quoted
+
+
+def park_unfinished_round(
+    plugin_dir: Path,
+    root: Path,
+    change_dir: Path,
+    phase: str,
+    fix_branch: str | None,
+    config: dict[str, Any],
+    pre_head: str | None,
+    before_st,
+    data: Any,
+    raw: str,
+    err: str,
+    why: str | None,
+) -> dict[str, Any] | None:
+    """Gaps 3 and 4 of NOTES §45 (choices 230 and 231), a fix round only: keep the session's
+    uncommitted work in one commit with the change folder on the PR's head, not gated, and
+    park the change on the PR (``park_and_publish``). ``why`` is the failed session's reason
+    (gap 3, case a); None is a session that exited 0 without a fresh gate record (gap 4,
+    case b), whose park carries its last message. A failed session that left no work outside
+    the change folder returns None: the caller takes today's path (``park_deferred_record``,
+    the failed run record, and ``release_unfinished_round`` for an automatic round). Where
+    the failed session's gate pushed a deferred record, this park replaces it: the gap-3
+    reason wins, and the change ends with one park."""
+    kept, left_out = unfinished_work(root, change_dir, config, pre_head, before_st)
+    if why is not None and not kept:
+        return None
+    reason = UNFINISHED_PARK.format(why=why) if why is not None else NO_GATE_PARK
+    record = read_gate(change_dir, phase)
+    if record and record.get("label") == c.FIXING_LABEL:
+        # decision 29's record of the automatic round says why it ended; the park below
+        # replaces the ``sdlc:fixing`` label, so ``release_unfinished_round`` parks nothing
+        auto_round.set_round_status(change_dir, "unfinished", reason=reason)
+    message = WORK_MESSAGE.format(why=why or "no fresh gate record") if kept else None
+    sha = report_failed_run(
+        root, change_dir, "fix", data, raw, err, reason, work=kept, message=message
+    )
+    if kept:
+        reason += WORK_KEPT.format(sha=sha[:10]) if sha else WORK_NOT_COMMITTED
+    if left_out:
+        reason += WORK_LEFT_OUT.format(paths=", ".join(left_out))
+    need = (UNFINISHED_NEED if kept else NO_WORK_NEED) + (
+        last_message_block(data, raw) if why is None else ""
+    )
+    parked = park_and_publish(
+        plugin_dir, root, change_dir, status_mod.read_status(change_dir), "fix", reason,
+        branch=fix_branch, check=UNFINISHED_CHECK, need=need,
+    )  # fmt: skip
+    return {**parked, "work": {"commit": sha, "kept": kept, "left_out": left_out}}
 
 
 def record_spend(
@@ -2467,6 +2761,8 @@ def _run_phase(args, env: dict[str, str], track: dict[str, Any]) -> int:
         print(SETUP_FAILED.format(reason=reason), file=sys.stderr)
         _emit({"phase": phase, "change_id": change_id, "setup": setup, "branch": branch})
         return EXIT_FAILED
+    # gap 2 of NOTES §45: read before the guard, which clears the park it judges
+    restart = pre_run_park(root, change_id, phase)
     change_dir, st, config, reason = guard(root, change_id, phase, args.repo, env)
     if reason:
         track["why"] = f"the fix run was skipped: {reason}"
@@ -2509,6 +2805,21 @@ def _run_phase(args, env: dict[str, str], track: dict[str, Any]) -> int:
         # failing targets as its constraint, taken once from the pending auto-round.json
         requests_collected = {**requests_collected, **take_red_targets(root, change_dir, env)}
 
+    # gap 2 of NOTES §45 (choice 229): a build restarted after its preflight park takes the
+    # owner's fix from the default branch first; the guardrail check and the preflight below
+    # then judge the merged checkout
+    merged = merge_default_branch(root) if restart else None
+    if merged is not None and not merged.get("ok"):
+        parked = park_and_publish(
+            plugin_dir, root, change_dir, st, phase,
+            MERGE_CONFLICT_PARK.format(
+                branch=branch["branch"], files=", ".join(merged.get("conflicts") or [])
+            ),
+            need=MERGE_CONFLICT_NEED.format(branch=branch["branch"], id=change_id),
+        )  # fmt: skip
+        _emit({**parked, "merged": merged, "branch": branch})
+        return EXIT_OK
+
     # the branch itself must be clean of guardrail edits before a run touches it (decision 6)
     try:
         guardrails = guardrail_changes(root, change_dir, config, gate_phase)
@@ -2545,9 +2856,10 @@ def _run_phase(args, env: dict[str, str], track: dict[str, Any]) -> int:
         if not report.get("allow"):
             reasons = report.get("reasons", [])
             parked = park_and_publish(
-                plugin_dir, root, change_dir, st, phase, "preflight: " + "; ".join(reasons)
-            )
-            _emit({**parked, "parked": reasons, "branch": branch})
+                plugin_dir, root, change_dir, st, phase, PREFLIGHT_PARK + "; ".join(reasons),
+                need=PREFLIGHT_PARK_NEED.format(id=change_id, branch=branch["branch"]),
+            )  # fmt: skip
+            _emit({**parked, "parked": reasons, "merged": merged, "branch": branch})
             return EXIT_OK
         permission_mode = report.get("permission_mode", "acceptEdits")
 
@@ -2628,6 +2940,9 @@ def _run_phase(args, env: dict[str, str], track: dict[str, Any]) -> int:
     # decision 34: the round's requests file as the runner wrote it; the session may only
     # mark the requests it applied (``fix_requests.keep_marks_only`` after the session)
     requests_before = fix_requests.snapshot(change_dir) if phase == "fix" else None
+    # gap 4 of NOTES §45 (choice 231): the gate record as the session finds it, so a record
+    # the round did not write is never read as its verdict (``gate_record_fresh``)
+    gate_before = gate_record_bytes(change_dir, gate_phase)
     data, raw, err, code = invoke(
         argv, root, session_env(env, root, phase), run_timeout_seconds(config, phase, env)
     )
@@ -2699,7 +3014,24 @@ def _run_phase(args, env: dict[str, str], track: dict[str, Any]) -> int:
         _emit({**parked, "owner_fields": owner, "session_branch": session_branch,
                "claude_exit": code, "cost_usd": cost, "branch": branch})  # fmt: skip
         return EXIT_OK
-    if code != 0 or not isinstance(data, dict) or data.get("is_error"):
+    failed = code != 0 or not isinstance(data, dict) or bool(data.get("is_error"))
+    if phase == "fix" and (failed or not gate_record_fresh(change_dir, gate_phase, gate_before)):
+        # gaps 3 and 4 of NOTES §45 (choices 230 and 231): an unfinished round - the session
+        # failed, or it exited 0 without writing this round's gate record (a question to the
+        # owner, round 5 of change 0005) - keeps its uncommitted work on the PR's head, not
+        # gated, and parks. It comes after the owner-field and session-branch checks above: a
+        # round that parked on those keeps no work, since its tree is not the owner's to keep
+        subtype = data.get("subtype") if isinstance(data, dict) else None
+        why = f"claude exited {code}" + (f", {subtype}" if subtype else "") if failed else None
+        unfinished = park_unfinished_round(
+            plugin_dir, root, change_dir, gate_phase, fix_branch, config, pre_head, before_st,
+            data, raw, err, why,
+        )  # fmt: skip
+        if unfinished is not None:
+            track["why"] = unfinished["parked"]
+            _emit({**unfinished, "claude_exit": code, "cost_usd": cost, "branch": branch})
+            return EXIT_FAILED
+    if failed:
         # a session that failed after its gate pushed a record whose commands check waits for
         # a step that will not come: park it, so neither the owner nor the next phase reads
         # it as passed (issue #91)
@@ -3034,7 +3366,10 @@ def apply_owner_labels(
     A ``workflow_dispatch`` round carries no event number: the open PR of ``branch`` (the
     round's head) supplies it, as ``collect_fix_requests`` does (0.3.2; the first dispatched
     round, 2026-10-02, read no label: PROGRESS "Session 17", F1). A run without a GitHub
-    route, or without a number and an open PR, reads nothing and says so."""
+    route, or without a number and an open PR, reads nothing and says so. A label counts
+    only from the owner's account (choice 218), judged against ``config``, the default
+    branch's ``sdlc.yaml``; on a runner the copy must be located (``owner_config``,
+    decision 34), or no label is read."""
     from state import unpark  # noqa: PLC0415
 
     number = _pr_number(pr_number)
@@ -3058,7 +3393,12 @@ def apply_owner_labels(
             "reason": "no pull request number and no open pull request for "
             f"{branch or 'the head'}: labels not read",
         }
-    result = unpark.apply_from_pr(root, change_dir, config, repo, number, github=github)
+    if env.get("GITHUB_ACTIONS"):
+        try:
+            config = owner_config(root, env)
+        except ConfigError as exc:
+            return {"ok": False, "reason": f"{exc}: labels not read"}
+    result = unpark.apply_from_pr(root, change_dir, config, repo, number, github=github, env=env)
     if result.get("performed"):
         names = ", ".join(p["label"] for p in result["performed"])
         result["commit"] = _cli_call(
@@ -4306,6 +4646,12 @@ PARK_CHECK = {"c": "preflight", "b": "guardrails", "d": "guardrails", "e": "guar
 
 
 PRE_RUN_NEED = "Settle this, then re-run the phase: CI stopped before the run started."
+# gap 2 of NOTES §45 (choice 228): the build's preflight park names its exact restart
+PREFLIGHT_PARK_NEED = (
+    "Settle this on the default branch, then dispatch SDLC build (Actions → SDLC build → Run "
+    "workflow) with change id {id}: the runner merges the default branch into {branch} and "
+    "runs the preflight again."
+)
 
 
 def write_park_result(

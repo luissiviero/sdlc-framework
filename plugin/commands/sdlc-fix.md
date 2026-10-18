@@ -17,6 +17,14 @@ applies what the owner asked for, on the branch the PR already has, and stops at
 
 Unattended: never ask the owner a question. If a comment is ambiguous, apply the reading
 that changes the least, say so in `evidence/fix-response.md`, and let the owner correct it.
+Never end the turn with a question or a request for confirmation: nobody reads it, and the
+runner denies the asking tool (`AskUserQuestion`; change 0005's fifth fix round ended its
+turn with "How would you like me to proceed" and nothing was committed, NOTES §45 gap 4).
+When you cannot decide, write the question under "What I need from you" in
+`evidence/fix-response.md`, run the gate (step 5; it parks when the reason is a park) or
+park with `state/cli.py park`, then commit and push. The runner parks a round that ends
+without a fresh gate record, with your last message in the park, and commits the round's
+uncommitted work on the pull request's head, not gated (plugin 1.0.10, choices 230 and 231).
 One shell command per Bash call: an unattended run allows only an explicit list of
 command prefixes (`git *`, `python *` and a few more, per phase: `plugin/ci/run_phase.py`
 and this command's `allowed-tools`), Claude Code checks each part of a chained command
@@ -99,7 +107,8 @@ change requests too: in CI the run performed them before this command started (t
 `status.yaml` with the label's actor: `risk_accepted_by`, `iterations_reset_by`,
 `tests_unlocked_by`); by hand, perform them now with
 `python "${CLAUDE_PLUGIN_ROOT}/plugin/state/cli.py" apply-labels --root "${CLAUDE_PROJECT_DIR}" --id <id> --pr <n>`
-(a label the automation identity applied is rejected and left on the PR). If there is
+(a label the automation identity applied is rejected and left on the PR, and so is a label
+any other account than the owner's applied, choice 218). If there is
 nothing to do, say so and stop.
 
 ## 2. Register the round and bump the iteration (build guide step 19)

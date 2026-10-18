@@ -12,6 +12,9 @@ inferred from a commit author (PROGRESS choice 17). The CLI commands (``accept-r
 Rules:
 - a label applied by the automation identity or by any ``<app>[bot]`` account is rejected and
   left on the PR: a run cannot un-park itself (decision 11);
+- a label applied by any other account than the owner's (``is_owner_actor``, fail closed) is
+  rejected and left on the PR too (decision 24, choice 218): a collaborator with triage
+  access can label a pull request, and the label would accept a risk the owner never saw;
 - ``sdlc:accept-risk`` accepts the risk-list hits the last gate of the change's phase reported
   (``evidence/gate-<phase>.json``, check ``risk_list``, ``details.hits``); with no recorded hit
   there is nothing to accept and the label is left where it is, with the reason;
@@ -22,7 +25,8 @@ Rules:
 
 ``is_owner_actor`` (decision 34) sits beside ``is_automation_actor``: the one rule, fail
 closed, for who starts a fix round (the ``@claude`` comment and the "Request changes"
-review) and who approves gates (c) and (d); the un-park labels keep the person rule above.
+review) and who approves gates (c) and (d); since plugin 1.0.10 (choice 218) it also judges
+who applied an un-park label, after the automation rule above.
 
 ``github`` is injectable: an object with ``pr_by_number``, ``label_actor`` and ``set_labels``
 like ``plugin/pr/github.py``. No shell, no third-party dependency.
@@ -176,10 +180,15 @@ def perform(
     present: dict[str, str | None],
     identities: list[str],
     hits: list[str],
+    *,
+    config: dict[str, Any],
+    env: Mapping[str, str] | None = None,
+    repo: str | None = None,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """Apply the owner labels ``present`` (label -> actor login, None when unknown) to
     ``st``; pure but for ``st``. Returns (performed, rejected), each a list of
-    {label, actor, reason/items}."""
+    {label, actor, reason/items}. ``config`` is the default branch's ``sdlc.yaml`` (the
+    owner's guardrail), read with ``env`` and ``repo`` by ``is_owner_actor`` (choice 218)."""
     performed: list[dict[str, Any]] = []
     rejected: list[dict[str, Any]] = []
     for label in c.UNPARK_LABELS:
@@ -196,6 +205,15 @@ def perform(
                     "actor": actor,
                     "reason": f"applied by the automation identity {actor}: a run cannot "
                     "un-park itself (decision 11)",
+                }
+            )
+            continue
+        if not is_owner_actor(actor, config, env, repo):
+            rejected.append(
+                {
+                    "label": label,
+                    "actor": actor,
+                    "reason": "not the owner's account (decision 24, choice 218): " + actor,
                 }
             )
             continue
@@ -224,9 +242,12 @@ def apply_from_pr(
     repo: str,
     pr_number: int,
     github: Any = None,
+    env: Mapping[str, str] | None = None,
 ) -> dict[str, Any]:
     """Read the PR's labels, perform the owner's un-park labels on ``status.yaml`` and remove
     the performed ones from the PR. Returns {ok, performed, rejected, removed, reason}.
+    ``config`` is the default branch's ``sdlc.yaml`` and ``env`` the run's environment
+    (``os.environ`` when None): a label counts only from the owner's account (choice 218).
 
     Nothing is committed here: the caller commits ``status.yaml`` on the work branch (the
     CI run through ``commit-phase``; a by-hand ``/sdlc-fix`` round with its own commit).
@@ -257,7 +278,13 @@ def apply_from_pr(
         return {**out, "ok": True, "reason": "no owner label on the pull request"}
     st = status_mod.read_status(change_dir)
     performed, rejected = perform(
-        st, present, automation_identities(config), risk_hits(change_dir, st.phase)
+        st,
+        present,
+        automation_identities(config),
+        risk_hits(change_dir, st.phase),
+        config=config,
+        env=env,
+        repo=repo,
     )
     if performed:
         status_mod.write_status(change_dir, st)

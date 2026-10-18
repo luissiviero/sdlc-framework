@@ -31,6 +31,7 @@ from tests.test_ci import (
     fake_cli,
     git,
     pr_route,
+    session_gate,
     set_state,
     write,
 )
@@ -878,6 +879,7 @@ def fix_run(project, fake_claude, monkeypatch, tmp_path, iterations=0):
         "FAKE_CLAUDE_WATCH", "changes/0001-percent-helper/evidence/fix-requests.json"
     )
     monkeypatch.setenv("FAKE_CLAUDE_RECORD", str(seen))
+    session_gate(monkeypatch, "c")  # the round's own gate writes its record (gap 4)
     monkeypatch.setenv("FAKE_CLAUDE_RESULT", json.dumps(FAKE_RESULT))
     env = dict(os.environ, **KEY_ENV, GITHUB_TOKEN=FAKE_TOKEN, **RUN_ENV)
     args = Args(root=str(root), phase="fix", head_ref="sdlc/0001/c", dry_run=False,
