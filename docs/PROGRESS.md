@@ -36,6 +36,7 @@ This session ran on branch `ccr-4900ade8-1qc1s9`, from the starting prompt `docs
 215. **R46's gate (a) is stacked on the intent PR**: an intent PR the owner's account opens starts the design at once, cut from its head; the intent PR is closed as superseded once the design PR exists.
 216. **R46's gate (b) is a stacked build**: a routine design continues to a build cut from the design head, the commit gate (b) passed on being the approved copy; the owner sees intent, spec, plan and code in one (e) PR.
 217. **The fast lane applies to every existing profile but Full** ("Not full profile, but any other existing profile").
+218. **The three un-park labels count only from the owner's account** (2026-10-18, option A of the session's table: "A, record it for the next session"). `sdlc:accept-risk`, `sdlc:reset-iterations` and `sdlc:unlock-tests` are judged by R17's `is_owner_actor`, fail closed, with a coarse `[bot]`-sender condition in `sdlc-fix.yml`'s `if:`. A by-hand `workflow_dispatch` stays as it is: it needs write access, and the runner's own automatic rounds use it. This makes the code match decision 24's own wording ("the owner's un-park verbs"), so no new decision file is written; decision 24 gets a note beside it when the change is built. It is built in the fix-round robustness PR (choice 204), which already touches `sdlc-fix.yml` and `state/unpark.py`, with a test that fails on the old code.
 
 ## Proposed edit for the owner
 Carried from `docs/progress/2026-10-17-1.0.4-and-choices-203-213.md` (choice 208); not yet applied (`grep -n 'skip marker' REVIEW.md` finds nothing on `main` at `56896c5`).
@@ -45,7 +46,7 @@ Carried from `docs/progress/2026-10-17-1.0.4-and-choices-203-213.md` (choice 208
 | [`REVIEW.md`](https://github.com/luissiviero/sdlc-framework/blob/main/REVIEW.md#L26) | after 26 (the end of the `plan.md` bullet) | nothing; line 27 starts "- The second occurrence of the same finding …" | `- Each added skip marker the gate's \`ratchets\` check listed at gate (e) (\`evidence/gate-e.json\`'s \`details.skip_markers\`) must be declared in \`plan.md\` or explained in the PR; an undeclared one quietly narrowing what the suite actually runs is non-compliant.` (the same bullet `template/REVIEW.md:27-30` carries since 1.0.2) |
 
 ## Left
-- **The un-park labels** (`sdlc:accept-risk`, `sdlc:reset-iterations`, `sdlc:unlock-tests`) and a by-hand `workflow_dispatch` still start a fix round from any member: decision 34 covers the review and comment paths only. The owner decides whether to narrow them too.
+- **The un-park labels** (`sdlc:accept-risk`, `sdlc:reset-iterations`, `sdlc:unlock-tests`) and a by-hand `workflow_dispatch` still start a fix round from any member: decision 34 covers the review and comment paths only. The owner decides whether to narrow them too. *[2026-10-18: decided by choice 218, the labels narrowed to the owner's account in the fix-round robustness PR; the by-hand dispatch stays.]*
 - **R17's known limit:** on an organization repository a member's "Request changes" review still enters the fix workflow's concurrency group (the `if:` cannot read `sdlc.yaml`).
 - **R46's known limits:**
   - the session writes `gate-b.json` and the verdict file (the same trust as (c)/(d), bounded by the runner's confirmation and the post-gate diff check);
