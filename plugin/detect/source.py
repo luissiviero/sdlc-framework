@@ -21,7 +21,12 @@ because a ``pull_request`` event caused by the workflow token starts no run, yet
 records one that ends ``completed`` / ``failure`` with zero jobs: on 2026-09-25 the sample
 repository's ``CI`` listing held nine such runs among 23, so the day's rate would have read
 0.39 on a day when no test failed. Only the automation identity is excluded, not every
-``[bot]`` actor: Dependabot's ``pull_request`` runs are real test runs. A local JSON cache
+``[bot]`` actor: Dependabot's ``pull_request`` runs are real test runs. Nor does a run on
+one of the framework's work branches count (``head_branch`` ``sdlc/...``, decision 33, R49):
+since the automation pushes as the project's GitHub App, the project's CI runs on those heads
+by itself, under the App's ``[bot]`` login, and a fix loop's intended red heads would read
+as a failure rate and file false incidents; under the workflow token the same runs were
+excluded by its actor, so the metric keeps measuring what it measured. A local JSON cache
 keeps the runs already seen, so a daily fetch only asks for the last few days.
 
 No third-party dependency (decision 7), a 30 s timeout on every request (``TIMEOUT`` of
@@ -56,14 +61,19 @@ SOURCE_KIND = "github-actions"
 MAX_PAGES = 10  # 1000 runs per fetch; the API returns newest first
 REFETCH_DAYS = 2  # a run in progress at the last fetch completes later
 # 2 since 0.2.23: entries carry the actor; an older cache is discarded and refetched once,
-# so its zero-job token runs (D12) do not sit in the baseline for a whole window
-CACHE_SCHEMA_VERSION = 2
+# so its zero-job token runs (D12) do not sit in the baseline for a whole window; 3 since
+# 1.0.9 (R49): entries carry the head branch, so a work branch's run is excluded
+CACHE_SCHEMA_VERSION = 3
 MAX_FAILED_LINKS = 10  # failed run ids/urls kept per day, newest first
 COUNTED_CONCLUSIONS = ("success", "failure")
 FAILED_CONCLUSION = "failure"
 COUNTED_EVENTS = ("push", "pull_request", "schedule", "workflow_dispatch")
 FRAMEWORK_WORKFLOW_PREFIX = "SDLC "
-CACHED_FIELDS = ("created_at", "conclusion", "status", "event", "name", "html_url", "actor")
+CACHED_FIELDS = (
+    "created_at", "conclusion", "status", "event", "name", "html_url", "actor", "head_branch",
+)  # fmt: skip
+# the framework's work branches (state/conventions.py: sdlc/<id>/<phase>, the dismiss branch)
+WORK_BRANCH_PREFIX = "sdlc/"
 # The framework's default automation identity (the same value as gate/policy.py
 # DEFAULT_AUTOMATION_IDENTITY, named here rather than imported to keep this module free of gate
 # imports); the caller passes the project's sdlc.yaml automation_identity list instead.
@@ -143,6 +153,8 @@ def counts(
     login = _actor_login(run.get("actor"))
     if login is not None and login.strip().casefold() in _normalized_actors(excluded_actors):
         return False
+    if str(run.get("head_branch") or "").startswith(WORK_BRANCH_PREFIX):
+        return False  # R49: the automation's own heads (the module docstring)
     return True
 
 

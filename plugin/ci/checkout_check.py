@@ -43,6 +43,11 @@ import subprocess
 import sys
 from pathlib import Path
 
+if __package__ in (None, ""):
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from ci import app_token  # noqa: E402 - stdlib only, from this fresh framework checkout
+
 DEFAULT_FETCH_REFSPEC = "+refs/heads/*:refs/remotes/origin/*"
 # config keys (lower-cased, regex) that redirect a fetch or run a command under git
 DENIED_CONFIG = (
@@ -178,6 +183,9 @@ def default_branch_problems(root: Path, origin: str | None, branch: str, pin_ref
     if not source:
         return ["no origin URL to fetch the default branch from"]
     tracking = f"refs/remotes/origin/{branch}"
+    # decision 33 (R49): past 50 minutes the fetch goes out on the workflow token, not the
+    # App's, whose hour may have run out (the step's env carries SDLC_WORKFLOW_TOKEN)
+    app_token.fall_back_if_stale(root)
     code, out = git(root, "fetch", source, f"+refs/heads/{branch}:{tracking}", env=CLEAN_ENV)
     if code != 0:
         return [f"cannot fetch the default branch {branch} from {source}: {out.strip()}"]

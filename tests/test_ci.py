@@ -2620,6 +2620,22 @@ def test_the_run_installs_nothing_in_a_dry_run_or_without_a_setup_command(projec
     assert ok is True and result == {"skipped": run_phase.project_setup.NOTHING_TO_RUN}
 
 
+def test_the_project_s_install_sees_no_github_token_and_no_model_credential(project, monkeypatch):
+    """R49 review, S2: ``commands.setup`` runs the project's own code; it gets
+    ``commands_env()`` - neither GitHub token (the App's, the workflow's) nor a model
+    credential - as the commands step does."""
+    root, _change = project
+    hidden = ("GITHUB_TOKEN", "GH_TOKEN", "SDLC_WORKFLOW_TOKEN", KEY_VAR, TOKEN_VAR)
+    for name in hidden:
+        monkeypatch.setenv(name, FAKE_TOKEN)
+    monkeypatch.setenv("SDLC_SETUP_PROBE", "seen")  # an ordinary variable still arrives
+    probe = "import os; print(sorted(k for k in os.environ if k in %r or k == 'SDLC_SETUP_PROBE'))"
+    set_setup_command(root, f'"{sys.executable}" -c "{probe % (hidden,)}"')
+    result, ok = run_phase.install_toolchain(root)
+    assert ok is True, result
+    assert result["output"].strip() == "['SDLC_SETUP_PROBE']"
+
+
 # --- a re-run on the existing work branch (sixth live design run, 2026-09-22) -----------------
 def _pr_lookup(monkeypatch, number: int | None) -> None:
     from pr import github

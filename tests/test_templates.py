@@ -880,6 +880,10 @@ STAMP_STEP = {
     ),
 }
 WORKFLOW_TOKEN = "${{ github.token }}"
+WORKFLOW_TOKEN_ONLY_STEPS = (
+    "Weekly security review (read-only claude -p)",
+    "Verify the project checkout before the next step",
+)
 
 
 def _header(name: str) -> str:
@@ -924,10 +928,12 @@ def test_a_workflow_that_pushes_mints_the_app_token_first(name):
         if key in ("GITHUB_TOKEN", "GH_TOKEN")
     ]
     assert tokens and set(tokens) == {APP_TOKEN}
-    # the workflow token only beside the App's, for the fallback after 50 minutes
+    # the workflow token beside the App's, for the fallback after 50 minutes, and in the
+    # steps that run a session or fetch after one with no GitHub token of their own (the
+    # scan's review: the session's git credential; the checkout check's fetch)
     for step in steps:
         env = dict(step.get("env") or {})
-        if "GITHUB_TOKEN" in env:
+        if "GITHUB_TOKEN" in env or step.get("name") in WORKFLOW_TOKEN_ONLY_STEPS:
             assert env.pop("SDLC_WORKFLOW_TOKEN") == WORKFLOW_TOKEN, step.get("name")
         assert "SDLC_WORKFLOW_TOKEN" not in env and WORKFLOW_TOKEN not in json.dumps(env)
     # the token rule names the App and keeps the fallback's explicit dispatch

@@ -203,6 +203,8 @@ jobs:
         if: steps.detect.outputs.change_id != ''
         env:
           PIN_REF: ${{ steps.pin.outputs.ref }}
+          # R49: past 50 minutes the fetch below uses the workflow token (ci/app_token.py)
+          SDLC_WORKFLOW_TOKEN: ${{ github.token }}
           ORIGIN_URL: ${{ github.server_url }}/${{ github.repository }}
           FRAMEWORK_URL: ${{ github.server_url }}/luissiviero/sdlc-framework
           SDLC_DEFAULT_BRANCH: ${{ github.event.repository.default_branch || github.ref_name }}

@@ -20,6 +20,12 @@ seconds, through ``$GITHUB_ENV``) and hands every publishing step the workflow t
   the action writes it: a placeholder through ``git config``, then the file edited, so the
   token never appears on a command line.
 
+The model's session never holds the App's token: its environment carries the workflow token
+(``session_tokens``) and, while it runs, so does the persisted credential
+(``session_credential``); the session's own pushes start no workflow run without the owner's
+approval, as before decision 33, and only the runner's publications after the session carry
+the App's identity.
+
 The cost is the one decision 33 removed: the project's CI on a head the workflow token
 pushed waits for the owner's approval (``docs/notes/23.md``). Without the App (no
 ``SDLC_APP_TOKEN_MINTED_AT``) or without ``SDLC_WORKFLOW_TOKEN`` nothing changes. The check
@@ -32,12 +38,14 @@ of the plugin.
 from __future__ import annotations
 
 import base64
+import contextlib
+import math
 import os
 import subprocess
 import sys
 import time
 import urllib.parse
-from collections.abc import Mapping, MutableMapping
+from collections.abc import Iterator, Mapping, MutableMapping
 from pathlib import Path
 from typing import Any
 
@@ -45,6 +53,7 @@ MINTED_AT_ENV = "SDLC_APP_TOKEN_MINTED_AT"
 WORKFLOW_TOKEN_ENV = "SDLC_WORKFLOW_TOKEN"
 TOKEN_VARS = ("GITHUB_TOKEN", "GH_TOKEN")
 MAX_AGE_SECONDS = 50 * 60  # ten minutes before the hour GitHub gives an installation token
+FUTURE_SKEW_SECONDS = 5 * 60  # a mint time further ahead than this is not a time
 SWITCH_NOTE = (
     "the App token is older than 50 minutes: the workflow token publishes this run "
     "(decision 33); the project's CI on this head waits for the owner's approval"
@@ -63,15 +72,23 @@ def _lookup(name: str, env: Mapping[str, str] | None) -> str:
 
 def is_stale(env: Mapping[str, str] | None = None, now: float | None = None) -> bool:
     """True when the App's token was minted more than ``MAX_AGE_SECONDS`` ago and the
-    workflow token is there to take over; False without the App or without that token."""
+    workflow token is there to take over; False without the App or without that token. A
+    mint time that does not parse, is not finite or lies more than ``FUTURE_SKEW_SECONDS``
+    ahead counts as stale: the App's token is of unknown age, and the workflow token is
+    the one that surely works (fail towards the token that publishes)."""
     minted, workflow = _lookup(MINTED_AT_ENV, env), _lookup(WORKFLOW_TOKEN_ENV, env)
     if not minted or not workflow:
         return False
     try:
         minted_at = float(minted)
     except ValueError:
-        return False
-    return (time.time() if now is None else now) - minted_at > MAX_AGE_SECONDS
+        return True
+    if not math.isfinite(minted_at):
+        return True
+    current = time.time() if now is None else now
+    if minted_at - current > FUTURE_SKEW_SECONDS:
+        return True
+    return current - minted_at > MAX_AGE_SECONDS
 
 
 def credential_key(server_url: str | None = None) -> str:
@@ -104,16 +121,29 @@ def replace_git_credential(root: Path, token: str) -> str:
     carries that token), "none" (no persisted credential: ``persist-credentials: false`` or
     not a checkout) or "failed: <why>". Every value of the key is replaced by one."""
     root = Path(root)
-    key = credential_key()
-    memo = (str(root.resolve()), key)
+    memo = (str(root.resolve()), credential_key())
     if memo in _replaced:
         return "already"
-    value = credential_value(token)
-    code, out = _git(root, "config", "--local", "--get-all", key)
-    if code != 0:
-        return "none"  # exit 1: the key is not set (git config's documented code)
-    if out.splitlines() == [value]:
+    done = _set_credential(root, credential_value(token))
+    if done in ("replaced", "already"):
         _replaced.add(memo)
+    return done
+
+
+def _persisted(root: Path) -> list[str] | None:
+    """The persisted header values, in order, or None when the key is not set."""
+    code, out = _git(root, "config", "--local", "--get-all", credential_key())
+    return out.splitlines() if code == 0 else None  # exit 1: the key is not set
+
+
+def _set_credential(root: Path, value: str) -> str:
+    """Make ``value`` the key's one value, as actions/checkout writes it (a placeholder
+    through ``git config``, then the file edited: the token never on a command line)."""
+    key = credential_key()
+    values = _persisted(root)
+    if values is None:
+        return "none"
+    if values == [value]:
         return "already"
     code, path = _git(root, "rev-parse", "--git-path", "config")
     if code != 0 or not path.strip():
@@ -123,13 +153,15 @@ def replace_git_credential(root: Path, token: str) -> str:
     if code != 0:
         return f"failed: git config exited {code}: {why.strip()}"
     try:
-        text = config.read_text(encoding="utf-8")
+        # newline="": the file keeps its own line endings (CRLF on a Windows checkout)
+        with config.open(encoding="utf-8", newline="") as handle:
+            text = handle.read()
         if text.count(PLACEHOLDER) != 1:
             return f"failed: the placeholder is not in {config} exactly once"
-        config.write_text(text.replace(PLACEHOLDER, value), encoding="utf-8")
+        with config.open("w", encoding="utf-8", newline="") as handle:
+            handle.write(text.replace(PLACEHOLDER, value))
     except OSError as exc:
         return f"failed: {exc}"
-    _replaced.add(memo)
     return "replaced"
 
 
@@ -163,11 +195,39 @@ def fall_back_if_stale(
     return out
 
 
+@contextlib.contextmanager
+def session_credential(
+    root: Path | str | None, env: MutableMapping[str, str] | None = None
+) -> Iterator[dict[str, Any]]:
+    """Around a model session: the checkout's persisted credential carries the workflow
+    token while the session runs, so the session never holds the App's token, in its
+    environment (``session_tokens``) or in ``.git/config``, and its own pushes go out on the
+    workflow token, which starts no run without the owner's approval (as before decision 33)
+    and does not expire with the App's. Afterwards the App's header comes back while that
+    token is fresh; once it is stale the run stays on the workflow token
+    (``fall_back_if_stale``). Restored in a ``finally``, so a session that crashed or timed
+    out restores too. A no-op without
+    ``SDLC_WORKFLOW_TOKEN`` or without a persisted credential."""
+    workflow = _lookup(WORKFLOW_TOKEN_ENV, env)
+    checkout = Path(root) if root is not None else None
+    before = _persisted(checkout) if workflow and checkout is not None else None
+    if checkout is None or not before:
+        yield {"session_credential": "unchanged"}
+        return
+    during = _set_credential(checkout, credential_value(workflow))
+    try:
+        yield {"session_credential": during}
+    finally:
+        _replaced.discard((str(checkout.resolve()), credential_key()))
+        if is_stale(env):
+            fall_back_if_stale(checkout, env)
+        else:
+            _set_credential(checkout, before[-1])  # the App's header, still fresh
+
+
 def session_tokens(env: Mapping[str, str]) -> dict[str, str]:
     """The GitHub tokens a model session gets: the workflow token as ``GITHUB_TOKEN`` and
     ``GH_TOKEN`` when the workflow handed it over (``SDLC_WORKFLOW_TOKEN``), else {} (the
-    session keeps what it had). The session then never holds the App token through its
-    environment, and nothing it does depends on the App token's lifetime; the credential
-    ``actions/checkout`` persisted in ``.git/config`` stays readable to it."""
+    session keeps what it had); ``session_credential`` does the same for ``.git/config``."""
     workflow = str(env.get(WORKFLOW_TOKEN_ENV) or "").strip()
     return {var: workflow for var in TOKEN_VARS} if workflow else {}

@@ -7,6 +7,7 @@ from __future__ import annotations
 import base64
 import os
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -108,11 +109,38 @@ def test_without_the_app_nothing_changes(monkeypatch, tmp_path, capsys):
     monkeypatch.setenv(app_token.MINTED_AT_ENV, str(int(NOW)))
     monkeypatch.setenv("GITHUB_TOKEN", APP)
     assert app_token.fall_back_if_stale(root, now=NOW + 86400) == {"switched": False}
-    monkeypatch.setenv(app_token.MINTED_AT_ENV, "not a time")
-    monkeypatch.setenv(app_token.WORKFLOW_TOKEN_ENV, WORKFLOW)
-    assert app_token.fall_back_if_stale(root, now=NOW + 86400) == {"switched": False}
     assert os.environ["GITHUB_TOKEN"] == APP and _headers(root) == [_basic(WORKFLOW)]
     assert capsys.readouterr().err == ""
+
+
+@pytest.mark.parametrize("minted", ["not a time", "nan", "inf", "-inf", str(int(NOW) + 301)])
+def test_a_mint_time_that_is_not_a_time_counts_as_stale(app_run, tmp_path, capsys, minted):
+    """R49 review, N1: a mint time that does not parse, is not finite or lies more than five
+    minutes ahead gives a token of unknown age: the workflow token publishes."""
+    os.environ[app_token.MINTED_AT_ENV] = minted  # the fixture's setenv restores it
+    root = _checkout(tmp_path, _basic(APP))
+    assert app_token.fall_back_if_stale(root, now=NOW)["switched"] is True
+    assert os.environ["GITHUB_TOKEN"] == WORKFLOW and _headers(root) == [_basic(WORKFLOW)]
+    assert capsys.readouterr().err.strip() == app_token.SWITCH_NOTE
+
+
+def test_a_mint_time_a_little_ahead_is_clock_skew_not_staleness(app_run):
+    os.environ[app_token.MINTED_AT_ENV] = str(int(NOW) + 300)
+    assert app_token.is_stale(now=NOW) is False
+
+
+def test_the_config_file_keeps_its_line_endings(app_run, tmp_path):
+    """R49 review, N3: a Windows checkout's ``.git/config`` may use CRLF; the file edit keeps
+    every line ending it found (only the header line ``git config`` itself rewrote is git's)."""
+    root = _checkout(tmp_path, _basic(APP))
+    config = root / ".git" / "config"
+    text = config.read_text(encoding="utf-8").replace("\n", "\r\n")
+    config.write_bytes(text.encode("utf-8"))
+    app_token.replace_git_credential(root, WORKFLOW)
+    lines = config.read_bytes().split(b"\n")[:-1]
+    kept = [line for line in lines if b"extraheader" not in line]
+    assert kept and all(line.endswith(b"\r") for line in kept)
+    assert _headers(root) == [_basic(WORKFLOW)]
 
 
 def test_the_api_and_git_routes_check_before_they_publish(app_run, tmp_path, monkeypatch):
@@ -147,3 +175,111 @@ def test_the_session_holds_the_workflow_token_never_the_app_s(tmp_path):
 def test_the_workflow_token_never_reaches_the_commands_step(monkeypatch):
     monkeypatch.setenv(app_token.WORKFLOW_TOKEN_ENV, WORKFLOW)
     assert app_token.WORKFLOW_TOKEN_ENV not in run_phase.commands_env()
+
+
+# --- R49 review, B1 and S1: the session never holds the App's token -----------------------
+def _session_seen(root: Path, monkeypatch, crash: bool = False) -> dict:
+    """Run ``run_phase.invoke`` with a fake session that records what it held."""
+    seen: dict = {}
+
+    def fake_session(argv, cwd, env, timeout):
+        seen["headers"] = _headers(root)
+        seen["config"] = (root / ".git" / "config").read_text(encoding="utf-8")
+        seen["env"] = dict(env)
+        if crash:
+            raise RuntimeError("the session crashed")
+        return None, "", "", 0
+
+    monkeypatch.setattr(run_phase, "_run_session", fake_session)
+    session = run_phase.session_env(dict(os.environ), root, "c")
+    if crash:
+        with pytest.raises(RuntimeError):
+            run_phase.invoke(["claude"], root, session, 60)
+    else:
+        run_phase.invoke(["claude"], root, session, 60)
+    return seen
+
+
+@pytest.mark.parametrize("crash", [False, True])
+def test_the_session_pushes_on_the_workflow_token_and_the_app_s_comes_back(
+    app_run, tmp_path, monkeypatch, crash
+):
+    """While the session runs, ``.git/config`` carries the workflow token's header and no
+    trace of the App's, and the session's env neither: its pushes (a branch, a tag) cannot
+    go out as the App and start the project's push- or tag-triggered workflows. After it, a
+    fresh App token's header comes back, also when the session crashed."""
+    monkeypatch.setattr(app_token.time, "time", lambda: NOW + 60)
+    root = _checkout(tmp_path, _basic(APP))
+    seen = _session_seen(root, monkeypatch, crash)
+    assert seen["headers"] == [_basic(WORKFLOW)]
+    assert _basic(APP) not in seen["config"]
+    assert seen["env"]["GITHUB_TOKEN"] == WORKFLOW and seen["env"]["GH_TOKEN"] == WORKFLOW
+    assert app_token.WORKFLOW_TOKEN_ENV not in seen["env"] and APP not in seen["env"].values()
+    assert _headers(root) == [_basic(APP)]  # restored: the runner publishes as the App
+    assert os.environ["GITHUB_TOKEN"] == APP
+
+
+def test_after_a_session_past_50_minutes_the_run_stays_on_the_workflow_token(
+    app_run, tmp_path, monkeypatch, capsys
+):
+    clock = {"now": NOW + 60}
+    monkeypatch.setattr(app_token.time, "time", lambda: clock["now"])
+    root = _checkout(tmp_path, _basic(APP))
+
+    def long_session(argv, cwd, env, timeout):
+        clock["now"] = NOW + 51 * 60  # the session outlived the App token's 50 minutes
+        assert _headers(root) == [_basic(WORKFLOW)]
+        return None, "", "", 0
+
+    monkeypatch.setattr(run_phase, "_run_session", long_session)
+    run_phase.invoke(["claude"], root, run_phase.session_env(dict(os.environ), root), 60)
+    assert _headers(root) == [_basic(WORKFLOW)]
+    assert os.environ["GITHUB_TOKEN"] == WORKFLOW
+    assert capsys.readouterr().err.strip() == app_token.SWITCH_NOTE
+
+
+def test_without_the_workflow_token_the_session_s_credential_is_untouched(tmp_path, monkeypatch):
+    root = _checkout(tmp_path, _basic(APP))
+    seen = _session_seen(root, monkeypatch)
+    assert seen["headers"] == [_basic(APP)] and _headers(root) == [_basic(APP)]
+
+
+# --- R49 review, N7 and N2: every publication checks the token first ----------------------
+class _Checked(Exception):
+    pass
+
+
+def _stop(*args, **kwargs):
+    raise _Checked
+
+
+@pytest.mark.parametrize(
+    "call",
+    [
+        lambda root: run_phase.dispatch("o/r", "sdlc-test.yml", "main", "0001", "sdlc/0001/c"),
+        lambda root: run_phase.commit_run_record(root, root, "0001", "c"),
+        lambda root: run_phase.park_and_publish(root, root, root, None, "c", "why"),
+        lambda root: run_phase.ensure_pr(root, root, "0001", "c", "o/r", {}),
+        lambda root: run_phase.supersede_pr("o/r", 7, 8),
+    ],
+    ids=["dispatch", "commit_run_record", "park_and_publish", "ensure_pr", "supersede_pr"],
+)
+def test_each_publishing_helper_checks_the_token_before_anything_else(tmp_path, monkeypatch, call):
+    monkeypatch.setattr(run_phase, "live_token", _stop)
+    with pytest.raises(_Checked):
+        call(tmp_path)
+
+
+def test_gh_runs_with_the_workflow_token_once_the_app_s_is_stale(app_run, monkeypatch):
+    monkeypatch.setattr(app_token.time, "time", lambda: NOW + 3600)
+    monkeypatch.setattr(github, "gh_path", lambda: sys.executable)
+    out = github._gh("-c", "import os; print(os.environ['GITHUB_TOKEN'], os.environ['GH_TOKEN'])")
+    assert out["ok"] and out["out"].split() == [WORKFLOW, WORKFLOW]
+
+
+def test_the_checkout_check_fetch_checks_the_token_first(tmp_path, monkeypatch):
+    from ci import checkout_check
+
+    monkeypatch.setattr(app_token, "fall_back_if_stale", _stop)
+    with pytest.raises(_Checked):
+        checkout_check.default_branch_problems(tmp_path, "https://github.com/o/r", "main", "v1")

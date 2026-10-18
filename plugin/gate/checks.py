@@ -303,13 +303,18 @@ def _kill_tree(proc: subprocess.Popen) -> None:
 
 
 def run_command(
-    command: str, root: Path, timeout: int, tail: int | None = OUTPUT_TAIL
+    command: str,
+    root: Path,
+    timeout: int,
+    tail: int | None = OUTPUT_TAIL,
+    env: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     """Run one project target through the platform shell (the targets are the owner's own
     one-liners: `npm test`, `python -m pytest`; on Windows the .cmd shims need cmd.exe). The
     command runs in its own process group so a timeout kills the whole tree. ``tail`` caps
     the kept output (the gate result keeps the tail; ``None`` keeps the literal output, which
-    is what the evidence writer of step 28 stores)."""
+    is what the evidence writer of step 28 stores). ``env`` replaces the process's own
+    environment when given (the runner's toolchain install: no token, no model credential)."""
     group: dict[str, Any] = (
         {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP}  # type: ignore[attr-defined]
         if os.name == "nt"
@@ -326,6 +331,7 @@ def run_command(
             text=True,
             encoding="utf-8",
             errors="replace",
+            env=env,
             **group,
         )
     except OSError as exc:

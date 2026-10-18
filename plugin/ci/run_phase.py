@@ -49,7 +49,7 @@ What one run does, in order:
    fails is an infrastructure failure. A dry run installs nothing;
 2. **guards** — not paused, the change exists, ``status.yaml`` is at the phase this run
    follows with a passing gate, not parked, and in the Full profile the owner's approval
-   label is on the build PR and was applied by a human, not by the workflow token. A failed
+   label is on the build PR and was applied by a human, not by the automation. A failed
    guard prints ``{"skipped": ...}`` and exits 0, so a duplicate trigger is harmless. One
    exception: a (b) or (c) run whose work branch already carries this phase but has no open
    pull request is a re-run of an attempt that never reached the queue, and it proceeds with
@@ -95,7 +95,8 @@ What one run does, in order:
    because a phase result nobody can find in the queue is not a hand-over;
 8. reads ``evidence/gate-<phase>.json`` and, on ``continue``, dispatches the next workflow
    with the change id and the next phase's work branch as ``head_ref`` (the only hand-over
-   GitHub allows from the workflow token; ``head_ref`` keys the concurrency group). A gate
+   GitHub allows from the workflow token, kept with the App for the fallback, decision 33;
+   ``head_ref`` keys the concurrency group). A gate
    (b) that passed on the fast lane (decision 30) is confirmed and recorded first
    (``record_fast_lane_b``) and dispatches the build; once the run's own PR exists, the PR
    it carries forward (the intent PR, the design PR) is closed as ``sdlc:superseded``.
@@ -566,12 +567,14 @@ SETUP_FAILED = "the project's setup command failed: {reason}"
 def install_toolchain(root: Path, dry_run: bool = False) -> tuple[dict[str, Any], bool]:
     """Run ``sdlc.yaml: commands.setup`` in ``root``. (result, ok).
 
-    A project with no setup command is skipped, not failed; a dry run installs nothing.
+    A project with no setup command is skipped, not failed; a dry run installs nothing. The
+    command runs in ``commands_env()``: neither the GitHub tokens (the App's, the workflow's)
+    nor a model credential reach the project's own install.
     """
     if dry_run:
         return {"skipped": "dry run: nothing is installed"}, True
     try:
-        result, code = project_setup.run_setup(root)
+        result, code = project_setup.run_setup(root, env=commands_env())
     except Exception as exc:  # noqa: BLE001 — an install must not crash the run silently
         return {"error": f"{type(exc).__name__}: {exc}"}, False
     return result, code == project_setup.EXIT_OK
@@ -1982,7 +1985,21 @@ def maintain_allowed_tools(root: Path | None) -> str:
 
 
 def invoke(argv: list[str], root: Path, env: dict[str, str], timeout: int) -> tuple:
-    """(result dict or None, stdout, stderr, exit code)."""
+    """(result dict or None, stdout, stderr, exit code).
+
+    Decision 33 (R49): the session never holds the App's token. ``SDLC_WORKFLOW_TOKEN``
+    never reaches it as such, and while it runs the checkout's persisted git credential
+    carries the workflow token (``ci/app_token.py session_credential``, restored afterwards
+    in a ``finally``): the session's own pushes start no workflow run without the owner's
+    approval, as before decision 33, and outlive the App token's hour."""
+    run_env = {
+        k: v for k, v in auth_mod.credential_env(env).items() if k != app_token.WORKFLOW_TOKEN_ENV
+    }
+    with app_token.session_credential(root, _RUN_ENV if _RUN_ENV is not None else env):
+        return _run_session(argv, root, run_env, timeout)
+
+
+def _run_session(argv: list[str], root: Path, env: dict[str, str], timeout: int) -> tuple:
     try:
         proc = subprocess.run(
             argv,
@@ -1990,7 +2007,7 @@ def invoke(argv: list[str], root: Path, env: dict[str, str], timeout: int) -> tu
             capture_output=True,
             text=True,
             encoding="utf-8",
-            env=auth_mod.credential_env(env),
+            env=env,
             timeout=timeout,
         )
     except subprocess.TimeoutExpired:
@@ -2316,7 +2333,10 @@ def dispatch(
     """``POST /repos/{repo}/actions/workflows/{file}/dispatches`` — 204 means accepted.
 
     ``workflow_dispatch`` is one of the two events GitHub still starts a run for when the
-    workflow token causes it, which is why every automated transition goes through here.
+    workflow token causes it, which is why every automated transition goes through here; with
+    the project's GitHub App (decision 33) other events start runs too, and the dispatch stays
+    because the fallback to the workflow token (no App, or an App token past 50 minutes)
+    needs it.
     ``head_ref`` is the work branch of the phase being dispatched; the workflow keys its
     concurrency group on it, so every run of one change serialises (section 4.2).
     ``extra_inputs`` adds inputs the target workflow declares (the comment dispatcher's
@@ -3830,7 +3850,8 @@ def auto_note(auto: dict[str, Any] | None) -> str:
 
 def dispatch_fix_round(args, change_id: str, head: str) -> dict[str, Any]:
     """``sdlc-fix.yml`` with the change id and the pull request's head (the only start the
-    workflow token's events allow; ``head_ref`` keys the round's concurrency group, so it
+    workflow token's events allow, and the App's labels skip the fix job, decision 33;
+    ``head_ref`` keys the round's concurrency group, so it
     waits for this run). ``--no-dispatch`` and ``--dry-run`` send nothing and say what would
     have been sent."""
     ref = args.ref or default_ref(Path(args.root))
@@ -4118,8 +4139,9 @@ def fast_lane_note(fast_lane: dict[str, Any]) -> str:
 def supersede_pr(
     repo: str, number: int, by: int | None, expected_head: str | None = None
 ) -> dict[str, Any]:
-    """Label pull request ``number`` ``sdlc:superseded`` and close it with the workflow
-    token, no comment (decision 20: no notification); ``by`` is the PR that now carries it.
+    """Label pull request ``number`` ``sdlc:superseded`` and close it with the automation's
+    token (the App's, decision 33, else the workflow token), no comment (decision 20: no
+    notification); ``by`` is the PR that now carries it.
     The label comes first and the close only after it, so a close never lacks the label
     ``sdlc-abandon.yml`` skips on (decision 25). Left as it is: a PR that is not open; a PR
     that already carries the label (the owner reopened it: never closed again); and, with
