@@ -30,10 +30,11 @@ and pass `--setup ""` when the project has nothing to install.
 ## 1. Ask the owner (one question round, defaults in brackets)
 - profile [standard]: standard (owner merges at a, b, e) · full (all five gates). (Lite,
   gates a and e only, was withdrawn by decision 21 and is gone since 0.2.14.)
-- review [parked]: parked (a judgment item inside a phase parks the change for the owner)
-  · deferred (a review panel decides it in fresh contexts and the run continues; the owner
-  reads "Decisions taken for you" at the next gate and overturns any of them with a review
-  comment; decision 21). A risk-list hit, a guardrail file change, a run limit, an
+- review [deferred]: deferred (a review panel decides a judgment item inside a phase in
+  fresh contexts and the run continues; the owner reads "Decisions taken for you" at the
+  next gate and overturns any of them with a review comment; decisions 21 and 32) · parked
+  (a judgment item inside a phase parks the change for the owner; still available per
+  project and per change). A risk-list hit, a guardrail file change, a run limit, an
   infrastructure failure, a merge to main and a deploy still park in both modes.
 - deploy action [none]: what makes a merged change live — publish package · schedule job ·
   regenerate report · promote to paper trading · deploy service · none
@@ -75,7 +76,9 @@ for them (`created` on a first install), never `outdated`; and `sdlc.yaml` repor
 (only `updated (… comments dropped)` loses them). So on an upgraded project these files may
 still describe an older plugin. Whenever a workflow copy is `outdated`, say so to the owner
 and name the template copies (`${CLAUDE_PLUGIN_ROOT}/template/`) to diff by hand; the
-framework never rewrites them. The report's `maintain.observation` line
+framework never rewrites them. For an outdated `sdlc-build.yml` or `sdlc-fix.yml`, also say:
+replace sdlc-build.yml and sdlc-fix.yml to get the build caps (decision 32; an older copy
+keeps the build and every fix round on the general caps). The report's `maintain.observation` line
 says whether the maintain metric will have an observation: a project whose only workflows
 are the framework's (`SDLC …`, excluded from the metric by design) has none until it
 carries its own CI workflow — say so to the owner in the report, with the one-line workflow

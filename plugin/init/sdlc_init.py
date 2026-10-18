@@ -49,6 +49,7 @@ if str(PLUGIN_DIR) not in sys.path:
 
 from detect.source import FRAMEWORK_WORKFLOW_PREFIX, SourceError, parse_source  # noqa: E402
 
+from gate import limits  # noqa: E402
 from init import detect as detect_mod  # noqa: E402
 from init.render import render_file  # noqa: E402
 from state import conventions as c  # noqa: E402
@@ -136,6 +137,32 @@ def merge_missing(existing: dict, fresh: dict) -> dict:
         elif isinstance(out[k], dict) and isinstance(v, dict):
             out[k] = merge_missing(out[k], v)
     return out
+
+
+# decision 32 (1.0.8): the build caps and the general setting each one falls back to
+BUILD_CAP_KEYS = {"build_max_turns": 0, "build_max_wall_clock_minutes": 1}
+
+
+def keep_build_caps(existing: dict, fresh: dict) -> dict:
+    """``fresh`` without a template build cap that would lower an existing project's: an
+    unset ``gate.build_*`` key is the larger of the general setting and the build default
+    (``limits.run_caps``), so a project with ``max_turns: 500`` builds with 500 turns, and
+    inserting the template's ``build_max_turns: 400`` on a re-run would cut it to 400."""
+    old_gate, new_gate = existing.get("gate"), fresh.get("gate")
+    if not isinstance(old_gate, dict) or not isinstance(new_gate, dict):
+        return fresh
+    general = limits.run_caps(old_gate, False)
+    kept = {
+        k: v
+        for k, v in new_gate.items()
+        if not (
+            k in BUILD_CAP_KEYS
+            and k not in old_gate
+            and isinstance(v, int)
+            and general[BUILD_CAP_KEYS[k]] > v
+        )
+    }
+    return {**fresh, "gate": kept}
 
 
 def merge_settings(existing: dict, fresh: dict) -> dict:
@@ -307,6 +334,12 @@ OUTDATED = (
     "outdated: differs from what plugin {version} installs; replace it with the template "
     "copy to upgrade (delete it and re-run /sdlc-init), or keep your edits"
 )
+# decision 32 (1.0.8): only the new copies export the job timeout the build caps need
+OUTDATED_BUILD_CAPS = (
+    "; replace sdlc-build.yml and sdlc-fix.yml to get the build caps (an older copy keeps "
+    "the build and every fix round on the general caps)"
+)
+BUILD_CAP_WORKFLOWS = (".github/workflows/sdlc-build.yml", ".github/workflows/sdlc-fix.yml")
 
 
 def install_workflows(root: Path, values: dict[str, str], report: dict) -> None:
@@ -327,7 +360,9 @@ def install_workflows(root: Path, values: dict[str, str], report: dict) -> None:
         elif target.read_text(encoding="utf-8") == content:
             report[rel] = "unchanged"
         else:
-            report[rel] = OUTDATED.format(version=values["PLUGIN_VERSION"])
+            report[rel] = OUTDATED.format(version=values["PLUGIN_VERSION"]) + (
+                OUTDATED_BUILD_CAPS if rel in BUILD_CAP_WORKFLOWS else ""
+            )
 
 
 # --- the maintain metric's observation (choice 87) ---------------------------------------------
@@ -472,6 +507,7 @@ def run(args) -> dict:
     sdlc_path = root / "sdlc.yaml"
     if sdlc_path.exists():
         existing_yaml = yamlish.load_file(sdlc_path)
+        fresh_yaml = keep_build_caps(existing_yaml, fresh_yaml)
         merged = merge_missing(existing_yaml, fresh_yaml)
         merged.setdefault("plugin", {})["version"] = values["PLUGIN_VERSION"]
         rendered = render_file(TEMPLATE / "sdlc.yaml", values)
@@ -621,7 +657,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--profile", default=c.DEFAULT_PROFILE, choices=c.PROFILES)
     p.add_argument(
         "--review",
-        default=c.DEFAULT_REVIEW_MODE,
+        default=c.INIT_REVIEW_MODE,
         choices=c.REVIEW_MODES,
         help="decision 21: deferred puts judgment items to the review panel inside a phase",
     )

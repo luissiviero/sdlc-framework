@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -129,7 +130,7 @@ def test_init_on_fixture_copy_is_idempotent(tmp_path):
     }
     cfg = yamlish.load_file(root / "sdlc.yaml")
     assert cfg["profile"] == "full" and cfg["commands"]["test"] == "python -m pytest"
-    assert cfg["review"] == "parked"  # decision 21: off by default
+    assert cfg["review"] == "deferred"  # decision 32 (1.0.8): the default /sdlc-init proposes
     assert cfg["test_paths"] == detect.TEST_PATHS["python"]  # step 25: the test-file lock
     assert cfg["plugin"]["version"] == sdlc_init.plugin_version()
     settings = json.loads((root / ".claude" / "settings.json").read_text(encoding="utf-8"))
@@ -740,3 +741,53 @@ def test_init_maintain_observation_for_a_named_workflow_source(tmp_path):
         "test command on push and pull_request) or the maintain metric will never have an "
         "observation"
     )
+
+
+def test_init_re_run_never_lowers_a_project_s_build_caps(tmp_path):
+    """Decision 32 (1.0.8): an unset ``gate.build_*`` key is the larger of the general setting
+    and the build default, so a project with ``max_turns: 500`` builds with 500 turns. A
+    re-run of /sdlc-init merges the missing keys; inserting the template's
+    ``build_max_turns: 400`` would have cut it, so such a key is left out."""
+    from gate import limits
+
+    root = tmp_path / "proj"
+    shutil.copytree(FIXTURE, root)
+    _run_init(root)
+    path = root / "sdlc.yaml"
+    text = path.read_text(encoding="utf-8")
+    text = re.sub(r"(?m)^  build_max_.*\n", "", text)  # the project as 1.0.7 wrote it
+    text = text.replace("max_turns: 200 ", "max_turns: 500 ").replace(
+        "max_wall_clock_minutes: 120 ", "max_wall_clock_minutes: 240 "
+    )
+    path.write_text(text, encoding="utf-8")
+    assert limits.run_caps(yamlish.load_file(path)["gate"], True) == (500, 240)
+    _run_init(root)
+    gate = yamlish.load_file(path)["gate"]
+    assert "build_max_turns" not in gate and "build_max_wall_clock_minutes" not in gate
+    assert limits.run_caps(gate, True) == (500, 240)
+    # a general setting below the build default gets the template's key: the same caps
+    path.write_text(
+        re.sub(r"(?m)^  build_max_.*\n", "", path.read_text(encoding="utf-8"))
+        .replace("max_turns: 500 ", "max_turns: 300 ")
+        .replace("max_wall_clock_minutes: 240 ", "max_wall_clock_minutes: 90 "),
+        encoding="utf-8",
+    )
+    report = _run_init(root)
+    gate = yamlish.load_file(path)["gate"]
+    assert gate["build_max_turns"] == 400 and gate["build_max_wall_clock_minutes"] == 180
+    assert "gate.build_max_turns" in report["files"]["sdlc.yaml"]
+    assert limits.run_caps(gate, True) == (400, 180) and limits.run_caps(gate, False) == (300, 90)
+
+
+def test_init_says_an_outdated_build_or_fix_workflow_keeps_the_general_caps(tmp_path):
+    """Decision 32: only the 1.0.8 sdlc-build.yml and sdlc-fix.yml export the job timeout the
+    build caps need, so the report on an older copy says to replace them."""
+    root = tmp_path / "proj"
+    shutil.copytree(FIXTURE, root)
+    _run_init(root)
+    for rel in (WORKFLOWS[0], WORKFLOWS[1], WORKFLOWS[6]):
+        (root / rel).write_text("name: an older workflow\n", encoding="utf-8")
+    files = _run_init(root)["files"]
+    hint = "replace sdlc-build.yml and sdlc-fix.yml to get the build caps"
+    assert hint in files[WORKFLOWS[1]] and hint in files[WORKFLOWS[6]]
+    assert files[WORKFLOWS[0]].startswith("outdated: ") and hint not in files[WORKFLOWS[0]]

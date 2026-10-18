@@ -180,7 +180,7 @@ in `spec.md` as `decided (by panel #<n>): <decision> — <concern>`, and commits
 folder itself (`design(<id>): panel decision <n>`), so the decision is in HEAD before anyone
 judges it. Do not reword a closed concern line: the gate matches it to the ledger by
 `#<n>`. Apply what the decision asks beyond that (an `escalate` decided `continue` needs
-nothing more; a fix the decision names is made now, `plan.md` in the same commit, committed
+nothing more; an `escalate` decided `park`: go straight to the gate, it parks; a fix the decision names is made now, `plan.md` in the same commit, committed
 with `commit-phase ... --phase b --message "design(<id>): panel decision <n> applied"`).
 After the last item, re-run step 6 for the new HEAD, once (a verdict never
 outlives the diff it judged, and the diff file must be regenerated first); from then on

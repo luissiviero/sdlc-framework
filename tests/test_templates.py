@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 import pytest
 
+from gate import limits
 from init import render
 from state import yamlish
 
@@ -135,6 +137,32 @@ def test_sdlc_yaml_renders_to_documented_keys():
         "version": VALUES["PLUGIN_VERSION"],
         "claude_code": VALUES["CLAUDE_CODE_VERSION"],  # step 30: the CLI the workflows pin
     }
+
+
+def test_sdlc_yaml_carries_decision_32_s_defaults():
+    """Decision 32 (1.0.8): deferred review is the default (/sdlc-init proposes it, the comment
+    says so, parked stays available), the build run and every fix round have their own caps,
+    named explicitly, and the per-change budget cap is 150 USD; NOTES 45 gap 5."""
+    from init import sdlc_init
+
+    assert sdlc_init.build_parser().parse_args([]).review == "deferred"
+    text = render.render_file(TEMPLATE / "sdlc.yaml", VALUES)
+    review_block = text.split("# --- review mode", 1)[1].split("\nreview:", 1)[0]
+    assert "deferred is what /sdlc-init proposes (decision 32); an unset key reads as parked" in (
+        review_block
+    )
+    gate = yamlish.loads(text)["gate"]
+    assert gate["max_turns"] == 200 and gate["max_wall_clock_minutes"] == 120
+    assert gate["build_max_turns"] == 400 and gate["build_max_wall_clock_minutes"] == 180
+    assert gate["max_budget_usd"] == 150
+    assert limits.run_caps(gate, True) == (400, 180) and limits.run_caps(gate, False) == (200, 120)
+    for name in ALL_WORKFLOWS:
+        text = (WORKFLOW_DIR / name).read_text(encoding="utf-8")
+        minutes = re.findall(r"(?m)^    timeout-minutes: (\d+)$", text)
+        if name in ("sdlc-build.yml", FIX_WORKFLOW):
+            assert minutes == ["260"], name  # 180 + 5 of grace, the commands step and the judge
+        elif name in ("sdlc-design.yml", "sdlc-test.yml", "sdlc-deploy.yml"):
+            assert minutes == ["200"], name
 
 
 def test_sdlc_yaml_also_parses_with_pyyaml():

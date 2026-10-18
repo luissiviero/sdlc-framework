@@ -12,7 +12,8 @@
 # that still says lite reads as standard)
 profile: {{PROFILE}}
 
-# --- review mode inside a phase (OPERATING_MODEL sections 3 and 6; decision 21) -------------
+# --- review mode inside a phase (OPERATING_MODEL sections 3 and 6; decisions 21, 32) ---------
+# deferred is what /sdlc-init proposes (decision 32); an unset key reads as parked.
 # parked:   a judgment item parks the change and waits for you (an open flagged concern in
 #           spec.md, contradicting policies, an escalate verdict of the adversarial reviewer,
 #           an Important review finding whose fix the run cannot determine, a verifier
@@ -115,9 +116,12 @@ gate:
   max_iterations: 3              # fix iterations per change, one counter across the phases
   max_iterations_non_routine: 2  # when the adversarial reviewer classes the plan non-routine
   max_panel_calls: 4             # panel calls per change under deferred review; not fix iterations
+  max_turns: 200                 # turns per session of every run but the build and fix runs
   max_wall_clock_minutes: 120    # per phase run, from `gate/cli.py start-run`
-  max_budget_usd: null           # per change; binds CI runs only (a headless run reports its
-                                 # spend, a by-hand or cloud-session run has no figure); null = off
+  build_max_turns: 400           # turns of the build run and of every fix round (decision 32)
+  build_max_wall_clock_minutes: 180  # wall clock of the build run and of every fix round
+  max_budget_usd: 150            # per change; binds CI runs only (a by-hand or cloud-session
+                                 # run has no figure); a run that reaches it parks; null = off
   command_timeout: 900           # seconds per build/test/lint command run by the gate
 
 # --- automation identity (decision 5; gate check owner_actions) ----------------------------------

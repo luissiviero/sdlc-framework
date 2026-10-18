@@ -597,6 +597,23 @@ def _panel_entries(ctx: GateContext, kind: str) -> list[dict[str, Any]]:
     ]
 
 
+def _owner_continues(ctx: GateContext) -> list[dict[str, Any]]:
+    """The ``escalate`` lines of this phase's ledger that the owner overturned and whose
+    decision upheld the verdict (not ``continue``): the owner's word replaces the panel's
+    (``sdlc-fix.md``), so an ``escalate`` verdict with the same reasons is settled for the
+    phase to continue; one with other reasons is a new item (1.0.8, NOTES 45 gap 1). [] unless
+    the review mode is deferred, as for ``_panel_entries``."""
+    if not ctx.deferred:
+        return []
+    from panel import ledger  # noqa: PLC0415
+
+    return [
+        e
+        for e in ledger.load_ledger(ctx.change_dir, ctx.phase)
+        if e.get("kind") == "escalate" and e.get("overturned") and not ledger.decides_continue(e)
+    ]
+
+
 def _panel_settled_findings(
     ctx: GateContext, important: list[dict[str, Any]]
 ) -> list[dict[str, Any]]:
@@ -873,7 +890,18 @@ def check_adversarial_verdict(ctx: GateContext) -> CheckResult:
 
         key = ledger.escalate_key(reasons)
         settled = next((e for e in _panel_entries(ctx, "escalate") if e.get("key") == key), None)
-        if settled is not None and str(settled.get("decision", "")).lower().startswith("continue"):
+        owner = next((e for e in _owner_continues(ctx) if e.get("key") == key), None)
+        if settled is None and owner is not None:
+            return _ok(
+                "adversarial_review",
+                "adversarial reviewer said escalate; the owner overturned the panel's "
+                f"decision {owner.get('n')} on it, so the phase continues: "
+                + str((owner.get("overturned") or {}).get("comment", "")),
+                classification=data["classification"],
+                reasons=reasons,
+                settled_by_owner=owner.get("n"),
+            )
+        if settled is not None and ledger.decides_continue(settled):
             return _ok(
                 "adversarial_review",
                 "adversarial reviewer said escalate; the review panel decided to continue: "
@@ -1643,8 +1671,12 @@ def _blind_verdicts_problems(ctx: GateContext, entry: dict) -> list[str]:
 
 
 def check_panel(ctx: GateContext) -> CheckResult:
-    """Every panel decision has a ledger line and no panel decision touched a never-to-panel
-    item. Passes trivially when there is no ledger and no concern closed by the panel."""
+    """Every panel decision has a ledger line, no panel decision touched a never-to-panel
+    item, and no standing ``escalate`` decision upholds the adversarial reviewer's verdict:
+    one that does not start with ``continue`` (``park``, empty, anything else) fails the
+    check, so the gate parks (NOTES 45 gap 1, choice 205; an overturned line is the owner's
+    act and is left alone). Passes trivially when there is no ledger and no concern closed
+    by the panel."""
     from panel import ledger  # noqa: PLC0415
 
     error = ledger.ledger_error(ctx.change_dir, ctx.phase)
@@ -1668,6 +1700,12 @@ def check_panel(ctx: GateContext) -> CheckResult:
             f"the ledger has {len(entries)} decision(s) but the review mode is {ctx.review_mode}"
         )
     standing = ledger.active(entries)
+    upheld = [e for e in standing if e.get("kind") == "escalate" and not ledger.decides_continue(e)]
+    for entry in upheld:
+        problems.append(
+            f"decision {entry.get('n')}: the panel upheld the adversarial reviewer's escalate "
+            f"({str(entry.get('decision') or '').strip()[:80] or 'no decision'!r})"
+        )
     # a closing names its ledger line (``decided (by panel #n):``, 0.2.15), so the words after
     # it may be tidied; the 0.2.14 form without the number is matched on the decision text.
     # The line may live in an earlier phase's ledger: a concern closed at (b) stays closed
@@ -1709,8 +1747,21 @@ def check_panel(ctx: GateContext) -> CheckResult:
             "panel",
             "; ".join(problems),
             "Every panel decision is one ledger line in evidence/decisions-<phase>.json (panel/"
-            "cli.py record writes it); a never-to-panel item parks for the owner.",
+            "cli.py record writes it); a never-to-panel item parks for the owner."
+            + (
+                " The panel upheld the adversarial reviewer's escalate (decision "
+                + ", ".join(str(e.get("n")) for e in upheld)
+                + f" of evidence/decisions-{ctx.phase}.md): read the reviewer's reasons and "
+                "the panel's rationale, then either fix what the reviewer names (a review "
+                "comment starts the fix round), or let the phase continue: a review comment "
+                'on that line of "Decisions taken for you" that names the decision '
+                "overturns it - the fix round marks the ledger line overturned (panel/cli.py "
+                "overturn) and the owner's word replaces the panel's."
+                if upheld
+                else ""
+            ),
             problems=problems,
+            upheld=[e.get("n") for e in upheld],
         )
     return _ok(
         "panel",

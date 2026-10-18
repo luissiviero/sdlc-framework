@@ -13,6 +13,12 @@ Limits (sdlc.yaml ``gate:`` block, all optional; defaults here):
     ``sdlc:reset-iterations`` label resets both counts);
   - ``max_wall_clock_minutes``: elapsed time since the phase run started (default 120);
     the run records its start with ``cli.py start-run``;
+  - ``build_max_turns`` and ``build_max_wall_clock_minutes``: the turn and wall-clock caps of
+    the build run (``--phase c``) and of every fix round (decision 32, 1.0.8; defaults 400 and
+    180); every other run keeps ``max_turns`` (the runner's, default 200) and
+    ``max_wall_clock_minutes``. An unset build key is the larger of the general setting and
+    the build default, so no project's cap goes down (``run_caps``); ``start-run`` records
+    ``"run": "build"`` for such a run, and a record without it gets the general cap;
   - ``max_budget_usd``: per-change spend where the substrate exposes one; the run writes the
     figure it observes with ``cli.py record-spend`` (a headless `claude -p` prints
     ``total_cost_usd`` in its JSON result); absent figure = not enforced, so the cap binds CI
@@ -48,6 +54,12 @@ DEFAULT_MAX_ITERATIONS = 3
 DEFAULT_MAX_ITERATIONS_NON_ROUTINE = 2
 DEFAULT_MAX_PANEL_CALLS = 4
 DEFAULT_MAX_WALL_CLOCK_MINUTES = 120
+DEFAULT_MAX_TURNS = 200  # the runner's ``--max-turns`` (docs/NOTES.md section 10)
+DEFAULT_BUILD_MAX_TURNS = 400  # decision 32: the build run and every fix round
+DEFAULT_BUILD_MAX_WALL_CLOCK_MINUTES = 180
+BUILD_RUN = "build"  # run-<phase>.json: "run" for the build run or a fix round
+RUN_KIND_ENV = "SDLC_RUN"  # the runner sets it to FIX_RUN in a fix session's environment
+FIX_RUN = "fix"
 RUN_FILE = "run-{phase}.json"  # evidence/run-<phase>.json: started_at, spend_usd
 SPEND_FILE = "spend.json"  # evidence/spend.json: the change's spend ledger (issue #71)
 
@@ -65,6 +77,27 @@ def _float(value: Any) -> float | None:
         return float(value)
     except (TypeError, ValueError):
         return None
+
+
+def run_caps(gate_settings: Any, build: bool) -> tuple[int, int]:
+    """(turns, wall-clock minutes) of one run, from the ``sdlc.yaml`` ``gate:`` block
+    (decision 32): the general ``max_turns`` and ``max_wall_clock_minutes``, or for the build
+    run and a fix round (``build``) ``build_max_turns`` and ``build_max_wall_clock_minutes``,
+    each of which, when unset or invalid, is the larger of the general setting and the build
+    default. The one copy of the rule: the runner's ``--max-turns`` and subprocess timeout and
+    the gate's wall-clock check all read it."""
+    cfg = gate_settings if isinstance(gate_settings, dict) else {}
+    turns = _int(cfg.get("max_turns"), DEFAULT_MAX_TURNS)
+    minutes = _int(cfg.get("max_wall_clock_minutes"), DEFAULT_MAX_WALL_CLOCK_MINUTES)
+    if not build:
+        return turns, minutes
+    return (
+        _int(cfg.get("build_max_turns"), max(turns, DEFAULT_BUILD_MAX_TURNS)),
+        _int(
+            cfg.get("build_max_wall_clock_minutes"),
+            max(minutes, DEFAULT_BUILD_MAX_WALL_CLOCK_MINUTES),
+        ),
+    )
 
 
 def iteration_cap(ctx: GateContext, classification: str | None) -> int:
@@ -166,6 +199,31 @@ def record_spend_entry(
     return ledger
 
 
+BUDGET_NEED = "Raise `gate.max_budget_usd` in sdlc.yaml (a reviewed PR) or finish by hand."
+
+
+def budget_reason(total: float, budget: float, this_run: float | None = None) -> str:
+    """The park reason of a spent per-change budget: the gate's ``limits`` check (``total``
+    above ``budget``: exceeded), and the runner when nothing is left before a session starts
+    (1.0.8; ``total`` equal to ``budget``: reached)."""
+    run = f" (this run {this_run:.2f})" if this_run is not None else ""
+    word = "exceeded" if total > budget else "reached"
+    return f"budget {word}: {total:.2f} USD spent on the change{run}, budget {budget:.2f} USD"
+
+
+def budget_left(gate_settings: Any, evidence_dir: Path) -> tuple[float, float, float] | None:
+    """(cap, spent, left) of the change's budget (``gate.max_budget_usd``, the total of
+    ``evidence/spend.json``), or None when no cap is set. The runner passes ``left`` as the
+    session's ``--max-budget-usd``: the cap is per change, so a session gets what the change
+    has not spent yet, never the whole cap again (1.0.8)."""
+    cfg = gate_settings if isinstance(gate_settings, dict) else {}
+    cap = _spend(cfg.get("max_budget_usd"))
+    if cap is None:
+        return None
+    spent = read_spend_ledger(evidence_dir)["total_usd"]
+    return cap, spent, round(max(cap - spent, 0.0), 6)
+
+
 def _elapsed_minutes(started_at: str | None, now: datetime | None = None) -> float | None:
     if not started_at:
         return None
@@ -240,9 +298,9 @@ def check_limits(ctx: GateContext, now: datetime | None = None) -> CheckResult:
             f"{ctx.phase}` before the work, and record spend with `record-spend`.",
             {**details, "stop": False},
         )
-    max_minutes = _int(
-        ctx.gate_setting("max_wall_clock_minutes", None), DEFAULT_MAX_WALL_CLOCK_MINUTES
-    )
+    # the build run and a fix round carry ``"run": "build"`` (``start-run``); an older record
+    # has no field and gets the general cap, as before 1.0.8
+    _turns, max_minutes = run_caps(ctx.config.get("gate"), run.get("run") == BUILD_RUN)
     elapsed = _elapsed_minutes(run.get("started_at"), now)
     details.update({"elapsed_minutes": round(elapsed, 1) if elapsed is not None else None})
     if elapsed is not None and elapsed > max_minutes:
@@ -269,13 +327,11 @@ def check_limits(ctx: GateContext, now: datetime | None = None) -> CheckResult:
         }
     )
     if budget is not None and total is not None and total > budget:
-        this_run = f" (this run {spend:.2f})" if spend is not None else ""
         return CheckResult(
             "limits",
             False,
-            f"budget exceeded: {total:.2f} USD spent on the change{this_run}, "
-            f"budget {budget:.2f} USD",
-            "Raise `gate.max_budget_usd` in sdlc.yaml (a reviewed PR) or finish by hand.",
+            budget_reason(total, budget, spend),
+            BUDGET_NEED,
             {**details, "stop": True},
         )
     return CheckResult("limits", True, "within the run limits", details=details)

@@ -215,6 +215,7 @@ def test_verifier_disagreement_is_read_from_the_report():
 # --- the CLI against the fixture ---------------------------------------------------------------
 def test_items_lists_the_fixed_list_and_the_parks(design_project):  # noqa: F811
     root, change = design_project
+    set_review(change, "parked")  # the template's default is deferred since 1.0.8 (decision 32)
     open_the_concern(change)
     git(root, "add", ".")
     git(root, "commit", "-q", "-m", "design(0001): an open concern")
@@ -240,6 +241,7 @@ def test_items_lists_the_fixed_list_and_the_parks(design_project):  # noqa: F811
 
 def test_record_refuses_under_parked_and_decides_under_deferred(design_project):  # noqa: F811
     root, change = design_project
+    set_review(change, "parked")  # the template's default is deferred since 1.0.8 (decision 32)
     open_the_concern(change)
     git(root, "add", ".")
     git(root, "commit", "-q", "-m", "design(0001): an open concern")
@@ -573,6 +575,98 @@ def test_gate_accepts_an_escalate_the_panel_decided_to_continue(project):  # noq
     assert "review mode is parked" in panel.reason
 
 
+def _gate_with_escalate_decision(root: Path, change: Path, phase: str, decision: str, **extra):
+    """Gate ``phase`` after the panel decided an ``escalate`` with ``decision`` and the
+    adversarial reviewer, re-run on the new HEAD, said ``continue`` (PR #186: the verdict that
+    followed the panel no longer escalated, so ``adversarial_review`` passed)."""
+    reasons = ["blast radius larger than the plan says"]
+    item = {"kind": "escalate", "key": ledger.escalate_key(reasons), "item": "escalate"}
+    ledger.save_ledger(change, phase, [])
+    entry = _ledger_entry(change, phase, item, "continue", "0" * 40)
+    entries = ledger.load_ledger(change, phase)
+    entries[0].update(decision=decision, **extra)
+    ledger.save_ledger(change, phase, entries)
+    git(root, "add", ".")
+    git(root, "commit", "-q", "-m", f"panel decision {entry['n']}: {decision!r}")
+    verdict(root, phase)
+    return gate.run_gate(root, "0001", phase, dry_run=True)
+
+
+@pytest.mark.parametrize(("phase", "fixture"), [("b", "design_project"), ("c", "project")])
+def test_a_panel_park_on_an_escalate_parks_the_gate_fail_closed(request, phase, fixture):
+    """NOTES 45 gap 1 (choice 205): PR #186's body listed "-> **park**" under ``b-ready``:
+    ``check_panel`` did not read the decision. A standing ``escalate`` decision that does not
+    start with the word ``continue`` fails the ``panel`` check, which never goes back to the
+    panel, so the gate parks; an overturned one is the owner's act and is left alone."""
+    root, change = request.getfixturevalue(fixture)
+    set_review(change, "deferred")
+    for decision in ("park", "Park: the verdict stands", "", "keep the verdict", "continued"):
+        result = _gate_with_escalate_decision(root, change, phase, decision)
+        assert result.result == "park" and result.label == "sdlc:needs-human", decision
+        panel = next(ch for ch in result.failed if ch.name == "panel")
+        assert panel.name in ledger.NEVER_TO_PANEL and panel.details["upheld"] == [1]
+        assert "decision 1: the panel upheld the adversarial reviewer's escalate" in panel.reason
+        upheld = (
+            "The panel upheld the adversarial reviewer's escalate "
+            f"(decision 1 of evidence/decisions-{phase}.md)"
+        )
+        assert upheld in panel.need
+        assert "overturns it - the fix round marks the ledger line overturned" in panel.need
+    result = _gate_with_escalate_decision(root, change, phase, "park")
+    assert "('park')" in next(ch for ch in result.failed if ch.name == "panel").reason
+    assert "upheld" in result.what_i_need()
+    # the PR body keeps showing the decision, now under a park
+    assert "→ **park**" in desc.build_description(root, "0001", phase)
+    for decision in ("continue", "Continue: add the test first", "  CONTINUE "):
+        result = _gate_with_escalate_decision(root, change, phase, decision)
+        assert "panel" in _names(result, True), (decision, result.reason)
+        assert result.result == ("wait" if phase == "b" else "continue"), result.reason
+    overturned = {"comment": "go on: the blast radius is fine", "at": "2026-10-18T10:00:00Z"}
+    result = _gate_with_escalate_decision(root, change, phase, "park", overturned=overturned)
+    assert "panel" in _names(result, True), result.reason
+    assert result.result == ("wait" if phase == "b" else "continue"), result.reason
+
+
+@pytest.mark.parametrize(("phase", "fixture"), [("b", "design_project"), ("c", "project")])
+def test_the_owner_s_overturn_of_a_panel_park_lets_the_phase_continue(request, phase, fixture):
+    """The way out of a gap-1 park (1.0.8): the owner overturns the panel's ``park`` with a
+    review comment (``sdlc-fix.md``: the owner's word replaces the panel's), so the reviewer
+    escalating again on the same reasons is settled and the panel does not take it again; an
+    escalate on new reasons is a new item, which the panel takes or the gate parks on."""
+    root, change = request.getfixturevalue(fixture)
+    set_review(change, "deferred")
+    overturned = {"comment": "go on: the blast radius is fine", "at": "2026-10-18T10:00:00Z"}
+    _gate_with_escalate_decision(root, change, phase, "park", overturned=overturned)
+    verdict(root, phase, verdict="escalate")  # the same reasons as the overturned line
+    result = gate.run_gate(root, "0001", phase, dry_run=True)
+    assert result.result == ("wait" if phase == "b" else "continue"), result.reason
+    adv = next(ch for ch in result.checks if ch.name == "adversarial_review")
+    assert adv.ok and adv.details["settled_by_owner"] == 1
+    assert gate.settled_by_panel(result.checks)  # not the reviewer's own continue: no fast lane
+    assert "the owner overturned the panel's decision 1" in adv.reason
+    rc, out = run(["items", "--root", str(root), "--id", "0001", "--phase", phase])
+    assert rc == 0 and out["items"] == [] and out["pending"] == []
+    # without the overturn the same verdict parks, as before
+    entries = ledger.load_ledger(change, phase)
+    entries[0]["overturned"] = None
+    ledger.save_ledger(change, phase, entries)
+    git(root, "commit", "-q", "-am", "the overturn undone")
+    verdict(root, phase, verdict="escalate")
+    assert gate.run_gate(root, "0001", phase, dry_run=True).result == "park"
+    # new reasons are a new item: the panel takes it, and the gate parks until it does
+    entries[0]["overturned"] = overturned
+    ledger.save_ledger(change, phase, entries)
+    git(root, "commit", "-q", "-am", "the overturn again")
+    path = verdict(root, phase, verdict="escalate")
+    data = json.loads(path.read_text(encoding="utf-8"))
+    path.write_text(json.dumps({**data, "reasons": ["a new risk"]}), encoding="utf-8")
+    result = gate.run_gate(root, "0001", phase, dry_run=True)
+    assert result.result == "park" and "adversarial_review" in _names(result, False)
+    rc, out = run(["items", "--root", str(root), "--id", "0001", "--phase", phase])
+    assert [(i["kind"], i["decided"]) for i in out["items"]] == [("escalate", False)]
+    assert out["items"][0]["key"] == ledger.escalate_key(["a new risk"])
+
+
 def test_gate_parks_a_panel_decision_whose_blind_verdict_is_not_committed(project):  # noqa: F811
     """A ledger line names its item (``item_n``, 0.2.30): both member files must be in HEAD
     with a verdict, or the gate's ``panel`` check fails; a line without ``item_n`` (written
@@ -748,6 +842,7 @@ def test_the_panel_cli_reads_the_review_mode_the_gate_reads(project):  # noqa: F
     """The review of the 0.2.26 diff, L1: the CLI read the branch's ``review_override`` while
     the gate reads the base's; a branch saying deferred spent panel calls the gate refused."""
     root, change = project
+    set_review(change, "parked")  # the owner's, merged (the template says deferred, 1.0.8)
     st = status_mod.read_status(change)
     st.review_override = "deferred"  # on the branch only
     status_mod.write_status(change, st)
@@ -806,3 +901,16 @@ def test_the_pr_summary_names_the_models_and_the_warning(tmp_path):
         in lines
     )
     assert any(line.startswith("⚠ the session itself runs on opus") for line in lines)
+
+
+def test_the_panel_cli_fails_closed_on_an_unreadable_approved_status(project, monkeypatch):  # noqa: F811
+    """1.0.8: when the approved copy cannot be read, the panel settles nothing (``parked``),
+    whatever the project's own mode says."""
+    root, change = project
+
+    def unreadable(*_a, **_k):
+        raise gate.GateError("the approved status.yaml cannot be read")
+
+    monkeypatch.setattr(gate, "approved_overrides", unreadable)
+    st = status_mod.read_status(change)
+    assert panel_cli.review_mode({"review": "deferred"}, st, root) == "parked"

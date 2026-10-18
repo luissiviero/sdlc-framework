@@ -565,6 +565,12 @@ def test_a_second_dispatch_repeats_the_design_when_the_first_left_no_pr(checkout
     nothing could move the change. A fresh runner starts on main; the run must find the
     branch, see that no pull request carries it, clear the park, run again and open it."""
     root, bare = checkout
+    # parked review, so the open concern parks (the template says deferred since 1.0.8)
+    st = status_mod.read_status(root / CHANGE)
+    st.review_override = "parked"
+    status_mod.write_status(root / CHANGE, st)
+    git(root, "commit", "-q", "-am", "intent(0001): parked review for this change")
+    git(root, "push", "-q", "origin", "main")
     open_concern = RECORDED_SPEC_BODY.replace("- [x] Rounding", "- Rounding")
     proc, out, _calls = run_phase_job(root, tmp_path / "first", "refuse", open_concern)
     assert proc.returncode == 1 and out["result"] == "park" and out["pr"]["ok"] is False

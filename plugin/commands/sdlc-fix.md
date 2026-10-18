@@ -103,8 +103,9 @@ change requests too: in CI the run performed them before this command started (t
 nothing to do, say so and stop.
 
 ## 2. Register the round and bump the iteration (build guide step 19)
-`python "${CLAUDE_PLUGIN_ROOT}/plugin/gate/cli.py" start-run --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase <phase>`
-— the gate's wall clock restarts here; without it the clock of the previous run (the owner
+`python "${CLAUDE_PLUGIN_ROOT}/plugin/gate/cli.py" start-run --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase <phase> --run fix`
+— the gate's wall clock restarts here, with the build caps (decision 32; the runner's
+`SDLC_RUN=fix` says the same); without it the clock of the previous run (the owner
 reviews on their own cadence, decision 20) would park every round as "wall-clock limit exceeded".
 `python "${CLAUDE_PLUGIN_ROOT}/plugin/gate/cli.py" bump-iteration --root "${CLAUDE_PROJECT_DIR}" --id <id>`
 If it reports the cap reached: do not change anything; write the open requests, one line
@@ -156,7 +157,9 @@ with what you changed:
   Important one.
 A comment on a line of "Decisions taken for you" (decision 21) overturns that panel
 decision: apply the comment like any other (for a concern, rewrite the item as
-`decided <the owner's words>`; for a finding, fix it as the owner says), then mark the
+`decided <the owner's words>`; for a finding, fix it as the owner says; for an `escalate`
+the panel decided `park`, the overturn is the owner's `continue`: a verdict that escalates
+again on the same reasons passes the gate, one with new reasons is a new item), then mark the
 ledger line —
 `python "${CLAUDE_PLUGIN_ROOT}/plugin/panel/cli.py" overturn --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase <phase> --item <n> --comment "<the owner's words>"`
 — so the PR summary counts it as overturned. The owner's word replaces the panel's.
@@ -201,7 +204,8 @@ conciliator: a general-purpose sub-agent that reads both), then
 gate parks); it writes the ledger line, closes a concern in `spec.md` as
 `decided (by panel #<n>): …` and commits the change folder itself. Do not reword a closed
 concern line. Apply what the decision asks beyond that (committed with
-`commit-phase ... --message "fix(<id>): panel decision <n> applied"`). After the last item,
+`commit-phase ... --message "fix(<id>): panel decision <n> applied"`; an `escalate` decided
+`continue` needs nothing more; an `escalate` decided `park`: go straight to the gate, it parks). After the last item,
 regenerate the diff file and run the verdict once more for the new HEAD; from then on
 nothing is committed before the gate except the gate evidence, and the verdict file never
 travels in a commit with content the reviewer did not see. An `escalate` with new reasons

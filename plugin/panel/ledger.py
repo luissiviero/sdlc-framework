@@ -350,6 +350,17 @@ def active(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return [e for e in entries if not e.get("overturned")]
 
 
+CONTINUE_RE = re.compile(r"(?i)^continue\b")
+
+
+def decides_continue(entry: dict[str, Any]) -> bool:
+    """Whether an ``escalate`` decision lets the phase continue: its text starts with the word
+    ``continue`` (any case, after stripping). Anything else - ``park``, an empty decision, any
+    other text - upholds the adversarial reviewer's verdict, and the gate parks (NOTES 45
+    gap 1, choice 205: the ``panel`` check fails closed on it)."""
+    return bool(CONTINUE_RE.match(str(entry.get("decision") or "").strip()))
+
+
 def decided_keys(entries: list[dict[str, Any]]) -> set[str]:
     return {str(e.get("key", "")) for e in active(entries)}
 

@@ -432,6 +432,84 @@ def test_limits_wall_clock_and_budget(tmp_path):
     assert limits.check_limits(ctx).ok
 
 
+def test_the_build_caps_and_their_fallback_rule():
+    """Decision 32 (1.0.8): the build run and every fix round get ``build_max_turns`` (400)
+    and ``build_max_wall_clock_minutes`` (180); an unset or invalid build key is the larger
+    of the general setting and the build default, so no project's cap goes down."""
+    caps = limits.run_caps
+    # unset
+    assert caps({}, False) == (200, 120) and caps({}, True) == (400, 180)
+    assert caps(None, True) == (400, 180) and caps("not a block", False) == (200, 120)
+    # general only, below and above the build default (this repository's root: 400)
+    assert caps({"max_turns": 300, "max_wall_clock_minutes": 90}, True) == (400, 180)
+    assert (
+        caps({"max_turns": 400}, False) == (400, 120) and caps({"max_turns": 400}, True)[0] == 400
+    )
+    general = {"max_turns": 500, "max_wall_clock_minutes": 240}
+    assert caps(general, False) == (500, 240) and caps(general, True) == (500, 240)
+    # build only: the general caps are untouched
+    build = {"build_max_turns": 250, "build_max_wall_clock_minutes": 150}
+    assert caps(build, True) == (250, 150) and caps(build, False) == (200, 120)
+    # both: the build key wins for the build, even below the general setting
+    both = {**general, **build}
+    assert caps(both, True) == (250, 150) and caps(both, False) == (500, 240)
+    # invalid values fall back as if unset
+    for bad in ("x", 0, -5, None, [1]):
+        assert caps({"max_turns": bad, "max_wall_clock_minutes": bad}, False) == (200, 120)
+        assert caps({"build_max_turns": bad, "build_max_wall_clock_minutes": bad}, True) == (
+            400,
+            180,
+        )
+        assert caps({"max_turns": 450, "build_max_turns": bad}, True)[0] == 450
+
+
+def test_the_build_run_and_a_fix_round_get_the_build_wall_clock(tmp_path):
+    """Decision 32: ``start-run`` records ``"run": "build"`` for the build and a fix round,
+    and the wall-clock check gives that run ``build_max_wall_clock_minutes``; a record without
+    the field (any other run, or one written before 1.0.8) keeps the general cap."""
+    started = (datetime.now(timezone.utc) - timedelta(minutes=150)).isoformat()
+    ctx = _ctx(tmp_path, phase="c")
+    write(ctx.evidence_dir / "run-c.json", json.dumps({"started_at": started, "run": "build"}))
+    res = limits.check_limits(ctx)
+    assert res.ok, res.reason
+    ctx = _ctx(tmp_path / "b", phase="b")
+    write(ctx.evidence_dir / "run-b.json", json.dumps({"started_at": started}))
+    res = limits.check_limits(ctx)
+    assert not res.ok and res.details["max_wall_clock_minutes"] == 120
+    assert "150 min elapsed, limit 120 min" in res.reason
+    # a fix round at (b) carries the field: the build cap, with the owner's own setting
+    write(ctx.evidence_dir / "run-b.json", json.dumps({"started_at": started, "run": "build"}))
+    assert limits.check_limits(ctx).ok
+    ctx.config["gate"] = {"build_max_wall_clock_minutes": 140}
+    res = limits.check_limits(ctx)
+    assert not res.ok and "limit 140 min" in res.reason
+
+
+def test_start_run_records_the_build_run_and_a_fix_round(tmp_path, monkeypatch, capsys):
+    """``"run": "build"`` for ``--phase c``, for any phase under ``SDLC_RUN=fix`` (the runner
+    marks the fix session) and for ``--run fix|build`` (a by-hand run); none otherwise."""
+    change_dir, _st = status_mod.new_change(tmp_path, "x")
+    monkeypatch.delenv(limits.RUN_KIND_ENV, raising=False)
+
+    def started(phase: str, *flags: str) -> dict:
+        argv = ["start-run", "--root", str(tmp_path), "--id", "0001", "--phase", phase, *flags]
+        assert gate_cli.main(argv) == 0
+        capsys.readouterr()
+        path = change_dir / "evidence" / f"run-{phase}.json"
+        return json.loads(path.read_text(encoding="utf-8"))
+
+    assert started("c")["run"] == "build"
+    for phase in ("b", "d", "e"):
+        assert "run" not in started(phase), phase
+    assert started("d", "--run", "fix")["run"] == "build"
+    assert started("e", "--run", "build")["run"] == "build"
+    monkeypatch.setenv(limits.RUN_KIND_ENV, "fix")
+    for phase in ("a", "b", "c", "d", "e"):
+        assert started(phase)["run"] == "build", phase
+    monkeypatch.setenv(limits.RUN_KIND_ENV, "something else")
+    assert "run" not in started("b")
+
+
 def test_the_budget_binds_the_change_s_running_total_not_the_last_session(tmp_path):
     """Issue #71 (0.3.1): ``max_budget_usd`` is documented per change, but the cap was compared
     with the last session's figure, which ``start-run`` reset and ``record-spend`` overwrote:
@@ -1956,7 +2034,7 @@ def test_sdlc_yaml_gate_block_is_read_from_the_base(project):
     root, change = project
     text = (root / "sdlc.yaml").read_text(encoding="utf-8")
     cfg = yamlish.load_file(root / "sdlc.yaml")["gate"]
-    assert cfg["max_iterations"] == 3 and cfg["max_budget_usd"] is None
+    assert cfg["max_iterations"] == 3 and cfg["max_budget_usd"] == 150  # decision 32
     st = status_mod.read_status(change)
     st.iterations = 5
     status_mod.write_status(change, st)
@@ -3212,6 +3290,17 @@ def test_the_overrides_are_read_from_the_base_branch_s_copy(project):
     panel: both are read from the copy the owner approved now, as intent.md is; the
     branch's own values are ignored with a note (choice 103)."""
     root, change = project
+    # a project on parked review (deferred is the template's default since 1.0.8, decision 32)
+    on_base(
+        root,
+        lambda r: write(
+            r / "sdlc.yaml",
+            (r / "sdlc.yaml")
+            .read_text(encoding="utf-8")
+            .replace("review: deferred", "review: parked"),
+        ),
+        "review: parked",
+    )
     set_on_base(root, change, profile_override="full")
     verdict(root, "c")
     result = gate.run_gate(root, "0001", "c", dry_run=True)

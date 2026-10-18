@@ -63,10 +63,12 @@ What one run does, in order:
 4b. creates the ``sdlc:*`` labels the runs apply (422 = the label already exists);
 5. composes and runs the bounded headless call — the pinned plugin through ``--plugin-dir``,
    the CI settings file through ``--settings`` (bare mode reads no settings by itself),
-   ``--permission-prompts none``, ``--max-turns`` / ``--max-budget-usd`` from ``sdlc.yaml``,
+   ``--permission-prompts none``, ``--max-turns`` / ``--max-budget-usd`` from ``sdlc.yaml``
+   (the build run and a fix round take the build caps, decision 32: ``run_caps``),
    ``--output-format json`` — with exactly one credential in the environment, and with
    ``SDLC_GATE_COMMANDS=runner`` in it, so the gate the session runs leaves the project's
-   build, test and lint to step 6b instead of running them inside Claude Code's sandbox;
+   build, test and lint to step 6b instead of running them inside Claude Code's sandbox
+   (a fix session also carries ``SDLC_RUN=fix``, so its ``start-run`` records the build caps);
 6. stores the JSON result as ``changes/<id>-<slug>/evidence/claude-<phase>.json``, records
    ``total_cost_usd`` with ``gate/cli.py record-spend`` and commits the run record on the
    work branch (the model's session pushed before the spend was known), and validates the
@@ -110,6 +112,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import re
 import subprocess
@@ -229,7 +232,9 @@ JUDGE_DISALLOWED_TOOLS = (
     "Edit,MultiEdit,NotebookEdit,Write,Bash,WebFetch,WebSearch,Agent,Task,Skill,SlashCommand,"
     "TodoWrite"
 )
-# within the job's budget: session 125 + commands step 50 + judge 10 < timeout-minutes 200
+# within the job's budget: session 125 + commands step 50 + judge 10 < timeout-minutes 200;
+# for the build run and a fix round (decision 32, 1.0.8) session 185 + 50 + 10 < 260
+# (``build_caps_refusal`` checks the job's own figure, ``JOB_TIMEOUT_ENV``)
 JUDGE_TIMEOUT_SECONDS = 10 * 60
 TRIAGE_PROMPT = (
     "Read the CI log at {log}. In at most five lines say what failed, the likely cause and "
@@ -257,7 +262,14 @@ LABEL_COLOR_FIXING = "FBCA04"  # sdlc:fixing: an automatic fix round runs (decis
 LABEL_COLOR_SUPERSEDED = "BFD4F2"  # sdlc:superseded: a later PR carries it (decision 30)
 TOKEN_VARS = ("GITHUB_TOKEN", "GH_TOKEN")
 
-DEFAULT_MAX_TURNS = 200
+DEFAULT_MAX_TURNS = limits.DEFAULT_MAX_TURNS
+# decision 32 (1.0.8): the build run and every fix round get the build caps (limits.run_caps)
+BUILD_CAP_PHASES = ("c", "fix")
+# The job's ``timeout-minutes`` as the 1.0.8 sdlc-build.yml and sdlc-fix.yml export it. An
+# older copy (200 minutes) exports nothing: a 185-minute session and the commands step would
+# outlast it, and GitHub would kill the job with no park and no label, so such a job keeps
+# the general caps.
+JOB_TIMEOUT_ENV = "SDLC_JOB_TIMEOUT_MINUTES"
 GRACE_MINUTES = 5  # the subprocess timeout sits this far above the gate's wall clock
 
 
@@ -301,11 +313,59 @@ def _int_or(value: Any, default: int) -> int:
     return n if n > 0 else default
 
 
-def run_timeout_seconds(config: dict[str, Any]) -> int:
-    minutes = _int_or(
-        _gate_settings(config).get("max_wall_clock_minutes"),
-        limits.DEFAULT_MAX_WALL_CLOCK_MINUTES,
+def build_caps_minutes_needed(config: dict[str, Any]) -> int:
+    """The job minutes the build caps need: the build session's wall clock, the grace, the
+    commands step and the judge (the arithmetic above ``JUDGE_TIMEOUT_SECONDS``); 245 with
+    the defaults."""
+    _turns, minutes = limits.run_caps(_gate_settings(config), True)
+    return (
+        minutes
+        + GRACE_MINUTES
+        + math.ceil(commands_timeout_seconds(config) / 60)
+        + math.ceil(JUDGE_TIMEOUT_SECONDS / 60)
     )
+
+
+def build_caps_refusal(config: dict[str, Any], env: dict[str, str] | None) -> str | None:
+    """Why the job cannot hold the build caps, or None when it can: its ``timeout-minutes``
+    (``JOB_TIMEOUT_ENV``) must cover the build session's wall clock, the grace, the commands
+    step and the judge (the arithmetic above ``JUDGE_TIMEOUT_SECONDS``)."""
+    needed = build_caps_minutes_needed(config)
+    raw = (env or {}).get(JOB_TIMEOUT_ENV)
+    job = _int_or(raw, 0)
+    if job >= needed:
+        return None
+    said = f"{JOB_TIMEOUT_ENV}={raw}" if raw else f"no {JOB_TIMEOUT_ENV}"
+    if job >= build_caps_minutes_needed({}):
+        # the job holds the defaults: the project raised its build wall clock or its
+        # command_timeout past what the job allows
+        return (
+            f"the general caps apply: the job says {said}, and this project's build caps "
+            f"need {needed} minutes (raise timeout-minutes and {JOB_TIMEOUT_ENV} together in "
+            "sdlc-build.yml and sdlc-fix.yml, or lower gate.build_max_wall_clock_minutes or "
+            "gate.command_timeout; decision 32)"
+        )
+    return (
+        f"the general caps apply: the job says {said}, and the build caps need {needed} "
+        "minutes (replace sdlc-build.yml and sdlc-fix.yml with the template copies of this "
+        "plugin version to get them; decision 32)"
+    )
+
+
+def run_caps(
+    config: dict[str, Any], phase: str, env: dict[str, str] | None = None
+) -> tuple[int, int]:
+    """(turns, wall-clock minutes) of a run of ``phase``: the build caps for the build run
+    and a fix round when the job allows them (``build_caps_refusal``), the general caps for
+    every other run (decision 32; ``limits.run_caps``)."""
+    build = phase in BUILD_CAP_PHASES and build_caps_refusal(config, env) is None
+    return limits.run_caps(_gate_settings(config), build)
+
+
+def run_timeout_seconds(
+    config: dict[str, Any], phase: str, env: dict[str, str] | None = None
+) -> int:
+    _turns, minutes = run_caps(config, phase, env)
     return (minutes + GRACE_MINUTES) * 60
 
 
@@ -1823,10 +1883,13 @@ def compose(
     config: dict[str, Any],
     env: dict[str, str],
     root: Path | None = None,
+    change_dir: Path | None = None,
 ) -> list[str]:
     """The full argv of one headless run. It carries no secret, so it is safe to print.
     With ``root`` the CI settings are rendered against the project (``ci_settings_file``);
-    without it the file is passed as is."""
+    without it the file is passed as is. With ``change_dir`` the session's
+    ``--max-budget-usd`` is what the change has left of ``gate.max_budget_usd`` (1.0.8: the
+    cap is per change; each session was given the whole cap again)."""
     # The prompt goes right after -p: --allowedTools / --disallowedTools take a list of
     # values, so a prompt placed after them is read as one more tool name and the CLI
     # answers "Input must be provided either through stdin or as a prompt argument"
@@ -1841,10 +1904,15 @@ def compose(
     argv += ["--permission-mode", permission_mode]
     argv += ["--permission-prompts", "none"]  # nobody is there to answer (NOTES 10b)
     gate_cfg = _gate_settings(config)
-    argv += ["--max-turns", str(_int_or(gate_cfg.get("max_turns"), DEFAULT_MAX_TURNS))]
+    argv += ["--max-turns", str(run_caps(config, phase, env)[0])]
     budget = gate_cfg.get("max_budget_usd")
     if budget not in (None, "", "null"):
-        argv += ["--max-budget-usd", str(budget)]
+        left = (
+            limits.budget_left(gate_cfg, Path(change_dir) / art.EVIDENCE_DIR)
+            if change_dir is not None
+            else None
+        )
+        argv += ["--max-budget-usd", _usd(left[2]) if left else str(budget)]
     argv += ["--output-format", "json"]
     model = env.get("SDLC_MODEL")
     if model:
@@ -1871,6 +1939,12 @@ def compose(
         argv += ["--allowedTools", JUDGE_ALLOWED_TOOLS]
         argv += ["--disallowedTools", JUDGE_DISALLOWED_TOOLS]
     return argv
+
+
+def _usd(amount: float) -> str:
+    """A ``--max-budget-usd`` figure: no exponent form, and never 0 for a positive amount
+    (a session with nothing left never starts: the runner parks first)."""
+    return f"{max(amount, 0.0001):.4f}".rstrip("0").rstrip(".")
 
 
 def maintain_allowed_tools(root: Path | None) -> str:
@@ -1943,16 +2017,21 @@ CACHE_HOME_ENV = "XDG_CACHE_HOME"
 SESSION_CACHE_DIR = ".sdlc-cache"
 
 
-def session_env(env: dict[str, str], root: Path) -> dict[str, str]:
+def session_env(env: dict[str, str], root: Path, phase: str | None = None) -> dict[str, str]:
     """The model's session's environment: ``env`` plus the mark that leaves the gate's
     ``commands`` check to the runner (``gate.checks.COMMANDS_RUNNER_ENV``), the switch
     that keeps every sub-agent in the foreground (``BACKGROUND_TASKS_ENV``; a value the
-    workflow's ``env:`` already carries is kept) and the cache folder under ``root``
+    workflow's ``env:`` already carries is kept), the cache folder under ``root``
     (``CACHE_HOME_ENV``; a value the workflow carries is replaced, since only the checkout is
-    known to be writable)."""
+    known to be writable) and, for a fix round, ``SDLC_RUN=fix`` (``limits.RUN_KIND_ENV``),
+    which makes the session's ``start-run`` record the build caps (decision 32); any other
+    session drops a value the workflow carries."""
     marked = {**env, gate_checks.COMMANDS_RUNNER_ENV: gate_checks.RUN_BY_RUNNER}
     marked.setdefault(BACKGROUND_TASKS_ENV, "1")
     marked[CACHE_HOME_ENV] = str(Path(root) / SESSION_CACHE_DIR)
+    marked.pop(limits.RUN_KIND_ENV, None)
+    if phase == "fix":
+        marked[limits.RUN_KIND_ENV] = limits.FIX_RUN
     return marked
 
 
@@ -2253,7 +2332,7 @@ def run_triage(args, env: dict[str, str]) -> int:
     if args.dry_run:
         _emit({"phase": "triage", "argv": argv})
         return EXIT_OK
-    data, raw, err, code = invoke(argv, root, env, run_timeout_seconds(_config(root)))
+    data, raw, err, code = invoke(argv, root, env, run_timeout_seconds(_config(root), "triage"))
     text = (data or {}).get("result") if isinstance(data, dict) else raw
     print(text or raw)
     if code != 0 or (isinstance(data, dict) and data.get("is_error")):
@@ -2385,6 +2464,22 @@ def _run_phase(args, env: dict[str, str], track: dict[str, Any]) -> int:
         _emit({**parked, "branch": branch})
         return EXIT_OK
 
+    # 1.0.8: the per-change budget is spent - no session starts on what is not left
+    budget = limits.budget_left(_gate_settings(config), change_dir / art.EVIDENCE_DIR)
+    if budget is not None and budget[2] <= 0:
+        cap, spent, _left = budget
+        parked = park_and_publish(
+            plugin_dir, root, change_dir, st, phase,
+            "limits: " + limits.budget_reason(spent, cap),
+            branch=fix_branch, check="limits", need=limits.BUDGET_NEED,
+        )  # fmt: skip
+        _emit({**parked, "branch": branch})
+        return EXIT_OK
+    if phase in BUILD_CAP_PHASES:
+        refusal = build_caps_refusal(config, env)
+        if refusal:
+            print(f"run_phase: {refusal}", file=sys.stderr)
+
     # phase (c): the preflight decides the permission mode, or parks the change (step 18)
     permission_mode = PERMISSION_MODE.get(phase, "default")
     if phase == "c":
@@ -2421,6 +2516,7 @@ def _run_phase(args, env: dict[str, str], track: dict[str, Any]) -> int:
         config=config,
         env=env,
         root=root,
+        change_dir=change_dir,
     )
     if args.dry_run:
         _emit(
@@ -2474,7 +2570,9 @@ def _run_phase(args, env: dict[str, str], track: dict[str, Any]) -> int:
     # decision 34: the round's requests file as the runner wrote it; the session may only
     # mark the requests it applied (``fix_requests.keep_marks_only`` after the session)
     requests_before = fix_requests.snapshot(change_dir) if phase == "fix" else None
-    data, raw, err, code = invoke(argv, root, session_env(env, root), run_timeout_seconds(config))
+    data, raw, err, code = invoke(
+        argv, root, session_env(env, root, phase), run_timeout_seconds(config, phase, env)
+    )
     result_path, stderr_path = run_record_paths(change_dir, phase)
     store_result(change_dir, phase, data, raw, result_path)
     store_stderr(change_dir, phase, err, stderr_path)
@@ -3493,6 +3591,7 @@ def run_reset_judge(
         config=config,
         env=judge_env,
         root=root,
+        change_dir=change_dir,
     )
     data, raw, err, code = invoke(argv, root, judge_env, JUDGE_TIMEOUT_SECONDS)
     result_path, stderr_path = run_record_paths(change_dir, "judge")

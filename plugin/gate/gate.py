@@ -261,9 +261,12 @@ def verdict_classification(results: list[CheckResult]) -> str | None:
 def settled_by_panel(results: list[CheckResult]) -> bool:
     """Whether the adversarial reviewer said ``escalate`` and the review panel settled it
     (``check_adversarial_verdict``'s ``settled_by_panel``): the gate passes, but the
-    reviewer's own verdict was not ``continue``."""
+    reviewer's own verdict was not ``continue``. An escalate the owner settled by overturning
+    the panel's decision (``settled_by_owner``, 1.0.8) counts the same."""
     found = next((r for r in results if r.name == "adversarial_review"), None)
-    return found is not None and found.details.get("settled_by_panel") is not None
+    return found is not None and any(
+        found.details.get(key) is not None for key in ("settled_by_panel", "settled_by_owner")
+    )
 
 
 def fast_lane_applies(
