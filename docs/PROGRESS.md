@@ -1,4 +1,4 @@
-# Progress — the pipeline sprint, part 2: R47 (decision 31) as plugin **1.0.7**, R48 (decision 32) as plugin **1.0.8**, R49 (decision 33) as plugin **1.0.9**, and the owner's choices 219 to 226 (2026-10-18)
+# Progress — the pipeline sprint, part 2: R47 (decision 31) as plugin **1.0.7**, R48 (decision 32) as plugin **1.0.8**, R49 (decision 33) as plugin **1.0.9**, and the owner's choices 219 to 227 (2026-10-18)
 
 This session ran on branch `ccr-b3531dc9-oioi5k`, from the sprint prompt (R47, R48, R49 in ROADMAP's Order). The previous record (R17 as 1.0.5, R46 as 1.0.6, choices 214 to 218) is now `docs/progress/2026-10-18-r17-r46-and-choices-214-218.md`, unchanged. The session's own file is `docs/handoffs/sessions/2026-10-18-ccr-b3531dc9-oioi5k.md`.
 
@@ -21,7 +21,7 @@ This session ran on branch `ccr-b3531dc9-oioi5k`, from the sprint prompt (R47, R
   - The key is only in the mint step. Every model session runs with the workflow token in its environment and in the git credential of `.git/config`. The App credential comes back after the session only when the config carries nothing credential-relevant the session could have set. The project's setup command gets no token.
   - `[bot]`-sender guards on the label triggers of test, deploy, fix and runbook; `label_applied_by_a_human` rejects any `[bot]`; detection leaves out CI runs on `sdlc/**` heads, so the fix loop's red runs never file incidents.
   - `/sdlc-init` step 6 carries the one-time App setup.
-- **R49's review:** round 1 found one blocking finding (the session's own pushes, through the App credential checkout persists, would fail after an hour) and two should-fix findings (a tag push by the session as the App; the setup command inheriting the tokens). Round 2 found one should-fix finding (the App credential restored into a config the session controlled). All were fixed with tests.
+- **R49's review:** round 1 found one blocking finding (the session's own pushes, through the App credential checkout persists, would fail after an hour) and two should-fix findings (a tag push by the session as the App; the setup command inheriting the tokens). Round 2 found one should-fix finding (the App credential restored into a config the session controlled). Round 3 found a proxy hidden in the per-worktree config; round 4 found session-written code and planted hooks reaching the persisted credential, so the root cause was removed: no credential is written to `.git/config`, and each git network call takes it through its environment. Round 5 found that this reopened the config redirect for the runner's own pushes, now checked before the App's token goes out, and the `/proc` exposure (choice 227). All were fixed with tests, except the one left to R44.
 
 ## The owner's decisions (2026-10-18)
 219. **A pending request is removed and requested again at every new wait** (the session's recommendation), so a wait after an `@claude` comment or an approval label, which do not clear a request, still sends one push.
@@ -32,6 +32,7 @@ This session ran on branch `ccr-b3531dc9-oioi5k`, from the sprint prompt (R47, R
 224. **A project without the App falls back to the workflow token** (the session's recommendation): `SDLC_APP_ID` unset means everything runs as before.
 225. **R49's live proof comes with the sample's upgrade to 1.0.9** (the session's recommendation), not a probe before the build.
 226. **After 50 minutes the App token gives way to the workflow token** (the session's recommendation): a long run still publishes; its final push waits for the owner's approval as before.
+227. **The App token's `/proc` exposure is left to R44** (the session's recommendation): an unsandboxed process the runner starts (the project's setup or targets) can read the runner's initial environment, the App token included, as it already could the workflow token and the model key; R44 closes it for all three together.
 
 ## Proposed edits for the owner
 *[2026-10-18: the three rows below are applied by the owner: `sdlc.yaml` in PR #231 (`f4241f6`), `REVIEW.md` in PR #232 (`d6ffafe`), the sample's `CLAUDE.md` in sample PR #66 (`5ea91cc`), each verified by its diff; the `sdlc.yaml:50` line was left unwrapped, recorded in `docs/nits.md`.]*
@@ -67,6 +68,7 @@ R49's rows (open):
 - **R49 not verified live** (choice 225): that an App push starts the sample's CI with no approval; that a `permission-*`-narrowed installation token still reads metadata; that the App's PRs, labels and review requests behave as the workflow token's. The owner's App setup (`sdlc-init.md` step 6) and the sample's upgrade to 1.0.9 come first.
 - **R49's known limits:**
   - runs longer than 50 minutes publish with the workflow token, so CI on their final head waits for the owner's approval (choice 226);
+  - an unsandboxed process the runner starts can read the App token from the runner's initial environment through `/proc` (choice 227, left to R44);
   - a project's runbook commands inherit the App token (the owner's own code);
   - a same-repo PR head can rewrite its own workflow file, mint step included; only a person with write access can push one (the App has no Workflows permission), the class of choice 95, and a note for R22, whose App key gains merge rights;
   - the evals workflow now runs, with the model credentials, on the automation's pushes that touch `evals/**`, where it used to wait at `action_required`;
