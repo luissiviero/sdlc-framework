@@ -44,9 +44,10 @@
 # the default branch's sdlc.yaml), so a refused round installs nothing and runs no model. On a public repository anyone with read
 # access can request changes, and the review's words would reach this privileged run (the
 # sample repository's weekly security review, 2026-09-25); a label already needs triage or
-# write permission. The exact check of who applied a label is the runner's too: it performs
-# an un-park label only when the owner's account applied it (state/unpark.py perform,
-# is_owner_actor, fail closed; choice 218).
+# write permission. The exact check of who applied a label is the runner's too: the find
+# step refuses a label another account applied, before anything installs (label_refusal),
+# and the run performs an un-park label only when the owner's account applied it
+# (state/unpark.py perform, is_owner_actor, fail closed; choice 218).
 #
 # The change is found from the pull request's own files (its changes/<id>-<slug>/ folder),
 # never from the head name alone: a web-session intent PR carries a claude/... head, and an

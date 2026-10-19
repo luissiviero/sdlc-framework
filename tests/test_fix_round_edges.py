@@ -19,12 +19,14 @@ import json
 import os
 from pathlib import Path
 
+import pytest
 from ci import run_phase
 
 from state import conventions as c
 from state import status as status_mod
 from tests import test_ci as ci_tests
 from tests import test_fix_round_gaps as gaps
+from tests import test_owner_rounds as owner_rounds
 from tests.test_ci import (
     DEFERRED_GATE_FILE,
     FAKE_RESULT,
@@ -260,3 +262,147 @@ def test_a_dry_run_of_a_restart_merges_nothing(project, tmp_path, fake_claude, m
     assert out["merged"] is None  # the restart's merge is skipped
     assert git(root, "log", "--merges", "--format=%s", "HEAD") == ""
     assert git(root, "rev-parse", "HEAD") == git(bare, "rev-parse", "sdlc/0001/c")
+
+
+# --- item 3: a round with nothing to do never starts a session --------------------------------
+NOTHING_TO_DO = (
+    "the fix round has nothing to do: no owner label performed, no request to apply in "
+    "evidence/fix-requests.json, and the change is not parked"
+)
+
+
+def _ready_round(project, fake_claude, monkeypatch, tmp_path, requests: list):
+    """An owner round on a build PR whose gate passed (not parked): the requests file holds
+    ``requests``."""
+    root, change, args, env, calls = gaps._owner_round(
+        project, fake_claude, monkeypatch, tmp_path, gaps.EDITS, gaps.QUESTION
+    )
+    set_state(change, "c", gate_phase="c", gate_result="passed")
+    git(root, "commit", "-q", "-am", "gate (c) passed")
+
+    def collect(root, change_dir, *a, **k):
+        from ci import fix_requests
+
+        fix_requests.write(
+            change_dir,
+            {"schema_version": 1, "ok": True, "requests": requests, "not_applied": []},
+        )
+        return {"ok": True, "requests": len(requests)}
+
+    monkeypatch.setattr(run_phase, "collect_fix_requests", collect)
+    return root, change, args, env, calls
+
+
+@pytest.mark.parametrize("applied", [False, True], ids=["no-request", "all-applied"])
+def test_a_fix_round_with_nothing_to_do_is_skipped_before_the_session(
+    project, fake_claude, monkeypatch, tmp_path, capsys, applied
+):
+    """A queued second run of a round, or an @claude comment already applied: the session
+    used to end without a gate record and park a ready PR."""
+    done = {"kind": "comment", "id": 5, "author": "luissiviero", "applied": True}
+    root, change, args, env, calls = _ready_round(
+        project, fake_claude, monkeypatch, tmp_path, [done] if applied else []
+    )
+    head = git(root, "rev-parse", "HEAD").strip()
+    record = (change / "evidence" / "gate-c.json").read_bytes()
+    assert run_phase.run_phase(args, env) == run_phase.EXIT_OK
+    assert json.loads(capsys.readouterr().out) == {"skipped": NOTHING_TO_DO}
+    assert not (change / "evidence" / "claude-fix.json").exists()  # no session
+    assert (change / "evidence" / "gate-c.json").read_bytes() == record
+    assert status_mod.read_status(change).parked_reason is None
+    assert git(root, "rev-parse", "HEAD").strip() == head and calls == []
+
+
+def test_a_fix_round_with_a_request_left_to_apply_runs(
+    project, fake_claude, monkeypatch, tmp_path, capsys
+):
+    pending = {"kind": "comment", "id": 6, "author": "luissiviero", "body": "rename x"}
+    _root, change, args, env, _calls = _ready_round(
+        project, fake_claude, monkeypatch, tmp_path, [pending]
+    )
+    run_phase.run_phase(args, env)
+    assert "skipped" not in json.loads(capsys.readouterr().out)
+    assert (change / "evidence" / "claude-fix.json").exists()  # the session ran
+
+
+def _label_event(tmp_path, sender: str):
+    payload = {
+        "action": "labeled",
+        "label": {"name": c.RESET_ITERATIONS_LABEL},
+        "sender": {"login": sender},
+        "pull_request": {"number": 7, "head": {"ref": "sdlc/0001/b"}},
+    }
+    path = tmp_path / f"label-{sender}.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    return path
+
+
+def test_the_find_step_refuses_a_label_another_account_applied(project, tmp_path, capsys):
+    """Choice 218: a label nobody but the owner may apply never starts a paid round."""
+    root, _change = project
+    for sender, found in (("colleague", ""), ("LuisSiviero", "0001")):
+        env = {
+            **owner_rounds.OWNER_ENV,
+            "GITHUB_EVENT_NAME": "pull_request",
+            "GITHUB_EVENT_PATH": str(_label_event(tmp_path, sender)),
+        }
+        code, printed, output = owner_rounds._find(root, tmp_path, env, capsys)
+        assert code == run_phase.EXIT_OK and output == f"change_id={found}\n", sender
+    assert (
+        "the label was applied by colleague, not the owner's account (choice 218)"
+        in (
+            owner_rounds._find(
+                root,
+                tmp_path,
+                {**env, "GITHUB_EVENT_PATH": str(_label_event(tmp_path, "colleague"))},
+                capsys,
+            )[1]
+        )
+    )
+    # on a runner a payload that cannot be read refuses (fail closed)
+    env = {**owner_rounds.OWNER_ENV, "GITHUB_ACTIONS": "true", "GITHUB_EVENT_NAME": "pull_request"}
+    code, printed, output = owner_rounds._find(root, tmp_path, env, capsys)
+    assert output == "change_id=\n" and "the label event's payload could not be read" in printed
+
+
+# --- item 4: an undecided session ends its turn with the question, it never parks -------------
+def test_sdlc_fix_tells_an_undecided_session_to_end_with_its_question():
+    text = " ".join((ci_tests.ROOT / "plugin" / "commands" / "sdlc-fix.md").read_text().split())
+    start = text.index("Unattended: never ask the owner a question.")
+    unattended = text[start : text.index("One shell command per Bash call", start)]
+    assert "state/cli.py park" not in unattended
+    assert (
+        'When you cannot decide, write the question under "What I need from you" in '
+        "`evidence/fix-response.md`, commit and push your work, and end the turn without "
+        "running the gate, the question as your last message."
+    ) in unattended
+    assert "it never waits for an answer" in unattended
+    assert (
+        "In CI such a round never starts: the runner skips it before the session when it "
+        "performed no owner label, `evidence/fix-requests.json` holds no request left to apply"
+    ) in text
+
+
+# --- item 6: the kept work leaves out a nested .claude/'s settings and hooks -------------------
+def test_a_nested_claude_settings_file_is_a_guardrail_path():
+    files = ["pkg/.claude/settings.json", "pkg/.claude/hooks/x.py", "pkg/.claude/notes.md"]
+    assert run_phase.guardrail_hits(files, {}) == [
+        "pkg/.claude/hooks/x.py",
+        "pkg/.claude/settings.json",
+    ]
+
+
+def test_a_nested_claude_settings_file_stays_out_of_the_kept_work(
+    project, fake_claude, monkeypatch, tmp_path, capsys
+):
+    nested = (
+        "pathlib.Path('pkg/.claude').mkdir(parents=True)\n"
+        "pathlib.Path('pkg/.claude/settings.json').write_text('{}\\n', encoding='utf-8')\n"
+    )
+    root, _change, args, env, _calls = gaps._owner_round(
+        project, fake_claude, monkeypatch, tmp_path, gaps.EDITS + nested, gaps.MAX_TURNS
+    )
+    assert run_phase.run_phase(args, env) == run_phase.EXIT_FAILED
+    out = json.loads(capsys.readouterr().out)
+    assert out["work"]["left_out"] == ["pkg/.claude/settings.json"]
+    assert "pkg/.claude/settings.json" not in gaps._committed(root)

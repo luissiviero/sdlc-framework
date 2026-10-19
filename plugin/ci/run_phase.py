@@ -1017,14 +1017,16 @@ def _committed_diff(root: Path) -> tuple[list[str], str | None]:
 
 def guardrail_hits(files: list[str], config: dict[str, Any]) -> list[str]:
     """The entries of ``files`` that are guardrail paths: ``.claude/**``, ``CLAUDE.md``,
-    ``REVIEW.md``, ``sdlc.yaml`` and the owner's ``protected_paths`` (the protected-paths
-    hook's own patterns; an unreadable ``protected_paths`` leaves the four)."""
+    ``REVIEW.md``, ``sdlc.yaml``, the owner's ``protected_paths`` and the settings and hooks
+    of a nested ``.claude/`` (the protected-paths hook's own patterns, ``GLOBAL_PROTECTED``
+    included; an unreadable ``protected_paths`` leaves the hook's fixed ones)."""
     from hooks import protected_paths as pp  # noqa: PLC0415
 
     try:
         patterns = pp.protected_patterns(config)
     except ConfigError:
         patterns = list(pp.ALWAYS_PROTECTED)
+    patterns += list(pp.GLOBAL_PROTECTED)
     return sorted({f for f in files if any(matches(p, f) for p in patterns)})
 
 
@@ -1185,6 +1187,39 @@ def review_refusal(root: Path, repo: str, env: dict[str, str]) -> str | None:
             f"the pull request's head is in {full_name or 'no repository'}, not in "
             f"{repo or 'the repository'}: a fork's head never starts a round (decision 34)"
         )
+    return None
+
+
+def label_refusal(root: Path, repo: str, env: dict[str, str]) -> str | None:
+    """The exact check of the label path (choice 218): None when the event is not a
+    ``pull_request`` ``labeled`` event, or when the account that applied the label (the
+    event's ``sender``) is the owner's (``is_owner_actor`` against the default branch's
+    ``sdlc.yaml``, as ``review_refusal`` judges a review); else the reason the round is
+    refused, before anything installs or runs, so a label nobody may apply never starts a
+    paid round (``unpark.perform`` rejects it in the run as well). Fail closed: on a runner
+    a payload that cannot be read refuses; by hand, with no payload path, nothing is read."""
+    if env.get("GITHUB_EVENT_NAME") != "pull_request":
+        return None
+    path = env.get("GITHUB_EVENT_PATH") or ""
+    if not path and not env.get("GITHUB_ACTIONS"):
+        return None
+    try:
+        payload = json.loads(Path(path).read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        return f"the label event's payload could not be read ({type(exc).__name__}): refused"
+    if not isinstance(payload, dict):
+        return "the label event's payload is not an object: refused"
+    if payload.get("action") != "labeled":
+        return None
+    sender = payload.get("sender") if isinstance(payload.get("sender"), dict) else {}
+    login = str(sender.get("login") or "")
+    try:
+        config = owner_config(root, env)
+    except ConfigError as exc:
+        return f"the label cannot be judged: {exc}"
+    if not is_owner_actor(login, config, env, repo):
+        who = login or "an unknown account"
+        return f"the label was applied by {who}, not the owner's account (choice 218)"
     return None
 
 
@@ -1486,13 +1521,16 @@ def print_found_change(args, env: dict[str, str]) -> int:
     ``reason=<...>`` and appends ``change_id=<id>`` to ``$GITHUB_OUTPUT``, so every later
     step can be skipped for a merge that carries no change (about 20 s of a green job). A
     review that is not the owner's, or on a fork's head, is refused here the same way
-    (``review_refusal``), so a refused round installs nothing and runs no model. The design
-    workflow's ``pull_request`` event goes through ``find_design_event`` (decision 30): an
-    intent PR that takes the fast lane also prints and writes ``start_point`` (its head sha)
-    and ``intent_pr`` (its number), which the run step passes on."""
+    (``review_refusal``), and so is a fix round's label another account applied
+    (``label_refusal``, choice 218), so a refused round installs nothing and runs no model.
+    The design workflow's ``pull_request`` event goes through ``find_design_event`` (decision
+    30): an intent PR that takes the fast lane also prints and writes ``start_point`` (its
+    head sha) and ``intent_pr`` (its number), which the run step passes on."""
     root = Path(args.root).resolve()
     outputs: dict[str, str] = {}
     refused = review_refusal(root, args.repo, env)
+    if not refused and args.phase == "fix":
+        refused = label_refusal(root, args.repo, env)
     if refused:
         change_id, reason = None, refused
     elif args.phase == "b" and env.get("GITHUB_EVENT_NAME") == "pull_request":
@@ -2872,6 +2910,14 @@ def _run_phase(args, env: dict[str, str], track: dict[str, Any]) -> int:
         # decision 29 (1.0.3): a round the runner dispatched on a red target applies the
         # failing targets as its constraint, taken once from the pending auto-round.json
         requests_collected = {**requests_collected, **take_red_targets(root, change_dir, env)}
+        idle = nothing_to_fix(change_dir, labels_applied, requests_collected)
+        if idle:
+            # a queued second run of the same round, an @claude comment already applied, a
+            # label another account applied: no session, no spend, no gate write, and the PR
+            # keeps its label (gap 4 of NOTES §45: such a round ended without a gate record
+            # and parked a ready PR). An automatic round's record is still decision 29's
+            track["why"] = f"the fix run was skipped: {idle}"
+            return _skip(idle)
 
     # gap 2 of NOTES §45 (choice 229): a build restarted after its preflight park takes the
     # owner's fix from the default branch first; the guardrail check and the preflight below
@@ -3913,6 +3959,43 @@ def verify_owner_fields(
         "overrides_changed": overrides,
         "test_files_restored": restored,
     }
+
+
+NOTHING_TO_FIX = (
+    "the fix round has nothing to do: no owner label performed, no request to apply in "
+    "evidence/{file}, and the change is not parked"
+)
+
+
+def nothing_to_fix(
+    change_dir: Path, labels: dict[str, Any] | None, requests: dict[str, Any] | None
+) -> str | None:
+    """The skip reason of a fix round with nothing to do, or None (gap 4 of NOTES §45): the
+    run performed no owner label, ``evidence/fix-requests.json`` was collected and holds no
+    request this round would apply (none, or each one already marked applied; a
+    ``red-targets`` request of decision 29 is one of them), and the change is not parked (a
+    park is the gate's change request, ``/sdlc-fix`` step 1). A file that is missing or was
+    not collected leaves the round to run."""
+    if (labels or {}).get("performed") or not (requests or {}).get("ok"):
+        return None
+    path = Path(change_dir) / art.EVIDENCE_DIR / fix_requests.FILE
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if not isinstance(data, dict) or not data.get("ok", True):
+        return None
+    pending = [
+        r for r in data.get("requests") or [] if not (isinstance(r, dict) and r.get("applied"))
+    ]
+    if pending:
+        return None
+    try:
+        if status_mod.read_status(change_dir).parked_reason:
+            return None
+    except (OSError, ValueError):
+        return None
+    return NOTHING_TO_FIX.format(file=fix_requests.FILE)
 
 
 FIX_REQUESTS_PARK = (

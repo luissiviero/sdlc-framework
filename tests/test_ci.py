@@ -3106,6 +3106,16 @@ class FixGitHub:
         return None
 
 
+def with_a_request(gh: FixGitHub) -> FixGitHub:
+    """``gh`` answering one review of the owner's: since plugin 1.0.10 a fix round with no
+    request to apply, no owner label and no park is skipped before the session."""
+    gh.reviews["reviews"] = [
+        {"id": 1, "author": "luissiviero", "type": "User", "association": "OWNER",
+         "state": "COMMENTED", "body": "rename the helper", "at": "t", "url": "u1"},
+    ]  # fmt: skip
+    return gh
+
+
 def test_fix_requests_are_judged_by_author_association_and_resolution():
     """D9's third part (session-7 review): the rule is applied by code before the session,
     and every dropped author is listed with why; a resolved thread is settled whatever it
@@ -3286,7 +3296,7 @@ def test_the_fix_run_collects_the_requests_after_the_labels_and_before_the_sessi
 ):
     root, change = project
     order = _fix_round(root, change, tmp_path, monkeypatch)
-    gh = FixGitHub()
+    gh = with_a_request(FixGitHub())
     monkeypatch.setattr(run_phase, "_github", lambda: gh)
     real = run_phase.collect_fix_requests
 
@@ -3317,7 +3327,8 @@ def test_the_fix_session_runs_with_the_fix_mark_and_the_build_timeout(
     long as for a build: (180 + 5) minutes with no setting."""
     root, change = project
     _fix_round(root, change, tmp_path, monkeypatch)
-    monkeypatch.setattr(run_phase, "_github", lambda: FixGitHub())
+    gh = with_a_request(FixGitHub())
+    monkeypatch.setattr(run_phase, "_github", lambda: gh)
     seen: dict = {}
 
     def invoke(argv, root, env, timeout):
@@ -4186,7 +4197,8 @@ def _ready_for(root: Path, change: Path, phase: str, tmp_path: Path, monkeypatch
         git(root, "checkout", "-q", "-b", "sdlc/0001/b")
         git(root, "commit", "-q", "-am", "design(0001): spec and plan")
         git(root, "push", "-q", "-u", "origin", "sdlc/0001/b")
-        monkeypatch.setattr(run_phase, "_github", lambda: _PullRequestGitHub())
+        gh = with_a_request(_PullRequestGitHub())
+        monkeypatch.setattr(run_phase, "_github", lambda: gh)
         monkeypatch.setattr(run_phase, "apply_owner_labels", lambda *a, **k: {"ok": True})
         monkeypatch.setattr(run_phase, "ensure_labels", lambda repo, env: {"ok": True})
         return "sdlc/0001/b"
@@ -4306,6 +4318,7 @@ def test_a_dispatched_fix_round_with_no_head_ref_runs_on_the_open_pull_request_s
     git(root, "push", "-q", "origin", ":sdlc/0001/a")
     git(root, "fetch", "-q", "--prune", "origin")
     # the whole round, dispatched on a runner from the pull request's own branch
+    with_a_request(gh)
     monkeypatch.setattr(run_phase, "apply_owner_labels", lambda *a, **k: {"ok": True})
     monkeypatch.setattr(run_phase, "ensure_labels", lambda repo, env: {"ok": True})
     pr_route(monkeypatch, number=12)
