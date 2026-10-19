@@ -193,7 +193,8 @@ paste. Do not retry with other means.
 - `continue` (Standard): report "gate (c) passed → /sdlc-test <id>". In the
   merge-triggered workflow the job dispatches the test workflow itself. Do not run (d) here.
   On the fast lane the runner also closes the design PR as `sdlc:superseded` once this PR
-  exists (no comment); the owner reviews intent, spec, plan and code together at (e).
+  exists (no comment), or the intent PR when no design PR was opened; the owner reviews
+  intent, spec, plan and code together at (e).
 - `wait` (Full): report the PR URL and "gate (c): approving review + `sdlc:c-approved`,
   applied by the owner's account (decision 34), starts the test phase; review comments are
   the change request (`/sdlc-fix`)".
