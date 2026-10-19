@@ -118,7 +118,6 @@ pushed (0.3.0, issue #91; the change is parked first where the record was deferr
 from __future__ import annotations
 
 import argparse
-import copy
 import json
 import math
 import os
@@ -1663,7 +1662,7 @@ MERGE_CONFLICT_NEED = (
 OVERWRITTEN_RE = re.compile(r"would be overwritten by merge:\s*\n((?:[ \t]+\S.*\n?)+)")
 
 
-def merge_default_branch(root: Path, change_dir: Path | None = None, st=None) -> dict[str, Any]:
+def merge_default_branch(root: Path) -> dict[str, Any]:
     """Merge the default branch (``gate_diff.default_base``, the ref the gate diffs against)
     into the checkout's branch with a merge commit: never a rebase, a reset or a force-push
     (gap 2 of NOTES §45, choice 229). The branch of a build parked at the preflight was cut
@@ -1671,19 +1670,15 @@ def merge_default_branch(root: Path, change_dir: Path | None = None, st=None) ->
     ``CLAUDE.md``, ``sdlc.yaml`` and ``.claude/settings.json``. ``{"ok", "merged", ...}``:
     ``merged`` is the new commit, None when the branch already contains the default branch.
 
-    The guard's own write to the change's ``status.yaml`` (``st``: the park cleared, gate (b)
-    put back) is set aside first, so the merge runs on the branch's committed tree and never
-    refuses over a local change; afterwards the runner's restart fields are applied to the
-    merged file, and every owner-only field is taken from the default branch's copy
-    (``_restart_record``), uncommitted as the guard left it. A conflict in that one file and
-    no other (an owner's change on the default branch; the squash-merged design of a
-    stacked fast-lane build, whose copy says phase b) is settled the same way, on the
-    default branch's copy. Any other conflict aborts the merge, puts the
-    guard's write back, and ``conflicts`` names the files, those git would have overwritten
-    included. The merge commit is pushed by the run's next push (the park's or the
-    session's); ``guardrail_changes`` diffs against the merge base, which the merge moves to
-    the default branch's tip, so the owner's own guardrail fix on it is not the branch's
-    change."""
+    The merge runs on the branch's committed tree (the guard writes nothing on a restart
+    until it has run, ``restart_record``), so git's three-way merge brings in what the
+    default branch changed since the merge base, the change's ``status.yaml`` included, and
+    keeps the branch's own changes. Any conflict, ``status.yaml`` included, is never settled
+    here: the merge is aborted and ``conflicts`` names the files, those git would have
+    overwritten included. The merge commit is pushed by the run's next push (the park's or
+    the session's); ``guardrail_changes`` diffs against the merge base, which the merge
+    moves to the default branch's tip, so the owner's own guardrail fix on it is not the
+    branch's change."""
     from state import gitops  # noqa: PLC0415
 
     base = gate_diff.default_base(root)
@@ -1692,10 +1687,6 @@ def merge_default_branch(root: Path, change_dir: Path | None = None, st=None) ->
         return {**out, "ok": True, "note": "no default branch to merge"}
     if gate_diff.is_ancestor(root, base, "HEAD"):
         return {**out, "ok": True, "note": "already up to date"}
-    record = None
-    if change_dir is not None and st is not None:
-        record = f"{c.CHANGES_DIR}/{Path(change_dir).name}/{status_mod.STATUS_FILE}"
-        gitops.run(root, "checkout", "HEAD", "--", record, check=False)
     name = base.removeprefix("refs/remotes/")
     before = gate_diff.head_sha(root)
     message = MERGE_BEFORE_PREFLIGHT.format(base=name)
@@ -1706,90 +1697,36 @@ def merge_default_branch(root: Path, change_dir: Path | None = None, st=None) ->
         text=True,
         encoding="utf-8",
     )
-    settled = proc.returncode == 0
-    conflicts: list[str] = []
-    if not settled:
+    if proc.returncode != 0:
         conflicts = gate_diff._z(
             gate_diff._git(root, "diff", "--name-only", "-z", "--diff-filter=U", check=False)
         )
-        if record is not None and conflicts == [record]:
-            _restart_record(root, change_dir, st, base, record, conflicted=True)
-            gitops.run(root, "add", "--", record, check=False)
-            done = subprocess.run(
-                ["git", *gitops.identity_args(root), "commit", "-q", "-m", message],
-                cwd=root,
-                capture_output=True,
-                text=True,
-                encoding="utf-8",
-            )
-            settled = done.returncode == 0
-            out["settled"] = [record] if settled else []
-    if not settled:
         said = f"{proc.stderr or ''}\n{proc.stdout or ''}"
         for block in OVERWRITTEN_RE.findall(said):
             conflicts += [line.strip() for line in block.splitlines() if line.strip()]
         gitops.run(root, "merge", "--abort", check=False)
-        if record is not None:
-            status_mod.write_status(change_dir, st)  # the guard's write, as it was
         why = said.strip().splitlines()
         return {
             **out,
             "ok": False,
             "conflicts": sorted(set(conflicts)) or [why[-1] if why else "git merge failed"],
         }
-    if record is not None:
-        _restart_record(root, change_dir, st, base, record)
     after = gate_diff.head_sha(root)
     return {**out, "ok": True, "merged": after if after != before else None}
 
 
-# the ``status.yaml`` attributes behind ``owner_fields``, ``fast_lane`` apart (the runner's
-# record of what this branch was cut from, carried as a restart field below)
-OWNER_STATUS_FIELDS = (
-    "risk_accepted", "risk_accepted_by", "iterations_reset_by", "iterations_reset_at",
-    "tests_unlocked_by", "tests_locked", "iterations", "panel_calls", "profile_override",
-    "review_override",
-)  # fmt: skip
-# what the guard's restart of the preflight park sets, and the runner's own records
-RESTART_FIELDS = ("phase", "gate", "parked_reason", "fast_lane", "build_pr")
-
-
-def _restart_record(
-    root: Path, change_dir: Path, st, base: str, record: str, conflicted: bool = False
-) -> None:
-    """The change's ``status.yaml`` after the restart's merge: the merged file (on a
-    conflict in it, the default branch's copy at ``base``) with the guard's restart fields
-    from ``st`` (phase c, the park cleared, gate (b) passed, the fast-lane record and the
-    build PR) and every owner-only field from the default branch's copy, so an owner's
-    change there (an override, a revoked ``risk_accepted`` item) is not undone by the
-    branch's older record. Without a readable default-branch copy the merged file's owner
-    fields stand (a stacked build whose design is not merged yet), and without a readable
-    merged file the guard's record does."""
-    from state import yamlish  # noqa: PLC0415
-
-    approved = None
-    text = gate_diff.file_at(root, base, record)
-    if text is not None:
-        try:
-            approved = status_mod.Status.from_dict(yamlish.loads(text))
-        except Exception:  # noqa: BLE001 - the merged file's own fields stand
-            approved = None
-    out = None
-    if conflicted:
-        out = copy.deepcopy(approved)
-    else:
-        try:
-            out = status_mod.read_status(change_dir)
-        except (OSError, ValueError):
-            out = None
-    if out is None:
-        out = copy.deepcopy(st)
-    for name in RESTART_FIELDS:
-        setattr(out, name, copy.deepcopy(getattr(st, name)))
-    if approved is not None:
-        for name in OWNER_STATUS_FIELDS:
-            setattr(out, name, copy.deepcopy(getattr(approved, name)))
-    status_mod.write_status(change_dir, out)
+def restart_record(change_dir: Path, run_phase: str):
+    """The guard's restart of a build parked at the runner's preflight (gap 2 of NOTES §45),
+    applied to ``status.yaml`` as the checkout carries it (after the restart's merge, the
+    merged record) and written: the phase set again, which clears the park, and the gate of
+    the phase before put back to passed. The preflight park replaced that gate record, which
+    the guard found passed before the preflight ran, and nothing has run since
+    (``pre_run_park``). Every other field is the record's own. Returns the record."""
+    st = status_mod.read_status(change_dir)
+    st.set_phase(run_phase)
+    st.record_gate(PREVIOUS_PHASE[run_phase], "passed")
+    status_mod.write_status(change_dir, st)
+    return st
 
 
 def _approved_ref(root: Path) -> str | None:
@@ -1970,10 +1907,12 @@ def guard(root: Path, change_id: str, run_phase: str, repo: str, env: dict[str, 
         st.set_phase(run_phase)  # clears the earlier attempt's park; the phase is unchanged
         if restart:
             # the preflight park replaced the gate (b) record this guard found passed before
-            # the preflight ran, and nothing has run since (``pre_run_park``): it is put back,
-            # or the check below would refuse the restart on the park's own record
+            # the preflight ran, and nothing has run since (``pre_run_park``): it is put back
+            # here, for the check below, and written by the run only after it merged the
+            # default branch into the committed tree (``restart_record``)
             st.record_gate(expected, "passed")
-        status_mod.write_status(change_dir, st)
+        else:
+            status_mod.write_status(change_dir, st)
     else:
         accepted = PHASE_BEFORE.get(run_phase, (expected,))
         if st.phase not in accepted:
@@ -2952,12 +2891,13 @@ def _run_phase(args, env: dict[str, str], track: dict[str, Any]) -> int:
             return _skip(idle)
 
     # gap 2 of NOTES §45 (choice 229): a build restarted after its preflight park takes the
-    # owner's fix from the default branch first; the guardrail check and the preflight below
-    # then judge the merged checkout
-    # (a dry run merges nothing: it reports the run it would start)
-    merged = merge_default_branch(root, change_dir, st) if restart and not args.dry_run else None
-    if merged is not None and merged.get("ok") and merged.get("merged"):
-        st = status_mod.read_status(change_dir)  # the record the merge left (_restart_record)
+    # owner's fix from the default branch first, merged into the committed tree; the
+    # guard's restart is then written on the merged record, and the guardrail check and the
+    # preflight below judge the merged checkout (a dry run merges nothing: it reports the
+    # run it would start)
+    merged = merge_default_branch(root) if restart and not args.dry_run else None
+    if restart and (merged is None or merged.get("ok")):
+        st = restart_record(change_dir, phase)
     if merged is not None and not merged.get("ok"):
         parked = park_and_publish(
             plugin_dir, root, change_dir, st, phase,

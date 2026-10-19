@@ -65,11 +65,18 @@ def test_an_open_pr_does_not_stop_the_restart_of_a_pre_run_preflight_park(projec
     ci_tests._pr_lookup(monkeypatch, 12)
     assert run_phase.rerun_reason(root, "0001", "c", "owner/name", {}) is None
     assert run_phase.pre_run_park(root, "0001", "c") is True
-    # the guard clears the park and puts back the passed gate (b) the preflight followed
-    assert skip_reason(root, "c") is None
-    st = status_mod.read_status(change)
+    # the guard clears the park and puts back the passed gate (b) the preflight followed;
+    # the run writes it only after the restart's merge (restart_record), so the guard
+    # leaves the committed tree clean
+    _dir, st, _cfg, reason = run_phase.guard(root, "0001", "c", "owner/name", {})
+    assert reason is None
     assert st.phase == "c" and st.parked_reason is None
     assert (st.gate.phase, st.gate.result) == ("b", "passed")
+    assert status_mod.read_status(change).parked_reason.startswith("preflight: ")
+    st = run_phase.restart_record(change, "c")
+    assert st.phase == "c" and st.parked_reason is None
+    assert (st.gate.phase, st.gate.result) == ("b", "passed")
+    assert status_mod.read_status(change).parked_reason is None
     # a fix round and the other phases are untouched
     assert run_phase.pre_run_park(root, "0001", "fix") is False
 

@@ -1,12 +1,13 @@
-"""Plugin 1.0.10, the first review round of the fix-round robustness PR (NOTES §45 gaps 2-4,
+"""Plugin 1.0.10, the review rounds of the fix-round robustness PR (NOTES §45 gaps 2-4,
 choice 218):
 
 - an unfinished fix round always parks, with or without work to keep, and a session that
-  failed after its own gate says so;
-- the fix round with nothing to do is skipped before the session, and a label another
-  account applied is refused by the find step (choice 218);
-- the restart of a build parked at the preflight merges a default branch that changed the
-  change's ``status.yaml`` (a stacked fast-lane build included), and a dry run merges nothing;
+  failed after its own gate says so; its park keeps the risk hits the replaced park named;
+- a fix round whose trigger carries nothing is skipped before the session, and a label
+  another account applied is refused by the find step (choice 218);
+- the restart of a build parked at the preflight merges the default branch into the
+  committed tree and writes its restart on the merged record (the owner's changes and the
+  branch's counters both stand); any conflict parks, and a dry run merges nothing;
 - the kept work leaves out the settings and hooks of a nested ``.claude/``;
 - ``/sdlc-fix`` tells an undecided session to end its turn with the question, never to park.
 
@@ -164,28 +165,30 @@ def test_a_restart_merges_a_default_branch_that_changed_the_change_s_status(
     assert st.review_override == "deferred"  # the owner's override is kept
 
 
-def test_a_stacked_build_restarts_after_its_design_was_squash_merged(
-    project, tmp_path, fake_claude, monkeypatch, capsys
-):
+def _stacked_build_parked(project, tmp_path, fake_claude, monkeypatch, intent_on_main: bool):
     """A build branch cut from the design branch, not from main (a fast-lane build, decision
-    30), parked at the preflight; the owner then squash-merged the design PR and fixed
-    CLAUDE.md on main. Both sides added the change's status.yaml (main's copy says phase b):
-    the conflict in that one file is settled with the branch's record, and the restart
-    runs."""
+    30), parked at the preflight because main's CLAUDE.md lacks the lint command; the design
+    spent two panel calls and one round. With ``intent_on_main`` main carries the change at
+    phase (a) (the owner merged the intent PR as usual), else no change folder at all.
+    Returns (root, change, the fixed CLAUDE.md, args, env), the checkout on main."""
     root, change = project
     rel = "changes/0001-percent-helper"
     lint = gaps._lint_command(root)
     claude_md = (root / "CLAUDE.md").read_text(encoding="utf-8")
     (root / "CLAUDE.md").write_text(claude_md.replace(lint, "ruff"), encoding="utf-8")
-    set_state(change, "b", gate_phase="b", gate_result="passed")
     bare = tmp_path / "remote.git"
     git(tmp_path, "init", "-q", "--bare", "-b", "main", str(bare))
     git(root, "remote", "add", "origin", str(bare))
     git(root, "add", "-A")
-    git(root, "reset", "-q", "--", rel)  # main before the design: no change folder yet
-    git(root, "commit", "-q", "-m", "sdlc-init")
+    if not intent_on_main:
+        git(root, "reset", "-q", "--", rel)  # main before the design: no change folder yet
+    git(root, "commit", "-q", "-m", "sdlc-init" + (" and the intent" if intent_on_main else ""))
     git(root, "push", "-q", "-u", "origin", "main")
     git(root, "checkout", "-q", "-b", "sdlc/0001/b")
+    set_state(change, "b", gate_phase="b", gate_result="passed")
+    st = status_mod.read_status(change)
+    st.panel_calls, st.iterations = 2, 1
+    status_mod.write_status(change, st)
     git(root, "add", rel)
     git(root, "commit", "-q", "-m", "design(0001): spec and plan")
     git(root, "checkout", "-q", "-b", "sdlc/0001/c")  # stacked on the design
@@ -194,10 +197,6 @@ def test_a_stacked_build_restarts_after_its_design_was_squash_merged(
     git(root, "commit", "-q", "-m", "run(c): parked at the preflight")
     git(root, "push", "-q", "-u", "origin", "sdlc/0001/c")
     git(root, "checkout", "-q", "main")
-    git(root, "merge", "-q", "--squash", "sdlc/0001/b")
-    git(root, "commit", "-q", "-m", "design(0001) (squash merge)")
-    gaps._owner_commits_on_main(root, "CLAUDE.md", claude_md, "CLAUDE.md names the lint command")
-    git(root, "branch", "-q", "-D", "sdlc/0001/c", "sdlc/0001/b")  # a fresh runner has main
     gaps._pr_upsert_only(monkeypatch, 7)
     session = tmp_path / "session.py"
     write(
@@ -212,16 +211,55 @@ def test_a_stacked_build_restarts_after_its_design_was_squash_merged(
         root=str(root), phase="c", dry_run=False, no_dispatch=True, claude=fake_cli(fake_claude)
     )
     env = dict(os.environ, **KEY_ENV, GITHUB_TOKEN=FAKE_TOKEN)
+    return root, change, claude_md, args, env
+
+
+def test_a_stacked_build_after_a_merged_intent_keeps_its_counters_on_restart(
+    project, tmp_path, fake_claude, monkeypatch, capsys
+):
+    """Main holds the change's phase-(a) record (panel_calls 0); the branch's record says 2.
+    The restart used to take the counters from main's copy and lower them itself."""
+    root, change, claude_md, args, env = _stacked_build_parked(
+        project, tmp_path, fake_claude, monkeypatch, intent_on_main=True
+    )
+    gaps._owner_commits_on_main(root, "CLAUDE.md", claude_md, "CLAUDE.md names the lint command")
+    git(root, "branch", "-q", "-D", "sdlc/0001/c", "sdlc/0001/b")  # a fresh runner has main
     assert run_phase.run_phase(args, env) == run_phase.EXIT_OK
     out = json.loads(capsys.readouterr().out)
     assert "parked" not in out and "skipped" not in out, out
     assert (change / "evidence" / "claude-c.json").exists()  # the session ran
     merges = git(root, "log", "--merges", "--format=%s", "HEAD").splitlines()
     assert merges == ["run(c): origin/main merged before the restarted preflight (gap 2)"]
-    assert git(root, "merge-base", "--is-ancestor", "origin/main", "HEAD") == ""
-    assert not (root / ".git" / "MERGE_HEAD").exists()
     st = status_mod.read_status(change)
+    assert (st.panel_calls, st.iterations) == (2, 1)
     assert st.phase == "c" and st.parked_reason is None
+
+
+def test_a_restart_whose_status_yaml_conflicts_parks_and_settles_nothing(
+    project, tmp_path, fake_claude, monkeypatch, capsys
+):
+    """The owner squash-merged the stacked build's design PR: both sides added the change's
+    status.yaml (main's copy says phase b). No conflict is settled by the runner: the merge
+    is aborted and the change parks for the owner's "Update branch"."""
+    root, change, claude_md, args, env = _stacked_build_parked(
+        project, tmp_path, fake_claude, monkeypatch, intent_on_main=False
+    )
+    git(root, "merge", "-q", "--squash", "sdlc/0001/b")
+    git(root, "commit", "-q", "-m", "design(0001) (squash merge)")
+    gaps._owner_commits_on_main(root, "CLAUDE.md", claude_md, "CLAUDE.md names the lint command")
+    git(root, "branch", "-q", "-D", "sdlc/0001/c", "sdlc/0001/b")  # a fresh runner has main
+    assert run_phase.run_phase(args, env) == run_phase.EXIT_OK
+    out = json.loads(capsys.readouterr().out)
+    expected = (
+        "preflight: the default branch does not merge into sdlc/0001/c: "
+        "changes/0001-percent-helper/status.yaml"
+    )
+    assert out["parked"] == expected
+    assert not (change / "evidence" / "claude-c.json").exists()  # no session
+    assert not (root / ".git" / "MERGE_HEAD").exists()
+    assert git(root, "log", "--merges", "--format=%s", "HEAD") == ""
+    assert status_mod.read_status(change).parked_reason == expected
+    assert '"Update branch"' in gaps._gate_c(change)["checks"][0]["need"]
 
 
 def test_a_file_the_merge_would_overwrite_is_named_as_the_conflict(
