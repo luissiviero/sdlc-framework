@@ -525,22 +525,28 @@ def test_the_design_job_pushes_the_evidence_and_opens_the_pr(checkout, tmp_path)
 
 def test_a_routine_design_takes_the_fast_lane_to_the_build(checkout, tmp_path):
     """Decision 30: the same job with a plan the adversarial reviewer classes routine passes
-    gate (b) without the owner's merge, records fast_lane.b on the branch it pushes, opens
-    the design PR unlabelled and hands over to the build on sdlc/0001/c."""
+    gate (b) without the owner's merge and hands over to the build on sdlc/0001/c. This job
+    has no GITHUB_TOKEN (its PR calls take the fake gh), so the dispatch has no route: since
+    1.0.11 (PROGRESS choice 232, the owner's answer of 2026-10-19 on this test) the design
+    then waits at (b) with fast_lane.b dropped on the branch it pushes, instead of reading
+    continue with no build behind it. The dispatched path is pinned in tests/test_fast_lane.py."""
     root, bare = checkout
     proc, out, _calls = run_phase_job(
         root, tmp_path, "ok", step_env={"FAKE_CLASSIFICATION": "routine"}
     )
     assert proc.returncode == 0, proc.stdout + proc.stderr
-    assert out["result"] == "continue" and out["label"] is None
-    assert out["fast_lane"]["recorded"] is True
     assert out["dispatched"]["workflow"] == "sdlc-build.yml"
     assert out["dispatched"]["head_ref"] == "sdlc/0001/c"
+    assert out["dispatched"]["ok"] is False
+    no_route = "the build was not dispatched: no GITHUB_TOKEN/GH_TOKEN to dispatch with"
+    assert out["fast_lane"]["recorded"] is False and out["fast_lane"]["reason"] == no_route
+    assert out["fast_lane"]["demoted"]["ok"] is True
+    assert out["result"] == "wait" and out["label"] == "sdlc:b-ready"
     status = remote_file(bare, "sdlc/0001/b", f"{CHANGE}/status.yaml")
-    recorded = r'(?m)^fast_lane:\n  b:\n    sha: "?[0-9a-f]{40}"?\n    classification: routine$'
-    assert re.search(recorded, status), status
+    assert not re.search(r"(?m)^  b:$", status), status
     gate_file = json.loads(remote_file(bare, "sdlc/0001/b", f"{CHANGE}/evidence/gate-b.json"))
-    assert gate_file["result"] == "continue" and gate_file["fast_lane"] is True
+    assert gate_file["result"] == "wait" and "fast_lane" not in gate_file
+    assert no_route in gate_file["config_note"]
 
 
 def test_the_design_job_is_red_when_github_refuses_the_pr(checkout, tmp_path):

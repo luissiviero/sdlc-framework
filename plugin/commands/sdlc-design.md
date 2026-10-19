@@ -212,7 +212,7 @@ classification; no commit after the judged one outside the change folder's `evid
 `status.yaml`; never in a fix round, which waits at `sdlc:b-ready`), records it in
 `status.yaml: fast_lane.b`, dispatches the build on `sdlc/<id>/c` cut from this branch, and
 closes this PR as `sdlc:superseded` once the build PR carries the spec and plan; a record it
-does not confirm waits with `sdlc:b-ready` as before.
+does not confirm, or a build dispatch GitHub refuses, waits with `sdlc:b-ready` as before.
 ```
 python "${CLAUDE_PLUGIN_ROOT}/plugin/pr/cli.py" upsert --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase b
 ```

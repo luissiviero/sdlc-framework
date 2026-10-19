@@ -99,12 +99,17 @@ def _design_on_the_lane(root: Path, change: Path, intent_sha: str, record: bool 
     return git(root, "rev-parse", "HEAD").strip()
 
 
-def _build_on_the_lane(root: Path, change: Path, design_sha: str, record: bool = True) -> None:
-    """The design head records ``fast_lane.b`` and is pushed; ``sdlc/0001/c`` is cut from it."""
+def _build_on_the_lane(
+    root: Path, change: Path, design_sha: str, record: bool = True, design_pr: int | None = 13
+) -> None:
+    """The design head records ``fast_lane.b`` (with the design PR's number, unless
+    ``design_pr`` is None) and is pushed; ``sdlc/0001/c`` is cut from it."""
     st = status_mod.read_status(change)
     if record:
         lane_record = dict(st.fast_lane or {})
-        lane_record["b"] = {"sha": design_sha, "classification": "routine", "pr": 13}
+        lane_record["b"] = {"sha": design_sha, "classification": "routine"}
+        if design_pr is not None:
+            lane_record["b"]["pr"] = design_pr
         _status(change, fast_lane=lane_record, gate=status_mod.Gate("b", "passed"))
     git(root, "commit", "-q", "-am", "run(b): gate (b) passed on the fast lane")
     git(root, "push", "-q", "-u", "origin", "sdlc/0001/b")
@@ -588,14 +593,31 @@ def _fast_gate_file(change: Path, head: str, fast: bool = True) -> None:
     write(change / "evidence" / "gate-b.json", json.dumps(data))
 
 
-def _design_run(root: Path, change: Path, fake_claude, monkeypatch, capsys) -> dict:
+def _design_run(
+    root: Path,
+    change: Path,
+    fake_claude,
+    monkeypatch,
+    capsys,
+    expect: int = run_phase.EXIT_OK,
+    no_dispatch: bool = True,
+    err: list[str] | None = None,
+) -> dict:
+    """One design run's JSON; ``err``, when given, receives what the run wrote to stderr."""
     monkeypatch.setenv("FAKE_CLAUDE_RESULT", json.dumps(FAKE_RESULT))
     args = Args(
-        root=str(root), phase="b", dry_run=False, no_dispatch=True, claude=fake_cli(fake_claude)
+        root=str(root),
+        phase="b",
+        dry_run=False,
+        no_dispatch=no_dispatch,
+        claude=fake_cli(fake_claude),
     )
     env = dict(os.environ, **KEY_ENV, GITHUB_TOKEN=FAKE_TOKEN)
-    assert run_phase.run_phase(args, env) == run_phase.EXIT_OK
-    return json.loads(capsys.readouterr().out)
+    assert run_phase.run_phase(args, env) == expect
+    captured = capsys.readouterr()
+    if err is not None:
+        err.append(captured.err)
+    return json.loads(captured.out)
 
 
 def test_a_routine_design_records_fast_lane_b_and_dispatches_the_build(
@@ -1003,7 +1025,7 @@ class LaneGitHub:
     """The GitHub calls a design run makes, answered here: the intent PR in ``intent_state``,
     no open PR before the upsert, labels created. ``create_pr`` must never be called."""
 
-    def __init__(self, monkeypatch, intent_state="open", merged=False, labels=None):
+    def __init__(self, monkeypatch, intent_state="open", merged=False, labels=None, upsert=True):
         self.calls: list = []
         answers = {
             "pr_by_number": lambda repo, number, cwd=None: {
@@ -1029,6 +1051,8 @@ class LaneGitHub:
         def cli_call(script, argv, timeout=600, env=None):
             if Path(script).parent.name == "pr" and argv and argv[0] == "upsert":
                 self.calls.append(("upsert", list(argv)))
+                if not upsert:  # GitHub refused to open the pull request
+                    return {"ok": False, "reason": "HTTP 502", "output": {"route": "api"}}
                 return {"ok": True, "reason": "", "output": {"route": "api", "number": 7}}
             return real(script, argv, timeout, env)
 
@@ -1046,7 +1070,7 @@ class LaneGitHub:
 
 
 def _lane_design_run(
-    root, change, intent_sha, fake_claude, monkeypatch, capsys, session=None
+    root, change, intent_sha, fake_claude, monkeypatch, capsys, session=None, **run
 ) -> dict:
     """A design run on the fast lane's branch (cut from the intent PR's head, the record
     committed, nothing pushed yet, S5), whose gate passed on a routine plan."""
@@ -1059,7 +1083,7 @@ def _lane_design_run(
     _verdict(root, "routine", head)
     if session:
         monkeypatch.setenv("FAKE_CLAUDE_RUN", str(session))
-    return _design_run(root, change, fake_claude, monkeypatch, capsys)
+    return _design_run(root, change, fake_claude, monkeypatch, capsys, **run)
 
 
 def test_the_owner_s_close_of_the_intent_pr_before_the_design_branch_is_pushed_abandons(
@@ -1110,8 +1134,9 @@ def test_a_stacked_build_reads_the_owner_s_close_of_the_design_pr(
     assert (found == "pull request #13 closed without a merge") is abandons, found
 
 
+@pytest.mark.parametrize("demotion_pushed", [True, False])
 def test_a_design_the_build_s_check_would_refuse_waits_at_b_with_its_label(
-    lane, fake_claude, monkeypatch, capsys, tmp_path
+    lane, fake_claude, monkeypatch, capsys, tmp_path, demotion_pushed
 ):
     """Second review, R3: the session leaves a plan edit uncommitted; the runner's
     confirmation reads the committed diff and passes, the run record sweeps the edit in, and
@@ -1131,9 +1156,13 @@ def test_a_design_the_build_s_check_would_refuse_waits_at_b_with_its_label(
     git(root, "commit", "-q", "-m", "intent: plan seed")
     git(root, "push", "-q", "origin", "claude/intent")
     intent_sha = git(root, "rev-parse", "HEAD").strip()
+    if not demotion_pushed:  # review of 1.0.11: the run ends red and names the merge
+        _refuse_the_demotion(monkeypatch, "refused by the build's check")
+    err: list[str] = []
     out = _lane_design_run(
-        root, change, intent_sha, fake_claude, monkeypatch, capsys, session=session
-    )
+        root, change, intent_sha, fake_claude, monkeypatch, capsys, session=session, err=err,
+        expect=run_phase.EXIT_OK if demotion_pushed else run_phase.EXIT_FAILED,
+    )  # fmt: skip
     assert out["fast_lane"]["recorded"] is False
     assert out["fast_lane"]["reason"] == (
         "the build's own check of the pushed design branch refused it"
@@ -1141,10 +1170,163 @@ def test_a_design_the_build_s_check_would_refuse_waits_at_b_with_its_label(
     assert out["dispatched"] is None
     assert out["result"] == "wait" and out["label"] == "sdlc:b-ready"
     assert fake.names().count("upsert") == 2  # the label is applied again after the demotion
+    if not demotion_pushed:
+        assert "merge the design pull request (sdlc:b-ready)" in err[0]
+        return
     gate_b = json.loads(git(root, "show", f"origin/sdlc/0001/b:{CHANGE_REL}/evidence/gate-b.json"))
     assert gate_b["result"] == "wait" and "fast_lane" not in gate_b
     remote = git(root, "show", f"origin/sdlc/0001/b:{CHANGE_REL}/status.yaml")
     assert "  b:" not in remote and "  a:" in remote
+
+
+# --- 8b. a pushed fast_lane.b always has a build behind it, or waits at (b) (plugin 1.0.11) -----
+def _dispatches(monkeypatch, answer: dict) -> list:
+    """``run_phase.dispatch`` answering ``answer``; returns the calls it saw."""
+    calls: list = []
+
+    def fake(repo, workflow, ref, change_id, head_ref, extra_inputs=None):
+        calls.append((workflow, change_id, head_ref))
+        return dict(answer)
+
+    monkeypatch.setattr(run_phase, "dispatch", fake)
+    return calls
+
+
+def test_a_design_pr_that_cannot_be_opened_still_dispatches_the_build(
+    lane, fake_claude, monkeypatch, capsys
+):
+    """Before 1.0.11 a design run whose PR GitHub refused pushed ``fast_lane.b`` and dispatched
+    nothing, and every later design event skipped as "design done". The build PR carries the
+    design on the fast lane, so the build is dispatched; the run still ends red."""
+    root, change, intent_sha = lane
+    LaneGitHub(monkeypatch, upsert=False)
+    calls = _dispatches(monkeypatch, {"ok": True, "status": 204, "reason": ""})
+    err: list[str] = []
+    out = _lane_design_run(
+        root, change, intent_sha, fake_claude, monkeypatch, capsys,
+        expect=run_phase.EXIT_FAILED, no_dispatch=False, err=err,
+    )  # fmt: skip
+    assert out["pr"]["ok"] is False and out["fast_lane"]["recorded"] is True, out
+    assert "pr_recorded" not in out["fast_lane"]
+    assert calls == [("sdlc-build.yml", "0001", "sdlc/0001/c")]
+    assert out["dispatched"]["ok"] is True
+    assert "no pull request carries this phase's result" in err[0]
+    assert run_phase.FAST_LANE_BUILD_CARRIES in err[0]
+    # the record the build stacks on stands on origin, without a design PR's number
+    assert run_phase.stacked_design(root, "0001") == "refs/remotes/origin/sdlc/0001/b"
+    remote = git(root, "show", f"origin/sdlc/0001/b:{CHANGE_REL}/status.yaml")
+    assert "  b:" in remote and "pr: 7" not in remote
+
+
+@pytest.mark.parametrize("demotion_pushed", [True, False])
+def test_a_build_dispatch_github_refuses_puts_the_design_back_at_b(
+    lane, fake_claude, monkeypatch, capsys, demotion_pushed
+):
+    """A refused dispatch would leave ``fast_lane.b`` pushed with no build: the design waits at
+    (b) with ``sdlc:b-ready`` instead, the record dropped on origin, so the owner's merge starts
+    the build and no later design event reads the change as done."""
+    root, change, intent_sha = lane
+    fake = LaneGitHub(monkeypatch)
+    calls = _dispatches(monkeypatch, {"ok": False, "status": 403, "reason": "HTTP 403"})
+    if not demotion_pushed:
+        _refuse_the_demotion(monkeypatch, "not dispatched")
+    err: list[str] = []
+    out = _lane_design_run(
+        root, change, intent_sha, fake_claude, monkeypatch, capsys, no_dispatch=False,
+        expect=run_phase.EXIT_OK if demotion_pushed else run_phase.EXIT_FAILED, err=err,
+    )  # fmt: skip
+    assert calls == [("sdlc-build.yml", "0001", "sdlc/0001/c")]
+    assert out["fast_lane"]["recorded"] is False
+    assert out["fast_lane"]["reason"] == "the build was not dispatched: HTTP 403"
+    assert out["result"] == "wait" and out["label"] == "sdlc:b-ready"
+    assert fake.names().count("upsert") == 2  # the label is applied again after the demotion
+    if not demotion_pushed:
+        assert "the fast lane's demotion to gate (b) was not committed and pushed" in err[0]
+        return
+    assert out["fast_lane"]["demoted"]["ok"] is True
+    gate_b = json.loads(git(root, "show", f"origin/sdlc/0001/b:{CHANGE_REL}/evidence/gate-b.json"))
+    assert gate_b["result"] == "wait" and "fast_lane" not in gate_b
+    assert "the build was not dispatched: HTTP 403" in gate_b["config_note"]
+    remote = git(root, "show", f"origin/sdlc/0001/b:{CHANGE_REL}/status.yaml")
+    assert "  b:" not in remote and "  a:" in remote
+    assert run_phase.carried_forward(root, "0001") is None
+
+
+def _refuse_the_demotion(monkeypatch, marker: str) -> None:
+    """``commit_run_record`` refuses the commit whose note carries ``marker``."""
+    real = run_phase.commit_run_record
+
+    def refuse(*a, note=None, **k):
+        if note and marker in note:
+            return {"ok": False, "reason": "push refused"}
+        return real(*a, note=note, **k)
+
+    monkeypatch.setattr(run_phase, "commit_run_record", refuse)
+
+
+@pytest.mark.parametrize("demotion_pushed", [True, False])
+def test_a_refused_dispatch_after_a_refused_design_pr_retries_the_pr_and_says_what_is_left(
+    lane, fake_claude, monkeypatch, capsys, demotion_pushed
+):
+    """Review of 1.0.11: GitHub refuses the design PR and then the dispatch. The demotion is
+    pushed and the PR tried again; a demotion that is not pushed either still names the way
+    out, beside the missing PR."""
+    root, change, intent_sha = lane
+    fake = LaneGitHub(monkeypatch, upsert=False)
+    _dispatches(monkeypatch, {"ok": False, "status": None, "reason": "connection reset"})
+    if not demotion_pushed:
+        _refuse_the_demotion(monkeypatch, "not dispatched")
+    err: list[str] = []
+    out = _lane_design_run(
+        root, change, intent_sha, fake_claude, monkeypatch, capsys, no_dispatch=False,
+        expect=run_phase.EXIT_FAILED, err=err,
+    )  # fmt: skip
+    assert out["fast_lane"]["recorded"] is False and out["result"] == "wait"
+    assert fake.names().count("upsert") == 2
+    assert "no pull request carries this phase's result" in err[0]
+    assert run_phase.FAST_LANE_BUILD_CARRIES not in err[0]
+    remote = git(root, "show", f"origin/sdlc/0001/b:{CHANGE_REL}/status.yaml")
+    if demotion_pushed:
+        assert "  b:" not in remote
+        assert "demotion to gate (b) was not committed" not in err[0]
+    else:
+        assert "  b:" in remote
+        assert "merge the design pull request (sdlc:b-ready)" in err[0]
+
+
+def test_a_stacked_build_reads_the_owner_s_close_of_the_intent_pr_with_no_design_pr(
+    lane, monkeypatch
+):
+    """Review of 1.0.11: with no design PR ever opened the build carries the intent PR
+    forward, so the owner's close of it without the label abandons, as a design PR's would."""
+    root, change, intent_sha = lane
+    design = _design_on_the_lane(root, change, intent_sha)
+    _build_on_the_lane(root, change, design, design_pr=None)
+    env = {"GITHUB_TOKEN": FAKE_TOKEN}
+    LaneGitHub(monkeypatch, intent_state="closed")
+    found = run_phase.earlier_pr_closed(root, change, "c", REPO, env)
+    assert found == "pull request #12 closed without a merge"
+    LaneGitHub(monkeypatch, intent_state="closed", labels=[c.SUPERSEDED_LABEL])
+    assert run_phase.earlier_pr_closed(root, change, "c", REPO, env) is None
+
+
+def test_the_build_run_supersedes_the_intent_pr_when_no_design_pr_was_opened(lane, monkeypatch):
+    root, change, intent_sha = lane
+    design = _design_on_the_lane(root, change, intent_sha)
+    _build_on_the_lane(root, change, design, design_pr=None)
+    args = Args(root=str(root), repo=REPO)
+    env = {"GITHUB_TOKEN": FAKE_TOKEN}
+    track = {"change_dir": change, "gate_phase": "c"}
+    fake = SupersedeGitHub(open_prs={"sdlc/0001/c": 14}, head_sha=intent_sha)
+    monkeypatch.setattr(run_phase, "_github", lambda: fake)
+    out = run_phase.supersede_earlier_pr(args, env, track)
+    assert out["ok"] is True and out["number"] == 12 and out["by"] == 14
+    assert ("close_pr", 12) in fake.calls
+    # the owner pushed to the intent PR after the design started: their commits stay open
+    fake = SupersedeGitHub(open_prs={"sdlc/0001/c": 14}, head_sha="b" * 40)
+    monkeypatch.setattr(run_phase, "_github", lambda: fake)
+    run_phase.supersede_earlier_pr(args, env, track)
+    assert "close_pr" not in [call[0] for call in fake.calls]
 
 
 # --- 9. the workflows and the text the owner reads ------------------------------------------------
