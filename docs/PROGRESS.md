@@ -1,6 +1,6 @@
 # Progress — the speed-first order: ROADMAP R50 to R54, the Order rewritten, and the owner's choices 233 and 234 (2026-10-19)
 
-This session ran on branch `ccr-70fb3ae3-39fz5m`, from the owner's questions of 2026-10-19: the work left, whether it can run concurrently, and then how to speed the plugin's use up as far as possible, "even if it means giving up a bit of control for a meaningful time boost". The previous record (the fast lane's recovery as 1.0.11, choice 232, PR #242) is now `docs/progress/2026-10-19-fast-lane-recovery-1.0.11-and-choice-232.md`, unchanged; the one before it (1.0.10, choices 228 to 231) is `docs/progress/2026-10-19-1.0.10-and-choices-228-231.md`, as #242 archived it. This record's choices were first numbered 232 and 233 and moved to 233 and 234 when #242's choice 232 merged first. The session's own file is `docs/handoffs/sessions/2026-10-19-ccr-70fb3ae3-39fz5m.md`.
+This session ran on branch `ccr-70fb3ae3-39fz5m`, from the owner's questions of 2026-10-19: the work left, whether it can run concurrently, and then how to speed the plugin's use up as far as possible, "even if it means giving up a bit of control for a meaningful time boost". The previous record (the live proof, part 1, and the checkout check as 1.0.12, PR #241) is now `docs/progress/2026-10-19-live-proof-part-1-1.0.12.md`, unchanged; before it come the fast lane's recovery as 1.0.11 (choice 232, PR #242), `docs/progress/2026-10-19-fast-lane-recovery-1.0.11-and-choice-232.md` as #241 archived it, and 1.0.10 (choices 228 to 231), `docs/progress/2026-10-19-1.0.10-and-choices-228-231.md` as #242 archived it. This record's choices were first numbered 232 and 233 and moved to 233 and 234 when #242's choice 232 merged first. The session's own file is `docs/handoffs/sessions/2026-10-19-ccr-70fb3ae3-39fz5m.md`.
 
 ## Summary
 - **Concurrency, the session's answer.** A project's pipeline already runs several changes at once: every phase workflow keys its concurrency group on the work branch, and a new id skips the ids with remote branches. Framework sessions already run in parallel by HANDOFF's design. On the sample, concurrency saves no meaningful time; on a real project it raises throughput, since most of a change's elapsed time is waiting for the owner.
@@ -23,7 +23,7 @@ This session ran on branch `ccr-70fb3ae3-39fz5m`, from the owner's questions of 
 None: no guardrail line changes in this PR. (The sample's pin is #241's row.)
 
 ## Left
-- **The owner's merge order is #242, #241, #240.** #242 is merged into this branch. When #241 merges, this branch merges `main` again: #241's record moves to `docs/progress/` unchanged, this record stays, and one copy of the 1.0.10 archive is kept (#242's name; #241 archives it as `2026-10-19-fix-round-robustness-1.0.10-and-choices-228-231.md`). #241 becomes 1.0.12.
+- **The owner's merge order was #242, #241, #240.** Both are merged into this branch; one copy of each archived record is kept, under the name on `main`.
 - **R50 has no automatic check:** a session that reads a real project's changes counts the changes past gate (e) and raises R50 at 20.
 - **R51's G1 is read from the workflows and `sdlc-init.md`, not seen live.**
 - **R53's measure** is the live-proof session's to take from change 0015's job steps, if it agrees.
