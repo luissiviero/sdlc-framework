@@ -2682,7 +2682,7 @@ def park_unfinished_round(
     )
     parked = park_and_publish(
         plugin_dir, root, change_dir, status_mod.read_status(change_dir), "fix", reason,
-        branch=fix_branch, check=UNFINISHED_CHECK, need=need,
+        branch=fix_branch, check=UNFINISHED_CHECK, need=need, keep_failed=True,
     )  # fmt: skip
     return {**parked, "work": {"commit": sha, "kept": kept, "left_out": left_out}}
 
@@ -4829,14 +4829,38 @@ PREFLIGHT_PARK_NEED = (
 
 
 def write_park_result(
-    root: Path, change_dir: Path, st, phase: str, check: str, reason: str, need: str | None = None
+    root: Path,
+    change_dir: Path,
+    st,
+    phase: str,
+    check: str,
+    reason: str,
+    need: str | None = None,
+    keep_failed: bool = False,
 ) -> Path:
     """``evidence/gate-<phase>.json`` in the gate's own shape, so the PR description shows
     the park and its "What I need from you" block (the gate itself overwrites it later).
-    ``need`` is the pre-run sentence unless the park came after the session."""
+    ``need`` is the pre-run sentence unless the park came after the session. With
+    ``keep_failed``, a record this park replaces that is itself a park keeps its failed
+    checks, details included, after the new one: ``sdlc:accept-risk`` reads the hits of the
+    ``risk_list`` check from this file (``unpark.risk_hits``), and the iteration cap's need
+    lives there too (the review of 1.0.10: the unfinished round's park erased both)."""
     from gate.checks import CheckResult  # noqa: PLC0415
     from gate.gate import GateResult  # noqa: PLC0415
 
+    path = change_dir / art.EVIDENCE_DIR / art.GATE_RESULT.format(phase=phase)
+    kept: list[CheckResult] = []
+    if keep_failed:
+        try:
+            before = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            before = None
+        if isinstance(before, dict) and before.get("result") == "park":
+            kept = [
+                CheckResult.from_dict(ch)
+                for ch in before.get("checks") or []
+                if isinstance(ch, dict) and not ch.get("ok") and ch.get("name") != check
+            ]
     result = GateResult(
         change_id=st.id,
         slug=st.slug,
@@ -4850,12 +4874,12 @@ def write_park_result(
                 ok=False,
                 reason=reason,
                 need=need or PRE_RUN_NEED,
-            )
+            ),
+            *kept,
         ],
         label=c.NEEDS_HUMAN_LABEL,
         head=gate_diff.head_sha(Path(root)) if gate_diff.is_repo(Path(root)) else None,
     )
-    path = change_dir / art.EVIDENCE_DIR / art.GATE_RESULT.format(phase=phase)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
         json.dumps(result.as_dict(), indent=2, sort_keys=True) + "\n",
@@ -4912,11 +4936,13 @@ def park_and_publish(
     branch: str | None = None,
     check: str | None = None,
     need: str | None = None,
+    keep_failed: bool = False,
 ) -> dict[str, Any]:
     """Park, then leave the park where the owner will find it: the change folder committed
     and pushed on the work branch, and the phase's PR carrying ``sdlc:needs-human`` and the
     "What I need from you" block (OPERATING_MODEL section 5: a park is a queue item). A fix
-    round parks the change's own phase on the PR's head (``branch``)."""
+    round parks the change's own phase on the PR's head (``branch``). ``keep_failed`` keeps
+    the failed checks of a gate park this park replaces (``write_park_result``)."""
     live_token()
     branch_phase = st.phase if phase == "fix" else BRANCH_PHASE.get(phase, phase)
     state_cli = plugin_dir / "plugin" / "state" / "cli.py"
@@ -4932,7 +4958,9 @@ def park_and_publish(
     # park's reason starts with it (0.2.29: gate-c.json used to read "preflight: preflight:")
     check_name = check or PARK_CHECK.get(phase, "ci")
     detail = reason[len(check_name) + 2 :] if reason.startswith(f"{check_name}: ") else reason
-    write_park_result(root, change_dir, st, branch_phase, check_name, detail, need)
+    write_park_result(
+        root, change_dir, st, branch_phase, check_name, detail, need, keep_failed=keep_failed
+    )
     out["commit"] = _cli_call(
         state_cli,
         ["commit-phase", "--root", str(root), "--id", st.id, "--phase", branch_phase,

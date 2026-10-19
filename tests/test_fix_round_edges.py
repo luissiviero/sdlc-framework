@@ -467,3 +467,59 @@ def test_a_nested_claude_settings_file_stays_out_of_the_kept_work(
     out = json.loads(capsys.readouterr().out)
     assert out["work"]["left_out"] == ["pkg/.claude/settings.json"]
     assert "pkg/.claude/settings.json" not in gaps._committed(root)
+
+
+# --- round 2, item 2: the unfinished round's park keeps the gate park it replaces -------------
+RISK_PARK = {
+    **GATE_FILE,
+    "phase": "c",
+    "result": "park",
+    "label": c.NEEDS_HUMAN_LABEL,
+    "at": "2026-10-19T09:00:00Z",
+    "checks": [
+        {"name": "commands", "ok": True, "reason": "green", "need": "", "details": {}},
+        {
+            "name": "risk_list",
+            "ok": False,
+            "reason": "risk-list hit: auth",
+            "need": "Accept the risk with sdlc:accept-risk, or ask for a change.",
+            "details": {"hits": {"auth": ["src/x.py"]}},
+        },
+    ],
+}
+GATE_PARKS_AGAIN = (
+    "import json, pathlib\n"
+    "path = pathlib.Path('changes/0001-percent-helper/evidence/gate-c.json')\n"
+    f"path.write_text({json.dumps(json.dumps(RISK_PARK))}, encoding='utf-8')\n"
+)
+
+
+def test_an_unfinished_round_keeps_the_risk_hits_sdlc_accept_risk_answers(
+    project, fake_claude, monkeypatch, tmp_path, capsys
+):
+    """A risk-list park; the owner's review starts a round, its gate parks again on the
+    hit, then the turn cap: the gap-3 park used to replace the record with one ``fix``
+    check, and the owner's ``sdlc:accept-risk`` was then rejected with no recorded hit."""
+    from state import unpark
+    from tests.test_state import _FakeGitHub
+
+    root, change, args, env, _calls = gaps._owner_round(
+        project, fake_claude, monkeypatch, tmp_path, gaps.EDITS + GATE_PARKS_AGAIN, gaps.MAX_TURNS
+    )
+    assert run_phase.run_phase(args, env) == run_phase.EXIT_FAILED
+    capsys.readouterr()
+    record = gaps._gate_c(change)
+    assert record["result"] == "park" and record["label"] == c.NEEDS_HUMAN_LABEL
+    assert [ch["name"] for ch in record["checks"]] == ["fix", "risk_list"]
+    assert record["checks"][1]["details"] == {"hits": {"auth": ["src/x.py"]}}
+    assert "- **risk_list**: risk-list hit: auth" in record["what_i_need"]
+    assert unpark.risk_hits(change, "c") == ["auth"]
+    github = _FakeGitHub([c.ACCEPT_RISK_LABEL], {c.ACCEPT_RISK_LABEL: "luissiviero"})
+    out = unpark.apply_from_pr(
+        root, change, {}, "owner/name", 7, github=github,
+        env={"GITHUB_REPOSITORY_OWNER": "luissiviero"},
+    )  # fmt: skip
+    assert out["performed"] == [
+        {"label": c.ACCEPT_RISK_LABEL, "actor": "luissiviero", "items": ["auth"]}
+    ]
+    assert status_mod.read_status(change).risk_accepted == ["auth"]
