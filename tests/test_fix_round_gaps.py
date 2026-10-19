@@ -336,7 +336,11 @@ def test_a_fix_session_at_the_turn_cap_keeps_its_work_on_the_pr_head_and_parks(
     assert record["label"] == c.NEEDS_HUMAN_LABEL and [ch["name"] for ch in record["checks"]] == [
         "fix"
     ]
-    assert record["checks"][0]["need"] == run_phase.UNFINISHED_NEED
+    assert record["checks"][0]["need"] == (
+        "The round's uncommitted work is committed on the branch but no gate judged it. Review "
+        "it, then start the next round (a review, an @claude comment or sdlc:reset-iterations); "
+        "that round's gate judges the whole branch."
+    )
     assert any(argv[:1] == ["upsert"] and "--head" in argv for _s, argv in calls)
 
 
@@ -384,6 +388,7 @@ def test_an_automatic_round_that_ends_unfinished_parks_once_with_the_gap_3_reaso
     session = tmp_path / "session.py"
     write(session, EDITS)
     env.update(FAKE_CLAUDE_RUN=str(session), FAKE_CLAUDE_RESULT=json.dumps(MAX_TURNS))
+    env.pop("FAKE_CLAUDE_GATE")  # the turn cap came before the round's gate
     auto_tests.dispatch_recorder(monkeypatch)
     assert run_phase.run_phase(args, env) == run_phase.EXIT_FAILED
     err = capsys.readouterr().err
@@ -429,7 +434,12 @@ def test_a_fix_session_that_ends_with_a_question_parks_with_it(
     reason = status_mod.read_status(change).parked_reason
     assert reason == "fix: the session ended without reaching its gate"
     [check] = _gate_c(change)["checks"]
-    assert check["name"] == "fix" and check["need"].startswith(run_phase.NO_WORK_NEED)
+    assert check["name"] == "fix" and check["need"].startswith(
+        "The round left no uncommitted work to keep (what it committed and pushed, if anything, "
+        "is on the branch) and no gate judged it. Review it and answer what it asks, if anything, "
+        "then start the next round (a review, an @claude comment or sdlc:reset-iterations); that "
+        "round's gate judges the whole branch."
+    )
     assert "The session stopped with:" in check["need"]
     assert "    > How would you like me to proceed?" in check["need"]
     assert git(root, "log", "-1", "--format=%s").strip() == "run(fix): failed run record"

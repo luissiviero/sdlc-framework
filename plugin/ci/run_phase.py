@@ -2451,19 +2451,21 @@ def report_failed_run(
 # what the session left, not gated, on the PR's head and parks the change on the PR.
 UNFINISHED_CHECK = "fix"
 UNFINISHED_PARK = UNFINISHED_CHECK + ": the round ended before its gate ({why})"
+AFTER_GATE_PARK = UNFINISHED_CHECK + ": the session failed after its gate ({why})"
 NO_GATE_PARK = UNFINISHED_CHECK + ": the session ended without reaching its gate"
 WORK_KEPT = "; its work is kept in {sha}, not gated"
 WORK_NOT_COMMITTED = "; its work could not be committed and stays uncommitted on the runner"
 WORK_LEFT_OUT = "; left out of the commit: {paths}"
 WORK_MESSAGE = "run(fix): unfinished round's work kept, not gated (gap 3): {why}"
-UNFINISHED_NEED = (
+KEPT_WORK_NEED = (
     "The round's uncommitted work is committed on the branch but no gate judged it. Review "
     "it, then start the next round (a review, an @claude comment or sdlc:reset-iterations); "
     "that round's gate judges the whole branch."
 )
 NO_WORK_NEED = (
-    "The round left no uncommitted work and no gate judged it. Answer what it needs, then "
-    "start the next round (a review, an @claude comment or sdlc:reset-iterations); that "
+    "The round left no uncommitted work to keep (what it committed and pushed, if anything, "
+    "is on the branch) and no gate judged it. Review it and answer what it asks, if anything, "
+    "then start the next round (a review, an @claude comment or sdlc:reset-iterations); that "
     "round's gate judges the whole branch."
 )
 LAST_MESSAGE_CHARS = 1500
@@ -2544,22 +2546,29 @@ def park_unfinished_round(
     raw: str,
     err: str,
     why: str | None,
+    after_gate: bool = False,
 ) -> dict[str, Any] | None:
     """Gaps 3 and 4 of NOTES §45 (choices 230 and 231), a fix round only: keep the session's
     uncommitted work in one commit with the change folder on the PR's head, not gated, and
-    park the change on the PR (``park_and_publish``). ``why`` is the failed session's reason
-    (gap 3, case a); None is a session that exited 0 without a fresh gate record (gap 4,
-    case b), whose park carries its last message. A failed session that left no work outside
-    the change folder returns None: the caller takes today's path (``park_deferred_record``,
-    the failed run record, and ``release_unfinished_round`` for an automatic round). Where
+    park the change on the PR (``park_and_publish``), whether or not anything was left to
+    keep. ``why`` is the failed session's reason (gap 3, case a; ``after_gate`` when its
+    gate had written a fresh record before it failed); None is a session that exited 0
+    without a fresh gate record (gap 4, case b), whose park carries its last message. Where
     the failed session's gate pushed a deferred record, this park replaces it: the gap-3
-    reason wins, and the change ends with one park."""
+    reason wins, and the change ends with one park. One exception keeps decision 29's own
+    park: an automatic round (the record still says ``sdlc:fixing``) whose session failed
+    with nothing to keep returns None, and the caller's path parks it once
+    (``release_unfinished_round``, or ``park_deferred_record`` over a deferred record)."""
     kept, left_out = unfinished_work(root, change_dir, config, pre_head, before_st)
-    if why is not None and not kept:
-        return None
-    reason = UNFINISHED_PARK.format(why=why) if why is not None else NO_GATE_PARK
     record = read_gate(change_dir, phase)
-    if record and record.get("label") == c.FIXING_LABEL:
+    automatic = bool(record) and record.get("label") == c.FIXING_LABEL
+    if why is not None and not kept and automatic:
+        return None
+    if why is None:
+        reason = NO_GATE_PARK
+    else:
+        reason = (AFTER_GATE_PARK if after_gate else UNFINISHED_PARK).format(why=why)
+    if automatic:
         # decision 29's record of the automatic round says why it ended; the park below
         # replaces the ``sdlc:fixing`` label, so ``release_unfinished_round`` parks nothing
         auto_round.set_round_status(change_dir, "unfinished", reason=reason)
@@ -2571,7 +2580,7 @@ def park_unfinished_round(
         reason += WORK_KEPT.format(sha=sha[:10]) if sha else WORK_NOT_COMMITTED
     if left_out:
         reason += WORK_LEFT_OUT.format(paths=", ".join(left_out))
-    need = (UNFINISHED_NEED if kept else NO_WORK_NEED) + (
+    need = (KEPT_WORK_NEED if kept else NO_WORK_NEED) + (
         last_message_block(data, raw) if why is None else ""
     )
     parked = park_and_publish(
@@ -3015,17 +3024,20 @@ def _run_phase(args, env: dict[str, str], track: dict[str, Any]) -> int:
                "claude_exit": code, "cost_usd": cost, "branch": branch})  # fmt: skip
         return EXIT_OK
     failed = code != 0 or not isinstance(data, dict) or bool(data.get("is_error"))
-    if phase == "fix" and (failed or not gate_record_fresh(change_dir, gate_phase, gate_before)):
+    fresh = gate_record_fresh(change_dir, gate_phase, gate_before)
+    if phase == "fix" and (failed or not fresh):
         # gaps 3 and 4 of NOTES §45 (choices 230 and 231): an unfinished round - the session
         # failed, or it exited 0 without writing this round's gate record (a question to the
         # owner, round 5 of change 0005) - keeps its uncommitted work on the PR's head, not
-        # gated, and parks. It comes after the owner-field and session-branch checks above: a
+        # gated, and parks, whether or not anything was left to keep (one park: it replaces
+        # the deferred-record park below; an automatic round with nothing to keep is decision
+        # 29's to park). It comes after the owner-field and session-branch checks above: a
         # round that parked on those keeps no work, since its tree is not the owner's to keep
         subtype = data.get("subtype") if isinstance(data, dict) else None
         why = f"claude exited {code}" + (f", {subtype}" if subtype else "") if failed else None
         unfinished = park_unfinished_round(
             plugin_dir, root, change_dir, gate_phase, fix_branch, config, pre_head, before_st,
-            data, raw, err, why,
+            data, raw, err, why, after_gate=fresh,
         )  # fmt: skip
         if unfinished is not None:
             track["why"] = unfinished["parked"]
