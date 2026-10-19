@@ -474,7 +474,8 @@ def test_sdlc_fix_tells_an_undecided_session_to_end_with_its_question():
     assert "it never waits for an answer" in unattended
     assert (
         "In CI a round whose trigger carries nothing never starts: when an un-park label "
-        "event, a review or an `@claude` comment started it, the run performed no owner label"
+        "event, a review or an `@claude` comment started it, the run read the pull request's "
+        "labels and performed none"
     ) in text
     assert (
         "A `workflow_dispatch` without the comment's link (the owner's start by hand, after a "
