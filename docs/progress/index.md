@@ -51,3 +51,4 @@ chronological order (oldest first). The current record stays in `docs/PROGRESS.m
 - [Progress — the speed-first order: ROADMAP R50 to R54, the Order rewritten, and the owner's choices 233 and 234 (2026-10-19)](2026-10-19-speed-first-order-and-choices-233-234.md)
 - [Progress — the framework's own checks, faster: no real network in the tests, the Windows suite in three shards, and the owner's choice 235 (2026-10-19)](2026-10-19-framework-checks-faster-and-choice-235.md)
 - [Progress — the framework's own checks, faster, part 2: the runner prepared before the suite (choice 235, item 6) (2026-10-19)](2026-10-19-framework-checks-faster-part-2-runner-prepared.md)
+- [Progress — the LLM wiki pattern: ROADMAP R55 to R57, three annotations, and the owner's choice 236 (2026-10-19)](2026-10-19-llm-wiki-and-choice-236.md)

@@ -1,0 +1,30 @@
+# The known broken links under docs/, read by `python tasks.py docs-lint` (ROADMAP R55).
+# One "<file under docs/><TAB><link target>" per line. The lint fails on a broken link not
+# listed here and on a line here that no longer breaks, so this list only shrinks.
+#
+# Kept records (choice 126: annotated, never rewritten; choice 237): each was written as
+# docs/PROGRESS.md, where "../sdlc.yaml" and "../CLAUDE.md" reached the repository root, and
+# moved to docs/progress/ unchanged.
+progress/2026-10-02-review-panel-blind-verdicts.md	../sdlc.yaml
+progress/2026-10-03-change-0001-docs-split.md	../CLAUDE.md
+progress/session-10.md	../sdlc.yaml
+progress/session-11.md	../sdlc.yaml
+progress/session-12.md	../sdlc.yaml
+progress/session-13.md	../sdlc.yaml
+progress/session-14-sitting-2.md	../sdlc.yaml
+progress/session-15.md	../sdlc.yaml
+progress/session-16.md	../sdlc.yaml
+progress/session-18-sitting-2.md	../sdlc.yaml
+progress/session-18-sitting-3.md	../sdlc.yaml
+progress/session-18.md	../sdlc.yaml
+progress/session-19.md	../CLAUDE.md
+progress/session-19.md	../sdlc.yaml
+progress/session-21.md	../REVIEW.md
+progress/session-21.md	../sdlc.yaml
+progress/session-7.md	../CLAUDE.md
+progress/session-7.md	../sdlc.yaml
+progress/session-8-sitting-1.md	../sdlc.yaml
+progress/session-9.md	../sdlc.yaml
+#
+# A file a proposal's edit table creates (R2, not built yet): the line goes when R2 adds it.
+proposals/session-tooling-pdf-web.md	../../.claude/hooks/ensure_pdf_tools.py
