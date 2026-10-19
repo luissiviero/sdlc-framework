@@ -2881,7 +2881,7 @@ def _run_phase(args, env: dict[str, str], track: dict[str, Any]) -> int:
         # decision 29 (1.0.3): a round the runner dispatched on a red target applies the
         # failing targets as its constraint, taken once from the pending auto-round.json
         requests_collected = {**requests_collected, **take_red_targets(root, change_dir, env)}
-        idle = nothing_to_fix(change_dir, labels_applied, requests_collected, env)
+        idle = nothing_to_fix(change_dir, labels_applied, requests_collected, env, args.repo)
         if idle:
             # a label event, a review or an @claude comment that carries nothing (a queued
             # second run of the same round, a comment already applied): no session, no
@@ -3952,22 +3952,26 @@ def nothing_to_fix(
     labels: dict[str, Any] | None,
     requests: dict[str, Any] | None,
     env: dict[str, str],
+    repo: str | None = None,
 ) -> str | None:
     """The skip reason of a fix round whose trigger carries nothing, or None (gap 4 of NOTES
     §45): the round was started by an un-park label (``pull_request``), a review
-    (``pull_request_review``) or an ``@claude`` comment (a ``workflow_dispatch`` with the
-    ``trigger`` input, decision 34); the run performed no owner label;
-    ``evidence/fix-requests.json`` was collected and holds no request this round would apply
-    (none, or each one already marked applied, or each one not applied); and the change is
-    not parked (a park is the gate's change request, ``/sdlc-fix`` step 1). A plain
-    ``workflow_dispatch`` never skips, and a file that is missing or was not collected
-    leaves the round to run."""
+    (``pull_request_review``) or an ``@claude`` comment (a ``workflow_dispatch`` whose
+    ``trigger`` input is a comment link of ``repo``, ``fix_requests.trigger_link``, decision
+    34); the labels were read and the run performed none; ``evidence/fix-requests.json`` was
+    collected and holds no request this round would apply (none, or each one already marked
+    applied, or each one not applied); and the change is not parked (a park is the gate's
+    change request, ``/sdlc-fix`` step 1). Any other ``workflow_dispatch`` (a stray
+    ``trigger`` value included) never skips, and a label read that failed or a file that is
+    missing or was not collected leaves the round to run."""
     event = env.get("GITHUB_EVENT_NAME") or ""
-    if event == "workflow_dispatch" and str(env.get("SDLC_TRIGGER") or "").strip():
+    if event == "workflow_dispatch" and fix_requests.trigger_link(env.get("SDLC_TRIGGER"), repo):
         trigger = COMMENT_TRIGGER
     else:
         trigger = SKIPPABLE_TRIGGERS.get(event)
     if trigger is None:
+        return None
+    if labels is not None and not labels.get("ok"):
         return None
     if (labels or {}).get("performed") or not (requests or {}).get("ok"):
         return None

@@ -659,3 +659,32 @@ def test_an_unfinished_round_after_a_reset_does_not_carry_the_iteration_cap(
     record = gaps._gate_c(change)
     assert [ch["name"] for ch in record["checks"]] == ["fix", "risk_list"]
     assert "iteration cap reached" not in record["what_i_need"]
+
+
+# --- round 3, items 3 and 4: a failed label read and a stray trigger never skip ----------------
+def test_a_label_event_whose_labels_could_not_be_read_runs(
+    project, fake_claude, monkeypatch, tmp_path, capsys
+):
+    _root, change, args, env, _calls = _ready_round(
+        project, fake_claude, monkeypatch, tmp_path, [], "label"
+    )
+    unread = {"ok": False, "reason": "cannot read #7: HTTP 502: labels not read"}
+    monkeypatch.setattr(run_phase, "apply_owner_labels", lambda *a, **k: unread)
+    run_phase.run_phase(args, env)
+    assert "skipped" not in json.loads(capsys.readouterr().out)
+    assert (change / "evidence" / "claude-fix.json").exists()  # the session ran
+
+
+@pytest.mark.parametrize(
+    "stray", ["not a link", "https://github.com/someone/else/pull/7#issuecomment-5"]
+)
+def test_a_dispatch_whose_trigger_is_not_a_comment_link_of_the_repository_runs(
+    project, fake_claude, monkeypatch, tmp_path, capsys, stray
+):
+    _root, change, args, env, _calls = _ready_round(
+        project, fake_claude, monkeypatch, tmp_path, [], "dispatch"
+    )
+    env["SDLC_TRIGGER"] = stray
+    run_phase.run_phase(args, env)
+    assert "skipped" not in json.loads(capsys.readouterr().out)
+    assert (change / "evidence" / "claude-fix.json").exists()  # the session ran
