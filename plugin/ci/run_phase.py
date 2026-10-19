@@ -724,7 +724,7 @@ def gitops_current_branch(root: Path) -> str | None:
 def _ref_exists(root: Path, ref: str) -> bool:
     from state import gitops
 
-    return bool(gitops.run(root, "rev-parse", "--verify", "--quiet", ref, check=False).strip())
+    return gitops.ref_exists(root, ref)  # remembered until the checkout may have changed
 
 
 def checkout_profile(root: Path, change_id: str) -> str | None:

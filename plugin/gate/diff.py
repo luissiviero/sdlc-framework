@@ -319,9 +319,10 @@ def committed_files(root: Path, merge_base: str | None, head: str | None = None)
 
 
 def is_repo(root: Path) -> bool:
+    """``gitops.is_repo``, whose yes is remembered (1.0.13); no git at all is a no."""
     try:
-        return _git(root, "rev-parse", "--is-inside-work-tree").strip() == "true"
-    except GitUnavailable:
+        return gitops.is_repo(root)
+    except OSError:
         return False
 
 
@@ -340,8 +341,14 @@ def default_base(root: Path) -> str:
     emptied the committed diff the checks and the runner's guard judge.
 
     ``SDLC_DEFAULT_BRANCH`` (refused when it names a framework branch, see
-    ``gitops.explicit_default_branch``) wins when ``refs/remotes/origin/<value>`` resolves."""
+    ``gitops.explicit_default_branch``) wins when ``refs/remotes/origin/<value>`` resolves.
+    The answer is remembered until the process starts anything but a read-only git query
+    (``gitops.remembered``, 1.0.13)."""
     explicit = gitops.explicit_default_branch()
+    return gitops.remembered(root, ("default_base", explicit), lambda: _base(root, explicit))
+
+
+def _base(root: Path, explicit: str | None) -> str:
     if explicit:
         ref = f"refs/remotes/origin/{explicit}"
         if _git(root, "rev-parse", "--verify", "--quiet", ref, check=False).strip():

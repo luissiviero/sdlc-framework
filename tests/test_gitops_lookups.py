@@ -1,0 +1,195 @@
+"""Layer-1 tests of the remembered git lookups (plugin 1.0.13, choice 235 item 5): ``is_repo``,
+``default_branch``, ``ref_exists`` and gate/diff.py's ``default_base`` ask git once while
+nothing can have changed the answer, and a lookup after any git call that can change it
+(init, fetch, checkout, commit, branch, remote, push, merge, a test's own ``git``, a process
+that is not git at all) returns the new truth."""
+
+from __future__ import annotations
+
+import shutil
+import stat
+import subprocess
+import sys
+from pathlib import Path
+
+import pytest
+
+from gate import diff as gate_diff
+from state import gitops
+
+
+def git(cwd: Path, *args: str) -> str:
+    return subprocess.run(
+        ["git", *args], cwd=cwd, capture_output=True, text=True, check=True, encoding="utf-8"
+    ).stdout
+
+
+def commit(root: Path, name: str) -> None:
+    (root / name).write_text(name + "\n", encoding="utf-8")
+    git(root, "add", name)
+    git(root, "commit", "-q", "-m", name)
+
+
+@pytest.fixture
+def repo(tmp_path):
+    """A repository on ``trunk`` (no main, no master, no remote) with one commit."""
+    root = tmp_path / "proj"
+    root.mkdir()
+    git(root, "init", "-q", "-b", "trunk")
+    git(root, "config", "user.email", "owner@example.com")
+    git(root, "config", "user.name", "Owner")
+    commit(root, "a.txt")
+    return root
+
+
+@pytest.fixture
+def counted(monkeypatch):
+    """The git calls gitops makes, by argument list."""
+    calls: list[tuple[str, ...]] = []
+    real = gitops.run
+
+    def run(root, *args, check=True):
+        calls.append(args)
+        return real(root, *args, check=check)
+
+    monkeypatch.setattr(gitops, "run", run)
+    return calls
+
+
+def test_a_repeated_lookup_with_nothing_in_between_asks_git_once(repo, counted):
+    assert gitops.is_repo(repo) and gitops.is_repo(repo)
+    assert gitops.default_branch(repo) == gitops.default_branch(repo) == "trunk"
+    assert gitops.ref_exists(repo, "refs/heads/trunk") and gitops.ref_exists(
+        repo, "refs/heads/trunk"
+    )
+    assert gate_diff.default_base(repo) == gate_diff.default_base(repo) == "HEAD"
+    asked = [args[:2] for args in counted]
+    assert asked.count(("rev-parse", "--is-inside-work-tree")) == 1
+    assert asked.count(("symbolic-ref", "refs/remotes/origin/HEAD")) == 1  # default_branch
+    assert asked.count(("rev-parse", "--verify")) == 3  # origin/main, origin/master, trunk
+    # read-only queries in between (the gate's own) keep the answers
+    git(repo, "status", "--porcelain")
+    git(repo, "rev-parse", "HEAD")
+    before = len(counted)
+    assert gitops.default_branch(repo) == "trunk" and gitops.ref_exists(repo, "refs/heads/trunk")
+    assert len(counted) == before
+
+
+def test_is_repo_follows_init_and_a_removed_git_directory(tmp_path):
+    root = tmp_path / "proj"
+    root.mkdir()
+    assert gitops.is_repo(root) is False and gate_diff.is_repo(root) is False
+    git(root, "init", "-q")
+    assert gitops.is_repo(root) is True and gate_diff.is_repo(root) is True
+    for path in (root / ".git").rglob("*"):
+        path.chmod(stat.S_IWRITE | stat.S_IREAD)  # git's objects are read-only on Windows
+    shutil.rmtree(root / ".git")  # no process at all: the stat of the git directory sees it
+    assert gitops.is_repo(root) is False and gate_diff.is_repo(root) is False
+    gitops.run(root, "init", "-q")
+    assert gitops.is_repo(root) is True
+
+
+def test_default_branch_follows_branch_remote_push_fetch_and_checkout(repo, tmp_path):
+    assert gitops.default_branch(repo) == "trunk"  # the current branch, the last resort
+    git(repo, "checkout", "-q", "-b", "feature")
+    assert gitops.default_branch(repo) == "feature"
+    gitops.run(repo, "branch", "master", "trunk")
+    assert gitops.default_branch(repo) == "master"  # a local master, by gitops' own call
+    git(repo, "branch", "main", "trunk")
+    assert gitops.default_branch(repo) == "main"  # a local main, by a test's own git
+    bare = tmp_path / "remote.git"
+    git(tmp_path, "init", "-q", "--bare", "-b", "trunk", str(bare))
+    gitops.run(repo, "remote", "add", "origin", str(bare))
+    gitops.run(repo, "push", "-q", "origin", "feature:release")
+    assert gitops.ref_exists(repo, "refs/remotes/origin/release")
+    git(bare, "symbolic-ref", "HEAD", "refs/heads/release")
+    gitops.run(repo, "remote", "set-head", "origin", "--auto")  # origin/HEAD by a fetch of it
+    assert gitops.default_branch(repo) == "release"
+    assert gate_diff.default_base(repo) == "refs/remotes/origin/release"
+    git(repo, "remote", "set-head", "origin", "--delete")
+    assert gitops.default_branch(repo) == "main"
+    assert gate_diff.default_base(repo) == "main"
+
+
+def test_ref_exists_follows_push_fetch_merge_and_deletion(repo, tmp_path):
+    bare = tmp_path / "remote.git"
+    git(tmp_path, "init", "-q", "--bare", "-b", "trunk", str(bare))
+    git(repo, "remote", "add", "origin", str(bare))
+    assert gitops.ref_exists(repo, "refs/remotes/origin/trunk") is False
+    gitops.push(repo, "trunk")
+    assert gitops.ref_exists(repo, "refs/remotes/origin/trunk") is True
+    other = tmp_path / "other"
+    git(tmp_path, "clone", "-q", str(bare), str(other))
+    git(other, "config", "user.email", "o@example.com")
+    git(other, "config", "user.name", "O")
+    git(other, "checkout", "-q", "-b", "topic")
+    commit(other, "b.txt")
+    git(other, "push", "-q", "origin", "topic")
+    assert gitops.ref_exists(repo, "refs/remotes/origin/topic") is False
+    gitops.run(repo, "fetch", "-q", "origin")
+    assert gitops.ref_exists(repo, "refs/remotes/origin/topic") is True
+    assert gitops.ref_exists(repo, "topic-merged") is False
+    git(repo, "merge", "-q", "--no-edit", "origin/topic")
+    git(repo, "branch", "topic-merged")
+    assert gitops.ref_exists(repo, "topic-merged") is True
+    git(repo, "update-ref", "-d", "refs/remotes/origin/topic")
+    assert gitops.ref_exists(repo, "refs/remotes/origin/topic") is False
+    assert gitops.ref_exists(repo, "HEAD~2") is False  # a.txt and b.txt only
+    (repo / "c.txt").write_text("c\n", encoding="utf-8")
+    assert gitops.commit_paths(repo, ["c.txt"], "c") is not None  # gitops' own commit
+    assert gitops.ref_exists(repo, "HEAD~2") is True
+
+
+def test_a_process_that_is_not_git_forgets_every_answer(repo):
+    """The model's session or a script may run git itself: any process start counts."""
+    assert gitops.default_branch(repo) == "trunk"
+    script = "import subprocess; subprocess.run(['git', 'branch', 'main'], check=True)"
+    subprocess.run([sys.executable, "-c", script], cwd=repo, check=True)
+    assert gitops.default_branch(repo) == "main"
+
+
+def test_the_explicit_default_branch_is_never_remembered(repo, monkeypatch):
+    assert gitops.default_branch(repo) == "trunk"
+    monkeypatch.setenv(gitops.DEFAULT_BRANCH_ENV, "develop")
+    assert gitops.default_branch(repo) == "develop"
+    monkeypatch.delenv(gitops.DEFAULT_BRANCH_ENV)
+    assert gitops.default_branch(repo) == "trunk"
+
+
+@pytest.mark.parametrize(
+    "argv, reads",
+    [
+        (["git", "rev-parse", "--is-inside-work-tree"], True),
+        (["git", "-c", "core.hooksPath=/x", "-c", "core.fsmonitor=false", "status"], True),
+        (["/usr/bin/git", "--literal-pathspecs", "diff", "--cached"], True),
+        (["git", "config", "--get", "user.name"], True),
+        (["git", "config", "user.name", "Bot"], False),
+        (["git", "remote"], True),
+        (["git", "remote", "get-url", "origin"], True),
+        (["git", "remote", "add", "origin", "/x"], False),
+        (["git", "remote", "set-url", "origin", "/x"], False),
+        (["git", "branch", "--list", "main"], True),
+        (["git", "branch", "--list", "-D", "main"], False),
+        (["git", "branch", "main"], False),
+        (["git", "symbolic-ref", "refs/remotes/origin/HEAD"], True),
+        (["git", "symbolic-ref", "HEAD", "refs/heads/x"], False),
+        (["git", "symbolic-ref", "--delete", "refs/remotes/origin/HEAD"], False),
+        (["git", "fetch", "origin"], False),
+        (["git", "checkout", "-b", "x"], False),
+        (["git", "commit", "-m", "x"], False),
+        (["git", "push", "origin", "x"], False),
+        (["git", "merge", "main"], False),
+        (["git", "init"], False),
+        (["git"], False),
+        ([sys.executable, "-c", "pass"], False),
+        # Windows: the audit event carries the command line list2cmdline built
+        ('git -c "core.hooksPath=C:\\Users\\RUNNER~1\\a b" rev-parse HEAD', True),
+        ("C:\\Program Files\\Git\\cmd\\git.exe status", False),  # unquoted: not understood
+        ('"C:\\Program Files\\Git\\cmd\\git.exe" status', True),
+        ("git.exe checkout -q main", False),
+        ('git config "--get" user.name', True),
+        (b"git status", False),
+    ],
+)
+def test_only_read_only_git_queries_keep_the_answers(argv, reads):
+    assert gitops._reads_only(argv) is reads

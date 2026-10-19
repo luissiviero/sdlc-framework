@@ -5,7 +5,9 @@ from __future__ import annotations
 
 import os
 import re
+import shlex
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 
@@ -18,6 +20,105 @@ DEFAULT_BRANCH_ENV = "SDLC_DEFAULT_BRANCH"
 
 class GitError(RuntimeError):
     pass
+
+
+# --- remembered lookups (1.0.13, choice 235 item 5) ---------------------------------------------
+# One phase run asked git ``rev-parse --is-inside-work-tree`` 13 times and ``rev-parse --verify
+# --quiet refs/remotes/origin/main`` 11 times, from is_repo, default_branch, gate/diff.py's
+# default_base and the runner's ref checks; on Windows every git process is expensive. A
+# lookup is remembered only until the process starts anything but a read-only git query: a
+# fetch, a checkout, a commit, a push, the model's session, a test's own ``git`` helper. The
+# audit hook below sees every process start of this process (``subprocess``, ``os.system``,
+# ``os.exec*``, ``os.spawn*``, ``os.posix_spawn``), whoever starts it, and moves the
+# generation on; a remembered answer of an older generation is asked again. is_repo keeps a
+# yes for good, re-checked by a stat that the git directory it found still exists.
+_PROCESS_EVENTS = frozenset(
+    {"subprocess.Popen", "os.system", "os.exec", "os.spawn", "os.posix_spawn", "os.startfile"}
+)
+# the git subcommands that never move a ref, HEAD or a remote; ``config``, ``remote``,
+# ``branch`` and ``symbolic-ref`` count only in their reading forms (``_reads_only``)
+_READ_ONLY_GIT = frozenset(
+    {
+        "rev-parse", "cat-file", "show", "diff", "diff-tree", "diff-index", "log", "rev-list",
+        "merge-base", "ls-files", "ls-tree", "ls-remote", "for-each-ref", "show-ref", "status",
+        "version", "check-ignore", "check-attr", "grep", "describe", "name-rev", "var",
+    }
+)  # fmt: skip
+_generation = 0
+_remembered: dict[tuple, tuple[int, object]] = {}
+_repos: dict[tuple, str] = {}
+
+
+def _reads_only(argv) -> bool:
+    """True when ``argv`` is a git query that changes no ref, HEAD or remote. On Windows the
+    audit event carries the command line ``list2cmdline`` built; it is split back on its
+    double quotes. Anything not understood is not read-only."""
+    if isinstance(argv, bytes):
+        return False
+    try:
+        if isinstance(argv, str):
+            split = shlex.split(argv, posix=False)
+            words = [w[1:-1] if w[:1] == w[-1:] == '"' else w for w in split]
+        else:
+            words = [os.fsdecode(w) for w in argv]
+    except (TypeError, ValueError):
+        return False
+    if not words:
+        return False
+    if os.path.splitext(re.split(r"[\\/]", words[0])[-1])[0].lower() != "git":
+        return False
+    i = 1
+    while i < len(words) and words[i].startswith("-"):
+        i += 2 if words[i] in ("-c", "-C") else 1  # global options before the subcommand
+    if i >= len(words):
+        return False
+    verb, rest = words[i], words[i + 1 :]
+    if verb in _READ_ONLY_GIT:
+        return True
+    if verb == "config":
+        return bool({"--get", "--get-all", "--get-regexp", "--list", "-l"} & set(rest))
+    if verb == "remote":
+        return rest in ([], ["-v"], ["--verbose"]) or rest[:1] == ["get-url"]
+    if verb == "branch":
+        writes = {"-d", "-D", "-m", "-M", "-c", "-C", "-f", "-u", "--delete", "--move", "--copy"}
+        reads = {"--list", "--show-current"}
+        return bool(reads & set(rest)) and not writes & set(rest)
+    if verb == "symbolic-ref":
+        return not {"-d", "--delete"} & set(rest) and len([w for w in rest if w[:1] != "-"]) == 1
+    return False
+
+
+def _on_audit(event: str, args: tuple) -> None:
+    global _generation
+    if event in _PROCESS_EVENTS and not (event == "subprocess.Popen" and _reads_only(args[1])):
+        _generation += 1
+
+
+sys.addaudithook(_on_audit)
+
+
+def _key(root: Path, *what: object) -> tuple:
+    return (
+        *what,
+        os.path.realpath(root),
+        os.environ.get("GIT_DIR"),
+        os.environ.get("GIT_WORK_TREE"),
+    )
+
+
+def remembered(root: Path, what: tuple, ask):
+    """``ask()``'s answer for ``what`` in ``root``, asked again once the process has started
+    anything but a read-only git query since it was last asked. An exception is not
+    remembered."""
+    key = _key(root, *what)
+    hit = _remembered.get(key)
+    if hit is not None and hit[0] == _generation:
+        return hit[1]
+    generation = _generation
+    answer = ask()
+    if generation == _generation:  # nothing changed the checkout while it was asked
+        _remembered[key] = (generation, answer)
+    return answer
 
 
 _NO_HOOKS_DIR: str | None = None
@@ -73,14 +174,35 @@ def run(root: Path, *args: str, check: bool = True) -> str:
 
 
 def is_repo(root: Path) -> bool:
+    """``root`` is inside a git work tree. A yes is remembered with the git directory git
+    named, and stands while that directory exists; a no is always asked again (a later
+    ``git init`` makes it a yes)."""
+    key = _key(root)
+    git_dir = _repos.get(key)
+    if git_dir and os.path.exists(git_dir):
+        return True
     try:
-        return run(root, "rev-parse", "--is-inside-work-tree").strip() == "true"
+        out = run(root, "rev-parse", "--is-inside-work-tree", "--absolute-git-dir").split("\n")
     except (GitError, FileNotFoundError):
         return False
+    if out[0].strip() != "true":
+        return False
+    if len(out) > 1 and out[1].strip():
+        _repos[key] = out[1].strip()
+    return True
 
 
 def current_branch(root: Path) -> str:
     return run(root, "rev-parse", "--abbrev-ref", "HEAD").strip()
+
+
+def ref_exists(root: Path, ref: str) -> bool:
+    """``git rev-parse --verify --quiet <ref>`` names a commit (remembered, see above)."""
+    return remembered(
+        root,
+        ("ref_exists", ref),
+        lambda: bool(run(root, "rev-parse", "--verify", "--quiet", ref, check=False).strip()),
+    )
 
 
 def explicit_default_branch() -> str | None:
@@ -110,6 +232,10 @@ def default_branch(root: Path) -> str:
     explicit = explicit_default_branch()
     if explicit:
         return explicit
+    return remembered(root, ("default_branch",), lambda: _guess_default_branch(root))
+
+
+def _guess_default_branch(root: Path) -> str:
     try:
         ref = run(root, "symbolic-ref", "refs/remotes/origin/HEAD").strip()
         prefix = "refs/remotes/origin/"
