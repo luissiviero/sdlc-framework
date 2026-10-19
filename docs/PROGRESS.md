@@ -1,23 +1,32 @@
-# Progress — two ROADMAP candidates registered: R50 (revisit decision 17's parallel worktrees) and R51 (concurrent changes, safe by construction), and the owner's choice 232 (2026-10-19)
+# Progress — the speed-first order: ROADMAP R50 to R54, the Order rewritten, and the owner's choices 232 and 233 (2026-10-19)
 
-This session ran on branch `ccr-70fb3ae3-39fz5m`, from the owner's questions of 2026-10-19: the work still to be done, whether several items can run at once, whether that adds risk, and whether the pipeline expects it. The previous record (1.0.10, choices 228 to 231) is now `docs/progress/2026-10-19-1.0.10-and-choices-228-231.md`, unchanged. The session's own file is `docs/handoffs/sessions/2026-10-19-ccr-70fb3ae3-39fz5m.md`.
+This session ran on branch `ccr-70fb3ae3-39fz5m`, from the owner's questions of 2026-10-19: the work left, whether it can run concurrently, and then how to speed the plugin's use up as far as possible, "even if it means giving up a bit of control for a meaningful time boost". The previous record (1.0.10, choices 228 to 231) is now `docs/progress/2026-10-19-fix-round-robustness-1.0.10-and-choices-228-231.md`, unchanged, under the same name and index line as the parallel session's PR #241. The session's own file is `docs/handoffs/sessions/2026-10-19-ccr-70fb3ae3-39fz5m.md`.
 
 ## Summary
-- **The session's answer, in short.** A project's pipeline already runs several changes at once: every phase workflow keys its concurrency group on the work branch, and a new id skips the ids with remote branches. Framework sessions already run in parallel by HANDOFF's design (one session file each). The one thing decision 17 leaves out is parallel worktrees on one local checkout.
-- **R50, a trigger to revisit decision 17's worktrees** (choice 232), `docs/proposals/revisit-parallel-worktrees.md`. Decision 17 carries a note beside its accepted option.
-- **R51, concurrent changes safe by construction** (proposed, not accepted), `docs/proposals/concurrent-changes.md`. On the sample now, concurrency saves no meaningful time; on a real project it raises throughput, because most of a change's elapsed time is waiting for the owner. Its gaps: a build PR whose checks are not re-run when the default branch moves (the owner's merge is Exempt from the ruleset, and the release runs `deploy.command` after the merge), and an id race between two allocations before either pushes. The spend ceiling and the view of the changes in flight are already R25, R9 part 1 and R20.
+- **Concurrency, the session's answer.** A project's pipeline already runs several changes at once: every phase workflow keys its concurrency group on the work branch, and a new id skips the ids with remote branches. Framework sessions already run in parallel by HANDOFF's design. On the sample, concurrency saves no meaningful time; on a real project it raises throughput, since most of a change's elapsed time is waiting for the owner.
+- **R50**: a trigger to revisit decision 17's parallel worktrees at 20 changes past gate (e) on a real project (choice 232). Decision 17 carries a note.
+- **R51**: concurrent changes, safe by construction (`docs/proposals/concurrent-changes.md`): a build PR behind the default branch is brought up to date and re-checked before gate (e) and the release, and a new id is reserved on the remote.
+- **The speed-first order** (choice 233, `docs/proposals/speed-beyond-the-sprint.md`): R7, then R24, R22, R51 with R25 parts 1-2, R18, R29 part 1 with R54, R26 and R52 move to ranks 7 to 15; the rest keep their order among themselves after them. Each moved cell is annotated with its previous rank.
+- **Three new candidates**: R52, merge by silence at gate (e), opt-in, decided only at R50's trigger; R53, faster CI jobs, measured first; R54, the quick intent, with R29 part 1.
 - No change under `plugin/` or `template/`; no version bump.
 
 ## The owner's decisions (2026-10-19)
 232. **Decision 17's "probably never" for parallel worktrees is revisited, not read as "never"** (the owner: "register to revisit this once the plugin is up and running for a while"). The session's reading of "a while": 20 changes past gate (e) on a project other than the sample, decision 17's own threshold for evals. ROADMAP R50.
+233. **The speed table's recommendations, all accepted** ("I accept all recommendations as you suggest them"):
+    - the speed-first Order above, with R51 accepted and R52 to R54 added;
+    - the sample runs `review: deferred` (applied by the owner, sample PR #72);
+    - the existing profiles are used per project (`deploy.production: false` where there is no real production, Lite for scripts, documentation and experiments); the sample keeps `production: true`;
+    - incident intents keep gate (a);
+    - the fix-round caps stay until R26's measures.
 
 ## Proposed edits for the owner
-None: no guardrail line changes.
+None: no guardrail line changes in this PR. (The sample's pin to 1.0.11 is PR #241's row.)
 
 ## Left
-- **R51 waits for the owner:** accept it and give it an Order, or drop it.
+- **This PR and #241 both replace `docs/PROGRESS.md`.** Their archive of the 1.0.10 record is identical (same file, same index line), so only `docs/PROGRESS.md` conflicts. #241 merges first; this branch then merges `main`, moves #241's record to `docs/progress/` unchanged and keeps this record.
 - **R50 has no automatic check:** a session that reads a real project's changes counts the changes past gate (e) and raises R50 at 20.
-- **R51's G1 is read from the workflows and `sdlc-init.md`, not seen live:** a build PR behind the default branch merging and releasing with no re-run.
+- **R51's G1 is read from the workflows and `sdlc-init.md`, not seen live.**
+- **R53's measure** is the live-proof session's to take from change 0015's job steps, if it agrees.
 
 ## Checks (this repository)
 On the final head, after `python -m pip install -e ".[dev]"`, chained with `set -o pipefail`: the four commands of `HANDOFF.md`'s standing precondition 1. Their output is in the PR.

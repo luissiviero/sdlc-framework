@@ -2,7 +2,7 @@
 type: Proposal
 title: Concurrent changes, safe by construction — a build PR is gated against the default branch it merges into
 description: The pipeline already runs several changes at once; what it lacks is a guard that a build PR's checks still hold after another change merged, plus the id reservation, the spend ceiling and the view of the changes in flight that R25, R9 and R20 partly carry.
-status: proposed
+status: accepted
 roadmap: R51
 sources:
   - id: owner
@@ -25,7 +25,7 @@ generated: { by: sdlc-framework-session/ccr-70fb3ae3-39fz5m, at: 2026-10-19T12:0
 
 # Concurrent changes, safe by construction
 
-**Status: proposed on 2026-10-19 at the owner's request (ROADMAP R51).** Nothing is built.
+**Status: proposed on 2026-10-19 at the owner's request (ROADMAP R51).** Nothing is built. *[2026-10-19, the owner (choice 233): accepted as recommended, Order 10, with R25 parts 1-2 at 11.]*
 
 ## Does running changes concurrently save time?
 
