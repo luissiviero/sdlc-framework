@@ -626,3 +626,36 @@ def test_a_restart_keeps_an_owner_change_on_main_the_branch_record_predates(
     assert st.risk_accepted == []  # the owner's revocation stands
     assert st.phase == "c" and st.parked_reason is None
     assert (st.gate.phase, st.gate.result) == ("b", "passed")
+
+
+# --- round 3, item 2: only the risk hits outlive the park they were in ------------------------
+def test_an_unfinished_round_after_a_reset_does_not_carry_the_iteration_cap(
+    project, fake_claude, monkeypatch, tmp_path, capsys
+):
+    """The iteration cap parked the change; the owner's sdlc:reset-iterations was performed
+    and the round hit the turn cap before its gate: the new park must not ask for a reset
+    again, while the risk hit the same park named stays for sdlc:accept-risk."""
+    root, change, args, env, _calls = gaps._owner_round(
+        project, fake_claude, monkeypatch, tmp_path, gaps.EDITS, gaps.MAX_TURNS
+    )
+    cap = {
+        "name": "limits",
+        "ok": False,
+        "reason": "iteration cap reached (3 of 3)",
+        "need": "Reset the count with sdlc:reset-iterations.",
+        "details": {"iterations": 3},
+    }
+    write(
+        change / "evidence" / "gate-c.json",
+        json.dumps({**RISK_PARK, "checks": [cap, *RISK_PARK["checks"]]}),
+    )
+    git(root, "commit", "-q", "-am", "the iteration cap park")
+    performed = [{"label": c.RESET_ITERATIONS_LABEL, "actor": "luissiviero"}]
+    monkeypatch.setattr(
+        run_phase, "apply_owner_labels", lambda *a, **k: {"ok": True, "performed": performed}
+    )
+    assert run_phase.run_phase(args, env) == run_phase.EXIT_FAILED
+    capsys.readouterr()
+    record = gaps._gate_c(change)
+    assert [ch["name"] for ch in record["checks"]] == ["fix", "risk_list"]
+    assert "iteration cap reached" not in record["what_i_need"]

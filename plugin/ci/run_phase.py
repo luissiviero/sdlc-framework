@@ -4816,11 +4816,14 @@ def write_park_result(
     the park and its "What I need from you" block (the gate itself overwrites it later).
     ``need`` is the pre-run sentence unless the park came after the session. With
     ``keep_failed``, a record this park replaces that is itself a park keeps its failed
-    checks, details included, after the new one: ``sdlc:accept-risk`` reads the hits of the
-    ``risk_list`` check from this file (``unpark.risk_hits``), and the iteration cap's need
-    lives there too (the review of 1.0.10: the unfinished round's park erased both)."""
+    risk-hit checks (``unpark.RISK_HIT_CHECKS``: ``risk_list``, ``ratchets``), details
+    included, after the new one: ``sdlc:accept-risk`` reads their hits from this file
+    (``unpark.risk_hits``), and the unfinished round's park erased them (the review of
+    1.0.10). Its other checks are not carried: they judged a state the round may have
+    changed (an iteration cap the owner's reset lifted), and the next gate judges again."""
     from gate.checks import CheckResult  # noqa: PLC0415
     from gate.gate import GateResult  # noqa: PLC0415
+    from state.unpark import RISK_HIT_CHECKS  # noqa: PLC0415
 
     path = change_dir / art.EVIDENCE_DIR / art.GATE_RESULT.format(phase=phase)
     kept: list[CheckResult] = []
@@ -4833,7 +4836,7 @@ def write_park_result(
             kept = [
                 CheckResult.from_dict(ch)
                 for ch in before.get("checks") or []
-                if isinstance(ch, dict) and not ch.get("ok") and ch.get("name") != check
+                if isinstance(ch, dict) and not ch.get("ok") and ch.get("name") in RISK_HIT_CHECKS
             ]
     result = GateResult(
         change_id=st.id,
@@ -4916,7 +4919,7 @@ def park_and_publish(
     and pushed on the work branch, and the phase's PR carrying ``sdlc:needs-human`` and the
     "What I need from you" block (OPERATING_MODEL section 5: a park is a queue item). A fix
     round parks the change's own phase on the PR's head (``branch``). ``keep_failed`` keeps
-    the failed checks of a gate park this park replaces (``write_park_result``)."""
+    the failed risk-hit checks of a gate park this park replaces (``write_park_result``)."""
     live_token()
     branch_phase = st.phase if phase == "fix" else BRANCH_PHASE.get(phase, phase)
     state_cli = plugin_dir / "plugin" / "state" / "cli.py"
