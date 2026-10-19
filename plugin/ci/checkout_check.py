@@ -48,6 +48,11 @@ from pathlib import Path
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+# The import below would write plugin/ci/__pycache__ into the very framework checkout this
+# script then finds "not clean" (`status --ignored`): every deploy run of 1.0.9 to 1.0.11
+# ended red here (NOTES section 48).
+sys.dont_write_bytecode = True
+
 from ci import app_token  # noqa: E402 - stdlib only, from this fresh framework checkout
 
 DEFAULT_FETCH_REFSPEC = "+refs/heads/*:refs/remotes/origin/*"

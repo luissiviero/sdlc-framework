@@ -230,3 +230,37 @@ def test_keys_reached_through_an_include_or_the_global_files_are_found(tmp_path,
         git(work, "config", key, "x")
     found = {name for _scope, name in checkout_check.config_findings(work)}
     assert {"diff.external", "diff.foo.textconv", "diff.foo.command"} <= found
+
+
+def test_the_script_run_from_the_fresh_framework_leaves_it_clean(tmp_path):
+    """The live deploy run 39270275720 on the sample (plugin 1.0.10): the workflows run this
+    script from the framework checkout it judges, and its import of ``ci.app_token`` wrote
+    ``plugin/ci/__pycache__`` there, which ``status --ignored`` then refused. Here the
+    framework origin carries the real ``plugin/ci`` files and the script runs from the
+    clone, as in the workflow, with bytecode writing on."""
+    import os
+    import shutil
+
+    work, bare, fw_origin, framework = setting(tmp_path)
+    ci_dir = fw_origin / "plugin" / "ci"
+    ci_dir.mkdir(parents=True)
+    for name in ("__init__.py", "app_token.py", "checkout_check.py"):
+        shutil.copy(SCRIPT.parent / name, ci_dir / name)
+    (fw_origin / ".gitignore").write_text("__pycache__/\n*.pyc\n", encoding="utf-8")
+    git(fw_origin, "add", ".")
+    git(fw_origin, "commit", "-q", "-m", "the plugin's ci files")
+    git(fw_origin, "tag", "-f", "v0.2.16")
+    # the clone takes the moved tag in place: removing it would trip over git's read-only
+    # object files on Windows (the first Windows run of this test, PR #241)
+    git(framework, "fetch", "-q", "--force", "origin", "tag", "v0.2.16")
+    git(framework, "checkout", "-q", "v0.2.16")
+    env = {k: v for k, v in os.environ.items() if k != "PYTHONDONTWRITEBYTECODE"}
+    proc = subprocess.run(
+        [sys.executable, str(framework / "plugin" / "ci" / "checkout_check.py"),
+         "--root", str(work), "--framework", "framework", "--pin-ref", "v0.2.16",
+         "--origin", str(bare), "--framework-origin", str(fw_origin),
+         "--default-branch", "main"],
+        capture_output=True, text=True, env={**env, "GIT_CONFIG_GLOBAL": "/dev/null"},
+    )  # fmt: skip
+    assert proc.returncode == 0, proc.stderr
+    assert git(framework, "status", "--porcelain", "--ignored", "--untracked-files=all") == ""
