@@ -49,7 +49,7 @@ if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 # The import below would write plugin/ci/__pycache__ into the very framework checkout this
-# script then finds "not clean" (`status --ignored`): every deploy run of 1.0.9 and 1.0.10
+# script then finds "not clean" (`status --ignored`): every deploy run of 1.0.9 to 1.0.11
 # ended red here (NOTES section 48).
 sys.dont_write_bytecode = True
 
