@@ -49,3 +49,5 @@ chronological order (oldest first). The current record stays in `docs/PROGRESS.m
 - [Progress — the fast lane's recovery PR: a pushed `fast_lane.b` always has a build behind it, as plugin **1.0.11**, and the owner's choice 232 (2026-10-19)](2026-10-19-fast-lane-recovery-1.0.11-and-choice-232.md)
 - [Progress — the live proof on the sample, part 1: change 0015 up to a red deploy run, and the checkout check's bytecode as plugin **1.0.12** (2026-10-19)](2026-10-19-live-proof-part-1-1.0.12.md)
 - [Progress — the speed-first order: ROADMAP R50 to R54, the Order rewritten, and the owner's choices 233 and 234 (2026-10-19)](2026-10-19-speed-first-order-and-choices-233-234.md)
+- [Progress — the framework's own checks, faster: no real network in the tests, the Windows suite in three shards, and the owner's choice 235 (2026-10-19)](2026-10-19-framework-checks-faster-and-choice-235.md)
+- [Progress — the framework's own checks, faster, part 2: the runner prepared before the suite (choice 235, item 6) (2026-10-19)](2026-10-19-framework-checks-faster-part-2-runner-prepared.md)
