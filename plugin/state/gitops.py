@@ -235,16 +235,26 @@ def default_branch(root: Path) -> str:
     return remembered(root, ("default_branch",), lambda: _guess_default_branch(root))
 
 
+def origin_head(root: Path) -> str | None:
+    """The ref ``refs/remotes/origin/HEAD`` points at, None when it is not set (remembered,
+    and shared with gate/diff.py's ``default_base``)."""
+
+    def ask() -> str | None:
+        try:
+            return run(root, "symbolic-ref", "refs/remotes/origin/HEAD").strip()
+        except GitError:
+            return None
+
+    return remembered(root, ("origin_head",), ask)
+
+
 def _guess_default_branch(root: Path) -> str:
-    try:
-        ref = run(root, "symbolic-ref", "refs/remotes/origin/HEAD").strip()
+    ref = origin_head(root)
+    if ref is not None:
         prefix = "refs/remotes/origin/"
         return ref[len(prefix) :] if ref.startswith(prefix) else ref.rsplit("/", 1)[-1]
-    except GitError:
-        pass
     for cand in ("main", "master"):
-        ref = f"refs/remotes/origin/{cand}"
-        if run(root, "rev-parse", "--verify", "--quiet", ref, check=False).strip():
+        if ref_exists(root, f"refs/remotes/origin/{cand}"):
             return cand
     for cand in ("main", "master"):
         if run(root, "branch", "--list", cand).strip():

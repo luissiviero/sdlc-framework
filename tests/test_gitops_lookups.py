@@ -65,13 +65,19 @@ def test_a_repeated_lookup_with_nothing_in_between_asks_git_once(repo, counted):
     assert gate_diff.default_base(repo) == gate_diff.default_base(repo) == "HEAD"
     asked = [args[:2] for args in counted]
     assert asked.count(("rev-parse", "--is-inside-work-tree")) == 1
-    assert asked.count(("symbolic-ref", "refs/remotes/origin/HEAD")) == 1  # default_branch
-    assert asked.count(("rev-parse", "--verify")) == 3  # origin/main, origin/master, trunk
+    # origin/HEAD and origin/main are asked once for default_branch and default_base together
+    assert asked.count(("symbolic-ref", "refs/remotes/origin/HEAD")) == 1
+    verified = [args[3] for args in counted if args[:2] == ("rev-parse", "--verify")]
+    assert sorted(verified) == sorted(
+        ["refs/remotes/origin/main", "refs/remotes/origin/master", "refs/heads/trunk", "main"]
+        + ["master"]
+    )
     # read-only queries in between (the gate's own) keep the answers
     git(repo, "status", "--porcelain")
     git(repo, "rev-parse", "HEAD")
     before = len(counted)
     assert gitops.default_branch(repo) == "trunk" and gitops.ref_exists(repo, "refs/heads/trunk")
+    assert gate_diff.default_base(repo) == "HEAD"
     assert len(counted) == before
 
 

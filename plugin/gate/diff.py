@@ -342,26 +342,22 @@ def default_base(root: Path) -> str:
 
     ``SDLC_DEFAULT_BRANCH`` (refused when it names a framework branch, see
     ``gitops.explicit_default_branch``) wins when ``refs/remotes/origin/<value>`` resolves.
-    The answer is remembered until the process starts anything but a read-only git query
-    (``gitops.remembered``, 1.0.13)."""
+    Its lookups are gitops' remembered ones (``origin_head``, ``ref_exists``, 1.0.13), shared
+    with ``gitops.default_branch`` and the runner's ref checks."""
     explicit = gitops.explicit_default_branch()
-    return gitops.remembered(root, ("default_base", explicit), lambda: _base(root, explicit))
-
-
-def _base(root: Path, explicit: str | None) -> str:
-    if explicit:
-        ref = f"refs/remotes/origin/{explicit}"
-        if _git(root, "rev-parse", "--verify", "--quiet", ref, check=False).strip():
-            return ref
     try:
-        ref = _git(root, "symbolic-ref", "refs/remotes/origin/HEAD").strip()
-        if ref.startswith("refs/remotes/"):
+        if explicit:
+            ref = f"refs/remotes/origin/{explicit}"
+            if gitops.ref_exists(root, ref):
+                return ref
+        ref = gitops.origin_head(root)
+        if ref and ref.startswith("refs/remotes/"):
             return ref
-    except GitUnavailable:
-        pass
-    for cand in ("refs/remotes/origin/main", "refs/remotes/origin/master", "main", "master"):
-        if _git(root, "rev-parse", "--verify", "--quiet", cand, check=False).strip():
-            return cand
+        for cand in ("refs/remotes/origin/main", "refs/remotes/origin/master", "main", "master"):
+            if gitops.ref_exists(root, cand):
+                return cand
+    except OSError as exc:
+        raise GitUnavailable(f"git: {exc!r}") from exc
     return "HEAD"
 
 
