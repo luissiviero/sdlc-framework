@@ -523,3 +523,35 @@ def test_an_unfinished_round_keeps_the_risk_hits_sdlc_accept_risk_answers(
         {"label": c.ACCEPT_RISK_LABEL, "actor": "luissiviero", "items": ["auth"]}
     ]
     assert status_mod.read_status(change).risk_accepted == ["auth"]
+
+
+# --- round 2, item 4: the label's owner check fails closed on a runner ------------------------
+def test_a_label_is_refused_when_the_default_branch_s_sdlc_yaml_cannot_be_located(
+    project, tmp_path, capsys
+):
+    """On a runner the head's own sdlc.yaml never names the approver: with no sdlc.yaml on
+    origin/main, a head that writes ``owner: mallory`` does not make mallory's label count."""
+    root, _change = project
+    ci_tests.with_remote(root, tmp_path)
+    git(root, "rm", "-q", "sdlc.yaml")
+    git(root, "commit", "-q", "-m", "main without sdlc.yaml")
+    git(root, "push", "-q", "origin", "main")
+    git(root, "reset", "-q", "--hard", "HEAD~1")  # the checkout is the head's tree
+    git(root, "fetch", "-q", "origin")
+    sdlc = root / "sdlc.yaml"
+    sdlc.write_text(sdlc.read_text(encoding="utf-8") + "owner: mallory\n", encoding="utf-8")
+    env = {
+        "GITHUB_ACTIONS": "true",
+        "GITHUB_EVENT_NAME": "pull_request",
+        "GITHUB_EVENT_PATH": str(_label_event(tmp_path, "mallory")),
+    }
+    refused = (
+        "the label cannot be judged: the default branch's sdlc.yaml cannot be located on the "
+        "runner, so the owner's account cannot be judged (decision 34)"
+    )
+    assert run_phase.label_refusal(root, "owner/name", env) == refused
+    code, printed, output = owner_rounds._find(root, tmp_path, env, capsys)
+    assert code == run_phase.EXIT_OK and output == "change_id=\n" and refused in printed
+    # by hand (no runner) the checkout's copy is the one there is: mallory counts
+    by_hand = {k: v for k, v in env.items() if k != "GITHUB_ACTIONS"}
+    assert run_phase.label_refusal(root, "owner/name", by_hand) is None
