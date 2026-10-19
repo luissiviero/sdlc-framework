@@ -29,12 +29,16 @@ class GitError(RuntimeError):
 # lookup is remembered only until the process starts anything but a read-only git query: a
 # fetch, a checkout, a commit, a push, the model's session, a test's own ``git`` helper. The
 # audit hook below sees every process start of this process (``subprocess``, ``os.system``,
-# ``os.exec*``, ``os.spawn*``, ``os.posix_spawn``), whoever starts it, and moves the
-# generation on; a remembered answer of an older generation is asked again. is_repo keeps a
-# yes for good, re-checked by a stat that the git directory it found still exists.
+# ``os.exec*``, ``os.spawn*``, ``os.posix_spawn``, and a fork, whose child may run git),
+# whoever starts it, and moves the generation on; a remembered answer of an older generation
+# is asked again. is_repo keeps a yes for good, re-checked by a stat that the git directory
+# it found still exists.
 _PROCESS_EVENTS = frozenset(
-    {"subprocess.Popen", "os.system", "os.exec", "os.spawn", "os.posix_spawn", "os.startfile"}
-)
+    {
+        "subprocess.Popen", "os.system", "os.exec", "os.spawn", "os.posix_spawn",
+        "os.startfile", "os.fork", "os.forkpty",
+    }
+)  # fmt: skip
 # the git subcommands that never move a ref, HEAD or a remote; ``config``, ``remote``,
 # ``branch`` and ``symbolic-ref`` count only in their reading forms (``_reads_only``)
 _READ_ONLY_GIT = frozenset(

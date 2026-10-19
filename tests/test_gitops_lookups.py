@@ -199,3 +199,19 @@ def test_the_explicit_default_branch_is_never_remembered(repo, monkeypatch):
 )
 def test_only_read_only_git_queries_keep_the_answers(argv, reads):
     assert gitops._reads_only(argv) is reads
+
+
+def test_every_process_start_but_a_read_only_git_query_moves_the_generation():
+    """The audit events the hook counts: a fork too, whose child may run git."""
+    for event, args in (
+        ("os.fork", ()),
+        ("os.system", (b"git branch main",)),
+        ("subprocess.Popen", ("git", ["git", "fetch"], None, None)),
+    ):
+        before = gitops._generation
+        gitops._on_audit(event, args)
+        assert gitops._generation == before + 1, event
+    before = gitops._generation
+    gitops._on_audit("subprocess.Popen", ("git", ["git", "rev-parse", "HEAD"], None, None))
+    gitops._on_audit("open", ("/x", "r", 0))
+    assert gitops._generation == before
