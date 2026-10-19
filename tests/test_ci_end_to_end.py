@@ -29,6 +29,7 @@ import pytest
 from gate import artifacts as art
 from gate import gate as gate_mod
 from state import status as status_mod
+from tests import fixture_repos
 from tests.test_ci import (
     FIXTURE,
     INIT,
@@ -377,10 +378,23 @@ def workflow_run_line(phase: str = "b", find: bool = False) -> list[str]:
 def checkout(tmp_path):
     """The runner's view: the project checked out on main with change 0001 merged at gate
     (a), the pinned framework beside it under ``framework/``, and a bare remote."""
-    root = tmp_path / "proj"
+    root, bare = tmp_path / "proj", tmp_path / "remote.git"
+    fixture_repos.copy(
+        "end-to-end-checkout",
+        tmp_path,
+        _build_checkout,
+        relocate=lambda dest: git(
+            dest / "proj", "config", "remote.origin.pushurl", str(dest / "remote.git")
+        ),
+    )
+    return root, bare
+
+
+def _build_checkout(base: Path) -> None:
+    root = base / "proj"
     shutil.copytree(FIXTURE, root)
-    bare = tmp_path / "remote.git"
-    git(tmp_path, "init", "-q", "--bare", "-b", "main", str(bare))
+    bare = base / "remote.git"
+    git(base, "init", "-q", "--bare", "-b", "main", str(bare))
     git(root, "init", "-q", "-b", "main")
     git(root, "config", "user.email", "owner@example.com")
     git(root, "config", "user.name", "Owner")
@@ -413,7 +427,6 @@ def checkout(tmp_path):
     ignore = shutil.ignore_patterns("__pycache__", "*.pyc")
     shutil.copytree(ROOT / "plugin", framework / "plugin", ignore=ignore)
     shutil.copytree(ROOT / ".claude-plugin", framework / ".claude-plugin", ignore=ignore)
-    return root, bare
 
 
 def run_phase_job(

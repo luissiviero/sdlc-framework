@@ -24,6 +24,7 @@ from gate import checks, gate, limits, policy, preflight
 from gate import cli as gate_cli
 from state import status as status_mod
 from state import yamlish
+from tests import fixture_repos
 
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURE = ROOT / "tests" / "fixtures" / "sample-python-project"
@@ -200,7 +201,13 @@ def start_run(root: Path, phase: str) -> None:
 def _initialised_fixture(tmp_path) -> tuple[Path, Path]:
     """A fixture copy on main with /sdlc-init merged and change 0001 created with its intent
     (uncommitted): the common ground of the phase-(b) and phase-(c) states below."""
+    fixture_repos.copy("gate-initialised", tmp_path, _build_initialised)
     root = tmp_path / "proj"
+    return root, root / "changes" / "0001-percent-helper"
+
+
+def _build_initialised(base: Path) -> None:
+    root = base / "proj"
     shutil.copytree(FIXTURE, root)
     git(root, "init", "-q", "-b", "main")
     git(root, "config", "user.email", "owner@example.com")
@@ -217,14 +224,20 @@ def _initialised_fixture(tmp_path) -> tuple[Path, Path]:
     assert proc.returncode == 0, proc.stderr
     change = root / "changes" / "0001-percent-helper"
     write(change / "intent.md", INTENT)
-    return root, change
 
 
 @pytest.fixture
 def project(tmp_path):
     """Fixture copy initialised (standard profile), change 0001 through (b), and a phase-(c)
     branch with the implementation committed together with plan.md."""
-    root, change = _initialised_fixture(tmp_path)
+    fixture_repos.copy("gate-project", tmp_path, _build_project)
+    root = tmp_path / "proj"
+    start_run(root, "c")  # the runbook registers the run before the work (step 19)
+    return root, root / "changes" / "0001-percent-helper"
+
+
+def _build_project(base: Path) -> None:
+    root, change = _initialised_fixture(base)
     write(change / "spec.md", SPEC)
     write(change / "plan.md", PLAN)
     st = status_mod.read_status(change)
@@ -242,15 +255,20 @@ def project(tmp_path):
     write(change / "plan.md", PLAN + "\nProgress: step 1 and 2 done.\n")
     git(root, "add", ".")
     git(root, "commit", "-q", "-m", "build: percent helper")
-    start_run(root, "c")  # the runbook registers the run before the work (step 19)
-    return root, change
 
 
 @pytest.fixture
 def design_project(tmp_path):
     """Fixture copy initialised, the intent merged on main (as if the (a) PR did), and the
     phase-(b) branch carrying only spec.md and plan.md — the state gate (b) judges."""
-    root, change = _initialised_fixture(tmp_path)
+    fixture_repos.copy("gate-design-project", tmp_path, _build_design_project)
+    root = tmp_path / "proj"
+    start_run(root, "b")
+    return root, root / "changes" / "0001-percent-helper"
+
+
+def _build_design_project(base: Path) -> None:
+    root, change = _initialised_fixture(base)
     git(root, "add", ".")
     git(root, "commit", "-q", "-m", "intent(0001): percent helper (as if the a PR merged)")
     git(root, "checkout", "-q", "-b", "sdlc/0001/b")
@@ -261,8 +279,6 @@ def design_project(tmp_path):
     status_mod.write_status(change, st)
     git(root, "add", ".")
     git(root, "commit", "-q", "-m", "design(0001): spec and plan")
-    start_run(root, "b")
-    return root, change
 
 
 # --- artifact contracts -----------------------------------------------------------------------

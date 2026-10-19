@@ -23,6 +23,7 @@ from gate import artifacts as art
 from gate import preflight
 from state import conventions as c
 from state import status as status_mod
+from tests import fixture_repos
 
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURE = ROOT / "tests" / "fixtures" / "sample-python-project"
@@ -241,7 +242,13 @@ def findings(change_dir: Path, important: int = 0, nits: int = 0) -> None:
 @pytest.fixture
 def project(tmp_path):
     """A fixture copy, initialised, with change 0001 and its three artifacts written by hand."""
+    fixture_repos.copy("pr-project", tmp_path, _build_project)
     root = tmp_path / "proj"
+    return root, root / "changes" / CHANGE_DIR_NAME
+
+
+def _build_project(base: Path) -> None:
+    root = base / "proj"
     shutil.copytree(FIXTURE, root)
     git(root, "init", "-q", "-b", "main")
     git(root, "config", "user.email", "owner@example.com")
@@ -262,7 +269,6 @@ def project(tmp_path):
     write(change / "plan.md", PLAN)
     git(root, "add", ".")
     git(root, "commit", "-q", "-m", "intent, spec and plan")
-    return root, change
 
 
 # --- the five bullets ----------------------------------------------------------------------
