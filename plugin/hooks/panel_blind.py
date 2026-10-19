@@ -26,6 +26,13 @@ Edit of any ``*.model.json`` in the panel folder is denied. When the transcript 
 found or names no model, the record says why and ``record`` refuses the item, which then
 parks for the owner rather than passing unproved.
 
+The adversarial reviewer's verdict is recorded the same way (ROADMAP R7): when it writes
+``evidence/adversarial-review-<phase>.json``, the hook writes
+``adversarial-review-<phase>.model.json`` beside it, with the ``head`` the verdict names and
+the time, which the reviewer itself cannot know (it has no clock; its own ``at`` was
+invented). The gate's ``reviewer_model`` check requires it when ``sdlc.yaml:
+adversarial_model`` is set; only the hook writes it.
+
 The rule is symmetric (the advocate's verdict is equally hidden from a reviewer that runs
 second) and needs no knowledge of which agent calls: in the window only the member still to
 write, or the session that starts it, acts. Once both files exist the conciliator reads
@@ -64,8 +71,14 @@ HOOKED_TOOLS = ("Read", "Grep", *SHELL_TOOLS, *WRITE_TOOLS)
 ADVOCATE_FILE_RE = re.compile(
     r"(?:^|/)changes/[^/]+/evidence/panel/([a-z])-(\d+)-advocate\.md$", re.IGNORECASE
 )
-MODEL_RECORD_RE = re.compile(r"(?:^|/)evidence/panel/[^/]*\.model\.json$", re.IGNORECASE)
+MODEL_RECORD_RE = re.compile(
+    r"(?:^|/)evidence/(?:panel/[^/]*|adversarial-review-[a-z])\.model\.json$", re.IGNORECASE
+)
 MODEL_RECORD = "{phase}-{n}-advocate.model.json"
+VERDICT_FILE_RE = re.compile(
+    r"(?:^|/)changes/[^/]+/evidence/adversarial-review-([a-z])\.json$", re.IGNORECASE
+)
+VERDICT_RECORD = "adversarial-review-{phase}.model.json"
 # a shell command that names a verdict or the panel folder: the cheap first look
 SHELL_HINT_RE = re.compile(r"panel|-reviewer\.md|-advocate\.md", re.IGNORECASE)
 # ripgrep file types whose globs never include a Markdown file: a Grep limited to one of
@@ -95,8 +108,9 @@ SHELL_REASON = (
     "before writing its own. Run it once both verdicts exist, or without the panel folder."
 )
 RECORD_REASON = (
-    "{rel} records which model wrote the devil's advocate's verdict; only the panel_blind "
-    "hook writes it, when the advocate writes its own file (0.2.30)."
+    "{rel} records which model wrote a verdict (the devil's advocate's, 0.2.30, or the "
+    "adversarial reviewer's, R7); only the panel_blind hook writes it, when that verdict is "
+    "written."
 )
 
 
@@ -155,7 +169,9 @@ def may_concern_panel(payload: dict, env: dict[str, str] | None = None) -> bool:
         return any(PANEL_FILE_RE.search(_slash(p)) for p in (path, os.path.realpath(path)))
     if tool in WRITE_TOOLS:
         return any(
-            ADVOCATE_FILE_RE.search(_slash(p)) or MODEL_RECORD_RE.search(_slash(p))
+            ADVOCATE_FILE_RE.search(_slash(p))
+            or VERDICT_FILE_RE.search(_slash(p))
+            or MODEL_RECORD_RE.search(_slash(p))
             for p in write_targets(tool_input)
         )
     if tool in SHELL_TOOLS and not SHELL_HINT_RE.search(str(tool_input.get("command") or "")):
@@ -214,10 +230,9 @@ def transcript_models(path: Path) -> list[str]:
     return sorted(models)
 
 
-def record_advocate_model(payload: dict, verdict_path: str, phase: str, n: str) -> Path:
-    """Write ``<phase>-<n>-advocate.model.json`` beside the advocate's verdict: who wrote it
-    (``agent_type``) and on which model, read from the writer's own transcript. ``record``
-    and the gate's ``panel`` check require it; ``reason`` says why ``models`` is empty."""
+def writer_record(payload: dict) -> dict:
+    """Who is writing (``agent_type``, ``agent_id``), on which models (read from the writer's
+    own transcript), why ``models`` is empty when it is, and the time."""
     from datetime import datetime, timezone  # noqa: PLC0415
 
     transcript = subagent_transcript(payload)
@@ -230,11 +245,7 @@ def record_advocate_model(payload: dict, verdict_path: str, phase: str, n: str) 
         reason = "the sub-agent's transcript names no model"
     else:
         reason = None
-    record = {
-        "schema_version": 1,
-        "phase": phase,
-        "n": int(n),
-        "member": "advocate",
+    return {
         "agent_type": payload.get("agent_type"),
         "agent_id": payload.get("agent_id"),
         "models": models,
@@ -242,12 +253,45 @@ def record_advocate_model(payload: dict, verdict_path: str, phase: str, n: str) 
         "reason": reason,
         "at": datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
     }
-    path = Path(verdict_path).with_name(MODEL_RECORD.format(phase=phase, n=n))
+
+
+def _write_record(path: Path, record: dict) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
         json.dumps(record, indent=2, sort_keys=True) + "\n", encoding="utf-8", newline="\n"
     )
     return path
+
+
+def record_advocate_model(payload: dict, verdict_path: str, phase: str, n: str) -> Path:
+    """Write ``<phase>-<n>-advocate.model.json`` beside the advocate's verdict: who wrote it
+    (``agent_type``) and on which model, read from the writer's own transcript. ``record``
+    and the gate's ``panel`` check require it; ``reason`` says why ``models`` is empty."""
+    record = {"schema_version": 1, "phase": phase, "n": int(n), "member": "advocate"}
+    record.update(writer_record(payload))
+    path = Path(verdict_path).with_name(MODEL_RECORD.format(phase=phase, n=n))
+    return _write_record(path, record)
+
+
+def verdict_head(tool_input: dict) -> str | None:
+    """The ``head`` of the verdict a Write carries, or None (an edit carries no whole file)."""
+    try:
+        data = json.loads(str(tool_input.get("content") or ""))
+    except ValueError:
+        return None
+    head = data.get("head") if isinstance(data, dict) else None
+    return head.strip() if isinstance(head, str) and head.strip() else None
+
+
+def record_reviewer_model(payload: dict, verdict_path: str, phase: str) -> Path:
+    """Write ``adversarial-review-<phase>.model.json`` beside the reviewer's verdict (R7):
+    the writer and its models as for the advocate, the ``head`` the verdict names and the
+    real time it was written. The gate's ``reviewer_model`` check requires it."""
+    record = {"schema_version": 1, "phase": phase, "member": "reviewer"}
+    record["head"] = verdict_head(payload.get("tool_input") or {})
+    record.update(writer_record(payload))
+    path = Path(verdict_path).with_name(VERDICT_RECORD.format(phase=phase))
+    return _write_record(path, record)
 
 
 def _grep_reads(tool_input: dict, search_root: str, target: str, common) -> bool:
@@ -318,6 +362,14 @@ def decide(payload: dict, argv: list[str], env: dict[str, str] | None = None):
                 # never refuse the verdict itself: with no record, `record` refuses the item
                 # and it parks for the owner
                 pass
+        for path in write_targets(tool_input):
+            m = VERDICT_FILE_RE.search(_slash(common.fs_path(path)))
+            if not m:
+                continue
+            try:
+                record_reviewer_model(payload, common.fs_path(path), m.group(1).lower())
+            except (OSError, ValueError):
+                pass  # with no record, the gate's reviewer_model check parks when it applies
         return common.Decision.allow()
     if tool in SHELL_TOOLS:
         command = _slash(str(tool_input.get("command") or "")).lower()

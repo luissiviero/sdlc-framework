@@ -86,6 +86,7 @@ NEVER_TO_PANEL = (
     "design_scope",
     "owner_actions",
     "panel",
+    "reviewer_model",
 )
 RATIONALE_MAX_LINES = 5
 # The closing word first: the gate's ``open_concerns`` check reads "decided". ``#<n>`` names
@@ -258,22 +259,36 @@ def advocate_model_path(change_dir: Path, phase: str, n: int) -> Path:
     return Path(change_dir) / art.EVIDENCE_DIR / PANEL_DIR / name
 
 
-def advocate_model_problems(text: str | None, wanted: str | None, phase: str, n: int) -> list[str]:
+def _model_record(text: str | None, name: str) -> tuple[dict[str, Any] | None, list[str]]:
+    """A model record the ``panel_blind`` hook wrote, read: (record, []) or (None, why)."""
+    try:
+        record = json.loads(text or "")
+    except ValueError:
+        return None, [f"{name} is unreadable"]
+    if not isinstance(record, dict):
+        return None, [f"{name} is not a JSON object"]
+    return record, []
+
+
+def advocate_model_problems(
+    text: str | None,
+    wanted: str | None,
+    phase: str,
+    n: int,
+) -> list[str]:
     """What is wrong with the record of which model wrote the advocate's verdict (written by
     the ``panel_blind`` hook, 0.2.30): it must exist, name the devil's advocate as the writer
-    and, when ``sdlc.yaml: panel_advocate_model`` is set, a model that satisfies it."""
+    and, when the phase's advocate model is set (``panel/models.py advocate_model``, R7), a
+    model that satisfies it."""
     name = f"panel/{ADVOCATE_MODEL_FILE.format(phase=phase, n=n)}"
     if text is None:
         return [
             f"{name} is missing: nothing shows which model wrote the devil's advocate's "
             "verdict (the panel_blind hook writes it when the advocate writes its file)"
         ]
-    try:
-        record = json.loads(text)
-    except ValueError:
-        return [f"{name} is unreadable"]
-    if not isinstance(record, dict):
-        return [f"{name} is not a JSON object"]
+    record, problems = _model_record(text, name)
+    if record is None:
+        return problems
     agent = str(record.get("agent_type") or "")
     if agent.rsplit(":", 1)[-1] != ADVOCATE_AGENT:
         writer = agent or "the main session"
@@ -286,7 +301,54 @@ def advocate_model_problems(text: str | None, wanted: str | None, phase: str, n:
     alias = str(wanted or "").strip()
     if alias and not any(model_matches(alias, m) for m in models):
         return [f"{name}: the devil's advocate ran on {', '.join(models)}, not on {alias} "
-                "(sdlc.yaml: panel_advocate_model)"]  # fmt: skip
+                "(sdlc.yaml: panel_advocate_model, or adversarial_model where the session "
+                "runs on it)"]  # fmt: skip
+    return []
+
+
+# --- which model wrote the adversarial reviewer's verdict (ROADMAP R7) ----------------------------
+# The ``panel_blind`` hook writes ``evidence/adversarial-review-<phase>.model.json`` when the
+# reviewer writes its verdict, as it does for the advocate: the writer, the models of its
+# replies read from its own transcript, the ``head`` the verdict names and the time it was
+# written (the reviewer has no clock: its own ``at`` was invented, NOTES section 51).
+REVIEWER_MODEL_FILE = "adversarial-review-{phase}.model.json"
+
+
+def reviewer_model_path(change_dir: Path, phase: str) -> Path:
+    return Path(change_dir) / art.EVIDENCE_DIR / REVIEWER_MODEL_FILE.format(phase=phase)
+
+
+def reviewer_model_problems(
+    text: str | None, wanted: str, phase: str, head: str | None
+) -> list[str]:
+    """What is wrong with the record of which model wrote the reviewer's verdict: it must
+    exist, belong to the verdict for ``head``, name the adversarial reviewer as the writer
+    and a model that satisfies ``sdlc.yaml: adversarial_model`` (``wanted``)."""
+    name = f"evidence/{REVIEWER_MODEL_FILE.format(phase=phase)}"
+    if text is None:
+        return [
+            f"{name} is missing: nothing shows which model wrote the adversarial reviewer's "
+            "verdict (the panel_blind hook writes it when the reviewer writes its verdict)"
+        ]
+    record, problems = _model_record(text, name)
+    if record is None:
+        return problems
+    recorded = str(record.get("head") or "")
+    if head and not (recorded and str(head).startswith(recorded)):
+        return [f"{name} belongs to the verdict for {recorded[:10] or 'no commit'}, not for "
+                f"{str(head)[:10]}: the verdict changed after the reviewer wrote it"]  # fmt: skip
+    agent = str(record.get("agent_type") or "")
+    if agent.rsplit(":", 1)[-1] != ADVOCATE_AGENT:
+        writer = agent or "the main session"
+        return [f"{name}: the verdict was written by {writer}, not by the adversarial "
+                f"reviewer (sdlc:{ADVOCATE_AGENT})"]  # fmt: skip
+    models = [str(m) for m in record.get("models") or [] if str(m).strip()]
+    if not models:
+        why = record.get("reason") or "no model recorded"
+        return [f"{name}: the reviewer's model is unproved ({why})"]
+    if not any(model_matches(wanted, m) for m in models):
+        return [f"{name}: the adversarial reviewer ran on {', '.join(models)}, not on "
+                f"{wanted} (sdlc.yaml: adversarial_model)"]  # fmt: skip
     return []
 
 
@@ -578,22 +640,26 @@ def models_path(change_dir: Path, phase: str) -> Path:
 
 def model_matches(wanted: str, model: str) -> bool:
     """Does ``model`` (an id from ``modelUsage``, e.g. ``claude-opus-5``) satisfy ``wanted``
-    (an alias, ``opus``, or a full id)? A context suffix (``opus[1m]``) is ignored."""
+    (an alias, ``opus``, or a full id)? A context suffix (``opus[1m]``) is ignored. An alias
+    matches any model of its family; a full id matches itself and its dated snapshots
+    (``claude-haiku-4-5`` and ``claude-haiku-4-5-20251001``), never another version (R7: a
+    ``claude-opus-5-5`` pin is not met by ``claude-opus-5``, nor the reverse)."""
     want = str(wanted).strip().lower().split("[", 1)[0]
     have = str(model).strip().lower().split("[", 1)[0]
     if not want or not have:
         return False
     if want in MODEL_FAMILIES:
         return want in have.replace("_", "-").split("-")
-    return have == want or have.startswith(want) or want.startswith(have)
+    return have == want or bool(re.fullmatch(re.escape(want) + r"-\d{8}", have))
 
 
 def session_model(model_usage: dict[str, Any], env_model: str | None) -> tuple[str | None, str]:
-    """The session's own model: ``SDLC_MODEL`` when the workflow set it (it is passed as
-    ``--model``), else the model with the largest output, which is the session's in every
-    run read so far (the panel's members write a few files; the session writes the rest)."""
+    """The session's own model: the run's ``--model`` when it had one (``SDLC_MODEL``, or
+    ``sdlc.yaml: session_model`` since R7), else the model with the largest output, which is
+    the session's in every run read so far (the panel's members write a few files; the
+    session writes the rest)."""
     if env_model:
-        return env_model, "SDLC_MODEL"
+        return env_model, "the run's --model"
     best, most = None, -1
     for model, usage in model_usage.items():
         out = usage.get("outputTokens") if isinstance(usage, dict) else None

@@ -18,6 +18,7 @@ import pytest
 
 from state import status as status_mod
 from state import yamlish
+from tests.model_records import write_reviewer_record
 from tests.test_gate import PERCENT, TEST_PERCENT
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -122,11 +123,11 @@ def write_verdict(change_dir: Path, phase: str, head: str) -> None:
         "reasons": [],
         "classification": "routine",
         "classification_reasons": [],
-        "at": "2026-09-21T10:00:00Z",
     }
     path = change_dir / "evidence" / f"adversarial-review-{phase}.json"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(data), encoding="utf-8", newline="\n")
+    write_reviewer_record(path, head)  # what the panel_blind hook writes beside it (R7)
 
 
 @pytest.fixture

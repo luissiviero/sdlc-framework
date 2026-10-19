@@ -293,7 +293,45 @@ def test_dry_run_argv_passes_sdlc_model_when_set(capsys, project):
     root, _change = project
     argv = dry_run_argv(capsys, root, env={**KEY_ENV, "SDLC_MODEL": "opus"})
     assert argv[argv.index("--model") + 1] == "opus"
-    assert "--model" not in dry_run_argv(capsys, root)
+    # R7: without it, the template's sdlc.yaml: session_model
+    argv = dry_run_argv(capsys, root)
+    assert argv[argv.index("--model") + 1] == "claude-opus-5-5"
+
+
+def test_the_session_runs_on_the_phase_s_model_and_pins_the_sub_agents_aliases(tmp_path):
+    """R7: ``sdlc.yaml: session_model`` per phase becomes ``--model`` (a fix round's is its
+    change's phase); no key, no flag; the session's environment pins the aliases the phase
+    commands start the reviewer and the advocate with, a pin the workflow set winning."""
+    config = {
+        "session_model": {"default": "claude-opus-5-5", "b": "claude-fable-5-1"},
+        "adversarial_model": "claude-opus-5-5",
+        "panel_advocate_model": "claude-fable-5-1",
+    }
+
+    def model(phase, model_phase=None, cfg=config, env=KEY_ENV):
+        argv = run_phase.compose(
+            claude="claude", plugin_dir=ROOT, phase=phase, prompt="p", permission_mode="default",
+            config=cfg, env=dict(env), model_phase=model_phase,
+        )  # fmt: skip
+        return argv[argv.index("--model") + 1] if "--model" in argv else None
+
+    assert model("b") == "claude-fable-5-1" and model("c") == "claude-opus-5-5"
+    assert model("fix", "b") == "claude-fable-5-1"  # a round on the design PR
+    assert model("fix", "e") == "claude-opus-5-5"
+    assert model("c", env={**KEY_ENV, "SDLC_MODEL": "sonnet"}) == "sonnet"
+    assert model("c", cfg={}) is None  # today's behaviour: the CLI's default
+    env = {"PATH": "/bin", **KEY_ENV}
+    pinned = run_phase.session_env(env, tmp_path, "c", config)
+    assert pinned["ANTHROPIC_DEFAULT_OPUS_MODEL"] == "claude-opus-5-5"
+    assert pinned["ANTHROPIC_DEFAULT_FABLE_MODEL"] == "claude-fable-5-1"
+    # at (b) the advocate runs on the reviewer's model: nothing pins Fable
+    assert "ANTHROPIC_DEFAULT_FABLE_MODEL" not in run_phase.session_env(
+        env, tmp_path, "fix", config, "b"
+    )
+    workflow_pin = {**env, "ANTHROPIC_DEFAULT_OPUS_MODEL": "x"}
+    kept = run_phase.session_env(workflow_pin, tmp_path, "c", config)
+    assert kept["ANTHROPIC_DEFAULT_OPUS_MODEL"] == "x"
+    assert "ANTHROPIC_DEFAULT_OPUS_MODEL" not in run_phase.session_env(env, tmp_path, "c")
 
 
 def test_phase_c_takes_its_permission_mode_from_the_preflight(capsys, project, monkeypatch):
@@ -1747,16 +1785,18 @@ SONNET = {"outputTokens": 120000, "costUSD": 4.7}
 @pytest.mark.parametrize(
     ("usage", "parked"),
     [
-        ({"claude-opus-5": OPUS, "claude-sonnet-5": SONNET}, False),  # as change 0002 ran
-        ({"claude-sonnet-5": SONNET}, True),  # the advocate ran on the session's model
+        # R7: the template's models, the session on Opus 5.5, the advocate on Fable 5.1
+        ({"claude-fable-5-1": OPUS, "claude-opus-5-5": SONNET}, False),
+        ({"claude-opus-5-5": SONNET}, True),  # the advocate ran on the session's model
     ],
 )
 def test_a_run_that_added_panel_decisions_must_show_the_advocate_model(
     project, fake_claude, tmp_path, monkeypatch, capsys, usage, parked
 ):
     """0.2.30: a run whose session added panel decisions keeps the models it used in
-    evidence/panel-models-<phase>.json; when none is sdlc.yaml's panel_advocate_model (opus
-    in the template) the change parks with the reason instead of handing over."""
+    evidence/panel-models-<phase>.json; when none is sdlc.yaml's panel_advocate_model
+    (claude-fable-5-1 in the template since R7) the change parks with the reason instead of
+    handing over."""
     root, change = project
     pr_route(monkeypatch)
     set_state(change, "b", gate_phase="b", gate_result="passed")
@@ -1773,11 +1813,11 @@ def test_a_run_that_added_panel_decisions_must_show_the_advocate_model(
     assert run_phase.run_phase(args, env) == run_phase.EXIT_OK
     out = json.loads(capsys.readouterr().out)
     record = json.loads((change / "evidence" / "panel-models-c.json").read_text(encoding="utf-8"))
-    assert record["new_decisions"] == 1 and record["advocate_model"] == "opus"
-    assert record["session_model"] == "claude-sonnet-5"
+    assert record["new_decisions"] == 1 and record["advocate_model"] == "claude-fable-5-1"
+    assert record["session_model"] == "claude-opus-5-5"  # the run's --model (R7)
     assert record["ok"] is (not parked)
     if parked:
-        assert "no model of this run is opus" in out["parked"]
+        assert "no model of this run is claude-fable-5-1" in out["parked"]
         gate_file = json.loads((change / "evidence" / "gate-c.json").read_text(encoding="utf-8"))
         assert gate_file["result"] == "park"
         assert [ch["name"] for ch in gate_file["checks"]] == ["panel_models"]
