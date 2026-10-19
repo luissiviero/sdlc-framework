@@ -1348,7 +1348,10 @@ def fake_claude(tmp_path):
     With ``FAKE_CLAUDE_WATCH`` (a path relative to its working directory, the project root)
     and ``FAKE_CLAUDE_RECORD`` set, it first copies that file as it finds it to the record:
     what the model's session would read. With ``FAKE_CLAUDE_RUN`` (a Python file) it runs
-    that script in the project root: what the model's session would write."""
+    that script in the project root: what the model's session would write. With
+    ``FAKE_CLAUDE_GATE`` (a gate record's path) it then rewrites that record with a new
+    ``at``, as the session's own gate run does: since plugin 1.0.10 a fix round whose record
+    the session did not write is unfinished (gap 4 of NOTES §45, ``gate_record_fresh``)."""
     bindir = tmp_path / "bin"
     bindir.mkdir()
     script = bindir / "claude.py"
@@ -1364,6 +1367,12 @@ def fake_claude(tmp_path):
         "if script:\n"
         "    import runpy\n"
         "    runpy.run_path(script, run_name='__main__')\n"
+        "gate = os.environ.get('FAKE_CLAUDE_GATE')\n"
+        "if gate:\n"
+        "    import json\n"
+        "    record = json.loads(pathlib.Path(gate).read_text(encoding='utf-8'))\n"
+        "    record['at'] = '2026-10-18T12:00:00Z'\n"
+        "    pathlib.Path(gate).write_text(json.dumps(record, indent=2), encoding='utf-8')\n"
         "print(os.environ['FAKE_CLAUDE_RESULT'])\n",
     )
     launcher = bindir / "claude"
@@ -1371,6 +1380,14 @@ def fake_claude(tmp_path):
     launcher.chmod(0o755)
     write(bindir / "claude.cmd", f'@echo off\r\n"{sys.executable}" "{script}" %*\r\n')
     return bindir
+
+
+def session_gate(monkeypatch, phase: str) -> None:
+    """The fake session rewrites change 0001's ``evidence/gate-<phase>.json`` as its gate run
+    would (``FAKE_CLAUDE_GATE``): a fix round's runner reads only a record the round wrote."""
+    monkeypatch.setenv(
+        "FAKE_CLAUDE_GATE", f"changes/0001-percent-helper/evidence/gate-{phase}.json"
+    )
 
 
 def fake_cli(bindir: Path) -> str:
@@ -2792,6 +2809,9 @@ def test_apply_owner_labels_performs_commits_and_reports(project, tmp_path, monk
     from pr import github
 
     root, change = project
+    # choice 218 (1.0.10): a label counts only from the owner's account, named here by the
+    # default branch's sdlc.yaml as an organization repository names it
+    owner = {"owner": "luissiviero"}
     with_remote(root, tmp_path)
     set_state(change, "b")
     st = status_mod.read_status(change)
@@ -2819,7 +2839,7 @@ def test_apply_owner_labels_performs_commits_and_reports(project, tmp_path, monk
         ),
     )
     out = run_phase.apply_owner_labels(
-        ROOT, root, change, {}, "owner/name", "7", "b", None, {"GITHUB_TOKEN": FAKE_TOKEN}
+        ROOT, root, change, owner, "owner/name", "7", "b", None, {"GITHUB_TOKEN": FAKE_TOKEN}
     )
     assert out["ok"] and out["performed"] == [
         {"label": "sdlc:reset-iterations", "actor": "luissiviero"}
@@ -2831,7 +2851,7 @@ def test_apply_owner_labels_performs_commits_and_reports(project, tmp_path, monk
     )
     assert status_mod.read_status(change).iterations == 0
     # without a route or a number nothing is read
-    out = run_phase.apply_owner_labels(ROOT, root, change, {}, "owner/name", "", "b", None, {})
+    out = run_phase.apply_owner_labels(ROOT, root, change, owner, "owner/name", "", "b", None, {})
     assert out["ok"] is False and "labels not read" in out["reason"]
     assert out["reason"].startswith("no pull request number and no open pull request for the head")
     # a dispatched round carries no number: the open PR of the round's head supplies it
@@ -2848,7 +2868,15 @@ def test_apply_owner_labels_performs_commits_and_reports(project, tmp_path, monk
     st.iterations = 2
     status_mod.write_status(change, st)
     out = run_phase.apply_owner_labels(
-        ROOT, root, change, {}, "owner/name", "", "b", "sdlc/0001/b", {"GITHUB_TOKEN": FAKE_TOKEN}
+        ROOT,
+        root,
+        change,
+        owner,
+        "owner/name",
+        "",
+        "b",
+        "sdlc/0001/b",
+        {"GITHUB_TOKEN": FAKE_TOKEN},
     )
     assert looked_up == ["sdlc/0001/b"]
     assert out["ok"] and out["performed"] == [
@@ -2859,7 +2887,7 @@ def test_apply_owner_labels_performs_commits_and_reports(project, tmp_path, monk
         ROOT,
         root,
         change,
-        {},
+        owner,
         "owner/name",
         "",
         "b",
@@ -2873,11 +2901,19 @@ def test_apply_owner_labels_performs_commits_and_reports(project, tmp_path, monk
         github, "find_open_pr", lambda repo, head, cwd=None: {"ok": False, "reason": "boom"}
     )
     out = run_phase.apply_owner_labels(
-        ROOT, root, change, {}, "owner/name", "", "b", "sdlc/0001/b", {"GITHUB_TOKEN": FAKE_TOKEN}
+        ROOT,
+        root,
+        change,
+        owner,
+        "owner/name",
+        "",
+        "b",
+        "sdlc/0001/b",
+        {"GITHUB_TOKEN": FAKE_TOKEN},
     )
     assert out["reason"] == "cannot look up the pull request of sdlc/0001/b: boom: labels not read"
     monkeypatch.setattr(github, "gh_path", lambda: None)
-    out = run_phase.apply_owner_labels(ROOT, root, change, {}, "owner/name", "7", "b", None, {})
+    out = run_phase.apply_owner_labels(ROOT, root, change, owner, "owner/name", "7", "b", None, {})
     assert out["ok"] is False and "no gh and no GITHUB_TOKEN" in out["reason"]
 
 
@@ -3070,6 +3106,16 @@ class FixGitHub:
         return None
 
 
+def with_a_request(gh: FixGitHub) -> FixGitHub:
+    """``gh`` answering one review of the owner's: since plugin 1.0.10 a fix round with no
+    request to apply, no owner label and no park is skipped before the session."""
+    gh.reviews["reviews"] = [
+        {"id": 1, "author": "luissiviero", "type": "User", "association": "OWNER",
+         "state": "COMMENTED", "body": "rename the helper", "at": "t", "url": "u1"},
+    ]  # fmt: skip
+    return gh
+
+
 def test_fix_requests_are_judged_by_author_association_and_resolution():
     """D9's third part (session-7 review): the rule is applied by code before the session,
     and every dropped author is listed with why; a resolved thread is settled whatever it
@@ -3250,7 +3296,7 @@ def test_the_fix_run_collects_the_requests_after_the_labels_and_before_the_sessi
 ):
     root, change = project
     order = _fix_round(root, change, tmp_path, monkeypatch)
-    gh = FixGitHub()
+    gh = with_a_request(FixGitHub())
     monkeypatch.setattr(run_phase, "_github", lambda: gh)
     real = run_phase.collect_fix_requests
 
@@ -3281,7 +3327,8 @@ def test_the_fix_session_runs_with_the_fix_mark_and_the_build_timeout(
     long as for a build: (180 + 5) minutes with no setting."""
     root, change = project
     _fix_round(root, change, tmp_path, monkeypatch)
-    monkeypatch.setattr(run_phase, "_github", lambda: FixGitHub())
+    gh = with_a_request(FixGitHub())
+    monkeypatch.setattr(run_phase, "_github", lambda: gh)
     seen: dict = {}
 
     def invoke(argv, root, env, timeout):
@@ -4150,7 +4197,8 @@ def _ready_for(root: Path, change: Path, phase: str, tmp_path: Path, monkeypatch
         git(root, "checkout", "-q", "-b", "sdlc/0001/b")
         git(root, "commit", "-q", "-am", "design(0001): spec and plan")
         git(root, "push", "-q", "-u", "origin", "sdlc/0001/b")
-        monkeypatch.setattr(run_phase, "_github", lambda: _PullRequestGitHub())
+        gh = with_a_request(_PullRequestGitHub())
+        monkeypatch.setattr(run_phase, "_github", lambda: gh)
         monkeypatch.setattr(run_phase, "apply_owner_labels", lambda *a, **k: {"ok": True})
         monkeypatch.setattr(run_phase, "ensure_labels", lambda repo, env: {"ok": True})
         return "sdlc/0001/b"
@@ -4170,6 +4218,8 @@ def test_every_phase_s_normal_ending_is_on_the_branch_the_runner_prepared(
     gate_phase = "b" if phase == "fix" else phase
     gate_file = {**GATE_FILE, "phase": gate_phase}
     write(change / "evidence" / f"gate-{gate_phase}.json", json.dumps(gate_file))
+    if phase == "fix":  # the round's own gate writes its record (gap 4 of NOTES §45)
+        session_gate(monkeypatch, gate_phase)
     monkeypatch.setenv("FAKE_CLAUDE_RESULT", json.dumps(FAKE_RESULT))
     args = Args(
         root=str(root), phase=phase, dry_run=False, no_dispatch=True, claude=fake_cli(fake_claude),
@@ -4268,10 +4318,12 @@ def test_a_dispatched_fix_round_with_no_head_ref_runs_on_the_open_pull_request_s
     git(root, "push", "-q", "origin", ":sdlc/0001/a")
     git(root, "fetch", "-q", "--prune", "origin")
     # the whole round, dispatched on a runner from the pull request's own branch
+    with_a_request(gh)
     monkeypatch.setattr(run_phase, "apply_owner_labels", lambda *a, **k: {"ok": True})
     monkeypatch.setattr(run_phase, "ensure_labels", lambda repo, env: {"ok": True})
     pr_route(monkeypatch, number=12)
     write(change / "evidence" / "gate-a.json", json.dumps({**GATE_FILE, "phase": "a"}))
+    session_gate(monkeypatch, "a")  # the round's own gate writes its record (gap 4)
     monkeypatch.setenv("FAKE_CLAUDE_RESULT", json.dumps(FAKE_RESULT))
     args = Args(
         root=str(root), phase="fix", head_ref="", pr_number=None, dry_run=False,

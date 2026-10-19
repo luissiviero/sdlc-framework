@@ -34,6 +34,7 @@ from tests.test_ci import (
     Args,
     fake_cli,
     pr_route,
+    session_gate,
 )
 from tests.test_gate import (
     INTENT,
@@ -691,6 +692,7 @@ def test_a_fix_round_at_b_never_takes_the_fast_lane(project, fake_claude, monkey
     head = git(root, "rev-parse", "HEAD").strip()
     _fast_gate_file(change, head)
     _verdict(root, "routine", head)
+    session_gate(monkeypatch, "b")  # the round's own gate writes its record (gap 4)
     monkeypatch.setenv("FAKE_CLAUDE_RESULT", json.dumps(FAKE_RESULT))
     args = Args(
         root=str(root), phase="fix", dry_run=False, no_dispatch=True, claude=fake_cli(fake_claude)

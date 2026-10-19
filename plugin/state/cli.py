@@ -15,8 +15,9 @@ and identical on Windows, in a cloud session and in CI.
     python cli.py lock-tests --root . --id 0001     # fix change: reproducing test committed
     python cli.py unlock-tests --root . --id 0001   # owner only: the test itself was wrong
     python cli.py apply-labels --root . --id 0001 --repo owner/name --pr 12
-        # the owner's un-park labels on the PR (decision 24): performed, recorded with the
-        # label's actor, removed from the PR; nothing is committed
+        # the owner's un-park labels on the PR (decision 24): performed when the owner's
+        # account applied them (choice 218), recorded with the label's actor, removed from
+        # the PR; nothing is committed
     python cli.py abandon --root . --id 0001 --reason "..." [--push]
         # decision 25: the PR was closed without a merge; phase: abandoned on the current
         # branch and on every other sdlc/<id>/* branch of the change on the remote
@@ -29,6 +30,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -259,9 +261,10 @@ def cmd_unlock_tests(args) -> int:
 
 
 def cmd_apply_labels(args) -> int:
-    """The owner's un-park labels on the change's PR (decision 24): performed on status.yaml,
-    recorded with the label's actor, removed from the PR. Exit 0 with the report; 2 when the
-    PR cannot be read (the labels are then not consumed)."""
+    """The owner's un-park labels on the change's PR (decision 24): performed on status.yaml
+    when the owner's account applied them (``unpark.is_owner_actor`` with this environment
+    and the repository, choice 218), recorded with the label's actor, removed from the PR.
+    Exit 0 with the report; 2 when the PR cannot be read (the labels are then not consumed)."""
     loaded = _load(args)
     if not loaded:
         return 2
@@ -273,7 +276,9 @@ def cmd_apply_labels(args) -> int:
         print(str(exc), file=sys.stderr)
         return 2
     repo = args.repo or gitops.github_repo(root) or ""
-    result = unpark.apply_from_pr(root, change_dir, config, repo, int(args.pr))
+    result = unpark.apply_from_pr(
+        root, change_dir, config, repo, int(args.pr), env=dict(os.environ)
+    )
     _emit(result)
     return 0 if result.get("ok") else 2
 

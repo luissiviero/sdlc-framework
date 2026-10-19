@@ -775,6 +775,7 @@ def test_an_owner_label_is_performed_before_the_round_and_a_bot_s_is_refused(che
         FAKE_LABEL_EVENTS=json.dumps(events),
         GIT_CONFIG_GLOBAL=str(tmp_path / "gitconfig"),
         GIT_CONFIG_NOSYSTEM="1",
+        GITHUB_REPOSITORY_OWNER="luissiviero",  # the owner's account (choice 218, 1.0.10)
     )
     assert proc.returncode == 0, proc.stdout + proc.stderr
     labels = out["owner_labels"]
@@ -1250,6 +1251,7 @@ def test_a_dispatched_round_reads_the_owner_s_labels_from_the_pull_request_of_th
         PR_NUMBER="",  # the dispatch: change_id and head_ref only
         FAKE_PR_LABELS=json.dumps(["sdlc:b-ready", "sdlc:reset-iterations"]),
         FAKE_LABEL_EVENTS=json.dumps(events),
+        GITHUB_REPOSITORY_OWNER="luissiviero",  # the owner's account (choice 218, 1.0.10)
     )
     assert proc.returncode == 0, proc.stdout + proc.stderr
     labels = out["owner_labels"]

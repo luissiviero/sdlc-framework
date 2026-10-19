@@ -785,6 +785,10 @@ def test_record_owner_label_performs_the_act_and_keeps_the_actor(tmp_path):
     assert c.RELEASE_APPROVED_LABEL in c.all_labels()
 
 
+# choice 218 (1.0.10): an un-park label counts only from the owner's account
+OWNER_ENV = {"GITHUB_REPOSITORY_OWNER": "luissiviero"}
+
+
 def test_unpark_perform_honours_a_person_and_rejects_the_automation_identity(tmp_path):
     from state import unpark
 
@@ -810,7 +814,12 @@ def test_unpark_perform_honours_a_person_and_rejects_the_automation_identity(tmp
         c.UNLOCK_TESTS_LABEL: "dependabot[bot]",
     }
     performed, rejected = unpark.perform(
-        st, present, ["github-actions[bot]"], unpark.risk_hits(change_dir, "c")
+        st,
+        present,
+        ["github-actions[bot]"],
+        unpark.risk_hits(change_dir, "c"),
+        config={},
+        env=OWNER_ENV,
     )
     assert performed == [{"label": c.ACCEPT_RISK_LABEL, "actor": "luissiviero", "items": ["auth"]}]
     assert [r["label"] for r in rejected] == [c.RESET_ITERATIONS_LABEL, c.UNLOCK_TESTS_LABEL]
@@ -818,11 +827,13 @@ def test_unpark_perform_honours_a_person_and_rejects_the_automation_identity(tmp
     assert st.iterations == 4 and st.risk_accepted_by == [{"item": "auth", "actor": "luissiviero"}]
     # accept-risk with no recorded hit accepts nothing and is left on the PR
     st2 = status.new_change(tmp_path, "No hit", change_id="0002")[1]
-    performed, rejected = unpark.perform(st2, {c.ACCEPT_RISK_LABEL: "luissiviero"}, [], [])
+    performed, rejected = unpark.perform(
+        st2, {c.ACCEPT_RISK_LABEL: "luissiviero"}, [], [], config={}, env=OWNER_ENV
+    )
     assert performed == [] and "nothing to accept" in rejected[0]["reason"]
     # a project's own automation identity counts as automation too
     performed, rejected = unpark.perform(
-        st2, {c.RESET_ITERATIONS_LABEL: "ci-robot"}, ["ci-robot"], []
+        st2, {c.RESET_ITERATIONS_LABEL: "ci-robot"}, ["ci-robot"], [], config={}, env=OWNER_ENV
     )
     assert performed == [] and rejected[0]["actor"] == "ci-robot"
 
@@ -906,7 +917,9 @@ def test_apply_from_pr_records_the_actor_and_removes_the_performed_label(tmp_pat
         ["sdlc:needs-human", c.RESET_ITERATIONS_LABEL, c.UNLOCK_TESTS_LABEL],
         {c.RESET_ITERATIONS_LABEL: "luissiviero", c.UNLOCK_TESTS_LABEL: "github-actions[bot]"},
     )
-    out = unpark.apply_from_pr(tmp_path, change_dir, {}, "owner/name", 7, github=github)
+    out = unpark.apply_from_pr(
+        tmp_path, change_dir, {}, "owner/name", 7, github=github, env=OWNER_ENV
+    )
     assert out["ok"] and [p["label"] for p in out["performed"]] == [c.RESET_ITERATIONS_LABEL]
     assert [r["label"] for r in out["rejected"]] == [c.UNLOCK_TESTS_LABEL]
     assert github.removed == [c.RESET_ITERATIONS_LABEL]  # the rejected one stays on the PR
@@ -915,7 +928,9 @@ def test_apply_from_pr_records_the_actor_and_removes_the_performed_label(tmp_pat
     assert back.tests_unlocked_by is None
     # no owner label at all: nothing read, nothing written
     quiet = _FakeGitHub(["sdlc:b-ready"], {})
-    out = unpark.apply_from_pr(tmp_path, change_dir, {}, "owner/name", 7, github=quiet)
+    out = unpark.apply_from_pr(
+        tmp_path, change_dir, {}, "owner/name", 7, github=quiet, env=OWNER_ENV
+    )
     assert out["ok"] and out["performed"] == [] and "no owner label" in out["reason"]
     # an unreadable PR consumes nothing and says why
     out = unpark.apply_from_pr(
@@ -934,6 +949,7 @@ def test_cli_apply_labels_uses_the_github_client(tmp_path, capsys, monkeypatch):
     monkeypatch.setattr(github, "pr_by_number", fake.pr_by_number)
     monkeypatch.setattr(github, "label_actor", fake.label_actor)
     monkeypatch.setattr(github, "set_labels", fake.set_labels)
+    monkeypatch.setenv("GITHUB_REPOSITORY_OWNER", "luissiviero")  # choice 218: the owner
     rc = cli.main(
         ["apply-labels", "--root", str(tmp_path), "--id", "0001", "--repo", "o/n", "--pr", "7"]
     )
