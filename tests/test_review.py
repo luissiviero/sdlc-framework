@@ -26,6 +26,7 @@ from review import findings as fmod
 from gate import artifacts as art
 from state import conventions as c
 from state import status as status_mod
+from tests import fixture_repos
 
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURE = ROOT / "tests" / "fixtures" / "sample-python-project"
@@ -90,7 +91,17 @@ def make_project(tmp_path: Path, change_type: str = "fix") -> tuple[Path, Path]:
     """A copy of the fixture project, initialised, with change 0001 on main and a phase-(c)
     branch that modifies the pre-existing ``tests/test_calc.py`` and adds ``tests/test_new.py``
     — the diff the framework rule of build guide step 25 judges."""
+    fixture_repos.copy(
+        f"review-project-{change_type}", tmp_path, lambda base: _build_project(base, change_type)
+    )
     root = tmp_path / "proj"
+    change = c.find_change_dir(root, "0001")
+    assert change is not None
+    return root, change
+
+
+def _build_project(base: Path, change_type: str) -> None:
+    root = base / "proj"
     shutil.copytree(FIXTURE, root)
     git(root, "init", "-q", "-b", "main")
     git(root, "config", "user.email", "owner@example.com")
@@ -123,7 +134,6 @@ def make_project(tmp_path: Path, change_type: str = "fix") -> tuple[Path, Path]:
     write(root / "tests" / "test_new.py", "def test_reproduces_the_bug():\n    assert 1\n")
     git(root, "add", ".")
     git(root, "commit", "-q", "-m", "fix(0001): reproducing test and the fix")
-    return root, change
 
 
 def head_of(root: Path) -> str:
