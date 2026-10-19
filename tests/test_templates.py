@@ -344,7 +344,11 @@ def test_this_repository_runs_its_own_checks_on_linux_and_windows():
         assert len(setup) == 1
         assert all("${{" not in step.get("run", "") for step in steps)  # never in a run line
         runs = [step["run"] for step in steps if "run" in step]
-        assert runs == ['python -m pip install -e ".[dev]"', "python tasks.py check"]
+        assert runs == [
+            "python .github/scripts/framework_checks_runner.py",  # choice 235: speed only
+            'python -m pip install -e ".[dev]"',
+            "python tasks.py check",
+        ]
     assert job["steps"][1]["with"]["python-version"] == "${{ matrix.python }}"
     shard = {"FRAMEWORK_TEST_SHARD": "${{ matrix.shard }}/3"}
     assert windows["steps"] == [
