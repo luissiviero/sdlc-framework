@@ -21,7 +21,7 @@ This session ran on branch `ccr-60c77de5-fstbqn`, from the owner's prompt of 202
 None: no guardrail line changes in 1.0.10.
 
 ## Left
-- **Not verified live:** a restart after a preflight park, an unfinished round's kept work, and a question turned into a park, on a real runner. The sample's upgrade (choice 207) brings 1.0.10 to a project.
+- **Not verified live:** a restart after a preflight park, an unfinished round's kept work, and a question turned into a park, on a real runner. The sample's upgrade (choice 207) brings 1.0.10 to a project. *[2026-10-19: PR #238 merged as `0d4bd2e`, `v1.0.10` on it; the sample is at 1.0.10 (sample PRs #67 and #68) with the project's GitHub App, whose first token minted in detect run 39258940721; the rest waits for the sample's first change (NOTES §47).]*
 - **1.0.10's known limits:**
   - a restart puts gate (b) back as passed from the branch's own files (`pre_run_park` reads `status.yaml`, `gate-c.json` and the evidence names a head could write); a restart still needs the owner's by-hand dispatch, and the old re-run path already trusted the branch's `status.yaml`;
   - a stacked build whose design PR was squash-merged always conflicts on `status.yaml` at a restart, so the owner updates the branch first;
