@@ -104,8 +104,10 @@ What one run does, in order:
    GitHub allows from the workflow token, kept with the App for the fallback, decision 33;
    ``head_ref`` keys the concurrency group). A gate
    (b) that passed on the fast lane (decision 30) is confirmed and recorded first
-   (``record_fast_lane_b``) and dispatches the build; once the run's own PR exists, the PR
-   it carries forward (the intent PR, the design PR) is closed as ``sdlc:superseded``.
+   (``record_fast_lane_b``) and dispatches the build, also when the design PR could not be
+   opened (the run still ends red); a dispatch GitHub refuses puts the design back to the
+   ``wait`` at (b) (``fast_lane_wait``). Once the run's own PR exists, the PR it carries
+   forward (the intent PR, the design PR) is closed as ``sdlc:superseded``.
 
 Exit codes: 0 the run finished, was skipped or parked (a park is a queue item, not a CI
 failure); 1 an infrastructure failure — the setup command failed, the CLI exited non-zero,
@@ -3306,29 +3308,44 @@ def _run_phase(args, env: dict[str, str], track: dict[str, Any]) -> int:
         else None
     )
     pr = ensure_pr(plugin_dir, root, change_id, phase, args.repo, env, gate_phase, fix_branch)
-    if (fast_lane or {}).get("recorded") and pr.get("ok") and not not_pushed:
-        # the design PR's number, for the build PR's body; the PR may have opened just now
-        fast_lane["pr_recorded"] = record_design_pr(
-            plugin_dir, root, change_dir, change_id, phase, gate_phase, fix_branch, pr
-        )
+    if (fast_lane or {}).get("recorded") and not not_pushed:
+        if pr.get("ok"):
+            # the design PR's number, for the build PR's body; the PR may have opened just now
+            fast_lane["pr_recorded"] = record_design_pr(
+                plugin_dir, root, change_dir, change_id, phase, gate_phase, fix_branch, pr
+            )
         # the build cuts its branch only where its own check holds on what was pushed (a
         # sweep of uncommitted spec or plan edits into the run record, a profile turned Full
         # since): when it refuses, the design waits at (b) with its label, nothing dispatched
         refused = stacked_refusal(root, change_id)
         if refused:
-            fast_lane.update(recorded=False, reason=refused)
-            demote_fast_lane(change_dir, refused, drop_record=True)
-            fast_lane["demoted"] = commit_run_record(
-                plugin_dir, root, change_id, phase, gate_phase, fix_branch,
+            pr = fast_lane_wait(
+                plugin_dir, root, change_dir, change_id, phase, gate_phase, fix_branch,
+                args.repo, env, fast_lane, refused,
                 note="fast lane refused by the build's check, gate (b) waits (decision 30)",
             )  # fmt: skip
             result = read_gate(change_dir, gate_phase) or result
-            pr = ensure_pr(
-                plugin_dir, root, change_id, phase, args.repo, env, gate_phase, fix_branch
-            )
+    # on the fast lane the build PR carries the design, so a design PR that could not be
+    # opened does not hold the build back: the run still ends red below, and the build PR
+    # supersedes the intent PR instead (decision 30)
+    on_lane = bool((fast_lane or {}).get("recorded")) and not not_pushed
     handed = (
-        hand_over(args, result, gate_phase, change_id) if pr.get("ok") and not not_pushed else None
+        hand_over(args, result, gate_phase, change_id)
+        if (pr.get("ok") or on_lane) and not not_pushed
+        else None
     )
+    if on_lane and handed is not None and handed.get("ok") is False:
+        # a pushed fast_lane.b with no build behind it would skip every later design event
+        # as "design done": the design waits at (b) instead, the owner's merge starts the build
+        refused = FAST_LANE_UNDISPATCHED.format(
+            reason=handed.get("reason") or handed.get("status") or "no answer"
+        )
+        pr = fast_lane_wait(
+            plugin_dir, root, change_dir, change_id, phase, gate_phase, fix_branch,
+            args.repo, env, fast_lane, refused,
+            note="fast lane: the build was not dispatched, gate (b) waits (decision 30)",
+        )  # fmt: skip
+        result = read_gate(change_dir, gate_phase) or result
     if auto is not None and auto.get("action") == "round":
         auto["dispatched"] = (
             dispatch_fix_round(args, change_id, pr.get("head") or branch["branch"])
@@ -3372,9 +3389,16 @@ def _run_phase(args, env: dict[str, str], track: dict[str, Any]) -> int:
         # the evidence is written and the spend is recorded above; what is missing is the
         # queue item, and a phase result nobody can find is an infrastructure failure
         print(PR_MISSING.format(reason=pr.get("reason") or "no route"), file=sys.stderr)
+        if (handed or {}).get("ok"):
+            print(FAST_LANE_BUILD_CARRIES, file=sys.stderr)
         return EXIT_FAILED
     if not_pushed:
         print(not_pushed, file=sys.stderr)
+        return EXIT_FAILED
+    demoted = (fast_lane or {}).get("demoted")
+    if demoted is not None and not demoted.get("ok"):
+        # the branch still records fast_lane.b, which later design events read as done
+        print(FAST_LANE_DEMOTION_NOT_PUSHED.format(reason=demoted.get("reason")), file=sys.stderr)
         return EXIT_FAILED
     return EXIT_OK
 
@@ -4448,6 +4472,15 @@ def stamp_run_record(change_dir: Path, phase: str, env: dict[str, str]) -> dict[
 # --- the fast lane after the design's gate (decision 30, ROADMAP R46) -----------------------------
 FAST_LANE_WAIT_REASON = "waiting for the owner at gate (b)"
 FAST_LANE_FIX_REFUSAL = "a fix round at (b) waits for the owner's merge (decision 30)"
+FAST_LANE_UNDISPATCHED = "the build was not dispatched: {reason}"
+FAST_LANE_BUILD_CARRIES = (
+    "the build was dispatched on the fast lane (decision 30): its pull request carries the "
+    "intent, spec and plan, and supersedes the intent pull request"
+)
+FAST_LANE_DEMOTION_NOT_PUSHED = (
+    "the fast lane's demotion to gate (b) was not committed and pushed: {reason}; the design "
+    "branch still records fast_lane.b, so dispatch SDLC build with the change id to go on"
+)
 
 
 def fast_lane_refusal(
@@ -4634,6 +4667,32 @@ def demote_fast_lane(change_dir: Path, why: str, drop_record: bool = False) -> N
     status_mod.write_status(change_dir, st)
 
 
+def fast_lane_wait(
+    plugin_dir: Path,
+    root: Path,
+    change_dir: Path,
+    change_id: str,
+    phase: str,
+    gate_phase: str,
+    fix_branch: str | None,
+    repo: str,
+    env: dict[str, str],
+    fast_lane: dict[str, Any],
+    why: str,
+    note: str,
+) -> dict[str, Any]:
+    """A fast lane recorded and pushed that cannot go on to the build: ``fast_lane.b`` is
+    dropped, the gate record goes back to today's ``wait`` at (b), both are pushed, and the
+    design PR is brought up to date with ``sdlc:b-ready`` (opened if it was missing). Returns
+    ``ensure_pr``'s answer; ``fast_lane`` says why and carries the demotion's commit."""
+    fast_lane.update(recorded=False, reason=why)
+    demote_fast_lane(change_dir, why, drop_record=True)
+    fast_lane["demoted"] = commit_run_record(
+        plugin_dir, root, change_id, phase, gate_phase, fix_branch, note=note
+    )
+    return ensure_pr(plugin_dir, root, change_id, phase, repo, env, gate_phase, fix_branch)
+
+
 def fast_lane_note(fast_lane: dict[str, Any]) -> str:
     """The end of the run record's commit message for what ``record_fast_lane_b`` did."""
     if fast_lane.get("recorded"):
@@ -4696,7 +4755,8 @@ SUPERSEDE_PHASES = ("b", "c", "d", "e")
 def supersede_earlier_pr(args, env: dict[str, str], track: dict[str, Any]) -> Any:
     """Decision 30: once this run's pull request carries the change, the earlier one is
     closed as superseded - the owner's intent PR by the design PR (``fast_lane.a.pr``), the
-    design PR by the build PR (``fast_lane.b.pr``, else the open PR of ``sdlc/<id>/b``). Only
+    design PR by the build PR (``fast_lane.b.pr``, else the open PR of ``sdlc/<id>/b``, else
+    the intent PR when no design PR was opened). Only
     while the fast lane's record stands on this branch (``fast_lane_sha``); None when there
     is nothing to supersede. Never raises for a GitHub failure (the caller logs it)."""
     gate_phase = track.get("gate_phase")
@@ -4719,6 +4779,11 @@ def supersede_earlier_pr(args, env: dict[str, str], track: dict[str, Any]) -> An
         if earlier is None:
             design = github.find_open_pr(args.repo, c.branch_name(st.id, "b"), cwd=root)
             earlier = _pr_number(design.get("number"))
+        if earlier is None:
+            # no design PR was ever opened (the design run could not open it and dispatched
+            # the build anyway): the intent PR is the one this PR carries forward
+            earlier = _pr_number((st.fast_lane or {}).get("a", {}).get("pr"))
+            expected_head = (st.fast_lane or {}).get("a", {}).get("sha")
     if earlier is None:
         return None
     head = track.get("fix_branch") or work_branch_for(st.id, gate_phase)
