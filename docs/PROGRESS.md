@@ -1,6 +1,6 @@
 # Progress — the framework's own checks, faster, part 3: the fixture repositories built once per session (choice 235, item 3) (2026-10-19)
 
-This session ran on branch `ccr-eb707371-rh6z2g`, from the owner's task of 2026-10-19: the second step of choice 235, in two PRs (this one first, the git lookups of `plugin/state/gitops.py` second). The previous record (part 2: the runner prepared before the suite, choice 235 item 6, PRs #245 and #246) is now `docs/progress/2026-10-19-framework-checks-runner-settings-item-6.md`, unchanged. The session's own file is `docs/handoffs/sessions/2026-10-19-ccr-eb707371-rh6z2g.md`, written in its last PR.
+This session ran on branch `ccr-eb707371-rh6z2g`, from the owner's task of 2026-10-19: the second step of choice 235, in two PRs (this one first, the git lookups of `plugin/state/gitops.py` second). The previous record (the LLM wiki pattern, ROADMAP R55 to R57 and choice 236, PR #247, from the parallel session `claude/llm-wiki-sdlc-framework-g10zr0`, which merged first) is now `docs/progress/2026-10-19-llm-wiki-roadmap-r55-r57-and-choice-236.md`, unchanged; the one before it (part 2 of choice 235, item 6) was archived by #247 as `docs/progress/2026-10-19-framework-checks-faster-part-2-runner-prepared.md`. The session's own file is `docs/handoffs/sessions/2026-10-19-ccr-eb707371-rh6z2g.md`, written in its last PR.
 
 Tests only: no change under `plugin/` or `template/`, no version bump, not on the port list.
 
