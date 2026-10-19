@@ -26,7 +26,7 @@ None: no guardrail line changes in this PR. (The sample's pin is #241's row.)
 - **The owner's merge order was #242, #241, #240.** Both are merged into this branch; one copy of each archived record is kept, under the name on `main`.
 - **R50 has no automatic check:** a session that reads a real project's changes counts the changes past gate (e) and raises R50 at 20.
 - **R51's G1 is read from the workflows and `sdlc-init.md`, not seen live.**
-- **R53's measure** is the live-proof session's to take from change 0015's job steps, if it agrees.
+- **R53's measure** is the live-proof session's to take from change 0015's job steps, if it agrees. *[2026-10-19, session `ccr-6281cac2-hdaob7`: taken, NOTES §49: setup is 4 to 9 percent of each phase job, under R53's fifth.]*
 
 ## Checks (this repository)
 On the final head, after `python -m pip install -e ".[dev]"`, chained with `set -o pipefail`: the four commands of `HANDOFF.md`'s standing precondition 1. Their output is in the PR.
