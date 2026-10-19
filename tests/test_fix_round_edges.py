@@ -555,3 +555,36 @@ def test_a_label_is_refused_when_the_default_branch_s_sdlc_yaml_cannot_be_locate
     # by hand (no runner) the checkout's copy is the one there is: mallory counts
     by_hand = {k: v for k, v in env.items() if k != "GITHUB_ACTIONS"}
     assert run_phase.label_refusal(root, "owner/name", by_hand) is None
+
+
+# --- round 2, item 5: the restart takes the owner's fields from main --------------------------
+def test_a_restart_keeps_an_owner_change_on_main_the_branch_record_predates(
+    project, tmp_path, fake_claude, monkeypatch, capsys
+):
+    """The build branch was cut while ``risk_accepted`` named ``auth``; the owner revoked it
+    on main before the restart. The guard's pre-merge record written over the merged file
+    used to bring the revoked item back."""
+    _root, change = project
+    st = status_mod.read_status(change)
+    st.risk_accepted = ["auth"]
+    status_mod.write_status(change, st)
+    root, change, _bare, lint, args, env = gaps._build_parked_at_the_preflight(
+        project, tmp_path, fake_claude, monkeypatch, capsys
+    )
+    assert status_mod.read_status(change).risk_accepted == ["auth"]  # the branch's record
+    fixed = (root / "CLAUDE.md").read_text(encoding="utf-8").replace("ruff", lint)
+    git(root, "checkout", "-q", "main")
+    git(root, "branch", "-q", "-D", "sdlc/0001/c")
+    main_st = status_mod.read_status(change)
+    main_st.risk_accepted = []
+    status_mod.write_status(change, main_st)
+    git(root, "commit", "-q", "-am", "owner: the auth risk is no longer accepted")
+    gaps._owner_commits_on_main(root, "CLAUDE.md", fixed, "CLAUDE.md names the lint command")
+    gaps._pr_upsert_only(monkeypatch, 7)
+    assert run_phase.run_phase(args, env) == run_phase.EXIT_OK
+    out = json.loads(capsys.readouterr().out)
+    assert "parked" not in out and "skipped" not in out, out
+    st = status_mod.read_status(change)
+    assert st.risk_accepted == []  # the owner's revocation stands
+    assert st.phase == "c" and st.parked_reason is None
+    assert (st.gate.phase, st.gate.result) == ("b", "passed")

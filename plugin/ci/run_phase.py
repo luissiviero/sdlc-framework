@@ -118,6 +118,7 @@ pushed (0.3.0, issue #91; the change is parked first where the record was deferr
 from __future__ import annotations
 
 import argparse
+import copy
 import json
 import math
 import os
@@ -1672,12 +1673,12 @@ def merge_default_branch(root: Path, change_dir: Path | None = None, st=None) ->
 
     The guard's own write to the change's ``status.yaml`` (``st``: the park cleared, gate (b)
     put back) is set aside first, so the merge runs on the branch's committed tree and never
-    refuses over a local change; afterwards ``st`` is written back over the merged file with
-    the default branch's ``profile_override`` and ``review_override`` (the copy
-    ``approved_overrides`` judges by), uncommitted as the guard left it. A conflict in that
-    one file and no other (the owner's override on the default branch; the squash-merged
-    design of a stacked fast-lane build, whose copy says phase b) is settled the same way:
-    the branch's record is the runner's. Any other conflict aborts the merge, puts the
+    refuses over a local change; afterwards the runner's restart fields are applied to the
+    merged file, and every owner-only field is taken from the default branch's copy
+    (``_restart_record``), uncommitted as the guard left it. A conflict in that one file and
+    no other (an owner's change on the default branch; the squash-merged design of a
+    stacked fast-lane build, whose copy says phase b) is settled the same way, on the
+    default branch's copy. Any other conflict aborts the merge, puts the
     guard's write back, and ``conflicts`` names the files, those git would have overwritten
     included. The merge commit is pushed by the run's next push (the park's or the
     session's); ``guardrail_changes`` diffs against the merge base, which the merge moves to
@@ -1712,7 +1713,7 @@ def merge_default_branch(root: Path, change_dir: Path | None = None, st=None) ->
             gate_diff._git(root, "diff", "--name-only", "-z", "--diff-filter=U", check=False)
         )
         if record is not None and conflicts == [record]:
-            _restart_record(root, change_dir, st, base, record)
+            _restart_record(root, change_dir, st, base, record, conflicted=True)
             gitops.run(root, "add", "--", record, check=False)
             done = subprocess.run(
                 ["git", *gitops.identity_args(root), "commit", "-q", "-m", message],
@@ -1742,22 +1743,53 @@ def merge_default_branch(root: Path, change_dir: Path | None = None, st=None) ->
     return {**out, "ok": True, "merged": after if after != before else None}
 
 
-def _restart_record(root: Path, change_dir: Path, st, base: str, record: str) -> None:
-    """The guard's restart record ``st`` written over the change's ``status.yaml``, with the
-    owner's two overrides as the default branch's copy at ``base`` carries them (none there,
-    or unreadable: the branch's values stand, and ``approved_overrides`` judges either way)."""
+# the ``status.yaml`` attributes behind ``owner_fields``, ``fast_lane`` apart (the runner's
+# record of what this branch was cut from, carried as a restart field below)
+OWNER_STATUS_FIELDS = (
+    "risk_accepted", "risk_accepted_by", "iterations_reset_by", "iterations_reset_at",
+    "tests_unlocked_by", "tests_locked", "iterations", "panel_calls", "profile_override",
+    "review_override",
+)  # fmt: skip
+# what the guard's restart of the preflight park sets, and the runner's own records
+RESTART_FIELDS = ("phase", "gate", "parked_reason", "fast_lane", "build_pr")
+
+
+def _restart_record(
+    root: Path, change_dir: Path, st, base: str, record: str, conflicted: bool = False
+) -> None:
+    """The change's ``status.yaml`` after the restart's merge: the merged file (on a
+    conflict in it, the default branch's copy at ``base``) with the guard's restart fields
+    from ``st`` (phase c, the park cleared, gate (b) passed, the fast-lane record and the
+    build PR) and every owner-only field from the default branch's copy, so an owner's
+    change there (an override, a revoked ``risk_accepted`` item) is not undone by the
+    branch's older record. Without a readable default-branch copy the merged file's owner
+    fields stand (a stacked build whose design is not merged yet), and without a readable
+    merged file the guard's record does."""
     from state import yamlish  # noqa: PLC0415
 
+    approved = None
     text = gate_diff.file_at(root, base, record)
     if text is not None:
         try:
             approved = status_mod.Status.from_dict(yamlish.loads(text))
-        except Exception:  # noqa: BLE001 - the guard's own record stands
+        except Exception:  # noqa: BLE001 - the merged file's own fields stand
             approved = None
-        if approved is not None:
-            st.profile_override = approved.profile_override
-            st.review_override = approved.review_override
-    status_mod.write_status(change_dir, st)
+    out = None
+    if conflicted:
+        out = copy.deepcopy(approved)
+    else:
+        try:
+            out = status_mod.read_status(change_dir)
+        except (OSError, ValueError):
+            out = None
+    if out is None:
+        out = copy.deepcopy(st)
+    for name in RESTART_FIELDS:
+        setattr(out, name, copy.deepcopy(getattr(st, name)))
+    if approved is not None:
+        for name in OWNER_STATUS_FIELDS:
+            setattr(out, name, copy.deepcopy(getattr(approved, name)))
+    status_mod.write_status(change_dir, out)
 
 
 def _approved_ref(root: Path) -> str | None:
@@ -2924,6 +2956,8 @@ def _run_phase(args, env: dict[str, str], track: dict[str, Any]) -> int:
     # then judge the merged checkout
     # (a dry run merges nothing: it reports the run it would start)
     merged = merge_default_branch(root, change_dir, st) if restart and not args.dry_run else None
+    if merged is not None and merged.get("ok") and merged.get("merged"):
+        st = status_mod.read_status(change_dir)  # the record the merge left (_restart_record)
     if merged is not None and not merged.get("ok"):
         parked = park_and_publish(
             plugin_dir, root, change_dir, st, phase,
