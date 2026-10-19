@@ -17,8 +17,8 @@ The sample's pin, after `v1.0.12` is tagged (a guardrail row, the owner's edit):
 The thirteen workflow copies do not change: neither 1.0.11 nor 1.0.12 changes a workflow template, and this fix is in the framework checkout the workflows fetch at the pin.
 
 ## Left
-- **Change 0015 waits at the deploy run.** After the pin moves, SDLC deploy is dispatched again for 0015 (`change_id: 0015`, `head_ref: sdlc/0015/c`). Gate (e) and R47's review request on the draft build PR come after that.
-- **Not verified live:** R47; a sandboxed session reading the runner's process through `/proc`; the App's own pull requests; the 1.0.10 paths (NOTES §48); that the ordinary fast-lane path still works on 1.0.11 (the next fast-lane change on the sample).
+- **Change 0015 waits at the deploy run.** After the pin moves, SDLC deploy is dispatched again for 0015 (`change_id: 0015`, `head_ref: sdlc/0015/c`). Gate (e) and R47's review request on the draft build PR come after that. *[2026-10-19, the same session: the owner dispatched it (run 39292052846, the check passed on 1.0.12); gate (e) parked at the iteration cap and the owner merged #71 over the park with `sdlc:release-approved` (NOTES §49).]*
+- **Not verified live:** R47; a sandboxed session reading the runner's process through `/proc`; the App's own pull requests; the 1.0.10 paths (NOTES §48); that the ordinary fast-lane path still works on 1.0.11 (the next fast-lane change on the sample). *[2026-10-19, the same session: still not verified after change 0015's merge; R47's request was made but no push reached the owner (NOTES §49).]*
 - **A nit for later:** `pr/cli.py upsert` cuts a long open question at its line end in the intent PR's summary (NOTES §48).
 - **The port list** (HANDOFF rules): this PR touches none of its paths (`plugin/ci/checkout_check.py` only).
 
