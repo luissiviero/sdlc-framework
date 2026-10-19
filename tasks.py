@@ -33,11 +33,13 @@ def task_test() -> int:
     # framework-checks.yml paid about six times the Linux jobs' time for it; `-n auto` spreads
     # the tests over the runner's cores. It stays out of pyproject's addopts so that plain
     # `python -m pytest` keeps working where the dev extra is not reinstalled yet, and this
-    # task falls back to one core there too.
+    # task falls back to one core there too. `worksteal` (2026-10-19): with the default `load`
+    # the last few slow end-to-end tests ran on one worker while the others sat idle, about
+    # three minutes at the end of the Windows job; an idle worker now takes over queued tests.
     if importlib.util.find_spec("xdist") is None:
         print("pytest-xdist is not installed: running the suite on one core", flush=True)
         return _run("pytest")
-    return _run("pytest", "-n", "auto")
+    return _run("pytest", "-n", "auto", "--dist", "worksteal")
 
 
 def task_lint() -> int:
