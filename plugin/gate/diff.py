@@ -319,9 +319,10 @@ def committed_files(root: Path, merge_base: str | None, head: str | None = None)
 
 
 def is_repo(root: Path) -> bool:
+    """``gitops.is_repo``, whose yes is remembered (1.0.13); no git at all is a no."""
     try:
-        return _git(root, "rev-parse", "--is-inside-work-tree").strip() == "true"
-    except GitUnavailable:
+        return gitops.is_repo(root)
+    except OSError:
         return False
 
 
@@ -340,21 +341,23 @@ def default_base(root: Path) -> str:
     emptied the committed diff the checks and the runner's guard judge.
 
     ``SDLC_DEFAULT_BRANCH`` (refused when it names a framework branch, see
-    ``gitops.explicit_default_branch``) wins when ``refs/remotes/origin/<value>`` resolves."""
+    ``gitops.explicit_default_branch``) wins when ``refs/remotes/origin/<value>`` resolves.
+    Its lookups are gitops' remembered ones (``origin_head``, ``ref_exists``, 1.0.13), shared
+    with ``gitops.default_branch`` and the runner's ref checks."""
     explicit = gitops.explicit_default_branch()
-    if explicit:
-        ref = f"refs/remotes/origin/{explicit}"
-        if _git(root, "rev-parse", "--verify", "--quiet", ref, check=False).strip():
-            return ref
     try:
-        ref = _git(root, "symbolic-ref", "refs/remotes/origin/HEAD").strip()
-        if ref.startswith("refs/remotes/"):
+        if explicit:
+            ref = f"refs/remotes/origin/{explicit}"
+            if gitops.ref_exists(root, ref):
+                return ref
+        ref = gitops.origin_head(root)
+        if ref and ref.startswith("refs/remotes/"):
             return ref
-    except GitUnavailable:
-        pass
-    for cand in ("refs/remotes/origin/main", "refs/remotes/origin/master", "main", "master"):
-        if _git(root, "rev-parse", "--verify", "--quiet", cand, check=False).strip():
-            return cand
+        for cand in ("refs/remotes/origin/main", "refs/remotes/origin/master", "main", "master"):
+            if gitops.ref_exists(root, cand):
+                return cand
+    except OSError as exc:
+        raise GitUnavailable(f"git: {exc!r}") from exc
     return "HEAD"
 
 
