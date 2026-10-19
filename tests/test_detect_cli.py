@@ -26,6 +26,7 @@ from detect import dismissals, finding, runbooks, source
 
 from state import gitops
 from state import status as status_mod
+from tests import fixture_repos
 
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURE = ROOT / "tests" / "fixtures" / "sample-python-project"
@@ -69,6 +70,19 @@ def project(tmp_path: Path) -> Path:
     """The fixture initialised (standard profile) and committed on main, pushed to a bare
     origin whose HEAD is main."""
     root = tmp_path / "proj"
+    fixture_repos.copy(
+        "detect-project",
+        tmp_path,
+        _build_project,
+        relocate=lambda dest: git(
+            dest / "proj", "remote", "set-url", "origin", str(dest / "origin.git")
+        ),
+    )
+    return root
+
+
+def _build_project(base: Path) -> None:
+    root = base / "proj"
     shutil.copytree(FIXTURE, root)
     git(root, "init", "-q", "-b", "main")
     git(root, "config", "user.email", "owner@example.com")
@@ -86,11 +100,10 @@ def project(tmp_path: Path) -> Path:
     git(root, "add", ".")
     git(root, "commit", "-q", "-m", "sdlc-init (as if the 0000 PR merged)")
     origin = bare(root)
-    git(tmp_path, "init", "-q", "--bare", "-b", "main", str(origin))
+    git(base, "init", "-q", "--bare", "-b", "main", str(origin))
     git(root, "remote", "add", "origin", str(origin))
     git(root, "push", "-q", "-u", "origin", "main")
     git(root, "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main")
-    return root
 
 
 def observations(values: list[float], failed_last: str | None = None) -> list[dict[str, Any]]:

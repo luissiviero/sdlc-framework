@@ -26,6 +26,7 @@ from gate import diff as diffmod
 from state import cli as state_cli
 from state import conventions as c
 from state import status as status_mod
+from tests import fixture_repos
 from tests import test_ci as ci_tests
 from tests.test_ci import (
     FAKE_RESULT,
@@ -63,9 +64,22 @@ def lane(tmp_path):
     """Main initialised and pushed to a bare origin without change 0001; the owner's intent
     PR head ``claude/intent`` carries the change folder at phase (a) with its intent, pushed
     too. Returns (root, change folder, the intent PR's head sha)."""
-    root, change = _initialised_fixture(tmp_path)
-    bare = tmp_path / "remote.git"
-    git(tmp_path, "init", "-q", "--bare", "-b", "main", str(bare))
+    root = tmp_path / "proj"
+    head = fixture_repos.copy(
+        "fast-lane",
+        tmp_path,
+        _build_lane,
+        relocate=lambda dest: git(
+            dest / "proj", "remote", "set-url", "origin", str(dest / "remote.git")
+        ),
+    )
+    return root, root / "changes" / "0001-percent-helper", head
+
+
+def _build_lane(base: Path) -> str:
+    root, _change = _initialised_fixture(base)
+    bare = base / "remote.git"
+    git(base, "init", "-q", "--bare", "-b", "main", str(bare))
     git(root, "remote", "add", "origin", str(bare))
     git(root, "stash", "-q", "-u")  # the change folder is the intent PR's, not main's
     git(root, "push", "-q", "-u", "origin", "main")
@@ -75,7 +89,7 @@ def lane(tmp_path):
     git(root, "commit", "-q", "-m", "intent(0001): percent helper")
     git(root, "push", "-q", "-u", "origin", "claude/intent")
     git(root, "fetch", "-q", "origin")
-    return root, change, git(root, "rev-parse", "HEAD").strip()
+    return git(root, "rev-parse", "HEAD").strip()
 
 
 def _status(change: Path, **fields) -> None:

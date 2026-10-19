@@ -33,6 +33,8 @@ import zlib
 
 import pytest
 
+from tests import fixture_repos
+
 RUNNER_PREFIXES = ("GITHUB_", "RUNNER_", "ACTIONS_")
 # ``SDLC_GATE_COMMANDS`` is the mark the runner sets in a CI session's environment (0.3.0,
 # issue #91): every process of that session inherits it, this suite included when it runs as
@@ -55,6 +57,22 @@ def runner_variables(environ=None) -> list[str]:
     return sorted(
         name for name in environ if name.startswith(RUNNER_PREFIXES) or name in RUNNER_NAMES
     )
+
+
+@pytest.fixture(autouse=True, scope="session")
+def _fixture_repos(tmp_path_factory):
+    """The fixture repositories are built once per session (``tests/fixture_repos.py``),
+    under the environment every test starts from: the runner's variables removed, the hook
+    log in the session's own temporary directory."""
+    environ = {
+        name: value
+        for name, value in os.environ.items()
+        if name not in runner_variables() and name != SHARD_VARIABLE
+    }
+    log_dir = tmp_path_factory.mktemp("fixture-repos-log")
+    environ["SDLC_HOOK_LOG"] = str(log_dir / "test-hook-log.jsonl")
+    fixture_repos.configure(tmp_path_factory, environ)
+    yield
 
 
 @pytest.fixture(autouse=True)
