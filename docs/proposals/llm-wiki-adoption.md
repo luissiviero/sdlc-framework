@@ -89,7 +89,7 @@ Related: R28's Architect reads the pages; R30's list of what starts empty gains 
 
 ## Order
 
-R55 first, a documentation and tasks PR. R56 after choice 235's second step and the sample's next change, so the plugin version does not move under either; no rank moves. R57's proposal is this file; its build waits for the real-project trial (after R28, rank 19) and its rank is the owner's, placed from the trial's measures. *[2026-10-19, choice 237: and after R45 (rank 20), so its names are not changed twice.]* Before writing a row number, a session checks that R55 to R57 are still free.
+R55 first, a documentation and tasks PR. R56 after choice 235's second step and the sample's next change, so the plugin version does not move under either; no rank moves. R57's proposal is this file; its build waits for the real-project trial (after R28, rank 19) and its rank is the owner's, placed from the trial's measures. *[2026-10-19, choice 237: and after R45 (rank 20), so its names are not changed twice.]* *[2026-10-19, choice 238: the trial now comes after R45 (rank 20); R28 moved after it, to rank 21.]* Before writing a row number, a session checks that R55 to R57 are still free.
 
 ## Decisions it touches
 
