@@ -1,32 +1,33 @@
-# Progress — the speed-first order: ROADMAP R50 to R54, the Order rewritten, and the owner's choices 233 and 234 (2026-10-19)
+# Progress — the framework's own checks, faster: no real network in the tests, the Windows suite in three shards, and the owner's choice 235 (2026-10-19)
 
-This session ran on branch `ccr-70fb3ae3-39fz5m`, from the owner's questions of 2026-10-19: the work left, whether it can run concurrently, and then how to speed the plugin's use up as far as possible, "even if it means giving up a bit of control for a meaningful time boost". The previous record (the live proof, part 1, and the checkout check as 1.0.12, PR #241) is now `docs/progress/2026-10-19-live-proof-part-1-1.0.12.md`, unchanged; before it come the fast lane's recovery as 1.0.11 (choice 232, PR #242), `docs/progress/2026-10-19-fast-lane-recovery-1.0.11-and-choice-232.md` as #241 archived it, and 1.0.10 (choices 228 to 231), `docs/progress/2026-10-19-1.0.10-and-choices-228-231.md` as #242 archived it. This record's choices were first numbered 232 and 233 and moved to 233 and 234 when #242's choice 232 merged first. The session's own file is `docs/handoffs/sessions/2026-10-19-ccr-70fb3ae3-39fz5m.md`.
+This session ran on branch `ccr-dc6617ae-y5l3n6`, from the owner's question of 2026-10-19: why `Framework checks` takes so much longer now, and what makes it faster without giving up safety. The previous record (the speed-first order, choices 233 and 234, PR #240) is now `docs/progress/2026-10-19-speed-first-order-and-choices-233-234.md`, unchanged. The session's own file is `docs/handoffs/sessions/2026-10-19-ccr-dc6617ae-y5l3n6.md`.
+
+This is this repository's own CI, not ROADMAP R53: R53 is about the setup time of a project's phase jobs, and nothing here touches `plugin/` or `template/`, so there is no version bump.
+
+## Why the checks got slower
+- **The Windows job is the whole wait.** Its "Lint and test" step went from 10.3 minutes for 1694 tests on 2026-10-17 ([run 39052509110](https://github.com/luissiviero/sdlc-framework/actions/runs/39052509110), "1694 passed in 616.22s") to 22.1 minutes for 2086 tests on 2026-10-19 ([run 39279514134](https://github.com/luissiviero/sdlc-framework/actions/runs/39279514134), "2086 passed in 1323.83s"). The Linux jobs stayed at 2 to 3.5 minutes. The 45 to 49 minutes the Actions list shows for some runs come from the run record being updated later; every job of those runs ended within about 23 minutes.
+- **The new tests are end-to-end tests that start many processes.** From `cd8baf7` to `209325f`, `test_fast_lane.py`, `test_fix_round_edges.py`, `test_auto_round.py`, `test_fix_round_gaps.py`, `test_owner_rounds.py` and `test_panel.py` added about 190 seconds of test time on Linux (re-measured, junit timings of both commits in a cloud session, 836 s against 1025 s). The suite starts about 47,700 processes, 44,000 of them `git` (13,600 `rev-parse`, 975 `init`), measured with a logging `sitecustomize` in the same session. Windows pays for each process several times over, so the same tests doubled the Windows step.
+- **40 tests reached the real api.github.com.** They sent 673 requests to `repos/owner/name` with a fake token, 17 label creations per `run_phase` run among them, because `full_run` in `tests/test_ci.py` hands the runner `GITHUB_TOKEN=FAKE_TOKEN` and nothing stubbed `ensure_labels`. Each request took about 0.3 seconds and came back 401: about 218 seconds of the 1025, measured the same way.
+- **The end of the Windows run waited on one worker.** The last 4 % of its tests took about three minutes (15:58:18 to 16:01:12 in the run above), the end of pytest-xdist's default `load` scheduling.
 
 ## Summary
-- **Concurrency, the session's answer.** A project's pipeline already runs several changes at once: every phase workflow keys its concurrency group on the work branch, and a new id skips the ids with remote branches. Framework sessions already run in parallel by HANDOFF's design. On the sample, concurrency saves no meaningful time; on a real project it raises throughput, since most of a change's elapsed time is waiting for the owner.
-- **R50**: a trigger to revisit decision 17's parallel worktrees at 20 changes past gate (e) on a real project (choice 233). Decision 17 carries a note.
-- **R51**: concurrent changes, safe by construction (`docs/proposals/concurrent-changes.md`): a build PR behind the default branch is brought up to date and re-checked before gate (e) and the release, and a new id is reserved on the remote.
-- **The speed-first order** (choice 234, `docs/proposals/speed-beyond-the-sprint.md`): R7, then R24, R22, R51 with R25 parts 1-2, R18, R29 part 1 with R54, R26 and R52 move to ranks 7 to 15; the rest keep their order among themselves after them. Each moved cell is annotated with its previous rank.
-- **Three new candidates**: R52, merge by silence at gate (e), opt-in, decided only at R50's trigger; R53, faster CI jobs, measured first; R54, the quick intent, with R29 part 1.
-- No change under `plugin/` or `template/`; no version bump.
+- **No real network in the tests.** An autouse fixture in `tests/conftest.py` answers every request to a host other than loopback with the same 401 "Bad credentials" the runner got, at once and in-process, so every test reads the answer it read before. A token a developer exported (`GH_TOKEN`) no longer leaves the machine. A test that needs another answer patches `_request` or `urlopen` itself, as before. One test of `tests/test_ci_end_to_end.py` still sends 25 requests from its subprocesses, which the fixture cannot reach.
+- **The Windows suite runs in three shards** on parallel runners (`check-windows-shard` in `framework-checks.yml`). `FRAMEWORK_TEST_SHARD=i/3` keeps the tests whose id hashes (crc32) to shard i, so every test still runs on Windows exactly once; a malformed value stops the run. The check `check (windows-latest, 3.12)` keeps its name and is now the shards' verdict, green only when every shard is, skipped on a documentation-only pull request as before.
+- **`--dist worksteal`** in `python tasks.py test` (pytest-xdist 3.2 or later, pyproject's dev extra): an idle worker takes queued tests over.
+- **Tests:** `test_a_test_reaches_no_host_but_loopback` and `test_the_shards_split_the_suite_with_nothing_lost` (`tests/test_scaffold.py`), `test_the_windows_suite_runs_in_shards_and_its_check_is_their_verdict` (`tests/test_templates.py`). Two existing workflow tests in `tests/test_templates.py` follow the new job layout.
+- **Measured in a cloud session (Linux, 4 cores):** total test time 1025 s to 856 s; one test of `tests/test_ci.py` from 6.1 s to 0.4 s; wall time 270 s to 249 s, since the cores were already busy. The three shards hold 672, 711 and 707 of the 2090 tests, with none lost or repeated (`--collect-only` per shard). `worksteal` made no difference locally (250 s against 249 s); its target is the Windows run's end.
+- **Measured on this PR's first run** ([run 39297046659](https://github.com/luissiviero/sdlc-framework/actions/runs/39297046659), head `4be1cde`, all green): the shards' test steps read "672 passed in 315.44s", "711 passed in 536.65s" and "707 passed in 331.06s", against one Windows step of 1323.83 s before; the run took about 10 minutes from start to the verdict check, against about 23. Shard 2 took longer than the other two although it is not the heaviest on Linux; one run does not say whether that is the runner or its tests.
 
 ## The owner's decisions (2026-10-19)
-233. **Decision 17's "probably never" for parallel worktrees is revisited, not read as "never"** (the owner: "register to revisit this once the plugin is up and running for a while"). The session's reading of "a while": 20 changes past gate (e) on a project other than the sample, decision 17's own threshold for evals. ROADMAP R50.
-234. **The speed table's recommendations, all accepted** ("I accept all recommendations as you suggest them"):
-    - the speed-first Order above, with R51 accepted and R52 to R54 added;
-    - the sample runs `review: deferred` (applied by the owner, sample PR #72);
-    - the existing profiles are used per project (`deploy.production: false` where there is no real production, Lite for scripts, documentation and experiments); the sample keeps `production: true`;
-    - incident intents keep gate (a);
-    - the fix-round caps stay until R26's measures.
+235. **The framework's own checks are made faster in two steps** (the session's recommendation; the owner, "Go ahead"): now, the network fixture, the Windows shards and `worksteal` (this PR), in parallel with the live proof since none of them touches `plugin/` or `template/`; after the live proof, building the fixture repositories once per session, fewer repeated git lookups in `plugin/state/gitops.py` (a plugin change, with a version bump), and the runner settings (Defender's real-time scan, git's automatic maintenance). Dropping the Windows job from pull requests was not proposed: it caught the Windows-only `PermissionError` of PR #241 on 2026-10-19.
 
 ## Proposed edits for the owner
-None: no guardrail line changes in this PR. (The sample's pin is #241's row.)
+None: no guardrail line changes in this PR.
 
 ## Left
-- **The owner's merge order was #242, #241, #240.** Both are merged into this branch; one copy of each archived record is kept, under the name on `main`.
-- **R50 has no automatic check:** a session that reads a real project's changes counts the changes past gate (e) and raises R50 at 20.
-- **R51's G1 is read from the workflows and `sdlc-init.md`, not seen live.**
-- **R53's measure** is the live-proof session's to take from change 0015's job steps, if it agrees. *[2026-10-19, session `ccr-6281cac2-hdaob7`: taken, NOTES §49: setup is 4 to 9 percent of each phase job, under R53's fifth.]*
+- **The second step of choice 235**, after the live proof: the fixture repositories built once, the git lookups in `gitops.py`, the runner settings. Estimated, not measured: the Windows shards from about 7 minutes to about 4 or 5.
+- **The 25 requests from the subprocesses** of `test_the_commands_step_runs_the_targets_without_the_job_s_credentials`: they need an environment-level stand-in, left for the second step.
+- **The shards' balance** is read from later runs: if one shard keeps taking far longer than the others, the split by count needs a split by time.
 
 ## Checks (this repository)
 On the final head, after `python -m pip install -e ".[dev]"`, chained with `set -o pipefail`: the four commands of `HANDOFF.md`'s standing precondition 1. Their output is in the PR.

@@ -13,8 +13,8 @@ dependencies = []
 # version, and a tool release must not turn every pull request red on its own (0.2.28).
 # pytest-xdist spreads the suite over the cores (`python tasks.py test`, 2026-10-13): the
 # suite is bound by process launches, which Windows pays for several times over; plain
-# `python -m pytest` runs without it.
-dev = ["pytest>=8,<10", "pytest-xdist>=3,<4", "ruff>=0.16,<0.17", "pyyaml>=6,<7"]
+# `python -m pytest` runs without it. 3.2 is the first with `--dist worksteal` (2026-10-19).
+dev = ["pytest>=8,<10", "pytest-xdist>=3.2,<4", "ruff>=0.16,<0.17", "pyyaml>=6,<7"]
 
 # Nothing to package: `pip install -e ".[dev]"` only installs the dev tools. Without this,
 # setuptools refuses the flat layout (`plugin` and `template` are both top-level folders).

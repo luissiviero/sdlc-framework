@@ -10,7 +10,9 @@
 # the oldest Python the framework supports (pyproject's requires-python): the branches the
 # code keeps for it run nowhere else. The Windows job always runs on main and on dispatch;
 # on a pull request it is skipped when every changed path is documentation (the platforms
-# job below), and reports the check as skipped.
+# job below), and reports the check as skipped. Since 2026-10-19 the Windows suite runs in
+# three shards on parallel runners, and the check `check (windows-latest, 3.12)` is their
+# verdict (the two jobs at the end).
 #
 # Every `run:` line calls python (CLAUDE.md: no shell scripts); the runner's default shell
 # is bash on Linux and pwsh on Windows, and both take these lines as written. Nothing is
@@ -83,13 +85,18 @@ jobs:
       - name: Lint and test
         run: python tasks.py check
 
-  # A job of its own, not a matrix entry, so that a skip reports the check as skipped
-  # instead of leaving it out. It runs when the pick failed too (its output is then empty,
-  # never 'false'), and never on a cancelled run.
-  check-windows:
-    name: check (windows-latest, 3.12)
+  # The Windows suite in three shards on parallel runners (2026-10-19): the one Windows job
+  # had grown to 20-23 minutes against 3 on Linux. Each shard runs `python tasks.py check`
+  # with FRAMEWORK_TEST_SHARD set, and tests/conftest.py keeps the tests whose id hashes to
+  # it, so every test still runs on Windows exactly once. Same `if:` as the job below.
+  check-windows-shard:
+    name: check (windows-latest, 3.12, shard ${{ matrix.shard }}/3)
     needs: platforms
     if: ${{ !cancelled() && (github.event_name != 'pull_request' || needs.platforms.outputs.windows != 'false') }}
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
     runs-on: windows-latest
     timeout-minutes: 60
     steps:
@@ -105,4 +112,23 @@ jobs:
         run: python -m pip install -e ".[dev]"
 
       - name: Lint and test
+        env:
+          FRAMEWORK_TEST_SHARD: ${{ matrix.shard }}/3
         run: python tasks.py check
+
+  # The check the Windows job always reported, kept under its name: green only when every
+  # shard is green. A job of its own, not a matrix entry, so that a skip reports the check as
+  # skipped instead of leaving it out. It runs when the pick failed too (its output is then
+  # empty, never 'false'), and never on a cancelled run; a red or skipped shard on an event
+  # that runs Windows makes it red. It only reads the shards' result, so it runs on Linux.
+  check-windows:
+    name: check (windows-latest, 3.12)
+    needs: [platforms, check-windows-shard]
+    if: ${{ !cancelled() && (github.event_name != 'pull_request' || needs.platforms.outputs.windows != 'false') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Every Windows shard passed
+        env:
+          SHARDS: ${{ needs.check-windows-shard.result }}
+        run: python3 -c "import os, sys; r = os.environ['SHARDS']; print('shards:', r); sys.exit(r != 'success')"
