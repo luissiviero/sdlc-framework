@@ -48,3 +48,4 @@ chronological order (oldest first). The current record stays in `docs/PROGRESS.m
 - [Progress — the fix-round robustness PR: NOTES §45 gaps 2, 3 and 4 and choice 218 as plugin **1.0.10**, and the owner's choices 228 to 231 (2026-10-18 to 2026-10-19)](2026-10-19-1.0.10-and-choices-228-231.md)
 - [Progress — the fast lane's recovery PR: a pushed `fast_lane.b` always has a build behind it, as plugin **1.0.11**, and the owner's choice 232 (2026-10-19)](2026-10-19-fast-lane-recovery-1.0.11-and-choice-232.md)
 - [Progress — the live proof on the sample, part 1: change 0015 up to a red deploy run, and the checkout check's bytecode as plugin **1.0.12** (2026-10-19)](2026-10-19-live-proof-part-1-1.0.12.md)
+- [Progress — the speed-first order: ROADMAP R50 to R54, the Order rewritten, and the owner's choices 233 and 234 (2026-10-19)](2026-10-19-speed-first-order-and-choices-233-234.md)

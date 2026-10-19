@@ -320,9 +320,9 @@ def test_this_repository_runs_its_own_checks_on_linux_and_windows():
     assert on["push"]["branches"] == ["main"]
     assert "workflow_dispatch" in on
     assert data["permissions"] == {"contents": "read"}
-    assert list(data["jobs"]) == ["platforms", "check", "check-windows"]
+    assert list(data["jobs"]) == ["platforms", "check", "check-windows-shard", "check-windows"]
     job = data["jobs"]["check"]
-    windows = data["jobs"]["check-windows"]
+    windows = data["jobs"]["check-windows-shard"]
     jobs = {(entry["os"], entry["python"]) for entry in job["strategy"]["matrix"]["include"]}
     python = windows["steps"][1]["with"]["python-version"]
     jobs.add((windows["runs-on"], python))
@@ -332,7 +332,7 @@ def test_this_repository_runs_its_own_checks_on_linux_and_windows():
         ("windows-latest", "3.12"),
         ("ubuntu-latest", "3.10"),
     }
-    assert windows["name"] == "check (windows-latest, 3.12)"  # the matrix job's old name
+    assert data["jobs"]["check-windows"]["name"] == "check (windows-latest, 3.12)"  # old name
     assert job["strategy"]["fail-fast"] is False
     assert job["runs-on"] == "${{ matrix.os }}"
     for each in (job, windows):
@@ -346,8 +346,13 @@ def test_this_repository_runs_its_own_checks_on_linux_and_windows():
         runs = [step["run"] for step in steps if "run" in step]
         assert runs == ['python -m pip install -e ".[dev]"', "python tasks.py check"]
     assert job["steps"][1]["with"]["python-version"] == "${{ matrix.python }}"
+    shard = {"FRAMEWORK_TEST_SHARD": "${{ matrix.shard }}/3"}
     assert windows["steps"] == [
-        {**s, "with": {"python-version": "3.12"}} if "setup-python" in s.get("uses", "") else s
+        {**s, "with": {"python-version": "3.12"}}
+        if "setup-python" in s.get("uses", "")
+        else {**s, "env": shard}
+        if s.get("run") == "python tasks.py check"
+        else s
         for s in job["steps"]
     ]
     assert not (WORKFLOW_DIR / FRAMEWORK_CHECKS).exists()  # not installed into projects
@@ -383,13 +388,38 @@ def test_the_windows_job_is_skipped_only_on_a_documentation_only_pull_request():
     assert step["id"] == "pick"
     assert step["run"] == "python3 .github/scripts/framework_checks_windows.py"
     assert (REPO_WORKFLOW_DIR.parent / "scripts" / "framework_checks_windows.py").is_file()
-    windows = data["jobs"]["check-windows"]
-    assert windows["needs"] == "platforms"
-    assert windows["if"] == (
+    runs_windows = (
         "${{ !cancelled() && (github.event_name != 'pull_request' || "
         "needs.platforms.outputs.windows != 'false') }}"
     )
+    shards = data["jobs"]["check-windows-shard"]
+    assert shards["needs"] == "platforms"
+    assert shards["if"] == runs_windows
+    verdict = data["jobs"]["check-windows"]
+    assert verdict["needs"] == ["platforms", "check-windows-shard"]
+    assert verdict["if"] == runs_windows
     assert "needs" not in data["jobs"]["check"] and "if" not in data["jobs"]["check"]
+
+
+def test_the_windows_suite_runs_in_shards_and_its_check_is_their_verdict():
+    """2026-10-19: the one Windows job took 20-23 minutes against 3 on Linux. Three shards run
+    on parallel runners, each `python tasks.py check` with its FRAMEWORK_TEST_SHARD (every
+    test in exactly one shard: tests/test_scaffold.py), none cancelling the others; the check
+    named as the Windows job always was is green only when every shard is."""
+    yaml = pytest.importorskip("yaml")
+    data = yaml.safe_load((REPO_WORKFLOW_DIR / FRAMEWORK_CHECKS).read_text(encoding="utf-8"))
+    shards = data["jobs"]["check-windows-shard"]
+    assert shards["runs-on"] == "windows-latest"
+    assert shards["strategy"] == {"fail-fast": False, "matrix": {"shard": [1, 2, 3]}}
+    count = len(shards["strategy"]["matrix"]["shard"])
+    assert shards["name"] == f"check (windows-latest, 3.12, shard ${{{{ matrix.shard }}}}/{count})"
+    (step,) = [s for s in shards["steps"] if s.get("run") == "python tasks.py check"]
+    assert step["env"] == {"FRAMEWORK_TEST_SHARD": f"${{{{ matrix.shard }}}}/{count}"}
+    verdict = data["jobs"]["check-windows"]
+    (only,) = verdict["steps"]
+    assert only["env"] == {"SHARDS": "${{ needs.check-windows-shard.result }}"}
+    assert only["run"].startswith("python3 -c ") and "${{" not in only["run"]
+    assert "sys.exit(r != 'success')" in only["run"]
 
 
 def test_a_superseded_pull_request_run_of_the_framework_evals_is_cancelled():
