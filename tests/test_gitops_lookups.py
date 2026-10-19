@@ -6,6 +6,7 @@ that is not git at all) returns the new truth."""
 
 from __future__ import annotations
 
+import os
 import shutil
 import stat
 import subprocess
@@ -22,6 +23,19 @@ def git(cwd: Path, *args: str) -> str:
     return subprocess.run(
         ["git", *args], cwd=cwd, capture_output=True, text=True, check=True, encoding="utf-8"
     ).stdout
+
+
+def remove_tree(path: Path) -> None:
+    """``shutil.rmtree`` that clears the read-only bit git sets on its objects (Windows)."""
+
+    def force(func, target, _exc):
+        os.chmod(target, stat.S_IWRITE)
+        func(target)
+
+    if sys.version_info >= (3, 12):
+        shutil.rmtree(path, onexc=force)
+    else:
+        shutil.rmtree(path, onerror=force)
 
 
 def commit(root: Path, name: str) -> None:
@@ -87,9 +101,7 @@ def test_is_repo_follows_init_and_a_removed_git_directory(tmp_path):
     assert gitops.is_repo(root) is False and gate_diff.is_repo(root) is False
     git(root, "init", "-q")
     assert gitops.is_repo(root) is True and gate_diff.is_repo(root) is True
-    for path in (root / ".git").rglob("*"):
-        path.chmod(stat.S_IWRITE | stat.S_IREAD)  # git's objects are read-only on Windows
-    shutil.rmtree(root / ".git")  # no process at all: the stat of the git directory sees it
+    remove_tree(root / ".git")  # no process at all: the stat of the git directory sees it
     assert gitops.is_repo(root) is False and gate_diff.is_repo(root) is False
     gitops.run(root, "init", "-q")
     assert gitops.is_repo(root) is True
