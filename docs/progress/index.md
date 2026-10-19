@@ -47,3 +47,4 @@ chronological order (oldest first). The current record stays in `docs/PROGRESS.m
 - [Progress — the pipeline sprint, part 2: R47 (decision 31) as plugin **1.0.7**, R48 (decision 32) as plugin **1.0.8**, R49 (decision 33) as plugin **1.0.9**, and the owner's choices 219 to 227 (2026-10-18)](2026-10-18-r47-r48-r49-and-choices-219-227.md)
 - [Progress — the fix-round robustness PR: NOTES §45 gaps 2, 3 and 4 and choice 218 as plugin **1.0.10**, and the owner's choices 228 to 231 (2026-10-18 to 2026-10-19)](2026-10-19-1.0.10-and-choices-228-231.md)
 - [Progress — the fast lane's recovery PR: a pushed `fast_lane.b` always has a build behind it, as plugin **1.0.11**, and the owner's choice 232 (2026-10-19)](2026-10-19-fast-lane-recovery-1.0.11-and-choice-232.md)
+- [Progress — the live proof on the sample, part 1: change 0015 up to a red deploy run, and the checkout check's bytecode as plugin **1.0.12** (2026-10-19)](2026-10-19-live-proof-part-1-1.0.12.md)
