@@ -110,10 +110,14 @@ change requests too: in CI the run performed them before this command started (t
 `python "${CLAUDE_PLUGIN_ROOT}/plugin/state/cli.py" apply-labels --root "${CLAUDE_PROJECT_DIR}" --id <id> --pr <n>`
 (a label the automation identity applied is rejected and left on the PR, and so is a label
 any other account than the owner's applied, choice 218). If there is
-nothing to do, say so and stop. In CI such a round never starts: the runner skips it before
-the session when it performed no owner label, `evidence/fix-requests.json` holds no request
-left to apply (none, or each one marked applied) and the change is not parked, so it costs
-nothing and leaves the PR's label as it was (plugin 1.0.10).
+nothing to do, say so and stop. In CI a round whose trigger carries nothing never starts:
+when an un-park label event, a review or an `@claude` comment started it, the run performed
+no owner label, `evidence/fix-requests.json` holds no request left to apply (none, or each
+one applied or not applied) and the change is not parked, the runner skips it before the
+session, so it costs nothing and leaves the PR's label as it was. A `workflow_dispatch`
+without the comment's link (the owner's start by hand, after a push or on a red check, and
+the runner's own round) always runs: the failing checks and the branch are change requests
+too (plugin 1.0.10).
 
 ## 2. Register the round and bump the iteration (build guide step 19)
 `python "${CLAUDE_PLUGIN_ROOT}/plugin/gate/cli.py" start-run --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase <phase> --run fix`

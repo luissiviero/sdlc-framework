@@ -2910,12 +2910,12 @@ def _run_phase(args, env: dict[str, str], track: dict[str, Any]) -> int:
         # decision 29 (1.0.3): a round the runner dispatched on a red target applies the
         # failing targets as its constraint, taken once from the pending auto-round.json
         requests_collected = {**requests_collected, **take_red_targets(root, change_dir, env)}
-        idle = nothing_to_fix(change_dir, labels_applied, requests_collected)
+        idle = nothing_to_fix(change_dir, labels_applied, requests_collected, env)
         if idle:
-            # a queued second run of the same round, an @claude comment already applied, a
-            # label another account applied: no session, no spend, no gate write, and the PR
-            # keeps its label (gap 4 of NOTES §45: such a round ended without a gate record
-            # and parked a ready PR). An automatic round's record is still decision 29's
+            # a label event, a review or an @claude comment that carries nothing (a queued
+            # second run of the same round, a comment already applied): no session, no
+            # spend, no gate write, and the PR keeps its label (gap 4 of NOTES §45: such a
+            # round ended without a gate record and parked a ready PR)
             track["why"] = f"the fix run was skipped: {idle}"
             return _skip(idle)
 
@@ -3962,20 +3962,39 @@ def verify_owner_fields(
 
 
 NOTHING_TO_FIX = (
-    "the fix round has nothing to do: no owner label performed, no request to apply in "
-    "evidence/{file}, and the change is not parked"
+    "the fix round has nothing to do: its {trigger} performed no owner label and left no "
+    "request to apply in evidence/{file}, and the change is not parked"
 )
+# the triggers that carry their own request (gap 4 of NOTES §45): a round started by any
+# other event - the owner's by-hand workflow_dispatch (after a push, on a red check), the
+# runner's own dispatch (decision 29) - always runs, since steps 1 and 3 of /sdlc-fix also
+# read failing checks and the branch itself, which no file here records
+SKIPPABLE_TRIGGERS = {"pull_request": "label event", "pull_request_review": "review"}
+COMMENT_TRIGGER = "@claude comment"
 
 
 def nothing_to_fix(
-    change_dir: Path, labels: dict[str, Any] | None, requests: dict[str, Any] | None
+    change_dir: Path,
+    labels: dict[str, Any] | None,
+    requests: dict[str, Any] | None,
+    env: dict[str, str],
 ) -> str | None:
-    """The skip reason of a fix round with nothing to do, or None (gap 4 of NOTES §45): the
-    run performed no owner label, ``evidence/fix-requests.json`` was collected and holds no
-    request this round would apply (none, or each one already marked applied; a
-    ``red-targets`` request of decision 29 is one of them), and the change is not parked (a
-    park is the gate's change request, ``/sdlc-fix`` step 1). A file that is missing or was
-    not collected leaves the round to run."""
+    """The skip reason of a fix round whose trigger carries nothing, or None (gap 4 of NOTES
+    §45): the round was started by an un-park label (``pull_request``), a review
+    (``pull_request_review``) or an ``@claude`` comment (a ``workflow_dispatch`` with the
+    ``trigger`` input, decision 34); the run performed no owner label;
+    ``evidence/fix-requests.json`` was collected and holds no request this round would apply
+    (none, or each one already marked applied, or each one not applied); and the change is
+    not parked (a park is the gate's change request, ``/sdlc-fix`` step 1). A plain
+    ``workflow_dispatch`` never skips, and a file that is missing or was not collected
+    leaves the round to run."""
+    event = env.get("GITHUB_EVENT_NAME") or ""
+    if event == "workflow_dispatch" and str(env.get("SDLC_TRIGGER") or "").strip():
+        trigger = COMMENT_TRIGGER
+    else:
+        trigger = SKIPPABLE_TRIGGERS.get(event)
+    if trigger is None:
+        return None
     if (labels or {}).get("performed") or not (requests or {}).get("ok"):
         return None
     path = Path(change_dir) / art.EVIDENCE_DIR / fix_requests.FILE
@@ -3995,7 +4014,7 @@ def nothing_to_fix(
             return None
     except (OSError, ValueError):
         return None
-    return NOTHING_TO_FIX.format(file=fix_requests.FILE)
+    return NOTHING_TO_FIX.format(trigger=trigger, file=fix_requests.FILE)
 
 
 FIX_REQUESTS_PARK = (
