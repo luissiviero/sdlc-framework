@@ -52,3 +52,4 @@ chronological order (oldest first). The current record stays in `docs/PROGRESS.m
 - [Progress — the framework's own checks, faster: no real network in the tests, the Windows suite in three shards, and the owner's choice 235 (2026-10-19)](2026-10-19-framework-checks-faster-and-choice-235.md)
 - [Progress — the framework's own checks, faster, part 2: the runner prepared before the suite (choice 235, item 6) (2026-10-19)](2026-10-19-framework-checks-faster-part-2-runner-prepared.md)
 - [Progress — the LLM wiki pattern: ROADMAP R55 to R57, three annotations, and the owner's choice 236 (2026-10-19)](2026-10-19-llm-wiki-roadmap-r55-r57-and-choice-236.md)
+- [Progress — the framework's own checks, faster, part 3: the fixture repositories built once per session (choice 235, item 3) (2026-10-19)](2026-10-19-framework-checks-faster-part-3-fixture-repositories.md)
