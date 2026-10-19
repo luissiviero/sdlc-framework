@@ -1,14 +1,15 @@
 # Session of 2026-10-19 on branch `claude/llm-wiki-sdlc-framework-g10zr0`: the LLM wiki pattern, ROADMAP R55 to R57, choice 236
 
 **Builds on:**
-- `docs/handoffs/sessions/2026-10-19-ccr-6281cac2-hdaob7.md` (the live proof, part 2, PR #244), which builds on every other session file of 2026-10-19.
+- `docs/handoffs/sessions/2026-10-19-ccr-6281cac2-hdaob7.md` (the live proof, part 2, PR #244), which builds on every other session file of 2026-10-19;
+- `docs/handoffs/sessions/2026-10-19-ccr-dc6617ae-y5l3n6.md` as its session updated it in PR #245 (choice 235, item 6), which ran in parallel and merged while this file's PR was open.
 
-No other session file is newer than it or missing from its header (verified, `ls docs/handoffs/sessions/` on `main` at `2a2a9b2`).
+The first was read on `main` at `2a2a9b2`, the second on `main` at `7626c92`, when this PR merged `main` (verified, `ls docs/handoffs/sessions/`).
 
 The owner's task: read the artifact "LLM Wiki Crosswalk" (https://claude.ai/artifact/CM4NBjyjRWTQ9tBb9dszP4), research further, and assess what of the LLM wiki pattern to implement in the framework and in the projects it drives; then check the timing and the overlaps with the roadmap; then write the accepted rows.
 
 ## Where the project stands
-- **`main` is at `2a2a9b2`** (#244 merged after #243); plugin 1.0.12 (verified, `.claude-plugin/plugin.json`); tags and the sample's pin at 1.0.12 carried from `2026-10-19-ccr-6281cac2-hdaob7.md`, not re-verified.
+- **`main` is at `7626c92`** (#246 and #245 merged after #244: item 6 of choice 235, the runner prepared before the suite, `docs/progress/2026-10-19-framework-checks-faster-part-2-runner-prepared.md`); plugin 1.0.12 (verified, `.claude-plugin/plugin.json`); tags and the sample's pin at 1.0.12 carried from `2026-10-19-ccr-6281cac2-hdaob7.md`, not re-verified.
 - **This session's PR** adds ROADMAP R55 to R57, annotates R2, R42 and R45, and writes `docs/proposals/llm-wiki-adoption.md` and the owner's choice 236 (`docs/PROGRESS.md`). Documentation only; no version.
 - **Open PRs:** framework #173 and this documentation PR; sample #55, #56, #57 (verified, the pulls API, 2026-10-19).
 
@@ -34,7 +35,7 @@ The owner's task: read the artifact "LLM Wiki Crosswalk" (https://claude.ai/arti
 | R55's broken links | `docs/` (43 of 367 at `209325f`) | Fixed in R55's clean-up, then the lint fails on a new one | R55's session | no |
 | Notes without a Claude Code version | `docs/notes/` 12 and 43 to 49 | Filled in, or marked "no Claude Code fact", once R55 lists them | a notes session | no |
 | The artifact "LLM Wiki Crosswalk" | claude.ai | Keeps its stale placement (R50 to R53, ranks before choice 234); superseded by this PR's rows | owner, if wanted | no |
-| Choice 235, second step | `docs/progress/2026-10-19-framework-checks-faster-and-choice-235.md`, "Left" | Carried from `2026-10-19-ccr-6281cac2-hdaob7.md`, not re-verified | owner says "Go"; a new session | no |
+| Choice 235, second step | `docs/progress/2026-10-19-framework-checks-faster-part-2-runner-prepared.md`, "Left" | The fixture repositories built once, the git lookups in `plugin/state/gitops.py` (a version bump), the stand-in for one test's 25 requests; item 6 (the runner settings) is done, #245 | owner says "Go"; a new session | no |
 | R47's push to the owner; on a draft PR; a remove-then-request pair | NOTES §49 | Carried from the same file, not re-verified | owner; a later session | no |
 | Fix rounds spent on findings no session can fix | NOTES §49 | The owner's call on the candidate (park at once) | owner | no |
 | R49's `/proc` claim; the App's own PRs | NOTES §48 | Carried from the same file, not re-verified | a later session | no |
@@ -50,6 +51,7 @@ The owner's task: read the artifact "LLM Wiki Crosswalk" (https://claude.ai/arti
 
 Done, dropped:
 - "This documentation PR" of `2026-10-19-ccr-6281cac2-hdaob7.md`: merged as #244 (`2a2a9b2`).
+- "This session's second PR (item 6)" of `2026-10-19-ccr-dc6617ae-y5l3n6.md`: merged as #245, its record as #246 (`7626c92`).
 
 ## What the owner does
 | When | Act |
