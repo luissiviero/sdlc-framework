@@ -267,6 +267,8 @@ def _model_record(text: str | None, name: str) -> tuple[dict[str, Any] | None, l
         return None, [f"{name} is unreadable"]
     if not isinstance(record, dict):
         return None, [f"{name} is not a JSON object"]
+    if not isinstance(record.get("models") or [], list):
+        return None, [f"{name}: its models are not a list"]
     return record, []
 
 
@@ -334,8 +336,11 @@ def reviewer_model_problems(
     if record is None:
         return problems
     recorded = str(record.get("head") or "")
-    if head and not (recorded and str(head).startswith(recorded)):
-        return [f"{name} belongs to the verdict for {recorded[:10] or 'no commit'}, not for "
+    if head and not recorded:
+        return [f"{name} names no head: the verdict was not written whole by the reviewer "
+                "(one Write of the whole file)"]  # fmt: skip
+    if head and not str(head).startswith(recorded):
+        return [f"{name} belongs to the verdict for {recorded[:10]}, not for "
                 f"{str(head)[:10]}: the verdict changed after the reviewer wrote it"]  # fmt: skip
     agent = str(record.get("agent_type") or "")
     if agent.rsplit(":", 1)[-1] != ADVOCATE_AGENT:
@@ -696,8 +701,8 @@ def check_models(
     }
     if not alias:
         record["warning"] = (
-            "sdlc.yaml names no panel_advocate_model, so the devil's advocate ran on the "
-            "session's model"
+            "sdlc.yaml names no panel_advocate_model, so nothing shows the devil's advocate ran "
+            "on another model than the session"
         )
         return record
     if not models:

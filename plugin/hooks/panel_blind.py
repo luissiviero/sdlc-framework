@@ -16,6 +16,8 @@ while it matters: while an item has one blind verdict and not the other (the *wi
 - a ``Bash`` or ``PowerShell`` command that names that verdict's file or the panel folder
   (``cat …/b-1-reviewer.md``, ``cat evidence/panel/*``) is denied.
 
+A shell command that names a model record (``*.model.json``) is denied at any time (R7).
+
 When the devil's advocate writes its verdict (a Write, Edit or MultiEdit of
 ``<phase>-<n>-advocate.md``), the hook writes ``<phase>-<n>-advocate.model.json`` beside it:
 the writer's ``agent_type`` and the models of its replies, read from its own transcript
@@ -81,6 +83,9 @@ VERDICT_FILE_RE = re.compile(
 VERDICT_RECORD = "adversarial-review-{phase}.model.json"
 # a shell command that names a verdict or the panel folder: the cheap first look
 SHELL_HINT_RE = re.compile(r"panel|-reviewer\.md|-advocate\.md", re.IGNORECASE)
+# a shell command that names a model record: refused outright (R7), so no redirect or script
+# rewrites what only this hook writes
+SHELL_RECORD_RE = re.compile(r"[\w.-]*\.model\.json", re.IGNORECASE)
 # ripgrep file types whose globs never include a Markdown file: a Grep limited to one of
 # them cannot read a verdict. Any other type (markdown, txt, an unknown name) is treated as
 # possibly matching, the safe direction.
@@ -174,8 +179,12 @@ def may_concern_panel(payload: dict, env: dict[str, str] | None = None) -> bool:
             or MODEL_RECORD_RE.search(_slash(p))
             for p in write_targets(tool_input)
         )
-    if tool in SHELL_TOOLS and not SHELL_HINT_RE.search(str(tool_input.get("command") or "")):
-        return False
+    if tool in SHELL_TOOLS:
+        command = str(tool_input.get("command") or "")
+        if SHELL_RECORD_RE.search(command):
+            return True
+        if not SHELL_HINT_RE.search(command):
+            return False
     return bool(one_sided(project_root(payload, env)))
 
 
@@ -373,6 +382,9 @@ def decide(payload: dict, argv: list[str], env: dict[str, str] | None = None):
         return common.Decision.allow()
     if tool in SHELL_TOOLS:
         command = _slash(str(tool_input.get("command") or "")).lower()
+        named = SHELL_RECORD_RE.search(command)
+        if named:
+            return common.Decision.deny(RECORD_REASON.format(rel=named.group(0)))
         for file, phase, n, member, _counterpart in one_sided(root):
             rel = common.rel_to(root, common.norm(str(file))) or str(file)
             if file.name.lower() in command:

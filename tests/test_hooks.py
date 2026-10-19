@@ -1796,6 +1796,26 @@ def test_panel_blind_refuses_a_tool_write_of_the_reviewer_s_model_record(panel_p
     assert not path.exists()
 
 
+@pytest.mark.parametrize("tool", ["Bash", "PowerShell"])
+def test_panel_blind_refuses_a_shell_command_that_names_a_model_record(panel_project, tool):
+    """The review of R7's diff: a redirect or a script could rewrite what only the hook
+    writes, outside any panel window; the fast path sends such a command to the check."""
+    root, panel = panel_project
+    (panel / "b-1-advocate.md").write_text("## Verdict\nno objection\n", encoding="utf-8")
+    for command in (
+        "echo {} > changes/0001-sample/evidence/adversarial-review-c.model.json",
+        "python -c \"open('Changes\\\\0001\\\\evidence\\\\b-1-advocate.MODEL.json', 'w')\"",
+    ):
+        payload = pre(tool, command=command)
+        assert panel_blind.may_concern_panel({**payload, "cwd": str(root)}, _env(root))
+        decision = _blind(root, payload)
+        assert decision.block and "only the panel_blind hook writes it" in decision.reason
+    # the verdict's own path takes the fast path to the recorder; other commands do not
+    write = pre("Write", file_path="C:\\p\\changes\\0001-x\\evidence\\adversarial-review-d.json")
+    assert panel_blind.may_concern_panel({**write, "cwd": str(root)}, _env(root))
+    assert not panel_blind.may_concern_panel({**pre(tool, command="git status"), "cwd": str(root)})
+
+
 # --- shell guard (change 0002: protected_paths.py and test_file_lock.py police Edit/Write/
 # MultiEdit/NotebookEdit only; shell_guard.py closes the identical Bash/PowerShell bypass) ----
 GUARD_HOOK = HOOKS_DIR / "shell_guard.py"

@@ -3450,13 +3450,10 @@ def panel_models(
     lands in ``evidence/panel-models-<phase>.json`` and is committed with the run record or
     the park; None when the run added no decision."""
     added = len(panel_ledger.load_ledger(change_dir, gate_phase)) - before
-    # R7: the phase's advocate model, and the session's model as the run passed it
-    record = panel_ledger.check_models(
-        added,
-        result,
-        panel_models_mod.advocate_model(config, gate_phase),
-        env.get("SDLC_MODEL") or panel_models_mod.session_model(config, gate_phase),
-    )
+    # R7: the session's model as the run passed it, and the phase's advocate model for it
+    session = env.get("SDLC_MODEL") or panel_models_mod.session_model(config, gate_phase)
+    advocate = panel_models_mod.advocate_model(config, gate_phase, session)
+    record = panel_ledger.check_models(added, result, advocate, session)
     if record is not None:
         panel_ledger.save_models(change_dir, gate_phase, record)
     return record

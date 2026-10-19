@@ -18,17 +18,22 @@ family alias (``opus``):
   ``reviewer_model`` check requires the verdict's own record (written by the
   ``panel_blind`` hook from the reviewer's transcript) to name it. Absent: not checked.
 - ``panel_advocate_model``: the devil's advocate's model (0.2.30). The advocate never runs on
-  the session's model: in a phase whose session runs on it, the advocate takes
+  the session's model: in a phase whose session runs on its family, the advocate takes
   ``adversarial_model`` instead.
 
-The Agent tool's per-invocation model takes a family alias, not a full id (this framework's
-reading of Claude Code 2.1.304, R7's record), and an alias the CLI resolves on its own may
+Every CI session the runner composes takes ``session_model``: the phases, a fix round, the
+triage of phase (f) and the weekly scan (their own run kinds read the ``default`` entry).
+
+The Agent tool's per-invocation model takes a family alias, not a full id (Claude Code
+2.1.304's Agent tool, docs/NOTES.md section 51), and an alias the CLI resolves on its own may
 name an older version (``opus`` was ``claude-opus-5`` in every CI run on 2.1.278 read up to
 2026-10-16). So the phase commands pass the alias (``alias``), and the runner pins what each
 alias resolves to with ``ANTHROPIC_DEFAULT_<FAMILY>_MODEL`` (``alias_pins``), a variable the
 workflow already sets winning. Where the alias names the session's own family, Claude Code
 runs the sub-agent on the session's exact model instead (the sub-agents reference, "Choose a
-model"); the gate's check then says so when that is not the configured model.
+model"). A configuration whose sub-agent cannot reach its model that way is reported by
+``conflicts``: ``panel/cli.py models`` prints it, and the gate's ``reviewer_model`` check names
+it when it parks.
 """
 
 from __future__ import annotations
@@ -92,13 +97,19 @@ def same_model(a: str | None, b: str | None) -> bool:
     return ledger.model_matches(a, b) or ledger.model_matches(b, a)
 
 
-def advocate_model(config: dict[str, Any] | None, phase: str | None) -> str | None:
+def advocate_model(
+    config: dict[str, Any] | None, phase: str | None, session: str | None = None
+) -> str | None:
     """The devil's advocate's model for ``phase``: ``panel_advocate_model``, or
-    ``adversarial_model`` when the phase's session itself runs on the former."""
+    ``adversarial_model`` when the phase's session (``session``, the run's own ``--model``
+    when given, else ``session_model``) runs on the former's family: an alias of the
+    session's family would run the advocate on the session's model."""
     advocate = _text((config or {}).get(ADVOCATE_KEY))
     reviewer = reviewer_model(config)
-    if advocate and reviewer and same_model(advocate, session_model(config, phase)):
-        return reviewer
+    session = session or session_model(config, phase)
+    if advocate and reviewer and session:
+        if same_model(advocate, session) or family(advocate) == family(session):
+            return reviewer
     return advocate
 
 
@@ -110,7 +121,8 @@ def alias_pins(
     it. A family already pinned by ``env`` is left alone, and the first id of a family wins."""
     env = env or {}
     pins: dict[str, str] = {}
-    for model in (reviewer_model(config), advocate_model(config, phase)):
+    session = _text(env.get("SDLC_MODEL"))
+    for model in (reviewer_model(config), advocate_model(config, phase, session)):
         fam = family(model)
         if not model or not fam or model.lower().split("[", 1)[0] in FAMILIES:
             continue
@@ -120,14 +132,60 @@ def alias_pins(
     return pins
 
 
-def for_phase(config: dict[str, Any] | None, phase: str | None) -> dict[str, Any]:
-    """What ``panel/cli.py models`` prints for the phase commands: each role's model and the
-    alias to pass (None: pass no model)."""
+def conflicts(
+    config: dict[str, Any] | None, phase: str | None, env: dict[str, str] | None = None
+) -> list[str]:
+    """Why a sub-agent of ``phase`` cannot run on its configured full id when started with its
+    alias: the session runs on another id of the same family (the alias then runs on the
+    session's model), or the reviewer and the advocate are two ids of one family (one pin
+    per family). ``env`` carries the workflow's ``SDLC_MODEL`` and pins."""
+    env = env or {}
+    session = _text(env.get("SDLC_MODEL")) or session_model(config, phase)
     reviewer = reviewer_model(config)
-    advocate = advocate_model(config, phase)
+    advocate = advocate_model(config, phase, session)
+    found: list[str] = []
+    for key, model in ((REVIEWER_KEY, reviewer), (ADVOCATE_KEY, advocate)):
+        if not model or family(model) is None or model.lower() in FAMILIES:
+            continue
+        if session and family(session) == family(model) and not same_model(session, model):
+            found.append(
+                f"{key} {model} is in the family of the session's model {session} at "
+                f"({phase}): started with its alias, it runs on {session}"
+            )
+        var = ALIAS_ENV.format(family=family(model).upper())
+        pinned = _text(env.get(var))
+        if pinned and not same_model(pinned, model):
+            found.append(f"the workflow pins {var}={pinned}, not {model} ({key})")
+    if (
+        reviewer
+        and advocate
+        and family(reviewer) == family(advocate)
+        and not (
+            same_model(reviewer, advocate) or {reviewer.lower(), advocate.lower()} & set(FAMILIES)
+        )
+    ):
+        found.append(
+            f"{REVIEWER_KEY} {reviewer} and the advocate's {advocate} are two ids of one "
+            "family: one alias cannot reach both"
+        )
+    return found
+
+
+def for_phase(
+    config: dict[str, Any] | None, phase: str | None, env: dict[str, str] | None = None
+) -> dict[str, Any]:
+    """What ``panel/cli.py models`` prints for the phase commands: each role's model and the
+    alias to pass (None: pass no model), the pins a run by hand exports before it starts
+    (the runner sets them itself) and the ``conflicts``."""
+    env = env or {}
+    session = _text(env.get("SDLC_MODEL")) or session_model(config, phase)
+    reviewer = reviewer_model(config)
+    advocate = advocate_model(config, phase, session)
     return {
         "phase": phase,
-        "session": session_model(config, phase),
+        "session": session,
         "reviewer": {"model": reviewer, "alias": alias(reviewer)},
         "advocate": {"model": advocate, "alias": alias(advocate)},
+        "pins": alias_pins(config, phase, env),
+        "conflicts": conflicts(config, phase, env),
     }

@@ -25,7 +25,7 @@ generated: { by: sdlc-framework-session/ccr-1578d710-8r04sw, at: 2026-10-09T12:0
 
 # The in-run reviewer on the latest Opus
 
-**Status: accepted by the owner on 2026-10-09 (roadmap R7).** Nothing is built. It goes through the front door as the next change after change 0002, which ships as 0.3.7; this change ships as **0.3.8**. The intent below is the draft that change starts from.
+**Status: accepted by the owner on 2026-10-09 (roadmap R7).** Nothing is built. It goes through the front door as the next change after change 0002, which ships as 0.3.7; this change ships as **0.3.8**. The intent below is the draft that change starts from. *[2026-10-19, session `ccr-e4a1d6f8-lgxd25`: built as a session pull request (the owner's rule of 2026-10-16: framework candidates do not go through the framework's own pipeline), plugin **1.0.14** (choice 184). Read against the code first (`docs/PROGRESS.md`, "R7's claims against today's code"): the per-invocation model of the Agent tool takes an alias only, so the phase commands pass the family alias and the runner pins it with `ANTHROPIC_DEFAULT_<FAMILY>_MODEL` (NOTES §51); the section "Before the design" was answered on 2026-10-09 (NOTES §38) and is not repeated; decision 29's judge, built since, moves to `adversarial_model` too; the reviewer's `at` time (session 24's gap 5) is recorded by the hook instead.]*
 
 ## The owner's decisions of 2026-10-09
 

@@ -41,6 +41,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 from typing import Any
@@ -331,7 +332,9 @@ def cmd_record(args) -> int:
     # and the advocate's verdict was written by the advocate, on its model (0.2.30)
     problems += ledger.advocate_model_problems(
         art.read_text(ledger.advocate_model_path(change_dir, args.phase, args.item)),
-        models.advocate_model(config if isinstance(config, dict) else {}, args.phase),
+        models.advocate_model(
+            config if isinstance(config, dict) else {}, args.phase, os.environ.get("SDLC_MODEL")
+        ),
         args.phase,
         args.item,
     )
@@ -404,7 +407,7 @@ def cmd_overturn(args) -> int:
 
 def cmd_models(args) -> int:
     """The models of the phase's roles and the alias each sub-agent is started with (R7)."""
-    _emit(models.for_phase(_config(Path(args.root).resolve()), args.phase))
+    _emit(models.for_phase(_config(Path(args.root).resolve()), args.phase, dict(os.environ)))
     return EXIT_OK
 
 

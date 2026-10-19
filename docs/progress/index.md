@@ -55,3 +55,4 @@ chronological order (oldest first). The current record stays in `docs/PROGRESS.m
 - [Progress — the framework's own checks, faster, part 3: the fixture repositories built once per session (choice 235, item 3) (2026-10-19)](2026-10-19-framework-checks-faster-part-3-fixture-repositories.md)
 - [Progress — ROADMAP R55, the docs lint and the generated decisions index, and the owner's choice 237 (2026-10-19)](2026-10-19-r55-docs-lint-and-choice-237.md)
 - [Progress — the framework's own checks, faster, part 4: the git lookups remembered, as plugin 1.0.13 (choice 235, item 5) (2026-10-19)](2026-10-19-framework-checks-faster-part-4-git-lookups-1.0.13.md)
+- [Progress — the Order before the real-project trial: R44 forward, R45 last before the trial, R28 after it, and the owner's choice 238 (2026-10-19)](2026-10-19-order-before-the-trial-and-choice-238.md)

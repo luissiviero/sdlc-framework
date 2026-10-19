@@ -31,8 +31,8 @@ review: {{REVIEW}}
 # --- models (ROADMAP R7; plugin/panel/models.py) ----------------------------------------------
 # Each a full model id or a family alias (opus, sonnet, haiku, fable).
 # session_model: the CI session's model (--model), one model or `default` plus per-phase
-#   entries (a-f; a fix round takes its change's phase); unset = the CLI's default. The
-#   workflow's SDLC_MODEL wins.
+#   entries (a-f; a fix round takes its change's phase; the triage of (f) and the weekly
+#   scan take `default`); unset = the CLI's default. The workflow's SDLC_MODEL wins.
 # adversarial_model: the adversarial reviewer's model; the gate parks a verdict whose
 #   writer did not run on it (check reviewer_model); unset = not checked.
 # panel_advocate_model: the devil's advocate's (a panel reduces variance, not bias: three

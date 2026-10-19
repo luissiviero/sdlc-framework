@@ -62,7 +62,8 @@ Attack the output from these angles and record what you tried:
    file, a key, a template, a settled decision, a rule the project already applies) checked
    against the code before the change (the merge base). Read every file `plan.md` lists
    under "Files that change": at (b) the working tree still holds today's code; at (c) read
-   each file beside the diff file, whose removed lines are what was there. Read
+   each listed file in the working tree and take its removed lines in the diff file as what
+   was there before. Read
    `docs/decisions/index.md` and the decisions the spec cites, when they exist. A claim
    the code contradicts — an example that breaks a decided rule, a name or a tag the code
    does not have, a caller the plan forgot — is a reason; list each claim you checked in

@@ -939,9 +939,10 @@ def check_adversarial_verdict(ctx: GateContext) -> CheckResult:
 
 REVIEWER_MODEL_NEED = (
     "The adversarial reviewer must run on the model sdlc.yaml's adversarial_model names (ROADMAP "
-    "R7), and nothing shows that this verdict did. Check that the phase command passes the "
-    "reviewer's alias (`panel/cli.py models`) and that the CLI resolves it to that model, then "
-    "re-run the reviewer on the current HEAD."
+    "R7), and nothing shows that this verdict did. `panel/cli.py models` prints the alias the "
+    "phase command passes, the pins that make it resolve to that model (the runner sets them; "
+    "a run by hand exports them before the session starts) and any conflict in the "
+    "configuration; fix that, then re-run the reviewer on the current HEAD."
 )
 
 
@@ -964,6 +965,11 @@ def check_reviewer_model(ctx: GateContext) -> CheckResult:
         art.read_text(path), wanted, ctx.phase, str(data["head"])
     )
     if problems:
+        # a configuration no alias can satisfy is named, so the park says what to change
+        problems += [
+            f"the configuration: {why}"
+            for why in models.conflicts(ctx.config, ctx.phase, dict(os.environ))
+        ]
         return _fail("reviewer_model", "; ".join(problems), REVIEWER_MODEL_NEED, wanted=wanted)
     return _ok("reviewer_model", f"the adversarial reviewer ran on {wanted}", wanted=wanted)
 
@@ -1703,7 +1709,10 @@ def _blind_verdicts_problems(ctx: GateContext, entry: dict) -> list[str]:
     else:
         model_text = art.read_text(model_path)
     missing += ledger.advocate_model_problems(
-        model_text, models.advocate_model(ctx.config, phase), phase, item_n
+        model_text,
+        models.advocate_model(ctx.config, phase, os.environ.get("SDLC_MODEL")),
+        phase,
+        item_n,
     )
     return [f"decision {entry.get('n')}: {problem}" for problem in missing]
 

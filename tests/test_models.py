@@ -78,6 +78,30 @@ def test_aliases_and_the_pins_that_make_them_resolve_to_the_configured_ids():
     assert models.alias_pins(two, "c") == {"ANTHROPIC_DEFAULT_OPUS_MODEL": "claude-opus-5-5"}
 
 
+def test_a_configuration_no_alias_can_satisfy_is_named():
+    """The review of R7's diff: an alias in the session's own family runs on the session's
+    model (NOTES section 51), and one pin serves one family."""
+    assert models.conflicts(CONFIG, "c") == [] and models.conflicts(CONFIG, "b") == []
+    old_session = {**CONFIG, "session_model": "claude-opus-5"}
+    assert (
+        "in the family of the session's model claude-opus-5"
+        in models.conflicts(old_session, "c")[0]
+    )
+    via_env = models.conflicts(CONFIG, "c", {"SDLC_MODEL": "claude-opus-5"})
+    assert via_env and "adversarial_model claude-opus-5-5" in via_env[0]
+    pinned = models.conflicts(CONFIG, "c", {"ANTHROPIC_DEFAULT_FABLE_MODEL": "claude-fable-5"})
+    assert pinned == [
+        "the workflow pins ANTHROPIC_DEFAULT_FABLE_MODEL=claude-fable-5, not claude-fable-5-1 "
+        "(panel_advocate_model)"
+    ]
+    two = {"adversarial_model": "claude-opus-5-5", "panel_advocate_model": "claude-opus-5"}
+    assert "two ids of one family" in models.conflicts(two, "c")[-1]
+    # the advocate switches on the session's family, not only on the same id
+    fable5 = {**CONFIG, "session_model": "claude-fable-5"}
+    assert models.advocate_model(fable5, "c") == "claude-opus-5-5"
+    assert models.advocate_model(CONFIG, "c", "claude-fable-5") == "claude-opus-5-5"
+
+
 def test_the_panel_cli_prints_the_phase_s_models(tmp_path):
     (tmp_path / "sdlc.yaml").write_text(
         "session_model:\n  default: claude-opus-5-5\n  b: claude-fable-5-1\n"
@@ -94,6 +118,8 @@ def test_the_panel_cli_prints_the_phase_s_models(tmp_path):
         "session": "claude-fable-5-1",
         "reviewer": {"model": "claude-opus-5-5", "alias": "opus"},
         "advocate": {"model": "claude-opus-5-5", "alias": "opus"},
+        "pins": {"ANTHROPIC_DEFAULT_OPUS_MODEL": "claude-opus-5-5"},  # a run by hand exports them
+        "conflicts": [],
     }
 
 
@@ -123,6 +149,9 @@ def test_the_reviewer_s_model_record_is_judged_for_its_writer_head_and_model(tmp
     assert "written by the main session" in problems(agent=None)[0]
     assert "written by general-purpose" in problems(agent="general-purpose")[0]
     assert "changed after the reviewer wrote it" in problems(recorded="0000000")[0]
+    assert "not written whole by the reviewer" in problems(recorded="")[0]
+    bad = json.dumps({"head": head, "agent_type": "sdlc:adversarial-reviewer", "models": 5})
+    assert "not a list" in ledger.reviewer_model_problems(bad, REVIEWER_MODEL, "c", head)[0]
     assert "is missing" in ledger.reviewer_model_problems(None, REVIEWER_MODEL, "c", head)[0]
     assert "unreadable" in ledger.reviewer_model_problems("{", REVIEWER_MODEL, "c", head)[0]
 
@@ -142,7 +171,7 @@ def test_the_gate_parks_a_verdict_whose_reviewer_ran_on_another_model(project): 
     check = _check(result)
     assert result.result == "park" and not check.ok
     assert "ran on claude-opus-5, not on claude-opus-5-5" in check.reason
-    assert "adversarial_model" in check.need
+    assert "adversarial_model" in check.need and "pins" in check.need
     # no record at all parks too
     (change / "evidence" / "adversarial-review-c.model.json").unlink()
     assert "is missing" in _check(gate.run_gate(root, "0001", "c", dry_run=True)).reason
