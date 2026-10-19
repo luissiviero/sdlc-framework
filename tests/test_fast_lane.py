@@ -1134,8 +1134,9 @@ def test_a_stacked_build_reads_the_owner_s_close_of_the_design_pr(
     assert (found == "pull request #13 closed without a merge") is abandons, found
 
 
+@pytest.mark.parametrize("demotion_pushed", [True, False])
 def test_a_design_the_build_s_check_would_refuse_waits_at_b_with_its_label(
-    lane, fake_claude, monkeypatch, capsys, tmp_path
+    lane, fake_claude, monkeypatch, capsys, tmp_path, demotion_pushed
 ):
     """Second review, R3: the session leaves a plan edit uncommitted; the runner's
     confirmation reads the committed diff and passes, the run record sweeps the edit in, and
@@ -1155,9 +1156,13 @@ def test_a_design_the_build_s_check_would_refuse_waits_at_b_with_its_label(
     git(root, "commit", "-q", "-m", "intent: plan seed")
     git(root, "push", "-q", "origin", "claude/intent")
     intent_sha = git(root, "rev-parse", "HEAD").strip()
+    if not demotion_pushed:  # review of 1.0.11: the run ends red and names the merge
+        _refuse_the_demotion(monkeypatch, "refused by the build's check")
+    err: list[str] = []
     out = _lane_design_run(
-        root, change, intent_sha, fake_claude, monkeypatch, capsys, session=session
-    )
+        root, change, intent_sha, fake_claude, monkeypatch, capsys, session=session, err=err,
+        expect=run_phase.EXIT_OK if demotion_pushed else run_phase.EXIT_FAILED,
+    )  # fmt: skip
     assert out["fast_lane"]["recorded"] is False
     assert out["fast_lane"]["reason"] == (
         "the build's own check of the pushed design branch refused it"
@@ -1165,6 +1170,9 @@ def test_a_design_the_build_s_check_would_refuse_waits_at_b_with_its_label(
     assert out["dispatched"] is None
     assert out["result"] == "wait" and out["label"] == "sdlc:b-ready"
     assert fake.names().count("upsert") == 2  # the label is applied again after the demotion
+    if not demotion_pushed:
+        assert "merge the design pull request (sdlc:b-ready)" in err[0]
+        return
     gate_b = json.loads(git(root, "show", f"origin/sdlc/0001/b:{CHANGE_REL}/evidence/gate-b.json"))
     assert gate_b["result"] == "wait" and "fast_lane" not in gate_b
     remote = git(root, "show", f"origin/sdlc/0001/b:{CHANGE_REL}/status.yaml")
@@ -1221,14 +1229,7 @@ def test_a_build_dispatch_github_refuses_puts_the_design_back_at_b(
     fake = LaneGitHub(monkeypatch)
     calls = _dispatches(monkeypatch, {"ok": False, "status": 403, "reason": "HTTP 403"})
     if not demotion_pushed:
-        real = run_phase.commit_run_record
-
-        def refuse_the_demotion(*a, note=None, **k):
-            if note and "not dispatched" in note:
-                return {"ok": False, "reason": "push refused"}
-            return real(*a, note=note, **k)
-
-        monkeypatch.setattr(run_phase, "commit_run_record", refuse_the_demotion)
+        _refuse_the_demotion(monkeypatch, "not dispatched")
     err: list[str] = []
     out = _lane_design_run(
         root, change, intent_sha, fake_claude, monkeypatch, capsys, no_dispatch=False,
@@ -1249,6 +1250,64 @@ def test_a_build_dispatch_github_refuses_puts_the_design_back_at_b(
     remote = git(root, "show", f"origin/sdlc/0001/b:{CHANGE_REL}/status.yaml")
     assert "  b:" not in remote and "  a:" in remote
     assert run_phase.carried_forward(root, "0001") is None
+
+
+def _refuse_the_demotion(monkeypatch, marker: str) -> None:
+    """``commit_run_record`` refuses the commit whose note carries ``marker``."""
+    real = run_phase.commit_run_record
+
+    def refuse(*a, note=None, **k):
+        if note and marker in note:
+            return {"ok": False, "reason": "push refused"}
+        return real(*a, note=note, **k)
+
+    monkeypatch.setattr(run_phase, "commit_run_record", refuse)
+
+
+@pytest.mark.parametrize("demotion_pushed", [True, False])
+def test_a_refused_dispatch_after_a_refused_design_pr_retries_the_pr_and_says_what_is_left(
+    lane, fake_claude, monkeypatch, capsys, demotion_pushed
+):
+    """Review of 1.0.11: GitHub refuses the design PR and then the dispatch. The demotion is
+    pushed and the PR tried again; a demotion that is not pushed either still names the way
+    out, beside the missing PR."""
+    root, change, intent_sha = lane
+    fake = LaneGitHub(monkeypatch, upsert=False)
+    _dispatches(monkeypatch, {"ok": False, "status": None, "reason": "connection reset"})
+    if not demotion_pushed:
+        _refuse_the_demotion(monkeypatch, "not dispatched")
+    err: list[str] = []
+    out = _lane_design_run(
+        root, change, intent_sha, fake_claude, monkeypatch, capsys, no_dispatch=False,
+        expect=run_phase.EXIT_FAILED, err=err,
+    )  # fmt: skip
+    assert out["fast_lane"]["recorded"] is False and out["result"] == "wait"
+    assert fake.names().count("upsert") == 2
+    assert "no pull request carries this phase's result" in err[0]
+    assert run_phase.FAST_LANE_BUILD_CARRIES not in err[0]
+    remote = git(root, "show", f"origin/sdlc/0001/b:{CHANGE_REL}/status.yaml")
+    if demotion_pushed:
+        assert "  b:" not in remote
+        assert "demotion to gate (b) was not committed" not in err[0]
+    else:
+        assert "  b:" in remote
+        assert "merge the design pull request (sdlc:b-ready)" in err[0]
+
+
+def test_a_stacked_build_reads_the_owner_s_close_of_the_intent_pr_with_no_design_pr(
+    lane, monkeypatch
+):
+    """Review of 1.0.11: with no design PR ever opened the build carries the intent PR
+    forward, so the owner's close of it without the label abandons, as a design PR's would."""
+    root, change, intent_sha = lane
+    design = _design_on_the_lane(root, change, intent_sha)
+    _build_on_the_lane(root, change, design, design_pr=None)
+    env = {"GITHUB_TOKEN": FAKE_TOKEN}
+    LaneGitHub(monkeypatch, intent_state="closed")
+    found = run_phase.earlier_pr_closed(root, change, "c", REPO, env)
+    assert found == "pull request #12 closed without a merge"
+    LaneGitHub(monkeypatch, intent_state="closed", labels=[c.SUPERSEDED_LABEL])
+    assert run_phase.earlier_pr_closed(root, change, "c", REPO, env) is None
 
 
 def test_the_build_run_supersedes_the_intent_pr_when_no_design_pr_was_opened(lane, monkeypatch):

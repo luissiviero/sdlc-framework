@@ -3335,8 +3335,10 @@ def _run_phase(args, env: dict[str, str], track: dict[str, Any]) -> int:
         else None
     )
     if on_lane and handed is not None and handed.get("ok") is False:
-        # a pushed fast_lane.b with no build behind it would skip every later design event
-        # as "design done": the design waits at (b) instead, the owner's merge starts the build
+        # a dispatch that failed (refused, or no answer) would leave fast_lane.b pushed with no
+        # build behind it, and every later design event would skip as "design done": the
+        # design waits at (b) instead, and the owner's merge starts the build. --no-dispatch
+        # (no workflow passes it) sends nothing on purpose and is left as it is
         refused = FAST_LANE_UNDISPATCHED.format(
             reason=handed.get("reason") or handed.get("status") or "no answer"
         )
@@ -3385,6 +3387,11 @@ def _run_phase(args, env: dict[str, str], track: dict[str, Any]) -> int:
             "branch": branch,
         }
     )
+    demoted = (fast_lane or {}).get("demoted")
+    demotion_lost = demoted is not None and not demoted.get("ok")
+    if demotion_lost:
+        # the branch still records fast_lane.b, which later design events read as done
+        print(FAST_LANE_DEMOTION_NOT_PUSHED.format(reason=demoted.get("reason")), file=sys.stderr)
     if not pr.get("ok"):
         # the evidence is written and the spend is recorded above; what is missing is the
         # queue item, and a phase result nobody can find is an infrastructure failure
@@ -3395,12 +3402,7 @@ def _run_phase(args, env: dict[str, str], track: dict[str, Any]) -> int:
     if not_pushed:
         print(not_pushed, file=sys.stderr)
         return EXIT_FAILED
-    demoted = (fast_lane or {}).get("demoted")
-    if demoted is not None and not demoted.get("ok"):
-        # the branch still records fast_lane.b, which later design events read as done
-        print(FAST_LANE_DEMOTION_NOT_PUSHED.format(reason=demoted.get("reason")), file=sys.stderr)
-        return EXIT_FAILED
-    return EXIT_OK
+    return EXIT_FAILED if demotion_lost else EXIT_OK
 
 
 PANEL_MODEL_CHECK = "panel_models"
@@ -4475,11 +4477,14 @@ FAST_LANE_FIX_REFUSAL = "a fix round at (b) waits for the owner's merge (decisio
 FAST_LANE_UNDISPATCHED = "the build was not dispatched: {reason}"
 FAST_LANE_BUILD_CARRIES = (
     "the build was dispatched on the fast lane (decision 30): its pull request carries the "
-    "intent, spec and plan, and supersedes the intent pull request"
+    "intent, spec and plan, and closes the intent pull request as superseded unless its head "
+    "moved since the design started"
 )
 FAST_LANE_DEMOTION_NOT_PUSHED = (
     "the fast lane's demotion to gate (b) was not committed and pushed: {reason}; the design "
-    "branch still records fast_lane.b, so dispatch SDLC build with the change id to go on"
+    "branch still records fast_lane.b, so later design events skip the change: merge the "
+    "design pull request (sdlc:b-ready) to start the build, or, with none, dispatch SDLC "
+    "build with the change id"
 )
 
 
@@ -4561,7 +4566,8 @@ def earlier_pr_closed(
 ) -> str | None:
     """Decision 30 with decision 25: the reason to abandon when the PR this run carries
     forward on the fast lane - the intent PR at (b) (``fast_lane.a.pr``), the design PR at
-    (c) (``fast_lane.b.pr``, else the latest PR of ``sdlc/<id>/b``) - was closed without a
+    (c) (``fast_lane.b.pr``, else the latest PR of ``sdlc/<id>/b``, else the intent PR when no
+    design PR was ever opened) - was closed without a
     merge and without ``sdlc:superseded`` (the runner's own close carries the label): the
     owner's close is the act that abandons the change, and the run's branch, not yet on
     origin when ``sdlc-abandon.yml`` ran, had no copy to mark. None otherwise, and when
@@ -4584,6 +4590,9 @@ def earlier_pr_closed(
         if number is None and phase == "c":
             latest = github.find_pr(repo, c.branch_name(st.id, "b"), "all", cwd=root)
             number = _pr_number(latest.get("number")) if latest.get("ok") else None
+            if number is None and latest.get("ok"):
+                # no design PR was ever opened: the build carries the intent PR forward
+                number = _pr_number(((st.fast_lane or {}).get("a") or {}).get("pr"))
         found = github.pr_by_number(repo, number, cwd=root) if number is not None else {}
     except Exception:  # noqa: BLE001 - no answer: the run goes on as before
         return None
