@@ -24,6 +24,7 @@ from gate import gate as gate_mod
 from gate import limits, preflight
 from state import status as status_mod
 from state import yamlish
+from tests import fixture_repos
 
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURE = ROOT / "tests" / "fixtures" / "sample-python-project"
@@ -343,7 +344,13 @@ def test_triage_without_a_log_is_a_usage_error():
 @pytest.fixture
 def project(tmp_path):
     """A fixture copy with /sdlc-init run and change 0001 created, sitting at phase (a)."""
+    fixture_repos.copy("ci-project", tmp_path, _build_project)
     root = tmp_path / "proj"
+    return root, root / "changes" / "0001-percent-helper"
+
+
+def _build_project(base: Path) -> None:
+    root = base / "proj"
     shutil.copytree(FIXTURE, root)
     git(root, "init", "-q", "-b", "main")
     git(root, "config", "user.email", "owner@example.com")
@@ -360,7 +367,6 @@ def project(tmp_path):
     # test installs nothing and reaches no network, so the detected pip line is replaced by a
     # command that only proves the step ran (the detection itself is tested in test_init.py)
     set_setup_command(root, NOOP_SETUP)
-    return root, root / "changes" / "0001-percent-helper"
 
 
 def set_state(change: Path, phase: str, gate_phase=None, gate_result=None, parked=None) -> None:

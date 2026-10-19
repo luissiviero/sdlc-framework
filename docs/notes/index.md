@@ -5,7 +5,11 @@ no slug, with `title`, `description`, `tags`, `sources`, `generated.at`, `verifi
 `stale_after` in its frontmatter. A note is stale when the environment no longer matches its
 `verified_with` (the Claude Code and plugin versions it was read against) or when its
 `stale_after` date has passed, whichever comes first; the index marks the second case with
-` (stale)` and nothing checks the first.
+` (stale)`, and `python tasks.py docs-lint` lists every note whose `verified_with` names no
+Claude Code version or one other than the pin the jobs install. A note after 49 names one, or
+says "no Claude Code fact". A note that replaces an earlier one says so in `supersedes` (the
+earlier note's number, or a list of them), and the index marks the earlier note
+` (superseded by N)`.
 
 Tags, one section each in this order:
 hooks, permissions, sandbox, auth, cli, github-actions, github-api, rulesets, git, windows, plugin-release, gate, detect, evals, sample-runs.

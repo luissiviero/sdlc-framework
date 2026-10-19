@@ -4,6 +4,7 @@ copy carries template/ next to plugin/ (a script in a copied plugin cannot read 
 root)."""
 
 import json
+import os
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -111,3 +112,84 @@ def test_the_shards_split_the_suite_with_nothing_lost():
     for bad in ("0/3", "4/3", "3", "a/b", "1/0", "-1/2"):
         with pytest.raises(ValueError):
             parse_shard(bad)
+
+
+def test_a_fixture_repository_is_built_once_and_every_copy_is_its_own(tmp_path, monkeypatch):
+    """``tests/fixture_repos.py`` (choice 235): a template is built once per session, under
+    the session's own environment, and each copy is an independent repository whose remote is
+    its own; a commit pushed from one copy reaches neither the other copy nor the template."""
+    import subprocess
+
+    from tests import fixture_repos
+
+    def git(cwd, *args):
+        return subprocess.run(
+            ["git", *args], cwd=cwd, capture_output=True, text=True, check=True, encoding="utf-8"
+        ).stdout.strip()
+
+    builds = []
+
+    def build(base):
+        builds.append(os.environ.get("SCAFFOLD_PROBE"))
+        root, bare = base / "proj", base / "remote.git"
+        root.mkdir()
+        git(base, "init", "-q", "--bare", "-b", "main", str(bare))
+        git(root, "init", "-q", "-b", "main")
+        git(root, "config", "user.email", "owner@example.com")
+        git(root, "config", "user.name", "Owner")
+        (root / "a.txt").write_text("a\n", encoding="utf-8")
+        git(root, "add", ".")
+        git(root, "commit", "-q", "-m", "first")
+        git(root, "remote", "add", "origin", str(bare))
+        git(root, "push", "-q", "-u", "origin", "main")
+        git(root, "fetch", "-q", "origin")  # FETCH_HEAD names the remote's path
+        return git(root, "rev-parse", "HEAD")
+
+    def relocate(dest):
+        git(dest / "proj", "remote", "set-url", "origin", str(dest / "remote.git"))
+
+    monkeypatch.setenv("SCAFFOLD_PROBE", "the requesting test's")
+    first, second = tmp_path / "first", tmp_path / "second"
+    first.mkdir()
+    second.mkdir()
+    head = fixture_repos.copy("scaffold-own", first, build, relocate)
+    assert fixture_repos.copy("scaffold-own", second, build, relocate) == head
+    assert builds == [None]  # once, and not under the requesting test's environment
+    template = fixture_repos._templates["scaffold-own"][0]
+
+    for dest in (first, second):
+        assert git(dest / "proj", "remote", "get-url", "origin") == str(dest / "remote.git")
+        assert (dest / "proj" / ".git" / "FETCH_HEAD").is_file()
+        assert fixture_repos._files_naming(dest, template) == []  # FETCH_HEAD rewritten too
+    (first / "proj" / "a.txt").write_text("changed\n", encoding="utf-8")
+    git(first / "proj", "commit", "-q", "-am", "second")
+    git(first / "proj", "push", "-q", "origin", "main")
+    moved = git(first / "remote.git", "rev-parse", "main")
+    assert moved != head
+    assert git(second / "remote.git", "rev-parse", "main") == head
+    assert git(second / "proj", "rev-parse", "HEAD") == head
+    assert git(template / "remote.git", "rev-parse", "main") == head
+    assert (second / "proj" / "a.txt").read_text(encoding="utf-8") == "a\n"
+
+
+def test_a_fixture_repository_copy_that_still_names_its_template_is_refused(tmp_path):
+    """A template whose git config names its own directory (a remote added by path) and no
+    ``relocate`` would push from every copy into the template: the first copy is refused."""
+    import subprocess
+
+    import pytest
+
+    from tests import fixture_repos
+
+    def build(base):
+        for args in (["init", "-q", "--bare", str(base / "remote.git")], ["init", "-q", "proj"]):
+            subprocess.run(["git", *args], cwd=base, check=True, capture_output=True)
+        subprocess.run(
+            ["git", "remote", "add", "origin", str(base / "remote.git")],
+            cwd=base / "proj",
+            check=True,
+            capture_output=True,
+        )
+
+    with pytest.raises(AssertionError, match="still names its template"):
+        fixture_repos.copy("scaffold-unrelocated", tmp_path, build)

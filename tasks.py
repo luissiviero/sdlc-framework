@@ -1,11 +1,13 @@
 """Task runner for the SDLC framework repo (decision 7: one runner, Windows and Linux).
 
 Usage: python tasks.py <task>
-Tasks: test | lint | format | check | notes-index | help
+Tasks: test | lint | format | check | notes-index | decisions-index | docs-lint | help
 
 Everything runs through ``sys.executable -m ...`` with argument lists (no shell), so the
 same file works in cmd.exe, PowerShell, Git Bash and a Linux runner. ``notes-index`` runs in
-this process: it rewrites ``docs/notes/index.md`` from the notes' frontmatter.
+this process: it rewrites ``docs/notes/index.md`` from the notes' frontmatter. So do
+``decisions-index`` (``docs/decisions/index.md`` from each decision's heading) and
+``docs-lint`` (the links, the notes' Claude Code versions and both indexes; ROADMAP R55).
 """
 
 from __future__ import annotations
@@ -16,6 +18,7 @@ import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
+from urllib.parse import unquote
 
 ROOT = Path(__file__).resolve().parent
 
@@ -97,7 +100,11 @@ no slug, with `title`, `description`, `tags`, `sources`, `generated.at`, `verifi
 `stale_after` in its frontmatter. A note is stale when the environment no longer matches its
 `verified_with` (the Claude Code and plugin versions it was read against) or when its
 `stale_after` date has passed, whichever comes first; the index marks the second case with
-` (stale)` and nothing checks the first.
+` (stale)`, and `python tasks.py docs-lint` lists every note whose `verified_with` names no
+Claude Code version or one other than the pin the jobs install. A note after 49 names one, or
+says "no Claude Code fact". A note that replaces an earlier one says so in `supersedes` (the
+earlier note's number, or a list of them), and the index marks the earlier note
+` (superseded by N)`.
 
 Tags, one section each in this order:
 {tags}.
@@ -144,7 +151,24 @@ def note_problems(fm: dict, tags: tuple[str, ...] = NOTE_TAGS) -> list[str]:
         for i, entry in enumerate(sources):
             if not isinstance(entry, dict) or not str(entry.get("resource") or "").strip():
                 problems.append(f"sources[{i}] has no resource")
+    if "supersedes" in fm and superseded_numbers(fm) is None:
+        problems.append("supersedes is not a note number or a list of them")
     return problems
+
+
+def superseded_numbers(fm: dict) -> list[int] | None:
+    """The note numbers a note's ``supersedes`` names ([] when it has none), or None when the
+    field is neither a number nor a non-empty list of numbers (a quoted "17" counts as 17)."""
+    value = fm.get("supersedes")
+    if value is None:
+        return []
+    values = value if isinstance(value, list) else [value]
+    numbers = [
+        int(v)
+        for v in values
+        if (isinstance(v, int) and not isinstance(v, bool)) or (isinstance(v, str) and v.isdigit())
+    ]
+    return numbers if values and len(numbers) == len(values) else None
 
 
 def read_notes(notes_dir: Path | None = None) -> tuple[list[tuple[int, dict]], list[str]]:
@@ -167,6 +191,11 @@ def read_notes(notes_dir: Path | None = None) -> tuple[list[tuple[int, dict]], l
             continue
         notes.append((int(match.group(1)), fm))
     notes.sort(key=lambda note: note[0])
+    numbers = {number for number, _ in notes}
+    for number, fm in notes:
+        for target in superseded_numbers(fm) or []:
+            if target >= number or target not in numbers:
+                problems.append(f"{number}.md: supersedes {target}, not an earlier note")
     return notes, problems
 
 
@@ -174,6 +203,10 @@ def notes_index_text(notes: list[tuple[int, dict]], today: str) -> str:
     """The index: the fixed opening, one section per tag in the list's order (a tag no note
     carries is left out), one line per note under each of its tags, the closing rule."""
     is_stale = _lessons_index().is_stale
+    superseded_by: dict[int, list[int]] = {}
+    for number, fm in notes:
+        for target in superseded_numbers(fm) or []:
+            superseded_by.setdefault(target, []).append(number)
     blocks = [NOTES_INDEX_HEADER.format(tags=", ".join(NOTE_TAGS))]
     for tag in NOTE_TAGS:
         lines = []
@@ -181,6 +214,8 @@ def notes_index_text(notes: list[tuple[int, dict]], today: str) -> str:
             if tag not in fm["tags"]:
                 continue
             line = f"{number}. [{fm['title']}]({number}.md) — {fm['description']}"
+            if number in superseded_by:
+                line += f" (superseded by {', '.join(map(str, superseded_by[number]))})"
             if is_stale(str(fm.get("stale_after") or ""), today):
                 line += " (stale)"
             lines.append(line)
@@ -213,12 +248,220 @@ def task_notes_index() -> int:
     return 0
 
 
+# --- the decisions index: docs/decisions/index.md from each decision's heading -------------
+# One line per decision, its title read from the file's own "## <N>. <title>" heading, so an
+# amended title reaches the index (ROADMAP R55, choice 236; before it the index was kept by
+# hand and decision 30's line kept its first title).
+DOCS_DIR = ROOT / "docs"
+DECISIONS_DIR = DOCS_DIR / "decisions"
+DECISIONS_INDEX = DECISIONS_DIR / "index.md"
+DECISION_FILE_RE = re.compile(r"^(\d+)\.md$")
+DECISION_HEADING_RE = re.compile(r"^## (\d+)\. (.+)$", re.MULTILINE)
+DECISIONS_INDEX_HEADER = """\
+# Decisions — accepted and applied in build guide v3
+
+Companion to `BUILD_GUIDE.md`. Step numbers refer to that guide. The accepted alternative is
+marked **[ACCEPTED]**.
+
+Decisions 21–26 were added on 2026-09-23 after the plan was audited against the owner's
+original objective and the article (session record: PR #22). The mechanism of 21 is the
+owner's, the rest are the session's suggestions adopted on the owner's instruction to proceed;
+all six were **confirmed on 2026-09-23** by the owner's merge of PR #22.
+
+One file per decision, number only, no slug (`docs/decisions/<N>.md`); each carries `status`,
+`reversibility` and `amended_by` in its frontmatter. This index is generated by
+`python tasks.py decisions-index` from each file's `## <N>. <title>` heading and is never
+edited by hand; `python tasks.py docs-lint` fails when it differs.
+"""
+DECISIONS_INDEX_FOOTER = """\
+Sticky decisions (2, 6, 7, 8, 10, 19) shape files and conventions every later step writes to.
+"""
+
+
+def build_decisions_index(decisions_dir: Path | None = None) -> tuple[str, list[str]]:
+    """(the index text, one line per decision file whose heading is missing or names another
+    number); with problems the text still lists the decisions that could be read."""
+    entries: list[tuple[int, str]] = []
+    problems: list[str] = []
+    for path in sorted((decisions_dir or DECISIONS_DIR).glob("*.md")):
+        match = DECISION_FILE_RE.match(path.name)
+        if match is None:
+            continue
+        number = int(match.group(1))
+        heading = DECISION_HEADING_RE.search(path.read_text(encoding="utf-8-sig"))
+        if heading is None or int(heading.group(1)) != number:
+            problems.append(f"{path.name}: no '## {number}. <title>' heading")
+            continue
+        entries.append((number, heading.group(2).strip()))
+    entries.sort()
+    lines = "\n".join(f"{n}. [{title}]({n}.md)" for n, title in entries)
+    return f"{DECISIONS_INDEX_HEADER}\n{lines}\n\n{DECISIONS_INDEX_FOOTER}", problems
+
+
+def task_decisions_index() -> int:
+    """Rewrite docs/decisions/index.md from the decisions' headings (1: a heading is wrong)."""
+    text, problems = build_decisions_index(DECISIONS_DIR)
+    for problem in problems:
+        print(f"decisions-index: {problem}")
+    if problems:
+        return 1
+    DECISIONS_INDEX.write_text(text, encoding="utf-8", newline="\n")
+    print(f"wrote {DECISIONS_INDEX.relative_to(ROOT).as_posix()}")
+    return 0
+
+
+# --- the docs lint (ROADMAP R55; choices 236 and 237) --------------------------------------
+# Deterministic checks only; a contradiction between two notes is a judgment, not a check.
+# Failures: a relative link under docs/ that resolves to nothing and is not in the baseline,
+# a baseline entry that no longer breaks (the baseline only shrinks), a note after
+# LAST_NOTE_WITHOUT_VERSION whose verified_with names no Claude Code version, a note or a
+# decision the indexes cannot read, an index that differs from what its task writes.
+# Reported only: the notes read on another Claude Code version than the pin, or on none.
+# The baseline holds the breaks inside kept records (docs/progress/, docs/handoffs/, notes),
+# which choice 126 forbids rewriting; choice 237 keeps them as they are.
+LINKS_BASELINE = DOCS_DIR / "links-baseline.txt"
+PIN_FILE = ROOT / "plugin" / "init" / "sdlc_init.py"
+PIN_RE = re.compile(r'^DEFAULT_CLAUDE_CODE_VERSION = "(\d+\.\d+\.\d+)"', re.MULTILINE)
+CLAUDE_CODE_RE = re.compile(r"Claude Code (\d+\.\d+\.\d+)")
+NO_CLAUDE_CODE = "no Claude Code fact"
+LAST_NOTE_WITHOUT_VERSION = 49
+FENCE_RE = re.compile(r"^\s*(```|~~~)")
+# a code span may wrap onto the next line, never across a blank one
+CODE_SPAN_RE = re.compile(r"(`+)(?:(?!\n[ \t]*\n).)+?\1", re.DOTALL)
+LINK_RE = re.compile(r"\]\(\s*<?([^)\s>]+)>?(?:\s+\"[^\"]*\")?\s*\)")
+SCHEME_RE = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]*:")
+
+
+def link_targets(text: str) -> list[str]:
+    """The targets of the inline markdown links in ``text``, outside fenced code blocks and
+    code spans."""
+    kept: list[str] = []
+    in_fence = False
+    for line in text.splitlines():
+        if FENCE_RE.match(line):
+            in_fence = not in_fence
+            kept.append("")  # a blank line, so no code span joins across the block
+            continue
+        kept.append("" if in_fence else line)
+    return LINK_RE.findall(CODE_SPAN_RE.sub("", "\n".join(kept)))
+
+
+def broken_links(docs_dir: Path, root: Path) -> list[tuple[str, str]]:
+    """``(file, target)`` for every relative link under ``docs_dir`` (``reference/`` aside:
+    the article's text is a source, not a page) that resolves to no file or folder; ``file``
+    is relative to ``docs_dir`` in "/" form, a target starting with "/" is read from
+    ``root``."""
+    found: list[tuple[str, str]] = []
+    for path in sorted(docs_dir.rglob("*.md")):
+        rel = path.relative_to(docs_dir)
+        if rel.parts[0] == "reference":
+            continue
+        for target in link_targets(path.read_text(encoding="utf-8-sig")):
+            if target.startswith("#") or SCHEME_RE.match(target):
+                continue
+            plain = unquote(target.split("#", 1)[0].split("?", 1)[0])
+            base = root / plain.lstrip("/") if plain.startswith("/") else path.parent / plain
+            if not base.exists():
+                found.append((rel.as_posix(), target))
+    return found
+
+
+def read_links_baseline(path: Path) -> set[tuple[str, str]]:
+    """The known breaks: one ``<file><TAB><target>`` per line; blank lines and lines starting
+    with "#" are comments."""
+    if not path.exists():
+        return set()
+    entries = set()
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if line.strip() and not line.startswith("#"):
+            file, _, target = line.partition("\t")
+            entries.add((file, target))
+    return entries
+
+
+def read_pin(path: Path | None = None) -> str:
+    """The Claude Code version the jobs install (``CLAUDE_CODE_VERSION``), or "" unreadable."""
+    match = PIN_RE.search((path or PIN_FILE).read_text(encoding="utf-8"))
+    return match.group(1) if match else ""
+
+
+def lint_docs(
+    docs_dir: Path | None = None,
+    root: Path | None = None,
+    baseline: Path | None = None,
+    pin: str | None = None,
+) -> tuple[list[str], list[str]]:
+    """(failures, reports) for the docs under ``docs_dir`` (``DOCS_DIR`` by default)."""
+    docs_dir = docs_dir or DOCS_DIR
+    root = root or docs_dir.parent
+    pin = read_pin() if pin is None else pin
+    failures: list[str] = []
+    reports: list[str] = []
+
+    known = read_links_baseline(baseline or docs_dir / LINKS_BASELINE.name)
+    broken = set(broken_links(docs_dir, root))
+    for file, target in sorted(broken - known):
+        failures.append(f"broken link: docs/{file} -> {target}")
+    for file, target in sorted(known - broken):
+        failures.append(f"baseline entry no longer breaks, remove it: {file}\t{target}")
+    reports.append(f"{len(known & broken)} known broken links (docs/links-baseline.txt)")
+
+    notes_dir = docs_dir / "notes"
+    if notes_dir.is_dir():
+        notes, problems = read_notes(notes_dir)
+        failures.extend(f"notes: {p}" for p in problems)
+        for number, fm in notes:
+            verified_with = str(fm.get("verified_with") or "")
+            versions = CLAUDE_CODE_RE.findall(verified_with)
+            if NO_CLAUDE_CODE in verified_with:
+                continue
+            if not versions and number > LAST_NOTE_WITHOUT_VERSION:
+                failures.append(
+                    f"notes: {number}.md names no Claude Code version in verified_with "
+                    f'(add one, or "{NO_CLAUDE_CODE}")'
+                )
+            elif not versions:
+                reports.append(f"note {number}: no Claude Code version recorded")
+            elif pin not in versions:
+                reports.append(
+                    f"note {number}: read on Claude Code {', '.join(versions)}, pin {pin}"
+                )
+        if (notes_dir / "index.md").exists():
+            text, _ = build_notes_index(notes_dir)
+            on_disk = (notes_dir / "index.md").read_text(encoding="utf-8")
+            stale = re.compile(r" \(stale\)$", re.MULTILINE)
+            if stale.sub("", text) != stale.sub("", on_disk):
+                failures.append("docs/notes/index.md differs: run python tasks.py notes-index")
+
+    decisions_dir = docs_dir / "decisions"
+    if decisions_dir.is_dir():
+        text, problems = build_decisions_index(decisions_dir)
+        failures.extend(f"decisions: {p}" for p in problems)
+        index = decisions_dir / "index.md"
+        if not index.exists() or index.read_text(encoding="utf-8") != text:
+            failures.append("docs/decisions/index.md differs: run python tasks.py decisions-index")
+    return failures, reports
+
+
+def task_docs_lint() -> int:
+    """Check the docs' links, the notes' versions and both indexes (1: a failure)."""
+    failures, reports = lint_docs()
+    for line in reports:
+        print(f"docs-lint: {line}")
+    for line in failures:
+        print(f"docs-lint: FAIL {line}")
+    print(f"docs-lint: {len(failures)} failure(s)")
+    return 1 if failures else 0
+
+
 TASKS = {
     "test": task_test,
     "lint": task_lint,
     "format": task_format,
     "check": task_check,
     "notes-index": task_notes_index,
+    "decisions-index": task_decisions_index,
+    "docs-lint": task_docs_lint,
 }
 
 
