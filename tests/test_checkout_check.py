@@ -250,10 +250,10 @@ def test_the_script_run_from_the_fresh_framework_leaves_it_clean(tmp_path):
     git(fw_origin, "add", ".")
     git(fw_origin, "commit", "-q", "-m", "the plugin's ci files")
     git(fw_origin, "tag", "-f", "v0.2.16")
-    shutil.rmtree(framework)
-    subprocess.run(
-        ["git", "clone", "-q", "--branch", "v0.2.16", str(fw_origin), str(framework)], check=True
-    )
+    # the clone takes the moved tag in place: removing it would trip over git's read-only
+    # object files on Windows (the first Windows run of this test, PR #241)
+    git(framework, "fetch", "-q", "--force", "origin", "tag", "v0.2.16")
+    git(framework, "checkout", "-q", "v0.2.16")
     env = {k: v for k, v in os.environ.items() if k != "PYTHONDONTWRITEBYTECODE"}
     proc = subprocess.run(
         [sys.executable, str(framework / "plugin" / "ci" / "checkout_check.py"),
