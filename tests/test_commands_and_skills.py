@@ -427,7 +427,9 @@ def test_sdlc_fix_covers_gate_a_and_the_owner_labels():
     assert "without re-running the brainstorm" in text
     assert "This is the one place a run edits `intent.md`" in text
     assert "Never edit `intent.md` at (b) or later" in text
-    assert "apply-labels" in text and "`risk_accepted_by`" in text
+    # decision 35: sdlc:accept-risk retired; the two labels' actors land in status.yaml
+    assert "apply-labels" in text and "`iterations_reset_by`" in text
+    assert "`sdlc:accept-risk` retired with decision 35" in text
     assert "--branch <head>" in text and "--head <head>" in text
     assert "At phase (a) or (f) skip the verdict" in text  # (f) since 0.2.19
     assert "`sdlc-fix.yml`" in text and "Request changes" in text

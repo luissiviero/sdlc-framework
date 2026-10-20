@@ -533,14 +533,15 @@ GATE_PARKS_AGAIN = (
 )
 
 
-def test_an_unfinished_round_keeps_the_risk_hits_sdlc_accept_risk_answers(
+def test_an_unfinished_round_keeps_the_risk_hits_the_banner_shows(
     project, fake_claude, monkeypatch, tmp_path, capsys
 ):
-    """A risk-list park; the owner's review starts a round, its gate parks again on the
-    hit, then the turn cap: the gap-3 park used to replace the record with one ``fix``
-    check, and the owner's ``sdlc:accept-risk`` was then rejected with no recorded hit."""
-    from state import unpark
-    from tests.test_state import _FakeGitHub
+    """A park whose record carries a risk-list hit (here a record of 1.0.14, where the hit
+    still failed the check); the owner's review starts a round, its gate parks again, then
+    the turn cap: the gap-3 park used to replace the record with one ``fix`` check, and the
+    hit was lost (then for ``sdlc:accept-risk``; since decision 35 for the close-look banner,
+    which reads the record)."""
+    from gate import risk
 
     root, change, args, env, _calls = gaps._owner_round(
         project, fake_claude, monkeypatch, tmp_path, gaps.EDITS + GATE_PARKS_AGAIN, gaps.MAX_TURNS
@@ -552,16 +553,43 @@ def test_an_unfinished_round_keeps_the_risk_hits_sdlc_accept_risk_answers(
     assert [ch["name"] for ch in record["checks"]] == ["fix", "risk_list"]
     assert record["checks"][1]["details"] == {"hits": {"auth": ["src/x.py"]}}
     assert "- **risk_list**: risk-list hit: auth" in record["what_i_need"]
-    assert unpark.risk_hits(change, "c") == ["auth"]
-    github = _FakeGitHub([c.ACCEPT_RISK_LABEL], {c.ACCEPT_RISK_LABEL: "luissiviero"})
-    out = unpark.apply_from_pr(
-        root, change, {}, "owner/name", 7, github=github,
-        env={"GITHUB_REPOSITORY_OWNER": "luissiviero"},
-    )  # fmt: skip
-    assert out["performed"] == [
-        {"label": c.ACCEPT_RISK_LABEL, "actor": "luissiviero", "items": ["auth"]}
-    ]
-    assert status_mod.read_status(change).risk_accepted == ["auth"]
+    assert risk.recorded_hits(record) == {"auth": ["src/x.py"]}
+    entries = risk.banner_entries(change, "c", status_mod.read_status(change))
+    assert [(e["item"], e["first"], e["accepted"]) for e in entries] == [("auth", "c", None)]
+
+
+def test_an_unfinished_round_keeps_a_reported_risk_hit_too(
+    project, fake_claude, monkeypatch, tmp_path, capsys
+):
+    """Decision 35: the gate reports a hit in a passing check; the park that replaces the
+    record keeps it all the same, so the banner still shows the item."""
+    reported = {
+        **RISK_PARK,
+        "checks": [
+            {"name": "commands", "ok": False, "reason": "red", "need": "", "details": {}},
+            {
+                "name": "risk_list",
+                "ok": True,
+                "reason": "risk-list hit, shown in the close-look banner (decision 35)",
+                "need": "",
+                "details": {"hits": {"auth": ["src/x.py"]}, "accepted": []},
+            },
+            {"name": "ratchets", "ok": True, "reason": "none", "need": "", "details": {}},
+        ],
+    }
+    parks_again = (
+        "import json, pathlib\n"
+        "path = pathlib.Path('changes/0001-percent-helper/evidence/gate-c.json')\n"
+        f"path.write_text({json.dumps(json.dumps(reported))}, encoding='utf-8')\n"
+    )
+    _root, change, args, env, _calls = gaps._owner_round(
+        project, fake_claude, monkeypatch, tmp_path, gaps.EDITS + parks_again, gaps.MAX_TURNS
+    )
+    assert run_phase.run_phase(args, env) == run_phase.EXIT_FAILED
+    capsys.readouterr()
+    record = gaps._gate_c(change)
+    assert [ch["name"] for ch in record["checks"]] == ["fix", "risk_list"]
+    assert record["checks"][1]["ok"] is True
 
 
 # --- round 2, item 4: the label's owner check fails closed on a runner ------------------------
@@ -635,7 +663,7 @@ def test_an_unfinished_round_after_a_reset_does_not_carry_the_iteration_cap(
 ):
     """The iteration cap parked the change; the owner's sdlc:reset-iterations was performed
     and the round hit the turn cap before its gate: the new park must not ask for a reset
-    again, while the risk hit the same park named stays for sdlc:accept-risk."""
+    again, while the risk hit the same park named stays for the close-look banner."""
     root, change, args, env, _calls = gaps._owner_round(
         project, fake_claude, monkeypatch, tmp_path, gaps.EDITS, gaps.MAX_TURNS
     )

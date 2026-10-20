@@ -36,6 +36,8 @@ VALUES = {
     "TEST_RULE": "Bash(python -m pytest *)",
     "LINT_RULE": "Bash(python -m ruff *)",
     "TEST_PATHS": '  - "tests/**"\n  - "**/test_*.py"',
+    # decision 35: what /sdlc-init renders for a project with no folder a default glob matches
+    "RISK_LIST": '  - "auth"\n  - "data migrations"\n  - "money movement"\n  - "production config"',
     "FRAMEWORK_REPO": "luissiviero/sdlc-framework",
     "CLAUDE_CODE_VERSION": "2.1.278",
 }
@@ -130,6 +132,7 @@ def test_sdlc_yaml_renders_to_documented_keys():
     assert (
         data["maintain"]["metric"] == "ci_test_failure_rate" and data["maintain"]["runbooks"] == []
     )
+    # decision 35: a plain item, or {item, paths} where /sdlc-init found a matching folder
     assert data["risk_list"] == ["auth", "data migrations", "money movement", "production config"]
     assert data["test_paths"] == ["tests/**", "**/test_*.py"]  # step 25: the test-file lock
     assert data["protected_paths"] == [] and data["plan_sync"]["exempt"] == ["*.md"]
@@ -505,11 +508,17 @@ def test_release_workflow_runs_the_release_cli_on_merge_and_label():
         "released": "${{ steps.release.outputs.released }}",
         "change_id": "${{ steps.release.outputs.change_id }}",
         "pin": "${{ steps.pin.outputs.ref }}",
+        # decision 35: the (e) merge's risk acceptance, stored by the record job
+        "risk_acceptance": "${{ steps.release.outputs.risk_acceptance }}",
     }
-    # the record job (0.3.1, issue #66): the only write token, the framework's step only
+    # the record job (0.3.1, issue #66): the only write token, the framework's step only;
+    # since 1.0.15 it also runs to store the merge's risk acceptance (decision 35)
     record = data["jobs"]["record"]
     assert record["needs"] == "release"
-    assert record["if"] == "${{ needs.release.outputs.released == 'true' }}"
+    assert record["if"] == (
+        "${{ !cancelled() && (needs.release.outputs.released == 'true' || "
+        "needs.release.outputs.risk_acceptance != '') }}"
+    )
     assert record["permissions"] == {"contents": "write"}
     assert [step.get("uses", step.get("run", "")).split(" ")[0] for step in record["steps"]] == [
         "actions/checkout@v5",
@@ -519,7 +528,8 @@ def test_release_workflow_runs_the_release_cli_on_merge_and_label():
     assert record["steps"][1]["with"]["ref"] == "${{ needs.release.outputs.pin }}"
     assert record["steps"][-1]["run"] == (
         'python framework/plugin/release/cli.py record --root . --id "$CHANGE_ID" '
-        '--pr "$PR_NUMBER" --merge-sha "$MERGE_SHA"'
+        '--pr "$PR_NUMBER" --merge-sha "$MERGE_SHA" --released "$RELEASED" '
+        '--acceptance "$RISK_ACCEPTANCE"'
     )
     assert "project_setup" not in str(record) and "deploy" not in str(record["steps"])
     assert job["steps"][-2]["name"] == (
@@ -556,8 +566,9 @@ def test_merge_fired_jobs_find_the_change_instead_of_filtering_the_head(name):
 
 def test_fix_workflow_starts_on_request_changes_and_on_the_owner_labels():
     """Decision 22: the owner's "Request changes" review submission starts the fix round on
-    the PR's own head; decision 24: so does one of the three un-park labels. The workflow
-    token's own review or label never does (a [bot] reviewer is refused besides)."""
+    the PR's own head; decision 24: so does one of the two un-park labels (the third,
+    sdlc:accept-risk, retired with decision 35). The workflow token's own review or label
+    never does (a [bot] reviewer is refused besides)."""
     data = _workflow_yaml(FIX_WORKFLOW)
     on = _triggers(data)
     assert on["pull_request_review"]["types"] == ["submitted"]
@@ -575,8 +586,9 @@ def test_fix_workflow_starts_on_request_changes_and_on_the_owner_labels():
         assert f"'{refused}'" not in job["if"], refused
     installed = (REPO_WORKFLOW_DIR / FIX_WORKFLOW).read_text(encoding="utf-8")
     assert installed == render.render_file(WORKFLOW_DIR / FIX_WORKFLOW, VALUES)
-    for label in ("sdlc:accept-risk", "sdlc:reset-iterations", "sdlc:unlock-tests"):
+    for label in ("sdlc:reset-iterations", "sdlc:unlock-tests"):
         assert f"github.event.label.name == '{label}'" in job["if"], label
+    assert "sdlc:accept-risk" not in job["if"]  # retired with decision 35
     assert "sdlc:c-approved" not in job["if"] and "sdlc:d-approved" not in job["if"]
     # the checkout is the PR's head, never the review event's merge ref (after the App's mint
     # step and its time, R49)

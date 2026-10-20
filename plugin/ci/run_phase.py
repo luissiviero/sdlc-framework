@@ -2873,8 +2873,8 @@ def _run_phase(args, env: dict[str, str], track: dict[str, Any]) -> int:
     gate_phase = st.phase if phase == "fix" else phase
     track.update(change_dir=change_dir, gate_phase=gate_phase)
     # decision 24: the owner's un-park labels on the PR are performed before anything runs
-    # and committed on the work branch, so the change request they answer (a park on a
-    # risk hit, the iteration cap, a locked test) is settled when the session reads status.yaml
+    # and committed on the work branch, so the change request they answer (the iteration
+    # cap, a locked test) is settled when the session reads status.yaml
     labels_applied = None
     requests_collected = None
     if phase == "fix" and not args.dry_run:
@@ -2910,6 +2910,15 @@ def _run_phase(args, env: dict[str, str], track: dict[str, Any]) -> int:
             # round ended without a gate record and parked a ready PR)
             track["why"] = f"the fix run was skipped: {idle}"
             return _skip(idle)
+
+    # decision 35: the owner's merge of the design PR accepted the risk-list items its
+    # close-look banner showed; the build run records that act before anything else reads
+    # status.yaml (the session's own commits carry the file)
+    if phase == "c" and not args.dry_run:
+        accepted = record_design_acceptance(root, change_dir, config, env)
+        if accepted is not None:
+            print(json.dumps({"risk_acceptance": accepted}, sort_keys=True), file=sys.stderr)
+            st = status_mod.read_status(change_dir)
 
     # gap 2 of NOTES §45 (choice 229): a build restarted after its preflight park takes the
     # owner's fix from the default branch first, merged into the committed tree; the
@@ -3552,6 +3561,64 @@ def apply_owner_labels(
     return result
 
 
+# --- decision 35: the design PR's merge accepts the risk lines its banner showed --------------
+def record_design_acceptance(
+    root: Path, change_dir: Path, config: dict[str, Any], env: dict[str, str]
+) -> dict[str, Any] | None:
+    """Record in ``status.yaml: risk_acceptances`` that the owner's merge of the design PR
+    accepted the risk-list items gate (b) reported and no earlier act accepted (decision 35,
+    point 2): the merge actor, the merge time and commit, and whether the merged body showed
+    the banner, all from the ``pull_request`` event that started this build. Only the
+    owner's account accepts (``unpark.is_owner_actor``, decision 34's one rule; ``config``
+    is the default branch's ``sdlc.yaml``). None when the
+    run was not started by the merge of ``sdlc/<id>/b`` (a dispatch, the fast lane): the hits
+    then stay unaccepted and the build PR's banner at (e) asks for them. Written, not
+    committed: the session's commits and the runner's own carry the change folder."""
+    from gate import risk as risk_mod  # noqa: PLC0415
+    from state import unpark  # noqa: PLC0415
+
+    if env.get("GITHUB_EVENT_NAME") != "pull_request":
+        return None
+    payload, why = read_event_payload(env)
+    if payload is None:
+        return {"ok": False, "reason": f"the event payload could not be read ({why})"}
+    pull = _mapping(payload.get("pull_request"))
+    if payload.get("action") != "closed" or pull.get("merged") is not True:
+        return None
+    st = status_mod.read_status(change_dir)
+    if _mapping(pull.get("head")).get("ref") != c.branch_name(st.id, "b"):
+        return None
+    items = risk_mod.new_items(risk_mod.banner_entries(change_dir, "b", st))
+    if not items:
+        return {"ok": True, "items": []}
+    by = str(_mapping(pull.get("merged_by")).get("login") or "").strip()
+    if not unpark.is_owner_actor(by, config, env):
+        return {
+            "ok": False,
+            "items": items,
+            "reason": f"merged by {by or 'nobody'}, not the owner's account: only the owner "
+            "accepts a risk (decisions 34 and 35; an automation account never does); the "
+            "build PR's banner asks again at (e)",
+        }
+    number = _pr_number(pull.get("number"))
+    if number is None:
+        return {"ok": False, "items": items, "reason": "the merged pull request has no number"}
+    line = risk_mod.acceptance_line(
+        "b",
+        items,
+        by,
+        str(pull.get("merged_at") or status_mod._now()),
+        number,
+        str(pull.get("merge_commit_sha") or "") or None,
+        risk_mod.banner_shown(pull.get("body"), items),
+    )
+    if not risk_mod.record_acceptance(st, line):
+        return {"ok": True, "items": items, "already": True}
+    st.touch()
+    status_mod.write_status(change_dir, st)
+    return {"ok": True, "line": line}
+
+
 # --- the owner-only fields of status.yaml, re-verified after the session (choice 103) ---------
 # The session can write status.yaml, and the gate's ``owner_actions`` check believes a recorded
 # label actor that is a person (the 1.0.0 readiness review, group A). The runner is the one
@@ -3567,13 +3634,14 @@ def apply_owner_labels(
 # other branch of the change, or a remote tip the runner's checkout does not contain, parks.
 OWNER_FIELDS_PARK = c.OWNER_FIELDS_PARK_PREFIX + "{reasons}"
 OWNER_FIELDS_NEED = (
-    "risk_accepted, risk_accepted_by, tests_locked, tests_unlocked_by, iterations_reset_by and "
-    "the counters are written by the runner from your label on the pull request "
-    "(sdlc:accept-risk, sdlc:reset-iterations, sdlc:unlock-tests) or by your own commit; the "
-    "run cannot approve itself (decision 5). The fields were restored to their pre-session "
+    "tests_locked, tests_unlocked_by, iterations_reset_by and the counters are written by the "
+    "runner from your label on the pull request (sdlc:reset-iterations, sdlc:unlock-tests) or "
+    "by your own commit, and risk_accepted by your own accept-risk commit; the run cannot "
+    "approve itself (decision 5). The fields were restored to their pre-session "
     "values (a test file changed under a lifted lock too); apply the label if the act is "
     "yours, else fix the phase command that wrote them and re-run the phase. fast_lane is "
-    "the runner's own record of decision 30's fast lane: no session writes it."
+    "the runner's own record of decision 30's fast lane, and risk_acceptances its record of "
+    "the merges that accepted a risk (decision 35): no session writes them."
 )
 OWNER_FIELDS_CHECK = "owner_fields"
 OWNER_LABEL_OF = {
@@ -3602,6 +3670,10 @@ def owner_fields(st) -> dict[str, Any]:
         "review_override": st.review_override,
         # decision 30: the runner's record of the commits the fast lane cut branches from
         "fast_lane": json.dumps(st.fast_lane, sort_keys=True) if st.fast_lane else None,
+        # decision 35: the merges that accepted a risk, recorded by the runner and the release
+        "risk_acceptances": json.dumps(st.risk_acceptances, sort_keys=True)
+        if st.risk_acceptances
+        else None,
     }
 
 
@@ -3670,6 +3742,16 @@ def owner_field_mismatches(
         reasons.append(
             f"fast_lane: the session recorded {after.get('fast_lane')}; expected "
             f"{before.get('fast_lane')} (the runner's record of the fast lane, decision 30)"
+        )
+    # decision 35: the record of the merges that accepted a risk; no session writes it
+    if after.get("risk_acceptances") not in (
+        before.get("risk_acceptances"),
+        approved.get("risk_acceptances"),
+    ):
+        reasons.append(
+            f"risk_acceptances: the session recorded {after.get('risk_acceptances')}; expected "
+            f"{before.get('risk_acceptances')} (the runner's record of the merges that "
+            "accepted a risk, decision 35)"
         )
     return reasons
 
@@ -3744,6 +3826,7 @@ def restore_owner_fields(change_dir: Path, before_st, after_st=None) -> None:
     after_st.profile_override = before_st.profile_override
     after_st.review_override = before_st.review_override
     after_st.fast_lane = before_st.fast_lane
+    after_st.risk_acceptances = [dict(line) for line in before_st.risk_acceptances]
     status_mod.write_status(change_dir, after_st)
 
 
@@ -3905,6 +3988,7 @@ def baseline_mismatches(
         "tests_unlocked_by"
     ):
         pending.append(("tests_unlocked_by", c.UNLOCK_TESTS_LABEL, before["tests_unlocked_by"]))
+    forged += acceptance_mismatches(before, approved, repo, env)
     if not pending:
         return forged
     if not env.get("GITHUB_ACTIONS"):
@@ -3937,6 +4021,76 @@ def baseline_mismatches(
                 f"(last: {found.get('actor')!r})"
             )
     return reasons
+
+
+def acceptance_mismatches(
+    before: dict[str, Any], approved: dict[str, Any], repo: str, env: dict[str, str]
+) -> list[str]:
+    """Decision 35: each ``risk_acceptances`` line on the branch that the default branch's
+    copy does not carry must match GitHub's own record of that merge: the pull request it
+    names is merged, by the account it names. On a runner a line that cannot be confirmed
+    parks; a by-hand run skips the read, as for the label actors."""
+    lines = json.loads(before.get("risk_acceptances") or "[]")
+    known = json.loads(approved.get("risk_acceptances") or "[]")
+    pending = [line for line in lines if line not in known]
+    if not pending or not env.get("GITHUB_ACTIONS"):
+        return []
+    github = _github()
+    if github is None or not repo:
+        return [
+            f"risk_acceptances: the line of PR #{line.get('pr')} is not on the default branch "
+            "and no route to GitHub can confirm its merge"
+            for line in pending
+        ]
+    reasons: list[str] = []
+    for line in pending:
+        try:
+            found = github.pr_by_number(repo, int(line.get("pr")))
+        except Exception as exc:  # noqa: BLE001 - no route: fail closed below
+            found = {"ok": False, "reason": str(exc)}
+        if not found.get("ok"):
+            reasons.append(
+                f"risk_acceptances: PR #{line.get('pr')} could not be read to confirm its "
+                f"merge: {found.get('reason')}"
+            )
+        elif not found.get("merged") or str(found.get("merged_by") or "") != str(line.get("by")):
+            reasons.append(
+                f"risk_acceptances: PR #{line.get('pr')} was not merged by {line.get('by')!r} "
+                f"(merged: {bool(found.get('merged'))}, by {found.get('merged_by')!r})"
+            )
+        else:
+            reasons += _acceptance_line_problems(line, found)
+    return reasons
+
+
+ACCEPTANCE_HEAD_PHASE = {"b": "b", "e": "c"}  # the merged PR's head: the design or build PR
+
+
+def _acceptance_line_problems(line: dict[str, Any], found: dict[str, Any]) -> list[str]:
+    """What GitHub's record of the merge contradicts in a ``risk_acceptances`` line beyond
+    its actor: the merged PR must be the phase's own (``sdlc/<id>/b`` for a (b) line,
+    ``sdlc/<id>/c`` for an (e) line), and a line that says the banner was shown must name
+    items the merged body's banner lists."""
+    from gate import risk as risk_mod  # noqa: PLC0415
+
+    details = line.get("details") if isinstance(line.get("details"), dict) else {}
+    phase = str(details.get("phase") or "")
+    parsed = c.parse_branch(str(found.get("head_ref") or ""))
+    problems: list[str] = []
+    if phase in ACCEPTANCE_HEAD_PHASE and (
+        parsed is None or parsed[1] != ACCEPTANCE_HEAD_PHASE[phase]
+    ):
+        problems.append(
+            f"risk_acceptances: PR #{line.get('pr')} (head {found.get('head_ref')!r}) is not "
+            f"the PR whose merge is gate ({phase})"
+        )
+    items = [str(i) for i in details.get("items") or []]
+    if details.get("banner_shown") is True and not risk_mod.banner_shown(found.get("body"), items):
+        problems.append(
+            f"risk_acceptances: PR #{line.get('pr')}'s body shows no banner line for "
+            f"{', '.join(items)}, while the line says it did"
+        )
+    return problems
 
 
 def verify_owner_fields(
@@ -4918,15 +5072,16 @@ def write_park_result(
     """``evidence/gate-<phase>.json`` in the gate's own shape, so the PR description shows
     the park and its "What I need from you" block (the gate itself overwrites it later).
     ``need`` is the pre-run sentence unless the park came after the session. With
-    ``keep_failed``, a record this park replaces that is itself a park keeps its failed
-    risk-hit checks (``unpark.RISK_HIT_CHECKS``: ``risk_list``, ``ratchets``), details
-    included, after the new one: ``sdlc:accept-risk`` reads their hits from this file
-    (``unpark.risk_hits``), and the unfinished round's park erased them (the review of
-    1.0.10). Its other checks are not carried: they judged a state the round may have
-    changed (an iteration cap the owner's reset lifted), and the next gate judges again."""
+    ``keep_failed``, a record this park replaces that is itself a park keeps its risk-hit
+    checks (``risk.RISK_HIT_CHECKS``: ``risk_list``, ``ratchets``) that report a hit, details
+    included, after the new one: the close-look banner reads their hits from this file
+    (decision 35; before it, ``sdlc:accept-risk`` did), and the unfinished round's park
+    erased them (the review of 1.0.10). Its other checks are not carried: they judged a state
+    the round may have changed (an iteration cap the owner's reset lifted), and the next gate
+    judges again."""
     from gate.checks import CheckResult  # noqa: PLC0415
     from gate.gate import GateResult  # noqa: PLC0415
-    from state.unpark import RISK_HIT_CHECKS  # noqa: PLC0415
+    from gate.risk import RISK_HIT_CHECKS  # noqa: PLC0415
 
     path = change_dir / art.EVIDENCE_DIR / art.GATE_RESULT.format(phase=phase)
     kept: list[CheckResult] = []
@@ -4939,7 +5094,9 @@ def write_park_result(
             kept = [
                 CheckResult.from_dict(ch)
                 for ch in before.get("checks") or []
-                if isinstance(ch, dict) and not ch.get("ok") and ch.get("name") in RISK_HIT_CHECKS
+                if isinstance(ch, dict)
+                and ch.get("name") in RISK_HIT_CHECKS
+                and ((ch.get("details") or {}).get("hits") or not ch.get("ok"))
             ]
     result = GateResult(
         change_id=st.id,
@@ -5022,7 +5179,7 @@ def park_and_publish(
     and pushed on the work branch, and the phase's PR carrying ``sdlc:needs-human`` and the
     "What I need from you" block (OPERATING_MODEL section 5: a park is a queue item). A fix
     round parks the change's own phase on the PR's head (``branch``). ``keep_failed`` keeps
-    the failed risk-hit checks of a gate park this park replaces (``write_park_result``)."""
+    the risk-hit checks of a gate park this park replaces (``write_park_result``)."""
     live_token()
     branch_phase = st.phase if phase == "fix" else BRANCH_PHASE.get(phase, phase)
     state_cli = plugin_dir / "plugin" / "state" / "cli.py"

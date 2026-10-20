@@ -125,8 +125,10 @@ python "${CLAUDE_PLUGIN_ROOT}/plugin/review/cli.py" prompt --root "${CLAUDE_PROJ
 ```
 and the instruction to write `changes/<id>-<slug>/evidence/review-findings.json` in the
 recorded shape (`schema_version`, `head` = `git rev-parse HEAD`, `findings[]` with `pass`,
-`severity` `important|nit`, `file`, `line`, `summary`, `signature`; `tally`). Then validate
-it and compute the tally:
+`severity` `important|nit`, `file`, `line`, `summary`, `signature`; `tally`), and, when the
+prompt ends with "Risk-list items this change touches", the brief per item in
+`evidence/roles/security-policy-e.md` (decision 35: the build PR's banner quotes it). Then
+validate it and compute the tally:
 ```
 python "${CLAUDE_PLUGIN_ROOT}/plugin/review/cli.py" validate --root "${CLAUDE_PROJECT_DIR}" --id <id>
 ```
@@ -169,8 +171,9 @@ It prints the review mode (`sdlc.yaml: review`, `status.yaml: review_override`),
 the gate would park on that belong to the panel's fixed list (an open flagged concern, a
 concern naming contradicting policies, the reviewer's `escalate` verdict, an Important
 finding the run cannot fix, the verifier's "does not match the plan"), which of them the
-ledger already decides, and under `parks` what stays the owner's whatever the mode (a
-risk-list hit, a guardrail file, a run limit, an infrastructure failure). When `mode` is
+ledger already decides, and under `parks` what stays the owner's whatever the mode (an
+escalation on a risk-list item, a guardrail file, a run limit, an infrastructure failure; a
+risk-list hit itself parks nothing, decision 35). When `mode` is
 `parked` or `pending` is empty, go on to the gate. Otherwise, for each pending item `n` in
 order, three fresh contexts, each with the brief printed by
 `python "${CLAUDE_PLUGIN_ROOT}/plugin/panel/cli.py" prompt --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase e --item <n> --member <reviewer|advocate|conciliator>`:
@@ -208,7 +211,9 @@ you" at the gate and overturns any line with a review comment.
 ## 4. Gate (e)
 `python "${CLAUDE_PLUGIN_ROOT}/plugin/gate/cli.py" check --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase e`
 — requires the evidence of (d) green, `review-findings.json` for HEAD with no Important
-finding, the plan in sync with the diff, no guardrail or risk hit. Exit 3 `wait` is the
+finding, the plan in sync with the diff, no guardrail file, no escalation on a risk-list
+item (a hit is a line of the PR's "Needs your close look" banner, which your merge accepts:
+decision 35). Exit 3 `wait` is the
 normal outcome (gate (e) is human in every profile); 4 = `park`. Then the release notes
 (build guide step 32; deterministic: what changed, the commits since the base, the evidence
 status, the final findings tally, the links):

@@ -81,11 +81,14 @@ RELEASE_APPROVED_LABEL = "sdlc:release-approved"
 # The owner's un-park verbs (decision 24; OPERATING_MODEL section 6): applied on the PR, read
 # by the next run (``state/unpark.py``), performed and recorded in ``status.yaml`` with the
 # label's actor, then removed from the PR so one application is one act. The CLI commands
-# ``accept-risk``, ``set-iterations`` and ``unlock-tests`` stay for by-hand runs.
+# ``set-iterations`` and ``unlock-tests`` stay for by-hand runs, and so does ``accept-risk``:
+# its label retired with decision 35 (plugin 1.0.15), since a risk-list hit no longer parks
+# and the owner's merge of the PR whose banner shows it accepts it. ``ACCEPT_RISK_LABEL``
+# stays only to confirm a ``risk_accepted_by`` entry recorded before then (its label event).
 ACCEPT_RISK_LABEL = "sdlc:accept-risk"
 RESET_ITERATIONS_LABEL = "sdlc:reset-iterations"
 UNLOCK_TESTS_LABEL = "sdlc:unlock-tests"
-UNPARK_LABELS = (ACCEPT_RISK_LABEL, RESET_ITERATIONS_LABEL, UNLOCK_TESTS_LABEL)
+UNPARK_LABELS = (RESET_ITERATIONS_LABEL, UNLOCK_TESTS_LABEL)
 # Phase (f) (build guide steps 37 and 39; decisions 14, 25): ``incident`` marks every intent
 # PR the maintain loop opens - the triage queue is the set of open PRs carrying it (p.44
 # step 6); ``schedule`` is the owner's "not now" (the PR stays open, nothing runs); ``sdlc:go``

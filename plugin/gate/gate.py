@@ -35,6 +35,7 @@ if str(PLUGIN_DIR) not in sys.path:
 from gate import artifacts as art  # noqa: E402
 from gate import checks, limits  # noqa: E402
 from gate import diff as diffmod  # noqa: E402
+from gate import risk as risk_mod  # noqa: E402
 from gate.checks import CheckResult, GateContext  # noqa: E402
 from hooks._common import SDLC_FILE, ConfigError, load_sdlc_config  # noqa: E402
 from state import conventions as c  # noqa: E402
@@ -181,7 +182,9 @@ def approved_overrides(
     return profile, review, "; ".join(ignored)
 
 
-def build_context(root: Path, change_id: str, phase: str, base: str | None = None) -> GateContext:
+def build_context(
+    root: Path, change_id: str, phase: str, base: str | None = None, any_phase: bool = False
+) -> GateContext:
     root = Path(root).resolve()
     if phase not in c.PHASES:
         raise GateError(f"phase must be one of {c.PHASES}")
@@ -191,7 +194,9 @@ def build_context(root: Path, change_id: str, phase: str, base: str | None = Non
     if change_dir is None:
         raise GateError(f"no change folder for id {change_id} under {root / c.CHANGES_DIR}")
     st = status_mod.read_status(change_dir)
-    if st.phase != phase:
+    # ``any_phase``: a read-only use that judges the phase ahead of the record (the review
+    # pass asks for the (e) risk hits while status.yaml still says (d)); never for a gate
+    if st.phase != phase and not any_phase:
         raise GateError(
             f"status.yaml says change {change_id} is in phase ({st.phase}); gate ({phase}) "
             "was asked for. Set the phase first (state/cli.py set-phase / commit-phase)."
@@ -276,7 +281,8 @@ def fast_lane_applies(
     reason to wait is that (b) is a human gate, the profile is not Full, the adversarial
     reviewer said ``continue`` itself (an ``escalate`` the panel settled waits) and classed
     the plan exactly ``routine``, and the CI runner runs the session (it alone records the
-    fast lane and dispatches the build; a gate run by hand waits)."""
+    fast lane and dispatches the build; a gate run by hand waits), and no risk-list item hit
+    that is not accepted yet (decision 35: a hit at (b) waits on the design PR)."""
     return (
         phase == FAST_LANE_PHASE
         and human_gate
@@ -285,7 +291,23 @@ def fast_lane_applies(
         and all(r.ok for r in results)
         and not settled_by_panel(results)
         and verdict_classification(results) == status_mod.FAST_LANE_CLASSIFICATION
+        and not unaccepted_risk_hits(results)
     )
+
+
+def unaccepted_risk_hits(results: list[CheckResult]) -> list[str]:
+    """The risk-list items the gate's risk-hit checks reported and no earlier act accepted
+    (decision 35). A hit at (b) goes on the design PR, whose merge accepts it, so a design
+    with one never takes the fast lane (decision 30's routine plan has no risk-list item)."""
+    out: list[str] = []
+    for r in results:
+        if r.name not in risk_mod.RISK_HIT_CHECKS:
+            continue
+        found = r.details.get("hits")
+        done = {str(a).lower() for a in r.details.get("accepted") or []}
+        if isinstance(found, dict):
+            out += [str(k) for k in found if str(k).lower() not in done]
+    return sorted(set(out))
 
 
 def evaluate(ctx: GateContext) -> GateResult:
@@ -347,6 +369,42 @@ def apply(ctx: GateContext, result: GateResult) -> None:
     ctx.evidence_dir.mkdir(parents=True, exist_ok=True)
     out = ctx.evidence_dir / art.GATE_RESULT.format(phase=ctx.phase)
     out.write_text(json.dumps(result.as_dict(), indent=2), encoding="utf-8", newline="\n")
+
+
+RISK_HIT_PHASES = {"risk_list": c.PHASES, "ratchets": ("c", "d", "e")}
+
+
+def risk_hits_now(
+    root: Path, change_id: str, phase: str, base: str | None = None
+) -> dict[str, Any]:
+    """The risk-list hits of the committed diff as the gate of ``phase`` would report them
+    (decision 35), without recording anything: ``{phase, hits, accepted, brief}``. The phase
+    commands hand them to the reviewer, which writes one brief per item in ``brief``; the
+    review pass asks for phase (e) while status.yaml still says (d)."""
+    ctx = build_context(root, change_id, phase, base, any_phase=True)
+    hits: dict[str, list[str]] = {}
+    accepted: set[str] = set()
+    problems: list[str] = []
+    for check in (checks.check_risk_list, checks.check_ratchets):
+        if phase not in RISK_HIT_PHASES[check.__name__.removeprefix("check_")]:
+            continue
+        result = check(ctx)
+        found = result.details.get("hits")
+        if isinstance(found, dict):
+            for item, where in found.items():
+                hits.setdefault(str(item), []).extend(str(w) for w in where)
+        elif not result.ok:
+            problems.append(f"{result.name}: {result.reason}")
+        accepted |= {str(a) for a in result.details.get("accepted") or []}
+    out: dict[str, Any] = {
+        "phase": phase,
+        "hits": hits,
+        "accepted": sorted(accepted),
+        "brief": f"{ctx.change_rel}/{risk_mod.brief_rel(phase)}",
+    }
+    if problems:
+        out["problems"] = problems
+    return out
 
 
 def run_gate(

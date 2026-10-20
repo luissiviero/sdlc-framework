@@ -1258,7 +1258,10 @@ def test_gate_parks_when_the_diff_touches_settings_json(project):
     assert g.details["touched"] == [".claude/settings.json"]  # still on the branch, exempted
 
 
-def test_gate_parks_on_a_risk_list_word_until_the_owner_accepts_it(project):
+def test_a_risk_list_word_is_reported_never_parked_and_accepted_by_hand(project):
+    """Decision 35 (1.0.15): a risk-list hit no longer parks. The check passes and reports
+    the hit for the close-look banner; the by-hand ``accept-risk`` stays, counts once the
+    owner committed it, and the check then names the item accepted."""
     root, change = project
     write(root / "sample_pkg" / "auth.py", "TOKEN_TTL = 60\n")
     write(
@@ -1269,9 +1272,10 @@ def test_gate_parks_on_a_risk_list_word_until_the_owner_accepts_it(project):
     git(root, "commit", "-q", "-m", "auth ttl")
     verdict(root, "c")
     result = gate.run_gate(root, "0001", "c")
-    assert result.result == "park"
-    r = next(ch for ch in result.failed if ch.name == "risk_list")
-    assert r.details["hits"] == {"auth": ["sample_pkg/auth.py"]} and "accept-risk" in r.need
+    assert result.result == "continue", result.reason
+    r = next(ch for ch in result.checks if ch.name == "risk_list")
+    assert r.ok and r.details["hits"] == {"auth": ["sample_pkg/auth.py"]}
+    assert r.details["accepted"] == [] and "close-look banner" in r.reason
     proc = run_py(
         str(STATE_CLI),
         "accept-risk",
@@ -1290,7 +1294,11 @@ def test_gate_parks_on_a_risk_list_word_until_the_owner_accepts_it(project):
     git(root, "add", ".")
     git(root, "commit", "-q", "-m", "owner: accept the auth risk for change 0001")
     verdict(root, "c")
-    assert gate.run_gate(root, "0001", "c").result == "continue"
+    result = gate.run_gate(root, "0001", "c")
+    assert result.result == "continue", result.reason
+    r = next(ch for ch in result.checks if ch.name == "risk_list")
+    assert r.details["accepted"] == ["auth"]
+    assert r.details["hits"] == {"auth": ["sample_pkg/auth.py"]}
 
 
 def test_gate_parks_on_escalate_missing_or_stale_verdict(project):
@@ -1343,7 +1351,8 @@ def test_plan_sync_judges_the_committed_diff_only(project):
 def test_guardrails_and_risk_list_judge_the_committed_diff_only(project):
     """Deliverable 6(d): guardrails and risk_list read merge base...HEAD, like plan_sync and
     design_scope (OPERATING_MODEL section 3: the gate judges HEAD, not the working tree).
-    Uncommitted work is clean_tree's to report; once committed, the same change parks."""
+    Uncommitted work is clean_tree's to report; once committed, the same change parks on the
+    guardrail file and reports the risk-list hit (decision 35: a hit never parks)."""
     root, _change = project
     settings = root / ".claude" / "settings.json"
     data = json.loads(settings.read_text(encoding="utf-8"))
@@ -1354,6 +1363,7 @@ def test_guardrails_and_risk_list_judge_the_committed_diff_only(project):
     verdict(root, "c")
     result = gate.run_gate(root, "0001", "c", dry_run=True)
     assert {"guardrails", "risk_list"} <= set(_names(result, True)), result.reason
+    assert next(ch for ch in result.checks if ch.name == "risk_list").details["hits"] == {}
     ct = next(ch for ch in result.failed if ch.name == "clean_tree")
     assert {".claude/settings.json", "CLAUDE.md", "sample_pkg/auth.py"} <= set(ct.details["dirty"])
 
@@ -1364,8 +1374,8 @@ def test_guardrails_and_risk_list_judge_the_committed_diff_only(project):
     assert result.result == "park"
     g = next(ch for ch in result.failed if ch.name == "guardrails")
     assert g.details["touched"] == [".claude/settings.json", "CLAUDE.md"]
-    r = next(ch for ch in result.failed if ch.name == "risk_list")
-    assert r.details["hits"] == {"auth": ["sample_pkg/auth.py"]}
+    r = next(ch for ch in result.checks if ch.name == "risk_list")
+    assert r.ok and r.details["hits"] == {"auth": ["sample_pkg/auth.py"]}
     assert "clean_tree" in _names(result, True)
 
 
@@ -1379,7 +1389,7 @@ def test_a_sandbox_masked_env_no_longer_trips_guardrails_or_risk_list(project):
     def protect_env(r: Path) -> None:
         text = (r / "sdlc.yaml").read_text(encoding="utf-8")
         edited = text.replace("protected_paths: []", 'protected_paths:\n  - ".env"').replace(
-            "  - production config\n", "  - production config\n  - env\n"
+            '  - "production config"\n', '  - "production config"\n  - env\n'
         )
         assert edited.count('- ".env"') == 1 and "  - env\n" in edited
         write(r / "sdlc.yaml", edited)
@@ -1621,13 +1631,13 @@ def _ratchet_repo(tmp_path: Path, plan_body: str, sdlc_yaml: str = RATCHET_SDLC_
     return root, change_dir
 
 
-def test_ratchets_drop_test_file_undeclared_fails(tmp_path):
+def test_ratchets_drop_test_file_undeclared_is_a_hit(tmp_path):
     root, _change = _ratchet_repo(tmp_path, BASE_PLAN)
     (root / "tests" / "test_keep.py").unlink()
     git(root, "add", ".")
     git(root, "commit", "-q", "-m", "drop a test")
     res = checks.check_ratchets(gate.build_context(root, "0001", "c"))
-    assert not res.ok
+    assert res.ok and "close-look banner" in res.reason  # decision 35: a hit, never a park
     assert res.details["hits"]["ratchet: tests"] == ["tests/test_keep.py"]
 
 
@@ -1657,7 +1667,7 @@ def test_ratchets_plan_edited_after_merge_base_does_not_excuse_drop(tmp_path):
     git(root, "add", ".")
     git(root, "commit", "-q", "-m", "drop a test and edit plan.md in the same commit")
     res = checks.check_ratchets(gate.build_context(root, "0001", "c"))
-    assert not res.ok
+    assert res.ok and "close-look banner" in res.reason  # decision 35: a hit, never a park
     assert res.details["hits"]["ratchet: tests"] == ["tests/test_keep.py"]
 
 
@@ -1674,21 +1684,21 @@ def test_ratchets_rename_out_of_test_paths_is_a_drop(tmp_path):
     git(root, "mv", "tests/test_keep.py", "renamed_out_of_scope.py")
     git(root, "commit", "-q", "-m", "rename out of test_paths")
     res = checks.check_ratchets(gate.build_context(root, "0001", "c"))
-    assert not res.ok
+    assert res.ok and "close-look banner" in res.reason  # decision 35: a hit, never a park
     assert res.details["hits"]["ratchet: tests"] == ["tests/test_keep.py"]
 
 
-def test_ratchets_drop_eval_case_folder_emptied_fails(tmp_path):
+def test_ratchets_drop_eval_case_folder_emptied_is_a_hit(tmp_path):
     root, _change = _ratchet_repo(tmp_path, BASE_PLAN)
     (root / "evals" / "cases" / "bar" / "only.yaml").unlink()
     git(root, "add", ".")
     git(root, "commit", "-q", "-m", "empty the bar case")
     res = checks.check_ratchets(gate.build_context(root, "0001", "c"))
-    assert not res.ok
+    assert res.ok and "close-look banner" in res.reason  # decision 35: a hit, never a park
     assert res.details["hits"]["ratchet: evals"] == ["evals/cases/bar/"]
 
 
-def test_ratchets_drop_eval_case_dot_rename_fails(tmp_path):
+def test_ratchets_drop_eval_case_dot_rename_is_a_hit(tmp_path):
     root, _change = _ratchet_repo(tmp_path, BASE_PLAN)
     # git mv needs the destination directory to pre-exist; move by hand so git still sees it
     # as a rename (-M) once the content is unchanged
@@ -1698,7 +1708,7 @@ def test_ratchets_drop_eval_case_dot_rename_fails(tmp_path):
     git(root, "add", "-A")
     git(root, "commit", "-q", "-m", "hide the bar case")
     res = checks.check_ratchets(gate.build_context(root, "0001", "c"))
-    assert not res.ok
+    assert res.ok and "close-look banner" in res.reason  # decision 35: a hit, never a park
     assert res.details["hits"]["ratchet: evals"] == ["evals/cases/bar/"]
 
 
@@ -1713,7 +1723,7 @@ def test_ratchets_eval_case_dot_rename_wins_over_a_surviving_sibling(tmp_path):
     git(root, "add", "-A")
     git(root, "commit", "-q", "-m", "hide one file of the foo case, b.yaml survives")
     res = checks.check_ratchets(gate.build_context(root, "0001", "c"))
-    assert not res.ok
+    assert res.ok and "close-look banner" in res.reason  # decision 35: a hit, never a park
     assert res.details["hits"]["ratchet: evals"] == ["evals/cases/foo/"]
 
 
@@ -1766,6 +1776,7 @@ def test_ratchets_accepted_hit_passes_on_later_run(tmp_path):
     res = checks.check_ratchets(gate.build_context(root, "0001", "c"))
     assert res.ok, res.reason
     assert res.details["accepted"] == ["ratchet: tests"]
+    assert res.details["hits"] == {"ratchet: tests": ["tests/test_keep.py"]}  # still shown
 
 
 def test_ratchets_risk_list_tests_configured_does_not_satisfy_ratchet_hit(tmp_path):
@@ -1783,7 +1794,7 @@ def test_ratchets_risk_list_tests_configured_does_not_satisfy_ratchet_hit(tmp_pa
     ctx = gate.build_context(root, "0001", "c")
     ratchets_res = checks.check_ratchets(ctx)
     risk_res = checks.check_risk_list(ctx)
-    assert not ratchets_res.ok
+    assert ratchets_res.ok and ratchets_res.details["accepted"] == []  # reported, decision 35
     assert ratchets_res.details["hits"]["ratchet: tests"] == ["tests/test_keep.py"]
     assert risk_res.ok, risk_res.reason
 
@@ -1832,7 +1843,7 @@ def test_ratchets_declaring_unknown_ratchet_name_is_inert(tmp_path):
     git(root, "add", ".")
     git(root, "commit", "-q", "-m", "drop a test, unrelated proof line present")
     res = checks.check_ratchets(gate.build_context(root, "0001", "c"))
-    assert not res.ok
+    assert res.ok and "close-look banner" in res.reason  # decision 35: a hit, never a park
     assert res.details["hits"]["ratchet: tests"] == ["tests/test_keep.py"]
 
 
@@ -1853,11 +1864,12 @@ def test_risk_list_reads_the_committed_spec(design_project):
     verdict(root, "b")
     result = gate.run_gate(root, "0001", "b", dry_run=True)
     assert "risk_list" in _names(result, True), result.reason
+    assert next(ch for ch in result.checks if ch.name == "risk_list").details["hits"] == {}
     git(root, "add", ".")
     git(root, "commit", "-q", "-m", "design(0001): a risk item flagged")
     verdict(root, "b")
     result = gate.run_gate(root, "0001", "b", dry_run=True)
-    hit = next(ch for ch in result.failed if ch.name == "risk_list")
+    hit = next(ch for ch in result.checks if ch.name == "risk_list")
     assert hit.details["hits"] == {"auth": ["spec.md Flagged concerns: text"]}
 
 
@@ -2645,7 +2657,9 @@ def test_gate_b_ignores_risk_list_words_in_the_spec_s_prose(design_project):
     assert "risk_list" not in _names(result, False)
 
 
-def test_gate_b_parks_on_a_risk_list_item_declared_under_flagged_concerns(design_project):
+def test_gate_b_reports_a_risk_list_item_declared_under_flagged_concerns(design_project):
+    """Decision 35: the item named under "Flagged concerns" is a hit the design PR's banner
+    shows; the open concern parks on its own check, never on risk_list."""
     root, change = design_project
     concern = "- auth: the helper reads the caller's session token; the owner decides.\n"
     write(change / "spec.md", SPEC.replace("## Acceptance", concern + "\n## Acceptance"))
@@ -2653,8 +2667,22 @@ def test_gate_b_parks_on_a_risk_list_item_declared_under_flagged_concerns(design
     git(root, "commit", "-q", "-m", "design(0001): a risk item flagged")
     verdict(root, "b")
     result = gate.run_gate(root, "0001", "b", dry_run=True)
-    assert result.result == "park"
-    hit = next(ch for ch in result.failed if ch.name == "risk_list")
+    assert result.result == "park" and "open_concerns" in _names(result, False)
+    assert "risk_list" not in _names(result, False)
+    hit = next(ch for ch in result.checks if ch.name == "risk_list")
+    assert hit.details["hits"] == {"auth": ["spec.md Flagged concerns: text"]}
+    # the declaration the spec-template skill asks for is closed: the design waits for the
+    # owner's merge, which accepts the item, and parks on nothing
+    declared = (
+        "- decided (decision 35): risk item 'auth': the helper reads the caller's session "
+        "token; the close-look banner shows it and the owner's merge accepts it.\n"
+    )
+    write(change / "spec.md", SPEC.replace("## Acceptance", declared + "\n## Acceptance"))
+    git(root, "commit", "-q", "-am", "design(0001): the risk item declared")
+    verdict(root, "b", classification="non-routine")
+    result = gate.run_gate(root, "0001", "b", dry_run=True)
+    assert result.result == "wait", result.reason
+    hit = next(ch for ch in result.checks if ch.name == "risk_list")
     assert hit.details["hits"] == {"auth": ["spec.md Flagged concerns: text"]}
 
 
@@ -2663,7 +2691,16 @@ def _label_act(change: Path, label: str, actor: str, items=("auth",)) -> None:
     from state import conventions as c
 
     st = status_mod.read_status(change)
-    st.record_owner_label(label, actor, list(items) if label == c.ACCEPT_RISK_LABEL else None)
+    if label == c.ACCEPT_RISK_LABEL:
+        # the label retired with decision 35 (1.0.15); a status.yaml its fix round wrote
+        # before then carries the item and the label's actor, which owner_actions honours
+        for item in items:
+            st.accept_risk(item)
+            st.risk_accepted_by = [e for e in st.risk_accepted_by if e["item"] != item] + [
+                {"item": item, "actor": actor}
+            ]
+    else:
+        st.record_owner_label(label, actor)
     status_mod.write_status(change, st)
 
 

@@ -92,6 +92,8 @@ jobs:
       released: ${{ steps.release.outputs.released }}
       change_id: ${{ steps.release.outputs.change_id }}
       pin: ${{ steps.pin.outputs.ref }}
+      # decision 35: the risk-list items the owner's merge accepted (one status.yaml line)
+      risk_acceptance: ${{ steps.release.outputs.risk_acceptance }}
     steps:
       # The merge commit itself, not the event's default ref: a label applied long after
       # the merge must release what was merged. A dispatch releases the default branch.
@@ -141,9 +143,14 @@ jobs:
   # It commits released_at / released_sha / released_pr into status.yaml on the work branch
   # sdlc/<id>/c (when still there) and on refs/sdlc/released/<id>; the release step reads
   # both before releasing. A push that fails is red: the release ran without its record.
+  # Decision 35 (1.0.15): it also runs when the merge accepted risk-list items the build
+  # PR's close-look banner showed, and commits that acceptance line (who merged, when, the
+  # items, whether the body showed the banner) the same way, with the release or alone,
+  # and after a failed deploy.command too (`!cancelled()`): `released` is written only after
+  # the command exited 0, so a failed release never records one.
   record:
     needs: release
-    if: ${{ needs.release.outputs.released == 'true' }}
+    if: ${{ !cancelled() && (needs.release.outputs.released == 'true' || needs.release.outputs.risk_acceptance != '') }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -171,4 +178,6 @@ jobs:
           CHANGE_ID: ${{ needs.release.outputs.change_id }}
           PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr_number }}
           MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
-        run: python framework/plugin/release/cli.py record --root . --id "$CHANGE_ID" --pr "$PR_NUMBER" --merge-sha "$MERGE_SHA"
+          RELEASED: ${{ needs.release.outputs.released }}
+          RISK_ACCEPTANCE: ${{ needs.release.outputs.risk_acceptance }}
+        run: python framework/plugin/release/cli.py record --root . --id "$CHANGE_ID" --pr "$PR_NUMBER" --merge-sha "$MERGE_SHA" --released "$RELEASED" --acceptance "$RISK_ACCEPTANCE"

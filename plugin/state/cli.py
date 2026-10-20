@@ -11,11 +11,13 @@ and identical on Windows, in a cloud session and in CI.
         # phases d and e commit on the (c) branch: the build PR stays open through them
     python cli.py set-phase --root . --id 0001 --phase b
     python cli.py park --root . --id 0001 --reason "..."
-    python cli.py accept-risk --root . --id 0001 --item "auth"   # owner accepts a risk hit
+    python cli.py accept-risk --root . --id 0001 --item "auth"   # owner accepts a risk hit by
+        # hand (decision 35: the merge of the PR whose banner shows it is the usual act)
     python cli.py lock-tests --root . --id 0001     # fix change: reproducing test committed
     python cli.py unlock-tests --root . --id 0001   # owner only: the test itself was wrong
     python cli.py apply-labels --root . --id 0001 --repo owner/name --pr 12
-        # the owner's un-park labels on the PR (decision 24): performed when the owner's
+        # the owner's un-park labels on the PR (decision 24; sdlc:accept-risk retired with
+        # decision 35): performed when the owner's
         # account applied them (choice 218), recorded with the label's actor, removed from
         # the PR; nothing is committed
     python cli.py abandon --root . --id 0001 --reason "..." [--push]
@@ -224,7 +226,10 @@ def cmd_park(args) -> int:
 
 
 def cmd_accept_risk(args) -> int:
-    """The owner accepts a risk-list hit for this change (gate check risk_list, step 16)."""
+    """The owner accepts a risk-list hit for this change by hand (gate check risk_list, step
+    16). Since decision 35 a hit no longer parks and the owner's merge of the PR whose
+    close-look banner shows it accepts it; this command stays, and the banner then lists the
+    item as accepted by hand."""
     loaded = _load(args)
     if not loaded:
         return 2

@@ -1,0 +1,81 @@
+# Progress — ROADMAP R24, a risk-list hit is a line in the close-look banner, as plugin 1.0.15 (2026-10-20)
+
+This session ran on branch `ccr-bc5e88a0-y1pwjg`. The owner's task was to build ROADMAP R24 (rank 8, the next open rank) as a session pull request with an independent review, from decision 35 and its choice-242 annotations, `docs/proposals/risk-hit-in-banner.md` ("The proposal", "Order", "What to settle before building"), R12's third point and R15's first change. The previous record (decisions 35 and 36, choices 242 and 243) is now `docs/progress/2026-10-20-decisions-35-36-and-choices-242-243.md`, unchanged. The session's own file is `docs/handoffs/sessions/2026-10-20-ccr-bc5e88a0-y1pwjg.md`.
+
+A change under `plugin/` and `template/`: plugin **1.0.15** (`.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json`). R56, for which the number was named (choice 184), has not merged: no tag `v1.0.15` and no pull request that builds R56, open or closed (verified, `git tag` after `git fetch --tags`, and a search of the repository's pull requests for "R56" at 13:16 UTC: #247, #249 and #252 name it, none builds it). Choice 184 reserves no number: whichever plugin PR merges first takes the next free one, so this PR moves to the next number if another merges before it.
+
+## What was built
+1. **Risk items with globs** (decision 35, point 4). An item of `sdlc.yaml: risk_list` is a plain string, matched by its words as before, or `{item, paths}`: the globs are matched on the committed diff, the words in spec.md's "Flagged concerns" only; no path under `changes/` is matched by either kind (`plugin/gate/risk.py` `parse_items`, `hits`). `/sdlc-init` proposes, for each of the four default items, the globs that match a file the project already has (`plugin/init/detect.py` `risk_list`; `template/sdlc.yaml` `{{RISK_LIST}}`); an item none matches stays a plain string, and an existing `sdlc.yaml` keeps its list.
+2. **The check reports and no longer parks** (points 1 and 6). `risk_list` and `ratchets` pass and report every hit, accepted or not, in `details.hits` and `details.accepted`. They fail only on an escalation on a hit item: the brief's word `escalate`, or an `escalate` verdict whose reasons name the item. Both checks are on the panel's never list, and `panel/cli.py items` puts such an escalate verdict under `parks`, never on the panel (point 3).
+3. **The brief per hit item** (point 3). `gate/cli.py risk-hits` lists the items the gate will report. The design, build, test and fix commands hand them to the adversarial reviewer, which writes `evidence/roles/security-policy-<phase>.md`. At (e), `review/cli.py prompt` ends with the items, and the REVIEW.md pass writes `security-policy-e.md`.
+4. **The banner's risk lines** (points 1 and 3). `pr/description.py` opens the body with "Needs your close look" (`risk.banner_lines`) on the design PR at (b), on the build PR from (c) to (e), and on change 0000's install PR at (a). Each item shows where it hit, the gate that first found it, and the newest brief on it. At (c) and (d) the banner says that only the (e) merge accepts. An item accepted at (b) is listed as accepted, with the new paths, and is not asked again. A drop the approved plan declares is a line too.
+5. **The acceptance record** (point 2). `status.yaml: risk_acceptances` holds one line per merge, in R11's line shape: `act`, `by`, `at`, `via`, `pr`, `head`, and `details` with `phase`, `items` and `banner_shown`. The build run records the design PR's merge from its `pull_request` event (`run_phase.py` `record_design_acceptance`). The release workflow's record job records the (e) merge: `release/cli.py` `merge_acceptance`, then `record --acceptance`, with or without a release. Only the owner's account's merge accepts (`is_owner_actor`); a `[bot]`, the automation identity or another person accepts nothing. The runner guards the field like an owner field and confirms each line against GitHub's record of the merge (`acceptance_mismatches`).
+6. **The label retires** (point 5). `sdlc:accept-risk` is no longer one of `UNPARK_LABELS`, so it is neither created nor read, and `sdlc-fix.yml` no longer starts on it. The by-hand `state/cli.py accept-risk` stays. The banner lists an item it accepted as "accepted by hand".
+7. **The documents follow** (point 7). Each sentence that said a hit parks, or named the label as live, is corrected in the data-conventions skill (rule 3, and its `check.py` docstring), the security-baseline, spec-template and definition-of-done skills, the design, build, test, deploy, fix and init commands, the adversarial reviewer, `template/sdlc.yaml`, `template/changes/README.md`, `README.md` and `docs/OPERATING_MODEL.md`. The release-guard sentence there no longer lists a hit among the parks.
+8. **The fast lane** waits at (b) on a hit no earlier act accepted (`gate.py` `unaccepted_risk_hits`): decision 35 puts a hit found at (b) on the design PR, whose merge accepts it.
+
+Tests: `tests/test_risk_banner.py` (21 tests). The tests that encoded "a hit parks" or the label are rewritten to decision 35's behaviour, none skipped or deleted: `test_gate.py`, `test_state.py`, `test_fix_round_edges.py`, `test_fast_lane.py`, `test_templates.py`, `test_integration_fixture.py`, `test_commands_and_skills.py`.
+
+## The proposal's "What to settle" rows, as taken
+| Row | Taken |
+|---|---|
+| The shape of a risk item; what `/sdlc-init` proposes | As recommended: `item:` and `paths:`; a plain string keeps the word match; globs only for folders that exist (the seven of the row). `sdlc.yaml` stays the owner's guardrail edit |
+| Where the brief goes | As recommended: a file of its own, `evidence/roles/security-policy-<phase>.md`, written by the adversarial reviewer at (b) to (d) and the REVIEW.md pass at (e) until R28. Its name is a question below |
+| Under Full, whether the (c) and (d) labels accept | Settled (T12, R12's third point): only the (e) merge accepts; the waiting PR's banner shows the hit |
+| The `data-conventions` sentence; the other documents | As recommended: corrected in this change |
+| How an escalation on a risk item is told | As recommended: the brief's word on the item, or an `escalate` verdict whose reasons name the item; it parks under `review: deferred` too |
+| Where a hit accepted by the (e) merge is recorded | The row's second option, a line of its own: R11 is not built. `risk_acceptances` uses R11's line shape, so R11 can take the lines into its list |
+| R15's measured fall | Not in this build (choice 242, point 1): its decision file comes with R15's second change |
+| The release guard on a merge over a parked gate (e) | As recommended: no change in `release/cli.py`'s guard; a hit no longer sets `parked_reason` (a test says so); `OPERATING_MODEL.md` corrected |
+| Whose act is the (e) acceptance once R22 is built | Not in this build (choice 242, point 2): until R22 the acceptor is the merge actor |
+| A hit at (a) or (f); the change folder's own path | As recommended: nothing under `changes/` is matched on paths, a glob or a plain item's words (the slug no longer hits; the spec's "Flagged concerns" are read as text). Change 0000's install PR shows the banner at (a) |
+| An item accepted at (b) and touched again | As recommended: it holds; the (e) banner lists it as accepted at (b), with the new paths and the brief, and asks nothing |
+| Which proposal builds the banner | As recommended: one generated block in `pr/description.py`, built here with the risk lines only; the non-routine plan's reasons and the Architect's line are design-go's, with R28's part 1 |
+
+## Questions for the owner
+1. **The fast lane on a hit at (b).** A design whose gate reports a risk-list hit no earlier act accepted now waits at (b), even when the reviewer classed it routine. Decision 35 puts such a hit on the design PR, and decision 30's routine plan has "no risk-list item". The other reading lets the hit ride to the (e) banner. This keeps the (b) acceptance; say if decision 30 was meant otherwise.
+2. **The brief file's name.** `evidence/roles/security-policy-<phase>.md` is per gate, because each gate's reviewer writes its own. R28's sketch names a round (`<role>-r1.md`). The name is R45's to settle with R28's.
+3. **Change 0000's acceptance.** The banner shows at (a) on the install PR, but no run follows that merge, so no `risk_acceptances` line records it. The merge commit is the record until R11 writes the (a) line.
+4. **Only the owner's merge accepts.** Decision 35 names "the merged pull request's merge actor". This build records an acceptance only when that actor is the owner's account (`is_owner_actor`, decision 34's one rule), as the independent review asked (choice 218's reason: an account the owner did not choose accepting what the owner never saw). A collaborator's merge records nothing, and the (e) banner asks again. Say if any person's merge should count.
+5. **The acceptance when no release runs.** The record job writes the (e) line on `sdlc/<id>/c` and on `refs/sdlc/released/<id>`, also when `deploy.command` failed (`!cancelled()`). A ref that carries only an acceptance is read as no release record, and the work branch is read after it (`remote_record`). That a failed job's step outputs reach the record job is GitHub's documented behaviour, not verified live here.
+6. **The design's declaration of a risk item.** An open line under "Flagged concerns" parks as an open concern (choice 14), so the design pass now writes a risk item closed: `- decided (decision 35): risk item '<item>': …` (the `spec-template` skill, `/sdlc-design`, the security baseline). A question the item raises for the owner stays an open concern of its own.
+
+## The independent review
+A general-purpose agent in a fresh context reviewed the first commit's diff against decision 35 and the proposal. Each finding was read against the code and the decision:
+
+| # | Finding | Outcome |
+|---|---|---|
+| 1 | A risk item declared under "Flagged concerns" still parks as an open concern | Fixed: the design pass writes the declaration closed (question 6); a test shows the design then waits, not parks |
+| 2 | The gate read the brief at HEAD, the previous round's (evidence is committed after the gate) | Fixed: read from the working tree, as the verdict is |
+| 3 | Change 0000's (a) acceptance has no recorded line | Not changed: no run follows that merge to write it; the merge commit is the record until R11's (a) line (question 3) |
+| 4 | The record job was skipped when `deploy.command` failed, losing the acceptance | Fixed: `!cancelled()` |
+| 5 | `remote_record` stopped before the work branch on a ref with only an acceptance | Fixed: the branch is read after it |
+| 6 | A line with `banner_shown: false` reads as an acceptance | Not changed: decision 35 asks the record to say whether the banner showed the items; the line records the merge with `false`, `risk.accepted` ignores it, and the (e) banner asks again |
+| 7 | A plain item still matched the change's own folder, and the slug's word would also block the fast lane | Fixed: no path under `changes/` is matched (the settle row above) |
+| 8 | Any person's merge was recorded as the acceptance | Fixed: the owner's account only (question 4) |
+| 9 | The guard confirmed only who merged | Fixed: it also checks the merged PR is the phase's (`sdlc/<id>/b` or `/c`) and that a line claiming the banner names items the merged body's banner lists |
+| 10 | A `[bot]` rejection assertion was dropped from a state test | Fixed: kept beside the new assertions |
+
+The review found no sentence left that says a hit parks or names the label as live, and confirmed that a `[bot]` or the automation identity cannot accept a risk on either path.
+
+## Without R11 and R28
+- **The acceptance line** is `status.yaml: risk_acceptances`, a list of its own in R11's line shape. R11 does not exist yet. When R11 is built, its approvals list takes these lines (the (b) line becomes the details map of the (b) merge's line, as x-audit gives it), and R22 moves the (e) line to the owner's approving review (choice 242, point 2).
+- **The banner** holds only the risk lines. The block is design-go's, and R28's part 1 adds the class reasons and the Architect's recommendation. The brief is written by the adversarial reviewer and the REVIEW.md pass in the file the Security & policy role takes over with R28, so the banner reads one place before and after R28.
+
+## The port list
+This PR touches `plugin/ci/run_phase.py` (`record_design_acceptance`, `owner_fields`, `owner_field_mismatches`, `restore_owner_fields`, `baseline_mismatches` with `acceptance_mismatches`, `write_park_result`, `OWNER_FIELDS_NEED`) and the fix workflow template (`template/.github/workflows/sdlc-fix.yml`, the label condition). It goes on the port list until the 1.0.0 read.
+
+## Proposed edits for the owner
+| Link | Row | What is there now | What it must become |
+|---|---|---|---|
+| [sdlc.yaml](https://github.com/luissiviero/sdlc-framework/blob/main/sdlc.yaml#L45) | 45 | `` # --- risk list (build guide step 5; a hit parks the change at its next gate) --------------- `` | `` # --- risk list (build guide step 5; decision 35: a hit is a line of the close-look banner) -- `` |
+| [sdlc.yaml](https://github.com/luissiviero/sdlc-framework/blob/main/sdlc.yaml#L54) | 54 to 57 | `` # you" in the PR) and requests the owner's review on the PR, the only notification (decision 31). The owner accepts a risk-list hit per change by `` / `` # applying the label sdlc:accept-risk on the pull request (decision 24; the fix round records `` / `` # the label's actor); `state/cli.py accept-risk` stays for by-hand runs, where the commit's `` / `` # author is the act. Setting `paused: true` stops every run before it starts. `` | `` # you" in the PR) and requests the owner's review on the PR, the only notification (decision 31). A risk-list hit `` / `` # does not park (decision 35): the owner's merge of the PR whose banner shows it accepts it; `` / `` # `state/cli.py accept-risk` stays for by-hand runs, where the commit's `` / `` # author is the act. Setting `paused: true` stops every run before it starts. `` |
+| [sdlc.yaml](https://github.com/luissiviero/sdlc-framework/blob/main/sdlc.yaml#L104) | 104 | `  version: 1.0.14` | `  version: 1.0.15` (after the merge, once `sdlc-tag.yml` has tagged `v1.0.15`) |
+| [sample sdlc.yaml](https://github.com/luissiviero/sdlc-sample-python/blob/main/sdlc.yaml#L55) | 55 | `` # --- risk list (build guide step 5; a hit parks the change at its next gate) --------------- `` | as row 45 above, at the sample's upgrade to 1.0.15 |
+| [sample sdlc.yaml](https://github.com/luissiviero/sdlc-sample-python/blob/main/sdlc.yaml#L85) | 85 to 86 | `` # you" in the PR) and requests the owner's review on the PR, the only notification (decision 31). The owner accepts a risk-list hit per change with `` / `` # `state/cli.py accept-risk`. Setting `paused: true` stops every run before it starts. `` | `` # you" in the PR) and requests the owner's review on the PR, the only notification (decision 31). A risk-list hit `` / `` # does not park (decision 35): the merge of the PR whose banner shows it accepts it. Setting `paused: true` stops every run before it starts. `` |
+| [sample sdlc.yaml](https://github.com/luissiviero/sdlc-sample-python/blob/main/sdlc.yaml#L118) | 118 | `` #           never goes to the panel and still parks: a risk-list hit, a guardrail file change, `` | `` #           never goes to the panel and still parks: an escalation on a risk-list item, a guardrail file change, `` |
+
+The sample's `risk_list` stays plain strings: they stay valid, and the owner adds globs when wanted.
+
+## Checks (this repository)
+On the final head, after `python -m pip install -e ".[dev]"`, chained with `set -o pipefail`: `python -m compileall -q plugin tests tasks.py .github/scripts`, `python -m ruff check .`, `python -m ruff format --check .`, `python tasks.py docs-lint` (with the tags fetched), `python -m pytest -n 4` and `claude plugin validate .`. Their output is in the PR.
