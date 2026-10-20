@@ -2,7 +2,7 @@
 type: Proposal
 title: The release label stays a second act, given in the same visit; a waiting or failed release reaches the digest; the approver is recorded
 description: On a declared production the build PR's banner says to apply sdlc:release-approved with the approval, so both acts happen in one visit; the daily digest lists releases waiting for their label and failed release runs; the release record stores who applied the label and when; the Platform & release brief comes before the approval.
-status: proposed
+status: accepted
 roadmap: R13
 sources:
   - id: study-entry
@@ -25,7 +25,7 @@ generated: { by: sdlc-framework-session/ccr-cd596b46-vq58fk, at: 2026-10-09T16:3
 
 # The release label stays a second act, given in the same visit
 
-**Status: proposed (roadmap R13), from study entry T21, confirmed by the owner on 2026-10-09.** Nothing is built. Its approver line goes into R11's approvals list, so it follows R11 or is built with it.
+**Status: proposed (roadmap R13), from study entry T21, confirmed by the owner on 2026-10-09.** *[2026-10-20: accepted 2026-10-13 (roadmap R13, PR #162), built with R12 as one change after R11]* Nothing is built. Its approver line goes into R11's approvals list, so it follows R11 or is built with it.
 
 ## The problem
 

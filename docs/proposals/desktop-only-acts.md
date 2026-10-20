@@ -2,7 +2,7 @@
 type: Proposal
 title: Desktop-only acts — say when the GitHub mobile app cannot do it, and give the link
 description: Every place the framework asks the owner for an act the GitHub mobile app cannot perform (a repository setting, a secret, a ruleset) says so, tells the owner to open github.com in the phone browser's desktop mode, and gives the direct link to the settings page.
-status: proposed
+status: accepted
 roadmap: R21
 sources:
   - id: owner-request
@@ -25,7 +25,7 @@ generated: { by: sdlc-framework-session/ccr-01de3f80-ilnomi, at: 2026-10-15T12:0
 
 # Desktop-only acts
 
-**Status: proposed (roadmap R21).** Nothing is built. The owner asked for it on 2026-10-15[^owner-request]; this file carries the argument and the row in `docs/ROADMAP.md` carries the status. Not urgent.
+**Status: proposed (roadmap R21).** *[2026-10-20: accepted 2026-10-16 (PR #215)]* Nothing is built. The owner asked for it on 2026-10-15[^owner-request]; this file carries the argument and the row in `docs/ROADMAP.md` carries the status. Not urgent.
 
 ## The problem
 
@@ -47,4 +47,4 @@ Not verified, to check on the owner's phone before the design: whether the app c
 
 ## Order
 
-Not placed. It is small and could ride with R19, which builds the table of acts this one marks; the `/sdlc-init` and digest lines need no R19 and could go in any plain PR that touches those files.
+Not placed. *[2026-10-20: Order 27 (ROADMAP R21); the rank is read from ROADMAP's Order column]* It is small and could ride with R19, which builds the table of acts this one marks; the `/sdlc-init` and digest lines need no R19 and could go in any plain PR that touches those files.

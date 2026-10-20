@@ -2,7 +2,7 @@
 type: Proposal
 title: A drive target proves the product; the plan's Proof names states as well as screenshots; the runner produces the proof and the verifier reads it
 description: A fourth optional target in sdlc.yaml, commands.drive, exercises the product headless and writes screenshots and state files into evidence/; the runner runs it after the session beside build, test and lint, and a red drive is a red target; plan.md's Proof section may name a state file with an expected value; the verifier reads the proof files of the previous phase and reports per item; the PR body shows them; /sdlc-init proposes the command where the stack already has the tool.
-status: proposed
+status: accepted
 roadmap: R14 (accepted by the owner on 2026-10-13, after R10 and so after the 1.0.0 read, as one change end to end; the per-item PR line with T27; the corrections D1 to D12 of docs/reviews/2026-10-13-artcraft-vs-framework/a1-revision.md are annotated in the body)
 sources:
   - id: artcraft-study

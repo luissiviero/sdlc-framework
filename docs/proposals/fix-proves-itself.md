@@ -2,7 +2,7 @@
 type: Proposal
 title: A fix proves itself — the gate requires the lock, and the runner shows the test red at the lock commit and green at HEAD
 description: For a fix-type change gate (c) fails when the test-file lock was never set or when the lock commit changes anything but test files and the change folder; the lock is committed together with the reproducing test; the runner runs the test target at the lock commit (red expected) and at HEAD (green) outside the sandbox and records both runs in the gate record; the failing test first, the lock hook, the test_lock check, sdlc:unlock-tests, the reviews and the session's failing-test.log all stay.
-status: proposed
+status: accepted
 roadmap: R34
 sources:
   - id: study-entry
@@ -46,7 +46,7 @@ generated: { by: sdlc-framework-session/ccr-01de3f80-ilnomi, at: 2026-10-15T20:0
 
 # A fix proves itself — the gate requires the lock, and the runner shows the test red at the lock commit and green at HEAD
 
-**Status: proposed (roadmap R34), from study entry T11, confirmed by the owner on 2026-10-09.** Nothing is built. It amends no decision. It adds a proof the gate checks to what a fix-type change already does, and replaces nothing. R15 (ArtCraft row A3) protects the tests that already exist, in every change type; this proposal proves that the new reproducing test of a fix failed before the fix. The two do not overlap (`templates-revision.md` row 8.5).
+**Status: proposed (roadmap R34), from study entry T11, confirmed by the owner on 2026-10-09.** *[2026-10-20: accepted 2026-10-16 (PR #215)]* Nothing is built. It amends no decision. It adds a proof the gate checks to what a fix-type change already does, and replaces nothing. R15 (ArtCraft row A3) protects the tests that already exist, in every change type; this proposal proves that the new reproducing test of a fix failed before the fix. The two do not overlap (`templates-revision.md` row 8.5).
 
 ## The problem
 

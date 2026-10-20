@@ -19,7 +19,7 @@ generated: { by: sdlc-framework-session/pr-audit, at: 2026-10-08T16:30:00Z }
 
 # The accept verb
 
-**Status: accepted by the owner on 2026-10-08 (roadmap R6), to be built after change 0002 and R5.** Nothing is built. It needs a decision recorded before its intent, because it adds an un-park verb to decision 24.
+**Status: accepted by the owner on 2026-10-08 (roadmap R6), to be built after change 0002 and R5.** Nothing is built. It needs a decision recorded before its intent, because it adds an un-park verb to decision 24. *[2026-10-20: its decision is recorded: decision 28, accepted 2026-10-13 (PR #168), which amends 24 (`docs/decisions/28.md`)]*
 
 ## The problem
 
@@ -44,6 +44,8 @@ The question has been carried since session 4: "an owner `accept` verb for findi
 - **The panel is untouched.** Under `review: deferred` the panel still settles what it settles. The label is the owner's direct answer under either setting.
 
 ## To settle in the decision and the design
+
+*[2026-10-20: all three settled by decision 28 (accepted 2026-10-13, PR #168), each as recommended: gate (e) only, the `CLAUDE.md` proposal kept, the name `sdlc:accept-findings` (`docs/decisions/28.md`)]*
 
 - Whether a fix round's own Important findings can be accepted by the same label, or whether the label is honoured at gate (e) only. The safer first version is gate (e) only.
 - Whether accepting a finding also suppresses its `CLAUDE.md` proposal (`claude_md_first_time_lines`). The suggested answer is no: the proposal records a pattern, the waiver records one decision.

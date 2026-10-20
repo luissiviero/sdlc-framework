@@ -2,7 +2,7 @@
 type: Proposal
 title: Starting a project — the whole loop from the first change, with an optional start by hand
 description: The whole loop from the first change stays the default, with no staged adoption and no per-phase switch; added, nothing replaced, an optional by-hand start documented in /sdlc-init step 6 and the README (no Claude secret, every phase job ends "skipped", the owner runs the phase commands, adding the secret later turns the automation on), and a short list in the change-0000 intent of what starts empty (evals, lessons, "Things Claude gets wrong", the detection).
-status: proposed
+status: accepted
 roadmap: R30
 sources:
   - id: study-entry
@@ -34,7 +34,7 @@ generated: { by: sdlc-framework-session/ccr-01de3f80-ilnomi, at: 2026-10-15T20:0
 
 # Starting a project: the whole loop from the first change, with an optional start by hand
 
-**Status: proposed (roadmap R30), from study entry T5, confirmed by the owner on 2026-10-09; the blend of the crosswalk row setup-adopt, the two additions the owner's note numbers #2 and #3 (the row has no option letters).** Nothing is built. It amends no decision: decision 1 (hosted CI) stays the default, and decision 17 (evals start empty) is stated in one more place. It is documentation, a change to the code that generates one file (the change-0000 intent, a plugin version) and, if the first row of "What to settle" is taken, the scan's skip; it sits among the study's "rest in any order" group; the guide command of R19 (T27) points the owner of a new project at the by-hand start this proposal documents.
+**Status: proposed (roadmap R30), from study entry T5, confirmed by the owner on 2026-10-09; the blend of the crosswalk row setup-adopt, the two additions the owner's note numbers #2 and #3 (the row has no option letters).** *[2026-10-20: accepted 2026-10-16 (PR #215); rank 28; the rank is read from ROADMAP's Order column]* Nothing is built. It amends no decision: decision 1 (hosted CI) stays the default, and decision 17 (evals start empty) is stated in one more place. It is documentation, a change to the code that generates one file (the change-0000 intent, a plugin version) and, if the first row of "What to settle" is taken, the scan's skip; it sits among the study's "rest in any order" group; the guide command of R19 (T27) points the owner of a new project at the by-hand start this proposal documents.
 
 ## The problem
 
@@ -93,7 +93,7 @@ None amended, so no decision file comes before the intent. 1 is kept (hosted CI 
 
 ## Order
 
-In the study's confirmed order, T5 is in "the rest in any order" (the record, section 8), after the gate changes (R22 to R26) and the roles (R27, R28). It depends on no other R number. Beside it: R19 (T27, accepted) has its guide command name T5's by-hand start as a first step on a new project, so the guide's text points at this paragraph; R21 edits the same step 6 bullet (the secret as a desktop-only act), so whichever lands second keeps both; R18 (T19, accepted) lists the scan's red run, once R43 (T26) feeds the scan into its "Failed runs" line, unless the first settle row is taken; R27 (T1's sources) creates `policies/` empty and leaves its line in this list to whichever of the two lands second; R33 (T8) proposes the formatter commands in the same change-0000 PR and edits `sdlc_init.py`, so whichever lands second keeps both; R40 (T22) counts the days until the detection's baseline fills in the digest, where this intent states it once at install; R45 (T4) renames the commands this paragraph names, and goes last. The parts:
+In the study's confirmed order, T5 is in "the rest in any order" (the record, section 8), after the gate changes (R22 to R26) and the roles (R27, R28). *[2026-10-20: at rank 28 R30 comes after R45 (20) and before R23 (31); the rank is read from ROADMAP's Order column]* It depends on no other R number. Beside it: R19 (T27, accepted) has its guide command name T5's by-hand start as a first step on a new project, so the guide's text points at this paragraph; R21 edits the same step 6 bullet (the secret as a desktop-only act), so whichever lands second keeps both; R18 (T19, accepted) lists the scan's red run, once R43 (T26) feeds the scan into its "Failed runs" line, unless the first settle row is taken; R27 (T1's sources) creates `policies/` empty and leaves its line in this list to whichever of the two lands second; R33 (T8) proposes the formatter commands in the same change-0000 PR and edits `sdlc_init.py`, so whichever lands second keeps both; R40 (T22) counts the days until the detection's baseline fills in the digest, where this intent states it once at install; R45 (T4) renames the commands this paragraph names, and goes last. *[2026-10-20: at rank 28 R30 comes after R45 (20) and before R23 (31); R45 does not go last; the rank is read from ROADMAP's Order column]* The parts:
 
 | Part | Where | When |
 |---|---|---|

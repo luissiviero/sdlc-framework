@@ -2,7 +2,7 @@
 type: Proposal
 title: The policy sources — the owner's written policies in the project's policies/ folder, read by the plugin's skills, with a trigger eval per policy skill
 description: The owner writes one policy source per policy skill in a policies/ folder that /sdlc-init creates empty; each plugin skill reads its source, which wins where they differ, so an edit reaches the next run with no pin bump; policies/ becomes a guardrail path, the spec header records the source's commit, and each policy skill gets a trigger eval on each plugin release.
-status: proposed
+status: accepted
 roadmap: R27
 sources:
   - id: study-entry
@@ -34,7 +34,7 @@ generated: { by: sdlc-framework-session/ccr-01de3f80-ilnomi, at: 2026-10-15T20:0
 
 # The policy sources: the owner's written policies in `policies/`, read by the plugin's skills, with a trigger eval per policy skill
 
-**Status: proposed (roadmap R27), from study entry T1 (first of its two proposals), confirmed by the owner on 2026-10-09.** Nothing is built. It amends decision 6: its list of guardrail paths gains the project's `policies/` folder. Decision 6 is sticky (`docs/decisions/6.md`, "B2 STICKY"); the owner confirmed this amendment at the close on 2026-10-09 (the record, section 8, T1's row). The decision file is written before the intent, in a documentation PR (the record, section 8, part 1); this proposal writes no decision file and reserves no number. It is the first of the roles' pair in the confirmed order. R28 (T1's second proposal, `roles-and-manager.md`) adds the roles, the manager and the agent catalogue, with T2 inside. Those roles read these sources through the skills on their cards.
+**Status: proposed (roadmap R27), from study entry T1 (first of its two proposals), confirmed by the owner on 2026-10-09.** *[2026-10-20: accepted 2026-10-16 (roadmap R27, PR #215)]* Nothing is built. It amends decision 6: its list of guardrail paths gains the project's `policies/` folder. Decision 6 is sticky (`docs/decisions/6.md`, "B2 STICKY"); the owner confirmed this amendment at the close on 2026-10-09 (the record, section 8, T1's row). The decision file is written before the intent, in a documentation PR (the record, section 8, part 1); this proposal writes no decision file and reserves no number. It is the first of the roles' pair in the confirmed order. R28 (T1's second proposal, `roles-and-manager.md`) adds the roles, the manager and the agent catalogue, with T2 inside. Those roles read these sources through the skills on their cards.
 
 ## The problem
 
@@ -110,7 +110,7 @@ Every "Recommended" below is the session's, except where a row says the entry or
 
 | Question | Recommended |
 |---|---|
-| The folder's name | **The entry leaves it to T4 (R45), placed last.** Build with `policies/`, and T4 renames it with the other names if it chooses another |
+| The folder's name | **The entry leaves it to T4 (R45), placed last.** *[2026-10-20: to T4 (R45, rank 20, after this one); the rank is read from ROADMAP's Order column]* Build with `policies/`, and T4 renames it with the other names if it chooses another |
 | Which code this proposal carries, given the close's "no code beyond the skills reading a source" | Mine: read the phrase as "no new reader of the source in code". The skills read their source in their own text. The code the build-skills and setup-adopt notes decide rides here: the guardrail lists, `/sdlc-init`'s folder, the spec header's commit and the eval check kind. The scan's quote of the source (row below) is a code reader beyond the phrase, so it is the owner's call |
 | How a trigger eval sees that a skill loaded (to verify when built) | A fifth check kind in `plugin/evals/run.py` that reads the run's tool calls, passing on a `Skill` call that names the skill. Two outputs carry them: the verbose json list, which `parse_result` already reads (`run.py:425-447`), or a stream output; both in place of today's `--output-format json` result alone (`run.py:411`), and the live check picks one. The event's exact shape is checked on one live run and recorded in `docs/notes/` before the design |
 | Where the framework's trigger evals run, "on each plugin release" | As cases in this repository's `evals/cases/`, run by `framework-evals.yml` on every PR that changes `plugin/**` and nightly (lines 12-21). That covers each release without a new workflow. Five skills times three prompts makes fifteen runs per evaluation, each with a small `budget_usd` |
@@ -144,7 +144,7 @@ Every "Recommended" below is the session's, except where a row says the entry or
 
 ## Order
 
-This proposal comes first among the roles in the confirmed order (the record, section 8: the record and the approvals, the owner's surface, the gate changes, then "T1's sources, then T1 with T2"). It follows R22 to R26 and comes before R28. R28 depends on it, because the roles read these sources through the skills. It depends on no other candidate: R30's change-0000 list, R35's trigger and R44's sandbox entry each meet it but need not come first. It changes `plugin/`, `template/` and `tests/`, so it ships as a plugin version with tests and reaches a project through the pin bump and `/sdlc-init`.
+This proposal comes first among the roles in the confirmed order (the record, section 8: the record and the approvals, the owner's surface, the gate changes, then "T1's sources, then T1 with T2"). It follows R22 to R26 and comes before R28. *[2026-10-20: it follows R22, R24, R25 and R26 and comes before R28; R23 (rank 31) comes after it; the rank is read from ROADMAP's Order column]* R28 depends on it, because the roles read these sources through the skills. It depends on no other candidate: R30's change-0000 list, R35's trigger and R44's sandbox entry each meet it but need not come first. It changes `plugin/`, `template/` and `tests/`, so it ships as a plugin version with tests and reaches a project through the pin bump and `/sdlc-init`.
 
 | Part | Where | When |
 |---|---|---|

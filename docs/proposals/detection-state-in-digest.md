@@ -2,7 +2,7 @@
 type: Proposal
 title: The detection's state reaches the digest and a ref, and the next metric is a project setting
 description: The daily detection's log line is also appended to a record on a ref so the breach history outlives the workflow artifact, a "Detection" line in the digest shows the last verdict, the baseline's size or the days until it fills and the 1σ events, the detect workflow's red runs join the "Failed runs" line, and a `command` metric source lets a project's own script print the day's value with no agent; one metric per project, no notification.
-status: proposed
+status: accepted
 roadmap: R40
 sources:
   - id: study-entry
@@ -43,7 +43,7 @@ generated: { by: sdlc-framework-session/ccr-01de3f80-ilnomi, at: 2026-10-15T20:0
 
 # The detection's state reaches the digest and a ref, and the next metric is a project setting
 
-**Status: proposed (roadmap R40), from study entry T22, confirmed by the owner on 2026-10-09, option B of the crosswalk row maintain-detect (the letters are the row's own).** Nothing is built. It amends no decision: decisions 15 and 19 are kept and given a code path, 20 and 4 are kept. It defines the "Detection" line that R20 (T28, accepted) places under "State"; R23 (T23) and R42 (T25) each add a sentence to that line, and the detect workflow's red runs reach R18's (T19, accepted) "Failed runs" line. T1's Operations role (R28) reads the detection; nothing here changes it.
+**Status: proposed (roadmap R40), from study entry T22, confirmed by the owner on 2026-10-09, option B of the crosswalk row maintain-detect (the letters are the row's own).** *[2026-10-20: accepted 2026-10-16 (PR #215)]* Nothing is built. It amends no decision: decisions 15 and 19 are kept and given a code path, 20 and 4 are kept. It defines the "Detection" line that R20 (T28, accepted) places under "State"; R23 (T23) and R42 (T25) each add a sentence to that line, and the detect workflow's red runs reach R18's (T19, accepted) "Failed runs" line. T1's Operations role (R28) reads the detection; nothing here changes it.
 
 ## The problem
 

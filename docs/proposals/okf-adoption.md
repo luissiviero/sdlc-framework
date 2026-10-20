@@ -1,7 +1,7 @@
 ---
 type: Proposal
 title: OKF adoption — the Open Knowledge Format applied to the SDLC framework
-description: Where the Open Knowledge Format already matches the framework, where adopting it would pay (lessons/ first), and what that would take; proposed, not implemented.
+description: Where the Open Knowledge Format already matches the framework, where adopting it would pay (lessons/ first), and what that would take; proposed, not implemented. *[2026-10-20, partly built — step 2 is change 0001 (8050b92), step 1 on lessons/ is change 0003 (v0.3.6), the notes' topics pull request 160; steps 3 and 4 proposed]*
 status: proposed
 roadmap: R1
 sources:
@@ -19,7 +19,7 @@ generated: { by: sdlc-framework-session/7, at: 2026-09-25T23:00:00Z }
 
 # OKF adoption
 
-**Status: proposed (roadmap R1). Nothing here is implemented.** (`proposed` is this repository's roadmap value, not one of OKF's lifecycle values `draft | stable | deprecated`; OKF's permissive conformance tolerates an unknown value, SPEC §11.)
+**Status: proposed (roadmap R1). Nothing here is implemented.** *[2026-10-20: partly built (roadmap R1): step 2 is change 0001 (8050b92), step 1 on lessons/ is change 0003 (v0.3.6), the notes' topics PR #160; steps 3 and 4 proposed]* (`proposed` is this repository's roadmap value, not one of OKF's lifecycle values `draft | stable | deprecated`; OKF's permissive conformance tolerates an unknown value, SPEC §11.)
 
 AI agents need knowledge that lives outside the model, and today it is scattered across catalogs, wikis, code comments and a few people's heads.[^blog] Google's Open Knowledge Format (OKF) answers with a file format, not a service: a directory of Markdown files, one concept per file, with a small YAML frontmatter block.[^blog] Version 0.2 of the spec adds provenance, trust, freshness and lifecycle fields for corpora that agents maintain.[^spec]
 
@@ -308,7 +308,7 @@ OKF's idea of sharing is simple: a bundle is a folder in an agreed format, so an
 
 - **Decision 8 (sticky):** the plugin holds process, the template holds project content. The obvious shortcut, shipping shared lessons inside the plugin, is ruled out. CLAUDE.md says: "Never put project content in the plugin." Shared lessons would need a new home.
 - **Decision 9 (reversible):** each project's repo is the source of truth for its own artifacts. A shared store would be a second place the same lesson lives, so the owner would have to say which copy wins. The natural answer: the project holds the original, the shared store holds a copy.
-- **A practical limit.** The CI workflow token can only read its own repo. Reading a shared lessons repo from CI needs a token with wider access, such as the GitHub App that decision 5 keeps in reserve for when the built-in token's limits bite.
+- **A practical limit.** The CI workflow token can only read its own repo. Reading a shared lessons repo from CI needs a token with wider access, such as the GitHub App that decision 5 keeps in reserve for when the built-in token's limits bite. *[2026-10-20: the GitHub App that decision 33 adopts (amending decision 5)]*
 
 ### The options
 
@@ -428,7 +428,7 @@ Smallest first. Each step stands on its own.
 1. **Frontmatter and an index for lessons and eval cases.** Frontmatter with `sources` on new lessons and eval cases; a `lessons/index.md` generator, `plugin/lessons/index.py` (Python, standard library), run by `/sdlc-deploy` step 0b in the same fix PR; `template/lessons/README.md` and the `/sdlc-maintain` prompt updated to read the index first. Files: `plugin/lessons/index.py` (new), `plugin/commands/sdlc-deploy.md`, `plugin/commands/sdlc-maintain.md`, `template/lessons/README.md`, `template/evals/README.md`, tests under `tests/`. Effort: one small plugin release.
 2. **Freshness on platform facts and the docs split.** `status` and `stale_after` on NOTES facts; `docs/NOTES.md`, `docs/DECISIONS.md` and `docs/PROGRESS.md` split into small files with an `index.md` each; HANDOFF's reading list made index-first. Markdown only, split with the Edit tool and merged by the owner; the `CLAUDE.md` pointer line is the owner's own edit (the table above). Files: `docs/notes/`, `docs/decisions/`, `docs/PROGRESS.md`, the current HANDOFF. Effort: one session of editing, no code.
 3. **The promote-to-rule practice.** One line in `docs/OPERATING_MODEL.md` §9: when the same kind of lesson appears in a second project, it becomes a policy-skill rule through a plugin PR. Files: `docs/OPERATING_MODEL.md`. Effort: one line.
-4. **The shared lessons repo.** Only with a wider-access token (decision 5's reserve, the GitHub App) and the owner's decision on 9. Files: a new repository, the fix-PR step in `plugin/commands/sdlc-deploy.md`, the read step in `plugin/commands/sdlc-maintain.md`, a workflow token change. Effort: medium to high; not before several projects run phase (f) live.
+4. **The shared lessons repo.** Only with a wider-access token (decision 5's reserve, the GitHub App) and the owner's decision on 9. *[2026-10-20: the GitHub App that decision 33 adopts (amending decision 5)]* Files: a new repository, the fix-PR step in `plugin/commands/sdlc-deploy.md`, the read step in `plugin/commands/sdlc-maintain.md`, a workflow token change. Effort: medium to high; not before several projects run phase (f) live.
 
 Accepted through the normal front door: `changes/<id>-<slug>/intent.md`, `Entry route: idea`, `Framework change: yes`; the roadmap row then carries the change id.
 

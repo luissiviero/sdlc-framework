@@ -2,7 +2,7 @@
 type: Proposal
 title: The runbook PRs get the review pass — every automated code change the owner merges has been reviewed
 description: The REVIEW.md pass that runs at gate (e) also runs, in a fresh-context claude -p session, on every pull request a built-in runbook opens (revert-pr, quarantine-flaky-test), and publishes its findings and the sdlc/review check run on that PR, so the owner merges a revert or a quarantine with its findings in front of them; the (e) pass and its blocking Important finding stay as they are, and no other PR gains a pass.
-status: proposed
+status: accepted
 roadmap: R36
 sources:
   - id: study-entry
@@ -40,7 +40,7 @@ generated: { by: sdlc-framework-session/ccr-01de3f80-ilnomi, at: 2026-10-15T20:0
 
 # The runbook PRs get the review pass: every automated code change the owner merges has been reviewed
 
-**Status: proposed (roadmap R36), from study entry T14, confirmed by the owner on 2026-10-09.** Nothing is built. It amends no decision: decision 12 (the review pass is a CI job) is applied to one more kind of pull request, and decisions 14 and 26 (which runbooks run without a person) are unchanged. It is one of the entries the confirmed order places in "the rest in any order"; R41 (T24) lists it as its point 4, "already decided", and builds nothing for it, and R22 (T18) names the check this proposal posts as the one a runbook PR carries under its second ruleset.
+**Status: proposed (roadmap R36), from study entry T14, confirmed by the owner on 2026-10-09.** *[2026-10-20: accepted 2026-10-16 (PR #215); rank 26; the rank is read from ROADMAP's Order column]* Nothing is built. It amends no decision: decision 12 (the review pass is a CI job) is applied to one more kind of pull request, and decisions 14 and 26 (which runbooks run without a person) are unchanged. It is one of the entries the confirmed order places in "the rest in any order"; R41 (T24) lists it as its point 4, "already decided", and builds nothing for it, and R22 (T18) names the check this proposal posts as the one a runbook PR carries under its second ruleset.
 
 ## The problem
 

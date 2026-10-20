@@ -2,7 +2,7 @@
 type: Proposal
 title: Review corrections reach CLAUDE.md through one standing pull request the owner merges when they choose
 description: After each gate (e) merge, a deterministic step with no model opens or updates one pull request, "CLAUDE.md: Things Claude gets wrong", that collects every proposed line, each traceable to its finding and change, and starts the eval run and build-config's brief itself; the owner merges it whenever they choose, one act for many lines; the digest lists the lines waiting; the review pass may tag a reworded repeat with the earlier signature; no run edits CLAUDE.md and nothing notifies the owner.
-status: proposed
+status: accepted
 roadmap: R37
 sources:
   - id: study-entry
@@ -40,7 +40,7 @@ generated: { by: sdlc-framework-session/ccr-01de3f80-ilnomi, at: 2026-10-15T20:0
 
 # Review corrections reach CLAUDE.md through one standing pull request the owner merges when they choose
 
-**Status: proposed (roadmap R37), from study entry T15, confirmed by the owner on 2026-10-09.** Nothing is built. It amends no decision in substance: decision 6 keeps `CLAUDE.md` the owner's, who makes the change by merging; whether a pull request the automation opens on a guardrail file fits decision 6's wording is the one point the close left to confirm, and if the owner reads it as an amendment, a decision file comes before the intent, in a documentation PR of its own. It defines the CLAUDE.md line that R20 (T28) places in the digest and the mechanism R38 (T16) reuses for `REVIEW.md`; R26 (T31) adds the repeat count to each line.
+**Status: proposed (roadmap R37), from study entry T15, confirmed by the owner on 2026-10-09.** *[2026-10-20: accepted 2026-10-16 (PR #215)]* Nothing is built. It amends no decision in substance: decision 6 keeps `CLAUDE.md` the owner's, who makes the change by merging; whether a pull request the automation opens on a guardrail file fits decision 6's wording is the one point the close left to confirm, and if the owner reads it as an amendment, a decision file comes before the intent, in a documentation PR of its own. It defines the CLAUDE.md line that R20 (T28) places in the digest and the mechanism R38 (T16) reuses for `REVIEW.md`; R26 (T31) adds the repeat count to each line.
 
 ## The problem
 

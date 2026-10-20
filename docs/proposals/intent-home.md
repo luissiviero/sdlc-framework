@@ -2,7 +2,7 @@
 type: Proposal
 title: The intent home — in the repository, written from anywhere, with examples
 description: Intents stay in changes/<id>-<slug>/ in the project repository; a second route writes them from claude.ai on a computer or a phone and must arrive as a PR on sdlc/<id>/a, never a commit to main; the intent template gains an Examples/References section and is overridable per project; for a screen change the interview asks for a mock and spec.md's Acceptance gets a fixed "Mock:" line.
-status: proposed
+status: accepted
 roadmap: R29
 sources:
   - id: study-entry
@@ -37,7 +37,7 @@ generated: { by: sdlc-framework-session/ccr-01de3f80-ilnomi, at: 2026-10-15T20:0
 
 # The intent home: in the repository, written from anywhere, with examples
 
-**Status: proposed (roadmap R29), from study entry T3, confirmed by the owner on 2026-10-09.** Nothing is built. It amends no settled decision: the home stays where decisions 8, 9 and 10 put it, and the route it adds opens the intent PR on `sdlc/<id>/a` and never commits to `main`, which keeps decisions 4 and 10 whole. It owns the intent's home, the template's Examples/References section and its override, the `Mock:` line and the claude.ai route; the Product brief at gate (a) and the interview are R28's (T1, with T2 inside), the label-started ticket route is R31 (T6), the plan's `state` Proof kind is R14's, and the rename of `/sdlc-plan` is R45's (T4).
+**Status: proposed (roadmap R29), from study entry T3, confirmed by the owner on 2026-10-09.** *[2026-10-20: accepted 2026-10-16 (roadmap R29, PR #215)]* Nothing is built. It amends no settled decision: the home stays where decisions 8, 9 and 10 put it, and the route it adds opens the intent PR on `sdlc/<id>/a` and never commits to `main`, which keeps decisions 4 and 10 whole. It owns the intent's home, the template's Examples/References section and its override, the `Mock:` line and the claude.ai route; the Product brief at gate (a) and the interview are R28's (T1, with T2 inside), the label-started ticket route is R31 (T6), the plan's `state` Proof kind is R14's, and the rename of `/sdlc-plan` is R45's (T4).
 
 ## The problem
 
@@ -79,7 +79,7 @@ Added, nothing replaced (the owner's words on plan-idea and design-mock). Six pa
 
 3. **Accepted by the owner's merge**, after the gate (a) briefs of T1 (Product, Architect), which R28 builds. Until R28, the merge alone, as today. R28 leaves to this proposal where the briefs run for an intent written on the claude.ai route (`roles-and-manager.md:172`); the session's recommendation is in "What to settle".
 
-4. **The template: the plugin's by default, overridable per project (to verify).** The plugin's `intent-template` stays the default. A project may carry its own copy; a change to it gets the Product role's review (R28) and the owner's approval, the merge. Two owner notes bear on that review: T3's note gives it to "a Product role", and the later x-roles note of 2026-10-09, point (6), gives the brief on the owner's own skill PRs to Platform & release, with "a policy source read by the role of its kind". R28 (proposed) reconciles them: it reads the project's copy as Product's source, as a policy source is read by the role of its kind, wherever the copy lives, and gives the brief on a change to it to Product (`roles-and-manager.md:164`, `:215`); this proposal follows that reading. While the gate reads the plugin's constants, an override adds sections and never drops or renames the five article sections or the header fields. The claude.ai conversation uses the same template, the project's copy when there is one (the session's recommendation, below).
+4. **The template: the plugin's by default, overridable per project (to verify).** The plugin's `intent-template` stays the default. A project may carry its own copy; a change to it gets the Product role's review (R28) and the owner's approval, the merge. Two owner notes bear on that review: T3's note gives it to "a Product role", and the later x-roles note of 2026-10-09, point (6), gives the brief on the owner's own skill PRs to Platform & release, with "a policy source read by the role of its kind". R28 (proposed) reconciles them: it reads the project's copy as Product's source, as a policy source is read by the role of its kind, wherever the copy lives, and gives the brief on a change to it to Product (`roles-and-manager.md:164`, `:215`); this proposal follows that reading. *[2026-10-20: R28 is accepted (2026-10-16), not proposed]* While the gate reads the plugin's constants, an override adds sections and never drops or renames the five article sections or the header fields. The claude.ai conversation uses the same template, the project's copy when there is one (the session's recommendation, below).
 
 5. **Examples and references.** The intent gains a section, "Examples/References" (heading wording judged with R45), where the owner puts examples of what is wanted and references such as a competitor's screens. "none" is a valid answer (the template's rule, `intent-template/SKILL.md:49`). `mock/` stays the slot for screens. The `intent-template` skill fixes "exactly this shape", so this is a change to the plugin's template, not only to one intent. One rule goes into the template and into `/sdlc-build`: the build matches the owner's mock, never the referenced screens. Whether the roles read the section is T2's open item, inside R28.
 
@@ -122,7 +122,7 @@ None is amended, so no decision file is written and no number is reserved. 8, 9 
 
 ## Order
 
-In the confirmed order (the record, section 8, part 2) T3 is in "the rest in any order", after the roles (R27, R28). The parts it takes:
+In the confirmed order (the record, section 8, part 2) T3 is in "the rest in any order", after the roles (R27, R28). *[2026-10-20: R29 part 1 is rank 14 (with R54), before R27 (19) and R28 (21); only the parts that need them wait; the rank is read from ROADMAP's Order column]* The parts it takes:
 
 | Part | Where | When |
 |---|---|---|

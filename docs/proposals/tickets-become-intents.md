@@ -2,7 +2,7 @@
 type: Proposal
 title: "Tickets become intents: a GitHub issue the owner labels starts the intent PR"
 description: Beside today's routes, which all stay, the owner's label sdlc:intent on a GitHub issue starts a CI run that writes intent.md from the issue (entry route ticket, the issue as its external reference), puts what it cannot work out under "Open questions" and opens the intent PR linked to the issue, which the owner corrects and merges at gate (a) as today; only the owner's own label starts a run, and the issue text is read as data, never as instructions.
-status: proposed
+status: accepted
 roadmap: R31
 sources:
   - id: study-entry
@@ -37,7 +37,7 @@ generated: { by: sdlc-framework-session/ccr-01de3f80-ilnomi, at: 2026-10-15T20:0
 
 # Tickets become intents: a GitHub issue the owner labels starts the intent PR
 
-**Status: proposed (roadmap R31), from study entry T6, confirmed by the owner on 2026-10-09.** Nothing is built. It amends no decision: decision 9's linkage rule is followed and the new label sits beside the owner's other labels (decisions 3 and 24, as amended by 27 and 28), so no decision file is written and no number is reserved. It adds a fourth way into a project beside the three of today, all of which stay; the act it adds is recorded by R11 and listed by R19, and its pull requests are placed by R20.
+**Status: proposed (roadmap R31), from study entry T6, confirmed by the owner on 2026-10-09.** *[2026-10-20: accepted 2026-10-16 (PR #215); rank 37; the rank is read from ROADMAP's Order column]* Nothing is built. It amends no decision: decision 9's linkage rule is followed and the new label sits beside the owner's other labels (decisions 3 and 24, as amended by 27 and 28), so no decision file is written and no number is reserved. It adds a fourth way into a project beside the three of today, all of which stay; the act it adds is recorded by R11 and listed by R19, and its pull requests are placed by R20.
 
 ## The problem
 

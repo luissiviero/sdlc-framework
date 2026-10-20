@@ -2,7 +2,7 @@
 type: Proposal
 title: Gate (e) is the owner's approving review; a GitHub App merges on it, and a rule holds unreviewed build PRs
 description: The owner's approving review on the build PR becomes gate (e) and the owner's only act there; a deterministic workflow with no model checks that the approval is the owner's, that the PR is a framework build PR at sdlc:e-ready and that the review of its head is green, then merges through a dedicated GitHub App that is a bypass actor of "Restrict updates"; a second ruleset requires only the sdlc/review check, which every other pull request receives as a passing "not a build PR", so an unreviewed build-PR merge needs a deliberate web bypass while every other PR merges as today.
-status: proposed
+status: accepted
 roadmap: R22
 sources:
   - id: study-entry
@@ -43,7 +43,7 @@ generated: { by: sdlc-framework-session/ccr-01de3f80-ilnomi, at: 2026-10-15T20:0
 
 # Gate (e) is the owner's approving review; a GitHub App merges on it, and a rule holds unreviewed build PRs
 
-**Status: proposed (roadmap R22), from study entry T18, confirmed by the owner on 2026-10-09, option C4 of the crosswalk row deploy-approve (the letters are the row's own: C3 and C1 are its fallbacks, B's record is kept).** Nothing is built. It amends decisions 13, 4 and 5; the decision file comes before the intent, in a documentation PR of its own, never with the intent; this proposal writes none and reserves no number. Whether the App works as designed is verified when built, as the close confirmed. It is the first of the gate-changes batch (T18, T23, T9, T30, T31); R23 (T23) reuses its App, its merge workflow and its `sdlc/review` check for the dismissal PR; the owner check both use is R17's.
+**Status: proposed (roadmap R22), from study entry T18, confirmed by the owner on 2026-10-09, option C4 of the crosswalk row deploy-approve (the letters are the row's own: C3 and C1 are its fallbacks, B's record is kept).** *[2026-10-20: accepted 2026-10-16 (roadmap R22, PR #215)]* Nothing is built. It amends decisions 13, 4 and 5; the decision file comes before the intent, in a documentation PR of its own, never with the intent; this proposal writes none and reserves no number. Whether the App works as designed is verified when built, as the close confirmed. It is the first of the gate-changes batch (T18, T23, T9, T30, T31); R23 (T23) reuses its App, its merge workflow and its `sdlc/review` check for the dismissal PR; the owner check both use is R17's.
 
 ## The problem
 
@@ -126,11 +126,11 @@ The entry's open items first, then this proposal's own recommendations, marked "
 
 ## Decisions it touches
 
-13 is amended: gate (e) becomes the owner's approving review, on which the App merges; on a declared production the release label stays the second act (R13). 4 is amended: a second actor, the App, may merge, only on the owner's approval; a ruleset gains a required check, not the required approval decision 4 rejected; the workflow token stays branch-only. 5 is amended: its own fallback, "GitHub App only when its limits bite", is taken for the merge; the workflow token stays the automation identity everywhere else. The decision file is written before the intent, in a documentation PR the owner reviews on its own, never with the intent; this proposal writes no decision file and reserves no number. 11 and 20 are kept (a blocked merge leaves the PR open and notifies no one; it shows in the digest). 27 is read (the owner-account question it left to T17, T18 and T24 is answered for this merge by R17's shared check). 28 and 29 are kept. Along T1's direction: the one-owner premise, whose decision file comes with R28.
+13 is amended: gate (e) becomes the owner's approving review, on which the App merges; on a declared production the release label stays the second act (R13). 4 is amended: a second actor, the App, may merge, only on the owner's approval; a ruleset gains a required check, not the required approval decision 4 rejected; the workflow token stays branch-only. 5 is amended: its own fallback, "GitHub App only when its limits bite", is taken for the merge; the workflow token stays the automation identity everywhere else. *[2026-10-20: decision 33 (accepted) already takes decision 5's App for pushes and pull requests; R22's decision file amends only the merge part of 5]* The decision file is written before the intent, in a documentation PR the owner reviews on its own, never with the intent; this proposal writes no decision file and reserves no number. 11 and 20 are kept (a blocked merge leaves the PR open and notifies no one; it shows in the digest). 27 is read (the owner-account question it left to T17, T18 and T24 is answered for this merge by R17's shared check). 28 and 29 are kept. Along T1's direction: the one-owner premise, whose decision file comes with R28.
 
 ## Order
 
-Eighth of the study's proposals in the confirmed order (the record, section 8: T32, T12, T21, then T17, T19, T27, T28, then the gate changes T18, T23, T9, T30, T31). It changes `plugin/` and `template/`, so it ships as a plugin version with tests and reaches a project through `/sdlc-init`'s workflow copies and its step 6. It comes after R11, whose list holds its lines, and meets R13 (built with R12 after R11) at the release; It comes after R17 (accepted 2026-10-14, built after R13), which builds `is_owner_actor`; this merge step only calls it. R23 comes after it (the same App). The parts it takes:
+Eighth of the study's proposals in the confirmed order (the record, section 8: T32, T12, T21, then T17, T19, T27, T28, then the gate changes T18, T23, T9, T30, T31). It changes `plugin/` and `template/`, so it ships as a plugin version with tests and reaches a project through `/sdlc-init`'s workflow copies and its step 6. It comes after R11, whose list holds its lines, and meets R13 (built with R12 after R11) at the release; It comes after R17 (accepted 2026-10-14, built after R13), which builds `is_owner_actor`; this merge step only calls it. *[2026-10-20: R22 is rank 9, before R11 (24) and R13 (25), so the merge lines wait for R11; R17 was built second in the pipeline sprint (1.0.5, PR #227); the rank is read from ROADMAP's Order column]* R23 comes after it (the same App). The parts it takes:
 
 | Part | Where | When |
 |---|---|---|

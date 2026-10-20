@@ -2,7 +2,7 @@
 type: Proposal
 title: A failed CI run explains itself, and the release notes gain a plain-words paragraph beside the deterministic list
 description: The existing read-only triage step runs on always() in the phase and fix workflows, reads the failed step's saved log or the parked gate's logs, says what failed, the likely cause and whether it looks flaky or real, and puts its lines, labelled model-written, into the park block on the PR or into a "Failed runs" line of the daily digest, fed by a record each failed run writes and by the Actions API for jobs where no step ran; the release notes stay deterministic and gain a model-written paragraph, kept on a re-run unless the code changed.
-status: proposed
+status: accepted
 roadmap: R18
 sources:
   - id: study-entry
@@ -31,7 +31,7 @@ generated: { by: sdlc-framework-session/ccr-20b39ad0-kcymdd, at: 2026-10-14T15:3
 
 # A failed CI run explains itself
 
-**Status: proposed (roadmap R18), from study entry T19, confirmed by the owner on 2026-10-09.** Nothing is built. It defines the digest's "Failed runs" line and its sources, which R13 (T21), T20, T22, T26 and R20 (T28) feed or place; its merge-workflow part arrives with T18. The owner chose option C of the row deploy-ci: the triage step wired (B) plus a model-written paragraph in the release notes.
+**Status: proposed (roadmap R18), from study entry T19, confirmed by the owner on 2026-10-09.** *[2026-10-20: accepted 2026-10-14 (PR #208)]* Nothing is built. It defines the digest's "Failed runs" line and its sources, which R13 (T21), T20, T22, T26 and R20 (T28) feed or place; its merge-workflow part arrives with T18. The owner chose option C of the row deploy-ci: the triage step wired (B) plus a model-written paragraph in the release notes.
 
 ## The problem
 

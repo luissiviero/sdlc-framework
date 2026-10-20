@@ -2,7 +2,7 @@
 type: Proposal
 title: A rejection keeps its reason — the owner's closing comment is saved with the change
 description: When the owner closes an intent pull request without a merge, the owner's last comment on it becomes the change's abandoned_reason in status.yaml instead of the fixed "pull request N closed without a merge", the fixed text staying when there is no comment; closing still abandons (decision 25), accepting is still the merge, and an incident's closing comment stays its dismissal reason.
-status: proposed
+status: accepted
 roadmap: R32
 sources:
   - id: study-entry
@@ -34,7 +34,7 @@ generated: { by: sdlc-framework-session/ccr-01de3f80-ilnomi, at: 2026-10-15T20:0
 
 # A rejection keeps its reason: the owner's closing comment is saved with the change
 
-**Status: proposed (roadmap R32), from study entry T7, confirmed by the owner on 2026-10-09.** Nothing is built. It amends no decision: decision 25 (closing a pull request at gates (a) to (e) abandons the change) is kept, and only what the change's record says changes. It fills the reason that R11's close line and R19's close row point to; the briefs before gate (a) that the owner's note also names belong to R28 (T1), not here.
+**Status: proposed (roadmap R32), from study entry T7, confirmed by the owner on 2026-10-09.** *[2026-10-20: accepted 2026-10-16 (roadmap R32, PR #215)]* Nothing is built. It amends no decision: decision 25 (closing a pull request at gates (a) to (e) abandons the change) is kept, and only what the change's record says changes. It fills the reason that R11's close line and R19's close row point to; the briefs before gate (a) that the owner's note also names belong to R28 (T1), not here.
 
 ## The problem
 

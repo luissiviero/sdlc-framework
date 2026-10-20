@@ -2,7 +2,7 @@
 type: Proposal
 title: The weekly window is guarded — every limit parks, a weekly ceiling and a budget per change, the spend visible, overspends learned from without raising budgets by themselves
 description: The gate's limits and the owner's reset label stay; every outer bound (the turn limit, the CLI's budget stop, the runner's timeout) parks the change like the gate's limits instead of a red run; a weekly ceiling in sdlc.yaml bounds the estimated spend of all CI runs over a rolling 7 days, and a budget per change, suggested by a deterministic step from past real-size spend, is accepted or edited in the design approval; each session gets what is left of the two; the spend is shown on the PR and in the digest; an overspend writes a lesson whose cause the owner sets, and only real size feeds a later suggestion; the manager may reset the iteration count once per change when decision 29's automatic rounds reach the cap.
-status: proposed
+status: accepted
 roadmap: R25
 sources:
   - id: study-entry
@@ -37,7 +37,7 @@ generated: { by: sdlc-framework-session/ccr-01de3f80-ilnomi, at: 2026-10-15T20:0
 
 # The weekly window is guarded: every limit parks, a weekly ceiling and a budget per change, the spend visible, overspends learned from without raising budgets by themselves
 
-**Status: proposed (roadmap R25), from study entry T30, confirmed by the owner on 2026-10-09, option B of the crosswalk row x-limits (the letters are the row's own).** Nothing is built. It amends decision 11 (a limit hit parks, extended to the outer bounds) and decision 24 (the un-park verbs are a person's labels, with one exception: the manager's one reset at the iteration cap); the decision file comes before the intent, in a documentation PR of its own; this proposal writes no decision file and reserves no number. Decision 29 already shares one iteration counter with this reset, and decision 11's text already names it. This proposal is the fourth of the gate changes, after R22 (T18), R23 (T23) and R24 (T9) and before R26 (T31), which reads the reset's mark and leaves the spend here; R20 places its two digest lines, and R19 lists its acts.
+**Status: proposed (roadmap R25), from study entry T30, confirmed by the owner on 2026-10-09, option B of the crosswalk row x-limits (the letters are the row's own).** *[2026-10-20: accepted 2026-10-16 (PR #215); rank 11 for parts 1-2, parts 3-5 after the trial; the rank is read from ROADMAP's Order column]* Nothing is built. It amends decision 11 (a limit hit parks, extended to the outer bounds) and decision 24 (the un-park verbs are a person's labels, with one exception: the manager's one reset at the iteration cap); the decision file comes before the intent, in a documentation PR of its own; this proposal writes no decision file and reserves no number. Decision 29 already shares one iteration counter with this reset, and decision 11's text already names it. This proposal is the fourth of the gate changes, after R22 (T18), R23 (T23) and R24 (T9) and before R26 (T31), which reads the reset's mark and leaves the spend here; R20 places its two digest lines, and R19 lists its acts. *[2026-10-20: parts 1-2 at rank 11: after R24 (8) and R22 (9), before R23 (31); parts 3-5 after the trial; the rank is read from ROADMAP's Order column]*
 
 ## The problem
 
@@ -127,7 +127,7 @@ A decision file for 11 and 24 first. Then after R10, whose automatic rounds and 
 3. **The weekly ceiling** (the ledger, each session's remainder, the wait, the run-now label, the restart through the digest workflow's own dispatch job, modelled on R20's): after R20's part 2; the label's name with R45.
 4. **The budget per change** (the design run's deterministic step with its rows and arithmetic, the protected field, the smaller remainder): after part 3.
 5. **The overspend lessons and the two acts at the budget park**: after part 4 and R42's lesson shape; the acts listed by R19 and recorded by R11.
-6. **The manager's one reset**: accepted by decision 29 for R10's automatic rounds; built by R10, as this proposal recommends (not settled), and read here; R26 reads its mark; R28 is T1's manager, the reader the owner's word names.
+6. **The manager's one reset**: accepted by decision 29 for R10's automatic rounds; built by R10, as this proposal recommends (not settled) *[2026-10-20: built by R10 (settled by the owner on 2026-10-17; plugin 1.0.3, PR #220), as the "Which candidate builds the reset" row's annotation says]*, and read here; R26 reads its mark; R28 is T1's manager, the reader the owner's word names.
 
 [^notes]: `docs/notes/2.md:70-73` (the plan window, no cap in dollars); `docs/notes/2.md:83-86` (`--max-budget-usd`, a client-side estimate); `docs/notes/10.md` 10b (`--max-turns`, `--max-budget-usd`, `total_cost_usd`).
 [^playbook]: `docs/reference/ai-native-sdlc-playbook.pdf` p.30, p.42, p.46-48, p.49.

@@ -13,7 +13,7 @@ sources:
     title: "Model time per phase run between 15 seconds and 10 minutes on the sample; 0.3 to 6.4 model hours against 1.8 to 7.4 days per change before the sprint"
   - id: notes-48
     resource: docs/notes/48.md (on branch ccr-6281cac2-hdaob7, PR #241)
-    title: "Change 0015: the App's pushes start CI with no approval click; the build caps apply; the deploy run red at the checkout check (fixed in 1.0.11)"
+    title: "Change 0015: the App's pushes start CI with no approval click; the build caps apply; the deploy run red at the checkout check (fixed in 1.0.12)"
 generated: { by: sdlc-framework-session/ccr-70fb3ae3-39fz5m, at: 2026-10-19T18:00:00Z }
 ---
 
@@ -34,14 +34,14 @@ The candidates that remove the owner's waits move to the front of ROADMAP's Orde
 | 7 | R7 | Better first pass, fewer fix rounds (unchanged) |
 | 8 | R24 | A risk-list hit stops parking; it becomes a banner line the merge accepts |
 | 9 | R22 | Gate (e) becomes one approving review on the phone; the App merges |
-| 10, 11 | R51 with R25 parts 1-2 | Several changes in flight, safely and within a spend ceiling |
-| 12 | R18 | A park explains itself, so the owner's diagnosis takes minutes |
-| 13 | R29 part 1 with R54 | An intent from anywhere, in one paragraph |
-| 14 | R26 | The measures R52 needs |
-| 15 | R52 | Merge by silence, not before R22, R26 and R50's trigger |
-| 16 onward | R33, R14, R27, R28, R45, R5, R6, … R8 | As before, among themselves; R28 and R14 add model time and R45 is a rename, so they come after the speed items |
+| 10, 11 | R51 with R25 parts 1-2 | Several changes in flight, safely and within a spend ceiling *[2026-10-20: "spend ceiling" here is the per-change budget cap that exists since R48 (`gate.max_budget_usd`, 150 USD in the template); the weekly ceiling is R25's part 3, after the trial]* |
+| 12 *[2026-10-20, choice 238: R44 12, R18 13, R29 part 1 with R54 14, R26 15, R52 16, R45 20 (last before the trial), R28 21 (after it); the rank is read from ROADMAP's Order column]* | R18 | A park explains itself, so the owner's diagnosis takes minutes |
+| 13 *[2026-10-20, choice 238: 14]* | R29 part 1 with R54 | An intent from anywhere, in one paragraph |
+| 14 *[2026-10-20, choice 238: 15]* | R26 | The measures R52 needs |
+| 15 *[2026-10-20, choice 238: 16]* | R52 | Merge by silence, not before R22, R26 and R50's trigger |
+| 16 onward *[2026-10-20, choice 238: 17 onward; R45 is 20, the last before the trial, and R28 is 21, after it]* | R33, R14, R27, R28, R45, R5, R6, … R8 | As before, among themselves; R28 and R14 add model time and R45 is a rename, so they come after the speed items |
 
-R53 is measured with the live proof and built after R18 only if the measure says so.
+R53 is measured with the live proof and built after R18 only if the measure says so. *[2026-10-20: measured on change 0015, 4 to 9 percent of each phase job (NOTES §49); no build on this measure]*
 
 ## R52, merge by silence at gate (e)
 
@@ -49,7 +49,7 @@ Opt-in per project. A build PR merges without the owner's act when all of these 
 
 ## R53, faster CI jobs
 
-Each phase job installs the Claude Code CLI, checks out the framework at the pin and runs the project's `setup` command before the session starts. That time is not measured. The live-proof session reads it from the job steps of a full change; if setup is at least a fifth of a run, R53 caches the installs (actions/cache) or moves the jobs to a prebuilt image.
+Each phase job installs the Claude Code CLI, checks out the framework at the pin and runs the project's `setup` command before the session starts. That time is not measured. *[2026-10-20: measured on change 0015, 4 to 9 percent of each phase job (NOTES §49); no build on this measure]* The live-proof session reads it from the job steps of a full change; if setup is at least a fifth of a run, R53 caches the installs (actions/cache) or moves the jobs to a prebuilt image.
 
 ## R54, the quick intent
 
@@ -58,7 +58,7 @@ The owner writes one paragraph and opens the intent PR (the fast lane accepts it
 ## The owner's other choices on 2026-10-19
 
 - **The sample runs `review: deferred`**: applied by the owner in the sample's PR #72.
-- **The profiles are used as they are** (no build): `deploy.production: false` where a project has no real production, and the Lite profile per change or project for scripts, documentation and experiments. The sample keeps `production: true`, since it exercises the release path.
+- **The profiles are used as they are** (no build): `deploy.production: false` where a project has no real production, and the Lite profile per change or project for scripts, documentation and experiments. *[2026-10-20: Lite was withdrawn by decision 21; read "Standard on the fast lane (decision 30)"]* The sample keeps `production: true`, since it exercises the release path.
 - **Incident intents keep gate (a)**: the weekly scan's and the detection's intents still wait for the owner's triage.
 - **The fix-round caps stay** (3, and 2 for a non-routine plan) until R26's measures show how often a change parks at the cap.
 

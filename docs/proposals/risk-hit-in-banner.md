@@ -2,7 +2,7 @@
 type: Proposal
 title: A risk-list hit is a line in the close-look banner — the merge accepts it, the reviewer briefs it, the paths are the project's
 description: A risk-list hit no longer parks the change; it becomes a line of the "Needs your close look" banner on the PR the owner merges anyway (the design PR at (b), the build PR at (e)), quoting the gate's reviewer's brief on the item, and the owner's merge is the acceptance, recorded with who, when and that the banner showed it; each risk item lists the paths it covers, proposed by /sdlc-init and confirmed once; the sdlc:accept-risk label retires.
-status: proposed
+status: accepted
 roadmap: R24
 sources:
   - id: study-entry
@@ -40,7 +40,7 @@ generated: { by: sdlc-framework-session/ccr-01de3f80-ilnomi, at: 2026-10-15T20:0
 
 # A risk-list hit is a line in the close-look banner: the merge accepts it, the reviewer briefs it, the paths are the project's
 
-**Status: proposed (roadmap R24), from study entry T9, confirmed by the owner on 2026-10-09, option C of the crosswalk row build-risk (the row's three options: today's label, B, C).** Nothing is built. It amends decisions 11 and 21 (the risk-list hit leaves the hard-park list; an escalation on a risk item still parks) and decision 24 (`sdlc:accept-risk` retires); the decision file comes before the intent, in a documentation PR of its own, never with the intent; this proposal writes none and reserves no number. Third of the gate changes in the confirmed order (T18, T23, T9, T30, T31); it carries R12's third point, and it takes over the ratchet findings R15 records as risk-list hits.
+**Status: proposed (roadmap R24), from study entry T9, confirmed by the owner on 2026-10-09, option C of the crosswalk row build-risk (the row's three options: today's label, B, C).** *[2026-10-20: accepted 2026-10-16 (PR #215); rank 8; the rank is read from ROADMAP's Order column]* Nothing is built. It amends decisions 11 and 21 (the risk-list hit leaves the hard-park list; an escalation on a risk item still parks) and decision 24 (`sdlc:accept-risk` retires); the decision file comes before the intent, in a documentation PR of its own, never with the intent; this proposal writes none and reserves no number. Third of the gate changes in the confirmed order (T18, T23, T9, T30, T31); it carries R12's third point, and it takes over the ratchet findings R15 records as risk-list hits.
 
 ## The problem
 
@@ -130,7 +130,7 @@ Rows marked *(mine)* are this proposal's additions, not the entry's.
 
 ## Order
 
-Tenth of the study's proposals in the confirmed order (the record, section 8: T32, T12, T21; T17, T19, T27, T28; then the gate changes T18, T23, T9, T30, T31), after R22 and R23. It changes `plugin/` and `template/`, so it ships as a plugin version with tests and reaches a project through `/sdlc-init`. Its dependencies:
+Tenth of the study's proposals in the confirmed order (the record, section 8: T32, T12, T21; T17, T19, T27, T28; then the gate changes T18, T23, T9, T30, T31), after R22 and R23. *[2026-10-20: rank 8 (choice 234), before R22 (9) and R23 (31); the Order column supersedes the study's order; the rank is read from ROADMAP's Order column]* It changes `plugin/` and `template/`, so it ships as a plugin version with tests and reaches a project through `/sdlc-init`. Its dependencies:
 
 - After **R11**: the acceptance lines are R11's.
 - With or after **R12**: R12's third point is built here.
