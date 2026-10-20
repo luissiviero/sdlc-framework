@@ -47,5 +47,6 @@ edited by hand; `python tasks.py docs-lint` fails when it differs.
 32. [Deferred review is the default (amends 21)](32.md)
 33. [The automation pushes and opens pull requests as a GitHub App (amends 5)](33.md)
 34. [The owner's `@claude` comment starts a fix round, and only the owner's account starts a round or approves (c) and (d) (amends 22 and 27)](34.md)
+35. [A risk-list hit is a line in the close-look banner (amends 11, 21 and 24)](35.md)
 
 Sticky decisions (2, 6, 7, 8, 10, 19) shape files and conventions every later step writes to.
