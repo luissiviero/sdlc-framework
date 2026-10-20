@@ -107,30 +107,30 @@ These were given in the session after this file was first written. They are answ
 
 ### Question 2: how often a change has no explicit grant, and the faster alternative
 
-**How often.** Twelve changes have run past change 0000 across the sample and this repository. Nine started from the owner's own intent (route `idea`). Three were incident intents from the daily detection or the weekly security scan, which the owner triages at gate (f) by merging the intent PR.
+**How often.** Twelve changes have run past change 0000 across the sample and this repository. Nine started from the owner's own intent (route `idea`). Three were incident intents from the daily detection or the weekly security scan, which the owner triages at gate (f) by merging the intent PR. *[2026-10-20, verified by the next session (C6): wrong count. The default branches hold twelve `changes/*/status.yaml` files, but two of them are the change 0000s. Past change 0000 there are ten changes: seven started from the owner's own intent (route `idea`: the sample's 0001, 0002, 0015 and 0016; this repository's 0001, 0003 and 0005) and three from incident intents (the sample's 0005 and 0008, still at phase f; this repository's 0002). Read with `git show origin/main:changes/<folder>/status.yaml` on both repositories. The conclusion holds: every change started with one act of the owner's.]*
 
 **What that means.** Every change already starts with one act of the owner's:
 - pushing their own intent;
 - merging an incident intent at (f);
-- labelling an issue under R31.
+- labelling an issue under R31. *[2026-10-20, verified by the next session (C7): R31 is accepted but not built (ROADMAP R31, Order 37; no template workflow runs on an `issues` event), so this route is a future one.]*
 
 If that act counts as the grant, no change is left in the "no grant" case, and the silence timer has nothing to wait for.
 
-**Recommendation.** Make the grant implicit in that first act, and drop the timer. The App merges the build PR as soon as R52's conditions hold and the locked-path floor is clear. The PR must also have been brought up to date with the default branch and re-checked first (R51).
+**Recommendation.** Make the grant implicit in that first act, and drop the timer. The App merges the build PR as soon as R52's conditions hold and the locked-path floor is clear. The PR must also have been brought up to date with the default branch and re-checked first (R51). *[2026-10-20, verified by the next session (C2): R52's own conditions (ROADMAP R52; `docs/proposals/speed-beyond-the-sprint.md`, section "R52") are a routine plan, every check green, no "Decisions taken for you", no risk-list hit and `deploy.production` false. The locked-path floor and the R51 update are this study's additions, and `options.md` section 3 adds a third, the plan-growth threshold, which this list does not name. With the timer dropped, R52's other stop ("any review comment or label stops it") has no window left: nothing here says how the owner objects before the merge. The owner decides both with `options.md`, row "Plan-growth threshold".]*
 
 **What still stops.** A change that fails a condition still waits for the owner at (e), as it does today:
 - a non-routine plan;
 - "Decisions taken for you";
-- a risk-list hit;
+- a risk-list hit; *[2026-10-20, decision 35 (merged to `main` in #279 after this was written): a risk-list hit no longer parks; it is a line of the "Needs your close look" banner, and the owner's merge accepts it. Such a change still waits for the owner at (e), so it stays on this list, but not "as it does today".]*
 - a declared production;
 - a locked path.
 
 Those are the changes where reading the code matters.
 
 **Faster than stopping, for the margin a timer was meant to give.**
-- **Merge now; a declared production still waits for the release label** (decision 13).
-- **Undo with one act.** The digest lists each "merged unread" change, and the existing `revert-pr` runbook reverts one.
-- **Waiting changes do not block the others.** Each change runs in its own branch (R51), so only a change that depends on a waiting one waits with it.
+- **Merge now; a declared production still waits for the release label** (decision 13). *[2026-10-20, verified by the next session (C2): this contradicts the list above and R52 itself. R52 requires `deploy.production` false, so a change on a declared production never merges unread: it waits for the owner's merge at (e), then for the release label.]*
+- **Undo with one act.** The digest lists each "merged unread" change, and the existing `revert-pr` runbook reverts one. *[2026-10-20, verified by the next session (C1): wrong. The "merged unread" list is not built (it is this study's proposal). `revert-pr` runs only as a tier-3 incident route that the diagnosis proposes (`plugin/detect/routes.py:44-48`, `plugin/commands/sdlc-maintain.md:81-95`), then pre-approval or `sdlc:go` on the incident intent PR (`template/.github/workflows/sdlc-runbook.yml:52`); every maintain CLI command needs an incident change id (`plugin/detect/cli.py`). The nearest by-hand path is a dispatch of `sdlc-detect.yml` with `force_tier: 3`, and then the model picks the commit. The runbook never merges (`plugin/detect/runbooks.py:5-7`), so the undo is two acts at best: open the revert PR, then merge it, as with GitHub's own Revert button. A one-act undo of a named merged change is new work for R52.]*
+- **Waiting changes do not block the others.** Each change runs in its own branch (R51), so only a change that depends on a waiting one waits with it. *[2026-10-20, verified by the next session: the per-change branches exist today (`sdlc/<id>/<phase>`); R51 adds the bring-up-to-date and re-check before (e).]*
 
 **What remains.** R52's decision is still timed for R50's trigger: 20 changes past gate (e) on a project other than the sample, with R26's measures. That is the one wait left before any of this applies.
 
@@ -148,7 +148,7 @@ Every session reads `CLAUDE.md` in full at its start. The article asks to keep i
 
 The number is fixed in the plugin rather than a new `sdlc.yaml` key, so it adds no setting.
 
-**Example.** "Run the migrations test before reporting done" was added after changes 0007 and 0011. Change 0019's incident adds an eval case that fails without that test. The next standing PR then shows the line as "enforced by eval 0019, proposed for deletion".
+**Example.** "Run the migrations test before reporting done" was added after changes 0007 and 0011. Change 0019's incident adds an eval case that fails without that test. The next standing PR then shows the line as "enforced by eval 0019, proposed for deletion". *[2026-10-20, the next session: an illustration; changes 0007, 0011 and 0019 and this line exist in no repository.]*
 
 ## How it was reached
 
@@ -156,6 +156,6 @@ The number is fixed in the plugin rather than a new `sdlc.yaml` key, so it adds 
 |---|---|---|
 | Study B, made without seeing Study A, committed first | `study-b.md` (commit `1884165`) | a new session with five profiling subagents |
 | Study A, read only after that and recorded unchanged | `study-a.md` (commit `5885764`) | the same session, from the comparison doc (revision 19) |
-| The judge: both studies blind as X and Y in random order, disputed claims checked in both repositories | `judge.md` (commit `824c606`) | a fresh subagent on a different model (Fable 5.1) that wrote neither study |
+| The judge: both studies blind as X and Y in random order, disputed claims checked in both repositories | `judge.md` (commit `824c606`) | a fresh subagent on a different model (Fable 5.1) that wrote neither study *[2026-10-20, the next session (C9): the subagent was started with the `fable` alias; the model that served it was not recorded, so "Fable 5.1" is not verified]* |
 
 The judge found Study B's method right: it scores the delta over `main` plus the accepted candidates. Study A counted R52's and R39's accepted value in its two top scores. Study A contributed two items Study B lacked: the explicit grant with no wait, and the post-merge staging step. Both studies' arithmetic re-computed correctly. Each study's factual slips are listed in `judge.md` sections 1 and 4.
