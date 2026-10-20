@@ -40,3 +40,4 @@ The skeleton of a session file:
 - A review that starts a fix round goes on the PR before any label. A fix round at (e) starts only from a review, never from a deploy dispatch.
 - Every PR that touches `plugin/detect/`, `plugin/ci/run_phase.py` or the detect, runbook and fix workflow templates goes on the port list in PROGRESS until the 1.0.0 read.
 - Edit docs with the Edit tool, sentence by sentence; cite the article by PDF page.
+- Before pushing a PR that adds lines under `docs/` citing a decision, a choice, a note, a PR, a version or a date, open each cited target and compare it with the sentence; say in the PR body that the citations were checked, and name any that could not be (choice 241). `REVIEW.md` holds the review pass to the same comparison on the diff, and `python tasks.py docs-lint` checks the merge claims (R58, check 8).
