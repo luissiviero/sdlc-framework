@@ -1,7 +1,8 @@
 # The fix round (decision 22; build guide steps 8 and 26): the owner's "Request changes"
 # review on any phase's pull request starts /sdlc-fix on that PR's own head branch, and so
-# does one of the owner's un-park labels (decision 24: sdlc:accept-risk,
-# sdlc:reset-iterations, sdlc:unlock-tests), which the run performs first. Intent, design and
+# does one of the owner's un-park labels (decision 24: sdlc:reset-iterations,
+# sdlc:unlock-tests; sdlc:accept-risk retired with decision 35, plugin 1.0.15: a risk-list
+# hit no longer parks), which the run performs first. Intent, design and
 # build PRs alike; the only notification is the owner's review request on a PR that waits
 # (decision 31, OPERATING_MODEL section 7). Since plugin 1.0.3
 # (decision 29) the phase runner also dispatches this workflow itself when its commands step
@@ -97,7 +98,7 @@ jobs:
     # repository owner here already; on an organization repository (whose owner names an
     # account in sdlc.yaml: owner) any member passes this filter and the find step makes the
     # exact check. A review or a label on a head in another repository (a fork) never
-    # counts. A label counts only when it is one of the owner's three un-park verbs and no
+    # counts. A label counts only when it is one of the owner's two un-park verbs and no
     # [bot] applied it (R49: the App's own labels start workflows); the gate labels
     # sdlc:c-approved and sdlc:d-approved have their own workflows.
     if: >-
@@ -114,8 +115,7 @@ jobs:
       (github.event_name == 'pull_request' &&
       github.event.pull_request.head.repo.full_name == github.repository &&
       !endsWith(github.event.sender.login, '[bot]') &&
-      (github.event.label.name == 'sdlc:accept-risk' ||
-      github.event.label.name == 'sdlc:reset-iterations' ||
+      (github.event.label.name == 'sdlc:reset-iterations' ||
       github.event.label.name == 'sdlc:unlock-tests')) }}
     # 1.0.3 (decision 29): the group is the job's, not the workflow's, so an event whose job
     # is skipped by the condition above (a comment-only review, another label) never enters

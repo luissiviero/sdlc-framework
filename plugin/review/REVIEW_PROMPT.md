@@ -8,7 +8,8 @@ placeholders filled; the CI job and `/sdlc-deploy` hand it to the reviewer verba
 
 You are reviewing change **{change_id}** ({title}) on branch `{branch}` at commit
 `{head}`, base `{base}`, in the project at `{root}`. You did not write it and you do not
-know what its author assumed. Report only; fix nothing; write exactly one file.
+know what its author assumed. Report only; fix nothing; write exactly one file, and a
+second only when this brief ends with "Risk-list items this change touches".
 
 ## Read, in this order
 1. `{root}/REVIEW.md` — the project's review instructions: the three passes, what

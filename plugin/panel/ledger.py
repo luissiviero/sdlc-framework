@@ -41,9 +41,11 @@ Kinds — the fixed list of what may go to the panel (nothing else ever does):
   the finding's signature; the gate's ``findings`` check reads the entry);
 - ``verifier``: the verifier's "does not match the plan" (a record; the run acts on it).
 
-What never goes to the panel and still parks (``NEVER_TO_PANEL``): a risk-list hit, a
-guardrail file change, a run limit, an infrastructure failure, any merge to ``main``, any
-deploy. The gate's ``panel`` check refuses a ledger that names one.
+What never goes to the panel and still parks (``NEVER_TO_PANEL``): an escalation on a
+risk-list item (decision 35: a hit itself no longer parks; it is a line of the close-look
+banner, and ``risk_list`` and ``ratchets`` fail only on such an escalation), a guardrail file
+change, a run limit, an infrastructure failure, any merge to ``main``, any deploy. The gate's
+``panel`` check refuses a ledger that names one.
 
 Pure module: no network, no git; ``apply_decision`` edits ``spec.md`` and nothing else.
 """
@@ -76,6 +78,7 @@ PANEL_KINDS = ("concern", "policy", "escalate", "finding", "verifier")
 # the gate checks whose failure is never the panel's to settle (OPERATING_MODEL section 6)
 NEVER_TO_PANEL = (
     "risk_list",
+    "ratchets",
     "guardrails",
     "limits",
     "commands",

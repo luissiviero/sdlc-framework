@@ -765,16 +765,15 @@ def test_record_owner_label_performs_the_act_and_keeps_the_actor(tmp_path):
     change_dir, st = status.new_change(tmp_path, "Labels")
     st.iterations = 3
     st.lock_tests()
-    st.record_owner_label(c.ACCEPT_RISK_LABEL, "luissiviero", ["auth", "data migrations"])
+    # decision 35 (1.0.15): sdlc:accept-risk retired; the merge accepts a risk
+    with pytest.raises(ValueError):
+        st.record_owner_label(c.ACCEPT_RISK_LABEL, "luissiviero", ["auth"])
+    assert c.ACCEPT_RISK_LABEL not in c.UNPARK_LABELS
     st.record_owner_label(c.RESET_ITERATIONS_LABEL, "luissiviero")
     st.record_owner_label(c.UNLOCK_TESTS_LABEL, "reviewer-2")
     status.write_status(change_dir, st)
     back = status.read_status(change_dir)
-    assert back.risk_accepted == ["auth", "data migrations"]
-    assert back.risk_accepted_by == [
-        {"item": "auth", "actor": "luissiviero"},
-        {"item": "data migrations", "actor": "luissiviero"},
-    ]
+    assert back.risk_accepted == [] and back.risk_accepted_by == []
     assert back.iterations == 0 and back.iterations_reset_by == "luissiviero"
     assert back.tests_locked is False and back.tests_unlocked_by == "reviewer-2"
     with pytest.raises(ValueError):
@@ -795,96 +794,69 @@ def test_unpark_perform_honours_a_person_and_rejects_the_automation_identity(tmp
     change_dir, st = status.new_change(tmp_path, "Labels")
     st.phase = "c"
     st.iterations = 4
-    gate_file = change_dir / "evidence" / "gate-c.json"
-    gate_file.write_text(
-        json.dumps(
-            {
-                "checks": [
-                    {"name": "risk_list", "ok": False, "details": {"hits": {"auth": ["src/auth"]}}}
-                ]
-            }
-        ),
-        encoding="utf-8",
-    )
-    assert unpark.risk_hits(change_dir, "c") == ["auth"]
-    assert unpark.risk_hits(change_dir, "b") == [] and unpark.risk_hits(change_dir, None) == []
+    st.lock_tests()
     present = {
-        c.ACCEPT_RISK_LABEL: "luissiviero",
+        c.ACCEPT_RISK_LABEL: "luissiviero",  # retired (decision 35): neither done nor refused
         c.RESET_ITERATIONS_LABEL: "github-actions[bot]",
-        c.UNLOCK_TESTS_LABEL: "dependabot[bot]",
+        c.UNLOCK_TESTS_LABEL: "luissiviero",
     }
     performed, rejected = unpark.perform(
-        st,
-        present,
-        ["github-actions[bot]"],
-        unpark.risk_hits(change_dir, "c"),
-        config={},
-        env=OWNER_ENV,
+        st, present, ["github-actions[bot]"], config={}, env=OWNER_ENV
     )
-    assert performed == [{"label": c.ACCEPT_RISK_LABEL, "actor": "luissiviero", "items": ["auth"]}]
-    assert [r["label"] for r in rejected] == [c.RESET_ITERATIONS_LABEL, c.UNLOCK_TESTS_LABEL]
+    assert performed == [{"label": c.UNLOCK_TESTS_LABEL, "actor": "luissiviero"}]
+    assert [r["label"] for r in rejected] == [c.RESET_ITERATIONS_LABEL]
     assert all("cannot un-park itself" in r["reason"] for r in rejected)
-    assert st.iterations == 4 and st.risk_accepted_by == [{"item": "auth", "actor": "luissiviero"}]
-    # accept-risk with no recorded hit accepts nothing and is left on the PR
+    assert st.iterations == 4 and st.risk_accepted == [] and st.risk_accepted_by == []
+    assert st.tests_locked is False and st.tests_unlocked_by == "luissiviero"
+    # any <app>[bot] counts as automation, whatever the identities list says
+    performed, rejected = unpark.perform(
+        st, {c.UNLOCK_TESTS_LABEL: "dependabot[bot]"}, ["github-actions[bot]"],
+        config={}, env=OWNER_ENV,
+    )  # fmt: skip
+    assert performed == [] and "cannot un-park itself" in rejected[0]["reason"]
+    # a project's own automation identity counts as automation too
     st2 = status.new_change(tmp_path, "No hit", change_id="0002")[1]
     performed, rejected = unpark.perform(
-        st2, {c.ACCEPT_RISK_LABEL: "luissiviero"}, [], [], config={}, env=OWNER_ENV
-    )
-    assert performed == [] and "nothing to accept" in rejected[0]["reason"]
-    # a project's own automation identity counts as automation too
-    performed, rejected = unpark.perform(
-        st2, {c.RESET_ITERATIONS_LABEL: "ci-robot"}, ["ci-robot"], [], config={}, env=OWNER_ENV
+        st2, {c.RESET_ITERATIONS_LABEL: "ci-robot"}, ["ci-robot"], config={}, env=OWNER_ENV
     )
     assert performed == [] and rejected[0]["actor"] == "ci-robot"
 
 
-def test_risk_hits_reads_ratchets_check_when_risk_list_absent(tmp_path):
-    from state import unpark
+def test_recorded_hits_reads_ratchets_check_when_risk_list_absent(tmp_path):
+    """The banner reads a gate record's risk-hit checks (decision 35; before it the
+    ``sdlc:accept-risk`` label read them through ``unpark.risk_hits``)."""
+    from gate import risk
 
-    change_dir, _st = status.new_change(tmp_path, "Ratchet")
-    gate_file = change_dir / "evidence" / "gate-c.json"
-    gate_file.write_text(
-        json.dumps(
+    record = {
+        "checks": [
             {
-                "checks": [
-                    {
-                        "name": "ratchets",
-                        "ok": False,
-                        "details": {"hits": {"ratchet: tests": ["tests/test_a.py"]}},
-                    }
-                ]
+                "name": "ratchets",
+                "ok": True,
+                "details": {"hits": {"ratchet: tests": ["tests/test_a.py"]}},
             }
-        ),
-        encoding="utf-8",
-    )
-    assert unpark.risk_hits(change_dir, "c") == ["ratchet: tests"]
+        ]
+    }
+    assert risk.recorded_hits(record) == {"ratchet: tests": ["tests/test_a.py"]}
 
 
-def test_risk_hits_unions_risk_list_and_ratchets(tmp_path):
-    from state import unpark
+def test_recorded_hits_unions_risk_list_and_ratchets(tmp_path):
+    from gate import risk
 
-    change_dir, _st = status.new_change(tmp_path, "Ratchet")
-    gate_file = change_dir / "evidence" / "gate-c.json"
-    gate_file.write_text(
-        json.dumps(
+    record = {
+        "checks": [
+            {"name": "risk_list", "ok": True, "details": {"hits": {"auth": ["src/auth"]}}},
             {
-                "checks": [
-                    {
-                        "name": "risk_list",
-                        "ok": False,
-                        "details": {"hits": {"auth": ["src/auth"]}},
-                    },
-                    {
-                        "name": "ratchets",
-                        "ok": False,
-                        "details": {"hits": {"ratchet: tests": ["tests/test_a.py"]}},
-                    },
-                ]
-            }
-        ),
-        encoding="utf-8",
-    )
-    assert unpark.risk_hits(change_dir, "c") == ["auth", "ratchet: tests"]
+                "name": "ratchets",
+                "ok": True,
+                "details": {"hits": {"ratchet: tests": ["tests/test_a.py"]}},
+            },
+            {"name": "guardrails", "ok": False, "details": {"hits": {"x": ["y"]}}},
+        ]
+    }
+    assert risk.recorded_hits(record) == {
+        "auth": ["src/auth"],
+        "ratchet: tests": ["tests/test_a.py"],
+    }
 
 
 class _FakeGitHub:

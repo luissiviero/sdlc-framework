@@ -9,6 +9,11 @@ is needed" (OPERATING_MODEL section 7). This module renders exactly that, from f
 re-runnable after every review comment.
 
 Layout of the body, in order:
+  00. "Needs your close look" (decision 35, ROADMAP R24): when a gate the PR covers reported a
+     risk-list hit, one line per item with where it hit and the reviewer's brief on it
+     (``gate/risk.py banner_lines``): the design PR (b), the build PR from (c) to (e), and the
+     install PR of change 0000 at (a). The PR's merge accepts the items no earlier act
+     accepted; at (c) and (d) only the (e) merge does;
   0. under deferred review (decision 21), "Decisions taken for you (N)" above the bullets:
      one line per standing panel decision of the phases this PR covers ((b) for the design
      PR; (c), (d), (e) for the build PR), from ``evidence/decisions-<phase>.json``; a review
@@ -56,6 +61,7 @@ from panel import ledger  # noqa: E402
 from gate import artifacts as art  # noqa: E402
 from gate import checks  # noqa: E402
 from gate import diff as diffmod  # noqa: E402
+from gate import risk as risk_mod  # noqa: E402
 from gate.checks import CheckResult  # noqa: E402
 from gate.gate import GateResult  # noqa: E402
 from hooks._common import ConfigError, config_flag, load_sdlc_config  # noqa: E402
@@ -648,9 +654,11 @@ def build_description(root: Path, change_id: str, phase: str) -> str:
     spec = art.read_text(change_dir / "spec.md") or ""
     gate_json = load_gate(change_dir, phase)
 
+    banner = risk_mod.banner_lines(change_dir, phase, st)
     if phase == "a":
         bullets = _intent_bullets(intent, st)
-        out = [" ".join(b.split()) for b in bullets]
+        out = [*banner, ""] if banner else []
+        out += [" ".join(b.split()) for b in bullets]
         out += ["", _links_line(root, change_dir, change_id, phase), "", _counters_line(st)]
         return "\n".join(out) + "\n"
     if phase == "f":
@@ -684,7 +692,7 @@ def build_description(root: Path, change_id: str, phase: str) -> str:
         f"- **Plan conformance**: {_conformance_line(gate_json, spec, phase)}",
         f"- **What needs you**: {_owner_line(gate_json, phase, auto)}",
     ]
-    out: list[str] = []
+    out: list[str] = [*banner, ""] if banner else []
     decisions = decisions_block(change_dir, phase)
     if decisions:
         out += [*decisions, ""]

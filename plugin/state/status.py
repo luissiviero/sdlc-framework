@@ -105,6 +105,15 @@ class Status:
     # changes it parks like any owner-only field. Absent (and not written) on every change
     # that never took the fast lane, so its file reads as before.
     fast_lane: dict[str, dict[str, Any]] | None = None
+    # Decision 35 (ROADMAP R24, plugin 1.0.15): the owner's merge of a PR whose close-look
+    # banner showed risk-list hits accepts them. One line per merge, in the shape of R11's
+    # approvals list (``act``, ``by``, ``at``, ``via``, ``pr``, ``head``, ``details`` with the
+    # gate's ``phase``, the ``items`` accepted and whether the merged body showed the banner,
+    # ``banner_shown``), so R11 can take it in. Written by the runner (the (b) merge, at the
+    # start of the build run) and by the release workflow's record job (the (e) merge), never
+    # by a session: a session that changes it parks like any owner-only field. Absent (and not
+    # written) on a change no merge accepted a risk for, so its file reads as before.
+    risk_acceptances: list[dict[str, Any]] = field(default_factory=list)
     created_at: str = field(default_factory=_now)
     updated_at: str = field(default_factory=_now)
     schema_version: int = SCHEMA_VERSION
@@ -167,6 +176,9 @@ class Status:
         ):
             raise ValueError("risk_accepted_by must be a list of {item, actor} entries")
         _validate_fast_lane(self.fast_lane)
+        from gate import risk as risk_mod  # noqa: PLC0415
+
+        risk_mod.validate_acceptances(self.risk_acceptances)
         for name in (
             "iterations_reset_by",
             "iterations_reset_at",
@@ -185,6 +197,8 @@ class Status:
         d["gate"] = asdict(self.gate)
         if not self.fast_lane:
             del d["fast_lane"]  # decision 30: a change off the fast lane keeps its file as before
+        if not self.risk_acceptances:
+            del d["risk_acceptances"]  # decision 35: written only once a merge accepts a risk
         return d
 
     @classmethod
@@ -234,18 +248,13 @@ class Status:
 
     def record_owner_label(self, label: str, actor: str, items: list[str] | None = None) -> None:
         """Perform one of the owner's un-park labels (decision 24) and record who applied it.
-        ``items`` are the risk-list items an ``sdlc:accept-risk`` accepts (the hits the last
-        gate reported); the other two labels carry no argument."""
+        ``items`` is kept for the callers of 1.0.14 and earlier and is unused: the third
+        label, ``sdlc:accept-risk``, retired with decision 35 (a risk is accepted by the
+        merge, ``risk_acceptances``)."""
         actor = actor.strip()
         if not actor:
             raise ValueError("an owner label needs its actor")
-        if label == c.ACCEPT_RISK_LABEL:
-            for item in items or []:
-                self.accept_risk(item)
-                self.risk_accepted_by = [
-                    e for e in self.risk_accepted_by if e["item"] != item.strip()
-                ] + [{"item": item.strip(), "actor": actor}]
-        elif label == c.RESET_ITERATIONS_LABEL:
+        if label == c.RESET_ITERATIONS_LABEL:
             self.iterations = 0
             self.panel_calls = 0  # one un-park verb resets both counts (decision 21)
             self.iterations_reset_by = actor
