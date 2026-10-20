@@ -2,13 +2,17 @@
 
 Layer 1 (fixture folders): which links count and which break, the baseline that only
 shrinks, the Claude Code version a note names against the pin, ``supersedes`` on notes and
-its marker in the notes index, the decisions index read from each file's heading.
+its marker in the notes index, the decisions index read from each file's heading; and R58's
+checks: frontmatter that parses, decision amendments and status, a proposal's status against
+its ROADMAP row, built rows under "Done", version and PR pairs against the tags, citations of
+the moved stubs, Portuguese words.
 Layer 2 (this repository): the lint finds no failure, the pin is the one ``/sdlc-init``
 installs, and the decisions index on disk is what ``python tasks.py decisions-index`` writes.
 """
 
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 
 import tasks
@@ -179,6 +183,150 @@ def test_a_stale_decisions_index_fails_the_lint(tmp_path):
 def test_the_pin_is_read_from_the_init_default(tmp_path):
     pin_file = _write(tmp_path / "sdlc_init.py", 'X = 1\nDEFAULT_CLAUDE_CODE_VERSION = "9.8.7"\n')
     assert tasks.read_pin(pin_file) == "9.8.7"
+
+
+# --- layer 1: the docs lint, part 2 (ROADMAP R58) ------------------------------------------------
+
+ROADMAP_HEAD = (
+    "# Roadmap\n\n## Candidates for what comes after\n\n"
+    "| # | Candidate | Source | Decisions it touches | Status | Order |\n"
+    "|---|---|---|---|---|---|\n"
+)
+
+
+def test_a_frontmatter_that_is_not_yaml_fails_with_its_line(tmp_path):
+    docs = tmp_path / "docs"
+    _write(docs / "proposals" / "bad.md", '---\ntitle: a\ndescription: one "x: y" two\n---\n')
+    _write(docs / "proposals" / "good.md", '---\ndescription: "one \\"x: y\\" two"\n---\n')
+    _write(docs / "page.md", "no frontmatter: fine\n")
+    _write(docs / "reference" / "src.md", "---\na: b: c\n---\n")
+    failures, reports = tasks.frontmatter_problems(docs)
+    assert len(failures) == 1 and reports == []
+    assert failures[0].startswith("frontmatter: docs/proposals/bad.md:3: ")
+
+
+def test_an_amendment_is_listed_and_the_status_follows_it(tmp_path):
+    folder = tmp_path / "decisions"
+    _write(folder / "1.md", "---\nstatus: accepted\namended_by: null\n---\n\n## 1. One\n")
+    _write(
+        folder / "2.md", "---\nstatus: accepted\namended_by: null\n---\n\n## 2. Two (amends 1)\n"
+    )
+    _write(
+        folder / "3.md",
+        "---\nstatus: amended\namended_by: [2, 9]\n---\n\n"
+        "## 3. Three (amends 1 and PROGRESS choice 154)\n",
+    )
+    assert tasks.decision_problems(folder) == [
+        "decisions: 1.md amended_by lacks 2 (decision 2 amends 1)",
+        "decisions: 1.md amended_by lacks 3 (decision 3 amends 1)",
+        "decisions: 3.md amended_by names 9, no such file",
+    ]
+    _write(folder / "1.md", "---\nstatus: accepted\namended_by: [2, 3]\n---\n\n## 1. One\n")
+    _write(
+        folder / "3.md", "---\nstatus: amended\namended_by: null\n---\n\n## 3. Three (amends 1)\n"
+    )
+    assert tasks.decision_problems(folder) == [
+        "decisions: 1.md status is accepted, expected amended",
+        "decisions: 3.md status is amended, expected accepted",
+    ]
+
+
+def test_a_proposal_status_follows_its_roadmap_row(tmp_path):
+    roadmap = _write(
+        tmp_path / "ROADMAP.md",
+        ROADMAP_HEAD
+        + "| R1 | a | b | c | proposed from the study *[accepted 2026-10-16]* | 1 |\n"
+        + "| R2 | a | b | c | proposed | |\n",
+    )
+    proposals = tmp_path / "proposals"
+    _write(proposals / "a.md", "---\nstatus: proposed\nroadmap: R1\n---\n")
+    _write(proposals / "b.md", "---\nstatus: accepted\nroadmap: R2\n---\n")
+    _write(proposals / "c.md", "---\nstatus: accepted\nroadmap: R1 (accepted, after R2)\n---\n")
+    _write(proposals / "d.md", "---\nstatus: partly accepted\nroadmap: R2\n---\n")
+    _write(proposals / "e.md", "---\nstatus: proposed\nroadmap: [R2, R9]\n---\n")
+    assert tasks.proposal_problems(proposals, tasks.roadmap_rows(roadmap)) == [
+        "proposals: a.md status is proposed, ROADMAP R1 records an acceptance",
+        "proposals: b.md status is accepted, ROADMAP R2 records none",
+        "proposals: e.md names R9, not a ROADMAP row",
+    ]
+
+
+def test_a_built_candidate_belongs_under_done(tmp_path):
+    row = "| R10 | the `a \\| b` loop | x | y | accepted; built as plugin 1.0.3 in PR #220 | 1 |\n"
+    roadmap = _write(tmp_path / "ROADMAP.md", ROADMAP_HEAD + row)
+    rows = tasks.roadmap_rows(roadmap)
+    assert rows["R10"][1].strip() == "accepted; built as plugin 1.0.3 in PR #220"
+    assert tasks.shipped_row_problems(rows) == [
+        "ROADMAP: R10 says 'built as plugin' but sits under "
+        "'Candidates for what comes after', not 'Done'"
+    ]
+    _write(
+        tmp_path / "ROADMAP.md",
+        ROADMAP_HEAD + "\n## Done\n\n" + ROADMAP_HEAD.split("\n\n")[-1] + row,
+    )
+    assert tasks.shipped_row_problems(tasks.roadmap_rows(tmp_path / "ROADMAP.md")) == []
+
+
+def test_a_version_is_paired_with_the_pr_its_tag_sits_on(tmp_path):
+    docs = tmp_path / "docs"
+    _write(
+        docs / "ROADMAP.md",
+        "built as plugin 1.0.3 in PR #221.\n"
+        "built as plugin **1.0.3** in the session PR #220; `v1.0.3` = PR #220.\n"
+        "after `v1.0.3` is pinned and PR #9 merges; plugin 9.9.9 in PR #1\n",
+    )
+    _write(docs / "progress" / "old.md", "plugin 1.0.3 in PR #5, a kept record\n")
+    assert tasks.version_pr_problems(docs, {"1.0.3": "220"}) == [
+        "version: docs/ROADMAP.md:1: 1.0.3 paired with PR #221; v1.0.3 is PR #220's merge"
+    ]
+
+
+def test_the_tags_are_read_from_git_and_absent_tags_are_reported(tmp_path):
+    def git(*args: str) -> None:
+        subprocess.run(
+            ["git", "-c", "user.name=t", "-c", "user.email=t@t", *args],
+            cwd=tmp_path,
+            check=True,
+            capture_output=True,
+        )
+
+    docs = tmp_path / "docs"
+    _write(docs / "page.md", "x\n")
+    _, reports = tasks.lint_docs(docs, tmp_path, docs / "none.txt", pin="2.1.278")
+    assert "version and PR pairs not checked: no tags in this checkout" in reports
+    git("init", "-q")
+    git("commit", "-q", "--allow-empty", "-m", "Merge pull request #5 from o/b")
+    git("tag", "v1.2.3")
+    git("commit", "-q", "--allow-empty", "-m", "a direct commit")
+    git("tag", "v1.2.4")
+    assert tasks.tag_prs(tmp_path) == {"1.2.3": "5"}
+
+
+def test_a_moved_stub_is_not_cited_in_a_living_document(tmp_path):
+    docs = tmp_path / "docs"
+    _write(docs / "decisions" / "1.md", "Facts in `docs/NOTES.md` §2.\n")
+    _write(
+        docs / "proposals" / "p.md",
+        "---\nsources:\n  - resource: docs/NOTES.md\n---\n"
+        "| `docs/NOTES.md` | 62 KB | Read for facts. |\nsee docs/DECISIONS.md section 4\n",
+    )
+    _write(docs / "progress" / "old.md", "`docs/NOTES.md` §3, a kept record\n")
+    assert tasks.stub_problems(docs) == [
+        "stub: docs/decisions/1.md:1 cites docs/NOTES.md",
+        "stub: docs/proposals/p.md:3 cites docs/NOTES.md",
+        "stub: docs/proposals/p.md:6 cites docs/DECISIONS.md",
+    ]
+
+
+def test_a_portuguese_word_fails_and_a_proper_noun_does_not(tmp_path):
+    docs = tmp_path / "docs"
+    _write(docs / "page.md", "English only.\nIsso não está certo.\nSão Paulo, and Luís's path.\n")
+    _write(docs / "handoffs" / "inputs" / "x.html", "<p>Você também</p>\n")
+    _write(docs / "reference" / "src.md", "não\n")
+    assert tasks.portuguese_problems(docs) == [
+        "portuguese: docs/handoffs/inputs/x.html:1: também, você",
+        "portuguese: docs/page.md:2: está, isso, não",
+    ]
 
 
 # --- layer 2: this repository -------------------------------------------------------------------

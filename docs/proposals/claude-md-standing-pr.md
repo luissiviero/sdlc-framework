@@ -1,7 +1,7 @@
 ---
 type: Proposal
 title: Review corrections reach CLAUDE.md through one standing pull request the owner merges when they choose
-description: After each gate (e) merge, a deterministic step with no model opens or updates one pull request, "CLAUDE.md: Things Claude gets wrong", that collects every proposed line, each traceable to its finding and change, and starts the eval run and build-config's brief itself; the owner merges it whenever they choose, one act for many lines; the digest lists the lines waiting; the review pass may tag a reworded repeat with the earlier signature; no run edits CLAUDE.md and nothing notifies the owner.
+description: "After each gate (e) merge, a deterministic step with no model opens or updates one pull request, \"CLAUDE.md: Things Claude gets wrong\", that collects every proposed line, each traceable to its finding and change, and starts the eval run and build-config's brief itself; the owner merges it whenever they choose, one act for many lines; the digest lists the lines waiting; the review pass may tag a reworded repeat with the earlier signature; no run edits CLAUDE.md and nothing notifies the owner."
 status: accepted
 roadmap: R37
 sources:

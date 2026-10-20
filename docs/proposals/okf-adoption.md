@@ -2,7 +2,7 @@
 type: Proposal
 title: OKF adoption — the Open Knowledge Format applied to the SDLC framework
 description: Where the Open Knowledge Format already matches the framework, where adopting it would pay (lessons/ first), and what that would take; proposed, not implemented. *[2026-10-20, partly built — step 2 is change 0001 (8050b92), step 1 on lessons/ is change 0003 (v0.3.6), the notes' topics pull request 160; steps 3 and 4 proposed]*
-status: proposed
+status: partly accepted
 roadmap: R1
 sources:
   - id: blog
