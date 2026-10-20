@@ -1,39 +1,30 @@
-# Progress — decisions 35 (R24) and 36 (R22), and the owner's choice 242 on their questions (2026-10-20)
+# Progress — R63 accepted: the CLI a new project installs knows the models its sdlc.yaml names (choice 244, 2026-10-20)
 
-This session ran on branch `ccr-8913e578-kwfegl`. The owner's task was to write the decision files of R24 and R22, numbered 35 and 36, one after the other, each in a documentation PR of its own, then answer the questions those PRs raised. The previous record (R61 accepted, NOTES §53, R58's check 8, choices 240 and 241) is now `docs/progress/2026-10-20-r61-accepted-notes-53-and-choices-240-241.md`, unchanged. The session's own file is `docs/handoffs/sessions/2026-10-20-ccr-8913e578-kwfegl.md`.
+This session ran on branch `ccr-a6fc1017-mkylxv`. The owner's task was to check the previous session's claims on the sample's change 0017 and on #284, take over #284 and the reading of 0017 for R7, and put the template CLI default of NOTES §54 to the owner. The previous record (decisions 35 and 36, choices 242 and 243) is now `docs/progress/2026-10-20-decisions-35-36-and-choices-242-243.md`, unchanged. The session's own file is `docs/handoffs/sessions/2026-10-20-ccr-a6fc1017-mkylxv.md`.
 
-No change under `plugin/` or `template/`; no version bump.
+No change under `plugin/` or `template/` in this PR; no version bump.
 
 ## Summary
-- **Decision 35** (R24): a risk-list hit is a line in the close-look banner, accepted by the owner's merge; it amends 11, 21 and 24. PR #279 merged as `d608f69`.
-- **Decision 36** (R22): gate (e) is the owner's approving review, and a GitHub App merges on it; it amends 13, 4 and 5. PR #280 merged as `c15dd35`.
-- **Choice 242**: the owner accepted the session's recommendation on each of the six questions the two PRs raised. Each answer is annotated beside the sentence it settles; nothing is reopened.
-- **Choice 243**: no page kept by hand states a count of the decisions or the notes; docs-lint's check 9 keeps it so.
+- **Choice 244**: R63 is accepted as recommended. Its proposal is `docs/proposals/template-cli-default.md`; its row is in `docs/ROADMAP.md`.
+- **The root pin**: the owner raised `sdlc.yaml`'s `claude_code` from 2.1.278 to 2.1.304 (PR #287, merged as `fe315da`).
 
 ## The owner's decisions (2026-10-20)
-242. **The questions of #279 and #280 are answered as the session recommended** (the owner, "accept all your recommendations"):
-    1. **R15's measured ratchet fall, once `sdlc:accept-risk` retires,** is a banner line the owner's (e) merge accepts, as every risk-list hit is. It amends R15 point 9 and decision 29's park at the iteration cap, so its decision file is written with R15's second change's design, before that change's intent. Annotated: decision 35 ("Left to the design"), R15's and R24's ROADMAP rows, `docs/proposals/ratchets.md` point 9, `docs/proposals/risk-hit-in-banner.md` ("What to settle").
-    2. **Once R22 is built, the owner's approving review accepts the banner's risk lines,** recorded on R22's (e) approval line. The App that then merges is a `[bot]` and never accepts a risk (`is_automation_actor`). Annotated: decision 35, point 2; R24's row; the R24 proposal's settle row.
-    3. **Decision 11's "nobody is notified" stays as written.** Kept records are annotated, never rewritten (choice 126), and its `amended_by` already names 31. No edit.
-    4. **R22 merges through a merge App of its own, not decision 33's App.** GitHub grants a bypass to an actor, not to a job, and the phase runners hold decision 33's App token; so that App is never a bypass actor, its merge step included. The merge App's key is a secret of a GitHub environment only the default branch can use, read only by the merge job. Annotated: decisions 33 and 36 (points 2 and 6), R22's row, `docs/proposals/gate-e-approving-review.md` point 2, `docs/proposals/pipeline-speed.md` (R49's row).
-    5. **The sample's ruleset 1 moves from `pull_request` mode to Exempt** when R22 sets up ruleset 2 there, recorded in a note (`docs/notes/53.md` read it in `pull_request` mode). Annotated: decision 36, point 5; R22's row; the R22 proposal, point 5.
-    6. **C3 and C1 are both kept,** for different failures: C3 when a check the automation posts cannot satisfy a required check (it still needs the App), C1 when the App itself does not work. Annotated: decision 36, point 7; R22's row; the R22 proposal, point 7.
-243. **No page kept by hand states a count of the decisions or the notes** (the owner, "agree", then "yes, build the docs-lint count check"):
-    - `CLAUDE.md` line 3 drops "34" ("records the settled choices"; the owner's edit, on `main` at `f2b1522`) and `README.md` drops "29" (PR #281);
-    - docs-lint gains check 9: `README.md`, `CLAUDE.md` and `docs/OPERATING_MODEL.md` fail on a count such as "N settled decisions", a correct one included (`tasks.py` `count_problems`, `tests/test_docs_lint.py`; `docs/proposals/docs-lint-checks.md`, "Check 9"). No plugin version.
+244. **R63 is accepted as recommended** (the owner, "accept R63 as recommended"):
+    - a candidate of its own, not a part of R61;
+    - `/sdlc-init`'s default CLI and the pin script's fallback move from 2.1.278 to 2.1.304, the template's comment follows, the tests follow; whether the runner names an `unrecognized_model` line as a park reason of its own is decided at the build;
+    - built before R24 (rank 8), once change 0017's build run shows the session on `claude-opus-5-5` under 2.1.304; no rank moves;
+    - a plugin change, so it takes the next free patch version.
 
 ## Proposed edits for the owner
 | Link | Row | What is there now | What it must become |
 |---|---|---|---|
-| [CLAUDE.md](https://github.com/luissiviero/sdlc-framework/blob/main/CLAUDE.md#L3) | 3 | `` `docs/decisions/index.md` records the 34 settled choices — do not reopen them without asking. `` | `` `docs/decisions/index.md` records the settled choices — do not reopen them without asking. `` |
+| [sdlc.yaml](https://github.com/luissiviero/sdlc-framework/blob/main/sdlc.yaml#L107) | 107 | `  # 2.1.278 is the CLI the jobs install and the framework's minimum.` | `  # 2.1.304 is the CLI the jobs install and the framework's minimum (NOTES §54).` |
 
-The count is dropped rather than raised (the owner, 2026-10-20): the index is generated and checked by docs-lint, so the number only went stale, and each new decision cost a guardrail edit. The same stale count in `README.md` ("The 29 settled decisions") is fixed in this PR. *[2026-10-20: the owner made this edit; `CLAUDE.md` line 3 reads "records the settled choices" on `main` at `f2b1522`. Choice 243 adds the check that keeps such a count out.]*
+The pin on line 108 already reads `"2.1.304"` (PR #287); this row makes its comment agree. It can wait for R63's build, which changes the same sentence in `template/sdlc.yaml`.
 
 ## Left
-- **R15's decision file** (choice 242, point 1): with R15's second change's design.
-- **The sample's bypass mode** (choice 242, point 5): at R22's setup on the sample, with a note.
-- **The merge App** (choice 242, point 4): its creation and its environment join `/sdlc-init` step 6 when R22 is built, and R21's desktop-only table when both are built (the R22 proposal's settle row).
-- Every other open item is in the session file of `ccr-8913e578-kwfegl`.
+- **R63's build**: after 0017's build run is read (this session's next step).
+- Every other open item is in the session file of `ccr-a6fc1017-mkylxv`.
 
 ## Checks (this repository)
 On the final head, after `python -m pip install -e ".[dev]"`, chained with `set -o pipefail`: the four commands of `HANDOFF.md`'s standing precondition 1, plus `python tasks.py docs-lint`. Their output is in the PR.

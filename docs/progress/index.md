@@ -59,3 +59,4 @@ chronological order (oldest first). The current record stays in `docs/PROGRESS.m
 - [Progress — ROADMAP R7, the in-run reviewer on the latest Opus, as plugin 1.0.14; the runs PR read against plugins 1.0.3 to 1.0.13 (2026-10-19)](2026-10-19-r7-reviewer-on-latest-opus-1.0.14.md)
 - [Progress — the review of PRs #250 to #252 and its follow-ups: R44's `policies/` entry after R27, the sandbox proof back in the queue, the superseded PR's token, and the owner's choice 239 (2026-10-20)](2026-10-20-prs-250-252-review-and-choice-239.md)
 - [Progress — R61 accepted and placed after R44, the sample's ruleset recorded (NOTES §53), R58's check 8, and the owner's choices 240 and 241 (2026-10-20)](2026-10-20-r61-accepted-notes-53-and-choices-240-241.md)
+- [Progress — decisions 35 (R24) and 36 (R22), and the owner's choices 242 and 243 on their questions and on the counts kept by hand (2026-10-20)](2026-10-20-decisions-35-36-and-choices-242-243.md)
