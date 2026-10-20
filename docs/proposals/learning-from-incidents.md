@@ -1,7 +1,7 @@
 ---
 type: Proposal
 title: Learning from an incident, the rest of it — the metric's return to baseline on the record, and a scan incident's lesson
-description: After an incident's fix ships, the daily detection's verdicts for that metric since the fix are summarised with no agent in R40's Detection line ("<id> fixed on <date>: N days, all within 1σ", or still breaching), read from the log on the ref, and the next diagnosis of the same metric reads them; a scan incident's lesson names the finding's class and signature where a detection incident's names the metric and the tier; the lesson checked at gate (e), the entry's first addition, is already built (plugin 0.3.6).
+description: "After an incident's fix ships, the daily detection's verdicts for that metric since the fix are summarised with no agent in R40's Detection line (\"<id> fixed on <date>: N days, all within 1σ\", or still breaching), read from the log on the ref, and the next diagnosis of the same metric reads them; a scan incident's lesson names the finding's class and signature where a detection incident's names the metric and the tier; the lesson checked at gate (e), the entry's first addition, is already built (plugin 0.3.6)."
 status: accepted
 roadmap: R42
 sources:

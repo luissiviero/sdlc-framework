@@ -1,7 +1,7 @@
 ---
 type: Proposal
 title: The docs lint, part 2 — the cross-file facts a script can check, so the docs consistency review's mechanical classes cannot come back
-description: Six deterministic checks added to python tasks.py docs-lint (decision amendments, proposal status against ROADMAP, built rows under Done, version and PR pairs against the tags, the moved stubs, a Portuguese word list), and one rule that proposals stop restating ROADMAP's status and order.
+description: Seven deterministic checks added to python tasks.py docs-lint (decision amendments, proposal status against ROADMAP, built rows under Done, version and PR pairs against the tags, the moved stubs, a Portuguese word list, every frontmatter parsing as YAML), and one rule that proposals stop restating ROADMAP's status and order.
 status: accepted
 roadmap: R58
 sources:
@@ -39,6 +39,7 @@ ROADMAP's Status and Order columns are the one place a candidate's state and ran
 | 4 | Every "plugin X.Y.Z … PR #N" or "`vX.Y.Z` … PR #N" pair matches the tag's merge commit; a report line, not a failure, when the checkout has no tags (the Linux framework-checks job gets `fetch-depth: 0`) | a few |
 | 5 | No citation of the moved stubs `docs/NOTES.md` or `docs/DECISIONS.md` as a source | 1 |
 | 6 | A short list of Portuguese words finds nothing outside `docs/reference/` (proper nouns such as São Paulo are listed as allowed) | 0 today |
+| 7 | Every Markdown file under `docs/` (outside `docs/reference/`) that opens with a `---` block has frontmatter that parses as YAML, and the error names the file and the line; checks 1 and 2 read frontmatter, so this one runs first. It uses PyYAML, already a pinned dev dependency (`pyproject.toml`, the `dev` extra) and present wherever the tests run; `tasks.py` imports it inside the check and prints a report line, not a failure, when it is absent | 0 rows of the review; 3 proposals found broken on 2026-10-20 (an unquoted `: ` in `description`, fixed in PR #256), 136 files parse today |
 
 Each check has a test in `tests/test_docs_lint.py` on a temporary tree, as R55's checks do.
 
@@ -48,4 +49,4 @@ Whether a sentence means what its citation says — the wrong decision or note c
 
 ## Order
 
-After the review's own fixes land (the rows held for open pull requests on `docs/ROADMAP.md` and `docs/proposals/reviewer-on-opus.md` included), so checks 2 and 3 pass on the first run.
+After the review's own fixes land (PR #256, with the rows that waited for #254 and #257), so checks 2, 3 and 7 pass on the first run.
