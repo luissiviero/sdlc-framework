@@ -14,7 +14,7 @@ kebab-case title.
 
 Branches: `sdlc/<id>/a` (intent PR), `sdlc/<id>/b` (spec+plan PR), `sdlc/<id>/c` (build PR,
 kept open through test and review). Labels: `sdlc:<phase>-ready` (waiting at a human gate),
-`sdlc:<phase>-approved` (Full profile, gates c and d), `sdlc:needs-human` (parked).
+`sdlc:needs-human` (parked).
 
 Nothing here is edited by hand except `intent.md` during phase (a). The repo is the source
 of truth; an external tracker holds only the issue number ↔ commit SHA link (decision 9), the

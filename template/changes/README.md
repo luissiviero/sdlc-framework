@@ -16,7 +16,7 @@ kebab-case title.
 
 Branches: `sdlc/<id>/a` (intent PR), `sdlc/<id>/b` (spec+plan PR), `sdlc/<id>/c` (build PR,
 kept open through test and review). Labels: `sdlc:<phase>-ready` (waiting at a human gate),
-`sdlc:<phase>-approved` (Full profile, gates c and d), `sdlc:release-approved` (the release
+`sdlc:release-approved` (the release
 approval on a declared production), `sdlc:needs-human` (parked); the owner's un-park verbs
 `sdlc:reset-iterations`, `sdlc:unlock-tests` (read and removed by the next fix round). A
 risk-list hit parks nothing: it is a line of the PR's "Needs your close look" banner, and

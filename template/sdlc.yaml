@@ -19,6 +19,7 @@
 # guardrail file change, a run limit, an infrastructure failure, a merge to main, a deploy.
 # Each panel call counts against gate.max_panel_calls, not the fix iterations. The keys
 # `profile` and `review` of older files are no longer read.
+
 # --- models (ROADMAP R7; plugin/panel/models.py) ----------------------------------------------
 # Each a full model id or a family alias (opus, sonnet, haiku, fable).
 # session_model: the CI session's model (--model), one model or `default` plus per-phase

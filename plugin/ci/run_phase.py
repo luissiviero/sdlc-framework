@@ -1607,7 +1607,7 @@ def _approved_ref(root: Path) -> str | None:
     live — or None when the checkout has no such ref to read (a by-hand run without a remote,
     or a remote that has no such branch; a guessed name that is a framework branch or the
     current branch, which is nobody's approved copy). Shared by ``_approved_config`` and
-    ``approved_overrides``."""
+    ``_approved_status``."""
     from state import gitops  # noqa: PLC0415
 
     try:
@@ -4561,7 +4561,7 @@ FAST_LANE_DEMOTION_NOT_PUSHED = (
 
 
 def fast_lane_refusal(
-    root: Path, change_dir: Path, result: dict[str, Any], config: dict[str, Any], env
+    root: Path, change_dir: Path, result: dict[str, Any]
 ) -> tuple[str | None, str | None]:
     """(refusal, full sha): the runner's own confirmation of a gate (b) that says it passed
     on the fast lane, read from what the runner trusts rather than the record alone - the
@@ -4607,7 +4607,7 @@ def record_fast_lane_b(
     the design PR's number when one is open - once the runner confirmed it
     (``fast_lane_refusal``). A record the runner does not confirm is put back to today's
     ``wait`` at (b): ``sdlc:b-ready``, the owner's merge starts the build."""
-    why, sha = fast_lane_refusal(root, change_dir, result, config, env)
+    why, sha = fast_lane_refusal(root, change_dir, result)
     if why or not sha:
         demote_fast_lane(change_dir, why or "not confirmed")
         print(f"fast lane refused, gate (b) waits for the owner: {why}", file=sys.stderr)
