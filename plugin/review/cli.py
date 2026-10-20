@@ -103,6 +103,57 @@ def render_prompt(
     )
 
 
+RISK_SECTION = """
+## Risk-list items this change touches (decision 35)
+A risk-list hit does not park the change: it is a line of the "Needs your close look" banner
+on this pull request, and the owner's merge accepts it. You brief the owner on each item
+below, in a second file, `{brief}`, one section per item, its name exactly as listed:
+
+```markdown
+# Security & policy brief, gate (e)
+
+## <item>
+- Word: continue
+- What the change does to it: <one or two sentences, with the files>
+- What could break: <one or two sentences>
+- How to undo it: <one or two sentences>
+```
+
+Your word on an item is `continue` or `escalate`; you never accept a risk. Escalate on an
+item only for what is an Important finding anyway, and report that finding too: an
+escalation on a risk item parks the change for the owner and never goes to the review panel.
+
+{items}
+"""
+
+
+def risk_section(root: Path, change_id: str, base: str | None) -> str:
+    """The prompt's last section when the committed diff touches risk-list items (decision
+    35): the items gate (e) will report, with where each matched, and the brief file the
+    pass writes for them; "" when nothing hits or the hits cannot be read (the gate reports
+    them anyway, and the banner then says no brief was written)."""
+    from gate import gate as gate_mod  # noqa: PLC0415
+
+    try:
+        found = gate_mod.risk_hits_now(root, change_id, "e", base)
+    except Exception:  # noqa: BLE001 - the prompt never fails on the risk read
+        return ""
+    hits = found.get("hits") or {}
+    if not hits:
+        return ""
+    accepted = {str(a).lower() for a in found.get("accepted") or []}
+    lines = [
+        f"- `{item}`: {', '.join(where[:5])}"
+        + (
+            " (accepted earlier; brief it for what this change does now)"
+            if item.lower() in accepted
+            else ""
+        )
+        for item, where in hits.items()
+    ]
+    return RISK_SECTION.format(brief=found.get("brief"), items="\n".join(lines))
+
+
 def cmd_prompt(args) -> int:
     loaded = _change(args)
     if loaded is None:
@@ -120,6 +171,7 @@ def cmd_prompt(args) -> int:
         root=_posix(root),
         change_dir=_posix(change_dir),
     )
+    text = text.rstrip("\n") + "\n" + risk_section(root, st.id, args.base)
     sys.stdout.write(text if text.endswith("\n") else text + "\n")
     return EXIT_OK
 

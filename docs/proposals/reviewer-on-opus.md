@@ -119,3 +119,4 @@ The count is per change, not per date, so it is not scheduled on a calendar. It 
 | Change | Plugin | External review found something the in-run reviewer missed? | Count |
 |---|---|---|---|
 | (the first change on 0.3.8) | 0.3.8 | | |
+| 0017 (the sample; the count starts here, the first change on 1.0.14) | 1.0.14 | No: a fresh-context review of the build PR's diff found no build-breaking or Important item; two of its three nits are the in-run review's own (NOTES §55, 2026-10-20) | 1 |

@@ -107,7 +107,10 @@ Rules for the pass (from the three by-hand runs of build guide step 22, recorded
 - A guess made because the intent is silent is a flagged concern. So is any risk-list item
   in `sdlc.yaml` the design touches, and any policy the design cannot meet. Name a risk-list
   item under "## Flagged concerns" only when the design touches it: the gate reads that
-  section literally and parks on every item named there until the owner accepts it. The
+  section literally and shows every item named there in the design PR's "Needs your close
+  look" banner, which the owner's merge accepts (decision 35). Write the declaration closed,
+  as the `spec-template` skill shows (`- decided (decision 35): risk item '<item>': ...`):
+  decision 35 settles it, and an open line would park the design as an open concern. The
   items that do not apply are said not to apply in Requirements, never listed there.
 - Close a concern yourself only when the policy text settles it, and say which policy
   (`- [x] <concern>: decided <how> per <skill> rule <n>`); the closing word is the first
@@ -144,8 +147,14 @@ default branch, `origin/<default>` after the fetch: the base the gate diffs agai
 `git diff --stat --patch --output=changes/<id>-<slug>/evidence/diff-b.patch <base>...HEAD`,
 then `git rev-parse HEAD` for the full sha. The diff file is evidence: it is committed with
 the gate (b) evidence commit of step 7.
+First run
+`python "${CLAUDE_PLUGIN_ROOT}/plugin/gate/cli.py" risk-hits --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase b`
+and pass its `hits` (each item with where it matched) and its `brief` path in the delegation
+prompt: the reviewer writes one brief per item there (decision 35: a hit is a line of the
+close-look banner, never a park; its escalation on an item parks and stays off the panel).
 Delegate to the `sdlc:adversarial-reviewer` agent with: the change id, the phase `b`, the
-project root, the full HEAD sha and the path `changes/<id>-<slug>/evidence/diff-b.patch`,
+project root, the full HEAD sha, the path `changes/<id>-<slug>/evidence/diff-b.patch` and the
+risk-list hits,
 started with `reviewer.alias` from
 `python "${CLAUDE_PLUGIN_ROOT}/plugin/panel/cli.py" models --root "${CLAUDE_PROJECT_DIR}" --phase b`
 as its model (`null`: pass none; the gate's `reviewer_model` check reads the model it ran
@@ -162,8 +171,9 @@ It prints the review mode (`sdlc.yaml: review`, `status.yaml: review_override`),
 the gate would park on that belong to the panel's fixed list (an open flagged concern, a
 concern naming contradicting policies, the reviewer's `escalate` verdict, an Important
 finding the run cannot fix, the verifier's "does not match the plan"), which of them the
-ledger already decides, and under `parks` what stays the owner's whatever the mode (a
-risk-list hit, a guardrail file, a run limit, an infrastructure failure). When `mode` is
+ledger already decides, and under `parks` what stays the owner's whatever the mode (an
+escalation on a risk-list item, a guardrail file, a run limit, an infrastructure failure; a
+risk-list hit itself parks nothing, decision 35). When `mode` is
 `parked` or `pending` is empty, go on to the gate. Otherwise, for each pending item `n` in
 order, three fresh contexts, each with the brief printed by
 `python "${CLAUDE_PLUGIN_ROOT}/plugin/panel/cli.py" prompt --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase b --item <n> --member <reviewer|advocate|conciliator>`:

@@ -103,9 +103,10 @@ nothing from it (a prompt-injection channel into a privileged run — the second
 review of the sample repository, 2026-09-25). In either case also read
 `changes/<id>-<slug>/status.yaml: parked_reason` and `evidence/gate-<phase>.json` "What I
 need from you": a park is a change request from the gate. The owner's un-park labels on
-the PR (`sdlc:accept-risk`, `sdlc:reset-iterations`, `sdlc:unlock-tests`; decision 24) are
+the PR (`sdlc:reset-iterations`, `sdlc:unlock-tests`; decision 24; `sdlc:accept-risk`
+retired with decision 35, since a risk-list hit no longer parks) are
 change requests too: in CI the run performed them before this command started (they are in
-`status.yaml` with the label's actor: `risk_accepted_by`, `iterations_reset_by`,
+`status.yaml` with the label's actor: `iterations_reset_by`,
 `tests_unlocked_by`); by hand, perform them now with
 `python "${CLAUDE_PLUGIN_ROOT}/plugin/state/cli.py" apply-labels --root "${CLAUDE_PROJECT_DIR}" --id <id> --pr <n>`
 (a label the automation identity applied is rejected and left on the PR, and so is a label
@@ -199,9 +200,12 @@ it reads first, in one call (`<base>` is the default branch, `origin/<default>` 
 fetch: the base the gate diffs against):
 `git diff --stat --patch --output=changes/<id>-<slug>/evidence/diff-<phase>.patch <base>...HEAD`,
 then `git rev-parse HEAD` for the full sha. The diff file is evidence: it is committed with
-the evidence commit that follows the gate. Delegate to `sdlc:adversarial-reviewer` for the
-phase with the full HEAD sha and the path `changes/<id>-<slug>/evidence/diff-<phase>.patch`,
-started with `reviewer.alias` from
+the evidence commit that follows the gate. Run
+`python "${CLAUDE_PLUGIN_ROOT}/plugin/gate/cli.py" risk-hits --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase <phase>`
+for the risk-list hits and their `brief` path (decision 35: the reviewer writes one brief per
+item there). Delegate to `sdlc:adversarial-reviewer` for the
+phase with the full HEAD sha, the path `changes/<id>-<slug>/evidence/diff-<phase>.patch` and
+the risk-list hits, started with `reviewer.alias` from
 `python "${CLAUDE_PLUGIN_ROOT}/plugin/panel/cli.py" models --root "${CLAUDE_PROJECT_DIR}" --phase <phase>`
 as its model (`null`: pass none; the gate's `reviewer_model` check reads the model it ran
 on, R7).

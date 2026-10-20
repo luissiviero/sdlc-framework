@@ -5,7 +5,8 @@ shrinks, the Claude Code version a note names against the pin, ``supersedes`` on
 its marker in the notes index, the decisions index read from each file's heading; and R58's
 checks: frontmatter that parses, decision amendments and status, a proposal's status against
 its ROADMAP row, built rows under "Done", version and PR pairs against the tags, citations of
-the moved stubs, Portuguese words; and check 8, merge claims against the merge commits.
+the moved stubs, Portuguese words; check 8, merge claims against the merge commits; and check
+9, no count of the decisions or the notes in the pages kept by hand.
 Layer 2 (this repository): the lint finds no failure, the pin is the one ``/sdlc-init``
 installs, and the decisions index on disk is what ``python tasks.py decisions-index`` writes.
 """
@@ -397,6 +398,27 @@ def test_a_portuguese_word_fails_and_a_proper_noun_does_not(tmp_path):
     assert tasks.portuguese_problems(docs) == [
         "portuguese: docs/handoffs/inputs/x.html:1: também, você",
         "portuguese: docs/page.md:2: está, isso, não",
+    ]
+
+
+def test_a_page_kept_by_hand_states_no_count_of_decisions_or_notes(tmp_path):
+    _write(tmp_path / "README.md", "| The 29 settled decisions, one file each |\n")
+    _write(
+        tmp_path / "CLAUDE.md",
+        "records the 34 settled choices; records the settled choices\n"
+        "PROGRESS choices 135–139; decisions 21–26 added; the 2 decisions it amends\n",
+    )
+    _write(
+        tmp_path / "docs" / "OPERATING_MODEL.md",
+        "All 53 notes and 36 decision files; 52 verified facts.\n",
+    )
+    _write(tmp_path / "docs" / "BUILD_GUIDE.md", "all 20 decisions in docs/DECISIONS.md\n")
+    assert tasks.count_problems(tmp_path) == [
+        'count: README.md:1: "The 29 settled decisions"; state no count, the index holds it',
+        'count: CLAUDE.md:1: "the 34 settled choices"; state no count, the index holds it',
+        'count: docs/OPERATING_MODEL.md:1: "All 53 notes"; state no count, the index holds it',
+        'count: docs/OPERATING_MODEL.md:1: "36 decision files"; state no count, the index holds it',
+        'count: docs/OPERATING_MODEL.md:1: "52 verified facts"; state no count, the index holds it',
     ]
 
 

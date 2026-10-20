@@ -12,7 +12,8 @@ phase commands under ``sdlc.yaml: review: deferred`` (or ``status.yaml: review_o
 ``mode`` prints the effective review mode. ``items`` runs the gate's checks without
 recording anything and lists what would park on a judgment item of the fixed list — an
 open flagged concern (``concern``, or ``policy`` when it names contradicting policies), an
-``escalate`` verdict of the adversarial reviewer, an Important review finding (``finding``)
+``escalate`` verdict of the adversarial reviewer (unless it is on a risk-list item, which
+stays the owner's: decision 35), an Important review finding (``finding``)
 and the verifier's "does not match the plan" (``verifier``) — as the items the panel may
 settle, each with its stable key and whether the ledger already decides it; everything else
 that failed is listed under ``parks`` and stays the owner's. It writes the list to
@@ -54,6 +55,7 @@ from review import findings as fmod  # noqa: E402
 from gate import artifacts as art  # noqa: E402
 from gate import diff as diffmod  # noqa: E402
 from gate import gate, limits  # noqa: E402
+from gate import risk as risk_mod  # noqa: E402
 from gate.checks import GateContext  # noqa: E402
 from hooks._common import ConfigError, load_sdlc_config, utf8_stdout  # noqa: E402
 from panel import ledger, models  # noqa: E402
@@ -133,6 +135,16 @@ def collect_items(
     ``evidence/verifier.md``."""
     items: list[dict[str, Any]] = []
     parks: list[dict[str, str]] = []
+    # decision 35: an escalation on a risk-list item parks for the owner and never goes to
+    # the panel; the gate's risk-hit checks name the escalated items
+    on_risk = sorted(
+        {
+            str(i)
+            for ch in result.failed
+            if ch.name in risk_mod.RISK_HIT_CHECKS
+            for i in ch.details.get("escalated") or []
+        }
+    )
     for check in result.failed:
         if check.name == "open_concerns":
             for text in check.details.get("open") or []:
@@ -142,6 +154,16 @@ def collect_items(
                     {"kind": ledger.kind_of_concern(body), "key": ledger.concern_key(body),
                      "item": body}
                 )  # fmt: skip
+        elif check.name == "adversarial_review" and "escalate" in check.reason and on_risk:
+            parks.append(
+                {
+                    "check": check.name,
+                    "reason": check.reason
+                    + " (on risk-list item(s) "
+                    + ", ".join(on_risk)
+                    + ": the owner's, never the panel's, decision 35)",
+                }
+            )
         elif check.name == "adversarial_review" and "escalate" in check.reason:
             reasons = [str(r) for r in (check.details.get("reasons") or [])]
             items.append(

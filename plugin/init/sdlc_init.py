@@ -94,6 +94,21 @@ def _yaml_list(items: list[str], indent: int = 2) -> str:
     return "\n".join(f'{pad}- "{_esc(str(item))}"' for item in items)
 
 
+def _risk_list_yaml(items: list[str | dict], indent: int = 2) -> str:
+    """``risk_list`` as a block sequence (decision 35): a plain item as a quoted string, an
+    item with globs as ``item:`` and ``paths:``, for the placeholder alone on its line."""
+    pad = " " * indent
+    lines: list[str] = []
+    for item in items:
+        if isinstance(item, dict):
+            lines.append(f'{pad}- item: "{_esc(str(item["item"]))}"')
+            lines.append(f"{pad}  paths:")
+            lines += [f'{pad}    - "{_esc(str(g))}"' for g in item["paths"]]
+        else:
+            lines.append(f'{pad}- "{_esc(str(item))}"')
+    return "\n".join(lines)
+
+
 def build_values(args, det: detect_mod.Detection) -> dict[str, str]:
     build_cmd = args.build or det.build.command or "echo no build target"
     test_cmd = args.test or det.test.command or "echo no test target"
@@ -122,6 +137,7 @@ def build_values(args, det: detect_mod.Detection) -> dict[str, str]:
         "TEST_RULE": _rule_for(test_cmd, "Bash(echo *)"),
         "LINT_RULE": _rule_for(lint_cmd, "Bash(echo *)"),
         "TEST_PATHS": _yaml_list(detect_mod.test_paths(det.language)),
+        "RISK_LIST": _risk_list_yaml(detect_mod.risk_list(Path(args.root))),
         "FRAMEWORK_REPO": args.framework_repo,
         "CLAUDE_CODE_VERSION": args.claude_code,
     }
