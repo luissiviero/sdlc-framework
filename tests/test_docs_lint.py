@@ -72,7 +72,7 @@ def test_the_baseline_hides_known_breaks_and_only_shrinks(tmp_path):
         docs / "links-baseline.txt",
         "# comment\n\nprogress/old.md\t../sdlc.yaml\nprogress/fixed.md\t../CLAUDE.md\n",
     )
-    failures, reports = tasks.lint_docs(docs, tmp_path, baseline, pin="2.1.278")
+    failures, reports = tasks.lint_docs(docs, tmp_path, baseline, pin="2.1.304")
     assert failures == [
         "broken link: docs/page.md -> nope.md",
         "baseline entry no longer breaks, remove it: progress/fixed.md\t../CLAUDE.md",
@@ -87,27 +87,27 @@ def test_a_note_names_its_claude_code_version_from_note_50_on(tmp_path):
     docs = tmp_path / "docs"
     notes = docs / "notes"
     notes.mkdir(parents=True)
-    _note(notes, 48, verified_with="Claude Code 2.1.278 on the runner")
+    _note(notes, 48, verified_with="Claude Code 2.1.304 on the runner")
     _note(notes, 49, verified_with="the sample at abc1234")
     _note(notes, 50, verified_with="Claude Code 2.1.296 in the container")
     _note(notes, 51, verified_with="the sample's main; no Claude Code fact")
     _note(notes, 52, verified_with="the framework at v1.0.12")
-    failures, reports = tasks.lint_docs(docs, tmp_path, docs / "none.txt", pin="2.1.278")
+    failures, reports = tasks.lint_docs(docs, tmp_path, docs / "none.txt", pin="2.1.304")
     assert failures == [
         "notes: 52.md names no Claude Code version in verified_with "
         '(add one, or "no Claude Code fact")'
     ]
     assert "note 49: no Claude Code version recorded" in reports
-    assert "note 50: read on Claude Code 2.1.296, pin 2.1.278" in reports
+    assert "note 50: read on Claude Code 2.1.296, pin 2.1.304" in reports
     assert not any(line.startswith(("note 48", "note 51")) for line in reports)
 
 
 def test_a_note_read_on_the_pin_among_others_matches(tmp_path):
     notes = tmp_path / "docs" / "notes"
     notes.mkdir(parents=True)
-    _note(notes, 1, verified_with="Claude Code 2.1.278 on the runner, 2.1.296 here")
-    _note(notes, 2, verified_with="Claude Code 2.1.278 on the runner, Claude Code 2.1.296 here")
-    _, reports = tasks.lint_docs(tmp_path / "docs", tmp_path, tmp_path / "none", pin="2.1.278")
+    _note(notes, 1, verified_with="Claude Code 2.1.304 on the runner, 2.1.296 here")
+    _note(notes, 2, verified_with="Claude Code 2.1.304 on the runner, Claude Code 2.1.296 here")
+    _, reports = tasks.lint_docs(tmp_path / "docs", tmp_path, tmp_path / "none", pin="2.1.304")
     assert not any(line.startswith("note ") for line in reports)
 
 
@@ -178,7 +178,7 @@ def test_a_stale_decisions_index_fails_the_lint(tmp_path):
     docs = tmp_path / "docs"
     _decision(docs / "decisions", 1, "One")
     _write(docs / "decisions" / "index.md", "# hand-kept\n")
-    failures, _ = tasks.lint_docs(docs, tmp_path, docs / "none.txt", pin="2.1.278")
+    failures, _ = tasks.lint_docs(docs, tmp_path, docs / "none.txt", pin="2.1.304")
     assert failures == ["docs/decisions/index.md differs: run python tasks.py decisions-index"]
 
 
@@ -294,7 +294,7 @@ def test_the_tags_are_read_from_git_and_absent_tags_are_reported(tmp_path):
 
     docs = tmp_path / "docs"
     _write(docs / "page.md", "x\n")
-    _, reports = tasks.lint_docs(docs, tmp_path, docs / "none.txt", pin="2.1.278")
+    _, reports = tasks.lint_docs(docs, tmp_path, docs / "none.txt", pin="2.1.304")
     assert "version and PR pairs not checked: no tags in this checkout" in reports
     git("init", "-q")
     git("commit", "-q", "--allow-empty", "-m", "Merge pull request #5 from o/b")
@@ -364,7 +364,7 @@ def test_the_merges_are_read_from_git_and_absent_history_is_reported(tmp_path):
 
     docs = tmp_path / "docs"
     _write(docs / "page.md", "x\n")
-    _, reports = tasks.lint_docs(docs, tmp_path, docs / "none.txt", pin="2.1.278")
+    _, reports = tasks.lint_docs(docs, tmp_path, docs / "none.txt", pin="2.1.304")
     assert "merge claims not checked: no merge history in this checkout" in reports
     git("init", "-q")
     git("commit", "-q", "--allow-empty", "-m", "Merge pull request #5 from o/b")

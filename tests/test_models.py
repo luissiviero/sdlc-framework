@@ -204,3 +204,47 @@ def test_without_adversarial_model_the_reviewer_s_model_is_not_checked(project):
     (change / "evidence" / "adversarial-review-c.model.json").unlink()
     check = _check(gate.run_gate(root, "0001", "c", dry_run=True))
     assert check.ok and "names no adversarial_model" in check.reason
+
+
+# NOTES §54: what CLI 2.1.278 printed on the design run of the sample's change 0017
+UNKNOWN_REVIEWER = (
+    '[claude-code:unrecognized_model] {"model":"claude-opus-5-5",'
+    '"query_source":"agent:custom:sdlc:adversarial-reviewer"}'
+)
+
+
+def test_an_unrecognized_model_line_names_the_configured_model_once():
+    """R63: the line the pinned CLI prints for a sub-agent model it does not know, read from
+    the session's stderr; a model sdlc.yaml names is reported once, in the order printed."""
+    err = "\n".join(
+        [
+            "workspace trust: skipped",
+            UNKNOWN_REVIEWER,
+            UNKNOWN_REVIEWER,
+            '[claude-code:unrecognized_model] {"model": "claude-fable-5-1"}',
+        ]
+    )
+    assert models.unrecognized(err, CONFIG, "c") == ["claude-opus-5-5", "claude-fable-5-1"]
+    # the run's own --model counts as the session's (here the design phase on Opus)
+    env = {"SDLC_MODEL": "claude-opus-5-5"}
+    assert models.unrecognized(UNKNOWN_REVIEWER, CONFIG, "b", env) == ["claude-opus-5-5"]
+
+
+def test_an_unrecognized_model_sdlc_yaml_does_not_name_is_not_reported():
+    other = '[claude-code:unrecognized_model] {"model":"claude-haiku-9-9"}'
+    assert models.unrecognized(other, CONFIG, "c") == []
+    assert models.unrecognized("", CONFIG, "c") == [] and models.unrecognized(None, {}, "c") == []
+    # no model configured: nothing is the owner's to raise the pin for
+    assert models.unrecognized(UNKNOWN_REVIEWER, {}, "c") == []
+    # a stderr with no such line (the fix round on 2.1.304, NOTES §54)
+    assert models.unrecognized("workspace trust: skipped\n", CONFIG, "b") == []
+
+
+def test_an_unrecognized_model_that_ran_all_the_same_is_not_reported():
+    """The session and the reviewer both on claude-opus-5-5: a fallback onto the session's
+    model loses nothing, and the session result's modelUsage shows the model ran."""
+    ran = ["claude-opus-5-5-20261001"]  # a dated snapshot of the configured id counts
+    assert models.unrecognized(UNKNOWN_REVIEWER, CONFIG, "c", ran=ran) == []
+    assert models.unrecognized(UNKNOWN_REVIEWER, CONFIG, "c", ran=["claude-fable-5-1"]) == [
+        "claude-opus-5-5"
+    ]

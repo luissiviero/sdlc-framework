@@ -5,7 +5,7 @@
         --maintain-metric ci_test_failure_rate --maintain-source github-actions \
         [--project-name X] [--build CMD] [--test CMD] [--lint CMD] [--setup CMD] \
         [--claude-md-from changes/0000-sdlc-init/CLAUDE.proposed.md] \
-        [--framework-repo owner/repo] [--claude-code 2.1.278] [--detect-only]
+        [--framework-repo owner/repo] [--claude-code 2.1.304] [--detect-only]
 
 What it does, idempotently (re-running upgrades):
   1. detects build/test/lint targets (init/detect.py) unless overridden;
@@ -59,7 +59,10 @@ TEMPLATE = REPO_ROOT / "template"
 DEFAULT_FRAMEWORK_REPO = "luissiviero/sdlc-framework"
 # The Claude Code CLI the SDLC workflows install; the framework's declared minimum
 # (docs/NOTES.md sections 2 and 10b: --permission-prompts none needs 2.1.259 or later).
-DEFAULT_CLAUDE_CODE_VERSION = "2.1.278"
+# 2.1.304 since 1.0.16 (ROADMAP R63): the first version read to run a sub-agent on a full
+# model id, the template's claude-opus-5-5 (docs/notes/54.md); 2.1.278 ran it on the
+# session's model.
+DEFAULT_CLAUDE_CODE_VERSION = "2.1.304"
 SKELETON_SECTIONS = (
     "## Commands",
     "## Things Claude gets wrong",
