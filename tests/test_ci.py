@@ -139,9 +139,10 @@ def test_choose_auth_token_only():
     assert chosen["auth"] == "oauth" and chosen["bare"] is False
 
 
-def test_choose_auth_key_wins_when_both_are_set():
+def test_choose_auth_token_wins_when_both_are_set():
+    """Decision 38 (amends decision 1's "key preferred")."""
     chosen = auth.choose_auth(BOTH_ENV)
-    assert chosen["auth"] == "api_key" and chosen["bare"] is True
+    assert chosen["auth"] == "oauth" and chosen["bare"] is False
 
 
 def test_choose_auth_none():
@@ -152,9 +153,9 @@ def test_choose_auth_none():
 
 def test_credential_env_carries_exactly_one_secret():
     out = auth.credential_env({"PATH": "/usr/bin", **BOTH_ENV})
-    assert out[KEY_VAR] == FAKE_KEY
-    assert TOKEN_VAR not in out and out["PATH"] == "/usr/bin"
-    assert auth.credential_env(TOKEN_ENV) == TOKEN_ENV
+    assert out[TOKEN_VAR] == FAKE_TOKEN
+    assert KEY_VAR not in out and out["PATH"] == "/usr/bin"
+    assert auth.credential_env(KEY_ENV) == KEY_ENV
 
 
 def test_substrate_smoke_agrees_with_the_shared_selection():
