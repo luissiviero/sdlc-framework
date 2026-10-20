@@ -27,6 +27,7 @@ None: no guardrail line changes in this PR.
 ## Left
 - **The `HANDOFF.md` rule** of choice 241: its own PR, after this one merges.
 - **A full docs sweep before the real-project trial**: recommended, not decided (choice 241).
+- **R62** (a citation reader for this repository's docs pull requests, on Gemini): proposed at the owner's request, Order blank; it shares R8's key and terms question, and the owner places both.
 - **Change 0017** runs through the sample's phases; its runs are read for R7 (NOTES §51's open items) when it reaches a gate.
 - **The decision files of R24 and R22** (35 and 36): one session, one after the other, each in its own documentation PR.
 - Every other open item is in the session file of `ccr-7ef35daa-7adzh8`, unchanged by this record except R61's decision and the answer to #262's question.
