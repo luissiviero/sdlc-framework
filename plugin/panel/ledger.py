@@ -435,11 +435,15 @@ def decided_keys(entries: list[dict[str, Any]]) -> set[str]:
     return {str(e.get("key", "")) for e in active(entries)}
 
 
+def _is_cost(cost: Any) -> bool:
+    return isinstance(cost, (int, float)) and not isinstance(cost, bool)
+
+
 def total_cost(entries: list[dict[str, Any]]) -> float:
     total = 0.0
     for e in entries:
         cost = e.get("cost_usd")
-        if isinstance(cost, (int, float)) and not isinstance(cost, bool):
+        if _is_cost(cost):
             total += float(cost)
     return round(total, 4)
 
@@ -523,7 +527,11 @@ def render_md(phase: str, entries: list[dict[str, Any]]) -> str:
         if isinstance(overturned, dict):
             line += f" — OVERTURNED by the owner's review comment: {overturned.get('comment', '')}"
         lines.append(" ".join(line.split()))
-    lines += ["", f"Total panel cost: ${total_cost(entries):.2f}"]
+    # NOTES §55: a line recorded without --cost-usd holds null, and the members' spend is
+    # inside the session's; when no line carries a cost, the total says so, not $0.00
+    priced = any(_is_cost(e.get("cost_usd")) for e in entries)
+    total_text = f"${total_cost(entries):.2f}" if priced else "n/a"
+    lines += ["", f"Total panel cost: {total_text}"]
     return "\n".join(lines) + "\n"
 
 

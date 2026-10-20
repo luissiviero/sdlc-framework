@@ -3256,6 +3256,24 @@ def _run_phase(args, env: dict[str, str], track: dict[str, Any]) -> int:
                 plugin_dir / "plugin" / "pr" / "cli.py",
                 ["check-run", "--root", str(root), "--id", change_id, "--phase", gate_phase],
             )
+    # R63: a configured model the pinned CLI does not know, which did not run: its sub-agent
+    # ran on another model (NOTES §54); the park names the pin to raise, which says more than
+    # the reviewer_model or panel_models park the fallback causes
+    usage = data.get("modelUsage")
+    ran = list(usage) if isinstance(usage, dict) else []
+    unknown = panel_models_mod.unrecognized(err, config, gate_phase, env, ran)
+    if unknown:
+        plugin_cfg = config.get("plugin")
+        pinned = plugin_cfg.get("claude_code") if isinstance(plugin_cfg, dict) else None
+        parked = park_and_publish(
+            plugin_dir, root, change_dir, status_mod.read_status(change_dir), phase,
+            f"{CLI_MODEL_CHECK}: "
+            + CLI_MODEL_PARK.format(cli=pinned or "of this job", models=", ".join(unknown)),
+            branch=fix_branch, check=CLI_MODEL_CHECK,
+            need=CLI_MODEL_NEED.format(stderr=stderr_path.name), keep_failed=True,
+        )  # fmt: skip
+        _emit({**parked, "unrecognized_models": unknown, "cost_usd": cost, "branch": branch})
+        return EXIT_OK
     # 0.2.30: a run that added panel decisions shows which models it used; the devil's
     # advocate must have run on sdlc.yaml's panel_advocate_model, or the change parks
     models = panel_models(change_dir, gate_phase, panel_before, data, config, env)
@@ -3437,6 +3455,17 @@ def _run_phase(args, env: dict[str, str], track: dict[str, Any]) -> int:
     return EXIT_FAILED if demotion_lost else EXIT_OK
 
 
+CLI_MODEL_CHECK = "cli_model"
+CLI_MODEL_PARK = (
+    "the pinned Claude Code CLI {cli} does not know model {models}; raise sdlc.yaml: claude_code"
+)
+CLI_MODEL_NEED = (
+    "The Claude Code CLI the job installed (sdlc.yaml: plugin.claude_code) printed "
+    "[claude-code:unrecognized_model] for a model this run was configured with, which did "
+    "not run: the sub-agent ran on another model (the framework's NOTES §54). Raise "
+    "plugin.claude_code to a CLI that knows the model (2.1.304 or later for "
+    "claude-opus-5-5), then re-run the phase; evidence/{stderr} holds the line."
+)
 PANEL_MODEL_CHECK = "panel_models"
 PANEL_MODEL_NEED = (
     "The review panel's devil's advocate must run on the model sdlc.yaml's "

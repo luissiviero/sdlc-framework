@@ -50,7 +50,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-DEFAULT_CLAUDE_CODE = "2.1.278"  # the framework's minimum, used when the key is absent
+DEFAULT_CLAUDE_CODE = "2.1.304"  # the framework's minimum, used when the key is absent
 # npm version or dist-tag characters only: the value reaches a shell command in the job
 CLAUDE_CODE_RE = re.compile(r"^[0-9A-Za-z.+-]+$")
 PLUGIN_BLOCK_RE = re.compile(r"(?m)^plugin:[ \t]*$")

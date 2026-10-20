@@ -82,7 +82,7 @@ def test_pyyaml_agrees_when_available():
 # What an owner writes by hand into sdlc.yaml (the plugin test coverage map of 2026-10-19,
 # gap 3): every hook reads the file through yamlish, and a misread turns `protected_paths`
 # into a deny of every edit. Each shape must give PyYAML's value or a YamlishError, never a
-# different value. The pins are the sharpest case: `1.0.14` and `2.1.278` are strings, not
+# different value. The pins are the sharpest case: `1.0.14` and `2.1.304` are strings, not
 # numbers, to both readers.
 @pytest.mark.parametrize(
     "text",
@@ -91,7 +91,7 @@ def test_pyyaml_agrees_when_available():
         'title: "a # inside quotes is not a comment"\n',
         "title: 'single quotes: with a colon'\n",
         'cmd: "python -m pytest -q"  # trailing comment\n',
-        "plugin:\n  version: 1.0.14\n  claude_code: 2.1.278\n",
+        "plugin:\n  version: 1.0.14\n  claude_code: 2.1.304\n",
         "session_model:\n  default: claude-opus-5-5\n  b: claude-fable-5-1\n",
         "adversarial_model: claude-opus-5-5\npanel_advocate_model: claude-fable-5-1\n",
         "protected_paths: []\n",
@@ -144,9 +144,9 @@ def test_yaml_1_1_shapes_read_as_yaml_1_2_strings_on_purpose():
 
 def test_the_pins_stay_strings_to_both_readers():
     yaml = pytest.importorskip("yaml")
-    text = "plugin:\n  version: 1.0.14\n  claude_code: 2.1.278\nfloat_like: 1.0\n"
+    text = "plugin:\n  version: 1.0.14\n  claude_code: 2.1.304\nfloat_like: 1.0\n"
     data = yamlish.loads(text)
-    assert data["plugin"] == {"version": "1.0.14", "claude_code": "2.1.278"}
+    assert data["plugin"] == {"version": "1.0.14", "claude_code": "2.1.304"}
     assert isinstance(data["float_like"], float)
     assert data == yaml.safe_load(text)
 
