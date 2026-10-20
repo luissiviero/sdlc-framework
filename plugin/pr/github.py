@@ -1262,6 +1262,36 @@ def update_issue_body(
     return _attempt(via_api, via_gh, number=number)
 
 
+def add_comment(repo: str, number: int, body: str, cwd: str | Path | None = None) -> dict[str, Any]:
+    """One comment on an issue or a pull request (the second opinion's record, R8)."""
+
+    def via_api() -> dict[str, Any]:
+        result = _request(
+            "POST",
+            f"{API_ROOT}/repos/{repo}/issues/{number}/comments",
+            token() or "",
+            {"body": body},
+        )
+        if result["error"]:
+            return {"route": "api", "ok": False, "reason": result["error"], "number": number}
+        return {"route": "api", "ok": True, "number": number, "url": result["data"].get("html_url")}
+
+    def via_gh() -> dict[str, Any]:
+        result = _gh(
+            "issue", "comment", str(number), "--repo", repo, "--body-file", "-", stdin=body, cwd=cwd
+        )
+        if not result["ok"]:
+            return {
+                "route": "gh",
+                "ok": False,
+                "reason": _gh_error(result, "gh issue comment"),
+                "number": number,
+            }
+        return {"route": "gh", "ok": True, "number": number, "url": _gh_url(result)}
+
+    return _attempt(via_api, via_gh, number=number)
+
+
 def pin_issue(repo: str, node_id: str | None) -> dict[str, Any]:
     """Best effort: a pinned issue is convenience, never a precondition."""
     if not node_id:

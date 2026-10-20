@@ -84,6 +84,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+SESSION_HIDDEN_VARS = ("GEMINI_API_KEY",)  # as ``ci/run_phase.py``: never a session's (R8)
+
 FRAMEWORK_DIR = Path(__file__).resolve().parents[2]
 PLUGIN_DIR = FRAMEWORK_DIR / "plugin"
 if str(PLUGIN_DIR) not in sys.path:
@@ -803,6 +805,9 @@ def _usage(message: str) -> int:
 def main(argv: list[str] | None = None, env: Mapping[str, str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     env = os.environ if env is None else env
+    # ROADMAP R8 (1.0.19): the Gemini key never reaches a Claude session, also when a workflow
+    # copy from 1.0.17 still passes it (``ci/run_phase.SESSION_HIDDEN_VARS``)
+    env = {k: v for k, v in env.items() if k not in SESSION_HIDDEN_VARS}
     if args.fixture and args.root:
         return _usage("--fixture builds the project: give --fixture or --root, not both")
     if not args.fixture and not args.root:

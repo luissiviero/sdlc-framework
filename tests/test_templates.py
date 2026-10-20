@@ -164,6 +164,7 @@ def test_sdlc_yaml_carries_decision_32_s_defaults():
     assert limits.run_caps(gate, True) == (400, 180) and limits.run_caps(gate, False) == (200, 120)
     for name in ALL_WORKFLOWS:
         text = (WORKFLOW_DIR / name).read_text(encoding="utf-8")
+        text = text.split("\n  second-opinion:")[0]  # R8's job after the phase job: 20 minutes
         minutes = re.findall(r"(?m)^    timeout-minutes: (\d+)$", text)
         if name in ("sdlc-build.yml", FIX_WORKFLOW):
             assert minutes == ["260"], name  # 180 + 5 of grace, the commands step and the judge
@@ -1021,7 +1022,7 @@ def test_a_workflow_that_pushes_mints_the_app_token_first(name):
     """The mint step is the job's first, skipped without the variable; the project checkout
     and every GitHub token of the job read its output, falling back to the workflow token."""
     data = _workflow_yaml(name)
-    [job] = data["jobs"].values()
+    job = next(iter(data["jobs"].values()))  # R8's second-opinion job after it mints nothing
     steps = job["steps"]
     # the token carries no more than this job's permissions: block grants the workflow token
     narrowed = {
@@ -1085,8 +1086,15 @@ def test_a_workflow_that_mints_the_app_token_records_when(name):
     """The installation token expires an hour after it is minted; the step after the mint
     writes the time to $GITHUB_ENV for the runner's 50-minute fallback, and only when the
     mint ran (without the App the fallback has nothing to count from and stays a no-op)."""
-    [job] = _workflow_yaml(name)["jobs"].values()
-    assert job["steps"][1] == STAMP_STEP
+    jobs = _workflow_yaml(name)["jobs"]
+    # R8 (1.0.19): the second-opinion job after the phase job mints nothing
+    minting = [
+        job
+        for job in jobs.values()
+        if any("create-github-app-token" in str(step.get("uses", "")) for step in job["steps"])
+    ]
+    assert len(minting) == 1 and set(jobs) - {"second-opinion"} == {next(iter(jobs))}
+    assert minting[0]["steps"][1] == STAMP_STEP
 
 
 @pytest.mark.parametrize("name", TOKEN_WORKFLOWS)

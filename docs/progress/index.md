@@ -67,3 +67,4 @@ chronological order (oldest first). The current record stays in `docs/PROGRESS.m
 - [Progress — change 0004's open questions: four answered by the owner (choice 246), the rest registered for R14's turn (2026-10-20)](2026-10-20-0004-open-questions-choice-246.md)
 - [Progress — docs-lint check 8 reports a merge claim that may be another repository's (choice 247) (2026-10-20)](2026-10-20-docs-lint-check-8-choice-247.md)
 - [Progress — ROADMAP R22, gate (e) is the owner's approving review and a merge App merges on it, as plugin 1.0.18 (2026-10-20)](2026-10-20-r22-gate-e-approving-review-1.0.18.md)
+- [Progress — R22's six questions answered as recommended (choice 249); the sample's upgrade to 1.0.18 opened (2026-10-20)](2026-10-20-choice-249-r22-questions.md)
