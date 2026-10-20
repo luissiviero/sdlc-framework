@@ -32,7 +32,7 @@ Across the five changes that finished, the model sessions worked 0.3 to 6.4 hour
 | R46 | **The fast lane.** An intent the owner wrote and pushed is accepted by that act (no gate (a)); gate (b) waits for the owner only on a non-routine plan (the adversarial reviewer's class); a routine design continues to the build, its spec and plan reaching the owner at (e) | 30 |
 | R47 | **Review requests at waiting gates.** When a pull request starts waiting for the owner (a human gate, a park), the automation requests the owner's review, so GitHub's own push reaches the phone; nothing else notifies | 31 |
 | R48 | **Deferred review by default, and higher run caps for the build.** `/sdlc-init` proposes and the template carries `review: deferred`; the build run's turn and wall-clock caps rise, within the budget cap | 32 |
-| R49 | **A GitHub App identity.** The automation pushes and opens pull requests as a GitHub App, so the project's CI runs on them by itself; the App is the one R22 creates, so R22's App setup comes first and R22's merge step stays in R22 | 33 |
+| R49 | **A GitHub App identity.** The automation pushes and opens pull requests as a GitHub App, so the project's CI runs on them by itself; the App is the one R22 creates, so R22's App setup comes first and R22's merge step stays in R22 | 33 *[2026-10-20, choice 242: R22 merges through an App of its own; this App is never a bypass actor (decisions 33 and 36)]* |
 
 With R10 (a red target starts the next round itself) and R17 (an `@claude` comment starts a round), a routine change goes from intent to merge the same day: model time plus the owner's one look at (e); a non-routine change takes about a day.
 
