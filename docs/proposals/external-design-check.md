@@ -19,7 +19,7 @@ generated: { by: sdlc-framework-session/ccr-1578d710-8r04sw, at: 2026-10-09T15:0
 
 # An external second opinion on the design at gate (b)
 
-**Status: proposed (roadmap R8).** Nothing is built. The owner asked for it on 2026-10-09 as an **addition** to the current checks: the adversarial reviewer, the panel and the owner's review at gate (b) all stay as they are. It starts after R7 has been measured on two changes (below).
+**Status: proposed (roadmap R8).** Nothing is built. The owner asked for it on 2026-10-09 as an **addition** to the current checks: the adversarial reviewer, the panel and the owner's review at gate (b) all stay as they are. It starts after R7 has been measured on two changes (below). *[2026-10-20: `docs/reviews/2026-10-20-gemini-second-opinion-study.md` reads this proposal against #290, which gave the key to the session instead, and recommends this proposal's shape, extended to gate (e); the owner has not decided.]*
 
 ## The problem
 
