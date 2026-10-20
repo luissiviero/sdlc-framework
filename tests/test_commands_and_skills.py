@@ -633,16 +633,19 @@ def test_sdlc_deploy_prepares_the_release_around_the_review_and_the_gate():
         assert nothing in prep, nothing
     assert "--ready" in step5 and "sdlc:e-ready" in step5
     assert "The agent does everything up to the production gate and nothing past it" in text
-    assert "merge = gate (e) passed; the release workflow then runs `deploy.command`" in step5
+    # R22 (decision 36): the approval is gate (e), and the merge App merges on it
+    assert "the approval = gate (e) passed (decision 36); the merge App then merges it" in (
+        " ".join(step5.split())
+    )
     two_acts = (
         "the release label `sdlc:release-approved` is the second act: apply it on this PR "
-        "after merging; the release workflow waits for it"
+        "in the same visit; the release workflow waits for it"
     )
-    assert two_acts in step5
+    assert two_acts in " ".join(step5.split())
     # decision 5: the label is the only route, a signed tag a run could make is not one
     assert "signed tag" not in text
     hand_over = text[text.index("## 6. Hand over") :]
-    assert two_acts in hand_over and "Nothing else runs" in hand_over
+    assert two_acts in " ".join(hand_over.split()) and "Nothing else runs" in hand_over
     fm = frontmatter(COMMANDS / "sdlc-deploy.md")
     assert 'Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/release/notes.py" *)' in fm["allowed-tools"]
     assert "is B4" not in fm["description"] and "release workflow" in fm["description"]
@@ -767,13 +770,16 @@ def test_sdlc_init_prescribes_the_branch_ruleset_of_decision_4():
     # the review of the 0.2.25 diff (H1): only "Restrict updates" with the owner as the sole
     # bypass actor keeps the workflow token from merging a pull request
     assert (
-        '**"Restrict updates"** with the repository admin (the owner) as the only bypass actor'
-        in text
+        '**"Restrict updates"** with the repository admin (the owner) as the only bypass actor '
+        "besides the merge App" in text
     )
+    # R22 (decision 36): the merge App is the second bypass actor, decision 33's App never
+    assert 'the merge App above is its second bypass actor, in "For pull requests only"' in text
+    assert "Never add this App to a ruleset's bypass list" in text
     assert "still lets `gh pr merge` through" in text
     assert "The daily digest says so" in text
     # 0.2.26: the bypass mode, from the owner's merges of 2026-09-27 (NOTES section 17)
-    assert "The bypass actor's mode is **Exempt**" in text
+    assert "The owner's bypass actor's mode is **Exempt**" in text
     assert "no bypass audit entry for the owner's merges" in text
     assert "the workflow token included" in text
     model = (PLUGIN.parent / "docs" / "OPERATING_MODEL.md").read_text(encoding="utf-8")

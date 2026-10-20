@@ -249,7 +249,7 @@ def test_the_banner_lists_each_item_with_its_brief_and_what_merging_does(tmp_pat
     _gate_file(change, "c", {"auth": ["sample_pkg/auth.py"]})
     _gate_file(change, "d", {"money movement": ["pay.py"]}, declared=["tests/a.py (plan)"])
     lines = risk.banner_lines(change, "d", st)
-    assert "Only your merge at gate (e) accepts them" in lines[0]
+    assert "Only your approval at gate (e) accepts them" in lines[0]
     assert lines[1].startswith("- `auth` — accepted at gate (b) by @luissiviero on 2026-10-20")
     assert lines[2].startswith("- `money movement` — first found at gate (d): pay.py.")
     assert lines[2].endswith("the reviewer wrote no brief on it")
@@ -452,6 +452,72 @@ def test_only_the_owner_s_e_merge_accepts(tmp_path):
     st.risk_acceptances = [_line(phase="e", pr=7)]
     again = release_cli.merge_acceptance(change_dir, st, {"merged_by": OWNER}, 7, "abc", {}, env)
     assert again is None
+
+
+def test_after_r22_the_owner_s_approval_accepts_and_the_merge_app_never(tmp_path):
+    """Choice 242, point 2: once the merge App merges, the owner's approving review takes the
+    (e) acceptance; the App's [bot] merge accepts nothing by itself."""
+    root, change_dir = _repo_with_change(tmp_path)
+    _e_hit(change_dir)
+    st = status_mod.read_status(change_dir)
+    env = {"GITHUB_REPOSITORY_OWNER": OWNER}
+    approved = {
+        "ok": True,
+        "reviews": [
+            {"author": "collaborator", "state": "APPROVED", "commit": "c1", "at": "t0"},
+            {"author": OWNER, "state": "APPROVED", "commit": "c2", "at": "2026-10-21T07:00:00Z"},
+        ],
+    }
+    pull = {"merged_by": "sdlc-merge[bot]", "body": ""}
+    line, why = release_cli.merge_acceptance(
+        change_dir, st, pull, 7, "abc", {}, env, reviews=lambda: approved
+    )
+    assert why == "" and line["via"] == risk.ACCEPT_VIA_APPROVAL and line["by"] == OWNER
+    assert line["at"] == "2026-10-21T07:00:00Z" and line["head"] == "c2"
+    risk.validate_acceptances([line])
+    # the owner's later "Request changes" withdraws it; a failed read accepts nothing
+    withdrawn = {
+        "ok": True,
+        "reviews": [*approved["reviews"], {"author": OWNER, "state": "CHANGES_REQUESTED"}],
+    }
+    for reviews in (withdrawn, {"ok": False, "reason": "HTTP 403"}):
+        got = release_cli.merge_acceptance(
+            change_dir, st, pull, 7, "abc", {}, env, reviews=lambda reviews=reviews: reviews
+        )
+        assert got[0] is None and "no approving review by the owner" in got[1]
+    # an approval line belongs to gate (e) only
+    with pytest.raises(ValueError):
+        risk.validate_acceptances([{**line, "details": {**line["details"], "phase": "b"}}])
+
+
+def test_the_runner_confirms_an_approval_line_from_the_reviews(tmp_path, monkeypatch):
+    _change, st = status_mod.new_change(tmp_path, "Risky")
+    st.risk_acceptances = [{**_line(phase="e", pr=7), "via": risk.ACCEPT_VIA_APPROVAL}]
+    after = run_phase.owner_fields(st)
+
+    class GitHub:
+        def __init__(self, reviews, merged=True):
+            self.reviews, self.merged = reviews, merged
+
+        def pr_by_number(self, repo, number):
+            body = f"{risk.BANNER_HEADING}: …\n- `auth` — first found at gate (e): x."
+            return {"ok": True, "merged": self.merged, "merged_by": "sdlc-merge[bot]",
+                    "head_ref": "sdlc/0001/c", "body": body}  # fmt: skip
+
+        def pr_reviews(self, repo, number):
+            return {"ok": True, "reviews": self.reviews}
+
+    env = {"GITHUB_ACTIONS": "true"}
+    approval = [{"author": OWNER, "state": "APPROVED"}]
+    for fake, expected in (
+        (GitHub(approval), []),
+        (GitHub([{"author": "mallory", "state": "APPROVED"}]), ["no approving review by"]),
+        (GitHub(approval, merged=False), ["is not merged"]),
+    ):
+        monkeypatch.setattr(run_phase, "_github", lambda fake=fake: fake)
+        found = run_phase.acceptance_mismatches(after, {}, "owner/name", env)
+        assert [e for e in expected if not any(e in r for r in found)] == [], found
+        assert bool(found) is bool(expected)
 
 
 # --- the label retired; /sdlc-init proposes globs -------------------------------------------

@@ -269,6 +269,23 @@ def cmd_validate(args) -> int:
 
 
 # --- check-run --------------------------------------------------------------------------------
+def _not_evidence_since(root: Path, change_dir: Path, reviewed: str, final: str) -> str:
+    """ "" when ``final`` is ``reviewed`` or follows it with only evidence and the run record
+    (``findings.allowed_after_review``), else the reason the check is not green there."""
+    if not reviewed or not final:
+        return "the reviewed commit or the final head is unknown"
+    if reviewed == final:
+        return ""
+    if not diffmod.is_ancestor(root, reviewed, final):
+        return f"the final head {final[:10]} does not follow the reviewed {reviewed[:10]}"
+    rel = str(Path(change_dir).resolve().relative_to(Path(root).resolve())).replace("\\", "/")
+    files = diffmod.committed_files(root, reviewed, final)
+    other = [f for f in files if not fmod.allowed_after_review(f, rel)]
+    if other:
+        return f"commits after the reviewed {reviewed[:10]} change: {', '.join(other[:5])}"
+    return ""
+
+
 def cmd_check_run(args) -> int:
     """Publish the tally as the ``sdlc/review`` check run. It never fails the run: with no
     GitHub route (no remote, no ``pr/github.py``, no credentials) the summary was already
@@ -288,6 +305,17 @@ def cmd_check_run(args) -> int:
     title = f"{tally['important']} Important, {tally['nit']} nits"
     summary = fmod.render_summary(data)
     head = str(data.get("head") or diffmod.head_sha(root) or "")
+    if getattr(args, "final_head", False):
+        # R22 (decision 36, point 3): the runner posts the check again on the build PR's
+        # final head, after its own last commit; green only while every commit after the
+        # reviewed one is evidence or the run record, which is what the merge step accepts
+        final = diffmod.head_sha(root) or ""
+        later = _not_evidence_since(root, change_dir, head, final)
+        if later:
+            conclusion = "failure"
+            title = f"{title}; commits after the reviewed one"
+            summary = f"{summary}\n\n{later}"
+        head = final or head
     repo = gitops.github_repo(root) if gitops.is_repo(root) else None
     if not repo:
         _emit({"route": "none", "reason": "no GitHub remote: nothing to post the check run to"})
@@ -350,6 +378,12 @@ def build_parser() -> argparse.ArgumentParser:
             )
         if name == "check-run":
             s.add_argument("--phase", default="e", choices=c.PHASES)
+            s.add_argument(
+                "--final-head",
+                action="store_true",
+                help="post on HEAD, green only if every commit since the reviewed one is "
+                "evidence or the run record (the runner, at (e))",
+            )
         s.set_defaults(fn=fn)
     return p
 

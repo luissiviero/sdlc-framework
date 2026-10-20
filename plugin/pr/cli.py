@@ -180,6 +180,11 @@ def cmd_upsert(args) -> int:
         st.touch()
         status_mod.write_status(change_dir, st)
         out["build_pr_recorded"] = int(number)
+    if number and head != c.work_branch(args.id, "c"):
+        # R22 (decision 36, point 5): ruleset 2 requires sdlc/review, so every pull request
+        # that is not a build PR carries a passing "not a build PR" on its head; the workflow
+        # token's pushes and pull requests start no run of sdlc-merge.yml that would post it
+        out["review_check"] = not_build_check(repo, int(number), found, root)
     if label and number:
         github.ensure_label(repo, label, label_color(label), f"SDLC gate ({args.phase})", cwd=root)
     if number:
@@ -207,6 +212,17 @@ def cmd_upsert(args) -> int:
                 found = got if got.get("ok") else {"state": "open", "requested_reviewers": []}
             out["review_request"] = owner_review(root, repo, int(number), label, found)
     return finish()
+
+
+def not_build_check(repo: str, number: int, found: dict[str, Any], root: Path) -> dict[str, Any]:
+    """Post the passing ``sdlc/review`` "not a build PR" on the pull request's head, read
+    back from GitHub (the head the upsert just pushed, or the new pull request's). Never
+    fails the upsert: the result says what happened."""
+    got = github.pr_by_number(repo, number, cwd=root)
+    sha = str((got.get("head_sha") if got.get("ok") else None) or found.get("head_sha") or "")
+    if not sha:
+        return {"ok": False, "reason": got.get("reason") or "the head commit is unknown"}
+    return github.post_not_build_check(repo, sha, cwd=root)
 
 
 def check_run_result(root: Path, change_dir: Path, phase: str) -> dict[str, Any]:

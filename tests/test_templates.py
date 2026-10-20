@@ -237,6 +237,7 @@ RUNBOOK_WORKFLOW = "sdlc-runbook.yml"  # the owner's Go on a runbook (plugin 0.2
 EVALS_WORKFLOW = "sdlc-evals.yml"  # build guide step 35 (plugin 0.2.19)
 SCAN_WORKFLOW = "sdlc-scan.yml"  # build guide step 38, decision 16 (plugin 0.2.19)
 COMMENT_WORKFLOW = "sdlc-comment.yml"  # the owner's @claude comment (decision 34, R17)
+MERGE_WORKFLOW = "sdlc-merge.yml"  # gate (e) is the owner's approval (decision 36, R22)
 ALL_WORKFLOWS = (
     *PHASE_WORKFLOWS,
     "sdlc-digest.yml",
@@ -248,6 +249,7 @@ ALL_WORKFLOWS = (
     RUNBOOK_WORKFLOW,
     EVALS_WORKFLOW,
     SCAN_WORKFLOW,
+    MERGE_WORKFLOW,
 )
 # this repository's own installed copies (PR #21) and its substrate smoke test
 REPO_WORKFLOW_DIR = TEMPLATE.parent / ".github" / "workflows"
@@ -299,6 +301,12 @@ def test_this_repository_s_workflow_copies_match_the_template():
             # has no evals/check.py: the per-project workflow is not installed here
             assert not (REPO_WORKFLOW_DIR / name).exists()
             assert (REPO_WORKFLOW_DIR / "framework-evals.yml").is_file()
+            continue
+        if name == MERGE_WORKFLOW:
+            # R22 (decision 36): plugin/ci/merge_step.py is not in the framework this
+            # repository's sdlc.yaml pins, and this repository has no merge App yet: the copy
+            # is installed with the pin, as the comment workflow's was
+            assert not (REPO_WORKFLOW_DIR / name).exists()
             continue
         if name == COMMENT_WORKFLOW:
             # R17 (decision 34): the dispatcher calls plugin/ci/comment_dispatch.py, which the
@@ -957,7 +965,55 @@ def _condition(name: str, job: str) -> str:
 
 
 def test_every_workflow_either_mints_the_app_token_or_keeps_the_workflow_token():
-    assert sorted((*APP_WORKFLOWS, *TOKEN_WORKFLOWS)) == sorted(ALL_WORKFLOWS)
+    # the merge workflow mints the merge App's token, never decision 33's (choice 242)
+    assert sorted((*APP_WORKFLOWS, *TOKEN_WORKFLOWS, MERGE_WORKFLOW)) == sorted(ALL_WORKFLOWS)
+
+
+def test_the_merge_workflow_rings_posts_and_merges_with_the_merge_app_only():
+    """R22 (decision 36): the review-triggered job holds no key and only dispatches; the
+    pull_request job posts "not a build PR"; the dispatched job alone reads the merge App's
+    key, in the sdlc-merge environment, never decision 33's App's key."""
+    data = _workflow_yaml(MERGE_WORKFLOW)
+    on = _triggers(data)
+    assert on["pull_request_review"]["types"] == ["submitted"]
+    assert on["pull_request"]["types"] == ["opened", "synchronize", "reopened", "ready_for_review"]
+    assert set(on["workflow_dispatch"]["inputs"]) == {"change_id", "head_ref", "pr"}
+    assert data["permissions"] == {
+        "actions": "write", "checks": "write", "contents": "read", "pull-requests": "read",
+    }  # fmt: skip
+    jobs = data["jobs"]
+    assert list(jobs) == ["doorbell", "not-a-build-pr", "merge"]
+    text = (WORKFLOW_DIR / MERGE_WORKFLOW).read_text(encoding="utf-8")
+    assert "SDLC_APP_PRIVATE_KEY" not in text and "vars.SDLC_APP_ID" not in text
+    assert re.findall(r"secrets\.\w+", text) == ["secrets.SDLC_MERGE_APP_PRIVATE_KEY"]
+    for name in ("doorbell", "not-a-build-pr"):
+        job = jobs[name]
+        assert "environment" not in job
+        assert "SDLC_MERGE" not in json.dumps(job)
+        assert job["steps"][0]["with"]["ref"] == DEFAULT_BRANCH_EXPR
+    doorbell = _condition(MERGE_WORKFLOW, "doorbell")
+    assert "github.event.review.state == 'approved'" in doorbell
+    assert jobs["doorbell"]["steps"][-1]["run"].startswith(
+        "python framework/plugin/ci/merge_step.py doorbell "
+    )
+    assert "!(startsWith(github.event.pull_request.head.ref, 'sdlc/')" in (
+        _condition(MERGE_WORKFLOW, "not-a-build-pr")
+    )
+    merge = jobs["merge"]
+    assert merge["environment"] == "sdlc-merge"
+    assert merge["concurrency"]["group"].startswith("sdlc-merge-")
+    mint = [s for s in merge["steps"] if s.get("uses", "").startswith("actions/create-github")]
+    assert len(mint) == 1 and mint[0]["with"]["app-id"] == "${{ vars.SDLC_MERGE_APP_ID }}"
+    assert {k for k in mint[0]["with"] if k.startswith("permission-")} == {
+        "permission-contents", "permission-pull-requests",
+    }  # fmt: skip
+    last = merge["steps"][-1]
+    assert last["env"]["SDLC_MERGE_TOKEN"] == "${{ steps.app.outputs.token }}"
+    assert last["env"]["GITHUB_TOKEN"] == WORKFLOW_TOKEN  # the reads; the merge App merges only
+    assert "SDLC_MERGE_TOKEN" not in json.dumps(merge["steps"][:-1])
+    # without the merge App the job says so and stops: the owner merges (fallback C1)
+    assert merge["steps"][0]["if"] == "${{ vars.SDLC_MERGE_APP_ID == '' }}"
+    assert all(s.get("if") == "${{ vars.SDLC_MERGE_APP_ID != '' }}" for s in merge["steps"][1:])
 
 
 @pytest.mark.parametrize("name", APP_WORKFLOWS)
@@ -1078,7 +1134,12 @@ def test_the_app_s_own_events_start_nothing_they_should_not():
     assert "!endsWith(github.event.comment.user.login, '[bot]')" in (
         _condition(COMMENT_WORKFLOW, "dispatch")
     )
-    # the release label counts only on a merged PR (the App never merges, decision 4)
+    # an approval by a [bot] rings no merge (decision 36)
+    assert "!endsWith(github.event.review.user.login, '[bot]')" in (
+        _condition(MERGE_WORKFLOW, "doorbell")
+    )
+    # the release label counts only on a merged PR (decision 33's App never merges, decision
+    # 4; the merge App merges only on the owner's approval, decision 36)
     assert "github.event.pull_request.merged == true &&" in _condition(RELEASE_WORKFLOW, "release")
 
 

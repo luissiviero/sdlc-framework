@@ -532,12 +532,12 @@ def test_merged_at_gate_e_reason_names_the_release_act_on_a_declared_production(
     change_dir, st = _parked_at_e(tmp_path)
     plain = status.merged_at_gate_e(st)
     assert plain.gate.result == "passed"
-    assert plain.gate.reason == "merged by the owner: gate (e) is the merge (decision 13)"
+    assert plain.gate.reason == status.MERGED_AT_GATE_E_REASON
     prod = status.merged_at_gate_e(st, production=True)
     assert prod.gate.phase == "e" and prod.gate.result == "passed"
     assert prod.parked_reason is None
     assert prod.gate.reason == (
-        "merged by the owner: gate (e) is the merge (decision 13); the release approval "
+        f"{status.MERGED_AT_GATE_E_REASON}; the release approval "
         "sdlc:release-approved is the release workflow's second act on this declared production"
     )
     assert prod.gate.reason == status.MERGED_AT_GATE_E_PRODUCTION_REASON

@@ -1,52 +1,80 @@
-# Progress — R64 registered: /sdlc-init refreshes the files it wrote once (choice 245); the pins at 1.0.17 and the sample's upgrade (2026-10-20)
+# Progress — ROADMAP R22, gate (e) is the owner's approving review and a merge App merges on it, as plugin 1.0.18 (2026-10-20)
 
-This session ran on branch `ccr-5953b5a0-gblc0q`, after #291 (R63 as plugin 1.0.16) merged. The owner's tasks: align the guardrail edits of this session and of `ccr-8b4eb57f-uy0e8e` (#290) so each file is edited once, say which PRs were ready to merge and in what order, open the sample's upgrade to 1.0.17, refresh the sample's two READMEs, then write and register the candidate behind that refresh with a rank of the session's choosing. The previous record (R63 as 1.0.16) is now `docs/progress/2026-10-20-r63-cli-default-1.0.16.md`, unchanged. The session's files are `docs/handoffs/sessions/2026-10-20-ccr-5953b5a0-gblc0q.md` (R63) and `docs/handoffs/sessions/2026-10-20-ccr-5953b5a0-gblc0q-end.md` (this part).
+This session ran on branch `ccr-0edc2256-yax6jz`. The owner's task: build R22 (rank 9) as the next free patch version, 1.0.18, in a session pull request with an independent review, from decision 36, `docs/proposals/gate-e-approving-review.md`, choice 242 (points 2, 4, 5 and 6), R22's row as R60's answers left it and `docs/reviews/2026-10-20-lifecycle-axis-ports/options.md` rows 1 and 3, decision 33 with R49, and decision 35 with R24's `risk_acceptances`. The previous record (R64 registered, the pins at 1.0.17) is now `docs/progress/2026-10-20-r64-registered-choice-245.md`, unchanged. The session's own file is `docs/handoffs/sessions/2026-10-20-ccr-0edc2256-yax6jz.md`.
 
-No change under `plugin/` or `template/` in this PR; no version bump.
+## Coordination with the other sessions
+- **The precondition.** R22's hold was still on `main` (`57b5a85`) when the session started: #296, which carries R60's answers into R22's row and lifts the hold, was open. The owner asked whether the build had to wait for it. It did not: the two sessions do different work, and their only shared lines are R22's ROADMAP row and the proposal. So this branch carries #296's commit (`e131e34`, merged in), and the two merge in either order without a conflict. The session of `ccr-0522ec37-iia2ok` was told so (a cross-session message).
+- **Numbers.** This build takes no decision, choice or note number. Decision 37 stays that session's, for the decision file that narrows the modes. Note 56 is kept for the sample's ruleset change (below), written once the owner has made it.
+- **The merge order:** #296, then the decision-37 PR in either order, then this PR.
 
 ## Summary
-- **Choice 245**: R64 is accepted and registered; its proposal is `docs/proposals/template-copies-refresh.md`, its row in `docs/ROADMAP.md`.
-- **The pins are at 1.0.17 in both repositories**:
-  - the framework's root `sdlc.yaml` by the owner's #292, merged as `b3dc071`;
-  - the sample's by its #89, merged as `7e27773`;
-  - the sample's workflow copies follow in its #90, merged as `d8290c1`.
-- **The previous record's owner edits are all done.** Its three rows went into #292 and sample #89, the 1.0.17 versions agreed with #290's session. R24's two root comment rows and the sample's three R24 rows rode in the same two PRs.
+- **Gate (e) is the owner's approving review** (decision 36, point 1). The build PR's body, `/sdlc-deploy` steps 5 and 6, the close-look banner, the operating model and the README say so: approve = gate (e), and the merge App merges on it.
+- **A merge workflow, `sdlc-merge.yml`, the fourteenth template workflow** (points 2 and 4), runs no model and has three jobs:
+  - `doorbell`: the owner's approval of a build PR dispatches the merge on the default branch. It holds no key.
+  - `not-a-build-pr`: every pull request whose head is not `sdlc/<id>/c` gets a passing `sdlc/review` check, "not a build PR".
+  - `merge`: it runs in the `sdlc-merge` environment, which only the default branch may use. It mints the merge App's token and runs `plugin/ci/merge_step.py merge`, which re-checks everything from the API:
+    - the build PR is open, not a draft, and at `sdlc:e-ready`;
+    - at its head, gate (e) passed with no deferred commands check, and there is no Important finding;
+    - every commit after the reviewed one, and after the approved one, is evidence or the run record;
+    - `sdlc/review` is green on the head;
+    - the owner's latest decisive review is an approval.
 
-## The owner's decision (2026-10-20)
-245. **R64 is accepted, its rank left to the session** (the owner, "Write it and register it in roadmap. You decide where's its best implementation order among the other items."). The session placed it after R27 (rank 19) and before R45 (rank 20), with no rank moved. Its reasons are in the proposal's "Order":
-    - R45's rename rewrites the names both READMEs and every workflow copy carry, so a refresh built first carries the rename into every project in one re-run;
-    - R61 changes the same `plugin/init/sdlc_init.py` earlier in the queue;
-    - nothing presses sooner, since the sample is current (sample #90 and #91) and no other project exists before the trial.
+    Then it merges at exactly that head. A refusal is a green "wait" line, and the PR shows in the digest.
+- **The check on the final head** (point 3): after its own last commit, the (e) run posts `sdlc/review` again (`review/cli.py check-run --final-head`). The check is green only while every commit since the reviewed one is evidence or the run record. When it is green and gate (e) waits for the owner, the run dispatches the merge workflow, so an early approval merges then (point 4).
+- **The App is required** (R60's answer, options row "Automation identity"):
+  - `ci/app_token.py app_missing` stops a run of a workflow that minted no App token: `run_phase.py`'s every phase, the detect step's filing and the scan's filing;
+  - `/sdlc-init` stops at the App's setup (its step 0), desktop-only, with the links;
+  - the workflow token stays the in-job fallback after 50 minutes, the session's token, and the token of the workflows that mint no App token.
+- **The (e) acceptance** (choice 242, point 2): when the build PR is merged by anyone but the owner, the release record job takes the risk lines' acceptance from the owner's approving review (`via: approval`). The merge App's `[bot]` accepts nothing. The runner's baseline check confirms such a line from the PR's reviews.
+- **The digest** marks an approved, unmerged build PR "approved <date>, not merged: <reason>" (the proposal's line, which R20 places later).
+- **The one-time setup** is in `/sdlc-init` step 6: the merge App, its `sdlc-merge` environment, the merge App in ruleset 1, and ruleset 2. The owner's steps for the sample are in the PR body.
 
-## What happened after #291
-- **#291 merged** as `d3bfdb4` at 15:40 UTC; `sdlc-tag.yml` tagged `v1.0.16` on it (verified, `git ls-remote --tags origin`).
-- **The guardrail edits were aligned with #290's session** (`session_01DgZ9p4G2jyWVPNNc7erSZS`), so the owner edited each file once:
-  - #290 moved to 1.0.17;
-  - one root `sdlc.yaml` paste, `version: 1.0.17` with R24's two comment edits, after `v1.0.17`;
-  - both `.claude/settings.json` files from #290's session alone;
-  - the sample's `sdlc.yaml` from this session, at 1.0.17 with R24's rows and R63's comment.
+## How each "What to settle" row was taken
+| Row (the proposal's table) | Taken |
+|---|---|
+| Whether the owner's approval counts on a PR the automation opened | By its recommendation: verified on the sample at the first (e) after the setup; the merge step reads the review itself, not a required-approval rule, so it holds either way. Not verified yet; C1 if it fails |
+| Whether the automation's check satisfies a required check, and binds the head | By its recommendation: to verify at the first PR after ruleset 2 exists; C3 (no ruleset 2) if the first fails. Not verified yet |
+| Whether a bypass in "for pull requests only" mode is logged | By its recommendation: to verify. Nothing in the build depends on it |
+| The App as a bypass actor, its workflow, the key only for a definition the PR branch cannot change | By the proposal's own recommendation: the review-triggered job holds no key and only dispatches; the merge job reads the key from an environment limited to the default branch and re-checks from the API. That such an environment refuses another ref is to verify |
+| Whether a push after the approval dismisses it | By its recommendation: the merge step's own rule decides (the approved commit, then evidence and the run record only) |
+| An approval given before the runner's last commit | By the entry's rule: accepted only when every later commit is evidence or the run record (`review/findings.py allowed_after_review`: the change's `evidence/`, its `status.yaml`, `changes/.review-seen.json`). That a review names its commit is used (`commit_id`), verified at the first merge |
+| How a build PR is told from the rest | By its recommendation: the merge step reads the findings and gate (e)'s record for the head, and requires `status.yaml: build_pr` to name the PR. The check job tells a build PR by its `sdlc/<id>/c` head alone. While the check has not posted, the PR waits |
+| The exact fields of the (e) approval line | R11 is not built: until it is, the merge workflow's log lines are the record (who, when, the commit, the tally), as the proposal's Order says. The risk acceptance line takes the approval (choice 242, point 2) |
+| How the owner's account is known | R17's `is_owner_actor`, fail closed, as settled |
+| Whether the small workflow's waiting runs hold the required check | By its recommendation: to verify |
+| Whether ruleset 2 blocks the owner's direct pushes | By its recommendation: to verify |
+| Whether an approval on a conflicted PR starts the merge workflow | By its recommendation: to verify; the digest line is built |
+| The digest line for an approved, unmerged build PR | By the proposal's recommendation: built in `pr/digest.py` (red or missing `sdlc/review`, a conflict, or not merged yet), shown on the PR's line under "Waiting at a human gate" until R20 orders the digest |
+| Whether the merge App's merge starts the release | By R13's settling: verified at the first merge; the merge workflow dispatches nothing yet |
+| The App, its key, ruleset 2 and the web bypass as desktop-only acts | R21's table is not built: `/sdlc-init` step 6 says "desktop-only" with the direct links for each, as R60's answer asks for the App |
+| Runbook PRs under ruleset 2 before R36 | **A conflict with the task, put to the owner** (the PR body's question 1): the recommendation holds ruleset 2 back until R36, while the task sets it up now. Since every runbook PR the App opens gets the passing "not a build PR" check, the recommendation's reason no longer holds. The steps for ruleset 2 are given now |
+| An (e) head whose findings `sdlc:accept-findings` accepted | R6 is not built: nothing now; the check follows the accepted signatures when R6 is |
+| Whether the GitHub mobile app can submit an approving review | To verify on the owner's phone (question 6) |
+| The merge App's merge of a dismissal PR | R23's own item |
+| The green-preview requirement | R39's own item |
+| One decision file or three | Done: decision 36 |
 
-  Each file the owner put in a PR (#292, #293, #294, sample #89) was compared with the agreed text: identical but for a final newline the web editor drops. Merged together with #290 on top of `main`, they passed every local check (2257 tests).
-- **The merge order the owner followed**:
-  - #294 before #290, so `v1.0.17` carries the template's Gemini host;
-  - #290 merged as `ef39013`, and `v1.0.17` and its release page were created on it;
-  - #292 after the tag;
-  - on the sample, #88 (0017's gate (e)) first, then #89, then #90.
-
-  #289 (the pin to 1.0.15) was closed unmerged at 17:07 UTC (verified, the GitHub API).
-- **Sample #90** (the 13 workflow copies and the pin script from `v1.0.17`) had to follow #89. Its release record step passes `--released` and `--acceptance`, which `release/cli.py` has only from 1.0.15 on. In 1.0.17 both default to the old behaviour, so the old copies kept working between the two merges.
-- **Sample #91** (`changes/README.md` and `evals/README.md` from `v1.0.17`, merged as `4a429c4`) replaced two unedited copies of the templates at `cb23707` and `e49589c`. That drift is R64's problem.
-
-## Left
-- **R64's build**, at its rank.
-- **The (d) check run beside a park after the commands step** (the R63 review's finding 5): carried in the R63 session file.
-- **The framework's two workflows on CLI 2.1.278** (`substrate-smoke.yml`, `framework-evals.yml`): unchanged under R63's rule; whether to align them with 2.1.304 is the owner's call.
+## The independent review
+A fresh-context sub-agent reviewed the diff before the PR. Its findings and what became of each are in the section "The review's findings" below.
 
 ## The port list
-This PR touches no file of the port list's paths.
+This PR touches `plugin/ci/run_phase.py` (`offer_merge`, `MERGE_WORKFLOW`, `_approval_line_problems`, `ACCEPT_VIA_APPROVAL`, the App check in `main`), `plugin/detect/cli.py` (`_app_missing`, the refusal in `cmd_run`) and the detect, runbook and fix workflow templates (their token-rule comments). It goes on the port list until the 1.0.0 read.
 
 ## Proposed edits for the owner
-None.
+| Link | Row | What is there now | What it must become |
+|---|---|---|---|
+| [sdlc.yaml](https://github.com/luissiviero/sdlc-framework/blob/main/sdlc.yaml#L104) | 104 | `  version: 1.0.17` | `  version: 1.0.18`, after this PR's merge, once `sdlc-tag.yml` has tagged `v1.0.18`, and only after the answer to the PR body's question 2 (this repository has no App) |
+| [sdlc.yaml](https://github.com/luissiviero/sdlc-framework/blob/main/sdlc.yaml#L6) | 6 | `` # standard: owner merges at (a) intent PR, (b) spec+plan PR, (e) build PR; (c),(d) automated `` | `` # standard: owner merges at (a) intent PR, (b) spec+plan PR, and approves at (e) build PR `` / `` #           (the merge App merges on that approval, decision 36); (c),(d) automated `` |
+| [CLAUDE.md](https://github.com/luissiviero/sdlc-framework/blob/main/CLAUDE.md#L34) | 34 | `` - Events caused by the CI workflow token do not start workflow runs (except workflow_dispatch / repository_dispatch): automated phase transitions dispatch the next workflow explicitly. With vars.SDLC_APP_ID the automation pushes as the project's GitHub App, whose events do start runs (decision 33); the explicit dispatch stays for the fallback. `` | `` - Events caused by the CI workflow token do not start workflow runs (except workflow_dispatch / repository_dispatch): automated phase transitions dispatch the next workflow explicitly. The automation pushes as the project's GitHub App, whose events do start runs (decision 33), and since 1.0.18 the App is required (R22): without vars.SDLC_APP_ID a run stops with the reason. The explicit dispatch stays for the in-job fallback to the workflow token after 50 minutes. `` |
+| [CLAUDE.md](https://github.com/luissiviero/sdlc-framework/blob/main/CLAUDE.md#L33) | 33 | `` - Only the owner merges to `main`; the automation identity has branch-only write access. Never use bypass-permissions mode. `` | `` - Only the owner merges to `main`, or the merge App on the owner's approving review (decision 36); the automation identity has branch-only write access. Never use bypass-permissions mode. `` |
+| [sample sdlc.yaml](https://github.com/luissiviero/sdlc-sample-python/blob/main/sdlc.yaml#L77) | 77 | `  version: 1.0.17` | `  version: 1.0.18`, at the sample's upgrade to 1.0.18 (after `v1.0.18`, with its fourteen workflow copies) |
+| [sample sdlc.yaml](https://github.com/luissiviero/sdlc-sample-python/blob/main/sdlc.yaml#L6) | 6 | `` # standard: owner merges at (a) intent PR, (b) spec+plan PR, (e) build PR; (c),(d) automated `` | as row 6 of the root `sdlc.yaml` above, at the same upgrade |
+
+## Left
+- **The live checks of decision 36's "To verify before the design"**, on the sample once the owner's setup is done: whether the approval counts, the required check and its head, the environment's refusal of another ref, whether the merge App's merge starts the release, the mobile approval. Each answer goes into a note.
+- **Note 56**, for the sample's ruleset 1 moved to Exempt with ruleset 2 created (choice 242, point 5): written after the owner's act, read from the rulesets API.
+- **The sample's upgrade to 1.0.18** after `v1.0.18`: the fourteen workflow copies and the owner's two `sdlc.yaml` rows above.
+- Every other open item is in the session file.
 
 ## Checks (this repository)
 On the final head, after `python -m pip install -e ".[dev]"`, chained with `set -o pipefail`: `python -m compileall -q plugin tests tasks.py .github/scripts`, `python -m ruff check .`, `python -m ruff format --check .`, `python tasks.py docs-lint`, `python -m pytest -n 4` and `claude plugin validate .`. Their output is in the PR.

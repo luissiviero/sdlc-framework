@@ -212,8 +212,8 @@ you" at the gate and overturns any line with a review comment.
 `python "${CLAUDE_PLUGIN_ROOT}/plugin/gate/cli.py" check --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase e`
 — requires the evidence of (d) green, `review-findings.json` for HEAD with no Important
 finding, the plan in sync with the diff, no guardrail file, no escalation on a risk-list
-item (a hit is a line of the PR's "Needs your close look" banner, which your merge accepts:
-decision 35). Exit 3 `wait` is the
+item (a hit is a line of the PR's "Needs your close look" banner, which the owner's
+approving review accepts: decision 35, choice 242). Exit 3 `wait` is the
 normal outcome (gate (e) is human in every profile); 4 = `park`. Then the release notes
 (build guide step 32; deterministic: what changed, the commits since the base, the evidence
 status, the final findings tally, the links):
@@ -225,28 +225,33 @@ commit (evidence is committed after the gate, OPERATING_MODEL §4.1, so no re-re
 `python "${CLAUDE_PLUGIN_ROOT}/plugin/state/cli.py" commit-phase --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase e --message "review(<id>): gate (e) evidence" --push`.
 In CI (a token is present), publish the review tally as a check run:
 `python "${CLAUDE_PLUGIN_ROOT}/plugin/review/cli.py" check-run --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase e`
-(route "none" by hand; nothing else changes).
+(route "none" by hand; nothing else changes). The runner posts it again on the PR's final
+head after its own last commit, and dispatches the merge workflow when it is green (decision
+36, points 3 and 4).
 
 ## 5. Mark the PR ready with the final summary (build guide step 27a, decision 20)
 ```
 python "${CLAUDE_PLUGIN_ROOT}/plugin/pr/cli.py" upsert --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase e --ready
 ```
 The description opens with the ≤5 bullets (what changed and why · evidence status ·
-findings by severity with the nits listed · plan conformance · what needs the owner: merge
-= approve, review comments = `/sdlc-fix`), the two counters of build guide step 42
+findings by severity with the nits listed · plan conformance · what needs the owner: an
+approving review = gate (e), review comments = `/sdlc-fix`), the two counters of build guide step 42
 (first-pass merge, fix iterations), the proposed `CLAUDE.md` lines, and the
 "## Release note" section quoted from `evidence/release-notes.md`. Label: `sdlc:e-ready`,
-or `sdlc:needs-human` when parked. The PR is waiting for your merge: merge = gate (e)
-passed; the release workflow then runs `deploy.command`. When `sdlc.yaml` says
+or `sdlc:needs-human` when parked. The PR is waiting for the owner's approving review: the
+approval = gate (e) passed (decision 36); the merge App then merges it (`sdlc-merge.yml`),
+and the release workflow runs `deploy.command`. Without a merge App the owner merges after
+approving (fallback C1). When `sdlc.yaml` says
 `deploy.production: true`, the body also says: the release label `sdlc:release-approved` is
-the second act: apply it on this PR after merging; the release workflow waits for it.
+the second act: apply it on this PR in the same visit; the release workflow waits for it.
 
 ## 6. Hand over
-Report the PR URL and "gate (e): merge = approve; a review comment is the change request
-(`/sdlc-fix <id>`)". When `sdlc.yaml` says `deploy.production: true`, add "the release
-label `sdlc:release-approved` is the second act: apply it on this PR after merging; the
-release workflow waits for it". Nothing else runs;
-the owner's merge is the trigger for the project's deploy adapter.
+Report the PR URL and "gate (e): an approving review = approve, and the merge App merges on
+it; a review comment is the change request (`/sdlc-fix <id>`)". When `sdlc.yaml` says
+`deploy.production: true`, add "the release label `sdlc:release-approved` is the second
+act: apply it on this PR in the same visit; the release workflow waits for it". Nothing
+else runs; the merge that follows the owner's approval is the trigger for the project's
+deploy adapter.
 
 Never edit `.claude/**`, `CLAUDE.md`, `REVIEW.md`, `sdlc.yaml`, `intent.md` or `spec.md`.
 Never use bypass-permissions mode. Never notify anyone. Never merge.

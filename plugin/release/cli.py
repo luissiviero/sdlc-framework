@@ -1,6 +1,6 @@
 """The release workflow's steps (build guide step 32.3; decision 13; OPERATING_MODEL section
-4, gate (e): "merge of the build PR; plus a release label only when sdlc.yaml declares a real
-production").
+4, gate (e): the owner's approving review of the build PR, on which the merge App merges
+(decision 36), "plus the release label" only when sdlc.yaml declares a real production).
 
     python cli.py run --root <project> --repo <owner/repo> --pr <number>
                       [--event closed|labeled] [--merge-sha <sha>] [--change-id <id>]
@@ -416,13 +416,17 @@ def merge_acceptance(
     config: dict[str, Any],
     env: Mapping[str, str] | None = None,
     repo: str | None = None,
+    reviews: Callable[[], dict[str, Any]] | None = None,
 ) -> tuple[dict[str, Any] | None, str] | None:
     """Decision 35: the ``risk_acceptances`` line of the (e) merge, from the merged copy's
     gate records (the items no earlier act accepted, ``risk.banner_entries``) and GitHub's
-    record of the merge (who, when, the body it showed); (None, why) when the merge actor is
-    not the owner's account (``unpark.is_owner_actor``, decision 34's one rule: a ``[bot]``
-    or the automation identity never accepts a risk, choice 242), None when nothing was
-    asked. Until R22 the merge actor is the acceptor (decision 35, point 2)."""
+    record of the act (who, when, the body it showed); (None, why) when no act of the
+    owner's account accepted (``unpark.is_owner_actor``, decision 34's one rule), None when
+    nothing was asked. The owner's own merge accepts, as before R22 (fallback C1, or a merge
+    through the bypass). Since R22 a merge by anyone else - the merge App is a ``[bot]`` and
+    never accepts a risk - is accepted by the owner's approving review, on which the merge
+    App merged (choice 242, point 2): ``reviews`` reads the pull request's reviews, and the
+    owner's latest review that approves or requests changes must approve."""
     from state import unpark  # noqa: PLC0415
 
     items = risk_mod.new_items(risk_mod.banner_entries(change_dir, "e", st))
@@ -430,9 +434,22 @@ def merge_acceptance(
         return None
     by = str(pr.get("merged_by") or "").strip()
     if not unpark.is_owner_actor(by, config, env, repo):
+        approval = _owner_approval(reviews, config, env, repo)
+        if approval is not None:
+            line = risk_mod.acceptance_line(
+                "e",
+                items,
+                str(approval.get("author")),
+                str(approval.get("at") or "").strip() or gate_mod._now(),
+                int(pr_number),
+                str(approval.get("commit") or "") or merge_sha,
+                risk_mod.banner_shown(pr.get("body"), items),
+                via=risk_mod.ACCEPT_VIA_APPROVAL,
+            )
+            return line, ""
         return None, (
-            f"not accepted: merged by {by or 'an unknown account'}, not the owner's account "
-            f"(decisions 34 and 35): {', '.join(items)}"
+            f"not accepted: merged by {by or 'an unknown account'}, not the owner's account, "
+            f"and no approving review by the owner (decisions 34, 35 and 36): {', '.join(items)}"
         )
     line = risk_mod.acceptance_line(
         "e",
@@ -444,6 +461,36 @@ def merge_acceptance(
         risk_mod.banner_shown(pr.get("body"), items),
     )
     return line, ""
+
+
+DECISIVE_REVIEWS = ("APPROVED", "CHANGES_REQUESTED", "DISMISSED")
+
+
+def _owner_approval(
+    reviews: Callable[[], dict[str, Any]] | None,
+    config: dict[str, Any],
+    env: Mapping[str, str] | None,
+    repo: str | None,
+) -> dict[str, Any] | None:
+    """The owner's latest review that approves, requests changes or was dismissed, when it
+    approves (the merge step's reading, ``ci/merge_step.py owner_approval``); None without a
+    reader, on a failed read, or when it does not approve."""
+    from state import unpark  # noqa: PLC0415
+
+    if reviews is None:
+        return None
+    got = reviews()
+    if not isinstance(got, dict) or not got.get("ok"):
+        return None
+    latest = None
+    for review in got.get("reviews") or []:
+        if str(review.get("state") or "").upper() not in DECISIVE_REVIEWS:
+            continue
+        if unpark.is_owner_actor(review.get("author"), config, env, repo):
+            latest = review
+    if latest is None or str(latest.get("state")).upper() != "APPROVED":
+        return None
+    return latest
 
 
 def _step_output(env: Mapping[str, str], lines: dict[str, str]) -> str | None:
@@ -690,7 +737,10 @@ def _release(args, env, github, git, record_git, say) -> int:
         say("parked", f"gate ({raw.gate.phase}) parked change {change_id}: {parked}")
     # (4d) decision 35: the owner's merge accepted the risk lines the build PR's banner
     # showed; the record job stores the line, whatever the release does next
-    accepted = merge_acceptance(change_dir, raw, pr, args.pr, merge_sha, config, env, args.repo)
+    accepted = merge_acceptance(
+        change_dir, raw, pr, args.pr, merge_sha, config, env, args.repo,
+        reviews=lambda: _call(github, "pr_reviews", args.repo, args.pr, cwd=str(root)),
+    )  # fmt: skip
     if accepted is not None:
         line, why = accepted
         if line is None:
@@ -698,7 +748,8 @@ def _release(args, env, github, git, record_git, say) -> int:
         else:
             items = ", ".join(line["details"]["items"])
             shown = "shown" if line["details"]["banner_shown"] else "NOT shown"
-            say("risk", f"accepted by {line['by']}'s merge: {items} (banner {shown})")
+            act = "approving review" if line["via"] == risk_mod.ACCEPT_VIA_APPROVAL else "merge"
+            say("risk", f"accepted by {line['by']}'s {act}: {items} (banner {shown})")
             problem = _step_output(
                 env, {"risk_acceptance": json.dumps(line, sort_keys=True), "change_id": change_id}
             )

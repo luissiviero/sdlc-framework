@@ -508,6 +508,13 @@ def file_change(root: Path, record: dict[str, Any], *, push: bool, dry_run: bool
     }
 
 
+def _app_missing() -> str | None:
+    """``ci/app_token.py app_missing`` on this process's environment (R22)."""
+    from ci import app_token  # noqa: PLC0415 - stdlib only
+
+    return app_token.app_missing(os.environ)
+
+
 def cmd_run(args) -> int:
     root = Path(args.root).resolve()
     config = _config(root)
@@ -629,6 +636,11 @@ def cmd_run(args) -> int:
         elif open_ones:
             outcome = f"open incident {open_ones[0]['change_id']} already carries {metric}"
             out["open_incidents"] = open_ones
+        elif args.file and not args.dry_run and _app_missing():
+            # R22: the project's App is required; the incident is not filed with the
+            # workflow token, and the run goes red with the reason (decision 33)
+            filed = {"filed": False, "reason": _app_missing()}
+            outcome = f"not filed: {filed['reason']}"
         elif args.file:
             filed = file_change(root, record, push=not args.no_push, dry_run=args.dry_run)
             outcome = (

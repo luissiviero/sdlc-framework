@@ -412,6 +412,21 @@ def test_run_twice_appends_one_line_per_run(tmp_path, src, gh, capsys):
 
 
 # --- run: filing the incident ---------------------------------------------------------------
+def test_run_files_no_incident_without_the_app(tmp_path, src, gh, capsys, monkeypatch):
+    """R22: the project's App is required; a workflow that minted no App token files
+    nothing with the workflow token, and the run goes red with the reason."""
+    root = project(tmp_path)
+    src.observations = series(16, spike=True)
+    monkeypatch.setenv("GITHUB_ACTIONS", "true")
+    monkeypatch.setenv("SDLC_WORKFLOW_TOKEN", "wf")
+    monkeypatch.delenv("SDLC_APP_TOKEN_MINTED_AT", raising=False)
+    log = tmp_path / "detect-log.jsonl"
+    code, out = cli(capsys, "run", "--root", str(root), "--repo", REPO, "--log", str(log), "--file")
+    assert code == 1
+    assert out["filed"]["filed"] is False and "GitHub App is required" in out["outcome"]
+    assert [p.name for p in change_dirs(root)] == ["0000-sdlc-init"]
+
+
 def test_run_spike_with_file_opens_the_incident_change(tmp_path, src, gh, capsys, monkeypatch):
     root = project(tmp_path)
     src.observations = series(16, spike=True)

@@ -241,8 +241,15 @@ def cmd_route(args) -> int:
     out["skipped"] = [_brief(f) for f in skipped]
     out["dismissed"] = sum(1 for f in skipped if f.get("skip_reason") == "dismissed")
     if to_file and not args.dry_run:
-        from ci import run_phase  # noqa: PLC0415
+        from ci import app_token, run_phase  # noqa: PLC0415
 
+        missing = app_token.app_missing(os.environ)
+        if missing:
+            # R22: the project's App is required; nothing is filed with the workflow token
+            out["problems"] = [*out["problems"], missing]
+            _github_output({"filed": 0})
+            _emit(out)
+            return EXIT_FAILED
         run_phase.ensure_git_identity(root)
     results = route_mod.file_findings(
         root,

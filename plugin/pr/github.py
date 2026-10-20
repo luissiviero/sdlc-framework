@@ -594,6 +594,8 @@ def pr_reviews(repo: str, number: int, cwd: str | Path | None = None) -> dict[st
                     "body": item.get("body") or "",
                     "at": item.get("submitted_at"),
                     "url": item.get("html_url"),
+                    # the commit the review was submitted on (R22: the merge step's head rule)
+                    "commit": item.get("commit_id"),
                 }
             )
         return out
@@ -1354,3 +1356,124 @@ def default_branch_protection(repo: str, cwd: str | Path | None = None) -> dict[
         return _judge("gh", branch, (flag or {}).get("protected"), rules)
 
     return _attempt(via_api, via_gh)
+
+
+# --- the merge step of gate (e) (decision 36; ROADMAP R22) --------------------------------------
+# Token route only: the merge workflow runs on a runner, where the job's token is the identity.
+MERGE_METHOD = "merge"  # a merge commit keeps the reviewed commits on the default branch
+COMPARE_FILE_CAP = 300  # GitHub's compare lists at most 300 files: past it, fail closed
+
+
+def _api(method: str, path: str, payload: dict[str, Any] | None = None, tok: str | None = None):
+    """One token-route call: (data, error)."""
+    use = tok if tok is not None else token()
+    if not use:
+        return None, NO_ROUTE
+    result = _request(method, f"{API_ROOT}/{path}", use, payload)
+    return result.get("data"), result.get("error") or ""
+
+
+REVIEW_CHECK = "sdlc/review"  # review/findings.py CHECK_RUN_NAME, the check ruleset 2 requires
+NOT_BUILD_TITLE = "not a build PR"
+NOT_BUILD_SUMMARY = (
+    "This pull request is not a framework build PR (its head is not `sdlc/<id>/c`), so gate "
+    "(e)'s review does not apply to it: it merges as before (decision 36, point 5)."
+)
+
+
+def post_not_build_check(repo: str, sha: str, cwd: str | Path | None = None) -> dict[str, Any]:
+    """The passing ``sdlc/review`` "not a build PR" on ``sha`` (decision 36, point 5): every
+    pull request that is not a build PR carries it, so ruleset 2 holds only build PRs."""
+    return create_check_run(
+        repo, sha, REVIEW_CHECK, "success", NOT_BUILD_TITLE, NOT_BUILD_SUMMARY, cwd=cwd
+    )
+
+
+def check_runs_on(repo: str, sha: str, name: str) -> dict[str, Any]:
+    """The latest check runs named ``name`` on commit ``sha``: {'ok', 'runs', 'reason'}; each
+    run is {'id', 'status', 'conclusion', 'app'} (``GET /repos/{repo}/commits/{sha}/check-runs``
+    with ``check_name`` and ``filter=latest``)."""
+    query = urllib.parse.urlencode({"check_name": name, "filter": "latest", "per_page": PER_PAGE})
+    data, error = _api("GET", f"repos/{repo}/commits/{sha}/check-runs?{query}")
+    if error:
+        return {"ok": False, "runs": [], "reason": error}
+    runs = [
+        {
+            "id": r.get("id"),
+            "status": r.get("status"),
+            "conclusion": r.get("conclusion"),
+            "app": (r.get("app") or {}).get("slug"),
+        }
+        for r in (data or {}).get("check_runs") or []
+        if isinstance(r, dict)
+    ]
+    return {"ok": True, "runs": runs, "reason": ""}
+
+
+def compare_commits(repo: str, base: str, head: str) -> dict[str, Any]:
+    """``GET /repos/{repo}/compare/{base}...{head}``: {'ok', 'status', 'files', 'reason'};
+    ``status`` is GitHub's (identical, ahead, behind, diverged) and ``files`` the paths the
+    head changed since the base. More than ``COMPARE_FILE_CAP`` files is an error (the list
+    would be cut)."""
+    data, error = _api("GET", f"repos/{repo}/compare/{base}...{head}")
+    if error:
+        return {"ok": False, "status": None, "files": [], "reason": error}
+    files = [str(f.get("filename")) for f in (data or {}).get("files") or [] if isinstance(f, dict)]
+    if len(files) >= COMPARE_FILE_CAP:
+        reason = f"{base[:10]}...{head[:10]} changes {len(files)} files or more: cannot list all"
+        return {"ok": False, "status": None, "files": [], "reason": reason}
+    return {"ok": True, "status": (data or {}).get("status"), "files": files, "reason": ""}
+
+
+def file_at(repo: str, path: str, ref: str) -> dict[str, Any]:
+    """One file's text at ``ref`` (``GET /repos/{repo}/contents/{path}?ref=``): {'ok', 'text',
+    'missing', 'reason'}; ``missing`` is True on a 404."""
+    import base64  # noqa: PLC0415
+
+    quoted = urllib.parse.quote(path)
+    result = _request(
+        "GET", f"{API_ROOT}/repos/{repo}/contents/{quoted}?ref={ref}", token() or "", None
+    )
+    if result.get("status") == 404:
+        return {"ok": False, "text": None, "missing": True, "reason": f"{path} is not at {ref}"}
+    if result.get("error"):
+        return {"ok": False, "text": None, "missing": False, "reason": result["error"]}
+    data = result.get("data") or {}
+    if not isinstance(data, dict) or data.get("type") != "file":
+        return {"ok": False, "text": None, "missing": False, "reason": f"{path} is not a file"}
+    try:
+        text = base64.b64decode(str(data.get("content") or "")).decode("utf-8")
+    except (ValueError, UnicodeDecodeError) as exc:
+        return {"ok": False, "text": None, "missing": False, "reason": f"{path}: {exc}"}
+    return {"ok": True, "text": text, "missing": False, "reason": ""}
+
+
+def dir_at(repo: str, path: str, ref: str) -> dict[str, Any]:
+    """The entry names of a directory at ``ref``: {'ok', 'names', 'reason'}."""
+    quoted = urllib.parse.quote(path)
+    data, error = _api("GET", f"repos/{repo}/contents/{quoted}?ref={ref}")
+    if error:
+        return {"ok": False, "names": [], "reason": error}
+    if not isinstance(data, list):
+        return {"ok": False, "names": [], "reason": f"{path} is not a directory at {ref}"}
+    names = [str(e.get("name")) for e in data if isinstance(e, dict) and e.get("type") == "dir"]
+    return {"ok": True, "names": names, "reason": ""}
+
+
+def merge_pr(repo: str, number: int, sha: str, tok: str) -> dict[str, Any]:
+    """Merge pull request ``number`` at exactly ``sha`` with ``tok`` (the merge App's token,
+    decision 36): ``PUT /repos/{repo}/pulls/{number}/merge``. GitHub refuses it when the
+    head moved (409) or a rule holds it (405): {'ok', 'sha', 'status', 'reason'}."""
+    if not tok:
+        return {"ok": False, "sha": None, "status": 0, "reason": "no merge token"}
+    payload = {"sha": sha, "merge_method": MERGE_METHOD}
+    result = _request("PUT", f"{API_ROOT}/repos/{repo}/pulls/{number}/merge", tok, payload)
+    if result.get("error"):
+        return {
+            "ok": False,
+            "sha": None,
+            "status": result.get("status"),
+            "reason": result["error"],
+        }
+    data = result.get("data") or {}
+    return {"ok": bool(data.get("merged")), "sha": data.get("sha"), "status": 200, "reason": ""}
