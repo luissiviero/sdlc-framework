@@ -33,7 +33,10 @@ Report at most five nits per review; summarize the rest as a count.
   framework counts repeats in `changes/.review-seen.json` and writes the proposal; a
   repeated finding keeps its own severity).
 - Flag when the change has made `CLAUDE.md` outdated.
-- A PR that adds lines under docs/ citing a decision, a note, a PR, a version or a date carries a changed-lines citation check (each cited target opened and compared) in its description; a missing check, or a mismatch it reported and left unresolved, is non-compliant.
+- Lines the diff adds under docs/ that cite a decision, a choice, a note, a PR, a version
+  or a date: open each cited target and compare. A citation that misstates a decision, a
+  choice or a ROADMAP Status or Order is non-compliant; any other mismatch is a nit.
+
 
 ## Do not report
 Generated files, anything under `changes/*/evidence/`, and anything CI already enforces
