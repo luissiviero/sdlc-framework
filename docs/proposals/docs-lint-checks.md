@@ -19,7 +19,7 @@ generated: { by: sdlc-framework-session/ccr-e8220c2e-ya26hb, at: 2026-10-20T12:0
 
 # The docs lint, part 2
 
-**Status: accepted by the owner on 2026-10-20 (ROADMAP R58, the row is added when ROADMAP is next free of open edits).** Nothing is built. Like R55, it is a documentation and tasks PR outside the ranks, with no plugin version.
+**Status: accepted by the owner on 2026-10-20 (ROADMAP R58).** Nothing is built. Like R55, it is a documentation and tasks PR outside the ranks, with no plugin version.
 
 ## Why
 
