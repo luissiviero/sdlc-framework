@@ -28,6 +28,7 @@ on:
   workflow_dispatch:
 
 permissions:
+  checks: read  # R22: the approved, unmerged build PR's line reads sdlc/review
   contents: read
   issues: write
   pull-requests: read

@@ -57,6 +57,9 @@ WORDS = ("continue", "escalate")
 BANNER_HEADING = "**Needs your close look**"
 ACCEPT_ACT = "risk accepted"
 ACCEPT_VIA = "merge"
+# R22 (choice 242, point 2): at (e) the owner's approving review accepts, the merge App never
+ACCEPT_VIA_APPROVAL = "approval"
+ACCEPT_VIAS = (ACCEPT_VIA, ACCEPT_VIA_APPROVAL)
 # the gates whose PR shows the banner, and the earlier gates whose records it reads: the
 # design PR (b); the build PR (c), (d) and (e), one PR from build to merge; the install PR of
 # change 0000 at (a), whose merge also confirms the globs
@@ -66,12 +69,12 @@ BANNER_ASK = {
     "(decision 35).",
     "b": "Merging this PR accepts them for this change, recorded in status.yaml with your "
     "name (decision 35); a review comment or Request changes stops it here.",
-    "c": "Only your merge at gate (e) accepts them (R12's third point); while this PR waits "
+    "c": "Only your approval at gate (e) accepts them (R12's third point); while this PR waits "
     "for your approval label, Request changes stops the change here.",
-    "d": "Only your merge at gate (e) accepts them (R12's third point); while this PR waits "
+    "d": "Only your approval at gate (e) accepts them (R12's third point); while this PR waits "
     "for your approval label, Request changes stops the change here.",
-    "e": "Merging this PR accepts them for this change, recorded in status.yaml with your "
-    "name (decision 35).",
+    "e": "Your approving review accepts them for this change (your merge, when you merge it "
+    "yourself), recorded in status.yaml with your name (decisions 35 and 36).",
 }
 
 
@@ -257,14 +260,19 @@ def acceptance_line(
     pr: int,
     head: str | None,
     banner_shown: bool,
+    via: str = ACCEPT_VIA,
 ) -> dict[str, Any]:
     """One ``status.yaml: risk_acceptances`` line, in the shape of R11's approvals list
-    (``act``, ``by``, ``at``, ``via``, ``pr``, ``head``, ``details``), so R11 can take it in."""
+    (``act``, ``by``, ``at``, ``via``, ``pr``, ``head``, ``details``), so R11 can take it in.
+    ``via`` is ``merge`` (the owner's merge) or, at (e) since R22, ``approval`` (the owner's
+    approving review, on which the merge App merged; ``head`` is then the approved commit)."""
+    if via not in ACCEPT_VIAS:
+        raise ValueError(f"via must be one of {', '.join(ACCEPT_VIAS)}")
     return {
         "act": ACCEPT_ACT,
         "by": by,
         "at": at,
-        "via": ACCEPT_VIA,
+        "via": via,
         "pr": int(pr),
         "head": head or None,
         "details": {"phase": phase, "items": list(items), "banner_shown": bool(banner_shown)},
@@ -280,7 +288,11 @@ def validate_acceptances(lines: Any) -> None:
             isinstance(line, dict)
             and set(line) == {"act", "by", "at", "via", "pr", "head", "details"}
             and line.get("act") == ACCEPT_ACT
-            and line.get("via") == ACCEPT_VIA
+            and line.get("via") in ACCEPT_VIAS
+            and (
+                line.get("via") == ACCEPT_VIA
+                or (isinstance(line.get("details"), dict) and line["details"].get("phase") == "e")
+            )
             and all(isinstance(line.get(k), str) and line[k].strip() for k in ("by", "at"))
             and isinstance(line.get("pr"), int)
             and not isinstance(line.get("pr"), bool)
@@ -294,8 +306,8 @@ def validate_acceptances(lines: Any) -> None:
         )
         if not ok:
             raise ValueError(
-                "risk_acceptances: each line is {act: 'risk accepted', by, at, via: 'merge', "
-                "pr, head, details: {phase: a|b|e, items, banner_shown}}"
+                "risk_acceptances: each line is {act: 'risk accepted', by, at, via: 'merge' "
+                "(or 'approval' at e), pr, head, details: {phase: a|b|e, items, banner_shown}}"
             )
 
 

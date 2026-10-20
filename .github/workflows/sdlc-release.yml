@@ -1,4 +1,5 @@
-# The release of gate (e): the owner's merge of the build PR runs the project's own
+# The release of gate (e): the merge of the build PR - by the merge App on the owner's
+# approving review (decision 36), or by the owner - runs the project's own
 # sdlc.yaml: deploy.command - after checking the approval - and nothing else.
 #
 # Contract: docs/OPERATING_MODEL.md sections 4 (gate (e): "merge of the build PR; plus a
@@ -9,8 +10,10 @@
 # template/.github/workflows/; edit it here, not in the framework.
 #
 # Why two pull_request types:
-#   * closed - the owner's merge. Without a declared production (deploy.production: false)
-#     the merge alone is the approval and the release runs now;
+#   * closed - the merge (the merge App's events start runs, the workflow token's never
+#     would; whether its merge starts this workflow is verified at R22's first merge, else
+#     the merge workflow dispatches it). Without a declared production
+#     (deploy.production: false) the approval of gate (e) is the release's and it runs now;
 #   * labeled - with deploy.production: true the release also needs the label
 #     sdlc:release-approved, applied by a person on GitHub - the only route: a run cannot
 #     approve itself (decision 5), so no signed tag counts and no bot's label does. The
@@ -92,7 +95,8 @@ jobs:
       released: ${{ steps.release.outputs.released }}
       change_id: ${{ steps.release.outputs.change_id }}
       pin: ${{ steps.pin.outputs.ref }}
-      # decision 35: the risk-list items the owner's merge accepted (one status.yaml line)
+      # decision 35: the risk-list items the owner's merge, or since R22 the owner's
+      # approving review, accepted (one status.yaml line)
       risk_acceptance: ${{ steps.release.outputs.risk_acceptance }}
     steps:
       # The merge commit itself, not the event's default ref: a label applied long after

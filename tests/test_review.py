@@ -525,6 +525,69 @@ def test_cli_check_run_succeeds_when_no_important_finding_stands(
     assert fake_github[0]["conclusion"] == "success"
 
 
+def _commit(root: Path, rel: str, text: str) -> str:
+    write(root / rel, text)
+    git(root, "add", "--", rel)
+    git(root, "commit", "-q", "-m", f"add {rel}")
+    return head_of(root)
+
+
+def test_cli_check_run_on_the_final_head_is_green_across_evidence_only(
+    tmp_path, capsys, monkeypatch, fake_github
+):
+    """R22 (decision 36, point 3): the runner posts sdlc/review again on the build PR's
+    final head, green only while every commit after the reviewed one is evidence or the run
+    record, the head rule the merge step applies."""
+    root, change = make_project(tmp_path, change_type="feature")
+    reviewed = head_of(root)
+    record_findings(change, payload(reviewed, [NIT]))
+    rel = change.relative_to(root).as_posix()
+    final = _commit(root, f"{rel}/evidence/run-e.json", "{}")
+    monkeypatch.setattr(review_cli.gitops, "github_repo", lambda *_a, **_k: "owner/repo")
+    argv = ["check-run", "--root", str(root), "--id", "0001", "--final-head"]
+    assert run_cli(argv) == 0
+    out = json.loads(capsys.readouterr().out)
+    assert out["head"] == final and out["conclusion"] == "success"
+    assert fake_github[-1]["head_sha"] == final
+    # a source change after the review turns it red on the final head
+    final = _commit(root, "src_extra.py", "x = 1\n")
+    assert run_cli(argv) == 0
+    out = json.loads(capsys.readouterr().out)
+    assert out["head"] == final and out["conclusion"] == "failure"
+    assert "commits after the reviewed one" in fake_github[-1]["title"]
+    assert "src_extra.py" in fake_github[-1]["summary"]
+
+
+def test_cli_check_run_on_the_final_head_lists_a_rename_s_old_path(
+    tmp_path, capsys, monkeypatch, fake_github
+):
+    """The R22 review, finding 3: a source file moved into evidence/ after the review
+    leaves the code; git's default rename detection lists only the new path."""
+    root, change = make_project(tmp_path, change_type="feature")
+    _commit(root, "src_moved.py", "x = 1\n")
+    reviewed = head_of(root)
+    record_findings(change, payload(reviewed, [NIT]))
+    rel = change.relative_to(root).as_posix()
+    git(root, "mv", "src_moved.py", f"{rel}/evidence/src_moved.py")
+    git(root, "commit", "-q", "-m", "move it")
+    monkeypatch.setattr(review_cli.gitops, "github_repo", lambda *_a, **_k: "owner/repo")
+    assert run_cli(["check-run", "--root", str(root), "--id", "0001", "--final-head"]) == 0
+    assert json.loads(capsys.readouterr().out)["conclusion"] == "failure"
+    assert "src_moved.py" in fake_github[-1]["summary"]
+
+
+def test_cli_check_run_on_the_final_head_needs_the_reviewed_commit(
+    tmp_path, capsys, monkeypatch, fake_github
+):
+    root, change = make_project(tmp_path, change_type="feature")
+    data = payload(head_of(root), [NIT])
+    data.pop("head")
+    record_findings(change, data)
+    monkeypatch.setattr(review_cli.gitops, "github_repo", lambda *_a, **_k: "owner/repo")
+    assert run_cli(["check-run", "--root", str(root), "--id", "0001", "--final-head"]) == 0
+    assert json.loads(capsys.readouterr().out)["conclusion"] == "failure"
+
+
 def test_cli_check_run_reports_no_route_when_github_cannot_post(tmp_path, capsys, monkeypatch):
     """``pr/github.py`` answers with ``route: none`` (no gh, no installation token) rather than
     raising; the phase carries on and the PR description still shows the summary."""

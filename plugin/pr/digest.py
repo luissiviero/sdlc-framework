@@ -55,6 +55,14 @@ UNPROTECTED = (
     "or a workflow holding the token from merging to `{branch}`."
 )
 READY_SUFFIX = "-ready"
+APPROVED_LINE = " — approved {at}, not merged: {reason}"
+NO_CHECK = "waiting for the sdlc/review check on its head"
+RED_CHECK = "sdlc/review is not green on its head"
+CONFLICT = "a conflict with the default branch"
+NOT_YET = (
+    "not merged yet: read the latest SDLC merge (e) run, or merge it yourself when no merge "
+    "App is set up (fallback C1)"
+)
 
 
 def _now() -> str:
@@ -106,6 +114,12 @@ def _line(pr: dict[str, Any]) -> str:
     url = pr.get("html_url") or pr.get("url")
     head = f"[#{number}]({url})" if url else f"#{number}"
     line = f"- {head} {title} — {labels} — updated {pr.get('updated_at', 'unknown')}"
+    approved = pr.get("approval") if isinstance(pr.get("approval"), dict) else None
+    if approved:
+        # R22: an approved build PR the merge App has not merged (a blocked merge shows here)
+        line += APPROVED_LINE.format(
+            at=str(approved.get("at") or "unknown")[:10], reason=approved.get("reason")
+        )
     bullet = first_bullet(pr.get("body"))
     return f"{line}\n  - {bullet}" if bullet else line
 
@@ -199,6 +213,49 @@ def list_queue_prs(repo: str) -> tuple[list[dict[str, Any]], str]:
     return [pr for pr in items if sdlc_labels(pr) or c.INCIDENT_LABEL in labels_of(pr)], ""
 
 
+def approval_of(
+    repo: str, pr: dict[str, Any], config: dict[str, Any] | None = None
+) -> dict[str, Any] | None:
+    """For a build PR at ``sdlc:e-ready``: {'at', 'reason'} when the owner's latest review
+    that approves, requests changes or was dismissed approves (``unpark.is_owner_actor``,
+    decision 34, with ``config`` the default branch's ``sdlc.yaml`` when the digest has the
+    checkout), and the PR is still open; None otherwise or when a read fails. The R22
+    proposal's line ("approved <date>, not merged: <reason>"), which R20 places."""
+    from state.unpark import is_owner_actor  # noqa: PLC0415
+
+    if c.ready_label("e") not in labels_of(pr) or not pr.get("number"):
+        return None
+    got = github.pr_reviews(repo, int(pr["number"]))
+    if not got.get("ok"):
+        return None
+    latest = None
+    for review in got.get("reviews") or []:
+        state = str(review.get("state") or "").upper()
+        if state in ("APPROVED", "CHANGES_REQUESTED", "DISMISSED") and is_owner_actor(
+            review.get("author"), config or {}, None, repo
+        ):
+            latest = review
+    if latest is None or str(latest.get("state")).upper() != "APPROVED":
+        return None
+    sha = str((pr.get("head") or {}).get("sha") or "")
+    checks = github.check_runs_on(repo, sha, github.REVIEW_CHECK) if sha else {"ok": False}
+    runs = (checks.get("runs") or []) if checks.get("ok") else []
+    if not checks.get("ok"):
+        reason = f"the sdlc/review check could not be read ({checks.get('reason') or 'no head'})"
+    elif not runs:
+        reason = NO_CHECK
+    elif any(r.get("conclusion") != "success" for r in runs):
+        reason = RED_CHECK
+    else:
+        # the list endpoint carries no mergeable_state: the single pull request does
+        single = github._request(
+            "GET", f"{github.API_ROOT}/repos/{repo}/pulls/{pr['number']}", github.token() or ""
+        )
+        data = single.get("data") if isinstance(single.get("data"), dict) else {}
+        reason = CONFLICT if data.get("mergeable_state") == "dirty" else NOT_YET
+    return {"at": latest.get("at"), "reason": reason}
+
+
 def publish(repo: str, markdown: str) -> dict[str, Any]:
     """Replace the digest issue's body, creating (and trying to pin) it on the first run."""
     found = github.pinned_issue(repo, ISSUE_TITLE)
@@ -238,6 +295,16 @@ def main(argv: list[str] | None = None) -> int:
     else:
         prs, error = list_queue_prs(args.repo)
         protection = github.default_branch_protection(args.repo)
+        config: dict[str, Any] = {}
+        if args.root:
+            from hooks._common import ConfigError, load_sdlc_config  # noqa: PLC0415
+
+            try:
+                config = load_sdlc_config(str(Path(args.root).resolve())) or {}
+            except ConfigError:
+                config = {}
+        for pr in prs:
+            pr["approval"] = approval_of(args.repo, pr, config)
 
     counters_md = ""
     if args.root:

@@ -206,12 +206,18 @@ def test_upsert_requests_the_review_only_with_the_flag(project, capsys, fake_rou
     out = upsert(capsys, root)
     assert out["created"] is True and "review_request" not in out
     assert fake_routes["calls"] == []  # the model's in-session upserts request nothing
-    assert fake_routes["reviewers"] == [("find", False)]  # the plain lookup, as before
+    # the plain lookup, as before, and (R22) the head read back for the "not a build PR"
+    # check this design PR carries
+    assert fake_routes["reviewers"] == [("find", False), ("by_number", False)]
     out = upsert(capsys, root, "--request-review")
     assert out["review_request"]["action"] == "requested"
     assert fake_routes["calls"] == [("request", 9, [OWNER])]
     # the sync's lookups ask for the author and the pending reviewers
-    assert fake_routes["reviewers"][1:] == [("find", True), ("by_number", True)]
+    assert fake_routes["reviewers"][2:] == [
+        ("find", True),
+        ("by_number", False),
+        ("by_number", True),
+    ]
     # a later publication on the same PR, now carrying sdlc:fixing: the request is withdrawn
     fake_routes["calls"].clear()
     fake_routes["existing"] = {**pr(pending=True), "number": 9, "labels": [c.ready_label("b")]}

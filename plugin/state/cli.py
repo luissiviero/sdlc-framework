@@ -394,7 +394,7 @@ def _derived_gate(raw: status.Status, st: status.Status, default: str | None) ->
 
 def cmd_show(args) -> int:
     """``status.yaml`` of one change. On a checkout of the default branch a change at phase e
-    was merged by the owner, which is gate (e) passed (decision 13): the output shows the
+    was merged at gate (e), which is gate (e) passed (decisions 13 and 36): the output shows the
     derived gate and says so under ``derived``; the file itself is left as it is."""
     loaded = _load(args)
     if not loaded:

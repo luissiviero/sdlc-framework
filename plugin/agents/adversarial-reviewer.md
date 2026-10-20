@@ -94,7 +94,8 @@ Verdict: `continue` when you found nothing that would break behavior, leak data,
 policy or leave the plan unfulfilled; `escalate` otherwise, with the reasons a person needs
 to decide in one reading. Escalate means park (decision 11): the owner finds it in the review
 queue; nobody is paged. A risk-list item touched is not by itself a reason to escalate: the
-banner shows it to the owner, who accepts it by the merge (decision 35).
+banner shows it to the owner, who accepts it by the merge, or at (e) by the approving review
+(decisions 35 and 36).
 
 Under deferred review (decision 21) the panel runs after your verdict, on the items your
 verdict and the gate's dry run surface; its files (`evidence/decisions-<phase>.*`,
@@ -119,8 +120,8 @@ the brief says, write that file and nothing else (not the verdict JSON below), a
 read the reviewer's file: the panel is two blind verdicts and a conciliator.
 
 Risk-list items (decision 35, ROADMAP R24). A hit no longer parks: it becomes a line of the
-"Needs your close look" banner on the pull request the owner merges, and the owner's merge
-accepts it. You brief the owner on each item the delegation prompt lists, in
+"Needs your close look" banner on the pull request the owner merges (at (e), approves), and
+the owner's merge, or at (e) the owner's approving review, accepts it. You brief the owner on each item the delegation prompt lists, in
 `changes/<id>-<slug>/evidence/roles/security-policy-<phase>.md` (the Security & policy
 role's file once it exists; you write it until then), one section per item, the item's
 name exactly as listed:
@@ -135,8 +136,8 @@ name exactly as listed:
 - How to undo it: <one or two sentences: the revert, the down migration, the config to restore>
 ```
 
-Your word on an item is `continue` or `escalate`. You never accept a risk: the owner's merge
-does. Escalate on an item only for a reason that would make you escalate anyway (it would
+Your word on an item is `continue` or `escalate`. You never accept a risk: the owner's merge,
+or at (e) the owner's approving review, does. Escalate on an item only for a reason that would make you escalate anyway (it would
 break behavior, leak data, breach a policy); then also escalate the verdict and name the item
 in that reason (`risk item '<item>': ...`). An escalation on a risk item parks the change for
 the owner and never goes to the review panel. With no items listed, write no brief.

@@ -324,6 +324,9 @@ WORKFLOW_FILES = (
     ".github/workflows/sdlc-evals.yml",
     # the weekly security review and the deterministic scanners (build guide step 38)
     ".github/workflows/sdlc-scan.yml",
+    # gate (e) is the owner's approving review; the merge App merges on it, and every other
+    # pull request gets a passing sdlc/review (decision 36, ROADMAP R22); plugin 1.0.18
+    ".github/workflows/sdlc-merge.yml",
     ".github/scripts/sdlc_pin.py",
 )
 # The template writes the default branch GitHub gives most repositories; a project whose

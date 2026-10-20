@@ -2170,6 +2170,8 @@ def test_digest_workflow_is_scheduled_and_needs_no_model_credential():
     assert re.search(r"(?m)^  workflow_dispatch:$", text)
     block = text.split("permissions:\n", 1)[1].split("\n\n", 1)[0]
     assert [line.strip() for line in block.splitlines()] == [
+        # R22: the approved, unmerged build PR's line reads sdlc/review
+        "checks: read  # R22: the approved, unmerged build PR's line reads sdlc/review",
         "contents: read",  # actions/checkout fails without it
         "issues: write",
         "pull-requests: read",
@@ -3061,7 +3063,7 @@ def test_pr_reviews_reads_every_page_through_the_api_and_gh(monkeypatch):
     review = {
         "id": 5, "user": _rest_user("luissiviero"), "author_association": "OWNER",
         "state": "CHANGES_REQUESTED", "body": "rename it", "submitted_at": "2026-09-26T10:00:00Z",
-        "html_url": "https://github.com/o/r/pull/12#pullrequestreview-5",
+        "html_url": "https://github.com/o/r/pull/12#pullrequestreview-5", "commit_id": "abc123",
     }  # fmt: skip
     bot = {"id": 6, "user": _rest_user("some-app[bot]", "Bot"), "author_association": "NONE",
            "state": "COMMENTED", "body": "lint", "submitted_at": "t", "html_url": "u"}  # fmt: skip
@@ -3079,9 +3081,9 @@ def test_pr_reviews_reads_every_page_through_the_api_and_gh(monkeypatch):
     assert got["reviews"] == [
         {"id": 5, "author": "luissiviero", "type": "User", "association": "OWNER",
          "state": "CHANGES_REQUESTED", "body": "rename it", "at": "2026-09-26T10:00:00Z",
-         "url": "https://github.com/o/r/pull/12#pullrequestreview-5"},
+         "url": "https://github.com/o/r/pull/12#pullrequestreview-5", "commit": "abc123"},
         {"id": 6, "author": "some-app[bot]", "type": "Bot", "association": "NONE",
-         "state": "COMMENTED", "body": "lint", "at": "t", "url": "u"},
+         "state": "COMMENTED", "body": "lint", "at": "t", "url": "u", "commit": None},
     ]  # fmt: skip
     seen = _gh_only(monkeypatch, lambda args: ([review], ""))
     got = github.pr_reviews("o/r", 12, cwd=".")
