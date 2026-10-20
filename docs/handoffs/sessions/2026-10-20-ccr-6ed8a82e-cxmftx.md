@@ -13,7 +13,7 @@ The owner's task: check the study independently (report only), put its four ques
 - **The sample's `main` is at `4a429c4`** with pin 1.0.17 (verified, its `sdlc.yaml:77`), and its workflow copies are 1.0.17's: nine steps pass `GEMINI_API_KEY` to a session (verified, `grep` on its `.github/workflows`). Its secret is unset (carried from `2026-10-20-ccr-5953b5a0-gblc0q-end.md`, not re-verified).
 - **Open PRs** (verified, the GitHub list): framework #173 (intent 0004) and this session's PR; sample #55.
 - **The check**: `docs/reviews/2026-10-20-gemini-study-check.md`. **Choice 246** and what 1.0.18 builds are in `docs/PROGRESS.md`.
-- **This session's PR**, draft, plugin **1.0.18**: #290's session part undone; R8 built for (b) and (e) in a `second-opinion` job after the phase job, off by default. R8's row is under "Done" in ROADMAP.
+- **This session's PR, #304**, draft, plugin **1.0.18**: #290's session part undone; R8 built for (b) and (e) in a `second-opinion` job after the phase job, off by default. R8's row is under "Done" in ROADMAP.
 
 **A correction:** `2026-10-20-ccr-8b4eb57f-uy0e8e-end.md` lists "The sample's upgrade to 1.0.17" as open. The sample was already on 1.0.17 (sample #89, #90 and #91, merged before that file was written).
 
@@ -30,7 +30,7 @@ The owner's task: check the study independently (report only), put its four ques
 ## Next steps, in order
 1. **The owner merges this session's PR** once `Framework checks` is green; `sdlc-tag.yml` tags `v1.0.18`.
 2. **The owner's pastes**, after the tag (the table in "What the owner does").
-3. **The sample**: the secret, the `sdlc.yaml` paste, then the PR with the 1.0.18 workflow copies, in that order.
+3. **The sample**: the secret, the `sdlc.yaml` paste, then sample #92 (the 1.0.18 workflow copies, draft, opened by this session from #304's templates), in that order.
 4. **The first live (b)** on the sample: the next change the owner opens there. The session that reads it writes R8's first tally row (`docs/proposals/external-design-check.md`, "Tally") and records whether the API accepted the request's shape.
 5. Then the next steps of the files this one builds on, carried unchanged, not re-verified: R60's answers into R22's row, R22's build, and the ROADMAP candidates in their Order column.
 
