@@ -90,6 +90,66 @@ Sorted by weighted score. "A" and "B" name the study each item came from.
 6. **Does a repeated gate failure count as "a mistake made twice"?** The article's rule is about Claude's mistakes. Plan-sync and scope failures are the session's; red targets already start fix rounds.
 7. **Once R8's Gemini tally exists, would you consider Gemini as the panel's devil's advocate?** That would be a new decision, not a port.
 
+## The owner's answers and the session's recommendations (2026-10-20)
+
+These were given in the session after this file was first written. They are answers, not decisions: no candidate is amended until an accepted item goes through the normal front door.
+
+| # | The owner's answer | The session's recommendation | State |
+|---|---|---|---|
+| 1 | Mostly private repositories, not exclusively | `/sdlc-init` turns the Actions-minutes meter on by default whenever the repository is private (R25, R61) | agreed |
+| 2 | Wants the fewest stops; asked how often a change lacks an explicit grant, and whether a faster alternative to waiting exists | See "Question 2" below. Drop the silence timer: the owner's act at the start of each change is the consent, the App merges as soon as R52's conditions hold, and only changes that fail those conditions wait for the owner | awaiting the owner |
+| 3 | Decides after reviewing the list of optional features (`options.md`) | Staging after the merge as an optional R39 key, on for projects whose behaviour shows only over time (paper trading) | open |
+| 4 | Agreed | No serial-queue mechanism; on the sample, merge one intent at a time when results must stay attributable | agreed |
+| 5 | Asked for an explanation | See "Question 5" below | awaiting the owner |
+| 6 | Agreed | A repeated failure counts as "a mistake made twice" for a fixed list of session-caused checks (`plan_sync`, `design_scope`, `clean_tree`, secrets, protected-path denials). Red targets, limits, infrastructure failures and owner acts are excluded | agreed |
+| 7 | Agreed | Not now; decide after R8's five-change tally | agreed |
+| R52 | Merge by silence becomes the **default**; a project that does not want it opts out | Recorded as the owner's direction for R52's decision. That decision amends decision 4 for every project that has not opted out, instead of only for opted-in ones | the owner's direction |
+
+### Question 2: how often a change has no explicit grant, and the faster alternative
+
+**How often.** Twelve changes have run past change 0000 across the sample and this repository. Nine started from the owner's own intent (route `idea`). Three were incident intents from the daily detection or the weekly security scan, which the owner triages at gate (f) by merging the intent PR.
+
+**What that means.** Every change already starts with one act of the owner's:
+- pushing their own intent;
+- merging an incident intent at (f);
+- labelling an issue under R31.
+
+If that act counts as the grant, no change is left in the "no grant" case, and the silence timer has nothing to wait for.
+
+**Recommendation.** Make the grant implicit in that first act, and drop the timer. The App merges the build PR as soon as R52's conditions hold and the locked-path floor is clear. The PR must also have been brought up to date with the default branch and re-checked first (R51).
+
+**What still stops.** A change that fails a condition still waits for the owner at (e), as it does today:
+- a non-routine plan;
+- "Decisions taken for you";
+- a risk-list hit;
+- a declared production;
+- a locked path.
+
+Those are the changes where reading the code matters.
+
+**Faster than stopping, for the margin a timer was meant to give.**
+- **Merge now; a declared production still waits for the release label** (decision 13).
+- **Undo with one act.** The digest lists each "merged unread" change, and the existing `revert-pr` runbook reverts one.
+- **Waiting changes do not block the others.** Each change runs in its own branch (R51), so only a change that depends on a waiting one waits with it.
+
+**What remains.** R52's decision is still timed for R50's trigger: 20 changes past gate (e) on a project other than the sample, with R26's measures. That is the one wait left before any of this applies.
+
+### Question 5: the `CLAUDE.md` line budget, explained
+
+Every session reads `CLAUDE.md` in full at its start. The article asks to keep it under a page and to add a line each time Claude repeats a mistake (p.20 steps 4-5). The framework does the adding, through R37's standing PR, but nothing ever removes a line, so the file only grows.
+
+**The recommendation:**
+- **A fixed cap of 60 lines for the whole file.** The template is 41 lines; the sample's filled-in file is 53.
+- **The count is shown.** R37's standing PR shows it, for example "CLAUDE.md: 53 of 60 lines".
+- **A line that would go past 60** makes the same PR list existing lines to delete:
+  - first, lines whose mistake a hook, gate check or eval now catches, so the written rule is redundant;
+  - then, lines whose mistake has not recurred in a set number of merged changes (R26 counts repeats per line).
+- **The owner deletes them** by editing the PR before merging. No run deletes a line (decision 6).
+
+The number is fixed in the plugin rather than a new `sdlc.yaml` key, so it adds no setting.
+
+**Example.** "Run the migrations test before reporting done" was added after changes 0007 and 0011. Change 0019's incident adds an eval case that fails without that test. The next standing PR then shows the line as "enforced by eval 0019, proposed for deletion".
+
 ## How it was reached
 
 | Step | File | Who |
