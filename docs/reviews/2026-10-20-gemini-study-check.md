@@ -6,7 +6,7 @@ The owner asked a fresh session (branch `ccr-6ed8a82e-cxmftx`) to answer the stu
 
 Read before the study: ROADMAP R8, R28 and R62 and the proposals of R8 and R62; decisions 11, 12 and 21; `template/sdlc.yaml`; `plugin/ci/run_phase.py` `session_env` and `commands_env`; `plugin/ci/settings.ci.json`; the workflow templates. The session's own answers were written to its scratch folder before the study was opened.
 
-Google's pages could not be opened from the container: `ai.google.dev` answers 403 at the proxy's `CONNECT` (and WebFetch fails on DNS). Every Gemini fact below is **read in search-result extracts of Google's pages, not verified**. No Gemini call was made: the container holds no key. The model ids are settled by `python plugin/external/cli.py models` on the owner's key (plugin 1.0.18) before any is written into `sdlc.yaml`.
+Google's pages could not be opened from the container: `ai.google.dev` answers 403 at the proxy's `CONNECT` (and WebFetch fails on DNS). Every Gemini fact below is **read in search-result extracts of Google's pages, not verified**. No Gemini call was made: the container holds no key. The model ids are settled by `python plugin/external/cli.py models` on the owner's key (plugin 1.0.19) before any is written into `sdlc.yaml`.
 
 ## The session's own answers, in short
 
@@ -37,7 +37,7 @@ Google's pages could not be opened from the container: `ai.google.dev` answers 4
 | 16 | Link billing before project code; "the paid tier excludes that" | **partly, a gap** | The extracts of the pricing and logging pages name a paid, invite-only **Contributor** tier that trades up to 50% off for Google's use of the data, and a **55-day** abuse-monitoring log on the paid tier that authorised staff may read | Add both: never accept the Contributor invite on the key's project; know the 55-day log. |
 | 17 | Q4: the runner sends the bundle | agree | URL context: public URLs only, 20 a request, and a tool. One blog says the consumer Gemini Code Assist GitHub app stopped on 2026-07-17 (not verified); the enterprise one needs Google Cloud and posts its own reviews, so it writes. | none |
 | 18 | Item 3: the Windows variable and the cloud secret, for calls by hand | **disagree** | A persistent Windows variable reaches every local Claude Code session; a cloud environment secret reaches every cloud session: #290's exposure on the PC and in the cloud | Neither persistently: the owner sets the key in one terminal window when running the client by hand. |
-| 19 | Item 4: the sample's paste of the 1.0.17 file | **disagree, out of date** | The sample's `main` at `4a429c4` carries `version: 1.0.17` (sample #89, #90, #91) | The 1.0.18 pin with `external_review`, then the 1.0.18 workflow copies, and the sample's own secret if the owner wants Gemini there. |
+| 19 | Item 4: the sample's paste of the 1.0.17 file | **disagree, out of date** | The sample's `main` at `4a429c4` carries `version: 1.0.17` (sample #89, #90, #91) | The 1.0.19 pin with `external_review`, then the 1.0.19 workflow copies, and the sample's own secret if the owner wants Gemini there. |
 
 ## Google's own sources through other hosts (the owner's question, later the same day)
 
@@ -52,7 +52,7 @@ What they settle:
 - **The prices**: the Vertex page gives the extracts' figures ($2 / $10 for Argon until 2026-11-30, then $4 / $20; $0.75 / $3.75 for 3.8 Flash until 2026-12-31, then $1.50 / $7.50). That is Vertex's list, read in full; the Developer API's list was not.
 - **Row 10 corrected**: Google's cookbook does call `generateContent` "the legacy `generateContent` API ... kept as a reference" and the Interactions API "the recommended way" (`quickstarts/Get_started_Generate_Content.ipynb`). The study was right on the label. The choice stands: the discovery document still serves `generateContent`, and the Interactions API keeps state on Google's side (`store=True` by default).
 
-What they change in plugin 1.0.18 (made in #304):
+What they change in plugin 1.0.19 (made in #304):
 1. **`store: false` on every request.** The discovery document lists a `store` field that "configures the logging behavior for a given request" and "takes precedence over the project-level logging config". Without it, a project with AI Studio logging on would keep the code sent in its logs, from which a dataset can be shared.
 2. **A cut-off answer is named.** On a non-streaming `generateContent` call the output cap is 32,768 tokens, thinking included (the cookbook's migration guide for Argon), and an answer can stop with `MAX_TOKENS` or `CONTINUATION`. The record now says so instead of "the answer is not JSON". The cap stays at 32,768, the call's maximum, and no `thinkingLevel` is sent, so Argon thinks at its default, medium; "high" would spend 16K to 64K tokens of that cap on thinking (the same guide).
 3. **The model's stage is recorded.** Each answer carries `modelStatus` (`STABLE`, `PREVIEW`, `LEGACY`, `DEPRECATED`, with a retirement time); the record keeps it and the comment names a stage other than `STABLE`.

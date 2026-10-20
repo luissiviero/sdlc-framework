@@ -275,6 +275,29 @@ def strip_git_auth(env: Mapping[str, str]) -> dict[str, str]:
     return out
 
 
+APP_REQUIRED = (
+    "the project's GitHub App is required (decision 33; R22, 1.0.18): this workflow minted no "
+    "App token, so the run stops before it starts instead of publishing with the workflow "
+    "token. Set the repository variable SDLC_APP_ID and the secret SDLC_APP_PRIVATE_KEY "
+    "(/sdlc-init step 6, in a desktop browser: "
+    "https://github.com/{repo}/settings/variables/actions), then re-run"
+)
+
+
+def app_missing(env: Mapping[str, str]) -> str | None:
+    """Why a run must stop because the project's App minted no token, else None (R22: the
+    App is required for every project, the owner's answer of R60). Only on a runner, and only
+    in a workflow that mints the App's token: those hand the job the workflow token as
+    ``SDLC_WORKFLOW_TOKEN`` and record ``SDLC_APP_TOKEN_MINTED_AT`` after the mint; the
+    workflows that mint no App token set neither and are not judged. A token that turns
+    stale later still falls back to the workflow token in the job (``fall_back_if_stale``)."""
+    if not str(env.get("GITHUB_ACTIONS") or "").strip():
+        return None
+    if not _lookup(WORKFLOW_TOKEN_ENV, env) or _lookup(MINTED_AT_ENV, env):
+        return None
+    return APP_REQUIRED.format(repo=str(env.get("GITHUB_REPOSITORY") or "<owner>/<repo>"))
+
+
 def session_tokens(env: Mapping[str, str]) -> dict[str, str]:
     """The GitHub tokens a model session gets: the workflow token as ``GITHUB_TOKEN`` and
     ``GH_TOKEN`` when the workflow handed it over (``SDLC_WORKFLOW_TOKEN``), else {} (the

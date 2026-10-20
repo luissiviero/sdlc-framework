@@ -25,8 +25,9 @@
 # Token rule (decision 33): with the repository variable SDLC_APP_ID set, the job pushes and
 # opens the incident PR with the project's GitHub App token, and the events the App causes do
 # start workflow runs (the project's CI on the incident head; the design workflow skips a PR a
-# [bot] opened). Without it the job falls back to the workflow token, and its commits and pull
-# requests never start another workflow run. Either way your merge, label or close of the
+# [bot] opened). The App is required (R22, 1.0.18): without it nothing is
+# filed, and the run goes red with the reason. Past 50 minutes the job falls back to the
+# workflow token, and its commits and pull requests never start another workflow run. Either way your merge, label or close of the
 # incident PR fires the design, runbook or abandon workflow normally. The App's private key
 # reaches the mint step only. No deploy credential reaches the model's step; a project runbook
 # with a command runs in the "Dispatch the route" step below, whose env: is where the
@@ -72,8 +73,9 @@ jobs:
     timeout-minutes: 150
     steps:
       # Decision 33: the automation pushes and opens pull requests as the project's GitHub
-      # App. Without the repository variable SDLC_APP_ID this step is skipped and every step
-      # below falls back to the workflow token. The private key is read here only.
+      # App, required since 1.0.18 (R22): without the repository variable SDLC_APP_ID this
+      # step is skipped, and the runner refuses the run before it pushes or opens anything
+      # (ci/app_token.py app_missing). The private key is read here only.
       - name: Mint the App token (decision 33; skipped without vars.SDLC_APP_ID)
         id: app
         if: ${{ vars.SDLC_APP_ID != '' }}

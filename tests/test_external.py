@@ -1,4 +1,4 @@
-"""ROADMAP R8 (plugin 1.0.18): the second opinion's client, bundler, record and command."""
+"""ROADMAP R8 (plugin 1.0.19): the second opinion's client, bundler, record and command."""
 
 from __future__ import annotations
 

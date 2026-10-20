@@ -26,9 +26,24 @@ the gate does not enter phase (c) without all three. Detection also proposes `co
 — the one command that installs what those three need (`python -m pip install -e ".[dev]"`,
 `npm ci`, ...), which the CI phase jobs run before every phase; override it with `--setup`
 and pass `--setup ""` when the project has nothing to install.
+- **The project's GitHub App is required** (decision 33; ROADMAP R22, plugin 1.0.18): the
+  automation pushes and opens pull requests as it, and without it no phase run starts (the
+  runner stops each run with the reason; it never falls back to the workflow token for a
+  whole run). On a project whose `origin` is on GitHub, check that the repository variable
+  is there: `gh variable list` must list `SDLC_APP_ID` (the private key, stored as a
+  repository secret, cannot be read back; ask the owner to confirm it). If the variable is
+  missing, or `gh` cannot list the variables and the owner does not confirm both, **stop
+  here**: give the owner the App bullet of step 6 and say that it is desktop-only, since the
+  GitHub mobile app cannot create an App or store a variable (open github.com in a desktop
+  browser, or in the phone browser's desktop mode; ROADMAP R21), with the direct links
+  `https://github.com/settings/apps/new` and
+  `https://github.com/<owner>/<repo>/settings/variables/actions`, and ask the owner to
+  re-run `/sdlc-init` once both are set. Nothing is written before that. A project with no
+  GitHub remote yet goes on, and the report says the App comes with the remote.
 
 ## 1. Ask the owner (one question round, defaults in brackets)
-- profile [standard]: standard (owner merges at a, b, e) · full (all five gates). (Lite,
+- profile [standard]: standard (owner merges at a and b, and approves at e) · full (all five
+  gates). (Lite,
   gates a and e only, was withdrawn by decision 21 and is gone since 0.2.14.)
 - review [deferred]: deferred (a review panel decides a judgment item inside a phase in
   fresh contexts and the run continues; the owner reads "Decisions taken for you" at the
@@ -106,7 +121,8 @@ it, keeping the label; say in the PR body that the framework branch is `sdlc/000
 python "${CLAUDE_PLUGIN_ROOT}/plugin/state/cli.py" commit-phase --root "${CLAUDE_PROJECT_DIR}" --id 0000 --phase a --message "sdlc-init: connect the SDLC framework" --paths sdlc.yaml .claude/settings.json REVIEW.md CLAUDE.md changes ruff.toml evals bands.yaml lessons .github/workflows .github/scripts --start-point <default branch> --push
 ```
 (paths that do not exist, such as an uncreated `ruff.toml`, are skipped; `.github/workflows`
-and `.github/scripts` carry the thirteen `sdlc-*.yml` workflows and `sdlc_pin.py` the install
+and `.github/scripts` carry the fourteen `sdlc-*.yml` workflows (`sdlc-merge.yml` since
+1.0.18) and `sdlc_pin.py` the install
 wrote — without them the merged project has no automation, and every pin step's `git show` of
 the script fails; a project's own workflow file already there rides along only if it was
 uncommitted, so commit the project's own work first). Then open the PR exactly as
@@ -144,11 +160,44 @@ close look" banner shows (gate (a) matches the globs on this PR's own files, dec
   private key and install the App on this repository only. Store the App ID as the
   repository **variable** `SDLC_APP_ID` and the `.pem` file's content as the repository
   **secret** `SDLC_APP_PRIVATE_KEY` (Settings → Secrets and variables → Actions). Never add
-  the App to a ruleset's bypass list (R22 will settle its merge step). Without the variable
-  every workflow runs on the workflow token as before. On an upgrade to 1.0.9 or later,
+  this App to a ruleset's bypass list: the phase runners hold its token, and GitHub grants a
+  bypass to an actor, not to a job (choice 242, point 4); the merge App below is the only
+  bypass actor besides you. This App is required since 1.0.18 (R22): `/sdlc-init` stops
+  before writing anything until it is set (step 0), and without the variable the runner
+  stops every phase run with the reason instead of running on the workflow token. The
+  workflow token stays the in-job fallback once the App's token is 50 minutes old, the
+  model session's token, and the token of the workflows that mint no App token. All of it
+  is desktop-only (ROADMAP R21). On an upgrade to 1.0.9 or later,
   replace all thirteen `sdlc-*.yml` workflows (delete each and re-run /sdlc-init) and bump
   the pin in `sdlc.yaml` to 1.0.9 in the same pull request: the 1.0.9 copies persist no git
-  credential in the checkout, and an older pinned framework would then push with none.
+  credential in the checkout, and an older pinned framework would then push with none. On
+  an upgrade to 1.0.18, re-running /sdlc-init installs `sdlc-merge.yml`; bump the pin in
+  `sdlc.yaml` to 1.0.18 in the same pull request, since the copy runs
+  `plugin/ci/merge_step.py`, which an older pinned framework does not have; replacing
+  `sdlc-digest.yml` gives the digest its `checks: read` for the approved, unmerged build PR's
+  line.
+- The merge App (decision 36; ROADMAP R22): gate (e) is your approving review on the build
+  PR, and a GitHub App of its own merges on it, so the approval is your only act there.
+  It is not the App above: GitHub grants a bypass to an actor, not to a job, and only this
+  App is a bypass actor of ruleset 1 (choice 242, point 4). Desktop-only (ROADMAP R21).
+  1. Create a second GitHub App on your account
+     (`https://github.com/settings/apps/new`): webhook off; repository permissions
+     Contents read and write, Pull requests read and write, Metadata read; Workflows
+     **no access**; no other permission. Generate a private key and install the App on
+     this repository only.
+  2. Create the environment `sdlc-merge` (Settings → Environments → New environment,
+     `https://github.com/<owner>/<repo>/settings/environments`): no required reviewer, no
+     wait timer; Deployment branches and tags → "Selected branches and tags" → add the rule
+     `main` (your default branch's name), so only a run on the default branch reads its
+     key. In that environment add the **variable** `SDLC_MERGE_APP_ID` (the App ID) and
+     the **secret** `SDLC_MERGE_APP_PRIVATE_KEY` (the `.pem` file's content), never as a
+     repository secret, which every workflow on every branch could read. Environments
+     on a private repository need a paid plan (GitHub's documentation); on a free private
+     repository the merge stays yours (fallback C1).
+  3. Add this App to ruleset 1's bypass list (the ruleset bullet below), in "For pull
+     requests only" mode.
+  Without `SDLC_MERGE_APP_ID` the merge workflow says so and stops: you merge the build PR
+  after approving it (fallback C1).
 - On an organization repository, set `owner: <your login>` in `sdlc.yaml` (decision 34);
   otherwise no `@claude` comment or "Request changes" review starts a round and no
   `sdlc:c-approved` or `sdlc:d-approved` label counts. A personal repository needs nothing.
@@ -159,9 +208,13 @@ close look" banner shows (gate (a) matches the globs on this PR's own files, dec
   holds `contents: write` and the phase session may run `gh`, so a rule that only requires
   a pull request (with no approvals) or only stops direct pushes still lets `gh pr merge`
   through. Settings → Rules → Rulesets → New branch ruleset: target the default branch,
-  **"Restrict updates"** with the repository admin (the owner) as the only bypass actor —
-  the one rule that keeps a merge to the owner —, plus "Restrict deletions", "Block force
-  pushes" and "Require a pull request before merging". The bypass actor's mode is
+  **"Restrict updates"** with the repository admin (the owner) as the only bypass actor
+  besides the merge App —
+  the one rule that keeps a merge to the owner and to the merge App, which merges only on
+  the owner's approval —, plus "Restrict deletions", "Block force
+  pushes" and "Require a pull request before merging". Since 1.0.18 the merge App above is
+  its second bypass actor, in "For pull requests only" mode (decision 36). The owner's
+  bypass actor's mode is
   **Exempt** (the `…` menu of the actor's row in the bypass list): the rules do not run for
   the owner, so a merge from the GitHub mobile app goes through on a tap — the app still
   labels the pull request "Unable to merge", because it shows the general merge state, which
@@ -178,6 +231,20 @@ close look" banner shows (gate (a) matches the globs on this PR's own files, dec
   `pr/github.py default_branch_protection`: the branch's active rules must include an
   `update` rule; the classic `protected` flag is reported but does not count, since on a
   user-owned repository a classic rule cannot restrict who pushes; since 0.2.25).
+- Ruleset 2, which holds a build PR whose review is not green (decision 36, point 5;
+  plugin 1.0.18). Desktop-only (ROADMAP R21). Settings → Rules → Rulesets → New branch
+  ruleset (`https://github.com/<owner>/<repo>/settings/rules`): name
+  `sdlc/review on every pull request (decision 36)`; enforcement **Active**; target the
+  default branch ("Include default branch"); bypass list: the repository admin role (you),
+  in "For pull requests only" mode; one rule, **"Require status checks to pass"**, with the
+  check `sdlc/review` added from any source and "Require branches to be up to date before
+  merging" off; no other rule, and no required approval (decision 4's reason: your own
+  intent PRs could not pass one). Every pull request that is not a build PR gets a passing
+  `sdlc/review` ("not a build PR") from `sdlc-merge.yml` or from the step that opens it,
+  so intent, design, incident and your own PRs merge as before; a build PR whose review is
+  red merges only through the web UI's bypass checkbox, a deliberate act. When you set it
+  up, set your own bypass mode in ruleset 1 to **Exempt** if it is not already (choice
+  242, point 5), so your merges from the phone still go through.
 - Optional, owner's machine only: `docs/owner-machine/README.md` in the framework repo
   explains the managed settings file and its machine-wide consequences.
 

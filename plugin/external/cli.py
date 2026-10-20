@@ -1,4 +1,4 @@
-"""The second opinion (ROADMAP R8, plugin 1.0.18): a model of another vendor reads a change at
+"""The second opinion (ROADMAP R8, plugin 1.0.19): a model of another vendor reads a change at
 gate (b) or (e) and answers; it edits nothing, never parks and never fails its job.
 
     python plugin/external/cli.py review --root . --id 0001 --phase b [--repo owner/name]

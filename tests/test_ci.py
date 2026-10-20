@@ -815,7 +815,7 @@ def test_ci_sandbox_reaches_the_actions_log_host_and_no_blob_wildcard():
 
 
 def test_no_session_holds_the_gemini_key_and_the_sandbox_never_reaches_its_host(tmp_path):
-    """ROADMAP R8 (1.0.18) corrects 1.0.17 (#290): the Gemini key reaches only the second
+    """ROADMAP R8 (1.0.19) corrects 1.0.17 (#290): the Gemini key reaches only the second
     opinion's own step, in a job after the phase job that runs no Claude session, and the CI
     sandbox does not list the Gemini host. ``session_env`` drops the key whatever a workflow
     copy from 1.0.17 still passes."""
@@ -2180,6 +2180,8 @@ def test_digest_workflow_is_scheduled_and_needs_no_model_credential():
     assert re.search(r"(?m)^  workflow_dispatch:$", text)
     block = text.split("permissions:\n", 1)[1].split("\n\n", 1)[0]
     assert [line.strip() for line in block.splitlines()] == [
+        # R22: the approved, unmerged build PR's line reads sdlc/review
+        "checks: read  # R22: the approved, unmerged build PR's line reads sdlc/review",
         "contents: read",  # actions/checkout fails without it
         "issues: write",
         "pull-requests: read",
@@ -2273,7 +2275,7 @@ def test_workflow_uses_no_other_secret(name):
     text = workflow(name)
     # R49 (decision 33): a workflow that pushes also reads the App's key, in its mint step
     app = {"SDLC_APP_PRIVATE_KEY"} if name in APP_WORKFLOWS else set()
-    # R8 (1.0.18): the second opinion's job after the design and the deploy job, alone
+    # R8 (1.0.19): the second opinion's job after the design and the deploy job, alone
     gemini = {"GEMINI_API_KEY"} if name in ("sdlc-design.yml", "sdlc-deploy.yml") else set()
     allowed = {KEY_VAR, TOKEN_VAR} | app | gemini
     assert set(re.findall(r"secrets\.([A-Za-z_][A-Za-z0-9_]*)", text)) <= allowed
@@ -3072,7 +3074,7 @@ def test_pr_reviews_reads_every_page_through_the_api_and_gh(monkeypatch):
     review = {
         "id": 5, "user": _rest_user("luissiviero"), "author_association": "OWNER",
         "state": "CHANGES_REQUESTED", "body": "rename it", "submitted_at": "2026-09-26T10:00:00Z",
-        "html_url": "https://github.com/o/r/pull/12#pullrequestreview-5",
+        "html_url": "https://github.com/o/r/pull/12#pullrequestreview-5", "commit_id": "abc123",
     }  # fmt: skip
     bot = {"id": 6, "user": _rest_user("some-app[bot]", "Bot"), "author_association": "NONE",
            "state": "COMMENTED", "body": "lint", "submitted_at": "t", "html_url": "u"}  # fmt: skip
@@ -3090,9 +3092,9 @@ def test_pr_reviews_reads_every_page_through_the_api_and_gh(monkeypatch):
     assert got["reviews"] == [
         {"id": 5, "author": "luissiviero", "type": "User", "association": "OWNER",
          "state": "CHANGES_REQUESTED", "body": "rename it", "at": "2026-09-26T10:00:00Z",
-         "url": "https://github.com/o/r/pull/12#pullrequestreview-5"},
+         "url": "https://github.com/o/r/pull/12#pullrequestreview-5", "commit": "abc123"},
         {"id": 6, "author": "some-app[bot]", "type": "Bot", "association": "NONE",
-         "state": "COMMENTED", "body": "lint", "at": "t", "url": "u"},
+         "state": "COMMENTED", "body": "lint", "at": "t", "url": "u", "commit": None},
     ]  # fmt: skip
     seen = _gh_only(monkeypatch, lambda args: ([review], ""))
     got = github.pr_reviews("o/r", 12, cwd=".")

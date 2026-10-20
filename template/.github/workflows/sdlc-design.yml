@@ -17,8 +17,9 @@
 #
 # Token rule (decision 33): with the repository variable SDLC_APP_ID set, the job pushes and
 # opens pull requests with the project's GitHub App token, and the events the App causes do
-# start workflow runs - the project's CI runs on its heads with no approval click. Without it
-# the job falls back to the workflow token, whose events never start another workflow run -
+# start workflow runs - the project's CI runs on its heads with no approval click. The App is
+# required (R22, 1.0.18): without it the runner refuses the run. Past 50 minutes the job falls
+# back to the workflow token, whose events never start another workflow run -
 # only workflow_dispatch and repository_dispatch do. The owner's merges and labels fire these
 # workflows normally; every automated transition stays an explicit workflow_dispatch that
 # run_phase.py sends with the change id, which the fallback needs. The App's private key
@@ -88,8 +89,9 @@ jobs:
     timeout-minutes: 200
     steps:
       # Decision 33: the automation pushes and opens pull requests as the project's GitHub
-      # App. Without the repository variable SDLC_APP_ID this step is skipped and every step
-      # below falls back to the workflow token. The private key is read here only.
+      # App, required since 1.0.18 (R22): without the repository variable SDLC_APP_ID this
+      # step is skipped, and the runner refuses the run before it pushes or opens anything
+      # (ci/app_token.py app_missing). The private key is read here only.
       - name: Mint the App token (decision 33; skipped without vars.SDLC_APP_ID)
         id: app
         if: ${{ vars.SDLC_APP_ID != '' }}
@@ -204,7 +206,7 @@ jobs:
             changes/.hook-log.jsonl
           if-no-files-found: ignore
 
-  # ROADMAP R8 (plugin 1.0.18): a second opinion on the design from a model of another vendor,
+  # ROADMAP R8 (plugin 1.0.19): a second opinion on the design from a model of another vendor,
   # advisory. Off unless the default branch's sdlc.yaml lists (b) under
   # external_review.phases. A job of its own on a fresh runner after the design job: the
   # Claude session never held the Gemini key and never shared this machine, and the key

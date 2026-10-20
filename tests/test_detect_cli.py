@@ -225,6 +225,14 @@ class FakeGitHub:
         self.calls.append(("ensure_label", args, kwargs))
         return {"ok": True, "route": "fake", "label": args[1], "created": False}
 
+    def pr_by_number(self, *args: Any, **kwargs: Any) -> dict[str, Any]:
+        self.calls.append(("pr_by_number", args, kwargs))
+        return {"ok": True, "route": "fake", "number": args[1], "head_sha": "f" * 40}
+
+    def post_not_build_check(self, *args: Any, **kwargs: Any) -> dict[str, Any]:
+        self.calls.append(("post_not_build_check", args, kwargs))
+        return {"ok": True, "route": "fake"}
+
     def named(self, name: str) -> list[tuple[tuple[Any, ...], dict[str, Any]]]:
         return [(a, k) for n, a, k in self.calls if n == name]
 
@@ -298,6 +306,8 @@ def gh(monkeypatch) -> FakeGitHub:
         "set_labels",
         "create_pr",
         "ensure_label",
+        "pr_by_number",
+        "post_not_build_check",
     ):
         monkeypatch.setattr(module, name, getattr(fake, name))
     return fake
@@ -412,6 +422,21 @@ def test_run_twice_appends_one_line_per_run(tmp_path, src, gh, capsys):
 
 
 # --- run: filing the incident ---------------------------------------------------------------
+def test_run_files_no_incident_without_the_app(tmp_path, src, gh, capsys, monkeypatch):
+    """R22: the project's App is required; a workflow that minted no App token files
+    nothing with the workflow token, and the run goes red with the reason."""
+    root = project(tmp_path)
+    src.observations = series(16, spike=True)
+    monkeypatch.setenv("GITHUB_ACTIONS", "true")
+    monkeypatch.setenv("SDLC_WORKFLOW_TOKEN", "wf")
+    monkeypatch.delenv("SDLC_APP_TOKEN_MINTED_AT", raising=False)
+    log = tmp_path / "detect-log.jsonl"
+    code, out = cli(capsys, "run", "--root", str(root), "--repo", REPO, "--log", str(log), "--file")
+    assert code == 1
+    assert out["filed"]["filed"] is False and "GitHub App is required" in out["outcome"]
+    assert [p.name for p in change_dirs(root)] == ["0000-sdlc-init"]
+
+
 def test_run_spike_with_file_opens_the_incident_change(tmp_path, src, gh, capsys, monkeypatch):
     root = project(tmp_path)
     src.observations = series(16, spike=True)
@@ -956,6 +981,8 @@ def test_dismiss_with_a_reason_opens_the_dismissal_pr(incident, gh, capsys):
     assert reason in body and signature in body
     assert kwargs["draft"] is False
     assert out["pr"]["url"] == "https://x/pr/13"
+    # R22: the abandon workflow's token opens it, so the step posts "not a build PR" itself
+    assert gh.named("post_not_build_check") == [((REPO, "f" * 40), {"cwd": root})]
 
 
 def test_dismiss_reads_the_reason_from_the_last_comment_by_a_person(incident, gh, capsys):

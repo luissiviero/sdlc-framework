@@ -1,4 +1,4 @@
-"""The Gemini API client of the second opinion (ROADMAP R8, plugin 1.0.18): one function that
+"""The Gemini API client of the second opinion (ROADMAP R8, plugin 1.0.19): one function that
 sends text and reads text, and one that lists the models the key can call.
 
 Read-only by construction: the request carries no ``tools`` field (no function calling, no

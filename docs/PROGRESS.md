@@ -1,11 +1,11 @@
-# Progress — ROADMAP R8, the second opinion at gates (b) and (e), as plugin 1.0.18; #290's session exposure undone (choice 248) (2026-10-20)
+# Progress — ROADMAP R8, the second opinion at gates (b) and (e), as plugin 1.0.19; #290's session exposure undone (choice 248) (2026-10-20)
 
-This session ran on branch `ccr-6ed8a82e-cxmftx`, after #297 (the Gemini study) merged as `57b5a85`. The owner's task had three parts: check the study independently, report only; put its four questions to the owner; then build what the owner answered. The previous record (docs-lint check 8, choice 247) is now `docs/progress/2026-10-20-docs-lint-check-8-choice-247.md`, unchanged. Choices 246 and 247 were taken by sessions that ran in parallel and merged while this PR was open (#298, #303), so the owner's answers here are choice 248. The session's file is `docs/handoffs/sessions/2026-10-20-ccr-6ed8a82e-cxmftx.md`.
+This session ran on branch `ccr-6ed8a82e-cxmftx`, after #297 (the Gemini study) merged as `57b5a85`. The owner's task had three parts: check the study independently, report only; put its four questions to the owner; then build what the owner answered. The previous record (R22 as plugin 1.0.18, from #306) is now `docs/progress/2026-10-20-r22-gate-e-approving-review-1.0.18.md`, unchanged; the choice-247 record before it was archived by #306. Choices 246 and 247 were taken by sessions that ran in parallel and merged while this PR was open (#298, #303), so the owner's answers here are choice 248; R22 (#306) took 1.0.18 first, as its session proposed (rank 9 before R8's 46), so this PR is 1.0.19 (choice 184). The session's file is `docs/handoffs/sessions/2026-10-20-ccr-6ed8a82e-cxmftx.md`.
 
 ## Summary
 - **The check**: `docs/reviews/2026-10-20-gemini-study-check.md`, one row per recommendation of `docs/reviews/2026-10-20-gemini-second-opinion-study.md`. It agrees with the main finding (#290 departs from R8) and the ranks, and disagrees on four points: the record must not be committed where later Claude sessions read it, the call belongs in a job of its own, the bundle must leave out the change's `evidence/`, and the owner's Windows variable and cloud secret would repeat #290's exposure.
 - **Choice 248**: the owner's four answers, below.
-- **Plugin 1.0.18**: #290's session part undone, and R8 built for (b) and (e), off unless a project's `sdlc.yaml` turns it on.
+- **Plugin 1.0.19**: #290's session part undone, and R8 built for (b) and (e), off unless a project's `sdlc.yaml` turns it on.
 
 ## The owner's decision (2026-10-20)
 248. **The study's four questions** (the owner's answers in the session, the options as the session put them):
@@ -14,7 +14,7 @@ This session ran on branch `ccr-6ed8a82e-cxmftx`, after #297 (the Gemini study) 
     3. **Phases (b) and (e)**: "(b) and (e)". (e) runs after the phase (e) step. The panel double comes later, in one decision file together with R28's amendment of decision 21, and on Argon.
     4. **Billing is linked on the key's Google project**: "Yes, linked". This is the owner's word, not verified: a session cannot see the Google project. It answers R8's row "read the terms of the key's tier before the first call": on the paid tier Google does not use prompts and answers to improve its products, and keeps them 55 days for abuse monitoring. The invite-only Contributor tier would use them, so it is never accepted on that project (`docs/reviews/2026-10-20-gemini-study-check.md`, row 16).
 
-## What 1.0.18 builds
+## What 1.0.19 builds
 - **The correction of #290 (1.0.17)**:
   - no workflow step that runs a Claude session passes `GEMINI_API_KEY` any more: nine steps in eight template workflows, and this repository's seven installed copies;
   - `run_phase.session_env` drops the key whatever a workflow passes (`SESSION_HIDDEN_VARS`), as do the scan's and the evals' launchers, for a project whose workflow copies are still 1.0.17's;
@@ -55,7 +55,7 @@ This PR touches `plugin/ci/run_phase.py` (`SESSION_HIDDEN_VARS` and its use in `
 |---|---|---|---|
 | [.claude/settings.json](https://github.com/luissiviero/sdlc-framework/blob/main/.claude/settings.json#L33) | 33-34 | `        "files.pythonhosted.org",` then `        "generativelanguage.googleapis.com"` | `        "files.pythonhosted.org"` (line 34 removed) |
 | [template/.claude/settings.json](https://github.com/luissiviero/sdlc-framework/blob/main/template/.claude/settings.json#L29) | 29 | `      "allowedDomains": ["github.com", "*.github.com", "pypi.org", "files.pythonhosted.org", "generativelanguage.googleapis.com"]` | `      "allowedDomains": ["github.com", "*.github.com", "pypi.org", "files.pythonhosted.org"]` |
-| [sdlc.yaml](https://github.com/luissiviero/sdlc-framework/blob/main/sdlc.yaml#L104) | 104, after the `v1.0.18` tag | `  version: 1.0.17` | `  version: 1.0.18` |
+| [sdlc.yaml](https://github.com/luissiviero/sdlc-framework/blob/main/sdlc.yaml#L104) | 104, after the `v1.0.19` tag, and on the same condition as R22's row for 1.0.18 (this repository's App; `docs/progress/2026-10-20-r22-gate-e-approving-review-1.0.18.md`) | `  version: 1.0.17` | `  version: 1.0.19`, in the same paste as R22's row 6 |
 
 ## Checks (this repository)
 On the final head, after `python -m pip install -e ".[dev]"`, chained with `set -o pipefail`: `python -m compileall -q plugin tests tasks.py .github/scripts`, `python -m ruff check .`, `python -m ruff format --check .`, `python tasks.py docs-lint`, `python -m pytest -n 8` and `claude plugin validate .` (clean but for the `CLAUDE.md`-at-the-root warning). Their output is in the PR.
