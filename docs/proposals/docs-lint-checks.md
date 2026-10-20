@@ -1,7 +1,7 @@
 ---
 type: Proposal
 title: The docs lint, part 2 — the cross-file facts a script can check, so the docs consistency review's mechanical classes cannot come back
-description: Six deterministic checks added to python tasks.py docs-lint (decision amendments, proposal status against ROADMAP, built rows under Done, version and PR pairs against the tags, the moved stubs, a Portuguese word list), and one rule that proposals stop restating ROADMAP's status and order.
+description: Seven deterministic checks added to python tasks.py docs-lint (decision amendments, proposal status against ROADMAP, built rows under Done, version and PR pairs against the tags, the moved stubs, a Portuguese word list, every frontmatter parsing as YAML), and one rule that proposals stop restating ROADMAP's status and order.
 status: accepted
 roadmap: R58
 sources:
@@ -19,7 +19,7 @@ generated: { by: sdlc-framework-session/ccr-e8220c2e-ya26hb, at: 2026-10-20T12:0
 
 # The docs lint, part 2
 
-**Status: accepted by the owner on 2026-10-20 (ROADMAP R58).** Nothing is built. Like R55, it is a documentation and tasks PR outside the ranks, with no plugin version.
+**Status: accepted by the owner on 2026-10-20 (ROADMAP R58), and built the same day in PR #262** (`tasks.py`, `tests/test_docs_lint.py`). Like R55, it is a documentation and tasks PR outside the ranks, with no plugin version. What changed from the draft below is in "As built".
 
 ## Why
 
@@ -39,13 +39,31 @@ ROADMAP's Status and Order columns are the one place a candidate's state and ran
 | 4 | Every "plugin X.Y.Z … PR #N" or "`vX.Y.Z` … PR #N" pair matches the tag's merge commit; a report line, not a failure, when the checkout has no tags (the Linux framework-checks job gets `fetch-depth: 0`) | a few |
 | 5 | No citation of the moved stubs `docs/NOTES.md` or `docs/DECISIONS.md` as a source | 1 |
 | 6 | A short list of Portuguese words finds nothing outside `docs/reference/` (proper nouns such as São Paulo are listed as allowed) | 0 today |
+| 7 | Every Markdown file under `docs/` (outside `docs/reference/`) that opens with a `---` block has frontmatter that parses as YAML, and the error names the file and the line; checks 1 and 2 read frontmatter, so this one runs first. It uses PyYAML, already a pinned dev dependency (`pyproject.toml`, the `dev` extra) and present wherever the tests run; `tasks.py` imports it inside the check and prints a report line, not a failure, when it is absent | 0 rows of the review; 3 proposals found broken on 2026-10-20 (an unquoted `: ` in `description`, fixed in PR #262), 136 files parse today |
 
 Each check has a test in `tests/test_docs_lint.py` on a temporary tree, as R55's checks do.
 
+## As built (2026-10-20, PR #262)
+
+All seven checks are in `lint_docs`, check 7 first, and the whole lint runs in under a second on this repository. Each has a test on a temporary tree. Four points differ from the table above:
+
+- **Check 2** compares only the `proposed` and `accepted` values; any other value is left alone. `okf-adoption.md` became `partly accepted`, which is what ROADMAP R1 records: steps 1 and 2 accepted and built, steps 3 and 4 proposed.
+- **Check 4** accepts a pair only when the phrasing ties the version to its PR ("plugin 1.0.6 in PR #228", "plugin 1.0.2, PR #211", "`v1.0.3` = PR #220"). A looser window flagged "after `v0.3.2` is pinned and PR #90 merges", which names two events. It reads the living documents only (ROADMAP, the operating model, the build guide, the decisions, the proposals), checks 14 pairs today, and all 14 match. The check jobs already check out with `fetch-depth: 0`, so no workflow change was needed.
+- **Check 5** fails a citation, not a mention: `docs/NOTES.md` followed by `§N` or "section N", or a `resource:` that is the stub itself. Naming the old file as a file, as the OKF proposal does where it planned the split, passes. Its first run found eight such citations in decisions 1 and 6 and in `session-tooling-pdf-web.md`. Each now names `docs/notes/<N>.md`, the file of that former section.
+- **Check 7** could not use the framework's own `state.yamlish` parser: it rejects the flow mappings (`generated: { by: …, at: … }`) that 51 proposals use. So it uses PyYAML, as planned.
+
+## Check 8 (2026-10-20, the owner's choice 241)
+
+Added after the build, from the question #262's session put to the owner. A claim "PR #N merged on <date>", "merged at <time> UTC [on <date>]" or "merged as `<sha>`" is compared with PR #N's merge commit (`tasks.py`, `merge_claim_problems`; one test each in `tests/test_docs_lint.py`):
+
+- **What is judged**: the sha after "merged as" or in the parenthesis that follows the claim, the date right after "merged on" (or "UTC on"), and the time right after "merged at", in UTC. A sha that "head" precedes is the PR's last commit, not its merge, and another event's date in the same clause is not the merge's; neither is judged. A time is judged to 90 seconds, because the merge commit's time is a second or two from GitHub's `merged_at`, which the records quote; a date is accepted in UTC or in the merge commit's own offset.
+- **What is not judged**: a PR that has no "Merge pull request #N" commit in this checkout (an unmerged PR, or one the history does not reach), a claim with "sample" just before it (the sample's PR numbers overlap this repository's), and a claim quoted in a code span (a review citing an error).
+- **Where a mismatch fails**: in the living documents, in a note after 53, and in a record whose file name is dated 2026-10-20 or later. In the older records it is a report line: they are kept as written (choice 126), and the errors the docs review found there are already annotated beside the sentence. On `main` at the time of writing it judged 38 claims and reported two (PR #90's date in `docs/notes/39.md` and `docs/handoffs/2026-10-14-item-11-prompt.md`, both annotated); nothing failed.
+
 ## What it does not catch
 
-Whether a sentence means what its citation says — the wrong decision or note cited, a date or a time that disagrees with another record — needs a reader. That stays with an occasional full sweep, at a milestone, not on every pull request.
+Whether a sentence means what its citation says — the wrong decision or note cited, a date or a time that disagrees with another record — needs a reader. That stays with an occasional full sweep, at a milestone, not on every pull request. *[2026-10-20, the owner's choice 241: the review pass compares the citations of the lines a diff adds under `docs/` (`REVIEW.md`, the owner's PR #274). The changed-lines reader as a skill is not built; the full sweep's cadence is unchanged here, and a sweep before the real-project trial is a recommendation the owner has not decided.]*
 
 ## Order
 
-After the review's own fixes land (the rows held for open pull requests on `docs/ROADMAP.md` and `docs/proposals/reviewer-on-opus.md` included), so checks 2 and 3 pass on the first run.
+After the review's own fixes land (PR #256, with the rows that waited for #254 and #257), so checks 2, 3 and 7 pass on the first run.

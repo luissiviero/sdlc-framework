@@ -12,7 +12,7 @@ sources:
     resource: https://github.com/GoogleCloudPlatform/open-knowledge-format/blob/main/SPEC.md
     title: "OKF SPEC.md v0.2, section 6.3 (the references/ convention)"
   - id: notes-1
-    resource: docs/NOTES.md
+    resource: docs/notes/1.md, docs/notes/15.md
     title: "NOTES section 1 (how Claude Code invokes hook commands) and section 15 (the facts read in session 7)"
   - id: session-7
     resource: docs/PROGRESS.md
@@ -26,7 +26,7 @@ Sessions on this repository cannot read a PDF or fetch a web page today. The own
 
 ## What the session verified (2026-09-25, this cloud session)
 
-Read once and recorded in `docs/NOTES.md` section 15 with the date [^session-7]:
+Read once and recorded in `docs/notes/15.md` with the date [^session-7]:
 
 | Question the prompt assumes an answer to | What this session found |
 |---|---|
@@ -94,7 +94,7 @@ The "Tooling rules" section, adapted from the prompt (one rule kept verbatim, se
 ```markdown
 ## Tooling rules
 - PDFs: Poppler is installed by a SessionStart hook (`.claude/hooks/ensure_pdf_tools.py`). Text: `pdftotext -layout`; a page as an image (`pdftoppm -png -r 150`) only to see a chart or a figure. If `pdftoppm` is missing, run the hook once and retry; if it is still missing, `pip install pypdf` and extract the text.
-- Web pages: fetch with the WebFetch tool when this repository allows it; never with curl, wget or a Python/Node HTTP library. The reachable hosts are the environment's policy list (docs/NOTES.md section 15), not the whole web.
+- Web pages: fetch with the WebFetch tool when this repository allows it; never with curl, wget or a Python/Node HTTP library. The reachable hosts are the environment's policy list (`docs/notes/15.md`), not the whole web.
 - If a fetch is refused, list the refused URLs in the final report; tell sub-agents the same.
 - When delegating research to sub-agents, tell them the rules above explicitly; never work from search snippets silently.
 - Anything a session needs more than once is ingested into `docs/reference/` in a reviewed PR (docs/proposals/session-tooling-pdf-web.md); a session reads the mirror, not the network.
@@ -102,7 +102,7 @@ The "Tooling rules" section, adapted from the prompt (one rule kept verbatim, se
 
 **(c) This repository only, never the template.** The allow entries belong to this repository's `.claude/settings.json` and not to `template/.claude/settings.json`: phases (b)–(f) run unattended with `--permission-prompts none`, and a fetched page inside an autonomous run is a prompt-injection path the security baseline closes (`plugin/skills/security-baseline`, rule 7: no outbound call except the allowed domains; `WebFetch`, `curl` and `wget` denied; the researcher agent is Read/Grep/Glob for the same reason). At most the interactive phase (a) in a project could fetch, and that is the project owner's setting, not the template's default.
 
-**(d) Environment claims are facts to verify, not to copy** (`docs/NOTES.md` is where a platform fact lives, with its source and date; PROGRESS choice 93). The prompt's "no general internet access" and "always WebFetch" were checked once in this session and recorded in `docs/NOTES.md` section 15 with the read date (the table above). Any later session reads the note instead of re-testing, and re-tests only when the note's date is older than the environment's last change.
+**(d) Environment claims are facts to verify, not to copy** (`docs/NOTES.md` is where a platform fact lives, with its source and date; PROGRESS choice 93). The prompt's "no general internet access" and "always WebFetch" were checked once in this session and recorded in `docs/notes/15.md` with the read date (the table above). Any later session reads the note instead of re-testing, and re-tests only when the note's date is older than the environment's last change.
 
 **(e) One rule kept verbatim:** "if a fetch is refused, list the refused URLs in the final report; tell sub-agents the same." The prompt's validation step ("fetch a Wikipedia page with WebFetch and confirm it returns content") is replaced by that rule, because the fetch is refused here today.
 
@@ -139,5 +139,5 @@ Accepted through the normal front door: `changes/<id>-<slug>/intent.md`, `Entry 
 
 [^prompt]: The setup prompt the owner was given, kept as `docs/handoffs/inputs/session-6-pdf-web-setup-prompt.md`.
 [^okf-spec]: OKF SPEC.md v0.2, section 6.3.
-[^notes-1]: `docs/NOTES.md` section 1: a command hook with `args` runs in exec form, no shell on any platform.
-[^session-7]: `docs/PROGRESS.md`, session 7, and `docs/NOTES.md` section 15, the entries dated 2026-09-25 (session 7).
+[^notes-1]: `docs/notes/1.md`: a command hook with `args` runs in exec form, no shell on any platform.
+[^session-7]: `docs/PROGRESS.md`, session 7, and `docs/notes/15.md`, the entries dated 2026-09-25 (session 7).

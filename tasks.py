@@ -7,7 +7,9 @@ Everything runs through ``sys.executable -m ...`` with argument lists (no shell)
 same file works in cmd.exe, PowerShell, Git Bash and a Linux runner. ``notes-index`` runs in
 this process: it rewrites ``docs/notes/index.md`` from the notes' frontmatter. So do
 ``decisions-index`` (``docs/decisions/index.md`` from each decision's heading) and
-``docs-lint`` (the links, the notes' Claude Code versions and both indexes; ROADMAP R55).
+``docs-lint`` (the links, the notes' Claude Code versions and both indexes, ROADMAP R55; the
+frontmatter, decision amendments, proposal statuses, shipped rows, version and PR pairs, moved
+stubs and Portuguese words, ROADMAP R58).
 """
 
 from __future__ import annotations
@@ -385,6 +387,372 @@ def read_pin(path: Path | None = None) -> str:
     return match.group(1) if match else ""
 
 
+# --- the docs lint, part 2 (ROADMAP R58, docs/proposals/docs-lint-checks.md) ---------------
+# The mechanical classes of the docs consistency review of 2026-10-19
+# (docs/reviews/2026-10-19-docs-consistency.md): a frontmatter that is not YAML, a decision
+# amended without its amended_by or with the wrong status, a proposal whose status contradicts
+# its ROADMAP row, a shipped row left among the candidates, a version paired with another PR
+# than its tag's, a citation of a moved stub, a Portuguese word. The version pairs and the
+# stubs are read in the living documents only: a kept record (choice 126) keeps a wrong
+# sentence beside its correction. Whether a citation means what it says is a reader's
+# judgment, not a check.
+FRONTMATTER_RE = re.compile(r"\A---\n(.*?)\n---\n", re.DOTALL)
+AMENDS_RE = re.compile(r"\(amends ([^)]*)\)")
+CHOICE_RE = re.compile(r"(?:PROGRESS )?choices? \d+")
+DECISION_STATUSES = ("accepted", "amended")
+ROADMAP_ROW_RE = re.compile(r"^\| (R\d+) \|")
+ROADMAP_FIELD_RE = re.compile(r"\[?\s*(R\d+(?:\s*,\s*R\d+)*)")
+SHIPPED_RE = re.compile(r"\bbuilt (?:as plugin|in PR)\b")
+# a version tied to its PR by the phrasing ("plugin 1.0.6 in PR #228", "plugin 1.0.2, PR #211",
+# "`v1.0.3` = PR #220"), not two events that only share a sentence
+VERSION_PR_RES = (
+    re.compile(r"\bplugin \**(\d+\.\d+\.\d+)\**(?:,| in(?: the session)?| \(| =) PR #(\d+)"),
+    re.compile(r"`v(\d+\.\d+\.\d+)`(?:,| in| \(| =) PR #(\d+)"),
+)
+MERGE_SUBJECT_RE = re.compile(r"^Merge pull request #(\d+) ")
+# check 8: "PR #N merged on/at/as ..." against the PR's merge commit; the claim ends at a
+# sentence end, a cell, a bracket or the next PR, and "sample" just before it marks the other
+# repository's PR, whose numbers overlap this one's
+MERGE_CLAIM_RE = re.compile(
+    r"(?P<before>.{0,40}?)(?<![\w#])(?:PR )?#(?P<pr>\d+)[^.;|#\]\n]{0,30}?\bmerged (?:on|at|as)\b"
+    r"(?P<claim>(?:[^.;|#\]\n]|\.(?!\s))*)"
+)
+CLAIM_SHA_RE = re.compile(r"(?:^\s*|\bas |\()`([0-9a-f]{7,40})`")
+# the date and the time the claim gives for the merge itself ("merged on <date>", "merged at
+# <time> UTC on <date>"), not another event's that shares the clause
+CLAIM_DATE_RE = re.compile(r"(?:^\s*|^\s*\d{2}:\d{2}(?::\d{2})? UTC on )(\d{4}-\d{2}-\d{2})\b")
+CLAIM_TIME_RE = re.compile(r"^\s*(\d{2}):(\d{2})(?::(\d{2}))? UTC\b")
+# a merge commit's time is a second or two from GitHub's merged_at, which the records quote
+CLAIM_TIME_SLACK_SECONDS = 90
+# the records written before check 8 existed are reported, not failed (choice 126)
+MERGE_CLAIMS_SINCE = "2026-10-20"
+LAST_NOTE_BEFORE_MERGE_CLAIMS = 53
+DATED_RE = re.compile(r"^(\d{4}-\d{2}-\d{2})-")
+# a moved stub cited for a fact (by section, or as a source), not named as the file it was
+STUB_CITATION_RE = re.compile(
+    r"(docs/(?:NOTES|DECISIONS)\.md)`?\s*(?:§|section )\s*\d"
+    r"|resource:\s*\"?(docs/(?:NOTES|DECISIONS)\.md)\"?\s*$"
+)
+LIVING_DOCS = ("ROADMAP.md", "OPERATING_MODEL.md", "BUILD_GUIDE.md")
+LIVING_FOLDERS = ("decisions", "proposals")
+# Portuguese words that are not also English words or code names; a proper noun is allowed
+WORD_RE = re.compile(r"[^\W\d_]+")
+PORTUGUESE_WORDS = frozenset(
+    "não você voce também tambem então entao obrigado obrigada fazer está são isso esse "
+    "essa aqui agora pelo pela nosso nossa quando onde porque ainda sobre depois antes "
+    "projeto decisão mudança revisão tarefa arquivo fluxo melhor preciso deve podemos "
+    "vamos feito pronto muito precisa fazendo tudo isto aquilo quais porém enquanto outra "
+    "outros outras eles elas meu minha nossos nossas seus suas umas uns".split()
+)
+PORTUGUESE_ALLOWED = ("São Paulo", "Luís")
+
+
+def _pages(docs_dir: Path, suffixes: tuple[str, ...] = (".md",)) -> list[Path]:
+    """Every file under ``docs_dir`` with one of ``suffixes``, ``reference/`` aside, in the
+    order of their relative POSIX paths: a Windows path sorts without case, so the order (and
+    every report built from it) would otherwise differ between the platforms."""
+    return sorted(
+        (
+            path
+            for path in docs_dir.rglob("*")
+            if path.suffix in suffixes and path.relative_to(docs_dir).parts[0] != "reference"
+        ),
+        key=lambda path: path.relative_to(docs_dir).as_posix(),
+    )
+
+
+def _living_docs(docs_dir: Path) -> list[Path]:
+    """The pages a session keeps current: ROADMAP, the operating model, the build guide, the
+    decisions and the proposals (the records under progress/, handoffs/, notes/ and reviews/
+    are annotated, never rewritten)."""
+    pages = [docs_dir / name for name in LIVING_DOCS if (docs_dir / name).is_file()]
+    for folder in LIVING_FOLDERS:
+        pages.extend(sorted((docs_dir / folder).glob("*.md")))
+    return pages
+
+
+def _frontmatter(text: str) -> str:
+    """The frontmatter block of ``text`` without its ``---`` lines, or "" when it has none."""
+    match = FRONTMATTER_RE.match(text)
+    return match.group(1) if match else ""
+
+
+def frontmatter_problems(docs_dir: Path) -> tuple[list[str], list[str]]:
+    """(failures, reports): one failure per page whose frontmatter does not parse as YAML,
+    naming the file's line; a report instead when PyYAML (a dev dependency) is absent."""
+    try:
+        import yaml
+    except ImportError:
+        return [], ['frontmatter not checked: PyYAML is not installed (pip install -e ".[dev]")']
+    failures: list[str] = []
+    for path in _pages(docs_dir):
+        block = _frontmatter(path.read_text(encoding="utf-8-sig"))
+        if not block:
+            continue
+        try:
+            yaml.safe_load(block)
+        except yaml.YAMLError as exc:
+            mark = getattr(exc, "problem_mark", None)
+            line = f":{mark.line + 2}" if mark is not None else ""
+            why = getattr(exc, "problem", None) or str(exc).splitlines()[0]
+            rel = path.relative_to(docs_dir).as_posix()
+            failures.append(f"frontmatter: docs/{rel}{line}: {why}")
+    return failures, []
+
+
+def decision_problems(decisions_dir: Path) -> list[str]:
+    """A decision whose heading says ``(amends N)`` missing from decision N's ``amended_by``,
+    an ``amended_by`` naming no decision, a ``status`` other than ``amended`` exactly when
+    ``amended_by`` is set (change 0001's spec: ``accepted`` or ``amended``)."""
+    fields: dict[int, tuple[str, list[int]]] = {}
+    amenders: dict[int, list[int]] = {}
+    for path in sorted(decisions_dir.glob("*.md")):
+        match = DECISION_FILE_RE.match(path.name)
+        if match is None:
+            continue
+        number = int(match.group(1))
+        text = path.read_text(encoding="utf-8-sig")
+        block = _frontmatter(text)
+        status = re.search(r"^status:\s*(\S+)", block, re.MULTILINE)
+        amended_by = re.search(r"^amended_by:\s*(.*)$", block, re.MULTILINE)
+        numbers = [int(n) for n in re.findall(r"\d+", amended_by.group(1))] if amended_by else []
+        fields[number] = (status.group(1) if status else "", numbers)
+        heading = DECISION_HEADING_RE.search(text)
+        amends = AMENDS_RE.search(heading.group(2)) if heading else None
+        if amends:
+            for target in re.findall(r"\d+", CHOICE_RE.sub("", amends.group(1))):
+                amenders.setdefault(int(target), []).append(number)
+    problems: list[str] = []
+    for number, (status, amended_by) in sorted(fields.items()):
+        for amender in amenders.get(number, []):
+            if amender not in amended_by:
+                problems.append(
+                    f"decisions: {number}.md amended_by lacks {amender} "
+                    f"(decision {amender} amends {number})"
+                )
+        for other in amended_by:
+            if other not in fields:
+                problems.append(f"decisions: {number}.md amended_by names {other}, no such file")
+        expected = DECISION_STATUSES[1] if amended_by else DECISION_STATUSES[0]
+        if status != expected:
+            problems.append(
+                f"decisions: {number}.md status is {status or 'missing'}, expected {expected}"
+            )
+    return problems
+
+
+def roadmap_rows(roadmap: Path) -> dict[str, tuple[str, str]]:
+    """Each ROADMAP row as ``R<n> -> (its section heading, its Status cell)``; the Status cell
+    is read from the row's end (Status, Order, then the closing bar), so a bar inside the
+    Candidate column cannot shift it."""
+    rows: dict[str, tuple[str, str]] = {}
+    section = ""
+    for line in roadmap.read_text(encoding="utf-8-sig").splitlines():
+        if line.startswith("## "):
+            section = line[3:].strip()
+            continue
+        match = ROADMAP_ROW_RE.match(line)
+        if match:
+            cells = re.split(r"(?<!\\)\|", line)
+            rows[match.group(1)] = (section, cells[-3] if len(cells) >= 8 else "")
+    return rows
+
+
+def proposal_problems(proposals_dir: Path, rows: dict[str, tuple[str, str]]) -> list[str]:
+    """A proposal whose ``status`` is ``proposed`` while its ROADMAP row records an acceptance,
+    or ``accepted`` while it records none; ROADMAP is the place the status is read (R58's
+    rule), the proposal's field a copy. Other status values are not compared."""
+    problems: list[str] = []
+    for path in sorted(proposals_dir.glob("*.md")):
+        block = _frontmatter(path.read_text(encoding="utf-8-sig"))
+        status = re.search(r"^status:\s*(.+?)\s*$", block, re.MULTILINE)
+        field = re.search(r"^roadmap:\s*(.+)$", block, re.MULTILINE)
+        if not status or not field:
+            continue
+        value = status.group(1).strip("\"'")
+        named = ROADMAP_FIELD_RE.match(field.group(1))
+        if value not in ("proposed", "accepted") or named is None:
+            continue
+        for number in re.findall(r"R\d+", named.group(1)):
+            if number not in rows:
+                problems.append(f"proposals: {path.name} names {number}, not a ROADMAP row")
+                continue
+            accepted = re.search(r"\baccepted\b", rows[number][1], re.IGNORECASE) is not None
+            if accepted != (value == "accepted"):
+                said = "records an acceptance" if accepted else "records none"
+                problems.append(
+                    f"proposals: {path.name} status is {value}, ROADMAP {number} {said}"
+                )
+    return problems
+
+
+def shipped_row_problems(rows: dict[str, tuple[str, str]]) -> list[str]:
+    """A row whose Status says it was built, still under the candidates' heading; the page's
+    own rule moves it under "Done"."""
+    return [
+        f"ROADMAP: {number} says '{found.group(0)}' but sits under '{section}', not 'Done'"
+        for number, (section, status) in rows.items()
+        if section.startswith("Candidates") and (found := SHIPPED_RE.search(status))
+    ]
+
+
+def tag_prs(root: Path) -> dict[str, str] | None:
+    """``version -> PR number`` for every tag ``v<version>`` on a pull request's merge commit,
+    or None when ``root`` has no tags (a shallow or tagless checkout)."""
+    try:
+        out = subprocess.run(
+            ["git", "for-each-ref", "--format=%(refname:short)%09%(*subject)%09%(subject)"]
+            + ["refs/tags"],
+            cwd=root,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            check=True,
+        ).stdout
+    except (OSError, subprocess.CalledProcessError):
+        return None
+    pairs: dict[str, str] = {}
+    for line in out.splitlines():
+        tag, commit_subject, subject = (line.split("\t") + ["", ""])[:3]
+        merge = MERGE_SUBJECT_RE.match(commit_subject or subject)
+        if tag.startswith("v") and merge:
+            pairs[tag[1:]] = merge.group(1)
+    return pairs or None
+
+
+def version_pr_problems(docs_dir: Path, tags: dict[str, str]) -> list[str]:
+    """A "plugin X.Y.Z … PR #N" or "`vX.Y.Z` … PR #N" pair in a living document whose PR is not
+    the one the tag ``vX.Y.Z`` sits on; a version with no tag is not judged."""
+    problems: list[str] = []
+    for path in _living_docs(docs_dir):
+        rel = path.relative_to(docs_dir).as_posix()
+        for number, line in enumerate(path.read_text(encoding="utf-8-sig").splitlines(), 1):
+            for pattern in VERSION_PR_RES:
+                for version, pr in pattern.findall(line):
+                    tagged = tags.get(version)
+                    if tagged and tagged != pr:
+                        problems.append(
+                            f"version: docs/{rel}:{number}: {version} paired with PR #{pr}; "
+                            f"v{version} is PR #{tagged}'s merge"
+                        )
+    return problems
+
+
+def git_time(text: str) -> datetime:
+    """A ``%cI`` time from git. Git 2.55 writes a UTC time with "Z" (2.43 writes "+00:00"),
+    and ``datetime.fromisoformat`` reads "Z" only from Python 3.11 on."""
+    return datetime.fromisoformat(text[:-1] + "+00:00" if text.endswith("Z") else text)
+
+
+def pr_merges(root: Path) -> dict[str, tuple[str, datetime]] | None:
+    """``PR number -> (merge commit, committer time)`` for every "Merge pull request #N"
+    commit reachable from HEAD, the newest first, or None when ``root`` has no such history."""
+    try:
+        out = subprocess.run(
+            ["git", "log", "--format=%H%x09%cI%x09%s"],
+            cwd=root,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            check=True,
+        ).stdout
+    except (OSError, subprocess.CalledProcessError):
+        return None
+    merges: dict[str, tuple[str, datetime]] = {}
+    for line in out.splitlines():
+        sha, when, subject = (line.split("\t", 2) + ["", ""])[:3]
+        merge = MERGE_SUBJECT_RE.match(subject)
+        if merge and merge.group(1) not in merges:
+            merges[merge.group(1)] = (sha, git_time(when))
+    return merges or None
+
+
+def _merge_claims_fail(docs_dir: Path, path: Path) -> bool:
+    """Whether a wrong merge claim in ``path`` fails the lint: a living document, a note after
+    ``LAST_NOTE_BEFORE_MERGE_CLAIMS``, or a record dated from ``MERGE_CLAIMS_SINCE`` on; the
+    older records are kept as written (choice 126), so their claims are reported."""
+    if path in _living_docs(docs_dir):
+        return True
+    rel = path.relative_to(docs_dir)
+    if rel.parts[0] == "notes":
+        return path.stem.isdigit() and int(path.stem) > LAST_NOTE_BEFORE_MERGE_CLAIMS
+    dated = DATED_RE.match(path.name)
+    return bool(dated) and dated.group(1) >= MERGE_CLAIMS_SINCE
+
+
+def _claim_mismatches(claim: str, sha: str, when: datetime) -> list[str]:
+    """What a claim's first sha, date and UTC time say that the merge commit does not."""
+    utc = when.astimezone(timezone.utc)
+    found: list[str] = []
+    said_sha = CLAIM_SHA_RE.search(claim)
+    if said_sha and not sha.startswith(said_sha.group(1)):
+        found.append(f"merge commit {said_sha.group(1)}, git has {sha[:7]}")
+    said_date = CLAIM_DATE_RE.search(claim)
+    if said_date and said_date.group(1) not in (utc.date().isoformat(), when.date().isoformat()):
+        found.append(f"date {said_date.group(1)}, git has {utc.date().isoformat()} UTC")
+    said_time = CLAIM_TIME_RE.search(claim)
+    if said_time:
+        hours, minutes, seconds = (int(v or 0) for v in said_time.groups())
+        said = hours * 3600 + minutes * 60 + seconds
+        actual = utc.hour * 3600 + utc.minute * 60 + utc.second
+        if abs(said - actual) > CLAIM_TIME_SLACK_SECONDS:
+            found.append(f"time {said_time.group(0).strip()}, git has {utc:%H:%M:%S} UTC")
+    return found
+
+
+def merge_claim_problems(
+    docs_dir: Path, merges: dict[str, tuple[str, datetime]]
+) -> tuple[list[str], list[str]]:
+    """(failures, reports): a "PR #N merged on/at/as ..." claim whose sha, date or UTC time is
+    not the merge commit's. A PR git does not know (the sample's, an unmerged one) is not
+    judged; a claim quoted in a code span (a review citing an error) is not a claim."""
+    failures: list[str] = []
+    reports: list[str] = []
+    for path in _pages(docs_dir):
+        rel = path.relative_to(docs_dir).as_posix()
+        strict = _merge_claims_fail(docs_dir, path)
+        for number, line in enumerate(path.read_text(encoding="utf-8-sig").splitlines(), 1):
+            line = CODE_SPAN_RE.sub(lambda m: "" if "merged" in m.group(0) else m.group(0), line)
+            for claim in MERGE_CLAIM_RE.finditer(line):
+                known = merges.get(claim.group("pr"))
+                if not known or "sample" in claim.group("before").lower():
+                    continue
+                for mismatch in _claim_mismatches(claim.group("claim"), *known):
+                    text = f"merged: docs/{rel}:{number}: PR #{claim.group('pr')} {mismatch}"
+                    (failures if strict else reports).append(text)
+    return failures, reports
+
+
+def stub_problems(docs_dir: Path) -> list[str]:
+    """A living document that cites a moved stub (``docs/NOTES.md``, ``docs/DECISIONS.md``)
+    for a fact, by section or as a source, instead of ``docs/notes/<N>.md`` (one file per
+    former section) or ``docs/decisions/<N>.md``; naming the old file as a file is fine."""
+    problems: list[str] = []
+    for path in _living_docs(docs_dir):
+        rel = path.relative_to(docs_dir).as_posix()
+        for number, line in enumerate(path.read_text(encoding="utf-8-sig").splitlines(), 1):
+            problems.extend(
+                f"stub: docs/{rel}:{number} cites {match.group(1) or match.group(2)}"
+                for match in STUB_CITATION_RE.finditer(line)
+            )
+    return problems
+
+
+def portuguese_problems(docs_dir: Path) -> list[str]:
+    """A line of a page or an HTML input under ``docs_dir`` that holds a Portuguese word
+    (CLAUDE.md: English only); the proper nouns of ``PORTUGUESE_ALLOWED`` aside."""
+    problems: list[str] = []
+    for path in _pages(docs_dir, (".md", ".html")):
+        rel = path.relative_to(docs_dir).as_posix()
+        for number, line in enumerate(path.read_text(encoding="utf-8-sig").splitlines(), 1):
+            for allowed in PORTUGUESE_ALLOWED:
+                line = line.replace(allowed, "")
+            words = sorted({w for w in WORD_RE.findall(line.lower()) if w in PORTUGUESE_WORDS})
+            if words:
+                problems.append(f"portuguese: docs/{rel}:{number}: {', '.join(words)}")
+    return problems
+
+
 def lint_docs(
     docs_dir: Path | None = None,
     root: Path | None = None,
@@ -397,6 +765,11 @@ def lint_docs(
     pin = read_pin() if pin is None else pin
     failures: list[str] = []
     reports: list[str] = []
+
+    # R58's check 7 first: checks 1 and 2 read frontmatter
+    found, said = frontmatter_problems(docs_dir)
+    failures.extend(found)
+    reports.extend(said)
 
     known = read_links_baseline(baseline or docs_dir / LINKS_BASELINE.name)
     broken = set(broken_links(docs_dir, root))
@@ -440,11 +813,34 @@ def lint_docs(
         index = decisions_dir / "index.md"
         if not index.exists() or index.read_text(encoding="utf-8") != text:
             failures.append("docs/decisions/index.md differs: run python tasks.py decisions-index")
+        failures.extend(decision_problems(decisions_dir))
+
+    roadmap = docs_dir / "ROADMAP.md"
+    if roadmap.is_file():
+        rows = roadmap_rows(roadmap)
+        failures.extend(shipped_row_problems(rows))
+        if (docs_dir / "proposals").is_dir():
+            failures.extend(proposal_problems(docs_dir / "proposals", rows))
+
+    tags = tag_prs(root)
+    if tags is None:
+        reports.append("version and PR pairs not checked: no tags in this checkout")
+    else:
+        failures.extend(version_pr_problems(docs_dir, tags))
+    merges = pr_merges(root)
+    if merges is None:
+        reports.append("merge claims not checked: no merge history in this checkout")
+    else:
+        found, said = merge_claim_problems(docs_dir, merges)
+        failures.extend(found)
+        reports.extend(said)
+    failures.extend(stub_problems(docs_dir))
+    failures.extend(portuguese_problems(docs_dir))
     return failures, reports
 
 
 def task_docs_lint() -> int:
-    """Check the docs' links, the notes' versions and both indexes (1: a failure)."""
+    """Check the docs' links, notes, indexes and R58's cross-file facts (1: a failure)."""
     failures, reports = lint_docs()
     for line in reports:
         print(f"docs-lint: {line}")

@@ -1,7 +1,7 @@
 ---
 type: Proposal
 title: The reviewer is tuned twice a month from signals already on record, through a standing REVIEW.md PR
-description: A scheduled read-only run twice a month reads the period's review findings and the signals already on record (findings the owner waived or overturned, findings the panel settled, repeats, nit volume against the cap, findings in paths CI already enforces), writes a committed tuning report, and its proposed REVIEW.md edits go into one standing pull request, "REVIEW.md: tuning", kept up to date by a deterministic step that also starts the eval run and the brief; the owner merges it when they choose, rates nothing, and is notified of nothing.
+description: "A scheduled read-only run twice a month reads the period's review findings and the signals already on record (findings the owner waived or overturned, findings the panel settled, repeats, nit volume against the cap, findings in paths CI already enforces), writes a committed tuning report, and its proposed REVIEW.md edits go into one standing pull request, \"REVIEW.md: tuning\", kept up to date by a deterministic step that also starts the eval run and the brief; the owner merges it when they choose, rates nothing, and is notified of nothing."
 status: accepted
 roadmap: R38
 sources:

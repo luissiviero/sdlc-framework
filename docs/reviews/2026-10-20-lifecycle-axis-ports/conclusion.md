@@ -31,7 +31,7 @@ generated: { by: claude-code-session, at: 2026-10-20T07:45:00Z }
 
 ## Summary
 
-- **The framework fits the goal better; lifecycle-axis- is better only at the edges.** No item needs a new candidate or reopens a settled decision. Every port amends an accepted candidate (R11, R13, R24, R25, R26, R35, R37, R39, R44, R52 or R58). Two also touch candidates still only proposed: R59 (renames) and R61 (the trial's shape).
+- **The framework fits the goal better; lifecycle-axis- is better only at the edges.** No item needs a new candidate or reopens a settled decision. Every port amends an accepted candidate (R11, R13, R24, R25, R26, R35, R37, R39, R44, R52 or R58). Two also touch candidates still only proposed: R59 (renames) and R61 (the trial's shape). *[2026-10-20, after this was written: R61 was accepted the same day (choice 240, merged to `main` in #273); R59 is still proposed]*
 - **Four ports score 8.**
   - Show how much the plan grew after the owner approved it (R24).
   - Give R52's merge by silence a per-change grant, a locked-path floor and a "merged unread" record (R52, R11).
