@@ -62,6 +62,9 @@ jobs:
     concurrency:
       group: "sdlc-${{ inputs.head_ref || github.event.pull_request.head.ref }}"
       cancel-in-progress: false
+    outputs:
+      change_id: ${{ inputs.change_id }}
+      head_ref: ${{ inputs.head_ref || github.event.pull_request.head.ref }}
     runs-on: ubuntu-latest
     # 0.3.0: the session's wall clock (gate.max_wall_clock_minutes, 120 by default, plus
     # 5 of grace) and then the gate's commands step, which runs the three targets after
@@ -138,7 +141,6 @@ jobs:
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GITHUB_TOKEN: ${{ steps.app.outputs.token || github.token }}
           SDLC_WORKFLOW_TOKEN: ${{ github.token }}
           CHANGE_ID: ${{ inputs.change_id }}
@@ -181,7 +183,6 @@ jobs:
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GITHUB_TOKEN: ${{ steps.app.outputs.token || github.token }}
           SDLC_WORKFLOW_TOKEN: ${{ github.token }}
           CHANGE_ID: ${{ inputs.change_id }}
@@ -202,4 +203,60 @@ jobs:
           path: |
             changes/**/evidence/hook-log.jsonl
             changes/.hook-log.jsonl
+          if-no-files-found: ignore
+
+  # ROADMAP R8 (plugin 1.0.18): a second opinion on the build from a model of another vendor,
+  # advisory. Off unless the default branch's sdlc.yaml lists (e) under
+  # external_review.phases. A job of its own on a fresh runner after the deploy job: the
+  # Claude session never held the Gemini key and never shared this machine, and the key
+  # reaches only the one step that calls the API. The step reads the PR's head from git
+  # (never the session's working tree), posts one comment on the PR as the workflow token
+  # (a fix round never applies a bot's comment) and never fails: a failed call is "not run".
+  second-opinion:
+    needs: deploy
+    if: ${{ needs.deploy.outputs.change_id != '' || needs.deploy.outputs.head_ref != '' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write  # a PR comment goes through the issues endpoint
+    steps:
+      - name: Check out the project
+        uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Read the framework pin from the default branch's sdlc.yaml, with its script
+        id: pin
+        env:
+          SDLC_DEFAULT_BRANCH: ${{ github.event.repository.default_branch || github.ref_name }}
+        shell: bash
+        run: git show "refs/remotes/origin/$SDLC_DEFAULT_BRANCH:.github/scripts/sdlc_pin.py" | python - --ref "refs/remotes/origin/$SDLC_DEFAULT_BRANCH"
+
+      - name: Check out the pinned framework (public repository, no token)
+        uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+          repository: "luissiviero/sdlc-framework"
+          ref: ${{ steps.pin.outputs.ref }}
+          path: framework
+
+      - name: Second opinion on the build (advisory; never fails the job)
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GITHUB_TOKEN: ${{ github.token }}
+          CHANGE_ID: ${{ needs.deploy.outputs.change_id }}
+          HEAD_REF: ${{ needs.deploy.outputs.head_ref }}
+          REPO: ${{ github.repository }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch || github.ref_name }}
+        run: python framework/plugin/external/cli.py review --root . --id "$CHANGE_ID" --head-ref "$HEAD_REF" --phase e --repo "$REPO" --ref "$DEFAULT_BRANCH" --post --out second-opinion.json
+
+      - name: Keep the second opinion's record
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: sdlc-second-opinion-${{ github.run_id }}
+          path: second-opinion.json
           if-no-files-found: ignore

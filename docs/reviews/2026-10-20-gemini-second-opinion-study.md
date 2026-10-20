@@ -1,6 +1,6 @@
 # Gemini as a second opinion in phases (a) to (e): a study and its recommendations (2026-10-20)
 
-The owner asked, after the Gemini key reached the phase runs (PR #290, plugin 1.0.17): can Gemini be read-only, and where in phases (a) to (e) should it double the Claude roles as a second opinion, never as a substitute? Four questions: which tasks gain most from a second opinion, how to build it, which Gemini model fits each task, and whether Gemini can read the repository from GitHub or must be sent the files. Report only; nothing was built. The owner will have a fresh session check these recommendations before anything is implemented.
+The owner asked, after the Gemini key reached the phase runs (PR #290, plugin 1.0.17): can Gemini be read-only, and where in phases (a) to (e) should it double the Claude roles as a second opinion, never as a substitute? Four questions: which tasks gain most from a second opinion, how to build it, which Gemini model fits each task, and whether Gemini can read the repository from GitHub or must be sent the files. Report only; nothing was built. The owner will have a fresh session check these recommendations before anything is implemented. *[2026-10-20: checked, one row per recommendation, in `docs/reviews/2026-10-20-gemini-study-check.md`; the owner's answers are choice 246 and plugin 1.0.18 builds them (`docs/PROGRESS.md`)]*
 
 ## Method
 
@@ -77,7 +77,7 @@ Not reliably. Gemini's URL context tool reads public URLs only, at most 20 per r
 | 1. The Gemini host only when the key is set | Replaced by the #290 correction: the host off the session's sandbox for everyone; the runner step calls Gemini outside it |
 | 2. The read-only wrapper | The client module above, also runnable by hand |
 | 3. The Windows variable and the cloud environment secret | The owner's settings; with the runner design, needed only to call the wrapper by hand |
-| 4. The sample | The owner's paste of the 1.0.17 file the 5953b5a0 session prepared; the sample gets Gemini only when its `sdlc.yaml` turns `external_review` on |
+| 4. The sample | The owner's paste of the 1.0.17 file the 5953b5a0 session prepared; the sample gets Gemini only when its `sdlc.yaml` turns `external_review` on *[2026-10-20, the check in `docs/reviews/2026-10-20-gemini-study-check.md`, row 19: the sample was already on 1.0.17 (sample #89 to #91) when this was written]* |
 
 ## What the owner settles before anything is built
 

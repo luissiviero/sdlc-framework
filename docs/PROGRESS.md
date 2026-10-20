@@ -1,52 +1,56 @@
-# Progress — R64 registered: /sdlc-init refreshes the files it wrote once (choice 245); the pins at 1.0.17 and the sample's upgrade (2026-10-20)
+# Progress — ROADMAP R8, the second opinion at gates (b) and (e), as plugin 1.0.18; #290's session exposure undone (choice 246) (2026-10-20)
 
-This session ran on branch `ccr-5953b5a0-gblc0q`, after #291 (R63 as plugin 1.0.16) merged. The owner's tasks: align the guardrail edits of this session and of `ccr-8b4eb57f-uy0e8e` (#290) so each file is edited once, say which PRs were ready to merge and in what order, open the sample's upgrade to 1.0.17, refresh the sample's two READMEs, then write and register the candidate behind that refresh with a rank of the session's choosing. The previous record (R63 as 1.0.16) is now `docs/progress/2026-10-20-r63-cli-default-1.0.16.md`, unchanged. The session's files are `docs/handoffs/sessions/2026-10-20-ccr-5953b5a0-gblc0q.md` (R63) and `docs/handoffs/sessions/2026-10-20-ccr-5953b5a0-gblc0q-end.md` (this part).
-
-No change under `plugin/` or `template/` in this PR; no version bump.
+This session ran on branch `ccr-6ed8a82e-cxmftx`, after #297 (the Gemini study) merged as `57b5a85`. The owner's task had three parts: check the study independently, report only; put its four questions to the owner; then build what the owner answered. The previous record (R64 registered, choice 245) is now `docs/progress/2026-10-20-r64-registered-choice-245.md`, unchanged. The session's file is `docs/handoffs/sessions/2026-10-20-ccr-6ed8a82e-cxmftx.md`.
 
 ## Summary
-- **Choice 245**: R64 is accepted and registered; its proposal is `docs/proposals/template-copies-refresh.md`, its row in `docs/ROADMAP.md`.
-- **The pins are at 1.0.17 in both repositories**:
-  - the framework's root `sdlc.yaml` by the owner's #292, merged as `b3dc071`;
-  - the sample's by its #89, merged as `7e27773`;
-  - the sample's workflow copies follow in its #90, merged as `d8290c1`.
-- **The previous record's owner edits are all done.** Its three rows went into #292 and sample #89, the 1.0.17 versions agreed with #290's session. R24's two root comment rows and the sample's three R24 rows rode in the same two PRs.
+- **The check**: `docs/reviews/2026-10-20-gemini-study-check.md`, one row per recommendation of `docs/reviews/2026-10-20-gemini-second-opinion-study.md`. It agrees with the main finding (#290 departs from R8) and the ranks, and disagrees on four points: the record must not be committed where later Claude sessions read it, the call belongs in a job of its own, the bundle must leave out the change's `evidence/`, and the owner's Windows variable and cloud secret would repeat #290's exposure.
+- **Choice 246**: the owner's four answers, below.
+- **Plugin 1.0.18**: #290's session part undone, and R8 built for (b) and (e), off unless a project's `sdlc.yaml` turns it on.
 
 ## The owner's decision (2026-10-20)
-245. **R64 is accepted, its rank left to the session** (the owner, "Write it and register it in roadmap. You decide where's its best implementation order among the other items."). The session placed it after R27 (rank 19) and before R45 (rank 20), with no rank moved. Its reasons are in the proposal's "Order":
-    - R45's rename rewrites the names both READMEs and every workflow copy carry, so a refresh built first carries the rename into every project in one re-run;
-    - R61 changes the same `plugin/init/sdlc_init.py` earlier in the queue;
-    - nothing presses sooner, since the sample is current (sample #90 and #91) and no other project exists before the trial.
+246. **The study's four questions** (the owner's answers in the session, the options as the session put them):
+    1. **#290's session part is undone, with the key in a job of its own**: "Yes, separate job". The key moves to a `second-opinion` job after the phase job, on a fresh runner; `session_env` drops it; it leaves the eight other steps; the Gemini host leaves `plugin/ci/settings.ci.json`; and the session gives the owner the pastes that remove the host from both `.claude/settings.json` files.
+    2. **R8 is built now, off by default**: "Build now, off by default". It runs only where the default branch's `sdlc.yaml` lists the phase under `external_review.phases`. The sample turns it on at (b) once the owner adds its secret. R8's Order cell (46, after R7 is measured on two changes) is overtaken by this answer.
+    3. **Phases (b) and (e)**: "(b) and (e)". (e) runs after the phase (e) step. The panel double comes later, in one decision file together with R28's amendment of decision 21, and on Argon.
+    4. **Billing is linked on the key's Google project**: "Yes, linked". This is the owner's word, not verified: a session cannot see the Google project. It answers R8's row "read the terms of the key's tier before the first call": on the paid tier Google does not use prompts and answers to improve its products, and keeps them 55 days for abuse monitoring. The invite-only Contributor tier would use them, so it is never accepted on that project (`docs/reviews/2026-10-20-gemini-study-check.md`, row 16).
 
-## What happened after #291
-- **#291 merged** as `d3bfdb4` at 15:40 UTC; `sdlc-tag.yml` tagged `v1.0.16` on it (verified, `git ls-remote --tags origin`).
-- **The guardrail edits were aligned with #290's session** (`session_01DgZ9p4G2jyWVPNNc7erSZS`), so the owner edited each file once:
-  - #290 moved to 1.0.17;
-  - one root `sdlc.yaml` paste, `version: 1.0.17` with R24's two comment edits, after `v1.0.17`;
-  - both `.claude/settings.json` files from #290's session alone;
-  - the sample's `sdlc.yaml` from this session, at 1.0.17 with R24's rows and R63's comment.
+## What 1.0.18 builds
+- **The correction of #290 (1.0.17)**:
+  - no workflow step that runs a Claude session passes `GEMINI_API_KEY` any more: nine steps in eight template workflows, and this repository's seven installed copies;
+  - `run_phase.session_env` drops the key whatever a workflow passes (`SESSION_HIDDEN_VARS`), as do the scan's and the evals' launchers, for a project whose workflow copies are still 1.0.17's;
+  - `plugin/ci/settings.ci.json` no longer lists `generativelanguage.googleapis.com`;
+  - `docs/OPERATING_MODEL.md` §4.2 states the one step that holds the key.
+- **The client**, `plugin/external/`:
+  - Python, standard library only (decision 7);
+  - `gemini.py` sends one `generateContent` request with no `tools` field and a JSON response schema, and lists the key's models;
+  - `bundle.py` builds the input from git at the PR's head. It leaves out every `.env*` file, every path under a `secrets` folder, the change's `evidence/` and binary files; it withholds every line the secrets hook would refuse; and it holds to a size cap (400,000 characters by default, `external_review.max_chars`);
+  - `briefs/b.md` and `briefs/e.md` take the adversarial reviewer's angles;
+  - `review.py` checks the answer against the schema, cuts it to size and writes the comment with the model's text made inert (no HTML, mention, link or code span);
+  - `cli.py review|models` runs in CI and by hand; a re-run on a head whose PR already carries a verdict calls nothing and posts nothing.
 
-  Each file the owner put in a PR (#292, #293, #294, sample #89) was compared with the agreed text: identical but for a final newline the web editor drops. Merged together with #290 on top of `main`, they passed every local check (2257 tests).
-- **The merge order the owner followed**:
-  - #294 before #290, so `v1.0.17` carries the template's Gemini host;
-  - #290 merged as `ef39013`, and `v1.0.17` and its release page were created on it;
-  - #292 after the tag;
-  - on the sample, #88 (0017's gate (e)) first, then #89, then #90.
+  Every failure is the record's "not run: <reason>", and the command exits 0.
+- **The jobs**: `second-opinion` in `sdlc-design.yml` (after `design`, phase (b)) and in `sdlc-deploy.yml` (after `deploy`, phase (e)). It runs on a fresh runner with `contents: read`, `pull-requests: write` and `issues: write`, and the Gemini key reaches only the step that calls the API. That step posts one comment on the design or build PR as the workflow token: a fix round never applies a bot's comment (`plugin/commands/sdlc-fix.md`, step 1). The JSON record is kept as the run's artifact `sdlc-second-opinion-<run id>`. Nothing is committed.
+- **`template/sdlc.yaml`** shows the `external_review` block commented out.
+- **Tests**: `tests/test_external.py` (15 tests), and `tests/test_ci.py`'s rule for the key (`test_no_session_holds_the_gemini_key_and_the_sandbox_never_reaches_its_host`) in place of 1.0.17's.
 
-  #289 (the pin to 1.0.15) was closed unmerged at 17:07 UTC (verified, the GitHub API).
-- **Sample #90** (the 13 workflow copies and the pin script from `v1.0.17`) had to follow #89. Its release record step passes `--released` and `--acceptance`, which `release/cli.py` has only from 1.0.15 on. In 1.0.17 both default to the old behaviour, so the old copies kept working between the two merges.
-- **Sample #91** (`changes/README.md` and `evals/README.md` from `v1.0.17`, merged as `4a429c4`) replaced two unedited copies of the templates at `cb23707` and `e49589c`. That drift is R64's problem.
+Not verified live: no call reached the Gemini API from this session (no key in its container), and Google's pages could not be opened from it. The request's field names (`generationConfig.responseMimeType`, `responseSchema`, the `x-goog-api-key` header) follow Google's documented REST shape as read in search results. The first live run shows whether the API accepts them: a refusal is a "not run" comment naming the HTTP error, never a red job.
 
 ## Left
-- **R64's build**, at its rank.
-- **The (d) check run beside a park after the commands step** (the R63 review's finding 5): carried in the R63 session file.
-- **The framework's two workflows on CLI 2.1.278** (`substrate-smoke.yml`, `framework-evals.yml`): unchanged under R63's rule; whether to align them with 2.1.304 is the owner's call.
+- **The first live use**: the sample's (b) once its secret and its `sdlc.yaml` block are in (the session file, "What the owner does").
+- **R8's tally**: one row per change in `docs/proposals/external-design-check.md`, kept by the session that reads the change.
+- **The panel double**: a decision file with R28's amendment of 21, later.
+- **R62**: unchanged, the owner's order. It can reuse `plugin/external/gemini.py`.
+- **The (d) check run beside a park after the commands step** and **the framework's two workflows on CLI 2.1.278**: carried from the previous record, unchanged.
 
 ## The port list
-This PR touches no file of the port list's paths.
+This PR touches `plugin/ci/run_phase.py` (`SESSION_HIDDEN_VARS` and its use in `session_env` and `commands_env`) and the detect and fix workflow templates (the key's line removed). It goes on the port list until the 1.0.0 read.
 
 ## Proposed edits for the owner
-None.
+| Link | Row | What is there now | What it must become |
+|---|---|---|---|
+| [.claude/settings.json](https://github.com/luissiviero/sdlc-framework/blob/main/.claude/settings.json#L33) | 33-34 | `        "files.pythonhosted.org",` then `        "generativelanguage.googleapis.com"` | `        "files.pythonhosted.org"` (line 34 removed) |
+| [template/.claude/settings.json](https://github.com/luissiviero/sdlc-framework/blob/main/template/.claude/settings.json#L29) | 29 | `      "allowedDomains": ["github.com", "*.github.com", "pypi.org", "files.pythonhosted.org", "generativelanguage.googleapis.com"]` | `      "allowedDomains": ["github.com", "*.github.com", "pypi.org", "files.pythonhosted.org"]` |
+| [sdlc.yaml](https://github.com/luissiviero/sdlc-framework/blob/main/sdlc.yaml#L104) | 104, after the `v1.0.18` tag | `  version: 1.0.17` | `  version: 1.0.18` |
 
 ## Checks (this repository)
-On the final head, after `python -m pip install -e ".[dev]"`, chained with `set -o pipefail`: `python -m compileall -q plugin tests tasks.py .github/scripts`, `python -m ruff check .`, `python -m ruff format --check .`, `python tasks.py docs-lint`, `python -m pytest -n 4` and `claude plugin validate .`. Their output is in the PR.
+On the final head, after `python -m pip install -e ".[dev]"`, chained with `set -o pipefail`: `python -m compileall -q plugin tests tasks.py .github/scripts`, `python -m ruff check .`, `python -m ruff format --check .`, `python tasks.py docs-lint`, `python -m pytest -n 8` and `claude plugin validate .` (clean but for the `CLAUDE.md`-at-the-root warning). Their output is in the PR.

@@ -163,6 +163,8 @@ def cmd_review(args, env: dict[str, str] | None = None) -> int:
     from ci import run_phase  # noqa: PLC0415
 
     env = dict(os.environ if env is None else env)
+    for var in run_phase.SESSION_HIDDEN_VARS:  # R8: never the session's (1.0.17 copies)
+        env.pop(var, None)
     root = Path(args.root).resolve()
     plugin_dir = Path(args.plugin_dir).resolve()
     if not (plugin_dir / "plugin" / "ci" / "settings.ci.json").is_file():

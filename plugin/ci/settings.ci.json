@@ -49,8 +49,7 @@
         "results-receiver.actions.githubusercontent.com",
         "pypi.org",
         "files.pythonhosted.org",
-        "registry.npmjs.org",
-        "generativelanguage.googleapis.com"
+        "registry.npmjs.org"
       ]
     },
     "filesystem": {

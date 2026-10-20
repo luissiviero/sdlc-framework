@@ -2,7 +2,7 @@
 type: Proposal
 title: An external second opinion on the design at gate (b), from a model of another vendor
 description: After the (b) design run, the runner sends the intent, the spec, the plan and the files the plan lists to Gemini and records its verdict beside the adversarial reviewer's; it adds a reader, it replaces nothing, and it never parks.
-status: proposed
+status: accepted
 roadmap: R8
 sources:
   - id: owner-session
@@ -19,7 +19,7 @@ generated: { by: sdlc-framework-session/ccr-1578d710-8r04sw, at: 2026-10-09T15:0
 
 # An external second opinion on the design at gate (b)
 
-**Status: proposed (roadmap R8).** Nothing is built. The owner asked for it on 2026-10-09 as an **addition** to the current checks: the adversarial reviewer, the panel and the owner's review at gate (b) all stay as they are. It starts after R7 has been measured on two changes (below). *[2026-10-20: `docs/reviews/2026-10-20-gemini-second-opinion-study.md` reads this proposal against #290, which gave the key to the session instead, and recommends this proposal's shape, extended to gate (e); the owner has not decided.]*
+**Status: proposed (roadmap R8).** Nothing is built. The owner asked for it on 2026-10-09 as an **addition** to the current checks: the adversarial reviewer, the panel and the owner's review at gate (b) all stay as they are. It starts after R7 has been measured on two changes (below). *[2026-10-20: `docs/reviews/2026-10-20-gemini-second-opinion-study.md` reads this proposal against #290, which gave the key to the session instead, and recommends this proposal's shape, extended to gate (e); the owner has not decided.]* *[2026-10-20: accepted by the owner (choice 246) and built as plugin 1.0.18 for (b) and (e), after an independent check of the study (`docs/reviews/2026-10-20-gemini-study-check.md`). Three departures from the text below, from that check: the call runs in a job of its own after the phase job, not a step of the runner in the session's job; the record is one PR comment, the job summary and a workflow artifact, not a committed `evidence/external-review-b.json`, which later Claude sessions would read; the key is `external_review: {model, phases, max_chars}`, without `provider`. Billing is linked on the key's Google project (the owner's word).]*
 
 ## The problem
 

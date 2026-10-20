@@ -2262,6 +2262,10 @@ BACKGROUND_TASKS_ENV = "CLAUDE_CODE_DISABLE_BACKGROUND_TASKS"
 # from git with the runner's other entries (``RUNNER_EXCLUDES``) and never committed.
 CACHE_HOME_ENV = "XDG_CACHE_HOME"
 SESSION_CACHE_DIR = ".sdlc-cache"
+# ROADMAP R8 (plugin 1.0.18): the Gemini key belongs to the second opinion's own job after the
+# phase job (``external/cli.py``), never to a Claude session. 1.0.17 (#290) handed it to every
+# session; a project whose workflow copies still pass it gets it stripped here.
+SESSION_HIDDEN_VARS = ("GEMINI_API_KEY",)
 
 
 def session_env(
@@ -2286,8 +2290,11 @@ def session_env(
     token without handing over the workflow token leaves the session no GitHub token. With
     ``config``, ``ANTHROPIC_DEFAULT_<FAMILY>_MODEL`` pins the alias the phase commands start
     the reviewer and the advocate with to their full ids for ``model_phase`` (``phase`` by
-    default; ``panel/models.py alias_pins``, R7); a value the workflow sets is kept."""
+    default; ``panel/models.py alias_pins``, R7); a value the workflow sets is kept. The Gemini key
+    (``SESSION_HIDDEN_VARS``) is dropped whatever the workflow passes (R8)."""
     marked = app_token.strip_git_auth(env)
+    for var in SESSION_HIDDEN_VARS:
+        marked.pop(var, None)
     marked[gate_checks.COMMANDS_RUNNER_ENV] = gate_checks.RUN_BY_RUNNER
     marked.update(app_token.session_tokens(env))
     marked.pop(app_token.WORKFLOW_TOKEN_ENV, None)
@@ -2405,15 +2412,15 @@ COMMIT_NOT_PUSHED = (
 
 def commands_env() -> dict[str, str]:
     """The environment of the runner's commands step: the runner's own, without the model
-    credentials (the Gemini key the phase step may hold included), the GitHub tokens the
-    phase step holds and any git credential handed through the environment
+    credentials (the Gemini key an older workflow copy may still pass included), the GitHub
+    tokens the phase step holds and any git credential handed through the environment
     (``app_token.strip_git_auth``). The targets run code the session just wrote; inside the
     sandbox they had one credential and a network allow-list, and outside it they get none
     (``commands.setup`` runs the same way); no checkout persists a credential in
     ``.git/config`` either (decision 33, R49)."""
     hidden = {
         *auth_mod.CREDENTIAL_VARS,
-        "GEMINI_API_KEY",
+        *SESSION_HIDDEN_VARS,
         "GITHUB_TOKEN",
         "GH_TOKEN",
         app_token.WORKFLOW_TOKEN_ENV,
