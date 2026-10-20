@@ -44,7 +44,7 @@ generated: { by: claude-code-session, at: 2026-10-20T09:00:00Z }
 | Dollar cap per change | Parks a change whose model spend reaches the cap. | `gate.max_budget_usd` | 150 USD; `null` = off | **One behaviour: on** **The owner: approved as recommended (2026-10-20): the amount stays a project setting; `null` (off) is no longer accepted.** | R25's weekly ceiling assumes a cap. "Off" is a combination nobody should run. |
 | Lesson staleness | Sets how long an incident's lesson stays fresh before the index marks it "(stale)". | `lessons.stale_after_months` | unset = 12 | **One behaviour: 12 months**, key removed. **The owner: approved as recommended (2026-10-20); each lesson keeps its own `stale_after`.** | Nobody has a reason to tune it. |
 | Pause everything | Stops every run before it starts, project-wide. | `paused` | `false` | **Keep**. **The owner: keep (2026-10-20).** | It is the emergency stop, not a combination. |
-| Automation login override | Names other bot accounts whose acts never count as the owner's. | `automation_identity` | unset | **Keep, hidden** | It is needed only when CI commits under another name. `/sdlc-init` never writes it. |
+| Automation login override | Names other bot accounts whose acts never count as the owner's. | `automation_identity` | unset | **Keep, hidden**. **The owner: keep hidden (2026-10-20).** | It is needed only when CI commits under another name. `/sdlc-init` never writes it. |
 | Owner's login | Names the account whose labels, reviews and comments count as the owner's. | `owner` | unset on personal repositories | **Keep, set by `/sdlc-init`** | A fact: required on organisation repositories. |
 
 ## 2. Options that accepted or proposed candidates would add
