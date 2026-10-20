@@ -49,5 +49,7 @@ edited by hand; `python tasks.py docs-lint` fails when it differs.
 34. [The owner's `@claude` comment starts a fix round, and only the owner's account starts a round or approves (c) and (d) (amends 22 and 27)](34.md)
 35. [A risk-list hit is a line in the close-look banner (amends 11, 21 and 24)](35.md)
 36. [Gate (e) is the owner's approving review; a GitHub App merges on it (amends 13, 4 and 5)](36.md)
+37. [One profile and one review mode, `standard` and `deferred`, with no per-change override (amends 18, 21, 27, 30, 32, 34 and 35)](37.md)
+38. [When both model secrets are set, the subscription token wins (amends 1)](38.md)
 
 Sticky decisions (2, 6, 7, 8, 10, 19) shape files and conventions every later step writes to.

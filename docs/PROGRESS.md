@@ -1,14 +1,14 @@
-# Progress — ROADMAP R8, the second opinion at gates (b) and (e), as plugin 1.0.18; #290's session exposure undone (choice 246) (2026-10-20)
+# Progress — ROADMAP R8, the second opinion at gates (b) and (e), as plugin 1.0.18; #290's session exposure undone (choice 248) (2026-10-20)
 
-This session ran on branch `ccr-6ed8a82e-cxmftx`, after #297 (the Gemini study) merged as `57b5a85`. The owner's task had three parts: check the study independently, report only; put its four questions to the owner; then build what the owner answered. The previous record (R64 registered, choice 245) is now `docs/progress/2026-10-20-r64-registered-choice-245.md`, unchanged. The session's file is `docs/handoffs/sessions/2026-10-20-ccr-6ed8a82e-cxmftx.md`.
+This session ran on branch `ccr-6ed8a82e-cxmftx`, after #297 (the Gemini study) merged as `57b5a85`. The owner's task had three parts: check the study independently, report only; put its four questions to the owner; then build what the owner answered. The previous record (docs-lint check 8, choice 247) is now `docs/progress/2026-10-20-docs-lint-check-8-choice-247.md`, unchanged. Choices 246 and 247 were taken by sessions that ran in parallel and merged while this PR was open (#298, #303), so the owner's answers here are choice 248. The session's file is `docs/handoffs/sessions/2026-10-20-ccr-6ed8a82e-cxmftx.md`.
 
 ## Summary
 - **The check**: `docs/reviews/2026-10-20-gemini-study-check.md`, one row per recommendation of `docs/reviews/2026-10-20-gemini-second-opinion-study.md`. It agrees with the main finding (#290 departs from R8) and the ranks, and disagrees on four points: the record must not be committed where later Claude sessions read it, the call belongs in a job of its own, the bundle must leave out the change's `evidence/`, and the owner's Windows variable and cloud secret would repeat #290's exposure.
-- **Choice 246**: the owner's four answers, below.
+- **Choice 248**: the owner's four answers, below.
 - **Plugin 1.0.18**: #290's session part undone, and R8 built for (b) and (e), off unless a project's `sdlc.yaml` turns it on.
 
 ## The owner's decision (2026-10-20)
-246. **The study's four questions** (the owner's answers in the session, the options as the session put them):
+248. **The study's four questions** (the owner's answers in the session, the options as the session put them):
     1. **#290's session part is undone, with the key in a job of its own**: "Yes, separate job". The key moves to a `second-opinion` job after the phase job, on a fresh runner; `session_env` drops it; it leaves the eight other steps; the Gemini host leaves `plugin/ci/settings.ci.json`; and the session gives the owner the pastes that remove the host from both `.claude/settings.json` files.
     2. **R8 is built now, off by default**: "Build now, off by default". It runs only where the default branch's `sdlc.yaml` lists the phase under `external_review.phases`. The sample turns it on at (b) once the owner adds its secret. R8's Order cell (46, after R7 is measured on two changes) is overtaken by this answer.
     3. **Phases (b) and (e)**: "(b) and (e)". (e) runs after the phase (e) step. The panel double comes later, in one decision file together with R28's amendment of decision 21, and on Argon.

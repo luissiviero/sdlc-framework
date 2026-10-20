@@ -1,6 +1,6 @@
 # An independent check of the Gemini second-opinion study (2026-10-20)
 
-The owner asked a fresh session (branch `ccr-6ed8a82e-cxmftx`) to answer the study's four questions from the repository and from Google's documentation **before** opening `docs/reviews/2026-10-20-gemini-second-opinion-study.md`, then to compare, one row per recommendation, without softening a disagreement. Report only; the owner's answers that followed are choice 246 in `docs/PROGRESS.md`.
+The owner asked a fresh session (branch `ccr-6ed8a82e-cxmftx`) to answer the study's four questions from the repository and from Google's documentation **before** opening `docs/reviews/2026-10-20-gemini-second-opinion-study.md`, then to compare, one row per recommendation, without softening a disagreement. Report only; the owner's answers that followed are choice 248 in `docs/PROGRESS.md`.
 
 ## Method
 

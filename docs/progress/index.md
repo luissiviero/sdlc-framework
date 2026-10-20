@@ -64,3 +64,5 @@ chronological order (oldest first). The current record stays in `docs/PROGRESS.m
 - [Progress — R63 accepted: the CLI a new project installs knows the models its sdlc.yaml names (choice 244), and NOTES §55 (2026-10-20)](2026-10-20-r63-accepted-choice-244.md)
 - [Progress — ROADMAP R63, the CLI a new project installs knows the models its sdlc.yaml names, as plugin 1.0.16 (2026-10-20)](2026-10-20-r63-cli-default-1.0.16.md)
 - [Progress — R64 registered: /sdlc-init refreshes the files it wrote once (choice 245); the pins at 1.0.17 and the sample's upgrade (2026-10-20)](2026-10-20-r64-registered-choice-245.md)
+- [Progress — change 0004's open questions: four answered by the owner (choice 246), the rest registered for R14's turn (2026-10-20)](2026-10-20-0004-open-questions-choice-246.md)
+- [Progress — docs-lint check 8 reports a merge claim that may be another repository's (choice 247) (2026-10-20)](2026-10-20-docs-lint-check-8-choice-247.md)
