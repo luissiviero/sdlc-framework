@@ -102,7 +102,7 @@ These were given in the session after this file was first written. They are answ
 | 4 | Agreed | No serial-queue mechanism; on the sample, merge one intent at a time when results must stay attributable | agreed |
 | 5 | Asked for an explanation, then approved it | See "Question 5" below | approved (2026-10-20) |
 | 6 | Agreed | A repeated failure counts as "a mistake made twice" for a fixed list of session-caused checks (`plan_sync`, `design_scope`, `clean_tree`, secrets, protected-path denials). Red targets, limits, infrastructure failures and owner acts are excluded | agreed |
-| 7 | Agreed | Not now; decide after R8's five-change tally | agreed |
+| 7 | Agreed; later confirmed for Gemini as a whole ("do as you recommended") | Not now; decide after R8's five-change tally. The tally ends in one behaviour, on everywhere or removed, with no option left (`options.md`) | agreed |
 | R52 | Merge by silence becomes the **default**; a project that does not want it opts out | Recorded as the owner's direction for R52's decision. That decision amends decision 4 for every project that has not opted out, instead of only for opted-in ones | the owner's direction |
 
 ### Question 2: how often a change has no explicit grant, and the faster alternative

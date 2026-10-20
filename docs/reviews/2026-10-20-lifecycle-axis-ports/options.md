@@ -64,7 +64,7 @@ generated: { by: claude-code-session, at: 2026-10-20T09:00:00Z }
 | Detection's day boundary | Sets where detection's "day" starts, so the daily counts follow the owner's clock. | R16 (proposed) | UTC offset, default `+00:00` | **Set by `/sdlc-init`** from the owner's timezone, asked once | It is a fact about the owner, not a choice to try. |
 | Network allow list | Lists extra sites a sandboxed CI session may reach, such as the language's package registry. | R61 (proposed) | optional `sandbox.allowed_domains` | **Set by `/sdlc-init`** from the detected package registry | It is a fact about the project's language. |
 | Policy sources | The owner's own rules (coding, security, data, UX, done) in `policies/`, which the plugin's skills read first. | R27 (accepted) | without them the plugin's defaults apply | **Keep** | This is the owner's content, not a mode. |
-| Second opinion from Gemini | Sends the design to a Gemini model at gate (b) and shows its verdict in the PR. It never parks. | R8 (proposed) | a Gemini key in a secret; no key = off | **Decide at R8**: one behaviour after its five-change tally, either on everywhere or removed | R8 is itself an experiment. Its tally should end in one answer, not leave an option. |
+| Second opinion from Gemini | Sends the design to a Gemini model at gate (b) and shows its verdict in the PR. It never parks. | R8 (proposed) | a Gemini key in a secret; no key = off | **Decide at R8**: one behaviour after its five-change tally, either on everywhere or removed (the owner approved, 2026-10-20) | R8 is itself an experiment. Its tally should end in one answer, not leave an option. |
 | Parallel worktrees | Several local sessions working on different changes at once. | R50 (proposed, a trigger) | — | Nothing to narrow yet | It is a question for later, not an option. |
 
 ## 3. Options this study (R60) proposed
@@ -73,7 +73,7 @@ generated: { by: claude-code-session, at: 2026-10-20T09:00:00Z }
 |---|---|---|---|
 | Actions-minutes meter | Shows GitHub Actions minutes used this month in the digest, and warns before they run out. | `gate.actions_minutes_warn`; on for private repositories | **One behaviour**: on for private repositories at 80%, no key (the owner agreed: question 1) |
 | `CLAUDE.md` line budget | Caps `CLAUDE.md`'s length and lists lines to delete when a new one would pass the cap. | `claude_md.max_lines` (the judge's version) | **One behaviour**: 60 lines fixed in the plugin, no key (the owner approved: question 5) |
-| Plan-growth threshold | Treats a change as non-routine when its plan grew past a size after approval. | `gate.max_plan_growth` (Study B) | **Drop**: the banner line alone, as the judge trimmed it |
+| Plan-growth threshold | Treats a change as non-routine when its plan grew past a size after approval. | `gate.max_plan_growth` (Study B) | **Keep as one behaviour, no key: one of R52's conditions.** A change whose plan grew by more than half its approved file list (at least 5 files) since gate (b) does not merge by silence; it waits for the owner at (e). *Changed on 2026-10-20: with merge by silence on by default, this is the only check that a routine plan stayed the plan the reviewer classed routine before it merges unread.* |
 | `revisit:` on decisions | A date or measure on a decision, after which the docs lint says it is due for review. | optional frontmatter field | **Drop** (excluded in the session's recommendation) |
 | Serial queue | Runs one change at a time and queues the rest. | `queue: serial` (Study A) | **Drop** (the owner agreed: question 4) |
 
@@ -87,7 +87,7 @@ If every row above went as recommended, the owner would face **four real choices
 3. pausing everything;
 4. the policy sources.
 
-**One decision is left open:** Gemini, which R8's tally decides. The staging step was settled by the owner on 2026-10-20: keep it.
+**No decision is left open.** The owner settled the staging step on 2026-10-20: keep it. Gemini is settled the same day: R8's tally decides it, with one behaviour.
 
 **What would drop out:** about ten optional paths and their combinations:
 - the `full` profile;
