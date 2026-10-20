@@ -18,6 +18,7 @@ import importlib.util
 import re
 import subprocess
 import sys
+from collections.abc import Callable
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import unquote
@@ -418,6 +419,9 @@ MERGE_CLAIM_RE = re.compile(
     r"(?P<claim>(?:[^.;|#\]\n]|\.(?!\s))*)"
 )
 CLAIM_SHA_RE = re.compile(r"(?:^\s*|\bas |\()`([0-9a-f]{7,40})`")
+# a sentence ends at a full stop followed by a space, or at a table cell; "sample" earlier in
+# the claim's sentence makes the claim another repository's, maybe (choice 247)
+SENTENCE_END_RE = re.compile(r"[.!?]\s|\|")
 # the date and the time the claim gives for the merge itself ("merged on <date>", "merged at
 # <time> UTC on <date>"), not another event's that shares the clause
 CLAIM_DATE_RE = re.compile(r"(?:^\s*|^\s*\d{2}:\d{2}(?::\d{2})? UTC on )(\d{4}-\d{2}-\d{2})\b")
@@ -676,6 +680,29 @@ def pr_merges(root: Path) -> dict[str, tuple[str, datetime]] | None:
     return merges or None
 
 
+def commit_lookup(root: Path) -> Callable[[str], bool]:
+    """Whether a sha names a commit of the repository at ``root`` (``git cat-file -e``),
+    remembered per sha."""
+    seen: dict[str, bool] = {}
+
+    def known(sha: str) -> bool:
+        if sha not in seen:
+            try:
+                seen[sha] = (
+                    subprocess.run(
+                        ["git", "cat-file", "-e", f"{sha}^{{commit}}"],
+                        cwd=root,
+                        capture_output=True,
+                    ).returncode
+                    == 0
+                )
+            except OSError:
+                seen[sha] = True
+        return seen[sha]
+
+    return known
+
+
 def _merge_claims_fail(docs_dir: Path, path: Path) -> bool:
     """Whether a wrong merge claim in ``path`` fails the lint: a living document, a note after
     ``LAST_NOTE_BEFORE_MERGE_CLAIMS``, or a record dated from ``MERGE_CLAIMS_SINCE`` on; the
@@ -710,11 +737,16 @@ def _claim_mismatches(claim: str, sha: str, when: datetime) -> list[str]:
 
 
 def merge_claim_problems(
-    docs_dir: Path, merges: dict[str, tuple[str, datetime]]
+    docs_dir: Path,
+    merges: dict[str, tuple[str, datetime]],
+    in_repo: Callable[[str], bool] | None = None,
 ) -> tuple[list[str], list[str]]:
     """(failures, reports): a "PR #N merged on/at/as ..." claim whose sha, date or UTC time is
     not the merge commit's. A PR git does not know (the sample's, an unmerged one) is not
-    judged; a claim quoted in a code span (a review citing an error) is not a claim."""
+    judged; a claim quoted in a code span (a review citing an error) is not a claim. A claim
+    that may be another repository's, its sha not a commit here (``in_repo``) or "sample"
+    earlier in its sentence, is reported, never failed: the two repositories' PR numbers
+    overlap (choice 247)."""
     failures: list[str] = []
     reports: list[str] = []
     for path in _pages(docs_dir):
@@ -726,9 +758,18 @@ def merge_claim_problems(
                 known = merges.get(claim.group("pr"))
                 if not known or "sample" in claim.group("before").lower():
                     continue
+                said_sha = CLAIM_SHA_RE.search(claim.group("claim"))
+                prefix = line[: claim.start("pr")]
+                ends = list(SENTENCE_END_RE.finditer(prefix))
+                sentence = prefix[ends[-1].end() :] if ends else prefix
+                foreign = bool(said_sha and in_repo and not in_repo(said_sha.group(1)))
+                foreign = foreign or "sample" in sentence.lower()
                 for mismatch in _claim_mismatches(claim.group("claim"), *known):
                     text = f"merged: docs/{rel}:{number}: PR #{claim.group('pr')} {mismatch}"
-                    (failures if strict else reports).append(text)
+                    if foreign:
+                        reports.append(f"{text} (another repository's PR?)")
+                    else:
+                        (failures if strict else reports).append(text)
     return failures, reports
 
 
@@ -856,7 +897,7 @@ def lint_docs(
     if merges is None:
         reports.append("merge claims not checked: no merge history in this checkout")
     else:
-        found, said = merge_claim_problems(docs_dir, merges)
+        found, said = merge_claim_problems(docs_dir, merges, commit_lookup(root))
         failures.extend(found)
         reports.extend(said)
     failures.extend(stub_problems(docs_dir))
