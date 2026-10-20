@@ -405,8 +405,9 @@ def merged_at_gate_e(st: Status, production: bool = False) -> Status:
     Pure: returns a new ``Status`` and never touches ``st`` or the file. A change at phase e
     whose ``status.yaml`` sits on the default branch reached it through the merge of the build
     PR, which happens only at gate (e): the merge App merges on the owner's approving review
-    (decision 36), or the owner merges (decision 13; OPERATING_MODEL section 4). The last run on the branch may have parked (the thirteenth live run parked
-    change 0001 on the iteration cap and the owner merged anyway), so the park is lifted and
+    (decision 36), or the owner merges (decision 13; OPERATING_MODEL section 4). The last
+    run on the branch may have parked (the thirteenth live run parked change 0001 on the
+    iteration cap and the owner merged anyway), so the park is lifted and
     the gate reads e/passed, stamped with the file's ``updated_at``. Anything else (another
     phase, or gate (e) already passed) comes back as an unchanged copy. ``production`` is
     ``sdlc.yaml: deploy.production``: when true the gate still reads passed (the change is
