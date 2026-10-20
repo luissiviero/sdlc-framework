@@ -39,7 +39,7 @@ VALUES = {
     # decision 35: what /sdlc-init renders for a project with no folder a default glob matches
     "RISK_LIST": '  - "auth"\n  - "data migrations"\n  - "money movement"\n  - "production config"',
     "FRAMEWORK_REPO": "luissiviero/sdlc-framework",
-    "CLAUDE_CODE_VERSION": "2.1.278",
+    "CLAUDE_CODE_VERSION": "2.1.304",
 }
 
 
@@ -1181,8 +1181,23 @@ def test_pin_script_reads_the_default_branch_s_pin_not_the_head_s(tmp_path):
     assert pin("--ref=--output=x").returncode == 1
 
 
+def test_the_pin_script_falls_back_to_the_cli_init_writes(tmp_path):
+    """R63 (1.0.16): a project with no ``plugin.claude_code`` installs the CLI /sdlc-init
+    writes, 2.1.304, the first version read to run a sub-agent on the template's
+    ``claude-opus-5-5`` (NOTES §54); 2.1.278 ran it on the session's model."""
+    from init import sdlc_init
+
+    assert sdlc_init.DEFAULT_CLAUDE_CODE_VERSION == "2.1.304"
+    proc = _pin(tmp_path, 'plugin:\n  version: "1.4.0"\n')
+    assert proc.returncode == 0, proc.stderr
+    assert f"claude_code={sdlc_init.DEFAULT_CLAUDE_CODE_VERSION}" in proc.stdout
+    rendered = render.render_file(TEMPLATE / "sdlc.yaml", VALUES)
+    assert "2.1.304 is the CLI the jobs install and the framework's minimum" in rendered
+    assert "2.1.278" not in rendered
+
+
 def test_pin_script_does_not_double_the_v_of_a_version(tmp_path):
-    proc = _pin(tmp_path, 'plugin:\n  version: "v1.4.0"\n  claude_code: "2.1.278"\n')
+    proc = _pin(tmp_path, 'plugin:\n  version: "v1.4.0"\n  claude_code: "2.1.304"\n')
     assert proc.returncode == 0, proc.stderr
     assert "ref=v1.4.0" in proc.stdout and "ref=vv" not in proc.stdout
 

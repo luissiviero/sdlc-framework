@@ -814,6 +814,25 @@ def test_ci_sandbox_reaches_the_actions_log_host_and_no_blob_wildcard():
     assert not any(d.endswith("blob.core.windows.net") for d in domains)
 
 
+def test_every_model_step_holds_the_gemini_key_and_the_sandbox_reaches_its_host():
+    """1.0.17: a session may call the Gemini API with the owner's ``GEMINI_API_KEY`` secret.
+    Every step that hands a session the Anthropic key hands it this key too, and the CI
+    sandbox reaches the API's one host, never a ``*.googleapis.com`` wildcard."""
+    source = json.loads((ROOT / "plugin" / "ci" / "settings.ci.json").read_text("utf-8"))
+    domains = source["sandbox"]["network"]["allowedDomains"]
+    assert "generativelanguage.googleapis.com" in domains
+    assert not any(d.startswith("*.") and d.endswith("googleapis.com") for d in domains)
+    model_steps = 0
+    for path in sorted(WORKFLOW_DIR.glob("*.yml")):
+        lines = path.read_text(encoding="utf-8").splitlines()
+        for n, line in enumerate(lines):
+            if line.strip() == "ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}":
+                model_steps += 1
+                gemini = lines[n + 2].strip()
+                assert gemini == "GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}", path.name
+    assert model_steps == 9
+
+
 def test_ci_settings_file_rewrites_the_sandbox_filesystem_deny_write_list(tmp_path):
     """change 0002: the sandbox's second layer beside the shell_guard hook. The project's own
     ``protected_paths`` plain entries are appended, absolute; a glob entry among them is
@@ -1701,14 +1720,14 @@ def test_guard_skips_when_the_previous_gate_deferred_its_evidence_logs(project):
 
 def test_the_commands_step_runs_without_the_job_s_credentials(monkeypatch):
     """The phase step holds both model credentials and the GitHub token (the workflows'
-    ``env:``); the targets run code the session wrote, so the step gets none of them."""
-    for name in ("ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN", "GITHUB_TOKEN", "GH_TOKEN"):
+    ``env:``); the targets run code the session wrote, so the step gets none of them, the
+    Gemini key (1.0.17) included."""
+    names = ("ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN", "GEMINI_API_KEY", "GITHUB_TOKEN")
+    for name in (*names, "GH_TOKEN"):
         monkeypatch.setenv(name, "placeholder-" + name.lower())  # sdlc: allow-secret
     monkeypatch.setenv("SDLC_PROJECT_SETTING", "kept")
     env = run_phase.commands_env()
-    assert not {"ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN", "GITHUB_TOKEN", "GH_TOKEN"} & set(
-        env
-    )
+    assert not {*names, "GH_TOKEN"} & set(env)
     assert env["SDLC_PROJECT_SETTING"] == "kept" and env["PATH"] == os.environ["PATH"]
     seen = {}
 
@@ -1825,6 +1844,62 @@ def test_a_run_that_added_panel_decisions_must_show_the_advocate_model(
         assert "dispatched" not in out
     else:
         assert out["result"] == "continue" and record["warning"] is None
+        assert out["dispatched"]["would_dispatch"] == "sdlc-test.yml"
+
+
+UNKNOWN_MODEL_SCRIPT = """
+import sys
+sys.stderr.write('[claude-code:unrecognized_model] {"model":"%s",'
+                 '"query_source":"agent:custom:sdlc:adversarial-reviewer"}\\n')
+"""
+
+
+@pytest.mark.parametrize(
+    ("model", "usage", "parked"),
+    [
+        # 0017's design run: the session on Fable, the reviewer's Opus unknown, Fable only ran
+        ("claude-opus-5-5", {"claude-fable-5-1": SONNET}, True),
+        # the model ran all the same (a fallback onto the session's own model loses nothing)
+        ("claude-opus-5-5", {"claude-fable-5-1": SONNET, "claude-opus-5-5": OPUS}, False),
+        # a model the run was not configured with is the CLI's own
+        ("claude-x-1", {"claude-fable-5-1": SONNET}, False),
+    ],
+)
+def test_a_model_the_pinned_cli_does_not_know_parks_with_the_pin_to_raise(
+    project, fake_claude, tmp_path, monkeypatch, capsys, model, usage, parked
+):
+    """R63 (NOTES §54): CLI 2.1.278 printed this line for the reviewer's claude-opus-5-5 and
+    ran the reviewer on the session's model. A configured model that did not run parks the
+    change, the reason naming the pin; any other line changes nothing."""
+    root, change = project
+    pr_route(monkeypatch)
+    set_state(change, "b", gate_phase="b", gate_result="passed")
+    write(change / "evidence" / "gate-c.json", json.dumps({**GATE_FILE, "phase": "c"}))
+    script = tmp_path / "unknown_model.py"
+    write(script, UNKNOWN_MODEL_SCRIPT % model)
+    monkeypatch.setenv("FAKE_CLAUDE_RUN", str(script))
+    monkeypatch.setenv("FAKE_CLAUDE_RESULT", json.dumps({**FAKE_RESULT, "modelUsage": usage}))
+    env = dict(os.environ, **KEY_ENV, GITHUB_TOKEN=FAKE_TOKEN, SDLC_MODEL="claude-fable-5-1")
+    args = Args(
+        root=str(root), phase="c", dry_run=False, no_dispatch=True, claude=fake_cli(fake_claude)
+    )
+    assert run_phase.run_phase(args, env) == run_phase.EXIT_OK
+    out = json.loads(capsys.readouterr().out)
+    stderr = (change / "evidence" / "claude-c.stderr.txt").read_text(encoding="utf-8")
+    assert "unrecognized_model" in stderr  # the line the park points to is kept
+    if parked:
+        assert out["unrecognized_models"] == ["claude-opus-5-5"]
+        assert "does not know model claude-opus-5-5" in out["parked"]
+        assert "raise sdlc.yaml: claude_code" in out["parked"]
+        gate_file = json.loads((change / "evidence" / "gate-c.json").read_text(encoding="utf-8"))
+        assert gate_file["result"] == "park"
+        assert [ch["name"] for ch in gate_file["checks"]] == ["cli_model"]
+        assert "plugin.claude_code" in gate_file["what_i_need"]
+        assert "evidence/claude-c.stderr.txt holds the line" in gate_file["what_i_need"]
+        assert status_mod.read_status(change).parked_reason.startswith("cli_model: ")
+        assert "dispatched" not in out
+    else:
+        assert "unrecognized_models" not in out and out["result"] == "continue"
         assert out["dispatched"]["would_dispatch"] == "sdlc-test.yml"
 
 
@@ -2186,7 +2261,9 @@ def test_workflow_uses_no_other_secret(name):
     text = workflow(name)
     # R49 (decision 33): a workflow that pushes also reads the App's key, in its mint step
     app = {"SDLC_APP_PRIVATE_KEY"} if name in APP_WORKFLOWS else set()
-    allowed = {KEY_VAR, TOKEN_VAR} | app
+    # 1.0.17: a workflow that runs a model hands its session the owner's Gemini key too
+    gemini = {"GEMINI_API_KEY"} if f"secrets.{KEY_VAR}" in text else set()
+    allowed = {KEY_VAR, TOKEN_VAR} | app | gemini
     assert set(re.findall(r"secrets\.([A-Za-z_][A-Za-z0-9_]*)", text)) <= allowed
     assert "github.token" in text or "sdlc-digest" not in text
     assert "${{ secrets.GITHUB_TOKEN }}" not in text  # github.token is the documented form
