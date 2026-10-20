@@ -1,54 +1,56 @@
 ---
 type: Proposal
-title: Analyze the value of porting lifecycle-axis- features into the framework
-description: The owner's earlier kit, lifecycle-axis-, has ten features that are stronger than the framework's equivalents; this entry only asks for an analysis of what each would be worth here. Nothing is decided.
+title: Which lifecycle-axis- features to port, settled by two independent studies and a judge
+description: The owner's earlier kit, lifecycle-axis-, does some things better than the framework. Two studies made independently of each other, compared by an independent judge, recommend what to port and how. The owner decides afterwards; nothing is decided here.
 status: proposed
 roadmap: R60
 sources:
-  - id: owner
+  - id: owner-2026-10-19
     resource: "the owner's message of 2026-10-19 ('add it to the end of the line but without any decision. The task is analyzing the value of adding these changes')"
     title: "The request to register the analysis"
+  - id: owner-2026-10-20
+    resource: "the owner's message of 2026-10-20 (a new session makes its own study before reading the first one; an independent judge compares the two; the roadmap item is substituted)"
+    title: "The request for an independent study and a judged comparison"
   - id: lifecycle-axis
     resource: "https://github.com/luissiviero/lifecycle-axis- (HEAD 80328c1, 2026-09-18)"
     title: "lifecycle-axis-, the starter kit the framework replaced"
-  - id: comparison
+  - id: study-a
     resource: "https://claude.ai/code/artifact/9f0ad0d6-170a-4e4a-b841-89126493329d"
-    title: "lifecycle-axis- vs sdlc-framework (comparison doc, 2026-10-19)"
-generated: { by: claude-chat-session, at: 2026-10-20T02:30:00Z }
+    title: "Study A: lifecycle-axis- vs sdlc-framework (comparison doc, 2026-10-19/20)"
+  - id: criteria
+    resource: docs/reviews/2026-09-28-playbook-vs-framework.md (section 7, the criteria weights saved 2026-09-29)
+    title: "The owner's six criteria and their weights"
+generated: { by: claude-chat-session, at: 2026-10-20T06:00:00Z }
 ---
 
-# Analyze the value of porting lifecycle-axis- features
+# Which lifecycle-axis- features to port
 
-**Status: proposed on 2026-10-19 at the owner's request (ROADMAP R60), placed last, no decision.** Nothing is built, accepted or ranked. The work this entry asks for is an analysis: for each feature below, what porting it would be worth to the framework, what it would cost, and which decisions it would touch. The owner decides afterwards.
+**Status: proposed at the owner's request (ROADMAP R60), placed last, no decision.** The entry was first registered on 2026-10-19 as "analyze the value of porting lifecycle-axis- features". On 2026-10-20 the owner substituted it with the process below. Nothing is built, accepted or ranked, and the Order cell stays blank until the owner decides.
 
 ## Why
 
-The owner started with `lifecycle-axis-` (2026-09-02 to 2026-09-18, 673 commits) and stopped it for this framework. The framework fits the original goal better: phases run unattended in CI and the owner acts only at phase ends. A side-by-side read of both repositories on 2026-10-19 found ten features where `lifecycle-axis-` is stronger, mostly on control, trust and cost.
+The owner built `lifecycle-axis-` (2026-09-02 to 2026-09-18, 673 commits) and stopped it for this framework, which fits the original goal better: phases run unattended in CI and the owner acts only at phase ends. A first study (Study A, a chat session of 2026-10-19/20) found features where `lifecycle-axis-` is stronger and recommended what to port. The owner wants that assessment checked by a second study made without seeing the first, and the two compared by a judge, before deciding.
 
-## The features to analyze
+This file deliberately states no finding of Study A, so that a session can read this entry without losing its independence.
 
-The "initial estimate" column is a first read for a single, hands-off owner. It is an input to the analysis, not a decision.
+## The process
 
-| # | Feature in lifecycle-axis- | Where it lives there | The framework today | Initial estimate |
-|---|---|---|---|---|
-| 1 | Delegation grant: `mode: delegated` plus a risk class on the intent; the agent signs spec, plan and incident, never the intent | `.sdlc/delegation.yaml`, `scripts/sign.py` | No: only the owner approves (decision 34) | High |
-| 2 | Run-queue across items, with park and resume and one successor session per item | `.claude/skills/sdlc-run/SKILL.md`, `scripts/next_item.py`, `docs/sdlc/handoff/HANDOFF.md` | Partial: concurrent changes are R51, not built | High |
-| 3 | Environment tiers: agent deploy and rollback in dev and staging; production allows only prepare-release and propose-rollback | `.sdlc/environments.yaml` | No: a single `deploy:` block in `sdlc.yaml` | High |
-| 4 | Release authorization bound to the exact commit SHA | `scripts/deploy.sh`, `.sdlc/release-authorizations/` | Partial: the `sdlc:release-approved` label (decision 13) | Medium |
-| 5 | Plan as a hard boundary: a hook blocks edits until the plan is approved; CI fails a diff that touches files outside the plan's list | `.claude/hooks/require-plan.sh`, `scripts/check_artifact_chain.py` | Partial: `plugin/hooks/plan_sync.py` checks that the plan is kept in sync, not that it was approved | Medium |
-| 6 | 55 eval cases, 49 of them deterministic regression tests for hooks and CI scripts | `evals/cases/`, `scripts/run_evals.sh` | 6 eval cases | Medium |
-| 7 | Gemini parity: one rule source rendered into CLAUDE.md, GEMINI.md and AGENTS.md, with drift and size checks | `docs/sdlc/rules/`, `scripts/gen_context_files.py`, `.gemini/settings.json` | No | Medium (the Gemini CLI refused the owner's personal account in lifecycle-axis-) |
-| 8 | Local-session execution: no model spend in CI per change | `docs/sdlc/handoff/HANDOFF.md` (session protocol) | Each change runs in GitHub Actions; about 50 to 85 USD per change on changes 0001 to 0005 | Medium |
-| 9 | Metrics per play: one leading and one lagging indicator each | `docs/sdlc/metrics.md` | Global counters only (`plugin/pr/counters.py`) | Low |
-| 10 | Multi-approver roles: approvers file, CODEOWNERS, a never-approve list of bot identities | `.sdlc/approvers.yaml`, `.github/CODEOWNERS` | Single owner | Low (one owner) |
+1. **Study B, independent.** A new session compares `lifecycle-axis-` (HEAD 80328c1) with this repository at `main` and lists what `lifecycle-axis-` does better. For each item it gives (a) what it is, (b) how it would work here, with a concrete example in this framework's terms, (c) a recommendation, (d) the reasoning, and (e) the effect on the owner's six criteria (weights in `docs/reviews/2026-09-28-playbook-vs-framework.md` section 7) and on the decisions and ROADMAP candidates it touches. It reads neither Study A nor anything that quotes it until Study B is committed.
+2. **Study A, recorded.** Only after Study B is committed does the session read Study A (the comparison doc linked in the sources) and record it unchanged as a file beside Study B.
+3. **The judge.** A fresh context that wrote neither study, on a different model where one is available, compares the two blind to their authorship. It checks each disputed claim against the code of both repositories, and writes a verdict per item and one merged proposal.
+4. **The owner decides.** The conclusion is a recommendation. Accepted items become changes or amend existing candidates through the normal front door; this entry's Order stays blank until then.
 
-## What the analysis should answer, per feature
+## Where the records go
 
-1. The value to the owner's way of working: fewer interruptions, less spend, or fewer ways for an agent to go wrong.
-2. The cost: code, workflows and docs added, and what it adds to a small project's scaffold.
-3. The decisions it would touch or reopen. Likely candidates are decision 13 (release authorization), 23 (GitHub only) and 34 (who approves), but the analysis names them.
-4. Whether part of it already exists under another name in the framework or in an accepted candidate (R11 to R57).
+`docs/reviews/2026-10-20-lifecycle-axis-ports/`:
+
+| File | Holds |
+|---|---|
+| `study-b.md` | Study B, committed before Study A is read |
+| `study-a.md` | Study A as read from the comparison doc |
+| `judge.md` | The judge's per-item verdicts and the evidence checked |
+| `conclusion.md` | Five-line summary first, then the merged proposal: what to port, how, and which candidates or decisions it touches |
 
 ## What this entry is not
 
-It accepts nothing, amends no decision and takes no rank. The Order cell stays blank until the owner decides.
+It accepts nothing, amends no decision and takes no rank.
