@@ -30,7 +30,8 @@
         "github.com",
         "*.github.com",
         "pypi.org",
-        "files.pythonhosted.org"
+        "files.pythonhosted.org",
+        "generativelanguage.googleapis.com"
       ]
     }
   },
