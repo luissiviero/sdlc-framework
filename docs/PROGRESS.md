@@ -1,11 +1,11 @@
-# Progress — decision 38, the subscription token wins when both model secrets are set, as plugin 1.0.19 (2026-10-20)
+# Progress — decision 38, the subscription token wins when both model secrets are set, as plugin 1.0.20 (2026-10-20)
 
 This session ran on branch `ccr-0522ec37-iia2ok-auth-order`. The owner's task (2026-10-20): build the code that decision 38 asks for (its point 4) as a plugin version of its own, after R22's build. It was prepared while R22 built, and its PR was opened once R22 merged (#306, 1.0.18), from `main` at `18b2a22`. It takes no decision, choice or note number.
 
 ## Coordination with the other sessions
-- **The version.** 1.0.19 is the next free patch after R22's 1.0.18 (`.claude-plugin/plugin.json` on `main`). #304 (R8, the Gemini second opinion, open) also wants 1.0.19. By choice 184 no number is reserved: whichever of the two merges second moves to 1.0.20.
-- **Overlap with #304.** #304 touches `plugin/evals/run.py`: a `SESSION_HIDDEN_VARS` constant and one line in `main()` that strips the Gemini key. This PR adds the `ci.auth` import and changes the `run_bounded` call in `run_case`. The two changes are in different places, so they merge without a conflict.
-- **The records.** #308 (R22's six questions, choice 249) archived R22's record as `docs/progress/2026-10-20-r22-gate-e-approving-review-1.0.18.md` and wrote its own. This PR's first push had archived R22's record under another name; merging `main` in, that copy was dropped. The choice 249 record moved unchanged to `docs/progress/2026-10-20-r22-questions-choice-249.md`, with its index line.
+- **The version.** This PR opened as 1.0.19. #304 (R8, the Gemini second opinion) merged first as 1.0.19 (`.claude-plugin/plugin.json` on `main`), so by choice 184 this PR moves to **1.0.20**.
+- **Overlap with #304.** #304 touches `plugin/evals/run.py`: a `SESSION_HIDDEN_VARS` constant and one line in `main()` that strips the Gemini key. This PR adds the `ci.auth` import and changes the `run_bounded` call in `run_case`. The two changes are in different places and merged without a conflict; `docs/OPERATING_MODEL.md` §4.2's paragraph carried both PRs' sentences and was merged by hand (R8's Gemini sentence, this PR's "Credential" sentence).
+- **The records.** #308 archived R22's record and wrote its own (choice 249), which #304 then archived as `docs/progress/2026-10-20-choice-249-r22-questions.md`. The copies this branch had archived under other names were dropped in the merges. R8's record (1.0.19) moved unchanged to `docs/progress/2026-10-20-r8-second-opinion-1.0.19.md`, with its index line.
 - **What comes next.** Decision 37's code (the narrowed modes) follows this PR, one build session at a time.
 
 ## Summary
@@ -46,7 +46,7 @@ No file on the list is touched: not `plugin/detect/`, not `plugin/ci/run_phase.p
 ## Proposed edits for the owner
 | Link | Row | What is there now | What it must become |
 |---|---|---|---|
-| [sample sdlc.yaml](https://github.com/luissiviero/sdlc-sample-python/blob/main/sdlc.yaml#L77) | 77 | `  version: 1.0.18` | `  version: 1.0.19`, at the sample's next upgrade, with its workflow copies and its `evals/README.md` (line 77 still states the old order) |
+| [sample sdlc.yaml](https://github.com/luissiviero/sdlc-sample-python/blob/main/sdlc.yaml#L78) | 78 | `  version: 1.0.19` | `  version: 1.0.20`, at the sample's next upgrade, with its workflow copies and its `evals/README.md` (line 77 still states the old order) |
 
 The root `sdlc.yaml` pin (line 104, `version: 1.0.17`) stays where it is: choice 249, point 2, holds it until this repository has its own App. When it moves, it moves to the newest tag.
 

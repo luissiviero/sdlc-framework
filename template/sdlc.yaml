@@ -46,6 +46,16 @@ review: {{REVIEW}}
 session_model: claude-opus-5-5
 adversarial_model: claude-opus-5-5
 panel_advocate_model: claude-fable-5-1
+# --- second opinion (ROADMAP R8; plugin/external/cli.py) -------------------------------------
+# A model of another vendor reads the design at (b) and the build at (e) and posts one advisory
+# comment on the PR; it edits nothing, never parks and is not a panel member. Off while this
+# block is absent. A job of its own after the phase job holds the repository secret
+# GEMINI_API_KEY; no Claude session ever does. Check the id with `cli.py models` first, and
+# send project code only from a Google project with billing linked (the paid tier's terms).
+# external_review:
+#   model: gemini-4-argon
+#   phases: [b, e]
+#   max_chars: 400000   # what one call may read; a file past it is left out and named
 
 # --- feedback loop: one-command targets (build guide step 14; article p.27 step 1) --------
 # Each must exit non-zero on failure. /sdlc-init detects them for Python projects.

@@ -139,7 +139,6 @@ jobs:
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GITHUB_TOKEN: ${{ steps.app.outputs.token || github.token }}
           SDLC_WORKFLOW_TOKEN: ${{ github.token }}
           CHANGE_ID: ${{ inputs.change_id }}
