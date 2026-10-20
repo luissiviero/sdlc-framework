@@ -23,7 +23,7 @@ No change under `plugin/` or `template/` in this PR; no version bump.
 The pin on line 108 already reads `"2.1.304"` (PR #287); this row makes its comment agree. It can wait for R63's build, which changes the same sentence in `template/sdlc.yaml`.
 
 ## Left
-- **R63's build**: after 0017's build run is read (this session's next step).
+- **R63's build**: its reading is in (NOTES §55, the sessions of (c) to (e) on `claude-opus-5-5` under 2.1.304); next, before R24.
 - Every other open item is in the session file of `ccr-a6fc1017-mkylxv`.
 
 ## Checks (this repository)
