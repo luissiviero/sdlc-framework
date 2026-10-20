@@ -65,7 +65,7 @@ generated: { by: claude-code-session, at: 2026-10-20T09:00:00Z }
 | Network allow list | Lists extra sites a sandboxed CI session may reach, such as the language's package registry. | R61 (proposed; *[accepted 2026-10-20, choice 240]*) | optional `sandbox.allowed_domains` | **Set by `/sdlc-init`** from the detected package registry. **The owner: approved as recommended (2026-10-20).** | It is a fact about the project's language. |
 | Policy sources | The owner's own rules (coding, security, data, UX, done) in `policies/`, which the plugin's skills read first. | R27 (accepted) | without them the plugin's defaults apply | **Keep**. **The owner: keep (2026-10-20).** | This is the owner's content, not a mode. |
 | Second opinion from Gemini | Sends the design to a Gemini model at gate (b) and shows its verdict in the PR. It never parks. | R8 (proposed) | a Gemini key in a secret; no key = off | **Decide at R8**: one behaviour after its five-change tally, either on everywhere or removed (the owner approved, 2026-10-20) | R8 is itself an experiment. Its tally should end in one answer, not leave an option. |
-| Parallel worktrees | Several local sessions working on different changes at once. | R50 (proposed, a trigger) | — | Nothing to narrow yet | It is a question for later, not an option. |
+| Parallel worktrees | Several local sessions working on different changes at once. | R50 (proposed, a trigger) | — | Nothing to narrow yet. **The owner (2026-10-20): agreed, no answer needed; R50's trigger asks.** | It is a question for later, not an option. |
 
 ## 3. Options this study (R60) proposed
 
