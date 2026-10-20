@@ -9,6 +9,7 @@ No other session file was newer when the session started (verified, `ls docs/han
 - `2026-10-20-ccr-0522ec37-iia2ok-part-2.md` (#300, #301, #302, decision 38);
 - `2026-10-20-ccr-d6ff91d5-syonv1.md` (#298, choice 246 on change 0004; #303, choice 247).
 - Then, at the second merge of `main` (`18b2a22`): `2026-10-20-ccr-0522ec37-iia2ok-part-3.md` (#305, the last R60 holds lifted) and `2026-10-20-ccr-0edc2256-yax6jz.md` (#306, R22 as plugin 1.0.18).
+- Then, at the third merge of `main` (`e4dfca1`): `2026-10-20-ccr-0edc2256-yax6jz-part-2.md` (#308, choice 249; the sample on 1.0.18 since sample #93 and #95).
 
 The owner's task: check the study independently (report only), put its four questions to the owner, then build the owner's four items as the study reads them.
 
@@ -26,7 +27,7 @@ The owner's task: check the study independently (report only), put its four ques
 - The standing ones are in `HANDOFF.md`.
 - **Next free numbers:**
   - candidate R65;
-  - choice 249 (248 taken here; 246 and 247 by the parallel session's #298 and #303);
+  - choice 250 (248 taken here; 246 and 247 by #298 and #303, 249 by #308);
   - note 56;
   - decision file 39 (37 and 38 are on `main`; read `docs/decisions/` first);
   - patch 1.0.20 after this PR (R22 is 1.0.18 on `main` since #306; this PR moved to 1.0.19). The decision-38 and decision-37 builds of session `ccr-0522ec37-iia2ok` wait for the next free patch.
@@ -43,7 +44,7 @@ The owner's task: check the study independently (report only), put its four ques
 | Item | Where | What is left | Who acts | Blocks 1.0.0 |
 |---|---|---|---|---|
 | This session's PR | framework | `Framework checks` green, the owner's merge | owner | no |
-| The pastes of choice 248 | both `.claude/settings.json` files; the root `sdlc.yaml` | The owner's pastes (below) | owner | no |
+| The pastes of choice 248 | both `.claude/settings.json` files (the root pin stays at 1.0.17, choice 249) | The owner's pastes (below) | owner | no |
 | The sample's second opinion | the sample | Its secret, its `sdlc.yaml` paste, then the PR of 1.0.19 workflow copies | owner, then a session | no |
 | The model id | `external_review.model` | `gemini-4-argon` is in Google's cookbook and SDK of 2026-10-19 and 2026-10-20 (`docs/reviews/2026-10-20-gemini-study-check.md`); whether the owner's key can call it is not verified. `python plugin/external/cli.py models` with the key settles it; a wrong id is a "not run: HTTP 404" comment, never a red job. | owner (by hand) or the first live run | no |
 | The request's shape | `plugin/external/gemini.py` | Checked against the API's discovery document (revision 20261019) and Google's SDK, not live: `responseSchema`, `responseMimeType`, the `x-goog-api-key` header | the session that reads the first live run | no |
@@ -54,7 +55,7 @@ The owner's task: check the study independently (report only), put its four ques
 | R64 | `docs/proposals/template-copies-refresh.md` | The build at its rank (carried) | the session at its rank | no |
 | The (d) check run beside a park after the commands step | `plugin/ci/run_phase.py` | Not fixed (carried) | a later build that touches the runner | no |
 | The framework's two workflows on CLI 2.1.278 | `substrate-smoke.yml`, `framework-evals.yml` | The owner's call (carried) | owner | no |
-| R22's owner acts and live checks | `docs/progress/2026-10-20-r22-gate-e-approving-review-1.0.18.md`, "Proposed edits for the owner" and "Left"; `2026-10-20-ccr-0edc2256-yax6jz.md` | R22 merged as 1.0.18 (#306). Its root `sdlc.yaml` rows are folded into this session's one paste. Its other items are carried unchanged, not re-verified. | owner; that session | no |
+| R22's owner acts and live checks | `docs/progress/2026-10-20-r22-gate-e-approving-review-1.0.18.md`; `2026-10-20-ccr-0edc2256-yax6jz.md` and its part 2 | R22 merged as 1.0.18 (#306); the sample runs 1.0.18 (sample #93, #95). The rest is in the part-2 row below. | owner; that session | no |
 | The narrowed modes' removal; the credential order's code | decisions 37 and 38, point 4 each | Two plugin versions, one build session at a time. Decision 38's touches `plugin/evals/run.py`, where this PR strips the Gemini key from the eval session's environment. | later build sessions | no |
 | The conclusion's ports; `CLAUDE.md`'s fallback sentence; the Actions-minutes figure; the artifacts question | `2026-10-20-ccr-0522ec37-iia2ok.md`, its parts 2 and 3 | Carried unchanged, not re-verified. The holds of R11, R30, R39 and R16 were lifted by #305 (part 3). | as there | no |
 | Change 0004's remaining questions | `docs/reviews/2026-10-20-0004-open-questions.md` | At R14's turn; read Q4's answer before R33 (carried from `2026-10-20-ccr-d6ff91d5-syonv1.md`, not re-verified) | the sessions at those ranks | no |
@@ -62,6 +63,7 @@ The owner's task: check the study independently (report only), put its four ques
 | Sample #55, change 0010 | the sample | Scheduled by the owner (carried) | owner | no |
 | The advocate under an Opus session; the build PR's "What changed and why" line; the gate's spend total one round late | NOTES §55 | Carried from `2026-10-20-ccr-a6fc1017-mkylxv.md`, not re-verified | as there | no |
 | R24's six questions | `docs/progress/2026-10-20-r24-risk-hit-banner-1.0.15.md` | Carried, not re-verified | owner | no |
+| R22's owner steps, note 56, decision 36's live checks, the root `CLAUDE.md` rows 33 and 34 and `sdlc.yaml` row 6, the root pin held at 1.0.17 | `2026-10-20-ccr-0edc2256-yax6jz-part-2.md` | Carried unchanged, not re-verified | owner; the next session | no |
 | Everything else the "-end" and 8913e578 files list open | `2026-10-20-ccr-7ef35daa-7adzh8-end.md`, `2026-10-20-ccr-8913e578-kwfegl.md` | Carried unchanged, not re-verified | as there | no |
 
 Done, dropped:
@@ -75,7 +77,7 @@ Done, dropped:
 | When | Act |
 |---|---|
 | Now | Read this session's PR; merge it when `Framework checks` is green. |
-| After `v1.0.19` | Paste the three framework files (the full contents are in the chat; the rows are in `docs/PROGRESS.md`, "Proposed edits for the owner"). |
-| After `v1.0.19`, for the sample | First R22's setup on the sample (its record, "Left"). Then add the repository secret `GEMINI_API_KEY` (Settings, Secrets and variables, Actions). Then paste its `sdlc.yaml` (the full content is in the chat: pin 1.0.19, R22's row 6 and `external_review: {model: gemini-4-argon, phases: [b]}`). Then merge sample #92, the 1.0.19 workflow copies. |
+| After `v1.0.19` | Paste the two `.claude/settings.json` files (the full contents are in the chat). The root pin stays at 1.0.17 (choice 249, point 2). |
+| After `v1.0.19`, for the sample | First R22's setup on the sample (#306's steps A to D). Then add the repository secret `GEMINI_API_KEY`. Then paste its `sdlc.yaml`: `version: 1.0.19` and the `external_review` block (the full content is in the chat). Then merge sample #92, the 1.0.19 workflow copies. |
 | Before the first live run, optional | In one PowerShell window: `$env:GEMINI_API_KEY = "<key>"`, then `python plugin/external/cli.py models` from the framework checkout, to confirm the model id. |
 | 2026-10-24 | On the PC: `git pull`, then `python -m pip install -e ".[dev]"` (the reminder, carried). |
