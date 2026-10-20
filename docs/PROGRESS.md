@@ -39,7 +39,7 @@ Row 6 landed as one line, its two halves joined by " / " (verified, the same rea
 The root `sdlc.yaml` pin row (line 104) is held by choice 249, point 2.
 
 ## Left
-- **Sample #93** merges once its checks are green on the head that carries the new pin. Its first `not-a-build-pr` run was red, as expected: the pin was still 1.0.17, which lacks `merge_step.py` (job 118860513392).
+- **Sample #93 merged** as `d602179`, after its checks were green on `3fc7d74`. On that head the `not-a-build-pr` job posted a passing `sdlc/review` check (verified, the PR's check runs), the first live run of `sdlc-merge.yml`. Its first `not-a-build-pr` run had been red, as expected: the pin was still 1.0.17, which lacks `merge_step.py` (job 118860513392).
 - **The owner's GitHub steps A to C**, then D after #93 merges (#306's body).
 - **Note 56**, from the rulesets API, once the owner has made C and D.
 - **Decision 36's live checks**, at the sample's next change at (e), the approval from the phone included (point 6).
