@@ -2405,12 +2405,19 @@ COMMIT_NOT_PUSHED = (
 
 def commands_env() -> dict[str, str]:
     """The environment of the runner's commands step: the runner's own, without the model
-    credentials, the GitHub tokens the phase step holds and any git credential handed
-    through the environment (``app_token.strip_git_auth``). The targets run code the session
-    just wrote; inside the sandbox they had one credential and a network allow-list, and
-    outside it they get none (``commands.setup`` runs the same way); no checkout persists a
-    credential in ``.git/config`` either (decision 33, R49)."""
-    hidden = {*auth_mod.CREDENTIAL_VARS, "GITHUB_TOKEN", "GH_TOKEN", app_token.WORKFLOW_TOKEN_ENV}
+    credentials (the Gemini key the phase step may hold included), the GitHub tokens the
+    phase step holds and any git credential handed through the environment
+    (``app_token.strip_git_auth``). The targets run code the session just wrote; inside the
+    sandbox they had one credential and a network allow-list, and outside it they get none
+    (``commands.setup`` runs the same way); no checkout persists a credential in
+    ``.git/config`` either (decision 33, R49)."""
+    hidden = {
+        *auth_mod.CREDENTIAL_VARS,
+        "GEMINI_API_KEY",
+        "GITHUB_TOKEN",
+        "GH_TOKEN",
+        app_token.WORKFLOW_TOKEN_ENV,
+    }
     return app_token.strip_git_auth({k: v for k, v in os.environ.items() if k not in hidden})
 
 
