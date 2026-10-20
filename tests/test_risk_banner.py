@@ -196,10 +196,10 @@ def _results(hits: dict, accepted=()) -> list[CheckResult]:
 
 
 def test_a_design_with_an_unaccepted_hit_never_takes_the_fast_lane():
-    assert gate.fast_lane_applies("b", "standard", True, _results({}), True)
-    assert not gate.fast_lane_applies("b", "standard", True, _results({"auth": ["x"]}), True)
+    assert gate.fast_lane_applies("b", True, _results({}), True)
+    assert not gate.fast_lane_applies("b", True, _results({"auth": ["x"]}), True)
     accepted = _results({"auth": ["x"]}, accepted=["auth"])
-    assert gate.fast_lane_applies("b", "standard", True, accepted, True)
+    assert gate.fast_lane_applies("b", True, accepted, True)
     assert gate.unaccepted_risk_hits(_results({"auth": ["x"], "b": ["y"]}, ["b"])) == ["auth"]
 
 

@@ -26,7 +26,6 @@ from tests.test_gate import (
     design_project,  # noqa: F401 - the fixture
     git,
     project,  # noqa: F401 - the fixture
-    set_on_base,
     verdict,
     write,
 )
@@ -40,13 +39,6 @@ DECISION = {
     "decision": "keep half-up rounding; the invoices module never calls percent()",
     "rationale": ["grep finds no caller in invoices/", "the coding standard names round()"],
 }
-
-
-def set_review(change: Path, mode: str) -> None:
-    """The per-change override (status.yaml: review_override), set the owner's way: a commit
-    on main merged into the branch. Since 0.2.26 the gate reads the override from the copy
-    the owner approved and ignores the branch's own value (choice 103)."""
-    set_on_base(change.parent.parent, change, review_override=mode)
 
 
 def open_the_concern(change: Path) -> None:
@@ -231,13 +223,13 @@ def test_verifier_disagreement_is_read_from_the_report():
 # --- the CLI against the fixture ---------------------------------------------------------------
 def test_items_lists_the_fixed_list_and_the_parks(design_project):  # noqa: F811
     root, change = design_project
-    set_review(change, "parked")  # the template's default is deferred since 1.0.8 (decision 32)
     open_the_concern(change)
     git(root, "add", ".")
     git(root, "commit", "-q", "-m", "design(0001): an open concern")
     verdict(root, "b", verdict="escalate")
     rc, out = run(["items", "--root", str(root), "--id", "0001", "--phase", "b"])
-    assert rc == 0 and out["mode"] == "parked" and out["gate"] == "park"
+    # decision 37 (1.0.20): deferred review is the only mode, so ``items`` names none
+    assert rc == 0 and "mode" not in out and out["gate"] == "park"
     kinds = [(i["kind"], i["decided"]) for i in out["items"]]
     assert kinds == [("concern", False), ("escalate", False)]
     assert out["items"][0]["item"] == OPEN_CONCERN and out["items"][0]["n"] == 1
@@ -255,9 +247,8 @@ def test_items_lists_the_fixed_list_and_the_parks(design_project):  # noqa: F811
     assert len(out["items"]) == 2
 
 
-def test_record_refuses_under_parked_and_decides_under_deferred(design_project):  # noqa: F811
+def test_record_decides_and_counts_one_panel_call(design_project):  # noqa: F811
     root, change = design_project
-    set_review(change, "parked")  # the template's default is deferred since 1.0.8 (decision 32)
     open_the_concern(change)
     git(root, "add", ".")
     git(root, "commit", "-q", "-m", "design(0001): an open concern")
@@ -267,13 +258,6 @@ def test_record_refuses_under_parked_and_decides_under_deferred(design_project):
     decision = ledger.member_path(change, "b", 1, "conciliator")
     decision.parent.mkdir(parents=True, exist_ok=True)
     decision.write_text(json.dumps(DECISION), encoding="utf-8")
-    rc, _out = run(["record", "--root", str(root), "--id", "0001", "--phase", "b", "--item", "1"])
-    assert rc == panel_cli.EXIT_PARKED_MODE  # review: parked - the owner decides
-    assert ledger.load_ledger(change, "b") == []
-
-    set_review(change, "deferred")
-    rc, out = run(["mode", "--root", str(root), "--id", "0001"])
-    assert rc == 0 and out["mode"] == "deferred"
     rc, out = run(
         ["record", "--root", str(root), "--id", "0001", "--phase", "b", "--item", "1",
          "--cost-usd", "0.42"]
@@ -339,7 +323,6 @@ def test_record_needs_both_blind_verdicts_and_takes_them_from_their_files(design
     restatement of them."""
     root, change = design_project
     open_the_concern(change)
-    set_review(change, "deferred")
     git(root, "add", ".")
     git(root, "commit", "-q", "-m", "design(0001): an open concern")
     verdict(root, "b")
@@ -386,7 +369,6 @@ def test_record_needs_the_advocate_model_record_and_the_advocate_model(design_pr
     recorded it; anything else is refused and the item stays open for the owner."""
     root, change = design_project
     open_the_concern(change)
-    set_review(change, "deferred")
     git(root, "add", ".")
     git(root, "commit", "-q", "-m", "design(0001): an open concern")
     verdict(root, "b")
@@ -436,7 +418,6 @@ def test_record_needs_the_advocate_model_record_and_the_advocate_model(design_pr
 
 def test_gate_parks_a_panel_decision_whose_advocate_ran_on_another_model(project):  # noqa: F811
     root, change = project
-    set_review(change, "deferred")
     head = git(root, "rev-parse", "HEAD").strip()
     reasons = ["blast radius larger than the plan says"]
     item = {"n": 1, "kind": "escalate", "key": ledger.escalate_key(reasons), "item": "escalate"}
@@ -453,7 +434,6 @@ def test_gate_parks_a_panel_decision_whose_advocate_ran_on_another_model(project
 
 def test_record_stops_at_the_iteration_cap_and_validates_the_decision(design_project):  # noqa: F811
     root, change = design_project
-    set_review(change, "deferred")
     open_the_concern(change)
     git(root, "add", ".")
     git(root, "commit", "-q", "-m", "design(0001): an open concern")
@@ -560,7 +540,6 @@ def _ledger_entry(change: Path, phase: str, item: dict, decision: str, head: str
 
 def test_gate_accepts_an_escalate_the_panel_decided_to_continue(project):  # noqa: F811
     root, change = project
-    set_review(change, "deferred")
     verdict(root, "c", verdict="escalate")
     result = gate.run_gate(root, "0001", "c", dry_run=True)
     assert "adversarial_review" in _names(result, False)
@@ -583,12 +562,6 @@ def test_gate_accepts_an_escalate_the_panel_decided_to_continue(project):  # noq
     result = gate.run_gate(root, "0001", "c", dry_run=True)
     adv = next(ch for ch in result.failed if ch.name == "adversarial_review")
     assert "the panel decided: park" in adv.need
-    # under review: parked the ledger decides nothing and the panel check says so
-    set_review(change, "parked")
-    result = gate.run_gate(root, "0001", "c", dry_run=True)
-    assert {"adversarial_review", "panel"} <= set(_names(result, False))
-    panel = next(ch for ch in result.failed if ch.name == "panel")
-    assert "review mode is parked" in panel.reason
 
 
 def _gate_with_escalate_decision(root: Path, change: Path, phase: str, decision: str, **extra):
@@ -615,7 +588,6 @@ def test_a_panel_park_on_an_escalate_parks_the_gate_fail_closed(request, phase, 
     start with the word ``continue`` fails the ``panel`` check, which never goes back to the
     panel, so the gate parks; an overturned one is the owner's act and is left alone."""
     root, change = request.getfixturevalue(fixture)
-    set_review(change, "deferred")
     for decision in ("park", "Park: the verdict stands", "", "keep the verdict", "continued"):
         result = _gate_with_escalate_decision(root, change, phase, decision)
         assert result.result == "park" and result.label == "sdlc:needs-human", decision
@@ -650,7 +622,6 @@ def test_the_owner_s_overturn_of_a_panel_park_lets_the_phase_continue(request, p
     escalating again on the same reasons is settled and the panel does not take it again; an
     escalate on new reasons is a new item, which the panel takes or the gate parks on."""
     root, change = request.getfixturevalue(fixture)
-    set_review(change, "deferred")
     overturned = {"comment": "go on: the blast radius is fine", "at": "2026-10-18T10:00:00Z"}
     _gate_with_escalate_decision(root, change, phase, "park", overturned=overturned)
     verdict(root, phase, verdict="escalate")  # the same reasons as the overturned line
@@ -688,7 +659,6 @@ def test_gate_parks_a_panel_decision_whose_blind_verdict_is_not_committed(projec
     with a verdict, or the gate's ``panel`` check fails; a line without ``item_n`` (written
     before 0.2.30) is not re-judged."""
     root, change = project
-    set_review(change, "deferred")
     head = git(root, "rev-parse", "HEAD").strip()
     reasons = ["blast radius larger than the plan says"]
     item = {"n": 1, "kind": "escalate", "key": ledger.escalate_key(reasons), "item": "escalate"}
@@ -721,7 +691,6 @@ def test_gate_accepts_an_important_finding_the_panel_settled(project):  # noqa: 
     from review import findings as fmod
 
     root, change = project
-    set_review(change, "deferred")
     verdict(root, "c")
     head = git(root, "rev-parse", "HEAD").strip()
     finding = {
@@ -754,7 +723,6 @@ def test_gate_at_c_reads_the_closings_of_b_from_the_b_ledger(project):  # noqa: 
     (c) on "closes a concern by the panel with no ledger line": the concern was closed at (b)
     and its line is in decisions-b.json, which the check did not read at (c)."""
     root, change = project
-    set_review(change, "deferred")
     verdict(root, "c")
     head = git(root, "rev-parse", "HEAD").strip()
     item = {"kind": "concern", "key": ledger.concern_key("Rounding half-even vs half-up"),
@@ -782,7 +750,6 @@ def test_gate_at_c_reads_the_closings_of_b_from_the_b_ledger(project):  # noqa: 
 
 def test_gate_panel_check_refuses_a_bad_ledger_and_an_unrecorded_closing(project):  # noqa: F811
     root, change = project
-    set_review(change, "deferred")
     verdict(root, "c")
     head = git(root, "rev-parse", "HEAD").strip()
     entry = _ledger_entry(
@@ -814,19 +781,10 @@ def test_gate_panel_check_refuses_a_bad_ledger_and_an_unrecorded_closing(project
     assert "panel decision 4, which no ledger of phases b/c carries" in panel.reason
 
 
-def test_a_change_may_override_the_review_mode(tmp_path):
-    change_dir, st = status_mod.new_change(tmp_path, "Deferred one", review_override="deferred")
-    assert status_mod.read_status(change_dir).review_override == "deferred"
-    with pytest.raises(ValueError):
-        st.review_override = "panel"
-        st.validate()
-
-
 def test_gate_panel_check_consumes_each_ledger_line_once(project):  # noqa: F811
     """One ledger line closed several concerns: ``#n`` was matched against a set, never
     consumed (1.0.0 readiness review, group A)."""
     root, change = project
-    set_review(change, "deferred")
     verdict(root, "c")
     head = git(root, "rev-parse", "HEAD").strip()
     item = {"kind": "concern", "key": ledger.concern_key("Rounding"), "item": "Rounding"}
@@ -852,21 +810,6 @@ def test_gate_panel_check_consumes_each_ledger_line_once(project):  # noqa: F811
     )
     result = gate.run_gate(root, "0001", "c", dry_run=True)
     assert "panel" not in _names(result, False), result.reason
-
-
-def test_the_panel_cli_reads_the_review_mode_the_gate_reads(project):  # noqa: F811
-    """The review of the 0.2.26 diff, L1: the CLI read the branch's ``review_override`` while
-    the gate reads the base's; a branch saying deferred spent panel calls the gate refused."""
-    root, change = project
-    set_review(change, "parked")  # the owner's, merged (the template says deferred, 1.0.8)
-    st = status_mod.read_status(change)
-    st.review_override = "deferred"  # on the branch only
-    status_mod.write_status(change, st)
-    rc, out = run(["mode", "--root", str(root), "--id", "0001"])
-    assert rc == 0 and out == {"mode": "parked", "override": "deferred"}
-    set_review(change, "deferred")  # the owner's, merged
-    rc, out = run(["mode", "--root", str(root), "--id", "0001"])
-    assert rc == 0 and out["mode"] == "deferred"
 
 
 # --- the models a panel ran on (0.2.30) -----------------------------------------------------------
@@ -917,16 +860,3 @@ def test_the_pr_summary_names_the_models_and_the_warning(tmp_path):
         in lines
     )
     assert any(line.startswith("⚠ the session itself runs on opus") for line in lines)
-
-
-def test_the_panel_cli_fails_closed_on_an_unreadable_approved_status(project, monkeypatch):  # noqa: F811
-    """1.0.8: when the approved copy cannot be read, the panel settles nothing (``parked``),
-    whatever the project's own mode says."""
-    root, change = project
-
-    def unreadable(*_a, **_k):
-        raise gate.GateError("the approved status.yaml cannot be read")
-
-    monkeypatch.setattr(gate, "approved_overrides", unreadable)
-    st = status_mod.read_status(change)
-    assert panel_cli.review_mode({"review": "deferred"}, st, root) == "parked"

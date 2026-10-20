@@ -121,7 +121,7 @@ rewriting `proposal.json` once (a listed route, the right arguments) and re-runn
 — the intent in its incident shape, nothing committed outside the change folder, the
 guardrails and the risk list, the finding (tier 2 or 3, not dismissed) and the route (listed
 for the tier; a runbook that ran; `go-requested` parks with "apply `sdlc:go`"). Exit 3
-`wait` is the normal outcome (gate (f) is human in every profile); 4 = `park`. Then commit
+`wait` is the normal outcome (gate (f) is always human); 4 = `park`. Then commit
 the evidence:
 `python "${CLAUDE_PLUGIN_ROOT}/plugin/state/cli.py" commit-phase --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase f --message "maintain(<id>): gate (f) evidence" --push`
 The change stays at phase `f` on its branch: your merge of the intent PR is gate (a) of

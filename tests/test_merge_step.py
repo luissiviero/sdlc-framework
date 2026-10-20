@@ -484,30 +484,26 @@ def test_compare_lists_a_rename_s_old_path_too(monkeypatch):
     assert got["files"] == [f"{DIR}/evidence/app.py", "src/app.py", f"{DIR}/evidence/run-e.json"]
 
 
-def test_the_full_profile_s_d_approval_is_not_gate_e_s(tmp_path, capsys):
-    """The R22 review, finding 1: on the full profile the owner approves the same PR at (d);
-    that approval, on a commit without gate (e)'s record, never merges at (e)."""
+def test_an_early_approval_counts_and_a_leftover_full_profile_is_not_read(tmp_path):
+    """Decision 36, point 4 (approving early): an approval on a commit without gate (e)'s
+    record merges once the rest holds. Decision 37 (1.0.20): the Full profile, whose (d)
+    approval was a review on the same PR, is gone, so a leftover ``profile: full`` changes
+    nothing."""
     early = "a" * 40
 
-    class Full(FakeGitHub):
+    class Early(FakeGitHub):
         def file_at(self, repo, path, ref):
             if ref == early and path.endswith("gate-e.json"):
                 return {"ok": False, "text": None, "missing": True, "reason": "404"}
             return super().file_at(repo, path, ref)
 
-    d_approval = {
+    approval = {
         "ok": True,
         "reviews": [{"author": "owner", "state": "APPROVED", "commit": early}],
     }
     root = checkout(tmp_path)
     (root / "sdlc.yaml").write_text("profile: full\n", encoding="utf-8")
-    gh = Full(reviews=d_approval)
-    assert merge_step.merge(root, REPO, 12, env(tmp_path), gh) == 0
-    assert "predates gate (e)" in capsys.readouterr().out
-    assert not [c for c in gh.calls if c[0] == "merge"]
-    # on standard the same early approval counts (decision 36, point 4: approving early)
-    (root / "sdlc.yaml").write_text("profile: standard\n", encoding="utf-8")
-    gh = Full(reviews=d_approval)
+    gh = Early(reviews=approval)
     assert merge_step.merge(root, REPO, 12, env(tmp_path), gh) == 0
     assert [c for c in gh.calls if c[0] == "merge"]
 

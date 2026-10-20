@@ -99,17 +99,10 @@ class GateContext:
     diff: Diff | None  # None when the project is not a git repository
     human_gate: bool
     diff_error: str = ""
-    profile: str = "standard"
     config_note: str = ""  # set when the config was taken from the merge base
-    # decision 21: ``parked`` | ``deferred`` (sdlc.yaml: review, status.yaml: review_override)
-    review_mode: str = "parked"
     # issue #91 (0.3.0): the runner runs the ``commands`` check after the session (set from
     # ``COMMANDS_RUNNER_ENV`` by ``gate.build_context``; a by-hand gate runs them itself)
     commands_deferred: bool = False
-
-    @property
-    def deferred(self) -> bool:
-        return self.review_mode == "deferred"
 
     @property
     def evidence_dir(self) -> Path:
@@ -574,7 +567,7 @@ def check_findings(ctx: GateContext) -> CheckResult:
             "findings",
             f"{len(blocking)} Important review finding(s) open",
             "Fix every Important finding (or have the owner waive it in a review comment; "
-            "under deferred review the panel may settle one the run cannot fix), then re-run "
+            "the review panel may settle one the run cannot fix), then re-run "
             f"the review pass so {ctx.change_rel}/evidence/{art.REVIEW_FINDINGS} shows none.",
             important=blocking[:20],
             settled_by_panel=[str(f.get("summary", "")) for f in settled],
@@ -591,10 +584,7 @@ def check_findings(ctx: GateContext) -> CheckResult:
 
 
 def _panel_entries(ctx: GateContext, kind: str) -> list[dict[str, Any]]:
-    """The standing ledger entries of ``kind`` for this phase (decision 21), [] unless the
-    review mode is deferred: under ``parked`` a ledger decides nothing."""
-    if not ctx.deferred:
-        return []
+    """The standing ledger entries of ``kind`` for this phase (decision 21)."""
     from panel import ledger  # noqa: PLC0415
 
     return [
@@ -608,10 +598,7 @@ def _owner_continues(ctx: GateContext) -> list[dict[str, Any]]:
     """The ``escalate`` lines of this phase's ledger that the owner overturned and whose
     decision upheld the verdict (not ``continue``): the owner's word replaces the panel's
     (``sdlc-fix.md``), so an ``escalate`` verdict with the same reasons is settled for the
-    phase to continue; one with other reasons is a new item (1.0.8, NOTES 45 gap 1). [] unless
-    the review mode is deferred, as for ``_panel_entries``."""
-    if not ctx.deferred:
-        return []
+    phase to continue; one with other reasons is a new item (1.0.8, NOTES 45 gap 1)."""
     from panel import ledger  # noqa: PLC0415
 
     return [
@@ -876,7 +863,7 @@ def parse_verdict(text: str | None) -> tuple[dict[str, Any] | None, str]:
     return data, ""
 
 
-VERDICT_REQUIRED_AT = ("b", "c", "d")  # every profile: the reviewer runs before each of these
+VERDICT_REQUIRED_AT = ("b", "c", "d")  # the reviewer runs before each of these
 
 
 def check_adversarial_verdict(ctx: GateContext) -> CheckResult:
@@ -1761,10 +1748,6 @@ def check_panel(ctx: GateContext) -> CheckResult:
                 f"decision {entry.get('n')}: {entry.get('kind')} never goes to the panel"
             )
         problems += _blind_verdicts_problems(ctx, entry)
-    if entries and not ctx.deferred:
-        problems.append(
-            f"the ledger has {len(entries)} decision(s) but the review mode is {ctx.review_mode}"
-        )
     standing = ledger.active(entries)
     upheld = [e for e in standing if e.get("kind") == "escalate" and not ledger.decides_continue(e)]
     for entry in upheld:

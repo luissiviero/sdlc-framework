@@ -40,9 +40,7 @@ digest (decisions 11 and 20):
 4. ``sdlc/review`` is green on the head;
 5. the owner's latest review that approves or requests changes approves, and every commit
    after the one it was submitted on is evidence or the run record, as in 3;
-6. on the ``full`` profile, whose (d) approval is an approving review on the same PR, the
-   approved commit must already carry ``evidence/gate-e.json``;
-7. it merges at exactly that head through the merge App's token (``SDLC_MERGE_TOKEN``),
+6. it merges at exactly that head through the merge App's token (``SDLC_MERGE_TOKEN``),
    a bypass actor of ruleset 1; the workflow token never merges (decision 4).
 
 Output: ``merge: <what>`` lines on stdout and in ``$GITHUB_STEP_SUMMARY``; until R11's
@@ -378,14 +376,6 @@ def judge(
     after = only_evidence_since(github, repo, approved_on, head, rel)
     if after:
         return {"wait": f"after the owner's approval: {after}"}
-    try:
-        profile = c.effective_profile(config.get("profile"), st.profile_override)
-    except ValueError:
-        profile = "full"  # an unknown profile is judged as the stricter one
-    if profile == "full" and _text_at(github, repo, gate_path, approved_on) is None:
-        # the full profile's (d) approval is an approving review on this same PR: only an
-        # approval given once gate (e) has run counts at (e) (the R22 review, finding 1)
-        return {"wait": "the owner's approval predates gate (e) (the full profile's (d) approval)"}
     return {"head": head, "change_id": change_id, "approval": approval, "tally": tally}
 
 

@@ -89,7 +89,7 @@ def test_sdlc_init_flow_matches_step_21():
     body = (PLUGIN / "commands" / "sdlc-init.md").read_text(encoding="utf-8")
     for token in [
         "--detect-only",
-        "profile",
+        "decision 37",
         "deploy action",
         "maintain metric",
         "/init",

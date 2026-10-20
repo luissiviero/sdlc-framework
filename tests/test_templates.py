@@ -16,8 +16,6 @@ TEMPLATE = Path(__file__).resolve().parents[1] / "template"
 
 VALUES = {
     "PROJECT_NAME": "demo",
-    "PROFILE": "standard",
-    "REVIEW": "parked",
     "BUILD_CMD": "python -m build",
     "TEST_CMD": "python -m pytest",
     "LINT_CMD": "python -m ruff check .",
@@ -104,17 +102,13 @@ def test_review_md_skip_marker_rule_present():
 
 def test_sdlc_yaml_renders_to_documented_keys():
     data = yamlish.loads(render.render_file(TEMPLATE / "sdlc.yaml", VALUES))
-    assert data["profile"] == "standard"
-    # decision 21 (0.2.14): the review mode; R7: the session's, the reviewer's and the devil's
-    # advocate's models (the advocate on another model than the session)
-    assert data["review"] == "parked" and data["panel_advocate_model"] == "claude-fable-5-1"
+    # decision 37 (1.0.20): one profile and one review mode, so neither key is written
+    assert "profile" not in data and "review" not in data
+    # R7: the session's, the reviewer's and the devil's advocate's models (the advocate on
+    # another model than the session)
+    assert data["panel_advocate_model"] == "claude-fable-5-1"
     assert data["session_model"] == "claude-opus-5-5"
     assert data["adversarial_model"] == "claude-opus-5-5"
-    assert "lite" not in render.render_file(TEMPLATE / "sdlc.yaml", VALUES).split("review:")[
-        0
-    ].replace("(lite, gates (a) and (e) only, was withdrawn", "").replace(
-        "that still says lite reads as standard", ""
-    )
     assert data["commands"] == {
         "build": "python -m build",
         "test": "python -m pytest",
@@ -146,17 +140,17 @@ def test_sdlc_yaml_renders_to_documented_keys():
 
 
 def test_sdlc_yaml_carries_decision_32_s_defaults():
-    """Decision 32 (1.0.8): deferred review is the default (/sdlc-init proposes it, the comment
-    says so, parked stays available), the build run and every fix round have their own caps,
-    named explicitly, and the per-change budget cap is 150 USD; NOTES 45 gap 5."""
+    """Decision 32 (1.0.8), as decision 37 narrowed it: deferred review is the only mode and
+    the template says so with no key to set; the build run and every fix round have their own
+    caps, named explicitly, and the per-change budget cap is 150 USD; NOTES 45 gap 5."""
     from init import sdlc_init
 
-    assert sdlc_init.build_parser().parse_args([]).review == "deferred"
+    # an older command line still parses: the two retired options are accepted and ignored
+    assert sdlc_init.build_parser().parse_args(["--profile", "full", "--review", "parked"])
     text = render.render_file(TEMPLATE / "sdlc.yaml", VALUES)
-    review_block = text.split("# --- review mode", 1)[1].split("\nreview:", 1)[0]
-    assert "deferred is what /sdlc-init proposes (decision 32); an unset key reads as parked" in (
-        review_block
-    )
+    block = text.split("# --- the gates and judgment calls", 1)[1].split("# --- models", 1)[0]
+    assert "decision 37" in block and "goes to a review panel" in block
+    assert "\nreview:" not in text and "\nprofile:" not in text
     gate = yamlish.loads(text)["gate"]
     assert gate["max_turns"] == 200 and gate["max_wall_clock_minutes"] == 120
     assert gate["build_max_turns"] == 400 and gate["build_max_wall_clock_minutes"] == 180
@@ -1120,14 +1114,9 @@ def test_the_app_s_own_events_start_nothing_they_should_not():
     bot_sender = "!endsWith(github.event.sender.login, '[bot]')"
     fix = _condition(FIX_WORKFLOW, "fix")
     assert bot_sender in fix.split("github.event_name == 'pull_request' &&", 1)[1]
-    for name, job, label in (
-        ("sdlc-test.yml", "test", "sdlc:c-approved"),
-        ("sdlc-deploy.yml", "deploy", "sdlc:d-approved"),
-    ):
-        assert _condition(name, job) == (
-            "${{ github.event_name != 'pull_request' || "
-            f"(github.event.label.name == '{label}' && {bot_sender}) }}}}"
-        )
+    # decision 37 (1.0.20): no approval label starts (d) or (e) any more; only a dispatch does
+    for name in ("sdlc-test.yml", "sdlc-deploy.yml"):
+        assert set(_triggers(_workflow_yaml(name))) == {"workflow_dispatch"}, name
     assert bot_sender in _condition(RUNBOOK_WORKFLOW, "go")
     # a [bot] review or @claude comment starts no round
     assert "!endsWith(github.event.review.user.login, '[bot]')" in fix

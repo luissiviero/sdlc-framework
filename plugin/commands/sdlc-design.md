@@ -1,5 +1,5 @@
 ---
-description: Phase (b) design — from the merged intent, write spec.md with the policy skills loaded (the article's p.14 prompt), then the read-only planning run that writes plan.md, run the adversarial reviewer and call gate (b). Under review: deferred, the panel settles open concerns before the gate. Open the spec+plan PR on sdlc/<id>/b with sdlc:b-ready. Re-runnable after review comments. No questions to the owner; a gap becomes a flagged concern.
+description: Phase (b) design — from the merged intent, write spec.md with the policy skills loaded (the article's p.14 prompt), then the read-only planning run that writes plan.md, run the adversarial reviewer and call gate (b). The review panel settles open concerns before the gate. Open the spec+plan PR on sdlc/<id>/b with sdlc:b-ready. Re-runnable after review comments. No questions to the owner; a gap becomes a flagged concern.
 argument-hint: [change id, e.g. 0001]
 disable-model-invocation: true
 allowed-tools: Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/state/cli.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/gate/cli.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/panel/cli.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/pr/cli.py" *), Bash(git *), Bash(gh *), Read, Glob, Grep, Edit(changes/**), Write, Agent
@@ -11,7 +11,7 @@ Source: build guide steps 22–23 (article p.13–14: the design prompt and its 
 ladder "by hand → slash command → merge-triggered job"; p.14 governance: "the spec, the
 prompt that produced it, and the skill versions in force are all logged in version
 control"), step 12 and decision 2 (plan.md by a read-only run at the end of phase (b)),
-decision 18 (profiles). Prompt version: **v1** (the spec header records it).
+decision 18 (the human gates, one profile since decision 37). Prompt version: **v1** (the spec header records it).
 
 This phase runs unattended: by hand or from the merge-triggered workflow.
 **Never ask the owner anything.** The merged intent.md is the owner's answer; anything it
@@ -97,7 +97,7 @@ this prompt to `changes/<id>-<slug>/intent.md`:
 
 Rules for the pass (from the three by-hand runs of build guide step 22, recorded in
 `docs/PROGRESS.md`):
-- Read the codebase before writing, and `CLAUDE.md` and `sdlc.yaml` (profile, risk list,
+- Read the codebase before writing, and `CLAUDE.md` and `sdlc.yaml` (risk list,
   commands): the spec integrates into what exists, and the codebase often answers an open
   question in one line (say where). If `CLAUDE.md` or `sdlc.yaml` is missing, that is a
   flagged concern, not an assumption.
@@ -115,10 +115,8 @@ Rules for the pass (from the three by-hand runs of build guide step 22, recorded
 - Close a concern yourself only when the policy text settles it, and say which policy
   (`- [x] <concern>: decided <how> per <skill> rule <n>`); the closing word is the first
   word of the item — a label such as `C3:` in front of it keeps the concern open. Every
-  other concern stays open; under `review: parked` the gate parks while one is open and
-  the owner closes it in review (step 23; `/sdlc-fix` applies a review comment that closes
-  it); under `review: deferred` the panel of step 6a closes it and the owner reads the
-  decision at the gate.
+  other concern stays open: the panel of step 6a closes it and the owner reads the decision
+  at the gate (a review comment overturns it, and `/sdlc-fix` applies the comment).
 - As short as the change allows: a small change gets a short spec. Requirements are
   checkable bullets; Design is the shape, not the code.
 - Write `changes/<id>-<slug>/spec.md`. Nothing else.
@@ -167,14 +165,12 @@ of step 5) and reports a verdict. Do not argue with it and do not edit its file.
 ```
 python "${CLAUDE_PLUGIN_ROOT}/plugin/panel/cli.py" items --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase b
 ```
-It prints the review mode (`sdlc.yaml: review`, `status.yaml: review_override`), the items
-the gate would park on that belong to the panel's fixed list (an open flagged concern, a
+It prints the items the gate would park on that belong to the panel's fixed list (an open flagged concern, a
 concern naming contradicting policies, the reviewer's `escalate` verdict, an Important
 finding the run cannot fix, the verifier's "does not match the plan"), which of them the
-ledger already decides, and under `parks` what stays the owner's whatever the mode (an
-escalation on a risk-list item, a guardrail file, a run limit, an infrastructure failure; a
-risk-list hit itself parks nothing, decision 35). When `mode` is
-`parked` or `pending` is empty, go on to the gate. Otherwise, for each pending item `n` in
+ledger already decides, and under `parks` what stays the owner's (an escalation on a
+risk-list item, a guardrail file, a run limit, an infrastructure failure; a risk-list hit
+itself parks nothing, decision 35). When `pending` is empty, go on to the gate. Otherwise, for each pending item `n` in
 order, three fresh contexts, each with the brief printed by
 `python "${CLAUDE_PLUGIN_ROOT}/plugin/panel/cli.py" prompt --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase b --item <n> --member <reviewer|advocate|conciliator>`:
 1. **reviewer** — delegate to a general-purpose sub-agent with the `reviewer` brief; it
@@ -212,8 +208,8 @@ you" at the gate and overturns any line with a review comment.
 ```
 python "${CLAUDE_PLUGIN_ROOT}/plugin/gate/cli.py" check --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase b
 ```
-Exit 3 = `wait` (gate (b) is a human gate in every profile), 4 = `park`, 0 = `continue`
-(the fast lane, decision 30: in CI only, on every profile but Full, when every check passed
+Exit 3 = `wait` (gate (b) is a human gate), 4 = `park`, 0 = `continue`
+(the fast lane, decision 30: in CI only, when every check passed
 and the adversarial reviewer classed the plan `routine`; by hand the gate waits). It writes `status.yaml` and `evidence/gate-b.json`, and prints the label to apply
 and, when parked, the "What I need from you" block. Then commit the evidence:
 ```
@@ -223,7 +219,7 @@ python "${CLAUDE_PLUGIN_ROOT}/plugin/state/cli.py" commit-phase --root "${CLAUDE
 ## 8. Outcome
 **`wait`, `park` or the fast lane's `continue` — open or update the spec+plan PR.** On
 `continue` there is no label and the fifth bullet says nothing is needed: the runner
-confirms the fast lane (the profile; the reviewer's own `continue` and routine
+confirms the fast lane (the reviewer's own `continue` and routine
 classification; no commit after the judged one outside the change folder's `evidence/` and
 `status.yaml`; never in a fix round, which waits at `sdlc:b-ready`), records it in
 `status.yaml: fast_lane.b`, dispatches the build on `sdlc/<id>/c` cut from this branch, and
@@ -253,8 +249,8 @@ with other means.
 
 ## 9. Report
 One line: the PR URL (or the compare URL), the gate result, the number of open concerns
-and, under deferred review, the number of panel decisions. Nothing else is started.
-Do not start phase (c) here: gate (b) is the owner's merge in every profile, except on the
+and the number of panel decisions. Nothing else is started.
+Do not start phase (c) here: gate (b) is the owner's merge, except on the
 fast lane, where the CI runner (never this session) dispatches the build.
 
 Never edit `.claude/**`, `CLAUDE.md`, `REVIEW.md`, `sdlc.yaml`, `intent.md` or any file

@@ -1,7 +1,7 @@
 """Deterministic half of /sdlc-init (build guide step 21; full version from B2).
 
-    python "${CLAUDE_PLUGIN_ROOT}/init/sdlc_init.py" --root <project> --profile standard \
-        --review parked --deploy-action none --deploy-production false \
+    python "${CLAUDE_PLUGIN_ROOT}/init/sdlc_init.py" --root <project> \
+        --deploy-action none --deploy-production false \
         --maintain-metric ci_test_failure_rate --maintain-source github-actions \
         [--project-name X] [--build CMD] [--test CMD] [--lint CMD] [--setup CMD] \
         [--claude-md-from changes/0000-sdlc-init/CLAUDE.proposed.md] \
@@ -120,8 +120,6 @@ def build_values(args, det: detect_mod.Detection) -> dict[str, str]:
     setup_cmd = args.setup if args.setup is not None else (det.setup.command or "")
     return {
         "PROJECT_NAME": args.project_name or Path(args.root).resolve().name,
-        "PROFILE": args.profile,
-        "REVIEW": args.review,
         "BUILD_CMD": _esc(build_cmd),
         "TEST_CMD": _esc(test_cmd),
         "LINT_CMD": _esc(lint_cmd),
@@ -655,7 +653,7 @@ with the agent doing the work and the owner judging at gates.
 
 ## Proposed outcome
 The SDLC framework plugin `sdlc@sdlc-framework` v{values["PLUGIN_VERSION"]} is installed:
-profile `{values["PROFILE"]}`, one-command targets build=`{values["BUILD_CMD"]}`,
+one-command targets build=`{values["BUILD_CMD"]}`,
 test=`{values["TEST_CMD"]}`, lint=`{values["LINT_CMD"]}`, guardrail hooks and permissions
 in place, `changes/` as the home of every change.
 
@@ -676,13 +674,10 @@ def build_parser() -> argparse.ArgumentParser:
         prog="sdlc-init", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
     p.add_argument("--root", default=".")
-    p.add_argument("--profile", default=c.DEFAULT_PROFILE, choices=c.PROFILES)
-    p.add_argument(
-        "--review",
-        default=c.INIT_REVIEW_MODE,
-        choices=c.REVIEW_MODES,
-        help="decision 21: deferred puts judgment items to the review panel inside a phase",
-    )
+    # Decision 37 (1.0.20): one profile and one review mode, so neither is asked or written.
+    # The two options are still accepted, and ignored, so an older command line keeps working.
+    p.add_argument("--profile", default=None, help=argparse.SUPPRESS)
+    p.add_argument("--review", default=None, help=argparse.SUPPRESS)
     p.add_argument("--deploy-action", default="none")
     p.add_argument(
         "--deploy-production", default="false", type=lambda s: s.lower() in ("1", "true", "yes")

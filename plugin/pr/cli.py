@@ -22,7 +22,7 @@ and withdraws it when it does not (decision 31, ``pr/review_request.py``); the r
 requested.
 
 Labels: the PR carries one gate label at a time (``sdlc:<phase>-ready``,
-``sdlc:<phase>-approved``, ``sdlc:needs-human``); the owner's own labels - the release
+``sdlc:needs-human``); the owner's own labels - the release
 approval and the un-park verbs of decision 24 - are never removed by an upsert.
 """
 
