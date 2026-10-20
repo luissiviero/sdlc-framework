@@ -57,3 +57,4 @@ chronological order (oldest first). The current record stays in `docs/PROGRESS.m
 - [Progress — the framework's own checks, faster, part 4: the git lookups remembered, as plugin 1.0.13 (choice 235, item 5) (2026-10-19)](2026-10-19-framework-checks-faster-part-4-git-lookups-1.0.13.md)
 - [Progress — the Order before the real-project trial: R44 forward, R45 last before the trial, R28 after it, and the owner's choice 238 (2026-10-19)](2026-10-19-order-before-the-trial-and-choice-238.md)
 - [Progress — ROADMAP R7, the in-run reviewer on the latest Opus, as plugin 1.0.14; the runs PR read against plugins 1.0.3 to 1.0.13 (2026-10-19)](2026-10-19-r7-reviewer-on-latest-opus-1.0.14.md)
+- [Progress — the review of PRs #250 to #252 and its follow-ups: R44's `policies/` entry after R27, the sandbox proof back in the queue, the superseded PR's token, and the owner's choice 239 (2026-10-20)](2026-10-20-prs-250-252-review-and-choice-239.md)
