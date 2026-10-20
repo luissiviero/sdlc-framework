@@ -33,7 +33,9 @@ workflow already sets winning. Where the alias names the session's own family, C
 runs the sub-agent on the session's exact model instead (the sub-agents reference, "Choose a
 model"). A configuration whose sub-agent cannot reach its model that way is reported by
 ``conflicts``: ``panel/cli.py models`` prints it, and the gate's ``reviewer_model`` check names
-it when it parks.
+it when it parks. A configured model the pinned CLI does not know is printed on the session's
+stderr as ``[claude-code:unrecognized_model]`` (NOTES §54); ``unrecognized`` finds it, and the
+runner parks on it with the pin to raise (ROADMAP R63).
 """
 
 from __future__ import annotations
@@ -50,6 +52,11 @@ DEFAULT_ENTRY = "default"
 # the run kinds whose session belongs to a phase other than their own name
 SESSION_PHASE = {"review": "e"}
 FULL_ID_RE = re.compile(r"^claude-(opus|sonnet|haiku|fable)-")
+# R63: the line a CLI prints for a sub-agent model it does not know, before it runs that
+# sub-agent on the session's model (NOTES §54: 2.1.278 for the reviewer's claude-opus-5-5)
+UNRECOGNIZED_MODEL_RE = re.compile(
+    r'\[claude-code:unrecognized_model\][^\r\n]*?"model"\s*:\s*"(?P<model>[^"\r\n]+)"'
+)
 
 
 def _text(value: Any) -> str | None:
@@ -189,3 +196,26 @@ def for_phase(
         "pins": alias_pins(config, phase, env),
         "conflicts": conflicts(config, phase, env),
     }
+
+
+def unrecognized(
+    stderr: str | None,
+    config: dict[str, Any] | None,
+    phase: str | None,
+    env: dict[str, str] | None = None,
+) -> list[str]:
+    """The models sdlc.yaml names for ``phase`` (the session's, the reviewer's, the
+    advocate's) that an ``unrecognized_model`` line of the session's stderr reports, once
+    each in the order printed. A model sdlc.yaml does not name is left out: the line is the
+    CLI's, and only a configured model is the owner's to fix by raising the pin."""
+    env = env or {}
+    session = _text(env.get("SDLC_MODEL")) or session_model(config, phase)
+    named = [
+        m for m in (session, reviewer_model(config), advocate_model(config, phase, session)) if m
+    ]
+    found: list[str] = []
+    for match in UNRECOGNIZED_MODEL_RE.finditer(stderr or ""):
+        model = match.group("model").strip()
+        if model not in found and any(same_model(model, n) for n in named):
+            found.append(model)
+    return found

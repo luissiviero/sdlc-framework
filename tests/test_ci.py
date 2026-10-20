@@ -1828,6 +1828,52 @@ def test_a_run_that_added_panel_decisions_must_show_the_advocate_model(
         assert out["dispatched"]["would_dispatch"] == "sdlc-test.yml"
 
 
+UNKNOWN_MODEL_SCRIPT = """
+import sys
+sys.stderr.write('[claude-code:unrecognized_model] {"model":"%s",'
+                 '"query_source":"agent:custom:sdlc:adversarial-reviewer"}\\n')
+"""
+
+
+@pytest.mark.parametrize(("model", "parked"), [("claude-opus-5-5", True), ("claude-x-1", False)])
+def test_a_model_the_pinned_cli_does_not_know_parks_with_the_pin_to_raise(
+    project, fake_claude, tmp_path, monkeypatch, capsys, model, parked
+):
+    """R63 (NOTES §54): CLI 2.1.278 printed this line for the reviewer's claude-opus-5-5 and
+    ran the reviewer on the session's model. A model sdlc.yaml names parks the change, the
+    reason naming the pin; a model it does not name is the CLI's own and changes nothing."""
+    root, change = project
+    pr_route(monkeypatch)
+    set_state(change, "b", gate_phase="b", gate_result="passed")
+    write(change / "evidence" / "gate-c.json", json.dumps({**GATE_FILE, "phase": "c"}))
+    script = tmp_path / "unknown_model.py"
+    write(script, UNKNOWN_MODEL_SCRIPT % model)
+    monkeypatch.setenv("FAKE_CLAUDE_RUN", str(script))
+    monkeypatch.setenv("FAKE_CLAUDE_RESULT", json.dumps(FAKE_RESULT))
+    env = dict(os.environ, **KEY_ENV, GITHUB_TOKEN=FAKE_TOKEN)
+    env.pop("SDLC_MODEL", None)
+    args = Args(
+        root=str(root), phase="c", dry_run=False, no_dispatch=True, claude=fake_cli(fake_claude)
+    )
+    assert run_phase.run_phase(args, env) == run_phase.EXIT_OK
+    out = json.loads(capsys.readouterr().out)
+    stderr = (change / "evidence" / "claude-c.stderr.txt").read_text(encoding="utf-8")
+    assert "unrecognized_model" in stderr  # the line the park points to is kept
+    if parked:
+        assert out["unrecognized_models"] == ["claude-opus-5-5"]
+        assert "does not know model claude-opus-5-5" in out["parked"]
+        assert "raise sdlc.yaml: claude_code" in out["parked"]
+        gate_file = json.loads((change / "evidence" / "gate-c.json").read_text(encoding="utf-8"))
+        assert gate_file["result"] == "park"
+        assert [ch["name"] for ch in gate_file["checks"]] == ["cli_model"]
+        assert "plugin.claude_code" in gate_file["what_i_need"]
+        assert status_mod.read_status(change).parked_reason.startswith("cli_model: ")
+        assert "dispatched" not in out
+    else:
+        assert "unrecognized_models" not in out and out["result"] == "continue"
+        assert out["dispatched"]["would_dispatch"] == "sdlc-test.yml"
+
+
 def test_a_run_without_panel_decisions_keeps_no_models_record(project, fake_claude, monkeypatch):
     root, change = project
     pr_route(monkeypatch)

@@ -159,6 +159,21 @@ def test_ledger_round_trip_render_and_cost(tmp_path):
     assert ledger.load_ledger(change, "c") == [] and ledger.ledger_error(change, "c") is None
 
 
+def test_the_total_says_n_a_when_no_line_carries_a_cost():
+    """NOTES §55: `panel record` without --cost-usd writes null (the members' spend is inside
+    the session's), and the sample's decisions-b.md read "Total panel cost: $0.00", a
+    measured zero where nothing was measured."""
+    item = {"kind": "concern", "key": "concern:x", "item": OPEN_CONCERN}
+    unpriced = [ledger.new_entry(1, "b", item, DECISION, "abc123", None)]
+    text = ledger.render_md("b", unpriced)
+    assert "cost: n/a" in text and "Total panel cost: n/a" in text and "$0.00" not in text
+    assert "Total panel cost: n/a" in ledger.render_md("b", [])
+    # one priced line is enough for a figure; a measured zero still reads $0.00
+    priced = [*unpriced, ledger.new_entry(2, "b", dict(item, key="concern:y"), DECISION, "a", 0)]
+    assert "Total panel cost: $0.00" in ledger.render_md("b", priced)
+    assert ledger.total_cost(unpriced) == 0.0  # the gate's figure stays a number
+
+
 def test_apply_decision_closes_the_concern_in_spec_md(tmp_path):
     change = tmp_path / "changes" / "0001-x"
     open_the_concern(change)

@@ -61,3 +61,4 @@ chronological order (oldest first). The current record stays in `docs/PROGRESS.m
 - [Progress — R61 accepted and placed after R44, the sample's ruleset recorded (NOTES §53), R58's check 8, and the owner's choices 240 and 241 (2026-10-20)](2026-10-20-r61-accepted-notes-53-and-choices-240-241.md)
 - [Progress — decisions 35 (R24) and 36 (R22), and the owner's choices 242 and 243 on their questions and on the counts in the pages kept by hand (2026-10-20)](2026-10-20-decisions-35-36-and-choices-242-243.md)
 - [Progress — ROADMAP R24, a risk-list hit is a line in the close-look banner, as plugin 1.0.15 (2026-10-20)](2026-10-20-r24-risk-hit-banner-1.0.15.md)
+- [Progress — R63 accepted: the CLI a new project installs knows the models its sdlc.yaml names (choice 244), and NOTES §55 (2026-10-20)](2026-10-20-r63-accepted-choice-244.md)
