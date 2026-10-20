@@ -445,6 +445,15 @@ PORTUGUESE_WORDS = frozenset(
     "outros outras eles elas meu minha nossos nossas seus suas umas uns".split()
 )
 PORTUGUESE_ALLOWED = ("São Paulo", "Luís")
+# check 9: a running count of the decisions or the notes in a page kept current by hand goes
+# stale with the next file (README.md said "The 29 settled decisions" at 36); the indexes hold
+# the count, so these pages state none, a correct one included (choice 243)
+COUNT_PAGES = ("README.md", "CLAUDE.md", "docs/OPERATING_MODEL.md")
+COUNT_CLAIM_RE = re.compile(
+    r"\b(?:the |all )?\d+ (?:settled (?:decisions|choices)|decision files|verified (?:notes|facts)"
+    r"|platform facts)\b|\ball \d+ (?:decisions|notes)\b",
+    re.IGNORECASE,
+)
 
 
 def _pages(docs_dir: Path, suffixes: tuple[str, ...] = (".md",)) -> list[Path]:
@@ -753,6 +762,22 @@ def portuguese_problems(docs_dir: Path) -> list[str]:
     return problems
 
 
+def count_problems(root: Path) -> list[str]:
+    """A line of ``COUNT_PAGES`` under ``root`` that states how many decisions or notes there
+    are; ``docs/decisions/index.md`` and ``docs/notes/index.md`` are generated and hold it."""
+    problems: list[str] = []
+    for rel in COUNT_PAGES:
+        path = root / rel
+        if not path.is_file():
+            continue
+        for number, line in enumerate(path.read_text(encoding="utf-8-sig").splitlines(), 1):
+            problems.extend(
+                f'count: {rel}:{number}: "{match.group(0)}"; state no count, the index holds it'
+                for match in COUNT_CLAIM_RE.finditer(line)
+            )
+    return problems
+
+
 def lint_docs(
     docs_dir: Path | None = None,
     root: Path | None = None,
@@ -836,6 +861,7 @@ def lint_docs(
         reports.extend(said)
     failures.extend(stub_problems(docs_dir))
     failures.extend(portuguese_problems(docs_dir))
+    failures.extend(count_problems(root))
     return failures, reports
 
 

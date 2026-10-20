@@ -60,6 +60,14 @@ Added after the build, from the question #262's session put to the owner. A clai
 - **What is not judged**: a PR that has no "Merge pull request #N" commit in this checkout (an unmerged PR, or one the history does not reach), a claim with "sample" just before it (the sample's PR numbers overlap this repository's), and a claim quoted in a code span (a review citing an error).
 - **Where a mismatch fails**: in the living documents, in a note after 53, and in a record whose file name is dated 2026-10-20 or later. In the older records it is a report line: they are kept as written (choice 126), and the errors the docs review found there are already annotated beside the sentence. On `main` at the time of writing it judged 38 claims and reported two (PR #90's date in `docs/notes/39.md` and `docs/handoffs/2026-10-14-item-11-prompt.md`, both annotated); nothing failed.
 
+## Check 9 (2026-10-20, the owner's choice 243)
+
+Added after `README.md` was found saying "The 29 settled decisions" with 36 decision files, and after the owner dropped the same count from `CLAUDE.md` line 3 rather than raising it. `README.md`, `CLAUDE.md` and `docs/OPERATING_MODEL.md` state no count of the decisions or the notes: the indexes are generated and checked, so they hold it (`tasks.py`, `count_problems`; one test in `tests/test_docs_lint.py`).
+
+- **What fails**: "N settled decisions", "N settled choices", "N decision files", "N verified notes" or "facts", "N platform facts", and "all N decisions" or "notes", in those three pages. A correct count fails too: it goes stale with the next file, and in `CLAUDE.md` its fix is a guardrail edit.
+- **What passes**: a range or a list of numbers ("decisions 21–26", "PROGRESS choices 135–139"), a count of something else ("the 2 decisions it amends"), and every other page. The build guide's "all 20 decisions in `docs/DECISIONS.md`" is its version 3's own history.
+- **Its first run**: on `README.md` and `CLAUDE.md` as they were at `c15dd35`, before PR #281, it fails on both counts; on `main` at `f2b1522` it finds none.
+
 ## What it does not catch
 
 Whether a sentence means what its citation says — the wrong decision or note cited, a date or a time that disagrees with another record — needs a reader. That stays with an occasional full sweep, at a milestone, not on every pull request. *[2026-10-20, the owner's choice 241: the review pass compares the citations of the lines a diff adds under `docs/` (`REVIEW.md`, the owner's PR #274). The changed-lines reader as a skill is not built; the full sweep's cadence is unchanged here, and a sweep before the real-project trial is a recommendation the owner has not decided.]*
