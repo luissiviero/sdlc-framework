@@ -74,7 +74,7 @@ The root `sdlc.yaml` (decision 6), once this PR has merged and `v1.0.14` is tagg
 | [sdlc.yaml](https://github.com/luissiviero/sdlc-framework/blob/main/sdlc.yaml#L12) | after 12 | (no line) | `adversarial_model: claude-opus-5-5` |
 | [sdlc.yaml](https://github.com/luissiviero/sdlc-framework/blob/main/sdlc.yaml#L12) | after 12 | (no line) | three lines: `session_model:`, then `  default: claude-opus-5-5`, then `  b: claude-fable-5-1` |
 
-The root pin is 0.3.6 (`sdlc.yaml` line 100), so these rows act only once that pin moves past 1.0.14. For a live reading sooner, the sample would need its pin at 1.0.14 (the owner's edit) and, optionally, the same keys:
+*[2026-10-20: applied by the owner in #261 (`6b0ffcd`, merged as `e671eae`), before this PR merged; verified on `main`: `yamlish` and PyYAML read the same values, `panel/cli.py models` reports no conflict in any phase (at (b) the session on `claude-fable-5-1`, the reviewer and the advocate on `claude-opus-5-5`; at (c) to (e) the advocate on `claude-fable-5-1`), and the suite is green with `main` merged into this branch.]* The root pin is 0.3.6 (`sdlc.yaml` line 104 since #261), so these rows act only once that pin moves past 1.0.14; plugin 0.3.6 ignores the two new keys. For a live reading sooner, the sample would need its pin at 1.0.14 (the owner's edit) and, optionally, the same keys:
 
 | Link | Row | What is there now | What it must become |
 |---|---|---|---|
