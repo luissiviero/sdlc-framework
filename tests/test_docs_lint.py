@@ -336,6 +336,21 @@ def test_a_merge_claim_matches_the_merge_commit(tmp_path):
     ]
 
 
+def test_a_git_time_in_utc_reads_on_every_python():
+    utc = datetime.fromisoformat("2026-10-20T07:15:11+00:00")
+    assert tasks.git_time("2026-10-20T07:15:11Z") == utc
+    assert tasks.git_time("2026-10-20T07:15:11+00:00") == utc
+    assert tasks.git_time("2026-10-20T04:15:11-03:00") == utc
+
+
+def test_docs_pages_sort_the_same_on_every_platform(tmp_path):
+    docs = tmp_path / "docs"
+    for name in ("progress/x.md", "ROADMAP.md", "notes/54.md"):
+        _write(docs / name, "x\n")
+    pages = [p.relative_to(docs).as_posix() for p in tasks._pages(docs)]
+    assert pages == ["ROADMAP.md", "notes/54.md", "progress/x.md"]
+
+
 def test_the_merges_are_read_from_git_and_absent_history_is_reported(tmp_path):
     def git(*args: str) -> str:
         return subprocess.run(

@@ -448,11 +448,16 @@ PORTUGUESE_ALLOWED = ("São Paulo", "Luís")
 
 
 def _pages(docs_dir: Path, suffixes: tuple[str, ...] = (".md",)) -> list[Path]:
-    """Every file under ``docs_dir`` with one of ``suffixes``, ``reference/`` aside."""
+    """Every file under ``docs_dir`` with one of ``suffixes``, ``reference/`` aside, in the
+    order of their relative POSIX paths: a Windows path sorts without case, so the order (and
+    every report built from it) would otherwise differ between the platforms."""
     return sorted(
-        path
-        for path in docs_dir.rglob("*")
-        if path.suffix in suffixes and path.relative_to(docs_dir).parts[0] != "reference"
+        (
+            path
+            for path in docs_dir.rglob("*")
+            if path.suffix in suffixes and path.relative_to(docs_dir).parts[0] != "reference"
+        ),
+        key=lambda path: path.relative_to(docs_dir).as_posix(),
     )
 
 
@@ -633,6 +638,12 @@ def version_pr_problems(docs_dir: Path, tags: dict[str, str]) -> list[str]:
     return problems
 
 
+def git_time(text: str) -> datetime:
+    """A ``%cI`` time from git. Git 2.55 writes a UTC time with "Z" (2.43 writes "+00:00"),
+    and ``datetime.fromisoformat`` reads "Z" only from Python 3.11 on."""
+    return datetime.fromisoformat(text[:-1] + "+00:00" if text.endswith("Z") else text)
+
+
 def pr_merges(root: Path) -> dict[str, tuple[str, datetime]] | None:
     """``PR number -> (merge commit, committer time)`` for every "Merge pull request #N"
     commit reachable from HEAD, the newest first, or None when ``root`` has no such history."""
@@ -652,7 +663,7 @@ def pr_merges(root: Path) -> dict[str, tuple[str, datetime]] | None:
         sha, when, subject = (line.split("\t", 2) + ["", ""])[:3]
         merge = MERGE_SUBJECT_RE.match(subject)
         if merge and merge.group(1) not in merges:
-            merges[merge.group(1)] = (sha, datetime.fromisoformat(when))
+            merges[merge.group(1)] = (sha, git_time(when))
     return merges or None
 
 
