@@ -42,7 +42,7 @@ maintain:
   # or go (touches a running system; waits for the owner's "Go" as a parked item)
   runbooks: []
 
-# --- risk list (build guide step 5; a hit parks the change at its next gate) ---------------
+# --- risk list (build guide step 5; decision 35: a hit is a line of the close-look banner) --
 risk_list:
   - auth
   - data migrations
@@ -51,9 +51,9 @@ risk_list:
 
 # --- confidence gate and run limits (build guide steps 16 and 19; decision 11) ---------------
 # A gate failure or a limit hit parks the change (label sdlc:needs-human, "What I need from
-# you" in the PR) and requests the owner's review on the PR, the only notification (decision 31). The owner accepts a risk-list hit per change by
-# applying the label sdlc:accept-risk on the pull request (decision 24; the fix round records
-# the label's actor); `state/cli.py accept-risk` stays for by-hand runs, where the commit's
+# you" in the PR) and requests the owner's review on the PR, the only notification (decision 31). A risk-list hit
+# does not park (decision 35): the owner's merge of the PR whose banner shows it accepts it;
+# `state/cli.py accept-risk` stays for by-hand runs, where the commit's
 # author is the act. Setting `paused: true` stops every run before it starts.
 paused: false
 gate:
@@ -101,8 +101,8 @@ hooks:
 plugin:
   name: sdlc
   marketplace: sdlc-framework
-  version: 1.0.14
+  version: 1.0.15
   # Claude Code CLI version the SDLC workflows install (`npm install -g
   # @anthropic-ai/claude-code@<this>`). `--permission-prompts none` needs 2.1.259 or later;
-  # 2.1.304 is the CLI the jobs install and the framework's minimum (NOTES §54).
+  # 2.1.304 is the CLI the jobs install and the framework's minimum.
   claude_code: "2.1.304"
