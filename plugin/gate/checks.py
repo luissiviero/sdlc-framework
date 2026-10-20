@@ -937,6 +937,43 @@ def check_adversarial_verdict(ctx: GateContext) -> CheckResult:
     )
 
 
+REVIEWER_MODEL_NEED = (
+    "The adversarial reviewer must run on the model sdlc.yaml's adversarial_model names (ROADMAP "
+    "R7), and nothing shows that this verdict did. `panel/cli.py models` prints the alias the "
+    "phase command passes, the pins that make it resolve to that model (the runner sets them; "
+    "a run by hand exports them before the session starts) and any conflict in the "
+    "configuration; fix that, then re-run the reviewer on the current HEAD."
+)
+
+
+def check_reviewer_model(ctx: GateContext) -> CheckResult:
+    """ROADMAP R7: when ``sdlc.yaml: adversarial_model`` is set, the record the
+    ``panel_blind`` hook wrote beside the phase's verdict names the adversarial reviewer as
+    the writer, the verdict's ``head`` and a model that satisfies the pin. A hard park, never
+    the panel's to settle (``ledger.NEVER_TO_PANEL``). Unset: nothing is checked."""
+    from panel import ledger, models  # noqa: PLC0415
+
+    wanted = models.reviewer_model(ctx.config)
+    if not wanted:
+        return _ok("reviewer_model", "sdlc.yaml names no adversarial_model: not checked")
+    data, _error = load_verdict(ctx.evidence_dir / art.ADVERSARIAL_VERDICT.format(phase=ctx.phase))
+    if data is None:
+        # the adversarial_review check reports a missing or unreadable verdict
+        return _ok("reviewer_model", "no readable verdict to check", wanted=wanted)
+    path = ledger.reviewer_model_path(ctx.change_dir, ctx.phase)
+    problems = ledger.reviewer_model_problems(
+        art.read_text(path), wanted, ctx.phase, str(data["head"])
+    )
+    if problems:
+        # a configuration no alias can satisfy is named, so the park says what to change
+        problems += [
+            f"the configuration: {why}"
+            for why in models.conflicts(ctx.config, ctx.phase, dict(os.environ))
+        ]
+        return _fail("reviewer_model", "; ".join(problems), REVIEWER_MODEL_NEED, wanted=wanted)
+    return _ok("reviewer_model", f"the adversarial reviewer ran on {wanted}", wanted=wanted)
+
+
 # --- 10. committed work only: the verdict and the PR cover HEAD, not the working tree -----------
 def _is_review_record(path: Path) -> bool:
     """A regular file (no symlink) whose text is a JSON object of objects: the shape
@@ -1648,8 +1685,9 @@ def check_ratchets(ctx: GateContext) -> CheckResult:
 def _blind_verdicts_problems(ctx: GateContext, entry: dict) -> list[str]:
     """A ledger line written since 0.2.30 names its item (``item_n``); both blind verdicts
     of that item must be committed (HEAD, the gate's rule), each with a ``## Verdict``
-    clause. A line without ``item_n`` predates the rule and is not re-judged."""
-    from panel import ledger  # noqa: PLC0415
+    clause. A line without ``item_n`` predates the rule and is not re-judged. The advocate's
+    model is the phase's (``panel/models.py advocate_model``, R7)."""
+    from panel import ledger, models  # noqa: PLC0415
 
     item_n = entry.get("item_n")
     if isinstance(item_n, bool) or not isinstance(item_n, int):
@@ -1671,7 +1709,10 @@ def _blind_verdicts_problems(ctx: GateContext, entry: dict) -> list[str]:
     else:
         model_text = art.read_text(model_path)
     missing += ledger.advocate_model_problems(
-        model_text, ctx.config.get("panel_advocate_model"), phase, item_n
+        model_text,
+        models.advocate_model(ctx.config, phase, os.environ.get("SDLC_MODEL")),
+        phase,
+        item_n,
     )
     return [f"decision {entry.get('n')}: {problem}" for problem in missing]
 
@@ -2055,6 +2096,7 @@ CHECKS_BY_PHASE: dict[str, tuple[Check, ...]] = {
         check_risk_list,
         check_owner_actions,
         check_adversarial_verdict,
+        check_reviewer_model,
     ),
     "c": (
         check_clean_tree,
@@ -2071,6 +2113,7 @@ CHECKS_BY_PHASE: dict[str, tuple[Check, ...]] = {
         check_test_lock,
         check_ratchets,
         check_adversarial_verdict,
+        check_reviewer_model,
     ),
     "d": (
         check_clean_tree,
@@ -2087,6 +2130,7 @@ CHECKS_BY_PHASE: dict[str, tuple[Check, ...]] = {
         check_test_lock,
         check_ratchets,
         check_adversarial_verdict,
+        check_reviewer_model,
     ),
     "e": (
         check_clean_tree,
@@ -2104,6 +2148,7 @@ CHECKS_BY_PHASE: dict[str, tuple[Check, ...]] = {
         check_ratchets,
         lesson_and_eval,
         check_adversarial_verdict,
+        check_reviewer_model,
     ),
     # gate (f) = the owner's triage of the incident intent PR (decision 25): the intent in
     # its incident shape, nothing committed outside the change folder (the diagnosis is

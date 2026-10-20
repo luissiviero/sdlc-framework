@@ -145,7 +145,11 @@ default branch, `origin/<default>` after the fetch: the base the gate diffs agai
 then `git rev-parse HEAD` for the full sha. The diff file is evidence: it is committed with
 the gate (b) evidence commit of step 7.
 Delegate to the `sdlc:adversarial-reviewer` agent with: the change id, the phase `b`, the
-project root, the full HEAD sha and the path `changes/<id>-<slug>/evidence/diff-b.patch`. It writes
+project root, the full HEAD sha and the path `changes/<id>-<slug>/evidence/diff-b.patch`,
+started with `reviewer.alias` from
+`python "${CLAUDE_PLUGIN_ROOT}/plugin/panel/cli.py" models --root "${CLAUDE_PROJECT_DIR}" --phase b`
+as its model (`null`: pass none; the gate's `reviewer_model` check reads the model it ran
+on, R7). It writes
 `changes/<id>-<slug>/evidence/adversarial-review-b.json` for the current HEAD (the commit
 of step 5) and reports a verdict. Do not argue with it and do not edit its file.
 
@@ -166,9 +170,11 @@ order, three fresh contexts, each with the brief printed by
 1. **reviewer** — delegate to a general-purpose sub-agent with the `reviewer` brief; it
    writes `evidence/panel/b-<n>-reviewer.md`.
 2. **devil's advocate** — delegate to `sdlc:adversarial-reviewer` with the `advocate`
-   brief, on the model `sdlc.yaml: panel_advocate_model` names (pass it as the sub-agent's
-   model: the per-invocation model wins, NOTES §11c; a panel on one model shares its blind
-   spots), blind to the reviewer's file; it writes `evidence/panel/b-<n>-advocate.md`.
+   brief, started with `advocate.alias` from `panel/cli.py models --phase b`, the alias of
+   `sdlc.yaml: panel_advocate_model` (pass it as the sub-agent's model: the per-invocation
+   model wins, NOTES §11c; a panel on one model shares its blind spots; it is the alias of
+   `adversarial_model` when the session itself runs on the advocate's model, R7), blind to
+   the reviewer's file; it writes `evidence/panel/b-<n>-advocate.md`.
 3. **conciliator** — delegate to a general-purpose sub-agent with the `conciliator` brief;
    it reads both files and writes `evidence/panel/b-<n>-conciliator.json`.
 Then record it:

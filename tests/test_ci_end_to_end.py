@@ -85,6 +85,14 @@ preflight = str(plugin / "plugin" / "gate" / "preflight.py")
 change = next(root.glob(f"changes/{change_id}-*"))
 
 
+def write_reviewer_model(phase, head):  # what the panel_blind hook writes beside it (R7)
+    (change / "evidence" / f"adversarial-review-{phase}.model.json").write_text(
+        json.dumps({"head": head, "agent_type": "sdlc:adversarial-reviewer",
+                    "models": ["claude-opus-5-5"], "reason": None}),
+        encoding="utf-8",
+    )
+
+
 def run(*args, ok=(0,)):
     proc = subprocess.run(
         [sys.executable, *args], cwd=root, capture_output=True, text=True, encoding="utf-8"
@@ -129,10 +137,11 @@ if phase == "fix":  # the recorded fix round of /sdlc-fix: one comment, applied 
         head = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=root, text=True).strip()
         verdict = {"schema_version": 1, "phase": fix_phase, "head": head, "verdict": "continue",
                    "reasons": [], "classification": classification(fix_phase),
-                   "classification_reasons": [], "at": "2026-09-24T10:00:00Z"}
+                   "classification_reasons": []}
         (change / "evidence" / f"adversarial-review-{fix_phase}.json").write_text(
             json.dumps(verdict), encoding="utf-8"
         )
+        write_reviewer_model(fix_phase, head)
     run(gate, "check", "--root", ".", "--id", change_id, "--phase", fix_phase, ok=(0, 3, 4))
     run(state, "commit-phase", "--root", ".", "--id", change_id, "--phase", fix_phase,
         "--message", f"fix({change_id}): gate ({fix_phase}) evidence", "--push", *on)
@@ -200,10 +209,11 @@ def write_verdict():
     head = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=root, text=True).strip()
     verdict = {"schema_version": 1, "phase": phase, "head": head, "verdict": "continue",
                "reasons": [], "classification": classification(phase),
-               "classification_reasons": [], "at": "2026-09-21T10:00:00Z"}
+               "classification_reasons": []}
     (change / "evidence" / f"adversarial-review-{phase}.json").write_text(
         json.dumps(verdict), encoding="utf-8"
     )
+    write_reviewer_model(phase, head)
 
 
 write_verdict()
@@ -225,8 +235,8 @@ if items["mode"] == "deferred" and items["pending"]:
         )
         # what the panel_blind hook records when the real advocate writes its file (0.2.30)
         (folder / f"{phase}-{n}-advocate.model.json").write_text(
-            json.dumps({"agent_type": "sdlc:adversarial-reviewer", "models": ["claude-opus-5"],
-                        "reason": None}),
+            json.dumps({"agent_type": "sdlc:adversarial-reviewer",
+                        "models": ["claude-fable-5-1"], "reason": None}),
             encoding="utf-8",
         )
         (folder / f"{phase}-{n}-conciliator.json").write_text(
@@ -250,11 +260,11 @@ if os.environ.get("FAKE_CLAUDE_MODE") == "fail-after-gate":  # the gate's record
                       "total_cost_usd": 0.5, "result": "the session hit its turn limit"}))
     sys.exit(1)
 # the real CLI reports every model the session and its sub-agents used (NOTES section 25):
-# here the session's and, as in the sample's change 0002, the advocate's opus
+# here the template's (R7): the session and the reviewer on Opus 5.5, the advocate on Fable
 print(json.dumps({"type": "result", "is_error": False, "result": f"{word} done",
                   "total_cost_usd": 0.5, "num_turns": 3,
-                  "modelUsage": {"claude-sonnet-5": {"outputTokens": 120000},
-                                 "claude-opus-5": {"outputTokens": 9000}}}))
+                  "modelUsage": {"claude-opus-5-5": {"outputTokens": 120000},
+                                 "claude-fable-5-1": {"outputTokens": 9000}}}))
 """
 
 # The fake gh: every call is logged; `pr list` finds nothing (or PR #7 when its --head is
@@ -924,8 +934,9 @@ def test_under_deferred_review_the_panel_closes_the_concern_and_the_pr_says_so(c
     assert "- decided (by panel #1): keep half-up rounding via round() — Rounding" in spec
     # 0.2.30: the run that took the decision shows the advocate's model, committed with it
     models = json.loads(remote_file(bare, "sdlc/0001/b", f"{CHANGE}/evidence/panel-models-b.json"))
-    assert models["ok"] and models["new_decisions"] == 1 and models["advocate_model"] == "opus"
-    assert models["models"] == ["claude-opus-5", "claude-sonnet-5"]
+    assert models["ok"] and models["new_decisions"] == 1
+    assert models["advocate_model"] == "claude-fable-5-1"  # the template's (R7)
+    assert models["models"] == ["claude-fable-5-1", "claude-opus-5-5"]
     ledger_md = remote_file(bare, "sdlc/0001/b", f"{CHANGE}/evidence/decisions-b.md")
     assert "1. [concern] Rounding" in ledger_md and "cost: $0.09" in ledger_md
     ledger_json = json.loads(

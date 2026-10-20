@@ -28,6 +28,7 @@ from state import conventions as c
 from state import status as status_mod
 from tests import fixture_repos
 from tests import test_ci as ci_tests
+from tests.model_records import write_reviewer_record
 from tests.test_ci import (
     FAKE_RESULT,
     FAKE_TOKEN,
@@ -518,14 +519,15 @@ def _verdict(
     root: Path, classification="routine", head: str | None = None, verdict: str = "continue"
 ) -> None:
     head = head or git(root, "rev-parse", "HEAD").strip()
+    path = root / CHANGE_REL / "evidence" / "adversarial-review-b.json"
     write(
-        root / CHANGE_REL / "evidence" / "adversarial-review-b.json",
+        path,
         json.dumps(
             {"schema_version": 1, "phase": "b", "head": head, "verdict": verdict,
-             "reasons": [], "classification": classification, "classification_reasons": [],
-             "at": "2026-10-17T10:00:00Z"}
+             "reasons": [], "classification": classification, "classification_reasons": []}
         ),
     )  # fmt: skip
+    write_reviewer_record(path, head)  # what the panel_blind hook writes beside it (R7)
 
 
 @pytest.fixture

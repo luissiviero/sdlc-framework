@@ -7,6 +7,7 @@ phase commands under ``sdlc.yaml: review: deferred`` (or ``status.yaml: review_o
         --member reviewer|advocate|conciliator
     python cli.py record --root . --id 0001 --phase b --item 1 [--cost-usd 0.42]
     python cli.py overturn --root . --id 0001 --phase b --item 1 --comment "<the owner's words>"
+    python cli.py models --root . --phase b
 
 ``mode`` prints the effective review mode. ``items`` runs the gate's checks without
 recording anything and lists what would park on a judgment item of the fixed list — an
@@ -27,7 +28,9 @@ the current branch (``--no-commit`` leaves that to the caller): the decision is 
 HEAD before the adversarial reviewer judges it, so a verdict never predates the panel (the
 first deferred run committed each verdict beside the content it did not judge, three
 times). ``overturn`` marks an entry overturned by the owner's review comment
-(``/sdlc-fix`` applies the comment itself).
+(``/sdlc-fix`` applies the comment itself). ``models`` prints the phase's session model,
+and the adversarial reviewer's and the devil's advocate's models with the alias each is
+started with (``panel/models.py``, ROADMAP R7; ``null``: pass no model).
 
 Under ``review: parked`` every command still answers (``items`` says the mode), so a
 by-hand run can see what the panel would take; nothing is decided unless the mode is
@@ -38,6 +41,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 from typing import Any
@@ -52,7 +56,7 @@ from gate import diff as diffmod  # noqa: E402
 from gate import gate, limits  # noqa: E402
 from gate.checks import GateContext  # noqa: E402
 from hooks._common import ConfigError, load_sdlc_config, utf8_stdout  # noqa: E402
-from panel import ledger  # noqa: E402
+from panel import ledger, models  # noqa: E402
 from panel import prompts as prompts_mod  # noqa: E402
 from state import conventions as c  # noqa: E402
 from state import gitops  # noqa: E402
@@ -328,7 +332,9 @@ def cmd_record(args) -> int:
     # and the advocate's verdict was written by the advocate, on its model (0.2.30)
     problems += ledger.advocate_model_problems(
         art.read_text(ledger.advocate_model_path(change_dir, args.phase, args.item)),
-        config.get("panel_advocate_model") if isinstance(config, dict) else None,
+        models.advocate_model(
+            config if isinstance(config, dict) else {}, args.phase, os.environ.get("SDLC_MODEL")
+        ),
         args.phase,
         args.item,
     )
@@ -399,6 +405,12 @@ def cmd_overturn(args) -> int:
     return EXIT_OK
 
 
+def cmd_models(args) -> int:
+    """The models of the phase's roles and the alias each sub-agent is started with (R7)."""
+    _emit(models.for_phase(_config(Path(args.root).resolve()), args.phase, dict(os.environ)))
+    return EXIT_OK
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="sdlc-panel", description=__doc__)
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -430,6 +442,10 @@ def build_parser() -> argparse.ArgumentParser:
         if name == "overturn":
             s.add_argument("--comment", required=True)
         s.set_defaults(fn=fn)
+    s = sub.add_parser("models")
+    s.add_argument("--root", default=".")
+    s.add_argument("--phase", required=True, choices=c.PHASES)
+    s.set_defaults(fn=cmd_models)
     return p
 
 
