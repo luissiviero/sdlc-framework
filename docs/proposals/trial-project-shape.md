@@ -2,7 +2,7 @@
 type: Proposal
 title: "The trial project's shape — what a repository that is not the sample needs from /sdlc-init and the CI session"
 description: "The five risks the trial readiness review of 2026-10-20 ranks before /sdlc-init runs on the real project, each checked against main and the roadmap: the CI session's command and network allow lists follow the project, detection reaches the 'ask the owner' path on a mixed repository, /sdlc-init names the CI workflow the maintain metric reads, the targets' duration and environment reach the gate, and the project's secret-shaped files are proposed as protected and unreadable."
-status: proposed
+status: accepted
 roadmap: R61
 sources:
   - id: review
@@ -19,7 +19,7 @@ generated: { by: sdlc-framework-session/ccr-7ef35daa-7adzh8, at: 2026-10-20T06:0
 
 # The trial project's shape
 
-**Status: proposed on 2026-10-20 from the trial readiness review; the owner has not decided.** Nothing is built. Changes under `plugin/` and `template/`, so it takes the next free patch number at its merge (choice 184), as one session pull request or one per part, each with an independent fresh-context review (the owner's rule of 2026-10-16).
+**Status: accepted on 2026-10-20 (the owner, as recommended; choice 240), proposed the same day from the trial readiness review.** Part 5 stays in this candidate rather than in R44. Nothing is built. Changes under `plugin/` and `template/`, so it takes the next free patch number at its merge (choice 184), as one session pull request or one per part, each with an independent fresh-context review (the owner's rule of 2026-10-16).
 
 ## The problem
 
@@ -46,7 +46,7 @@ The trial readiness review (`docs/reviews/2026-10-20-trial-readiness-review.md`)
 
 ## What it does not cover
 
-R44 (the sandbox: shell writes, the model credential, `~/.ssh`) and R24 (the risk list's globs) are untouched; part 5 is about the project's own files, which neither names. Part 5 could instead ride with R44, which the review also offers; the owner decides. A deploy through `deploy.command` on the trial is out of scope (R39).
+R44 (the sandbox: shell writes, the model credential, `~/.ssh`) and R24 (the risk list's globs) are untouched; part 5 is about the project's own files, which neither names. The review also offered part 5 as part of R44; the owner kept it here (choice 240). A deploy through `deploy.command` on the trial is out of scope (R39).
 
 ## Decisions it touches
 
@@ -54,4 +54,4 @@ R44 (the sandbox: shell writes, the model credential, `~/.ssh`) and R24 (the ris
 
 ## Order
 
-Blank until the owner places it. The review's verdict is that the trial is "ready after those five"; parts 1 to 3 are small and independent of every other candidate.
+Read in ROADMAP's Order column, the one place the order is kept (choice 240). What the order rests on: part 1 widens what the CI session may run, so it lands inside the sandbox R44 tightens, and both edit `ci_settings_file`; part 4's timeouts build on R25 parts 1-2, which make every outer bound park; R33's formatter proposals for Node and Rust need part 2's detection; and R45's rename comes after this candidate's new keys exist.
