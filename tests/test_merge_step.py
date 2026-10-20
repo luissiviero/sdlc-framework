@@ -462,3 +462,19 @@ def test_scan_files_nothing_without_the_app(tmp_path, monkeypatch, capsys):
     assert scan_cli.main(argv) == scan_cli.EXIT_FAILED
     out = json.loads(capsys.readouterr().out)
     assert any("GitHub App is required" in p for p in out["problems"])
+
+
+def test_compare_lists_a_rename_s_old_path_too(monkeypatch):
+    from pr import github
+
+    monkeypatch.setattr(github, "token", lambda: "t")
+    data = {
+        "status": "ahead",
+        "files": [
+            {"filename": f"{DIR}/evidence/app.py", "previous_filename": "src/app.py"},
+            {"filename": f"{DIR}/evidence/run-e.json"},
+        ],
+    }
+    monkeypatch.setattr(github, "_request", lambda *a, **k: {"data": data, "error": ""})
+    got = github.compare_commits(REPO, REVIEWED, HEAD)
+    assert got["files"] == [f"{DIR}/evidence/app.py", "src/app.py", f"{DIR}/evidence/run-e.json"]

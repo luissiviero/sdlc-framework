@@ -1413,14 +1413,21 @@ def check_runs_on(repo: str, sha: str, name: str) -> dict[str, Any]:
 def compare_commits(repo: str, base: str, head: str) -> dict[str, Any]:
     """``GET /repos/{repo}/compare/{base}...{head}``: {'ok', 'status', 'files', 'reason'};
     ``status`` is GitHub's (identical, ahead, behind, diverged) and ``files`` the paths the
-    head changed since the base. More than ``COMPARE_FILE_CAP`` files is an error (the list
-    would be cut)."""
+    head changed since the base, a rename's old path included. More than ``COMPARE_FILE_CAP``
+    files is an error (the list would be cut)."""
     data, error = _api("GET", f"repos/{repo}/compare/{base}...{head}")
     if error:
         return {"ok": False, "status": None, "files": [], "reason": error}
-    files = [str(f.get("filename")) for f in (data or {}).get("files") or [] if isinstance(f, dict)]
-    if len(files) >= COMPARE_FILE_CAP:
-        reason = f"{base[:10]}...{head[:10]} changes {len(files)} files or more: cannot list all"
+    files: list[str] = []
+    for entry in (data or {}).get("files") or []:
+        if not isinstance(entry, dict):
+            continue
+        # a rename lists its new name; its old one is a path the head changed too (a file
+        # moved out of the source into evidence/ deletes it from what merges)
+        files += [str(entry.get(k)) for k in ("filename", "previous_filename") if entry.get(k)]
+    listed = len((data or {}).get("files") or [])
+    if listed >= COMPARE_FILE_CAP:
+        reason = f"{base[:10]}...{head[:10]} changes {listed} files or more: cannot list all"
         return {"ok": False, "status": None, "files": [], "reason": reason}
     return {"ok": True, "status": (data or {}).get("status"), "files": files, "reason": ""}
 
