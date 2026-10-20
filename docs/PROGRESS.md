@@ -2,7 +2,7 @@
 
 This session ran on branch `ccr-5953b5a0-gblc0q`. The owner's task was to build ROADMAP R63 as plugin 1.0.16, as a session pull request with an independent review, from `docs/proposals/template-cli-default.md`, choice 244, and NOTES §54 and §55; to decide the proposal's optional item; to fix the panel's "Total panel cost: $0.00" (NOTES §55); and to read the two framework workflows that install 2.1.278. The previous record (R63 accepted, choice 244, NOTES §55) is now `docs/progress/2026-10-20-r63-accepted-choice-244.md`, unchanged. The session's own file is `docs/handoffs/sessions/2026-10-20-ccr-5953b5a0-gblc0q.md`.
 
-A change under `plugin/` and `template/`: plugin **1.0.16** (`.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json`). R24 took 1.0.15 (PR #286, tag `v1.0.15`); choice 184 reserves no number, so this PR moves to the next one if another plugin PR merges first.
+A change under `plugin/` and `template/`: plugin **1.0.16** (`.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json`). R24 took 1.0.15 (PR #286, tag `v1.0.15`); choice 184 reserves no number, so this PR moves to the next one if another plugin PR merges first. #290 (the Gemini key, a parallel session's, opened at 14:41 UTC) also claims 1.0.16: whichever of the two merges second moves to 1.0.17.
 
 ## What was built
 1. **The default CLI is 2.1.304** (the proposal's change 1). `DEFAULT_CLAUDE_CODE_VERSION` and the usage line in `plugin/init/sdlc_init.py`, and `DEFAULT_CLAUDE_CODE` in `template/.github/scripts/sdlc_pin.py` and its copy `.github/scripts/sdlc_pin.py` (byte-identical, `tests/test_ci.py` checks it), move from 2.1.278. `python tasks.py docs-lint` reads its pin from `sdlc_init.py`, so its report lines now compare the notes with 2.1.304.
@@ -42,6 +42,8 @@ The review found no other place in `plugin/`, `template/`, `tests/` or the live 
 
 ## The port list
 This PR touches `plugin/ci/run_phase.py` (the `cli_model` park after the session: `CLI_MODEL_CHECK`, `CLI_MODEL_PARK`, `CLI_MODEL_NEED` and the call before `panel_models`). It goes on the port list until the 1.0.0 read. No detect, runbook or fix workflow template is touched.
+
+Carried here at its session's request (`docs/handoffs/sessions/2026-10-20-ccr-8b4eb57f-uy0e8e.md`, on #290's branch: "add it at the next PROGRESS record"): #290 (the Gemini key for the phase runs, open, draft) touches `plugin/ci/run_phase.py` (`commands_env`) and the detect and fix workflow templates.
 
 ## Proposed edits for the owner
 | Link | Row | What is there now | What it must become |

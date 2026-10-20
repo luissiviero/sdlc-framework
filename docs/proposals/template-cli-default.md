@@ -19,7 +19,7 @@ generated: { by: sdlc-framework-session/ccr-a6fc1017-mkylxv, at: 2026-10-20T14:1
 
 # The CLI a new project installs knows the models its sdlc.yaml names
 
-**Status: accepted by the owner on 2026-10-20, as recommended (choice 244).** Nothing is built yet. *[2026-10-20: built as plugin 1.0.16 in PR #290; item 4 is built as the runner's `cli_model` park, and the two workflows stay on 2.1.278 (neither runs a sub-agent on a full model id); the reasons are in `docs/PROGRESS.md`]* It changes `plugin/` and `template/`, so it takes the next free patch version.
+**Status: accepted by the owner on 2026-10-20, as recommended (choice 244).** Nothing is built yet. *[2026-10-20: built as plugin 1.0.16 in PR #291; item 4 is built as the runner's `cli_model` park, and the two workflows stay on 2.1.278 (neither runs a sub-agent on a full model id); the reasons are in `docs/PROGRESS.md`]* It changes `plugin/` and `template/`, so it takes the next free patch version.
 
 ## The problem
 - `template/sdlc.yaml` sets `session_model: claude-opus-5-5` and `adversarial_model: claude-opus-5-5` (lines 44-45).
