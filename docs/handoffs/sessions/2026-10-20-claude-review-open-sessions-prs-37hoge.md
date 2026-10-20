@@ -12,7 +12,7 @@ The owner's task, in two parts. First, a coordination pass: review every open se
 - **The sample** (`luissiviero/sdlc-sample-python`) is at `62b752c`: its pin is **1.0.14** and its `sdlc.yaml` carries `panel_advocate_model: claude-fable-5-1`, `adversarial_model: claude-opus-5-5` and `session_model: {default: claude-opus-5-5, b: claude-fable-5-1}` (the owner's #83 and #84; verified, `git show origin/main:sdlc.yaml`). `panel/cli.py models` on 1.0.14 reports no conflict in any phase (verified in this session: at (b) the session on `claude-fable-5-1`, the reviewer and the advocate on `claude-opus-5-5`; at (c) to (e) the advocate on `claude-fable-5-1`). `changes/.dismissed.json` holds the four scan dismissals (0004, 0006, 0011, 0012; verified). #55 stays open, labelled `schedule`.
 - **Open framework PRs** at 03:30 UTC: #173 (intent 0004, waits for R14's turn, choice 211), #262 (three proposal frontmatters quoted; R58's check 7), #263 (the decisions audit, report only), #264 (the R51 race analysis, report only), #265 (R45's names against the article, report only), and this one. Each of #262 to #265 merges cleanly onto `8546217` (verified, `git merge-tree`). #256's session was building R58 when this file was written.
 - **This PR** carries four things, each a commit of its own:
-  1. **The sandbox proof's case** (ROADMAP R44, point 1; the owner's item 15 of 2026-10-08 on PR #144; choices 173 and 187): `evals/cases/0006-sandbox-write-deny/`, and `.github/workflows/framework-evals.yml` gains the phase jobs' runner setup step (`python plugin/ci/runner_setup.py`) before the suite. The `Framework evals` run on this PR is the live proof; its result is to be recorded in a note (the next free number is 52) and in R44's row, by the session that reads the run. Until then the sandbox lines of every record stay "not verified live". No plugin version bump: nothing under `plugin/` or `template/` changed.
+  1. **The sandbox proof's case** (ROADMAP R44, point 1; the owner's item 15 of 2026-10-08 on PR #144; choices 173 and 187): `evals/cases/0006-sandbox-write-deny/`, and `.github/workflows/framework-evals.yml` gains the phase jobs' runner setup step (`python plugin/ci/runner_setup.py`) before the suite. **The `Framework evals` run on this PR's first head passed** (verified, run 39362817773, job 118432677254: 7/7, case 0006 in 3 turns at 0.0762 USD; the runner setup step installed bubblewrap and socat and loaded the AppArmor profile). NOTES §52 records it; R44's row, the Milestone table's row 12 and `docs/proposals/sandbox-closes-gaps.md` (point 1, and N6's token sentence) are annotated. No plugin version bump: nothing under `plugin/` or `template/` changed.
   2. **The security review's findings registered** (`docs/reviews/2026-10-19-plugin-security-review.md`, merged as #259 with no row in ROADMAP): I2, I3 and M9 as candidate **R59** (`docs/proposals/gate-diff-and-evidence-hardening.md`, proposed, no order); I1, I4, M1, M5 and N6 proposed as additions to R44's scope and I6 for after the trial, on R44's row; I5 on R3's row (and R41 named); the dismissal-store conflict of sample #81/#82 on R23's row. The owner has decided none of these.
   3. **Two coverage gaps closed** (`docs/reviews/2026-10-19-plugin-test-coverage.md`, gaps 1 and 3): `tests/test_policy.py` (new: `is_automation`'s App-email suffix branch, the custom list, `automation_identity`'s fallbacks) and `tests/test_yamlish.py` (hand-written `sdlc.yaml` shapes against PyYAML, the pins as strings, the YAML 1.1 shapes read as 1.2 strings on purpose, a misread file reaching the protected-path hook as a deny). Gaps 2, 4 and 5 are open below.
   4. This file.
@@ -20,12 +20,12 @@ The owner's task, in two parts. First, a coordination pass: review every open se
 ## Preconditions of the moment
 - The standing ones are in `HANDOFF.md`; `python tasks.py docs-lint` is green on this head (0 failures; the four permanent lines for notes 46 to 49).
 - The next free patch number is 1.0.15; R56 takes it when it merges (choice 184; carried from the e4a1d6f8 file). R59, if accepted, takes the next free one at its merge.
-- The next free decision file is 35 (carried). The next free note is 52 (verified, `ls docs/notes/`).
+- The next free decision file is 35 (carried). The next free note is 53 once this PR merges (52 is this PR's; verified, `ls docs/notes/`).
 - Three proposal frontmatters on `main` do not parse as YAML (`claude-md-standing-pr.md`, `learning-from-incidents.md`, `reviewer-tuning.md`); #262 fixes them. This PR's new proposal parses (verified with PyYAML).
 
 ## Next steps, in order
 1. **The owner merges #262, #263, #264 and #265** (report-only or docs-only; each merges cleanly), and this PR once its `Framework checks` and `Framework evals` runs are green.
-2. **The sandbox proof's reading**: the first `Framework evals` run on this PR's head with the setup step. Green: case 0006 passed, `denyWrite` holds on a runner; a note records it, R44's row and the "today" of `docs/proposals/sandbox-closes-gaps.md` are annotated, and the root pin may move straight to the newest tag (choice 187, the owner's edit). Red on check 2 (`docs/policy.md` changed): the sandbox did not hold or did not start (the template's `failIfUnavailable: false` runs the command unconfined), and the job log says which. Red on check 1: the agent declined or the sandbox denied an ordinary write; read the run.
+2. **The root pin moves** (choice 187: the sandbox proof passed, NOTES §52): the owner's edit of the root `sdlc.yaml`, line 104, `version: 0.3.6` to `version: 1.0.14`, in a reviewed PR. Then the template sandbox block (the R7 record, step 1, item 13) no longer waits on anything and rides with R44's point 2 or a small PR of its own.
 3. **R7's first live reading on 1.0.14**: one small sample change (carried from the e4a1d6f8 file; the pin and the rows are in since #83 and #84, so only the change is left; the R7 session's estimate for one change on Opus and Fable was about 12 to 20 USD). It also counts as "the sample's next change" that R56 waits for.
 4. **The owner decides** on R59 and on the additions to R44 (this PR's registrations), and on R30's place, the "park at once" candidate and the runs PR's open items (carried).
 5. **Free beside the queue:** the decision files of R24 and R22 (ranks 8 and 9), each in a documentation PR of its own, numbered 35 and 36 before they are written (carried); R58's build (#256's session, in progress).
@@ -37,9 +37,9 @@ The owner's task, in two parts. First, a coordination pass: review every open se
 | Item | Where | What is left | Who acts | Blocks 1.0.0 |
 |---|---|---|---|---|
 | This PR | framework | `Framework checks` and `Framework evals` green on the final head, then the owner's merge | owner | no |
-| The sandbox proof's result | this PR's `Framework evals` run | A note (52) and R44's annotation from the run's report artifact; `docs/proposals/sandbox-closes-gaps.md`'s "today" corrected (N6) | the next session | no |
-| The template sandbox block | `docs/progress/2026-10-19-r7-reviewer-on-latest-opus-1.0.14.md`, step 1, item 13 | Waits on the sandbox proof's reading (carried) | the session after the proof | no |
-| The root pin | root `sdlc.yaml` (0.3.6) | Moves to the newest tag once the proof passes (choice 187); the owner's edit | owner | no |
+| The sandbox proof's error text | NOTES §52, "Not verified" | What the denied write printed (`EROFS`, `EACCES` or the sandbox's message); an `output` check or a `--keep` run would show it. Not needed for the proof | a later run, if wanted | no |
+| The template sandbox block | `docs/progress/2026-10-19-r7-reviewer-on-latest-opus-1.0.14.md`, step 1, item 13 | The proof it waited on passed; build it with R44's point 2 or in a small PR | a later session | no |
+| The root pin | root `sdlc.yaml` line 104 (0.3.6) | Moves to `v1.0.14` now (choice 187); the owner's edit, in the format below | owner | no |
 | R59 and the additions to R44 | ROADMAP R59, R44, R3, R23 | The owner's decision; R59 then needs its order | owner | no |
 | #262, #263, #264, #265 | framework | The owner's merges; #263's weakened decisions (1, 4, 16, 29) are its reading, nothing is reopened | owner | no |
 | R58's build | #256's session | In progress when this file was written; a docs-and-tasks PR outside the ranks | that session; owner merges | no |
@@ -60,14 +60,21 @@ The owner's task, in two parts. First, a coordination pass: review every open se
 Done, dropped:
 - "#254" of the e4e43fa6 file: merged as `63d2710`. #256 merged as `8546217`. The sample's dismissal PRs: #82 merged (`0e8ae49`), #81 merged (`6c69462`) after this session merged the default branch into `sdlc/0012/dismiss` keeping both entries.
 - "For R7's live reading, move the sample's pin to 1.0.14 and add its optional rows": done by the owner, sample #83 and #84.
-- "The sandbox proof, the next queue item": its case and workflow step are this PR; its reading is open item 2.
+- "The sandbox proof, the next queue item": built and passed in this PR (run 39362817773; NOTES §52). The queue before rank 8 is empty.
 - The security review's findings had no ROADMAP row: registered in this PR (owner decides).
 
 ## What the owner does
 | When | Act |
 |---|---|
 | Now | Merge #262, #263, #264 and #265; merge this PR once `Framework checks` and `Framework evals` are green on its final head. |
-| After the evals run | Read the proof's verdict (step 2); if green, move the root `sdlc.yaml` pin to the newest tag (choice 187). |
+| Now | The root pin (choice 187; the proof passed). One row: |
+
+| Link | Row | What is there now | What it must become |
+|---|---|---|---|
+| [sdlc.yaml](https://github.com/luissiviero/sdlc-framework/blob/main/sdlc.yaml#L104) | 104 | `  version: 0.3.6` | `  version: 1.0.14` |
+
+| When | Act |
+|---|---|
 | When convenient | Decide R59 and R44's proposed additions (ROADMAP R59, R44); say whether R30 moves before the trial; decide the "park at once" candidate; say whether the runs PR's open items become a ROADMAP candidate (carried). |
 | When convenient | Start one small sample change for R7's live reading (step 3). |
 | Now, if not done | GitHub Mobile's "Review Requested" push type and the GitHub Mobile tick under "Participating, @mentions and custom" (carried). |
