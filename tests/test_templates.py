@@ -444,6 +444,22 @@ def test_a_superseded_pull_request_run_of_the_framework_evals_is_cancelled():
     }
 
 
+def test_the_framework_evals_prepare_the_runner_s_sandbox_before_the_suite():
+    """ROADMAP R44, point 1 (the owner's item 15 on PR #144): the fixture runs sandboxed as a
+    CI session does, so case 0006 proves denyWrite on a runner. The phase jobs' setup step
+    runs from this checkout's plugin/ (the framework is the repository, not framework/)."""
+    yaml = pytest.importorskip("yaml")
+    text = (REPO_WORKFLOW_DIR / "framework-evals.yml").read_text(encoding="utf-8")
+    steps = yaml.safe_load(text)["jobs"]["evals"]["steps"]
+    runs = [s.get("run", "") for s in steps]
+    setup = next(i for i, r in enumerate(runs) if r == "python plugin/ci/runner_setup.py")
+    suite = next(i for i, r in enumerate(runs) if r.startswith("python plugin/evals/run.py "))
+    assert setup < suite
+    assert steps[setup]["name"] == "Prepare the runner for Claude Code's sandbox"
+    assert "if" not in steps[setup]  # every run of the suite is sandboxed, not only some
+    assert "framework/plugin" not in text
+
+
 @pytest.mark.parametrize(
     "path",
     [*(WORKFLOW_DIR / n for n in ALL_WORKFLOWS), *sorted(REPO_WORKFLOW_DIR.glob("*.yml"))],
