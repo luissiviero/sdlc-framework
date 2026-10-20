@@ -19,6 +19,7 @@ from pr import description as desc
 from gate import artifacts as art
 from gate import gate
 from state import status as status_mod
+from tests.model_records import ADVOCATE_MODEL
 from tests.test_gate import (
     SPEC,
     _names,
@@ -75,7 +76,7 @@ def write_members(change: Path, phase: str, n: int) -> None:
 
 
 def write_advocate_model(
-    change: Path, phase: str, n: int, agent="sdlc:adversarial-reviewer", models=("claude-opus-5",)
+    change: Path, phase: str, n: int, agent="sdlc:adversarial-reviewer", models=(ADVOCATE_MODEL,)
 ) -> None:
     record = {"agent_type": agent, "models": list(models), "reason": None if models else "x"}
     ledger.advocate_model_path(change, phase, n).write_text(json.dumps(record), encoding="utf-8")
@@ -393,7 +394,7 @@ def test_record_needs_the_advocate_model_record_and_the_advocate_model(design_pr
         ),
         (
             lambda: write_advocate_model(change, "b", 1, models=("claude-sonnet-5",)),
-            "ran on claude-sonnet-5, not on opus",
+            f"ran on claude-sonnet-5, not on {ADVOCATE_MODEL}",
         ),
     )
     for arrange, message in cases:
@@ -432,7 +433,7 @@ def test_gate_parks_a_panel_decision_whose_advocate_ran_on_another_model(project
     verdict(root, "c", verdict="escalate")
     result = gate.run_gate(root, "0001", "c", dry_run=True)
     panel = next(ch for ch in result.failed if ch.name == "panel")
-    assert "ran on claude-sonnet-5, not on opus" in panel.reason
+    assert f"ran on claude-sonnet-5, not on {ADVOCATE_MODEL}" in panel.reason
 
 
 def test_record_stops_at_the_iteration_cap_and_validates_the_decision(design_project):  # noqa: F811
@@ -872,7 +873,7 @@ def test_check_models_parks_without_the_advocate_model_and_warns_on_one_model():
     assert not ledger.check_models(1, {"total_cost_usd": 1}, "opus", None)["ok"]
     # the session itself runs on the advocate's model: a warning, not a park
     record = ledger.check_models(1, both, "opus", "opus")
-    assert record["ok"] and record["session_model_source"] == "SDLC_MODEL"
+    assert record["ok"] and record["session_model_source"] == "the run's --model"
     assert "the panel had no second model" in record["warning"]
     # no advocate model configured: a warning that says so
     record = ledger.check_models(1, both, "", None)

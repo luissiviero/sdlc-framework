@@ -99,7 +99,10 @@ default branch, `origin/<default>` after the fetch: the base the gate diffs agai
 then `git rev-parse HEAD` for the full sha. The diff file is evidence: it is committed with
 the gate (d) evidence commit below.
 Delegate to `sdlc:adversarial-reviewer` (change id, phase `d`, project root, the full HEAD
-sha, the path `changes/<id>-<slug>/evidence/diff-d.patch`); it writes
+sha, the path `changes/<id>-<slug>/evidence/diff-d.patch`), started with `reviewer.alias`
+from `python "${CLAUDE_PLUGIN_ROOT}/plugin/panel/cli.py" models --root "${CLAUDE_PROJECT_DIR}" --phase d`
+as its model (`null`: pass none; the gate's `reviewer_model` check reads the model it ran
+on, R7); it writes
 `evidence/adversarial-review-d.json` for HEAD.
 
 ### Deferred review: the panel settles the judgment items (decision 21; build guide step 16a)
@@ -118,9 +121,9 @@ order, three fresh contexts, each with the brief printed by
 1. **reviewer** — delegate to a general-purpose sub-agent with the `reviewer` brief; it
    writes `evidence/panel/d-<n>-reviewer.md`.
 2. **devil's advocate** — delegate to `sdlc:adversarial-reviewer` with the `advocate`
-   brief, on the model `sdlc.yaml: panel_advocate_model` names (pass it as the sub-agent's
-   model: the per-invocation model wins, NOTES §11c; a panel on one model shares its blind
-   spots), blind to the reviewer's file; it writes `evidence/panel/d-<n>-advocate.md`.
+   brief, started with `advocate.alias` from `panel/cli.py models --phase d` (pass it as the
+   sub-agent's model: the per-invocation model wins, NOTES §11c; a panel on one model shares
+   its blind spots), blind to the reviewer's file; it writes `evidence/panel/d-<n>-advocate.md`.
 3. **conciliator** — delegate to a general-purpose sub-agent with the `conciliator` brief;
    it reads both files and writes `evidence/panel/d-<n>-conciliator.json`.
 Then record it:

@@ -25,6 +25,7 @@ from gate import cli as gate_cli
 from state import status as status_mod
 from state import yamlish
 from tests import fixture_repos
+from tests.model_records import write_reviewer_record
 
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURE = ROOT / "tests" / "fixtures" / "sample-python-project"
@@ -149,12 +150,12 @@ def verdict(root: Path, phase: str, verdict: str = "continue", classification="r
         "reasons": [] if verdict == "continue" else ["blast radius larger than the plan says"],
         "classification": classification,
         "classification_reasons": [],
-        "at": "2026-09-21T10:00:00Z",
     }
     path = (
         root / "changes" / "0001-percent-helper" / "evidence" / f"adversarial-review-{phase}.json"
     )
     write(path, json.dumps(data))
+    write_reviewer_record(path, head)  # what the panel_blind hook writes beside it (R7)
     return path
 
 
@@ -646,6 +647,7 @@ def test_gate_continues_on_a_clean_change(project):
         "owner_actions",
         "test_lock",
         "adversarial_review",
+        "reviewer_model",
         "ratchets",
     }
     st = status_mod.read_status(change)
@@ -2126,6 +2128,7 @@ def test_gate_b_waits_for_the_owner_in_every_profile(design_project):
         "risk_list",
         "owner_actions",
         "adversarial_review",
+        "reviewer_model",
     }
     # decision 21 (0.2.14): Lite is gone; a change that still says lite waits like Standard
     st = status_mod.read_status(change)

@@ -28,11 +28,22 @@ profile: {{PROFILE}}
 #           counts against gate.max_panel_calls, not the fix iterations. Per-change override:
 #           status.yaml: review_override.
 review: {{REVIEW}}
-# the model alias of the devil's advocate (a panel reduces variance, not bias: three judges
-# on one model share its blind spots, so the advocate runs on another model than the
-# reviewer); the reviewer and the conciliator inherit the session's model. The phase commands
-# pass this alias to the advocate sub-agent; no script reads the key
-panel_advocate_model: opus
+# --- models (ROADMAP R7; plugin/panel/models.py) ----------------------------------------------
+# Each a full model id or a family alias (opus, sonnet, haiku, fable).
+# session_model: the CI session's model (--model), one model or `default` plus per-phase
+#   entries (a-f; a fix round takes its change's phase; the triage of (f) and the weekly
+#   scan take `default`); unset = the CLI's default. The workflow's SDLC_MODEL wins.
+# adversarial_model: the adversarial reviewer's model; the gate parks a verdict whose
+#   writer did not run on it (check reviewer_model); unset = not checked.
+# panel_advocate_model: the devil's advocate's (a panel reduces variance, not bias: three
+#   judges on one model share its blind spots); the panel's reviewer and conciliator run
+#   on the session's model, and where the session runs on this one, the advocate runs on
+#   adversarial_model instead.
+# The phase commands start each sub-agent with the family alias (`panel/cli.py models`);
+# the runner pins what that alias resolves to (ANTHROPIC_DEFAULT_<FAMILY>_MODEL).
+session_model: claude-opus-5-5
+adversarial_model: claude-opus-5-5
+panel_advocate_model: claude-fable-5-1
 
 # --- feedback loop: one-command targets (build guide step 14; article p.27 step 1) --------
 # Each must exit non-zero on failure. /sdlc-init detects them for Python projects.

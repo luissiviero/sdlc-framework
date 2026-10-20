@@ -72,6 +72,10 @@ What one run does, in order:
    ``SDLC_GATE_COMMANDS=runner`` in it, so the gate the session runs leaves the project's
    build, test and lint to step 6b instead of running them inside Claude Code's sandbox
    (a fix session also carries ``SDLC_RUN=fix``, so its ``start-run`` records the build caps);
+   the session runs on ``--model`` from ``sdlc.yaml: session_model`` for its phase
+   (``SDLC_MODEL`` wins), and ``ANTHROPIC_DEFAULT_<FAMILY>_MODEL`` pins the alias each
+   sub-agent is started with to the reviewer's and the advocate's full ids
+   (``panel/models.py``, ROADMAP R7);
 6. stores the JSON result as ``changes/<id>-<slug>/evidence/claude-<phase>.json``, records
    ``total_cost_usd`` with ``gate/cli.py record-spend`` and commits the run record on the
    work branch (the model's session pushed before the spend was known), and validates the
@@ -137,6 +141,7 @@ if str(PLUGIN_DIR) not in sys.path:
     sys.path.insert(0, str(PLUGIN_DIR))
 
 from panel import ledger as panel_ledger  # noqa: E402
+from panel import models as panel_models_mod  # noqa: E402
 from pr.github import next_page_url  # noqa: E402, F401 - re-exported, moved there in 0.2.12
 
 from ci import app_token, auto_round, fix_requests, project_setup  # noqa: E402
@@ -2112,12 +2117,15 @@ def compose(
     env: dict[str, str],
     root: Path | None = None,
     change_dir: Path | None = None,
+    model_phase: str | None = None,
 ) -> list[str]:
     """The full argv of one headless run. It carries no secret, so it is safe to print.
     With ``root`` the CI settings are rendered against the project (``ci_settings_file``);
     without it the file is passed as is. With ``change_dir`` the session's
     ``--max-budget-usd`` is what the change has left of ``gate.max_budget_usd`` (1.0.8: the
-    cap is per change; each session was given the whole cap again)."""
+    cap is per change; each session was given the whole cap again). ``--model`` is
+    ``SDLC_MODEL`` when the workflow sets it, else ``sdlc.yaml: session_model`` for
+    ``model_phase`` (a fix round's change phase; ``phase`` by default; R7), else none."""
     # The prompt goes right after -p: --allowedTools / --disallowedTools take a list of
     # values, so a prompt placed after them is read as one more tool name and the CLI
     # answers "Input must be provided either through stdin or as a prompt argument"
@@ -2142,7 +2150,7 @@ def compose(
         )
         argv += ["--max-budget-usd", _usd(left[2]) if left else str(budget)]
     argv += ["--output-format", "json"]
-    model = env.get("SDLC_MODEL")
+    model = env.get("SDLC_MODEL") or panel_models_mod.session_model(config, model_phase or phase)
     if model:
         argv += ["--model", model]
     if phase == "b":
@@ -2256,7 +2264,13 @@ CACHE_HOME_ENV = "XDG_CACHE_HOME"
 SESSION_CACHE_DIR = ".sdlc-cache"
 
 
-def session_env(env: dict[str, str], root: Path, phase: str | None = None) -> dict[str, str]:
+def session_env(
+    env: dict[str, str],
+    root: Path,
+    phase: str | None = None,
+    config: dict[str, Any] | None = None,
+    model_phase: str | None = None,
+) -> dict[str, str]:
     """The model's session's environment: ``env`` plus the mark that leaves the gate's
     ``commands`` check to the runner (``gate.checks.COMMANDS_RUNNER_ENV``), the switch
     that keeps every sub-agent in the foreground (``BACKGROUND_TASKS_ENV``; a value the
@@ -2269,7 +2283,10 @@ def session_env(env: dict[str, str], root: Path, phase: str | None = None) -> di
     (``ci/app_token.py session_tokens``) and as git's header in the environment
     (``git_auth_env``, on a runner), so its own pushes work (no checkout persists a
     credential) and start no run without the owner's approval. A job that minted the App's
-    token without handing over the workflow token leaves the session no GitHub token."""
+    token without handing over the workflow token leaves the session no GitHub token. With
+    ``config``, ``ANTHROPIC_DEFAULT_<FAMILY>_MODEL`` pins the alias the phase commands start
+    the reviewer and the advocate with to their full ids for ``model_phase`` (``phase`` by
+    default; ``panel/models.py alias_pins``, R7); a value the workflow sets is kept."""
     marked = app_token.strip_git_auth(env)
     marked[gate_checks.COMMANDS_RUNNER_ENV] = gate_checks.RUN_BY_RUNNER
     marked.update(app_token.session_tokens(env))
@@ -2285,6 +2302,8 @@ def session_env(env: dict[str, str], root: Path, phase: str | None = None) -> di
     marked.pop(limits.RUN_KIND_ENV, None)
     if phase == "fix":
         marked[limits.RUN_KIND_ENV] = limits.FIX_RUN
+    if config is not None:
+        marked.update(panel_models_mod.alias_pins(config, model_phase or phase, env))
     return marked
 
 
@@ -2978,6 +2997,7 @@ def _run_phase(args, env: dict[str, str], track: dict[str, Any]) -> int:
         env=env,
         root=root,
         change_dir=change_dir,
+        model_phase=gate_phase,
     )
     if args.dry_run:
         _emit(
@@ -3035,7 +3055,10 @@ def _run_phase(args, env: dict[str, str], track: dict[str, Any]) -> int:
     # the round did not write is never read as its verdict (``gate_record_fresh``)
     gate_before = gate_record_bytes(change_dir, gate_phase)
     data, raw, err, code = invoke(
-        argv, root, session_env(env, root, phase), run_timeout_seconds(config, phase, env)
+        argv,
+        root,
+        session_env(env, root, phase, config, gate_phase),
+        run_timeout_seconds(config, phase, env),
     )
     result_path, stderr_path = run_record_paths(change_dir, phase)
     store_result(change_dir, phase, data, raw, result_path)
@@ -3427,9 +3450,10 @@ def panel_models(
     lands in ``evidence/panel-models-<phase>.json`` and is committed with the run record or
     the park; None when the run added no decision."""
     added = len(panel_ledger.load_ledger(change_dir, gate_phase)) - before
-    record = panel_ledger.check_models(
-        added, result, config.get("panel_advocate_model"), env.get("SDLC_MODEL")
-    )
+    # R7: the session's model as the run passed it, and the phase's advocate model for it
+    session = env.get("SDLC_MODEL") or panel_models_mod.session_model(config, gate_phase)
+    advocate = panel_models_mod.advocate_model(config, gate_phase, session)
+    record = panel_ledger.check_models(added, result, advocate, session)
     if record is not None:
         panel_ledger.save_models(change_dir, gate_phase, record)
     return record
@@ -4143,8 +4167,9 @@ def run_reset_judge(
     targets: list[dict[str, Any]],
 ) -> dict[str, Any]:
     """The fresh-context, read-only judge of decision 29 at the iteration cap: a bounded
-    ``claude -p`` with Read, Grep and Glob only, on ``sdlc.yaml: panel_advocate_model`` (the
-    adversarial reviewer's model) when set, else the session's model. Its result record is
+    ``claude -p`` with Read, Grep and Glob only, on the adversarial reviewer's model
+    (``sdlc.yaml: adversarial_model``, R7), else ``panel_advocate_model`` when set, else the
+    session's model. Its result record is
     ``evidence/claude-judge.json`` and its cost one entry of the spend ledger. Returns
     ``{"ok", "reset", "reasons"}`` or ``{"ok": False, "reason"}`` (a judge that failed or
     whose answer cannot be read never resets)."""
@@ -4158,7 +4183,7 @@ def run_reset_judge(
     judge_env = app_token.strip_git_auth(
         {k: v for k, v in env.items() if k not in (*TOKEN_VARS, app_token.WORKFLOW_TOKEN_ENV)}
     )
-    model = config.get("panel_advocate_model")
+    model = panel_models_mod.reviewer_model(config) or config.get("panel_advocate_model")
     if isinstance(model, str) and model.strip():
         judge_env["SDLC_MODEL"] = model.strip()
     argv = compose(
