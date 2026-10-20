@@ -105,4 +105,4 @@ plugin:
   # Claude Code CLI version the SDLC workflows install (`npm install -g
   # @anthropic-ai/claude-code@<this>`). `--permission-prompts none` needs 2.1.259 or later;
   # 2.1.278 is the CLI the jobs install and the framework's minimum.
-  claude_code: "2.1.278"
+  claude_code: "2.1.304"
