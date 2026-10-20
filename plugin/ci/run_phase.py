@@ -3568,7 +3568,9 @@ def record_design_acceptance(
     """Record in ``status.yaml: risk_acceptances`` that the owner's merge of the design PR
     accepted the risk-list items gate (b) reported and no earlier act accepted (decision 35,
     point 2): the merge actor, the merge time and commit, and whether the merged body showed
-    the banner, all from the ``pull_request`` event that started this build. None when the
+    the banner, all from the ``pull_request`` event that started this build. Only the
+    owner's account accepts (``unpark.is_owner_actor``, decision 34's one rule; ``config``
+    is the default branch's ``sdlc.yaml``). None when the
     run was not started by the merge of ``sdlc/<id>/b`` (a dispatch, the fast lane): the hits
     then stay unaccepted and the build PR's banner at (e) asks for them. Written, not
     committed: the session's commits and the runner's own carry the change folder."""
@@ -3590,12 +3592,13 @@ def record_design_acceptance(
     if not items:
         return {"ok": True, "items": []}
     by = str(_mapping(pull.get("merged_by")).get("login") or "").strip()
-    if not by or unpark.is_automation_actor(by, unpark.automation_identities(config)):
+    if not unpark.is_owner_actor(by, config, env):
         return {
             "ok": False,
             "items": items,
-            "reason": f"merged by {by or 'nobody'}: an automation account accepts no risk "
-            "(decision 35); the build PR's banner asks again at (e)",
+            "reason": f"merged by {by or 'nobody'}, not the owner's account: only the owner "
+            "accepts a risk (decisions 34 and 35; an automation account never does); the "
+            "build PR's banner asks again at (e)",
         }
     number = _pr_number(pull.get("number"))
     if number is None:
@@ -4055,7 +4058,39 @@ def acceptance_mismatches(
                 f"risk_acceptances: PR #{line.get('pr')} was not merged by {line.get('by')!r} "
                 f"(merged: {bool(found.get('merged'))}, by {found.get('merged_by')!r})"
             )
+        else:
+            reasons += _acceptance_line_problems(line, found)
     return reasons
+
+
+ACCEPTANCE_HEAD_PHASE = {"b": "b", "e": "c"}  # the merged PR's head: the design or build PR
+
+
+def _acceptance_line_problems(line: dict[str, Any], found: dict[str, Any]) -> list[str]:
+    """What GitHub's record of the merge contradicts in a ``risk_acceptances`` line beyond
+    its actor: the merged PR must be the phase's own (``sdlc/<id>/b`` for a (b) line,
+    ``sdlc/<id>/c`` for an (e) line), and a line that says the banner was shown must name
+    items the merged body's banner lists."""
+    from gate import risk as risk_mod  # noqa: PLC0415
+
+    details = line.get("details") if isinstance(line.get("details"), dict) else {}
+    phase = str(details.get("phase") or "")
+    parsed = c.parse_branch(str(found.get("head_ref") or ""))
+    problems: list[str] = []
+    if phase in ACCEPTANCE_HEAD_PHASE and (
+        parsed is None or parsed[1] != ACCEPTANCE_HEAD_PHASE[phase]
+    ):
+        problems.append(
+            f"risk_acceptances: PR #{line.get('pr')} (head {found.get('head_ref')!r}) is not "
+            f"the PR whose merge is gate ({phase})"
+        )
+    items = [str(i) for i in details.get("items") or []]
+    if details.get("banner_shown") is True and not risk_mod.banner_shown(found.get("body"), items):
+        problems.append(
+            f"risk_acceptances: PR #{line.get('pr')}'s body shows no banner line for "
+            f"{', '.join(items)}, while the line says it did"
+        )
+    return problems
 
 
 def verify_owner_fields(

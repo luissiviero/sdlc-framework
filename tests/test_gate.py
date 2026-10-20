@@ -2671,6 +2671,19 @@ def test_gate_b_reports_a_risk_list_item_declared_under_flagged_concerns(design_
     assert "risk_list" not in _names(result, False)
     hit = next(ch for ch in result.checks if ch.name == "risk_list")
     assert hit.details["hits"] == {"auth": ["spec.md Flagged concerns: text"]}
+    # the declaration the spec-template skill asks for is closed: the design waits for the
+    # owner's merge, which accepts the item, and parks on nothing
+    declared = (
+        "- decided (decision 35): risk item 'auth': the helper reads the caller's session "
+        "token; the close-look banner shows it and the owner's merge accepts it.\n"
+    )
+    write(change / "spec.md", SPEC.replace("## Acceptance", declared + "\n## Acceptance"))
+    git(root, "commit", "-q", "-am", "design(0001): the risk item declared")
+    verdict(root, "b", classification="non-routine")
+    result = gate.run_gate(root, "0001", "b", dry_run=True)
+    assert result.result == "wait", result.reason
+    hit = next(ch for ch in result.checks if ch.name == "risk_list")
+    assert hit.details["hits"] == {"auth": ["spec.md Flagged concerns: text"]}
 
 
 # --- decision 24: the owner's label, performed and committed by the CI run ---------------------

@@ -14,8 +14,8 @@ This module holds the parts the gate, the PR description, the runner and the rel
   matched by its words in the committed diff's paths and in spec.md's "Flagged concerns"
   as before, or a mapping ``{item: <words>, paths: [<glob>, ...]}``, whose globs are matched
   on the committed diff and whose words are matched in "Flagged concerns" only. A glob never
-  matches under ``changes/``: a change's own folder is not a risk (a slug such as
-  ``0007-auth-login`` hit the word match);
+  matches under ``changes/``, and neither do a plain item's words: a change's own folder is
+  not a risk (a slug such as ``0007-auth-login`` hit the word match before 1.0.15);
 - **the brief** (``brief_path``, ``parse_brief``): ``evidence/roles/security-policy-<phase>.md``,
   the file the Security & policy role owns once R28 builds it, written until then by the
   adversarial reviewer at (b) to (d) and by the REVIEW.md pass at (e): one ``## <item>``
@@ -132,21 +132,19 @@ def hits(
     items: list[RiskItem | str | dict[str, Any]], paths: list[str], texts: dict[str, str]
 ) -> dict[str, list[str]]:
     """``{item: [where it matched]}``. A plain item's words are matched on ``paths`` and in
-    ``texts``; an item with globs has them matched on ``paths`` outside ``changes/`` and its
-    words in ``texts`` only."""
+    ``texts``; an item with globs has them matched on ``paths`` and its words in ``texts``
+    only. No path under ``changes/`` is matched: the change's own folder is not a risk, and
+    its spec's "Flagged concerns" come in through ``texts``."""
     found: dict[str, list[str]] = {}
+    outside = [p for p in paths if not p.startswith(CHANGES_PREFIX)]
     for raw in items:
         item = _as_item(raw)
         if item is None:
             continue
         if item.paths:
-            where = [
-                p
-                for p in paths
-                if not p.startswith(CHANGES_PREFIX) and any(matches(g, p) for g in item.paths)
-            ]
+            where = [p for p in outside if any(matches(g, p) for g in item.paths)]
         else:
-            where = [p for p in paths if phrase_in(p, item.name)]
+            where = [p for p in outside if phrase_in(p, item.name)]
         where += [f"{name}: text" for name, text in texts.items() if phrase_in(text, item.name)]
         if where:
             found[item.name] = where

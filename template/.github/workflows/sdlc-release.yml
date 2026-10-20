@@ -145,10 +145,12 @@ jobs:
   # both before releasing. A push that fails is red: the release ran without its record.
   # Decision 35 (1.0.15): it also runs when the merge accepted risk-list items the build
   # PR's close-look banner showed, and commits that acceptance line (who merged, when, the
-  # items, whether the body showed the banner) the same way, with the release or alone.
+  # items, whether the body showed the banner) the same way, with the release or alone,
+  # and after a failed deploy.command too (`!cancelled()`): `released` is written only after
+  # the command exited 0, so a failed release never records one.
   record:
     needs: release
-    if: ${{ needs.release.outputs.released == 'true' || needs.release.outputs.risk_acceptance != '' }}
+    if: ${{ !cancelled() && (needs.release.outputs.released == 'true' || needs.release.outputs.risk_acceptance != '') }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:

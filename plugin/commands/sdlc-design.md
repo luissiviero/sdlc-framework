@@ -108,8 +108,10 @@ Rules for the pass (from the three by-hand runs of build guide step 22, recorded
   in `sdlc.yaml` the design touches, and any policy the design cannot meet. Name a risk-list
   item under "## Flagged concerns" only when the design touches it: the gate reads that
   section literally and shows every item named there in the design PR's "Needs your close
-  look" banner, which the owner's merge accepts (decision 35). The items that do not apply
-  are said not to apply in Requirements, never listed there.
+  look" banner, which the owner's merge accepts (decision 35). Write the declaration closed,
+  as the `spec-template` skill shows (`- decided (decision 35): risk item '<item>': ...`):
+  decision 35 settles it, and an open line would park the design as an open concern. The
+  items that do not apply are said not to apply in Requirements, never listed there.
 - Close a concern yourself only when the policy text settles it, and say which policy
   (`- [x] <concern>: decided <how> per <skill> rule <n>`); the closing word is the first
   word of the item — a label such as `C3:` in front of it keeps the concern open. Every

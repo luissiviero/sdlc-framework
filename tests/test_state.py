@@ -808,6 +808,12 @@ def test_unpark_perform_honours_a_person_and_rejects_the_automation_identity(tmp
     assert all("cannot un-park itself" in r["reason"] for r in rejected)
     assert st.iterations == 4 and st.risk_accepted == [] and st.risk_accepted_by == []
     assert st.tests_locked is False and st.tests_unlocked_by == "luissiviero"
+    # any <app>[bot] counts as automation, whatever the identities list says
+    performed, rejected = unpark.perform(
+        st, {c.UNLOCK_TESTS_LABEL: "dependabot[bot]"}, ["github-actions[bot]"],
+        config={}, env=OWNER_ENV,
+    )  # fmt: skip
+    assert performed == [] and "cannot un-park itself" in rejected[0]["reason"]
     # a project's own automation identity counts as automation too
     st2 = status.new_change(tmp_path, "No hit", change_id="0002")[1]
     performed, rejected = unpark.perform(

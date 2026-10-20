@@ -832,14 +832,10 @@ def check_risk_list(ctx: GateContext) -> CheckResult:
 
 
 def _phase_brief(ctx: GateContext) -> dict[str, dict[str, str]]:
-    """The gate's reviewer's brief per hit item, as committed at HEAD (the working tree when
-    there is no commit to read), like every artifact the gate judges."""
-    rel = f"{ctx.change_rel}/{risk_mod.brief_rel(ctx.phase)}"
-    head = ctx.diff.head if ctx.diff else None
-    text = diffmod.file_at(ctx.root, head, rel) if head else None
-    if text is None:
-        text = art.read_text(risk_mod.brief_path(ctx.change_dir, ctx.phase))
-    return risk_mod.parse_brief(text)
+    """The gate's reviewer's brief per hit item, read from the working tree as the verdict
+    is (``load_verdict``): both are evidence the reviewer wrote for this round, committed
+    after the gate, so HEAD still holds the previous round's brief."""
+    return risk_mod.read_brief(ctx.change_dir, ctx.phase)
 
 
 def _phase_verdict(ctx: GateContext) -> dict[str, Any] | None:

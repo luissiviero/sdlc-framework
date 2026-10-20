@@ -65,7 +65,7 @@ def test_globs_match_paths_outside_changes_and_words_match_only_the_concerns():
         "config/production.yaml",
         "changes/0007-data-migrations/migrations/x.md",  # the change's own folder never hits
         "src/authentication.py",
-        "changes/0007-auth-login/intent.md",  # a plain item keeps today's word match
+        "changes/0007-auth-login/intent.md",  # nor a plain item's words (1.0.15)
     ]
     texts = {"spec.md Flagged concerns": "- data migrations: the column is renamed"}
     assert risk.hits(items, paths, texts) == {
@@ -75,7 +75,6 @@ def test_globs_match_paths_outside_changes_and_words_match_only_the_concerns():
             "spec.md Flagged concerns: text",
         ],
         "production config": ["infra/main.tf", "config/production.yaml"],
-        "auth": ["changes/0007-auth-login/intent.md"],
     }
     # the same paths miss with the plain words (the proposal's "What the framework does today")
     plain = ["data migrations", "production config"]
@@ -287,7 +286,11 @@ def _merge_event(tmp_path: Path, head: str, merged_by: str, body: str) -> dict[s
     }
     path = tmp_path / "event.json"
     path.write_text(json.dumps(payload), encoding="utf-8")
-    return {"GITHUB_EVENT_NAME": "pull_request", "GITHUB_EVENT_PATH": str(path)}
+    return {
+        "GITHUB_EVENT_NAME": "pull_request",
+        "GITHUB_EVENT_PATH": str(path),
+        "GITHUB_REPOSITORY_OWNER": OWNER,
+    }
 
 
 def test_the_build_run_records_the_design_merge_s_acceptance(tmp_path):
@@ -310,13 +313,16 @@ def test_the_build_run_records_the_design_merge_s_acceptance(tmp_path):
     assert run_phase.record_design_acceptance(root, change, {}, other) is None
 
 
-def test_a_bot_s_merge_accepts_no_risk_and_an_unseen_banner_is_recorded_as_such(tmp_path):
+def test_only_the_owner_s_merge_accepts_and_an_unseen_banner_is_recorded_as_such(tmp_path):
     root = tmp_path / "proj"
     change, st = status_mod.new_change(root, "Risky")
     _gate_file(change, "b", {"auth": ["x"]})
     env = _merge_event(tmp_path, f"sdlc/{st.id}/b", "sdlc-merge[bot]", "")
     out = run_phase.record_design_acceptance(root, change, {}, env)
-    assert out["ok"] is False and "accepts no risk" in out["reason"]
+    assert out["ok"] is False and "only the owner accepts a risk" in out["reason"]
+    # a collaborator who may merge is a person, not the owner (decision 34's one rule)
+    env = _merge_event(tmp_path, f"sdlc/{st.id}/b", "collaborator", "")
+    assert run_phase.record_design_acceptance(root, change, {}, env)["ok"] is False
     assert status_mod.read_status(change).risk_acceptances == []
     env = _merge_event(tmp_path, f"sdlc/{st.id}/b", OWNER, "a body without the banner")
     line = run_phase.record_design_acceptance(root, change, {}, env)["line"]
@@ -333,18 +339,27 @@ def test_the_runner_guards_the_acceptance_record_like_an_owner_field(tmp_path, m
     assert any(r.startswith("risk_acceptances: the session recorded") for r in reasons)
     assert run_phase.owner_field_mismatches(after, after, None) == []
 
+    banner = f"{risk.BANNER_HEADING}: …\n- `auth` — first found at gate (b): x."
+
     class GitHub:
-        def __init__(self, merged_by):
-            self.merged_by = merged_by
+        def __init__(self, merged_by, head="sdlc/0001/b", body=banner):
+            self.merged_by, self.head, self.body = merged_by, head, body
 
         def pr_by_number(self, repo, number):
-            return {"ok": True, "merged": True, "merged_by": self.merged_by}
+            return {"ok": True, "merged": True, "merged_by": self.merged_by,
+                    "head_ref": self.head, "body": self.body}  # fmt: skip
 
     env = {"GITHUB_ACTIONS": "true"}
-    for who, expected in ((OWNER, []), ("mallory", ["was not merged by 'luissiviero'"])):
-        monkeypatch.setattr(run_phase, "_github", lambda who=who: GitHub(who))
+    cases = (
+        (GitHub(OWNER), []),
+        (GitHub("mallory"), ["was not merged by 'luissiviero'"]),
+        (GitHub(OWNER, head="sdlc/0001/c"), ["is not the PR whose merge is gate (b)"]),
+        (GitHub(OWNER, body="no banner"), ["shows no banner line for auth"]),
+    )
+    for fake, expected in cases:
+        monkeypatch.setattr(run_phase, "_github", lambda fake=fake: fake)
         found = run_phase.acceptance_mismatches(after, {}, "owner/name", env)
-        assert [e for e in expected if not any(e in r for r in found)] == []
+        assert [e for e in expected if not any(e in r for r in found)] == [], found
         assert bool(found) is bool(expected)
     # the default branch's copy carries it: nothing to confirm
     assert run_phase.acceptance_mismatches(after, after, "owner/name", env) == []
@@ -383,7 +398,8 @@ def test_the_e_merge_s_acceptance_is_stored_by_the_record_job(tmp_path):
     outputs = tmp_path.parent / f"{tmp_path.name}-outputs"
     outputs.write_text("", encoding="utf-8")
     body = f"{risk.BANNER_HEADING}: …\n- `auth` — first found at gate (e): report.py."
-    code, lines = _run(root, MergedBy(body=body), env={"GITHUB_OUTPUT": str(outputs)})
+    env = {"GITHUB_OUTPUT": str(outputs), "GITHUB_REPOSITORY_OWNER": OWNER}
+    code, lines = _run(root, MergedBy(body=body), env=env)
     assert code == 0, lines
     assert "release: risk: accepted by luissiviero's merge: auth (banner shown)" in lines
     written = dict(line.split("=", 1) for line in outputs.read_text(encoding="utf-8").splitlines())
@@ -402,7 +418,7 @@ def test_the_e_merge_s_acceptance_is_stored_by_the_record_job(tmp_path):
     st, where = release_cli.remote_record(
         root, "0001", "changes/0001-export-the-claims-report/status.yaml", _approval_git()
     )
-    assert st is None and "carries the risk acceptance" in where
+    assert st is None and where == "no release record on sdlc/0001/c"  # the branch is read too
     # the job re-run changes nothing
     code, lines = _record(root, "--released", "", "--acceptance", written["risk_acceptance"])
     assert code == 0 and "already records it" in lines[0]
@@ -414,10 +430,15 @@ def _approval_git():
     return approval.make_git()
 
 
-def test_a_bot_s_e_merge_accepts_nothing(tmp_path):
+def test_only_the_owner_s_e_merge_accepts(tmp_path):
     root, change_dir = _repo_with_change(tmp_path)
     _e_hit(change_dir)
     st = status_mod.read_status(change_dir)
+    env = {"GITHUB_REPOSITORY_OWNER": OWNER}
+    collaborator = release_cli.merge_acceptance(
+        change_dir, st, {"merged_by": "collaborator"}, 7, "abc", {}, env
+    )
+    assert collaborator[0] is None and "not the owner's account" in collaborator[1]
     assert (
         release_cli.merge_acceptance(
             change_dir, st, {"merged_by": "sdlc-merge[bot]"}, 7, "abc", {}
@@ -425,11 +446,12 @@ def test_a_bot_s_e_merge_accepts_nothing(tmp_path):
         is None
     )
     line, _why = release_cli.merge_acceptance(
-        change_dir, st, {"merged_by": OWNER, "body": ""}, 7, "abc", {}
+        change_dir, st, {"merged_by": OWNER, "body": ""}, 7, "abc", {}, env
     )
     assert line["details"] == {"phase": "e", "items": ["auth"], "banner_shown": False}
     st.risk_acceptances = [_line(phase="e", pr=7)]
-    assert release_cli.merge_acceptance(change_dir, st, {"merged_by": OWNER}, 7, "abc", {}) is None
+    again = release_cli.merge_acceptance(change_dir, st, {"merged_by": OWNER}, 7, "abc", {}, env)
+    assert again is None
 
 
 # --- the label retired; /sdlc-init proposes globs -------------------------------------------

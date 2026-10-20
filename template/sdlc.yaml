@@ -115,8 +115,8 @@ maintain:
 # anyway (the design PR at (b), the build PR at (e)), with the gate's reviewer's brief on the
 # item, and your merge accepts it, recorded in the change's status.yaml. An item is its words,
 # matched in the committed diff's paths and in spec.md's "Flagged concerns", or
-# {item: <words>, paths: [<glob>, ...]}: the globs are matched on the committed diff (never
-# under changes/) and the words in "Flagged concerns" only. /sdlc-init proposed globs only
+# {item: <words>, paths: [<glob>, ...]}: the globs are matched on the committed diff and the
+# words in "Flagged concerns" only; no path under changes/ is matched. /sdlc-init proposed globs only
 # for folders this project has; keep or edit them in the change-0000 PR.
 risk_list:
 {{RISK_LIST}}

@@ -265,11 +265,11 @@ def remote_record(
         st = _status_at(root, "FETCH_HEAD", rel_status, git)
         if st is not None and st.released:
             return st, ref
-        if st is not None and st.risk_acceptances:
-            # decision 35: the record job stored the (e) merge's risk acceptance there
-            # before any release ran (a declared production waiting for its label)
-            return None, f"{ref} carries the risk acceptance, no release record"
-        raise RemoteUnreadable(f"{ref} is on the remote but carries no release record")
+        if st is None or not st.risk_acceptances:
+            raise RemoteUnreadable(f"{ref} is on the remote but carries no release record")
+        # decision 35: the record job stored the (e) merge's risk acceptance there before
+        # any release ran (a declared production waiting for its label); the work branch is
+        # still read, since a push of two refspecs is not atomic
     if not _remote_ref(root, branch, git, heads=True):
         return None, f"neither {ref} nor the work branch {branch} is on the remote"
     _fetch(root, f"refs/heads/{branch}", git)
@@ -414,22 +414,25 @@ def merge_acceptance(
     pr_number: int,
     merge_sha: str | None,
     config: dict[str, Any],
+    env: Mapping[str, str] | None = None,
+    repo: str | None = None,
 ) -> tuple[dict[str, Any] | None, str] | None:
     """Decision 35: the ``risk_acceptances`` line of the (e) merge, from the merged copy's
     gate records (the items no earlier act accepted, ``risk.banner_entries``) and GitHub's
     record of the merge (who, when, the body it showed); (None, why) when the merge actor is
-    no person (a ``[bot]`` or the automation identity never accepts a risk, choice 242), None
-    when nothing was asked. Until R22 the merge actor is the acceptor (decision 35, point 2)."""
+    not the owner's account (``unpark.is_owner_actor``, decision 34's one rule: a ``[bot]``
+    or the automation identity never accepts a risk, choice 242), None when nothing was
+    asked. Until R22 the merge actor is the acceptor (decision 35, point 2)."""
     from state import unpark  # noqa: PLC0415
 
     items = risk_mod.new_items(risk_mod.banner_entries(change_dir, "e", st))
     if not items:
         return None
     by = str(pr.get("merged_by") or "").strip()
-    if not by or unpark.is_automation_actor(by, unpark.automation_identities(config)):
+    if not unpark.is_owner_actor(by, config, env, repo):
         return None, (
-            f"not accepted: merged by {by or 'an unknown account'}, and an automation account "
-            f"accepts no risk (decision 35): {', '.join(items)}"
+            f"not accepted: merged by {by or 'an unknown account'}, not the owner's account "
+            f"(decisions 34 and 35): {', '.join(items)}"
         )
     line = risk_mod.acceptance_line(
         "e",
@@ -687,7 +690,7 @@ def _release(args, env, github, git, record_git, say) -> int:
         say("parked", f"gate ({raw.gate.phase}) parked change {change_id}: {parked}")
     # (4d) decision 35: the owner's merge accepted the risk lines the build PR's banner
     # showed; the record job stores the line, whatever the release does next
-    accepted = merge_acceptance(change_dir, raw, pr, args.pr, merge_sha, config)
+    accepted = merge_acceptance(change_dir, raw, pr, args.pr, merge_sha, config, env, args.repo)
     if accepted is not None:
         line, why = accepted
         if line is None:

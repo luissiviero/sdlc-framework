@@ -516,8 +516,8 @@ def test_release_workflow_runs_the_release_cli_on_merge_and_label():
     record = data["jobs"]["record"]
     assert record["needs"] == "release"
     assert record["if"] == (
-        "${{ needs.release.outputs.released == 'true' || "
-        "needs.release.outputs.risk_acceptance != '' }}"
+        "${{ !cancelled() && (needs.release.outputs.released == 'true' || "
+        "needs.release.outputs.risk_acceptance != '') }}"
     )
     assert record["permissions"] == {"contents": "write"}
     assert [step.get("uses", step.get("run", "")).split(" ")[0] for step in record["steps"]] == [

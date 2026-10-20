@@ -33,9 +33,11 @@ description: The organization's security baseline. Use whenever creating or chan
 7. **Network**: runs make no outbound call except through the project's allowed domains
    (`.claude/settings.json` sandbox block); `WebFetch`, `curl` and `wget` are denied.
 8. Any item on `sdlc.yaml: risk_list` (auth, data migrations, money movement, production
-   config) that the change touches goes into `spec.md` "Flagged concerns"; the gate shows it
-   in the "Needs your close look" banner of the PR the owner merges, with the reviewer's
-   brief on it, and the owner's merge accepts it (decision 35; it no longer parks).
+   config) that the change touches goes into `spec.md` "Flagged concerns", declared closed
+   (`- decided (decision 35): risk item '<item>': ...`, the `spec-template` skill); the gate
+   shows it in the "Needs your close look" banner of the PR the owner merges, with the
+   reviewer's brief on it, and the owner's merge accepts it (decision 35; it no longer
+   parks).
 
 ## Check
 Run the deterministic check and include its output in your summary (article p.22 pattern):
