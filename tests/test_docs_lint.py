@@ -337,6 +337,46 @@ def test_a_merge_claim_matches_the_merge_commit(tmp_path):
     ]
 
 
+def test_a_claim_that_may_be_another_repositorys_is_reported_not_failed(tmp_path):
+    docs = tmp_path / "docs"
+    when = datetime.fromisoformat("2026-10-20T15:40:00+00:00")
+    merges = {"88": ("5fdd4ebaaaa", when)}
+    _write(
+        docs / "ROADMAP.md",
+        "- **The sample** is on 1.0.17 (`sdlc.yaml:77`, `4a429c4`); its #88 merged as `656eadd`.\n"
+        "- **The sample** is on 1.0.17 (`sdlc.yaml:77` on `main`); its #88 merged on 2026-10-19.\n"
+        "The sample is on 1.0.17 and its CLI pin moved today. PR #88 merged on 2026-10-19.\n"
+        "PR #88 merged as `1234567`.\n",
+    )
+    failures, reports = tasks.merge_claim_problems(docs, merges, lambda sha: sha == "1234567")
+    assert failures == [
+        "merged: docs/ROADMAP.md:3: PR #88 date 2026-10-19, git has 2026-10-20 UTC",
+        "merged: docs/ROADMAP.md:4: PR #88 merge commit 1234567, git has 5fdd4eb",
+    ]
+    assert reports == [
+        "merged: docs/ROADMAP.md:1: PR #88 merge commit 656eadd, git has 5fdd4eb"
+        " (another repository's PR?)",
+        "merged: docs/ROADMAP.md:2: PR #88 date 2026-10-19, git has 2026-10-20 UTC"
+        " (another repository's PR?)",
+    ]
+
+
+def test_a_commit_is_looked_up_in_the_repository(tmp_path):
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    subprocess.run(
+        ["git", "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty"]
+        + ["-m", "one"],
+        cwd=tmp_path,
+        check=True,
+    )
+    sha = subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=tmp_path, check=True, capture_output=True, text=True
+    ).stdout.strip()
+    known = tasks.commit_lookup(tmp_path)
+    assert known(sha[:7]) is True
+    assert known("656eadd") is False
+
+
 def test_a_git_time_in_utc_reads_on_every_python():
     utc = datetime.fromisoformat("2026-10-20T07:15:11+00:00")
     assert tasks.git_time("2026-10-20T07:15:11Z") == utc
