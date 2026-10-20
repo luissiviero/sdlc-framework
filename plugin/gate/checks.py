@@ -32,6 +32,7 @@ if str(PLUGIN_DIR) not in sys.path:
 
 from gate import artifacts as art  # noqa: E402
 from gate import diff as diffmod  # noqa: E402
+from gate import risk as risk_mod  # noqa: E402
 from gate.diff import Diff  # noqa: E402
 from gate.policy import automation_identity, is_automation  # noqa: E402
 from hooks import plan_sync, protected_paths  # noqa: E402
@@ -747,52 +748,41 @@ def check_guardrails(ctx: GateContext) -> CheckResult:
     )
 
 
-# --- 8. risk list (step 5; OPERATING_MODEL section 9) ------------------------------------------
-def _tokens(text: str) -> list[str]:
-    return re.findall(r"[a-z0-9]+", text.lower())
+# --- 8. risk list (step 5; OPERATING_MODEL section 9; decision 35) ----------------------------
+def risk_hits(items: list[Any], paths: list[str], texts: dict[str, str]) -> dict[str, list[str]]:
+    """{risk item: [where it matched]} (``risk.hits``): a plain item's words whole-token and
+    plural-tolerant, so 'auth' matches 'auth/' and 'auth_token' but not 'author'; an item
+    with ``paths`` by its globs, never under ``changes/``."""
+    return risk_mod.hits(items, paths, texts)
 
 
-def _phrase_in(tokens: list[str], phrase: list[str]) -> bool:
-    n = len(phrase)
-    for i in range(len(tokens) - n + 1):
-        if all(_tok_eq(tokens[i + j], phrase[j]) for j in range(n)):
-            return True
-    return False
-
-
-def _tok_eq(a: str, b: str) -> bool:
-    return a == b or a == b + "s" or b == a + "s"
-
-
-def risk_hits(items: list[str], paths: list[str], texts: dict[str, str]) -> dict[str, list[str]]:
-    """{risk item: [where it matched]}; whole-token phrase match, plural-tolerant, so 'auth'
-    matches 'auth/' and 'auth_token' but not 'author'."""
-    hits: dict[str, list[str]] = {}
-    for item in items:
-        phrase = _tokens(item)
-        if not phrase:
-            continue
-        where = [p for p in paths if _phrase_in(_tokens(p), phrase)]
-        where += [
-            f"{name}: text" for name, text in texts.items() if _phrase_in(_tokens(text), phrase)
-        ]
-        if where:
-            hits[item] = where
-    return hits
+RISK_ESCALATION_NEED = (
+    "The gate's reviewer escalates on the risk-list item(s) named above. Under decision 35 a "
+    "hit is only a line of the close-look banner, but an escalation on a risk item parks for "
+    "you and never goes to the review panel (decisions 11 and 21 as 35 amends them). Read the "
+    "brief ({brief}) and the verdict's reasons, then answer as for any escalation: a review "
+    "comment or Request changes starts a fix round, and the reviewer judges the new HEAD."
+)
 
 
 def check_risk_list(ctx: GateContext) -> CheckResult:
     """Risk-list items in the **committed** diff's paths and in the committed spec's
     "Flagged concerns" (OPERATING_MODEL section 3: the gate judges HEAD; see
-    ``check_guardrails`` for the sandbox-masked ``.env`` this keeps out)."""
-    items = ctx.config.get("risk_list") or []
-    if not isinstance(items, list):
-        return _fail("risk_list", "sdlc.yaml: risk_list must be a list", "Fix sdlc.yaml.")
+    ``check_guardrails`` for the sandbox-masked ``.env`` this keeps out).
+
+    Decision 35 (1.0.15): a hit no longer parks. The check passes and reports every hit in
+    ``details.hits`` (accepted or not; ``details.accepted`` names the accepted ones), which the
+    close-look banner of the PR the owner merges reads (``risk.banner_lines``). It fails, and
+    parks, only when the gate's reviewer escalates on a hit item (``risk.escalated_items``:
+    the brief's word, or an ``escalate`` verdict that names the item); ``risk_list`` is on the
+    panel's never list, so that escalation stays the owner's."""
+    items, why = risk_mod.parse_items(ctx.config.get("risk_list"))
+    if why:
+        return _fail("risk_list", why, "Fix sdlc.yaml (decision 35: a string or {item, paths}).")
     no_base = _no_base(ctx, "risk_list")
     if no_base:
         return no_base
-    items = [str(i) for i in items if str(i).strip()]
-    accepted = {a.lower().strip() for a in ctx.status.risk_accepted}
+    accepted = risk_mod.accepted(ctx.status)
     head = ctx.diff.head if ctx.diff else None
     paths = (
         diffmod.committed_files(ctx.root, ctx.diff.merge_base, ctx.diff.head) if ctx.diff else []
@@ -817,18 +807,44 @@ def check_risk_list(ctx: GateContext) -> CheckResult:
         if concerns.strip():
             texts[f"spec.md {art.CONCERNS_SECTION[3:]}"] = concerns
     hits = risk_hits(items, paths, texts)
-    live = {k: v for k, v in hits.items() if k.lower().strip() not in accepted}
-    if live:
+    accepted_hit = sorted(k for k in hits if k.lower() in accepted)
+    if not hits:
+        return _ok("risk_list", "no risk-list item touched", hits={}, accepted=accepted_hit)
+    escalated = risk_mod.escalated_items(sorted(hits), _phase_brief(ctx), _phase_verdict(ctx))
+    shown = "; ".join(f"'{k}' in {', '.join(v[:3])}" for k, v in hits.items())
+    if escalated:
         return _fail(
             "risk_list",
-            "risk-list hit: " + "; ".join(f"'{k}' in {', '.join(v[:3])}" for k, v in live.items()),
-            "Review the change with the risk in mind. To let it continue, accept the item for "
-            'this change: `python "${CLAUDE_PLUGIN_ROOT}/plugin/state/cli.py" accept-risk '
-            f'--root . --id {ctx.status.id} --item "<item>"` (recorded in status.yaml).',
-            hits=live,
-            accepted=sorted(accepted),
+            "the reviewer escalates on risk-list item(s) "
+            + ", ".join(f"'{i}'" for i in escalated)
+            + f" (hits: {shown})",
+            RISK_ESCALATION_NEED.format(brief=risk_mod.brief_rel(ctx.phase)),
+            hits=hits,
+            accepted=accepted_hit,
+            escalated=escalated,
         )
-    return _ok("risk_list", "no risk-list item touched", accepted=sorted(accepted))
+    return _ok(
+        "risk_list",
+        f"risk-list hit, shown in the close-look banner (decision 35): {shown}",
+        hits=hits,
+        accepted=accepted_hit,
+    )
+
+
+def _phase_brief(ctx: GateContext) -> dict[str, dict[str, str]]:
+    """The gate's reviewer's brief per hit item, as committed at HEAD (the working tree when
+    there is no commit to read), like every artifact the gate judges."""
+    rel = f"{ctx.change_rel}/{risk_mod.brief_rel(ctx.phase)}"
+    head = ctx.diff.head if ctx.diff else None
+    text = diffmod.file_at(ctx.root, head, rel) if head else None
+    if text is None:
+        text = art.read_text(risk_mod.brief_path(ctx.change_dir, ctx.phase))
+    return risk_mod.parse_brief(text)
+
+
+def _phase_verdict(ctx: GateContext) -> dict[str, Any] | None:
+    data, _error = load_verdict(ctx.evidence_dir / art.ADVERSARIAL_VERDICT.format(phase=ctx.phase))
+    return data
 
 
 # --- 9. the adversarial reviewer's verdict (step 17; an input, never run by the gate) ---------
@@ -1078,9 +1094,11 @@ def check_design_scope(ctx: GateContext) -> CheckResult:
 
 # --- 12. owner-only state: accept-risk and set-iterations (build guide step 24.5) -------------
 OWNER_ACTIONS_NEED = (
-    "accept-risk, set-iterations and unlock-tests are the owner's: apply sdlc:accept-risk, "
+    "accept-risk, set-iterations and unlock-tests are the owner's: apply "
     "sdlc:reset-iterations or sdlc:unlock-tests on the pull request, or run the command on "
-    "your machine or in your own session and commit; a run cannot approve itself (decision 5)."
+    "your machine or in your own session and commit (a risk item is accepted by your merge "
+    "since decision 35, or by accept-risk run by hand); a run cannot approve itself "
+    "(decision 5)."
 )
 STATUS_HISTORY_LIMIT = "200"  # commits of status.yaml history the check walks back through
 
@@ -1247,7 +1265,8 @@ def check_owner_actions(ctx: GateContext) -> CheckResult:
     # acceptance of another item (1.0.0 readiness review, group A; the review of the 0.2.26
     # diff, L6, for the drops and the lifts). An unlabelled gain is ratified when a later
     # commit recorded a person's actor for the item (the owner's sdlc:accept-risk after the
-    # park; L5: without it the park could never be cleared).
+    # park, before decision 35 retired the label; L5: without it the park could never be
+    # cleared).
     risk_events: list[tuple[str, str, str, list[str], dict[str, str], int]] = []
     drop_events: list[tuple[str, str, str, str, int, int, str | None, str | None]] = []
     unlock_events: list[tuple[str, str, str, str | None]] = []
@@ -1598,27 +1617,26 @@ def _declared_ratchets(plan_text: str) -> set[str]:
     return {m.group(1).lower() for m in RATCHET_PROOF_RE.finditer(proof)}
 
 
-def _ratchet_need(change_id: str) -> str:
-    return (
-        "A dropped test file or eval case is not excused by anything else: a test emptied of "
-        "its own tests, a dropped test inside a file that still exists, or an edited "
-        "test-runner configuration line is not caught by this check (the measured ratchets, "
-        "ROADMAP R15, is the change that would catch those). Declare this drop - list its "
-        "path under plan.md's '## Files that change', or add '- ratchet: <name> may fall, "
-        "because <why>' under '## Proof' - before the next run, or accept it: "
-        '`python "${CLAUDE_PLUGIN_ROOT}/plugin/state/cli.py" accept-risk --root . --id '
-        f'{change_id} --item "<item>"`.'
-    )
+RATCHET_ESCALATION_NEED = RISK_ESCALATION_NEED
 
 
 def check_ratchets(ctx: GateContext) -> CheckResult:
-    """A dropped test file or eval case, undeclared by the approved plan, is a risk-list-
-    shaped gate finding (intent.md change 1; spec.md Requirements/Design). The approved plan
+    """A dropped test file or eval case, undeclared by the approved plan, is a risk-list hit
+    named after its ratchet (``ratchet: tests``, ``ratchet: evals``; R15). The approved plan
     is read at the merge base (``ctx.approved_artifact``; on the fast lane, decision 30, at the
     design commit gate (b) passed on), never the working tree, so a
     commit cannot excuse its own drop by editing plan.md alongside it (the riskiest step,
     spec.md Design/Risks). Added skip markers are listed in ``details.skip_markers``, never
-    affecting ``ok``."""
+    affecting ``ok``.
+
+    Decision 35 (1.0.15), point 6: the hit no longer parks. It is reported in
+    ``details.hits`` (accepted or not) for the close-look banner, which the owner's merge
+    accepts as every hit; a drop the plan declares is listed in ``details.declared`` and is a
+    banner line too. The check fails only when the gate's reviewer escalates on a ratchet
+    item (``risk.escalated_items``), which parks like any escalation on a risk item. Not
+    caught here: a test emptied of its own tests, a dropped test inside a file that still
+    exists, an edited test-runner configuration line (the measured ratchets, R15's second
+    change)."""
     from hooks._common import ConfigError  # noqa: PLC0415
     from hooks.test_file_lock import test_path_patterns  # noqa: PLC0415
 
@@ -1640,7 +1658,7 @@ def check_ratchets(ctx: GateContext) -> CheckResult:
     plan = ctx.approved_artifact("plan.md") or ""
     planned = art.planned_files(plan)
     declared_ratchets = _declared_ratchets(plan)
-    accepted = {a.lower().strip() for a in ctx.status.risk_accepted}
+    accepted = risk_mod.accepted(ctx.status)
 
     hits: dict[str, list[str]] = {}
     declared: list[str] = []
@@ -1654,30 +1672,35 @@ def check_ratchets(ctx: GateContext) -> CheckResult:
             probe = f"{path}." if path.endswith("/") else path
             if name in declared_ratchets or any(plan_sync.is_planned(probe, p) for p in planned):
                 declared.append(f"{path} (plan)")
-            elif key.lower() in accepted:
-                continue
             else:
                 hits.setdefault(key, []).append(path)
 
     skip_markers = skip_marker_hits(ctx, patterns)
-    need = _ratchet_need(ctx.status.id)
-    if hits:
+    accepted_hit = sorted(k for k in hits if k.lower() in accepted)
+    details = {
+        "hits": hits,
+        "declared": declared,
+        "skip_markers": skip_markers,
+        "accepted": accepted_hit,
+    }
+    if not hits:
+        return _ok("ratchets", "no undeclared test file or eval case drop", **details)
+    shown = "; ".join(f"'{k}': {', '.join(v[:5])}" for k, v in hits.items())
+    escalated = risk_mod.escalated_items(sorted(hits), _phase_brief(ctx), _phase_verdict(ctx))
+    if escalated:
         return _fail(
             "ratchets",
-            "dropped-ratchet hit: "
-            + "; ".join(f"'{k}': {', '.join(v[:5])}" for k, v in hits.items()),
-            need,
-            hits=hits,
-            declared=declared,
-            skip_markers=skip_markers,
-            accepted=sorted(accepted),
+            "the reviewer escalates on ratchet item(s) "
+            + ", ".join(f"'{i}'" for i in escalated)
+            + f" (dropped-ratchet hit: {shown})",
+            RATCHET_ESCALATION_NEED.format(brief=risk_mod.brief_rel(ctx.phase)),
+            escalated=escalated,
+            **details,
         )
     return _ok(
         "ratchets",
-        "no undeclared test file or eval case drop",
-        declared=declared,
-        skip_markers=skip_markers,
-        accepted=sorted(accepted),
+        f"dropped-ratchet hit, shown in the close-look banner (decision 35): {shown}",
+        **details,
     )
 
 

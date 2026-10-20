@@ -1,12 +1,15 @@
 """The owner's un-park verbs as labels (decision 24; build guide steps 9, 16, 19; OPERATING_MODEL
-section 6): ``sdlc:accept-risk``, ``sdlc:reset-iterations`` and ``sdlc:unlock-tests``, applied
-by the owner on the change's PR, read by the next run, performed, and recorded in
-``status.yaml`` with the label's actor as GitHub recorded it.
+section 6): ``sdlc:reset-iterations`` and ``sdlc:unlock-tests``, applied by the owner on the
+change's PR, read by the next run, performed, and recorded in ``status.yaml`` with the
+label's actor as GitHub recorded it. The third, ``sdlc:accept-risk``, retired with decision 35
+(plugin 1.0.15): a risk-list hit no longer parks, and the owner's merge of the PR whose
+close-look banner shows it accepts it (``gate/risk.py``); a label of that name is no longer
+read, and the by-hand ``accept-risk`` command stays.
 
 Why labels: point 3 of the objective puts the owner's input in the PR, not in a terminal, and
 GitHub records who applied a label, so the actor is read from the PR's timeline instead of
-inferred from a commit author (PROGRESS choice 17). The CLI commands (``accept-risk``,
-``set-iterations``, ``unlock-tests``) stay for by-hand runs; the pause flag stays in
+inferred from a commit author (PROGRESS choice 17). The CLI commands (``set-iterations``,
+``unlock-tests``, and ``accept-risk``) stay for by-hand runs; the pause flag stays in
 ``sdlc.yaml`` because pausing is a reviewed change.
 
 Rules:
@@ -14,10 +17,7 @@ Rules:
   left on the PR: a run cannot un-park itself (decision 11);
 - a label applied by any other account than the owner's (``is_owner_actor``, fail closed) is
   rejected and left on the PR too (decision 24, choice 218): a collaborator with triage
-  access can label a pull request, and the label would accept a risk the owner never saw;
-- ``sdlc:accept-risk`` accepts the risk-list hits the last gate of the change's phase reported
-  (``evidence/gate-<phase>.json``, check ``risk_list``, ``details.hits``); with no recorded hit
-  there is nothing to accept and the label is left where it is, with the reason;
+  access can label a pull request, and the label would reset a count the owner never saw;
 - a performed label is removed from the PR, so one application is one act and the next run
   does not perform it again; the ``labeled`` event stays in the PR's timeline as the record;
 - the gate's ``owner_actions`` check (``plugin/gate/checks.py``) reads the recorded actor when
@@ -148,38 +148,11 @@ def runner_reset_recorded(change_dir: Path, actor: str | None, at: str | None) -
     )
 
 
-RISK_HIT_CHECKS = ("risk_list", "ratchets")
-
-
-def risk_hits(change_dir: Path, phase: str | None) -> list[str]:
-    """The risk-list items the last gate of ``phase`` reported: the union of the ``risk_list``
-    and ``ratchets`` checks' ``details.hits`` keys (spec.md change 5: a dropped test file or
-    eval case, undeclared by the plan, is a risk-list-shaped hit of its own check, read here
-    too, so ``sdlc:accept-risk`` is not rejected as "nothing to accept" when only a ratchet
-    hit is reported), or []. The gate file is the record the owner read in the PR's "What I
-    need from you" block, so it is what the label answers."""
-    if not phase or phase not in c.PHASES:
-        return []
-    path = Path(change_dir) / GATE_FILE.format(phase=phase)
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return []
-    hit_keys: set[str] = set()
-    for check in (data.get("checks") if isinstance(data, dict) else None) or []:
-        if not isinstance(check, dict) or check.get("name") not in RISK_HIT_CHECKS:
-            continue
-        hits = (check.get("details") or {}).get("hits")
-        if isinstance(hits, dict):
-            hit_keys.update(str(k) for k in hits if str(k).strip())
-    return sorted(hit_keys)
-
-
 def perform(
     st: status_mod.Status,
     present: dict[str, str | None],
     identities: list[str],
-    hits: list[str],
+    hits: list[str] | None = None,
     *,
     config: dict[str, Any],
     env: Mapping[str, str] | None = None,
@@ -187,8 +160,9 @@ def perform(
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """Apply the owner labels ``present`` (label -> actor login, None when unknown) to
     ``st``; pure but for ``st``. Returns (performed, rejected), each a list of
-    {label, actor, reason/items}. ``config`` is the default branch's ``sdlc.yaml`` (the
-    owner's guardrail), read with ``env`` and ``repo`` by ``is_owner_actor`` (choice 218)."""
+    {label, actor, reason}. ``config`` is the default branch's ``sdlc.yaml`` (the owner's
+    guardrail), read with ``env`` and ``repo`` by ``is_owner_actor`` (choice 218). ``hits``
+    is unused since ``sdlc:accept-risk`` retired (decision 35)."""
     performed: list[dict[str, Any]] = []
     rejected: list[dict[str, Any]] = []
     for label in c.UNPARK_LABELS:
@@ -217,21 +191,8 @@ def perform(
                 }
             )
             continue
-        if label == c.ACCEPT_RISK_LABEL and not hits:
-            rejected.append(
-                {
-                    "label": label,
-                    "actor": actor,
-                    "reason": f"no risk-list hit recorded in {GATE_FILE.format(phase=st.phase)}"
-                    ": nothing to accept",
-                }
-            )
-            continue
-        st.record_owner_label(label, actor, hits if label == c.ACCEPT_RISK_LABEL else None)
-        entry: dict[str, Any] = {"label": label, "actor": actor}
-        if label == c.ACCEPT_RISK_LABEL:
-            entry["items"] = list(hits)
-        performed.append(entry)
+        st.record_owner_label(label, actor)
+        performed.append({"label": label, "actor": actor})
     return performed, rejected
 
 
@@ -281,7 +242,6 @@ def apply_from_pr(
         st,
         present,
         automation_identities(config),
-        risk_hits(change_dir, st.phase),
         config=config,
         env=env,
         repo=repo,

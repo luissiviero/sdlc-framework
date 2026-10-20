@@ -262,6 +262,9 @@ _EMPTY_PR: dict[str, Any] = {
     "draft": False,
     "author": None,
     "requested_reviewers": [],
+    "merged_by": None,
+    "merged_at": None,
+    "body": None,
 }
 
 
@@ -290,10 +293,17 @@ def _pr_from_api(item: dict[str, Any]) -> dict[str, Any]:
         "node_id": item.get("node_id"),
         "author": (item.get("user") or {}).get("login"),
         "requested_reviewers": _logins(item.get("requested_reviewers")),
+        # decision 35: who merged it and what its body showed (the risk acceptance)
+        "merged_by": (item.get("merged_by") or {}).get("login"),
+        "merged_at": item.get("merged_at"),
+        "body": item.get("body"),
     }
 
 
-GH_PR_FIELDS = "number,url,labels,isDraft,state,mergeCommit,headRefName,headRefOid,baseRefName"
+GH_PR_FIELDS = (
+    "number,url,labels,isDraft,state,mergeCommit,headRefName,headRefOid,baseRefName,"
+    "mergedBy,mergedAt,body"
+)
 # the review-request sync's lookups only (decision 31): with a workflow token a team's review
 # request can fail the GraphQL read of ``reviewRequests``, so no other lookup asks for it
 GH_REVIEW_FIELDS = f"{GH_PR_FIELDS},author,reviewRequests"
@@ -321,6 +331,9 @@ def _pr_from_gh(item: dict[str, Any]) -> dict[str, Any]:
         "draft": bool(item.get("isDraft")),
         "author": (item.get("author") or {}).get("login"),
         "requested_reviewers": _logins(item.get("reviewRequests")),
+        "merged_by": (item.get("mergedBy") or {}).get("login"),
+        "merged_at": item.get("mergedAt"),
+        "body": item.get("body"),
     }
 
 
@@ -370,9 +383,10 @@ def find_pr(
     """The most recent pull request from ``head_branch`` in ``state`` (open, closed or all):
     {'route', 'ok', 'number', 'state', 'merged', 'merge_commit_sha', 'head_ref', 'head_sha',
     'base_ref', 'labels', 'html_url', 'url', 'draft', 'author', 'requested_reviewers',
-    'reason'} - number None when there is none; ``requested_reviewers`` lists the users whose
-    review is pending (teams are left out). The ``gh`` route reads ``author`` and
-    ``requested_reviewers`` only with ``reviewers`` (``GH_REVIEW_FIELDS``)."""
+    'merged_by', 'merged_at', 'body', 'reason'} - number None when there is none;
+    ``requested_reviewers`` lists the users whose review is pending (teams are left out).
+    The ``gh`` route reads ``author`` and ``requested_reviewers`` only with ``reviewers``
+    (``GH_REVIEW_FIELDS``)."""
     if state not in PR_STATES:
         raise ValueError(f"state must be one of {PR_STATES}, not {state!r}")
     return _attempt(

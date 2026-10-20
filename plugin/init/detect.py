@@ -48,6 +48,39 @@ def test_paths(language: str) -> list[str]:
     return list(TEST_PATHS.get(language, TEST_PATHS["unknown"]))
 
 
+# Decision 35 (ROADMAP R24): the default risk-list items, and the globs /sdlc-init proposes
+# for each, each only when it matches a file the project already has (a migrations folder,
+# infra/, a production configuration). An item no glob matches stays a plain string, matched
+# by its words as before; the owner keeps or edits the list in the change-0000 PR.
+RISK_ITEMS = ("auth", "data migrations", "money movement", "production config")
+RISK_GLOBS = {
+    "auth": ("**/auth/**",),
+    "data migrations": ("**/migrations/**", "alembic/versions/**"),
+    "money movement": ("**/payments/**",),
+    "production config": ("config/production.*", "infra/**", "**/*.tf"),
+}
+RISK_SCAN_EXCLUDE = (".git", ".venv", "venv", "node_modules", "__pycache__", "changes")
+
+
+def risk_list(root: Path) -> list[str | dict[str, object]]:
+    """The risk list /sdlc-init proposes: each default item, with the globs of ``RISK_GLOBS``
+    that match at least one file of the project (``changes/`` and the usual tool folders left
+    out), as ``{item, paths}``; an item none matches stays a plain string."""
+    from hooks._common import matches  # noqa: PLC0415
+
+    root = Path(root)
+    files = [
+        p.relative_to(root).as_posix()
+        for p in root.rglob("*")
+        if p.is_file() and not any(part in RISK_SCAN_EXCLUDE for part in p.relative_to(root).parts)
+    ]
+    out: list[str | dict[str, object]] = []
+    for item in RISK_ITEMS:
+        globs = [g for g in RISK_GLOBS[item] if any(matches(g, f) for f in files)]
+        out.append({"item": item, "paths": globs} if globs else item)
+    return out
+
+
 @dataclass
 class Target:
     command: str | None

@@ -9,6 +9,7 @@
     python cli.py set-iterations --root . --id 0001 --count 0   # owner only (decisions 5, 24)
     python cli.py bump-iteration --root . --id 0001             # one fix round (step 24)
     python cli.py spec-header --root . --id 0001 [--plugin-root <path>]
+    python cli.py risk-hits --root . --id 0001 --phase c       # decision 35: the brief's items
 
 ``bump-iteration`` counts one fix round of the change's current phase (the runbooks call it
 per round of the verifier / evidence / review loops), writes ``status.yaml`` and prints the
@@ -40,6 +41,11 @@ inside Claude Code's sandbox, where a nested ``.env*`` is unreadable), it runs b
 lint on the working tree the session left and rewrites ``evidence/gate-<phase>.json`` and
 ``status.yaml`` with the result; a red target parks the change. It prints ``{"ran": false}``
 and touches nothing when the record carries no deferred check, and exits 0 either way.
+
+``risk-hits`` prints the risk-list items the gate of ``--phase`` would report on the
+committed diff (``hits``, with where each matched; ``accepted``; ``brief``, the file the
+reviewer writes one brief per item in), recording nothing (decision 35). The phase commands
+hand them to the adversarial reviewer, and ``review/cli.py prompt`` to the REVIEW.md pass.
 
 ``check`` prints the gate result as JSON (result: continue | wait | park, the checks, the
 "What I need from you" block) and exits 0 on continue, 3 on wait (human gate), 4 on park,
@@ -268,6 +274,15 @@ def cmd_spec_header(args) -> int:
     return 0
 
 
+def cmd_risk_hits(args) -> int:
+    try:
+        _emit(gate.risk_hits_now(Path(args.root), args.id, args.phase, args.base))
+    except gate.GateError as exc:
+        print(f"gate: {exc}", file=sys.stderr)
+        return 2
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="sdlc-gate", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
@@ -337,6 +352,15 @@ def build_parser() -> argparse.ArgumentParser:
         help="installed plugin root, read when sdlc.yaml carries no plugin.version pin",
     )
     sh.set_defaults(fn=cmd_spec_header)
+
+    rh = sub.add_parser(
+        "risk-hits", help="the risk-list items the phase's gate would report (decision 35)"
+    )
+    rh.add_argument("--root", default=".")
+    rh.add_argument("--id", required=True)
+    rh.add_argument("--phase", required=True, choices=c.PHASES)
+    rh.add_argument("--base", default=None, help="base ref for the diff (default: origin HEAD)")
+    rh.set_defaults(fn=cmd_risk_hits)
     return p
 
 

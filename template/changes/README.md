@@ -18,8 +18,9 @@ Branches: `sdlc/<id>/a` (intent PR), `sdlc/<id>/b` (spec+plan PR), `sdlc/<id>/c`
 kept open through test and review). Labels: `sdlc:<phase>-ready` (waiting at a human gate),
 `sdlc:<phase>-approved` (Full profile, gates c and d), `sdlc:release-approved` (the release
 approval on a declared production), `sdlc:needs-human` (parked); the owner's un-park verbs
-`sdlc:accept-risk`, `sdlc:reset-iterations`, `sdlc:unlock-tests` (read and removed by the
-next fix round). A "Request changes" review on any of these PRs starts a fix round; closing
+`sdlc:reset-iterations`, `sdlc:unlock-tests` (read and removed by the next fix round). A
+risk-list hit parks nothing: it is a line of the PR's "Needs your close look" banner, and
+your merge accepts it (decision 35; `sdlc:accept-risk` retired). A "Request changes" review on any of these PRs starts a fix round; closing
 one without merging abandons the change. Phase (f): an incident intent PR (head
 `sdlc/<id>/a`, title `maintain(<id>): …`) carries `sdlc:f-ready` and `incident`; the owner's
 triage is the gate (merge = fix now, label `schedule` = later, close with a comment =

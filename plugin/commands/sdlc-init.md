@@ -34,13 +34,20 @@ and pass `--setup ""` when the project has nothing to install.
   fresh contexts and the run continues; the owner reads "Decisions taken for you" at the
   next gate and overturns any of them with a review comment; decisions 21 and 32) · parked
   (a judgment item inside a phase parks the change for the owner; still available per
-  project and per change). A risk-list hit, a guardrail file change, a run limit, an
-  infrastructure failure, a merge to main and a deploy still park in both modes.
+  project and per change). An escalation on a risk-list item, a guardrail file change, a
+  run limit, an infrastructure failure, a merge to main and a deploy still park in both
+  modes; a risk-list hit itself parks nothing (decision 35: it is a line of the "Needs your
+  close look" banner on the PR the owner merges, and the merge accepts it).
 - deploy action [none]: what makes a merged change live — publish package · schedule job ·
   regenerate report · promote to paper trading · deploy service · none
 - real production? [no] — turns on the release label and the production gate
 - maintain metric and source [ci_test_failure_rate from github-actions]
 - confirm or override the detected build/test/lint commands and the setup (install) command
+- the risk list is not asked here (decision 35): the install script proposes the four default
+  items, each with the globs that match folders this project already has (a migrations
+  folder, `infra/`, a production configuration, `auth/`, `payments/`; `init/detect.py
+  risk_list`), an item no glob matches staying a plain string; the owner keeps or edits
+  them in `sdlc.yaml` in the change-0000 PR, once
 
 ## 2. CLAUDE.md proposal (the hook denies direct writes to CLAUDE.md, so write it here)
 If `CLAUDE.md` does not exist yet: generate its content the way `/init` does (use the `init`
@@ -108,7 +115,9 @@ uncommitted, so commit the project's own work first). Then open the PR exactly a
 (title `intent(0000): <title>`, label `sdlc:a-ready`, the generated ≤5-bullet summary from
 `changes/0000-sdlc-init/intent.md`; routes gh → REST API → compare URL for the owner). In the
 report, add what the summary cannot know: the detected targets and their health, and the
-files the owner should review (CLAUDE.md trim, settings). Merge = accept.
+files the owner should review (CLAUDE.md trim, settings, the risk list's globs). Merge =
+accept: it also confirms the risk list, and accepts any risk-list hit the PR's "Needs your
+close look" banner shows (gate (a) matches the globs on this PR's own files, decision 35).
 
 ## 6. After the merge (tell the owner, do not do it)
 - The plugin is declared in `.claude/settings.json`. A local interactive session installs it

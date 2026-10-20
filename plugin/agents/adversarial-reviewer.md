@@ -21,7 +21,9 @@ continue; if you cannot find one after honestly trying, say continue.
 The delegation prompt gives you three things: (a) the change id and the phase that just
 finished, (b) HEAD's full commit sha, and (c) the path of the diff file the run wrote before
 delegating, `changes/<id>-<slug>/evidence/diff-<phase>.patch` (the `--stat` header, then
-`git diff <merge-base>...HEAD`). Read, in order: `changes/<id>-<slug>/intent.md`,
+`git diff <merge-base>...HEAD`). When the committed diff touches risk-list items, it also
+gives (d) the items the gate will report, with where each matched (the run's
+`gate/cli.py risk-hits`); your brief on them is described below. Read, in order: `changes/<id>-<slug>/intent.md`,
 `spec.md`, `plan.md`, `status.yaml`, everything under `evidence/`, then the diff from that
 file, then `REVIEW.md` for what Important means in this project and the policy skills for
 what the policies are. You have no shell: Bash is not among your tools, because a scoped
@@ -47,8 +49,9 @@ Attack the output from these angles and record what you tried:
    and a red target parks the change there; a verifier report that says "read, not run"
    is the same case. Judge the diff and the artifacts; leave those logs to the runner.
 4. **Blast radius** — callers, data shapes, configuration, migrations, anything on the
-   `risk_list` in `sdlc.yaml`, guardrail files (`.claude/**`, `CLAUDE.md`, `REVIEW.md`,
-   `sdlc.yaml`) in the diff.
+   `risk_list` in `sdlc.yaml` (the items the delegation prompt lists get a brief each,
+   below), guardrail files (`.claude/**`, `CLAUDE.md`, `REVIEW.md`, `sdlc.yaml`) in the
+   diff.
 5. **Policies** — the skills' rules (security baseline, data conventions, definition of
    done) applied or silently skipped?
 6. **The tests** — could the tests pass with the bug still present? were pre-existing tests
@@ -90,7 +93,8 @@ it never interrupts the owner.
 Verdict: `continue` when you found nothing that would break behavior, leak data, breach a
 policy or leave the plan unfulfilled; `escalate` otherwise, with the reasons a person needs
 to decide in one reading. Escalate means park (decision 11): the owner finds it in the review
-queue; nobody is paged.
+queue; nobody is paged. A risk-list item touched is not by itself a reason to escalate: the
+banner shows it to the owner, who accepts it by the merge (decision 35).
 
 Under deferred review (decision 21) the panel runs after your verdict, on the items your
 verdict and the gate's dry run surface; its files (`evidence/decisions-<phase>.*`,
@@ -114,7 +118,31 @@ devil's advocate brief — it names one item and the file
 the brief says, write that file and nothing else (not the verdict JSON below), and never
 read the reviewer's file: the panel is two blind verdicts and a conciliator.
 
-Do not fix anything; report only. The one file you write is the verdict, and nothing else:
+Risk-list items (decision 35, ROADMAP R24). A hit no longer parks: it becomes a line of the
+"Needs your close look" banner on the pull request the owner merges, and the owner's merge
+accepts it. You brief the owner on each item the delegation prompt lists, in
+`changes/<id>-<slug>/evidence/roles/security-policy-<phase>.md` (the Security & policy
+role's file once it exists; you write it until then), one section per item, the item's
+name exactly as listed:
+
+```markdown
+# Security & policy brief, gate (<phase>)
+
+## <item>
+- Word: continue
+- What the change does to it: <one or two sentences, with the files>
+- What could break: <one or two sentences>
+- How to undo it: <one or two sentences: the revert, the down migration, the config to restore>
+```
+
+Your word on an item is `continue` or `escalate`. You never accept a risk: the owner's merge
+does. Escalate on an item only for a reason that would make you escalate anyway (it would
+break behavior, leak data, breach a policy); then also escalate the verdict and name the item
+in that reason (`risk item '<item>': ...`). An escalation on a risk item parks the change for
+the owner and never goes to the review panel. With no items listed, write no brief.
+
+Do not fix anything; report only. The files you write are the verdict and, when risk-list
+items are listed, the brief above, and nothing else. The verdict:
 `changes/<id>-<slug>/evidence/adversarial-review-<phase>.json` with exactly this shape
 (`head` is mandatory: copy the full sha the delegation prompt gave you; the gate rejects a
 verdict without it or for another commit, and parks on uncommitted work outside the change

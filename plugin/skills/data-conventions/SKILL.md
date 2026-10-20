@@ -23,7 +23,9 @@ description: The organization's data and storage conventions. Use whenever addin
    OpenAPI); generated code is never edited by hand.
 3. **Migrations** are backward compatible with the running code (expand, migrate, contract),
    reversible, and named in `plan.md` "Files that change" and Risks; "data migrations" is on
-   the risk list, so the change parks at its next gate for the owner.
+   the risk list, so the migration is a line of the "Needs your close look" banner on the
+   PR the owner merges, with the reviewer's brief on it, and the owner's merge accepts it
+   (decision 35).
 4. **Events and APIs**: additive changes only; a removed or renamed field is a new version
    with a deprecation note.
 5. **Retention and minimisation**: store what the spec needs, nothing "for later"; state the

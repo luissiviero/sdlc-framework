@@ -126,8 +126,14 @@ default branch, `origin/<default>` after the fetch: the base the gate diffs agai
 `git diff --stat --patch --output=changes/<id>-<slug>/evidence/diff-c.patch <base>...HEAD`,
 then `git rev-parse HEAD` for the full sha. The diff file is evidence: it is committed with
 the gate (c) evidence commit below.
+First run
+`python "${CLAUDE_PLUGIN_ROOT}/plugin/gate/cli.py" risk-hits --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase c`
+and pass its `hits` (each item with where it matched) and its `brief` path in the delegation
+prompt: the reviewer writes one brief per item there (decision 35: a hit is a line of the
+close-look banner, never a park; its escalation on an item parks and stays off the panel).
 Delegate to `sdlc:adversarial-reviewer` with the change id, phase `c`, the project root,
-the full HEAD sha and the path `changes/<id>-<slug>/evidence/diff-c.patch`, started with
+the full HEAD sha, the path `changes/<id>-<slug>/evidence/diff-c.patch` and the risk-list
+hits, started with
 `reviewer.alias` from
 `python "${CLAUDE_PLUGIN_ROOT}/plugin/panel/cli.py" models --root "${CLAUDE_PROJECT_DIR}" --phase c`
 as its model (`null`: pass none; the gate's `reviewer_model` check reads the model it ran
@@ -141,8 +147,9 @@ It prints the review mode (`sdlc.yaml: review`, `status.yaml: review_override`),
 the gate would park on that belong to the panel's fixed list (an open flagged concern, a
 concern naming contradicting policies, the reviewer's `escalate` verdict, an Important
 finding the run cannot fix, the verifier's "does not match the plan"), which of them the
-ledger already decides, and under `parks` what stays the owner's whatever the mode (a
-risk-list hit, a guardrail file, a run limit, an infrastructure failure). When `mode` is
+ledger already decides, and under `parks` what stays the owner's whatever the mode (an
+escalation on a risk-list item, a guardrail file, a run limit, an infrastructure failure; a
+risk-list hit itself parks nothing, decision 35). When `mode` is
 `parked` or `pending` is empty, go on to the gate. Otherwise, for each pending item `n` in
 order, three fresh contexts, each with the brief printed by
 `python "${CLAUDE_PLUGIN_ROOT}/plugin/panel/cli.py" prompt --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase c --item <n> --member <reviewer|advocate|conciliator>`:

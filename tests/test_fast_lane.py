@@ -224,7 +224,8 @@ def test_a_build_stacked_on_the_design_reads_the_approved_plan_for_ratchets(lane
     ctx = gate.build_context(root, "0001", "c")
     assert ctx.approved_base() == design
     assert "ratchet: tests may fall" in (ctx.approved_artifact("plan.md") or "")
-    assert checks.check_ratchets(ctx).ok is True
+    declared = checks.check_ratchets(ctx)
+    assert declared.ok is True and declared.details["hits"] == {}
     # without the record the plan is new on the branch: no approved plan, the drop is a hit
     lane_record = dict(status_mod.read_status(change).fast_lane or {})
     lane_record.pop("b")
@@ -233,7 +234,9 @@ def test_a_build_stacked_on_the_design_reads_the_approved_plan_for_ratchets(lane
     ctx = gate.build_context(root, "0001", "c")
     assert ctx.approved_artifact("plan.md") is None
     result = checks.check_ratchets(ctx)
-    assert result.ok is False and "tests/test_flag.py" in result.reason
+    # decision 35: the undeclared drop is a hit the banner shows, never a park
+    assert result.ok is True and "tests/test_flag.py" in result.reason
+    assert result.details["hits"] == {"ratchet: tests": ["tests/test_flag.py"]}
 
 
 def test_the_runner_reads_the_framework_change_exemption_at_the_recorded_commit(lane):
