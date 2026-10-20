@@ -1,36 +1,35 @@
-# Progress — R61 accepted and placed after R44, the sample's ruleset recorded (NOTES §53), R58's check 8, and the owner's choices 240 and 241 (2026-10-20)
+# Progress — decisions 35 (R24) and 36 (R22), and the owner's choice 242 on their questions (2026-10-20)
 
-This session ran on branch `ccr-7ef35daa-7adzh8`. The owner's task began as a read-only sweep of the open sessions and PRs; after the owner merged the four reports it cross-referenced their findings with the roadmap (PR #269, `docs/reviews/2026-10-20-findings-cross-reference.md`, which proposed R61). The owner then accepted R61 as recommended (choice 240). The previous record (the review of PRs #250 to #252 and choice 239, PR #254) is now `docs/progress/2026-10-20-prs-250-252-review-and-choice-239.md`, unchanged. The session's own file is `docs/handoffs/sessions/2026-10-20-ccr-7ef35daa-7adzh8.md` (PR #269); what changed after it is in this record.
+This session ran on branch `ccr-8913e578-kwfegl`. The owner's task was to write the decision files of R24 and R22, numbered 35 and 36, one after the other, each in a documentation PR of its own, then answer the questions those PRs raised. The previous record (R61 accepted, NOTES §53, R58's check 8, choices 240 and 241) is now `docs/progress/2026-10-20-r61-accepted-notes-53-and-choices-240-241.md`, unchanged. The session's own file is `docs/handoffs/sessions/2026-10-20-ccr-8913e578-kwfegl.md`.
 
 No change under `plugin/` or `template/`; no version bump.
 
 ## Summary
-- **R61 is accepted and placed** (choice 240): "after R44 (rank 12) and before R18 (rank 13), before the real-project trial", with no rank moved. Part 5, the project's secret-shaped files, stays in R61 rather than in R44. The reasons are in `docs/proposals/trial-project-shape.md`, "Order": part 1 widens what the CI session may run, so it lands inside the sandbox R44 tightens, and both edit `ci_settings_file`; part 4 builds on R25 parts 1-2; R33 needs part 2's detection; R45 renames after R61's keys exist.
-- **NOTES §53**: the sample's `main` has an active branch ruleset with *Restrict updates* since 2026-09-27 (ruleset 24078926, the admin role its one bypass actor, in `pull_request` mode), read from `GET …/rules/branches/main` on 2026-10-20. NOTES §17 recorded only the classic rule. The decisions audit's reading of decision 4 as unverified on the live project is answered; nothing is reopened.
-- **The sample's change 0017** (name the part in `percent`'s zero-whole error) was opened by the owner's account as intent PR sample #85 on 2026-10-20, with the owner's approval of the intent. The fast lane started its design run at once (sample run 39379201252). It is R7's first live reading on 1.0.14 and the sample change R56 waits for.
-- **The owner's PC reminder** moved: the one that fired into an archived session (`trig_01Dbv76g2tPAEdw1wPC6b4Gf`) is deleted; a new one, `trig_01WqkM8vJPR1LB3JnVkJkTvx`, fires into this session on 2026-10-24 at 11:55 UTC, four days out as the owner asked.
+- **Decision 35** (R24): a risk-list hit is a line in the close-look banner, accepted by the owner's merge; it amends 11, 21 and 24. PR #279 merged as `d608f69`.
+- **Decision 36** (R22): gate (e) is the owner's approving review, and a GitHub App merges on it; it amends 13, 4 and 5. PR #280 merged as `c15dd35`.
+- **Choice 242**: the owner accepted the session's recommendation on each of the six questions the two PRs raised. Each answer is annotated beside the sentence it settles; nothing is reopened.
 
 ## The owner's decisions (2026-10-20)
-240. **R61 is accepted as recommended** (the owner, "accept R61 as recommended"):
-    - R61 is one candidate, with its part 5 in it, not in R44;
-    - its Order is after R44 (rank 12) and before R18 (rank 13), before the real-project trial; no other rank moves;
-    - it takes the next free patch number at its merge (choice 184), as one session pull request or one per part.
-241. **#262's open question is answered** (the owner, "go", on the session's table of 2026-10-20; the `REVIEW.md` line the owner wrote first was changed as recommended, PR #274):
-    - R58 gains check 8: a "PR #N merged on/at/as" claim is compared with the PR's merge commit in git; a mismatch fails in the living documents, in a note after 53 and in a record dated from 2026-10-20 on, and is a report line in the older records (choice 126). Built in this PR, `tasks.py` and `tests/test_docs_lint.py`, no plugin version;
-    - `REVIEW.md` line 36 (the owner's edit, #274): the review pass opens each target the diff's added `docs/` lines cite and compares; a citation that misstates a decision, a choice or a ROADMAP Status or Order is non-compliant, any other mismatch a nit;
-    - `HANDOFF.md`'s "Rules for every session" gains the session-side duty (open each cited target before pushing a docs PR, and say so in the PR body), in a PR of its own as that page requires, after this one;
-    - the changed-lines reader as a skill is not built. The full sweep before the real-project trial was recommended and is not decided.
+242. **The questions of #279 and #280 are answered as the session recommended** (the owner, "accept all your recommendations"):
+    1. **R15's measured ratchet fall, once `sdlc:accept-risk` retires,** is a banner line the owner's (e) merge accepts, as every risk-list hit is. It amends R15 point 9 and decision 29's park at the iteration cap, so its decision file is written with R15's second change's design, before that change's intent. Annotated: decision 35 ("Left to the design"), R15's and R24's ROADMAP rows, `docs/proposals/ratchets.md` point 9, `docs/proposals/risk-hit-in-banner.md` ("What to settle").
+    2. **Once R22 is built, the owner's approving review accepts the banner's risk lines,** recorded on R22's (e) approval line. The App that then merges is a `[bot]` and never accepts a risk (`is_automation_actor`). Annotated: decision 35, point 2; R24's row; the R24 proposal's settle row.
+    3. **Decision 11's "nobody is notified" stays as written.** Kept records are annotated, never rewritten (choice 126), and its `amended_by` already names 31. No edit.
+    4. **R22 merges through a merge App of its own, not decision 33's App.** GitHub grants a bypass to an actor, not to a job, and the phase runners hold decision 33's App token; so that App is never a bypass actor, its merge step included. The merge App's key is a secret of a GitHub environment only the default branch can use, read only by the merge job. Annotated: decisions 33 and 36 (points 2 and 6), R22's row, `docs/proposals/gate-e-approving-review.md` point 2, `docs/proposals/pipeline-speed.md` (R49's row).
+    5. **The sample's ruleset 1 moves from `pull_request` mode to Exempt** when R22 sets up ruleset 2 there, recorded in a note (`docs/notes/53.md` read it in `pull_request` mode). Annotated: decision 36, point 5; R22's row; the R22 proposal, point 5.
+    6. **C3 and C1 are both kept,** for different failures: C3 when a check the automation posts cannot satisfy a required check (it still needs the App), C1 when the App itself does not work. Annotated: decision 36, point 7; R22's row; the R22 proposal, point 7.
 
 ## Proposed edits for the owner
-None: no guardrail line changes in this PR.
+| Link | Row | What is there now | What it must become |
+|---|---|---|---|
+| [CLAUDE.md](https://github.com/luissiviero/sdlc-framework/blob/main/CLAUDE.md#L3) | 3 | `` `docs/decisions/index.md` records the 34 settled choices — do not reopen them without asking. `` | `` `docs/decisions/index.md` records the settled choices — do not reopen them without asking. `` |
+
+The count is dropped rather than raised (the owner, 2026-10-20): the index is generated and checked by docs-lint, so the number only went stale, and each new decision cost a guardrail edit. The same stale count in `README.md` ("The 29 settled decisions") is fixed in this PR.
 
 ## Left
-- **The `HANDOFF.md` rule** of choice 241: its own PR, after this one merges.
-- **A full docs sweep before the real-project trial**: recommended, not decided (choice 241).
-- **R62** (a citation reader for this repository's docs pull requests, on Gemini): proposed at the owner's request, Order blank; it shares R8's key and terms question, and the owner places both.
-- **Change 0017** runs through the sample's phases; its runs are read for R7 (NOTES §51's open items) when it reaches a gate.
-- **The decision files of R24 and R22** (35 and 36): one session, one after the other, each in its own documentation PR.
-- Every other open item is in the session file of `ccr-7ef35daa-7adzh8`, unchanged by this record except R61's decision and the answer to #262's question.
+- **R15's decision file** (choice 242, point 1): with R15's second change's design.
+- **The sample's bypass mode** (choice 242, point 5): at R22's setup on the sample, with a note.
+- **The merge App** (choice 242, point 4): its creation and its environment join `/sdlc-init` step 6 when R22 is built, and R21's desktop-only table when both are built (the R22 proposal's settle row).
+- Every other open item is in the session file of `ccr-8913e578-kwfegl`.
 
 ## Checks (this repository)
 On the final head, after `python -m pip install -e ".[dev]"`, chained with `set -o pipefail`: the four commands of `HANDOFF.md`'s standing precondition 1, plus `python tasks.py docs-lint`. Their output is in the PR.
