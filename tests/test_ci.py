@@ -815,7 +815,7 @@ def test_ci_sandbox_reaches_the_actions_log_host_and_no_blob_wildcard():
 
 
 def test_every_model_step_holds_the_gemini_key_and_the_sandbox_reaches_its_host():
-    """1.0.16: a session may call the Gemini API with the owner's ``GEMINI_API_KEY`` secret.
+    """1.0.17: a session may call the Gemini API with the owner's ``GEMINI_API_KEY`` secret.
     Every step that hands a session the Anthropic key hands it this key too, and the CI
     sandbox reaches the API's one host, never a ``*.googleapis.com`` wildcard."""
     source = json.loads((ROOT / "plugin" / "ci" / "settings.ci.json").read_text("utf-8"))
@@ -1721,7 +1721,7 @@ def test_guard_skips_when_the_previous_gate_deferred_its_evidence_logs(project):
 def test_the_commands_step_runs_without_the_job_s_credentials(monkeypatch):
     """The phase step holds both model credentials and the GitHub token (the workflows'
     ``env:``); the targets run code the session wrote, so the step gets none of them, the
-    Gemini key (1.0.16) included."""
+    Gemini key (1.0.17) included."""
     names = ("ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN", "GEMINI_API_KEY", "GITHUB_TOKEN")
     for name in (*names, "GH_TOKEN"):
         monkeypatch.setenv(name, "placeholder-" + name.lower())  # sdlc: allow-secret
@@ -2261,7 +2261,7 @@ def test_workflow_uses_no_other_secret(name):
     text = workflow(name)
     # R49 (decision 33): a workflow that pushes also reads the App's key, in its mint step
     app = {"SDLC_APP_PRIVATE_KEY"} if name in APP_WORKFLOWS else set()
-    # 1.0.16: a workflow that runs a model hands its session the owner's Gemini key too
+    # 1.0.17: a workflow that runs a model hands its session the owner's Gemini key too
     gemini = {"GEMINI_API_KEY"} if f"secrets.{KEY_VAR}" in text else set()
     allowed = {KEY_VAR, TOKEN_VAR} | app | gemini
     assert set(re.findall(r"secrets\.([A-Za-z_][A-Za-z0-9_]*)", text)) <= allowed
