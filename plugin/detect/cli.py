@@ -508,6 +508,16 @@ def file_change(root: Path, record: dict[str, Any], *, push: bool, dry_run: bool
     }
 
 
+def _post_not_build(github: Any, repo: str, number: int, root: Path) -> dict[str, Any]:
+    """The passing ``sdlc/review`` "not a build PR" on pull request ``number``'s head, read
+    back from GitHub; never fails the caller."""
+    got = github.pr_by_number(repo, number, cwd=root)
+    sha = str(got.get("head_sha") or "") if got.get("ok") else ""
+    if not sha:
+        return {"ok": False, "reason": got.get("reason") or "the head commit is unknown"}
+    return github.post_not_build_check(repo, sha, cwd=root)
+
+
 def _app_missing() -> str | None:
     """``ci/app_token.py app_missing`` on this process's environment (R22)."""
     from ci import app_token  # noqa: PLC0415 - stdlib only
@@ -1492,6 +1502,10 @@ def cmd_dismiss(args) -> int:
                     args.repo, default, branch, title, body, draft=False, cwd=root
                 )
                 number = (out["pr"] or {}).get("number")
+                if number:
+                    # R22 (decision 36, point 5): the abandon workflow's token opens it, so no
+                    # sdlc-merge.yml run posts the "not a build PR" check ruleset 2 requires
+                    out["review_check"] = _post_not_build(github, args.repo, int(number), root)
                 if number:  # the digest lists it under the incident label (decision 20)
                     github.ensure_label(
                         args.repo,

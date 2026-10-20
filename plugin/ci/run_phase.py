@@ -4092,6 +4092,14 @@ def acceptance_mismatches(
         ]
     reasons: list[str] = []
     for line in pending:
+        if is_automation_actor(str(line.get("by") or ""), []):
+            # since R22 the merge App merges build PRs, so "merged by the line's actor" no
+            # longer implies a person: a [bot] never accepts a risk (choice 242, point 2)
+            reasons.append(
+                f"risk_acceptances: the line of PR #{line.get('pr')} names {line.get('by')!r}, "
+                "an automation account, which never accepts a risk"
+            )
+            continue
         try:
             found = github.pr_by_number(repo, int(line.get("pr")))
         except Exception as exc:  # noqa: BLE001 - no route: fail closed below

@@ -13,8 +13,9 @@
 #   may use, it mints the merge App's token and runs plugin/ci/merge_step.py, which re-checks
 #   everything from the API (the owner's approval, the build PR at sdlc:e-ready, gate (e)'s
 #   record, the review findings and every commit after them, sdlc/review green on the head)
-#   and merges at exactly that head. A refusal is a green run that says why; the PR stays
-#   open and shows in the digest (decisions 11 and 20).
+#   and merges at exactly that head. A check that does not hold is a green run that says
+#   why; a merge GitHub refuses (a conflict, a rule) is red, for R18's "Failed runs". Either
+#   way the PR stays open and shows in the digest (decisions 11 and 20).
 #
 # The merge App is one of its own, not the App the automation pushes as (decision 33):
 # GitHub grants a bypass to an actor, not to a job, and the phase runners hold that App's
@@ -133,13 +134,17 @@ jobs:
         run: python framework/plugin/ci/merge_step.py not-build --root . --repo "$REPO"
 
   merge:
-    if: ${{ github.event_name == 'workflow_dispatch' }}
+    # A dispatch on the default branch only, beside the environment's own branch rule (GitHub
+    # creates a referenced environment that does not exist yet, with no rule).
+    if: >-
+      ${{ github.event_name == 'workflow_dispatch' &&
+      github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
     # Only the default branch may use this environment (its deployment branch rule, set up
     # by /sdlc-init step 6): a dispatch on another ref never reaches the merge App's key.
     environment: sdlc-merge
     # A group of its own: it never waits behind, or cancels, a pending phase run of the change.
     concurrency:
-      group: "sdlc-merge-${{ inputs.head_ref || inputs.pr }}"
+      group: "sdlc-merge-${{ inputs.pr }}"
       cancel-in-progress: false
     runs-on: ubuntu-latest
     timeout-minutes: 15

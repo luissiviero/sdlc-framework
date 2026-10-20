@@ -1,5 +1,5 @@
 ---
-description: Phase (e) deploy — the review passes in a fresh context with REVIEW.md (bugs, security, compliance) into evidence/review-findings.json, a fix loop bounded by the iteration cap while an Important finding stands, the regenerated PR summary, then gate (e): the build PR is marked ready with sdlc:e-ready and waits for the owner's merge in every profile. The release is prepared in the PR per the project's deploy adapter (release notes, nothing executed); the release workflow runs it on the owner's merge. Re-runnable.
+description: Phase (e) deploy — the review passes in a fresh context with REVIEW.md (bugs, security, compliance) into evidence/review-findings.json, a fix loop bounded by the iteration cap while an Important finding stands, the regenerated PR summary, then gate (e): the build PR is marked ready with sdlc:e-ready and waits for the owner's approving review in every profile, on which the merge App merges it (decision 36). The release is prepared in the PR per the project's deploy adapter (release notes, nothing executed); the release workflow runs it on that merge. Re-runnable.
 argument-hint: [change id, e.g. 0001]
 disable-model-invocation: true
 allowed-tools: Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/state/cli.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/gate/cli.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/panel/cli.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/evidence/collect.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/review/cli.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/pr/cli.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/release/notes.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/evals/case.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/lessons/index.py" *), Bash(git *), Bash(gh *), Read, Glob, Grep, Edit, Write, Agent
@@ -10,12 +10,13 @@ allowed-tools: Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/state/cli.py" *), Bash(
 Source: build guide step 24 (composition: OPERATING_MODEL §4.1), step 26 (REVIEW.md and
 the review passes, article p.32–35: "Bugs · Security · Compliance", Important vs nit, "at
 most five nits"; decision 12: the review pass runs in a fresh context, writer ≠ judge),
-step 27a (the PR summary), step 32 (release prepared), decision 13 (gate (e) = the owner's
-merge; the release label only when `sdlc.yaml` declares a real production), decision 19
+step 27a (the PR summary), step 32 (release prepared), decision 13 as amended by 36 (gate
+(e) = the owner's approving review, on which the merge App merges; the release label only
+when `sdlc.yaml` declares a real production), decision 19
 (what deploy means for a project that is not a service).
 
-Unattended: never ask the owner; a blocker parks. The owner's merge is the only human
-action in this phase; nothing is deployed here: the release is prepared in the PR and the
+Unattended: never ask the owner; a blocker parks. The owner's approving review is the only
+human action in this phase (plus the release label on a declared production); nothing is deployed here: the release is prepared in the PR and the
 release workflow runs it after the merge (article p.32: "The agent does everything up to
 the production gate and nothing past it").
 One shell command per Bash call: an unattended run allows only an explicit list of

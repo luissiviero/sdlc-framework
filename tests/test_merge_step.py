@@ -419,25 +419,29 @@ def test_the_digest_says_an_approved_build_pr_is_not_merged_and_why(monkeypatch)
     }
     monkeypatch.setattr(gh, "pr_reviews", lambda *a, **k: reviews)
     monkeypatch.setattr(gh, "check_runs_on", lambda *a, **k: {"ok": True, "runs": []})
-    got = digest.approval_of("o/r", pr)
+    monkeypatch.delenv("GITHUB_REPOSITORY_OWNER", raising=False)
+    monkeypatch.delenv("GITHUB_REPOSITORY", raising=False)
+    got = digest.approval_of("owner/r", pr)
     assert got == {"at": "2026-10-21T", "reason": digest.NO_CHECK}
+    # a collaborator's approval is not the owner's: no line (decision 34)
+    assert digest.approval_of("someone/r", pr) is None
     assert "approved 2026-10-21, not merged: waiting for the sdlc/review" in digest._line(
         {**pr, "approval": got}
     )
     red = {"ok": True, "runs": [{"conclusion": "failure"}]}
     monkeypatch.setattr(gh, "check_runs_on", lambda *a, **k: red)
-    assert digest.approval_of("o/r", pr)["reason"] == digest.RED_CHECK
+    assert digest.approval_of("owner/r", pr)["reason"] == digest.RED_CHECK
     green = {"ok": True, "runs": [{"conclusion": "success"}]}
     monkeypatch.setattr(gh, "check_runs_on", lambda *a, **k: green)
     monkeypatch.setattr(gh, "token", lambda: "t")
     monkeypatch.setattr(
         gh, "_request", lambda *a, **k: {"data": {"mergeable_state": "dirty"}, "error": ""}
     )
-    assert digest.approval_of("o/r", pr)["reason"] == digest.CONFLICT
+    assert digest.approval_of("owner/r", pr)["reason"] == digest.CONFLICT
     # not approved, or not at (e): no line
     monkeypatch.setattr(gh, "pr_reviews", lambda *a, **k: {"ok": True, "reviews": []})
-    assert digest.approval_of("o/r", pr) is None
-    assert digest.approval_of("o/r", {**pr, "labels": [{"name": "sdlc:b-ready"}]}) is None
+    assert digest.approval_of("owner/r", pr) is None
+    assert digest.approval_of("owner/r", {**pr, "labels": [{"name": "sdlc:b-ready"}]}) is None
 
 
 # --- detect and scan file nothing without the App -------------------------------------------
@@ -478,3 +482,94 @@ def test_compare_lists_a_rename_s_old_path_too(monkeypatch):
     monkeypatch.setattr(github, "_request", lambda *a, **k: {"data": data, "error": ""})
     got = github.compare_commits(REPO, REVIEWED, HEAD)
     assert got["files"] == [f"{DIR}/evidence/app.py", "src/app.py", f"{DIR}/evidence/run-e.json"]
+
+
+def test_the_full_profile_s_d_approval_is_not_gate_e_s(tmp_path, capsys):
+    """The R22 review, finding 1: on the full profile the owner approves the same PR at (d);
+    that approval, on a commit without gate (e)'s record, never merges at (e)."""
+    early = "a" * 40
+
+    class Full(FakeGitHub):
+        def file_at(self, repo, path, ref):
+            if ref == early and path.endswith("gate-e.json"):
+                return {"ok": False, "text": None, "missing": True, "reason": "404"}
+            return super().file_at(repo, path, ref)
+
+    d_approval = {
+        "ok": True,
+        "reviews": [{"author": "owner", "state": "APPROVED", "commit": early}],
+    }
+    root = checkout(tmp_path)
+    (root / "sdlc.yaml").write_text("profile: full\n", encoding="utf-8")
+    gh = Full(reviews=d_approval)
+    assert merge_step.merge(root, REPO, 12, env(tmp_path), gh) == 0
+    assert "predates gate (e)" in capsys.readouterr().out
+    assert not [c for c in gh.calls if c[0] == "merge"]
+    # on standard the same early approval counts (decision 36, point 4: approving early)
+    (root / "sdlc.yaml").write_text("profile: standard\n", encoding="utf-8")
+    gh = Full(reviews=d_approval)
+    assert merge_step.merge(root, REPO, 12, env(tmp_path), gh) == 0
+    assert [c for c in gh.calls if c[0] == "merge"]
+
+
+def test_findings_that_do_not_normalise_wait(tmp_path, capsys):
+    bad = {f"{DIR}/evidence/review-findings.json": json.dumps({"head": REVIEWED, "findings": 3})}
+    _waits(tmp_path, capsys, FakeGitHub(files=bad), "")
+
+
+# --- the GitHub helpers ------------------------------------------------------------------------
+def test_the_merge_step_s_github_helpers_shape_the_api(monkeypatch):
+    import base64
+
+    from pr import github
+
+    monkeypatch.setattr(github, "token", lambda: "t")
+    answers = {}
+
+    def fake(method, url, tok, payload=None):
+        answers.setdefault("calls", []).append((method, url, payload))
+        for fragment, answer in answers.items():
+            if fragment != "calls" and fragment in url:
+                return answer
+        return {"status": 404, "data": {"message": "Not Found"}, "error": "Not Found"}
+
+    monkeypatch.setattr(github, "_request", fake)
+    text = base64.b64encode(b"phase: e\n").decode()
+    answers["/contents/a.yaml"] = {"status": 200, "data": {"type": "file", "content": text},
+                                   "error": ""}  # fmt: skip
+    assert github.file_at(REPO, "a.yaml", HEAD)["text"] == "phase: e\n"
+    assert github.file_at(REPO, "b.yaml", HEAD)["missing"] is True
+    answers["/contents/changes"] = {
+        "status": 200,
+        "error": "",
+        "data": [{"name": "0007-dark-mode", "type": "dir"}, {"name": "README.md", "type": "file"}],
+    }
+    assert github.dir_at(REPO, "changes", HEAD)["names"] == ["0007-dark-mode"]
+    answers["/check-runs?"] = {
+        "status": 200,
+        "error": "",
+        "data": {
+            "check_runs": [
+                {"id": 1, "status": "completed", "conclusion": "success", "app": {"slug": "x"}}
+            ]
+        },
+    }
+    runs = github.check_runs_on(REPO, HEAD, "sdlc/review")
+    assert runs["runs"] == [{"id": 1, "status": "completed", "conclusion": "success", "app": "x"}]
+    assert "check_name=sdlc%2Freview" in answers["calls"][-1][1]
+    answers["/compare/"] = {
+        "status": 200,
+        "error": "",
+        "data": {"status": "ahead", "files": [{"filename": f"f{n}"} for n in range(300)]},
+    }
+    assert github.compare_commits(REPO, REVIEWED, HEAD)["ok"] is False
+    answers["/pulls/12/merge"] = {"status": 405, "error": "Repository rule violations", "data": {}}
+    assert github.merge_pr(REPO, 12, HEAD, "m") == {
+        "ok": False,
+        "sha": None,
+        "status": 405,
+        "reason": "Repository rule violations",
+    }
+    method, url, payload = answers["calls"][-1]
+    assert method == "PUT" and payload == {"sha": HEAD, "merge_method": "merge"}
+    assert github.merge_pr(REPO, 12, HEAD, "")["reason"] == "no merge token"

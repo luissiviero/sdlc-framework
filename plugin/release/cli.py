@@ -6,7 +6,8 @@
                       [--event closed|labeled] [--merge-sha <sha>] [--change-id <id>]
     python cli.py record --root <project> --id <id> --pr <number> [--merge-sha <sha>]
 
-``.github/workflows/sdlc-release.yml`` calls ``run`` on the owner's merge of a build PR and,
+``.github/workflows/sdlc-release.yml`` calls ``run`` on the merge of a build PR (the merge
+App's on the owner's approval, decision 36, or the owner's) and,
 when production is declared, on the release label; its second job calls ``record`` after a
 release that ran. Neither is a phase run: no ``claude`` starts and no hook fires here, so
 ``run`` checks the approval itself with the production-gate hook's own function

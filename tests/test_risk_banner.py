@@ -509,6 +509,12 @@ def test_the_runner_confirms_an_approval_line_from_the_reviews(tmp_path, monkeyp
 
     env = {"GITHUB_ACTIONS": "true"}
     approval = [{"author": OWNER, "state": "APPROVED"}]
+    forged = {**_line(phase="e", pr=7, by="sdlc-merge[bot]")}
+    st.risk_acceptances = [forged]
+    bot_fields = run_phase.owner_fields(st)
+    monkeypatch.setattr(run_phase, "_github", lambda: GitHub(approval))
+    found = run_phase.acceptance_mismatches(bot_fields, {}, "owner/name", env)
+    assert any("an automation account, which never accepts a risk" in r for r in found)
     for fake, expected in (
         (GitHub(approval), []),
         (GitHub([{"author": "mallory", "state": "APPROVED"}]), ["no approving review by"]),

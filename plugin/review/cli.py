@@ -22,6 +22,7 @@ from __future__ import annotations
 import argparse
 import importlib
 import json
+import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -106,7 +107,8 @@ def render_prompt(
 RISK_SECTION = """
 ## Risk-list items this change touches (decision 35)
 A risk-list hit does not park the change: it is a line of the "Needs your close look" banner
-on this pull request, and the owner's merge accepts it. You brief the owner on each item
+on this pull request, and the owner's approving review accepts it
+(decision 36). You brief the owner on each item
 below, in a second file, `{brief}`, one section per item, its name exactly as listed:
 
 ```markdown
@@ -279,7 +281,18 @@ def _not_evidence_since(root: Path, change_dir: Path, reviewed: str, final: str)
     if not diffmod.is_ancestor(root, reviewed, final):
         return f"the final head {final[:10]} does not follow the reviewed {reviewed[:10]}"
     rel = str(Path(change_dir).resolve().relative_to(Path(root).resolve())).replace("\\", "/")
-    files = diffmod.committed_files(root, reviewed, final)
+    # every path a commit touched, a rename's both sides and a type change included (the R22
+    # review, finding 3: git's default rename detection lists only the new path)
+    try:
+        out = subprocess.run(
+            ["git", "diff", "--name-only", "--no-renames", "-z", f"{reviewed}..{final}"],
+            cwd=str(root), capture_output=True, text=True, encoding="utf-8", timeout=120,
+        )  # fmt: skip
+    except (OSError, subprocess.SubprocessError) as exc:
+        return f"the commits after the reviewed one could not be listed: {exc}"
+    if out.returncode != 0:
+        return "the commits after the reviewed one could not be listed"
+    files = [f for f in out.stdout.split("\0") if f]
     other = [f for f in files if not fmod.allowed_after_review(f, rel)]
     if other:
         return f"commits after the reviewed {reviewed[:10]} change: {', '.join(other[:5])}"
@@ -304,13 +317,14 @@ def cmd_check_run(args) -> int:
     conclusion = "success" if tally["important"] == 0 else "failure"
     title = f"{tally['important']} Important, {tally['nit']} nits"
     summary = fmod.render_summary(data)
-    head = str(data.get("head") or diffmod.head_sha(root) or "")
+    reviewed = str(data.get("head") or "")
+    head = str(reviewed or diffmod.head_sha(root) or "")
     if getattr(args, "final_head", False):
         # R22 (decision 36, point 3): the runner posts the check again on the build PR's
         # final head, after its own last commit; green only while every commit after the
         # reviewed one is evidence or the run record, which is what the merge step accepts
         final = diffmod.head_sha(root) or ""
-        later = _not_evidence_since(root, change_dir, head, final)
+        later = _not_evidence_since(root, change_dir, reviewed, final)
         if later:
             conclusion = "failure"
             title = f"{title}; commits after the reviewed one"

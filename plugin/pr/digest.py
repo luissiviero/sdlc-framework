@@ -59,7 +59,10 @@ APPROVED_LINE = " — approved {at}, not merged: {reason}"
 NO_CHECK = "waiting for the sdlc/review check on its head"
 RED_CHECK = "sdlc/review is not green on its head"
 CONFLICT = "a conflict with the default branch"
-NOT_YET = "the merge step has not merged it (read the latest SDLC merge (e) run)"
+NOT_YET = (
+    "not merged yet: read the latest SDLC merge (e) run, or merge it yourself when no merge "
+    "App is set up (fallback C1)"
+)
 
 
 def _now() -> str:
@@ -210,12 +213,16 @@ def list_queue_prs(repo: str) -> tuple[list[dict[str, Any]], str]:
     return [pr for pr in items if sdlc_labels(pr) or c.INCIDENT_LABEL in labels_of(pr)], ""
 
 
-def approval_of(repo: str, pr: dict[str, Any]) -> dict[str, Any] | None:
-    """For a build PR at ``sdlc:e-ready``: {'at', 'reason'} when its latest review that
-    approves or requests changes, by an account that is not a ``[bot]``, approves, and the
-    PR is still open; None otherwise or when a read fails. The R22 proposal's line ("approved
-    <date>, not merged: <reason>"), which R20 places; the merge step itself checks that the
-    approval is the owner's (decision 34)."""
+def approval_of(
+    repo: str, pr: dict[str, Any], config: dict[str, Any] | None = None
+) -> dict[str, Any] | None:
+    """For a build PR at ``sdlc:e-ready``: {'at', 'reason'} when the owner's latest review
+    that approves, requests changes or was dismissed approves (``unpark.is_owner_actor``,
+    decision 34, with ``config`` the default branch's ``sdlc.yaml`` when the digest has the
+    checkout), and the PR is still open; None otherwise or when a read fails. The R22
+    proposal's line ("approved <date>, not merged: <reason>"), which R20 places."""
+    from state.unpark import is_owner_actor  # noqa: PLC0415
+
     if c.ready_label("e") not in labels_of(pr) or not pr.get("number"):
         return None
     got = github.pr_reviews(repo, int(pr["number"]))
@@ -224,9 +231,9 @@ def approval_of(repo: str, pr: dict[str, Any]) -> dict[str, Any] | None:
     latest = None
     for review in got.get("reviews") or []:
         state = str(review.get("state") or "").upper()
-        if state in ("APPROVED", "CHANGES_REQUESTED", "DISMISSED") and not str(
-            review.get("author") or ""
-        ).endswith("[bot]"):
+        if state in ("APPROVED", "CHANGES_REQUESTED", "DISMISSED") and is_owner_actor(
+            review.get("author"), config or {}, None, repo
+        ):
             latest = review
     if latest is None or str(latest.get("state")).upper() != "APPROVED":
         return None
@@ -288,8 +295,16 @@ def main(argv: list[str] | None = None) -> int:
     else:
         prs, error = list_queue_prs(args.repo)
         protection = github.default_branch_protection(args.repo)
+        config: dict[str, Any] = {}
+        if args.root:
+            from hooks._common import ConfigError, load_sdlc_config  # noqa: PLC0415
+
+            try:
+                config = load_sdlc_config(str(Path(args.root).resolve())) or {}
+            except ConfigError:
+                config = {}
         for pr in prs:
-            pr["approval"] = approval_of(args.repo, pr)
+            pr["approval"] = approval_of(args.repo, pr, config)
 
     counters_md = ""
     if args.root:

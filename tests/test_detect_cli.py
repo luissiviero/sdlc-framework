@@ -225,6 +225,14 @@ class FakeGitHub:
         self.calls.append(("ensure_label", args, kwargs))
         return {"ok": True, "route": "fake", "label": args[1], "created": False}
 
+    def pr_by_number(self, *args: Any, **kwargs: Any) -> dict[str, Any]:
+        self.calls.append(("pr_by_number", args, kwargs))
+        return {"ok": True, "route": "fake", "number": args[1], "head_sha": "f" * 40}
+
+    def post_not_build_check(self, *args: Any, **kwargs: Any) -> dict[str, Any]:
+        self.calls.append(("post_not_build_check", args, kwargs))
+        return {"ok": True, "route": "fake"}
+
     def named(self, name: str) -> list[tuple[tuple[Any, ...], dict[str, Any]]]:
         return [(a, k) for n, a, k in self.calls if n == name]
 
@@ -298,6 +306,8 @@ def gh(monkeypatch) -> FakeGitHub:
         "set_labels",
         "create_pr",
         "ensure_label",
+        "pr_by_number",
+        "post_not_build_check",
     ):
         monkeypatch.setattr(module, name, getattr(fake, name))
     return fake
@@ -971,6 +981,8 @@ def test_dismiss_with_a_reason_opens_the_dismissal_pr(incident, gh, capsys):
     assert reason in body and signature in body
     assert kwargs["draft"] is False
     assert out["pr"]["url"] == "https://x/pr/13"
+    # R22: the abandon workflow's token opens it, so the step posts "not a build PR" itself
+    assert gh.named("post_not_build_check") == [((REPO, "f" * 40), {"cwd": root})]
 
 
 def test_dismiss_reads_the_reason_from_the_last_comment_by_a_person(incident, gh, capsys):

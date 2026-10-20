@@ -42,7 +42,8 @@ and pass `--setup ""` when the project has nothing to install.
   GitHub remote yet goes on, and the report says the App comes with the remote.
 
 ## 1. Ask the owner (one question round, defaults in brackets)
-- profile [standard]: standard (owner merges at a, b, e) · full (all five gates). (Lite,
+- profile [standard]: standard (owner merges at a and b, and approves at e) · full (all five
+  gates). (Lite,
   gates a and e only, was withdrawn by decision 21 and is gone since 0.2.14.)
 - review [deferred]: deferred (a review panel decides a judgment item inside a phase in
   fresh contexts and the run continues; the owner reads "Decisions taken for you" at the
@@ -170,7 +171,9 @@ close look" banner shows (gate (a) matches the globs on this PR's own files, dec
   replace all thirteen `sdlc-*.yml` workflows (delete each and re-run /sdlc-init) and bump
   the pin in `sdlc.yaml` to 1.0.9 in the same pull request: the 1.0.9 copies persist no git
   credential in the checkout, and an older pinned framework would then push with none. On
-  an upgrade to 1.0.18, re-running /sdlc-init installs `sdlc-merge.yml`, and replacing
+  an upgrade to 1.0.18, re-running /sdlc-init installs `sdlc-merge.yml`; bump the pin in
+  `sdlc.yaml` to 1.0.18 in the same pull request, since the copy runs
+  `plugin/ci/merge_step.py`, which an older pinned framework does not have; replacing
   `sdlc-digest.yml` gives the digest its `checks: read` for the approved, unmerged build PR's
   line.
 - The merge App (decision 36; ROADMAP R22): gate (e) is your approving review on the build
@@ -187,7 +190,8 @@ close look" banner shows (gate (a) matches the globs on this PR's own files, dec
      wait timer; Deployment branches and tags → "Selected branches and tags" → add the rule
      `main` (your default branch's name), so only a run on the default branch reads its
      key. In that environment add the **variable** `SDLC_MERGE_APP_ID` (the App ID) and
-     the **secret** `SDLC_MERGE_APP_PRIVATE_KEY` (the `.pem` file's content). Environments
+     the **secret** `SDLC_MERGE_APP_PRIVATE_KEY` (the `.pem` file's content), never as a
+     repository secret, which every workflow on every branch could read. Environments
      on a private repository need a paid plan (GitHub's documentation); on a free private
      repository the merge stays yours (fallback C1).
   3. Add this App to ruleset 1's bypass list (the ruleset bullet below), in "For pull

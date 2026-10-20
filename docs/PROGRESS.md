@@ -6,6 +6,7 @@ This session ran on branch `ccr-0edc2256-yax6jz`. The owner's task: build R22 (r
 - **The precondition.** R22's hold was still on `main` (`57b5a85`) when the session started: #296, which carries R60's answers into R22's row and lifts the hold, was open. The owner asked whether the build had to wait for it. It did not: the two sessions do different work, and their only shared lines are R22's ROADMAP row and the proposal. So this branch carried #296's commit (`e131e34`) from the start. #296 has merged since (`292f306`), so the hold is lifted on `main` too.
 - **Numbers.** This build takes no decision, choice or note number. Decisions 37 and 38 and choices 246 and 247 are the other sessions' (#299, #302, #298, #303). Note 56 is kept for the sample's ruleset change (below), written once the owner has made it.
 - **The merge order:** #303 before this PR, as agreed with its session; `main` at `0e11ae9` (its merge) is merged into this branch.
+- **The version.** #304 (R8, the Gemini second opinion, open as a draft) also claims 1.0.18. Its session was told that R22 (rank 9) proposes to merge first as 1.0.18 and #304 to move to 1.0.19; the owner's merge order decides, and whichever merges second takes the next number. The session that writes decisions 37 and 38 builds their code after this PR.
 
 ## Summary
 - **Gate (e) is the owner's approving review** (decision 36, point 1). The build PR's body, `/sdlc-deploy` steps 5 and 6, the close-look banner, the operating model and the README say so: approve = gate (e), and the merge App merges on it.
@@ -15,14 +16,15 @@ This session ran on branch `ccr-0edc2256-yax6jz`. The owner's task: build R22 (r
   - `merge`: it runs in the `sdlc-merge` environment, which only the default branch may use. It mints the merge App's token and runs `plugin/ci/merge_step.py merge`, which re-checks everything from the API:
     - the build PR is open, not a draft, and at `sdlc:e-ready`;
     - at its head, gate (e) passed with no deferred commands check, and there is no Important finding;
-    - every commit after the reviewed one, and after the approved one, is evidence or the run record;
+    - every commit after the reviewed one, and after the approved one, is evidence or the run record (a rename's old path included);
+    - on the `full` profile, the approved commit already carries gate (e)'s record, so the (d) approval never counts at (e);
     - `sdlc/review` is green on the head;
     - the owner's latest decisive review is an approval.
 
-    Then it merges at exactly that head. A refusal is a green "wait" line, and the PR shows in the digest.
+    Then it merges at exactly that head. A check that does not hold is a green "wait" line; a merge GitHub refuses (a conflict, a rule) is a red run. Either way the PR shows in the digest.
 - **The check on the final head** (point 3): after its own last commit, the (e) run posts `sdlc/review` again (`review/cli.py check-run --final-head`). The check is green only while every commit since the reviewed one is evidence or the run record. When it is green and gate (e) waits for the owner, the run dispatches the merge workflow, so an early approval merges then (point 4).
 - **The App is required** (R60's answer, options row "Automation identity"):
-  - `ci/app_token.py app_missing` stops a run of a workflow that minted no App token: `run_phase.py`'s every phase, the detect step's filing and the scan's filing;
+  - `ci/app_token.py app_missing` stops a run of a workflow that minted no App token: every phase run of `run_phase.py` (`--find-change` and `--phase triage`, which publish nothing, return before it), the detect step's filing and the scan's filing;
   - `/sdlc-init` stops at the App's setup (its step 0), desktop-only, with the links;
   - the workflow token stays the in-job fallback after 50 minutes, the session's token, and the token of the workflows that mint no App token.
 - **The (e) acceptance** (choice 242, point 2): when the build PR is merged by anyone but the owner, the release record job takes the risk lines' acceptance from the owner's approving review (`via: approval`). The merge App's `[bot]` accepts nothing. The runner's baseline check confirms such a line from the PR's reviews.
@@ -55,10 +57,34 @@ This session ran on branch `ccr-0edc2256-yax6jz`. The owner's task: build R22 (r
 | One decision file or three | Done: decision 36 |
 
 ## The independent review
-A fresh-context sub-agent reviewed the diff before the PR. Its findings and what became of each are in the section "The review's findings" below.
+A fresh-context sub-agent reviewed the diff (at `fb29e89` with the working tree) before the PR, with the suite green. It changed no file. It found three Important issues and nine nits; the session had already fixed a tenth, the compare side's rename hole, in `fb29e89` while it read. What became of each:
+
+| # | Finding | Severity | Outcome |
+|---|---|---|---|
+| 1 | On the `full` profile the owner's (d) approval, an approving review on the same build PR, would count as gate (e)'s | Important | Fixed: on `full` the approved commit must already carry `evidence/gate-e.json` (`merge_step.judge`); an early approval on `standard` still counts (point 4). Tested |
+| 2 | A dismissal PR (opened by the abandon workflow's token) and a runbook PR after the App's 50-minute fallback get no "not a build PR" check, so ruleset 2 would hold them | Important | Fixed: `detect/cli.py dismiss --open-pr` and `detect/runbooks.py` post it on the new head. Tested |
+| 3 | The final-head check is green for a source file renamed into `evidence/` (git lists only the new path), so ruleset 2 lets the owner merge it without the bypass | Important | Fixed: `review/cli.py` lists the paths with `--no-renames` and no filter. Tested |
+| 4 | The final-head check is green when the findings name no reviewed commit | Nit | Fixed: then it is red. Tested |
+| 5 | A forged `risk_acceptances` line naming the merge App passes the runner's baseline check, since the App now merges | Nit | Fixed: a line naming an automation account never passes. Tested. The line naming another change's build PR predates R22 and is left as it is |
+| 6 | The digest's approved-PR line counts any approver, and its reason assumes a merge App | Nit | Fixed: the owner's account only (`is_owner_actor`, with the default branch's `sdlc.yaml` when the digest has the checkout); the reason names fallback C1 too |
+| 7 | The merge job's concurrency group could be split by the dispatch's `head_ref` | Nit | Fixed: keyed on the PR's number |
+| 8 | The merge job relies on the environment's branch rule alone, and GitHub creates a missing environment with no rule | Nit | Fixed: the job also requires `github.ref` to be the default branch; `/sdlc-init` says the key is never a repository secret |
+| 9 | Installing `sdlc-merge.yml` under an older pin turns every PR's run red | Nit | Fixed: `/sdlc-init` says to bump the pin to 1.0.18 in the same pull request |
+| 10 | Stale "the owner's merge" wording at (e) | Nit | Fixed: `sdlc-deploy.md` (description, sources, the human action), `README.md`, `OPERATING_MODEL.md` §2 and §4, `release/cli.py`, `sdlc-init.md` step 1, the review prompt's risk section and the adversarial reviewer's brief |
+| 11 | Docs claims: a merge GitHub refuses is red, not green; `app_missing` does not run for `--find-change` and `triage` | Nit | Fixed in the module docstring, the workflow header and this record |
+| 12 | Missing tests | Nit | Added: the GitHub helpers' shaping, the 300-file cap, the full-profile case, findings that do not normalise (now a "wait", not a crash). `offer_merge`'s call conditions inside `_run_phase` are tested through `offer_merge` only |
+
+The review also checked these and found them sound:
+- the doorbell holds no key and checks the owner against the default branch's `sdlc.yaml`;
+- the merge job reads nothing the PR controls, and its key reaches only the mint step and the merge call;
+- the head rule's paths (a folder named `changes/0007-x-evil/` is refused) and an "Update branch" merge commit;
+- the reviews' states and `commit_id`, and the reading of `status.yaml`;
+- `validate_acceptances`;
+- `app_missing` runs before any side effect, in exactly the eight workflows that mint the App token;
+- `offer_merge` dispatches only on a green check and a gate (e) that waits.
 
 ## The port list
-This PR touches `plugin/ci/run_phase.py` (`offer_merge`, `MERGE_WORKFLOW`, `_approval_line_problems`, `ACCEPT_VIA_APPROVAL`, the App check in `main`), `plugin/detect/cli.py` (`_app_missing`, the refusal in `cmd_run`) and the detect, runbook and fix workflow templates (their token-rule comments). It goes on the port list until the 1.0.0 read.
+This PR touches `plugin/ci/run_phase.py` (`offer_merge`, `MERGE_WORKFLOW`, `_approval_line_problems`, `ACCEPT_VIA_APPROVAL`, the App check in `main`), `plugin/detect/cli.py` (`_app_missing`, the refusal in `cmd_run`, `_post_not_build` in `dismiss`), `plugin/detect/runbooks.py` (the check on the runbook PR) and the detect, runbook and fix workflow templates (their token-rule comments). It goes on the port list until the 1.0.0 read.
 
 ## Proposed edits for the owner
 | Link | Row | What is there now | What it must become |

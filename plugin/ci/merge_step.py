@@ -40,12 +40,15 @@ digest (decisions 11 and 20):
 4. ``sdlc/review`` is green on the head;
 5. the owner's latest review that approves or requests changes approves, and every commit
    after the one it was submitted on is evidence or the run record, as in 3;
-6. it merges at exactly that head through the merge App's token (``SDLC_MERGE_TOKEN``),
+6. on the ``full`` profile, whose (d) approval is an approving review on the same PR, the
+   approved commit must already carry ``evidence/gate-e.json``;
+7. it merges at exactly that head through the merge App's token (``SDLC_MERGE_TOKEN``),
    a bypass actor of ruleset 1; the workflow token never merges (decision 4).
 
 Output: ``merge: <what>`` lines on stdout and in ``$GITHUB_STEP_SUMMARY``; until R11's
 approvals list exists they are the record of the approval and the merge (who, when, the
-findings tally). Exit 0 on a merge or a wait, 1 on an API failure or a refused merge call.
+findings tally). Exit 0 on a merge or a wait; 1, a red run for R18's "Failed runs", on an
+API failure or a merge call GitHub refuses (a conflict, a rule, a moved head).
 """
 
 from __future__ import annotations
@@ -323,7 +326,8 @@ def judge(
     if st.build_pr is None or int(st.build_pr) != int(number):
         return {"wait": f"status.yaml names build PR #{st.build_pr}, not #{number}"}
     evidence = f"{rel}/{art.EVIDENCE_DIR}"
-    gate_text = _text_at(github, repo, f"{evidence}/{art.GATE_RESULT.format(phase='e')}", head)
+    gate_path = f"{evidence}/{art.GATE_RESULT.format(phase='e')}"
+    gate_text = _text_at(github, repo, gate_path, head)
     try:
         gate_record = json.loads(gate_text) if gate_text is not None else None
     except ValueError:
@@ -341,7 +345,10 @@ def judge(
         findings = None
     if not isinstance(findings, dict):
         return {"wait": "evidence/review-findings.json is missing or unreadable at the head"}
-    findings = fmod.normalise(findings)
+    try:
+        findings = fmod.normalise(findings)
+    except (TypeError, ValueError, AttributeError) as exc:
+        return {"wait": f"evidence/review-findings.json cannot be read: {exc}"}
     tally = findings["tally"]
     if tally.get("important"):
         return {"wait": f"the review found {tally['important']} Important finding(s)"}
@@ -371,6 +378,14 @@ def judge(
     after = only_evidence_since(github, repo, approved_on, head, rel)
     if after:
         return {"wait": f"after the owner's approval: {after}"}
+    try:
+        profile = c.effective_profile(config.get("profile"), st.profile_override)
+    except ValueError:
+        profile = "full"  # an unknown profile is judged as the stricter one
+    if profile == "full" and _text_at(github, repo, gate_path, approved_on) is None:
+        # the full profile's (d) approval is an approving review on this same PR: only an
+        # approval given once gate (e) has run counts at (e) (the R22 review, finding 1)
+        return {"wait": "the owner's approval predates gate (e) (the full profile's (d) approval)"}
     return {"head": head, "change_id": change_id, "approval": approval, "tally": tally}
 
 
