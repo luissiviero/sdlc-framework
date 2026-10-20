@@ -5,7 +5,7 @@ shrinks, the Claude Code version a note names against the pin, ``supersedes`` on
 its marker in the notes index, the decisions index read from each file's heading; and R58's
 checks: frontmatter that parses, decision amendments and status, a proposal's status against
 its ROADMAP row, built rows under "Done", version and PR pairs against the tags, citations of
-the moved stubs, Portuguese words.
+the moved stubs, Portuguese words; and check 8, merge claims against the merge commits.
 Layer 2 (this repository): the lint finds no failure, the pin is the one ``/sdlc-init``
 installs, and the decisions index on disk is what ``python tasks.py decisions-index`` writes.
 """
@@ -13,6 +13,7 @@ installs, and the decisions index on disk is what ``python tasks.py decisions-in
 from __future__ import annotations
 
 import subprocess
+from datetime import datetime
 from pathlib import Path
 
 import tasks
@@ -300,6 +301,61 @@ def test_the_tags_are_read_from_git_and_absent_tags_are_reported(tmp_path):
     git("commit", "-q", "--allow-empty", "-m", "a direct commit")
     git("tag", "v1.2.4")
     assert tasks.tag_prs(tmp_path) == {"1.2.3": "5"}
+
+
+def test_a_merge_claim_matches_the_merge_commit(tmp_path):
+    docs = tmp_path / "docs"
+    when = datetime.fromisoformat("2026-10-03T12:16:52-03:00")
+    merges = {"90": ("89b8400aaaa", when), "7": ("0beba95bbbb", when)}
+    _write(
+        docs / "ROADMAP.md",
+        "PR #90 merged at 15:16:55 UTC (`89b8400`), held since 2026-10-02.\n"
+        "PR #90 merged on 2026-10-03; #90 merged as `89b8400`; PR #90 merged on 2026-10-03.\n"
+        "PR #90 merged on 2026-10-04 and #87 earlier.\n"
+        "PR #90 merged at 15:30 UTC (head `1234567`).\n"
+        "PR #90, merged as `abcdef1`.\n"
+        "the sample's PR #7 merged as `ffffff1`; PR #12 merged on 2020-01-01.\n"
+        "a review quotes `PR #90 merged on 2026-10-09`.\n",
+    )
+    _write(docs / "progress" / "session-9.md", "PR #90 merged on 2026-10-04.\n")
+    _write(docs / "progress" / "2026-10-21-x.md", "PR #90 merged at 19:18:12 UTC on 2026-10-04.\n")
+    _write(docs / "notes" / "12.md", "PR #90 merged as `0000000`.\n")
+    _write(docs / "notes" / "54.md", "PR #90 merged as `0000000`.\n")
+    failures, reports = tasks.merge_claim_problems(docs, merges)
+    assert failures == [
+        "merged: docs/ROADMAP.md:3: PR #90 date 2026-10-04, git has 2026-10-03 UTC",
+        "merged: docs/ROADMAP.md:4: PR #90 time 15:30 UTC, git has 15:16:52 UTC",
+        "merged: docs/ROADMAP.md:5: PR #90 merge commit abcdef1, git has 89b8400",
+        "merged: docs/notes/54.md:1: PR #90 merge commit 0000000, git has 89b8400",
+        "merged: docs/progress/2026-10-21-x.md:1: PR #90 date 2026-10-04, git has 2026-10-03 UTC",
+        "merged: docs/progress/2026-10-21-x.md:1: PR #90 time 19:18:12 UTC, git has 15:16:52 UTC",
+    ]
+    assert reports == [
+        "merged: docs/notes/12.md:1: PR #90 merge commit 0000000, git has 89b8400",
+        "merged: docs/progress/session-9.md:1: PR #90 date 2026-10-04, git has 2026-10-03 UTC",
+    ]
+
+
+def test_the_merges_are_read_from_git_and_absent_history_is_reported(tmp_path):
+    def git(*args: str) -> str:
+        return subprocess.run(
+            ["git", "-c", "user.name=t", "-c", "user.email=t@t", *args],
+            cwd=tmp_path,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout
+
+    docs = tmp_path / "docs"
+    _write(docs / "page.md", "x\n")
+    _, reports = tasks.lint_docs(docs, tmp_path, docs / "none.txt", pin="2.1.278")
+    assert "merge claims not checked: no merge history in this checkout" in reports
+    git("init", "-q")
+    git("commit", "-q", "--allow-empty", "-m", "Merge pull request #5 from o/b")
+    git("commit", "-q", "--allow-empty", "-m", "a direct commit")
+    sha = git("rev-parse", "HEAD~1").strip()
+    merges = tasks.pr_merges(tmp_path)
+    assert list(merges) == ["5"] and merges["5"][0] == sha
 
 
 def test_a_moved_stub_is_not_cited_in_a_living_document(tmp_path):

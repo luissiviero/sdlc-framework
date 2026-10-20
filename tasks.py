@@ -410,6 +410,24 @@ VERSION_PR_RES = (
     re.compile(r"`v(\d+\.\d+\.\d+)`(?:,| in| \(| =) PR #(\d+)"),
 )
 MERGE_SUBJECT_RE = re.compile(r"^Merge pull request #(\d+) ")
+# check 8: "PR #N merged on/at/as ..." against the PR's merge commit; the claim ends at a
+# sentence end, a cell, a bracket or the next PR, and "sample" just before it marks the other
+# repository's PR, whose numbers overlap this one's
+MERGE_CLAIM_RE = re.compile(
+    r"(?P<before>.{0,40}?)(?<![\w#])(?:PR )?#(?P<pr>\d+)[^.;|#\]\n]{0,30}?\bmerged (?:on|at|as)\b"
+    r"(?P<claim>(?:[^.;|#\]\n]|\.(?!\s))*)"
+)
+CLAIM_SHA_RE = re.compile(r"(?:^\s*|\bas |\()`([0-9a-f]{7,40})`")
+# the date and the time the claim gives for the merge itself ("merged on <date>", "merged at
+# <time> UTC on <date>"), not another event's that shares the clause
+CLAIM_DATE_RE = re.compile(r"(?:^\s*|^\s*\d{2}:\d{2}(?::\d{2})? UTC on )(\d{4}-\d{2}-\d{2})\b")
+CLAIM_TIME_RE = re.compile(r"^\s*(\d{2}):(\d{2})(?::(\d{2}))? UTC\b")
+# a merge commit's time is a second or two from GitHub's merged_at, which the records quote
+CLAIM_TIME_SLACK_SECONDS = 90
+# the records written before check 8 existed are reported, not failed (choice 126)
+MERGE_CLAIMS_SINCE = "2026-10-20"
+LAST_NOTE_BEFORE_MERGE_CLAIMS = 53
+DATED_RE = re.compile(r"^(\d{4}-\d{2}-\d{2})-")
 # a moved stub cited for a fact (by section, or as a source), not named as the file it was
 STUB_CITATION_RE = re.compile(
     r"(docs/(?:NOTES|DECISIONS)\.md)`?\s*(?:§|section )\s*\d"
@@ -615,6 +633,85 @@ def version_pr_problems(docs_dir: Path, tags: dict[str, str]) -> list[str]:
     return problems
 
 
+def pr_merges(root: Path) -> dict[str, tuple[str, datetime]] | None:
+    """``PR number -> (merge commit, committer time)`` for every "Merge pull request #N"
+    commit reachable from HEAD, the newest first, or None when ``root`` has no such history."""
+    try:
+        out = subprocess.run(
+            ["git", "log", "--format=%H%x09%cI%x09%s"],
+            cwd=root,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            check=True,
+        ).stdout
+    except (OSError, subprocess.CalledProcessError):
+        return None
+    merges: dict[str, tuple[str, datetime]] = {}
+    for line in out.splitlines():
+        sha, when, subject = (line.split("\t", 2) + ["", ""])[:3]
+        merge = MERGE_SUBJECT_RE.match(subject)
+        if merge and merge.group(1) not in merges:
+            merges[merge.group(1)] = (sha, datetime.fromisoformat(when))
+    return merges or None
+
+
+def _merge_claims_fail(docs_dir: Path, path: Path) -> bool:
+    """Whether a wrong merge claim in ``path`` fails the lint: a living document, a note after
+    ``LAST_NOTE_BEFORE_MERGE_CLAIMS``, or a record dated from ``MERGE_CLAIMS_SINCE`` on; the
+    older records are kept as written (choice 126), so their claims are reported."""
+    if path in _living_docs(docs_dir):
+        return True
+    rel = path.relative_to(docs_dir)
+    if rel.parts[0] == "notes":
+        return path.stem.isdigit() and int(path.stem) > LAST_NOTE_BEFORE_MERGE_CLAIMS
+    dated = DATED_RE.match(path.name)
+    return bool(dated) and dated.group(1) >= MERGE_CLAIMS_SINCE
+
+
+def _claim_mismatches(claim: str, sha: str, when: datetime) -> list[str]:
+    """What a claim's first sha, date and UTC time say that the merge commit does not."""
+    utc = when.astimezone(timezone.utc)
+    found: list[str] = []
+    said_sha = CLAIM_SHA_RE.search(claim)
+    if said_sha and not sha.startswith(said_sha.group(1)):
+        found.append(f"merge commit {said_sha.group(1)}, git has {sha[:7]}")
+    said_date = CLAIM_DATE_RE.search(claim)
+    if said_date and said_date.group(1) not in (utc.date().isoformat(), when.date().isoformat()):
+        found.append(f"date {said_date.group(1)}, git has {utc.date().isoformat()} UTC")
+    said_time = CLAIM_TIME_RE.search(claim)
+    if said_time:
+        hours, minutes, seconds = (int(v or 0) for v in said_time.groups())
+        said = hours * 3600 + minutes * 60 + seconds
+        actual = utc.hour * 3600 + utc.minute * 60 + utc.second
+        if abs(said - actual) > CLAIM_TIME_SLACK_SECONDS:
+            found.append(f"time {said_time.group(0).strip()}, git has {utc:%H:%M:%S} UTC")
+    return found
+
+
+def merge_claim_problems(
+    docs_dir: Path, merges: dict[str, tuple[str, datetime]]
+) -> tuple[list[str], list[str]]:
+    """(failures, reports): a "PR #N merged on/at/as ..." claim whose sha, date or UTC time is
+    not the merge commit's. A PR git does not know (the sample's, an unmerged one) is not
+    judged; a claim quoted in a code span (a review citing an error) is not a claim."""
+    failures: list[str] = []
+    reports: list[str] = []
+    for path in _pages(docs_dir):
+        rel = path.relative_to(docs_dir).as_posix()
+        strict = _merge_claims_fail(docs_dir, path)
+        for number, line in enumerate(path.read_text(encoding="utf-8-sig").splitlines(), 1):
+            line = CODE_SPAN_RE.sub(lambda m: "" if "merged" in m.group(0) else m.group(0), line)
+            for claim in MERGE_CLAIM_RE.finditer(line):
+                known = merges.get(claim.group("pr"))
+                if not known or "sample" in claim.group("before").lower():
+                    continue
+                for mismatch in _claim_mismatches(claim.group("claim"), *known):
+                    text = f"merged: docs/{rel}:{number}: PR #{claim.group('pr')} {mismatch}"
+                    (failures if strict else reports).append(text)
+    return failures, reports
+
+
 def stub_problems(docs_dir: Path) -> list[str]:
     """A living document that cites a moved stub (``docs/NOTES.md``, ``docs/DECISIONS.md``)
     for a fact, by section or as a source, instead of ``docs/notes/<N>.md`` (one file per
@@ -719,6 +816,13 @@ def lint_docs(
         reports.append("version and PR pairs not checked: no tags in this checkout")
     else:
         failures.extend(version_pr_problems(docs_dir, tags))
+    merges = pr_merges(root)
+    if merges is None:
+        reports.append("merge claims not checked: no merge history in this checkout")
+    else:
+        found, said = merge_claim_problems(docs_dir, merges)
+        failures.extend(found)
+        reports.extend(said)
     failures.extend(stub_problems(docs_dir))
     failures.extend(portuguese_problems(docs_dir))
     return failures, reports

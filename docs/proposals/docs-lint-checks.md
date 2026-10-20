@@ -52,9 +52,17 @@ All seven checks are in `lint_docs`, check 7 first, and the whole lint runs in u
 - **Check 5** fails a citation, not a mention: `docs/NOTES.md` followed by `§N` or "section N", or a `resource:` that is the stub itself. Naming the old file as a file, as the OKF proposal does where it planned the split, passes. Its first run found eight such citations in decisions 1 and 6 and in `session-tooling-pdf-web.md`. Each now names `docs/notes/<N>.md`, the file of that former section.
 - **Check 7** could not use the framework's own `state.yamlish` parser: it rejects the flow mappings (`generated: { by: …, at: … }`) that 51 proposals use. So it uses PyYAML, as planned.
 
+## Check 8 (2026-10-20, the owner's choice 241)
+
+Added after the build, from the question #262's session put to the owner. A claim "PR #N merged on <date>", "merged at <time> UTC [on <date>]" or "merged as `<sha>`" is compared with PR #N's merge commit (`tasks.py`, `merge_claim_problems`; one test each in `tests/test_docs_lint.py`):
+
+- **What is judged**: the sha after "merged as" or in the parenthesis that follows the claim, the date right after "merged on" (or "UTC on"), and the time right after "merged at", in UTC. A sha that "head" precedes is the PR's last commit, not its merge, and another event's date in the same clause is not the merge's; neither is judged. A time is judged to 90 seconds, because the merge commit's time is a second or two from GitHub's `merged_at`, which the records quote; a date is accepted in UTC or in the merge commit's own offset.
+- **What is not judged**: a PR that has no "Merge pull request #N" commit in this checkout (an unmerged PR, or one the history does not reach), a claim with "sample" just before it (the sample's PR numbers overlap this repository's), and a claim quoted in a code span (a review citing an error).
+- **Where a mismatch fails**: in the living documents, in a note after 53, and in a record whose file name is dated 2026-10-20 or later. In the older records it is a report line: they are kept as written (choice 126), and the errors the docs review found there are already annotated beside the sentence. On `main` at the time of writing it judged 38 claims and reported two (PR #90's date in `docs/notes/39.md` and `docs/handoffs/2026-10-14-item-11-prompt.md`, both annotated); nothing failed.
+
 ## What it does not catch
 
-Whether a sentence means what its citation says — the wrong decision or note cited, a date or a time that disagrees with another record — needs a reader. That stays with an occasional full sweep, at a milestone, not on every pull request.
+Whether a sentence means what its citation says — the wrong decision or note cited, a date or a time that disagrees with another record — needs a reader. That stays with an occasional full sweep, at a milestone, not on every pull request. *[2026-10-20, the owner's choice 241: the review pass compares the citations of the lines a diff adds under `docs/` (`REVIEW.md`, the owner's PR #274). The changed-lines reader as a skill is not built; the full sweep's cadence is unchanged here, and a sweep before the real-project trial is a recommendation the owner has not decided.]*
 
 ## Order
 
