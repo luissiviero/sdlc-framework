@@ -177,9 +177,9 @@ order, three fresh contexts, each with the brief printed by
 1. **reviewer** — delegate to a general-purpose sub-agent with the `reviewer` brief; it
    writes `evidence/panel/e-<n>-reviewer.md`.
 2. **devil's advocate** — delegate to `sdlc:adversarial-reviewer` with the `advocate`
-   brief, on the model `sdlc.yaml: panel_advocate_model` names (pass it as the sub-agent's
-   model: the per-invocation model wins, NOTES §11c; a panel on one model shares its blind
-   spots), blind to the reviewer's file; it writes `evidence/panel/e-<n>-advocate.md`.
+   brief, started with `advocate.alias` from `panel/cli.py models --phase e` (pass it as the
+   sub-agent's model: the per-invocation model wins, NOTES §11c; a panel on one model shares
+   its blind spots), blind to the reviewer's file; it writes `evidence/panel/e-<n>-advocate.md`.
 3. **conciliator** — delegate to a general-purpose sub-agent with the `conciliator` brief;
    it reads both files and writes `evidence/panel/e-<n>-conciliator.json`.
 Then record it:

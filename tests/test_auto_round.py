@@ -598,6 +598,14 @@ def test_the_judge_is_read_only_on_the_advocate_s_model(project, monkeypatch):
         )["ok"]
         is False
     )
+    # R7: the judge runs on the adversarial reviewer's model when sdlc.yaml names one
+    monkeypatch.setattr(run_phase, "invoke", fake_invoke)
+    run_phase.run_reset_judge(
+        Args(root=str(root)), ROOT, root, change, "0001", "c",
+        {"adversarial_model": "claude-opus-5-5", "panel_advocate_model": "claude-fable-5-1"},
+        dict(KEY_ENV), 3, 3, targets,
+    )  # fmt: skip
+    assert seen["model"] == "claude-opus-5-5"
     monkeypatch.setattr(run_phase, "invoke", lambda *a, **k: (None, "", "boom", 1))
     assert (
         "claude exited 1"

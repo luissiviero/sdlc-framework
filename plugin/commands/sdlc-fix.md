@@ -200,7 +200,11 @@ fetch: the base the gate diffs against):
 `git diff --stat --patch --output=changes/<id>-<slug>/evidence/diff-<phase>.patch <base>...HEAD`,
 then `git rev-parse HEAD` for the full sha. The diff file is evidence: it is committed with
 the evidence commit that follows the gate. Delegate to `sdlc:adversarial-reviewer` for the
-phase with the full HEAD sha and the path `changes/<id>-<slug>/evidence/diff-<phase>.patch`.
+phase with the full HEAD sha and the path `changes/<id>-<slug>/evidence/diff-<phase>.patch`,
+started with `reviewer.alias` from
+`python "${CLAUDE_PLUGIN_ROOT}/plugin/panel/cli.py" models --root "${CLAUDE_PROJECT_DIR}" --phase <phase>`
+as its model (`null`: pass none; the gate's `reviewer_model` check reads the model it ran
+on, R7).
 
 ### Deferred review: the panel settles the judgment items (decision 21; build guide step 16a)
 A fix round is a phase run: under `review: deferred` (`sdlc.yaml`, or the change's
@@ -213,8 +217,9 @@ python "${CLAUDE_PLUGIN_ROOT}/plugin/panel/cli.py" items --root "${CLAUDE_PROJEC
 When `mode` is `parked` or `pending` is empty, go on to the gate. Otherwise, for each
 pending item `n` in order, three fresh contexts, each with the brief printed by
 `python "${CLAUDE_PLUGIN_ROOT}/plugin/panel/cli.py" prompt --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase <phase> --item <n> --member <reviewer|advocate|conciliator>`
-(reviewer: a general-purpose sub-agent; devil's advocate: `sdlc:adversarial-reviewer` on
-the model `sdlc.yaml: panel_advocate_model` names, blind to the reviewer's file;
+(reviewer: a general-purpose sub-agent; devil's advocate: `sdlc:adversarial-reviewer`
+started with `advocate.alias` from `panel/cli.py models --phase <phase>`, blind to the
+reviewer's file;
 conciliator: a general-purpose sub-agent that reads both), then
 `python "${CLAUDE_PLUGIN_ROOT}/plugin/panel/cli.py" record --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase <phase> --item <n>`
 — one panel call against `gate.max_panel_calls` (exit 3 at the cap: stop the panel, the

@@ -103,8 +103,11 @@ def test_review_md_skip_marker_rule_present():
 def test_sdlc_yaml_renders_to_documented_keys():
     data = yamlish.loads(render.render_file(TEMPLATE / "sdlc.yaml", VALUES))
     assert data["profile"] == "standard"
-    # decision 21 (0.2.14): the review mode and the devil's advocate's model
-    assert data["review"] == "parked" and data["panel_advocate_model"] == "opus"
+    # decision 21 (0.2.14): the review mode; R7: the session's, the reviewer's and the devil's
+    # advocate's models (the advocate on another model than the session)
+    assert data["review"] == "parked" and data["panel_advocate_model"] == "claude-fable-5-1"
+    assert data["session_model"] == "claude-opus-5-5"
+    assert data["adversarial_model"] == "claude-opus-5-5"
     assert "lite" not in render.render_file(TEMPLATE / "sdlc.yaml", VALUES).split("review:")[
         0
     ].replace("(lite, gates (a) and (e) only, was withdrawn", "").replace(
