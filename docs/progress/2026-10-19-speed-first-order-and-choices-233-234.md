@@ -15,7 +15,7 @@ This session ran on branch `ccr-70fb3ae3-39fz5m`, from the owner's questions of 
 234. **The speed table's recommendations, all accepted** ("I accept all recommendations as you suggest them"):
     - the speed-first Order above, with R51 accepted and R52 to R54 added;
     - the sample runs `review: deferred` (applied by the owner, sample PR #72);
-    - the existing profiles are used per project (`deploy.production: false` where there is no real production, Lite for scripts, documentation and experiments); the sample keeps `production: true`;
+    - the existing profiles are used per project (`deploy.production: false` where there is no real production, Lite for scripts, documentation and experiments); the sample keeps `production: true`; *[2026-10-20, docs review: Lite was withdrawn by decision 21 (a `lite` value reads as Standard, `docs/decisions/21.md`); what fits scripts, documentation and experiments is Standard on the fast lane (decision 30).]*
     - incident intents keep gate (a);
     - the fix-round caps stay until R26's measures.
 

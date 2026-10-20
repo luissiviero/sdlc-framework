@@ -8,7 +8,7 @@
 - **Port list (choice 138):** this session's PR touches nothing under `plugin/detect/`, `plugin/ci/run_phase.py` or the detect, runbook and fix workflow templates — docs only. No file under `plugin/` or `template/` changed: no bump, no tag, no guardrail row. **Ahead**: the review asks change 0002's build to touch `plugin/ci/run_phase.py` (`ci_settings_file`, the sandbox paths) — the build PR goes on the port list when it exists.
 
 ## Read from the repositories
-- The sample: **not read** — the session's GitHub scope held this repository only (`actions_list` on the sample denied; NOTES §16's case); `add_repo` not attempted (denied twice before, NOTES §16, §22). The count stays at thirteen as of 04:20 UTC (NOTES §36); nothing written to the sample (precondition 6).
+- The sample: **not read** — the session's GitHub scope held this repository only (`actions_list` on the sample denied; NOTES §16's case); `add_repo` not attempted (denied twice before, NOTES §16, §22). *[2026-10-20, docs review: NOTES §16 alone holds both denials (`docs/notes/16.md`); note 22 has no `add_repo` fact.]* The count stays at thirteen as of 04:20 UTC (NOTES §36); nothing written to the sample (precondition 6).
 - This repository: `main` `0ff7fd0` at the start (two merges past the prompt's `c004a48`: PR #145 and PR #143), the tags to `v0.3.6` on `eca1af2`, the pin 0.3.6; the run, the branch and PR #144 of NOTES §37; the open pull requests: #144 only.
 
 ## The review's findings, reproduced before they were kept

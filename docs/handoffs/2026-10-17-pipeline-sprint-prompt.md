@@ -13,7 +13,7 @@ This session builds the rest of the pipeline sprint, one session PR per candidat
 
 Check that `main` carries `v1.0.3` and that no open PR touches the files the candidate changes. *[2026-10-17, choice 212: the sprint starts after the safety PR (plugin 1.0.4) merges, so check for `v1.0.4` instead.]*
 
-**How each candidate is built** (the owner's choice of 2026-10-16, decisions 30 to 33):
+**How each candidate is built** (the owner's choice of 2026-10-16, decisions 30 to 33): *[2026-10-20, docs review: the build method is the owner's choice in row 8 of ROADMAP's speed table (`docs/ROADMAP.md`); decisions 30 to 33 do not set it.]*
 1. Write a precise spec from the candidate's proposal, its decision file and the code.
 2. Have one Opus agent build it, with tests that fail on the old code.
 3. Have an independent Opus agent review the diff, in a fresh context, report only.
