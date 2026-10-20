@@ -97,10 +97,10 @@ These were given in the session after this file was first written. They are answ
 | # | The owner's answer | The session's recommendation | State |
 |---|---|---|---|
 | 1 | Mostly private repositories, not exclusively | `/sdlc-init` turns the Actions-minutes meter on by default whenever the repository is private (R25, R61) | agreed |
-| 2 | Wants the fewest stops; asked how often a change lacks an explicit grant, and whether a faster alternative to waiting exists | See "Question 2" below. Drop the silence timer: the owner's act at the start of each change is the consent, the App merges as soon as R52's conditions hold, and only changes that fail those conditions wait for the owner | awaiting the owner |
-| 3 | Decides after reviewing the list of optional features (`options.md`) | Staging after the merge as an optional R39 key, on for projects whose behaviour shows only over time (paper trading) | open |
+| 2 | Wants the fewest stops; asked how often a change lacks an explicit grant, and whether a faster alternative to waiting exists | See "Question 2" below. Drop the silence timer: the owner's act at the start of each change is the consent, the App merges as soon as R52's conditions hold, and only changes that fail those conditions wait for the owner | approved as a whole (2026-10-20) |
+| 3 | Keep the staging step after the merge: some of the owner's projects trade | Staging after the merge as an R39 key, paired with the preview and set by `/sdlc-init` from the deploy action (paper trading turns it on) | approved: keep (2026-10-20) |
 | 4 | Agreed | No serial-queue mechanism; on the sample, merge one intent at a time when results must stay attributable | agreed |
-| 5 | Asked for an explanation | See "Question 5" below | awaiting the owner |
+| 5 | Asked for an explanation, then approved it | See "Question 5" below | approved (2026-10-20) |
 | 6 | Agreed | A repeated failure counts as "a mistake made twice" for a fixed list of session-caused checks (`plan_sync`, `design_scope`, `clean_tree`, secrets, protected-path denials). Red targets, limits, infrastructure failures and owner acts are excluded | agreed |
 | 7 | Agreed | Not now; decide after R8's five-change tally | agreed |
 | R52 | Merge by silence becomes the **default**; a project that does not want it opts out | Recorded as the owner's direction for R52's decision. That decision amends decision 4 for every project that has not opted out, instead of only for opted-in ones | the owner's direction |
