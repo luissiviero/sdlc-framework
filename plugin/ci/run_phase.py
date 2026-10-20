@@ -3422,10 +3422,22 @@ def _run_phase(args, env: dict[str, str], track: dict[str, Any]) -> int:
                 args.repo, env, auto["dispatched"],
             )  # fmt: skip
             pr = auto["parked"].get("pr") or pr
+    # R22 (decision 36, points 3 and 4): sdlc/review again on the build PR's final head, and
+    # the merge workflow dispatched when it is green, for an approval given before
+    merge_offer = (
+        offer_merge(args, plugin_dir, root, change_id, result, pr)
+        if gate_phase == "e"
+        and pr.get("ok")
+        and not not_pushed
+        and not args.dry_run
+        and not (auto or {}).get("dispatched")
+        else None
+    )
     _emit(
         {
             "phase": phase,
             "gate_phase": gate_phase,
+            "merge_offer": merge_offer,
             "change_id": change_id,
             "owner_labels": labels_applied,
             "owner_fields": owner,
@@ -4080,6 +4092,14 @@ def acceptance_mismatches(
         ]
     reasons: list[str] = []
     for line in pending:
+        if is_automation_actor(str(line.get("by") or ""), []):
+            # since R22 the merge App merges build PRs, so "merged by the line's actor" no
+            # longer implies a person: a [bot] never accepts a risk (choice 242, point 2)
+            reasons.append(
+                f"risk_acceptances: the line of PR #{line.get('pr')} names {line.get('by')!r}, "
+                "an automation account, which never accepts a risk"
+            )
+            continue
         try:
             found = github.pr_by_number(repo, int(line.get("pr")))
         except Exception as exc:  # noqa: BLE001 - no route: fail closed below
@@ -4089,6 +4109,12 @@ def acceptance_mismatches(
                 f"risk_acceptances: PR #{line.get('pr')} could not be read to confirm its "
                 f"merge: {found.get('reason')}"
             )
+        elif line.get("via") == ACCEPT_VIA_APPROVAL:
+            # R22: an (e) line taken by the owner's approving review, the merge App's merge
+            # accepting nothing (choice 242, point 2): the merge and the approval confirm it
+            reasons += _approval_line_problems(github, repo, line, found)
+            if found.get("merged"):
+                reasons += _acceptance_line_problems(line, found)
         elif not found.get("merged") or str(found.get("merged_by") or "") != str(line.get("by")):
             reasons.append(
                 f"risk_acceptances: PR #{line.get('pr')} was not merged by {line.get('by')!r} "
@@ -4100,6 +4126,32 @@ def acceptance_mismatches(
 
 
 ACCEPTANCE_HEAD_PHASE = {"b": "b", "e": "c"}  # the merged PR's head: the design or build PR
+
+
+ACCEPT_VIA_APPROVAL = "approval"  # gate/risk.py ACCEPT_VIA_APPROVAL
+
+
+def _approval_line_problems(
+    github: Any, repo: str, line: dict[str, Any], found: dict[str, Any]
+) -> list[str]:
+    """What GitHub's record contradicts in an (e) line taken by an approving review: the PR
+    must be merged, and ``line.by`` must have submitted an approving review on it."""
+    pr = line.get("pr")
+    if not found.get("merged"):
+        return [f"risk_acceptances: PR #{pr} is not merged, while its approval line says it is"]
+    try:
+        got = github.pr_reviews(repo, int(pr))
+    except Exception as exc:  # noqa: BLE001 - no route: fail closed
+        got = {"ok": False, "reason": str(exc)}
+    if not got.get("ok"):
+        return [f"risk_acceptances: the reviews of PR #{pr} could not be read: {got.get('reason')}"]
+    by = str(line.get("by") or "").lower()
+    if not any(
+        str(r.get("state") or "").upper() == "APPROVED" and str(r.get("author") or "").lower() == by
+        for r in got.get("reviews") or []
+    ):
+        return [f"risk_acceptances: PR #{pr} carries no approving review by {line.get('by')!r}"]
+    return []
 
 
 def _acceptance_line_problems(line: dict[str, Any], found: dict[str, Any]) -> list[str]:
@@ -5044,6 +5096,49 @@ def hand_over(args, result: dict[str, Any], phase: str, change_id: str) -> Any:
     }
 
 
+MERGE_WORKFLOW = "sdlc-merge.yml"
+
+
+def offer_merge(
+    args, plugin_dir: Path, root: Path, change_id: str, result: dict[str, Any], pr: dict[str, Any]
+) -> dict[str, Any]:
+    """Post ``sdlc/review`` on the build PR's final head (``review/cli.py check-run
+    --final-head``: after the runner's own last commit, green only while every commit after
+    the reviewed one is evidence or the run record), then, when it is green and gate (e)
+    waits for the owner, dispatch ``sdlc-merge.yml`` with the PR's number: an approval the
+    owner gave before the check turned green merges now, and with no approval the merge
+    step says so and waits (decision 36, points 3 and 4). A project whose copies predate
+    1.0.18 has no merge workflow: the dispatch fails and the run goes on (the owner merges,
+    fallback C1)."""
+    change_dir = c.find_change_dir(root, change_id)
+    if change_dir is None or not (change_dir / "evidence" / "review-findings.json").is_file():
+        return {"posted": None, "reason": "no evidence/review-findings.json: no check to post"}
+    posted = _cli_call(
+        plugin_dir / "plugin" / "review" / "cli.py",
+        ["check-run", "--root", str(root), "--id", change_id, "--phase", "e", "--final-head"],
+    )
+    output = posted.get("output") if isinstance(posted.get("output"), dict) else {}
+    out: dict[str, Any] = {"posted": output or posted}
+    number = _pr_number(pr.get("number"))
+    if output.get("route") != "check-run" or output.get("conclusion") != "success":
+        out["dispatched"] = None
+        out["reason"] = "sdlc/review is not green on the final head: nothing to merge"
+        return out
+    if result.get("result") != "wait" or number is None:
+        out["dispatched"] = None
+        out["reason"] = "gate (e) does not wait for the owner: nothing to merge"
+        return out
+    if args.no_dispatch:
+        out["dispatched"] = {"would_dispatch": MERGE_WORKFLOW, "pr": number}
+        return out
+    head_ref = work_branch_for(change_id, "e")
+    ref = args.ref or default_ref(root)
+    out["dispatched"] = dispatch(
+        args.repo, MERGE_WORKFLOW, ref, change_id, head_ref, {"pr": str(number)}
+    )
+    return out
+
+
 def default_ref(root: Path) -> str:
     from state import gitops
 
@@ -5406,6 +5501,10 @@ def main(argv: list[str] | None = None) -> int:
     if not args.id and not args.head_ref and not args.pr_number:
         print("--id, --head-ref or --pr-number is required for a phase run", file=sys.stderr)
         return EXIT_USAGE
+    missing = app_token.app_missing(env)
+    if missing:
+        print(missing, file=sys.stderr)
+        return EXIT_FAILED
     return run_phase(args, env)
 
 

@@ -383,15 +383,17 @@ def test_phase_e_release_note_and_counters(project):
     gate_json(change, "e", "wait", c.ready_label("e"))
     body = desc.build_description(root, "0001", "e")
     assert len(bullets(body)) == 5
-    assert "merge = approve; a review comment is the change request (/sdlc-fix)" in body
+    assert "an approving review = approve (gate (e), decision 36)" in body
     assert "## Release note" in body
     assert "returns a rounded percentage" in body.split("## Release note")[1]
     assert "Counters: first-pass merge: yes · fix iterations: 0" in body
     # relative repository paths when the fixture has no GitHub remote
     assert f"changes/{CHANGE_DIR_NAME}/intent.md" in body
     assert f"changes/{CHANGE_DIR_NAME}/evidence/gate-e.json" in body
-    # waiting for the owner's merge; the release workflow runs after it (build guide step 32)
-    assert "merge = gate (e) passed; the release workflow then runs `deploy.command`" in body
+    # waiting for the owner's approval; the merge App merges, then the release workflow runs
+    # (build guide step 32; decision 36)
+    assert "Waiting for your approval: the merge App then merges this PR" in body
+    assert "the release workflow runs `deploy.command`" in body
     # the fixture declares no production: merge is the whole gate (decision 13)
     assert "Release approval" not in body and "sdlc:release-approved" not in body
 
@@ -507,8 +509,8 @@ def test_release_approval_line_only_when_production_is_declared(project):
     body = desc.build_description(root, "0001", "e")
     assert len(bullets(body)) == 5
     line = (
-        "Release approval: apply `sdlc:release-approved` on this PR after merging; the "
-        "release workflow waits for it."
+        "Release approval: apply `sdlc:release-approved` on this PR with your approval; the "
+        "release workflow waits for it after the merge."
     )
     assert line in body.splitlines()
     assert "signed tag" not in body  # decision 5: the label is the only route
@@ -707,6 +709,43 @@ def test_upsert_records_the_build_pr_in_status_yaml(project, capsys, recorder):
     assert pr_cli.main(["upsert", "--root", str(root), "--id", "0001", "--phase", "d"]) == 0
     out = json.loads(capsys.readouterr().out)
     assert out["number"] == 41 and "build_pr_recorded" not in out
+
+
+def test_upsert_posts_not_a_build_pr_on_every_other_pull_request(project, capsys, recorder):
+    """R22 (decision 36, point 5): ruleset 2 requires sdlc/review; the workflow token's pull
+    requests start no run of sdlc-merge.yml, so the upsert posts the passing "not a build
+    PR" on the head of every pull request that is not the build PR."""
+    root, change = project
+    calls, answers = recorder
+    gate_json(change, "b", "wait", c.ready_label("b"))
+    gate_json(change, "c", "park", c.NEEDS_HUMAN_LABEL)
+    answers[("GET", "/pulls?")] = {"status": 200, "data": [], "error": ""}
+    answers[("POST", "/repos/o/r/pulls")] = {
+        "status": 201,
+        "data": {"number": 41, "html_url": "https://github.com/o/r/pull/41", "node_id": "PR_41"},
+        "error": "",
+    }
+    answers[("GET", "/repos/o/r/pulls/41")] = {
+        "status": 200,
+        "data": {"number": 41, "head": {"ref": "sdlc/0001/b", "sha": "f" * 40}},
+        "error": "",
+    }
+    answers[("POST", "/check-runs")] = {"status": 201, "data": {"id": 3}, "error": ""}
+    git(root, "remote", "add", "origin", "https://github.com/o/r.git")
+    assert pr_cli.main(["upsert", "--root", str(root), "--id", "0001", "--phase", "b"]) == 0
+    out = json.loads(capsys.readouterr().out)
+    assert out["review_check"]["ok"] is True
+    [posted] = [p for m, u, p in calls if m == "POST" and u.endswith("/check-runs")]
+    assert posted["name"] == "sdlc/review" and posted["head_sha"] == "f" * 40
+    assert posted["conclusion"] == "success" and posted["output"]["title"] == "not a build PR"
+    # the build PR gets none: its sdlc/review is the review pass's, posted by the (e) run
+    calls.clear()
+    assert (
+        pr_cli.main(["upsert", "--root", str(root), "--id", "0001", "--phase", "c", "--draft"]) == 0
+    )
+    out = json.loads(capsys.readouterr().out)
+    assert "review_check" not in out
+    assert not [u for m, u, _p in calls if u.endswith("/check-runs")]
 
 
 def test_upsert_posts_the_phase_check_run_when_asked(project, capsys, monkeypatch):

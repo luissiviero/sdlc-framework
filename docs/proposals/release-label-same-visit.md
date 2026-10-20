@@ -29,7 +29,7 @@ generated: { by: sdlc-framework-session/ccr-cd596b46-vq58fk, at: 2026-10-09T16:3
 
 ## The problem
 
-On a declared production (`deploy.production: true`) gate (e) has two acts (decision 13)[^decision-13]: the owner's merge of the build PR, then the label `sdlc:release-approved` on it. Three things about the second act are wrong or missing today:
+On a declared production (`deploy.production: true`) gate (e) has two acts (decision 13)[^decision-13]: the owner's merge of the build PR, then the label `sdlc:release-approved` on it. *[2026-10-20, R22 built as plugin 1.0.18 (decision 36): the first act is now the owner's approving review, on which the merge App merges; the label stays the second act]* Three things about the second act are wrong or missing today:
 
 - **It costs a second visit.** The PR body tells the owner to apply the label "after merging" (`plugin/pr/description.py`, `plugin/commands/sdlc-deploy.md` §5 and §6), although a label applied before the merge already counts: the labeled event on the open PR is skipped, and the merge then finds the label.
 - **A waiting or failed release shows nowhere the owner looks.** A release waiting for its label is a green job on a closed PR, and the daily digest lists open PRs only; a failed release is a red run in Actions that nothing in the framework reports.

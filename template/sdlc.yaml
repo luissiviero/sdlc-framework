@@ -3,7 +3,8 @@
 # It is a protected path: only the owner edits it, in a reviewed PR.
 
 # --- profile: which gates are human (OPERATING_MODEL section 3; decision 18) --------------
-# standard: owner merges at (a) intent PR, (b) spec+plan PR, (e) build PR; (c),(d) automated.
+# standard: owner merges at (a) intent PR, (b) spec+plan PR, and approves at (e) build PR
+#           (the merge App merges on that approval, decision 36); (c),(d) automated.
 #           The fast lane (decision 30): your own intent PR needs no (a) merge (opening it
 #           starts the design), and (b) waits for you only on a non-routine plan (a routine
 #           one goes on to the build; you review intent, spec, plan and code at (e))

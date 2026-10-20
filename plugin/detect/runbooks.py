@@ -227,6 +227,12 @@ def _pr_with_label(
         url, number = made.get("url"), made.get("number")
     outcome.pr_url, outcome.pr_number = url, number
     if number is not None:
+        # R22 (decision 36, point 5): the passing "not a build PR" check ruleset 2 requires,
+        # posted here too, since a push or a PR the workflow token makes starts no run of
+        # sdlc-merge.yml (the App's 50-minute fallback); never fails the runbook
+        got = github.pr_by_number(repo, int(number), cwd=root)
+        if got.get("ok") and got.get("head_sha"):
+            github.post_not_build_check(repo, str(got["head_sha"]), cwd=root)
         github.ensure_label(
             repo, INCIDENT_LABEL, INCIDENT_COLOR, f"SDLC framework: {INCIDENT_LABEL}", cwd=root
         )

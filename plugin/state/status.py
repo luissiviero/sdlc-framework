@@ -36,8 +36,9 @@ class Status:
     id: str
     slug: str
     title: str
-    # The phase the change is in. On the default branch a change at phase e was merged by the
-    # owner, and that merge is the whole of gate (e) (decision 13): ``read_status(...,
+    # The phase the change is in. On the default branch a change at phase e was merged at
+    # gate (e) - by the merge App on the owner's approving review (decision 36), or by the
+    # owner - so the merge means gate (e) passed (decision 13): ``read_status(...,
     # on_default_branch=True)`` derives gate e/passed from it (``merged_at_gate_e``) without
     # rewriting the file, because the automation identity never writes to the default branch.
     phase: str = "a"
@@ -386,7 +387,10 @@ def _load(change_dir: Path) -> dict[str, Any]:
     return data
 
 
-MERGED_AT_GATE_E_REASON = "merged by the owner: gate (e) is the merge (decision 13)"
+MERGED_AT_GATE_E_REASON = (
+    "merged at gate (e): the owner's approval, or the owner's merge (decision 13, as amended "
+    "by decision 36)"
+)
 # With ``sdlc.yaml: deploy.production`` true the phase gate is still passed by the merge (the
 # change is done and merged), but the release needs a second act the release workflow checks.
 MERGED_AT_GATE_E_PRODUCTION_REASON = (
@@ -396,13 +400,14 @@ MERGED_AT_GATE_E_PRODUCTION_REASON = (
 
 
 def merged_at_gate_e(st: Status, production: bool = False) -> Status:
-    """The status as the owner's merge of the build PR left it: gate (e) passed.
+    """The status as the build PR's merge left it: gate (e) passed.
 
     Pure: returns a new ``Status`` and never touches ``st`` or the file. A change at phase e
-    whose ``status.yaml`` sits on the default branch reached it through the owner's merge of
-    the build PR, and that merge is the whole of gate (e) (decision 13; OPERATING_MODEL
-    section 4). The last run on the branch may have parked (the thirteenth live run parked
-    change 0001 on the iteration cap and the owner merged anyway), so the park is lifted and
+    whose ``status.yaml`` sits on the default branch reached it through the merge of the build
+    PR, which happens only at gate (e): the merge App merges on the owner's approving review
+    (decision 36), or the owner merges (decision 13; OPERATING_MODEL section 4). The last
+    run on the branch may have parked (the thirteenth live run parked change 0001 on the
+    iteration cap and the owner merged anyway), so the park is lifted and
     the gate reads e/passed, stamped with the file's ``updated_at``. Anything else (another
     phase, or gate (e) already passed) comes back as an unchanged copy. ``production`` is
     ``sdlc.yaml: deploy.production``: when true the gate still reads passed (the change is

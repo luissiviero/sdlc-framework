@@ -13,7 +13,8 @@ Layout of the body, in order:
      risk-list hit, one line per item with where it hit and the reviewer's brief on it
      (``gate/risk.py banner_lines``): the design PR (b), the build PR from (c) to (e), and the
      install PR of change 0000 at (a). The PR's merge accepts the items no earlier act
-     accepted; at (c) and (d) only the (e) merge does;
+     accepted; at (c) and (d) only gate (e) does, by the owner's approving review since R22
+     (choice 242, point 2), or by the owner's merge when the owner merges;
   0. under deferred review (decision 21), "Decisions taken for you (N)" above the bullets:
      one line per standing panel decision of the phases this PR covers ((b) for the design
      PR; (c), (d), (e) for the build PR), from ``evidence/decisions-<phase>.json``; a review
@@ -115,15 +116,17 @@ GATE_CHECKLIST = {
     + " Merge = approve; a review comment = change request (/sdlc-fix).",
     "c": "approving review + label sdlc:c-approved starts the test phase",
     "d": "approving review + label sdlc:d-approved starts the review phase",
-    "e": "merge = approve; a review comment is the change request (/sdlc-fix). Waiting for "
-    "your merge: merge = gate (e) passed; the release workflow then runs `deploy.command`",
+    "e": "an approving review = approve (gate (e), decision 36); a review comment is the "
+    "change request (/sdlc-fix). Waiting for your approval: the merge App then merges this PR "
+    "(without a merge App, merge it after approving) and the release workflow runs "
+    "`deploy.command`",
 }
-# Decision 13: when the project declares a real production, the merge is the first act and
-# the release label, applied by a person on GitHub, the second (the only route: a run cannot
-# approve itself, decision 5).
+# Decision 13, as amended by 36: when the project declares a real production, the approving
+# review is the first act and the release label, applied by a person on GitHub, the second
+# (the only route: a run cannot approve itself, decision 5), in the same visit.
 RELEASE_APPROVAL_LINE = (
-    f"Release approval: apply `{c.RELEASE_APPROVED_LABEL}` on this PR after merging; the "
-    "release workflow waits for it."
+    f"Release approval: apply `{c.RELEASE_APPROVED_LABEL}` on this PR with your approval; the "
+    "release workflow waits for it after the merge."
 )
 NOTHING_NEEDED = "nothing: the run continues to the next phase"
 

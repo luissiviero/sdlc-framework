@@ -102,6 +102,14 @@ class FakeGitHub:
         self.calls.append(("set_labels", args, kwargs))
         return {"ok": True, "route": "fake", "added": list(args[2]), "removed": list(args[3])}
 
+    def pr_by_number(self, *args: Any, **kwargs: Any) -> dict[str, Any]:
+        self.calls.append(("pr_by_number", args, kwargs))
+        return {"ok": True, "route": "fake", "number": args[1], "head_sha": "f" * 40}
+
+    def post_not_build_check(self, *args: Any, **kwargs: Any) -> dict[str, Any]:
+        self.calls.append(("post_not_build_check", args, kwargs))
+        return {"ok": True, "route": "fake"}
+
     def named(self, name: str) -> list[tuple[tuple[Any, ...], dict[str, Any]]]:
         return [(a, k) for n, a, k in self.calls if n == name]
 
@@ -109,7 +117,10 @@ class FakeGitHub:
 @pytest.fixture
 def gh(monkeypatch) -> FakeGitHub:
     fake = FakeGitHub()
-    for name in ("create_pr", "find_open_pr", "ensure_label", "set_labels"):
+    for name in (
+        "create_pr", "find_open_pr", "ensure_label", "set_labels", "pr_by_number",
+        "post_not_build_check",
+    ):  # fmt: skip
         monkeypatch.setattr(runbooks.github, name, getattr(fake, name))
     return fake
 
@@ -145,6 +156,8 @@ def test_revert_of_a_plain_commit_opens_the_labelled_pr_and_comes_back(project, 
     )
     assert gh.named("ensure_label")[0][0][:2] == ("o/r", "incident")
     assert gh.named("set_labels")[0][0] == ("o/r", 1, ["incident"], [])
+    # R22: the passing "not a build PR" check ruleset 2 requires, on the revert PR's head
+    assert gh.named("post_not_build_check") == [(("o/r", "f" * 40), {"cwd": project})]
 
 
 def test_revert_of_a_merge_commit_uses_the_first_parent(project, gh):
