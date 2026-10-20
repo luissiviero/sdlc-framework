@@ -2,7 +2,7 @@
 
 Written 2026-10-20 at the owner's request, read against `main` at `8474c93`. The intent is `changes/0004-drive-target-and-proof-items/intent.md` on `sdlc/0004/a` (PR #173, `sdlc:a-ready`, opened 2026-10-13, last updated 2026-10-14). R14 is rank 18 in ROADMAP's Order (the owner's speed-first order, choice 234); the PR waits for that turn (choice 211). Merging it starts the design run, so it is not merged before then.
 
-Nothing here is a decision: each "Recommendation" is a proposal the owner accepts, corrects or leaves for the turn. Once the owner answers, the answer is recorded as a choice in `docs/PROGRESS.md` and annotated beside the row below.
+Nothing here is a decision: each "Recommendation" is a proposal the owner accepts, corrects or leaves for the turn. Once the owner answers, the answer is recorded as a choice in `docs/PROGRESS.md` and annotated beside the row below. *[2026-10-20, choice 246: the owner answered Q1, Q4, Q5 and the first half of Q3 as recommended ("Q1, Q4, Q5 and Q3a as recommended"). Q2 and the second half of Q3 stay for R14's turn.]*
 
 ## The five questions
 
@@ -19,7 +19,7 @@ Nothing here is a decision: each "Recommendation" is a proposal the owner accept
 The intent is refreshed then, not now. Ranks 9 to 17 change what it describes, so refreshing it now would mean refreshing it twice. Whoever picks up R14 works through this list before the owner merges #173:
 
 1. **Refresh the intent against the `main` of that day.** It says "read at `main` 714f523, plugin 0.3.7". Its branch is far behind `main` (61 commits on 2026-10-20, counted with `git rev-list`). Its Constraint "After R10" is met: R10 was built as plugin 1.0.3 (PR #220). Decide how the refresh runs: by hand in a session, or as an `@claude` fix round on #173 (decision 34) once the branch is up to date.
-2. **Carry the owner's answers to Q1, Q4 and Q5** (once given) into the intent's Proposed outcome, and remove them from its Open questions.
+2. **Carry the owner's answers to Q1, Q4 and Q5** (once given) into the intent's Proposed outcome, and remove them from its Open questions. *[2026-10-20: given, choice 246, with the first half of Q3; carry all four.]*
 3. **Answer Q2** on the code as R25 and R44 leave it: the job timeouts, `commands_timeout_seconds`, `build_caps_minutes_needed`, and whether a timed-out drive is a round (decision 29) or a park (R25).
 4. **Answer the second half of Q3** against R11's row as it stands then. If R11 is still on hold, record the `proof` entry's shape as provisional.
 5. **R29 (rank 14)** gives spec.md's Acceptance a fixed `Mock:` line for a screen change. The plan's `screenshot: … vs mock/<file>` item reads the mock from that line. If R29's intent template gains an Examples/References section and R54's quick intent changes the template, the refreshed intent follows the new template.
