@@ -19,7 +19,7 @@ generated: { by: sdlc-framework-session/ccr-e8220c2e-ya26hb, at: 2026-10-20T12:0
 
 # The docs lint, part 2
 
-**Status: accepted by the owner on 2026-10-20 (ROADMAP R58).** Nothing is built. Like R55, it is a documentation and tasks PR outside the ranks, with no plugin version.
+**Status: accepted by the owner on 2026-10-20 (ROADMAP R58), and built the same day in PR #262** (`tasks.py`, `tests/test_docs_lint.py`). Like R55, it is a documentation and tasks PR outside the ranks, with no plugin version. What changed from the draft below is in "As built".
 
 ## Why
 
@@ -39,9 +39,18 @@ ROADMAP's Status and Order columns are the one place a candidate's state and ran
 | 4 | Every "plugin X.Y.Z … PR #N" or "`vX.Y.Z` … PR #N" pair matches the tag's merge commit; a report line, not a failure, when the checkout has no tags (the Linux framework-checks job gets `fetch-depth: 0`) | a few |
 | 5 | No citation of the moved stubs `docs/NOTES.md` or `docs/DECISIONS.md` as a source | 1 |
 | 6 | A short list of Portuguese words finds nothing outside `docs/reference/` (proper nouns such as São Paulo are listed as allowed) | 0 today |
-| 7 | Every Markdown file under `docs/` (outside `docs/reference/`) that opens with a `---` block has frontmatter that parses as YAML, and the error names the file and the line; checks 1 and 2 read frontmatter, so this one runs first. It uses PyYAML, already a pinned dev dependency (`pyproject.toml`, the `dev` extra) and present wherever the tests run; `tasks.py` imports it inside the check and prints a report line, not a failure, when it is absent | 0 rows of the review; 3 proposals found broken on 2026-10-20 (an unquoted `: ` in `description`, fixed in PR #256), 136 files parse today |
+| 7 | Every Markdown file under `docs/` (outside `docs/reference/`) that opens with a `---` block has frontmatter that parses as YAML, and the error names the file and the line; checks 1 and 2 read frontmatter, so this one runs first. It uses PyYAML, already a pinned dev dependency (`pyproject.toml`, the `dev` extra) and present wherever the tests run; `tasks.py` imports it inside the check and prints a report line, not a failure, when it is absent | 0 rows of the review; 3 proposals found broken on 2026-10-20 (an unquoted `: ` in `description`, fixed in PR #262), 136 files parse today |
 
 Each check has a test in `tests/test_docs_lint.py` on a temporary tree, as R55's checks do.
+
+## As built (2026-10-20, PR #262)
+
+All seven checks are in `lint_docs`, check 7 first, and the whole lint runs in under a second on this repository. Each has a test on a temporary tree. Four points differ from the table above:
+
+- **Check 2** compares only the `proposed` and `accepted` values; any other value is left alone. `okf-adoption.md` became `partly accepted`, which is what ROADMAP R1 records: steps 1 and 2 accepted and built, steps 3 and 4 proposed.
+- **Check 4** accepts a pair only when the phrasing ties the version to its PR ("plugin 1.0.6 in PR #228", "plugin 1.0.2, PR #211", "`v1.0.3` = PR #220"). A looser window flagged "after `v0.3.2` is pinned and PR #90 merges", which names two events. It reads the living documents only (ROADMAP, the operating model, the build guide, the decisions, the proposals), checks 14 pairs today, and all 14 match. The check jobs already check out with `fetch-depth: 0`, so no workflow change was needed.
+- **Check 5** fails a citation, not a mention: `docs/NOTES.md` followed by `§N` or "section N", or a `resource:` that is the stub itself. Naming the old file as a file, as the OKF proposal does where it planned the split, passes. Its first run found eight such citations in decisions 1 and 6 and in `session-tooling-pdf-web.md`. Each now names `docs/notes/<N>.md`, the file of that former section.
+- **Check 7** could not use the framework's own `state.yamlish` parser: it rejects the flow mappings (`generated: { by: …, at: … }`) that 51 proposals use. So it uses PyYAML, as planned.
 
 ## What it does not catch
 
