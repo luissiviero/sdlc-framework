@@ -22,7 +22,7 @@ This session ran on branch `ccr-6ed8a82e-cxmftx`, after #297 (the Gemini study) 
   - `docs/OPERATING_MODEL.md` §4.2 states the one step that holds the key.
 - **The client**, `plugin/external/`:
   - Python, standard library only (decision 7);
-  - `gemini.py` sends one `generateContent` request with no `tools` field and a JSON response schema, and lists the key's models;
+  - `gemini.py` sends one `generateContent` request with no `tools` field, `store: false` and a JSON response schema; it names an answer cut at the output cap, records the model's stage, and lists the key's models;
   - `bundle.py` builds the input from git at the PR's head. It leaves out every `.env*` file, every path under a `secrets` folder, the change's `evidence/` and binary files; it withholds every line the secrets hook would refuse; and it holds to a size cap (400,000 characters by default, `external_review.max_chars`);
   - `briefs/b.md` and `briefs/e.md` take the adversarial reviewer's angles;
   - `review.py` checks the answer against the schema, cuts it to size and writes the comment with the model's text made inert (no HTML, mention, link or code span);
@@ -33,7 +33,12 @@ This session ran on branch `ccr-6ed8a82e-cxmftx`, after #297 (the Gemini study) 
 - **`template/sdlc.yaml`** shows the `external_review` block commented out.
 - **Tests**: `tests/test_external.py` (15 tests), and `tests/test_ci.py`'s rule for the key (`test_no_session_holds_the_gemini_key_and_the_sandbox_never_reaches_its_host`) in place of 1.0.17's.
 
-Not verified live: no call reached the Gemini API from this session (no key in its container), and Google's pages could not be opened from it. The request's field names (`generationConfig.responseMimeType`, `responseSchema`, the `x-goog-api-key` header) follow Google's documented REST shape as read in search results. The first live run shows whether the API accepts them: a refusal is a "not run" comment naming the HTTP error, never a red job.
+Not verified live: no call reached the Gemini API from this session (no key in its container). The request's shape was checked against Google's own sources on allowed hosts, read in full after the owner asked (`docs/reviews/2026-10-20-gemini-study-check.md`, "Google's own sources through other hosts"):
+- the API's discovery document (revision 20261019) for the fields;
+- Google's SDK for the `x-goog-api-key` header (`google/genai/_api_client.py`);
+- Google's cookbook for the model ids and Argon's limits.
+
+Those sources moved four things into this PR: `store: false` on every request, a named reason for an answer cut at the 32,768-token cap, the model's stage in the record, and a 900-second client timeout in a 20-minute job. `ai.google.dev` itself stays denied by the container's proxy, so the Developer API's terms were not read. A refusal on the first live run is a "not run" comment naming the HTTP error, never a red job.
 
 ## Left
 - **The first live use**: the sample's (b) once its secret and its `sdlc.yaml` block are in (the session file, "What the owner does").

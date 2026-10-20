@@ -164,7 +164,7 @@ def test_sdlc_yaml_carries_decision_32_s_defaults():
     assert limits.run_caps(gate, True) == (400, 180) and limits.run_caps(gate, False) == (200, 120)
     for name in ALL_WORKFLOWS:
         text = (WORKFLOW_DIR / name).read_text(encoding="utf-8")
-        text = text.split("\n  second-opinion:")[0]  # R8's job after the phase job: 15 minutes
+        text = text.split("\n  second-opinion:")[0]  # R8's job after the phase job: 20 minutes
         minutes = re.findall(r"(?m)^    timeout-minutes: (\d+)$", text)
         if name in ("sdlc-build.yml", FIX_WORKFLOW):
             assert minutes == ["260"], name  # 180 + 5 of grace, the commands step and the judge

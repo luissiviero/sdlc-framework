@@ -67,7 +67,8 @@ def args(**kw):
 def test_the_request_sends_no_tools():
     """Read-only by construction: one user turn and a schema, never a tool of any kind."""
     body = gemini.request_body("judge this", review_mod.SCHEMA)
-    assert set(body) == {"contents", "generationConfig"}
+    assert set(body) == {"store", "contents", "generationConfig"}
+    assert body["store"] is False  # never kept in the project's logs (discovery doc, 20261019)
     assert "tools" not in json.dumps(body) and "toolConfig" not in json.dumps(body)
     assert body["generationConfig"]["responseMimeType"] == "application/json"
     assert body["generationConfig"]["responseSchema"] == review_mod.SCHEMA
@@ -84,6 +85,7 @@ def test_generate_reads_the_answer_and_the_key_goes_only_into_the_header(monkeyp
             "error": "",
             "data": {
                 "modelVersion": "gemini-4-argon-001",
+                "modelStatus": {"modelStage": "STABLE"},
                 "usageMetadata": {"promptTokenCount": 10, "totalTokenCount": 12},
                 "candidates": [
                     {
@@ -102,6 +104,7 @@ def test_generate_reads_the_answer_and_the_key_goes_only_into_the_header(monkeyp
     out = gemini.generate("gemini-4-argon", "p", review_mod.SCHEMA, FAKE)
     assert out["ok"] and out["answer"]["verdict"] == "no concerns"
     assert out["model"] == "gemini-4-argon-001" and out["tokens"]["totalTokenCount"] == 12
+    assert out["model_status"] == {"modelStage": "STABLE"}
     assert seen["url"].endswith("/models/gemini-4-argon:generateContent")
     assert seen["credential"] == FAKE and FAKE not in json.dumps(seen["payload"])
 
@@ -123,6 +126,29 @@ def test_generate_reads_the_answer_and_the_key_goes_only_into_the_header(monkeyp
             },
             "the answer is not JSON",
         ),  # fmt: skip
+        (
+            {
+                "status": 200,
+                "error": "",
+                "data": {
+                    "candidates": [
+                        {
+                            "finishReason": "MAX_TOKENS",
+                            "content": {"parts": [{"text": '{"verdict": "c'}]},
+                        }
+                    ]
+                },
+            },
+            "the answer was cut at the output cap (32768 tokens, thinking included)",
+        ),  # fmt: skip
+        (
+            {
+                "status": 200,
+                "error": "",
+                "data": {"candidates": [{"finishReason": "CONTINUATION"}]},
+            },
+            "the answer stopped at the per-request limit and asks for a continuation",
+        ),
     ],
 )
 def test_every_failure_is_a_reason_never_an_exception(monkeypatch, result, reason):
@@ -197,6 +223,9 @@ def test_the_comment_makes_the_model_s_text_inert():
     assert "@owner" not in text and "<b>" not in text and "https://" not in text
     assert "](" not in text.split("**", 3)[-1] and "`rm`" not in text
     assert "Not run: no key." in review_mod.comment({"ran": False, "reason": "no key"})
+    assert "Model stage" not in text
+    record["model_status"] = {"modelStage": "PREVIEW", "retirementTime": "2027-01-31T00:00:00Z"}
+    assert "Model stage: PREVIEW, retires 2027-01-31T00:00:00Z" in review_mod.comment(record)
 
 
 def test_off_unless_the_default_branch_turns_it_on(project, monkeypatch):

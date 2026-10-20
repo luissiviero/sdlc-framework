@@ -25,8 +25,17 @@ from typing import Any
 
 API_ROOT = "https://generativelanguage.googleapis.com/v1beta"
 KEY_ENV = "GEMINI_API_KEY"
-TIMEOUT = 300  # seconds; a design or a build diff with thinking takes minutes, not hours
+# Google's migration guide for gemini-4-argon (google-gemini/cookbook,
+# quickstarts/Get_started.ipynb, read 2026-10-20): client timeouts of 15 to 20 minutes for
+# "high" thinking; a non-streaming generateContent call caps its output at 32,768 tokens,
+# thinking included, which is also the guide's floor against an answer cut off mid-thought
+TIMEOUT = 900  # seconds
 MAX_OUTPUT_TOKENS = 32768
+# a candidate stopped before its end: the JSON answer is incomplete, said so by name
+CUT_OFF = {
+    "MAX_TOKENS": "the answer was cut at the output cap ({cap} tokens, thinking included)",
+    "CONTINUATION": "the answer stopped at the per-request limit and asks for a continuation",
+}
 
 
 def key(env: dict[str, str] | None = None) -> str | None:
@@ -67,8 +76,12 @@ def _request(
 
 def request_body(prompt: str, schema: dict[str, Any]) -> dict[str, Any]:
     """The whole request: one user turn and a JSON response schema. No ``tools`` and no
-    ``toolConfig`` field, ever (``test_the_request_sends_no_tools``)."""
+    ``toolConfig`` field, ever (``test_the_request_sends_no_tools``). ``store`` false: the API's
+    discovery document (revision 20261019) says it sets the request's logging and "takes
+    precedence over the project-level logging config", so a project whose AI Studio logging is
+    on never keeps the code sent here in its logs, from which a dataset could be shared."""
     return {
+        "store": False,
         "contents": [{"role": "user", "parts": [{"text": prompt}]}],
         "generationConfig": {
             "responseMimeType": "application/json",
@@ -87,13 +100,17 @@ def _answer_text(data: dict[str, Any]) -> tuple[str | None, str]:
     first = candidates[0] if isinstance(candidates[0], dict) else {}
     parts = (first.get("content") or {}).get("parts") or []
     text = "".join(p.get("text", "") for p in parts if isinstance(p, dict) and not p.get("thought"))
+    finish = first.get("finishReason")
+    if finish in CUT_OFF:
+        return None, CUT_OFF[finish].format(cap=MAX_OUTPUT_TOKENS)
     if not text.strip():
-        return None, f"an empty answer (finish reason: {first.get('finishReason')})"
+        return None, f"an empty answer (finish reason: {finish})"
     return text, ""
 
 
 def generate(model: str, prompt: str, schema: dict[str, Any], credential: str) -> dict[str, Any]:
-    """{'ok', 'answer' (the parsed JSON), 'model' (the version the API reports), 'tokens',
+    """{'ok', 'answer' (the parsed JSON), 'model' (the version the API reports),
+    'model_status' (its stage and retirement time, as the API reports them), 'tokens',
     'seconds', 'reason'}. ``ok`` false carries the reason; nothing raises."""
     started = time.monotonic()
     url = f"{API_ROOT}/models/{urllib.parse.quote(model, safe='-._')}:generateContent"
@@ -104,6 +121,9 @@ def generate(model: str, prompt: str, schema: dict[str, Any], credential: str) -
         "ok": False,
         "answer": None,
         "model": data.get("modelVersion"),
+        "model_status": data.get("modelStatus")
+        if isinstance(data.get("modelStatus"), dict)
+        else None,
         "tokens": {k: v for k, v in usage.items() if isinstance(v, int)}
         if isinstance(usage, dict)
         else None,

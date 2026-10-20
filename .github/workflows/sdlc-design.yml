@@ -215,7 +215,8 @@ jobs:
     needs: design
     if: ${{ needs.design.outputs.change_id != '' || needs.design.outputs.head_ref != '' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # the client waits up to 15 minutes for the answer (Google's guide for "high" thinking)
+    timeout-minutes: 20
     permissions:
       contents: read
       pull-requests: write

@@ -115,6 +115,16 @@ def comment(record: dict[str, Any]) -> str:
     if not record.get("ran"):
         lines.append(f"Not run: {_plain(record.get('reason') or 'no reason recorded')}.")
         return "\n".join(lines) + "\n"
+    status = record.get("model_status") or {}
+    stage = status.get("modelStage")
+    if stage and stage != "STABLE":  # the API's own word: PREVIEW, LEGACY, DEPRECATED...
+        retires = status.get("retirementTime")
+        lines += [
+            f"Model stage: {_plain(str(stage))}"
+            + (f", retires {_plain(str(retires))}" if retires else "")
+            + ": check `external_review.model` in `sdlc.yaml`.",
+            "",
+        ]
     answer = record.get("answer") or {}
     lines.append(f"Verdict: **{answer.get('verdict')}**. {_plain(answer.get('summary', ''))}")
     if answer.get("concerns"):

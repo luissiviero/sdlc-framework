@@ -172,7 +172,10 @@ def run_review(args: argparse.Namespace, env: dict[str, str]) -> dict[str, Any]:
         return record
     result = gemini.generate(record["model"], text, review_mod.SCHEMA, credential)
     record.update(
-        model_reported=result["model"], tokens=result["tokens"], seconds=result["seconds"]
+        model_reported=result["model"],
+        model_status=result.get("model_status"),
+        tokens=result["tokens"],
+        seconds=result["seconds"],
     )
     if not result["ok"]:
         record["reason"] = result["reason"]
