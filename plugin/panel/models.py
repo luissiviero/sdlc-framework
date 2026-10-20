@@ -203,11 +203,18 @@ def unrecognized(
     config: dict[str, Any] | None,
     phase: str | None,
     env: dict[str, str] | None = None,
+    ran: list[str] | None = None,
 ) -> list[str]:
-    """The models sdlc.yaml names for ``phase`` (the session's, the reviewer's, the
-    advocate's) that an ``unrecognized_model`` line of the session's stderr reports, once
-    each in the order printed. A model sdlc.yaml does not name is left out: the line is the
-    CLI's, and only a configured model is the owner's to fix by raising the pin."""
+    """The models the run was configured with (the session's, from the workflow's
+    ``SDLC_MODEL`` or ``session_model``; ``adversarial_model``; the phase's advocate; an alias
+    meets any id of its family) that an ``unrecognized_model`` line of the session's stderr
+    reports and that did not run: ``ran`` is the session result's ``modelUsage``, sub-agents
+    included. A fallback onto the same model (the session and the reviewer both on
+    ``claude-opus-5-5``) loses nothing and is not reported; neither is a model the run was
+    not configured with, since only a configured one is the owner's to fix by raising the
+    pin. Once each, in the order printed."""
+    from panel import ledger  # noqa: PLC0415
+
     env = env or {}
     session = _text(env.get("SDLC_MODEL")) or session_model(config, phase)
     named = [
@@ -216,6 +223,9 @@ def unrecognized(
     found: list[str] = []
     for match in UNRECOGNIZED_MODEL_RE.finditer(stderr or ""):
         model = match.group("model").strip()
-        if model not in found and any(same_model(model, n) for n in named):
-            found.append(model)
+        if model in found or not any(same_model(model, n) for n in named):
+            continue
+        if any(ledger.model_matches(model, m) for m in ran or []):
+            continue
+        found.append(model)
     return found

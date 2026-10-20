@@ -238,3 +238,13 @@ def test_an_unrecognized_model_sdlc_yaml_does_not_name_is_not_reported():
     assert models.unrecognized(UNKNOWN_REVIEWER, {}, "c") == []
     # a stderr with no such line (the fix round on 2.1.304, NOTES §54)
     assert models.unrecognized("workspace trust: skipped\n", CONFIG, "b") == []
+
+
+def test_an_unrecognized_model_that_ran_all_the_same_is_not_reported():
+    """The session and the reviewer both on claude-opus-5-5: a fallback onto the session's
+    model loses nothing, and the session result's modelUsage shows the model ran."""
+    ran = ["claude-opus-5-5-20261001"]  # a dated snapshot of the configured id counts
+    assert models.unrecognized(UNKNOWN_REVIEWER, CONFIG, "c", ran=ran) == []
+    assert models.unrecognized(UNKNOWN_REVIEWER, CONFIG, "c", ran=["claude-fable-5-1"]) == [
+        "claude-opus-5-5"
+    ]

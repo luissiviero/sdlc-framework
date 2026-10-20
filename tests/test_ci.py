@@ -1835,13 +1835,23 @@ sys.stderr.write('[claude-code:unrecognized_model] {"model":"%s",'
 """
 
 
-@pytest.mark.parametrize(("model", "parked"), [("claude-opus-5-5", True), ("claude-x-1", False)])
+@pytest.mark.parametrize(
+    ("model", "usage", "parked"),
+    [
+        # 0017's design run: the session on Fable, the reviewer's Opus unknown, Fable only ran
+        ("claude-opus-5-5", {"claude-fable-5-1": SONNET}, True),
+        # the model ran all the same (a fallback onto the session's own model loses nothing)
+        ("claude-opus-5-5", {"claude-fable-5-1": SONNET, "claude-opus-5-5": OPUS}, False),
+        # a model the run was not configured with is the CLI's own
+        ("claude-x-1", {"claude-fable-5-1": SONNET}, False),
+    ],
+)
 def test_a_model_the_pinned_cli_does_not_know_parks_with_the_pin_to_raise(
-    project, fake_claude, tmp_path, monkeypatch, capsys, model, parked
+    project, fake_claude, tmp_path, monkeypatch, capsys, model, usage, parked
 ):
     """R63 (NOTES §54): CLI 2.1.278 printed this line for the reviewer's claude-opus-5-5 and
-    ran the reviewer on the session's model. A model sdlc.yaml names parks the change, the
-    reason naming the pin; a model it does not name is the CLI's own and changes nothing."""
+    ran the reviewer on the session's model. A configured model that did not run parks the
+    change, the reason naming the pin; any other line changes nothing."""
     root, change = project
     pr_route(monkeypatch)
     set_state(change, "b", gate_phase="b", gate_result="passed")
@@ -1849,9 +1859,8 @@ def test_a_model_the_pinned_cli_does_not_know_parks_with_the_pin_to_raise(
     script = tmp_path / "unknown_model.py"
     write(script, UNKNOWN_MODEL_SCRIPT % model)
     monkeypatch.setenv("FAKE_CLAUDE_RUN", str(script))
-    monkeypatch.setenv("FAKE_CLAUDE_RESULT", json.dumps(FAKE_RESULT))
-    env = dict(os.environ, **KEY_ENV, GITHUB_TOKEN=FAKE_TOKEN)
-    env.pop("SDLC_MODEL", None)
+    monkeypatch.setenv("FAKE_CLAUDE_RESULT", json.dumps({**FAKE_RESULT, "modelUsage": usage}))
+    env = dict(os.environ, **KEY_ENV, GITHUB_TOKEN=FAKE_TOKEN, SDLC_MODEL="claude-fable-5-1")
     args = Args(
         root=str(root), phase="c", dry_run=False, no_dispatch=True, claude=fake_cli(fake_claude)
     )
@@ -1867,6 +1876,7 @@ def test_a_model_the_pinned_cli_does_not_know_parks_with_the_pin_to_raise(
         assert gate_file["result"] == "park"
         assert [ch["name"] for ch in gate_file["checks"]] == ["cli_model"]
         assert "plugin.claude_code" in gate_file["what_i_need"]
+        assert "evidence/claude-c.stderr.txt holds the line" in gate_file["what_i_need"]
         assert status_mod.read_status(change).parked_reason.startswith("cli_model: ")
         assert "dispatched" not in out
     else:
