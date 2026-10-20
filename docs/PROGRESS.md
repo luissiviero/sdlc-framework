@@ -21,7 +21,9 @@ No change under `plugin/` or `template/`; no version bump.
 ## Proposed edits for the owner
 | Link | Row | What is there now | What it must become |
 |---|---|---|---|
-| [CLAUDE.md](https://github.com/luissiviero/sdlc-framework/blob/main/CLAUDE.md#L3) | 3 | `` `docs/decisions/index.md` records the 34 settled choices — do not reopen them without asking. `` | `` `docs/decisions/index.md` records the 36 settled choices — do not reopen them without asking. `` |
+| [CLAUDE.md](https://github.com/luissiviero/sdlc-framework/blob/main/CLAUDE.md#L3) | 3 | `` `docs/decisions/index.md` records the 34 settled choices — do not reopen them without asking. `` | `` `docs/decisions/index.md` records the settled choices — do not reopen them without asking. `` |
+
+The count is dropped rather than raised (the owner, 2026-10-20): the index is generated and checked by docs-lint, so the number only went stale, and each new decision cost a guardrail edit. The same stale count in `README.md` ("The 29 settled decisions") is fixed in this PR.
 
 ## Left
 - **R15's decision file** (choice 242, point 1): with R15's second change's design.
