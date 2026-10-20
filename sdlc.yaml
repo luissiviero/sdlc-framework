@@ -9,7 +9,11 @@
 # that still says lite reads as standard)
 profile: standard
 review: deferred
-panel_advocate_model: opus
+panel_advocate_model: claude-fable-5-1
+adversarial_model: claude-opus-5-5
+session_model:
+   default: claude-opus-5-5
+   b: claude-fable-5-1
 
 # --- feedback loop: one-command targets (build guide step 14; article p.27 step 1) --------
 # Each must exit non-zero on failure. /sdlc-init detects them for Python projects.
