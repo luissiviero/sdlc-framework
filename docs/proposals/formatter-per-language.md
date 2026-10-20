@@ -2,7 +2,7 @@
 type: Proposal
 title: The formatter follows the project's languages — per file type, the project's own commands on the changed file
 description: The formatter-and-linter hook runs, per file type, the format and lint commands the project names in sdlc.yaml on the changed file only, failing open as today, with ruff for Python the default, /sdlc-init proposing prettier and eslint for Node and rustfmt for Rust, whole-project checks left at the gate's lint target and no default for a file type with no command; added, nothing replaced.
-status: proposed
+status: accepted
 roadmap: R33
 sources:
   - id: study-entry
@@ -37,7 +37,7 @@ generated: { by: sdlc-framework-session/ccr-01de3f80-ilnomi, at: 2026-10-15T20:0
 
 # The formatter follows the project's languages: per file type, the project's own commands on the changed file
 
-**Status: proposed (roadmap R33), from study entry T8, confirmed by the owner on 2026-10-09.** Nothing is built. It amends no decision: decisions 6 and 7 stay, as the owner's note says, and this proposal writes no decision file. It is one of the study's "rest in any order" proposals (the record, section 8 part 2), added to the formatter hook and to the commands `/sdlc-init` proposes for it, with no other hook changed; full Rust support, the test-file lock for tests inside source files and the quarantine runbook for Node and Rust stay open here, beside R34 (T11) and R41 (T24).
+**Status: proposed (roadmap R33), from study entry T8, confirmed by the owner on 2026-10-09.** *[2026-10-20: accepted 2026-10-16 (roadmap R33, PR #215)]* Nothing is built. It amends no decision: decisions 6 and 7 stay, as the owner's note says, and this proposal writes no decision file. It is one of the study's "rest in any order" proposals (the record, section 8 part 2), added to the formatter hook and to the commands `/sdlc-init` proposes for it, with no other hook changed; full Rust support, the test-file lock for tests inside source files and the quarantine runbook for Node and Rust stay open here, beside R34 (T11) and R41 (T24).
 
 ## The problem
 

@@ -2,7 +2,7 @@
 type: Proposal
 title: The sandbox closes what is open — shell writes to the hooks and the protected paths denied, the model credential hidden from shell commands, the workflow token kept
 description: The CI sandbox is first proven on a runner, then denies shell writes to the pinned framework, the protected paths and the policy sources, hides ANTHROPIC_API_KEY, CLAUDE_CODE_OAUTH_TOKEN, ~/.ssh and ~/.aws/credentials from sandboxed commands, runs the build preflight's test target without credentials, and closes the head's own setup command, which runs before the guardrail park, outside Claude's sandbox and in a job that holds the workflow token (the mechanism to settle); the workflow token stays in the session, recorded as accepted.
-status: proposed
+status: accepted
 roadmap: R44
 sources:
   - id: study-entry
@@ -43,7 +43,7 @@ generated: { by: sdlc-framework-session/ccr-01de3f80-ilnomi, at: 2026-10-15T20:0
 
 # The sandbox closes what is open — shell writes to the hooks and the protected paths denied, the model credential hidden from shell commands, the workflow token kept
 
-**Status: proposed (roadmap R44), from study entry T29, confirmed by the owner on 2026-10-09, option B of the crosswalk row x-sandbox (the letters are the row's own), extended by the owner on 2026-10-14 to the head's own setup command.** Nothing is built. Part of what the entry asked for shipped before this file, in plugin 0.3.7 (change 0002: the `denyWrite` list), and is described under "today". The same release added the shell-guard hook, which is T8's (build-hooks) and which the entry records beside it. It amends no decision: decisions 1, 5 and 6 are kept, and layer iii of decision 6 gains entries. It is in the study's "rest in any order" group. The forged release ref it found is open: the entry's annotation hands it to T32, but R11's proposal builds no check on it (see "What to settle"). R27 (T1 part 1) adds the policy-sources entry.
+**Status: proposed (roadmap R44), from study entry T29, confirmed by the owner on 2026-10-09, option B of the crosswalk row x-sandbox (the letters are the row's own), extended by the owner on 2026-10-14 to the head's own setup command.** *[2026-10-20: accepted 2026-10-16 (PR #215); rank 12, before the real-project trial, after R51 and R25 parts 1-2 (choice 238); the rank is read from ROADMAP's Order column]* Nothing is built. Part of what the entry asked for shipped before this file, in plugin 0.3.7 (change 0002: the `denyWrite` list), and is described under "today". The same release added the shell-guard hook, which is T8's (build-hooks) and which the entry records beside it. It amends no decision: decisions 1, 5 and 6 are kept, and layer iii of decision 6 gains entries. It is in the study's "rest in any order" group. *[2026-10-20: rank 12, before the real-project trial, after R51 and R25 parts 1-2 (choice 238); the rank is read from ROADMAP's Order column]* The forged release ref it found is open: the entry's annotation hands it to T32, but R11's proposal builds no check on it (see "What to settle"). R27 (T1 part 1) adds the policy-sources entry.
 
 ## The problem
 

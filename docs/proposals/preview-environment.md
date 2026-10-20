@@ -2,7 +2,7 @@
 type: Proposal
 title: An optional preview environment before the approval, and a rollback rehearsed there on a schedule
 description: Two additions, both optional and off by default — deploy.preview_command deploys each (e) head to a preview environment after the review pass, in a job of its own with a "preview" GitHub environment's secrets, a read-only token and no Claude session, its result a line of the banner the owner reads before approving and a red preview failing gate (e) as a red target does; and a weekly workflow runs the rollback runbook's rehearse_command there with no agent and records pass or fail on a ref, so that decision 26's pre-approval needs the owner's rehearsed_at and a passing rehearsal within N days.
-status: proposed
+status: accepted
 roadmap: R39
 sources:
   - id: study-entry
@@ -37,7 +37,7 @@ generated: { by: sdlc-framework-session/ccr-01de3f80-ilnomi, at: 2026-10-15T20:0
 
 # An optional preview environment before the approval, and a rollback rehearsed there on a schedule
 
-**Status: proposed (roadmap R39), from study entry T20, confirmed by the owner on 2026-10-09, option B of the crosswalk row deploy-envs (the letters are the row's own, not deploy-approve's or deploy-ci's).** Nothing is built. It amends decision 26: the pre-approved rollback also needs a passing rehearsal within N days; the decision file comes before the intent, in a documentation PR of its own; this proposal writes no decision file and reserves no number. Both its parts are optional and off by default. The preview's result is a line of the banner the owner reads before approving at gate (e) (T18, R22); the banner block is R24's (T9), or R28's part 1 if that comes first. A red preview starts decision 29's round (R10) and reaches R18's triage (T19) at the cap; R41 (T24) adds a second condition to the same pre-approval, a release in the breach window.
+**Status: proposed (roadmap R39), from study entry T20, confirmed by the owner on 2026-10-09, option B of the crosswalk row deploy-envs (the letters are the row's own, not deploy-approve's or deploy-ci's).** *[2026-10-20: accepted 2026-10-16 (roadmap R39, PR #215)]* Nothing is built. It amends decision 26: the pre-approved rollback also needs a passing rehearsal within N days; the decision file comes before the intent, in a documentation PR of its own; this proposal writes no decision file and reserves no number. Both its parts are optional and off by default. The preview's result is a line of the banner the owner reads before approving at gate (e) (T18, R22); the banner block is R24's (T9), or R28's part 1 if that comes first. A red preview starts decision 29's round (R10) and reaches R18's triage (T19) at the cap; R41 (T24) adds a second condition to the same pre-approval, a release in the breach window.
 
 ## The problem
 

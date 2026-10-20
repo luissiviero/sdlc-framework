@@ -2,7 +2,7 @@
 type: Proposal
 title: The eval suite grows — more triggers, the incident case checked, a first set drafted after twenty changes
 description: The project's eval workflow also runs on sdlc.yaml (the pin bump, with the pin read from the pull request's head on such a change, so the bump is evaluated with the new framework before it merges) and on policies/**; gate (e) of an incident change requires its eval case with at least one check; and once the twentieth change has merged, a run drafts eval cases from merged changes in a PR the owner merges. Decision 17 stays and gains that step; a required status check stays not chosen.
-status: proposed
+status: accepted
 roadmap: R35
 sources:
   - id: study-entry
@@ -34,7 +34,7 @@ generated: { by: sdlc-framework-session/ccr-01de3f80-ilnomi, at: 2026-10-15T20:0
 
 # The eval suite grows: more triggers, the incident case checked, a first set drafted after twenty changes
 
-**Status: proposed (roadmap R35), from study entry T13, confirmed by the owner on 2026-10-09; the blend of the crosswalk row test-evals (the row has no option letters).** Nothing is built. It amends no decision: decision 17 stays (the suite starts empty and fills from incidents) and its "after ~20 real changes" gains a step, so no decision file is written and no number is reserved. It sits in the study's "rest in any order" group; R15 (ArtCraft row A3) already extends the entry (the suite cannot shrink unseen), and R42 (T25) owns the lesson half of the same gate (e) check whose eval half is this proposal's.
+**Status: proposed (roadmap R35), from study entry T13, confirmed by the owner on 2026-10-09; the blend of the crosswalk row test-evals (the row has no option letters).** *[2026-10-20: accepted 2026-10-16 (PR #215)]* Nothing is built. It amends no decision: decision 17 stays (the suite starts empty and fills from incidents) and its "after ~20 real changes" gains a step, so no decision file is written and no number is reserved. It sits in the study's "rest in any order" group; R15 (ArtCraft row A3) already extends the entry (the suite cannot shrink unseen), and R42 (T25) owns the lesson half of the same gate (e) check whose eval half is this proposal's.
 
 ## The problem
 

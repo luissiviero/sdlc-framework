@@ -2,7 +2,7 @@
 type: Proposal
 title: The pin-bump pull request — the release tag workflow proposes the root pin, the owner merges it
 description: After sdlc-tag.yml creates a new tag, it opens a pull request that moves sdlc.yaml's plugin.version to that tag; the owner's merge is the only act left, and the pin can never arrive before its tag.
-status: proposed
+status: accepted
 roadmap: R5
 sources:
   - id: owner-request
@@ -19,7 +19,7 @@ generated: { by: sdlc-framework-session/pr-audit, at: 2026-10-08T15:00:00Z }
 
 # The pin-bump pull request
 
-**Status: proposed (roadmap R5).** Nothing is built. The owner asked for it on 2026-10-08; this file carries the argument and the row in `docs/ROADMAP.md` carries the status.
+**Status: proposed (roadmap R5).** *[2026-10-20: accepted by the owner on 2026-10-08 (roadmap R5)]* Nothing is built. The owner asked for it on 2026-10-08; this file carries the argument and the row in `docs/ROADMAP.md` carries the status.
 
 ## The problem
 

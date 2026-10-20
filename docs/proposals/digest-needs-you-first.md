@@ -2,7 +2,7 @@
 type: Proposal
 title: The digest — ordered by what needs the owner, current at every park, never failing silently
 description: The pinned "SDLC review queue" issue is reordered into "Needs you" (parked, then waiting; incident PRs first, then oldest first, each with how long it has waited and T27's "Next for you"), "Worth knowing", "State" and the counters; the runner dispatches the digest after every park or human gate; a digest that cannot list or publish exits 1. One issue, nothing notifying the owner.
-status: proposed
+status: accepted
 roadmap: R20
 sources:
   - id: study-entry
@@ -34,7 +34,7 @@ generated: { by: sdlc-framework-session/ccr-20b39ad0-kcymdd, at: 2026-10-14T15:3
 
 # The digest: ordered by what needs the owner, current at every park, never failing silently
 
-**Status: proposed (roadmap R20), from study entry T28, confirmed by the owner on 2026-10-09: option B of the crosswalk row x-queue, with additions (the letters are the row's own).** Nothing is built. This proposal owns the digest's order, its refresh and its exit code. The lines it places are defined elsewhere: "Failed runs" in R18 (T19), "Next for you" in R19 (T27), the release line in R13, and the rest in entries not yet proposed (T15, T20, T22, T23, T25, T26, T30, T31). Each line arrives with its entry; the order and the refresh can be built first.
+**Status: proposed (roadmap R20), from study entry T28, confirmed by the owner on 2026-10-09: option B of the crosswalk row x-queue, with additions (the letters are the row's own).** *[2026-10-20: accepted 2026-10-14 (PR #208)]* Nothing is built. This proposal owns the digest's order, its refresh and its exit code. The lines it places are defined elsewhere: "Failed runs" in R18 (T19), "Next for you" in R19 (T27), the release line in R13, and the rest in entries not yet proposed (T15, T20, T22, T23, T25, T26, T30, T31). *[2026-10-20: those entries are now proposed and accepted as R37, R39, R40, R23, R42, R43, R25 and R26]* Each line arrives with its entry; the order and the refresh can be built first.
 
 ## The problem
 

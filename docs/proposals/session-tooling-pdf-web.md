@@ -120,13 +120,13 @@ Cost: an ingestion is a normal PR the owner reviews, so a mirrored page is read 
 
 | Decision | How | Reopened? |
 |---|---|---|
-| 6 (where the guardrails live) | `.claude/settings.json` and `CLAUDE.md` stay owner-edited; the tables above are proposals | No |
+| 6 (where the guardrails live) | `.claude/settings.json` and `CLAUDE.md` stay owner-edited; the tables above are proposals | No *[2026-10-20: per choice 236, a project's `references/` is a guardrail path, which amends decision 6, its decision file before the intent]* |
 | 7 (Python for every hook, no runtime dependency) | The hook is Python and standard library; Poppler is a session tool, not a runtime dependency of the plugin | No |
 | 23 (GitHub only) | Unchanged; the GitHub API is read through the session's tools, not `urllib` | No |
 | The security baseline (skill; article p.37–38) | Phases (b)–(f) keep the deny list; only this repository's interactive sessions may fetch | No |
 | 5 (the workflow token; a GitHub App in reserve) | Unchanged | No |
 
-Nothing is reopened.
+Nothing is reopened. *[2026-10-20: per choice 236, a project's `references/` is a guardrail path, which amends decision 6, its decision file before the intent]*
 
 ## What it would take
 

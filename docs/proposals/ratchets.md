@@ -2,7 +2,7 @@
 type: Proposal
 title: The bar is lowered only by the owner — a dropped test or eval case is a gate finding, the test and case counts are ratchets measured against the merge base, and the owner's existing label accepts a drop
 description: A gate check `ratchets` judges, at gates (c), (d) and (e), every test file and eval case the branch drops (a delete, or a move out of the test paths) unless the approved plan declares it; later the runner's commands step measures named counts on a clean checkout of HEAD and on the merge base, and a fall is a red entry that starts decision 29's fix round; a drop the owner wants is accepted with sdlc:accept-risk, recorded as a risk-list hit named after the ratchet; added skip markers are listed for the reviewers and never park.
-status: proposed
+status: accepted
 roadmap: R15 (accepted by the owner on 2026-10-13 with the twelve corrections D1 to D12 of docs/reviews/2026-10-13-artcraft-vs-framework/a3-revision.md as recommended; two changes, the diff form now and the measured ratchets after R10; each correction is marked beside the text it shapes)
 sources:
   - id: artcraft-study
@@ -34,7 +34,7 @@ generated: { by: sdlc-framework-session/ccr-c6d8a9c3-3s7q61, at: 2026-10-13T21:3
 
 # The bar is lowered only by the owner: dropped tests and eval cases are findings, and the counts are ratchets
 
-**Status: proposed from the ArtCraft-versus-framework study of 2026-10-13 (row A3), checked against the code before it was written, and accepted the same day.** Nothing is built. *[2026-10-13: accepted by the owner as ROADMAP **R15**, with the revision's twelve corrections (`docs/reviews/2026-10-13-artcraft-vs-framework/a3-revision.md`, section 9, D1 to D12) accepted as recommended. No proposal existed before the revision, so the corrections are the text below rather than notes on an earlier text; each paragraph a correction shapes carries its number, so the record of what changed is kept (choice 126). The first change's intent waits for PR #173 (R14's intent, change 0004), whose id the allocator would otherwise give again.]* *[2026-10-13, later: the allocator's `new-change` also counts remote `sdlc/<id>/*` branches (`plugin/state/cli.py:52`, `gitops.remote_change_ids`), so it gave 0005, not 0004; on the owner's word change 1's intent was drafted as change **0005** on `sdlc/0005/a`, PR #180 (draft, `sdlc:a-ready`).]*
+**Status: proposed from the ArtCraft-versus-framework study of 2026-10-13 (row A3), checked against the code before it was written, and accepted the same day.** Nothing is built. *[2026-10-20: change 1 built as change 0005, PR #211, `v1.0.2` (2026-10-17); change 2 waits at rank 32; the rank is read from ROADMAP's Order column]* *[2026-10-13: accepted by the owner as ROADMAP **R15**, with the revision's twelve corrections (`docs/reviews/2026-10-13-artcraft-vs-framework/a3-revision.md`, section 9, D1 to D12) accepted as recommended. No proposal existed before the revision, so the corrections are the text below rather than notes on an earlier text; each paragraph a correction shapes carries its number, so the record of what changed is kept (choice 126). The first change's intent waits for PR #173 (R14's intent, change 0004), whose id the allocator would otherwise give again.]* *[2026-10-13, later: the allocator's `new-change` also counts remote `sdlc/<id>/*` branches (`plugin/state/cli.py:52`, `gitops.remote_change_ids`), so it gave 0005, not 0004; on the owner's word change 1's intent was drafted as change **0005** on `sdlc/0005/a`, PR #180 (draft, `sdlc:a-ready`).]*
 
 ## The problem
 
@@ -120,7 +120,7 @@ None is amended. *[D10]*
 
 ## Order
 
-Change 1 can be built now: it needs no runner code and does not wait for R10, and a finding parks as every gate failure does today. Change 2 comes **after R10**, so a fall starts decision 29's round instead of parking; one timeout line in `run_phase.py` puts it on the port list, which records it and does not bar it. "After the 1.0.0 read because `run_phase.py` is on the port list" does not hold (a3-revision.md row 4). Where change 1 sits among R7 to R14 is the owner's call. *[D9, D12]*
+Change 1 can be built now: it needs no runner code and does not wait for R10, and a finding parks as every gate failure does today. *[2026-10-20: change 1 built as change 0005, PR #211, `v1.0.2` (2026-10-17); change 2 waits at rank 32; the rank is read from ROADMAP's Order column]* Change 2 comes **after R10**, so a fall starts decision 29's round instead of parking; one timeout line in `run_phase.py` puts it on the port list, which records it and does not bar it. "After the 1.0.0 read because `run_phase.py` is on the port list" does not hold (a3-revision.md row 4). Where change 1 sits among R7 to R14 is the owner's call. *[D9, D12]*
 
 ## What changes in the playbook study's record
 

@@ -2,7 +2,7 @@
 type: Proposal
 title: The reviewer is tuned twice a month from signals already on record, through a standing REVIEW.md PR
 description: A scheduled read-only run twice a month reads the period's review findings and the signals already on record (findings the owner waived or overturned, findings the panel settled, repeats, nit volume against the cap, findings in paths CI already enforces), writes a committed tuning report, and its proposed REVIEW.md edits go into one standing pull request, "REVIEW.md: tuning", kept up to date by a deterministic step that also starts the eval run and the brief; the owner merges it when they choose, rates nothing, and is notified of nothing.
-status: proposed
+status: accepted
 roadmap: R38
 sources:
   - id: study-entry
@@ -37,7 +37,7 @@ generated: { by: sdlc-framework-session/ccr-01de3f80-ilnomi, at: 2026-10-15T20:0
 
 # The reviewer is tuned twice a month from signals already on record, through a standing REVIEW.md PR
 
-**Status: proposed (roadmap R38), from study entry T16, confirmed by the owner on 2026-10-09.** Nothing is built. It amends no decision: decision 6 keeps `REVIEW.md` the owner's, who still makes every change by merging, and decision 16's scheduled read-only run is reused as a pattern. It is the second standing PR after R37 (T15, "CLAUDE.md: Things Claude gets wrong") and shares its mechanism; the brief it starts is T1's, R28.
+**Status: proposed (roadmap R38), from study entry T16, confirmed by the owner on 2026-10-09.** *[2026-10-20: accepted 2026-10-16 (PR #215); rank 45; the rank is read from ROADMAP's Order column]* Nothing is built. It amends no decision: decision 6 keeps `REVIEW.md` the owner's, who still makes every change by merging, and decision 16's scheduled read-only run is reused as a pattern. It is the second standing PR after R37 (T15, "CLAUDE.md: Things Claude gets wrong") and shares its mechanism; the brief it starts is T1's, R28.
 
 ## The problem
 
@@ -123,7 +123,7 @@ In the confirmed order's fifth group, "the rest in any order" (the record, secti
 | The `sdlc/review` check posted by the step | the step | With R22 (T18) |
 | The accepted-findings signal | `status.yaml` | With R6 (decision 28) |
 | A review-pass eval case | `evals/` | With R35 (T13), if chosen |
-| The names | the workflow, the PR, the ref | With R45 (T4), last |
+| The names | the workflow, the PR, the ref | With R45 (T4), last *[2026-10-20: R45 is rank 20, before R38 (45): the names come from R45's decision PR before this is built; the rank is read from ROADMAP's Order column]* |
 
 [^playbook]: `docs/reference/ai-native-sdlc-playbook.pdf` p.33 (step 2), p.34 (step 6 and the example `REVIEW.md`), p.35 (governance).
 [^code]: `template/REVIEW.md`; `plugin/review/findings.py`; `plugin/review/REVIEW_PROMPT.md`; `plugin/gate/checks.py` `check_findings`; `plugin/gate/artifacts.py`; `plugin/panel/cli.py` `cmd_overturn`; `plugin/panel/ledger.py`; `plugin/ci/fix_requests.py`; `plugin/hooks/protected_paths.py`; `plugin/evals/run.py`; `template/.github/workflows/sdlc-evals.yml`, `sdlc-scan.yml`; the crosswalk row deploy-tuning and `target-design.md` T16 ("Today").

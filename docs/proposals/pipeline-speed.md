@@ -19,7 +19,7 @@ generated: { by: sdlc-framework-session/ccr-01de3f80-ilnomi, at: 2026-10-16T12:0
 
 # The pipeline's speed
 
-**Status: accepted by the owner on 2026-10-16 (roadmap R46 to R49), with decisions 30 to 33.** Nothing is built. These four, with R10 and R17, are built before every other candidate.
+**Status: accepted by the owner on 2026-10-16 (roadmap R46 to R49), with decisions 30 to 33.** Nothing is built. *[2026-10-20: built: R46 1.0.6 (PR #228), R47 1.0.7 (PR #230), R48 1.0.8 (PR #233), R49 1.0.9 (PR #235)]* These four, with R10 and R17, are built before every other candidate.
 
 ## The problem
 
@@ -62,4 +62,4 @@ On the next five changes of a project: time from the intent's push to the (e) me
 
 ## Order
 
-First, before every other candidate: R10, R46, R47, R48, R17, R49 (the "pipeline sprint", ROADMAP Order 1 to 6), built as session pull requests with an independent review, not through the framework's own pipeline (the owner's choice of 2026-10-16 for framework changes). Before R10's build, the owner answers who builds decision 29's reset (R10 or R25).
+First, before every other candidate: R10, R46, R47, R48, R17, R49 (the "pipeline sprint", ROADMAP Order 1 to 6), *[2026-10-20: R10, R17, R46, R47, R48, R49 (Order 1 to 6; R17 moved on 2026-10-17); the rank is read from ROADMAP's Order column]* built as session pull requests with an independent review, not through the framework's own pipeline (the owner's choice of 2026-10-16 for framework changes). Before R10's build, the owner answers who builds decision 29's reset (R10 or R25). *[2026-10-20: answered 2026-10-17: R10 builds the reset (1.0.3, PR #220)]*

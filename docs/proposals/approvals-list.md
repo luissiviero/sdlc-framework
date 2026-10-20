@@ -2,7 +2,7 @@
 type: Proposal
 title: The record answers who, when and why — one approvals list, the run on every record, a line per fix round, the transcript as an artifact
 description: Every act with an actor (the gate merges, the approval labels, the release label, the un-park labels, the Go, a close, a dismissal) gets one appended line in status.yaml, written by the deterministic step the act fires, from GitHub's own record; every run record names its workflow run and its trigger; each fix round gets a line with its reason; the session transcript is uploaded as a workflow artifact; the OpenTelemetry export is closed as not needed for one owner.
-status: proposed
+status: accepted
 roadmap: R11
 sources:
   - id: study-entry
@@ -28,7 +28,7 @@ generated: { by: sdlc-framework-session/ccr-cd596b46-vq58fk, at: 2026-10-09T16:3
 
 # The record answers who, when and why
 
-**Status: proposed (roadmap R11), from study entry T32, confirmed by the owner on 2026-10-09.** Nothing is built. The first of the study's proposals in the owner's order: every later entry writes a line into the list this one creates.
+**Status: proposed (roadmap R11), from study entry T32, confirmed by the owner on 2026-10-09.** Nothing is built. The first of the study's proposals in the owner's order: every later entry writes a line into the list this one creates. *[2026-10-20: accepted 2026-10-13 (PR #162); rank 24 today, after the pipeline sprint and the speed items; the rank is read from ROADMAP's Order column]*
 
 ## The problem
 
@@ -100,7 +100,7 @@ On the first three changes after it ships, a session reads each change's `status
 
 ## Order
 
-First of the study's proposals, by the owner's confirmed order (the record and the approvals: this, then R12 and R13), after the queue the owner has already set (0002 → R7 → R5 → R6 → R10 → the carried gaps). R12 and R13 write their lines into the list this creates, so they follow it or are built with it.
+First of the study's proposals, by the owner's confirmed order (the record and the approvals: this, then R12 and R13), after the queue the owner has already set (0002 → R7 → R5 → R6 → R10 → the carried gaps). *[2026-10-20: accepted 2026-10-13 (PR #162); rank 24 today, after the pipeline sprint and the speed items; the rank is read from ROADMAP's Order column]* R12 and R13 write their lines into the list this creates, so they follow it or are built with it.
 
 [^playbook]: `docs/reference/ai-native-sdlc-playbook.pdf` p.6, p.11, p.17, p.26, p.29, p.35, p.37, p.39, p.41, p.44, p.47.
 [^decision-9]: `docs/decisions/9.md`.

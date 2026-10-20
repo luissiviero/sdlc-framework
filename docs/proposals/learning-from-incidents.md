@@ -2,7 +2,7 @@
 type: Proposal
 title: Learning from an incident, the rest of it — the metric's return to baseline on the record, and a scan incident's lesson
 description: After an incident's fix ships, the daily detection's verdicts for that metric since the fix are summarised with no agent in R40's Detection line ("<id> fixed on <date>: N days, all within 1σ", or still breaching), read from the log on the ref, and the next diagnosis of the same metric reads them; a scan incident's lesson names the finding's class and signature where a detection incident's names the metric and the tier; the lesson checked at gate (e), the entry's first addition, is already built (plugin 0.3.6).
-status: proposed
+status: accepted
 roadmap: R42
 sources:
   - id: study-entry
@@ -37,7 +37,7 @@ generated: { by: sdlc-framework-session/ccr-01de3f80-ilnomi, at: 2026-10-15T20:0
 
 # Learning from an incident, the rest of it: the metric's return to baseline on the record, and a scan incident's lesson
 
-**Status: proposed (roadmap R42), from study entry T25, confirmed by the owner on 2026-10-09, option B of the crosswalk row maintain-learn (the letters are the row's own).** Part of the entry is built: its first addition, gate (e) requiring the lesson beside the eval case, shipped before the close in plugin 0.3.6 as change 0003 (ROADMAP R1 on `lessons/`) and is not proposed again; this proposal covers the two parts that remain, the baseline line and the scan incident's lesson. One recommendation in "What to settle" (row 1) would extend the built check to the four body sections; it is this session's, beyond the close row's "remain", and the owner accepts or declines it. It amends no decision. Its baseline line is a sentence inside R40's (T22) Detection line, which R20 (T28) places under "State"; the scan lesson shares an open item with R43 (T26).
+**Status: proposed (roadmap R42), from study entry T25, confirmed by the owner on 2026-10-09, option B of the crosswalk row maintain-learn (the letters are the row's own).** *[2026-10-20: accepted 2026-10-16 (roadmap R42, PR #215)]* Part of the entry is built: its first addition, gate (e) requiring the lesson beside the eval case, shipped before the close in plugin 0.3.6 as change 0003 (ROADMAP R1 on `lessons/`) and is not proposed again; this proposal covers the two parts that remain, the baseline line and the scan incident's lesson. One recommendation in "What to settle" (row 1) would extend the built check to the four body sections; it is this session's, beyond the close row's "remain", and the owner accepts or declines it. It amends no decision. Its baseline line is a sentence inside R40's (T22) Detection line, which R20 (T28) places under "State"; the scan lesson shares an open item with R43 (T26).
 
 ## The problem
 
@@ -119,7 +119,7 @@ The record's confirmed order puts T25 among "the rest in any order" (section 8).
 | The router naming the lessons of the same class in a scan intent's Evidence section, only if the owner takes "What to settle", row 4 | `plugin/scan/route.py` `intent_text` | After the scan lesson's `class` field above; beside R43 (T26), whose Order places the same part "With R42 (T25)" |
 | The four body sections at gate (e), only if the owner accepts the extension ("What to settle", row 1) | `plugin/gate/checks.py` `lesson_and_eval` | Buildable now; beside R35 (T13), which owns the eval half of the same check |
 
-It changes `plugin/` and `template/`, so it ships as a plugin version with tests. R25 (T30) writes its overspend lesson beside these lessons; its `detected` block and index rule are R25's to settle ("What to settle", the overspend row), after the scan lesson's block here. R45 (T4) renames last.
+It changes `plugin/` and `template/`, so it ships as a plugin version with tests. R25 (T30) writes its overspend lesson beside these lessons; its `detected` block and index rule are R25's to settle ("What to settle", the overspend row), after the scan lesson's block here. R45 (T4) renames last. *[2026-10-20: R45 is rank 20, before R42 (44): this proposal's field names are judged with R45, or settled in R42's own PR; the rank is read from ROADMAP's Order column]*
 
 [^playbook]: `docs/reference/ai-native-sdlc-playbook.pdf` p.44 step 7, p.45, p.47 step 7, p.49.
 [^code]: Read at `main` 5542406 (plugin 1.0.1) with `git show 5542406:<path>`; the line numbers above are at that commit.

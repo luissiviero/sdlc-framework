@@ -83,7 +83,7 @@ After part 2, the next three sessions' records note whether their starting promp
 
 ## Order
 
-Part 2 is the next session-boundary documentation PR. Part 1 is a change, placed by the owner in the queue after the items before it (0002 → R7 → R5 → R6 → T10 → the carried gaps → R9's part 1, unless the owner moves it).
+Part 2 is the next session-boundary documentation PR. Part 1 is a change, placed by the owner in the queue after the items before it (0002 → R7 → R5 → R6 → T10 → the carried gaps → R9's part 1, unless the owner moves it). *[2026-10-20: part 2 applied on 2026-10-13 (PR #170); part 1 is rank 39 (choice 234); the rank is read from ROADMAP's Order column]*
 
 [^playbook-artifacts]: `docs/reference/ai-native-sdlc-playbook.pdf` p.6–7, p.18, p.19–20.
 [^digest]: `docs/decisions/20.md`, "Queue + digest".

@@ -2,7 +2,7 @@
 type: Proposal
 title: The weekly scan validates its findings, applies its patch and reaches the digest
 description: Each Important finding of the weekly security review carries the exploit path traced from an entry point (or why it is not reachable) and a confidence of high or medium, low staying a nit, both riding into the intent's Evidence section and the Security & policy brief of R28 (T1); the build run of a bounded scan change starts from evidence/suggested-patch.diff after the failing test; a "Scan" line reaches the digest and the scan's red runs join "Failed runs"; decision 16's pattern without Claude Security stays.
-status: proposed
+status: accepted
 roadmap: R43
 sources:
   - id: study-entry
@@ -43,7 +43,7 @@ generated: { by: sdlc-framework-session/ccr-01de3f80-ilnomi, at: 2026-10-15T20:0
 
 # The weekly scan validates its findings, applies its patch and reaches the digest
 
-**Status: proposed (roadmap R43), from study entry T26, confirmed by the owner on 2026-10-09, option B of the crosswalk row maintain-scan (the letters are the row's own).** Nothing is built. It amends no decision: decision 16 is kept (the pattern without Claude Security) and decision 20 is kept (the lines go to the digest), so no decision file is written and no number is reserved. It feeds two lines other proposals place: the "Scan" line, which R20 (T28) puts under "State", and the scan's red runs in R18's (T19) "Failed runs" line; its validation rides into the Security & policy brief of R28 (T1 with T2), and its patch step follows R34's (T11) order, the failing test before the fix.
+**Status: proposed (roadmap R43), from study entry T26, confirmed by the owner on 2026-10-09, option B of the crosswalk row maintain-scan (the letters are the row's own).** *[2026-10-20: accepted 2026-10-16 (PR #215); rank 34; the rank is read from ROADMAP's Order column]* Nothing is built. It amends no decision: decision 16 is kept (the pattern without Claude Security) and decision 20 is kept (the lines go to the digest), so no decision file is written and no number is reserved. It feeds two lines other proposals place: the "Scan" line, which R20 (T28) puts under "State", and the scan's red runs in R18's (T19) "Failed runs" line; its validation rides into the Security & policy brief of R28 (T1 with T2), and its patch step follows R34's (T11) order, the failing test before the fix.
 
 ## The problem
 
@@ -131,7 +131,7 @@ In the study's confirmed order T26 sits among "the rest in any order" (the recor
 | The digest refreshed after a filing | `scan/route.py file_findings`, R20's dispatch job | With R20's part 2 |
 | The scan lesson's class matched to a later finding | the router, the lesson's frontmatter | With R42 (T25), whose entry holds the match as an open item |
 
-R45 (T4) may rename what this proposal names; it comes last. The Order column of the ROADMAP row is the owner's.
+R45 (T4) may rename what this proposal names; it comes last. *[2026-10-20: R45 is rank 20, before R43 (34), so it does not come last; the rank is read from ROADMAP's Order column]* The Order column of the ROADMAP row is the owner's.
 
 [^playbook]: `docs/reference/ai-native-sdlc-playbook.pdf` p.46-48.
 [^decision-16]: `docs/decisions/16.md`.

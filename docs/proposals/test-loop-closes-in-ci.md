@@ -28,7 +28,7 @@ generated: { by: sdlc-framework-session/ccr-9497322b-1iu07x, at: 2026-10-13T13:3
 
 # The test loop closes by itself in CI
 
-**Status: accepted by the owner on 2026-10-09 (roadmap R10), from study entry T10.** Nothing is built. This short file exists for uniformity with the study's other proposals (the start table's row 2d); the entry's full text is `target-design.md` T10, and its decision is `docs/decisions/29.md`, written with R6's decision 28 for one owner review.
+**Status: accepted by the owner on 2026-10-09 (roadmap R10), from study entry T10.** Nothing is built. *[2026-10-20: built as plugin 1.0.3 in PR #220 (2026-10-17), with the judged reset at the cap; rank 1; the rank is read from ROADMAP's Order column]* This short file exists for uniformity with the study's other proposals (the start table's row 2d); the entry's full text is `target-design.md` T10, and its decision is `docs/decisions/29.md`, written with R6's decision 28 for one owner review.
 
 ## The problem
 

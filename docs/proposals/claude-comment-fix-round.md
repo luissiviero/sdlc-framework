@@ -2,7 +2,7 @@
 type: Proposal
 title: The owner's @claude comment starts a fix round, beside the "Request changes" review
 description: A pull request comment by the owner that starts with @claude starts the same fix round as the owner's "Request changes" review, with every unresolved comment as a constraint; a small workflow with no model checks the comment is the owner's and dispatches sdlc-fix.yml as the owner does by hand today; the comment is a trigger and never a verb, its text is read as data, and the round shares decision 29's one iteration counter.
-status: proposed
+status: accepted
 roadmap: R17
 sources:
   - id: study-entry
@@ -28,7 +28,7 @@ generated: { by: sdlc-framework-session/ccr-20b39ad0-kcymdd, at: 2026-10-14T15:3
 
 # The owner's @claude comment starts a fix round, beside the "Request changes" review
 
-**Status: proposed (roadmap R17), from study entry T17, confirmed by the owner on 2026-10-09.** Nothing is built. It amends decision 22: one trigger added beside the "Request changes" review, its substance unchanged. The decision file comes before the intent, in a documentation PR the owner reviews on its own, never with the intent; this proposal writes no decision file and reserves no number. The round's record is R11's point 3; the act it adds is listed in R19's "What you can do here" block.
+**Status: proposed (roadmap R17), from study entry T17, confirmed by the owner on 2026-10-09.** Nothing is built. *[2026-10-20: accepted 2026-10-14 (PR #208); built as plugin 1.0.5 in PR #227; the `issue_comment` check is NOTES §46 (`docs/notes/46.md`)]* It amends decision 22: one trigger added beside the "Request changes" review, its substance unchanged. The decision file comes before the intent, in a documentation PR the owner reviews on its own, never with the intent; this proposal writes no decision file and reserves no number. *[2026-10-20: its decision file is `docs/decisions/34.md`, accepted 2026-10-17, which amends 22 and 27]* The round's record is R11's point 3; the act it adds is listed in R19's "What you can do here" block.
 
 ## The problem
 
@@ -108,11 +108,11 @@ On the next three intent PRs the owner opens by hand: each round is started by o
 
 ## Decisions it touches
 
-22 is amended: one trigger, the owner's `@claude` comment, beside the "Request changes" review; the round, the command and the record are unchanged. The decision file is written before the intent, in a documentation PR the owner reviews on its own, never with the intent, as decision 27 (PR #162, recorded in ROADMAP's R12 row: "its decision file is `docs/decisions/27.md`") and decisions 28 and 29 (PR #168) were. This proposal writes no decision file and reserves no number. 24 and 28 are kept (a trigger, not a verb); 29 is kept (one counter, the same dispatch); 20 and 11 are kept (no reply, no notification, a park at the cap); 5 is kept.
+22 is amended: one trigger, the owner's `@claude` comment, beside the "Request changes" review; the round, the command and the record are unchanged. The decision file is written before the intent, in a documentation PR the owner reviews on its own, never with the intent, as decision 27 (PR #162, recorded in ROADMAP's R12 row: "its decision file is `docs/decisions/27.md`") and decisions 28 and 29 (PR #168) were. This proposal writes no decision file and reserves no number. *[2026-10-20: its decision file is `docs/decisions/34.md`, accepted 2026-10-17, which amends 22 and 27]* 24 and 28 are kept (a trigger, not a verb); 29 is kept (one counter, the same dispatch); 20 and 11 are kept (no reply, no notification, a park at the cap); 5 is kept.
 
 ## Order
 
-Fourth of the study's proposals in the confirmed order (the record, section 8: T32, T12, T21, then T17, T19, T27, T28), so after R11 to R13 and first of this batch. It changes `template/` and `plugin/`, so it ships as a plugin version with tests and reaches a project through `/sdlc-init`'s workflow copies. The parts it takes:
+Fourth of the study's proposals in the confirmed order (the record, section 8: T32, T12, T21, then T17, T19, T27, T28), so after R11 to R13 and first of this batch. *[2026-10-20: Order 2 (pipeline sprint, moved on 2026-10-17), before R11 to R13; built in 1.0.5 (PR #227); the rank is read from ROADMAP's Order column]* It changes `template/` and `plugin/`, so it ships as a plugin version with tests and reaches a project through `/sdlc-init`'s workflow copies. The parts it takes:
 
 | Part | Where | When |
 |---|---|---|

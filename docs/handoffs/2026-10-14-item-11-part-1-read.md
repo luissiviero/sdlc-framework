@@ -47,7 +47,7 @@ Written on 2026-10-14 by the item-11 session (branch `ccr-4a548fe6-7cqzlo`), fro
 
 ## 4. The port list and what the read did not exercise
 
-The sample ran **0.2.30**, so the read certifies 0.2.30's detect path. `main`'s history restarted at PR #126 (`v0.2.30` is not an ancestor of `main`: `git merge-base --is-ancestor`), so the list comes from the records' "Port list (choice 138)" lines, checked against a content diff (`git diff v0.2.30 origin/main`).
+The sample ran **0.2.30**, so the read certifies 0.2.30's detect path. `main`'s history restarted at PR #126 (`v0.2.30` is not an ancestor of `main`: `git merge-base --is-ancestor`), so the list comes from the records' "Port list (choice 138)" lines, checked against a content diff (`git diff v0.2.30 origin/main`). *[2026-10-20, docs review: `v0.2.30` (`6ff3af9`, PR #93) is an ancestor of `main` (`git merge-base --is-ancestor v0.2.30 origin/main` is true on a full clone); the port list still holds.]*
 
 | PR | Version | Detect-path files it touched | Record |
 |---|---|---|---|
