@@ -359,8 +359,6 @@ def test_labels_are_the_documented_set():
         "sdlc:d-ready",
         "sdlc:e-ready",
         "sdlc:f-ready",
-        "sdlc:c-approved",
-        "sdlc:d-approved",
         "sdlc:release-approved",
         # the owner's un-park verbs (decision 24, plugin 0.2.13); sdlc:accept-risk retired
         # with decision 35 (plugin 1.0.15)
@@ -490,7 +488,7 @@ def test_build_test_and_deploy_halves_run_on_the_single_build_branch(project):
     assert proc.returncode == 0, proc.stdout + proc.stderr
     result = json.loads(proc.stdout)
     assert result["result"] == "continue" and result["label"] is None
-    assert result["profile"] == "standard" and [c for c in result["checks"] if not c["ok"]] == []
+    assert "profile" not in result and [c for c in result["checks"] if not c["ok"]] == []
     commit_phase(root, "c", "build(0001): gate (c) evidence")
 
     # --- /sdlc-test: phase (d), same branch -----------------------------------------------

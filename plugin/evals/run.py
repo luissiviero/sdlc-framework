@@ -52,8 +52,8 @@ nothing lands in the project) plus a markdown table on stdout; with ``$GITHUB_OU
 the step outputs ``pass_rate``, ``passed``, ``total`` and ``ok`` are appended to it.
 
 ``--fixture`` runs the framework-level suite: instead of ``--root`` the project is built from
-``tests/fixtures/sample-python-project`` (a git repository with ``/sdlc-init`` applied,
-profile standard) and ``--cases`` defaults to this repository's ``evals/cases``.
+``tests/fixtures/sample-python-project`` (a git repository with ``/sdlc-init`` applied)
+and ``--cases`` defaults to this repository's ``evals/cases``.
 
 Commands in ``setup`` and in ``command`` checks run without a shell (``release/cli.py``
 ``command_chain``: one command, or steps joined by ``&&``); ``python`` falls back to the
@@ -692,8 +692,8 @@ def run_case(
 
 # --- the fixture project ------------------------------------------------------------------------
 def build_fixture(source: Path = FIXTURE) -> Path:
-    """The sample project as a git repository with ``/sdlc-init`` applied (profile standard),
-    in a temporary folder: the project the framework-level suite runs against."""
+    """The sample project as a git repository with ``/sdlc-init`` applied, in a
+    temporary folder: the project the framework-level suite runs against."""
     from init import sdlc_init  # noqa: PLC0415 - only the fixture needs it
 
     root = Path(tempfile.mkdtemp(prefix="sdlc-eval-fixture-")) / source.name
@@ -708,7 +708,7 @@ def build_fixture(source: Path = FIXTURE) -> Path:
     gitops.run(root, "add", "-A")
     gitops.run(root, "commit", "-q", "-m", "The sample project")
     with contextlib.redirect_stdout(io.StringIO()):
-        code = sdlc_init.main(["--root", str(root), "--profile", "standard"])
+        code = sdlc_init.main(["--root", str(root)])
     if code != 0:
         raise RuntimeError(f"/sdlc-init failed on the fixture (exit {code})")
     gitops.run(root, "add", "-A")

@@ -630,7 +630,7 @@ def test_gate_continues_on_a_clean_change(project):
     verdict(root, "c")
     result = gate.run_gate(root, "0001", "c")
     assert result.result == "continue", result.reason
-    assert result.label is None and result.human_gate is False and result.profile == "standard"
+    assert result.label is None and result.human_gate is False
     assert _names(result, False) == []
     assert set(_names(result, True)) == {
         "limits",
@@ -657,19 +657,20 @@ def test_gate_continues_on_a_clean_change(project):
     assert result.what_i_need() == ""
 
 
-def test_gate_waits_at_a_human_gate_and_dry_run_writes_nothing(project):
+def test_gate_dry_run_writes_nothing_and_a_failed_check_parks(project):
+    """Gate (c) is the confidence gate's alone (decision 37, 1.0.21): it continues with no
+    label; a dry run writes nothing, and a failed check parks."""
     root, change = project
-    set_on_base(root, change, profile_override="full")
     before = (change / "status.yaml").read_text(encoding="utf-8")
     result = gate.run_gate(root, "0001", "c", dry_run=True)
-    assert result.result == "park"  # Full profile still needs the adversarial verdict at (c)
+    assert result.result == "park"  # the adversarial verdict is still needed at (c)
     assert "adversarial_review" in _names(result, False)
     verdict(root, "c")
     result = gate.run_gate(root, "0001", "c", dry_run=True)
-    assert result.result == "wait" and result.label == "sdlc:c-ready"
+    assert result.result == "continue" and result.label is None and not result.human_gate
     assert (change / "status.yaml").read_text(encoding="utf-8") == before
     assert not (change / "evidence" / "gate-c.json").exists()
-    # a failed check parks even at a human gate (uncommitted work is clean_tree's, not
+    # a failed check parks (uncommitted work is clean_tree's, not
     # plan_sync's: the plan is judged on the commits since 0.2.9)
     (root / "sample_pkg" / "percent.py").unlink()
     write(root / "sample_pkg" / "extra.py", "x = 1\n")
@@ -2122,12 +2123,12 @@ def test_gate_cli_rejects_a_malformed_id(project):
 
 
 # --- gate (b): the design gate (steps 22-23) ---------------------------------------------------
-def test_gate_b_waits_for_the_owner_in_every_profile(design_project):
+def test_gate_b_waits_for_the_owner(design_project, monkeypatch):
     root, change = design_project
     verdict(root, "b")
     result = gate.run_gate(root, "0001", "b", dry_run=True)
     assert result.result == "wait", result.reason
-    assert result.label == "sdlc:b-ready" and result.profile == "standard"
+    assert result.label == "sdlc:b-ready"
     assert _names(result, False) == []
     assert set(_names(result, True)) == {
         "limits",
@@ -2142,14 +2143,16 @@ def test_gate_b_waits_for_the_owner_in_every_profile(design_project):
         "adversarial_review",
         "reviewer_model",
     }
-    # decision 21 (0.2.14): Lite is gone; a change that still says lite waits like Standard
-    st = status_mod.read_status(change)
-    st.profile_override = "lite"
-    status_mod.write_status(change, st)
+    # decision 37 (1.0.21): a project file that still says ``profile: full`` or
+    # ``review: parked`` waits the same; the keys are not read, and the result names them
+    loaded = gate.load_sdlc_config
+    monkeypatch.setattr(
+        gate, "load_sdlc_config", lambda r: {**loaded(r), "profile": "full", "review": "parked"}
+    )
     result = gate.run_gate(root, "0001", "b", dry_run=True)
     assert result.result == "wait", result.reason
-    assert result.label == "sdlc:b-ready" and result.profile == "standard"
-    assert result.human_gate is True
+    assert result.label == "sdlc:b-ready" and result.human_gate is True
+    assert "profile: full" in result.config_note and "decision 37" in result.config_note
 
 
 def test_gate_b_parks_on_a_spec_without_the_header(design_project):
@@ -3205,9 +3208,7 @@ def test_lesson_and_eval_renders_every_problem_on_its_own_indented_line(tmp_path
     _lesson_setup(tmp_path, write_lesson_file=False, write_index=False, write_eval=False)
     res = checks.lesson_and_eval(_e_ctx(tmp_path))
     assert not res.ok and len(res.need.split("\n    ")) >= 3
-    result = gate.GateResult(
-        "0001", "x", "e", "standard", True, "park", [res], "sdlc:needs-human", "a" * 40
-    )
+    result = gate.GateResult("0001", "x", "e", True, "park", [res], "sdlc:needs-human", "a" * 40)
     block = result.what_i_need()
     bullet = f"- **lesson_and_eval**: {res.reason}"
     problems = res.need.split("\n    ")
@@ -3340,69 +3341,21 @@ def test_lock_tests_clears_the_recorded_unlock_actor():
 
 
 # --- 0.2.26: group A of the 1.0.0 readiness review (docs/reviews/2026-09-26-readiness-review.md) --
-def test_the_overrides_are_read_from_the_base_branch_s_copy(project):
-    """A branch that wrote ``profile_override: standard`` on a Full-profile change skipped
-    the (c)/(d) label gates, and ``review_override: deferred`` sent the park items to the
-    panel: both are read from the copy the owner approved now, as intent.md is; the
-    branch's own values are ignored with a note (choice 103)."""
+def test_a_leftover_profile_override_changes_nothing(project):
+    """Decision 37 (1.0.21): no per-change override any more. A ``status.yaml`` an older plugin
+    wrote with ``profile_override: full`` and ``review_override: parked``, on the copy the
+    owner approved, still loads, and gate (c) is still the confidence gate's alone."""
     root, change = project
-    # a project on parked review (deferred is the template's default since 1.0.8, decision 32)
-    on_base(
-        root,
-        lambda r: write(
-            r / "sdlc.yaml",
-            (r / "sdlc.yaml")
-            .read_text(encoding="utf-8")
-            .replace("review: deferred", "review: parked"),
-        ),
-        "review: parked",
-    )
-    set_on_base(root, change, profile_override="full")
-    verdict(root, "c")
-    result = gate.run_gate(root, "0001", "c", dry_run=True)
-    assert result.result == "wait" and result.label == "sdlc:c-ready"
-    # the branch lowers its own profile: ignored, and the result says so
-    st = status_mod.read_status(change)
-    st.profile_override = "standard"
-    st.review_override = "deferred"
-    status_mod.write_status(change, st)
-    commit_all(root, "the run lowers its own profile and defers its review", author=BOT_AUTHOR)
-    verdict(root, "c")
-    result = gate.run_gate(root, "0001", "c", dry_run=True)
-    assert result.result == "wait" and result.label == "sdlc:c-ready", result.reason
-    assert "profile_override 'standard' on the branch ignored ('full' at" in result.config_note
-    assert "review_override 'deferred' on the branch ignored (None at" in result.config_note
-    ctx = gate.build_context(root, "0001", "c")
-    assert ctx.profile == "full" and ctx.review_mode == "parked" and not ctx.deferred
-    # the owner's own change of the override, merged, is what counts
-    git(root, "reset", "-q", "--hard", "HEAD~1")  # takes the run record with it
-    start_run(root, "c")
-    set_on_base(root, change, profile_override=None)
-    verdict(root, "c")
-    result = gate.run_gate(root, "0001", "c", dry_run=True)
-    assert result.result == "continue", result.reason
-    assert result.config_note == ""
 
+    def leftover(r: Path) -> None:
+        raw = yamlish.load_file(change / "status.yaml")
+        raw.update({"profile_override": "full", "review_override": "parked"})
+        yamlish.dump_file(change / "status.yaml", raw)
 
-def test_the_gate_reads_the_overrides_at_the_base_s_tip_not_the_merge_base(project):
-    """The review of the 0.2.26 diff, M3: read at the merge base, the gate and the runner's
-    guard (the default branch's tip) disagreed when the owner changed the override on main
-    after the branch forked, and the run stalled without a park. Both read the tip."""
-    root, change = project
-    verdict(root, "c")
-    assert gate.run_gate(root, "0001", "c", dry_run=True).result == "continue"
-    # the owner raises the change to Full on main, without merging main into the branch
-    branch = git(root, "rev-parse", "--abbrev-ref", "HEAD").strip()
-    git(root, "checkout", "-q", "main")
-    st = status_mod.read_status(change)
-    st.profile_override = "full"
-    status_mod.write_status(change, st)
-    git(root, "commit", "-q", "-am", "owner: full profile for 0001")
-    git(root, "checkout", "-q", branch)
+    on_base(root, leftover, "an older plugin's status.yaml")
     verdict(root, "c")
     result = gate.run_gate(root, "0001", "c", dry_run=True)
-    assert result.result == "wait" and result.label == "sdlc:c-ready", result.reason
-    assert "profile_override None on the branch ignored ('full' at main)" in result.config_note
+    assert result.result == "continue" and result.label is None, result.reason
 
 
 def test_design_scope_exempts_change_0000_by_its_folder_and_at_gate_a_only(project):

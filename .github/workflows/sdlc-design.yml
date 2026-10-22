@@ -1,11 +1,11 @@
 # Phase (b) design, fired by the merge of the intent PR: the merged pull request that carries
 # the change's changes/<id>-<slug>/ folder, whatever its head branch is called.
 #
-# The fast lane (decision 30): on every profile but Full, an intent PR your own account opens
+# The fast lane (decision 30): an intent PR your own account opens
 # (or reopens) starts the design at once, without a merge - writing and pushing the intent is
 # your acceptance. The design branch is cut from the PR's head, and once the design PR exists
 # the intent PR is labelled sdlc:superseded and closed (no comment). The find step judges it
-# exactly (your account as the author and as the one who opened or reopened it, the profile,
+# exactly (your account as the author and as the one who opened or reopened it,
 # one change folder at phase a and nothing else, no design PR yet) and skips green otherwise; a
 # collaborator's or a bot's intent PR or reopen, a draft and a fork's head keep gate (a), the
 # merge.

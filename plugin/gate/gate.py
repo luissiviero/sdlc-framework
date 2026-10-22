@@ -2,18 +2,17 @@
 
 Order: run limits (step 19) → deterministic checks → the adversarial reviewer's verdict.
 Result:
-  - ``continue``  every check passed and the gate is automated for this profile;
-  - ``wait``      every check passed but the gate is human (Standard: a, b, e; Full: all):
-                  the run stops with the ``sdlc:<phase>-ready`` label;
+  - ``continue``  every check passed and the gate is automated ((c) and (d));
+  - ``wait``      every check passed but the gate is human ((a), (b), (e) and (f), decision
+                  37): the run stops with the ``sdlc:<phase>-ready`` label;
   - ``park``      a check failed: ``Status.park(reason)``, the ``sdlc:needs-human`` label and
                   the "What I need from you" block for the PR description. The gate notifies
                   nobody; the runner's publication requests the owner's review (decision 31).
-The fast lane (decision 30, ROADMAP R46): at gate (b), in a session the CI runner runs, on
-every profile but Full, a gate whose only reason to wait is that (b) is a human gate and whose
-adversarial reviewer classed the plan ``routine`` says ``continue`` (``fast_lane`` true, no
-label): the runner records it in ``status.yaml: fast_lane.b`` and dispatches the build. A
-``non-routine`` or missing classification, a park, the Full profile and a gate run by hand
-wait at (b) as before.
+The fast lane (decision 30, ROADMAP R46): at gate (b), in a session the CI runner runs, a
+gate whose only reason to wait is that (b) is a human gate and whose adversarial reviewer
+classed the plan ``routine`` says ``continue`` (``fast_lane`` true, no label): the runner
+records it in ``status.yaml: fast_lane.b`` and dispatches the build. A ``non-routine`` or
+missing classification, a park and a gate run by hand wait at (b) as before.
 The result is also written to ``changes/<id>-<slug>/evidence/gate-<phase>.json`` so the
 PR summary (step 27a, B3) can show it.
 """
@@ -54,7 +53,6 @@ class GateResult:
     change_id: str
     slug: str
     phase: str
-    profile: str
     human_gate: bool
     result: str
     checks: list[CheckResult]
@@ -63,7 +61,7 @@ class GateResult:
     at: str = field(default_factory=_now)
     dry_run: bool = False
     config_note: str = ""
-    # decision 30: gate (b) passed on the fast lane (a routine plan, not Full, in CI)
+    # decision 30: gate (b) passed on the fast lane (a routine plan, in CI)
     fast_lane: bool = False
 
     @property
@@ -100,7 +98,6 @@ class GateResult:
             "change_id": self.change_id,
             "slug": self.slug,
             "phase": self.phase,
-            "profile": self.profile,
             "human_gate": self.human_gate,
             "result": self.result,
             "label": self.label,
@@ -125,7 +122,6 @@ class GateResult:
             change_id=str(data.get("change_id") or ""),
             slug=str(data.get("slug") or ""),
             phase=str(data.get("phase") or ""),
-            profile=str(data.get("profile") or "standard"),
             human_gate=bool(data.get("human_gate")),
             result=str(data.get("result") or "park"),
             checks=[
@@ -144,42 +140,6 @@ class GateResult:
 
 class GateError(RuntimeError):
     pass
-
-
-def approved_overrides(
-    root: Path, change_dir: Path, st: status_mod.Status, d: diffmod.Diff | None
-) -> tuple[str | None, str | None, str]:
-    """``(profile_override, review_override, note)`` as the base branch's ``status.yaml``
-    carries them at the base's tip (``d.base``, the ref the runner's guard reads too — the
-    review of the 0.2.26 diff, M3: read at the merge base, the gate and the guard disagreed
-    when the owner changed the override on the default branch after the branch forked, and
-    the run stalled without a park). ``intent.md`` stays at the merge base by design. A folder
-    not on the base (an intent PR before its merge) has no approved override; with no base
-    to compare with (no git, no default branch) the checkout's values stand, as every other
-    check then reads the working tree."""
-    if d is None or not d.merge_base or d.base == "HEAD":
-        return st.profile_override, st.review_override, ""
-    rel = f"{change_dir.name}"
-    text = diffmod.file_at(root, d.base, f"{c.CHANGES_DIR}/{rel}/{status_mod.STATUS_FILE}")
-    profile: str | None = None
-    review: str | None = None
-    if text is not None:
-        try:
-            approved = status_mod.Status.from_dict(yamlish.loads(text))
-        except Exception as exc:  # noqa: BLE001
-            raise GateError(
-                f"{rel}/{status_mod.STATUS_FILE} at {d.base} unreadable: {exc}"
-            ) from exc
-        profile, review = approved.profile_override, approved.review_override
-    ignored = [
-        f"{name} {branch!r} on the branch ignored ({expected!r} at {d.base})"
-        for name, branch, expected in (
-            ("profile_override", st.profile_override, profile),
-            ("review_override", st.review_override, review),
-        )
-        if branch != expected
-    ]
-    return profile, review, "; ".join(ignored)
 
 
 def build_context(
@@ -226,22 +186,14 @@ def build_context(
                 config_note = (
                     f"sdlc.yaml changed on the branch: limits and lists read from {d.base}"
                 )
-    # the overrides only the owner sets are read from the copy the owner approved, as
-    # intent.md is (``approved_artifact``): a branch that wrote ``profile_override: standard``
-    # skipped the Full profile's (c)/(d) label gates before 0.2.26 (the 1.0.0 readiness
-    # review; choice 103). The branch's own values are ignored, with a note in the result.
-    profile_override, review_override, override_note = approved_overrides(root, change_dir, st, d)
-    if override_note:
-        config_note = "; ".join(n for n in (config_note, override_note) if n)
-    profile = c.effective_profile(config.get("profile"), profile_override)
-    human = c.is_human_gate(profile, phase)
-    try:
-        review_mode = c.effective_review_mode(config.get("review"), review_override)
-    except ValueError as exc:
-        raise GateError(str(exc)) from exc
+    # decision 37: ``profile`` and ``review`` are no longer read; a value that chose another
+    # behaviour is named in the result's note, never refused
+    retired = c.retired_settings_note(config)
+    if retired:
+        config_note = "; ".join(n for n in (config_note, retired) if n)
     return GateContext(
-        root, change_dir, phase, st, config, d, human, diff_error, profile, config_note,
-        review_mode,
+        root, change_dir, phase, st, config, d, c.is_human_gate(phase), diff_error,
+        config_note,
         # issue #91: a CI session's gate leaves the commands to the runner (checks.check_commands)
         commands_deferred=os.environ.get(checks.COMMANDS_RUNNER_ENV) == checks.RUN_BY_RUNNER,
     )  # fmt: skip
@@ -275,10 +227,10 @@ def settled_by_panel(results: list[CheckResult]) -> bool:
 
 
 def fast_lane_applies(
-    phase: str, profile: str, human_gate: bool, results: list[CheckResult], in_runner: bool
+    phase: str, human_gate: bool, results: list[CheckResult], in_runner: bool
 ) -> bool:
     """Decision 30: gate (b) does not wait for the owner when every check passed, the only
-    reason to wait is that (b) is a human gate, the profile is not Full, the adversarial
+    reason to wait is that (b) is a human gate, the adversarial
     reviewer said ``continue`` itself (an ``escalate`` the panel settled waits) and classed
     the plan exactly ``routine``, and the CI runner runs the session (it alone records the
     fast lane and dispatches the build; a gate run by hand waits), and no risk-list item hit
@@ -287,7 +239,6 @@ def fast_lane_applies(
         phase == FAST_LANE_PHASE
         and human_gate
         and in_runner
-        and c.fast_lane_profile(profile)
         and all(r.ok for r in results)
         and not settled_by_panel(results)
         and verdict_classification(results) == status_mod.FAST_LANE_CLASSIFICATION
@@ -328,9 +279,8 @@ def evaluate(ctx: GateContext) -> GateResult:
                     )
                 )
     failed = [r for r in results if not r.ok]
-    profile = ctx.profile
     # decision 30: the commands mark says the runner runs this session (``build_context``)
-    fast = fast_lane_applies(ctx.phase, profile, ctx.human_gate, results, ctx.commands_deferred)
+    fast = fast_lane_applies(ctx.phase, ctx.human_gate, results, ctx.commands_deferred)
     if failed:
         result, label = "park", c.NEEDS_HUMAN_LABEL
     elif ctx.human_gate and not fast:
@@ -341,7 +291,6 @@ def evaluate(ctx: GateContext) -> GateResult:
         change_id=ctx.status.id,
         slug=ctx.status.slug,
         phase=ctx.phase,
-        profile=profile,
         human_gate=ctx.human_gate,
         result=result,
         checks=results,
@@ -652,7 +601,7 @@ def run_deferred_commands(
         # green on the logs of this run, so the verdict is the gate's, as ``evaluate`` gives it
         # (decision 30's fast lane included: this step runs in the CI runner only)
         result.fast_lane = fast_lane_applies(
-            ctx.phase, ctx.profile, ctx.human_gate, result.checks, in_runner=True
+            ctx.phase, ctx.human_gate, result.checks, in_runner=True
         )
         result.result, result.label = (
             ("wait", c.ready_label(ctx.phase))

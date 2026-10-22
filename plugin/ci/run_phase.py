@@ -48,12 +48,11 @@ What one run does, in order:
    the run does it itself. A project with no setup command is skipped; a setup command that
    fails is an infrastructure failure. A dry run installs nothing;
 2. **guards** — not paused, the change exists, ``status.yaml`` is at the phase this run
-   follows with a passing gate, not parked, and in the Full profile the owner's approval
-   label is on the build PR and was applied by a human, not by the automation. A failed
-   guard prints ``{"skipped": ...}`` and exits 0, so a duplicate trigger is harmless. One
-   exception: a (b) or (c) run whose work branch already carries this phase but has no open
-   pull request is a re-run of an attempt that never reached the queue, and it proceeds with
-   the earlier park cleared (``rerun_reason``). So does a build parked at the runner's
+   follows with a passing gate, and not parked. A failed guard prints ``{"skipped": ...}``
+   and exits 0, so a duplicate trigger is harmless. One exception: a (b) or (c) run whose
+   work branch already carries this phase but has no open pull request is a re-run of an
+   attempt that never reached the queue, and it proceeds with the earlier park cleared
+   (``rerun_reason``). So does a build parked at the runner's
    preflight before any session ran, its pull request open or not (``pre_run_park``; gap 2
    of NOTES §45): the restart merges the default branch into the work branch first
    (``merge_default_branch``), and a conflict parks it again;
@@ -160,7 +159,7 @@ from hooks._common import (  # noqa: E402
 )
 from state import conventions as c  # noqa: E402
 from state import status as status_mod  # noqa: E402
-from state.unpark import automation_identities, is_automation_actor, is_owner_actor  # noqa: E402
+from state.unpark import is_automation_actor, is_owner_actor  # noqa: E402
 
 EXIT_OK, EXIT_FAILED, EXIT_USAGE = 0, 1, 2
 
@@ -188,18 +187,15 @@ PREVIOUS_PHASE = {"b": "a", "c": "b", "d": "c", "e": "d", "f": "f", "review": "d
 PHASE_BEFORE = {"b": ("a", "f")}  # the phases a run accepts where PREVIOUS_PHASE names one
 GATE_MUST_HAVE_PASSED = ("c", "d", "e", "review")
 FIX_PHASES = ("a", "b", "c", "d", "e", "f")  # the phases whose PR a fix round may run on
-# Full profile only: the owner's approving label on the build PR, and who applied it.
-APPROVAL_LABEL = {"d": "c", "e": "d", "review": "d"}  # run phase -> phase whose label is read
-APPROVAL_BRANCH_PHASE = "c"  # the build PR, which lives on sdlc/<id>/c through (d) and (e)
 # Hand-over (section 4.2, "Hands over" column). A `wait` or a `park` dispatches nothing;
-# gate (b) is the owner's merge in every profile since the Lite removal (plugin 0.2.14), so
-# a design run never dispatches the build - except on the fast lane below.
+# gate (b) is the owner's merge, so a design run never dispatches the build - except on the
+# fast lane below.
 NEXT_WORKFLOW = {"c": "sdlc-test.yml", "d": "sdlc-deploy.yml"}
 # The phase the dispatched workflow runs; its work branch is the dispatch's ``head_ref``
 # input, which keys the workflow's concurrency group on the change's own branch.
 NEXT_PHASE = {"c": "d", "d": "e"}
-# Decision 30 (the fast lane, ROADMAP R46): a design whose gate passed on a routine plan, on
-# every profile but Full, continues to the build without the owner's merge. The hand-over
+# Decision 30 (the fast lane, ROADMAP R46): a design whose gate passed on a routine plan
+# continues to the build without the owner's merge. The hand-over
 # is taken only on a record the runner itself confirmed (``record_fast_lane_b``), so a
 # plain ``continue`` at (b) still dispatches nothing.
 FAST_LANE_WORKFLOW = {"b": "sdlc-build.yml"}
@@ -438,73 +434,6 @@ def ensure_labels(repo: str, env: dict[str, str]) -> dict[str, Any]:
     return {"ensured": len(names), "created": created, "failed": failed}
 
 
-def label_applied_by_a_human(
-    repo: str, number: int, label: str, identities: list[str] | None = None
-) -> tuple[bool, str]:
-    """Say whether a person applied ``label`` last: (True, login) or (False, reason).
-
-    The timeline is read by ``pr/github.py label_actor`` (the paging lives there since
-    0.2.12); the automation's own label must never pass a human gate (OPERATING_MODEL
-    section 4.2, "actor not the token"). Since R49 (decision 33) that label may be the
-    project's GitHub App's (``<slug>[bot]``), not ``github-actions[bot]``: the actor is
-    judged by ``state/unpark.py is_automation_actor``, which rejects any ``[bot]`` and
-    ``identities`` (``sdlc.yaml: automation_identity``; the policy default when None).
-    """
-    github = _github()
-    if github is None:
-        return False, "plugin/pr/github.py is not available"
-    found = github.label_actor(repo, number, label)
-    if not found.get("ok"):
-        return False, f"could not read the label events: {found.get('reason') or 'failed'}"
-    actor = found.get("actor")
-    if not actor:
-        return False, f"no `labeled` event for {label}"
-    if identities is None:
-        identities = automation_identities({})
-    if is_automation_actor(actor, identities):
-        return False, f"{label} was applied by {actor}, not by a human"
-    return True, actor
-
-
-def check_approval(
-    root: Path, repo: str, change_id: str, run_phase: str, env: dict[str, str]
-) -> str | None:
-    """Full profile: the skip reason when the owner's approval is not on the build PR. The
-    label counts only from the owner's account (decision 34, amending 27), judged by
-    ``state/unpark.py is_owner_actor`` against the default branch's ``sdlc.yaml``."""
-    label = c.approved_label(APPROVAL_LABEL[run_phase])
-    github = _github()
-    if github is None:
-        return f"{label} cannot be checked: plugin/pr/github.py is not available"
-    if not _token(env) and not github.gh_path():
-        # fail closed: with no route to GitHub the label cannot be read at all, and an
-        # unverifiable human gate is not a passed human gate (OPERATING_MODEL section 4.2).
-        return f"{label} cannot be verified: no gh and no token"
-    head = c.branch_name(change_id, APPROVAL_BRANCH_PHASE)
-    pr = github.find_open_pr(repo, head)
-    number = pr.get("number")
-    if not number:
-        return f"no open PR on {head} to read {label} from"
-    if label not in (pr.get("labels") or []):
-        return f"the build PR #{number} does not carry {label}"
-    if not _token(env):
-        print(f"note: no token, so the actor of {label} is not checked", file=sys.stderr)
-        return None
-    try:
-        config = owner_config(root, env)
-    except ConfigError as exc:  # fail closed, as the guard refuses on it
-        return f"{label} on PR #{number} cannot be judged: {exc}"
-    ok, who = label_applied_by_a_human(repo, int(number), label, automation_identities(config))
-    if not ok:
-        return f"{label} on PR #{number}: {who}"
-    if not is_owner_actor(who, config, env, repo):
-        return (
-            f"{label} on PR #{number} was applied by {who}, not by the owner's account "
-            "(decision 34)"
-        )
-    return None
-
-
 # --- what the runner leaves in the working directory (first live design run, 2026-09-21) -----
 # Two kinds of untracked entry appear in a phase job's checkout and belong to nobody:
 #   * ``framework/`` — the pinned framework the workflow checks out beside the project
@@ -732,25 +661,6 @@ def _ref_exists(root: Path, ref: str) -> bool:
     return gitops.ref_exists(root, ref)  # remembered until the checkout may have changed
 
 
-def checkout_profile(root: Path, change_id: str) -> str | None:
-    """The change's effective profile as the current checkout says it (``sdlc.yaml: profile``
-    and the change's ``status.yaml: profile_override``); None when it cannot be read.
-
-    ``prepare_branch`` calls it before it switches, so it reads the default branch the run
-    started on: the owner's merged ``sdlc.yaml`` and the merged intent's status."""
-    override = None
-    change_dir = c.find_change_dir(root, change_id)
-    if change_dir is not None:
-        try:
-            override = status_mod.read_status(change_dir).profile_override
-        except (OSError, ValueError):
-            override = None
-    try:
-        return c.effective_profile(_config(root).get("profile"), override)
-    except ValueError:
-        return None
-
-
 def _status_at(root: Path, ref: str, change_id: str):
     """The change's ``status.yaml`` as ``ref`` carries it (its folder found in that tree), or
     None: no such ref, no folder there, or a copy that does not parse."""
@@ -815,8 +725,6 @@ def stacked_design(root: Path, change_id: str) -> str | None:
     - its ``status.yaml`` records ``fast_lane.b`` at a commit it carries and the default
       branch does not (``fast_lane_sha``), and the default branch's copy of the change is not
       past (a) (a design PR the owner merged by hand takes the default branch);
-    - the profile is not Full, read as the guard reads it (the default branch's
-      ``sdlc.yaml`` and its override for the change);
     - its ``evidence/gate-b.json`` records the fast lane's ``continue``;
     - its adversarial verdict for (b) is ``continue`` and ``routine`` at ``fast_lane.b.sha``
       (``fast_lane_verdict_refusal``, as the runner confirmed it);
@@ -832,13 +740,6 @@ def stacked_design(root: Path, change_id: str) -> str | None:
         return None
     merged = _status_at(root, base, change_id) if base != "HEAD" else None
     if merged is not None and merged.phase not in ("a", "f"):
-        return None
-    try:
-        config = _approved_config(root)
-        override = merged.profile_override if merged is not None else None
-        if not c.fast_lane_profile(c.effective_profile(config.get("profile"), override)):
-            return None
-    except (ConfigError, ValueError):
         return None
     rel = f"{c.CHANGES_DIR}/{c.change_dir_name(st.id, st.slug)}"
     evidence = f"{rel}/{art.EVIDENCE_DIR}"
@@ -863,17 +764,15 @@ def stacked_design(root: Path, change_id: str) -> str | None:
     return design
 
 
-def _start_point(root: Path, change_id: str, phase: str, profile: str | None) -> str | None:
-    """Where a missing work branch starts: the default branch, in every profile. The owner's
+def _start_point(root: Path, change_id: str, phase: str) -> str | None:
+    """Where a missing work branch starts: the default branch. The owner's
     merge at gate (b) put the approved spec and plan there, and a design branch left behind
     after that merge lacks the default branch's later commits and may carry commits made
     after the merge (PROGRESS known gaps, ninth live run; HANDOFF 6(a)). Until 0.2.14 the
     Lite profile started ``sdlc/<id>/c`` from ``sdlc/<id>/b``; Lite is gone (decision 21).
     One exception since decision 30: a build on the fast lane starts from the design branch
     whose gate passed on a routine plan (``stacked_design``), since no merge put the spec
-    and plan on the default branch. ``profile`` is kept for the callers' symmetry: the fast
-    lane was judged by the design run's gate and the runner on the profile they read."""
-    del profile
+    and plan on the default branch."""
     if phase == "c":
         stacked = stacked_design(root, change_id)
         if stacked:
@@ -939,7 +838,6 @@ def prepare_branch(
     root: Path,
     change_id: str,
     phase: str,
-    profile: str | None = None,
     branch: str | None = None,
     start_point: str | None = None,
     intent_pr: int | None = None,
@@ -947,9 +845,8 @@ def prepare_branch(
     """Put the checkout on the branch this phase works on, creating it for (b) and (c).
 
     Without this a dispatched run reads main's ``status.yaml`` and skips every phase past
-    (c), and a park would have no branch to commit its own evidence on. ``profile`` decides
-    where a new ``sdlc/<id>/c`` starts (``_start_point``); when it is not given it is read
-    from the checkout before anything is switched (``checkout_profile``). ``branch`` names
+    (c), and a park would have no branch to commit its own evidence on. A new
+    ``sdlc/<id>/c`` starts where ``_start_point`` says. ``branch`` names
     the branch outright (a fix round: the PR's own head), which is never created.
     ``start_point`` and ``intent_pr`` (phase (b) only, decision 30) cut a new design branch
     from the owner's open intent PR instead (``start_from_intent_pr``); a branch that
@@ -958,8 +855,6 @@ def prepare_branch(
     """
     from state import gitops
 
-    if profile is None:
-        profile = checkout_profile(root, change_id)
     named = bool(branch)
     branch = branch or work_branch_for(change_id, phase)
     out: dict[str, Any] = {"branch": branch, "switched": False}
@@ -980,7 +875,7 @@ def prepare_branch(
         return {**out, "note": f"{branch} does not exist: the build phase has not run yet"}
     if phase == "b" and start_point:
         return start_from_intent_pr(root, change_id, branch, start_point, intent_pr)
-    start = _start_point(root, change_id, phase, profile)
+    start = _start_point(root, change_id, phase)
     if start is None:
         return {**out, "note": "no base branch to create the work branch from"}
     return {**out, "switched": _git_ok(root, "checkout", "-b", branch, start), "from": start}
@@ -1255,29 +1150,6 @@ def _mapping(value: Any) -> dict[str, Any]:
     return value if isinstance(value, dict) else {}
 
 
-def _fast_lane_profile(root: Path, config: dict[str, Any], folder: str, head: Any) -> str:
-    """The profile the fast lane is judged by, as the gate reads it: the default branch's
-    ``sdlc.yaml`` and the default branch's ``profile_override`` for the change (none for an
-    unmerged change). A ``profile_override: full`` the owner wrote on the PR head counts too:
-    it can only keep gate (a) (decision 30's Full rule), never skip it. Raises ``ValueError``
-    on an unknown profile or an unreadable approved copy."""
-    from state import yamlish  # noqa: PLC0415
-
-    override = None
-    ref = _approved_ref(root)
-    rel = f"{c.CHANGES_DIR}/{folder}/{status_mod.STATUS_FILE}"
-    text = gate_diff.file_at(root, ref, rel) if ref is not None else None
-    if text is not None:
-        override = status_mod.Status.from_dict(yamlish.loads(text)).profile_override
-    profile = c.effective_profile(config.get("profile"), override)
-    if (
-        getattr(head, "profile_override", None)
-        and c.effective_profile(None, head.profile_override) == "full"
-    ):
-        return "full"
-    return profile
-
-
 def intent_pr_start(
     root: Path, repo: str, payload: dict[str, Any], env: dict[str, str]
 ) -> tuple[str | None, str | None, dict[str, str]]:
@@ -1285,7 +1157,7 @@ def intent_pr_start(
     It starts the design only when the PR is not a draft, its head is in ``repo``, both its
     author and the event's sender (who opened or reopened it) are the owner's account
     (``is_owner_actor`` against the default branch's ``sdlc.yaml``, decision 34's one rule),
-    the profile is not Full, its files are all inside exactly one ``changes/<id>-<slug>/``
+    its files are all inside exactly one ``changes/<id>-<slug>/``
     folder whose ``intent.md`` exists at the PR's head and whose ``status.yaml`` there is at
     phase (a), and no open pull request has the head ``sdlc/<id>/b`` yet (a reopened PR whose
     design PR exists; a pushed design branch with no PR may run again, ``rerun_reason``).
@@ -1400,12 +1272,6 @@ def intent_pr_start(
             ),
             {},
         )
-    try:
-        profile = _fast_lane_profile(root, config, folder, st)
-    except Exception as exc:  # noqa: BLE001 - fail closed on an unreadable approved copy
-        return None, f"the profile cannot be read: {exc}", {}
-    if not c.fast_lane_profile(profile):
-        return None, f"the profile is {profile}: gate (a) is the merge of the intent PR", {}
     carried = carried_forward(root, change_id)
     if carried:
         return None, carried, {}
@@ -1741,7 +1607,7 @@ def _approved_ref(root: Path) -> str | None:
     live — or None when the checkout has no such ref to read (a by-hand run without a remote,
     or a remote that has no such branch; a guessed name that is a framework branch or the
     current branch, which is nobody's approved copy). Shared by ``_approved_config`` and
-    ``approved_overrides``."""
+    ``_approved_status``."""
     from state import gitops  # noqa: PLC0415
 
     try:
@@ -1769,7 +1635,7 @@ def _approved_config(root: Path) -> dict[str, Any]:
 
     The guard used to read the checkout's copy, which ``prepare_branch`` had already
     switched to the work branch: ``paused: true`` merged on the default branch stopped
-    nothing in flight, and a branch could carry its own ``profile`` (OPERATING_MODEL
+    nothing in flight, and a branch could carry its own limits (OPERATING_MODEL
     section 4.2: the guard reads the "base branch copy of sdlc.yaml"; 1.0.0 readiness
     review, 2026-09-26). The default branch is named by ``SDLC_DEFAULT_BRANCH`` or guessed
     (``state/gitops.default_branch``); a guess that lands on a framework branch is refused,
@@ -1777,7 +1643,7 @@ def _approved_config(root: Path) -> dict[str, Any]:
 
     A copy that cannot be read raises ``ConfigError`` (NOTES §45 gap 6: PR #214's indented
     ``max_turns`` made the copy unreadable, and the ``{}`` returned here then dropped
-    ``paused``, the profile, ``protected_paths``, ``max_budget_usd`` and the turn cap without
+    ``paused``, ``protected_paths``, ``max_budget_usd`` and the turn cap without
     a word); the guard refuses to run on it."""
     from state import yamlish  # noqa: PLC0415
 
@@ -1816,8 +1682,7 @@ def owner_config(root: Path, env: dict[str, str]) -> dict[str, Any]:
 
 class ApprovedCopyUnreadable(RuntimeError):
     """The default branch's ``status.yaml`` exists and cannot be read: fail closed (the
-    review of the 0.2.26 diff, L3 — a None here read as "no override" and dropped the
-    owner's ``profile_override: full``)."""
+    review of the 0.2.26 diff, L3)."""
 
 
 def _approved_status(root: Path, change_dir: Path):
@@ -1839,36 +1704,6 @@ def _approved_status(root: Path, change_dir: Path):
         return status_mod.Status.from_dict(yamlish.loads(text))
     except Exception as exc:  # noqa: BLE001
         raise ApprovedCopyUnreadable(f"{rel} on the default branch is unreadable: {exc}") from exc
-
-
-def approved_overrides(
-    root: Path, change_dir: Path, st, env: dict[str, str] | None = None
-) -> tuple[str | None, str | None, str]:
-    """``(profile_override, review_override, note)`` the run judges by: the default branch's
-    copy of ``status.yaml`` when the checkout has one (choice 103; the 1.0.0 readiness
-    review: a branch that wrote ``profile_override: standard`` skipped the Full profile's
-    (c)/(d) label gates, and ``review_override: deferred`` sent the park items to the
-    panel). The branch's own values are ignored and the note says so when they differ. A
-    folder not on the default branch yet has no approved override (None). Without a
-    remote-tracking ref the checkout's values stand by hand only; on a runner
-    (``GITHUB_ACTIONS``) no override applies, since the branch's copy is nobody's approval.
-    An unreadable approved copy raises (``ApprovedCopyUnreadable``): the caller refuses."""
-    if _approved_ref(root) is None:
-        if (env if env is not None else os.environ).get("GITHUB_ACTIONS"):
-            return None, None, "no default branch ref on the runner: no override applies"
-        return st.profile_override, st.review_override, ""
-    approved = _approved_status(root, change_dir)
-    profile = approved.profile_override if approved is not None else None
-    review = approved.review_override if approved is not None else None
-    ignored = [
-        f"{name} {branch!r} on the branch ignored ({expected!r} on the default branch)"
-        for name, branch, expected in (
-            ("profile_override", st.profile_override, profile),
-            ("review_override", st.review_override, review),
-        )
-        if branch != expected
-    ]
-    return profile, review, "; ".join(ignored)
 
 
 def guard(root: Path, change_id: str, run_phase: str, repo: str, env: dict[str, str]):
@@ -1956,19 +1791,13 @@ def guard(root: Path, change_id: str, run_phase: str, repo: str, env: dict[str, 
         previous = read_gate(change_dir, expected)
         if previous is not None and gate_mod.deferred_commands(previous):
             return None, None, config, DEFERRED_GATE_SKIP.format(phase=expected, id=change_id)
-    # the Full profile's label gates are judged by the override the owner approved, not the
-    # branch's (0.2.26; a branch writing ``profile_override: standard`` skipped them before)
+    # the default branch's status.yaml is the copy the owner approved, which the owner-field
+    # checks compare the session's with: an unreadable one stops the run before anything is
+    # spent (fail closed; the review of the 0.2.26 diff, L3)
     try:
-        profile_override, _review, note = approved_overrides(root, change_dir, st, env)
+        _approved_status(root, change_dir)
     except ApprovedCopyUnreadable as exc:
         return None, None, config, f"{exc}: nothing runs until it is fixed"
-    if note:
-        print(f"status.yaml: {note}", file=sys.stderr)
-    profile = c.effective_profile(config.get("profile"), profile_override)
-    if profile == "full" and run_phase in APPROVAL_LABEL:
-        reason = check_approval(root, repo, change_id, run_phase, env)
-        if reason:
-            return None, None, config, reason
     return change_dir, st, config, None
 
 
@@ -3105,8 +2934,6 @@ def _run_phase(args, env: dict[str, str], track: dict[str, Any]) -> int:
     marks_note = fix_requests.keep_marks_only(change_dir, requests_before)
     if marks_note:  # restored, not a park: the round's own work stands
         print(marks_note, file=sys.stderr)
-    for line in owner["overrides_changed"]:
-        print(f"status.yaml: {line}", file=sys.stderr)
     # the session's own branch is the one the runner prepared, never the one it ends on (the
     # review of 2026-10-08: with the current branch here, a session that switched to another
     # of the change's branches, pushed it and stayed was not parked). A session that left
@@ -3379,8 +3206,8 @@ def _run_phase(args, env: dict[str, str], track: dict[str, Any]) -> int:
                 plugin_dir, root, change_dir, change_id, phase, gate_phase, fix_branch, pr
             )
         # the build cuts its branch only where its own check holds on what was pushed (a
-        # sweep of uncommitted spec or plan edits into the run record, a profile turned Full
-        # since): when it refuses, the design waits at (b) with its label, nothing dispatched
+        # sweep of uncommitted spec or plan edits into the run record): when it refuses, the
+        # design waits at (b) with its label, nothing dispatched
         refused = stacked_refusal(root, change_id)
         if refused:
             pr = fast_lane_wait(
@@ -3721,8 +3548,6 @@ def owner_fields(st) -> dict[str, Any]:
         "locked": st.change_type == "fix" and bool(st.tests_locked),
         "iterations": st.iterations,
         "panel_calls": st.panel_calls,
-        "profile_override": st.profile_override,
-        "review_override": st.review_override,
         # decision 30: the runner's record of the commits the fast lane cut branches from
         "fast_lane": json.dumps(st.fast_lane, sort_keys=True) if st.fast_lane else None,
         # decision 35: the merges that accepted a risk, recorded by the runner and the release
@@ -3742,8 +3567,7 @@ def owner_field_mismatches(
     dropped acceptance or a cleared actor fails closed at the gate; ``lock_tests`` clears
     ``tests_unlocked_by`` by design). The acts are judged with the actors (the review of the
     0.2.26 diff, H1): a risk item accepted with no entry, or the lock lifted with no actor,
-    is the session's own act whatever the commit author says. The overrides are not judged
-    here: they are restored and reported (``override_changes``)."""
+    is the session's own act whatever the commit author says."""
     approved = approved or {}
     reasons: list[str] = []
     known_items = set(before["risk_accepted"]) | set(approved.get("risk_accepted") or [])
@@ -3811,19 +3635,6 @@ def owner_field_mismatches(
     return reasons
 
 
-def override_changes(before: dict[str, Any], after: dict[str, Any]) -> list[str]:
-    """The overrides the session changed on the branch — restored and reported, never parked:
-    the runner and the gate read the default branch's copy whatever the branch says, and the
-    branch's value is put back so the owner's next merge does not carry it (the review of
-    the 0.2.26 diff, H2)."""
-    return [
-        f"{name}: the session set {after[name]!r} (was {before[name]!r}); restored, the "
-        "default branch's copy is what the runner and the gate read"
-        for name in ("profile_override", "review_override")
-        if after[name] != before[name]
-    ]
-
-
 def _test_files_changed_since(root: Path, pre_head: str, config: dict[str, Any]) -> list[str]:
     """The files under ``sdlc.yaml: test_paths`` that differ between ``pre_head`` and the
     working tree (committed by the session or not)."""
@@ -3878,8 +3689,6 @@ def restore_owner_fields(change_dir: Path, before_st, after_st=None) -> None:
         after_st.tests_locked = True
     after_st.iterations = max(after_st.iterations, before_st.iterations)
     after_st.panel_calls = max(after_st.panel_calls, before_st.panel_calls)
-    after_st.profile_override = before_st.profile_override
-    after_st.review_override = before_st.review_override
     after_st.fast_lane = before_st.fast_lane
     after_st.risk_acceptances = [dict(line) for line in before_st.risk_acceptances]
     status_mod.write_status(change_dir, after_st)
@@ -4196,10 +4005,9 @@ def verify_owner_fields(
     pre_head: str | None = None,
     config: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """After the session: ``{"ok", "mismatches", "overrides_changed", "test_files_restored"}``;
-    on a mismatch (or an unreadable file) the owner-only fields are restored before anything
-    is committed, and the test files changed under a lifted lock are put back; a changed
-    override is restored whatever else happened."""
+    """After the session: ``{"ok", "mismatches", "test_files_restored"}``; on a mismatch
+    (or an unreadable file) the owner-only fields are restored before anything is committed,
+    and the test files changed under a lifted lock are put back."""
     before = owner_fields(before_st)
     approved = owner_fields(approved_st) if approved_st is not None else None
     try:
@@ -4209,13 +4017,11 @@ def verify_owner_fields(
         return {
             "ok": False,
             "mismatches": [f"status.yaml unreadable after the session: {exc}"],
-            "overrides_changed": [],
             "test_files_restored": [],
         }
     after = owner_fields(after_st)
     mismatches = owner_field_mismatches(before, after, approved)
-    overrides = override_changes(before, after)
-    if mismatches or overrides:
+    if mismatches:
         restore_owner_fields(change_dir, before_st, after_st)
     restored: list[str] = []
     if before["locked"] and not after["locked"] and root is not None and pre_head:
@@ -4229,7 +4035,6 @@ def verify_owner_fields(
     return {
         "ok": not mismatches,
         "mismatches": mismatches,
-        "overrides_changed": overrides,
         "test_files_restored": restored,
     }
 
@@ -4763,23 +4568,20 @@ FAST_LANE_DEMOTION_NOT_PUSHED = (
 
 
 def fast_lane_refusal(
-    root: Path, change_dir: Path, result: dict[str, Any], config: dict[str, Any], env
+    root: Path, change_dir: Path, result: dict[str, Any]
 ) -> tuple[str | None, str | None]:
     """(refusal, full sha): the runner's own confirmation of a gate (b) that says it passed
     on the fast lane, read from what the runner trusts rather than the record alone - the
-    profile from the default branch's ``sdlc.yaml`` and override (the guard's reading, not
-    Full), the adversarial verdict for the record's commit, ``continue`` and ``routine``
+    change's ``status.yaml`` and the default branch's copy of it readable (fail closed), the
+    adversarial verdict for the record's commit, ``continue`` and ``routine``
     (``fast_lane_verdict_refusal``), that commit in the branch the run prepared, and no
     commit after it outside the change folder's evidence and ``status.yaml``
     (``fast_lane_after_gate``)."""
     try:
-        st = status_mod.read_status(change_dir)
-        override, _review, _note = approved_overrides(root, change_dir, st, env)
-        profile = c.effective_profile(config.get("profile"), override)
+        status_mod.read_status(change_dir)
+        _approved_status(root, change_dir)
     except (OSError, ValueError, ApprovedCopyUnreadable) as exc:
-        return f"the profile cannot be read: {exc}", None
-    if not c.fast_lane_profile(profile):
-        return f"the profile is {profile}: gate (b) is the owner's merge", None
+        return f"the change's status cannot be read: {exc}", None
     verdict, error = gate_checks.load_verdict(
         change_dir / art.EVIDENCE_DIR / art.ADVERSARIAL_VERDICT.format(phase="b")
     )
@@ -4812,7 +4614,7 @@ def record_fast_lane_b(
     the design PR's number when one is open - once the runner confirmed it
     (``fast_lane_refusal``). A record the runner does not confirm is put back to today's
     ``wait`` at (b): ``sdlc:b-ready``, the owner's merge starts the build."""
-    why, sha = fast_lane_refusal(root, change_dir, result, config, env)
+    why, sha = fast_lane_refusal(root, change_dir, result)
     if why or not sha:
         demote_fast_lane(change_dir, why or "not confirmed")
         print(f"fast lane refused, gate (b) waits for the owner: {why}", file=sys.stderr)
@@ -5240,7 +5042,6 @@ def write_park_result(
         change_id=st.id,
         slug=st.slug,
         phase=phase,
-        profile=getattr(st, "profile_override", None) or "",
         human_gate=True,
         result="park",
         checks=[

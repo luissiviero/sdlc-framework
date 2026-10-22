@@ -1276,7 +1276,6 @@ def write_park_result(
         change_id=st.id,
         slug=st.slug,
         phase="f",
-        profile=getattr(st, "profile_override", None) or "",
         human_gate=True,
         result="park",
         checks=[CheckResult(name=check, ok=False, reason=reason, need=need)],

@@ -5,8 +5,8 @@ Every automated publication (``pr/cli.py upsert --request-review``: the runner, 
 workflow and the weekly scan) brings the owner's review request in line with the label the
 gate printed:
 - a waiting label (``sdlc:needs-human``, ``sdlc:<phase>-ready``) requests the owner's review;
-  a request still pending from an earlier wait (an ``@claude`` comment or an approval label
-  does not clear it) is removed and requested again, so every new wait gives one fresh push;
+  a request still pending from an earlier wait (an ``@claude`` comment does not clear it)
+  is removed and requested again, so every new wait gives one fresh push;
 - any other label, or none, withdraws a pending request, so GitHub's "Review requests" list
   is exactly the owner's waiting queue.
 

@@ -13,7 +13,7 @@ branch's. A phase branch carries the ``sdlc.yaml`` it started from, and a pull r
 stay open across several framework releases: read from the head, the branch would run the
 framework it was created under for its whole life (the first overturn rounds on the sample
 repository, 2026-09-24, ran 0.2.14 on ``sdlc/0002/b`` while ``main`` pinned 0.2.16). The
-run's own configuration (review mode, limits) already comes from the base branch's copy.
+run's own configuration (pause flag, limits) already comes from the base branch's copy.
 
 The ref is fully qualified (plugin 0.2.24): git resolves ``refs/tags/<name>`` before
 ``refs/remotes/<name>``, so with the short ``origin/main`` a tag named ``origin/main``,
