@@ -40,6 +40,31 @@ Not tested, in either mode: a force-push to `main` and the deletion of `main`. I
 | S1 | **Accepted.** The commit landed on `main` | `PUT …/contents/docs/reviews/ruleset-probe-s1.md` created commit `7c33f02` on `main`, its author the owner's login. The file is removed by the pull request that records this row. |
 | S2 | **Accepted.** The push landed on `main` | `git push origin HEAD:main`: `2a782f1..906317a  HEAD -> main`. The file is removed by the same pull request. |
 | S3 | **Merged** | PR #316: `merge_pull_request` answered `merged: true`, merge commit `1cdb45f` on `main`; it also removed the two probe files. |
-| O1 | not run yet | |
-| O2 | not run yet | |
+| O1 | **Merged from the phone, with no warning.** The app shows "Ready to merge" under "All checks have passed"; a tap opens the same commit-message sheet, and its MERGE button merged | PR #318: `mergeable_state` read `clean` through the session's tools before the tap (#314 read `blocked` in the other mode), the owner's screenshot of the sheet, then the merge `45931cd` on `main`. |
+| O2 | Not needed: O1 merged | |
 | O3 | **Logged, as `pass`.** No entry says `bypass`, and every actor is the owner's login | The same read: S2 17:33:26 `pass` (the commit's author is `Claude`, the pusher the owner's login), S1 17:33:32 `pass`, #316 (the session's merge) 17:34:16 `pass`. The owner's later merges (#317 17:48:38, #319 18:30:02) and two direct web-editor commits to `main` (`2cf98e3` "Update CLAUDE.md" 17:49:57, `396e4b4` 18:43:34) read `pass` too. The mode changed between 17:21:47 and 17:33:26. |
+
+## A third option, C: Exempt in ruleset 1, plus a ruleset with no direct writes
+The owner first chose "For pull requests only", then asked whether the sample's ruleset 1 should follow, since the sample also has ruleset 2. On the sample, Exempt in ruleset 1 lets only ruleset 2 decide the phone's label: "Ready to merge" on an ordinary pull request, "Unable to merge" where `sdlc/review` is missing or red. Option C keeps that label and still refuses direct writes:
+- **Ruleset 1:** the owner stays (or becomes) Exempt.
+- **No-direct-writes rules:** "Require a pull request before merging" (no approvals), "Block force pushes" and "Restrict deletions". They sit in a ruleset whose bypass for the owner is "For pull requests only", so the bypass never covers a push.
+
+The owner set C up on 2026-10-22:
+- **This repository:** ruleset 1 (24077592) back to Exempt, and a new ruleset 25674595, "main — no direct writes (choice 251)".
+- **The sample:** ruleset 2 (25656269) gained the three rules and was renamed "review and no direct writes on main (decision 36, choice 251)". Ruleset 1 (24078926) kept the owner Exempt.
+
+The session verified all four rulesets from the owner's exports and from `GET /repos/<repo>/rules/branches/main`.
+
+### Results: option C
+
+| # | Result | Evidence |
+|---|--------|----------|
+| S1, this repository | **Refused** by the new ruleset alone | `PUT …/contents/docs/reviews/ruleset-probe-s1.md` on `main`: `409 Repository rule violations found`, "Changes must be made through a pull request." Ruleset 1's "Cannot update this protected ref" no longer appears, since the owner is Exempt there. |
+| S1, the sample | **Refused** by ruleset 2 | `PUT …/contents/ruleset-probe-s1.md` on the sample's `main`: `409`, "Required status check "sdlc/review" is expected." and "Changes must be made through a pull request." |
+| S2 | Not run | The session's own safety check refused the `git push` to `main` before it reached GitHub. In both earlier runs S2 met the same rules as S1. |
+| S3 | Not run | C does not change what governs an API merge by a pull-request bypass; S3 merged in both earlier runs. |
+| O1, the sample | **"Ready to merge"** on an ordinary PR, **"Unable to merge"** on one ruleset 2 holds | Sample #101 (a throwaway, closed unmerged): `mergeable_state` read `blocked` until the "not a build PR" check was posted, then `clean`; the owner's app showed "Ready to merge". Sample #55, which has no `sdlc/review`: the owner's app showed "Unable to merge". #101 also started the design workflow's fast lane, whose job found no change and ended green in 15 seconds. |
+| O1, this repository | Expected "Ready to merge" | The owner's merge of the pull request that records this table. |
+
+## The owner's choice
+On 2026-10-22, after the three runs, the owner chose **C** on both repositories (choice 251). It refuses a direct commit or push to `main` by anything acting as the owner's login, and it keeps the phone's label meaningful: "Unable to merge" appears only where ruleset 2 holds a pull request. A guardrail edit in the web editor needs a pull request. No option stops a session acting as the owner from merging a pull request (S3). The facts are NOTES §57.
