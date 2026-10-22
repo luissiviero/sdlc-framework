@@ -33,6 +33,13 @@ Not tested, in either mode: a force-push to `main` and the deletion of `main`. I
 | O2 | Not needed: O1 merged | |
 | O3 | not run yet | |
 
-## Results: "Exempt"
+## Results: "Exempt" (set by the owner on 2026-10-22)
 
-Not run yet.
+| # | Result | Evidence |
+|---|--------|----------|
+| S1 | **Accepted.** The commit landed on `main` | `PUT …/contents/docs/reviews/ruleset-probe-s1.md` created commit `7c33f02` on `main`, its author the owner's login. The file is removed by the pull request that records this row. |
+| S2 | **Accepted.** The push landed on `main` | `git push origin HEAD:main`: `2a782f1..906317a  HEAD -> main`. The file is removed by the same pull request. |
+| S3 | not run yet | |
+| O1 | not run yet | |
+| O2 | not run yet | |
+| O3 | not run yet | |
