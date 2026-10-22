@@ -3944,6 +3944,15 @@ def acceptance_mismatches(
             reasons += _approval_line_problems(github, repo, line, found, config, env)
             if found.get("merged"):
                 reasons += _acceptance_line_problems(line, found, change_id)
+        elif config is not None and not is_owner_actor(
+            str(line.get("by") or ""), config, env, repo
+        ):
+            # the review of the 1.0.22 diff (finding 4): a merge line accepts only for the
+            # owner's account, as its writers require, also under a misconfigured ruleset
+            reasons.append(
+                f"risk_acceptances: the line of PR #{line.get('pr')} names {line.get('by')!r}, "
+                "not the owner's account (decision 34)"
+            )
         elif not found.get("merged") or str(found.get("merged_by") or "") != str(line.get("by")):
             reasons.append(
                 f"risk_acceptances: PR #{line.get('pr')} was not merged by {line.get('by')!r} "

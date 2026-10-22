@@ -1020,7 +1020,7 @@ def test_dismiss_with_a_reason_opens_the_dismissal_pr(incident, gh, capsys):
     assert gh.named("post_not_build_check") == [((REPO, pushed), {"cwd": root})]
 
 
-def test_a_second_close_posts_the_check_on_its_new_commit(incident, gh, capsys):
+def test_a_second_close_posts_the_check_on_its_new_commit(incident, gh, capsys, monkeypatch):
     """The R22 double check, finding F1: on a second close the dismissal PR is already open,
     so create_pr refuses and names no number; the new head still needs its "not a build PR"
     check, or ruleset 2 holds the pull request."""
@@ -1037,6 +1037,14 @@ def test_a_second_close_posts_the_check_on_its_new_commit(incident, gh, capsys):
     assert out["commit"] == pushed
     posted = [a for a, _k in gh.named("post_not_build_check")]
     assert posted[-1] == (REPO, pushed) and len(posted) == 2
+    # a re-run that commits nothing new (commit_files names no commit) still posts the
+    # check, on the branch tip it pushed (the review of the 1.0.22 diff, finding 2)
+    git(root, "fetch", "-q", "origin")
+    monkeypatch.setattr(gitops, "commit_files", lambda *a, **k: None)
+    code, out = cli(capsys, "dismiss", *args, "--pr-number", "14", "--reason", "second")
+    assert code == 0 and out["dismissed"] is True and out["commit"] is None
+    posted = [a for a, _k in gh.named("post_not_build_check")]
+    assert posted[-1] == (REPO, pushed) and len(posted) == 3
 
 
 def test_dismiss_reads_the_reason_from_the_last_comment_by_a_person(incident, gh, capsys):

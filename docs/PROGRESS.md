@@ -50,7 +50,28 @@ The previous record (decision 37 as 1.0.21, from #313) is now `docs/progress/202
 - **`/sdlc-init` step 6 and the README** say what 1.0.22 changes for an upgrade: replace the abandon, runbook, scan, digest and merge workflows, with the pin in the same PR.
 
 ## The independent review
-To be filled in once the fresh-context review of this diff has run, before the PR leaves draft.
+A fresh-context sub-agent reviewed the diff (`9bf78f1` and `3ec5b60`) before the PR, with the suite green. It changed no file, and it found no path by which anyone but the owner passes a gate. It raised one Important finding and seven Nits; each is handled:
+
+| # | Finding | Severity | Outcome |
+|---|---|---|---|
+| 1 | After F3 an early approval stalls, while GitHub still shows the PR approved; the digest's line said only "not merged yet" | Important | Fixed: the digest reads gate (e)'s record at the approved commit (`merge_step.gate_e_waits_at`, shared with the merge step) and says "your approval predates gate (e): approve again on the head". Tested |
+| 2 | A re-run dismissal that commits nothing posts the check with no commit | Nit | Fixed: it posts on the branch tip it pushed. Tested |
+| 3 | The F2 wiring (the change id and the config into the acceptance check) had no test | Nit | Fixed: a `baseline_mismatches` test with another change's PR, a sound line, and no config. The call site's `owner_config` read stays untested |
+| 4 | A merge line was not checked against the owner's account | Nit | Fixed: with the config, a merge line naming another account parks, as its writers already require. The phase-(a) shape `validate_acceptances` allows is left as it is: nothing writes it |
+| 5 | The release's fallback `head` (the merge commit, when the approval names no commit) would now fail the runner's check | Nit | Fixed: no commit, no acceptance line; the merge step already refuses such an approval. Tested |
+| 6 | F3 checked only that a gate (e) record existed at the approved commit | Nit | Fixed: the record must read `wait` (an escalated or parked record is no offer). Tested |
+| 7 | F8 is silent on a failed lookup, and an organization secret of the same name read as a repository secret | Nit | The failed lookup's reason goes to the run's log; the notice says "a repository or organization secret". Whether `actions: read` reads the environments API is left to the first live digest (Left) |
+| 8 | Decision 36, point 4 and the §4.2 merge row did not state the F3 rule | Nit | Fixed: point 4 annotated (choice 250), and the row's merge conditions name gate (e)'s record |
+
+The review also checked these and found them sound:
+- F1's post after the push;
+- F2's change id, case-insensitive logins and by-hand skip;
+- F4's placement before any side effect, and the runbook's environment;
+- F5's App scope (the automation App holds Checks read and write, `/sdlc-init` step 6);
+- the digest flag's expression, which renders `true` or `false` and never the key;
+- the SHA pins (`git ls-remote`);
+- the root copies;
+- the annotations beside the sentence, and their citations.
 
 ## The port list
 This PR touches `plugin/ci/run_phase.py` (`baseline_mismatches`, `acceptance_mismatches`, `_approval_line_problems`, `_acceptance_line_problems`), `plugin/detect/cli.py` (`dismiss`, `go`, `park`, `_refused_without_the_app`) and the runbook workflow template (its permissions). It goes on the port list until the 1.0.0 read.

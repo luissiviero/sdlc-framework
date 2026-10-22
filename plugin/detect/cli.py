@@ -1508,8 +1508,10 @@ def cmd_dismiss(args) -> int:
                 # R22 (decision 36, point 5): the abandon workflow's token pushes it, so no
                 # sdlc-merge.yml run posts the "not a build PR" check ruleset 2 requires. It
                 # goes on the commit just pushed, also on a second close, whose pull request
-                # is already open and create_pr refuses (the R22 double check, finding F1)
-                out["review_check"] = github.post_not_build_check(args.repo, sha, cwd=root)
+                # is already open and create_pr refuses (the R22 double check, finding F1); a
+                # re-run that commits nothing new posts on the branch tip it pushed
+                pushed = sha or gitops.run(root, "rev-parse", "HEAD").strip()
+                out["review_check"] = github.post_not_build_check(args.repo, pushed, cwd=root)
                 if number:  # the digest lists it under the incident label (decision 20)
                     github.ensure_label(
                         args.repo,

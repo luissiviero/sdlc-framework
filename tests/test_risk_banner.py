@@ -363,11 +363,19 @@ def test_the_runner_guards_the_acceptance_record_like_an_owner_field(tmp_path, m
         assert bool(found) is bool(expected)
     # another change's merged design PR accepts nothing for this one (the R22 double
     # check, F2): with the change id, the head's id must be this change's
+    repo = f"{OWNER}/name"
     monkeypatch.setattr(run_phase, "_github", lambda: GitHub(OWNER, head="sdlc/0099/b"))
-    found = run_phase.acceptance_mismatches(after, {}, "owner/name", env, {}, "0001")
+    found = run_phase.acceptance_mismatches(after, {}, repo, env, {}, "0001")
     assert any("another change's, not 0001's" in r for r in found), found
     monkeypatch.setattr(run_phase, "_github", lambda: GitHub(OWNER))
-    assert run_phase.acceptance_mismatches(after, {}, "owner/name", env, {}, "0001") == []
+    assert run_phase.acceptance_mismatches(after, {}, repo, env, {}, "0001") == []
+    # a merge line naming a collaborator who merged (a misconfigured ruleset) is no owner's
+    # acceptance (the review of the 1.0.22 diff, finding 4)
+    st.risk_acceptances = [_line(by="mallory")]
+    collaborator = run_phase.owner_fields(st)
+    monkeypatch.setattr(run_phase, "_github", lambda: GitHub("mallory"))
+    found = run_phase.acceptance_mismatches(collaborator, {}, repo, env, {}, "0001")
+    assert any("not the owner's account" in r for r in found), found
     # the default branch's copy carries it: nothing to confirm
     assert run_phase.acceptance_mismatches(after, after, "owner/name", env) == []
 
@@ -482,6 +490,13 @@ def test_after_r22_the_owner_s_approval_accepts_and_the_merge_app_never(tmp_path
     assert why == "" and line["via"] == risk.ACCEPT_VIA_APPROVAL and line["by"] == OWNER
     assert line["at"] == "2026-10-21T07:00:00Z" and line["head"] == "c2"
     risk.validate_acceptances([line])
+    # an approval that names no commit accepts nothing: the runner confirms a line only on
+    # the approved commit (the review of the 1.0.22 diff, finding 5)
+    no_commit = {"ok": True, "reviews": [{"author": OWNER, "state": "APPROVED", "at": "t"}]}
+    got = release_cli.merge_acceptance(
+        change_dir, st, pull, 7, "abc", {}, env, reviews=lambda: no_commit
+    )
+    assert got[0] is None and "names no commit" in got[1]
     # the owner's later "Request changes" withdraws it; a failed read accepts nothing
     withdrawn = {
         "ok": True,
@@ -552,6 +567,40 @@ def test_the_runner_confirms_an_approval_line_from_the_reviews(tmp_path, monkeyp
     monkeypatch.setattr(run_phase, "_github", lambda: GitHub(approval))
     found = run_phase.acceptance_mismatches(after, {}, repo, env, None, "0001")
     assert any("cannot be judged" in r for r in found)
+
+
+def test_the_baseline_check_passes_the_change_id_and_the_owner_s_config_on(tmp_path, monkeypatch):
+    """The review of the 1.0.22 diff (finding 3): ``baseline_mismatches`` hands the change
+    id (from its folder) and the default branch's config to the acceptance check, so another
+    change's PR is refused and a sound approval line stands."""
+    change, st = status_mod.new_change(tmp_path, "Risky")
+    assert change.name.startswith("0001-")
+    st.risk_acceptances = [{**_line(phase="e", pr=7), "via": risk.ACCEPT_VIA_APPROVAL}]
+    before = run_phase.owner_fields(st)
+    repo = f"{OWNER}/name"
+    env = {"GITHUB_ACTIONS": "true"}
+
+    class GitHub:
+        head_ref = "sdlc/0099/c"
+
+        def pr_by_number(self, repo, number):
+            body = f"{risk.BANNER_HEADING}: …\n- `auth` — first found at gate (e): x."
+            return {"ok": True, "merged": True, "merged_by": "sdlc-merge[bot]",
+                    "head_ref": self.head_ref, "body": body}  # fmt: skip
+
+        def pr_reviews(self, repo, number):
+            return {"ok": True, "reviews": [
+                {"author": OWNER, "state": "APPROVED", "commit": "abc1234"}
+            ]}  # fmt: skip
+
+    fake = GitHub()
+    monkeypatch.setattr(run_phase, "_github", lambda: fake)
+    found = run_phase.baseline_mismatches(before, None, repo, None, env, change, config={})
+    assert any("another change's, not 0001's" in r for r in found), found
+    fake.head_ref = "sdlc/0001/c"
+    assert run_phase.baseline_mismatches(before, None, repo, None, env, change, config={}) == []
+    found = run_phase.baseline_mismatches(before, None, repo, None, env, change, config=None)
+    assert any("cannot be judged" in r for r in found), found
 
 
 # --- the label retired; /sdlc-init proposes globs -------------------------------------------

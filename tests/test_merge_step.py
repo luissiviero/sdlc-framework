@@ -566,6 +566,59 @@ def test_an_approval_before_gate_e_waits_and_a_leftover_full_profile_is_not_read
     assert [c for c in gh.calls if c[0] == "merge"]
 
 
+def test_an_approval_on_an_escalated_gate_e_record_waits(tmp_path, capsys):
+    """The review of the 1.0.22 diff (finding 6): a gate (e) record that did not offer the
+    PR (an escalation, a park) is no offer, so an approval given on it does not count."""
+    early = "a" * 40
+
+    class Escalated(FakeGitHub):
+        def file_at(self, repo, path, ref):
+            if ref == early and path.endswith("gate-e.json"):
+                text = json.dumps({"phase": "e", "result": "escalate"})
+                return {"ok": True, "text": text, "missing": False}
+            return super().file_at(repo, path, ref)
+
+    approval = {"ok": True, "reviews": [{"author": "owner", "state": "APPROVED", "commit": early}]}
+    _waits(tmp_path, capsys, Escalated(reviews=approval), "approval predates gate (e)")
+
+
+def test_the_digest_asks_for_a_new_approval_when_it_predates_gate_e(monkeypatch):
+    """The review of the 1.0.22 diff (finding 1): GitHub still shows the PR approved, so
+    the digest's line says why the merge waits and what the owner does."""
+    from pr import digest
+    from pr import github as gh
+
+    early = "a" * 40
+    pr = {
+        "number": 12, "labels": [{"name": "sdlc:e-ready"}], "title": "t",
+        "head": {"sha": HEAD, "ref": "sdlc/0007/c"},
+    }  # fmt: skip
+    reviews = {"ok": True, "reviews": [{"author": "owner", "state": "APPROVED", "commit": early}]}
+    gate = {"text": None}
+    monkeypatch.setattr(gh, "pr_reviews", lambda *a, **k: reviews)
+    monkeypatch.setattr(gh, "check_runs_on", lambda *a, **k: {"ok": True, "runs": []})
+    monkeypatch.setattr(gh, "dir_at", lambda *a, **k: {"ok": True, "names": [DIR.split("/")[1]]})
+
+    def file_at(repo, path, ref):
+        assert path == f"{DIR}/evidence/gate-e.json" and ref == early
+        if gate["text"] is None:
+            return {"ok": False, "text": None, "missing": True, "reason": "404"}
+        return {"ok": True, "text": gate["text"], "missing": False}
+
+    monkeypatch.setattr(gh, "file_at", file_at)
+    monkeypatch.delenv("GITHUB_REPOSITORY_OWNER", raising=False)
+    monkeypatch.delenv("GITHUB_REPOSITORY", raising=False)
+    assert digest.approval_of("owner/r", pr)["reason"] == digest.PREDATES_GATE_E
+    gate["text"] = json.dumps({"result": "escalate"})
+    assert digest.approval_of("owner/r", pr)["reason"] == digest.PREDATES_GATE_E
+    gate["text"] = json.dumps({"result": "wait"})  # given once (e) offered the PR
+    assert digest.approval_of("owner/r", pr)["reason"] == digest.NO_CHECK
+    # a read that fails says nothing wrong: the line falls back to the check's state
+    monkeypatch.setattr(gh, "dir_at", lambda *a, **k: {"ok": False, "names": [], "reason": "x"})
+    gate["text"] = None
+    assert digest.approval_of("owner/r", pr)["reason"] == digest.NO_CHECK
+
+
 def test_findings_that_do_not_normalise_wait(tmp_path, capsys):
     bad = {f"{DIR}/evidence/review-findings.json": json.dumps({"head": REVIEWED, "findings": 3})}
     _waits(tmp_path, capsys, FakeGitHub(files=bad), "")

@@ -64,10 +64,11 @@ MERGE_KEY_UNSAFE = (
     "(`/sdlc-init` step 6). Until then a workflow pushed to another branch could read the key "
     "and merge as the merge App."
 )
-KEY_IN_REPOSITORY = "the repository secret SDLC_MERGE_APP_PRIVATE_KEY exists"
+KEY_IN_REPOSITORY = "a repository or organization secret SDLC_MERGE_APP_PRIVATE_KEY exists"
 KEY_IN_REPOSITORY_ENV = "SDLC_MERGE_KEY_IN_REPOSITORY"  # sdlc-digest.yml sets it
 READY_SUFFIX = "-ready"
 APPROVED_LINE = " — approved {at}, not merged: {reason}"
+PREDATES_GATE_E = "your approval predates gate (e): approve again on the head (choice 250)"
 NO_CHECK = "waiting for the sdlc/review check on its head"
 RED_CHECK = "sdlc/review is not green on its head"
 CONFLICT = "a conflict with the default branch"
@@ -270,6 +271,8 @@ def approval_of(
             latest = review
     if latest is None or str(latest.get("state")).upper() != "APPROVED":
         return None
+    if _approval_predates_gate_e(repo, pr, str(latest.get("commit") or "")):
+        return {"at": latest.get("at"), "reason": PREDATES_GATE_E}
     sha = str((pr.get("head") or {}).get("sha") or "")
     checks = github.check_runs_on(repo, sha, github.REVIEW_CHECK) if sha else {"ok": False}
     runs = (checks.get("runs") or []) if checks.get("ok") else []
@@ -287,6 +290,27 @@ def approval_of(
         data = single.get("data") if isinstance(single.get("data"), dict) else {}
         reason = CONFLICT if data.get("mergeable_state") == "dirty" else NOT_YET
     return {"at": latest.get("at"), "reason": reason}
+
+
+def _approval_predates_gate_e(repo: str, pr: dict[str, Any], commit: str) -> bool:
+    """True when the owner's approval names a commit at which gate (e) had not offered the PR
+    (``ci/merge_step.py gate_e_waits_at``), so the merge step waits for a new approval
+    (choice 250; the review of the 1.0.22 diff). A read that fails says False: the digest
+    says nothing rather than something wrong."""
+    from ci import merge_step  # noqa: PLC0415
+
+    change_id = merge_step.build_change_id((pr.get("head") or {}).get("ref"))
+    if not change_id or not commit:
+        return False
+    listed = github.dir_at(repo, c.CHANGES_DIR, commit)
+    dirs = [n for n in listed.get("names") or [] if n.startswith(f"{change_id}-")]
+    if not listed.get("ok") or len(dirs) != 1:
+        return False
+    gate_path = f"{c.CHANGES_DIR}/{dirs[0]}/evidence/gate-e.json"
+    try:
+        return not merge_step.gate_e_waits_at(github, repo, gate_path, commit)
+    except merge_step.StepError:
+        return False
 
 
 def publish(repo: str, markdown: str) -> dict[str, Any]:
@@ -333,6 +357,13 @@ def main(argv: list[str] | None = None) -> int:
         environment = github.merge_environment(args.repo, branch) if branch else None
         if isinstance(environment, dict):
             environment["branch"] = branch
+            if not environment.get("ok"):
+                # the notice says nothing on a failed lookup; the run's log says why
+                print(
+                    f"digest: the {github.MERGE_ENVIRONMENT} environment could not be read: "
+                    f"{environment.get('reason')}",
+                    file=sys.stderr,
+                )
         # the workflow passes "true" when the job, which has no environment, sees the key
         key_in_repository = os.environ.get(KEY_IN_REPOSITORY_ENV, "").strip() == "true"
         merge_key = merge_key_notice(environment, key_in_repository)

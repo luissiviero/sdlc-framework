@@ -436,6 +436,13 @@ def merge_acceptance(
     by = str(pr.get("merged_by") or "").strip()
     if not unpark.is_owner_actor(by, config, env, repo):
         approval = _owner_approval(reviews, config, env, repo)
+        if approval is not None and not str(approval.get("commit") or ""):
+            # the merge step refuses such an approval, and the runner confirms a line only on
+            # the commit the owner approved (choice 250): no commit, no acceptance
+            return None, (
+                "not accepted: the owner's approval names no commit (decision 36): "
+                + ", ".join(items)
+            )
         if approval is not None:
             line = risk_mod.acceptance_line(
                 "e",
@@ -443,7 +450,7 @@ def merge_acceptance(
                 str(approval.get("author")),
                 str(approval.get("at") or "").strip() or gate_mod._now(),
                 int(pr_number),
-                str(approval.get("commit") or "") or merge_sha,
+                str(approval.get("commit")),
                 risk_mod.banner_shown(pr.get("body"), items),
                 via=risk_mod.ACCEPT_VIA_APPROVAL,
             )
