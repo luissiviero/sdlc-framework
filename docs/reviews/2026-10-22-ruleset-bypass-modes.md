@@ -28,7 +28,7 @@ Not tested, in either mode: a force-push to `main` and the deletion of `main`. I
 |---|--------|----------|
 | S1 | Refused by the ruleset | `PUT …/contents/docs/reviews/ruleset-probe-s1.md` answered `409 Repository rule violations found`: "Cannot update this protected ref. Changes must be made through a pull request." |
 | S2 | Refused by the ruleset; the session's git proxy let the push through to GitHub | `git push origin HEAD:main` of `95abcf6` on top of `1f58af2`: `! [remote rejected] HEAD -> main (push declined due to repository rule violations)`, with the same two messages as S1. A first attempt on a stale `main` (`0a0554d`) failed with `rejected (fetch first)` and an `HTTP 403` from the transfer, so it is not counted. |
-| S3 | not run yet | |
+| S3 | **Merged.** The bypass in this mode covers an API merge by a session acting as the owner | PR #314: `mergeable_state` read `blocked` through the same tools, then `merge_pull_request` answered `merged: true`, merge commit `54a05f6` on `main`. The PR's author also reads as the owner's login, though the session opened it. |
 | O1 | not run yet | |
 | O2 | not run yet | |
 | O3 | not run yet | |
