@@ -10,7 +10,7 @@ It is a documentation and `tasks.py` PR: no plugin version, nothing under `plugi
 The previous record (R65's part 2 and choice 253, from #325) is now `docs/progress/2026-10-22-r65-part-2-choices-index-choice-253.md`, unchanged (verified, `cmp` against `8e48bcc:docs/PROGRESS.md`). This session's end file is `docs/handoffs/sessions/2026-10-22-claude-r65-part-3-checks-11-12.md`.
 
 ## Coordination with the other sessions
-- **Numbers.** This PR takes none. The owner's answer starts work choice 253 already decided, so it is not a new choice.
+- **Numbers.** This PR takes choice 254, for the owner's answer to its two open points, and nothing else (`python tasks.py next-free` on `a8d6dba` printed choice 254, none taken above `main`, at 23:07 UTC). The owner's "the rest as recommended" only started work choice 253 had already decided, so it took no number.
 - **Open PRs**, read after #325 merged at 22:46 UTC: #173 (intent 0004) and #326 (session `ccr-6ed8a82e-cxmftx`'s end file, missed in this record's first draft). #326 has merged since, as `a8d6dba`, and `main` is merged into this branch.
 
 ## What was built
@@ -36,7 +36,12 @@ The previous record (R65's part 2 and choice 253, from #325) is now `docs/progre
    - section 1.6: the fifth rank.
 5. **Tests.** Four in layer 1: ranks in proposals and decisions; session files on each side of the cutover; retired terms, failing and passing; the terms' sources. The repository's own lint test covers layer 2.
 
-## Points left open, with a recommendation
+## The owner's decision (2026-10-22)
+254. **Check 12's two open points are taken as recommended** (the owner, "Both recommendations accepted", on this PR's two points):
+    1. `docs/BUILD_GUIDE.md` stays out of check 12. It is the version-3 plan with its annotations (choice 252, point 6);
+    2. check 12's pass words stay wider than the proposal's three: "removed", "gone" and a dated annotation also mark a term as no longer live.
+
+## The points the owner settled (choice 254)
 - **`docs/BUILD_GUIDE.md` stays out of check 12.** Recommendation: keep it out. It is history with annotations, and the owner froze its JSON twin for the same reason (choice 252, point 6).
 - **The pass words were widened** from the proposal's three ("retired", "withdrawn", "until 1.0.20") to also take "removed", "gone" and a dated annotation. Without them, check 12 fails `OPERATING_MODEL.md:42` and `:57`, which say the term is gone in other words, and annotated ROADMAP rows such as R12. Recommendation: keep the wider list. Each extra word marks the term as no longer live.
 
@@ -50,5 +55,6 @@ The previous record (R65's part 2 and choice 253, from #325) is now `docs/progre
 | When | Act |
 |---|---|
 | Now | Merge this PR when `Framework checks` is green on its final head. |
-| Now, any time | Row 5 of choice 253's record (the merge-tool deny rule); the four branch deletions (choice 253, point 9). |
+| Now | Merge #328 (row 5 of choice 253's record, the merge-tool deny rule). |
+| Now, any time | The sample's branch `ccr-76f1ceba-idf2w0`, if it is still there; this repository's three are gone (verified, `git fetch --prune` at 23:08 UTC). |
 | After R65's part 4 merges | Rows 1 to 4 of choice 253's record, in one PR. |
