@@ -1,43 +1,36 @@
-# Progress — ROADMAP R65's part 1: `python tasks.py next-free` and docs-lint check 10 (2026-10-22)
+# Progress — ROADMAP R65's part 2: `python tasks.py choices-index` and `docs/progress/choices.md` (2026-10-22)
 
-This session ran on branch `claude/r65-part-1-next-free`. It builds R65's part 1 as the owner accepted it (choice 252, points 2 and 3; `docs/proposals/one-owner-per-fact.md`, part 1; the study `docs/reviews/2026-10-22-sources-of-truth.md`, sections 1.7 and 2). It is a documentation and `tasks.py` PR with no plugin version, and nothing under `plugin/` or `template/`.
+This session ran on branch `claude/r65-part-2-choices-index`. It is the same session as R65's part 1 (#324), and the owner asked it to start part 2 once #323's merge was checked. Part 2 is built as the owner accepted it: choice 252, point 3, and `docs/proposals/one-owner-per-fact.md`, part 2. It is a documentation and `tasks.py` PR with no plugin version, and nothing under `plugin/` or `template/`.
 
-The previous record (choice 252, from #322) is now `docs/progress/2026-10-22-sources-of-truth-study-r65-choice-252.md`, unchanged (verified, `cmp` against `30b0367:docs/PROGRESS.md`). This session's file is `docs/handoffs/sessions/2026-10-22-claude-r65-part-1-next-free.md`.
+**This branch is built on #324's branch**: the task reads choices with part 1's `choice_items`. Its diff against `main` holds #324's commits until #324 merges. The owner merges #324 first.
+
+The previous record (R65's part 1, from #324) is now `docs/progress/2026-10-22-r65-part-1-next-free.md`, unchanged (verified, `cmp` against `claude/r65-part-1-next-free:docs/PROGRESS.md` at `c87725b`). This session's end file is `docs/handoffs/sessions/2026-10-22-claude-r65-part-2-choices-index.md`.
 
 ## Coordination with the other sessions
-- **Numbers.** This PR takes none: no choice, candidate, note, decision or patch. `python tasks.py next-free` on `30b0367` and the four branches ahead of it printed choice 253, candidate R66, note 58, decision 39 and patch 1.0.24, none taken above `main`. These are the values the previous session file wrote by hand.
-- **Open PRs**, read at the start: #323 (the previous session's end file) and #173 (intent 0004). Neither touches `tasks.py` or the tests.
-- **`HANDOFF.md` is not edited.** Its skeleton changes to "run `python tasks.py next-free`" in R65's part 5, a PR of its own as that page requires.
+- **#323 merged** as `50eea3b` after part 1 was opened. It added only the previous session's end file (verified, `git diff --stat 30b0367 50eea3b`). `main` is merged into #324's branch, and so into this one; no file conflicted.
+- **Numbers.** This PR takes none. `python tasks.py next-free` on `50eea3b` printed choice 253, candidate R66, note 58, decision 39 and patch 1.0.24, none taken above `main`.
+- **Open PRs**, read after #323 merged: #324 (part 1) and #173 (intent 0004).
 
 ## What was built
-1. **`python tasks.py next-free`.**
-   - It reads `origin/main`, or `main` when nothing was fetched, and every local or fetched branch ahead of it, plus a detached `HEAD`. Each is read at its own commit with `git ls-tree` and one `git cat-file --batch`.
-   - It prints the next free choice, candidate, note, decision and patch: one above the highest number taken anywhere.
-   - It names the branch that holds each number above `main`'s highest. Nothing is reserved (choices 184 and 252).
-   - Standard library only (`json` is new to `tasks.py`). It passes argument lists to `git`, with no shell, so it runs on Windows and Linux.
-2. **docs-lint check 10: a number taken twice fails.** It covers two choice items with one number, two decision or note files with one number (`7.md` and `07.md`), and two ROADMAP rows with one number. A choice whose every record is older than `NUMBERS_UNIQUE_SINCE` (2026-10-22) is reported, not failed (choice 126), as check 8 does. `docs/PROGRESS.md` is always the newest record.
-3. **The one-line mentions.** `tasks.py`'s docstring and its help list the new task beside docs-lint.
-4. **Tests.** Three in `tests/test_docs_lint.py` (the choice reader, a choice taken twice each way, two files and two rows) and one on this repository's docs. Seven in the new `tests/test_next_free.py`, on temporary git repositories.
-
-## The design point: where a record states a choice
-A naive read of every "N. **…**" line in `docs/PROGRESS.md` and `docs/progress/` finds 1 to 6 five times, 7, 8 and 17 to 23 twice, and 16 three times (verified, `grep` on `30b0367`). These are ordinary numbered lists, not choices taken twice:
-- "Live checks the owner can do now" in `session-3.md` (1 to 8) and `session-5.md` (1 to 23);
-- the review findings in `session-5.md` (1 to 16);
-- the "What was built" and "Questions for the owner" lists of later records, such as `2026-10-20-r24-risk-hit-banner-1.0.15.md`.
-
-So check 10 reads a choice only as a top-level list item under a heading that states choices. The three forms in the records are "Choices made where the pack left it open", "The owner's choices" and "The owner's decision(s)". Read that way, the records state choices 16 to 252, each exactly once, with no number repeated (verified, `tasks.number_problems(tasks.DOCS_DIR)` returns no failure and no report; the layer-2 test asserts it). No record repeats a choice number.
-
-Choices 1 to 15 are not under `docs/progress/`. Sessions 1 and 2 wrote them in `docs/PROGRESS.md` before the rule that moves a record to `docs/progress/`, and git history alone keeps them (verified, `git show fe20f6a:docs/PROGRESS.md` holds 1 to 7 and `git show 57db1b3:docs/PROGRESS.md` holds 11 to 15). Check 10 cannot see them, and needs not: every later record numbers above them.
+1. **`python tasks.py choices-index`.** It writes `docs/progress/choices.md` from the records, one row per choice: the number, the record and line as a link, and the item's first sentence.
+   - A choice is what docs-lint check 10 reads: a top-level item under a heading that states choices.
+   - The first sentence is the item's first bold phrase, because every record leads its choices with one. 236 of the 237 items open with it; choice 168 opens with an italic note and then the bold phrase. An item with no bold phrase gives its first sentence.
+   - Links are reduced to their text, and a bar is escaped for the table.
+2. **docs-lint fails a stale or missing index** ("docs/progress/choices.md differs: run python tasks.py choices-index"), as it does for the decisions and the notes.
+3. **The two generated pages beside the records** (`index.md`, `choices.md`) are no longer read as records, by check 10 or by `next-free`.
+4. **The first index**: choices 16 to 252, 237 rows. Choices 1 to 15 are named in its opening as kept in git history only (`fe20f6a`, `57db1b3`), as #324's record found. `docs/progress/index.md` gains one sentence saying `choices.md` is not a record.
+5. **Tests.** Three in layer 1 (the summary, the rows and their links, a stale or missing index each way) and one in layer 2 (the index on disk is what the task writes).
 
 ## Unclear points, with a recommendation
-- **A stale branch inflates the next free number.** A branch ahead of `main` with no open PR still counts. Today's four are `sdlc/0004/a` (#173), `claude/sources-of-truth-study-csl6nq` (#323), `ccr-bc5e88a0-y1pwjg` and `luissiviero-patch-1`, and none takes a number above `main` (verified, `tasks.branches_ahead` on `30b0367`). Recommendation: keep it so. The task cannot read GitHub's open PRs without network access, a too-high number is harmless, and the task prints the branch so a session can judge.
-- **The cutover is the date of the build, 2026-10-22, not the merge.** Two records from that date are already in `docs/progress/` and repeat no choice. Recommendation: keep it, as check 8 took its build date.
+- **A line number moves with every edit above it.** A PR that edits `docs/PROGRESS.md` above a choice, or moves it to `docs/progress/`, changes the index, and docs-lint names the task to run. Two parallel PRs that both take a choice already conflict in `docs/PROGRESS.md`; the index adds one generated file to resolve by running the task. Recommendation: keep the line. The proposal asks for it, and the alternative, a heading anchor, does not name the item.
+- **ROADMAP R65's row is not annotated per part.** Its Status says "accepted" until all six parts are built. Recommendation: one annotation when part 5 merges, not one per part.
 
 ## Left
-- **R65's parts 2 to 5:** one session PR each, in the row's order. Part 4 waits for the owner's guardrail rows 1 to 3 (choice 252's record). Part 5 makes `HANDOFF.md`'s skeleton point to `python tasks.py next-free`.
+- **R65's parts 3 to 5:** one session PR each, in the row's order. Part 4 waits for the owner's guardrail rows 1 to 3.
 - **R65's part 6:** its own plugin patch after R51 merges (choice 252).
 
 ## What the owner does
 | When | Act |
 |---|---|
-| Now | Review this PR, and merge it when `Framework checks` is green on its final head. |
+| Now | Merge #324 when `Framework checks` is green on its final head. |
+| After #324 | Merge this PR when `Framework checks` is green on its final head. |
