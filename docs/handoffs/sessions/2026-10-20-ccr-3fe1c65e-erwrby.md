@@ -26,18 +26,24 @@ The owner's task had two parts:
   - This session's PR, which merges cleanly onto `0a0554d` (verified, `git merge-tree`).
 - **Decision 37's code** is on branch `ccr-0522ec37-iia2ok-modes-code` at `be487c6`, with no PR yet. It is based on `e4dfca1`, so it has neither #304 nor #307, and its `plugin.json` still reads 1.0.18 (verified, `git show`). Merged with `main` at `0a0554d` it conflicts in `docs/OPERATING_MODEL.md` only (verified, `git merge-tree --name-only`); that merge is its own session's.
 - **Open, sample:** #55.
-- **R22's setup on the sample:** the owner reports step A done (the merge App) on 2026-10-22. It is not verified: the session's GitHub route refuses `/apps/...` ("sessions are bound to their configured repositories"), and `/repos/.../installation` needs the App's own key. Step C verifies it, since only an App installed on the repository can be added to ruleset 1's bypass list. Steps B to D are not done (verified on 2026-10-22, the rulesets API): one ruleset, 24078926, whose one bypass actor is the admin role in `pull_request` mode; no second ruleset.
+- **R22's setup on the sample is done** (2026-10-22, the owner's steps A to D, guided in this session).
+  - **The rulesets:** read from the API and recorded in NOTES §56 (this PR).
+    - Ruleset 1 (24078926) has the admin role `exempt` and the merge App (integration 5428541, `luissiviero-sdlc-merge`) in `pull_request` mode.
+    - Ruleset 2 (25656269) requires `sdlc/review` from any source, with the admin role's bypass for pull requests only.
+  - **The merge App's name:** the name in #306's steps, `sdlc-merge-luissiviero`, was taken on GitHub, so the App is `luissiviero-sdlc-merge`.
+  - **The App's installation:** verified by step C, since only an App installed on the repository can be a bypass actor.
+  - **The `sdlc-merge` environment (step B):** reported by the owner, not readable from the session (NOTES §56). The first merge run verifies it.
 
 ## Preconditions of the moment
 - The standing ones are in `HANDOFF.md`.
-- **Next free numbers:** choice 250, candidate R65, note 56 (kept for the sample's rulesets), decision 39. Patch 1.0.20 is #307's and 1.0.21 decision 37's code, so 1.0.22 is the next free. This session took none.
+- **Next free numbers:** choice 250, candidate R65, note 57 (this session took 56), decision 39. Patch 1.0.20 is #307's and 1.0.21 decision 37's code, so 1.0.22 is the next free.
 
 ## Next steps, in order
 1. **This session's PR** (documentation only): the owner merges it when `Framework checks` is green, at any point in the order below.
 2. **Decision 37's code (1.0.21)**, session `ccr-0522ec37-iia2ok`'s. #307 merged as `0a0554d`. Decision 37's branch has to merge `main` (with #304 and #307) first, resolving `docs/OPERATING_MODEL.md`, and take 1.0.21.
 3. **The owner's answers** to the review's four questions (F3, F8, F9, the fix PR).
 4. **If the owner agrees, the fix PR as 1.0.22**: F1, F2, F4 and F5 with F13's tests, and the documentation rows the owner wants in it. It starts from `main` after decision 37's code merges, and before R51, which also changes the merge step.
-5. **When the owner says R22's steps A to D are done on the sample:** read both rulesets, and the environment where the API shows it. Write note 56 (choice 242, point 5) in a documentation PR.
+5. **Done in this PR:** R22's steps A to D on the sample, and NOTES §56 from the rulesets API (choice 242, point 5). Note 56 rides in this documentation PR rather than one of its own, since the session works on one branch.
 6. **At the sample's next change:** read decision 36's live checks at (e) and R8's first second opinion at (b), and record each answer in a note. The sample sets `deploy.production: true`, so its (e) also needs the release label.
 7. **Then the queue in ROADMAP's Order column**, from R51 with R25, one build session at a time. It is not started here: decision 37's code (another session's build) is still open, and touches `run_phase.py`, the gate and the state code that R51 also changes.
 
@@ -50,8 +56,7 @@ The owner's task had two parts:
 | The review's questions | `docs/reviews/2026-10-20-r22-session-double-check.md`, "Questions for the owner" | F3, F8, F9, and the 1.0.22 fix PR | owner | no |
 | F1, F2, F4, F5 and F13 | the same review, section 1 | A plugin patch after decision 37's code | the next build session, if the owner agrees | no |
 | D1 to D9, M1 to M4, L4 to L6 | the same review, sections 2 and 3 | Edits and annotations, in the fix PR or a documentation PR | the next session | no |
-| R22's setup on the sample | #306's body, steps A to D | A reported done, not verified; B to D the owner's acts | owner | no |
-| Note 56 | `docs/notes/` | After steps C and D | the next session | no |
+| The `sdlc-merge` environment | the sample | Not readable from a session; verified by the first merge run (NOTES §56) | the next session | no |
 | Decision 36's live checks; R8's first second opinion | the sample | At its next change | the next session | no |
 | `CLAUDE.md` rows 33 and 34, the root `sdlc.yaml` row 6 | `docs/progress/2026-10-20-r22-gate-e-approving-review-1.0.18.md`, "Proposed edits for the owner" | The owner's edits. Not made on `a592a6d` (verified, `CLAUDE.md:33-34`, `sdlc.yaml:6`) | owner | no |
 | The root pin | `sdlc.yaml:104` | At 1.0.17 until this repository has its App, at R14's turn (choice 249, point 2) | owner | no |
@@ -76,5 +81,5 @@ Done, dropped:
 |---|---|
 | Now | Merge this PR when `Framework checks` is green. Answer the review's four questions. |
 | When its session opens it | Read decision 37's PR (1.0.21), and merge it when green. |
-| Any time | R22's steps B to D on the sample (A is done), then tell the session; the `CLAUDE.md` rows 33 and 34 and the root `sdlc.yaml` row 6. |
+| Any time | The `CLAUDE.md` rows 33 and 34 and the root `sdlc.yaml` row 6. |
 | At the sample's next change | Approve its build PR from the phone, and apply `sdlc:release-approved` (`deploy.production: true`). |
