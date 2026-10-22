@@ -11,7 +11,7 @@ The previous record (R65's part 2 and choice 253, from #325) is now `docs/progre
 
 ## Coordination with the other sessions
 - **Numbers.** This PR takes none. The owner's answer starts work choice 253 already decided, so it is not a new choice.
-- **Open PRs**, read after #325 merged at 22:46 UTC: #173 (intent 0004) only.
+- **Open PRs**, read after #325 merged at 22:46 UTC: #173 (intent 0004) and #326 (session `ccr-6ed8a82e-cxmftx`'s end file, missed in this record's first draft). #326 has merged since, as `a8d6dba`, and `main` is merged into this branch.
 
 ## What was built
 1. **docs-lint check 11: a rank lives in ROADMAP's Order column.**
