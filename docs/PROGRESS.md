@@ -1,53 +1,60 @@
-# Progress — the owner's bypass tested live; Exempt in ruleset 1 plus a no-direct-writes ruleset (choice 251), as plugin 1.0.23 (2026-10-22)
+# Progress — the study of the sources of truth; ROADMAP R65 accepted (choice 252) (2026-10-22)
 
-This session ran on branch `ccr-76f1ceba-idf2w0`. The owner asked whether the Repository admin's bypass in this repository's ruleset 24077592 should be "For pull requests only" or Exempt, then asked for a live test before choosing. The test ran three setups, recorded in `docs/reviews/2026-10-22-ruleset-bypass-modes.md`:
-- "For pull requests only" and Exempt, through #314, #315, #316 and #318 (all merged);
-- C, through sample #101 (closed unmerged) and this PR.
+This session ran on branch `claude/sources-of-truth-study-csl6nq`. The owner asked for a study of the sources of truth, report only, with one candidate row:
+- the study: `docs/reviews/2026-10-22-sources-of-truth.md`;
+- the proposal: `docs/proposals/one-owner-per-fact.md`;
+- the row: ROADMAP R65.
 
-The facts are NOTES §57.
+The owner then accepted all seven of the study's questions as recommended.
 
-The previous record (the R22 double check's fixes as 1.0.22, from #319) is now `docs/progress/2026-10-22-r22-double-check-fixes-1.0.22.md`, unchanged. This session's file is `docs/handoffs/sessions/2026-10-22-ccr-76f1ceba-idf2w0.md`.
+The previous record (choice 251, from #321) is now `docs/progress/2026-10-22-bypass-option-c-choice-251-1.0.23.md`, unchanged (verified, `cmp` against `0d229a6:docs/PROGRESS.md`). This session's file is `docs/handoffs/sessions/2026-10-22-claude-sources-of-truth-study-csl6nq.md`.
 
 ## Coordination with the other sessions
-- **Numbers.** Choice 251, note 57 and patch 1.0.23, the next free ones in `2026-10-22-ccr-3fe1c65e-erwrby.md` and in #320's file. No open PR claims them (verified, the open PRs on 2026-10-22: #320, documentation only and since merged, and #173).
-- **The direct writes.** The test's probes in Exempt (`7c33f02`, `906317a`) landed on `main` and #316 removed them; the session `ccr-3fe1c65e-erwrby` recorded them as well.
+- **Numbers.** Choice 252 and candidate R65, the next free ones once #321 merged as `0d229a6` with choice 251, note 57 and 1.0.23 (verified, `git grep` and `git ls-tree` on `origin/main`, and every branch ahead of it read after `git fetch`). No note, decision or patch is taken.
+- **#321's session file** names candidate R65 as the next free one. This PR takes it, so that line is stale once this PR merges; this session's file says so.
+- **The base.** `main` at `0d229a6` (#321) is merged into this branch. The study's line numbers stay on `84c50a0`, as its "Method" says, and its annotations of 2026-10-22 record what #321 changed.
 
 ## The owner's decision (2026-10-22)
-251. **Option C on both repositories: the owner stays Exempt in ruleset 1, and a ruleset with the owner's bypass "For pull requests only" holds "Require a pull request before merging" (no approvals), "Block force pushes" and "Restrict deletions"** (the owner, "I like C", after the two first runs and the comparison against the six criteria). It completes choice 242's point 5 rather than reversing it. What the runs showed:
-    - Exempt alone accepts a direct commit or push to `main` by anything acting as the owner's login, a cloud session included, and logs it as `pass`;
-    - "For pull requests only" in ruleset 1 refuses those writes, but the phone then shows "Unable to merge" on every pull request;
-    - C refuses the session's direct commit on both repositories. On the sample, the phone shows "Ready to merge" on an ordinary pull request and "Unable to merge" only on one ruleset 2 holds;
-    - no setup stops a session acting as the owner's login from merging a pull request through the API.
-
-    The owner made the setup on 2026-10-22:
-    - this repository: ruleset 1 to Exempt, and the new ruleset 25674595 "main — no direct writes (choice 251)";
-    - the sample: the three rules added to ruleset 2 (25656269), renamed "review and no direct writes on main (decision 36, choice 251)".
-
-    The session verified all four rulesets from the owner's exports and from the rules endpoint of each `main`. Annotated: NOTES §17, decision 36 point 5, R22's row, choice 242 point 5.
+252. **R65 is accepted as recommended** (the owner, "I accepted everything as recommended", on the study's section 6):
+    1. R65 is a candidate outside the ranks, as R55 and R58 were: documentation and `tasks.py` PRs with no plugin version, in the order of parts 1 to 6. Part 6 is a plugin patch of its own, after R51 merges, never inside R51's PR (the owner's second answer of the same day, "Accepted", on the session's suggestion; the first answer had let it ride the next plugin patch, which is R51's). No rank moves;
+    2. the next free numbers are computed by `python tasks.py next-free` from `main` and every fetched branch ahead of it, and session files stop writing them. Nothing is reserved (choice 184);
+    3. `docs/progress/choices.md` is generated by `python tasks.py choices-index`, and docs-lint check 10 fails a number taken twice;
+    4. session files are linted for ranks and next free numbers only from the merge of R65's part 3 on (choice 126 for the older ones);
+    5. no `REVIEW.md` line for copies;
+    6. `docs/build_guide.json` is the frozen version-3 data: its `README.md` row says so, and the annotations live in `BUILD_GUIDE.md` only;
+    7. `python tasks.py verify` is the one owner of the local checks. `HANDOFF.md`'s precondition 1 and `CLAUDE.md` point to it, after the owner's guardrail rows 1 to 3 below.
 
 ## Summary
-- **The test** (`docs/reviews/2026-10-22-ruleset-bypass-modes.md`):
-  - in each of the first two setups, six tests: three by the session (a direct commit through the GitHub MCP tool, a direct `git push`, an API merge), three by the owner (the phone merge, the web merge if needed, the rule-suites log);
-  - in C: the direct commit on both repositories and the phone's label on the sample. This PR's own merge from the phone is the framework's label check.
-  - The owner gave the session an explicit go for the writes to `main`, which `HANDOFF.md` forbids otherwise.
-  - In C, the session's own safety check refused the `git push` to `main`, so S2 was not run there.
-- **NOTES §57**: the facts, with the rule-suites log the owner read from a codespace. The repository's settings show no Rule Insights page, and a codespace's own token gets 403.
-- **`/sdlc-init` step 6** (`plugin/commands/sdlc-init.md`):
-  - ruleset 1 keeps the owner Exempt, with the reason and its gap;
-  - ruleset 2 gets its new name and four rules, with the owner's bypass for pull requests only;
-  - a project set up with 1.0.18 to 1.0.22 adds the three rules to its ruleset 2.
-- **`docs/OPERATING_MODEL.md` §2**: the same.
-- **The test pinning that text** (`test_sdlc_init_prescribes_the_branch_ruleset_of_decision_4`) follows choice 251. It passes on the new text and fails on the previous one (verified, the instruction files stashed).
-- **1.0.23** in `.claude-plugin/plugin.json` and `marketplace.json`. The root pin stays at 1.0.17 (choice 249, point 2).
-- The citations added under `docs/` were opened and compared with each sentence (choice 241).
+- **The study**:
+  - the inventory of eleven kinds of fact in both repositories;
+  - the owner of each kind;
+  - the drift: 39 stale places on `main` at `84c50a0` in 17 rows, every one a copy. #321 fixed 5 of them, and its setup made a sixth (the sample's README) true again, so 33 remain.
+- **The proposal and the row:** R65, now accepted.
+- **No code changed.** Every citation added under `docs/` was opened and compared with its sentence (choice 241).
+
+## Proposed edits for the owner
+From the study's section 5:
+- rows 1 to 3 come before R65's part 4;
+- row 4 is optional;
+- row 5 is a stale copy today;
+- row 6 is already carried (this repository's pin move).
+
+| Link | Row | What is there now | What it must become |
+|---|---|---|---|
+| [CLAUDE.md](https://github.com/luissiviero/sdlc-framework/blob/main/CLAUDE.md?plain=1#L8-L11) | 8-11 | the Test and Lint lines, the task runner line, the "Run tests and lint" line | `- Task runner: python tasks.py <task> — must work on Windows and Linux; python tasks.py verify runs every check a PR needs (HANDOFF.md, standing precondition 1)`, line 11 unchanged; the Test and Lint lines live once, under "Verifying your work" |
+| [CLAUDE.md](https://github.com/luissiviero/sdlc-framework/blob/main/CLAUDE.md?plain=1#L54) | 54 | ``- Build: `python -m compileall -q plugin tests tasks.py` (must finish with no output and exit code 0)`` | ``- Build: `python -m compileall -q plugin tests tasks.py .github/scripts` (must finish with no output and exit code 0)`` |
+| [sdlc.yaml](https://github.com/luissiviero/sdlc-framework/blob/main/sdlc.yaml#L21) | 21 | `  build: "python -m compileall -q plugin tests tasks.py"` | `  build: "python -m compileall -q plugin tests tasks.py .github/scripts"` |
+| [CLAUDE.md](https://github.com/luissiviero/sdlc-framework/blob/main/CLAUDE.md?plain=1#L34) | 34 | `- Events caused by the CI workflow token do not start workflow runs (except workflow_dispatch / repository_dispatch): …` | the same, with `; NOTES §11` after `repository_dispatch` |
+| [sample sdlc.yaml](https://github.com/luissiviero/sdlc-sample-python/blob/main/sdlc.yaml#L39) | 39 | `  # owner's merge (and, when production is true, after the release label): e.g.` | `  # build PR's merge (and, when production is true, after the release label): e.g.` |
+| [sdlc.yaml](https://github.com/luissiviero/sdlc-framework/blob/main/sdlc.yaml#L5-L11) | 5-11 | the profile comment, `profile: standard`, `review: deferred` | decision 37's block, `template/sdlc.yaml:5-21`, with this repository's pin move |
 
 ## Left
-- **Ruleset 2 from the phone.** A tap merged a pull request blocked by a ruleset where the owner's bypass is for pull requests only (#315). The same tap is expected to merge a red build PR on the sample past its "Unable to merge" label, but that is not verified. The first red build PR on the sample shows it.
-- **What stops a session from merging as the owner.** No setup (NOTES §57, S3). A session's merge of its own pull request is refused by its instructions only (`HANDOFF.md`, "Never merge to `main`"). This is a candidate for the ROADMAP, not something this record decides.
-- **The sample's branch `ccr-76f1ceba-idf2w0`** holds the throwaway file of #101. The session's tools cannot delete a branch; the owner may delete it from #101's page.
+- **R65's parts 1 to 5:** one session PR each, in the row's order, outside the ranks.
+- **R65's part 6:** its own plugin patch (comment fixes and one message in `plugin/ci/run_phase.py`), after R51 merges, taking the next free patch number then (choice 184).
 
 ## What the owner does
-| Where | What is there now | What it must become |
-|---|---|---|
-| This PR | ready for review | Merge it from the phone: "Ready to merge" is expected (the framework's label check). |
-| [Sample #101](https://github.com/luissiviero/sdlc-sample-python/pull/101) | closed, its branch kept | Optional: "Delete branch". |
+| When | Act |
+|---|---|
+| Now | Merge this PR when `Framework checks` is green on its final head. |
+| Before R65's part 4 | Rows 1 to 3 above, in one PR. |
+| Now, any time | Row 5, the sample's `sdlc.yaml:39`. |
