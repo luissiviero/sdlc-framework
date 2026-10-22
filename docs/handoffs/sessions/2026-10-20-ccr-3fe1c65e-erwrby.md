@@ -11,7 +11,8 @@ The owner's task had two parts:
 2. Continue from the part-3 file's "Next steps, in order".
 
 ## Where the project stands
-- **Framework `main` is at `a592a6d`**, the merge of #311 (verified, `git log -1 origin/main`). It is on plugin **1.0.19**, and `v1.0.19` is the newest tag (verified, `git tag`). The root pin stays at 1.0.17 (choice 249, point 2; verified, `sdlc.yaml:104`).
+- **Framework `main` is at `0a0554d`**, the merge of #307 on 2026-10-22 (verified, `git log -1 origin/main`). It is on plugin **1.0.20**, and `v1.0.20` is the newest tag (verified, `git tag`). The root pin stays at 1.0.17 (choice 249, point 2; verified, `sdlc.yaml:104`).
+- **What #307 changed for the projects:** three template files between `v1.0.19` and `v1.0.20` (verified, `git diff --stat v1.0.19 v1.0.20 -- template/`). `template/.claude/settings.json` lost the Gemini host (#310); the sample's copy already lacks it. `sdlc-evals.yml` changed in a comment only, and `evals/README.md` names the new credential order. So the sample on pin 1.0.19 needs nothing to keep working; its move to 1.0.20 is #307's proposed row, at its next upgrade. #307 added no session file (verified, `git diff --name-only a592a6d 0a0554d -- docs/handoffs`).
 - **The sample's `main` is at `21f1748`**, on pin 1.0.19 (verified, `git show origin/main:sdlc.yaml`).
 - **The double check** is `docs/reviews/2026-10-20-r22-session-double-check.md`, in this session's PR. Nothing was fixed. It finds no high-severity defect: the merge App merges only on the owner's latest approving review, at a head the findings allow. It does find these:
   - four medium code defects with small fixes: F1 (the abandon workflow has no `checks` permission, so ruleset 2 would hold every dismissal PR), F2 (the baseline check confirms an approval line by anyone, on any change's build PR), F4 (the runbook Go does not refuse a run without the App) and F5;
@@ -21,12 +22,11 @@ The owner's task had two parts:
 
   The sample's copies, its `sdlc.yaml` and the merge `f93d4d0` hold (sections 4 and 5 of the review).
 - **Open, framework** (verified, the GitHub PR list):
-  - #307 (decision 38, plugin 1.0.20, session `ccr-0522ec37-iia2ok`). It is a draft at head `157f186`, with every `Framework checks` job green on that head (run 39505414842), and it merges cleanly onto `a592a6d` (verified, `git merge-tree`).
   - #173 (intent 0004), at R14's turn.
-  - This session's PR.
-- **Decision 37's code** is on branch `ccr-0522ec37-iia2ok-modes-code` at `be487c6`, with no PR yet. It is based on `e4dfca1`, so it has neither #304 nor #307, and its `plugin.json` still reads 1.0.18 (verified, `git show`).
+  - This session's PR, which merges cleanly onto `0a0554d` (verified, `git merge-tree`).
+- **Decision 37's code** is on branch `ccr-0522ec37-iia2ok-modes-code` at `be487c6`, with no PR yet. It is based on `e4dfca1`, so it has neither #304 nor #307, and its `plugin.json` still reads 1.0.18 (verified, `git show`). Merged with `main` at `0a0554d` it conflicts in `docs/OPERATING_MODEL.md` only (verified, `git merge-tree --name-only`); that merge is its own session's.
 - **Open, sample:** #55.
-- **R22's setup on the sample is still not done** (verified at 22:52 UTC, the unauthenticated rulesets API): one ruleset, 24078926, updated 2026-09-27, whose one bypass actor is the admin role in `pull_request` mode; no second ruleset.
+- **R22's setup on the sample:** the owner reports step A done (the merge App) on 2026-10-22. It is not verified: the session's GitHub route refuses `/apps/...` ("sessions are bound to their configured repositories"), and `/repos/.../installation` needs the App's own key. Step C verifies it, since only an App installed on the repository can be added to ruleset 1's bypass list. Steps B to D are not done (verified on 2026-10-22, the rulesets API): one ruleset, 24078926, whose one bypass actor is the admin role in `pull_request` mode; no second ruleset.
 
 ## Preconditions of the moment
 - The standing ones are in `HANDOFF.md`.
@@ -34,7 +34,7 @@ The owner's task had two parts:
 
 ## Next steps, in order
 1. **This session's PR** (documentation only): the owner merges it when `Framework checks` is green, at any point in the order below.
-2. **#307 (1.0.20)**, then **decision 37's code (1.0.21)**, both session `ccr-0522ec37-iia2ok`'s. Decision 37's branch has to merge `main` with #304 and #307 first, and take 1.0.21.
+2. **Decision 37's code (1.0.21)**, session `ccr-0522ec37-iia2ok`'s. #307 merged as `0a0554d`. Decision 37's branch has to merge `main` (with #304 and #307) first, resolving `docs/OPERATING_MODEL.md`, and take 1.0.21.
 3. **The owner's answers** to the review's four questions (F3, F8, F9, the fix PR).
 4. **If the owner agrees, the fix PR as 1.0.22**: F1, F2, F4 and F5 with F13's tests, and the documentation rows the owner wants in it. It starts from `main` after decision 37's code merges, and before R51, which also changes the merge step.
 5. **When the owner says R22's steps A to D are done on the sample:** read both rulesets, and the environment where the API shows it. Write note 56 (choice 242, point 5) in a documentation PR.
@@ -45,11 +45,12 @@ The owner's task had two parts:
 | Item | Where | What is left | Who acts | Blocks 1.0.0 |
 |---|---|---|---|---|
 | This session's PR | framework | `Framework checks` green, then the owner's merge | owner | no |
-| #307 and decision 37's code | framework | #307 is green on `157f186` and waits for the owner's merge. Decision 37's PR is not opened yet | session `ccr-0522ec37-iia2ok`; owner | no |
+| Decision 37's code | framework | Its PR is not opened yet; `main` to merge in first | session `ccr-0522ec37-iia2ok`; owner | no |
+| #307's session file | `docs/handoffs/sessions/` | #307 merged with none; the file is session `ccr-0522ec37-iia2ok`'s to write | that session | no |
 | The review's questions | `docs/reviews/2026-10-20-r22-session-double-check.md`, "Questions for the owner" | F3, F8, F9, and the 1.0.22 fix PR | owner | no |
 | F1, F2, F4, F5 and F13 | the same review, section 1 | A plugin patch after decision 37's code | the next build session, if the owner agrees | no |
 | D1 to D9, M1 to M4, L4 to L6 | the same review, sections 2 and 3 | Edits and annotations, in the fix PR or a documentation PR | the next session | no |
-| R22's setup on the sample | #306's body, steps A to D | The owner's acts (not done, verified above) | owner | no |
+| R22's setup on the sample | #306's body, steps A to D | A reported done, not verified; B to D the owner's acts | owner | no |
 | Note 56 | `docs/notes/` | After steps C and D | the next session | no |
 | Decision 36's live checks; R8's first second opinion | the sample | At its next change | the next session | no |
 | `CLAUDE.md` rows 33 and 34, the root `sdlc.yaml` row 6 | `docs/progress/2026-10-20-r22-gate-e-approving-review-1.0.18.md`, "Proposed edits for the owner" | The owner's edits. Not made on `a592a6d` (verified, `CLAUDE.md:33-34`, `sdlc.yaml:6`) | owner | no |
@@ -73,7 +74,7 @@ Done, dropped:
 ## What the owner does
 | When | Act |
 |---|---|
-| Now | Merge this PR when `Framework checks` is green. Merge #307 (green on `157f186`). Answer the review's four questions. |
-| After #307 | Read decision 37's PR (1.0.21) when its session opens it, and merge it when green. |
-| Any time | R22's steps A to D on the sample, then tell the session; the `CLAUDE.md` rows 33 and 34 and the root `sdlc.yaml` row 6. |
+| Now | Merge this PR when `Framework checks` is green. Answer the review's four questions. |
+| When its session opens it | Read decision 37's PR (1.0.21), and merge it when green. |
+| Any time | R22's steps B to D on the sample (A is done), then tell the session; the `CLAUDE.md` rows 33 and 34 and the root `sdlc.yaml` row 6. |
 | At the sample's next change | Approve its build PR from the phone, and apply `sdlc:release-approved` (`deploy.production: true`). |
