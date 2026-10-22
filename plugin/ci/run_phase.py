@@ -2882,10 +2882,14 @@ def _run_phase(args, env: dict[str, str], track: dict[str, Any]) -> int:
                 "number"
             )
         )
+    try:
+        baseline_config: dict[str, Any] | None = owner_config(root, env)
+    except ConfigError:
+        baseline_config = None  # an approval line then fails closed
     baseline = baseline_mismatches(
         owner_fields(before_st),
         owner_fields(approved_st) if approved_st is not None else None,
-        args.repo, pr_for_labels, env, change_dir=change_dir,
+        args.repo, pr_for_labels, env, change_dir=change_dir, config=baseline_config,
     )  # fmt: skip
     if baseline:
         parked = park_and_publish(
@@ -3817,6 +3821,7 @@ def baseline_mismatches(
     pr_number: int | None,
     env: dict[str, str],
     change_dir: Path | None = None,
+    config: dict[str, Any] | None = None,
 ) -> list[str]:
     """The pre-session entries the default branch's copy does not carry must each match a
     ``labeled`` event on the pull request (the label, the actor) — choice 103's wording: an
@@ -3852,7 +3857,8 @@ def baseline_mismatches(
         "tests_unlocked_by"
     ):
         pending.append(("tests_unlocked_by", c.UNLOCK_TESTS_LABEL, before["tests_unlocked_by"]))
-    forged += acceptance_mismatches(before, approved, repo, env)
+    change_id = change_dir.name.split("-", 1)[0] if change_dir is not None else None
+    forged += acceptance_mismatches(before, approved, repo, env, config, change_id)
     if not pending:
         return forged
     if not env.get("GITHUB_ACTIONS"):
@@ -3888,11 +3894,18 @@ def baseline_mismatches(
 
 
 def acceptance_mismatches(
-    before: dict[str, Any], approved: dict[str, Any], repo: str, env: dict[str, str]
+    before: dict[str, Any],
+    approved: dict[str, Any],
+    repo: str,
+    env: dict[str, str],
+    config: dict[str, Any] | None = None,
+    change_id: str | None = None,
 ) -> list[str]:
     """Decision 35: each ``risk_acceptances`` line on the branch that the default branch's
     copy does not carry must match GitHub's own record of that merge: the pull request it
-    names is merged, by the account it names. On a runner a line that cannot be confirmed
+    names is merged, by the account it names, and is this change's (``change_id``). An (e)
+    line taken by an approval must name the owner's latest decisive review (``config``, the
+    default branch's ``sdlc.yaml``; choice 250). On a runner a line that cannot be confirmed
     parks; a by-hand run skips the read, as for the label actors."""
     lines = json.loads(before.get("risk_acceptances") or "[]")
     known = json.loads(approved.get("risk_acceptances") or "[]")
@@ -3928,16 +3941,16 @@ def acceptance_mismatches(
         elif line.get("via") == ACCEPT_VIA_APPROVAL:
             # R22: an (e) line taken by the owner's approving review, the merge App's merge
             # accepting nothing (choice 242, point 2): the merge and the approval confirm it
-            reasons += _approval_line_problems(github, repo, line, found)
+            reasons += _approval_line_problems(github, repo, line, found, config, env)
             if found.get("merged"):
-                reasons += _acceptance_line_problems(line, found)
+                reasons += _acceptance_line_problems(line, found, change_id)
         elif not found.get("merged") or str(found.get("merged_by") or "") != str(line.get("by")):
             reasons.append(
                 f"risk_acceptances: PR #{line.get('pr')} was not merged by {line.get('by')!r} "
                 f"(merged: {bool(found.get('merged'))}, by {found.get('merged_by')!r})"
             )
         else:
-            reasons += _acceptance_line_problems(line, found)
+            reasons += _acceptance_line_problems(line, found, change_id)
     return reasons
 
 
@@ -3948,11 +3961,27 @@ ACCEPT_VIA_APPROVAL = "approval"  # gate/risk.py ACCEPT_VIA_APPROVAL
 
 
 def _approval_line_problems(
-    github: Any, repo: str, line: dict[str, Any], found: dict[str, Any]
+    github: Any,
+    repo: str,
+    line: dict[str, Any],
+    found: dict[str, Any],
+    config: dict[str, Any] | None,
+    env: dict[str, str],
 ) -> list[str]:
     """What GitHub's record contradicts in an (e) line taken by an approving review: the PR
-    must be merged, and ``line.by`` must have submitted an approving review on it."""
+    must be merged, ``line.by`` must be the owner's account, and the owner's latest review
+    that approves, requests changes or was dismissed must approve, on the commit the line
+    names (``ci/merge_step.py owner_approval``, the merge step's own reading; the R22 double
+    check, F2). Without the default branch's ``sdlc.yaml`` the owner cannot be judged, and
+    the line fails closed."""
+    from ci.merge_step import owner_approval  # noqa: PLC0415
+
     pr = line.get("pr")
+    if config is None:
+        return [f"risk_acceptances: the approval line of PR #{pr} cannot be judged: no sdlc.yaml"]
+    if not is_owner_actor(str(line.get("by") or ""), config, env, repo):
+        return [f"risk_acceptances: PR #{pr}'s approval line names {line.get('by')!r}, "
+                "not the owner's account (decision 34)"]  # fmt: skip
     if not found.get("merged"):
         return [f"risk_acceptances: PR #{pr} is not merged, while its approval line says it is"]
     try:
@@ -3961,20 +3990,25 @@ def _approval_line_problems(
         got = {"ok": False, "reason": str(exc)}
     if not got.get("ok"):
         return [f"risk_acceptances: the reviews of PR #{pr} could not be read: {got.get('reason')}"]
+    approval = owner_approval(got.get("reviews") or [], config, env, repo)
     by = str(line.get("by") or "").lower()
-    if not any(
-        str(r.get("state") or "").upper() == "APPROVED" and str(r.get("author") or "").lower() == by
-        for r in got.get("reviews") or []
-    ):
-        return [f"risk_acceptances: PR #{pr} carries no approving review by {line.get('by')!r}"]
+    if approval is None or str(approval.get("author") or "").lower() != by:
+        return [f"risk_acceptances: PR #{pr} carries no approving review by {line.get('by')!r} "
+                "as the owner's latest decisive review"]  # fmt: skip
+    if str(line.get("head") or "") != str(approval.get("commit") or ""):
+        return [f"risk_acceptances: PR #{pr}'s approval line names commit {line.get('head')!r}, "
+                f"while the owner approved {approval.get('commit')!r}"]  # fmt: skip
     return []
 
 
-def _acceptance_line_problems(line: dict[str, Any], found: dict[str, Any]) -> list[str]:
+def _acceptance_line_problems(
+    line: dict[str, Any], found: dict[str, Any], change_id: str | None = None
+) -> list[str]:
     """What GitHub's record of the merge contradicts in a ``risk_acceptances`` line beyond
     its actor: the merged PR must be the phase's own (``sdlc/<id>/b`` for a (b) line,
-    ``sdlc/<id>/c`` for an (e) line), and a line that says the banner was shown must name
-    items the merged body's banner lists."""
+    ``sdlc/<id>/c`` for an (e) line) and, with ``change_id``, this change's (the R22 double
+    check, F2: another change's merged PR accepts nothing here), and a line that says the
+    banner was shown must name items the merged body's banner lists."""
     from gate import risk as risk_mod  # noqa: PLC0415
 
     details = line.get("details") if isinstance(line.get("details"), dict) else {}
@@ -3987,6 +4021,11 @@ def _acceptance_line_problems(line: dict[str, Any], found: dict[str, Any]) -> li
         problems.append(
             f"risk_acceptances: PR #{line.get('pr')} (head {found.get('head_ref')!r}) is not "
             f"the PR whose merge is gate ({phase})"
+        )
+    elif change_id and parsed is not None and parsed[0] != change_id:
+        problems.append(
+            f"risk_acceptances: PR #{line.get('pr')} (head {found.get('head_ref')!r}) is "
+            f"another change's, not {change_id}'s"
         )
     items = [str(i) for i in details.get("items") or []]
     if details.get("banner_shown") is True and not risk_mod.banner_shown(found.get("body"), items):

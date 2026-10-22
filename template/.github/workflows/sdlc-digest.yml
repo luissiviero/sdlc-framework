@@ -28,6 +28,7 @@ on:
   workflow_dispatch:
 
 permissions:
+  actions: read  # choice 250: the sdlc-merge environment's deployment branch policy
   checks: read  # R22: the approved, unmerged build PR's line reads sdlc/review
   contents: read
   issues: write
@@ -69,4 +70,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
+          # "true" when this job, which has no environment, sees the merge App's key: it is
+          # then a repository secret every workflow on every branch can read (choice 250);
+          # only the comparison reaches the step, never the key
+          SDLC_MERGE_KEY_IN_REPOSITORY: ${{ secrets.SDLC_MERGE_APP_PRIVATE_KEY != '' }}
         run: python framework/plugin/pr/digest.py --repo "$REPO" --root .

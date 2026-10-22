@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import urllib.parse
 from datetime import datetime, timezone
@@ -54,6 +55,17 @@ UNPROTECTED = (
     "require a pull request before merging. Until then nothing but convention keeps a session "
     "or a workflow holding the token from merging to `{branch}`."
 )
+MERGE_KEY_UNSAFE = (
+    "**The merge App's key is not kept to `{branch}`** ({found}). Decision 36: the merge App "
+    "is a bypass actor of the branch ruleset, so its key must be readable by a run on `{branch}` "
+    "alone (choice 242, point 4). Settings → Environments → `sdlc-merge` → Deployment branches "
+    "and tags: *Selected branches and tags*, with the one rule `{branch}`; and the key only as "
+    "that environment's secret `SDLC_MERGE_APP_PRIVATE_KEY`, never a repository secret "
+    "(`/sdlc-init` step 6). Until then a workflow pushed to another branch could read the key "
+    "and merge as the merge App."
+)
+KEY_IN_REPOSITORY = "the repository secret SDLC_MERGE_APP_PRIVATE_KEY exists"
+KEY_IN_REPOSITORY_ENV = "SDLC_MERGE_KEY_IN_REPOSITORY"  # sdlc-digest.yml sets it
 READY_SUFFIX = "-ready"
 APPROVED_LINE = " — approved {at}, not merged: {reason}"
 NO_CHECK = "waiting for the sdlc/review check on its head"
@@ -141,11 +153,30 @@ def unprotected_notice(protection: dict[str, Any] | None) -> str:
     return UNPROTECTED.format(branch=branch, found=protection.get("by") or "nothing")
 
 
+def merge_key_notice(environment: dict[str, Any] | None, key_in_repository: bool) -> str:
+    """The warning when the merge App's key is readable beyond the default branch (choice
+    250; the R22 double check, F8), or "". ``environment`` is ``github.merge_environment``;
+    ``key_in_repository`` is the digest job's own reading of the secret, a job with no
+    environment seeing only repository and organization secrets. A lookup that failed says
+    nothing rather than something wrong, as for the unprotected branch."""
+    env = environment if isinstance(environment, dict) and environment.get("ok") else None
+    found = []
+    if env is not None and env.get("safe") is False:
+        found.append(str(env.get("found") or "an unknown policy"))
+    if key_in_repository:
+        found.append(KEY_IN_REPOSITORY)
+    if not found:
+        return ""
+    branch = (env or {}).get("branch") or "the default branch"
+    return MERGE_KEY_UNSAFE.format(branch=branch, found="; ".join(found))
+
+
 def render_digest(
     prs: list[dict[str, Any]],
     now: str,
     counters: str = "",
     protection: dict[str, Any] | None = None,
+    merge_key: str = "",
 ) -> str:
     """The digest markdown. The unprotected-branch notice first when it applies
     (``unprotected_notice``), then parked, then the phase-ready queue by phase letter, then
@@ -162,6 +193,8 @@ def render_digest(
     notice = unprotected_notice(protection)
     if notice:
         out += [notice, ""]
+    if merge_key:
+        out += [merge_key, ""]
     out.append(
         f"{len(parked)} parked, {len(ready)} waiting at a gate"
         + (f", {len(fixing)} in an automatic fix round" if fixing else "")
@@ -292,9 +325,17 @@ def main(argv: list[str] | None = None) -> int:
             data = data.get("prs") or []
         prs = [pr for pr in data if isinstance(pr, dict)]
         protection = None  # a recorded list renders offline
+        merge_key = ""
     else:
         prs, error = list_queue_prs(args.repo)
         protection = github.default_branch_protection(args.repo)
+        branch = protection.get("branch") if isinstance(protection, dict) else None
+        environment = github.merge_environment(args.repo, branch) if branch else None
+        if isinstance(environment, dict):
+            environment["branch"] = branch
+        # the workflow passes "true" when the job, which has no environment, sees the key
+        key_in_repository = os.environ.get(KEY_IN_REPOSITORY_ENV, "").strip() == "true"
+        merge_key = merge_key_notice(environment, key_in_repository)
         config: dict[str, Any] = {}
         if args.root:
             from hooks._common import ConfigError, load_sdlc_config  # noqa: PLC0415
@@ -311,7 +352,7 @@ def main(argv: list[str] | None = None) -> int:
         from pr import counters  # noqa: PLC0415
 
         counters_md = counters.render(counters.collect(Path(args.root).resolve()))
-    markdown = render_digest(prs, _now(), counters_md, protection)
+    markdown = render_digest(prs, _now(), counters_md, protection, merge_key)
     if args.dry_run:
         print(markdown, end="")
         return 0

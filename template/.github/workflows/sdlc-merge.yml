@@ -141,6 +141,8 @@ jobs:
       github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
     # Only the default branch may use this environment (its deployment branch rule, set up
     # by /sdlc-init step 6): a dispatch on another ref never reaches the merge App's key.
+    # The job that holds a bypass actor's key runs its actions at a commit SHA, which no one
+    # can move, not at a tag (choice 250; the R22 double check, F9).
     environment: sdlc-merge
     # A group of its own: it never waits behind, or cancels, a pending phase run of the change.
     concurrency:
@@ -156,7 +158,7 @@ jobs:
       - name: Mint the merge App's token (decision 36)
         id: app
         if: ${{ vars.SDLC_MERGE_APP_ID != '' }}
-        uses: actions/create-github-app-token@v2
+        uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349 # v2.2.2
         with:
           app-id: ${{ vars.SDLC_MERGE_APP_ID }}
           private-key: ${{ secrets.SDLC_MERGE_APP_PRIVATE_KEY }}
@@ -165,7 +167,7 @@ jobs:
 
       - name: Check out the default branch
         if: ${{ vars.SDLC_MERGE_APP_ID != '' }}
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           persist-credentials: false
           ref: ${{ github.event.repository.default_branch }}
@@ -181,7 +183,7 @@ jobs:
 
       - name: Check out the pinned framework (public repository, no token)
         if: ${{ vars.SDLC_MERGE_APP_ID != '' }}
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           persist-credentials: false
           repository: "{{FRAMEWORK_REPO}}"

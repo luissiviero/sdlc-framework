@@ -2109,6 +2109,8 @@ def test_digest_workflow_is_scheduled_and_needs_no_model_credential():
     assert re.search(r"(?m)^  workflow_dispatch:$", text)
     block = text.split("permissions:\n", 1)[1].split("\n\n", 1)[0]
     assert [line.strip() for line in block.splitlines()] == [
+        # choice 250 (the R22 double check, F8): the sdlc-merge environment's branch policy
+        "actions: read  # choice 250: the sdlc-merge environment's deployment branch policy",
         # R22: the approved, unmerged build PR's line reads sdlc/review
         "checks: read  # R22: the approved, unmerged build PR's line reads sdlc/review",
         "contents: read",  # actions/checkout fails without it
@@ -2206,7 +2208,10 @@ def test_workflow_uses_no_other_secret(name):
     app = {"SDLC_APP_PRIVATE_KEY"} if name in APP_WORKFLOWS else set()
     # R8 (1.0.19): the second opinion's job after the design and the deploy job, alone
     gemini = {"GEMINI_API_KEY"} if name in ("sdlc-design.yml", "sdlc-deploy.yml") else set()
-    allowed = {KEY_VAR, TOKEN_VAR} | app | gemini
+    # choice 250 (F8): the digest compares the merge key with '' to learn whether it is a
+    # repository secret; the comparison alone reaches its step
+    merge_key = {"SDLC_MERGE_APP_PRIVATE_KEY"} if name == "sdlc-digest.yml" else set()
+    allowed = {KEY_VAR, TOKEN_VAR} | app | gemini | merge_key
     assert set(re.findall(r"secrets\.([A-Za-z_][A-Za-z0-9_]*)", text)) <= allowed
     assert "github.token" in text or "sdlc-digest" not in text
     assert "${{ secrets.GITHUB_TOKEN }}" not in text  # github.token is the documented form

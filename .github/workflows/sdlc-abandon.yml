@@ -41,10 +41,13 @@ on:
   pull_request:
     types: [closed]
 
-# contents: write to commit the end state on the change's branches; nothing else.
+# contents: write to commit the end state on the change's branches; checks: write for the
+# dismissal PR's passing sdlc/review "not a build PR", which no sdlc-merge.yml run posts on a
+# push by this workflow's token (decision 36, point 5; the R22 double check, F1).
 permissions:
   contents: write
   pull-requests: write
+  checks: write
 
 # Its own group (live run of 2026-09-25): the close also fires the merge-guarded design and
 # build workflows, and on the shared sdlc-<head> group GitHub displaced the pending abandon
