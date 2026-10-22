@@ -2,7 +2,7 @@
 
 A Claude Code plugin (`plugin/`) plus a project template (`template/`) that drives any project through plan → design → build → test → deploy → maintain with human gates at (a), (b) and (e). `docs/OPERATING_MODEL.md` is the contract; `docs/PROGRESS.md` says what exists after each build session; `docs/notes/index.md` holds the platform facts verified against the Claude Code docs, one file per section; `docs/MODEL_ALLOCATION.md` says which build-session tasks run on Fable and which on Opus sub-agents.
 
-- Tests and lint: `python tasks.py check` (or `test` / `lint` / `format`).
+- Every check a pull request needs, as CI runs them: `python tasks.py verify` (the `sdlc.yaml` build, lint and test commands, the docs lint, and `claude plugin validate .` where the CLI is installed). Tests and lint alone: `python tasks.py check` (or `test` / `lint` / `format`).
 - Try the plugin in a project: `claude --plugin-dir <path-to-this-repo>` (the repository root is the plugin root; `.claude-plugin/plugin.json` points at `plugin/`), then `/sdlc:sdlc-init`.
 - Install it from the marketplace by hand: `/plugin install sdlc --marketplace luissiviero/sdlc-framework`.
 - The framework installs itself into a project by declaring the marketplace in the project's `.claude/settings.json` (done by `/sdlc-init`), so cloud sessions and the owner's PC load the same pinned plugin.

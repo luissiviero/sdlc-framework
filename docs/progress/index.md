@@ -78,3 +78,4 @@ chronological order (oldest first). The current record stays in `docs/PROGRESS.m
 - [Progress — the study of the sources of truth; ROADMAP R65 accepted (choice 252) (2026-10-22)](2026-10-22-sources-of-truth-study-r65-choice-252.md)
 - [Progress — ROADMAP R65's part 1: `python tasks.py next-free` and docs-lint check 10 (2026-10-22)](2026-10-22-r65-part-1-next-free.md)
 - [Progress — ROADMAP R65's part 2: `python tasks.py choices-index` and `docs/progress/choices.md` (2026-10-22)](2026-10-22-r65-part-2-choices-index-choice-253.md)
+- [Progress — ROADMAP R65's part 3: docs-lint checks 11 and 12, S1 to S4 fixed (2026-10-22)](2026-10-22-r65-part-3-checks-11-12-choice-254.md)

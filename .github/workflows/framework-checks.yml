@@ -1,5 +1,5 @@
 # This repository's own checks (the 1.0.0 readiness review of 2026-09-26, group C): the lint
-# and the whole test suite, `python tasks.py check`, on the two platforms the framework runs
+# and the whole test suite, `python tasks.py verify`, on the two platforms the framework runs
 # on. Not a template: a project gets sdlc-*.yml from the template; this workflow tests the
 # plugin, the template and the hooks themselves. The Windows job is the only Windows run of
 # the suite (the owner's PC last ran it under 657 tests, session 4): the console-encoding
@@ -87,11 +87,11 @@ jobs:
       - name: Install the dev tools (pyproject's dev extra)
         run: python -m pip install -e ".[dev]"
 
-      - name: Lint and test
-        run: python tasks.py check
+      - name: Build, lint, docs lint and test (python tasks.py verify; choice 253)
+        run: python tasks.py verify
 
   # The Windows suite in three shards on parallel runners (2026-10-19): the one Windows job
-  # had grown to 20-23 minutes against 3 on Linux. Each shard runs `python tasks.py check`
+  # had grown to 20-23 minutes against 3 on Linux. Each shard runs `python tasks.py verify`
   # with FRAMEWORK_TEST_SHARD set, and tests/conftest.py keeps the tests whose id hashes to
   # it, so every test still runs on Windows exactly once. Same `if:` as the job below.
   check-windows-shard:
@@ -119,10 +119,10 @@ jobs:
       - name: Install the dev tools (pyproject's dev extra)
         run: python -m pip install -e ".[dev]"
 
-      - name: Lint and test
+      - name: Build, lint, docs lint and test (python tasks.py verify; choice 253)
         env:
           FRAMEWORK_TEST_SHARD: ${{ matrix.shard }}/3
-        run: python tasks.py check
+        run: python tasks.py verify
 
   # The check the Windows job always reported, kept under its name: green only when every
   # shard is green. A job of its own, not a matrix entry, so that a skip reports the check as

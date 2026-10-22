@@ -319,7 +319,8 @@ FRAMEWORK_CHECKS = "framework-checks.yml"  # this repository's own suite (0.2.28
 def test_this_repository_runs_its_own_checks_on_linux_and_windows():
     """The 1.0.0 readiness review, group C: no CI job ran this repository's pytest or ruff,
     and the Windows-only code last ran under 657 tests (the owner's PC, session 4). The
-    workflow is not a template: it runs `python tasks.py check` on both platforms on every
+    workflow is not a template: it runs `python tasks.py verify` (choice 253: the build, lint,
+    docs lint and test commands a session runs, since R65's part 4) on both platforms on every
     pull request and every push to main, with python on every run line (CLAUDE.md)."""
     yaml = pytest.importorskip("yaml")
     text = (REPO_WORKFLOW_DIR / FRAMEWORK_CHECKS).read_text(encoding="utf-8")
@@ -356,7 +357,7 @@ def test_this_repository_runs_its_own_checks_on_linux_and_windows():
         assert runs == [
             "python .github/scripts/framework_checks_runner.py",  # choice 235: speed only
             'python -m pip install -e ".[dev]"',
-            "python tasks.py check",
+            "python tasks.py verify",
         ]
     assert job["steps"][1]["with"]["python-version"] == "${{ matrix.python }}"
     shard = {"FRAMEWORK_TEST_SHARD": "${{ matrix.shard }}/3"}
@@ -364,7 +365,7 @@ def test_this_repository_runs_its_own_checks_on_linux_and_windows():
         {**s, "with": {"python-version": "3.12"}}
         if "setup-python" in s.get("uses", "")
         else {**s, "env": shard}
-        if s.get("run") == "python tasks.py check"
+        if s.get("run") == "python tasks.py verify"
         else s
         for s in job["steps"]
     ]
@@ -416,7 +417,7 @@ def test_the_windows_job_is_skipped_only_on_a_documentation_only_pull_request():
 
 def test_the_windows_suite_runs_in_shards_and_its_check_is_their_verdict():
     """2026-10-19: the one Windows job took 20-23 minutes against 3 on Linux. Three shards run
-    on parallel runners, each `python tasks.py check` with its FRAMEWORK_TEST_SHARD (every
+    on parallel runners, each `python tasks.py verify` with its FRAMEWORK_TEST_SHARD (every
     test in exactly one shard: tests/test_scaffold.py), none cancelling the others; the check
     named as the Windows job always was is green only when every shard is."""
     yaml = pytest.importorskip("yaml")
@@ -426,7 +427,7 @@ def test_the_windows_suite_runs_in_shards_and_its_check_is_their_verdict():
     assert shards["strategy"] == {"fail-fast": False, "matrix": {"shard": [1, 2, 3]}}
     count = len(shards["strategy"]["matrix"]["shard"])
     assert shards["name"] == f"check (windows-latest, 3.12, shard ${{{{ matrix.shard }}}}/{count})"
-    (step,) = [s for s in shards["steps"] if s.get("run") == "python tasks.py check"]
+    (step,) = [s for s in shards["steps"] if s.get("run") == "python tasks.py verify"]
     assert step["env"] == {"FRAMEWORK_TEST_SHARD": f"${{{{ matrix.shard }}}}/{count}"}
     verdict = data["jobs"]["check-windows"]
     (only,) = verdict["steps"]
