@@ -1,7 +1,7 @@
 """Task runner for the SDLC framework repo (decision 7: one runner, Windows and Linux).
 
 Usage: python tasks.py <task>
-Tasks: test | lint | format | check | notes-index | decisions-index | docs-lint | help
+Tasks: test | lint | format | check | notes-index | decisions-index | docs-lint | next-free | help
 
 Everything runs through ``sys.executable -m ...`` with argument lists (no shell), so the
 same file works in cmd.exe, PowerShell, Git Bash and a Linux runner. ``notes-index`` runs in
@@ -9,12 +9,15 @@ this process: it rewrites ``docs/notes/index.md`` from the notes' frontmatter. S
 ``decisions-index`` (``docs/decisions/index.md`` from each decision's heading) and
 ``docs-lint`` (the links, the notes' Claude Code versions and both indexes, ROADMAP R55; the
 frontmatter, decision amendments, proposal statuses, shipped rows, version and PR pairs, moved
-stubs and Portuguese words, ROADMAP R58).
+stubs and Portuguese words, ROADMAP R58; a number taken twice, R65). ``next-free`` reads git:
+the next free choice, candidate, note, decision and patch on ``main`` and every fetched branch
+ahead of it (ROADMAP R65, part 1).
 """
 
 from __future__ import annotations
 
 import importlib.util
+import json
 import re
 import subprocess
 import sys
@@ -458,6 +461,19 @@ COUNT_CLAIM_RE = re.compile(
     r"|platform facts)\b|\ball \d+ (?:decisions|notes)\b",
     re.IGNORECASE,
 )
+# check 10: a number taken twice fails (ROADMAP R65, part 1; choice 252). A record states its
+# choices as the top-level items of a list under a heading that names them ("Choices made
+# where the pack left it open", "The owner's choices", "The owner's decision(s)"); its other
+# numbered lists ("Live checks", "What was built", a review's findings) count from 1 again,
+# so a read of every "N. **" line finds 1 to 8 and 16 to 23 twice. Choices 1 to 15 were
+# stated in sessions 1 and 2's PROGRESS.md, which git history alone keeps.
+HEADING_RE = re.compile(r"^#{1,6} ")
+CHOICE_HEADING_RE = re.compile(
+    r"^#{1,6} .*\b(?:choices made|owner['’]s choices|owner['’]s decisions?)\b", re.IGNORECASE
+)
+CHOICE_ITEM_RE = re.compile(r"^ {0,3}(\d+)\. ")
+# the records written before check 10 existed are reported, not failed (choice 126)
+NUMBERS_UNIQUE_SINCE = "2026-10-22"
 
 
 def _pages(docs_dir: Path, suffixes: tuple[str, ...] = (".md",)) -> list[Path]:
@@ -819,6 +835,91 @@ def count_problems(root: Path) -> list[str]:
     return problems
 
 
+def choice_items(text: str) -> list[tuple[int, int]]:
+    """``(choice, line)`` for every choice a record states: an item "N. " at the top level of
+    a list under a ``CHOICE_HEADING_RE`` heading, outside fenced code blocks."""
+    items: list[tuple[int, int]] = []
+    choices = fenced = False
+    for number, line in enumerate(text.splitlines(), 1):
+        if FENCE_RE.match(line):
+            fenced = not fenced
+        elif fenced:
+            continue
+        elif HEADING_RE.match(line):
+            choices = bool(CHOICE_HEADING_RE.match(line))
+        elif choices and (item := CHOICE_ITEM_RE.match(line)):
+            items.append((int(item.group(1)), number))
+    return items
+
+
+def roadmap_items(text: str) -> list[tuple[int, int]]:
+    """``(n, line)`` for every ROADMAP row ``| R<n> |``."""
+    return [
+        (int(match.group(1)[1:]), number)
+        for number, line in enumerate(text.splitlines(), 1)
+        if (match := ROADMAP_ROW_RE.match(line))
+    ]
+
+
+def numbered_files(folder: Path) -> list[tuple[int, str]]:
+    """``(N, file name)`` for every ``<N>.md`` in ``folder``, none when it is missing."""
+    if not folder.is_dir():
+        return []
+    return [
+        (int(match.group(1)), path.name)
+        for path in sorted(folder.glob("*.md"))
+        if (match := NOTE_FILE_RE.match(path.name))
+    ]
+
+
+def _records(docs_dir: Path) -> list[Path]:
+    """``docs/PROGRESS.md`` and every record under ``docs/progress/``, by name."""
+    records = [docs_dir / "PROGRESS.md"] if (docs_dir / "PROGRESS.md").is_file() else []
+    if (docs_dir / "progress").is_dir():
+        records.extend(sorted((docs_dir / "progress").glob("*.md"), key=lambda p: p.name))
+    return records
+
+
+def number_problems(docs_dir: Path) -> tuple[list[str], list[str]]:
+    """(failures, reports) for check 10: a choice two records state, two decision or note
+    files with one number, two ROADMAP rows with one number. A choice whose every record is
+    older than ``NUMBERS_UNIQUE_SINCE`` is reported, not failed (choice 126); ``PROGRESS.md``
+    is the newest record."""
+    failures: list[str] = []
+    reports: list[str] = []
+    places: dict[int, list[tuple[str, bool]]] = {}
+    for path in _records(docs_dir):
+        rel = path.relative_to(docs_dir).as_posix()
+        dated = DATED_RE.match(path.name)
+        strict = path.parent == docs_dir or bool(dated and dated.group(1) >= NUMBERS_UNIQUE_SINCE)
+        for choice, line in choice_items(path.read_text(encoding="utf-8-sig")):
+            places.setdefault(choice, []).append((f"docs/{rel}:{line}", strict))
+    for choice, found in sorted(places.items()):
+        if len(found) > 1:
+            text = f"numbers: choice {choice} taken twice: {', '.join(p for p, _ in found)}"
+            (failures if any(strict for _, strict in found) else reports).append(text)
+    for kind, folder in (("decision", "decisions"), ("note", "notes")):
+        files: dict[int, list[str]] = {}
+        for n, name in numbered_files(docs_dir / folder):
+            files.setdefault(n, []).append(f"docs/{folder}/{name}")
+        failures.extend(
+            f"numbers: {kind} {n} taken twice: {', '.join(names)}"
+            for n, names in sorted(files.items())
+            if len(names) > 1
+        )
+    roadmap = docs_dir / "ROADMAP.md"
+    if roadmap.is_file():
+        rows: dict[int, list[str]] = {}
+        for n, line in roadmap_items(roadmap.read_text(encoding="utf-8-sig")):
+            rows.setdefault(n, []).append(f"docs/ROADMAP.md:{line}")
+        failures.extend(
+            f"numbers: candidate R{n} taken twice: {', '.join(lines)}"
+            for n, lines in sorted(rows.items())
+            if len(lines) > 1
+        )
+    return failures, reports
+
+
 def lint_docs(
     docs_dir: Path | None = None,
     root: Path | None = None,
@@ -903,11 +1004,14 @@ def lint_docs(
     failures.extend(stub_problems(docs_dir))
     failures.extend(portuguese_problems(docs_dir))
     failures.extend(count_problems(root))
+    found, said = number_problems(docs_dir)
+    failures.extend(found)
+    reports.extend(said)
     return failures, reports
 
 
 def task_docs_lint() -> int:
-    """Check the docs' links, notes, indexes and R58's cross-file facts (1: a failure)."""
+    """Check the docs' links, notes, indexes, cross-file facts and numbers (1: a failure)."""
     failures, reports = lint_docs()
     for line in reports:
         print(f"docs-lint: {line}")
@@ -915,6 +1019,174 @@ def task_docs_lint() -> int:
         print(f"docs-lint: FAIL {line}")
     print(f"docs-lint: {len(failures)} failure(s)")
     return 1 if failures else 0
+
+
+# --- the next free numbers (ROADMAP R65, part 1; choices 184 and 252) -----------------------
+# Read from git, never from a session file: ``main`` (``origin/main`` once fetched) and every
+# local or fetched branch ahead of it, each at its own commit. A number a branch holds above
+# the highest on ``main`` is taken above ``main``, named with its branch; the next free number
+# is one above the highest taken anywhere. Nothing is reserved (choice 184): two branches may
+# take one number, and check 10 fails the second when both reach ``main``.
+NEXT_FREE_KINDS = ("choice", "candidate", "note", "decision", "patch")
+BASE_REFS = ("refs/remotes/origin/main", "refs/heads/main")
+PLUGIN_MANIFEST = ".claude-plugin/plugin.json"
+VERSION_RE = re.compile(r"^(\d+)\.(\d+)\.(\d+)$")
+
+
+def _git(root: Path, *args: str, stdin: bytes | None = None) -> bytes:
+    """A git command's output as bytes (``CalledProcessError`` when it fails)."""
+    return subprocess.run(
+        ["git", *args], cwd=root, input=stdin, capture_output=True, check=True
+    ).stdout
+
+
+def _read_blobs(root: Path, commit: str, paths: list[str]) -> dict[str, str]:
+    """``path -> text`` for ``paths`` at ``commit``, in one ``git cat-file --batch``."""
+    if not paths:
+        return {}
+    out = _git(
+        root, "cat-file", "--batch", stdin="".join(f"{commit}:{p}\n" for p in paths).encode()
+    )
+    texts: dict[str, str] = {}
+    at = 0
+    for path in paths:
+        end = out.index(b"\n", at)
+        header = out[at:end].split()
+        at = end + 1
+        if len(header) == 3 and header[1] == b"blob":
+            size = int(header[2])
+            texts[path] = out[at : at + size].decode("utf-8-sig", errors="replace")
+            at += size + 1
+    return texts
+
+
+def _is_record(path: str) -> bool:
+    return path == "docs/PROGRESS.md" or (
+        path.startswith("docs/progress/") and path.count("/") == 2 and path.endswith(".md")
+    )
+
+
+def numbers_taken(paths: list[str], texts: dict[str, str]) -> dict[str, set[tuple[int, ...]]]:
+    """Every number a tree takes, by kind, each as a tuple so that a version compares as a
+    number does: the notes and the decisions from the tree's ``paths``; the choices, the
+    ROADMAP rows and the plugin version from ``texts`` (``path -> text``)."""
+    taken: dict[str, set[tuple[int, ...]]] = {kind: set() for kind in NEXT_FREE_KINDS}
+    for path in paths:
+        folder, _, name = path.rpartition("/")
+        match = NOTE_FILE_RE.match(name)
+        if match and folder in ("docs/notes", "docs/decisions"):
+            taken["note" if folder == "docs/notes" else "decision"].add((int(match.group(1)),))
+    for path, text in texts.items():
+        if path == "docs/ROADMAP.md":
+            taken["candidate"].update((n,) for n, _ in roadmap_items(text))
+        elif path == PLUGIN_MANIFEST:
+            try:
+                version = VERSION_RE.match(str(json.loads(text).get("version", "")))
+            except (ValueError, AttributeError):
+                version = None
+            if version:
+                taken["patch"].add(tuple(int(v) for v in version.groups()))
+        elif _is_record(path):
+            taken["choice"].update((n,) for n, _ in choice_items(text))
+    return taken
+
+
+def read_numbers(root: Path, commit: str) -> dict[str, set[tuple[int, ...]]]:
+    """The numbers taken at ``commit`` of the repository at ``root``."""
+    listed = _git(
+        root, "ls-tree", "-r", "-z", "--name-only", commit, "--", "docs", ".claude-plugin"
+    )
+    paths = [p for p in listed.decode("utf-8").split("\0") if p]
+    wanted = [p for p in paths if p in ("docs/ROADMAP.md", PLUGIN_MANIFEST) or _is_record(p)]
+    return numbers_taken(paths, _read_blobs(root, commit, wanted))
+
+
+def branches_ahead(root: Path) -> tuple[str, str, dict[str, list[str]]]:
+    """(the base ref, its commit, ``commit -> branch names``) for every local or fetched
+    branch, and a detached ``HEAD``, that holds a commit the base lacks; a fetched branch is
+    named without its remote. ``LookupError`` when neither ``origin/main`` nor ``main`` exists."""
+    for ref in BASE_REFS:
+        try:
+            base = _git(root, "rev-parse", "--verify", "-q", f"{ref}^{{commit}}").decode().strip()
+        except subprocess.CalledProcessError:
+            continue
+        break
+    else:
+        raise LookupError("no main branch: neither origin/main nor main exists")
+    listed = _git(root, "for-each-ref", "--format=%(refname)%09%(objectname)", "refs/heads")
+    listed += _git(root, "for-each-ref", "--format=%(refname)%09%(objectname)", "refs/remotes")
+    heads: dict[str, list[str]] = {}
+    for line in listed.decode("utf-8").splitlines():
+        name, commit = line.split("\t")
+        if name == ref or name.endswith("/HEAD"):
+            continue
+        short = name.split("/", 3)[3] if name.startswith("refs/remotes/") else name[11:]
+        if short not in heads.setdefault(commit, []):
+            heads[commit].append(short)
+    try:
+        head = _git(root, "rev-parse", "-q", "--verify", "HEAD^{commit}").decode().strip()
+        heads.setdefault(head, ["HEAD"])
+    except subprocess.CalledProcessError:
+        pass
+    ahead = {
+        commit: names
+        for commit, names in heads.items()
+        if int(_git(root, "rev-list", "--count", f"{base}..{commit}").decode()) > 0
+    }
+    return ref.split("/", 2)[2], base, ahead
+
+
+def _show(kind: str, number: tuple[int, ...]) -> str:
+    text = ".".join(str(n) for n in number)
+    return f"R{text}" if kind == "candidate" else text
+
+
+def next_free(root: Path) -> tuple[str, dict[str, str], list[tuple[str, str, list[str]]], int]:
+    """(the base read, as "<ref> at <sha>"; the next free number of each kind; each number
+    taken above the base with the branches that hold it, by kind and number; how many
+    branches ahead were read)."""
+    base_ref, base, ahead = branches_ahead(root)
+    on_main = read_numbers(root, base)
+    taken = {kind: set(numbers) for kind, numbers in on_main.items()}
+    holders: dict[tuple[str, tuple[int, ...]], list[str]] = {}
+    for commit, names in sorted(ahead.items(), key=lambda item: item[1]):
+        for kind, numbers in read_numbers(root, commit).items():
+            taken[kind] |= numbers
+            # above main's highest: main holds one version, its own, and no choice under 16
+            floor = max(on_main[kind], default=())
+            for number in numbers:
+                if number > floor:
+                    holders.setdefault((kind, number), []).extend(names)
+    free: dict[str, str] = {}
+    for kind in NEXT_FREE_KINDS:
+        if not taken[kind]:
+            free[kind] = "none read" if kind == "patch" else _show(kind, (1,))
+            continue
+        highest = max(taken[kind])
+        free[kind] = _show(kind, (*highest[:-1], highest[-1] + 1))
+    above = [
+        (kind, _show(kind, number), sorted(holders[(kind, number)]))
+        for kind in NEXT_FREE_KINDS
+        for number in sorted(n for k, n in holders if k == kind)
+    ]
+    return f"{base_ref} at {base[:7]}", free, above, len(ahead)
+
+
+def task_next_free() -> int:
+    """Print the next free choice, candidate, note, decision and patch (main and branches ahead)."""
+    try:
+        base, free, above, read = next_free(ROOT)
+    except (LookupError, OSError, subprocess.CalledProcessError) as error:
+        print(f"next-free: cannot read git: {error}", file=sys.stderr)
+        return 1
+    print(f"next-free: read on {base} and {read} branch(es) ahead of it, as last fetched")
+    for kind in NEXT_FREE_KINDS:
+        print(f"  {kind:10} {free[kind]}")
+    print("next-free: taken above main:" + ("" if above else " none"))
+    for kind, number, names in above:
+        print(f"  {kind} {number}: {', '.join(names)}")
+    print("next-free: nothing is reserved (choice 184); git fetch origin reads the newest state")
+    return 0
 
 
 TASKS = {
@@ -925,6 +1197,7 @@ TASKS = {
     "notes-index": task_notes_index,
     "decisions-index": task_decisions_index,
     "docs-lint": task_docs_lint,
+    "next-free": task_next_free,
 }
 
 
