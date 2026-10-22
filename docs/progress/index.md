@@ -77,3 +77,4 @@ chronological order (oldest first). The current record stays in `docs/PROGRESS.m
 - [Progress — the owner's bypass tested live; Exempt in ruleset 1 plus a no-direct-writes ruleset (choice 251), as plugin 1.0.23 (2026-10-22)](2026-10-22-bypass-option-c-choice-251-1.0.23.md)
 - [Progress — the study of the sources of truth; ROADMAP R65 accepted (choice 252) (2026-10-22)](2026-10-22-sources-of-truth-study-r65-choice-252.md)
 - [Progress — ROADMAP R65's part 1: `python tasks.py next-free` and docs-lint check 10 (2026-10-22)](2026-10-22-r65-part-1-next-free.md)
+- [Progress — ROADMAP R65's part 2: `python tasks.py choices-index` and `docs/progress/choices.md` (2026-10-22)](2026-10-22-r65-part-2-choices-index-choice-253.md)

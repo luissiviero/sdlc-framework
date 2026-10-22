@@ -36,7 +36,7 @@ generated: { by: sdlc-framework-session/ccr-a6fc1017-mkylxv, at: 2026-10-20T14:1
 The root `sdlc.yaml` is the owner's edit: its pin moved to 2.1.304 in PR #287 and its comment on line 107 in PR #288. The framework's own workflows that install a fixed CLI (`.github/workflows/substrate-smoke.yml`, `.github/workflows/framework-evals.yml`) are read at the build: they move only if they run a sub-agent on a full model id.
 
 ## Order
-Before R24 (rank 8), with no rank moved *[2026-10-20: R24 merged first, as plugin 1.0.15 (PR #286), in a session that ran in parallel; R63 is the next build, as 1.0.16]*. It is built once change 0017's build run (c) shows the session on `claude-opus-5-5` under 2.1.304, which completes the reading the new default rests on.
+Before R24, with no rank moved *[2026-10-22, R65's part 3 (docs-lint check 11): "R24 (rank 8)" stood here; ROADMAP's Order column holds the rank]* *[2026-10-20: R24 merged first, as plugin 1.0.15 (PR #286), in a session that ran in parallel; R63 is the next build, as 1.0.16]*. It is built once change 0017's build run (c) shows the session on `claude-opus-5-5` under 2.1.304, which completes the reading the new default rests on.
 
 ## Why not a part of R61
 R61 (after R44, before R18) is about the trial project's shape and is several builds away; until this lands, any project set up on the current plugin parks at every gate. The change is small and touches different lines from R61's `/sdlc-init` work.
