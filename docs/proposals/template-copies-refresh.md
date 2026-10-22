@@ -45,7 +45,7 @@ Tests: a pristine copy of an older version is replaced, an edited one is kept an
 - The report's exact words, and whether `/sdlc-init` prints the list of refreshed files for the PR body.
 
 ## Order
-**After R27 (rank 19) and before R45 (rank 20), with no rank moved.**
+**After R27 and before R45, with no rank moved.** *[2026-10-22, R65's part 3 (docs-lint check 11): "R27 (rank 19)" and "R45 (rank 20)" stood here; ROADMAP's Order column holds the ranks]*
 - **Why before R45:** the rename rewrites the names in both READMEs and every workflow copy. Built first, one re-run on each project carries the rename into its files. Built after, every project needs a hand copy at the rename, the costliest moment.
 - **Why after R61:** R61 changes what `/sdlc-init` writes on a first install, in the same file (`plugin/init/sdlc_init.py`). Building this after it avoids reworking a moving file.
 - **Why not sooner:** the sample is current since sample PRs #90 and #91, and no other project exists until the real-project trial.

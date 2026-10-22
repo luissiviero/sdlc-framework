@@ -7,7 +7,8 @@ checks: frontmatter that parses, decision amendments and status, a proposal's st
 its ROADMAP row, built rows under "Done", version and PR pairs against the tags, citations of
 the moved stubs, Portuguese words; check 8, merge claims against the merge commits; and check
 9, no count of the decisions or the notes in the pages kept by hand; check 10, no number
-taken twice (ROADMAP R65, part 1); the choices index read from the records (part 2).
+taken twice (ROADMAP R65, part 1); the choices index read from the records (part 2); check
+11, no rank outside ROADMAP, and check 12, no retired term as a live one (part 3).
 Layer 2 (this repository): the lint finds no failure, no number is taken twice, the pin is the
 one ``/sdlc-init`` installs, and the decisions index and the choices index on disk are what
 ``python tasks.py decisions-index`` and ``python tasks.py choices-index`` write.
@@ -580,6 +581,87 @@ def test_a_stale_or_missing_choices_index_fails_the_lint(tmp_path, monkeypatch, 
     assert stale not in tasks.lint_docs(docs, tmp_path, pin="2.1.304")[0]
     _write(docs / "PROGRESS.md", "\n## The owner's decision (2026-10-23)\n9. **Nine.**\n")
     assert stale in tasks.lint_docs(docs, tmp_path, pin="2.1.304")[0]
+
+
+def test_a_rank_stands_only_in_a_dated_annotation_or_roadmap(tmp_path):
+    docs = tmp_path / "docs"
+    _write(
+        docs / "proposals" / "p.md",
+        "After R27 (rank 19), with no rank moved.\n"
+        "After R27 *[2026-10-22: rank 19 then]*, ranked by the owner.\n"
+        "Ranks 24 and 25 in one line.\n",
+    )
+    _write(docs / "decisions" / "36.md", "**Where it meets R51 (rank 10):**\n")
+    _write(docs / "ROADMAP.md", "| R51 | x | rank 10 |\n")
+    _write(docs / "progress" / "session-9.md", "R51, rank 10\n")
+    assert tasks.rank_problems(docs) == [
+        'rank: docs/proposals/p.md:1: "rank 19"; ROADMAP\'s Order column holds it',
+        'rank: docs/proposals/p.md:3: "Ranks 24"; ROADMAP\'s Order column holds it',
+        'rank: docs/decisions/36.md:1: "rank 10"; ROADMAP\'s Order column holds it',
+    ]
+
+
+def test_a_session_file_from_the_cutover_names_no_rank_and_no_next_free_number(tmp_path):
+    docs = tmp_path / "docs"
+    sessions = docs / "handoffs" / "sessions"
+    old = "R51 (rank 10). The next free are choice 254 and R66.\n"
+    _write(sessions / "2026-10-22-ccr-a.md", old)
+    _write(sessions / "2026-10-13-session-26.md", old)
+    _write(
+        sessions / "2026-10-23-ccr-b.md",
+        "R51 (rank 10).\n"
+        "**Next free numbers:** choice 254, candidate R66, patch 1.0.24.\n"
+        "**Next free numbers:** run `python tasks.py next-free`.\n"
+        "The next free note: R66's proposal takes what next-free prints.\n",
+    )
+    assert tasks.rank_problems(docs) == [
+        'rank: docs/handoffs/sessions/2026-10-23-ccr-b.md:1: "rank 10"; '
+        "name the candidate by its number only",
+        "next free: docs/handoffs/sessions/2026-10-23-ccr-b.md:2: a number written by hand; "
+        "write: python tasks.py next-free",
+        "next free: docs/handoffs/sessions/2026-10-23-ccr-b.md:4: a number written by hand; "
+        "write: python tasks.py next-free",
+    ]
+
+
+def test_a_retired_term_fails_as_a_live_one_and_passes_where_said_retired(tmp_path):
+    _write(
+        tmp_path / "README.md",
+        "Drives a project with profile-based human gates.\n"
+        "The Full profile was withdrawn by decision 37.\n",
+    )
+    _write(
+        tmp_path / ".claude-plugin" / "plugin.json",
+        '{"description": "with profile-based gates"}\n',
+    )
+    _write(
+        tmp_path / "docs" / "OPERATING_MODEL.md",
+        "(c): the `full` profile's `sdlc:c-approved` label until 1.0.20\n"
+        "The owner applies sdlc:accept-risk on the PR.\n"
+        "the per-change review_override is gone\n",
+    )
+    _write(tmp_path / "docs" / "ROADMAP.md", "| R12 | under the Full profile *[2026-10-20: x]* |\n")
+    _write(
+        tmp_path / "template" / ".github" / "workflows" / "w.yml",
+        "# the owner's sdlc:d-approved label\n",
+    )
+    _write(tmp_path / "template" / "__pycache__" / "x.md", "profile-based\n")
+    _write(tmp_path / "docs" / "BUILD_GUIDE.md", "Standard (default) and the Full profile\n")
+    assert tasks.retired_term_problems(tmp_path, tasks.retired_terms()) == [
+        'retired: README.md:1: "profile-based" as a live term; say it is retired, or drop it',
+        'retired: docs/OPERATING_MODEL.md:2: "sdlc:accept-risk" as a live term; '
+        "say it is retired, or drop it",
+        'retired: .claude-plugin/plugin.json:1: "profile-based" as a live term; '
+        "say it is retired, or drop it",
+        'retired: template/.github/workflows/w.yml:1: "sdlc:d-approved" as a live term; '
+        "say it is retired, or drop it",
+    ]
+
+
+def test_the_retired_terms_come_from_the_plugin_and_the_short_list():
+    names = [name for name, _ in tasks.retired_terms()]
+    assert names[:3] == ["sdlc:accept-risk", "profile_override", "review_override"]
+    assert names[3:] == ["profile-based", "the Full profile", "sdlc:c-approved", "sdlc:d-approved"]
 
 
 # --- layer 2: this repository -------------------------------------------------------------------

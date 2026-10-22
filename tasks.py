@@ -11,7 +11,8 @@ this process: it rewrites ``docs/notes/index.md`` from the notes' frontmatter. S
 ``choices-index`` (``docs/progress/choices.md`` from the records' choices, ROADMAP R65) and
 ``docs-lint`` (the links, the notes' Claude Code versions and both indexes, ROADMAP R55; the
 frontmatter, decision amendments, proposal statuses, shipped rows, version and PR pairs, moved
-stubs and Portuguese words, ROADMAP R58; a number taken twice, R65). ``next-free`` reads git:
+stubs and Portuguese words, ROADMAP R58; a number taken twice, a rank outside ROADMAP and a
+retired term used as a live one, R65). ``next-free`` reads git:
 the next free choice, candidate, note, decision and patch on ``main`` and every fetched branch
 ahead of it (ROADMAP R65, part 1).
 """
@@ -478,6 +479,33 @@ CHOICE_ITEM_RE = re.compile(r"^ {0,3}(\d+)\. ")
 NUMBERS_UNIQUE_SINCE = "2026-10-22"
 # the records' folder holds two generated pages beside the records
 PROGRESS_PAGES = ("index.md", "choices.md")
+# check 11: ROADMAP's Order column owns the ranks (R58's rule; ROADMAP R65, part 3). A rank in
+# a proposal or a decision stands only inside a dated annotation, the rank at that date; a
+# session file names a candidate by its number only (HANDOFF.md) and takes its next free
+# numbers from `python tasks.py next-free`. Session files are read from the day after part 3
+# was built: every file of 2026-10-22 or before is kept as written (choices 126 and 252).
+RANK_RE = re.compile(r"\branks? \d+", re.IGNORECASE)
+ANNOTATION_RE = re.compile(r"\*\[\d{4}-\d{2}-\d{2}.*?\]\*")
+NEXT_FREE_RE = re.compile(r"\bnext free\b", re.IGNORECASE)
+NUMBER_TAKEN_RE = re.compile(r"\b(?:choice|note|decision) \d+|\bR\d+\b|\b\d+\.\d+\.\d+\b")
+SESSION_FILES_LINTED_SINCE = "2026-10-23"
+# check 12: no retired term as a live one where a reader takes the current state: README.md,
+# the manifests, the operating model, ROADMAP and the template. A line that says the term is
+# retired, withdrawn, removed or gone, or that carries a dated annotation, passes; the build
+# guide is the version-3 plan with its annotations (choice 252, point 6) and is not read. The
+# terms are the retired label and keys the plugin still names (``conventions.ACCEPT_RISK_LABEL``,
+# ``status.RETIRED_KEYS``) and the words below, which no code keeps.
+RETIRED_WORDS = (
+    ("profile-based", r"profile-based"),
+    ("the Full profile", r"\bfull`? profile\b"),
+    ("sdlc:c-approved", r"sdlc:c-approved"),
+    ("sdlc:d-approved", r"sdlc:d-approved"),
+)
+RETIRED_SAID_RE = re.compile(
+    r"retired|withdrawn|until 1\.0\.20|removed|\bgone\b|\*\[\d{4}-\d{2}-\d{2}", re.IGNORECASE
+)
+RETIRED_PAGES = ("README.md", "docs/OPERATING_MODEL.md", "docs/ROADMAP.md")
+RETIRED_FOLDERS = (".claude-plugin", "template")
 
 
 def _pages(docs_dir: Path, suffixes: tuple[str, ...] = (".md",)) -> list[Path]:
@@ -929,6 +957,81 @@ def number_problems(docs_dir: Path) -> tuple[list[str], list[str]]:
     return failures, reports
 
 
+def rank_problems(docs_dir: Path) -> list[str]:
+    """Check 11: a rank outside a dated annotation in ``docs/proposals/`` or ``docs/decisions/``;
+    a rank, or a next free number written by hand, in a session file dated from
+    ``SESSION_FILES_LINTED_SINCE`` on."""
+    problems: list[str] = []
+    for folder in ("proposals", "decisions"):
+        for path in _pages(docs_dir / folder) if (docs_dir / folder).is_dir() else []:
+            rel = path.relative_to(docs_dir).as_posix()
+            for number, line in enumerate(path.read_text(encoding="utf-8-sig").splitlines(), 1):
+                for match in RANK_RE.finditer(ANNOTATION_RE.sub("", line)):
+                    problems.append(
+                        f'rank: docs/{rel}:{number}: "{match.group(0)}"; '
+                        "ROADMAP's Order column holds it"
+                    )
+    sessions = docs_dir / "handoffs" / "sessions"
+    for path in sorted(sessions.glob("*.md")) if sessions.is_dir() else []:
+        dated = DATED_RE.match(path.name)
+        if not dated or dated.group(1) < SESSION_FILES_LINTED_SINCE:
+            continue
+        rel = f"docs/handoffs/sessions/{path.name}"
+        for number, line in enumerate(path.read_text(encoding="utf-8-sig").splitlines(), 1):
+            problems.extend(
+                f'rank: {rel}:{number}: "{match.group(0)}"; name the candidate by its number only'
+                for match in RANK_RE.finditer(line)
+            )
+            if NEXT_FREE_RE.search(line) and NUMBER_TAKEN_RE.search(line):
+                problems.append(
+                    f"next free: {rel}:{number}: a number written by hand; "
+                    "write: python tasks.py next-free"
+                )
+    return problems
+
+
+def retired_terms() -> list[tuple[str, re.Pattern[str]]]:
+    """``(term, pattern)`` for check 12: the plugin's retired label and keys, then
+    ``RETIRED_WORDS``."""
+    plugin_dir = str(ROOT / "plugin")
+    if plugin_dir not in sys.path:
+        sys.path.insert(0, plugin_dir)
+    from state import conventions, status
+
+    names = (conventions.ACCEPT_RISK_LABEL, *status.RETIRED_KEYS)
+    terms = [(name, re.compile(re.escape(name))) for name in names]
+    return terms + [(name, re.compile(word, re.IGNORECASE)) for name, word in RETIRED_WORDS]
+
+
+def retired_term_problems(root: Path, terms: list[tuple[str, re.Pattern[str]]]) -> list[str]:
+    """Check 12: a line of ``RETIRED_PAGES`` or of a file under ``RETIRED_FOLDERS`` that uses a
+    retired term and does not say it is retired (``RETIRED_SAID_RE``)."""
+    paths = [root / rel for rel in RETIRED_PAGES]
+    for folder in RETIRED_FOLDERS:
+        if (root / folder).is_dir():
+            paths.extend(
+                sorted(
+                    (p for p in (root / folder).rglob("*") if p.is_file()),
+                    key=lambda p: p.relative_to(root).as_posix(),
+                )
+            )
+    problems: list[str] = []
+    for path in paths:
+        if not path.is_file() or "__pycache__" in path.parts:
+            continue
+        rel = path.relative_to(root).as_posix()
+        text = path.read_text(encoding="utf-8-sig", errors="replace")
+        for number, line in enumerate(text.splitlines(), 1):
+            if RETIRED_SAID_RE.search(line):
+                continue
+            problems.extend(
+                f'retired: {rel}:{number}: "{term}" as a live term; say it is retired, or drop it'
+                for term, pattern in terms
+                if pattern.search(line)
+            )
+    return problems
+
+
 # --- the choices index: docs/progress/choices.md from the records (ROADMAP R65, part 2) -----
 # Where choice N is stated, so that "choice N" opens without a grep (choice 252, point 3). A
 # choice is what check 10 reads; its summary is the item's first bold phrase, which the records
@@ -1073,6 +1176,8 @@ def lint_docs(
     found, said = number_problems(docs_dir)
     failures.extend(found)
     reports.extend(said)
+    failures.extend(rank_problems(docs_dir))
+    failures.extend(retired_term_problems(root, retired_terms()))
     choices = docs_dir / "progress" / "choices.md"
     if (docs_dir / "PROGRESS.md").is_file() or choices.exists():
         if not choices.exists() or choices.read_text(encoding="utf-8") != build_choices_index(
