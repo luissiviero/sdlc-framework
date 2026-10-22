@@ -39,7 +39,8 @@ argv = sys.argv[1:]
 log = os.environ.get("FAKE_ARGV_LOG")
 if log:
     with open(log, "a", encoding="utf-8") as fh:
-        fh.write(json.dumps({"argv": argv, "cwd": os.getcwd()}) + "\n")
+        creds = [k for k in ("ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN") if k in os.environ]
+        fh.write(json.dumps({"argv": argv, "cwd": os.getcwd(), "creds": creds}) + "\n")
 prompt = argv[argv.index("-p") + 1]
 result = {
     "type": "result", "subtype": "success", "is_error": False, "num_turns": 3,
@@ -276,6 +277,23 @@ def test_the_run_argv(tmp_path, project, cases, fake):
     assert pairs["--plugin-dir"] == str(tmp_path.resolve())
     assert pairs["--model"] == "claude-test-model"
     assert "--bare" not in argv and "bypassPermissions" not in argv
+
+
+def test_the_session_gets_one_credential_the_token_when_both_are_set(
+    tmp_path, project, cases, fake
+):
+    """Decision 38: with both secrets the token wins, and the key is not handed to the run,
+    which in print mode would otherwise use it; with the key alone the key is handed."""
+    make_case(cases, "0001-creds", "SAY ok\n", "checks:\n  - output:\n      contains: ok\n")
+    env = clean_env(tmp_path, ANTHROPIC_API_KEY="k", CLAUDE_CODE_OAUTH_TOKEN="t")
+    code, _ = run_suite(tmp_path, project, cases, fake, env=env)
+    assert code == 0
+    assert logged(tmp_path)[-1]["creds"] == ["CLAUDE_CODE_OAUTH_TOKEN"]
+    env = clean_env(tmp_path, ANTHROPIC_API_KEY="k")
+    env.pop("CLAUDE_CODE_OAUTH_TOKEN", None)
+    code, _ = run_suite(tmp_path, project, cases, fake, env=env)
+    assert code == 0
+    assert logged(tmp_path)[-1]["creds"] == ["ANTHROPIC_API_KEY"]
 
 
 def test_the_workspace_copies_git_and_leaves_caches_out(tmp_path, project, cases, fake):

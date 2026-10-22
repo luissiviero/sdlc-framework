@@ -30,11 +30,14 @@ def smoke():
 
 @pytest.fixture
 def fake_claude(tmp_path):
-    """A stand-in CLI: records its argv, prints the JSON named by FAKE_CLAUDE_RESULT."""
+    """A stand-in CLI: records its argv and the names of the credentials it was handed, prints
+    the JSON named by FAKE_CLAUDE_RESULT."""
     script = tmp_path / "fake_claude.py"
     script.write_text(
         "import json, os, sys\n"
         "open(os.environ['FAKE_CLAUDE_ARGV'], 'w').write(json.dumps(sys.argv[1:]))\n"
+        "names = [k for k in ('ANTHROPIC_API_KEY', 'CLAUDE_CODE_OAUTH_TOKEN') if k in os.environ]\n"
+        "open(os.environ['FAKE_CLAUDE_ARGV'] + '.env', 'w').write(json.dumps(names))\n"
         "data = json.loads(os.environ['FAKE_CLAUDE_RESULT'])\n"
         "print(json.dumps(data))\n"
         "sys.exit(1 if data.get('is_error') else 0)\n"
@@ -51,6 +54,7 @@ def fake_claude(tmp_path):
         return [sys.executable, str(script)], env
 
     make.argv = lambda: json.loads((tmp_path / "argv.json").read_text())
+    make.credentials = lambda: json.loads((tmp_path / "argv.json.env").read_text())
     return make
 
 
@@ -90,13 +94,17 @@ def test_subscription_token_never_uses_bare_mode(smoke, fake_claude):
     assert "auth: subscription-token" in out.getvalue()
 
 
-def test_api_key_wins_when_both_are_set(smoke, fake_claude):
+def test_the_token_wins_when_both_are_set_and_the_cli_gets_only_the_token(smoke, fake_claude):
+    """Decision 38: the subscription token wins, and the key is not handed to the CLI, which
+    would otherwise use it in print mode."""
     claude, env = fake_claude(OK)
     env["ANTHROPIC_API_KEY"] = FAKE_KEY
     env["CLAUDE_CODE_OAUTH_TOKEN"] = FAKE_TOKEN
     out = io.StringIO()
-    smoke.run(claude=claude, env=env, out=out)
-    assert "auth: api-key" in out.getvalue()
+    assert smoke.run(claude=claude, env=env, out=out) == 0
+    assert "auth: subscription-token" in out.getvalue()
+    assert "--bare" not in fake_claude.argv()
+    assert fake_claude.credentials() == ["CLAUDE_CODE_OAUTH_TOKEN"]
 
 
 def test_cli_error_exits_1_but_still_reports(smoke, fake_claude):

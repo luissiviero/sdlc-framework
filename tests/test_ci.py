@@ -139,9 +139,10 @@ def test_choose_auth_token_only():
     assert chosen["auth"] == "oauth" and chosen["bare"] is False
 
 
-def test_choose_auth_key_wins_when_both_are_set():
+def test_choose_auth_token_wins_when_both_are_set():
+    """Decision 38 (amends decision 1's "key preferred")."""
     chosen = auth.choose_auth(BOTH_ENV)
-    assert chosen["auth"] == "api_key" and chosen["bare"] is True
+    assert chosen["auth"] == "oauth" and chosen["bare"] is False
 
 
 def test_choose_auth_none():
@@ -152,9 +153,16 @@ def test_choose_auth_none():
 
 def test_credential_env_carries_exactly_one_secret():
     out = auth.credential_env({"PATH": "/usr/bin", **BOTH_ENV})
-    assert out[KEY_VAR] == FAKE_KEY
-    assert TOKEN_VAR not in out and out["PATH"] == "/usr/bin"
-    assert auth.credential_env(TOKEN_ENV) == TOKEN_ENV
+    assert out[TOKEN_VAR] == FAKE_TOKEN
+    assert KEY_VAR not in out and out["PATH"] == "/usr/bin"
+    assert auth.credential_env(KEY_ENV) == KEY_ENV
+
+
+def test_an_empty_token_counts_as_unset_and_the_key_is_kept():
+    """GitHub hands an unset secret to a step as an empty string: the key's path then."""
+    env = {**KEY_ENV, TOKEN_VAR: ""}
+    assert auth.choose_auth(env)["auth"] == "api_key"
+    assert auth.credential_env(env) == KEY_ENV
 
 
 def test_substrate_smoke_agrees_with_the_shared_selection():
@@ -286,6 +294,13 @@ def test_design_phase_argv_cannot_edit_a_file(capsys, project):
 def test_dry_run_argv_on_the_token_path_is_not_bare(capsys, project):
     root, _change = project
     argv = dry_run_argv(capsys, root, env=dict(TOKEN_ENV))
+    assert argv[:2] == ["claude", "-p"] and "--bare" not in argv
+
+
+def test_dry_run_argv_with_both_secrets_takes_the_token_path(capsys, project):
+    """Decision 38: with both secrets the runner takes the token's path, so no --bare."""
+    root, _change = project
+    argv = dry_run_argv(capsys, root, env=dict(BOTH_ENV))
     assert argv[:2] == ["claude", "-p"] and "--bare" not in argv
 
 

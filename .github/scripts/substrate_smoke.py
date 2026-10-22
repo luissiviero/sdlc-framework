@@ -10,9 +10,10 @@ workflow was given, and prints what the CLI reports. Either repository secret wo
 - ``CLAUDE_CODE_OAUTH_TOKEN`` -> ``claude -p ...`` (no ``--bare``: bare mode does not read
                                the token; the run draws on the owner's subscription window)
 
-When both are present the key wins, as the CLI itself does in print mode ("the key is
-always used when present"). Exit codes: 0 the turn succeeded; 1 the CLI reported an error
-or returned no JSON; 2 no credential was given.
+When both are present the token wins (decision 38), and the CLI is handed only the chosen
+secret, since in print mode it would use the key ("the key is always used when present").
+Exit codes: 0 the turn succeeded; 1 the CLI reported an error or returned no JSON; 2 no
+credential was given.
 """
 
 from __future__ import annotations
@@ -61,7 +62,7 @@ def run(
     argv = [*claude, "-p", *flags, *BOUNDS, "--output-format", "json", PROMPT]
     print("auth:", label, file=out)
     print("command:", " ".join(argv[len(claude) :]), file=out)
-    proc = subprocess.run(argv, capture_output=True, text=True, env=env)
+    proc = subprocess.run(argv, capture_output=True, text=True, env=auth_mod.credential_env(env))
     try:
         data = json.loads(proc.stdout)
     except ValueError:
