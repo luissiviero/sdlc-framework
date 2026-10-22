@@ -219,16 +219,12 @@ close look" banner shows (gate (a) matches the globs on this PR's own files, dec
   pushes" and "Require a pull request before merging". Since 1.0.18 the merge App above is
   its second bypass actor, in "For pull requests only" mode (decision 36). The owner's
   bypass actor's mode is
-  **"For pull requests only"** too (the `…` menu of the actor's row in the bypass list;
-  choice 251, both modes tested live on 2026-10-22, NOTES §57). In this mode a direct commit
-  or push to the default branch is refused for you as well, and so for anything that acts
-  as your login, which a cloud session's GitHub tools and git proxy do. Your merges still go
-  through. The GitHub mobile app labels the pull request "Unable to merge" (its merge state
-  is `blocked`) and still offers Merge, and the confirmation sheet merges it. The web UI
-  merges through its bypass checkbox. Each such merge is logged as a bypass. Do not choose
-  **Exempt**: the rules would not run for your login, so a session acting as you could
-  write to the default branch directly, and GitHub would log that as an ordinary pass.
-  Neither mode stops a session acting as your login from merging a pull request through the
+  **Exempt** (the `…` menu of the actor's row in the bypass list): this ruleset does not
+  run for you, so the phone's merge label shows ruleset 2's verdict alone (below). Exempt
+  alone would also let anything that acts as your login write to the default branch
+  directly, which a cloud session's GitHub tools and git proxy do. Ruleset 2's
+  no-direct-writes rules close that (choice 251, tested live on 2026-10-22, NOTES §57).
+  No setting stops a session acting as your login from merging a pull request through the
   API. From a terminal, `gh pr merge` refuses a `blocked` pull request before asking GitHub:
   use the REST merge endpoint through `gh api` or the web UI. The rules run for every other
   actor, the workflow token included. The daily digest
@@ -238,20 +234,30 @@ close look" banner shows (gate (a) matches the globs on this PR's own files, dec
   `update` rule; the classic `protected` flag is reported but does not count, since on a
   user-owned repository a classic rule cannot restrict who pushes; since 0.2.25).
 - Ruleset 2, which holds a build PR whose review is not green (decision 36, point 5;
-  plugin 1.0.18). Desktop-only (ROADMAP R21). Settings → Rules → Rulesets → New branch
+  plugin 1.0.18) and refuses a direct write to the default branch by your login (choice
+  251, plugin 1.0.23). Desktop-only (ROADMAP R21). Settings → Rules → Rulesets → New branch
   ruleset (`https://github.com/<owner>/<repo>/settings/rules`): name
-  `sdlc/review on every pull request (decision 36)`; enforcement **Active**; target the
-  default branch ("Include default branch"); bypass list: the repository admin role (you),
-  in "For pull requests only" mode; one rule, **"Require status checks to pass"**, with the
-  check `sdlc/review` added from any source and "Require branches to be up to date before
-  merging" off; no other rule, and no required approval (decision 4's reason: your own
-  intent PRs could not pass one). Every pull request that is not a build PR gets a passing
-  `sdlc/review` ("not a build PR") from `sdlc-merge.yml` or from the step that opens it,
-  so intent, design, incident and your own PRs merge as before; a build PR whose review is
-  red merges only through your bypass, a deliberate act: the web UI's bypass checkbox, or
-  the phone's Merge under its "Unable to merge" label (verified on ruleset 1 in the same
-  mode, NOTES §57). Keep your own bypass in ruleset 1 in "For pull requests only" (choice
-  251, which reverses choice 242's point 5).
+  `review and no direct writes on main (decision 36, choice 251)`; enforcement **Active**;
+  target the default branch ("Include default branch"); bypass list: the repository admin
+  role (you), in "For pull requests only" mode, so your bypass never covers a push. Four
+  rules:
+  - **"Require status checks to pass"**, with the check `sdlc/review` added from any
+    source and "Require branches to be up to date before merging" off;
+  - **"Require a pull request before merging"**, with required approvals **0** and every
+    other option under it off (decision 4's reason: your own intent PRs could not pass a
+    required approval);
+  - **"Block force pushes"**;
+  - **"Restrict deletions"**.
+
+  Nothing else. Every pull request that is not a build PR gets a passing `sdlc/review`
+  ("not a build PR") from `sdlc-merge.yml` or from the step that opens it, so intent,
+  design, incident and your own PRs merge as before, and the phone shows them "Ready to
+  merge". A build PR whose review is red, or a pull request with no `sdlc/review` yet,
+  shows "Unable to merge" and merges only through your bypass, a deliberate act: the web
+  UI's bypass checkbox, or the phone's Merge under that label (verified for a bypass in
+  this mode, NOTES §57). A session's direct commit to the default branch is refused (NOTES
+  §57). A project set up with plugin 1.0.18 to 1.0.22 has ruleset 2 with the check alone:
+  add the three rules to it, rename it, and keep your bypass in ruleset 1 Exempt.
 - Optional, owner's machine only: `docs/owner-machine/README.md` in the framework repo
   explains the managed settings file and its machine-wide consequences.
 

@@ -778,13 +778,25 @@ def test_sdlc_init_prescribes_the_branch_ruleset_of_decision_4():
     assert "Never add this App to a ruleset's bypass list" in text
     assert "still lets `gh pr merge` through" in text
     assert "The daily digest says so" in text
-    # 1.0.23 (choice 251, NOTES section 57): the owner's bypass is "For pull requests only",
-    # because Exempt lets anything acting as the owner's login write to the default branch
-    assert "The owner's bypass actor's mode is **\"For pull requests only\"** too" in text
-    assert "Do not choose **Exempt**" in text
-    assert "Neither mode stops a session acting as your login from merging" in text
+    # 0.2.26: the owner is Exempt in ruleset 1 (NOTES section 17); 1.0.23 (choice 251, NOTES
+    # section 57): Exempt alone let anything acting as the owner's login write to the default
+    # branch, so ruleset 2 also holds the no-direct-writes rules, with the owner's bypass for
+    # pull requests only
+    assert "The owner's bypass actor's mode is **Exempt**" in text
+    assert "No setting stops a session acting as your login from merging" in text
     assert "the workflow token included" in text
-    assert "set your own bypass mode in ruleset 1 to **Exempt**" not in text
+    assert "`review and no direct writes on main (decision 36, choice 251)`" in text
+    ruleset_2 = text[text.index("- Ruleset 2, which holds a build PR") :]
+    for rule in (
+        '**"Require status checks to pass"**',
+        '**"Require a pull request before merging"**, with required approvals **0**',
+        '**"Block force pushes"**',
+        '**"Restrict deletions"**',
+    ):
+        assert rule in ruleset_2
+    assert 'role (you), in "For pull requests only" mode, so your bypass never covers a push' in (
+        ruleset_2
+    )
     model = (PLUGIN.parent / "docs" / "OPERATING_MODEL.md").read_text(encoding="utf-8")
-    assert "The owner's bypass mode is *for pull requests only*" in model
-    assert "The owner's bypass mode is *Exempt*" not in model
+    assert "The owner's bypass mode is *Exempt*" in model
+    assert '"Require a pull request before merging", "Block force pushes" and' in model
