@@ -25,7 +25,7 @@ generated: { by: sdlc-framework-session/claude-sources-of-truth-study-csl6nq, at
 
 # One owner per fact
 
-**Status: proposed on 2026-10-22 at the owner's request, and accepted the same day as recommended (choice 252).** Nothing is built. Every part but one is a documentation and `tasks.py` PR with no plugin version, as R55 and R58 were. The exception is part 6, which edits comments under `plugin/` and `template/` and rides the next plugin patch.
+**Status: proposed on 2026-10-22 at the owner's request, and accepted the same day as recommended (choice 252).** Nothing is built. Every part but one is a documentation and `tasks.py` PR with no plugin version, as R55 and R58 were. The exception is part 6, which edits comments under `plugin/` and `template/` and rides the next plugin patch. *[2026-10-22, choice 252: a patch of its own, after R51 merges]*
 
 ## The problem
 The study (`docs/reviews/2026-10-22-sources-of-truth.md`) found **39 stale places on `main` in 17 rows**, and every one is a copy:
@@ -63,7 +63,7 @@ The work, in six parts:
    - `verify` runs the pre-PR set: `compileall` over the build folders, ruff check, ruff format check, docs-lint, pytest, and `claude plugin validate .` when the CLI is on the path. `HANDOFF.md`'s precondition 1 and `CLAUDE.md` point to it.
    - **Check 13:** the three lines of `CLAUDE.md`'s "Verifying your work" equal `sdlc.yaml: commands`. It needs the study's guardrail rows 1 to 3 first.
 5. **The history rule written down.** `HANDOFF.md`'s skeleton gains one sentence: an open PR, `main`'s head or a number is written "read at <time> UTC on <sha>". A snapshot then says when it was true. The same `HANDOFF.md` PR makes part 1's change to the skeleton.
-6. **Check 5 widened** to `plugin/`, `template/` and `.github/`, with the thirteen comments that cite `docs/NOTES.md` by section rewritten to `docs/notes/<N>.md` (S15). The same plugin PR fixes S8, S11 and S12 and formats `run_phase.py`'s CLI message from `DEFAULT_CLAUDE_CODE_VERSION`. This is the one part with a plugin version: it rides the next plugin patch.
+6. **Check 5 widened** to `plugin/`, `template/` and `.github/`, with the thirteen comments that cite `docs/NOTES.md` by section rewritten to `docs/notes/<N>.md` (S15). The same plugin PR fixes S8, S11 and S12 and formats `run_phase.py`'s CLI message from `DEFAULT_CLAUDE_CODE_VERSION`. This is the one part with a plugin version: it rides the next plugin patch. *[2026-10-22, choice 252: a plugin patch of its own after R51 merges, never inside R51's PR, which rewrites the same `run_phase.py`]*
 
 Not in R65:
 - **`changes/index.md`** stays R9 part 1, at its place in ROADMAP's Order column.
@@ -76,7 +76,7 @@ The parts are independent PRs, in this order:
 3. Part 3, with S1 to S4.
 4. Part 4, after the owner's guardrail rows 1 to 3.
 5. Part 5, a `HANDOFF.md` PR of its own as that page requires, after part 1.
-6. Part 6, whenever the next plugin patch is built.
+6. Part 6, whenever the next plugin patch is built. *[2026-10-22, choice 252: in a patch of its own, after R51 merges]*
 
 No other candidate waits on R65, and R65 waits on none.
 

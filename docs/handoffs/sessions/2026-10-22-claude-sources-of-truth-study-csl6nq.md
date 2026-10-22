@@ -31,7 +31,7 @@ No other session file is newer (verified, `git ls-tree origin/main docs/handoffs
    4. `tasks.py verify` with check 13, after the owner's guardrail rows 1 to 3;
    5. `HANDOFF.md`'s skeleton.
 
-   Part 6 rides the next plugin patch (see "Every open item").
+   Part 6 is a plugin patch of its own after R51 merges, never inside R51's PR (choice 252).
 3. **At the sample's next change**, read each of these into a note (carried from #321's file):
    - decision 36's live checks at (e);
    - R8's first second opinion at (b);
@@ -45,7 +45,7 @@ No other session file is newer (verified, `git ls-tree origin/main docs/handoffs
 |---|---|---|---|---|
 | This PR | framework | Green checks, the owner's merge | this session; owner | no |
 | R65's parts 1 to 5 | ROADMAP R65; `docs/proposals/one-owner-per-fact.md` | Built as session PRs, outside the ranks | the next sessions | no |
-| R65's part 6 and R51 | ROADMAP R65, R51 | As accepted, it rides the next plugin patch, which is R51's. The session suggested its own patch after R51; the owner has not answered (`docs/PROGRESS.md`, "Left") | owner | no |
+| R65's part 6 | ROADMAP R65 | A plugin patch of its own after R51 merges, at the next free patch number then (choice 252) | the session after R51 | no |
 | The guardrail rows of choice 252 | `docs/PROGRESS.md`, "Proposed edits for the owner" | Rows 1 to 3 before part 4; row 4 optional; row 5 (the sample's `sdlc.yaml:39`) now; row 6 with the pin move | owner | no |
 | The study's stale places not fixed by #321 | `docs/reviews/2026-10-22-sources-of-truth.md`, section 3 | 33 places, fixed by R65's parts, the next plugin patch and the owner's rows | sessions; owner | no |
 | The phone's tap on a red build PR that ruleset 2 holds | the sample | Not verified (carried from #321's file) | the next session, at the sample's next red build PR | no |
@@ -71,6 +71,5 @@ Done, dropped:
 | Now | Merge this PR when `Framework checks` is green on its final head. |
 | Now, any time | Row 5 of `docs/PROGRESS.md`'s table: the sample's `sdlc.yaml:39`. |
 | Before R65's part 4 | Rows 1 to 3 of the same table, in one PR. |
-| When R51's session starts, or before | Say whether R65's part 6 rides R51's PR (as accepted) or comes after it in a patch of its own. |
 | At the sample's next change | Approve the build PR from the phone after gate (e) has run; apply `sdlc:release-approved` (carried). |
 | At R14's turn, or earlier | This repository's own automation App, then the `sdlc.yaml` rows (carried). |

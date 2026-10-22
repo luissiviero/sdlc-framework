@@ -338,7 +338,7 @@ In the owner's format. None is made by this PR, and none is due before R65 is ac
 No row for `REVIEW.md`, `.claude/**` or the sample's `bands.yaml`: R65 adds deterministic checks, and `REVIEW.md:36-38` already holds the reader's side (choice 241). Question 5 asks whether the owner wants one line there too.
 
 ## 6. Questions for the owner
-*[2026-10-22, choice 252: the owner accepted all seven as recommended (`docs/PROGRESS.md`).]*
+*[2026-10-22, choice 252: the owner accepted all seven as recommended (`docs/PROGRESS.md`), and then the session's later suggestion on question 1: the plugin part is a patch of its own after R51, not inside R51's PR.]*
 
 1. **Accept R65, and where in the order?** Recommended: accepted, outside the ranks as R55 and R58 were (documentation and `tasks.py` PRs, no plugin version), in the order of its row. Its one plugin part rides the next plugin patch and takes no rank of its own.
 2. **Next free numbers computed, not written?** Recommended: yes. `python tasks.py next-free` reads `main` and every branch ahead of it after a fetch, prints the five numbers with the branch that holds each taken one, and session files stop writing them (`HANDOFF.md`'s skeleton points to the task). It reserves nothing (choice 184).
