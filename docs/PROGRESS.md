@@ -39,5 +39,5 @@ The previous record (the R22 double check's fixes as 1.0.22, from #319) is now `
 ## What the owner does
 | Where | What is there now | What it must become |
 |---|---|---|
-| [This repository's ruleset 1](https://github.com/luissiviero/sdlc-framework/settings/rules/24077592), bypass list, Repository admin row, `…` menu | Exempt (set for the test's second run) | For pull requests only |
+| [This repository's ruleset 1](https://github.com/luissiviero/sdlc-framework/settings/rules/24077592), bypass list, Repository admin row, `…` menu | For pull requests only: the owner set it back after the test (the owner, 2026-10-22) | nothing |
 | [The sample's ruleset 1](https://github.com/luissiviero/sdlc-sample-python/settings/rules/24078926), bypass list, Repository admin row, `…` menu | Exempt (NOTES §56) | For pull requests only; the merge App's row stays "For pull requests only" |
