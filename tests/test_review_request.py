@@ -82,7 +82,7 @@ def test_a_pending_request_is_removed_and_requested_again(label):
     assert gh.calls == [("remove", 5, [OWNER]), ("request", 5, [OWNER])]
 
 
-@pytest.mark.parametrize("label", [c.FIXING_LABEL, None, c.approved_label("c")])
+@pytest.mark.parametrize("label", [c.FIXING_LABEL, None, "sdlc:c-approved"])
 def test_a_label_that_does_not_wait_withdraws_a_pending_request(label):
     gh = FakeGitHub()
     out = rr.sync_owner_review(gh, REPO, 5, label, {}, ENV, pr(pending=True))
@@ -96,7 +96,7 @@ def test_a_label_that_does_not_wait_withdraws_a_pending_request(label):
 def test_is_waiting_label():
     assert all(rr.is_waiting_label(c.ready_label(p)) for p in c.PHASES)
     assert rr.is_waiting_label(c.NEEDS_HUMAN_LABEL)
-    for label in (None, "", c.FIXING_LABEL, c.approved_label("d"), c.GO_LABEL, "sdlc:x-ready"):
+    for label in (None, "", c.FIXING_LABEL, "sdlc:d-approved", c.GO_LABEL, "sdlc:x-ready"):
         assert not rr.is_waiting_label(label)
 
 

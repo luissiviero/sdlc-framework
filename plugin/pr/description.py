@@ -15,7 +15,7 @@ Layout of the body, in order:
      install PR of change 0000 at (a). The PR's merge accepts the items no earlier act
      accepted; at (c) and (d) only gate (e) does, by the owner's approving review since R22
      (choice 242, point 2), or by the owner's merge when the owner merges;
-  0. under deferred review (decision 21), "Decisions taken for you (N)" above the bullets:
+  0. "Decisions taken for you (N)" above the bullets (decision 21):
      one line per standing panel decision of the phases this PR covers ((b) for the design
      PR; (c), (d), (e) for the build PR), from ``evidence/decisions-<phase>.json``; a review
      comment on any of them overturns it (/sdlc-fix);
@@ -114,8 +114,6 @@ GATE_CHECKLIST = {
     "recorded reason)",
     "b": "; ".join(STEP_23_CHECKLIST)
     + " Merge = approve; a review comment = change request (/sdlc-fix).",
-    "c": "approving review + label sdlc:c-approved starts the test phase",
-    "d": "approving review + label sdlc:d-approved starts the review phase",
     "e": "an approving review = approve (gate (e), decision 36); a review comment is the "
     "change request (/sdlc-fix). Waiting for your approval: the merge App then merges this PR "
     "(without a merge App, merge it after approving) and the release workflow runs "
@@ -304,7 +302,6 @@ def what_i_need_block(gate_json: dict[str, Any]) -> str:
             change_id=str(gate_json.get("change_id", "")),
             slug=str(gate_json.get("slug", "")),
             phase=str(gate_json.get("phase", "")),
-            profile=str(gate_json.get("profile", "")),
             human_gate=bool(gate_json.get("human_gate", False)),
             result=str(gate_json.get("result", "")),
             checks=[
@@ -390,7 +387,7 @@ def _owner_line(
         return _auto_round_line(auto)
     if result == "park":
         return f'parked at gate ({phase}) - see "What I need from you" below'
-    if result == "wait" or phase in ("a", "f"):  # (a) and (f) are human in every profile
+    if result == "wait" or phase in ("a", "f"):  # (a) and (f) are always human
         return GATE_CHECKLIST.get(phase, "the owner's review is the gate")
     return NOTHING_NEEDED
 

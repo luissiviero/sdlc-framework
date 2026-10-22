@@ -69,3 +69,4 @@ chronological order (oldest first). The current record stays in `docs/PROGRESS.m
 - [Progress — ROADMAP R22, gate (e) is the owner's approving review and a merge App merges on it, as plugin 1.0.18 (2026-10-20)](2026-10-20-r22-gate-e-approving-review-1.0.18.md)
 - [Progress — R22's six questions answered as recommended (choice 249); the sample's upgrade to 1.0.18 opened (2026-10-20)](2026-10-20-choice-249-r22-questions.md)
 - [Progress — ROADMAP R8, the second opinion at gates (b) and (e), as plugin 1.0.19; #290's session exposure undone (choice 248) (2026-10-20)](2026-10-20-r8-second-opinion-1.0.19.md)
+- [Progress — decision 38, the subscription token wins when both model secrets are set, as plugin 1.0.20 (2026-10-20)](2026-10-20-decision-38-auth-order-1.0.20.md)

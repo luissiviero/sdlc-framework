@@ -15,7 +15,7 @@ from ci import fix_requests, run_phase
 
 from state import unpark
 from tests import test_ci as ci_tests
-from tests.test_ci import FAKE_TOKEN, Args, FixGitHub, set_state, skip_reason
+from tests.test_ci import FAKE_TOKEN, Args, FixGitHub
 
 # the fixture of tests/test_ci.py, used here by name
 project = ci_tests.project
@@ -72,90 +72,6 @@ def test_an_empty_actor_or_an_unknown_owner_is_refused():
 def test_the_owner_is_read_from_os_environ_by_default(monkeypatch):
     monkeypatch.setenv("GITHUB_REPOSITORY_OWNER", "luissiviero")
     assert unpark.is_owner_actor("luissiviero", {}) is True
-
-
-# --- gates (c) and (d): the label counts only from the owner's account -----------------------
-def _full_profile_with_label(root, change, monkeypatch, actor: str):
-    from pr import github
-
-    text = (root / "sdlc.yaml").read_text(encoding="utf-8")
-    (root / "sdlc.yaml").write_text(text.replace("profile: standard", "profile: full"), "utf-8")
-    set_state(change, "c", gate_phase="c", gate_result="passed")
-    monkeypatch.setattr(github, "gh_path", lambda: None)
-    monkeypatch.setattr(github, "token", lambda: FAKE_TOKEN)
-    monkeypatch.setattr(
-        github, "find_open_pr", lambda repo, head: {"number": 7, "labels": ["sdlc:c-approved"]}
-    )
-    events = [{"event": "labeled", "label": {"name": "sdlc:c-approved"}, "actor": {"login": actor}}]
-    monkeypatch.setattr(
-        github, "_request", lambda method, url, tok, payload=None: {
-            "status": 200, "data": events, "error": ""
-        },
-    )  # fmt: skip
-    return events
-
-
-def test_an_approval_label_applied_by_a_collaborator_does_not_start_the_next_phase(
-    project, monkeypatch
-):
-    """Decision 34 amends 27: a person who is not the owner's account no longer approves
-    gate (c) or (d); the run skips with the label, the PR and the actor in its reason."""
-    root, change = project
-    events = _full_profile_with_label(root, change, monkeypatch, "colleague")
-    env = {"GITHUB_TOKEN": FAKE_TOKEN, **OWNER_ENV}
-    assert skip_reason(root, "d", env) == (
-        "sdlc:c-approved on PR #7 was applied by colleague, not by the owner's account "
-        "(decision 34)"
-    )
-    events[0]["actor"]["login"] = "luissiviero"
-    assert skip_reason(root, "d", env) is None
-    # with no owner known at all, nobody approves (fail closed)
-    assert "not by the owner's account" in skip_reason(root, "d", {"GITHUB_TOKEN": FAKE_TOKEN})
-
-
-def test_an_approval_label_the_app_applied_is_the_automation_s_not_a_person_s(project, monkeypatch):
-    """R49 (decision 33): the project's App labels as ``<slug>[bot]``, not
-    ``github-actions[bot]``; its label, and one by the identity ``sdlc.yaml:
-    automation_identity`` lists, is refused as the automation's before the owner check."""
-    root, change = project
-    events = _full_profile_with_label(root, change, monkeypatch, "sdlc-luissiviero[bot]")
-    env = {"GITHUB_TOKEN": FAKE_TOKEN, **OWNER_ENV}
-    assert skip_reason(root, "d", env) == (
-        "sdlc:c-approved on PR #7: sdlc:c-approved was applied by sdlc-luissiviero[bot], "
-        "not by a human"
-    )
-    text = (root / "sdlc.yaml").read_text(encoding="utf-8")
-    (root / "sdlc.yaml").write_text(text + "\nautomation_identity:\n  - ci-machine\n", "utf-8")
-    events[0]["actor"]["login"] = "ci-machine"
-    assert skip_reason(root, "d", env) == (
-        "sdlc:c-approved on PR #7: sdlc:c-approved was applied by ci-machine, not by a human"
-    )
-
-
-def test_an_organization_repository_s_owner_key_names_the_approver(project, monkeypatch):
-    root, change = project
-    _full_profile_with_label(root, change, monkeypatch, "alice")
-    org = {"GITHUB_TOKEN": FAKE_TOKEN, "GITHUB_REPOSITORY_OWNER": "acme"}
-    assert "applied by alice, not by the owner's account" in skip_reason(root, "d", org)
-    text = (root / "sdlc.yaml").read_text(encoding="utf-8")
-    (root / "sdlc.yaml").write_text(text + "\nowner: alice\n", "utf-8")
-    assert skip_reason(root, "d", org) is None
-    set_state(change, "d", gate_phase="d", gate_result="passed")
-    # gate (d)'s label is read for the deploy run: the same rule
-    from pr import github
-
-    monkeypatch.setattr(
-        github, "find_open_pr", lambda repo, head: {"number": 7, "labels": ["sdlc:d-approved"]}
-    )
-    events = [{"event": "labeled", "label": {"name": "sdlc:d-approved"}, "actor": {"login": "x"}}]
-    monkeypatch.setattr(
-        github, "_request", lambda method, url, tok, payload=None: {
-            "status": 200, "data": events, "error": ""
-        },
-    )  # fmt: skip
-    assert "applied by x, not by the owner's account" in skip_reason(root, "e", org)
-    events[0]["actor"]["login"] = "Alice"
-    assert skip_reason(root, "e", org) is None
 
 
 # --- the "Request changes" path: the find step refuses all but the owner's own head -----------
@@ -579,23 +495,11 @@ def test_on_a_runner_without_the_default_branch_s_copy_the_owner_is_not_judged(
     assert "the review cannot be judged: " + run_phase.OWNER_COPY_MISSING in printed
     _code, _printed, output = _find(root, tmp_path, review, capsys)
     assert output == "change_id=0001\n"  # by hand: the checkout's copy is the owner's
-    # the (c)/(d) label is judged the same way
-    (root / "sdlc.yaml").write_text(text, "utf-8")
-    _full_profile_with_label(root, change, monkeypatch, "luissiviero")
-    env = {"GITHUB_TOKEN": FAKE_TOKEN, "GITHUB_ACTIONS": "true", **OWNER_ENV}
-    reason = run_phase.check_approval(root, "owner/name", "0001", "d", env)
-    assert reason == f"sdlc:c-approved on PR #7 cannot be judged: {run_phase.OWNER_COPY_MISSING}"
 
 
-def test_an_unreadable_sdlc_yaml_refuses_the_review_and_the_label(
-    project, tmp_path, capsys, monkeypatch
-):
-    root, change = project
-    _full_profile_with_label(root, change, monkeypatch, "luissiviero")
-    (root / "sdlc.yaml").write_text("profile: full\n  max_turns: 5\n", "utf-8")
-    env = {"GITHUB_TOKEN": FAKE_TOKEN, **OWNER_ENV}
-    reason = run_phase.check_approval(root, "owner/name", "0001", "d", env)
-    assert reason.startswith("sdlc:c-approved on PR #7 cannot be judged: sdlc.yaml")
+def test_an_unreadable_sdlc_yaml_refuses_the_review(project, tmp_path, capsys):
+    root, _change = project
+    (root / "sdlc.yaml").write_text("paused: false\n  max_turns: 5\n", "utf-8")
     event = _review_event(tmp_path, "luissiviero", "owner/name")
     review = {**OWNER_ENV, "GITHUB_EVENT_NAME": "pull_request_review"}
     _code, printed, output = _find(

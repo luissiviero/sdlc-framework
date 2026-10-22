@@ -211,14 +211,13 @@ as its model (`null`: pass none; the gate's `reviewer_model` check reads the mod
 on, R7).
 
 ### Deferred review: the panel settles the judgment items (decision 21; build guide step 16a)
-A fix round is a phase run: under `review: deferred` (`sdlc.yaml`, or the change's
-`status.yaml: review_override`) the judgment items the gate would park on go to the panel
+A fix round is a phase run: the judgment items the gate would park on go to the panel
 here too, the reviewer's `escalate` on this round included (the first overturn round on the
 sample repository, 2026-09-24, parked on an `escalate` that the panel should have taken).
 ```
 python "${CLAUDE_PLUGIN_ROOT}/plugin/panel/cli.py" items --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase <phase>
 ```
-When `mode` is `parked` or `pending` is empty, go on to the gate. Otherwise, for each
+When `pending` is empty, go on to the gate. Otherwise, for each
 pending item `n` in order, three fresh contexts, each with the brief printed by
 `python "${CLAUDE_PLUGIN_ROOT}/plugin/panel/cli.py" prompt --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase <phase> --item <n> --member <reviewer|advocate|conciliator>`
 (reviewer: a general-purpose sub-agent; devil's advocate: `sdlc:adversarial-reviewer`

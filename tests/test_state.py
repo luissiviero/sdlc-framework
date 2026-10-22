@@ -24,10 +24,13 @@ def test_branch_names_and_parse():
 
 def test_labels():
     assert c.ready_label("a") == "sdlc:a-ready"
-    assert c.approved_label("c") == "sdlc:c-approved"
     assert c.NEEDS_HUMAN_LABEL == "sdlc:needs-human"
     labels = c.all_labels()
-    assert "sdlc:d-approved" in labels and "sdlc:needs-human" in labels
+    assert "sdlc:needs-human" in labels
+    # decision 37 (1.0.21): the Full profile's approval labels are gone
+    assert not any(
+        label.endswith("-approved") and label != c.RELEASE_APPROVED_LABEL for label in labels
+    )
     # phase (f), decision 25: the triage queue's labels carry no prefix (the article's own
     # "incident" and the owner's "schedule"); the Go authorization is the framework's
     assert {"incident", "schedule", "sdlc:go"} <= set(labels)
@@ -37,23 +40,19 @@ def test_labels():
     )
 
 
-def test_profiles_and_human_gates():
-    # gate (f) is the owner's triage in every profile (decision 25; plugin 0.2.19)
-    assert c.HUMAN_GATES["standard"] == {"a", "b", "e", "f"}
-    assert c.HUMAN_GATES["full"] == {"a", "b", "c", "d", "e", "f"}
-    assert "lite" not in c.HUMAN_GATES and c.PROFILES == ("standard", "full")
-    # decision 21 (0.2.14): a file that still says lite reads as standard
-    assert c.effective_profile("standard", "lite") == "standard"
-    assert c.effective_profile("lite", None) == "standard"
-    # decision 32 (1.0.8): /sdlc-init proposes deferred; an unset key still reads as parked
-    assert c.effective_review_mode(None, None) == "parked" and c.INIT_REVIEW_MODE == "deferred"
-    assert c.effective_review_mode("deferred", None) == "deferred"
-    assert c.effective_review_mode("parked", "deferred") == "deferred"
-    with pytest.raises(ValueError):
-        c.effective_review_mode("panel", None)
-    assert c.effective_profile(None, None) == "standard"
-    assert c.is_human_gate("standard", "c") is False
-    assert c.is_human_gate("full", "c") is True
+def test_human_gates():
+    # decision 37 (1.0.21): one set of human gates; gate (f) is the owner's triage (decision 25)
+    assert c.HUMAN_GATES == {"a", "b", "e", "f"}
+    assert c.is_human_gate("c") is False and c.is_human_gate("e") is True
+
+
+def test_a_retired_setting_is_named_never_refused():
+    """Decision 37: ``profile`` and ``review`` are no longer read; a value that chose another
+    behaviour is named in one note, and the one behaviour's own value (or none) says nothing."""
+    for quiet in ({}, {"profile": "standard", "review": "deferred"}, {"profile": "lite"}):
+        assert c.retired_settings_note(quiet) == ""
+    note = c.retired_settings_note({"profile": "full", "review": "parked"})
+    assert "profile: full" in note and "review: parked" in note and "decision 37" in note
 
 
 def test_slugify():
@@ -127,8 +126,6 @@ def test_status_round_trip_and_schema(tmp_path):
         "phase",
         "entry_route",
         "change_type",
-        "profile_override",
-        "review_override",  # decision 21: the per-change review mode
         "gate",
         "parked_reason",
         "iterations",
@@ -201,11 +198,23 @@ def test_invalid_status_rejected():
         status.Status.from_dict({"id": "0001", "slug": "x", "title": "t", "bogus": 1})
 
 
+def test_a_status_file_from_before_decision_37_still_loads(tmp_path):
+    """Decision 37 (1.0.21): the two per-change override keys are dropped on load, so a file an
+    older plugin wrote still reads, and the next write leaves them out."""
+    change_dir, _ = status.new_change(tmp_path, "Old")
+    raw = yamlish.load_file(change_dir / "status.yaml")
+    raw.update({"profile_override": "full", "review_override": "parked"})
+    yamlish.dump_file(change_dir / "status.yaml", raw)
+    st = status.read_status(change_dir)
+    status.write_status(change_dir, st)
+    assert not set(status.RETIRED_KEYS) & set(yamlish.load_file(change_dir / "status.yaml"))
+
+
 def test_pyyaml_reads_status_file(tmp_path):
     yaml = pytest.importorskip("yaml")
     change_dir, _ = status.new_change(tmp_path, "Any")
     data = yaml.safe_load((change_dir / "status.yaml").read_text(encoding="utf-8"))
-    assert data["id"] == "0001" and data["profile_override"] is None
+    assert data["id"] == "0001" and "profile_override" not in data
 
 
 def test_cli_new_change_and_show(tmp_path, capsys):

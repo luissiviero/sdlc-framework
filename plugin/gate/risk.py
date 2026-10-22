@@ -69,10 +69,10 @@ BANNER_ASK = {
     "(decision 35).",
     "b": "Merging this PR accepts them for this change, recorded in status.yaml with your "
     "name (decision 35); a review comment or Request changes stops it here.",
-    "c": "Only your approval at gate (e) accepts them (R12's third point); while this PR waits "
-    "for your approval label, Request changes stops the change here.",
-    "d": "Only your approval at gate (e) accepts them (R12's third point); while this PR waits "
-    "for your approval label, Request changes stops the change here.",
+    "c": "Only your approval at gate (e) accepts them (R12's third point); Request changes "
+    "stops the change here.",
+    "d": "Only your approval at gate (e) accepts them (R12's third point); Request changes "
+    "stops the change here.",
     "e": "Your approving review accepts them for this change (your merge, when you merge it "
     "yourself), recorded in status.yaml with your name (decisions 35 and 36).",
 }

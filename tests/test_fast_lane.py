@@ -44,7 +44,6 @@ from tests.test_gate import (
     SPEC,
     _initialised_fixture,
     git,
-    on_base,
     start_run,
     write,
 )
@@ -330,8 +329,6 @@ def test_the_owner_s_opened_intent_pr_starts_the_design_from_its_head(
         ("bot", "not the owner's account"),
         ("fork", "a fork's intent never starts a design"),
         ("draft", "is a draft"),
-        ("full", "the profile is full"),
-        ("head_full", "the profile is full"),
         ("no_folder", "touches 0 change folders: the fast lane starts one intent PR"),
         ("two_folders", "touches 2 change folders: the fast lane starts one intent PR"),
         ("not_phase_a", "is at phase b at the head of #12, not a"),
@@ -363,19 +360,6 @@ def test_an_intent_pr_that_is_not_the_owner_s_own_at_phase_a_keeps_gate_a(
         pull["head"] = {"sha": intent_sha, "repo": {"full_name": "someone/name"}}
     elif case == "draft":
         pull["draft"] = True
-    elif case == "full":
-        git(root, "checkout", "-q", "main")
-        sdlc = root / "sdlc.yaml"
-        sdlc.write_text(
-            sdlc.read_text(encoding="utf-8").replace("profile: standard", "profile: full"),
-            encoding="utf-8",
-        )
-        git(root, "commit", "-q", "-am", "owner: full profile")
-        git(root, "push", "-q", "origin", "main")
-    elif case == "head_full":
-        _status(change, profile_override="full")
-        git(root, "commit", "-q", "-am", "intent: full for this change")
-        intent_sha = git(root, "rev-parse", "HEAD").strip()
     elif case == "no_folder":
         files = ["README.md"]
     elif case == "two_folders":
@@ -542,27 +526,17 @@ def design(tmp_path, monkeypatch):
 
 
 @pytest.mark.parametrize(
-    ("classification", "runner", "profile", "expected"),
+    ("classification", "runner", "expected"),
     [
-        ("routine", True, "standard", ("continue", None, True)),
-        ("routine", True, "lite", ("continue", None, True)),
-        ("non-routine", True, "standard", ("wait", "sdlc:b-ready", False)),
-        ("routine", False, "standard", ("wait", "sdlc:b-ready", False)),  # by hand
-        ("routine", True, "full", ("wait", "sdlc:b-ready", False)),
+        ("routine", True, ("continue", None, True)),
+        ("non-routine", True, ("wait", "sdlc:b-ready", False)),
+        ("routine", False, ("wait", "sdlc:b-ready", False)),  # by hand
     ],
 )
-def test_gate_b_continues_only_on_a_routine_plan_in_ci_off_full(
-    design, monkeypatch, classification, runner, profile, expected
+def test_gate_b_continues_only_on_a_routine_plan_in_ci(
+    design, monkeypatch, classification, runner, expected
 ):
     root, change = design
-    if profile != "standard":
-
-        def owner_profile(base: Path) -> None:
-            sdlc = base / "sdlc.yaml"
-            text = sdlc.read_text(encoding="utf-8")
-            sdlc.write_text(text.replace("profile: standard", f"profile: {profile}"), "utf-8")
-
-        on_base(root, owner_profile, f"owner: profile {profile}")
     _verdict(root, classification)
     if runner:
         monkeypatch.setenv(checks.COMMANDS_RUNNER_ENV, checks.RUN_BY_RUNNER)
@@ -599,9 +573,9 @@ def test_an_escalate_the_panel_settled_never_takes_the_fast_lane():
         return [CheckResult("adversarial_review", True, "ok", details=details)]
 
     routine = {"classification": "routine"}
-    assert gate.fast_lane_applies("b", "standard", True, results(**routine), True) is True
+    assert gate.fast_lane_applies("b", True, results(**routine), True) is True
     settled = results(**routine, settled_by_panel=1)
-    assert gate.fast_lane_applies("b", "standard", True, settled, True) is False
+    assert gate.fast_lane_applies("b", True, settled, True) is False
 
 
 # --- 5. the runner confirms, records and dispatches the build -------------------------------------
@@ -662,9 +636,7 @@ def test_a_routine_design_records_fast_lane_b_and_dispatches_the_build(
     assert run_phase.stacked_design(root, "0001") == "refs/remotes/origin/sdlc/0001/b"
 
 
-@pytest.mark.parametrize(
-    "why", ["non-routine", "missing", "full", "other-head", "escalate", "after-gate"]
-)
+@pytest.mark.parametrize("why", ["non-routine", "missing", "other-head", "escalate", "after-gate"])
 def test_a_fast_lane_record_the_runner_does_not_confirm_waits_at_b(
     project, fake_claude, monkeypatch, capsys, why
 ):
@@ -674,13 +646,6 @@ def test_a_fast_lane_record_the_runner_does_not_confirm_waits_at_b(
     _fast_gate_file(change, head)
     if why == "non-routine":
         _verdict(root, "non-routine", head)
-    elif why == "full":
-        _verdict(root, "routine", head)
-        sdlc = root / "sdlc.yaml"
-        sdlc.write_text(
-            sdlc.read_text(encoding="utf-8").replace("profile: standard", "profile: full"),
-            encoding="utf-8",
-        )
     elif why == "other-head":
         _verdict(root, "routine", "0" * 40)
     elif why == "escalate":  # S3: the reviewer's own verdict must be continue
@@ -823,7 +788,7 @@ def test_the_build_is_cut_from_the_design_on_the_fast_lane_and_from_main_after_a
     root, change, intent_sha = lane
     _design, design_tip = _confirmed_design(root, change, intent_sha)
     git(root, "checkout", "-q", "main")
-    assert run_phase._start_point(root, "0001", "c", None) == "refs/remotes/origin/sdlc/0001/b"
+    assert run_phase._start_point(root, "0001", "c") == "refs/remotes/origin/sdlc/0001/b"
     branch = run_phase.prepare_branch(root, "0001", "c")
     assert branch["from"] == "refs/remotes/origin/sdlc/0001/b"
     assert git(root, "rev-parse", "HEAD").strip() == design_tip
@@ -837,44 +802,34 @@ def test_the_build_is_cut_from_the_design_on_the_fast_lane_and_from_main_after_a
     git(root, "commit", "-q", "-m", "design(0001) merged (squash)")
     git(root, "push", "-q", "origin", "main")
     git(root, "fetch", "-q", "origin")
-    assert run_phase._start_point(root, "0001", "c", None) == "refs/remotes/origin/main"
+    assert run_phase._start_point(root, "0001", "c") == "refs/remotes/origin/main"
 
 
-@pytest.mark.parametrize("pushed", ["full", "no-gate-record", "non-routine", "escalate", "plan"])
+@pytest.mark.parametrize("pushed", ["no-gate-record", "non-routine", "escalate", "plan"])
 def test_a_design_branch_record_that_does_not_hold_starts_the_build_from_main(lane, pushed):
     """Decision 30 review, B2: anyone with write access could push ``fast_lane.b`` and
-    ``gate b/passed``; the build is stacked only when the profile is not Full and the
+    ``gate b/passed``; the build is stacked only when the
     branch's gate record, verdict and later commits say the same as the runner confirmed.
     Otherwise it starts from the default branch, where the (c) guard refuses."""
     root, change, intent_sha = lane
     design, _tip = _confirmed_design(root, change, intent_sha)
     gate_file = change / "evidence" / "gate-b.json"
-    if pushed == "full":
-        git(root, "checkout", "-q", "main")
-        sdlc = root / "sdlc.yaml"
-        sdlc.write_text(
-            sdlc.read_text(encoding="utf-8").replace("profile: standard", "profile: full"),
-            encoding="utf-8",
-        )
-        git(root, "commit", "-q", "-am", "owner: full profile")
-        git(root, "push", "-q", "origin", "main")
-    else:
-        if pushed == "no-gate-record":
-            record = json.loads(gate_file.read_text(encoding="utf-8"))
-            record.pop("fast_lane")
-            write(gate_file, json.dumps({**record, "result": "wait"}))
-        elif pushed == "non-routine":
-            _verdict(root, "non-routine", design)
-        elif pushed == "escalate":
-            _verdict(root, "routine", design, verdict="escalate")
-        elif pushed == "plan":
-            write(change / "plan.md", PLAN + "\nOne more step, written after the gate.\n")
-        git(root, "commit", "-q", "-am", f"pushed: {pushed}")
-        git(root, "push", "-q", "origin", "sdlc/0001/b")
-        git(root, "checkout", "-q", "main")
+    if pushed == "no-gate-record":
+        record = json.loads(gate_file.read_text(encoding="utf-8"))
+        record.pop("fast_lane")
+        write(gate_file, json.dumps({**record, "result": "wait"}))
+    elif pushed == "non-routine":
+        _verdict(root, "non-routine", design)
+    elif pushed == "escalate":
+        _verdict(root, "routine", design, verdict="escalate")
+    elif pushed == "plan":
+        write(change / "plan.md", PLAN + "\nOne more step, written after the gate.\n")
+    git(root, "commit", "-q", "-am", f"pushed: {pushed}")
+    git(root, "push", "-q", "origin", "sdlc/0001/b")
+    git(root, "checkout", "-q", "main")
     git(root, "fetch", "-q", "origin")
     assert run_phase.stacked_design(root, "0001") is None
-    assert run_phase._start_point(root, "0001", "c", None) == "refs/remotes/origin/main"
+    assert run_phase._start_point(root, "0001", "c") == "refs/remotes/origin/main"
 
 
 def test_a_merged_design_pr_whose_build_already_started_starts_no_second_build(

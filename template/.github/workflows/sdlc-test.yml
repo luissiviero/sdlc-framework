@@ -1,4 +1,4 @@
-# Phase (d) test, fired by the build job's dispatch, or by the owner's sdlc:c-approved label (Full).
+# Phase (d) test, fired by the build job's dispatch.
 #
 # Contract: docs/OPERATING_MODEL.md section 4.2 (the trigger and dispatch table), build guide
 # step 30, article p.39-41 ("Run Claude Code non-interactively inside the CI/CD pipeline,
@@ -31,8 +31,6 @@ on:
         description: "The change's work branch, e.g. sdlc/0001/c; it keys the concurrency group"
         required: false
         type: string
-  pull_request:
-    types: [labeled]
 
 permissions:
   contents: write
@@ -43,24 +41,15 @@ permissions:
 
 # One change at a time, keyed on the change's own branch: sdlc/<id>/b for the design PR
 # merge, sdlc/<id>/c for build, test and deploy — the runs that must serialise
-# (OPERATING_MODEL section 4.2). run_phase.py passes head_ref on every dispatch, so an
-# automated hop lands in the same group as the PR-fired run of the same branch. The group
-# is set on the job below.
+# (OPERATING_MODEL section 4.2). run_phase.py passes head_ref on every dispatch; since
+# decision 37 (1.0.21) a dispatch is the only way this workflow starts (no approval label).
+# The group is set on the job below.
 jobs:
   test:
-    # Only the gate (c) approval label starts this workflow from a PR event, and never when a
-    # [bot] applied it (R49: the App's own labels start workflows); run_phase.py also checks
-    # that a human, not the automation, applied it.
-    if: >-
-      ${{ github.event_name != 'pull_request' ||
-      (github.event.label.name == 'sdlc:c-approved' &&
-      !endsWith(github.event.sender.login, '[bot]')) }}
-    # 1.0.3 (decision 29): the group is the job's, not the workflow's, so an event whose job
-    # is skipped by the condition above (a comment-only review, another label) never enters
-    # it and cannot cancel a pending run - the automatic fix round the runner dispatched
-    # among them. Job and workflow groups of one name are one group in the repository.
+    # 1.0.3 (decision 29): the group is the job's, not the workflow's. Job and workflow
+    # groups of one name are one group in the repository.
     concurrency:
-      group: "sdlc-${{ inputs.head_ref || github.event.pull_request.head.ref }}"
+      group: "sdlc-${{ inputs.head_ref }}"
       cancel-in-progress: false
     runs-on: ubuntu-latest
     # 0.3.0: the session's wall clock (gate.max_wall_clock_minutes, 120 by default, plus
@@ -142,7 +131,7 @@ jobs:
           GITHUB_TOKEN: ${{ steps.app.outputs.token || github.token }}
           SDLC_WORKFLOW_TOKEN: ${{ github.token }}
           CHANGE_ID: ${{ inputs.change_id }}
-          HEAD_REF: ${{ inputs.head_ref || github.event.pull_request.head.ref }}
+          HEAD_REF: ${{ inputs.head_ref }}
           REPO: ${{ github.repository }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
           SDLC_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}

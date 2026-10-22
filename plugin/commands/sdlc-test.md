@@ -1,5 +1,5 @@
 ---
-description: Phase (d) test — in a fresh context, run the project's full test, build and lint targets into changes/<id>/evidence/ (test.log, build.log, lint.log), fix what fails within the iteration cap, take screenshots for UI changes, run the verifier, get the adversarial verdict, call gate (d) and update the build PR. Standard: continue to /sdlc-deploy; Full: wait for sdlc:d-approved. Re-runnable.
+description: Phase (d) test — in a fresh context, run the project's full test, build and lint targets into changes/<id>/evidence/ (test.log, build.log, lint.log), fix what fails within the iteration cap, take screenshots for UI changes, run the verifier, get the adversarial verdict, call gate (d) and update the build PR. Then continue to /sdlc-deploy. Re-runnable.
 argument-hint: [change id, e.g. 0001]
 disable-model-invocation: true
 allowed-tools: Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/state/cli.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/gate/cli.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/panel/cli.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/evidence/collect.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/pr/cli.py" *), Bash(git *), Bash(gh *), Read, Glob, Grep, Edit, Write, Agent
@@ -32,7 +32,7 @@ docs were killed mid-write and the run ended with no gate; this rule since 0.3.3
 
 ## 0. Preconditions
 - Change id `$ARGUMENTS` (or the single change whose `status.phase` is `c` with gate
-  `passed` — in the Full profile also labelled `sdlc:c-approved`; stop and list otherwise).
+  `passed`; stop and list otherwise).
 - `python "${CLAUDE_PLUGIN_ROOT}/plugin/gate/preflight.py" --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase d`:
   if `allow` is false, stop and report its `reasons` (a `parked: ...` reason is the
   owner's item). Never judge `status.yaml` yourself.
@@ -115,14 +115,13 @@ on, R7); it writes
 ```
 python "${CLAUDE_PLUGIN_ROOT}/plugin/panel/cli.py" items --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase d
 ```
-It prints the review mode (`sdlc.yaml: review`, `status.yaml: review_override`), the items
-the gate would park on that belong to the panel's fixed list (an open flagged concern, a
-concern naming contradicting policies, the reviewer's `escalate` verdict, an Important
-finding the run cannot fix, the verifier's "does not match the plan"), which of them the
-ledger already decides, and under `parks` what stays the owner's whatever the mode (an
-escalation on a risk-list item, a guardrail file, a run limit, an infrastructure failure; a
-risk-list hit itself parks nothing, decision 35). When `mode` is
-`parked` or `pending` is empty, go on to the gate. Otherwise, for each pending item `n` in
+It prints the items the gate would park on that belong to the panel's fixed list (an open
+flagged concern, a concern naming contradicting policies, the reviewer's `escalate`
+verdict, an Important finding the run cannot fix, the verifier's "does not match the
+plan"), which of them the ledger already decides, and under `parks` what stays the owner's
+(an escalation on a risk-list item, a guardrail file, a run limit, an infrastructure
+failure; a risk-list hit itself parks nothing, decision 35). When `pending` is empty, go on
+to the gate. Otherwise, for each pending item `n` in
 order, three fresh contexts, each with the brief printed by
 `python "${CLAUDE_PLUGIN_ROOT}/plugin/panel/cli.py" prompt --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase d --item <n> --member <reviewer|advocate|conciliator>`:
 1. **reviewer** — delegate to a general-purpose sub-agent with the `reviewer` brief; it
@@ -166,15 +165,13 @@ replaces them; exit 0 continue · 3 wait · 4 park). Commit:
 python "${CLAUDE_PLUGIN_ROOT}/plugin/pr/cli.py" upsert --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase d --check-run
 ```
 It regenerates the ≤5-bullet summary (evidence status now filled from the logs), applies
-the gate's label (`sdlc:d-ready` in the Full profile, `sdlc:needs-human` when parked) and,
+the gate's label (`sdlc:needs-human` when parked) and,
 when a token is available, posts the phase (d) check run with the evidence summary
 (build guide step 28).
 
 ## 7. Hand over
-- `continue` (Standard): report "gate (d) passed → /sdlc-deploy <id>"; the workflow
+- `continue`: report "gate (d) passed → /sdlc-deploy <id>"; the workflow
   dispatches the review job itself. Do not run (e) here.
-- `wait` (Full): report the PR URL and "gate (d): approving review + `sdlc:d-approved`,
-  applied by the owner's account (decision 34), starts the review phase".
 - `park`: report the PR URL and the gate's "What I need from you" block.
 
 Never edit `.claude/**`, `CLAUDE.md`, `REVIEW.md`, `sdlc.yaml`, `intent.md` or `spec.md`.

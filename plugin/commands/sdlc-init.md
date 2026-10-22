@@ -1,6 +1,6 @@
 ---
-description: Connect the SDLC framework to this project in one command — profile and phase adapters into sdlc.yaml, one-command build/test/lint targets (Python or Node detected), guardrail hooks and permissions, CLAUDE.md skeleton, REVIEW.md, changes/, evals/, bands.yaml — committed as the project's first PR (change 0000). Idempotent; re-run to upgrade.
-argument-hint: [--profile standard|full] [--review parked|deferred]
+description: Connect the SDLC framework to this project in one command — phase adapters into sdlc.yaml, one-command build/test/lint targets (Python or Node detected), guardrail hooks and permissions, CLAUDE.md skeleton, REVIEW.md, changes/, evals/, bands.yaml — committed as the project's first PR (change 0000). Idempotent; re-run to upgrade.
+argument-hint: [none; it asks its questions in one round]
 disable-model-invocation: true
 allowed-tools: Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/init/sdlc_init.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/state/cli.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/pr/cli.py" *), Bash(git *), Bash(gh *), Read, Write, Edit, Glob, Grep, AskUserQuestion
 ---
@@ -42,17 +42,15 @@ and pass `--setup ""` when the project has nothing to install.
   GitHub remote yet goes on, and the report says the App comes with the remote.
 
 ## 1. Ask the owner (one question round, defaults in brackets)
-- profile [standard]: standard (owner merges at a and b, and approves at e) · full (all five
-  gates). (Lite,
-  gates a and e only, was withdrawn by decision 21 and is gone since 0.2.14.)
-- review [deferred]: deferred (a review panel decides a judgment item inside a phase in
-  fresh contexts and the run continues; the owner reads "Decisions taken for you" at the
-  next gate and overturns any of them with a review comment; decisions 21 and 32) · parked
-  (a judgment item inside a phase parks the change for the owner; still available per
-  project and per change). An escalation on a risk-list item, a guardrail file change, a
-  run limit, an infrastructure failure, a merge to main and a deploy still park in both
-  modes; a risk-list hit itself parks nothing (decision 35: it is a line of the "Needs your
-  close look" banner on the PR the owner merges, and the merge accepts it).
+- Not asked (decision 37): the gates and the review mode are one behaviour for every
+  project. The owner merges at a and b and approves at e; c and d are the confidence
+  gate's. A judgment item inside a phase goes to a review panel in fresh contexts and the
+  run continues; the owner reads "Decisions taken for you" at the next gate and overturns
+  any of them with a review comment (decisions 21 and 32). An escalation on a risk-list
+  item, a guardrail file change, a run limit, an infrastructure failure, a merge to main
+  and a deploy still park; a risk-list hit itself parks nothing (decision 35: it is a line
+  of the "Needs your close look" banner on the PR the owner merges, and the merge accepts
+  it).
 - deploy action [none]: what makes a merged change live — publish package · schedule job ·
   regenerate report · promote to paper trading · deploy service · none
 - real production? [no] — turns on the release label and the production gate
@@ -77,7 +75,7 @@ sections, and the owner trims it in the PR.
 
 ## 3. Install
 ```
-python "${CLAUDE_PLUGIN_ROOT}/plugin/init/sdlc_init.py" --root "${CLAUDE_PROJECT_DIR}" --profile <profile> --review <parked|deferred> --deploy-action "<action>" --deploy-production <true|false> --maintain-metric <metric> --maintain-source <source> [--claude-md-from changes/0000-sdlc-init/CLAUDE.proposed.md] [--build "<cmd>"] [--test "<cmd>"] [--lint "<cmd>"] [--setup "<cmd>"]
+python "${CLAUDE_PLUGIN_ROOT}/plugin/init/sdlc_init.py" --root "${CLAUDE_PROJECT_DIR}" --deploy-action "<action>" --deploy-production <true|false> --maintain-metric <metric> --maintain-source <source> [--claude-md-from changes/0000-sdlc-init/CLAUDE.proposed.md] [--build "<cmd>"] [--test "<cmd>"] [--lint "<cmd>"] [--setup "<cmd>"]
 ```
 It writes `sdlc.yaml`, `.claude/settings.json` (permissions + the pinned plugin
 declaration; hooks come from the plugin), `REVIEW.md`, `changes/README.md`, builds
@@ -199,8 +197,8 @@ close look" banner shows (gate (a) matches the globs on this PR's own files, dec
   Without `SDLC_MERGE_APP_ID` the merge workflow says so and stops: you merge the build PR
   after approving it (fallback C1).
 - On an organization repository, set `owner: <your login>` in `sdlc.yaml` (decision 34);
-  otherwise no `@claude` comment or "Request changes" review starts a round and no
-  `sdlc:c-approved` or `sdlc:d-approved` label counts. A personal repository needs nothing.
+  otherwise no `@claude` comment or "Request changes" review starts a round. A personal
+  repository needs nothing.
 - The branch ruleset on the default branch (decision 4: only the owner merges; the
   automation identity has branch-only write access). The framework never creates it — a
   session must not be able to — and nothing but this rule keeps a session or a workflow

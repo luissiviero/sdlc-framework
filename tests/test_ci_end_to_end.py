@@ -220,7 +220,7 @@ write_verdict()
 # deferred review (decision 21): the panel settles the judgment items before the gate; the
 # three members are fresh contexts here stood in by recorded files, the record is the CLI's
 items = json.loads(run(panel, "items", "--root", ".", "--id", change_id, "--phase", phase))
-if items["mode"] == "deferred" and items["pending"]:
+if items["pending"]:
     for n in items["pending"]:
         for member in ("reviewer", "advocate", "conciliator"):
             run(panel, "prompt", "--root", ".", "--id", change_id, "--phase", phase,
@@ -594,14 +594,10 @@ def test_a_second_dispatch_repeats_the_design_when_the_first_left_no_pr(checkout
     nothing could move the change. A fresh runner starts on main; the run must find the
     branch, see that no pull request carries it, clear the park, run again and open it."""
     root, bare = checkout
-    # parked review, so the open concern parks (the template says deferred since 1.0.8)
-    st = status_mod.read_status(root / CHANGE)
-    st.review_override = "parked"
-    status_mod.write_status(root / CHANGE, st)
-    git(root, "commit", "-q", "-am", "intent(0001): parked review for this change")
-    git(root, "push", "-q", "origin", "main")
-    open_concern = RECORDED_SPEC_BODY.replace("- [x] Rounding", "- Rounding")
-    proc, out, _calls = run_phase_job(root, tmp_path / "first", "refuse", open_concern)
+    # a spec without its Acceptance section parks on ``artifacts``, which never goes to the
+    # review panel (deferred review is the only mode since decision 37)
+    incomplete = RECORDED_SPEC_BODY.split("## Acceptance", 1)[0]
+    proc, out, _calls = run_phase_job(root, tmp_path / "first", "refuse", incomplete)
     assert proc.returncode == 1 and out["result"] == "park" and out["pr"]["ok"] is False
     assert "parked_reason: null" not in remote_file(bare, "sdlc/0001/b", f"{CHANGE}/status.yaml")
     git(root, "checkout", "-q", "main")  # a fresh runner checks out the default branch
@@ -914,18 +910,11 @@ def test_a_pr_closed_without_a_merge_abandons_the_change_and_every_run_skips_it(
 
 # --- deferred review (decision 21; plugin 0.2.14) --------------------------------------------
 def test_under_deferred_review_the_panel_closes_the_concern_and_the_pr_says_so(checkout, tmp_path):
-    """The design run leaves one open concern. Under review: parked it parks (the third
-    test above). Under review: deferred the run puts it to the panel, records the decision,
-    commits (``record`` does), re-runs the verdict, and the gate waits for the owner with
-    the decision at the top of the PR body; one panel call was spent, no fix iteration."""
+    """The design run leaves one open concern: the run puts it to the panel, records the
+    decision, commits (``record`` does), re-runs the verdict, and the gate waits for the
+    owner with the decision at the top of the PR body; one panel call was spent, no fix
+    iteration (deferred review, the only mode since decision 37)."""
     root, bare = checkout
-    change = root / CHANGE
-    st = status_mod.read_status(change)
-    st.review_override = "deferred"  # the per-change switch; sdlc.yaml stays as merged
-    status_mod.write_status(change, st)
-    git(root, "add", f"{CHANGE}/status.yaml")
-    git(root, "commit", "-q", "-m", "intent(0001): deferred review for this change")
-    git(root, "push", "-q", "origin", "main")
     open_concern = RECORDED_SPEC_BODY.replace("- [x] Rounding", "- Rounding")
     proc, out, calls = run_phase_job(root, tmp_path, "ok", open_concern)
     assert proc.returncode == 0, proc.stdout + proc.stderr
