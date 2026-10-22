@@ -1240,7 +1240,7 @@ def next_free(root: Path) -> tuple[str, dict[str, str], list[tuple[str, str, lis
         highest = max(taken[kind])
         free[kind] = _show(kind, (*highest[:-1], highest[-1] + 1))
     above = [
-        (kind, _show(kind, number), sorted(holders[(kind, number)]))
+        (kind, _show(kind, number), sorted(set(holders[(kind, number)])))
         for kind in NEXT_FREE_KINDS
         for number in sorted(n for k, n in holders if k == kind)
     ]

@@ -2,14 +2,14 @@
 
 This session ran on branch `claude/r65-part-2-choices-index`. It is the same session as R65's part 1 (#324), and the owner asked it to start part 2 once #323's merge was checked. Part 2 is built as the owner accepted it: choice 252, point 3, and `docs/proposals/one-owner-per-fact.md`, part 2. It is a documentation and `tasks.py` PR with no plugin version, and nothing under `plugin/` or `template/`.
 
-**This branch is built on #324's branch**: the task reads choices with part 1's `choice_items`. Its diff against `main` holds #324's commits until #324 merges. The owner merges #324 first.
+**This branch is built on #324's branch**: the task reads choices with part 1's `choice_items`. #324 merged at 22:29 UTC as `8e8d5c6`, and `main` is merged into this branch since.
 
 The previous record (R65's part 1, from #324) is now `docs/progress/2026-10-22-r65-part-1-next-free.md`, unchanged (verified, `cmp` against `claude/r65-part-1-next-free:docs/PROGRESS.md` at `c87725b`). This session's end file is `docs/handoffs/sessions/2026-10-22-claude-r65-part-2-choices-index.md`.
 
 ## Coordination with the other sessions
 - **#323 merged** as `50eea3b` after part 1 was opened. It added only the previous session's end file (verified, `git diff --stat 30b0367 50eea3b`). `main` is merged into #324's branch, and so into this one; no file conflicted.
 - **Numbers.** This PR takes choice 253, for the owner's answer below, and nothing else. `python tasks.py next-free` on `50eea3b` printed choice 253, candidate R66, note 58, decision 39 and patch 1.0.24, none taken above `main` (verified again after `git fetch` at 22:20 UTC, before taking it).
-- **Open PRs**, read after #323 merged: #324 (part 1) and #173 (intent 0004).
+- **Open PRs**, read after #323 merged: #324 (part 1) and #173 (intent 0004). #324 has merged since, as `8e8d5c6`.
 
 ## The owner's decision (2026-10-22)
 253. **The sources-of-truth session's nine decisions are taken as this session reviewed them** (the owner, "all as in your verdicts", on this session's independent review of the table that session `ccr-aaab8db4-pn5lsc` gave at 21:44 UTC, plus four rows of its own):
@@ -35,7 +35,8 @@ The previous record (R65's part 1, from #324) is now `docs/progress/2026-10-22-r
 2. **docs-lint fails a stale or missing index** ("docs/progress/choices.md differs: run python tasks.py choices-index"), as it does for the decisions and the notes.
 3. **The two generated pages beside the records** (`index.md`, `choices.md`) are no longer read as records, by check 10 or by `next-free`.
 4. **The first index**: choices 16 to 252, 237 rows. Choices 1 to 15 are named in its opening as kept in git history only (`fe20f6a`, `57db1b3`), as #324's record found. `docs/progress/index.md` gains one sentence saying `choices.md` is not a record.
-5. **Tests.** Three in layer 1 (the summary, the rows and their links, a stale or missing index each way) and one in layer 2 (the index on disk is what the task writes).
+5. **A fix to part 1's `next-free`.** A local branch and its fetched copy at two different commits named the branch twice (seen live once `main` was merged into this branch). Each number now names a branch once; a test on a temporary repository reproduces the old output and passes with the fix.
+6. **Tests.** Three in layer 1 (the summary, the rows and their links, a stale or missing index each way) and one in layer 2 (the index on disk is what the task writes).
 
 ## Points this PR left to the owner, now settled
 - **A line number moves with every edit above it.** A PR that edits `docs/PROGRESS.md` above a choice, or moves it to `docs/progress/`, changes the index, and docs-lint names the task to run. Two parallel PRs that both take a choice already conflict in `docs/PROGRESS.md`; the index adds one generated file, resolved by running the task. Kept (choice 253, point 12).
@@ -60,7 +61,6 @@ Rows 1 to 4 replace those of choice 252's record (`docs/progress/2026-10-22-sour
 ## What the owner does
 | When | Act |
 |---|---|
-| Now | Merge #324 when `Framework checks` is green on its final head. |
-| After #324 | Merge this PR when `Framework checks` is green on its final head. |
+| Now | Merge this PR when `Framework checks` is green on its final head. |
 | Now, any time | Row 5 above (the merge-tool deny rule). Delete the four branches of choice 253, point 9. |
 | After R65's part 4 merges | Rows 1 to 4 above, in one PR. |
