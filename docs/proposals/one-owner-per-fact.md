@@ -2,7 +2,7 @@
 type: Proposal
 title: "One owner per fact: every kind of fact has one place that holds its current value; the rest point to it, are generated from it or are checked against it"
 description: "The sources-of-truth study found 39 stale places on main in 17 rows, every one a copy. It names one owner for each of eleven kinds of fact. Its tasks.py and docs-lint work: next-free and choices-index generate what sessions write by hand today; verify runs the pre-PR set; docs-lint checks 10 to 13 catch numbers taken twice, ranks outside ROADMAP, retired terms and commands that differ from sdlc.yaml; check 5 widened to the code's comments."
-status: proposed
+status: accepted
 roadmap: R65
 sources:
   - id: study
@@ -25,7 +25,7 @@ generated: { by: sdlc-framework-session/claude-sources-of-truth-study-csl6nq, at
 
 # One owner per fact
 
-**Status: proposed on 2026-10-22 at the owner's request; the owner has not decided.** Nothing is built. Every part but one is a documentation and `tasks.py` PR with no plugin version, as R55 and R58 were. The exception is part 6, which edits comments under `plugin/` and `template/` and rides the next plugin patch.
+**Status: proposed on 2026-10-22 at the owner's request, and accepted the same day as recommended (choice 252).** Nothing is built. Every part but one is a documentation and `tasks.py` PR with no plugin version, as R55 and R58 were. The exception is part 6, which edits comments under `plugin/` and `template/` and rides the next plugin patch.
 
 ## The problem
 The study (`docs/reviews/2026-10-22-sources-of-truth.md`) found **39 stale places on `main` in 17 rows**, and every one is a copy:
@@ -81,7 +81,7 @@ The parts are independent PRs, in this order:
 No other candidate waits on R65, and R65 waits on none.
 
 ## What to settle before building
-The study's section 6 holds seven questions, each with a recommendation. Summary: accept as a candidate outside the ranks; compute the next free numbers; generate the choices index; lint session files from the merge on only; no `REVIEW.md` line; `build_guide.json` frozen; `tasks.py verify` as the owner of the local checks.
+The study's section 6 holds seven questions, each with a recommendation. Summary: accept as a candidate outside the ranks; compute the next free numbers; generate the choices index; lint session files from the merge on only; no `REVIEW.md` line; `build_guide.json` frozen; `tasks.py verify` as the owner of the local checks. *[2026-10-22, choice 252: the owner accepted all seven as recommended (`docs/PROGRESS.md`).]*
 
 ## Decisions it touches
 - **Kept:** 7 (Python, both platforms), 9 (the repository is the record; GitHub holds the live PR state) and 10 (a generated file beside the folders, as R9's). None is amended.

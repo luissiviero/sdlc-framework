@@ -71,7 +71,7 @@ Three different values hide under "the version":
 | Place | What it holds | Class |
 |---|---|---|
 | `docs/decisions/4.md`, `docs/decisions/36.md:13-18` | the rule: the owner, and the merge App on the owner's approving review | **owner** (the rule) |
-| the rulesets on GitHub (framework 24077592, sample 24078926 and 25656269) | the live bypass actors and modes | **owner** (the live value), read into a note: `docs/notes/56.md:31-35` (the sample); the framework's ruleset has no note after the bypass test. #321 adds `docs/notes/57.md` on its branch |
+| the rulesets on GitHub (framework 24077592, sample 24078926 and 25656269) | the live bypass actors and modes | **owner** (the live value), read into a note: `docs/notes/56.md:31-35` (the sample); the framework's ruleset has no note after the bypass test. #321 adds `docs/notes/57.md` on its branch *[2026-10-22: #321 merged as `0d229a6`; NOTES §57 holds both repositories' rulesets under choice 251 (Option C: the owner Exempt in ruleset 1, plus a no-direct-writes ruleset)]* |
 | `plugin/commands/sdlc-init.md:180-251` (step 6: the merge App `:180`, ruleset 1 `:208`, ruleset 2 `:238`) | how to set the rulesets, the merge App and the environment | **owner** (the setup steps, section 1.11) |
 | `CLAUDE.md:33` | "Only the owner merges to `main`, or the merge App on the owner's approving review (decision 36)" | point |
 | `docs/OPERATING_MODEL.md:28` | the rule, the bypass mode "Exempt" and its reason | copy; the mode part is **stale** (S10); #321 rewrites it |
@@ -137,6 +137,8 @@ Today's values, read on `main` and on every branch ahead of it:
 - **patch 1.0.24**: `main` is at 1.0.22, and #321 takes 1.0.23.
 
 Verified with `git ls-tree`, `git grep` and `git diff origin/main...origin/ccr-76f1ceba-idf2w0` after `git fetch`. The other branches ahead of `main` are `sdlc/0004/a` (#173), `ccr-bc5e88a0-y1pwjg` and `luissiviero-patch-1`. They take no number in these files; the last two have no open PR.
+
+*[2026-10-22, after #321 merged as `0d229a6` (choice 251, note 57, 1.0.23) and this PR took choice 252 and R65: the next free are choice 253, candidate R66, note 58, decision 39 and patch 1.0.24.]*
 
 ### 1.8 Open PRs and merge order
 | Place | What it holds | Class |
@@ -246,6 +248,8 @@ A stale copy is a place, outside an annotation, whose value differs from its own
 
 Two classes are counted apart, after the table.
 
+*[2026-10-22, after #321 merged as `0d229a6`: S9 and S10 are fixed on `main` (verified: the annotation at `docs/notes/17.md:47`, `/sdlc-init` step 6 rewritten, `docs/decisions/36.md:17` annotated for choice 251). S13 holds again: under choice 251's Option C the session's direct commit was refused on both repositories (NOTES §57). The other 33 places stand.]*
+
 | # | Where | The copy | The owner's value | Fix, and by whom |
 |---|---|---|---|---|
 | S1 | `.claude-plugin/plugin.json:5` | "profile-based human gates" | one profile (decision 37; `conventions.py:39-44`) | "with human gates at (a), (b) and (e)", the next plugin PR |
@@ -291,7 +295,7 @@ The double check's lesson holds: every row it found was a copy, not an owner, th
 **`CLAUDE.md:34`.** It names no version since the owner's `396e4b4`. It points to `plugin.version` in `sdlc.yaml`, so it cannot go stale when the pin moves. It is the pattern R65 asks of every other copy.
 
 **Not drift, and worth naming:**
-- On 2026-10-22, `2cf98e3` and `396e4b4` reached `main` as direct commits by the owner, while `CLAUDE.md:48-49` says the guardrails change "in a reviewed PR". It is a practice under Exempt, not a stale fact. #321's choice 251 closes the path for every login.
+- On 2026-10-22, `2cf98e3` and `396e4b4` reached `main` as direct commits by the owner, while `CLAUDE.md:48-49` says the guardrails change "in a reviewed PR". It is a practice under Exempt, not a stale fact. #321's choice 251 closes the path for every login. *[2026-10-22: it closes direct writes to `main`; an API merge by anything acting as the owner's login still goes through (NOTES §57)]*
 - CI's `python tasks.py check` (`framework-checks.yml:91`, `:125`) runs no `compileall`. The `build` command of `sdlc.yaml:21` runs only in a session's local checks.
 
 ## 4. Against ROADMAP R9, R58, R62, choices 126 and 241, and the decisions
@@ -334,6 +338,8 @@ In the owner's format. None is made by this PR, and none is due before R65 is ac
 No row for `REVIEW.md`, `.claude/**` or the sample's `bands.yaml`: R65 adds deterministic checks, and `REVIEW.md:36-38` already holds the reader's side (choice 241). Question 5 asks whether the owner wants one line there too.
 
 ## 6. Questions for the owner
+*[2026-10-22, choice 252: the owner accepted all seven as recommended (`docs/PROGRESS.md`).]*
+
 1. **Accept R65, and where in the order?** Recommended: accepted, outside the ranks as R55 and R58 were (documentation and `tasks.py` PRs, no plugin version), in the order of its row. Its one plugin part rides the next plugin patch and takes no rank of its own.
 2. **Next free numbers computed, not written?** Recommended: yes. `python tasks.py next-free` reads `main` and every branch ahead of it after a fetch, prints the five numbers with the branch that holds each taken one, and session files stop writing them (`HANDOFF.md`'s skeleton points to the task). It reserves nothing (choice 184).
 3. **A generated index of the choices?** Recommended: yes, `docs/progress/choices.md` from the records, with check 10 failing a number taken twice. It also gives R62 its targets.
@@ -343,7 +349,7 @@ No row for `REVIEW.md`, `.claude/**` or the sample's `bands.yaml`: R65 adds dete
 7. **A pre-PR task, `python tasks.py verify`, as the one owner of "the local checks"?** Recommended: yes. It runs `compileall` over the build folders, ruff check, ruff format, docs-lint, pytest, and `claude plugin validate .` when the CLI is present. `HANDOFF.md`'s precondition 1 and `CLAUDE.md` then point to it (guardrail rows 1 to 3).
 
 ## 7. Not verified, and why
-- **The live bypass modes of both rulesets 1 today.** The test record says Exempt since 17:33 UTC (O3), and #321 asks the owner to set "For pull requests only". A session cannot read the bypass list (it needs an admin read).
+- **The live bypass modes of both rulesets 1 today.** The test record says Exempt since 17:33 UTC (O3), and #321 asks the owner to set "For pull requests only". A session cannot read the bypass list (it needs an admin read). *[2026-10-22: #321 merged with choice 251, Option C. Its session verified all four rulesets from the owner's exports and the rules endpoints (`docs/PROGRESS.md` on `0d229a6`, choice 251); read by session `ccr-76f1ceba-idf2w0`, not by this one.]*
 - **This repository's `vars.SDLC_APP_ID`.** A session cannot read the repository's variables. Carried from the end file of `ccr-3fe1c65e-erwrby`, not re-verified.
 - **The PR bodies.** Read by a sub-agent through the GitHub API, not by this session; its counts are reported as its own.
 - **Whether a rank was right when each older session file was written.** Not judged: section 1.6 compares them with today's ROADMAP only.
