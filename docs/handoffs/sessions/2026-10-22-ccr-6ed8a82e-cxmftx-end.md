@@ -31,7 +31,7 @@ Known before, still open: the (e) job runs whenever the deploy job succeeds, als
 ## Next steps, in order
 1. **The owner merges this session's PR** (this file only, documentation).
 2. **R65 first**, then the other next steps of the csl6nq "-end" file, carried unchanged, not re-verified. These are R65's part 1 and on, the queue from R51 with R25, the sample's next-change notes, and this repository's own App at R14's turn.
-3. **Once R65's parts 1 to 5 have merged, before its part 6** (the owner, 2026-10-22), a new session fixes the Gemini use and puts it into the x-roles, from the prompt this session gave in the chat. That covers both defects above, the (e) waste and a first live call, then the owner's questions on Gemini in R28's roles before any decision file. R65's part 6, the plugin patch after R51 (choice 252), does not hold it back. Until then:
+3. **The Gemini session starts now, for the model id only** (the owner, 2026-10-22): the owner runs `cli.py models` on the PC and the session checks the sample's `external_review.model` against it. **Once R65's parts 1 to 5 have merged, before its part 6**, the same session fixes the Gemini use and puts it into the x-roles, from the prompt this session gave in the chat. That covers both defects above, the (e) waste and a first live call, then the owner's questions on Gemini in R28's roles before any decision file. R65's part 6, the plugin patch after R51 (choice 252), does not hold it back. Until then:
    - defect 1 stays latent, since this repository runs no change before R14's turn;
    - on the sample, a (b) opinion on the fast lane lands on the closed design PR (defect 2). If one runs, the session that reads the change notes it.
 
@@ -61,6 +61,5 @@ Done, dropped (from this session's first file):
 | When | Act |
 |---|---|
 | Now | Merge this PR when `Framework checks` is green. |
-| Once R65's parts 1 to 5 have merged | Start the new session with the prompt in this session's chat. |
-| Any time, optional | In one PowerShell window on the PC: `$env:GEMINI_API_KEY = "<key>"`, then `python plugin/external/cli.py models` from the framework checkout; tell the new session the ids it lists. |
+| Now | Start the new session with the prompt in this session's chat; it asks for the `cli.py models` output first, then waits for R65's parts 1 to 5. |
 | Any time | The key's usage page in its Google project, if a check of past use is wanted. |
