@@ -778,9 +778,13 @@ def test_sdlc_init_prescribes_the_branch_ruleset_of_decision_4():
     assert "Never add this App to a ruleset's bypass list" in text
     assert "still lets `gh pr merge` through" in text
     assert "The daily digest says so" in text
-    # 0.2.26: the bypass mode, from the owner's merges of 2026-09-27 (NOTES section 17)
-    assert "The owner's bypass actor's mode is **Exempt**" in text
-    assert "no bypass audit entry for the owner's merges" in text
+    # 1.0.23 (choice 251, NOTES section 57): the owner's bypass is "For pull requests only",
+    # because Exempt lets anything acting as the owner's login write to the default branch
+    assert "The owner's bypass actor's mode is **\"For pull requests only\"** too" in text
+    assert "Do not choose **Exempt**" in text
+    assert "Neither mode stops a session acting as your login from merging" in text
     assert "the workflow token included" in text
+    assert "set your own bypass mode in ruleset 1 to **Exempt**" not in text
     model = (PLUGIN.parent / "docs" / "OPERATING_MODEL.md").read_text(encoding="utf-8")
-    assert "The owner's bypass mode is *Exempt*" in model
+    assert "The owner's bypass mode is *for pull requests only*" in model
+    assert "The owner's bypass mode is *Exempt*" not in model

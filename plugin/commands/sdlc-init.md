@@ -219,17 +219,19 @@ close look" banner shows (gate (a) matches the globs on this PR's own files, dec
   pushes" and "Require a pull request before merging". Since 1.0.18 the merge App above is
   its second bypass actor, in "For pull requests only" mode (decision 36). The owner's
   bypass actor's mode is
-  **Exempt** (the `…` menu of the actor's row in the bypass list): the rules do not run for
-  the owner, so a merge from the GitHub mobile app goes through on a tap — the app still
-  labels the pull request "Unable to merge", because it shows the general merge state, which
-  is `blocked` for everyone the rules apply to; under "Allow for pull requests only" the app
-  shows the same label with no bypass control and the owner merged from the web UI through
-  its bypass checkbox (both verified live on 2026-09-27, NOTES §17; whether a tap would also
-  have merged under that mode was not tested). From a terminal, `gh pr merge` refuses a
-  `blocked` pull request before asking GitHub: use the REST merge endpoint through `gh api`
-  or the web UI. The cost of Exempt is that GitHub writes no bypass audit entry for the
-  owner's merges (the merge commit and the pull request's `merged_by` remain the record);
-  the rules still run for every other actor, the workflow token included. The daily digest
+  **"For pull requests only"** too (the `…` menu of the actor's row in the bypass list;
+  choice 251, both modes tested live on 2026-10-22, NOTES §57). In this mode a direct commit
+  or push to the default branch is refused for you as well, and so for anything that acts
+  as your login, which a cloud session's GitHub tools and git proxy do. Your merges still go
+  through. The GitHub mobile app labels the pull request "Unable to merge" (its merge state
+  is `blocked`) and still offers Merge, and the confirmation sheet merges it. The web UI
+  merges through its bypass checkbox. Each such merge is logged as a bypass. Do not choose
+  **Exempt**: the rules would not run for your login, so a session acting as you could
+  write to the default branch directly, and GitHub would log that as an ordinary pass.
+  Neither mode stops a session acting as your login from merging a pull request through the
+  API. From a terminal, `gh pr merge` refuses a `blocked` pull request before asking GitHub:
+  use the REST merge endpoint through `gh api` or the web UI. The rules run for every other
+  actor, the workflow token included. The daily digest
   says so at the top
   of the review queue while the default branch has no such rule (`pr/digest.py`,
   `pr/github.py default_branch_protection`: the branch's active rules must include an
@@ -246,9 +248,10 @@ close look" banner shows (gate (a) matches the globs on this PR's own files, dec
   intent PRs could not pass one). Every pull request that is not a build PR gets a passing
   `sdlc/review` ("not a build PR") from `sdlc-merge.yml` or from the step that opens it,
   so intent, design, incident and your own PRs merge as before; a build PR whose review is
-  red merges only through the web UI's bypass checkbox, a deliberate act. When you set it
-  up, set your own bypass mode in ruleset 1 to **Exempt** if it is not already (choice
-  242, point 5), so your merges from the phone still go through.
+  red merges only through your bypass, a deliberate act: the web UI's bypass checkbox, or
+  the phone's Merge under its "Unable to merge" label (verified on ruleset 1 in the same
+  mode, NOTES §57). Keep your own bypass in ruleset 1 in "For pull requests only" (choice
+  251, which reverses choice 242's point 5).
 - Optional, owner's machine only: `docs/owner-machine/README.md` in the framework repo
   explains the managed settings file and its machine-wide consequences.
 

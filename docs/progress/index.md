@@ -71,3 +71,4 @@ chronological order (oldest first). The current record stays in `docs/PROGRESS.m
 - [Progress — ROADMAP R8, the second opinion at gates (b) and (e), as plugin 1.0.19; #290's session exposure undone (choice 248) (2026-10-20)](2026-10-20-r8-second-opinion-1.0.19.md)
 - [Progress — decision 38, the subscription token wins when both model secrets are set, as plugin 1.0.20 (2026-10-20)](2026-10-20-decision-38-auth-order-1.0.20.md)
 - [Progress — decision 37, one profile and one review mode, as plugin 1.0.21 (2026-10-22)](2026-10-22-decision-37-one-profile-1.0.21.md)
+- [Progress — the R22 double check's fixes, as plugin 1.0.22 (choice 250) (2026-10-22)](2026-10-22-r22-double-check-fixes-1.0.22.md)

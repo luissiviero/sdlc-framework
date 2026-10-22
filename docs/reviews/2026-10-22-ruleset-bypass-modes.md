@@ -40,6 +40,9 @@ Not tested, in either mode: a force-push to `main` and the deletion of `main`. I
 | S1 | **Accepted.** The commit landed on `main` | `PUT …/contents/docs/reviews/ruleset-probe-s1.md` created commit `7c33f02` on `main`, its author the owner's login. The file is removed by the pull request that records this row. |
 | S2 | **Accepted.** The push landed on `main` | `git push origin HEAD:main`: `2a782f1..906317a  HEAD -> main`. The file is removed by the same pull request. |
 | S3 | **Merged** | PR #316: `merge_pull_request` answered `merged: true`, merge commit `1cdb45f` on `main`; it also removed the two probe files. |
-| O1 | not run yet | |
-| O2 | not run yet | |
+| O1 | **Merged from the phone, with no warning.** The app shows "Ready to merge" under "All checks have passed"; a tap opens the same commit-message sheet, and its MERGE button merged | PR #318: `mergeable_state` read `clean` through the session's tools before the tap (#314 read `blocked` in the other mode), the owner's screenshot of the sheet, then the merge `45931cd` on `main`. |
+| O2 | Not needed: O1 merged | |
 | O3 | **Logged, as `pass`.** No entry says `bypass`, and every actor is the owner's login | The same read: S2 17:33:26 `pass` (the commit's author is `Claude`, the pusher the owner's login), S1 17:33:32 `pass`, #316 (the session's merge) 17:34:16 `pass`. The owner's later merges (#317 17:48:38, #319 18:30:02) and two direct web-editor commits to `main` (`2cf98e3` "Update CLAUDE.md" 17:49:57, `396e4b4` 18:43:34) read `pass` too. The mode changed between 17:21:47 and 17:33:26. |
+
+## The owner's choice
+On 2026-10-22, after the two runs, the owner chose **"For pull requests only"** for the admin role (choice 251). That mode refuses a direct commit or push to `main` by anything acting as the owner's login, and it costs the warning label and a confirmation sheet on the phone, plus a pull request for a guardrail edit made in the web editor. Neither mode stops a session acting as the owner from merging a pull request (S3). The facts are NOTES §57.
