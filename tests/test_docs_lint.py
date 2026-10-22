@@ -7,10 +7,10 @@ checks: frontmatter that parses, decision amendments and status, a proposal's st
 its ROADMAP row, built rows under "Done", version and PR pairs against the tags, citations of
 the moved stubs, Portuguese words; check 8, merge claims against the merge commits; and check
 9, no count of the decisions or the notes in the pages kept by hand; check 10, no number
-taken twice (ROADMAP R65, part 1).
+taken twice (ROADMAP R65, part 1); the choices index read from the records (part 2).
 Layer 2 (this repository): the lint finds no failure, no number is taken twice, the pin is the
-one ``/sdlc-init`` installs, and the decisions index on disk is what
-``python tasks.py decisions-index`` writes.
+one ``/sdlc-init`` installs, and the decisions index and the choices index on disk are what
+``python tasks.py decisions-index`` and ``python tasks.py choices-index`` write.
 """
 
 from __future__ import annotations
@@ -533,6 +533,55 @@ def test_two_files_or_two_rows_with_one_number_fail(tmp_path):
     assert "numbers: candidate R65 taken twice: docs/ROADMAP.md:3, docs/ROADMAP.md:5" in failures
 
 
+def test_a_choice_is_summarised_by_its_bold_lead_else_its_first_sentence():
+    assert tasks.choice_summary("**A kept record is annotated.** Every correction…") == (
+        "A kept record is annotated."
+    )
+    assert tasks.choice_summary("*(a note.)* **The fix lands** in the PR.") == "The fix lands"
+    assert tasks.choice_summary("No bold: see [the note](../notes/1.md). Then more.") == (
+        "No bold: see the note."
+    )
+    assert tasks.choice_summary("**`a | b` is one cell**") == "`a \\| b` is one cell"
+    assert tasks.choice_summary("no end") == "no end"
+
+
+def test_the_choices_index_lists_each_choice_with_its_record_and_line(tmp_path):
+    docs = tmp_path / "docs"
+    _write(docs / "PROGRESS.md", "# P\n\n## The owner's decision (2026-10-23)\n9. **Nine.** x\n")
+    _write(docs / "progress" / "session-3.md", "## Choices made\n2. **Two**\n1. **One**\n")
+    _write(docs / "progress" / "index.md", "## The owner's choices\n5. **Not a record**\n")
+    _write(docs / "progress" / "choices.md", "## The owner's choices\n6. **Not a record**\n")
+    text = tasks.build_choices_index(docs)
+    assert text.startswith(tasks.CHOICES_INDEX_HEADER)
+    assert text[len(tasks.CHOICES_INDEX_HEADER) :] == (
+        "| 1 | [session-3.md:3](session-3.md) | One |\n"
+        "| 2 | [session-3.md:2](session-3.md) | Two |\n"
+        "| 9 | [PROGRESS.md:4](../PROGRESS.md) | Nine. |\n"
+    )
+    _write(docs / "progress" / "choices.md", text)
+    assert tasks.number_problems(docs) == ([], [])
+    assert tasks.broken_links(docs, tmp_path) == []
+
+
+def test_a_stale_or_missing_choices_index_fails_the_lint(tmp_path, monkeypatch, capsys):
+    docs = tmp_path / "docs"
+    _write(docs / "PROGRESS.md", "## The owner's decision (2026-10-23)\n9. **Nine.**\n")
+    stale = "docs/progress/choices.md differs: run python tasks.py choices-index"
+    assert stale in tasks.lint_docs(docs, tmp_path, pin="2.1.304")[0]
+    monkeypatch.setattr(tasks, "DOCS_DIR", docs)
+    monkeypatch.setattr(tasks, "ROOT", tmp_path)
+    monkeypatch.setattr(tasks, "CHOICES_INDEX", docs / "progress" / "choices.md")
+    (docs / "progress").mkdir()
+    assert tasks.task_choices_index() == 0
+    assert "wrote docs/progress/choices.md" in capsys.readouterr().out
+    first = (docs / "progress" / "choices.md").read_text(encoding="utf-8")
+    assert tasks.task_choices_index() == 0
+    assert (docs / "progress" / "choices.md").read_text(encoding="utf-8") == first
+    assert stale not in tasks.lint_docs(docs, tmp_path, pin="2.1.304")[0]
+    _write(docs / "PROGRESS.md", "\n## The owner's decision (2026-10-23)\n9. **Nine.**\n")
+    assert stale in tasks.lint_docs(docs, tmp_path, pin="2.1.304")[0]
+
+
 # --- layer 2: this repository -------------------------------------------------------------------
 
 
@@ -556,6 +605,10 @@ def test_the_pin_is_the_version_sdlc_init_installs():
     from init import sdlc_init
 
     assert tasks.read_pin() == sdlc_init.DEFAULT_CLAUDE_CODE_VERSION
+
+
+def test_the_choices_index_on_disk_is_what_the_task_would_write():
+    assert tasks.CHOICES_INDEX.read_text(encoding="utf-8") == tasks.build_choices_index()
 
 
 def test_the_decisions_index_on_disk_is_what_the_task_would_write():

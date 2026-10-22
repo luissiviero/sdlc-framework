@@ -2,6 +2,8 @@
 
 Every earlier top-level record of `docs/PROGRESS.md` lives here, one file per record, in
 chronological order (oldest first). The current record stays in `docs/PROGRESS.md`.
+[`choices.md`](choices.md) is not a record: it lists where each numbered choice is stated, and
+`python tasks.py choices-index` writes it.
 
 - [Session 3 record (B3: first autonomous phases, gates, merge-triggered plumbing; steps 22–30) — kept as written at the end of session 3](session-3.md)
 - [Session 4 record (B4: release gate, deploy adapters, decisions 21–26; steps 29, 31, 32, 16a) — kept as written at the end of session 4 (B4: release gate, deploy adapters, then decisions 21–26; steps 29, 31, 32, 16a)](session-4.md)
@@ -74,3 +76,4 @@ chronological order (oldest first). The current record stays in `docs/PROGRESS.m
 - [Progress — the R22 double check's fixes, as plugin 1.0.22 (choice 250) (2026-10-22)](2026-10-22-r22-double-check-fixes-1.0.22.md)
 - [Progress — the owner's bypass tested live; Exempt in ruleset 1 plus a no-direct-writes ruleset (choice 251), as plugin 1.0.23 (2026-10-22)](2026-10-22-bypass-option-c-choice-251-1.0.23.md)
 - [Progress — the study of the sources of truth; ROADMAP R65 accepted (choice 252) (2026-10-22)](2026-10-22-sources-of-truth-study-r65-choice-252.md)
+- [Progress — ROADMAP R65's part 1: `python tasks.py next-free` and docs-lint check 10 (2026-10-22)](2026-10-22-r65-part-1-next-free.md)

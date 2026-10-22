@@ -137,6 +137,17 @@ def test_origin_main_is_read_before_main_and_a_fetched_branch_loses_its_remote(t
     assert read == 1
 
 
+def test_a_branch_and_its_fetched_copy_at_two_commits_are_named_once(tmp_path):
+    root = _repo(tmp_path)
+    _git(root, "checkout", "-q", "-b", "claude/one")
+    pushed = _commit(root, {"docs/notes/3.md": "x\n"})
+    _git(root, "update-ref", "refs/remotes/origin/claude/one", pushed)
+    _commit(root, {"docs/notes/4.md": "x\n"})
+    _, _, above, read = tasks.next_free(root)
+    assert above == [("note", "3", ["claude/one"]), ("note", "4", ["claude/one"])]
+    assert read == 2
+
+
 def test_an_older_version_on_a_stale_branch_is_not_taken(tmp_path):
     root = _repo(tmp_path)
     old = _git(root, "rev-parse", "HEAD")

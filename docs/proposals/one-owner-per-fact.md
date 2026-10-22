@@ -61,7 +61,7 @@ The work, in six parts:
    - **Check 12:** no retired term as a live one in the living pages, `README.md`, the manifests and `template/`. The terms are the `full` profile, "profile-based", `sdlc:c-approved`, `sdlc:d-approved` and `sdlc:accept-risk`, read from `conventions.py`'s retired lists plus a short list in `tasks.py`. A term beside "retired", "withdrawn" or "until 1.0.20" passes. Its first run fails S1 to S4, which the same PR fixes in `README.md` and the manifests.
 4. **`python tasks.py verify`** (new task) and **check 13**:
    - `verify` runs the pre-PR set: `compileall` over the build folders, ruff check, ruff format check, docs-lint, pytest, and `claude plugin validate .` when the CLI is on the path. `HANDOFF.md`'s precondition 1 and `CLAUDE.md` point to it.
-   - **Check 13:** the three lines of `CLAUDE.md`'s "Verifying your work" equal `sdlc.yaml: commands`. It needs the study's guardrail rows 1 to 3 first.
+   - **Check 13:** the three lines of `CLAUDE.md`'s "Verifying your work" equal `sdlc.yaml: commands`. It needs the study's guardrail rows 1 to 3 first. *[2026-10-22, choice 253: it does not; `CLAUDE.md:54` and `sdlc.yaml:21` agree today, so check 13 ships with `verify`, and the rows change both lines together after it]*
 5. **The history rule written down.** `HANDOFF.md`'s skeleton gains one sentence: an open PR, `main`'s head or a number is written "read at <time> UTC on <sha>". A snapshot then says when it was true. The same `HANDOFF.md` PR makes part 1's change to the skeleton.
 6. **Check 5 widened** to `plugin/`, `template/` and `.github/`, with the thirteen comments that cite `docs/NOTES.md` by section rewritten to `docs/notes/<N>.md` (S15). The same plugin PR fixes S8, S11 and S12 and formats `run_phase.py`'s CLI message from `DEFAULT_CLAUDE_CODE_VERSION`. This is the one part with a plugin version: it rides the next plugin patch. *[2026-10-22, choice 252: a plugin patch of its own after R51 merges, never inside R51's PR, which rewrites the same `run_phase.py`]*
 
@@ -74,7 +74,7 @@ The parts are independent PRs, in this order:
 1. Part 1 first: it removes the most hand work, and check 10 guards the numbers every PR takes.
 2. Part 2.
 3. Part 3, with S1 to S4.
-4. Part 4, after the owner's guardrail rows 1 to 3.
+4. Part 4, after the owner's guardrail rows 1 to 3. *[2026-10-22, choice 253: part 4 first, with `verify` and check 13 in one PR; the owner's rows 1 to 4 follow it, under check 13]*
 5. Part 5, a `HANDOFF.md` PR of its own as that page requires, after part 1.
 6. Part 6, whenever the next plugin patch is built. *[2026-10-22, choice 252: in a patch of its own, after R51 merges]*
 
