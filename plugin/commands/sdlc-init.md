@@ -173,7 +173,10 @@ close look" banner shows (gate (a) matches the globs on this PR's own files, dec
   `sdlc.yaml` to 1.0.18 in the same pull request, since the copy runs
   `plugin/ci/merge_step.py`, which an older pinned framework does not have; replacing
   `sdlc-digest.yml` gives the digest its `checks: read` for the approved, unmerged build PR's
-  line.
+  line. On an upgrade to 1.0.22, replace `sdlc-abandon.yml`, `sdlc-runbook.yml` and
+  `sdlc-scan.yml` (they may now write checks, so their pull requests get the "not a build
+  PR" check ruleset 2 requires), `sdlc-digest.yml` (it reads the `sdlc-merge` environment)
+  and `sdlc-merge.yml` (its pinned actions), with the pin in the same pull request.
 - The merge App (decision 36; ROADMAP R22): gate (e) is your approving review on the build
   PR, and a GitHub App of its own merges on it, so the approval is your only act there.
   It is not the App above: GitHub grants a bypass to an actor, not to a job, and only this
@@ -195,7 +198,10 @@ close look" banner shows (gate (a) matches the globs on this PR's own files, dec
   3. Add this App to ruleset 1's bypass list (the ruleset bullet below), in "For pull
      requests only" mode.
   Without `SDLC_MERGE_APP_ID` the merge workflow says so and stops: you merge the build PR
-  after approving it (fallback C1).
+  after approving it (fallback C1). The daily digest says so at the top while the
+  environment lets a branch other than the default one use it, or while the key is also a
+  repository secret (choice 250). The merge job runs its actions pinned by commit SHA;
+  when you refresh `sdlc-merge.yml` from a later framework version, keep the pins it brings.
 - On an organization repository, set `owner: <your login>` in `sdlc.yaml` (decision 34);
   otherwise no `@claude` comment or "Request changes" review starts a round. A personal
   repository needs nothing.

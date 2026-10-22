@@ -36,8 +36,8 @@ description: The organization's security baseline. Use whenever creating or chan
    config) that the change touches goes into `spec.md` "Flagged concerns", declared closed
    (`- decided (decision 35): risk item '<item>': ...`, the `spec-template` skill); the gate
    shows it in the "Needs your close look" banner of the PR the owner merges, with the
-   reviewer's brief on it, and the owner's merge accepts it (decision 35; it no longer
-   parks).
+   reviewer's brief on it, and the owner's merge accepts it (decision 35; at (e), the
+   owner's approving review, decision 36; it no longer parks).
 
 ## Check
 Run the deterministic check and include its output in your summary (article p.22 pattern):
