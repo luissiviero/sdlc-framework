@@ -27,7 +27,7 @@ def test_labels():
     assert c.NEEDS_HUMAN_LABEL == "sdlc:needs-human"
     labels = c.all_labels()
     assert "sdlc:needs-human" in labels
-    # decision 37 (1.0.20): the Full profile's approval labels are gone
+    # decision 37 (1.0.21): the Full profile's approval labels are gone
     assert not any(
         label.endswith("-approved") and label != c.RELEASE_APPROVED_LABEL for label in labels
     )
@@ -41,7 +41,7 @@ def test_labels():
 
 
 def test_human_gates():
-    # decision 37 (1.0.20): one set of human gates; gate (f) is the owner's triage (decision 25)
+    # decision 37 (1.0.21): one set of human gates; gate (f) is the owner's triage (decision 25)
     assert c.HUMAN_GATES == {"a", "b", "e", "f"}
     assert c.is_human_gate("c") is False and c.is_human_gate("e") is True
 
@@ -199,7 +199,7 @@ def test_invalid_status_rejected():
 
 
 def test_a_status_file_from_before_decision_37_still_loads(tmp_path):
-    """Decision 37 (1.0.20): the two per-change override keys are dropped on load, so a file an
+    """Decision 37 (1.0.21): the two per-change override keys are dropped on load, so a file an
     older plugin wrote still reads, and the next write leaves them out."""
     change_dir, _ = status.new_change(tmp_path, "Old")
     raw = yamlish.load_file(change_dir / "status.yaml")

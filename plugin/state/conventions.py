@@ -36,7 +36,7 @@ PHASE_ARTIFACTS = {
 }
 
 # --- the human gates (decisions 18, 30 and 25, as decision 37 narrowed them) --------------
-# One profile (decision 37, plugin 1.0.20): the owner's gates are (a), (b) and (e), shaped by
+# One profile (decision 37, plugin 1.0.21): the owner's gates are (a), (b) and (e), shaped by
 # the fast lane (decision 30), and (f), the triage of each incident intent PR (decision 25).
 # Gates (c) and (d) are the confidence gate's alone. The Full profile, its ``sdlc:c-approved``
 # and ``sdlc:d-approved`` labels and the per-change ``profile_override`` are gone, as Lite was

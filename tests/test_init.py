@@ -130,7 +130,7 @@ def test_init_on_fixture_copy_is_idempotent(tmp_path):
     }
     cfg = yamlish.load_file(root / "sdlc.yaml")
     assert cfg["commands"]["test"] == "python -m pytest"
-    # decision 37 (1.0.20): one profile and one review mode, so neither key is written
+    # decision 37 (1.0.21): one profile and one review mode, so neither key is written
     assert "profile" not in cfg and "review" not in cfg
     assert cfg["test_paths"] == detect.TEST_PATHS["python"]  # step 25: the test-file lock
     assert cfg["plugin"]["version"] == sdlc_init.plugin_version()

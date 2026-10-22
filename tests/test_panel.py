@@ -228,7 +228,7 @@ def test_items_lists_the_fixed_list_and_the_parks(design_project):  # noqa: F811
     git(root, "commit", "-q", "-m", "design(0001): an open concern")
     verdict(root, "b", verdict="escalate")
     rc, out = run(["items", "--root", str(root), "--id", "0001", "--phase", "b"])
-    # decision 37 (1.0.20): deferred review is the only mode, so ``items`` names none
+    # decision 37 (1.0.21): deferred review is the only mode, so ``items`` names none
     assert rc == 0 and "mode" not in out and out["gate"] == "park"
     kinds = [(i["kind"], i["decided"]) for i in out["items"]]
     assert kinds == [("concern", False), ("escalate", False)]

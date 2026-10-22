@@ -26,7 +26,7 @@
     "failIfUnavailable": false,
     "allowUnsandboxedCommands": false,
     "network": {
-      "allowedDomains": ["github.com", "*.github.com", "pypi.org", "files.pythonhosted.org", "generativelanguage.googleapis.com"]
+      "allowedDomains": ["github.com", "*.github.com", "pypi.org", "files.pythonhosted.org"]
     }
   },
   "extraKnownMarketplaces": {

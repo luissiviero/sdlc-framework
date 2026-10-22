@@ -102,7 +102,7 @@ def test_review_md_skip_marker_rule_present():
 
 def test_sdlc_yaml_renders_to_documented_keys():
     data = yamlish.loads(render.render_file(TEMPLATE / "sdlc.yaml", VALUES))
-    # decision 37 (1.0.20): one profile and one review mode, so neither key is written
+    # decision 37 (1.0.21): one profile and one review mode, so neither key is written
     assert "profile" not in data and "review" not in data
     # R7: the session's, the reviewer's and the devil's advocate's models (the advocate on
     # another model than the session)
@@ -158,6 +158,7 @@ def test_sdlc_yaml_carries_decision_32_s_defaults():
     assert limits.run_caps(gate, True) == (400, 180) and limits.run_caps(gate, False) == (200, 120)
     for name in ALL_WORKFLOWS:
         text = (WORKFLOW_DIR / name).read_text(encoding="utf-8")
+        text = text.split("\n  second-opinion:")[0]  # R8's job after the phase job: 20 minutes
         minutes = re.findall(r"(?m)^    timeout-minutes: (\d+)$", text)
         if name in ("sdlc-build.yml", FIX_WORKFLOW):
             assert minutes == ["260"], name  # 180 + 5 of grace, the commands step and the judge
@@ -1015,7 +1016,7 @@ def test_a_workflow_that_pushes_mints_the_app_token_first(name):
     """The mint step is the job's first, skipped without the variable; the project checkout
     and every GitHub token of the job read its output, falling back to the workflow token."""
     data = _workflow_yaml(name)
-    [job] = data["jobs"].values()
+    job = next(iter(data["jobs"].values()))  # R8's second-opinion job after it mints nothing
     steps = job["steps"]
     # the token carries no more than this job's permissions: block grants the workflow token
     narrowed = {
@@ -1079,8 +1080,15 @@ def test_a_workflow_that_mints_the_app_token_records_when(name):
     """The installation token expires an hour after it is minted; the step after the mint
     writes the time to $GITHUB_ENV for the runner's 50-minute fallback, and only when the
     mint ran (without the App the fallback has nothing to count from and stays a no-op)."""
-    [job] = _workflow_yaml(name)["jobs"].values()
-    assert job["steps"][1] == STAMP_STEP
+    jobs = _workflow_yaml(name)["jobs"]
+    # R8 (1.0.19): the second-opinion job after the phase job mints nothing
+    minting = [
+        job
+        for job in jobs.values()
+        if any("create-github-app-token" in str(step.get("uses", "")) for step in job["steps"])
+    ]
+    assert len(minting) == 1 and set(jobs) - {"second-opinion"} == {next(iter(jobs))}
+    assert minting[0]["steps"][1] == STAMP_STEP
 
 
 @pytest.mark.parametrize("name", TOKEN_WORKFLOWS)
@@ -1114,7 +1122,7 @@ def test_the_app_s_own_events_start_nothing_they_should_not():
     bot_sender = "!endsWith(github.event.sender.login, '[bot]')"
     fix = _condition(FIX_WORKFLOW, "fix")
     assert bot_sender in fix.split("github.event_name == 'pull_request' &&", 1)[1]
-    # decision 37 (1.0.20): no approval label starts (d) or (e) any more; only a dispatch does
+    # decision 37 (1.0.21): no approval label starts (d) or (e) any more; only a dispatch does
     for name in ("sdlc-test.yml", "sdlc-deploy.yml"):
         assert set(_triggers(_workflow_yaml(name))) == {"workflow_dispatch"}, name
     assert bot_sender in _condition(RUNBOOK_WORKFLOW, "go")

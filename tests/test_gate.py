@@ -658,7 +658,7 @@ def test_gate_continues_on_a_clean_change(project):
 
 
 def test_gate_dry_run_writes_nothing_and_a_failed_check_parks(project):
-    """Gate (c) is the confidence gate's alone (decision 37, 1.0.20): it continues with no
+    """Gate (c) is the confidence gate's alone (decision 37, 1.0.21): it continues with no
     label; a dry run writes nothing, and a failed check parks."""
     root, change = project
     before = (change / "status.yaml").read_text(encoding="utf-8")
@@ -2143,7 +2143,7 @@ def test_gate_b_waits_for_the_owner(design_project, monkeypatch):
         "adversarial_review",
         "reviewer_model",
     }
-    # decision 37 (1.0.20): a project file that still says ``profile: full`` or
+    # decision 37 (1.0.21): a project file that still says ``profile: full`` or
     # ``review: parked`` waits the same; the keys are not read, and the result names them
     loaded = gate.load_sdlc_config
     monkeypatch.setattr(
@@ -3342,7 +3342,7 @@ def test_lock_tests_clears_the_recorded_unlock_actor():
 
 # --- 0.2.26: group A of the 1.0.0 readiness review (docs/reviews/2026-09-26-readiness-review.md) --
 def test_a_leftover_profile_override_changes_nothing(project):
-    """Decision 37 (1.0.20): no per-change override any more. A ``status.yaml`` an older plugin
+    """Decision 37 (1.0.21): no per-change override any more. A ``status.yaml`` an older plugin
     wrote with ``profile_override: full`` and ``review_override: parked``, on the copy the
     owner approved, still loads, and gate (c) is still the confidence gate's alone."""
     root, change = project

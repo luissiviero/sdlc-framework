@@ -74,8 +74,8 @@ python evals/check.py --dry-run            # list the cases and the command each
 Each case runs in a throwaway copy of the project with one bounded
 `claude -p ... --output-format json --permission-prompts none` call; the project's
 `CLAUDE.md`, hooks and settings stay loaded (no `--bare`), because they are what the suite
-tests. The credential is the environment's: `ANTHROPIC_API_KEY` when present, else
-`CLAUDE_CODE_OAUTH_TOKEN`. A run that ends in an error, hits `max_turns` or the budget, or
+tests. The runner hands the session one credential of the environment's:
+`CLAUDE_CODE_OAUTH_TOKEN` when it is set, else `ANTHROPIC_API_KEY`. A run that ends in an error, hits `max_turns` or the budget, or
 passes the wall clock fails its case.
 
 The runner writes `evals-report.json` in the current directory (every case, its checks, turns

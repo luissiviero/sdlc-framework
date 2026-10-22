@@ -486,7 +486,7 @@ def test_compare_lists_a_rename_s_old_path_too(monkeypatch):
 
 def test_an_early_approval_counts_and_a_leftover_full_profile_is_not_read(tmp_path):
     """Decision 36, point 4 (approving early): an approval on a commit without gate (e)'s
-    record merges once the rest holds. Decision 37 (1.0.20): the Full profile, whose (d)
+    record merges once the rest holds. Decision 37 (1.0.21): the Full profile, whose (d)
     approval was a review on the same PR, is gone, so a leftover ``profile: full`` changes
     nothing."""
     early = "a" * 40

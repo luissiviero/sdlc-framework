@@ -30,13 +30,14 @@ prompt is sent, 0.2.28) and ``checks.yaml`` (``checks`` plus optional ``descript
            --permission-mode <mode> --max-turns <n> --max-budget-usd <usd>
            --allowedTools <tools> --disallowedTools WebFetch,WebSearch --plugin-dir <framework>
 
-   with the credential of the environment as it is. The runner never adds ``--bare``: bare
-   mode skips "hooks ..., LSP, plugin sync, ... and CLAUDE.md auto-discovery" (the step 35.2
-   research note, quoting ``claude --help``), and the project's ``CLAUDE.md``, hooks and
-   settings are exactly what the suite regression-tests. Without ``--bare`` print mode uses
-   ``ANTHROPIC_API_KEY`` when it is present and ``CLAUDE_CODE_OAUTH_TOKEN`` otherwise
-   (``ci/auth.py``). ``SDLC_MODEL``, when set, becomes ``--model`` (the p.29 case of "a new
-   model is swapped in");
+   with one credential of the environment's (``ci/auth.py credential_env``: the
+   ``CLAUDE_CODE_OAUTH_TOKEN`` when it is set, else ``ANTHROPIC_API_KEY``, decision 38). The
+   runner never adds ``--bare``: bare mode skips "hooks ..., LSP, plugin sync, ... and
+   CLAUDE.md auto-discovery" (the step 35.2 research note, quoting ``claude --help``), and
+   the project's ``CLAUDE.md``, hooks and settings are exactly what the suite
+   regression-tests. Without ``--bare`` print mode would use ``ANTHROPIC_API_KEY`` whenever
+   it is present, so the secret not chosen is dropped before the run. ``SDLC_MODEL``, when
+   set, becomes ``--model`` (the p.29 case of "a new model is swapped in");
 4. reads the JSON result (``subtype``, ``is_error``, ``num_turns``, ``total_cost_usd``,
    ``result``, ``permission_denials``): ``is_error`` or a subtype other than ``success``
    (``error_max_turns``, ``error_max_budget_usd``, ...) fails the case, and so does output
@@ -84,11 +85,14 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+SESSION_HIDDEN_VARS = ("GEMINI_API_KEY",)  # as ``ci/run_phase.py``: never a session's (R8)
+
 FRAMEWORK_DIR = Path(__file__).resolve().parents[2]
 PLUGIN_DIR = FRAMEWORK_DIR / "plugin"
 if str(PLUGIN_DIR) not in sys.path:
     sys.path.insert(0, str(PLUGIN_DIR))
 
+from ci import auth  # noqa: E402
 from release.cli import UsageError, command_chain  # noqa: E402
 
 from state import gitops, yamlish  # noqa: E402
@@ -642,7 +646,7 @@ def run_case(
         argv = compose(claude, case.prompt, config, plugin_dir, env)
         result: dict[str, Any] = {}
         try:
-            code, out, err = run_bounded(argv, workspace, timeout, env)
+            code, out, err = run_bounded(argv, workspace, timeout, auth.credential_env(env))
         except subprocess.TimeoutExpired:
             reason = f"timed out after {timeout:g}s"
         except OSError as exc:
@@ -803,6 +807,9 @@ def _usage(message: str) -> int:
 def main(argv: list[str] | None = None, env: Mapping[str, str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     env = os.environ if env is None else env
+    # ROADMAP R8 (1.0.19): the Gemini key never reaches a Claude session, also when a workflow
+    # copy from 1.0.17 still passes it (``ci/run_phase.SESSION_HIDDEN_VARS``)
+    env = {k: v for k, v in env.items() if k not in SESSION_HIDDEN_VARS}
     if args.fixture and args.root:
         return _usage("--fixture builds the project: give --fixture or --root, not both")
     if not args.fixture and not args.root:

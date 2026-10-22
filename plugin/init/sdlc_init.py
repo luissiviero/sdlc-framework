@@ -674,7 +674,7 @@ def build_parser() -> argparse.ArgumentParser:
         prog="sdlc-init", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
     p.add_argument("--root", default=".")
-    # Decision 37 (1.0.20): one profile and one review mode, so neither is asked or written.
+    # Decision 37 (1.0.21): one profile and one review mode, so neither is asked or written.
     # The two options are still accepted, and ignored, so an older command line keeps working.
     p.add_argument("--profile", default=None, help=argparse.SUPPRESS)
     p.add_argument("--review", default=None, help=argparse.SUPPRESS)

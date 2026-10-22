@@ -364,7 +364,7 @@ def test_phase_d_green_logs_and_nothing_to_do_at_d(project):
     assert "test green, build green, lint green" in lines[1]
     assert "verifier.md present" in lines[1] and "1 screenshot(s)" in lines[1]
     assert "0 Important, 2 nits (nit 0; nit 1)" in lines[2]
-    # decision 37 (1.0.20): gate (d) is the confidence gate's; no approval label is asked for
+    # decision 37 (1.0.21): gate (d) is the confidence gate's; no approval label is asked for
     assert desc.NOTHING_NEEDED in lines[4] and "approved" not in lines[4]
 
 

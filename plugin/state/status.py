@@ -17,7 +17,7 @@ from . import yamlish
 
 STATUS_FILE = "status.yaml"
 SCHEMA_VERSION = 1
-# Keys a file written before 1.0.20 carries and nothing reads any more (decision 37: no
+# Keys a file written before 1.0.21 carries and nothing reads any more (decision 37: no
 # per-change profile or review mode). ``from_dict`` drops them, so an older change still loads;
 # the next ``write_status`` leaves them out.
 RETIRED_KEYS = ("profile_override", "review_override")

@@ -139,9 +139,10 @@ def test_choose_auth_token_only():
     assert chosen["auth"] == "oauth" and chosen["bare"] is False
 
 
-def test_choose_auth_key_wins_when_both_are_set():
+def test_choose_auth_token_wins_when_both_are_set():
+    """Decision 38 (amends decision 1's "key preferred")."""
     chosen = auth.choose_auth(BOTH_ENV)
-    assert chosen["auth"] == "api_key" and chosen["bare"] is True
+    assert chosen["auth"] == "oauth" and chosen["bare"] is False
 
 
 def test_choose_auth_none():
@@ -152,9 +153,16 @@ def test_choose_auth_none():
 
 def test_credential_env_carries_exactly_one_secret():
     out = auth.credential_env({"PATH": "/usr/bin", **BOTH_ENV})
-    assert out[KEY_VAR] == FAKE_KEY
-    assert TOKEN_VAR not in out and out["PATH"] == "/usr/bin"
-    assert auth.credential_env(TOKEN_ENV) == TOKEN_ENV
+    assert out[TOKEN_VAR] == FAKE_TOKEN
+    assert KEY_VAR not in out and out["PATH"] == "/usr/bin"
+    assert auth.credential_env(KEY_ENV) == KEY_ENV
+
+
+def test_an_empty_token_counts_as_unset_and_the_key_is_kept():
+    """GitHub hands an unset secret to a step as an empty string: the key's path then."""
+    env = {**KEY_ENV, TOKEN_VAR: ""}
+    assert auth.choose_auth(env)["auth"] == "api_key"
+    assert auth.credential_env(env) == KEY_ENV
 
 
 def test_substrate_smoke_agrees_with_the_shared_selection():
@@ -286,6 +294,13 @@ def test_design_phase_argv_cannot_edit_a_file(capsys, project):
 def test_dry_run_argv_on_the_token_path_is_not_bare(capsys, project):
     root, _change = project
     argv = dry_run_argv(capsys, root, env=dict(TOKEN_ENV))
+    assert argv[:2] == ["claude", "-p"] and "--bare" not in argv
+
+
+def test_dry_run_argv_with_both_secrets_takes_the_token_path(capsys, project):
+    """Decision 38: with both secrets the runner takes the token's path, so no --bare."""
+    root, _change = project
+    argv = dry_run_argv(capsys, root, env=dict(BOTH_ENV))
     assert argv[:2] == ["claude", "-p"] and "--bare" not in argv
 
 
@@ -538,7 +553,7 @@ def _design_branch_left_on_the_remote(root: Path, tmp_path: Path, extra_sdlc: st
 def test_a_project_that_still_names_a_retired_profile_builds_from_the_default_branch(
     project, tmp_path
 ):
-    """Decisions 21 (0.2.14) and 37 (1.0.20): Lite and Full are gone and ``profile`` is no
+    """Decisions 21 (0.2.14) and 37 (1.0.21): Lite and Full are gone and ``profile`` is no
     longer read. A project whose sdlc.yaml still says one builds from the default branch,
     never from a design branch left on the remote."""
     root, _change = project
@@ -765,23 +780,33 @@ def test_ci_sandbox_reaches_the_actions_log_host_and_no_blob_wildcard():
     assert not any(d.endswith("blob.core.windows.net") for d in domains)
 
 
-def test_every_model_step_holds_the_gemini_key_and_the_sandbox_reaches_its_host():
-    """1.0.17: a session may call the Gemini API with the owner's ``GEMINI_API_KEY`` secret.
-    Every step that hands a session the Anthropic key hands it this key too, and the CI
-    sandbox reaches the API's one host, never a ``*.googleapis.com`` wildcard."""
+def test_no_session_holds_the_gemini_key_and_the_sandbox_never_reaches_its_host(tmp_path):
+    """ROADMAP R8 (1.0.19) corrects 1.0.17 (#290): the Gemini key reaches only the second
+    opinion's own step, in a job after the phase job that runs no Claude session, and the CI
+    sandbox does not list the Gemini host. ``session_env`` drops the key whatever a workflow
+    copy from 1.0.17 still passes."""
     source = json.loads((ROOT / "plugin" / "ci" / "settings.ci.json").read_text("utf-8"))
-    domains = source["sandbox"]["network"]["allowedDomains"]
-    assert "generativelanguage.googleapis.com" in domains
-    assert not any(d.startswith("*.") and d.endswith("googleapis.com") for d in domains)
-    model_steps = 0
-    for path in sorted(WORKFLOW_DIR.glob("*.yml")):
-        lines = path.read_text(encoding="utf-8").splitlines()
-        for n, line in enumerate(lines):
-            if line.strip() == "ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}":
-                model_steps += 1
-                gemini = lines[n + 2].strip()
-                assert gemini == "GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}", path.name
-    assert model_steps == 9
+    assert not any("googleapis" in d for d in source["sandbox"]["network"]["allowedDomains"])
+    holders = []
+    for folder in (WORKFLOW_DIR, ROOT / ".github" / "workflows"):
+        for path in sorted(folder.glob("*.yml")):
+            text = path.read_text(encoding="utf-8")
+            for job in re.split(r"(?m)^  (?=[a-z][a-z-]*:\n)", text)[1:]:
+                if "secrets.GEMINI_API_KEY" not in job:
+                    continue
+                holders.append((folder.parent.parent.name, path.name, job.split(":", 1)[0]))
+                assert f"secrets.{KEY_VAR}" not in job and f"secrets.{TOKEN_VAR}" not in job
+                assert "plugin/ci/run_phase.py" not in job and "claude" not in job.lower()
+                steps = [s for s in job.split("\n      - name:") if "GEMINI_API_KEY" in s]
+                assert len(steps) == 1 and "framework/plugin/external/cli.py review" in steps[0]
+    assert sorted(holders) == sorted(
+        (where, name, "second-opinion")
+        for where in ("template", "sdlc-framework")
+        for name in ("sdlc-deploy.yml", "sdlc-design.yml")
+    )
+    env = {"GEMINI_API_KEY": "placeholder-gemini", "PATH": "/bin"}  # sdlc: allow-secret
+    assert "GEMINI_API_KEY" not in run_phase.session_env(env, tmp_path, "b")
+    assert "GEMINI_API_KEY" not in run_phase.commands_env()
 
 
 def test_ci_settings_file_rewrites_the_sandbox_filesystem_deny_write_list(tmp_path):
@@ -1993,7 +2018,7 @@ def test_phase_workflow_triggers(name):
         assert re.search(r"(?m)^    branches: \[main\]$", text)
         assert "github.event.pull_request.merged == true" in text
     else:
-        # decision 37 (1.0.20): no approval label starts (d) or (e); only the dispatch does
+        # decision 37 (1.0.21): no approval label starts (d) or (e); only the dispatch does
         assert "pull_request:" not in text and "-approved" not in text
 
 
@@ -2050,7 +2075,8 @@ def test_merge_fired_workflows_find_the_change_from_the_merged_pr(name):
     assert "startsWith(github.event.pull_request.head.ref, 'sdlc/')" not in text
     assert "github.event_name == 'workflow_dispatch'" in text  # the dispatch path still runs
     assert "github.event.pull_request.merged == true" in text
-    steps = text.split("    steps:\n", 1)[1]
+    # the phase job's steps; R8's second-opinion job after it has its own job-level guard
+    steps = text.split("    steps:\n", 1)[1].split("\n  second-opinion:")[0]
     find = steps.index("id: find")
     assert steps.index("path: framework") < find < steps.index("actions/setup-node@")
     assert find < steps.index("runner_setup.py") < steps.index("project_setup.py")
@@ -2149,7 +2175,8 @@ def test_the_framework_is_checked_out_afresh_between_the_two_steps_of_a_shared_c
     between = text[text.index(REMOVE_STEP) : text.index(CHECK_STEP)]
     assert 'repository: "{{FRAMEWORK_REPO}}"' in between  # the fresh checkout
     assert "ref: ${{ steps.pin.outputs.ref }}" in between and "path: framework" in between
-    assert text.count('repository: "{{FRAMEWORK_REPO}}"') == 2
+    # in the shared job; R8's second-opinion job after it checks out its own, on a fresh runner
+    assert text.split("\n  second-opinion:")[0].count('repository: "{{FRAMEWORK_REPO}}"') == 2
     step = text.split(CHECK_STEP)[0].rsplit("- name:", 1)[1]
     assert "Verify the project checkout before the next step" in step
     assert "PIN_REF: ${{ steps.pin.outputs.ref }}" in step
@@ -2177,8 +2204,8 @@ def test_workflow_uses_no_other_secret(name):
     text = workflow(name)
     # R49 (decision 33): a workflow that pushes also reads the App's key, in its mint step
     app = {"SDLC_APP_PRIVATE_KEY"} if name in APP_WORKFLOWS else set()
-    # 1.0.17: a workflow that runs a model hands its session the owner's Gemini key too
-    gemini = {"GEMINI_API_KEY"} if f"secrets.{KEY_VAR}" in text else set()
+    # R8 (1.0.19): the second opinion's job after the design and the deploy job, alone
+    gemini = {"GEMINI_API_KEY"} if name in ("sdlc-design.yml", "sdlc-deploy.yml") else set()
     allowed = {KEY_VAR, TOKEN_VAR} | app | gemini
     assert set(re.findall(r"secrets\.([A-Za-z_][A-Za-z0-9_]*)", text)) <= allowed
     assert "github.token" in text or "sdlc-digest" not in text
