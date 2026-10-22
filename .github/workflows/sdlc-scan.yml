@@ -42,10 +42,13 @@ on:
     - cron: "23 6 * * 1"
   workflow_dispatch:
 
+# checks: write for the passing sdlc/review "not a build PR" on the pull request this job
+# opens, also after the in-job fallback to the workflow token (the R22 double check, F5).
 permissions:
   contents: write
   pull-requests: write
   issues: write
+  checks: write
 
 concurrency:
   group: "sdlc-scan"
@@ -71,6 +74,7 @@ jobs:
           permission-contents: write
           permission-pull-requests: write
           permission-issues: write
+          permission-checks: write
 
       # The token expires an hour after it is minted (the action's README); past 50
       # minutes the runner publishes with the workflow token instead (ci/app_token.py),

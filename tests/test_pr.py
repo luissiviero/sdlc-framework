@@ -1332,6 +1332,80 @@ def test_default_branch_protection_counts_a_restrict_updates_rule_only(recorder)
     assert github.default_branch_protection("o/r")["ok"] is False
 
 
+def test_merge_environment_is_safe_only_for_the_default_branch_alone(recorder):
+    """Choice 250 (the R22 double check, F8): the sdlc-merge environment keeps the merge
+    App's key to the default branch only with selected branches whose one rule is it."""
+    calls, answers = recorder
+    env_url = "/environments/sdlc-merge"
+    answers[("GET", env_url + "/deployment-branch-policies")] = {
+        "status": 200, "data": {"branch_policies": [{"name": "main", "type": "branch"}]},
+        "error": "",
+    }  # fmt: skip
+    custom = {"protected_branches": False, "custom_branch_policies": True}
+    answers[("GET", env_url)] = {
+        "status": 200, "data": {"deployment_branch_policy": custom}, "error": ""
+    }  # fmt: skip
+    got = github.merge_environment("o/r", "main")
+    assert (got["ok"], got["exists"], got["safe"]) == (True, True, True)
+    # a second rule, a tag rule, every protected branch, no policy: each is unsafe
+    policies = answers[("GET", env_url + "/deployment-branch-policies")]["data"]
+    policies["branch_policies"].append({"name": "dev", "type": "branch"})
+    got = github.merge_environment("o/r", "main")
+    assert got["safe"] is False and "branch main, branch dev" in got["found"]
+    policies["branch_policies"] = [{"name": "main", "type": "tag"}]
+    assert github.merge_environment("o/r", "main")["safe"] is False
+    answers[("GET", env_url)]["data"]["deployment_branch_policy"] = {
+        "protected_branches": True, "custom_branch_policies": False,
+    }  # fmt: skip
+    assert "every protected branch" in github.merge_environment("o/r", "main")["found"]
+    answers[("GET", env_url)]["data"]["deployment_branch_policy"] = None
+    got = github.merge_environment("o/r", "main")
+    assert got["safe"] is False and got["found"] == "every branch and tag may use it"
+    # no environment: the merge stays the owner's (fallback C1), nothing to warn about
+    answers[("GET", env_url)] = {"status": 404, "data": {}, "error": "Not Found"}
+    got = github.merge_environment("o/r", "main")
+    assert (got["ok"], got["exists"], got["safe"]) == (True, False, True)
+    # a lookup that fails is not an answer
+    answers[("GET", env_url)] = {"status": 403, "data": {}, "error": "Forbidden"}
+    assert github.merge_environment("o/r", "main")["ok"] is False
+
+
+def test_digest_warns_when_the_merge_key_reaches_beyond_the_default_branch(monkeypatch, capsys):
+    """Choice 250 (F8): the digest says so when the environment lets another ref read the
+    key, or when the key is a repository secret; a failed lookup says nothing."""
+    unsafe = {"ok": True, "safe": False, "found": "every branch and tag may use it",
+              "branch": "main"}  # fmt: skip
+    notice = digest_mod.merge_key_notice(unsafe, False)
+    assert "merge App's key is not kept to `main`** (every branch and tag" in notice
+    both = digest_mod.merge_key_notice({**unsafe, "safe": True}, True)
+    assert digest_mod.KEY_IN_REPOSITORY in both
+    assert digest_mod.merge_key_notice({**unsafe, "safe": True}, False) == ""
+    assert digest_mod.merge_key_notice({"ok": False, "reason": "403"}, False) == ""
+    md = digest_mod.render_digest(QUEUE, "2026-10-22T06:00:00Z", merge_key=notice)
+    assert md.index("merge App's key") < md.index("## Waiting")
+    # main reads the environment for the default branch and the job's own flag
+    monkeypatch.setattr(digest_mod, "list_queue_prs", lambda repo: (list(QUEUE), ""))
+    monkeypatch.setattr(
+        digest_mod.github, "default_branch_protection",
+        lambda repo, cwd=None: {"ok": True, "branch": "main", "protected": True},
+    )  # fmt: skip
+    asked = []
+
+    def environment(repo, branch):
+        asked.append((repo, branch))
+        return {"ok": True, "exists": True, "safe": True, "found": "only main may use it"}
+
+    monkeypatch.setattr(digest_mod.github, "merge_environment", environment)
+    monkeypatch.setenv(digest_mod.KEY_IN_REPOSITORY_ENV, "true")
+    assert digest_mod.main(["--repo", "o/r", "--dry-run"]) == 0
+    out = capsys.readouterr().out
+    assert asked == [("o/r", "main")]
+    assert digest_mod.KEY_IN_REPOSITORY in out and "not kept to `main`" in out
+    monkeypatch.setenv(digest_mod.KEY_IN_REPOSITORY_ENV, "false")
+    assert digest_mod.main(["--repo", "o/r", "--dry-run"]) == 0
+    assert "merge App's key" not in capsys.readouterr().out
+
+
 def test_digest_main_reads_the_protection_and_renders_the_notice(monkeypatch, capsys):
     """``main`` asks GitHub once (never with ``--input``) and hands the answer to the
     renderer; ``--dry-run`` prints the notice at the top."""

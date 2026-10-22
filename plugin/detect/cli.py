@@ -508,16 +508,6 @@ def file_change(root: Path, record: dict[str, Any], *, push: bool, dry_run: bool
     }
 
 
-def _post_not_build(github: Any, repo: str, number: int, root: Path) -> dict[str, Any]:
-    """The passing ``sdlc/review`` "not a build PR" on pull request ``number``'s head, read
-    back from GitHub; never fails the caller."""
-    got = github.pr_by_number(repo, number, cwd=root)
-    sha = str(got.get("head_sha") or "") if got.get("ok") else ""
-    if not sha:
-        return {"ok": False, "reason": got.get("reason") or "the head commit is unknown"}
-    return github.post_not_build_check(repo, sha, cwd=root)
-
-
 def _app_missing() -> str | None:
     """``ci/app_token.py app_missing`` on this process's environment (R22)."""
     from ci import app_token  # noqa: PLC0415 - stdlib only
@@ -1175,7 +1165,19 @@ def _human_label_actor(repo: str, number: int, label: str, config: dict[str, Any
     return actor, ""
 
 
+def _refused_without_the_app(args) -> bool:
+    """R22: the project's App is required. A Go or a park in a workflow that minted no App
+    token pushes and opens nothing with the workflow token; the run goes red with the reason,
+    and the label stays for a re-run once the App is set up (the R22 double check, F4)."""
+    missing = _app_missing()
+    if missing:
+        _emit({"change_id": args.id, "performed": False, "reason": missing})
+    return bool(missing)
+
+
 def cmd_go(args) -> int:
+    if _refused_without_the_app(args):
+        return EXIT_FAILED
     root = Path(args.root).resolve()
     change_dir, st = _change(root, args.id)
     record = _load_finding(change_dir)
@@ -1300,6 +1302,8 @@ def cmd_park(args) -> int:
     pushed on the incident branch, the Go label removed (one application is one act, as
     after a performed Go) and the intent PR refreshed with ``sdlc:needs-human``. No runbook
     runs here and no model."""
+    if _refused_without_the_app(args):
+        return EXIT_FAILED
     root = Path(args.root).resolve()
     change_dir, st = _change(root, args.id)
     record, _why = finding.read(change_dir / art.EVIDENCE_DIR / finding.DETECTION_FILE)
@@ -1501,10 +1505,13 @@ def cmd_dismiss(args) -> int:
                     args.repo, default, branch, title, body, draft=False, cwd=root
                 )
                 number = (out["pr"] or {}).get("number")
-                if number:
-                    # R22 (decision 36, point 5): the abandon workflow's token opens it, so no
-                    # sdlc-merge.yml run posts the "not a build PR" check ruleset 2 requires
-                    out["review_check"] = _post_not_build(github, args.repo, int(number), root)
+                # R22 (decision 36, point 5): the abandon workflow's token pushes it, so no
+                # sdlc-merge.yml run posts the "not a build PR" check ruleset 2 requires. It
+                # goes on the commit just pushed, also on a second close, whose pull request
+                # is already open and create_pr refuses (the R22 double check, finding F1); a
+                # re-run that commits nothing new posts on the branch tip it pushed
+                pushed = sha or gitops.run(root, "rev-parse", "HEAD").strip()
+                out["review_check"] = github.post_not_build_check(args.repo, pushed, cwd=root)
                 if number:  # the digest lists it under the incident label (decision 20)
                     github.ensure_label(
                         args.repo,

@@ -12,7 +12,7 @@ No change under `plugin/` or `template/`; no version bump.
 ## Summary
 - **#306 merged** as `18b2a22`, and `sdlc-tag.yml` tagged `v1.0.18` on it (verified, `git ls-remote --tags origin v1.0.18`).
 - **Choice 249**: the six questions of #306 are answered as the session recommended. Each answer is annotated beside the sentence it settles, where a kept record carries one.
-- **The sample's upgrade to 1.0.18** is sample #93, a draft. It holds the thirteen workflow copies and the new `sdlc-merge.yml`, each the template at `v1.0.18` with `{{FRAMEWORK_REPO}}` filled. Every old copy equalled the template at `v1.0.17`, and `sdlc_pin.py` is unchanged between the two tags. The owner's two `sdlc.yaml` rows went first, in sample #94 and #95 (below).
+- **The sample's upgrade to 1.0.18** is sample #93, a draft. *[2026-10-22, the R22 double check (L6): sample #93 merged as `d602179` before this PR merged, as "Left" below records]* It holds the thirteen workflow copies and the new `sdlc-merge.yml`, each the template at `v1.0.18` with `{{FRAMEWORK_REPO}}` filled. Every old copy equalled the template at `v1.0.17`, and `sdlc_pin.py` is unchanged between the two tags. The owner's two `sdlc.yaml` rows went first, in sample #94 and #95 (below).
 
 ## The owner's decision (2026-10-20)
 249. **The six questions of #306 are answered as recommended** (the owner, "Accept all recommendations; open the sample's 1.0.18 upgrade PR"):
@@ -39,8 +39,8 @@ Row 6 landed as one line, its two halves joined by " / " (verified, the same rea
 The root `sdlc.yaml` pin row (line 104) is held by choice 249, point 2.
 
 ## Left
-- **Sample #93 merged** as `d602179`, after its checks were green on `3fc7d74`. On that head the `not-a-build-pr` job posted a passing `sdlc/review` check (verified, the PR's check runs), the first live run of `sdlc-merge.yml`. Its first `not-a-build-pr` run had been red, as expected: the pin was still 1.0.17, which lacks `merge_step.py` (job 118860513392).
-- **The owner's GitHub steps A to C**, then D after #93 merges (#306's body).
+- **Sample #93 merged** as `d602179`, after its checks were green on `3fc7d74`. On that head the `not-a-build-pr` job posted a passing `sdlc/review` check (verified, the PR's check runs), the first live run of `sdlc-merge.yml`. *[2026-10-22, the R22 double check (L5): its first green run; the first run was the red job 118860513392 of the next sentence]* Its first `not-a-build-pr` run had been red, as expected: the pin was still 1.0.17, which lacks `merge_step.py` (job 118860513392).
+- **The owner's GitHub steps A to C**, then D after #93 merges (#306's body). *[2026-10-22, the R22 double check (L4): sample #93 had merged as `d602179` when this was written; steps A to D were done on 2026-10-22, NOTES §56]*
 - **Note 56**, from the rulesets API, once the owner has made C and D.
 - **Decision 36's live checks**, at the sample's next change at (e), the approval from the phone included (point 6).
 

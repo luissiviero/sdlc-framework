@@ -33,7 +33,8 @@ description: What "done" means for a change in the SDLC framework. Use before re
   findings by severity, plan conformance, what needs the owner); merge is the owner's.
 - **Always**: no guardrail file touched unless the intent says `Framework change: yes`; no
   risk-list item touched without its line in the "Needs your close look" banner, which the
-  owner's merge accepts (decision 35); no test skipped, weakened or
+  owner's merge accepts (decision 35; at (e), the owner's approving review, decision 36); no
+  test skipped, weakened or
   deleted; nobody notified — a run that cannot finish parks with "What I need from you".
 
 ## Check

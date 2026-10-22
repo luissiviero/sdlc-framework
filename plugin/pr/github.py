@@ -1403,6 +1403,54 @@ def _api(method: str, path: str, payload: dict[str, Any] | None = None, tok: str
     return result.get("data"), result.get("error") or ""
 
 
+MERGE_ENVIRONMENT = "sdlc-merge"  # decision 36: the environment that holds the merge App's key
+
+
+def merge_environment(repo: str, branch: str) -> dict[str, Any]:
+    """Whether the ``sdlc-merge`` environment keeps the merge App's key to ``branch``, the
+    default branch (decision 36 and choice 242, point 4; ``/sdlc-init`` step 6): {'ok',
+    'exists', 'safe', 'found', 'reason'}. Safe means a deployment branch policy of selected
+    branches whose one rule is ``branch``; any other policy lets a workflow on another ref
+    read the key of a bypass actor of ruleset 1 (choice 250; the R22 double check, F8). No
+    environment is safe (the merge stays the owner's, fallback C1). Read-only: the workflow
+    token's ``actions: read`` (``GET /repos/{repo}/environments/{name}`` and its
+    ``deployment-branch-policies``); a lookup that fails is ``ok: False``."""
+    tok = token()
+    if not tok:
+        return {"ok": False, "reason": NO_ROUTE}
+    base = f"{API_ROOT}/repos/{repo}/environments/{urllib.parse.quote(MERGE_ENVIRONMENT)}"
+    got = _request("GET", base, tok)
+    if got.get("status") == 404:
+        found = f"no {MERGE_ENVIRONMENT} environment"
+        return {"ok": True, "exists": False, "safe": True, "found": found, "reason": ""}
+    if got.get("error"):
+        return {"ok": False, "reason": got["error"]}
+    policy = (got.get("data") or {}).get("deployment_branch_policy")
+
+    def unsafe(found: str) -> dict[str, Any]:
+        return {"ok": True, "exists": True, "safe": False, "found": found, "reason": ""}
+
+    if not isinstance(policy, dict):
+        return unsafe("every branch and tag may use it")
+    if policy.get("protected_branches"):
+        return unsafe("every protected branch may use it, not the default branch alone")
+    if not policy.get("custom_branch_policies"):
+        return unsafe("its deployment branch policy names no branch")
+    rules = _request("GET", f"{base}/deployment-branch-policies?per_page={PER_PAGE}", tok)
+    if rules.get("error"):
+        return {"ok": False, "reason": rules["error"]}
+    named = [
+        (str(r.get("name") or ""), str(r.get("type") or "branch"))
+        for r in (rules.get("data") or {}).get("branch_policies") or []
+        if isinstance(r, dict)
+    ]
+    if named != [(branch, "branch")]:
+        shown = ", ".join(f"{kind} {name}" for name, kind in named) or "none"
+        return unsafe(f"its deployment rules are {shown}, not the branch {branch} alone")
+    found = f"only {branch} may use it"
+    return {"ok": True, "exists": True, "safe": True, "found": found, "reason": ""}
+
+
 REVIEW_CHECK = "sdlc/review"  # review/findings.py CHECK_RUN_NAME, the check ruleset 2 requires
 NOT_BUILD_TITLE = "not a build PR"
 NOT_BUILD_SUMMARY = (

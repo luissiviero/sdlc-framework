@@ -40,7 +40,10 @@ digest (decisions 11 and 20):
 4. ``sdlc/review`` is green on the head;
 5. the owner's latest review that approves or requests changes approves, and every commit
    after the one it was submitted on is evidence or the run record, as in 3;
-6. it merges at exactly that head through the merge App's token (``SDLC_MERGE_TOKEN``),
+6. the approved commit already carries ``evidence/gate-e.json`` reading ``wait``: an
+   approval given before gate (e) offered the PR, before the owner could read its banner,
+   is no gate (e) (choice 250; the R22 double check, F3);
+7. it merges at exactly that head through the merge App's token (``SDLC_MERGE_TOKEN``),
    a bypass actor of ruleset 1; the workflow token never merges (decision 4).
 
 Output: ``merge: <what>`` lines on stdout and in ``$GITHUB_STEP_SUMMARY``; until R11's
@@ -271,6 +274,21 @@ def _text_at(github: Any, repo: str, path: str, ref: str) -> str | None:
     return str(got.get("text"))
 
 
+APPROVAL_PREDATES_GATE_E = "the owner's approval predates gate (e): approve again on the head"
+
+
+def gate_e_waits_at(github: Any, repo: str, gate_path: str, ref: str) -> bool:
+    """True when ``gate_path`` (the change's ``evidence/gate-e.json``) at ``ref`` reads
+    ``result: wait``: gate (e) had run and offered the PR to the owner there (choice 250; an
+    earlier (e) record that escalated or parked is no offer). ``StepError`` on a read error."""
+    text = _text_at(github, repo, gate_path, ref)
+    try:
+        record = json.loads(text) if text is not None else None
+    except ValueError:
+        return False
+    return isinstance(record, dict) and record.get("result") == "wait"
+
+
 def judge(
     pr: dict[str, Any],
     repo: str,
@@ -376,6 +394,10 @@ def judge(
     after = only_evidence_since(github, repo, approved_on, head, rel)
     if after:
         return {"wait": f"after the owner's approval: {after}"}
+    if not gate_e_waits_at(github, repo, gate_path, approved_on):
+        # choice 250: an approval given before gate (e) offered the PR is no gate (e); the
+        # owner's banner and the review findings come with (e), so the owner approves again
+        return {"wait": APPROVAL_PREDATES_GATE_E}
     return {"head": head, "change_id": change_id, "approval": approval, "tally": tally}
 
 

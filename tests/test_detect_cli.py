@@ -839,6 +839,38 @@ def test_go_not_by_a_person_performs_nothing(rollback_incident, gh, spy, capsys,
     assert status_mod.read_status(change).runbook_authorized_by is None
 
 
+@pytest.mark.parametrize("verb", ["go", "park"])
+def test_go_and_park_refuse_without_the_app(rollback_incident, gh, spy, capsys, monkeypatch, verb):
+    """R22, the double check's F4: the runbook workflow's only runner call is --find-change,
+    which returns before the App check, so the Go and the park check it themselves. Without
+    an App token nothing runs, nothing is pushed or labelled, and the run goes red."""
+    root, change = rollback_incident
+    write_proposal(change, "runbook:rollback-deploy")
+    code, out = cli(capsys, "dispatch", "--root", str(root), "--id", "0001", "--repo", REPO)
+    assert code == 0 and out["outcome"]["status"] == "go-requested"
+    gh.actor = {"ok": True, "actor": "the-owner", "reason": ""}
+    monkeypatch.setenv("GITHUB_ACTIONS", "true")
+    monkeypatch.setenv("SDLC_WORKFLOW_TOKEN", "wf")
+    monkeypatch.delenv("SDLC_APP_TOKEN_MINTED_AT", raising=False)
+    before = git(bare(root), "rev-parse", "sdlc/0001/a").strip()
+    extra = ["--check", "setup", "--reason", "x"] if verb == "park" else []
+    code, out = cli(
+        capsys, verb, "--root", str(root), "--id", "0001", "--repo", REPO, "--pr-number", "12",
+        *extra,
+    )  # fmt: skip
+    assert code == 1
+    assert out["performed"] is False and "GitHub App is required" in out["reason"]
+    assert spy.calls == [] and gh.named("set_labels") == [] and gh.named("label_actor") == []
+    assert git(bare(root), "rev-parse", "sdlc/0001/a").strip() == before
+    # the label stays, so the Go runs on a re-run once the App is set up
+    monkeypatch.delenv("GITHUB_ACTIONS")
+    if verb == "go":
+        code, out = cli(
+            capsys, "go", "--root", str(root), "--id", "0001", "--repo", REPO, "--pr-number", "12"
+        )
+        assert code == 0 and out["performed"] is True, out.get("reason")
+
+
 def test_go_needs_repo_and_pr_number(incident, capsys):
     root, _change = incident
     code, out = cli(capsys, "go", "--root", str(root), "--id", "0001", "--repo", REPO)
@@ -981,8 +1013,38 @@ def test_dismiss_with_a_reason_opens_the_dismissal_pr(incident, gh, capsys):
     assert reason in body and signature in body
     assert kwargs["draft"] is False
     assert out["pr"]["url"] == "https://x/pr/13"
-    # R22: the abandon workflow's token opens it, so the step posts "not a build PR" itself
-    assert gh.named("post_not_build_check") == [((REPO, "f" * 40), {"cwd": root})]
+    # R22: the abandon workflow's token opens it, so the step posts "not a build PR" itself,
+    # on the commit it pushed
+    pushed = git(bare(root), "rev-parse", branch).strip()
+    assert out["commit"] == pushed
+    assert gh.named("post_not_build_check") == [((REPO, pushed), {"cwd": root})]
+
+
+def test_a_second_close_posts_the_check_on_its_new_commit(incident, gh, capsys, monkeypatch):
+    """The R22 double check, finding F1: on a second close the dismissal PR is already open,
+    so create_pr refuses and names no number; the new head still needs its "not a build PR"
+    check, or ruleset 2 holds the pull request."""
+    root, _change = incident
+    args = ("--root", str(root), "--id", "0001", "--repo", REPO, "--open-pr", "--by", "o")
+    code, out = cli(capsys, "dismiss", *args, "--pr-number", "12", "--reason", "first")
+    assert code == 0 and out["dismissed"] is True
+    git(root, "fetch", "-q", "origin")
+    gh.create_pr = lambda *a, **k: {"ok": False, "reason": "HTTP 422: a pull request exists"}
+    code, out = cli(capsys, "dismiss", *args, "--pr-number", "14", "--reason", "second")
+    assert code == 0 and out["dismissed"] is True
+    branch = "sdlc/0001/dismiss"
+    pushed = git(bare(root), "rev-parse", branch).strip()
+    assert out["commit"] == pushed
+    posted = [a for a, _k in gh.named("post_not_build_check")]
+    assert posted[-1] == (REPO, pushed) and len(posted) == 2
+    # a re-run that commits nothing new (commit_files names no commit) still posts the
+    # check, on the branch tip it pushed (the review of the 1.0.22 diff, finding 2)
+    git(root, "fetch", "-q", "origin")
+    monkeypatch.setattr(gitops, "commit_files", lambda *a, **k: None)
+    code, out = cli(capsys, "dismiss", *args, "--pr-number", "14", "--reason", "second")
+    assert code == 0 and out["dismissed"] is True and out["commit"] is None
+    posted = [a for a, _k in gh.named("post_not_build_check")]
+    assert posted[-1] == (REPO, pushed) and len(posted) == 3
 
 
 def test_dismiss_reads_the_reason_from_the_last_comment_by_a_person(incident, gh, capsys):

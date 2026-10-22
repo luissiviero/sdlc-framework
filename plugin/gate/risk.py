@@ -3,8 +3,9 @@
 A risk-list hit no longer parks the change. The gate's ``risk_list`` check (and ``ratchets``,
 whose undeclared drop is a hit named after the ratchet, R15) reports the hits in its record;
 the gate's reviewer writes a short brief per hit item; the PR the owner merges anyway shows
-both in its "Needs your close look" banner; the owner's merge is the acceptance, which the
-runner records in ``status.yaml: risk_acceptances``. What still parks is the reviewer's
+both in its "Needs your close look" banner; the owner's merge is the acceptance (at (e), the
+owner's approving review, decision 36), which the runner records in
+``status.yaml: risk_acceptances``. What still parks is the reviewer's
 escalation on a risk item: it never goes to the review panel (decisions 11 and 21 as 35
 amends them).
 

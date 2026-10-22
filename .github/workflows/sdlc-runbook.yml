@@ -32,10 +32,13 @@ on:
   pull_request:
     types: [labeled]
 
+# checks: write for the passing sdlc/review "not a build PR" on the pull request this job
+# opens, also after the in-job fallback to the workflow token (the R22 double check, F5).
 permissions:
   contents: write
   pull-requests: write
   issues: write
+  checks: write
 
 # Its own group (live, 2026-09-25): a label event also fires the fix, test and deploy workflows,
 # whose guards skip; on the shared sdlc-<head> group GitHub displaced one pending run at
@@ -69,6 +72,7 @@ jobs:
           permission-contents: write
           permission-pull-requests: write
           permission-issues: write
+          permission-checks: write
 
       # The token expires an hour after it is minted (the action's README); past 50
       # minutes the runner publishes with the workflow token instead (ci/app_token.py),

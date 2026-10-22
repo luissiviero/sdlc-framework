@@ -1,85 +1,95 @@
-# Progress — decision 37, one profile and one review mode, as plugin 1.0.21 (2026-10-22)
+# Progress — the R22 double check's fixes, as plugin 1.0.22 (choice 250) (2026-10-22)
 
-This session ran on branch `ccr-0522ec37-iia2ok-modes-code`. The owner's task (2026-10-20): build the code that decision 37 asks for (its point 4) as a plugin version of its own, after R22's build and after decision 38's. It was built while #307 (decision 38) waited, and its PR was opened once #307 merged, from `main` at `0a0554d`. It takes no decision, choice or note number.
+This session ran on branch `ccr-3fe1c65e-erwrby`. The owner's task: double-check the R22 session (report only), then continue from its "Next steps". The report is `docs/reviews/2026-10-20-r22-session-double-check.md` (#312, merged as `1f58af2`). It ended with four questions, and the owner answered "all as recommended" (2026-10-22). Choice 250 records that answer, and this PR builds it.
+
+The previous record (decision 37 as 1.0.21, from #313) is now `docs/progress/2026-10-22-decision-37-one-profile-1.0.21.md`, unchanged. This session's file is `docs/handoffs/sessions/2026-10-22-ccr-3fe1c65e-erwrby.md`.
 
 ## Coordination with the other sessions
-- **The version.** #304 (R8) merged as 1.0.19 and #307 (decision 38) as 1.0.20, so this PR is **1.0.21** (choice 184). Every "1.0.20" the branch had written for decision 37 now says 1.0.21, and every "until 1.0.19" says "until 1.0.20". R8's "plugin 1.0.19" is R8's and stays.
-- **Overlap with #304 and #307.** One conflict, in `docs/OPERATING_MODEL.md` §4.2's rules paragraph, merged sentence by sentence: this PR's sentences on the label events, the concurrency group and the abandon group, R8's two sentences on `GEMINI_API_KEY`, and decision 38's "Credential" sentence. R8's `second-opinion` job in `sdlc-deploy.yml` read `inputs.head_ref || github.event.pull_request.head.ref`. Since the deploy workflow now starts only from a dispatch, the job reads `inputs.head_ref` alone, in both copies.
-- **The records.** Decision 38's record (1.0.20) moved unchanged to `docs/progress/2026-10-20-decision-38-auth-order-1.0.20.md`, with its index line.
+- **The base.** #313 (decision 37, 1.0.21, session `ccr-0522ec37-iia2ok`) was open when the owner answered. It changes `plugin/ci/merge_step.py`, `run_phase.py`, `detect/cli.py`, `gate/risk.py`, `/sdlc-init` and the tests this PR touches. So this branch was built on #313's head (`2e5b1d9`) with `main` (`1f58af2`) merged in, and its PR waited for #313's merge. #313 merged as `2a782f1` with that same head, and `main` at `1cdb45f` is merged in (`90f02de`). It brings #313, #314, #315 and #316 (session `ccr-76f1ceba-idf2w0`'s ruleset bypass-mode test), with no conflict. The archived decision-37 record equals `2a782f1:docs/PROGRESS.md` (verified, `diff`).
+- **Numbers.** Choice 250 and patch 1.0.22, the next free ones (#313 takes no choice, verified on its branch). No decision, note or candidate number is taken.
+
+## The owner's decision (2026-10-22)
+250. **The four questions of the R22 double check are answered as recommended** (the owner, "all as recommended"):
+    1. **F3: an approval given before gate (e) ran is no gate (e).** The merge step requires `evidence/gate-e.json` at the approved commit. On any profile, an approval given before (e) committed its record, before the banner and the findings, waits, and the owner approves again on the head. Decision 36, point 4 (approving before the check is green) still holds for an approval given during (e).
+    2. **F8: the digest warns about the merge key.** It says so at the top while the `sdlc-merge` environment lets a ref other than the default branch use it, or while `SDLC_MERGE_APP_PRIVATE_KEY` is also a repository secret.
+    3. **F9: the merge job's actions are pinned by commit SHA**, the merge job only. It is the one job that holds a bypass actor's key.
+    4. **F1, F2, F4 and F5 ship as one patch, 1.0.22**, after decision 37's code and before R51. F3, F8 and F9 ride in it, with the review's documentation rows.
 
 ## Summary
-- **One profile** (decision 37, point 1). `plugin/state/conventions.py` has one set of human gates, `HUMAN_GATES = {a, b, e, f}`, and `is_human_gate(phase)`. `PROFILES`, the `full` profile, and the `sdlc:c-approved` and `sdlc:d-approved` labels are gone. Gates (c) and (d) are the confidence gate's in every project. The fast lane (decision 30) applies to every project.
-- **One review mode** (point 2). A judgment item of decision 21's fixed list always goes to the review panel. The `parked` mode, the panel's `mode` subcommand and its exit code 4 are gone.
-- **No per-change override** (point 3). `status.yaml: profile_override` and `review_override` are gone, and so are the gate's, the guard's and the panel's reads of the base branch's overrides.
-- **The workflows.** `sdlc-test.yml` and `sdlc-deploy.yml`, in `template/` and the root copies, start only from the previous phase's `workflow_dispatch`. The label trigger and `run_phase.py label_applied_by_a_human` are gone. The fix workflow's comment no longer names the two labels.
-- **The documents.** Rewritten:
-  - `docs/OPERATING_MODEL.md` §3, §4, §4.2 and §9;
-  - `README.md`, with an upgrade note: replace `sdlc-test.yml` and `sdlc-deploy.yml`;
-  - `template/sdlc.yaml`, where one comment block replaces the two keys;
-  - `changes/README.md` and its template copy;
-  - the phase commands and `/sdlc-init`.
+- **F1, the dismissal PR's check.**
+  - `sdlc-abandon.yml` (template and root copy) gains `checks: write`.
+  - `detect/cli.py dismiss` posts the "not a build PR" check on the commit it pushed, also on a second close, whose PR already exists. `_post_not_build` is gone.
+  - Ruleset 2 no longer holds a dismissal PR.
+- **F2, the runner's baseline check of an (e) approval line.** The line stands only when:
+  - `by` is the owner's account (`is_owner_actor`, with the default branch's `sdlc.yaml`, which the runner now passes in);
+  - the owner's latest decisive review approves (`merge_step.owner_approval`, the merge step's own reading) on the commit the line names;
+  - the merged PR is this change's own. This last check applies to merge lines too.
 
-  `docs/BUILD_GUIDE.md` is annotated beside the sentence (choice 126).
-- **Tests.** The tests of the removed features were deleted: the Full label gate and its actor, owner and fail-closed variants, `checkout_profile`, the approved overrides in the gate, guard and panel, `panel mode`, exit 4, the Full merge wait and the parked ledger check. Where a deleted test also covered something that stays, it was rewritten against what stays: label-event paging, automation-actor detection, early approval at (e), and the guard's refusal of an unreadable approved copy.
+  Without the default branch's `sdlc.yaml`, an approval line fails closed.
+- **F3:** `merge_step.judge` waits when the approved commit lacks gate (e)'s record ("the owner's approval predates gate (e): approve again on the head"). `/sdlc-deploy`'s PR text says so.
+- **F4:** `detect/cli.py go` and `park` refuse to run, with the reason and a red run, in a workflow that minted no App token. The runbook workflow's only runner call was `--find-change`, which returns before the App check.
+- **F5:** `sdlc-runbook.yml` and `sdlc-scan.yml`, and their App mints, gain `checks: write`.
+- **F8:** `pr/github.py merge_environment` reads the `sdlc-merge` environment and its deployment branch policies. The policy counts as safe only when it lists selected branches with the default branch as the one rule; a missing environment is safe too, since the merge is then the owner's (fallback C1). `pr/digest.py merge_key_notice` puts the warning beside the unprotected-branch notice. `sdlc-digest.yml` gains `actions: read` and passes the job's own reading of `secrets.SDLC_MERGE_APP_PRIVATE_KEY != ''`: the comparison reaches the step, the key never does. A lookup that fails says nothing.
+- **F9:** the merge job's `actions/checkout` and `actions/create-github-app-token` are pinned as `@fbc6f39…  # v5.1.0` and `@fee1f7d…  # v2.2.2`. The SHAs were read with `git ls-remote` on 2026-10-22, and `v5` and `v2` point at the same commits.
+- **F13, tests.** They cover:
+  - every job that posts `sdlc/review` holds `checks: write`, in its permissions and its App mint (fails on 1.0.21's abandon, runbook and scan workflows);
+  - a Go and a park without the App;
+  - the approval line with a collaborator, a dismissed approval, another commit and another change's PR;
+  - a dismissed approval and a head that does not follow the approved commit (diverged, behind) at the merge step;
+  - zero or two change folders;
+  - the merge job's `github.ref` condition and its SHA pins;
+  - the dismissal's second close;
+  - the environment's policies and the digest's notice.
+- **The documentation rows of the review:**
+  - D1 to D3 in `docs/OPERATING_MODEL.md`: §4's (e) row, §4.2's deploy hand-over and the merge row's "verified" claim and refusal wording;
+  - D4 to D6 in `template/sdlc.yaml`, `template/changes/README.md`, three skills, `data-conventions/check.py`, `gate/risk.py`'s docstring and `OPERATING_MODEL.md` §3, §6 and §9;
+  - annotations beside D7 to D9 (`BUILD_GUIDE.md` step 1's gate line, R52's row, decision 4) and M1 to M3 (decision 36 point 5, the proposal's point 6 and its Order row, ROADMAP R22's and R24's record pointers);
+  - L4 to L6 in the choice-249 record.
 
-## The design calls decision 37 left to the build
-| Call | How it was taken |
-|---|---|
-| A `sdlc.yaml` that still says `profile: full` or `review: parked` | Read as the one behaviour and named once in the gate's note (`conventions.retired_settings_note`): the key "is no longer read (decision 37) … the owner removes the key". Never refused. `standard`, `lite` and `deferred` stay silent, as `lite` did since 0.2.14. |
-| A `status.yaml` that carries `profile_override` or `review_override` | Dropped on load (`status.RETIRED_KEYS`), because `Status.from_dict` refuses unknown keys and an older file must keep loading. Silent (review finding 3e, left: the only override either repository sets is one `review_override: deferred`, which asks for what now always happens). |
-| A `sdlc.yaml` with no `review:` key | Runs deferred like every other. Decision 32's build (1.0.8) had kept it `parked` (`DEFAULT_REVIEW_MODE`) so that such a project would not switch silently; with one mode there is nothing to switch to. Said in `docs/OPERATING_MODEL.md` §9. |
-| `/sdlc-init --profile` and `--review` | Still parsed, hidden and ignored, so an older command line does not fail. Neither key is written. |
-| The fail-closed reads of the base branch's `status.yaml` | The runner's guard still refuses an unreadable approved copy (`_approved_status`, "nothing runs until it is fixed"), and so do the session start and `fast_lane_refusal`. The gate and the panel, run by hand, no longer read that copy, so they no longer refuse on it (finding 2a, left). |
+  The handoff corrections (M5, L1 to L3, L8) were made in this session's first file (#312).
+- **`/sdlc-init` step 6 and the README** say what 1.0.22 changes for an upgrade: replace the abandon, runbook, scan, digest and merge workflows, with the pin in the same PR.
 
 ## The independent review
-A general-purpose agent in a fresh context reviewed the diff against `origin/main` at the time (`18b2a22` with #308 merged), from decision 37. It found the build matching decision 37 and nothing blocking. Its checks: 2279 passed, lint and docs-lint clean, every workflow parsing, and `/sdlc-init --profile full --review parked` writing neither key.
+A fresh-context sub-agent reviewed the diff (`9bf78f1` and `3ec5b60`) before the PR, with the suite green. It changed no file, and it found no path by which anyone but the owner passes a gate. It raised one Important finding and seven Nits; each is handled:
 
-| # | Finding | Outcome |
-|---|---|---|
-| 1a | `_approved_ref`'s docstring names the removed `approved_overrides` (nit) | fixed |
-| 1b | `fast_lane_refusal` keeps two unused parameters (nit) | fixed |
-| 2a | The gate and the panel, run by hand, no longer fail closed on an unreadable base `status.yaml` (nit) | left: nothing they run reads that copy any more, and the runner still refuses it |
-| 2b | An owner approval given before `gate-e.json` existed now merges (nit) | no change: decision 36, point 4; `only_evidence_since` still guards the code |
-| 3a | `changes/README.md` and its template copy still list `sdlc:<phase>-approved` (should-fix) | fixed |
-| 3b | `all_labels()` still creates `sdlc:c-ready` and `sdlc:d-ready`, which no gate applies now (nit) | left: a label nobody applies costs nothing, and a project that already has them keeps them |
-| 3c | A blank line missing in `template/sdlc.yaml` (nit) | fixed |
-| 3d | An older `sdlc-test.yml` or `sdlc-deploy.yml` still starts a run on the withdrawn labels; no upgrade note (nit) | fixed: README's upgrade paragraph, and below |
-| 3e | A leftover override in `status.yaml` is dropped silently (nit) | left, as in the design calls |
-| 4 | One dry-run assertion at a human gate narrowed (nit) | no change: `wait` is still tested at (b) |
-| 5a | `docs/OPERATING_MODEL.md` §4.2's rules paragraph still described label-fired test and deploy runs (should-fix) | fixed |
-| 5b | `docs/BUILD_GUIDE.md` lines 215 and 761 not annotated (nit) | annotated |
-| 6 | The version and this record still to write (should-fix) | done here |
-| — | A `sdlc.yaml` without `review:` switches to deferred silently, undocumented (nit) | documented in §9 |
+| # | Finding | Severity | Outcome |
+|---|---|---|---|
+| 1 | After F3 an early approval stalls, while GitHub still shows the PR approved; the digest's line said only "not merged yet" | Important | Fixed: the digest reads gate (e)'s record at the approved commit (`merge_step.gate_e_waits_at`, shared with the merge step) and says "your approval predates gate (e): approve again on the head". Tested |
+| 2 | A re-run dismissal that commits nothing posts the check with no commit | Nit | Fixed: it posts on the branch tip it pushed. Tested |
+| 3 | The F2 wiring (the change id and the config into the acceptance check) had no test | Nit | Fixed: a `baseline_mismatches` test with another change's PR, a sound line, and no config. The call site's `owner_config` read stays untested |
+| 4 | A merge line was not checked against the owner's account | Nit | Fixed: with the config, a merge line naming another account parks, as its writers already require. The phase-(a) shape `validate_acceptances` allows is left as it is: nothing writes it |
+| 5 | The release's fallback `head` (the merge commit, when the approval names no commit) would now fail the runner's check | Nit | Fixed: no commit, no acceptance line; the merge step already refuses such an approval. Tested |
+| 6 | F3 checked only that a gate (e) record existed at the approved commit | Nit | Fixed: the record must read `wait` (an escalated or parked record is no offer). Tested |
+| 7 | F8 is silent on a failed lookup, and an organization secret of the same name read as a repository secret | Nit | The failed lookup's reason goes to the run's log; the notice says "a repository or organization secret". Whether `actions: read` reads the environments API is left to the first live digest (Left) |
+| 8 | Decision 36, point 4 and the §4.2 merge row did not state the F3 rule | Nit | Fixed: point 4 annotated (choice 250), and the row's merge conditions name gate (e)'s record |
+
+The review also checked these and found them sound:
+- F1's post after the push;
+- F2's change id, case-insensitive logins and by-hand skip;
+- F4's placement before any side effect, and the runbook's environment;
+- F5's App scope (the automation App holds Checks read and write, `/sdlc-init` step 6);
+- the digest flag's expression, which renders `true` or `false` and never the key;
+- the SHA pins (`git ls-remote`);
+- the root copies;
+- the annotations beside the sentence, and their citations.
 
 ## The port list
-This PR touches `plugin/ci/run_phase.py` (the Full label gate, `label_applied_by_a_human`, `checkout_profile`, the approved overrides, `_approved_status`, `fast_lane_refusal`, `_start_point`), `plugin/detect/cli.py` (`write_park_result` no longer passes a profile) and the fix workflow template (its comment). It goes on the port list until the 1.0.0 read.
+This PR touches `plugin/ci/run_phase.py` (`baseline_mismatches`, `acceptance_mismatches`, `_approval_line_problems`, `_acceptance_line_problems`), `plugin/detect/cli.py` (`dismiss`, `go`, `park`, `_refused_without_the_app`) and the runbook workflow template (its permissions). It goes on the port list until the 1.0.0 read.
 
 ## Proposed edits for the owner
-Each `sdlc.yaml` edit goes in the same pull request that moves that repository's pin to 1.0.21 or later, not before: a plugin older than 1.0.21 still reads a missing `review:` as `parked`. The keys are harmless until then; 1.0.21 says nothing about `standard` or `deferred`.
-
 | Link | Row | What is there now | What it must become |
 |---|---|---|---|
-| [sdlc.yaml](https://github.com/luissiviero/sdlc-framework/blob/main/sdlc.yaml#L5) | 5-9 | the `# --- profile: which gates are human …` comment block, five lines, ending `# that still says lite reads as standard)` | the 17-line block `# --- the gates and judgment calls …` of `template/sdlc.yaml` (lines 5-21) at 1.0.21 |
-| [sdlc.yaml](https://github.com/luissiviero/sdlc-framework/blob/main/sdlc.yaml#L10) | 10-11 | `profile: standard` / `review: deferred` | deleted |
-| [sample sdlc.yaml](https://github.com/luissiviero/sdlc-sample-python/blob/main/sdlc.yaml#L5) | 5-11 | the `# --- profile: which gates are human …` comment block and `profile: standard` | the same 17-line block of `template/sdlc.yaml` |
-| [sample sdlc.yaml](https://github.com/luissiviero/sdlc-sample-python/blob/main/sdlc.yaml#L110) | 110-124 | the `# --- review mode inside a phase …` comment block and `review: deferred` | deleted, with the blank line after it |
-| [sample sdlc.yaml](https://github.com/luissiviero/sdlc-sample-python/blob/main/sdlc.yaml#L78) | 78 | `  version: 1.0.19` | `  version: 1.0.21`, at the sample's next upgrade, in the same PR as the rows above and with its `sdlc-test.yml` and `sdlc-deploy.yml` replaced by the 1.0.21 copies |
-| [CLAUDE.md](https://github.com/luissiviero/sdlc-framework/blob/main/CLAUDE.md#L3) | 3 | `` … deploy → maintain with profile-based human gates. … `` | `` … deploy → maintain with human gates at (a), (b) and (e). … `` (the rest of the line unchanged) |
+| [sample sdlc.yaml](https://github.com/luissiviero/sdlc-sample-python/blob/main/sdlc.yaml#L78) | 78 | `  version: 1.0.19` | `  version: 1.0.22`, after `v1.0.22`, in the same pull request as decision 37's rows (the previous record's table) and the sample's 1.0.22 workflow copies, which this session opens as a sample PR after the tag |
 
-The root pin (line 104, `version: 1.0.17`) stays where it is: choice 249, point 2, holds it until this repository has its own App. So the root's two `sdlc.yaml` rows wait for that move.
-
-The owner may want to know one effect: a project that pinned `full` now gets no wait after (c) and (d); its look comes at (e), with the close-look banner, and on a declared production the release label stays (decision 37, "What it gives up").
+The root pin stays at 1.0.17 (choice 249, point 2).
 
 ## Left
-- Every other open item is in the session files.
+- **The live reads at the sample's next change** (carried): decision 36's checks at (e), R8's first second opinion at (b), and, new here, the digest's reading of the `sdlc-merge` environment with the workflow token's `actions: read` (not verified live: whether `actions: read` is enough for the environments API).
+- **The sample's ruleset 1 bypass mode.**
+  - On 2026-10-22 the owner moved the sample's admin bypass to Exempt, as choice 242, point 5 asks (NOTES §56).
+  - Session `ccr-76f1ceba-idf2w0` tested both modes on this repository's ruleset the same day (`docs/reviews/2026-10-22-ruleset-bypass-modes.md`). In Exempt, a cloud session acting as the owner's login committed and pushed straight to `main` (S1, S2). In "For pull requests only", the owner's tap in the mobile app merged (O1), which was Exempt's one reason.
+  - Whether the sample's bypass goes back follows that test's outcome and is the owner's call. It is not changed here.
+- Every other open item is in the session file.
 
 ## Checks (this repository)
-On the final head, chained with `set -o pipefail`, on a full-history clone:
-- `python -m compileall -q plugin tests tasks.py .github/scripts`
-- `python -m ruff check .`
-- `python -m ruff format --check .`
-- `python tasks.py docs-lint`
-- `python -m pytest -n auto --dist worksteal`
-- `claude plugin validate .`
-
-Their output is in the PR.
+On the final head, chained with `set -o pipefail`, on a full-history clone: `python -m compileall -q plugin tests tasks.py .github/scripts`, `python -m ruff check .`, `python -m ruff format --check .`, `python tasks.py docs-lint`, `python -m pytest -n 4` and `claude plugin validate .`. Their output is in the PR.

@@ -856,6 +856,7 @@ def test_workflow_is_weekly_and_dispatchable():
         "contents": "write",
         "pull-requests": "write",
         "issues": "write",
+        "checks": "write",  # the scan PR's "not a build PR" check (the R22 double check, F5)
     }
     assert data["concurrency"]["group"] == "sdlc-scan"
     assert data["concurrency"]["cancel-in-progress"] is False

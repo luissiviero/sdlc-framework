@@ -472,13 +472,27 @@ def test_the_framework_evals_prepare_the_runner_s_sandbox_before_the_suite():
     ids=lambda p: f"{p.parent.parent.parent.name}/{p.name}",
 )
 def test_every_workflow_uses_checkout_and_setup_node_v5(path):
-    """HANDOFF 4(c): the v4 actions run on Node 20, which GitHub deprecates."""
+    """HANDOFF 4(c): the v4 actions run on Node 20, which GitHub deprecates. A pin by commit
+    SHA (the merge job, choice 250) names its v5 tag in the line's comment."""
     text = path.read_text(encoding="utf-8")
     uses = [ln.split("uses:", 1)[1].strip() for ln in text.splitlines() if "uses:" in ln]
     assert uses, path
     for action in uses:
         if action.startswith(("actions/checkout@", "actions/setup-node@")):
-            assert action.endswith("@v5"), f"{path.name}: {action}"
+            pinned = re.fullmatch(r"\S+@[0-9a-f]{40} # (v5[.\d]*)", action)
+            assert action.endswith("@v5") or pinned, f"{path.name}: {action}"
+
+
+def test_the_digest_reads_the_merge_environment_and_never_the_key():
+    """Choice 250 (the R22 double check, F8): the digest reads the sdlc-merge environment
+    (``actions: read``) and learns only whether the merge key is a repository secret."""
+    data = _workflow_yaml("sdlc-digest.yml")
+    assert data["permissions"]["actions"] == "read"
+    post = next(s for s in data["jobs"]["digest"]["steps"] if s.get("name") == "Post the digest")
+    flag = "${{ secrets.SDLC_MERGE_APP_PRIVATE_KEY != '' }}"
+    assert post["env"]["SDLC_MERGE_KEY_IN_REPOSITORY"] == flag
+    text = (WORKFLOW_DIR / "sdlc-digest.yml").read_text(encoding="utf-8")
+    assert text.count("SDLC_MERGE_APP_PRIVATE_KEY") == 1
 
 
 def test_release_workflow_runs_the_release_cli_on_merge_and_label():
@@ -713,8 +727,11 @@ def test_abandon_workflow_records_the_end_state_without_a_model():
     data = _workflow_yaml(ABANDON_WORKFLOW)
     on = _triggers(data)
     assert on == {"pull_request": {"types": ["closed"]}}
-    # pull-requests: write since 0.2.19: the dismissal of gate (f) opens a pull request
-    assert data["permissions"] == {"contents": "write", "pull-requests": "write"}
+    # pull-requests: write since 0.2.19: the dismissal of gate (f) opens a pull request;
+    # checks: write for its "not a build PR" check (the R22 double check, F1)
+    assert data["permissions"] == {
+        "contents": "write", "pull-requests": "write", "checks": "write",
+    }  # fmt: skip
     job = data["jobs"]["abandon"]
     # decision 30: a PR the fast lane superseded (labelled by the runner first) is not an abandon
     assert job["if"] == (
@@ -996,6 +1013,15 @@ def test_the_merge_workflow_rings_posts_and_merges_with_the_merge_app_only():
     )
     merge = jobs["merge"]
     assert merge["environment"] == "sdlc-merge"
+    # a dispatch on the default branch only, beside the environment's branch rule (the R22
+    # double check, F13)
+    assert merge["if"] == (
+        "${{ github.event_name == 'workflow_dispatch' && "
+        "github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}"
+    )
+    # the job that holds the merge App's key runs its actions at a commit SHA (choice 250, F9)
+    used = [s["uses"] for s in merge["steps"] if "uses" in s]
+    assert used and all(re.fullmatch(r"[\w-]+/[\w-]+@[0-9a-f]{40}", u) for u in used), used
     assert merge["concurrency"]["group"].startswith("sdlc-merge-")
     mint = [s for s in merge["steps"] if s.get("uses", "").startswith("actions/create-github")]
     assert len(mint) == 1 and mint[0]["with"]["app-id"] == "${{ vars.SDLC_MERGE_APP_ID }}"
@@ -1009,6 +1035,32 @@ def test_the_merge_workflow_rings_posts_and_merges_with_the_merge_app_only():
     # without the merge App the job says so and stops: the owner merges (fallback C1)
     assert merge["steps"][0]["if"] == "${{ vars.SDLC_MERGE_APP_ID == '' }}"
     assert all(s.get("if") == "${{ vars.SDLC_MERGE_APP_ID != '' }}" for s in merge["steps"][1:])
+
+
+# the steps that can post the passing sdlc/review "not a build PR" (decision 36, point 5):
+# pr/cli.py upsert (also through run_phase.py and scan/cli.py), detect/cli.py dismiss and go
+# (the runbook PR), merge_step.py not-build
+CHECK_POSTERS = (
+    "plugin/pr/cli.py", "plugin/ci/run_phase.py", "plugin/scan/cli.py",
+    "plugin/detect/cli.py dismiss", "plugin/detect/cli.py go", "merge_step.py not-build",
+)  # fmt: skip
+
+
+@pytest.mark.parametrize("name", ALL_WORKFLOWS)
+def test_a_job_that_posts_the_review_check_may_write_checks(name):
+    """The R22 double check, F1 and F5: a job whose step posts sdlc/review holds
+    ``checks: write``, and so does its App token, or the post is a 403 that the step keeps
+    quiet and ruleset 2 holds the pull request."""
+    data = _workflow_yaml(name)
+    for job_name, job in data["jobs"].items():
+        runs = " ".join(str(s.get("run") or "") for s in job.get("steps") or [])
+        if not any(poster in runs for poster in CHECK_POSTERS):
+            continue
+        permissions = job.get("permissions", data.get("permissions")) or {}
+        assert permissions.get("checks") == "write", (name, job_name)
+        for step in job["steps"]:
+            if str(step.get("uses", "")).startswith("actions/create-github-app-token"):
+                assert step["with"].get("permission-checks") == "write", (name, job_name)
 
 
 @pytest.mark.parametrize("name", APP_WORKFLOWS)
