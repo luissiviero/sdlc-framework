@@ -142,16 +142,16 @@ def _restart_after_main_fixes_claude_md(project, tmp_path, fake_claude, monkeypa
 def test_a_restart_merges_a_default_branch_that_changed_the_change_s_status(
     project, tmp_path, fake_claude, monkeypatch, capsys
 ):
-    """The owner set an override in the change's status.yaml on main: the guard's write (the
+    """The owner changed the change's status.yaml on main: the guard's write (the
     park cleared) used to make git refuse the merge ("local changes would be overwritten"),
     and the change parked again with the reason "Aborting"."""
     root, change, _bare, _lint, args, env = _restart_after_main_fixes_claude_md(
         project, tmp_path, fake_claude, monkeypatch, capsys
     )
     st = status_mod.read_status(change)
-    st.review_override = "deferred"
+    st.external_ref = "#42"
     status_mod.write_status(change, st)
-    git(root, "commit", "-q", "-am", "owner: review deferred for change 0001")
+    git(root, "commit", "-q", "-am", "owner: the ticket for change 0001")
     git(root, "push", "-q", "origin", "main")
     gaps._pr_upsert_only(monkeypatch, 7)
     assert run_phase.run_phase(args, env) == run_phase.EXIT_OK
@@ -162,7 +162,7 @@ def test_a_restart_merges_a_default_branch_that_changed_the_change_s_status(
     assert merges == ["run(c): origin/main merged before the restarted preflight (gap 2)"]
     st = status_mod.read_status(change)
     assert st.phase == "c" and st.parked_reason is None
-    assert st.review_override == "deferred"  # the owner's override is kept
+    assert st.external_ref == "#42"  # the owner's change is kept
 
 
 def _stacked_build_parked(project, tmp_path, fake_claude, monkeypatch, intent_on_main: bool):

@@ -1,6 +1,6 @@
 """``changes/<id>-<slug>/status.yaml`` — the per-change state file (step 9, decision 10).
 
-Fields (OPERATING_MODEL section 8): phase, profile override, change type feature/fix,
+Fields (OPERATING_MODEL section 8): phase, change type feature/fix,
 gate result, parked reason, iteration count. Added for traceability: id, slug, title,
 entry route (article p.9), external_ref (decision 9 linkage: issue number), timestamps.
 """
@@ -17,6 +17,10 @@ from . import yamlish
 
 STATUS_FILE = "status.yaml"
 SCHEMA_VERSION = 1
+# Keys a file written before 1.0.21 carries and nothing reads any more (decision 37: no
+# per-change profile or review mode). ``from_dict`` drops them, so an older change still loads;
+# the next ``write_status`` leaves them out.
+RETIRED_KEYS = ("profile_override", "review_override")
 
 
 def _now() -> str:
@@ -44,9 +48,6 @@ class Status:
     phase: str = "a"
     entry_route: str = "idea"
     change_type: str = "feature"
-    profile_override: str | None = None
-    # decision 21: ``parked`` | ``deferred`` | null (the project's ``sdlc.yaml: review``)
-    review_override: str | None = None
     gate: Gate = field(default_factory=Gate)
     parked_reason: str | None = None
     iterations: int = 0
@@ -130,13 +131,6 @@ class Status:
             raise ValueError(f"entry_route must be one of {c.ENTRY_ROUTES}")
         if self.change_type not in c.CHANGE_TYPES:
             raise ValueError(f"change_type must be one of {c.CHANGE_TYPES}")
-        if self.profile_override is not None and (
-            self.profile_override not in c.PROFILES
-            and self.profile_override not in c.LEGACY_PROFILES
-        ):
-            raise ValueError(f"profile_override must be one of {c.PROFILES} or null")
-        if self.review_override is not None and self.review_override not in c.REVIEW_MODES:
-            raise ValueError(f"review_override must be one of {c.REVIEW_MODES} or null")
         if self.gate.result is not None and self.gate.result not in c.GATE_RESULTS:
             raise ValueError(f"gate.result must be one of {c.GATE_RESULTS} or null")
         if self.gate.phase is not None and self.gate.phase not in c.PHASES:
@@ -206,6 +200,8 @@ class Status:
     def from_dict(cls, d: dict[str, Any]) -> Status:
         d = dict(d)
         gate = d.pop("gate", None) or {}
+        for retired in RETIRED_KEYS:
+            d.pop(retired, None)
         known = {f for f in cls.__dataclass_fields__}
         unknown = set(d) - known
         if unknown:
@@ -481,10 +477,8 @@ def new_change(
     title: str,
     entry_route: str = "idea",
     change_type: str = "feature",
-    profile_override: str | None = None,
     external_ref: str | None = None,
     change_id: str | None = None,
-    review_override: str | None = None,
 ) -> tuple[Path, Status]:
     """Create ``changes/<id>-<slug>/`` with a status.yaml in phase (a). Idempotent per id."""
     project_root = Path(project_root)
@@ -506,8 +500,6 @@ def new_change(
         title=title.strip(),
         entry_route=entry_route,
         change_type=change_type,
-        profile_override=profile_override,
-        review_override=review_override,
         external_ref=external_ref,
     )
     write_status(change_dir, status)

@@ -1,5 +1,5 @@
 ---
-description: Phase (a) plan — brainstorm a change with the owner, write changes/<id>-<slug>/intent.md via the intent-template skill, let the owner correct it, commit on sdlc/<id>/a and open the intent PR. Gate (a) = the owner merges that PR; on a non-Full profile, an intent PR the owner's own account opens starts the design at once (the fast lane, decision 30).
+description: Phase (a) plan — brainstorm a change with the owner, write changes/<id>-<slug>/intent.md via the intent-template skill, let the owner correct it, commit on sdlc/<id>/a and open the intent PR. Gate (a) = the owner merges that PR; an intent PR the owner's own account opens starts the design at once (the fast lane, decision 30).
 argument-hint: [one-line description of the idea, ticket or incident]
 disable-model-invocation: true
 allowed-tools: Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/state/cli.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/pr/cli.py" *), Bash(git *), Bash(gh *), Read, Write, Edit, Glob, Grep, AskUserQuestion
@@ -29,16 +29,14 @@ time, until you can fill every section of the intent template without guessing:
 - what success looks like, stated so it can be checked later;
 - entry route: idea, ticket or incident (for a ticket ask for its number; for an incident ask
   for the evidence: what was observed, where, when);
-- change type: feature or fix (a fix is proven by a failing test written first);
-- whether this change needs a profile different from the project's (`profile_override`),
-  or a review mode different from the project's (`review_override`: `deferred` lets a review
-  panel settle judgment items inside a phase, decision 21).
+- change type: feature or fix (a fix is proven by a failing test written first).
+The gates and the review mode are not asked: one behaviour for every change (decision 37).
 Do not write files during the brainstorm.
 
 ## 2. Allocate the change
 Run (from the project root):
 ```
-python "${CLAUDE_PLUGIN_ROOT}/plugin/state/cli.py" new-change --root "${CLAUDE_PROJECT_DIR}" --title "<short title>" --route <idea|ticket|incident> --type <feature|fix> [--profile-override <standard|full>] [--review-override <parked|deferred>] [--external-ref <ticket number>]
+python "${CLAUDE_PLUGIN_ROOT}/plugin/state/cli.py" new-change --root "${CLAUDE_PROJECT_DIR}" --title "<short title>" --route <idea|ticket|incident> --type <feature|fix> [--external-ref <ticket number>]
 ```
 It prints the id, slug, folder and branch. Read them from the JSON; never invent an id.
 
@@ -75,11 +73,10 @@ with other means.
 
 ## 7. Report
 One line: the PR URL (or the compare URL), and "gate (a): merge the PR to approve; review
-comments are the change request (then run `/sdlc-fix`)". On every profile but Full, add
-that an intent PR opened from the owner's own account takes the fast lane (decision 30):
+comments are the change request (then run `/sdlc-fix`)". Add that an intent PR opened from the owner's own account takes the fast lane (decision 30):
 opening it accepts the intent, the design workflow starts at once without a merge, and the
-intent PR is closed as `sdlc:superseded` once the design PR carries the intent. On Full,
-and for a PR opened (or reopened) as a draft or by any other account, or one that changes
+intent PR is closed as `sdlc:superseded` once the design PR carries the intent. For a PR
+opened (or reopened) as a draft or by any other account, or one that changes
 anything outside its change folder, the merge stays gate (a). Do not start
 phase (b).
 

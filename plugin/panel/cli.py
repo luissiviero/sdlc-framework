@@ -1,15 +1,14 @@
 """Command-line face of the review panel (decision 21; build guide step 16a), called by the
-phase commands under ``sdlc.yaml: review: deferred`` (or ``status.yaml: review_override``).
+phase commands: deferred review is the only mode (decision 37).
 
-    python "${CLAUDE_PLUGIN_ROOT}/plugin/panel/cli.py" mode --root . --id 0001
-    python cli.py items --root . --id 0001 --phase b
+    python "${CLAUDE_PLUGIN_ROOT}/plugin/panel/cli.py" items --root . --id 0001 --phase b
     python cli.py prompt --root . --id 0001 --phase b --item 1 \
         --member reviewer|advocate|conciliator
     python cli.py record --root . --id 0001 --phase b --item 1 [--cost-usd 0.42]
     python cli.py overturn --root . --id 0001 --phase b --item 1 --comment "<the owner's words>"
     python cli.py models --root . --phase b
 
-``mode`` prints the effective review mode. ``items`` runs the gate's checks without
+``items`` runs the gate's checks without
 recording anything and lists what would park on a judgment item of the fixed list — an
 open flagged concern (``concern``, or ``policy`` when it names contradicting policies), an
 ``escalate`` verdict of the adversarial reviewer (unless it is on a risk-list item, which
@@ -33,9 +32,7 @@ times). ``overturn`` marks an entry overturned by the owner's review comment
 and the adversarial reviewer's and the devil's advocate's models with the alias each is
 started with (``panel/models.py``, ROADMAP R7; ``null``: pass no model).
 
-Under ``review: parked`` every command still answers (``items`` says the mode), so a
-by-hand run can see what the panel would take; nothing is decided unless the mode is
-``deferred``. Exit 0 ok, 2 usage, 3 the cap is reached, 4 the mode is parked (``record``).
+Exit 0 ok, 2 usage, 3 the cap is reached.
 """
 
 from __future__ import annotations
@@ -64,7 +61,7 @@ from state import conventions as c  # noqa: E402
 from state import gitops  # noqa: E402
 from state import status as status_mod  # noqa: E402
 
-EXIT_OK, EXIT_USAGE, EXIT_CAP, EXIT_PARKED_MODE = 0, 2, 3, 4
+EXIT_OK, EXIT_USAGE, EXIT_CAP = 0, 2, 3
 # the commit word of each phase's runbook (design(<id>): ..., build(<id>): ...)
 COMMIT_WORD = {
     "a": "intent",
@@ -98,30 +95,6 @@ def _config(root: Path) -> dict[str, Any]:
         return load_sdlc_config(str(root)) or {}
     except ConfigError:
         return {}
-
-
-def review_mode(config: dict[str, Any], st: status_mod.Status, root: Path | None = None) -> str:
-    """The effective review mode: the change's override as the base branch carries it (the
-    gate reads the same copy since 0.2.26; the branch's own value would send the items to
-    the panel and the gate would refuse the ledger), else the project's, else parked. A
-    mode or an approved status it cannot read is ``parked``: the panel settles nothing on it
-    (the gate refuses the same copy)."""
-    override = st.review_override
-    if root is not None:
-        try:
-            d = diffmod.collect(root, None)
-        except diffmod.GitUnavailable:
-            d = None
-        change_dir = c.find_change_dir(root, st.id)
-        if change_dir is not None:
-            try:
-                _profile, override, _note = gate.approved_overrides(root, change_dir, st, d)
-            except gate.GateError:
-                return "parked"
-    try:
-        return c.effective_review_mode(config.get("review"), override)
-    except ValueError:
-        return "parked"
 
 
 # --- items ----------------------------------------------------------------------------------
@@ -207,21 +180,11 @@ def collect_items(
     return items, parks
 
 
-def cmd_mode(args) -> int:
-    loaded = _change(args)
-    if loaded is None:
-        return EXIT_USAGE
-    root, _change_dir, st = loaded
-    _emit({"mode": review_mode(_config(root), st, root), "override": st.review_override})
-    return EXIT_OK
-
-
 def cmd_items(args) -> int:
     loaded = _change(args)
     if loaded is None:
         return EXIT_USAGE
     root, change_dir, st = loaded
-    mode = review_mode(_config(root), st, root)
     try:
         result = gate.run_gate(root, args.id, args.phase, args.base, dry_run=True)
     except gate.GateError as exc:
@@ -233,7 +196,6 @@ def cmd_items(args) -> int:
     cap = limits.iteration_cap(ctx, limits.classification_for(ctx))
     calls_cap = limits.panel_cap(ctx)
     out = {
-        "mode": mode,
         "phase": args.phase,
         "items": items,
         "parks": parks,
@@ -317,13 +279,6 @@ def cmd_record(args) -> int:
         return EXIT_USAGE
     root, change_dir, st = loaded
     config = _config(root)
-    mode = review_mode(config, st, root)
-    if mode != "deferred":
-        print(
-            f"review mode is {mode}: the panel decides nothing; the item parks for the owner",
-            file=sys.stderr,
-        )
-        return EXIT_PARKED_MODE
     item = _item(change_dir, args.phase, args.item)
     if item is None:
         print(f"no item {args.item} for phase ({args.phase}): run `items` first", file=sys.stderr)
@@ -437,7 +392,6 @@ def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="sdlc-panel", description=__doc__)
     sub = p.add_subparsers(dest="cmd", required=True)
     for name, fn in (
-        ("mode", cmd_mode),
         ("items", cmd_items),
         ("prompt", cmd_prompt),
         ("record", cmd_record),
@@ -446,8 +400,7 @@ def build_parser() -> argparse.ArgumentParser:
         s = sub.add_parser(name)
         s.add_argument("--root", default=".")
         s.add_argument("--id", required=True)
-        if name != "mode":
-            s.add_argument("--phase", required=True, choices=c.PHASES)
+        s.add_argument("--phase", required=True, choices=c.PHASES)
         if name == "items":
             s.add_argument("--base", default=None, help="base ref for the diff")
         if name in ("prompt", "record", "overturn"):

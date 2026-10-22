@@ -499,41 +499,6 @@ def test_guard_skips_an_unknown_change(project):
     assert "no change folder" in reason
 
 
-def test_full_profile_needs_a_human_applied_approval_label(project, monkeypatch):
-    root, change = project
-    text = (root / "sdlc.yaml").read_text(encoding="utf-8")
-    (root / "sdlc.yaml").write_text(text.replace("profile: standard", "profile: full"), "utf-8")
-    set_state(change, "c", gate_phase="c", gate_result="passed")
-    # decision 34 (amends 27): the label counts from the owner's account only, the
-    # repository owner here (tests/test_owner_rounds.py covers who else is refused)
-    env = {"GITHUB_TOKEN": FAKE_TOKEN, "GITHUB_REPOSITORY_OWNER": "luissiviero"}
-    from pr import github
-
-    monkeypatch.setattr(github, "gh_path", lambda: None)
-    monkeypatch.setattr(github, "token", lambda: FAKE_TOKEN)
-    monkeypatch.setattr(github, "find_open_pr", lambda repo, head: {"number": 7, "labels": []})
-    assert "does not carry sdlc:c-approved" in skip_reason(root, "d", env)
-
-    monkeypatch.setattr(
-        github, "find_open_pr", lambda repo, head: {"number": 7, "labels": ["sdlc:c-approved"]}
-    )
-    events = [{"event": "labeled", "label": {"name": "sdlc:c-approved"}, "actor": {"login": "x"}}]
-
-    def fake_request(method, url, tok, payload=None):
-        assert "/issues/7/events" in url
-        return {"status": 200, "data": events, "error": ""}
-
-    monkeypatch.setattr(github, "_request", fake_request)
-    events[0]["actor"]["login"] = run_phase.BOT_LOGIN
-    assert "not by a human" in skip_reason(root, "d", env)
-    events[0]["actor"]["login"] = "luissiviero"
-    assert skip_reason(root, "d", env) is None
-    # the Standard profile never reads the label at all
-    (root / "sdlc.yaml").write_text(text, "utf-8")
-    monkeypatch.setattr(github, "find_open_pr", lambda repo, head: {"number": None})
-    assert skip_reason(root, "d", env) is None
-
-
 def with_remote(root: Path, tmp_path: Path) -> Path:
     """A bare origin with the project's main branch pushed to it."""
     bare = tmp_path / "remote.git"
@@ -571,12 +536,11 @@ def test_a_dispatched_run_switches_to_the_work_branch_before_the_guard(project, 
     assert git(root, "rev-parse", "--abbrev-ref", "HEAD").strip() == "sdlc/0001/c"
 
 
-def _design_branch_left_on_the_remote(root: Path, tmp_path: Path, profile: str) -> str:
-    """Main at the given profile and a pushed sdlc/0001/b one commit past it; its sha."""
+def _design_branch_left_on_the_remote(root: Path, tmp_path: Path, extra_sdlc: str = "") -> str:
+    """Main (its ``sdlc.yaml`` with ``extra_sdlc`` appended) and a pushed sdlc/0001/b one
+    commit past it; its sha."""
     text = (root / "sdlc.yaml").read_text(encoding="utf-8")
-    (root / "sdlc.yaml").write_text(
-        text.replace("profile: standard", f"profile: {profile}"), encoding="utf-8"
-    )
+    (root / "sdlc.yaml").write_text(text + extra_sdlc, encoding="utf-8")
     set_state(root / "changes" / "0001-percent-helper", "b", gate_phase="b", gate_result="passed")
     with_remote(root, tmp_path)
     git(root, "checkout", "-q", "-b", "sdlc/0001/b")
@@ -586,13 +550,14 @@ def _design_branch_left_on_the_remote(root: Path, tmp_path: Path, profile: str) 
     return git(root, "rev-parse", "origin/sdlc/0001/b").strip()
 
 
-def test_a_legacy_lite_project_builds_from_the_default_branch(project, tmp_path):
-    """Decision 21 (0.2.14): Lite is gone. A project whose sdlc.yaml still says lite reads
-    as Standard, and its build branch starts from the default branch, never from a design
-    branch left on the remote."""
+def test_a_project_that_still_names_a_retired_profile_builds_from_the_default_branch(
+    project, tmp_path
+):
+    """Decisions 21 (0.2.14) and 37 (1.0.21): Lite and Full are gone and ``profile`` is no
+    longer read. A project whose sdlc.yaml still says one builds from the default branch,
+    never from a design branch left on the remote."""
     root, _change = project
-    design_head = _design_branch_left_on_the_remote(root, tmp_path, "lite")
-    assert run_phase.checkout_profile(root, "0001") == "standard"
+    design_head = _design_branch_left_on_the_remote(root, tmp_path, "profile: full\n")
 
     branch = run_phase.prepare_branch(root, "0001", "c")
     assert branch["branch"] == "sdlc/0001/c" and branch["switched"] is True
@@ -604,7 +569,7 @@ def test_the_build_branch_starts_from_the_default_branch(project, tmp_path):
     """HANDOFF 6(a): a design branch that outlived the owner's merge at gate (b) is not
     where the build starts; the default branch is."""
     root, _change = project
-    design_head = _design_branch_left_on_the_remote(root, tmp_path, "standard")
+    design_head = _design_branch_left_on_the_remote(root, tmp_path)
     main_head = git(root, "rev-parse", "origin/main").strip()
 
     branch = run_phase.prepare_branch(root, "0001", "c")
@@ -613,26 +578,12 @@ def test_the_build_branch_starts_from_the_default_branch(project, tmp_path):
     assert head == main_head and head != design_head
 
 
-def test_start_point_is_the_default_branch_whatever_the_profile(project, tmp_path):
+def test_start_point_is_the_default_branch(project, tmp_path):
     root, _change = project
-    _design_branch_left_on_the_remote(root, tmp_path, "standard")
-    for profile in ("standard", "full", "lite", None):
-        assert run_phase._start_point(root, "0001", "c", profile) == "refs/remotes/origin/main"
-        assert run_phase._start_point(root, "0001", "b", profile) == "refs/remotes/origin/main"
+    _design_branch_left_on_the_remote(root, tmp_path)
+    assert run_phase._start_point(root, "0001", "c") == "refs/remotes/origin/main"
+    assert run_phase._start_point(root, "0001", "b") == "refs/remotes/origin/main"
     assert "b" not in run_phase.NEXT_WORKFLOW  # a design run never dispatches the build
-
-
-def test_a_profile_override_on_the_change_is_read_and_a_legacy_lite_is_standard(project):
-    root, change = project
-    assert run_phase.checkout_profile(root, "0001") == "standard"
-    st = status_mod.read_status(change)
-    st.profile_override = "full"
-    status_mod.write_status(change, st)
-    assert run_phase.checkout_profile(root, "0001") == "full"
-    st.profile_override = "lite"  # a change from before 0.2.14
-    status_mod.write_status(change, st)
-    assert run_phase.checkout_profile(root, "0001") == "standard"
-    assert run_phase.checkout_profile(root, "0099") == "standard"  # no change: the project's
 
 
 def test_a_missing_build_branch_leaves_the_checkout_alone(project):
@@ -946,27 +897,6 @@ def test_a_nested_guardrail_name_is_not_a_guardrail_change(project, tmp_path):
     assert run_phase.guardrail_changes(root, change, {}) == ["CLAUDE.md"]
 
 
-def test_full_profile_fails_closed_when_the_label_cannot_be_read(project, monkeypatch):
-    """No gh and no token is no route to the label: an unverifiable human gate is not a
-    passed human gate, so the run skips instead of proceeding (OPERATING_MODEL 4.2)."""
-    root, change = project
-    text = (root / "sdlc.yaml").read_text(encoding="utf-8")
-    (root / "sdlc.yaml").write_text(text.replace("profile: standard", "profile: full"), "utf-8")
-    set_state(change, "c", gate_phase="c", gate_result="passed")
-    from pr import github
-
-    monkeypatch.setattr(github, "gh_path", lambda: None)
-    monkeypatch.setattr(github, "token", lambda: None)
-    assert "cannot be verified" in skip_reason(root, "d", {})
-
-    # gh alone still reads the label; only the actor check degrades, with a note
-    monkeypatch.setattr(github, "gh_path", lambda: "/usr/bin/gh")
-    monkeypatch.setattr(
-        github, "find_open_pr", lambda repo, head: {"number": 7, "labels": ["sdlc:c-approved"]}
-    )
-    assert skip_reason(root, "d", {}) is None
-
-
 def test_label_events_are_read_page_by_page(monkeypatch):
     """A long PR thread pushes the `labeled` event past the first page of the timeline."""
     from pr import github
@@ -999,7 +929,8 @@ def test_label_events_are_read_page_by_page(monkeypatch):
 
     monkeypatch.setattr(github, "token", lambda: FAKE_TOKEN)
     monkeypatch.setattr(github, "_request", fake_request)
-    assert run_phase.label_applied_by_a_human("o/r", 7, "sdlc:c-approved") == (True, "luissiviero")
+    found = github.label_actor("o/r", 7, "sdlc:c-approved")
+    assert found["ok"] and found["actor"] == "luissiviero"
     assert len(seen) == 2 and seen[0].endswith("per_page=100")
 
 
@@ -1272,43 +1203,22 @@ def test_label_actor_fails_closed_past_the_page_cap_through_gh(monkeypatch):
     assert done == {"route": "gh", "ok": True, "reason": "", "actor": None}
 
 
-def test_label_applied_by_a_human_wraps_label_actor(monkeypatch):
+def test_next_page_url_is_re_exported():
     from pr import github
 
-    answers = {"ok": True, "actor": run_phase.BOT_LOGIN, "reason": ""}
-    monkeypatch.setattr(github, "label_actor", lambda repo, number, label: dict(answers))
-    assert "not by a human" in run_phase.label_applied_by_a_human("o/r", 7, "x")[1]
-    answers["actor"] = None
-    assert run_phase.label_applied_by_a_human("o/r", 7, "x") == (False, "no `labeled` event for x")
-    answers.update(ok=False, reason="api: Not Found")
-    ok, why = run_phase.label_applied_by_a_human("o/r", 7, "x")
-    assert ok is False and why == "could not read the label events: api: Not Found"
-    answers.update(ok=True, actor="luissiviero")
-    assert run_phase.label_applied_by_a_human("o/r", 7, "x") == (True, "luissiviero")
-    assert run_phase.next_page_url is github.next_page_url  # the re-export
+    assert run_phase.next_page_url is github.next_page_url
 
 
-def test_label_applied_by_a_human_rejects_every_automation_actor(monkeypatch):
-    """R49 (decision 33): the App's label reads ``<slug>[bot]``, never the workflow token's
-    login; any ``[bot]`` and the configured automation identity are rejected, a person
-    passes (``state/unpark.py is_automation_actor``)."""
-    from pr import github
+def test_every_automation_actor_is_recognised():
+    """R49 (decision 33): the App's acts read ``<slug>[bot]``, never the workflow token's
+    login; any ``[bot]`` and the configured automation identity count as the automation, a
+    person does not (``state/unpark.py is_automation_actor``)."""
+    from state import unpark
 
-    answers = {"ok": True, "actor": "", "reason": ""}
-    monkeypatch.setattr(github, "label_actor", lambda repo, number, label: dict(answers))
     for bot in ("github-actions[bot]", "sdlc-luissiviero[bot]", "Sdlc-Other[BOT]"):
-        answers["actor"] = bot
-        ok, why = run_phase.label_applied_by_a_human("o/r", 7, "x")
-        assert ok is False and why == f"x was applied by {bot}, not by a human", bot
-    answers["actor"] = "ci-machine"
-    ok, why = run_phase.label_applied_by_a_human("o/r", 7, "x", ["ci-machine"])
-    assert ok is False and why == "x was applied by ci-machine, not by a human"
-    assert run_phase.label_applied_by_a_human("o/r", 7, "x") == (True, "ci-machine")
-    answers["actor"] = "luissiviero"
-    assert run_phase.label_applied_by_a_human("o/r", 7, "x", ["ci-machine"]) == (
-        True,
-        "luissiviero",
-    )
+        assert unpark.is_automation_actor(bot, []) is True, bot
+    assert unpark.is_automation_actor("ci-machine", ["ci-machine"]) is True
+    assert unpark.is_automation_actor("luissiviero", ["ci-machine"]) is False
 
 
 def test_pr_by_number_reads_the_merge_through_either_route(monkeypatch):
@@ -2108,9 +2018,8 @@ def test_phase_workflow_triggers(name):
         assert re.search(r"(?m)^    branches: \[main\]$", text)
         assert "github.event.pull_request.merged == true" in text
     else:
-        assert re.search(r"(?m)^    types: \[labeled\]$", text)
-        label = "sdlc:c-approved" if name == "sdlc-test.yml" else "sdlc:d-approved"
-        assert f"github.event.label.name == '{label}'" in text
+        # decision 37 (1.0.21): no approval label starts (d) or (e); only the dispatch does
+        assert "pull_request:" not in text and "-approved" not in text
 
 
 @pytest.mark.parametrize("name", PHASE_WORKFLOWS)
@@ -2124,7 +2033,12 @@ def test_phase_workflow_permissions_and_concurrency(name):
         "checks: write",
         "actions: write",
     ]
-    assert 'group: "sdlc-${{ inputs.head_ref || github.event.pull_request.head.ref }}"' in text
+    group = (
+        'group: "sdlc-${{ inputs.head_ref }}"'
+        if name in ("sdlc-test.yml", "sdlc-deploy.yml")  # dispatched only (decision 37)
+        else 'group: "sdlc-${{ inputs.head_ref || github.event.pull_request.head.ref }}"'
+    )
+    assert group in text
     assert "cancel-in-progress: false" in text
     # 0.3.0: the session, then the commands step; 1.0.8 (decision 32): the build's wall clock
     # is gate.build_max_wall_clock_minutes (180), so its job allows 260
@@ -3669,25 +3583,23 @@ def test_guard_reads_paused_and_the_profile_from_the_default_branch_s_copy(
     assert run_phase._approved_config(root)["paused"] is True
 
 
-def test_approved_config_reads_the_profile_from_the_default_branch_s_copy(project, tmp_path):
-    """The Full profile's (c) and (d) label gates read the profile the guard returns: a work
-    branch that says ``standard`` while the owner's copy says ``full`` is ignored."""
+def test_approved_config_reads_the_default_branch_s_copy(project, tmp_path):
+    """The guard reads the owner's copy of ``sdlc.yaml``: a work branch that lowers its own
+    budget cap is ignored (OPERATING_MODEL section 4.2, the "base branch copy")."""
     root, _change = project
     with_remote(root, tmp_path)
     path = root / "sdlc.yaml"
-    path.write_text(
-        path.read_text(encoding="utf-8").replace("profile: standard", "profile: full"), "utf-8"
-    )
-    git(root, "commit", "-q", "-am", "owner: full profile")
+    owner = path.read_text(encoding="utf-8").replace("max_budget_usd: 150", "max_budget_usd: 90")
+    assert owner != path.read_text(encoding="utf-8")
+    path.write_text(owner, "utf-8")
+    git(root, "commit", "-q", "-am", "owner: a lower budget cap")
     git(root, "push", "-q", "origin", "main")
     git(root, "checkout", "-q", "-b", "sdlc/0001/c")
-    path.write_text(
-        path.read_text(encoding="utf-8").replace("profile: full", "profile: standard"), "utf-8"
-    )
-    git(root, "commit", "-q", "-am", "the branch lowers its own profile")
-    assert run_phase._approved_config(root)["profile"] == "full"
+    path.write_text(owner.replace("max_budget_usd: 90", "max_budget_usd: 900"), "utf-8")
+    git(root, "commit", "-q", "-am", "the branch raises its own cap")
+    assert run_phase._approved_config(root)["gate"]["max_budget_usd"] == 90
     _dir, _st, config, _reason = run_phase.guard(root, "0001", "c", "owner/name", {})
-    assert config["profile"] == "full"
+    assert config["gate"]["max_budget_usd"] == 90
 
 
 # --- 0.2.26: the runner re-verifies the owner-only fields of status.yaml (choice 103) ---------
@@ -3777,14 +3689,6 @@ def test_owner_field_mismatches_name_the_field_the_session_value_and_the_expecte
         snapshot, run_phase.owner_fields(after), run_phase.owner_fields(approved)
     )
     assert [r.split(":")[0] for r in reasons] == ["iterations", "panel_calls"]
-    # the overrides are reported (and restored, below), never a mismatch
-    assert run_phase.override_changes(
-        run_phase.owner_fields(before),
-        run_phase.owner_fields(_owner_state(change, profile_override="standard")),
-    ) == [
-        "profile_override: the session set 'standard' (was None); restored, the default "
-        "branch's copy is what the runner and the gate read"
-    ]
 
 
 def test_verify_owner_fields_restores_the_fields_before_anything_is_committed(project):
@@ -3812,16 +3716,8 @@ def test_verify_owner_fields_restores_the_fields_before_anything_is_committed(pr
     assert run_phase.verify_owner_fields(change, restored, None) == {
         "ok": True,
         "mismatches": [],
-        "overrides_changed": [],
         "test_files_restored": [],
     }
-    # a changed override is restored whatever else happened (the review of the 0.2.26 diff,
-    # H2: the runner's commit carried it and the owner's merge at (b) made it the approved copy)
-    _owner_state(change, profile_override="standard", review_override="deferred")
-    verified = run_phase.verify_owner_fields(change, restored, None)
-    assert verified["ok"] is True and len(verified["overrides_changed"]) == 2
-    kept = status_mod.read_status(change)
-    assert kept.profile_override is None and kept.review_override is None
     # a file the session left unreadable: the pre-session file comes back whole
     (change / "status.yaml").write_text("phase: [", encoding="utf-8")
     verified = run_phase.verify_owner_fields(change, before, None)
@@ -3848,7 +3744,6 @@ def test_a_session_that_writes_an_owner_field_parks_with_the_fields_restored(
         "st = status.read_status(change)\n"
         "st.accept_risk('auth')\n"
         "st.risk_accepted_by = [{'item': 'auth', 'actor': 'luissiviero'}]\n"
-        "st.profile_override = 'standard'\n"
         "status.write_status(change, st)\n",
     )
     monkeypatch.setenv("FAKE_CLAUDE_RUN", str(script))
@@ -3860,12 +3755,8 @@ def test_a_session_that_writes_an_owner_field_parks_with_the_fields_restored(
         "runner recorded no label" in out["parked"]
     )
     assert out["owner_fields"]["ok"] is False and "dispatched" not in out
-    assert out["owner_fields"]["overrides_changed"] == [
-        "profile_override: the session set 'standard' (was None); restored, the default "
-        "branch's copy is what the runner and the gate read"
-    ]
     st = status_mod.read_status(change)
-    assert st.risk_accepted == [] and st.risk_accepted_by == [] and st.profile_override is None
+    assert st.risk_accepted == [] and st.risk_accepted_by == []
     assert st.parked_reason == out["parked"]
     gate_file = json.loads((change / "evidence" / "gate-b.json").read_text(encoding="utf-8"))
     (check,) = gate_file["checks"]
@@ -3885,72 +3776,31 @@ def test_an_honest_session_reports_the_owner_fields_ok_and_hands_over(
     assert out["owner_fields"] == {
         "ok": True,
         "mismatches": [],
-        "overrides_changed": [],
         "test_files_restored": [],
     }
     assert out["result"] == "continue"
 
 
-def test_guard_reads_the_profile_override_from_the_default_branch_s_copy(
-    project, tmp_path, monkeypatch
-):
-    """A branch that wrote ``profile_override: standard`` on a Full-profile change skipped the
-    (c)/(d) label gates; the guard reads the copy the owner approved (choice 103)."""
+def test_guard_fails_closed_on_an_unreadable_approved_status(project, tmp_path):
+    """The guard reads the default branch's copy of the change's ``status.yaml``, the one the
+    owner-field checks compare with: an unreadable one refuses the run (the review of the
+    0.2.26 diff, L3); a folder not on the default branch yet has no approved copy."""
     root, change = project
-    # the skip reason asserted below is the one without a route to GitHub: a runner has `gh`
-    # on PATH (the first run in Actions, 0.2.28, read "no open PR on ..." instead)
-    from pr import github
-
-    monkeypatch.setattr(github, "gh_path", lambda: None)
-    _owner_state(change, profile_override="full")
-    with_remote(root, tmp_path)  # commits and pushes main with the owner's override
+    with_remote(root, tmp_path)
     git(root, "checkout", "-q", "-b", "sdlc/0001/c")
     set_state(change, "c", gate_phase="c", gate_result="passed")
-    _owner_state(change, profile_override="standard")
-    git(root, "commit", "-q", "-am", "the branch lowers its own profile")
-    assert run_phase.approved_overrides(root, change, status_mod.read_status(change)) == (
-        "full",
-        None,
-        "profile_override 'standard' on the branch ignored ('full' on the default branch)",
-    )
-    reason = skip_reason(root, "d")
-    assert reason and "sdlc:c-approved cannot be verified" in reason
-    # the owner's copy says standard (no override): no label is needed
-    git(root, "checkout", "-q", "main")
-    _owner_state(change, profile_override=None)
-    git(root, "commit", "-q", "-am", "owner: standard profile")
-    git(root, "push", "-q", "origin", "main")
-    git(root, "checkout", "-q", "sdlc/0001/c")
+    git(root, "commit", "-q", "-am", "the build")
     assert skip_reason(root, "d") is None
-    # a folder not on the default branch yet has no approved override
     assert run_phase._approved_status(root, root / "changes" / "0009-nope") is None
-    assert run_phase.approved_overrides(
-        root, root / "changes" / "0009-nope", status_mod.read_status(change)
-    ) == (
-        None,
-        None,
-        "profile_override 'standard' on the branch ignored (None on the default branch)",
-    )
-    # an unreadable approved copy fails closed (the review of the 0.2.26 diff, L3)
     git(root, "checkout", "-q", "main")
     (change / "status.yaml").write_text("phase: [", encoding="utf-8")
     git(root, "commit", "-q", "-am", "owner: a broken status.yaml")
     git(root, "push", "-q", "origin", "main")
     git(root, "checkout", "-q", "sdlc/0001/c")
     with pytest.raises(run_phase.ApprovedCopyUnreadable):
-        run_phase.approved_overrides(root, change, status_mod.read_status(change))
+        run_phase._approved_status(root, change)
     reason = skip_reason(root, "d")
     assert reason and "on the default branch is unreadable" in reason
-    # without a remote-tracking default branch the checkout's values stand by hand only;
-    # on a runner no override applies (L4)
-    git(root, "remote", "remove", "origin")
-    st = status_mod.read_status(change)
-    assert run_phase.approved_overrides(root, change, st, {}) == ("standard", None, "")
-    assert run_phase.approved_overrides(root, change, st, {"GITHUB_ACTIONS": "true"}) == (
-        None,
-        None,
-        "no default branch ref on the runner: no override applies",
-    )
 
 
 def test_guard_fails_closed_on_a_pause_flag_that_is_not_a_boolean(project):

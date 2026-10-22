@@ -684,8 +684,6 @@ def fields(reset_by=None, reset_at=None) -> dict:
         "locked": False,
         "iterations": 0,
         "panel_calls": 0,
-        "profile_override": None,
-        "review_override": None,
     }
 
 

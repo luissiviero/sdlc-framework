@@ -45,7 +45,7 @@ It runs the confidence gate in dry-run (nothing recorded) and prints each check.
 output:
 ```
 ## definition-of-done check (gate dry run)
-- change 0001 (percent-helper), gate (c), profile standard, automated gate
+- change 0001 (percent-helper), gate (c), automated gate
 - [x] limits: within the run limits
 - [x] artifacts: every required artifact exists and has its template sections
 - [ ] adversarial_review: evidence/adversarial-review-c.json missing

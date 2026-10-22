@@ -1,5 +1,5 @@
 ---
-description: Phase (c) build — implement the merged spec+plan on sdlc/<id>/c under the guardrail hooks, after the preflight allows it. Fix-type changes write the reproducing test first. Then code-simplifier, verifier (evidence/verifier.md), adversarial verdict, gate (c), and the build PR (draft) with the generated summary. Standard: continue to /sdlc-test; Full: wait for sdlc:c-approved. Re-runnable.
+description: Phase (c) build — implement the merged spec+plan on sdlc/<id>/c under the guardrail hooks, after the preflight allows it. Fix-type changes write the reproducing test first. Then code-simplifier, verifier (evidence/verifier.md), adversarial verdict, gate (c), and the build PR (draft) with the generated summary, then continue to /sdlc-test. Re-runnable.
 argument-hint: [change id, e.g. 0001]
 disable-model-invocation: true
 allowed-tools: Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/state/cli.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/gate/cli.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/gate/preflight.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/panel/cli.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/evidence/collect.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/pr/cli.py" *), Bash(git *), Bash(gh *), Read, Glob, Grep, Edit, Write, Agent
@@ -50,7 +50,7 @@ docs were killed mid-write and the run ended with no gate; this rule since 0.3.3
 
 ## 1. Branch and run registration
 - Default branch as in `/sdlc-design` step 0. `git fetch origin`.
-- Start point: the default branch (gate (b) is the owner's merge in every profile). First
+- Start point: the default branch (gate (b) is the owner's merge). First
   run: `git switch -c sdlc/<id>/c origin/<default>`. On the fast lane (decision 30; CI
   only) the runner has already cut `sdlc/<id>/c` from `origin/sdlc/<id>/b`, whose gate
   passed on a routine plan without a merge (`status.yaml: fast_lane.b`): the spec and plan
@@ -113,8 +113,8 @@ nearest neighbouring flows and reports (in CI it reads gate (b)'s `commands` ent
 the targets, which the runner runs after this session — its brief says when; plugin 0.3.2,
 item 3b). Store its report verbatim as
 `changes/<id>-<slug>/evidence/verifier.md`. If it reports behaviour that does not match
-`plan.md`, fix it (step 4 again, bounded by the iteration cap from the preflight; under
-deferred review a mismatch you cannot resolve is a panel item of step 7: run
+`plan.md`, fix it (step 4 again, bounded by the iteration cap from the preflight; a
+mismatch you cannot resolve is a panel item of step 7: run
 `python "${CLAUDE_PLUGIN_ROOT}/plugin/gate/cli.py" bump-iteration --root "${CLAUDE_PROJECT_DIR}" --id <id>`
 per round; the gate parks at the cap), then re-run the verifier. Commit the evidence:
 `commit-phase ... --phase c --message "build(<id>): verifier evidence"`.
@@ -143,14 +143,13 @@ on, R7); it writes `evidence/adversarial-review-c.json` for HEAD.
 ```
 python "${CLAUDE_PLUGIN_ROOT}/plugin/panel/cli.py" items --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase c
 ```
-It prints the review mode (`sdlc.yaml: review`, `status.yaml: review_override`), the items
-the gate would park on that belong to the panel's fixed list (an open flagged concern, a
-concern naming contradicting policies, the reviewer's `escalate` verdict, an Important
-finding the run cannot fix, the verifier's "does not match the plan"), which of them the
-ledger already decides, and under `parks` what stays the owner's whatever the mode (an
-escalation on a risk-list item, a guardrail file, a run limit, an infrastructure failure; a
-risk-list hit itself parks nothing, decision 35). When `mode` is
-`parked` or `pending` is empty, go on to the gate. Otherwise, for each pending item `n` in
+It prints the items the gate would park on that belong to the panel's fixed list (an open
+flagged concern, a concern naming contradicting policies, the reviewer's `escalate`
+verdict, an Important finding the run cannot fix, the verifier's "does not match the
+plan"), which of them the ledger already decides, and under `parks` what stays the owner's
+(an escalation on a risk-list item, a guardrail file, a run limit, an infrastructure
+failure; a risk-list hit itself parks nothing, decision 35). When `pending` is empty, go on
+to the gate. Otherwise, for each pending item `n` in
 order, three fresh contexts, each with the brief printed by
 `python "${CLAUDE_PLUGIN_ROOT}/plugin/panel/cli.py" prompt --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase c --item <n> --member <reviewer|advocate|conciliator>`:
 1. **reviewer** — delegate to a general-purpose sub-agent with the `reviewer` brief; it
@@ -194,20 +193,17 @@ Open or update the build PR — draft, base the default branch, head `sdlc/<id>/
 python "${CLAUDE_PLUGIN_ROOT}/plugin/pr/cli.py" upsert --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase c --draft
 ```
 It renders the ≤5-bullet summary from `status.yaml`, `evidence/gate-c.json`, the verifier
-report and the plan-vs-diff check, applies the label (`sdlc:c-ready` in the Full profile,
-`sdlc:needs-human` when parked, none otherwise), and uses the GitHub REST API with
+report and the plan-vs-diff check, applies the label (`sdlc:needs-human` when parked, none
+otherwise), and uses the GitHub REST API with
 `GITHUB_TOKEN`/`GH_TOKEN` first, then `gh`, then prints the compare URL and the body for the owner to
 paste. Do not retry with other means.
 
 ## 9. Hand over
-- `continue` (Standard): report "gate (c) passed → /sdlc-test <id>". In the
+- `continue`: report "gate (c) passed → /sdlc-test <id>". In the
   merge-triggered workflow the job dispatches the test workflow itself. Do not run (d) here.
   On the fast lane the runner also closes the design PR as `sdlc:superseded` once this PR
   exists (no comment), or the intent PR when no design PR was opened; the owner reviews
   intent, spec, plan and code together at (e).
-- `wait` (Full): report the PR URL and "gate (c): approving review + `sdlc:c-approved`,
-  applied by the owner's account (decision 34), starts the test phase; review comments are
-  the change request (`/sdlc-fix`)".
 - `park`: report the PR URL and the gate's "What I need from you" block.
 
 Never edit `.claude/**`, `CLAUDE.md`, `REVIEW.md`, `sdlc.yaml` or `intent.md`. Never use
