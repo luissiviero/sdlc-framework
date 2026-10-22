@@ -5,7 +5,7 @@ This session ran on branch `ccr-3fe1c65e-erwrby`. The owner's task: double-check
 The previous record (decision 37 as 1.0.21, from #313) is now `docs/progress/2026-10-22-decision-37-one-profile-1.0.21.md`, unchanged. This session's file is `docs/handoffs/sessions/2026-10-22-ccr-3fe1c65e-erwrby.md`.
 
 ## Coordination with the other sessions
-- **The base.** #313 (decision 37, 1.0.21, session `ccr-0522ec37-iia2ok`) was open when the owner answered. It changes `plugin/ci/merge_step.py`, `run_phase.py`, `detect/cli.py`, `gate/risk.py`, `/sdlc-init` and the tests this PR touches. So this branch was built on #313's head (`2e5b1d9`) with `main` (`1f58af2`) merged in, and its PR waits for #313's merge. `main` with #313 is merged in before the PR leaves draft.
+- **The base.** #313 (decision 37, 1.0.21, session `ccr-0522ec37-iia2ok`) was open when the owner answered. It changes `plugin/ci/merge_step.py`, `run_phase.py`, `detect/cli.py`, `gate/risk.py`, `/sdlc-init` and the tests this PR touches. So this branch was built on #313's head (`2e5b1d9`) with `main` (`1f58af2`) merged in, and its PR waited for #313's merge. #313 merged as `2a782f1` with that same head, and `main` at `1cdb45f` is merged in (`90f02de`). It brings #313, #314, #315 and #316 (session `ccr-76f1ceba-idf2w0`'s ruleset bypass-mode test), with no conflict. The archived decision-37 record equals `2a782f1:docs/PROGRESS.md` (verified, `diff`).
 - **Numbers.** Choice 250 and patch 1.0.22, the next free ones (#313 takes no choice, verified on its branch). No decision, note or candidate number is taken.
 
 ## The owner's decision (2026-10-22)
@@ -85,6 +85,10 @@ The root pin stays at 1.0.17 (choice 249, point 2).
 
 ## Left
 - **The live reads at the sample's next change** (carried): decision 36's checks at (e), R8's first second opinion at (b), and, new here, the digest's reading of the `sdlc-merge` environment with the workflow token's `actions: read` (not verified live: whether `actions: read` is enough for the environments API).
+- **The sample's ruleset 1 bypass mode.**
+  - On 2026-10-22 the owner moved the sample's admin bypass to Exempt, as choice 242, point 5 asks (NOTES §56).
+  - Session `ccr-76f1ceba-idf2w0` tested both modes on this repository's ruleset the same day (`docs/reviews/2026-10-22-ruleset-bypass-modes.md`). In Exempt, a cloud session acting as the owner's login committed and pushed straight to `main` (S1, S2). In "For pull requests only", the owner's tap in the mobile app merged (O1), which was Exempt's one reason.
+  - Whether the sample's bypass goes back follows that test's outcome and is the owner's call. It is not changed here.
 - Every other open item is in the session file.
 
 ## Checks (this repository)
