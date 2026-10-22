@@ -30,19 +30,21 @@ Known before, still open: the (e) job runs whenever the deploy job succeeds, als
 
 ## Next steps, in order
 1. **The owner merges this session's PR** (this file only, documentation).
-2. **A new session fixes the Gemini use and puts it into the x-roles**, from the prompt this session gave in the chat: both defects above, the (e) waste, a first live call, then the owner's questions on Gemini in R28's roles before any decision file.
-3. Then the next steps of the csl6nq "-end" file, carried unchanged, not re-verified: R65's part 1 and on, the queue from R51 with R25, the sample's next-change notes, this repository's own App at R14's turn.
+2. **R65 first**, then the other next steps of the csl6nq "-end" file, carried unchanged, not re-verified. These are R65's part 1 and on, the queue from R51 with R25, the sample's next-change notes, and this repository's own App at R14's turn.
+3. **Once R65 is over** (the owner, 2026-10-22), a new session fixes the Gemini use and puts it into the x-roles, from the prompt this session gave in the chat. That covers both defects above, the (e) waste and a first live call, then the owner's questions on Gemini in R28's roles before any decision file. R65's part 6 is a plugin patch after R51 (choice 252), so "over" may mean after R51's build too; the owner says which when starting it. Until then:
+   - defect 1 stays latent, since this repository runs no change before R14's turn;
+   - on the sample, a (b) opinion on the fast lane lands on the closed design PR (defect 2). If one runs, the session that reads the change notes it.
 
 ## Every open item
 | Item | Where | What is left | Who acts | Blocks 1.0.0 |
 |---|---|---|---|---|
 | This PR | framework | Green checks, the owner's merge | owner | no |
-| The pinned-below-1.0.19 job failure | `.github/workflows/sdlc-design.yml:256`, `sdlc-deploy.yml`, their templates | Defect 1 above | the next session | no |
-| The fast lane's lost (b) opinion | `plugin/external/cli.py`, the design workflow | Defect 2 above | the next session; owner (where it should land) | no |
-| The (e) job when phase (e) did not run | `sdlc-deploy.yml`, the `second-opinion` job | Gate it on the phase step's own outcome | the next session | no |
+| The pinned-below-1.0.19 job failure | `.github/workflows/sdlc-design.yml:256`, `sdlc-deploy.yml`, their templates | Defect 1 above | the Gemini session, after R65 | no |
+| The fast lane's lost (b) opinion | `plugin/external/cli.py`, the design workflow | Defect 2 above | the Gemini session, after R65; owner (where it should land) | no |
+| The (e) job when phase (e) did not run | `sdlc-deploy.yml`, the `second-opinion` job | Gate it on the phase step's own outcome | the Gemini session, after R65 | no |
 | The first live call | the sample, or by hand | The model id and the request's shape are unconfirmed live: `cli.py models` with the key, or the sample's next real change | owner; the next session | no |
 | The Developer API's terms | `ai.google.dev/gemini-api/terms` | Not readable from a session's proxy; the owner's read from the PC | owner | no |
-| Gemini in the x-roles | R28; `docs/proposals/roles-and-manager.md`; decision 21 | R28 as accepted says "Opus and Fable only" and "Claude Code sub-agents run Claude models". Adding Gemini amends that and decision 21 (the panel), so it is the owner's call, in one decision with R28's own amendment of 21 (`docs/reviews/2026-10-20-gemini-study-check.md`, row 4) | the next session; owner | no |
+| Gemini in the x-roles | R28; `docs/proposals/roles-and-manager.md`; decision 21 | R28 as accepted says "Opus and Fable only" and "Claude Code sub-agents run Claude models". Adding Gemini amends that and decision 21 (the panel), so it is the owner's call, in one decision with R28's own amendment of 21 (`docs/reviews/2026-10-20-gemini-study-check.md`, row 4) | the Gemini session, after R65; owner | no |
 | R8's tally | `docs/proposals/external-design-check.md`, "Tally" | No row yet: no live run | the session that reads the first one | no |
 | R62 | ROADMAP R62 | Unordered; it can reuse `plugin/external/gemini.py` | owner | no |
 | The port list | `docs/PROGRESS.md` | #304 touched `plugin/ci/run_phase.py` and the detect and fix templates (carried) | the 1.0.0 read | no |
@@ -59,6 +61,6 @@ Done, dropped (from this session's first file):
 | When | Act |
 |---|---|
 | Now | Merge this PR when `Framework checks` is green. |
-| Now | Start the new session with the prompt in this session's chat. |
+| Once R65 is over | Start the new session with the prompt in this session's chat. |
 | Any time, optional | In one PowerShell window on the PC: `$env:GEMINI_API_KEY = "<key>"`, then `python plugin/external/cli.py models` from the framework checkout; tell the new session the ids it lists. |
 | Any time | The key's usage page in its Google project, if a check of past use is wanted. |
