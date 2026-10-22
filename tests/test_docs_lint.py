@@ -6,9 +6,11 @@ its marker in the notes index, the decisions index read from each file's heading
 checks: frontmatter that parses, decision amendments and status, a proposal's status against
 its ROADMAP row, built rows under "Done", version and PR pairs against the tags, citations of
 the moved stubs, Portuguese words; check 8, merge claims against the merge commits; and check
-9, no count of the decisions or the notes in the pages kept by hand.
-Layer 2 (this repository): the lint finds no failure, the pin is the one ``/sdlc-init``
-installs, and the decisions index on disk is what ``python tasks.py decisions-index`` writes.
+9, no count of the decisions or the notes in the pages kept by hand; check 10, no number
+taken twice (ROADMAP R65, part 1).
+Layer 2 (this repository): the lint finds no failure, no number is taken twice, the pin is the
+one ``/sdlc-init`` installs, and the decisions index on disk is what
+``python tasks.py decisions-index`` writes.
 """
 
 from __future__ import annotations
@@ -462,12 +464,92 @@ def test_a_page_kept_by_hand_states_no_count_of_decisions_or_notes(tmp_path):
     ]
 
 
+CHOICES_RECORD = (
+    "# Progress\n\n"
+    "## Live checks the owner can do now\n"
+    "1. **A live check**, a list of its own.\n\n"
+    "## The owner's decisions (2026-10-22)\n"
+    "252. **A choice** with its points:\n"
+    "    1. a point, not a choice;\n"
+    "253. **Another choice**.\n"
+    "```\n254. in a fence\n```\n"
+    "## Choices made where the pack left it open (continuing session 3's numbering)\n"
+    "31. An early choice, not in bold.\n"
+    "### What was built\n"
+    "2. **A step**, not a choice.\n"
+)
+
+
+def test_choices_are_read_only_under_a_heading_that_states_them():
+    assert tasks.choice_items(CHOICES_RECORD) == [(252, 7), (253, 9), (31, 14)]
+
+
+def test_a_choice_taken_twice_fails_from_the_cutover_and_is_reported_before(tmp_path):
+    docs = tmp_path / "docs"
+    old = "## The owner's choices (2026-10-02)\n133. **One**.\n134. **Two**.\n"
+    _write(docs / "progress" / "session-15.md", old)
+    _write(docs / "progress" / "session-16.md", "## Choices made where the pack\n134. Again.\n")
+    _write(
+        docs / "progress" / "2026-10-22-x.md", "## The owner's decision (2026-10-22)\n7. **New**.\n"
+    )
+    _write(docs / "progress" / "session-3.md", "## Session 3 · Choices made\n7. Old.\n")
+    _write(docs / "PROGRESS.md", "## The owner's decision (2026-10-23)\n133. **Taken**.\n")
+    _write(docs / "progress" / "2026-10-21-y.md", "## Live checks\n1. a\n2. b\n")
+    _write(docs / "progress" / "2026-10-21-z.md", "## Live checks\n1. a\n2. b\n")
+    assert tasks.number_problems(docs) == (
+        [
+            "numbers: choice 7 taken twice: docs/progress/2026-10-22-x.md:2, "
+            "docs/progress/session-3.md:2",
+            "numbers: choice 133 taken twice: docs/PROGRESS.md:2, docs/progress/session-15.md:2",
+        ],
+        [
+            "numbers: choice 134 taken twice: docs/progress/session-15.md:3, "
+            "docs/progress/session-16.md:2"
+        ],
+    )
+
+
+def test_two_files_or_two_rows_with_one_number_fail(tmp_path):
+    docs = tmp_path / "docs"
+    _decision(docs / "decisions", 7, "Seven")
+    _decision(docs / "decisions", 8, "Eight")
+    _write(docs / "decisions" / "07.md", "---\nstatus: accepted\n---\n\n## 7. Seven again\n")
+    _write(docs / "notes" / "57.md", "x\n")
+    _write(docs / "notes" / "057.md", "x\n")
+    _write(docs / "notes" / "index.md", "x\n")
+    _write(
+        docs / "ROADMAP.md",
+        "## Candidates\n| R64 | a |\n| R65 | b |\n## Done\n| R65 | c |\n| R66 | d |\n",
+    )
+    assert tasks.number_problems(docs) == (
+        [
+            "numbers: decision 7 taken twice: docs/decisions/07.md, docs/decisions/7.md",
+            "numbers: note 57 taken twice: docs/notes/057.md, docs/notes/57.md",
+            "numbers: candidate R65 taken twice: docs/ROADMAP.md:3, docs/ROADMAP.md:5",
+        ],
+        [],
+    )
+    failures, _ = tasks.lint_docs(docs, tmp_path, pin="2.1.304")
+    assert "numbers: candidate R65 taken twice: docs/ROADMAP.md:3, docs/ROADMAP.md:5" in failures
+
+
 # --- layer 2: this repository -------------------------------------------------------------------
 
 
 def test_the_repository_docs_pass_the_lint():
     failures, _ = tasks.lint_docs()
     assert failures == []
+
+
+def test_the_repository_takes_no_number_twice():
+    assert tasks.number_problems(tasks.DOCS_DIR) == ([], [])
+    choices = [
+        n
+        for path in tasks._records(tasks.DOCS_DIR)
+        for n, _ in tasks.choice_items(path.read_text(encoding="utf-8-sig"))
+    ]
+    # choices 1 to 15 live in sessions 1 and 2's PROGRESS.md, in git history only
+    assert sorted(choices) == list(range(16, max(choices) + 1))
 
 
 def test_the_pin_is_the_version_sdlc_init_installs():

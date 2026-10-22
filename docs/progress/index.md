@@ -73,3 +73,4 @@ chronological order (oldest first). The current record stays in `docs/PROGRESS.m
 - [Progress — decision 37, one profile and one review mode, as plugin 1.0.21 (2026-10-22)](2026-10-22-decision-37-one-profile-1.0.21.md)
 - [Progress — the R22 double check's fixes, as plugin 1.0.22 (choice 250) (2026-10-22)](2026-10-22-r22-double-check-fixes-1.0.22.md)
 - [Progress — the owner's bypass tested live; Exempt in ruleset 1 plus a no-direct-writes ruleset (choice 251), as plugin 1.0.23 (2026-10-22)](2026-10-22-bypass-option-c-choice-251-1.0.23.md)
+- [Progress — the study of the sources of truth; ROADMAP R65 accepted (choice 252) (2026-10-22)](2026-10-22-sources-of-truth-study-r65-choice-252.md)
