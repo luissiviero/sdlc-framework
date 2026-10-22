@@ -29,10 +29,17 @@ Not tested, in either mode: a force-push to `main` and the deletion of `main`. I
 | S1 | Refused by the ruleset | `PUT …/contents/docs/reviews/ruleset-probe-s1.md` answered `409 Repository rule violations found`: "Cannot update this protected ref. Changes must be made through a pull request." |
 | S2 | Refused by the ruleset; the session's git proxy let the push through to GitHub | `git push origin HEAD:main` of `95abcf6` on top of `1f58af2`: `! [remote rejected] HEAD -> main (push declined due to repository rule violations)`, with the same two messages as S1. A first attempt on a stale `main` (`0a0554d`) failed with `rejected (fetch first)` and an `HTTP 403` from the transfer, so it is not counted. |
 | S3 | **Merged.** The bypass in this mode covers an API merge by a session acting as the owner | PR #314: `mergeable_state` read `blocked` through the same tools, then `merge_pull_request` answered `merged: true`, merge commit `54a05f6` on `main`. The PR's author also reads as the owner's login, though the session opened it. |
+| O1 | **Merged from the phone.** The app shows "Unable to merge — Cannot merge at this time" under "All checks have passed", and still offers Merge; a tap opens the commit-message sheet, and its MERGE button merged | PR #315: the owner's screenshot of the sheet (14:09 local time), then `merged: true`, `merged_by: luissiviero`, `merged_at` 17:09:14 UTC. This answers NOTES §17's open point: the label discouraged the tap on 2026-09-27, but the tap merges in this mode too. |
+| O2 | Not needed: O1 merged | |
+| O3 | not run yet | |
+
+## Results: "Exempt" (set by the owner on 2026-10-22)
+
+| # | Result | Evidence |
+|---|--------|----------|
+| S1 | **Accepted.** The commit landed on `main` | `PUT …/contents/docs/reviews/ruleset-probe-s1.md` created commit `7c33f02` on `main`, its author the owner's login. The file is removed by the pull request that records this row. |
+| S2 | **Accepted.** The push landed on `main` | `git push origin HEAD:main`: `2a782f1..906317a  HEAD -> main`. The file is removed by the same pull request. |
+| S3 | not run yet | |
 | O1 | not run yet | |
 | O2 | not run yet | |
 | O3 | not run yet | |
-
-## Results: "Exempt"
-
-Not run yet.
