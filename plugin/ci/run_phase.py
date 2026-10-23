@@ -3748,7 +3748,9 @@ OWNER_FIELDS_NEED = (
     "values (a test file changed under a lifted lock too); apply the label if the act is "
     "yours, else fix the phase command that wrote them and re-run the phase. fast_lane is "
     "the runner's own record of decision 30's fast lane, and risk_acceptances its record of "
-    "the merges that accepted a risk (decision 35): no session writes them."
+    "the merges that accepted a risk (decision 35): no session writes them. released_at, "
+    "released_sha and released_pr are the release workflow's record, written after the "
+    "merge (choice 268): no session writes them either."
 )
 OWNER_FIELDS_CHECK = "owner_fields"
 OWNER_LABEL_OF = {
@@ -3779,6 +3781,9 @@ def owner_fields(st) -> dict[str, Any]:
         "risk_acceptances": json.dumps(st.risk_acceptances, sort_keys=True)
         if st.risk_acceptances
         else None,
+        # choice 268 (d): the release record; only the release workflow writes it, after the
+        # merge (a session's released_pr would make the release of its merge skip)
+        "released": (st.released_at, st.released_sha, st.released_pr),
     }
 
 
@@ -3857,6 +3862,13 @@ def owner_field_mismatches(
             f"{before.get('risk_acceptances')} (the runner's record of the merges that "
             "accepted a risk, decision 35)"
         )
+    # choice 268 (d): the release record, written by the release workflow after the merge
+    if after.get("released") not in (before.get("released"), approved.get("released")):
+        reasons.append(
+            f"released_at, released_sha, released_pr: the session recorded "
+            f"{after.get('released')}; expected {before.get('released')} (the release "
+            "workflow's record, written after the merge)"
+        )
     return reasons
 
 
@@ -3914,6 +3926,9 @@ def restore_owner_fields(change_dir: Path, before_st, after_st=None) -> None:
     after_st.panel_calls = max(after_st.panel_calls, before_st.panel_calls)
     after_st.fast_lane = before_st.fast_lane
     after_st.risk_acceptances = [dict(line) for line in before_st.risk_acceptances]
+    after_st.released_at = before_st.released_at
+    after_st.released_sha = before_st.released_sha
+    after_st.released_pr = before_st.released_pr
     status_mod.write_status(change_dir, after_st)
 
 
