@@ -75,6 +75,10 @@ A fresh-context sub-agent reviewed `65fe810`, report only. It found nothing bloc
    - Two prompts read like the built-in review skills, so cases 0008 and 0011 are reworded around "this organization's" rules.
    - The budget is 0.50 USD, as the other cases have.
 
+## The live trigger runs
+- **First run.** `Framework evals` run 39981213528, on `65fe810`, with a check that accepted the name with or without `sdlc:`: 12 of 15 trigger cases passed. 0009, 0011 and 0013 did not load their skill. As recommended to the owner, the skills were fixed rather than the cases: the `coding-standards` and `security-baseline` descriptions gained the phrasings the three prompts used. 0011 had already been reworded after the review.
+- **Second run.** Run 39982874210, on `b6afd69`, with exact names: 14 of 15 passed, which verifies `sdlc:<name>` (NOTES §61). 0020 ended at `max_turns` 6 before its checks; the trigger cases now allow 12 turns.
+
 ## Citations checked
 - Decision 40 and #365's corrections.
 - The article, p.21-23, in `docs/reference/ai-native-sdlc-playbook.txt`.

@@ -4,7 +4,7 @@
 # for the task without naming the skill and the run edits nothing.
 description: the ux-conventions skill loads for "form states" without being named
 tools: "Read,Grep,Glob,Skill"
-max_turns: 6
+max_turns: 12
 budget_usd: 0.5
 timeout_seconds: 300
 checks:

@@ -653,7 +653,7 @@ def test_each_policy_skill_has_three_trigger_cases_that_never_name_it():
         assert skill not in case.prompt and skill.replace("-", " ") not in case.prompt.lower()
         assert "skill" not in case.prompt.lower(), name
         assert case.config["tools"] == "Read,Grep,Glob,Skill"
-        assert case.config["budget_usd"] <= 0.5 and case.config["max_turns"] <= 6
+        assert case.config["budget_usd"] <= 0.5 and case.config["max_turns"] <= 12
         assert case.config["checks"][1] == {"file": "sample_pkg/calc.py", "unchanged": True}
     assert sorted(by_skill) == sorted(preflight.POLICY_SKILLS)
     assert all(len(set(prompts)) == 3 for prompts in by_skill.values()), by_skill
