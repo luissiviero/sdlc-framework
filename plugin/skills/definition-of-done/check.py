@@ -26,8 +26,8 @@ def main(argv: list[str] | None = None) -> int:
         return policy.report("definition-of-done check", [f"gate could not run: {exc}"])
     print("## definition-of-done check (gate dry run)")
     print(
-        f"- change {result.change_id} ({result.slug}), gate ({result.phase}), profile "
-        f"{result.profile}, {'human' if result.human_gate else 'automated'} gate"
+        f"- change {result.change_id} ({result.slug}), gate ({result.phase}), "
+        f"{'human' if result.human_gate else 'automated'} gate"
     )
     for ch in result.checks:
         print(f"- [{'x' if ch.ok else ' '}] {ch.name}: {ch.reason}")

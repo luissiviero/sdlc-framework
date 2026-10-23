@@ -1,0 +1,63 @@
+{
+  "collected_at": "2026-10-16T18:22:20+00:00",
+  "head": "7be5f77f0c27ed84ecc664c9f1307a4edd1a1720",
+  "not_applied": [],
+  "ok": true,
+  "pr_number": 211,
+  "repo": "luissiviero/sdlc-framework",
+  "requests": [
+    {
+      "association": "OWNER",
+      "at": "2026-10-15T15:49:05Z",
+      "author": "luissiviero",
+      "body": "Re-run phase (c) per plan.md; the preflight park is settled.",
+      "id": 5535922259,
+      "kind": "review",
+      "state": "CHANGES_REQUESTED",
+      "url": "https://github.com/luissiviero/sdlc-framework/pull/211#pullrequestreview-5535922259"
+    },
+    {
+      "association": "OWNER",
+      "at": "2026-10-15T21:21:52Z",
+      "author": "luissiviero",
+      "body": "The build is committed in 7d4e472; finish phase (c): verifier, adversarial review, gate.",
+      "id": 5540094158,
+      "kind": "review",
+      "state": "CHANGES_REQUESTED",
+      "url": "https://github.com/luissiviero/sdlc-framework/pull/211#pullrequestreview-5540094158"
+    },
+    {
+      "association": "OWNER",
+      "at": "2026-10-16T02:16:29Z",
+      "author": "luissiviero",
+      "body": "The build is committed in 7d4e472; finish phase (c): verifier, adversarial review, gate.",
+      "id": 5542229374,
+      "kind": "review",
+      "state": "CHANGES_REQUESTED",
+      "url": "https://github.com/luissiviero/sdlc-framework/pull/211#pullrequestreview-5542229374"
+    },
+    {
+      "association": "OWNER",
+      "at": "2026-10-16T11:27:25Z",
+      "author": "luissiviero",
+      "body": "Gate (c) parked on two failing tests. (1) checks.dropped_eval_cases must not report a dot-prefixed destination folder as a dropped case: test_dropped_test_files_and_eval_cases_pure expects [\"evals/cases/bar/\", \"evals/cases/baz/\"] and gets evals/cases/.baz/ as well \u2014 fix the code. (2) test_gate_continues_on_a_clean_change (tests/test_gate.py:540) lists gate (c)'s checks; add ratchets to its expected set, since this change adds that check to phase (c) on purpose.",
+      "id": 5547148338,
+      "kind": "review",
+      "state": "CHANGES_REQUESTED",
+      "url": "https://github.com/luissiviero/sdlc-framework/pull/211#pullrequestreview-5547148338"
+    },
+    {
+      "association": "OWNER",
+      "at": "2026-10-16T18:21:37Z",
+      "author": "luissiviero",
+      "body": "Apply the same two fixes again and commit them before anything else: (1) in checks.dropped_eval_cases, record a dot-prefixed rename destination only as the dropped source case, never as a case of its own (test_dropped_test_files_and_eval_cases_pure); (2) add \"ratchets\" to the expected check set in test_gate_continues_on_a_clean_change (tests/test_gate.py:540). Then run the gate. In CI the gate's commands run on the runner after the session, outside the sandbox (SDLC_GATE_COMMANDS=runner), so the .env read denial inside the session does not affect the gate. Do not stop to ask; this round is unattended.",
+      "id": 5552003512,
+      "kind": "review",
+      "state": "CHANGES_REQUESTED",
+      "url": "https://github.com/luissiviero/sdlc-framework/pull/211#pullrequestreview-5552003512"
+    }
+  ],
+  "route": "api",
+  "schema_version": 1,
+  "unavailable": null
+}

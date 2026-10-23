@@ -29,6 +29,7 @@ import pytest
 from gate import artifacts as art
 from gate import gate as gate_mod
 from state import status as status_mod
+from tests import fixture_repos
 from tests.test_ci import (
     FIXTURE,
     INIT,
@@ -84,6 +85,14 @@ preflight = str(plugin / "plugin" / "gate" / "preflight.py")
 change = next(root.glob(f"changes/{change_id}-*"))
 
 
+def write_reviewer_model(phase, head):  # what the panel_blind hook writes beside it (R7)
+    (change / "evidence" / f"adversarial-review-{phase}.model.json").write_text(
+        json.dumps({"head": head, "agent_type": "sdlc:adversarial-reviewer",
+                    "models": ["claude-opus-5-5"], "reason": None}),
+        encoding="utf-8",
+    )
+
+
 def run(*args, ok=(0,)):
     proc = subprocess.run(
         [sys.executable, *args], cwd=root, capture_output=True, text=True, encoding="utf-8"
@@ -96,6 +105,13 @@ def give_up(message):  # the session stops in step 0 and reports, as the prose t
     print(json.dumps({"type": "result", "is_error": False, "num_turns": 4,
                       "duration_ms": 30995, "total_cost_usd": 0.13, "result": message}))
     sys.exit(0)
+
+
+def classification(of_phase):
+    # decision 30: a routine design takes the fast lane; the recorded design runs keep
+    # today's gate (b) unless the test asks for the fast lane (FAKE_CLASSIFICATION)
+    default = "non-routine" if of_phase == "b" else "routine"
+    return os.environ.get("FAKE_CLASSIFICATION") or default
 
 
 # step 0: /sdlc-design reads the change and stops on a park; /sdlc-build asks the preflight
@@ -120,11 +136,12 @@ if phase == "fix":  # the recorded fix round of /sdlc-fix: one comment, applied 
     if fix_phase != "a":
         head = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=root, text=True).strip()
         verdict = {"schema_version": 1, "phase": fix_phase, "head": head, "verdict": "continue",
-                   "reasons": [], "classification": "routine", "classification_reasons": [],
-                   "at": "2026-09-24T10:00:00Z"}
+                   "reasons": [], "classification": classification(fix_phase),
+                   "classification_reasons": []}
         (change / "evidence" / f"adversarial-review-{fix_phase}.json").write_text(
             json.dumps(verdict), encoding="utf-8"
         )
+        write_reviewer_model(fix_phase, head)
     run(gate, "check", "--root", ".", "--id", change_id, "--phase", fix_phase, ok=(0, 3, 4))
     run(state, "commit-phase", "--root", ".", "--id", change_id, "--phase", fix_phase,
         "--message", f"fix({change_id}): gate ({fix_phase}) evidence", "--push", *on)
@@ -191,18 +208,19 @@ panel = str(plugin / "plugin" / "panel" / "cli.py")
 def write_verdict():
     head = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=root, text=True).strip()
     verdict = {"schema_version": 1, "phase": phase, "head": head, "verdict": "continue",
-               "reasons": [], "classification": "routine", "classification_reasons": [],
-               "at": "2026-09-21T10:00:00Z"}
+               "reasons": [], "classification": classification(phase),
+               "classification_reasons": []}
     (change / "evidence" / f"adversarial-review-{phase}.json").write_text(
         json.dumps(verdict), encoding="utf-8"
     )
+    write_reviewer_model(phase, head)
 
 
 write_verdict()
 # deferred review (decision 21): the panel settles the judgment items before the gate; the
 # three members are fresh contexts here stood in by recorded files, the record is the CLI's
 items = json.loads(run(panel, "items", "--root", ".", "--id", change_id, "--phase", phase))
-if items["mode"] == "deferred" and items["pending"]:
+if items["pending"]:
     for n in items["pending"]:
         for member in ("reviewer", "advocate", "conciliator"):
             run(panel, "prompt", "--root", ".", "--id", change_id, "--phase", phase,
@@ -217,8 +235,8 @@ if items["mode"] == "deferred" and items["pending"]:
         )
         # what the panel_blind hook records when the real advocate writes its file (0.2.30)
         (folder / f"{phase}-{n}-advocate.model.json").write_text(
-            json.dumps({"agent_type": "sdlc:adversarial-reviewer", "models": ["claude-opus-5"],
-                        "reason": None}),
+            json.dumps({"agent_type": "sdlc:adversarial-reviewer",
+                        "models": ["claude-fable-5-1"], "reason": None}),
             encoding="utf-8",
         )
         (folder / f"{phase}-{n}-conciliator.json").write_text(
@@ -242,11 +260,11 @@ if os.environ.get("FAKE_CLAUDE_MODE") == "fail-after-gate":  # the gate's record
                       "total_cost_usd": 0.5, "result": "the session hit its turn limit"}))
     sys.exit(1)
 # the real CLI reports every model the session and its sub-agents used (NOTES section 25):
-# here the session's and, as in the sample's change 0002, the advocate's opus
+# here the template's (R7): the session and the reviewer on Opus 5.5, the advocate on Fable
 print(json.dumps({"type": "result", "is_error": False, "result": f"{word} done",
                   "total_cost_usd": 0.5, "num_turns": 3,
-                  "modelUsage": {"claude-sonnet-5": {"outputTokens": 120000},
-                                 "claude-opus-5": {"outputTokens": 9000}}}))
+                  "modelUsage": {"claude-opus-5-5": {"outputTokens": 120000},
+                                 "claude-fable-5-1": {"outputTokens": 9000}}}))
 """
 
 # The fake gh: every call is logged; `pr list` finds nothing (or PR #7 when its --head is
@@ -361,7 +379,8 @@ def workflow_run_line(phase: str = "b", find: bool = False) -> list[str]:
     or with ``find`` the step before it that finds the change (``--find-change``)."""
     text = (WORKFLOW_DIR / WORKFLOW_FILE[phase]).read_text(encoding="utf-8")
     lines = re.findall(r"(?m)^\s+run: (python framework/plugin/ci/run_phase\.py .*)$", text)
-    lines = [ln for ln in lines if ("--find-change" in ln) == find]
+    # R18: the triage step after the phase run is a run_phase.py line of its own
+    lines = [ln for ln in lines if ("--find-change" in ln) == find and "--phase triage" not in ln]
     assert len(lines) == 1, f"the run line of {WORKFLOW_FILE[phase]} moved"
     return shlex.split(lines[0])
 
@@ -370,10 +389,23 @@ def workflow_run_line(phase: str = "b", find: bool = False) -> list[str]:
 def checkout(tmp_path):
     """The runner's view: the project checked out on main with change 0001 merged at gate
     (a), the pinned framework beside it under ``framework/``, and a bare remote."""
-    root = tmp_path / "proj"
+    root, bare = tmp_path / "proj", tmp_path / "remote.git"
+    fixture_repos.copy(
+        "end-to-end-checkout",
+        tmp_path,
+        _build_checkout,
+        relocate=lambda dest: git(
+            dest / "proj", "config", "remote.origin.pushurl", str(dest / "remote.git")
+        ),
+    )
+    return root, bare
+
+
+def _build_checkout(base: Path) -> None:
+    root = base / "proj"
     shutil.copytree(FIXTURE, root)
-    bare = tmp_path / "remote.git"
-    git(tmp_path, "init", "-q", "--bare", "-b", "main", str(bare))
+    bare = base / "remote.git"
+    git(base, "init", "-q", "--bare", "-b", "main", str(bare))
     git(root, "init", "-q", "-b", "main")
     git(root, "config", "user.email", "owner@example.com")
     git(root, "config", "user.name", "Owner")
@@ -406,7 +438,6 @@ def checkout(tmp_path):
     ignore = shutil.ignore_patterns("__pycache__", "*.pyc")
     shutil.copytree(ROOT / "plugin", framework / "plugin", ignore=ignore)
     shutil.copytree(ROOT / ".claude-plugin", framework / ".claude-plugin", ignore=ignore)
-    return root, bare
 
 
 def run_phase_job(
@@ -516,6 +547,32 @@ def test_the_design_job_pushes_the_evidence_and_opens_the_pr(checkout, tmp_path)
     assert "--draft" not in create  # (b) opens plain; the owner's merge is gate (b)
 
 
+def test_a_routine_design_takes_the_fast_lane_to_the_build(checkout, tmp_path):
+    """Decision 30: the same job with a plan the adversarial reviewer classes routine passes
+    gate (b) without the owner's merge and hands over to the build on sdlc/0001/c. This job
+    has no GITHUB_TOKEN (its PR calls take the fake gh), so the dispatch has no route: since
+    1.0.11 (PROGRESS choice 232, the owner's answer of 2026-10-19 on this test) the design
+    then waits at (b) with fast_lane.b dropped on the branch it pushes, instead of reading
+    continue with no build behind it. The dispatched path is pinned in tests/test_fast_lane.py."""
+    root, bare = checkout
+    proc, out, _calls = run_phase_job(
+        root, tmp_path, "ok", step_env={"FAKE_CLASSIFICATION": "routine"}
+    )
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert out["dispatched"]["workflow"] == "sdlc-build.yml"
+    assert out["dispatched"]["head_ref"] == "sdlc/0001/c"
+    assert out["dispatched"]["ok"] is False
+    no_route = "the build was not dispatched: no GITHUB_TOKEN/GH_TOKEN to dispatch with"
+    assert out["fast_lane"]["recorded"] is False and out["fast_lane"]["reason"] == no_route
+    assert out["fast_lane"]["demoted"]["ok"] is True
+    assert out["result"] == "wait" and out["label"] == "sdlc:b-ready"
+    status = remote_file(bare, "sdlc/0001/b", f"{CHANGE}/status.yaml")
+    assert not re.search(r"(?m)^  b:$", status), status
+    gate_file = json.loads(remote_file(bare, "sdlc/0001/b", f"{CHANGE}/evidence/gate-b.json"))
+    assert gate_file["result"] == "wait" and "fast_lane" not in gate_file
+    assert no_route in gate_file["config_note"]
+
+
 def test_the_design_job_is_red_when_github_refuses_the_pr(checkout, tmp_path):
     """The fifth live run: everything ran, GitHub refused `pr create` because the repository
     setting was off. The evidence still reaches the remote; the job fails and says why."""
@@ -538,8 +595,10 @@ def test_a_second_dispatch_repeats_the_design_when_the_first_left_no_pr(checkout
     nothing could move the change. A fresh runner starts on main; the run must find the
     branch, see that no pull request carries it, clear the park, run again and open it."""
     root, bare = checkout
-    open_concern = RECORDED_SPEC_BODY.replace("- [x] Rounding", "- Rounding")
-    proc, out, _calls = run_phase_job(root, tmp_path / "first", "refuse", open_concern)
+    # a spec without its Acceptance section parks on ``artifacts``, which never goes to the
+    # review panel (deferred review is the only mode since decision 37)
+    incomplete = RECORDED_SPEC_BODY.split("## Acceptance", 1)[0]
+    proc, out, _calls = run_phase_job(root, tmp_path / "first", "refuse", incomplete)
     assert proc.returncode == 1 and out["result"] == "park" and out["pr"]["ok"] is False
     assert "parked_reason: null" not in remote_file(bare, "sdlc/0001/b", f"{CHANGE}/status.yaml")
     git(root, "checkout", "-q", "main")  # a fresh runner checks out the default branch
@@ -742,6 +801,7 @@ def test_an_owner_label_is_performed_before_the_round_and_a_bot_s_is_refused(che
         FAKE_LABEL_EVENTS=json.dumps(events),
         GIT_CONFIG_GLOBAL=str(tmp_path / "gitconfig"),
         GIT_CONFIG_NOSYSTEM="1",
+        GITHUB_REPOSITORY_OWNER="luissiviero",  # the owner's account (choice 218, 1.0.10)
     )
     assert proc.returncode == 0, proc.stdout + proc.stderr
     labels = out["owner_labels"]
@@ -773,6 +833,7 @@ def test_a_fix_round_on_a_web_session_intent_pr_edits_the_intent_on_its_own_head
         str(STATE_CLI), "new-change", "--root", str(root), "--title", "Second idea", cwd=root
     )
     assert proc.returncode == 0, proc.stderr
+    reserved = json.loads(proc.stdout)["reservation"]["sha"]  # R51: sdlc/0002/a reserved
     second = "changes/0002-second-idea"
     (root / second / "intent.md").write_text(
         RECORDED_INTENT.replace("0001", "0002"), encoding="utf-8", newline="\n"
@@ -794,7 +855,8 @@ def test_a_fix_round_on_a_web_session_intent_pr_edits_the_intent_on_its_own_head
     intent = remote_file(bare, "claude/relaxed-y", f"{second}/intent.md")
     assert "Revised per the owner's review comment." in intent
     assert "phase: a" in remote_file(bare, "claude/relaxed-y", f"{second}/status.yaml")
-    assert "sdlc/0002/a" not in git(bare, "branch", "--list")  # nothing else was pushed
+    # nothing else was pushed: the reservation new-change made is the branch's only commit
+    assert git(bare, "rev-parse", "refs/heads/sdlc/0002/a").strip() == reserved
     edit = next(c for c in calls if c[:2] == ["pr", "edit"])
     assert edit[2] == "7" and not any(c[:2] == ["pr", "create"] for c in calls)
     listed = next(c for c in calls if c[:2] == ["pr", "list"])
@@ -851,18 +913,11 @@ def test_a_pr_closed_without_a_merge_abandons_the_change_and_every_run_skips_it(
 
 # --- deferred review (decision 21; plugin 0.2.14) --------------------------------------------
 def test_under_deferred_review_the_panel_closes_the_concern_and_the_pr_says_so(checkout, tmp_path):
-    """The design run leaves one open concern. Under review: parked it parks (the third
-    test above). Under review: deferred the run puts it to the panel, records the decision,
-    commits (``record`` does), re-runs the verdict, and the gate waits for the owner with
-    the decision at the top of the PR body; one panel call was spent, no fix iteration."""
+    """The design run leaves one open concern: the run puts it to the panel, records the
+    decision, commits (``record`` does), re-runs the verdict, and the gate waits for the
+    owner with the decision at the top of the PR body; one panel call was spent, no fix
+    iteration (deferred review, the only mode since decision 37)."""
     root, bare = checkout
-    change = root / CHANGE
-    st = status_mod.read_status(change)
-    st.review_override = "deferred"  # the per-change switch; sdlc.yaml stays as merged
-    status_mod.write_status(change, st)
-    git(root, "add", f"{CHANGE}/status.yaml")
-    git(root, "commit", "-q", "-m", "intent(0001): deferred review for this change")
-    git(root, "push", "-q", "origin", "main")
     open_concern = RECORDED_SPEC_BODY.replace("- [x] Rounding", "- Rounding")
     proc, out, calls = run_phase_job(root, tmp_path, "ok", open_concern)
     assert proc.returncode == 0, proc.stdout + proc.stderr
@@ -871,8 +926,9 @@ def test_under_deferred_review_the_panel_closes_the_concern_and_the_pr_says_so(c
     assert "- decided (by panel #1): keep half-up rounding via round() — Rounding" in spec
     # 0.2.30: the run that took the decision shows the advocate's model, committed with it
     models = json.loads(remote_file(bare, "sdlc/0001/b", f"{CHANGE}/evidence/panel-models-b.json"))
-    assert models["ok"] and models["new_decisions"] == 1 and models["advocate_model"] == "opus"
-    assert models["models"] == ["claude-opus-5", "claude-sonnet-5"]
+    assert models["ok"] and models["new_decisions"] == 1
+    assert models["advocate_model"] == "claude-fable-5-1"  # the template's (R7)
+    assert models["models"] == ["claude-fable-5-1", "claude-opus-5-5"]
     ledger_md = remote_file(bare, "sdlc/0001/b", f"{CHANGE}/evidence/decisions-b.md")
     assert "1. [concern] Rounding" in ledger_md and "cost: $0.09" in ledger_md
     ledger_json = json.loads(
@@ -1026,7 +1082,9 @@ def test_a_target_red_after_the_session_parks_the_change_on_the_remote(checkout,
     status = remote_file(bare, "sdlc/0001/b", f"{CHANGE}/status.yaml")
     assert "result: parked" in status and "commands: not green" in status
     edit = [c for c in calls if c[:2] == ["pr", "edit"]]
-    assert edit and "sdlc:needs-human" in " ".join(edit[-1])
+    labelled = [c for c in edit if "--add-label" in c]
+    assert labelled and "sdlc:needs-human" in " ".join(labelled[-1])
+    assert edit[-1][-2:] == ["--add-reviewer", "owner"]  # the park requests the owner's review
 
 
 def test_a_session_that_fails_after_a_deferred_gate_parks_the_change_on_the_remote(
@@ -1047,7 +1105,9 @@ def test_a_session_that_fails_after_a_deferred_gate_parks_the_change_on_the_remo
     status = remote_file(bare, "sdlc/0001/b", f"{CHANGE}/status.yaml")
     assert "result: parked" in status and "commands: deferred to the runner" in status
     edit = [c for c in calls if c[:2] == ["pr", "edit"]]
-    assert edit and "sdlc:needs-human" in " ".join(edit[-1])
+    labelled = [c for c in edit if "--add-label" in c]
+    assert labelled and "sdlc:needs-human" in " ".join(labelled[-1])
+    assert edit[-1][-2:] == ["--add-reviewer", "owner"]  # the park requests the owner's review
 
 
 ENV_CHECKING_TEST = (
@@ -1183,7 +1243,9 @@ def test_a_session_that_dies_before_the_runner_s_step_leaves_the_marked_logs_par
     status = remote_file(bare, "sdlc/0001/c", f"{CHANGE}/status.yaml")
     assert "result: parked" in status and "commands: deferred to the runner" in status
     edit = [c for c in calls if c[:2] == ["pr", "edit"]]
-    assert edit and "sdlc:needs-human" in " ".join(edit[-1])
+    labelled = [c for c in edit if "--add-label" in c]
+    assert labelled and "sdlc:needs-human" in " ".join(labelled[-1])
+    assert edit[-1][-2:] == ["--add-reviewer", "owner"]  # the park requests the owner's review
 
 
 # --- F1 (PROGRESS "Session 17"): a dispatched fix round reads the owner's labels -------------
@@ -1211,6 +1273,7 @@ def test_a_dispatched_round_reads_the_owner_s_labels_from_the_pull_request_of_th
         PR_NUMBER="",  # the dispatch: change_id and head_ref only
         FAKE_PR_LABELS=json.dumps(["sdlc:b-ready", "sdlc:reset-iterations"]),
         FAKE_LABEL_EVENTS=json.dumps(events),
+        GITHUB_REPOSITORY_OWNER="luissiviero",  # the owner's account (choice 218, 1.0.10)
     )
     assert proc.returncode == 0, proc.stdout + proc.stderr
     labels = out["owner_labels"]

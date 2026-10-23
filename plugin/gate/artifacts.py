@@ -27,6 +27,16 @@ INTENT_SECTIONS = (
 # when ``status.yaml: entry_route`` is ``incident``.
 INTENT_EVIDENCE_SECTION = "## Evidence"
 INTENT_HEADER_FIELDS = ("Author:", "Status:", "Change id:", "Entry route:")
+# R29 part 1: the section for the owner's examples and references (skill ``intent-template``).
+# Not in INTENT_SECTIONS: the gate does not require it, so changes in flight and the
+# detection's incident intents never park on it (docs/proposals/intent-home.md).
+INTENT_EXAMPLES_SECTION = "## Examples/References"
+# R54, the quick intent: the owner writes the Problem paragraph only; each other article
+# section holds this one line, and the design pass states what it assumed in spec.md's
+# SPEC_ASSUMED_SECTION, which the design PR and the build PR show above their bullets.
+QUICK_INTENT_RE = re.compile(r"(?im)^\s*Quick intent:\s*yes\b")
+QUICK_INTENT_MARKER = "Left to the design run (quick intent)."
+SPEC_ASSUMED_SECTION = "## Assumed from the quick intent"
 # The first heading of intent.md: "# Intent: <title>" (skill ``intent-template``).
 INTENT_TITLE_RE = re.compile(r"(?i)^#\s*Intent:\s*(?P<title>.*)$")
 
@@ -86,6 +96,36 @@ REQUIRED_EVIDENCE = {
     "d": (EVIDENCE_TEST, EVIDENCE_BUILD, EVIDENCE_LINT, EVIDENCE_VERIFIER),
     "e": (EVIDENCE_TEST, EVIDENCE_BUILD, EVIDENCE_LINT, EVIDENCE_VERIFIER),
 }
+# The incident's lesson and eval (change 0003; docs/proposals/okf-adoption.md R1), checked
+# only at gate (e) by gate/checks.py:lesson_and_eval. The field names and order are spec.md
+# Requirements' first bullet, minus the three optional fields (runbook, supersedes,
+# retired_by); the value names what a present field must not be to count as missing.
+LESSON_REQUIRED_FIELDS = {
+    "type": "scalar",
+    "title": "scalar",
+    "description": "scalar",
+    "tags": "list",
+    "change": "scalar",
+    "detected": "mapping",
+    "fixed": "mapping",
+    "generated": "mapping",
+    "status": "scalar",
+    "stale_after": "scalar",
+    "sources": "list",
+}
+LESSON_STATUSES = ("stable", "retired")
+# The eval case's two files: plugin/evals/case.py:178 is the only writer and must agree.
+EVAL_PROMPT = "prompt.md"
+EVAL_CHECKS = "checks.yaml"
+
+
+def lesson_glob(slug: str) -> str:
+    """The glob a change's lesson file must match, year and month free, slug fixed (a looser
+    ``lessons/*-<slug>.md`` would also match a file whose name merely ends in another
+    change's slug)."""
+    return f"lessons/[0-9][0-9][0-9][0-9]-[0-9][0-9]-{slug}.md"
+
+
 # The review passes (step 26, phase e) publish review-findings.json; the gate refuses to pass
 # gate (e) without it, and reads it at (c)/(d) whenever it is present.
 FINDINGS_REQUIRED_AT = ("e",)
@@ -228,17 +268,22 @@ def render_spec_header(
     plugin_version: str,
     skills: list[str],
     overrides: list[str],
+    sources: list[tuple[str, str]] | None = None,
 ) -> str:
     """The two header lines of spec.md, exactly as the ``spec-template`` skill shows them
     (article p.14: the spec, the prompt that produced it and the skill versions in force are
-    logged together). ``gate/cli.py spec-header`` renders it; the design pass pastes it."""
+    logged together). ``gate/cli.py spec-header`` renders it; the design pass pastes it.
+    ``sources`` are the owner's policy sources in force, ``(path, commit)`` each (R27): the
+    record of which policy text judged the change, beside the plugin version."""
     applied = ", ".join(skills)
     overridden = ", ".join(overrides) if overrides else "none"
+    in_force = ", ".join(f"{path}@{commit}" for path, commit in sources or []) or "none"
     return (
         f"# Spec: {title}\n"
         f"Change id: {change_id}. Status: proposed. Produced by: sdlc plugin "
         f"{plugin_version}, /sdlc-design prompt {DESIGN_PROMPT_VERSION} (article p.14). "
-        f"Skills: {applied} (plugin {plugin_version}); overrides: {overridden}"
+        f"Skills: {applied} (plugin {plugin_version}); overrides: {overridden}; "
+        f"policy sources: {in_force}"
     )
 
 
@@ -256,6 +301,17 @@ def intent_title(intent_text: str) -> str | None:
 
 def is_framework_change(intent_text: str) -> bool:
     return FRAMEWORK_CHANGE_RE.search(intent_text) is not None
+
+
+def is_quick_intent(intent_text: str) -> bool:
+    """The header line ``Quick intent: yes`` (R54), read before the first section."""
+    return QUICK_INTENT_RE.search(intent_text.split("## ", 1)[0]) is not None
+
+
+def left_to_design(body: str) -> bool:
+    """True when an intent section holds only the quick intent's marker (R54)."""
+    text = re.sub(r"^\s*[-*]\s+", "", " ".join(body.split())).rstrip(".").lower()
+    return text == QUICK_INTENT_MARKER.rstrip(".").lower()
 
 
 def open_concerns(spec_text: str) -> list[str]:
@@ -291,8 +347,28 @@ def planned_files(plan_text: str) -> list[str]:
     return files
 
 
+def linked_part(path: Path) -> Path | None:
+    """The first part of ``path`` that is a symbolic link, from the file itself up to the
+    ``changes`` folder or the folder that holds ``.git`` (the project root, not judged), or
+    None. R59 (the plugin security review of 2026-10-19, I2): a session can link
+    ``evidence/claude-md-proposals.md`` to ``.env`` without reading it, and the runner, which
+    builds the PR body outside the sandbox, would quote the target."""
+    part = Path(path).absolute()
+    while True:
+        if part.is_symlink():
+            return part
+        parent = part.parent
+        if part.name == "changes" or parent == part or (parent / ".git").exists():
+            return None
+        part = parent
+
+
 def read_text(path: Path) -> str | None:
+    """The file's text, or None when it is missing, unreadable or reached through a link
+    (``linked_part``)."""
     try:
+        if linked_part(path) is not None:
+            return None
         return Path(path).read_text(encoding="utf-8")
     except OSError:
         return None

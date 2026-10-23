@@ -13,7 +13,11 @@ description: What "done" means for a change in the SDLC framework. Use before re
   the tally), p.42 (the confidence gate decides whether a stage's output continues).
 - `docs/OPERATING_MODEL.md` sections 1, 3 and 6 of the framework: the artifact per phase, the
   deterministic checks of the gate, park never page.
-- Owner's definition of done: **no owner source yet** — name it here when it exists.
+- Owner's definition of done: the project's `policies/definition-of-done.md`, written by the
+  owner in their own words (ROADMAP R27). Read it first when it exists: where it and this
+  skill differ, the source wins, over a project override too; a rule here it does not
+  mention still applies. No file means these rules alone. It is a guardrail path (decision
+  40): never edit it in a run.
 - Project override: `.claude/skills/definition-of-done/SKILL.md`.
 
 ## Done, per phase
@@ -32,7 +36,9 @@ description: What "done" means for a change in the SDLC framework. Use before re
   Important finding open; PR summary ≤5 bullets (what changed and why, evidence status,
   findings by severity, plan conformance, what needs the owner); merge is the owner's.
 - **Always**: no guardrail file touched unless the intent says `Framework change: yes`; no
-  risk-list item touched without the owner's acceptance; no test skipped, weakened or
+  risk-list item touched without its line in the "Needs your close look" banner, which the
+  owner's merge accepts (decision 35; at (e), the owner's approving review, decision 36); no
+  test skipped, weakened or
   deleted; nobody notified — a run that cannot finish parks with "What I need from you".
 
 ## Check
@@ -44,12 +50,20 @@ It runs the confidence gate in dry-run (nothing recorded) and prints each check.
 output:
 ```
 ## definition-of-done check (gate dry run)
-- change 0001 (percent-helper), gate (c), profile standard, automated gate
+- change 0001 (percent-helper), gate (c), automated gate
 - [x] limits: within the run limits
 - [x] artifacts: every required artifact exists and has its template sections
 - [ ] adversarial_review: evidence/adversarial-review-c.json missing
 - verdict if run now: **park**
   - adversarial_review needs: Run the adversarial-reviewer agent in a fresh context for this phase; it writes the verdict JSON.
 ```
-Deterministic backing: the gate itself (`plugin/gate/cli.py check`) is the enforcement; this
-skill is advisory and tells the model what it will be measured against (p.22 governance).
+Deterministic backing, item by item (R27): (a) to (d), the gate itself (`plugin/gate/cli.py
+check`: artifacts, commands, evidence, plan sync, the adversarial verdict), except the
+screenshots for UI changes at (d), which no gate check requires (`REQUIRED_EVIDENCE` names
+the verifier report and the toolchain logs); (e), the gate's
+findings check on `evidence/review-findings.json`; "Always", the protected-paths hook, the
+shell guard and the gate's `guardrails` check for the guardrail files, the gate's
+`risk_list` check for the banner, the test ratchet and, on a fix-type change, the test-file
+lock for the tests. "Nobody notified" has no hook: the runner sends nothing but the review
+request (decision 31). This skill is advisory and tells the model what it will be measured
+against (p.22 governance).

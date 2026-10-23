@@ -1,0 +1,11 @@
+{
+  "at": "2026-10-12T11:29:14Z",
+  "findings": [],
+  "head": "7764e7a5d875baf648b9c4876fa31e794f92e8b7",
+  "schema_version": 1,
+  "tally": {
+    "important": 0,
+    "nit": 0,
+    "nits_omitted": 0
+  }
+}

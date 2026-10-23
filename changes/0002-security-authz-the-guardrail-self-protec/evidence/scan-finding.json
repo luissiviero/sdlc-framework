@@ -1,0 +1,13 @@
+{
+  "at": "2026-10-05T14:53:56Z",
+  "bounded": false,
+  "class": "authz",
+  "file": "plugin/hooks/hooks.json",
+  "head": "8050b92d556e6b9dc90952c51200f0fb558bc664",
+  "kind": "scan",
+  "line": 32,
+  "schema_version": 1,
+  "severity": "important",
+  "signature": "c433d0293e7a89b4",
+  "summary": "The guardrail self-protection (protected_paths.py) only hooks the Edit|Write|MultiEdit|NotebookEdit tool matcher; the Bash/PowerShell matcher runs plan_sync.py and production_gate.py but never checks a command's target path, and plugin/ci/settings.ci.json's permission allow-list grants bare 'Bash(python *)', 'Bash(python3 *)', 'Bash(node *)', 'Bash(npm *)' and 'Bash(npx *)' with --permission-prompts none, so an unattended phase session can overwrite CLAUDE.md, REVIEW.md, sdlc.yaml or .claude/** with a one-line python/node file write via Bash, bypassing the guardrail-file protection the framework's own threat model (decision 6, CLAUDE.md 'Never edit .claude/**, CLAUDE.md, REVIEW.md or sdlc.yaml in a run') relies on entirely."
+}

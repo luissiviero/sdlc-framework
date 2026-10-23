@@ -1,7 +1,12 @@
 # Progress archive
 
 Every earlier top-level record of `docs/PROGRESS.md` lives here, one file per record, in
-chronological order (oldest first). The current record stays in `docs/PROGRESS.md`.
+chronological order (oldest first). *[2026-10-23, choice 259: the list below ends with the
+last record written in `docs/PROGRESS.md`. From then on each session writes its own record in
+this folder as `<YYYY-MM-DD>-<branch>.md`, and the folder sorted by name is the list; this page
+is not edited again.]*
+[`choices.md`](choices.md) is not a record: it lists where each numbered choice is stated, and
+`python tasks.py choices-index` writes it.
 
 - [Session 3 record (B3: first autonomous phases, gates, merge-triggered plumbing; steps 22–30) — kept as written at the end of session 3](session-3.md)
 - [Session 4 record (B4: release gate, deploy adapters, decisions 21–26; steps 29, 31, 32, 16a) — kept as written at the end of session 4 (B4: release gate, deploy adapters, then decisions 21–26; steps 29, 31, 32, 16a)](session-4.md)
@@ -31,3 +36,53 @@ chronological order (oldest first). The current record stays in `docs/PROGRESS.m
 - [Progress — session 19 (2026-10-04): change 0001 read to its merge — item 3b verified live at (d), the (e) rounds parked on the review pass's own record; plugin 0.3.5 commits that record with the change and sets it aside at the gate; item 9 (R1 on `lessons/`) designed](session-19.md)
 - [Progress — session 20 (2026-10-06 to 2026-10-07): change 0003 (R1 on `lessons/`) through the front door on plugin 0.3.5 — the intent merged, the design run parked gate (b) on one flagged concern, two fresh-context reviews found three build-breaking gaps in the design and the owner's review carries them; the scan's change 0002 read; no bump](session-20.md)
 - [Runner fix (2026-10-08, a one-fix session between sessions 21 and 22): the runner's push check takes the branch it prepared as the session's own, parks a session that ends elsewhere, and a dispatched fix round reads its head from the open pull request; plugin version to be decided by the owner (0.3.6, or riding with change 0003)](2026-10-08-runner-push-check.md)
+- [Progress — session 21 (2026-10-07 to 2026-10-08): change 0003's two fix rounds read on plugin 0.3.5 — the owner's twenty items applied by the first round, a fresh-context review found two build-breaking gaps, the owner's second review (seventeen items) was posted on their word and applied by the second round, gate (b) `sdlc:b-ready` at iteration 2 of 2 and PR #124 ready to merge; the build, (d), (e) and the 0.3.6 tag wait on the merge; no bump](session-21.md)
+- [Progress — session 22 (2026-10-08): change 0003's build read from its turn-capped run to gate (e) on plugin 0.3.5 — the cap's shape judged, the (c) round, (d) and (e) read live, a fresh-context review of the build diff drafted and overtaken by the owner's own reviews; the owner's answers of 2026-10-08 recorded; no bump](session-22.md)
+- [Progress — session 23 (2026-10-08): change 0002 (the weekly scan's security finding) read from its parked design run on plugin 0.3.6 — PR #130's push check verified live on the first phase run after the pin moved, the three gate (b) checks and a fresh-context review turned into the owner's review text for PR #144; R6's ROADMAP row; no bump](session-23.md)
+- [Progress — session 24 (2026-10-09): the parallel work of 2026-10-08/09 put in order (one decision table: conflicts tested by real merges, the merge order, the start conditions, the change ids and the version line after 0.3.7), then change 0002 from its turn-capped build run to its tag, read live; no bump](session-24.md)
+- [Progress — session 25 (2026-10-12 to 2026-10-13): the consolidation session — both repositories read against the docs, one open-items table, the owner's seven decisions; change 0002 driven from its turn-capped (e) round to its merge and `v0.3.7`; `HANDOFF.md` rewritten as the single restart point; no bump in this PR](session-25.md)
+- [Progress — session 26 (2026-10-13): the provocation of 2026-10-13 recorded from session 25's read (PR #58 merged by accident and reverted by #59; four counted runs), the gate's `&&` question answered by running the gate's own code in the container, `HANDOFF.md` rewritten for the item-11 session; the notes-index work as a second PR; no bump](session-26.md)
+- [Progress — 2026-10-13, outside the session plan: the framework checks on every core — pytest-xdist in the dev extra, `python tasks.py test` runs `-n auto`, a fake `gh` for the three phase-run tests; no bump](2026-10-13-framework-checks-every-core.md)
+- [Progress — item 11 (2026-10-14): the sample's first real detection read (change 0013, filed by the owner's dispatch), one gap fixed with its tests, plugin **1.0.0**; Part 3 after the merge, `v1.0.0`, the sample's upgrade, choices 183 to 195](2026-10-14-item-11.md)
+- [Progress — 1.0.1 (2026-10-14): a writable cache folder for `gh` in the CI sandbox, plugin **1.0.1**; choice 196, and change 0005's proposed root `REVIEW.md` row](2026-10-14-1.0.1.md)
+- [Progress — the item-11 follow-ups (2026-10-14 to 2026-10-17): change 0005 from gate (b) to plugin **1.0.2**, the sample's detect run of 2026-10-15, eight gaps recorded](2026-10-17-item-11-follow-ups.md)
+- [Progress — the study's proposals R21 to R45, the pipeline's speed (decisions 30 to 33, R46 to R49), and R10 as plugin **1.0.3** (2026-10-15 to 2026-10-17)](2026-10-17-r21-r49-and-1.0.3.md)
+- [Progress — the safety fixes of NOTES §45 (gaps 6, 7 and 8) as plugin **1.0.4**, and the owner's choices 203 to 213 on the gaps' routes (2026-10-17)](2026-10-17-1.0.4-and-choices-203-213.md)
+- [Progress — the pipeline sprint, part 1: R17 (decision 34) as plugin **1.0.5**, R46 (decision 30) as plugin **1.0.6**, and the owner's choices 214 to 218 (2026-10-17 to 2026-10-18)](2026-10-18-r17-r46-and-choices-214-218.md)
+- [Progress — the pipeline sprint, part 2: R47 (decision 31) as plugin **1.0.7**, R48 (decision 32) as plugin **1.0.8**, R49 (decision 33) as plugin **1.0.9**, and the owner's choices 219 to 227 (2026-10-18)](2026-10-18-r47-r48-r49-and-choices-219-227.md)
+- [Progress — the fix-round robustness PR: NOTES §45 gaps 2, 3 and 4 and choice 218 as plugin **1.0.10**, and the owner's choices 228 to 231 (2026-10-18 to 2026-10-19)](2026-10-19-1.0.10-and-choices-228-231.md)
+- [Progress — the fast lane's recovery PR: a pushed `fast_lane.b` always has a build behind it, as plugin **1.0.11**, and the owner's choice 232 (2026-10-19)](2026-10-19-fast-lane-recovery-1.0.11-and-choice-232.md)
+- [Progress — the live proof on the sample, part 1: change 0015 up to a red deploy run, and the checkout check's bytecode as plugin **1.0.12** (2026-10-19)](2026-10-19-live-proof-part-1-1.0.12.md)
+- [Progress — the speed-first order: ROADMAP R50 to R54, the Order rewritten, and the owner's choices 233 and 234 (2026-10-19)](2026-10-19-speed-first-order-and-choices-233-234.md)
+- [Progress — the framework's own checks, faster: no real network in the tests, the Windows suite in three shards, and the owner's choice 235 (2026-10-19)](2026-10-19-framework-checks-faster-and-choice-235.md)
+- [Progress — the framework's own checks, faster, part 2: the runner prepared before the suite (choice 235, item 6) (2026-10-19)](2026-10-19-framework-checks-faster-part-2-runner-prepared.md)
+- [Progress — the LLM wiki pattern: ROADMAP R55 to R57, three annotations, and the owner's choice 236 (2026-10-19)](2026-10-19-llm-wiki-roadmap-r55-r57-and-choice-236.md)
+- [Progress — the framework's own checks, faster, part 3: the fixture repositories built once per session (choice 235, item 3) (2026-10-19)](2026-10-19-framework-checks-faster-part-3-fixture-repositories.md)
+- [Progress — ROADMAP R55, the docs lint and the generated decisions index, and the owner's choice 237 (2026-10-19)](2026-10-19-r55-docs-lint-and-choice-237.md)
+- [Progress — the framework's own checks, faster, part 4: the git lookups remembered, as plugin 1.0.13 (choice 235, item 5) (2026-10-19)](2026-10-19-framework-checks-faster-part-4-git-lookups-1.0.13.md)
+- [Progress — the Order before the real-project trial: R44 forward, R45 last before the trial, R28 after it, and the owner's choice 238 (2026-10-19)](2026-10-19-order-before-the-trial-and-choice-238.md)
+- [Progress — ROADMAP R7, the in-run reviewer on the latest Opus, as plugin 1.0.14; the runs PR read against plugins 1.0.3 to 1.0.13 (2026-10-19)](2026-10-19-r7-reviewer-on-latest-opus-1.0.14.md)
+- [Progress — the review of PRs #250 to #252 and its follow-ups: R44's `policies/` entry after R27, the sandbox proof back in the queue, the superseded PR's token, and the owner's choice 239 (2026-10-20)](2026-10-20-prs-250-252-review-and-choice-239.md)
+- [Progress — R61 accepted and placed after R44, the sample's ruleset recorded (NOTES §53), R58's check 8, and the owner's choices 240 and 241 (2026-10-20)](2026-10-20-r61-accepted-notes-53-and-choices-240-241.md)
+- [Progress — decisions 35 (R24) and 36 (R22), and the owner's choices 242 and 243 on their questions and on the counts in the pages kept by hand (2026-10-20)](2026-10-20-decisions-35-36-and-choices-242-243.md)
+- [Progress — ROADMAP R24, a risk-list hit is a line in the close-look banner, as plugin 1.0.15 (2026-10-20)](2026-10-20-r24-risk-hit-banner-1.0.15.md)
+- [Progress — R63 accepted: the CLI a new project installs knows the models its sdlc.yaml names (choice 244), and NOTES §55 (2026-10-20)](2026-10-20-r63-accepted-choice-244.md)
+- [Progress — ROADMAP R63, the CLI a new project installs knows the models its sdlc.yaml names, as plugin 1.0.16 (2026-10-20)](2026-10-20-r63-cli-default-1.0.16.md)
+- [Progress — R64 registered: /sdlc-init refreshes the files it wrote once (choice 245); the pins at 1.0.17 and the sample's upgrade (2026-10-20)](2026-10-20-r64-registered-choice-245.md)
+- [Progress — change 0004's open questions: four answered by the owner (choice 246), the rest registered for R14's turn (2026-10-20)](2026-10-20-0004-open-questions-choice-246.md)
+- [Progress — docs-lint check 8 reports a merge claim that may be another repository's (choice 247) (2026-10-20)](2026-10-20-docs-lint-check-8-choice-247.md)
+- [Progress — ROADMAP R22, gate (e) is the owner's approving review and a merge App merges on it, as plugin 1.0.18 (2026-10-20)](2026-10-20-r22-gate-e-approving-review-1.0.18.md)
+- [Progress — R22's six questions answered as recommended (choice 249); the sample's upgrade to 1.0.18 opened (2026-10-20)](2026-10-20-choice-249-r22-questions.md)
+- [Progress — ROADMAP R8, the second opinion at gates (b) and (e), as plugin 1.0.19; #290's session exposure undone (choice 248) (2026-10-20)](2026-10-20-r8-second-opinion-1.0.19.md)
+- [Progress — decision 38, the subscription token wins when both model secrets are set, as plugin 1.0.20 (2026-10-20)](2026-10-20-decision-38-auth-order-1.0.20.md)
+- [Progress — decision 37, one profile and one review mode, as plugin 1.0.21 (2026-10-22)](2026-10-22-decision-37-one-profile-1.0.21.md)
+- [Progress — the R22 double check's fixes, as plugin 1.0.22 (choice 250) (2026-10-22)](2026-10-22-r22-double-check-fixes-1.0.22.md)
+- [Progress — the owner's bypass tested live; Exempt in ruleset 1 plus a no-direct-writes ruleset (choice 251), as plugin 1.0.23 (2026-10-22)](2026-10-22-bypass-option-c-choice-251-1.0.23.md)
+- [Progress — the study of the sources of truth; ROADMAP R65 accepted (choice 252) (2026-10-22)](2026-10-22-sources-of-truth-study-r65-choice-252.md)
+- [Progress — ROADMAP R65's part 1: `python tasks.py next-free` and docs-lint check 10 (2026-10-22)](2026-10-22-r65-part-1-next-free.md)
+- [Progress — ROADMAP R65's part 2: `python tasks.py choices-index` and `docs/progress/choices.md` (2026-10-22)](2026-10-22-r65-part-2-choices-index-choice-253.md)
+- [Progress — ROADMAP R65's part 3: docs-lint checks 11 and 12, S1 to S4 fixed (2026-10-22)](2026-10-22-r65-part-3-checks-11-12-choice-254.md)
+- [Progress — ROADMAP R65's part 4: `python tasks.py verify`, docs-lint check 13, CI on `verify` (2026-10-22)](2026-10-22-r65-part-4-verify.md)
+- [Progress — ROADMAP R65's part 5: `HANDOFF.md` points to `next-free` and `verify` (2026-10-23)](2026-10-23-r65-part-5-handoff.md)
+- [Progress — ROADMAP R8 fixed as plugin 1.0.24: the second opinion at any pin, after phase (e) only, and carried on the fast lane (2026-10-23)](2026-10-23-r8-1.0.24-choices-255-256.md)
+- [Progress — the owner's answers to the eighteen open questions: choices 257 and 258 (2026-10-23)](2026-10-23-choices-257-258.md)

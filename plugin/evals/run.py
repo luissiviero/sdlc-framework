@@ -30,17 +30,20 @@ prompt is sent, 0.2.28) and ``checks.yaml`` (``checks`` plus optional ``descript
            --permission-mode <mode> --max-turns <n> --max-budget-usd <usd>
            --allowedTools <tools> --disallowedTools WebFetch,WebSearch --plugin-dir <framework>
 
-   with the credential of the environment as it is. The runner never adds ``--bare``: bare
-   mode skips "hooks ..., LSP, plugin sync, ... and CLAUDE.md auto-discovery" (the step 35.2
-   research note, quoting ``claude --help``), and the project's ``CLAUDE.md``, hooks and
-   settings are exactly what the suite regression-tests. Without ``--bare`` print mode uses
-   ``ANTHROPIC_API_KEY`` when it is present and ``CLAUDE_CODE_OAUTH_TOKEN`` otherwise
-   (``ci/auth.py``). ``SDLC_MODEL``, when set, becomes ``--model`` (the p.29 case of "a new
-   model is swapped in");
+   with one credential of the environment's (``ci/auth.py credential_env``: the
+   ``CLAUDE_CODE_OAUTH_TOKEN`` when it is set, else ``ANTHROPIC_API_KEY``, decision 38). The
+   runner never adds ``--bare``: bare mode skips "hooks ..., LSP, plugin sync, ... and
+   CLAUDE.md auto-discovery" (the step 35.2 research note, quoting ``claude --help``), and
+   the project's ``CLAUDE.md``, hooks and settings are exactly what the suite
+   regression-tests. Without ``--bare`` print mode would use ``ANTHROPIC_API_KEY`` whenever
+   it is present, so the secret not chosen is dropped before the run. ``SDLC_MODEL``, when
+   set, becomes ``--model`` (the p.29 case of "a new model is swapped in");
 4. reads the JSON result (``subtype``, ``is_error``, ``num_turns``, ``total_cost_usd``,
    ``result``, ``permission_denials``): ``is_error`` or a subtype other than ``success``
    (``error_max_turns``, ``error_max_budget_usd``, ...) fails the case, and so does output
-   that is not JSON or a run past the wall clock ("timed out");
+   that is not JSON or a run past the wall clock ("timed out"). A case with a ``skill``
+   check (R27) runs with ``--verbose``, and its skill loads are read from the run's
+   ``Skill`` tool calls (``skills_loaded``);
 5. evaluates the checks in order, each giving ``{kind, passed, detail}``; the case passes when
    the run succeeded and every check passed. A check with an unknown key, a case folder
    without ``prompt.md`` or ``checks.yaml`` and an unreadable ``checks.yaml`` fail the case
@@ -51,8 +54,8 @@ nothing lands in the project) plus a markdown table on stdout; with ``$GITHUB_OU
 the step outputs ``pass_rate``, ``passed``, ``total`` and ``ok`` are appended to it.
 
 ``--fixture`` runs the framework-level suite: instead of ``--root`` the project is built from
-``tests/fixtures/sample-python-project`` (a git repository with ``/sdlc-init`` applied,
-profile standard) and ``--cases`` defaults to this repository's ``evals/cases``.
+``tests/fixtures/sample-python-project`` (a git repository with ``/sdlc-init`` applied)
+and ``--cases`` defaults to this repository's ``evals/cases``.
 
 Commands in ``setup`` and in ``command`` checks run without a shell (``release/cli.py``
 ``command_chain``: one command, or steps joined by ``&&``); ``python`` falls back to the
@@ -84,11 +87,14 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+SESSION_HIDDEN_VARS = ("GEMINI_API_KEY",)  # as ``ci/run_phase.py``: never a session's (R8)
+
 FRAMEWORK_DIR = Path(__file__).resolve().parents[2]
 PLUGIN_DIR = FRAMEWORK_DIR / "plugin"
 if str(PLUGIN_DIR) not in sys.path:
     sys.path.insert(0, str(PLUGIN_DIR))
 
+from ci import auth  # noqa: E402
 from release.cli import UsageError, command_chain  # noqa: E402
 
 from state import gitops, yamlish  # noqa: E402
@@ -114,13 +120,17 @@ DEFAULTS: dict[str, Any] = {
 }
 FORBIDDEN_MODES = ("bypassPermissions",)  # CLAUDE.md: never use bypass-permissions mode
 CASE_KEYS = frozenset({"description", "setup", "checks", *DEFAULTS})
-CHECK_KINDS = ("command", "file", "output", "denied")
+# ``skill`` (R27): the run loaded the named skill, read from its tool calls (article p.22
+# step 4: "test that the skill triggers")
+CHECK_KINDS = ("command", "file", "output", "denied", "skill")
 CHECK_KEYS = {
     "command": frozenset({"command", "exit"}),
     "file": frozenset({"file", "exists", "contains", "not_contains", "unchanged", "equals"}),
     "output": frozenset({"output"}),
     "denied": frozenset({"denied"}),
+    "skill": frozenset({"skill"}),
 }
+SKILL_TOOL = "Skill"  # the plugin's skills load as ``sdlc:<name>`` (docs/notes/61.md)
 OUTPUT_KEYS = frozenset({"contains", "not_contains", "regex"})
 # ``framework`` is where the CI workflows check out the pinned framework inside the project:
 # its own CLAUDE.md and .claude/ must not colour a case
@@ -300,6 +310,9 @@ def validate_check(index: int, check: Any) -> list[str]:
                     re.compile(str(spec["regex"]))
                 except re.error as exc:
                     problems.append(f"{where}: regex does not compile: {exc}")
+    elif kind == "skill":
+        if not isinstance(check["skill"], str) or not check["skill"].strip():
+            problems.append(f"{where}: skill must name a skill")
     elif not isinstance(check["denied"], str) or not check["denied"].strip():
         problems.append(f"{where}: denied must name a tool")
     return problems
@@ -367,16 +380,31 @@ def _tail(text: str) -> str:
     return text if len(text) <= DETAIL_TAIL else "..." + text[-DETAIL_TAIL:]
 
 
+# R44 (the plugin security review of 2026-10-19, I1): a case's ``command`` check runs code
+# the case's session wrote, outside any sandbox; it gets no model credential and no token
+CHECK_HIDDEN_VARS = (
+    *auth.CREDENTIAL_VARS, *SESSION_HIDDEN_VARS, "GITHUB_TOKEN", "GH_TOKEN",
+    "SDLC_WORKFLOW_TOKEN",
+)  # fmt: skip
+
+
+def check_env() -> dict[str, str]:
+    """The environment of a case's ``command`` check: the process's own without
+    ``CHECK_HIDDEN_VARS``."""
+    return {k: v for k, v in os.environ.items() if k not in CHECK_HIDDEN_VARS}
+
+
 def run_commands(command: str, cwd: Path, timeout: float) -> tuple[int, str]:
-    """Run a command chain without a shell; (exit code of the first failing step or 0, what
-    happened)."""
+    """Run a command chain without a shell, with ``check_env``; (exit code of the first
+    failing step or 0, what happened)."""
     try:
         chain = command_chain(command, cwd)
     except UsageError as exc:
         return 2, str(exc)
+    env = check_env()
     for argv in chain:
         try:
-            code, out, err = run_bounded([_exe(argv[0]), *argv[1:]], cwd, timeout)
+            code, out, err = run_bounded([_exe(argv[0]), *argv[1:]], cwd, timeout, env)
         except subprocess.TimeoutExpired:
             return 124, f"{argv[0]}: timed out after {timeout:g}s"
         except FileNotFoundError:
@@ -398,17 +426,34 @@ def claude_prefix(claude: str) -> list[str]:
     return [shutil.which(claude) or claude]
 
 
+CI_EVAL_SETTINGS = {
+    "sandbox": {
+        "enabled": True,
+        "failIfUnavailable": True,
+        "allowUnsandboxedCommands": False,
+        "credentials": {
+            "envVars": [{"name": name, "mode": "deny"} for name in auth.CREDENTIAL_VARS]
+        },
+    }
+}
+
+
 def compose(
     claude: str,
     prompt: str,
     config: Mapping[str, Any],
     plugin_dir: Path,
     env: Mapping[str, str],
+    verbose: bool = False,
 ) -> list[str]:
     """The argv of one case's run. The prompt goes right after ``-p``: ``--allowedTools``
     and ``--disallowedTools`` take several values, so a prompt placed after them would be
-    read as one more tool name (plugin/ci/run_phase.py, observed live)."""
+    read as one more tool name (plugin/ci/run_phase.py, observed live). ``verbose`` (a case
+    with a ``skill`` check, R27) asks for every message, so the tool calls can be read; the
+    result message is still the last ``result`` of the list (``parse_result``)."""
     argv = [*claude_prefix(claude), "-p", prompt, "--output-format", "json"]
+    if verbose:
+        argv.append("--verbose")
     argv += ["--permission-prompts", "none"]
     argv += ["--permission-mode", str(config["permission_mode"])]
     argv += ["--max-turns", str(config["max_turns"])]
@@ -416,6 +461,11 @@ def compose(
     argv += ["--allowedTools", str(config["tools"])]
     argv += ["--disallowedTools", DISALLOWED_TOOLS]
     argv += ["--plugin-dir", str(plugin_dir)]
+    if env.get("GITHUB_ACTIONS"):
+        # R44 (I1, and the review of 1.0.27): on a runner a case's session, whose tools a
+        # pull request can set, runs sandboxed or not at all, and its shell commands find
+        # neither model credential; the project's own rules still apply beside these
+        argv += ["--settings", json.dumps(CI_EVAL_SETTINGS)]
     model = env.get("SDLC_MODEL")
     if model:
         argv += ["--model", model]
@@ -445,6 +495,62 @@ def parse_result(stdout: str) -> dict[str, Any] | None:
         if isinstance(data, dict):
             return data
     return None
+
+
+def _messages(stdout: str) -> list[Any]:
+    """Every message of a verbose run: the JSON list, or one JSON value per line (a list
+    extends, an object is one message), so a stray line before the output is skipped."""
+    text = stdout.strip()
+    try:
+        values = [json.loads(text)] if text else []
+    except ValueError:
+        values = []
+        for line in text.splitlines():
+            try:
+                values.append(json.loads(line))
+            except ValueError:
+                continue
+    out: list[Any] = []
+    for value in values:
+        out.extend(value if isinstance(value, list) else [value])
+    return out
+
+
+def _blocks(message: Any, role: str) -> list[dict[str, Any]]:
+    """The content blocks of a ``role`` message (``assistant`` or ``user``), dicts only."""
+    if not isinstance(message, dict) or message.get("type") != role:
+        return []
+    inner = message.get("message")
+    content = inner.get("content") if isinstance(inner, dict) else None
+    return [b for b in content if isinstance(b, dict)] if isinstance(content, list) else []
+
+
+def skills_loaded(stdout: str) -> list[str]:
+    """The skills a run loaded, in order, named as the call named them (``sdlc:<name>`` for
+    the plugin's, the bare name for a project's own): each ``Skill`` tool call of an
+    assistant message, by its ``skill`` input (``command`` on older builds), whose result is
+    not an error (a refused or unknown skill loads nothing). R27, the trigger evals; the
+    shape is recorded in ``docs/notes/61.md``."""
+    messages = _messages(stdout)
+    failed = {
+        block.get("tool_use_id")
+        for message in messages
+        for block in _blocks(message, "user")
+        if block.get("type") == "tool_result" and block.get("is_error")
+    }
+    names = []
+    for message in messages:
+        for block in _blocks(message, "assistant"):
+            if block.get("type") != "tool_use" or block.get("name") != SKILL_TOOL:
+                continue
+            if block.get("id") is not None and block.get("id") in failed:
+                continue
+            spec = block.get("input")
+            spec = spec if isinstance(spec, dict) else {}
+            name = str(spec.get("skill") or spec.get("command") or "").strip().lstrip("/")
+            if name:
+                names.append(name)
+    return names
 
 
 def run_failure(data: Mapping[str, Any]) -> str:
@@ -554,6 +660,16 @@ def check_output(check: Mapping[str, Any], result_text: str) -> dict[str, Any]:
     return _outcome("output", not failures, "; ".join(failures) or "ok")
 
 
+def check_skill(check: Mapping[str, Any], loaded: list[str]) -> dict[str, Any]:
+    """Exact names: ``sdlc:<name>`` is the plugin's skill, ``<name>`` a project's own (an
+    override's case must not pass on the plugin's copy)."""
+    want = str(check["skill"]).strip()
+    if want in loaded:
+        return _outcome("skill", True, f"{want} was loaded")
+    seen = ", ".join(loaded) or "none"
+    return _outcome("skill", False, f"{want} was not loaded (skills loaded: {seen})")
+
+
 def check_denied(check: Mapping[str, Any], denied: list[str]) -> dict[str, Any]:
     want = check["denied"]
     hit = [name for name in denied if name == want or fnmatch.fnmatchcase(name, want)]
@@ -571,6 +687,7 @@ def evaluate(
     before: Mapping[str, bytes | None],
     expected: Mapping[str, bytes | None],
     timeout: float,
+    loaded: list[str] | None = None,
 ) -> dict[str, Any]:
     kind = check_kind(check)
     if kind == "command":
@@ -584,6 +701,8 @@ def evaluate(
         return check_file(check, workspace, before, expected)
     if kind == "output":
         return check_output(check, str(result.get("result") or ""))
+    if kind == "skill":
+        return check_skill(check, loaded or [])
     return check_denied(check, denials(result))
 
 
@@ -639,10 +758,12 @@ def run_case(
                 res["reason"] = f"setup failed: {detail}"
                 return res
         before, expected = snapshot(case, workspace)
-        argv = compose(claude, case.prompt, config, plugin_dir, env)
+        verbose = any(check_kind(check) == "skill" for check in config["checks"])
+        argv = compose(claude, case.prompt, config, plugin_dir, env, verbose)
         result: dict[str, Any] = {}
+        loaded: list[str] = []
         try:
-            code, out, err = run_bounded(argv, workspace, timeout, env)
+            code, out, err = run_bounded(argv, workspace, timeout, auth.credential_env(env))
         except subprocess.TimeoutExpired:
             reason = f"timed out after {timeout:g}s"
         except OSError as exc:
@@ -656,6 +777,7 @@ def run_case(
             else:
                 result = parsed
                 reason = run_failure(result)
+                loaded = skills_loaded(out)
         res["subtype"] = result.get("subtype")
         res["turns"] = result.get("num_turns") or 0
         res["cost_usd"] = float(result.get("total_cost_usd") or 0.0)
@@ -667,6 +789,7 @@ def run_case(
                 before=before,
                 expected=expected,
                 timeout=timeout,
+                loaded=loaded,
             )
             for check in config["checks"]
         ]
@@ -688,8 +811,8 @@ def run_case(
 
 # --- the fixture project ------------------------------------------------------------------------
 def build_fixture(source: Path = FIXTURE) -> Path:
-    """The sample project as a git repository with ``/sdlc-init`` applied (profile standard),
-    in a temporary folder: the project the framework-level suite runs against."""
+    """The sample project as a git repository with ``/sdlc-init`` applied, in a
+    temporary folder: the project the framework-level suite runs against."""
     from init import sdlc_init  # noqa: PLC0415 - only the fixture needs it
 
     root = Path(tempfile.mkdtemp(prefix="sdlc-eval-fixture-")) / source.name
@@ -698,10 +821,13 @@ def build_fixture(source: Path = FIXTURE) -> Path:
     gitops.run(root, "config", "user.name", "sdlc-evals")
     gitops.run(root, "config", "user.email", "sdlc-evals@example.com")
     gitops.run(root, "config", "commit.gpgsign", "false")
+    # git 2.5x runs the auto maintenance after a commit detached, so it can create and delete
+    # .git/objects/maintenance.lock while run_case copies the fixture (shutil.Error on CI)
+    gitops.run(root, "config", "maintenance.auto", "false")
     gitops.run(root, "add", "-A")
     gitops.run(root, "commit", "-q", "-m", "The sample project")
     with contextlib.redirect_stdout(io.StringIO()):
-        code = sdlc_init.main(["--root", str(root), "--profile", "standard"])
+        code = sdlc_init.main(["--root", str(root)])
     if code != 0:
         raise RuntimeError(f"/sdlc-init failed on the fixture (exit {code})")
     gitops.run(root, "add", "-A")
@@ -800,6 +926,9 @@ def _usage(message: str) -> int:
 def main(argv: list[str] | None = None, env: Mapping[str, str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     env = os.environ if env is None else env
+    # ROADMAP R8 (1.0.19): the Gemini key never reaches a Claude session, also when a workflow
+    # copy from 1.0.17 still passes it (``ci/run_phase.SESSION_HIDDEN_VARS``)
+    env = {k: v for k, v in env.items() if k not in SESSION_HIDDEN_VARS}
     if args.fixture and args.root:
         return _usage("--fixture builds the project: give --fixture or --root, not both")
     if not args.fixture and not args.root:

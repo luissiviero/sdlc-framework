@@ -1,13 +1,15 @@
 """Orchestrator conventions (build guide step 9; decisions 3, 10, 18).
 
-Everything that names a phase, a profile, a folder, a branch or a label lives here so every
+Everything that names a phase, a human gate, a folder, a branch or a label lives here so every
 later step writes to one definition. Sources: docs/OPERATING_MODEL.md sections 3, 4 and 8.
 """
 
 from __future__ import annotations
 
 import re
+from collections.abc import Mapping
 from pathlib import Path
+from typing import Any
 
 # --- phases -----------------------------------------------------------------------------
 PHASES = ("a", "b", "c", "d", "e", "f")
@@ -33,29 +35,24 @@ PHASE_ARTIFACTS = {
     "f": ["lessons/ (incident record) -> new intent.md"],
 }
 
-# --- profiles (decision 18; OPERATING_MODEL section 3) ------------------------------------
-# Lite (gates (a) and (e) only) was withdrawn by decision 21 and removed in plugin 0.2.14:
-# it took the human out of gate (b), which the article keeps human (p.14, p.15). Deferred
-# review (``sdlc.yaml: review: deferred``) is what it was for. A file that still says
-# ``lite`` (a project or a change from before 0.2.14) reads as Standard (``LEGACY_PROFILES``).
-PROFILES = ("standard", "full")
-DEFAULT_PROFILE = "standard"
-LEGACY_PROFILES = {"lite": "standard"}
-# Gate (f) is human in every profile (decision 25): the owner triages each incident intent
-# PR - merge (fix now), label ``schedule``, or close with a reason (dismiss).
-HUMAN_GATES = {
-    "standard": frozenset({"a", "b", "e", "f"}),
-    "full": frozenset({"a", "b", "c", "d", "e", "f"}),
-}
+# --- the human gates (decisions 18, 30 and 25, as decision 37 narrowed them) --------------
+# One profile (decision 37, plugin 1.0.21): the owner's gates are (a), (b) and (e), shaped by
+# the fast lane (decision 30), and (f), the triage of each incident intent PR (decision 25).
+# Gates (c) and (d) are the confidence gate's alone. The Full profile, its ``sdlc:c-approved``
+# and ``sdlc:d-approved`` labels and the per-change ``profile_override`` are gone, as Lite was
+# in 0.2.14 (decision 21).
+HUMAN_GATES = frozenset({"a", "b", "e", "f"})
 
-# --- review mode (decision 21; OPERATING_MODEL sections 3 and 6) ----------------------------
-# ``parked``: a judgment item of the fixed list parks the change for the owner (the behaviour
-# before 0.2.14). ``deferred``: the run puts it to the review panel (reviewer, devil's
-# advocate, conciliator, each in a fresh context) and continues; the owner reads the panel's
-# decisions once, at the phase's end. Per project in ``sdlc.yaml: review``, per change in
-# ``status.yaml: review_override``.
-REVIEW_MODES = ("parked", "deferred")
-DEFAULT_REVIEW_MODE = "parked"
+# --- deferred review (decisions 21 and 32, as decision 37 narrowed them) ------------------
+# One review mode: a judgment item of the fixed list always goes to the review panel
+# (reviewer, devil's advocate, conciliator, each in a fresh context), the run continues and
+# the owner reads the panel's decisions at the next human gate. The ``parked`` mode and the
+# per-change ``review_override`` are gone.
+#
+# The two ``sdlc.yaml`` keys that chose these, ``profile`` and ``review``, are no longer read.
+# A file that still carries a value other than the one behaviour is reported once per gate run
+# (``retired_settings_note``), never refused, so an old project keeps running.
+RETIRED_SETTINGS = {"profile": ("standard", "lite"), "review": ("deferred",)}
 
 CHANGE_TYPES = ("feature", "fix")
 ENTRY_ROUTES = ("idea", "ticket", "incident")  # article p.9: idea / ticket / incident
@@ -77,11 +74,14 @@ RELEASE_APPROVED_LABEL = "sdlc:release-approved"
 # The owner's un-park verbs (decision 24; OPERATING_MODEL section 6): applied on the PR, read
 # by the next run (``state/unpark.py``), performed and recorded in ``status.yaml`` with the
 # label's actor, then removed from the PR so one application is one act. The CLI commands
-# ``accept-risk``, ``set-iterations`` and ``unlock-tests`` stay for by-hand runs.
+# ``set-iterations`` and ``unlock-tests`` stay for by-hand runs, and so does ``accept-risk``:
+# its label retired with decision 35 (plugin 1.0.15), since a risk-list hit no longer parks
+# and the owner's merge of the PR whose banner shows it accepts it. ``ACCEPT_RISK_LABEL``
+# stays only to confirm a ``risk_accepted_by`` entry recorded before then (its label event).
 ACCEPT_RISK_LABEL = "sdlc:accept-risk"
 RESET_ITERATIONS_LABEL = "sdlc:reset-iterations"
 UNLOCK_TESTS_LABEL = "sdlc:unlock-tests"
-UNPARK_LABELS = (ACCEPT_RISK_LABEL, RESET_ITERATIONS_LABEL, UNLOCK_TESTS_LABEL)
+UNPARK_LABELS = (RESET_ITERATIONS_LABEL, UNLOCK_TESTS_LABEL)
 # Phase (f) (build guide steps 37 and 39; decisions 14, 25): ``incident`` marks every intent
 # PR the maintain loop opens - the triage queue is the set of open PRs carrying it (p.44
 # step 6); ``schedule`` is the owner's "not now" (the PR stays open, nothing runs); ``sdlc:go``
@@ -91,6 +91,24 @@ UNPARK_LABELS = (ACCEPT_RISK_LABEL, RESET_ITERATIONS_LABEL, UNLOCK_TESTS_LABEL)
 INCIDENT_LABEL = "incident"
 SCHEDULE_LABEL = "schedule"
 GO_LABEL = "sdlc:go"
+# Decision 29 (plugin 1.0.3, ROADMAP R10): a red target the CI runner finds after the session
+# starts the next fix round by itself. While that round runs the PR carries ``sdlc:fixing``
+# instead of ``sdlc:needs-human`` (the gate record keeps its failing checks and its ``park``,
+# and the check run ``sdlc/<phase>`` stays red): nothing is needed from the owner until the
+# iteration cap. ``evidence/auto-round.json`` is the round the runner dispatched;
+# ``evidence/auto-reset.json`` the one judged reset of the count at the cap, whose
+# ``iterations_reset_by`` names the runner with ``RUNNER_RESET_PREFIX`` (never a label actor).
+FIXING_LABEL = "sdlc:fixing"
+AUTO_ROUND_FILE = "auto-round.json"
+AUTO_RESET_FILE = "auto-reset.json"
+RUNNER_RESET_PREFIX = "sdlc-runner:"
+# the start of ``status.yaml: parked_reason`` while an automatic round runs
+FIXING_PARK_PREFIX = "automatic fix round "
+# Decision 30 (the fast lane, ROADMAP R46): the runner closes the owner's intent PR once the
+# design PR carries it, and the design PR once the build PR carries it, each after labelling
+# it ``sdlc:superseded`` (no comment, decision 20). ``sdlc-abandon.yml`` skips a closed PR
+# with this label, so a close that supersedes never abandons the change (decision 25).
+SUPERSEDED_LABEL = "sdlc:superseded"
 
 
 def ready_label(phase: str) -> str:
@@ -99,15 +117,15 @@ def ready_label(phase: str) -> str:
     return f"{LABEL_PREFIX}{phase}-ready"
 
 
-def approved_label(phase: str) -> str:
-    """Full profile only: the owner's approving review + this label passes gate (c)/(d)."""
-    _check_phase(phase)
-    return f"{LABEL_PREFIX}{phase}-approved"
+def runner_labels() -> list[str]:
+    """The labels only the CI runner applies, beside the gate and owner set of ``all_labels``
+    (decision 29: ``sdlc:fixing`` while an automatic fix round runs). ``ensure_labels`` creates
+    both; ``state/cli.py labels`` prints the documented set."""
+    return [FIXING_LABEL]
 
 
 def all_labels() -> list[str]:
     labels = [ready_label(p) for p in PHASES]
-    labels += [approved_label(p) for p in ("c", "d")]
     labels.append(RELEASE_APPROVED_LABEL)
     labels += list(UNPARK_LABELS)
     labels.append(NEEDS_HUMAN_LABEL)
@@ -234,21 +252,23 @@ def _check_id(change_id: str) -> None:
         raise ValueError(f"change id must be four digits, got {change_id!r}")
 
 
-def effective_profile(project_profile: str | None, override: str | None) -> str:
-    profile = override or project_profile or DEFAULT_PROFILE
-    profile = LEGACY_PROFILES.get(profile, profile)
-    if profile not in PROFILES:
-        raise ValueError(f"unknown profile {profile!r}; expected one of {PROFILES}")
-    return profile
-
-
-def effective_review_mode(project_mode: str | None, override: str | None) -> str:
-    mode = override or project_mode or DEFAULT_REVIEW_MODE
-    if mode not in REVIEW_MODES:
-        raise ValueError(f"unknown review mode {mode!r}; expected one of {REVIEW_MODES}")
-    return mode
-
-
-def is_human_gate(profile: str, phase: str) -> bool:
+def is_human_gate(phase: str) -> bool:
     _check_phase(phase)
-    return phase in HUMAN_GATES[effective_profile(profile, None)]
+    return phase in HUMAN_GATES
+
+
+def retired_settings_note(config: Mapping[str, Any]) -> str:
+    """One line naming each ``sdlc.yaml`` key decision 37 retired that still holds another
+    behaviour (``profile: full``, ``review: parked``), or ``""``. The key is not read: the
+    change runs as ``standard`` with deferred review, and the note says so."""
+    stale = [
+        f"{key}: {config[key]}"
+        for key, kept in RETIRED_SETTINGS.items()
+        if config.get(key) not in (None, "", *kept)
+    ]
+    if not stale:
+        return ""
+    return (
+        f"sdlc.yaml: {', '.join(stale)} is no longer read (decision 37): the change runs on "
+        "the one profile with deferred review; the owner removes the key"
+    )

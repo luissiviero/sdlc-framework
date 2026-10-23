@@ -27,6 +27,7 @@ from scan import scanners as scanners_mod
 
 from gate import artifacts as art
 from state import status as status_mod
+from tests import fixture_repos
 
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURE = ROOT / "tests" / "fixtures" / "sample-python-project"
@@ -103,6 +104,19 @@ def project(tmp_path: Path, push: bool = True) -> Path:
     """The fixture initialised (standard profile) and committed on main, pushed to a bare
     origin whose HEAD is main."""
     root = tmp_path / "proj"
+    fixture_repos.copy(
+        "scan-project",
+        tmp_path,
+        _build_project,
+        relocate=lambda dest: git(
+            dest / "proj", "remote", "set-url", "origin", str(dest / "origin.git")
+        ),
+    )
+    return root
+
+
+def _build_project(base: Path) -> None:
+    root = base / "proj"
     shutil.copytree(FIXTURE, root)
     git(root, "init", "-q", "-b", "main")
     git(root, "config", "user.email", "owner@example.com")
@@ -120,11 +134,10 @@ def project(tmp_path: Path, push: bool = True) -> Path:
     git(root, "add", ".")
     git(root, "commit", "-q", "-m", "sdlc-init (as if the 0000 PR merged)")
     origin = bare(root)
-    git(tmp_path, "init", "-q", "--bare", "-b", "main", str(origin))
+    git(base, "init", "-q", "--bare", "-b", "main", str(origin))
     git(root, "remote", "add", "origin", str(origin))
     git(root, "push", "-q", "-u", "origin", "main")
     git(root, "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main")
-    return root
 
 
 def head_of(root: Path) -> str:
@@ -282,6 +295,19 @@ def test_prompt_uses_the_project_override_of_the_skill(tmp_path):
     assert "Every query is parameterised, no exception." in text
     assert ".claude/skills/security-baseline/SKILL.md" in text
     assert "validate every external input" not in text
+
+
+def test_prompt_quotes_the_owners_policy_source_beside_the_skill(tmp_path):
+    """R27: the scan builds the skill's text in code, so it quotes the owner's source too,
+    under the skills' rule (the source wins); no source, no section."""
+    root = tmp_path / "proj"
+    text = prompt_mod.build_prompt(root, {}, head="abc", out_path="f.json")
+    assert "policies/security-baseline.md" not in text
+    write(root / "policies" / "security-baseline.md", "Admin routes need two factors.\n")
+    text = prompt_mod.build_prompt(root, {}, head="abc", out_path="f.json")
+    assert "## The owner's security policy (policies/security-baseline.md)" in text
+    assert "Admin routes need two factors." in text and "they win" in text
+    assert "validate every external input" in text  # the skill's rules stay
 
 
 def test_tool_lists_are_read_only_but_for_one_write():
@@ -503,6 +529,25 @@ def test_file_findings_opens_one_incident_change_per_finding(tmp_path):
         assert diff and all(p.startswith(rel + "/") for p in diff)
     patch = show(root, "origin/sdlc/0001/a", f"{results[0]['dir']}/evidence/suggested-patch.diff")
     assert patch == PATCH
+
+
+def test_the_incident_intent_pr_requests_the_owner_s_review(tmp_path, monkeypatch):
+    """Decision 31: the scan's intent PR is the automation's publication, so its upsert asks
+    for the owner's review when the PR waits."""
+    root = project(tmp_path)
+    findings = _loaded(tmp_path, BOUNDED)
+    chosen, _ = route_mod.select(findings, dismissals.empty(), 1)
+    upserts: list[list[str]] = []
+    real_cli = route_mod._cli
+
+    def spy(script, argv, cwd):
+        if argv and argv[0] == "upsert":
+            upserts.append(list(argv))
+        return real_cli(script, argv, cwd)
+
+    monkeypatch.setattr(route_mod, "_cli", spy)
+    route_mod.file_findings(root, chosen, head=head_of(root), repo=REPO, push=True, dry_run=False)
+    assert len(upserts) == 1 and upserts[0][-3:] == ["--phase", "f", "--request-review"]
 
 
 def test_file_findings_without_push_allocates_distinct_ids(tmp_path):
@@ -824,6 +869,7 @@ def test_workflow_is_weekly_and_dispatchable():
         "contents": "write",
         "pull-requests": "write",
         "issues": "write",
+        "checks": "write",  # the scan PR's "not a build PR" check (the R22 double check, F5)
     }
     assert data["concurrency"]["group"] == "sdlc-scan"
     assert data["concurrency"]["cancel-in-progress"] is False
@@ -857,7 +903,7 @@ def test_workflow_keeps_the_reports_and_never_fails_on_scanner_findings():
     scanners = next(s for s in steps if "cli.py scanners" in s.get("run", ""))
     assert scanners.get("continue-on-error") is True
     assert scanners.get("if") == "${{ always() }}"
-    uploads = [s for s in steps if str(s.get("uses", "")).startswith("actions/upload-artifact@v4")]
+    uploads = [s for s in steps if str(s.get("uses", "")).startswith("actions/upload-artifact@")]
     kept = next(s for s in uploads if "scan-findings.json" in s["with"]["path"])
     assert kept["if"] == "${{ always() }}" and kept["with"]["if-no-files-found"] == "ignore"
     for name in ("scan-findings.json", "scan-run.json", "pip-audit.json", "bandit.json",
@@ -866,3 +912,17 @@ def test_workflow_keeps_the_reports_and_never_fails_on_scanner_findings():
     review = next(s for s in steps if "cli.py review" in s.get("run", ""))
     assert set(review["env"]) >= {"ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN"}
     assert "GITHUB_TOKEN" not in review["env"]  # the review reads code; it needs no GitHub
+
+
+def test_the_route_runs_from_a_fresh_framework_after_the_checkout_is_verified():
+    """R44 (the plugin security review of 2026-10-19, I4): the review's session shared the
+    checkout; the route, which holds the tokens, runs from a framework checked out afresh and
+    after ``checkout_check.py`` judged the project's git config."""
+    steps = _workflow()["jobs"]["scan"]["steps"]
+    names = [s.get("name", "") for s in steps]
+    review = names.index("Weekly security review (read-only claude -p)")
+    route = names.index("File the findings as incident intents")
+    between = steps[review + 1 : route]
+    assert "rmtree('framework'" in between[0]["run"]
+    assert between[1]["with"]["path"] == "framework"
+    assert "checkout_check.py" in between[2]["run"]

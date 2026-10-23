@@ -89,7 +89,7 @@ def test_sdlc_init_flow_matches_step_21():
     body = (PLUGIN / "commands" / "sdlc-init.md").read_text(encoding="utf-8")
     for token in [
         "--detect-only",
-        "profile",
+        "decision 37",
         "deploy action",
         "maintain metric",
         "/init",
@@ -148,6 +148,13 @@ def test_plan_skill_sections_and_interrogation():
     ]:
         assert q in body, q
     assert "read-only" in body.lower() and "Read/Grep/Glob" in body
+
+
+def test_plan_template_ratchet_proof_item_present():
+    body = (PLUGIN / "skills" / "plan-template" / "SKILL.md").read_text(encoding="utf-8")
+    assert "- ratchet: <name> may fall, because <why>" in body
+    text = " ".join(body.split())
+    assert "`tests` or `evals`" in text
 
 
 def test_no_portuguese_in_process_content():
@@ -351,6 +358,55 @@ def test_sdlc_deploy_flow_matches_step_26():
     assert text.index("## 0a.") < text.index("## 0b.") < text.index("## 1. Review passes")
 
 
+def test_sdlc_deploy_writes_the_lesson_s_frontmatter_and_rebuilds_the_index():
+    """Change 0003: the lesson's frontmatter fields, each from a named source, the
+    ``supersedes``/``retired_by`` edit to the earlier lesson, and the index rebuild in the
+    same commit as the lesson and the eval."""
+    path = COMMANDS / "sdlc-deploy.md"
+    text = flat(path)
+    step = text[text.index("## 0b.") : text.index("## 1. Review passes")]
+    for token in [
+        "type",
+        "`title`",
+        "status.yaml: title",
+        "description",
+        "tags",
+        "status.yaml: id",
+        "detected",
+        "evidence/detection.json",
+        "evidence/scan-finding.json",
+        "fixed",
+        "status.yaml: build_pr",
+        "runbook",
+        "evidence/proposal.json: route",
+        "supersedes",
+        "status: retired",
+        "retired_by",
+        "generated",
+        "stale_after",
+        "lessons.stale_after_months",
+        "sources",
+        "run-<n>",
+        'lessons/index.py" build',
+        "never hand-edit",
+        "lesson_and_eval",
+    ]:
+        assert token in step, token
+    assert step.index('evals/case.py" new') < step.index('lessons/index.py" build')
+    fm = frontmatter(path)
+    assert 'Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/lessons/index.py" *)' in fm["allowed-tools"]
+
+
+def test_lessons_readme_sources_example_includes_a_run_n_entry():
+    """The ``sources`` example must show the one case `/sdlc-deploy` step 0b actually
+    writes for a failed run (spec.md: one `run-<n>` per failed run `detection.json`
+    lists), not only the always-present `detection`/`eval`/`fix-pr` ids."""
+    template = Path(__file__).resolve().parents[1] / "template"
+    text = (template / "lessons" / "README.md").read_text(encoding="utf-8")
+    assert '- id: "run-1"' in text
+    assert "run-<n>` per failed run" in text
+
+
 def test_sdlc_fix_flow_matches_the_change_request_loop():
     text = flat(COMMANDS / "sdlc-fix.md")
     for token in ["bump-iteration", "park", "decided", "upsert", "Never merge"]:
@@ -371,7 +427,9 @@ def test_sdlc_fix_covers_gate_a_and_the_owner_labels():
     assert "without re-running the brainstorm" in text
     assert "This is the one place a run edits `intent.md`" in text
     assert "Never edit `intent.md` at (b) or later" in text
-    assert "apply-labels" in text and "`risk_accepted_by`" in text
+    # decision 35: sdlc:accept-risk retired; the two labels' actors land in status.yaml
+    assert "apply-labels" in text and "`iterations_reset_by`" in text
+    assert "`sdlc:accept-risk` retired with decision 35" in text
     assert "--branch <head>" in text and "--head <head>" in text
     assert "At phase (a) or (f) skip the verdict" in text  # (f) since 0.2.19
     assert "`sdlc-fix.yml`" in text and "Request changes" in text
@@ -441,6 +499,33 @@ def test_review_prompt_passes_severity_and_json_shape():
         assert token in text, token
     for key in ["schema_version", "head", "findings", "tally"]:
         assert key in text, key
+
+
+def test_review_prompt_keeps_a_repeated_nit_a_nit():
+    """Change 0003's (e) fix round (NOTES §35, run 37734768551): the reviewer read
+    `changes/.review-seen.json`, saw four nits of the earlier pass at count 2, graded them
+    Important as a breach of REVIEW.md's second-occurrence rule and cited that rule in each
+    finding's `rule` field, so `validate` proposed four CLAUDE.md lines and the gate parked.
+    The rule is the framework's own mechanism (`review/cli.py validate`, `update_seen`: a
+    repeat counts across changes only), never a breach by the diff: the brief says so even
+    against REVIEW.md's wording, forbids reading the record and citing the rule, and keeps a
+    repeated finding's own severity; the template REVIEW.md says "across changes" and that a
+    repeated finding keeps its own severity."""
+    text = " ".join(REVIEW_PROMPT.read_text(encoding="utf-8").split())
+    for token in [
+        "except for how its second-occurrence rule is read",
+        "Do not read `changes/.review-seen.json`",
+        "do not grade a finding by how often it was reported",
+        "never cite that rule in a finding's `rule` field",
+        "whatever REVIEW.md's wording: a repeated nit is a nit",
+        "counts a finding's occurrences across changes",
+    ]:
+        assert token in text, token
+    review_md = " ".join(
+        (PLUGIN.parent / "template" / "REVIEW.md").read_text(encoding="utf-8").split()
+    )
+    assert "across changes produces a one-line entry" in review_md
+    assert "a repeated finding keeps its own severity" in review_md
 
 
 def test_review_prompt_renders_with_str_format():
@@ -548,16 +633,19 @@ def test_sdlc_deploy_prepares_the_release_around_the_review_and_the_gate():
         assert nothing in prep, nothing
     assert "--ready" in step5 and "sdlc:e-ready" in step5
     assert "The agent does everything up to the production gate and nothing past it" in text
-    assert "merge = gate (e) passed; the release workflow then runs `deploy.command`" in step5
+    # R22 (decision 36): the approval is gate (e), and the merge App merges on it
+    assert "the approval = gate (e) passed (decision 36); the merge App then merges it" in (
+        " ".join(step5.split())
+    )
     two_acts = (
         "the release label `sdlc:release-approved` is the second act: apply it on this PR "
-        "after merging; the release workflow waits for it"
+        "in the same visit; the release workflow waits for it"
     )
-    assert two_acts in step5
+    assert two_acts in " ".join(step5.split())
     # decision 5: the label is the only route, a signed tag a run could make is not one
     assert "signed tag" not in text
     hand_over = text[text.index("## 6. Hand over") :]
-    assert two_acts in hand_over and "Nothing else runs" in hand_over
+    assert two_acts in " ".join(hand_over.split()) and "Nothing else runs" in hand_over
     fm = frontmatter(COMMANDS / "sdlc-deploy.md")
     assert 'Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/release/notes.py" *)' in fm["allowed-tools"]
     assert "is B4" not in fm["description"] and "release workflow" in fm["description"]
@@ -621,6 +709,28 @@ def test_sdlc_maintain_flow_matches_step_37():
     assert text.index(GATE_START_RUN) < text.index(GATE_CHECK)
 
 
+def test_sdlc_maintain_reads_the_generated_index_first():
+    """Change 0003: the diagnosis reads ``lessons/index.md`` and opens only the lessons its
+    tags name, falling back to every file when the index is stale or missing, and never
+    rebuilds the index itself (that is `/sdlc-deploy` step 0b)."""
+    path = COMMANDS / "sdlc-maintain.md"
+    text = flat(path)
+    fm = frontmatter(path)
+    assert 'Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/lessons/index.py" *)' in fm["allowed-tools"]
+    for token in [
+        "lessons/index.md",
+        'lessons/index.py" check',
+        "Tags",
+        "## Retired",
+        "## Unsorted",
+        "stale or missing",
+        "## Evidence",
+        "(stale)",
+        "never rebuild",
+    ]:
+        assert token in text, token
+
+
 def test_sdlc_init_commits_every_path_the_install_writes():
     """0.2.25 (1.0.0 readiness review): the change-0000 commit listed neither ``.github``
     nor ``lessons``, so a project set up by the book merged with no workflows and no pin
@@ -635,6 +745,7 @@ def test_sdlc_init_commits_every_path_the_install_writes():
     written = [
         *sdlc_init.WORKFLOW_FILES,
         "lessons/README.md",
+        "policies/README.md",  # R27
         "REVIEW.md",
         "changes/README.md",
         "evals/README.md",
@@ -651,6 +762,23 @@ def test_sdlc_init_commits_every_path_the_install_writes():
         assert covered, f"{rel} is written by the install but not committed by step 5"
 
 
+def test_sdlc_init_marks_every_settings_act_desktop_only_with_its_link():
+    """R21's first part (choice 257): every act of step 6 that is a repository setting, which
+    the GitHub mobile app does not show, says it is desktop-only and gives the direct link
+    to the project's settings page; step 5's report names them the same way."""
+    text = flat(COMMANDS / "sdlc-init.md")
+    step_6 = text[text.index("## 6. After the merge") :]
+    bullets = [b for b in step_6.split(" - ") if "Settings →" in b]
+    assert len(bullets) >= 4  # the permission and the secret, the App, the merge App, rulesets
+    for bullet in bullets:
+        assert "Desktop-only" in bullet or "desktop-only" in bullet, bullet[:80]
+        assert "https://github.com/" in bullet, bullet[:80]
+    for link in ("/settings/actions`", "/settings/secrets/actions`", "/settings/rules`"):
+        assert f"https://github.com/<owner>/<repo>{link}" in step_6
+    report = text[text.index("## 5. Commit") : text.index("## 6. After the merge")]
+    assert "each settings act marked desktop-only with its direct link (ROADMAP R21)" in report
+
+
 def test_sdlc_init_prescribes_the_branch_ruleset_of_decision_4():
     """0.2.25: decision 4 is enforced by a GitHub ruleset the framework never creates; the
     owner is told to create it, and the digest says while it is missing."""
@@ -660,14 +788,80 @@ def test_sdlc_init_prescribes_the_branch_ruleset_of_decision_4():
     # the review of the 0.2.25 diff (H1): only "Restrict updates" with the owner as the sole
     # bypass actor keeps the workflow token from merging a pull request
     assert (
-        '**"Restrict updates"** with the repository admin (the owner) as the only bypass actor'
-        in text
+        '**"Restrict updates"** with the repository admin (the owner) as the only bypass actor '
+        "besides the merge App" in text
     )
+    # R22 (decision 36): the merge App is the second bypass actor, decision 33's App never
+    assert 'the merge App above is its second bypass actor, in "For pull requests only"' in text
+    assert "Never add this App to a ruleset's bypass list" in text
     assert "still lets `gh pr merge` through" in text
     assert "The daily digest says so" in text
-    # 0.2.26: the bypass mode, from the owner's merges of 2026-09-27 (NOTES section 17)
-    assert "The bypass actor's mode is **Exempt**" in text
-    assert "no bypass audit entry for the owner's merges" in text
+    # 0.2.26: the owner is Exempt in ruleset 1 (NOTES section 17); 1.0.23 (choice 251, NOTES
+    # section 57): Exempt alone let anything acting as the owner's login write to the default
+    # branch, so ruleset 2 also holds the no-direct-writes rules, with the owner's bypass for
+    # pull requests only
+    assert "The owner's bypass actor's mode is **Exempt**" in text
+    assert "No setting stops a session acting as your login from merging" in text
     assert "the workflow token included" in text
+    assert "`review and no direct writes on main (decision 36, choice 251)`" in text
+    ruleset_2 = text[text.index("- Ruleset 2, which holds a build PR") :]
+    for rule in (
+        '**"Require status checks to pass"**',
+        '**"Require a pull request before merging"**, with required approvals **0**',
+        '**"Block force pushes"**',
+        '**"Restrict deletions"**',
+    ):
+        assert rule in ruleset_2
+    assert 'role (you), in "For pull requests only" mode, so your bypass never covers a push' in (
+        ruleset_2
+    )
     model = (PLUGIN.parent / "docs" / "OPERATING_MODEL.md").read_text(encoding="utf-8")
     assert "The owner's bypass mode is *Exempt*" in model
+    assert '"Require a pull request before merging", "Block force pushes" and' in model
+
+
+# --- R29 part 1 and R54: examples, the mock and the quick intent --------------------------------
+def test_intent_template_has_examples_after_the_article_sections():
+    """R29 part 1: Examples/References follows Open questions and precedes the incident-only
+    Evidence; the gate does not require it (INTENT_SECTIONS is unchanged)."""
+    from gate import artifacts as art
+
+    body = (PLUGIN / "skills" / "intent-template" / "SKILL.md").read_text(encoding="utf-8")
+    block = re.search(r"```markdown\n(.*?)```", body, re.S).group(1)
+    headings = [h.split("   ")[0] for h in re.findall(r"^## .+$", block, re.M)]
+    assert headings == [*art.INTENT_SECTIONS, art.INTENT_EXAMPLES_SECTION, "## Evidence"]
+    assert art.INTENT_EXAMPLES_SECTION not in art.INTENT_SECTIONS
+    text = " ".join(body.split())
+    assert "never a referenced screen" in text
+    # the quick intent's marker is the gate's, word for word
+    assert f"`{art.QUICK_INTENT_MARKER}`" in text and "`Quick intent: yes`" in text
+
+
+def test_the_mock_question_and_the_mock_line():
+    """R29 part 1: the interview asks for a mock on a screen change; spec.md's Acceptance gets
+    a fixed Mock: line; the build matches the mock, never the referenced screens."""
+    plan = flat(COMMANDS / "sdlc-plan.md")
+    assert '"Do you have a mock or example screens?"' in plan and "never blocks" in plan
+    spec = flat(PLUGIN / "skills" / "spec-template" / "SKILL.md")
+    assert "`Mock: mock/<file>`" in spec
+    assert "`Mock: none, screens follow the UX conventions`" in spec
+    build = flat(COMMANDS / "sdlc-build.md")
+    assert "never the screens the intent's Examples/References only refer to" in build
+    assert "`Mock:` line" in flat(COMMANDS / "sdlc-design.md")
+
+
+def test_the_quick_intent_route():
+    """R54: one paragraph, no correction loop at (a); the design run states its assumptions
+    in the section the gate requires and the reviewer judges."""
+    from gate import artifacts as art
+
+    plan = flat(COMMANDS / "sdlc-plan.md")
+    assert "**The quick intent**" in plan and "`quick:`" in plan
+    assert "skip step 4's correction loop" in plan
+    heading = art.SPEC_ASSUMED_SECTION
+    for path in (
+        COMMANDS / "sdlc-design.md",
+        PLUGIN / "skills" / "spec-template" / "SKILL.md",
+    ):
+        assert f"`{heading}`" in flat(path), path.name
+    assert heading.lstrip("# ") in flat(PLUGIN / "agents" / "adversarial-reviewer.md")

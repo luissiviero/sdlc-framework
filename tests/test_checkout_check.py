@@ -165,3 +165,102 @@ def test_a_pin_the_default_branch_no_longer_carries_is_refused(tmp_path, monkeyp
     )
     monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(tmp_path / "gitconfig"))
     assert checkout_check.config_problems(work) == []
+
+
+def test_the_config_is_judged_as_git_resolves_it_worktree_included(tmp_path, monkeypatch):
+    """R49 fix round 3: a key hidden in ``.git/config.worktree`` (``extensions.worktreeConfig``
+    on, ``git config --worktree``) is invisible to ``git config --local --list``; one
+    ``git config --list --show-scope`` reads every scope, and the switch itself is refused."""
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(tmp_path / "no-such-gitconfig"))
+    work = tmp_path / "work"
+    subprocess.run(["git", "init", "-q", str(work)], check=True)
+    assert checkout_check.config_problems(work) == []
+    git(work, "config", "extensions.worktreeConfig", "true")
+    git(work, "config", "--worktree", "http.proxy", "http://proxy.invalid:3128")
+    git(work, "config", "--worktree", "credential.helper", "store")
+    git(work, "config", "--worktree", "http.sslVerify", "false")
+    found = checkout_check.config_findings(work)
+    assert sorted(found) == sorted(
+        [
+            ("local", "extensions.worktreeconfig"),
+            ("worktree", "http.proxy"),
+            ("worktree", "credential.helper"),
+            ("worktree", "http.sslverify"),
+        ]
+    )
+    assert "git config worktree carries http.proxy" in checkout_check.config_problems(work)
+
+
+def test_a_git_that_cannot_list_the_scopes_is_a_problem(tmp_path, monkeypatch):
+    monkeypatch.setattr(checkout_check, "git", lambda cwd, *a, **k: (129, "error: unknown option"))
+    assert checkout_check.config_problems(tmp_path) == [
+        "git config --list --show-scope failed (exit 129): error: unknown option"
+    ]
+
+
+def test_keys_reached_through_an_include_or_the_global_files_are_found(tmp_path, monkeypatch):
+    """R49 fix round 4, N3: an ``include.path`` that pulls a proxy into the local scope, a
+    global ``http.sslVerify`` and the same in ``$XDG_CONFIG_HOME/git/config`` (git's other
+    global file) are all judged - one listing reads what git reads."""
+    work = tmp_path / "work"
+    subprocess.run(["git", "init", "-q", str(work)], check=True)
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(tmp_path / "no-such-gitconfig"))
+    included = tmp_path / "included.config"
+    included.write_text("[http]\n\tproxy = http://proxy.invalid:3128\n", encoding="utf-8")
+    git(work, "config", "include.path", included.as_posix())
+    assert set(checkout_check.config_findings(work)) == {
+        ("local", "include.path"),
+        ("local", "http.proxy"),
+    }
+    git(work, "config", "--unset", "include.path")
+    global_cfg = tmp_path / "gitconfig"
+    global_cfg.write_text("[http]\n\tsslVerify = false\n", encoding="utf-8")
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(global_cfg))
+    assert checkout_check.config_findings(work) == [("global", "http.sslverify")]
+    # without GIT_CONFIG_GLOBAL, git reads ~/.gitconfig and $XDG_CONFIG_HOME/git/config
+    monkeypatch.delenv("GIT_CONFIG_GLOBAL")
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+    (tmp_path / "xdg" / "git").mkdir(parents=True)
+    (tmp_path / "xdg" / "git" / "config").write_text(
+        "[http]\n\tproxy = http://proxy.invalid:3128\n", encoding="utf-8"
+    )
+    assert checkout_check.config_findings(work) == [("global", "http.proxy")]
+    for key in ("diff.external", "diff.foo.textconv", "diff.foo.command"):
+        git(work, "config", key, "x")
+    found = {name for _scope, name in checkout_check.config_findings(work)}
+    assert {"diff.external", "diff.foo.textconv", "diff.foo.command"} <= found
+
+
+def test_the_script_run_from_the_fresh_framework_leaves_it_clean(tmp_path):
+    """The live deploy run 39270275720 on the sample (plugin 1.0.10): the workflows run this
+    script from the framework checkout it judges, and its import of ``ci.app_token`` wrote
+    ``plugin/ci/__pycache__`` there, which ``status --ignored`` then refused. Here the
+    framework origin carries the real ``plugin/ci`` files and the script runs from the
+    clone, as in the workflow, with bytecode writing on."""
+    import os
+    import shutil
+
+    work, bare, fw_origin, framework = setting(tmp_path)
+    ci_dir = fw_origin / "plugin" / "ci"
+    ci_dir.mkdir(parents=True)
+    for name in ("__init__.py", "app_token.py", "checkout_check.py"):
+        shutil.copy(SCRIPT.parent / name, ci_dir / name)
+    (fw_origin / ".gitignore").write_text("__pycache__/\n*.pyc\n", encoding="utf-8")
+    git(fw_origin, "add", ".")
+    git(fw_origin, "commit", "-q", "-m", "the plugin's ci files")
+    git(fw_origin, "tag", "-f", "v0.2.16")
+    # the clone takes the moved tag in place: removing it would trip over git's read-only
+    # object files on Windows (the first Windows run of this test, PR #241)
+    git(framework, "fetch", "-q", "--force", "origin", "tag", "v0.2.16")
+    git(framework, "checkout", "-q", "v0.2.16")
+    env = {k: v for k, v in os.environ.items() if k != "PYTHONDONTWRITEBYTECODE"}
+    proc = subprocess.run(
+        [sys.executable, str(framework / "plugin" / "ci" / "checkout_check.py"),
+         "--root", str(work), "--framework", "framework", "--pin-ref", "v0.2.16",
+         "--origin", str(bare), "--framework-origin", str(fw_origin),
+         "--default-branch", "main"],
+        capture_output=True, text=True, env={**env, "GIT_CONFIG_GLOBAL": "/dev/null"},
+    )  # fmt: skip
+    assert proc.returncode == 0, proc.stderr
+    assert git(framework, "status", "--porcelain", "--ignored", "--untracked-files=all") == ""

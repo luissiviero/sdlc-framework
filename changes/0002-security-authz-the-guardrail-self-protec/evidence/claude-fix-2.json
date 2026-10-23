@@ -1,0 +1,99 @@
+{
+  "api_error_status": null,
+  "duration_api_ms": 504098,
+  "duration_ms": 516681,
+  "fast_mode_disabled_reason": "sdk_opt_in_required",
+  "fast_mode_state": "off",
+  "first_content_frame_ms": 2110,
+  "is_error": false,
+  "modelUsage": {
+    "claude-sonnet-5": {
+      "cacheCreationInputTokens": 169669,
+      "cacheReadInputTokens": 3189482,
+      "canonicalModel": "claude-sonnet-5",
+      "contextWindow": 1000000,
+      "costBasis": "list",
+      "costUSD": 1.5477903999999998,
+      "inputTokens": 90,
+      "maxOutputTokens": 64000,
+      "outputTokens": 38300,
+      "provider": "firstParty",
+      "thinkingTokens": 24538,
+      "webSearchRequests": 0
+    }
+  },
+  "num_turns": 40,
+  "permission_denials": [],
+  "queued_turn_count": 0,
+  "result": "PR #144 (https://github.com/luissiviero/sdlc-framework/pull/144) \u2014 gate (b): wait (all checks pass, label `sdlc:b-ready`), iterations 2/2 used, no requests left open.",
+  "result_index": 0,
+  "session_id": "ee5f0466-c855-4509-a591-922be5030eba",
+  "stop_reason": "end_turn",
+  "subagent_stats": {
+    "by_type": {
+      "sdlc:adversarial-reviewer": 1
+    },
+    "completed": 1,
+    "failed": 0,
+    "killed": {
+      "parent": 0,
+      "system": 0,
+      "user": 0
+    },
+    "max_depth": 1,
+    "refused": {
+      "budget": 0,
+      "concurrency_limit": 0,
+      "depth_limit": 0
+    },
+    "requested": {
+      "background": 0,
+      "foreground": 0,
+      "unset": 1
+    },
+    "spawned": 1,
+    "spawned_by_subagents": 0,
+    "started_in_background": 0
+  },
+  "subtype": "success",
+  "terminal_reason": "completed",
+  "time_to_request_ms": 83,
+  "total_cost_usd": 1.5477903999999998,
+  "ttft_ms": 3053,
+  "ttft_stream_ms": 2110,
+  "type": "result",
+  "usage": {
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 68361,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "cache_creation_input_tokens": 68361,
+    "cache_read_input_tokens": 2414674,
+    "inference_geo": "not_available",
+    "input_tokens": 66,
+    "iterations": [
+      {
+        "cache_creation": {
+          "ephemeral_1h_input_tokens": 384,
+          "ephemeral_5m_input_tokens": 0
+        },
+        "cache_creation_input_tokens": 384,
+        "cache_read_input_tokens": 92941,
+        "input_tokens": 2,
+        "output_tokens": 193,
+        "type": "message"
+      }
+    ],
+    "output_tokens": 15913,
+    "output_tokens_details": {
+      "thinking_tokens": 8176
+    },
+    "server_tool_use": {
+      "web_fetch_requests": 0,
+      "web_search_requests": 0
+    },
+    "service_tier": "standard",
+    "speed": "standard"
+  },
+  "uuid": "fa2cbb8f-86d7-4a90-9791-c07a1f92c146"
+}

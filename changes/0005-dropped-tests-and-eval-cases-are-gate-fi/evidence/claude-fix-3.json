@@ -1,0 +1,155 @@
+{
+  "duration_api_ms": 2193002,
+  "duration_ms": 2408769,
+  "errors": [
+    "Reached maximum number of turns (200)"
+  ],
+  "fast_mode_disabled_reason": "sdk_opt_in_required",
+  "fast_mode_state": "off",
+  "is_error": true,
+  "modelUsage": {
+    "claude-sonnet-5": {
+      "cacheCreationInputTokens": 512275,
+      "cacheReadInputTokens": 45579129,
+      "canonicalModel": "claude-sonnet-5",
+      "contextWindow": 1000000,
+      "costBasis": "list",
+      "costUSD": 12.851718799999997,
+      "inputTokens": 468,
+      "maxOutputTokens": 64000,
+      "outputTokens": 192022,
+      "provider": "firstParty",
+      "thinkingTokens": 108419,
+      "webSearchRequests": 0
+    }
+  },
+  "num_turns": 201,
+  "permission_denials": [
+    {
+      "tool_input": {
+        "command": "echo \"SDLC_GATE_COMMANDS=$SDLC_GATE_COMMANDS\"; env | grep -i CLAUDE_PLUGIN_ROOT; env | grep -i SDLC",
+        "description": "Check CI environment variables for gate commands"
+      },
+      "tool_name": "Bash",
+      "tool_use_id": "toolu_018WmobhVt35rkNyt9K6Pda7"
+    },
+    {
+      "tool_input": {
+        "command": "grep -n \"short test summary info\" -A2 \"$TMPDIR/pytest_full.log\" | tail -5\ngrep -E \"^[0-9]+ passed|passed,|failed,|error\" \"$TMPDIR/pytest_full.log\" | tail -3\nawk '/= .*passed|= .*failed|= .*error/' \"$TMPDIR/pytest_full.log\" | tail -3",
+        "description": "Extract the exact final summary counts"
+      },
+      "tool_name": "Bash",
+      "tool_use_id": "toolu_01Ct4LWKK8QMpvF5K9tRPk2H"
+    },
+    {
+      "tool_input": {
+        "command": "{ time python -m pytest -q --tb=no > \"$TMPDIR/pytest_summary2.log\" 2>&1; echo \"EXITCODE=$?\"; } 2> \"$TMPDIR/pytest_time.log\"\necho \"---time---\"\ncat \"$TMPDIR/pytest_time.log\"\necho \"---tail of summary2---\"\npython -c \"\nwith open('$TMPDIR/pytest_summary2.log') as f:\n    lines = f.readlines()\nprint('total lines', len(lines))\nfor l in lines[-5:]:\n    print(repr(l))\n\"",
+        "description": "Time the pytest run and inspect its true tail",
+        "timeout": 600000
+      },
+      "tool_name": "Bash",
+      "tool_use_id": "toolu_01BcY8K8j7rKq4Be9enufHAk"
+    },
+    {
+      "tool_input": {
+        "command": "python -m compileall -q plugin tests tasks.py; echo \"compileall exit=$?\"\necho \"---ruff check---\"\npython -m ruff check .\necho \"ruff check exit=$?\"\necho \"---ruff format---\"\npython -m ruff format --check .\necho \"ruff format exit=$?\"",
+        "description": "Run compileall and ruff across the whole repo"
+      },
+      "tool_name": "Bash",
+      "tool_use_id": "toolu_01JAK95m6cC2zSprnS6cSE99"
+    },
+    {
+      "tool_input": {
+        "command": "python - <<'EOF'\nimport sys, json, tempfile\nsys.path.insert(0, \"plugin\")\nfrom pr.description import _conformance_line\nfrom state.unpark import risk_hits\nimport pathlib\n\n# _conformance_line: declared drops clause present\ngate_json = {\n    \"checks\": [\n        {\"name\": \"plan_sync\", \"ok\": True, \"reason\": \"\", \"details\": {}},\n        {\"name\": \"ratchets\", \"ok\": True, \"reason\": \"\", \"details\": {\"declared\": [{\"name\": \"ratchet: tests\", \"source\": \"plan\"}]}},\n    ]\n}\nprint(\"with declared drops:\", _conformance_line(gate_json, \"\", \"c\"))\n\n# clause absent when no declared drops\ngate_json2 = {\n    \"checks\": [\n        {\"name\": \"plan_sync\", \"ok\": True, \"reason\": \"\", \"details\": {}},\n        {\"name\": \"ratchets\", \"ok\": True, \"reason\": \"\", \"details\": {\"declared\": []}},\n    ]\n}\nprint(\"without declared drops:\", _conformance_line(gate_json2, \"\", \"c\"))\n\n# phase (a)/(b): ratchets clause should not even apply (different code path)\nprint(\"phase a:\", _conformance_line({\"checks\": []}, \"## Open questions from intent\\n- none\\n\", \"a\"))\n\n# risk_hits: union of risk_list and ratchets hits, including ratchets-only record\nwith tempfile.TemporaryDirectory() as d:\n    change_dir = pathlib.Path(d)\n    gate_c = {\n        \"checks\": [\n            {\"name\": \"ratchets\", \"ok\": False, \"details\": {\"hits\": {\"ratchet: tests\": [\"tests/test_x.py\"]}}},\n        ]\n    }\n    (change_dir / \"evidence\").mkdir()\n    (change_dir / \"evidence\" / \"gate-c.json\").write_text(json.dumps(gate_c))\n    print(\"risk_hits ratchets-only:\", risk_hits(change_dir, \"c\"))\n\n    gate_c2 = {\n        \"checks\": [\n            {\"name\": \"risk_list\", \"ok\": False, \"details\": {\"hits\": {\"tests\": [\"x\"]}}},\n            {\"name\": \"ratchets\", \"ok\": False, \"details\": {\"hits\": {\"ratchet: tests\": [\"tests/test_x.py\"]}}},\n        ]\n    }\n    (change_dir / \"evidence\" / \"gate-c.json\").write_text(json.dumps(gate_c2))\n    print(\"risk_hits union:\", risk_hits(change_dir, \"c\"))\nEOF\n",
+        "description": "Exercise _conformance_line and risk_hits directly"
+      },
+      "tool_name": "Bash",
+      "tool_use_id": "toolu_01Xykagb8kbmdd9z345FexzH"
+    },
+    {
+      "tool_input": {
+        "command": "mkdir -p \"$TMPDIR/riskhits_test/evidence\" && python -c \"\nimport sys, json, pathlib\nsys.path.insert(0, 'plugin')\nfrom state.unpark import risk_hits\n\nchange_dir = pathlib.Path('$TMPDIR/riskhits_test')\ngate_c = dict(checks=[\n    dict(name='ratchets', ok=False, details=dict(hits={'ratchet: tests': ['tests/test_x.py']})),\n])\n(change_dir / 'evidence' / 'gate-c.json').write_text(json.dumps(gate_c))\nprint('ratchets-only:', risk_hits(change_dir, 'c'))\n\ngate_c2 = dict(checks=[\n    dict(name='risk_list', ok=False, details=dict(hits={'tests': ['x']})),\n    dict(name='ratchets', ok=False, details=dict(hits={'ratchet: tests': ['tests/test_x.py']})),\n])\n(change_dir / 'evidence' / 'gate-c.json').write_text(json.dumps(gate_c2))\nprint('union:', risk_hits(change_dir, 'c'))\n\"\nrm -rf \"$TMPDIR/riskhits_test\"\n",
+        "description": "Exercise risk_hits directly using a temp evidence file"
+      },
+      "tool_name": "Bash",
+      "tool_use_id": "toolu_01KmifddpAQeTGFWfEK2hpSe"
+    },
+    {
+      "tool_input": {
+        "command": "python -c \"\nimport sys\nsys.path.insert(0, 'plugin')\nfrom gate.checks import RATCHET_PROOF_RE, _ratchet_path_declared\n\n# Proof-line declaration\nproof = '- ratchet: tests may fall, because the old suite moved to a new file\\n'\nprint('proof declares tests:', bool(RATCHET_PROOF_RE['tests'].search(proof)))\nprint('proof declares evals:', bool(RATCHET_PROOF_RE['evals'].search(proof)))\n\n# Files-that-change declaration: a dropped test file path listed verbatim\nplanned = ['tests/test_x.py']\nprint('file declared in Files that change:', _ratchet_path_declared('tests/test_x.py', planned, {}, 'evals/cases/'))\n\n# Eval-case directory declared with trailing slash\ncase_paths = {'case1': ['evals/cases/case1/input.json']}\nplanned2 = ['evals/cases/case1/']\nprint('case dir declared with trailing slash:', _ratchet_path_declared('evals/cases/case1/', planned2, case_paths, 'evals/cases/'))\n\n# Undeclared case\nprint('case dir undeclared:', _ratchet_path_declared('evals/cases/case2/', [], {'case2': ['evals/cases/case2/input.json']}, 'evals/cases/'))\n\"\n",
+        "description": "Exercise RATCHET_PROOF_RE and _ratchet_path_declared declaration helpers"
+      },
+      "tool_name": "Bash",
+      "tool_use_id": "toolu_012APNJnRnrj1YMdsKhSW2Yn"
+    }
+  ],
+  "queued_turn_count": 0,
+  "result_index": 0,
+  "session_id": "474413fd-69ae-4d33-85e2-355efb39e669",
+  "stop_reason": "tool_use",
+  "subagent_stats": {
+    "by_type": {
+      "sdlc:code-simplifier": 1,
+      "sdlc:verifier": 2
+    },
+    "completed": 3,
+    "failed": 0,
+    "killed": {
+      "parent": 0,
+      "system": 0,
+      "user": 0
+    },
+    "max_depth": 1,
+    "refused": {
+      "budget": 0,
+      "concurrency_limit": 0,
+      "depth_limit": 0
+    },
+    "requested": {
+      "background": 0,
+      "foreground": 0,
+      "unset": 3
+    },
+    "spawned": 3,
+    "spawned_by_subagents": 0,
+    "started_in_background": 0
+  },
+  "subtype": "error_max_turns",
+  "terminal_reason": "max_turns",
+  "total_cost_usd": 12.851718799999997,
+  "type": "result",
+  "usage": {
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 356033,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "cache_creation_input_tokens": 356033,
+    "cache_read_input_tokens": 44284326,
+    "inference_geo": "global",
+    "input_tokens": 400,
+    "iterations": [
+      {
+        "cache_creation": {
+          "ephemeral_1h_input_tokens": 996,
+          "ephemeral_5m_input_tokens": 0
+        },
+        "cache_creation_input_tokens": 996,
+        "cache_read_input_tokens": 380001,
+        "input_tokens": 2,
+        "output_tokens": 1373,
+        "type": "message"
+      }
+    ],
+    "output_tokens": 155967,
+    "output_tokens_details": {
+      "thinking_tokens": 90778
+    },
+    "server_tool_use": {
+      "web_fetch_requests": 0,
+      "web_search_requests": 0
+    },
+    "service_tier": "standard",
+    "speed": "standard"
+  },
+  "uuid": "2878eb66-ab3e-438d-800f-97cfc70baa4f"
+}

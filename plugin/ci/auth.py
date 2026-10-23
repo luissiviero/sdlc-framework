@@ -1,23 +1,24 @@
 """Which credential an unattended ``claude -p`` run uses, and whether it runs in bare mode.
 
-One definition for the whole framework (docs/NOTES.md section 2; OPERATING_MODEL section
+One definition for the whole framework (docs/notes/2.md; OPERATING_MODEL section
 4.2). ``.github/scripts/substrate_smoke.py`` — the first proof of the substrate, build guide
 step 3 — and ``plugin/ci/run_phase.py`` both call it, so the smoke run and the phase jobs can
 never disagree about which secret wins.
 
-The rule, from the documentation quoted in NOTES section 2:
+The rule, from the documentation quoted in NOTES section 2, in the order of decision 38:
 
-- ``ANTHROPIC_API_KEY`` present -> ``claude -p --bare``. Bare mode "is the recommended mode
-  for scripted and SDK calls" and reads only the key; the spend is billed per token, capped
-  by the workspace limit and by ``--max-budget-usd``.
-- otherwise ``CLAUDE_CODE_OAUTH_TOKEN`` present -> ``claude -p`` **without** ``--bare``,
-  because "Bare mode does not read ``CLAUDE_CODE_OAUTH_TOKEN``"; the run draws on the
-  owner's subscription window.
+- ``CLAUDE_CODE_OAUTH_TOKEN`` present -> ``claude -p`` **without** ``--bare``, because
+  "Bare mode does not read ``CLAUDE_CODE_OAUTH_TOKEN``"; the run draws on the owner's
+  subscription window.
+- otherwise ``ANTHROPIC_API_KEY`` present -> ``claude -p --bare``. Bare mode "is the
+  recommended mode for scripted and SDK calls" and reads only the key; the spend is billed
+  per token, capped by the workspace limit and by ``--max-budget-usd``.
 - neither -> no run is possible.
 
-When both are set the key wins, as the CLI itself does in print mode ("the key is always
-used when present"). No value is ever read, printed or returned here: only the variable
-names are looked at.
+When both are set the token wins (decision 38, amending decision 1's "key preferred"). The
+CLI itself would use the key in print mode ("the key is always used when present"), so a
+session must be handed ``credential_env``'s copy, which drops the secret not chosen. No
+value is ever read, printed or returned here: only the variable names are looked at.
 """
 
 from __future__ import annotations
@@ -34,22 +35,23 @@ LABELS = {"api_key": "api-key", "oauth": "subscription-token", None: "none"}
 
 def choose_auth(env: Mapping[str, str]) -> dict:
     """``{"auth": "api_key" | "oauth" | None, "bare": bool, "reason": str}``."""
-    if env.get(API_KEY_VAR):
-        return {
-            "auth": "api_key",
-            "bare": True,
-            "reason": (
-                f"{API_KEY_VAR} is set: bare mode, billed per token and capped by "
-                "--max-budget-usd (NOTES section 2). The key wins when both secrets exist."
-            ),
-        }
     if env.get(OAUTH_TOKEN_VAR):
         return {
             "auth": "oauth",
             "bare": False,
             "reason": (
-                f"{OAUTH_TOKEN_VAR} is set and {API_KEY_VAR} is not: no --bare, because bare "
-                "mode does not read the token; the run draws on the subscription window."
+                f"{OAUTH_TOKEN_VAR} is set: no --bare, because bare mode does not read the "
+                "token; the run draws on the subscription window. The token wins when both "
+                "secrets exist (decision 38)."
+            ),
+        }
+    if env.get(API_KEY_VAR):
+        return {
+            "auth": "api_key",
+            "bare": True,
+            "reason": (
+                f"{API_KEY_VAR} is set and {OAUTH_TOKEN_VAR} is not: bare mode, billed per "
+                "token and capped by --max-budget-usd (NOTES section 2)."
             ),
         }
     return {
@@ -57,7 +59,7 @@ def choose_auth(env: Mapping[str, str]) -> dict:
         "bare": False,
         "reason": (
             f"no credential: set the repository secret {API_KEY_VAR} or {OAUTH_TOKEN_VAR} "
-            "(docs/NOTES.md section 2)"
+            "(the framework's docs/notes/2.md)"
         ),
     }
 

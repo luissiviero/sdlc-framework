@@ -3,16 +3,17 @@ start with a read-only step, article p.41).
 
 Runs one headless `claude -p` turn under a per-run budget with whichever credential the
 workflow was given, and prints what the CLI reports. Either repository secret works
-(docs/NOTES.md section 2):
+(docs/notes/2.md):
 
 - ``ANTHROPIC_API_KEY``      -> ``claude -p --bare ...`` (bare mode reads only the key;
                                billed per token, not against a plan window)
 - ``CLAUDE_CODE_OAUTH_TOKEN`` -> ``claude -p ...`` (no ``--bare``: bare mode does not read
                                the token; the run draws on the owner's subscription window)
 
-When both are present the key wins, as the CLI itself does in print mode ("the key is
-always used when present"). Exit codes: 0 the turn succeeded; 1 the CLI reported an error
-or returned no JSON; 2 no credential was given.
+When both are present the token wins (decision 38), and the CLI is handed only the chosen
+secret, since in print mode it would use the key ("the key is always used when present").
+Exit codes: 0 the turn succeeded; 1 the CLI reported an error or returned no JSON; 2 no
+credential was given.
 """
 
 from __future__ import annotations
@@ -35,7 +36,7 @@ if str(PLUGIN_DIR) not in sys.path:
 from ci import auth as auth_mod  # noqa: E402
 
 PROMPT = "Reply with the single word OK. Do not use any tool."
-# The outer bounds every phase job will carry (docs/NOTES.md section 10b).
+# The outer bounds every phase job will carry (docs/notes/10.md, 10b).
 BOUNDS = ["--model", "opus", "--max-turns", "2", "--max-budget-usd", "0.25"]
 
 
@@ -61,7 +62,7 @@ def run(
     argv = [*claude, "-p", *flags, *BOUNDS, "--output-format", "json", PROMPT]
     print("auth:", label, file=out)
     print("command:", " ".join(argv[len(claude) :]), file=out)
-    proc = subprocess.run(argv, capture_output=True, text=True, env=env)
+    proc = subprocess.run(argv, capture_output=True, text=True, env=auth_mod.credential_env(env))
     try:
         data = json.loads(proc.stdout)
     except ValueError:

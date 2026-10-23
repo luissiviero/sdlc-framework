@@ -18,14 +18,20 @@ Style and naming are nits.
 Report at most five nits per review; summarize the rest as a count.
 
 ## Framework rules (each is an Important finding)
-- The diff must not touch `.claude/**`, `CLAUDE.md`, `REVIEW.md` or `sdlc.yaml` unless the
-  change is the framework itself (its intent.md says so).
+- The diff must not touch `.claude/**`, `CLAUDE.md`, `REVIEW.md`, `sdlc.yaml` or
+  `policies/**` unless the change is the framework itself (its intent.md says so).
 - In a fix-type change (`change_type: fix` in status.yaml) the diff must not modify test
   files that existed before the fix; the failing test written first is the proof.
 - `plan.md` must reflect the diff: files that change, order of work, risks, proof. A diff
   that departs from the plan without a plan.md update in the same commit is non-compliant.
-- The second occurrence of the same finding across reviews produces a one-line entry in
-  `CLAUDE.md` under "Things Claude gets wrong", proposed in the review for the owner.
+- Each added skip marker the gate's `ratchets` check listed at gate (e)
+  (`evidence/gate-e.json`'s `details.skip_markers`) must be declared in `plan.md` or
+  explained in the PR; an undeclared one quietly narrowing what the suite actually runs is
+  non-compliant.
+- The second occurrence of the same finding across changes produces a one-line entry in
+  `CLAUDE.md` under "Things Claude gets wrong", proposed in the review for the owner (the
+  framework counts repeats in `changes/.review-seen.json` and writes the proposal; a
+  repeated finding keeps its own severity).
 - Flag when the change has made `CLAUDE.md` outdated.
 
 ## Do not report

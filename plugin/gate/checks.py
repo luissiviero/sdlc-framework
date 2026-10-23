@@ -32,10 +32,12 @@ if str(PLUGIN_DIR) not in sys.path:
 
 from gate import artifacts as art  # noqa: E402
 from gate import diff as diffmod  # noqa: E402
+from gate import risk as risk_mod  # noqa: E402
 from gate.diff import Diff  # noqa: E402
 from gate.policy import automation_identity, is_automation  # noqa: E402
 from hooks import plan_sync, protected_paths  # noqa: E402
 from hooks._common import matches  # noqa: E402
+from lessons import index as lessons_mod  # noqa: E402
 from state import conventions as c  # noqa: E402
 from state import yamlish  # noqa: E402
 from state.status import STATUS_FILE, Status  # noqa: E402
@@ -97,17 +99,10 @@ class GateContext:
     diff: Diff | None  # None when the project is not a git repository
     human_gate: bool
     diff_error: str = ""
-    profile: str = "standard"
     config_note: str = ""  # set when the config was taken from the merge base
-    # decision 21: ``parked`` | ``deferred`` (sdlc.yaml: review, status.yaml: review_override)
-    review_mode: str = "parked"
     # issue #91 (0.3.0): the runner runs the ``commands`` check after the session (set from
     # ``COMMANDS_RUNNER_ENV`` by ``gate.build_context``; a by-hand gate runs them itself)
     commands_deferred: bool = False
-
-    @property
-    def deferred(self) -> bool:
-        return self.review_mode == "deferred"
 
     @property
     def evidence_dir(self) -> Path:
@@ -120,13 +115,30 @@ class GateContext:
     def artifact(self, name: str) -> str | None:
         return art.read_text(self.change_dir / name)
 
+    def approved_base(self) -> str | None:
+        """The commit the approved copies are read at: the merge base with the default
+        branch, or, on the fast lane (decision 30), the commit ``status.yaml: fast_lane``
+        records for this phase while it stands (``diff.fast_lane_sha``: the owner's unmerged
+        intent PR head for (b), the design commit gate (b) passed on for (c) to (e)). None
+        when there is no base to compare with."""
+        if self.diff is None:
+            return None
+        return diffmod.approved_base(
+            self.root,
+            self.status.fast_lane,
+            self.phase,
+            self.diff.merge_base,
+            self.diff.base,
+            self.diff.head or "HEAD",
+        )
+
     def approved_artifact(self, name: str) -> str | None:
-        """The artifact as committed on the base branch (what the owner approved), falling
-        back to the working tree only when there is no base to compare with."""
-        if self.diff is not None and self.diff.merge_base:
-            committed = diffmod.file_at(
-                self.root, self.diff.merge_base, f"{self.change_rel}/{name}"
-            )
+        """The artifact as committed on the base branch (what the owner approved; on the
+        fast lane, at the commit ``approved_base`` names), falling back to the working tree
+        only when there is no base to compare with."""
+        base = self.approved_base()
+        if self.diff is not None and base:
+            committed = diffmod.file_at(self.root, base, f"{self.change_rel}/{name}")
             if committed is not None:
                 return committed
             if f"{self.change_rel}/{name}" in self.diff.files:
@@ -215,6 +227,13 @@ def check_artifacts(ctx: GateContext) -> CheckResult:
             lacking = [f for f in art.SPEC_HEADER_FIELDS if f not in head]
             if lacking:
                 problems.append(f"spec.md header lacks {', '.join(lacking)}")
+            # R54: a quick intent's assumptions are what the owner corrects on the PR
+            if art.is_quick_intent(ctx.artifact("intent.md") or ""):
+                body = art.split_sections(text).get(art.SPEC_ASSUMED_SECTION, "")
+                if not re.search(r"(?m)^\s*(?:[-*]|\d+[.)])\s+\S", body):
+                    problems.append(
+                        f"spec.md of a quick intent lists nothing under {art.SPEC_ASSUMED_SECTION}"
+                    )
     if problems:
         return _fail(
             "artifacts",
@@ -285,13 +304,18 @@ def _kill_tree(proc: subprocess.Popen) -> None:
 
 
 def run_command(
-    command: str, root: Path, timeout: int, tail: int | None = OUTPUT_TAIL
+    command: str,
+    root: Path,
+    timeout: int,
+    tail: int | None = OUTPUT_TAIL,
+    env: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     """Run one project target through the platform shell (the targets are the owner's own
     one-liners: `npm test`, `python -m pytest`; on Windows the .cmd shims need cmd.exe). The
     command runs in its own process group so a timeout kills the whole tree. ``tail`` caps
     the kept output (the gate result keeps the tail; ``None`` keeps the literal output, which
-    is what the evidence writer of step 28 stores)."""
+    is what the evidence writer of step 28 stores). ``env`` replaces the process's own
+    environment when given (the runner's toolchain install: no token, no model credential)."""
     group: dict[str, Any] = (
         {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP}  # type: ignore[attr-defined]
         if os.name == "nt"
@@ -308,6 +332,7 @@ def run_command(
             text=True,
             encoding="utf-8",
             errors="replace",
+            env=env,
             **group,
         )
     except OSError as exc:
@@ -360,14 +385,18 @@ def missing_targets(ctx: GateContext) -> CheckResult | None:
     )
 
 
-def run_targets(ctx: GateContext) -> dict[str, dict[str, Any]]:
+def run_targets(ctx: GateContext, only: list[str] | None = None) -> dict[str, dict[str, Any]]:
     """Run the three targets once, keeping the literal output and the seconds each took:
     ``{name: {"command", "exit_code", "output", "seconds"[, "timeout"]}}``. The gate's record
     keeps the tail of the output (``judge_targets``); the evidence logs keep it whole (item
-    3b: the runner writes ``test.log``, ``build.log`` and ``lint.log`` from this same run)."""
+    3b: the runner writes ``test.log``, ``build.log`` and ``lint.log`` from this same run).
+    ``only`` names the targets to run (decision 29: the re-run of the targets that did not
+    start), all three when None."""
     timeout = int(ctx.gate_setting("command_timeout", DEFAULT_COMMAND_TIMEOUT))
     runs: dict[str, dict[str, Any]] = {}
     for name, cmd in _commands(ctx).items():
+        if only is not None and name not in only:
+            continue
         started = time.monotonic()
         run = run_command(cmd, ctx.root, timeout, tail=None)
         run["seconds"] = round(time.monotonic() - started, 1)
@@ -545,7 +574,7 @@ def check_findings(ctx: GateContext) -> CheckResult:
             "findings",
             f"{len(blocking)} Important review finding(s) open",
             "Fix every Important finding (or have the owner waive it in a review comment; "
-            "under deferred review the panel may settle one the run cannot fix), then re-run "
+            "the review panel may settle one the run cannot fix), then re-run "
             f"the review pass so {ctx.change_rel}/evidence/{art.REVIEW_FINDINGS} shows none.",
             important=blocking[:20],
             settled_by_panel=[str(f.get("summary", "")) for f in settled],
@@ -562,16 +591,27 @@ def check_findings(ctx: GateContext) -> CheckResult:
 
 
 def _panel_entries(ctx: GateContext, kind: str) -> list[dict[str, Any]]:
-    """The standing ledger entries of ``kind`` for this phase (decision 21), [] unless the
-    review mode is deferred: under ``parked`` a ledger decides nothing."""
-    if not ctx.deferred:
-        return []
+    """The standing ledger entries of ``kind`` for this phase (decision 21)."""
     from panel import ledger  # noqa: PLC0415
 
     return [
         e
         for e in ledger.active(ledger.load_ledger(ctx.change_dir, ctx.phase))
         if e.get("kind") == kind
+    ]
+
+
+def _owner_continues(ctx: GateContext) -> list[dict[str, Any]]:
+    """The ``escalate`` lines of this phase's ledger that the owner overturned and whose
+    decision upheld the verdict (not ``continue``): the owner's word replaces the panel's
+    (``sdlc-fix.md``), so an ``escalate`` verdict with the same reasons is settled for the
+    phase to continue; one with other reasons is a new item (1.0.8, NOTES 45 gap 1)."""
+    from panel import ledger  # noqa: PLC0415
+
+    return [
+        e
+        for e in ledger.load_ledger(ctx.change_dir, ctx.phase)
+        if e.get("kind") == "escalate" and e.get("overturned") and not ledger.decides_continue(e)
     ]
 
 
@@ -663,7 +703,15 @@ def check_guardrails(ctx: GateContext) -> CheckResult:
     patterns = protected_paths.protected_patterns(ctx.config)
     touched = [f for f in committed if any(matches(p, f) for p in patterns)]
     intent_rel = f"{ctx.change_rel}/intent.md"
-    if ctx.phase not in ("a", "f") and intent_rel in committed:
+    # decision 30: on the fast lane the intent was accepted at the owner's unmerged intent PR
+    # head, which the branch was cut from; "changed after gate (a)" is read since that commit
+    approved = ctx.approved_base()
+    since_gate = (
+        committed
+        if approved == ctx.diff.merge_base
+        else diffmod.committed_files(ctx.root, approved, ctx.diff.head)
+    )
+    if ctx.phase not in ("a", "f") and intent_rel in since_gate:
         # the intent was accepted at gate (a): a later phase may not rewrite it (it is what
         # the guardrail exemption and the risk acceptance are judged against). Phase (f)
         # writes the incident intent itself (p.44 step 5): its PR is the intent PR of that
@@ -687,59 +735,49 @@ def check_guardrails(ctx: GateContext) -> CheckResult:
     return _fail(
         "guardrails",
         f"the diff touches guardrail file(s): {', '.join(touched[:10])}",
-        "Guardrail files (.claude/**, CLAUDE.md, REVIEW.md, sdlc.yaml, protected_paths) are "
-        "changed by the owner in a reviewed PR. Revert them here; a framework change says "
-        "'Framework change: yes' in the intent the owner merged at gate (a).",
+        "Guardrail files (.claude/**, CLAUDE.md, REVIEW.md, sdlc.yaml, policies/**, "
+        "protected_paths) are changed by the owner in a reviewed PR. Revert them here; a "
+        "framework change says 'Framework change: yes' in the intent the owner merged at "
+        "gate (a).",
         touched=touched,
     )
 
 
-# --- 8. risk list (step 5; OPERATING_MODEL section 9) ------------------------------------------
-def _tokens(text: str) -> list[str]:
-    return re.findall(r"[a-z0-9]+", text.lower())
+# --- 8. risk list (step 5; OPERATING_MODEL section 9; decision 35) ----------------------------
+def risk_hits(items: list[Any], paths: list[str], texts: dict[str, str]) -> dict[str, list[str]]:
+    """{risk item: [where it matched]} (``risk.hits``): a plain item's words whole-token and
+    plural-tolerant, so 'auth' matches 'auth/' and 'auth_token' but not 'author'; an item
+    with ``paths`` by its globs, never under ``changes/``."""
+    return risk_mod.hits(items, paths, texts)
 
 
-def _phrase_in(tokens: list[str], phrase: list[str]) -> bool:
-    n = len(phrase)
-    for i in range(len(tokens) - n + 1):
-        if all(_tok_eq(tokens[i + j], phrase[j]) for j in range(n)):
-            return True
-    return False
-
-
-def _tok_eq(a: str, b: str) -> bool:
-    return a == b or a == b + "s" or b == a + "s"
-
-
-def risk_hits(items: list[str], paths: list[str], texts: dict[str, str]) -> dict[str, list[str]]:
-    """{risk item: [where it matched]}; whole-token phrase match, plural-tolerant, so 'auth'
-    matches 'auth/' and 'auth_token' but not 'author'."""
-    hits: dict[str, list[str]] = {}
-    for item in items:
-        phrase = _tokens(item)
-        if not phrase:
-            continue
-        where = [p for p in paths if _phrase_in(_tokens(p), phrase)]
-        where += [
-            f"{name}: text" for name, text in texts.items() if _phrase_in(_tokens(text), phrase)
-        ]
-        if where:
-            hits[item] = where
-    return hits
+RISK_ESCALATION_NEED = (
+    "The gate's reviewer escalates on the risk-list item(s) named above. Under decision 35 a "
+    "hit is only a line of the close-look banner, but an escalation on a risk item parks for "
+    "you and never goes to the review panel (decisions 11 and 21 as 35 amends them). Read the "
+    "brief ({brief}) and the verdict's reasons, then answer as for any escalation: a review "
+    "comment or Request changes starts a fix round, and the reviewer judges the new HEAD."
+)
 
 
 def check_risk_list(ctx: GateContext) -> CheckResult:
     """Risk-list items in the **committed** diff's paths and in the committed spec's
     "Flagged concerns" (OPERATING_MODEL section 3: the gate judges HEAD; see
-    ``check_guardrails`` for the sandbox-masked ``.env`` this keeps out)."""
-    items = ctx.config.get("risk_list") or []
-    if not isinstance(items, list):
-        return _fail("risk_list", "sdlc.yaml: risk_list must be a list", "Fix sdlc.yaml.")
+    ``check_guardrails`` for the sandbox-masked ``.env`` this keeps out).
+
+    Decision 35 (1.0.15): a hit no longer parks. The check passes and reports every hit in
+    ``details.hits`` (accepted or not; ``details.accepted`` names the accepted ones), which the
+    close-look banner of the PR the owner merges reads (``risk.banner_lines``). It fails, and
+    parks, only when the gate's reviewer escalates on a hit item (``risk.escalated_items``:
+    the brief's word, or an ``escalate`` verdict that names the item); ``risk_list`` is on the
+    panel's never list, so that escalation stays the owner's."""
+    items, why = risk_mod.parse_items(ctx.config.get("risk_list"))
+    if why:
+        return _fail("risk_list", why, "Fix sdlc.yaml (decision 35: a string or {item, paths}).")
     no_base = _no_base(ctx, "risk_list")
     if no_base:
         return no_base
-    items = [str(i) for i in items if str(i).strip()]
-    accepted = {a.lower().strip() for a in ctx.status.risk_accepted}
+    accepted = risk_mod.accepted(ctx.status)
     head = ctx.diff.head if ctx.diff else None
     paths = (
         diffmod.committed_files(ctx.root, ctx.diff.merge_base, ctx.diff.head) if ctx.diff else []
@@ -764,18 +802,40 @@ def check_risk_list(ctx: GateContext) -> CheckResult:
         if concerns.strip():
             texts[f"spec.md {art.CONCERNS_SECTION[3:]}"] = concerns
     hits = risk_hits(items, paths, texts)
-    live = {k: v for k, v in hits.items() if k.lower().strip() not in accepted}
-    if live:
+    accepted_hit = sorted(k for k in hits if k.lower() in accepted)
+    if not hits:
+        return _ok("risk_list", "no risk-list item touched", hits={}, accepted=accepted_hit)
+    escalated = risk_mod.escalated_items(sorted(hits), _phase_brief(ctx), _phase_verdict(ctx))
+    shown = "; ".join(f"'{k}' in {', '.join(v[:3])}" for k, v in hits.items())
+    if escalated:
         return _fail(
             "risk_list",
-            "risk-list hit: " + "; ".join(f"'{k}' in {', '.join(v[:3])}" for k, v in live.items()),
-            "Review the change with the risk in mind. To let it continue, accept the item for "
-            'this change: `python "${CLAUDE_PLUGIN_ROOT}/plugin/state/cli.py" accept-risk '
-            f'--root . --id {ctx.status.id} --item "<item>"` (recorded in status.yaml).',
-            hits=live,
-            accepted=sorted(accepted),
+            "the reviewer escalates on risk-list item(s) "
+            + ", ".join(f"'{i}'" for i in escalated)
+            + f" (hits: {shown})",
+            RISK_ESCALATION_NEED.format(brief=risk_mod.brief_rel(ctx.phase)),
+            hits=hits,
+            accepted=accepted_hit,
+            escalated=escalated,
         )
-    return _ok("risk_list", "no risk-list item touched", accepted=sorted(accepted))
+    return _ok(
+        "risk_list",
+        f"risk-list hit, shown in the close-look banner (decision 35): {shown}",
+        hits=hits,
+        accepted=accepted_hit,
+    )
+
+
+def _phase_brief(ctx: GateContext) -> dict[str, dict[str, str]]:
+    """The gate's reviewer's brief per hit item, read from the working tree as the verdict
+    is (``load_verdict``): both are evidence the reviewer wrote for this round, committed
+    after the gate, so HEAD still holds the previous round's brief."""
+    return risk_mod.read_brief(ctx.change_dir, ctx.phase)
+
+
+def _phase_verdict(ctx: GateContext) -> dict[str, Any] | None:
+    data, _error = load_verdict(ctx.evidence_dir / art.ADVERSARIAL_VERDICT.format(phase=ctx.phase))
+    return data
 
 
 # --- 9. the adversarial reviewer's verdict (step 17; an input, never run by the gate) ---------
@@ -787,8 +847,20 @@ def load_verdict(path: Path) -> tuple[dict[str, Any] | None, str]:
     if not path.is_file():
         return None, "missing"
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError) as exc:
+        text = path.read_text(encoding="utf-8")
+    except OSError as exc:
+        return None, f"unreadable: {exc}"
+    return parse_verdict(text)
+
+
+def parse_verdict(text: str | None) -> tuple[dict[str, Any] | None, str]:
+    """``load_verdict``'s validation of the verdict file's text (the runner reads the file
+    at a commit of the design branch too, decision 30): (data, "") or (None, why)."""
+    if text is None:
+        return None, "missing"
+    try:
+        data = json.loads(text)
+    except ValueError as exc:
         return None, f"unreadable: {exc}"
     if not isinstance(data, dict) or data.get("verdict") not in ("continue", "escalate"):
         return None, "malformed: 'verdict' must be 'continue' or 'escalate'"
@@ -799,7 +871,7 @@ def load_verdict(path: Path) -> tuple[dict[str, Any] | None, str]:
     return data, ""
 
 
-VERDICT_REQUIRED_AT = ("b", "c", "d")  # every profile: the reviewer runs before each of these
+VERDICT_REQUIRED_AT = ("b", "c", "d")  # the reviewer runs before each of these
 
 
 def check_adversarial_verdict(ctx: GateContext) -> CheckResult:
@@ -831,7 +903,18 @@ def check_adversarial_verdict(ctx: GateContext) -> CheckResult:
 
         key = ledger.escalate_key(reasons)
         settled = next((e for e in _panel_entries(ctx, "escalate") if e.get("key") == key), None)
-        if settled is not None and str(settled.get("decision", "")).lower().startswith("continue"):
+        owner = next((e for e in _owner_continues(ctx) if e.get("key") == key), None)
+        if settled is None and owner is not None:
+            return _ok(
+                "adversarial_review",
+                "adversarial reviewer said escalate; the owner overturned the panel's "
+                f"decision {owner.get('n')} on it, so the phase continues: "
+                + str((owner.get("overturned") or {}).get("comment", "")),
+                classification=data["classification"],
+                reasons=reasons,
+                settled_by_owner=owner.get("n"),
+            )
+        if settled is not None and ledger.decides_continue(settled):
             return _ok(
                 "adversarial_review",
                 "adversarial reviewer said escalate; the review panel decided to continue: "
@@ -859,6 +942,43 @@ def check_adversarial_verdict(ctx: GateContext) -> CheckResult:
         classification=data["classification"],
         reasons=reasons,
     )
+
+
+REVIEWER_MODEL_NEED = (
+    "The adversarial reviewer must run on the model sdlc.yaml's adversarial_model names (ROADMAP "
+    "R7), and nothing shows that this verdict did. `panel/cli.py models` prints the alias the "
+    "phase command passes, the pins that make it resolve to that model (the runner sets them; "
+    "a run by hand exports them before the session starts) and any conflict in the "
+    "configuration; fix that, then re-run the reviewer on the current HEAD."
+)
+
+
+def check_reviewer_model(ctx: GateContext) -> CheckResult:
+    """ROADMAP R7: when ``sdlc.yaml: adversarial_model`` is set, the record the
+    ``panel_blind`` hook wrote beside the phase's verdict names the adversarial reviewer as
+    the writer, the verdict's ``head`` and a model that satisfies the pin. A hard park, never
+    the panel's to settle (``ledger.NEVER_TO_PANEL``). Unset: nothing is checked."""
+    from panel import ledger, models  # noqa: PLC0415
+
+    wanted = models.reviewer_model(ctx.config)
+    if not wanted:
+        return _ok("reviewer_model", "sdlc.yaml names no adversarial_model: not checked")
+    data, _error = load_verdict(ctx.evidence_dir / art.ADVERSARIAL_VERDICT.format(phase=ctx.phase))
+    if data is None:
+        # the adversarial_review check reports a missing or unreadable verdict
+        return _ok("reviewer_model", "no readable verdict to check", wanted=wanted)
+    path = ledger.reviewer_model_path(ctx.change_dir, ctx.phase)
+    problems = ledger.reviewer_model_problems(
+        art.read_text(path), wanted, ctx.phase, str(data["head"])
+    )
+    if problems:
+        # a configuration no alias can satisfy is named, so the park says what to change
+        problems += [
+            f"the configuration: {why}"
+            for why in models.conflicts(ctx.config, ctx.phase, dict(os.environ))
+        ]
+        return _fail("reviewer_model", "; ".join(problems), REVIEWER_MODEL_NEED, wanted=wanted)
+    return _ok("reviewer_model", f"the adversarial reviewer ran on {wanted}", wanted=wanted)
 
 
 # --- 10. committed work only: the verdict and the PR cover HEAD, not the working tree -----------
@@ -913,6 +1033,54 @@ def check_clean_tree(ctx: GateContext) -> CheckResult:
     )
 
 
+# --- 10b. no link under the change folder (R59, the plugin security review of 2026-10-19, I2) --
+EVIDENCE_LINKS_NEED = (
+    "Replace each link with the file's own content, or remove it: the runner reads the change "
+    "folder outside the sandbox to build the PR body, and a link there could quote any file "
+    "it can read (.env included)."
+)
+
+
+def change_folder_links(root: Path, change_rel: str, head: str | None) -> list[str]:
+    """Every symbolic link under ``change_rel``: in the working tree (tracked or not, the
+    folder itself and its parents up to ``changes/`` included) and, at ``head``, every entry
+    committed with the link mode ``120000``."""
+    folder = Path(root) / change_rel
+    found: set[str] = set()
+    linked = art.linked_part(folder)
+    if linked is not None:
+        found.add(Path(os.path.relpath(linked, root)).as_posix())
+    elif folder.is_dir():
+        for top, dirs, files in os.walk(folder):
+            for name in dirs + files:
+                entry = Path(top) / name
+                if entry.is_symlink():
+                    found.add(entry.relative_to(root).as_posix())
+    if head:
+        out = diffmod._git(root, "ls-tree", "-r", "-z", head, "--", change_rel + "/", check=False)
+        for record in out.split("\0"):
+            meta, _, path = record.partition("\t")
+            if path and meta.split(" ")[0] == "120000":
+                found.add(path.replace("\\", "/"))
+    return sorted(found)
+
+
+def check_evidence_links(ctx: GateContext) -> CheckResult:
+    if ctx.diff is None:
+        return _fail(
+            "evidence_links", ctx.diff_error, "Run the gate inside the project's git repo."
+        )
+    links = change_folder_links(ctx.root, ctx.change_rel, ctx.diff.head)
+    if links:
+        return _fail(
+            "evidence_links",
+            f"{len(links)} symbolic link(s) under the change folder: " + ", ".join(links[:10]),
+            EVIDENCE_LINKS_NEED,
+            links=links[:50],
+        )
+    return _ok("evidence_links", "no symbolic link under the change folder")
+
+
 # --- 11. phase (b) touches no source (decision 2; OPERATING_MODEL section 8) -------------------
 def check_design_scope(ctx: GateContext) -> CheckResult:
     """The spec-and-plan run of phase (b) is read-only on source: the only files it writes are
@@ -965,9 +1133,11 @@ def check_design_scope(ctx: GateContext) -> CheckResult:
 
 # --- 12. owner-only state: accept-risk and set-iterations (build guide step 24.5) -------------
 OWNER_ACTIONS_NEED = (
-    "accept-risk, set-iterations and unlock-tests are the owner's: apply sdlc:accept-risk, "
+    "accept-risk, set-iterations and unlock-tests are the owner's: apply "
     "sdlc:reset-iterations or sdlc:unlock-tests on the pull request, or run the command on "
-    "your machine or in your own session and commit; a run cannot approve itself (decision 5)."
+    "your machine or in your own session and commit (a risk item is accepted by your merge "
+    "since decision 35, or by accept-risk run by hand); a run cannot approve itself "
+    "(decision 5)."
 )
 STATUS_HISTORY_LIMIT = "200"  # commits of status.yaml history the check walks back through
 
@@ -1040,9 +1210,15 @@ def _status_fields_uncached(ctx: GateContext, ref: str) -> dict[str, Any] | None
 def _label_actor_ok(actor: str | None, identities: list[str]) -> bool:
     """A recorded label actor that is a person: not empty, not the automation identity, not
     a ``[bot]`` account (``state/unpark.py`` applies the same rule before recording)."""
-    from state.unpark import is_automation_actor  # noqa: PLC0415
+    from state.unpark import is_automation_actor, is_runner_reset  # noqa: PLC0415
 
-    return bool(actor) and not is_automation_actor(str(actor), identities)
+    # decision 29: the runner's marked reset is not a person's act; it counts only through
+    # ``runner_reset_recorded`` (``check_owner_actions``), never as a label actor
+    return (
+        bool(actor)
+        and not is_runner_reset(actor)
+        and not is_automation_actor(str(actor), identities)
+    )
 
 
 def _status_history(ctx: GateContext) -> list[tuple[str, str, str]]:
@@ -1128,9 +1304,10 @@ def check_owner_actions(ctx: GateContext) -> CheckResult:
     # acceptance of another item (1.0.0 readiness review, group A; the review of the 0.2.26
     # diff, L6, for the drops and the lifts). An unlabelled gain is ratified when a later
     # commit recorded a person's actor for the item (the owner's sdlc:accept-risk after the
-    # park; L5: without it the park could never be cleared).
+    # park, before decision 35 retired the label; L5: without it the park could never be
+    # cleared).
     risk_events: list[tuple[str, str, str, list[str], dict[str, str], int]] = []
-    drop_events: list[tuple[str, str, str, str, int, int, str | None]] = []
+    drop_events: list[tuple[str, str, str, str, int, int, str | None, str | None]] = []
     unlock_events: list[tuple[str, str, str, str | None]] = []
     ratified: dict[str, tuple[int, str]] = {}  # item -> (walk index, the actor recorded)
     for index, (sha, email, name) in enumerate(_status_history(ctx)):
@@ -1162,10 +1339,14 @@ def check_owner_actions(ctx: GateContext) -> CheckResult:
                     now["reset_at"] is not None and now["reset_at"] != before["reset_at"]
                 )
                 reset_by = now["reset_by"] if recorded else None
+                reset_at = now["reset_at"] if recorded else None
                 drop_events.append(
-                    (counter, sha, email, name, before[counter], now[counter], reset_by)
+                    (counter, sha, email, name, before[counter], now[counter], reset_by, reset_at)
                 )
+    from state.unpark import runner_reset_recorded  # noqa: PLC0415
+
     labels: dict[str, Any] = {}
+    runner_resets: dict[str, Any] = {}
     for sha, email, name, added, by, index in risk_events:
         if not is_automation(name, email, identities):
             continue
@@ -1193,11 +1374,15 @@ def check_owner_actions(ctx: GateContext) -> CheckResult:
             labels.setdefault("risk_accepted", {}).update(
                 {i: by.get(i) or ratified[i][1] for i in added}
             )
-    for counter, sha, email, name, was, now_count, reset_by in drop_events:
+    for counter, sha, email, name, was, now_count, reset_by, reset_at in drop_events:
         if not is_automation(name, email, identities):
             continue
         if _label_actor_ok(reset_by, identities):
             labels.setdefault(f"{counter}_reset", reset_by)
+        elif runner_reset_recorded(ctx.change_dir, reset_by, reset_at):
+            # decision 29: the runner's one judged reset at the cap, marked as the label's is
+            # and recorded in evidence/auto-reset.json; on the fix-round line, not a person's
+            runner_resets.setdefault(f"{counter}_reset", reset_by)
         else:
             problems.append(
                 f"{counter} dropped from {was} to {now_count} in commit {sha[:10]}, "
@@ -1237,6 +1422,7 @@ def check_owner_actions(ctx: GateContext) -> CheckResult:
         "committed by the owner or applied by the owner's label",
         risk_accepted=sorted(tree_risk),
         label_actors=labels,
+        **({"runner_resets": runner_resets} if runner_resets else {}),
     )
 
 
@@ -1290,17 +1476,9 @@ def check_test_lock(ctx: GateContext) -> CheckResult:
         patterns = test_path_patterns(ctx.config)
     except ConfigError as exc:
         return _fail("test_lock", str(exc), "Fix sdlc.yaml: test_paths (a list of globs).")
-    changed = diffmod._z(
-        diffmod._git(
-            ctx.root,
-            "diff",
-            "--name-only",
-            "-z",
-            "--diff-filter=ACMRD",
-            f"{sha}..HEAD",
-            check=False,
-        )
-    )
+    # every status, a rename's source and a type change counted (R59, I3): a locked test
+    # renamed away or turned into a symlink is a changed test file
+    changed = diffmod.changed_paths(ctx.root, f"{sha}..HEAD")
     hits = sorted(f for f in changed if any(matches(p, f) for p in patterns))
     if hits:
         return _fail(
@@ -1316,12 +1494,254 @@ def check_test_lock(ctx: GateContext) -> CheckResult:
     )
 
 
+# --- 12b. dropped test files and eval cases are a gate finding (intent.md change 1) -----------
+EVAL_CASES_PREFIX = "evals/cases/"
+RATCHET_KEYS = {"tests": "ratchet: tests", "evals": "ratchet: evals"}
+RATCHET_PROOF_RE = re.compile(r"(?im)^[ \t]*[-*][ \t]*ratchet:[ \t]*(tests|evals)\b")
+
+# intent.md's own fixed token list (open question 2): never anchored beyond the plain
+# substring itself, so a test that only mentions a token in a string is listed, never parked
+# on (the measured ratchets, ROADMAP R15, is what would tell the two apart).
+SKIP_MARKER_TOKENS = (
+    "@pytest.mark.skip",
+    "@pytest.mark.xfail",
+    "pytest.skip(",
+    "--deselect",
+    "--ignore",
+    "-k",
+    "testpaths",
+    "norecursedirs",
+    "collect_ignore",
+    "it.skip(",
+    "describe.skip(",
+    "xit(",
+    ".only(",
+    "test.todo(",
+    "#[ignore]",
+)
+# The test runner's own configuration files (Requirements), read the same way ``matches``
+# reads every other glob in this module - no new ``sdlc.yaml`` key.
+SKIP_MARKER_CONFIG_GLOBS = (
+    "**/pytest.ini",
+    "**/pyproject.toml",
+    "**/setup.cfg",
+    "**/tox.ini",
+    "**/conftest.py",
+    "**/package.json",
+    "**/jest.config.*",
+)
+
+
+def dropped_test_files(records: list[diffmod.NameStatusRecord], patterns: list[str]) -> list[str]:
+    """A ``D`` under a ``test_paths`` glob, or an ``R``/``C`` whose source matches a glob and
+    destination matches none (a rename within the globs is not a drop; panel decision #3,
+    phase b). Pure: takes the parsed ``--name-status`` records, no live git."""
+    dropped: set[str] = set()
+    for rec in records:
+        if rec.status == "D":
+            if any(matches(p, rec.path) for p in patterns):
+                dropped.add(rec.path)
+        elif rec.status in ("R", "C") and rec.new_path is not None:
+            if any(matches(p, rec.path) for p in patterns) and not any(
+                matches(p, rec.new_path) for p in patterns
+            ):
+                dropped.add(rec.path)
+    return sorted(dropped)
+
+
+def dropped_eval_cases(
+    records: list[diffmod.NameStatusRecord],
+    survivors: list[str],
+    prefix: str = EVAL_CASES_PREFIX,
+) -> list[str]:
+    """Case folders under ``prefix`` with no survivor left in ``survivors`` (``tree_files`` at
+    ``ctx.diff.head``), plus every case renamed to a dot-prefixed destination folder (``discover``
+    excludes a hidden folder with no deletion in the diff). A case is decided from what the
+    committed tree still holds, not from the diff's records alone, so a partial multi-file
+    deletion with a surviving sibling is never mistaken for the whole case's drop (panel
+    decision #2, phase b) — but the dot-prefixed-rename rule is evaluated independently of
+    that survivor check, deliberately: a surviving sibling never excuses a dot-prefixed
+    rename, since the rename is itself how a case would be hidden from discovery (panel
+    decision #1, phase c fix round). Pure but for its two list arguments."""
+
+    def case_of(path: str) -> str | None:
+        if not path.startswith(prefix):
+            return None
+        rest = path[len(prefix) :]
+        return rest.split("/", 1)[0] if "/" in rest else None
+
+    touched: set[str] = set()
+    dot_dropped: set[str] = set()
+    for rec in records:
+        src_case = case_of(rec.path)
+        if src_case:
+            touched.add(src_case)
+        if rec.status in ("R", "C") and rec.new_path is not None:
+            dst_case = case_of(rec.new_path)
+            if dst_case:
+                if dst_case.startswith(".") and src_case and src_case != dst_case:
+                    dot_dropped.add(src_case)
+                else:
+                    touched.add(dst_case)
+
+    survivor_cases = {name for path in survivors if (name := case_of(path))}
+    dropped = set(dot_dropped) | {
+        case for case in touched if case not in dot_dropped and case not in survivor_cases
+    }
+    return sorted(f"{prefix}{case}/" for case in dropped)
+
+
+_HUNK_RE = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@")
+
+
+def _added_lines(diff_text: str) -> list[tuple[str, int, str]]:
+    """``[(file, line, content)]`` for every added line of a ``--unified=0`` diff (never the
+    whole file): the new-file path from each ``+++ b/<path>`` header and the new line number
+    from each ``@@ ... +<n> ...@@`` hunk header, advanced one per added line."""
+    out: list[tuple[str, int, str]] = []
+    current_file = ""
+    next_line = 0
+    for raw in diff_text.splitlines():
+        if raw.startswith("+++ "):
+            current_file = raw[len("+++ b/") :] if raw.startswith("+++ b/") else ""
+            continue
+        if raw.startswith("@@"):
+            m = _HUNK_RE.match(raw)
+            next_line = int(m.group(1)) if m else 0
+            continue
+        if raw.startswith("+"):  # not "+++", already consumed above
+            if current_file:
+                out.append((current_file, next_line, raw[1:]))
+            next_line += 1
+    return out
+
+
+def skip_marker_hits(ctx: GateContext, test_patterns: list[str]) -> list[dict[str, Any]]:
+    """``[{file, line, token}]`` for every ``SKIP_MARKER_TOKENS`` occurrence on an added line
+    of a file under ``test_paths`` or a test-runner configuration file (``SKIP_MARKER_CONFIG_
+    GLOBS``). Never affects ``ok`` - listed only (open question 2)."""
+    if ctx.diff is None or not ctx.diff.merge_base:
+        return []
+    committed = diffmod.committed_files(ctx.root, ctx.diff.merge_base, ctx.diff.head)
+    scanned = sorted(
+        f
+        for f in committed
+        if any(matches(p, f) for p in test_patterns)
+        or any(matches(g, f) for g in SKIP_MARKER_CONFIG_GLOBS)
+    )
+    if not scanned:
+        return []
+    ref = f"{ctx.diff.merge_base}...{ctx.diff.head or 'HEAD'}"
+    text = diffmod._git(ctx.root, "diff", "-M", "--unified=0", ref, "--", *scanned, check=False)
+    hits = []
+    for file, line, content in _added_lines(text):
+        for token in SKIP_MARKER_TOKENS:
+            if token in content:
+                hits.append({"file": file, "line": line, "token": token})
+    return hits
+
+
+def _declared_ratchets(plan_text: str) -> set[str]:
+    """The ratchet names a '## Proof' item declares wholesale (``- ratchet: tests may fall,
+    because <why>``); a name other than ``tests``/``evals`` is inert (open question 4)."""
+    proof = art.split_sections(plan_text).get("## Proof", "")
+    return {m.group(1).lower() for m in RATCHET_PROOF_RE.finditer(proof)}
+
+
+RATCHET_ESCALATION_NEED = RISK_ESCALATION_NEED
+
+
+def check_ratchets(ctx: GateContext) -> CheckResult:
+    """A dropped test file or eval case, undeclared by the approved plan, is a risk-list hit
+    named after its ratchet (``ratchet: tests``, ``ratchet: evals``; R15). The approved plan
+    is read at the merge base (``ctx.approved_artifact``; on the fast lane, decision 30, at the
+    design commit gate (b) passed on), never the working tree, so a
+    commit cannot excuse its own drop by editing plan.md alongside it (the riskiest step,
+    spec.md Design/Risks). Added skip markers are listed in ``details.skip_markers``, never
+    affecting ``ok``.
+
+    Decision 35 (1.0.15), point 6: the hit no longer parks. It is reported in
+    ``details.hits`` (accepted or not) for the close-look banner, which the owner's merge
+    accepts as every hit; a drop the plan declares is listed in ``details.declared`` and is a
+    banner line too. The check fails only when the gate's reviewer escalates on a ratchet
+    item (``risk.escalated_items``), which parks like any escalation on a risk item. Not
+    caught here: a test emptied of its own tests, a dropped test inside a file that still
+    exists, an edited test-runner configuration line (the measured ratchets, R15's second
+    change)."""
+    from hooks._common import ConfigError  # noqa: PLC0415
+    from hooks.test_file_lock import test_path_patterns  # noqa: PLC0415
+
+    if ctx.diff is None:
+        return _fail("ratchets", ctx.diff_error, "Run the gate inside the project's git repo.")
+    no_base = _no_base(ctx, "ratchets")
+    if no_base:
+        return no_base
+    try:
+        patterns = test_path_patterns(ctx.config)
+    except ConfigError as exc:
+        return _fail("ratchets", str(exc), "Fix sdlc.yaml: test_paths (a list of globs).")
+
+    records = diffmod.name_status(ctx.root, ctx.diff.merge_base, ctx.diff.head)
+    dropped_tests = dropped_test_files(records, patterns)
+    survivors = diffmod.tree_files(ctx.root, ctx.diff.head, EVAL_CASES_PREFIX)
+    dropped_cases = dropped_eval_cases(records, survivors, EVAL_CASES_PREFIX)
+
+    plan = ctx.approved_artifact("plan.md") or ""
+    planned = art.planned_files(plan)
+    declared_ratchets = _declared_ratchets(plan)
+    accepted = risk_mod.accepted(ctx.status)
+
+    hits: dict[str, list[str]] = {}
+    declared: list[str] = []
+    for name, dropped in (("tests", dropped_tests), ("evals", dropped_cases)):
+        key = RATCHET_KEYS[name]
+        for path in dropped:
+            # a case path is a directory ("evals/cases/bar/"), never a file itself: is_planned's
+            # directory-prefix branch only matches something strictly under the prefix, so a
+            # synthetic file name under it lets a plan.md entry that lists the folder with its
+            # trailing slash (check_plan_sync's own convention) match the folder's own drop.
+            probe = f"{path}." if path.endswith("/") else path
+            if name in declared_ratchets or any(plan_sync.is_planned(probe, p) for p in planned):
+                declared.append(f"{path} (plan)")
+            else:
+                hits.setdefault(key, []).append(path)
+
+    skip_markers = skip_marker_hits(ctx, patterns)
+    accepted_hit = sorted(k for k in hits if k.lower() in accepted)
+    details = {
+        "hits": hits,
+        "declared": declared,
+        "skip_markers": skip_markers,
+        "accepted": accepted_hit,
+    }
+    if not hits:
+        return _ok("ratchets", "no undeclared test file or eval case drop", **details)
+    shown = "; ".join(f"'{k}': {', '.join(v[:5])}" for k, v in hits.items())
+    escalated = risk_mod.escalated_items(sorted(hits), _phase_brief(ctx), _phase_verdict(ctx))
+    if escalated:
+        return _fail(
+            "ratchets",
+            "the reviewer escalates on ratchet item(s) "
+            + ", ".join(f"'{i}'" for i in escalated)
+            + f" (dropped-ratchet hit: {shown})",
+            RATCHET_ESCALATION_NEED.format(brief=risk_mod.brief_rel(ctx.phase)),
+            escalated=escalated,
+            **details,
+        )
+    return _ok(
+        "ratchets",
+        f"dropped-ratchet hit, shown in the close-look banner (decision 35): {shown}",
+        **details,
+    )
+
+
 # --- 13. the decisions ledger of deferred review (decision 21; build guide step 16a) ----------
 def _blind_verdicts_problems(ctx: GateContext, entry: dict) -> list[str]:
     """A ledger line written since 0.2.30 names its item (``item_n``); both blind verdicts
     of that item must be committed (HEAD, the gate's rule), each with a ``## Verdict``
-    clause. A line without ``item_n`` predates the rule and is not re-judged."""
-    from panel import ledger  # noqa: PLC0415
+    clause. A line without ``item_n`` predates the rule and is not re-judged. The advocate's
+    model is the phase's (``panel/models.py advocate_model``, R7)."""
+    from panel import ledger, models  # noqa: PLC0415
 
     item_n = entry.get("item_n")
     if isinstance(item_n, bool) or not isinstance(item_n, int):
@@ -1343,14 +1763,21 @@ def _blind_verdicts_problems(ctx: GateContext, entry: dict) -> list[str]:
     else:
         model_text = art.read_text(model_path)
     missing += ledger.advocate_model_problems(
-        model_text, ctx.config.get("panel_advocate_model"), phase, item_n
+        model_text,
+        models.advocate_model(ctx.config, phase, os.environ.get("SDLC_MODEL")),
+        phase,
+        item_n,
     )
     return [f"decision {entry.get('n')}: {problem}" for problem in missing]
 
 
 def check_panel(ctx: GateContext) -> CheckResult:
-    """Every panel decision has a ledger line and no panel decision touched a never-to-panel
-    item. Passes trivially when there is no ledger and no concern closed by the panel."""
+    """Every panel decision has a ledger line, no panel decision touched a never-to-panel
+    item, and no standing ``escalate`` decision upholds the adversarial reviewer's verdict:
+    one that does not start with ``continue`` (``park``, empty, anything else) fails the
+    check, so the gate parks (NOTES 45 gap 1, choice 205; an overturned line is the owner's
+    act and is left alone). Passes trivially when there is no ledger and no concern closed
+    by the panel."""
     from panel import ledger  # noqa: PLC0415
 
     error = ledger.ledger_error(ctx.change_dir, ctx.phase)
@@ -1369,11 +1796,13 @@ def check_panel(ctx: GateContext) -> CheckResult:
                 f"decision {entry.get('n')}: {entry.get('kind')} never goes to the panel"
             )
         problems += _blind_verdicts_problems(ctx, entry)
-    if entries and not ctx.deferred:
-        problems.append(
-            f"the ledger has {len(entries)} decision(s) but the review mode is {ctx.review_mode}"
-        )
     standing = ledger.active(entries)
+    upheld = [e for e in standing if e.get("kind") == "escalate" and not ledger.decides_continue(e)]
+    for entry in upheld:
+        problems.append(
+            f"decision {entry.get('n')}: the panel upheld the adversarial reviewer's escalate "
+            f"({str(entry.get('decision') or '').strip()[:80] or 'no decision'!r})"
+        )
     # a closing names its ledger line (``decided (by panel #n):``, 0.2.15), so the words after
     # it may be tidied; the 0.2.14 form without the number is matched on the decision text.
     # The line may live in an earlier phase's ledger: a concern closed at (b) stays closed
@@ -1415,8 +1844,21 @@ def check_panel(ctx: GateContext) -> CheckResult:
             "panel",
             "; ".join(problems),
             "Every panel decision is one ledger line in evidence/decisions-<phase>.json (panel/"
-            "cli.py record writes it); a never-to-panel item parks for the owner.",
+            "cli.py record writes it); a never-to-panel item parks for the owner."
+            + (
+                " The panel upheld the adversarial reviewer's escalate (decision "
+                + ", ".join(str(e.get("n")) for e in upheld)
+                + f" of evidence/decisions-{ctx.phase}.md): read the reviewer's reasons and "
+                "the panel's rationale, then either fix what the reviewer names (a review "
+                "comment starts the fix round), or let the phase continue: a review comment "
+                'on that line of "Decisions taken for you" that names the decision '
+                "overturns it - the fix round marks the ledger line overturned (panel/cli.py "
+                "overturn) and the owner's word replaces the panel's."
+                if upheld
+                else ""
+            ),
             problems=problems,
+            upheld=[e.get("n") for e in upheld],
         )
     return _ok(
         "panel",
@@ -1589,6 +2031,98 @@ def check_route(ctx: GateContext) -> CheckResult:
     )
 
 
+def _lesson_field_problems(lesson_name: str, fm: dict[str, Any]) -> list[str]:
+    problems = []
+    for name, kind in art.LESSON_REQUIRED_FIELDS.items():
+        value = fm.get(name)
+        present = (
+            (kind == "scalar" and isinstance(value, str) and value.strip())
+            or (kind == "list" and isinstance(value, list) and value)
+            or (kind == "mapping" and isinstance(value, dict) and value)
+        )
+        if not present:
+            problems.append(f"{lesson_name}: frontmatter field {name!r} missing or not a {kind}")
+    status = fm.get("status")
+    if isinstance(status, str) and status.strip() and status not in art.LESSON_STATUSES:
+        problems.append(f"{lesson_name}: status {status!r} is not one of {art.LESSON_STATUSES}")
+    return problems
+
+
+_SUPERSEDES_NAME_RE = re.compile(r"^[0-9]{4}-[0-9]{2}-.+\.md$")
+
+
+def _supersedes_problem(lessons_dir: Path, lesson_name: str, fm: dict[str, Any]) -> str | None:
+    supersedes = fm.get("supersedes")
+    if not (isinstance(supersedes, str) and supersedes.strip()):
+        return None
+
+    if (
+        Path(supersedes).name != supersedes
+        or not _SUPERSEDES_NAME_RE.match(supersedes)
+        or supersedes == lesson_name
+    ):
+        return f"{lesson_name}: supersedes must name a lesson file in lessons/"
+    target = lessons_dir / supersedes
+    if not target.is_file():
+        return f"{lesson_name}: supersedes target {supersedes!r} does not exist"
+    target_fm, _why = lessons_mod.read_frontmatter(target)
+    if target_fm is None:
+        return f"{lesson_name}: supersedes target {supersedes!r} is unreadable"
+    if target_fm.get("status") != "retired":
+        return f"{lesson_name}: supersedes target {supersedes!r} has not been retired"
+    return None
+
+
+# --- lesson and eval, gate (e) only (build guide: change 0003) -------------------------------
+def lesson_and_eval(ctx: GateContext) -> CheckResult:
+    """An incident change's fix ships with its lesson and its eval (spec.md change 0003).
+    Guarded on ``ctx.phase == "e"`` as well as the route, not only registered for phase "e" in
+    ``CHECKS_BY_PHASE``: the same ``entry_route == "incident"`` holds all the way through
+    phase (f) too, before either the lesson or the eval exists, and this check must never run
+    there (the regression guard is ``test_gate_f_waits_for_the_owner_s_triage...``)."""
+    if not (ctx.status.entry_route == "incident" and ctx.phase == "e"):
+        return _ok("lesson_and_eval", "not an incident change at gate (e): nothing to check")
+
+    problems: list[str] = []
+    lessons_dir = ctx.root / "lessons"
+    pattern = art.lesson_glob(ctx.status.slug)
+    matches = sorted(ctx.root.glob(pattern))
+    if not matches:
+        problems.append(f"no lesson file matches {pattern}")
+    elif len(matches) > 1:
+        names = ", ".join(m.relative_to(ctx.root).as_posix() for m in matches)
+        problems.append(f"{len(matches)} lesson files match {pattern}: {names}")
+    else:
+        lesson_path = matches[0]
+        fm, why = lessons_mod.read_frontmatter(lesson_path)
+        if fm is None:
+            problems.append(f"{lesson_path.name}: {why}")
+        else:
+            problems += _lesson_field_problems(lesson_path.name, fm)
+            supersedes_problem = _supersedes_problem(lessons_dir, lesson_path.name, fm)
+            if supersedes_problem:
+                problems.append(supersedes_problem)
+
+    eval_dir = ctx.root / "evals" / "cases" / f"{ctx.status.id}-{ctx.status.slug}"
+    eval_rel = eval_dir.relative_to(ctx.root).as_posix()
+    for name in (art.EVAL_PROMPT, art.EVAL_CHECKS):
+        if not (eval_dir / name).is_file():
+            problems.append(f"{eval_rel}/{name} is missing")
+
+    index_ok, _diff, _notes = lessons_mod.check(ctx.root)
+    if not index_ok:
+        problems.append("lessons/index.md is not what `plugin/lessons/index.py build` would write")
+
+    if problems:
+        return _fail(
+            "lesson_and_eval",
+            "; ".join(problems),
+            "\n    ".join(problems),
+            problems=problems,
+        )
+    return _ok("lesson_and_eval", "the lesson, its frontmatter and the eval case are all present")
+
+
 def _project_language(root: Path) -> str:
     try:
         from init import detect as detect_mod  # noqa: PLC0415
@@ -1601,9 +2135,16 @@ def _project_language(root: Path) -> str:
 CHECKS_BY_PHASE: dict[str, tuple[Check, ...]] = {
     # gate (a) judges the intent PR: since 0.2.26 ``design_scope`` refuses a source file on it
     # (OPERATING_MODEL section 4.2 promised it for the fix round at (a); change 0000 is exempt)
-    "a": (check_artifacts, check_design_scope, check_guardrails, check_risk_list),
+    "a": (
+        check_artifacts,
+        check_evidence_links,
+        check_design_scope,
+        check_guardrails,
+        check_risk_list,
+    ),
     "b": (
         check_artifacts,
+        check_evidence_links,
         check_design_scope,
         check_open_concerns,
         check_panel,
@@ -1612,10 +2153,12 @@ CHECKS_BY_PHASE: dict[str, tuple[Check, ...]] = {
         check_risk_list,
         check_owner_actions,
         check_adversarial_verdict,
+        check_reviewer_model,
     ),
     "c": (
         check_clean_tree,
         check_artifacts,
+        check_evidence_links,
         check_open_concerns,
         check_panel,
         check_commands,
@@ -1626,11 +2169,14 @@ CHECKS_BY_PHASE: dict[str, tuple[Check, ...]] = {
         check_risk_list,
         check_owner_actions,
         check_test_lock,
+        check_ratchets,
         check_adversarial_verdict,
+        check_reviewer_model,
     ),
     "d": (
         check_clean_tree,
         check_artifacts,
+        check_evidence_links,
         check_open_concerns,
         check_panel,
         check_commands,
@@ -1641,11 +2187,14 @@ CHECKS_BY_PHASE: dict[str, tuple[Check, ...]] = {
         check_risk_list,
         check_owner_actions,
         check_test_lock,
+        check_ratchets,
         check_adversarial_verdict,
+        check_reviewer_model,
     ),
     "e": (
         check_clean_tree,
         check_artifacts,
+        check_evidence_links,
         check_open_concerns,
         check_panel,
         check_commands,
@@ -1656,7 +2205,10 @@ CHECKS_BY_PHASE: dict[str, tuple[Check, ...]] = {
         check_risk_list,
         check_owner_actions,
         check_test_lock,
+        check_ratchets,
+        lesson_and_eval,
         check_adversarial_verdict,
+        check_reviewer_model,
     ),
     # gate (f) = the owner's triage of the incident intent PR (decision 25): the intent in
     # its incident shape, nothing committed outside the change folder (the diagnosis is
@@ -1664,6 +2216,7 @@ CHECKS_BY_PHASE: dict[str, tuple[Check, ...]] = {
     # and the route it took. No toolchain, no verdict, no panel: phase (f) builds nothing.
     "f": (
         check_artifacts,
+        check_evidence_links,
         check_design_scope,
         check_guardrails,
         check_risk_list,

@@ -1,12 +1,13 @@
 """The release workflow's steps (build guide step 32.3; decision 13; OPERATING_MODEL section
-4, gate (e): "merge of the build PR; plus a release label only when sdlc.yaml declares a real
-production").
+4, gate (e): the owner's approving review of the build PR, on which the merge App merges
+(decision 36), "plus the release label" only when sdlc.yaml declares a real production).
 
     python cli.py run --root <project> --repo <owner/repo> --pr <number>
                       [--event closed|labeled] [--merge-sha <sha>] [--change-id <id>]
     python cli.py record --root <project> --id <id> --pr <number> [--merge-sha <sha>]
 
-``.github/workflows/sdlc-release.yml`` calls ``run`` on the owner's merge of a build PR and,
+``.github/workflows/sdlc-release.yml`` calls ``run`` on the merge of a build PR (the merge
+App's on the owner's approval, decision 36, or the owner's) and,
 when production is declared, on the release label; its second job calls ``record`` after a
 release that ran. Neither is a phase run: no ``claude`` starts and no hook fires here, so
 ``run`` checks the approval itself with the production-gate hook's own function
@@ -64,8 +65,9 @@ other shell operators (``|``, ``;``, ``||``, redirections) are refused as a conf
 error. The executable is resolved on PATH (``.cmd``/``.exe`` shims on Windows).
 
 Exit codes: 0 done, skip or waiting (``record``: stored or already there) · 1 the release
-command failed, or the record could not be pushed (a failed release is red: infrastructure,
-not a park) · 2 usage or configuration error, or a remote record that could not be read.
+command failed, the merge commit's targets are not green (R51), or the record could not be
+pushed (a failed release is red: infrastructure, not a park) · 2 usage or configuration error,
+or a remote record that could not be read.
 """
 
 from __future__ import annotations
@@ -90,7 +92,9 @@ if str(PLUGIN_DIR) not in sys.path:
     sys.path.insert(0, str(PLUGIN_DIR))
 
 from gate import artifacts as art  # noqa: E402
+from gate import checks as gate_checks  # noqa: E402
 from gate import gate as gate_mod  # noqa: E402
+from gate import risk as risk_mod  # noqa: E402
 from hooks._common import ConfigError, config_flag, load_sdlc_config  # noqa: E402
 from release import approval as approval_mod  # noqa: E402
 from state import conventions as c  # noqa: E402
@@ -103,6 +107,8 @@ DEFAULT_TIMEOUT = 900  # seconds, when sdlc.yaml has no gate.command_timeout
 RECORD_GIT_TIMEOUT = 120  # seconds per git call of the record (a fetch or a push)
 RECORD_PUSH_ATTEMPTS = 3  # a push rejected by a concurrent push is retried on the new tip
 RECORD_COMMIT = "release({id}): record the release of pull request #{pr}"
+# decision 35: the record job stores the (e) merge's risk acceptance when no release ran
+ACCEPTANCE_COMMIT = "release({id}): record the risk acceptance of pull request #{pr}'s merge"
 RELEASED_REF = "refs/sdlc/released/{id}"  # not a branch: survives the head branch's deletion
 
 
@@ -262,7 +268,11 @@ def remote_record(
         st = _status_at(root, "FETCH_HEAD", rel_status, git)
         if st is not None and st.released:
             return st, ref
-        raise RemoteUnreadable(f"{ref} is on the remote but carries no release record")
+        if st is None or not st.risk_acceptances:
+            raise RemoteUnreadable(f"{ref} is on the remote but carries no release record")
+        # decision 35: the record job stored the (e) merge's risk acceptance there before
+        # any release ran (a declared production waiting for its label); the work branch is
+        # still read, since a push of two refspecs is not atomic
     if not _remote_ref(root, branch, git, heads=True):
         return None, f"neither {ref} nor the work branch {branch} is on the remote"
     _fetch(root, f"refs/heads/{branch}", git)
@@ -274,6 +284,100 @@ def remote_record(
     return None, f"no release record on {branch}"
 
 
+# --- R51: the merge commit re-checked, and never deployed over a newer release ----------------
+RECHECK_RED = (
+    "the merge commit {sha} is not green ({red}): no gate ran on this tree, which holds what "
+    "merged into the default branch after gate (e); deploy.command did not run"
+)
+RECHECK_ROUTE = (
+    "fix the default branch in a change of its own (an incident intent, /sdlc-plan), then "
+    "dispatch SDLC release with pr_number {pr}; nothing is lost: the change is merged and "
+    "not recorded as released"
+)
+NEWER_RELEASE = (
+    "the merge commit {sha} is already inside the release of change {other} ({at}), which "
+    "deployed a newer tree; deploying it now would put an older tree over that one"
+)
+TOKEN_VARS = ("GITHUB_TOKEN", "GH_TOKEN")
+# a variable whose name reads as a credential: the owner's deploy secrets sit in the release
+# step's env:, and the targets run code that no gate judged on this tree (the independent
+# review of the R51 PR, finding 6); a secret named otherwise still reaches them
+SECRET_NAME_RE = re.compile(
+    r"TOKEN|SECRET|PASSWORD|PASSWD|PASSPHRASE|PRIVATE|CREDENTIAL|AUTH|API_?KEY|ACCESS_?KEY|_KEY$",
+    re.IGNORECASE,
+)
+
+
+def recheck_targets(config: Mapping[str, Any], root: Path, timeout: int) -> list[str] | None:
+    """Build, test and lint run once more on the checked-out merge commit (the release job's
+    toolchain step installed what they need), with no variable whose name reads as a
+    credential in their environment (``SECRET_NAME_RE``; the GitHub token among them).
+    The targets that are not green, ``[]`` when all are, None when sdlc.yaml has none."""
+    commands = gate_checks.commands_from_config(dict(config))
+    if not commands:
+        return None
+    env = {
+        k: v for k, v in os.environ.items() if k not in TOKEN_VARS and not SECRET_NAME_RE.search(k)
+    }
+    red = []
+    for name, command in commands.items():
+        run = gate_checks.run_command(command, root, timeout, env=env)
+        if run["exit_code"] != 0:
+            how = "timed out" if run["exit_code"] is None else f"exit {run['exit_code']}"
+            red.append(f"{name} ({how})")
+            print(run.get("output") or "", file=sys.stderr)
+    return red
+
+
+def newer_release(
+    root: Path, merge_sha: str | None, change_id: str, git: Callable[..., tuple[int, str]]
+) -> tuple[str, str] | None:
+    """``(change id, released_sha)`` of another change's release record whose released commit
+    strictly contains ``merge_sha``, else None. One repository-wide release group runs the
+    releases one at a time and a newer pending run replaces an older one (NOTES §59), so this
+    is a merge commit dispatched again after a later one released."""
+    if not merge_sha:
+        return None
+    code, remotes = git(root, "remote")
+    if code != 0 or "origin" not in remotes.split():
+        return None
+    code, out = git(root, "ls-remote", "origin", RELEASED_REF.format(id="*"))
+    if code != 0:
+        raise RemoteUnreadable(f"origin could not be read (git ls-remote exited {code})")
+    for line in out.splitlines():
+        parts = line.split()
+        if len(parts) != 2 or parts[1] == RELEASED_REF.format(id=change_id):
+            continue
+        other = parts[1].rsplit("/", 1)[-1]
+        _fetch(root, parts[1], git)
+        code, names = git(root, "ls-tree", "--name-only", "FETCH_HEAD", f"{c.CHANGES_DIR}/")
+        folder = next(
+            (n for n in names.splitlines() if n.startswith(f"{c.CHANGES_DIR}/{other}-")), None
+        )
+        st = _status_at(root, "FETCH_HEAD", f"{folder}/status.yaml", git) if folder else None
+        sha = getattr(st, "released_sha", None)
+        if not sha or sha == merge_sha:
+            continue
+        if git(root, "merge-base", "--is-ancestor", merge_sha, sha)[0] == 0:
+            return other, sha
+    return None
+
+
+def _records_all(st: Any, release: bool, acceptance: dict[str, Any] | None) -> bool:
+    """Whether ``st`` already carries what the record job stores: the release record (when
+    ``release``) and the acceptance line of the same merge (when one is given)."""
+    if release and not st.released:
+        return False
+    if acceptance is None:
+        return True
+    return any(
+        line.get("pr") == acceptance.get("pr")
+        and (line.get("details") or {}).get("phase")
+        == (acceptance.get("details") or {}).get("phase")
+        for line in st.risk_acceptances
+    )
+
+
 def store_release_record(
     root: Path,
     change_id: str,
@@ -281,35 +385,46 @@ def store_release_record(
     pr_number: int,
     merge_sha: str | None,
     git: Callable[..., tuple[int, str]],
+    release: bool = True,
+    acceptance: dict[str, Any] | None = None,
 ) -> tuple[bool, str]:
     """Commit the release record into ``status.yaml`` and push it: (stored, what happened).
 
     The commit sits on the work branch's tip when ``sdlc/<id>/c`` is still on the remote
-    (a later pull request from it then carries the record), else on the merge commit the
-    release checked out; it is pushed to the branch (when there) and always to the ref
+    (a later pull request from it then carries the record), else on the ref's tip when the
+    ref is there, else on the merge commit the release checked out; it is pushed to the
+    branch (when there) and always to the ref
     ``refs/sdlc/released/<id>``, which no branch deletion touches. A temporary worktree keeps
     the checkout as it is; a push rejected by a concurrent push is retried on the new tip,
-    ``RECORD_PUSH_ATTEMPTS`` times. The push relies on the credential the job's checkout
-    left in the shared ``.git/config`` (``actions/checkout``'s ``extraheader``), which a
-    worktree shares; a checkout that moved it to a per-directory include would need a
-    ``git -c`` here. A record already there, on the ref or the branch, is "stored".
+    ``RECORD_PUSH_ATTEMPTS`` times. The push takes its credential from its environment
+    (``approval.make_git`` → ``state/gitops.py network_env``, the job's ``GITHUB_TOKEN``):
+    no checkout persists one in ``.git/config`` (decision 33, R49), so a worktree needs
+    nothing of its own. A record already there, on the ref or the branch, is "stored".
+
+    Decision 35 (1.0.15): ``acceptance`` is the (e) merge's ``risk_acceptances`` line, stored
+    in the same commit; with ``release`` False the commit carries that line alone (the
+    merge accepted a risk and no release ran: none is configured, or a declared production
+    waits for its label), and ``remote_record`` reads such a ref as carrying no release.
     """
     branch = c.work_branch(change_id, "c")
     ref = RELEASED_REF.format(id=change_id)
     try:
-        if _remote_ref(root, ref, git):
+        on_ref = _remote_ref(root, ref, git)
+        if on_ref:
             _fetch(root, ref, git)
             st = _status_at(root, "FETCH_HEAD", rel_status, git)
-            if st is not None and st.released:
-                return True, f"{ref} already records it: {_released_line(st)}"
+            if st is not None and _records_all(st, release, acceptance):
+                return True, f"{ref} already records it" + (
+                    f": {_released_line(st)}" if st.released else ""
+                )
         on_branch = _remote_ref(root, branch, git, heads=True)
     except RemoteUnreadable as exc:
         return False, str(exc)
     why = "not attempted"
     for _attempt in range(RECORD_PUSH_ATTEMPTS):
-        if on_branch:
+        if on_branch or on_ref:
             try:
-                _fetch(root, f"refs/heads/{branch}", git)
+                _fetch(root, f"refs/heads/{branch}" if on_branch else ref, git)
             except RemoteUnreadable as exc:
                 return False, str(exc)
             base = "FETCH_HEAD"
@@ -325,10 +440,17 @@ def store_release_record(
                 st = status_mod.read_status(change_dir)
             except (OSError, ValueError) as exc:
                 return False, f"{base}: {rel_status} could not be read: {exc}"
-            if st.released:
-                where = branch if on_branch else "the merge commit"
-                return True, f"{where} already records it: {_released_line(st)}"
-            st.record_release(pr_number, merge_sha)
+            if _records_all(st, release, acceptance):
+                where = branch if on_branch else (ref if on_ref else "the merge commit")
+                return True, f"{where} already records it" + (
+                    f": {_released_line(st)}" if st.released else ""
+                )
+            if release and not st.released:
+                st.record_release(pr_number, merge_sha)
+            if acceptance is not None:
+                risk_mod.record_acceptance(st, acceptance)
+                st.touch()
+                st.validate()
             status_mod.write_status(change_dir, st)
             identity = []
             code, name = git(worktree, "config", "user.name")
@@ -337,11 +459,14 @@ def store_release_record(
                     "-c", f"user.name={gitops.BOT_LOGIN}",
                     "-c", f"user.email={gitops.BOT_EMAIL}",
                 ]  # fmt: skip
+            message = (RECORD_COMMIT if release else ACCEPTANCE_COMMIT).format(
+                id=change_id, pr=pr_number
+            )
             code, _ = git(worktree, "add", "--", rel_status)
             if code == 0:
                 code, _ = git(
                     worktree, *identity, "commit", "--quiet", "--only", "-m",
-                    RECORD_COMMIT.format(id=change_id, pr=pr_number), "--", rel_status,
+                    message, "--", rel_status,
                 )  # fmt: skip
             if code != 0:
                 return False, f"the record could not be committed on {base} (exit {code})"
@@ -362,6 +487,99 @@ def store_release_record(
             git(root, "worktree", "remove", "--force", str(worktree))
             shutil.rmtree(worktree, ignore_errors=True)
     return False, why
+
+
+def merge_acceptance(
+    change_dir: Path,
+    st: Any,
+    pr: Mapping[str, Any],
+    pr_number: int,
+    merge_sha: str | None,
+    config: dict[str, Any],
+    env: Mapping[str, str] | None = None,
+    repo: str | None = None,
+    reviews: Callable[[], dict[str, Any]] | None = None,
+) -> tuple[dict[str, Any] | None, str] | None:
+    """Decision 35: the ``risk_acceptances`` line of the (e) merge, from the merged copy's
+    gate records (the items no earlier act accepted, ``risk.banner_entries``) and GitHub's
+    record of the act (who, when, the body it showed); (None, why) when no act of the
+    owner's account accepted (``unpark.is_owner_actor``, decision 34's one rule), None when
+    nothing was asked. The owner's own merge accepts, as before R22 (fallback C1, or a merge
+    through the bypass). Since R22 a merge by anyone else - the merge App is a ``[bot]`` and
+    never accepts a risk - is accepted by the owner's approving review, on which the merge
+    App merged (choice 242, point 2): ``reviews`` reads the pull request's reviews, and the
+    owner's latest review that approves or requests changes must approve."""
+    from state import unpark  # noqa: PLC0415
+
+    items = risk_mod.new_items(risk_mod.banner_entries(change_dir, "e", st))
+    if not items:
+        return None
+    by = str(pr.get("merged_by") or "").strip()
+    if not unpark.is_owner_actor(by, config, env, repo):
+        approval = _owner_approval(reviews, config, env, repo)
+        if approval is not None and not str(approval.get("commit") or ""):
+            # the merge step refuses such an approval, and the runner confirms a line only on
+            # the commit the owner approved (choice 250): no commit, no acceptance
+            return None, (
+                "not accepted: the owner's approval names no commit (decision 36): "
+                + ", ".join(items)
+            )
+        if approval is not None:
+            line = risk_mod.acceptance_line(
+                "e",
+                items,
+                str(approval.get("author")),
+                str(approval.get("at") or "").strip() or gate_mod._now(),
+                int(pr_number),
+                str(approval.get("commit")),
+                risk_mod.banner_shown(pr.get("body"), items),
+                via=risk_mod.ACCEPT_VIA_APPROVAL,
+            )
+            return line, ""
+        return None, (
+            f"not accepted: merged by {by or 'an unknown account'}, not the owner's account, "
+            f"and no approving review by the owner (decisions 34, 35 and 36): {', '.join(items)}"
+        )
+    line = risk_mod.acceptance_line(
+        "e",
+        items,
+        by,
+        str(pr.get("merged_at") or "").strip() or gate_mod._now(),
+        int(pr_number),
+        merge_sha,
+        risk_mod.banner_shown(pr.get("body"), items),
+    )
+    return line, ""
+
+
+DECISIVE_REVIEWS = ("APPROVED", "CHANGES_REQUESTED", "DISMISSED")
+
+
+def _owner_approval(
+    reviews: Callable[[], dict[str, Any]] | None,
+    config: dict[str, Any],
+    env: Mapping[str, str] | None,
+    repo: str | None,
+) -> dict[str, Any] | None:
+    """The owner's latest review that approves, requests changes or was dismissed, when it
+    approves (the merge step's reading, ``ci/merge_step.py owner_approval``); None without a
+    reader, on a failed read, or when it does not approve."""
+    from state import unpark  # noqa: PLC0415
+
+    if reviews is None:
+        return None
+    got = reviews()
+    if not isinstance(got, dict) or not got.get("ok"):
+        return None
+    latest = None
+    for review in got.get("reviews") or []:
+        if str(review.get("state") or "").upper() not in DECISIVE_REVIEWS:
+            continue
+        if unpark.is_owner_actor(review.get("author"), config, env, repo):
+            latest = review
+    if latest is None or str(latest.get("state")).upper() != "APPROVED":
+        return None
+    return latest
 
 
 def _step_output(env: Mapping[str, str], lines: dict[str, str]) -> str | None:
@@ -411,16 +629,30 @@ def _record(args, git, say) -> int:
         say("error", f"no changes/{args.id}-<slug>/ folder at {root}")
         return 2
     rel_status = str(status_mod.status_path(change_dir).relative_to(root)).replace("\\", "/")
+    release = str(getattr(args, "released", "true") or "").strip().lower() == "true"
+    acceptance = None
+    raw = str(getattr(args, "acceptance", "") or "").strip()
+    if raw:
+        try:
+            acceptance = json.loads(raw)
+            risk_mod.validate_acceptances([acceptance])
+        except ValueError as exc:
+            say("error", f"--acceptance is not a risk_acceptances line: {exc}")
+            return 2
+    if not release and acceptance is None:
+        say("record", "nothing to store: no release ran and no risk was accepted")
+        return 0
     try:
         stored, what = store_release_record(
-            root, args.id, rel_status, int(args.pr), args.merge_sha, git
+            root, args.id, rel_status, int(args.pr), args.merge_sha, git, release, acceptance
         )
     except TimeoutError as exc:
         stored, what = False, f"git took too long: {exc}"
     if stored:
         say("record", what)
         return 0
-    say("record", f"not stored: {what}; the release ran without its record")
+    lost = "the release ran without its record" if release else "the risk acceptance is unrecorded"
+    say("record", f"not stored: {what}; {lost}")
     return 1
 
 
@@ -592,6 +824,27 @@ def _release(args, env, github, git, record_git, say) -> int:
     parked = (raw.parked_reason or "").strip()
     if parked:
         say("parked", f"gate ({raw.gate.phase}) parked change {change_id}: {parked}")
+    # (4d) decision 35: the owner's merge accepted the risk lines the build PR's banner
+    # showed; the record job stores the line, whatever the release does next
+    accepted = merge_acceptance(
+        change_dir, raw, pr, args.pr, merge_sha, config, env, args.repo,
+        reviews=lambda: _call(github, "pr_reviews", args.repo, args.pr, cwd=str(root)),
+    )  # fmt: skip
+    if accepted is not None:
+        line, why = accepted
+        if line is None:
+            say("risk", why)
+        else:
+            items = ", ".join(line["details"]["items"])
+            shown = "shown" if line["details"]["banner_shown"] else "NOT shown"
+            act = "approving review" if line["via"] == risk_mod.ACCEPT_VIA_APPROVAL else "merge"
+            say("risk", f"accepted by {line['by']}'s {act}: {items} (banner {shown})")
+            problem = _step_output(
+                env, {"risk_acceptance": json.dumps(line, sort_keys=True), "change_id": change_id}
+            )
+            if problem:
+                say("error", f"the record job's outputs could not be written ({problem})")
+                return 1
     # (4a) one release per change (issue #66): the merged copy, then the remote's record
     rel_status = str(status_mod.status_path(change_dir).relative_to(root)).replace("\\", "/")
     if raw.released:
@@ -641,6 +894,38 @@ def _release(args, env, github, git, record_git, say) -> int:
     if not command:
         say("done", "release prepared in the PR; deploy.command is empty, nothing runs")
         return 0
+    # (5b) R51 (checks 9 to 11 of the race analysis): the tree that deploys is the merge
+    # commit, which no gate judged when another change merged after this one's gate (e) or
+    # the owner updated the branch; a newer release that already holds it deploys nothing
+    # older over it
+    try:
+        newer = newer_release(root, merge_sha, change_id, record_git)
+    except (RemoteUnreadable, TimeoutError) as exc:
+        say("error", f"the remote's release records could not be read ({exc}); the release "
+            "fails closed")  # fmt: skip
+        return 2
+    if newer is not None:
+        say("skip", NEWER_RELEASE.format(sha=merge_sha, other=newer[0], at=newer[1]))
+        # it shipped inside that release: the record job records it, so a release that
+        # GitHub's queue replaced is recorded by dispatching this workflow (the independent
+        # review of the R51 PR, finding 4)
+        problem = _step_output(env, {"released": "true", "change_id": change_id})
+        if problem:
+            say("error", f"the record job's outputs could not be written ({problem})")
+            return 1
+        say("record", f"pending: released inside change {newer[0]}'s release; the record "
+            f"job stores it on {c.work_branch(change_id, 'c')} and "
+            f"{RELEASED_REF.format(id=change_id)}")  # fmt: skip
+        return 0
+    red = recheck_targets(config, root, _timeout(config))
+    if red is None:
+        say("recheck", "no build, test or lint target in sdlc.yaml: nothing to re-run")
+    elif red:
+        say("refused", RECHECK_RED.format(sha=merge_sha or "HEAD", red="; ".join(red)))
+        say("route", RECHECK_ROUTE.format(pr=args.pr))
+        return 1
+    else:
+        say("recheck", "build, test and lint exit 0 on the merge commit")
     say("run", command)
     try:
         code, what = run_command(command, root, _timeout(config))
@@ -684,6 +969,17 @@ def build_parser() -> argparse.ArgumentParser:
     rec.add_argument("--id", required=True, help="the change id the run step printed")
     rec.add_argument("--pr", required=True, type=int, help="the build PR's number")
     rec.add_argument("--merge-sha", default=None, help="recorded as released_sha")
+    rec.add_argument(
+        "--released",
+        default="true",
+        help="'true' when the release ran (the default, as before 1.0.15); anything else "
+        "stores only --acceptance",
+    )
+    rec.add_argument(
+        "--acceptance",
+        default="",
+        help="decision 35: the (e) merge's risk_acceptances line as JSON, from the run step",
+    )
     return p
 
 

@@ -5,8 +5,11 @@
 #
 # plugin/evals/run.py --fixture copies tests/fixtures/sample-python-project to a temporary
 # directory, runs /sdlc-init on it with this checkout as the plugin, and runs each case there
-# with the project's CLAUDE.md, hooks and settings in force (never --bare). The pass rate is
-# the job's verdict; the report is an artifact. Nothing is committed, nobody is notified.
+# with the project's CLAUDE.md, hooks and settings in force (never --bare), sandboxed as a CI
+# session is: the phase jobs' runner setup step installs bubblewrap first, so the fixture's
+# sandbox block takes effect and case 0006 proves denyWrite live (ROADMAP R44, point 1). The
+# pass rate is the job's verdict; the report is an artifact. Nothing is committed, nobody is
+# notified.
 name: Framework evals
 
 on:
@@ -24,8 +27,12 @@ permissions:
   contents: read
 
 concurrency:
-  group: "framework-evals-${{ github.event.pull_request.head.ref || github.ref }}"
-  cancel-in-progress: false
+  # A pull request's runs are keyed by its number (two forks' branches of one name never
+  # share a group), and a new push cancels the paid run it supersedes, whose verdict would
+  # judge a head nobody merges. The nightly and dispatched runs are keyed by their commit and
+  # never cancelled (the batch ci revision, 10.8).
+  group: "framework-evals-${{ github.event.pull_request.number || github.sha }}"
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   evals:
@@ -42,6 +49,9 @@ jobs:
 
       - name: Install the pinned Claude Code CLI
         run: npm install -g @anthropic-ai/claude-code@2.1.278
+
+      - name: Prepare the runner for Claude Code's sandbox
+        run: python plugin/ci/runner_setup.py
 
       - name: Install the fixture's toolchain
         run: python -m pip install pytest ruff

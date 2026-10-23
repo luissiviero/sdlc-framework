@@ -18,6 +18,7 @@ import pytest
 
 from state import status as status_mod
 from state import yamlish
+from tests.model_records import write_reviewer_record
 from tests.test_gate import PERCENT, TEST_PERCENT
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -122,11 +123,11 @@ def write_verdict(change_dir: Path, phase: str, head: str) -> None:
         "reasons": [],
         "classification": "routine",
         "classification_reasons": [],
-        "at": "2026-09-21T10:00:00Z",
     }
     path = change_dir / "evidence" / f"adversarial-review-{phase}.json"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(data), encoding="utf-8", newline="\n")
+    write_reviewer_record(path, head)  # what the panel_blind hook writes beside it (R7)
 
 
 @pytest.fixture
@@ -358,10 +359,9 @@ def test_labels_are_the_documented_set():
         "sdlc:d-ready",
         "sdlc:e-ready",
         "sdlc:f-ready",
-        "sdlc:c-approved",
-        "sdlc:d-approved",
         "sdlc:release-approved",
-        "sdlc:accept-risk",  # the owner's un-park verbs (decision 24, plugin 0.2.13)
+        # the owner's un-park verbs (decision 24, plugin 0.2.13); sdlc:accept-risk retired
+        # with decision 35 (plugin 1.0.15)
         "sdlc:reset-iterations",
         "sdlc:unlock-tests",
         "sdlc:needs-human",
@@ -488,7 +488,7 @@ def test_build_test_and_deploy_halves_run_on_the_single_build_branch(project):
     assert proc.returncode == 0, proc.stdout + proc.stderr
     result = json.loads(proc.stdout)
     assert result["result"] == "continue" and result["label"] is None
-    assert result["profile"] == "standard" and [c for c in result["checks"] if not c["ok"]] == []
+    assert "profile" not in result and [c for c in result["checks"] if not c["ok"]] == []
     commit_phase(root, "c", "build(0001): gate (c) evidence")
 
     # --- /sdlc-test: phase (d), same branch -----------------------------------------------

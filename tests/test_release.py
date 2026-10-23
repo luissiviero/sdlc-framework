@@ -120,6 +120,35 @@ def test_notes_are_deterministic_and_list_commits_and_links(tmp_path):
     assert "test missing" in first  # the evidence status line of the PR summary
 
 
+def test_notes_what_changed_is_the_title_for_a_quick_intent(tmp_path):
+    # R54: a quick intent leaves Proposed outcome to the design run; its marker is no note
+    root, change_dir = _repo_with_change(tmp_path)
+    (change_dir / "intent.md").write_text(
+        INTENT.replace(
+            "Owners download the claims report as CSV. Later we add more formats.",
+            "Left to the design run (quick intent).",
+        ),
+        encoding="utf-8",
+    )
+    text = notes.build_notes(root, "0001", base="main")
+    assert "## What changed\n\nExport the claims report\n" in text
+    assert "Left to the design run" not in text
+
+
+def test_notes_what_changed_keeps_a_sentence_wrapped_over_lines(tmp_path):
+    # item 11's read: only the first line of a hard-wrapped paragraph was read
+    root, change_dir = _repo_with_change(tmp_path)
+    (change_dir / "intent.md").write_text(
+        INTENT.replace(
+            "Owners download the claims report as CSV. Later we add more formats.",
+            "Owners download the claims report\nas CSV. Later we add more formats.",
+        ),
+        encoding="utf-8",
+    )
+    text = notes.build_notes(root, "0001", base="main")
+    assert "## What changed\n\nOwners download the claims report as CSV.\n" in text
+
+
 def test_notes_leave_out_evidence_only_commits(tmp_path):
     """M1: the commit that stores the notes (or any other evidence-only commit) is not listed,
     so writing the notes does not change them; a commit that also touches code still is."""
@@ -873,3 +902,139 @@ def test_cli_refuses_the_automation_identity_s_label_on_a_parked_merge(tmp_path)
     assert code == 0
     assert any(line.startswith("release: waiting: ") for line in lines)
     assert not any(line.startswith("release: run:") for line in lines)
+
+
+# --- R51: the merge commit re-checked, and never deployed over a newer release ----------------
+def _targets(test_exit: int) -> str:
+    return (
+        "commands:\n"
+        "  build: python -c \"print('built')\"\n"
+        f'  test: python -c "import sys; sys.exit({test_exit})"\n'
+        "  lint: python -c \"print('linted')\"\n"
+    )
+
+
+def test_a_merge_commit_whose_targets_are_red_is_refused_with_a_route(tmp_path, capfd):
+    """Check 9 of the race analysis: no gate ran on the merge commit when another change
+    merged after this one's gate (e); the release runs the three targets there first and
+    deploy.command never runs on red. Check 10: the refusal says what to do next."""
+    yaml = _yaml(command=RELEASED) + _targets(1)
+    root, _ = _repo_with_change(tmp_path, sdlc_yaml=yaml)
+    code, lines = _run(root, FakeGitHub())
+    assert code == 1, lines
+    refused = next(line for line in lines if line.startswith("release: refused:"))
+    assert "test (exit 1)" in refused and "deploy.command did not run" in refused
+    route = next(line for line in lines if line.startswith("release: route:"))
+    assert "dispatch SDLC release with pr_number 7" in route
+    assert not any(line.startswith("release: run:") for line in lines)
+    assert "released" not in capfd.readouterr().out
+
+
+def test_a_green_merge_commit_releases_after_its_recheck(tmp_path, capfd):
+    yaml = _yaml(command=RELEASED) + _targets(0)
+    root, _ = _repo_with_change(tmp_path, sdlc_yaml=yaml)
+    code, lines = _run(root, FakeGitHub())
+    assert code == 0, lines
+    assert "release: recheck: build, test and lint exit 0 on the merge commit" in lines
+    assert "release: exit: 0" in lines
+    assert lines.index("release: recheck: build, test and lint exit 0 on the merge commit") < (
+        lines.index("release: exit: 0")
+    )
+
+
+def test_the_recheck_runs_without_the_github_token(tmp_path, monkeypatch):
+    monkeypatch.setenv("GITHUB_TOKEN", "ghs_secret")
+    check = "python -c \"import os, sys; sys.exit(1 if os.environ.get('GITHUB_TOKEN') else 0)\""
+    yaml = {"commands": {"build": check, "test": check, "lint": check}}
+    assert cli.recheck_targets(yaml, tmp_path, 60) == []
+
+
+def test_the_recheck_runs_without_the_deploy_secrets(tmp_path, monkeypatch):
+    """The independent review of the R51 PR, finding 6: the owner's deploy secrets sit in the
+    release step's env:, and the targets run code no gate judged on the merge commit."""
+    for name in ("TWINE_PASSWORD", "AWS_SECRET_ACCESS_KEY", "NPM_TOKEN", "DEPLOY_API_KEY"):
+        monkeypatch.setenv(name, "secret")
+    monkeypatch.setenv("PROJECT_SETTING", "kept")
+    names = "('TWINE_PASSWORD', 'AWS_SECRET_ACCESS_KEY', 'NPM_TOKEN', 'DEPLOY_API_KEY')"
+    check = (
+        f'python -c "import os, sys; sys.exit(any(n in os.environ for n in {names}) '
+        "or os.environ.get('PROJECT_SETTING') != 'kept')\""
+    )
+    yaml = {"commands": {"build": check, "test": check, "lint": check}}
+    assert cli.recheck_targets(yaml, tmp_path, 60) == []
+    assert cli.SECRET_NAME_RE.search("PATH") is None and cli.SECRET_NAME_RE.search("HOME") is None
+
+
+def test_a_merge_commit_a_newer_release_holds_is_skipped(tmp_path, capfd):
+    """Check 11: a merge commit dispatched again after a later change released a tree that
+    contains it would put the older tree over the newer one; it is skipped."""
+    root, _ = _repo_with_change(tmp_path, sdlc_yaml=_yaml(command=RELEASED))
+    remote = _with_remote(root)
+    older = _git(root, "rev-parse", "HEAD").strip()
+    # change 0002's record: released as a commit that descends from ``older``
+    _git(root, "checkout", "-q", "-b", "other", "main")
+    folder = root / "changes" / "0002-a-later-change"
+    folder.mkdir(parents=True)
+    (folder / "status.yaml").write_text(
+        "id: '0002'\nslug: a-later-change\ntitle: A later change\nphase: e\n", encoding="utf-8"
+    )
+    _git(root, "add", ".")
+    _git(root, "commit", "-q", "-m", "later change")
+    newer = _git(root, "rev-parse", "HEAD").strip()
+    (folder / "status.yaml").write_text(
+        "id: '0002'\nslug: a-later-change\ntitle: A later change\nphase: e\n"
+        f"released_at: '2026-10-23T00:00:00Z'\nreleased_sha: {newer}\nreleased_pr: 9\n",
+        encoding="utf-8",
+    )
+    _git(root, "commit", "-q", "-am", "release(0002): record")
+    _git(root, "push", "-q", str(remote), "HEAD:refs/sdlc/released/0002")
+    _git(root, "checkout", "-q", "main")
+    outputs = tmp_path.parent / f"{tmp_path.name}-github-output"
+    outputs.write_text("", encoding="utf-8")
+    code, lines = _run(
+        root, FakeGitHub(), "--merge-sha", older, env={"GITHUB_OUTPUT": str(outputs)}
+    )
+    assert code == 0, "\n".join(lines)
+    skip = next(line for line in lines if line.startswith("release: skip:"))
+    assert skip.startswith(f"release: skip: the merge commit {older} is already inside")
+    assert "change 0002" in skip and newer in skip
+    assert "released" not in capfd.readouterr().out  # deploy.command did not run
+    # it shipped inside 0002's release: the record job records it (finding 4 of the review)
+    assert outputs.read_text(encoding="utf-8") == "released=true\nchange_id=0001\n"
+    assert lines[-1].startswith("release: record: pending: released inside change 0002's")
+
+
+# --- R18: the model's paragraph beside the deterministic list -------------------------------------
+def test_notes_keep_the_plain_words_until_the_code_changes(tmp_path):
+    """The paragraph is labelled and marked with the commit it describes; a re-run with no
+    code change (an evidence-only commit between) leaves the file byte-identical, and a code
+    commit drops it so the session writes a fresh one."""
+    root, change_dir = _repo_with_change(tmp_path)
+    path = notes.write_notes(root, "0001", base="main", plain_words="It exports\nthe report.")
+    first = path.read_text(encoding="utf-8")
+    head = _git(root, "rev-parse", "HEAD").strip()  # the full sha, whatever %h's length
+    assert first.index(notes.PLAIN_HEADING) < first.index("## What changed")
+    assert notes.PLAIN_LABEL in first and "It exports the report." in first
+    assert notes.PLAIN_MARK.format(sha=head) in first
+    _git(root, "add", "changes")
+    _git(root, "commit", "-q", "-m", "Store the release notes")
+    assert notes.write_notes(root, "0001", base="main").read_text(encoding="utf-8") == first
+    (root / "report.py").write_text("x = 4\n", encoding="utf-8")
+    _git(root, "add", "report.py")
+    _git(root, "commit", "-q", "-m", "Change the code again")
+    again = notes.write_notes(root, "0001", base="main").read_text(encoding="utf-8")
+    assert notes.PLAIN_HEADING not in again and "It exports" not in again
+    assert "## What changed" in again
+
+
+def test_notes_without_a_paragraph_keep_their_shape(tmp_path):
+    root, _ = _repo_with_change(tmp_path)
+    text = notes.build_notes(root, "0001", base="main")
+    assert notes.PLAIN_HEADING not in text
+    assert text.splitlines()[2] == "## What changed"
+
+
+def test_notes_plain_words_need_write(tmp_path, capsys):
+    root, _ = _repo_with_change(tmp_path)
+    assert notes.main(["--root", str(root), "--id", "0001", "--plain-words", "x"]) == 2
+    assert "--plain-words needs --write" in capsys.readouterr().err

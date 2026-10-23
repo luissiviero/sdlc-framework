@@ -29,7 +29,7 @@ from detect.cli import _remote_abandoned_ids  # noqa: E402
 from state import conventions as c  # noqa: E402
 from state import status as status_mod  # noqa: E402
 
-SHIPPED_PHASE = "e"  # a change at phase e on the default branch was merged by the owner
+SHIPPED_PHASE = "e"  # at phase e on the default branch: merged on the owner's approval (dec. 36)
 
 
 def collect(root: Path) -> dict[str, Any]:

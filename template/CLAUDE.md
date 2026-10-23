@@ -27,9 +27,10 @@ skill, not here (p.21). -->
 ## SDLC framework
 - Every change lives in `changes/<id>-<slug>/` (intent.md → spec.md + plan.md → evidence/);
   phase branches are `sdlc/<id>/<phase>`; see `changes/README.md`.
-- Never edit `.claude/**`, `CLAUDE.md`, `REVIEW.md` or `sdlc.yaml` in a run: they are
-  guardrails the owner changes in a reviewed PR. Never use bypass-permissions mode.
-- When a run cannot finish, park: write "what I need from you", never notify.
+- Never edit `.claude/**`, `CLAUDE.md`, `REVIEW.md`, `sdlc.yaml` or `policies/**` in a run:
+  they are guardrails the owner changes in a reviewed PR. Never use bypass-permissions mode.
+- When a run cannot finish, park: write "what I need from you"; the runner requests the
+  owner's review on the waiting PR, and nothing else notifies.
 
 ## Verifying your work
 <!-- Verbatim structure of the article's verification block (p.28). -->

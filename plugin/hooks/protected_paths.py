@@ -3,8 +3,9 @@ p.23 'Block edits to protected paths', p.36 example PreToolUse hook).
 
 Always protected (self-protection, decision 6): the project's own guardrail files at the
 project root - ``/.claude/**``, ``/CLAUDE.md``, ``/REVIEW.md``, ``/sdlc.yaml`` (it holds the
-project's protected list) - and every file under the plugin root (the hook scripts). The four
-are anchored (0.2.10, NOTES.md section 12): a same-named file in a subdirectory, such as the
+project's protected list), the owner's policy sources ``/policies/**`` (decision 40) - and
+every file under the plugin root (the hook scripts). They are anchored (0.2.10,
+docs/notes/12.md): a same-named file in a subdirectory, such as the
 framework repository's ``template/CLAUDE.md``, is ordinary project content; a project whose
 nested copies are guardrails too lists them under ``protected_paths`` (``**/CLAUDE.md``).
 Anywhere on disk, inside or outside the project: ``.claude/settings*.json`` and
@@ -42,15 +43,25 @@ from _common import (  # noqa: E402
     target_paths,
 )
 
-# anchored to the project root (the leading slash): docs/x/CLAUDE.md is not a guardrail file
-ALWAYS_PROTECTED = ("/.claude/**", "/CLAUDE.md", "/REVIEW.md", "/sdlc.yaml")
+# anchored to the project root (the leading slash): docs/x/CLAUDE.md is not a guardrail file.
+# R44 (the plugin security review of 2026-10-19, M1) adds the workflows, the local CLAUDE.md,
+# the project's MCP servers and git's own folder: each runs or steers code outside the
+# session (a workflow on the next event, an MCP server at the next start, a config key or a
+# hook on the runner's next git call). R27 (decision 40) adds the owner's policy sources: a run
+# never edits the policy that judges it
+ALWAYS_PROTECTED = (
+    "/.claude/**", "/CLAUDE.md", "/REVIEW.md", "/sdlc.yaml",
+    "/.github/workflows/**", "/CLAUDE.local.md", "/.mcp.json", "/.git/**",
+    "/policies/**",
+)  # fmt: skip
 # matched against the whole normalised path, wherever it is (user-level settings included)
 GLOBAL_PROTECTED = ("**/.claude/settings.json", "**/.claude/settings.*.json", "**/.claude/hooks/**")
 
 REASON = (
     "Protected path: {what}. Edits to guardrail files (.claude/**, CLAUDE.md, REVIEW.md, "
-    "sdlc.yaml, the SDLC plugin) and the project's protected_paths are made by the owner in a "
-    "reviewed PR, not by a run. Stop and report what you needed to change and why."
+    "sdlc.yaml, .github/workflows/**, CLAUDE.local.md, .mcp.json, .git/**, policies/**, "
+    "the SDLC plugin) and the project's protected_paths are made by the owner in a reviewed "
+    "PR, not by a run. Stop and report what you needed to change and why."
 )
 
 

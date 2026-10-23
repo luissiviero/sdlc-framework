@@ -1,6 +1,6 @@
 """``changes/<id>-<slug>/status.yaml`` — the per-change state file (step 9, decision 10).
 
-Fields (OPERATING_MODEL section 8): phase, profile override, change type feature/fix,
+Fields (OPERATING_MODEL section 8): phase, change type feature/fix,
 gate result, parked reason, iteration count. Added for traceability: id, slug, title,
 entry route (article p.9), external_ref (decision 9 linkage: issue number), timestamps.
 """
@@ -17,6 +17,10 @@ from . import yamlish
 
 STATUS_FILE = "status.yaml"
 SCHEMA_VERSION = 1
+# Keys a file written before 1.0.21 carries and nothing reads any more (decision 37: no
+# per-change profile or review mode). ``from_dict`` drops them, so an older change still loads;
+# the next ``write_status`` leaves them out.
+RETIRED_KEYS = ("profile_override", "review_override")
 
 
 def _now() -> str:
@@ -36,16 +40,14 @@ class Status:
     id: str
     slug: str
     title: str
-    # The phase the change is in. On the default branch a change at phase e was merged by the
-    # owner, and that merge is the whole of gate (e) (decision 13): ``read_status(...,
+    # The phase the change is in. On the default branch a change at phase e was merged at
+    # gate (e) - by the merge App on the owner's approving review (decision 36), or by the
+    # owner - so the merge means gate (e) passed (decision 13): ``read_status(...,
     # on_default_branch=True)`` derives gate e/passed from it (``merged_at_gate_e``) without
     # rewriting the file, because the automation identity never writes to the default branch.
     phase: str = "a"
     entry_route: str = "idea"
     change_type: str = "feature"
-    profile_override: str | None = None
-    # decision 21: ``parked`` | ``deferred`` | null (the project's ``sdlc.yaml: review``)
-    review_override: str | None = None
     gate: Gate = field(default_factory=Gate)
     parked_reason: str | None = None
     iterations: int = 0
@@ -96,6 +98,24 @@ class Status:
     released_at: str | None = None
     released_sha: str | None = None
     released_pr: int | None = None
+    # Decision 30 (the fast lane, ROADMAP R46): the runner's record of the commits the change's
+    # later phases were cut from without a merge. ``a``: ``{sha, pr}``, the head of the owner's
+    # intent PR the design branch was cut from; ``b``: ``{sha, classification}`` (and ``pr``,
+    # the design PR, when known), the design commit whose gate passed on a routine plan, which
+    # the build branch was cut from. Each sha is the "approved copy" of the phases after it
+    # (``gate/diff.py approved_base``). Written by ``ci/run_phase.py`` only: a session that
+    # changes it parks like any owner-only field. Absent (and not written) on every change
+    # that never took the fast lane, so its file reads as before.
+    fast_lane: dict[str, dict[str, Any]] | None = None
+    # Decision 35 (ROADMAP R24, plugin 1.0.15): the owner's merge of a PR whose close-look
+    # banner showed risk-list hits accepts them. One line per merge, in the shape of R11's
+    # approvals list (``act``, ``by``, ``at``, ``via``, ``pr``, ``head``, ``details`` with the
+    # gate's ``phase``, the ``items`` accepted and whether the merged body showed the banner,
+    # ``banner_shown``), so R11 can take it in. Written by the runner (the (b) merge, at the
+    # start of the build run) and by the release workflow's record job (the (e) merge), never
+    # by a session: a session that changes it parks like any owner-only field. Absent (and not
+    # written) on a change no merge accepted a risk for, so its file reads as before.
+    risk_acceptances: list[dict[str, Any]] = field(default_factory=list)
     created_at: str = field(default_factory=_now)
     updated_at: str = field(default_factory=_now)
     schema_version: int = SCHEMA_VERSION
@@ -111,13 +131,6 @@ class Status:
             raise ValueError(f"entry_route must be one of {c.ENTRY_ROUTES}")
         if self.change_type not in c.CHANGE_TYPES:
             raise ValueError(f"change_type must be one of {c.CHANGE_TYPES}")
-        if self.profile_override is not None and (
-            self.profile_override not in c.PROFILES
-            and self.profile_override not in c.LEGACY_PROFILES
-        ):
-            raise ValueError(f"profile_override must be one of {c.PROFILES} or null")
-        if self.review_override is not None and self.review_override not in c.REVIEW_MODES:
-            raise ValueError(f"review_override must be one of {c.REVIEW_MODES} or null")
         if self.gate.result is not None and self.gate.result not in c.GATE_RESULTS:
             raise ValueError(f"gate.result must be one of {c.GATE_RESULTS} or null")
         if self.gate.phase is not None and self.gate.phase not in c.PHASES:
@@ -157,6 +170,10 @@ class Status:
             for e in self.risk_accepted_by
         ):
             raise ValueError("risk_accepted_by must be a list of {item, actor} entries")
+        _validate_fast_lane(self.fast_lane)
+        from gate import risk as risk_mod  # noqa: PLC0415
+
+        risk_mod.validate_acceptances(self.risk_acceptances)
         for name in (
             "iterations_reset_by",
             "iterations_reset_at",
@@ -173,12 +190,18 @@ class Status:
     def to_dict(self) -> dict[str, Any]:
         d = asdict(self)
         d["gate"] = asdict(self.gate)
+        if not self.fast_lane:
+            del d["fast_lane"]  # decision 30: a change off the fast lane keeps its file as before
+        if not self.risk_acceptances:
+            del d["risk_acceptances"]  # decision 35: written only once a merge accepts a risk
         return d
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> Status:
         d = dict(d)
         gate = d.pop("gate", None) or {}
+        for retired in RETIRED_KEYS:
+            d.pop(retired, None)
         known = {f for f in cls.__dataclass_fields__}
         unknown = set(d) - known
         if unknown:
@@ -222,18 +245,13 @@ class Status:
 
     def record_owner_label(self, label: str, actor: str, items: list[str] | None = None) -> None:
         """Perform one of the owner's un-park labels (decision 24) and record who applied it.
-        ``items`` are the risk-list items an ``sdlc:accept-risk`` accepts (the hits the last
-        gate reported); the other two labels carry no argument."""
+        ``items`` is kept for the callers of 1.0.14 and earlier and is unused: the third
+        label, ``sdlc:accept-risk``, retired with decision 35 (a risk is accepted by the
+        merge, ``risk_acceptances``)."""
         actor = actor.strip()
         if not actor:
             raise ValueError("an owner label needs its actor")
-        if label == c.ACCEPT_RISK_LABEL:
-            for item in items or []:
-                self.accept_risk(item)
-                self.risk_accepted_by = [
-                    e for e in self.risk_accepted_by if e["item"] != item.strip()
-                ] + [{"item": item.strip(), "actor": actor}]
-        elif label == c.RESET_ITERATIONS_LABEL:
+        if label == c.RESET_ITERATIONS_LABEL:
             self.iterations = 0
             self.panel_calls = 0  # one un-park verb resets both counts (decision 21)
             self.iterations_reset_by = actor
@@ -309,6 +327,37 @@ class Status:
         self.validate()
 
 
+# Decision 30: the entries of ``status.yaml: fast_lane`` and the keys each one carries.
+FAST_LANE_KEYS = {"a": ("sha", "pr"), "b": ("sha", "classification", "pr")}
+FAST_LANE_REQUIRED = {"a": ("sha", "pr"), "b": ("sha", "classification")}
+FAST_LANE_CLASSIFICATION = "routine"
+_SHA_CHARS = frozenset("0123456789abcdef")
+
+
+def _validate_fast_lane(value: Any) -> None:
+    """``fast_lane`` is null or a mapping of ``a`` and/or ``b``: each entry a full commit sha
+    and its pull request number (``a``), or the sha and the classification ``routine`` and,
+    optionally, the design PR's number (``b``)."""
+    if value is None:
+        return
+    if not isinstance(value, dict) or not value or not set(value) <= set(FAST_LANE_KEYS):
+        raise ValueError("fast_lane must be null or a mapping of 'a' and/or 'b'")
+    for key, entry in value.items():
+        if not isinstance(entry, dict) or not set(entry) <= set(FAST_LANE_KEYS[key]):
+            raise ValueError(f"fast_lane.{key} must be a mapping of {FAST_LANE_KEYS[key]}")
+        missing = [k for k in FAST_LANE_REQUIRED[key] if entry.get(k) is None]
+        if missing:
+            raise ValueError(f"fast_lane.{key} lacks {', '.join(missing)}")
+        sha = entry["sha"]
+        if not isinstance(sha, str) or len(sha) != 40 or not set(sha) <= _SHA_CHARS:
+            raise ValueError(f"fast_lane.{key}.sha must be a full commit sha")
+        pr = entry.get("pr")
+        if pr is not None and (isinstance(pr, bool) or not isinstance(pr, int) or pr < 1):
+            raise ValueError(f"fast_lane.{key}.pr must be a pull request number")
+        if key == "b" and entry["classification"] != FAST_LANE_CLASSIFICATION:
+            raise ValueError(f"fast_lane.b.classification must be {FAST_LANE_CLASSIFICATION!r}")
+
+
 def stale_park(st: Status) -> str | None:
     """The ``parked_reason`` a later gate result already lifted, or None.
 
@@ -334,34 +383,48 @@ def _load(change_dir: Path) -> dict[str, Any]:
     return data
 
 
-MERGED_AT_GATE_E_REASON = "merged by the owner: gate (e) is the merge (decision 13)"
+MERGED_AT_GATE_E_REASON = (
+    "merged at gate (e): the owner's approval, or the owner's merge (decision 13, as amended "
+    "by decision 36)"
+)
 # With ``sdlc.yaml: deploy.production`` true the phase gate is still passed by the merge (the
 # change is done and merged), but the release needs a second act the release workflow checks.
 MERGED_AT_GATE_E_PRODUCTION_REASON = (
     MERGED_AT_GATE_E_REASON + "; the release approval sdlc:release-approved is the release "
     "workflow's second act on this declared production"
 )
+# What gate (e) records when it passes on the build branch (``gate/gate.py``): true until the
+# owner's merge, so on the default branch it is read as the merge reason.
+WAITING_AT_GATE_E_REASON = "waiting for the owner at gate (e)"
 
 
 def merged_at_gate_e(st: Status, production: bool = False) -> Status:
-    """The status as the owner's merge of the build PR left it: gate (e) passed.
+    """The status as the build PR's merge left it: gate (e) passed.
 
     Pure: returns a new ``Status`` and never touches ``st`` or the file. A change at phase e
-    whose ``status.yaml`` sits on the default branch reached it through the owner's merge of
-    the build PR, and that merge is the whole of gate (e) (decision 13; OPERATING_MODEL
-    section 4). The last run on the branch may have parked (the thirteenth live run parked
-    change 0001 on the iteration cap and the owner merged anyway), so the park is lifted and
-    the gate reads e/passed, stamped with the file's ``updated_at``. Anything else (another
-    phase, or gate (e) already passed) comes back as an unchanged copy. ``production`` is
+    whose ``status.yaml`` sits on the default branch reached it through the merge of the build
+    PR, which happens only at gate (e): the merge App merges on the owner's approving review
+    (decision 36), or the owner merges (decision 13; OPERATING_MODEL section 4). The last
+    run on the branch may have parked (the thirteenth live run parked change 0001 on the
+    iteration cap and the owner merged anyway), so the park is lifted and
+    the gate reads e/passed, stamped with the file's ``updated_at``. A gate (e) that already
+    passed keeps its result and time, but its "waiting for the owner" reason, true only until
+    the merge, reads as the merge reason (changes 0002, 0003 and 0005 of this repository read
+    "waiting" on ``main`` after their merges). Another phase, or another reason, comes back as
+    an unchanged copy. ``production`` is
     ``sdlc.yaml: deploy.production``: when true the gate still reads passed (the change is
     done and merged), but the reason says the release label is the second act, which is the
     release workflow's to check, not this function's.
     """
     derived = Status.from_dict(st.to_dict())
-    if st.phase != "e" or (st.gate.phase == "e" and st.gate.result == "passed"):
+    if st.phase != "e":
         # an abandoned change (decision 25) never reads as merged: its phase is not e
         return derived
     reason = MERGED_AT_GATE_E_PRODUCTION_REASON if production else MERGED_AT_GATE_E_REASON
+    if st.gate.phase == "e" and st.gate.result == "passed":
+        if st.gate.reason == WAITING_AT_GATE_E_REASON:
+            derived.gate = Gate(phase="e", result="passed", reason=reason, at=st.gate.at)
+        return derived
     derived.gate = Gate(phase="e", result="passed", reason=reason, at=st.updated_at)
     derived.parked_reason = None
     return derived
@@ -385,9 +448,10 @@ def read_status(
     change_dir: Path, on_default_branch: bool = False, production: bool = False
 ) -> Status:
     """``status.yaml`` of the change. ``on_default_branch`` says the file was read from a
-    checkout of the default branch: a change at phase e there was merged by the owner, so
-    gate (e) reads passed (``merged_at_gate_e``; ``production`` is ``sdlc.yaml:
-    deploy.production`` and only changes the derived reason). The derivation happens in
+    checkout of the default branch: a change at phase e there was merged on the owner's
+    approving review (decision 36: by the merge App, or by the owner), so gate (e) reads
+    passed (``merged_at_gate_e``; ``production`` is ``sdlc.yaml: deploy.production`` and
+    only changes the derived reason). The derivation happens in
     memory only; the file on disk is never rewritten by it (the default branch is read-only
     for automation, and only the owner's reviewed PRs reach it)."""
     st = Status.from_dict(_load(change_dir))
@@ -424,10 +488,8 @@ def new_change(
     title: str,
     entry_route: str = "idea",
     change_type: str = "feature",
-    profile_override: str | None = None,
     external_ref: str | None = None,
     change_id: str | None = None,
-    review_override: str | None = None,
 ) -> tuple[Path, Status]:
     """Create ``changes/<id>-<slug>/`` with a status.yaml in phase (a). Idempotent per id."""
     project_root = Path(project_root)
@@ -449,8 +511,6 @@ def new_change(
         title=title.strip(),
         entry_route=entry_route,
         change_type=change_type,
-        profile_override=profile_override,
-        review_override=review_override,
         external_ref=external_ref,
     )
     write_status(change_dir, status)

@@ -11,8 +11,11 @@ description: The organization's data and storage conventions. Use whenever addin
   p.22 (skill example rule 4: "fields tagged pii in the schema must never appear in logs or
   error messages"), p.34 (security pass: "PII in logs"), p.35 (hooks "can block edits to
   migrations and infra without a change ticket").
-- Owner's data policy and classification scheme: **no owner source yet** — name it here when
-  it exists.
+- Owner's data policy and classification scheme: the project's
+  `policies/data-conventions.md`, written by the owner in their own words (ROADMAP R27).
+  Read it first when it exists: where it and this skill differ, the source wins, over a
+  project override too; a rule here it does not mention still applies. No file means these
+  rules alone. It is a guardrail path (decision 40): never edit it in a run.
 - Project override: `.claude/skills/data-conventions/SKILL.md`.
 
 ## Rules
@@ -23,7 +26,9 @@ description: The organization's data and storage conventions. Use whenever addin
    OpenAPI); generated code is never edited by hand.
 3. **Migrations** are backward compatible with the running code (expand, migrate, contract),
    reversible, and named in `plan.md` "Files that change" and Risks; "data migrations" is on
-   the risk list, so the change parks at its next gate for the owner.
+   the risk list, so the migration is a line of the "Needs your close look" banner on the
+   PR the owner merges, with the reviewer's brief on it, and the owner's merge accepts it
+   (decision 35; at (e), the owner's approving review, decision 36).
 4. **Events and APIs**: additive changes only; a removed or renamed field is a new version
    with a deprecation note.
 5. **Retention and minimisation**: store what the spec needs, nothing "for later"; state the
@@ -44,6 +49,8 @@ output:
 - db/migrations/0007_add_phone.sql: schema or migration file in the diff (backward compatible? rollback? documented in plan.md Risks?)
 - note: src/users.py:88: new personal-data identifier 'phone_number' (classify it; not in logs)
 ```
-Deterministic backing: the risk-list gate check ("data migrations"), the protected-paths hook
-for frozen schema folders (`sdlc.yaml: protected_paths`). This skill is advisory (p.22
+Deterministic backing, rule by rule (R27): rule 2, the protected-paths hook for the frozen
+schema and generated folders a project lists under `sdlc.yaml: protected_paths`; rule 3, the
+gate's `risk_list` check ("data migrations") and its banner. Rules 1, 4, 5 and 6 have no
+hook: only the REVIEW.md pass at (e) re-checks them. This skill is advisory (p.22
 governance).

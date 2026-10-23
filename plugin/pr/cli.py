@@ -3,7 +3,8 @@
 
     python "${CLAUDE_PLUGIN_ROOT}/plugin/pr/cli.py" description --root . --id 0001 --phase c
     python cli.py upsert --root . --id 0001 --phase c [--draft] [--ready] [--check-run]
-                                                      [--head <branch>] [--dry-run]
+                                                      [--head <branch>] [--request-review]
+                                                      [--dry-run]
     python cli.py check-run --root . --id 0001 --phase d
 
 ``description`` prints the body only (nothing else). ``upsert`` opens or updates the phase's
@@ -14,9 +15,14 @@ command. ``check-run`` posts the phase's check run for HEAD (step 28) on its own
 success, 2 on a usage error; a missing GitHub route is not an error - it prints the body for
 the owner. ``--head`` names the PR's head branch when it is not the phase's framework branch
 (a fix round on an intent PR a web session pushed from ``claude/...``, decision 22).
+``--request-review`` marks the automation's own publication (the runner, the detect
+workflow, the weekly scan): after the labels it requests the owner's review when the PR waits
+and withdraws it when it does not (decision 31, ``pr/review_request.py``); the result is
+``review_request`` in the summary and never changes the exit code. Without it nothing is
+requested.
 
 Labels: the PR carries one gate label at a time (``sdlc:<phase>-ready``,
-``sdlc:<phase>-approved``, ``sdlc:needs-human``); the owner's own labels - the release
+``sdlc:needs-human``); the owner's own labels - the release
 approval and the un-park verbs of decision 24 - are never removed by an upsert.
 """
 
@@ -24,6 +30,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 from typing import Any
@@ -33,13 +40,14 @@ if __package__ in (None, ""):
 
 from hooks._common import utf8_stdout  # noqa: E402
 from pr import description as desc  # noqa: E402
-from pr import github  # noqa: E402
+from pr import github, review_request  # noqa: E402
 from state import conventions as c  # noqa: E402
 from state import gitops  # noqa: E402
 from state import status as status_mod  # noqa: E402
 
 READY_COLOR = "0E8A16"  # green: the run finished and waits at a human gate
 NEEDS_HUMAN_COLOR = "D93F0B"  # orange-red: parked, waiting for a decision
+FIXING_COLOR = "FBCA04"  # yellow: an automatic fix round runs, nothing waits (decision 29)
 CHECK_RUN_NAME = "sdlc/{phase}"
 # the owner's labels: applied by a person, read by the release workflow and the next run,
 # never swept away when the gate label changes
@@ -51,6 +59,8 @@ def _emit(obj: Any) -> None:
 
 
 def label_color(label: str) -> str:
+    if label == c.FIXING_LABEL:
+        return FIXING_COLOR
     return NEEDS_HUMAN_COLOR if label == c.NEEDS_HUMAN_LABEL else READY_COLOR
 
 
@@ -75,6 +85,29 @@ def _repo_and_base(root: Path) -> tuple[str | None, str]:
     return repo, base.split("origin/", 1)[-1] if base.startswith("origin/") else base
 
 
+def owner_review(
+    root: Path, repo: str, number: int, label: str | None, found: dict[str, Any]
+) -> dict[str, Any]:
+    """Decision 31 for one publication: the owner's review request brought in line with
+    ``label``. The owner is read from the ``sdlc.yaml`` the owner check reads
+    (``ci/run_phase.py owner_config``: on a runner only the default branch's copy, so a PR
+    head writing ``owner:`` never chooses who is notified); a copy that cannot be read is a
+    skip with its reason (fail closed). Imported here, not at the top: only the automation's
+    publications pay for it."""
+    from ci import run_phase  # noqa: PLC0415
+
+    try:
+        config = run_phase.owner_config(root, dict(os.environ))
+    except Exception as exc:  # noqa: BLE001 - an unreadable copy (ConfigError), no git
+        return {"ok": True, "skipped": f"no review request: {exc}"}
+    try:
+        return review_request.sync_owner_review(
+            github, repo, number, label, config, os.environ, found
+        )
+    except Exception as exc:  # noqa: BLE001 - never the upsert's exit code or route
+        return {"ok": False, "reason": f"review request: {type(exc).__name__}: {exc}"}
+
+
 def cmd_description(args) -> int:
     ctx = _context(args)
     if ctx is None:
@@ -89,7 +122,7 @@ def cmd_upsert(args) -> int:
     if ctx is None:
         return 2
     root, change_dir, st = ctx
-    body = desc.build_description(root, args.id, args.phase)
+    body = desc.build_description(root, args.id, args.phase, draft=args.draft)
     title = desc.pr_title(st, args.phase)
     gate_json = desc.load_gate(change_dir, args.phase)
     label = desc.label_for(gate_json, args.phase)
@@ -121,8 +154,13 @@ def cmd_upsert(args) -> int:
         out.update({"route": "none", "url": None, "reason": "no GitHub remote", "body": body})
         return finish()
 
-    found = github.find_open_pr(repo, head, cwd=root)
+    # the review-request sync reads the PR's author and pending reviewers (decision 31)
+    review = {"reviewers": True} if getattr(args, "request_review", False) else {}
+    found = github.find_open_pr(repo, head, cwd=root, **review)
     number = found.get("number")
+    if number and bool(found.get("draft")) != bool(args.draft):
+        # the PR's live draft state, not this call's flag (a fix round passes no --draft)
+        body = desc.build_description(root, args.id, args.phase, draft=bool(found.get("draft")))
     if number:
         result = github.update_pr(repo, int(number), body, title, cwd=root)
     else:
@@ -145,6 +183,11 @@ def cmd_upsert(args) -> int:
         st.touch()
         status_mod.write_status(change_dir, st)
         out["build_pr_recorded"] = int(number)
+    if number and head != c.work_branch(args.id, "c"):
+        # R22 (decision 36, point 5): ruleset 2 requires sdlc/review, so every pull request
+        # that is not a build PR carries a passing "not a build PR" on its head; the workflow
+        # token's pushes and pull requests start no run of sdlc-merge.yml that would post it
+        out["review_check"] = not_build_check(repo, int(number), found, root)
     if label and number:
         github.ensure_label(repo, label, label_color(label), f"SDLC gate ({args.phase})", cwd=root)
     if number:
@@ -165,7 +208,24 @@ def cmd_upsert(args) -> int:
             out["labels"] = github.set_labels(repo, int(number), add, remove, cwd=root)
         if args.ready:
             out["ready"] = github.set_ready(repo, int(number), cwd=root)
+        if getattr(args, "request_review", False):
+            if out["created"]:
+                # a new PR: read back its author and its (empty) review requests
+                got = github.pr_by_number(repo, int(number), cwd=root, reviewers=True)
+                found = got if got.get("ok") else {"state": "open", "requested_reviewers": []}
+            out["review_request"] = owner_review(root, repo, int(number), label, found)
     return finish()
+
+
+def not_build_check(repo: str, number: int, found: dict[str, Any], root: Path) -> dict[str, Any]:
+    """Post the passing ``sdlc/review`` "not a build PR" on the pull request's head, read
+    back from GitHub (the head the upsert just pushed, or the new pull request's). Never
+    fails the upsert: the result says what happened."""
+    got = github.pr_by_number(repo, number, cwd=root)
+    sha = str((got.get("head_sha") if got.get("ok") else None) or found.get("head_sha") or "")
+    if not sha:
+        return {"ok": False, "reason": got.get("reason") or "the head commit is unknown"}
+    return github.post_not_build_check(repo, sha, cwd=root)
 
 
 def check_run_result(root: Path, change_dir: Path, phase: str) -> dict[str, Any]:
@@ -229,6 +289,12 @@ def build_parser() -> argparse.ArgumentParser:
                 default=None,
                 help="the PR's head branch when it is not sdlc/<id>/<phase> (a fix round on "
                 "a web-session intent PR)",
+            )
+            p.add_argument(
+                "--request-review",
+                action="store_true",
+                help="the automation's publication: request the owner's review when the PR "
+                "waits, withdraw it when it does not (decision 31)",
             )
     return parser
 

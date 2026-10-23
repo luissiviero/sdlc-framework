@@ -508,6 +508,13 @@ def file_change(root: Path, record: dict[str, Any], *, push: bool, dry_run: bool
     }
 
 
+def _app_missing() -> str | None:
+    """``ci/app_token.py app_missing`` on this process's environment (R22)."""
+    from ci import app_token  # noqa: PLC0415 - stdlib only
+
+    return app_token.app_missing(os.environ)
+
+
 def cmd_run(args) -> int:
     root = Path(args.root).resolve()
     config = _config(root)
@@ -542,7 +549,10 @@ def cmd_run(args) -> int:
         # D12 (live, 2026-09-25): a run by the automation identity never ran a job. Those
         # zero-job runs are caused by the workflow token, so they are always by its login
         # (source.DEFAULT_EXCLUDED_ACTORS), never by sdlc.yaml's automation_identity: a PAT
-        # or App identity listed there runs real tests, which are observations.
+        # or App identity listed there runs real tests, which are observations. Since 1.0.9
+        # (decision 33, R49) the project's CI also runs by itself on the automation's work
+        # branches, under the App's login: source.counts leaves out every run on an sdlc/...
+        # head, so a fix loop's intended red heads file no false incident.
         fetched = source.fetch(
             args.repo,
             since=since,
@@ -626,6 +636,11 @@ def cmd_run(args) -> int:
         elif open_ones:
             outcome = f"open incident {open_ones[0]['change_id']} already carries {metric}"
             out["open_incidents"] = open_ones
+        elif args.file and not args.dry_run and _app_missing():
+            # R22: the project's App is required; the incident is not filed with the
+            # workflow token, and the run goes red with the reason (decision 33)
+            filed = {"filed": False, "reason": _app_missing()}
+            outcome = f"not filed: {filed['reason']}"
         elif args.file:
             filed = file_change(root, record, push=not args.no_push, dry_run=args.dry_run)
             outcome = (
@@ -829,7 +844,17 @@ def _act(
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(json.dumps(outcome, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         return outcome
-    result = runbooks.run(
+    approved = None
+    refused = None
+    if resolved.project_runbook is not None and not dry_run and os.environ.get("GITHUB_ACTIONS"):
+        # R3's I5 fix (built in R44, choice 257): on a runner a project runbook runs in a
+        # fresh tree of the default branch's approved commit, never in the checkout the
+        # diagnosis session held Write in
+        try:
+            approved = runbooks.approved_commit(root, _default_branch(root))
+        except (runbooks.RunbookError, gitops.GitError) as exc:
+            refused = runbooks.Outcome(name, runbooks.FAILED, reason=str(exc))
+    result = refused or runbooks.run(
         name,
         root,
         change_id,
@@ -840,6 +865,7 @@ def _act(
         repo=repo,
         timeout=_timeout(config),
         dry_run=dry_run,
+        approved=approved,
     )
     outcome = result.as_dict()
     outcome["authorization"] = resolved.as_dict()
@@ -1029,6 +1055,12 @@ def cmd_dispatch(args) -> int:
     return EXIT_OK
 
 
+def _upsert_argv(root: Path, change_id: str) -> list[str]:
+    """The intent PR's upsert: the automation's publication, so ``--request-review`` requests
+    the owner's review when the PR waits and withdraws it when it does not (decision 31)."""
+    return ["upsert", "--root", str(root), "--id", change_id, "--phase", "f", "--request-review"]
+
+
 def _gate_and_pr(root: Path, change_id: str, push: bool, out: dict[str, Any]) -> dict[str, Any]:
     """Gate (f) on the branch, the evidence commit, the intent PR (what the maintain command
     does by hand in its steps 7 and 8)."""
@@ -1039,9 +1071,7 @@ def _gate_and_pr(root: Path, change_id: str, push: bool, out: dict[str, Any]) ->
     out["evidence_commit"] = _commit_change(
         root, change_id, f"maintain({change_id}): gate (f) evidence", push=push
     )
-    pr, code, err = _cli(
-        PR_CLI, ["upsert", "--root", str(root), "--id", change_id, "--phase", "f"], root
-    )
+    pr, code, err = _cli(PR_CLI, _upsert_argv(root, change_id), root)
     out["pr"] = pr or {"error": err, "exit": code}
     return out
 
@@ -1084,9 +1114,7 @@ def cmd_finish(args) -> int:
             out["park_commit"] = _commit_change(
                 root, args.id, f"park: {reason}"[:500], push=not args.no_push
             )
-            pr, code, err = _cli(
-                PR_CLI, ["upsert", "--root", str(root), "--id", args.id, "--phase", "f"], root
-            )
+            pr, code, err = _cli(PR_CLI, _upsert_argv(root, args.id), root)
             out["pr"] = pr or {"error": err, "exit": code}
         _emit(out)
         return EXIT_FAILED
@@ -1148,7 +1176,19 @@ def _human_label_actor(repo: str, number: int, label: str, config: dict[str, Any
     return actor, ""
 
 
+def _refused_without_the_app(args) -> bool:
+    """R22: the project's App is required. A Go or a park in a workflow that minted no App
+    token pushes and opens nothing with the workflow token; the run goes red with the reason,
+    and the label stays for a re-run once the App is set up (the R22 double check, F4)."""
+    missing = _app_missing()
+    if missing:
+        _emit({"change_id": args.id, "performed": False, "reason": missing})
+    return bool(missing)
+
+
 def cmd_go(args) -> int:
+    if _refused_without_the_app(args):
+        return EXIT_FAILED
     root = Path(args.root).resolve()
     change_dir, st = _change(root, args.id)
     record = _load_finding(change_dir)
@@ -1249,7 +1289,6 @@ def write_park_result(
         change_id=st.id,
         slug=st.slug,
         phase="f",
-        profile=getattr(st, "profile_override", None) or "",
         human_gate=True,
         result="park",
         checks=[CheckResult(name=check, ok=False, reason=reason, need=need)],
@@ -1274,6 +1313,8 @@ def cmd_park(args) -> int:
     pushed on the incident branch, the Go label removed (one application is one act, as
     after a performed Go) and the intent PR refreshed with ``sdlc:needs-human``. No runbook
     runs here and no model."""
+    if _refused_without_the_app(args):
+        return EXIT_FAILED
     root = Path(args.root).resolve()
     change_dir, st = _change(root, args.id)
     record, _why = finding.read(change_dir / art.EVIDENCE_DIR / finding.DETECTION_FILE)
@@ -1323,9 +1364,7 @@ def cmd_park(args) -> int:
         out["label_removed"] = github.set_labels(
             args.repo, args.pr_number, [], [c.GO_LABEL], cwd=root
         )
-    pr, code, err = _cli(
-        PR_CLI, ["upsert", "--root", str(root), "--id", args.id, "--phase", "f"], root
-    )
+    pr, code, err = _cli(PR_CLI, _upsert_argv(root, args.id), root)
     out["pr"] = pr or {"error": err, "exit": code}
     _emit(out)
     # a park nobody can find is the red run this command replaces, only green: the commit
@@ -1477,6 +1516,13 @@ def cmd_dismiss(args) -> int:
                     args.repo, default, branch, title, body, draft=False, cwd=root
                 )
                 number = (out["pr"] or {}).get("number")
+                # R22 (decision 36, point 5): the abandon workflow's token pushes it, so no
+                # sdlc-merge.yml run posts the "not a build PR" check ruleset 2 requires. It
+                # goes on the commit just pushed, also on a second close, whose pull request
+                # is already open and create_pr refuses (the R22 double check, finding F1); a
+                # re-run that commits nothing new posts on the branch tip it pushed
+                pushed = sha or gitops.run(root, "rev-parse", "HEAD").strip()
+                out["review_check"] = github.post_not_build_check(args.repo, pushed, cwd=root)
                 if number:  # the digest lists it under the incident label (decision 20)
                     github.ensure_label(
                         args.repo,

@@ -47,8 +47,13 @@ Change id: 0003. Status: proposed. Produced by: sdlc plugin 0.3.5, /sdlc-design 
   none, so `build` uses the real date. A file whose frontmatter does not parse is listed
   under `## Unsorted` like a frontmatter-less file, never raises, and `build`/`check` print
   one line per `## Unsorted` file naming the parser's error (or "no frontmatter block") next
-  to it; `check` exits 0 with `## Unsorted` entries present and prints that same one note
-  line per `## Unsorted` file — only a drift of the generated text is exit 1.
+  to it; a file that is not valid UTF-8, and a `detected.at` or `stale_after` value that is
+  present but not a date-shaped string (the wrong type, or a month/day out of range —
+  fix round, PR #132: `stale_after: 2027` and `detected.at: "2026-13-01…"` both crashed
+  `build`/`check` with a traceback before this fix), go to `## Unsorted` the same way,
+  naming the field and the value; `check` exits 0 with `## Unsorted` entries present and
+  prints that same one note line per `## Unsorted` file — only a drift of the generated
+  text is exit 1.
   `/sdlc-deploy` step 0b runs `build` in the same commit as the lesson and the eval
   (extending the commit convention already at `plugin/commands/sdlc-deploy.md:82-83`). The
   index is never edited by hand.
@@ -117,7 +122,13 @@ Change id: 0003. Status: proposed. Produced by: sdlc plugin 0.3.5, /sdlc-design 
   `evals/cases/<id>-<slug>/prompt.md` and `evals/cases/<id>-<slug>/checks.yaml` both exist
   (shape fixed by `plugin/evals/case.py`); `plugin/lessons/index.py check` passes; a
   `supersedes` target that does not exist fails, and so does a `supersedes` target whose
-  `status` is not `retired` (proving step 0b's retirement write landed); a `status` outside
+  `status` is not `retired` (proving step 0b's retirement write landed); a `supersedes`
+  value that is not a bare lesson file name matching
+  `[0-9][0-9][0-9][0-9]-[0-9][0-9]-*.md` — an absolute path, a path that climbs outside
+  `lessons/`, or the lesson's own name — fails with one line that never repeats the target
+  file's own content or parser error (fix round, PR #132: an unchecked `supersedes` could
+  read an arbitrary file on the host and quote its first unparsable line into the gate's
+  "what I need from you" text); a `status` outside
   `stable | retired` fails. Each problem is one line of text; the check returns one
   `CheckResult` whose `need` joins every problem's line with `"\n    "` (a newline and four
   spaces), so the existing "what I need from you" rendering (`plugin/gate/gate.py:76-79`,
@@ -301,13 +312,16 @@ Change id: 0003. Status: proposed. Produced by: sdlc plugin 0.3.5, /sdlc-design 
   the `## Retired` heading before `## Unsorted`, the `(stale)` marker (with `--today` fixing
   the clock) and its removal when comparing with `check`, class normalisation (`flaky-test`,
   `flaky_test` and `Flaky Test` sharing one heading), `README.md` and `index.md` themselves
-  excluded from the build, a malformed-frontmatter file listed under `## Unsorted` with no
+  excluded from the build, a malformed-frontmatter file, a non-UTF-8 lesson file and a
+  bad-shaped `detected.at`/`stale_after` value each listed under `## Unsorted` with no
   crash, a zero-lesson index, `check`'s exit 1 and diff on a drifted index (a CRLF copy of a
   correct index must pass); the gate's new `lesson_and_eval` check at phase (e) only, with
   one test per fail case (missing lesson, two lesson files matching the glob, missing a
   required frontmatter field, `prompt.md`
   or `checks.yaml` missing, failing `index.py check`, a dangling `supersedes`, a `supersedes`
-  target whose `status` did not actually move to `retired`, an out-of-enum `status`)
+  target whose `status` did not actually move to `retired`, an out-of-enum `status`, a
+  `supersedes` value that is not a bare lesson file name — outside `lessons/`, absolute, or
+  the lesson's own name)
   asserting the whole rendered "what I need from you" block, each problem on its own
   indented line, not just that each line is present somewhere in the text,
   plus the existing gate (f) test

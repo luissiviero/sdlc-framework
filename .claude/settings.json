@@ -9,9 +9,19 @@
       "Edit(/CLAUDE.md)",
       "Edit(/REVIEW.md)",
       "Edit(/sdlc.yaml)",
+      "Edit(/.github/workflows/**)",
+      "Edit(/CLAUDE.local.md)",
+      "Edit(/.mcp.json)",
+      "Edit(/.git/config)",
+      "Edit(/.git/hooks/**)",
+      "Edit(/policies/**)",
       "WebFetch",
       "Bash(curl *)",
-      "Bash(wget *)"
+      "Bash(wget *)",
+      "mcp__github__merge_pull_request",
+      "mcp__github__enable_pr_auto_merge",
+      "Bash(gh pr merge *)",
+      "Bash(gh api *)"
     ],
     "allow": [
       "Bash(git *)",

@@ -1,6 +1,7 @@
 """Shared plumbing for the Python hooks (build guide step 15; decision 7).
 
-Facts this relies on, from the Claude Code hooks reference (docs/NOTES.md has the quotes):
+Facts this relies on, from the Claude Code hooks reference (docs/notes/1.md has the
+quotes on the input and the exit codes, docs/notes/8.md the output contract):
   - the hook receives one JSON object on stdin with ``hook_event_name``, ``tool_name``,
     ``tool_input``, ``cwd`` (and more);
   - ``tool_input.file_path`` is absolute and uses the platform's separators (backslashes on
@@ -30,9 +31,18 @@ PLUGIN_ROOT = Path(__file__).resolve().parent.parent  # <repo>/plugin
 if str(PLUGIN_ROOT) not in sys.path:
     sys.path.insert(0, str(PLUGIN_ROOT))
 
-from state import yamlish  # noqa: E402
+from state import gitops, yamlish  # noqa: E402
 
 FILE_TOOLS = ("Edit", "Write", "MultiEdit", "NotebookEdit")
+
+
+def git_options() -> list[str]:
+    """The global options of a hook's own git call: ``gitops.runner_args`` on a runner (no
+    hook, no filesystem monitor, no signing, no external diff the session configured), none
+    by hand (R44, the plugin security review of 2026-10-19, N3)."""
+    return gitops.runner_args()
+
+
 SDLC_FILE = "sdlc.yaml"
 
 
@@ -41,6 +51,8 @@ class Decision:
     block: bool
     reason: str = ""
     extra: dict[str, Any] | None = None
+    # fields added to the decision's hook-log line (R33: the formatter's commands and exits)
+    log: dict[str, Any] | None = None
 
     @staticmethod
     def allow() -> Decision:
@@ -331,7 +343,7 @@ def log_decision(
                 from state import conventions as conv
 
                 proc = subprocess.run(
-                    ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+                    ["git", *git_options(), "rev-parse", "--abbrev-ref", "HEAD"],
                     cwd=root,
                     capture_output=True,
                     text=True,
@@ -357,6 +369,14 @@ def log_decision(
             "cwd": payload.get("cwd"),
         }
         record.update(extra)
+        if isinstance(record.get("command"), str):
+            # a committed log keeps no literal secret (R59, M12): the production gate logs
+            # the command on its fail-closed path, and the log is committed under evidence/
+            if str(Path(__file__).resolve().parent) not in sys.path:
+                sys.path.insert(0, str(Path(__file__).resolve().parent))
+            from secrets_check import redact  # noqa: PLC0415 - secrets_check imports this
+
+            record["command"] = redact(record["command"])
         line = json.dumps(record, sort_keys=True, default=str) + "\n"
         path.parent.mkdir(parents=True, exist_ok=True)
         with path.open("a", encoding="utf-8", newline="\n") as fh:
@@ -395,6 +415,7 @@ def run_hook(decide, event: str, argv: list[str] | None = None, *, log: bool = T
                 decision.reason,
                 payload,
                 paths=target_paths(payload.get("tool_input") or {}),
+                **(decision.log or {}),
             )
         return emit(decision, event)
     except Exception as exc:  # noqa: BLE001

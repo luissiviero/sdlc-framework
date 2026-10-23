@@ -1,0 +1,177 @@
+{
+  "duration_api_ms": 3310070,
+  "duration_ms": 3744906,
+  "errors": [
+    "Reached maximum number of turns (200)"
+  ],
+  "fast_mode_disabled_reason": "sdk_opt_in_required",
+  "fast_mode_state": "off",
+  "is_error": true,
+  "modelUsage": {
+    "claude-sonnet-5": {
+      "cacheCreationInputTokens": 769163,
+      "cacheReadInputTokens": 59138136,
+      "canonicalModel": "claude-sonnet-5",
+      "contextWindow": 1000000,
+      "costBasis": "list",
+      "costUSD": 17.064525699999994,
+      "inputTokens": 576,
+      "maxOutputTokens": 64000,
+      "outputTokens": 275267,
+      "provider": "firstParty",
+      "thinkingTokens": 162879,
+      "webSearchRequests": 0
+    }
+  },
+  "num_turns": 201,
+  "permission_denials": [
+    {
+      "tool_input": {
+        "content": "\"\"\"PreToolUse hook: deny a Bash or PowerShell command whose text would write to a protected\npath (build guide step 15; the review's `plugin/hooks/hooks.json:32` authz finding, change\n0002). `protected_paths.py` and `test_file_lock.py` police `Edit`/`Write`/`MultiEdit`/\n`NotebookEdit` only; neither ever looks at what file a shell command would *write*, so an\nunattended run could reach the same guardrail file through a one-line interpreter script or a\nshell redirection and the two path-based gates would never see it.\n\nThis hook reuses both existing hooks' matching primitives (`protected_paths.protected_patterns`\n/ `_check_one`, `test_file_lock.locked_change_id` / `is_locked` / `test_path_patterns`) rather\nthan adding a Bash branch to either: their own wiring tests each assert exactly one `hooks.json`\nmatcher entry per hook (spec.md Requirements, third bullet).\n\n`shell_write_targets(command)` is its own tokenizer (not a reuse of\n`production_gate.command_parts`/`chain_parts`: that parser lower-cases text, splits inside\nquotes and loses a redirection target behind its option-stripping suffix check, all wrong for a\nparser that must extract path arguments with quotes and case preserved). It tokenises with\nshlex-style quoting (a `>` inside a quote is text, not an operator, because the character loop\nonly recognises an operator when it is not inside a quote), skips heredoc bodies verbatim,\nsplits a command chain on `;`, `&&`, `||`, `|` and newline only where each sits outside a quote,\nand keeps case throughout. A leading wrapper word (`sudo`, `nohup`, `time`, `env`) is skipped\nbefore matching a write idiom; `bash -c '...'`, `sh -c '...'`, `cmd /c '...'` and\n`pwsh -Command '...'` are read by recursing into the quoted inner string with the same\ntokeniser.\n\nA resolved write-target candidate is checked against `protected_paths.protected_patterns`/\n`_check_one` first, then \u2014 only when the branch's change is a fix-type change whose tests are\nlocked \u2014 against `test_file_lock.test_path_patterns`. A relative candidate is resolved against\n`payload[\"cwd\"]`, following a literal `cd`/`pushd`/`Set-Location`/`git -C` earlier in the same\nchain; a non-literal candidate (a `$VAR`, `$(...)`, a backtick, `~`, or a glob) or a `cd` to a\nnon-literal directory *with a write idiom after it* fails closed \u2014 denied, with a reason that\nasks for the literal path. A `cd` to a non-literal directory with no write idiom after it is\nallowed: the hook judges write targets, not directories.\n\nWhat it closes, and what it cannot \u2014 see spec.md Design: it closes a command whose text names\nthe target literally beside a write idiom (every redirection form, `tee`, the in-place editors,\n`cp`/`mv`/`rsync`/`install`/`ln`'s destination, `dd of=`, the git verbs that take a path,\n`rm`/`truncate`/`touch`, and the python/node/PowerShell interpreter literals). It cannot close a\nscript written to an unprotected path and run separately, an `npm` lifecycle script, a git verb\nthat rewrites tracked files without a pathspec, or a path built from a variable or a heredoc\nbody \u2014 the sandbox's `filesystem.denyWrite` (CI) and the gate's diff-based `check_guardrails`/\n`check_test_lock` are the other two layers for those.\n\nUsage in hooks.json (exec form): python shell_guard.py --plugin-root <path>\n\"\"\"\n\nfrom __future__ import annotations\n\nimport argparse\nimport re\nimport subprocess\nimport sys\nfrom pathlib import Path\n\nsys.path.insert(0, str(Path(__file__).resolve().parent))\nfrom _common import (  # noqa: E402\n    Decision,\n    load_sdlc_config,\n    log_decision,\n    project_dir,\n    run_hook,\n)\n\nimport protected_paths  # noqa: E402\nimport test_file_lock  # noqa: E402\n\nTOOLS = (\"Bash\", \"PowerShell\")\nHOOK = \"shell_guard\"\n\nREASON_NONLITERAL = (\n    \"Shell guard: the write target `{target}` is not a literal path (a variable, command \"\n    \"substitution, backtick, `~` or a glob); write the literal path so the guard can check it.\"\n)\n\n# --- tokenising ------------------------------------------------------------------------------\n_HEREDOC_RE = re.compile(r\"<<-?\\s*(['\\\"]?)([A-Za-z_][A-Za-z0-9_]*)\\1\")\n_OP_CHARS = \"<>&\"\n_REDIR_RE = re.compile(r\"^\\d*(>>|>\\||&>>|&>|<>|>)$\")\n_FD_TARGET_RE = re.compile(r\"^&?\\d+$\")\n_FLAG_RE = re.compile(r\"^-\")\n_NONLITERAL_RE = re.compile(r\"[$`~*?\\[]\")\n\n_WRAPPERS = {\"sudo\", \"nohup\", \"time\", \"env\"}\n_INNER_SHELL_PAIRS = {(\"bash\", \"-c\"), (\"sh\", \"-c\"), (\"cmd\", \"/c\"), (\"pwsh\", \"-command\")}\n_CD_WORDS = {\"cd\", \"pushd\", \"set-location\"}\n\n\ndef _strip_heredocs(command: str) -> str:\n    \"\"\"Heredoc bodies (``<<WORD`` ... the terminator line) removed verbatim, so their text is\n    never tokenised as a command (a blockquote mentioning a guardrail path is not a write).\"\"\"\n    lines = command.split(\"\\n\")\n    out: list[str] = []\n    i = 0\n    while i < len(lines):\n        out.append(lines[i])\n        m = _HEREDOC_RE.search(lines[i])\n        i += 1\n        if m:\n            terminator = m.group(2)\n            while i < len(lines) and lines[i].strip() != terminator:\n                i += 1\n            i += 1  # the terminator line itself\n    return \"\\n\".join(out)\n\n\ndef _chain_parts_tokenized(command: str) -> list[list[str]]:\n    \"\"\"Chain parts (split on ``;``, ``&&``, ``||``, ``|`` and newline, outside quotes), each a\n    list of tokens: a quoted word with quotes stripped and case kept, or an operator token\n    (``>``, ``>>``, ``>|``, ``&>``, ``&>>``, ``<>``, ``<``, ``<<``, a digit-prefixed redirection,\n    ``&``) recognised only when it appears outside a quote \u2014 a quoted ``>`` is just text.\"\"\"\n    command = _strip_heredocs(command)\n    parts: list[list[str]] = []\n    words: list[str] = []\n    cur: list[str] = []\n    in_single = in_double = False\n    i = 0\n    n = len(command)\n\n    def flush_word() -> None:\n        if cur:\n            words.append(\"\".join(cur))\n            cur.clear()\n\n    def flush_part() -> None:\n        flush_word()\n        if words:\n            parts.append(list(words))\n        words.clear()\n\n    while i < n:\n        ch = command[i]\n        if in_single:\n            if ch == \"'\":\n                in_single = False\n            else:\n                cur.append(ch)\n            i += 1\n            continue\n        if in_double:\n            if ch == '\"':\n                in_double = False\n            elif ch == \"\\\\\" and i + 1 < n and command[i + 1] in \"\\\"\\\\$`\":\n                cur.append(command[i + 1])\n                i += 2\n                continue\n            else:\n                cur.append(ch)\n            i += 1\n            continue\n        if ch == \"'\":\n            in_single = True\n            i += 1\n            continue\n        if ch == '\"':\n            in_double = True\n            i += 1\n            continue\n        if ch == \"\\\\\" and i + 1 < n and command[i + 1] != \"\\n\":\n            cur.append(command[i + 1])\n            i += 2\n            continue\n        if ch in \";\\n\":\n            flush_part()\n            i += 1\n            continue\n        if command[i : i + 2] == \"&&\" or command[i : i + 2] == \"||\":\n            flush_part()\n            i += 2\n            continue\n        if ch == \"|\":\n            flush_part()\n            i += 1\n            continue\n        if ch.isspace():\n            flush_word()\n            i += 1\n            continue\n        if ch in _OP_CHARS:\n            op = ch\n            j = i + 1\n            if ch == \"&\" and j < n and command[j] == \">\":\n                op = \"&>\"\n                j += 1\n                if j < n and command[j] == \">\":\n                    op = \"&>>\"\n                    j += 1\n            elif ch == \">\":\n                if j < n and command[j] == \">\":\n                    op = \">>\"\n                    j += 1\n                elif j < n and command[j] == \"|\":\n                    op = \">|\"\n                    j += 1\n            elif ch == \"<\":\n                if j < n and command[j] == \"<\":\n                    op = \"<<\"\n                    j += 1\n                    if j < n and command[j] == \"-\":\n                        op = \"<<-\"\n                        j += 1\n                elif j < n and command[j] == \">\":\n                    op = \"<>\"\n                    j += 1\n            fd = \"\"\n            if op[0] in \"<>\" and cur and all(d.isdigit() for d in cur):\n                fd = \"\".join(cur)\n                cur.clear()\n            flush_word()\n            words.append(fd + op)\n            i = j\n            continue\n        cur.append(ch)\n        i += 1\n    flush_part()\n    return parts\n\n\ndef _strip_wrappers(words: list[str]) -> list[str]:\n    out = list(words)\n    while out and out[0].lower() in _WRAPPERS:\n        out = out[1:]\n    return out\n\n\ndef _inner_shell_command(words: list[str]) -> str | None:\n    if len(words) >= 3 and (words[0].lower(), words[1].lower()) in _INNER_SHELL_PAIRS:\n        return words[2]\n    return None\n\n\ndef _git_dash_c(words: list[str]) -> tuple[str, list[str]] | None:\n    if len(words) >= 3 and words[0] == \"git\" and words[1] == \"-C\":\n        return words[2], [\"git\", *words[3:]]\n    return None\n\n\ndef _dir_change_target(words: list[str]) -> str | None:\n    if len(words) >= 2 and words[0].lower() in _CD_WORDS:\n        return words[1]\n    return None\n\n\ndef _is_literal(token: str) -> bool:\n    return not _NONLITERAL_RE.search(token)\n\n\ndef _nonflag(words: list[str]) -> list[str]:\n    return [w for w in words if not _FLAG_RE.match(w)]\n\n\n# --- interpreter literals (python/node/PowerShell calls inline in the command text) ----------\n_PY_OPEN_RE = re.compile(r\"\\bopen\\(\\s*['\\\"]([^'\\\"]+)['\\\"](?:\\s*,\\s*['\\\"]([^'\\\"]*)['\\\"])?\")\n_PY_PATH_RE = re.compile(\n    r\"\\bPath\\(\\s*['\\\"]([^'\\\"]+)['\\\"]\\s*\\)\\.(?:write_text|write_bytes|unlink|rename|replace|touch)\\b\"\n)\n_PY_OS_RE = re.compile(r\"\\bos\\.(?:remove|unlink|rename|replace)\\(\\s*['\\\"]([^'\\\"]+)['\\\"]\")\n_PY_SHUTIL_RE = re.compile(r\"\\bshutil\\.(?:copy2?|copyfile|move|rmtree)\\(\\s*['\\\"]([^'\\\"]+)['\\\"]\")\n_NODE_FS_RE = re.compile(\n    r\"\\b(?:fs\\.(?:promises\\.)?|require\\(['\\\"]fs['\\\"]\\)\\.)?\"\n    r\"(?:writeFileSync|writeFile|appendFileSync|appendFile|rmSync|rm|unlinkSync|unlink|\"\n    r\"renameSync|rename|copyFileSync|copyFile|cpSync|createWriteStream|truncateSync|truncate)\"\n    r\"\\(\\s*['\\\"]([^'\\\"]+)['\\\"]\"\n)\n_PS_STATIC_RE = re.compile(\n    r\"\\[IO\\.File\\]::(?:WriteAllText|WriteAllBytes|AppendAllText|Delete|Copy|Move)\"\n    r\"\\(\\s*['\\\"]([^'\\\"]+)['\\\"]\"\n)\n_WRITE_MODE_RE = re.compile(r\"[wax+]\")\n\n\ndef _interpreter_targets(text: str) -> list[str]:\n    out: list[str] = []\n    for m in _PY_OPEN_RE.finditer(text):\n        mode = m.group(2)\n        if mode is not None and _WRITE_MODE_RE.search(mode):\n            out.append(m.group(1))\n    for pattern in (_PY_PATH_RE, _PY_OS_RE, _PY_SHUTIL_RE, _NODE_FS_RE, _PS_STATIC_RE):\n        out.extend(m.group(1) for m in pattern.finditer(text))\n    return out\n\n\n# --- PowerShell cmdlets and their aliases -----------------------------------------------------\n_PS_CMDLETS = {\n    \"set-content\",\n    \"add-content\",\n    \"out-file\",\n    \"new-item\",\n    \"copy-item\",\n    \"move-item\",\n    \"rename-item\",\n    \"remove-item\",\n    \"clear-content\",\n    \"tee-object\",\n}\n_PS_ALIASES = {\"sc\", \"ac\", \"ni\", \"cpi\", \"mi\", \"rni\", \"ri\", \"del\", \"erase\", \"rm\"}\n_PS_PATH_FLAGS = {\"-path\", \"-literalpath\", \"-filepath\", \"-destination\"}\n\n\ndef _powershell_targets(words: list[str]) -> list[str]:\n    if not words or words[0].lower() not in (_PS_CMDLETS | _PS_ALIASES):\n        return []\n    rest = words[1:]\n    targets: list[str] = []\n    found_flag = False\n    i = 0\n    while i < len(rest):\n        if rest[i].lower() in _PS_PATH_FLAGS and i + 1 < len(rest):\n            targets.append(rest[i + 1])\n            found_flag = True\n            i += 2\n            continue\n        i += 1\n    if not found_flag:\n        nonflag = _nonflag(rest)\n        if nonflag:\n            targets.append(nonflag[0])\n    return targets\n\n\n# --- the write-idiom list (spec.md Design) -----------------------------------------------------\ndef _part_targets(words: list[str]) -> list[str]:\n    \"\"\"Every write-target candidate one chain part names, unresolved against any directory.\"\"\"\n    if not words:\n        return []\n    targets: list[str] = []\n    headl = words[0].lower()\n\n    for i, w in enumerate(words):\n        if _REDIR_RE.match(w) and i + 1 < len(words):\n            nxt = words[i + 1]\n            if not _FD_TARGET_RE.match(nxt):  # `2>&1`, `>&2`: a duplicated fd, not a file\n                targets.append(nxt)\n\n    if headl == \"tee\":\n        targets.extend(_nonflag(words[1:]))\n    elif headl in (\"cp\", \"mv\", \"install\", \"ln\", \"rsync\"):\n        rest = _nonflag(words[1:])\n        if rest:\n            targets.append(rest[-1])\n    elif headl in (\"rm\", \"truncate\", \"touch\"):\n        targets.extend(_nonflag(words[1:]))\n    elif headl == \"sed\" and any(w.startswith(\"-i\") for w in words[1:]):\n        rest = _nonflag(words[1:])\n        if rest:\n            targets.append(rest[-1])\n    elif headl == \"perl\" and any(w == \"-i\" or w.startswith(\"-i\") for w in words[1:]):\n        rest = _nonflag(words[1:])\n        if rest:\n            targets.append(rest[-1])\n    elif headl == \"dd\":\n        targets.extend(w[len(\"of=\") :] for w in words[1:] if w.startswith(\"of=\"))\n    elif headl == \"git\" and len(words) >= 2:\n        sub = words[1].lower()\n        if sub == \"checkout\" and \"--\" in words:\n            targets.extend(words[words.index(\"--\") + 1 :])\n        elif sub in (\"restore\", \"rm\", \"mv\", \"apply\"):\n            targets.extend(_nonflag(words[2:]))\n\n    targets.extend(_powershell_targets(words))\n    for w in words:\n        targets.extend(_interpreter_targets(w))\n    return list(dict.fromkeys(targets))\n\n\ndef _logical_parts(command: str):\n    \"\"\"Yields each chain part's words, wrapper-stripped, with ``git -C <dir> ...`` rewritten to\n    ``git ...`` and a recognised inner-shell call (``bash -c``, ``sh -c``, ``cmd /c``,\n    ``pwsh -Command``) expanded by recursing into its quoted argument.\"\"\"\n    for words in _chain_parts_tokenized(command):\n        plain = _strip_wrappers(words)\n        if not plain:\n            continue\n        git_c = _git_dash_c(plain)\n        if git_c is not None:\n            yield git_c[1]\n            continue\n        inner = _inner_shell_command(plain)\n        if inner is not None:\n            yield from _logical_parts(inner)\n            continue\n        yield plain\n\n\ndef shell_write_targets(command: str) -> list[str]:\n    \"\"\"Every write-target candidate the command names anywhere in its chain, unresolved\n    against any working directory (``decide()`` resolves each one, below).\"\"\"\n    out: list[str] = []\n    for words in _logical_parts(command):\n        out.extend(_part_targets(words))\n    return list(dict.fromkeys(out))\n\n\ndef _resolve(base: str, raw: str) -> str:\n    raw_fs = raw.replace(\"\\\\\", \"/\")\n    if raw_fs.startswith(\"/\") or (len(raw_fs) >= 2 and raw_fs[1] == \":\"):\n        return raw\n    return str(Path(base) / raw)\n\n\ndef _resolution_walk(command: str, cwd: str):\n    \"\"\"Yields ``(raw_target, base_dir, base_is_nonliteral)`` for every write-target candidate,\n    tracking a literal ``cd``/``pushd``/``Set-Location``/``git -C`` earlier in the chain.\"\"\"\n    current = cwd\n    nonliteral = False\n    for words in _chain_parts_tokenized(command):\n        plain = _strip_wrappers(words)\n        if not plain:\n            continue\n        dirarg = _dir_change_target(plain)\n        if dirarg is not None:\n            if _is_literal(dirarg):\n                current = _resolve(current, dirarg)\n                nonliteral = False\n            else:\n                nonliteral = True\n            continue\n        git_c = _git_dash_c(plain)\n        if git_c is not None:\n            dirarg2, rest = git_c\n            if _is_literal(dirarg2):\n                base, base_nl = _resolve(current, dirarg2), False\n                current, nonliteral = base, False\n            else:\n                base, base_nl = None, True\n                nonliteral = True\n            for raw in _part_targets(rest):\n                yield raw, base, base_nl\n            continue\n        inner = _inner_shell_command(plain)\n        if inner is not None:\n            for raw, base, base_nl in _resolution_walk(inner, current):\n                yield raw, base, base_nl or nonliteral\n            continue\n        for raw in _part_targets(plain):\n            yield raw, current, nonliteral\n\n\ndef _git(root: str, *args: str) -> str:\n    try:\n        proc = subprocess.run(\n            [\"git\", *args], cwd=root, capture_output=True, text=True, encoding=\"utf-8\", timeout=20\n        )\n    except (OSError, subprocess.TimeoutExpired):\n        return \"\"\n    return proc.stdout if proc.returncode == 0 else \"\"\n\n\ndef decide(payload: dict, argv: list[str], env: dict[str, str] | None = None, git=_git) -> Decision:\n    parser = argparse.ArgumentParser()\n    parser.add_argument(\"--plugin-root\", default=None)\n    args = parser.parse_args(argv)\n\n    if payload.get(\"tool_name\") not in TOOLS:\n        return Decision.allow()\n    command = str((payload.get(\"tool_input\") or {}).get(\"command\") or \"\")\n    if not command.strip():\n        return Decision.allow()\n    root = project_dir(payload, env)\n    cwd = str(payload.get(\"cwd\") or root)\n    try:\n        config = load_sdlc_config(root)\n        patterns = protected_paths.protected_patterns(config)\n    except protected_paths.ConfigError as exc:\n        return Decision.deny(\n            f\"Shell guard cannot read the project's guardrail config ({exc}); refusing every \"\n            \"shell write until the owner fixes sdlc.yaml.\"\n        )\n    plugin_root = protected_paths.real(args.plugin_root) if args.plugin_root else None\n\n    test_patterns: list[str] | None = None\n    branch = git(root, \"rev-parse\", \"--abbrev-ref\", \"HEAD\").strip()\n    change_id = test_file_lock.locked_change_id(branch) if branch else None\n    if change_id is not None:\n        try:\n            if test_file_lock.is_locked(root, change_id):\n                test_patterns = test_file_lock.test_path_patterns(config)\n        except test_file_lock.ConfigError as exc:\n            return Decision.deny(test_file_lock.FAIL_CLOSED.format(error=exc))\n\n    for raw, base, nonliteral in _resolution_walk(command, cwd):\n        if nonliteral or not _is_literal(raw):\n            return Decision.deny(REASON_NONLITERAL.format(target=raw))\n        resolved = _resolve(base, raw)\n        reason = protected_paths._check_one(resolved, root, patterns, plugin_root)\n        if reason:\n            return Decision.deny(protected_paths.REASON.format(what=reason))\n        if test_patterns:\n            for candidate in {protected_paths.norm(resolved), protected_paths.real(resolved)}:\n                rel = protected_paths.rel_to(root, candidate)\n                if rel is not None and any(\n                    protected_paths.matches(pattern, rel) for pattern in test_patterns\n                ):\n                    return Decision.deny(test_file_lock.REASON.format(path=rel))\n    return Decision.allow()\n\n\ndef _decide_and_log(payload: dict, argv: list[str]) -> Decision:\n    decision = decide(payload, argv)\n    if decision.block:\n        log_decision(HOOK, \"block\", decision.reason, payload)\n    return decision\n\n\nif __name__ == \"__main__\":\n    sys.exit(run_hook(_decide_and_log, \"PreToolUse\", sys.argv[1:], log=False))\n",
+        "file_path": "/home/runner/work/sdlc-framework/sdlc-framework/framework/plugin/hooks/shell_guard.py"
+      },
+      "tool_name": "Write",
+      "tool_use_id": "toolu_01Loy32Nbpx5kpchn2hcHbWi"
+    },
+    {
+      "tool_input": {
+        "command": "cd /tmp && rm -rf sg_test && mkdir sg_test && cd sg_test && cat > sdlc.yaml <<'EOF'\nprofile: standard\nprotected_paths: []\nEOF\npython3 - <<'PYEOF'\nimport sys, json\nsys.path.insert(0, \"/home/runner/work/sdlc-framework/sdlc-framework/plugin/hooks\")\nimport shell_guard as sg\n\nroot = \"/tmp/sg_test\"\npayload = {\n    \"hook_event_name\": \"PreToolUse\",\n    \"tool_name\": \"Bash\",\n    \"tool_input\": {\"command\": \"python -c \\\"open('CLAUDE.md','w').write('x')\\\"\"},\n    \"cwd\": root,\n}\nd = sg.decide(payload, [], env={\"CLAUDE_PROJECT_DIR\": root})\nprint(\"block:\", d.block, d.reason[:80])\n\npayload2 = {**payload, \"tool_input\": {\"command\": \"echo hi\"}}\nd2 = sg.decide(payload2, [], env={\"CLAUDE_PROJECT_DIR\": root})\nprint(\"block:\", d2.block)\n\npayload3 = {**payload, \"tool_input\": {\"command\": \"rm \" + root + \"/notes.txt\"}}\nd3 = sg.decide(payload3, [], env={\"CLAUDE_PROJECT_DIR\": root})\nprint(\"block:\", d3.block)\nPYEOF",
+        "description": "End-to-end decide() check with a real sdlc.yaml"
+      },
+      "tool_name": "Bash",
+      "tool_use_id": "toolu_01T5BgXKhtw61PmmTU27JG87"
+    },
+    {
+      "tool_input": {
+        "command": "mkdir -p /tmp/claude-1001/sg_proj2 && printf 'profile: standard\\nprotected_paths: []\\n' > /tmp/claude-1001/sg_proj2/sdlc.yaml && python3 - <<'PYEOF'\nimport json, subprocess, sys, os\nproj = \"/tmp/claude-1001/sg_proj2\"\npayload = {\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"echo x > sdlc.yaml\"},\"cwd\":proj}\nproc = subprocess.run(\n    [sys.executable, \"plugin/hooks/shell_guard.py\"],\n    input=json.dumps(payload), capture_output=True, text=True,\n    env={**os.environ, \"CLAUDE_PROJECT_DIR\": proj},\n)\nprint(\"rc\", proc.returncode)\nprint(\"out\", proc.stdout)\nprint(\"err\", proc.stderr)\nprint(os.listdir(proj))\nPYEOF",
+        "description": "Debug the hook-log write manually"
+      },
+      "tool_name": "Bash",
+      "tool_use_id": "toolu_011iw4BfPBUK2vfn9M4gqN5H"
+    },
+    {
+      "tool_input": {
+        "command": "grep -E \"short test summary|passed|failed|error\" \"$TMPDIR/full_run.log\" | tail -1; grep -c \"^$\" \"$TMPDIR/full_run.log\"; wc -l \"$TMPDIR/full_run.log\"; grep -n \"==========\" \"$TMPDIR/full_run.log\" | tail -5",
+        "description": "Locate the final summary line"
+      },
+      "tool_name": "Bash",
+      "tool_use_id": "toolu_01WzxZYYfww5NmfHCXCEpXHC"
+    },
+    {
+      "tool_input": {
+        "command": "set -e\nTMPD=\"$TMPDIR/shell_guard_verify\"\nrm -rf \"$TMPD\"\nmkdir -p \"$TMPD\"\ncat > \"$TMPD/sdlc.yaml\" <<'YAML'\nprotected_paths: []\ntest_paths: []\nYAML\ncat > \"$TMPD/CLAUDE.md\" <<'EOF'\nguardrail\nEOF\ncat > \"$TMPD/status.yaml\" <<'EOF'\nchange_type: feature\ntests_locked: false\nEOF\necho \"TMPD=$TMPD\"\nls -la \"$TMPD\"",
+        "description": "Set up a minimal temp project dir for direct hook invocation"
+      },
+      "tool_name": "Bash",
+      "tool_use_id": "toolu_01YV1CsdUkZPfoB99bdS9Q4q"
+    },
+    {
+      "tool_input": {
+        "command": "cd /home/runner/work/sdlc-framework/sdlc-framework\necho \"--- OPERATING_MODEL.md around 121 ---\"\nsed -n '115,130p' docs/OPERATING_MODEL.md\necho \"--- settings.ci.json denyWrite ---\"\npython3 -c \"\nimport json\nd = json.load(open('plugin/ci/settings.ci.json'))\nprint(json.dumps(d.get('sandbox', {}), indent=2))\n\"\necho \"--- test_evals.py FRAMEWORK_SUITE ---\"\ngrep -n \"FRAMEWORK_SUITE\" tests/test_evals.py | head -10"
+      },
+      "tool_name": "Bash",
+      "tool_use_id": "toolu_018pB1YvLDD7KFk51LHptGB8"
+    },
+    {
+      "tool_input": {
+        "command": "cd /home/runner/work/sdlc-framework/sdlc-framework\nCLAUDE_PLUGIN_ROOT=$(pwd) python plugin/skills/security-baseline/check.py\necho \"exit:$?\""
+      },
+      "tool_name": "Bash",
+      "tool_use_id": "toolu_0142CAcADGr4Gb23ENntEmDM"
+    },
+    {
+      "tool_input": {
+        "command": "CLAUDE_PLUGIN_ROOT=/home/runner/work/sdlc-framework/sdlc-framework python /home/runner/work/sdlc-framework/sdlc-framework/plugin/skills/security-baseline/check.py",
+        "description": "Run security-baseline check.py against repo for new findings"
+      },
+      "tool_name": "Bash",
+      "tool_use_id": "toolu_016xErYZk2GzCtwE4EZEiEp6"
+    },
+    {
+      "tool_input": {
+        "command": "set -e\nWORK=\"$TMPDIR/shell_guard_verify\"\nrm -rf \"$WORK\"\nmkdir -p \"$WORK/proj\" \"$WORK/other\"\ncd /home/runner/work/sdlc-framework/sdlc-framework\nprintf 'profile: standard\\n' > \"$WORK/proj/sdlc.yaml\"\nprintf 'guardrail\\n' > \"$WORK/proj/CLAUDE.md\"\n\nPYTHONPATH=\"$PWD/plugin\" python3 - \"$WORK/proj\" \"$WORK/other\" <<'PYEOF'\nimport json, os, subprocess, sys\n\nproj, other = sys.argv[1], sys.argv[2]\nhook = os.path.join(os.getcwd(), \"plugin/hooks/shell_guard.py\")\n\ndef run(command, cwd, project_dir):\n    payload = {\n        \"hook_event_name\": \"PreToolUse\",\n        \"tool_name\": \"Bash\",\n        \"tool_input\": {\"command\": command},\n        \"cwd\": cwd,\n    }\n    env = {**os.environ, \"CLAUDE_PROJECT_DIR\": project_dir}\n    proc = subprocess.run(\n        [sys.executable, hook],\n        input=json.dumps(payload),\n        capture_output=True,\n        text=True,\n        env=env,\n    )\n    return proc.returncode, proc.stdout.strip(), proc.stderr.strip()\n\nprint(\"=== 1. repro: git -C <other> status && echo x > CLAUDE.md (cwd=proj) ===\")\nrc, out, err = run(f\"git -C {other} status && echo x > CLAUDE.md\", proj, proj)\nprint(\"exit:\", rc)\nprint(\"stdout:\", out[:300])\n\nprint()\nprint(\"=== 2a. git -C <other> rm CLAUDE.md alone, cwd=proj (expect ALLOW) ===\")\nrc, out, err = run(f\"git -C {other} rm CLAUDE.md\", proj, proj)\nprint(\"exit:\", rc)\nprint(\"stdout:\", out[:300])\n\nprint()\nprint(\"=== 2b. git -C <proj> rm CLAUDE.md alone, cwd=other (expect DENY) ===\")\nrc, out, err = run(f\"git -C {proj} rm CLAUDE.md\", other, proj)\nprint(\"exit:\", rc)\nprint(\"stdout:\", out[:300])\nPYEOF\n",
+        "description": "Run shell_guard.py as subprocess with git -C repro and regression cases"
+      },
+      "tool_name": "Bash",
+      "tool_use_id": "toolu_01XSVrvb3CDZ5rLzRn9mNJXE"
+    },
+    {
+      "tool_input": {
+        "command": "cat > \"$TMPDIR/shell_guard_verify/run.py\" << 'PYEOF'\nimport json\nimport os\nimport subprocess\nimport sys\n\nproj = sys.argv[1]\nother = sys.argv[2]\nhook = sys.argv[3]\n\n\ndef run(command, cwd, project_dir):\n    payload = dict(\n        hook_event_name=\"PreToolUse\",\n        tool_name=\"Bash\",\n        tool_input=dict(command=command),\n        cwd=cwd,\n    )\n    env = dict(os.environ)\n    env[\"CLAUDE_PROJECT_DIR\"] = project_dir\n    proc = subprocess.run(\n        [sys.executable, hook],\n        input=json.dumps(payload),\n        capture_output=True,\n        text=True,\n        env=env,\n    )\n    return proc.returncode, proc.stdout.strip(), proc.stderr.strip()\n\n\nprint(\"=== 1. repro: git -C other status and echo x > CLAUDE.md, cwd=proj ===\")\ncmd1 = \"git -C \" + other + \" status && echo x > CLAUDE.md\"\nrc, out, err = run(cmd1, proj, proj)\nprint(\"exit:\", rc)\nprint(\"stdout:\", out[:400])\nprint()\n\nprint(\"=== 2a. git -C other rm CLAUDE.md alone, cwd=proj, expect ALLOW ===\")\ncmd2 = \"git -C \" + other + \" rm CLAUDE.md\"\nrc, out, err = run(cmd2, proj, proj)\nprint(\"exit:\", rc)\nprint(\"stdout:\", out[:400])\nprint()\n\nprint(\"=== 2b. git -C proj rm CLAUDE.md alone, cwd=other, expect DENY ===\")\ncmd3 = \"git -C \" + proj + \" rm CLAUDE.md\"\nrc, out, err = run(cmd3, other, proj)\nprint(\"exit:\", rc)\nprint(\"stdout:\", out[:400])\nPYEOF\necho written",
+        "description": "Write verification python script to temp file"
+      },
+      "tool_name": "Bash",
+      "tool_use_id": "toolu_01KNLfWBENDix6YS3awMuiHY"
+    }
+  ],
+  "queued_turn_count": 0,
+  "result_index": 0,
+  "session_id": "c5e2d29f-929a-448a-8740-d9f7e2b8651a",
+  "stop_reason": "tool_use",
+  "subagent_stats": {
+    "by_type": {
+      "sdlc:adversarial-reviewer": 2,
+      "sdlc:code-simplifier": 1,
+      "sdlc:verifier": 2
+    },
+    "completed": 5,
+    "failed": 0,
+    "killed": {
+      "parent": 0,
+      "system": 0,
+      "user": 0
+    },
+    "max_depth": 1,
+    "refused": {
+      "budget": 0,
+      "concurrency_limit": 0,
+      "depth_limit": 0
+    },
+    "requested": {
+      "background": 0,
+      "foreground": 0,
+      "unset": 5
+    },
+    "spawned": 5,
+    "spawned_by_subagents": 0,
+    "started_in_background": 0
+  },
+  "subtype": "error_max_turns",
+  "terminal_reason": "max_turns",
+  "total_cost_usd": 17.064525699999994,
+  "type": "result",
+  "usage": {
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 373446,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "cache_creation_input_tokens": 373446,
+    "cache_read_input_tokens": 55097321,
+    "inference_geo": "not_available",
+    "input_tokens": 400,
+    "iterations": [
+      {
+        "cache_creation": {
+          "ephemeral_1h_input_tokens": 2380,
+          "ephemeral_5m_input_tokens": 0
+        },
+        "cache_creation_input_tokens": 2380,
+        "cache_read_input_tokens": 396030,
+        "input_tokens": 2,
+        "output_tokens": 6136,
+        "type": "message"
+      }
+    ],
+    "output_tokens": 193885,
+    "output_tokens_details": {
+      "thinking_tokens": 114196
+    },
+    "server_tool_use": {
+      "web_fetch_requests": 0,
+      "web_search_requests": 0
+    },
+    "service_tier": "standard",
+    "speed": "standard"
+  },
+  "uuid": "f8e4e4c3-d324-4106-bf87-932842581ad8"
+}

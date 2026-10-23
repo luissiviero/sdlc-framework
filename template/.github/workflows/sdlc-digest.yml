@@ -7,7 +7,8 @@
 # Token rule: events caused by this workflow's GITHUB_TOKEN never start another workflow run
 # - only workflow_dispatch and repository_dispatch do. This workflow starts nothing; it edits
 # the body of one long-lived issue, which sends no notification. It holds no deploy secret
-# and needs no model credential.
+# and needs no model credential. It keeps the workflow token, not the App's (decision 33):
+# it pushes nothing.
 #
 # Since plugin 0.2.19 the digest ends with the counters of build guide step 42.2
 # (pr/counters.py: first-pass merge share, fix iterations, incidents, dismissals), computed
@@ -27,6 +28,8 @@ on:
   workflow_dispatch:
 
 permissions:
+  actions: read  # choice 250: the sdlc-merge environment's deployment branch policy
+  checks: read  # R22: the approved, unmerged build PR's line reads sdlc/review
   contents: read
   issues: write
   pull-requests: read
@@ -41,8 +44,9 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Check out the project
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
+          persist-credentials: false
           fetch-depth: 0
 
       - name: Read the framework pin from the default branch's sdlc.yaml, with its script
@@ -55,8 +59,9 @@ jobs:
         run: git show "refs/remotes/origin/$SDLC_DEFAULT_BRANCH:.github/scripts/sdlc_pin.py" | python - --ref "refs/remotes/origin/$SDLC_DEFAULT_BRANCH"
 
       - name: Check out the pinned framework (public repository, no token)
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
+          persist-credentials: false
           repository: "{{FRAMEWORK_REPO}}"
           ref: ${{ steps.pin.outputs.ref }}
           path: framework
@@ -65,4 +70,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
+          # "true" when this job, which has no environment, sees the merge App's key: it is
+          # then a repository secret every workflow on every branch can read (choice 250);
+          # only the comparison reaches the step, never the key
+          SDLC_MERGE_KEY_IN_REPOSITORY: ${{ secrets.SDLC_MERGE_APP_PRIVATE_KEY != '' }}
         run: python framework/plugin/pr/digest.py --repo "$REPO" --root .

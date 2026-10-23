@@ -17,7 +17,55 @@
       "run": "fix",
       "source": "claude-fix-2.json",
       "usd": 6.773545700000003
+    },
+    {
+      "at": "2026-10-08T03:35:08Z",
+      "run": "c",
+      "source": "claude-c.json",
+      "usd": 12.858396800000012
+    },
+    {
+      "at": "2026-10-08T04:16:33Z",
+      "run": "fix",
+      "source": "claude-fix-3.json",
+      "usd": 2.3744039000000003
+    },
+    {
+      "at": "2026-10-08T04:31:41Z",
+      "run": "d",
+      "source": "claude-d.json",
+      "usd": 2.1973152
+    },
+    {
+      "at": "2026-10-08T04:45:25Z",
+      "run": "review",
+      "source": "claude-review.json",
+      "usd": 1.5697938
+    },
+    {
+      "at": "2026-10-08T04:54:02Z",
+      "run": "e",
+      "source": "claude-e.json",
+      "usd": 1.4762030999999998
+    },
+    {
+      "at": "2026-10-08T07:10:17Z",
+      "run": "fix",
+      "source": "claude-fix-4.json",
+      "usd": 14.898176999999999
+    },
+    {
+      "at": "2026-10-08T12:10:20Z",
+      "run": "fix",
+      "source": "claude-fix-5.json",
+      "usd": 8.249044300000003
+    },
+    {
+      "at": "2026-10-08T12:50:41Z",
+      "run": "fix",
+      "source": "claude-fix-6.json",
+      "usd": 6.256628799999998
     }
   ],
-  "total_usd": 16.115356
+  "total_usd": 65.995319
 }

@@ -24,9 +24,19 @@ Report at most five nits per review; summarize the rest as a count.
   files that existed before the fix; the failing test written first is the proof.
 - `plan.md` must reflect the diff: files that change, order of work, risks, proof. A diff
   that departs from the plan without a plan.md update in the same commit is non-compliant.
-- The second occurrence of the same finding across reviews produces a one-line entry in
-  `CLAUDE.md` under "Things Claude gets wrong", proposed in the review for the owner.
+- Each added skip marker the gate's `ratchets` check listed at gate (e)
+  (`evidence/gate-e.json`'s `details.skip_markers`) must be declared in `plan.md` or
+  explained in the PR; an undeclared one quietly narrowing what the suite actually runs is
+  non-compliant.
+- The second occurrence of the same finding across changes produces a one-line entry in
+  `CLAUDE.md` under "Things Claude gets wrong", proposed in the review for the owner (the
+  framework counts repeats in `changes/.review-seen.json` and writes the proposal; a
+  repeated finding keeps its own severity).
 - Flag when the change has made `CLAUDE.md` outdated.
+- Lines the diff adds under docs/ that cite a decision, a choice, a note, a PR, a version
+  or a date: open each cited target and compare. A citation that misstates a decision, a
+  choice or a ROADMAP Status or Order is non-compliant; any other mismatch is a nit.
+
 
 ## Do not report
 Generated files, anything under `changes/*/evidence/`, and anything CI already enforces

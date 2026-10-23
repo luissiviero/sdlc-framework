@@ -163,6 +163,8 @@ def cmd_review(args, env: dict[str, str] | None = None) -> int:
     from ci import run_phase  # noqa: PLC0415
 
     env = dict(os.environ if env is None else env)
+    for var in run_phase.SESSION_HIDDEN_VARS:  # R8: never the session's (1.0.17 copies)
+        env.pop(var, None)
     root = Path(args.root).resolve()
     plugin_dir = Path(args.plugin_dir).resolve()
     if not (plugin_dir / "plugin" / "ci" / "settings.ci.json").is_file():
@@ -186,7 +188,9 @@ def cmd_review(args, env: dict[str, str] | None = None) -> int:
         return EXIT_OK
     if out_path.exists():
         out_path.unlink()  # a findings file left from an earlier run is never read as this one
-    data, raw, err, code = run_phase.invoke(argv, root, env, run_phase.run_timeout_seconds(config))
+    data, raw, err, code = run_phase.invoke(
+        argv, root, env, run_phase.run_timeout_seconds(config, "scan")
+    )
     record = _resolve(root, args.run_record)
     run_phase.store_result(root, "scan", data, raw, record)
     if (err or "").strip():
@@ -239,8 +243,15 @@ def cmd_route(args) -> int:
     out["skipped"] = [_brief(f) for f in skipped]
     out["dismissed"] = sum(1 for f in skipped if f.get("skip_reason") == "dismissed")
     if to_file and not args.dry_run:
-        from ci import run_phase  # noqa: PLC0415
+        from ci import app_token, run_phase  # noqa: PLC0415
 
+        missing = app_token.app_missing(os.environ)
+        if missing:
+            # R22: the project's App is required; nothing is filed with the workflow token
+            out["problems"] = [*out["problems"], missing]
+            _github_output({"filed": 0})
+            _emit(out)
+            return EXIT_FAILED
         run_phase.ensure_git_identity(root)
     results = route_mod.file_findings(
         root,

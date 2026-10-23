@@ -42,6 +42,16 @@ SEEN_FILE = c.REVIEW_SEEN_FILE  # changes/.review-seen.json: the project's recor
 PROPOSALS_FILE = "claude-md-proposals.md"  # evidence/: the lines the PR description quotes
 CHECK_RUN_NAME = "sdlc/review"
 
+
+def allowed_after_review(path: str, change_dir_rel: str) -> bool:
+    """A path a commit after the reviewed one may touch (decision 36, point 2; R22): the
+    change's ``evidence/``, its ``status.yaml`` (the run record and the gate record) and
+    ``changes/.review-seen.json``, which ``commit-phase`` carries with the change."""
+    p = str(path).replace("\\", "/")
+    base = str(change_dir_rel).replace("\\", "/").rstrip("/")
+    return p.startswith(f"{base}/evidence/") or p in (f"{base}/status.yaml", c.review_seen_rel())
+
+
 SUMMARY_MAX = 80  # characters of the normalised summary that go into a signature
 SIGNATURE_LEN = 16  # hex characters of the sha1 kept
 

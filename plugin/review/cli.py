@@ -22,6 +22,7 @@ from __future__ import annotations
 import argparse
 import importlib
 import json
+import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -103,6 +104,58 @@ def render_prompt(
     )
 
 
+RISK_SECTION = """
+## Risk-list items this change touches (decision 35)
+A risk-list hit does not park the change: it is a line of the "Needs your close look" banner
+on this pull request, and the owner's approving review accepts it
+(decision 36). You brief the owner on each item
+below, in a second file, `{brief}`, one section per item, its name exactly as listed:
+
+```markdown
+# Security & policy brief, gate (e)
+
+## <item>
+- Word: continue
+- What the change does to it: <one or two sentences, with the files>
+- What could break: <one or two sentences>
+- How to undo it: <one or two sentences>
+```
+
+Your word on an item is `continue` or `escalate`; you never accept a risk. Escalate on an
+item only for what is an Important finding anyway, and report that finding too: an
+escalation on a risk item parks the change for the owner and never goes to the review panel.
+
+{items}
+"""
+
+
+def risk_section(root: Path, change_id: str, base: str | None) -> str:
+    """The prompt's last section when the committed diff touches risk-list items (decision
+    35): the items gate (e) will report, with where each matched, and the brief file the
+    pass writes for them; "" when nothing hits or the hits cannot be read (the gate reports
+    them anyway, and the banner then says no brief was written)."""
+    from gate import gate as gate_mod  # noqa: PLC0415
+
+    try:
+        found = gate_mod.risk_hits_now(root, change_id, "e", base)
+    except Exception:  # noqa: BLE001 - the prompt never fails on the risk read
+        return ""
+    hits = found.get("hits") or {}
+    if not hits:
+        return ""
+    accepted = {str(a).lower() for a in found.get("accepted") or []}
+    lines = [
+        f"- `{item}`: {', '.join(where[:5])}"
+        + (
+            " (accepted earlier; brief it for what this change does now)"
+            if item.lower() in accepted
+            else ""
+        )
+        for item, where in hits.items()
+    ]
+    return RISK_SECTION.format(brief=found.get("brief"), items="\n".join(lines))
+
+
 def cmd_prompt(args) -> int:
     loaded = _change(args)
     if loaded is None:
@@ -120,6 +173,7 @@ def cmd_prompt(args) -> int:
         root=_posix(root),
         change_dir=_posix(change_dir),
     )
+    text = text.rstrip("\n") + "\n" + risk_section(root, st.id, args.base)
     sys.stdout.write(text if text.endswith("\n") else text + "\n")
     return EXIT_OK
 
@@ -217,6 +271,34 @@ def cmd_validate(args) -> int:
 
 
 # --- check-run --------------------------------------------------------------------------------
+def _not_evidence_since(root: Path, change_dir: Path, reviewed: str, final: str) -> str:
+    """ "" when ``final`` is ``reviewed`` or follows it with only evidence and the run record
+    (``findings.allowed_after_review``), else the reason the check is not green there."""
+    if not reviewed or not final:
+        return "the reviewed commit or the final head is unknown"
+    if reviewed == final:
+        return ""
+    if not diffmod.is_ancestor(root, reviewed, final):
+        return f"the final head {final[:10]} does not follow the reviewed {reviewed[:10]}"
+    rel = str(Path(change_dir).resolve().relative_to(Path(root).resolve())).replace("\\", "/")
+    # every path a commit touched, a rename's both sides and a type change included (the R22
+    # review, finding 3: git's default rename detection lists only the new path)
+    try:
+        out = subprocess.run(
+            ["git", "diff", "--name-only", "--no-renames", "-z", f"{reviewed}..{final}"],
+            cwd=str(root), capture_output=True, text=True, encoding="utf-8", timeout=120,
+        )  # fmt: skip
+    except (OSError, subprocess.SubprocessError) as exc:
+        return f"the commits after the reviewed one could not be listed: {exc}"
+    if out.returncode != 0:
+        return "the commits after the reviewed one could not be listed"
+    files = [f for f in out.stdout.split("\0") if f]
+    other = [f for f in files if not fmod.allowed_after_review(f, rel)]
+    if other:
+        return f"commits after the reviewed {reviewed[:10]} change: {', '.join(other[:5])}"
+    return ""
+
+
 def cmd_check_run(args) -> int:
     """Publish the tally as the ``sdlc/review`` check run. It never fails the run: with no
     GitHub route (no remote, no ``pr/github.py``, no credentials) the summary was already
@@ -235,7 +317,19 @@ def cmd_check_run(args) -> int:
     conclusion = "success" if tally["important"] == 0 else "failure"
     title = f"{tally['important']} Important, {tally['nit']} nits"
     summary = fmod.render_summary(data)
-    head = str(data.get("head") or diffmod.head_sha(root) or "")
+    reviewed = str(data.get("head") or "")
+    head = str(reviewed or diffmod.head_sha(root) or "")
+    if getattr(args, "final_head", False):
+        # R22 (decision 36, point 3): the runner posts the check again on the build PR's
+        # final head, after its own last commit; green only while every commit after the
+        # reviewed one is evidence or the run record, which is what the merge step accepts
+        final = diffmod.head_sha(root) or ""
+        later = _not_evidence_since(root, change_dir, reviewed, final)
+        if later:
+            conclusion = "failure"
+            title = f"{title}; commits after the reviewed one"
+            summary = f"{summary}\n\n{later}"
+        head = final or head
     repo = gitops.github_repo(root) if gitops.is_repo(root) else None
     if not repo:
         _emit({"route": "none", "reason": "no GitHub remote: nothing to post the check run to"})
@@ -298,6 +392,12 @@ def build_parser() -> argparse.ArgumentParser:
             )
         if name == "check-run":
             s.add_argument("--phase", default="e", choices=c.PHASES)
+            s.add_argument(
+                "--final-head",
+                action="store_true",
+                help="post on HEAD, green only if every commit since the reviewed one is "
+                "evidence or the run record (the runner, at (e))",
+            )
         s.set_defaults(fn=fn)
     return p
 

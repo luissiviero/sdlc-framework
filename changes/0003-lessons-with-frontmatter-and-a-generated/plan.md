@@ -37,7 +37,11 @@
   field; `evals/cases/<id>-<slug>/prompt.md` and `checks.yaml` both exist;
   `plugin/lessons/index.py check` passes; a
   `supersedes` target that does not exist fails, and so does one whose `status` did not
-  move to `retired`; a `status` outside `stable | retired` fails. Each problem is one line,
+  move to `retired`; a `supersedes` value that is not a bare lesson file name matching
+  `[0-9][0-9][0-9][0-9]-[0-9][0-9]-*.md` (`Path(value).name == value`) — an absolute path, a
+  path that climbs outside `lessons/`, or the lesson's own name — fails too, with a message
+  that never repeats the target file's content or parser error (fix round, PR #132); a
+  `status` outside `stable | retired` fails. Each problem is one line,
   joined with `"\n    "` (a newline and four spaces) into the single `CheckResult.need` the
   existing "what I need from you" rendering (`gate.py:76-79`, which prints
   `  - what I need: <need>` for one line) already prints per failed check, so every later
@@ -78,8 +82,11 @@
   `tests/test_scaffold.py::test_marketplace_points_at_repo_root`, `test_scaffold.py:41-47`).
 - `tests/test_lessons.py` (new) — the index builder: ordering by first tag, newest-first
   within a heading, `## Retired` before `## Unsorted`; `README.md` and `index.md` present on
-  disk and excluded from the build; a lesson with malformed frontmatter listed under
-  `## Unsorted` with no crash; a zero-lesson tree; the `(stale)` marker with `--today` and
+  disk and excluded from the build; a lesson with malformed frontmatter, a non-UTF-8 lesson
+  file, and a `detected.at`/`stale_after` value present but not date-shaped (wrong type, or
+  a month/day out of range — fix round, PR #132), each listed under
+  `## Unsorted` with no crash; a direct check that `_month_label`/`_date_only` never raise
+  on a bad-shaped input; a zero-lesson tree; the `(stale)` marker with `--today` and
   its removal before `check` compares; a drifted index's exit 1 and diff, including a
   byte-identical index written with CRLF line endings still passing `check`; class
   normalisation (`flaky-test`/`flaky_test`/`Flaky Test` sharing one heading).
@@ -91,7 +98,9 @@
   field, `prompt.md` or `checks.yaml`
   missing, a failing
   `index.py check`, a dangling `supersedes`, a `supersedes` target whose `status` did not
-  move to `retired`, an out-of-enum `status`), each asserting the whole rendered "what I
+  move to `retired`, an out-of-enum `status`, and a `supersedes` value that is not a bare
+  lesson file name — outside `lessons/`, absolute, or the lesson's own name, fix round PR
+  #132), each asserting the whole rendered "what I
   need from you" block, each problem on its own indented line; one unit test calling
   `lesson_and_eval` directly with a phase-(f) incident context and asserting it passes, so
   the guard itself is proven and not only its registration; plus a regression case
@@ -107,11 +116,13 @@
    split, `build` and `check`, and
    `tests/test_lessons.py` in the same commit (coding-standards rule 4: no behavior change
    without a test that fails without it).
-2. `plugin/gate/artifacts.py` + `plugin/gate/checks.py`'s new `lesson_and_eval` check (eight
+2. `plugin/gate/artifacts.py` + `plugin/gate/checks.py`'s new `lesson_and_eval` check (nine
    fail cases: missing lesson, two lesson files matching the glob, missing a required
    frontmatter field, `prompt.md` or
    `checks.yaml` missing, a failing `index.py check`, a dangling `supersedes`, a `supersedes` target whose
-   `status` did not move to `retired`, an out-of-enum `status`), and the matching new cases
+   `status` did not move to `retired`, an out-of-enum `status`, a `supersedes` value that is
+   not a bare lesson file name — outside `lessons/`, absolute, or the lesson's own name —
+   fix round, PR #132), and the matching new cases
    in `tests/test_gate.py`, in the same commit — this is the riskiest step (see Risks) and
    should land as its own reviewable unit, not folded into step 1 or 3.
 3. `plugin/commands/sdlc-deploy.md` step 0b and `plugin/commands/sdlc-maintain.md` step 1,
@@ -129,7 +140,7 @@
 1. **What this could break.** Every project pinned to this plugin version going forward:
    `/sdlc-deploy` step 0b (writes a lesson differently), `/sdlc-maintain` step 1 (reads
    `lessons/` differently), and gate (e) for any `entry_route: incident` change (one new way
-   to park, with up to eight reasons). No caller is touched retroactively: a project stays
+   to park, with up to nine reasons). No caller is touched retroactively: a project stays
    on its pinned version until it bumps it (decision 8), and the sample repository is frozen
    at 0.2.30 until item 11 of `HANDOFF.md` — not a caller of this version at all right now.
    No database schema or stored row is touched; the only data shapes are the markdown
@@ -153,7 +164,8 @@
    field, `prompt.md` or `checks.yaml`
    missing, a failing
    `index.py check`, a dangling `supersedes`, a `supersedes` target whose `status` did not
-   move to `retired`, an out-of-enum `status`) individually, plus the existing gate (f) case
+   move to `retired`, an out-of-enum `status`, a `supersedes` value that is not a bare
+   lesson file name) individually, plus the existing gate (f) case
    (`test_gate_f_waits_for_the_owner_s_triage_with_the_finding_and_its_route`,
    `test_gate.py:2341-2354`) still passing unchanged, so a regression in the new check or its
    guard fails its own assertion, not just the suite in general.
@@ -223,7 +235,8 @@
 ## Proof
 - `tests/test_lessons.py` (new, to be written): ordering by first tag, newest-first within a
   heading, `## Retired` before `## Unsorted`, `README.md`/`index.md` excluded, a malformed
-  frontmatter file under `## Unsorted` with no crash, a zero-lesson tree, the `(stale)`
+  frontmatter file, a non-UTF-8 lesson file and a bad-shaped `detected.at`/`stale_after`
+  value each under `## Unsorted` with no crash, a zero-lesson tree, the `(stale)`
   marker with `--today` and its removal before comparing, `check` exit 0 on a built index
   (CRLF included) and exit 1 with a diff on a drifted one, class normalisation
   (`flaky-test`/`flaky_test`/`Flaky Test` sharing one heading), and a lesson
@@ -234,7 +247,9 @@
   all-present pass case and each new fail case (missing lesson, two lesson files matching
   the glob, missing frontmatter field,
   `prompt.md` or `checks.yaml` missing, failing `index.py check`, dangling `supersedes`, a `supersedes`
-  target whose `status` did not move to `retired`, out-of-enum `status`), each asserting the
+  target whose `status` did not move to `retired`, out-of-enum `status`, and a `supersedes`
+  value that is not a bare lesson file name — outside `lessons/`, absolute, or the lesson's
+  own name), each asserting the
   whole rendered "what I need from you" block with one problem per indented line; one unit
   test calling `lesson_and_eval` directly with a phase-(f) incident context asserting it
   passes, proving the guard itself and not only its registration; plus confirming

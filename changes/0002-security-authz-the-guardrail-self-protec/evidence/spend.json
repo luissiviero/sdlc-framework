@@ -1,0 +1,113 @@
+{
+  "entries": [
+    {
+      "at": "2026-10-08T16:38:50Z",
+      "run": "b",
+      "source": "claude-b.json",
+      "usd": 2.3968262
+    },
+    {
+      "at": "2026-10-09T02:12:01Z",
+      "run": "fix",
+      "source": "claude-fix.json",
+      "usd": 3.3359129999999992
+    },
+    {
+      "at": "2026-10-09T02:36:20Z",
+      "run": "fix",
+      "source": "claude-fix-2.json",
+      "usd": 1.5477903999999998
+    },
+    {
+      "at": "2026-10-09T03:16:00Z",
+      "run": "fix",
+      "source": "claude-fix-3.json",
+      "usd": 0.49259660000000005
+    },
+    {
+      "at": "2026-10-09T03:38:08Z",
+      "run": "fix",
+      "source": "claude-fix-4.json",
+      "usd": 4.595167699999999
+    },
+    {
+      "at": "2026-10-09T05:12:17Z",
+      "run": "c",
+      "source": "claude-c.json",
+      "usd": 17.064525699999994
+    },
+    {
+      "at": "2026-10-09T07:49:56Z",
+      "run": "c",
+      "source": "claude-c-2.json",
+      "usd": 0.5019698
+    },
+    {
+      "at": "2026-10-09T09:54:01Z",
+      "run": "fix",
+      "source": "claude-fix-5.json",
+      "usd": 4.333259249999999
+    },
+    {
+      "at": "2026-10-09T10:51:28Z",
+      "run": "fix",
+      "source": "claude-fix-6.json",
+      "usd": 10.846482800000004
+    },
+    {
+      "at": "2026-10-09T11:04:38Z",
+      "run": "d",
+      "source": "claude-d.json",
+      "usd": 1.7696836999999996
+    },
+    {
+      "at": "2026-10-09T11:15:39Z",
+      "run": "review",
+      "source": "claude-review.json",
+      "usd": 1.4325448000000003
+    },
+    {
+      "at": "2026-10-09T11:24:25Z",
+      "run": "e",
+      "source": "claude-e.json",
+      "usd": 1.8177459
+    },
+    {
+      "at": "2026-10-09T12:27:51Z",
+      "run": "fix",
+      "source": "claude-fix-7.json",
+      "usd": 0.6421490000000002
+    },
+    {
+      "at": "2026-10-09T15:54:39Z",
+      "run": "fix",
+      "source": "claude-fix-8.json",
+      "usd": 11.000252100000004
+    },
+    {
+      "at": "2026-10-12T08:20:35Z",
+      "run": "fix",
+      "source": "claude-fix-9.json",
+      "usd": 5.727254500000001
+    },
+    {
+      "at": "2026-10-12T09:01:15Z",
+      "run": "fix",
+      "source": "claude-fix-10.json",
+      "usd": 5.175804899999998
+    },
+    {
+      "at": "2026-10-12T09:58:26Z",
+      "run": "fix",
+      "source": "claude-fix-11.json",
+      "usd": 4.081536400000001
+    },
+    {
+      "at": "2026-10-12T11:39:17Z",
+      "run": "fix",
+      "source": "claude-fix-12.json",
+      "usd": 7.925284299999999
+    }
+  ],
+  "total_usd": 84.686787
+}

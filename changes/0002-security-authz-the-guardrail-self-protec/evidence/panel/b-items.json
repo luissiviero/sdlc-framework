@@ -1,0 +1,58 @@
+{
+  "decided": 0,
+  "gate": "park",
+  "items": [
+    {
+      "decided": false,
+      "item": "Risk list: **auth**. This change is an authorization control top to bottom (closing a gap",
+      "key": "concern:2447697a53e298a8",
+      "kind": "concern",
+      "n": 1
+    },
+    {
+      "decided": false,
+      "item": "`secrets_check.py` is examined but not changed here. Its control is a content scan",
+      "key": "concern:91a68583599ab793",
+      "kind": "concern",
+      "n": 2
+    },
+    {
+      "decided": false,
+      "item": "The fix is heuristic command-text parsing, the same kind `production_gate.py` already",
+      "key": "concern:0f791cd41344c665",
+      "kind": "concern",
+      "n": 3
+    },
+    {
+      "decided": false,
+      "item": "adversarial reviewer says escalate: plan.md's Order of work step 8 and Proof section both instruct running `python evals/check.py --case \"0006-*\"` to prove the new eval case passes, but `evals/check.py` does not exist anywhere in this repository (confirmed: no such file at the root, and docs/progress/session-5.md item 10 records this exact mistake as a previously-fixed 'medium' finding -- 'no evals/check.py here... the copy removed; framework-evals.yml is this repository's' -- so the design pass has reintroduced a known-wrong command). The correct invocation for this repo, matching .github/workflows/framework-evals.yml and spec.md's own Acceptance line ('passes under plugin/evals/run.py'), is `python plugin/evals/run.py --fixture --case \"0006-*\"`. spec.md and plan.md now disagree on the command that proves the same acceptance requirement, and plan.md repeats the wrong one twice; following plan.md literally in phase (c) would fail or force an undocumented departure from the plan it is supposed to pin down.",
+      "key": "escalate:4cb0d65709d9f0a1",
+      "kind": "escalate",
+      "n": 4
+    }
+  ],
+  "iterations": {
+    "cap": 2,
+    "left": 2,
+    "used": 0
+  },
+  "mode": "parked",
+  "panel_calls": {
+    "cap": 4,
+    "left": 4,
+    "used": 0
+  },
+  "parks": [
+    {
+      "check": "risk_list",
+      "reason": "risk-list hit: 'auth' in spec.md Flagged concerns: text"
+    }
+  ],
+  "pending": [
+    1,
+    2,
+    3,
+    4
+  ],
+  "phase": "b"
+}

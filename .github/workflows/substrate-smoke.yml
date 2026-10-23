@@ -1,10 +1,10 @@
 # First proof of the execution substrate (build guide step 3, decision 1; step 30's
 # "start with the copy-paste-ready read-only step", article p.41). Dispatch only: it never
 # runs on its own. It installs the pinned Claude Code CLI and runs .github/scripts/
-# substrate_smoke.py, which takes whichever repository secret exists — ANTHROPIC_API_KEY
-# (bare mode, billed per token; preferred when both are set) or CLAUDE_CODE_OAUTH_TOKEN (the
-# owner's subscription) — runs one headless turn under a per-run budget, and prints the cost
-# and the model the CLI reports. Facts and quotes behind every flag are in docs/NOTES.md sections 2 and 10b.
+# substrate_smoke.py, which takes whichever repository secret exists — CLAUDE_CODE_OAUTH_TOKEN
+# (the owner's subscription; preferred when both are set, decision 38) or ANTHROPIC_API_KEY
+# (bare mode, billed per token) — runs one headless turn under a per-run budget, and prints the cost
+# and the model the CLI reports. Facts and quotes behind every flag are in docs/notes/2.md and docs/notes/10.md (10b).
 name: Substrate smoke test
 
 on:

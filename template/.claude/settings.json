@@ -9,6 +9,12 @@
       "Edit(/CLAUDE.md)",
       "Edit(/REVIEW.md)",
       "Edit(/sdlc.yaml)",
+      "Edit(/.github/workflows/**)",
+      "Edit(/CLAUDE.local.md)",
+      "Edit(/.mcp.json)",
+      "Edit(/.git/config)",
+      "Edit(/.git/hooks/**)",
+      "Edit(/policies/**)",
       "WebFetch",
       "Bash(curl *)",
       "Bash(wget *)"

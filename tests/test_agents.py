@@ -76,7 +76,8 @@ def test_adversarial_verdict_example_matches_the_gate_reader(tmp_path):
     m = re.search(r"```json\n(.*?)\n```", body, re.S)
     assert m
     example = json.loads(m.group(1))
-    for key in ("schema_version", "phase", "head", "verdict", "reasons", "classification", "at"):
+    # R7: no "at" - the reviewer has no clock; the panel_blind hook records the time
+    for key in ("schema_version", "phase", "head", "verdict", "reasons", "classification"):
         assert key in example, key
     path = tmp_path / "adversarial-review-c.json"
     path.write_text(json.dumps(example), encoding="utf-8")
@@ -94,7 +95,7 @@ def test_adversarial_reviewer_has_no_shell_and_reads_the_given_diff_and_sha():
     tools = [t.strip() for t in fm["tools"].split(",")]
     assert tools == ["Read", "Grep", "Glob", "Write"]
     assert "Bash" not in fm["tools"] and fm.get("disallowedTools") == "Edit"
-    assert fm["model"] == "inherit"
+    assert fm["model"] == "opus"  # R7: was inherit
     text = " ".join(body.split())
     assert "evidence/diff-<phase>.patch" in text
     assert "HEAD's full commit sha" in text
@@ -107,6 +108,14 @@ def test_adversarial_reviewer_has_no_shell_and_reads_the_given_diff_and_sha():
     assert "2026-09-21" in text  # the fifth live run's example stays
 
 
+def test_adversarial_reviewer_skip_marker_angle_present():
+    _, body = frontmatter(AGENTS / "adversarial-reviewer.md")
+    text = " ".join(body.split())
+    assert "7. **Skip markers**" in text
+    assert "ratchets" in text and "details.skip_markers" in text
+    assert "phases (c) and (d)" in text
+
+
 def test_adversarial_verdict_still_carries_head(tmp_path):
     """The verdict keeps its mandatory `head`: without it the gate rejects the file."""
     _, body = frontmatter(AGENTS / "adversarial-reviewer.md")
@@ -117,3 +126,16 @@ def test_adversarial_verdict_still_carries_head(tmp_path):
     path.write_text(json.dumps(example), encoding="utf-8")
     data, error = checks.load_verdict(path)
     assert error, "a verdict without head must be rejected"
+
+
+def test_the_adversarial_reviewer_runs_on_opus_with_room_and_checks_today_s_code():
+    """ROADMAP R7: Opus by default (the phase commands pass the alias of sdlc.yaml:
+    adversarial_model), 80 turns, an angle that checks the design's claims against the code
+    before the change, and no invented ``at`` time (the panel_blind hook records the real
+    one beside the verdict)."""
+    fm, body = frontmatter(AGENTS / "adversarial-reviewer.md")
+    assert fm["model"] == "opus" and int(fm["maxTurns"]) == 80
+    flat = " ".join(body.split())
+    assert "8. **Claims against today's code**" in flat
+    assert "Read every file `plan.md` lists" in flat and "docs/decisions/index.md" in flat
+    assert '"at"' not in body and "adversarial-review-<phase>.model.json" in body

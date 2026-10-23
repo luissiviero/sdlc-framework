@@ -3,19 +3,22 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 import pytest
 
-from init import render
+from gate import limits, preflight
+from init import render, sdlc_init
 from state import yamlish
 
 TEMPLATE = Path(__file__).resolve().parents[1] / "template"
+# R60's port in R44: the template's actions, each pinned to the commit of its tested tag
+CHECKOUT = "actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09"  # v5.1.0
+APP_TOKEN_ACTION = "actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349"
 
 VALUES = {
     "PROJECT_NAME": "demo",
-    "PROFILE": "standard",
-    "REVIEW": "parked",
     "BUILD_CMD": "python -m build",
     "TEST_CMD": "python -m pytest",
     "LINT_CMD": "python -m ruff check .",
@@ -34,8 +37,15 @@ VALUES = {
     "TEST_RULE": "Bash(python -m pytest *)",
     "LINT_RULE": "Bash(python -m ruff *)",
     "TEST_PATHS": '  - "tests/**"\n  - "**/test_*.py"',
+    # decision 35: what /sdlc-init renders for a project with no folder a default glob matches
+    "RISK_LIST": '  - "auth"\n  - "data migrations"\n  - "money movement"\n  - "production config"',
     "FRAMEWORK_REPO": "luissiviero/sdlc-framework",
-    "CLAUDE_CODE_VERSION": "2.1.278",
+    "CLAUDE_CODE_VERSION": "2.1.304",
+    # R61 and R33 (1.0.29): what /sdlc-init renders for a Python project with nothing to add
+    "ALLOWED_DOMAINS": "[]",
+    "PROTECTED_PATHS": "[]",
+    "FORMATTERS": " []",
+    "COMMANDS_ENV": "[]",
 }
 
 
@@ -87,6 +97,12 @@ def test_review_md_structure():
         in text
     )
     assert "Report at most five nits per review" in text
+
+
+def test_review_md_skip_marker_rule_present():
+    text = (TEMPLATE / "REVIEW.md").read_text(encoding="utf-8")
+    assert "ratchets" in text and "details.skip_markers" in text
+    assert "gate (e)" in text
     # rules added by the guide (step 26 notes; step 7 (iv); step 25; step 12)
     flat = " ".join(text.split())
     assert ".claude/**" in flat and "must not modify test files" in flat and "plan.md" in flat
@@ -94,20 +110,20 @@ def test_review_md_structure():
 
 def test_sdlc_yaml_renders_to_documented_keys():
     data = yamlish.loads(render.render_file(TEMPLATE / "sdlc.yaml", VALUES))
-    assert data["profile"] == "standard"
-    # decision 21 (0.2.14): the review mode and the devil's advocate's model
-    assert data["review"] == "parked" and data["panel_advocate_model"] == "opus"
-    assert "lite" not in render.render_file(TEMPLATE / "sdlc.yaml", VALUES).split("review:")[
-        0
-    ].replace("(lite, gates (a) and (e) only, was withdrawn", "").replace(
-        "that still says lite reads as standard", ""
-    )
+    # decision 37 (1.0.21): one profile and one review mode, so neither key is written
+    assert "profile" not in data and "review" not in data
+    # R7: the session's, the reviewer's and the devil's advocate's models (the advocate on
+    # another model than the session)
+    assert data["panel_advocate_model"] == "claude-fable-5-1"
+    assert data["session_model"] == "claude-opus-5-5"
+    assert data["adversarial_model"] == "claude-opus-5-5"
     assert data["commands"] == {
         "build": "python -m build",
         "test": "python -m pytest",
         "lint": "python -m ruff check .",
         # step 30: the one-command install the CI phase jobs run before the phase
         "setup": "python -m pip install pytest ruff",
+        "env": [],  # R61: the secrets the targets need, none here
     }
     # step 29 / 32: the release workflow's command and the production-gate hook's patterns
     assert data["deploy"] == {
@@ -119,16 +135,48 @@ def test_sdlc_yaml_renders_to_documented_keys():
     assert (
         data["maintain"]["metric"] == "ci_test_failure_rate" and data["maintain"]["runbooks"] == []
     )
+    # decision 35: a plain item, or {item, paths} where /sdlc-init found a matching folder
     assert data["risk_list"] == ["auth", "data migrations", "money movement", "production config"]
     assert data["test_paths"] == ["tests/**", "**/test_*.py"]  # step 25: the test-file lock
     assert data["protected_paths"] == [] and data["plan_sync"]["exempt"] == ["*.md"]
-    assert data["hooks"]["format_on_edit"] is True
+    # R33: one behaviour, on; the project's own formatters per file type (none here: ruff)
+    assert data["hooks"] == {"formatters": []}
+    assert data["sandbox"] == {"allowed_domains": []}  # R61: PyPI and npm are in the base list
     assert data["plugin"] == {
         "name": "sdlc",
         "marketplace": "sdlc-framework",
         "version": VALUES["PLUGIN_VERSION"],
         "claude_code": VALUES["CLAUDE_CODE_VERSION"],  # step 30: the CLI the workflows pin
     }
+
+
+def test_sdlc_yaml_carries_decision_32_s_defaults():
+    """Decision 32 (1.0.8), as decision 37 narrowed it: deferred review is the only mode and
+    the template says so with no key to set; the build run and every fix round have their own
+    caps, named explicitly, and the per-change budget cap is 150 USD; NOTES 45 gap 5."""
+    from init import sdlc_init
+
+    # an older command line still parses: the two retired options are accepted and ignored
+    assert sdlc_init.build_parser().parse_args(["--profile", "full", "--review", "parked"])
+    text = render.render_file(TEMPLATE / "sdlc.yaml", VALUES)
+    block = text.split("# --- the gates and judgment calls", 1)[1].split("# --- models", 1)[0]
+    assert "decision 37" in block and "goes to a review panel" in block
+    assert "\nreview:" not in text and "\nprofile:" not in text
+    gate = yamlish.loads(text)["gate"]
+    assert gate["max_turns"] == 200 and gate["max_wall_clock_minutes"] == 120
+    assert gate["build_max_turns"] == 400 and gate["build_max_wall_clock_minutes"] == 180
+    assert gate["max_budget_usd"] == 150
+    assert limits.run_caps(gate, True) == (400, 180) and limits.run_caps(gate, False) == (200, 120)
+    for name in ALL_WORKFLOWS:
+        text = (WORKFLOW_DIR / name).read_text(encoding="utf-8")
+        text = text.split("\n  second-opinion:")[0]  # R8's job after the phase job: 20 minutes
+        minutes = re.findall(r"(?m)^    timeout-minutes: (\d+)$", text)
+        if name in ("sdlc-build.yml", FIX_WORKFLOW):
+            assert minutes == ["260"], name  # 180 + 5 of grace, the commands step and the judge
+        elif name in ("sdlc-design.yml", "sdlc-test.yml"):
+            assert minutes == ["200"], name
+        elif name == "sdlc-deploy.yml":  # the review pass, (e) and one re-check (R25, R51)
+            assert minutes == ["355"], name
 
 
 def test_sdlc_yaml_also_parses_with_pyyaml():
@@ -142,8 +190,8 @@ def test_settings_json_contract():
     deny = data["permissions"]["deny"]
     for rule in ["Read(.env*)", "Read(./secrets/**)", "WebFetch", "Bash(curl *)", "Bash(wget *)"]:
         assert rule in deny  # article p.37
-    for rule in ["Edit(/.claude/**)", "Edit(/CLAUDE.md)", "Edit(/REVIEW.md)", "Edit(/sdlc.yaml)"]:
-        assert rule in deny  # second layer under the protected-path hook
+    for rule in preflight.REQUIRED_DENY:
+        assert rule in deny  # second layer under the protected-path hook; the preflight checks it
     assert not any(r.startswith("Write(") for r in deny), (
         "Write() path rules are ignored by Claude Code"
     )
@@ -196,16 +244,20 @@ DETECT_WORKFLOW = "sdlc-detect.yml"  # build guide step 37, decisions 14/15/26 (
 RUNBOOK_WORKFLOW = "sdlc-runbook.yml"  # the owner's Go on a runbook (plugin 0.2.19)
 EVALS_WORKFLOW = "sdlc-evals.yml"  # build guide step 35 (plugin 0.2.19)
 SCAN_WORKFLOW = "sdlc-scan.yml"  # build guide step 38, decision 16 (plugin 0.2.19)
+COMMENT_WORKFLOW = "sdlc-comment.yml"  # the owner's @claude comment (decision 34, R17)
+MERGE_WORKFLOW = "sdlc-merge.yml"  # gate (e) is the owner's approval (decision 36, R22)
 ALL_WORKFLOWS = (
     *PHASE_WORKFLOWS,
     "sdlc-digest.yml",
     RELEASE_WORKFLOW,
     FIX_WORKFLOW,
+    COMMENT_WORKFLOW,
     ABANDON_WORKFLOW,
     DETECT_WORKFLOW,
     RUNBOOK_WORKFLOW,
     EVALS_WORKFLOW,
     SCAN_WORKFLOW,
+    MERGE_WORKFLOW,
 )
 # this repository's own installed copies (PR #21) and its substrate smoke test
 REPO_WORKFLOW_DIR = TEMPLATE.parent / ".github" / "workflows"
@@ -258,8 +310,54 @@ def test_this_repository_s_workflow_copies_match_the_template():
             assert not (REPO_WORKFLOW_DIR / name).exists()
             assert (REPO_WORKFLOW_DIR / "framework-evals.yml").is_file()
             continue
+        if name == MERGE_WORKFLOW:
+            # R22 (decision 36): plugin/ci/merge_step.py is not in the framework this
+            # repository's sdlc.yaml pins, and this repository has no merge App yet: the copy
+            # is installed with the pin, as the comment workflow's was
+            assert not (REPO_WORKFLOW_DIR / name).exists()
+            continue
+        if name == COMMENT_WORKFLOW:
+            # R17 (decision 34): the dispatcher calls plugin/ci/comment_dispatch.py, which the
+            # framework this repository's sdlc.yaml pins does not ship, and framework changes
+            # are not run through the pipeline here: the copy is installed with the pin
+            assert not (REPO_WORKFLOW_DIR / name).exists()
+            continue
         installed = (REPO_WORKFLOW_DIR / name).read_text(encoding="utf-8")
-        assert installed == render.render_file(WORKFLOW_DIR / name, VALUES), name
+        # R61: the install drops the commands.env markers when sdlc.yaml names no variable
+        expected = sdlc_init.apply_env_markers(render.render_file(WORKFLOW_DIR / name, VALUES), [])
+        expected = without_r18(name, expected)
+        if name == FIX_WORKFLOW:
+            # R44 (1.0.27): project_setup.py --command-from is not in the framework this
+            # repository's sdlc.yaml pins (1.0.17), so the installed copy keeps the setup line
+            # without it until the pin moves (R14's turn); the rest is the template's
+            expected = expected.replace(COMMAND_FROM, "")
+            assert expected.count("project_setup.py --root .\n") == 1, name
+        assert installed == expected, name
+
+
+COMMAND_FROM = ' --command-from "refs/remotes/origin/$SDLC_DEFAULT_BRANCH"'
+# R18 (plugin 1.0.36): run_phase.py --out, --phase triage --out/--setup and project_setup.py
+# --out are not in the framework this repository's sdlc.yaml pins (1.0.17), so the installed
+# copies keep their steps without them until the pin moves (R14's turn), as for COMMAND_FROM
+R18_BLOCK_RE = re.compile(
+    r"\n      # R18: a failed run explains itself\..*?\n(?=\n      # Build guide step 41\.1)", re.S
+)
+R18_OUTS = (' --out "$RUNNER_TEMP/sdlc-run.json"', ' --out "$RUNNER_TEMP/sdlc-setup.json"')
+
+
+def without_r18(name: str, text: str) -> str:
+    """The template's text as the 1.0.17 pin can run it: R18's triage steps, its ``--out``
+    flags and the step ids it added (``setup``, ``review``, and ``phase`` where the template
+    had none before) left out."""
+    if "--phase triage" not in text:  # a workflow R18 left as it was (the runbook's own setup id)
+        return text
+    text = R18_BLOCK_RE.sub("", text)
+    for out in R18_OUTS:
+        text = text.replace(out, "")
+    ids = ("setup", "review") if name == "sdlc-deploy.yml" else ("setup", "review", "phase")
+    for step_id in ids:
+        text = text.replace(f"        id: {step_id}\n", "")
+    return text
 
 
 FRAMEWORK_CHECKS = "framework-checks.yml"  # this repository's own suite (0.2.28)
@@ -268,7 +366,8 @@ FRAMEWORK_CHECKS = "framework-checks.yml"  # this repository's own suite (0.2.28
 def test_this_repository_runs_its_own_checks_on_linux_and_windows():
     """The 1.0.0 readiness review, group C: no CI job ran this repository's pytest or ruff,
     and the Windows-only code last ran under 657 tests (the owner's PC, session 4). The
-    workflow is not a template: it runs `python tasks.py check` on both platforms on every
+    workflow is not a template: it runs `python tasks.py verify` (choice 253: the build, lint,
+    docs lint and test commands a session runs, since R65's part 4) on both platforms on every
     pull request and every push to main, with python on every run line (CLAUDE.md)."""
     yaml = pytest.importorskip("yaml")
     text = (REPO_WORKFLOW_DIR / FRAMEWORK_CHECKS).read_text(encoding="utf-8")
@@ -278,33 +377,141 @@ def test_this_repository_runs_its_own_checks_on_linux_and_windows():
     assert on["push"]["branches"] == ["main"]
     assert "workflow_dispatch" in on
     assert data["permissions"] == {"contents": "read"}
-    assert data["concurrency"]["cancel-in-progress"] is True
-    assert list(data["jobs"]) == ["check"]
+    assert list(data["jobs"]) == ["platforms", "check", "check-windows-shard", "check-windows"]
     job = data["jobs"]["check"]
+    windows = data["jobs"]["check-windows-shard"]
     jobs = {(entry["os"], entry["python"]) for entry in job["strategy"]["matrix"]["include"]}
+    python = windows["steps"][1]["with"]["python-version"]
+    jobs.add((windows["runs-on"], python))
     # both platforms on one interpreter, plus the oldest Python pyproject supports
     assert jobs == {
         ("ubuntu-latest", "3.12"),
         ("windows-latest", "3.12"),
         ("ubuntu-latest", "3.10"),
     }
+    assert data["jobs"]["check-windows"]["name"] == "check (windows-latest, 3.12)"  # old name
     assert job["strategy"]["fail-fast"] is False
     assert job["runs-on"] == "${{ matrix.os }}"
-    assert job["timeout-minutes"] >= 30  # the Windows run of 657 tests took 17.5 minutes
-    steps = job["steps"]
-    uses = [step["uses"] for step in steps if "uses" in step]
-    assert uses[0].startswith("actions/checkout@")
-    python_steps = [s for s in steps if s.get("uses", "").startswith("actions/setup-python@")]
-    assert len(python_steps) == 1
-    assert python_steps[0]["with"]["python-version"] == "${{ matrix.python }}"
-    assert data["concurrency"]["group"] == (
-        "framework-checks-${{ github.event.pull_request.number || github.ref }}"
-    )
-    assert all("${{" not in step.get("run", "") for step in steps)  # never in a run line
-    runs = [step["run"] for step in steps if "run" in step]
-    assert runs == ['python -m pip install -e ".[dev]"', "python tasks.py check"]
+    for each in (job, windows):
+        assert each["timeout-minutes"] >= 30  # the Windows run of 657 tests took 17.5 minutes
+        steps = each["steps"]
+        uses = [step["uses"] for step in steps if "uses" in step]
+        assert uses[0].startswith("actions/checkout@")
+        setup = [s for s in steps if s.get("uses", "").startswith("actions/setup-python@")]
+        assert len(setup) == 1
+        assert all("${{" not in step.get("run", "") for step in steps)  # never in a run line
+        runs = [step["run"] for step in steps if "run" in step]
+        assert runs == [
+            "python .github/scripts/framework_checks_runner.py",  # choice 235: speed only
+            'python -m pip install -e ".[dev]"',
+            "python tasks.py verify",
+        ]
+    assert job["steps"][1]["with"]["python-version"] == "${{ matrix.python }}"
+    shard = {"FRAMEWORK_TEST_SHARD": "${{ matrix.shard }}/3"}
+    assert windows["steps"] == [
+        {**s, "with": {"python-version": "3.12"}}
+        if "setup-python" in s.get("uses", "")
+        else {**s, "env": shard}
+        if s.get("run") == "python tasks.py verify"
+        else s
+        for s in job["steps"]
+    ]
     assert not (WORKFLOW_DIR / FRAMEWORK_CHECKS).exists()  # not installed into projects
     assert FRAMEWORK_CHECKS not in ALL_WORKFLOWS
+
+
+def test_main_runs_of_this_repository_s_checks_are_never_cancelled():
+    """The batch ci revision, 10.1: a merge cancelled the run of the merge before it, so the
+    suite never finished on the commit v0.3.6 names (run #279). A pull request's runs are
+    keyed by its number and cancel each other; every other run is keyed by its commit and
+    never cancelled, so a third merge cannot replace the second's pending run either."""
+    yaml = pytest.importorskip("yaml")
+    data = yaml.safe_load((REPO_WORKFLOW_DIR / FRAMEWORK_CHECKS).read_text(encoding="utf-8"))
+    assert data["concurrency"] == {
+        "group": "framework-checks-${{ github.event.pull_request.number || github.sha }}",
+        "cancel-in-progress": "${{ github.event_name == 'pull_request' }}",
+    }
+
+
+def test_the_windows_job_is_skipped_only_on_a_documentation_only_pull_request():
+    """The batch ci revision, 10.2: Windows is the whole wait of a pull request, and half the
+    merges touch only documentation. The platforms job runs the selector; the Windows job is
+    a job of its own whose `if:` reads it, so a skip reports the check as skipped. It runs on
+    every other event, and when the pick failed (an empty output is never 'false'). The
+    Linux jobs wait for nothing."""
+    yaml = pytest.importorskip("yaml")
+    data = yaml.safe_load((REPO_WORKFLOW_DIR / FRAMEWORK_CHECKS).read_text(encoding="utf-8"))
+    pick = data["jobs"]["platforms"]
+    assert pick["runs-on"] == "ubuntu-latest"
+    assert pick["outputs"] == {"windows": "${{ steps.pick.outputs.windows }}"}
+    assert pick["steps"][0]["with"]["fetch-depth"] == 2  # the merge commit and its parents
+    step = pick["steps"][-1]
+    assert step["id"] == "pick"
+    assert step["run"] == "python3 .github/scripts/framework_checks_windows.py"
+    assert (REPO_WORKFLOW_DIR.parent / "scripts" / "framework_checks_windows.py").is_file()
+    runs_windows = (
+        "${{ !cancelled() && (github.event_name != 'pull_request' || "
+        "needs.platforms.outputs.windows != 'false') }}"
+    )
+    shards = data["jobs"]["check-windows-shard"]
+    assert shards["needs"] == "platforms"
+    assert shards["if"] == runs_windows
+    verdict = data["jobs"]["check-windows"]
+    assert verdict["needs"] == ["platforms", "check-windows-shard"]
+    assert verdict["if"] == runs_windows
+    assert "needs" not in data["jobs"]["check"] and "if" not in data["jobs"]["check"]
+
+
+def test_the_windows_suite_runs_in_shards_and_its_check_is_their_verdict():
+    """2026-10-19: the one Windows job took 20-23 minutes against 3 on Linux. Three shards run
+    on parallel runners, each `python tasks.py verify` with its FRAMEWORK_TEST_SHARD (every
+    test in exactly one shard: tests/test_scaffold.py), none cancelling the others; the check
+    named as the Windows job always was is green only when every shard is."""
+    yaml = pytest.importorskip("yaml")
+    data = yaml.safe_load((REPO_WORKFLOW_DIR / FRAMEWORK_CHECKS).read_text(encoding="utf-8"))
+    shards = data["jobs"]["check-windows-shard"]
+    assert shards["runs-on"] == "windows-latest"
+    assert shards["strategy"] == {"fail-fast": False, "matrix": {"shard": [1, 2, 3]}}
+    count = len(shards["strategy"]["matrix"]["shard"])
+    assert shards["name"] == f"check (windows-latest, 3.12, shard ${{{{ matrix.shard }}}}/{count})"
+    (step,) = [s for s in shards["steps"] if s.get("run") == "python tasks.py verify"]
+    assert step["env"] == {"FRAMEWORK_TEST_SHARD": f"${{{{ matrix.shard }}}}/{count}"}
+    verdict = data["jobs"]["check-windows"]
+    (only,) = verdict["steps"]
+    assert only["env"] == {"SHARDS": "${{ needs.check-windows-shard.result }}"}
+    assert only["run"].startswith("python3 -c ") and "${{" not in only["run"]
+    assert "sys.exit(r != 'success')" in only["run"]
+
+
+def test_a_superseded_pull_request_run_of_the_framework_evals_is_cancelled():
+    """The batch ci revision, 10.8: keyed by head ref with no cancelling, three pushes to a
+    plugin pull request ran the paid suite three times in a row, two of them on heads nobody
+    merges. A pull request's runs are keyed by its number and cancel each other; the nightly
+    and dispatched runs are keyed by their commit and never cancelled."""
+    yaml = pytest.importorskip("yaml")
+    text = (REPO_WORKFLOW_DIR / "framework-evals.yml").read_text(encoding="utf-8")
+    data = yaml.safe_load(text)
+    assert "schedule" in _triggers(data)
+    assert data["concurrency"] == {
+        "group": "framework-evals-${{ github.event.pull_request.number || github.sha }}",
+        "cancel-in-progress": "${{ github.event_name == 'pull_request' }}",
+    }
+
+
+def test_the_framework_evals_prepare_the_runner_s_sandbox_before_the_suite():
+    """ROADMAP R44, point 1 (the owner's item 15 on PR #144): the fixture runs sandboxed as a
+    CI session does, so case 0006 proves denyWrite on a runner. The phase jobs' setup step
+    runs from this checkout's plugin/ (the framework is the repository, not framework/)."""
+    yaml = pytest.importorskip("yaml")
+    text = (REPO_WORKFLOW_DIR / "framework-evals.yml").read_text(encoding="utf-8")
+    steps = yaml.safe_load(text)["jobs"]["evals"]["steps"]
+    runs = [s.get("run", "") for s in steps]
+    setup = next(i for i, r in enumerate(runs) if r == "python plugin/ci/runner_setup.py")
+    suite = next(i for i, r in enumerate(runs) if r.startswith("python plugin/evals/run.py "))
+    assert setup < suite
+    assert steps[setup]["name"] == "Prepare the runner for Claude Code's sandbox"
+    assert "if" not in steps[setup]  # every run of the suite is sandboxed, not only some
+    assert "framework/plugin" not in text
 
 
 @pytest.mark.parametrize(
@@ -313,13 +520,39 @@ def test_this_repository_runs_its_own_checks_on_linux_and_windows():
     ids=lambda p: f"{p.parent.parent.parent.name}/{p.name}",
 )
 def test_every_workflow_uses_checkout_and_setup_node_v5(path):
-    """HANDOFF 4(c): the v4 actions run on Node 20, which GitHub deprecates."""
+    """HANDOFF 4(c): the v4 actions run on Node 20, which GitHub deprecates. A pin by commit
+    SHA (the merge job, choice 250) names its v5 tag in the line's comment."""
     text = path.read_text(encoding="utf-8")
     uses = [ln.split("uses:", 1)[1].strip() for ln in text.splitlines() if "uses:" in ln]
     assert uses, path
     for action in uses:
         if action.startswith(("actions/checkout@", "actions/setup-node@")):
-            assert action.endswith("@v5"), f"{path.name}: {action}"
+            pinned = re.fullmatch(r"\S+@[0-9a-f]{40} # (v5[.\d]*)", action)
+            assert action.endswith("@v5") or pinned, f"{path.name}: {action}"
+
+
+@pytest.mark.parametrize("name", ALL_WORKFLOWS)
+def test_every_third_party_action_is_pinned_to_a_commit_with_its_tag(name):
+    """R60's port (choice 257), carried into R44: a tag can be moved by whoever controls the
+    action's repository, a commit cannot. Every ``uses:`` of a template workflow names a
+    40-hex-digit commit and, in the line's comment, the release tag it was taken from."""
+    text = (WORKFLOW_DIR / name).read_text(encoding="utf-8")
+    uses = [ln.split("uses:", 1)[1].strip() for ln in text.splitlines() if "uses:" in ln]
+    assert uses, name
+    for action in uses:
+        assert re.fullmatch(r"[\w.-]+/[\w./-]+@[0-9a-f]{40} # v\d+(\.\d+)*", action), action
+
+
+def test_the_digest_reads_the_merge_environment_and_never_the_key():
+    """Choice 250 (the R22 double check, F8): the digest reads the sdlc-merge environment
+    (``actions: read``) and learns only whether the merge key is a repository secret."""
+    data = _workflow_yaml("sdlc-digest.yml")
+    assert data["permissions"]["actions"] == "read"
+    post = next(s for s in data["jobs"]["digest"]["steps"] if s.get("name") == "Post the digest")
+    flag = "${{ secrets.SDLC_MERGE_APP_PRIVATE_KEY != '' }}"
+    assert post["env"]["SDLC_MERGE_KEY_IN_REPOSITORY"] == flag
+    text = (WORKFLOW_DIR / "sdlc-digest.yml").read_text(encoding="utf-8")
+    assert text.count("SDLC_MERGE_APP_PRIVATE_KEY") == 1
 
 
 def test_release_workflow_runs_the_release_cli_on_merge_and_label():
@@ -332,9 +565,16 @@ def test_release_workflow_runs_the_release_cli_on_merge_and_label():
     # and must not be able to push (the review of the 0.3.1 diff, finding 4)
     assert data["permissions"] == {"contents": "read", "pull-requests": "read", "issues": "read"}
     assert "permissions" not in data["jobs"]["release"]
-    assert data["concurrency"]["group"] == (
-        "sdlc-release-${{ github.event.pull_request.number || inputs.pr_number }}"
-    )
+    # R51: one release at a time in the repository, so two deploy.command runs never overlap;
+    # the group is the release job's, so a label event whose job is skipped never replaces a
+    # pending release (the independent review of the R51 PR, finding 1)
+    assert "concurrency" not in data
+    assert data["jobs"]["release"]["concurrency"] == {
+        "group": "sdlc-release",
+        "cancel-in-progress": False,
+    }
+    assert "concurrency" not in data["jobs"]["record"]
+    assert data["jobs"]["release"]["timeout-minutes"] == 75
     job = data["jobs"]["release"]
     assert "github.event_name == 'workflow_dispatch'" in job["if"]
     assert "github.event.pull_request.merged == true" in job["if"]
@@ -352,21 +592,28 @@ def test_release_workflow_runs_the_release_cli_on_merge_and_label():
         "released": "${{ steps.release.outputs.released }}",
         "change_id": "${{ steps.release.outputs.change_id }}",
         "pin": "${{ steps.pin.outputs.ref }}",
+        # decision 35: the (e) merge's risk acceptance, stored by the record job
+        "risk_acceptance": "${{ steps.release.outputs.risk_acceptance }}",
     }
-    # the record job (0.3.1, issue #66): the only write token, the framework's step only
+    # the record job (0.3.1, issue #66): the only write token, the framework's step only;
+    # since 1.0.15 it also runs to store the merge's risk acceptance (decision 35)
     record = data["jobs"]["record"]
     assert record["needs"] == "release"
-    assert record["if"] == "${{ needs.release.outputs.released == 'true' }}"
+    assert record["if"] == (
+        "${{ !cancelled() && (needs.release.outputs.released == 'true' || "
+        "needs.release.outputs.risk_acceptance != '') }}"
+    )
     assert record["permissions"] == {"contents": "write"}
     assert [step.get("uses", step.get("run", "")).split(" ")[0] for step in record["steps"]] == [
-        "actions/checkout@v5",
-        "actions/checkout@v5",
+        CHECKOUT,
+        CHECKOUT,
         "python",
     ]
     assert record["steps"][1]["with"]["ref"] == "${{ needs.release.outputs.pin }}"
     assert record["steps"][-1]["run"] == (
         'python framework/plugin/release/cli.py record --root . --id "$CHANGE_ID" '
-        '--pr "$PR_NUMBER" --merge-sha "$MERGE_SHA"'
+        '--pr "$PR_NUMBER" --merge-sha "$MERGE_SHA" --released "$RELEASED" '
+        '--acceptance "$RISK_ACCEPTANCE"'
     )
     assert "project_setup" not in str(record) and "deploy" not in str(record["steps"])
     assert job["steps"][-2]["name"] == (
@@ -393,8 +640,13 @@ def test_merge_fired_jobs_find_the_change_instead_of_filtering_the_head(name):
     assert job["steps"][find - 1]["with"]["path"] == "framework"
     assert "--find-change" in job["steps"][find]["run"]
     for step in job["steps"][find + 1 :]:
+        if "triage" in step.get("name", ""):  # R18: after a failure or a park, behind the find
+            assert "steps.find.outputs.change_id != ''" in step["if"] or (
+                step["if"] == "always() && steps.triage_checkout.outcome == 'success'"
+            ), step
+            continue
         assert step["if"] == "steps.find.outputs.change_id != ''", step
-    phase_step = [step for step in job["steps"] if "run" in step][-1]
+    phase_step = next(step for step in job["steps"] if step.get("id") == "phase")
     assert phase_step["env"]["CHANGE_ID"] == "${{ steps.find.outputs.change_id }}"
     # step 41.1: the hook log rides as an artifact after the run, gated like every step
     assert job["steps"][-1]["name"] == "Keep the hook log"
@@ -403,8 +655,9 @@ def test_merge_fired_jobs_find_the_change_instead_of_filtering_the_head(name):
 
 def test_fix_workflow_starts_on_request_changes_and_on_the_owner_labels():
     """Decision 22: the owner's "Request changes" review submission starts the fix round on
-    the PR's own head; decision 24: so does one of the three un-park labels. The workflow
-    token's own review or label never does (a [bot] reviewer is refused besides)."""
+    the PR's own head; decision 24: so does one of the two un-park labels (the third,
+    sdlc:accept-risk, retired with decision 35). The workflow token's own review or label
+    never does (a [bot] reviewer is refused besides)."""
     data = _workflow_yaml(FIX_WORKFLOW)
     on = _triggers(data)
     assert on["pull_request_review"]["types"] == ["submitted"]
@@ -421,29 +674,126 @@ def test_fix_workflow_starts_on_request_changes_and_on_the_owner_labels():
     for refused in ("CONTRIBUTOR", "FIRST_TIME_CONTRIBUTOR", "FIRST_TIMER", "NONE"):
         assert f"'{refused}'" not in job["if"], refused
     installed = (REPO_WORKFLOW_DIR / FIX_WORKFLOW).read_text(encoding="utf-8")
-    assert installed == render.render_file(WORKFLOW_DIR / FIX_WORKFLOW, VALUES)
-    for label in ("sdlc:accept-risk", "sdlc:reset-iterations", "sdlc:unlock-tests"):
+    rendered = sdlc_init.apply_env_markers(
+        render.render_file(WORKFLOW_DIR / FIX_WORKFLOW, VALUES), []
+    )
+    # see the copies test (R44, R18)
+    assert installed == without_r18(FIX_WORKFLOW, rendered).replace(COMMAND_FROM, "")
+    for label in ("sdlc:reset-iterations", "sdlc:unlock-tests"):
         assert f"github.event.label.name == '{label}'" in job["if"], label
+    assert "sdlc:accept-risk" not in job["if"]  # retired with decision 35
     assert "sdlc:c-approved" not in job["if"] and "sdlc:d-approved" not in job["if"]
-    # the checkout is the PR's head, never the review event's merge ref
-    checkout = job["steps"][0]
+    # the checkout is the PR's head, never the review event's merge ref (after the App's mint
+    # step and its time, R49)
+    checkout = job["steps"][2]
     assert checkout["with"]["ref"] == (
         "${{ inputs.head_ref || github.event.pull_request.head.ref || github.ref }}"
     )
-    runs = [step["run"] for step in job["steps"] if "run" in step]
-    assert runs[-1] == (
+    phase_step = next(step for step in job["steps"] if step.get("id") == "phase")
+    assert phase_step["run"] == (
         "python framework/plugin/ci/run_phase.py --root . --plugin-dir framework --phase fix "
         '--id "$CHANGE_ID" --head-ref "$HEAD_REF" --repo "$REPO" --pr-number "$PR_NUMBER" '
-        '--ref "$DEFAULT_BRANCH"'
+        '--ref "$DEFAULT_BRANCH" --out "$RUNNER_TEMP/sdlc-run.json"'
     )
     find = next(step for step in job["steps"] if step.get("id") == "find")
     assert "--phase fix" in find["run"] and "--find-change" in find["run"]
-    phase_step = [step for step in job["steps"] if "run" in step][-1]
     assert phase_step["env"]["PR_NUMBER"] == "${{ github.event.pull_request.number }}"
     assert job["steps"][-1]["name"] == "Keep the hook log"  # step 41.1
-    assert data["concurrency"]["group"] == (
+    # 1.0.3 (decision 29): the group is the job's, so a run whose job is skipped never enters
+    # it and cannot cancel the automatic fix round pending there
+    assert "concurrency" not in data
+    assert job["concurrency"]["group"] == (
         "sdlc-${{ inputs.head_ref || github.event.pull_request.head.ref }}"
     )
+
+
+def test_fix_workflow_refuses_fork_heads_and_takes_the_comment_s_link():
+    """Decision 34 (R17): the review and the label path refuse a head in another repository
+    in the job's `if:`; the find step reads the owner from the default branch's sdlc.yaml
+    (it names that branch); the `trigger` input reaches the round through env only."""
+    data = _workflow_yaml(FIX_WORKFLOW)
+    job = data["jobs"]["fix"]
+    fork = "github.event.pull_request.head.repo.full_name == github.repository"
+    assert job["if"].count(fork) == 2
+    review, label = job["if"].split("github.event_name == 'pull_request' &&", 1)
+    assert fork in review.split("github.event_name == 'pull_request_review'", 1)[1]
+    assert fork in label
+    # the R17 review: a refused review must not enter the concurrency group and displace a
+    # pending round, so on a personal repository the condition names the owner itself; an
+    # organization's owner is named in sdlc.yaml, which an expression cannot read
+    exact = (
+        "(github.event.review.user.login == github.repository_owner || "
+        "github.event.repository.owner.type == 'Organization')"
+    )
+    assert exact in review and exact not in label
+    text = (WORKFLOW_DIR / FIX_WORKFLOW).read_text(encoding="utf-8")
+    assert "a known limit" in text and "Known limit (decision 34)" in text
+    trigger = _triggers(data)["workflow_dispatch"]["inputs"]["trigger"]
+    assert trigger["required"] is False and trigger["type"] == "string"
+    assert "@claude" in trigger["description"] and "decision 34" in trigger["description"]
+    find = next(step for step in job["steps"] if step.get("id") == "find")
+    assert find["env"]["SDLC_DEFAULT_BRANCH"] == DEFAULT_BRANCH_EXPR
+    phase_step = next(step for step in job["steps"] if step.get("id") == "phase")
+    assert phase_step["env"]["SDLC_TRIGGER"] == "${{ inputs.trigger }}"
+    assert "inputs.trigger" not in phase_step["run"] and "SDLC_TRIGGER" not in phase_step["run"]
+    text = (WORKFLOW_DIR / FIX_WORKFLOW).read_text(encoding="utf-8")
+    assert "the owner's account" in text and "decision 34" in text  # the reviewer rule
+
+
+def test_comment_workflow_dispatches_the_fix_round_without_a_model():
+    """Decision 34 (R17), NOTES section 46: on a new pull request comment only, a coarse
+    `if:`, the default branch checked out (never the PR's head), the pin and the pinned
+    framework as the fix workflow takes them, then one Python step; the comment's text
+    appears in the `if:` and nowhere else; the token holds three scopes."""
+    data = _workflow_yaml(COMMENT_WORKFLOW)
+    assert data["name"] == "SDLC comment (fix round)"  # the prefix keeps it out of the metric
+    assert _triggers(data) == {"issue_comment": {"types": ["created"]}}
+    assert data["permissions"] == {
+        "actions": "write",
+        "contents": "read",
+        "pull-requests": "read",
+    }
+    assert "concurrency" not in data
+    assert list(data["jobs"]) == ["dispatch"]
+    job = data["jobs"]["dispatch"]
+    assert "permissions" not in job and "concurrency" not in job
+    for clause in (
+        "github.event.issue.pull_request",
+        "startsWith(github.event.comment.body, '@claude')",
+        "!endsWith(github.event.comment.user.login, '[bot]')",
+        "github.event.comment.author_association == 'OWNER'",
+        "github.event.comment.author_association == 'MEMBER'",
+        "github.event.comment.author_association == 'COLLABORATOR'",
+    ):
+        assert clause in job["if"], clause
+    for refused in ("CONTRIBUTOR'", "FIRST_TIME", "'NONE'"):
+        assert refused not in job["if"], refused
+    steps = job["steps"]
+    assert steps[0]["uses"] == CHECKOUT
+    assert steps[0]["with"]["ref"] == DEFAULT_BRANCH_EXPR
+    assert "head" not in str(steps[0])
+    assert steps[1]["id"] == "pin" and steps[1]["run"] == PIN_RUN
+    fix = _workflow_yaml(FIX_WORKFLOW)["jobs"]["fix"]["steps"]
+    assert steps[1] == next(step for step in fix if step.get("id") == "pin")
+    assert steps[2] == next(step for step in fix if step.get("with", {}).get("path") == "framework")
+    assert len(steps) == 4
+    run = steps[3]
+    assert run["run"] == 'python framework/plugin/ci/comment_dispatch.py --root . --repo "$REPO"'
+    assert run["env"] == {
+        "GITHUB_TOKEN": "${{ github.token }}",
+        "REPO": "${{ github.repository }}",
+        "DEFAULT_BRANCH": DEFAULT_BRANCH_EXPR,
+    }
+    # the body only inside the job's if: never in env, with or run, nor anywhere in steps
+    assert "comment.body" not in str(steps)
+    text = (WORKFLOW_DIR / COMMENT_WORKFLOW).read_text(encoding="utf-8")
+    assert text.count("github.event.comment.body") == 1
+    # no model, no secret
+    for absent in ("secrets.", "claude-code@", "run_phase.py", "setup-node", "project_setup"):
+        assert absent not in text, absent
+    for cited in ("decision 34", "NOTES section 46", "p.33", "default branch"):
+        assert cited in text, cited
+    assert (TEMPLATE.parent / "plugin" / "ci" / "comment_dispatch.py").is_file()
 
 
 def test_abandon_workflow_records_the_end_state_without_a_model():
@@ -452,10 +802,17 @@ def test_abandon_workflow_records_the_end_state_without_a_model():
     data = _workflow_yaml(ABANDON_WORKFLOW)
     on = _triggers(data)
     assert on == {"pull_request": {"types": ["closed"]}}
-    # pull-requests: write since 0.2.19: the dismissal of gate (f) opens a pull request
-    assert data["permissions"] == {"contents": "write", "pull-requests": "write"}
+    # pull-requests: write since 0.2.19: the dismissal of gate (f) opens a pull request;
+    # checks: write for its "not a build PR" check (the R22 double check, F1)
+    assert data["permissions"] == {
+        "contents": "write", "pull-requests": "write", "checks": "write",
+    }  # fmt: skip
     job = data["jobs"]["abandon"]
-    assert job["if"] == "${{ github.event.pull_request.merged == false }}"
+    # decision 30: a PR the fast lane superseded (labelled by the runner first) is not an abandon
+    assert job["if"] == (
+        "${{ github.event.pull_request.merged == false && "
+        "!contains(github.event.pull_request.labels.*.name, 'sdlc:superseded') }}"
+    )
     assert job["steps"][0]["with"]["ref"] == "${{ github.event.pull_request.head.ref }}"
     runs = [step["run"] for step in job["steps"] if "run" in step]
     assert runs[-2] == (
@@ -555,9 +912,30 @@ def test_evals_workflow_runs_on_configuration_changes_and_nightly():
     assert data["permissions"] == {"contents": "read"}
     job = data["jobs"]["evals"]
     runs = [step["run"] for step in job["steps"] if "run" in step]
-    assert runs[-1] == "python evals/check.py --framework framework --report evals-report.json"
+    # R44 (I1): the pinned framework's runner, never the checkout's own evals/check.py
+    assert runs[-1] == (
+        "python framework/plugin/evals/run.py --root . --plugin-dir framework "
+        "--report evals-report.json"
+    )
     assert all("--bare" not in run and "run_phase.py" not in run for run in runs)
+    assert not any("evals/check.py" in run for run in runs)
     assert job["steps"][-1]["name"] == "Keep the report"
+
+
+@pytest.mark.parametrize("name", ["sdlc-evals.yml", "sdlc-fix.yml"])
+def test_a_head_s_setup_command_is_the_default_branch_s_and_the_framework_is_fetched_again(name):
+    """R44 (the head's own setup command): where a session's head reaches the setup step,
+    the command comes from the default branch's sdlc.yaml and the framework the install could
+    write is removed and checked out again before the step that holds the credentials."""
+    steps = [s for job in _workflow_yaml(name)["jobs"].values() for s in job["steps"]]
+    names = [s.get("name", "") for s in steps]
+    setup = next(i for i, n in enumerate(names) if n.startswith("Install the project's own"))
+    assert '--command-from "refs/remotes/origin/$SDLC_DEFAULT_BRANCH"' in steps[setup]["run"]
+    assert "rmtree('framework'" in steps[setup + 1]["run"]
+    again = steps[setup + 2]
+    assert again["uses"] == CHECKOUT and again["with"]["path"] == "framework"
+    assert again["with"]["ref"] == "${{ steps.pin.outputs.ref }}"
+    assert all("secrets." not in json.dumps(s) for s in steps[: setup + 3] if s.get("id") != "app")
 
 
 def test_scan_workflow_is_weekly_reviews_routes_and_scans_in_that_order():
@@ -595,12 +973,15 @@ def test_runbook_workflow_runs_the_go_once_without_a_model():
     job = data["jobs"]["go"]
     # the incident PR's head only (0.2.24): a Go on a build PR has no incident to park and
     # would fail the setup step's outside-changes/ check every time
+    # R49 (decision 33): a Go a [bot] applied never runs, now that the App's labels start runs
     assert job["if"] == (
         "${{ github.event.label.name == 'sdlc:go' && "
+        "!endsWith(github.event.sender.login, '[bot]') && "
         "startsWith(github.event.pull_request.head.ref, 'sdlc/') && "
         "endsWith(github.event.pull_request.head.ref, '/a') }}"
     )
-    assert job["steps"][0]["with"]["ref"] == "${{ github.event.pull_request.head.ref }}"
+    # the project checkout follows the App's mint step and its time (R49)
+    assert job["steps"][2]["with"]["ref"] == "${{ github.event.pull_request.head.ref }}"
     runs = [step["run"] for step in job["steps"] if "run" in step]
     assert runs[-2] == (
         'python framework/plugin/detect/cli.py go --root . --id "$CHANGE_ID" '
@@ -632,7 +1013,8 @@ def test_runbook_workflow_runs_the_go_once_without_a_model():
     assert park["env"]["SDLC_DEFAULT_BRANCH"] == DEFAULT_BRANCH_EXPR
     assert not any("secrets." in str(v) for v in park["env"].values())
     assert set(park["env"]) == {
-        "GITHUB_TOKEN", "CHANGE_ID", "REPO", "PR_NUMBER", "SDLC_DEFAULT_BRANCH", "SETUP_ERROR"
+        "GITHUB_TOKEN", "CHANGE_ID", "REPO", "PR_NUMBER", "SDLC_DEFAULT_BRANCH", "SETUP_ERROR",
+        "SDLC_WORKFLOW_TOKEN",  # R49: the fallback after 50 minutes
     }  # fmt: skip
     for step in job["steps"]:
         assert "${{" not in step.get("run", ""), step["name"]
@@ -641,8 +1023,269 @@ def test_runbook_workflow_runs_the_go_once_without_a_model():
     assert data["concurrency"]["group"] == "sdlc-runbook-${{ github.event.pull_request.head.ref }}"
     assert data["concurrency"]["cancel-in-progress"] is False
     text = (WORKFLOW_DIR / RUNBOOK_WORKFLOW).read_text(encoding="utf-8")
-    for absent in ("claude-code@", "runner_setup.py", "setup-node", "secrets.", "--phase f "):
+    for absent in ("claude-code@", "runner_setup.py", "setup-node", "--phase f "):
         assert absent not in text, absent
+    # no model credential: the one secret is the App's key, read by the mint step (R49)
+    assert re.findall(r"secrets\.\w+", text) == ["secrets.SDLC_APP_PRIVATE_KEY"]
+
+
+# --- R49 (decision 33): the automation pushes and opens pull requests as a GitHub App ---------
+APP_WORKFLOWS = (*PHASE_WORKFLOWS, FIX_WORKFLOW, DETECT_WORKFLOW, RUNBOOK_WORKFLOW, SCAN_WORKFLOW)
+TOKEN_WORKFLOWS = (
+    ABANDON_WORKFLOW,
+    COMMENT_WORKFLOW,
+    "sdlc-digest.yml",
+    RELEASE_WORKFLOW,
+    EVALS_WORKFLOW,
+)
+APP_TOKEN = "${{ steps.app.outputs.token || github.token }}"
+MINT_STEP = {
+    "name": "Mint the App token (decision 33; skipped without vars.SDLC_APP_ID)",
+    "id": "app",
+    "if": "${{ vars.SDLC_APP_ID != '' }}",
+    "uses": APP_TOKEN_ACTION,
+    "with": {
+        "app-id": "${{ vars.SDLC_APP_ID }}",
+        "private-key": "${{ secrets.SDLC_APP_PRIVATE_KEY }}",
+    },
+}
+# the scopes the App holds (sdlc-init step 6) and so may narrow to the job's permissions:
+APP_SCOPES = ("contents", "pull-requests", "issues", "checks", "actions")
+# the mint time the runner's 50-minute fallback counts from (plugin/ci/app_token.py)
+STAMP_STEP = {
+    "name": "Record when the App token was minted",
+    "if": "steps.app.outcome == 'success'",
+    "run": (
+        "python -c \"import os, time; f = open(os.environ['GITHUB_ENV'], 'a'); "
+        "f.write('SDLC_APP_TOKEN_MINTED_AT=%d\\n' % time.time()); f.close()\""
+    ),
+}
+WORKFLOW_TOKEN = "${{ github.token }}"
+
+
+def _header(name: str) -> str:
+    """The workflow's text with each comment's line breaks joined, for a phrase search."""
+    return re.sub(r"\n# ?", " ", (WORKFLOW_DIR / name).read_text(encoding="utf-8"))
+
+
+def _condition(name: str, job: str) -> str:
+    return " ".join(_workflow_yaml(name)["jobs"][job]["if"].split())
+
+
+def test_every_workflow_either_mints_the_app_token_or_keeps_the_workflow_token():
+    # the merge workflow mints the merge App's token, never decision 33's (choice 242)
+    assert sorted((*APP_WORKFLOWS, *TOKEN_WORKFLOWS, MERGE_WORKFLOW)) == sorted(ALL_WORKFLOWS)
+
+
+def test_the_merge_workflow_rings_posts_and_merges_with_the_merge_app_only():
+    """R22 (decision 36): the review-triggered job holds no key and only dispatches; the
+    pull_request job posts "not a build PR"; the dispatched job alone reads the merge App's
+    key, in the sdlc-merge environment, never decision 33's App's key."""
+    data = _workflow_yaml(MERGE_WORKFLOW)
+    on = _triggers(data)
+    assert on["pull_request_review"]["types"] == ["submitted"]
+    assert on["pull_request"]["types"] == ["opened", "synchronize", "reopened", "ready_for_review"]
+    assert set(on["workflow_dispatch"]["inputs"]) == {"change_id", "head_ref", "pr"}
+    assert data["permissions"] == {
+        "actions": "write", "checks": "write", "contents": "read", "pull-requests": "read",
+    }  # fmt: skip
+    jobs = data["jobs"]
+    assert list(jobs) == ["doorbell", "not-a-build-pr", "merge"]
+    text = (WORKFLOW_DIR / MERGE_WORKFLOW).read_text(encoding="utf-8")
+    assert "SDLC_APP_PRIVATE_KEY" not in text and "vars.SDLC_APP_ID" not in text
+    assert re.findall(r"secrets\.\w+", text) == ["secrets.SDLC_MERGE_APP_PRIVATE_KEY"]
+    for name in ("doorbell", "not-a-build-pr"):
+        job = jobs[name]
+        assert "environment" not in job
+        assert "SDLC_MERGE" not in json.dumps(job)
+        assert job["steps"][0]["with"]["ref"] == DEFAULT_BRANCH_EXPR
+    doorbell = _condition(MERGE_WORKFLOW, "doorbell")
+    assert "github.event.review.state == 'approved'" in doorbell
+    assert jobs["doorbell"]["steps"][-1]["run"].startswith(
+        "python framework/plugin/ci/merge_step.py doorbell "
+    )
+    assert "!(startsWith(github.event.pull_request.head.ref, 'sdlc/')" in (
+        _condition(MERGE_WORKFLOW, "not-a-build-pr")
+    )
+    merge = jobs["merge"]
+    assert merge["environment"] == "sdlc-merge"
+    # a dispatch on the default branch only, beside the environment's branch rule (the R22
+    # double check, F13)
+    assert merge["if"] == (
+        "${{ github.event_name == 'workflow_dispatch' && "
+        "github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}"
+    )
+    # the job that holds the merge App's key runs its actions at a commit SHA (choice 250, F9)
+    used = [s["uses"] for s in merge["steps"] if "uses" in s]
+    assert used and all(re.fullmatch(r"[\w-]+/[\w-]+@[0-9a-f]{40}", u) for u in used), used
+    assert merge["concurrency"]["group"].startswith("sdlc-merge-")
+    mint = [s for s in merge["steps"] if s.get("uses", "").startswith("actions/create-github")]
+    assert len(mint) == 1 and mint[0]["with"]["app-id"] == "${{ vars.SDLC_MERGE_APP_ID }}"
+    assert {k for k in mint[0]["with"] if k.startswith("permission-")} == {
+        "permission-contents", "permission-pull-requests",
+    }  # fmt: skip
+    last = merge["steps"][-1]
+    assert last["env"]["SDLC_MERGE_TOKEN"] == "${{ steps.app.outputs.token }}"
+    assert last["env"]["GITHUB_TOKEN"] == WORKFLOW_TOKEN  # the reads; the merge App merges only
+    assert "SDLC_MERGE_TOKEN" not in json.dumps(merge["steps"][:-1])
+    # without the merge App the job says so and stops: the owner merges (fallback C1)
+    assert merge["steps"][0]["if"] == "${{ vars.SDLC_MERGE_APP_ID == '' }}"
+    assert all(s.get("if") == "${{ vars.SDLC_MERGE_APP_ID != '' }}" for s in merge["steps"][1:])
+
+
+# the steps that can post the passing sdlc/review "not a build PR" (decision 36, point 5):
+# pr/cli.py upsert (also through run_phase.py and scan/cli.py), detect/cli.py dismiss and go
+# (the runbook PR), merge_step.py not-build
+CHECK_POSTERS = (
+    "plugin/pr/cli.py", "plugin/ci/run_phase.py", "plugin/scan/cli.py",
+    "plugin/detect/cli.py dismiss", "plugin/detect/cli.py go", "merge_step.py not-build",
+)  # fmt: skip
+
+
+@pytest.mark.parametrize("name", ALL_WORKFLOWS)
+def test_a_job_that_posts_the_review_check_may_write_checks(name):
+    """The R22 double check, F1 and F5: a job whose step posts sdlc/review holds
+    ``checks: write``, and so does its App token, or the post is a 403 that the step keeps
+    quiet and ruleset 2 holds the pull request."""
+    data = _workflow_yaml(name)
+    for job_name, job in data["jobs"].items():
+        runs = " ".join(str(s.get("run") or "") for s in job.get("steps") or [])
+        if not any(poster in runs for poster in CHECK_POSTERS):
+            continue
+        permissions = job.get("permissions", data.get("permissions")) or {}
+        assert permissions.get("checks") == "write", (name, job_name)
+        for step in job["steps"]:
+            if str(step.get("uses", "")).startswith("actions/create-github-app-token"):
+                assert step["with"].get("permission-checks") == "write", (name, job_name)
+
+
+@pytest.mark.parametrize("name", APP_WORKFLOWS)
+def test_a_workflow_that_pushes_mints_the_app_token_first(name):
+    """The mint step is the job's first, skipped without the variable; the project checkout
+    and every GitHub token of the job read its output, falling back to the workflow token."""
+    data = _workflow_yaml(name)
+    job = next(iter(data["jobs"].values()))  # R8's second-opinion job after it mints nothing
+    steps = job["steps"]
+    # the token carries no more than this job's permissions: block grants the workflow token
+    narrowed = {
+        f"permission-{s}": data["permissions"][s] for s in APP_SCOPES if s in data["permissions"]
+    }
+    assert steps[0] == {**MINT_STEP, "with": {**MINT_STEP["with"], **narrowed}}
+    # the private key: in the mint step's with: and nowhere else, never in an env:
+    text = (WORKFLOW_DIR / name).read_text(encoding="utf-8")
+    assert text.count("SDLC_APP_PRIVATE_KEY") == 1
+    assert "SDLC_APP_PRIVATE_KEY" not in json.dumps([data.get("env"), job.get("env"), steps[1:]])
+    checkouts = [s for s in steps if s.get("uses", "").startswith("actions/checkout@")]
+    project = [s for s in checkouts if s["with"].get("path") != "framework"]
+    assert project == [steps[2]]  # the project checkout follows the mint step and its time
+    assert steps[2]["with"]["token"] == APP_TOKEN  # pushes go out on its persisted token
+    for framework in checkouts[1:]:
+        assert "token" not in framework["with"]  # a public read, as before
+    tokens = [
+        value
+        for step in steps
+        for key, value in (step.get("env") or {}).items()
+        if key in ("GITHUB_TOKEN", "GH_TOKEN")
+    ]
+    assert tokens and set(tokens) == {APP_TOKEN}
+    # the workflow token beside the App's, for the fallback after 50 minutes, and nowhere
+    # else (fix round 4: the checkout check's fetch takes both, like every other step)
+    for step in steps:
+        env = dict(step.get("env") or {})
+        if "GITHUB_TOKEN" in env:
+            assert env.pop("SDLC_WORKFLOW_TOKEN") == WORKFLOW_TOKEN, step.get("name")
+        assert "SDLC_WORKFLOW_TOKEN" not in env and WORKFLOW_TOKEN not in json.dumps(env)
+    # the token rule names the App and keeps the fallback's explicit dispatch
+    header = _header(name)
+    assert "Token rule (decision 33)" in header and "SDLC_APP_ID" in header
+    assert "events the App causes do start workflow runs" in header
+
+
+@pytest.mark.parametrize("name", ALL_WORKFLOWS)
+def test_no_checkout_persists_a_credential(name):
+    """R49 fix round 4: ``.git/config`` holds no token after any checkout, so neither
+    project code (the commands step's targets, the toolchain install), a planted hook nor a
+    planted config key can reach one; each git network call of the runner takes it in its
+    own environment (``ci/app_token.py git_auth_env``)."""
+    data = _workflow_yaml(name)
+    checkouts = [
+        step
+        for job in data["jobs"].values()
+        for step in job["steps"]
+        if step.get("uses", "").startswith("actions/checkout@")
+    ]
+    assert checkouts, name
+    for step in checkouts:
+        assert step["with"]["persist-credentials"] is False, (name, step.get("name"))
+    if name == RELEASE_WORKFLOW:
+        # the record job's push takes the job's token from its step's environment
+        [record] = [s for s in data["jobs"]["record"]["steps"] if "run" in s]
+        assert record["env"]["GITHUB_TOKEN"] == "${{ github.token }}"
+
+
+@pytest.mark.parametrize("name", APP_WORKFLOWS)
+def test_a_workflow_that_mints_the_app_token_records_when(name):
+    """The installation token expires an hour after it is minted; the step after the mint
+    writes the time to $GITHUB_ENV for the runner's 50-minute fallback, and only when the
+    mint ran (without the App the fallback has nothing to count from and stays a no-op)."""
+    jobs = _workflow_yaml(name)["jobs"]
+    # R8 (1.0.19): the second-opinion job after the phase job mints nothing
+    minting = [
+        job
+        for job in jobs.values()
+        if any("create-github-app-token" in str(step.get("uses", "")) for step in job["steps"])
+    ]
+    assert len(minting) == 1 and set(jobs) - {"second-opinion"} == {next(iter(jobs))}
+    assert minting[0]["steps"][1] == STAMP_STEP
+
+
+@pytest.mark.parametrize("name", TOKEN_WORKFLOWS)
+def test_a_workflow_that_needs_no_ci_run_keeps_the_workflow_token(name):
+    text = (WORKFLOW_DIR / name).read_text(encoding="utf-8")
+    for absent in ("create-github-app-token", "SDLC_APP_", "steps.app."):
+        assert absent not in text, absent
+    assert "keeps the workflow token, not the App's (decision 33)" in _header(name)
+
+
+def test_the_app_s_own_events_start_nothing_they_should_not():
+    """The trigger audit: with the App, the automation's own pushes, PR opens and closes and
+    labels start workflows. One assertion per guard."""
+    # no template workflow runs on a push, so the App's pushes to sdlc/** start none of them
+    assert not [n for n in ALL_WORKFLOWS if "push" in _triggers(_workflow_yaml(n))]
+    # the runner's superseded close (labelled first) is not an abandon (R46)
+    assert "!contains(github.event.pull_request.labels.*.name, 'sdlc:superseded')" in (
+        _condition(ABANDON_WORKFLOW, "abandon")
+    )
+    # an intent PR the App opened (detect, scan) takes no fast lane: author and sender
+    design = _condition("sdlc-design.yml", "design")
+    assert "!endsWith(github.event.pull_request.user.login, '[bot]')" in design
+    assert "!endsWith(github.event.sender.login, '[bot]')" in design
+    # a close without a merge runs neither the design nor the build job
+    assert "github.event.pull_request.merged == true" in design
+    assert _condition("sdlc-build.yml", "build") == (
+        "${{ github.event_name == 'workflow_dispatch' || "
+        "github.event.pull_request.merged == true }}"
+    )
+    # a label a [bot] applied starts no round and approves no gate
+    bot_sender = "!endsWith(github.event.sender.login, '[bot]')"
+    fix = _condition(FIX_WORKFLOW, "fix")
+    assert bot_sender in fix.split("github.event_name == 'pull_request' &&", 1)[1]
+    # decision 37 (1.0.21): no approval label starts (d) or (e) any more; only a dispatch does
+    for name in ("sdlc-test.yml", "sdlc-deploy.yml"):
+        assert set(_triggers(_workflow_yaml(name))) == {"workflow_dispatch"}, name
+    assert bot_sender in _condition(RUNBOOK_WORKFLOW, "go")
+    # a [bot] review or @claude comment starts no round
+    assert "!endsWith(github.event.review.user.login, '[bot]')" in fix
+    assert "!endsWith(github.event.comment.user.login, '[bot]')" in (
+        _condition(COMMENT_WORKFLOW, "dispatch")
+    )
+    # an approval by a [bot] rings no merge (decision 36)
+    assert "!endsWith(github.event.review.user.login, '[bot]')" in (
+        _condition(MERGE_WORKFLOW, "doorbell")
+    )
+    # the release label counts only on a merged PR (decision 33's App never merges, decision
+    # 4; the merge App merges only on the owner's approval, decision 36)
+    assert "github.event.pull_request.merged == true &&" in _condition(RELEASE_WORKFLOW, "release")
 
 
 def test_pin_script_is_installed_and_reads_the_template_pin(tmp_path):
@@ -744,8 +1387,23 @@ def test_pin_script_reads_the_default_branch_s_pin_not_the_head_s(tmp_path):
     assert pin("--ref=--output=x").returncode == 1
 
 
+def test_the_pin_script_falls_back_to_the_cli_init_writes(tmp_path):
+    """R63 (1.0.16): a project with no ``plugin.claude_code`` installs the CLI /sdlc-init
+    writes, 2.1.304, the first version read to run a sub-agent on the template's
+    ``claude-opus-5-5`` (NOTES §54); 2.1.278 ran it on the session's model."""
+    from init import sdlc_init
+
+    assert sdlc_init.DEFAULT_CLAUDE_CODE_VERSION == "2.1.304"
+    proc = _pin(tmp_path, 'plugin:\n  version: "1.4.0"\n')
+    assert proc.returncode == 0, proc.stderr
+    assert f"claude_code={sdlc_init.DEFAULT_CLAUDE_CODE_VERSION}" in proc.stdout
+    rendered = render.render_file(TEMPLATE / "sdlc.yaml", VALUES)
+    assert "2.1.304 is the CLI the jobs install and the framework's minimum" in rendered
+    assert "2.1.278" not in rendered
+
+
 def test_pin_script_does_not_double_the_v_of_a_version(tmp_path):
-    proc = _pin(tmp_path, 'plugin:\n  version: "v1.4.0"\n  claude_code: "2.1.278"\n')
+    proc = _pin(tmp_path, 'plugin:\n  version: "v1.4.0"\n  claude_code: "2.1.304"\n')
     assert proc.returncode == 0, proc.stderr
     assert "ref=v1.4.0" in proc.stdout and "ref=vv" not in proc.stdout
 

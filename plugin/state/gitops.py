@@ -5,7 +5,9 @@ from __future__ import annotations
 
 import os
 import re
+import shlex
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 
@@ -20,6 +22,119 @@ class GitError(RuntimeError):
     pass
 
 
+# --- remembered lookups (1.0.13, choice 235 item 5) ---------------------------------------------
+# One phase run asked git ``rev-parse --is-inside-work-tree`` 13 times and ``rev-parse --verify
+# --quiet refs/remotes/origin/main`` 11 times, from is_repo, default_branch, gate/diff.py's
+# default_base and the runner's ref checks; on Windows every git process is expensive. A
+# lookup is remembered only until the process starts anything but a read-only git query: a
+# fetch, a checkout, a commit, a push, the model's session, a test's own ``git`` helper. The
+# audit hook below sees the process starts made through ``subprocess``, ``os.system``,
+# ``os.exec*``, ``os.spawn*``, ``os.posix_spawn``, ``os.startfile`` and ``os.fork*`` (a
+# fork's child may run git), whoever makes them, and moves the generation on, counted at the
+# start only; a remembered answer of an older generation is asked again. Code that starts
+# processes another way (``multiprocessing`` with ``spawn`` or ``forkserver`` raises none of
+# these events), or reads while a child it started still runs, must not rely on the
+# remembered answers (choice 239). A remote's answer (``ls-remote``) is never remembered:
+# the id reservation reads it fresh each time (R51). is_repo keeps a yes for good,
+# re-checked by a stat that the git directory it found still exists.
+_PROCESS_EVENTS = frozenset(
+    {
+        "subprocess.Popen", "os.system", "os.exec", "os.spawn", "os.posix_spawn",
+        "os.startfile", "os.fork", "os.forkpty",
+    }
+)  # fmt: skip
+# the git subcommands that never move a ref, HEAD or a remote; ``config``, ``remote``,
+# ``branch`` and ``symbolic-ref`` count only in their reading forms (``_reads_only``)
+_READ_ONLY_GIT = frozenset(
+    {
+        "rev-parse", "cat-file", "show", "diff", "diff-tree", "diff-index", "log", "rev-list",
+        "merge-base", "ls-files", "ls-tree", "ls-remote", "for-each-ref", "show-ref", "status",
+        "version", "check-ignore", "check-attr", "grep", "describe", "name-rev", "var",
+    }
+)  # fmt: skip
+# the long global options that also take their value as the next word (``--git-dir x``)
+_SEPARATE_VALUE_OPTIONS = frozenset(
+    {"--git-dir", "--work-tree", "--namespace", "--super-prefix", "--config-env", "--attr-source"}
+)
+_generation = 0
+_remembered: dict[tuple, tuple[int, object]] = {}
+_repos: dict[tuple, str] = {}
+
+
+def _reads_only(argv) -> bool:
+    """True when ``argv`` is a git query that changes no ref, HEAD or remote. On Windows the
+    audit event carries the command line ``list2cmdline`` built; it is split back on its
+    double quotes. Anything not understood is not read-only."""
+    if isinstance(argv, bytes):
+        return False
+    try:
+        if isinstance(argv, str):
+            split = shlex.split(argv, posix=False)
+            words = [w[1:-1] if w[:1] == w[-1:] == '"' else w for w in split]
+        else:
+            words = [os.fsdecode(w) for w in argv]
+    except (TypeError, ValueError):
+        return False
+    if not words:
+        return False
+    if os.path.splitext(re.split(r"[\\/]", words[0])[-1])[0].lower() != "git":
+        return False
+    i = 1
+    while i < len(words) and words[i].startswith("-"):
+        if words[i] in _SEPARATE_VALUE_OPTIONS:
+            return False  # its value may be a read verb: not understood (choice 239)
+        i += 2 if words[i] in ("-c", "-C") else 1  # global options before the subcommand
+    if i >= len(words):
+        return False
+    verb, rest = words[i], words[i + 1 :]
+    if verb in _READ_ONLY_GIT:
+        return True
+    if verb == "config":
+        return bool({"--get", "--get-all", "--get-regexp", "--list", "-l"} & set(rest))
+    if verb == "remote":
+        return rest in ([], ["-v"], ["--verbose"]) or rest[:1] == ["get-url"]
+    if verb == "branch":
+        writes = {"-d", "-D", "-m", "-M", "-c", "-C", "-f", "-u", "--delete", "--move", "--copy"}
+        reads = {"--list", "--show-current"}
+        return bool(reads & set(rest)) and not writes & set(rest)
+    if verb == "symbolic-ref":
+        return not {"-d", "--delete"} & set(rest) and len([w for w in rest if w[:1] != "-"]) == 1
+    return False
+
+
+def _on_audit(event: str, args: tuple) -> None:
+    global _generation
+    if event in _PROCESS_EVENTS and not (event == "subprocess.Popen" and _reads_only(args[1])):
+        _generation += 1
+
+
+sys.addaudithook(_on_audit)
+
+
+def _key(root: Path, *what: object) -> tuple:
+    return (
+        *what,
+        os.path.realpath(root),
+        os.environ.get("GIT_DIR"),
+        os.environ.get("GIT_WORK_TREE"),
+    )
+
+
+def remembered(root: Path, what: tuple, ask):
+    """``ask()``'s answer for ``what`` in ``root``, asked again once the process has started
+    anything but a read-only git query since it was last asked. An exception is not
+    remembered."""
+    key = _key(root, *what)
+    hit = _remembered.get(key)
+    if hit is not None and hit[0] == _generation:
+        return hit[1]
+    generation = _generation
+    answer = ask()
+    if generation == _generation:  # nothing changed the checkout while it was asked
+        _remembered[key] = (generation, answer)
+    return answer
+
+
 _NO_HOOKS_DIR: str | None = None
 
 
@@ -29,37 +144,178 @@ def runner_args() -> list[str]:
     (``.git/hooks/pre-commit``, ``core.hooksPath``) or an ``fsmonitor`` command that a later
     step's ``git commit`` or ``git push`` would run with that step's environment (session-8
     review). ``core.hooksPath`` points at an empty directory of this process and the
-    filesystem monitor is off. By hand nothing changes: the owner's own hooks run."""
+    filesystem monitor is off. R44 (the plugin security review of 2026-10-19, I4) adds the
+    global attributes file off, signing off and no external diff, so a ``commit.gpgSign``
+    with a ``gpg.program`` or a ``diff.external`` the session wrote runs nothing;
+    ``refuse_planted_config`` refuses the keys these options cannot reach (a ``filter``
+    driver named in the checkout's own ``.gitattributes``). By hand nothing changes: the
+    owner's own hooks run."""
     global _NO_HOOKS_DIR
     if not os.environ.get("GITHUB_ACTIONS"):
         return []
     if _NO_HOOKS_DIR is None or not os.path.isdir(_NO_HOOKS_DIR):
         _NO_HOOKS_DIR = tempfile.mkdtemp(prefix="sdlc-no-hooks-")
-    return ["-c", f"core.hooksPath={_NO_HOOKS_DIR}", "-c", "core.fsmonitor=false"]
+    return [
+        "-c", f"core.hooksPath={_NO_HOOKS_DIR}", "-c", "core.fsmonitor=false",
+        "-c", f"core.attributesFile={os.devnull}", "-c", "commit.gpgSign=false",
+        "-c", "tag.gpgSign=false", "-c", "diff.external=",
+        # the review of 1.0.27: a replace ref the session wrote (.git/refs/replace/) made a
+        # worktree of the approved commit check out another tree, and the diff readers see
+        # no change; the push never carries a replacement, so the runner reads past them
+        "--no-replace-objects",
+    ]  # fmt: skip
+
+
+# git-lfs's own filter, as ``git lfs install --local`` writes it (``actions/checkout`` with
+# ``lfs: true``): judged by its value, so an LFS project keeps working (the review of 1.0.27)
+LFS_FILTER = re.compile(r"^filter\.lfs\.(clean|smudge|process)$")
+LFS_VALUE = re.compile(r"^git-lfs (clean|smudge|filter-process)( -- %f)?$")
+
+
+def _planted(root: Path) -> tuple[str, ...]:
+    """``refuse_planted_config``'s findings: the program-running keys but git-lfs's own
+    filter, and a ``.git/info/grafts`` file (which rewrites history as a replace ref does)."""
+    from ci import checkout_check  # noqa: PLC0415
+
+    found: list[str] = []
+    for scope, name in checkout_check.config_findings(root, checkout_check.PROGRAM_SCOPES):
+        if scope == checkout_check.UNLISTED:
+            found.append(name)
+            continue
+        if LFS_FILTER.match(name.lower()):
+            code, value = checkout_check.git(root, "config", f"--{scope}", "--get", name)
+            if code == 0 and LFS_VALUE.match(value.strip()):
+                continue
+        found.append(f"git config {scope} carries {name}")
+    code, common = checkout_check.git(root, "rev-parse", "--git-common-dir")
+    if code == 0 and (root / common.strip() / "info" / "grafts").exists():
+        found.append(".git/info/grafts exists")
+    return tuple(found)
+
+
+def refuse_planted_config(root: Path | str) -> None:
+    """On a runner (``GITHUB_ACTIONS`` set), raise ``GitError`` when the git config as git
+    resolves it in ``root`` carries a key that makes git run a program (``ci/checkout_check.py
+    RUNS_PROGRAM``: a ``filter.<x>.clean``, a ``gpg.program``, an alias, a conditional
+    include...; the redirect keys stay ``ci/app_token.py``'s, which switches to the workflow
+    token). The checkout is shared with the model's session, which holds ``Bash(git *)`` and
+    unscoped ``Write``; the runner's own ``git add`` and ``git commit`` after the session
+    would run a planted filter outside the sandbox with every credential of the job (R44,
+    the plugin security review of 2026-10-19, I4). Asked once per generation (``remembered``):
+    the model's session is a process start, so its end asks again. By hand nothing is
+    judged: the owner's own config is theirs."""
+    if not os.environ.get("GITHUB_ACTIONS"):
+        return
+    keep = sys.dont_write_bytecode  # checkout_check turns it off for its own fresh checkout
+    from ci import checkout_check  # noqa: F401, PLC0415 - stdlib only; ci imports state
+
+    sys.dont_write_bytecode = keep
+    found = remembered(Path(root), ("planted-config",), lambda: _planted(Path(root)))
+    if found:
+        raise GitError(
+            "the checkout's git config was changed in a way the runner refuses to run git "
+            "under (R44, I4): " + "; ".join(found)
+        )
+
+
+# the git commands that reach the remote, and so take a credential
+NETWORK_COMMANDS = ("push", "fetch", "pull", "ls-remote", "clone")
+
+
+def network_env(
+    args: tuple[str, ...] | list[str], root: Path | str | None = None
+) -> dict[str, str] | None:
+    """The environment of a git call in ``root``: for a network command on a runner, the
+    process's own plus the credential in git's command-scope config (``ci/app_token.py
+    git_auth_env``, which judges ``root``'s git config before handing out the App's token;
+    decision 33, R49: no checkout persists one in ``.git/config``); None otherwise (the
+    process's own, unchanged)."""
+    if not args or args[0] not in NETWORK_COMMANDS:
+        return None
+    from ci import app_token  # noqa: PLC0415 - stdlib only
+
+    auth = app_token.git_auth_env(root=root)
+    return {**os.environ, **auth} if auth else None
+
+
+def run_proc(root: Path, *args: str) -> subprocess.CompletedProcess:
+    """``git <args>`` in ``root``, its exit code and both streams; ``run`` raises on a
+    non-zero exit instead. A local read-only query is bounded by ``READ_TIMEOUT_SECONDS``;
+    a network command is not (a sign-in by Git Credential Manager can take longer, and the
+    bound kills git, not its remote helper). A push reports in English (``LC_ALL=C``):
+    ``reserve_change_id`` and ``push`` read git's refusal reasons, which git translates
+    (the independent review of the R51 PR, findings 7 and 8)."""
+    refuse_planted_config(root)  # R44, I4: no runner git call under a planted program
+    env = network_env(args, root)
+    if args and args[0] == "push":
+        env = {**(env if env is not None else os.environ), "LC_ALL": "C", "LANGUAGE": "C"}
+    local_read = _reads_only(["git", *args]) and not (args and args[0] in NETWORK_COMMANDS)
+    try:
+        return subprocess.run(
+            ["git", *runner_args(), *args],
+            cwd=str(root),
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            env=env,
+            timeout=READ_TIMEOUT_SECONDS if local_read else None,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise GitError(f"git {' '.join(args)} timed out after {exc.timeout:g} s") from exc
+
+
+# a local read-only query that hangs (a slow network filesystem, an ``fsmonitor`` command by
+# hand) fails closed after this long, as gate/diff.py's own calls did before 1.0.13 (choice
+# 239); a network command, a push or a commit keeps the job's own bound
+READ_TIMEOUT_SECONDS = 60
 
 
 def run(root: Path, *args: str, check: bool = True) -> str:
-    proc = subprocess.run(
-        ["git", *runner_args(), *args],
-        cwd=str(root),
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-    )
+    proc = run_proc(root, *args)
     if check and proc.returncode != 0:
         raise GitError(f"git {' '.join(args)} failed: {proc.stderr.strip() or proc.stdout}")
     return proc.stdout
 
 
 def is_repo(root: Path) -> bool:
+    """``root`` is inside a git work tree. A yes is remembered with the git directory git
+    named and the work tree's ``.git`` entry, and stands while both exist; a no is always
+    asked again (a later ``git init`` makes it a yes). The ``.git`` entry is what a linked
+    worktree removed without ``git worktree remove`` loses while its git directory, under the
+    main checkout's, stays (choice 239); a ``GIT_DIR`` checkout has none and keeps the git
+    directory's stat alone."""
+    key = _key(root)
+    known = _repos.get(key)
+    if known and all(os.path.exists(p) for p in known):
+        return True
     try:
-        return run(root, "rev-parse", "--is-inside-work-tree").strip() == "true"
+        out = run(
+            root, "rev-parse", "--is-inside-work-tree", "--absolute-git-dir", "--show-toplevel"
+        ).split("\n")
     except (GitError, FileNotFoundError):
         return False
+    if out[0].strip() != "true":
+        return False
+    if len(out) > 1 and out[1].strip():
+        paths = [out[1].strip()]
+        top = out[2].strip() if len(out) > 2 else ""
+        if top and not os.environ.get("GIT_DIR"):
+            paths.append(os.path.join(top, ".git"))
+        _repos[key] = tuple(paths)
+    return True
 
 
 def current_branch(root: Path) -> str:
     return run(root, "rev-parse", "--abbrev-ref", "HEAD").strip()
+
+
+def ref_exists(root: Path, ref: str) -> bool:
+    """``git rev-parse --verify --quiet <ref>`` names a commit (remembered, see above)."""
+    return remembered(
+        root,
+        ("ref_exists", ref),
+        lambda: bool(run(root, "rev-parse", "--verify", "--quiet", ref, check=False).strip()),
+    )
 
 
 def explicit_default_branch() -> str | None:
@@ -89,15 +345,29 @@ def default_branch(root: Path) -> str:
     explicit = explicit_default_branch()
     if explicit:
         return explicit
-    try:
-        ref = run(root, "symbolic-ref", "refs/remotes/origin/HEAD").strip()
+    return remembered(root, ("default_branch",), lambda: _guess_default_branch(root))
+
+
+def origin_head(root: Path) -> str | None:
+    """The ref ``refs/remotes/origin/HEAD`` points at, None when it is not set (remembered,
+    and shared with gate/diff.py's ``default_base``)."""
+
+    def ask() -> str | None:
+        try:
+            return run(root, "symbolic-ref", "refs/remotes/origin/HEAD").strip()
+        except GitError:
+            return None
+
+    return remembered(root, ("origin_head",), ask)
+
+
+def _guess_default_branch(root: Path) -> str:
+    ref = origin_head(root)
+    if ref is not None:
         prefix = "refs/remotes/origin/"
         return ref[len(prefix) :] if ref.startswith(prefix) else ref.rsplit("/", 1)[-1]
-    except GitError:
-        pass
     for cand in ("main", "master"):
-        ref = f"refs/remotes/origin/{cand}"
-        if run(root, "rev-parse", "--verify", "--quiet", ref, check=False).strip():
+        if ref_exists(root, f"refs/remotes/origin/{cand}"):
             return cand
     for cand in ("main", "master"):
         if run(root, "branch", "--list", cand).strip():
@@ -293,8 +563,37 @@ def ensure_identity(root: Path, name: str = BOT_LOGIN, email: str = BOT_EMAIL) -
     return name
 
 
-def push(root: Path, branch: str, remote: str = "origin") -> None:
+PUSH_MERGE_MESSAGE = "merge {remote}/{branch}: the branch moved while this run worked (R51)"
+_MOVED_RE = re.compile(r"\[rejected\].*\((?:non-fast-forward|fetch first)\)")
+
+
+def push(root: Path, branch: str, remote: str = "origin") -> str | None:
+    """Push ``branch``. A push git rejects because the remote branch moved (the owner's
+    "Update branch", a by-hand commit, another run) fetches it, merges it with a merge commit
+    (never a rebase or a force) and pushes once more (R51, check 12 of the race analysis).
+    Returns that merge commit, None when the first push went through; a merge that conflicts
+    (aborted), a second rejection or any other failure raises ``GitError``. The caller that
+    judged the tree before the push re-checks the merged one."""
+    proc = run_proc(root, "push", "-u", remote, branch)
+    if proc.returncode == 0:
+        return None
+    said = f"{proc.stderr}\n{proc.stdout}".strip()
+    if not _MOVED_RE.search(said):
+        raise GitError(f"git push -u {remote} {branch} failed: {said}")
+    tracking = f"refs/remotes/{remote}/{branch}"
+    run(root, "fetch", remote, f"+refs/heads/{branch}:{tracking}")
+    message = PUSH_MERGE_MESSAGE.format(remote=remote, branch=branch)
+    merge = run_proc(
+        root, *identity_args(root), "merge", "--no-ff", "--no-edit", "-m", message, tracking
+    )
+    if merge.returncode != 0:
+        run(root, "merge", "--abort", check=False)
+        raise GitError(
+            f"git push -u {remote} {branch} was rejected (the remote branch moved) and "
+            f"{tracking} does not merge: {(merge.stdout or merge.stderr).strip()[-500:]}"
+        )
     run(root, "push", "-u", remote, branch)
+    return run(root, "rev-parse", "HEAD").strip()
 
 
 def has_remote(root: Path, remote: str = "origin") -> bool:
@@ -333,3 +632,59 @@ def remote_change_ids(root: Path, remote: str = "origin") -> list[str]:
         if len(parts) == 2:
             ids.add(parts[1].split("/")[0])
     return sorted(i for i in ids if i.isdigit() and len(i) == 4)
+
+
+# --- the id reservation (R51, gap G2; NOTES §59) -------------------------------------------------
+# A new id is reserved on the remote before its folder is written: ``sdlc/<id>/a`` is
+# created with a commit unique to this allocation (the default branch's tree, the default
+# branch's tip as parent, a message with a random nonce), pushed with an empty lease. NOTES
+# §59 shows why both halves: a push of the object a ref already holds answers "up to date"
+# with exit 0 even under the lease, and a plain push of a child commit fast-forwards over a
+# reservation of the tip. Only git's own rejection of the ref update counts as "taken"; any
+# other failure (no write access to ``sdlc/*``, the network) leaves the id unreserved and
+# says so.
+RESERVED, TAKEN, UNRESERVED = "reserved", "taken", "unreserved"
+RESERVE_MESSAGE = "sdlc: reserve change id {id} ({nonce}; R51)"
+_TAKEN_RE = re.compile(
+    r"\[rejected\].*\((?:stale info|non-fast-forward|fetch first|already exists)\)"
+)
+
+
+def reservation_base(root: Path, remote: str = "origin") -> str | None:
+    """The commit a reservation starts from: the default branch's remote-tracking tip, else
+    HEAD; None in a repository without a commit."""
+    for ref in (f"refs/remotes/{remote}/{default_branch(root)}", "HEAD"):
+        sha = run(root, "rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}", check=False)
+        if sha.strip():
+            return sha.strip()
+    return None
+
+
+def reserve_change_id(
+    root: Path, change_id: str, base: str, remote: str = "origin"
+) -> tuple[str, str | None, str]:
+    """``(outcome, sha, detail)`` of reserving ``sdlc/<change_id>/a`` on ``remote``:
+    ``RESERVED`` with the reservation commit, ``TAKEN`` when git refused the ref update
+    because the ref exists, ``UNRESERVED`` with git's message for any other failure."""
+    import secrets  # noqa: PLC0415
+
+    nonce = secrets.token_hex(8)
+    message = RESERVE_MESSAGE.format(id=change_id, nonce=nonce)
+    try:
+        sha = run(
+            root, *identity_args(root), "commit-tree", f"{base}^{{tree}}", "-p", base,
+            "-m", message,
+        ).strip()  # fmt: skip
+    except GitError as exc:
+        return UNRESERVED, None, str(exc)
+    ref = f"refs/heads/{conventions.branch_name(change_id, 'a')}"
+    try:
+        proc = run_proc(root, "push", f"--force-with-lease={ref}:", remote, f"{sha}:{ref}")
+    except (GitError, FileNotFoundError) as exc:
+        return UNRESERVED, None, str(exc)
+    text = f"{proc.stderr}\n{proc.stdout}".strip()
+    if proc.returncode == 0:
+        return RESERVED, sha, text
+    if _TAKEN_RE.search(text):
+        return TAKEN, None, text
+    return UNRESERVED, None, text.splitlines()[-1] if text else f"exit {proc.returncode}"

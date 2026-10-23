@@ -11,12 +11,20 @@
 # Token rule: events caused by this workflow's GITHUB_TOKEN never start another workflow run
 # - only workflow_dispatch and repository_dispatch do. The owner's close fires this workflow
 # normally; the commits it pushes to the change's branches start nothing. Not a phase run: no
-# claude starts, no model credential is read, no deploy secret is held.
+# claude starts, no model credential is read, no deploy secret is held. It keeps the workflow
+# token, not the App's (decision 33): an end state and a dismissal record need no CI run.
 #
 # The change is found from the pull request's own files (its changes/<id>-<slug>/ folder),
 # never from the head name alone (a web-session intent PR carries a claude/... head). A
 # closed PR that carries no change folder costs one green job of about 20 s. A merged PR is
 # gate (a), (b) or (e) passed and is never this workflow's.
+#
+# The fast lane (decision 30): the run closes the owner's intent PR once the design PR carries
+# it, and the design PR once the build PR carries it, each labelled sdlc:superseded first.
+# Such a close is not an abandon: the label goes on before the close, and the job skips a PR
+# that carries it (also once the runner's own close starts workflows, R49). Your own close of
+# a PR without the label abandons the change as before. A PR the runner labelled but could not
+# close stays open with the label; remove the label before you close it to abandon.
 #
 # Gate (f) (decision 25, second half; build guide step 39; article p.47 step 4 "Dismiss with
 # a reason, so the dismissal is recorded and the same finding does not return as new on the
@@ -33,10 +41,13 @@ on:
   pull_request:
     types: [closed]
 
-# contents: write to commit the end state on the change's branches; nothing else.
+# contents: write to commit the end state on the change's branches; checks: write for the
+# dismissal PR's passing sdlc/review "not a build PR", which no sdlc-merge.yml run posts on a
+# push by this workflow's token (decision 36, point 5; the R22 double check, F1).
 permissions:
   contents: write
   pull-requests: write
+  checks: write
 
 # Its own group (live run of 2026-09-25): the close also fires the merge-guarded design and
 # build workflows, and on the shared sdlc-<head> group GitHub displaced the pending abandon
@@ -47,14 +58,17 @@ concurrency:
 
 jobs:
   abandon:
-    if: ${{ github.event.pull_request.merged == false }}
+    if: >-
+      ${{ github.event.pull_request.merged == false &&
+      !contains(github.event.pull_request.labels.*.name, 'sdlc:superseded') }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       # The closed pull request's head: the branch that carries the change's status.yaml.
       - name: Check out the pull request's head
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
+          persist-credentials: false
           ref: ${{ github.event.pull_request.head.ref }}
           fetch-depth: 0
 
@@ -68,8 +82,9 @@ jobs:
         run: git show "refs/remotes/origin/$SDLC_DEFAULT_BRANCH:.github/scripts/sdlc_pin.py" | python - --ref "refs/remotes/origin/$SDLC_DEFAULT_BRANCH"
 
       - name: Check out the pinned framework (public repository, no token)
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
+          persist-credentials: false
           repository: "luissiviero/sdlc-framework"
           ref: ${{ steps.pin.outputs.ref }}
           path: framework

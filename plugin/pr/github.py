@@ -48,7 +48,16 @@ def gh_path() -> str | None:
     return shutil.which("gh")
 
 
+def _app_token_fallback() -> None:
+    """Decision 33 (R49): once the App's token is older than 50 minutes, the run publishes
+    with the workflow token (``ci/app_token.py``); a no-op without the App."""
+    from ci import app_token  # noqa: PLC0415 - stdlib only, imported when first needed
+
+    app_token.fall_back_if_stale()
+
+
 def token() -> str | None:
+    _app_token_fallback()
     for var in TOKEN_VARS:
         value = os.environ.get(var)
         if value:
@@ -141,6 +150,7 @@ def _gh(*args: str, stdin: str | None = None, cwd: str | Path | None = None) -> 
     exe = gh_path()
     if not exe:
         return {"ok": False, "code": 127, "out": "", "err": "gh not found"}
+    _app_token_fallback()  # gh reads GH_TOKEN / GITHUB_TOKEN from the environment
     try:
         proc = subprocess.run(
             [exe, *args],
@@ -250,15 +260,23 @@ _EMPTY_PR: dict[str, Any] = {
     "html_url": None,
     "url": None,
     "draft": False,
+    "author": None,
+    "requested_reviewers": [],
+    "merged_by": None,
+    "merged_at": None,
+    "body": None,
 }
 
 
 def _pr_from_api(item: dict[str, Any]) -> dict[str, Any]:
     """One REST pull request (single or listed) in the shape every lookup returns. A listed
-    item has no ``merged`` field, only ``merged_at``."""
+    item has no ``merged`` field, only ``merged_at``. ``head_repo`` is the head repository's
+    ``owner/name`` (decision 34: the comment dispatcher refuses a fork's head), None when
+    that repository was deleted; the ``gh`` route does not shape it (None, refused)."""
     merged = item.get("merged")
     if merged is None:
         merged = bool(item.get("merged_at"))
+    head_repo = (item.get("head") or {}).get("repo")
     return {
         "number": item.get("number"),
         "state": item.get("state"),
@@ -266,16 +284,34 @@ def _pr_from_api(item: dict[str, Any]) -> dict[str, Any]:
         "merge_commit_sha": item.get("merge_commit_sha"),
         "head_ref": (item.get("head") or {}).get("ref"),
         "head_sha": (item.get("head") or {}).get("sha"),
+        "head_repo": head_repo.get("full_name") if isinstance(head_repo, dict) else None,
         "base_ref": (item.get("base") or {}).get("ref"),
         "labels": [lb.get("name") for lb in item.get("labels") or []],
         "html_url": item.get("html_url"),
         "url": item.get("html_url"),
         "draft": bool(item.get("draft")),
         "node_id": item.get("node_id"),
+        "author": (item.get("user") or {}).get("login"),
+        "requested_reviewers": _logins(item.get("requested_reviewers")),
+        # decision 35: who merged it and what its body showed (the risk acceptance)
+        "merged_by": (item.get("merged_by") or {}).get("login"),
+        "merged_at": item.get("merged_at"),
+        "body": item.get("body"),
     }
 
 
-GH_PR_FIELDS = "number,url,labels,isDraft,state,mergeCommit,headRefName,headRefOid,baseRefName"
+GH_PR_FIELDS = (
+    "number,url,labels,isDraft,state,mergeCommit,headRefName,headRefOid,baseRefName,"
+    "mergedBy,mergedAt,body"
+)
+# the review-request sync's lookups only (decision 31): with a workflow token a team's review
+# request can fail the GraphQL read of ``reviewRequests``, so no other lookup asks for it
+GH_REVIEW_FIELDS = f"{GH_PR_FIELDS},author,reviewRequests"
+
+
+def _logins(items: Any) -> list[str]:
+    """The ``login`` of each user in a list (a team carries none and is left out)."""
+    return [str(u["login"]) for u in items or [] if isinstance(u, dict) and u.get("login")]
 
 
 def _pr_from_gh(item: dict[str, Any]) -> dict[str, Any]:
@@ -293,6 +329,11 @@ def _pr_from_gh(item: dict[str, Any]) -> dict[str, Any]:
         "html_url": item.get("url"),
         "url": item.get("url"),
         "draft": bool(item.get("isDraft")),
+        "author": (item.get("author") or {}).get("login"),
+        "requested_reviewers": _logins(item.get("reviewRequests")),
+        "merged_by": (item.get("mergedBy") or {}).get("login"),
+        "merged_at": item.get("mergedAt"),
+        "body": item.get("body"),
     }
 
 
@@ -308,7 +349,9 @@ def _find_pr_api(repo: str, head_branch: str, state: str) -> dict[str, Any]:
     return {"route": "api", "ok": True, "reason": "", **_pr_from_api(items[0])}
 
 
-def _find_pr_gh(repo: str, head_branch: str, state: str, cwd: str | Path | None) -> dict[str, Any]:
+def _find_pr_gh(
+    repo: str, head_branch: str, state: str, cwd: str | Path | None, fields: str = GH_PR_FIELDS
+) -> dict[str, Any]:
     data, error = _gh_json(
         "pr",
         "list",
@@ -319,7 +362,7 @@ def _find_pr_gh(repo: str, head_branch: str, state: str, cwd: str | Path | None)
         "--state",
         state,
         "--json",
-        GH_PR_FIELDS,
+        fields,
         cwd=cwd,
     )
     if error:
@@ -331,29 +374,43 @@ def _find_pr_gh(repo: str, head_branch: str, state: str, cwd: str | Path | None)
 
 
 def find_pr(
-    repo: str, head_branch: str, state: str = "open", cwd: str | Path | None = None
+    repo: str,
+    head_branch: str,
+    state: str = "open",
+    cwd: str | Path | None = None,
+    reviewers: bool = False,
 ) -> dict[str, Any]:
     """The most recent pull request from ``head_branch`` in ``state`` (open, closed or all):
     {'route', 'ok', 'number', 'state', 'merged', 'merge_commit_sha', 'head_ref', 'head_sha',
-    'base_ref', 'labels', 'html_url', 'url', 'draft', 'reason'} - number None when there is
-    none."""
+    'base_ref', 'labels', 'html_url', 'url', 'draft', 'author', 'requested_reviewers',
+    'merged_by', 'merged_at', 'body', 'reason'} - number None when there is none;
+    ``requested_reviewers`` lists the users whose review is pending (teams are left out).
+    The ``gh`` route reads ``author`` and ``requested_reviewers`` only with ``reviewers``
+    (``GH_REVIEW_FIELDS``)."""
     if state not in PR_STATES:
         raise ValueError(f"state must be one of {PR_STATES}, not {state!r}")
     return _attempt(
         lambda: _find_pr_api(repo, head_branch, state),
-        lambda: _find_pr_gh(repo, head_branch, state, cwd),
+        lambda: _find_pr_gh(
+            repo, head_branch, state, cwd, GH_REVIEW_FIELDS if reviewers else GH_PR_FIELDS
+        ),
         number=None,
     )
 
 
-def find_open_pr(repo: str, head_branch: str, cwd: str | Path | None = None) -> dict[str, Any]:
+def find_open_pr(
+    repo: str, head_branch: str, cwd: str | Path | None = None, reviewers: bool = False
+) -> dict[str, Any]:
     """{'route', 'number', 'url', 'labels', 'draft'} - number None when there is none."""
-    return find_pr(repo, head_branch, "open", cwd=cwd)
+    return find_pr(repo, head_branch, "open", cwd=cwd, reviewers=reviewers)
 
 
-def pr_by_number(repo: str, number: int, cwd: str | Path | None = None) -> dict[str, Any]:
-    """One pull request by number, in ``find_pr``'s shape; ``ok`` False with a reason when it
-    cannot be read (no route, not found)."""
+def pr_by_number(
+    repo: str, number: int, cwd: str | Path | None = None, reviewers: bool = False
+) -> dict[str, Any]:
+    """One pull request by number, in ``find_pr``'s shape (``reviewers`` as there); ``ok``
+    False with a reason when it cannot be read (no route, not found)."""
+    fields = GH_REVIEW_FIELDS if reviewers else GH_PR_FIELDS
 
     def via_api() -> dict[str, Any]:
         result = _request("GET", f"{API_ROOT}/repos/{repo}/pulls/{number}", token() or "")
@@ -363,9 +420,7 @@ def pr_by_number(repo: str, number: int, cwd: str | Path | None = None) -> dict[
         return {"route": "api", "ok": True, "reason": "", **_pr_from_api(result["data"])}
 
     def via_gh() -> dict[str, Any]:
-        data, error = _gh_json(
-            "pr", "view", str(number), "--repo", repo, "--json", GH_PR_FIELDS, cwd=cwd
-        )
+        data, error = _gh_json("pr", "view", str(number), "--repo", repo, "--json", fields, cwd=cwd)
         if error or not isinstance(data, dict):
             reason = error or "gh pr view printed no pull request"
             return {"route": "gh", "ok": False, "reason": reason, "number": None}
@@ -539,6 +594,8 @@ def pr_reviews(repo: str, number: int, cwd: str | Path | None = None) -> dict[st
                     "body": item.get("body") or "",
                     "at": item.get("submitted_at"),
                     "url": item.get("html_url"),
+                    # the commit the review was submitted on (R22: the merge step's head rule)
+                    "commit": item.get("commit_id"),
                 }
             )
         return out
@@ -831,6 +888,33 @@ def _set_ready_api(repo: str, number: int) -> dict[str, Any]:
     return {"route": "api", "ok": True, "number": number}
 
 
+def close_pr(repo: str, number: int, cwd: str | Path | None = None) -> dict[str, Any]:
+    """Close a pull request without merging and without a comment (decision 30: the fast
+    lane supersedes the intent and design PRs; decision 20: no notification). The REST
+    route sets ``state: closed``; ``gh pr close`` is the fallback."""
+
+    def via_api() -> dict[str, Any]:
+        result = _request(
+            "PATCH", f"{API_ROOT}/repos/{repo}/pulls/{number}", token() or "", {"state": "closed"}
+        )
+        if result["error"]:
+            return {"route": "api", "ok": False, "reason": result["error"], "number": number}
+        return {"route": "api", "ok": True, "number": number}
+
+    def via_gh() -> dict[str, Any]:
+        result = _gh("pr", "close", str(number), "--repo", repo, cwd=cwd)
+        if not result["ok"]:
+            return {
+                "route": "gh",
+                "ok": False,
+                "reason": _gh_error(result, "gh pr close"),
+                "number": number,
+            }
+        return {"route": "gh", "ok": True, "number": number}
+
+    return _attempt(via_api, via_gh, number=number)
+
+
 def set_ready(repo: str, number: int, cwd: str | Path | None = None) -> dict[str, Any]:
     """Mark a draft PR ready for review (phase (e)). REST has no such field: the GraphQL
     mutation ``markPullRequestReadyForReview`` takes the PR's node id."""
@@ -949,6 +1033,52 @@ def set_labels(
     if not remove and not add:
         return {"route": "none", "ok": True, "added": [], "removed": []}
     return _attempt(via_api, via_gh, number=number)
+
+
+# --- review requests (decision 31) -----------------------------------------------------------
+def _reviewers(
+    method: str, flag: str, repo: str, number: int, logins: list[str], cwd: str | Path | None
+) -> dict[str, Any]:
+    """``POST`` (request) or ``DELETE`` (withdraw) the users ``logins`` as reviewers of the PR.
+    A refusal (422: the PR's author, a user without access; 404) is a failure with
+    GitHub's reason, never an exception."""
+
+    def via_api() -> dict[str, Any]:
+        url = f"{API_ROOT}/repos/{repo}/pulls/{number}/requested_reviewers"
+        result = _request(method, url, token() or "", {"reviewers": list(logins)})
+        if result["error"]:
+            return {"route": "api", "ok": False, "reason": result["error"], "number": number}
+        return {"route": "api", "ok": True, "number": number, "reviewers": list(logins)}
+
+    def via_gh() -> dict[str, Any]:
+        args = ["pr", "edit", str(number), "--repo", repo]
+        for login in logins:
+            args += [flag, login]
+        result = _gh(*args, cwd=cwd)
+        if not result["ok"]:
+            return {
+                "route": "gh",
+                "ok": False,
+                "reason": _gh_error(result, "gh pr edit"),
+                "number": number,
+            }
+        return {"route": "gh", "ok": True, "number": number, "reviewers": list(logins)}
+
+    return _attempt(via_api, via_gh, number=number)
+
+
+def request_reviewers(
+    repo: str, number: int, logins: list[str], cwd: str | Path | None = None
+) -> dict[str, Any]:
+    """Request the review of ``logins`` on the PR: GitHub notifies each of them."""
+    return _reviewers("POST", "--add-reviewer", repo, number, logins, cwd)
+
+
+def remove_reviewers(
+    repo: str, number: int, logins: list[str], cwd: str | Path | None = None
+) -> dict[str, Any]:
+    """Withdraw the pending review request of ``logins`` on the PR."""
+    return _reviewers("DELETE", "--remove-reviewer", repo, number, logins, cwd)
 
 
 # --- check runs -------------------------------------------------------------------------------
@@ -1132,6 +1262,36 @@ def update_issue_body(
     return _attempt(via_api, via_gh, number=number)
 
 
+def add_comment(repo: str, number: int, body: str, cwd: str | Path | None = None) -> dict[str, Any]:
+    """One comment on an issue or a pull request (the second opinion's record, R8)."""
+
+    def via_api() -> dict[str, Any]:
+        result = _request(
+            "POST",
+            f"{API_ROOT}/repos/{repo}/issues/{number}/comments",
+            token() or "",
+            {"body": body},
+        )
+        if result["error"]:
+            return {"route": "api", "ok": False, "reason": result["error"], "number": number}
+        return {"route": "api", "ok": True, "number": number, "url": result["data"].get("html_url")}
+
+    def via_gh() -> dict[str, Any]:
+        result = _gh(
+            "issue", "comment", str(number), "--repo", repo, "--body-file", "-", stdin=body, cwd=cwd
+        )
+        if not result["ok"]:
+            return {
+                "route": "gh",
+                "ok": False,
+                "reason": _gh_error(result, "gh issue comment"),
+                "number": number,
+            }
+        return {"route": "gh", "ok": True, "number": number, "url": _gh_url(result)}
+
+    return _attempt(via_api, via_gh, number=number)
+
+
 def pin_issue(repo: str, node_id: str | None) -> dict[str, Any]:
     """Best effort: a pinned issue is convenience, never a precondition."""
     if not node_id:
@@ -1155,11 +1315,12 @@ def default_branch_protection(repo: str, cwd: str | Path | None = None) -> dict[
     """Whether the repository's default branch keeps a merge to the owner: {'branch',
     'protected', 'classic', 'rules', 'by'}.
 
-    Decision 4 (only the owner merges; the automation identity has branch-only write access)
-    is enforced by GitHub, never by the framework, and nothing checked it existed until the
-    1.0.0 readiness review (2026-09-26) found the framework's own default branch
-    unprotected. The one form that enforces it is a branch ruleset with *Restrict updates*
-    and only the repository admin in its bypass list: the workflow token holds
+    Decision 4 (only the owner merges, and the merge App on the owner's approving review,
+    decision 36; the automation identity has branch-only write access) is enforced by
+    GitHub, never by the framework, and nothing checked it existed until the 1.0.0
+    readiness review (2026-09-26) found the framework's own default branch unprotected. The
+    one form that enforces it is a branch ruleset with *Restrict updates* and only the
+    repository admin and the merge App in its bypass list: the workflow token holds
     ``contents: write`` and the phase session ``Bash(gh *)``, so a rule that stops direct
     pushes or requires a pull request (with no approvals) still lets ``gh pr merge`` through
     (the review of the 0.2.25 diff, finding H1). The active rules of the branch are read from
@@ -1226,3 +1387,179 @@ def default_branch_protection(repo: str, cwd: str | Path | None = None) -> dict[
         return _judge("gh", branch, (flag or {}).get("protected"), rules)
 
     return _attempt(via_api, via_gh)
+
+
+# --- the merge step of gate (e) (decision 36; ROADMAP R22) --------------------------------------
+# Token route only: the merge workflow runs on a runner, where the job's token is the identity.
+MERGE_METHOD = "merge"  # a merge commit keeps the reviewed commits on the default branch
+COMPARE_FILE_CAP = 300  # GitHub's compare lists at most 300 files: past it, fail closed
+
+
+def _api(method: str, path: str, payload: dict[str, Any] | None = None, tok: str | None = None):
+    """One token-route call: (data, error)."""
+    use = tok if tok is not None else token()
+    if not use:
+        return None, NO_ROUTE
+    result = _request(method, f"{API_ROOT}/{path}", use, payload)
+    return result.get("data"), result.get("error") or ""
+
+
+MERGE_ENVIRONMENT = "sdlc-merge"  # decision 36: the environment that holds the merge App's key
+
+
+def merge_environment(repo: str, branch: str) -> dict[str, Any]:
+    """Whether the ``sdlc-merge`` environment keeps the merge App's key to ``branch``, the
+    default branch (decision 36 and choice 242, point 4; ``/sdlc-init`` step 6): {'ok',
+    'exists', 'safe', 'found', 'reason'}. Safe means a deployment branch policy of selected
+    branches whose one rule is ``branch``; any other policy lets a workflow on another ref
+    read the key of a bypass actor of ruleset 1 (choice 250; the R22 double check, F8). No
+    environment is safe (the merge stays the owner's, fallback C1). Read-only: the workflow
+    token's ``actions: read`` (``GET /repos/{repo}/environments/{name}`` and its
+    ``deployment-branch-policies``); a lookup that fails is ``ok: False``."""
+    tok = token()
+    if not tok:
+        return {"ok": False, "reason": NO_ROUTE}
+    base = f"{API_ROOT}/repos/{repo}/environments/{urllib.parse.quote(MERGE_ENVIRONMENT)}"
+    got = _request("GET", base, tok)
+    if got.get("status") == 404:
+        found = f"no {MERGE_ENVIRONMENT} environment"
+        return {"ok": True, "exists": False, "safe": True, "found": found, "reason": ""}
+    if got.get("error"):
+        return {"ok": False, "reason": got["error"]}
+    policy = (got.get("data") or {}).get("deployment_branch_policy")
+
+    def unsafe(found: str) -> dict[str, Any]:
+        return {"ok": True, "exists": True, "safe": False, "found": found, "reason": ""}
+
+    if not isinstance(policy, dict):
+        return unsafe("every branch and tag may use it")
+    if policy.get("protected_branches"):
+        return unsafe("every protected branch may use it, not the default branch alone")
+    if not policy.get("custom_branch_policies"):
+        return unsafe("its deployment branch policy names no branch")
+    rules = _request("GET", f"{base}/deployment-branch-policies?per_page={PER_PAGE}", tok)
+    if rules.get("error"):
+        return {"ok": False, "reason": rules["error"]}
+    named = [
+        (str(r.get("name") or ""), str(r.get("type") or "branch"))
+        for r in (rules.get("data") or {}).get("branch_policies") or []
+        if isinstance(r, dict)
+    ]
+    if named != [(branch, "branch")]:
+        shown = ", ".join(f"{kind} {name}" for name, kind in named) or "none"
+        return unsafe(f"its deployment rules are {shown}, not the branch {branch} alone")
+    found = f"only {branch} may use it"
+    return {"ok": True, "exists": True, "safe": True, "found": found, "reason": ""}
+
+
+REVIEW_CHECK = "sdlc/review"  # review/findings.py CHECK_RUN_NAME, the check ruleset 2 requires
+NOT_BUILD_TITLE = "not a build PR"
+NOT_BUILD_SUMMARY = (
+    "This pull request is not a framework build PR (its head is not `sdlc/<id>/c`), so gate "
+    "(e)'s review does not apply to it: it merges as before (decision 36, point 5)."
+)
+
+
+def post_not_build_check(repo: str, sha: str, cwd: str | Path | None = None) -> dict[str, Any]:
+    """The passing ``sdlc/review`` "not a build PR" on ``sha`` (decision 36, point 5): every
+    pull request that is not a build PR carries it, so ruleset 2 holds only build PRs."""
+    return create_check_run(
+        repo, sha, REVIEW_CHECK, "success", NOT_BUILD_TITLE, NOT_BUILD_SUMMARY, cwd=cwd
+    )
+
+
+def check_runs_on(repo: str, sha: str, name: str) -> dict[str, Any]:
+    """The latest check runs named ``name`` on commit ``sha``: {'ok', 'runs', 'reason'}; each
+    run is {'id', 'status', 'conclusion', 'app'} (``GET /repos/{repo}/commits/{sha}/check-runs``
+    with ``check_name`` and ``filter=latest``)."""
+    query = urllib.parse.urlencode({"check_name": name, "filter": "latest", "per_page": PER_PAGE})
+    data, error = _api("GET", f"repos/{repo}/commits/{sha}/check-runs?{query}")
+    if error:
+        return {"ok": False, "runs": [], "reason": error}
+    runs = [
+        {
+            "id": r.get("id"),
+            "status": r.get("status"),
+            "conclusion": r.get("conclusion"),
+            "app": (r.get("app") or {}).get("slug"),
+        }
+        for r in (data or {}).get("check_runs") or []
+        if isinstance(r, dict)
+    ]
+    return {"ok": True, "runs": runs, "reason": ""}
+
+
+def compare_commits(repo: str, base: str, head: str) -> dict[str, Any]:
+    """``GET /repos/{repo}/compare/{base}...{head}``: {'ok', 'status', 'files', 'reason'};
+    ``status`` is GitHub's (identical, ahead, behind, diverged) and ``files`` the paths the
+    head changed since the base, a rename's old path included. More than ``COMPARE_FILE_CAP``
+    files is an error (the list would be cut)."""
+    data, error = _api("GET", f"repos/{repo}/compare/{base}...{head}")
+    if error:
+        return {"ok": False, "status": None, "files": [], "reason": error}
+    files: list[str] = []
+    for entry in (data or {}).get("files") or []:
+        if not isinstance(entry, dict):
+            continue
+        # a rename lists its new name; its old one is a path the head changed too (a file
+        # moved out of the source into evidence/ deletes it from what merges)
+        files += [str(entry.get(k)) for k in ("filename", "previous_filename") if entry.get(k)]
+    listed = len((data or {}).get("files") or [])
+    if listed >= COMPARE_FILE_CAP:
+        reason = f"{base[:10]}...{head[:10]} changes {listed} files or more: cannot list all"
+        return {"ok": False, "status": None, "files": [], "reason": reason}
+    return {"ok": True, "status": (data or {}).get("status"), "files": files, "reason": ""}
+
+
+def file_at(repo: str, path: str, ref: str) -> dict[str, Any]:
+    """One file's text at ``ref`` (``GET /repos/{repo}/contents/{path}?ref=``): {'ok', 'text',
+    'missing', 'reason'}; ``missing`` is True on a 404."""
+    import base64  # noqa: PLC0415
+
+    quoted = urllib.parse.quote(path)
+    result = _request(
+        "GET", f"{API_ROOT}/repos/{repo}/contents/{quoted}?ref={ref}", token() or "", None
+    )
+    if result.get("status") == 404:
+        return {"ok": False, "text": None, "missing": True, "reason": f"{path} is not at {ref}"}
+    if result.get("error"):
+        return {"ok": False, "text": None, "missing": False, "reason": result["error"]}
+    data = result.get("data") or {}
+    if not isinstance(data, dict) or data.get("type") != "file":
+        return {"ok": False, "text": None, "missing": False, "reason": f"{path} is not a file"}
+    try:
+        text = base64.b64decode(str(data.get("content") or "")).decode("utf-8")
+    except (ValueError, UnicodeDecodeError) as exc:
+        return {"ok": False, "text": None, "missing": False, "reason": f"{path}: {exc}"}
+    return {"ok": True, "text": text, "missing": False, "reason": ""}
+
+
+def dir_at(repo: str, path: str, ref: str) -> dict[str, Any]:
+    """The entry names of a directory at ``ref``: {'ok', 'names', 'reason'}."""
+    quoted = urllib.parse.quote(path)
+    data, error = _api("GET", f"repos/{repo}/contents/{quoted}?ref={ref}")
+    if error:
+        return {"ok": False, "names": [], "reason": error}
+    if not isinstance(data, list):
+        return {"ok": False, "names": [], "reason": f"{path} is not a directory at {ref}"}
+    names = [str(e.get("name")) for e in data if isinstance(e, dict) and e.get("type") == "dir"]
+    return {"ok": True, "names": names, "reason": ""}
+
+
+def merge_pr(repo: str, number: int, sha: str, tok: str) -> dict[str, Any]:
+    """Merge pull request ``number`` at exactly ``sha`` with ``tok`` (the merge App's token,
+    decision 36): ``PUT /repos/{repo}/pulls/{number}/merge``. GitHub refuses it when the
+    head moved (409) or a rule holds it (405): {'ok', 'sha', 'status', 'reason'}."""
+    if not tok:
+        return {"ok": False, "sha": None, "status": 0, "reason": "no merge token"}
+    payload = {"sha": sha, "merge_method": MERGE_METHOD}
+    result = _request("PUT", f"{API_ROOT}/repos/{repo}/pulls/{number}/merge", tok, payload)
+    if result.get("error"):
+        return {
+            "ok": False,
+            "sha": None,
+            "status": result.get("status"),
+            "reason": result["error"],
+        }
+    data = result.get("data") or {}
+    return {"ok": bool(data.get("merged")), "sha": data.get("sha"), "status": 200, "reason": ""}

@@ -23,6 +23,7 @@ from gate import artifacts as art
 from gate import preflight
 from state import conventions as c
 from state import status as status_mod
+from tests import fixture_repos
 
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURE = ROOT / "tests" / "fixtures" / "sample-python-project"
@@ -241,7 +242,13 @@ def findings(change_dir: Path, important: int = 0, nits: int = 0) -> None:
 @pytest.fixture
 def project(tmp_path):
     """A fixture copy, initialised, with change 0001 and its three artifacts written by hand."""
+    fixture_repos.copy("pr-project", tmp_path, _build_project)
     root = tmp_path / "proj"
+    return root, root / "changes" / CHANGE_DIR_NAME
+
+
+def _build_project(base: Path) -> None:
+    root = base / "proj"
     shutil.copytree(FIXTURE, root)
     git(root, "init", "-q", "-b", "main")
     git(root, "config", "user.email", "owner@example.com")
@@ -262,7 +269,6 @@ def project(tmp_path):
     write(change / "plan.md", PLAN)
     git(root, "add", ".")
     git(root, "commit", "-q", "-m", "intent, spec and plan")
-    return root, change
 
 
 # --- the five bullets ----------------------------------------------------------------------
@@ -295,6 +301,130 @@ def test_five_bullets_at_phase_a_describe_the_intent(project):
     assert f"Links: changes/{CHANGE_DIR_NAME}/intent.md" in body
     assert "spec.md" not in body and "gate-a.json" not in body
     assert "Counters: first-pass merge: yes · fix iterations: 0" in body
+
+
+def test_intent_pr_names_the_fast_lane_unless_opened_as_a_draft(project):
+    """Choice 239 (R54): the sample's #77 read "merge = approve (gate (a))" while its opening
+    had already accepted the intent and started the design (NOTES §50). A PR not opened as a
+    draft names both cases; a draft, which never takes the fast lane, keeps gate (a) alone."""
+    root, _change = project
+    needs = bullets(desc.build_description(root, "0001", "a"))[4]
+    assert (
+        "opened from your own account, not as a draft, and changing nothing outside its change "
+        "folder, nothing"
+    ) in needs
+    assert "the fast lane, decision 30" in needs and "`sdlc:superseded`" in needs
+    assert needs.endswith("or changing other files: " + desc.GATE_CHECKLIST["a"])
+    draft = bullets(desc.build_description(root, "0001", "a", draft=True))[4]
+    assert draft == "- **What needs you**: " + desc.GATE_CHECKLIST["a"]
+
+
+def test_upsert_passes_the_draft_flag_to_the_description(project, capsys):
+    root, _change = project
+    for flags, fast in (([], True), (["--draft"], False)):
+        argv = ["upsert", "--root", str(root), "--id", "0001", "--phase", "a", "--dry-run"]
+        assert pr_cli.main(argv + flags) == 0
+        body = json.loads(capsys.readouterr().out)["body"]
+        assert ("the fast lane, decision 30" in body) is fast
+
+
+def test_the_install_pr_of_change_0000_keeps_gate_a(project):
+    """The review of 5248e29: /sdlc-init opens change 0000's PR without --draft, and it changes
+    files outside its folder, so the fast lane never takes it (run_phase.intent_pr_start)."""
+    root, change = project
+    st = status_mod.read_status(change)
+    needs = desc._intent_bullets(INTENT, status_mod.Status(**{**st.__dict__, "id": "0000"}))[4]
+    assert needs == "- **What needs you**: " + desc.GATE_CHECKLIST["a"]
+
+
+def test_upsert_on_an_open_pr_reads_its_live_draft_state(project, capsys, monkeypatch):
+    """A fix round's upsert passes no --draft: the body follows the PR's own draft flag."""
+    root, _change = project
+    git(root, "remote", "add", "origin", "https://github.com/o/r.git")
+    bodies: list[str] = []
+    for live_draft, fast in ((True, False), (False, True)):
+        found = {"ok": True, "number": 7, "labels": [], "draft": live_draft, "route": "api"}
+        monkeypatch.setattr(github, "find_open_pr", lambda *a, _f=found, **k: _f)
+        monkeypatch.setattr(
+            github,
+            "update_pr",
+            lambda repo, number, body, title, cwd=None: (
+                bodies.append(body) or {"ok": True, "route": "api", "number": number}
+            ),
+        )
+        monkeypatch.setattr(github, "ensure_label", lambda *a, **k: {"ok": True})
+        monkeypatch.setattr(github, "set_labels", lambda *a, **k: {"ok": True})
+        monkeypatch.setattr(pr_cli, "not_build_check", lambda *a, **k: {"ok": True})
+        assert pr_cli.main(["upsert", "--root", str(root), "--id", "0001", "--phase", "a"]) == 0
+        capsys.readouterr()
+        assert ("the fast lane, decision 30" in bodies[-1]) is fast
+
+
+QUICK_INTENT = """# Intent: percent helper
+Author: owner (developer). Status: proposed. Change id: 0001. Entry route: idea.
+Quick intent: yes
+
+## Problem
+Callers compute percentages by hand and get rounding wrong. Give them a helper.
+
+## Proposed outcome
+Left to the design run (quick intent).
+
+## Affected users and systems
+Left to the design run (quick intent).
+
+## Constraints
+Left to the design run (quick intent).
+
+## Open questions
+Left to the design run (quick intent).
+
+## Examples/References
+none
+"""
+ASSUMED = """
+## Assumed from the quick intent
+- Proposed outcome: `sample_pkg.percent(part, whole)` returns a rounded
+  percentage.
+- Change type: feature.
+"""
+
+
+def test_quick_intent_at_a_says_what_is_left_to_the_design(project):
+    root, change = project
+    write(change / "intent.md", QUICK_INTENT)
+    lines = bullets(desc.build_description(root, "0001", "a"))
+    assert len(lines) == 5
+    assert lines[0].endswith("Callers compute percentages by hand and get rounding wrong.")
+    assert lines[1].endswith("idea route, feature change, quick intent")
+    for line in lines[2:4]:
+        assert "left to the design run (quick intent)" in line
+        assert "Left to the design run" not in line  # never quoted as an open question
+
+
+def test_what_i_assumed_heads_the_design_and_build_prs(project):
+    root, change = project
+    write(change / "intent.md", QUICK_INTENT)
+    write(change / "spec.md", SPEC_HEADER + ASSUMED + SPEC_BODY)
+    gate_json(change, "b", "wait", c.ready_label("b"))
+    gate_json(change, "e", "wait", c.ready_label("e"))
+    for phase in ("b", "e"):
+        body = desc.build_description(root, "0001", phase)
+        assert len(bullets(body)) == 5
+        assert body.startswith("**What I assumed (2)** from your one-paragraph intent (R54)")
+        # choice 263: a fix round edits the spec at (b) only; from (c) on it changes the code
+        head = body.splitlines()[0]
+        assert ("corrects it (/sdlc-fix)" in head) is (phase == "b")
+        assert ("the line itself stays as the design wrote it" in head) is (phase == "e")
+        assert (
+            "1. Proposed outcome: `sample_pkg.percent(part, whole)` returns a rounded "
+            "percentage.\n2. Change type: feature.\n"
+        ) in body
+    # the marker is not a release note: with no notes file, the section is left out
+    assert "## Release note" not in desc.build_description(root, "0001", "e")
+    write(change / "intent.md", INTENT)
+    write(change / "spec.md", SPEC)
+    assert "What I assumed" not in desc.build_description(root, "0001", "b")
 
 
 def test_phase_a_open_questions_none_and_default_label(project):
@@ -347,18 +477,19 @@ def test_phase_c_evidence_missing_and_not_yet_reviewed(project):
     assert "nothing: the run continues to the next phase" in lines[4]
 
 
-def test_phase_d_green_logs_and_full_profile_checklist(project):
+def test_phase_d_green_logs_and_nothing_to_do_at_d(project):
     root, change = project
     logs(change, exit_code=0)
     write(change / art.EVIDENCE_DIR / art.EVIDENCE_VERIFIER, "# Verifier\nRan it.\n")
     write(change / art.EVIDENCE_DIR / desc.SCREENSHOT_DIR / "home.png", "png")
     findings(change, important=0, nits=2)
-    gate_json(change, "d", "wait", c.ready_label("d"))
+    gate_json(change, "d", "continue", None)
     lines = bullets(desc.build_description(root, "0001", "d"))
     assert "test green, build green, lint green" in lines[1]
     assert "verifier.md present" in lines[1] and "1 screenshot(s)" in lines[1]
     assert "0 Important, 2 nits (nit 0; nit 1)" in lines[2]
-    assert "sdlc:d-approved" in lines[4]
+    # decision 37 (1.0.21): gate (d) is the confidence gate's; no approval label is asked for
+    assert desc.NOTHING_NEEDED in lines[4] and "approved" not in lines[4]
 
 
 def test_red_log_is_red(project):
@@ -377,15 +508,17 @@ def test_phase_e_release_note_and_counters(project):
     gate_json(change, "e", "wait", c.ready_label("e"))
     body = desc.build_description(root, "0001", "e")
     assert len(bullets(body)) == 5
-    assert "merge = approve; a review comment is the change request (/sdlc-fix)" in body
+    assert "an approving review = approve (gate (e), decision 36)" in body
     assert "## Release note" in body
     assert "returns a rounded percentage" in body.split("## Release note")[1]
     assert "Counters: first-pass merge: yes · fix iterations: 0" in body
     # relative repository paths when the fixture has no GitHub remote
     assert f"changes/{CHANGE_DIR_NAME}/intent.md" in body
     assert f"changes/{CHANGE_DIR_NAME}/evidence/gate-e.json" in body
-    # waiting for the owner's merge; the release workflow runs after it (build guide step 32)
-    assert "merge = gate (e) passed; the release workflow then runs `deploy.command`" in body
+    # waiting for the owner's approval; the merge App merges, then the release workflow runs
+    # (build guide step 32; decision 36)
+    assert "Waiting for your approval: the merge App then merges this PR" in body
+    assert "the release workflow runs `deploy.command`" in body
     # the fixture declares no production: merge is the whole gate (decision 13)
     assert "Release approval" not in body and "sdlc:release-approved" not in body
 
@@ -428,6 +561,57 @@ def test_phase_e_release_note_falls_back_to_the_intent_outcome(project):
     assert "returns a rounded percentage" in body.split("## Release note")[1]
 
 
+def test_phase_f_proposed_outcome_keeps_a_sentence_wrapped_over_lines(project):
+    # item 11's read: the sample's PR #60 showed "... the commit that caused the breach was
+    # already" because only the first line of a hard-wrapped paragraph was read
+    root, change = project
+    st = status_mod.read_status(change)
+    st.entry_route, st.change_type = "incident", "fix"
+    st.set_phase("f")
+    status_mod.write_status(change, st)
+    outcome = (
+        "No design-phase code change is required: the commit that caused the breach was already\n"
+        "reverted on `main`, before this diagnosis ran (see Evidence).\n"
+        "`main` is green.\n"
+    )
+    write(
+        change / "intent.md",
+        INTENT.replace("Entry route: idea", "Entry route: incident abc").replace(
+            "`sample_pkg.percent(part, whole)` returns a rounded percentage; covered by tests.\n",
+            outcome,
+        ),
+    )
+    lines = bullets(desc.build_description(root, "0001", "f"))
+    assert lines[1] == (
+        "- **Proposed outcome**: Percent helper: No design-phase code change is required: the "
+        "commit that caused the breach was already reverted on `main`, before this diagnosis "
+        "ran (see Evidence)."
+    )
+
+
+@pytest.mark.parametrize(
+    "body, sentence",
+    [
+        ("One line. Two.\n", "One line."),
+        ("Wrapped over\ntwo lines. Then more.\n", "Wrapped over two lines."),
+        ("No end mark\non two lines\n\nNext paragraph.\n", "No end mark on two lines"),
+        ("- An item\n  that wraps. Rest.\n- Another item.\n", "An item that wraps."),
+        ("- An item with no end mark\n- Another item.\n", "An item with no end mark"),
+        ("Stops at a list\n- item.\n", "Stops at a list"),
+        ("> a quote\n\nThe text\nafter it.\n", "The text after it."),
+        ("A signature:\n```python\ndef f(x):\n    return x\n```\n", "A signature:"),
+        ("```\ncode line\n```\nThe text\nafter it.\n", "The text after it."),
+    ],
+)
+@pytest.mark.parametrize("helper", ["pr", "release"])
+def test_first_sentence_reads_the_whole_first_paragraph(helper, body, sentence):
+    # the PR body's helper and the release note's copy read a section the same way
+    from release import notes
+
+    first_sentence = desc._first_sentence if helper == "pr" else notes._first_sentence
+    assert first_sentence(body) == sentence
+
+
 def _declare_production(root: Path, value: str) -> None:
     config = root / "sdlc.yaml"
     text = config.read_text(encoding="utf-8")
@@ -450,8 +634,8 @@ def test_release_approval_line_only_when_production_is_declared(project):
     body = desc.build_description(root, "0001", "e")
     assert len(bullets(body)) == 5
     line = (
-        "Release approval: apply `sdlc:release-approved` on this PR after merging; the "
-        "release workflow waits for it."
+        "Release approval: apply `sdlc:release-approved` on this PR with your approval; the "
+        "release workflow waits for it after the merge."
     )
     assert line in body.splitlines()
     assert "signed tag" not in body  # decision 5: the label is the only route
@@ -492,7 +676,7 @@ def test_parked_body_carries_what_i_need_from_you(project):
     body = desc.build_description(root, "0001", "c")
     lines = bullets(body)
     assert len(lines) == 5
-    assert "parked at gate (c)" in lines[4] and "nobody was notified" in lines[4]
+    assert lines[4].endswith('parked at gate (c) - see "What I need from you" below')
     assert data["what_i_need"].strip() in body
     assert "the diff touches the risk-list item 'auth'" in body
     assert "what I need: Accept the risk with state/cli.py accept-risk" in body
@@ -513,6 +697,37 @@ def test_plan_conformance_reports_the_failed_check(project):
     gate_json(change, "c", "park", c.NEEDS_HUMAN_LABEL, plan_sync_ok=False)
     lines = bullets(desc.build_description(root, "0001", "c"))
     assert "2 changed file(s) not listed in plan.md" in lines[3]
+
+
+def test_conformance_line_declared_drops_clause_present():
+    gate_json_data = {
+        "checks": [
+            {
+                "name": "plan_sync",
+                "ok": True,
+                "reason": "every committed source file is in plan.md",
+            },
+            {"name": "ratchets", "ok": True, "details": {"declared": ["tests/x.py (plan)"]}},
+        ]
+    }
+    line = desc._conformance_line(gate_json_data, "", "c")
+    assert line == "diff matches plan.md; declared drops: tests/x.py (plan)"
+
+
+def test_conformance_line_declared_drops_clause_absent():
+    gate_json_data = {
+        "checks": [
+            {
+                "name": "plan_sync",
+                "ok": True,
+                "reason": "every committed source file is in plan.md",
+            },
+            {"name": "ratchets", "ok": True, "details": {"declared": []}},
+        ]
+    }
+    assert desc._conformance_line(gate_json_data, "", "c") == "diff matches plan.md"
+    # unchanged at (a)/(b): no `ratchets` check runs there
+    assert desc._conformance_line(None, "", "b").startswith("open questions from intent")
 
 
 def test_no_gate_file_means_nothing_needed(project):
@@ -621,6 +836,43 @@ def test_upsert_records_the_build_pr_in_status_yaml(project, capsys, recorder):
     assert out["number"] == 41 and "build_pr_recorded" not in out
 
 
+def test_upsert_posts_not_a_build_pr_on_every_other_pull_request(project, capsys, recorder):
+    """R22 (decision 36, point 5): ruleset 2 requires sdlc/review; the workflow token's pull
+    requests start no run of sdlc-merge.yml, so the upsert posts the passing "not a build
+    PR" on the head of every pull request that is not the build PR."""
+    root, change = project
+    calls, answers = recorder
+    gate_json(change, "b", "wait", c.ready_label("b"))
+    gate_json(change, "c", "park", c.NEEDS_HUMAN_LABEL)
+    answers[("GET", "/pulls?")] = {"status": 200, "data": [], "error": ""}
+    answers[("POST", "/repos/o/r/pulls")] = {
+        "status": 201,
+        "data": {"number": 41, "html_url": "https://github.com/o/r/pull/41", "node_id": "PR_41"},
+        "error": "",
+    }
+    answers[("GET", "/repos/o/r/pulls/41")] = {
+        "status": 200,
+        "data": {"number": 41, "head": {"ref": "sdlc/0001/b", "sha": "f" * 40}},
+        "error": "",
+    }
+    answers[("POST", "/check-runs")] = {"status": 201, "data": {"id": 3}, "error": ""}
+    git(root, "remote", "add", "origin", "https://github.com/o/r.git")
+    assert pr_cli.main(["upsert", "--root", str(root), "--id", "0001", "--phase", "b"]) == 0
+    out = json.loads(capsys.readouterr().out)
+    assert out["review_check"]["ok"] is True
+    [posted] = [p for m, u, p in calls if m == "POST" and u.endswith("/check-runs")]
+    assert posted["name"] == "sdlc/review" and posted["head_sha"] == "f" * 40
+    assert posted["conclusion"] == "success" and posted["output"]["title"] == "not a build PR"
+    # the build PR gets none: its sdlc/review is the review pass's, posted by the (e) run
+    calls.clear()
+    assert (
+        pr_cli.main(["upsert", "--root", str(root), "--id", "0001", "--phase", "c", "--draft"]) == 0
+    )
+    out = json.loads(capsys.readouterr().out)
+    assert "review_check" not in out
+    assert not [u for m, u, _p in calls if u.endswith("/check-runs")]
+
+
 def test_upsert_posts_the_phase_check_run_when_asked(project, capsys, monkeypatch):
     """The phase (d) runbook line is one command: upsert --check-run (build guide step 28)."""
     root, change = project
@@ -652,6 +904,13 @@ def test_label_colours(project):
 
 
 # --- the GitHub client ------------------------------------------------------------------------
+@pytest.fixture(autouse=True)
+def no_minutes_meter(monkeypatch):
+    """The digest's Actions-minutes meter (R25) reads GitHub; these tests never do. Its own
+    tests are in test_actions_minutes.py."""
+    monkeypatch.setattr(digest_mod, "minutes_meter", lambda repo: "")
+
+
 @pytest.fixture
 def no_gh(monkeypatch):
     """No `gh` on PATH: every route decision falls to the token."""
@@ -1204,6 +1463,80 @@ def test_default_branch_protection_counts_a_restrict_updates_rule_only(recorder)
     assert github.default_branch_protection("o/r")["ok"] is False
 
 
+def test_merge_environment_is_safe_only_for_the_default_branch_alone(recorder):
+    """Choice 250 (the R22 double check, F8): the sdlc-merge environment keeps the merge
+    App's key to the default branch only with selected branches whose one rule is it."""
+    calls, answers = recorder
+    env_url = "/environments/sdlc-merge"
+    answers[("GET", env_url + "/deployment-branch-policies")] = {
+        "status": 200, "data": {"branch_policies": [{"name": "main", "type": "branch"}]},
+        "error": "",
+    }  # fmt: skip
+    custom = {"protected_branches": False, "custom_branch_policies": True}
+    answers[("GET", env_url)] = {
+        "status": 200, "data": {"deployment_branch_policy": custom}, "error": ""
+    }  # fmt: skip
+    got = github.merge_environment("o/r", "main")
+    assert (got["ok"], got["exists"], got["safe"]) == (True, True, True)
+    # a second rule, a tag rule, every protected branch, no policy: each is unsafe
+    policies = answers[("GET", env_url + "/deployment-branch-policies")]["data"]
+    policies["branch_policies"].append({"name": "dev", "type": "branch"})
+    got = github.merge_environment("o/r", "main")
+    assert got["safe"] is False and "branch main, branch dev" in got["found"]
+    policies["branch_policies"] = [{"name": "main", "type": "tag"}]
+    assert github.merge_environment("o/r", "main")["safe"] is False
+    answers[("GET", env_url)]["data"]["deployment_branch_policy"] = {
+        "protected_branches": True, "custom_branch_policies": False,
+    }  # fmt: skip
+    assert "every protected branch" in github.merge_environment("o/r", "main")["found"]
+    answers[("GET", env_url)]["data"]["deployment_branch_policy"] = None
+    got = github.merge_environment("o/r", "main")
+    assert got["safe"] is False and got["found"] == "every branch and tag may use it"
+    # no environment: the merge stays the owner's (fallback C1), nothing to warn about
+    answers[("GET", env_url)] = {"status": 404, "data": {}, "error": "Not Found"}
+    got = github.merge_environment("o/r", "main")
+    assert (got["ok"], got["exists"], got["safe"]) == (True, False, True)
+    # a lookup that fails is not an answer
+    answers[("GET", env_url)] = {"status": 403, "data": {}, "error": "Forbidden"}
+    assert github.merge_environment("o/r", "main")["ok"] is False
+
+
+def test_digest_warns_when_the_merge_key_reaches_beyond_the_default_branch(monkeypatch, capsys):
+    """Choice 250 (F8): the digest says so when the environment lets another ref read the
+    key, or when the key is a repository secret; a failed lookup says nothing."""
+    unsafe = {"ok": True, "safe": False, "found": "every branch and tag may use it",
+              "branch": "main"}  # fmt: skip
+    notice = digest_mod.merge_key_notice(unsafe, False)
+    assert "merge App's key is not kept to `main`** (every branch and tag" in notice
+    both = digest_mod.merge_key_notice({**unsafe, "safe": True}, True)
+    assert digest_mod.KEY_IN_REPOSITORY in both
+    assert digest_mod.merge_key_notice({**unsafe, "safe": True}, False) == ""
+    assert digest_mod.merge_key_notice({"ok": False, "reason": "403"}, False) == ""
+    md = digest_mod.render_digest(QUEUE, "2026-10-22T06:00:00Z", merge_key=notice)
+    assert md.index("merge App's key") < md.index("## Waiting")
+    # main reads the environment for the default branch and the job's own flag
+    monkeypatch.setattr(digest_mod, "list_queue_prs", lambda repo: (list(QUEUE), ""))
+    monkeypatch.setattr(
+        digest_mod.github, "default_branch_protection",
+        lambda repo, cwd=None: {"ok": True, "branch": "main", "protected": True},
+    )  # fmt: skip
+    asked = []
+
+    def environment(repo, branch):
+        asked.append((repo, branch))
+        return {"ok": True, "exists": True, "safe": True, "found": "only main may use it"}
+
+    monkeypatch.setattr(digest_mod.github, "merge_environment", environment)
+    monkeypatch.setenv(digest_mod.KEY_IN_REPOSITORY_ENV, "true")
+    assert digest_mod.main(["--repo", "o/r", "--dry-run"]) == 0
+    out = capsys.readouterr().out
+    assert asked == [("o/r", "main")]
+    assert digest_mod.KEY_IN_REPOSITORY in out and "not kept to `main`" in out
+    monkeypatch.setenv(digest_mod.KEY_IN_REPOSITORY_ENV, "false")
+    assert digest_mod.main(["--repo", "o/r", "--dry-run"]) == 0
+    assert "merge App's key" not in capsys.readouterr().out
+
+
 def test_digest_main_reads_the_protection_and_renders_the_notice(monkeypatch, capsys):
     """``main`` asks GitHub once (never with ``--input``) and hands the answer to the
     renderer; ``--dry-run`` prints the notice at the top."""
@@ -1225,6 +1558,9 @@ def test_digest_main_reads_the_protection_and_renders_the_notice(monkeypatch, ca
         in out
     )
     assert out.index("does not restrict who merges") < out.index("## Waiting")
+    # R21: a ruleset is desktop-only, and the notice links the project's own rulesets page
+    assert "Desktop-only: the GitHub mobile app cannot change a ruleset" in out
+    assert "open https://github.com/o/r/settings/rules in a desktop browser" in out
 
 
 def test_digest_says_so_while_the_default_branch_is_unprotected():
@@ -1235,6 +1571,8 @@ def test_digest_says_so_while_the_default_branch_is_unprotected():
     ) < md.index("## Waiting")
     assert "Settings → Rules → Rulesets" in md and "decision 4" in md.lower()
     assert "Restrict updates" in md and "bypass: repository admin" in md
+    # R21: without the repository the notice still says desktop-only, with no broken link
+    assert "Desktop-only" in md and digest_mod.NO_LINK in md and "{" not in md
     md = digest_mod.render_digest([], "2026-09-25T06:00:00Z", protection=unprotected)
     assert "does not restrict who merges" in md and digest_mod.NOTHING_WAITING in md
     protected = {"ok": True, "branch": "main", "protected": True, "by": "ruleset: restrict updates"}
@@ -1297,3 +1635,22 @@ def test_log_state_names_a_log_the_session_left_to_the_runner(tmp_path):
         path, art.render_evidence_header("pytest -x || exit 0", 0, 1.0, "2026-10-03T12:00:00Z"), ""
     )
     assert desc.log_state(path) == "green"
+
+
+def test_a_linked_evidence_file_is_never_quoted_in_the_body(project, tmp_path):
+    """R59, the plugin security review of 2026-10-19, I2: a session links
+    ``evidence/claude-md-proposals.md`` to a file it may not read (``.env``); the runner,
+    which builds the body outside the sandbox, must not quote the target."""
+    root, change = project
+    gate_json(change, "e", "wait", c.ready_label("e"))
+    secret = root / ".env"
+    secret.write_text("FAKE_SECRET=marker-r59-i2\n", encoding="utf-8")
+    link = change / art.EVIDENCE_DIR / desc.CLAUDE_MD_PROPOSALS
+    link.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        os.symlink(secret, link)
+    except (OSError, NotImplementedError):
+        pytest.skip("symbolic links are not permitted here")
+    body = desc.build_description(root, "0001", "e")
+    assert "marker-r59-i2" not in body
+    assert "## Proposed CLAUDE.md lines" not in body

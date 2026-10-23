@@ -24,10 +24,13 @@ def test_branch_names_and_parse():
 
 def test_labels():
     assert c.ready_label("a") == "sdlc:a-ready"
-    assert c.approved_label("c") == "sdlc:c-approved"
     assert c.NEEDS_HUMAN_LABEL == "sdlc:needs-human"
     labels = c.all_labels()
-    assert "sdlc:d-approved" in labels and "sdlc:needs-human" in labels
+    assert "sdlc:needs-human" in labels
+    # decision 37 (1.0.21): the Full profile's approval labels are gone
+    assert not any(
+        label.endswith("-approved") and label != c.RELEASE_APPROVED_LABEL for label in labels
+    )
     # phase (f), decision 25: the triage queue's labels carry no prefix (the article's own
     # "incident" and the owner's "schedule"); the Go authorization is the framework's
     assert {"incident", "schedule", "sdlc:go"} <= set(labels)
@@ -37,21 +40,19 @@ def test_labels():
     )
 
 
-def test_profiles_and_human_gates():
-    # gate (f) is the owner's triage in every profile (decision 25; plugin 0.2.19)
-    assert c.HUMAN_GATES["standard"] == {"a", "b", "e", "f"}
-    assert c.HUMAN_GATES["full"] == {"a", "b", "c", "d", "e", "f"}
-    assert "lite" not in c.HUMAN_GATES and c.PROFILES == ("standard", "full")
-    # decision 21 (0.2.14): a file that still says lite reads as standard
-    assert c.effective_profile("standard", "lite") == "standard"
-    assert c.effective_profile("lite", None) == "standard"
-    assert c.effective_review_mode(None, None) == "parked"
-    assert c.effective_review_mode("parked", "deferred") == "deferred"
-    with pytest.raises(ValueError):
-        c.effective_review_mode("panel", None)
-    assert c.effective_profile(None, None) == "standard"
-    assert c.is_human_gate("standard", "c") is False
-    assert c.is_human_gate("full", "c") is True
+def test_human_gates():
+    # decision 37 (1.0.21): one set of human gates; gate (f) is the owner's triage (decision 25)
+    assert c.HUMAN_GATES == {"a", "b", "e", "f"}
+    assert c.is_human_gate("c") is False and c.is_human_gate("e") is True
+
+
+def test_a_retired_setting_is_named_never_refused():
+    """Decision 37: ``profile`` and ``review`` are no longer read; a value that chose another
+    behaviour is named in one note, and the one behaviour's own value (or none) says nothing."""
+    for quiet in ({}, {"profile": "standard", "review": "deferred"}, {"profile": "lite"}):
+        assert c.retired_settings_note(quiet) == ""
+    note = c.retired_settings_note({"profile": "full", "review": "parked"})
+    assert "profile: full" in note and "review: parked" in note and "decision 37" in note
 
 
 def test_slugify():
@@ -125,8 +126,6 @@ def test_status_round_trip_and_schema(tmp_path):
         "phase",
         "entry_route",
         "change_type",
-        "profile_override",
-        "review_override",  # decision 21: the per-change review mode
         "gate",
         "parked_reason",
         "iterations",
@@ -199,11 +198,23 @@ def test_invalid_status_rejected():
         status.Status.from_dict({"id": "0001", "slug": "x", "title": "t", "bogus": 1})
 
 
+def test_a_status_file_from_before_decision_37_still_loads(tmp_path):
+    """Decision 37 (1.0.21): the two per-change override keys are dropped on load, so a file an
+    older plugin wrote still reads, and the next write leaves them out."""
+    change_dir, _ = status.new_change(tmp_path, "Old")
+    raw = yamlish.load_file(change_dir / "status.yaml")
+    raw.update({"profile_override": "full", "review_override": "parked"})
+    yamlish.dump_file(change_dir / "status.yaml", raw)
+    st = status.read_status(change_dir)
+    status.write_status(change_dir, st)
+    assert not set(status.RETIRED_KEYS) & set(yamlish.load_file(change_dir / "status.yaml"))
+
+
 def test_pyyaml_reads_status_file(tmp_path):
     yaml = pytest.importorskip("yaml")
     change_dir, _ = status.new_change(tmp_path, "Any")
     data = yaml.safe_load((change_dir / "status.yaml").read_text(encoding="utf-8"))
-    assert data["id"] == "0001" and data["profile_override"] is None
+    assert data["id"] == "0001" and "profile_override" not in data
 
 
 def test_cli_new_change_and_show(tmp_path, capsys):
@@ -477,14 +488,33 @@ def test_read_status_on_the_default_branch_derives_gate_e_without_a_write(tmp_pa
         on_main = status.read_status(change_dir, on_default_branch=True)
         assert on_main.gate.result == "parked" and on_main.parked_reason
         assert on_main.to_dict() == status.read_status(change_dir).to_dict()
-    # an e that already passed its gate keeps its own record
+    # an e that already passed its gate keeps its result and time; the build run's "waiting
+    # for the owner" is true only until the merge, so on main it reads as the merge reason
     st = status.read_status(change_dir)
     st.phase = "e"
     st.record_gate("e", "passed", "waiting for the owner at gate (e)")
     status.write_status(change_dir, st)
+    raw = status.read_status(change_dir)
     kept = status.read_status(change_dir, on_default_branch=True)
-    assert kept.gate.reason == "waiting for the owner at gate (e)"
-    assert kept.to_dict() == status.read_status(change_dir).to_dict()
+    assert kept.gate == status.Gate(
+        phase="e", result="passed", reason=status.MERGED_AT_GATE_E_REASON, at=raw.gate.at
+    )
+    assert {**kept.to_dict(), "gate": None} == {**raw.to_dict(), "gate": None}
+    # another reason on a passed gate is the record's own, and is kept as written
+    st.record_gate("e", "passed", "passed by hand")
+    status.write_status(change_dir, st)
+    own = status.read_status(change_dir, on_default_branch=True)
+    assert own.to_dict() == status.read_status(change_dir).to_dict()
+
+
+def test_the_waiting_reason_is_the_one_gate_e_records():
+    """``WAITING_AT_GATE_E_REASON`` is what ``gate/gate.py`` writes when gate (e) passes on the
+    build branch; were the two to drift, merged changes would read "waiting" on main again."""
+    source = (Path(__file__).resolve().parents[1] / "plugin" / "gate" / "gate.py").read_text(
+        encoding="utf-8"
+    )
+    assert '"passed", f"waiting for the owner at gate ({ctx.phase})"' in source
+    assert status.WAITING_AT_GATE_E_REASON == "waiting for the owner at gate (e)"
 
 
 def test_show_and_list_on_the_default_branch_print_the_derived_gate(repo, capsys):
@@ -530,12 +560,12 @@ def test_merged_at_gate_e_reason_names_the_release_act_on_a_declared_production(
     change_dir, st = _parked_at_e(tmp_path)
     plain = status.merged_at_gate_e(st)
     assert plain.gate.result == "passed"
-    assert plain.gate.reason == "merged by the owner: gate (e) is the merge (decision 13)"
+    assert plain.gate.reason == status.MERGED_AT_GATE_E_REASON
     prod = status.merged_at_gate_e(st, production=True)
     assert prod.gate.phase == "e" and prod.gate.result == "passed"
     assert prod.parked_reason is None
     assert prod.gate.reason == (
-        "merged by the owner: gate (e) is the merge (decision 13); the release approval "
+        f"{status.MERGED_AT_GATE_E_REASON}; the release approval "
         "sdlc:release-approved is the release workflow's second act on this declared production"
     )
     assert prod.gate.reason == status.MERGED_AT_GATE_E_PRODUCTION_REASON
@@ -763,16 +793,15 @@ def test_record_owner_label_performs_the_act_and_keeps_the_actor(tmp_path):
     change_dir, st = status.new_change(tmp_path, "Labels")
     st.iterations = 3
     st.lock_tests()
-    st.record_owner_label(c.ACCEPT_RISK_LABEL, "luissiviero", ["auth", "data migrations"])
+    # decision 35 (1.0.15): sdlc:accept-risk retired; the merge accepts a risk
+    with pytest.raises(ValueError):
+        st.record_owner_label(c.ACCEPT_RISK_LABEL, "luissiviero", ["auth"])
+    assert c.ACCEPT_RISK_LABEL not in c.UNPARK_LABELS
     st.record_owner_label(c.RESET_ITERATIONS_LABEL, "luissiviero")
     st.record_owner_label(c.UNLOCK_TESTS_LABEL, "reviewer-2")
     status.write_status(change_dir, st)
     back = status.read_status(change_dir)
-    assert back.risk_accepted == ["auth", "data migrations"]
-    assert back.risk_accepted_by == [
-        {"item": "auth", "actor": "luissiviero"},
-        {"item": "data migrations", "actor": "luissiviero"},
-    ]
+    assert back.risk_accepted == [] and back.risk_accepted_by == []
     assert back.iterations == 0 and back.iterations_reset_by == "luissiviero"
     assert back.tests_locked is False and back.tests_unlocked_by == "reviewer-2"
     with pytest.raises(ValueError):
@@ -783,46 +812,79 @@ def test_record_owner_label_performs_the_act_and_keeps_the_actor(tmp_path):
     assert c.RELEASE_APPROVED_LABEL in c.all_labels()
 
 
+# choice 218 (1.0.10): an un-park label counts only from the owner's account
+OWNER_ENV = {"GITHUB_REPOSITORY_OWNER": "luissiviero"}
+
+
 def test_unpark_perform_honours_a_person_and_rejects_the_automation_identity(tmp_path):
     from state import unpark
 
     change_dir, st = status.new_change(tmp_path, "Labels")
     st.phase = "c"
     st.iterations = 4
-    gate_file = change_dir / "evidence" / "gate-c.json"
-    gate_file.write_text(
-        json.dumps(
-            {
-                "checks": [
-                    {"name": "risk_list", "ok": False, "details": {"hits": {"auth": ["src/auth"]}}}
-                ]
-            }
-        ),
-        encoding="utf-8",
-    )
-    assert unpark.risk_hits(change_dir, "c") == ["auth"]
-    assert unpark.risk_hits(change_dir, "b") == [] and unpark.risk_hits(change_dir, None) == []
+    st.lock_tests()
     present = {
-        c.ACCEPT_RISK_LABEL: "luissiviero",
+        c.ACCEPT_RISK_LABEL: "luissiviero",  # retired (decision 35): neither done nor refused
         c.RESET_ITERATIONS_LABEL: "github-actions[bot]",
-        c.UNLOCK_TESTS_LABEL: "dependabot[bot]",
+        c.UNLOCK_TESTS_LABEL: "luissiviero",
     }
     performed, rejected = unpark.perform(
-        st, present, ["github-actions[bot]"], unpark.risk_hits(change_dir, "c")
+        st, present, ["github-actions[bot]"], config={}, env=OWNER_ENV
     )
-    assert performed == [{"label": c.ACCEPT_RISK_LABEL, "actor": "luissiviero", "items": ["auth"]}]
-    assert [r["label"] for r in rejected] == [c.RESET_ITERATIONS_LABEL, c.UNLOCK_TESTS_LABEL]
+    assert performed == [{"label": c.UNLOCK_TESTS_LABEL, "actor": "luissiviero"}]
+    assert [r["label"] for r in rejected] == [c.RESET_ITERATIONS_LABEL]
     assert all("cannot un-park itself" in r["reason"] for r in rejected)
-    assert st.iterations == 4 and st.risk_accepted_by == [{"item": "auth", "actor": "luissiviero"}]
-    # accept-risk with no recorded hit accepts nothing and is left on the PR
-    st2 = status.new_change(tmp_path, "No hit", change_id="0002")[1]
-    performed, rejected = unpark.perform(st2, {c.ACCEPT_RISK_LABEL: "luissiviero"}, [], [])
-    assert performed == [] and "nothing to accept" in rejected[0]["reason"]
-    # a project's own automation identity counts as automation too
+    assert st.iterations == 4 and st.risk_accepted == [] and st.risk_accepted_by == []
+    assert st.tests_locked is False and st.tests_unlocked_by == "luissiviero"
+    # any <app>[bot] counts as automation, whatever the identities list says
     performed, rejected = unpark.perform(
-        st2, {c.RESET_ITERATIONS_LABEL: "ci-robot"}, ["ci-robot"], []
+        st, {c.UNLOCK_TESTS_LABEL: "dependabot[bot]"}, ["github-actions[bot]"],
+        config={}, env=OWNER_ENV,
+    )  # fmt: skip
+    assert performed == [] and "cannot un-park itself" in rejected[0]["reason"]
+    # a project's own automation identity counts as automation too
+    st2 = status.new_change(tmp_path, "No hit", change_id="0002")[1]
+    performed, rejected = unpark.perform(
+        st2, {c.RESET_ITERATIONS_LABEL: "ci-robot"}, ["ci-robot"], config={}, env=OWNER_ENV
     )
     assert performed == [] and rejected[0]["actor"] == "ci-robot"
+
+
+def test_recorded_hits_reads_ratchets_check_when_risk_list_absent(tmp_path):
+    """The banner reads a gate record's risk-hit checks (decision 35; before it the
+    ``sdlc:accept-risk`` label read them through ``unpark.risk_hits``)."""
+    from gate import risk
+
+    record = {
+        "checks": [
+            {
+                "name": "ratchets",
+                "ok": True,
+                "details": {"hits": {"ratchet: tests": ["tests/test_a.py"]}},
+            }
+        ]
+    }
+    assert risk.recorded_hits(record) == {"ratchet: tests": ["tests/test_a.py"]}
+
+
+def test_recorded_hits_unions_risk_list_and_ratchets(tmp_path):
+    from gate import risk
+
+    record = {
+        "checks": [
+            {"name": "risk_list", "ok": True, "details": {"hits": {"auth": ["src/auth"]}}},
+            {
+                "name": "ratchets",
+                "ok": True,
+                "details": {"hits": {"ratchet: tests": ["tests/test_a.py"]}},
+            },
+            {"name": "guardrails", "ok": False, "details": {"hits": {"x": ["y"]}}},
+        ]
+    }
+    assert risk.recorded_hits(record) == {
+        "auth": ["src/auth"],
+        "ratchet: tests": ["tests/test_a.py"],
+    }
 
 
 class _FakeGitHub:
@@ -855,7 +917,9 @@ def test_apply_from_pr_records_the_actor_and_removes_the_performed_label(tmp_pat
         ["sdlc:needs-human", c.RESET_ITERATIONS_LABEL, c.UNLOCK_TESTS_LABEL],
         {c.RESET_ITERATIONS_LABEL: "luissiviero", c.UNLOCK_TESTS_LABEL: "github-actions[bot]"},
     )
-    out = unpark.apply_from_pr(tmp_path, change_dir, {}, "owner/name", 7, github=github)
+    out = unpark.apply_from_pr(
+        tmp_path, change_dir, {}, "owner/name", 7, github=github, env=OWNER_ENV
+    )
     assert out["ok"] and [p["label"] for p in out["performed"]] == [c.RESET_ITERATIONS_LABEL]
     assert [r["label"] for r in out["rejected"]] == [c.UNLOCK_TESTS_LABEL]
     assert github.removed == [c.RESET_ITERATIONS_LABEL]  # the rejected one stays on the PR
@@ -864,7 +928,9 @@ def test_apply_from_pr_records_the_actor_and_removes_the_performed_label(tmp_pat
     assert back.tests_unlocked_by is None
     # no owner label at all: nothing read, nothing written
     quiet = _FakeGitHub(["sdlc:b-ready"], {})
-    out = unpark.apply_from_pr(tmp_path, change_dir, {}, "owner/name", 7, github=quiet)
+    out = unpark.apply_from_pr(
+        tmp_path, change_dir, {}, "owner/name", 7, github=quiet, env=OWNER_ENV
+    )
     assert out["ok"] and out["performed"] == [] and "no owner label" in out["reason"]
     # an unreadable PR consumes nothing and says why
     out = unpark.apply_from_pr(
@@ -883,6 +949,7 @@ def test_cli_apply_labels_uses_the_github_client(tmp_path, capsys, monkeypatch):
     monkeypatch.setattr(github, "pr_by_number", fake.pr_by_number)
     monkeypatch.setattr(github, "label_actor", fake.label_actor)
     monkeypatch.setattr(github, "set_labels", fake.set_labels)
+    monkeypatch.setenv("GITHUB_REPOSITORY_OWNER", "luissiviero")  # choice 218: the owner
     rc = cli.main(
         ["apply-labels", "--root", str(tmp_path), "--id", "0001", "--repo", "o/n", "--pr", "7"]
     )

@@ -9,6 +9,8 @@ stores these notes, and the gate and review evidence of every re-run, touch only
 unless the code itself changed:
 
     # Release notes — change <id>: <title>
+    ## In plain words    R18: the model's paragraph, labelled, kept while it describes the
+                         last commit of the list (``PLAIN_MARK``); absent until written
     ## What changed      the first sentence of the intent's "## Proposed outcome" (else the title)
     ## Commits           one bullet per commit since the merge base with the default branch
                          that changes something outside changes/*/evidence/
@@ -17,7 +19,12 @@ unless the code itself changed:
     ## Links             intent.md, spec.md, plan.md, relative to evidence/release-notes.md
 
 ``--write`` stores it as ``changes/<id>-<slug>/evidence/release-notes.md`` (UTF-8, LF) and
-prints the path; without it the notes go to stdout. Exit codes: 0 done, 2 usage error (no
+prints the path; without it the notes go to stdout. With ``--plain-words "<text>"`` (and
+``--write``) the (e) session's paragraph is stored under "## In plain words", with the label
+and the mark naming the commit it describes; a later ``--write`` keeps the section while that
+commit is still the last of the list and drops it otherwise, so a re-run with no code change
+leaves the file byte-identical and a code change asks for a fresh paragraph. Every other
+section stays deterministic. Exit codes: 0 done, 2 usage error (no
 change folder). Argument lists only; no shell.
 """
 
@@ -43,6 +50,14 @@ NO_HISTORY = "(no git history available)"
 # ":(exclude)changes/*/evidence" excludes nothing: a wildcard pathspec does not match the
 # files below the directory it names)
 EVIDENCE_ONLY = (".", ":(exclude,glob)changes/*/evidence/**")
+# R18 (ArtCraft rule A2): the paragraph is a model judgment beside generated lines
+PLAIN_HEADING = "## In plain words"
+PLAIN_LABEL = (
+    "*Written by the model from the diff and the plan; every section below is generated from "
+    "files and git.*"
+)
+PLAIN_MARK = "<!-- sdlc:plain-words describes {sha} -->"
+PLAIN_MARK_RE = re.compile(r"^<!-- sdlc:plain-words describes (?P<sha>[0-9a-f]+|none) -->$", re.M)
 LIST_ITEM_RE = re.compile(r"^\s*(?:[-*]|\d+[.)])\s+(?P<text>.+)$")
 SENTENCE_RE = re.compile(r"(?s)^(.*?[.!?])(?:\s|$)")
 
@@ -72,16 +87,27 @@ def _read(path: Path) -> str:
 
 
 def _first_sentence(body: str) -> str:
+    # the first paragraph or list item read whole: a hard-wrapped sentence is not cut at the
+    # first line's end (item 11's read)
+    parts: list[str] = []
+    fenced = False
     for raw in (body or "").splitlines():
         line = raw.strip()
-        if not line or line.startswith(("#", ">", "|")):
+        fence = line.startswith(("```", "~~~"))
+        if fence and not parts:
+            fenced = not fenced  # a leading code block is skipped, never read as prose
             continue
-        m = LIST_ITEM_RE.match(line)
-        if m:
-            line = m.group("text").strip()
-        m = SENTENCE_RE.match(line)
-        return (m.group(1) if m else line).strip()
-    return ""
+        if fenced:
+            continue
+        item = LIST_ITEM_RE.match(line) if line else None
+        skip = not line or line.startswith(("#", ">", "|"))
+        if parts and (skip or item or fence):
+            break
+        if not skip:
+            parts.append(item.group("text").strip() if item else line)
+    joined = " ".join(parts)
+    m = SENTENCE_RE.match(joined)
+    return (m.group(1) if m else joined).strip()
 
 
 def _title(change_dir: Path, intent: str) -> str:
@@ -153,20 +179,58 @@ def _findings_line(change_dir: Path) -> str:
     return f"{counts['important']} Important, {counts['nit']} nits"
 
 
-def build_notes(root: Path, change_id: str, base: str | None = None) -> str:
-    """The release notes of ``change_id`` as markdown. Raises ValueError when the change
-    folder does not exist."""
+def last_commit(root: Path, found: list[str] | None) -> str:
+    """The full sha the paragraph's mark names: the last entry of ``commits``, or ``none``
+    (the full one, since the length of ``%h`` can differ between two clones)."""
+    if not found:
+        return "none"
+    short = found[-1].split()[0]
+    full = (_git(root, "rev-parse", "--verify", "--quiet", f"{short}^{{commit}}") or "").strip()
+    return full or short
+
+
+def plain_section(text: str, sha: str) -> list[str]:
+    """The "## In plain words" lines: the paragraph on one line (headings and blank lines
+    folded), the label first, the mark last."""
+    words = " ".join(
+        line.strip() for line in (text or "").splitlines() if not line.lstrip().startswith("#")
+    ).strip()
+    return [PLAIN_HEADING, "", PLAIN_LABEL, "", words, "", PLAIN_MARK.format(sha=sha), ""]
+
+
+def kept_paragraph(path: Path, sha: str) -> str | None:
+    """The paragraph of the stored notes when its mark names ``sha``, else None."""
+    text = _read(path)
+    sections = art.split_sections(text)
+    body = sections.get(PLAIN_HEADING)
+    mark = PLAIN_MARK_RE.search(body or "")
+    if body is None or mark is None or mark.group("sha") != sha:
+        return None
+    lines = [ln for ln in body.splitlines() if ln.strip() and ln.strip() != PLAIN_LABEL]
+    return " ".join(ln.strip() for ln in lines if not PLAIN_MARK_RE.match(ln.strip())) or None
+
+
+def build_notes(
+    root: Path, change_id: str, base: str | None = None, plain: str | None = None
+) -> str:
+    """The release notes of ``change_id`` as markdown, with ``plain`` under "## In plain
+    words" when given. Raises ValueError when the change folder does not exist."""
     root = Path(root).resolve()
     change_dir = c.find_change_dir(root, change_id)
     if change_dir is None:
         raise ValueError(f"no changes/{change_id}-<slug>/ folder under {root}")
     intent = _read(change_dir / "intent.md")
     title = _title(change_dir, intent)
-    outcome = _first_sentence(art.split_sections(intent).get("## Proposed outcome", ""))
-    lines = [f"# Release notes — change {change_id}: {title}", "", "## What changed", ""]
+    outcome = art.split_sections(intent).get("## Proposed outcome", "")
+    # a quick intent leaves the outcome to the design run (R54): the title says it then
+    outcome = "" if art.left_to_design(outcome) else _first_sentence(outcome)
+    found = commits(root, base)
+    lines = [f"# Release notes — change {change_id}: {title}", ""]
+    if plain:
+        lines += plain_section(plain, last_commit(root, found))
+    lines += ["## What changed", ""]
     lines.append(outcome or title)
     lines += ["", "## Commits", ""]
-    found = commits(root, base)
     if found is None:
         lines.append(NO_HISTORY)
     elif not found:
@@ -181,12 +245,20 @@ def build_notes(root: Path, change_id: str, base: str | None = None) -> str:
     return "\n".join(lines) + "\n"
 
 
-def write_notes(root: Path, change_id: str, base: str | None = None) -> Path:
+def write_notes(
+    root: Path, change_id: str, base: str | None = None, plain_words: str | None = None
+) -> Path:
+    """Write the notes; the paragraph is ``plain_words`` when given, else the stored one
+    while it still describes the last commit of the list (``kept_paragraph``)."""
     root = Path(root).resolve()
-    text = build_notes(root, change_id, base)
     change_dir = c.find_change_dir(root, change_id)
-    assert change_dir is not None  # build_notes raised otherwise
+    if change_dir is None:
+        raise ValueError(f"no changes/{change_id}-<slug>/ folder under {root}")
     path = change_dir / art.EVIDENCE_DIR / NOTES_FILE
+    plain = plain_words if plain_words and plain_words.strip() else None
+    if plain is None:
+        plain = kept_paragraph(path, last_commit(root, commits(root, base)))
+    text = build_notes(root, change_id, base, plain)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text, encoding="utf-8", newline="\n")
     return path
@@ -202,6 +274,11 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--id", required=True, help="change id, e.g. 0001")
     p.add_argument("--base", default=None, help="base ref (default: the default branch)")
     p.add_argument("--write", action="store_true", help="write evidence/release-notes.md")
+    p.add_argument(
+        "--plain-words",
+        default=None,
+        help='with --write: the (e) session\'s paragraph for "## In plain words" (R18)',
+    )
     return p
 
 
@@ -211,8 +288,11 @@ def main(argv: list[str] | None = None) -> int:
     if callable(reconfigure):
         reconfigure(encoding="utf-8", errors="replace")
     try:
+        if args.plain_words is not None and not args.write:
+            print("release-notes: --plain-words needs --write", file=sys.stderr)
+            return 2
         if args.write:
-            print(write_notes(Path(args.root), args.id, args.base))
+            print(write_notes(Path(args.root), args.id, args.base, args.plain_words))
         else:
             sys.stdout.write(build_notes(Path(args.root), args.id, args.base))
     except ValueError as exc:

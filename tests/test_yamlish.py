@@ -79,6 +79,103 @@ def test_pyyaml_agrees_when_available():
     assert yaml.safe_load(yamlish.dumps(data)) == data
 
 
+# What an owner writes by hand into sdlc.yaml (the plugin test coverage map of 2026-10-19,
+# gap 3): every hook reads the file through yamlish, and a misread turns `protected_paths`
+# into a deny of every edit. Each shape must give PyYAML's value or a YamlishError, never a
+# different value. The pins are the sharpest case: `1.0.14` and `2.1.304` are strings, not
+# numbers, to both readers.
+@pytest.mark.parametrize(
+    "text",
+    [
+        "name: value # a comment after the value\n",
+        'title: "a # inside quotes is not a comment"\n',
+        "title: 'single quotes: with a colon'\n",
+        'cmd: "python -m pytest -q"  # trailing comment\n',
+        "plugin:\n  version: 1.0.14\n  claude_code: 2.1.304\n",
+        "session_model:\n  default: claude-opus-5-5\n  b: claude-fable-5-1\n",
+        "adversarial_model: claude-opus-5-5\npanel_advocate_model: claude-fable-5-1\n",
+        "protected_paths: []\n",
+        "protected_paths: [docs/policy.md, 'src/gen/**']\n",
+        "protected_paths:\n  - docs/policy.md\n  - src/gen/**\n",
+        "runbooks:\n  - name: quarantine\n    authorization: preapproved\n"
+        "  - name: rollback\n    authorization: go\n",
+        "commands:\n  build: python -m compileall -q .\n  test: python -m pytest\n"
+        "  lint: python -m ruff check .\n",
+        "deploy:\n  production: false\n  command: null\n",
+        "automation_identity:\n  - github-actions[bot]\n"
+        "  - 41898282+github-actions[bot]@users.noreply.github.com\n",
+        "limits:\n  max_budget_usd: 5.0\n  build_max_turns: 400\n",
+        "note: 'it''s quoted'\n",
+        'path: "C:\\\\work\\\\project"\n',
+        "empty:\nnext: 1\n",
+        "text: |\n  line one\n  line two\n",
+        "text: >\n  folded\n  text\n",
+        "anchor: &a value\nalias: *a\n",
+        "multi: {a: 1, b: two}\n",
+        "ratio: .5\noctal: 0o17\n",
+    ],
+)  # fmt: skip
+def test_hand_written_sdlc_yaml_shapes_agree_with_pyyaml_or_are_refused(text):
+    yaml = pytest.importorskip("yaml")
+    try:
+        data = yamlish.loads(text)
+    except yamlish.YamlishError:
+        return  # a clear refusal is fine; a silently different value is not
+    assert data == yaml.safe_load(text), text
+
+
+def test_yaml_1_1_shapes_read_as_yaml_1_2_strings_on_purpose():
+    """The one place the two readers differ by design: PyYAML follows YAML 1.1 (`yes`, `on`,
+    `no` and `off` are booleans, `0x1f` is 31, `.inf` is infinity, a bare date is a `date`),
+    yamlish reads them as YAML 1.2 does (plain strings), which is what `hooks/_common`'s
+    boolean reader relies on: a `yes` in sdlc.yaml is refused with a clear message, never
+    taken for `true`. Pinned here so a change to either side is seen."""
+    assert yamlish.loads("yes_word: yes\non_word: on\nno_word: no\noff_word: off\n") == {
+        "yes_word": "yes",
+        "on_word": "on",
+        "no_word": "no",
+        "off_word": "off",
+    }
+    assert yamlish.loads("when: 2026-10-20\n") == {"when": "2026-10-20"}
+    assert yamlish.loads("hex: 0x1f\ninf: .inf\n") == {"hex": "0x1f", "inf": ".inf"}
+    yaml = pytest.importorskip("yaml")
+    assert yaml.safe_load("yes_word: yes\n") == {"yes_word": True}  # the 1.1 reading, for contrast
+
+
+def test_the_pins_stay_strings_to_both_readers():
+    yaml = pytest.importorskip("yaml")
+    text = "plugin:\n  version: 1.0.14\n  claude_code: 2.1.304\nfloat_like: 1.0\n"
+    data = yamlish.loads(text)
+    assert data["plugin"] == {"version": "1.0.14", "claude_code": "2.1.304"}
+    assert isinstance(data["float_like"], float)
+    assert data == yaml.safe_load(text)
+
+
+def test_a_misread_sdlc_yaml_reaches_the_protected_path_hook_as_a_deny_naming_the_file(
+    tmp_path,
+):
+    """The hooks read sdlc.yaml through yamlish (`hooks/_common.load_sdlc_config`); a file
+    the reader refuses (a tab) is a ConfigError, and the protected-path hook turns it into a
+    deny that names sdlc.yaml, so the owner sees what to fix instead of a silent allow."""
+    from hooks import _common, protected_paths
+
+    root = tmp_path / "project"
+    root.mkdir()
+    (root / "sdlc.yaml").write_text("protected_paths:\n\t- docs/policy.md\n", encoding="utf-8")
+    with pytest.raises(_common.ConfigError) as exc:
+        _common.load_sdlc_config(str(root))
+    assert "sdlc.yaml" in str(exc.value)
+    payload = {
+        "hook_event_name": "PreToolUse",
+        "tool_name": "Edit",
+        "tool_input": {"file_path": str(root / "README.md"), "old_string": "a", "new_string": "b"},
+        "cwd": str(root),
+    }
+    decision = protected_paths.decide(payload, [], env={"CLAUDE_PROJECT_DIR": str(root)})
+    assert decision.block
+    assert "sdlc.yaml" in decision.reason and "refusing every edit" in decision.reason
+
+
 def test_tabs_rejected():
     with pytest.raises(yamlish.YamlishError):
         yamlish.loads("a:\n\tb: 1\n")

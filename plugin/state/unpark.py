@@ -1,24 +1,32 @@
 """The owner's un-park verbs as labels (decision 24; build guide steps 9, 16, 19; OPERATING_MODEL
-section 6): ``sdlc:accept-risk``, ``sdlc:reset-iterations`` and ``sdlc:unlock-tests``, applied
-by the owner on the change's PR, read by the next run, performed, and recorded in
-``status.yaml`` with the label's actor as GitHub recorded it.
+section 6): ``sdlc:reset-iterations`` and ``sdlc:unlock-tests``, applied by the owner on the
+change's PR, read by the next run, performed, and recorded in ``status.yaml`` with the
+label's actor as GitHub recorded it. The third, ``sdlc:accept-risk``, retired with decision 35
+(plugin 1.0.15): a risk-list hit no longer parks, and the owner's merge of the PR whose
+close-look banner shows it accepts it (``gate/risk.py``); a label of that name is no longer
+read, and the by-hand ``accept-risk`` command stays.
 
 Why labels: point 3 of the objective puts the owner's input in the PR, not in a terminal, and
 GitHub records who applied a label, so the actor is read from the PR's timeline instead of
-inferred from a commit author (PROGRESS choice 17). The CLI commands (``accept-risk``,
-``set-iterations``, ``unlock-tests``) stay for by-hand runs; the pause flag stays in
+inferred from a commit author (PROGRESS choice 17). The CLI commands (``set-iterations``,
+``unlock-tests``, and ``accept-risk``) stay for by-hand runs; the pause flag stays in
 ``sdlc.yaml`` because pausing is a reviewed change.
 
 Rules:
 - a label applied by the automation identity or by any ``<app>[bot]`` account is rejected and
   left on the PR: a run cannot un-park itself (decision 11);
-- ``sdlc:accept-risk`` accepts the risk-list hits the last gate of the change's phase reported
-  (``evidence/gate-<phase>.json``, check ``risk_list``, ``details.hits``); with no recorded hit
-  there is nothing to accept and the label is left where it is, with the reason;
+- a label applied by any other account than the owner's (``is_owner_actor``, fail closed) is
+  rejected and left on the PR too (decision 24, choice 218): a collaborator with triage
+  access can label a pull request, and the label would reset a count the owner never saw;
 - a performed label is removed from the PR, so one application is one act and the next run
   does not perform it again; the ``labeled`` event stays in the PR's timeline as the record;
 - the gate's ``owner_actions`` check (``plugin/gate/checks.py``) reads the recorded actor when
   the commit that carries the state change was authored by the automation identity.
+
+``is_owner_actor`` (decision 34) sits beside ``is_automation_actor``: the one rule, fail
+closed, for who starts a fix round (the ``@claude`` comment and the "Request changes"
+review) and who approves gates (c) and (d); since plugin 1.0.10 (choice 218) it also judges
+who applied an un-park label, after the automation rule above.
 
 ``github`` is injectable: an object with ``pr_by_number``, ``label_actor`` and ``set_labels``
 like ``plugin/pr/github.py``. No shell, no third-party dependency.
@@ -27,7 +35,9 @@ like ``plugin/pr/github.py``. No shell, no third-party dependency.
 from __future__ import annotations
 
 import json
+import os
 import sys
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
@@ -65,34 +75,94 @@ def is_automation_actor(actor: str, identities: list[str]) -> bool:
     return any(who == i.strip().lower() for i in identities)
 
 
-def risk_hits(change_dir: Path, phase: str | None) -> list[str]:
-    """The risk-list items the last gate of ``phase`` reported (the keys of the ``risk_list``
-    check's ``details.hits``), or []. The gate file is the record the owner read in the PR's
-    "What I need from you" block, so it is what the label answers."""
-    if not phase or phase not in c.PHASES:
-        return []
-    path = Path(change_dir) / GATE_FILE.format(phase=phase)
+def owner_login(
+    config: dict[str, Any], env: Mapping[str, str] | None = None, repo: str | None = None
+) -> str | None:
+    """The owner's account (decision 34, point 3): ``sdlc.yaml: owner`` when it names one (an
+    organization repository sets it), else the repository owner from the runner's
+    environment (``GITHUB_REPOSITORY_OWNER``, else the part of ``GITHUB_REPOSITORY`` before
+    ``/``), else the owner part of ``repo`` (the caller's ``owner/name``), else None.
+    ``config`` is the default branch's copy, the owner's guardrail."""
+    env = os.environ if env is None else env
+    named = (config or {}).get("owner")
+    if isinstance(named, str) and named.strip():
+        return named.strip()
+    owner = str(env.get("GITHUB_REPOSITORY_OWNER") or "").strip()
+    if owner:
+        return owner
+    for full in (env.get("GITHUB_REPOSITORY"), repo):
+        text = str(full or "").strip()
+        head = text.split("/", 1)[0].strip() if "/" in text else ""
+        if head:
+            return head
+    return None
+
+
+def is_owner_actor(
+    actor: str | None,
+    config: dict[str, Any],
+    env: Mapping[str, str] | None = None,
+    repo: str | None = None,
+) -> bool:
+    """True only for the owner's account (decision 34): the one rule for who starts a fix
+    round and who approves gates (c) and (d). Fails closed: an empty actor, a ``[bot]`` or
+    the automation identity (even when ``owner:`` names it) and an unknown owner are False;
+    a workflow's ``if:`` keeps only a coarse check."""
+    who = str(actor or "").strip()
+    if not who or is_automation_actor(who, automation_identities(config or {})):
+        return False
+    owner = owner_login(config, env, repo)
+    return owner is not None and who.lower() == owner.lower()
+
+
+def is_runner_reset(actor: str | None) -> bool:
+    """True for an ``iterations_reset_by`` that names the CI runner's one judged reset at the
+    cap (decision 29: ``sdlc-runner:<run id or 'local'>``), never a label actor: such a value
+    is not a person and counts only with ``runner_reset_recorded``."""
+    return str(actor or "").strip().startswith(c.RUNNER_RESET_PREFIX)
+
+
+def read_auto_reset(change_dir: Path) -> dict[str, Any] | None:
+    """``evidence/auto-reset.json`` (decision 29), or None when absent or unreadable."""
+    path = Path(change_dir) / "evidence" / c.AUTO_RESET_FILE
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
-        return []
-    for check in (data.get("checks") if isinstance(data, dict) else None) or []:
-        if isinstance(check, dict) and check.get("name") == "risk_list":
-            hits = (check.get("details") or {}).get("hits")
-            if isinstance(hits, dict):
-                return [str(k) for k in hits if str(k).strip()]
-    return []
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def runner_reset_recorded(change_dir: Path, actor: str | None, at: str | None) -> bool:
+    """The marked reset of decision 29 is the one exception the owner-field guards accept:
+    ``actor`` names the runner and ``evidence/auto-reset.json`` records a reset by that same
+    actor at that same stamp. Anything else (no file, another actor or stamp, a verdict that
+    was not a reset) is not accepted; ``is_automation_actor`` is left as it is."""
+    if not is_runner_reset(actor) or not at:
+        return False
+    data = read_auto_reset(change_dir)
+    if data is None or data.get("reset") is not True:
+        return False
+    return (
+        str(data.get("actor") or "") == str(actor).strip()
+        and str(data.get("at") or "") == str(at).strip()
+    )
 
 
 def perform(
     st: status_mod.Status,
     present: dict[str, str | None],
     identities: list[str],
-    hits: list[str],
+    hits: list[str] | None = None,
+    *,
+    config: dict[str, Any],
+    env: Mapping[str, str] | None = None,
+    repo: str | None = None,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """Apply the owner labels ``present`` (label -> actor login, None when unknown) to
     ``st``; pure but for ``st``. Returns (performed, rejected), each a list of
-    {label, actor, reason/items}."""
+    {label, actor, reason}. ``config`` is the default branch's ``sdlc.yaml`` (the owner's
+    guardrail), read with ``env`` and ``repo`` by ``is_owner_actor`` (choice 218). ``hits``
+    is unused since ``sdlc:accept-risk`` retired (decision 35)."""
     performed: list[dict[str, Any]] = []
     rejected: list[dict[str, Any]] = []
     for label in c.UNPARK_LABELS:
@@ -112,21 +182,17 @@ def perform(
                 }
             )
             continue
-        if label == c.ACCEPT_RISK_LABEL and not hits:
+        if not is_owner_actor(actor, config, env, repo):
             rejected.append(
                 {
                     "label": label,
                     "actor": actor,
-                    "reason": f"no risk-list hit recorded in {GATE_FILE.format(phase=st.phase)}"
-                    ": nothing to accept",
+                    "reason": "not the owner's account (decision 24, choice 218): " + actor,
                 }
             )
             continue
-        st.record_owner_label(label, actor, hits if label == c.ACCEPT_RISK_LABEL else None)
-        entry: dict[str, Any] = {"label": label, "actor": actor}
-        if label == c.ACCEPT_RISK_LABEL:
-            entry["items"] = list(hits)
-        performed.append(entry)
+        st.record_owner_label(label, actor)
+        performed.append({"label": label, "actor": actor})
     return performed, rejected
 
 
@@ -137,9 +203,12 @@ def apply_from_pr(
     repo: str,
     pr_number: int,
     github: Any = None,
+    env: Mapping[str, str] | None = None,
 ) -> dict[str, Any]:
     """Read the PR's labels, perform the owner's un-park labels on ``status.yaml`` and remove
     the performed ones from the PR. Returns {ok, performed, rejected, removed, reason}.
+    ``config`` is the default branch's ``sdlc.yaml`` and ``env`` the run's environment
+    (``os.environ`` when None): a label counts only from the owner's account (choice 218).
 
     Nothing is committed here: the caller commits ``status.yaml`` on the work branch (the
     CI run through ``commit-phase``; a by-hand ``/sdlc-fix`` round with its own commit).
@@ -170,7 +239,12 @@ def apply_from_pr(
         return {**out, "ok": True, "reason": "no owner label on the pull request"}
     st = status_mod.read_status(change_dir)
     performed, rejected = perform(
-        st, present, automation_identities(config), risk_hits(change_dir, st.phase)
+        st,
+        present,
+        automation_identities(config),
+        config=config,
+        env=env,
+        repo=repo,
     )
     if performed:
         status_mod.write_status(change_dir, st)

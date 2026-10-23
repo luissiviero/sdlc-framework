@@ -1,6 +1,6 @@
 """Install the project's own toolchain before a phase runs (build guide step 30).
 
-    python framework/plugin/ci/project_setup.py --root . [--ref <git ref>]
+    python framework/plugin/ci/project_setup.py --root . [--ref <git ref>] [--out <file>]
 
 A GitHub-hosted runner carries neither the project nor the tools its targets call: the first
 live design run (2026-09-21) parked at gate (b) because ``python -m pytest`` answered
@@ -35,6 +35,14 @@ with ``--ref`` the step first lists ``git diff --name-only <ref>...HEAD`` in ``-
 refuses, running nothing, when any path lies outside ``changes/``; a ``git diff`` that fails
 is refused too (fail closed). The check compares commits: the working tree's uncommitted
 state is not its concern, the committed head is.
+
+``--command-from`` reads only the command from that ref's ``sdlc.yaml`` and runs it in the
+checkout as it is, with no refusal of the head's other files (R44, the head's own setup
+command): the fix workflow checks out a session's head, which changes source files by design,
+and before 1.0.27 a ``sdlc.yaml`` the session edited chose the command that runs there before
+the runner's guardrail park. The command still runs the head's own manifests; the workflow
+then removes ``framework/`` and checks it out again, so nothing the install wrote there runs
+in the next step.
 
 Prints JSON. Exit 0 when the command exited 0 or there was nothing to run, 1 when it failed
 or timed out, 2 on a usage error. On a failure the reason is also written as the step output
@@ -134,11 +142,18 @@ def paths_changed_outside_changes(root: Path, ref: str) -> list[str]:
 
 
 def run_setup(
-    root: Path, timeout: int = TIMEOUT_SECONDS, ref: str | None = None
+    root: Path,
+    timeout: int = TIMEOUT_SECONDS,
+    ref: str | None = None,
+    env: dict[str, str] | None = None,
+    command_from: str | None = None,
 ) -> tuple[dict[str, Any], int]:
     """(result, exit code). A project with no setup command is skipped, not failed. With
     ``ref``, the command comes from that ref's ``sdlc.yaml``, a head that changed files outside
-    ``changes/`` relative to it runs nothing, and the result names the ref."""
+    ``changes/`` relative to it runs nothing, and the result names the ref. With
+    ``command_from``, only the command comes from that ref's ``sdlc.yaml``. ``env`` is the
+    command's environment when given (``run_phase.commands_env``: no GitHub token and no
+    model credential), else the process's own."""
     root = Path(root).resolve()
     extra: dict[str, Any] = {"ref": ref} if ref else {}
     if ref:
@@ -155,6 +170,13 @@ def run_setup(
             where = f"outside {CHANGES_DIR}/ relative to {ref}"
             error = f"the checkout changed files {where}: {', '.join(outside[:PATHS_SHOWN])}"
             return {"error": error, "ref": ref, "paths": outside}, EXIT_FAILED
+    elif command_from:
+        try:
+            config = config_at_ref(root, command_from)
+        except ValueError as exc:
+            error = f"{SDLC_FILE} at {command_from} could not be read: {exc}"
+            return {"error": error, "command_from": command_from}, EXIT_FAILED
+        extra = {"command_from": command_from}
     else:
         try:
             config = load_sdlc_config(str(root)) or {}
@@ -163,7 +185,7 @@ def run_setup(
     command = setup_command(config)
     if not command:
         return {"skipped": NOTHING_TO_RUN, **extra}, EXIT_OK
-    run = run_command(command, root, timeout, tail=OUTPUT_TAIL)
+    run = run_command(command, root, timeout, tail=OUTPUT_TAIL, env=env)
     exit_code = run.get("exit_code")
     result = {
         "command": command,
@@ -229,6 +251,19 @@ def build_parser() -> argparse.ArgumentParser:
             "working tree, and refuse a head that changed files outside changes/"
         ),
     )
+    p.add_argument(
+        "--command-from",
+        default=None,
+        help=(
+            "read only commands.setup from this git ref's sdlc.yaml (e.g. "
+            "refs/remotes/origin/main) and run it in the checkout as it is"
+        ),
+    )
+    p.add_argument(
+        "--out",
+        default=None,
+        help="also write the JSON to this file, which the triage step reads (R18)",
+    )
     return p
 
 
@@ -237,10 +272,21 @@ def main(argv: list[str] | None = None) -> int:
     if args.timeout <= 0:
         print("--timeout must be a positive number of seconds", file=sys.stderr)
         return EXIT_USAGE
-    result, code = run_setup(Path(args.root), args.timeout, ref=args.ref or None)
+    if args.ref and args.command_from:
+        print("--ref and --command-from are exclusive", file=sys.stderr)
+        return EXIT_USAGE
+    result, code = run_setup(
+        Path(args.root), args.timeout, ref=args.ref or None, command_from=args.command_from
+    )
     if code == EXIT_FAILED:
         result["error_line"] = write_error_output(result)
     print(json.dumps(result, indent=2, sort_keys=True))
+    if args.out:  # R18: a failed setup is a file the triage step reads
+        try:
+            text = json.dumps(result, indent=2, sort_keys=True) + "\n"
+            Path(args.out).write_text(text, encoding="utf-8")
+        except OSError as exc:
+            print(f"could not write {args.out}: {exc}", file=sys.stderr)
     return code
 
 

@@ -126,6 +126,21 @@ def test_refuses_when_settings_allow_bypass_or_lack_a_deny_rule(project):
     ]
 
 
+def test_refuses_a_project_whose_settings_lack_the_policies_deny_rule(project):
+    """Decision 40: ``policies/`` is a guardrail path, so a project initialised before the
+    template carried ``Edit(/policies/**)`` is told to re-run /sdlc-init, which adds it; the
+    initialised fixture carries it."""
+    path = project / ".claude" / "settings.json"
+    data = json.loads(path.read_text(encoding="utf-8"))
+    assert "Edit(/policies/**)" in data["permissions"]["deny"]
+    data["permissions"]["deny"].remove("Edit(/policies/**)")
+    path.write_text(json.dumps(data), encoding="utf-8")
+    report = preflight.run_preflight(project, ROOT)
+    failed = next(ch for ch in report["checks"] if ch["name"] == "settings")
+    assert failed["details"]["problems"] == ["deny rule Edit(/policies/**) missing"]
+    assert "Re-run /sdlc-init" in failed["need"]
+
+
 def test_accepts_the_bare_deny_spelling_of_an_older_install(project):
     """A project initialised before the rules were anchored carries Edit(CLAUDE.md); it
     still denies the root file, so the settings check accepts either spelling."""

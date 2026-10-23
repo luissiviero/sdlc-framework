@@ -9,17 +9,30 @@ is needed" (OPERATING_MODEL section 7). This module renders exactly that, from f
 re-runnable after every review comment.
 
 Layout of the body, in order:
-  0. under deferred review (decision 21), "Decisions taken for you (N)" above the bullets:
+  00. "Needs your close look" (decision 35, ROADMAP R24): when a gate the PR covers reported a
+     risk-list hit, one line per item with where it hit and the reviewer's brief on it
+     (``gate/risk.py banner_lines``): the design PR (b), the build PR from (c) to (e), and the
+     install PR of change 0000 at (a). The PR's merge accepts the items no earlier act
+     accepted; at (c) and (d) only gate (e) does, by the owner's approving review since R22
+     (choice 242, point 2), or by the owner's merge when the owner merges;
+  0a. "What I assumed (N)" (ROADMAP R54): when the change started from a quick intent, the
+     list under spec.md's "## Assumed from the quick intent", on the design PR and the build
+     PR; a review comment on a line corrects it at (b), and changes the code from (c) on;
+  0. "Decisions taken for you (N)" above the bullets (decision 21):
      one line per standing panel decision of the phases this PR covers ((b) for the design
      PR; (c), (d), (e) for the build PR), from ``evidence/decisions-<phase>.json``; a review
      comment on any of them overturns it (/sdlc-fix);
   1. the five bullets, one line each (a fixed order, so the owner reads the same shape every
      time); when the gate parked, the fifth bullet points at the "What I need from you" block
-     and the block itself follows the list verbatim (it is multi-line, a bullet is not). At
+     and the block itself follows the list verbatim (it is multi-line, a bullet is not) -
+     unless the record carries ``sdlc:fixing`` (decision 29): then the runner's automatic
+     fix round k of the cap is running, the fifth bullet says so and nothing is asked. At
      phase (a) the intent PR has no spec, no diff and no gate file, so the middle bullets
      describe the intent instead: entry route, affected users and systems, open questions;
   2. ``Links:`` intent, spec, plan and the gate result, as blob links on the head branch when
      the GitHub remote lets us build the URL, else as plain repository paths;
+  2a. ``Run:`` the workflow run the phase's evidence came from, when ``evidence/run-<phase>.json``
+     names one (decision 29's third answer; nothing by hand);
   3. ``Counters:`` the two indicators of step 42 - first-pass merge yes/no and fix iterations;
   4. the proposed ``CLAUDE.md`` lines when the review pass left them (never applied here:
      ``CLAUDE.md`` is a protected path, the owner applies the line in the PR review);
@@ -30,7 +43,9 @@ Layout of the body, in order:
 
 At phase (e), when ``sdlc.yaml: deploy.production`` is true, one more line follows the
 bullets (like the counters line, not a sixth bullet): the release approval, the second act
-of gate (e) (decision 13).
+of gate (e) (decision 13). On the fast lane (decision 30) a line of the same kind says what
+this PR carries and which earlier PR it superseded: the design PR carries the owner's
+intent (the intent PR is closed), the build PR the intent, spec and plan with the code.
 """
 
 from __future__ import annotations
@@ -48,7 +63,9 @@ if str(PLUGIN_DIR) not in sys.path:
 from panel import ledger  # noqa: E402
 
 from gate import artifacts as art  # noqa: E402
-from gate import checks  # noqa: E402
+from gate import checks, limits  # noqa: E402
+from gate import diff as diffmod  # noqa: E402
+from gate import risk as risk_mod  # noqa: E402
 from gate.checks import CheckResult  # noqa: E402
 from gate.gate import GateResult  # noqa: E402
 from hooks._common import ConfigError, config_flag, load_sdlc_config  # noqa: E402
@@ -100,17 +117,30 @@ GATE_CHECKLIST = {
     "recorded reason)",
     "b": "; ".join(STEP_23_CHECKLIST)
     + " Merge = approve; a review comment = change request (/sdlc-fix).",
-    "c": "approving review + label sdlc:c-approved starts the test phase",
-    "d": "approving review + label sdlc:d-approved starts the review phase",
-    "e": "merge = approve; a review comment is the change request (/sdlc-fix). Waiting for "
-    "your merge: merge = gate (e) passed; the release workflow then runs `deploy.command`",
+    "e": "an approving review = approve (gate (e), decision 36); a review comment is the "
+    "change request (/sdlc-fix). Waiting for your approval: the merge App then merges this PR "
+    "(without a merge App, merge it after approving) and the release workflow runs "
+    "`deploy.command`",
 }
-# Decision 13: when the project declares a real production, the merge is the first act and
-# the release label, applied by a person on GitHub, the second (the only route: a run cannot
-# approve itself, decision 5).
+# Decision 13, as amended by 36: when the project declares a real production, the approving
+# review is the first act and the release label, applied by a person on GitHub, the second
+# (the only route: a run cannot approve itself, decision 5), in the same visit.
+# Choice 239 (ROADMAP R54): an intent PR opened from the owner's own account, not as a draft,
+# is accepted by that act and starts the design at once (decision 30), so "merge = approve"
+# is not what it needs. The description is written before the PR exists and cannot know who
+# opens it, so a PR not opened as a draft names both cases; a draft keeps the gate (a) line
+# alone (a draft never takes the fast lane, run_phase.intent_pr_start).
+FAST_LANE_A_CHECKLIST = (
+    "opened from your own account, not as a draft, and changing nothing outside its change "
+    "folder, nothing: opening it accepted the intent "
+    "and started the design (the fast lane, decision 30), and the design run closes this PR as "
+    f"`{c.SUPERSEDED_LABEL}`; correct what the design made of it with a review comment on the "
+    "design PR, or on the build PR at gate (e). Opened as a draft or by another account, or "
+    "changing other files: " + GATE_CHECKLIST["a"]
+)
 RELEASE_APPROVAL_LINE = (
-    f"Release approval: apply `{c.RELEASE_APPROVED_LABEL}` on this PR after merging; the "
-    "release workflow waits for it."
+    f"Release approval: apply `{c.RELEASE_APPROVED_LABEL}` on this PR with your approval; the "
+    "release workflow waits for it after the merge."
 )
 NOTHING_NEEDED = "nothing: the run continues to the next phase"
 
@@ -127,7 +157,7 @@ def load_gate(change_dir: Path, phase: str) -> dict[str, Any] | None:
     if not path.is_file():
         return None
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
+        data = json.loads(art.read_text(path) or "")
     except (OSError, ValueError):
         return None
     return data if isinstance(data, dict) else None
@@ -152,17 +182,28 @@ def _section(text: str | None, heading: str) -> str:
 
 
 def _first_sentence(text: str) -> str:
-    """The first sentence of a section body, list markers and blank lines removed."""
+    """The first sentence of a section body, list markers and blank lines removed. The first
+    paragraph or list item is read whole, so a sentence hard-wrapped over several lines is not
+    cut at the first line's end (item 11's read: the sample's PR #60)."""
+    parts: list[str] = []
+    fenced = False
     for raw in (text or "").splitlines():
         line = raw.strip()
-        if not line or line.startswith(("#", ">", "|")):
+        fence = line.startswith(("```", "~~~"))
+        if fence and not parts:
+            fenced = not fenced  # a leading code block is skipped, never read as prose
             continue
-        m = LIST_ITEM_RE.match(line)
-        if m:
-            line = m.group("text").strip()
-        m = SENTENCE_RE.match(line)
-        return (m.group(1) if m else line).strip()
-    return ""
+        if fenced:
+            continue
+        item = LIST_ITEM_RE.match(line) if line else None
+        skip = not line or line.startswith(("#", ">", "|"))
+        if parts and (skip or item or fence):
+            break
+        if not skip:
+            parts.append(item.group("text").strip() if item else line)
+    joined = " ".join(parts)
+    m = SENTENCE_RE.match(joined)
+    return (m.group(1) if m else joined).strip()
 
 
 def _list_items(body: str) -> list[str]:
@@ -255,8 +296,14 @@ def _conformance_line(gate_json: dict[str, Any] | None, spec_text: str, phase: s
         return f"open questions from intent: {answered} answered / {len(carried)} carried forward"
     check = _gate_check(gate_json, "plan_sync")
     if check is None:
-        return "plan conformance not checked at this gate"
-    return "diff matches plan.md" if check.get("ok") else str(check.get("reason", "")).strip()
+        base = "plan conformance not checked at this gate"
+    else:
+        base = "diff matches plan.md" if check.get("ok") else str(check.get("reason", "")).strip()
+    ratchets = _gate_check(gate_json, "ratchets")
+    declared = (ratchets or {}).get("details", {}).get("declared") if ratchets else None
+    if isinstance(declared, list) and declared:
+        base += "; declared drops: " + ", ".join(str(d) for d in declared)
+    return base
 
 
 # --- bullet 5: what needs the owner ----------------------------------------------------------
@@ -271,7 +318,6 @@ def what_i_need_block(gate_json: dict[str, Any]) -> str:
             change_id=str(gate_json.get("change_id", "")),
             slug=str(gate_json.get("slug", "")),
             phase=str(gate_json.get("phase", "")),
-            profile=str(gate_json.get("profile", "")),
             human_gate=bool(gate_json.get("human_gate", False)),
             result=str(gate_json.get("result", "")),
             checks=[
@@ -294,22 +340,94 @@ def what_i_need_block(gate_json: dict[str, Any]) -> str:
     return result.what_i_need().strip("\n")
 
 
-def _owner_line(gate_json: dict[str, Any] | None, phase: str) -> str:
+# Decision 29 (1.0.3): while the runner's automatic fix round runs, the record keeps its park
+# (the tree is red) and carries ``sdlc:fixing``; the owner is needed only at the cap.
+AUTO_ROUND_LINE = (
+    "nothing: the runner found a red target ({targets}) and automatic fix round {round} of "
+    "{cap} is running (decision 29); the change waits for you only if the iteration cap is "
+    "reached"
+)
+
+
+def auto_round_state(change_dir: Path, gate_json: dict[str, Any] | None) -> dict[str, Any] | None:
+    """The automatic fix round the record is marked with (label ``sdlc:fixing``), read from
+    ``evidence/auto-round.json``; None when the record carries no such mark."""
+    if not gate_json or gate_json.get("label") != c.FIXING_LABEL:
+        return None
+    path = Path(change_dir) / art.EVIDENCE_DIR / c.AUTO_ROUND_FILE
+    try:
+        data = json.loads(art.read_text(path) or "")
+    except (OSError, ValueError):
+        data = None
+    marked = gate_json.get("auto_round") if isinstance(gate_json.get("auto_round"), dict) else {}
+    data = data if isinstance(data, dict) else {}
+    return {
+        "round": data.get("round", marked.get("round")),
+        "cap": data.get("cap", marked.get("cap")),
+        "targets": [t for t in data.get("targets") or [] if isinstance(t, dict)],
+    }
+
+
+def _auto_round_line(auto: dict[str, Any]) -> str:
+    def state(t: dict[str, Any]) -> str:
+        return "timed out" if t.get("timed_out") else f"exit {t.get('exit_code')}"
+
+    targets = ", ".join(f"{t.get('target')} ({state(t)})" for t in auto["targets"])
+    return AUTO_ROUND_LINE.format(
+        targets=targets or "see the gate record", round=auto.get("round"), cap=auto.get("cap")
+    )
+
+
+def run_line(change_dir: Path, phase: str) -> str:
+    """Decision 29's third answer: the workflow run the phase's evidence came from, read from
+    ``evidence/run-<phase>.json`` (the runner names it there, ``github_run``); "" when the
+    record names no run (a by-hand run)."""
+    path = Path(change_dir) / art.EVIDENCE_DIR / f"run-{phase}.json"
+    try:
+        data = json.loads(art.read_text(path) or "")
+    except (OSError, ValueError):
+        return ""
+    run = data.get("github_run") if isinstance(data, dict) else None
+    if not isinstance(run, dict) or not str(run.get("id") or "").strip():
+        return ""
+    label = f"workflow run {run['id']}"
+    shown = f"[{label}]({run['url']})" if run.get("url") else label
+    return f"Run: the evidence and the gate record of phase ({phase}) come from {shown}."
+
+
+def _owner_line(
+    gate_json: dict[str, Any] | None, phase: str, auto: dict[str, Any] | None = None
+) -> str:
     result = (gate_json or {}).get("result")
+    if auto is not None:
+        return _auto_round_line(auto)
     if result == "park":
-        return (
-            f'parked at gate ({phase}) - see "What I need from you" below; '
-            "nobody was notified (decision 11)"
-        )
-    if result == "wait" or phase in ("a", "f"):  # (a) and (f) are human in every profile
+        return f'parked at gate ({phase}) - see "What I need from you" below'
+    if result == "wait" or phase in ("a", "f"):  # (a) and (f) are always human
         return GATE_CHECKLIST.get(phase, "the owner's review is the gate")
     return NOTHING_NEEDED
 
 
-def _intent_bullets(intent: str, st: Status) -> list[str]:
+def _intent_bullets(intent: str, st: Status, draft: bool = False) -> list[str]:
     """Phase (a): the intent PR /sdlc-plan opens. There is no spec, no diff and no gate file
-    yet, so the middle bullets describe the intent itself (build guide step 11)."""
+    yet, so the middle bullets describe the intent itself (build guide step 11). A quick
+    intent (R54) says that the design run fills the sections the owner left to it."""
     problem = _first_sentence(_section(intent, "## Problem"))
+    # change 0000's install PR changes files outside its folder: never the fast lane
+    fast = not draft and st.id != c.INIT_CHANGE_ID
+    needs = FAST_LANE_A_CHECKLIST if fast else GATE_CHECKLIST["a"]
+    if art.is_quick_intent(intent):
+        left = (
+            "left to the design run (quick intent): it lists what it assumed above the "
+            "design PR's bullets"
+        )
+        return [
+            f"- **What changed and why**: {st.title}: {problem}",
+            f"- **Entry route**: {st.entry_route} route, {st.change_type} change, quick intent",
+            f"- **Affected users and systems**: {left}",
+            f"- **Open questions**: {left}",
+            f"- **What needs you**: {needs}",
+        ]
     affected = _first_sentence(_section(intent, "## Affected users and systems"))
     questions = [
         item
@@ -326,7 +444,7 @@ def _intent_bullets(intent: str, st: Status) -> list[str]:
         f"- **Entry route**: {st.entry_route} route, {st.change_type} change",
         f"- **Affected users and systems**: {affected or 'not stated'}",
         f"- **Open questions**: {open_line}",
-        f"- **What needs you**: {GATE_CHECKLIST['a']}",
+        f"- **What needs you**: {needs}",
     ]
 
 
@@ -380,7 +498,7 @@ def _incident_bullets(
         if proposal.runbook:
             outcome_path = evidence / f"runbook-{proposal.runbook}.json"
             try:
-                data = json.loads(outcome_path.read_text(encoding="utf-8"))
+                data = json.loads(art.read_text(outcome_path) or "")
             except (OSError, ValueError):
                 data = {}
             status = str((data or {}).get("status") or "not run")
@@ -435,6 +553,31 @@ def decisions_block(change_dir: Path, phase: str) -> list[str]:
         )
     lines += models_lines(change_dir, phase)
     return lines
+
+
+def assumed_block(spec: str, phase: str = "b") -> list[str]:
+    """R54: ``**What I assumed (N)**`` and the spec's list of assumptions when the change
+    started from a quick intent, or []. Shown on the design PR and on the build PR (on the
+    fast lane the design PR is superseded). A fix round at (b) edits spec.md; from (c) on it
+    changes the code only and never the spec (/sdlc-fix), so the line stays as written."""
+    items: list[str] = []
+    for line in _section(spec, art.SPEC_ASSUMED_SECTION).splitlines():
+        m = LIST_ITEM_RE.match(line)
+        if m:
+            items.append(m.group("text").strip())
+        elif items and line.strip():  # an item hard-wrapped over several lines
+            items[-1] = f"{items[-1]} {line.strip()}"
+    if not items:
+        return []
+    if phase == "b":
+        how = "a review comment on any line corrects it (/sdlc-fix)"
+    else:
+        how = (
+            "a review comment on any line changes the code to match your correction "
+            "(/sdlc-fix); the line itself stays as the design wrote it"
+        )
+    head = f"**What I assumed ({len(items)})** from your one-paragraph intent (R54): {how}."
+    return [head, *(f"{n}. {item}" for n, item in enumerate(items, 1))]
 
 
 def models_lines(change_dir: Path, phase: str) -> list[str]:
@@ -512,7 +655,41 @@ def release_note(change_dir: Path, intent: str) -> str:
         if body.strip():
             return body
     outcome = _section(intent, "## Proposed outcome")
+    if art.left_to_design(outcome):  # a quick intent (R54): no outcome in the owner's words
+        return ""
     return " ".join(outcome.split()) if outcome else ""
+
+
+def fast_lane_line(root: Path, st: Status, phase: str) -> str:
+    """Decision 30: what this PR carries on the fast lane and the PR it superseded, or "".
+    Read only while the record stands on the checkout (``diff.fast_lane_sha``: a PR the
+    owner merged after all is not superseded)."""
+    lane = st.fast_lane or {}
+    try:
+        live = diffmod.fast_lane_sha(Path(root), lane, phase)
+    except Exception:  # noqa: BLE001 - a missing git is not a reason to lose the summary
+        live = None
+    if not live:
+        return ""
+    intent_pr = (lane.get("a") or {}).get("pr")
+    if phase == "b":
+        return (
+            "Fast lane (decision 30): this PR carries your intent too, accepted when you "
+            f"opened intent PR #{intent_pr}, which it supersedes (closed, not merged)."
+        )
+    design_pr = (lane.get("b") or {}).get("pr")
+    superseded = [
+        f"{name} #{number}"
+        for name, number in (("intent PR", intent_pr), ("design PR", design_pr))
+        if number
+    ]
+    line = (
+        "Fast lane (decision 30): the adversarial reviewer classed the plan routine, so the "
+        "intent, spec and plan are in this PR with the code; review them here"
+    )
+    if superseded:
+        line += f" (superseded: {', '.join(superseded)})"
+    return line + "."
 
 
 def _counters_line(st: Status) -> str:
@@ -523,8 +700,9 @@ def _counters_line(st: Status) -> str:
     return line
 
 
-def build_description(root: Path, change_id: str, phase: str) -> str:
-    """The whole PR body for a change at a phase. Pure: reads files, contacts nothing."""
+def build_description(root: Path, change_id: str, phase: str, draft: bool = False) -> str:
+    """The whole PR body for a change at a phase. Pure: reads files, contacts nothing.
+    ``draft``: the PR is opened as a draft, which never takes the fast lane at (a)."""
     root = Path(root).resolve()
     if phase not in c.PHASES:
         raise ValueError(f"phase must be one of {c.PHASES}, got {phase!r}")
@@ -536,9 +714,11 @@ def build_description(root: Path, change_id: str, phase: str) -> str:
     spec = art.read_text(change_dir / "spec.md") or ""
     gate_json = load_gate(change_dir, phase)
 
+    banner = risk_mod.banner_lines(change_dir, phase, st)
     if phase == "a":
-        bullets = _intent_bullets(intent, st)
-        out = [" ".join(b.split()) for b in bullets]
+        bullets = _intent_bullets(intent, st, draft)
+        out = [*banner, ""] if banner else []
+        out += [" ".join(b.split()) for b in bullets]
         out += ["", _links_line(root, change_dir, change_id, phase), "", _counters_line(st)]
         return "\n".join(out) + "\n"
     if phase == "f":
@@ -564,26 +744,40 @@ def build_description(root: Path, change_id: str, phase: str) -> str:
     else:
         findings = _findings_line(change_dir)
 
+    auto = auto_round_state(change_dir, gate_json)
     bullets = [
         f"- **What changed and why**: {what}".rstrip(),
         f"- **Evidence**: {evidence_status(change_dir, phase)}",
         f"- **Review findings**: {findings}",
         f"- **Plan conformance**: {_conformance_line(gate_json, spec, phase)}",
-        f"- **What needs you**: {_owner_line(gate_json, phase)}",
+        f"- **What needs you**: {_owner_line(gate_json, phase, auto)}",
     ]
-    out: list[str] = []
+    out: list[str] = [*banner, ""] if banner else []
+    assumed = assumed_block(spec, phase)
+    if assumed:
+        out += [*assumed, ""]
     decisions = decisions_block(change_dir, phase)
     if decisions:
         out += [*decisions, ""]
     out += [" ".join(b.split()) for b in bullets]
 
-    if (gate_json or {}).get("result") == "park":
+    if (gate_json or {}).get("result") == "park" and auto is None:
         block = what_i_need_block(gate_json)
         if block:
             out += ["", block]
     if phase == "e" and production_declared(root):
         out += ["", RELEASE_APPROVAL_LINE]
-    out += ["", _links_line(root, change_dir, change_id, phase), "", _counters_line(st)]
+    lane = fast_lane_line(root, st, phase)
+    if lane:
+        out += ["", lane]
+    out += ["", _links_line(root, change_dir, change_id, phase)]
+    run = run_line(change_dir, phase)
+    if run:
+        out += ["", run]
+    out += ["", _counters_line(st)]
+    spend = limits.spend_line(change_dir / art.EVIDENCE_DIR)  # R25 part 2
+    if spend:
+        out += ["", spend]
 
     proposals = art.read_text(change_dir / art.EVIDENCE_DIR / CLAUDE_MD_PROPOSALS)
     if proposals and proposals.strip():

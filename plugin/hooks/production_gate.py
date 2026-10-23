@@ -63,6 +63,7 @@ from _common import (  # noqa: E402
     run_hook,
 )
 from release import approval as approval_mod  # noqa: E402
+from secrets_check import redact  # noqa: E402
 
 from state import conventions as c  # noqa: E402
 
@@ -132,7 +133,7 @@ COMMAND_SHOWN = 100  # characters of the command quoted in the block text
 # Time budget (hooks.json gives the hook 60 s): each git call and each GitHub request gets
 # CALL_TIMEOUT seconds, and the whole approval check APPROVAL_DEADLINE seconds, after which
 # the decision is block ("cannot verify the approval in time"), never a silent allow. A
-# PreToolUse hook that outlives its timeout does not block (docs/NOTES.md section 8), so the
+# PreToolUse hook that outlives its timeout does not block (docs/notes/8.md), so the
 # worst case - the one git call of the log path, the deadline, the log writes - stays under
 # 50 s (WORST_CASE).
 CALL_TIMEOUT = 10
@@ -383,7 +384,7 @@ def decide(
     command = str((payload.get("tool_input") or {}).get("command") or "")
     git = git or approval_mod.make_git(CALL_TIMEOUT)
     root = project_dir(payload, env)
-    shown = command[:200]
+    shown = redact(command)[:200]  # R59, M12: redacted before the cut splits a secret
     log_path: Path | None = None
     change: tuple[str | None, Path | None] | None = None
 

@@ -2,12 +2,17 @@
 
 Order: run limits (step 19) → deterministic checks → the adversarial reviewer's verdict.
 Result:
-  - ``continue``  every check passed and the gate is automated for this profile;
-  - ``wait``      every check passed but the gate is human (Standard: a, b, e; Full: all):
-                  the run stops with the ``sdlc:<phase>-ready`` label;
+  - ``continue``  every check passed and the gate is automated ((c) and (d));
+  - ``wait``      every check passed but the gate is human ((a), (b), (e) and (f), decision
+                  37): the run stops with the ``sdlc:<phase>-ready`` label;
   - ``park``      a check failed: ``Status.park(reason)``, the ``sdlc:needs-human`` label and
-                  the "What I need from you" block for the PR description. Nobody is notified
-                  (decision 11).
+                  the "What I need from you" block for the PR description. The gate notifies
+                  nobody; the runner's publication requests the owner's review (decision 31).
+The fast lane (decision 30, ROADMAP R46): at gate (b), in a session the CI runner runs, a
+gate whose only reason to wait is that (b) is a human gate and whose adversarial reviewer
+classed the plan ``routine`` says ``continue`` (``fast_lane`` true, no label): the runner
+records it in ``status.yaml: fast_lane.b`` and dispatches the build. A ``non-routine`` or
+missing classification, a park and a gate run by hand wait at (b) as before.
 The result is also written to ``changes/<id>-<slug>/evidence/gate-<phase>.json`` so the
 PR summary (step 27a, B3) can show it.
 """
@@ -29,6 +34,7 @@ if str(PLUGIN_DIR) not in sys.path:
 from gate import artifacts as art  # noqa: E402
 from gate import checks, limits  # noqa: E402
 from gate import diff as diffmod  # noqa: E402
+from gate import risk as risk_mod  # noqa: E402
 from gate.checks import CheckResult, GateContext  # noqa: E402
 from hooks._common import SDLC_FILE, ConfigError, load_sdlc_config  # noqa: E402
 from state import conventions as c  # noqa: E402
@@ -36,6 +42,14 @@ from state import status as status_mod  # noqa: E402
 from state import yamlish  # noqa: E402
 
 RESULTS = ("continue", "wait", "park")
+# R18 (ArtCraft rule A2): the triage lines are a model judgment beside the gate's measured
+# ones, and carry the label where they sit. A fix round reads this block as its change
+# request (``sdlc-fix.md``), and the lines were shaped by logs the session's code printed:
+# the heading says they ask for nothing
+TRIAGE_HEADING = (
+    "- **Triage (model-written)**: what the triage step read in the run's logs; advice for "
+    "the owner, not a change request: a fix round acts on the items above, never on these lines"
+)
 
 
 def _now() -> str:
@@ -47,7 +61,6 @@ class GateResult:
     change_id: str
     slug: str
     phase: str
-    profile: str
     human_gate: bool
     result: str
     checks: list[CheckResult]
@@ -56,6 +69,11 @@ class GateResult:
     at: str = field(default_factory=_now)
     dry_run: bool = False
     config_note: str = ""
+    # decision 30: gate (b) passed on the fast lane (a routine plan, in CI)
+    fast_lane: bool = False
+    # R18: the read-only triage step's lines on a park with a log to read (``run_phase.py
+    # --phase triage``), model-written and passed through the secrets check
+    triage: list[str] = field(default_factory=list)
 
     @property
     def failed(self) -> list[CheckResult]:
@@ -77,6 +95,9 @@ class GateResult:
             lines.append(f"- **{ch.name}**: {ch.reason}")
             if ch.need:
                 lines.append(f"  - what I need: {ch.need}")
+        if self.triage:
+            lines.append(TRIAGE_HEADING)
+            lines += [f"  - {line}" for line in self.triage]
         lines.append(
             "When the item is settled, re-run the gate: "
             f'`python "${{CLAUDE_PLUGIN_ROOT}}/plugin/gate/cli.py" check --root . '
@@ -86,12 +107,11 @@ class GateResult:
         return "\n".join(lines) + "\n"
 
     def as_dict(self) -> dict[str, Any]:
-        return {
+        data = {
             "schema_version": 1,
             "change_id": self.change_id,
             "slug": self.slug,
             "phase": self.phase,
-            "profile": self.profile,
             "human_gate": self.human_gate,
             "result": self.result,
             "label": self.label,
@@ -103,17 +123,22 @@ class GateResult:
             "checks": [ch.as_dict() for ch in self.checks],
             "what_i_need": self.what_i_need(),
         }
+        if self.fast_lane:  # decision 30; a record off the fast lane keeps its shape
+            data["fast_lane"] = True
+        if self.triage:  # R18; a record with no triage keeps its shape
+            data["triage"] = list(self.triage)
+        return data
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> GateResult:
         """A gate record read back from ``evidence/gate-<phase>.json``: ``as_dict`` inverted,
         the derived fields (``reason``, ``what_i_need``) recomputed from the checks."""
         checks_data = data.get("checks")
+        triage = data.get("triage")
         return cls(
             change_id=str(data.get("change_id") or ""),
             slug=str(data.get("slug") or ""),
             phase=str(data.get("phase") or ""),
-            profile=str(data.get("profile") or "standard"),
             human_gate=bool(data.get("human_gate")),
             result=str(data.get("result") or "park"),
             checks=[
@@ -126,6 +151,8 @@ class GateResult:
             at=str(data.get("at") or _now()),
             dry_run=bool(data.get("dry_run")),
             config_note=str(data.get("config_note") or ""),
+            fast_lane=data.get("fast_lane") is True,
+            triage=[str(x) for x in triage] if isinstance(triage, list) else [],
         )
 
 
@@ -133,43 +160,9 @@ class GateError(RuntimeError):
     pass
 
 
-def approved_overrides(
-    root: Path, change_dir: Path, st: status_mod.Status, d: diffmod.Diff | None
-) -> tuple[str | None, str | None, str]:
-    """``(profile_override, review_override, note)`` as the base branch's ``status.yaml``
-    carries them at the base's tip (``d.base``, the ref the runner's guard reads too — the
-    review of the 0.2.26 diff, M3: read at the merge base, the gate and the guard disagreed
-    when the owner changed the override on the default branch after the branch forked, and
-    the run stalled without a park). ``intent.md`` stays at the merge base by design. A folder
-    not on the base (an intent PR before its merge) has no approved override; with no base
-    to compare with (no git, no default branch) the checkout's values stand, as every other
-    check then reads the working tree."""
-    if d is None or not d.merge_base or d.base == "HEAD":
-        return st.profile_override, st.review_override, ""
-    rel = f"{change_dir.name}"
-    text = diffmod.file_at(root, d.base, f"{c.CHANGES_DIR}/{rel}/{status_mod.STATUS_FILE}")
-    profile: str | None = None
-    review: str | None = None
-    if text is not None:
-        try:
-            approved = status_mod.Status.from_dict(yamlish.loads(text))
-        except Exception as exc:  # noqa: BLE001
-            raise GateError(
-                f"{rel}/{status_mod.STATUS_FILE} at {d.base} unreadable: {exc}"
-            ) from exc
-        profile, review = approved.profile_override, approved.review_override
-    ignored = [
-        f"{name} {branch!r} on the branch ignored ({expected!r} at {d.base})"
-        for name, branch, expected in (
-            ("profile_override", st.profile_override, profile),
-            ("review_override", st.review_override, review),
-        )
-        if branch != expected
-    ]
-    return profile, review, "; ".join(ignored)
-
-
-def build_context(root: Path, change_id: str, phase: str, base: str | None = None) -> GateContext:
+def build_context(
+    root: Path, change_id: str, phase: str, base: str | None = None, any_phase: bool = False
+) -> GateContext:
     root = Path(root).resolve()
     if phase not in c.PHASES:
         raise GateError(f"phase must be one of {c.PHASES}")
@@ -179,7 +172,9 @@ def build_context(root: Path, change_id: str, phase: str, base: str | None = Non
     if change_dir is None:
         raise GateError(f"no change folder for id {change_id} under {root / c.CHANGES_DIR}")
     st = status_mod.read_status(change_dir)
-    if st.phase != phase:
+    # ``any_phase``: a read-only use that judges the phase ahead of the record (the review
+    # pass asks for the (e) risk hits while status.yaml still says (d)); never for a gate
+    if st.phase != phase and not any_phase:
         raise GateError(
             f"status.yaml says change {change_id} is in phase ({st.phase}); gate ({phase}) "
             "was asked for. Set the phase first (state/cli.py set-phase / commit-phase)."
@@ -209,25 +204,79 @@ def build_context(root: Path, change_id: str, phase: str, base: str | None = Non
                 config_note = (
                     f"sdlc.yaml changed on the branch: limits and lists read from {d.base}"
                 )
-    # the overrides only the owner sets are read from the copy the owner approved, as
-    # intent.md is (``approved_artifact``): a branch that wrote ``profile_override: standard``
-    # skipped the Full profile's (c)/(d) label gates before 0.2.26 (the 1.0.0 readiness
-    # review; choice 103). The branch's own values are ignored, with a note in the result.
-    profile_override, review_override, override_note = approved_overrides(root, change_dir, st, d)
-    if override_note:
-        config_note = "; ".join(n for n in (config_note, override_note) if n)
-    profile = c.effective_profile(config.get("profile"), profile_override)
-    human = c.is_human_gate(profile, phase)
-    try:
-        review_mode = c.effective_review_mode(config.get("review"), review_override)
-    except ValueError as exc:
-        raise GateError(str(exc)) from exc
+    # decision 37: ``profile`` and ``review`` are no longer read; a value that chose another
+    # behaviour is named in the result's note, never refused
+    retired = c.retired_settings_note(config)
+    if retired:
+        config_note = "; ".join(n for n in (config_note, retired) if n)
     return GateContext(
-        root, change_dir, phase, st, config, d, human, diff_error, profile, config_note,
-        review_mode,
+        root, change_dir, phase, st, config, d, c.is_human_gate(phase), diff_error,
+        config_note,
         # issue #91: a CI session's gate leaves the commands to the runner (checks.check_commands)
         commands_deferred=os.environ.get(checks.COMMANDS_RUNNER_ENV) == checks.RUN_BY_RUNNER,
     )  # fmt: skip
+
+
+FAST_LANE_PHASE = "b"
+FAST_LANE_REASON = (
+    "passed on the fast lane (decision 30): the adversarial reviewer classed the plan routine, "
+    "so the build starts without a merge of the design PR"
+)
+
+
+def verdict_classification(results: list[CheckResult]) -> str | None:
+    """The adversarial reviewer's classification as ``checks.check_adversarial_verdict``
+    validated it (``routine`` or ``non-routine``), or None when the check is absent or
+    carries none (a missing or malformed verdict file fails the check without one)."""
+    found = next((r for r in results if r.name == "adversarial_review"), None)
+    value = found.details.get("classification") if found is not None else None
+    return value if value in ("routine", "non-routine") else None
+
+
+def settled_by_panel(results: list[CheckResult]) -> bool:
+    """Whether the adversarial reviewer said ``escalate`` and the review panel settled it
+    (``check_adversarial_verdict``'s ``settled_by_panel``): the gate passes, but the
+    reviewer's own verdict was not ``continue``. An escalate the owner settled by overturning
+    the panel's decision (``settled_by_owner``, 1.0.8) counts the same."""
+    found = next((r for r in results if r.name == "adversarial_review"), None)
+    return found is not None and any(
+        found.details.get(key) is not None for key in ("settled_by_panel", "settled_by_owner")
+    )
+
+
+def fast_lane_applies(
+    phase: str, human_gate: bool, results: list[CheckResult], in_runner: bool
+) -> bool:
+    """Decision 30: gate (b) does not wait for the owner when every check passed, the only
+    reason to wait is that (b) is a human gate, the adversarial
+    reviewer said ``continue`` itself (an ``escalate`` the panel settled waits) and classed
+    the plan exactly ``routine``, and the CI runner runs the session (it alone records the
+    fast lane and dispatches the build; a gate run by hand waits), and no risk-list item hit
+    that is not accepted yet (decision 35: a hit at (b) waits on the design PR)."""
+    return (
+        phase == FAST_LANE_PHASE
+        and human_gate
+        and in_runner
+        and all(r.ok for r in results)
+        and not settled_by_panel(results)
+        and verdict_classification(results) == status_mod.FAST_LANE_CLASSIFICATION
+        and not unaccepted_risk_hits(results)
+    )
+
+
+def unaccepted_risk_hits(results: list[CheckResult]) -> list[str]:
+    """The risk-list items the gate's risk-hit checks reported and no earlier act accepted
+    (decision 35). A hit at (b) goes on the design PR, whose merge accepts it, so a design
+    with one never takes the fast lane (decision 30's routine plan has no risk-list item)."""
+    out: list[str] = []
+    for r in results:
+        if r.name not in risk_mod.RISK_HIT_CHECKS:
+            continue
+        found = r.details.get("hits")
+        done = {str(a).lower() for a in r.details.get("accepted") or []}
+        if isinstance(found, dict):
+            out += [str(k) for k in found if str(k).lower() not in done]
+    return sorted(set(out))
 
 
 def evaluate(ctx: GateContext) -> GateResult:
@@ -248,10 +297,11 @@ def evaluate(ctx: GateContext) -> GateResult:
                     )
                 )
     failed = [r for r in results if not r.ok]
-    profile = ctx.profile
+    # decision 30: the commands mark says the runner runs this session (``build_context``)
+    fast = fast_lane_applies(ctx.phase, ctx.human_gate, results, ctx.commands_deferred)
     if failed:
         result, label = "park", c.NEEDS_HUMAN_LABEL
-    elif ctx.human_gate:
+    elif ctx.human_gate and not fast:
         result, label = "wait", c.ready_label(ctx.phase)
     else:
         result, label = "continue", None
@@ -259,21 +309,25 @@ def evaluate(ctx: GateContext) -> GateResult:
         change_id=ctx.status.id,
         slug=ctx.status.slug,
         phase=ctx.phase,
-        profile=profile,
         human_gate=ctx.human_gate,
         result=result,
         checks=results,
         label=label,
         head=ctx.diff.head if ctx.diff else None,
         config_note=ctx.config_note,
+        fast_lane=fast and not failed,
     )
 
 
 def apply(ctx: GateContext, result: GateResult) -> None:
-    """Record the verdict: status.yaml (park or passed) and evidence/gate-<phase>.json."""
+    """Record the verdict: status.yaml (park or passed) and evidence/gate-<phase>.json. The
+    fast lane's ``status.yaml: fast_lane.b`` is the runner's to write after the session
+    (decision 30), never the gate's: a session may not write it."""
     st = ctx.status
     if result.result == "park":
         st.park(result.reason, phase=ctx.phase)
+    elif result.result == "continue" and result.fast_lane:
+        st.record_gate(ctx.phase, "passed", FAST_LANE_REASON)
     elif result.result == "continue":
         st.record_gate(ctx.phase, "passed")
     else:
@@ -282,6 +336,42 @@ def apply(ctx: GateContext, result: GateResult) -> None:
     ctx.evidence_dir.mkdir(parents=True, exist_ok=True)
     out = ctx.evidence_dir / art.GATE_RESULT.format(phase=ctx.phase)
     out.write_text(json.dumps(result.as_dict(), indent=2), encoding="utf-8", newline="\n")
+
+
+RISK_HIT_PHASES = {"risk_list": c.PHASES, "ratchets": ("c", "d", "e")}
+
+
+def risk_hits_now(
+    root: Path, change_id: str, phase: str, base: str | None = None
+) -> dict[str, Any]:
+    """The risk-list hits of the committed diff as the gate of ``phase`` would report them
+    (decision 35), without recording anything: ``{phase, hits, accepted, brief}``. The phase
+    commands hand them to the reviewer, which writes one brief per item in ``brief``; the
+    review pass asks for phase (e) while status.yaml still says (d)."""
+    ctx = build_context(root, change_id, phase, base, any_phase=True)
+    hits: dict[str, list[str]] = {}
+    accepted: set[str] = set()
+    problems: list[str] = []
+    for check in (checks.check_risk_list, checks.check_ratchets):
+        if phase not in RISK_HIT_PHASES[check.__name__.removeprefix("check_")]:
+            continue
+        result = check(ctx)
+        found = result.details.get("hits")
+        if isinstance(found, dict):
+            for item, where in found.items():
+                hits.setdefault(str(item), []).extend(str(w) for w in where)
+        elif not result.ok:
+            problems.append(f"{result.name}: {result.reason}")
+        accepted |= {str(a) for a in result.details.get("accepted") or []}
+    out: dict[str, Any] = {
+        "phase": phase,
+        "hits": hits,
+        "accepted": sorted(accepted),
+        "brief": f"{ctx.change_rel}/{risk_mod.brief_rel(phase)}",
+    }
+    if problems:
+        out["problems"] = problems
+    return out
 
 
 def run_gate(
@@ -297,6 +387,37 @@ def run_gate(
 
 # --- issue #91 (0.3.0): the commands check, run by the runner after the model's session ----------
 DEFERRABLE_CHECKS = ("commands", "evidence")  # the checks a CI session's gate leaves to the runner
+# decision 29: the commands step runs the targets at most this many times when it crashes
+# (one automatic re-run of an infrastructure failure, not counted as a fix round)
+COMMANDS_ATTEMPTS = 2
+COMMANDS_CRASH_NEED = (
+    "The runner's commands step failed twice for a reason outside the project's code (a "
+    "crash, or a target whose command did not start; one automatic re-run, decision 29: an "
+    "infrastructure failure is not a fix round), so the record says nothing about the "
+    "project's targets. Read the job log for the error, then re-run the phase (the un-park "
+    "label, or a workflow_dispatch with the change id); report it to the framework owner when "
+    "it is the framework's own failure."
+)
+
+
+# 126 and 127 are the shell's own answers: the command was found but cannot run, or was not
+# found (a tool missing on the runner) - nothing the change's code makes a target say
+NOT_STARTED_EXITS = (126, 127)
+
+
+def not_started(runs: dict[str, dict[str, Any]]) -> list[str]:
+    """The targets whose command never ran (``checks.run_command`` could not spawn the shell:
+    no exit code and no timeout; or the shell's 126/127): an infrastructure failure, not a
+    red target (decision 29)."""
+    return [
+        name
+        for name, run in runs.items()
+        if isinstance(run, dict)
+        and (
+            (run.get("exit_code") is None and run.get("timeout") is None)
+            or run.get("exit_code") in NOT_STARTED_EXITS
+        )
+    ]
 
 
 def deferred_checks(data: dict[str, Any]) -> list[str]:
@@ -388,7 +509,10 @@ def run_deferred_commands(
     (``details.ran_by`` names the runner), and the ``evidence`` entry is judged again when
     it was deferred or the step wrote a log. A red target parks the change exactly as the
     in-session check did (``status.yaml`` and the label); a green one leaves the session's
-    verdict (``wait`` or ``continue``) standing. Returns None, and touches nothing, when the
+    verdict (``wait`` or ``continue``) standing. An infrastructure failure - the targets'
+    run crashed, or a target's command did not start - gets one automatic re-run of the
+    targets, not counted as a fix round (decision 29, plugin 1.0.3); a second one parks
+    with the reason saying so. Returns None, and touches nothing, when the
     record carries no check deferred to the runner: a gate run by hand or by an older runner
     already ran the targets itself. Raises ``GateError`` when the record or the change
     cannot be read."""
@@ -410,6 +534,7 @@ def run_deferred_commands(
     pending = deferred_checks(data)
     replaced: dict[str, CheckResult] = {}
     written: list[str] = []
+    attempts = 0
     try:
         # one run of the three targets: the record's ``commands`` entry and, at (d) and (e),
         # the three logs come from it, so they agree by construction (item 3b)
@@ -417,17 +542,52 @@ def run_deferred_commands(
         if missing is not None:
             replaced["commands"] = missing
         else:
-            runs = checks.run_targets(ctx)
+            # decision 29: an infrastructure failure (the step itself crashed, not a target
+            # that ran red) gets one automatic re-run of the commands step, not counted as a
+            # fix round; a second crash parks below with the reason saying it was retried
+            runs: dict[str, dict[str, Any]] = {}
+            while True:
+                attempts += 1
+                try:
+                    # the re-run runs only the targets that did not start, so it stays
+                    # within the step's timeout; after a crash all three run again
+                    again = not_started(runs) if runs else None
+                    runs = {**runs, **checks.run_targets(ctx, only=again)}
+                except Exception:  # noqa: BLE001
+                    if attempts >= COMMANDS_ATTEMPTS:
+                        raise
+                    runs = {}
+                    continue
+                if not not_started(runs) or attempts >= COMMANDS_ATTEMPTS:
+                    break
             replaced["commands"] = checks.judge_targets(runs, ran_by=checks.RUN_BY_RUNNER)
+            if attempts > 1:
+                replaced["commands"].details["retried"] = attempts - 1
+            unstarted = not_started(runs)
+            if unstarted:
+                judged = replaced["commands"]
+                judged.details["not_started"] = unstarted
+                judged.reason += f"; {', '.join(unstarted)} did not start" + (
+                    " (after one automatic re-run, decision 29)" if attempts > 1 else ""
+                )
+                judged.need = COMMANDS_CRASH_NEED
             written = write_deferred_logs(
                 ctx.evidence_dir, runs, all_targets=phase in checks.HEADER_REQUIRED_AT
             )
     except Exception as exc:  # noqa: BLE001 — a crashing check parks, as in ``evaluate``
+        retried = attempts > 1
         replaced["commands"] = CheckResult(
             "commands",
             False,
-            f"check crashed: {exc!r}",
-            "Report this to the framework owner; the gate failed closed.",
+            f"check crashed: {exc!r}"
+            + (
+                " (after one automatic re-run of the commands step, decision 29)" if retried else ""
+            ),
+            COMMANDS_CRASH_NEED
+            if retried
+            else "Report this to the framework owner; the gate failed closed.",
+            # the same details as before 1.0.3: no ``runs``, so the runner never reads a crash
+            # as a red target (``ci/auto_round.red_targets``); the reason says it was retried
             {"ran_by": checks.RUN_BY_RUNNER},
         )
     if "evidence" in pending or written:
@@ -453,11 +613,18 @@ def run_deferred_commands(
     ]
     if result.failed:
         result.result, result.label = "park", c.NEEDS_HUMAN_LABEL
+        result.fast_lane = False
     elif result.result == "park":
         # the session parked on a log the step has now replaced (item 3b): every check is
         # green on the logs of this run, so the verdict is the gate's, as ``evaluate`` gives it
+        # (decision 30's fast lane included: this step runs in the CI runner only)
+        result.fast_lane = fast_lane_applies(
+            ctx.phase, ctx.human_gate, result.checks, in_runner=True
+        )
         result.result, result.label = (
-            ("wait", c.ready_label(ctx.phase)) if ctx.human_gate else ("continue", None)
+            ("wait", c.ready_label(ctx.phase))
+            if ctx.human_gate and not result.fast_lane
+            else ("continue", None)
         )
     result.dry_run = False
     apply(ctx, result)

@@ -5,18 +5,20 @@ status.yaml, branches, commits — goes through here so it is unit-testable with
 and identical on Windows, in a cloud session and in CI.
 
     python "${CLAUDE_PLUGIN_ROOT}/state/cli.py" new-change --root . --title "..." \
-        [--route idea|ticket|incident] [--type feature|fix] [--profile-override full] \
-        [--review-override deferred|parked] [--external-ref 42]
+        [--route idea|ticket|incident] [--type feature|fix] [--external-ref 42]
     python cli.py commit-phase --root . --id 0001 --phase a --message "..."
         # phases d and e commit on the (c) branch: the build PR stays open through them
     python cli.py set-phase --root . --id 0001 --phase b
     python cli.py park --root . --id 0001 --reason "..."
-    python cli.py accept-risk --root . --id 0001 --item "auth"   # owner accepts a risk hit
+    python cli.py accept-risk --root . --id 0001 --item "auth"   # owner accepts a risk hit by
+        # hand (decision 35: the merge of the PR whose banner shows it is the usual act)
     python cli.py lock-tests --root . --id 0001     # fix change: reproducing test committed
     python cli.py unlock-tests --root . --id 0001   # owner only: the test itself was wrong
     python cli.py apply-labels --root . --id 0001 --repo owner/name --pr 12
-        # the owner's un-park labels on the PR (decision 24): performed, recorded with the
-        # label's actor, removed from the PR; nothing is committed
+        # the owner's un-park labels on the PR (decision 24; sdlc:accept-risk retired with
+        # decision 35): performed when the owner's
+        # account applied them (choice 218), recorded with the label's actor, removed from
+        # the PR; nothing is committed
     python cli.py abandon --root . --id 0001 --reason "..." [--push]
         # decision 25: the PR was closed without a merge; phase: abandoned on the current
         # branch and on every other sdlc/<id>/* branch of the change on the remote
@@ -29,6 +31,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -45,18 +48,71 @@ def _emit(obj) -> None:
     print(json.dumps(obj, indent=2, sort_keys=True))
 
 
+RESERVE_TRIES = 5  # ids taken in a row before new-change gives up (R51)
+
+
+def reserve_new_id(root: Path) -> tuple[str | None, dict]:
+    """``(id, reservation)``: the next id, reserved on the remote before its folder is
+    written (R51, gap G2; ``gitops.reserve_change_id``). Each try reads the remote's ids
+    afresh and skips every id already refused, so a third allocation that took the next id
+    meanwhile is seen. An id refused ``RESERVE_TRIES`` times in a row gives None. A failure
+    other than git's refusal keeps today's best-effort id, unreserved, and says why. A
+    reserved id gets its local ``sdlc/<id>/a`` at the reservation commit, so the first
+    ``commit-phase`` of the id starts from it (a stale local default branch would otherwise
+    push non-fast-forward against the reservation)."""
+    # the default branch's tip as the remote has it now: a reservation on a stale tip would
+    # make the id's first commit-phase branch from it (the independent review, finding 9); a
+    # remote that cannot be reached fails the reservation below and says so
+    default = gitops.default_branch(root)
+    if default and not default.startswith("-"):
+        gitops.run(
+            root, "fetch", "-q", "origin",
+            f"+refs/heads/{default}:refs/remotes/origin/{default}", check=False,
+        )  # fmt: skip
+    base = gitops.reservation_base(root)
+    refused: list[str] = []
+    for _ in range(RESERVE_TRIES):
+        change_id = c.next_change_id(root, gitops.remote_change_ids(root) + refused)
+        if base is None:
+            return change_id, {"outcome": gitops.UNRESERVED, "detail": "no commit to start from"}
+        outcome, sha, detail = gitops.reserve_change_id(root, change_id, base)
+        if outcome == gitops.TAKEN:
+            refused.append(change_id)
+            continue
+        reservation = {"outcome": outcome, "detail": detail[-500:]}
+        if outcome == gitops.RESERVED:
+            reservation["sha"] = sha
+            branch = c.branch_name(change_id, "a")
+            gitops.run(root, "branch", "--", branch, sha, check=False)  # kept if it exists
+            reservation["local_branch"] = branch if _branch_exists(root, branch) else None
+        return change_id, reservation
+    return None, {"outcome": gitops.TAKEN, "refused": refused}
+
+
 def cmd_new_change(args) -> int:
     root = Path(args.root).resolve()
     change_id = args.id
+    reservation = None
     if change_id is None and gitops.is_repo(root) and gitops.has_remote(root):
-        change_id = c.next_change_id(root, gitops.remote_change_ids(root))
+        change_id, reservation = reserve_new_id(root)
+        if change_id is None:
+            print(
+                f"new-change: the ids {', '.join(reservation['refused'])} were each taken on "
+                "the remote before this allocation could reserve one; run it again",
+                file=sys.stderr,
+            )
+            return 1
+        if reservation["outcome"] != gitops.RESERVED:
+            print(
+                f"new-change: id {change_id} is not reserved on the remote, a best-effort "
+                f"id as before R51: {reservation['detail']}",
+                file=sys.stderr,
+            )
     change_dir, st = status.new_change(
         root,
         title=args.title,
         entry_route=args.route,
         change_type=args.type,
-        profile_override=args.profile_override,
-        review_override=args.review_override,
         external_ref=args.external_ref,
         change_id=change_id,
     )
@@ -67,6 +123,7 @@ def cmd_new_change(args) -> int:
             "dir": str(change_dir.relative_to(root)).replace("\\", "/"),
             "branch": c.branch_name(st.id, "a"),
             "status": st.to_dict(),
+            **({"reservation": reservation} if reservation is not None else {}),
         }
     )
     return 0
@@ -163,8 +220,9 @@ def cmd_commit_phase(args) -> int:
         return 2
     sha = gitops.commit_files(root, files, args.message)
     pushed = False
+    remote_merged = None  # R51: the remote branch moved and was merged before the push
     if args.push and gitops.has_remote(root):
-        gitops.push(root, branch)
+        remote_merged = gitops.push(root, branch)
         pushed = True
     _emit(
         {
@@ -173,6 +231,7 @@ def cmd_commit_phase(args) -> int:
             "work_branch": branch,
             "commit": sha,
             "pushed": pushed,
+            "remote_merged": remote_merged,
             "github_repo": gitops.github_repo(root),
             "base": gitops.default_branch(root) if sha else None,
         }
@@ -222,7 +281,10 @@ def cmd_park(args) -> int:
 
 
 def cmd_accept_risk(args) -> int:
-    """The owner accepts a risk-list hit for this change (gate check risk_list, step 16)."""
+    """The owner accepts a risk-list hit for this change by hand (gate check risk_list, step
+    16). Since decision 35 a hit no longer parks and the owner's merge of the PR whose
+    close-look banner shows it accepts it; this command stays, and the banner then lists the
+    item as accepted by hand."""
     loaded = _load(args)
     if not loaded:
         return 2
@@ -259,9 +321,10 @@ def cmd_unlock_tests(args) -> int:
 
 
 def cmd_apply_labels(args) -> int:
-    """The owner's un-park labels on the change's PR (decision 24): performed on status.yaml,
-    recorded with the label's actor, removed from the PR. Exit 0 with the report; 2 when the
-    PR cannot be read (the labels are then not consumed)."""
+    """The owner's un-park labels on the change's PR (decision 24): performed on status.yaml
+    when the owner's account applied them (``unpark.is_owner_actor`` with this environment
+    and the repository, choice 218), recorded with the label's actor, removed from the PR.
+    Exit 0 with the report; 2 when the PR cannot be read (the labels are then not consumed)."""
     loaded = _load(args)
     if not loaded:
         return 2
@@ -273,7 +336,9 @@ def cmd_apply_labels(args) -> int:
         print(str(exc), file=sys.stderr)
         return 2
     repo = args.repo or gitops.github_repo(root) or ""
-    result = unpark.apply_from_pr(root, change_dir, config, repo, int(args.pr))
+    result = unpark.apply_from_pr(
+        root, change_dir, config, repo, int(args.pr), env=dict(os.environ)
+    )
     _emit(result)
     return 0 if result.get("ok") else 2
 
@@ -384,7 +449,7 @@ def _derived_gate(raw: status.Status, st: status.Status, default: str | None) ->
 
 def cmd_show(args) -> int:
     """``status.yaml`` of one change. On a checkout of the default branch a change at phase e
-    was merged by the owner, which is gate (e) passed (decision 13): the output shows the
+    was merged at gate (e), which is gate (e) passed (decisions 13 and 36): the output shows the
     derived gate and says so under ``derived``; the file itself is left as it is."""
     loaded = _load(args)
     if not loaded:
@@ -446,13 +511,6 @@ def build_parser() -> argparse.ArgumentParser:
     n.add_argument("--title", required=True)
     n.add_argument("--route", default="idea", choices=c.ENTRY_ROUTES)
     n.add_argument("--type", default="feature", choices=c.CHANGE_TYPES)
-    n.add_argument("--profile-override", default=None, choices=c.PROFILES)
-    n.add_argument(
-        "--review-override",
-        default=None,
-        choices=c.REVIEW_MODES,
-        help="decision 21: deferred puts judgment items to the review panel for this change",
-    )
     n.add_argument("--external-ref", default=None)
     n.add_argument("--id", default=None, help="force an id (e.g. 0000 for /sdlc-init)")
     n.set_defaults(fn=cmd_new_change)

@@ -24,6 +24,8 @@ from gate import checks, gate, limits, policy, preflight
 from gate import cli as gate_cli
 from state import status as status_mod
 from state import yamlish
+from tests import fixture_repos
+from tests.model_records import write_reviewer_record
 
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURE = ROOT / "tests" / "fixtures" / "sample-python-project"
@@ -148,12 +150,12 @@ def verdict(root: Path, phase: str, verdict: str = "continue", classification="r
         "reasons": [] if verdict == "continue" else ["blast radius larger than the plan says"],
         "classification": classification,
         "classification_reasons": [],
-        "at": "2026-09-21T10:00:00Z",
     }
     path = (
         root / "changes" / "0001-percent-helper" / "evidence" / f"adversarial-review-{phase}.json"
     )
     write(path, json.dumps(data))
+    write_reviewer_record(path, head)  # what the panel_blind hook writes beside it (R7)
     return path
 
 
@@ -200,7 +202,13 @@ def start_run(root: Path, phase: str) -> None:
 def _initialised_fixture(tmp_path) -> tuple[Path, Path]:
     """A fixture copy on main with /sdlc-init merged and change 0001 created with its intent
     (uncommitted): the common ground of the phase-(b) and phase-(c) states below."""
+    fixture_repos.copy("gate-initialised", tmp_path, _build_initialised)
     root = tmp_path / "proj"
+    return root, root / "changes" / "0001-percent-helper"
+
+
+def _build_initialised(base: Path) -> None:
+    root = base / "proj"
     shutil.copytree(FIXTURE, root)
     git(root, "init", "-q", "-b", "main")
     git(root, "config", "user.email", "owner@example.com")
@@ -217,14 +225,20 @@ def _initialised_fixture(tmp_path) -> tuple[Path, Path]:
     assert proc.returncode == 0, proc.stderr
     change = root / "changes" / "0001-percent-helper"
     write(change / "intent.md", INTENT)
-    return root, change
 
 
 @pytest.fixture
 def project(tmp_path):
     """Fixture copy initialised (standard profile), change 0001 through (b), and a phase-(c)
     branch with the implementation committed together with plan.md."""
-    root, change = _initialised_fixture(tmp_path)
+    fixture_repos.copy("gate-project", tmp_path, _build_project)
+    root = tmp_path / "proj"
+    start_run(root, "c")  # the runbook registers the run before the work (step 19)
+    return root, root / "changes" / "0001-percent-helper"
+
+
+def _build_project(base: Path) -> None:
+    root, change = _initialised_fixture(base)
     write(change / "spec.md", SPEC)
     write(change / "plan.md", PLAN)
     st = status_mod.read_status(change)
@@ -242,15 +256,20 @@ def project(tmp_path):
     write(change / "plan.md", PLAN + "\nProgress: step 1 and 2 done.\n")
     git(root, "add", ".")
     git(root, "commit", "-q", "-m", "build: percent helper")
-    start_run(root, "c")  # the runbook registers the run before the work (step 19)
-    return root, change
 
 
 @pytest.fixture
 def design_project(tmp_path):
     """Fixture copy initialised, the intent merged on main (as if the (a) PR did), and the
     phase-(b) branch carrying only spec.md and plan.md — the state gate (b) judges."""
-    root, change = _initialised_fixture(tmp_path)
+    fixture_repos.copy("gate-design-project", tmp_path, _build_design_project)
+    root = tmp_path / "proj"
+    start_run(root, "b")
+    return root, root / "changes" / "0001-percent-helper"
+
+
+def _build_design_project(base: Path) -> None:
+    root, change = _initialised_fixture(base)
     git(root, "add", ".")
     git(root, "commit", "-q", "-m", "intent(0001): percent helper (as if the a PR merged)")
     git(root, "checkout", "-q", "-b", "sdlc/0001/b")
@@ -261,8 +280,6 @@ def design_project(tmp_path):
     status_mod.write_status(change, st)
     git(root, "add", ".")
     git(root, "commit", "-q", "-m", "design(0001): spec and plan")
-    start_run(root, "b")
-    return root, change
 
 
 # --- artifact contracts -----------------------------------------------------------------------
@@ -312,12 +329,16 @@ def test_spec_header_render_and_intent_title():
     assert fields == (
         "Change id: 0001. Status: proposed. Produced by: sdlc plugin 0.1.0, /sdlc-design "
         "prompt v1 (article p.14). Skills: coding-standards, security-baseline "
-        "(plugin 0.1.0); overrides: none"
+        "(plugin 0.1.0); overrides: none; policy sources: none"
     )
     assert all(f in fields for f in art.SPEC_HEADER_FIELDS)
     assert art.DESIGN_PROMPT_VERSION == "v1"
     overridden = art.render_spec_header("x", "0002", "1.2.3", ["a", "b"], ["b"])
-    assert overridden.endswith("Skills: a, b (plugin 1.2.3); overrides: b")
+    assert overridden.endswith("Skills: a, b (plugin 1.2.3); overrides: b; policy sources: none")
+    sourced = art.render_spec_header(
+        "x", "0003", "1.2.3", ["a"], [], [("policies/a.md", "0123456789ab")]
+    )
+    assert sourced.endswith("overrides: none; policy sources: policies/a.md@0123456789ab")
     # the header a spec carries is the one the gate accepts
     assert art.missing_sections(SPEC, art.SPEC_SECTIONS) == []
     assert all(f in SPEC.split("## ", 1)[0] for f in art.SPEC_HEADER_FIELDS)
@@ -361,10 +382,12 @@ def test_findings_and_verdict_readers(tmp_path):
 
 
 # --- run limits (step 19) with a bare context -------------------------------------------------
-def _ctx(tmp_path, config=None, iterations=0, phase="c"):
+def _ctx(tmp_path, config=None, iterations=0, phase="c", entry_route="idea"):
     change_dir = tmp_path / "changes" / "0001-x"
     (change_dir / "evidence").mkdir(parents=True, exist_ok=True)
-    st = status_mod.Status(id="0001", slug="x", title="x", phase=phase, iterations=iterations)
+    st = status_mod.Status(
+        id="0001", slug="x", title="x", phase=phase, iterations=iterations, entry_route=entry_route
+    )
     # human_gate=True: these unit tests isolate the caps; run registration is tested on the fixture
     return checks.GateContext(tmp_path, change_dir, phase, st, config or {}, None, True, "no git")
 
@@ -430,6 +453,90 @@ def test_limits_wall_clock_and_budget(tmp_path):
     assert limits.check_limits(ctx).ok
 
 
+def test_the_build_caps_and_their_fallback_rule():
+    """Decision 32 (1.0.8): the build run and every fix round get ``build_max_turns`` (400)
+    and ``build_max_wall_clock_minutes`` (180); an unset or invalid build key is the larger
+    of the general setting and the build default, so no project's cap goes down."""
+    caps = limits.run_caps
+    # unset
+    assert caps({}, False) == (200, 120) and caps({}, True) == (400, 180)
+    assert caps(None, True) == (400, 180) and caps("not a block", False) == (200, 120)
+    # general only, below and above the build default (this repository's root: 400)
+    assert caps({"max_turns": 300, "max_wall_clock_minutes": 90}, True) == (400, 180)
+    assert (
+        caps({"max_turns": 400}, False) == (400, 120) and caps({"max_turns": 400}, True)[0] == 400
+    )
+    general = {"max_turns": 500, "max_wall_clock_minutes": 240}
+    assert caps(general, False) == (500, 240) and caps(general, True) == (500, 240)
+    # build only: the general caps are untouched
+    build = {"build_max_turns": 250, "build_max_wall_clock_minutes": 150}
+    assert caps(build, True) == (250, 150) and caps(build, False) == (200, 120)
+    # both: the build key wins for the build, even below the general setting
+    both = {**general, **build}
+    assert caps(both, True) == (250, 150) and caps(both, False) == (500, 240)
+    # invalid values fall back as if unset
+    for bad in ("x", 0, -5, None, [1]):
+        assert caps({"max_turns": bad, "max_wall_clock_minutes": bad}, False) == (200, 120)
+        assert caps({"build_max_turns": bad, "build_max_wall_clock_minutes": bad}, True) == (
+            400,
+            180,
+        )
+        assert caps({"max_turns": 450, "build_max_turns": bad}, True)[0] == 450
+
+
+def test_the_build_run_and_a_fix_round_get_the_build_wall_clock(tmp_path):
+    """Decision 32: ``start-run`` records ``"run": "build"`` for the build and a fix round,
+    and the wall-clock check gives that run ``build_max_wall_clock_minutes``; a record without
+    the field (any other run, or one written before 1.0.8) keeps the general cap."""
+    started = (datetime.now(timezone.utc) - timedelta(minutes=150)).isoformat()
+    ctx = _ctx(tmp_path, phase="c")
+    write(ctx.evidence_dir / "run-c.json", json.dumps({"started_at": started, "run": "build"}))
+    res = limits.check_limits(ctx)
+    assert res.ok, res.reason
+    ctx = _ctx(tmp_path / "b", phase="b")
+    write(ctx.evidence_dir / "run-b.json", json.dumps({"started_at": started}))
+    res = limits.check_limits(ctx)
+    assert not res.ok and res.details["max_wall_clock_minutes"] == 120
+    assert "150 min elapsed, limit 120 min" in res.reason
+    # a fix round at (b) carries the field: the build cap, with the owner's own setting
+    write(ctx.evidence_dir / "run-b.json", json.dumps({"started_at": started, "run": "build"}))
+    assert limits.check_limits(ctx).ok
+    ctx.config["gate"] = {"build_max_wall_clock_minutes": 140}
+    res = limits.check_limits(ctx)
+    assert not res.ok and "limit 140 min" in res.reason
+
+
+def test_start_run_records_the_build_run_and_a_fix_round(tmp_path, monkeypatch, capsys):
+    """``"run": "build"`` for ``--phase c``, for any phase under ``SDLC_RUN=fix`` (the runner
+    marks the fix session) and for ``--run fix|build`` (a by-hand run); none otherwise."""
+    change_dir, _st = status_mod.new_change(tmp_path, "x")
+    monkeypatch.delenv(limits.RUN_KIND_ENV, raising=False)
+
+    def started(phase: str, *flags: str) -> dict:
+        argv = ["start-run", "--root", str(tmp_path), "--id", "0001", "--phase", phase, *flags]
+        assert gate_cli.main(argv) == 0
+        capsys.readouterr()
+        path = change_dir / "evidence" / f"run-{phase}.json"
+        return json.loads(path.read_text(encoding="utf-8"))
+
+    assert started("c")["run"] == "build"
+    for phase in ("b", "d", "e"):
+        assert "run" not in started(phase), phase
+    assert started("d", "--run", "fix")["run"] == "build"
+    assert started("e", "--run", "build")["run"] == "build"
+    monkeypatch.setenv(limits.RUN_KIND_ENV, "fix")
+    for phase in ("a", "b", "c", "d", "e"):
+        assert started(phase)["run"] == "build", phase
+    monkeypatch.setenv(limits.RUN_KIND_ENV, "something else")
+    assert "run" not in started("b")
+
+
+def _stored(evidence: Path, source: str, usd) -> None:
+    """The runner's stored result of one session: M8 (R25, 1.0.26) rebuilds the change's
+    spend from these, never from ``evidence/spend.json``, which the session can write."""
+    write(evidence / source, json.dumps({"total_cost_usd": usd}))
+
+
 def test_the_budget_binds_the_change_s_running_total_not_the_last_session(tmp_path):
     """Issue #71 (0.3.1): ``max_budget_usd`` is documented per change, but the cap was compared
     with the last session's figure, which ``start-run`` reset and ``record-spend`` overwrote:
@@ -438,8 +545,10 @@ def test_the_budget_binds_the_change_s_running_total_not_the_last_session(tmp_pa
     ctx = _ctx(tmp_path, {"gate": {"max_budget_usd": 2}})
     write(ctx.evidence_dir / "run-c.json", json.dumps({"spend_usd": 1.5}))
     ledger = limits.record_spend_entry(ctx.evidence_dir, "c", "claude-c.json", 1.5)
+    _stored(ctx.evidence_dir, "claude-c.json", 1.5)
     assert ledger["total_usd"] == 1.5 and limits.check_limits(ctx).ok
     ledger = limits.record_spend_entry(ctx.evidence_dir, "c", "claude-c-2.json", 1.5)
+    _stored(ctx.evidence_dir, "claude-c-2.json", 1.5)
     assert ledger["total_usd"] == 3.0
     res = limits.check_limits(ctx)
     assert not res.ok and res.details["stop"]
@@ -450,8 +559,12 @@ def test_the_budget_binds_the_change_s_running_total_not_the_last_session(tmp_pa
     assert res.details["spend_entries"] == 2
     # the cap is the change's, not the phase's: a (b) session's spend counts at (c)
     assert limits.read_spend_ledger(_ctx(tmp_path, phase="b").evidence_dir)["total_usd"] == 3.0
-    # without a ledger (a change recorded before 0.3.1) the run record's figure still binds
+    # M8: an emptied ledger changes nothing, the stored results still count
     (ctx.evidence_dir / limits.SPEND_FILE).unlink()
+    assert not limits.check_limits(ctx).ok
+    # without stored results (a by-hand run) the run record's figure still binds
+    for name in ("claude-c.json", "claude-c-2.json"):
+        (ctx.evidence_dir / name).unlink()
     assert limits.check_limits(ctx).ok
     write(ctx.evidence_dir / "run-c.json", json.dumps({"spend_usd": 2.5}))
     res = limits.check_limits(ctx)
@@ -470,6 +583,10 @@ def test_the_review_pass_and_each_fix_round_are_their_own_spend_entries(tmp_path
     limits.record_spend_entry(evidence, "e", "claude-e.json", 2.04)
     limits.record_spend_entry(evidence, "fix", "claude-fix.json", 0.9)
     limits.record_spend_entry(evidence, "fix", "claude-fix-2.json", 0.5)
+    for source, usd in (("claude-d.json", 1.0), ("claude-review.json", 0.65),
+                        ("claude-e.json", 2.04), ("claude-fix.json", 0.9),
+                        ("claude-fix-2.json", 0.5)):  # fmt: skip
+        _stored(evidence, source, usd)
     ledger = limits.read_spend_ledger(evidence)
     assert [(e["run"], e["source"]) for e in ledger["entries"]] == [
         ("d", "claude-d.json"),
@@ -482,6 +599,7 @@ def test_the_review_pass_and_each_fix_round_are_their_own_spend_entries(tmp_path
     assert not limits.check_limits(ctx).ok
     # the same session recorded again (a repeated step): its entry is replaced
     ledger = limits.record_spend_entry(evidence, "fix", "claude-fix-2.json", 0.4)
+    _stored(evidence, "claude-fix-2.json", 0.4)
     assert len(ledger["entries"]) == 5 and ledger["total_usd"] == 4.99
     assert limits.check_limits(ctx).ok
     stored = json.loads((evidence / "spend.json").read_text(encoding="utf-8"))
@@ -513,6 +631,13 @@ def test_a_spend_figure_is_finite_and_non_negative_and_zero_counts(tmp_path):
     ledger = limits.read_spend_ledger(evidence)
     assert [e["source"] for e in ledger["entries"]] == ["zero.json", "real.json"]
     assert ledger["total_usd"] == 0.02
+    # the stored results are judged the same way: no figure is counted as no figure (M8)
+    for source, usd in (("claude-c.json", 0.0), ("claude-c-2.json", 0.02),
+                        ("claude-c-3.json", float("nan")), ("claude-c-4.json", -5),
+                        ("claude-c-5.json", float("inf"))):  # fmt: skip
+        _stored(evidence, source, usd)
+    assert limits.spend_from_runs(evidence)["total_usd"] == 0.02
+    assert limits.spend_from_runs(evidence)["unknown"] == 3
     res = limits.check_limits(ctx)
     assert not res.ok and "budget exceeded: 0.02 USD" in res.reason
     status_mod.write_status(ctx.change_dir, ctx.status)  # the CLI reads the change's status
@@ -533,12 +658,13 @@ def test_gate_continues_on_a_clean_change(project):
     verdict(root, "c")
     result = gate.run_gate(root, "0001", "c")
     assert result.result == "continue", result.reason
-    assert result.label is None and result.human_gate is False and result.profile == "standard"
+    assert result.label is None and result.human_gate is False
     assert _names(result, False) == []
     assert set(_names(result, True)) == {
         "limits",
         "clean_tree",
         "artifacts",
+        "evidence_links",
         "open_concerns",
         "panel",
         "commands",
@@ -550,6 +676,8 @@ def test_gate_continues_on_a_clean_change(project):
         "owner_actions",
         "test_lock",
         "adversarial_review",
+        "reviewer_model",
+        "ratchets",
     }
     st = status_mod.read_status(change)
     assert st.gate.phase == "c" and st.gate.result == "passed" and st.parked_reason is None
@@ -558,19 +686,20 @@ def test_gate_continues_on_a_clean_change(project):
     assert result.what_i_need() == ""
 
 
-def test_gate_waits_at_a_human_gate_and_dry_run_writes_nothing(project):
+def test_gate_dry_run_writes_nothing_and_a_failed_check_parks(project):
+    """Gate (c) is the confidence gate's alone (decision 37, 1.0.21): it continues with no
+    label; a dry run writes nothing, and a failed check parks."""
     root, change = project
-    set_on_base(root, change, profile_override="full")
     before = (change / "status.yaml").read_text(encoding="utf-8")
     result = gate.run_gate(root, "0001", "c", dry_run=True)
-    assert result.result == "park"  # Full profile still needs the adversarial verdict at (c)
+    assert result.result == "park"  # the adversarial verdict is still needed at (c)
     assert "adversarial_review" in _names(result, False)
     verdict(root, "c")
     result = gate.run_gate(root, "0001", "c", dry_run=True)
-    assert result.result == "wait" and result.label == "sdlc:c-ready"
+    assert result.result == "continue" and result.label is None and not result.human_gate
     assert (change / "status.yaml").read_text(encoding="utf-8") == before
     assert not (change / "evidence" / "gate-c.json").exists()
-    # a failed check parks even at a human gate (uncommitted work is clean_tree's, not
+    # a failed check parks (uncommitted work is clean_tree's, not
     # plan_sync's: the plan is judged on the commits since 0.2.9)
     (root / "sample_pkg" / "percent.py").unlink()
     write(root / "sample_pkg" / "extra.py", "x = 1\n")
@@ -662,14 +791,19 @@ def test_the_runner_s_commands_step_parks_a_red_target_and_keeps_the_record_s_sh
 
 
 @pytest.mark.parametrize(
-    ("fixture", "phase", "expected", "label"),
-    [("project", "c", "continue", None), ("design_project", "b", "wait", "sdlc:b-ready")],
+    ("fixture", "phase", "expected", "label", "classification"),
+    [
+        ("project", "c", "continue", None, "routine"),
+        ("design_project", "b", "wait", "sdlc:b-ready", "non-routine"),
+        # decision 30: a routine plan in a CI session passes gate (b) on the fast lane
+        ("design_project", "b", "continue", None, "routine"),
+    ],
 )
 def test_a_green_target_after_the_session_leaves_the_session_s_verdict_standing(
-    request, monkeypatch, fixture, phase, expected, label
+    request, monkeypatch, fixture, phase, expected, label, classification
 ):
     root, change = request.getfixturevalue(fixture)
-    verdict(root, phase)
+    verdict(root, phase, classification=classification)
     monkeypatch.setenv(checks.COMMANDS_RUNNER_ENV, checks.RUN_BY_RUNNER)
     assert gate.run_gate(root, "0001", phase).result == expected
     result = gate.run_deferred_commands(root, "0001", phase)
@@ -712,6 +846,72 @@ def test_a_crashing_check_in_the_runner_s_step_parks_as_the_gate_does(project, m
     recorded = json.loads((change / "evidence" / "gate-c.json").read_text(encoding="utf-8"))
     assert recorded["result"] == "park" and gate.deferred_commands(recorded) is False
     assert status_mod.read_status(change).gate.result == "parked"
+
+
+def test_an_infrastructure_failure_of_the_runner_s_step_is_re_run_once(project, monkeypatch):
+    """Decision 29 (1.0.3): a crash of the targets' run is an infrastructure failure, not a
+    red target: the step re-runs the targets once, not counted as a fix round, and parks
+    with the reason saying it retried only when the second run crashes too."""
+    root, change = project
+    verdict(root, "c")
+    monkeypatch.setenv(checks.COMMANDS_RUNNER_ENV, checks.RUN_BY_RUNNER)
+    assert gate.run_gate(root, "0001", "c").result == "continue"
+    deferred = (change / "evidence" / "gate-c.json").read_text(encoding="utf-8")
+    original = checks.run_targets
+    calls: list[int] = []
+
+    def flaky(ctx, fail_times, only=None):
+        calls.append(only)
+        if len(calls) <= fail_times:
+            raise OSError("runner lost its disk")
+        return original(ctx, only=only)
+
+    monkeypatch.setattr(checks, "run_targets", lambda ctx, only=None: flaky(ctx, 1, only))
+    result = gate.run_deferred_commands(root, "0001", "c")
+    assert calls == [None, None] and result.result == "continue", result.reason
+    cmd = _commands_check(result)
+    assert cmd.ok is True and cmd.details["retried"] == 1
+    # twice: parked, the reason says the step was re-run once, the iteration count untouched
+    (change / "evidence" / "gate-c.json").write_text(deferred, encoding="utf-8")
+    calls.clear()
+    monkeypatch.setattr(checks, "run_targets", lambda ctx, only=None: flaky(ctx, 5, only))
+    result = gate.run_deferred_commands(root, "0001", "c")
+    assert len(calls) == 2 and result.result == "park"
+    cmd = _commands_check(result)
+    assert cmd.reason.startswith("check crashed: OSError")
+    assert "after one automatic re-run of the commands step, decision 29" in cmd.reason
+    assert "failed twice" in cmd.need and "runs" not in cmd.details
+    assert status_mod.read_status(change).iterations == 0
+
+
+@pytest.mark.parametrize("code", [None, 126, 127])
+def test_a_target_that_did_not_start_is_re_run_once_and_never_read_as_red(
+    project, monkeypatch, code
+):
+    """No shell (no exit code, no timeout) or the shell's 126/127 (a tool missing on the
+    runner) is an infrastructure failure (decision 29): only that target runs again, once."""
+    root, change = project
+    verdict(root, "c")
+    monkeypatch.setenv(checks.COMMANDS_RUNNER_ENV, checks.RUN_BY_RUNNER)
+    assert gate.run_gate(root, "0001", "c").result == "continue"
+    calls: list = []
+
+    def no_tool(ctx, only=None):
+        calls.append(only)
+        runs = {
+            "build": {"command": "b", "exit_code": 0, "output": "", "seconds": 0.0},
+            "test": {"command": "t", "exit_code": code, "output": "t: not found", "seconds": 0.0},
+            "lint": {"command": "l", "exit_code": 0, "output": "", "seconds": 0.0},
+        }
+        return {n: r for n, r in runs.items() if only is None or n in only}
+
+    monkeypatch.setattr(checks, "run_targets", no_tool)
+    result = gate.run_deferred_commands(root, "0001", "c")
+    assert calls == [None, ["test"]] and result.result == "park"
+    cmd = _commands_check(result)
+    assert cmd.details["not_started"] == ["test"]
+    assert cmd.details["runs"]["build"]["exit_code"] == 0
+    assert "did not start (after one automatic re-run, decision 29)" in cmd.reason
 
 
 def test_the_runner_s_commands_step_leaves_a_record_without_the_deferred_mark_alone(project):
@@ -1088,7 +1288,10 @@ def test_gate_parks_when_the_diff_touches_settings_json(project):
     assert g.details["touched"] == [".claude/settings.json"]  # still on the branch, exempted
 
 
-def test_gate_parks_on_a_risk_list_word_until_the_owner_accepts_it(project):
+def test_a_risk_list_word_is_reported_never_parked_and_accepted_by_hand(project):
+    """Decision 35 (1.0.15): a risk-list hit no longer parks. The check passes and reports
+    the hit for the close-look banner; the by-hand ``accept-risk`` stays, counts once the
+    owner committed it, and the check then names the item accepted."""
     root, change = project
     write(root / "sample_pkg" / "auth.py", "TOKEN_TTL = 60\n")
     write(
@@ -1099,9 +1302,10 @@ def test_gate_parks_on_a_risk_list_word_until_the_owner_accepts_it(project):
     git(root, "commit", "-q", "-m", "auth ttl")
     verdict(root, "c")
     result = gate.run_gate(root, "0001", "c")
-    assert result.result == "park"
-    r = next(ch for ch in result.failed if ch.name == "risk_list")
-    assert r.details["hits"] == {"auth": ["sample_pkg/auth.py"]} and "accept-risk" in r.need
+    assert result.result == "continue", result.reason
+    r = next(ch for ch in result.checks if ch.name == "risk_list")
+    assert r.ok and r.details["hits"] == {"auth": ["sample_pkg/auth.py"]}
+    assert r.details["accepted"] == [] and "close-look banner" in r.reason
     proc = run_py(
         str(STATE_CLI),
         "accept-risk",
@@ -1120,7 +1324,11 @@ def test_gate_parks_on_a_risk_list_word_until_the_owner_accepts_it(project):
     git(root, "add", ".")
     git(root, "commit", "-q", "-m", "owner: accept the auth risk for change 0001")
     verdict(root, "c")
-    assert gate.run_gate(root, "0001", "c").result == "continue"
+    result = gate.run_gate(root, "0001", "c")
+    assert result.result == "continue", result.reason
+    r = next(ch for ch in result.checks if ch.name == "risk_list")
+    assert r.details["accepted"] == ["auth"]
+    assert r.details["hits"] == {"auth": ["sample_pkg/auth.py"]}
 
 
 def test_gate_parks_on_escalate_missing_or_stale_verdict(project):
@@ -1173,7 +1381,8 @@ def test_plan_sync_judges_the_committed_diff_only(project):
 def test_guardrails_and_risk_list_judge_the_committed_diff_only(project):
     """Deliverable 6(d): guardrails and risk_list read merge base...HEAD, like plan_sync and
     design_scope (OPERATING_MODEL section 3: the gate judges HEAD, not the working tree).
-    Uncommitted work is clean_tree's to report; once committed, the same change parks."""
+    Uncommitted work is clean_tree's to report; once committed, the same change parks on the
+    guardrail file and reports the risk-list hit (decision 35: a hit never parks)."""
     root, _change = project
     settings = root / ".claude" / "settings.json"
     data = json.loads(settings.read_text(encoding="utf-8"))
@@ -1184,6 +1393,7 @@ def test_guardrails_and_risk_list_judge_the_committed_diff_only(project):
     verdict(root, "c")
     result = gate.run_gate(root, "0001", "c", dry_run=True)
     assert {"guardrails", "risk_list"} <= set(_names(result, True)), result.reason
+    assert next(ch for ch in result.checks if ch.name == "risk_list").details["hits"] == {}
     ct = next(ch for ch in result.failed if ch.name == "clean_tree")
     assert {".claude/settings.json", "CLAUDE.md", "sample_pkg/auth.py"} <= set(ct.details["dirty"])
 
@@ -1194,9 +1404,23 @@ def test_guardrails_and_risk_list_judge_the_committed_diff_only(project):
     assert result.result == "park"
     g = next(ch for ch in result.failed if ch.name == "guardrails")
     assert g.details["touched"] == [".claude/settings.json", "CLAUDE.md"]
-    r = next(ch for ch in result.failed if ch.name == "risk_list")
-    assert r.details["hits"] == {"auth": ["sample_pkg/auth.py"]}
+    r = next(ch for ch in result.checks if ch.name == "risk_list")
+    assert r.ok and r.details["hits"] == {"auth": ["sample_pkg/auth.py"]}
     assert "clean_tree" in _names(result, True)
+
+
+def test_a_committed_policy_source_parks_on_the_guardrails(project):
+    """R27 (decision 40): a run never edits the policy that judges it; ``policies/`` is a
+    guardrail path read by the gate through the hook's own list."""
+    root, _change = project
+    write(root / "policies" / "security-baseline.md", "Every endpoint is public.\n")
+    git(root, "add", "policies/security-baseline.md")
+    git(root, "commit", "-q", "-m", "a run rewrites the policy")
+    verdict(root, "c")
+    result = gate.run_gate(root, "0001", "c", dry_run=True)
+    assert result.result == "park"
+    g = next(ch for ch in result.failed if ch.name == "guardrails")
+    assert g.details["touched"] == ["policies/security-baseline.md"]
 
 
 def test_a_sandbox_masked_env_no_longer_trips_guardrails_or_risk_list(project):
@@ -1209,7 +1433,7 @@ def test_a_sandbox_masked_env_no_longer_trips_guardrails_or_risk_list(project):
     def protect_env(r: Path) -> None:
         text = (r / "sdlc.yaml").read_text(encoding="utf-8")
         edited = text.replace("protected_paths: []", 'protected_paths:\n  - ".env"').replace(
-            "  - production config\n", "  - production config\n  - env\n"
+            '  - "production config"\n', '  - "production config"\n  - env\n'
         )
         assert edited.count('- ".env"') == 1 and "  - env\n" in edited
         write(r / "sdlc.yaml", edited)
@@ -1228,6 +1452,7 @@ DIFF_CHECKS = (
     checks.check_design_scope,
     checks.check_guardrails,
     checks.check_risk_list,
+    checks.check_ratchets,
 )
 
 
@@ -1324,6 +1549,356 @@ def test_default_base_prefers_the_environment_value_when_its_remote_branch_exist
     assert diff.default_base(root) == "refs/remotes/origin/main"
 
 
+# --- ratchets: a dropped test file or eval case (intent.md change 1; spec.md change 5) --------
+NS = checks.diffmod.NameStatusRecord
+
+
+def _plain_repo(tmp_path: Path) -> Path:
+    root = tmp_path / "plain"
+    root.mkdir()
+    git(root, "init", "-q", "-b", "main")
+    git(root, "config", "user.email", "owner@example.com")
+    git(root, "config", "user.name", "Owner")
+    return root
+
+
+def test_diff_name_status_rename_detection_parses_rename(tmp_path):
+    root = _plain_repo(tmp_path)
+    write(root / "tests" / "test_a.py", "def test_a(): pass\n")
+    git(root, "add", ".")
+    git(root, "commit", "-q", "-m", "base")
+    base = git(root, "rev-parse", "HEAD").strip()
+    git(root, "mv", "tests/test_a.py", "tests/test_b.py")
+    git(root, "commit", "-q", "-m", "rename")
+    records = checks.diffmod.name_status(root, base, "HEAD")
+    assert records == [NS("R", "tests/test_a.py", "tests/test_b.py")]
+
+
+def test_diff_name_status_delete_parses_as_d(tmp_path):
+    root = _plain_repo(tmp_path)
+    write(root / "tests" / "test_a.py", "def test_a(): pass\n")
+    git(root, "add", ".")
+    git(root, "commit", "-q", "-m", "base")
+    base = git(root, "rev-parse", "HEAD").strip()
+    (root / "tests" / "test_a.py").unlink()
+    git(root, "add", ".")
+    git(root, "commit", "-q", "-m", "drop")
+    records = checks.diffmod.name_status(root, base, "HEAD")
+    assert records == [NS("D", "tests/test_a.py")]
+
+
+def test_diff_tree_files_lists_committed_paths_under_prefix(tmp_path):
+    root = _plain_repo(tmp_path)
+    write(root / "evals" / "cases" / "foo" / "a.yaml", "a: 1\n")
+    write(root / "evals" / "cases" / "foo" / "b.yaml", "b: 1\n")
+    write(root / "evals" / "cases" / "bar" / "c.yaml", "c: 1\n")
+    write(root / "README.md", "x\n")
+    git(root, "add", ".")
+    git(root, "commit", "-q", "-m", "base")
+    head = git(root, "rev-parse", "HEAD").strip()
+    assert checks.diffmod.tree_files(root, head, "evals/cases") == [
+        "evals/cases/bar/c.yaml",
+        "evals/cases/foo/a.yaml",
+        "evals/cases/foo/b.yaml",
+    ]
+    assert checks.diffmod.tree_files(root, None, "evals/cases") == []
+
+
+def test_dropped_test_files_and_eval_cases_pure():
+    """The two drop-rule functions over the parsed records alone (plus a plain survivor
+    list for the eval-case rule), not live git (plan.md step 2)."""
+    patterns = ["tests/**"]
+    records = [
+        NS("D", "tests/test_a.py"),
+        NS("D", "sample_pkg/util.py"),  # not under test_paths: not reported
+        NS("R", "tests/test_b.py", "tests/test_c.py"),  # rename within the globs: not a drop
+        NS("R", "tests/test_d.py", "sample_pkg/test_d.py"),  # out of scope: a drop
+        NS("R", "sample_pkg/x.py", "tests/test_e.py"),  # into scope: a new test, not a drop
+    ]
+    assert checks.dropped_test_files(records, patterns) == ["tests/test_a.py", "tests/test_d.py"]
+
+    case_records = [
+        NS("D", "evals/cases/bar/only.yaml"),  # the whole case: dropped
+        NS("D", "evals/cases/foo/a.yaml"),  # one of two: a survivor remains
+        NS("R", "evals/cases/baz/x.yaml", "evals/cases/.baz/x.yaml"),  # hidden rename: dropped
+        NS("R", "evals/cases/qux/a.yaml", "evals/cases/qux/a2.yaml"),  # internal move: kept
+    ]
+    survivors = ["evals/cases/foo/b.yaml", "evals/cases/qux/a2.yaml"]
+    assert checks.dropped_eval_cases(case_records, survivors) == [
+        "evals/cases/bar/",
+        "evals/cases/baz/",
+    ]
+
+
+RATCHET_SDLC_YAML = "risk_list:\n  - auth\n"
+BASE_PLAN = "# Plan: x\n\n## Files that change\n- none\n\n## Proof\nnone\n"
+PLAN_FILES_DECLARES_TEST = (
+    "# Plan: x\n\n## Files that change\n- `tests/test_keep.py` — removed\n\n## Proof\nnone\n"
+)
+PLAN_PROOF_DECLARES_TESTS = (
+    "# Plan: x\n\n## Files that change\n- none\n\n## Proof\n"
+    "- ratchet: tests may fall, because the helper is retired\n"
+)
+PLAN_FILES_DECLARES_BAR = (
+    "# Plan: x\n\n## Files that change\n- `evals/cases/bar/` — retired\n\n## Proof\nnone\n"
+)
+PLAN_PROOF_DECLARES_EVALS = (
+    "# Plan: x\n\n## Files that change\n- none\n\n## Proof\n"
+    "- ratchet: evals may fall, because the case is obsolete\n"
+)
+PLAN_PROOF_UNKNOWN_RATCHET = (
+    "# Plan: x\n\n## Files that change\n- none\n\n## Proof\n"
+    "- ratchet: docs may fall, because nothing\n"
+)
+
+
+def _ratchet_repo(tmp_path: Path, plan_body: str, sdlc_yaml: str = RATCHET_SDLC_YAML):
+    """A one-branch repo ('main') with the given plan.md committed as approved, a
+    tests/test_keep.py file, a two-file eval case ('foo') and a one-file eval case ('bar');
+    checked out on 'sdlc/0001/c' for the test's own commit."""
+    root = tmp_path / "repo"
+    write(root / "sdlc.yaml", sdlc_yaml)
+    write(root / "tests" / "test_keep.py", "def test_keep():\n    assert True\n")
+    write(root / "evals" / "cases" / "foo" / "a.yaml", "a: 1\n")
+    write(root / "evals" / "cases" / "foo" / "b.yaml", "b: 1\n")
+    write(root / "evals" / "cases" / "bar" / "only.yaml", "c: 1\n")
+    git(root, "init", "-q", "-b", "main")
+    git(root, "config", "user.email", "owner@example.com")
+    git(root, "config", "user.name", "Owner")
+    change_dir, st = status_mod.new_change(root, "x", change_id="0001")
+    write(change_dir / "plan.md", plan_body)
+    st.set_phase("c")
+    status_mod.write_status(change_dir, st)
+    git(root, "add", ".")
+    git(root, "commit", "-q", "-m", "base (as if the a and b PRs merged)")
+    git(root, "checkout", "-q", "-b", "sdlc/0001/c")
+    return root, change_dir
+
+
+def test_ratchets_drop_test_file_undeclared_is_a_hit(tmp_path):
+    root, _change = _ratchet_repo(tmp_path, BASE_PLAN)
+    (root / "tests" / "test_keep.py").unlink()
+    git(root, "add", ".")
+    git(root, "commit", "-q", "-m", "drop a test")
+    res = checks.check_ratchets(gate.build_context(root, "0001", "c"))
+    assert res.ok and "close-look banner" in res.reason  # decision 35: a hit, never a park
+    assert res.details["hits"]["ratchet: tests"] == ["tests/test_keep.py"]
+
+
+def test_ratchets_drop_test_file_declared_in_files_that_change_ok(tmp_path):
+    root, _change = _ratchet_repo(tmp_path, PLAN_FILES_DECLARES_TEST)
+    (root / "tests" / "test_keep.py").unlink()
+    git(root, "add", ".")
+    git(root, "commit", "-q", "-m", "drop a test, declared")
+    res = checks.check_ratchets(gate.build_context(root, "0001", "c"))
+    assert res.ok, res.reason
+    assert "tests/test_keep.py (plan)" in res.details["declared"]
+
+
+def test_ratchets_drop_test_file_declared_in_proof_ok(tmp_path):
+    root, _change = _ratchet_repo(tmp_path, PLAN_PROOF_DECLARES_TESTS)
+    (root / "tests" / "test_keep.py").unlink()
+    git(root, "add", ".")
+    git(root, "commit", "-q", "-m", "drop a test, declared via proof")
+    res = checks.check_ratchets(gate.build_context(root, "0001", "c"))
+    assert res.ok, res.reason
+
+
+def test_ratchets_plan_edited_after_merge_base_does_not_excuse_drop(tmp_path):
+    root, change_dir = _ratchet_repo(tmp_path, BASE_PLAN)
+    (root / "tests" / "test_keep.py").unlink()
+    write(change_dir / "plan.md", PLAN_FILES_DECLARES_TEST)  # edited only on this branch
+    git(root, "add", ".")
+    git(root, "commit", "-q", "-m", "drop a test and edit plan.md in the same commit")
+    res = checks.check_ratchets(gate.build_context(root, "0001", "c"))
+    assert res.ok and "close-look banner" in res.reason  # decision 35: a hit, never a park
+    assert res.details["hits"]["ratchet: tests"] == ["tests/test_keep.py"]
+
+
+def test_ratchets_rename_within_test_paths_is_not_a_drop(tmp_path):
+    root, _change = _ratchet_repo(tmp_path, BASE_PLAN)
+    git(root, "mv", "tests/test_keep.py", "tests/test_renamed.py")
+    git(root, "commit", "-q", "-m", "rename within test_paths")
+    res = checks.check_ratchets(gate.build_context(root, "0001", "c"))
+    assert res.ok, res.reason
+
+
+def test_ratchets_rename_out_of_test_paths_is_a_drop(tmp_path):
+    root, _change = _ratchet_repo(tmp_path, BASE_PLAN)
+    git(root, "mv", "tests/test_keep.py", "renamed_out_of_scope.py")
+    git(root, "commit", "-q", "-m", "rename out of test_paths")
+    res = checks.check_ratchets(gate.build_context(root, "0001", "c"))
+    assert res.ok and "close-look banner" in res.reason  # decision 35: a hit, never a park
+    assert res.details["hits"]["ratchet: tests"] == ["tests/test_keep.py"]
+
+
+def test_ratchets_drop_eval_case_folder_emptied_is_a_hit(tmp_path):
+    root, _change = _ratchet_repo(tmp_path, BASE_PLAN)
+    (root / "evals" / "cases" / "bar" / "only.yaml").unlink()
+    git(root, "add", ".")
+    git(root, "commit", "-q", "-m", "empty the bar case")
+    res = checks.check_ratchets(gate.build_context(root, "0001", "c"))
+    assert res.ok and "close-look banner" in res.reason  # decision 35: a hit, never a park
+    assert res.details["hits"]["ratchet: evals"] == ["evals/cases/bar/"]
+
+
+def test_ratchets_drop_eval_case_dot_rename_is_a_hit(tmp_path):
+    root, _change = _ratchet_repo(tmp_path, BASE_PLAN)
+    # git mv needs the destination directory to pre-exist; move by hand so git still sees it
+    # as a rename (-M) once the content is unchanged
+    dest = root / "evals" / "cases" / ".bar" / "only.yaml"
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    (root / "evals" / "cases" / "bar" / "only.yaml").rename(dest)
+    git(root, "add", "-A")
+    git(root, "commit", "-q", "-m", "hide the bar case")
+    res = checks.check_ratchets(gate.build_context(root, "0001", "c"))
+    assert res.ok and "close-look banner" in res.reason  # decision 35: a hit, never a park
+    assert res.details["hits"]["ratchet: evals"] == ["evals/cases/bar/"]
+
+
+def test_ratchets_eval_case_dot_rename_wins_over_a_surviving_sibling(tmp_path):
+    """Pins panel decision #1 (phase c fix round): the dot-prefixed-rename rule is
+    evaluated independently of the survivor-emptiness rule, so a sibling left in place
+    under the same case folder does not excuse the rename (spec.md Design)."""
+    root, _change = _ratchet_repo(tmp_path, BASE_PLAN)
+    dest = root / "evals" / "cases" / ".foo" / "a.yaml"
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    (root / "evals" / "cases" / "foo" / "a.yaml").rename(dest)
+    git(root, "add", "-A")
+    git(root, "commit", "-q", "-m", "hide one file of the foo case, b.yaml survives")
+    res = checks.check_ratchets(gate.build_context(root, "0001", "c"))
+    assert res.ok and "close-look banner" in res.reason  # decision 35: a hit, never a park
+    assert res.details["hits"]["ratchet: evals"] == ["evals/cases/foo/"]
+
+
+def test_ratchets_drop_eval_case_declared_in_files_that_change_ok(tmp_path):
+    root, _change = _ratchet_repo(tmp_path, PLAN_FILES_DECLARES_BAR)
+    (root / "evals" / "cases" / "bar" / "only.yaml").unlink()
+    git(root, "add", ".")
+    git(root, "commit", "-q", "-m", "empty the bar case, declared")
+    res = checks.check_ratchets(gate.build_context(root, "0001", "c"))
+    assert res.ok, res.reason
+    assert "evals/cases/bar/ (plan)" in res.details["declared"]
+
+
+def test_ratchets_drop_eval_case_declared_in_proof_ok(tmp_path):
+    root, _change = _ratchet_repo(tmp_path, PLAN_PROOF_DECLARES_EVALS)
+    (root / "evals" / "cases" / "bar" / "only.yaml").unlink()
+    git(root, "add", ".")
+    git(root, "commit", "-q", "-m", "empty the bar case, declared via proof")
+    res = checks.check_ratchets(gate.build_context(root, "0001", "c"))
+    assert res.ok, res.reason
+
+
+def test_ratchets_eval_case_partial_delete_is_not_a_drop(tmp_path):
+    root, _change = _ratchet_repo(tmp_path, BASE_PLAN)
+    (root / "evals" / "cases" / "foo" / "a.yaml").unlink()
+    git(root, "add", ".")
+    git(root, "commit", "-q", "-m", "drop one file of a multi-file case")
+    res = checks.check_ratchets(gate.build_context(root, "0001", "c"))
+    assert res.ok, res.reason
+
+
+def test_ratchets_eval_case_internal_move_is_not_a_drop(tmp_path):
+    root, _change = _ratchet_repo(tmp_path, BASE_PLAN)
+    git(root, "mv", "evals/cases/foo/a.yaml", "evals/cases/foo/a2.yaml")
+    git(root, "commit", "-q", "-m", "move within the same case")
+    res = checks.check_ratchets(gate.build_context(root, "0001", "c"))
+    assert res.ok, res.reason
+
+
+def test_ratchets_accepted_hit_passes_on_later_run(tmp_path):
+    root, change_dir = _ratchet_repo(tmp_path, BASE_PLAN)
+    (root / "tests" / "test_keep.py").unlink()
+    git(root, "add", ".")
+    git(root, "commit", "-q", "-m", "drop a test")
+    st = status_mod.read_status(change_dir)
+    st.accept_risk("ratchet: tests")
+    status_mod.write_status(change_dir, st)
+    git(root, "add", ".")
+    git(root, "commit", "-q", "-m", "accept the risk")
+    res = checks.check_ratchets(gate.build_context(root, "0001", "c"))
+    assert res.ok, res.reason
+    assert res.details["accepted"] == ["ratchet: tests"]
+    assert res.details["hits"] == {"ratchet: tests": ["tests/test_keep.py"]}  # still shown
+
+
+def test_ratchets_risk_list_tests_configured_does_not_satisfy_ratchet_hit(tmp_path):
+    root, change_dir = _ratchet_repo(
+        tmp_path, BASE_PLAN, sdlc_yaml="risk_list:\n  - auth\n  - tests\n"
+    )
+    (root / "tests" / "test_keep.py").unlink()
+    git(root, "add", ".")
+    git(root, "commit", "-q", "-m", "drop a test")
+    st = status_mod.read_status(change_dir)
+    st.accept_risk("tests")  # accepts risk_list's bare item, not the ratchet
+    status_mod.write_status(change_dir, st)
+    git(root, "add", ".")
+    git(root, "commit", "-q", "-m", "accept the bare risk-list item")
+    ctx = gate.build_context(root, "0001", "c")
+    ratchets_res = checks.check_ratchets(ctx)
+    risk_res = checks.check_risk_list(ctx)
+    assert ratchets_res.ok and ratchets_res.details["accepted"] == []  # reported, decision 35
+    assert ratchets_res.details["hits"]["ratchet: tests"] == ["tests/test_keep.py"]
+    assert risk_res.ok, risk_res.reason
+
+
+def test_ratchets_skip_markers_listed_never_fail(tmp_path):
+    """Skip markers are listed, never parked on (open question 2). The ``--deselect`` lines
+    are this repository's own runbook test file, not a synthetic one — nine of them, the
+    count the Risks section names; a small supplement covers the remaining fixed tokens."""
+    runbook_test_text = (ROOT / "tests" / "test_detect_runbooks.py").read_text(encoding="utf-8")
+    assert runbook_test_text.count("--deselect") == 9
+    supplement = (
+        "@pytest.mark.skip\n"
+        "@pytest.mark.xfail\n"
+        'pytest.skip("reason")\n'
+        "--ignore=tests/slow\n"
+        "-k not slow\n"
+        "norecursedirs = build\n"
+        'collect_ignore = ["setup.py"]\n'
+        'it.skip("x", () => {})\n'
+        'describe.skip("y", () => {})\n'
+        '.only("z")\n'
+        'test.todo("w")\n'
+        "#[ignore]\n"
+    )
+    root, _change = _ratchet_repo(tmp_path, BASE_PLAN)
+    write(root / "tests" / "test_detect_runbooks.py", "")
+    write(root / "tests" / "test_skip_marker_supplement.py", "")
+    git(root, "add", ".")
+    git(root, "commit", "-q", "-m", "empty placeholders")
+    write(root / "tests" / "test_detect_runbooks.py", runbook_test_text)
+    write(root / "tests" / "test_skip_marker_supplement.py", supplement)
+    git(root, "add", ".")
+    git(root, "commit", "-q", "-m", "the real runbook test file and the token supplement")
+    res = checks.check_ratchets(gate.build_context(root, "0001", "c"))
+    assert res.ok, res.reason
+    hit_tokens = {h["token"] for h in res.details["skip_markers"]}
+    assert hit_tokens == set(checks.SKIP_MARKER_TOKENS)
+    deselect_hits = [h for h in res.details["skip_markers"] if h["token"] == "--deselect"]
+    assert len(deselect_hits) == 9
+    assert all(h["file"] == "tests/test_detect_runbooks.py" for h in deselect_hits)
+
+
+def test_ratchets_declaring_unknown_ratchet_name_is_inert(tmp_path):
+    root, _change = _ratchet_repo(tmp_path, PLAN_PROOF_UNKNOWN_RATCHET)
+    (root / "tests" / "test_keep.py").unlink()
+    git(root, "add", ".")
+    git(root, "commit", "-q", "-m", "drop a test, unrelated proof line present")
+    res = checks.check_ratchets(gate.build_context(root, "0001", "c"))
+    assert res.ok and "close-look banner" in res.reason  # decision 35: a hit, never a park
+    assert res.details["hits"]["ratchet: tests"] == ["tests/test_keep.py"]
+
+
+def test_checks_by_phase_ratchets_membership():
+    assert checks.check_ratchets in checks.CHECKS_BY_PHASE["c"]
+    assert checks.check_ratchets in checks.CHECKS_BY_PHASE["d"]
+    assert checks.check_ratchets in checks.CHECKS_BY_PHASE["e"]
+    for phase in ("a", "b", "f"):
+        assert checks.check_ratchets not in checks.CHECKS_BY_PHASE[phase]
+
+
 def test_risk_list_reads_the_committed_spec(design_project):
     """The spec's "Flagged concerns" are read at HEAD: clean_tree skips the change folder and
     does not run at (b), so an uncommitted edit of spec.md is not what the PR carries."""
@@ -1333,11 +1908,12 @@ def test_risk_list_reads_the_committed_spec(design_project):
     verdict(root, "b")
     result = gate.run_gate(root, "0001", "b", dry_run=True)
     assert "risk_list" in _names(result, True), result.reason
+    assert next(ch for ch in result.checks if ch.name == "risk_list").details["hits"] == {}
     git(root, "add", ".")
     git(root, "commit", "-q", "-m", "design(0001): a risk item flagged")
     verdict(root, "b")
     result = gate.run_gate(root, "0001", "b", dry_run=True)
-    hit = next(ch for ch in result.failed if ch.name == "risk_list")
+    hit = next(ch for ch in result.checks if ch.name == "risk_list")
     assert hit.details["hits"] == {"auth": ["spec.md Flagged concerns: text"]}
 
 
@@ -1532,7 +2108,7 @@ def test_sdlc_yaml_gate_block_is_read_from_the_base(project):
     root, change = project
     text = (root / "sdlc.yaml").read_text(encoding="utf-8")
     cfg = yamlish.load_file(root / "sdlc.yaml")["gate"]
-    assert cfg["max_iterations"] == 3 and cfg["max_budget_usd"] is None
+    assert cfg["max_iterations"] == 3 and cfg["max_budget_usd"] == 150  # decision 32
     st = status_mod.read_status(change)
     st.iterations = 5
     status_mod.write_status(change, st)
@@ -1590,16 +2166,17 @@ def test_gate_cli_rejects_a_malformed_id(project):
 
 
 # --- gate (b): the design gate (steps 22-23) ---------------------------------------------------
-def test_gate_b_waits_for_the_owner_in_every_profile(design_project):
+def test_gate_b_waits_for_the_owner(design_project, monkeypatch):
     root, change = design_project
     verdict(root, "b")
     result = gate.run_gate(root, "0001", "b", dry_run=True)
     assert result.result == "wait", result.reason
-    assert result.label == "sdlc:b-ready" and result.profile == "standard"
+    assert result.label == "sdlc:b-ready"
     assert _names(result, False) == []
     assert set(_names(result, True)) == {
         "limits",
         "artifacts",
+        "evidence_links",
         "design_scope",
         "open_concerns",
         "panel",
@@ -1608,15 +2185,18 @@ def test_gate_b_waits_for_the_owner_in_every_profile(design_project):
         "risk_list",
         "owner_actions",
         "adversarial_review",
+        "reviewer_model",
     }
-    # decision 21 (0.2.14): Lite is gone; a change that still says lite waits like Standard
-    st = status_mod.read_status(change)
-    st.profile_override = "lite"
-    status_mod.write_status(change, st)
+    # decision 37 (1.0.21): a project file that still says ``profile: full`` or
+    # ``review: parked`` waits the same; the keys are not read, and the result names them
+    loaded = gate.load_sdlc_config
+    monkeypatch.setattr(
+        gate, "load_sdlc_config", lambda r: {**loaded(r), "profile": "full", "review": "parked"}
+    )
     result = gate.run_gate(root, "0001", "b", dry_run=True)
     assert result.result == "wait", result.reason
-    assert result.label == "sdlc:b-ready" and result.profile == "standard"
-    assert result.human_gate is True
+    assert result.label == "sdlc:b-ready" and result.human_gate is True
+    assert "profile: full" in result.config_note and "decision 37" in result.config_note
 
 
 def test_gate_b_parks_on_a_spec_without_the_header(design_project):
@@ -1880,7 +2460,25 @@ def test_gate_cli_spec_header(project, capsys, tmp_path):
     rc = gate_cli.main(["spec-header", "--root", str(root), "--id", "0001"])
     out = json.loads(capsys.readouterr().out)
     assert rc == 0 and out["overrides"] == ["coding-standards"]
-    assert out["header"].endswith("overrides: coding-standards")
+    assert out["header"].endswith("overrides: coding-standards; policy sources: none")
+    # R27: the owner's policy source in force, with the commit that last changed it
+    write(root / "policies" / "security-baseline.md", "Every endpoint needs a login.\n")
+    gate_cli.main(["spec-header", "--root", str(root), "--id", "0001"])
+    out = json.loads(capsys.readouterr().out)
+    assert out["policy_sources"] == [
+        {"path": "policies/security-baseline.md", "commit": "uncommitted"}
+    ]
+    git(root, "add", "policies/security-baseline.md")
+    git(root, "commit", "-q", "-m", "owner: the security policy")
+    sha = git(root, "rev-parse", "HEAD").strip()[:12]
+    gate_cli.main(["spec-header", "--root", str(root), "--id", "0001"])
+    out = json.loads(capsys.readouterr().out)
+    assert out["header"].endswith(f"policy sources: policies/security-baseline.md@{sha}")
+    # a committed source modified in the working tree is not the text that commit recorded
+    write(root / "policies" / "security-baseline.md", "Every endpoint is public.\n")
+    gate_cli.main(["spec-header", "--root", str(root), "--id", "0001"])
+    out = json.loads(capsys.readouterr().out)
+    assert out["header"].endswith("policy sources: policies/security-baseline.md@uncommitted")
     # no intent.md: the title falls back to status.yaml
     (change / "intent.md").unlink()
     gate_cli.main(["spec-header", "--root", str(root), "--id", "0001"])
@@ -2124,7 +2722,9 @@ def test_gate_b_ignores_risk_list_words_in_the_spec_s_prose(design_project):
     assert "risk_list" not in _names(result, False)
 
 
-def test_gate_b_parks_on_a_risk_list_item_declared_under_flagged_concerns(design_project):
+def test_gate_b_reports_a_risk_list_item_declared_under_flagged_concerns(design_project):
+    """Decision 35: the item named under "Flagged concerns" is a hit the design PR's banner
+    shows; the open concern parks on its own check, never on risk_list."""
     root, change = design_project
     concern = "- auth: the helper reads the caller's session token; the owner decides.\n"
     write(change / "spec.md", SPEC.replace("## Acceptance", concern + "\n## Acceptance"))
@@ -2132,8 +2732,22 @@ def test_gate_b_parks_on_a_risk_list_item_declared_under_flagged_concerns(design
     git(root, "commit", "-q", "-m", "design(0001): a risk item flagged")
     verdict(root, "b")
     result = gate.run_gate(root, "0001", "b", dry_run=True)
-    assert result.result == "park"
-    hit = next(ch for ch in result.failed if ch.name == "risk_list")
+    assert result.result == "park" and "open_concerns" in _names(result, False)
+    assert "risk_list" not in _names(result, False)
+    hit = next(ch for ch in result.checks if ch.name == "risk_list")
+    assert hit.details["hits"] == {"auth": ["spec.md Flagged concerns: text"]}
+    # the declaration the spec-template skill asks for is closed: the design waits for the
+    # owner's merge, which accepts the item, and parks on nothing
+    declared = (
+        "- decided (decision 35): risk item 'auth': the helper reads the caller's session "
+        "token; the close-look banner shows it and the owner's merge accepts it.\n"
+    )
+    write(change / "spec.md", SPEC.replace("## Acceptance", declared + "\n## Acceptance"))
+    git(root, "commit", "-q", "-am", "design(0001): the risk item declared")
+    verdict(root, "b", classification="non-routine")
+    result = gate.run_gate(root, "0001", "b", dry_run=True)
+    assert result.result == "wait", result.reason
+    hit = next(ch for ch in result.checks if ch.name == "risk_list")
     assert hit.details["hits"] == {"auth": ["spec.md Flagged concerns: text"]}
 
 
@@ -2142,7 +2756,16 @@ def _label_act(change: Path, label: str, actor: str, items=("auth",)) -> None:
     from state import conventions as c
 
     st = status_mod.read_status(change)
-    st.record_owner_label(label, actor, list(items) if label == c.ACCEPT_RISK_LABEL else None)
+    if label == c.ACCEPT_RISK_LABEL:
+        # the label retired with decision 35 (1.0.15); a status.yaml its fix round wrote
+        # before then carries the item and the label's actor, which owner_actions honours
+        for item in items:
+            st.accept_risk(item)
+            st.risk_accepted_by = [e for e in st.risk_accepted_by if e["item"] != item] + [
+                {"item": item, "actor": actor}
+            ]
+    else:
+        st.record_owner_label(label, actor)
     status_mod.write_status(change, st)
 
 
@@ -2205,6 +2828,42 @@ def test_owner_actions_honours_a_second_reset_by_the_same_person(project):
     verdict(root, "c")
     result = gate.run_gate(root, "0001", "c", dry_run=True)
     assert "owner_actions" in _names(result, False)
+
+
+def test_owner_actions_accepts_the_runner_s_marked_reset_only_with_its_record(project):
+    """Decision 29 (1.0.3): the runner's one judged reset at the cap is marked
+    ``sdlc-runner:<run>`` and recorded in evidence/auto-reset.json; the check accepts that
+    drop on the record's word, lists it apart from the owner's label acts, and refuses the
+    same marking without the record (before 1.0.3 any non-bot string passed as a person)."""
+    from state import conventions as c
+
+    root, change = project
+    st = status_mod.read_status(change)
+    st.iterations = 3
+    status_mod.write_status(change, st)
+    commit_all(root, "build(0001): three automatic rounds")
+    st = status_mod.read_status(change)
+    st.iterations = 0
+    st.panel_calls = 0
+    st.iterations_reset_by = "sdlc-runner:777"
+    st.iterations_reset_at = "2026-10-17T10:00:00Z"
+    status_mod.write_status(change, st)
+    sha = commit_all(root, "run(c): judged reset (decision 29)", author=BOT_AUTHOR)
+    verdict(root, "c")
+    result = gate.run_gate(root, "0001", "c", dry_run=True)
+    oa = next(ch for ch in result.failed if ch.name == "owner_actions")
+    assert f"iterations dropped from 3 to 0 in commit {sha[:10]}" in oa.reason
+    assert "'sdlc-runner:777' is not a person" in oa.reason
+    record = {"reset": True, "actor": "sdlc-runner:777", "at": "2026-10-17T10:00:00Z"}
+    write(change / "evidence" / c.AUTO_RESET_FILE, json.dumps(record))
+    result = gate.run_gate(root, "0001", "c", dry_run=True)
+    assert "owner_actions" not in _names(result, False), result.reason
+    oa = next(ch for ch in result.checks if ch.name == "owner_actions")
+    assert oa.details["runner_resets"] == {"iterations_reset": "sdlc-runner:777"}
+    assert oa.details["label_actors"] == {}  # not a person's act
+    # a record of another stamp is not this reset
+    write(change / "evidence" / c.AUTO_RESET_FILE, json.dumps({**record, "at": "2026-10-18"}))
+    assert "owner_actions" in _names(gate.run_gate(root, "0001", "c", dry_run=True), False)
 
 
 def test_owner_actions_rejects_a_label_actor_that_is_the_automation_identity(project):
@@ -2343,8 +3002,8 @@ def test_gate_f_waits_for_the_owner_s_triage_with_the_finding_and_its_route(main
     result = gate.run_gate(root, "0002", "f")
     assert result.result == "wait" and result.label == "sdlc:f-ready", result.reason
     names = [ch.name for ch in result.checks]
-    assert names == ["limits", "artifacts", "design_scope", "guardrails", "risk_list",
-                     "detection", "route"]  # fmt: skip
+    assert names == ["limits", "artifacts", "evidence_links", "design_scope", "guardrails",
+                     "risk_list", "detection", "route"]  # fmt: skip
     detection = next(ch for ch in result.checks if ch.name == "detection")
     assert detection.details["tier"] == 3 and detection.details["rule"] == "we1"
     route = next(ch for ch in result.checks if ch.name == "route")
@@ -2433,6 +3092,192 @@ def test_gate_f_parks_when_the_diagnosis_committed_source(maintain_project):
     result = gate.run_gate(root, "0002", "f")
     scope = next(ch for ch in result.checks if ch.name == "design_scope")
     assert result.result == "park" and not scope.ok and "phase (f)" in scope.need
+
+
+# --- lesson and eval, gate (e) only (change 0003) ---------------------------------------------
+from lessons import index as lessons_index  # noqa: E402
+from tests.test_lessons import write_lesson  # noqa: E402
+
+LESSON_SLUG = "x"  # matches _ctx's Status(slug="x")
+
+
+def _lesson_setup(
+    tmp_path,
+    lesson_overrides=None,
+    write_lesson_file=True,
+    write_index=True,
+    write_eval=True,
+    missing_eval_file=None,
+    extra_lesson_name=None,
+):
+    """Everything ``lesson_and_eval`` reads for change 0001-x, each piece switchable so a
+    fail case can drop exactly one thing."""
+    if write_lesson_file:
+        write_lesson(tmp_path / "lessons" / f"2026-10-{LESSON_SLUG}.md", **(lesson_overrides or {}))
+    if extra_lesson_name:
+        write_lesson(tmp_path / "lessons" / extra_lesson_name)
+    if write_index:
+        text, _notes = lessons_index.build(tmp_path, today="2026-10-08")
+        write(tmp_path / "lessons" / "index.md", text)
+    if write_eval:
+        eval_dir = tmp_path / "evals" / "cases" / f"0001-{LESSON_SLUG}"
+        if missing_eval_file != "prompt.md":
+            write(eval_dir / "prompt.md", "Incident 0001: x.\n")
+        if missing_eval_file != "checks.yaml":
+            write(eval_dir / "checks.yaml", "checks:\n  - command: pytest\n    exit: 0\n")
+    return tmp_path
+
+
+def _e_ctx(tmp_path):
+    return _ctx(tmp_path, phase="e", entry_route="incident")
+
+
+def test_lesson_and_eval_passes_when_everything_is_present(tmp_path):
+    _lesson_setup(tmp_path)
+    res = checks.lesson_and_eval(_e_ctx(tmp_path))
+    assert res.ok, res.reason
+
+
+def test_lesson_and_eval_does_not_run_outside_an_incident_change_at_gate_e(tmp_path):
+    assert checks.lesson_and_eval(_ctx(tmp_path, phase="e", entry_route="idea")).ok
+    assert checks.lesson_and_eval(_ctx(tmp_path, phase="c", entry_route="incident")).ok
+
+
+def test_lesson_and_eval_guard_holds_even_called_directly_at_phase_f(tmp_path):
+    """The guard itself, not only its absence from CHECKS_BY_PHASE['f']: an incident change
+    at phase (f) has neither the lesson nor the eval yet, and the check must still pass."""
+    res = checks.lesson_and_eval(_ctx(tmp_path, phase="f", entry_route="incident"))
+    assert res.ok, res.reason
+    assert "lesson_and_eval" not in [fn.__name__ for fn in checks.CHECKS_BY_PHASE["f"]]
+
+
+def test_lesson_and_eval_fails_on_a_missing_lesson_file(tmp_path):
+    _lesson_setup(tmp_path, write_lesson_file=False, write_index=False)
+    res = checks.lesson_and_eval(_e_ctx(tmp_path))
+    assert not res.ok
+    assert any("no lesson file matches" in p for p in res.need.split("\n    "))
+
+
+def test_lesson_and_eval_fails_on_two_lesson_files_matching_the_glob(tmp_path):
+    _lesson_setup(tmp_path, extra_lesson_name=f"2026-11-{LESSON_SLUG}.md")
+    res = checks.lesson_and_eval(_e_ctx(tmp_path))
+    assert not res.ok
+    assert any("2 lesson files match" in p for p in res.need.split("\n    "))
+
+
+def test_lesson_and_eval_fails_on_a_missing_required_frontmatter_field(tmp_path):
+    _lesson_setup(tmp_path, lesson_overrides={"change": None}, write_index=False)
+    res = checks.lesson_and_eval(_e_ctx(tmp_path))
+    assert not res.ok
+    assert any("'change' missing or not a scalar" in p for p in res.need.split("\n    "))
+
+
+def test_lesson_and_eval_fails_on_a_wrong_type_frontmatter_field(tmp_path):
+    """A field that is present but the wrong shape (here a scalar where ``tags`` wants a
+    list) is reported with the same wording as an absent one, not as "missing"."""
+    _lesson_setup(tmp_path, lesson_overrides={"tags": "flaky-test"}, write_index=False)
+    res = checks.lesson_and_eval(_e_ctx(tmp_path))
+    assert not res.ok
+    assert any("'tags' missing or not a list" in p for p in res.need.split("\n    "))
+
+
+def test_lesson_and_eval_fails_when_prompt_or_checks_yaml_is_missing(tmp_path):
+    _lesson_setup(tmp_path, missing_eval_file="prompt.md")
+    res = checks.lesson_and_eval(_e_ctx(tmp_path))
+    assert not res.ok
+    assert any("prompt.md is missing" in p for p in res.need.split("\n    "))
+
+    (tmp_path / "evals" / "cases" / f"0001-{LESSON_SLUG}" / "checks.yaml").unlink()
+    write(tmp_path / "evals" / "cases" / f"0001-{LESSON_SLUG}" / "prompt.md", "Incident 0001: x.\n")
+    res = checks.lesson_and_eval(_e_ctx(tmp_path))
+    assert not res.ok
+    assert any("checks.yaml is missing" in p for p in res.need.split("\n    "))
+
+
+def test_lesson_and_eval_fails_on_a_failing_index_check(tmp_path):
+    _lesson_setup(tmp_path, write_index=False)
+    write(tmp_path / "lessons" / "index.md", "# Lessons\n\nhand-edited, wrong\n")
+    res = checks.lesson_and_eval(_e_ctx(tmp_path))
+    assert not res.ok
+    assert any("lessons/index.md is not what" in p for p in res.need.split("\n    "))
+
+
+def test_lesson_and_eval_fails_on_a_dangling_supersedes(tmp_path):
+    _lesson_setup(tmp_path, lesson_overrides={"supersedes": "2099-01-ghost.md"}, write_index=False)
+    res = checks.lesson_and_eval(_e_ctx(tmp_path))
+    assert not res.ok
+    assert any(
+        "supersedes target '2099-01-ghost.md' does not exist" in p for p in res.need.split("\n    ")
+    )
+
+
+def test_lesson_and_eval_fails_on_a_supersedes_path_outside_lessons(tmp_path):
+    _lesson_setup(tmp_path, lesson_overrides={"supersedes": "../secret.txt"}, write_index=False)
+    res = checks.lesson_and_eval(_e_ctx(tmp_path))
+    assert not res.ok
+    assert any(
+        "supersedes must name a lesson file in lessons/" in p for p in res.need.split("\n    ")
+    )
+
+
+def test_lesson_and_eval_fails_on_an_absolute_supersedes_path(tmp_path):
+    target = tmp_path / "lessons" / f"2026-09-earlier-{LESSON_SLUG}.md"
+    write_lesson(target, status="retired")
+    _lesson_setup(tmp_path, lesson_overrides={"supersedes": str(target)}, write_index=False)
+    res = checks.lesson_and_eval(_e_ctx(tmp_path))
+    assert not res.ok
+    assert any(
+        "supersedes must name a lesson file in lessons/" in p for p in res.need.split("\n    ")
+    )
+
+
+def test_lesson_and_eval_fails_on_a_lesson_that_supersedes_itself(tmp_path):
+    _lesson_setup(
+        tmp_path, lesson_overrides={"supersedes": f"2026-10-{LESSON_SLUG}.md"}, write_index=False
+    )
+    res = checks.lesson_and_eval(_e_ctx(tmp_path))
+    assert not res.ok
+    assert any(
+        "supersedes must name a lesson file in lessons/" in p for p in res.need.split("\n    ")
+    )
+
+
+def test_lesson_and_eval_fails_when_the_supersedes_target_was_never_retired(tmp_path):
+    write_lesson(tmp_path / "lessons" / f"2026-09-earlier-{LESSON_SLUG}.md")  # status: stable
+    _lesson_setup(
+        tmp_path,
+        lesson_overrides={"supersedes": f"2026-09-earlier-{LESSON_SLUG}.md"},
+        write_index=False,
+    )
+    res = checks.lesson_and_eval(_e_ctx(tmp_path))
+    assert not res.ok
+    assert any(
+        f"supersedes target '2026-09-earlier-{LESSON_SLUG}.md' has not been retired" in p
+        for p in res.need.split("\n    ")
+    )
+
+
+def test_lesson_and_eval_fails_on_an_out_of_enum_status(tmp_path):
+    _lesson_setup(tmp_path, lesson_overrides={"status": "archived"}, write_index=False)
+    res = checks.lesson_and_eval(_e_ctx(tmp_path))
+    assert not res.ok
+    assert any("status 'archived' is not one of" in p for p in res.need.split("\n    "))
+
+
+def test_lesson_and_eval_renders_every_problem_on_its_own_indented_line(tmp_path):
+    """The whole "what I need from you" block, not just substrings: ``gate.GateResult`` is
+    what the PR description actually shows the owner."""
+    _lesson_setup(tmp_path, write_lesson_file=False, write_index=False, write_eval=False)
+    res = checks.lesson_and_eval(_e_ctx(tmp_path))
+    assert not res.ok and len(res.need.split("\n    ")) >= 3
+    result = gate.GateResult("0001", "x", "e", True, "park", [res], "sdlc:needs-human", "a" * 40)
+    block = result.what_i_need()
+    bullet = f"- **lesson_and_eval**: {res.reason}"
+    problems = res.need.split("\n    ")
+    need_lines = [f"  - what I need: {problems[0]}"] + [f"    {p}" for p in problems[1:]]
+    assert bullet in block
+    for line in need_lines:
+        assert line in block.splitlines()
 
 
 def _set_lock(change: Path, locked: bool, unlocked_by=None, change_type="fix") -> None:
@@ -2558,58 +3403,21 @@ def test_lock_tests_clears_the_recorded_unlock_actor():
 
 
 # --- 0.2.26: group A of the 1.0.0 readiness review (docs/reviews/2026-09-26-readiness-review.md) --
-def test_the_overrides_are_read_from_the_base_branch_s_copy(project):
-    """A branch that wrote ``profile_override: standard`` on a Full-profile change skipped
-    the (c)/(d) label gates, and ``review_override: deferred`` sent the park items to the
-    panel: both are read from the copy the owner approved now, as intent.md is; the
-    branch's own values are ignored with a note (choice 103)."""
+def test_a_leftover_profile_override_changes_nothing(project):
+    """Decision 37 (1.0.21): no per-change override any more. A ``status.yaml`` an older plugin
+    wrote with ``profile_override: full`` and ``review_override: parked``, on the copy the
+    owner approved, still loads, and gate (c) is still the confidence gate's alone."""
     root, change = project
-    set_on_base(root, change, profile_override="full")
-    verdict(root, "c")
-    result = gate.run_gate(root, "0001", "c", dry_run=True)
-    assert result.result == "wait" and result.label == "sdlc:c-ready"
-    # the branch lowers its own profile: ignored, and the result says so
-    st = status_mod.read_status(change)
-    st.profile_override = "standard"
-    st.review_override = "deferred"
-    status_mod.write_status(change, st)
-    commit_all(root, "the run lowers its own profile and defers its review", author=BOT_AUTHOR)
-    verdict(root, "c")
-    result = gate.run_gate(root, "0001", "c", dry_run=True)
-    assert result.result == "wait" and result.label == "sdlc:c-ready", result.reason
-    assert "profile_override 'standard' on the branch ignored ('full' at" in result.config_note
-    assert "review_override 'deferred' on the branch ignored (None at" in result.config_note
-    ctx = gate.build_context(root, "0001", "c")
-    assert ctx.profile == "full" and ctx.review_mode == "parked" and not ctx.deferred
-    # the owner's own change of the override, merged, is what counts
-    git(root, "reset", "-q", "--hard", "HEAD~1")  # takes the run record with it
-    start_run(root, "c")
-    set_on_base(root, change, profile_override=None)
-    verdict(root, "c")
-    result = gate.run_gate(root, "0001", "c", dry_run=True)
-    assert result.result == "continue", result.reason
-    assert result.config_note == ""
 
+    def leftover(r: Path) -> None:
+        raw = yamlish.load_file(change / "status.yaml")
+        raw.update({"profile_override": "full", "review_override": "parked"})
+        yamlish.dump_file(change / "status.yaml", raw)
 
-def test_the_gate_reads_the_overrides_at_the_base_s_tip_not_the_merge_base(project):
-    """The review of the 0.2.26 diff, M3: read at the merge base, the gate and the runner's
-    guard (the default branch's tip) disagreed when the owner changed the override on main
-    after the branch forked, and the run stalled without a park. Both read the tip."""
-    root, change = project
-    verdict(root, "c")
-    assert gate.run_gate(root, "0001", "c", dry_run=True).result == "continue"
-    # the owner raises the change to Full on main, without merging main into the branch
-    branch = git(root, "rev-parse", "--abbrev-ref", "HEAD").strip()
-    git(root, "checkout", "-q", "main")
-    st = status_mod.read_status(change)
-    st.profile_override = "full"
-    status_mod.write_status(change, st)
-    git(root, "commit", "-q", "-am", "owner: full profile for 0001")
-    git(root, "checkout", "-q", branch)
+    on_base(root, leftover, "an older plugin's status.yaml")
     verdict(root, "c")
     result = gate.run_gate(root, "0001", "c", dry_run=True)
-    assert result.result == "wait" and result.label == "sdlc:c-ready", result.reason
-    assert "profile_override None on the branch ignored ('full' at main)" in result.config_note
+    assert result.result == "continue" and result.label is None, result.reason
 
 
 def test_design_scope_exempts_change_0000_by_its_folder_and_at_gate_a_only(project):
@@ -2776,3 +3584,63 @@ def test_gate_a_exempts_change_0000_from_design_scope(tmp_path):
     ds = next(ch for ch in result.checks if ch.name == "design_scope")
     assert ds.ok and "change 0000 installs the framework" in ds.reason
     assert "design_scope" not in _names(result, False)
+
+
+# --- R54: the quick intent ------------------------------------------------------------------
+QUICK_INTENT = """# Intent: percent helper
+Author: owner (developer). Status: proposed. Change id: 0001. Entry route: idea.
+Quick intent: yes
+
+## Problem
+Callers compute percentages by hand and get rounding wrong; give them a helper.
+
+## Proposed outcome
+Left to the design run (quick intent).
+
+## Affected users and systems
+Left to the design run (quick intent).
+
+## Constraints
+Left to the design run (quick intent).
+
+## Open questions
+Left to the design run (quick intent).
+
+## Examples/References
+none
+"""
+ASSUMED = """## Assumed from the quick intent
+- Proposed outcome: `sample_pkg.percent(part, whole)` returns a rounded percentage.
+- Affected users and systems: sample_pkg users.
+"""
+
+
+def test_quick_intent_helpers():
+    assert art.is_quick_intent(QUICK_INTENT) and not art.is_quick_intent(INTENT)
+    # the header line only: the words inside a section are not the header
+    assert not art.is_quick_intent(INTENT + "\nQuick intent: yes\n")
+    assert art.left_to_design("Left to the design run\n(quick intent).\n")
+    assert art.left_to_design("- Left to the design run (quick intent)")  # a list item, no period
+    assert not art.left_to_design("none")
+    # the marker fills every section, so the gate's intent contract holds as it is
+    assert art.missing_sections(QUICK_INTENT, art.INTENT_SECTIONS) == []
+    assert art.empty_sections(QUICK_INTENT, art.INTENT_SECTIONS) == []
+
+
+def test_a_quick_intent_s_spec_must_state_what_it_assumed(tmp_path):
+    ctx = _ctx(tmp_path, phase="b")
+    write(ctx.change_dir / "intent.md", QUICK_INTENT)
+    write(ctx.change_dir / "plan.md", PLAN)
+    write(ctx.change_dir / "spec.md", SPEC)
+    result = checks.check_artifacts(ctx)
+    assert not result.ok and art.SPEC_ASSUMED_SECTION in result.reason
+    write(ctx.change_dir / "spec.md", SPEC + "\n## Assumed from the quick intent\n\n")
+    assert not checks.check_artifacts(ctx).ok  # an empty list is no statement
+    write(ctx.change_dir / "spec.md", SPEC + "\n## Assumed from the quick intent\nnone\n")
+    assert not checks.check_artifacts(ctx).ok  # nor is "none": the PR shows list items
+    write(ctx.change_dir / "spec.md", SPEC_HEADER + "\n" + ASSUMED + SPEC_BODY)
+    assert checks.check_artifacts(ctx).ok
+    # an intent written the usual way needs no such section
+    write(ctx.change_dir / "intent.md", INTENT)
+    write(ctx.change_dir / "spec.md", SPEC)
+    assert checks.check_artifacts(ctx).ok

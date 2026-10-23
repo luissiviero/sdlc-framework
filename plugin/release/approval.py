@@ -2,8 +2,9 @@
 gate also defines what counts as approval, whether that's an approved change ticket or the
 release manager's sign-off").
 
-When ``sdlc.yaml: deploy.production`` is true, gate (e) has two acts: the owner's merge of the
-build PR, and the release approval. The approval is **the label** ``sdlc:release-approved`` on
+When ``sdlc.yaml: deploy.production`` is true, gate (e) has two acts: the owner's approving
+review of the build PR (decision 36; the owner's merge where no merge App merges), and the
+release approval. The approval is **the label** ``sdlc:release-approved`` on
 the change's build PR, applied by a person, and nothing else: the actor of the last
 ``labeled`` event for that label is read through GitHub, never from an environment variable
 (the article's example reads ``$RELEASE_APPROVAL``, p.36-37; an unattended run could set that
@@ -69,6 +70,8 @@ def make_git(timeout: float = GIT_TIMEOUT) -> GitRunner:
     closed with "cannot verify the approval in time")."""
 
     def run(root: str | Path, *args: str) -> tuple[int, str]:
+        from state.gitops import network_env  # noqa: PLC0415
+
         try:
             proc = subprocess.run(
                 ["git", *args],
@@ -78,6 +81,9 @@ def make_git(timeout: float = GIT_TIMEOUT) -> GitRunner:
                 encoding="utf-8",
                 errors="replace",
                 timeout=timeout,
+                # a fetch, ls-remote or push gets the credential in its environment only
+                # (decision 33, R49: no checkout persists one in .git/config)
+                env=network_env(args, root),
             )
         except subprocess.TimeoutExpired as exc:
             raise TimeoutError(f"git {' '.join(args[:2])} took over {timeout}s") from exc

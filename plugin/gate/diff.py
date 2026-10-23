@@ -22,8 +22,12 @@ class GitUnavailable(RuntimeError):
 
 def _git(root: Path, *args: str, check: bool = True) -> str:
     try:
+        gitops.refuse_planted_config(root)
+    except gitops.GitError as exc:
+        raise GitUnavailable(str(exc)) from exc
+    try:
         proc = subprocess.run(
-            ["git", *args],
+            ["git", *gitops.runner_args(), *args],
             cwd=str(root),
             capture_output=True,
             text=True,
@@ -243,8 +247,91 @@ def sandbox_mounted(root: Path, files: list[str]) -> list[str]:
     return sorted(set(out))
 
 
+@dataclass
+class NameStatusRecord:
+    """One record of ``git diff --name-status -M -z``: a status letter (``D``, ``M``, ``A``,
+    or ``R``/``C`` with the percentage stripped), ``path`` (the source path, or the only path
+    when it is not a rename/copy) and ``new_path`` (the destination, ``R``/``C`` only)."""
+
+    status: str
+    path: str
+    new_path: str | None = None
+
+
+def parse_name_status(out: str) -> list[NameStatusRecord]:
+    """``git diff --name-status -M -z`` output (NUL-separated) into typed records: a rename
+    or copy record is three fields (status, old path, new path), every other status is two
+    (status, path) — the gate's existing ``_z`` only flattens a ``--name-only`` list and
+    cannot carry a rename's two paths (spec.md Design; ``check_ratchets``'s rename rule)."""
+    records: list[NameStatusRecord] = []
+    fields = [f for f in out.split("\0") if f != ""]
+    i = 0
+    while i < len(fields):
+        status = fields[i]
+        i += 1
+        letter = status[0] if status else ""
+        if letter in ("R", "C"):
+            if i + 1 >= len(fields):
+                break
+            old, new = fields[i], fields[i + 1]
+            i += 2
+            records.append(NameStatusRecord(letter, old.replace("\\", "/"), new.replace("\\", "/")))
+        else:
+            if i >= len(fields):
+                break
+            path = fields[i]
+            i += 1
+            records.append(NameStatusRecord(letter, path.replace("\\", "/")))
+    return records
+
+
+def name_status(
+    root: Path, merge_base: str | None, head: str | None = None
+) -> list[NameStatusRecord]:
+    """``git diff --name-status -M -z <merge_base>...<head>`` parsed into records; ``-M``
+    named explicitly (spec.md Requirements), so rename detection does not depend on the
+    running machine's git configuration. ``[]`` with no merge base, as ``committed_files``."""
+    if not merge_base:
+        return []
+    ref = f"{merge_base}...{head or 'HEAD'}"
+    out = _git(root, "diff", "--name-status", "-M", "-z", ref, check=False)
+    return parse_name_status(out)
+
+
+# Every reader of what a branch changed (R59, the plugin security review of 2026-10-19, I3):
+# ``--name-status`` with no diff filter and no rename detection, so a rename lists its source
+# as a deletion beside its destination, and a type change (``T``: a file turned into a
+# symlink, or the reverse) and a submodule are listed with the rest. ``--name-only`` with the
+# default rename detection printed only a rename's destination, and ``--diff-filter=ACMRD``
+# dropped ``T``: ``git mv CLAUDE.md x`` and ``sdlc.yaml`` turned into a link passed the gate.
+CHANGED = ("--name-status", "--no-renames", "-z")
+
+
+def paths_of(out: str) -> list[str]:
+    """The paths of ``git diff --name-status --no-renames -z`` output, sorted, once each."""
+    return sorted({record.path for record in parse_name_status(out)})
+
+
+def changed_paths(root: Path, *revs: str) -> list[str]:
+    """The paths ``git diff`` lists between ``revs`` (a range, or one ref against the working
+    tree), every status counted (``CHANGED``)."""
+    return paths_of(_git(root, "diff", *CHANGED, *revs, check=False))
+
+
+def tree_files(root: Path, ref: str | None, prefix: str) -> list[str]:
+    """Every path ``ref``'s committed tree holds under ``prefix`` (``git ls-tree -r
+    --name-only -z <ref> -- <prefix>``). Used to tell an eval case's survivor from its drop:
+    a file under a case folder the diff never touches carries no ``--name-status`` record at
+    all (panel decision #2, phase b)."""
+    if not ref:
+        return []
+    out = _git(root, "ls-tree", "-r", "--name-only", "-z", ref, "--", prefix, check=False)
+    return _z(out)
+
+
 def committed_files(root: Path, merge_base: str | None, head: str | None = None) -> list[str]:
-    """The files the branch carries: ``git diff --name-only <merge_base>...HEAD``.
+    """The files the branch carries: ``git diff <merge_base>...HEAD``, every status and a
+    rename's two paths counted (``CHANGED``).
 
     This is the PR's own diff — what a reviewer sees and what merges. The working tree says
     nothing here: a checkout can be dirty for reasons that have nothing to do with the change
@@ -253,13 +340,14 @@ def committed_files(root: Path, merge_base: str | None, head: str | None = None)
     if not merge_base:
         return []
     ref = f"{merge_base}...{head or 'HEAD'}"
-    return _z(_git(root, "diff", "--name-only", "-z", "--diff-filter=ACMRD", ref, check=False))
+    return changed_paths(root, ref)
 
 
 def is_repo(root: Path) -> bool:
+    """``gitops.is_repo``, whose yes is remembered (1.0.13); no git at all is a no."""
     try:
-        return _git(root, "rev-parse", "--is-inside-work-tree").strip() == "true"
-    except GitUnavailable:
+        return gitops.is_repo(root)
+    except OSError:
         return False
 
 
@@ -278,22 +366,91 @@ def default_base(root: Path) -> str:
     emptied the committed diff the checks and the runner's guard judge.
 
     ``SDLC_DEFAULT_BRANCH`` (refused when it names a framework branch, see
-    ``gitops.explicit_default_branch``) wins when ``refs/remotes/origin/<value>`` resolves."""
+    ``gitops.explicit_default_branch``) wins when ``refs/remotes/origin/<value>`` resolves.
+    Its lookups are gitops' remembered ones (``origin_head``, ``ref_exists``, 1.0.13), shared
+    with ``gitops.default_branch`` and the runner's ref checks."""
     explicit = gitops.explicit_default_branch()
-    if explicit:
-        ref = f"refs/remotes/origin/{explicit}"
-        if _git(root, "rev-parse", "--verify", "--quiet", ref, check=False).strip():
-            return ref
     try:
-        ref = _git(root, "symbolic-ref", "refs/remotes/origin/HEAD").strip()
-        if ref.startswith("refs/remotes/"):
+        if explicit:
+            ref = f"refs/remotes/origin/{explicit}"
+            if gitops.ref_exists(root, ref):
+                return ref
+        ref = gitops.origin_head(root)
+        if ref and ref.startswith("refs/remotes/"):
             return ref
-    except GitUnavailable:
-        pass
-    for cand in ("refs/remotes/origin/main", "refs/remotes/origin/master", "main", "master"):
-        if _git(root, "rev-parse", "--verify", "--quiet", cand, check=False).strip():
-            return cand
+        for cand in ("refs/remotes/origin/main", "refs/remotes/origin/master", "main", "master"):
+            if gitops.ref_exists(root, cand):
+                return cand
+    except (OSError, gitops.GitError) as exc:  # a read that timed out included (choice 239)
+        raise GitUnavailable(f"git: {exc!r}") from exc
     return "HEAD"
+
+
+def is_ancestor(root: Path, commit: str, ref: str) -> bool:
+    """``git merge-base --is-ancestor <commit> <ref>``: False on any error (an unknown sha)."""
+    try:
+        proc = subprocess.run(
+            ["git", "merge-base", "--is-ancestor", commit, ref],
+            cwd=str(root),
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return proc.returncode == 0
+
+
+# Decision 30 (the fast lane, ROADMAP R46): the ``status.yaml: fast_lane`` entry whose commit
+# is the approved copy of a phase. Phase (b) was cut from the owner's unmerged intent PR (entry
+# ``a``); the build branch, and the test, deploy and review runs and the fix rounds on it,
+# from the design commit whose gate passed on a routine plan (entry ``b``). Every other phase
+# (the intent PR's own rounds at (a), phase (f)) reads the merge base as before.
+FAST_LANE_ENTRY = {"b": "a", "c": "b", "d": "b", "e": "b", "review": "b"}
+
+
+def fast_lane_sha(
+    root: Path,
+    fast_lane: dict | None,
+    phase: str,
+    base: str | None = None,
+    head: str = "HEAD",
+) -> str | None:
+    """The commit ``fast_lane`` records for ``phase`` while it stands, else None: it must be
+    an ancestor of ``head`` (the branch was cut from it) and not of the default branch
+    ``base`` (its pull request was not merged). A merge of that PR (its commit then on the
+    default branch), a squash merge (the next branch then cut from the default branch, the
+    commit not in it) and a change that never took the fast lane all give None, and the
+    caller reads the merge base exactly as before."""
+    key = FAST_LANE_ENTRY.get(phase)
+    entry = (fast_lane or {}).get(key) if key and isinstance(fast_lane, dict) else None
+    sha = entry.get("sha") if isinstance(entry, dict) else None
+    if not isinstance(sha, str) or not sha:
+        return None
+    base = base or default_base(root)
+    if base == "HEAD" or not is_ancestor(root, sha, head) or is_ancestor(root, sha, base):
+        return None
+    return sha
+
+
+def approved_base(
+    root: Path,
+    fast_lane: dict | None,
+    phase: str,
+    merge_base: str | None,
+    base: str | None = None,
+    head: str = "HEAD",
+) -> str | None:
+    """The one rule for the commit a phase's "approved copies" (``intent.md``, ``plan.md``)
+    and its "changed since the last gate" diff are read at: the fast lane's recorded commit
+    for the phase (``fast_lane_sha``) while it stands, else ``merge_base`` (the merge base
+    of HEAD with the default branch, None when there is none), as before decision 30. The
+    gate (``GateContext.approved_base``) and the runner (``guardrail_changes``) both call it.
+    The PR's own diff (``committed_files`` from the merge base) is unchanged: the owner sees
+    intent, spec, plan and code together at (e)."""
+    if not merge_base:
+        return None
+    return fast_lane_sha(Path(root), fast_lane, phase, base, head) or merge_base
 
 
 def collect(root: Path, base: str | None = None) -> Diff:
@@ -315,13 +472,16 @@ def collect(root: Path, base: str | None = None) -> Diff:
         # (``checks._no_base``), never pass on the empty list (readiness review, group B).
         note = "" if mb else f"no merge base with {base}: the committed diff cannot be judged"
     ref = merge_base or "HEAD"
-    files = _z(_git(root, "diff", "--name-only", "-z", "--diff-filter=ACMRD", ref, check=False))
-    files = sorted(
-        set(files) | set(_z(_git(root, "ls-files", "-z", "--others", "--exclude-standard")))
-    )
+    files = set(changed_paths(root, ref))
+    if merge_base and head and merge_base != head:
+        # the commits too: a commit made with plumbing (``update-index --cacheinfo``) can
+        # leave the working tree as the base had it, and the working-tree diff alone misses
+        # it (R59, I3)
+        files |= set(changed_paths(root, f"{merge_base}...HEAD"))
+    files = sorted(files | set(_z(_git(root, "ls-files", "-z", "--others", "--exclude-standard"))))
     commits: list[Commit] = []
     if merge_base and head and merge_base != head:
         for sha in _git(root, "rev-list", "--reverse", f"{merge_base}..HEAD").split():
-            changed = _z(_git(root, "diff-tree", "--no-commit-id", "--name-only", "-r", "-z", sha))
+            changed = paths_of(_git(root, "diff-tree", "--no-commit-id", "-r", *CHANGED, sha))
             commits.append(Commit(sha, changed))
     return Diff(base, merge_base, head, files, commits, branch, note)

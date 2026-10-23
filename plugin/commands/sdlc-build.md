@@ -1,5 +1,5 @@
 ---
-description: Phase (c) build — implement the merged spec+plan on sdlc/<id>/c under the guardrail hooks, after the preflight allows it. Fix-type changes write the reproducing test first. Then code-simplifier, verifier (evidence/verifier.md), adversarial verdict, gate (c), and the build PR (draft) with the generated summary. Standard: continue to /sdlc-test; Full: wait for sdlc:c-approved. Re-runnable.
+description: Phase (c) build — implement the merged spec+plan on sdlc/<id>/c under the guardrail hooks, after the preflight allows it. Fix-type changes write the reproducing test first. Then code-simplifier, verifier (evidence/verifier.md), adversarial verdict, gate (c), and the build PR (draft) with the generated summary, then continue to /sdlc-test. Re-runnable.
 argument-hint: [change id, e.g. 0001]
 disable-model-invocation: true
 allowed-tools: Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/state/cli.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/gate/cli.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/gate/preflight.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/panel/cli.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/evidence/collect.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/pr/cli.py" *), Bash(git *), Bash(gh *), Read, Glob, Grep, Edit, Write, Agent
@@ -50,8 +50,12 @@ docs were killed mid-write and the run ended with no gate; this rule since 0.3.3
 
 ## 1. Branch and run registration
 - Default branch as in `/sdlc-design` step 0. `git fetch origin`.
-- Start point: the default branch (gate (b) is the owner's merge in every profile). First
-  run: `git switch -c sdlc/<id>/c origin/<default>`. Re-run: `git switch sdlc/<id>/c` and
+- Start point: the default branch (gate (b) is the owner's merge). First
+  run: `git switch -c sdlc/<id>/c origin/<default>`. On the fast lane (decision 30; CI
+  only) the runner has already cut `sdlc/<id>/c` from `origin/sdlc/<id>/b`, whose gate
+  passed on a routine plan without a merge (`status.yaml: fast_lane.b`): the spec and plan
+  on the branch are the approved ones, and the build PR will carry the intent, spec and plan
+  with the code. Never write `fast_lane`: it is the runner's record. Re-run: `git switch sdlc/<id>/c` and
   `git pull --ff-only origin sdlc/<id>/c`; the existing diff and the PR's unresolved review
   comments are the starting point, gathered as `/sdlc-fix` step 1 gathers them (the reviews
   and comments, and the inline threads from `gh api repos/<repo>/pulls/<n>/comments`) and
@@ -67,7 +71,9 @@ Read `changes/<id>-<slug>/intent.md`, `spec.md`, `plan.md` and `status.yaml`. Th
 the contract: "Files that change", "Order of work", "Proof". Do not redesign; if the plan
 cannot be followed, update `plan.md` in the same commit as the departure and say why under
 Risks (article p.16 step 7). Load the policy skills (`coding-standards`,
-`security-baseline`, `ux-conventions`, `data-conventions`, `definition-of-done`).
+`security-baseline`, `ux-conventions`, `data-conventions`, `definition-of-done`; a project
+override under `.claude/skills/<name>/` replaces the plugin's; the owner's source
+`policies/<name>.md`, where it exists, wins over either (decision 40)).
 
 ## 3. Fix-type change: the reproducing test first (build guide step 25, article p.28 step 4)
 When `status.change_type` is `fix`:
@@ -85,6 +91,9 @@ When `status.change_type` is `fix`:
 For front-end work the visual target is the exported design mock in
 `changes/<id>-<slug>/mock/` (build guide step 34; article p.12–13): read it before the first
 screen is written, and name in `plan.md` Proof the screenshot that phase (d) compares with it.
+The build matches the owner's mock (`spec.md` Acceptance, the `Mock:` line), never the
+screens the intent's Examples/References only refer to (ROADMAP R29); with
+`Mock: none`, screens follow the `ux-conventions` skill.
 Follow "Order of work". After each step run the project's `test` command for the tests the
 step touches (the full suite is phase (d)). Commit with
 `python "${CLAUDE_PLUGIN_ROOT}/plugin/state/cli.py" commit-phase --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase c --message "build(<id>): <step>" --paths <files>`
@@ -109,8 +118,8 @@ nearest neighbouring flows and reports (in CI it reads gate (b)'s `commands` ent
 the targets, which the runner runs after this session — its brief says when; plugin 0.3.2,
 item 3b). Store its report verbatim as
 `changes/<id>-<slug>/evidence/verifier.md`. If it reports behaviour that does not match
-`plan.md`, fix it (step 4 again, bounded by the iteration cap from the preflight; under
-deferred review a mismatch you cannot resolve is a panel item of step 7: run
+`plan.md`, fix it (step 4 again, bounded by the iteration cap from the preflight; a
+mismatch you cannot resolve is a panel item of step 7: run
 `python "${CLAUDE_PLUGIN_ROOT}/plugin/gate/cli.py" bump-iteration --root "${CLAUDE_PROJECT_DIR}" --id <id>`
 per round; the gate parks at the cap), then re-run the verifier. Commit the evidence:
 `commit-phase ... --phase c --message "build(<id>): verifier evidence"`.
@@ -122,29 +131,38 @@ default branch, `origin/<default>` after the fetch: the base the gate diffs agai
 `git diff --stat --patch --output=changes/<id>-<slug>/evidence/diff-c.patch <base>...HEAD`,
 then `git rev-parse HEAD` for the full sha. The diff file is evidence: it is committed with
 the gate (c) evidence commit below.
+First run
+`python "${CLAUDE_PLUGIN_ROOT}/plugin/gate/cli.py" risk-hits --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase c`
+and pass its `hits` (each item with where it matched) and its `brief` path in the delegation
+prompt: the reviewer writes one brief per item there (decision 35: a hit is a line of the
+close-look banner, never a park; its escalation on an item parks and stays off the panel).
 Delegate to `sdlc:adversarial-reviewer` with the change id, phase `c`, the project root,
-the full HEAD sha and the path `changes/<id>-<slug>/evidence/diff-c.patch`; it writes
-`evidence/adversarial-review-c.json` for HEAD.
+the full HEAD sha, the path `changes/<id>-<slug>/evidence/diff-c.patch` and the risk-list
+hits, started with
+`reviewer.alias` from
+`python "${CLAUDE_PLUGIN_ROOT}/plugin/panel/cli.py" models --root "${CLAUDE_PROJECT_DIR}" --phase c`
+as its model (`null`: pass none; the gate's `reviewer_model` check reads the model it ran
+on, R7); it writes `evidence/adversarial-review-c.json` for HEAD.
 
 ### Deferred review: the panel settles the judgment items (decision 21; build guide step 16a)
 ```
 python "${CLAUDE_PLUGIN_ROOT}/plugin/panel/cli.py" items --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase c
 ```
-It prints the review mode (`sdlc.yaml: review`, `status.yaml: review_override`), the items
-the gate would park on that belong to the panel's fixed list (an open flagged concern, a
-concern naming contradicting policies, the reviewer's `escalate` verdict, an Important
-finding the run cannot fix, the verifier's "does not match the plan"), which of them the
-ledger already decides, and under `parks` what stays the owner's whatever the mode (a
-risk-list hit, a guardrail file, a run limit, an infrastructure failure). When `mode` is
-`parked` or `pending` is empty, go on to the gate. Otherwise, for each pending item `n` in
+It prints the items the gate would park on that belong to the panel's fixed list (an open
+flagged concern, a concern naming contradicting policies, the reviewer's `escalate`
+verdict, an Important finding the run cannot fix, the verifier's "does not match the
+plan"), which of them the ledger already decides, and under `parks` what stays the owner's
+(an escalation on a risk-list item, a guardrail file, a run limit, an infrastructure
+failure; a risk-list hit itself parks nothing, decision 35). When `pending` is empty, go on
+to the gate. Otherwise, for each pending item `n` in
 order, three fresh contexts, each with the brief printed by
 `python "${CLAUDE_PLUGIN_ROOT}/plugin/panel/cli.py" prompt --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase c --item <n> --member <reviewer|advocate|conciliator>`:
 1. **reviewer** — delegate to a general-purpose sub-agent with the `reviewer` brief; it
    writes `evidence/panel/c-<n>-reviewer.md`.
 2. **devil's advocate** — delegate to `sdlc:adversarial-reviewer` with the `advocate`
-   brief, on the model `sdlc.yaml: panel_advocate_model` names (pass it as the sub-agent's
-   model: the per-invocation model wins, NOTES §11c; a panel on one model shares its blind
-   spots), blind to the reviewer's file; it writes `evidence/panel/c-<n>-advocate.md`.
+   brief, started with `advocate.alias` from `panel/cli.py models --phase c` (pass it as the
+   sub-agent's model: the per-invocation model wins, NOTES §11c; a panel on one model shares
+   its blind spots), blind to the reviewer's file; it writes `evidence/panel/c-<n>-advocate.md`.
 3. **conciliator** — delegate to a general-purpose sub-agent with the `conciliator` brief;
    it reads both files and writes `evidence/panel/c-<n>-conciliator.json`.
 Then record it:
@@ -156,7 +174,7 @@ in `spec.md` as `decided (by panel #<n>): <decision> — <concern>`, and commits
 folder itself (`build(<id>): panel decision <n>`), so the decision is in HEAD before anyone
 judges it. Do not reword a closed concern line: the gate matches it to the ledger by
 `#<n>`. Apply what the decision asks beyond that (an `escalate` decided `continue` needs
-nothing more; a fix the decision names is made now, `plan.md` in the same commit, committed
+nothing more; an `escalate` decided `park`: go straight to the gate, it parks; a fix the decision names is made now, `plan.md` in the same commit, committed
 with `commit-phase ... --phase c --message "build(<id>): panel decision <n> applied"`).
 After the last item, re-run step 7 for the new HEAD, once (a verdict never
 outlives the diff it judged, and the diff file must be regenerated first); from then on
@@ -180,17 +198,18 @@ Open or update the build PR — draft, base the default branch, head `sdlc/<id>/
 python "${CLAUDE_PLUGIN_ROOT}/plugin/pr/cli.py" upsert --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase c --draft
 ```
 It renders the ≤5-bullet summary from `status.yaml`, `evidence/gate-c.json`, the verifier
-report and the plan-vs-diff check, applies the label (`sdlc:c-ready` in the Full profile,
-`sdlc:needs-human` when parked, none otherwise), and uses the GitHub REST API with
+report and the plan-vs-diff check, applies the label (`sdlc:needs-human` when parked, none
+otherwise), and uses the GitHub REST API with
 `GITHUB_TOKEN`/`GH_TOKEN` first, then `gh`, then prints the compare URL and the body for the owner to
 paste. Do not retry with other means.
 
 ## 9. Hand over
-- `continue` (Standard): report "gate (c) passed → /sdlc-test <id>". In the
+- `continue`: report "gate (c) passed → /sdlc-test <id>". In the
   merge-triggered workflow the job dispatches the test workflow itself. Do not run (d) here.
-- `wait` (Full): report the PR URL and "gate (c): approving review + `sdlc:c-approved`
-  starts the test phase; review comments are the change request (`/sdlc-fix`)".
+  On the fast lane the runner also closes the design PR as `sdlc:superseded` once this PR
+  exists (no comment), or the intent PR when no design PR was opened; the owner reviews
+  intent, spec, plan and code together at (e).
 - `park`: report the PR URL and the gate's "What I need from you" block.
 
-Never edit `.claude/**`, `CLAUDE.md`, `REVIEW.md`, `sdlc.yaml` or `intent.md`. Never use
-bypass-permissions mode. Never notify anyone.
+Never edit `.claude/**`, `CLAUDE.md`, `REVIEW.md`, `sdlc.yaml`, `policies/**` or
+`intent.md`. Never use bypass-permissions mode. Never notify anyone.

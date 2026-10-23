@@ -1,0 +1,123 @@
+{
+  "api_error_status": null,
+  "duration_api_ms": 1264038,
+  "duration_ms": 1215164,
+  "fast_mode_disabled_reason": "sdk_opt_in_required",
+  "fast_mode_state": "off",
+  "first_content_frame_ms": 3382,
+  "is_error": false,
+  "modelUsage": {
+    "claude-opus-5": {
+      "cacheCreationInputTokens": 49584,
+      "cacheReadInputTokens": 146645,
+      "canonicalModel": "claude-opus-5",
+      "contextWindow": 1000000,
+      "costBasis": "list",
+      "costUSD": 0.6193825,
+      "inputTokens": 12,
+      "maxOutputTokens": 64000,
+      "outputTokens": 9444,
+      "provider": "firstParty",
+      "thinkingTokens": 7446,
+      "webSearchRequests": 0
+    },
+    "claude-sonnet-5": {
+      "cacheCreationInputTokens": 377676,
+      "cacheReadInputTokens": 6891299,
+      "canonicalModel": "claude-sonnet-5",
+      "contextWindow": 1000000,
+      "costBasis": "list",
+      "costUSD": 3.4828452999999997,
+      "inputTokens": 176,
+      "maxOutputTokens": 64000,
+      "outputTokens": 94649,
+      "provider": "firstParty",
+      "thinkingTokens": 59473,
+      "webSearchRequests": 0
+    }
+  },
+  "num_turns": 71,
+  "permission_denials": [
+    {
+      "tool_input": {
+        "command": "for f in changes/*/spec.md changes/*/intent.md; do echo \"== $f ==\"; head -3 \"$f\" | grep -i \"plugin\\|produced\\|read at\"; done 2>/dev/null",
+        "description": "Compare version stamps across changes' intent.md and spec.md"
+      },
+      "tool_name": "Bash",
+      "tool_use_id": "toolu_01YaE2VPbiCWNzg9AEzXcUpM"
+    }
+  ],
+  "queued_turn_count": 0,
+  "result": "All done. Summary:\n\n**PR:** https://github.com/luissiviero/sdlc-framework/pull/186\n**Gate (b):** `wait` \u2014 every deterministic check `ok`, adversarial reviewer says `continue`, human gate pending (as expected at phase b).\n**Iterations:** 1 of 2 used. **Panel calls:** 3 of 4 used (one escalate settled: confirmed two Proof-list gaps, downgraded a third to a non-blocking nit).\n**Requests left open:** none. The owner's mandatory items (marketplace.json/plugin.json version lockstep, three missing Proof-list tests) were applied; the three \"Optional\" items were checked and found to need no edit (one citation already accurate, two are historical version stamps \u2014 one of which, `intent.md`, can't be touched at phase b regardless) \u2014 reasoning is in `evidence/fix-response.md`.",
+  "result_index": 0,
+  "session_id": "bd108b7a-82ef-4085-81ab-56433f4123b3",
+  "stop_reason": "end_turn",
+  "subagent_stats": {
+    "by_type": {
+      "general-purpose": 2,
+      "sdlc:adversarial-reviewer": 3
+    },
+    "completed": 5,
+    "failed": 0,
+    "killed": {
+      "parent": 0,
+      "system": 0,
+      "user": 0
+    },
+    "max_depth": 1,
+    "refused": {
+      "budget": 0,
+      "concurrency_limit": 0,
+      "depth_limit": 0
+    },
+    "requested": {
+      "background": 0,
+      "foreground": 0,
+      "unset": 5
+    },
+    "spawned": 5,
+    "spawned_by_subagents": 0,
+    "started_in_background": 0
+  },
+  "subtype": "success",
+  "terminal_reason": "completed",
+  "time_to_request_ms": 115,
+  "total_cost_usd": 4.1022278,
+  "ttft_ms": 4050,
+  "ttft_stream_ms": 3382,
+  "type": "result",
+  "usage": {
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 142369,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "cache_creation_input_tokens": 142369,
+    "cache_read_input_tokens": 5956635,
+    "inference_geo": "global",
+    "input_tokens": 124,
+    "iterations": [
+      {
+        "cache_creation": {
+          "ephemeral_1h_input_tokens": 420,
+          "ephemeral_5m_input_tokens": 0
+        },
+        "cache_creation_input_tokens": 420,
+        "cache_read_input_tokens": 141949,
+        "input_tokens": 2,
+        "output_tokens": 724,
+        "type": "message"
+      }
+    ],
+    "output_tokens": 45956,
+    "output_tokens_details": {
+      "thinking_tokens": 24844
+    },
+    "server_tool_use": {
+      "web_fetch_requests": 0,
+      "web_search_requests": 0
+    },
+    "service_tier": "standard",
+    "speed": "standard"
+  },
+  "uuid": "658cce84-5e4c-4ec0-a8f5-0ee3bd754ff2"
+}

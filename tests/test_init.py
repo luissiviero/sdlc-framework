@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -11,6 +12,7 @@ from pathlib import Path
 
 import pytest
 
+from gate import preflight
 from init import detect, sdlc_init
 from state import yamlish
 
@@ -106,7 +108,7 @@ def test_merge_claude_md_keeps_existing_and_adds_missing_sections():
 
 def _run_init(root: Path, *extra: str) -> dict:
     proc = subprocess.run(
-        [sys.executable, str(INIT), "--root", str(root), "--profile", "full", *extra],
+        [sys.executable, str(INIT), "--root", str(root), *extra],
         capture_output=True,
         text=True,
         check=True,
@@ -128,8 +130,9 @@ def test_init_on_fixture_copy_is_idempotent(tmp_path):
         "branch": "sdlc/0000/a",
     }
     cfg = yamlish.load_file(root / "sdlc.yaml")
-    assert cfg["profile"] == "full" and cfg["commands"]["test"] == "python -m pytest"
-    assert cfg["review"] == "parked"  # decision 21: off by default
+    assert cfg["commands"]["test"] == "python -m pytest"
+    # decision 37 (1.0.21): one profile and one review mode, so neither key is written
+    assert "profile" not in cfg and "review" not in cfg
     assert cfg["test_paths"] == detect.TEST_PATHS["python"]  # step 25: the test-file lock
     assert cfg["plugin"]["version"] == sdlc_init.plugin_version()
     settings = json.loads((root / ".claude" / "settings.json").read_text(encoding="utf-8"))
@@ -275,6 +278,7 @@ def test_init_on_node_fixture_writes_npm_targets(tmp_path):
         "test": "npm test",
         "lint": "npm run lint",
         "setup": "npm install",  # no package-lock.json in the fixture
+        "env": [],  # R61: no --env given
     }
     assert cfg["test_paths"] == detect.TEST_PATHS["node"]  # step 25: the test-file lock
     settings = json.loads((root / ".claude" / "settings.json").read_text(encoding="utf-8"))
@@ -323,10 +327,29 @@ def test_init_writes_evals_and_bands_once(tmp_path):
     # owner edits survive: create-only files are kept on re-run
     (root / "bands.yaml").write_text("metric: my_metric\n", encoding="utf-8")
     report2 = _run_init(root)
-    assert (
-        report2["files"]["bands.yaml"] == "kept" and report2["files"]["evals/README.md"] == "kept"
-    )
+    # R64: an edited guardrail is the owner's own content: kept, never refreshed (decision 6)
+    assert report2["files"]["bands.yaml"] == "kept"
+    assert report2["files"]["evals/README.md"] == "kept"
     assert (root / "bands.yaml").read_text(encoding="utf-8") == "metric: my_metric\n"
+
+
+def test_init_creates_the_policies_folder_with_its_readme_only(tmp_path):
+    """R27: ``policies/`` starts with its README, which names the five sources; no stub source
+    (a stub would read as a policy); an owner's edit survives a re-run; change 0000's intent
+    says the folder starts empty."""
+    root = tmp_path / "proj"
+    shutil.copytree(FIXTURE, root)
+    report = _run_init(root)
+    assert report["files"]["policies/README.md"] == "created"
+    assert sorted(p.name for p in (root / "policies").iterdir()) == ["README.md"]
+    readme = (root / "policies" / "README.md").read_text(encoding="utf-8")
+    for name in preflight.POLICY_SKILLS:
+        assert f"`policies/{name}.md`" in readme
+    intent = (root / "changes" / "0000-sdlc-init" / "intent.md").read_text(encoding="utf-8")
+    assert "`policies/` starts\nempty" in intent or "`policies/` starts empty" in intent
+    (root / "policies" / "README.md").write_text("Our own words.\n", encoding="utf-8")
+    assert _run_init(root)["files"]["policies/README.md"].startswith("kept; outdated (edited)")
+    assert (root / "policies" / "README.md").read_text(encoding="utf-8") == "Our own words.\n"
 
 
 def test_bands_yaml_also_parses_with_pyyaml(tmp_path):
@@ -504,6 +527,7 @@ WORKFLOWS = (
     ".github/workflows/sdlc-digest.yml",
     ".github/workflows/sdlc-release.yml",  # build guide step 32.3 (plugin 0.2.12)
     ".github/workflows/sdlc-fix.yml",  # decisions 22 and 24 (plugin 0.2.13)
+    ".github/workflows/sdlc-comment.yml",  # the owner's @claude comment (decision 34, R17)
     ".github/workflows/sdlc-abandon.yml",  # decision 25 (plugin 0.2.13)
     ".github/workflows/sdlc-detect.yml",  # build guide step 37 (plugin 0.2.19)
     ".github/workflows/sdlc-runbook.yml",  # the owner's Go on a runbook (plugin 0.2.19)
@@ -739,3 +763,53 @@ def test_init_maintain_observation_for_a_named_workflow_source(tmp_path):
         "test command on push and pull_request) or the maintain metric will never have an "
         "observation"
     )
+
+
+def test_init_re_run_never_lowers_a_project_s_build_caps(tmp_path):
+    """Decision 32 (1.0.8): an unset ``gate.build_*`` key is the larger of the general setting
+    and the build default, so a project with ``max_turns: 500`` builds with 500 turns. A
+    re-run of /sdlc-init merges the missing keys; inserting the template's
+    ``build_max_turns: 400`` would have cut it, so such a key is left out."""
+    from gate import limits
+
+    root = tmp_path / "proj"
+    shutil.copytree(FIXTURE, root)
+    _run_init(root)
+    path = root / "sdlc.yaml"
+    text = path.read_text(encoding="utf-8")
+    text = re.sub(r"(?m)^  build_max_.*\n", "", text)  # the project as 1.0.7 wrote it
+    text = text.replace("max_turns: 200 ", "max_turns: 500 ").replace(
+        "max_wall_clock_minutes: 120 ", "max_wall_clock_minutes: 240 "
+    )
+    path.write_text(text, encoding="utf-8")
+    assert limits.run_caps(yamlish.load_file(path)["gate"], True) == (500, 240)
+    _run_init(root)
+    gate = yamlish.load_file(path)["gate"]
+    assert "build_max_turns" not in gate and "build_max_wall_clock_minutes" not in gate
+    assert limits.run_caps(gate, True) == (500, 240)
+    # a general setting below the build default gets the template's key: the same caps
+    path.write_text(
+        re.sub(r"(?m)^  build_max_.*\n", "", path.read_text(encoding="utf-8"))
+        .replace("max_turns: 500 ", "max_turns: 300 ")
+        .replace("max_wall_clock_minutes: 240 ", "max_wall_clock_minutes: 90 "),
+        encoding="utf-8",
+    )
+    report = _run_init(root)
+    gate = yamlish.load_file(path)["gate"]
+    assert gate["build_max_turns"] == 400 and gate["build_max_wall_clock_minutes"] == 180
+    assert "gate.build_max_turns" in report["files"]["sdlc.yaml"]
+    assert limits.run_caps(gate, True) == (400, 180) and limits.run_caps(gate, False) == (300, 90)
+
+
+def test_init_says_an_outdated_build_or_fix_workflow_keeps_the_general_caps(tmp_path):
+    """Decision 32: only the 1.0.8 sdlc-build.yml and sdlc-fix.yml export the job timeout the
+    build caps need, so the report on an older copy says to replace them."""
+    root = tmp_path / "proj"
+    shutil.copytree(FIXTURE, root)
+    _run_init(root)
+    for rel in (WORKFLOWS[0], WORKFLOWS[1], WORKFLOWS[6]):
+        (root / rel).write_text("name: an older workflow\n", encoding="utf-8")
+    files = _run_init(root)["files"]
+    hint = "replace sdlc-build.yml and sdlc-fix.yml to get the build caps"
+    assert hint in files[WORKFLOWS[1]] and hint in files[WORKFLOWS[6]]
+    assert files[WORKFLOWS[0]].startswith("outdated: ") and hint not in files[WORKFLOWS[0]]
