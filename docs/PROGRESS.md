@@ -1,60 +1,61 @@
-# Progress — ROADMAP R65's part 3: docs-lint checks 11 and 12, S1 to S4 fixed (2026-10-22)
+# Progress — ROADMAP R65's part 4: `python tasks.py verify`, docs-lint check 13, CI on `verify` (2026-10-22)
 
-This session ran on branch `claude/r65-part-3-checks-11-12`, from `main` at `8e48bcc` (#325). It is the session of R65's parts 1 (#324) and 2 (#325). After #325 merged, the owner answered "The rest as recommended", and the recommendation was to start part 3 next. Part 3 is built as the owner accepted it:
-- choice 252, point 4;
-- choice 253, points 5 and 6;
-- `docs/proposals/one-owner-per-fact.md`, part 3.
+This session ran on branch `claude/r65-part-4-verify`, from `main` at `8bca5fd` (#327). It is the session of R65's parts 1 to 3 (#324, #325, #327). The owner asked it to continue in the same session. Part 4 is built as the owner settled it:
+- choice 252, point 7;
+- choice 253, points 2 and 4: `verify` and check 13 in one PR, before the owner's rows; CI on `verify`;
+- `docs/proposals/one-owner-per-fact.md`, part 4.
 
-It is a documentation and `tasks.py` PR: no plugin version, nothing under `plugin/` or `template/`. The two manifests under `.claude-plugin/` change their description only.
+It is a documentation, `tasks.py` and CI PR: no plugin version, nothing under `plugin/` or `template/`. The workflow it changes is this repository's own `framework-checks.yml`, which is not a template.
 
-The previous record (R65's part 2 and choice 253, from #325) is now `docs/progress/2026-10-22-r65-part-2-choices-index-choice-253.md`, unchanged (verified, `cmp` against `8e48bcc:docs/PROGRESS.md`). This session's end file is `docs/handoffs/sessions/2026-10-22-claude-r65-part-3-checks-11-12.md`.
+The previous record (R65's part 3 and choice 254, from #327) is now `docs/progress/2026-10-22-r65-part-3-checks-11-12-choice-254.md`, unchanged (verified, `cmp` against `8bca5fd:docs/PROGRESS.md`). This session's end file is `docs/handoffs/sessions/2026-10-22-claude-r65-part-4-verify.md`.
 
 ## Coordination with the other sessions
-- **Numbers.** This PR takes choice 254, for the owner's answer to its two open points, and nothing else (`python tasks.py next-free` on `a8d6dba` printed choice 254, none taken above `main`, at 23:07 UTC). The owner's "the rest as recommended" only started work choice 253 had already decided, so it took no number.
-- **Open PRs**, read after #325 merged at 22:46 UTC: #173 (intent 0004) and #326 (session `ccr-6ed8a82e-cxmftx`'s end file, missed in this record's first draft). #326 has merged since, as `a8d6dba`, and `main` is merged into this branch.
+- **Numbers.** This PR takes none (`python tasks.py next-free` on `8bca5fd`: choice 255, none taken above `main`, read at 23:51 UTC).
+- **Open PRs**, read at 23:51 UTC: #173 (intent 0004) and the owner's #328 (row 5 of choice 253's record). Neither touches a file this PR changes.
 
 ## What was built
-1. **docs-lint check 11: a rank lives in ROADMAP's Order column.**
-   - In `docs/proposals/` and `docs/decisions/`, "rank N" fails outside a dated annotation (`*[YYYY-MM-DD …]*`).
-   - In a session file dated from 2026-10-23 on, any "rank N" fails. So does a hand-written next free number: a "next free" line that names a choice, note, decision, candidate or version.
-   - The session files of 2026-10-22 and before are kept as written (choices 126 and 252, point 4). The cutover is the day after the build, because that day's files already hold next-free lines.
-2. **docs-lint check 12: no retired term used as a live one.** It reads `README.md`, the two manifests, `docs/OPERATING_MODEL.md`, `docs/ROADMAP.md` and every file under `template/`.
-   - The terms are `conventions.ACCEPT_RISK_LABEL` and `status.RETIRED_KEYS`, read from the plugin, plus a short list in `tasks.py`: "profile-based", the Full profile, `sdlc:c-approved` and `sdlc:d-approved`.
-   - A line passes if it says the term is retired, withdrawn, removed or gone, or "until 1.0.20", or if it carries a dated annotation.
-   - `docs/BUILD_GUIDE.md` is not read: it is the version-3 plan with its annotations (choice 252, point 6). Read, it would fail four lines of the plan as written.
-3. **The first runs, fixed in this PR:**
-   - **Check 12** failed exactly S1 to S4, as the proposal said it would. `README.md:3`, `.claude-plugin/plugin.json:5` and `.claude-plugin/marketplace.json:3` and `:12` now read "with human gates at (a), (b) and (e)", the study's wording.
-   - **Check 11** failed five ranks, not four. The study's section 1.6 counted `docs/proposals/llm-wiki-adoption.md:92` as annotated, but its "after R28, rank 19" stood outside the annotations. The five are:
-     - `docs/decisions/36.md:23`;
-     - `docs/proposals/template-cli-default.md:39`;
-     - `docs/proposals/template-copies-refresh.md:48` (two ranks);
-     - `docs/proposals/llm-wiki-adoption.md:92`.
-   - Each sentence now names the candidate alone, and a dated annotation beside it keeps the text that stood there (choice 126).
-4. **The study's annotations** in `docs/reviews/2026-10-22-sources-of-truth.md`:
-   - section 2's "Who merges" row: `OPERATING_MODEL.md:28` keeps choice 251 written out, checked by a test (choice 253, point 5);
-   - S1's "the next plugin PR": fixed here (choice 253, point 6);
-   - section 1.6: the fifth rank.
-5. **Tests.** Four in layer 1: ranks in proposals and decisions; session files on each side of the cutover; retired terms, failing and passing; the terms' sources. The repository's own lint test covers layer 2.
+1. **`python tasks.py verify`, the one owner of the local checks** (choice 252, point 7).
+   - It reads `commands` from `sdlc.yaml` and runs build, lint, the docs lint, test, and `claude plugin validate .` when the CLI is on the path. It holds no list of its own (choice 253, point 2).
+   - Each command is split at `&&` and run as argument lists, with `python` replaced by this interpreter, so the same line runs in cmd.exe, PowerShell and bash.
+   - `python -m pytest` runs as `tasks.py test`: the same pytest, spread over the cores.
+   - Every step runs, each verdict is printed, and one red step fails the task.
+   - Its first live use, on this branch: build, lint, docs-lint, test (2354 passed) and plugin validate all "ok".
+2. **docs-lint check 13.** The Build, Test and Lint lines under `CLAUDE.md`'s "Verifying your work" must quote `sdlc.yaml: commands` word for word. A line that is missing or differs fails. It passes on `main` today: `CLAUDE.md:54` and `sdlc.yaml:21` hold the same build command.
+3. **CI runs `python tasks.py verify`** (choice 253, point 4).
+   - Both jobs of `framework-checks.yml` changed, and the Windows shards keep `FRAMEWORK_TEST_SHARD`.
+   - In CI, `claude plugin validate .` reports "not run": no CLI is installed there.
+   - The two tests that pin the run line (`tests/test_templates.py`) follow the decision.
+4. **`README.md:5`** names `verify`. The study's note that CI runs no `compileall` is annotated (choice 126).
+5. **Tests.** The new `tests/test_verify.py`:
+   - the commands read from `sdlc.yaml`;
+   - the argument lists;
+   - every step run, and a red one failing the task;
+   - another test command run as written, and the CLI's validate;
+   - check 13 each way;
+   - this repository's lines (layer 2).
 
-## The owner's decision (2026-10-22)
-254. **Check 12's two open points are taken as recommended** (the owner, "Both recommendations accepted", on this PR's two points):
-    1. `docs/BUILD_GUIDE.md` stays out of check 12. It is the version-3 plan with its annotations (choice 252, point 6);
-    2. check 12's pass words stay wider than the proposal's three: "removed", "gone" and a dated annotation also mark a term as no longer live.
+## Points to know
+- **Until the owner's row 3, `verify` compiles `plugin tests tasks.py` only**, as `sdlc.yaml:21` says. `.github/scripts` joins when rows 2 and 3 change `CLAUDE.md:54` and `sdlc.yaml:21` together. Check 13 fails if only one of the two changes.
+- **`CLAUDE.md`'s "Commands" lines (8 to 11)** are not read by check 13. The owner's row 1 removes their copies of the Test and Lint lines.
 
-## The points the owner settled (choice 254)
-- **`docs/BUILD_GUIDE.md` stays out of check 12.** Recommendation: keep it out. It is history with annotations, and the owner froze its JSON twin for the same reason (choice 252, point 6).
-- **The pass words were widened** from the proposal's three ("retired", "withdrawn", "until 1.0.20") to also take "removed", "gone" and a dated annotation. Without them, check 12 fails `OPERATING_MODEL.md:42` and `:57`, which say the term is gone in other words, and annotated ROADMAP rows such as R12. Recommendation: keep the wider list. Each extra word marks the term as no longer live.
+## Proposed edits for the owner
+From choice 253's record, now due: rows 1 to 4, in one PR, after this PR merges. Row 5 is the owner's #328.
+
+| Link | Row | What is there now | What it must become |
+|---|---|---|---|
+| [CLAUDE.md](https://github.com/luissiviero/sdlc-framework/blob/main/CLAUDE.md?plain=1#L8-L11) | 8-11 | the Test and Lint lines, the task runner line, the "Run tests and lint" line | `- Task runner: python tasks.py <task> — must work on Windows and Linux; python tasks.py verify runs every check a PR needs (HANDOFF.md, standing precondition 1)`, line 11 unchanged; the Test and Lint lines live once, under "Verifying your work" |
+| [CLAUDE.md](https://github.com/luissiviero/sdlc-framework/blob/main/CLAUDE.md?plain=1#L54) | 54 | ``- Build: `python -m compileall -q plugin tests tasks.py` (must finish with no output and exit code 0)`` | ``- Build: `python -m compileall -q plugin tests tasks.py .github/scripts` (must finish with no output and exit code 0)`` |
+| [sdlc.yaml](https://github.com/luissiviero/sdlc-framework/blob/main/sdlc.yaml#L21) | 21 | `  build: "python -m compileall -q plugin tests tasks.py"` | `  build: "python -m compileall -q plugin tests tasks.py .github/scripts"` |
+| [CLAUDE.md](https://github.com/luissiviero/sdlc-framework/blob/main/CLAUDE.md?plain=1#L34) | 34 | `- Events caused by the CI workflow token do not start workflow runs (except workflow_dispatch / repository_dispatch): …` | the same, with `; docs/notes/11.md` after `repository_dispatch` |
 
 ## Left
-- **R65's part 4:** `python tasks.py verify` and check 13 in one PR, then CI on `verify`. The owner's rows 1 to 4 come after it (choice 253, points 2 to 4).
-- **R65's part 5:** `HANDOFF.md`'s skeleton points to `python tasks.py next-free`. The same PR adds the annotation of R65's row (choice 253, point 13).
+- **R65's part 5:** `HANDOFF.md`'s skeleton points to `python tasks.py next-free`, and its precondition 1 to `python tasks.py verify` (choice 252, point 7). The same PR annotates R65's row once (choice 253, point 13).
+- **The Gemini session**, once parts 1 to 5 have merged, before part 6 (carried from `2026-10-22-ccr-6ed8a82e-cxmftx-end.md`).
 - **R65's part 6:** its own plugin patch after R51 merges (choice 252).
-- **The merge-tool deny rule:** the owner's row 5 of #325's record, then a live check (choice 253, point 7).
+- **The merge-tool deny rule:** the owner's #328, then a live check (choice 253, point 7).
 
 ## What the owner does
 | When | Act |
 |---|---|
-| Now | Merge this PR when `Framework checks` is green on its final head. |
-| Now | Merge #328 (row 5 of choice 253's record, the merge-tool deny rule). |
-| Now, any time | The sample's branch `ccr-76f1ceba-idf2w0`, if it is still there; this repository's three are gone (verified, `git fetch --prune` at 23:08 UTC). |
-| After R65's part 4 merges | Rows 1 to 4 of choice 253's record, in one PR. |
+| Now | Merge this PR when `Framework checks` is green on its final head; merge #328. |
+| After this PR merges | Rows 1 to 4 above, in one PR. |

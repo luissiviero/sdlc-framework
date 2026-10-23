@@ -296,7 +296,7 @@ The double check's lesson holds: every row it found was a copy, not an owner, th
 
 **Not drift, and worth naming:**
 - On 2026-10-22, `2cf98e3` and `396e4b4` reached `main` as direct commits by the owner, while `CLAUDE.md:48-49` says the guardrails change "in a reviewed PR". It is a practice under Exempt, not a stale fact. #321's choice 251 closes the path for every login. *[2026-10-22: it closes direct writes to `main`; an API merge by anything acting as the owner's login still goes through (NOTES §57)]*
-- CI's `python tasks.py check` (`framework-checks.yml:91`, `:125`) runs no `compileall`. The `build` command of `sdlc.yaml:21` runs only in a session's local checks.
+- CI's `python tasks.py check` (`framework-checks.yml:91`, `:125`) runs no `compileall`. The `build` command of `sdlc.yaml:21` runs only in a session's local checks. *[2026-10-22, choice 253, point 4: CI runs `python tasks.py verify` since R65's part 4, which runs `sdlc.yaml`'s build command too]*
 
 ## 4. Against ROADMAP R9, R58, R62, choices 126 and 241, and the decisions
 - **R9** (`docs/proposals/state-index.md`):

@@ -1,8 +1,8 @@
 """Task runner for the SDLC framework repo (decision 7: one runner, Windows and Linux).
 
 Usage: python tasks.py <task>
-Tasks: test | lint | format | check | notes-index | decisions-index | choices-index | docs-lint |
-       next-free | help
+Tasks: test | lint | format | check | verify | notes-index | decisions-index | choices-index |
+       docs-lint | next-free | help
 
 Everything runs through ``sys.executable -m ...`` with argument lists (no shell), so the
 same file works in cmd.exe, PowerShell, Git Bash and a Linux runner. ``notes-index`` runs in
@@ -12,7 +12,8 @@ this process: it rewrites ``docs/notes/index.md`` from the notes' frontmatter. S
 ``docs-lint`` (the links, the notes' Claude Code versions and both indexes, ROADMAP R55; the
 frontmatter, decision amendments, proposal statuses, shipped rows, version and PR pairs, moved
 stubs and Portuguese words, ROADMAP R58; a number taken twice, a rank outside ROADMAP and a
-retired term used as a live one, R65). ``next-free`` reads git:
+retired term used as a live one, CLAUDE.md's verifying lines against ``sdlc.yaml``, R65).
+``verify`` runs every check a pull request needs (ROADMAP R65, part 4). ``next-free`` reads git:
 the next free choice, candidate, note, decision and patch on ``main`` and every fetched branch
 ahead of it (ROADMAP R65, part 1).
 """
@@ -22,6 +23,8 @@ from __future__ import annotations
 import importlib.util
 import json
 import re
+import shlex
+import shutil
 import subprocess
 import sys
 from collections.abc import Callable
@@ -72,6 +75,76 @@ def task_check() -> int:
     """lint then test; the pre-commit bar for this repo."""
     rc = task_lint()
     return rc or task_test()
+
+
+# --- the pre-PR set (ROADMAP R65, part 4; choices 252 and 253) -----------------------------
+# One owner for the local checks: `sdlc.yaml: commands` holds the build, test and lint
+# commands, CLAUDE.md's "Verifying your work" quotes them (docs-lint check 13), and `verify`
+# runs them, then the docs lint and `claude plugin validate .` where the CLI is installed.
+# A command is split at `&&` and run as argument lists, `python` being this interpreter, so
+# the same line runs in cmd.exe, PowerShell and bash. The test command `python -m pytest` runs
+# as `tasks.py test`, the same pytest spread over the cores. CI runs `verify` (choice 253).
+SDLC_YAML = ROOT / "sdlc.yaml"
+COMMAND_KEYS = ("build", "test", "lint")
+PYTEST_COMMAND = "python -m pytest"
+
+
+def read_commands(path: Path | None = None) -> dict[str, str]:
+    """``build``, ``test`` and ``lint`` from ``commands`` in ``sdlc.yaml`` ("" when unset)."""
+    import yaml
+
+    data = yaml.safe_load((path or SDLC_YAML).read_text(encoding="utf-8-sig")) or {}
+    commands = data.get("commands") or {}
+    return {key: str(commands.get(key) or "") for key in COMMAND_KEYS}
+
+
+def command_steps(command: str) -> list[list[str]]:
+    """Each ``&&`` part of a command as an argument list, a leading ``python`` replaced by
+    this interpreter."""
+    steps: list[list[str]] = []
+    for part in command.split("&&"):
+        args = shlex.split(part.strip())
+        if args and args[0] == "python":
+            args[0] = sys.executable
+        if args:
+            steps.append(args)
+    return steps
+
+
+def _run_steps(command: str) -> int:
+    rc = 0
+    for args in command_steps(command):
+        print("$", " ".join(args), flush=True)
+        rc = subprocess.call(args, cwd=ROOT) or rc
+    return rc
+
+
+def task_verify() -> int:
+    """Every check a PR needs: sdlc.yaml's build, lint and test, docs-lint, plugin validate."""
+    commands = read_commands()
+    results: list[tuple[str, int | None]] = []
+    for key in ("build", "lint"):
+        results.append((key, _run_steps(commands[key]) if commands[key] else None))
+    results.append(("docs-lint", task_docs_lint()))
+    test = commands["test"]
+    if not test:
+        results.append(("test", None))
+    else:
+        results.append(("test", task_test() if test == PYTEST_COMMAND else _run_steps(test)))
+    claude = shutil.which("claude")
+    if claude:
+        print("$ claude plugin validate .", flush=True)
+        results.append(
+            ("plugin validate", subprocess.call([claude, "plugin", "validate", "."], cwd=ROOT))
+        )
+    else:
+        results.append(("plugin validate", None))
+    for name, rc in results:
+        verdict = (
+            "not run (no command or no claude CLI)" if rc is None else "ok" if rc == 0 else "FAIL"
+        )
+        print(f"verify: {name}: {verdict}")
+    return 1 if any(rc for _, rc in results) else 0
 
 
 # --- the notes index: docs/notes/index.md from the notes' frontmatter -----------------------
@@ -505,6 +578,10 @@ RETIRED_SAID_RE = re.compile(
     r"retired|withdrawn|until 1\.0\.20|removed|\bgone\b|\*\[\d{4}-\d{2}-\d{2}", re.IGNORECASE
 )
 RETIRED_PAGES = ("README.md", "docs/OPERATING_MODEL.md", "docs/ROADMAP.md")
+# check 13: CLAUDE.md's "Verifying your work" quotes `sdlc.yaml: commands` word for word
+# (ROADMAP R65, part 4; choice 253): one line per key, "- Build: `<command>` ..."
+VERIFY_HEADING = "## Verifying your work"
+VERIFY_LINE_RE = re.compile(r"^- (Build|Test|Lint): `([^`]*)`")
 RETIRED_FOLDERS = (".claude-plugin", "template")
 
 
@@ -1032,6 +1109,35 @@ def retired_term_problems(root: Path, terms: list[tuple[str, re.Pattern[str]]]) 
     return problems
 
 
+def verify_line_problems(root: Path) -> list[str]:
+    """Check 13: a line of CLAUDE.md's "Verifying your work" that is missing or differs from
+    ``sdlc.yaml: commands``; nothing when either file is absent."""
+    claude, sdlc = root / "CLAUDE.md", root / "sdlc.yaml"
+    if not claude.is_file() or not sdlc.is_file():
+        return []
+    commands = read_commands(sdlc)
+    quoted: dict[str, tuple[int, str]] = {}
+    inside = False
+    for number, line in enumerate(claude.read_text(encoding="utf-8-sig").splitlines(), 1):
+        if line.startswith("## "):
+            inside = line.strip() == VERIFY_HEADING
+        elif inside and (match := VERIFY_LINE_RE.match(line)):
+            quoted[match.group(1).lower()] = (number, match.group(2))
+    problems: list[str] = []
+    for key in COMMAND_KEYS:
+        if key not in quoted:
+            problems.append(
+                f'commands: CLAUDE.md has no "- {key.title()}:" line under "{VERIFY_HEADING}"'
+            )
+        elif quoted[key][1] != commands[key]:
+            number, text = quoted[key]
+            problems.append(
+                f"commands: CLAUDE.md:{number}: `{text}` differs from sdlc.yaml commands.{key} "
+                f"`{commands[key]}`"
+            )
+    return problems
+
+
 # --- the choices index: docs/progress/choices.md from the records (ROADMAP R65, part 2) -----
 # Where choice N is stated, so that "choice N" opens without a grep (choice 252, point 3). A
 # choice is what check 10 reads; its summary is the item's first bold phrase, which the records
@@ -1178,6 +1284,7 @@ def lint_docs(
     reports.extend(said)
     failures.extend(rank_problems(docs_dir))
     failures.extend(retired_term_problems(root, retired_terms()))
+    failures.extend(verify_line_problems(root))
     choices = docs_dir / "progress" / "choices.md"
     if (docs_dir / "PROGRESS.md").is_file() or choices.exists():
         if not choices.exists() or choices.read_text(encoding="utf-8") != build_choices_index(
@@ -1374,6 +1481,7 @@ TASKS = {
     "lint": task_lint,
     "format": task_format,
     "check": task_check,
+    "verify": task_verify,
     "notes-index": task_notes_index,
     "decisions-index": task_decisions_index,
     "choices-index": task_choices_index,
