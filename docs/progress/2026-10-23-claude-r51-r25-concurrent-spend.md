@@ -74,14 +74,15 @@ A fresh-context review of the branch (the owner's rule, as ROADMAP's 2026-10-16 
 - **The weekly scan's ids**: `scan/route.py` allocates up to three ids in one run and passes `--id`, so its incidents are not reserved. Letting `new-change` reserve them would change the scan's run without a push, so it is left for a PR of its own.
 - **R51 check 8** (the (e) offer withdrawn on a later push, and the (e) run re-run on a push to the default branch for every open build PR): it needs a new trigger. Check 9 already stops an untested merge commit from deploying.
 - **R51 check 11, the other half**: recording every change a release's tip holds. A release that GitHub's queue replaced stays unrecorded until the owner dispatches it with its PR number. The workflow's comment says so.
-- **R25's weekly ceiling** in runs and time on the token: see "What I need from you", item 1.
+- **R25's weekly ceiling** in runs and time on the token: it stays in part 3 (choice 260, #1).
 - **R25 parts 3-5** and **R65's part 6** (choice 252): out of scope.
 
-## What I need from you
-1. **The weekly ceiling.** Choice 257's #5 reads "on the subscription token the weekly ceiling counts runs and time". The proposal puts the ceiling, its ledger across changes, the wait and the run-now label in part 3, after R20's part 2 and with R45's label name. This PR builds what the ceiling will count: every run line records its credential and its time. Say whether the ceiling's enforcement belongs in parts 1-2 after all; if so, name its first values (runs and hours a week).
-2. **The Actions allowance.** The meter uses GitHub Free's 2,000 minutes a month, since a repository token cannot read the account's plan. Say whether your plan has another figure.
-3. **Decision 11's amendment.** The proposal orders a decision file for decisions 11 and 24 before the build. Decision 11's text already parks on a "limit hit", and the outer bounds are limits, so nothing reopens it. Say whether you want the file written in a documentation PR of its own, or a dated note on decision 11 as R7 had.
-4. **The two probe branches** on `origin`, `claude/r51-ghref-probe` and `claude/r51-ghref-probe2`: delete them (the session could not).
+## The owner's choices
+260. **The four questions of this PR, as recommended** (the owner, 2026-10-23, this session's chat: "As recommended", on the session's table of the four questions with a recommendation each):
+    - **#1, the weekly ceiling:** its enforcement stays in R25's part 3, as the proposal orders: it needs the ledger across changes, the wait, the run-now label (its name with R45) and the restart through the digest (after R20's part 2). Parts 1-2 record what it will count: each run line's credential and time. Choice 257's #5 is read that way.
+    - **#2, the Actions allowance:** the meter keeps GitHub Free's 2,000 minutes a month. The owner named no other plan; the recommendation was 3,000 only on GitHub Pro.
+    - **#3, decision 11:** a dated note on decision 11 in this PR, as R7 had, not a decision file in a PR of its own: decision 11 already parks on a limit hit, and the outer bounds are limits. Decision 24's half of the proposal's amendment, the manager's one reset, was built by R10. The note is in `docs/decisions/11.md`.
+    - **#4, the probe branches:** the owner deletes `claude/r51-ghref-probe` and `claude/r51-ghref-probe2`; the session's proxy refused it.
 
 ## The port list
 This PR touches `plugin/ci/run_phase.py`:
