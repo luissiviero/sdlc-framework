@@ -256,7 +256,9 @@ def test_a_job_that_hands_over_no_workflow_token_leaves_the_session_none(app_run
     assert not {"GITHUB_TOKEN", "GH_TOKEN"} & set(session) and _pairs(session) == []
 
 
-def test_the_triage_session_gets_the_session_environment(app_run, tmp_path, monkeypatch):
+def test_the_triage_session_gets_no_github_token(app_run, tmp_path, monkeypatch):
+    """R18, point 5: the triage session reads logs only; neither the App's token nor the
+    workflow token, nor git's credential, reaches it (the record writer runs outside it)."""
     from tests.test_ci import KEY_ENV, Args
 
     seen = {}
@@ -269,8 +271,9 @@ def test_the_triage_session_gets_the_session_environment(app_run, tmp_path, monk
     env = {**os.environ, **KEY_ENV}
     args = Args(root=str(tmp_path), phase="triage", log="build.log", id=None, dry_run=False)
     assert run_phase.run_triage(args, env) == run_phase.EXIT_OK
-    assert seen["GITHUB_TOKEN"] == WORKFLOW and seen["GH_TOKEN"] == WORKFLOW
-    assert app_token.WORKFLOW_TOKEN_ENV not in seen and _basic(APP) not in seen.values()
+    assert not {"GITHUB_TOKEN", "GH_TOKEN", app_token.WORKFLOW_TOKEN_ENV} & set(seen)
+    assert WORKFLOW not in seen.values() and APP not in seen.values()
+    assert _basic(APP) not in seen.values() and _basic(WORKFLOW) not in seen.values()
 
 
 def test_a_target_the_commands_step_runs_finds_no_token(app_run, tmp_path, monkeypatch):

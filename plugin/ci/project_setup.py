@@ -1,6 +1,6 @@
 """Install the project's own toolchain before a phase runs (build guide step 30).
 
-    python framework/plugin/ci/project_setup.py --root . [--ref <git ref>]
+    python framework/plugin/ci/project_setup.py --root . [--ref <git ref>] [--out <file>]
 
 A GitHub-hosted runner carries neither the project nor the tools its targets call: the first
 live design run (2026-09-21) parked at gate (b) because ``python -m pytest`` answered
@@ -259,6 +259,11 @@ def build_parser() -> argparse.ArgumentParser:
             "refs/remotes/origin/main) and run it in the checkout as it is"
         ),
     )
+    p.add_argument(
+        "--out",
+        default=None,
+        help="also write the JSON to this file, which the triage step reads (R18)",
+    )
     return p
 
 
@@ -276,6 +281,12 @@ def main(argv: list[str] | None = None) -> int:
     if code == EXIT_FAILED:
         result["error_line"] = write_error_output(result)
     print(json.dumps(result, indent=2, sort_keys=True))
+    if args.out:  # R18: a failed setup is a file the triage step reads
+        try:
+            text = json.dumps(result, indent=2, sort_keys=True) + "\n"
+            Path(args.out).write_text(text, encoding="utf-8")
+        except OSError as exc:
+            print(f"could not write {args.out}: {exc}", file=sys.stderr)
     return code
 
 
