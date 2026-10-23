@@ -32,9 +32,9 @@ A fresh-context sub-agent reviewed the first version (report only), with experim
 4. **Medium, fixed:** the park text dropped "unless the push is yours" and gave a 10-character sha; it now gives the full sha, says to fetch the ref first and to leave one the release workflow wrote.
 5. **Fixed in part:** an unreadable read after a readable one parks with its own reason; two unreadable reads stay no reason, for the reason above.
 6. and 7. Recorded under "Known limits".
+It also found the `ruff format` failure of the first version, fixed.
 
 A second pass on the fixes (`b955ec3`) found nothing still blocking.
-It also found the `ruff format` failure of the first version, fixed.
 
 ## What I need from you
 1. **`status.yaml`'s `released_*` fields as owner-only fields.** My recommendation: yes, in a small follow-up PR in R44's class. `run_phase.owner_fields` gains `released_at`, `released_pr` and `released_sha`, so a session that writes them parks as one that accepts a risk does; only the release workflow sets them, after the merge.
