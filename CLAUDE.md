@@ -5,9 +5,7 @@ Indexes first: `docs/notes/index.md` lists every verified platform fact, `docs/d
 Every session starts and ends by `HANDOFF.md`: read the newest file in `docs/handoffs/sessions/` and the parallel ones first, write your own at the end, and follow its "Rules for every session".
 
 ## Commands
-- Test: `python -m pytest` (all green; never skip or delete a failing test)
-- Lint: `python -m ruff check . && python -m ruff format --check .` (zero warnings)
-- Task runner: `python tasks.py <task>` — must work on Windows and Linux
+- Task runner: `python tasks.py <task>` — must work on Windows and Linux; `python tasks.py verify` runs every check a PR needs (HANDOFF.md, standing precondition 1)
 Run tests and lint before reporting any task complete, and paste the output. If a test fails, fix the code, not the test.
 
 ## Conventions
