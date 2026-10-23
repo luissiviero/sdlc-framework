@@ -296,10 +296,26 @@ def test_update_seen_round_trip_and_second_occurrence():
         "count": 2,
         "first_change": "0001",
         "last_change": "0002",
+        "changes": ["0001", "0002"],
         "summary": BUG["summary"],
         "file": BUG["file"],
         "last_seen": "2026-09-22T09:00:00Z",
     }
+
+
+def test_seen_record_lists_every_change_a_finding_was_found_in():
+    """R26 part 3: "found in N changes" per proposed CLAUDE.md line, the changes in between
+    kept; a record written before it starts from its first and last change."""
+    sig = fmod.signature(BUG)
+    old = {sig: {"count": 3, "first_change": "0001", "last_change": "0002", "summary": "s"}}
+    record, repeated = fmod.update_seen(old, [BUG], "0004", "2026-10-23T00:00:00Z")
+    assert record[sig]["changes"] == ["0001", "0002", "0004"]
+    assert repeated[0]["changes"] == ["0001", "0002", "0004"]
+    record, repeated = fmod.update_seen(record, [BUG], "0004", "2026-10-23T01:00:00Z")
+    assert record[sig]["changes"] == ["0001", "0002", "0004"] and record[sig]["count"] == 5
+    assert fmod.claude_md_lines(repeated) == [
+        f"- {BUG['summary'].rstrip('.')} (found in 3 changes: 0001, 0002, 0004; bugs)"
+    ]
 
 
 def test_seen_record_path_is_the_projects_changes_folder(tmp_path):
@@ -314,8 +330,8 @@ def test_claude_md_lines_are_one_per_finding_and_deduplicated():
     ]
     lines = fmod.claude_md_lines(repeated)
     assert lines == [
-        f"- {BUG['summary'].rstrip('.')} (seen in changes 0001 and 0003; bugs)",
-        f"- {NIT['summary'].rstrip('.')} (seen in changes 0002 and 0003; compliance)",
+        f"- {BUG['summary'].rstrip('.')} (found in 2 changes: 0001, 0003; bugs)",
+        f"- {NIT['summary'].rstrip('.')} (found in 2 changes: 0002, 0003; compliance)",
     ]
     assert fmod.claude_md_lines([]) == []
 
@@ -424,7 +440,7 @@ def test_cli_validate_writes_the_proposals_on_the_second_occurrence(tmp_path, ca
     result = json.loads(capsys.readouterr().out)
     assert len(result["repeated"]) == 1
     assert result["proposals"] == [
-        f"- {BUG['summary'].rstrip('.')} (seen in changes 0001 and {st.id}; bugs)"
+        f"- {BUG['summary'].rstrip('.')} (found in 2 changes: 0001, {st.id}; bugs)"
     ]
     proposals = second_dir / art.EVIDENCE_DIR / fmod.PROPOSALS_FILE
     assert result["proposals"][0] in proposals.read_text(encoding="utf-8")

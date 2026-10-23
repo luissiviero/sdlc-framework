@@ -33,7 +33,8 @@ Layout of the body, in order:
      the GitHub remote lets us build the URL, else as plain repository paths;
   2a. ``Run:`` the workflow run the phase's evidence came from, when ``evidence/run-<phase>.json``
      names one (decision 29's third answer; nothing by hand);
-  3. ``Counters:`` the two indicators of step 42 - first-pass merge yes/no and fix iterations;
+  3. ``Counters:`` the two indicators of step 42 - "no fix round so far" or "first-pass: no"
+     (a reset count included, R26) and fix iterations;
   4. the proposed ``CLAUDE.md`` lines when the review pass left them (never applied here:
      ``CLAUDE.md`` is a protected path, the owner applies the line in the PR review);
   5. at phase (e), the release note: ``evidence/release-notes.md`` (written by
@@ -693,8 +694,15 @@ def fast_lane_line(root: Path, st: Status, phase: str) -> str:
 
 
 def _counters_line(st: Status) -> str:
-    first_pass = "yes" if st.iterations == 0 else "no"
-    line = f"Counters: first-pass merge: {first_pass} · fix iterations: {st.iterations}"
+    # R26 part 1: the PR is open, so "yes" would only mean no fix round so far; a reset
+    # count (the label, the runner's judged reset or by hand) is never first-pass
+    if st.iterations_reset_at:
+        first_pass = f"first-pass: no (count reset {st.iterations_reset_at})"
+    elif st.iterations == 0:
+        first_pass = "no fix round so far"
+    else:
+        first_pass = "first-pass: no"
+    line = f"Counters: {first_pass} · fix iterations: {st.iterations}"
     if st.panel_calls:  # decision 21: the panel's calls are not fix rounds
         line += f" · panel calls: {st.panel_calls}"
     return line

@@ -245,7 +245,7 @@ python "${CLAUDE_PLUGIN_ROOT}/plugin/pr/cli.py" upsert --root "${CLAUDE_PROJECT_
 The description opens with the ≤5 bullets (what changed and why · evidence status ·
 findings by severity with the nits listed · plan conformance · what needs the owner: an
 approving review = gate (e), review comments = `/sdlc-fix`), the two counters of build guide step 42
-(first-pass merge, fix iterations), the proposed `CLAUDE.md` lines, and the
+("no fix round so far" or "first-pass: no", a reset count included; fix iterations), the proposed `CLAUDE.md` lines, and the
 "## Release note" section quoted from `evidence/release-notes.md`. Label: `sdlc:e-ready`,
 or `sdlc:needs-human` when parked. The PR is waiting for the owner's approving review: the
 approval = gate (e) passed (decision 36); the merge App then merges it (`sdlc-merge.yml`),

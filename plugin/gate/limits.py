@@ -123,10 +123,16 @@ def panel_cap(ctx: GateContext) -> int:
 def classification_for(ctx: GateContext) -> str | None:
     """The adversarial reviewer's routine/non-routine call for this phase, or the latest one
     from an earlier gate (a classification made at (b) tightens (c) and (d))."""
+    return classification_in(ctx.evidence_dir, ctx.phase)
+
+
+def classification_in(evidence_dir: Path, phase: str) -> str | None:
+    """``classification_for`` over an evidence folder: the counters read a shipped change's
+    class the way the cap does (R26 part 2)."""
     from gate.checks import load_verdict
 
-    for phase in (ctx.phase, "d", "c", "b"):
-        data, _ = load_verdict(ctx.evidence_dir / art.ADVERSARIAL_VERDICT.format(phase=phase))
+    for at in (phase, "d", "c", "b"):
+        data, _ = load_verdict(Path(evidence_dir) / art.ADVERSARIAL_VERDICT.format(phase=at))
         if data is not None:
             return data.get("classification")
     return None

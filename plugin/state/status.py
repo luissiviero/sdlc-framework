@@ -294,6 +294,17 @@ class Status:
         self.touch()
         self.validate()
 
+    def set_iterations(self, count: int) -> None:
+        """The by-hand count (``gate/cli.py set-iterations``, the owner's): a lower count is a
+        reset, marked as the label's and the runner's are (R26 part 1), so the change never
+        reads as first-pass. ``iterations_reset_by`` is cleared: no label was applied, and the
+        gate's ``owner_actions`` check reads the commit's author for the act, as for any
+        by-hand act; a commit by the automation identity with no actor parks."""
+        if count < self.iterations:
+            self.iterations_reset_at = _now()
+            self.iterations_reset_by = None
+        self.iterations = count
+
     def bump_iteration(self) -> int:
         self.iterations += 1
         self.touch()

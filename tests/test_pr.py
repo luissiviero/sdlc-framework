@@ -300,7 +300,7 @@ def test_five_bullets_at_phase_a_describe_the_intent(project):
     # phase (a) links only the artifact that exists, and carries the counters
     assert f"Links: changes/{CHANGE_DIR_NAME}/intent.md" in body
     assert "spec.md" not in body and "gate-a.json" not in body
-    assert "Counters: first-pass merge: yes · fix iterations: 0" in body
+    assert "Counters: no fix round so far · fix iterations: 0" in body
 
 
 def test_intent_pr_names_the_fast_lane_unless_opened_as_a_draft(project):
@@ -511,7 +511,7 @@ def test_phase_e_release_note_and_counters(project):
     assert "an approving review = approve (gate (e), decision 36)" in body
     assert "## Release note" in body
     assert "returns a rounded percentage" in body.split("## Release note")[1]
-    assert "Counters: first-pass merge: yes · fix iterations: 0" in body
+    assert "Counters: no fix round so far · fix iterations: 0" in body
     # relative repository paths when the fixture has no GitHub remote
     assert f"changes/{CHANGE_DIR_NAME}/intent.md" in body
     assert f"changes/{CHANGE_DIR_NAME}/evidence/gate-e.json" in body
@@ -654,7 +654,7 @@ def test_counters_after_a_fix_round(project):
     status_mod.write_status(change, st)
     gate_json(change, "c", "continue", None)
     body = desc.build_description(root, "0001", "c")
-    assert "Counters: first-pass merge: no · fix iterations: 3" in body
+    assert "Counters: first-pass: no · fix iterations: 3" in body
 
 
 def test_claude_md_proposals_block(project):
@@ -1283,7 +1283,7 @@ def test_phase_f_bullets_describe_the_finding_the_route_and_the_triage(project):
     assert lines[3].endswith("incident route, fix change")
     assert "merge = fix now" in lines[4] and "close with a comment = dismiss" in lines[4]
     assert f"changes/{CHANGE_DIR_NAME}/evidence/detection.json" in body
-    assert "Counters: first-pass merge: yes" in body
+    assert "Counters: no fix round so far" in body
     # a parked gate (Go requested) shows "What I need from you"
     write(
         change / "evidence" / "gate-f.json",
@@ -1391,8 +1391,10 @@ def test_counters_over_the_change_folders_and_the_digest_section(project, tmp_pa
     assert counts["incidents_merged"] == 1 and counts["incidents_shipped"] == 1
     assert counts["dismissals"] == 1 and counts["dismissals_by_kind"] == {"detect": 1, "scan": 0}
     md = counters.render(counts)
-    assert md.startswith("## Counters") and "| First-pass merge share (p.17) | " in md
-    assert "| Incidents merged (fix now) / shipped (p.45) | 1 / 1 |" in md
+    assert md.startswith("## Counters") and "| First-pass merge share | " in md
+    assert (
+        "| Incidents merged (fix now) / shipped | 1 / 1 | Closing the loop (p.45), lagging |" in md
+    )
     assert "never reach the default branch" in md
     assert "1 change folder(s) abandoned after a merge, left out." in md
     digest = digest_mod.render_digest([], "2026-09-25T06:00:00Z", md)
@@ -1401,6 +1403,113 @@ def test_counters_over_the_change_folders_and_the_digest_section(project, tmp_pa
     assert digest.index("## Waiting at a human gate") < digest.index("## Counters")
     assert digest.rstrip().endswith("Generated 2026-09-25T06:00:00Z.")
     assert counters.main(["--root", str(root), "--json"]) == 0
+
+
+def _ship(change_dir, st, classification=None, growth=None):
+    """Mark a change shipped (phase e), with the plan's class in an adversarial verdict and
+    the plan's growth in the gate-e record when given."""
+    st.set_phase("e")
+    status_mod.write_status(change_dir, st)
+    evidence = change_dir / art.EVIDENCE_DIR
+    evidence.mkdir(parents=True, exist_ok=True)
+    if classification:
+        verdict = {"schema_version": 1, "phase": "e", "head": "f" * 40, "verdict": "continue",
+                   "reasons": [], "classification": classification,
+                   "classification_reasons": []}  # fmt: skip
+        (evidence / art.ADVERSARIAL_VERDICT.format(phase="e")).write_text(
+            json.dumps(verdict), encoding="utf-8"
+        )
+    if growth is not None:
+        growth_record = {"plan_growth": {"added": growth, "removed": []}}
+        record = {"checks": [{"name": "plan_sync", "ok": True, "details": growth_record}]}
+        (evidence / art.GATE_RESULT.format(phase="e")).write_text(
+            json.dumps(record), encoding="utf-8"
+        )
+
+
+def test_counters_true_definitions_class_split_and_plan_growth(project):
+    """R26 parts 1 and 2 and choice 257's ports: a reset change by any of the three routes is
+    never first-pass and is named under the table; an expired dismissal is not in force; the
+    first-pass share and the fix iterations are split by the plan's class with their "n of
+    m"; the plan's growth since gate (b) is counted; every row names its play."""
+    from detect import dismissals
+    from pr import counters
+
+    root, change = project
+    st = status_mod.read_status(change)
+    _ship(change, st, "routine", growth=["src/a.py", "src/b.py"])  # 0001: first pass
+    by_label, st2 = status_mod.new_change(root, "Label reset")
+    st2.bump_iteration()
+    st2.record_owner_label(c.RESET_ITERATIONS_LABEL, "owner")
+    _ship(by_label, st2, "non-routine")
+    by_hand, st3 = status_mod.new_change(root, "Hand reset")
+    st3.bump_iteration()
+    st3.set_iterations(0)
+    _ship(by_hand, st3, "non-routine", growth=[])
+    by_runner, st4 = status_mod.new_change(root, "Runner reset")
+    st4.iterations_reset_by, st4.iterations_reset_at = "sdlc-runner:1/1", "2026-10-23T00:00:00Z"
+    _ship(by_runner, st4)  # no verdict: unclassified
+    path = dismissals.path_for(root)
+    record = dismissals.add(
+        dismissals.load(path), "a" * 16, kind="detect", reason="noise", by="o", change_id="0003"
+    )
+    record = dismissals.add(
+        record, "b" * 16, kind="scan", reason="old", by="o", change_id="0003", until="2020-01-01"
+    )
+    dismissals.save(path, record)
+
+    counts = counters.collect(root)
+    ids = {st.id: name for st, name in ((st2, "label"), (st3, "hand"), (st4, "runner"))}
+    assert counts["reset_shipped"] == sorted(ids)
+    assert counts["first_pass_merges"] == 1  # 0001 only (0000-sdlc-init is not shipped)
+    assert counts["by_class"]["routine"]["first_pass_merges"] == 1
+    assert counts["by_class"]["routine"]["shipped"] == 1
+    assert counts["by_class"]["non-routine"] == {
+        "shipped": 2, "first_pass_merges": 0, "first_pass_share": 0.0,
+        "fix_iterations_mean": 0.0,
+    }  # fmt: skip
+    assert counts["by_class"]["unclassified"]["shipped"] == 1
+    assert counts["plan_grown"] == {"0001": 2}
+    assert counts["dismissals"] == 1 and counts["dismissals_expired"] == 1
+    assert counts["dismissals_by_kind"] == {"detect": 1, "scan": 0}
+
+    md = counters.render(counts)
+    assert (
+        "| First-pass merge share, routine plans | 100% (1 of 1) | Plan mode (p.17), leading |"
+        in md
+    )
+    assert "| First-pass merge share, non-routine plans | 0% (0 of 2) |" in md
+    assert "| Fix iterations per shipped change, non-routine plans | 0.0 (2 of 4 shipped) |" in md
+    assert "| Plan grown since gate (b) (shipped changes) | 1 of 4 (2 files) |" in md
+    assert "| Panel calls, all changes (decision 21) | 0 | — |" in md
+    assert f"Reset, never first-pass: {', '.join(sorted(ids))}." in md
+    assert "1 shipped change(s) carry no class" in md
+    assert "1 expired dismissal(s), not in force." in md
+    assert "DORA, built in a change of its own" in md
+
+
+def test_counters_name_a_class_with_no_shipped_change(project):
+    """The settle table: a class with no shipped change reads "0 of 0", never a rate."""
+    from pr import counters
+
+    md = counters.render(counters.collect(project[0]))
+    assert "| First-pass merge share, routine plans | 0 of 0, no routine plan shipped yet |" in md
+    assert "| First-pass merge share, non-routine plans | 0 of 0, no non-routine plan " in md
+
+
+def test_counters_line_of_an_open_pr_after_a_reset(project):
+    """R26 part 1: a reset count never reads as first-pass on the PR either."""
+    root, change = project
+    st = status_mod.read_status(change)
+    st.bump_iteration()
+    st.record_owner_label(c.RESET_ITERATIONS_LABEL, "owner")
+    status_mod.write_status(change, st)
+    gate_json(change, "c", "continue", None)
+    body = desc.build_description(root, "0001", "c")
+    assert (
+        f"Counters: first-pass: no (count reset {st.iterations_reset_at}) · fix iterations: 0"
+        in body
+    )
 
 
 def test_digest_lists_the_runbook_and_dismissal_prs_under_the_incident_label():
@@ -1615,7 +1724,7 @@ def test_counters_leave_out_a_change_abandoned_on_its_remote_branches(project, t
     assert not status_mod.read_status(second).abandoned  # main never learns of it
     counts = counters.collect(root)
     assert counts["incidents_merged"] == 0 and counts["abandoned"] == 1
-    assert "| Incidents merged (fix now) / shipped (p.45) | 0 / 0 |" in counters.render(counts)
+    assert "| Incidents merged (fix now) / shipped | 0 / 0 |" in counters.render(counts)
 
 
 def test_log_state_names_a_log_the_session_left_to_the_runner(tmp_path):

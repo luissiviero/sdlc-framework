@@ -401,6 +401,22 @@ def _brief_text(entry: dict[str, Any]) -> str:
     )
 
 
+def plan_grown(change_dir: Path, phase: str) -> list[str]:
+    """The files the plan gained since gate (b), as the newest gate record the phase's PR
+    covers holds them (``plan_sync``'s ``details.plan_growth.added``; R26, choice 257: R60's
+    port, no park and no cap change). [] at (a) and (b) and before any such record."""
+    for gate_phase in reversed(BANNER_PHASES.get(phase, ())):
+        if gate_phase not in ("c", "d", "e"):
+            continue
+        for check in (_gate_record(change_dir, gate_phase) or {}).get("checks") or []:
+            if isinstance(check, dict) and check.get("name") == "plan_sync":
+                growth = (check.get("details") or {}).get("plan_growth")
+                added = growth.get("added") if isinstance(growth, dict) else None
+                if isinstance(added, list):
+                    return [str(p) for p in added if str(p).strip()]
+    return []
+
+
 def banner_lines(change_dir: Path, phase: str, st: Any) -> list[str]:
     """The banner's risk lines for the phase's PR, or [] when nothing hit. The first line
     carries ``BANNER_HEADING``; each item's line starts with ``- `<item>```, which
@@ -411,13 +427,22 @@ def banner_lines(change_dir: Path, phase: str, st: Any) -> list[str]:
         for drop in declared_drops(_gate_record(change_dir, gate_phase)):
             if drop not in declared:
                 declared.append(drop)
-    if not entries and not declared:
+    grown = plan_grown(change_dir, phase)
+    if not entries and not declared and not grown:
         return []
-    asked = new_items(entries)
-    head = f"{BANNER_HEADING}: this change touches risk-list items."
-    if asked:
+    if entries or declared:
+        head = f"{BANNER_HEADING}: this change touches risk-list items."
+    else:
+        head = f"{BANNER_HEADING}: the plan changed after you approved it at gate (b)."
+    if new_items(entries):
         head += " " + BANNER_ASK.get(phase, BANNER_ASK["e"])
     lines = [head]
+    if grown:
+        n = len(grown)
+        listed = ", ".join(f"`{p}`" for p in grown[:5]) + (" …" if n > 5 else "")
+        lines.append(
+            f"- The plan grew by {n} file{'s' if n != 1 else ''} since gate (b): {listed}."
+        )
     for entry in entries:
         where = ", ".join(entry["where"][:5]) + (" …" if len(entry["where"]) > 5 else "")
         if entry.get("accepted"):
