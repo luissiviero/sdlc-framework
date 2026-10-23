@@ -6,7 +6,7 @@
 - the files those carry, by reference, not re-verified.
 
 ## Where the project stands
-- **Framework `main` is at `9554cf4`** (#369, the owner's `Edit(/policies/**)` in `template/.claude/settings.json`), on plugin **1.0.35** (verified, `git log -1 origin/main` and `git show origin/main:.claude-plugin/plugin.json` after `git fetch origin`, read at 16:40 UTC).
+- **Framework `main` is at `9ffd7c3`** (#368, R18), on plugin **1.0.36** (verified, `git log -1 origin/main` after `git fetch origin`, read at 16:54 UTC); this branch started from `9554cf4` (#369, the owner's `Edit(/policies/**)` in `template/.claude/settings.json`, plugin 1.0.35) and has `main` merged in with a merge commit.
 - **This PR** adds the rule to the preflight's `REQUIRED_DENY` as plugin 1.0.38 (1.0.36 is held by lane A's R18, 1.0.37 by lane B's R64, #370, which took it first); its record is `docs/progress/2026-10-23-claude-preflight-policies-deny.md`.
 
 ## Preconditions of the moment
