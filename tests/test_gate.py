@@ -329,12 +329,16 @@ def test_spec_header_render_and_intent_title():
     assert fields == (
         "Change id: 0001. Status: proposed. Produced by: sdlc plugin 0.1.0, /sdlc-design "
         "prompt v1 (article p.14). Skills: coding-standards, security-baseline "
-        "(plugin 0.1.0); overrides: none"
+        "(plugin 0.1.0); overrides: none; policy sources: none"
     )
     assert all(f in fields for f in art.SPEC_HEADER_FIELDS)
     assert art.DESIGN_PROMPT_VERSION == "v1"
     overridden = art.render_spec_header("x", "0002", "1.2.3", ["a", "b"], ["b"])
-    assert overridden.endswith("Skills: a, b (plugin 1.2.3); overrides: b")
+    assert overridden.endswith("Skills: a, b (plugin 1.2.3); overrides: b; policy sources: none")
+    sourced = art.render_spec_header(
+        "x", "0003", "1.2.3", ["a"], [], [("policies/a.md", "0123456789ab")]
+    )
+    assert sourced.endswith("overrides: none; policy sources: policies/a.md@0123456789ab")
     # the header a spec carries is the one the gate accepts
     assert art.missing_sections(SPEC, art.SPEC_SECTIONS) == []
     assert all(f in SPEC.split("## ", 1)[0] for f in art.SPEC_HEADER_FIELDS)
@@ -2456,7 +2460,20 @@ def test_gate_cli_spec_header(project, capsys, tmp_path):
     rc = gate_cli.main(["spec-header", "--root", str(root), "--id", "0001"])
     out = json.loads(capsys.readouterr().out)
     assert rc == 0 and out["overrides"] == ["coding-standards"]
-    assert out["header"].endswith("overrides: coding-standards")
+    assert out["header"].endswith("overrides: coding-standards; policy sources: none")
+    # R27: the owner's policy source in force, with the commit that last changed it
+    write(root / "policies" / "security-baseline.md", "Every endpoint needs a login.\n")
+    gate_cli.main(["spec-header", "--root", str(root), "--id", "0001"])
+    out = json.loads(capsys.readouterr().out)
+    assert out["policy_sources"] == [
+        {"path": "policies/security-baseline.md", "commit": "uncommitted"}
+    ]
+    git(root, "add", "policies/security-baseline.md")
+    git(root, "commit", "-q", "-m", "owner: the security policy")
+    sha = git(root, "rev-parse", "HEAD").strip()[:12]
+    gate_cli.main(["spec-header", "--root", str(root), "--id", "0001"])
+    out = json.loads(capsys.readouterr().out)
+    assert out["header"].endswith(f"policy sources: policies/security-baseline.md@{sha}")
     # no intent.md: the title falls back to status.yaml
     (change / "intent.md").unlink()
     gate_cli.main(["spec-header", "--root", str(root), "--id", "0001"])

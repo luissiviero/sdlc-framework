@@ -17,7 +17,7 @@ before them (Rules, "A quick intent").
 
 ```markdown
 # Spec: <short title, the same as the intent's>
-Change id: <id>. Status: proposed. Produced by: sdlc plugin <version>, /sdlc-design prompt v1 (article p.14). Skills: <policy skills applied, comma-separated> (plugin <version>); overrides: none | <project skills under .claude/skills/ that replaced a plugin skill>.
+Change id: <id>. Status: proposed. Produced by: sdlc plugin <version>, /sdlc-design prompt v1 (article p.14). Skills: <policy skills applied, comma-separated> (plugin <version>); overrides: none | <project skills under .claude/skills/ that replaced a plugin skill>; policy sources: none | <policies/<skill>.md@<commit>, one per owner source in force>.
 
 ## Requirements
 <what the change must do and must not do, one requirement per bullet, each checkable; the
@@ -47,8 +47,9 @@ UI, the metric and its threshold; for a change that touches a screen, the Mock: 
 - **Header.** The second line is rendered by
   `python "${CLAUDE_PLUGIN_ROOT}/plugin/gate/cli.py" spec-header --root . --id <id>`;
   paste it as printed. It records the pinned plugin version from `sdlc.yaml` and the policy
-  skills in force, so the spec, the prompt and the skill versions are logged together
-  (p.14). The gate parks a spec whose header lacks `Change id:` or `Produced by:`.
+  skills in force, with the commit of each owner policy source in `policies/` (R27), so the
+  spec, the prompt, the skill versions and the policy text are logged together (p.14); a
+  source not committed yet reads `@uncommitted`. The gate parks a spec whose header lacks `Change id:` or `Produced by:`.
 - **Concerns fail closed** (PROGRESS choice 14): every list item under "## Flagged concerns"
   is an open concern unless it starts with `[x]`, `closed`, `resolved` or `decided`. The gate
   parks the change while any concern is open. To close one, edit the item so it starts with

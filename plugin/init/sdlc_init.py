@@ -783,8 +783,9 @@ def run(args) -> dict:
         ".claude/settings.json",
     )
 
-    # REVIEW.md, changes/README.md, evals/, bands.yaml, lessons/: create only (owner-edited
-    # afterwards; lessons/ is the incident record of build guide step 36)
+    # REVIEW.md, changes/README.md, evals/, bands.yaml, lessons/, policies/: create only
+    # (owner-edited afterwards; lessons/ is the incident record of build guide step 36;
+    # policies/ holds the owner's policy sources, R27, and starts with its README only)
     for rel in (
         "REVIEW.md",
         "changes/README.md",
@@ -793,6 +794,7 @@ def run(args) -> dict:
         "evals/check.py",  # the p.30 check.sh in Python (build guide step 35; plugin 0.2.19)
         "bands.yaml",
         "lessons/README.md",
+        "policies/README.md",
     ):
         target = root / rel
         if target.exists():
@@ -981,6 +983,8 @@ The owner; this repository's CLAUDE.md, REVIEW.md, sdlc.yaml and .claude/setting
 Only the owner merges to main. No bypass-permissions mode. Guardrail files are protected
 paths from this change on. A test that needs a service the CI runner does not start (a
 database, a queue) is deselected until the owner adds the service to the phase workflows.
+`policies/` starts empty but for its README: the owner's policy sources, one file per policy
+skill, are the owner's to write (R27); until one exists, its skill applies its generic rules.
 
 ## Open questions
 - Detection notes: {"; ".join(det.notes) if det.notes else "none"}
