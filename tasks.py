@@ -16,7 +16,8 @@ retired term used as a live one, CLAUDE.md's verifying lines against ``sdlc.yaml
 ``verify`` runs every check a pull request needs (ROADMAP R65, part 4). ``next-free`` reads git:
 the next free choice, candidate, note, decision and patch on ``main`` and every fetched branch
 ahead of it (ROADMAP R65, part 1). ``version-check`` fails a branch that bumps ``plugin.json``
-to a version ``main`` already holds or a tag already has (ROADMAP R5's race, choice 257).
+to a version ``main`` already holds or a tag already has (ROADMAP R5's race, choice 257), or
+that a fetched open branch bumped to first (choice 265).
 """
 
 from __future__ import annotations
@@ -1543,16 +1544,73 @@ def version_problems(root: Path) -> tuple[list[str], list[str]]:
         main_shown = _show("patch", on_main)
         name = ref.split("/", 2)[2]
         return [f"the branch bumps to {shown}, not above {name}'s {main_shown}: {hint}"], []
+    failures, reports = _open_branch_problems(root, base, head, shown, hint)
+    if failures:
+        return failures, reports
     tagged = tag_exists(root, shown)
     if tagged:
-        return [f"the branch bumps to {shown}, and v{shown} is already tagged: {hint}"], []
+        return [f"the branch bumps to {shown}, and v{shown} is already tagged: {hint}"], reports
     if tagged is None:
-        return [], [f"v{shown}'s tag not checked: no tag here and origin did not answer"]
-    return [], []
+        reports.append(f"v{shown}'s tag not checked: no tag here and origin did not answer")
+    return [], reports
+
+
+# An open branch that bumps to the same version is a clash before either merges (choice 265).
+# The branch whose bump came first keeps the version; the later one fails here and renumbers.
+# Only the branches this clone has fetched are seen, so `git fetch origin` before `verify`;
+# CI fetches the pull request alone and sees none. A branch built on this one, or one this
+# branch is built on, shares the bump and is no clash.
+
+
+def _bump_key(root: Path, base: str, tip: str, version: tuple[int, ...]) -> tuple[int, str]:
+    """(committer time, commit) of the earliest commit in ``base..tip`` that brings ``version``
+    (none of its parents holds it); the commit breaks a tie in time."""
+    lines = _git(root, "rev-list", "--parents", f"{base}..{tip}").decode().splitlines()
+    keys = []
+    for commit, *parents in (line.split() for line in lines):
+        if _version_at(root, commit) != version:
+            continue
+        if version in {_version_at(root, parent) for parent in parents}:
+            continue
+        stamp = _git(root, "show", "-s", "--format=%ct", commit).decode().strip()
+        keys.append((int(stamp), commit))
+    return min(keys) if keys else (2**63, tip)
+
+
+def _is_ancestor(root: Path, older: str, newer: str) -> bool:
+    try:
+        _git(root, "merge-base", "--is-ancestor", older, newer)
+    except subprocess.CalledProcessError:
+        return False
+    return True
+
+
+def _open_branch_problems(
+    root: Path, base: str, head: tuple[int, ...], shown: str, hint: str
+) -> tuple[list[str], list[str]]:
+    """(failures, reports) for the fetched branches ahead of main that bump to ``head`` too."""
+    _, _, ahead = branches_ahead(root)
+    own = _git(root, "rev-parse", "HEAD^{commit}").decode().strip()
+    mine = _bump_key(root, base, own, head)
+    failures, reports = [], []
+    for commit, names in sorted(ahead.items()):
+        if commit == own or _version_at(root, commit) != head:
+            continue
+        if _is_ancestor(root, commit, own) or _is_ancestor(root, own, commit):
+            continue
+        if not version_bumped(root, base, commit):
+            continue
+        shown_names = ", ".join(names)
+        if _bump_key(root, base, commit, head) < mine:
+            failures.append(f"the branch bumps to {shown}, which {shown_names} took first: {hint}")
+        else:
+            reports.append(f"{shown} is also taken by {shown_names}, later: that branch renumbers")
+    return failures, reports
 
 
 def task_version_check() -> int:
-    """Fail a branch that bumps plugin.json to a version main holds or a tag already has."""
+    """Fail a branch that bumps plugin.json to a version main holds, a tag already has, or a
+    fetched open branch bumped to first."""
     try:
         failures, reports = version_problems(ROOT)
     except (OSError, subprocess.CalledProcessError) as error:
