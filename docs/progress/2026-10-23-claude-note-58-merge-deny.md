@@ -1,4 +1,4 @@
-# Progress — note 58: the merge-tool deny rule binds a cloud session; the `gh` path left open (2026-10-23)
+# Progress — note 58: the merge-tool deny rules bind a cloud session, the GitHub tools and `gh` alike (2026-10-23)
 
 This session ran on branch `claude/note-58-merge-deny`, from `main` at `26f03c1` (#336), rebuilt on #337's branch (`2cea05e`) so that it follows choice 259. It is the session of R65's parts 1 to 5. The owner said "Continue" after part 5 merged.
 
@@ -21,10 +21,13 @@ Under choice 259 (#337), this record is a file of its own, named as the session'
   - Once the checkout held `main` at `26f03c1`, the harness withdrew both. `ToolSearch` returns the other GitHub tools but not these two.
   - The user-level settings deny neither, so the project file is the rule's only source.
   - The session never called a merge tool.
-- **The `gh` path is not verified** (note 58). In this container `gh` reads GitHub through the session's proxy (`gh run view` worked), although its own token is invalid. Whether it could merge is not known: the only test is a merge attempt, which this session did not make. Its read of `gh api user` was denied by the permission system, and the session did not work around that.
+- **The `gh` path, closed by the owner's #339 and checked** (verified, note 58).
+  - In this container `gh` reads GitHub through the session's proxy (`gh run view` worked), although its own token is invalid. Whether it could merge was never tested: the only test is a merge attempt.
+  - The owner took this PR's proposed row as #339 (`9076e85`, merged at 03:05 UTC).
+  - On that checkout, at 03:07 UTC, `gh pr merge --help` and `gh api --help` were refused before they ran, and `gh pr --help` ran. The `--help` forms could merge nothing even had the rules not bound.
 
 ## Proposed edits for the owner
-One row, recommended, closing the `gh` path the same way. After it merges, a session checks live that a `gh pr merge` command is refused before it runs.
+One row, recommended, closing the `gh` path the same way. *[2026-10-23: taken by the owner as #339 and checked live, note 58]*
 
 | Link | Row | What is there now | What it must become |
 |---|---|---|---|
@@ -41,4 +44,3 @@ One row, recommended, closing the `gh` path the same way. After it merges, a ses
 | When | Act |
 |---|---|
 | Now | Merge #337, then this PR when `Framework checks` is green on its final head. |
-| Now, recommended | The row above (the `gh` path). |
