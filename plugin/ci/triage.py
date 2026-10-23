@@ -252,19 +252,22 @@ def failed_run_record(
 
 
 def _git(root: Path, args: list[str], stdin: str | None = None) -> str | None:
+    """stdout of one git plumbing call, or None. ``stdin`` goes in as UTF-8 bytes: in text
+    mode Windows writes ``\r\n`` for ``\n``, and ``git mktree`` then names the record
+    ``failed-run.json\r`` (the Windows job of the first push of 1.0.36)."""
     try:
         proc = subprocess.run(
             ["git", *args],
             cwd=str(root),
-            input=stdin,
+            input=stdin.encode("utf-8") if stdin is not None else None,
             capture_output=True,
-            text=True,
-            encoding="utf-8",
             timeout=60,
         )
     except (OSError, subprocess.SubprocessError):
         return None
-    return proc.stdout.strip() if proc.returncode == 0 else None
+    if proc.returncode != 0:
+        return None
+    return proc.stdout.decode("utf-8", errors="replace").strip()
 
 
 def write_record_ref(root: Path, record: dict[str, Any], env: dict[str, str]) -> dict[str, Any]:

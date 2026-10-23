@@ -60,6 +60,9 @@ A general-purpose agent in a fresh context reviewed the diff against `origin/mai
 7. **S6: the runs list was one page.** Up to five pages now; the refs' pruning is a known limit.
 8. **Nits**: no session for a reason the runner already gave (N1); the `--out` file on the usage-error exit (N3); the paragraph's mark names the full sha (N4, `tests/test_release.py`); the template test checks each failed step's condition (N5). N2 (a setup that crashes before writing its file reads as "the runner did not finish") stays: the record still lists the run, with the setup's step red in Actions.
 
+## CI
+The Windows job of the first push (`bd15819`, [job 120518500812](https://github.com/luissiviero/sdlc-framework/actions/runs/39984018585/job/120518500812)) failed `test_a_red_run_writes_its_failed_run_record_on_its_own_ref`: the record writer passed its `git mktree` input in text mode, which Windows writes with `\r\n`, so the tree named the file `failed-run.json\r`. `triage._git` now passes bytes.
+
 ## Proposed edits for the owner
 None: this PR touches no guardrail file.
 
