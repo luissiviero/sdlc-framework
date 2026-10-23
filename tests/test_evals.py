@@ -956,7 +956,7 @@ def test_a_case_s_command_check_runs_without_the_model_credentials(tmp_path, mon
 
 
 def test_on_a_runner_a_case_s_session_runs_sandboxed_without_the_credentials():
-    """R44 (I1, the review of 1.0.26): a pull request sets a case's tools; on a runner its
+    """R44 (I1, the review of 1.0.27): a pull request sets a case's tools; on a runner its
     session is sandboxed or does not run, and its shell commands find no model credential."""
     config = {"permission_mode": "acceptEdits", "max_turns": 5, "budget_usd": 1, "tools": "Read"}
     argv = run.compose("claude", "p", config, Path("/f"), {"GITHUB_ACTIONS": "true"})

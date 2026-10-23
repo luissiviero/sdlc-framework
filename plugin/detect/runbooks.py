@@ -803,7 +803,7 @@ def _approved_tree(root: Path, approved: str) -> Path:
             if (root / keep).is_dir():
                 shutil.copytree(root / keep, tree / keep, symlinks=True)
     except BaseException:
-        _drop_tree(root, tree)  # never leave a registered worktree behind (the 1.0.26 review)
+        _drop_tree(root, tree)  # never leave a registered worktree behind (the 1.0.27 review)
         raise
     return tree
 

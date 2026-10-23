@@ -120,7 +120,7 @@ def locked_change_ids(root: str, branch: str, git=_git) -> list[str]:
     session left it (a detached HEAD, a branch of its own), every local ``sdlc/<id>/c|d|e``
     branch that contains HEAD and, on a runner, every one HEAD contains, so a commit on the
     session's own branch does not lift it (R59, the plugin security review of 2026-10-19,
-    M3, and the review of 1.0.26). By hand only the first: an owner's branch carries old
+    M3, and the review of 1.0.27). By hand only the first: an owner's branch carries old
     change branches it merged."""
     own = locked_change_id(branch) if branch else None
     if own is not None:

@@ -100,7 +100,7 @@ maintain:
   # A `go` here is stricter than the bands' value and wins. Decision 26: on a project with
   # deploy.production: true, a runbook whose name contains "rollback" and whose
   # rehearsed_at is a date the owner set after a staging rehearsal is pre-approved.
-  # Since plugin 1.0.26 (R44) a runbook on the runner runs in a fresh tree of the default
+  # Since plugin 1.0.27 (R44) a runbook on the runner runs in a fresh tree of the default
   # branch's commit (with changes/ copied in), never in the checkout the diagnosis session
   # wrote in, and with an explicit environment: the system's basics, plus the variables
   # you name under env: (the model credentials never). Nothing installed by commands.setup

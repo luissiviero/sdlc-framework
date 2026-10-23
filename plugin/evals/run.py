@@ -448,7 +448,7 @@ def compose(
     argv += ["--disallowedTools", DISALLOWED_TOOLS]
     argv += ["--plugin-dir", str(plugin_dir)]
     if env.get("GITHUB_ACTIONS"):
-        # R44 (I1, and the review of 1.0.26): on a runner a case's session, whose tools a
+        # R44 (I1, and the review of 1.0.27): on a runner a case's session, whose tools a
         # pull request can set, runs sandboxed or not at all, and its shell commands find
         # neither model credential; the project's own rules still apply beside these
         argv += ["--settings", json.dumps(CI_EVAL_SETTINGS)]
