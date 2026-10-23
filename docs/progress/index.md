@@ -1,7 +1,10 @@
 # Progress archive
 
 Every earlier top-level record of `docs/PROGRESS.md` lives here, one file per record, in
-chronological order (oldest first). The current record stays in `docs/PROGRESS.md`.
+chronological order (oldest first). *[2026-10-23, choice 259: the list below ends with the
+last record written in `docs/PROGRESS.md`. From then on each session writes its own record in
+this folder as `<YYYY-MM-DD>-<branch>.md`, and the folder sorted by name is the list; this page
+is not edited again.]*
 [`choices.md`](choices.md) is not a record: it lists where each numbered choice is stated, and
 `python tasks.py choices-index` writes it.
 
@@ -82,3 +85,4 @@ chronological order (oldest first). The current record stays in `docs/PROGRESS.m
 - [Progress — ROADMAP R65's part 4: `python tasks.py verify`, docs-lint check 13, CI on `verify` (2026-10-22)](2026-10-22-r65-part-4-verify.md)
 - [Progress — ROADMAP R65's part 5: `HANDOFF.md` points to `next-free` and `verify` (2026-10-23)](2026-10-23-r65-part-5-handoff.md)
 - [Progress — ROADMAP R8 fixed as plugin 1.0.24: the second opinion at any pin, after phase (e) only, and carried on the fast lane (2026-10-23)](2026-10-23-r8-1.0.24-choices-255-256.md)
+- [Progress — the owner's answers to the eighteen open questions: choices 257 and 258 (2026-10-23)](2026-10-23-choices-257-258.md)

@@ -61,7 +61,7 @@ A project that runs the framework has decision 20's queue (the pull requests fil
 - The next session reads the newest file and every file a parallel session wrote that the newest one did not build on, and reconciles them by reading, never by resolving a merge. No index file: a generated or hand-kept index would be a shared file again; the listing sorted by name is the index.
 - Session 26's brief moved unchanged to `docs/handoffs/sessions/2026-10-13-session-26.md`; the briefs before it stay where they are.
 
-**Left for the owner.** `docs/PROGRESS.md` follows the same pattern (the newest record only, rewritten by every session, the previous one archived) and so carries the same risk. The amendment leaves it as it is; folding the record into the session file, or giving `docs/progress/` a file per session from the start, is the owner's call.
+**Left for the owner.** `docs/PROGRESS.md` follows the same pattern (the newest record only, rewritten by every session, the previous one archived) and so carries the same risk. The amendment leaves it as it is; folding the record into the session file, or giving `docs/progress/` a file per session from the start, is the owner's call. *[2026-10-23, choice 259: the owner chose a file per session in `docs/progress/`, named as the session file; `docs/PROGRESS.md` becomes a fixed page that points there.]*
 
 ## How it is judged
 

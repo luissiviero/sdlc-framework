@@ -1148,8 +1148,8 @@ CHOICES_INDEX_HEADER = """\
 # Choices — where each numbered choice is stated
 
 Every choice the records number: the number, the record and line that state it, and the
-item's first sentence (its bold lead). The records are `docs/PROGRESS.md`, the newest, and the
-files of this folder; a choice is a top-level item under a heading that states choices, as
+item's first sentence (its bold lead). The records are the files of this folder, one per session
+since choice 259; a choice is a top-level item under a heading that states choices, as
 `python tasks.py docs-lint` check 10 reads them (ROADMAP R65). Choices 1 to 15 are in sessions
 1 and 2's `docs/PROGRESS.md`, which git history alone keeps (`fe20f6a`, `57db1b3`).
 
