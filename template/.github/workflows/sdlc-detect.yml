@@ -167,6 +167,7 @@ jobs:
 
       - name: "Install the project's own toolchain (sdlc.yaml: commands.setup)"
         if: steps.detect.outputs.change_id != ''
+        # sdlc:commands.env setup
         run: python framework/plugin/ci/project_setup.py --root .
 
       # The diagnosis (p.43 step 3, 2σ "read-only to diagnose"): the model writes the
@@ -183,6 +184,7 @@ jobs:
           REPO: ${{ github.repository }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
           SDLC_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          # sdlc:commands.env
         run: python framework/plugin/ci/run_phase.py --root . --plugin-dir framework --phase f --id "$CHANGE_ID" --head-ref "$HEAD_REF" --repo "$REPO" --ref "$DEFAULT_BRANCH"
 
       # The diagnosis ran a session holding Write and Bash(git *) in this same checkout

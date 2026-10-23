@@ -43,5 +43,5 @@ files over 500 lines. Example output:
 - nothing found
 - note: lint target `python -m ruff check .` passed
 ```
-The formatter hook (`hooks.format_on_edit`) and the lint target in the gate are the
-deterministic backing; this skill is advisory (p.22 governance).
+The formatter hook (`hooks.formatters`, ruff for Python by default) and the lint target in
+the gate are the deterministic backing; this skill is advisory (p.22 governance).

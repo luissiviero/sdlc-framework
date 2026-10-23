@@ -361,13 +361,17 @@ def test_format_on_edit_reports_unfixable(tmp_path):
     assert d.block and "F821" in d.reason
 
 
-def test_format_on_edit_ignores_non_python_and_can_be_disabled(tmp_path):
+def test_format_on_edit_ignores_non_python_and_the_retired_switch(tmp_path):
+    """R33 (options.md, row "Formatter on edit"): one behaviour, on. The switch of earlier
+    versions is no longer read, so a project that still carries `false` gets ruff too; a file
+    type no entry maps is left alone."""
+    pytest.importorskip("ruff")
     (tmp_path / "sdlc.yaml").write_text("hooks:\n  format_on_edit: false\n", encoding="utf-8")
     f = tmp_path / "m.py"
     f.write_text("x=1\n", encoding="utf-8")
     payload = {"tool_name": "Write", "tool_input": {"file_path": str(f)}, "cwd": str(tmp_path)}
     assert not format_on_edit.decide(payload, [], env={"CLAUDE_PROJECT_DIR": str(tmp_path)}).block
-    assert f.read_text(encoding="utf-8") == "x=1\n"
+    assert f.read_text(encoding="utf-8") == "x = 1\n"
     md = tmp_path / "n.md"
     md.write_text("x", encoding="utf-8")
     assert not format_on_edit.decide(
@@ -375,6 +379,7 @@ def test_format_on_edit_ignores_non_python_and_can_be_disabled(tmp_path):
         [],
         env={},
     ).block
+    assert md.read_text(encoding="utf-8") == "x"
 
 
 def test_format_on_edit_end_to_end_emits_block_json(tmp_path):
