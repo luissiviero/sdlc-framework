@@ -844,7 +844,17 @@ def _act(
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(json.dumps(outcome, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         return outcome
-    result = runbooks.run(
+    approved = None
+    refused = None
+    if resolved.project_runbook is not None and not dry_run and os.environ.get("GITHUB_ACTIONS"):
+        # R3's I5 fix (built in R44, choice 257): on a runner a project runbook runs in a
+        # fresh tree of the default branch's approved commit, never in the checkout the
+        # diagnosis session held Write in
+        try:
+            approved = runbooks.approved_commit(root, _default_branch(root))
+        except (runbooks.RunbookError, gitops.GitError) as exc:
+            refused = runbooks.Outcome(name, runbooks.FAILED, reason=str(exc))
+    result = refused or runbooks.run(
         name,
         root,
         change_id,
@@ -855,6 +865,7 @@ def _act(
         repo=repo,
         timeout=_timeout(config),
         dry_run=dry_run,
+        approved=approved,
     )
     outcome = result.as_dict()
     outcome["authorization"] = resolved.as_dict()

@@ -732,11 +732,99 @@ def _text(value: Any) -> str:
     return str(value)
 
 
+# The variables a project runbook's command gets without asking (R3's I5 fix, built in R44,
+# choice 257): what a program needs to start on Linux, macOS and Windows, and the runner's
+# own non-secret ones. Anything else (a production secret, a token) only when the entry names
+# it under ``env:``; the model credentials never.
+BASE_ENV = (
+    "PATH", "HOME", "USER", "LOGNAME", "SHELL", "LANG", "LC_ALL", "TZ", "TMPDIR", "TEMP",
+    "TMP", "SYSTEMROOT", "SYSTEMDRIVE", "COMSPEC", "PATHEXT", "WINDIR", "USERPROFILE",
+    "APPDATA", "LOCALAPPDATA", "PROGRAMDATA", "CI", "GITHUB_ACTIONS", "RUNNER_OS",
+    "RUNNER_TEMP",
+)  # fmt: skip
+NEVER_ENV = ("ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN")
+SECRET_NAME_RE = re.compile(r"(?i)(token|secret|key|pass|pwd|credential|auth)")
+MIN_MASKED = 6  # a value shorter than this is too common to mask without garbling the output
+KEEP_IN_APPROVED_TREE = ("changes",)
+
+
+def runbook_env(entry: dict, environ: dict[str, str] | None = None) -> dict[str, str]:
+    """The explicit environment of a project runbook: ``BASE_ENV`` and the names the entry
+    lists under ``env:``, from ``environ`` (``os.environ`` when None); the model credentials
+    never, whatever the entry lists."""
+    environ = dict(os.environ if environ is None else environ)
+    named = (entry or {}).get("env") or []
+    if not isinstance(named, list):
+        raise RunbookError("sdlc.yaml: maintain.runbooks[].env must be a list of variable names")
+    wanted = {*BASE_ENV, *(str(n).strip() for n in named if str(n).strip())}
+    return {k: v for k, v in environ.items() if k in wanted and k not in NEVER_ENV}
+
+
+def mask(text: str, env: dict[str, str]) -> str:
+    """``text`` with the value of every variable of ``env`` whose name reads as a secret, and
+    every token-shaped string the secrets hook knows, replaced (R59, the plugin security
+    review of 2026-10-19, M7: the output tail is committed under ``evidence/``, where the
+    job log's masking does not reach)."""
+    from hooks.secrets_check import REDACTED, redact  # noqa: PLC0415
+
+    values = sorted(
+        {v for k, v in env.items() if SECRET_NAME_RE.search(k) and len(v) >= MIN_MASKED},
+        key=len,
+        reverse=True,
+    )
+    for value in values:
+        text = text.replace(value, REDACTED)
+    return redact(text)
+
+
+def approved_commit(root: Path, default: str) -> str:
+    """The default branch's commit as ``origin`` carries it (``ls-remote``, never a ref the
+    session could plant), present locally; raises ``RunbookError`` when it cannot be told."""
+    tip = _origin_tip(root, default) if gitops.has_remote(root) else ""
+    if not tip:
+        raise RunbookError(f"origin carries no {default} to run the runbook from")
+    if not _git_ok(root, "cat-file", "-e", f"{tip}^{{commit}}"):
+        raise RunbookError(f"the approved commit {tip[:10]} of {default} is not fetched")
+    return tip
+
+
+def _approved_tree(root: Path, approved: str) -> Path:
+    """A fresh worktree of ``approved`` outside the checkout, with the checkout's
+    ``KEEP_IN_APPROVED_TREE`` folders copied in: the tree the runbook acts in holds the
+    approved files only, whatever the diagnosis session wrote, tracked, untracked or ignored
+    (R3's I5 fix: the reset to the approved commit and the clean, keeping ``changes/``)."""
+    import tempfile  # noqa: PLC0415
+
+    tree = Path(tempfile.mkdtemp(prefix="sdlc-runbook-")) / "tree"
+    gitops.run(root, "worktree", "add", "--detach", "--", str(tree), approved)
+    for keep in KEEP_IN_APPROVED_TREE:
+        shutil.rmtree(tree / keep, ignore_errors=True)
+        if (root / keep).is_dir():
+            shutil.copytree(root / keep, tree / keep, symlinks=True)
+    return tree
+
+
+def _drop_tree(root: Path, tree: Path) -> None:
+    gitops.run(root, "worktree", "remove", "--force", "--", str(tree), check=False)
+    shutil.rmtree(tree.parent, ignore_errors=True)
+    gitops.run(root, "worktree", "prune", check=False)
+
+
 def project_runbook(
-    root: Path, name: str, entry: dict, *, timeout: int, dry_run: bool = False
+    root: Path,
+    name: str,
+    entry: dict,
+    *,
+    timeout: int,
+    dry_run: bool = False,
+    approved: str | None = None,
 ) -> Outcome:
     """Run an ``sdlc.yaml: maintain.runbooks[]`` entry's ``command`` with the release
-    command's semantics (no shell, ``&&`` steps, stop at the first failure)."""
+    command's semantics (no shell, ``&&`` steps, stop at the first failure), with the
+    explicit environment of ``runbook_env``. With ``approved`` (a commit; the CI path) the
+    command runs in a fresh worktree of that commit (``_approved_tree``), never in the
+    checkout the diagnosis session held ``Write`` in; the output kept in the record is
+    masked (``mask``)."""
     root = Path(root)
     outcome = Outcome(name, RAN)
     command = str((entry or {}).get("command") or "").strip()
@@ -754,15 +842,41 @@ def project_runbook(
         print(f"runbook: {name}: dry run: {shown}")
         outcome.reason = f"dry run: would run {shown}"
         return outcome
+    try:
+        env = runbook_env(entry)
+        cwd = _approved_tree(root, approved) if approved else root
+    except (RunbookError, gitops.GitError, OSError) as exc:
+        outcome.status, outcome.reason = FAILED, f"the runbook's tree cannot be prepared: {exc}"
+        return outcome
+    try:
+        if cwd != root:  # the globs expand in the tree the command runs in
+            chain = release_cli.command_chain(command, cwd)
+        code, output, why = _run_chain(chain, cwd, env, timeout)
+    finally:
+        if cwd != root:
+            _drop_tree(root, cwd)
+    if code != 0:
+        outcome.status, outcome.reason = FAILED, why
+    outcome.exit_code = code
+    outcome.output_tail = mask(output, env)[-OUTPUT_TAIL:]
+    return outcome
+
+
+def _run_chain(
+    chain: list[list[str]], cwd: Path, env: dict[str, str], timeout: int
+) -> tuple[int, str, str]:
+    """(exit code, output, why) of the steps run in turn until the first failure."""
     output = ""
     code = 0
+    why = ""
     for argv in chain:
         output += f"$ {shlex.join(argv)}\n"
-        exe = shutil.which(argv[0], path=os.environ.get("PATH")) or argv[0]
+        exe = shutil.which(argv[0], path=env.get("PATH")) or argv[0]
         try:
             proc = subprocess.run(
                 [exe, *argv[1:]],
-                cwd=str(root),
+                cwd=str(cwd),
+                env=env,
                 capture_output=True,
                 text=True,
                 encoding="utf-8",
@@ -781,11 +895,8 @@ def project_runbook(
             code, why = proc.returncode, f"{argv[0]} exited {proc.returncode}"
         if code != 0:
             output += why + "\n"
-            outcome.status, outcome.reason = FAILED, why
             break
-    outcome.exit_code = code
-    outcome.output_tail = output[-OUTPUT_TAIL:]
-    return outcome
+    return code, output, why
 
 
 # --- dispatch and record --------------------------------------------------------------------
@@ -801,8 +912,10 @@ def run(
     repo: str | None,
     timeout: int,
     dry_run: bool = False,
+    approved: str | None = None,
 ) -> Outcome:
-    """Run one runbook by name: the two built-ins, else the project's ``entry``."""
+    """Run one runbook by name: the two built-ins, else the project's ``entry`` (in a
+    worktree of ``approved`` when given, ``project_runbook``)."""
     if name.startswith("runbook:"):
         name = name[len("runbook:") :]
     if name == REVERT_PR:
@@ -826,7 +939,9 @@ def run(
             reason=f"no runbook named {name!r} under sdlc.yaml: maintain.runbooks",
             args=dict(args or {}),
         )
-    outcome = project_runbook(root, name, entry, timeout=timeout, dry_run=dry_run)
+    outcome = project_runbook(
+        root, name, entry, timeout=timeout, dry_run=dry_run, approved=approved
+    )
     outcome.args = dict(args or {})
     return outcome
 

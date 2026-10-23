@@ -636,6 +636,7 @@ def test_gate_continues_on_a_clean_change(project):
         "limits",
         "clean_tree",
         "artifacts",
+        "evidence_links",
         "open_concerns",
         "panel",
         "commands",
@@ -2133,6 +2134,7 @@ def test_gate_b_waits_for_the_owner(design_project, monkeypatch):
     assert set(_names(result, True)) == {
         "limits",
         "artifacts",
+        "evidence_links",
         "design_scope",
         "open_concerns",
         "panel",
@@ -2940,8 +2942,8 @@ def test_gate_f_waits_for_the_owner_s_triage_with_the_finding_and_its_route(main
     result = gate.run_gate(root, "0002", "f")
     assert result.result == "wait" and result.label == "sdlc:f-ready", result.reason
     names = [ch.name for ch in result.checks]
-    assert names == ["limits", "artifacts", "design_scope", "guardrails", "risk_list",
-                     "detection", "route"]  # fmt: skip
+    assert names == ["limits", "artifacts", "evidence_links", "design_scope", "guardrails",
+                     "risk_list", "detection", "route"]  # fmt: skip
     detection = next(ch for ch in result.checks if ch.name == "detection")
     assert detection.details["tier"] == 3 and detection.details["rule"] == "we1"
     route = next(ch for ch in result.checks if ch.name == "route")

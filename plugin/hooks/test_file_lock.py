@@ -41,6 +41,10 @@ from _common import (  # noqa: E402
 )
 
 from state import conventions as c  # noqa: E402
+from state import (
+    gitops,  # noqa: E402 - runner_args only (N3)
+    yamlish,  # noqa: E402
+)
 from state import status as status_mod  # noqa: E402
 
 LOCKED_PHASES = ("c", "d", "e")
@@ -75,8 +79,9 @@ FAIL_CLOSED = (
 def _git(root: str, *args: str) -> str:
     try:
         proc = subprocess.run(
-            ["git", *args], cwd=root, capture_output=True, text=True, encoding="utf-8", timeout=20
-        )
+            ["git", *gitops.runner_args(), *args], cwd=root, capture_output=True, text=True,
+            encoding="utf-8", timeout=20,
+        )  # fmt: skip
     except (OSError, subprocess.TimeoutExpired):
         return ""
     return proc.stdout if proc.returncode == 0 else ""
@@ -109,9 +114,39 @@ def test_path_patterns(config: dict) -> list[str]:
     return [str(p) for p in patterns if str(p).strip()]
 
 
-def is_locked(root: str, change_id: str) -> bool:
-    """True when the change is a fix whose reproducing test is committed. Raises ConfigError
-    when the change folder or its status.yaml cannot be read (the caller fails closed)."""
+def locked_change_ids(root: str, branch: str, git=_git) -> list[str]:
+    """The change ids the lock applies to: the current branch's, or, when the session left
+    it (a detached HEAD, a branch of its own), the id of every local ``sdlc/<id>/c|d|e``
+    branch that contains HEAD. R59 (the plugin security review of 2026-10-19, M3): a branch
+    switch turned the hook off."""
+    own = locked_change_id(branch) if branch else None
+    if own is not None:
+        return [own]
+    out = git(root, "branch", "--contains", "HEAD", "--format=%(refname:short)")
+    ids = {locked_change_id(line.strip()) for line in out.splitlines()}
+    return sorted(i for i in ids if i)
+
+
+def _committed_locked(root: str, rel: str, ref: str, git=_git) -> bool:
+    """True when ``ref``'s committed ``status.yaml`` at ``rel`` says a locked fix."""
+    text = git(root, "--no-replace-objects", "show", f"{ref}:{rel}")
+    try:
+        data = yamlish.loads(text) if text else None
+    except ValueError:
+        return False
+    return (
+        isinstance(data, dict)
+        and data.get("change_type") == "fix"
+        and data.get("tests_locked") is True
+    )
+
+
+def is_locked(root: str, change_id: str, git=_git) -> bool:
+    """True when the change is a fix whose reproducing test is committed: its working-tree
+    ``status.yaml`` says so, or the one committed at HEAD does (R59, M3: an edited working
+    copy does not lift the lock; only the owner's ``unlock-tests`` commit does). Raises
+    ConfigError when the change folder or its status.yaml cannot be read (the caller fails
+    closed)."""
     change_dir = c.find_change_dir(Path(root), change_id)
     if change_dir is None:
         raise ConfigError(f"no changes/{change_id}-<slug>/ folder for the current branch")
@@ -119,7 +154,10 @@ def is_locked(root: str, change_id: str) -> bool:
         st = status_mod.read_status(change_dir)
     except Exception as exc:  # noqa: BLE001
         raise ConfigError(f"{change_id} status.yaml could not be read: {exc}") from exc
-    return st.change_type == "fix" and bool(st.tests_locked)
+    if st.change_type == "fix" and bool(st.tests_locked):
+        return True
+    rel = status_mod.status_path(change_dir).relative_to(Path(root)).as_posix()
+    return _committed_locked(root, rel, "HEAD", git)
 
 
 def decide(payload: dict, argv: list[str], env: dict[str, str] | None = None, git=_git) -> Decision:
@@ -130,11 +168,11 @@ def decide(payload: dict, argv: list[str], env: dict[str, str] | None = None, gi
         return Decision.allow()
     root = project_dir(payload, env)
     branch = git(root, "rev-parse", "--abbrev-ref", "HEAD").strip()
-    change_id = locked_change_id(branch) if branch else None
-    if change_id is None:
-        return Decision.allow()  # not a git repo, or not a phase (c)/(d)/(e) branch
+    change_ids = locked_change_ids(root, branch, git) if branch else []
+    if not change_ids:
+        return Decision.allow()  # not a git repo, or HEAD on no phase (c)/(d)/(e) branch
     try:
-        if not is_locked(root, change_id):
+        if not any(is_locked(root, change_id, git) for change_id in change_ids):
             return Decision.allow()
         patterns = test_path_patterns(load_sdlc_config(root))
     except ConfigError as exc:

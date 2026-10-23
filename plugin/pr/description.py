@@ -141,7 +141,7 @@ def load_gate(change_dir: Path, phase: str) -> dict[str, Any] | None:
     if not path.is_file():
         return None
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
+        data = json.loads(art.read_text(path) or "")
     except (OSError, ValueError):
         return None
     return data if isinstance(data, dict) else None
@@ -340,7 +340,7 @@ def auto_round_state(change_dir: Path, gate_json: dict[str, Any] | None) -> dict
         return None
     path = Path(change_dir) / art.EVIDENCE_DIR / c.AUTO_ROUND_FILE
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
+        data = json.loads(art.read_text(path) or "")
     except (OSError, ValueError):
         data = None
     marked = gate_json.get("auto_round") if isinstance(gate_json.get("auto_round"), dict) else {}
@@ -368,7 +368,7 @@ def run_line(change_dir: Path, phase: str) -> str:
     record names no run (a by-hand run)."""
     path = Path(change_dir) / art.EVIDENCE_DIR / f"run-{phase}.json"
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
+        data = json.loads(art.read_text(path) or "")
     except (OSError, ValueError):
         return ""
     run = data.get("github_run") if isinstance(data, dict) else None
@@ -466,7 +466,7 @@ def _incident_bullets(
         if proposal.runbook:
             outcome_path = evidence / f"runbook-{proposal.runbook}.json"
             try:
-                data = json.loads(outcome_path.read_text(encoding="utf-8"))
+                data = json.loads(art.read_text(outcome_path) or "")
             except (OSError, ValueError):
                 data = {}
             status = str((data or {}).get("status") or "not run")

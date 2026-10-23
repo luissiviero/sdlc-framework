@@ -63,6 +63,14 @@ NOOP_SETUP = f'"{sys.executable}" -c "print(\'setup ok\')"'
 
 
 # --- helpers ------------------------------------------------------------------------------------
+
+# settings.ci.json's own denyWrite entries, in order (change 0002; R44, M1)
+CI_DENY_WRITE = (
+    ".claude", "framework", "CLAUDE.md", "REVIEW.md", "sdlc.yaml",
+    ".github/workflows", "CLAUDE.local.md", ".mcp.json", ".git/config", ".git/hooks",
+)  # fmt: skip
+
+
 def git(cwd: Path, *args: str) -> str:
     return subprocess.run(
         ["git", *args], cwd=cwd, capture_output=True, text=True, check=True, encoding="utf-8"
@@ -747,10 +755,7 @@ def test_ci_settings_are_rendered_against_the_project_root(tmp_path):
         assert rule in deny  # relative and tool-level rules untouched
     assert data["permissions"]["allow"] == source["permissions"]["allow"]
     fs_base = tmp_path.resolve()
-    rewritten_deny_write = [
-        str(fs_base / name)
-        for name in (".claude", "framework", "CLAUDE.md", "REVIEW.md", "sdlc.yaml")
-    ]
+    rewritten_deny_write = [str(fs_base / name) for name in CI_DENY_WRITE]
     assert data["sandbox"]["filesystem"]["denyWrite"] == rewritten_deny_write
     # every other sandbox key (enabled, failIfUnavailable, allowUnsandboxedCommands, network)
     # is carried over unchanged — round 4 fix-request item 17: the prior assertion compared
@@ -822,16 +827,7 @@ def test_ci_settings_file_rewrites_the_sandbox_filesystem_deny_write_list(tmp_pa
     data = json.loads(out.read_text(encoding="utf-8"))
     fs_base = tmp_path.resolve()
     assert data["sandbox"]["filesystem"]["denyWrite"] == [
-        str(fs_base / name)
-        for name in (
-            ".claude",
-            "framework",
-            "CLAUDE.md",
-            "REVIEW.md",
-            "sdlc.yaml",
-            "poetry.lock",
-            "Makefile",
-        )
+        str(fs_base / name) for name in (*CI_DENY_WRITE, "poetry.lock", "Makefile")
     ]
     assert data["sandbox"]["filesystem"]["_denyWriteSkipped"] == ["src/gen/**"]
     # `poetry.lock` is a bare name (the hook protects it in every directory); the sandbox can
@@ -863,8 +859,7 @@ def test_ci_settings_file_rejects_a_bad_protected_paths_entry(
     data = json.loads(out.read_text(encoding="utf-8"))
     fs_base = tmp_path.resolve()
     assert data["sandbox"]["filesystem"]["denyWrite"] == [
-        str(fs_base / name)
-        for name in (".claude", "framework", "CLAUDE.md", "REVIEW.md", "sdlc.yaml")
+        str(fs_base / name) for name in CI_DENY_WRITE
     ]
     assert data["sandbox"]["filesystem"]["_denyWriteSkipped"] == expected_skipped
     assert "_denyWriteNarrowed" not in data["sandbox"]["filesystem"]
@@ -872,10 +867,11 @@ def test_ci_settings_file_rejects_a_bad_protected_paths_entry(
 
 def test_ci_settings_file_denies_writing_a_protected_path_with_no_project_sdlc_yaml(tmp_path):
     """A project with no ``protected_paths`` entry at all (or no sdlc.yaml yet) still gets the
-    five always-protected denyWrite entries, with nothing appended and nothing skipped."""
+    always-protected denyWrite entries (ten since R44), with nothing appended and nothing
+    skipped."""
     out = run_phase.ci_settings_file(ROOT, tmp_path)
     data = json.loads(out.read_text(encoding="utf-8"))
-    assert len(data["sandbox"]["filesystem"]["denyWrite"]) == 5
+    assert len(data["sandbox"]["filesystem"]["denyWrite"]) == len(CI_DENY_WRITE)
     assert "_denyWriteSkipped" not in data["sandbox"]["filesystem"]
 
 
@@ -1675,6 +1671,43 @@ def test_the_commands_step_runs_without_the_job_s_credentials(monkeypatch):
     assert seen["argv"][:5] == ["run-commands", "--root", str(Path("/p")), "--id", "0001"]
     assert seen["timeout"] == 480 and "GITHUB_TOKEN" not in seen["env"]
     assert seen["env"]["SDLC_PROJECT_SETTING"] == "kept"
+
+
+def test_the_build_preflight_runs_the_test_target_without_the_job_s_credentials(monkeypatch):
+    """R44 point 3: the preflight starts the project's test target before the session,
+    outside the sandbox; it gets the commands step's environment."""
+    names = ("ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN", "GITHUB_TOKEN", "GH_TOKEN")
+    for name in names:
+        monkeypatch.setenv(name, "placeholder-" + name.lower())  # sdlc: allow-secret
+    seen = {}
+
+    def fake_run(argv, **kwargs):
+        seen.update(kwargs)
+        return subprocess.CompletedProcess(argv, 0, stdout='{"allow": true}', stderr="")
+
+    monkeypatch.setattr(run_phase.subprocess, "run", fake_run)
+    assert run_phase.preflight(ROOT, Path("/p"), "0001") == {"allow": True}
+    assert seen["env"] is not None and not set(names) & set(seen["env"])
+
+
+def test_the_ci_settings_hide_the_model_credentials_from_sandboxed_commands():
+    """R44 points 3 and 4 and M1: the credentials block in the article's shape (p.37), and the
+    new guardrail paths on both deny lists."""
+    data = json.loads((ROOT / "plugin" / "ci" / "settings.ci.json").read_text(encoding="utf-8"))
+    creds = data["sandbox"]["credentials"]
+    assert {e["name"] for e in creds["envVars"] if e["mode"] == "deny"} == {
+        "ANTHROPIC_API_KEY",
+        "CLAUDE_CODE_OAUTH_TOKEN",
+    }
+    assert {e["path"] for e in creds["files"] if e["mode"] == "deny"} == {
+        "~/.ssh",
+        "~/.aws/credentials",
+    }
+    deny_write = data["sandbox"]["filesystem"]["denyWrite"]
+    for entry in (".github/workflows", "CLAUDE.local.md", ".mcp.json", ".git/config"):
+        assert entry in deny_write
+    assert ".git" not in deny_write  # the session commits its own work
+    assert "Edit(/.github/workflows/**)" in data["permissions"]["deny"]
 
 
 def test_a_rewritten_record_that_did_not_reach_the_branch_fails_the_run(

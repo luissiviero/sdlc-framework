@@ -64,6 +64,7 @@ from _common import (  # noqa: E402
     HOOK_LOG_DEFAULT,
     HOOK_LOG_EVIDENCE,
     Decision,
+    git_options,
     load_sdlc_config,
     log_decision,
     project_dir,
@@ -880,7 +881,12 @@ def _is_ancestor_of_protected(resolved: str, protected_roots: list[str]) -> bool
 def _git(root: str, *args: str) -> str:
     try:
         proc = subprocess.run(
-            ["git", *args], cwd=root, capture_output=True, text=True, encoding="utf-8", timeout=20
+            ["git", *git_options(), *args],
+            cwd=root,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            timeout=20,
         )
     except (OSError, subprocess.TimeoutExpired):
         return ""

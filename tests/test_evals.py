@@ -938,3 +938,18 @@ def test_check_py_uses_the_variable_then_the_checkout(tmp_path, calls, capsys):
     # an explicit choice that does not hold the runner is never replaced by the checkout
     assert module.main([], env={"SDLC_FRAMEWORK_DIR": str(tmp_path / "nowhere")}) == 2
     assert len(calls) == 3
+
+
+def test_a_case_s_command_check_runs_without_the_model_credentials(tmp_path, monkeypatch):
+    """R44 (the plugin security review of 2026-10-19, I1): a ``command`` check runs code the
+    case's session wrote, outside any sandbox."""
+    names = ("ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN", "GITHUB_TOKEN", "GH_TOKEN")
+    for name in names:
+        monkeypatch.setenv(name, "placeholder-" + name.lower())  # sdlc: allow-secret
+    probe = tmp_path / "probe.py"
+    probe.write_text(
+        f"import os, sys\nsys.exit(1 if any(os.environ.get(n) for n in {names!r}) else 0)\n",
+        encoding="utf-8",
+    )
+    code, detail = run.run_commands(f"python {probe.name}", tmp_path, 60)
+    assert code == 0, detail

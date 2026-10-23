@@ -134,13 +134,51 @@ def runner_args() -> list[str]:
     (``.git/hooks/pre-commit``, ``core.hooksPath``) or an ``fsmonitor`` command that a later
     step's ``git commit`` or ``git push`` would run with that step's environment (session-8
     review). ``core.hooksPath`` points at an empty directory of this process and the
-    filesystem monitor is off. By hand nothing changes: the owner's own hooks run."""
+    filesystem monitor is off. R44 (the plugin security review of 2026-10-19, I4) adds the
+    global attributes file off, signing off and no external diff, so a ``commit.gpgSign``
+    with a ``gpg.program`` or a ``diff.external`` the session wrote runs nothing;
+    ``refuse_planted_config`` refuses the keys these options cannot reach (a ``filter``
+    driver named in the checkout's own ``.gitattributes``). By hand nothing changes: the
+    owner's own hooks run."""
     global _NO_HOOKS_DIR
     if not os.environ.get("GITHUB_ACTIONS"):
         return []
     if _NO_HOOKS_DIR is None or not os.path.isdir(_NO_HOOKS_DIR):
         _NO_HOOKS_DIR = tempfile.mkdtemp(prefix="sdlc-no-hooks-")
-    return ["-c", f"core.hooksPath={_NO_HOOKS_DIR}", "-c", "core.fsmonitor=false"]
+    return [
+        "-c", f"core.hooksPath={_NO_HOOKS_DIR}", "-c", "core.fsmonitor=false",
+        "-c", f"core.attributesFile={os.devnull}", "-c", "commit.gpgSign=false",
+        "-c", "tag.gpgSign=false", "-c", "diff.external=",
+    ]  # fmt: skip
+
+
+def refuse_planted_config(root: Path | str) -> None:
+    """On a runner (``GITHUB_ACTIONS`` set), raise ``GitError`` when the git config as git
+    resolves it in ``root`` carries a key that makes git run a program (``ci/checkout_check.py
+    RUNS_PROGRAM``: a ``filter.<x>.clean``, a ``gpg.program``, an alias, a conditional
+    include...; the redirect keys stay ``ci/app_token.py``'s, which switches to the workflow
+    token). The checkout is shared with the model's session, which holds ``Bash(git *)`` and
+    unscoped ``Write``; the runner's own ``git add`` and ``git commit`` after the session
+    would run a planted filter outside the sandbox with every credential of the job (R44,
+    the plugin security review of 2026-10-19, I4). Asked once per generation (``remembered``):
+    the model's session is a process start, so its end asks again. By hand nothing is
+    judged: the owner's own config is theirs."""
+    if not os.environ.get("GITHUB_ACTIONS"):
+        return
+    keep = sys.dont_write_bytecode  # checkout_check turns it off for its own fresh checkout
+    from ci import checkout_check  # noqa: PLC0415 - stdlib only; ci imports state
+
+    sys.dont_write_bytecode = keep
+    found = remembered(
+        Path(root),
+        ("planted-config",),
+        lambda: tuple(checkout_check.config_problems(Path(root), checkout_check.PROGRAM_SCOPES)),
+    )
+    if found:
+        raise GitError(
+            "the checkout's git config was changed in a way the runner refuses to run git "
+            "under (R44, I4): " + "; ".join(found)
+        )
 
 
 # the git commands that reach the remote, and so take a credential
@@ -164,6 +202,7 @@ def network_env(
 
 
 def run(root: Path, *args: str, check: bool = True) -> str:
+    refuse_planted_config(root)
     proc = subprocess.run(
         ["git", *runner_args(), *args],
         cwd=str(root),

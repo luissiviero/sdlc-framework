@@ -22,8 +22,12 @@ class GitUnavailable(RuntimeError):
 
 def _git(root: Path, *args: str, check: bool = True) -> str:
     try:
+        gitops.refuse_planted_config(root)
+    except gitops.GitError as exc:
+        raise GitUnavailable(str(exc)) from exc
+    try:
         proc = subprocess.run(
-            ["git", *args],
+            ["git", *gitops.runner_args(), *args],
             cwd=str(root),
             capture_output=True,
             text=True,
@@ -294,6 +298,26 @@ def name_status(
     return parse_name_status(out)
 
 
+# Every reader of what a branch changed (R59, the plugin security review of 2026-10-19, I3):
+# ``--name-status`` with no diff filter and no rename detection, so a rename lists its source
+# as a deletion beside its destination, and a type change (``T``: a file turned into a
+# symlink, or the reverse) and a submodule are listed with the rest. ``--name-only`` with the
+# default rename detection printed only a rename's destination, and ``--diff-filter=ACMRD``
+# dropped ``T``: ``git mv CLAUDE.md x`` and ``sdlc.yaml`` turned into a link passed the gate.
+CHANGED = ("--name-status", "--no-renames", "-z")
+
+
+def paths_of(out: str) -> list[str]:
+    """The paths of ``git diff --name-status --no-renames -z`` output, sorted, once each."""
+    return sorted({record.path for record in parse_name_status(out)})
+
+
+def changed_paths(root: Path, *revs: str) -> list[str]:
+    """The paths ``git diff`` lists between ``revs`` (a range, or one ref against the working
+    tree), every status counted (``CHANGED``)."""
+    return paths_of(_git(root, "diff", *CHANGED, *revs, check=False))
+
+
 def tree_files(root: Path, ref: str | None, prefix: str) -> list[str]:
     """Every path ``ref``'s committed tree holds under ``prefix`` (``git ls-tree -r
     --name-only -z <ref> -- <prefix>``). Used to tell an eval case's survivor from its drop:
@@ -306,7 +330,8 @@ def tree_files(root: Path, ref: str | None, prefix: str) -> list[str]:
 
 
 def committed_files(root: Path, merge_base: str | None, head: str | None = None) -> list[str]:
-    """The files the branch carries: ``git diff --name-only <merge_base>...HEAD``.
+    """The files the branch carries: ``git diff <merge_base>...HEAD``, every status and a
+    rename's two paths counted (``CHANGED``).
 
     This is the PR's own diff — what a reviewer sees and what merges. The working tree says
     nothing here: a checkout can be dirty for reasons that have nothing to do with the change
@@ -315,7 +340,7 @@ def committed_files(root: Path, merge_base: str | None, head: str | None = None)
     if not merge_base:
         return []
     ref = f"{merge_base}...{head or 'HEAD'}"
-    return _z(_git(root, "diff", "--name-only", "-z", "--diff-filter=ACMRD", ref, check=False))
+    return changed_paths(root, ref)
 
 
 def is_repo(root: Path) -> bool:
@@ -447,13 +472,16 @@ def collect(root: Path, base: str | None = None) -> Diff:
         # (``checks._no_base``), never pass on the empty list (readiness review, group B).
         note = "" if mb else f"no merge base with {base}: the committed diff cannot be judged"
     ref = merge_base or "HEAD"
-    files = _z(_git(root, "diff", "--name-only", "-z", "--diff-filter=ACMRD", ref, check=False))
-    files = sorted(
-        set(files) | set(_z(_git(root, "ls-files", "-z", "--others", "--exclude-standard")))
-    )
+    files = set(changed_paths(root, ref))
+    if merge_base and head and merge_base != head:
+        # the commits too: a commit made with plumbing (``update-index --cacheinfo``) can
+        # leave the working tree as the base had it, and the working-tree diff alone misses
+        # it (R59, I3)
+        files |= set(changed_paths(root, f"{merge_base}...HEAD"))
+    files = sorted(files | set(_z(_git(root, "ls-files", "-z", "--others", "--exclude-standard"))))
     commits: list[Commit] = []
     if merge_base and head and merge_base != head:
         for sha in _git(root, "rev-list", "--reverse", f"{merge_base}..HEAD").split():
-            changed = _z(_git(root, "diff-tree", "--no-commit-id", "--name-only", "-r", "-z", sha))
+            changed = paths_of(_git(root, "diff-tree", "--no-commit-id", "-r", *CHANGED, sha))
             commits.append(Commit(sha, changed))
     return Diff(base, merge_base, head, files, commits, branch, note)

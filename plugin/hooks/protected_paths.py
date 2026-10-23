@@ -42,15 +42,23 @@ from _common import (  # noqa: E402
     target_paths,
 )
 
-# anchored to the project root (the leading slash): docs/x/CLAUDE.md is not a guardrail file
-ALWAYS_PROTECTED = ("/.claude/**", "/CLAUDE.md", "/REVIEW.md", "/sdlc.yaml")
+# anchored to the project root (the leading slash): docs/x/CLAUDE.md is not a guardrail file.
+# R44 (the plugin security review of 2026-10-19, M1) adds the workflows, the local CLAUDE.md,
+# the project's MCP servers and git's own folder: each runs or steers code outside the
+# session (a workflow on the next event, an MCP server at the next start, a config key or a
+# hook on the runner's next git call)
+ALWAYS_PROTECTED = (
+    "/.claude/**", "/CLAUDE.md", "/REVIEW.md", "/sdlc.yaml",
+    "/.github/workflows/**", "/CLAUDE.local.md", "/.mcp.json", "/.git/**",
+)  # fmt: skip
 # matched against the whole normalised path, wherever it is (user-level settings included)
 GLOBAL_PROTECTED = ("**/.claude/settings.json", "**/.claude/settings.*.json", "**/.claude/hooks/**")
 
 REASON = (
     "Protected path: {what}. Edits to guardrail files (.claude/**, CLAUDE.md, REVIEW.md, "
-    "sdlc.yaml, the SDLC plugin) and the project's protected_paths are made by the owner in a "
-    "reviewed PR, not by a run. Stop and report what you needed to change and why."
+    "sdlc.yaml, .github/workflows/**, CLAUDE.local.md, .mcp.json, .git/**, the SDLC plugin) "
+    "and the project's protected_paths are made by the owner in a reviewed PR, not by a run. "
+    "Stop and report what you needed to change and why."
 )
 
 

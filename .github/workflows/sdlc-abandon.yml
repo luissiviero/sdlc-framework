@@ -66,7 +66,7 @@ jobs:
     steps:
       # The closed pull request's head: the branch that carries the change's status.yaml.
       - name: Check out the pull request's head
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           persist-credentials: false
           ref: ${{ github.event.pull_request.head.ref }}
@@ -82,7 +82,7 @@ jobs:
         run: git show "refs/remotes/origin/$SDLC_DEFAULT_BRANCH:.github/scripts/sdlc_pin.py" | python - --ref "refs/remotes/origin/$SDLC_DEFAULT_BRANCH"
 
       - name: Check out the pinned framework (public repository, no token)
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           persist-credentials: false
           repository: "luissiviero/sdlc-framework"

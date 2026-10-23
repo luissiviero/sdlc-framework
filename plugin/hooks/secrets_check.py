@@ -23,6 +23,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _common import (  # noqa: E402
     Decision,
+    git_options,
     new_texts,
     project_dir,
     rel_to,
@@ -60,6 +61,22 @@ PLACEHOLDER = re.compile(
 )
 
 
+REDACTED = "[redacted]"
+
+
+def redact(text: str) -> str:
+    """``text`` with every match of ``PATTERNS`` replaced by ``REDACTED`` (only the value of a
+    credential assignment, so the name stays readable), placeholders included: what goes
+    into a committed log is masked whether or not it looks real (R59, the plugin security
+    review of 2026-10-19, M7 and M12)."""
+    for _label, rx in PATTERNS:
+        if rx.groups:
+            text = rx.sub(lambda m: m.group(0).replace(m.group(1), REDACTED), text)
+        else:
+            text = rx.sub(REDACTED, text)
+    return text
+
+
 UNCOMMITTED_MARK = " on a line marked allow-secret that the owner has not committed"
 
 
@@ -71,7 +88,7 @@ def committed_lines(root: str, path: str) -> frozenset[str]:
         return frozenset()
     try:
         proc = subprocess.run(
-            ["git", "--no-replace-objects", "show", f"HEAD:{rel}"],
+            ["git", *git_options(), "--no-replace-objects", "show", f"HEAD:{rel}"],
             cwd=root,
             capture_output=True,
             text=True,
