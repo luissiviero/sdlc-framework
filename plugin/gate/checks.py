@@ -663,6 +663,8 @@ def check_plan_sync(ctx: GateContext) -> CheckResult:
         for commit in ctx.diff.commits
         if plan_sync.check(branch, commit.files, exempt, planned).block
     ]
+    growth = _plan_growth(ctx, planned)
+    grown = {"plan_growth": growth} if growth is not None else {}
     problems = []
     if unplanned:
         problems.append(f"{len(unplanned)} changed file(s) not listed in plan.md")
@@ -676,13 +678,32 @@ def check_plan_sync(ctx: GateContext) -> CheckResult:
             "in the same commit as the departure, or revert the unplanned change.",
             unplanned=unplanned[:50],
             unsynced_commits=unsynced,
+            **grown,
         )
     unrealised = [p for p in planned if not any(plan_sync.is_planned(f, p) for f in committed)]
     return _ok(
         "plan_sync",
         "every committed source file is in plan.md",
         planned_but_unchanged=unrealised,
+        **grown,
     )
+
+
+def _plan_growth(ctx: GateContext, planned: list[str]) -> dict[str, list[str]] | None:
+    """The files plan.md lists now and the copy the owner approved at gate (b) did not, and
+    the reverse (R26, choice 257: R60's port): the build PR's banner shows the first, the
+    digest counts it. None at (b), where the plan is being written, and when there is no
+    approved copy to compare with."""
+    if ctx.phase not in ("c", "d", "e"):
+        return None
+    approved = ctx.approved_artifact("plan.md")  # the caller returned already with no base
+    if approved is None:
+        return None
+    now, before = dict.fromkeys(planned), dict.fromkeys(art.planned_files(approved))
+    return {
+        "added": [p for p in now if p not in before],
+        "removed": [p for p in before if p not in now],
+    }
 
 
 # --- 7. no diff touching the guardrail files (OPERATING_MODEL section 3) ------------------------

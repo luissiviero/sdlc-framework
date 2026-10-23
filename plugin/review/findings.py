@@ -290,10 +290,13 @@ def update_seen(
     """Fold this review's findings into the project's record and say which of them are the
     second occurrence of a finding from an *earlier* change.
 
-    The record maps signature -> ``{"count", "first_change", "last_change", "summary", "file",
-    "last_seen"}``. A finding is repeated when its signature was already recorded (count >= 1)
-    by another change id; two occurrences inside one change are one mistake being reviewed
-    twice, not the pattern the CLAUDE.md line is for.
+    The record maps signature -> ``{"count", "first_change", "last_change", "changes",
+    "summary", "file", "last_seen"}``. A finding is repeated when its signature was already
+    recorded (count >= 1) by another change id; two occurrences inside one change are one
+    mistake being reviewed twice, not the pattern the CLAUDE.md line is for. ``count`` counts
+    runs; ``changes`` lists the change ids it was found in (R26 part 3: "found in N changes"
+    per proposed CLAUDE.md line), started from the first and last change on a record written
+    before it.
     """
     updated = {k: dict(v) for k, v in record.items() if isinstance(v, dict)}
     repeated: list[dict[str, Any]] = []
@@ -309,21 +312,35 @@ def update_seen(
         count = entry.get("count", 0)
         count = count if isinstance(count, int) and not isinstance(count, bool) else 0
         first = entry.get("first_change") or change_id
+        changes = _changes_of(entry)
+        if change_id not in changes:
+            changes.append(change_id)
         if count >= 1 and first != change_id:
             item = dict(finding)
             item["signature"] = sig
             item["first_change"] = first
             item["change_id"] = change_id
+            item["changes"] = list(changes)
             repeated.append(item)
         updated[sig] = {
             "count": count + 1,
             "first_change": first,
             "last_change": change_id,
+            "changes": changes,
             "summary": str(finding.get("summary", "")),
             "file": str(finding.get("file", "")),
             "last_seen": at,
         }
     return updated, repeated
+
+
+def _changes_of(entry: dict[str, Any]) -> list[str]:
+    """The change ids a record entry was found in: its ``changes`` list, or, on an entry
+    written before R26, its first and last change (the ones in between were not kept)."""
+    listed = entry.get("changes")
+    if not isinstance(listed, list):
+        listed = [entry.get("first_change"), entry.get("last_change")]
+    return list(dict.fromkeys(x for x in listed if isinstance(x, str) and x))
 
 
 CLAUDE_MD_RE = re.compile(r"(?i)\bCLAUDE\.md\b")
@@ -358,7 +375,9 @@ def claude_md_lines(repeated: list[dict[str, Any]]) -> list[str]:
         first = finding.get("first_change", "?")
         this = finding.get("change_id", "?")
         pass_name = str(finding.get("pass", "")).strip() or "review"
-        line = f"- {summary} (seen in changes {first} and {this}; {pass_name})"
+        # R26 part 3: in how many changes the mistake was found, not only the two ends
+        changes = [str(x) for x in finding.get("changes") or [] if x] or [str(first), str(this)]
+        line = f"- {summary} (found in {len(changes)} changes: {', '.join(changes)}; {pass_name})"
         if line not in lines:
             lines.append(line)
     return lines

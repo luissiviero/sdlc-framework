@@ -517,7 +517,7 @@ def test_the_runner_enforces_the_count_a_session_did_not_bump(project, monkeypat
 
 def test_an_owner_s_reset_by_hand_is_not_undone(project, monkeypatch):
     """The re-review of 443f818: three automatic rounds, a park at the cap, the owner's
-    ``gate/cli.py set-iterations --count 0`` by hand (no label, so no iterations_reset_at),
+    ``gate/cli.py set-iterations --count 0`` by hand (no label: no actor; R26 stamps the time),
     and a red target on the next run: the stale taken round 3 must not raise the count."""
     root, change = project
     set_state(change, "c", gate_phase="c", gate_result="parked", parked="red")

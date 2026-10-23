@@ -180,7 +180,7 @@ def cmd_set_iterations(args) -> int:
     change_dir, st = _change(args)
     if change_dir is None:
         return 2
-    st.iterations = int(args.count)
+    st.set_iterations(int(args.count))  # R26: a lower count stamps the reset's mark
     if args.panel_calls is not None:
         st.panel_calls = int(args.panel_calls)  # decision 21: the panel's own count
     st.touch()

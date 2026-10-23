@@ -1,0 +1,37 @@
+# Progress — R26, measures that change a decision, plugin 1.0.39 (2026-10-23)
+
+This session is lane A of wave 4, started by the central session `session_016NLfdsdfTFZUyrVGN4Ektc` at the owner's request. It ran on branch `claude/r26-measures-change-a-decision`, from `main` at `b9dbd9b` (#373). It builds ROADMAP R26 from `docs/proposals/measures-that-change-a-decision.md`, with choice 257's two ports from R60 (`docs/progress/2026-10-23-choices-257-258.md`, line 20; the R26 row's annotation of 2026-10-23). The parallel lane B prepares R14 (change 0004, PR #173); this PR touches `plugin/gate/checks.py` only in `check_plan_sync` and a new helper after it, not `run_targets`, and `plugin/pr/description.py` only in `_counters_line` and the module docstring.
+
+## What was built
+1. **True definitions (part 1).** A change whose count was reset never counts as first-pass, by any of the three routes: the owner's `sdlc:reset-iterations` label and the runner's judged reset at the cap (decision 29) already stamped `iterations_reset_at`; `gate/cli.py set-iterations` now stamps it too when it lowers the count, and clears `iterations_reset_by` (`Status.set_iterations`, `plugin/state/status.py`). The counter reads the stamp for all three. An open PR's counters line reads "no fix round so far" instead of "first-pass merge: yes", and "first-pass: no (count reset <at>)" after a reset (`plugin/pr/description.py` `_counters_line`). "Dismissals in force" counts only unexpired dismissals, read with `dismissals.lookup` as the store reads them; the expired ones are named under the table. The definitions are written under the table, with the reset changes by id.
+2. **The class split (part 2).** The first-pass share and the fix iterations per shipped change, each for routine and non-routine plans, each with its "n of m"; a class with no shipped change reads "0 of 0, no routine plan shipped yet". The class is read as the iteration cap reads it, through the new `limits.classification_in` (the body of `classification_for`, which now calls it). A shipped change with no verdict is in the totals only, and named.
+3. **Repeats (part 3, the part that is not R37's).** `changes/.review-seen.json` keeps, per signature, the list of changes it was found in (`changes`); a record written before it starts from its first and last change. A proposed `CLAUDE.md` line now says "found in N changes: <ids>" (`plugin/review/findings.py` `update_seen`, `claude_md_lines`). The proposal's Order table puts the list "in this change or R37's, whichever is built first"; R37 is not built, so it is here. The standing PR, its digest line and the mark on a build PR after a line merged stay with R37.
+4. **No new counter; what is not computed (parts 5 and 6).** A paragraph under the table says where spend, the wait and failed runs are, and why time to first review, first-pass CI success, the survival rate of intents, OpenTelemetry and the per-engineer measures, and DORA are not counted here. Build guide step 42's "scheduled report later" is dropped, annotated beside the sentence (`docs/BUILD_GUIDE.md`, step 42's implementation notes).
+5. **Choice 257's ports from R60.** The table gains a third column, the play and whether the article names the indicator leading or lagging: plan mode, p.17 ("Share of changes that merge from the first implementation pass" leading; "Rework cycles per change ... and how often the merged diff still matches the committed plan.md" lagging); closing the loop, p.45 ("The share of findings that become merged fixes" lagging). No counter is added for it. The gate's `plan_sync` check records `plan_growth: {added, removed}` at (c), (d) and (e) against the copy of `plan.md` approved at gate (b) (`ctx.approved_artifact`, the merge base or the fast lane's design commit); the build PR's "Needs your close look" banner shows "The plan grew by N files since gate (b)" with the first five files (`plugin/gate/risk.py` `plan_grown`, `banner_lines`), a banner of its own when no risk item hit; the digest counts the shipped changes whose plan grew and the files. No park and no cap change.
+
+**Not built: DORA (part 4).** The proposal's Order table says "Its own change, after parts 1 and 2", its settle table "parts 1, 2, 5 and 6 first, in one change ... DORA after", and the R26 row "built in a change of its own after the study". Nothing is left open, so the central session was not asked.
+
+Run on this repository's own four shipped changes (`python plugin/pr/counters.py --root .`): every plan is non-routine (as ArtCraft 6.4 says), none is first-pass (0001, 0002, 0003 and 0005 were each reset), 1.5 fix iterations per shipped change; no plan growth is recorded, since their gate records predate it.
+
+## The proposal's citations, checked against `main` at `b9dbd9b`
+The proposal was read at `5542406` (plugin 1.0.1); its line numbers moved. Still exact: `counters.py:60` (first-pass as an iteration count of 0) and `dismissals.py:109-123` (`lookup`). Moved, same content: the label's reset is now `status.py:254-258`; `_counters_line` is `description.py:695`; `classification_for` is `limits.py:123`; `update_seen` is `findings.py:284`; `cmd_set_iterations` is `gate/cli.py:179`; `_status_fields` reads the reset fields at `checks.py:1190-1191`, and the drop's "recorded" rule is at `checks.py:1338-1342`; the reviewer's classification is at `adversarial-reviewer.md:91-94`. The proposal's claim on the check holds at `checks.py:1338-1342`: a changed stamp counts as a recorded act and credits the drop to whatever `iterations_reset_by` holds, so the by-hand reset clears the actor; `test_a_by_hand_reset_after_a_label_is_marked_and_judged_by_its_author` shows the automation identity's commit then parks and the owner's passes, the proposal's "to verify with a test".
+
+## The owner's choices
+None taken in this session.
+
+## Proposed edits for the owner
+None: no guardrail file needs a change.
+
+## Port list
+Not on it: this PR touches neither `plugin/ci/run_phase.py` nor `plugin/detect/` nor the detect, runbook and fix workflow templates.
+
+## The independent review
+A fresh-context reviewer read the diff against `main` and found nothing blocking. It also ran the full suite, which passed, and checked by hand that the plan's growth reads correctly on the fast lane. Fixed, with tests:
+- **S1.** The plan-growth row read "0 of 4" when the shipped changes' gate records only predated it. `risk.plan_grown` now returns None when no record carries the growth. The row counts only the shipped changes that carry the record, and a note under the table names the others.
+- **S2.** Tests were added for growth on the fast lane, for a banner with growth and risk items together (the ask kept, `banner_shown` true), and for the build PR body.
+- **N1.** The newest gate record with a `plan_sync` check decides, never an older one behind it.
+- **N2.** The plan's entries are de-duplicated before they are compared.
+- **N3.** The note now names "the digest's Failed runs section" instead of "the section above".
+- **N4.** A malformed dismissal entry is no longer counted as expired.
+- **N5.** A by-hand reset made before 1.0.39 left no mark; the definitions say so.
+- **N6.** The extra `approved_base` call is dropped: `check_plan_sync` returns earlier when there is no base.

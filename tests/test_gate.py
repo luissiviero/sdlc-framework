@@ -1378,6 +1378,86 @@ def test_plan_sync_judges_the_committed_diff_only(project):
     assert "clean_tree" in _names(result, True)  # .env is a sandbox-masked name
 
 
+def test_plan_sync_records_the_plan_s_growth_since_gate_b(project):
+    """R26, choice 257 (R60's port): at (c) to (e) the gate records the files the plan gained
+    and lost against the copy the owner approved at gate (b); no park, no cap change."""
+    root, change = project
+    verdict(root, "c")
+    p = next(
+        ch for ch in gate.run_gate(root, "0001", "c", dry_run=True).checks if ch.name == "plan_sync"
+    )
+    assert p.details["plan_growth"] == {"added": [], "removed": []}
+    plan = (change / "plan.md").read_text(encoding="utf-8")
+    plan = plan.replace(
+        "- `tests/test_percent.py` — new: three cases\n",
+        "- `sample_pkg/extra.py` — new: a helper the build needed\n",
+    )
+    write(change / "plan.md", plan)
+    write(root / "sample_pkg" / "extra.py", "X = 1\n")
+    commit_all(root, "build: a file the plan did not have")
+    verdict(root, "c")
+    result = gate.run_gate(root, "0001", "c", dry_run=True)
+    p = next(ch for ch in result.checks if ch.name == "plan_sync")
+    assert p.details["plan_growth"] == {
+        "added": ["sample_pkg/extra.py"],
+        "removed": ["tests/test_percent.py"],
+    }
+
+
+def test_the_banner_says_how_much_the_plan_grew_since_gate_b(tmp_path):
+    """Choice 257 (R60's port): "The plan grew by N files since gate (b)" on the build PR,
+    from the newest gate record the PR covers; a banner of its own when nothing hit."""
+    from gate import risk
+
+    change = tmp_path / "changes" / "0001-x"
+    evidence = change / "evidence"
+    evidence.mkdir(parents=True)
+
+    def record(phase, added):
+        check = {"name": "plan_sync", "ok": True,
+                 "details": {"plan_growth": {"added": added, "removed": []}}}  # fmt: skip
+        write(evidence / f"gate-{phase}.json", json.dumps({"checks": [check]}))
+
+    st = status_mod.Status(id="0001", slug="x", title="X")
+    assert risk.banner_lines(change, "e", st) == []
+    record("c", ["a.py"])
+    record("d", ["a.py", "b.py"])
+    lines = risk.banner_lines(change, "e", st)
+    assert lines[0].startswith(risk.BANNER_HEADING + ": the plan changed after you approved it")
+    assert lines[1] == "- The plan grew by 2 files since gate (b): `a.py`, `b.py`."
+    assert (
+        risk.banner_lines(change, "c", st)[1] == "- The plan grew by 1 file since gate (b): `a.py`."
+    )
+    assert risk.banner_lines(change, "b", st) == []  # the design PR: the plan is being written
+    assert risk.banner_shown("\n".join(lines), [])
+
+
+def test_the_banner_keeps_the_risk_ask_beside_the_plan_s_growth(tmp_path):
+    """The growth line beside risk-list items: the merge is still asked to accept them, and
+    ``banner_shown`` still finds every item line; the newest record with a ``plan_sync``
+    check decides, so an older record's growth never shows behind a newer one without it."""
+    from gate import risk
+
+    change = tmp_path / "changes" / "0001-x"
+    evidence = change / "evidence"
+    evidence.mkdir(parents=True)
+    growth = {"name": "plan_sync", "ok": True,
+              "details": {"plan_growth": {"added": ["a.py"], "removed": []}}}  # fmt: skip
+    hit = {"name": "risk_list", "ok": True, "details": {"hits": {"auth": ["src/auth.py"]}}}
+    write(evidence / "gate-c.json", json.dumps({"checks": [growth, hit]}))
+    st = status_mod.Status(id="0001", slug="x", title="X")
+    lines = risk.banner_lines(change, "e", st)
+    assert lines[0].startswith(risk.BANNER_HEADING + ": this change touches risk-list items.")
+    assert risk.BANNER_ASK["e"] in lines[0]
+    assert lines[1] == "- The plan grew by 1 file since gate (b): `a.py`."
+    assert lines[2].startswith("- `auth` — first found at gate (c)")
+    assert risk.banner_shown("\n".join(lines), ["auth"])
+    # a newer record whose plan_sync holds no growth (no approved copy): none is shown
+    write(evidence / "gate-d.json", json.dumps({"checks": [{"name": "plan_sync", "ok": True}]}))
+    assert risk.plan_grown(change, "e") is None
+    assert not any("plan grew" in line for line in risk.banner_lines(change, "e", st))
+
+
 def test_guardrails_and_risk_list_judge_the_committed_diff_only(project):
     """Deliverable 6(d): guardrails and risk_list read merge base...HEAD, like plan_sync and
     design_scope (OPERATING_MODEL section 3: the gate judges HEAD, not the working tree).
@@ -2828,6 +2908,57 @@ def test_owner_actions_honours_a_second_reset_by_the_same_person(project):
     verdict(root, "c")
     result = gate.run_gate(root, "0001", "c", dry_run=True)
     assert "owner_actions" in _names(result, False)
+
+
+def test_a_by_hand_reset_after_a_label_is_marked_and_judged_by_its_author(project):
+    """R26 part 1: ``set-iterations`` stamps ``iterations_reset_at`` when it lowers the
+    count and clears ``iterations_reset_by``, so the change never reads as first-pass. The
+    changed stamp must not credit the drop to the earlier label's actor: committed by the
+    automation identity it parks (the proposal's "to verify with a test"); the owner's own
+    commit passes, as for any by-hand act."""
+    from state import conventions as c
+
+    root, change = project
+    st = status_mod.read_status(change)
+    st.iterations = 2
+    status_mod.write_status(change, st)
+    commit_all(root, "build(0001): two fix rounds")
+    _label_act(change, c.RESET_ITERATIONS_LABEL, "luissiviero")
+    commit_all(root, "owner labels applied: sdlc:reset-iterations", author=BOT_AUTHOR)
+    st = status_mod.read_status(change)
+    label_stamp = st.iterations_reset_at
+    st.iterations = 2
+    status_mod.write_status(change, st)
+    commit_all(root, "fix(0001): two more rounds")
+    import time
+
+    time.sleep(1.1)  # the stamp has second resolution
+    # raising the count is no reset: nothing is stamped
+    assert (
+        gate_cli.main(["set-iterations", "--root", str(root), "--id", "0001", "--count", "3"]) == 0
+    )
+    st = status_mod.read_status(change)
+    assert st.iterations_reset_at == label_stamp and st.iterations_reset_by == "luissiviero"
+    assert (
+        gate_cli.main(["set-iterations", "--root", str(root), "--id", "0001", "--count", "0"]) == 0
+    )
+    st = status_mod.read_status(change)
+    assert st.iterations == 0 and st.iterations_reset_by is None
+    assert st.iterations_reset_at and st.iterations_reset_at != label_stamp
+    sha = commit_all(root, "reset the iteration count", author=BOT_AUTHOR)
+    verdict(root, "c")
+    result = gate.run_gate(root, "0001", "c", dry_run=True)
+    oa = next(ch for ch in result.failed if ch.name == "owner_actions")
+    assert f"iterations dropped from 2 to 0 in commit {sha[:10]}" in oa.reason
+    assert "no owner label actor is recorded for it" in oa.reason
+    # the owner's own commit of the same act passes
+    git(root, "reset", "-q", "--hard", "HEAD~1")
+    assert (
+        gate_cli.main(["set-iterations", "--root", str(root), "--id", "0001", "--count", "0"]) == 0
+    )
+    commit_all(root, "owner: allow another round")
+    verdict(root, "c")
+    assert "owner_actions" not in _names(gate.run_gate(root, "0001", "c", dry_run=True), False)
 
 
 def test_owner_actions_accepts_the_runner_s_marked_reset_only_with_its_record(project):
