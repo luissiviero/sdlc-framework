@@ -134,6 +134,7 @@ jobs:
         run: python framework/plugin/ci/runner_setup.py
 
       - name: "Install the project's own toolchain (sdlc.yaml: commands.setup)"
+        # sdlc:commands.env setup
         run: python framework/plugin/ci/project_setup.py --root .
 
       - name: Review pass in a fresh context (read-only but for the findings file)
@@ -190,6 +191,7 @@ jobs:
           REPO: ${{ github.repository }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
           SDLC_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          # sdlc:commands.env
         run: python framework/plugin/ci/run_phase.py --root . --plugin-dir framework --phase e --id "$CHANGE_ID" --head-ref "$HEAD_REF" --repo "$REPO" --ref "$DEFAULT_BRANCH"
 
       # Build guide step 41.1 (article p.39): every hook decision of the run is one line of

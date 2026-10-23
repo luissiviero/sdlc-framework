@@ -58,6 +58,13 @@ commands:
   # one command that installs what test/build/lint need; the CI phase jobs run it before
   # the phase; empty = nothing to install
   setup: "{{SETUP_CMD}}"
+  # the repository secrets or variables (names only) the targets need, e.g. [TEST_DB_URL]
+  # (R61, plugin 1.0.29). /sdlc-init writes each into the setup and phase steps of the phase
+  # workflows, so the setup command, the model's session and the runner's build, test and
+  # lint read it. Those run code the session wrote, the targets outside the sandbox: name a
+  # test credential here, never a production one. A service a test needs is your edit of the
+  # workflow; the model credentials and the GitHub tokens are never passed.
+  env: {{COMMANDS_ENV}}
 
 # --- phase adapters (OPERATING_MODEL section 9; decision 19) ---------------------------------
 deploy:
@@ -149,7 +156,9 @@ gate:
   build_max_wall_clock_minutes: 180  # wall clock of the build run and of every fix round
   max_budget_usd: 150            # per change; binds CI runs only (a by-hand or cloud-session
                                  # run has no figure); a run that reaches it parks; null = off
-  command_timeout: 900           # seconds per build/test/lint command run by the gate
+  command_timeout: 900           # seconds per build/test/lint command run by the gate; also
+                                 # the CI session's Bash timeout (R61). `/sdlc-init` step 4
+                                 # sets it to three times the longest target's run
 
 # --- automation identity (decision 5; gate check owner_actions) ----------------------------------
 # The gate honours a risk acceptance, an iteration reset or a test-lock lift only when the
@@ -181,13 +190,39 @@ test_paths:
 # copies at the project root) and the plugin's own files. Add generated code, frozen packages,
 # migrations, infra. Entries follow gitignore rules: a bare name matches in any directory,
 # a leading slash anchors it to the project root (e.g. "**/CLAUDE.md" freezes nested copies).
-protected_paths: []
+# /sdlc-init proposes the secret-shaped files it found (*.pem, *.key, credentials.json, ...;
+# R61, plugin 1.0.29), with the same names as Read deny rules in .claude/settings.json; the CI
+# session cannot read a secret-shaped entry either (any other entry, such as migrations/,
+# stays readable there, since the sandbox hides a denied path from the tests too).
+protected_paths: {{PROTECTED_PATHS}}
 plan_sync:
   # staged paths matching these globs do not require a plan.md update in phase (c)
   exempt:
     - "*.md"
 hooks:
-  format_on_edit: true
+  # The formatter and linter on each file Claude edits (R33, plugin 1.0.29; one behaviour,
+  # always on). An entry maps a glob, or a list of globs, to `fix` commands run in order on
+  # the changed file and `check` commands whose exit 1 is fed back to Claude; `{file}` is the
+  # file's path from the project root, already quoted for the shell (do not quote it again).
+  # The first matching entry wins. A .py or .pyi file no entry matches gets ruff (check
+  # --fix, format, check); any other file type with no entry is left alone. A missing tool, any other exit code or a timeout never blocks the edit.
+  # In a CI session the project's commands are not run (they run outside the sandbox, on code
+  # the session can write); the runner's lint target judges the change there.
+  # Keep to what is cheap per file: a whole-project check (clippy, a type check) belongs in
+  # commands.lint. /sdlc-init proposed what it found (black, yapf or autopep8 in
+  # pyproject.toml; prettier and eslint in package.json; rustfmt for Cargo.toml), e.g.
+  #   - glob: ["*.ts", "*.tsx"]
+  #     fix: ["npx --no prettier --write {file}", "npx --no eslint --fix {file}"]
+  #     check: ["npx --no eslint {file}"]
+  formatters:{{FORMATTERS}}
+
+# --- the CI session's sandbox (R61, plugin 1.0.29) -------------------------------------------
+# allowed_domains: hosts the sandboxed CI session may reach beyond the API, GitHub, PyPI and
+# npm (plugin/ci/settings.ci.json), such as the project's package registry; /sdlc-init
+# proposed the registries of the languages it found. The session may also run the commands
+# above: their Bash allow rules follow commands.build, test, lint and setup.
+sandbox:
+  allowed_domains: {{ALLOWED_DOMAINS}}
 
 # --- pinned process (decision 8) ----------------------------------------------------------
 plugin:

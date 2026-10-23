@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 from gate import limits
-from init import render
+from init import render, sdlc_init
 from state import yamlish
 
 TEMPLATE = Path(__file__).resolve().parents[1] / "template"
@@ -41,6 +41,11 @@ VALUES = {
     "RISK_LIST": '  - "auth"\n  - "data migrations"\n  - "money movement"\n  - "production config"',
     "FRAMEWORK_REPO": "luissiviero/sdlc-framework",
     "CLAUDE_CODE_VERSION": "2.1.304",
+    # R61 and R33 (1.0.29): what /sdlc-init renders for a Python project with nothing to add
+    "ALLOWED_DOMAINS": "[]",
+    "PROTECTED_PATHS": "[]",
+    "FORMATTERS": " []",
+    "COMMANDS_ENV": "[]",
 }
 
 
@@ -118,6 +123,7 @@ def test_sdlc_yaml_renders_to_documented_keys():
         "lint": "python -m ruff check .",
         # step 30: the one-command install the CI phase jobs run before the phase
         "setup": "python -m pip install pytest ruff",
+        "env": [],  # R61: the secrets the targets need, none here
     }
     # step 29 / 32: the release workflow's command and the production-gate hook's patterns
     assert data["deploy"] == {
@@ -133,7 +139,9 @@ def test_sdlc_yaml_renders_to_documented_keys():
     assert data["risk_list"] == ["auth", "data migrations", "money movement", "production config"]
     assert data["test_paths"] == ["tests/**", "**/test_*.py"]  # step 25: the test-file lock
     assert data["protected_paths"] == [] and data["plan_sync"]["exempt"] == ["*.md"]
-    assert data["hooks"]["format_on_edit"] is True
+    # R33: one behaviour, on; the project's own formatters per file type (none here: ruff)
+    assert data["hooks"] == {"formatters": []}
+    assert data["sandbox"] == {"allowed_domains": []}  # R61: PyPI and npm are in the base list
     assert data["plugin"] == {
         "name": "sdlc",
         "marketplace": "sdlc-framework",
@@ -315,7 +323,8 @@ def test_this_repository_s_workflow_copies_match_the_template():
             assert not (REPO_WORKFLOW_DIR / name).exists()
             continue
         installed = (REPO_WORKFLOW_DIR / name).read_text(encoding="utf-8")
-        expected = render.render_file(WORKFLOW_DIR / name, VALUES)
+        # R61: the install drops the commands.env markers when sdlc.yaml names no variable
+        expected = sdlc_init.apply_env_markers(render.render_file(WORKFLOW_DIR / name, VALUES), [])
         if name == FIX_WORKFLOW:
             # R44 (1.0.27): project_setup.py --command-from is not in the framework this
             # repository's sdlc.yaml pins (1.0.17), so the installed copy keeps the setup line
@@ -635,7 +644,9 @@ def test_fix_workflow_starts_on_request_changes_and_on_the_owner_labels():
     for refused in ("CONTRIBUTOR", "FIRST_TIME_CONTRIBUTOR", "FIRST_TIMER", "NONE"):
         assert f"'{refused}'" not in job["if"], refused
     installed = (REPO_WORKFLOW_DIR / FIX_WORKFLOW).read_text(encoding="utf-8")
-    rendered = render.render_file(WORKFLOW_DIR / FIX_WORKFLOW, VALUES)
+    rendered = sdlc_init.apply_env_markers(
+        render.render_file(WORKFLOW_DIR / FIX_WORKFLOW, VALUES), []
+    )
     assert installed == rendered.replace(COMMAND_FROM, "")  # see the copies test (R44)
     for label in ("sdlc:reset-iterations", "sdlc:unlock-tests"):
         assert f"github.event.label.name == '{label}'" in job["if"], label
