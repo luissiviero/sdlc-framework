@@ -1,4 +1,4 @@
-# Session of 2026-10-23 on branch `claude/preflight-policies-deny`: the small lane of wave 3, the preflight's `Edit(/policies/**)` (plugin 1.0.37)
+# Session of 2026-10-23 on branch `claude/preflight-policies-deny`: the small lane of wave 3, the preflight's `Edit(/policies/**)` (plugin 1.0.38)
 
 **Builds on:**
 - `docs/handoffs/sessions/2026-10-23-claude-decision-39-names.md` (#366), this session's earlier file, which covers #363 and #366;
@@ -7,14 +7,14 @@
 
 ## Where the project stands
 - **Framework `main` is at `9554cf4`** (#369, the owner's `Edit(/policies/**)` in `template/.claude/settings.json`), on plugin **1.0.35** (verified, `git log -1 origin/main` and `git show origin/main:.claude-plugin/plugin.json` after `git fetch origin`, read at 16:40 UTC).
-- **This PR** adds the rule to the preflight's `REQUIRED_DENY` as plugin 1.0.37 (1.0.36 is held by lane A); its record is `docs/progress/2026-10-23-claude-preflight-policies-deny.md`.
+- **This PR** adds the rule to the preflight's `REQUIRED_DENY` as plugin 1.0.38 (1.0.36 is held by lane A's R18, 1.0.37 by lane B's R64, #370, which took it first); its record is `docs/progress/2026-10-23-claude-preflight-policies-deny.md`.
 
 ## Preconditions of the moment
 - The standing ones are in `HANDOFF.md`; the wave's in the central session's file.
-- **Numbers:** if lane B's R64 or lane A merges first with 1.0.37, this PR renumbers after `git fetch origin` and `python tasks.py next-free`.
+- **Numbers and order:** wave 3 merges by version: R18 (1.0.36), R64 (1.0.37), then this PR (1.0.38), so `main` never goes down a version. A new clash renumbers after `git fetch origin` and `python tasks.py next-free`.
 
 ## Next steps, in order
-1. **This PR**: the owner merges it when `Framework checks` is green on its final head.
+1. **This PR**: the owner merges it when `Framework checks` is green on its final head, after R18 and R64.
 2. Everything else as the files above list it.
 
 ## Every open item
