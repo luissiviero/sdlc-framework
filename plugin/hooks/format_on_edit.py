@@ -192,7 +192,8 @@ def run_project_commands(
     False only for a check's exit 1, with its output; anything else is a note."""
     if run_command is None:
         from gate.checks import run_command  # noqa: PLC0415 - the gate's shell and tree kill
-    quoted = quote_path(rel)
+    # a path the tool would read as an option (`-x.ts`) is passed as `./-x.ts`
+    quoted = quote_path(os.path.join(".", rel) if rel.startswith("-") else rel)
     if quoted is None:
         return True, f"formatter skipped: {rel} holds a character cmd.exe expands"
     env = command_env()

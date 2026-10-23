@@ -17,7 +17,6 @@ import fnmatch
 import json
 import os
 import re
-import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -415,7 +414,7 @@ def detect(root: Path) -> Detection:
             ],
         )
     det.signals = signals
-    det.secrets = secret_paths(root, files)
+    det.secrets = secret_paths(root)
     return det
 
 
@@ -452,35 +451,44 @@ SIGNAL_SCAN_EXCLUDE = (
 )  # fmt: skip
 
 
+def walk_files(root: Path) -> list[str]:
+    """Every file under ``root``, project-relative with forward slashes, ignored ones
+    included; the walk prunes ``SIGNAL_SCAN_EXCLUDE`` and every folder holding a
+    ``pyvenv.cfg`` (a virtualenv of any name)."""
+    root = Path(root)
+    listed: list[str] = []
+    for folder, dirs, names in os.walk(root):
+        dirs[:] = [
+            d
+            for d in dirs
+            if d not in SIGNAL_SCAN_EXCLUDE and not (Path(folder, d) / "pyvenv.cfg").is_file()
+        ]
+        rel = Path(folder).relative_to(root).as_posix()
+        listed += [n if rel == "." else f"{rel}/{n}" for n in names]
+    return listed
+
+
 def project_files(root: Path) -> list[str]:
     """The project's files, project-relative with forward slashes: ``git ls-files`` (tracked,
     and untracked but not ignored) in a repository, so an ignored virtualenv or build output
-    is not counted; elsewhere a walk that prunes ``SIGNAL_SCAN_EXCLUDE`` and every folder
-    holding a ``pyvenv.cfg`` (a virtualenv of any name). Either way the excluded folders are
-    left out (R61 part 2; the review of 1.0.29)."""
+    is not counted; elsewhere, or when git refuses, ``walk_files``. Either way the excluded
+    folders and the virtualenvs are left out (R61 part 2; the review of 1.0.29). The git call
+    is ``gitops.run_proc``'s: on a runner, where the gate, the detection, the runbooks and the
+    scan call ``detect`` on a checkout the session wrote, it runs with ``runner_args`` and
+    refuses a planted program (R44, I4)."""
+    from state import gitops  # noqa: PLC0415
+
     root = Path(root)
     listed: list[str] | None = None
     if (root / ".git").exists():
         try:
-            proc = subprocess.run(
-                ["git", "-C", str(root), "ls-files", "-co", "--exclude-standard", "-z"],
-                capture_output=True,
-                timeout=60,
-            )
+            proc = gitops.run_proc(root, "ls-files", "-co", "--exclude-standard", "-z")
             if proc.returncode == 0:
-                listed = [f for f in proc.stdout.decode("utf-8", "replace").split("\0") if f]
-        except (OSError, subprocess.SubprocessError):
+                listed = [f for f in proc.stdout.split("\0") if f]
+        except (OSError, gitops.GitError):
             listed = None
     if listed is None:
-        listed = []
-        for folder, dirs, names in os.walk(root):
-            dirs[:] = [
-                d
-                for d in dirs
-                if d not in SIGNAL_SCAN_EXCLUDE and not (Path(folder, d) / "pyvenv.cfg").is_file()
-            ]
-            rel = Path(folder).relative_to(root).as_posix()
-            listed += [n if rel == "." else f"{rel}/{n}" for n in names]
+        listed = walk_files(root)
     venvs = tuple(f[: -len("pyvenv.cfg")] for f in listed if f.endswith("/pyvenv.cfg"))
     return [
         f
@@ -649,10 +657,11 @@ SECRET_PATTERNS = (
 
 
 def secret_paths(root: Path, files: list[str] | None = None) -> list[str]:
-    """The patterns of ``SECRET_PATTERNS`` that match a file of the project (``project_files``,
-    the usual tool folders left out), for ``protected_paths`` and the ``Read`` deny rules; the
-    owner confirms them in the change-0000 PR."""
-    files = project_files(root) if files is None else files
+    """The patterns of ``SECRET_PATTERNS`` that match a file of the project, ignored ones
+    included (``walk_files``: a gitignored ``certs/dev.pem`` is the secret a local session
+    could read), for ``protected_paths`` and the ``Read`` deny rules; the owner confirms them
+    in the change-0000 PR."""
+    files = walk_files(root) if files is None else files
     names = {f.rsplit("/", 1)[-1] for f in files}
     return [pat for pat in SECRET_PATTERNS if any(fnmatch.fnmatchcase(n, pat) for n in names)]
 

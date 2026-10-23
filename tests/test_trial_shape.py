@@ -115,6 +115,26 @@ def test_a_virtualenv_of_any_name_and_ignored_files_are_not_counted(tmp_path):
     assert detect.detect(tmp_path).language == "node"
 
 
+def test_on_a_runner_a_planted_git_program_is_refused_and_the_walk_used(tmp_path, monkeypatch):
+    """The gate, the detection, the runbooks and the scan call detect() on the runner, on a
+    checkout the session wrote: the file list goes through gitops (R44, I4), which refuses a
+    config key that runs a program, and the walk stands in."""
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+    marker = tmp_path.parent / f"{tmp_path.name}-ran"
+    subprocess.run(
+        ["git", "-C", str(tmp_path), "config", "alias.ls-files", f"!touch {marker}"], check=True
+    )
+    subprocess.run(
+        ["git", "-C", str(tmp_path), "config", "core.fsmonitor", f"touch {marker}"], check=True
+    )
+    _write(tmp_path, ".gitignore", "out/\n")
+    _write(tmp_path, "out/gen.py", "x = 1\n")
+    monkeypatch.setenv("GITHUB_ACTIONS", "true")
+    files = detect.project_files(tmp_path)
+    assert "out/gen.py" in files  # the walk, which reads ignored files too
+    assert not marker.exists()
+
+
 def test_a_python_project_with_some_javascript_keeps_its_targets(tmp_path):
     _write(tmp_path, "pyproject.toml", "[tool.pytest.ini_options]\n")
     for n in range(4):
@@ -158,6 +178,16 @@ def test_a_black_project_gets_its_own_formatter_not_ruff(tmp_path):
 
 
 # --- part 5: the secret-shaped paths ---------------------------------------------------------- --
+def test_a_gitignored_secret_file_is_still_proposed(tmp_path):
+    """A local key is usually gitignored: the scan walks the disk, not git's list."""
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+    _write(tmp_path, ".gitignore", "certs/\n")
+    _write(tmp_path, "certs/dev.pem")
+    assert "certs/dev.pem" not in detect.project_files(tmp_path)
+    assert detect.secret_paths(tmp_path) == ["*.pem"]
+    assert detect.detect(tmp_path).secrets == ["*.pem"]
+
+
 def test_secret_shaped_paths_are_proposed(tmp_path):
     _write(tmp_path, "certs/server.pem")
     _write(tmp_path, "deploy/credentials.json")
@@ -287,6 +317,26 @@ def test_a_runner_installed_or_named_in_a_comment_is_not_taken_for_the_tests(tmp
     _write(wf, "a.yml", "name: Evals\njobs:\n  e:\n    steps:\n      - run: pip install pytest\n")
     _write(wf, "b.yml", "name: Checks\n# runs pytest via tasks.py\njobs: {}\n")
     assert sdlc_init.testing_workflow(tmp_path, "python -m pytest") is None
+
+
+def test_a_re_run_reports_the_source_sdlc_yaml_keeps(tmp_path):
+    _write(tmp_path, "m.py", "x = 1\n")
+    _run_init(tmp_path)  # one workflow or none: github-actions
+    wf = tmp_path / ".github" / "workflows"
+    _write(wf, "ci.yml", "name: CI\njobs: {t: {steps: [{run: python -m unittest}]}}\n")
+    _write(wf, "lint.yml", "name: Lint\n")
+    report = _run_init(tmp_path)
+    assert report["maintain"]["source"] == "github-actions"
+    assert report["maintain"]["why"] == "kept from sdlc.yaml"
+
+
+def test_time_commands_before_the_install_says_so(tmp_path):
+    proc = subprocess.run(
+        [sys.executable, str(INIT), "--root", str(tmp_path), "--time-commands"],
+        capture_output=True,
+        text=True,
+    )
+    assert proc.returncode == 2 and "run the install first" in proc.stderr
 
 
 def test_one_workflow_keeps_the_plain_source(tmp_path):
@@ -483,6 +533,18 @@ def test_the_budget_stops_the_commands(tmp_path, monkeypatch):
     entry = {"glob": ["*"], "fix": ["anything {file}"], "check": []}
     clean, note = format_on_edit.run_project_commands(entry, "a.ts", tmp_path, ran)
     assert clean and "budget" in note and ran == []
+
+
+def test_a_path_that_reads_as_an_option_is_passed_as_a_path(tmp_path):
+    seen = []
+
+    def fake_run(command, cwd, timeout, env=None):
+        seen.append(command)
+        return {"exit_code": 0, "output": ""}
+
+    entry = {"glob": ["*"], "fix": ["fmt {file}"], "check": []}
+    format_on_edit.run_project_commands(entry, "-rf.ts", tmp_path, [], fake_run)
+    assert seen[0] in ("fmt ./-rf.ts", 'fmt ".\\-rf.ts"')
 
 
 def test_paths_are_quoted_for_the_platform_shell():

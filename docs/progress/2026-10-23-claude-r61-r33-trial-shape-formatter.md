@@ -76,7 +76,19 @@ A general-purpose agent in a fresh context reviewed the diff against `origin/mai
 10. **Three tree walks per install** are now one.
 11. **A retired `false` switch went silent.** The report now says it is no longer read.
 
-The review found no problem in the marker replacement (valid YAML with one and two names), the flow lists (yamlish and PyYAML agree), the reserved names, the guardrail park that stops a session-edited `sdlc.yaml` from widening the CI settings (checked here for the phase run: `guardrail_changes` parks before `compose` builds the settings; the two other `compose` callers were not traced), the shell quoting, or the rules' anchoring.
+The review found no problem in the marker replacement (valid YAML with one and two names), the flow lists (yamlish and PyYAML agree), the reserved names, the guardrail park that stops a session-edited `sdlc.yaml` from widening the CI settings (checked here for the phase run: `guardrail_changes` parks before `compose` builds the settings. The two other `compose` callers were checked in the self-check below), the shell quoting, or the rules' anchoring.
+
+## The self-check after the review
+A second pass over the whole diff, at the owner's request, found five more problems. Each is fixed with a test:
+1. **The runner's git.** `detect()` runs on the runner (the gate checks, `detect/cli.py`, `runbooks.py`, `scan/cli.py`) on a checkout the session wrote. The review's `git ls-files` ran plain git, without `runner_args` or `refuse_planted_config`, so a planted program could run there (R44, I4). It now goes through `gitops.run_proc`, and the walk stands in when git refuses.
+2. **Ignored secrets.** The same review fix made the secret scan read git's list, which leaves out the gitignored local keys the scan is for. The scan walks the disk again, with the tool folders and virtualenvs pruned.
+3. **Option-shaped paths.** A file whose path starts with `-` is passed as `./-x.ts`, so a tool cannot read it as an option.
+4. **The maintain source on a re-run.** The report now gives the `maintain.source` that `sdlc.yaml` keeps, not a new proposal the merge would not write.
+5. **No `sdlc.yaml`.** `--time-commands` on a project with no `sdlc.yaml` exits 2 with the reason, instead of a traceback.
+
+The two other `compose` callers were checked:
+- the iteration-cap judge runs with Read, Grep and Glob only, so neither the network list nor the Bash rules reach it;
+- triage builds its settings from the checkout's `sdlc.yaml` with no guardrail park, but no template workflow runs it (by hand only), and `sdlc.yaml` stays denied to every session's edits.
 
 ## Verified
 - `python tasks.py verify` on this branch after the review's fixes, with `main` merged in at `f0e50f7` (#345, #347): build, lint, docs lint, version check, tests (2512 passed, 1 skipped: the Windows shim test) and `claude plugin validate` all ok. The output is in the PR body.

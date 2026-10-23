@@ -591,11 +591,24 @@ def testing_workflow(root: Path, test_command: str | None) -> str | None:
     return None
 
 
+def _existing_source(root: Path) -> str | None:
+    try:
+        maintain = yamlish.load_file(root / "sdlc.yaml").get("maintain")
+    except (OSError, ValueError):
+        return None
+    source = maintain.get("source") if isinstance(maintain, dict) else None
+    return source.strip() if isinstance(source, str) and source.strip() else None
+
+
 def maintain_source(root: Path, args, det: detect_mod.Detection) -> tuple[str, str]:
-    """(source, why): ``--maintain-source`` when given; else ``github-actions:<name>`` for
+    """(source, why): ``--maintain-source`` when given; else the ``maintain.source`` an
+    existing ``sdlc.yaml`` carries (a re-run keeps it); else ``github-actions:<name>`` for
     the workflow ``testing_workflow`` finds, else ``github-actions`` (every own workflow)."""
     if args.maintain_source:
         return args.maintain_source, "given"
+    kept = _existing_source(root)
+    if kept:  # a re-run never overwrites the owner's value (merge_missing): report that one
+        return kept, "kept from sdlc.yaml"
     name = testing_workflow(root, args.test or det.test.command)
     if name is None:
         return MAINTAIN_SOURCE_KIND, "one project workflow or fewer, or none runs the tests alone"
@@ -887,6 +900,8 @@ def time_commands(root: Path, run_command=None, clock=None) -> dict:
     from gate import checks  # noqa: PLC0415
 
     sdlc_path = root / "sdlc.yaml"
+    if not sdlc_path.is_file():
+        raise ValueError(f"--time-commands: no sdlc.yaml in {root}; run the install first")
     config = yamlish.load_file(sdlc_path)
     commands = config.get("commands") if isinstance(config.get("commands"), dict) else {}
     gate_cfg = config.get("gate") if isinstance(config.get("gate"), dict) else {}
@@ -1022,7 +1037,7 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     try:
         report = time_commands(Path(args.root).resolve()) if args.time_commands else run(args)
-    except ValueError as exc:  # an --env name refused
+    except ValueError as exc:  # an --env name refused, or --time-commands with no sdlc.yaml
         print(json.dumps({"error": str(exc)}))
         print(str(exc), file=sys.stderr)
         return 2
