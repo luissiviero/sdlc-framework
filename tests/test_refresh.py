@@ -42,10 +42,13 @@ def _older(rel: str) -> str:
 
 def _manifest_with(monkeypatch, entries: dict[str, str]) -> None:
     """The shipped manifest plus ``{rel: older template text}``, each as version 1.0.10."""
-    files = {rel: dict(known) for rel, known in refresh.load_manifest().items()}
+    shipped = refresh.load_manifest()
+    maps = {key: {rel: dict(known) for rel, known in shipped[key].items()} for key in shipped}
     for rel, text in entries.items():
-        files.setdefault(rel, {})[refresh.digest(refresh.canonical_template(text))] = "1.0.10"
-    monkeypatch.setattr(refresh, "load_manifest", lambda path=refresh.MANIFEST: files)
+        for key, marked in (("files", False), ("files_marked", True)):
+            digest = refresh.digest(refresh.canonical_template(text, marked))
+            maps[key].setdefault(rel, {})[digest] = "1.0.10"
+    monkeypatch.setattr(refresh, "load_manifest", lambda path=refresh.MANIFEST: maps)
 
 
 def _render(rel: str, text: str, names: list[str] | None = None, branch: str = "main") -> str:
@@ -66,7 +69,9 @@ def test_the_manifest_knows_every_current_template(rel):
     """A template change without its hash would leave this version's copies unrecognised on
     the next upgrade: run `python tasks.py template-hashes` and commit the file."""
     text = (TEMPLATE / rel).read_text(encoding="utf-8")
-    assert refresh.digest(refresh.canonical_template(text)) in refresh.load_manifest()[rel]
+    manifest = refresh.load_manifest()
+    assert refresh.digest(refresh.canonical_template(text)) in manifest["files"][rel]
+    assert refresh.digest(refresh.canonical_template(text, True)) in manifest["files_marked"][rel]
 
 
 def test_the_refreshed_copies_hold_no_guardrail_file():
@@ -78,10 +83,14 @@ def test_the_refreshed_copies_hold_no_guardrail_file():
 
 
 def test_a_missing_or_broken_manifest_refreshes_nothing(tmp_path):
-    assert refresh.load_manifest(tmp_path / "none.json") == {}
+    empty = {"files": {}, "files_marked": {}}
+    assert refresh.load_manifest(tmp_path / "none.json") == empty
     broken = tmp_path / "broken.json"
     broken.write_text("{not json", encoding="utf-8")
-    assert refresh.load_manifest(broken) == {}
+    assert refresh.load_manifest(broken) == empty
+    old = tmp_path / "old.json"
+    old.write_text(json.dumps({"schema": 1, "files": {README: {"x": "1.0.0"}}}), encoding="utf-8")
+    assert refresh.load_manifest(old) == empty  # another schema: nothing is trusted
 
 
 # --- the canonical forms --------------------------------------------------------------------
@@ -93,20 +102,75 @@ def test_a_rendered_copy_canonicalises_to_its_template(names, branch):
     for rel in sdlc_init.WORKFLOW_FILES:
         text = (TEMPLATE / rel).read_text(encoding="utf-8")
         copy = _render(rel, text, names, branch)
+        want = refresh.canonical_template(text, marked=bool(names))
         canon = refresh.canonical_copy(copy, sdlc_init.DEFAULT_FRAMEWORK_REPO, names, branch)
-        assert canon == refresh.canonical_template(text), (rel, names, branch)
+        assert canon == want, (rel, names, branch)
         crlf = copy.replace("\n", "\r\n")
         canon = refresh.canonical_copy(crlf, sdlc_init.DEFAULT_FRAMEWORK_REPO, names, branch)
-        assert canon == refresh.canonical_template(text), rel
+        assert canon == want, rel
 
 
-def test_a_names_line_the_owner_added_is_not_taken_for_the_markers():
-    """Only the names the project declares are dropped: an env line for another name, or an
-    env: key that holds more than the names, is an edit."""
-    text = "    env:\n      OTHER: ${{ secrets.OTHER || vars.OTHER }}\n    run: x\n"
-    assert refresh.canonical_copy(text, "", ["NPM_TOKEN"]) == text
-    mixed = "    env:\n      NPM_TOKEN: ${{ secrets.NPM_TOKEN || vars.NPM_TOKEN }}\n      X: 1\n"
-    assert refresh.canonical_copy(mixed, "", ["NPM_TOKEN"]) == "    env:\n      X: 1\n"
+BUILD = ".github/workflows/sdlc-build.yml"
+TOKEN = "      NPM_TOKEN: ${{ secrets.NPM_TOKEN || vars.NPM_TOKEN }}"
+
+
+def _is_pristine(copy: str, names: list[str], branch: str = "main") -> bool:
+    return (
+        refresh.written_by(
+            BUILD,
+            copy,
+            framework_repo=sdlc_init.DEFAULT_FRAMEWORK_REPO,
+            env_names=names,
+            default_branch=branch,
+        )
+        is not None
+    )
+
+
+def test_an_env_edit_is_never_taken_for_the_markers():
+    """The fresh review of R64: an owner's change to the env lines is an edit, wherever it
+    is. A: a names line added to a step with no marker; B: the lines the markers wrote,
+    deleted; E: an env: key holding only the names, added; a block out of order, a block
+    with a name missing. A copy with no env lines at all is the text 1.0.27 shipped, before
+    the markers existed, so it is that release's pristine copy (the record's known limit)."""
+    template = (TEMPLATE / BUILD).read_text(encoding="utf-8")
+    assert sdlc_init.ENV_MARKER_RE.search(template), "the build workflow carries markers"
+    names = ["NPM_TOKEN", "DB_URL"]
+    copy = _render(BUILD, template, names)
+    assert _is_pristine(copy, names)
+    lines = copy.split("\n")
+    run = next(i for i, line in enumerate(lines) if line.strip().startswith("run:"))
+    block = [f"{' ' * 10}{n}: ${{{{ secrets.{n} || vars.{n} }}}}" for n in names]
+    a = "\n".join([*lines[:run], *block, *lines[run:]])
+    assert not _is_pristine(a, names)  # A
+    b = "\n".join(
+        line for line in lines if "secrets.NPM_TOKEN" not in line and "secrets.DB_URL" not in line
+    )
+    assert not _is_pristine(b, names)  # B
+    e = "\n".join([*lines[:run], "        env:", *(" " * 2 + x for x in block), *lines[run:]])
+    assert not _is_pristine(e, names)  # E
+    swapped = _render(BUILD, template, list(reversed(names)))
+    assert not _is_pristine(swapped, names)
+    assert not _is_pristine(_render(BUILD, template, names[:1]), names)
+    stripped = refresh.written_by(
+        BUILD,
+        _render(BUILD, template, []),
+        framework_repo=sdlc_init.DEFAULT_FRAMEWORK_REPO,
+        env_names=names,
+    )
+    assert stripped is None or tuple(map(int, stripped.split("."))) < (1, 0, 29)
+
+
+def test_a_main_filter_on_a_trunk_project_is_an_edit():
+    """The install rewrote every filter to the default branch, so one set back is an edit."""
+    rel = ".github/workflows/sdlc-evals.yml"
+    template = (TEMPLATE / rel).read_text(encoding="utf-8")
+    copy = _render(rel, template, [], "trunk")
+    assert "branches: [trunk]" in copy
+    kwargs = {"framework_repo": sdlc_init.DEFAULT_FRAMEWORK_REPO, "env_names": []}
+    assert refresh.written_by(rel, copy, default_branch="trunk", **kwargs) is not None
+    edited = copy.replace("branches: [trunk]", "branches: [main]", 1)
+    assert refresh.written_by(rel, edited, default_branch="trunk", **kwargs) is None
 
 
 # --- the re-run ------------------------------------------------------------------------------
@@ -137,7 +201,7 @@ def test_an_edited_copy_is_kept_and_reported(project, monkeypatch):
     assert report["files"][README].startswith("kept; outdated (edited)")
     assert (
         report["files"][WORKFLOW].startswith("outdated: ")
-        and "(edited" in report["files"][WORKFLOW]
+        and "an edit" in report["files"][WORKFLOW]
     )
     assert (project / README).read_text(encoding="utf-8") == edited
     assert (project / WORKFLOW).read_text(encoding="utf-8") == workflow
@@ -158,9 +222,11 @@ def test_a_guardrail_file_is_never_written_even_when_pristine(project, monkeypat
     _manifest_with(monkeypatch, {"REVIEW.md": older})
     (project / "REVIEW.md").write_text(older, encoding="utf-8")
     report = _init(project)
-    assert report["files"]["REVIEW.md"].startswith("kept; outdated: ")
+    assert report["files"]["REVIEW.md"].startswith("kept; outdated (was 1.0.10)")
     assert "reviewed PR" in report["files"]["REVIEW.md"]
     assert (project / "REVIEW.md").read_text(encoding="utf-8") == older
+    (project / "REVIEW.md").write_text(older + "Our own rule.\n", encoding="utf-8")
+    assert _init(project)["files"]["REVIEW.md"] == "kept"  # the owner's content: no noise
 
 
 def test_the_check_script_is_refreshed_like_the_readmes(project, monkeypatch):
@@ -173,7 +239,70 @@ def test_the_check_script_is_refreshed_like_the_readmes(project, monkeypatch):
 def test_the_shipped_manifest_is_well_formed():
     data = json.loads(refresh.MANIFEST.read_text(encoding="utf-8"))
     assert data["schema"] == refresh.SCHEMA
-    assert set(data["files"]) == set(sdlc_init.REFRESHED_COPIES)
-    for known in data["files"].values():
-        for digest, version in known.items():
-            assert len(digest) == 64 and version.count(".") == 2
+    rels = {*sdlc_init.REFRESHED_COPIES, *sdlc_init.REPORTED_COPIES}
+    for key in ("files", "files_marked"):
+        assert set(data[key]) == rels
+        for known in data[key].values():
+            for digest, version in known.items():
+                assert len(digest) == 64 and version.count(".") == 2
+    # the history is there: the oldest copies (0.2.x) are recognised, not only today's
+    assert any(v.startswith("0.2.") for v in data["files"][README].values())
+
+
+def _tasks():
+    import importlib.util  # noqa: PLC0415
+
+    spec = importlib.util.spec_from_file_location("tasks_r64", ROOT / "tasks.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _git(cwd: Path, *args: str) -> None:
+    import subprocess  # noqa: PLC0415
+
+    subprocess.run(
+        ["git", "-c", "user.email=o@x", "-c", "user.name=o", *args],
+        cwd=cwd,
+        check=True,
+        capture_output=True,
+    )
+
+
+def test_template_hashes_keeps_the_first_version_and_refuses_a_clone_without_tags(
+    tmp_path, monkeypatch
+):
+    """`python tasks.py template-hashes`: each text keeps the first tag that shipped it, a
+    file missing at a tag is skipped, and a clone without tags writes nothing (it would lose
+    every release's text)."""
+    tasks = _tasks()
+    monkeypatch.setattr(sdlc_init, "REFRESHED_COPIES", (README,))
+    monkeypatch.setattr(sdlc_init, "REPORTED_COPIES", ("REVIEW.md",))
+    root = tmp_path / "fw"
+    (root / ".claude-plugin").mkdir(parents=True)
+    (root / "template" / "changes").mkdir(parents=True)
+
+    def ship(version: str, readme: str, review: str | None) -> None:
+        (root / ".claude-plugin" / "plugin.json").write_text(
+            json.dumps({"version": version}), encoding="utf-8"
+        )
+        (root / "template" / README).write_text(readme, encoding="utf-8")
+        if review is not None:
+            (root / "template" / "REVIEW.md").write_text(review, encoding="utf-8")
+
+    _git(tmp_path, "init", "-q", str(root))
+    ship("1.0.0", "one\n", None)
+    _git(root, "add", ".")
+    _git(root, "commit", "-q", "-m", "1.0.0")
+    with pytest.raises(tasks.NoTagsError):
+        tasks.template_hashes(root)
+    _git(root, "tag", "v1.0.0")
+    ship("1.0.1", "two\n", "review\n")
+    _git(root, "add", ".")
+    _git(root, "commit", "-q", "-m", "1.0.1")
+    _git(root, "tag", "v1.0.1")
+    ship("1.0.2", "one\n", "review\n")  # the first text, back in the working tree
+    maps = tasks.template_hashes(root)
+    readme = maps["files"][README]
+    assert readme == {refresh.digest("one\n"): "1.0.0", refresh.digest("two\n"): "1.0.1"}
+    assert maps["files"]["REVIEW.md"] == {refresh.digest("review\n"): "1.0.1"}

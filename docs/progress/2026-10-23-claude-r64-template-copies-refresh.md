@@ -5,9 +5,9 @@ This session is lane B of wave 3, started by the central session (`session_016NL
 It changes `plugin/`, so it bumps the patch. `python tasks.py next-free` gave 1.0.37 after `git fetch origin` on `84d4aa3`: lane A's `claude/r18-failed-run-explains-itself` held 1.0.36. It takes no choice and no note.
 
 ## What was built
-1. **`plugin/init/refresh.py`** recognises a copy the template wrote and nobody edited. Both sides are hashed in a canonical form:
-   - **the template's:** its `# sdlc:commands.env` marker lines dropped, `{{FRAMEWORK_REPO}}` kept;
-   - **the copy's:** the project's framework repository put back as `{{FRAMEWORK_REPO}}`, the lines the markers expanded to for the project's `commands.env` names dropped, the `branches:` filter put back to `main`, and CRLF read as LF.
+1. **`plugin/init/refresh.py`** recognises a copy the template wrote and nobody edited. Both sides are hashed in a canonical form (after the review, see below):
+   - **the template's:** its `# sdlc:commands.env` marker lines dropped for a project with no names (`files`), kept for one with names (`files_marked`), `{{FRAMEWORK_REPO}}` kept;
+   - **the copy's:** the project's framework repository put back as `{{FRAMEWORK_REPO}}`, each exact block the markers expanded to put back as its marker line, the `branches:` filter put back to `main`, and CRLF read as LF.
 
    `{{FRAMEWORK_REPO}}` is the only placeholder these files have had at any of the 75 tags (checked with `git show` on each tag). A copy rendered with values the project no longer has does not match, so it is treated as edited: kept, never overwritten.
 2. **`plugin/init/template_hashes.json`** records, for each refreshed copy, the hash of every text its template had at a `v*` tag. Each hash keeps the first version that shipped it. `python tasks.py template-hashes` writes the file from the tags and the working tree. A test fails when the current template's hash is missing from it, so a template change cannot ship without its hash.
@@ -28,6 +28,22 @@ It changes `plugin/`, so it bumps the patch. `python tasks.py next-free` gave 1.
    - the manifest is well formed.
 
    A manual check against the real manifest: a v1.0.20 `changes/README.md` and `sdlc-design.yml` were refreshed (`was 1.0.15`, `was 1.0.19`), and an edited v1.0.20 `sdlc-test.yml` was kept.
+
+## The fresh-context review
+A fresh-context sub-agent reviewed `36f0f4c`, report only. It found nothing blocking. What it found, fixed with tests:
+1. **Important: an env edit could pass as pristine.** The canonical form dropped every declared-name line wherever it sat, so an owner's change was overwritten when they:
+   - (A) added such a line to a step without a marker;
+   - (B) deleted the lines the markers wrote, which the refresh would put back as secrets;
+   - (E) added an `env:` key holding only the names.
+
+   The copy's exact rendered blocks (every name, in order, at a marker's place) are now put back as the marker line. A project with names is compared only with the marked templates (`files_marked`, manifest schema 2). A–E, a reordered block and a missing name are tested.
+2. **Important: `template-hashes` in a clone without tags** would have written a manifest with today's hashes only. It now refuses (`NoTagsError`). A test runs the task on a small repository: first version kept, a file missing at a tag skipped, no tags refused. Another asserts the shipped manifest holds 0.2.x texts.
+3. **A `branches: [main]` line on a project whose default branch is another** is an edit: the install rewrote every filter.
+4. **The report blamed an edit** where the cause can be values the project no longer has; the wording now names both.
+5. **Guardrail noise.** `REVIEW.md` is reported outdated only when an older release wrote it and nobody edited it; an edited one, and `bands.yaml` always, say `kept`.
+6. **The test gaps** named above are closed.
+
+**Known limit:** where the current template minus its markers equals a release from before the markers existed (1.0.29), a copy with no env lines is that release's pristine copy. For `sdlc-build.yml` that is 1.0.27's text. A project whose owner deleted the marker lines from a copy rendered with names is then indistinguishable from that older copy, and the refresh writes the lines back for the names `sdlc.yaml` still declares. Removing a name from `commands.env` is the way to drop it.
 
 ## Settled at the build (the proposal's "What to settle")
 - **Where the hashes come from:** read from the framework's own tags, by a script (`tasks.py template-hashes`), not recorded only from this build on. The sample's copies from 1.0.10 and 1.0.17 are recognised, which is where the proposal's problem was seen.

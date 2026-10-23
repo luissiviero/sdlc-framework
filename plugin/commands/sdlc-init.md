@@ -112,12 +112,15 @@ the template of every release (`plugin/init/template_hashes.json`):
   `policies/README.md`) is replaced with this version's and reported
   `refreshed (was <version>)`, the first release that shipped the text it had; the report's
   `refreshed` map lists them;
-- an edited copy is kept: a workflow is reported `outdated: … (edited …)`, a README or
-  `evals/check.py` `kept; outdated (edited): …`; the owner diffs it with the template copy
+- an edited copy is kept, and so is one rendered with values the project no longer has
+  (another framework repository, a renamed default branch, changed `commands.env` names): a
+  workflow is reported `outdated: …`, a README or `evals/check.py` `kept; outdated (edited):
+  …`; the owner diffs it with the template copy
   (`${CLAUDE_PLUGIN_ROOT}/template/`) to take the newer text, or keeps their edits;
-- `REVIEW.md` and `bands.yaml` are guardrail files and never rewritten (decision 6): one that
-  differs from this version's template is reported `kept; outdated: …` for the owner's
-  reviewed PR;
+- `REVIEW.md` and `bands.yaml` are guardrail files and never rewritten (decision 6): a
+  `REVIEW.md` an older release wrote and nobody edited is reported `kept; outdated (was
+  <version>): …` for the owner's reviewed PR; an edited one and `bands.yaml` are the owner's
+  content and say `kept`;
 - `sdlc.yaml` reports `unchanged` or `updated (added …)` with its comments kept as the first
   install wrote them (only `updated (… comments dropped)` loses them).
 

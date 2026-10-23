@@ -327,8 +327,8 @@ def test_init_writes_evals_and_bands_once(tmp_path):
     # owner edits survive: create-only files are kept on re-run
     (root / "bands.yaml").write_text("metric: my_metric\n", encoding="utf-8")
     report2 = _run_init(root)
-    # R64: an edited guardrail is kept and reported outdated, never refreshed (decision 6)
-    assert report2["files"]["bands.yaml"].startswith("kept; outdated: ")
+    # R64: an edited guardrail is the owner's own content: kept, never refreshed (decision 6)
+    assert report2["files"]["bands.yaml"] == "kept"
     assert report2["files"]["evals/README.md"] == "kept"
     assert (root / "bands.yaml").read_text(encoding="utf-8") == "metric: my_metric\n"
 

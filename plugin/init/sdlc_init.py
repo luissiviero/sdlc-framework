@@ -438,6 +438,9 @@ README_COPIES = (
     "policies/README.md",
 )
 REFRESHED_COPIES = (*WORKFLOW_FILES, *README_COPIES)
+# a guardrail file the manifest knows only to report an older release's copy (decision 6);
+# bands.yaml is rendered from the maintain metric and is the owner's from the first install
+REPORTED_COPIES = ("REVIEW.md",)
 # The template writes the default branch GitHub gives most repositories; a project whose
 # default branch has another name gets it substituted here, on the `branches:` filter only
 # (OPERATING_MODEL section 4.2: the merge triggers filter the *base* branch).
@@ -464,21 +467,22 @@ def render_workflow(rel: str, values: dict[str, str], default_branch: str) -> st
 
 
 OUTDATED = (
-    "outdated: differs from what plugin {version} installs and from every release's template "
-    "(edited, so never overwritten); replace it with the template copy to upgrade (delete it "
-    "and re-run /sdlc-init), or keep your edits"
+    "outdated: differs from what plugin {version} installs and matches no release's template "
+    "as this project renders it (an edit, or values changed since the install), so it was "
+    "kept; replace it with the template copy to upgrade (delete it and re-run /sdlc-init), "
+    "or keep your edits"
 )
 # R64: a copy no one edited since an older release wrote it is replaced in the same PR as the pin
 REFRESHED = "refreshed (was {was})"
 # R64: a guardrail file is never refreshed (decision 6); an outdated one is only reported
 GUARDRAIL_OUTDATED = (
-    "kept; outdated: differs from what plugin {version} installs; a guardrail file, so the "
-    "owner diffs it with the template copy and edits it in a reviewed PR"
+    "kept; outdated (was {was}): the copy an older release wrote, never edited since; a "
+    "guardrail file, so the owner replaces it with the template copy in a reviewed PR"
 )
-GUARDRAIL_COPIES = ("REVIEW.md", "bands.yaml")
 KEPT_EDITED = (
-    "kept; outdated (edited): differs from what plugin {version} installs and from every "
-    "release's template; diff it with the template copy, or keep your edits"
+    "kept; outdated (edited): differs from what plugin {version} installs and matches no "
+    "release's template (an edit, or values changed since the install); diff it with the "
+    "template copy, or keep your edits"
 )
 # decision 32 (1.0.8): only the new copies export the job timeout the build caps need
 OUTDATED_BUILD_CAPS = (
@@ -490,6 +494,17 @@ OUTDATED_ENV = "; the kept copy may lack the commands.env lines for {names}"
 BUILD_CAP_WORKFLOWS = (".github/workflows/sdlc-build.yml", ".github/workflows/sdlc-fix.yml")
 
 
+def _written_by(root: Path, rel: str, values: dict[str, str], default_branch: str) -> str | None:
+    """The release whose template wrote the project's ``rel`` unedited (``init/refresh.py``)."""
+    return refresh.written_by(
+        rel,
+        (root / rel).read_text(encoding="utf-8"),
+        framework_repo=values.get("FRAMEWORK_REPO", ""),
+        env_names=json.loads(values.get("COMMANDS_ENV", "[]")),
+        default_branch=default_branch,
+    )
+
+
 def refresh_copy(
     root: Path, rel: str, content: str, values: dict[str, str], default_branch: str, report: dict
 ) -> bool:
@@ -497,13 +512,7 @@ def refresh_copy(
     nobody changed it since (``init/refresh.py``); True when it did. The refreshed copy rides
     in the same pull request as the pin, so the two move together."""
     target = root / rel
-    was = refresh.written_by(
-        rel,
-        target.read_text(encoding="utf-8"),
-        framework_repo=values.get("FRAMEWORK_REPO", ""),
-        env_names=json.loads(values.get("COMMANDS_ENV", "[]")),
-        default_branch=default_branch,
-    )
+    was = _written_by(root, rel, values, default_branch)
     if was is None:
         return False
     target.write_text(content, encoding="utf-8", newline="\n")
@@ -858,8 +867,8 @@ def run(args) -> dict:
             root, rel, content, values, "main", report["files"]
         ):
             continue
-        elif rel in GUARDRAIL_COPIES:
-            report["files"][rel] = GUARDRAIL_OUTDATED.format(version=values["PLUGIN_VERSION"])
+        elif rel in REPORTED_COPIES and (was := _written_by(root, rel, values, "main")):
+            report["files"][rel] = GUARDRAIL_OUTDATED.format(was=was)
         elif rel in README_COPIES:
             report["files"][rel] = KEPT_EDITED.format(version=values["PLUGIN_VERSION"])
         else:

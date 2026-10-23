@@ -1698,16 +1698,24 @@ def _init_modules():
     return sdlc_init, refresh
 
 
-def template_hashes(root: Path) -> dict[str, dict[str, str]]:
-    """``{rel: {hash: version}}`` for every refreshed copy (R64): the canonical text of
-    ``template/<rel>`` at each ``v*`` tag, oldest first, and in the working tree at the
-    version ``plugin.json`` holds; each hash keeps the first version that shipped it."""
+class NoTagsError(RuntimeError):
+    """No ``v*`` tag is in the clone: a manifest from it would lose every release's text."""
+
+
+def template_hashes(root: Path) -> dict[str, dict[str, dict[str, str]]]:
+    """The two maps of ``plugin/init/template_hashes.json`` (R64), ``files`` and
+    ``files_marked``, each ``{rel: {hash: version}}`` for every refreshed copy and every
+    reported one: the canonical text of ``template/<rel>`` at each ``v*`` tag, oldest first,
+    then in the working tree at the version ``plugin.json`` holds; each hash keeps the first
+    version that shipped it. Raises ``NoTagsError`` in a clone without tags."""
     sdlc_init, refresh = _init_modules()
     tags = _git(root, "tag", "--list", "v*", "--sort=v:refname").decode("utf-8").split()
+    if not tags:
+        raise NoTagsError("no v* tag in this clone: run `git fetch --tags origin` first")
     current = json.loads((root / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8"))
-    files: dict[str, dict[str, str]] = {}
-    for rel in sdlc_init.REFRESHED_COPIES:
-        known: dict[str, str] = {}
+    maps: dict[str, dict[str, dict[str, str]]] = {"files": {}, "files_marked": {}}
+    for rel in (*sdlc_init.REFRESHED_COPIES, *sdlc_init.REPORTED_COPIES):
+        texts = []
         for tag in tags:
             proc = subprocess.run(
                 ["git", "show", f"{tag}:template/{rel}"],
@@ -1717,22 +1725,25 @@ def template_hashes(root: Path) -> dict[str, dict[str, str]]:
                 encoding="utf-8",
             )
             if proc.returncode == 0:
-                known.setdefault(refresh.digest(refresh.canonical_template(proc.stdout)), tag[1:])
-        text = (root / "template" / rel).read_text(encoding="utf-8")
-        known.setdefault(refresh.digest(refresh.canonical_template(text)), current["version"])
-        files[rel] = known
-    return files
+                texts.append((proc.stdout, tag[1:]))
+        texts.append(((root / "template" / rel).read_text(encoding="utf-8"), current["version"]))
+        for key, marked in (("files", False), ("files_marked", True)):
+            known: dict[str, str] = {}
+            for text, version in texts:
+                known.setdefault(refresh.digest(refresh.canonical_template(text, marked)), version)
+            maps[key][rel] = known
+    return maps
 
 
 def task_template_hashes() -> int:
     """Rewrite plugin/init/template_hashes.json from the v* tags and the working tree (R64)."""
     _sdlc_init, refresh = _init_modules()
     try:
-        files = template_hashes(ROOT)
-    except (OSError, subprocess.CalledProcessError) as error:
-        print(f"template-hashes: cannot read git: {error}", file=sys.stderr)
+        maps = template_hashes(ROOT)
+    except (OSError, subprocess.CalledProcessError, NoTagsError) as error:
+        print(f"template-hashes: not written: {error}", file=sys.stderr)
         return 1
-    data = {"schema": refresh.SCHEMA, "files": files}
+    data = {"schema": refresh.SCHEMA, **maps}
     refresh.MANIFEST.write_text(
         json.dumps(data, indent=2, sort_keys=True) + "\n", encoding="utf-8", newline="\n"
     )
