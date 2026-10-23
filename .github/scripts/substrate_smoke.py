@@ -3,7 +3,7 @@ start with a read-only step, article p.41).
 
 Runs one headless `claude -p` turn under a per-run budget with whichever credential the
 workflow was given, and prints what the CLI reports. Either repository secret works
-(docs/NOTES.md section 2):
+(docs/notes/2.md):
 
 - ``ANTHROPIC_API_KEY``      -> ``claude -p --bare ...`` (bare mode reads only the key;
                                billed per token, not against a plan window)
@@ -36,7 +36,7 @@ if str(PLUGIN_DIR) not in sys.path:
 from ci import auth as auth_mod  # noqa: E402
 
 PROMPT = "Reply with the single word OK. Do not use any tool."
-# The outer bounds every phase job will carry (docs/NOTES.md section 10b).
+# The outer bounds every phase job will carry (docs/notes/10.md, 10b).
 BOUNDS = ["--model", "opus", "--max-turns", "2", "--max-budget-usd", "0.25"]
 
 

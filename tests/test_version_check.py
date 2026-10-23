@@ -5,7 +5,7 @@ bump from ``main``; a bump above ``main`` with no tag passes; a bump to a tagged
 ``main``'s own version after the other pull request merged first, fails; the tag is read on
 ``origin`` when the clone lacks it; nothing is checked without a ``main``. Two open branches
 that bump to one version: the later bump fails and the earlier is told, and a branch built on
-the other shares its bump (choice 265).
+the other shares its bump (choice 266).
 """
 
 from __future__ import annotations

@@ -136,7 +136,7 @@ def dry_run_argv(capsys, root: Path, phase: str = "b", env=None) -> list[str]:
     return json.loads(capsys.readouterr().out)["argv"]
 
 
-# --- 1. the credential selection (task 30.3; docs/NOTES.md section 2) -----------------------------
+# --- 1. the credential selection (task 30.3; docs/notes/2.md) -----------------------------------
 def test_choose_auth_key_only():
     chosen = auth.choose_auth(KEY_ENV)
     assert chosen["auth"] == "api_key" and chosen["bare"] is True and chosen["reason"]
@@ -191,7 +191,7 @@ def test_substrate_smoke_agrees_with_the_shared_selection():
             assert smoke == (auth.LABELS[chosen["auth"]], ["--bare"] if chosen["bare"] else [])
 
 
-# --- 2. the composed command line (task 30.3; docs/NOTES.md section 10b) --------------------------
+# --- 2. the composed command line (task 30.3; docs/notes/10.md, 10b) ----------------------------
 @pytest.mark.parametrize(
     ("phase", "command", "mode"),
     [("b", "sdlc-design", "default"), ("d", "sdlc-test", "acceptEdits"),
@@ -4196,6 +4196,80 @@ def test_a_session_that_pushes_another_branch_of_the_change_parks(
         root, "sdlc/0001/d-test", run_phase.change_refs(root, "0001"),
         run_phase.change_refs(root, "0001"),
     ) == []  # fmt: skip
+
+
+@pytest.mark.parametrize(
+    "moved", ["created", "moved", "deleted", "tag-variant", "branch-variant", "redirected"]
+)
+def test_a_session_that_writes_the_change_s_release_ref_parks(
+    project, fake_claude, monkeypatch, capsys, tmp_path, moved
+):
+    """Choice 261, point 2 (``docs/proposals/sandbox-closes-gaps.md``, "What to settle", last
+    row): a session that pushes ``refs/sdlc/released/<id>`` makes the release workflow skip
+    the change as already released (``release/cli.py``, ``remote_record``). The branch fetch
+    never brings the ref, so the runner reads it with ``ls-remote`` before and after the
+    session and parks under ``session_branch`` when it was created, moved or deleted. The
+    independent review: a name the release workflow's fetch of the short name would also
+    take (under ``refs/tags/`` or ``refs/heads/``) parks, and so does a session that points
+    origin at a mirror for the reads and pushes the forged ref to the real remote."""
+    root, change = project
+    bare = with_remote(root, tmp_path)
+    pr_route(monkeypatch)
+    if moved in ("moved", "deleted"):
+        git(root, "push", "-q", "origin", "HEAD:refs/sdlc/released/0001")
+    push = {
+        "created": "git('push', '-q', 'origin', 'HEAD:refs/sdlc/released/0001')\n",
+        "moved": "git('commit', '-q', '--allow-empty', '-m', 'forged record')\n"
+        "git('push', '-q', '-f', 'origin', 'HEAD:refs/sdlc/released/0001')\n"
+        "git('reset', '-q', '--hard', 'HEAD~1')\n",
+        "deleted": "git('push', '-q', 'origin', ':refs/sdlc/released/0001')\n",
+        "tag-variant": "git('push', '-q', 'origin', 'HEAD:refs/tags/refs/sdlc/released/0001')\n",
+        "branch-variant": "git('push', '-q', 'origin', "
+        "'HEAD:refs/heads/refs/sdlc/released/0001')\n",
+        "redirected": f"git('clone', '-q', '--mirror', {str(bare)!r}, "
+        f"{str(tmp_path / 'mirror.git')!r})\n"
+        "git('push', '-q', 'origin', 'HEAD:refs/sdlc/released/0001')\n"
+        f"git('remote', 'set-url', 'origin', {str(tmp_path / 'mirror.git')!r})\n"
+        f"git('remote', 'set-url', '--push', 'origin', {str(bare)!r})\n",
+    }[moved]
+    monkeypatch.setenv("FAKE_CLAUDE_RUN", str(_forging_session(tmp_path, change, push)))
+    full_run(root, change, fake_claude, monkeypatch, "b")
+    out = json.loads(capsys.readouterr().out)
+    assert out["parked"].startswith("session_branch: ")
+    if moved == "redirected":
+        assert "origin: its URL changed or it was removed during the session" in out["parked"]
+        return
+    name = {
+        "tag-variant": "refs/tags/refs/sdlc/released/0001",
+        "branch-variant": "refs/heads/refs/sdlc/released/0001",
+    }.get(moved, "refs/sdlc/released/0001")
+    assert f"{name}: the release ref moved during the session" in out["parked"]
+    if moved != "moved" and moved != "deleted":
+        assert "(absent ->" in out["parked"]
+    if moved == "deleted":
+        assert "-> absent)" in out["parked"]
+
+
+def test_the_release_ref_left_alone_or_unreadable(project, tmp_path):
+    """The release ref is keyed by its full name beside the branches; an untouched ref is no
+    reason; a remote that cannot be asked after the session, when it could be before, is one
+    (fail closed; the independent review, finding 5). Two failed reads are a remote the job
+    cannot reach, which the session cannot cause before it starts."""
+    root, _change = project
+    with_remote(root, tmp_path)
+    git(root, "push", "-q", "origin", "HEAD:refs/sdlc/released/0001")
+    git(root, "checkout", "-q", "-b", "sdlc/0001/b")
+    refs = run_phase.change_refs(root, "0001")
+    assert refs["refs/sdlc/released/0001"] == git(root, "rev-parse", "HEAD").strip()
+    assert run_phase.session_push_mismatches(root, "sdlc/0001/b", refs, dict(refs)) == []
+    git(root, "remote", "set-url", "origin", str(tmp_path / "gone.git"))
+    unreadable = run_phase.released_refs(root, "0001")
+    assert unreadable == {"refs/sdlc/released/0001": run_phase.RELEASED_REF_UNREADABLE}
+    after = {**refs, **unreadable}
+    assert run_phase.session_push_mismatches(root, "sdlc/0001/b", after, dict(after)) == []
+    assert run_phase.session_push_mismatches(root, "sdlc/0001/b", refs, after) == [
+        "refs/sdlc/released/0001: the remote could not be read after the session"
+    ]
 
 
 @pytest.mark.parametrize("stays_with_the_plant", [True, False])

@@ -1,6 +1,6 @@
 """Which credential an unattended ``claude -p`` run uses, and whether it runs in bare mode.
 
-One definition for the whole framework (docs/NOTES.md section 2; OPERATING_MODEL section
+One definition for the whole framework (docs/notes/2.md; OPERATING_MODEL section
 4.2). ``.github/scripts/substrate_smoke.py`` — the first proof of the substrate, build guide
 step 3 — and ``plugin/ci/run_phase.py`` both call it, so the smoke run and the phase jobs can
 never disagree about which secret wins.
@@ -59,7 +59,7 @@ def choose_auth(env: Mapping[str, str]) -> dict:
         "bare": False,
         "reason": (
             f"no credential: set the repository secret {API_KEY_VAR} or {OAUTH_TOKEN_VAR} "
-            "(docs/NOTES.md section 2)"
+            "(the framework's docs/notes/2.md)"
         ),
     }
 

@@ -1,9 +1,9 @@
-# Progress — R66's follow-up: four points from the closed #353 (choice 265) (2026-10-23)
+# Progress — R66's follow-up: four points from the closed #353 (choice 266) (2026-10-23)
 
-This session ran on branch `claude/r66-follow-up`, built on #354's branch (`ccr-9171b99a-q6u17y` at `3a540ef`, which holds `main` at `0733b8c`), so #354 merges first. It changes `tasks.py` and its tests and four documentation files; no file under `plugin/` or `template/`, no plugin version.
+This session ran on branch `claude/r66-follow-up`, built on #354's branch (`ccr-9171b99a-q6u17y` at `3a540ef`, which holds `main` at `0733b8c`); #354 merged, and `main` at `b6800ff` is merged in. The choice was first taken as 265, which #355 took and merged first; it is 266. It changes `tasks.py` and its tests and four documentation files; no file under `plugin/` or `template/`, no plugin version.
 
 ## The owner's choices
-265. **#354 is the version kept, with four points of #353 as a follow-up** (the owner, 2026-10-23, session `claude/parallelism-inventory`: "#354 with those 4 points after follow-up", after a table comparing #353 and #354). #353 is closed. The four points:
+266. **#354 is the version kept, with four points of #353 as a follow-up** (the owner, 2026-10-23, session `claude/parallelism-inventory`: "#354 with those 4 points after follow-up", after a table comparing #353 and #354). #353 is closed. The four points:
    - (1) the coordinator's relay never starts a comment with `@claude`: a dated annotation on R66's part 3;
    - (2) the conflict at the base update before gate (e) resolved by a fix round instead of a park, decided on the trial's measure: point 5 of R66's "What to settle";
    - (3) R28's manager reading the changes in flight, as the alternative to the coordinator reading `evidence/manager.md`: point 6;
@@ -19,10 +19,12 @@ This session ran on branch `claude/r66-follow-up`, built on #354's branch (`ccr-
 - CI checks out the pull request alone, so `version-check` sees no other branch there; it acts on a session's `verify` after `git fetch origin`. Choice, note and candidate numbers still have only `next-free` before a merge.
 - `HANDOFF.md`'s description of `version-check` (standing precondition 1) is not changed: it is a stable page changed in a PR of its own. Proposed for that PR: "a branch that bumps the plugin to a version `main` holds, a tag has or a fetched open branch took first fails".
 
+- `next-free` and check 10's no-gap test can disagree on a choice number. On 2026-10-23, `next-free` gave 266 while 265 was held only on open branches, and `test_the_repository_takes_no_number_twice` made 265 the only number the next merge could take. `version-check` is not touched by it: a patch must be above `main`'s and not taken first by an open branch, and a gap in versions is not failed. Whether `next-free` should give one above `main` for choices when the lower one is held only on open branches is the owner's to say.
+
 ## Carried from #353 (closed), not in #354
 - `docs/proposals/weekly-window-guarded.md:110` says "the framework runs one change at a time", which the per-branch concurrency groups contradict (`template/.github/workflows/sdlc-build.yml:52-54`). A dated annotation is due in a documentation PR.
 
 ## What the owner does
 | When | Act |
 |---|---|
-| After #354 merges | Merge this PR when `Framework checks` is green on its final head. |
+| Now | Merge this PR when `Framework checks` is green on its final head. |

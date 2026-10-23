@@ -656,14 +656,46 @@ SECRET_PATTERNS = (
 )  # fmt: skip
 
 
+# Choice 265 (point 3): two patterns name files that are often plain configuration a build or
+# a test reads, and a Read deny hides a file from the tests too. They are proposed only when a
+# matching file holds what reads as a secret: in `.npmrc` an `_authToken`, `_auth` or
+# `_password` with a literal value (a `${NPM_TOKEN}` reference is not one); in
+# `appsettings.*.json` a `ConnectionStrings` key or a key holding `Password` or `Secret`.
+CONTENT_GATED = {
+    ".npmrc": re.compile(r"(?im)_(?:authToken|auth|password)\s*=\s*(?!\$\{)\S"),
+    "appsettings.*.json": re.compile(
+        r'(?i)"(?:ConnectionStrings|[^"]*(?:Password|Secret)[^"]*)"\s*:'
+    ),
+}
+CONTENT_READ_LIMIT = 256 * 1024  # bytes read from a gated file; a secret sits near the top
+
+
+def _holds_secret(path: Path, pattern: re.Pattern[str]) -> bool:
+    try:
+        with path.open("rb") as fh:
+            text = fh.read(CONTENT_READ_LIMIT).decode("utf-8", errors="replace")
+    except OSError:
+        return False
+    return pattern.search(text) is not None
+
+
 def secret_paths(root: Path, files: list[str] | None = None) -> list[str]:
     """The patterns of ``SECRET_PATTERNS`` that match a file of the project, ignored ones
     included (``walk_files``: a gitignored ``certs/dev.pem`` is the secret a local session
     could read), for ``protected_paths`` and the ``Read`` deny rules; the owner confirms them
-    in the change-0000 PR."""
+    in the change-0000 PR. A pattern of ``CONTENT_GATED`` counts only when one of its files
+    holds what reads as a secret (choice 265)."""
+    root = Path(root)
     files = walk_files(root) if files is None else files
-    names = {f.rsplit("/", 1)[-1] for f in files}
-    return [pat for pat in SECRET_PATTERNS if any(fnmatch.fnmatchcase(n, pat) for n in names)]
+    out: list[str] = []
+    for pat in SECRET_PATTERNS:
+        hits = [f for f in files if fnmatch.fnmatchcase(f.rsplit("/", 1)[-1], pat)]
+        gate = CONTENT_GATED.get(pat)
+        if gate is not None:
+            hits = [f for f in hits if _holds_secret(root / f, gate)]
+        if hits:
+            out.append(pat)
+    return out
 
 
 def is_secret_pattern(entry: str) -> bool:

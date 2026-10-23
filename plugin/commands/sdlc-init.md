@@ -29,7 +29,8 @@ command and pass it with `--build/--test/--lint`; the gate does not enter phase 
 all three. The report's `proposed` block shows what else the install writes for the owner
 to confirm in the change-0000 PR: the package registries the CI session may reach
 (`sandbox.allowed_domains`), the secret-shaped files found (`protected_paths`, and the same
-names as `Read` deny rules), and the formatter commands per file type (`hooks.formatters`:
+names as `Read` deny rules; `.npmrc` and `appsettings.*.json` only when one holds a token,
+a password, a secret or a connection string), and the formatter commands per file type (`hooks.formatters`:
 black, yapf or autopep8 from `pyproject.toml`, prettier and eslint from `package.json`,
 rustfmt for `Cargo.toml`; ruff stays Python's default with no entry). Detection also proposes `commands.setup`
 — the one command that installs what those three need (`python -m pip install -e ".[dev]"`,
@@ -59,7 +60,7 @@ and pass `--setup ""` when the project has nothing to install.
   item, a guardrail file change, a run limit, an infrastructure failure, a merge to main
   and a deploy still park; a risk-list hit itself parks nothing (decision 35: it is a line
   of the "Needs your close look" banner on the PR the owner merges, and the merge accepts
-  it).
+  it; at (e), the owner's approving review, on which the merge App merges, decision 36).
 - deploy action [none]: what makes a merged change live — publish package · schedule job ·
   regenerate report · promote to paper trading · deploy service · none
 - real production? [no] — turns on the release label and the production gate
@@ -158,7 +159,9 @@ uncommitted, so commit the project's own work first). Then open the PR exactly a
 (title `intent(0000): <title>`, label `sdlc:a-ready`, the generated ≤5-bullet summary from
 `changes/0000-sdlc-init/intent.md`; routes gh → REST API → compare URL for the owner). In the
 report, add what the summary cannot know: the detected targets and their health, and the
-files the owner should review (CLAUDE.md trim, settings, the risk list's globs). Merge =
+files the owner should review (CLAUDE.md trim, settings, the risk list's globs), and the
+acts of step 6 the owner does after the merge, each settings act marked desktop-only with
+its direct link (ROADMAP R21). Merge =
 accept: it also confirms the risk list, and accepts any risk-list hit the PR's "Needs your
 close look" banner shows (gate (a) matches the globs on this PR's own files, decision 35).
 
@@ -171,22 +174,31 @@ close look" banner shows (gate (a) matches the globs on this PR's own files, dec
   `claude plugin marketplace update sdlc-framework`, `claude plugin install
   sdlc@sdlc-framework --yes` and `claude plugin update sdlc@sdlc-framework` (the two
   `update` lines refresh the environment's cached copy after a framework release; see
-  `docs/NOTES.md` §3a).
+  `docs/notes/3.md`, 3a).
 - The phase workflows open pull requests with the workflow token, which GitHub refuses
   until the owner turns on, once per repository, Settings → Actions → General → Workflow
-  permissions → "Allow GitHub Actions to create and approve pull requests" (NOTES §11a).
-  Without it every phase job ends with "GitHub Actions is not permitted to create or
-  approve pull requests" after the phase has run. The workflows also need the repository
-  secret `CLAUDE_CODE_OAUTH_TOKEN` or `ANTHROPIC_API_KEY` (NOTES §2).
+  permissions → "Allow GitHub Actions to create and approve pull requests" (NOTES §11a;
+  `https://github.com/<owner>/<repo>/settings/actions`). Without it every phase job ends
+  with "GitHub Actions is not permitted to create or approve pull requests" after the phase
+  has run. The workflows also need the repository secret `CLAUDE_CODE_OAUTH_TOKEN` or
+  `ANTHROPIC_API_KEY` (NOTES §2; Settings → Secrets and variables → Actions,
+  `https://github.com/<owner>/<repo>/settings/secrets/actions`). Both are desktop-only: the
+  GitHub mobile app shows no repository settings, so open the links in a desktop browser,
+  or in the phone browser's desktop mode (ROADMAP R21). In the report, name both with
+  their links filled with the project's owner and repository, and say they are
+  desktop-only.
 - The GitHub App the automation pushes and opens pull requests as (decision 33), so the
   project's CI runs on its heads with no approval click and the events it causes start
   workflow runs. Create a GitHub App on the owner's account (Settings → Developer settings →
-  GitHub Apps → New GitHub App) with the webhook turned off and these repository
+  GitHub Apps → New GitHub App, `https://github.com/settings/apps/new`) with the webhook
+  turned off and these repository
   permissions: Actions, Checks, Contents, Issues and Pull requests read and write; Metadata
   read; Workflows **no access**, so the App can never change a workflow file. Generate a
   private key and install the App on this repository only. Store the App ID as the
   repository **variable** `SDLC_APP_ID` and the `.pem` file's content as the repository
-  **secret** `SDLC_APP_PRIVATE_KEY` (Settings → Secrets and variables → Actions). Never add
+  **secret** `SDLC_APP_PRIVATE_KEY` (Settings → Secrets and variables → Actions,
+  `https://github.com/<owner>/<repo>/settings/variables/actions` and
+  `https://github.com/<owner>/<repo>/settings/secrets/actions`). Never add
   this App to a ruleset's bypass list: the phase runners hold its token, and GitHub grants a
   bypass to an actor, not to a job (choice 242, point 4); the merge App below is the only
   bypass actor besides you. This App is required since 1.0.18 (R22): `/sdlc-init` stops
@@ -240,7 +252,8 @@ close look" banner shows (gate (a) matches the globs on this PR's own files, dec
   from pushing to the default branch or merging its own pull request: the workflow token
   holds `contents: write` and the phase session may run `gh`, so a rule that only requires
   a pull request (with no approvals) or only stops direct pushes still lets `gh pr merge`
-  through. Settings → Rules → Rulesets → New branch ruleset: target the default branch,
+  through. Desktop-only (ROADMAP R21). Settings → Rules → Rulesets → New branch ruleset
+  (`https://github.com/<owner>/<repo>/settings/rules`): target the default branch,
   **"Restrict updates"** with the repository admin (the owner) as the only bypass actor
   besides the merge App —
   the one rule that keeps a merge to the owner and to the merge App, which merges only on
