@@ -887,3 +887,79 @@ def test_cli_refuses_the_automation_identity_s_label_on_a_parked_merge(tmp_path)
     assert code == 0
     assert any(line.startswith("release: waiting: ") for line in lines)
     assert not any(line.startswith("release: run:") for line in lines)
+
+
+# --- R51: the merge commit re-checked, and never deployed over a newer release ----------------
+def _targets(test_exit: int) -> str:
+    return (
+        "commands:\n"
+        "  build: python -c \"print('built')\"\n"
+        f'  test: python -c "import sys; sys.exit({test_exit})"\n'
+        "  lint: python -c \"print('linted')\"\n"
+    )
+
+
+def test_a_merge_commit_whose_targets_are_red_is_refused_with_a_route(tmp_path, capfd):
+    """Check 9 of the race analysis: no gate ran on the merge commit when another change
+    merged after this one's gate (e); the release runs the three targets there first and
+    deploy.command never runs on red. Check 10: the refusal says what to do next."""
+    yaml = _yaml(command=RELEASED) + _targets(1)
+    root, _ = _repo_with_change(tmp_path, sdlc_yaml=yaml)
+    code, lines = _run(root, FakeGitHub())
+    assert code == 1, lines
+    refused = next(line for line in lines if line.startswith("release: refused:"))
+    assert "test (exit 1)" in refused and "deploy.command did not run" in refused
+    route = next(line for line in lines if line.startswith("release: route:"))
+    assert "dispatch SDLC release with pr_number 7" in route
+    assert not any(line.startswith("release: run:") for line in lines)
+    assert "released" not in capfd.readouterr().out
+
+
+def test_a_green_merge_commit_releases_after_its_recheck(tmp_path, capfd):
+    yaml = _yaml(command=RELEASED) + _targets(0)
+    root, _ = _repo_with_change(tmp_path, sdlc_yaml=yaml)
+    code, lines = _run(root, FakeGitHub())
+    assert code == 0, lines
+    assert "release: recheck: build, test and lint exit 0 on the merge commit" in lines
+    assert "release: exit: 0" in lines
+    assert lines.index("release: recheck: build, test and lint exit 0 on the merge commit") < (
+        lines.index("release: exit: 0")
+    )
+
+
+def test_the_recheck_runs_without_the_github_token(tmp_path, monkeypatch):
+    monkeypatch.setenv("GITHUB_TOKEN", "ghs_secret")
+    check = "python -c \"import os, sys; sys.exit(1 if os.environ.get('GITHUB_TOKEN') else 0)\""
+    yaml = {"commands": {"build": check, "test": check, "lint": check}}
+    assert cli.recheck_targets(yaml, tmp_path, 60) == []
+
+
+def test_a_merge_commit_a_newer_release_holds_is_skipped(tmp_path, capfd):
+    """Check 11: a merge commit dispatched again after a later change released a tree that
+    contains it would put the older tree over the newer one; it is skipped."""
+    root, _ = _repo_with_change(tmp_path, sdlc_yaml=_yaml(command=RELEASED))
+    remote = _with_remote(root)
+    older = _git(root, "rev-parse", "HEAD").strip()
+    # change 0002's record: released as a commit that descends from ``older``
+    _git(root, "checkout", "-q", "-b", "other", "main")
+    folder = root / "changes" / "0002-a-later-change"
+    folder.mkdir(parents=True)
+    (folder / "status.yaml").write_text(
+        "id: '0002'\nslug: a-later-change\ntitle: A later change\nphase: e\n", encoding="utf-8"
+    )
+    _git(root, "add", ".")
+    _git(root, "commit", "-q", "-m", "later change")
+    newer = _git(root, "rev-parse", "HEAD").strip()
+    (folder / "status.yaml").write_text(
+        "id: '0002'\nslug: a-later-change\ntitle: A later change\nphase: e\n"
+        f"released_at: '2026-10-23T00:00:00Z'\nreleased_sha: {newer}\nreleased_pr: 9\n",
+        encoding="utf-8",
+    )
+    _git(root, "commit", "-q", "-am", "release(0002): record")
+    _git(root, "push", "-q", str(remote), "HEAD:refs/sdlc/released/0002")
+    _git(root, "checkout", "-q", "main")
+    code, lines = _run(root, FakeGitHub(), "--merge-sha", older)
+    assert code == 0, "\n".join(lines)
+    assert lines[-1].startswith(f"release: skip: the merge commit {older} is already inside")
+    assert "change 0002" in lines[-1] and newer in lines[-1]
+    assert "released" not in capfd.readouterr().out

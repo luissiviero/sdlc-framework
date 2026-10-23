@@ -65,8 +65,9 @@ other shell operators (``|``, ``;``, ``||``, redirections) are refused as a conf
 error. The executable is resolved on PATH (``.cmd``/``.exe`` shims on Windows).
 
 Exit codes: 0 done, skip or waiting (``record``: stored or already there) · 1 the release
-command failed, or the record could not be pushed (a failed release is red: infrastructure,
-not a park) · 2 usage or configuration error, or a remote record that could not be read.
+command failed, the merge commit's targets are not green (R51), or the record could not be
+pushed (a failed release is red: infrastructure, not a park) · 2 usage or configuration error,
+or a remote record that could not be read.
 """
 
 from __future__ import annotations
@@ -91,6 +92,7 @@ if str(PLUGIN_DIR) not in sys.path:
     sys.path.insert(0, str(PLUGIN_DIR))
 
 from gate import artifacts as art  # noqa: E402
+from gate import checks as gate_checks  # noqa: E402
 from gate import gate as gate_mod  # noqa: E402
 from gate import risk as risk_mod  # noqa: E402
 from hooks._common import ConfigError, config_flag, load_sdlc_config  # noqa: E402
@@ -280,6 +282,75 @@ def remote_record(
     if st.released:
         return st, branch
     return None, f"no release record on {branch}"
+
+
+# --- R51: the merge commit re-checked, and never deployed over a newer release ----------------
+RECHECK_RED = (
+    "the merge commit {sha} is not green ({red}): no gate ran on this tree, which holds what "
+    "merged into the default branch after gate (e); deploy.command did not run"
+)
+RECHECK_ROUTE = (
+    "fix the default branch in a change of its own (an incident intent, /sdlc-plan), then "
+    "dispatch SDLC release with pr_number {pr}; nothing is lost: the change is merged and "
+    "not recorded as released"
+)
+NEWER_RELEASE = (
+    "the merge commit {sha} is already inside the release of change {other} ({at}), which "
+    "deployed a newer tree; deploying it now would put an older tree over that one"
+)
+TOKEN_VARS = ("GITHUB_TOKEN", "GH_TOKEN")
+
+
+def recheck_targets(config: Mapping[str, Any], root: Path, timeout: int) -> list[str] | None:
+    """Build, test and lint run once more on the checked-out merge commit (the release job's
+    toolchain step installed what they need), with no GitHub token in their environment.
+    The targets that are not green, ``[]`` when all are, None when sdlc.yaml has none."""
+    commands = gate_checks.commands_from_config(dict(config))
+    if not commands:
+        return None
+    env = {k: v for k, v in os.environ.items() if k not in TOKEN_VARS}
+    red = []
+    for name, command in commands.items():
+        run = gate_checks.run_command(command, root, timeout, env=env)
+        if run["exit_code"] != 0:
+            how = "timed out" if run["exit_code"] is None else f"exit {run['exit_code']}"
+            red.append(f"{name} ({how})")
+            print(run.get("output") or "", file=sys.stderr)
+    return red
+
+
+def newer_release(
+    root: Path, merge_sha: str | None, change_id: str, git: Callable[..., tuple[int, str]]
+) -> tuple[str, str] | None:
+    """``(change id, released_sha)`` of another change's release record whose released commit
+    strictly contains ``merge_sha``, else None. One repository-wide release group runs the
+    releases one at a time and a newer pending run replaces an older one (NOTES §59), so this
+    is a merge commit dispatched again after a later one released."""
+    if not merge_sha:
+        return None
+    code, remotes = git(root, "remote")
+    if code != 0 or "origin" not in remotes.split():
+        return None
+    code, out = git(root, "ls-remote", "origin", RELEASED_REF.format(id="*"))
+    if code != 0:
+        raise RemoteUnreadable(f"origin could not be read (git ls-remote exited {code})")
+    for line in out.splitlines():
+        parts = line.split()
+        if len(parts) != 2 or parts[1] == RELEASED_REF.format(id=change_id):
+            continue
+        other = parts[1].rsplit("/", 1)[-1]
+        _fetch(root, parts[1], git)
+        code, names = git(root, "ls-tree", "--name-only", "FETCH_HEAD", f"{c.CHANGES_DIR}/")
+        folder = next(
+            (n for n in names.splitlines() if n.startswith(f"{c.CHANGES_DIR}/{other}-")), None
+        )
+        st = _status_at(root, "FETCH_HEAD", f"{folder}/status.yaml", git) if folder else None
+        sha = getattr(st, "released_sha", None)
+        if not sha or sha == merge_sha:
+            continue
+        if git(root, "merge-base", "--is-ancestor", merge_sha, sha)[0] == 0:
+            return other, sha
+    return None
 
 
 def _records_all(st: Any, release: bool, acceptance: dict[str, Any] | None) -> bool:
@@ -813,6 +884,28 @@ def _release(args, env, github, git, record_git, say) -> int:
     if not command:
         say("done", "release prepared in the PR; deploy.command is empty, nothing runs")
         return 0
+    # (5b) R51 (checks 9 to 11 of the race analysis): the tree that deploys is the merge
+    # commit, which no gate judged when another change merged after this one's gate (e) or
+    # the owner updated the branch; a newer release that already holds it deploys nothing
+    # older over it
+    try:
+        newer = newer_release(root, merge_sha, change_id, record_git)
+    except (RemoteUnreadable, TimeoutError) as exc:
+        say("error", f"the remote's release records could not be read ({exc}); the release "
+            "fails closed")  # fmt: skip
+        return 2
+    if newer is not None:
+        say("skip", NEWER_RELEASE.format(sha=merge_sha, other=newer[0], at=newer[1]))
+        return 0
+    red = recheck_targets(config, root, _timeout(config))
+    if red is None:
+        say("recheck", "no build, test or lint target in sdlc.yaml: nothing to re-run")
+    elif red:
+        say("refused", RECHECK_RED.format(sha=merge_sha or "HEAD", red="; ".join(red)))
+        say("route", RECHECK_ROUTE.format(pr=args.pr))
+        return 1
+    else:
+        say("recheck", "build, test and lint exit 0 on the merge commit")
     say("run", command)
     try:
         code, what = run_command(command, root, _timeout(config))

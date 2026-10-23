@@ -832,6 +832,7 @@ def test_a_fix_round_on_a_web_session_intent_pr_edits_the_intent_on_its_own_head
         str(STATE_CLI), "new-change", "--root", str(root), "--title", "Second idea", cwd=root
     )
     assert proc.returncode == 0, proc.stderr
+    reserved = json.loads(proc.stdout)["reservation"]["sha"]  # R51: sdlc/0002/a reserved
     second = "changes/0002-second-idea"
     (root / second / "intent.md").write_text(
         RECORDED_INTENT.replace("0001", "0002"), encoding="utf-8", newline="\n"
@@ -853,7 +854,8 @@ def test_a_fix_round_on_a_web_session_intent_pr_edits_the_intent_on_its_own_head
     intent = remote_file(bare, "claude/relaxed-y", f"{second}/intent.md")
     assert "Revised per the owner's review comment." in intent
     assert "phase: a" in remote_file(bare, "claude/relaxed-y", f"{second}/status.yaml")
-    assert "sdlc/0002/a" not in git(bare, "branch", "--list")  # nothing else was pushed
+    # nothing else was pushed: the reservation new-change made is the branch's only commit
+    assert git(bare, "rev-parse", "refs/heads/sdlc/0002/a").strip() == reserved
     edit = next(c for c in calls if c[:2] == ["pr", "edit"])
     assert edit[2] == "7" and not any(c[:2] == ["pr", "create"] for c in calls)
     listed = next(c for c in calls if c[:2] == ["pr", "list"])

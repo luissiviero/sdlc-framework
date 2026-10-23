@@ -107,7 +107,7 @@ def test_is_repo_follows_init_and_a_removed_git_directory(tmp_path):
     assert gitops.is_repo(root) is True
 
 
-def test_default_branch_follows_branch_remote_push_fetch_and_checkout(repo, tmp_path):
+def test_default_branch_follows_branch_remote_push_set_head_and_checkout(repo, tmp_path):
     assert gitops.default_branch(repo) == "trunk"  # the current branch, the last resort
     git(repo, "checkout", "-q", "-b", "feature")
     assert gitops.default_branch(repo) == "feature"
@@ -207,6 +207,10 @@ def test_the_explicit_default_branch_is_never_remembered(repo, monkeypatch):
         ("git.exe checkout -q main", False),
         ('git config "--get" user.name', True),
         (b"git status", False),
+        # a long global option whose value is the next word: not understood (choice 239)
+        (["git", "--git-dir", "log", "commit", "-m", "x"], False),
+        (["git", "--work-tree", "status", "checkout", "x"], False),
+        (["git", "--git-dir=.git", "log"], True),
     ],
 )
 def test_only_read_only_git_queries_keep_the_answers(argv, reads):
@@ -227,3 +231,87 @@ def test_every_process_start_but_a_read_only_git_query_moves_the_generation():
     gitops._on_audit("subprocess.Popen", ("git", ["git", "rev-parse", "HEAD"], None, None))
     gitops._on_audit("open", ("/x", "r", 0))
     assert gitops._generation == before
+
+
+def _start_with(how: str) -> None:
+    """Start one trivial real process through ``how`` and wait for it."""
+    exe = sys.executable
+    if how == "os.system":
+        assert os.system(f'"{exe}" -c pass') == 0
+    elif how == "os.spawnv":
+        assert os.spawnv(os.P_WAIT, exe, [exe, "-c", "pass"]) == 0
+    elif how == "os.posix_spawn":
+        pid = os.posix_spawn(exe, [exe, "-c", "pass"], dict(os.environ))
+        os.waitpid(pid, 0)
+    elif how == "os.fork":
+        pid = os.fork()
+        if pid == 0:  # the child leaves at once, running nothing of the test
+            os._exit(0)
+        os.waitpid(pid, 0)
+    elif how == "subprocess":
+        subprocess.run([exe, "-c", "pass"], check=True)
+
+
+# the ways a process can start on this platform, each raising its own audit event in CPython;
+# os.exec* replaces the process and os.startfile opens a file with its application, so neither
+# is started here (their names are only the hook's spelling of CPython's events)
+STARTS = ["os.system", "os.spawnv", "subprocess"] + (
+    ["os.posix_spawn", "os.fork"] if os.name == "posix" else []
+)
+
+
+@pytest.mark.parametrize("how", STARTS)
+def test_a_real_process_start_moves_the_generation(how):
+    """Choice 239: the events CPython raises are the names the hook counts, shown by starting
+    a real process each way rather than by calling the hook with hand-made events."""
+    before = gitops._generation
+    _start_with(how)
+    assert gitops._generation > before, how
+
+
+def test_a_hanging_read_only_query_fails_closed(repo, monkeypatch):
+    """Choice 239: a read-only query is bounded again (gate/diff.py lost its 60 s in 1.0.13);
+    the timeout is a GitError, which the gate reads as git unavailable."""
+
+    def hang(*_args, **kwargs):
+        assert kwargs.get("timeout") == gitops.READ_TIMEOUT_SECONDS
+        raise subprocess.TimeoutExpired(["git"], kwargs["timeout"])
+
+    monkeypatch.setattr(gitops.subprocess, "run", hang)
+    with pytest.raises(gitops.GitError, match="timed out"):
+        gitops.run(repo, "rev-parse", "HEAD")
+    assert gate_diff.is_repo(repo / "elsewhere") is False
+
+
+def test_a_write_has_no_read_timeout(repo, monkeypatch):
+    seen = {}
+    real = subprocess.run
+
+    def spy(*args, **kwargs):
+        seen["timeout"] = kwargs.get("timeout")
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(gitops.subprocess, "run", spy)
+    gitops.run(repo, "branch", "other")
+    assert seen["timeout"] is None
+
+
+def test_is_repo_drops_a_linked_worktree_removed_by_hand(repo, tmp_path):
+    """Choice 239: the worktree's git directory outlives a removal by hand; its ``.git`` file
+    does not, and is_repo now stats both."""
+    wt = tmp_path / "wt"
+    git(repo, "worktree", "add", "-q", str(wt), "-b", "side")
+    assert gitops.is_repo(wt) is True
+    remove_tree(wt)
+    wt.mkdir()  # the same path, empty: git rev-parse exits 128 here
+    assert gitops.is_repo(wt) is False
+
+
+def test_a_hanging_default_base_lookup_is_git_unavailable(repo, monkeypatch):
+    def hang(*_args, **kwargs):
+        raise subprocess.TimeoutExpired(["git"], kwargs.get("timeout") or 0)
+
+    gitops._remembered.clear()
+    monkeypatch.setattr(gitops.subprocess, "run", hang)
+    with pytest.raises(gate_diff.GitUnavailable):
+        gate_diff.default_base(repo)

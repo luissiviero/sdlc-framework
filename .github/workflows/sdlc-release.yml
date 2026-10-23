@@ -71,9 +71,14 @@ permissions:
   pull-requests: read
   issues: read
 
-# One release at a time per pull request: the closed and labeled events of one PR serialise.
+# One release at a time in the repository (R51, check 11 of the race analysis): with one group
+# per pull request two merges ran deploy.command at once and the older could finish last. A
+# newer pending run replaces an older pending one (NOTES §59): the newer merge commit holds
+# the older one, and release/cli.py never deploys a merge commit that a recorded newer release
+# already holds. A replaced run's change is not recorded as released; dispatch this workflow
+# with its pr_number to record it.
 concurrency:
-  group: "sdlc-release-${{ github.event.pull_request.number || inputs.pr_number }}"
+  group: "sdlc-release"
   cancel-in-progress: false
 
 jobs:

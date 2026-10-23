@@ -506,9 +506,8 @@ def test_release_workflow_runs_the_release_cli_on_merge_and_label():
     # and must not be able to push (the review of the 0.3.1 diff, finding 4)
     assert data["permissions"] == {"contents": "read", "pull-requests": "read", "issues": "read"}
     assert "permissions" not in data["jobs"]["release"]
-    assert data["concurrency"]["group"] == (
-        "sdlc-release-${{ github.event.pull_request.number || inputs.pr_number }}"
-    )
+    # R51: one release at a time in the repository, so two deploy.command runs never overlap
+    assert data["concurrency"] == {"group": "sdlc-release", "cancel-in-progress": False}
     job = data["jobs"]["release"]
     assert "github.event_name == 'workflow_dispatch'" in job["if"]
     assert "github.event.pull_request.merged == true" in job["if"]

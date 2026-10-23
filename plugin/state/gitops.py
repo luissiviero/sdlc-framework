@@ -28,11 +28,15 @@ class GitError(RuntimeError):
 # default_base and the runner's ref checks; on Windows every git process is expensive. A
 # lookup is remembered only until the process starts anything but a read-only git query: a
 # fetch, a checkout, a commit, a push, the model's session, a test's own ``git`` helper. The
-# audit hook below sees every process start of this process (``subprocess``, ``os.system``,
-# ``os.exec*``, ``os.spawn*``, ``os.posix_spawn``, and a fork, whose child may run git),
-# whoever starts it, and moves the generation on; a remembered answer of an older generation
-# is asked again. is_repo keeps a yes for good, re-checked by a stat that the git directory
-# it found still exists.
+# audit hook below sees the process starts made through ``subprocess``, ``os.system``,
+# ``os.exec*``, ``os.spawn*``, ``os.posix_spawn``, ``os.startfile`` and ``os.fork*`` (a
+# fork's child may run git), whoever makes them, and moves the generation on, counted at the
+# start only; a remembered answer of an older generation is asked again. Code that starts
+# processes another way (``multiprocessing`` with ``spawn`` or ``forkserver`` raises none of
+# these events), or reads while a child it started still runs, must not rely on the
+# remembered answers (choice 239). A remote's answer (``ls-remote``) is never remembered:
+# the id reservation reads it fresh each time (R51). is_repo keeps a yes for good,
+# re-checked by a stat that the git directory it found still exists.
 _PROCESS_EVENTS = frozenset(
     {
         "subprocess.Popen", "os.system", "os.exec", "os.spawn", "os.posix_spawn",
@@ -48,6 +52,10 @@ _READ_ONLY_GIT = frozenset(
         "version", "check-ignore", "check-attr", "grep", "describe", "name-rev", "var",
     }
 )  # fmt: skip
+# the long global options that also take their value as the next word (``--git-dir x``)
+_SEPARATE_VALUE_OPTIONS = frozenset(
+    {"--git-dir", "--work-tree", "--namespace", "--super-prefix", "--config-env", "--attr-source"}
+)
 _generation = 0
 _remembered: dict[tuple, tuple[int, object]] = {}
 _repos: dict[tuple, str] = {}
@@ -73,6 +81,8 @@ def _reads_only(argv) -> bool:
         return False
     i = 1
     while i < len(words) and words[i].startswith("-"):
+        if words[i] in _SEPARATE_VALUE_OPTIONS:
+            return False  # its value may be a read verb: not understood (choice 239)
         i += 2 if words[i] in ("-c", "-C") else 1  # global options before the subcommand
     if i >= len(words):
         return False
@@ -163,15 +173,31 @@ def network_env(
     return {**os.environ, **auth} if auth else None
 
 
+def run_proc(root: Path, *args: str) -> subprocess.CompletedProcess:
+    """``git <args>`` in ``root``, its exit code and both streams; ``run`` raises on a
+    non-zero exit instead. A read-only query is bounded by ``READ_TIMEOUT_SECONDS``."""
+    try:
+        return subprocess.run(
+            ["git", *runner_args(), *args],
+            cwd=str(root),
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            env=network_env(args, root),
+            timeout=READ_TIMEOUT_SECONDS if _reads_only(["git", *args]) else None,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise GitError(f"git {' '.join(args)} timed out after {exc.timeout:g} s") from exc
+
+
+# a read-only query that hangs (a slow network filesystem, an ``fsmonitor`` command by hand)
+# fails closed after this long, as gate/diff.py's own calls did before 1.0.13 (choice 239);
+# a fetch, a push or a commit keeps the job's own bound
+READ_TIMEOUT_SECONDS = 60
+
+
 def run(root: Path, *args: str, check: bool = True) -> str:
-    proc = subprocess.run(
-        ["git", *runner_args(), *args],
-        cwd=str(root),
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        env=network_env(args, root),
-    )
+    proc = run_proc(root, *args)
     if check and proc.returncode != 0:
         raise GitError(f"git {' '.join(args)} failed: {proc.stderr.strip() or proc.stdout}")
     return proc.stdout
@@ -179,20 +205,29 @@ def run(root: Path, *args: str, check: bool = True) -> str:
 
 def is_repo(root: Path) -> bool:
     """``root`` is inside a git work tree. A yes is remembered with the git directory git
-    named, and stands while that directory exists; a no is always asked again (a later
-    ``git init`` makes it a yes)."""
+    named and the work tree's ``.git`` entry, and stands while both exist; a no is always
+    asked again (a later ``git init`` makes it a yes). The ``.git`` entry is what a linked
+    worktree removed without ``git worktree remove`` loses while its git directory, under the
+    main checkout's, stays (choice 239); a ``GIT_DIR`` checkout has none and keeps the git
+    directory's stat alone."""
     key = _key(root)
-    git_dir = _repos.get(key)
-    if git_dir and os.path.exists(git_dir):
+    known = _repos.get(key)
+    if known and all(os.path.exists(p) for p in known):
         return True
     try:
-        out = run(root, "rev-parse", "--is-inside-work-tree", "--absolute-git-dir").split("\n")
+        out = run(
+            root, "rev-parse", "--is-inside-work-tree", "--absolute-git-dir", "--show-toplevel"
+        ).split("\n")
     except (GitError, FileNotFoundError):
         return False
     if out[0].strip() != "true":
         return False
     if len(out) > 1 and out[1].strip():
-        _repos[key] = out[1].strip()
+        paths = [out[1].strip()]
+        top = out[2].strip() if len(out) > 2 else ""
+        if top and not os.environ.get("GIT_DIR"):
+            paths.append(os.path.join(top, ".git"))
+        _repos[key] = tuple(paths)
     return True
 
 
@@ -494,3 +529,59 @@ def remote_change_ids(root: Path, remote: str = "origin") -> list[str]:
         if len(parts) == 2:
             ids.add(parts[1].split("/")[0])
     return sorted(i for i in ids if i.isdigit() and len(i) == 4)
+
+
+# --- the id reservation (R51, gap G2; NOTES §59) -------------------------------------------------
+# A new id is reserved on the remote before its folder is written: ``sdlc/<id>/a`` is
+# created with a commit unique to this allocation (the default branch's tree, the default
+# branch's tip as parent, a message with a random nonce), pushed with an empty lease. NOTES
+# §59 shows why both halves: a push of the object a ref already holds answers "up to date"
+# with exit 0 even under the lease, and a plain push of a child commit fast-forwards over a
+# reservation of the tip. Only git's own rejection of the ref update counts as "taken"; any
+# other failure (no write access to ``sdlc/*``, the network) leaves the id unreserved and
+# says so.
+RESERVED, TAKEN, UNRESERVED = "reserved", "taken", "unreserved"
+RESERVE_MESSAGE = "sdlc: reserve change id {id} ({nonce}; R51)"
+_TAKEN_RE = re.compile(
+    r"\[rejected\].*\((?:stale info|non-fast-forward|fetch first|already exists)\)"
+)
+
+
+def reservation_base(root: Path, remote: str = "origin") -> str | None:
+    """The commit a reservation starts from: the default branch's remote-tracking tip, else
+    HEAD; None in a repository without a commit."""
+    for ref in (f"refs/remotes/{remote}/{default_branch(root)}", "HEAD"):
+        sha = run(root, "rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}", check=False)
+        if sha.strip():
+            return sha.strip()
+    return None
+
+
+def reserve_change_id(
+    root: Path, change_id: str, base: str, remote: str = "origin"
+) -> tuple[str, str | None, str]:
+    """``(outcome, sha, detail)`` of reserving ``sdlc/<change_id>/a`` on ``remote``:
+    ``RESERVED`` with the reservation commit, ``TAKEN`` when git refused the ref update
+    because the ref exists, ``UNRESERVED`` with git's message for any other failure."""
+    import secrets  # noqa: PLC0415
+
+    nonce = secrets.token_hex(8)
+    message = RESERVE_MESSAGE.format(id=change_id, nonce=nonce)
+    try:
+        sha = run(
+            root, *identity_args(root), "commit-tree", f"{base}^{{tree}}", "-p", base,
+            "-m", message,
+        ).strip()  # fmt: skip
+    except GitError as exc:
+        return UNRESERVED, None, str(exc)
+    ref = f"refs/heads/{conventions.branch_name(change_id, 'a')}"
+    try:
+        proc = run_proc(root, "push", f"--force-with-lease={ref}:", remote, f"{sha}:{ref}")
+    except (GitError, FileNotFoundError) as exc:
+        return UNRESERVED, None, str(exc)
+    text = f"{proc.stderr}\n{proc.stdout}".strip()
+    if proc.returncode == 0:
+        return RESERVED, sha, text
+    if _TAKEN_RE.search(text):
+        return TAKEN, None, text
+    return UNRESERVED, None, text.splitlines()[-1] if text else f"exit {proc.returncode}"
