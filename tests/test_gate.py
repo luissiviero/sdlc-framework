@@ -527,6 +527,12 @@ def test_start_run_records_the_build_run_and_a_fix_round(tmp_path, monkeypatch, 
     assert "run" not in started("b")
 
 
+def _stored(evidence: Path, source: str, usd) -> None:
+    """The runner's stored result of one session: M8 (R25, 1.0.26) rebuilds the change's
+    spend from these, never from ``evidence/spend.json``, which the session can write."""
+    write(evidence / source, json.dumps({"total_cost_usd": usd}))
+
+
 def test_the_budget_binds_the_change_s_running_total_not_the_last_session(tmp_path):
     """Issue #71 (0.3.1): ``max_budget_usd`` is documented per change, but the cap was compared
     with the last session's figure, which ``start-run`` reset and ``record-spend`` overwrote:
@@ -535,8 +541,10 @@ def test_the_budget_binds_the_change_s_running_total_not_the_last_session(tmp_pa
     ctx = _ctx(tmp_path, {"gate": {"max_budget_usd": 2}})
     write(ctx.evidence_dir / "run-c.json", json.dumps({"spend_usd": 1.5}))
     ledger = limits.record_spend_entry(ctx.evidence_dir, "c", "claude-c.json", 1.5)
+    _stored(ctx.evidence_dir, "claude-c.json", 1.5)
     assert ledger["total_usd"] == 1.5 and limits.check_limits(ctx).ok
     ledger = limits.record_spend_entry(ctx.evidence_dir, "c", "claude-c-2.json", 1.5)
+    _stored(ctx.evidence_dir, "claude-c-2.json", 1.5)
     assert ledger["total_usd"] == 3.0
     res = limits.check_limits(ctx)
     assert not res.ok and res.details["stop"]
@@ -547,8 +555,12 @@ def test_the_budget_binds_the_change_s_running_total_not_the_last_session(tmp_pa
     assert res.details["spend_entries"] == 2
     # the cap is the change's, not the phase's: a (b) session's spend counts at (c)
     assert limits.read_spend_ledger(_ctx(tmp_path, phase="b").evidence_dir)["total_usd"] == 3.0
-    # without a ledger (a change recorded before 0.3.1) the run record's figure still binds
+    # M8: an emptied ledger changes nothing, the stored results still count
     (ctx.evidence_dir / limits.SPEND_FILE).unlink()
+    assert not limits.check_limits(ctx).ok
+    # without stored results (a by-hand run) the run record's figure still binds
+    for name in ("claude-c.json", "claude-c-2.json"):
+        (ctx.evidence_dir / name).unlink()
     assert limits.check_limits(ctx).ok
     write(ctx.evidence_dir / "run-c.json", json.dumps({"spend_usd": 2.5}))
     res = limits.check_limits(ctx)
@@ -567,6 +579,10 @@ def test_the_review_pass_and_each_fix_round_are_their_own_spend_entries(tmp_path
     limits.record_spend_entry(evidence, "e", "claude-e.json", 2.04)
     limits.record_spend_entry(evidence, "fix", "claude-fix.json", 0.9)
     limits.record_spend_entry(evidence, "fix", "claude-fix-2.json", 0.5)
+    for source, usd in (("claude-d.json", 1.0), ("claude-review.json", 0.65),
+                        ("claude-e.json", 2.04), ("claude-fix.json", 0.9),
+                        ("claude-fix-2.json", 0.5)):  # fmt: skip
+        _stored(evidence, source, usd)
     ledger = limits.read_spend_ledger(evidence)
     assert [(e["run"], e["source"]) for e in ledger["entries"]] == [
         ("d", "claude-d.json"),
@@ -579,6 +595,7 @@ def test_the_review_pass_and_each_fix_round_are_their_own_spend_entries(tmp_path
     assert not limits.check_limits(ctx).ok
     # the same session recorded again (a repeated step): its entry is replaced
     ledger = limits.record_spend_entry(evidence, "fix", "claude-fix-2.json", 0.4)
+    _stored(evidence, "claude-fix-2.json", 0.4)
     assert len(ledger["entries"]) == 5 and ledger["total_usd"] == 4.99
     assert limits.check_limits(ctx).ok
     stored = json.loads((evidence / "spend.json").read_text(encoding="utf-8"))
@@ -610,6 +627,13 @@ def test_a_spend_figure_is_finite_and_non_negative_and_zero_counts(tmp_path):
     ledger = limits.read_spend_ledger(evidence)
     assert [e["source"] for e in ledger["entries"]] == ["zero.json", "real.json"]
     assert ledger["total_usd"] == 0.02
+    # the stored results are judged the same way: no figure is counted as no figure (M8)
+    for source, usd in (("claude-c.json", 0.0), ("claude-c-2.json", 0.02),
+                        ("claude-c-3.json", float("nan")), ("claude-c-4.json", -5),
+                        ("claude-c-5.json", float("inf"))):  # fmt: skip
+        _stored(evidence, source, usd)
+    assert limits.spend_from_runs(evidence)["total_usd"] == 0.02
+    assert limits.spend_from_runs(evidence)["unknown"] == 3
     res = limits.check_limits(ctx)
     assert not res.ok and "budget exceeded: 0.02 USD" in res.reason
     status_mod.write_status(ctx.change_dir, ctx.status)  # the CLI reads the change's status

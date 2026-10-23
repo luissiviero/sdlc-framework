@@ -665,18 +665,21 @@ def test_a_session_gets_what_is_left_of_the_change_s_budget(capsys, project):
         return argv[argv.index("--max-budget-usd") + 1]
 
     assert budget() == "150" and budget(change_dir=change) == "150"  # nothing spent yet
-    limits.record_spend_entry(evidence, "b", "claude-b.json", 100.0)
-    limits.record_spend_entry(evidence, "c", "claude-c.json", 49.0)
+    # M8 (R25, 1.0.26): the total is rebuilt from the stored session results
+    evidence.mkdir(parents=True, exist_ok=True)
+    for source, usd in (("claude-b.json", 100.0), ("claude-c.json", 49.0)):
+        write(evidence / source, json.dumps({"total_cost_usd": usd}))
     assert budget(change_dir=change) == "1"
-    limits.record_spend_entry(evidence, "c", "claude-c-2.json", 0.42)
+    write(evidence / "claude-c-2.json", json.dumps({"total_cost_usd": 0.42}))
     assert budget(change_dir=change) == "0.58"
     # no exponent form, and never 0 for a positive amount left
     assert run_phase._usd(0.00001) == "0.0001" and run_phase._usd(149.99999) == "150"
     assert run_phase._usd(1e-7) == "0.0001" and run_phase._usd(12.5) == "12.5"
     assert limits.budget_reason(151, 150).startswith("budget exceeded: 151.00 USD")
     # the template's cap through a real dry run
-    (evidence / limits.SPEND_FILE).unlink()
-    limits.record_spend_entry(evidence, "b", "claude-b.json", 149.0)
+    for name in ("claude-c.json", "claude-c-2.json"):
+        (evidence / name).unlink()
+    write(evidence / "claude-b.json", json.dumps({"total_cost_usd": 149.0}))
     argv = dry_run_argv(capsys, root, "d")
     assert argv[argv.index("--max-budget-usd") + 1] == "1"
 
@@ -686,7 +689,8 @@ def test_a_change_with_no_budget_left_parks_before_the_session(project, monkeypa
     the budget reason of the gate's ``limits`` check and never invokes the CLI."""
     root, change = project
     set_state(change, "c", gate_phase="c", gate_result="passed")
-    limits.record_spend_entry(change / "evidence", "c", "claude-c.json", 150.0)
+    # M8 (R25, 1.0.26): the total is rebuilt from the stored session results, not the ledger
+    write(change / "evidence" / "claude-c.json", json.dumps({"total_cost_usd": 150.0}))
     invoked: list = []
     monkeypatch.setattr(run_phase, "invoke", lambda *a, **k: invoked.append(a) or (None, "", "", 1))
     calls = upsert_recorder(monkeypatch)
@@ -1454,7 +1458,9 @@ def test_full_run_stores_the_result_record_records_spend_and_hands_over(
     assert out["dispatched"]["head_ref"] == "sdlc/0001/c"  # (d) runs on the build branch
 
     stored = json.loads((change / "evidence" / "claude-c.json").read_text(encoding="utf-8"))
+    run_meta = stored.pop("sdlc_run")  # R25: the credential that paid and the session's time
     assert stored == FAKE_RESULT
+    assert run_meta["credential"] == "api_key" and run_meta["timed_out"] is False
     run_file = json.loads((change / "evidence" / "run-c.json").read_text(encoding="utf-8"))
     assert run_file["spend_usd"] == 0.42 and run_file["phase"] == "c"
     ledger = json.loads((change / "evidence" / "spend.json").read_text(encoding="utf-8"))
@@ -1614,6 +1620,89 @@ def test_a_session_that_fails_after_a_deferred_gate_parks_the_record(
     set_state(change, "b", gate_phase="b", gate_result="passed")
     assert run_phase.run_phase(args, env) == run_phase.EXIT_FAILED
     assert status_mod.read_status(change).gate.result == "passed"
+
+
+def test_a_session_stopped_at_the_turn_limit_parks_green_with_its_record(
+    project, fake_claude, monkeypatch, capsys
+):
+    """R25 part 1: an outer bound parks like the gate's own limits (one park, replacing the
+    deferred record's), the stored result names the credential and the time (M8, choice
+    257), and the run is not red."""
+    root, change = project
+    pr_route(monkeypatch)
+    set_state(change, "b", gate_phase="b", gate_result="passed")
+    write(change / "evidence" / "gate-c.json", json.dumps(DEFERRED_GATE_FILE))
+    stopped = {**FAKE_RESULT, "is_error": True, "subtype": "error_max_turns", "num_turns": 400}
+    monkeypatch.setenv("FAKE_CLAUDE_RESULT", json.dumps(stopped))
+    env = dict(os.environ, **KEY_ENV, GITHUB_TOKEN=FAKE_TOKEN)
+    args = Args(
+        root=str(root), phase="c", dry_run=False, no_dispatch=True, claude=fake_cli(fake_claude)
+    )
+    assert run_phase.run_phase(args, env) == run_phase.EXIT_OK
+    out = json.loads(capsys.readouterr().out)
+    assert out["parked"] == "limits: stopped at the turn limit (400 turns)"
+    st = status_mod.read_status(change)
+    assert st.gate.result == "parked" and st.parked_reason == out["parked"]
+    recorded = json.loads((change / "evidence" / "gate-c.json").read_text(encoding="utf-8"))
+    limit = next(ch for ch in recorded["checks"] if ch["name"] == "limits")
+    assert "raise the bound in sdlc.yaml" in limit["need"]
+    stored = json.loads((change / "evidence" / "claude-c.json").read_text(encoding="utf-8"))
+    assert stored["subtype"] == "error_max_turns"
+    assert stored["sdlc_run"]["credential"] == "api_key"  # KEY_ENV holds the key only
+    assert stored["sdlc_run"]["timed_out"] is False and stored["sdlc_run"]["seconds"] >= 0
+
+
+def test_a_session_that_rewrites_an_earlier_run_record_parks(
+    project, fake_claude, monkeypatch, capsys
+):
+    """M8: the spend is rebuilt from the stored results, so the session may not touch them;
+    an earlier record it changed is put back and the change parks, as for the owner-only
+    fields."""
+    root, change = project
+    pr_route(monkeypatch)
+    set_state(change, "b", gate_phase="b", gate_result="passed")
+    earlier = change / "evidence" / "claude-b.json"
+    write(earlier, json.dumps({"total_cost_usd": 7.5}))
+    git(root, "add", ".")
+    git(root, "commit", "-q", "-m", "the design's record")
+    script = root.parent / "rewrite.py"
+    write(script, f"open({str(earlier)!r}, 'w').write('{{}}')\n")
+    monkeypatch.setenv("FAKE_CLAUDE_RUN", str(script))
+    env = dict(os.environ, **KEY_ENV, GITHUB_TOKEN=FAKE_TOKEN)
+    args = Args(
+        root=str(root), phase="c", dry_run=False, no_dispatch=True, claude=fake_cli(fake_claude)
+    )
+    assert run_phase.run_phase(args, env) == run_phase.EXIT_OK
+    out = json.loads(capsys.readouterr().out)
+    assert "evidence/claude-b.json: the session changed it" in out["parked"]
+    assert json.loads(earlier.read_text(encoding="utf-8")) == {"total_cost_usd": 7.5}
+
+
+def test_a_session_that_deletes_an_earlier_run_record_cannot_take_its_place(
+    project, fake_claude, monkeypatch, capsys
+):
+    """M8 (the independent review of the R51 PR, finding 2): run 2 of (c) whose session
+    deletes run 1's ``claude-c.json`` must not have the runner store its own result under
+    that freed name; the record is put back and the change parks."""
+    root, change = project
+    pr_route(monkeypatch)
+    set_state(change, "b", gate_phase="b", gate_result="passed")
+    earlier = change / "evidence" / "claude-c.json"
+    write(earlier, json.dumps({"total_cost_usd": 8.0}))
+    git(root, "add", ".")
+    git(root, "commit", "-q", "-m", "run 1's record")
+    script = root.parent / "delete.py"
+    write(script, f"import os; os.remove({str(earlier)!r})\n")
+    monkeypatch.setenv("FAKE_CLAUDE_RUN", str(script))
+    env = dict(os.environ, **KEY_ENV, GITHUB_TOKEN=FAKE_TOKEN)
+    args = Args(
+        root=str(root), phase="c", dry_run=False, no_dispatch=True, claude=fake_cli(fake_claude)
+    )
+    assert run_phase.run_phase(args, env) == run_phase.EXIT_OK
+    out = json.loads(capsys.readouterr().out)
+    assert "evidence/claude-c.json: the session deleted it" in out["parked"]
+    assert json.loads(earlier.read_text(encoding="utf-8")) == {"total_cost_usd": 8.0}
+    assert (change / "evidence" / "claude-c-2.json").is_file()  # this run's own record
 
 
 def test_guard_skips_when_the_previous_gate_deferred_its_commands(project):
@@ -2032,6 +2121,64 @@ def test_the_review_pass_commits_its_own_result_record_and_spend_entry(
     ]
 
 
+def _behind_main(root: Path, change: Path) -> str:
+    """The build branch at phase (d) and a default branch that moved after it: the tip."""
+    set_state(change, "d", gate_phase="d", gate_result="passed")
+    git(root, "add", ".")
+    git(root, "commit", "-q", "-m", "as if (d) passed")
+    git(root, "checkout", "-q", "-b", "sdlc/0001/c")
+    git(root, "checkout", "-q", "main")
+    write(root / "another.txt", "another change merged\n")
+    git(root, "add", "another.txt")
+    git(root, "commit", "-q", "-m", "another change merged")
+    tip = git(root, "rev-parse", "HEAD").strip()
+    git(root, "checkout", "-q", "sdlc/0001/c")
+    return tip
+
+
+def test_a_build_branch_behind_main_parks_before_the_review_pass_on_red(
+    project, fake_claude, fake_gh, monkeypatch, capsys
+):
+    """R51 (gap G1, checks 6 and 7): before the REVIEW.md pass the default branch is merged
+    in and the runner re-runs the targets itself; red parks the change, and no session runs
+    on a tree no gate judged."""
+    root, change = project
+    monkeypatch.setattr(run_phase, "review_prompt", lambda *a: ("REVIEW the diff.", ""))
+    tip = _behind_main(root, change)
+    monkeypatch.setattr(run_phase.base_update, "recheck", lambda *a: ["test (exit 1)"])
+    ran = root.parent / "session-ran"
+    monkeypatch.setenv("FAKE_CLAUDE_RUN", str(root.parent / "mark.py"))
+    write(root.parent / "mark.py", f"open({str(ran)!r}, 'w').close()\n")
+    args = Args(root=str(root), phase="review", dry_run=False, claude=fake_cli(fake_claude))
+    code = run_phase.run_phase(args, dict(os.environ, **KEY_ENV))
+    out = json.loads(capsys.readouterr().out)
+    assert code == run_phase.EXIT_OK, out
+    assert out["parked"].startswith("base_update: the default branch merged into sdlc/0001/c")
+    assert "test (exit 1)" in out["parked"]
+    assert not ran.exists()  # no session
+    assert git(root, "merge-base", "--is-ancestor", tip, "HEAD").strip() == ""
+    st = status_mod.read_status(change)
+    assert st.parked_reason and "test (exit 1)" in st.parked_reason
+
+
+def test_a_green_merged_tree_goes_on_to_the_review_pass(
+    project, fake_claude, fake_gh, monkeypatch, capsys
+):
+    root, change = project
+    monkeypatch.setattr(run_phase, "review_prompt", lambda *a: ("REVIEW the diff.", ""))
+    tip = _behind_main(root, change)
+    monkeypatch.setattr(run_phase.base_update, "recheck", lambda *a: [])
+    monkeypatch.setenv("FAKE_CLAUDE_RESULT", json.dumps({**FAKE_RESULT, "total_cost_usd": 0.5}))
+    write(change / "evidence" / "review-findings.json", "{not json")
+    args = Args(root=str(root), phase="review", dry_run=False, claude=fake_cli(fake_claude))
+    run_phase.run_phase(args, dict(os.environ, **KEY_ENV))
+    out = json.loads(capsys.readouterr().out)
+    assert "parked" not in out and out["cost_usd"] == 0.5, out  # the session ran
+    assert git(root, "merge-base", "--is-ancestor", tip, "HEAD").strip() == ""
+    subjects = git(root, "log", "-3", "--format=%s").splitlines()
+    assert any("merged before gate (e) is offered (R51)" in line for line in subjects)
+
+
 def test_review_phase_argv_is_read_only(project, monkeypatch, capsys):
     root, change = project
     monkeypatch.setattr(run_phase, "review_prompt", lambda *a: ("REVIEW the diff.", ""))
@@ -2094,7 +2241,8 @@ def test_phase_workflow_permissions_and_concurrency(name):
     assert "cancel-in-progress: false" in text
     # 0.3.0: the session, then the commands step; 1.0.8 (decision 32): the build's wall clock
     # is gate.build_max_wall_clock_minutes (180), so its job allows 260
-    minutes = 260 if name == "sdlc-build.yml" else 200
+    # R25 part 1 and R51: the deploy job holds the review pass, phase (e) and one re-check
+    minutes = {"sdlc-build.yml": 260, "sdlc-deploy.yml": 355}.get(name, 200)
     assert f"timeout-minutes: {minutes}\n" in text
 
 

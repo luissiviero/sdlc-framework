@@ -60,7 +60,7 @@ if str(PLUGIN_DIR) not in sys.path:
 from panel import ledger  # noqa: E402
 
 from gate import artifacts as art  # noqa: E402
-from gate import checks  # noqa: E402
+from gate import checks, limits  # noqa: E402
 from gate import diff as diffmod  # noqa: E402
 from gate import risk as risk_mod  # noqa: E402
 from gate.checks import CheckResult  # noqa: E402
@@ -712,6 +712,9 @@ def build_description(root: Path, change_id: str, phase: str) -> str:
     if run:
         out += ["", run]
     out += ["", _counters_line(st)]
+    spend = limits.spend_line(change_dir / art.EVIDENCE_DIR)  # R25 part 2
+    if spend:
+        out += ["", spend]
 
     proposals = art.read_text(change_dir / art.EVIDENCE_DIR / CLAUDE_MD_PROPOSALS)
     if proposals and proposals.strip():

@@ -36,7 +36,9 @@ The outer bound for headless runs is the CLI's own ``--max-turns`` (docs/NOTES.m
 
 from __future__ import annotations
 
+import json
 import math
+import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -199,6 +201,197 @@ def record_spend_entry(
     return ledger
 
 
+# --- the run lines (R25 parts 1-2, M8 of the plugin security review; choice 257) ---------------
+# The spend the budget and the PR read is rebuilt from the runner's own stored results, one
+# ``evidence/claude-<run>[-<n>].json`` per session (``run_phase.store_result``), never from
+# ``evidence/spend.json``: the session can write that ledger, and emptying it gave the next
+# session the whole ``max_budget_usd`` again. The runner guards the stored results like its
+# other files (``snapshot_run_records``, ``run_record_mismatches``). Each result carries the
+# runner's ``sdlc_run`` fields: the credential that paid (``oauth`` the subscription token,
+# ``api_key`` the key), the session's wall time and whether the runner's timeout stopped it.
+# On the subscription token a run cannot be capped in dollars (NOTES §2), so its lines are
+# counted in runs and time.
+RUN_RECORD_RE = re.compile(r"^claude-(?P<run>[a-z]+)(?:-(?P<n>\d+))?\.json$")
+RUN_META = "sdlc_run"
+CREDENTIAL_WORDS = {"oauth": "subscription token", "api_key": "API key"}
+
+
+def _record_order(path: Path) -> tuple[str, int]:
+    m = RUN_RECORD_RE.match(path.name)
+    return (m.group("run"), int(m.group("n") or 1)) if m else ("", 0)
+
+
+def run_record_paths(evidence_dir: Path) -> list[Path]:
+    """The stored session results in ``evidence_dir``, ordered by run and number."""
+    found = [p for p in Path(evidence_dir).glob("claude-*.json") if RUN_RECORD_RE.match(p.name)]
+    return sorted(found, key=_record_order)
+
+
+def run_lines(evidence_dir: Path) -> list[dict[str, Any]]:
+    """One line per stored session result: ``source``, ``run``, ``usd`` (None when the
+    session reported no figure: a timeout, a crash), ``credential``, ``seconds``, ``turns``
+    and ``stop`` (the CLI's error subtype, or ``timeout``)."""
+    lines = []
+    for path in run_record_paths(evidence_dir):
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            data = None
+        data = data if isinstance(data, dict) else {}
+        meta = data.get(RUN_META) if isinstance(data.get(RUN_META), dict) else {}
+        seconds = _spend(meta.get("seconds"))
+        if seconds is None and _spend(data.get("duration_ms")) is not None:
+            seconds = float(data["duration_ms"]) / 1000.0
+        subtype = data.get("subtype")
+        stop = (
+            "timeout"
+            if meta.get("timed_out")
+            else (subtype if isinstance(subtype, str) and subtype.startswith("error") else None)
+        )
+        lines.append(
+            {
+                "source": path.name,
+                "run": RUN_RECORD_RE.match(path.name).group("run"),
+                "usd": _spend(data.get("total_cost_usd")),
+                "credential": meta.get("credential"),
+                "seconds": round(seconds, 1) if seconds is not None else None,
+                "turns": data.get("num_turns") if isinstance(data.get("num_turns"), int) else None,
+                "stop": stop,
+                "at": meta.get("at"),
+            }
+        )
+    return lines
+
+
+def spend_from_runs(evidence_dir: Path) -> dict[str, Any]:
+    """The change's spend rebuilt from its run lines: ``total_usd`` (the figures that exist),
+    ``entries`` (the lines with a figure, ``read_spend_ledger``'s shape), ``lines`` (all),
+    ``unknown`` (sessions without a figure) and, per credential, the runs, seconds and USD."""
+    lines = run_lines(evidence_dir)
+    priced = [ln for ln in lines if ln["usd"] is not None]
+    by: dict[str, dict[str, Any]] = {}
+    for ln in lines:
+        b = by.setdefault(
+            str(ln["credential"] or "unknown"), {"runs": 0, "seconds": 0.0, "usd": 0.0}
+        )
+        b["runs"] += 1
+        b["seconds"] = round(b["seconds"] + (ln["seconds"] or 0.0), 1)
+        b["usd"] = round(b["usd"] + (ln["usd"] or 0.0), 6)
+    return {
+        "total_usd": round(sum(ln["usd"] for ln in priced), 6),
+        "entries": [
+            {"run": ln["run"], "source": ln["source"], "usd": ln["usd"], "at": ln["at"]}
+            for ln in priced
+        ],
+        "lines": lines,
+        "unknown": len(lines) - len(priced),
+        "by_credential": by,
+    }
+
+
+def snapshot_run_records(evidence_dir: Path) -> dict[str, bytes]:
+    """The stored session results as they stand right before a session (M8)."""
+    out = {}
+    for path in run_record_paths(evidence_dir):
+        try:
+            out[path.name] = path.read_bytes()
+        except OSError:
+            continue
+    return out
+
+
+def run_record_mismatches(
+    evidence_dir: Path, before: dict[str, bytes], own: set[str] | frozenset[str] = frozenset()
+) -> list[str]:
+    """After a session: every stored result it created (``own``, the runner's own result of
+    this session, aside), changed or deleted is put back as it was and named; the caller
+    parks, as for the owner-only fields. Only the runner writes them (M8)."""
+    reasons = []
+    now = {p.name for p in run_record_paths(evidence_dir)}
+    for name in sorted((now | set(before)) - set(own)):
+        path = Path(evidence_dir) / name
+        try:
+            current = path.read_bytes() if path.is_file() else None
+        except OSError:
+            current = None
+        was = before.get(name)
+        if current == was:
+            continue
+        what = "created" if was is None else ("deleted" if current is None else "changed")
+        reasons.append(f"evidence/{name}: the session {what} it; only the runner writes it")
+        if was is None:
+            path.unlink(missing_ok=True)
+        else:
+            path.write_bytes(was)
+    return reasons
+
+
+def _duration(seconds: float) -> str:
+    minutes = int(round(seconds / 60.0))
+    return f"{minutes // 60} h {minutes % 60:02d} min" if minutes >= 60 else f"{minutes} min"
+
+
+def spend_line(evidence_dir: Path) -> str:
+    """The PR's spend line (R25 part 2): the total in USD and, per credential, the runs and
+    their time; "" when no session ran. The subscription token's runs are shown in runs and
+    time first: they cannot be capped in dollars (NOTES §2)."""
+    spent = spend_from_runs(evidence_dir)
+    if not spent["lines"]:
+        return ""
+    n = len(spent["lines"])
+    parts = []
+    for key in ("oauth", "api_key", "unknown"):
+        b = spent["by_credential"].get(key)
+        if not b:
+            continue
+        word = CREDENTIAL_WORDS.get(key, "credential not recorded")
+        runs = f"{b['runs']} run{'s' if b['runs'] != 1 else ''}"
+        parts.append(f"{word}: {runs}, {_duration(b['seconds'])}, {b['usd']:.2f} USD")
+    line = (
+        f"Spend: {spent['total_usd']:.2f} USD over {n} session{'s' if n != 1 else ''} "
+        f"({'; '.join(parts)})"
+    )
+    if spent["unknown"]:
+        line += f"; {spent['unknown']} without a figure (a timeout or a crash), not counted"
+    return line + "."
+
+
+# --- the outer bounds park (R25 part 1) -----------------------------------------------------------
+OUTER_BOUND_NEED = (
+    "The session stopped at an outer bound before its gate; its partial evidence and its "
+    "result record are committed on the branch. Read them, then either raise the bound in "
+    "sdlc.yaml (gate.max_turns or gate.build_max_turns, gate.max_wall_clock_minutes or "
+    "gate.build_max_wall_clock_minutes, gate.max_budget_usd; a reviewed PR) and re-run the "
+    "phase, or finish by hand."
+)
+TIMEOUT_EXIT = 124  # run_phase.invoke's exit when the runner's timeout stopped the session
+
+
+def outer_bound(data: Any, code: int, err: str = "") -> str | None:
+    """The park reason of a session an outer bound stopped, else None: the CLI's turn limit
+    (``error_max_turns``), its budget stop (``error_max_budget_usd``), or the runner's
+    timeout (no result, exit 124)."""
+    if isinstance(data, dict):
+        subtype = data.get("subtype")
+        if subtype == "error_max_turns":
+            turns = data.get("num_turns")
+            return (
+                f"stopped at the turn limit ({turns} turns)"
+                if turns
+                else ("stopped at the turn limit")
+            )
+        if subtype == "error_max_budget_usd":
+            cost = _spend(data.get("total_cost_usd"))
+            return "stopped at the session's budget" + (
+                f" ({cost:.2f} USD)" if cost is not None else ""
+            )
+        return None
+    if code == TIMEOUT_EXIT:
+        said = (err or "").strip().splitlines()
+        return "stopped by the runner's timeout" + (f" ({said[-1]})" if said else "")
+    return None
+
+
 BUDGET_NEED = "Raise `gate.max_budget_usd` in sdlc.yaml (a reviewed PR) or finish by hand."
 
 
@@ -212,15 +405,15 @@ def budget_reason(total: float, budget: float, this_run: float | None = None) ->
 
 
 def budget_left(gate_settings: Any, evidence_dir: Path) -> tuple[float, float, float] | None:
-    """(cap, spent, left) of the change's budget (``gate.max_budget_usd``, the total of
-    ``evidence/spend.json``), or None when no cap is set. The runner passes ``left`` as the
-    session's ``--max-budget-usd``: the cap is per change, so a session gets what the change
-    has not spent yet, never the whole cap again (1.0.8)."""
+    """(cap, spent, left) of the change's budget (``gate.max_budget_usd``, the total rebuilt
+    from the stored session results, ``spend_from_runs``; M8), or None when no cap is set.
+    The runner passes ``left`` as the session's ``--max-budget-usd``: the cap is per change,
+    so a session gets what the change has not spent yet, never the whole cap again (1.0.8)."""
     cfg = gate_settings if isinstance(gate_settings, dict) else {}
     cap = _spend(cfg.get("max_budget_usd"))
     if cap is None:
         return None
-    spent = read_spend_ledger(evidence_dir)["total_usd"]
+    spent = spend_from_runs(evidence_dir)["total_usd"]
     return cap, spent, round(max(cap - spent, 0.0), 6)
 
 
@@ -314,9 +507,9 @@ def check_limits(ctx: GateContext, now: datetime | None = None) -> CheckResult:
         )
     budget = _float(ctx.gate_setting("max_budget_usd", None))
     spend = _float(run.get("spend_usd"))  # the last session of this phase (the run record)
-    ledger = read_spend_ledger(ctx.evidence_dir)
-    # the change's running total (issue #71); a change recorded before the ledger existed
-    # has only the run record's figure
+    ledger = spend_from_runs(ctx.evidence_dir)
+    # the change's running total (issue #71), rebuilt from the stored session results (M8);
+    # a change with none (a by-hand run) has only the run record's figure
     total = ledger["total_usd"] if ledger["entries"] else spend
     details.update(
         {

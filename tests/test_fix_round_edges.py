@@ -72,11 +72,11 @@ def test_a_failed_session_that_committed_its_work_itself_still_parks(
     """Round 3 of change 0005: the session committed its code, then hit the turn cap; the PR
     kept its old label over commits no gate judged."""
     root, change, args, env, calls = gaps._owner_round(
-        project, fake_claude, monkeypatch, tmp_path, COMMIT_EDITS, gaps.MAX_TURNS
+        project, fake_claude, monkeypatch, tmp_path, COMMIT_EDITS, gaps.FAILED_RUN
     )
     assert run_phase.run_phase(args, env) == run_phase.EXIT_FAILED
     out = json.loads(capsys.readouterr().out)
-    reason = "fix: the round ended before its gate (claude exited 0, error_max_turns)"
+    reason = "fix: the round ended before its gate (claude exited 0, error_during_execution)"
     assert status_mod.read_status(change).parked_reason == reason
     assert out["parked"] == reason and out["work"]["kept"] == []
     [check] = gaps._gate_c(change)["checks"]
@@ -95,11 +95,11 @@ def test_a_deferred_record_the_failed_session_pushed_folds_into_the_one_park(
     """The session's gate wrote a deferred record, then the session failed with nothing
     uncommitted: one park, the gap-3 one, never the deferred-record park."""
     root, change, args, env, _calls = gaps._owner_round(
-        project, fake_claude, monkeypatch, tmp_path, WRITE_DEFERRED, gaps.MAX_TURNS
+        project, fake_claude, monkeypatch, tmp_path, WRITE_DEFERRED, gaps.FAILED_RUN
     )
     assert run_phase.run_phase(args, env) == run_phase.EXIT_FAILED
     out = json.loads(capsys.readouterr().out)
-    reason = "fix: the session failed after its gate (claude exited 0, error_max_turns)"
+    reason = "fix: the session failed after its gate (claude exited 0, error_during_execution)"
     assert out["parked"] == reason
     assert status_mod.read_status(change).parked_reason == reason
     record = gaps._gate_c(change)
@@ -112,15 +112,15 @@ def test_a_session_that_failed_after_its_gate_keeps_its_work_under_that_reason(
     project, fake_claude, monkeypatch, tmp_path, capsys
 ):
     root, change, args, env, _calls = gaps._owner_round(
-        project, fake_claude, monkeypatch, tmp_path, gaps.EDITS, gaps.MAX_TURNS
+        project, fake_claude, monkeypatch, tmp_path, gaps.EDITS, gaps.FAILED_RUN
     )
     env["FAKE_CLAUDE_GATE"] = "changes/0001-percent-helper/evidence/gate-c.json"
     assert run_phase.run_phase(args, env) == run_phase.EXIT_FAILED
     capsys.readouterr()
     sha = git(root, "rev-parse", "HEAD").strip()
     assert status_mod.read_status(change).parked_reason == (
-        "fix: the session failed after its gate (claude exited 0, error_max_turns); its work "
-        f"is kept in {sha[:10]}, not gated"
+        "fix: the session failed after its gate (claude exited 0, error_during_execution); "
+        f"its work is kept in {sha[:10]}, not gated"
     )
 
 
@@ -500,7 +500,7 @@ def test_a_nested_claude_settings_file_stays_out_of_the_kept_work(
         "pathlib.Path('pkg/.claude/settings.json').write_text('{}\\n', encoding='utf-8')\n"
     )
     root, _change, args, env, _calls = gaps._owner_round(
-        project, fake_claude, monkeypatch, tmp_path, gaps.EDITS + nested, gaps.MAX_TURNS
+        project, fake_claude, monkeypatch, tmp_path, gaps.EDITS + nested, gaps.FAILED_RUN
     )
     assert run_phase.run_phase(args, env) == run_phase.EXIT_FAILED
     out = json.loads(capsys.readouterr().out)
@@ -544,7 +544,7 @@ def test_an_unfinished_round_keeps_the_risk_hits_the_banner_shows(
     from gate import risk
 
     root, change, args, env, _calls = gaps._owner_round(
-        project, fake_claude, monkeypatch, tmp_path, gaps.EDITS + GATE_PARKS_AGAIN, gaps.MAX_TURNS
+        project, fake_claude, monkeypatch, tmp_path, gaps.EDITS + GATE_PARKS_AGAIN, gaps.FAILED_RUN
     )
     assert run_phase.run_phase(args, env) == run_phase.EXIT_FAILED
     capsys.readouterr()
@@ -583,7 +583,7 @@ def test_an_unfinished_round_keeps_a_reported_risk_hit_too(
         f"path.write_text({json.dumps(json.dumps(reported))}, encoding='utf-8')\n"
     )
     _root, change, args, env, _calls = gaps._owner_round(
-        project, fake_claude, monkeypatch, tmp_path, gaps.EDITS + parks_again, gaps.MAX_TURNS
+        project, fake_claude, monkeypatch, tmp_path, gaps.EDITS + parks_again, gaps.FAILED_RUN
     )
     assert run_phase.run_phase(args, env) == run_phase.EXIT_FAILED
     capsys.readouterr()
@@ -665,7 +665,7 @@ def test_an_unfinished_round_after_a_reset_does_not_carry_the_iteration_cap(
     and the round hit the turn cap before its gate: the new park must not ask for a reset
     again, while the risk hit the same park named stays for the close-look banner."""
     root, change, args, env, _calls = gaps._owner_round(
-        project, fake_claude, monkeypatch, tmp_path, gaps.EDITS, gaps.MAX_TURNS
+        project, fake_claude, monkeypatch, tmp_path, gaps.EDITS, gaps.FAILED_RUN
     )
     cap = {
         "name": "limits",

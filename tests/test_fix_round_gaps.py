@@ -267,6 +267,9 @@ def test_a_restart_whose_merge_conflicts_parks_again_and_leaves_no_merge(
 
 # --- gaps 3 and 4: an unfinished fix round keeps its work and parks ----------------------------
 MAX_TURNS = {"is_error": True, "subtype": "error_max_turns", "total_cost_usd": 1.5, "result": ""}
+# a failed session that no outer bound stopped: since R25 part 1 (plugin 1.0.26) the turn limit
+# parks green, so the gap-3 tests of a failed round use this one
+FAILED_RUN = {**MAX_TURNS, "subtype": "error_during_execution"}
 QUESTION = {"is_error": False, "total_cost_usd": 0.4, "result": "How would you like me to proceed?"}
 EDITS = (
     "import pathlib\n"
@@ -321,13 +324,14 @@ def test_a_fix_session_at_the_turn_cap_keeps_its_work_on_the_pr_head_and_parks(
     root, change, args, env, calls = _owner_round(
         project, fake_claude, monkeypatch, tmp_path, EDITS, MAX_TURNS
     )
-    assert run_phase.run_phase(args, env) == run_phase.EXIT_FAILED  # still a red run
+    # R25 part 1 (plugin 1.0.26): an outer bound parks green and names itself; before, a
+    # red run with "claude exited 0, error_max_turns"
+    assert run_phase.run_phase(args, env) == run_phase.EXIT_OK
     out = json.loads(capsys.readouterr().out)
     sha = git(root, "rev-parse", "HEAD").strip()
     message = git(root, "log", "-1", "--format=%s").strip()
     assert message == (
-        "run(fix): unfinished round's work kept, not gated (gap 3): claude exited 0, "
-        "error_max_turns"
+        "run(fix): unfinished round's work kept, not gated (gap 3): stopped at the turn limit"
     )
     files = _committed(root)
     assert "src/x.py" in files and "src/new.py" in files
@@ -335,7 +339,7 @@ def test_a_fix_session_at_the_turn_cap_keeps_its_work_on_the_pr_head_and_parks(
     assert git(root, "status", "--porcelain", "--", "src") == ""
     reason = status_mod.read_status(change).parked_reason
     assert reason == (
-        "fix: the round ended before its gate (claude exited 0, error_max_turns); its work is "
+        "fix: the round ended before its gate (stopped at the turn limit); its work is "
         f"kept in {sha[:10]}, not gated"
     )
     assert out["parked"] == reason and out["work"]["kept"] == ["src/new.py", "src/x.py"]
@@ -355,7 +359,7 @@ def test_guardrail_and_env_files_stay_out_of_the_kept_work_and_are_named(
     project, fake_claude, monkeypatch, tmp_path, capsys
 ):
     root, change, args, env, _calls = _owner_round(
-        project, fake_claude, monkeypatch, tmp_path, EDITS + GUARDRAIL_EDITS, MAX_TURNS
+        project, fake_claude, monkeypatch, tmp_path, EDITS + GUARDRAIL_EDITS, FAILED_RUN
     )
     assert run_phase.run_phase(args, env) == run_phase.EXIT_FAILED
     out = json.loads(capsys.readouterr().out)
@@ -375,7 +379,7 @@ def test_a_round_that_parks_on_the_owner_fields_keeps_no_work(
     """Today's behaviour stands: the owner-field park comes first, and its tree is not the
     owner's to keep (the session wrote a runner file)."""
     root, change, args, env, _calls = _owner_round(
-        project, fake_claude, monkeypatch, tmp_path, EDITS + auto_tests.PLANT, MAX_TURNS
+        project, fake_claude, monkeypatch, tmp_path, EDITS + auto_tests.PLANT, FAILED_RUN
     )
     head = git(root, "rev-parse", "HEAD").strip()
     run_phase.run_phase(args, env)
@@ -394,7 +398,7 @@ def test_an_automatic_round_that_ends_unfinished_parks_once_with_the_gap_3_reaso
     git(root, "commit", "-q", "-m", "src/x.py")
     session = tmp_path / "session.py"
     write(session, EDITS)
-    env.update(FAKE_CLAUDE_RUN=str(session), FAKE_CLAUDE_RESULT=json.dumps(MAX_TURNS))
+    env.update(FAKE_CLAUDE_RUN=str(session), FAKE_CLAUDE_RESULT=json.dumps(FAILED_RUN))
     env.pop("FAKE_CLAUDE_GATE")  # the turn cap came before the round's gate
     auto_tests.dispatch_recorder(monkeypatch)
     assert run_phase.run_phase(args, env) == run_phase.EXIT_FAILED

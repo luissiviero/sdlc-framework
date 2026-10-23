@@ -923,14 +923,16 @@ def test_a_fix_round_that_does_not_finish_parks_for_the_owner(
         script = tmp_path / "die.py"
         write(script, "import sys\nsys.exit(1)\n")
         env["FAKE_CLAUDE_RUN"] = str(script)  # the session's own environment
-        expected = "claude exited 1"
+        expected, code = "claude exited 1", run_phase.EXIT_FAILED
     else:
         monkeypatch.setattr(
             run_phase, "invoke", lambda *a, **k: (None, "", "claude did not finish", 124)
         )
-        expected = "claude exited 124"
+        # R25 part 1 (1.0.26): the runner's timeout is an outer bound; decision 29's park
+        # names it, and the run is green (before: "claude exited 124", a red run)
+        expected, code = "stopped by the runner's timeout", run_phase.EXIT_OK
     sent = dispatch_recorder(monkeypatch)
-    assert run_phase.run_phase(args, env) == run_phase.EXIT_FAILED
+    assert run_phase.run_phase(args, env) == code
     err = capsys.readouterr().err
     assert "the automatic fix round 1 did not finish" in err and sent == []
     record = gate_c(change)

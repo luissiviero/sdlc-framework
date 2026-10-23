@@ -780,6 +780,13 @@ def test_label_colours(project):
 
 
 # --- the GitHub client ------------------------------------------------------------------------
+@pytest.fixture(autouse=True)
+def no_minutes_meter(monkeypatch):
+    """The digest's Actions-minutes meter (R25) reads GitHub; these tests never do. Its own
+    tests are in test_actions_minutes.py."""
+    monkeypatch.setattr(digest_mod, "minutes_meter", lambda repo: "")
+
+
 @pytest.fixture
 def no_gh(monkeypatch):
     """No `gh` on PATH: every route decision falls to the token."""

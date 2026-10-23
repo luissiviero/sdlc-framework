@@ -48,11 +48,66 @@ def _emit(obj) -> None:
     print(json.dumps(obj, indent=2, sort_keys=True))
 
 
+RESERVE_TRIES = 5  # ids taken in a row before new-change gives up (R51)
+
+
+def reserve_new_id(root: Path) -> tuple[str | None, dict]:
+    """``(id, reservation)``: the next id, reserved on the remote before its folder is
+    written (R51, gap G2; ``gitops.reserve_change_id``). Each try reads the remote's ids
+    afresh and skips every id already refused, so a third allocation that took the next id
+    meanwhile is seen. An id refused ``RESERVE_TRIES`` times in a row gives None. A failure
+    other than git's refusal keeps today's best-effort id, unreserved, and says why. A
+    reserved id gets its local ``sdlc/<id>/a`` at the reservation commit, so the first
+    ``commit-phase`` of the id starts from it (a stale local default branch would otherwise
+    push non-fast-forward against the reservation)."""
+    # the default branch's tip as the remote has it now: a reservation on a stale tip would
+    # make the id's first commit-phase branch from it (the independent review, finding 9); a
+    # remote that cannot be reached fails the reservation below and says so
+    default = gitops.default_branch(root)
+    if default and not default.startswith("-"):
+        gitops.run(
+            root, "fetch", "-q", "origin",
+            f"+refs/heads/{default}:refs/remotes/origin/{default}", check=False,
+        )  # fmt: skip
+    base = gitops.reservation_base(root)
+    refused: list[str] = []
+    for _ in range(RESERVE_TRIES):
+        change_id = c.next_change_id(root, gitops.remote_change_ids(root) + refused)
+        if base is None:
+            return change_id, {"outcome": gitops.UNRESERVED, "detail": "no commit to start from"}
+        outcome, sha, detail = gitops.reserve_change_id(root, change_id, base)
+        if outcome == gitops.TAKEN:
+            refused.append(change_id)
+            continue
+        reservation = {"outcome": outcome, "detail": detail[-500:]}
+        if outcome == gitops.RESERVED:
+            reservation["sha"] = sha
+            branch = c.branch_name(change_id, "a")
+            gitops.run(root, "branch", "--", branch, sha, check=False)  # kept if it exists
+            reservation["local_branch"] = branch if _branch_exists(root, branch) else None
+        return change_id, reservation
+    return None, {"outcome": gitops.TAKEN, "refused": refused}
+
+
 def cmd_new_change(args) -> int:
     root = Path(args.root).resolve()
     change_id = args.id
+    reservation = None
     if change_id is None and gitops.is_repo(root) and gitops.has_remote(root):
-        change_id = c.next_change_id(root, gitops.remote_change_ids(root))
+        change_id, reservation = reserve_new_id(root)
+        if change_id is None:
+            print(
+                f"new-change: the ids {', '.join(reservation['refused'])} were each taken on "
+                "the remote before this allocation could reserve one; run it again",
+                file=sys.stderr,
+            )
+            return 1
+        if reservation["outcome"] != gitops.RESERVED:
+            print(
+                f"new-change: id {change_id} is not reserved on the remote, a best-effort "
+                f"id as before R51: {reservation['detail']}",
+                file=sys.stderr,
+            )
     change_dir, st = status.new_change(
         root,
         title=args.title,
@@ -68,6 +123,7 @@ def cmd_new_change(args) -> int:
             "dir": str(change_dir.relative_to(root)).replace("\\", "/"),
             "branch": c.branch_name(st.id, "a"),
             "status": st.to_dict(),
+            **({"reservation": reservation} if reservation is not None else {}),
         }
     )
     return 0
@@ -164,8 +220,9 @@ def cmd_commit_phase(args) -> int:
         return 2
     sha = gitops.commit_files(root, files, args.message)
     pushed = False
+    remote_merged = None  # R51: the remote branch moved and was merged before the push
     if args.push and gitops.has_remote(root):
-        gitops.push(root, branch)
+        remote_merged = gitops.push(root, branch)
         pushed = True
     _emit(
         {
@@ -174,6 +231,7 @@ def cmd_commit_phase(args) -> int:
             "work_branch": branch,
             "commit": sha,
             "pushed": pushed,
+            "remote_merged": remote_merged,
             "github_repo": gitops.github_repo(root),
             "base": gitops.default_branch(root) if sha else None,
         }
