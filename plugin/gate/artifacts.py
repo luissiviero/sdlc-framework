@@ -27,6 +27,16 @@ INTENT_SECTIONS = (
 # when ``status.yaml: entry_route`` is ``incident``.
 INTENT_EVIDENCE_SECTION = "## Evidence"
 INTENT_HEADER_FIELDS = ("Author:", "Status:", "Change id:", "Entry route:")
+# R29 part 1: the section for the owner's examples and references (skill ``intent-template``).
+# Not in INTENT_SECTIONS: the gate does not require it, so changes in flight and the
+# detection's incident intents never park on it (docs/proposals/intent-home.md).
+INTENT_EXAMPLES_SECTION = "## Examples/References"
+# R54, the quick intent: the owner writes the Problem paragraph only; each other article
+# section holds this one line, and the design pass states what it assumed in spec.md's
+# SPEC_ASSUMED_SECTION, which the design PR and the build PR show above their bullets.
+QUICK_INTENT_RE = re.compile(r"(?im)^\s*Quick intent:\s*yes\b")
+QUICK_INTENT_MARKER = "Left to the design run (quick intent)."
+SPEC_ASSUMED_SECTION = "## Assumed from the quick intent"
 # The first heading of intent.md: "# Intent: <title>" (skill ``intent-template``).
 INTENT_TITLE_RE = re.compile(r"(?i)^#\s*Intent:\s*(?P<title>.*)$")
 
@@ -286,6 +296,16 @@ def intent_title(intent_text: str) -> str | None:
 
 def is_framework_change(intent_text: str) -> bool:
     return FRAMEWORK_CHANGE_RE.search(intent_text) is not None
+
+
+def is_quick_intent(intent_text: str) -> bool:
+    """The header line ``Quick intent: yes`` (R54), read before the first section."""
+    return QUICK_INTENT_RE.search(intent_text.split("## ", 1)[0]) is not None
+
+
+def left_to_design(body: str) -> bool:
+    """True when an intent section holds only the quick intent's marker (R54)."""
+    return " ".join(body.split()).lower() == QUICK_INTENT_MARKER.lower()
 
 
 def open_concerns(spec_text: str) -> list[str]:

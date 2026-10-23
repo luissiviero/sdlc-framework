@@ -15,6 +15,9 @@ Layout of the body, in order:
      install PR of change 0000 at (a). The PR's merge accepts the items no earlier act
      accepted; at (c) and (d) only gate (e) does, by the owner's approving review since R22
      (choice 242, point 2), or by the owner's merge when the owner merges;
+  0a. "What I assumed (N)" (ROADMAP R54): when the change started from a quick intent, the
+     list under spec.md's "## Assumed from the quick intent", on the design PR and the build
+     PR; a review comment on a line corrects it (/sdlc-fix);
   0. "Decisions taken for you (N)" above the bullets (decision 21):
      one line per standing panel decision of the phases this PR covers ((b) for the design
      PR; (c), (d), (e) for the build PR), from ``evidence/decisions-<phase>.json``; a review
@@ -122,6 +125,18 @@ GATE_CHECKLIST = {
 # Decision 13, as amended by 36: when the project declares a real production, the approving
 # review is the first act and the release label, applied by a person on GitHub, the second
 # (the only route: a run cannot approve itself, decision 5), in the same visit.
+# Choice 239 (ROADMAP R54): an intent PR opened from the owner's own account, not as a draft,
+# is accepted by that act and starts the design at once (decision 30), so "merge = approve"
+# is not what it needs. The description is written before the PR exists and cannot know who
+# opens it, so a PR not opened as a draft names both cases; a draft keeps the gate (a) line
+# alone (a draft never takes the fast lane, run_phase.intent_pr_start).
+FAST_LANE_A_CHECKLIST = (
+    "opened from your own account and not as a draft, nothing: opening it accepted the intent "
+    "and started the design (the fast lane, decision 30), and the design run closes this PR as "
+    f"`{c.SUPERSEDED_LABEL}`; correct what the design made of it with a review comment on the "
+    "design PR, or on the build PR at gate (e). Opened as a draft or by another account: "
+    + GATE_CHECKLIST["a"]
+)
 RELEASE_APPROVAL_LINE = (
     f"Release approval: apply `{c.RELEASE_APPROVED_LABEL}` on this PR with your approval; the "
     "release workflow waits for it after the merge."
@@ -392,10 +407,24 @@ def _owner_line(
     return NOTHING_NEEDED
 
 
-def _intent_bullets(intent: str, st: Status) -> list[str]:
+def _intent_bullets(intent: str, st: Status, draft: bool = False) -> list[str]:
     """Phase (a): the intent PR /sdlc-plan opens. There is no spec, no diff and no gate file
-    yet, so the middle bullets describe the intent itself (build guide step 11)."""
+    yet, so the middle bullets describe the intent itself (build guide step 11). A quick
+    intent (R54) says that the design run fills the sections the owner left to it."""
     problem = _first_sentence(_section(intent, "## Problem"))
+    needs = GATE_CHECKLIST["a"] if draft else FAST_LANE_A_CHECKLIST
+    if art.is_quick_intent(intent):
+        left = (
+            "left to the design run (quick intent): it lists what it assumed above the "
+            "design PR's bullets"
+        )
+        return [
+            f"- **What changed and why**: {st.title}: {problem}",
+            f"- **Entry route**: {st.entry_route} route, {st.change_type} change, quick intent",
+            f"- **Affected users and systems**: {left}",
+            f"- **Open questions**: {left}",
+            f"- **What needs you**: {needs}",
+        ]
     affected = _first_sentence(_section(intent, "## Affected users and systems"))
     questions = [
         item
@@ -412,7 +441,7 @@ def _intent_bullets(intent: str, st: Status) -> list[str]:
         f"- **Entry route**: {st.entry_route} route, {st.change_type} change",
         f"- **Affected users and systems**: {affected or 'not stated'}",
         f"- **Open questions**: {open_line}",
-        f"- **What needs you**: {GATE_CHECKLIST['a']}",
+        f"- **What needs you**: {needs}",
     ]
 
 
@@ -523,6 +552,26 @@ def decisions_block(change_dir: Path, phase: str) -> list[str]:
     return lines
 
 
+def assumed_block(spec: str) -> list[str]:
+    """R54: ``**What I assumed (N)**`` and the spec's list of assumptions when the change
+    started from a quick intent, or []. Shown on the design PR and on the build PR, where the
+    owner corrects an assumption (on the fast lane the design PR is superseded)."""
+    items: list[str] = []
+    for line in _section(spec, art.SPEC_ASSUMED_SECTION).splitlines():
+        m = LIST_ITEM_RE.match(line)
+        if m:
+            items.append(m.group("text").strip())
+        elif items and line.strip():  # an item hard-wrapped over several lines
+            items[-1] = f"{items[-1]} {line.strip()}"
+    if not items:
+        return []
+    head = (
+        f"**What I assumed ({len(items)})** from your one-paragraph intent (R54): a review "
+        "comment on any line corrects it (/sdlc-fix)."
+    )
+    return [head, *(f"{n}. {item}" for n, item in enumerate(items, 1))]
+
+
 def models_lines(change_dir: Path, phase: str) -> list[str]:
     """The models the panel's runs used, from ``evidence/panel-models-<phase>.json``
     (0.2.30, written by the CI runner after a run that added decisions), and the warning
@@ -598,6 +647,8 @@ def release_note(change_dir: Path, intent: str) -> str:
         if body.strip():
             return body
     outcome = _section(intent, "## Proposed outcome")
+    if art.left_to_design(outcome):  # a quick intent (R54): no outcome in the owner's words
+        return ""
     return " ".join(outcome.split()) if outcome else ""
 
 
@@ -641,8 +692,9 @@ def _counters_line(st: Status) -> str:
     return line
 
 
-def build_description(root: Path, change_id: str, phase: str) -> str:
-    """The whole PR body for a change at a phase. Pure: reads files, contacts nothing."""
+def build_description(root: Path, change_id: str, phase: str, draft: bool = False) -> str:
+    """The whole PR body for a change at a phase. Pure: reads files, contacts nothing.
+    ``draft``: the PR is opened as a draft, which never takes the fast lane at (a)."""
     root = Path(root).resolve()
     if phase not in c.PHASES:
         raise ValueError(f"phase must be one of {c.PHASES}, got {phase!r}")
@@ -656,7 +708,7 @@ def build_description(root: Path, change_id: str, phase: str) -> str:
 
     banner = risk_mod.banner_lines(change_dir, phase, st)
     if phase == "a":
-        bullets = _intent_bullets(intent, st)
+        bullets = _intent_bullets(intent, st, draft)
         out = [*banner, ""] if banner else []
         out += [" ".join(b.split()) for b in bullets]
         out += ["", _links_line(root, change_dir, change_id, phase), "", _counters_line(st)]
@@ -693,6 +745,9 @@ def build_description(root: Path, change_id: str, phase: str) -> str:
         f"- **What needs you**: {_owner_line(gate_json, phase, auto)}",
     ]
     out: list[str] = [*banner, ""] if banner else []
+    assumed = assumed_block(spec)
+    if assumed:
+        out += [*assumed, ""]
     decisions = decisions_block(change_dir, phase)
     if decisions:
         out += [*decisions, ""]

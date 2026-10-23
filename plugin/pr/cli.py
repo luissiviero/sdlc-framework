@@ -122,7 +122,7 @@ def cmd_upsert(args) -> int:
     if ctx is None:
         return 2
     root, change_dir, st = ctx
-    body = desc.build_description(root, args.id, args.phase)
+    body = desc.build_description(root, args.id, args.phase, draft=args.draft)
     title = desc.pr_title(st, args.phase)
     gate_json = desc.load_gate(change_dir, args.phase)
     label = desc.label_for(gate_json, args.phase)

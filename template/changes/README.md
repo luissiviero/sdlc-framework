@@ -12,7 +12,7 @@ kebab-case title.
 | `evidence/` | (c), (d), (e) | `verifier.md` (verifier agent), `test.log` · `build.log` · `lint.log` · screenshots (the test run, B3), `adversarial-review-<phase>.json` (adversarial reviewer), `review-findings.json` (review pass, B3), `gate-<phase>.json` and `run-<phase>.json` (the gate) |
 | `status.yaml` | every phase | `plugin/state` — phase (or `abandoned`: the PR was closed without a merge), change type, gate result, parked reason, iteration count, the actors of the owner's un-park labels and of the runbook Go |
 | `evidence/detection.json`, `evidence/proposal.json`, `evidence/runbook-<name>.json` | (f) maintain | the detection script (the finding: metric, tier, rule, the numbers), the diagnosis (`/sdlc-maintain`: the proposed route) and the dispatcher (what the runbook did); an incident change is filed by the detection script with `entry_route: incident` and stays at phase `f` until its intent PR is merged (= gate (a)) |
-| `mock/` | (b) design, optional | the exported design mock for front-end work (build guide step 34): the visual target phases (c) and (d) compare screenshots against; project content, committed with the spec |
+| `mock/` | (a) plan or (b) design, optional | the exported design mock for front-end work (build guide step 34): the visual target phases (c) and (d) compare screenshots against, named by `spec.md`'s `Mock:` line; project content, committed with the intent or the spec. Example screens that are not a target go in the intent's Examples/References |
 
 Branches: `sdlc/<id>/a` (intent PR), `sdlc/<id>/b` (spec+plan PR), `sdlc/<id>/c` (build PR,
 kept open through test and review). Labels: `sdlc:<phase>-ready` (waiting at a human gate),

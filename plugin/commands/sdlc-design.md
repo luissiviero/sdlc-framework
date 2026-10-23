@@ -117,6 +117,14 @@ Rules for the pass (from the three by-hand runs of build guide step 22, recorded
   word of the item — a label such as `C3:` in front of it keeps the concern open. Every
   other concern stays open: the panel of step 6a closes it and the owner reads the decision
   at the gate (a review comment overturns it, and `/sdlc-fix` applies the comment).
+- A quick intent (header `Quick intent: yes`, ROADMAP R54) gives only the owner's Problem
+  paragraph: fill the sections it leaves to this run as `## Assumed from the quick intent`,
+  before Requirements, one list item per section and per other assumption (skill
+  `spec-template`, "A quick intent"). Those assumptions are not flagged concerns: the owner
+  reads them above the design PR's bullets (and the build PR's, on the fast lane) and
+  corrects one with a review comment. Still never edit intent.md.
+- A change that touches a screen ends Acceptance with the `Mock:` line (skill
+  `spec-template`): the file in `mock/`, or `Mock: none, screens follow the UX conventions`.
 - As short as the change allows: a small change gets a short spec. Requirements are
   checkable bullets; Design is the shape, not the code.
 - Write `changes/<id>-<slug>/spec.md`. Nothing else.
