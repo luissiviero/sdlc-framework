@@ -3,12 +3,15 @@
 Layer 1 (temporary git repositories): a branch that bumps nothing passes, also when it merges a
 bump from ``main``; a bump above ``main`` with no tag passes; a bump to a tagged version, or to
 ``main``'s own version after the other pull request merged first, fails; the tag is read on
-``origin`` when the clone lacks it; nothing is checked without a ``main``.
+``origin`` when the clone lacks it; nothing is checked without a ``main``. Two open branches
+that bump to one version: the later bump fails and the earlier is told, and a branch built on
+the other shares its bump (choice 266).
 """
 
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 from pathlib import Path
 
@@ -17,19 +20,22 @@ import tasks
 GIT = ["git", "-c", "user.name=t", "-c", "user.email=t@t", "-c", "init.defaultBranch=main"]
 
 
-def _git(root: Path, *args: str) -> str:
+def _git(root: Path, *args: str, date: str | None = None) -> str:
+    env = {**os.environ, "GIT_COMMITTER_DATE": date} if date else None
     return subprocess.run(
-        [*GIT, *args], cwd=root, check=True, capture_output=True, text=True
+        [*GIT, *args], cwd=root, check=True, capture_output=True, text=True, env=env
     ).stdout.strip()
 
 
-def _commit(root: Path, files: dict[str, str], message: str = "change") -> None:
+def _commit(
+    root: Path, files: dict[str, str], message: str = "change", date: str | None = None
+) -> None:
     for rel, text in files.items():
         path = root / rel
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(text, encoding="utf-8", newline="\n")
     _git(root, "add", "-A")
-    _git(root, "commit", "-q", "-m", message)
+    _git(root, "commit", "-q", "-m", message, date=date)
 
 
 def _version(version: str) -> dict[str, str]:
@@ -123,3 +129,43 @@ def test_main_itself_and_a_repository_without_main_check_nothing(tmp_path):
     _git(root, "branch", "-q", "-m", "main", "trunk")
     failures, reports = tasks.version_problems(root)
     assert failures == [] and reports[0].startswith("not checked: no main branch")
+
+
+def _two_bumps(tmp_path: Path, work_date: str, other_date: str) -> Path:
+    """``work`` and ``other``, both open from ``main``, both bumping to 1.0.3."""
+    root = _repo(tmp_path)
+    _commit(root, {**_version("1.0.3"), "plugin/a.py": "a = 2\n"}, "work: 1.0.3", work_date)
+    _git(root, "checkout", "-q", "-b", "other", "main")
+    _commit(root, {**_version("1.0.3"), "plugin/b.py": "b = 1\n"}, "other: 1.0.3", other_date)
+    _git(root, "checkout", "-q", "work")
+    return root
+
+
+def test_the_later_of_two_open_bumps_to_one_version_fails(tmp_path):
+    root = _two_bumps(tmp_path, "2026-10-23T11:00:00Z", "2026-10-23T10:00:00Z")
+    failures, reports = tasks.version_problems(root)
+    assert failures == [
+        "the branch bumps to 1.0.3, which other took first: "
+        "take the next free patch (python tasks.py next-free)"
+    ]
+    assert reports == []
+
+
+def test_the_earlier_of_two_open_bumps_is_told_and_passes(tmp_path):
+    root = _two_bumps(tmp_path, "2026-10-23T10:00:00Z", "2026-10-23T11:00:00Z")
+    failures, reports = tasks.version_problems(root)
+    assert failures == []
+    assert reports[0] == "1.0.3 is also taken by other, later: that branch renumbers"
+
+
+def test_a_branch_built_on_this_one_shares_its_bump(tmp_path):
+    root = _repo(tmp_path)
+    _commit(root, {**_version("1.0.3"), "plugin/a.py": "a = 2\n"}, "work: 1.0.3")
+    _git(root, "checkout", "-q", "-b", "stacked")
+    _commit(root, {"docs/x.md": "x\n"}, "stacked: docs")
+    _git(root, "checkout", "-q", "work")
+    failures, reports = tasks.version_problems(root)
+    assert failures == [] and not any("also taken" in line for line in reports)
+    _git(root, "checkout", "-q", "stacked")
+    failures, reports = tasks.version_problems(root)
+    assert failures == [] and not any("also taken" in line for line in reports)
