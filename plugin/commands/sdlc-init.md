@@ -20,9 +20,18 @@ allowed-tools: Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/init/sdlc_init.py" *), 
 python "${CLAUDE_PLUGIN_ROOT}/plugin/init/sdlc_init.py" --root "${CLAUDE_PROJECT_DIR}" --detect-only
 ```
 Detection covers Python (pyproject/pytest/ruff/flake8) and Node (`package.json` scripts →
-`npm test`, `npm run lint`, `npm run build`). For other languages, or when a target is
-reported as `none`, ask the owner for the command and pass it with `--build/--test/--lint`;
-the gate does not enter phase (c) without all three. Detection also proposes `commands.setup`
+`npm test`, `npm run lint`, `npm run build`). It counts each language's source files and
+manifests first (the report's `detection.signals`): the targets are detected only when
+Python or Node holds two source files in three, so a mixed repository, or a Go, Rust, Java,
+.NET or Ruby project, comes back with every target `none` and a note naming the signals
+(R61). For other languages, or when a target is reported as `none`, ask the owner for the
+command and pass it with `--build/--test/--lint`; the gate does not enter phase (c) without
+all three. The report's `proposed` block shows what else the install writes for the owner
+to confirm in the change-0000 PR: the package registries the CI session may reach
+(`sandbox.allowed_domains`), the secret-shaped files found (`protected_paths`, and the same
+names as `Read` deny rules), and the formatter commands per file type (`hooks.formatters`:
+black, yapf or autopep8 from `pyproject.toml`, prettier and eslint from `package.json`,
+rustfmt for `Cargo.toml`; ruff stays Python's default with no entry). Detection also proposes `commands.setup`
 — the one command that installs what those three need (`python -m pip install -e ".[dev]"`,
 `npm ci`, ...), which the CI phase jobs run before every phase; override it with `--setup`
 and pass `--setup ""` when the project has nothing to install.
@@ -54,7 +63,17 @@ and pass `--setup ""` when the project has nothing to install.
 - deploy action [none]: what makes a merged change live — publish package · schedule job ·
   regenerate report · promote to paper trading · deploy service · none
 - real production? [no] — turns on the release label and the production gate
-- maintain metric and source [ci_test_failure_rate from github-actions]
+- maintain metric and source [ci_test_failure_rate from github-actions; when the project
+  has several workflows of its own, the detection report's `maintain.source` proposes
+  `github-actions:<name>` for the one that runs the tests (R61): pass `--maintain-source`
+  only when the owner names another]
+- the repository secrets or variables the targets need [none]: names only, each passed as
+  `--env NAME`; the install writes them under `commands.env` and into the setup and phase
+  steps of the phase workflows. Say to the owner that the setup command, the session and
+  the targets (which run code the session wrote, the targets outside the sandbox) can read
+  them, so they should be test credentials, never production ones; a service a test needs
+  (a database) is the owner's edit of the workflow, and the change-0000 intent says that
+  tests bound to a service are deselected for now
 - confirm or override the detected build/test/lint commands and the setup (install) command
 - the risk list is not asked here (decision 35): the install script proposes the four default
   items, each with the globs that match folders this project already has (a migrations
@@ -75,7 +94,7 @@ sections, and the owner trims it in the PR.
 
 ## 3. Install
 ```
-python "${CLAUDE_PLUGIN_ROOT}/plugin/init/sdlc_init.py" --root "${CLAUDE_PROJECT_DIR}" --deploy-action "<action>" --deploy-production <true|false> --maintain-metric <metric> --maintain-source <source> [--claude-md-from changes/0000-sdlc-init/CLAUDE.proposed.md] [--build "<cmd>"] [--test "<cmd>"] [--lint "<cmd>"] [--setup "<cmd>"]
+python "${CLAUDE_PLUGIN_ROOT}/plugin/init/sdlc_init.py" --root "${CLAUDE_PROJECT_DIR}" --deploy-action "<action>" --deploy-production <true|false> --maintain-metric <metric> [--maintain-source <source>] [--env NAME ...] [--claude-md-from changes/0000-sdlc-init/CLAUDE.proposed.md] [--build "<cmd>"] [--test "<cmd>"] [--lint "<cmd>"] [--setup "<cmd>"]
 ```
 It writes `sdlc.yaml`, `.claude/settings.json` (permissions + the pinned plugin
 declaration; hooks come from the plugin), `REVIEW.md`, `changes/README.md`, builds
@@ -107,8 +126,18 @@ overwrites the owner's edits. This script is the only sanctioned writer of guard
 everything it writes rides in the change-0000 PR the owner merges.
 
 ## 4. Verify the feedback loop
-Run the three commands from `sdlc.yaml` once and paste the output. A target that fails is
-reported, not hidden: the owner decides whether to fix the project or change the target.
+Run and time the three commands from `sdlc.yaml` once (give the Bash call a timeout that
+covers them):
+```
+python "${CLAUDE_PLUGIN_ROOT}/plugin/init/sdlc_init.py" --root "${CLAUDE_PROJECT_DIR}" --time-commands
+```
+and paste each target's output, exit code and seconds from its JSON report. A target that
+fails is reported, not hidden: the owner decides whether to fix the project or change the
+target. It raises `gate.command_timeout` to three times the longest run when that is above
+the template's 900 seconds (the CI session's Bash timeout follows it, R61); when its
+`workflows` line says to raise `timeout-minutes` and `SDLC_JOB_TIMEOUT_MINUTES`, tell the
+owner the two numbers for `sdlc-build.yml` and `sdlc-fix.yml`. Commit the changed
+`sdlc.yaml` with the rest in step 5.
 
 ## 5. Commit as the project's first PR (gate (a) of change 0000)
 Branch policy: the framework's branch is `sdlc/0000/a`. If this session's platform assigns

@@ -800,3 +800,50 @@ def test_sdlc_init_prescribes_the_branch_ruleset_of_decision_4():
     model = (PLUGIN.parent / "docs" / "OPERATING_MODEL.md").read_text(encoding="utf-8")
     assert "The owner's bypass mode is *Exempt*" in model
     assert '"Require a pull request before merging", "Block force pushes" and' in model
+
+
+# --- R29 part 1 and R54: examples, the mock and the quick intent --------------------------------
+def test_intent_template_has_examples_after_the_article_sections():
+    """R29 part 1: Examples/References follows Open questions and precedes the incident-only
+    Evidence; the gate does not require it (INTENT_SECTIONS is unchanged)."""
+    from gate import artifacts as art
+
+    body = (PLUGIN / "skills" / "intent-template" / "SKILL.md").read_text(encoding="utf-8")
+    block = re.search(r"```markdown\n(.*?)```", body, re.S).group(1)
+    headings = [h.split("   ")[0] for h in re.findall(r"^## .+$", block, re.M)]
+    assert headings == [*art.INTENT_SECTIONS, art.INTENT_EXAMPLES_SECTION, "## Evidence"]
+    assert art.INTENT_EXAMPLES_SECTION not in art.INTENT_SECTIONS
+    text = " ".join(body.split())
+    assert "never a referenced screen" in text
+    # the quick intent's marker is the gate's, word for word
+    assert f"`{art.QUICK_INTENT_MARKER}`" in text and "`Quick intent: yes`" in text
+
+
+def test_the_mock_question_and_the_mock_line():
+    """R29 part 1: the interview asks for a mock on a screen change; spec.md's Acceptance gets
+    a fixed Mock: line; the build matches the mock, never the referenced screens."""
+    plan = flat(COMMANDS / "sdlc-plan.md")
+    assert '"Do you have a mock or example screens?"' in plan and "never blocks" in plan
+    spec = flat(PLUGIN / "skills" / "spec-template" / "SKILL.md")
+    assert "`Mock: mock/<file>`" in spec
+    assert "`Mock: none, screens follow the UX conventions`" in spec
+    build = flat(COMMANDS / "sdlc-build.md")
+    assert "never the screens the intent's Examples/References only refer to" in build
+    assert "`Mock:` line" in flat(COMMANDS / "sdlc-design.md")
+
+
+def test_the_quick_intent_route():
+    """R54: one paragraph, no correction loop at (a); the design run states its assumptions
+    in the section the gate requires and the reviewer judges."""
+    from gate import artifacts as art
+
+    plan = flat(COMMANDS / "sdlc-plan.md")
+    assert "**The quick intent**" in plan and "`quick:`" in plan
+    assert "skip step 4's correction loop" in plan
+    heading = art.SPEC_ASSUMED_SECTION
+    for path in (
+        COMMANDS / "sdlc-design.md",
+        PLUGIN / "skills" / "spec-template" / "SKILL.md",
+    ):
+        assert f"`{heading}`" in flat(path), path.name
+    assert heading.lstrip("# ") in flat(PLUGIN / "agents" / "adversarial-reviewer.md")

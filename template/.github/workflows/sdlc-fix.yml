@@ -235,6 +235,7 @@ jobs:
         if: steps.find.outputs.change_id != ''
         env:
           SDLC_DEFAULT_BRANCH: ${{ github.event.repository.default_branch || github.ref_name }}
+          # sdlc:commands.env
         run: python framework/plugin/ci/project_setup.py --root . --command-from "refs/remotes/origin/$SDLC_DEFAULT_BRANCH"
 
       - name: Remove the framework checkout the install could reach
@@ -266,6 +267,7 @@ jobs:
           # decision 34: the owner's @claude comment the dispatcher passed, written into
           # evidence/fix-requests.json as the round's trigger; an input, never in a run line
           SDLC_TRIGGER: ${{ inputs.trigger }}
+          # sdlc:commands.env
         run: python framework/plugin/ci/run_phase.py --root . --plugin-dir framework --phase fix --id "$CHANGE_ID" --head-ref "$HEAD_REF" --repo "$REPO" --pr-number "$PR_NUMBER" --ref "$DEFAULT_BRANCH"
 
       # Build guide step 41.1 (article p.39): every hook decision of the run is one line of

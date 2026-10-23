@@ -123,6 +123,7 @@ pushed (0.3.0, issue #91; the change is parked first where the record was deferr
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import math
 import os
@@ -1897,6 +1898,73 @@ def _deny_write_entries(
     return entries, skipped, narrowed
 
 
+def _extend(block: dict[str, Any], key: str, items: list[str]) -> None:
+    have = block.get(key)
+    if isinstance(have, list):
+        block[key] = have + [item for item in items if item not in have]
+
+
+PROJECT_COMMAND_KEYS = ("build", "test", "lint", "setup")
+_DOMAIN_RE = re.compile(r"(\*\.)?[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+")
+
+
+def project_command_rules(config: dict[str, Any]) -> list[str]:
+    """``Bash(...)`` allow rules for the project's own targets (R61 part 1): on a Go, Rust or
+    Java project the session may run the commands it is told to run before "done". The
+    placeholders ``/sdlc-init`` writes for a missing target (``echo no ... target``) get none."""
+    from init.sdlc_init import rule_for  # noqa: PLC0415
+
+    commands = config.get("commands") if isinstance(config.get("commands"), dict) else {}
+    rules: list[str] = []
+    for key in PROJECT_COMMAND_KEYS:
+        command = commands.get(key)
+        if not isinstance(command, str) or not command.strip():
+            continue
+        if command.strip().startswith("echo no "):
+            continue
+        rule = rule_for(command, "")
+        if rule and rule not in rules:
+            rules.append(rule)
+    return rules
+
+
+def project_domains(config: dict[str, Any]) -> list[str]:
+    """``sdlc.yaml: sandbox.allowed_domains``: host names only (a ``*.`` prefix allowed); an
+    entry that is not one is left out, never widened into a pattern (R61 part 1)."""
+    sandbox = config.get("sandbox") if isinstance(config.get("sandbox"), dict) else {}
+    raw = sandbox.get("allowed_domains")
+    if not isinstance(raw, list):
+        return []
+    return [str(d).strip() for d in raw if _DOMAIN_RE.fullmatch(str(d).strip())]
+
+
+def protected_read_rules(config: dict[str, Any], base: str) -> list[str]:
+    """A ``Read`` deny rule for each secret-shaped ``protected_paths`` entry
+    (``init.detect.is_secret_pattern``), anchored at the project root (``//<root>/...``), and
+    a second one in any folder for a bare name, which gitignore matches at any depth (R61 part
+    5: the session cannot read a secret-shaped file it may not edit). Any other entry
+    (``migrations/``, generated code) stays readable: the sandbox masks a denied path for
+    every command, the tests included (docs/notes/24.md)."""
+    from init.detect import is_secret_pattern  # noqa: PLC0415
+
+    raw = config.get("protected_paths")
+    if not isinstance(raw, list):
+        return []
+    rules: list[str] = []
+    for entry in raw:
+        text = str(entry).strip().replace("\\", "/")
+        if not text or text.startswith("!") or ".." in text.split("/"):
+            continue
+        if not is_secret_pattern(text):
+            continue
+        anchored = "/" in text.rstrip("/")
+        path = text.strip("/") + ("/**" if text.endswith("/") else "")
+        rules.append(f"Read({base}/{path})")
+        if not anchored:
+            rules.append(f"Read({base}/**/{path})")
+    return rules
+
+
 def ci_settings_file(plugin_dir: Path, root: Path) -> Path:
     """``settings.ci.json`` with its ``/``-anchored path rules resolved against the project
     root, written to a temporary copy. A ``/path`` rule anchors at the directory of the
@@ -1908,20 +1976,32 @@ def ci_settings_file(plugin_dir: Path, root: Path) -> Path:
     ``sandbox.filesystem.denyWrite`` (change 0002) is rewritten the same way, but to a plain
     absolute filesystem path (a leading ``/`` is absolute, not the ``//``-anchored spelling the
     permission rules above use), and gains the project's own ``protected_paths`` plain-path
-    entries appended."""
+    entries appended.
+
+    R61 (1.0.29): the project's shape follows. The allow list gains the rule of each of
+    ``commands.build``, ``test``, ``lint`` and ``setup`` (``sdlc_init.rule_for``, the rules
+    the project's own settings carry), the network list the hosts of ``sandbox.
+    allowed_domains``, and the deny list a ``Read`` rule for each secret-shaped
+    ``protected_paths`` entry (``protected_read_rules``)."""
     source = Path(plugin_dir).joinpath(*SETTINGS_REL)
     data = json.loads(source.read_text(encoding="utf-8"))
     root_resolved = Path(root).resolve()
     base = _posix_root(root_resolved.as_posix())
+    config = _config(root)
     perms = data.get("permissions") or {}
     for key in ("deny", "ask", "allow"):
         if isinstance(perms.get(key), list):
             perms[key] = [_absolute_rule(r, base) for r in perms[key]]
+    _extend(perms, "allow", project_command_rules(config))
+    _extend(perms, "deny", protected_read_rules(config, base))
     sandbox = data.get("sandbox") or {}
+    network = sandbox.get("network")
+    if isinstance(network, dict):
+        _extend(network, "allowedDomains", project_domains(config))
     fs = sandbox.get("filesystem") or {}
     if isinstance(fs.get("denyWrite"), list):
         rewritten = [str(root_resolved / str(entry).lstrip("/\\")) for entry in fs["denyWrite"]]
-        extra, skipped, narrowed = _deny_write_entries(root_resolved, _config(root))
+        extra, skipped, narrowed = _deny_write_entries(root_resolved, config)
         fs["denyWrite"] = rewritten + extra
         if skipped:
             fs["_denyWriteSkipped"] = skipped
@@ -2149,7 +2229,22 @@ def session_env(
         marked[limits.RUN_KIND_ENV] = limits.FIX_RUN
     if config is not None:
         marked.update(panel_models_mod.alias_pins(config, model_phase or phase, env))
+        # R61 part 4: a target the session runs gets the gate's per-command timeout, not
+        # the Bash tool's two minutes; a value the workflow sets is kept
+        bash_ms = str(1000 * commands_timeout_seconds_per(config))
+        for var in BASH_TIMEOUT_VARS:
+            marked.setdefault(var, bash_ms)
     return marked
+
+
+BASH_TIMEOUT_VARS = ("BASH_DEFAULT_TIMEOUT_MS", "BASH_MAX_TIMEOUT_MS")
+
+
+def commands_timeout_seconds_per(config: dict[str, Any]) -> int:
+    """``sdlc.yaml: gate.command_timeout``, the gate's timeout for one target."""
+    return _int_or(
+        _gate_settings(config).get("command_timeout"), gate_checks.DEFAULT_COMMAND_TIMEOUT
+    )
 
 
 def commands_timeout_seconds(config: dict[str, Any]) -> int:
@@ -3810,9 +3905,52 @@ def restore_owner_fields(change_dir: Path, before_st, after_st=None) -> None:
     status_mod.write_status(change_dir, after_st)
 
 
+RELEASED_REF = "refs/sdlc/released/{id}"  # release/cli.py's record ref, not a branch
+RELEASED_REF_UNREADABLE = "unreadable"
+ORIGIN_URLS = "remote origin"  # the key of origin's fetch and push URLs in ``change_refs``
+
+
+def released_refs(root: Path, change_id: str) -> dict[str, str]:
+    """``{name: sha}`` of every ref ``git ls-remote origin refs/sdlc/released/<id>`` lists (a
+    fetch of the branches does not bring them). ls-remote matches the pattern against the
+    tail of a name, so ``refs/tags/refs/sdlc/released/<id>``, which the release workflow's
+    fetch of the short name would take for the record, is listed too (the independent
+    review, finding 1). ``{ref: RELEASED_REF_UNREADABLE}`` when the remote could not be asked."""
+    from state import gitops  # noqa: PLC0415
+
+    ref = RELEASED_REF.format(id=change_id)
+    proc = gitops.run_proc(root, "ls-remote", "origin", ref)  # a planted config raises
+    if proc.returncode != 0:
+        return {ref: RELEASED_REF_UNREADABLE}
+    refs: dict[str, str] = {}
+    for line in proc.stdout.splitlines():
+        sha, _, name = line.partition("\t")
+        if sha.strip() and name.strip():
+            refs[name.strip()] = sha.strip()
+    return refs
+
+
+def origin_urls(root: Path) -> str:
+    """A digest of origin's fetch and push URLs as git resolves them (``insteadOf`` and
+    ``pushInsteadOf`` expanded), so a session that points origin elsewhere between the two
+    reads of ``change_refs`` is seen (the independent review, finding 2). A digest, never
+    the URLs: a park reason is committed and a URL can carry a credential."""
+    from state import gitops  # noqa: PLC0415
+
+    urls = [
+        gitops.run_proc(root, "remote", "get-url", *flags, "--all", "origin").stdout
+        for flags in ((), ("--push",))
+    ]
+    return hashlib.sha256("\0".join(urls).encode("utf-8")).hexdigest()[:16]
+
+
 def change_refs(root: Path, change_id: str) -> dict[str, str]:
     """``{branch: sha}`` of the change's branches on the remote (``origin/sdlc/<id>/*``), after
-    a fetch; empty without a remote."""
+    a fetch; the change's release ref (``released_refs``, keyed by full name); and a digest of
+    origin's URLs (``ORIGIN_URLS``). Empty without a remote, so a session that removes or
+    renames origin changes every key. Choice 261, point 2: a session that creates or moves
+    the release ref makes the release workflow skip the change as already released
+    (``release/cli.py``, ``remote_record``); ``session_push_mismatches`` parks it."""
     from state import gitops  # noqa: PLC0415
 
     if not gitops.is_repo(root) or not gitops.has_remote(root):
@@ -3830,6 +3968,8 @@ def change_refs(root: Path, change_id: str) -> dict[str, str]:
         name, _, sha = line.partition("\0")
         if name and sha:
             refs[name.removeprefix("origin/")] = sha
+    refs.update(released_refs(root, change_id))
+    refs[ORIGIN_URLS] = origin_urls(root)
     return refs
 
 
@@ -3841,8 +3981,14 @@ SESSION_BRANCH_NEED = (
     "moved, and the checkout was put back on {branch} before this park was committed. For each "
     "origin/sdlc/<id>/... branch named above, reset it to the tip it had before the run (the "
     "sha before the arrow) or delete it when it was absent, unless the push is yours; a next "
-    "phase's run starts from what that branch carries. Then fix the phase command that left "
-    "its branch and re-run the phase."
+    "phase's run starts from what that branch carries. For a release ref named above "
+    "(refs/.../sdlc/released/<id>): first look whether the release workflow wrote it during "
+    "the run (a merge of the change; its run log says so), and if it did, leave it; otherwise "
+    "git fetch origin <the ref>, then put it back with git push -f origin <the full sha before "
+    "the arrow>:<the ref>, or delete it with git push origin :<the ref> when it was absent; "
+    "the release workflow skips a change whose ref names it released. A remote that could "
+    "not be read, or an origin whose URL changed, is read again by a re-run. Then fix the "
+    "phase command that left its branch or touched the remote, and re-run the phase."
 )
 SESSION_BRANCH_MISMATCH = (
     "the session ended on {current}, not on {branch}, the branch the runner prepared; "
@@ -3907,7 +4053,24 @@ def session_push_mismatches(
     for name in sorted(set(refs_before) | set(refs_after)):
         if name == branch:
             continue
-        if refs_before.get(name) != refs_after.get(name):
+        if name == ORIGIN_URLS:
+            if refs_before.get(name) != refs_after.get(name):
+                reasons.append(
+                    "origin: its URL changed or it was removed during the session, so the "
+                    "reads of the remote after the session cannot be trusted"
+                )
+        elif name.startswith("refs/"):
+            # unreadable after a read that worked: the session cannot make the read before
+            # it fail, so two failed reads (a remote the job cannot reach) are no reason
+            if refs_after.get(name) == RELEASED_REF_UNREADABLE != refs_before.get(name):
+                reasons.append(f"{name}: the remote could not be read after the session")
+            elif refs_before.get(name) != refs_after.get(name):
+                reasons.append(
+                    f"{name}: the release ref moved during the session "
+                    f"({refs_before.get(name) or 'absent'} -> {refs_after.get(name) or 'absent'}); "
+                    "the release workflow writes it, and skips a change it names as released"
+                )
+        elif refs_before.get(name) != refs_after.get(name):
             reasons.append(
                 f"origin/{name}: the session pushed to another branch of the change "
                 f"({(refs_before.get(name) or 'absent')[:10]} -> "

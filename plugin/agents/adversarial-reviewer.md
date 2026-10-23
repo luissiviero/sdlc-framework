@@ -35,6 +35,9 @@ or the diff file is incomplete: say so in `reasons` and escalate.
 
 Attack the output from these angles and record what you tried:
 1. **Intent** — does the artifact solve the problem intent.md states, or something nearby?
+   For a quick intent (`Quick intent: yes`, ROADMAP R54), the owner's paragraph is the
+   intent: does every line of spec.md's "Assumed from the quick intent" follow from it,
+   and does the design rest on no assumption that list omits?
 2. **Spec and plan** — every requirement covered? every flagged concern closed with a
    decision? the diff inside the files plan.md lists, in the order it says?
 3. **Proof** — is the evidence literal toolchain output, or the author's claim? Compare
