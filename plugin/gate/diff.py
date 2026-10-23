@@ -356,7 +356,7 @@ def default_base(root: Path) -> str:
         for cand in ("refs/remotes/origin/main", "refs/remotes/origin/master", "main", "master"):
             if gitops.ref_exists(root, cand):
                 return cand
-    except OSError as exc:
+    except (OSError, gitops.GitError) as exc:  # a read that timed out included (choice 239)
         raise GitUnavailable(f"git: {exc!r}") from exc
     return "HEAD"
 

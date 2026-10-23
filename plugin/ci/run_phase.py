@@ -143,7 +143,7 @@ from panel import ledger as panel_ledger  # noqa: E402
 from panel import models as panel_models_mod  # noqa: E402
 from pr.github import next_page_url  # noqa: E402, F401 - re-exported, moved there in 0.2.12
 
-from ci import app_token, auto_round, fix_requests, project_setup  # noqa: E402
+from ci import app_token, auto_round, base_update, fix_requests, project_setup  # noqa: E402
 from ci import auth as auth_mod  # noqa: E402
 from gate import artifacts as art  # noqa: E402
 from gate import checks as gate_checks  # noqa: E402
@@ -1535,7 +1535,7 @@ MERGE_CONFLICT_NEED = (
 OVERWRITTEN_RE = re.compile(r"would be overwritten by merge:\s*\n((?:[ \t]+\S.*\n?)+)")
 
 
-def merge_default_branch(root: Path) -> dict[str, Any]:
+def merge_default_branch(root: Path, message: str = MERGE_BEFORE_PREFLIGHT) -> dict[str, Any]:
     """Merge the default branch (``gate_diff.default_base``, the ref the gate diffs against)
     into the checkout's branch with a merge commit: never a rebase, a reset or a force-push
     (gap 2 of NOTES §45, choice 229). The branch of a build parked at the preflight was cut
@@ -1562,14 +1562,19 @@ def merge_default_branch(root: Path) -> dict[str, Any]:
         return {**out, "ok": True, "note": "already up to date"}
     name = base.removeprefix("refs/remotes/")
     before = gate_diff.head_sha(root)
-    message = MERGE_BEFORE_PREFLIGHT.format(base=name)
+    message = message.format(base=name)  # R51 names its own merge (ci/base_update.py)
+    # R51 runs this after a model session of the same job, which held ``Bash(git *)`` in this
+    # checkout: on a runner no hook the session planted runs (``runner_args``), and git gets
+    # none of the job's credentials (``commands_env``; the independent review, finding 3)
     proc = subprocess.run(
-        ["git", *gitops.identity_args(root), "merge", "--no-ff", "--no-edit", "-m", message, base],
+        ["git", *gitops.runner_args(), *gitops.identity_args(root), "merge", "--no-ff",
+         "--no-edit", "-m", message, base],
         cwd=root,
         capture_output=True,
         text=True,
         encoding="utf-8",
-    )
+        env=commands_env(),
+    )  # fmt: skip
     if proc.returncode != 0:
         conflicts = gate_diff._z(
             gate_diff._git(root, "diff", "--name-only", "-z", "--diff-filter=U", check=False)
@@ -2298,6 +2303,30 @@ def run_record_paths(change_dir: Path, phase: str) -> tuple[Path, Path]:
     )
 
 
+# R25 part 1: the phases whose run parks on an outer bound. The review pass and the (e) run
+# share one job, and a parked review would let the (e) step run on it; the maintain run (f)
+# hands its park to detect/cli.py finish: both stay red, as before, and say why.
+OUTER_BOUND_PARKS = ("b", "c", "d", "e")
+
+
+def run_line_record(
+    data: Any, raw: str, code: int, env: dict[str, str], seconds: float
+) -> dict[str, Any]:
+    """The stored result of a session: the CLI's own JSON with the runner's ``sdlc_run``
+    fields added (R25: the credential that paid, the session's wall time, whether the
+    runner's timeout stopped it; ``limits.run_lines`` reads them), or, when the CLI printed
+    no JSON, those fields and its raw output."""
+    meta = {
+        "credential": auth_mod.choose_auth(env)["auth"],
+        "seconds": round(seconds, 1),
+        "timed_out": code == limits.TIMEOUT_EXIT and not isinstance(data, dict),
+        "at": auto_round.now(),
+    }
+    if isinstance(data, dict):
+        return {**data, limits.RUN_META: meta}
+    return {limits.RUN_META: meta, "raw": raw or ""}
+
+
 def store_result(
     change_dir: Path, phase: str, data: Any, raw: str, path: Path | None = None
 ) -> Path:
@@ -2799,6 +2828,23 @@ def _run_phase(args, env: dict[str, str], track: dict[str, Any]) -> int:
         _emit({**parked, "merged": merged, "branch": branch})
         return EXIT_OK
 
+    # R51 (gap G1, checks 6 and 7): before the REVIEW.md pass, the (e) run and a fix round
+    # at (e), the default branch is merged in and the merged tree re-checked by the runner;
+    # a conflict or a red target parks (ci/base_update.py)
+    if (phase in ("review", "e") or gate_phase == "e") and not args.dry_run:
+        updated = base_update.update_before_offer(
+            root, config, commands_env(), merge_default_branch, branch["branch"], change_id,
+            phase,
+        )  # fmt: skip
+        track["base_update"] = updated
+        if not updated.get("ok"):
+            parked = park_and_publish(
+                plugin_dir, root, change_dir, st, phase, updated["reason"],
+                branch=fix_branch, check=base_update.CHECK, need=updated["need"],
+            )  # fmt: skip
+            _emit({**parked, "base_update": updated, "branch": branch})
+            return EXIT_OK
+
     # the branch itself must be clean of guardrail edits before a run touches it (decision 6)
     try:
         guardrails = guardrail_changes(root, change_dir, config, gate_phase)
@@ -2927,14 +2973,20 @@ def _run_phase(args, env: dict[str, str], track: dict[str, Any]) -> int:
     # gap 4 of NOTES §45 (choice 231): the gate record as the session finds it, so a record
     # the round did not write is never read as its verdict (``gate_record_fresh``)
     gate_before = gate_record_bytes(change_dir, gate_phase)
+    # R25 (M8): the stored results of earlier sessions, which the spend is rebuilt from
+    records_before = limits.snapshot_run_records(change_dir / art.EVIDENCE_DIR)
+    # chosen before the session: picked after it, a record the session deleted would be
+    # taken for this run's own name and never compared (the independent review, finding 2)
+    result_path, stderr_path = run_record_paths(change_dir, phase)
+    session_started = time.monotonic()
     data, raw, err, code = invoke(
         argv,
         root,
         session_env(env, root, phase, config, gate_phase),
         run_timeout_seconds(config, phase, env),
     )
-    result_path, stderr_path = run_record_paths(change_dir, phase)
-    store_result(change_dir, phase, data, raw, result_path)
+    stored = run_line_record(data, raw, code, env, time.monotonic() - session_started)
+    store_result(change_dir, phase, stored, raw, result_path)
     store_stderr(change_dir, phase, err, stderr_path)
     cost = None
     if isinstance(data, dict):
@@ -2951,6 +3003,9 @@ def _run_phase(args, env: dict[str, str], track: dict[str, Any]) -> int:
     # the runner's round and reset records are judged like the owner-only fields: put back
     # and parked on when the session created, changed or deleted one
     owner["mismatches"] += auto_round.runner_file_mismatches(change_dir, runner_files)
+    owner["mismatches"] += limits.run_record_mismatches(
+        change_dir / art.EVIDENCE_DIR, records_before, {result_path.name}
+    )  # R25 (M8): the stored results the spend is rebuilt from
     owner["ok"] = not owner["mismatches"]
     marks_note = fix_requests.keep_marks_only(change_dir, requests_before)
     if marks_note:  # restored, not a park: the round's own work stands
@@ -2970,7 +3025,7 @@ def _run_phase(args, env: dict[str, str], track: dict[str, Any]) -> int:
             # the run's own records again: a forced checkout reset the tracked files the
             # session's branch carried, this run's result record and spend entry among them
             # (the entry is keyed by its source, so the ledger counts it once)
-            store_result(change_dir, phase, data, raw, result_path)
+            store_result(change_dir, phase, stored, raw, result_path)
             store_stderr(change_dir, phase, err, stderr_path)
             auto_round.runner_file_mismatches(change_dir, runner_files)  # restored again
             fix_requests.keep_marks_only(change_dir, requests_before)
@@ -3011,14 +3066,29 @@ def _run_phase(args, env: dict[str, str], track: dict[str, Any]) -> int:
         # round that parked on those keeps no work, since its tree is not the owner's to keep
         subtype = data.get("subtype") if isinstance(data, dict) else None
         why = f"claude exited {code}" + (f", {subtype}" if subtype else "") if failed else None
+        bound = limits.outer_bound(data, code, err) if failed else None  # R25 part 1
         unfinished = park_unfinished_round(
             plugin_dir, root, change_dir, gate_phase, fix_branch, config, pre_head, before_st,
-            data, raw, err, why, after_gate=fresh,
+            data, raw, err, bound or why, after_gate=fresh,
         )  # fmt: skip
         if unfinished is not None:
             track["why"] = unfinished["parked"]
             _emit({**unfinished, "claude_exit": code, "cost_usd": cost, "branch": branch})
-            return EXIT_FAILED
+            return EXIT_OK if bound else EXIT_FAILED
+    bound = limits.outer_bound(data, code, err) if failed else None
+    if bound and phase in OUTER_BOUND_PARKS:
+        # R25 part 1: a session an outer bound stopped (the turn limit, the CLI's budget stop,
+        # the runner's timeout) parks like the gate's own limits, with its partial evidence
+        # committed, instead of ending the run red; one park replaces the deferred record's
+        report_failed_run(root, change_dir, phase, data, raw, err, f"claude exited {code}: {bound}")
+        parked = park_and_publish(
+            plugin_dir, root, change_dir, status_mod.read_status(change_dir), phase,
+            f"limits: {bound}", branch=fix_branch, check="limits",
+            need=limits.OUTER_BOUND_NEED, keep_failed=True,
+        )  # fmt: skip
+        track["why"] = f"limits: {bound}"
+        _emit({**parked, "claude_exit": code, "cost_usd": cost, "branch": branch})
+        return EXIT_OK
     if failed:
         # a session that failed after its gate pushed a record whose commands check waits for
         # a step that will not come: park it, so neither the owner nor the next phase reads
@@ -3029,8 +3099,12 @@ def _run_phase(args, env: dict[str, str], track: dict[str, Any]) -> int:
         if parked is not None:
             _emit({**parked, "claude_exit": code, "cost_usd": cost, "branch": branch})
         track["why"] = f"the fix session did not finish (claude exited {code})"
+        if bound and phase == "fix":
+            # R25 part 1: an automatic round an outer bound stopped, with nothing to keep;
+            # decision 29's own park follows on the way out (``release_unfinished_round``)
+            track["why"] = f"limits: {bound}"
         report_failed_run(root, change_dir, phase, data, raw, err, f"claude exited {code}")
-        return EXIT_FAILED
+        return EXIT_OK if bound and phase == "fix" else EXIT_FAILED
 
     if phase == "f":
         record = commit_run_record(plugin_dir, root, change_id, phase) if cost is not None else None
@@ -3209,6 +3283,25 @@ def _run_phase(args, env: dict[str, str], track: dict[str, Any]) -> int:
         if cost is not None or commands["ran"] or stamped or fast_lane is not None
         else None
     )
+    # R51 (check 12): the work branch moved while the run worked (the owner's "Update
+    # branch", a by-hand commit); the push merged its remote head in, and the gate above
+    # judged the tree before that merge, so the runner re-checks the merged one
+    moved = base_update.remote_merged(record)
+    if moved:
+        head = fix_branch or branch["branch"]
+        recheck = base_update.judged(
+            root, config, commands_env(), base_update.MOVED.format(branch=head, sha=moved[:10]),
+            head,
+        )  # fmt: skip
+        track["base_update"] = recheck
+        if not recheck["ok"]:
+            parked = park_and_publish(
+                plugin_dir, root, change_dir, status_mod.read_status(change_dir), phase,
+                recheck["reason"], branch=fix_branch, check=base_update.CHECK,
+                need=recheck["need"], keep_failed=True,
+            )  # fmt: skip
+            _emit({**parked, "base_update": recheck, "cost_usd": cost, "branch": branch})
+            return EXIT_OK
     # the PR is where the owner meets the change, parked or not: open it here rather than
     # trusting the run to have done it (the parked run of 2026-09-21 did not)
     # the rewritten record must reach the branch: the session pushed the deferred one, and

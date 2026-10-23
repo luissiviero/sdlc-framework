@@ -62,8 +62,13 @@ jobs:
     # 0.3.0: the session's wall clock (gate.max_wall_clock_minutes, 120 by default, plus
     # 5 of grace) and then the gate's commands step, which runs the three targets after
     # the session at gate.command_timeout each (900 s by default): 125 + 50 minutes;
-    # 1.0.3 (decision 29): + 10 for the judge at the iteration cap
-    timeout-minutes: 200
+    # 1.0.3 (decision 29): + 10 for the judge at the iteration cap. R25 part 1: the job holds
+    # two sessions, the REVIEW.md pass (125 minutes) before phase (e) (125 + 50 + 10), so it
+    # covers both and the runner's own timeout, which parks the change, fires before the
+    # job's, which records nothing; R51 adds the targets on a merged tree before a session
+    # (45, once: the second step merges only when the default branch moved in between):
+    # 125 + 185 + 45 = 355, five under the 360 a GitHub-hosted job may run
+    timeout-minutes: 355
     steps:
       # Decision 33: the automation pushes and opens pull requests as the project's GitHub
       # App, required since 1.0.18 (R22): without the repository variable SDLC_APP_ID this
