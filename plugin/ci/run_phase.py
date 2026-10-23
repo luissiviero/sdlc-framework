@@ -2635,6 +2635,21 @@ def run_triage(args, env: dict[str, str]) -> int:
 
 
 # --- the phase run --------------------------------------------------------------------------------
+def write_phase_ran(env: dict[str, str], ran: bool) -> None:
+    """``phase_ran=true|false`` to ``$GITHUB_OUTPUT``: whether this event's run passed the
+    guard and ran its phase (a session, or a park before one). ``sdlc-deploy.yml`` runs the
+    (e) second opinion only when it is not ``false`` (ROADMAP R8; plugin 1.0.24), so an empty
+    value from a framework pinned before it keeps the earlier behaviour. Never raises."""
+    output = env.get("GITHUB_OUTPUT")
+    if not output:
+        return
+    try:
+        with open(output, "a", encoding="utf-8", newline="\n") as handle:
+            handle.write(f"phase_ran={'true' if ran else 'false'}\n")
+    except OSError as exc:  # the second opinion then runs as before 1.0.24: say so only
+        print(f"could not write {output}: {exc}", file=sys.stderr)
+
+
 def run_phase(args, env: dict[str, str]) -> int:
     """One phase run (``_run_phase``). A fix round that ends without its own verdict - a
     setup failure, a skip, a session that failed or timed out, no gate record - while the
@@ -2647,6 +2662,7 @@ def run_phase(args, env: dict[str, str]) -> int:
         code = _run_phase(args, env, track)
         return code
     finally:
+        write_phase_ran(env, bool(track.get("ran")))
         if args.phase == "fix" and not args.dry_run and track.get("change_id"):
             try:
                 release_unfinished_round(args, env, track, code)
@@ -2711,6 +2727,7 @@ def _run_phase(args, env: dict[str, str], track: dict[str, Any]) -> int:
         return _skip(reason)
     if auth_mod.choose_auth(env)["auth"] is None and not args.dry_run:
         return _skip(auth_mod.choose_auth(env)["reason"])
+    track["ran"] = True  # past the guard: this event runs the phase (``write_phase_ran``)
     # the phase whose gate, evidence and PR this run produces: the change's own phase for a
     # fix round, the run's phase otherwise
     gate_phase = st.phase if phase == "fix" else phase

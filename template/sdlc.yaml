@@ -39,9 +39,11 @@ panel_advocate_model: claude-fable-5-1
 # --- second opinion (ROADMAP R8; plugin/external/cli.py) -------------------------------------
 # A model of another vendor reads the design at (b) and the build at (e) and posts one advisory
 # comment on the PR; it edits nothing, never parks and is not a panel member. Off while this
-# block is absent. A job of its own after the phase job holds the repository secret
-# GEMINI_API_KEY; no Claude session ever does. Check the id with `cli.py models` first, and
-# send project code only from a Google project with billing linked (the paid tier's terms).
+# block is absent. On the fast lane the design PR is closed before you read it, so at (e) the
+# (b) opinion is carried onto the build PR (1.0.24). A job of its own after the phase job holds
+# the repository secret GEMINI_API_KEY; no Claude session ever does. Check the id with
+# `cli.py models` first, and send project code only from a Google project with billing linked
+# (the paid tier's terms).
 # external_review:
 #   model: gemini-4-argon
 #   phases: [b, e]
