@@ -72,7 +72,13 @@ POLICY_SKILLS = (
     "definition-of-done",
 )
 PLUGIN_ID = "sdlc@sdlc-framework"
-REQUIRED_DENY = ("Edit(/.claude/**)", "Edit(/CLAUDE.md)", "Edit(/REVIEW.md)", "Edit(/sdlc.yaml)")
+REQUIRED_DENY = (
+    "Edit(/.claude/**)",
+    "Edit(/CLAUDE.md)",
+    "Edit(/REVIEW.md)",
+    "Edit(/sdlc.yaml)",
+    "Edit(/policies/**)",  # decision 40: the project's policy sources are a guardrail path
+)
 
 
 def has_deny_rule(deny: list[str], rule: str) -> bool:
