@@ -1,6 +1,6 @@
 ---
 name: coding-standards
-description: The organization's coding standards. Use whenever writing, changing or reviewing source code in a project that runs the SDLC framework — during the design pass (spec.md), the implementation run of phase (c), the code-simplifier and the review passes ("apply the coding standards", "is this idiomatic here", "review the diff for style").
+description: The organization's coding standards. Use whenever writing, changing or reviewing source code in a project that runs the SDLC framework — during the design pass (spec.md), the implementation run of phase (c), the code-simplifier and the review passes — and whenever asked which rules or conventions a code change here must follow, before writing it ("apply the coding standards", "is this idiomatic here", "review the diff for style", "what rules does a change here have to follow").
 ---
 
 # Coding standards

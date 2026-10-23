@@ -1,6 +1,6 @@
 ---
 name: security-baseline
-description: The organization's security baseline. Use whenever creating or changing an endpoint, authentication, authorization, secrets handling, input parsing, shell or SQL execution, file access or dependencies, and in every security review pass ("check this for security", "is this endpoint safe", "review for vulnerabilities", "handle the token").
+description: The organization's security baseline. Use whenever creating or changing an endpoint, authentication, authorization, secrets handling, input parsing, shell or SQL execution, file access or dependencies, in every security review pass, and whenever asked whether a credential, token, key or password may be stored, committed or logged, or whether code handles its inputs safely ("check this for security", "is this endpoint safe", "review for vulnerabilities", "handle the token", "can this token go in a config file", "is this input handling safe").
 ---
 
 # Security baseline
