@@ -4141,6 +4141,14 @@ def test_the_release_record_is_an_owner_only_field(project):
         setattr(moved, name, value)
         reasons = run_phase.owner_field_mismatches(forged, run_phase.owner_fields(moved), None)
         assert [r.split(":")[0] for r in reasons] == ["released_at, released_sha, released_pr"]
+    # a record the branch carried comes back as it was, not cleared
+    status_mod.write_status(change, st)
+    carried = status_mod.read_status(change)
+    moved = status_mod.read_status(change)
+    moved.released_sha = "b" * 40
+    status_mod.write_status(change, moved)
+    assert run_phase.verify_owner_fields(change, carried, None)["ok"] is False
+    assert status_mod.read_status(change).released_sha == "a" * 40
 
 
 def test_a_session_that_writes_the_release_record_parks_with_it_restored(
