@@ -12,7 +12,8 @@ the triage step writes no record for it. Two sources, no model call:
 - the failed-run records on ``refs/sdlc/failed-runs/<run>-<attempt>`` (``ci/triage.py``) add
   the runner's reason and the triage lines, labelled model-written. A record is data: the
   phase session holds ``Bash(git *)`` and could push such a ref, so a record shows only for
-  a run the API lists as red, on one line, cut to ``TEXT_MAX`` characters.
+  a run the API lists as red, on one line, cut to ``TEXT_MAX`` characters, with its
+  mentions and links made inert (the issue body would otherwise notify, against decision 31).
 
 Where the line sits in the digest is R20's to place; until then it follows the queue.
 """
@@ -26,12 +27,21 @@ from collections.abc import Callable
 from datetime import datetime, timedelta
 from typing import Any
 
+if __package__ in (None, ""):
+    import sys
+    from pathlib import Path
+
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from pr.github import next_page_url  # noqa: E402
+
 WINDOW_DAYS = 7
 FAILED_CONCLUSIONS = ("failure", "cancelled", "timed_out")
 WORKFLOW_PREFIX = ".github/workflows/sdlc-"
 REF_PREFIX = "sdlc/failed-runs/"  # under refs/, as ``ci/triage.py FAILED_RUN_PREFIX``
 RECORD_FILE = "failed-run.json"
 MAX_RECORDS = 50  # records read per digest; older ones show as bare lines
+MAX_PAGES = 5  # pages of 100 runs: a busy repository's week, the project's own CI included
 TEXT_MAX = 400
 HEADING = "## Failed runs — the last {days} days, no park"
 UNREADABLE = "The failed runs could not be read: {reason}."
@@ -44,6 +54,29 @@ Get = Callable[[str], dict[str, Any]]
 def _one_line(value: Any) -> str:
     text = " ".join(str(value or "").split())
     return text if len(text) <= TEXT_MAX else text[: TEXT_MAX - 1] + "…"
+
+
+def _inert(value: Any) -> str:
+    """A record's text on one line, with ``@`` mentions and markdown links or HTML made
+    inert: a record is data a session could have written."""
+    text = _one_line(value).replace("@", "@\u200b").replace("](", "] (")
+    return text.replace("<", "&lt;")
+
+
+def _red_runs(api_root: str, repo: str, since: str, get: Get) -> tuple[list[Any], str]:
+    query = urllib.parse.urlencode({"created": f">={since}", "per_page": 100})
+    url: str | None = f"{api_root}/repos/{repo}/actions/runs?{query}"
+    runs: list[Any] = []
+    for _page in range(MAX_PAGES):
+        if not url:
+            break
+        listed = get(url)
+        if listed.get("error"):
+            return runs, str(listed["error"])
+        data = listed.get("data") if isinstance(listed.get("data"), dict) else {}
+        runs += data.get("workflow_runs") or []
+        url = next_page_url(listed)
+    return runs, ""
 
 
 def _record(api_root: str, repo: str, ref: dict[str, Any], get: Get) -> dict[str, Any] | None:
@@ -66,14 +99,12 @@ def collect(repo: str, now: datetime, get: Get, api_root: str) -> dict[str, Any]
     """{'ok', 'runs', 'reason'}: the red runs of the window, oldest first, each with its
     record when one names it. ``get(url)`` is ``github._request("GET", url, token)``."""
     since = (now - timedelta(days=WINDOW_DAYS)).date().isoformat()
-    query = urllib.parse.urlencode({"created": f">={since}", "per_page": 100})
-    listed = get(f"{api_root}/repos/{repo}/actions/runs?{query}")
-    if listed.get("error"):
-        return {"ok": False, "runs": [], "reason": str(listed["error"])}
-    data = listed.get("data") if isinstance(listed.get("data"), dict) else {}
+    listed, error = _red_runs(api_root, repo, since, get)
+    if error:
+        return {"ok": False, "runs": [], "reason": error}
     red = [
         run
-        for run in data.get("workflow_runs") or []
+        for run in listed
         if isinstance(run, dict)
         and str(run.get("path") or "").startswith(WORKFLOW_PREFIX)
         and run.get("conclusion") in FAILED_CONCLUSIONS
@@ -112,11 +143,11 @@ def line(entry: dict[str, Any]) -> str:
         parts.append(NO_RECORD.format(conclusion=run.get("conclusion")))
         return " — ".join(parts)
     if record.get("change_id"):
-        parts.append(f"change {_one_line(record['change_id'])}")
-    parts.append(_one_line(record.get("reason")))
+        parts.append(f"change {_inert(record['change_id'])}")
+    parts.append(_inert(record.get("reason")))
     triage = record.get("triage")
     if isinstance(triage, list) and triage:
-        parts.append(f"{TRIAGE_LABEL}: " + _one_line("; ".join(str(t) for t in triage)))
+        parts.append(f"{TRIAGE_LABEL}: " + _inert("; ".join(str(t) for t in triage)))
     return " — ".join(parts)
 
 

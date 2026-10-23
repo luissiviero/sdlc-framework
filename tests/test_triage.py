@@ -15,6 +15,7 @@ from ci import project_setup, run_phase, triage
 from pr import digest, failed_runs
 
 from gate import gate as gate_mod
+from state import status as status_mod
 from tests import test_ci as ci_tests  # noqa: E402
 from tests.test_ci import (
     DEFERRED_GATE_FILE,
@@ -268,8 +269,13 @@ def test_a_parked_run_gets_its_lines_in_the_park_block(project, monkeypatch, cap
     assert "changes/0001-percent-helper/evidence/test.log" in prompt
     assert ".sdlc-cache/triage/run.json" in prompt
     assert (evidence / "claude-triage.json").is_file()  # the budget's own record
+    # committed on the branch without moving the change's phase (the review, finding B1),
+    # then the PR body refreshed with no review request
+    assert _git(root, "log", "-1", "--format=%s") == "triage(0001): the run's logs read"
     names = [argv[0] for _name, argv in calls]
-    assert names == ["commit-phase", "upsert"]
+    assert names == ["upsert"] and "--request-review" not in calls[0][1]
+    # the park ended the job red: a record marked parked, which the digest leaves to the queue
+    assert report["record"]["reason"] == triage.NO_RUN_ID  # no GITHUB_RUN_ID here
 
 
 def test_a_red_run_writes_its_failed_run_record_on_its_own_ref(tmp_path, monkeypatch, capsys):
@@ -277,9 +283,21 @@ def test_a_red_run_writes_its_failed_run_record_on_its_own_ref(tmp_path, monkeyp
     root.mkdir()
     _git(root, "init", "-q", "-b", "main")
     bare = _origin(root, tmp_path)
+    # a session that knew the run id pushed its own record first: the runner's replaces it
+    _git(root, "-c", "user.name=s", "-c", "user.email=s@x", "commit", "-q", "--allow-empty",
+         "-m", "forged")  # fmt: skip
+    _git(root, "push", "-q", "origin", "HEAD:refs/sdlc/failed-runs/4242-2")
+    write(root / "stderr.txt", "Error: the gate CLI crashed\n")
     out = tmp_path / "run.json"
     out.write_text(
-        json.dumps({"triage": "red", "exit_code": 1, "why": "the run left no gate record"}),
+        json.dumps(
+            {
+                "triage": "red",
+                "exit_code": 1,
+                "why": "the run left no gate record",
+                "stderr_file": "stderr.txt",
+            }
+        ),
         encoding="utf-8",
     )
     session = Session("it never reached its gate\nlooks real")
@@ -326,6 +344,104 @@ def test_a_failed_setup_is_read_from_its_file(tmp_path, monkeypatch, capsys):
 def test_a_run_with_no_file_to_read_is_recorded_without_a_session(tmp_path, monkeypatch):
     record = triage.failed_run_record("red", None, None, [], {"GITHUB_RUN_ID": "1"})
     assert record["reason"] == triage.RUNNER_DID_NOT_FINISH and record["triage"] == []
+
+
+def test_a_red_review_pass_keeps_the_change_at_its_phase(project, monkeypatch, capsys):
+    """The review, finding B1: the triage of a red review pass stores its result and commits
+    it on the build branch without moving the change to (e), so the next deploy run's guard
+    still finds it at (d)."""
+    root, change = project
+    set_state(change, "d", gate_phase="d", gate_result="passed")
+    _git(root, "add", "-A")
+    _git(root, "commit", "-q", "-m", "at d")
+    write(change / "evidence" / "claude-review.stderr.txt", "Traceback: review/cli.py\n")
+    out = root.parent / "run.json"
+    out.write_text(
+        json.dumps(
+            {
+                "triage": "red",
+                "exit_code": 1,
+                "change_id": "0001",
+                "gate_phase": "review",
+                "branch_phase": "e",
+                "change_dir": "changes/0001-percent-helper",
+                "stderr_file": "changes/0001-percent-helper/evidence/claude-review.stderr.txt",
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(run_phase, "_run_session", Session("the review CLI crashed\nreal"))
+    monkeypatch.setattr(run_phase, "record_spend", lambda *a, **k: True)
+    assert run_phase.run_triage(_triage_args(root, out), dict(KEY_ENV)) == 0
+    report = json.loads(capsys.readouterr().out)
+    assert report["commit"]["ok"] is True and report["session"]["result_file"] == (
+        "claude-triage.json"
+    )
+    assert status_mod.read_status(change).phase == "d"
+    committed = _git(root, "show", "HEAD:changes/0001-percent-helper/status.yaml")
+    assert "phase: d" in committed
+
+
+def test_a_red_run_the_runner_already_explained_costs_no_session(tmp_path, monkeypatch, capsys):
+    """The review, nit N1: the only file is the runner's own JSON (a missing App, a crash
+    before the guard): the reason is deterministic and no model is called."""
+    session = Session("x")
+    monkeypatch.setattr(run_phase, "_run_session", session)
+    out = tmp_path / "run.json"
+    out.write_text(json.dumps({"triage": "red", "exit_code": 1, "why": "no App"}), "utf-8")
+    args = _triage_args(tmp_path, out, dry_run=True)
+    assert run_phase.run_triage(args, dict(KEY_ENV)) == 0
+    assert json.loads(capsys.readouterr().out)["logs"] == [] and session.calls == []
+
+
+def test_the_two_halves_run_in_two_steps(project, monkeypatch, capsys, tmp_path):
+    """The review, finding S4: the read-only half writes its lines to a file with no GitHub
+    token in its environment; the writing half reads that file and calls no model."""
+    root, change = project
+    write(change / "evidence" / "claude-c.stderr.txt", "boom\n")
+    out = tmp_path / "run.json"
+    out.write_text(
+        json.dumps(
+            {
+                "triage": "red",
+                "exit_code": 1,
+                "change_id": "0001",
+                "gate_phase": "c",
+                "change_dir": "changes/0001-percent-helper",
+                "stderr_file": "changes/0001-percent-helper/evidence/claude-c.stderr.txt",
+            }
+        ),
+        encoding="utf-8",
+    )
+    session = Session("the session crashed\nlooks real")
+    monkeypatch.setattr(run_phase, "_run_session", session)
+    monkeypatch.setattr(run_phase, "record_spend", lambda *a, **k: True)
+    lines = tmp_path / "triage.json"
+    assert run_phase.run_triage(_triage_args(root, out, lines=str(lines)), dict(KEY_ENV)) == 0
+    capsys.readouterr()
+    assert json.loads(lines.read_text(encoding="utf-8"))["lines"] == [
+        "the session crashed",
+        "looks real",
+    ]
+    assert not (change / "evidence" / "claude-triage.json").exists()  # nothing written yet
+    monkeypatch.setattr(run_phase, "_run_session", None)  # the writing half calls no model
+    args = _triage_args(root, out, publish=str(lines))
+    assert run_phase.run_triage(args, {"GITHUB_TOKEN": FAKE_TOKEN}) == 0
+    report = json.loads(capsys.readouterr().out)
+    assert report["case"] == "red" and (change / "evidence" / "claude-triage.json").is_file()
+    assert report["record"]["reason"] == triage.NO_RUN_ID
+    # a missing lines file (the read-only step failed): a record with no lines
+    args = _triage_args(root, out, publish=str(tmp_path / "none.json"))
+    assert run_phase.run_triage(args, {}) == 0
+    assert json.loads(capsys.readouterr().out)["lines"] == []
+
+
+def test_a_reason_carrying_a_secret_is_withheld():
+    """The review, finding S2: a setup's last output line can carry a token."""
+    token = "ghp_" + "a" * 36
+    setup = {"command": "pip install", "exit_code": 1, "output": f"401 https://x:{token}@idx"}
+    record = triage.failed_run_record("setup", None, setup, [], {})
+    assert record["reason"] == triage.REASON_WITHHELD and token not in json.dumps(record)
 
 
 # --- the digest's "Failed runs" line -------------------------------------------------------------
@@ -388,6 +504,39 @@ def test_the_failed_runs_line_lists_red_runs_with_their_records():
     assert "parked one" not in text and "forged" not in text and "old" not in text
 
 
+def test_a_record_s_mentions_and_links_are_inert_and_the_runs_are_paged():
+    """The review, findings S1 and S6: a record is data a session could write, so a mention
+    or a link in it never notifies; a busy repository's runs span several pages."""
+    pages = {
+        "first": {"error": "", "data": {"workflow_runs": [_run(1, "success")]},
+                  "headers": {"Link": '<https://api/next>; rel="next"'}},
+        "next": {"error": "", "data": {"workflow_runs": [_run(7, "failure")]}},
+    }  # fmt: skip
+    record = {"reason": "ping @owner [x](https://evil) <img>", "triage": ["@team"]}
+
+    def get(url):
+        if url == "https://api/next":
+            return pages["next"]
+        if "/actions/runs?" in url:
+            return pages["first"]
+        if "/git/matching-refs/" in url:
+            return {
+                "error": "",
+                "data": [{"ref": "refs/sdlc/failed-runs/7-1", "object": {"sha": "s"}}],
+            }
+        import base64
+
+        return {
+            "error": "",
+            "data": {"content": base64.b64encode(json.dumps(record).encode()).decode()},
+        }
+
+    now = datetime(2026, 10, 23, tzinfo=timezone.utc)
+    text = failed_runs.render(failed_runs.collect("o/r", now, get, "https://api"))
+    assert "run 7" in text and "@owner" not in text and "@team" not in text
+    assert "](https://evil)" not in text and "<img>" not in text
+
+
 def test_the_digest_places_the_failed_runs_after_the_queue():
     section = "## Failed runs — the last 7 days, no park\n\n- a run"
     text = digest.render_digest([], "2026-10-23T06:00:00Z", "## Counters", failed_runs=section)
@@ -413,19 +562,27 @@ def test_each_phase_workflow_triages_after_a_fresh_framework_checkout(name):
         and "persist-credentials: false" in (steps[triage_at - 2])
     )
     assert "checkout_check.py" in steps[triage_at - 1]
-    step = steps[triage_at]
-    assert "continue-on-error: true" in step
-    assert "steps.triage_checkout.outcome == 'success'" in step
-    assert "# sdlc:commands.env" not in step  # the project's secrets never reach it
+    explain, publish = steps[triage_at], steps[triage_at + 1]
+    for step in (explain, publish):
+        assert "continue-on-error: true" in step
+        assert "if: always() && steps.triage_checkout.outcome == 'success'" in step
+        assert "# sdlc:commands.env" not in step  # the project's secrets never reach it
+    # the read-only half holds the model credential and no GitHub token; the writing half
+    # the token and no model credential (the review, finding S4)
+    assert "--lines " in explain and "ANTHROPIC_API_KEY" in explain
+    assert "GITHUB_TOKEN" not in explain and "SDLC_WORKFLOW_TOKEN" not in explain
+    assert "--publish " in publish and "GITHUB_TOKEN" in publish
+    assert "ANTHROPIC_API_KEY" not in publish and "CLAUDE_CODE_OAUTH_TOKEN" not in publish
+    failed = ("review", "phase") if name == "deploy" else ("phase",)
     for before in steps[triage_at - 3 : triage_at]:
         assert "steps.phase.outputs.triage == 'park'" in before
         assert "steps.setup.outcome == 'failure'" in before
+        for step_id in failed:
+            assert f"steps.{step_id}.outcome == 'failure'" in before
     # every phase run and the setup write the files the triage step reads
     for line in [ln for ln in text.splitlines() if ln.strip().startswith("run: python")]:
         if "run_phase.py" in line and "--find-change" not in line and "--phase triage" not in line:
             assert '--out "$RUNNER_TEMP/sdlc-run.json"' in line, line
         if "project_setup.py" in line:
             assert '--out "$RUNNER_TEMP/sdlc-setup.json"' in line, line
-    assert "        id: setup\n        # sdlc:commands.env setup" in text or (
-        "        id: setup\n" in text
-    )
+    assert "        id: setup\n" in text

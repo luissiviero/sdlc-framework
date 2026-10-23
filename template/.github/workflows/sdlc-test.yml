@@ -145,10 +145,10 @@ jobs:
       # with a log to read (the runner's triage=park output; a park ends the job green), the
       # framework checkout the session could reach is replaced and the project checkout
       # verified, as after the review pass; then the read-only triage session (Read only, no
-      # GitHub token, .git denied) reads the run's files. Its lines, model-written and
-      # scanned for secrets, join the park block or a failed-run record on
-      # refs/sdlc/failed-runs/, which the digest's "Failed runs" line reads. It never fails
-      # the job (plugin/ci/triage.py).
+      # GitHub token, .git and /proc denied) reads the run's files. Its lines, model-written
+      # and scanned for secrets, join the park block or a failed-run record on
+      # refs/sdlc/failed-runs/, which the digest's "Failed runs" line reads. Neither step
+      # fails the job (plugin/ci/triage.py).
       - name: Remove the framework checkout before the triage step
         if: always() && (steps.setup.outcome == 'failure' || steps.phase.outcome == 'failure' || steps.phase.outputs.triage == 'park')
         run: python -c "import shutil; shutil.rmtree('framework', ignore_errors=True)"
@@ -174,19 +174,30 @@ jobs:
           SDLC_DEFAULT_BRANCH: ${{ github.event.repository.default_branch || github.ref_name }}
         run: python framework/plugin/ci/checkout_check.py --root . --framework framework --pin-ref "$PIN_REF" --origin "$ORIGIN_URL" --framework-origin "$FRAMEWORK_URL"
 
+      # The read-only half: the model credential and no GitHub token in its environment, so
+      # nothing the session reads, /proc included, holds one; its lines go to a file.
       - name: Explain the failed or parked run (read-only triage, model-written)
         if: always() && steps.triage_checkout.outcome == 'success'
         continue-on-error: true
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          # for the record writer outside the session; run_phase.py hides both from it
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          SDLC_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: python framework/plugin/ci/run_phase.py --root . --plugin-dir framework --phase triage --out "$RUNNER_TEMP/sdlc-run.json" --setup "$RUNNER_TEMP/sdlc-setup.json" --lines "$RUNNER_TEMP/sdlc-triage.json"
+
+      # The writing half: the token and no model credential, no model run; the lines into
+      # the park block or a failed-run record (a missing file: a record with no lines).
+      - name: Publish the triage (the park block, or a failed-run record)
+        if: always() && steps.triage_checkout.outcome == 'success'
+        continue-on-error: true
+        env:
           GITHUB_TOKEN: ${{ steps.app.outputs.token || github.token }}
           SDLC_WORKFLOW_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
           SDLC_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
-        run: python framework/plugin/ci/run_phase.py --root . --plugin-dir framework --phase triage --repo "$REPO" --out "$RUNNER_TEMP/sdlc-run.json" --setup "$RUNNER_TEMP/sdlc-setup.json"
+        run: python framework/plugin/ci/run_phase.py --root . --plugin-dir framework --phase triage --repo "$REPO" --out "$RUNNER_TEMP/sdlc-run.json" --setup "$RUNNER_TEMP/sdlc-setup.json" --publish "$RUNNER_TEMP/sdlc-triage.json"
 
       # Build guide step 41.1 (article p.39): every hook decision of the run is one line of
       # changes/<id>-<slug>/evidence/hook-log.jsonl (committed with the evidence) or of

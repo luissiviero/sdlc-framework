@@ -1012,7 +1012,7 @@ def test_notes_keep_the_plain_words_until_the_code_changes(tmp_path):
     root, change_dir = _repo_with_change(tmp_path)
     path = notes.write_notes(root, "0001", base="main", plain_words="It exports\nthe report.")
     first = path.read_text(encoding="utf-8")
-    head = _git(root, "rev-parse", "--short", "HEAD").strip()
+    head = _git(root, "rev-parse", "HEAD").strip()  # the full sha, whatever %h's length
     assert first.index(notes.PLAIN_HEADING) < first.index("## What changed")
     assert notes.PLAIN_LABEL in first and "It exports the report." in first
     assert notes.PLAIN_MARK.format(sha=head) in first

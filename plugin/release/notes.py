@@ -179,9 +179,14 @@ def _findings_line(change_dir: Path) -> str:
     return f"{counts['important']} Important, {counts['nit']} nits"
 
 
-def last_commit(found: list[str] | None) -> str:
-    """The short sha the paragraph's mark names: the last entry of ``commits``, or ``none``."""
-    return found[-1].split()[0] if found else "none"
+def last_commit(root: Path, found: list[str] | None) -> str:
+    """The full sha the paragraph's mark names: the last entry of ``commits``, or ``none``
+    (the full one, since the length of ``%h`` can differ between two clones)."""
+    if not found:
+        return "none"
+    short = found[-1].split()[0]
+    full = (_git(root, "rev-parse", "--verify", "--quiet", f"{short}^{{commit}}") or "").strip()
+    return full or short
 
 
 def plain_section(text: str, sha: str) -> list[str]:
@@ -222,7 +227,7 @@ def build_notes(
     found = commits(root, base)
     lines = [f"# Release notes — change {change_id}: {title}", ""]
     if plain:
-        lines += plain_section(plain, last_commit(found))
+        lines += plain_section(plain, last_commit(root, found))
     lines += ["## What changed", ""]
     lines.append(outcome or title)
     lines += ["", "## Commits", ""]
@@ -252,7 +257,7 @@ def write_notes(
     path = change_dir / art.EVIDENCE_DIR / NOTES_FILE
     plain = plain_words if plain_words and plain_words.strip() else None
     if plain is None:
-        plain = kept_paragraph(path, last_commit(commits(root, base)))
+        plain = kept_paragraph(path, last_commit(root, commits(root, base)))
     text = build_notes(root, change_id, base, plain)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text, encoding="utf-8", newline="\n")

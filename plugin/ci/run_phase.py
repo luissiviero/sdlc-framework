@@ -248,8 +248,9 @@ REVIEW_DISALLOWED_TOOLS = "Edit,WebFetch,WebSearch"
 MAINTAIN_DISALLOWED_TOOLS = "Edit,MultiEdit,NotebookEdit,WebFetch,WebSearch"
 # The p.41 read-only triage step: it reads a log and says what it thinks; it fixes nothing.
 TRIAGE_ALLOWED_TOOLS = "Read"
-# R18, point 5: ``.git`` unreadable too, whatever a checkout keeps there
-TRIAGE_DISALLOWED_TOOLS = "Edit,Write,Bash,Read(**/.git/**)"
+# R18, point 5: ``.git`` unreadable too, whatever a checkout keeps there, and ``/proc``, where
+# another process's environment is (the workflow's triage step holds no GitHub token either)
+TRIAGE_DISALLOWED_TOOLS = "Edit,Write,Bash,Read(**/.git/**),Read(//proc/**)"
 # R18: minutes, not a phase's 125, so the triage step is never what cancels the job (the
 # build and fix jobs: session 185 + commands step 50 + judge 10 + 5 < 260)
 TRIAGE_TIMEOUT_SECONDS = 5 * 60
@@ -2798,12 +2799,114 @@ def triage_session(
     return lines, cost, ran
 
 
+def triage_explain(args, env: dict[str, str], root: Path) -> dict[str, Any]:
+    """The read-only half of the triage step: the case (``triage.case_of``), the files the
+    session reads, and its lines, cost and stored result. It writes nothing to git and needs
+    no GitHub token. A red run whose only file is the runner's own JSON (a deterministic
+    reason, such as a missing App or a crash before the guard) gets no session."""
+    out = triage_mod.read_json(getattr(args, "out", None))
+    setup = triage_mod.read_json(getattr(args, "setup", None))
+    case = triage_mod.case_of(out, setup)
+    explained: dict[str, Any] = {"case": case, "logs": [], "lines": []}
+    if case is None:
+        return explained
+    write_git_exclude(root)  # the copies below sit in the cache folder git never sees
+    copies = [
+        triage_mod.copy_in(root, "run.json", out),
+        triage_mod.copy_in(root, "setup.json", setup if case == "setup" else None),
+    ]
+    logs = triage_mod.logs_for(root, case, out, [c for c in copies if c])
+    if case == "red" and logs == [c for c in copies if c]:
+        logs = []  # the runner already said why; the model has nothing more to read
+    lines, cost, ran = triage_session(args, env, root, logs)
+    return {**explained, "logs": logs, "lines": lines, "cost_usd": cost, "session": ran}
+
+
+def triage_publish(
+    args, env: dict[str, str], root: Path, explained: dict[str, Any]
+) -> dict[str, Any]:
+    """The writing half, outside any session, with the job's GitHub token: the session's
+    result stored where the budget reads it, the lines into the park block (committed on the
+    current branch, the PR body refreshed with no new review request) or a failed-run record
+    on its own ref. A park that ended the job red also writes a record, marked parked, so the
+    digest's "Failed runs" line leaves it to the queue. The change's phase is never moved
+    (``gitops.commit_paths``, as ``report_failed_run`` commits)."""
+    from state import gitops  # noqa: PLC0415
+
+    out = triage_mod.read_json(getattr(args, "out", None))
+    setup = triage_mod.read_json(getattr(args, "setup", None))
+    case = triage_mod.case_of(out, setup)
+    report: dict[str, Any] = {"phase": "triage", "lines": [], **explained, "case": case}
+    if case is None:
+        return report
+    ensure_git_identity(root)
+    plugin_dir = Path(args.plugin_dir).resolve()
+    out = out or {}
+    change_id, gate_phase = out.get("change_id"), out.get("gate_phase")
+    change_rel = out.get("change_dir")
+    session = report.get("session") if isinstance(report.get("session"), dict) else {}
+    stored, raw = session.pop("stored", None), session.pop("raw", "")
+    cost = report.get("cost_usd")
+    lines = [str(line) for line in report.get("lines") or []]
+    changed = False
+    if stored is not None and change_id and gate_phase and change_rel:
+        # under the phase's budget (``SPEND_PHASE``), where ``limits.spend_from_runs`` reads
+        result_path = run_record_paths(root / change_rel, "triage")[0]
+        store_result(root / change_rel, "triage", stored, raw, result_path)
+        session["result_file"] = result_path.name
+        changed = True
+        report["spend_recorded"] = isinstance(cost, (int, float)) and record_spend(
+            plugin_dir, root, change_id, gate_phase, float(cost), run="triage",
+            source=result_path.name,
+        )  # fmt: skip
+    if case == "park" and lines:
+        report["added"] = triage_mod.add_to_park(root / str(out.get("gate_record") or ""), lines)
+        changed = changed or report["added"]
+    if changed and change_rel and gitops.is_repo(root):
+        live_token()
+        try:
+            sha = gitops.commit_paths(
+                root, [change_rel], f"triage({change_id}): the run's logs read"
+            )
+            if sha and gitops.has_remote(root):
+                gitops.push(root, gitops.current_branch(root))
+            report["commit"] = {"ok": True, "sha": sha}
+        except (gitops.GitError, OSError) as exc:
+            report["commit"] = {"ok": False, "reason": str(exc)}
+    if report.get("added"):
+        head = out.get("fix_branch")
+        report["pr"] = upsert_outcome(
+            _cli_call(
+                plugin_dir / "plugin" / "pr" / "cli.py",
+                [
+                    "upsert",
+                    "--root",
+                    str(root),
+                    "--id",
+                    change_id,
+                    "--phase",
+                    out.get("branch_phase") or gate_phase,
+                    "--draft",
+                    *(["--head", head] if head else []),
+                ],
+            )  # fmt: skip
+        )
+    if case != "park" or out.get("exit_code"):
+        live_token()
+        record = triage_mod.failed_run_record(case, out or None, setup, lines, env, cost)
+        report["record"] = triage_mod.write_record_ref(root, record, env)
+    return report
+
+
 def run_triage(args, env: dict[str, str]) -> int:
     """``--log <file>`` alone: read one log and print what the session says (the p.41 step
-    by hand). ``--out <file>`` (and ``--setup <file>``): the CI step after a phase run (R18),
-    which puts the lines in the park block or a failed-run record; it never fails the job
-    for a problem of its own, which it prints instead."""
+    by hand). ``--out <file>`` (and ``--setup <file>``): the CI step after a phase run (R18).
+    With ``--lines <file>`` only the read-only half runs and writes its result there (the
+    workflow's step that holds no GitHub token); with ``--publish <file>`` only the writing
+    half runs, from that file (the step that holds the token and no model credential);
+    with neither, both. It never fails the job for a problem of its own: it says so."""
     out_path, setup_path = getattr(args, "out", None), getattr(args, "setup", None)
+    lines_path, publish_path = getattr(args, "lines", None), getattr(args, "publish", None)
     if not (args.log or out_path or setup_path):
         print("--phase triage needs --log, --out or --setup <file>", file=sys.stderr)
         return EXIT_USAGE
@@ -2817,86 +2920,24 @@ def run_triage(args, env: dict[str, str]) -> int:
             return _skip(ran["reason"])
         print("\n".join(lines))
         return EXIT_OK if ran.get("ok") else EXIT_FAILED
-    out = triage_mod.read_json(out_path)
-    setup = triage_mod.read_json(setup_path)
-    case = triage_mod.case_of(out, setup)
-    if case is None:
-        return _skip("nothing to explain: the run neither failed nor parked on a log")
-    write_git_exclude(root)  # the copies below sit in the cache folder git never sees
-    copies = [
-        triage_mod.copy_in(root, "run.json", out),
-        triage_mod.copy_in(root, "setup.json", setup if case == "setup" else None),
-    ]
-    logs = triage_mod.logs_for(root, case, out, [c for c in copies if c])
-    lines, cost, ran = triage_session(args, env, root, logs)
-    if args.dry_run:
-        _emit({"phase": "triage", "case": case, "logs": logs, **ran})
-        return EXIT_OK
-    ensure_git_identity(root)
-    plugin_dir = Path(args.plugin_dir).resolve()
-    change_id = (out or {}).get("change_id")
-    gate_phase = (out or {}).get("gate_phase")
-    branch_phase = (out or {}).get("branch_phase") or gate_phase
-    change_dir = root / str((out or {}).get("change_dir") or "")
-    stored = ran.pop("stored", None)
-    raw = ran.pop("raw", "")
-    spent = False
-    if stored is not None and change_id and gate_phase and (out or {}).get("change_dir"):
-        # the session's result where the budget reads it (``limits.spend_from_runs``), under
-        # the phase's budget (``SPEND_PHASE``), and in the ledger
-        result_path = run_record_paths(change_dir, "triage")[0]
-        store_result(change_dir, "triage", stored, raw, result_path)
-        ran["result_file"] = result_path.name
-        spent = cost is not None and record_spend(
-            plugin_dir, root, change_id, gate_phase, cost, run="triage", source=result_path.name
-        )
-    report: dict[str, Any] = {
-        "phase": "triage",
-        "case": case,
-        "logs": logs,
-        "lines": lines,
-        "session": ran,
-        "cost_usd": cost,
-        "spend_recorded": spent,
-    }
-    if case == "park":
-        record = root / str(out.get("gate_record") or "")
-        report["added"] = bool(lines) and triage_mod.add_to_park(record, lines)
-        if report["added"] or "result_file" in ran:
-            live_token()
-            branch = out.get("fix_branch")
-            report["commit"] = _cli_call(
-                plugin_dir / "plugin" / "state" / "cli.py",
-                ["commit-phase", "--root", str(root), "--id", change_id,
-                 "--phase", branch_phase, "--message", "triage: the park's logs read (R18)",
-                 "--push", *(["--branch", branch] if branch else [])],
-            )  # fmt: skip
-        if report["added"]:
-            report["pr"] = upsert_outcome(
-                _cli_call(
-                    plugin_dir / "plugin" / "pr" / "cli.py",
-                    [
-                        "upsert",
-                        "--root",
-                        str(root),
-                        "--id",
-                        change_id,
-                        "--phase",
-                        branch_phase,
-                        "--draft",
-                        *(["--head", out["fix_branch"]] if out.get("fix_branch") else []),
-                    ],
-                )  # fmt: skip
-            )
+    if publish_path:
+        explained = triage_mod.read_json(publish_path) or {}
     else:
-        if "result_file" in ran:
-            report["commit"] = commit_run_record(
-                plugin_dir, root, change_id, "triage", branch_phase, (out or {}).get("fix_branch")
-            )
-        live_token()
-        record = triage_mod.failed_run_record(case, out, setup, lines, env, cost)
-        report["record"] = triage_mod.write_record_ref(root, record, env)
-    _emit(report)
+        explained = triage_explain(args, env, root)
+        if explained.get("case") is None:
+            return _skip("nothing to explain: the run neither failed nor parked on a log")
+    if args.dry_run:
+        _emit({"phase": "triage", **explained})
+        return EXIT_OK
+    if lines_path:
+        Path(lines_path).parent.mkdir(parents=True, exist_ok=True)
+        Path(lines_path).write_text(
+            json.dumps(explained, indent=2, sort_keys=True, default=str) + "\n", encoding="utf-8"
+        )
+        report = {k: v for k, v in explained.items() if k not in ("session",)}
+        _emit({"phase": "triage", **report, "lines_file": lines_path})
+        return EXIT_OK
+    _emit(triage_publish(args, env, root, explained))
     return EXIT_OK
 
 
@@ -5861,6 +5902,16 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="--phase triage: the file project_setup.py --out wrote (R18)",
     )
+    p.add_argument(
+        "--lines",
+        default=None,
+        help="--phase triage: run the read-only half only and write its result here (R18)",
+    )
+    p.add_argument(
+        "--publish",
+        default=None,
+        help="--phase triage: run the writing half only, from the file --lines wrote (R18)",
+    )
     p.add_argument("--claude", default="claude", help="the CLI executable (default: on PATH)")
     p.add_argument("--dry-run", action="store_true", help="print the argv and stop")
     p.add_argument("--no-dispatch", action="store_true", help="print the hand-over, send nothing")
@@ -5879,7 +5930,9 @@ def main(argv: list[str] | None = None) -> int:
             return EXIT_USAGE
         return print_found_change(args, env)
     if not args.id and not args.head_ref and not args.pr_number:
-        print("--id, --head-ref or --pr-number is required for a phase run", file=sys.stderr)
+        why = "--id, --head-ref or --pr-number is required for a phase run"
+        print(why, file=sys.stderr)
+        write_run_out(args, env, {"why": why}, EXIT_USAGE)  # R18: every exit path
         return EXIT_USAGE
     missing = app_token.app_missing(env)
     if missing:

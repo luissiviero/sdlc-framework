@@ -48,6 +48,7 @@ WORK_DIR = (".sdlc-cache", "triage")  # under the checkout, excluded from git by
 RUNNER_DID_NOT_FINISH = "the runner did not finish: it wrote no result file"
 SETUP_FAILED = "the project's setup failed: {line}"
 NO_RUN_ID = "no GITHUB_RUN_ID: not a workflow run, so no failed-run record"
+REASON_WITHHELD = "the runner's reason is withheld: the secrets check flagged it; read the job log"
 
 
 def _now() -> str:
@@ -190,7 +191,14 @@ def add_to_park(path: Path, lines: list[str]) -> bool:
 
 
 def reason_of(case: str, out: dict[str, Any] | None, setup: dict[str, Any] | None) -> str:
-    """The runner's deterministic reason for the failed run."""
+    """The runner's deterministic reason for the failed run, or ``REASON_WITHHELD`` when the
+    secrets check flags it: a setup's or a target's last output line can carry a credential
+    (an index URL with a token), and the reason lands in a ref and the digest issue."""
+    reason = _reason(case, out, setup)
+    return REASON_WITHHELD if find_secrets(reason) else reason
+
+
+def _reason(case: str, out: dict[str, Any] | None, setup: dict[str, Any] | None) -> str:
     if case == "setup":
         from ci.project_setup import failure_line  # noqa: PLC0415
 
@@ -214,8 +222,9 @@ def failed_run_record(
     env: dict[str, str],
     cost: float | None = None,
 ) -> dict[str, Any]:
-    """The record of a red run with no park: the run's address and attempt, the event and
-    its actor, the change, the step, the exit code, the reason and the triage text."""
+    """The record of a red run: the run's address and attempt, the event and its actor, the
+    change, the step, the exit code, the reason, whether it parked (a park that ended the
+    job red is in the queue already, and the digest drops it) and the triage text."""
     out = out or {}
     server = env.get("GITHUB_SERVER_URL") or "https://github.com"
     repo, run_id = env.get("GITHUB_REPOSITORY", ""), env.get("GITHUB_RUN_ID", "")
@@ -235,7 +244,7 @@ def failed_run_record(
         "step": "setup" if case == "setup" else "runner",
         "exit_code": None if case == "setup" else out.get("exit_code"),
         "reason": reason_of(case, out or None, setup),
-        "parked": False,
+        "parked": case == "park",
         "triage": list(lines),
         "cost_usd": cost,
         "at": _now(),
@@ -261,7 +270,9 @@ def _git(root: Path, args: list[str], stdin: str | None = None) -> str | None:
 def write_record_ref(root: Path, record: dict[str, Any], env: dict[str, str]) -> dict[str, Any]:
     """The record as a one-file commit on ``FAILED_RUN_REF``, pushed to origin with the job's
     credential (``state/gitops.py run_proc``: git's command-scope config, never a file),
-    outside the session. Nothing on a branch moves, and the commit has no parent."""
+    outside the session. Nothing on a branch moves, and the commit has no parent. The push
+    is forced: the ref is this run's own, and one a session pushed first under the same name
+    (it knows ``GITHUB_RUN_ID``) is replaced, not kept."""
     from state import gitops  # noqa: PLC0415
 
     run_id = env.get("GITHUB_RUN_ID")
@@ -279,7 +290,7 @@ def write_record_ref(root: Path, record: dict[str, Any], env: dict[str, str]) ->
     if not commit:
         return {"ok": False, "ref": ref, "reason": "git could not write the record"}
     try:
-        proc = gitops.run_proc(root, "push", "origin", f"{commit}:{ref}")
+        proc = gitops.run_proc(root, "push", "origin", f"+{commit}:{ref}")
     except Exception as exc:  # noqa: BLE001 - the record is best effort; the API line stays
         return {"ok": False, "ref": ref, "reason": str(exc)}
     if proc.returncode != 0:

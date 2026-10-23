@@ -392,8 +392,10 @@ def test_triage_phase_is_read_only(capsys):
     assert run_phase.run_triage(args, dict(KEY_ENV)) == run_phase.EXIT_OK
     argv = json.loads(capsys.readouterr().out)["argv"]
     assert argv[argv.index("--allowedTools") + 1] == "Read"
-    # R18, point 5: .git is unreadable too
-    assert argv[argv.index("--disallowedTools") + 1] == "Edit,Write,Bash,Read(**/.git/**)"
+    # R18, point 5: .git is unreadable too, and /proc, where another process's environment is
+    assert argv[argv.index("--disallowedTools") + 1] == (
+        "Edit,Write,Bash,Read(**/.git/**),Read(//proc/**)"
+    )
     assert argv[2].startswith("Read the CI log at out/build.log.")
     assert "Do not fix anything." in argv[2]
     # R18: the article's p.41 "flaky or real", and the files read as data
@@ -2295,14 +2297,16 @@ def test_merge_fired_workflows_find_the_change_from_the_merged_pr(name):
     assert "PR_NUMBER: ${{ github.event.pull_request.number }}" in steps
     # every step after the find step is conditional on a change having been found
     after = steps[find:].split("\n      - ")[1:]
-    # setup-node, the CLI, the sandbox, the toolchain, the run, R18's four triage steps (the
-    # framework removed and checked out afresh, the checkout verified, the triage), the log
-    assert len(after) == 10
+    # setup-node, the CLI, the sandbox, the toolchain, the run, R18's five triage steps (the
+    # framework removed and checked out afresh, the checkout verified, the read-only triage,
+    # its publication), the log
+    assert len(after) == 11
     for step in after[:5] + after[-1:]:
         assert "if: steps.find.outputs.change_id != ''" in step, step
     for step in after[5:8]:
         assert "if: always() && steps.find.outputs.change_id != '' && (" in step, step
-    assert "if: always() && steps.triage_checkout.outcome == 'success'" in after[8]
+    for step in after[8:10]:
+        assert "if: always() && steps.triage_checkout.outcome == 'success'" in step, step
     after = after[:5] + after[-1:]
     # the phase run gets the id the find step printed, through an env var; the hook log
     # (step 41.1) rides as an artifact after it
