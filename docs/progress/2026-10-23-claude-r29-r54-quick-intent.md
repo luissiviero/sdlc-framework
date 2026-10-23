@@ -39,4 +39,14 @@ None: no guardrail file needs a change for this PR.
 This PR touches neither `plugin/ci/run_phase.py` nor `plugin/detect/` nor the detect, runbook and fix workflow templates, so it is not on the port list.
 
 ## The fresh-context review
-Pending at the time of writing; its findings and their fixes are added below once it reports.
+A fresh-context sub-agent reviewed `5248e29`, the code commit (report only). It found the marker and the heading identical across the skills, the commands and the code, the incident and scan intents untouched, no settled decision reopened, and:
+1. **Blocking, fixed:** change 0000's install PR, which `/sdlc-init` opens without `--draft`, would have read the fast-lane line. It changes files outside its folder, so `intent_pr_start` never takes it: it keeps the gate (a) line, and the fast-lane line now names the third case (a PR that changes other files). A test.
+2. **Fixed:** a fix round's `upsert` passes no `--draft`, so a draft intent PR would have switched to the fast-lane line; on an open PR the body now follows the PR's live draft flag. A test.
+3. **Recorded:** the departure from R54's "fills the rest of the intent template" was not in the reviewed commit; it is item 7 above, R54's ROADMAP annotation, and the PR's "What I need from you".
+4. **Fixed:** a quick intent's "Open questions from intent" holds "none" or the questions assumed answered, never the marker (`spec-template`, `/sdlc-design`).
+5. **Fixed:** `evals/case.py` no longer prints the marker as "What must hold".
+6. **Fixed:** the marker is matched as a list item or without its period too. `Quick intent: yes` written on the Author line itself is still missed, as `Framework change:` is; recorded.
+7. **Fixed:** gate (b) requires at least one list item under the assumptions section ("none" is not a statement). A test.
+8. **Fixed:** `docs/OPERATING_MODEL.md` section 7 names "What I assumed (N)" beside "Decisions taken for you (N)".
+
+The review session checked out `5248e29` detached while this session committed its documentation, so that commit landed off the branch and the first push carried the code alone; it was recovered with a cherry-pick before the second push.

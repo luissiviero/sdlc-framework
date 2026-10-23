@@ -122,7 +122,8 @@ Rules for the pass (from the three by-hand runs of build guide step 22, recorded
   before Requirements, one list item per section and per other assumption (skill
   `spec-template`, "A quick intent"). Those assumptions are not flagged concerns: the owner
   reads them above the design PR's bullets (and the build PR's, on the fast lane) and
-  corrects one with a review comment. Still never edit intent.md.
+  corrects one with a review comment. "Open questions from intent" holds "none" or the
+  questions you assumed answers to, never the marker line. Still never edit intent.md.
 - A change that touches a screen ends Acceptance with the `Mock:` line (skill
   `spec-template`): the file in `mock/`, or `Mock: none, screens follow the UX conventions`.
 - As short as the change allows: a small change gets a short spec. Requirements are

@@ -158,6 +158,9 @@ def cmd_upsert(args) -> int:
     review = {"reviewers": True} if getattr(args, "request_review", False) else {}
     found = github.find_open_pr(repo, head, cwd=root, **review)
     number = found.get("number")
+    if number and bool(found.get("draft")) != bool(args.draft):
+        # the PR's live draft state, not this call's flag (a fix round passes no --draft)
+        body = desc.build_description(root, args.id, args.phase, draft=bool(found.get("draft")))
     if number:
         result = github.update_pr(repo, int(number), body, title, cwd=root)
     else:

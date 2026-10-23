@@ -131,11 +131,12 @@ GATE_CHECKLIST = {
 # opens it, so a PR not opened as a draft names both cases; a draft keeps the gate (a) line
 # alone (a draft never takes the fast lane, run_phase.intent_pr_start).
 FAST_LANE_A_CHECKLIST = (
-    "opened from your own account and not as a draft, nothing: opening it accepted the intent "
+    "opened from your own account, not as a draft, and changing nothing outside its change "
+    "folder, nothing: opening it accepted the intent "
     "and started the design (the fast lane, decision 30), and the design run closes this PR as "
     f"`{c.SUPERSEDED_LABEL}`; correct what the design made of it with a review comment on the "
-    "design PR, or on the build PR at gate (e). Opened as a draft or by another account: "
-    + GATE_CHECKLIST["a"]
+    "design PR, or on the build PR at gate (e). Opened as a draft or by another account, or "
+    "changing other files: " + GATE_CHECKLIST["a"]
 )
 RELEASE_APPROVAL_LINE = (
     f"Release approval: apply `{c.RELEASE_APPROVED_LABEL}` on this PR with your approval; the "
@@ -412,7 +413,9 @@ def _intent_bullets(intent: str, st: Status, draft: bool = False) -> list[str]:
     yet, so the middle bullets describe the intent itself (build guide step 11). A quick
     intent (R54) says that the design run fills the sections the owner left to it."""
     problem = _first_sentence(_section(intent, "## Problem"))
-    needs = GATE_CHECKLIST["a"] if draft else FAST_LANE_A_CHECKLIST
+    # change 0000's install PR changes files outside its folder: never the fast lane
+    fast = not draft and st.id != c.INIT_CHANGE_ID
+    needs = FAST_LANE_A_CHECKLIST if fast else GATE_CHECKLIST["a"]
     if art.is_quick_intent(intent):
         left = (
             "left to the design run (quick intent): it lists what it assumed above the "

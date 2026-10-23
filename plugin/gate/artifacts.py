@@ -305,7 +305,8 @@ def is_quick_intent(intent_text: str) -> bool:
 
 def left_to_design(body: str) -> bool:
     """True when an intent section holds only the quick intent's marker (R54)."""
-    return " ".join(body.split()).lower() == QUICK_INTENT_MARKER.lower()
+    text = re.sub(r"^\s*[-*]\s+", "", " ".join(body.split())).rstrip(".").lower()
+    return text == QUICK_INTENT_MARKER.rstrip(".").lower()
 
 
 def open_concerns(spec_text: str) -> list[str]:

@@ -229,11 +229,10 @@ def check_artifacts(ctx: GateContext) -> CheckResult:
                 problems.append(f"spec.md header lacks {', '.join(lacking)}")
             # R54: a quick intent's assumptions are what the owner corrects on the PR
             if art.is_quick_intent(ctx.artifact("intent.md") or ""):
-                assumed = (art.SPEC_ASSUMED_SECTION,)
-                if art.missing_sections(text, assumed) or art.empty_sections(text, assumed):
+                body = art.split_sections(text).get(art.SPEC_ASSUMED_SECTION, "")
+                if not re.search(r"(?m)^\s*(?:[-*]|\d+[.)])\s+\S", body):
                     problems.append(
-                        f"spec.md of a quick intent lacks {art.SPEC_ASSUMED_SECTION} "
-                        "(or it is empty)"
+                        f"spec.md of a quick intent lists nothing under {art.SPEC_ASSUMED_SECTION}"
                     )
     if problems:
         return _fail(

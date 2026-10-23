@@ -309,9 +309,12 @@ def test_intent_pr_names_the_fast_lane_unless_opened_as_a_draft(project):
     draft names both cases; a draft, which never takes the fast lane, keeps gate (a) alone."""
     root, _change = project
     needs = bullets(desc.build_description(root, "0001", "a"))[4]
-    assert "opened from your own account and not as a draft, nothing" in needs
+    assert (
+        "opened from your own account, not as a draft, and changing nothing outside its change "
+        "folder, nothing"
+    ) in needs
     assert "the fast lane, decision 30" in needs and "`sdlc:superseded`" in needs
-    assert needs.endswith("Opened as a draft or by another account: " + desc.GATE_CHECKLIST["a"])
+    assert needs.endswith("or changing other files: " + desc.GATE_CHECKLIST["a"])
     draft = bullets(desc.build_description(root, "0001", "a", draft=True))[4]
     assert draft == "- **What needs you**: " + desc.GATE_CHECKLIST["a"]
 
@@ -323,6 +326,38 @@ def test_upsert_passes_the_draft_flag_to_the_description(project, capsys):
         assert pr_cli.main(argv + flags) == 0
         body = json.loads(capsys.readouterr().out)["body"]
         assert ("the fast lane, decision 30" in body) is fast
+
+
+def test_the_install_pr_of_change_0000_keeps_gate_a(project):
+    """The review of 5248e29: /sdlc-init opens change 0000's PR without --draft, and it changes
+    files outside its folder, so the fast lane never takes it (run_phase.intent_pr_start)."""
+    root, change = project
+    st = status_mod.read_status(change)
+    needs = desc._intent_bullets(INTENT, status_mod.Status(**{**st.__dict__, "id": "0000"}))[4]
+    assert needs == "- **What needs you**: " + desc.GATE_CHECKLIST["a"]
+
+
+def test_upsert_on_an_open_pr_reads_its_live_draft_state(project, capsys, monkeypatch):
+    """A fix round's upsert passes no --draft: the body follows the PR's own draft flag."""
+    root, _change = project
+    git(root, "remote", "add", "origin", "https://github.com/o/r.git")
+    bodies: list[str] = []
+    for live_draft, fast in ((True, False), (False, True)):
+        found = {"ok": True, "number": 7, "labels": [], "draft": live_draft, "route": "api"}
+        monkeypatch.setattr(github, "find_open_pr", lambda *a, _f=found, **k: _f)
+        monkeypatch.setattr(
+            github,
+            "update_pr",
+            lambda repo, number, body, title, cwd=None: (
+                bodies.append(body) or {"ok": True, "route": "api", "number": number}
+            ),
+        )
+        monkeypatch.setattr(github, "ensure_label", lambda *a, **k: {"ok": True})
+        monkeypatch.setattr(github, "set_labels", lambda *a, **k: {"ok": True})
+        monkeypatch.setattr(pr_cli, "not_build_check", lambda *a, **k: {"ok": True})
+        assert pr_cli.main(["upsert", "--root", str(root), "--id", "0001", "--phase", "a"]) == 0
+        capsys.readouterr()
+        assert ("the fast lane, decision 30" in bodies[-1]) is fast
 
 
 QUICK_INTENT = """# Intent: percent helper

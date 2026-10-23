@@ -7,7 +7,7 @@ No other session file reached `main` since (verified, `ls docs/handoffs/sessions
 
 ## Where the project stands
 - **Framework `main` is at `d72de6a`** (#344), on plugin **1.0.27** (verified, `git log -1 origin/main` and `.claude-plugin/plugin.json` after `git fetch origin`, read at the session's start). The root pin at 1.0.17 is carried, not re-verified.
-- **This PR** builds R29 part 1 with R54 and choice 239's line as plugin **1.0.28** (its record: `docs/progress/2026-10-23-claude-r29-r54-quick-intent.md`). It takes no choice, note or decision number.
+- **This PR** (#348) builds R29 part 1 with R54 and choice 239's line as plugin **1.0.28** (its record: `docs/progress/2026-10-23-claude-r29-r54-quick-intent.md`). It takes no choice, note or decision number.
 - **Open PRs**: #173 (intent 0004), carried, not re-verified; lane A's PR and this one.
 
 ## Preconditions of the moment

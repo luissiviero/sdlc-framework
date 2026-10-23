@@ -3584,6 +3584,7 @@ def test_quick_intent_helpers():
     # the header line only: the words inside a section are not the header
     assert not art.is_quick_intent(INTENT + "\nQuick intent: yes\n")
     assert art.left_to_design("Left to the design run\n(quick intent).\n")
+    assert art.left_to_design("- Left to the design run (quick intent)")  # a list item, no period
     assert not art.left_to_design("none")
     # the marker fills every section, so the gate's intent contract holds as it is
     assert art.missing_sections(QUICK_INTENT, art.INTENT_SECTIONS) == []
@@ -3599,6 +3600,8 @@ def test_a_quick_intent_s_spec_must_state_what_it_assumed(tmp_path):
     assert not result.ok and art.SPEC_ASSUMED_SECTION in result.reason
     write(ctx.change_dir / "spec.md", SPEC + "\n## Assumed from the quick intent\n\n")
     assert not checks.check_artifacts(ctx).ok  # an empty list is no statement
+    write(ctx.change_dir / "spec.md", SPEC + "\n## Assumed from the quick intent\nnone\n")
+    assert not checks.check_artifacts(ctx).ok  # nor is "none": the PR shows list items
     write(ctx.change_dir / "spec.md", SPEC_HEADER + "\n" + ASSUMED + SPEC_BODY)
     assert checks.check_artifacts(ctx).ok
     # an intent written the usual way needs no such section
