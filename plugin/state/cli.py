@@ -211,8 +211,9 @@ def cmd_commit_phase(args) -> int:
         return 2
     sha = gitops.commit_files(root, files, args.message)
     pushed = False
+    remote_merged = None  # R51: the remote branch moved and was merged before the push
     if args.push and gitops.has_remote(root):
-        gitops.push(root, branch)
+        remote_merged = gitops.push(root, branch)
         pushed = True
     _emit(
         {
@@ -221,6 +222,7 @@ def cmd_commit_phase(args) -> int:
             "work_branch": branch,
             "commit": sha,
             "pushed": pushed,
+            "remote_merged": remote_merged,
             "github_repo": gitops.github_repo(root),
             "base": gitops.default_branch(root) if sha else None,
         }

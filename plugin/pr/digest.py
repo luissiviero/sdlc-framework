@@ -178,6 +178,7 @@ def render_digest(
     counters: str = "",
     protection: dict[str, Any] | None = None,
     merge_key: str = "",
+    meter: str = "",
 ) -> str:
     """The digest markdown. The unprotected-branch notice first when it applies
     (``unprotected_notice``), then parked, then the phase-ready queue by phase letter, then
@@ -196,6 +197,8 @@ def render_digest(
         out += [notice, ""]
     if merge_key:
         out += [merge_key, ""]
+    if meter:  # R25: the Actions-minutes meter of a private repository (pr/actions_minutes.py)
+        out += [meter, ""]
     out.append(
         f"{len(parked)} parked, {len(ready)} waiting at a gate"
         + (f", {len(fixing)} in an automatic fix round" if fixing else "")
@@ -327,6 +330,26 @@ def publish(repo: str, markdown: str) -> dict[str, Any]:
     return created
 
 
+def minutes_meter(repo: str) -> str:
+    """The Actions-minutes lines of a private repository (R25), "" otherwise; a read that
+    fails says why in the run's log and leaves the digest as it was."""
+    from datetime import datetime, timezone  # noqa: PLC0415
+
+    from pr import actions_minutes  # noqa: PLC0415
+
+    tok = github.token() or ""
+    if not tok:
+        return ""  # nothing to ask with; the digest says so elsewhere
+    meter = actions_minutes.month_minutes(
+        repo, datetime.now(timezone.utc), lambda url: github._request("GET", url, tok)
+    )
+    if not meter.get("ok"):
+        print(
+            f"digest: the Actions minutes could not be read: {meter.get('reason')}", file=sys.stderr
+        )
+    return actions_minutes.render(meter)
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="pr/digest.py", description=__doc__)
     parser.add_argument("--repo", required=True, help="owner/name")
@@ -350,6 +373,7 @@ def main(argv: list[str] | None = None) -> int:
         prs = [pr for pr in data if isinstance(pr, dict)]
         protection = None  # a recorded list renders offline
         merge_key = ""
+        meter = ""
     else:
         prs, error = list_queue_prs(args.repo)
         protection = github.default_branch_protection(args.repo)
@@ -367,6 +391,7 @@ def main(argv: list[str] | None = None) -> int:
         # the workflow passes "true" when the job, which has no environment, sees the key
         key_in_repository = os.environ.get(KEY_IN_REPOSITORY_ENV, "").strip() == "true"
         merge_key = merge_key_notice(environment, key_in_repository)
+        meter = minutes_meter(args.repo)
         config: dict[str, Any] = {}
         if args.root:
             from hooks._common import ConfigError, load_sdlc_config  # noqa: PLC0415
@@ -383,7 +408,7 @@ def main(argv: list[str] | None = None) -> int:
         from pr import counters  # noqa: PLC0415
 
         counters_md = counters.render(counters.collect(Path(args.root).resolve()))
-    markdown = render_digest(prs, _now(), counters_md, protection, merge_key)
+    markdown = render_digest(prs, _now(), counters_md, protection, merge_key, meter)
     if args.dry_run:
         print(markdown, end="")
         return 0

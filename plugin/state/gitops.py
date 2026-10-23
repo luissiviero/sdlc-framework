@@ -489,8 +489,37 @@ def ensure_identity(root: Path, name: str = BOT_LOGIN, email: str = BOT_EMAIL) -
     return name
 
 
-def push(root: Path, branch: str, remote: str = "origin") -> None:
+PUSH_MERGE_MESSAGE = "merge {remote}/{branch}: the branch moved while this run worked (R51)"
+_MOVED_RE = re.compile(r"\[rejected\].*\((?:non-fast-forward|fetch first)\)")
+
+
+def push(root: Path, branch: str, remote: str = "origin") -> str | None:
+    """Push ``branch``. A push git rejects because the remote branch moved (the owner's
+    "Update branch", a by-hand commit, another run) fetches it, merges it with a merge commit
+    (never a rebase or a force) and pushes once more (R51, check 12 of the race analysis).
+    Returns that merge commit, None when the first push went through; a merge that conflicts
+    (aborted), a second rejection or any other failure raises ``GitError``. The caller that
+    judged the tree before the push re-checks the merged one."""
+    proc = run_proc(root, "push", "-u", remote, branch)
+    if proc.returncode == 0:
+        return None
+    said = f"{proc.stderr}\n{proc.stdout}".strip()
+    if not _MOVED_RE.search(said):
+        raise GitError(f"git push -u {remote} {branch} failed: {said}")
+    tracking = f"refs/remotes/{remote}/{branch}"
+    run(root, "fetch", remote, f"+refs/heads/{branch}:{tracking}")
+    message = PUSH_MERGE_MESSAGE.format(remote=remote, branch=branch)
+    merge = run_proc(
+        root, *identity_args(root), "merge", "--no-ff", "--no-edit", "-m", message, tracking
+    )
+    if merge.returncode != 0:
+        run(root, "merge", "--abort", check=False)
+        raise GitError(
+            f"git push -u {remote} {branch} was rejected (the remote branch moved) and "
+            f"{tracking} does not merge: {(merge.stdout or merge.stderr).strip()[-500:]}"
+        )
     run(root, "push", "-u", remote, branch)
+    return run(root, "rev-parse", "HEAD").strip()
 
 
 def has_remote(root: Path, remote: str = "origin") -> bool:

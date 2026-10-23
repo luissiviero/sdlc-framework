@@ -162,8 +162,10 @@ def test_sdlc_yaml_carries_decision_32_s_defaults():
         minutes = re.findall(r"(?m)^    timeout-minutes: (\d+)$", text)
         if name in ("sdlc-build.yml", FIX_WORKFLOW):
             assert minutes == ["260"], name  # 180 + 5 of grace, the commands step and the judge
-        elif name in ("sdlc-design.yml", "sdlc-test.yml", "sdlc-deploy.yml"):
+        elif name in ("sdlc-design.yml", "sdlc-test.yml"):
             assert minutes == ["200"], name
+        elif name == "sdlc-deploy.yml":  # R25 part 1: the review pass's 125 and phase (e)'s 185
+            assert minutes == ["330"], name
 
 
 def test_sdlc_yaml_also_parses_with_pyyaml():
