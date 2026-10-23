@@ -2,7 +2,7 @@
 type: Proposal
 title: "The gate reads what the branch really changed — renames, type changes and symlinks counted, and no evidence file read through a link"
 description: "Three findings of the plugin security review of 2026-10-19 (I2, I3 and M9) closed in one small change: the gate's diff readers list a rename's source and a type change, a symlink under changes/ is a finding, and the runner reads the evidence it quotes without following links."
-status: proposed
+status: accepted
 roadmap: R59
 sources:
   - id: review

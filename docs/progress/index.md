@@ -81,3 +81,4 @@ chronological order (oldest first). The current record stays in `docs/PROGRESS.m
 - [Progress — ROADMAP R65's part 3: docs-lint checks 11 and 12, S1 to S4 fixed (2026-10-22)](2026-10-22-r65-part-3-checks-11-12-choice-254.md)
 - [Progress — ROADMAP R65's part 4: `python tasks.py verify`, docs-lint check 13, CI on `verify` (2026-10-22)](2026-10-22-r65-part-4-verify.md)
 - [Progress — ROADMAP R65's part 5: `HANDOFF.md` points to `next-free` and `verify` (2026-10-23)](2026-10-23-r65-part-5-handoff.md)
+- [Progress — ROADMAP R8 fixed as plugin 1.0.24: the second opinion at any pin, after phase (e) only, and carried on the fast lane (2026-10-23)](2026-10-23-r8-1.0.24-choices-255-256.md)

@@ -2,7 +2,7 @@
 type: Proposal
 title: Session tooling for PDFs and web pages
 description: How a Claude session on this repository reads a PDF and fetches a web page, adapted from a setup prompt the owner was given, and the OKF reading that makes most fetches unnecessary.
-status: proposed
+status: closed
 roadmap: R2
 sources:
   - id: prompt

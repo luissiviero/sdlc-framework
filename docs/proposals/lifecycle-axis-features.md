@@ -2,7 +2,7 @@
 type: Proposal
 title: Which lifecycle-axis- features to port, settled by two independent studies and a judge
 description: The owner's earlier kit, lifecycle-axis-, does some things better than the framework. Two studies made independently of each other, compared by an independent judge, recommend what to port and how. The owner decides afterwards; nothing is decided here.
-status: proposed
+status: accepted
 roadmap: R60
 sources:
   - id: owner-2026-10-19
