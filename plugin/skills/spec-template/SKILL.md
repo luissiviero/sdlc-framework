@@ -89,7 +89,8 @@ UI, the metric and its threshold; for a change that touches a screen, the Mock: 
   one list item per section the owner left, `- <section>: <what you assumed>`, plus any
   other assumption the design rests on (the change type included). These are assumptions,
   not flagged concerns: the design PR and the build PR show them above their bullets and
-  the owner corrects one with a review comment. "Open questions from intent" holds "none"
+  the owner corrects one with a review comment (on the design PR the spec changes; at gate
+  (e) the code does, and the line stays). "Open questions from intent" holds "none"
   or the questions you assumed answers to, never the intent's marker line. A gap no
   reasonable reading fills (two
   policies in conflict, a risk-list item, a cost or data question only the owner can

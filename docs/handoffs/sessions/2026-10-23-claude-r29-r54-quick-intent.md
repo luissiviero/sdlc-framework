@@ -1,14 +1,15 @@
 # Session of 2026-10-23 on branch `claude/r29-r54-quick-intent`: R29 part 1 with R54, plugin 1.0.28 (wave 2, lane B)
 
 **Builds on:**
-- `docs/handoffs/sessions/2026-10-23-claude-r44-r59-i5.md` (#344, `d72de6a`) and `2026-10-23-claude-r51-r25-concurrent-spend.md` (#343, `ebb3467`), wave 1's two lanes, the newest on `main`, and the files they carry.
+- `docs/handoffs/sessions/2026-10-23-claude-r44-r59-i5.md` (#344, `d72de6a`) and `2026-10-23-claude-r51-r25-concurrent-spend.md` (#343, `ebb3467`), wave 1's two lanes, the newest on `main`, and the files they carry;
+- `2026-10-23-ccr-b2d02bf7-9ywgjn-handoff.md` (#346, `d80981a`), which reached `main` during this session and was merged into this branch; its open items are carried below.
 
 No other session file reached `main` since (verified, `ls docs/handoffs/sessions/` after `git fetch origin`, read at the session's start on `d72de6a`). Lane A of wave 2 (R61 with R33) runs in parallel; its session file is not on `main`.
 
 ## Where the project stands
 - **Framework `main` is at `d72de6a`** (#344), on plugin **1.0.27** (verified, `git log -1 origin/main` and `.claude-plugin/plugin.json` after `git fetch origin`, read at the session's start).
-  Since then the owner merged #345 and #347 (the settings rows, `f0e50f7`, read at 09:29 UTC), merged into this branch. The root pin at 1.0.17 is carried, not re-verified.
-- **This PR** (#348) builds R29 part 1 with R54 and choice 239's line as plugin **1.0.28** (its record: `docs/progress/2026-10-23-claude-r29-r54-quick-intent.md`). It takes no choice, note or decision number.
+  Since then the owner merged #345 and #347 (the settings rows, `f0e50f7`, read at 09:29 UTC) and #346 (`HANDOFF.md`'s two lines, `d80981a`, read at 10:40 UTC); both are merged into this branch. The root pin at 1.0.17 is carried, not re-verified.
+- **This PR** (#348) builds R29 part 1 with R54 and choice 239's line as plugin **1.0.28** (its record: `docs/progress/2026-10-23-claude-r29-r54-quick-intent.md`). It takes choice 263 (the owner's answers to its two open points), no note or decision number.
 - **Open PRs**: #173 (intent 0004), carried, not re-verified; lane A's PR and this one.
 
 ## Preconditions of the moment
@@ -31,7 +32,7 @@ No other session file reached `main` since (verified, `ls docs/handoffs/sessions
 | R29's later parts | `docs/proposals/intent-home.md`, "Order" | The template override, the claude.ai route, the briefs, the names | sessions, at their ranks | no |
 | The forged release ref | choice 261, point 2 | Carried | a session | no |
 | The probe branches | `claude/r51-ghref-probe`, `claude/r51-ghref-probe2` | Carried from the R51 file | owner | no |
-| Everything else carried | the R44 file's and the R51 file's "Every open item" | Carried, not re-verified | as there | no |
+| Everything else carried | the `-handoff` file's (#346), the R44 file's and the R51 file's "Every open item", the small lane's four PRs included | Carried, not re-verified | as there | no |
 
 Done, dropped:
 - "Lane B's PR" (the R51 file's step 2): #344 merged as `d72de6a`. "This PR" of both wave-1 files: #343 and #344 merged.

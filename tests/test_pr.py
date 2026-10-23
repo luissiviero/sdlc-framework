@@ -412,6 +412,10 @@ def test_what_i_assumed_heads_the_design_and_build_prs(project):
         body = desc.build_description(root, "0001", phase)
         assert len(bullets(body)) == 5
         assert body.startswith("**What I assumed (2)** from your one-paragraph intent (R54)")
+        # choice 263: a fix round edits the spec at (b) only; from (c) on it changes the code
+        head = body.splitlines()[0]
+        assert ("corrects it (/sdlc-fix)" in head) is (phase == "b")
+        assert ("the line itself stays as the design wrote it" in head) is (phase == "e")
         assert (
             "1. Proposed outcome: `sample_pkg.percent(part, whole)` returns a rounded "
             "percentage.\n2. Change type: feature.\n"

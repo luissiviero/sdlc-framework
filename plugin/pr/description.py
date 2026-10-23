@@ -17,7 +17,7 @@ Layout of the body, in order:
      (choice 242, point 2), or by the owner's merge when the owner merges;
   0a. "What I assumed (N)" (ROADMAP R54): when the change started from a quick intent, the
      list under spec.md's "## Assumed from the quick intent", on the design PR and the build
-     PR; a review comment on a line corrects it (/sdlc-fix);
+     PR; a review comment on a line corrects it at (b), and changes the code from (c) on;
   0. "Decisions taken for you (N)" above the bullets (decision 21):
      one line per standing panel decision of the phases this PR covers ((b) for the design
      PR; (c), (d), (e) for the build PR), from ``evidence/decisions-<phase>.json``; a review
@@ -555,10 +555,11 @@ def decisions_block(change_dir: Path, phase: str) -> list[str]:
     return lines
 
 
-def assumed_block(spec: str) -> list[str]:
+def assumed_block(spec: str, phase: str = "b") -> list[str]:
     """R54: ``**What I assumed (N)**`` and the spec's list of assumptions when the change
-    started from a quick intent, or []. Shown on the design PR and on the build PR, where the
-    owner corrects an assumption (on the fast lane the design PR is superseded)."""
+    started from a quick intent, or []. Shown on the design PR and on the build PR (on the
+    fast lane the design PR is superseded). A fix round at (b) edits spec.md; from (c) on it
+    changes the code only and never the spec (/sdlc-fix), so the line stays as written."""
     items: list[str] = []
     for line in _section(spec, art.SPEC_ASSUMED_SECTION).splitlines():
         m = LIST_ITEM_RE.match(line)
@@ -568,10 +569,14 @@ def assumed_block(spec: str) -> list[str]:
             items[-1] = f"{items[-1]} {line.strip()}"
     if not items:
         return []
-    head = (
-        f"**What I assumed ({len(items)})** from your one-paragraph intent (R54): a review "
-        "comment on any line corrects it (/sdlc-fix)."
-    )
+    if phase == "b":
+        how = "a review comment on any line corrects it (/sdlc-fix)"
+    else:
+        how = (
+            "a review comment on any line changes the code to match your correction "
+            "(/sdlc-fix); the line itself stays as the design wrote it"
+        )
+    head = f"**What I assumed ({len(items)})** from your one-paragraph intent (R54): {how}."
     return [head, *(f"{n}. {item}" for n, item in enumerate(items, 1))]
 
 
@@ -748,7 +753,7 @@ def build_description(root: Path, change_id: str, phase: str, draft: bool = Fals
         f"- **What needs you**: {_owner_line(gate_json, phase, auto)}",
     ]
     out: list[str] = [*banner, ""] if banner else []
-    assumed = assumed_block(spec)
+    assumed = assumed_block(spec, phase)
     if assumed:
         out += [*assumed, ""]
     decisions = decisions_block(change_dir, phase)

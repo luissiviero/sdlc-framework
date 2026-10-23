@@ -1,6 +1,6 @@
 # Progress — R29 part 1 with R54: the intent home's examples and mock, the quick intent, plugin 1.0.28 (2026-10-23)
 
-This session ran on branch `claude/r29-r54-quick-intent`, from `main` at `d72de6a` (#344, plugin 1.0.27), as lane B of wave 2 of the parallel build sessions the owner started on 2026-10-23 ("start wave 2"). Lane A builds R61 with R33 at the same time and merges first (ROADMAP's Order column). The scope is R29's part 1 (`docs/proposals/intent-home.md`, the first two rows of its "Order" table) and R54 (`docs/proposals/speed-beyond-the-sprint.md`, "R54, the quick intent"), with choice 239's item on R54's row. This PR changes `plugin/` and `template/`, so it bumps the patch; it took 1.0.28, the number `python tasks.py next-free` gave on `d72de6a` (read at the session's start, nothing taken above `main`). It takes no choice, note or decision number.
+This session ran on branch `claude/r29-r54-quick-intent`, from `main` at `d72de6a` (#344, plugin 1.0.27), as lane B of wave 2 of the parallel build sessions the owner started on 2026-10-23 ("start wave 2"). Lane A builds R61 with R33 at the same time and merges first (ROADMAP's Order column). The scope is R29's part 1 (`docs/proposals/intent-home.md`, the first two rows of its "Order" table) and R54 (`docs/proposals/speed-beyond-the-sprint.md`, "R54, the quick intent"), with choice 239's item on R54's row. This PR changes `plugin/` and `template/`, so it bumps the patch; it took 1.0.28, the number `python tasks.py next-free` gave on `d72de6a` (read at the session's start, nothing taken above `main`). It takes choice 263, the number `next-free` gave on `d80981a` after `main` was merged in (choice 262 is held by branch `ccr-b2d02bf7-9ywgjn`), and no note or decision number.
 
 ## What was built
 **R29 part 1.**
@@ -22,7 +22,7 @@ This session ran on branch `claude/r29-r54-quick-intent`, from `main` at `d72de6
 ## Not built, and why
 - **R29's later parts:** the template override per project (after the live check, with or after R27), the claude.ai route and its connector check (after R17; the allocation shared with R31), the gate (a) briefs (R28), the names (R45). Their rows in the proposal's "Order" table are unchanged.
 - **The quick intent from claude.ai or the phone:** that is the claude.ai route above; R54 runs through `/sdlc-plan` until it exists.
-- **The intent PR's line rewritten after the PR opens** (reading the author and the draft flag back and editing the body): it would need the owner check in `pr/cli.py` and a second write for one line; the two-case line is true whichever way the PR was opened. Recorded as a choice the owner may revisit.
+- **The intent PR's line rewritten after the PR opens** (reading the author and the draft flag back and editing the body): it would need the owner check in `pr/cli.py` and a second write for one line; the two-case line is true whichever way the PR was opened. The owner kept the two-case line (choice 263, #2).
 
 ## Known limits, recorded
 - **A wrongly assumed change type** (feature or fix) is set at allocation in `status.yaml`, which the design run does not change; the quick route asks for it when the paragraph does not make it plain, and the design PR lists it among the assumptions.
@@ -30,7 +30,9 @@ This session ran on branch `claude/r29-r54-quick-intent`, from `main` at `d72de6
 - **Not verified live:** a quick intent on the sample. It needs the sample's pin to move past 1.0.28.
 
 ## The owner's choices
-None taken in this session.
+263. **The PR's two open points** (the owner, 2026-10-23, this session's chat, on the session's table weighed against the study's criteria weights: safety 1, attention 3, autonomy 3, auditability 2, cost 0, fidelity 2):
+    - **#1, where a quick intent's assumptions live: approved as recommended** ("Approved"). The design run writes them in `spec.md`, `## Assumed from the quick intent`, and never fills `intent.md`, which stays the owner's paragraph. An exception to the guardrails check would let a design run change the intent that, on the fast lane, becomes the approved copy for (c) to (e) without the owner seeing it. R54's "fills the rest of the intent template" is read this way. A review comment corrects a line on the design PR; at gate (e) it changes the code and the line stays as written (the header of "What I assumed" says so since this choice).
+    - **#2, the intent PR's "What needs you" line: the two-case line is kept** ("Keep the two-case line"). It is written once when the PR opens and names both cases; neither alternative is built: not `upsert` rewriting the body after reading back the author and the draft flag, nor the design run rewriting it when it starts on the fast lane. The line is visible only while the design runs (nine minutes on the sample's #77, NOTES §50).
 
 ## Proposed edits for the owner
 None: no guardrail file needs a change for this PR.
