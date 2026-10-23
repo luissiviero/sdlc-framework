@@ -1483,19 +1483,51 @@ def next_free(root: Path) -> tuple[str, dict[str, str], list[tuple[str, str, lis
             for number in numbers:
                 if number > floor:
                     holders.setdefault((kind, number), []).extend(names)
-    free: dict[str, str] = {}
-    for kind in NEXT_FREE_KINDS:
-        if not taken[kind]:
-            free[kind] = "none read" if kind == "patch" else _show(kind, (1,))
-            continue
-        highest = max(taken[kind])
-        free[kind] = _show(kind, (*highest[:-1], highest[-1] + 1))
+    free = {kind: _one_above(kind, taken[kind]) for kind in NEXT_FREE_KINDS}
     above = [
         (kind, _show(kind, number), sorted(set(holders[(kind, number)])))
         for kind in NEXT_FREE_KINDS
         for number in sorted(n for k, n in holders if k == kind)
     ]
     return f"{base_ref} at {base[:7]}", free, above, len(ahead)
+
+
+def _one_above(kind: str, numbers: set[tuple[int, ...]]) -> str:
+    if not numbers:
+        return "none read" if kind == "patch" else _show(kind, (1,))
+    highest = max(numbers)
+    return _show(kind, (*highest[:-1], highest[-1] + 1))
+
+
+# Choices must run on main without a gap (test_the_repository_takes_no_number_twice), so the
+# number above every branch is right only for a PR that merges after the branches holding the
+# lower ones; a PR that merges before them takes the next on main (choice 267). Notes, decisions,
+# candidates and versions may have gaps.
+GAPLESS_KINDS = ("choice",)
+
+
+def next_on_main(root: Path) -> dict[str, str]:
+    """The next number of each kind on ``main`` alone, branches ahead not read."""
+    _, base = main_commit(root)
+    on_main = read_numbers(root, base)
+    return {kind: _one_above(kind, set(on_main[kind])) for kind in NEXT_FREE_KINDS}
+
+
+def gap_notes(
+    free: dict[str, str], on_main: dict[str, str], above: list[tuple[str, str, list[str]]]
+) -> list[str]:
+    """One line per gapless kind whose next on main is held only by branches ahead of it."""
+    notes = []
+    for kind in GAPLESS_KINDS:
+        if free[kind] == on_main[kind]:
+            continue
+        names = sorted({name for k, _, held in above if k == kind for name in held})
+        notes.append(
+            f"{kind} {on_main[kind]} is next on main and held by {', '.join(names)}: main's "
+            f"{kind}s run without a gap, so a PR that merges before them takes {on_main[kind]}, "
+            f"one that merges after them {free[kind]}; the later renumbers"
+        )
+    return notes
 
 
 def task_next_free() -> int:
@@ -1511,6 +1543,8 @@ def task_next_free() -> int:
     print("next-free: taken above main:" + ("" if above else " none"))
     for kind, number, names in above:
         print(f"  {kind} {number}: {', '.join(names)}")
+    for line in gap_notes(free, next_on_main(ROOT), above):
+        print(f"next-free: {line}")
     print("next-free: nothing is reserved (choice 184); git fetch origin reads the newest state")
     return 0
 

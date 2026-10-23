@@ -107,7 +107,7 @@ On the sample and on this repository, once built: no red run is left by a turn l
 - An overspend raising the next suggestion by itself, which could mask a defect as normal cost.
 - A separate API key in its own Console workspace with a monthly spend limit, the only cap enforced by Anthropic, kept in reserve.
 - A6's landing as written: a `calibration.json` the digest regenerates from every shipped change; it would count overspends T30 excludes, read rounds a reset erases, and needs a writer the digest is not (`planning-revision.md` 6.2 to 6.5)[^artcraft].
-- A6's hours per item, parallel share, "needs a human" list and calendar time (`planning-revision.md` 6.6 and 6.7, P5, rejected by the owner on 2026-10-14): the framework runs one change at a time and spends dollars, not agent-hours, and the wait on each item is T28's (R20)[^artcraft].
+- A6's hours per item, parallel share, "needs a human" list and calendar time (`planning-revision.md` 6.6 and 6.7, P5, rejected by the owner on 2026-10-14): the framework runs one change at a time and spends dollars, not agent-hours, and the wait on each item is T28's (R20)[^artcraft]. *[2026-10-23, choice 267: "one change at a time" does not hold. Each change's runs serialize on its own work branch (`template/.github/workflows/sdlc-build.yml:52-54`), several changes run at once with no cap, and R51 (plugin 1.0.26) makes that safe. The reason that stands for rejecting A6 is the rest of the sentence: the framework spends dollars, not agent-hours.]*
 
 ## Decisions it touches
 
