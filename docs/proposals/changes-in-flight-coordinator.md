@@ -28,7 +28,7 @@ generated: { by: sdlc-framework-session/ccr-9171b99a-q6u17y, at: 2026-10-23T12:0
 
 # Changes in flight, ordered and warned, and a project coordinator that is stateless beyond the repository
 
-**Status: accepted on 2026-10-23 (the owner, choice 263; ROADMAP R66), built after the real-project trial.** Nothing is built. The study behind it is `docs/reviews/2026-10-23-parallelism-inventory.md`; this file carries only what is to be built and the one design rule the owner fixed.
+**Status: accepted on 2026-10-23 (the owner, choice 264; ROADMAP R66), built after the real-project trial.** Nothing is built. The study behind it is `docs/reviews/2026-10-23-parallelism-inventory.md`; this file carries only what is to be built and the one design rule the owner fixed.
 
 ## The problem
 
@@ -79,4 +79,4 @@ This repository runs a central session for the same jobs by hand (choice 262). I
 
 ## Order
 
-After the real-project trial, so that the trial measures the pipeline without it (the owner, 2026-10-23, choice 263); after R28's first change, which this proposal reads; after R9 part 1 for part 3. The rank is the Order column's.
+After the real-project trial, so that the trial measures the pipeline without it (the owner, 2026-10-23, choice 264); after R28's first change, which this proposal reads; after R9 part 1 for part 3. The rank is the Order column's.

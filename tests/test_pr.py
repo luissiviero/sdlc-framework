@@ -303,6 +303,130 @@ def test_five_bullets_at_phase_a_describe_the_intent(project):
     assert "Counters: first-pass merge: yes · fix iterations: 0" in body
 
 
+def test_intent_pr_names_the_fast_lane_unless_opened_as_a_draft(project):
+    """Choice 239 (R54): the sample's #77 read "merge = approve (gate (a))" while its opening
+    had already accepted the intent and started the design (NOTES §50). A PR not opened as a
+    draft names both cases; a draft, which never takes the fast lane, keeps gate (a) alone."""
+    root, _change = project
+    needs = bullets(desc.build_description(root, "0001", "a"))[4]
+    assert (
+        "opened from your own account, not as a draft, and changing nothing outside its change "
+        "folder, nothing"
+    ) in needs
+    assert "the fast lane, decision 30" in needs and "`sdlc:superseded`" in needs
+    assert needs.endswith("or changing other files: " + desc.GATE_CHECKLIST["a"])
+    draft = bullets(desc.build_description(root, "0001", "a", draft=True))[4]
+    assert draft == "- **What needs you**: " + desc.GATE_CHECKLIST["a"]
+
+
+def test_upsert_passes_the_draft_flag_to_the_description(project, capsys):
+    root, _change = project
+    for flags, fast in (([], True), (["--draft"], False)):
+        argv = ["upsert", "--root", str(root), "--id", "0001", "--phase", "a", "--dry-run"]
+        assert pr_cli.main(argv + flags) == 0
+        body = json.loads(capsys.readouterr().out)["body"]
+        assert ("the fast lane, decision 30" in body) is fast
+
+
+def test_the_install_pr_of_change_0000_keeps_gate_a(project):
+    """The review of 5248e29: /sdlc-init opens change 0000's PR without --draft, and it changes
+    files outside its folder, so the fast lane never takes it (run_phase.intent_pr_start)."""
+    root, change = project
+    st = status_mod.read_status(change)
+    needs = desc._intent_bullets(INTENT, status_mod.Status(**{**st.__dict__, "id": "0000"}))[4]
+    assert needs == "- **What needs you**: " + desc.GATE_CHECKLIST["a"]
+
+
+def test_upsert_on_an_open_pr_reads_its_live_draft_state(project, capsys, monkeypatch):
+    """A fix round's upsert passes no --draft: the body follows the PR's own draft flag."""
+    root, _change = project
+    git(root, "remote", "add", "origin", "https://github.com/o/r.git")
+    bodies: list[str] = []
+    for live_draft, fast in ((True, False), (False, True)):
+        found = {"ok": True, "number": 7, "labels": [], "draft": live_draft, "route": "api"}
+        monkeypatch.setattr(github, "find_open_pr", lambda *a, _f=found, **k: _f)
+        monkeypatch.setattr(
+            github,
+            "update_pr",
+            lambda repo, number, body, title, cwd=None: (
+                bodies.append(body) or {"ok": True, "route": "api", "number": number}
+            ),
+        )
+        monkeypatch.setattr(github, "ensure_label", lambda *a, **k: {"ok": True})
+        monkeypatch.setattr(github, "set_labels", lambda *a, **k: {"ok": True})
+        monkeypatch.setattr(pr_cli, "not_build_check", lambda *a, **k: {"ok": True})
+        assert pr_cli.main(["upsert", "--root", str(root), "--id", "0001", "--phase", "a"]) == 0
+        capsys.readouterr()
+        assert ("the fast lane, decision 30" in bodies[-1]) is fast
+
+
+QUICK_INTENT = """# Intent: percent helper
+Author: owner (developer). Status: proposed. Change id: 0001. Entry route: idea.
+Quick intent: yes
+
+## Problem
+Callers compute percentages by hand and get rounding wrong. Give them a helper.
+
+## Proposed outcome
+Left to the design run (quick intent).
+
+## Affected users and systems
+Left to the design run (quick intent).
+
+## Constraints
+Left to the design run (quick intent).
+
+## Open questions
+Left to the design run (quick intent).
+
+## Examples/References
+none
+"""
+ASSUMED = """
+## Assumed from the quick intent
+- Proposed outcome: `sample_pkg.percent(part, whole)` returns a rounded
+  percentage.
+- Change type: feature.
+"""
+
+
+def test_quick_intent_at_a_says_what_is_left_to_the_design(project):
+    root, change = project
+    write(change / "intent.md", QUICK_INTENT)
+    lines = bullets(desc.build_description(root, "0001", "a"))
+    assert len(lines) == 5
+    assert lines[0].endswith("Callers compute percentages by hand and get rounding wrong.")
+    assert lines[1].endswith("idea route, feature change, quick intent")
+    for line in lines[2:4]:
+        assert "left to the design run (quick intent)" in line
+        assert "Left to the design run" not in line  # never quoted as an open question
+
+
+def test_what_i_assumed_heads_the_design_and_build_prs(project):
+    root, change = project
+    write(change / "intent.md", QUICK_INTENT)
+    write(change / "spec.md", SPEC_HEADER + ASSUMED + SPEC_BODY)
+    gate_json(change, "b", "wait", c.ready_label("b"))
+    gate_json(change, "e", "wait", c.ready_label("e"))
+    for phase in ("b", "e"):
+        body = desc.build_description(root, "0001", phase)
+        assert len(bullets(body)) == 5
+        assert body.startswith("**What I assumed (2)** from your one-paragraph intent (R54)")
+        # choice 263: a fix round edits the spec at (b) only; from (c) on it changes the code
+        head = body.splitlines()[0]
+        assert ("corrects it (/sdlc-fix)" in head) is (phase == "b")
+        assert ("the line itself stays as the design wrote it" in head) is (phase == "e")
+        assert (
+            "1. Proposed outcome: `sample_pkg.percent(part, whole)` returns a rounded "
+            "percentage.\n2. Change type: feature.\n"
+        ) in body
+    # the marker is not a release note: with no notes file, the section is left out
+    assert "## Release note" not in desc.build_description(root, "0001", "e")
+    write(change / "intent.md", INTENT)
+    write(change / "spec.md", SPEC)
+    assert "What I assumed" not in desc.build_description(root, "0001", "b")
+
+
 def test_phase_a_open_questions_none_and_default_label(project):
     root, change = project
     assert bullets(desc.build_description(root, "0001", "a"))[3].endswith("none")

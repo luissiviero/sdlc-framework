@@ -172,6 +172,7 @@ jobs:
 
       - name: "Install the project's own toolchain (sdlc.yaml: commands.setup)"
         if: steps.find.outputs.change_id != ''
+        # sdlc:commands.env setup
         run: python framework/plugin/ci/project_setup.py --root .
 
       - name: Run phase (b)
@@ -191,6 +192,7 @@ jobs:
           # unknown flag and ignores an unknown variable
           SDLC_START_POINT: ${{ steps.find.outputs.start_point }}
           SDLC_INTENT_PR: ${{ steps.find.outputs.intent_pr }}
+          # sdlc:commands.env
         run: python framework/plugin/ci/run_phase.py --root . --plugin-dir framework --phase b --id "$CHANGE_ID" --head-ref "$HEAD_REF" --repo "$REPO" --ref "$DEFAULT_BRANCH"
 
       # Build guide step 41.1 (article p.39): every hook decision of the run is one line of

@@ -1,7 +1,10 @@
 """Detect (or propose) one-command build/test/lint targets (build guide step 14; article
 p.27 step 1: 'wrap checks in a single target ... that exits non-zero on failure').
 
-Python projects (session 1) and Node projects (session 2, from ``package.json`` scripts).
+Python projects (session 1) and Node projects (session 2, from ``package.json`` scripts),
+detected when that language leads the repository's counted signals (R61 part 2); the
+registry hosts, the formatter commands and the secret-shaped paths /sdlc-init proposes
+(R61 parts 1 and 5, R33).
 Python targets are ``python -m ...`` commands and Node targets ``npm ...`` commands, so each
 runs identically on Windows, in a cloud session and on a Linux runner (decision 7). A target
 the detector cannot find or create is left as ``None``: the installer writes a placeholder
@@ -10,7 +13,9 @@ and the gate refuses to enter phase (c) until the owner provides one.
 
 from __future__ import annotations
 
+import fnmatch
 import json
+import os
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -105,6 +110,10 @@ class Detection:
     # project nor its test and lint tools installed, which failed the gate's `commands` check
     # on the first live design run (2026-09-21). None means "nothing to install".
     setup: Target = field(default_factory=_no_target)
+    # R61 part 2: every language's counted signals (``language_signals``), for the report
+    signals: dict[str, dict[str, object]] = field(default_factory=dict)
+    # R61 part 5: the secret-shaped patterns found (``secret_paths``), from the same file list
+    secrets: list[str] = field(default_factory=list)
 
     def as_dict(self) -> dict:
         return {
@@ -115,6 +124,7 @@ class Detection:
             "setup": self.setup.__dict__,
             "stats": self.stats,
             "notes": self.notes,
+            "signals": self.signals,
         }
 
 
@@ -362,12 +372,305 @@ def detect_node(root: Path, pkg: dict) -> Detection:
 
 
 def detect(root: Path) -> Detection:
-    """Entry point: Python when Python signals exist, else Node when package.json exists."""
+    """Entry point: the language that leads the counted signals (``language_signals``).
+    Python's or Node's targets are detected when that language is dominant; any other leader,
+    or a leader that is not dominant (a mixed repository), comes back with every target unset
+    and a note, so /sdlc-init asks the owner for the commands (R61 part 2)."""
     root = Path(root)
-    py = detect_python(root)
-    if py.language == "python":
-        return py
+    files = project_files(root)
+    signals = language_signals(root, files)
+    leader, dominant = leading_language(signals)
     pkg = _package_json(root)
-    if pkg is not None:
-        return detect_node(root, pkg)
-    return py
+    if leader == "unknown" or (
+        leader == "node" and (root / "package.json").is_file() and pkg is None
+    ):
+        det = detect_python(root)  # "unknown" (or an unreadable package.json), as before R61
+    elif leader == "node" and pkg is None:
+        det = _unset(
+            "node",
+            [
+                f"Node project with no package.json at the root ({_signals_text(signals)}): "
+                "no target is detected; ask the owner for the commands"
+            ],
+        )
+    elif not dominant:
+        det = _unset(
+            leader,
+            [
+                f"mixed repository ({_signals_text(signals)}): no language holds two source "
+                "files in three, so no target is detected; ask the owner for the commands"
+            ],
+        )
+    elif leader == "python":
+        det = detect_python(root)
+    elif leader == "node":
+        det = detect_node(root, pkg)  # type: ignore[arg-type]
+    else:
+        det = _unset(
+            leader,
+            [
+                f"{leader} project ({_signals_text(signals)}): no target detection for "
+                f"{leader}; ask the owner for the commands"
+            ],
+        )
+    det.signals = signals
+    det.secrets = secret_paths(root)
+    return det
+
+
+# --- R61 part 2: which language the repository is, counted -----------------------------------
+# The trial readiness review of 2026-10-20 (risk 2): one helper `.py` file made a Node, Go or
+# Rust repository "Python", with pytest, ruff and compileall targets that pass on nothing.
+# Each language's source files are counted, and its manifest noted; a language takes part only
+# with its manifest (Python also with `.py` files alone, which run without one). Python or
+# Node targets are detected only when that language holds two source files in three of the
+# taking part; otherwise the leader is returned with every target unset, and /sdlc-init asks
+# the owner for the commands.
+LANGUAGE_SUFFIXES = {
+    "python": (".py",),
+    "node": (".js", ".mjs", ".cjs", ".jsx", ".ts", ".tsx"),
+    "rust": (".rs",),
+    "go": (".go",),
+    "java": (".java", ".kt"),
+    "dotnet": (".cs", ".fs", ".vb"),
+    "ruby": (".rb",),
+}
+LANGUAGE_MANIFESTS = {
+    "python": ("pyproject.toml", "setup.py", "setup.cfg"),
+    "node": ("package.json",),
+    "rust": ("Cargo.toml",),
+    "go": ("go.mod",),
+    "java": ("pom.xml", "build.gradle", "build.gradle.kts"),
+    "dotnet": ("*.csproj", "*.fsproj", "*.vbproj", "*.sln"),
+    "ruby": ("Gemfile",),
+}
+DOMINANT_SHARE = 2 / 3
+SIGNAL_SCAN_EXCLUDE = (
+    ".git", ".venv", "venv", "node_modules", "__pycache__", ".tox", "target", "dist",
+    "build", "vendor", "changes",
+)  # fmt: skip
+
+
+def walk_files(root: Path) -> list[str]:
+    """Every file under ``root``, project-relative with forward slashes, ignored ones
+    included; the walk prunes ``SIGNAL_SCAN_EXCLUDE`` and every folder holding a
+    ``pyvenv.cfg`` (a virtualenv of any name)."""
+    root = Path(root)
+    listed: list[str] = []
+    for folder, dirs, names in os.walk(root):
+        dirs[:] = [
+            d
+            for d in dirs
+            if d not in SIGNAL_SCAN_EXCLUDE and not (Path(folder, d) / "pyvenv.cfg").is_file()
+        ]
+        rel = Path(folder).relative_to(root).as_posix()
+        listed += [n if rel == "." else f"{rel}/{n}" for n in names]
+    return listed
+
+
+def project_files(root: Path) -> list[str]:
+    """The project's files, project-relative with forward slashes: ``git ls-files`` (tracked,
+    and untracked but not ignored) in a repository, so an ignored virtualenv or build output
+    is not counted; elsewhere, or when git refuses, ``walk_files``. Either way the excluded
+    folders and the virtualenvs are left out (R61 part 2; the review of 1.0.29). The git call
+    is ``gitops.run_proc``'s: on a runner, where the gate, the detection, the runbooks and the
+    scan call ``detect`` on a checkout the session wrote, it runs with ``runner_args`` and
+    refuses a planted program (R44, I4)."""
+    from state import gitops  # noqa: PLC0415
+
+    root = Path(root)
+    listed: list[str] | None = None
+    if (root / ".git").exists():
+        try:
+            proc = gitops.run_proc(root, "ls-files", "-co", "--exclude-standard", "-z")
+            if proc.returncode == 0:
+                listed = [f for f in proc.stdout.split("\0") if f]
+        except (OSError, gitops.GitError):
+            listed = None
+    if listed is None:
+        listed = walk_files(root)
+    venvs = tuple(f[: -len("pyvenv.cfg")] for f in listed if f.endswith("/pyvenv.cfg"))
+    return [
+        f
+        for f in listed
+        if not any(p in SIGNAL_SCAN_EXCLUDE for p in f.split("/")[:-1])
+        and not (venvs and f.startswith(venvs))
+    ]
+
+
+def language_signals(root: Path, files: list[str] | None = None) -> dict[str, dict[str, object]]:
+    """``{language: {"files": n, "manifests": [path, ...]}}`` for every language of
+    ``LANGUAGE_SUFFIXES`` with at least one source file or manifest, a manifest counted in
+    any folder (``web/package.json`` makes a Node frontend take part)."""
+    files = project_files(root) if files is None else files
+    counts = dict.fromkeys(LANGUAGE_SUFFIXES, 0)
+    by_suffix = {s: lang for lang, suffixes in LANGUAGE_SUFFIXES.items() for s in suffixes}
+    manifests: dict[str, list[str]] = {lang: [] for lang in LANGUAGE_SUFFIXES}
+    for rel in files:
+        name = rel.rsplit("/", 1)[-1]
+        lang = by_suffix.get(Path(name).suffix.lower())
+        if lang:
+            counts[lang] += 1
+        for language, patterns in LANGUAGE_MANIFESTS.items():
+            if any(fnmatch.fnmatchcase(name, pat) for pat in patterns):
+                manifests[language].append(rel)
+    return {
+        lang: {"files": counts[lang], "manifests": sorted(manifests[lang])}
+        for lang in LANGUAGE_SUFFIXES
+        if counts[lang] or manifests[lang]
+    }
+
+
+def _taking_part(signals: dict[str, dict[str, object]]) -> dict[str, int]:
+    """The languages that take part, with their file counts: a manifest, or Python files."""
+    return {
+        lang: int(sig["files"])  # type: ignore[call-overload]
+        for lang, sig in signals.items()
+        if sig["manifests"] or (lang == "python" and sig["files"])
+    }
+
+
+def _signals_text(signals: dict[str, dict[str, object]]) -> str:
+    parts = []
+    for lang, sig in signals.items():
+        manifests = ", ".join(sig["manifests"]) or "no manifest"  # type: ignore[arg-type]
+        parts.append(f"{lang} {sig['files']} file(s) ({manifests})")
+    return "; ".join(parts) or "none"
+
+
+def leading_language(signals: dict[str, dict[str, object]]) -> tuple[str, bool]:
+    """(language, dominant): the taking-part language with the most source files (Python,
+    then Node, then the others on a tie, as before R61), and whether it holds
+    ``DOMINANT_SHARE`` of their files; ``("unknown", False)`` when none takes part."""
+    counts = _taking_part(signals)
+    if not counts:
+        return "unknown", False
+    order = list(LANGUAGE_SUFFIXES)
+    leader = max(counts, key=lambda lang: (counts[lang], -order.index(lang)))
+    total = sum(counts.values())
+    return leader, total == 0 or counts[leader] >= DOMINANT_SHARE * total
+
+
+def _unset(language: str, notes: list[str]) -> Detection:
+    return Detection(language, _no_target(), _no_target(), _no_target(), {}, notes)
+
+
+# --- R61 part 1: the package registry the CI session may reach ---------------------------------
+# What `sandbox.allowed_domains` proposes per language, beyond the hosts plugin/ci/
+# settings.ci.json already allows (PyPI and npm): the owner keeps or edits the list in the
+# change-0000 PR (options.md, row "Network allow list").
+REGISTRY_DOMAINS = {
+    "rust": ("crates.io", "index.crates.io", "static.crates.io"),
+    "go": ("proxy.golang.org", "sum.golang.org"),
+    "java": (
+        "repo.maven.apache.org", "repo1.maven.org", "plugins.gradle.org", "services.gradle.org",
+    ),
+    "dotnet": ("api.nuget.org",),
+    "ruby": ("rubygems.org", "index.rubygems.org"),
+}  # fmt: skip
+
+
+def registry_domains(signals: dict[str, dict[str, object]]) -> list[str]:
+    """The registry hosts of every language that takes part, in ``REGISTRY_DOMAINS`` order."""
+    present = _taking_part(signals)
+    return [d for lang, domains in REGISTRY_DOMAINS.items() if lang in present for d in domains]
+
+
+# --- R33: the formatter commands /sdlc-init proposes per file type ------------------------------
+# `sdlc.yaml: hooks.formatters`, read by plugin/hooks/format_on_edit.py: each entry maps a glob
+# (or a list of globs) to the `fix` commands run in order on the changed file and the `check`
+# commands whose exit 1 is fed back; `{file}` is the file's project-relative path. Only what is
+# cheap per file (p.23); a whole-project check (clippy, a type check) stays the lint target.
+NODE_GLOBS = ["*.js", "*.jsx", "*.mjs", "*.cjs", "*.ts", "*.tsx"]
+PY_GLOBS = ["*.py", "*.pyi"]
+PY_OTHER_FORMATTERS = {
+    "black": "python -m black --quiet {file}",
+    "yapf": "python -m yapf --in-place {file}",
+    "autopep8": "python -m autopep8 --in-place {file}",
+}
+
+
+def node_dependencies(pkg: dict) -> set[str]:
+    """The package names of ``dependencies`` and ``devDependencies`` (choice 246: one helper
+    for R33's formatter proposal and R14's ``@playwright/test``)."""
+    names: set[str] = set()
+    for key in ("dependencies", "devDependencies"):
+        block = pkg.get(key)
+        if isinstance(block, dict):
+            names.update(str(name) for name in block)
+    return names
+
+
+def python_formatter(pyproject: str) -> str | None:
+    """The formatter ``pyproject.toml`` configures other than ruff (``[tool.black]``,
+    ``[tool.yapf]``, ``[tool.autopep8]``), or None: such a project gets a ``*.py`` mapping to
+    its own formatter instead of ruff's (options.md, row "Formatter on edit")."""
+    for name in PY_OTHER_FORMATTERS:
+        if re.search(rf"(?m)^\s*\[tool\.{name}\]", pyproject):
+            return name
+    return None
+
+
+def _rust_edition(cargo: str) -> str:
+    match = re.search(r"""(?m)^\s*edition\s*=\s*["'](\d{4})["']""", cargo)
+    return match.group(1) if match else "2021"
+
+
+def formatters(root: Path, signals: dict[str, dict[str, object]] | None = None) -> list[dict]:
+    """The ``hooks.formatters`` entries to propose, each language read on its own (a Node
+    project with a helper ``.py`` file still gets prettier): a Python project on black, yapf
+    or autopep8 gets that formatter for ``*.py`` and ``*.pyi`` (ruff stays the default
+    otherwise, with no entry); a ``package.json`` with prettier or eslint in its
+    dependencies gets them for the JavaScript and TypeScript files; a ``Cargo.toml`` gets
+    rustfmt for ``*.rs``. Empty when nothing applies."""
+    root = Path(root)
+    signals = language_signals(root) if signals is None else signals
+    out: list[dict] = []
+    other = python_formatter(_read(root / "pyproject.toml"))
+    if other and "python" in signals:
+        out.append({"glob": list(PY_GLOBS), "fix": [PY_OTHER_FORMATTERS[other]]})
+    pkg = _package_json(root)
+    deps = node_dependencies(pkg) if pkg else set()
+    fix: list[str] = []
+    check: list[str] = []
+    if "prettier" in deps:
+        fix.append("npx --no prettier --write {file}")
+    if "eslint" in deps:
+        fix.append("npx --no eslint --fix {file}")
+        check.append("npx --no eslint {file}")
+    if fix:
+        entry: dict = {"glob": list(NODE_GLOBS), "fix": fix}
+        if check:
+            entry["check"] = check
+        out.append(entry)
+    if (root / "Cargo.toml").is_file():
+        edition = _rust_edition(_read(root / "Cargo.toml"))
+        out.append({"glob": "*.rs", "fix": [f"rustfmt --edition {edition} {{file}}"]})
+    return out
+
+
+# --- R61 part 5: the project's secret-shaped files ----------------------------------------------
+SECRET_PATTERNS = (
+    "*.pem", "*.key", "*.p12", "*.pfx", "*.jks", "*.keystore", "id_rsa*", "credentials.json",
+    "terraform.tfvars", "*-secret.yaml", "appsettings.*.json", ".npmrc",
+)  # fmt: skip
+
+
+def secret_paths(root: Path, files: list[str] | None = None) -> list[str]:
+    """The patterns of ``SECRET_PATTERNS`` that match a file of the project, ignored ones
+    included (``walk_files``: a gitignored ``certs/dev.pem`` is the secret a local session
+    could read), for ``protected_paths`` and the ``Read`` deny rules; the owner confirms them
+    in the change-0000 PR."""
+    files = walk_files(root) if files is None else files
+    names = {f.rsplit("/", 1)[-1] for f in files}
+    return [pat for pat in SECRET_PATTERNS if any(fnmatch.fnmatchcase(n, pat) for n in names)]
+
+
+def is_secret_pattern(entry: str) -> bool:
+    """Whether a ``protected_paths`` entry names a secret-shaped file: one of
+    ``SECRET_PATTERNS`` itself, or a path whose last part matches one. Only those become a
+    ``Read`` deny in CI, where the sandbox masks a denied path for every command, so a
+    protected ``migrations/`` folder stays readable to the tests (the review of 1.0.29)."""
+    text = str(entry).strip().rstrip("/").replace("\\", "/")
+    name = text.rsplit("/", 1)[-1]
+    return text in SECRET_PATTERNS or any(fnmatch.fnmatchcase(name, p) for p in SECRET_PATTERNS)

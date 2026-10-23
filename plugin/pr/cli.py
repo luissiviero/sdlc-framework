@@ -122,7 +122,7 @@ def cmd_upsert(args) -> int:
     if ctx is None:
         return 2
     root, change_dir, st = ctx
-    body = desc.build_description(root, args.id, args.phase)
+    body = desc.build_description(root, args.id, args.phase, draft=args.draft)
     title = desc.pr_title(st, args.phase)
     gate_json = desc.load_gate(change_dir, args.phase)
     label = desc.label_for(gate_json, args.phase)
@@ -158,6 +158,9 @@ def cmd_upsert(args) -> int:
     review = {"reviewers": True} if getattr(args, "request_review", False) else {}
     found = github.find_open_pr(repo, head, cwd=root, **review)
     number = found.get("number")
+    if number and bool(found.get("draft")) != bool(args.draft):
+        # the PR's live draft state, not this call's flag (a fix round passes no --draft)
+        body = desc.build_description(root, args.id, args.phase, draft=bool(found.get("draft")))
     if number:
         result = github.update_pr(repo, int(number), body, title, cwd=root)
     else:
