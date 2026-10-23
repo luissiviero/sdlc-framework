@@ -8,7 +8,7 @@
 This session built two PRs: #363 (branch `claude/released-owner-fields`, choice 268 (d), plugin 1.0.34) and this one (choice 268 (b), decision 39, no version). This file is committed in the last of them, this one.
 
 ## Where the project stands
-- **Framework `main` is at `2a0e7c7`** (#363), plugin **1.0.34** (verified, `git log -1 origin/main` after `git fetch origin`, read at 15:30 UTC). #363 made `released_at`, `released_sha` and `released_pr` owner-only fields; the central session's choice 268 and lane B's decision 40 reached `main` before it. `main` is merged into this branch with a merge commit; the decisions index was regenerated, not merged by hand.
+- **Framework `main` is at `2a0e7c7`** (#363), plugin **1.0.34** (verified, `git log -1 origin/main` after `git fetch origin`, read at 15:31 UTC; `be5be5e`, plugin 1.0.33, before it). #363 made `released_at`, `released_sha` and `released_pr` owner-only fields; the central session's choice 268 and lane B's decision 40 reached `main` before it. `main` is merged into this branch with a merge commit; the decisions index was regenerated, not merged by hand.
 - **This PR** writes decision 39; nothing is renamed. R45's renames are wave 5.
 
 ## Preconditions of the moment
