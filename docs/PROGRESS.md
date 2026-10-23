@@ -10,7 +10,7 @@ The previous record (R65's part 5, from #334) is now `docs/progress/2026-10-23-r
 - **Numbers.** `python tasks.py next-free`, read at the start of Part 1 on `5357fdc`, gave choice 255 and patch 1.0.24, with nothing taken above `main`. This PR takes both.
 - **Open PRs**, read when this session resumed: the owner's #328 and #173. R65's parts 1 to 5 are on `main` (#324, #325, #327, #329, #334); part 6 waits for R51.
 
-## The owner's decision (2026-10-23)
+## The owner's decisions (2026-10-23)
 255. **On the fast lane, the (b) second opinion reaches the owner on the build PR at (e)** (the owner, "Carried at (e) (Recommended)", on this session's question). The design PR is closed as `sdlc:superseded` once the build PR exists, and the owner's first look is the build PR at (e) (`docs/OPERATING_MODEL.md` §4, "The fast lane"). So when phase (e) has run, the deploy workflow's `second-opinion` job carries the (b) opinion of the superseded design PR onto the build PR:
     - once per build PR, with the verdict, the concerns and a link to the original comment;
     - as a section of the (e) comment when (e) is on, else as a comment of its own;
@@ -19,6 +19,11 @@ The previous record (R65's part 5, from #334) is now `docs/progress/2026-10-23-r
     - when none was posted there, saying so instead of staying silent.
 
     The other options were a line in the build PR's body, a comment on the build PR at (b), or turning on (e) in the sample. They were not taken: the first two race the build run, and the last loses the (b) opinion still.
+256. **The Gemini items go to the end of the queue** (the owner, "Send this Gemini roadmap items to the end of the queue", after Part 2's first live call was refused, below). R8 stays last in ROADMAP's Order column, and R62 is ranked after it, still not accepted. Two parts of this session wait behind every other ranked candidate:
+    - Part 2, the first live call;
+    - Part 3, Gemini in R28's roles. The proposal and its questions are carried in the session file, not put to the owner yet.
+
+    This PR's fix stays as built: it keeps this repository's own job green at its pin whatever Gemini's order.
 
 ## What was built (plugin 1.0.24)
 1. **Defect 1: the job at any pin.** In both copies of `sdlc-design.yml` and `sdlc-deploy.yml` and their templates, the second-opinion step runs only when `hashFiles('framework/plugin/external/cli.py')` is not empty. A framework pinned before 1.0.19, as this repository's 1.0.17, has no `plugin/external/`, so the step is skipped and the job stays green. With `external_review` off, `cli.py review` now writes no record file and posts nothing; the printed record is the only trace. Tests: `test_a_pin_without_plugin_external_skips_the_step_green` (the four copies) and `test_off_writes_and_posts_nothing`.
@@ -69,10 +74,26 @@ None in this repository: the root pin stays at 1.0.17 (choice 249, point 2), and
 
 The sample takes 1.0.24 in a sample PR after the tag `v1.0.24`. That PR carries the workflow copies and the owner's `sdlc.yaml` edits, given in full in the owner's format with the pin move and choice 252's row 5 (choice 253, point 8).
 
+## Part 2's first try (2026-10-23)
+- **The dry run passed:** `cli.py review --root . --id 0017 --phase b --ref main --dry-run` on the sample's `main` (`28fba16`) built 8 files, 31,214 characters (verified here, command output).
+- **The real call was refused, at 0.2 s:** `HTTP 429` on the free tier, with `generate_content_free_tier_requests` and `..._input_token_count` both at `limit: 0` for `gemini-4-argon`. This is the owner's run in a Codespace, read from the owner's screenshot.
+  - The key's Google project has no billing linked, and on the free tier Argon has no quota at all.
+  - Listing a model (Part 0) is no proof it can be called.
+  - The client recorded the refusal as "not run" and exited 0, as designed.
+  - The request's shape is not verified: the refusal came before it was read.
+- **The owner's Google AI Pro plan carries no Gemini API quota.** It does carry Google Cloud credit for the API, $10 a month by Google's plan pages (not verified from a bill). The remedy is billing on the key's project, with that credit and a budget alert. None of it is done yet; it waits with R8 (choice 256).
+- Note 58 is not written: the request's shape it was to record is not verified.
+
 ## Left
-- **Part 2, the first live call:** the owner runs a dry run and one real review by hand, and note 58 records the model id (Part 0, in the session's first file) and the request's shape.
-- **Part 3:** Gemini in R28's roles, the owner's questions first.
+- **Part 2, the first live call** and note 58, after billing on the sample key's project; behind every other ranked candidate (choice 256).
+- **Part 3:** Gemini in R28's roles, the owner's questions first; the same.
 - Every other open item is in the session file.
+
+## What the owner does
+| When | Act |
+|---|---|
+| Now | Merge this PR when `Framework checks` is green on its final head. |
+| When R8's turn comes | Billing on the sample key's Google project (the AI Pro credit, a $10 budget alert); then the session that takes R8 runs Part 2 again. |
 
 ## Checks (this repository)
 `python tasks.py verify` on the final head; its output is in the PR.
