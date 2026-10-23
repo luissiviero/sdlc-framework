@@ -327,9 +327,9 @@ def test_init_writes_evals_and_bands_once(tmp_path):
     # owner edits survive: create-only files are kept on re-run
     (root / "bands.yaml").write_text("metric: my_metric\n", encoding="utf-8")
     report2 = _run_init(root)
-    assert (
-        report2["files"]["bands.yaml"] == "kept" and report2["files"]["evals/README.md"] == "kept"
-    )
+    # R64: an edited guardrail is the owner's own content: kept, never refreshed (decision 6)
+    assert report2["files"]["bands.yaml"] == "kept"
+    assert report2["files"]["evals/README.md"] == "kept"
     assert (root / "bands.yaml").read_text(encoding="utf-8") == "metric: my_metric\n"
 
 
@@ -348,7 +348,7 @@ def test_init_creates_the_policies_folder_with_its_readme_only(tmp_path):
     intent = (root / "changes" / "0000-sdlc-init" / "intent.md").read_text(encoding="utf-8")
     assert "`policies/` starts\nempty" in intent or "`policies/` starts empty" in intent
     (root / "policies" / "README.md").write_text("Our own words.\n", encoding="utf-8")
-    assert _run_init(root)["files"]["policies/README.md"] == "kept"
+    assert _run_init(root)["files"]["policies/README.md"].startswith("kept; outdated (edited)")
     assert (root / "policies" / "README.md").read_text(encoding="utf-8") == "Our own words.\n"
 
 

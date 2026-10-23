@@ -1,6 +1,6 @@
 ---
 name: security-baseline
-description: The organization's security baseline. Use whenever creating or changing an endpoint, authentication, authorization, secrets handling, input parsing, shell or SQL execution, file access or dependencies, in every security review pass, and whenever asked whether a credential, token, key or password may be stored, committed or logged, or whether code handles its inputs safely ("check this for security", "is this endpoint safe", "review for vulnerabilities", "handle the token", "can this token go in a config file", "is this input handling safe").
+description: The organization's security baseline: the rules this project applies to secrets, credentials, endpoints and untrusted input. Use it before answering any question about where a token, API key, password or other credential may be kept, committed, configured or logged in this repository, even one that seems answerable from general knowledge, and whenever creating or changing an endpoint, authentication, authorization, secrets handling, input parsing, shell or SQL execution, file access or dependencies, in every security review pass, and whenever asked whether code handles its inputs safely ("check this for security", "is this endpoint safe", "review for vulnerabilities", "handle the token", "can this token go in a config file", "is it allowed to commit this key", "is this input handling safe").
 ---
 
 # Security baseline
