@@ -46,6 +46,14 @@ Both are in `docs/notes/59.md`.
 - ROADMAP: R51's and R25's rows annotated, as choice 259 allows a build PR.
 - `docs/notes/59.md` and the regenerated notes index.
 
+### Existing tests whose expectation changed with the behaviour
+Each change follows a behaviour the accepted proposals change on purpose; no test was skipped or deleted.
+- `tests/test_fix_round_gaps.py`, the turn-cap test: the run is green and the reason says "stopped at the turn limit" (R25 part 1). Before, it asserted a red run with "claude exited 0, error_max_turns".
+- `tests/test_fix_round_gaps.py` and `tests/test_fix_round_edges.py`, ten gap-3 tests (three and seven): they used the turn limit only as an example of a failed session. They now use a session that failed with `error_during_execution` (`FAILED_RUN`), which no outer bound stops, and keep their assertions on the gap-3 path.
+- `tests/test_gate.py`, three budget tests, and `tests/test_ci.py`'s no-budget-left test: they also write the stored session results the total is now rebuilt from (M8). The ledger assertions stay, and one more shows that an emptied ledger no longer lowers the total.
+- `tests/test_templates.py` and `tests/test_ci.py`: the release group is `sdlc-release`, and the deploy job allows 330 minutes.
+- `tests/test_ci_end_to_end.py`, the web-session intent test: "nothing else was pushed" now reads "the reserved `sdlc/0002/a` holds only the reservation", since `new-change` reserves the id before the round runs.
+
 ## Not built, and why
 - **R51 check 8** (the (e) offer withdrawn on a later push, and the (e) run re-run on a push to the default branch for every open build PR): it needs a new trigger. Check 9 already stops an untested merge commit from deploying.
 - **R51 check 11, the other half**: recording every change a release's tip holds. A release that GitHub's queue replaced stays unrecorded until the owner dispatches it with its PR number. The workflow's comment says so.

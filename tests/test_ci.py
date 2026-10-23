@@ -678,7 +678,8 @@ def test_a_change_with_no_budget_left_parks_before_the_session(project, monkeypa
     the budget reason of the gate's ``limits`` check and never invokes the CLI."""
     root, change = project
     set_state(change, "c", gate_phase="c", gate_result="passed")
-    limits.record_spend_entry(change / "evidence", "c", "claude-c.json", 150.0)
+    # M8 (R25, 1.0.25): the total is rebuilt from the stored session results, not the ledger
+    write(change / "evidence" / "claude-c.json", json.dumps({"total_cost_usd": 150.0}))
     invoked: list = []
     monkeypatch.setattr(run_phase, "invoke", lambda *a, **k: invoked.append(a) or (None, "", "", 1))
     calls = upsert_recorder(monkeypatch)
