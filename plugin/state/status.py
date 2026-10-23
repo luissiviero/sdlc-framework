@@ -393,6 +393,9 @@ MERGED_AT_GATE_E_PRODUCTION_REASON = (
     MERGED_AT_GATE_E_REASON + "; the release approval sdlc:release-approved is the release "
     "workflow's second act on this declared production"
 )
+# What gate (e) records when it passes on the build branch (``gate/gate.py``): true until the
+# owner's merge, so on the default branch it is read as the merge reason.
+WAITING_AT_GATE_E_REASON = "waiting for the owner at gate (e)"
 
 
 def merged_at_gate_e(st: Status, production: bool = False) -> Status:
@@ -404,17 +407,24 @@ def merged_at_gate_e(st: Status, production: bool = False) -> Status:
     (decision 36), or the owner merges (decision 13; OPERATING_MODEL section 4). The last
     run on the branch may have parked (the thirteenth live run parked change 0001 on the
     iteration cap and the owner merged anyway), so the park is lifted and
-    the gate reads e/passed, stamped with the file's ``updated_at``. Anything else (another
-    phase, or gate (e) already passed) comes back as an unchanged copy. ``production`` is
+    the gate reads e/passed, stamped with the file's ``updated_at``. A gate (e) that already
+    passed keeps its result and time, but its "waiting for the owner" reason, true only until
+    the merge, reads as the merge reason (changes 0002, 0003 and 0005 of this repository read
+    "waiting" on ``main`` after their merges). Another phase, or another reason, comes back as
+    an unchanged copy. ``production`` is
     ``sdlc.yaml: deploy.production``: when true the gate still reads passed (the change is
     done and merged), but the reason says the release label is the second act, which is the
     release workflow's to check, not this function's.
     """
     derived = Status.from_dict(st.to_dict())
-    if st.phase != "e" or (st.gate.phase == "e" and st.gate.result == "passed"):
+    if st.phase != "e":
         # an abandoned change (decision 25) never reads as merged: its phase is not e
         return derived
     reason = MERGED_AT_GATE_E_PRODUCTION_REASON if production else MERGED_AT_GATE_E_REASON
+    if st.gate.phase == "e" and st.gate.result == "passed":
+        if st.gate.reason == WAITING_AT_GATE_E_REASON:
+            derived.gate = Gate(phase="e", result="passed", reason=reason, at=st.gate.at)
+        return derived
     derived.gate = Gate(phase="e", result="passed", reason=reason, at=st.updated_at)
     derived.parked_reason = None
     return derived

@@ -488,14 +488,33 @@ def test_read_status_on_the_default_branch_derives_gate_e_without_a_write(tmp_pa
         on_main = status.read_status(change_dir, on_default_branch=True)
         assert on_main.gate.result == "parked" and on_main.parked_reason
         assert on_main.to_dict() == status.read_status(change_dir).to_dict()
-    # an e that already passed its gate keeps its own record
+    # an e that already passed its gate keeps its result and time; the build run's "waiting
+    # for the owner" is true only until the merge, so on main it reads as the merge reason
     st = status.read_status(change_dir)
     st.phase = "e"
     st.record_gate("e", "passed", "waiting for the owner at gate (e)")
     status.write_status(change_dir, st)
+    raw = status.read_status(change_dir)
     kept = status.read_status(change_dir, on_default_branch=True)
-    assert kept.gate.reason == "waiting for the owner at gate (e)"
-    assert kept.to_dict() == status.read_status(change_dir).to_dict()
+    assert kept.gate == status.Gate(
+        phase="e", result="passed", reason=status.MERGED_AT_GATE_E_REASON, at=raw.gate.at
+    )
+    assert {**kept.to_dict(), "gate": None} == {**raw.to_dict(), "gate": None}
+    # another reason on a passed gate is the record's own, and is kept as written
+    st.record_gate("e", "passed", "passed by hand")
+    status.write_status(change_dir, st)
+    own = status.read_status(change_dir, on_default_branch=True)
+    assert own.to_dict() == status.read_status(change_dir).to_dict()
+
+
+def test_the_waiting_reason_is_the_one_gate_e_records():
+    """``WAITING_AT_GATE_E_REASON`` is what ``gate/gate.py`` writes when gate (e) passes on the
+    build branch; were the two to drift, merged changes would read "waiting" on main again."""
+    source = (Path(__file__).resolve().parents[1] / "plugin" / "gate" / "gate.py").read_text(
+        encoding="utf-8"
+    )
+    assert '"passed", f"waiting for the owner at gate ({ctx.phase})"' in source
+    assert status.WAITING_AT_GATE_E_REASON == "waiting for the owner at gate (e)"
 
 
 def test_show_and_list_on_the_default_branch_print_the_derived_gate(repo, capsys):
