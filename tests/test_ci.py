@@ -753,7 +753,7 @@ def test_ci_settings_are_rendered_against_the_project_root(tmp_path):
     base = run_phase._posix_root(tmp_path.resolve().as_posix())
     assert base.startswith("//") and not base.startswith("///") and ":" not in base
     deny = data["permissions"]["deny"]
-    for name in (".claude/**", "CLAUDE.md", "REVIEW.md", "sdlc.yaml"):
+    for name in (".claude/**", "CLAUDE.md", "REVIEW.md", "sdlc.yaml", "policies/**"):
         assert f"Edit(/{name})" in source["permissions"]["deny"]
         assert f"Edit({base}/{name})" in deny and f"Edit(/{name})" not in deny
     for rule in ("Read(.env*)", "Read(**/.env*)", "WebFetch", "Bash(curl *)"):

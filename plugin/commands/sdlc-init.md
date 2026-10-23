@@ -217,7 +217,10 @@ close look" banner shows (gate (a) matches the globs on this PR's own files, dec
   line. On an upgrade to 1.0.22, replace `sdlc-abandon.yml`, `sdlc-runbook.yml` and
   `sdlc-scan.yml` (they may now write checks, so their pull requests get the "not a build
   PR" check ruleset 2 requires), `sdlc-digest.yml` (it reads the `sdlc-merge` environment)
-  and `sdlc-merge.yml` (its pinned actions), with the pin in the same pull request.
+  and `sdlc-merge.yml` (its pinned actions), with the pin in the same pull request. On an
+  upgrade to 1.0.38, re-run /sdlc-init in the pin's pull request: it adds
+  `Edit(/policies/**)` to `.claude/settings.json`, which the build's preflight requires from
+  that version on (decision 40); without it the first build parks with the missing rule.
 - The merge App (decision 36; ROADMAP R22): gate (e) is your approving review on the build
   PR, and a GitHub App of its own merges on it, so the approval is your only act there.
   It is not the App above: GitHub grants a bypass to an actor, not to a job, and only this

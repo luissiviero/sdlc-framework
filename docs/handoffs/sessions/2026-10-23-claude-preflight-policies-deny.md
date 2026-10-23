@@ -21,6 +21,7 @@
 | Item | Where | What is left | Who acts | Blocks 1.0.0 |
 |---|---|---|---|---|
 | This PR | framework | Green checks, the owner's merge | this session; owner | no |
+| This repository's `.claude/settings.json` lacks `Edit(/policies/**)` | this PR's record, "Proposed edits for the owner" | The owner's row, before this repository's pin reaches 1.0.38 | owner | no |
 | A project initialised before #369 | this PR's record, "Known limits" | Re-run `/sdlc-init` on its next upgrade (the sample included) | owner | no |
 | Everything the files above list open | their "Every open item" | Carried, not re-verified | as there | no |
 
@@ -29,4 +30,5 @@ Done, dropped: "The template's `Edit(/policies/**)` rule" of `2026-10-23-claude-
 ## What the owner does
 | When | Act |
 |---|---|
-| When it is green | Merge this PR. |
+| When it is green, after R18 and R64 | Merge this PR. |
+| Before this repository's pin reaches 1.0.38 | Apply the row in this PR's record (`.claude/settings.json`). |
