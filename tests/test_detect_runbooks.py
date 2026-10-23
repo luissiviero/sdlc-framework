@@ -647,7 +647,7 @@ def test_without_the_approved_commit_on_origin_the_runbook_is_refused(tmp_path):
 
 
 def test_a_replace_ref_does_not_swap_the_runbook_s_approved_tree(tmp_path, monkeypatch):
-    """The review of 1.0.25: ``git replace <approved> <evil>`` made the worktree check out
+    """The review of 1.0.26: ``git replace <approved> <evil>`` made the worktree check out
     the session's tree; on a runner the runner's git reads no replace ref."""
     root = make_repo(tmp_path, {"rollback.py": "print('approved script')\n"})
     approved = runbooks.approved_commit(root, "main")

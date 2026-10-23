@@ -305,7 +305,7 @@ def head_matches(root: Path, change_dir: Path, head: str | None) -> bool:
         if current == head:
             return True
         gitops.run(root, "merge-base", "--is-ancestor", head, "HEAD")
-        # a rename's source counted (the review of 1.0.25): a file moved into the change
+        # a rename's source counted (the review of 1.0.26): a file moved into the change
         # folder is a change outside it
         changed = gitops.run(root, "diff", "--name-status", "--no-renames", head, "HEAD")
     except (gitops.GitError, OSError):

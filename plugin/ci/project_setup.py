@@ -39,7 +39,7 @@ state is not its concern, the committed head is.
 ``--command-from`` reads only the command from that ref's ``sdlc.yaml`` and runs it in the
 checkout as it is, with no refusal of the head's other files (R44, the head's own setup
 command): the fix workflow checks out a session's head, which changes source files by design,
-and before 1.0.25 a ``sdlc.yaml`` the session edited chose the command that runs there before
+and before 1.0.26 a ``sdlc.yaml`` the session edited chose the command that runs there before
 the runner's guardrail park. The command still runs the head's own manifests; the workflow
 then removes ``framework/`` and checks it out again, so nothing the install wrote there runs
 in the next step.

@@ -149,7 +149,7 @@ def runner_args() -> list[str]:
         "-c", f"core.hooksPath={_NO_HOOKS_DIR}", "-c", "core.fsmonitor=false",
         "-c", f"core.attributesFile={os.devnull}", "-c", "commit.gpgSign=false",
         "-c", "tag.gpgSign=false", "-c", "diff.external=",
-        # the review of 1.0.25: a replace ref the session wrote (.git/refs/replace/) made a
+        # the review of 1.0.26: a replace ref the session wrote (.git/refs/replace/) made a
         # worktree of the approved commit check out another tree, and the diff readers see
         # no change; the push never carries a replacement, so the runner reads past them
         "--no-replace-objects",
@@ -157,7 +157,7 @@ def runner_args() -> list[str]:
 
 
 # git-lfs's own filter, as ``git lfs install --local`` writes it (``actions/checkout`` with
-# ``lfs: true``): judged by its value, so an LFS project keeps working (the review of 1.0.25)
+# ``lfs: true``): judged by its value, so an LFS project keeps working (the review of 1.0.26)
 LFS_FILTER = re.compile(r"^filter\.lfs\.(clean|smudge|process)$")
 LFS_VALUE = re.compile(r"^git-lfs (clean|smudge|filter-process)( -- %f)?$")
 

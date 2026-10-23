@@ -99,7 +99,7 @@ RUNS_PROGRAM = (
     r"^diff\..*\.(textconv|command)$",
     r"^merge\..*driver$",
     r"^filter\..*\.(clean|smudge|process)$",
-    r"^protocol\.(.*\.)?allow$",  # ext:: runs a command as a transport (the 1.0.25 review)
+    r"^protocol\.(.*\.)?allow$",  # ext:: runs a command as a transport (the 1.0.26 review)
 )
 PROGRAM_SCOPES = (("local", RUNS_PROGRAM), ("worktree", RUNS_PROGRAM))
 CLEAN_ENV = {
@@ -121,7 +121,7 @@ def hardening() -> list[str]:
         _NO_HOOKS_DIR = tempfile.mkdtemp(prefix="sdlc-no-hooks-")
     return [
         "-c", f"core.hooksPath={_NO_HOOKS_DIR}", "-c", "core.fsmonitor=false",
-        "--no-replace-objects",  # a replace ref the session wrote is not read (1.0.25)
+        "--no-replace-objects",  # a replace ref the session wrote is not read (1.0.26)
     ]  # fmt: skip
 
 

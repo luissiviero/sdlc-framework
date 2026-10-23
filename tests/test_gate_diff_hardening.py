@@ -226,7 +226,7 @@ def test_the_hook_log_redacts_a_secret_in_the_command(tmp_path):
     assert key not in record["command"] and "[redacted]" in record["command"]
 
 
-# --- the fresh-context review of 1.0.25 ----------------------------------------------------------
+# --- the fresh-context review of 1.0.26 ----------------------------------------------------------
 def test_a_replace_ref_does_not_hide_a_commit_from_the_runner_s_diff(tmp_path, monkeypatch):
     """A session writes ``refs/replace/<head>`` pointing at a commit with the base's tree:
     without ``--no-replace-objects`` the diff printed nothing."""

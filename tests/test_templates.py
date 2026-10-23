@@ -315,7 +315,7 @@ def test_this_repository_s_workflow_copies_match_the_template():
         installed = (REPO_WORKFLOW_DIR / name).read_text(encoding="utf-8")
         expected = render.render_file(WORKFLOW_DIR / name, VALUES)
         if name == FIX_WORKFLOW:
-            # R44 (1.0.25): project_setup.py --command-from is not in the framework this
+            # R44 (1.0.26): project_setup.py --command-from is not in the framework this
             # repository's sdlc.yaml pins (1.0.17), so the installed copy keeps the setup line
             # without it until the pin moves (R14's turn); the rest is the template's
             expected = expected.replace(COMMAND_FROM, "")
