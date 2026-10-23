@@ -1,0 +1,2 @@
+<!-- R27, the trigger eval of the coding-standards policy skill, prompt 2 of 3 (article p.22 step 4: "Ask Claude to do the relevant task in different ways and confirm the skill loads each time"). The prompt never names the skill. -->
+I am about to add a function to sample_pkg that rounds a number to two decimals. Before I write it, tell me the rules a code change in this project has to follow. Do not edit any file.

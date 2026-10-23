@@ -41,7 +41,9 @@ prompt is sent, 0.2.28) and ``checks.yaml`` (``checks`` plus optional ``descript
 4. reads the JSON result (``subtype``, ``is_error``, ``num_turns``, ``total_cost_usd``,
    ``result``, ``permission_denials``): ``is_error`` or a subtype other than ``success``
    (``error_max_turns``, ``error_max_budget_usd``, ...) fails the case, and so does output
-   that is not JSON or a run past the wall clock ("timed out");
+   that is not JSON or a run past the wall clock ("timed out"). A case with a ``skill``
+   check (R27) runs with ``--verbose``, and its skill loads are read from the run's
+   ``Skill`` tool calls (``skills_loaded``);
 5. evaluates the checks in order, each giving ``{kind, passed, detail}``; the case passes when
    the run succeeded and every check passed. A check with an unknown key, a case folder
    without ``prompt.md`` or ``checks.yaml`` and an unreadable ``checks.yaml`` fail the case
@@ -118,13 +120,18 @@ DEFAULTS: dict[str, Any] = {
 }
 FORBIDDEN_MODES = ("bypassPermissions",)  # CLAUDE.md: never use bypass-permissions mode
 CASE_KEYS = frozenset({"description", "setup", "checks", *DEFAULTS})
-CHECK_KINDS = ("command", "file", "output", "denied")
+# ``skill`` (R27): the run loaded the named skill, read from its tool calls (article p.22
+# step 4: "test that the skill triggers")
+CHECK_KINDS = ("command", "file", "output", "denied", "skill")
 CHECK_KEYS = {
     "command": frozenset({"command", "exit"}),
     "file": frozenset({"file", "exists", "contains", "not_contains", "unchanged", "equals"}),
     "output": frozenset({"output"}),
     "denied": frozenset({"denied"}),
+    "skill": frozenset({"skill"}),
 }
+SKILL_TOOL = "Skill"
+PLUGIN_NAMESPACE = "sdlc:"  # the plugin's skills load as ``sdlc:<name>``
 OUTPUT_KEYS = frozenset({"contains", "not_contains", "regex"})
 # ``framework`` is where the CI workflows check out the pinned framework inside the project:
 # its own CLAUDE.md and .claude/ must not colour a case
@@ -304,6 +311,9 @@ def validate_check(index: int, check: Any) -> list[str]:
                     re.compile(str(spec["regex"]))
                 except re.error as exc:
                     problems.append(f"{where}: regex does not compile: {exc}")
+    elif kind == "skill":
+        if not isinstance(check["skill"], str) or not check["skill"].strip():
+            problems.append(f"{where}: skill must name a skill")
     elif not isinstance(check["denied"], str) or not check["denied"].strip():
         problems.append(f"{where}: denied must name a tool")
     return problems
@@ -435,11 +445,16 @@ def compose(
     config: Mapping[str, Any],
     plugin_dir: Path,
     env: Mapping[str, str],
+    verbose: bool = False,
 ) -> list[str]:
     """The argv of one case's run. The prompt goes right after ``-p``: ``--allowedTools``
     and ``--disallowedTools`` take several values, so a prompt placed after them would be
-    read as one more tool name (plugin/ci/run_phase.py, observed live)."""
+    read as one more tool name (plugin/ci/run_phase.py, observed live). ``verbose`` (a case
+    with a ``skill`` check, R27) asks for every message, so the tool calls can be read; the
+    result message is still the last ``result`` of the list (``parse_result``)."""
     argv = [*claude_prefix(claude), "-p", prompt, "--output-format", "json"]
+    if verbose:
+        argv.append("--verbose")
     argv += ["--permission-prompts", "none"]
     argv += ["--permission-mode", str(config["permission_mode"])]
     argv += ["--max-turns", str(config["max_turns"])]
@@ -481,6 +496,42 @@ def parse_result(stdout: str) -> dict[str, Any] | None:
         if isinstance(data, dict):
             return data
     return None
+
+
+def _messages(stdout: str) -> list[Any]:
+    """Every message of a verbose run: the JSON list, or one JSON object per line."""
+    text = stdout.strip()
+    try:
+        data = json.loads(text) if text else []
+    except ValueError:
+        data = []
+        for line in text.splitlines():
+            try:
+                data.append(json.loads(line))
+            except ValueError:
+                continue
+    return data if isinstance(data, list) else [data]
+
+
+def skills_loaded(stdout: str) -> list[str]:
+    """The skills a run loaded, in order: each ``Skill`` tool call of an assistant message,
+    named by its ``skill`` input (``command`` on older builds), without the plugin's
+    ``sdlc:`` prefix (R27, the trigger evals; the shape is recorded in ``docs/notes/``)."""
+    names = []
+    for message in _messages(stdout):
+        if not isinstance(message, dict) or message.get("type") != "assistant":
+            continue
+        content = (message.get("message") or {}).get("content")
+        for block in content if isinstance(content, list) else []:
+            if not isinstance(block, dict) or block.get("type") != "tool_use":
+                continue
+            if block.get("name") != SKILL_TOOL:
+                continue
+            spec = block.get("input") or {}
+            name = str(spec.get("skill") or spec.get("command") or "").strip().lstrip("/")
+            if name:
+                names.append(name.removeprefix(PLUGIN_NAMESPACE))
+    return names
 
 
 def run_failure(data: Mapping[str, Any]) -> str:
@@ -590,6 +641,14 @@ def check_output(check: Mapping[str, Any], result_text: str) -> dict[str, Any]:
     return _outcome("output", not failures, "; ".join(failures) or "ok")
 
 
+def check_skill(check: Mapping[str, Any], loaded: list[str]) -> dict[str, Any]:
+    want = str(check["skill"]).removeprefix(PLUGIN_NAMESPACE)
+    if want in loaded:
+        return _outcome("skill", True, f"{want} was loaded")
+    seen = ", ".join(loaded) or "none"
+    return _outcome("skill", False, f"{want} was not loaded (skills loaded: {seen})")
+
+
 def check_denied(check: Mapping[str, Any], denied: list[str]) -> dict[str, Any]:
     want = check["denied"]
     hit = [name for name in denied if name == want or fnmatch.fnmatchcase(name, want)]
@@ -607,6 +666,7 @@ def evaluate(
     before: Mapping[str, bytes | None],
     expected: Mapping[str, bytes | None],
     timeout: float,
+    loaded: list[str] | None = None,
 ) -> dict[str, Any]:
     kind = check_kind(check)
     if kind == "command":
@@ -620,6 +680,8 @@ def evaluate(
         return check_file(check, workspace, before, expected)
     if kind == "output":
         return check_output(check, str(result.get("result") or ""))
+    if kind == "skill":
+        return check_skill(check, loaded or [])
     return check_denied(check, denials(result))
 
 
@@ -675,8 +737,10 @@ def run_case(
                 res["reason"] = f"setup failed: {detail}"
                 return res
         before, expected = snapshot(case, workspace)
-        argv = compose(claude, case.prompt, config, plugin_dir, env)
+        verbose = any(check_kind(check) == "skill" for check in config["checks"])
+        argv = compose(claude, case.prompt, config, plugin_dir, env, verbose)
         result: dict[str, Any] = {}
+        loaded: list[str] = []
         try:
             code, out, err = run_bounded(argv, workspace, timeout, auth.credential_env(env))
         except subprocess.TimeoutExpired:
@@ -692,6 +756,7 @@ def run_case(
             else:
                 result = parsed
                 reason = run_failure(result)
+                loaded = skills_loaded(out)
         res["subtype"] = result.get("subtype")
         res["turns"] = result.get("num_turns") or 0
         res["cost_usd"] = float(result.get("total_cost_usd") or 0.0)
@@ -703,6 +768,7 @@ def run_case(
                 before=before,
                 expected=expected,
                 timeout=timeout,
+                loaded=loaded,
             )
             for check in config["checks"]
         ]

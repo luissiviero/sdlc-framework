@@ -1,0 +1,13 @@
+# The framework-level suite (build guide step 35). R27: the trigger eval of the coding-standards
+# policy skill, prompt 3 of 3. The run loads the skill on its own, seen in its Skill tool
+# call (plugin/evals/run.py, the skill check; the shape in docs/notes/61.md); the prompt asks
+# for the task without naming the skill and the run edits nothing.
+description: the coding-standards skill loads for "would it pass review" without being named
+tools: "Read,Grep,Glob,Skill"
+max_turns: 6
+budget_usd: 0.3
+timeout_seconds: 300
+checks:
+  - skill: "coding-standards"
+  - file: "sample_pkg/calc.py"
+    unchanged: true

@@ -57,11 +57,18 @@ checks:
       not_contains: "cannot"
       regex: "\\d+ passed"
   - denied: "Edit"                     # a tool the permission rules or a hook refused
+  - skill: "security-baseline"         # the run loaded this skill (its Skill tool call)
 ```
 A file check without `exists` requires the file when it asserts `contains` or `equals` (or
 nothing else); a check that only asserts `not_contains` or `unchanged` passes when the file
 is absent. A check with an unknown key, a case without `prompt.md` or `checks.yaml`, and a
 `checks.yaml` that cannot be read fail the case with the reason: nothing is skipped.
+
+A `skill` check (R27; article p.22 step 4, "test that the skill triggers") passes when the
+run's tool calls show the skill loading, `sdlc:<name>` or `<name>`; a case with one runs with
+`--verbose` so the calls are in the output. The framework runs three such cases per policy
+skill on every plugin change; a project that replaces a policy skill under `.claude/skills/`
+adds the framework's three cases for that skill here, in the PR that adds the override.
 
 ## Running it
 ```
