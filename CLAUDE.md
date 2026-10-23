@@ -29,7 +29,7 @@ Run tests and lint before reporting any task complete, and paste the output. If 
 
 ## Things to get right
 - Only the owner merges to `main`, or the merge App on the owner's approving review (decision 36); the automation identity has branch-only write access. Never use bypass-permissions mode.
-- Events caused by the CI workflow token do not start workflow runs (except workflow_dispatch / repository_dispatch): automated phase transitions dispatch the next workflow explicitly. The automation pushes as the project's GitHub App, whose events do start runs (decision 33). The plugin requires the App (R22): without vars.SDLC_APP_ID a run stops with the reason; which plugin version runs here is `plugin.version` in `sdlc.yaml`. The explicit dispatch stays for the in-job fallback to the workflow token after 50 minutes.
+- Events caused by the CI workflow token do not start workflow runs (except workflow_dispatch / repository_dispatch; docs/notes/11.md): automated phase transitions dispatch the next workflow explicitly. The automation pushes as the project's GitHub App, whose events do start runs (decision 33). The plugin requires the App (R22): without vars.SDLC_APP_ID a run stops with the reason; which plugin version runs here is `plugin.version` in `sdlc.yaml`. The explicit dispatch stays for the in-job fallback to the workflow token after 50 minutes.
 - Escalation means park (label `sdlc:needs-human`, write "what I need from you"); the only notification is the review request on a PR that waits for the owner (decision 31).
 - The plan.md run is read-only (Read/Grep/Glob); the first run with edit tools is phase (c).
 - Verify how Claude Code on Windows invokes hook commands before writing the first hook; record the answer in `docs/notes/1.md`.
@@ -49,7 +49,7 @@ Run tests and lint before reporting any task complete, and paste the output. If 
 
 ## Verifying your work
 <!-- Verbatim structure of the article's verification block (p.28). -->
-- Build: `python -m compileall -q plugin tests tasks.py` (must finish with no output and exit code 0)
+- Build: `python -m compileall -q plugin tests tasks.py .github/scripts` (must finish with no output and exit code 0)
 - Test: `python -m pytest` (all green; never skip or delete a failing test)
 - Lint: `python -m ruff check . && python -m ruff format --check .` (zero warnings)
 Run all three before reporting any task complete, and paste the output.
