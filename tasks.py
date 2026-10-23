@@ -2,7 +2,7 @@
 
 Usage: python tasks.py <task>
 Tasks: test | lint | format | check | verify | notes-index | decisions-index | choices-index |
-       docs-lint | next-free | help
+       docs-lint | next-free | version-check | help
 
 Everything runs through ``sys.executable -m ...`` with argument lists (no shell), so the
 same file works in cmd.exe, PowerShell, Git Bash and a Linux runner. ``notes-index`` runs in
@@ -15,7 +15,8 @@ stubs and Portuguese words, ROADMAP R58; a number taken twice, a rank outside RO
 retired term used as a live one, CLAUDE.md's verifying lines against ``sdlc.yaml``, R65).
 ``verify`` runs every check a pull request needs (ROADMAP R65, part 4). ``next-free`` reads git:
 the next free choice, candidate, note, decision and patch on ``main`` and every fetched branch
-ahead of it (ROADMAP R65, part 1).
+ahead of it (ROADMAP R65, part 1). ``version-check`` fails a branch that bumps ``plugin.json``
+to a version ``main`` already holds or a tag already has (ROADMAP R5's race, choice 257).
 """
 
 from __future__ import annotations
@@ -120,12 +121,14 @@ def _run_steps(command: str) -> int:
 
 
 def task_verify() -> int:
-    """Every check a PR needs: sdlc.yaml's build, lint and test, docs-lint, plugin validate."""
+    """Every check a PR needs: sdlc.yaml's build, lint and test, docs-lint, the version check,
+    plugin validate."""
     commands = read_commands()
     results: list[tuple[str, int | None]] = []
     for key in ("build", "lint"):
         results.append((key, _run_steps(commands[key]) if commands[key] else None))
     results.append(("docs-lint", task_docs_lint()))
+    results.append(("version-check", task_version_check()))
     test = commands["test"]
     if not test:
         results.append(("test", None))
@@ -1388,18 +1391,23 @@ def read_numbers(root: Path, commit: str) -> dict[str, set[tuple[int, ...]]]:
     return numbers_taken(paths, _read_blobs(root, commit, wanted))
 
 
-def branches_ahead(root: Path) -> tuple[str, str, dict[str, list[str]]]:
-    """(the base ref, its commit, ``commit -> branch names``) for every local or fetched
-    branch, and a detached ``HEAD``, that holds a commit the base lacks; a fetched branch is
-    named without its remote. ``LookupError`` when neither ``origin/main`` nor ``main`` exists."""
+def main_commit(root: Path) -> tuple[str, str]:
+    """(the base ref, its commit): ``origin/main``, else ``main``. ``LookupError`` when neither
+    exists."""
     for ref in BASE_REFS:
         try:
             base = _git(root, "rev-parse", "--verify", "-q", f"{ref}^{{commit}}").decode().strip()
         except subprocess.CalledProcessError:
             continue
-        break
-    else:
-        raise LookupError("no main branch: neither origin/main nor main exists")
+        return ref, base
+    raise LookupError("no main branch: neither origin/main nor main exists")
+
+
+def branches_ahead(root: Path) -> tuple[str, str, dict[str, list[str]]]:
+    """(the base ref, its commit, ``commit -> branch names``) for every local or fetched
+    branch, and a detached ``HEAD``, that holds a commit the base lacks; a fetched branch is
+    named without its remote. ``LookupError`` when neither ``origin/main`` nor ``main`` exists."""
+    ref, base = main_commit(root)
     listed = _git(root, "for-each-ref", "--format=%(refname)%09%(objectname)", "refs/heads")
     listed += _git(root, "for-each-ref", "--format=%(refname)%09%(objectname)", "refs/remotes")
     heads: dict[str, list[str]] = {}
@@ -1476,6 +1484,86 @@ def task_next_free() -> int:
     return 0
 
 
+# --- the version check (ROADMAP R5's race; choice 257) -------------------------------------
+# Two pull requests that bump plugin.json to one version merge clean, and sdlc-tag.yml tags the
+# first only: the second's change ships under a tag that does not hold it. A branch bumps when
+# one of its own commits (ahead of main) holds a version none of its parents holds, so a merge
+# of main into the branch brings main's version without bumping. A branch that bumps must hold
+# a version above main's whose tag does not exist yet; one that bumps nothing passes, since a
+# change may ship with the next release (PR #88). On main itself nothing is ahead, so nothing
+# is checked.
+
+
+def _version_at(root: Path, commit: str) -> tuple[int, ...] | None:
+    """The plugin version at ``commit``, or None when it has no readable one."""
+    try:
+        text = _read_blobs(root, commit, [PLUGIN_MANIFEST]).get(PLUGIN_MANIFEST, "")
+        match = VERSION_RE.match(str(json.loads(text).get("version", "")))
+    except (subprocess.CalledProcessError, ValueError, AttributeError):
+        return None
+    return tuple(int(v) for v in match.groups()) if match else None
+
+
+def version_bumped(root: Path, base: str, head: str = "HEAD") -> bool:
+    """Whether a commit in ``base..head`` holds a plugin version none of its parents holds."""
+    lines = _git(root, "rev-list", "--parents", f"{base}..{head}").decode().splitlines()
+    for commit, *parents in (line.split() for line in lines):
+        if _version_at(root, commit) not in {_version_at(root, parent) for parent in parents}:
+            return True
+    return False
+
+
+def tag_exists(root: Path, version: str) -> bool | None:
+    """Whether ``v<version>`` is tagged, locally or on ``origin``; None when neither answers."""
+    try:
+        _git(root, "rev-parse", "-q", "--verify", f"refs/tags/v{version}")
+        return True
+    except subprocess.CalledProcessError:
+        pass
+    try:
+        return bool(_git(root, "ls-remote", "--tags", "origin", f"refs/tags/v{version}").strip())
+    except (OSError, subprocess.CalledProcessError):
+        return None
+
+
+def version_problems(root: Path) -> tuple[list[str], list[str]]:
+    """(failures, reports) for the branch at ``HEAD`` against ``main``."""
+    try:
+        ref, base = main_commit(root)
+    except LookupError as error:
+        return [], [f"not checked: {error}"]
+    if not version_bumped(root, base):
+        return [], []
+    head, on_main = _version_at(root, "HEAD"), _version_at(root, base)
+    if head is None:
+        return [f"{PLUGIN_MANIFEST} holds no readable version at HEAD"], []
+    shown = _show("patch", head)
+    hint = "take the next free patch (python tasks.py next-free)"
+    if on_main is not None and head <= on_main:
+        main_shown = _show("patch", on_main)
+        name = ref.split("/", 2)[2]
+        return [f"the branch bumps to {shown}, not above {name}'s {main_shown}: {hint}"], []
+    tagged = tag_exists(root, shown)
+    if tagged:
+        return [f"the branch bumps to {shown}, and v{shown} is already tagged: {hint}"], []
+    if tagged is None:
+        return [], [f"v{shown}'s tag not checked: no tag here and origin did not answer"]
+    return [], []
+
+
+def task_version_check() -> int:
+    """Fail a branch that bumps plugin.json to a version main holds or a tag already has."""
+    try:
+        failures, reports = version_problems(ROOT)
+    except (OSError, subprocess.CalledProcessError) as error:
+        failures, reports = [], [f"not checked: cannot read git: {error}"]
+    for line in reports:
+        print(f"version-check: {line}")
+    for line in failures:
+        print(f"version-check: FAIL {line}")
+    return 1 if failures else 0
+
+
 TASKS = {
     "test": task_test,
     "lint": task_lint,
@@ -1487,6 +1575,7 @@ TASKS = {
     "choices-index": task_choices_index,
     "docs-lint": task_docs_lint,
     "next-free": task_next_free,
+    "version-check": task_version_check,
 }
 
 
