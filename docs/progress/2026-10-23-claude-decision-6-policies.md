@@ -12,7 +12,7 @@ This session is lane B of wave 3 (R27, then R64), started by the central session
 The central session asked for an amendment with no new number. Every amendment on `main` is a new decision file headed "(amends N)", with decision N's `amended_by` set and its status `amended` (decisions 26 to 32 and 38; docs-lint's check of `amended_by`, `tasks.py` line 651), and choice 237 names "R27's" decision file, which R2's must follow. The central session was told the reason before the PR opened.
 
 ## The number
-`python tasks.py next-free`, after `git fetch origin` at 15:20 UTC on `be5be5e`, gave decision 39. The small lane takes 39 for decision 39 in parallel from no branch yet, so this file takes 40. If decision 39 does not merge first, or the numbers clash, the PR that merges later renumbers and re-runs `decisions-index`.
+`python tasks.py next-free`, after `git fetch origin` at 15:20 UTC on `be5be5e`, gave decision 39. Decision 39 is the owner's names decision (choice 268 (b), as the central session reported it; not on `main` or a fetched branch at 15:25 UTC, so not verified), written by the small lane in parallel, so this file takes 40. Decisions may have gaps (`next-free` keeps choices gapless, not decisions), so 40 stays whichever PR merges first, and neither renumbers (the central session, 2026-10-23); a conflict in `docs/decisions/index.md` is fixed by re-running `python tasks.py decisions-index`.
 
 ## Port list
 None: the PR touches no file under `plugin/` or `template/`.
