@@ -1,4 +1,5 @@
-"""``python tasks.py verify`` and docs-lint check 13 (ROADMAP R65, part 4; choice 253).
+"""``python tasks.py verify`` and docs-lint check 13 (ROADMAP R65, part 4; choice 253; the version
+check since choice 257).
 
 Layer 1 (temporary files): the commands read from ``sdlc.yaml``, split at ``&&`` and run with
 this interpreter; every step run and its verdict printed, a red one failing the task; check
@@ -69,15 +70,17 @@ def test_verify_runs_every_step_and_fails_on_a_red_one(monkeypatch, capsys):
         },
     )
     monkeypatch.setattr(tasks, "task_docs_lint", lambda: ran.append("docs-lint") or 0)
+    monkeypatch.setattr(tasks, "task_version_check", lambda: ran.append("version-check") or 0)
     monkeypatch.setattr(tasks, "task_test", lambda: ran.append("test") or 0)
     monkeypatch.setattr(tasks.shutil, "which", lambda name: None)
     assert tasks.main(["verify"]) == 1
-    assert ran == ["docs-lint", "test"]
+    assert ran == ["docs-lint", "version-check", "test"]
     out = capsys.readouterr().out.splitlines()
-    assert out[-5:] == [
+    assert out[-6:] == [
         "verify: build: ok",
         "verify: lint: FAIL",
         "verify: docs-lint: ok",
+        "verify: version-check: ok",
         "verify: test: ok",
         "verify: plugin validate: not run (no command or no claude CLI)",
     ]
@@ -93,6 +96,7 @@ def test_verify_runs_another_test_command_as_written_and_validates_with_the_cli(
         lambda path=None: {"build": "", "test": "python -m unittest", "lint": ""},
     )
     monkeypatch.setattr(tasks, "task_docs_lint", lambda: 0)
+    monkeypatch.setattr(tasks, "task_version_check", lambda: 0)
     monkeypatch.setattr(tasks, "task_test", lambda: 1)
     monkeypatch.setattr(tasks.shutil, "which", lambda name: "/bin/claude")
     monkeypatch.setattr(tasks.subprocess, "call", lambda args, cwd=None: calls.append(args) or 0)
