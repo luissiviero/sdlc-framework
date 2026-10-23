@@ -11,7 +11,9 @@
       "Edit(/sdlc.yaml)",
       "WebFetch",
       "Bash(curl *)",
-      "Bash(wget *)"
+      "Bash(wget *)",
+      "mcp__github__merge_pull_request",
+      "mcp__github__enable_pr_auto_merge"
     ],
     "allow": [
       "Bash(git *)",
