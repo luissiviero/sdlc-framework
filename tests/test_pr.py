@@ -1558,6 +1558,9 @@ def test_digest_main_reads_the_protection_and_renders_the_notice(monkeypatch, ca
         in out
     )
     assert out.index("does not restrict who merges") < out.index("## Waiting")
+    # R21: a ruleset is desktop-only, and the notice links the project's own rulesets page
+    assert "Desktop-only: the GitHub mobile app cannot change a ruleset" in out
+    assert "open https://github.com/o/r/settings/rules in a desktop browser" in out
 
 
 def test_digest_says_so_while_the_default_branch_is_unprotected():
@@ -1568,6 +1571,8 @@ def test_digest_says_so_while_the_default_branch_is_unprotected():
     ) < md.index("## Waiting")
     assert "Settings → Rules → Rulesets" in md and "decision 4" in md.lower()
     assert "Restrict updates" in md and "bypass: repository admin" in md
+    # R21: without the repository the notice still says desktop-only, with no broken link
+    assert "Desktop-only" in md and digest_mod.NO_LINK in md and "{" not in md
     md = digest_mod.render_digest([], "2026-09-25T06:00:00Z", protection=unprotected)
     assert "does not restrict who merges" in md and digest_mod.NOTHING_WAITING in md
     protected = {"ok": True, "branch": "main", "protected": True, "by": "ruleset: restrict updates"}

@@ -53,8 +53,12 @@ UNPROTECTED = (
     "without it does not. Settings → Rules → Rulesets → New branch ruleset on `{branch}`: "
     "restrict updates (bypass: repository admin), restrict deletions, block force pushes, "
     "require a pull request before merging. Until then nothing but convention keeps a session "
-    "or a workflow holding the token from merging to `{branch}`."
+    "or a workflow holding the token from merging to `{branch}`. Desktop-only: the GitHub "
+    "mobile app cannot change a ruleset; open {link} in a desktop browser, or in the phone "
+    "browser's desktop mode (ROADMAP R21)."
 )
+RULESETS_LINK = "https://github.com/{repo}/settings/rules"
+NO_LINK = "the repository's Settings → Rules page on github.com"
 MERGE_KEY_UNSAFE = (
     "**The merge App's key is not kept to `{branch}`** ({found}). Decision 36: the merge App "
     "is a bypass actor of the branch ruleset, so its key must be readable by a run on `{branch}` "
@@ -145,13 +149,17 @@ def unprotected_notice(protection: dict[str, Any] | None) -> str:
     framework never creates — a session must not be able to — and until 0.2.25 nothing
     checked existed (1.0.0 readiness review, 2026-09-26: the framework's own default branch
     was unprotected). The digest is the one place the owner reads every day, so it says so
-    there; a lookup that failed says nothing rather than something wrong."""
+    there; a lookup that failed says nothing rather than something wrong. The ruleset is a
+    setting the GitHub mobile app does not show, so the notice says it is desktop-only and
+    links the project's rulesets page when ``main`` gave the repository (``repo``; R21)."""
     if not isinstance(protection, dict) or not protection.get("ok"):
         return ""
     if protection.get("protected") is not False:
         return ""
     branch = protection.get("branch") or "the default branch"
-    return UNPROTECTED.format(branch=branch, found=protection.get("by") or "nothing")
+    repo = protection.get("repo")
+    link = RULESETS_LINK.format(repo=repo) if repo else NO_LINK
+    return UNPROTECTED.format(branch=branch, found=protection.get("by") or "nothing", link=link)
 
 
 def merge_key_notice(environment: dict[str, Any] | None, key_in_repository: bool) -> str:
@@ -377,6 +385,8 @@ def main(argv: list[str] | None = None) -> int:
     else:
         prs, error = list_queue_prs(args.repo)
         protection = github.default_branch_protection(args.repo)
+        if isinstance(protection, dict):
+            protection["repo"] = args.repo  # the notice's settings link (R21)
         branch = protection.get("branch") if isinstance(protection, dict) else None
         environment = github.merge_environment(args.repo, branch) if branch else None
         if isinstance(environment, dict):
