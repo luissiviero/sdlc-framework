@@ -2,7 +2,9 @@
 
 Layer 1 (temporary git repositories): the numbers ``main`` takes, the ones each branch ahead of
 it takes above ``main`` with the branch named, ``origin/main`` read before a local ``main``,
-an older plugin version on a stale branch not counted, nothing read without a ``main``. The
+an older plugin version on a stale branch not counted, nothing read without a ``main``; a
+choice held only by a branch named as the next on main, since main's choices run without a gap
+(choice 267). The
 task runs on this repository in the PR body's first live use, not here: a CI checkout of a pull
 request may hold neither ``main`` nor ``origin/main``.
 """
@@ -200,3 +202,27 @@ def test_the_task_prints_each_kind_and_each_branch(tmp_path, monkeypatch, capsys
         "  note 3: claude/one",
         "next-free: nothing is reserved (choice 184); git fetch origin reads the newest state",
     ]
+
+
+def test_a_choice_held_only_by_a_branch_is_named_as_the_next_on_main(tmp_path):
+    root = _repo(tmp_path)
+    _git(root, "checkout", "-q", "-b", "claude/one")
+    _commit(root, {"docs/PROGRESS.md": "## The owner's decision (2026-10-23)\n4. **Four**.\n"})
+    _git(root, "checkout", "-q", "main")
+    _, free, above, _ = tasks.next_free(root)
+    on_main = tasks.next_on_main(root)
+    assert (free["choice"], on_main["choice"]) == ("5", "4")
+    assert tasks.gap_notes(free, on_main, above) == [
+        "choice 4 is next on main and held by claude/one: main's choices run without a gap, "
+        "so a PR that merges before them takes 4, one that merges after them 5; "
+        "the later renumbers"
+    ]
+
+
+def test_no_gap_note_when_the_next_on_main_is_free(tmp_path):
+    root = _repo(tmp_path)
+    _git(root, "checkout", "-q", "-b", "claude/one")
+    _commit(root, {"docs/notes/3.md": "x\n"})
+    _git(root, "checkout", "-q", "main")
+    _, free, above, _ = tasks.next_free(root)
+    assert tasks.gap_notes(free, tasks.next_on_main(root), above) == []
