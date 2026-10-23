@@ -656,7 +656,7 @@ SECRET_PATTERNS = (
 )  # fmt: skip
 
 
-# Choice 263 (point 3): two patterns name files that are often plain configuration a build or
+# Choice 265 (point 3): two patterns name files that are often plain configuration a build or
 # a test reads, and a Read deny hides a file from the tests too. They are proposed only when a
 # matching file holds what reads as a secret: in `.npmrc` an `_authToken`, `_auth` or
 # `_password` with a literal value (a `${NPM_TOKEN}` reference is not one); in
@@ -684,7 +684,7 @@ def secret_paths(root: Path, files: list[str] | None = None) -> list[str]:
     included (``walk_files``: a gitignored ``certs/dev.pem`` is the secret a local session
     could read), for ``protected_paths`` and the ``Read`` deny rules; the owner confirms them
     in the change-0000 PR. A pattern of ``CONTENT_GATED`` counts only when one of its files
-    holds what reads as a secret (choice 263)."""
+    holds what reads as a secret (choice 265)."""
     root = Path(root)
     files = walk_files(root) if files is None else files
     out: list[str] = []

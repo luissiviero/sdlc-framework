@@ -173,7 +173,9 @@ def build_notes(root: Path, change_id: str, base: str | None = None) -> str:
         raise ValueError(f"no changes/{change_id}-<slug>/ folder under {root}")
     intent = _read(change_dir / "intent.md")
     title = _title(change_dir, intent)
-    outcome = _first_sentence(art.split_sections(intent).get("## Proposed outcome", ""))
+    outcome = art.split_sections(intent).get("## Proposed outcome", "")
+    # a quick intent leaves the outcome to the design run (R54): the title says it then
+    outcome = "" if art.left_to_design(outcome) else _first_sentence(outcome)
     lines = [f"# Release notes — change {change_id}: {title}", "", "## What changed", ""]
     lines.append(outcome or title)
     lines += ["", "## Commits", ""]

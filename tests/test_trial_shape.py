@@ -213,7 +213,7 @@ def test_secret_shaped_paths_are_proposed(tmp_path):
 def test_two_patterns_are_proposed_only_when_the_file_holds_a_secret(
     tmp_path, name, text, proposed
 ):
-    """Choice 263, point 3: `.npmrc` and `appsettings.*.json` are often plain configuration
+    """Choice 265, point 3: `.npmrc` and `appsettings.*.json` are often plain configuration
     the tests read, and a Read deny hides a file from them too; they are proposed only when
     their content reads as a secret."""
     _write(tmp_path, f"src/{name}", text)

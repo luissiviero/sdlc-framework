@@ -12,6 +12,7 @@ import importlib.util
 import json
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -542,6 +543,7 @@ def test_the_framework_suite_s_cases_load():
         "0004-verify-before-done",
         "0005-hooks-loaded",
         "0006-sandbox-write-deny",
+        "0007-sandbox-credentials-hidden",
     ]
     loaded = {name: run.load_case(FRAMEWORK_CASES / name) for name in names}
     for name, case in loaded.items():
@@ -749,6 +751,94 @@ def test_case_0006_s_setup_denies_the_write_in_the_settings_and_no_hook_fires(tm
         )
         code, _detail = run.run_commands(no_block, root, 60)
         assert code == 1
+    finally:
+        run.remove_tree(root.parent)
+
+
+CREDENTIALS = ("ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN")
+
+
+def test_case_0007_s_setup_denies_the_ci_settings_credentials_and_its_checks_read_the_note(
+    tmp_path,
+):
+    """R44's live proof of ``sandbox.credentials`` (docs/notes/60.md), without a model or a
+    sandbox: the setup writes into the workspace's settings the very ``envVars`` block
+    ``plugin/ci/settings.ci.json`` carries, keeping every other sandbox key; the file check
+    passes on a note that says both credentials unset and fails on one that says either set
+    or quotes a key; an absent hook log passes."""
+    ci = json.loads((ROOT / "plugin" / "ci" / "settings.ci.json").read_text(encoding="utf-8"))
+    case = run.load_case(FRAMEWORK_CASES / "0007-sandbox-credentials-hidden")
+    assert case.error == ""
+    assert case.config["tools"] == "Read,Bash(python *),Bash(python3 *)"
+    assert [run.check_kind(c) for c in case.config["checks"]] == ["file", "command"]
+    # the prompt's one command, word for word (the agent composes nothing)
+    prompt_command = next(
+        line for line in case.prompt.splitlines() if line.startswith('python -c "import os')
+    )
+    root = run.build_fixture()
+    try:
+        settings_path = root / ".claude" / "settings.json"
+        before = json.loads(settings_path.read_text(encoding="utf-8"))
+        for command in case.config["setup"]:
+            code, detail = run.run_commands(command, root, 60)
+            assert code == 0, detail
+        after = json.loads(settings_path.read_text(encoding="utf-8"))
+        assert after["sandbox"]["credentials"] == {
+            "envVars": ci["sandbox"]["credentials"]["envVars"]
+        }
+        assert {k: v for k, v in after["sandbox"].items() if k != "credentials"} == (
+            before["sandbox"]
+        )
+        assert after["permissions"] == before["permissions"]
+        note = root / "docs" / "env-note.md"
+        check = case.config["checks"][0]
+        held = "PATH=set\nHOME=set\nANTHROPIC_API_KEY=unset\nCLAUDE_CODE_OAUTH_TOKEN=unset\n"
+        for text, passes in (
+            (held, True),
+            (held.replace("ANTHROPIC_API_KEY=unset", "ANTHROPIC_API_KEY=set"), False),
+            (held.replace("CLAUDE_CODE_OAUTH_TOKEN=unset", "CLAUDE_CODE_OAUTH_TOKEN=set"), False),
+            (held + "sk-ant-" + "x" * 30 + "\n", False),
+            (held.replace("PATH=set", "PATH=unset"), False),
+        ):
+            note.write_text(text, encoding="utf-8")
+            result = run.evaluate(
+                check, workspace=root, result={}, before={}, expected={}, timeout=60
+            )
+            assert result["passed"] is passes, (text, result)
+        # the shell-guard hook lets the prompt's command through: only the sandbox acts on it
+        from hooks import shell_guard
+
+        payload = {
+            "hook_event_name": "PreToolUse",
+            "tool_name": "Bash",
+            "tool_input": {"command": prompt_command},
+            "cwd": str(root),
+        }
+        decision = shell_guard.decide(payload, [], env={"CLAUDE_PROJECT_DIR": str(root)})
+        assert not decision.block, decision.reason
+        # the prompt's command itself: the check passes where neither credential is in the
+        # command's environment and fails where one is (outside a sandbox, nothing hides it)
+        note.unlink()
+        for leaked, passes in ((None, True), ("CLAUDE_CODE_OAUTH_TOKEN", False)):
+            env = {k: v for k, v in os.environ.items() if k not in CREDENTIALS}
+            env["HOME"] = env.get("HOME") or str(tmp_path)
+            if leaked:
+                env[leaked] = "placeholder-token-value"  # sdlc: allow-secret
+            proc = subprocess.run(
+                [sys.executable, *shlex.split(prompt_command)[1:]],
+                cwd=root,
+                env=env,
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            assert proc.returncode == 0, proc.stderr
+            result = run.evaluate(
+                check, workspace=root, result={}, before={}, expected={}, timeout=60
+            )
+            assert result["passed"] is passes, (leaked, note.read_text(encoding="utf-8"))
+        code, detail = run.run_commands(case.config["checks"][1]["command"], root, 60)
+        assert code == 0, detail
     finally:
         run.remove_tree(root.parent)
 

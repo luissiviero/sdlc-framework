@@ -40,6 +40,7 @@ PLUGIN_DIR = Path(__file__).resolve().parent.parent
 if str(PLUGIN_DIR) not in sys.path:
     sys.path.insert(0, str(PLUGIN_DIR))
 
+from gate import artifacts as art  # noqa: E402
 from hooks._common import ConfigError, load_sdlc_config  # noqa: E402
 from state import conventions as c  # noqa: E402
 from state import yamlish  # noqa: E402
@@ -86,7 +87,9 @@ def read_intent(change_dir: Path) -> dict[str, str]:
     return {
         "title": m.group("title") if m else "",
         "problem": first_sentence(sections.get("problem", "")),
-        "outcome": " ".join(sections.get("proposed outcome", "").split()),
+        "outcome": ""
+        if art.left_to_design(sections.get("proposed outcome", ""))  # a quick intent (R54)
+        else " ".join(sections.get("proposed outcome", "").split()),
     }
 
 
