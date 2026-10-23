@@ -519,6 +519,11 @@ STUB_CITATION_RE = re.compile(
     r"(docs/(?:NOTES|DECISIONS)\.md)`?\s*(?:§|section )\s*\d"
     r"|resource:\s*\"?(docs/(?:NOTES|DECISIONS)\.md)\"?\s*$"
 )
+# R65, part 6 (S15 of the sources-of-truth study): the code, the template and the workflows
+# never point at a moved stub at all; every mention there is a fact's source
+CODE_STUB_RE = re.compile(r"(?:docs/)?(?:NOTES|DECISIONS)\.md")
+CODE_DIRS = ("plugin", "template", ".github")
+CODE_SUFFIXES = (".py", ".md", ".yml", ".yaml", ".json", ".toml", ".txt")
 LIVING_DOCS = ("ROADMAP.md", "OPERATING_MODEL.md", "BUILD_GUIDE.md")
 LIVING_FOLDERS = ("decisions", "proposals")
 # Portuguese words that are not also English words or code names; a proper noun is allowed
@@ -916,6 +921,30 @@ def stub_problems(docs_dir: Path) -> list[str]:
     return problems
 
 
+def code_stub_problems(root: Path) -> list[str]:
+    """A file under ``plugin/``, ``template/`` or ``.github/`` that names a moved stub
+    (``docs/NOTES.md``, ``docs/DECISIONS.md``) instead of ``docs/notes/<N>.md`` or
+    ``docs/decisions/<N>.md`` (check 5 widened, R65 part 6)."""
+    problems: list[str] = []
+    for folder in CODE_DIRS:
+        base = root / folder
+        if not base.is_dir():
+            continue
+        for path in sorted(base.rglob("*")):
+            if not path.is_file() or path.suffix not in CODE_SUFFIXES:
+                continue
+            if "__pycache__" in path.parts:
+                continue
+            rel = path.relative_to(root).as_posix()
+            text = path.read_text(encoding="utf-8-sig", errors="replace")
+            for number, line in enumerate(text.splitlines(), 1):
+                problems.extend(
+                    f"stub: {rel}:{number} cites {match.group(0)}"
+                    for match in CODE_STUB_RE.finditer(line)
+                )
+    return problems
+
+
 def portuguese_problems(docs_dir: Path) -> list[str]:
     """A line of a page or an HTML input under ``docs_dir`` that holds a Portuguese word
     (CLAUDE.md: English only); the proper nouns of ``PORTUGUESE_ALLOWED`` aside."""
@@ -1280,6 +1309,7 @@ def lint_docs(
         failures.extend(found)
         reports.extend(said)
     failures.extend(stub_problems(docs_dir))
+    failures.extend(code_stub_problems(root))
     failures.extend(portuguese_problems(docs_dir))
     failures.extend(count_problems(root))
     found, said = number_problems(docs_dir)

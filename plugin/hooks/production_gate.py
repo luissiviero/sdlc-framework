@@ -133,7 +133,7 @@ COMMAND_SHOWN = 100  # characters of the command quoted in the block text
 # Time budget (hooks.json gives the hook 60 s): each git call and each GitHub request gets
 # CALL_TIMEOUT seconds, and the whole approval check APPROVAL_DEADLINE seconds, after which
 # the decision is block ("cannot verify the approval in time"), never a silent allow. A
-# PreToolUse hook that outlives its timeout does not block (docs/NOTES.md section 8), so the
+# PreToolUse hook that outlives its timeout does not block (docs/notes/8.md), so the
 # worst case - the one git call of the log path, the deadline, the log writes - stays under
 # 50 s (WORST_CASE).
 CALL_TIMEOUT = 10

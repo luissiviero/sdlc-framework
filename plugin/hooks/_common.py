@@ -1,6 +1,7 @@
 """Shared plumbing for the Python hooks (build guide step 15; decision 7).
 
-Facts this relies on, from the Claude Code hooks reference (docs/NOTES.md has the quotes):
+Facts this relies on, from the Claude Code hooks reference (the quotes are in docs/notes/,
+the output contract in docs/notes/8.md; docs/notes/index.md lists them under hooks):
   - the hook receives one JSON object on stdin with ``hook_event_name``, ``tool_name``,
     ``tool_input``, ``cwd`` (and more);
   - ``tool_input.file_path`` is absolute and uses the platform's separators (backslashes on

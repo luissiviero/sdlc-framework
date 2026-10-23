@@ -4,7 +4,7 @@ p.23 'Block edits to protected paths', p.36 example PreToolUse hook).
 Always protected (self-protection, decision 6): the project's own guardrail files at the
 project root - ``/.claude/**``, ``/CLAUDE.md``, ``/REVIEW.md``, ``/sdlc.yaml`` (it holds the
 project's protected list) - and every file under the plugin root (the hook scripts). The four
-are anchored (0.2.10, NOTES.md section 12): a same-named file in a subdirectory, such as the
+are anchored (0.2.10, docs/notes/12.md): a same-named file in a subdirectory, such as the
 framework repository's ``template/CLAUDE.md``, is ordinary project content; a project whose
 nested copies are guardrails too lists them under ``protected_paths`` (``**/CLAUDE.md``).
 Anywhere on disk, inside or outside the project: ``.claude/settings*.json`` and

@@ -59,7 +59,7 @@ and pass `--setup ""` when the project has nothing to install.
   item, a guardrail file change, a run limit, an infrastructure failure, a merge to main
   and a deploy still park; a risk-list hit itself parks nothing (decision 35: it is a line
   of the "Needs your close look" banner on the PR the owner merges, and the merge accepts
-  it).
+  it; at (e), the owner's approving review, on which the merge App merges, decision 36).
 - deploy action [none]: what makes a merged change live — publish package · schedule job ·
   regenerate report · promote to paper trading · deploy service · none
 - real production? [no] — turns on the release label and the production gate
@@ -171,7 +171,7 @@ close look" banner shows (gate (a) matches the globs on this PR's own files, dec
   `claude plugin marketplace update sdlc-framework`, `claude plugin install
   sdlc@sdlc-framework --yes` and `claude plugin update sdlc@sdlc-framework` (the two
   `update` lines refresh the environment's cached copy after a framework release; see
-  `docs/NOTES.md` §3a).
+  `docs/notes/3.md`, 3a).
 - The phase workflows open pull requests with the workflow token, which GitHub refuses
   until the owner turns on, once per repository, Settings → Actions → General → Workflow
   permissions → "Allow GitHub Actions to create and approve pull requests" (NOTES §11a).

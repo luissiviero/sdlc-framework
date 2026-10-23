@@ -25,7 +25,7 @@ Every CI session the runner composes takes ``session_model``: the phases, a fix 
 triage of phase (f) and the weekly scan (their own run kinds read the ``default`` entry).
 
 The Agent tool's per-invocation model takes a family alias, not a full id (Claude Code
-2.1.304's Agent tool, docs/NOTES.md section 51), and an alias the CLI resolves on its own may
+2.1.304's Agent tool, docs/notes/51.md), and an alias the CLI resolves on its own may
 name an older version (``opus`` was ``claude-opus-5`` in every CI run on 2.1.278 read up to
 2026-10-16). So the phase commands pass the alias (``alias``), and the runner pins what each
 alias resolves to with ``ANTHROPIC_DEFAULT_<FAMILY>_MODEL`` (``alias_pins``), a variable the

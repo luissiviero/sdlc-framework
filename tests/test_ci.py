@@ -136,7 +136,7 @@ def dry_run_argv(capsys, root: Path, phase: str = "b", env=None) -> list[str]:
     return json.loads(capsys.readouterr().out)["argv"]
 
 
-# --- 1. the credential selection (task 30.3; docs/NOTES.md section 2) -----------------------------
+# --- 1. the credential selection (task 30.3; docs/notes/2.md) -----------------------------------
 def test_choose_auth_key_only():
     chosen = auth.choose_auth(KEY_ENV)
     assert chosen["auth"] == "api_key" and chosen["bare"] is True and chosen["reason"]
@@ -191,7 +191,7 @@ def test_substrate_smoke_agrees_with_the_shared_selection():
             assert smoke == (auth.LABELS[chosen["auth"]], ["--bare"] if chosen["bare"] else [])
 
 
-# --- 2. the composed command line (task 30.3; docs/NOTES.md section 10b) --------------------------
+# --- 2. the composed command line (task 30.3; docs/notes/10.md, 10b) ----------------------------
 @pytest.mark.parametrize(
     ("phase", "command", "mode"),
     [("b", "sdlc-design", "default"), ("d", "sdlc-test", "acceptEdits"),
