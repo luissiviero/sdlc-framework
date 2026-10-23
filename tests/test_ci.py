@@ -4118,6 +4118,70 @@ def test_a_session_that_accepts_a_risk_under_the_owner_s_name_parks(
     assert status_mod.read_status(change).risk_accepted == []
 
 
+# --- 1.0.34: the release record is an owner-only field (choice 268 (d)) ---------------------
+def test_the_release_record_is_an_owner_only_field(project):
+    """A session that writes ``released_*`` would make the release of its merge skip; only
+    the release workflow writes them, after the merge. A record the branch already carried
+    (``before``) or the default branch's copy brings (``approved``) is no reason."""
+    _root, change = project
+    before = run_phase.owner_fields(status_mod.read_status(change))
+    st = status_mod.read_status(change)
+    st.record_release(42, "a" * 40)
+    forged = run_phase.owner_fields(st)
+    (reason,) = run_phase.owner_field_mismatches(before, forged, None)
+    assert reason.startswith("released_at, released_sha, released_pr: the session recorded (")
+    assert "42)" in reason and "expected (None, None, None)" in reason
+    assert run_phase.owner_field_mismatches(forged, forged, None) == []
+    assert run_phase.owner_field_mismatches(before, forged, forged) == []
+    # a record the session clears or moves parks too: the release would run again
+    for name, value in (("released_pr", None), ("released_sha", "b" * 40)):
+        moved = status_mod.read_status(change)
+        moved.record_release(42, "a" * 40)
+        moved.released_at = st.released_at
+        setattr(moved, name, value)
+        reasons = run_phase.owner_field_mismatches(forged, run_phase.owner_fields(moved), None)
+        assert [r.split(":")[0] for r in reasons] == ["released_at, released_sha, released_pr"]
+    # a record the branch carried comes back as it was, not cleared
+    status_mod.write_status(change, st)
+    carried = status_mod.read_status(change)
+    moved = status_mod.read_status(change)
+    moved.released_sha = "b" * 40
+    status_mod.write_status(change, moved)
+    assert run_phase.verify_owner_fields(change, carried, None)["ok"] is False
+    assert status_mod.read_status(change).released_sha == "a" * 40
+
+
+def test_a_session_that_writes_the_release_record_parks_with_it_restored(
+    project, fake_claude, monkeypatch, capsys, tmp_path
+):
+    """The whole path: the session records a release of its own change and commits it; the
+    runner restores the fields and parks under ``owner_fields``."""
+    root, change = project
+    pr_route(monkeypatch)
+    git(root, "add", "-A")
+    git(root, "commit", "-q", "-m", "the change folder, committed")
+    script = _forging_session(
+        tmp_path,
+        change,
+        "st = status.read_status(change)\n"
+        "st.record_release(7, 'c' * 40)\n"
+        "status.write_status(change, st)\n"
+        "git('commit', '-q', '-am', 'the change is released')\n",
+    )
+    monkeypatch.setenv("FAKE_CLAUDE_RUN", str(script))
+    full_run(root, change, fake_claude, monkeypatch, "b")
+    out = json.loads(capsys.readouterr().out)
+    assert out["parked"].startswith("status.yaml: the session wrote owner-only field(s): ")
+    assert "released_at, released_sha, released_pr: the session recorded (" in out["parked"]
+    assert out["owner_fields"]["ok"] is False and "dispatched" not in out
+    st = status_mod.read_status(change)
+    assert (st.released_at, st.released_sha, st.released_pr) == (None, None, None)
+    assert not st.released and st.parked_reason == out["parked"]
+    gate_file = json.loads((change / "evidence" / "gate-b.json").read_text(encoding="utf-8"))
+    (check,) = gate_file["checks"]
+    assert check["name"] == "owner_fields" and "choice 268" in check["need"]
+
+
 def test_a_session_that_lifts_the_lock_has_its_test_edits_restored(
     project, fake_claude, monkeypatch, capsys, tmp_path
 ):
