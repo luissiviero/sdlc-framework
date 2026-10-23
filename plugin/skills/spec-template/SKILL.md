@@ -65,7 +65,8 @@ UI, the metric and its threshold; for a change that touches a screen, the Mock: 
   PR's "Needs your close look" banner, which the owner's merge accepts (decision 35; it no
   longer parks). Decision 35 settles the declaration, so write it closed, one item per
   line: `- decided (decision 35): risk item '<item>': <what the design does to it>; the
-  close-look banner shows it and the owner's merge accepts it.` A question the item raises
+  close-look banner shows it and the owner's merge accepts it (at (e), the owner's approving
+  review).` A question the item raises
   that the owner must answer is a concern of its own, left open. List the items the design
   touches, and say in Requirements that the others do not apply — never under Flagged
   concerns.

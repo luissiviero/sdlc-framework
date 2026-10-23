@@ -45,13 +45,15 @@ ISSUE_TITLE = "SDLC review queue"
 NOTHING_WAITING = "Nothing waiting: no open PR carries an `sdlc:` label."
 UNPROTECTED = (
     "**The default branch `{branch}` does not restrict who merges** (found: {found}). Decision "
-    "4 (only the owner merges; the automation identity has branch-only write access) is "
-    "enforced by a branch ruleset with *Restrict updates* and only the repository admin in its "
+    "4 (only the owner merges, and, since decision 36, the merge App on the owner's approving "
+    "review; the automation identity has branch-only write access) is enforced by a branch "
+    "ruleset with *Restrict updates* and only the repository admin and the merge App in its "
     "bypass list — the one form that keeps the automation's token (the workflow token or the "
     "project's GitHub App, decision 33), which holds `contents: write`, "
     "from merging a pull request; a classic protection rule or a pull-request requirement "
     "without it does not. Settings → Rules → Rulesets → New branch ruleset on `{branch}`: "
-    "restrict updates (bypass: repository admin), restrict deletions, block force pushes, "
+    'restrict updates (bypass: repository admin, and the merge App in "For pull requests '
+    'only" mode), restrict deletions, block force pushes, '
     "require a pull request before merging. Until then nothing but convention keeps a session "
     "or a workflow holding the token from merging to `{branch}`. Desktop-only: the GitHub "
     "mobile app cannot change a ruleset; open {link} in a desktop browser, or in the phone "
@@ -144,14 +146,15 @@ def _line(pr: dict[str, Any]) -> str:
 def unprotected_notice(protection: dict[str, Any] | None) -> str:
     """The warning for an unprotected default branch, or "" when it is protected or unknown.
 
-    Decision 4 (only the owner merges; the automation identity has branch-only write
-    access) is enforced by a branch ruleset or protection rule on GitHub, which the
-    framework never creates — a session must not be able to — and until 0.2.25 nothing
-    checked existed (1.0.0 readiness review, 2026-09-26: the framework's own default branch
-    was unprotected). The digest is the one place the owner reads every day, so it says so
-    there; a lookup that failed says nothing rather than something wrong. The ruleset is a
-    setting the GitHub mobile app does not show, so the notice says it is desktop-only and
-    links the project's rulesets page when ``main`` gave the repository (``repo``; R21)."""
+    Decision 4 (only the owner merges, and the merge App on the owner's approving review,
+    decision 36; the automation identity has branch-only write access) is enforced by a
+    branch ruleset or protection rule on GitHub, which the framework never creates — a
+    session must not be able to — and until 0.2.25 nothing checked existed (1.0.0 readiness
+    review, 2026-09-26: the framework's own default branch was unprotected). The digest is
+    the one place the owner reads every day, so it says so there; a lookup that failed says
+    nothing rather than something wrong. The ruleset is a setting the GitHub mobile app does
+    not show, so the notice says it is desktop-only and links the project's rulesets page
+    when ``main`` gave the repository (``repo``; R21)."""
     if not isinstance(protection, dict) or not protection.get("ok"):
         return ""
     if protection.get("protected") is not False:

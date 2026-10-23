@@ -522,7 +522,7 @@ STUB_CITATION_RE = re.compile(
 )
 # R65, part 6 (S15 of the sources-of-truth study): the code, the template and the workflows
 # never point at a moved stub at all; every mention there is a fact's source
-CODE_STUB_RE = re.compile(r"(?:docs/)?(?:NOTES|DECISIONS)\.md")
+CODE_STUB_RE = re.compile(r"(?<![\w-])(?:docs/)?(?:NOTES|DECISIONS)\.md")
 CODE_DIRS = ("plugin", "template", ".github")
 CODE_SUFFIXES = (".py", ".md", ".yml", ".yaml", ".json", ".toml", ".txt")
 LIVING_DOCS = ("ROADMAP.md", "OPERATING_MODEL.md", "BUILD_GUIDE.md")

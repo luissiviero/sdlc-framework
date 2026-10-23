@@ -1315,11 +1315,12 @@ def default_branch_protection(repo: str, cwd: str | Path | None = None) -> dict[
     """Whether the repository's default branch keeps a merge to the owner: {'branch',
     'protected', 'classic', 'rules', 'by'}.
 
-    Decision 4 (only the owner merges; the automation identity has branch-only write access)
-    is enforced by GitHub, never by the framework, and nothing checked it existed until the
-    1.0.0 readiness review (2026-09-26) found the framework's own default branch
-    unprotected. The one form that enforces it is a branch ruleset with *Restrict updates*
-    and only the repository admin in its bypass list: the workflow token holds
+    Decision 4 (only the owner merges, and the merge App on the owner's approving review,
+    decision 36; the automation identity has branch-only write access) is enforced by
+    GitHub, never by the framework, and nothing checked it existed until the 1.0.0
+    readiness review (2026-09-26) found the framework's own default branch unprotected. The
+    one form that enforces it is a branch ruleset with *Restrict updates* and only the
+    repository admin and the merge App in its bypass list: the workflow token holds
     ``contents: write`` and the phase session ``Bash(gh *)``, so a rule that stops direct
     pushes or requires a pull request (with no approvals) still lets ``gh pr merge`` through
     (the review of the 0.2.25 diff, finding H1). The active rules of the branch are read from

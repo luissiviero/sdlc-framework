@@ -15,7 +15,7 @@ This session ran on branch `claude/r65-part-6-stale-comments`, from `main` at `f
 This PR touches `plugin/ci/run_phase.py` (the docstring, `CLI_MODEL_NEED` and its one call), so it goes on the port list until the 1.0.0 read.
 
 ## The fresh-context review
-Pending.
+Pending. *[2026-10-23: the review reported nothing blocking after this PR merged as `b6800ff`; its findings are fixed in the follow-up `docs/progress/2026-10-23-claude-r65-part-6-follow-up.md`, plugin 1.0.33]*
 
 ## Proposed edits for the owner
 None.

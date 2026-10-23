@@ -3529,7 +3529,7 @@ CLI_MODEL_PARK = (
 CLI_MODEL_NEED = (
     "The Claude Code CLI the job installed (sdlc.yaml: plugin.claude_code) printed "
     "[claude-code:unrecognized_model] for a model this run was configured with, which did "
-    "not run: the sub-agent ran on another model (the framework's NOTES §54). Raise "
+    "not run: the sub-agent ran on another model (the framework's docs/notes/54.md). Raise "
     "plugin.claude_code to a CLI that knows the model ({version} or later for "
     "claude-opus-5-5), then re-run the phase; evidence/{stderr} holds the line."
 )
