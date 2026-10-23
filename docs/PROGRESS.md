@@ -1,61 +1,41 @@
-# Progress — ROADMAP R65's part 4: `python tasks.py verify`, docs-lint check 13, CI on `verify` (2026-10-22)
+# Progress — ROADMAP R65's part 5: `HANDOFF.md` points to `next-free` and `verify` (2026-10-23)
 
-This session ran on branch `claude/r65-part-4-verify`, from `main` at `8bca5fd` (#327). It is the session of R65's parts 1 to 3 (#324, #325, #327). The owner asked it to continue in the same session. Part 4 is built as the owner settled it:
-- choice 252, point 7;
-- choice 253, points 2 and 4: `verify` and check 13 in one PR, before the owner's rows; CI on `verify`;
-- `docs/proposals/one-owner-per-fact.md`, part 4.
+This session ran on branch `claude/r65-part-5-handoff`, from `main` at `26f6a48` (#333). It is the session of R65's parts 1 to 4 (#324, #325, #327, #329). Part 5 changes `HANDOFF.md` in a PR of its own, as that page requires. The rules for it come from:
+- choice 252, points 2 and 7;
+- choice 253, point 13;
+- `docs/proposals/one-owner-per-fact.md`, part 5.
 
-It is a documentation, `tasks.py` and CI PR: no plugin version, nothing under `plugin/` or `template/`. The workflow it changes is this repository's own `framework-checks.yml`, which is not a template.
+It is a documentation PR: no plugin version, no file under `plugin/` or `template/`.
 
-The previous record (R65's part 3 and choice 254, from #327) is now `docs/progress/2026-10-22-r65-part-3-checks-11-12-choice-254.md`, unchanged (verified, `cmp` against `8bca5fd:docs/PROGRESS.md`). This session's end file is `docs/handoffs/sessions/2026-10-22-claude-r65-part-4-verify.md`.
+The previous record (R65's part 4, from #329) is now `docs/progress/2026-10-22-r65-part-4-verify.md`, unchanged (verified, `cmp` against `26f6a48:docs/PROGRESS.md`). This session's end file is `docs/handoffs/sessions/2026-10-23-claude-r65-part-5-handoff.md`.
 
 ## Coordination with the other sessions
-- **Numbers.** This PR takes none (`python tasks.py next-free` on `8bca5fd`: choice 255, none taken above `main`, read at 23:51 UTC).
-- **Open PRs**, read at 23:51 UTC: #173 (intent 0004) and the owner's #328 (row 5 of choice 253's record). Neither touches a file this PR changes.
+- **Numbers.** This PR takes none. `python tasks.py next-free` ran at 01:36 UTC on `26f6a48` with nothing taken above `main`.
+- **The owner's guardrail rows 1 to 4 are on `main`**:
+  - row 1 with #330 (`95c8536`);
+  - rows 2 and 4, the two other `CLAUDE.md` lines, with #332 (`97e499c`);
+  - row 3, `sdlc.yaml:21`, with #333 (`26f6a48`).
+
+  Between #332 and #333, `main` failed docs-lint check 13 for five minutes. `CLAUDE.md:52` named `.github/scripts` and `sdlc.yaml:21` did not yet, and [the run of #332's merge](https://github.com/luissiviero/sdlc-framework/actions/runs/39883663848) failed. [The run of #333's merge](https://github.com/luissiviero/sdlc-framework/actions/runs/39884122956) is green on every job (verified, `gh run view`). Check 13 caught exactly the drift it was built for, on its first day.
+- **Open PRs**, read at 01:36 UTC: #331, the Gemini session's first file (`ccr-fc4dc248-6pmtbd`), the owner's #328 and #173. #331's session waits for this PR: its Parts 1 to 3 start once R65's parts 4 and 5 have merged.
 
 ## What was built
-1. **`python tasks.py verify`, the one owner of the local checks** (choice 252, point 7).
-   - It reads `commands` from `sdlc.yaml` and runs build, lint, the docs lint, test, and `claude plugin validate .` when the CLI is on the path. It holds no list of its own (choice 253, point 2).
-   - Each command is split at `&&` and run as argument lists, with `python` replaced by this interpreter, so the same line runs in cmd.exe, PowerShell and bash.
-   - `python -m pytest` runs as `tasks.py test`: the same pytest, spread over the cores.
-   - Every step runs, each verdict is printed, and one red step fails the task.
-   - Its first live use, on this branch: build, lint, docs-lint, test (2354 passed) and plugin validate all "ok".
-2. **docs-lint check 13.** The Build, Test and Lint lines under `CLAUDE.md`'s "Verifying your work" must quote `sdlc.yaml: commands` word for word. A line that is missing or differs fails. It passes on `main` today: `CLAUDE.md:54` and `sdlc.yaml:21` hold the same build command.
-3. **CI runs `python tasks.py verify`** (choice 253, point 4).
-   - Both jobs of `framework-checks.yml` changed, and the Windows shards keep `FRAMEWORK_TEST_SHARD`.
-   - In CI, `claude plugin validate .` reports "not run": no CLI is installed there.
-   - The two tests that pin the run line (`tests/test_templates.py`) follow the decision.
-4. **`README.md:5`** names `verify`. The study's note that CI runs no `compileall` is annotated (choice 126).
-5. **Tests.** The new `tests/test_verify.py`:
-   - the commands read from `sdlc.yaml`;
-   - the argument lists;
-   - every step run, and a red one failing the task;
-   - another test command run as written, and the CLI's validate;
-   - check 13 each way;
-   - this repository's lines (layer 2).
-
-## Points to know
-- **Until the owner's row 3, `verify` compiles `plugin tests tasks.py` only**, as `sdlc.yaml:21` says. `.github/scripts` joins when rows 2 and 3 change `CLAUDE.md:54` and `sdlc.yaml:21` together. Check 13 fails if only one of the two changes.
-- **`CLAUDE.md`'s "Commands" lines (8 to 11)** are not read by check 13. The owner's row 1 removes their copies of the Test and Lint lines.
-
-## Proposed edits for the owner
-From choice 253's record, now due: rows 1 to 4, in one PR, after this PR merges. Row 5 is the owner's #328.
-
-| Link | Row | What is there now | What it must become |
-|---|---|---|---|
-| [CLAUDE.md](https://github.com/luissiviero/sdlc-framework/blob/main/CLAUDE.md?plain=1#L8-L11) | 8-11 | the Test and Lint lines, the task runner line, the "Run tests and lint" line | `- Task runner: python tasks.py <task> — must work on Windows and Linux; python tasks.py verify runs every check a PR needs (HANDOFF.md, standing precondition 1)`, line 11 unchanged; the Test and Lint lines live once, under "Verifying your work" |
-| [CLAUDE.md](https://github.com/luissiviero/sdlc-framework/blob/main/CLAUDE.md?plain=1#L54) | 54 | ``- Build: `python -m compileall -q plugin tests tasks.py` (must finish with no output and exit code 0)`` | ``- Build: `python -m compileall -q plugin tests tasks.py .github/scripts` (must finish with no output and exit code 0)`` |
-| [sdlc.yaml](https://github.com/luissiviero/sdlc-framework/blob/main/sdlc.yaml#L21) | 21 | `  build: "python -m compileall -q plugin tests tasks.py"` | `  build: "python -m compileall -q plugin tests tasks.py .github/scripts"` |
-| [CLAUDE.md](https://github.com/luissiviero/sdlc-framework/blob/main/CLAUDE.md?plain=1#L34) | 34 | `- Events caused by the CI workflow token do not start workflow runs (except workflow_dispatch / repository_dispatch): …` | the same, with `; docs/notes/11.md` after `repository_dispatch` |
+1. **`HANDOFF.md`:**
+   - "Where the state lives" names `docs/progress/choices.md` for "where is choice N".
+   - It also says the next free numbers are computed by `python tasks.py next-free`, never kept in a file (choice 252, point 2).
+   - The skeleton's "Preconditions of the moment" writes no next free number: the next session runs the task.
+   - Two new skeleton lines: a snapshot is written "read at <time> UTC on <sha>", and check 11 reads session files from 2026-10-23 on.
+   - Standing precondition 1 is `python tasks.py verify`, the task CI runs (choice 252, point 7).
+   - "Rules for every session" points to `choices.md` for the numbered choices, and names checks 10 to 13 beside check 8.
+2. **ROADMAP R65's status**, annotated once, as choice 253, point 13 asked: parts 1 to 5 are on `main` with their PRs, the owner's rows with #330, #332 and #333, and part 6 waits for R51. The row stays among the candidates until part 6.
 
 ## Left
-- **R65's part 5:** `HANDOFF.md`'s skeleton points to `python tasks.py next-free`, and its precondition 1 to `python tasks.py verify` (choice 252, point 7). The same PR annotates R65's row once (choice 253, point 13).
-- **The Gemini session**, once parts 1 to 5 have merged, before part 6 (carried from `2026-10-22-ccr-6ed8a82e-cxmftx-end.md`).
-- **R65's part 6:** its own plugin patch after R51 merges (choice 252).
+- **R65's part 6:** a plugin patch of its own after R51 merges (choice 252).
+- **The Gemini session** (#331) resumes now that parts 4 and 5 are in, on the owner's word.
 - **The merge-tool deny rule:** the owner's #328, then a live check (choice 253, point 7).
 
 ## What the owner does
 | When | Act |
 |---|---|
 | Now | Merge this PR when `Framework checks` is green on its final head; merge #328. |
-| After this PR merges | Rows 1 to 4 above, in one PR. |
+| After this PR merges | Come back to the Gemini session (#331) for its Part 1. |
