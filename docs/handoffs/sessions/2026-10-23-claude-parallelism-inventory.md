@@ -17,7 +17,7 @@ No other session file reached `main` since (verified, `git fetch origin main` an
 
 ## Next steps, in order
 1. **This PR**: the owner merges it when `Framework checks` is green on its final head.
-2. **The owner's five questions** at the end of the review, with a recommendation for each.
+2. **The owner's six questions** at the end of the review, with a recommendation for each.
 3. **#352**: its `docs/handoffs/central-session.md:38` overclaims what `version-check` and check 10 refuse (the review, section 1b); the central session corrects it, or the owner asks for it.
 4. Everything else carried from `2026-10-23-ccr-b2d02bf7-9ywgjn-end.md` on #352's branch, "Next steps, in order", not re-verified.
 
@@ -25,7 +25,7 @@ No other session file reached `main` since (verified, `git fetch origin main` an
 | Item | Where | What is left | Who acts | Blocks 1.0.0 |
 |---|---|---|---|---|
 | This PR | framework | Green checks, the owner's merge | this session; owner | no |
-| The central session as a pipeline feature | `docs/reviews/2026-10-23-parallelism-inventory.md`, "What the owner decides" | The owner's five answers | owner | no |
+| The central session as a pipeline feature | `docs/reviews/2026-10-23-parallelism-inventory.md`, "What the owner decides" | The owner's six answers | owner | no |
 | Two stale proposal sentences | `docs/proposals/concurrent-changes.md:28`; `docs/proposals/weekly-window-guarded.md:110` | Annotate in a documentation PR | a session | no |
 | Everything else carried | `2026-10-23-ccr-b2d02bf7-9ywgjn-end.md` (#352's branch) and `2026-10-23-ccr-b2d02bf7-9ywgjn-handoff.md`, "Every open item" | Carried, not re-verified | as there | no |
 
@@ -33,4 +33,4 @@ No other session file reached `main` since (verified, `git fetch origin main` an
 | When | Act |
 |---|---|
 | Now | Merge this PR when `Framework checks` is green on its final head. |
-| When you choose | Answer the review's five questions, as recommended or one by one. |
+| When you choose | Answer the review's six questions, as recommended or one by one. |

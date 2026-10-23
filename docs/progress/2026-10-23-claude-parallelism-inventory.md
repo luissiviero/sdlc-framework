@@ -3,7 +3,7 @@
 This session ran on branch `claude/parallelism-inventory`, from `main` at `d80981a` (#346). It is a documentation PR: no plugin version, no file under `plugin/` or `template/`, no number taken.
 
 ## What was written
-1. **`docs/reviews/2026-10-23-parallelism-inventory.md`**: every mechanism that runs work in parallel or keeps it from colliding, inside a project's pipeline (18 rows) and in this repository's own lanes (8 rows), with where each is defined, its status and its limits; the clashes of waves 1 and 2; the gaps a pipeline-level central session would fill and where each part would live; four options judged against the owner's weights; a recommendation and five questions for the owner.
+1. **`docs/reviews/2026-10-23-parallelism-inventory.md`**: every mechanism that runs work in parallel or keeps it from colliding, inside a project's pipeline (18 rows) and in this repository's own lanes (8 rows), with where each is defined, its status and its limits; the clashes of waves 1 and 2; the gaps a pipeline-level central session would fill and where each part would live; six options scored against the owner's weights, revised at the owner's request in a second pass (the late clash at the base update, the wait rule, R60's full drop, the manager of R28 as the place for judgment across changes); a recommendation and six questions for the owner.
 
 ## How it was checked
 - Three read-only sub-agents did the wide searches; this session re-read a sample of their anchors at the source and corrected one path (`plugin/state/gitops.py`). Every citation in the review was opened and compared with its sentence (choice 241); the lines on #352's branch were read at `2faa553`.
@@ -16,4 +16,4 @@ This session ran on branch `claude/parallelism-inventory`, from `main` at `d8098
 | When | Act |
 |---|---|
 | Now | Merge this PR when `Framework checks` is green on its final head. |
-| When you choose | Answer the five questions at the end of the review. |
+| When you choose | Answer the six questions at the end of the review. |
