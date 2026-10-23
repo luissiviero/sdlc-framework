@@ -1432,6 +1432,32 @@ def test_the_banner_says_how_much_the_plan_grew_since_gate_b(tmp_path):
     assert risk.banner_shown("\n".join(lines), [])
 
 
+def test_the_banner_keeps_the_risk_ask_beside_the_plan_s_growth(tmp_path):
+    """The growth line beside risk-list items: the merge is still asked to accept them, and
+    ``banner_shown`` still finds every item line; the newest record with a ``plan_sync``
+    check decides, so an older record's growth never shows behind a newer one without it."""
+    from gate import risk
+
+    change = tmp_path / "changes" / "0001-x"
+    evidence = change / "evidence"
+    evidence.mkdir(parents=True)
+    growth = {"name": "plan_sync", "ok": True,
+              "details": {"plan_growth": {"added": ["a.py"], "removed": []}}}  # fmt: skip
+    hit = {"name": "risk_list", "ok": True, "details": {"hits": {"auth": ["src/auth.py"]}}}
+    write(evidence / "gate-c.json", json.dumps({"checks": [growth, hit]}))
+    st = status_mod.Status(id="0001", slug="x", title="X")
+    lines = risk.banner_lines(change, "e", st)
+    assert lines[0].startswith(risk.BANNER_HEADING + ": this change touches risk-list items.")
+    assert risk.BANNER_ASK["e"] in lines[0]
+    assert lines[1] == "- The plan grew by 1 file since gate (b): `a.py`."
+    assert lines[2].startswith("- `auth` — first found at gate (c)")
+    assert risk.banner_shown("\n".join(lines), ["auth"])
+    # a newer record whose plan_sync holds no growth (no approved copy): none is shown
+    write(evidence / "gate-d.json", json.dumps({"checks": [{"name": "plan_sync", "ok": True}]}))
+    assert risk.plan_grown(change, "e") is None
+    assert not any("plan grew" in line for line in risk.banner_lines(change, "e", st))
+
+
 def test_guardrails_and_risk_list_judge_the_committed_diff_only(project):
     """Deliverable 6(d): guardrails and risk_list read merge base...HEAD, like plan_sync and
     design_scope (OPERATING_MODEL section 3: the gate judges HEAD, not the working tree).

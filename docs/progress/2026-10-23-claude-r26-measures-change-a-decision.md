@@ -24,3 +24,14 @@ None: no guardrail file needs a change.
 
 ## Port list
 Not on it: this PR touches neither `plugin/ci/run_phase.py` nor `plugin/detect/` nor the detect, runbook and fix workflow templates.
+
+## The independent review
+A fresh-context reviewer read the diff against `main` and found nothing blocking. It also ran the full suite, which passed, and checked by hand that the plan's growth reads correctly on the fast lane. Fixed, with tests:
+- **S1.** The plan-growth row read "0 of 4" when the shipped changes' gate records only predated it. `risk.plan_grown` now returns None when no record carries the growth. The row counts only the shipped changes that carry the record, and a note under the table names the others.
+- **S2.** Tests were added for growth on the fast lane, for a banner with growth and risk items together (the ask kept, `banner_shown` true), and for the build PR body.
+- **N1.** The newest gate record with a `plan_sync` check decides, never an older one behind it.
+- **N2.** The plan's entries are de-duplicated before they are compared.
+- **N3.** The note now names "the digest's Failed runs section" instead of "the section above".
+- **N4.** A malformed dismissal entry is no longer counted as expired.
+- **N5.** A by-hand reset made before 1.0.39 left no mark; the definitions say so.
+- **N6.** The extra `approved_base` call is dropped: `check_plan_sync` returns earlier when there is no base.

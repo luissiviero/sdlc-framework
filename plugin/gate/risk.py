@@ -401,10 +401,12 @@ def _brief_text(entry: dict[str, Any]) -> str:
     )
 
 
-def plan_grown(change_dir: Path, phase: str) -> list[str]:
+def plan_grown(change_dir: Path, phase: str) -> list[str] | None:
     """The files the plan gained since gate (b), as the newest gate record the phase's PR
     covers holds them (``plan_sync``'s ``details.plan_growth.added``; R26, choice 257: R60's
-    port, no park and no cap change). [] at (a) and (b) and before any such record."""
+    port, no park and no cap change). The newest record with a ``plan_sync`` check decides,
+    never an older one behind it; None when it holds no growth (a record written before
+    1.0.39, or no approved copy), at (a) and (b), and before any such record."""
     for gate_phase in reversed(BANNER_PHASES.get(phase, ())):
         if gate_phase not in ("c", "d", "e"):
             continue
@@ -412,9 +414,10 @@ def plan_grown(change_dir: Path, phase: str) -> list[str]:
             if isinstance(check, dict) and check.get("name") == "plan_sync":
                 growth = (check.get("details") or {}).get("plan_growth")
                 added = growth.get("added") if isinstance(growth, dict) else None
-                if isinstance(added, list):
-                    return [str(p) for p in added if str(p).strip()]
-    return []
+                if not isinstance(added, list):
+                    return None
+                return [str(p) for p in added if str(p).strip()]
+    return None
 
 
 def banner_lines(change_dir: Path, phase: str, st: Any) -> list[str]:

@@ -1469,7 +1469,7 @@ def test_counters_true_definitions_class_split_and_plan_growth(project):
         "fix_iterations_mean": 0.0,
     }  # fmt: skip
     assert counts["by_class"]["unclassified"]["shipped"] == 1
-    assert counts["plan_grown"] == {"0001": 2}
+    assert counts["plan_grown"] == {"0001": 2} and counts["plan_growth_recorded"] == 2
     assert counts["dismissals"] == 1 and counts["dismissals_expired"] == 1
     assert counts["dismissals_by_kind"] == {"detect": 1, "scan": 0}
 
@@ -1480,12 +1480,30 @@ def test_counters_true_definitions_class_split_and_plan_growth(project):
     )
     assert "| First-pass merge share, non-routine plans | 0% (0 of 2) |" in md
     assert "| Fix iterations per shipped change, non-routine plans | 0.0 (2 of 4 shipped) |" in md
-    assert "| Plan grown since gate (b) (shipped changes) | 1 of 4 (2 files) |" in md
+    assert (
+        "| Plan grown since gate (b) (shipped changes with the record) | 1 of 2 (2 files) |" in md
+    )
+    assert "2 shipped change(s) have no record of the plan's growth" in md
     assert "| Panel calls, all changes (decision 21) | 0 | — |" in md
     assert f"Reset, never first-pass: {', '.join(sorted(ids))}." in md
     assert "1 shipped change(s) carry no class" in md
     assert "1 expired dismissal(s), not in force." in md
     assert "DORA, built in a change of its own" in md
+
+
+def test_the_build_pr_body_shows_the_plan_s_growth(project):
+    """Choice 257 (R60's port): the build PR's banner, from the gate records it covers."""
+    root, change = project
+    gate_json(change, "e", "wait", c.ready_label("e"))
+    record = json.loads((change / art.EVIDENCE_DIR / "gate-e.json").read_text(encoding="utf-8"))
+    growth = {"plan_growth": {"added": ["src/x.py", "src/y.py"], "removed": []}}
+    for check in record["checks"]:  # the fixture's own plan_sync check gains the record
+        if check["name"] == "plan_sync":
+            check["details"].update(growth)
+    (change / art.EVIDENCE_DIR / "gate-e.json").write_text(json.dumps(record), encoding="utf-8")
+    body = desc.build_description(root, "0001", "e")
+    assert "- The plan grew by 2 files since gate (b): `src/x.py`, `src/y.py`." in body
+    assert body.index("**Needs your close look**") < body.index("- **What changed and why**")
 
 
 def test_counters_name_a_class_with_no_shipped_change(project):

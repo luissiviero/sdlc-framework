@@ -694,15 +694,15 @@ def _plan_growth(ctx: GateContext, planned: list[str]) -> dict[str, list[str]] |
     the reverse (R26, choice 257: R60's port): the build PR's banner shows the first, the
     digest counts it. None at (b), where the plan is being written, and when there is no
     approved copy to compare with."""
-    if ctx.phase not in ("c", "d", "e") or not ctx.approved_base():
+    if ctx.phase not in ("c", "d", "e"):
         return None
-    approved = ctx.approved_artifact("plan.md")
+    approved = ctx.approved_artifact("plan.md")  # the caller returned already with no base
     if approved is None:
         return None
-    before = art.planned_files(approved)
+    now, before = dict.fromkeys(planned), dict.fromkeys(art.planned_files(approved))
     return {
-        "added": [p for p in planned if p not in before],
-        "removed": [p for p in before if p not in planned],
+        "added": [p for p in now if p not in before],
+        "removed": [p for p in before if p not in now],
     }
 
 

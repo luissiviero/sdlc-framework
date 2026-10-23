@@ -238,6 +238,32 @@ def test_a_build_stacked_on_the_design_reads_the_approved_plan_for_ratchets(lane
     assert result.details["hits"] == {"ratchet: tests": ["tests/test_flag.py"]}
 
 
+def test_the_plan_s_growth_on_the_fast_lane_reads_the_design_commit(lane):
+    """R26 (choice 257's port): on the fast lane the plan approved at gate (b) is the one at
+    the recorded design commit, as for the ratchets; without the record there is no
+    approved copy, and no growth is recorded rather than a false one."""
+    root, change, intent_sha = lane
+    design = _design_on_the_lane(root, change, intent_sha)
+    _build_on_the_lane(root, change, design)
+    plan = (change / "plan.md").read_text(encoding="utf-8")
+    write(
+        change / "plan.md",
+        plan.replace("\n## Order of work", "- `src/new_one.py` — new\n\n## Order of work", 1),
+    )
+    git(root, "commit", "-q", "-am", "build: the plan gains a file")
+    ctx = gate.build_context(root, "0001", "c")
+    assert checks.check_plan_sync(ctx).details["plan_growth"] == {
+        "added": ["src/new_one.py"],
+        "removed": [],
+    }
+    lane_record = dict(status_mod.read_status(change).fast_lane or {})
+    lane_record.pop("b")
+    _status(change, fast_lane=lane_record)
+    git(root, "commit", "-q", "-am", "the record dropped")
+    ctx = gate.build_context(root, "0001", "c")
+    assert "plan_growth" not in checks.check_plan_sync(ctx).details
+
+
 def test_the_runner_reads_the_framework_change_exemption_at_the_recorded_commit(lane):
     root, change, intent_sha = lane
     git(root, "checkout", "-q", "claude/intent")

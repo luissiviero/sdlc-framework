@@ -44,9 +44,9 @@ CLOSING_THE_LOOP = "Closing the loop (p.45)"
 # each with its reason, written under the table so the owner never looks for it
 NOT_COUNTED = (
     "Not counted here, with the reason: spend is each PR's spend line and the weekly "
-    "ceiling's; the wait at each gate is the review queue's; failed runs are the section "
-    "above; time to first review (the owner is the only reviewer); first-pass CI success "
-    "(the runner runs the targets after the session, and a red target is a counted fix "
+    "ceiling's; the wait at each gate is the review queue's; failed runs are the digest's "
+    "Failed runs section; time to first review (the owner is the only reviewer); first-pass "
+    "CI success (the runner runs the targets after the session, and a red target is a counted fix "
     "round); the share of intents that survive (an intent closed unmerged never reaches the "
     "default branch); OpenTelemetry and per-engineer measures (one owner, no team); DORA, "
     "built in a change of its own on a project with a declared production."
@@ -106,14 +106,19 @@ def collect(root: Path) -> dict[str, Any]:
     in_force = {
         sig: e for sig, e in dismissed.items() if dismissals.lookup({"entries": dismissed}, sig)
     }
+    expired = sum(1 for sig, e in dismissed.items() if isinstance(e, dict) and sig not in in_force)
     # R26 part 2: the plan's class as the iteration cap reads it, the newest verdict first
     by_class: dict[str, list[status_mod.Status]] = {k: [] for k in (*CLASSES, "unclassified")}
     grown: dict[str, int] = {}
+    growth_recorded = 0
     for change_dir, st in shipped_dirs:
         found = limits.classification_in(change_dir / art.EVIDENCE_DIR, SHIPPED_PHASE)
         by_class[found if found in CLASSES else "unclassified"].append(st)
         # choice 257 (R60's port): the files the plan gained after gate (b)
         added = risk_mod.plan_grown(change_dir, SHIPPED_PHASE)
+        if added is None:
+            continue  # no record of it (gate records before 1.0.39): unknown, not zero
+        growth_recorded += 1
         if added:
             grown[st.id] = len(added)
     first_pass = sum(1 for st in shipped if _first_pass(st))
@@ -127,6 +132,7 @@ def collect(root: Path) -> dict[str, Any]:
         "reset_shipped": sorted(st.id for st in shipped if _was_reset(st)),
         "by_class": {k: _class_counts(group) for k, group in by_class.items()},
         "plan_grown": grown,
+        "plan_growth_recorded": growth_recorded,
         "fix_iterations_total": sum(st.iterations for st in statuses),
         "fix_iterations_mean": (
             sum(st.iterations for st in shipped) / len(shipped) if shipped else None
@@ -135,7 +141,7 @@ def collect(root: Path) -> dict[str, Any]:
         "incidents_merged": len(incidents),
         "incidents_shipped": sum(1 for st in incidents if st.phase == SHIPPED_PHASE),
         "dismissals": len(in_force),
-        "dismissals_expired": len(dismissed) - len(in_force),
+        "dismissals_expired": expired,
         "dismissals_by_kind": {
             kind: sum(1 for e in in_force.values() if isinstance(e, dict) and e.get("kind") == kind)
             for kind in dismissals.KINDS
@@ -208,8 +214,9 @@ def render(counts: dict[str, Any]) -> str:
         )
     rows += [
         (
-            "Plan grown since gate (b) (shipped changes)",
-            f"{len(grown)} of {shipped} ({sum(grown.values())} files)",
+            "Plan grown since gate (b) (shipped changes with the record)",
+            f"{len(grown)} of {counts.get('plan_growth_recorded', 0)} "
+            f"({sum(grown.values())} files)",
             f"{PLAN_MODE}, lagging",
         ),
         ("Panel calls, all changes (decision 21)", str(counts["panel_calls_total"]), ""),
@@ -241,8 +248,9 @@ def render(counts: dict[str, Any]) -> str:
         "too. Fix iterations are read from status.yaml, which a reset sets back to 0, so a "
         "reset change counts fewer rounds than it ran. The plan's class is the adversarial "
         "reviewer's newest call, as the iteration cap reads it. Plan grown: the files the "
-        "plan lists that the copy approved at gate (b) did not. Dismissals in force: unexpired "
-        "only."
+        "plan lists that the copy approved at gate (b) did not, over the shipped changes whose "
+        "gate records carry it (plugin 1.0.39 on). A by-hand reset made before plugin 1.0.39 "
+        "left no mark and still reads as first-pass. Dismissals in force: unexpired only."
     )
     reset = counts.get("reset_shipped") or []
     if reset:
@@ -254,6 +262,13 @@ def render(counts: dict[str, Any]) -> str:
         out.append(
             f"{unclassified} shipped change(s) carry no class (no adversarial verdict in "
             "evidence/): in the totals only."
+        )
+    unrecorded = shipped - counts.get("plan_growth_recorded", 0)
+    if unrecorded:
+        out.append("")
+        out.append(
+            f"{unrecorded} shipped change(s) have no record of the plan's growth (gate records "
+            "written before plugin 1.0.39): left out of that row, not counted as zero."
         )
     if counts.get("dismissals_expired"):
         out.append("")
