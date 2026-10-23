@@ -31,7 +31,7 @@ generated: { by: sdlc-framework-session/ccr-20b39ad0-kcymdd, at: 2026-10-14T15:3
 
 # A failed CI run explains itself
 
-**Status: proposed (roadmap R18), from study entry T19, confirmed by the owner on 2026-10-09.** *[2026-10-20: accepted 2026-10-14 (PR #208)]* Nothing is built. It defines the digest's "Failed runs" line and its sources, which R13 (T21), T20, T22, T26 and R20 (T28) feed or place; its merge-workflow part arrives with T18. The owner chose option C of the row deploy-ci: the triage step wired (B) plus a model-written paragraph in the release notes.
+**Status: proposed (roadmap R18), from study entry T19, confirmed by the owner on 2026-10-09.** *[2026-10-20: accepted 2026-10-14 (PR #208)]* Nothing is built. *[2026-10-23: built in plugin 1.0.36, the parts this file's "Order" marks "now"; the record `docs/progress/2026-10-23-claude-r18-failed-run-explains-itself.md` lists where the build departs from the text below, which was read at plugin 1.0.0: the record writer pushes with the job's token through git's command-scope config, since no checkout persists a credential (decision 33); the digest already held `actions: read` (choice 250); a failed setup writes its JSON to `--out` and keeps the job red instead of `continue-on-error`; the triage session's result is stored as `evidence/claude-triage.json`, which the budget reads since R25.]* It defines the digest's "Failed runs" line and its sources, which R13 (T21), T20, T22, T26 and R20 (T28) feed or place; its merge-workflow part arrives with T18. The owner chose option C of the row deploy-ci: the triage step wired (B) plus a model-written paragraph in the release notes.
 
 ## The problem
 
