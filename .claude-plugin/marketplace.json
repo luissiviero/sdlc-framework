@@ -8,7 +8,7 @@
     {
       "name": "sdlc",
       "source": "./",
-      "version": "1.0.32",
+      "version": "1.0.33",
       "description": "Drives a project through plan, design, build, test, deploy and maintain with human gates at (a), (b) and (e)."
     }
   ]

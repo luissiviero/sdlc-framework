@@ -27,7 +27,8 @@ from gate import diff as diffmod  # noqa: E402
 from hooks._common import ConfigError, load_sdlc_config  # noqa: E402
 
 # The identities the framework itself runs under (OPERATING_MODEL section 8: the automation
-# identity has branch-only write access; only the owner merges). A project overrides the list
+# identity has branch-only write access; only the owner merges, and the merge App on the
+# owner's approving review, decision 36). A project overrides the list
 # with `sdlc.yaml: automation_identity` — the GitHub Actions bot is the default, matched
 # against a commit's author name or email. The gate's `owner_actions` check (build guide step
 # 24.5) uses it to refuse a risk acceptance or an iteration reset a run made for itself.

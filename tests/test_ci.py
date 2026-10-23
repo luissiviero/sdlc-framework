@@ -1952,6 +1952,8 @@ def test_a_model_the_pinned_cli_does_not_know_parks_with_the_pin_to_raise(
         assert gate_file["result"] == "park"
         assert [ch["name"] for ch in gate_file["checks"]] == ["cli_model"]
         assert "plugin.claude_code" in gate_file["what_i_need"]
+        # R65 part 6: the advice names the CLI /sdlc-init pins
+        assert f"{run_phase._default_cli()} or later for" in gate_file["what_i_need"]
         assert "evidence/claude-c.stderr.txt holds the line" in gate_file["what_i_need"]
         assert status_mod.read_status(change).parked_reason.startswith("cli_model: ")
         assert "dispatched" not in out

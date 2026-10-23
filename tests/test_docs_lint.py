@@ -438,7 +438,7 @@ def test_a_moved_stub_is_not_named_in_the_code_the_template_or_the_workflows(tmp
     mention of a moved stub is a fact's source; ``tests/`` and ``docs/`` are not read here."""
     _write(tmp_path / "plugin" / "a.py", "# the flags (docs/NOTES.md section 2)\nok = 1\n")
     _write(tmp_path / "template" / "x.yml", "# see DECISIONS.md\n")
-    _write(tmp_path / ".github" / "w.yml", "# docs/notes/2.md\n")
+    _write(tmp_path / ".github" / "w.yml", "# docs/notes/2.md, a RELEASE_NOTES.md\n")
     _write(tmp_path / "plugin" / "__pycache__" / "a.txt", "docs/NOTES.md\n")
     _write(tmp_path / "tests" / "t.py", "# docs/NOTES.md section 2\n")
     assert tasks.code_stub_problems(tmp_path) == [
