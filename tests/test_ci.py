@@ -68,6 +68,7 @@ NOOP_SETUP = f'"{sys.executable}" -c "print(\'setup ok\')"'
 CI_DENY_WRITE = (
     ".claude", "framework", "CLAUDE.md", "REVIEW.md", "sdlc.yaml",
     ".github/workflows", "CLAUDE.local.md", ".mcp.json", ".git/config", ".git/hooks",
+    "policies",
 )  # fmt: skip
 
 
@@ -1793,10 +1794,11 @@ def test_the_ci_settings_hide_the_model_credentials_from_sandboxed_commands():
         "~/.aws/credentials",
     }
     deny_write = data["sandbox"]["filesystem"]["denyWrite"]
-    for entry in (".github/workflows", "CLAUDE.local.md", ".mcp.json", ".git/config"):
+    for entry in (".github/workflows", "CLAUDE.local.md", ".mcp.json", ".git/config", "policies"):
         assert entry in deny_write
     assert ".git" not in deny_write  # the session commits its own work
     assert "Edit(/.github/workflows/**)" in data["permissions"]["deny"]
+    assert "Edit(/policies/**)" in data["permissions"]["deny"]  # R27, decision 40
 
 
 def test_a_rewritten_record_that_did_not_reach_the_branch_fails_the_run(

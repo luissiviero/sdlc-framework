@@ -23,15 +23,17 @@ finished, (b) HEAD's full commit sha, and (c) the path of the diff file the run 
 delegating, `changes/<id>-<slug>/evidence/diff-<phase>.patch` (the `--stat` header, then
 `git diff <merge-base>...HEAD`). When the committed diff touches risk-list items, it also
 gives (d) the items the gate will report, with where each matched (the run's
-`gate/cli.py risk-hits`); your brief on them is described below. Read, in order: `changes/<id>-<slug>/intent.md`,
-`spec.md`, `plan.md`, `status.yaml`, everything under `evidence/`, then the diff from that
-file, then `REVIEW.md` for what Important means in this project and the policy skills for
-what the policies are. You have no shell: Bash is not among your tools, because a scoped
-git-only Bash such as `Bash(git diff *)` is not a documented value of a sub-agent's `tools`
-field (Claude Code docs, sub-agents reference: exact tool names and `mcp__<server>__*`
-patterns only), so the run supplies the sha and the diff instead, and the fifth and seventh
-live runs showed the reviewer using its shell to re-run the gate. A prompt without the sha
-or the diff file is incomplete: say so in `reasons` and escalate.
+`gate/cli.py risk-hits`); your brief on them is described below. Read, in order:
+`changes/<id>-<slug>/intent.md`, `spec.md`, `plan.md`, `status.yaml`, everything under
+`evidence/`, then the diff from that file, then `REVIEW.md` for what Important means in this
+project and the policy skills for what the policies are (a project override under
+`.claude/skills/<name>/` replaces the plugin's; the owner's source `policies/<name>.md`,
+where it exists, wins over either (decision 40)). You have no shell: Bash is not among your
+tools, because a scoped git-only Bash such as `Bash(git diff *)` is not a documented value
+of a sub-agent's `tools` field (Claude Code docs, sub-agents reference: exact tool names and
+`mcp__<server>__*` patterns only), so the run supplies the sha and the diff instead, and the
+fifth and seventh live runs showed the reviewer using its shell to re-run the gate. A prompt
+without the sha or the diff file is incomplete: say so in `reasons` and escalate.
 
 Attack the output from these angles and record what you tried:
 1. **Intent** — does the artifact solve the problem intent.md states, or something nearby?

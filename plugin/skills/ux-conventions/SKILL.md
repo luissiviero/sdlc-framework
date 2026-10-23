@@ -12,8 +12,12 @@ description: The organization's UX and brand conventions for user-facing interfa
   (a mock from Claude Design exported to build), p.28 step 5 (the visual loop: "Give Claude a
   browser or screenshot tool, give it the mock, and let it iterate. Implement, screenshot,
   compare, and adjust. Two or three rounds is normal").
-- Owner's brand and UX guidelines: **no owner source yet** — name them here when they exist
-  (colors, type, spacing, tone of voice, component library).
+- Owner's brand and UX guidelines (colors, type, spacing, tone of voice, component
+  library): the project's `policies/ux-conventions.md`, written by the owner in their own
+  words (ROADMAP R27). Read it first when it exists: where it and this skill differ, the
+  source wins, over a project override too; a rule here it does not mention still
+  applies. No file means these rules alone. It is a guardrail path (decision 40): never
+  edit it in a run.
 - Project override: `.claude/skills/ux-conventions/SKILL.md`. Projects without a user
   interface leave this skill unused; the check says so.
 
@@ -44,5 +48,6 @@ It lists the UI files in the diff, flags copy hard-coded in markup, and reports 
 - UI changed but evidence/ holds no screenshot: run the visual loop (implement, screenshot, compare with the mock) and save the result
 - note: UI files changed: src/components/Form.tsx
 ```
-Deterministic backing: the evidence check of the gate (screenshots are evidence for UI
-changes, step 28). This skill is advisory (p.22 governance).
+Deterministic backing, rule by rule (R27): rule 7, the evidence check of the gate
+(screenshots are evidence for UI changes, step 28). Rules 1 to 6 have no hook: only the
+REVIEW.md pass at (e) re-checks them. This skill is advisory (p.22 governance).

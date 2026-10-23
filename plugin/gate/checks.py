@@ -735,9 +735,10 @@ def check_guardrails(ctx: GateContext) -> CheckResult:
     return _fail(
         "guardrails",
         f"the diff touches guardrail file(s): {', '.join(touched[:10])}",
-        "Guardrail files (.claude/**, CLAUDE.md, REVIEW.md, sdlc.yaml, protected_paths) are "
-        "changed by the owner in a reviewed PR. Revert them here; a framework change says "
-        "'Framework change: yes' in the intent the owner merged at gate (a).",
+        "Guardrail files (.claude/**, CLAUDE.md, REVIEW.md, sdlc.yaml, policies/**, "
+        "protected_paths) are changed by the owner in a reviewed PR. Revert them here; a "
+        "framework change says 'Framework change: yes' in the intent the owner merged at "
+        "gate (a).",
         touched=touched,
     )
 

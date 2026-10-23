@@ -20,8 +20,9 @@ the adversarial reviewer do that.
    types or callers make impossible; comments that restate the code; nested conditionals
    that flatten with early returns; configuration for things that never vary.
 3. Respect the project's conventions (`CLAUDE.md`, the `coding-standards` skill when
-   present) over your own taste; a departure from them is a finding, a style preference
-   is not.
+   present; the owner's `policies/coding-standards.md`, where it exists, wins over the
+   skill) over your own taste; a departure from them is a finding, a style preference is
+   not.
 
 Do not fix anything; report only. Do not edit any file; the session that called you applies
 what it accepts, and the plan-sync hook still requires plan.md in the same commit.

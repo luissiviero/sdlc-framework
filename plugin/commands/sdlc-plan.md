@@ -93,5 +93,5 @@ opened (or reopened) as a draft or by any other account, or one that changes
 anything outside its change folder, the merge stays gate (a). Do not start
 phase (b).
 
-Never edit `.claude/**`, `CLAUDE.md`, `REVIEW.md` or `sdlc.yaml`. Never use bypass-permissions
-mode. Never notify anyone.
+Never edit `.claude/**`, `CLAUDE.md`, `REVIEW.md`, `sdlc.yaml` or `policies/**`. Never use
+bypass-permissions mode. Never notify anyone.

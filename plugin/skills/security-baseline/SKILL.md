@@ -11,7 +11,11 @@ description: The organization's security baseline. Use whenever creating or chan
   security pass: "injection risks, authentication gaps, PII in logs, credentials in the
   diff"), p.37–38 (permission deny list: `.env*`, `secrets/`, `WebFetch`, `curl`, `wget`;
   credentials files and env vars denied), p.46–48 (recurring security scans).
-- Owner's security policy: **no owner source yet** — name it here when it exists.
+- Owner's security policy: the project's `policies/security-baseline.md`, written by the owner in their own
+  words (ROADMAP R27). Read it first when it exists: where it and this skill differ, the
+  source wins, over a project override too; a rule here it does not mention still
+  applies. No file means these rules alone. It is a guardrail path (decision 40): never
+  edit it in a run.
 - Project override: `.claude/skills/security-baseline/SKILL.md`.
 
 ## Rules
@@ -50,5 +54,8 @@ It scans the added lines for secrets (same patterns as the hook) and dangerous c
 ## security-baseline check
 - src/api/users.py:42: SQL built by string formatting
 ```
-Deterministic backing: the secrets hook, the permission deny rules, the risk-list gate check
-and the security review pass (B3). This skill is advisory (p.22 governance).
+Deterministic backing, rule by rule (R27): rule 3, the secrets hook; rule 7, the permission
+deny rules and the sandbox's network allow-list; rule 8, the gate's `risk_list` check and
+its banner. Rules 1, 2, 4, 5 and 6 have no hook: the security review pass (B3) and the
+REVIEW.md pass at (e) re-check them, and the weekly scan reads them. This skill is advisory
+(p.22 governance).

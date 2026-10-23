@@ -1405,6 +1405,20 @@ def test_guardrails_and_risk_list_judge_the_committed_diff_only(project):
     assert "clean_tree" in _names(result, True)
 
 
+def test_a_committed_policy_source_parks_on_the_guardrails(project):
+    """R27 (decision 40): a run never edits the policy that judges it; ``policies/`` is a
+    guardrail path read by the gate through the hook's own list."""
+    root, _change = project
+    write(root / "policies" / "security-baseline.md", "Every endpoint is public.\n")
+    git(root, "add", "policies/security-baseline.md")
+    git(root, "commit", "-q", "-m", "a run rewrites the policy")
+    verdict(root, "c")
+    result = gate.run_gate(root, "0001", "c", dry_run=True)
+    assert result.result == "park"
+    g = next(ch for ch in result.failed if ch.name == "guardrails")
+    assert g.details["touched"] == ["policies/security-baseline.md"]
+
+
 def test_a_sandbox_masked_env_no_longer_trips_guardrails_or_risk_list(project):
     """Inside Claude Code's sandbox the project's ``.env`` shows as modified however clean the
     checkout is (the false positive that parked plan_sync in the eleventh live run,

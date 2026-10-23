@@ -303,6 +303,6 @@ close look" banner shows (gate (a) matches the globs on this PR's own files, dec
 - Optional, owner's machine only: `docs/owner-machine/README.md` in the framework repo
   explains the managed settings file and its machine-wide consequences.
 
-Never edit `.claude/**`, `CLAUDE.md`, `REVIEW.md` or `sdlc.yaml` directly; only the install
-script writes them, and the owner reviews the result in the PR. Never use bypass-permissions
-mode. Never notify anyone.
+Never edit `.claude/**`, `CLAUDE.md`, `REVIEW.md`, `sdlc.yaml` or `policies/**` directly;
+only the install script writes them, and the owner reviews the result in the PR. Never use
+bypass-permissions mode. Never notify anyone.

@@ -77,7 +77,8 @@ The gate reads the wall clock from it; an automated gate (b) parks without it.
 ## 3. Spec pass — prompt v1 (article p.14, with the policy skills loaded)
 Load the five policy skills before writing: `coding-standards`, `security-baseline`,
 `ux-conventions`, `data-conventions`, `definition-of-done` (a project override under
-`.claude/skills/<name>/` replaces the plugin's). Load the `spec-template` skill. Then apply
+`.claude/skills/<name>/` replaces the plugin's; the owner's source `policies/<name>.md`,
+where it exists, wins over either (decision 40)). Load the `spec-template` skill. Then apply
 this prompt to `changes/<id>-<slug>/intent.md`:
 
 > Read intent.md and produce a requirements and design spec for integrating it into this
@@ -263,5 +264,6 @@ and the number of panel decisions. Nothing else is started.
 Do not start phase (c) here: gate (b) is the owner's merge, except on the
 fast lane, where the CI runner (never this session) dispatches the build.
 
-Never edit `.claude/**`, `CLAUDE.md`, `REVIEW.md`, `sdlc.yaml`, `intent.md` or any file
-outside `changes/<id>-<slug>/`. Never use bypass-permissions mode. Never notify anyone.
+Never edit `.claude/**`, `CLAUDE.md`, `REVIEW.md`, `sdlc.yaml`, `policies/**`, `intent.md`
+or any file outside `changes/<id>-<slug>/`. Never use bypass-permissions mode. Never notify
+anyone.
