@@ -2,7 +2,7 @@
 type: Proposal
 title: Python language audit — where Python runs in the framework and the sample, and whether another language fits better
 description: An audit of every Python area in sdlc-framework and sdlc-sample-python with a verdict per area; one change shipped (PR #88), the rest are kept, optional or waiting on one measurement on the owner's PC.
-status: proposed
+status: closed
 roadmap: R4
 sources:
   - id: tracker
@@ -16,7 +16,7 @@ generated: { by: sdlc-framework-session/audit, at: 2026-10-02T10:30:00Z }
 
 # Python language audit
 
-**Status: proposed (roadmap R4). One item shipped in PR #88; the others are recorded here, and one waits on a measurement the owner makes.** Nothing here reopens decision 7 (Python for every hook, gate check, detection script and eval check).
+**Status: proposed (roadmap R4). One item shipped in PR #88; the others are recorded here, and one waits on a measurement the owner makes.** *[2026-10-23, choice 258: closed as "keep". The owner's acts that needed the Windows PC move to a GitHub Codespace, which runs Linux, so the Windows timing below decides nothing; the hooks stay as they are, and the optional rows are taken only when a change touches those files.]* Nothing here reopens decision 7 (Python for every hook, gate check, detection script and eval check).
 
 ## What was audited
 
