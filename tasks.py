@@ -2,7 +2,7 @@
 
 Usage: python tasks.py <task>
 Tasks: test | lint | format | check | verify | notes-index | decisions-index | choices-index |
-       docs-lint | next-free | version-check | help
+       docs-lint | next-free | version-check | template-hashes | help
 
 Everything runs through ``sys.executable -m ...`` with argument lists (no shell), so the
 same file works in cmd.exe, PowerShell, Git Bash and a Linux runner. ``notes-index`` runs in
@@ -17,7 +17,9 @@ retired term used as a live one, CLAUDE.md's verifying lines against ``sdlc.yaml
 the next free choice, candidate, note, decision and patch on ``main`` and every fetched branch
 ahead of it (ROADMAP R65, part 1). ``version-check`` fails a branch that bumps ``plugin.json``
 to a version ``main`` already holds or a tag already has (ROADMAP R5's race, choice 257), or
-that a fetched open branch bumped to first (choice 266).
+that a fetched open branch bumped to first (choice 266). ``template-hashes`` rewrites
+``plugin/init/template_hashes.json``, the hash of each refreshed copy's template at every tag,
+which ``/sdlc-init`` reads to tell a copy nobody edited (ROADMAP R64).
 """
 
 from __future__ import annotations
@@ -1686,6 +1688,69 @@ def task_version_check() -> int:
     return 1 if failures else 0
 
 
+def _init_modules():
+    """``plugin/init/sdlc_init.py`` and ``refresh.py``, imported as the tests import them."""
+    plugin_dir = str(ROOT / "plugin")
+    if plugin_dir not in sys.path:
+        sys.path.insert(0, plugin_dir)
+    from init import refresh, sdlc_init
+
+    return sdlc_init, refresh
+
+
+class NoTagsError(RuntimeError):
+    """No ``v*`` tag is in the clone: a manifest from it would lose every release's text."""
+
+
+def template_hashes(root: Path) -> dict[str, dict[str, dict[str, str]]]:
+    """The two maps of ``plugin/init/template_hashes.json`` (R64), ``files`` and
+    ``files_marked``, each ``{rel: {hash: version}}`` for every refreshed copy and every
+    reported one: the canonical text of ``template/<rel>`` at each ``v*`` tag, oldest first,
+    then in the working tree at the version ``plugin.json`` holds; each hash keeps the first
+    version that shipped it. Raises ``NoTagsError`` in a clone without tags."""
+    sdlc_init, refresh = _init_modules()
+    tags = _git(root, "tag", "--list", "v*", "--sort=v:refname").decode("utf-8").split()
+    if not tags:
+        raise NoTagsError("no v* tag in this clone: run `git fetch --tags origin` first")
+    current = json.loads((root / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8"))
+    maps: dict[str, dict[str, dict[str, str]]] = {"files": {}, "files_marked": {}}
+    for rel in (*sdlc_init.REFRESHED_COPIES, *sdlc_init.REPORTED_COPIES):
+        texts = []
+        for tag in tags:
+            proc = subprocess.run(
+                ["git", "show", f"{tag}:template/{rel}"],
+                cwd=root,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+            )
+            if proc.returncode == 0:
+                texts.append((proc.stdout, tag[1:]))
+        texts.append(((root / "template" / rel).read_text(encoding="utf-8"), current["version"]))
+        for key, marked in (("files", False), ("files_marked", True)):
+            known: dict[str, str] = {}
+            for text, version in texts:
+                known.setdefault(refresh.digest(refresh.canonical_template(text, marked)), version)
+            maps[key][rel] = known
+    return maps
+
+
+def task_template_hashes() -> int:
+    """Rewrite plugin/init/template_hashes.json from the v* tags and the working tree (R64)."""
+    _sdlc_init, refresh = _init_modules()
+    try:
+        maps = template_hashes(ROOT)
+    except (OSError, subprocess.CalledProcessError, NoTagsError) as error:
+        print(f"template-hashes: not written: {error}", file=sys.stderr)
+        return 1
+    data = {"schema": refresh.SCHEMA, **maps}
+    refresh.MANIFEST.write_text(
+        json.dumps(data, indent=2, sort_keys=True) + "\n", encoding="utf-8", newline="\n"
+    )
+    print(f"template-hashes: wrote {refresh.MANIFEST.relative_to(ROOT).as_posix()}")
+    return 0
+
+
 TASKS = {
     "test": task_test,
     "lint": task_lint,
@@ -1698,6 +1763,7 @@ TASKS = {
     "docs-lint": task_docs_lint,
     "next-free": task_next_free,
     "version-check": task_version_check,
+    "template-hashes": task_template_hashes,
 }
 
 

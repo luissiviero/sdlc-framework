@@ -104,19 +104,30 @@ existed, creates `evals/` (empty suite, filled by incidents — decision 17) and
 (control bands for the maintain metric — decision 15), and creates
 `changes/0000-sdlc-init/` with an intent.md. It also installs the CI workflows (the phase
 transitions, the release, the fix round, the abandon rule) and the daily digest under
-`.github/`, create-only (an existing file is never overwritten); re-running it on an upgrade
-installs the workflow files a newer plugin adds and reports an existing one that differs
-from this version's template as `outdated` — the owner replaces it (delete it and re-run)
-to get the newer steps, or keeps their edits. Read its JSON report and show the owner the
-file-by-file result, the `outdated` ones first. The other project files the install writes
-create-only — `changes/README.md`, `evals/README.md`, `evals/check.py`, `lessons/README.md`,
-`policies/README.md` (R27), `REVIEW.md`, `bands.yaml` — are never compared with the template: the report says `kept`
-for them (`created` on a first install), never `outdated`; and `sdlc.yaml` reports
-`unchanged` or `updated (added …)` with its comments kept as the first install wrote them
-(only `updated (… comments dropped)` loses them). So on an upgraded project these files may
-still describe an older plugin. Whenever a workflow copy is `outdated`, say so to the owner
-and name the template copies (`${CLAUDE_PLUGIN_ROOT}/template/`) to diff by hand; the
-framework never rewrites them. For an outdated `sdlc-build.yml` or `sdlc-fix.yml`, also say:
+`.github/`, create-only (an edited file is never overwritten). Re-running it on an upgrade
+(R64) installs the workflow files a newer plugin adds, and compares each existing copy with
+the template of every release (`plugin/init/template_hashes.json`):
+- a copy an older release wrote and nobody changed since (the workflows, the pin script,
+  `changes/README.md`, `evals/README.md`, `evals/check.py`, `lessons/README.md`,
+  `policies/README.md`) is replaced with this version's and reported
+  `refreshed (was <version>)`, the first release that shipped the text it had; the report's
+  `refreshed` map lists them;
+- an edited copy is kept, and so is one rendered with values the project no longer has
+  (another framework repository, a renamed default branch, changed `commands.env` names): a
+  workflow is reported `outdated: …`, a README or `evals/check.py` `kept; outdated (edited):
+  …`; the owner diffs it with the template copy
+  (`${CLAUDE_PLUGIN_ROOT}/template/`) to take the newer text, or keeps their edits;
+- `REVIEW.md` and `bands.yaml` are guardrail files and never rewritten (decision 6): a
+  `REVIEW.md` an older release wrote and nobody edited is reported `kept; outdated (was
+  <version>): …` for the owner's reviewed PR; an edited one and `bands.yaml` are the owner's
+  content and say `kept`;
+- `sdlc.yaml` reports `unchanged` or `updated (added …)` with its comments kept as the first
+  install wrote them (only `updated (… comments dropped)` loses them).
+
+Read its JSON report and show the owner the file-by-file result, the `outdated` ones first,
+then the `refreshed` ones; the refreshed copies ride in the same PR as the pin, so the two
+move together, and the PR body lists them. Whenever a copy is `outdated`, say so to the owner
+and name the template copy to diff by hand; the framework never rewrites an edited one. For an outdated `sdlc-build.yml` or `sdlc-fix.yml`, also say:
 replace sdlc-build.yml and sdlc-fix.yml to get the build caps (decision 32; an older copy
 keeps the build and every fix round on the general caps). The report's `maintain.observation` line
 says whether the maintain metric will have an observation: a project whose only workflows
