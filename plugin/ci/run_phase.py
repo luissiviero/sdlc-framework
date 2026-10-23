@@ -123,6 +123,7 @@ pushed (0.3.0, issue #91; the change is parked first where the record was deferr
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import math
 import os
@@ -3904,9 +3905,52 @@ def restore_owner_fields(change_dir: Path, before_st, after_st=None) -> None:
     status_mod.write_status(change_dir, after_st)
 
 
+RELEASED_REF = "refs/sdlc/released/{id}"  # release/cli.py's record ref, not a branch
+RELEASED_REF_UNREADABLE = "unreadable"
+ORIGIN_URLS = "remote origin"  # the key of origin's fetch and push URLs in ``change_refs``
+
+
+def released_refs(root: Path, change_id: str) -> dict[str, str]:
+    """``{name: sha}`` of every ref ``git ls-remote origin refs/sdlc/released/<id>`` lists (a
+    fetch of the branches does not bring them). ls-remote matches the pattern against the
+    tail of a name, so ``refs/tags/refs/sdlc/released/<id>``, which the release workflow's
+    fetch of the short name would take for the record, is listed too (the independent
+    review, finding 1). ``{ref: RELEASED_REF_UNREADABLE}`` when the remote could not be asked."""
+    from state import gitops  # noqa: PLC0415
+
+    ref = RELEASED_REF.format(id=change_id)
+    proc = gitops.run_proc(root, "ls-remote", "origin", ref)  # a planted config raises
+    if proc.returncode != 0:
+        return {ref: RELEASED_REF_UNREADABLE}
+    refs: dict[str, str] = {}
+    for line in proc.stdout.splitlines():
+        sha, _, name = line.partition("\t")
+        if sha.strip() and name.strip():
+            refs[name.strip()] = sha.strip()
+    return refs
+
+
+def origin_urls(root: Path) -> str:
+    """A digest of origin's fetch and push URLs as git resolves them (``insteadOf`` and
+    ``pushInsteadOf`` expanded), so a session that points origin elsewhere between the two
+    reads of ``change_refs`` is seen (the independent review, finding 2). A digest, never
+    the URLs: a park reason is committed and a URL can carry a credential."""
+    from state import gitops  # noqa: PLC0415
+
+    urls = [
+        gitops.run_proc(root, "remote", "get-url", *flags, "--all", "origin").stdout
+        for flags in ((), ("--push",))
+    ]
+    return hashlib.sha256("\0".join(urls).encode("utf-8")).hexdigest()[:16]
+
+
 def change_refs(root: Path, change_id: str) -> dict[str, str]:
     """``{branch: sha}`` of the change's branches on the remote (``origin/sdlc/<id>/*``), after
-    a fetch; empty without a remote."""
+    a fetch; the change's release ref (``released_refs``, keyed by full name); and a digest of
+    origin's URLs (``ORIGIN_URLS``). Empty without a remote, so a session that removes or
+    renames origin changes every key. Choice 261, point 2: a session that creates or moves
+    the release ref makes the release workflow skip the change as already released
+    (``release/cli.py``, ``remote_record``); ``session_push_mismatches`` parks it."""
     from state import gitops  # noqa: PLC0415
 
     if not gitops.is_repo(root) or not gitops.has_remote(root):
@@ -3924,6 +3968,8 @@ def change_refs(root: Path, change_id: str) -> dict[str, str]:
         name, _, sha = line.partition("\0")
         if name and sha:
             refs[name.removeprefix("origin/")] = sha
+    refs.update(released_refs(root, change_id))
+    refs[ORIGIN_URLS] = origin_urls(root)
     return refs
 
 
@@ -3935,8 +3981,14 @@ SESSION_BRANCH_NEED = (
     "moved, and the checkout was put back on {branch} before this park was committed. For each "
     "origin/sdlc/<id>/... branch named above, reset it to the tip it had before the run (the "
     "sha before the arrow) or delete it when it was absent, unless the push is yours; a next "
-    "phase's run starts from what that branch carries. Then fix the phase command that left "
-    "its branch and re-run the phase."
+    "phase's run starts from what that branch carries. For a release ref named above "
+    "(refs/.../sdlc/released/<id>): first look whether the release workflow wrote it during "
+    "the run (a merge of the change; its run log says so), and if it did, leave it; otherwise "
+    "git fetch origin <the ref>, then put it back with git push -f origin <the full sha before "
+    "the arrow>:<the ref>, or delete it with git push origin :<the ref> when it was absent; "
+    "the release workflow skips a change whose ref names it released. A remote that could "
+    "not be read, or an origin whose URL changed, is read again by a re-run. Then fix the "
+    "phase command that left its branch or touched the remote, and re-run the phase."
 )
 SESSION_BRANCH_MISMATCH = (
     "the session ended on {current}, not on {branch}, the branch the runner prepared; "
@@ -4001,7 +4053,24 @@ def session_push_mismatches(
     for name in sorted(set(refs_before) | set(refs_after)):
         if name == branch:
             continue
-        if refs_before.get(name) != refs_after.get(name):
+        if name == ORIGIN_URLS:
+            if refs_before.get(name) != refs_after.get(name):
+                reasons.append(
+                    "origin: its URL changed or it was removed during the session, so the "
+                    "reads of the remote after the session cannot be trusted"
+                )
+        elif name.startswith("refs/"):
+            # unreadable after a read that worked: the session cannot make the read before
+            # it fail, so two failed reads (a remote the job cannot reach) are no reason
+            if refs_after.get(name) == RELEASED_REF_UNREADABLE != refs_before.get(name):
+                reasons.append(f"{name}: the remote could not be read after the session")
+            elif refs_before.get(name) != refs_after.get(name):
+                reasons.append(
+                    f"{name}: the release ref moved during the session "
+                    f"({refs_before.get(name) or 'absent'} -> {refs_after.get(name) or 'absent'}); "
+                    "the release workflow writes it, and skips a change it names as released"
+                )
+        elif refs_before.get(name) != refs_after.get(name):
             reasons.append(
                 f"origin/{name}: the session pushed to another branch of the change "
                 f"({(refs_before.get(name) or 'absent')[:10]} -> "
