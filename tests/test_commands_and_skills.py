@@ -745,6 +745,7 @@ def test_sdlc_init_commits_every_path_the_install_writes():
     written = [
         *sdlc_init.WORKFLOW_FILES,
         "lessons/README.md",
+        "policies/README.md",  # R27
         "REVIEW.md",
         "changes/README.md",
         "evals/README.md",

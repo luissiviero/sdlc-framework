@@ -7,6 +7,7 @@
 
 ## Where the project stands
 - **Framework `main` is at `20979f2`** (#365), on plugin **1.0.34** (verified, `git fetch origin`, `git log -1 origin/main`, read at 15:52 UTC). The small lane's owner-fields patch is on it (#363, merged as `2a0e7c7`, 1.0.34; verified, `git show 2a0e7c7:.claude-plugin/plugin.json`). The root pin at 1.0.17 is carried, not re-verified.
+- **`main` merged in at `9554cf4`** (#369), with lane B's R27 (#367, plugin 1.0.35) in it (verified, `git log origin/main` after `git fetch origin`, read at 16:36 UTC); the version conflict was resolved to this PR's 1.0.36, and `python tasks.py verify` is green on the merge.
 - **This PR** builds R18 and takes 1.0.36: lane B's `claude/r27-policy-sources` holds 1.0.35 (`python tasks.py next-free` on `20979f2`). Its record is `docs/progress/2026-10-23-claude-r18-failed-run-explains-itself.md`.
 
 ## Preconditions of the moment

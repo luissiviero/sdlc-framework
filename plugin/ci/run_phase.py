@@ -942,8 +942,9 @@ def _committed_diff(root: Path) -> tuple[list[str], str | None]:
 
 def guardrail_hits(files: list[str], config: dict[str, Any]) -> list[str]:
     """The entries of ``files`` that are guardrail paths: ``.claude/**``, ``CLAUDE.md``,
-    ``REVIEW.md``, ``sdlc.yaml``, the owner's ``protected_paths`` and the settings and hooks
-    of a nested ``.claude/`` (the protected-paths hook's own patterns, ``GLOBAL_PROTECTED``
+    ``REVIEW.md``, ``sdlc.yaml``, ``policies/**`` (decision 40), the owner's
+    ``protected_paths`` and the settings and hooks of a nested ``.claude/`` (the
+    protected-paths hook's own patterns, ``GLOBAL_PROTECTED``
     included; an unreadable ``protected_paths`` leaves the hook's fixed ones)."""
     from hooks import protected_paths as pp  # noqa: PLC0415
 

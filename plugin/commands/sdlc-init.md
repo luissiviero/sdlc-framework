@@ -110,7 +110,7 @@ from this version's template as `outdated` — the owner replaces it (delete it 
 to get the newer steps, or keeps their edits. Read its JSON report and show the owner the
 file-by-file result, the `outdated` ones first. The other project files the install writes
 create-only — `changes/README.md`, `evals/README.md`, `evals/check.py`, `lessons/README.md`,
-`REVIEW.md`, `bands.yaml` — are never compared with the template: the report says `kept`
+`policies/README.md` (R27), `REVIEW.md`, `bands.yaml` — are never compared with the template: the report says `kept`
 for them (`created` on a first install), never `outdated`; and `sdlc.yaml` reports
 `unchanged` or `updated (added …)` with its comments kept as the first install wrote them
 (only `updated (… comments dropped)` loses them). So on an upgraded project these files may
@@ -146,7 +146,7 @@ a branch and forbids pushing any other (Claude Code on the web does), run the co
 without `--push`, then push the resulting commit to the assigned branch and open the PR from
 it, keeping the label; say in the PR body that the framework branch is `sdlc/0000/a` locally.
 ```
-python "${CLAUDE_PLUGIN_ROOT}/plugin/state/cli.py" commit-phase --root "${CLAUDE_PROJECT_DIR}" --id 0000 --phase a --message "sdlc-init: connect the SDLC framework" --paths sdlc.yaml .claude/settings.json REVIEW.md CLAUDE.md changes ruff.toml evals bands.yaml lessons .github/workflows .github/scripts --start-point <default branch> --push
+python "${CLAUDE_PLUGIN_ROOT}/plugin/state/cli.py" commit-phase --root "${CLAUDE_PROJECT_DIR}" --id 0000 --phase a --message "sdlc-init: connect the SDLC framework" --paths sdlc.yaml .claude/settings.json REVIEW.md CLAUDE.md changes ruff.toml evals bands.yaml lessons policies .github/workflows .github/scripts --start-point <default branch> --push
 ```
 (paths that do not exist, such as an uncreated `ruff.toml`, are skipped; `.github/workflows`
 and `.github/scripts` carry the fourteen `sdlc-*.yml` workflows (`sdlc-merge.yml` since
@@ -303,6 +303,6 @@ close look" banner shows (gate (a) matches the globs on this PR's own files, dec
 - Optional, owner's machine only: `docs/owner-machine/README.md` in the framework repo
   explains the managed settings file and its machine-wide consequences.
 
-Never edit `.claude/**`, `CLAUDE.md`, `REVIEW.md` or `sdlc.yaml` directly; only the install
-script writes them, and the owner reviews the result in the PR. Never use bypass-permissions
-mode. Never notify anyone.
+Never edit `.claude/**`, `CLAUDE.md`, `REVIEW.md`, `sdlc.yaml` or `policies/**` directly;
+only the install script writes them, and the owner reviews the result in the PR. Never use
+bypass-permissions mode. Never notify anyone.

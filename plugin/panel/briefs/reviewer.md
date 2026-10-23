@@ -13,7 +13,8 @@ Kind: {kind}
 2. `{change_dir}/intent.md`, `spec.md`, `plan.md`, `status.yaml`.
 3. The policy skills in force (`coding-standards`, `security-baseline`, `ux-conventions`,
    `data-conventions`, `definition-of-done`; a project override under `.claude/skills/`
-   replaces the plugin's): every rule the item touches.
+   replaces the plugin's; the owner's source `policies/<name>.md`, where it exists, wins
+   over either (decision 40)): every rule the item touches.
 4. `{change_dir}/evidence/` — {evidence_hint}
 5. The codebase, with Read, Grep and Glob, where the item depends on what exists.
 

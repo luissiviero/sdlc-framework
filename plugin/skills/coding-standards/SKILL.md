@@ -1,6 +1,6 @@
 ---
 name: coding-standards
-description: The organization's coding standards. Use whenever writing, changing or reviewing source code in a project that runs the SDLC framework — during the design pass (spec.md), the implementation run of phase (c), the code-simplifier and the review passes ("apply the coding standards", "is this idiomatic here", "review the diff for style").
+description: The organization's coding standards. Use whenever writing, changing or reviewing source code in a project that runs the SDLC framework — during the design pass (spec.md), the implementation run of phase (c), the code-simplifier and the review passes — and whenever asked which rules or conventions a code change here must follow, before writing it ("apply the coding standards", "is this idiomatic here", "review the diff for style", "what rules does a change here have to follow").
 ---
 
 # Coding standards
@@ -10,8 +10,11 @@ description: The organization's coding standards. Use whenever writing, changing
   "Things Claude gets wrong", and the p.20 example rules "never edit generated classes",
   "Do not bump dependency versions; the platform team owns them") and p.28 (verification
   block: "If a test fails, fix the code, not the test").
-- Owner's standards document: **no owner source yet** — when one exists, name it here and
-  derive the rules from it (p.21 step 2: "write it from the policy owner's source of truth").
+- Owner's standards document: the project's `policies/coding-standards.md`, written by the
+  owner in their own words (ROADMAP R27). Read it first when it exists: where it and this
+  skill differ, the source wins, over a project override too; a rule here it does not
+  mention still applies. No file means these rules alone. It is a guardrail path (decision
+  40): never edit it in a run.
 - Project override: a project replaces this skill with `.claude/skills/coding-standards/SKILL.md`.
 
 ## Rules
@@ -43,5 +46,10 @@ files over 500 lines. Example output:
 - nothing found
 - note: lint target `python -m ruff check .` passed
 ```
-The formatter hook (`hooks.formatters`, ruff for Python by default) and the lint target in
-the gate are the deterministic backing; this skill is advisory (p.22 governance).
+Deterministic backing, rule by rule (R27): rule 3, the plan-sync hook on `git commit` in
+phase (c) and the gate's `plan_sync` and `design_scope` checks; rule 4, the test-file lock
+(hook and gate) on a fix-type change and the gate's test ratchet; rule 6, the
+protected-paths hook for the generated folders a project lists under `sdlc.yaml:
+protected_paths`; rule 8, the formatter hook (`hooks.formatters`, ruff for Python by
+default) and the lint target in the gate. Rules 1, 2, 5 and 7 have no hook: only the
+REVIEW.md pass at (e) re-checks them. This skill is advisory (p.22 governance).

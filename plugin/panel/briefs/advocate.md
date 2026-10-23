@@ -13,10 +13,12 @@ Kind: {kind}
 
 ## Read
 `{root}/REVIEW.md`; `{change_dir}/intent.md`, `spec.md`, `plan.md`, `status.yaml`;
-`{change_dir}/evidence/` ({evidence_hint}); the policy skills in force; the codebase with
-Read, Grep and Glob where the item depends on it. Until you have written your file, a hook
-refuses any Read or Grep that would show you the reviewer's verdict: give each Grep a folder
-(`src/`, `plugin/`) or limit it to code (`type: py`, `glob: "*.py"`).
+`{change_dir}/evidence/` ({evidence_hint}); the policy skills in force (a project override
+replaces the plugin's; the owner's source `policies/<name>.md`, where it exists, wins over
+either (decision 40)); the codebase with Read, Grep and Glob where the item depends on it.
+Until you have written your file, a hook refuses any Read or Grep that would show you the
+reviewer's verdict: give each Grep a folder (`src/`, `plugin/`) or limit it to code
+(`type: py`, `glob: "*.py"`).
 
 ## Your job
 Find the reason the obvious resolution is wrong: the intent it would betray, the policy it

@@ -1,8 +1,9 @@
 """Static tests for the five policy skills of build guide step 20: frontmatter with a trigger
-description, a Source section naming the article pages (and "no owner source yet"), rules,
-a Check section calling the skill's own deterministic script, and the scripts running against
+description, a Source section naming the article pages and the owner's policy source in
+``policies/<name>.md`` (R27, decision 40), rules, a Check section calling the skill's own
+deterministic script with its backing listed rule by rule, and the scripts running against
 the initialised fixture. Whether the model triggers a skill is a live check, not a layer-1
-test."""
+test: the trigger cases in ``evals/cases/`` (R27)."""
 
 from __future__ import annotations
 
@@ -48,13 +49,36 @@ def test_policy_skill_shape(name):
         assert heading in body, heading
     source = body.split("## Source", 1)[1].split("## ", 1)[0]
     assert re.search(r"p\.\d+", source), "cites article pages"
-    assert "no owner source yet" in source
+    assert "no owner source yet" not in source
+    flat = " ".join(source.split())
+    assert f"`policies/{name}.md`" in flat and "the source wins" in flat  # R27
     assert f".claude/skills/{name}/SKILL.md" in source  # project override
     check = body.split("## Check", 1)[1]
     call = f'python "${{CLAUDE_PLUGIN_ROOT}}/plugin/skills/{name}/check.py"'
     assert call in check and (SKILLS / name / "check.py").is_file()
     assert "```" in check and "## " in check.split("```")[3]  # example output block
     assert "advisory" in check and "p.22" in check
+    assert re.search(r"Deterministic backing, (rule|item) by (rule|item) \(R27\)", check)
+
+
+READERS = (
+    "plugin/commands/sdlc-design.md",
+    "plugin/commands/sdlc-build.md",
+    "plugin/commands/sdlc-fix.md",
+    "plugin/agents/adversarial-reviewer.md",
+    "plugin/agents/code-simplifier.md",
+    "plugin/panel/briefs/advocate.md",
+    "plugin/panel/briefs/reviewer.md",
+    "plugin/review/REVIEW_PROMPT.md",
+)
+
+
+@pytest.mark.parametrize("rel", READERS)
+def test_every_reader_of_the_policy_skills_says_the_source_wins(rel):
+    """R27: each place that loads the policy skills says which copy wins, the owner's source
+    in ``policies/`` first (the proposal's row "The readers' silence on which copy wins")."""
+    text = " ".join((ROOT / rel).read_text(encoding="utf-8").split())
+    assert "policies/" in text and "wins over" in text, rel
 
 
 def test_skill_names_match_preflight_list():

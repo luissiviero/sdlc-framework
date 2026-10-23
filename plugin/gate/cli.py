@@ -250,6 +250,32 @@ def skill_overrides(root: Path) -> list[str]:
     ]
 
 
+POLICY_SOURCE_COMMIT_LEN = 12
+UNCOMMITTED = "uncommitted"
+
+
+def policy_sources(root: Path) -> list[tuple[str, str]]:
+    """The owner's policy sources that exist (``policies/<skill>.md``, R27), each with the
+    commit that last changed it, shortened; a source not committed yet says so. The commit is
+    what the spec header records: the policy text that judged the change."""
+    from state import gitops  # noqa: PLC0415
+
+    found = []
+    for name in preflight.POLICY_SKILLS:
+        rel = f"policies/{name}.md"
+        if not (Path(root) / rel).is_file():
+            continue
+        sha = ""
+        if gitops.is_repo(Path(root)):
+            out = gitops.run(Path(root), "log", "-1", "--format=%H", "--", rel, check=False)
+            sha = out.strip()[:POLICY_SOURCE_COMMIT_LEN]
+            dirty = gitops.run(Path(root), "status", "--porcelain", "--", rel, check=False)
+            if dirty.strip():
+                sha = ""
+        found.append((rel, sha or UNCOMMITTED))
+    return found
+
+
 def cmd_spec_header(args) -> int:
     root = Path(args.root).resolve()
     change_dir, st = _change(args)
@@ -260,6 +286,7 @@ def cmd_spec_header(args) -> int:
     version = plugin_version(root, Path(args.plugin_root))
     skills = list(preflight.POLICY_SKILLS)
     overrides = skill_overrides(root)
+    sources = policy_sources(root)
     _emit(
         {
             "title": title,
@@ -267,8 +294,9 @@ def cmd_spec_header(args) -> int:
             "plugin_version": version,
             "skills": skills,
             "overrides": overrides,
+            "policy_sources": [{"path": path, "commit": sha} for path, sha in sources],
             "prompt_version": art.DESIGN_PROMPT_VERSION,
-            "header": art.render_spec_header(title, st.id, version, skills, overrides),
+            "header": art.render_spec_header(title, st.id, version, skills, overrides, sources),
         }
     )
     return 0

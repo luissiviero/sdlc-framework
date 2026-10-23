@@ -51,7 +51,9 @@ docs were killed mid-write and the run ended with no gate; this rule since 0.3.3
   phase `b` → `sdlc/<id>/b`; `c`, `d`, `e` → `sdlc/<id>/c`.
   In CI the run is already on that branch. `git fetch origin`, `git switch <branch>`,
   `git pull --ff-only origin <branch>`.
-- Load the policy skills and, for phase `a` or `f`, `intent-template`; for phase `b`,
+- Load the policy skills (a project override under `.claude/skills/<name>/` replaces the
+  plugin's; the owner's source `policies/<name>.md`, where it exists, wins over either
+  (decision 40)) and, for phase `a` or `f`, `intent-template`; for phase `b`,
   `spec-template` and `plan-template`.
 
 ## 1. Collect the change requests

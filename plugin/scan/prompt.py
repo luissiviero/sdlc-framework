@@ -32,6 +32,8 @@ PROMPT_VERSION = "v1"
 SKILL_NAME = "security-baseline"
 PLUGIN_SKILL = PLUGIN_DIR / "skills" / SKILL_NAME / "SKILL.md"
 PROJECT_SKILL = Path(".claude") / "skills" / SKILL_NAME / "SKILL.md"  # the project override
+# the owner's policy source (R27, decision 40): it wins where it and the skill differ
+POLICY_SOURCE = Path("policies") / f"{SKILL_NAME}.md"
 SKILL_RULES_SECTION = "## Rules"
 REVIEW_FILE = "REVIEW.md"
 IMPORTANT_SECTION = "## What Important means here"
@@ -106,6 +108,13 @@ def skill_text(root: Path) -> tuple[str, str]:
     return "(the security-baseline skill could not be read)", "missing"
 
 
+def policy_source(root: Path) -> str | None:
+    """The owner's security policy, ``policies/security-baseline.md`` (R27), when it exists
+    and says anything: quoted whole, since the owner writes it in their own words."""
+    text = (art.read_text(Path(root) / POLICY_SOURCE) or "").strip()
+    return text or None
+
+
 def important_meaning(root: Path) -> str | None:
     """REVIEW.md's "What Important means here" section, when the project has one."""
     text = art.read_text(Path(root) / REVIEW_FILE)
@@ -167,6 +176,7 @@ def build_prompt(
     cap = _max_findings(config, max_findings)
     out = _display_path(root, out_path)
     skill, origin = skill_text(root)
+    source = policy_source(root)
     meaning = important_meaning(root)
     dismissed = dismissed_entries(root)
     tests = ", ".join(f"`{g}`" for g in _test_globs(root))
@@ -205,6 +215,12 @@ def build_prompt(
         "findings file below. No Edit, no web access.\n"
     )
     parts.append(f"## The policy you apply: the security-baseline skill ({origin})\n{skill}\n")
+    if source:
+        parts.append(
+            f"## The owner's security policy ({POLICY_SOURCE.as_posix()})\n"
+            "The owner's own words: where they and the skill above differ, they win; a rule "
+            f"of the skill they do not mention still applies.\n{source}\n"
+        )
     if meaning:
         parts.append(f"## What Important means here (the project's REVIEW.md)\n{meaning}\n")
     else:

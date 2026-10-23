@@ -9,6 +9,7 @@
       "Edit(CLAUDE.md)",
       "Edit(REVIEW.md)",
       "Edit(sdlc.yaml)",
+      "Edit(policies/**)",
       "WebFetch",
       "Bash(curl *)",
       "Bash(wget *)"
