@@ -325,6 +325,7 @@ def test_this_repository_s_workflow_copies_match_the_template():
         installed = (REPO_WORKFLOW_DIR / name).read_text(encoding="utf-8")
         # R61: the install drops the commands.env markers when sdlc.yaml names no variable
         expected = sdlc_init.apply_env_markers(render.render_file(WORKFLOW_DIR / name, VALUES), [])
+        expected = without_r18(name, expected)
         if name == FIX_WORKFLOW:
             # R44 (1.0.27): project_setup.py --command-from is not in the framework this
             # repository's sdlc.yaml pins (1.0.17), so the installed copy keeps the setup line
@@ -335,6 +336,30 @@ def test_this_repository_s_workflow_copies_match_the_template():
 
 
 COMMAND_FROM = ' --command-from "refs/remotes/origin/$SDLC_DEFAULT_BRANCH"'
+# R18 (plugin 1.0.36): run_phase.py --out, --phase triage --out/--setup and project_setup.py
+# --out are not in the framework this repository's sdlc.yaml pins (1.0.17), so the installed
+# copies keep their steps without them until the pin moves (R14's turn), as for COMMAND_FROM
+R18_BLOCK_RE = re.compile(
+    r"\n      # R18: a failed run explains itself\..*?\n(?=\n      # Build guide step 41\.1)", re.S
+)
+R18_OUTS = (' --out "$RUNNER_TEMP/sdlc-run.json"', ' --out "$RUNNER_TEMP/sdlc-setup.json"')
+
+
+def without_r18(name: str, text: str) -> str:
+    """The template's text as the 1.0.17 pin can run it: R18's triage steps, its ``--out``
+    flags and the step ids it added (``setup``, ``review``, and ``phase`` where the template
+    had none before) left out."""
+    if "--phase triage" not in text:  # a workflow R18 left as it was (the runbook's own setup id)
+        return text
+    text = R18_BLOCK_RE.sub("", text)
+    for out in R18_OUTS:
+        text = text.replace(out, "")
+    ids = ("setup", "review") if name == "sdlc-deploy.yml" else ("setup", "review", "phase")
+    for step_id in ids:
+        text = text.replace(f"        id: {step_id}\n", "")
+    return text
+
+
 FRAMEWORK_CHECKS = "framework-checks.yml"  # this repository's own suite (0.2.28)
 
 
@@ -615,8 +640,13 @@ def test_merge_fired_jobs_find_the_change_instead_of_filtering_the_head(name):
     assert job["steps"][find - 1]["with"]["path"] == "framework"
     assert "--find-change" in job["steps"][find]["run"]
     for step in job["steps"][find + 1 :]:
+        if "triage" in step.get("name", ""):  # R18: after a failure or a park, behind the find
+            assert "steps.find.outputs.change_id != ''" in step["if"] or (
+                step["if"] == "always() && steps.triage_checkout.outcome == 'success'"
+            ), step
+            continue
         assert step["if"] == "steps.find.outputs.change_id != ''", step
-    phase_step = [step for step in job["steps"] if "run" in step][-1]
+    phase_step = next(step for step in job["steps"] if step.get("id") == "phase")
     assert phase_step["env"]["CHANGE_ID"] == "${{ steps.find.outputs.change_id }}"
     # step 41.1: the hook log rides as an artifact after the run, gated like every step
     assert job["steps"][-1]["name"] == "Keep the hook log"
@@ -647,7 +677,8 @@ def test_fix_workflow_starts_on_request_changes_and_on_the_owner_labels():
     rendered = sdlc_init.apply_env_markers(
         render.render_file(WORKFLOW_DIR / FIX_WORKFLOW, VALUES), []
     )
-    assert installed == rendered.replace(COMMAND_FROM, "")  # see the copies test (R44)
+    # see the copies test (R44, R18)
+    assert installed == without_r18(FIX_WORKFLOW, rendered).replace(COMMAND_FROM, "")
     for label in ("sdlc:reset-iterations", "sdlc:unlock-tests"):
         assert f"github.event.label.name == '{label}'" in job["if"], label
     assert "sdlc:accept-risk" not in job["if"]  # retired with decision 35
@@ -658,15 +689,14 @@ def test_fix_workflow_starts_on_request_changes_and_on_the_owner_labels():
     assert checkout["with"]["ref"] == (
         "${{ inputs.head_ref || github.event.pull_request.head.ref || github.ref }}"
     )
-    runs = [step["run"] for step in job["steps"] if "run" in step]
-    assert runs[-1] == (
+    phase_step = next(step for step in job["steps"] if step.get("id") == "phase")
+    assert phase_step["run"] == (
         "python framework/plugin/ci/run_phase.py --root . --plugin-dir framework --phase fix "
         '--id "$CHANGE_ID" --head-ref "$HEAD_REF" --repo "$REPO" --pr-number "$PR_NUMBER" '
-        '--ref "$DEFAULT_BRANCH"'
+        '--ref "$DEFAULT_BRANCH" --out "$RUNNER_TEMP/sdlc-run.json"'
     )
     find = next(step for step in job["steps"] if step.get("id") == "find")
     assert "--phase fix" in find["run"] and "--find-change" in find["run"]
-    phase_step = [step for step in job["steps"] if "run" in step][-1]
     assert phase_step["env"]["PR_NUMBER"] == "${{ github.event.pull_request.number }}"
     assert job["steps"][-1]["name"] == "Keep the hook log"  # step 41.1
     # 1.0.3 (decision 29): the group is the job's, so a run whose job is skipped never enters
@@ -703,7 +733,7 @@ def test_fix_workflow_refuses_fork_heads_and_takes_the_comment_s_link():
     assert "@claude" in trigger["description"] and "decision 34" in trigger["description"]
     find = next(step for step in job["steps"] if step.get("id") == "find")
     assert find["env"]["SDLC_DEFAULT_BRANCH"] == DEFAULT_BRANCH_EXPR
-    phase_step = [step for step in job["steps"] if "run" in step][-1]
+    phase_step = next(step for step in job["steps"] if step.get("id") == "phase")
     assert phase_step["env"]["SDLC_TRIGGER"] == "${{ inputs.trigger }}"
     assert "inputs.trigger" not in phase_step["run"] and "SDLC_TRIGGER" not in phase_step["run"]
     text = (WORKFLOW_DIR / FIX_WORKFLOW).read_text(encoding="utf-8")

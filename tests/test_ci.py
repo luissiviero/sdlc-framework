@@ -393,9 +393,14 @@ def test_triage_phase_is_read_only(capsys):
     assert run_phase.run_triage(args, dict(KEY_ENV)) == run_phase.EXIT_OK
     argv = json.loads(capsys.readouterr().out)["argv"]
     assert argv[argv.index("--allowedTools") + 1] == "Read"
-    assert argv[argv.index("--disallowedTools") + 1] == "Edit,Write,Bash"
+    # R18, point 5: .git is unreadable too, and /proc, where another process's environment is
+    assert argv[argv.index("--disallowedTools") + 1] == (
+        "Edit,Write,Bash,Read(**/.git/**),Read(//proc/**)"
+    )
     assert argv[2].startswith("Read the CI log at out/build.log.")
     assert "Do not fix anything." in argv[2]
+    # R18: the article's p.41 "flaky or real", and the files read as data
+    assert "flaky or real" in argv[2] and "Quote no values" in argv[2]
 
 
 def test_triage_without_a_log_is_a_usage_error():
@@ -2294,9 +2299,17 @@ def test_merge_fired_workflows_find_the_change_from_the_merged_pr(name):
     assert "PR_NUMBER: ${{ github.event.pull_request.number }}" in steps
     # every step after the find step is conditional on a change having been found
     after = steps[find:].split("\n      - ")[1:]
-    assert len(after) == 6  # setup-node, the CLI, the sandbox, the toolchain, the run, the log
-    for step in after:
+    # setup-node, the CLI, the sandbox, the toolchain, the run, R18's five triage steps (the
+    # framework removed and checked out afresh, the checkout verified, the read-only triage,
+    # its publication), the log
+    assert len(after) == 11
+    for step in after[:5] + after[-1:]:
         assert "if: steps.find.outputs.change_id != ''" in step, step
+    for step in after[5:8]:
+        assert "if: always() && steps.find.outputs.change_id != '' && (" in step, step
+    for step in after[8:10]:
+        assert "if: always() && steps.triage_checkout.outcome == 'success'" in step, step
+    after = after[:5] + after[-1:]
     # the phase run gets the id the find step printed, through an env var; the hook log
     # (step 41.1) rides as an artifact after it
     assert after[-2].count("CHANGE_ID: ${{ steps.find.outputs.change_id }}") == 1
@@ -2373,7 +2386,8 @@ def test_the_framework_is_checked_out_afresh_between_the_two_steps_of_a_shared_c
     removed and checked out again by the runner's own action at the pin the first step
     read (a step output), and the project checkout's remote, refspec and config are
     verified from that fresh copy before the second step."""
-    text = workflow(name)
+    # R18's triage block repeats the same three steps after the phase run, on a failure only
+    text = workflow(name).split("      # R18: a failed run explains itself")[0]
     for step in (REMOVE_STEP, CHECK_STEP):
         assert text.count(step) == 1, step
     assert text.index(first) < text.index(REMOVE_STEP) < text.index(CHECK_STEP)

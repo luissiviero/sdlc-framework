@@ -1326,7 +1326,7 @@ def test_the_design_workflow_starts_on_the_owner_s_opened_intent_pr():
         assert part in condition, part
     find = next(step for step in job["steps"] if step.get("id") == "find")
     assert find["env"]["SDLC_DEFAULT_BRANCH"] == "${{ github.event.repository.default_branch }}"
-    run = [step for step in job["steps"] if "run_phase.py" in step.get("run", "")][-1]
+    run = next(step for step in job["steps"] if step.get("id") == "phase")
     # S2: in the environment, never as flags an older pinned framework would reject
     assert run["env"]["SDLC_START_POINT"] == "${{ steps.find.outputs.start_point }}"
     assert run["env"]["SDLC_INTENT_PR"] == "${{ steps.find.outputs.intent_pr }}"
