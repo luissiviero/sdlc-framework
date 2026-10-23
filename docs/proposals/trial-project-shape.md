@@ -19,7 +19,7 @@ generated: { by: sdlc-framework-session/ccr-7ef35daa-7adzh8, at: 2026-10-20T06:0
 
 # The trial project's shape
 
-**Status: accepted on 2026-10-20 (the owner, as recommended; choice 240), proposed the same day from the trial readiness review.** Part 5 stays in this candidate rather than in R44. Nothing is built. Changes under `plugin/` and `template/`, so it takes the next free patch number at its merge (choice 184), as one session pull request or one per part, each with an independent fresh-context review (the owner's rule of 2026-10-16).
+**Status: accepted on 2026-10-20 (the owner, as recommended; choice 240), proposed the same day from the trial readiness review.** Part 5 stays in this candidate rather than in R44. Nothing is built. *[2026-10-23: all five parts built in plugin 1.0.29 with R33, one PR; what was built and how is in ROADMAP R61's annotation and in `docs/progress/2026-10-23-claude-r61-r33-trial-shape-formatter.md`.]* Changes under `plugin/` and `template/`, so it takes the next free patch number at its merge (choice 184), as one session pull request or one per part, each with an independent fresh-context review (the owner's rule of 2026-10-16).
 
 ## The problem
 

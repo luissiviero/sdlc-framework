@@ -120,6 +120,21 @@ def test_notes_are_deterministic_and_list_commits_and_links(tmp_path):
     assert "test missing" in first  # the evidence status line of the PR summary
 
 
+def test_notes_what_changed_is_the_title_for_a_quick_intent(tmp_path):
+    # R54: a quick intent leaves Proposed outcome to the design run; its marker is no note
+    root, change_dir = _repo_with_change(tmp_path)
+    (change_dir / "intent.md").write_text(
+        INTENT.replace(
+            "Owners download the claims report as CSV. Later we add more formats.",
+            "Left to the design run (quick intent).",
+        ),
+        encoding="utf-8",
+    )
+    text = notes.build_notes(root, "0001", base="main")
+    assert "## What changed\n\nExport the claims report\n" in text
+    assert "Left to the design run" not in text
+
+
 def test_notes_what_changed_keeps_a_sentence_wrapped_over_lines(tmp_path):
     # item 11's read: only the first line of a hard-wrapped paragraph was read
     root, change_dir = _repo_with_change(tmp_path)

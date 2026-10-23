@@ -89,6 +89,9 @@ When `status.change_type` is `fix`:
 For front-end work the visual target is the exported design mock in
 `changes/<id>-<slug>/mock/` (build guide step 34; article p.12–13): read it before the first
 screen is written, and name in `plan.md` Proof the screenshot that phase (d) compares with it.
+The build matches the owner's mock (`spec.md` Acceptance, the `Mock:` line), never the
+screens the intent's Examples/References only refer to (ROADMAP R29); with
+`Mock: none`, screens follow the `ux-conventions` skill.
 Follow "Order of work". After each step run the project's `test` command for the tests the
 step touches (the full suite is phase (d)). Commit with
 `python "${CLAUDE_PLUGIN_ROOT}/plugin/state/cli.py" commit-phase --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase c --message "build(<id>): <step>" --paths <files>`

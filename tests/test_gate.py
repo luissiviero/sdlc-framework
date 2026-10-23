@@ -3548,3 +3548,63 @@ def test_gate_a_exempts_change_0000_from_design_scope(tmp_path):
     ds = next(ch for ch in result.checks if ch.name == "design_scope")
     assert ds.ok and "change 0000 installs the framework" in ds.reason
     assert "design_scope" not in _names(result, False)
+
+
+# --- R54: the quick intent ------------------------------------------------------------------
+QUICK_INTENT = """# Intent: percent helper
+Author: owner (developer). Status: proposed. Change id: 0001. Entry route: idea.
+Quick intent: yes
+
+## Problem
+Callers compute percentages by hand and get rounding wrong; give them a helper.
+
+## Proposed outcome
+Left to the design run (quick intent).
+
+## Affected users and systems
+Left to the design run (quick intent).
+
+## Constraints
+Left to the design run (quick intent).
+
+## Open questions
+Left to the design run (quick intent).
+
+## Examples/References
+none
+"""
+ASSUMED = """## Assumed from the quick intent
+- Proposed outcome: `sample_pkg.percent(part, whole)` returns a rounded percentage.
+- Affected users and systems: sample_pkg users.
+"""
+
+
+def test_quick_intent_helpers():
+    assert art.is_quick_intent(QUICK_INTENT) and not art.is_quick_intent(INTENT)
+    # the header line only: the words inside a section are not the header
+    assert not art.is_quick_intent(INTENT + "\nQuick intent: yes\n")
+    assert art.left_to_design("Left to the design run\n(quick intent).\n")
+    assert art.left_to_design("- Left to the design run (quick intent)")  # a list item, no period
+    assert not art.left_to_design("none")
+    # the marker fills every section, so the gate's intent contract holds as it is
+    assert art.missing_sections(QUICK_INTENT, art.INTENT_SECTIONS) == []
+    assert art.empty_sections(QUICK_INTENT, art.INTENT_SECTIONS) == []
+
+
+def test_a_quick_intent_s_spec_must_state_what_it_assumed(tmp_path):
+    ctx = _ctx(tmp_path, phase="b")
+    write(ctx.change_dir / "intent.md", QUICK_INTENT)
+    write(ctx.change_dir / "plan.md", PLAN)
+    write(ctx.change_dir / "spec.md", SPEC)
+    result = checks.check_artifacts(ctx)
+    assert not result.ok and art.SPEC_ASSUMED_SECTION in result.reason
+    write(ctx.change_dir / "spec.md", SPEC + "\n## Assumed from the quick intent\n\n")
+    assert not checks.check_artifacts(ctx).ok  # an empty list is no statement
+    write(ctx.change_dir / "spec.md", SPEC + "\n## Assumed from the quick intent\nnone\n")
+    assert not checks.check_artifacts(ctx).ok  # nor is "none": the PR shows list items
+    write(ctx.change_dir / "spec.md", SPEC_HEADER + "\n" + ASSUMED + SPEC_BODY)
+    assert checks.check_artifacts(ctx).ok
+    # an intent written the usual way needs no such section
+    write(ctx.change_dir / "intent.md", INTENT)
+    write(ctx.change_dir / "spec.md", SPEC)
+    assert checks.check_artifacts(ctx).ok
