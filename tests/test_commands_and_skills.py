@@ -761,6 +761,23 @@ def test_sdlc_init_commits_every_path_the_install_writes():
         assert covered, f"{rel} is written by the install but not committed by step 5"
 
 
+def test_sdlc_init_marks_every_settings_act_desktop_only_with_its_link():
+    """R21's first part (choice 257): every act of step 6 that is a repository setting, which
+    the GitHub mobile app does not show, says it is desktop-only and gives the direct link
+    to the project's settings page; step 5's report names them the same way."""
+    text = flat(COMMANDS / "sdlc-init.md")
+    step_6 = text[text.index("## 6. After the merge") :]
+    bullets = [b for b in step_6.split(" - ") if "Settings →" in b]
+    assert len(bullets) >= 4  # the permission and the secret, the App, the merge App, rulesets
+    for bullet in bullets:
+        assert "Desktop-only" in bullet or "desktop-only" in bullet, bullet[:80]
+        assert "https://github.com/" in bullet, bullet[:80]
+    for link in ("/settings/actions`", "/settings/secrets/actions`", "/settings/rules`"):
+        assert f"https://github.com/<owner>/<repo>{link}" in step_6
+    report = text[text.index("## 5. Commit") : text.index("## 6. After the merge")]
+    assert "each settings act marked desktop-only with its direct link (ROADMAP R21)" in report
+
+
 def test_sdlc_init_prescribes_the_branch_ruleset_of_decision_4():
     """0.2.25: decision 4 is enforced by a GitHub ruleset the framework never creates; the
     owner is told to create it, and the digest says while it is missing."""
