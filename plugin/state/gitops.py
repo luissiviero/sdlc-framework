@@ -149,7 +149,38 @@ def runner_args() -> list[str]:
         "-c", f"core.hooksPath={_NO_HOOKS_DIR}", "-c", "core.fsmonitor=false",
         "-c", f"core.attributesFile={os.devnull}", "-c", "commit.gpgSign=false",
         "-c", "tag.gpgSign=false", "-c", "diff.external=",
+        # the review of 1.0.25: a replace ref the session wrote (.git/refs/replace/) made a
+        # worktree of the approved commit check out another tree, and the diff readers see
+        # no change; the push never carries a replacement, so the runner reads past them
+        "--no-replace-objects",
     ]  # fmt: skip
+
+
+# git-lfs's own filter, as ``git lfs install --local`` writes it (``actions/checkout`` with
+# ``lfs: true``): judged by its value, so an LFS project keeps working (the review of 1.0.25)
+LFS_FILTER = re.compile(r"^filter\.lfs\.(clean|smudge|process)$")
+LFS_VALUE = re.compile(r"^git-lfs (clean|smudge|filter-process)( -- %f)?$")
+
+
+def _planted(root: Path) -> tuple[str, ...]:
+    """``refuse_planted_config``'s findings: the program-running keys but git-lfs's own
+    filter, and a ``.git/info/grafts`` file (which rewrites history as a replace ref does)."""
+    from ci import checkout_check  # noqa: PLC0415
+
+    found: list[str] = []
+    for scope, name in checkout_check.config_findings(root, checkout_check.PROGRAM_SCOPES):
+        if scope == checkout_check.UNLISTED:
+            found.append(name)
+            continue
+        if LFS_FILTER.match(name.lower()):
+            code, value = checkout_check.git(root, "config", f"--{scope}", "--get", name)
+            if code == 0 and LFS_VALUE.match(value.strip()):
+                continue
+        found.append(f"git config {scope} carries {name}")
+    code, common = checkout_check.git(root, "rev-parse", "--git-common-dir")
+    if code == 0 and (root / common.strip() / "info" / "grafts").exists():
+        found.append(".git/info/grafts exists")
+    return tuple(found)
 
 
 def refuse_planted_config(root: Path | str) -> None:
@@ -166,14 +197,10 @@ def refuse_planted_config(root: Path | str) -> None:
     if not os.environ.get("GITHUB_ACTIONS"):
         return
     keep = sys.dont_write_bytecode  # checkout_check turns it off for its own fresh checkout
-    from ci import checkout_check  # noqa: PLC0415 - stdlib only; ci imports state
+    from ci import checkout_check  # noqa: F401, PLC0415 - stdlib only; ci imports state
 
     sys.dont_write_bytecode = keep
-    found = remembered(
-        Path(root),
-        ("planted-config",),
-        lambda: tuple(checkout_check.config_problems(Path(root), checkout_check.PROGRAM_SCOPES)),
-    )
+    found = remembered(Path(root), ("planted-config",), lambda: _planted(Path(root)))
     if found:
         raise GitError(
             "the checkout's git config was changed in a way the runner refuses to run git "

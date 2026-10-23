@@ -224,3 +224,68 @@ def test_the_hook_log_redacts_a_secret_in_the_command(tmp_path):
     )  # fmt: skip
     record = json.loads(log.read_text(encoding="utf-8"))
     assert key not in record["command"] and "[redacted]" in record["command"]
+
+
+# --- the fresh-context review of 1.0.25 ----------------------------------------------------------
+def test_a_replace_ref_does_not_hide_a_commit_from_the_runner_s_diff(tmp_path, monkeypatch):
+    """A session writes ``refs/replace/<head>`` pointing at a commit with the base's tree:
+    without ``--no-replace-objects`` the diff printed nothing."""
+    root = repo(tmp_path, GUARDED)
+    base = git(root, "rev-parse", "HEAD").strip()
+    (root / "CLAUDE.md").write_text("# changed\n", encoding="utf-8")
+    git(root, "commit", "-q", "-am", "edit a guardrail")
+    head = git(root, "rev-parse", "HEAD").strip()
+    tree = git(root, "rev-parse", f"{base}^{{tree}}").strip()
+    fake = git(root, "commit-tree", tree, "-p", base, "-m", "looks clean").strip()
+    git(root, "replace", head, fake)
+    monkeypatch.setenv("GITHUB_ACTIONS", "true")
+    assert diffmod.committed_files(root, base) == ["CLAUDE.md"]
+
+
+def test_git_lfs_s_own_filter_is_not_refused_but_another_is(tmp_path, monkeypatch):
+    root = repo(tmp_path, GUARDED)
+    git(root, "config", "filter.lfs.clean", "git-lfs clean -- %f")
+    git(root, "config", "filter.lfs.smudge", "git-lfs smudge -- %f")
+    git(root, "config", "filter.lfs.process", "git-lfs filter-process")
+    monkeypatch.setenv("GITHUB_ACTIONS", "true")
+    assert gitops.run(root, "rev-parse", "HEAD").strip()
+    git(root, "config", "filter.lfs.clean", "sh -c planted")
+    with pytest.raises(gitops.GitError, match="filter.lfs.clean"):
+        gitops.run(root, "status")
+
+
+def test_grafts_and_the_ext_transport_are_refused(tmp_path, monkeypatch):
+    root = repo(tmp_path, GUARDED)
+    monkeypatch.setenv("GITHUB_ACTIONS", "true")
+    git(root, "config", "protocol.ext.allow", "always")
+    with pytest.raises(gitops.GitError, match="protocol.ext.allow"):
+        gitops.run(root, "status")
+    git(root, "config", "--unset", "protocol.ext.allow")
+    (root / ".git" / "info").mkdir(exist_ok=True)
+    (root / ".git" / "info" / "grafts").write_text("", encoding="utf-8")
+    with pytest.raises(gitops.GitError, match="grafts"):
+        gitops.run(root, "status")
+
+
+def test_the_lock_holds_after_a_commit_on_the_session_s_own_branch(tmp_path, monkeypatch):
+    """``branch --contains HEAD`` stops naming the locked branch once the session commits
+    elsewhere; on a runner ``for-each-ref --merged HEAD`` still finds it."""
+    root = _locked_repo(tmp_path)
+    git(root, "checkout", "-q", "-b", "mine")
+    (root / "changes/0001-fix/status.yaml").write_text(
+        LOCKED.replace("tests_locked: true", "tests_locked: false"), encoding="utf-8"
+    )
+    git(root, "commit", "-q", "-am", "unlock it myself")
+    env = {"CLAUDE_PROJECT_DIR": str(root)}
+    monkeypatch.setenv("GITHUB_ACTIONS", "true")
+    assert test_file_lock.decide(_edit(root, "tests/test_x.py"), [], env).block
+
+
+def test_the_runner_s_restore_sees_a_locked_test_moved_away(tmp_path):
+    root = repo(tmp_path, {"sdlc.yaml": "test_paths:\n  - tests/**\n", "tests/test_x.py": "x\n"})
+    pre_head = git(root, "rev-parse", "HEAD").strip()
+    (root / "src").mkdir()
+    git(root, "mv", "tests/test_x.py", "src/x.py")
+    git(root, "commit", "-q", "-m", "move the test")
+    config = {"test_paths": ["tests/**"]}
+    assert run_phase._test_files_changed_since(root, pre_head, config) == ["tests/test_x.py"]

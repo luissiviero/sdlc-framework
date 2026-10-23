@@ -21,6 +21,7 @@ Usage in hooks.json (exec form): python test_file_lock.py
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -115,16 +116,27 @@ def test_path_patterns(config: dict) -> list[str]:
 
 
 def locked_change_ids(root: str, branch: str, git=_git) -> list[str]:
-    """The change ids the lock applies to: the current branch's, or, when the session left
-    it (a detached HEAD, a branch of its own), the id of every local ``sdlc/<id>/c|d|e``
-    branch that contains HEAD. R59 (the plugin security review of 2026-10-19, M3): a branch
-    switch turned the hook off."""
+    """(change id, branch name) pairs the lock applies to: the current branch's, or, when the
+    session left it (a detached HEAD, a branch of its own), every local ``sdlc/<id>/c|d|e``
+    branch that contains HEAD and, on a runner, every one HEAD contains, so a commit on the
+    session's own branch does not lift it (R59, the plugin security review of 2026-10-19,
+    M3, and the review of 1.0.25). By hand only the first: an owner's branch carries old
+    change branches it merged."""
     own = locked_change_id(branch) if branch else None
     if own is not None:
-        return [own]
-    out = git(root, "branch", "--contains", "HEAD", "--format=%(refname:short)")
-    ids = {locked_change_id(line.strip()) for line in out.splitlines()}
-    return sorted(i for i in ids if i)
+        return [(own, branch)]
+    names = git(root, "branch", "--contains", "HEAD", "--format=%(refname:short)").splitlines()
+    if os.environ.get("GITHUB_ACTIONS"):
+        names += git(
+            root,
+            "for-each-ref",
+            "--merged",
+            "HEAD",
+            "--format=%(refname:short)",
+            "refs/heads/sdlc/",
+        ).splitlines()
+    pairs = {(locked_change_id(n.strip()), n.strip()) for n in names}
+    return sorted((i, n) for i, n in pairs if i)
 
 
 def _committed_locked(root: str, rel: str, ref: str, git=_git) -> bool:
@@ -141,12 +153,13 @@ def _committed_locked(root: str, rel: str, ref: str, git=_git) -> bool:
     )
 
 
-def is_locked(root: str, change_id: str, git=_git) -> bool:
+def is_locked(root: str, change_id: str, git=_git, branch: str = "") -> bool:
     """True when the change is a fix whose reproducing test is committed: its working-tree
-    ``status.yaml`` says so, or the one committed at HEAD does (R59, M3: an edited working
-    copy does not lift the lock; only the owner's ``unlock-tests`` commit does). Raises
-    ConfigError when the change folder or its status.yaml cannot be read (the caller fails
-    closed)."""
+    ``status.yaml`` says so, or the one committed at HEAD, at the tip of ``branch`` or at
+    ``origin``'s copy of it does (R59, M3: an edited working copy, or a commit of the
+    session's own on another branch, does not lift the lock; only the owner's
+    ``unlock-tests`` does). Raises ConfigError when the change folder or its status.yaml
+    cannot be read (the caller fails closed)."""
     change_dir = c.find_change_dir(Path(root), change_id)
     if change_dir is None:
         raise ConfigError(f"no changes/{change_id}-<slug>/ folder for the current branch")
@@ -157,7 +170,10 @@ def is_locked(root: str, change_id: str, git=_git) -> bool:
     if st.change_type == "fix" and bool(st.tests_locked):
         return True
     rel = status_mod.status_path(change_dir).relative_to(Path(root)).as_posix()
-    return _committed_locked(root, rel, "HEAD", git)
+    refs = ["HEAD"]
+    if branch and not branch.startswith("-"):
+        refs += [f"refs/heads/{branch}", f"refs/remotes/origin/{branch}"]
+    return any(_committed_locked(root, rel, ref, git) for ref in refs)
 
 
 def decide(payload: dict, argv: list[str], env: dict[str, str] | None = None, git=_git) -> Decision:
@@ -172,7 +188,7 @@ def decide(payload: dict, argv: list[str], env: dict[str, str] | None = None, gi
     if not change_ids:
         return Decision.allow()  # not a git repo, or HEAD on no phase (c)/(d)/(e) branch
     try:
-        if not any(is_locked(root, change_id, git) for change_id in change_ids):
+        if not any(is_locked(root, cid, git, name) for cid, name in change_ids):
             return Decision.allow()
         patterns = test_path_patterns(load_sdlc_config(root))
     except ConfigError as exc:

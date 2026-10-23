@@ -417,6 +417,18 @@ def claude_prefix(claude: str) -> list[str]:
     return [shutil.which(claude) or claude]
 
 
+CI_EVAL_SETTINGS = {
+    "sandbox": {
+        "enabled": True,
+        "failIfUnavailable": True,
+        "allowUnsandboxedCommands": False,
+        "credentials": {
+            "envVars": [{"name": name, "mode": "deny"} for name in auth.CREDENTIAL_VARS]
+        },
+    }
+}
+
+
 def compose(
     claude: str,
     prompt: str,
@@ -435,6 +447,11 @@ def compose(
     argv += ["--allowedTools", str(config["tools"])]
     argv += ["--disallowedTools", DISALLOWED_TOOLS]
     argv += ["--plugin-dir", str(plugin_dir)]
+    if env.get("GITHUB_ACTIONS"):
+        # R44 (I1, and the review of 1.0.25): on a runner a case's session, whose tools a
+        # pull request can set, runs sandboxed or not at all, and its shell commands find
+        # neither model credential; the project's own rules still apply beside these
+        argv += ["--settings", json.dumps(CI_EVAL_SETTINGS)]
     model = env.get("SDLC_MODEL")
     if model:
         argv += ["--model", model]

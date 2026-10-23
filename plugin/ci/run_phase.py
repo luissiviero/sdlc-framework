@@ -3679,9 +3679,7 @@ def _test_files_changed_since(root: Path, pre_head: str, config: dict[str, Any])
         patterns = test_path_patterns(config)
     except _ConfigError:
         return []
-    changed = gate_diff._z(
-        gate_diff._git(root, "diff", "--name-only", "-z", pre_head, check=False)
-    ) + gate_diff._z(
+    changed = gate_diff.changed_paths(root, pre_head) + gate_diff._z(
         gate_diff._git(root, "ls-files", "--others", "--exclude-standard", "-z", check=False)
     )
     return sorted({f for f in changed if any(matches(p, f) for p in patterns)})

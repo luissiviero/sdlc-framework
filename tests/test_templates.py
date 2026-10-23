@@ -313,9 +313,17 @@ def test_this_repository_s_workflow_copies_match_the_template():
             assert not (REPO_WORKFLOW_DIR / name).exists()
             continue
         installed = (REPO_WORKFLOW_DIR / name).read_text(encoding="utf-8")
-        assert installed == render.render_file(WORKFLOW_DIR / name, VALUES), name
+        expected = render.render_file(WORKFLOW_DIR / name, VALUES)
+        if name == FIX_WORKFLOW:
+            # R44 (1.0.25): project_setup.py --command-from is not in the framework this
+            # repository's sdlc.yaml pins (1.0.17), so the installed copy keeps the setup line
+            # without it until the pin moves (R14's turn); the rest is the template's
+            expected = expected.replace(COMMAND_FROM, "")
+            assert expected.count("project_setup.py --root .\n") == 1, name
+        assert installed == expected, name
 
 
+COMMAND_FROM = ' --command-from "refs/remotes/origin/$SDLC_DEFAULT_BRANCH"'
 FRAMEWORK_CHECKS = "framework-checks.yml"  # this repository's own suite (0.2.28)
 
 
@@ -618,7 +626,8 @@ def test_fix_workflow_starts_on_request_changes_and_on_the_owner_labels():
     for refused in ("CONTRIBUTOR", "FIRST_TIME_CONTRIBUTOR", "FIRST_TIMER", "NONE"):
         assert f"'{refused}'" not in job["if"], refused
     installed = (REPO_WORKFLOW_DIR / FIX_WORKFLOW).read_text(encoding="utf-8")
-    assert installed == render.render_file(WORKFLOW_DIR / FIX_WORKFLOW, VALUES)
+    rendered = render.render_file(WORKFLOW_DIR / FIX_WORKFLOW, VALUES)
+    assert installed == rendered.replace(COMMAND_FROM, "")  # see the copies test (R44)
     for label in ("sdlc:reset-iterations", "sdlc:unlock-tests"):
         assert f"github.event.label.name == '{label}'" in job["if"], label
     assert "sdlc:accept-risk" not in job["if"]  # retired with decision 35

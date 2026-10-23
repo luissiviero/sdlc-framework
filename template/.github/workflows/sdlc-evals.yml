@@ -81,6 +81,11 @@ jobs:
           CLAUDE_CODE_VERSION: ${{ steps.pin.outputs.claude_code }}
         run: npm install -g @anthropic-ai/claude-code@"$CLAUDE_CODE_VERSION"
 
+      # R44 (I1): the cases' sessions run sandboxed on a runner (plugin/evals/run.py
+      # CI_EVAL_SETTINGS), which needs bubblewrap and socat
+      - name: Prepare the runner for Claude Code's sandbox
+        run: python framework/plugin/ci/runner_setup.py
+
       # R44 (the plugin security review of 2026-10-19, I1): on a pull request this checkout
       # is the head, which a session may have written; the setup command is the default
       # branch's, and the framework the install could reach is checked out afresh after it.

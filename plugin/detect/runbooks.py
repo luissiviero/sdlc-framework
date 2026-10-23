@@ -796,11 +796,15 @@ def _approved_tree(root: Path, approved: str) -> Path:
     import tempfile  # noqa: PLC0415
 
     tree = Path(tempfile.mkdtemp(prefix="sdlc-runbook-")) / "tree"
-    gitops.run(root, "worktree", "add", "--detach", "--", str(tree), approved)
-    for keep in KEEP_IN_APPROVED_TREE:
-        shutil.rmtree(tree / keep, ignore_errors=True)
-        if (root / keep).is_dir():
-            shutil.copytree(root / keep, tree / keep, symlinks=True)
+    try:
+        gitops.run(root, "worktree", "add", "--detach", "--", str(tree), approved)
+        for keep in KEEP_IN_APPROVED_TREE:
+            shutil.rmtree(tree / keep, ignore_errors=True)
+            if (root / keep).is_dir():
+                shutil.copytree(root / keep, tree / keep, symlinks=True)
+    except BaseException:
+        _drop_tree(root, tree)  # never leave a registered worktree behind (the 1.0.25 review)
+        raise
     return tree
 
 
@@ -842,19 +846,19 @@ def project_runbook(
         print(f"runbook: {name}: dry run: {shown}")
         outcome.reason = f"dry run: would run {shown}"
         return outcome
+    tree: Path | None = None
     try:
         env = runbook_env(entry)
-        cwd = _approved_tree(root, approved) if approved else root
-    except (RunbookError, gitops.GitError, OSError) as exc:
+        if approved:
+            tree = _approved_tree(root, approved)
+            chain = release_cli.command_chain(command, tree)  # globs expand where it runs
+        code, output, why = _run_chain(chain, tree or root, env, timeout)
+    except (RunbookError, gitops.GitError, release_cli.UsageError, OSError) as exc:
         outcome.status, outcome.reason = FAILED, f"the runbook's tree cannot be prepared: {exc}"
         return outcome
-    try:
-        if cwd != root:  # the globs expand in the tree the command runs in
-            chain = release_cli.command_chain(command, cwd)
-        code, output, why = _run_chain(chain, cwd, env, timeout)
     finally:
-        if cwd != root:
-            _drop_tree(root, cwd)
+        if tree is not None:
+            _drop_tree(root, tree)
     if code != 0:
         outcome.status, outcome.reason = FAILED, why
     outcome.exit_code = code

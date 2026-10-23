@@ -644,3 +644,19 @@ def test_without_the_approved_commit_on_origin_the_runbook_is_refused(tmp_path):
     root = make_repo(tmp_path, {"app.py": "VALUE = 1\n"}, remote=False)
     with pytest.raises(runbooks.RunbookError, match="origin carries no main"):
         runbooks.approved_commit(root, "main")
+
+
+def test_a_replace_ref_does_not_swap_the_runbook_s_approved_tree(tmp_path, monkeypatch):
+    """The review of 1.0.25: ``git replace <approved> <evil>`` made the worktree check out
+    the session's tree; on a runner the runner's git reads no replace ref."""
+    root = make_repo(tmp_path, {"rollback.py": "print('approved script')\n"})
+    approved = runbooks.approved_commit(root, "main")
+    git(root, "checkout", "-q", "-b", "evil")
+    evil = commit(root, {"rollback.py": "print('session script')\n"}, "evil")
+    git(root, "checkout", "-q", "main")
+    git(root, "replace", approved, evil)
+    monkeypatch.setenv("GITHUB_ACTIONS", "true")
+    entry = {"command": f"{sys.executable} rollback.py"}
+    out = runbooks.project_runbook(root, "rollback-x", entry, timeout=60, approved=approved)
+    assert out.status == runbooks.RAN, out.reason
+    assert "approved script" in out.output_tail and "session script" not in out.output_tail

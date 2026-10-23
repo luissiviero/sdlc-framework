@@ -235,7 +235,7 @@ jobs:
         if: steps.find.outputs.change_id != ''
         env:
           SDLC_DEFAULT_BRANCH: ${{ github.event.repository.default_branch || github.ref_name }}
-        run: python framework/plugin/ci/project_setup.py --root . --command-from "refs/remotes/origin/$SDLC_DEFAULT_BRANCH"
+        run: python framework/plugin/ci/project_setup.py --root .
 
       - name: Remove the framework checkout the install could reach
         if: steps.find.outputs.change_id != ''
