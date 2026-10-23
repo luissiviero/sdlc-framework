@@ -80,7 +80,8 @@ The review found no problem in the marker replacement (valid YAML with one and t
 
 ## Verified
 - `python tasks.py verify` on this branch after the review's fixes, with `main` merged in at `f0e50f7` (#345, #347): build, lint, docs lint, version check, tests (2512 passed, 1 skipped: the Windows shim test) and `claude plugin validate` all ok. The output is in the PR body.
-- The `.cmd` shim test runs only on the Framework checks Windows job; its result is read from that job, not here.
+- **The `.cmd` shim check passed on Windows** (verified, https://github.com/luissiviero/sdlc-framework/actions/runs/39932613030/job/120344396800, shard 2 of `3cff3ce`: `849 passed`, none skipped; the test's node id hashes to shard 2, `tests/conftest.py in_shard`). A fake shim that passes `%*` on got `--write "src\a & b.ts"` whole when the hook started it through cmd.exe with the path in double quotes. That settles the proposal's first open point for a path with a space and `&`.
+- The same run's shard 3 failed one test of this PR, `test_a_missing_tool_and_a_bad_mapping_never_block`: on Windows, cmd.exe exits 1 for an unknown command, where a POSIX shell exits 127. The hook did not block, as intended; the test asserted the POSIX code and now asserts a non-zero exit.
 - Not verified live: a CI session with `sandbox.allowed_domains` reaching crates.io, and the `BASH_*_TIMEOUT_MS` variables taking effect in Claude Code 2.1.304. Both wait for the trial project.
 
 ## What I need from you

@@ -459,7 +459,8 @@ def test_a_missing_tool_and_a_bad_mapping_never_block(tmp_path):
     )
     target = _write(root, "a.ts", "x\n")
     d = format_on_edit.decide(_payload(target, root), [], env={"CLAUDE_PROJECT_DIR": str(root)})
-    assert not d.block and d.log["commands"][0]["exit_code"] not in (0, 1)
+    # cmd.exe exits 1 for an unknown command, a POSIX shell 127: a fixer's exit is never a block
+    assert not d.block and d.log["commands"][0]["exit_code"] != 0
     _write(root, "sdlc.yaml", "hooks:\n  formatters: [a, b]\n")
     assert not format_on_edit.decide(
         _payload(target, root), [], env={"CLAUDE_PROJECT_DIR": str(root)}
