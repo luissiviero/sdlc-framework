@@ -657,18 +657,21 @@ def test_a_session_gets_what_is_left_of_the_change_s_budget(capsys, project):
         return argv[argv.index("--max-budget-usd") + 1]
 
     assert budget() == "150" and budget(change_dir=change) == "150"  # nothing spent yet
-    limits.record_spend_entry(evidence, "b", "claude-b.json", 100.0)
-    limits.record_spend_entry(evidence, "c", "claude-c.json", 49.0)
+    # M8 (R25, 1.0.26): the total is rebuilt from the stored session results
+    evidence.mkdir(parents=True, exist_ok=True)
+    for source, usd in (("claude-b.json", 100.0), ("claude-c.json", 49.0)):
+        write(evidence / source, json.dumps({"total_cost_usd": usd}))
     assert budget(change_dir=change) == "1"
-    limits.record_spend_entry(evidence, "c", "claude-c-2.json", 0.42)
+    write(evidence / "claude-c-2.json", json.dumps({"total_cost_usd": 0.42}))
     assert budget(change_dir=change) == "0.58"
     # no exponent form, and never 0 for a positive amount left
     assert run_phase._usd(0.00001) == "0.0001" and run_phase._usd(149.99999) == "150"
     assert run_phase._usd(1e-7) == "0.0001" and run_phase._usd(12.5) == "12.5"
     assert limits.budget_reason(151, 150).startswith("budget exceeded: 151.00 USD")
     # the template's cap through a real dry run
-    (evidence / limits.SPEND_FILE).unlink()
-    limits.record_spend_entry(evidence, "b", "claude-b.json", 149.0)
+    for name in ("claude-c.json", "claude-c-2.json"):
+        (evidence / name).unlink()
+    write(evidence / "claude-b.json", json.dumps({"total_cost_usd": 149.0}))
     argv = dry_run_argv(capsys, root, "d")
     assert argv[argv.index("--max-budget-usd") + 1] == "1"
 
@@ -678,7 +681,7 @@ def test_a_change_with_no_budget_left_parks_before_the_session(project, monkeypa
     the budget reason of the gate's ``limits`` check and never invokes the CLI."""
     root, change = project
     set_state(change, "c", gate_phase="c", gate_result="passed")
-    # M8 (R25, 1.0.25): the total is rebuilt from the stored session results, not the ledger
+    # M8 (R25, 1.0.26): the total is rebuilt from the stored session results, not the ledger
     write(change / "evidence" / "claude-c.json", json.dumps({"total_cost_usd": 150.0}))
     invoked: list = []
     monkeypatch.setattr(run_phase, "invoke", lambda *a, **k: invoked.append(a) or (None, "", "", 1))
@@ -1459,7 +1462,9 @@ def test_full_run_stores_the_result_record_records_spend_and_hands_over(
     assert out["dispatched"]["head_ref"] == "sdlc/0001/c"  # (d) runs on the build branch
 
     stored = json.loads((change / "evidence" / "claude-c.json").read_text(encoding="utf-8"))
+    run_meta = stored.pop("sdlc_run")  # R25: the credential that paid and the session's time
     assert stored == FAKE_RESULT
+    assert run_meta["credential"] == "api_key" and run_meta["timed_out"] is False
     run_file = json.loads((change / "evidence" / "run-c.json").read_text(encoding="utf-8"))
     assert run_file["spend_usd"] == 0.42 and run_file["phase"] == "c"
     ledger = json.loads((change / "evidence" / "spend.json").read_text(encoding="utf-8"))

@@ -1,6 +1,6 @@
-# Progress — R51 with R25 parts 1-2: concurrent changes made safe, the weekly window guarded (plugin 1.0.25, 2026-10-23)
+# Progress — R51 with R25 parts 1-2: concurrent changes made safe, the weekly window guarded (plugin 1.0.26, 2026-10-23)
 
-This session ran on branch `claude/r51-r25-concurrent-spend`, from `main` at `f090652` (#341). It is lane A of the two parallel build sessions the owner started on 2026-10-23; lane B builds R44 with R59 and R3's I5 in another session. This PR merges first, since choice 238 places R44 after R51 and R25 parts 1-2, and lane B merges `main` in after it. The plugin moves from 1.0.24 to 1.0.25 (`python tasks.py next-free`, read after `git fetch origin` at 03:40 UTC on `f090652`).
+This session ran on branch `claude/r51-r25-concurrent-spend`, from `main` at `f090652` (#341). It is lane A of the two parallel build sessions the owner started on 2026-10-23; lane B builds R44 with R59 and R3's I5 in another session. This PR merges first, since choice 238 places R44 after R51 and R25 parts 1-2, and lane B merges `main` in after it. The plugin moves from 1.0.25 to 1.0.26: the session first took 1.0.25, which #342 took and tagged while this PR was built, and `main` was merged in at `1d89cf1` (`python tasks.py next-free`, read after `git fetch origin` at 04:35 UTC on `1d89cf1`). Note 59 is also taken by lane B's branch (`next-free`, the same read); this PR merges first, so lane B takes the number `next-free` gives it then.
 
 ## The two GitHub facts (R51's row asked for them before the design relied on them)
 Both are in `docs/notes/59.md`.
@@ -50,7 +50,9 @@ Both are in `docs/notes/59.md`.
 Each change follows a behaviour the accepted proposals change on purpose; no test was skipped or deleted.
 - `tests/test_fix_round_gaps.py`, the turn-cap test: the run is green and the reason says "stopped at the turn limit" (R25 part 1). Before, it asserted a red run with "claude exited 0, error_max_turns".
 - `tests/test_fix_round_gaps.py` and `tests/test_fix_round_edges.py`, ten gap-3 tests (three and seven): they used the turn limit only as an example of a failed session. They now use a session that failed with `error_during_execution` (`FAILED_RUN`), which no outer bound stops, and keep their assertions on the gap-3 path.
-- `tests/test_gate.py`, three budget tests, and `tests/test_ci.py`'s no-budget-left test: they also write the stored session results the total is now rebuilt from (M8). The ledger assertions stay, and one more shows that an emptied ledger no longer lowers the total.
+- `tests/test_auto_round.py`, the timeout case of an unfinished automatic round: decision 29's park names the runner's timeout and the run is green (R25 part 1). Before, it asserted "claude exited 124" and a red run.
+- `tests/test_gate.py`, three budget tests, and `tests/test_ci.py`'s no-budget-left and budget-left tests: they also write the stored session results the total is now rebuilt from (M8). The ledger assertions stay, and one more shows that an emptied ledger no longer lowers the total.
+- `tests/test_ci.py`'s full-run test: the stored result carries the runner's `sdlc_run` beside the CLI's own fields, and the test checks both.
 - `tests/test_templates.py` and `tests/test_ci.py`: the release job's group is `sdlc-release`, the release job allows 75 minutes, and the deploy job 355.
 - `tests/test_ci_end_to_end.py`, the web-session intent test: "nothing else was pushed" now reads "the reserved `sdlc/0002/a` holds only the reservation", since `new-change` reserves the id before the round runs.
 

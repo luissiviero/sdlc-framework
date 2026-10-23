@@ -45,7 +45,7 @@
 # deploy.command run there, and neither may push. Only the record job, which runs the
 # framework's record step and nothing of the project's, holds contents: write (the automation
 # identity's branch-only access). The deploy command's own credentials are the project's
-# secrets; add them to the env: of the release step below. Since 1.0.25 (R51) that step runs
+# secrets; add them to the env: of the release step below. Since 1.0.26 (R51) that step runs
 # the project's build, test and lint on the merge commit first, without any variable whose
 # name holds TOKEN, SECRET, PASSWORD, PASSPHRASE, PRIVATE, CREDENTIAL, AUTH or KEY: name the
 # deploy secrets so, or the targets see them. It keeps the workflow token, not

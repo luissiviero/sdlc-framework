@@ -528,7 +528,7 @@ def test_start_run_records_the_build_run_and_a_fix_round(tmp_path, monkeypatch, 
 
 
 def _stored(evidence: Path, source: str, usd) -> None:
-    """The runner's stored result of one session: M8 (R25, 1.0.25) rebuilds the change's
+    """The runner's stored result of one session: M8 (R25, 1.0.26) rebuilds the change's
     spend from these, never from ``evidence/spend.json``, which the session can write."""
     write(evidence / source, json.dumps({"total_cost_usd": usd}))
 

@@ -267,7 +267,7 @@ def test_a_restart_whose_merge_conflicts_parks_again_and_leaves_no_merge(
 
 # --- gaps 3 and 4: an unfinished fix round keeps its work and parks ----------------------------
 MAX_TURNS = {"is_error": True, "subtype": "error_max_turns", "total_cost_usd": 1.5, "result": ""}
-# a failed session that no outer bound stopped: since R25 part 1 (plugin 1.0.25) the turn limit
+# a failed session that no outer bound stopped: since R25 part 1 (plugin 1.0.26) the turn limit
 # parks green, so the gap-3 tests of a failed round use this one
 FAILED_RUN = {**MAX_TURNS, "subtype": "error_during_execution"}
 QUESTION = {"is_error": False, "total_cost_usd": 0.4, "result": "How would you like me to proceed?"}
@@ -324,7 +324,7 @@ def test_a_fix_session_at_the_turn_cap_keeps_its_work_on_the_pr_head_and_parks(
     root, change, args, env, calls = _owner_round(
         project, fake_claude, monkeypatch, tmp_path, EDITS, MAX_TURNS
     )
-    # R25 part 1 (plugin 1.0.25): an outer bound parks green and names itself; before, a
+    # R25 part 1 (plugin 1.0.26): an outer bound parks green and names itself; before, a
     # red run with "claude exited 0, error_max_turns"
     assert run_phase.run_phase(args, env) == run_phase.EXIT_OK
     out = json.loads(capsys.readouterr().out)
