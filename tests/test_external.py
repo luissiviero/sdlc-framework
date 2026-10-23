@@ -379,9 +379,11 @@ ANSWER = {"verdict": "concerns", "summary": "s",
 
 
 def _fast_lane_build(project: Path, design_pr: int | None) -> str:
-    """``sdlc/0001/c`` cut from the design branch, its status.yaml recording ``fast_lane.b``."""
+    """``sdlc/0001/c`` cut from the design branch, its status.yaml recording ``fast_lane.b``
+    (``design_pr`` None: no fast lane; 0: the entry without its optional ``pr``)."""
     git(project, "checkout", "-q", "-b", "sdlc/0001/c")
-    fast = f"fast_lane:\n  b:\n    sha: {'a' * 40}\n    pr: {design_pr}\n" if design_pr else ""
+    entry = f"fast_lane:\n  b:\n    sha: {'a' * 40}\n    classification: routine\n"
+    fast = "" if design_pr is None else entry + (f"    pr: {design_pr}\n" if design_pr else "")
     (project / CHANGE / "status.yaml").write_text(f"id: '0001'\nphase: d\n{fast}", "utf-8")
     (project / "src" / "app.py").write_text("def thing():\n    return 2\n", encoding="utf-8")
     git(project, "add", "-A")
@@ -389,7 +391,16 @@ def _fast_lane_build(project: Path, design_pr: int | None) -> str:
     return git(project, "rev-parse", "HEAD")
 
 
-def _github_with_a_superseded_design(head: str, design_labels: list[str], b_opinions: list[str]):
+def _github_with_a_superseded_design(
+    head: str,
+    design_labels: list[str],
+    b_opinions: list[str],
+    design_state: str = "closed",
+    author: str = "github-actions[bot]",
+    unread: int | None = None,
+):
+    """A GitHub where build PR #9 (``sdlc/0001/c``) supersedes design PR #5; ``unread``: the
+    comments of that PR cannot be read."""
     posted: list[tuple[str, int, str]] = []
 
     class FakeGithub:
@@ -399,20 +410,27 @@ def _github_with_a_superseded_design(head: str, design_labels: list[str], b_opin
             return {"number": 9, "head_sha": head}
 
         @staticmethod
+        def find_pr(repo, branch, state, cwd=None):
+            assert (branch, state) == ("sdlc/0001/b", "closed")
+            return {"ok": True, "number": 5}
+
+        @staticmethod
         def pr_by_number(repo, number, cwd=None):
             assert number == 5
-            return {"ok": True, "number": 5, "labels": design_labels}
+            return {"ok": True, "number": 5, "state": design_state, "labels": design_labels}
 
         @staticmethod
         def issue_comments(repo, number, cwd=None):
+            if number == unread:
+                return {"ok": False, "reason": "HTTP 502", "comments": []}
             if number == 5:
-                bodies = [(b, "https://github.com/o/p/pull/5#b") for b in b_opinions]
+                bodies = [(b, author, "https://github.com/o/p/pull/5#b") for b in b_opinions]
             else:
-                bodies = [(body, "u") for _, n, body in posted if n == number]
-            return {
-                "ok": True,
-                "comments": [{"type": "Bot", "body": b, "url": u} for b, u in bodies],
-            }
+                bodies = [
+                    (body, "github-actions[bot]", "u") for _, n, body in posted if n == number
+                ]
+            comments = [{"type": "Bot", "author": a, "body": b, "url": u} for b, a, u in bodies]
+            return {"ok": True, "comments": comments}
 
         @staticmethod
         def add_comment(repo, number, body, cwd=None):
@@ -426,25 +444,36 @@ B_OPINION = review_mod.comment(
     {"phase": "b", "head": "b" * 40, "model": "gemini-4-argon", "ran": True,
      "answer": {"verdict": "no concerns", "summary": "the plan holds", "concerns": []}}
 )  # fmt: skip
+E_ARGV = ["review", "--id", "0001", "--phase", "e", "--repo", "o/p", "--ref", "main", "--post"]
+
+
+def _b_only(project: Path) -> None:
+    git(project, "checkout", "-q", "main")
+    (project / "sdlc.yaml").write_text(ON.replace("[b, e]", "[b]"), encoding="utf-8")
+    git(project, "commit", "-q", "-am", "(b) only")
+    git(project, "checkout", "-q", "sdlc/0001/b")
+
+
+def _fake_generate(model, prompt, schema, credential):
+    return {"ok": True, "answer": ANSWER, "model": "gemini-4-argon", "tokens": {},
+            "seconds": 1.0, "reason": ""}  # fmt: skip
 
 
 def test_the_fast_lane_carries_the_b_opinion_onto_the_build_pr_once(
     project, monkeypatch, tmp_path, capsys
 ):
-    """Defect 2 of the R8 end file, as the owner chose (2026-10-23): with (e) off, the (b)
+    """Defect 2 of the R8 end file, as the owner chose (choice 255): with (e) off, the (b)
     opinion of the superseded design PR reaches the build PR at (e) as a comment of its own,
     calls no model, and is never carried twice."""
     monkeypatch.setattr(gemini, "_request", lambda *a, **k: pytest.fail("called"))
-    git(project, "checkout", "-q", "main")
-    (project / "sdlc.yaml").write_text(ON.replace("[b, e]", "[b]"), encoding="utf-8")
-    git(project, "commit", "-q", "-am", "(b) only")
-    git(project, "checkout", "-q", "sdlc/0001/b")
+    _b_only(project)
     head = _fast_lane_build(project, design_pr=5)
     github, posted = _github_with_a_superseded_design(head, ["sdlc:superseded"], [B_OPINION])
     monkeypatch.setattr(cli, "_github", lambda: github)
+    summary = tmp_path / "summary.md"
+    monkeypatch.setenv("GITHUB_STEP_SUMMARY", str(summary))
     out = tmp_path / "record.json"
-    argv = ["review", "--root", str(project), "--id", "0001", "--phase", "e", "--repo", "o/p",
-            "--ref", "main", "--post", "--out", str(out)]  # fmt: skip
+    argv = [*E_ARGV, "--root", str(project), "--out", str(out)]
     assert cli.main(argv) == 0
     record = json.loads(out.read_text(encoding="utf-8"))
     assert record["off"] and record["carried"]["design_pr"] == 5
@@ -454,47 +483,88 @@ def test_the_fast_lane_carries_the_b_opinion_onto_the_build_pr_once(
     assert "superseded design PR #5" in body and "https://github.com/o/p/pull/5#b" in body
     assert "> Verdict: **no concerns**. the plan holds" in body
     assert review_mod.MARKER not in body  # never read as a verdict on the build head
-    out.unlink()
     capsys.readouterr()
     assert cli.main(argv) == 0
     again = json.loads(capsys.readouterr().out)
     assert again["carried"]["reason"] == "already carried onto the build PR"
-    assert len(posted) == 1 and not out.exists()  # nothing new: no record, no comment
+    assert len(posted) == 1  # nothing posted twice; the reason is in the summary and the JSON
+    assert "not carried: already carried onto the build PR" in summary.read_text("utf-8")
 
 
 def test_with_e_on_the_carried_opinion_is_a_section_of_the_e_comment(project, monkeypatch):
-    def fake_generate(model, prompt, schema, credential):
-        return {"ok": True, "answer": ANSWER, "model": "gemini-4-argon", "tokens": {},
-                "seconds": 1.0, "reason": ""}  # fmt: skip
-
-    monkeypatch.setattr(gemini, "generate", fake_generate)
+    """One comment: the (e) record, then the carried (b) one; a re-run on the same head posts
+    neither again (the combined comment is a verdict on this head, the carry is marked)."""
+    monkeypatch.setattr(gemini, "generate", _fake_generate)
     head = _fast_lane_build(project, design_pr=5)
     github, posted = _github_with_a_superseded_design(head, ["sdlc:superseded"], [B_OPINION])
     monkeypatch.setattr(cli, "_github", lambda: github)
     monkeypatch.setenv("GEMINI_API_KEY", FAKE)
-    argv = ["review", "--root", str(project), "--id", "0001", "--phase", "e", "--repo", "o/p",
-            "--ref", "main", "--post"]  # fmt: skip
+    argv = [*E_ARGV, "--root", str(project)]
     assert cli.main(argv) == 0
     assert len(posted) == 1 and posted[0][1] == 9
     own, carried = posted[0][2].split("<!-- sdlc:second-opinion-carried #5 -->")
     assert own.startswith(review_mod.MARKER) and "phase (e)" in own and "src/app.py" in own
     assert "> Verdict: **no concerns**" in carried
+    assert cli.main(argv) == 0
+    assert len(posted) == 1
+
+
+def test_a_failed_carry_never_costs_the_e_record_its_post(project, monkeypatch):
+    monkeypatch.setattr(gemini, "generate", _fake_generate)
+    head = _fast_lane_build(project, design_pr=5)
+    github, posted = _github_with_a_superseded_design(head, ["sdlc:superseded"], [B_OPINION])
+
+    def broken(*a, **k):
+        raise RuntimeError("a new shape")
+
+    github.pr_by_number = staticmethod(broken)
+    monkeypatch.setattr(cli, "_github", lambda: github)
+    monkeypatch.setenv("GEMINI_API_KEY", FAKE)
+    assert cli.main([*E_ARGV, "--root", str(project)]) == 0
+    assert len(posted) == 1 and posted[0][2].startswith(review_mod.MARKER)
+    assert "second-opinion-carried" not in posted[0][2]
+
+
+def test_the_carried_quote_is_inert_and_only_the_workflow_bot_s_counts(project, monkeypatch):
+    """A bot comment of another identity is no source; a line that slipped past ``_plain``
+    loses its HTML, its mention and its link once more."""
+    monkeypatch.setattr(gemini, "_request", lambda *a, **k: pytest.fail("called"))
+    head = _fast_lane_build(project, design_pr=5)
+    forged = B_OPINION + "@owner <img src=x> [x](https://evil.example)\n"
+    config = cli.read_config(project, "main")
+    github, _ = _github_with_a_superseded_design(
+        head, ["sdlc:superseded"], [forged], author="other-app[bot]"
+    )
+    monkeypatch.setattr(cli, "_github", lambda: github)
+    carried = cli.carry_design_opinion(args(root=str(project), phase="e", repo="o/p"), config)
+    assert "was not found" in carried["text"]
+    github, _ = _github_with_a_superseded_design(head, ["sdlc:superseded"], [forged])
+    monkeypatch.setattr(cli, "_github", lambda: github)
+    text = cli.carry_design_opinion(args(root=str(project), phase="e", repo="o/p"), config)["text"]
+    quoted = "\n".join(line for line in text.splitlines() if line.startswith(">"))
+    assert "@\u200bowner" in quoted and "<img" not in quoted and "&lt;img" in quoted
+    assert "](" not in quoted and "https://evil" not in quoted
 
 
 @pytest.mark.parametrize(
-    ("design_pr", "labels", "opinions", "expected"),
+    ("design_pr", "labels", "state", "opinions", "unread", "expected"),
     [
-        (None, ["sdlc:superseded"], [B_OPINION], None),  # no fast lane: nothing to carry
-        (5, [], [B_OPINION], None),  # the design PR stayed open: the owner read it there
-        (5, ["sdlc:superseded"], [], "was not found"),  # said, never silent
+        (None, ["sdlc:superseded"], "closed", [B_OPINION], None, None),  # no fast lane
+        (5, [], "closed", [B_OPINION], None, None),  # closed by the owner, not superseded
+        (5, ["sdlc:superseded"], "open", [B_OPINION], None, None),  # reopened: read there
+        (5, ["sdlc:superseded"], "closed", [], None, "was not found"),  # said, never silent
+        (0, ["sdlc:superseded"], "closed", [B_OPINION], None, "the plan holds"),  # no number
+        (5, ["sdlc:superseded"], "closed", [B_OPINION], 5, "comments were not read"),
     ],
 )
 def test_the_carry_only_for_a_superseded_design_and_never_silent(
-    project, monkeypatch, design_pr, labels, opinions, expected
+    project, monkeypatch, design_pr, labels, state, opinions, unread, expected
 ):
+    """``design_pr`` 0: ``fast_lane.b`` without its optional ``pr``; the design PR is found
+    by its branch, as ``run_phase.supersede_earlier_pr`` found it to close it."""
     monkeypatch.setattr(gemini, "_request", lambda *a, **k: pytest.fail("called"))
     head = _fast_lane_build(project, design_pr=design_pr)
-    github, _posted = _github_with_a_superseded_design(head, labels, opinions)
+    github, _posted = _github_with_a_superseded_design(head, labels, opinions, state, unread=unread)
     monkeypatch.setattr(cli, "_github", lambda: github)
     carried = cli.carry_design_opinion(
         args(root=str(project), phase="e", repo="o/p"), cli.read_config(project, "main")
@@ -502,11 +572,12 @@ def test_the_carry_only_for_a_superseded_design_and_never_silent(
     if expected is None:
         assert carried is None
     else:
-        assert carried["pr"] == 9 and expected in carried["text"]
+        assert carried["pr"] == 9 and expected in (carried.get("text") or carried["reason"])
 
 
 def test_a_phases_value_that_is_not_a_list_is_said_never_silent(project, monkeypatch):
-    """``phases: b`` turns nothing on: the record says so, and is posted, instead of "off"."""
+    """``phases: b`` turns nothing on: the record says so instead of "off" (the summary and
+    the JSON; with no PR looked up it is not posted). ``--model`` by hand still runs."""
     monkeypatch.setattr(gemini, "_request", lambda *a, **k: pytest.fail("called"))
     git(project, "checkout", "-q", "main")
     (project / "sdlc.yaml").write_text(ON.replace("[b, e]", "b"), encoding="utf-8")
@@ -514,3 +585,8 @@ def test_a_phases_value_that_is_not_a_list_is_said_never_silent(project, monkeyp
     record = cli.run_review(args(root=str(project), ref="main"), {"GEMINI_API_KEY": FAKE})
     assert not record.get("off") and not record["ran"]
     assert record["reason"] == "sdlc.yaml external_review.phases is not a list, as [b, e]"
+    git(project, "checkout", "-q", "sdlc/0001/b")
+    by_hand = cli.run_review(
+        args(root=str(project), ref="main", model="gemini-4-argon", dry_run=True), {}
+    )
+    assert by_hand["reason"] == "dry run: nothing sent"

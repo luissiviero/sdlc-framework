@@ -48,6 +48,8 @@ from state.conventions import SUPERSEDED_LABEL  # noqa: E402
 PHASES = ("b", "e")
 BRANCH = {"b": "sdlc/{id}/b", "e": "sdlc/{id}/c"}
 CONFIG_KEY = "external_review"
+# who posts the record: the job's `GITHUB_TOKEN` is the workflow token
+WORKFLOW_BOT = "github-actions[bot]"
 WORK_BRANCH_RE = re.compile(r"^sdlc/(\d{4})/[a-f]$")
 
 
@@ -117,7 +119,7 @@ def run_review(args: argparse.Namespace, env: dict[str, str]) -> dict[str, Any]:
         "model": args.model or settings(config).get("model"),
         "pr": None,
     }
-    if settings(config) and not isinstance(settings(config).get("phases"), list):
+    if not args.model and settings(config) and not isinstance(settings(config).get("phases"), list):
         # a block the owner wrote but that turns nothing on is said, never silent (1.0.24)
         record["reason"] = f"sdlc.yaml {CONFIG_KEY}.phases is not a list, as [b, e]"
         return record
@@ -201,9 +203,10 @@ def run_review(args: argparse.Namespace, env: dict[str, str]) -> dict[str, Any]:
     return record
 
 
-def _fast_lane_design_pr(root: Path, head: str, change_id: str) -> int | None:
-    """``fast_lane.b.pr`` of the change's ``status.yaml`` at ``head``: the design PR the fast
-    lane's build superseded (decision 30), None off the fast lane or when unreadable."""
+def _fast_lane_b(root: Path, head: str, change_id: str) -> dict[str, Any] | None:
+    """``fast_lane.b`` of the change's ``status.yaml`` at ``head``: the record of a build the
+    fast lane started (decision 30), None off the fast lane or when unreadable. Its ``pr``,
+    the design PR, is optional (``state/status.py FAST_LANE_REQUIRED``)."""
     folder = bundle.change_folder(root, head, change_id)
     text = bundle.read_at(root, head, f"{folder}/status.yaml") if folder else None
     try:
@@ -212,29 +215,53 @@ def _fast_lane_design_pr(root: Path, head: str, change_id: str) -> int | None:
         return None
     fast = status.get("fast_lane") if isinstance(status, dict) else None
     entry = fast.get("b") if isinstance(fast, dict) else None
-    number = entry.get("pr") if isinstance(entry, dict) else None
-    return number if isinstance(number, int) and not isinstance(number, bool) else None
+    return entry if isinstance(entry, dict) else None
+
+
+def _pr_number(value: Any) -> int | None:
+    return value if isinstance(value, int) and not isinstance(value, bool) else None
+
+
+def _the_opinion(comment: dict[str, Any]) -> bool:
+    """A (b) record the second-opinion job posted: the workflow token's identity, never
+    another App's (``given_on_head`` reads any bot, for a verdict it only skips on)."""
+    body = comment.get("body") or ""
+    return (
+        comment.get("type") == "Bot"
+        and comment.get("author") == WORKFLOW_BOT
+        and body.startswith(review_mod.MARKER)
+        and "phase (b)" in body
+    )
 
 
 def carry_design_opinion(args: argparse.Namespace, config: dict[str, Any]) -> dict[str, Any] | None:
     """At (e): the (b) opinion of the design PR the fast lane superseded, for the build PR
     (``review.carried``), once per build PR. None when there is nothing to carry: (b) is off,
-    the change took no fast lane, or its design PR was not superseded (the owner read the
-    opinion there). A reason without ``text`` when GitHub could not be read."""
+    the change took no fast lane, or its design PR is not closed as superseded (the owner
+    reads the opinion there). A reason without ``text`` when GitHub could not be read."""
     if args.phase != "e" or not args.repo or not args.id or not turned_on(config, "b"):
         return None
     root = Path(args.root).resolve()
     github = _github()
     build = github.find_open_pr(args.repo, BRANCH["e"].format(id=args.id), cwd=root)
     head = bundle.resolve(root, build.get("head_sha") or "") if build.get("number") else None
-    design_pr = _fast_lane_design_pr(root, head, args.id) if head else None
-    if design_pr is None:
+    entry = _fast_lane_b(root, head, args.id) if head else None
+    if entry is None:
         return None
-    carry: dict[str, Any] = {"pr": build["number"], "design_pr": design_pr}
+    carry: dict[str, Any] = {"pr": build["number"]}
+    design_pr = _pr_number(entry.get("pr"))
+    if design_pr is None:
+        # the number was never recorded: the build PR superseded the design PR it found by
+        # its branch (``run_phase.supersede_earlier_pr``), so look for it the same way
+        found = github.find_pr(args.repo, BRANCH["b"].format(id=args.id), "closed", cwd=root)
+        design_pr = _pr_number(found.get("number"))
+        if design_pr is None:
+            return {**carry, "reason": "fast_lane.b names no design PR and none was found"}
+    carry["design_pr"] = design_pr
     design = github.pr_by_number(args.repo, design_pr, cwd=root)
     if not design.get("ok"):
         return {**carry, "reason": f"the design PR was not read: {design.get('reason')}"}
-    if SUPERSEDED_LABEL not in (design.get("labels") or []):
+    if design.get("state") != "closed" or SUPERSEDED_LABEL not in (design.get("labels") or []):
         return None
     marker = review_mod.CARRIED_MARKER.format(pr=design_pr)
     on_build = github.issue_comments(args.repo, build["number"], cwd=root)
@@ -247,13 +274,7 @@ def carry_design_opinion(args: argparse.Namespace, config: dict[str, Any]) -> di
     on_design = github.issue_comments(args.repo, design_pr, cwd=root)
     if not on_design.get("ok"):
         return {**carry, "reason": f"the design PR's comments were not read: {on_design['reason']}"}
-    opinions = [
-        c
-        for c in on_design["comments"]
-        if c.get("type") == "Bot"
-        and (c.get("body") or "").startswith(review_mod.MARKER)
-        and "phase (b)" in (c.get("body") or "")
-    ]
+    opinions = [c for c in on_design["comments"] if _the_opinion(c)]
     last = opinions[-1] if opinions else {}
     carry["comment"] = last.get("url")
     carry["text"] = review_mod.carried(design_pr, last.get("body"), last.get("url"))
@@ -264,18 +285,26 @@ def publish(args: argparse.Namespace, record: dict[str, Any], env: dict[str, str
     """The record where the owner reads it: the job summary in CI, one PR comment with
     ``--post``, the JSON with ``--out``. An "off" record with nothing carried writes and posts
     nothing; a repeat on a head that already has a verdict is not posted again. A carried (b)
-    opinion is a section of the (e) comment, or a comment of its own."""
+    opinion is a section of the (e) comment, or a comment of its own; an (e) record that found
+    no pull request of its own (no model, say) goes with it onto the build PR. A carry that
+    only has a reason (GitHub unread, already carried) is written to the summary and the
+    JSON, never posted."""
     carried = record.get("carried") or {}
     carry_text = carried.get("text") or ""
-    if record.get("off") and not carry_text:
+    if record.get("off") and not carried:
         return
     if args.out:
         Path(args.out).write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
     own = "" if record.get("off") else review_mod.comment(record)
+    carry_note = (
+        ""
+        if carry_text or not carried
+        else (f"The design's second opinion was not carried: {carried.get('reason')}.\n")
+    )
     summary = env.get("GITHUB_STEP_SUMMARY")
     if summary:
         with open(summary, "a", encoding="utf-8") as fh:
-            fh.write("\n".join(part for part in (own, carry_text) if part) + "\n")
+            fh.write("\n".join(part for part in (own, carry_text or carry_note) if part) + "\n")
     post_own = bool(own) and not record.get("duplicate")
     text = "\n".join(part for part in (own if post_own else "", carry_text) if part)
     target = record.get("pr") or carried.get("pr")
@@ -289,7 +318,10 @@ def publish(args: argparse.Namespace, record: dict[str, Any], env: dict[str, str
 def cmd_review(args: argparse.Namespace) -> int:
     env = dict(os.environ)
     record = run_review(args, env)
-    carried = carry_design_opinion(args, read_config(Path(args.root).resolve(), args.ref))
+    try:
+        carried = carry_design_opinion(args, read_config(Path(args.root).resolve(), args.ref))
+    except Exception as exc:  # noqa: BLE001 - the carry never costs the (e) record its post
+        carried = {"reason": f"the carry failed: {type(exc).__name__}: {exc}"}
     if carried is not None:
         record["carried"] = carried
     publish(args, record, env)

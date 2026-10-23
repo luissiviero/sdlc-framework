@@ -49,6 +49,18 @@ Read on `main` at `5357fdc`, through R22's App (1.0.18), decisions 37 and 38 and
   - Copies at 1.0.24 and pin 1.0.22, which is the sample once its copies move: the (e) job runs as before, and the carry is missing until the pin moves.
   - Copies at 1.0.19 and pin 1.0.24: the carry runs, but `phase_ran` is not read.
 
+## The independent review
+A fresh-context review of `50753e7` found no high-severity defect: the `hashFiles` guard, the folded job condition, the `phase_ran` output on every return path and the carry's main paths held. Its findings, and what this PR did with each:
+1. **The `phases` check blocked a by-hand `--model` run**, against the module's "whatever `sdlc.yaml` says". Fixed: the check applies only without `--model`, and the test runs both.
+2. **A failing carry would cost the (e) record its post**, after the paid call. Fixed: the carry is caught and recorded as a reason (`test_a_failed_carry_never_costs_the_e_record_its_post`).
+3. **`fast_lane.b.pr` is optional** (`state/status.py`, `FAST_LANE_REQUIRED`). The build then supersedes the design PR it finds by its branch, which left the opinion uncarried and unsaid. Fixed: the carry finds the closed PR of `sdlc/<id>/b` the same way, and says so when there is none.
+4. **Any bot's comment counted as the source, and the quote was posted raw.** Fixed: only the workflow token's `github-actions[bot]` counts, and every quoted line loses raw HTML, mentions and links once more (`test_the_carried_quote_is_inert_and_only_the_workflow_bot_s_counts`).
+5. **A design PR the owner reopened was still carried.** Fixed: the carry needs the PR closed as well as labelled.
+6. **A carry that only had a reason reached the log alone.** Fixed: it goes to the job summary and the JSON, never to a comment.
+7. **An (e) record with no PR of its own now goes with the carry onto the build PR** (no model, say). Kept on purpose, since it makes a not-run visible, and said in `publish`'s docstring.
+8. **Untested paths** (a re-run with (e) on, unread comments, the credential skip's `phase_ran`). Tests added, and one test's docstring corrected.
+9. **A session can write to `$GITHUB_OUTPUT`** (hardening). Not taken here. `write_phase_ran` runs after the session, so its line comes last. A stray heredoc the session left open could swallow it, and the job would then run as before 1.0.24 (fails open, costs one call). Dropping `GITHUB_OUTPUT` from `session_env` touches every session and is left to the 1.0.0 read, recorded in the session file.
+
 ## The port list
 This PR touches `plugin/ci/run_phase.py` (`write_phase_ran`, one line in `run_phase` and one in `_run_phase`). It goes on the port list until the 1.0.0 read.
 

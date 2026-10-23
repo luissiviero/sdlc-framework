@@ -151,6 +151,15 @@ def comment(record: dict[str, Any]) -> str:
     return "\n".join(lines) + "\n"
 
 
+def _inert_again(text: str) -> str:
+    """A carried line made inert once more, without escaping what ``_plain`` already did: no
+    raw HTML, no mention, no link, whoever wrote the comment the line came from."""
+    text = text.replace("<", "&lt;")
+    text = re.sub("@(?!\u200b)", "@\u200b", text)
+    text = re.sub(r"\]\(", "] (", text)
+    return re.sub(r"(?i)\b(https?)://", r"\1[:]//", text)
+
+
 def carried(design_pr: int, body: str | None, url: str | None) -> str:
     """The (b) opinion of design PR ``design_pr``, which the fast lane closed as superseded,
     quoted for the build PR at (e) (decision 30: the owner's first look on the fast lane is
@@ -172,5 +181,5 @@ def carried(design_pr: int, body: str | None, url: str | None) -> str:
         "",
     ]
     for line in body.replace(MARKER, "").strip().splitlines():
-        lines.append(f"> {line}" if line.strip() else ">")
+        lines.append(f"> {_inert_again(line)}" if line.strip() else ">")
     return "\n".join(lines) + "\n"

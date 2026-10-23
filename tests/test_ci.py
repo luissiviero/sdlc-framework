@@ -1942,6 +1942,11 @@ def test_the_run_says_whether_the_phase_ran_for_the_e_second_opinion(project, tm
     assert output.read_text(encoding="utf-8") == "phase_ran=false\n"  # at (a), not past (d)
     output.unlink()
     set_state(change, "d", gate_phase="d", gate_result="passed")
+    # past the guard with no credential: skipped, so the second opinion is not paid either
+    no_key = Args(root=str(root), phase="e", dry_run=False)
+    assert run_phase.run_phase(no_key, {"GITHUB_OUTPUT": str(output)}) == run_phase.EXIT_OK
+    assert output.read_text(encoding="utf-8") == "phase_ran=false\n"
+    output.unlink()
     assert run_phase.run_phase(Args(root=str(root), phase="e"), env) == run_phase.EXIT_OK
     assert output.read_text(encoding="utf-8") == "phase_ran=true\n"
 
