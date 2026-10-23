@@ -16,7 +16,14 @@ On: ``sdlc.yaml: external_review: {model: <id>, phases: [b, e]}`` on the default
 ``--model`` runs it by hand whatever ``sdlc.yaml`` says. With ``--repo`` it reviews the head
 of the change's open pull request (``sdlc/<id>/b`` at (b), ``sdlc/<id>/c`` at (e)) and
 ``--post`` puts the record on that pull request as one comment. Every failure is the
-record's "not run: <reason>"; the exit code is 0 whenever the arguments parse.
+record's "not run: <reason>"; the exit code is 0 whenever the arguments parse. An "off"
+record writes no file and posts nothing: the printed record is the only trace (1.0.24).
+
+At (e), when ``external_review.phases`` lists (b) and the build head's ``status.yaml``
+records the fast lane (``fast_lane.b.pr``, decision 30), the (b) opinion posted on the
+design PR, which the build PR closed as ``sdlc:superseded``, is carried onto the build PR
+once, where the owner looks first (plugin 1.0.24): a section of the (e) comment, or a
+comment of its own when (e) is off. It calls no model.
 """
 
 from __future__ import annotations
@@ -36,6 +43,7 @@ if str(PLUGIN_DIR) not in sys.path:
 from external import bundle, gemini  # noqa: E402
 from external import review as review_mod  # noqa: E402
 from state import yamlish  # noqa: E402
+from state.conventions import SUPERSEDED_LABEL  # noqa: E402
 
 PHASES = ("b", "e")
 BRANCH = {"b": "sdlc/{id}/b", "e": "sdlc/{id}/c"}
@@ -109,6 +117,10 @@ def run_review(args: argparse.Namespace, env: dict[str, str]) -> dict[str, Any]:
         "model": args.model or settings(config).get("model"),
         "pr": None,
     }
+    if settings(config) and not isinstance(settings(config).get("phases"), list):
+        # a block the owner wrote but that turns nothing on is said, never silent (1.0.24)
+        record["reason"] = f"sdlc.yaml {CONFIG_KEY}.phases is not a list, as [b, e]"
+        return record
     if not args.model and not turned_on(config, args.phase):
         record["off"] = True
         record["reason"] = (
@@ -189,27 +201,86 @@ def run_review(args: argparse.Namespace, env: dict[str, str]) -> dict[str, Any]:
     return record
 
 
+def _fast_lane_design_pr(root: Path, head: str, change_id: str) -> int | None:
+    """``fast_lane.b.pr`` of the change's ``status.yaml`` at ``head``: the design PR the fast
+    lane's build superseded (decision 30), None off the fast lane or when unreadable."""
+    folder = bundle.change_folder(root, head, change_id)
+    text = bundle.read_at(root, head, f"{folder}/status.yaml") if folder else None
+    try:
+        status = yamlish.loads(text) if text else {}
+    except Exception:  # noqa: BLE001 - an unreadable file carries nothing, never a crash
+        return None
+    fast = status.get("fast_lane") if isinstance(status, dict) else None
+    entry = fast.get("b") if isinstance(fast, dict) else None
+    number = entry.get("pr") if isinstance(entry, dict) else None
+    return number if isinstance(number, int) and not isinstance(number, bool) else None
+
+
+def carry_design_opinion(args: argparse.Namespace, config: dict[str, Any]) -> dict[str, Any] | None:
+    """At (e): the (b) opinion of the design PR the fast lane superseded, for the build PR
+    (``review.carried``), once per build PR. None when there is nothing to carry: (b) is off,
+    the change took no fast lane, or its design PR was not superseded (the owner read the
+    opinion there). A reason without ``text`` when GitHub could not be read."""
+    if args.phase != "e" or not args.repo or not args.id or not turned_on(config, "b"):
+        return None
+    root = Path(args.root).resolve()
+    github = _github()
+    build = github.find_open_pr(args.repo, BRANCH["e"].format(id=args.id), cwd=root)
+    head = bundle.resolve(root, build.get("head_sha") or "") if build.get("number") else None
+    design_pr = _fast_lane_design_pr(root, head, args.id) if head else None
+    if design_pr is None:
+        return None
+    carry: dict[str, Any] = {"pr": build["number"], "design_pr": design_pr}
+    design = github.pr_by_number(args.repo, design_pr, cwd=root)
+    if not design.get("ok"):
+        return {**carry, "reason": f"the design PR was not read: {design.get('reason')}"}
+    if SUPERSEDED_LABEL not in (design.get("labels") or []):
+        return None
+    marker = review_mod.CARRIED_MARKER.format(pr=design_pr)
+    on_build = github.issue_comments(args.repo, build["number"], cwd=root)
+    if not on_build.get("ok"):
+        return {**carry, "reason": f"the build PR's comments were not read: {on_build['reason']}"}
+    if any(
+        c.get("type") == "Bot" and marker in (c.get("body") or "") for c in on_build["comments"]
+    ):
+        return {**carry, "reason": "already carried onto the build PR"}
+    on_design = github.issue_comments(args.repo, design_pr, cwd=root)
+    if not on_design.get("ok"):
+        return {**carry, "reason": f"the design PR's comments were not read: {on_design['reason']}"}
+    opinions = [
+        c
+        for c in on_design["comments"]
+        if c.get("type") == "Bot"
+        and (c.get("body") or "").startswith(review_mod.MARKER)
+        and "phase (b)" in (c.get("body") or "")
+    ]
+    last = opinions[-1] if opinions else {}
+    carry["comment"] = last.get("url")
+    carry["text"] = review_mod.carried(design_pr, last.get("body"), last.get("url"))
+    return carry
+
+
 def publish(args: argparse.Namespace, record: dict[str, Any], env: dict[str, str]) -> None:
     """The record where the owner reads it: the job summary in CI, one PR comment with
-    ``--post``, the JSON with ``--out``. An "off" record is not posted, nor a repeat on a head
-    that already has a verdict."""
+    ``--post``, the JSON with ``--out``. An "off" record with nothing carried writes and posts
+    nothing; a repeat on a head that already has a verdict is not posted again. A carried (b)
+    opinion is a section of the (e) comment, or a comment of its own."""
+    carried = record.get("carried") or {}
+    carry_text = carried.get("text") or ""
+    if record.get("off") and not carry_text:
+        return
     if args.out:
         Path(args.out).write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
-    if record.get("off"):
-        return
-    text = review_mod.comment(record)
+    own = "" if record.get("off") else review_mod.comment(record)
     summary = env.get("GITHUB_STEP_SUMMARY")
     if summary:
         with open(summary, "a", encoding="utf-8") as fh:
-            fh.write(text + "\n")
-    if (
-        args.post
-        and args.repo
-        and record.get("pr")
-        and not args.dry_run
-        and not record.get("duplicate")
-    ):
-        posted = _github().add_comment(args.repo, record["pr"], text, cwd=args.root)
+            fh.write("\n".join(part for part in (own, carry_text) if part) + "\n")
+    post_own = bool(own) and not record.get("duplicate")
+    text = "\n".join(part for part in (own if post_own else "", carry_text) if part)
+    target = record.get("pr") or carried.get("pr")
+    if args.post and args.repo and target and not args.dry_run and text:
+        posted = _github().add_comment(args.repo, target, text, cwd=args.root)
         record["comment"] = posted.get("url") if posted.get("ok") else None
         if not posted.get("ok"):
             record["comment_error"] = posted.get("reason")
@@ -218,6 +289,9 @@ def publish(args: argparse.Namespace, record: dict[str, Any], env: dict[str, str
 def cmd_review(args: argparse.Namespace) -> int:
     env = dict(os.environ)
     record = run_review(args, env)
+    carried = carry_design_opinion(args, read_config(Path(args.root).resolve(), args.ref))
+    if carried is not None:
+        record["carried"] = carried
     publish(args, record, env)
     print(json.dumps(record, indent=2))
     return 0

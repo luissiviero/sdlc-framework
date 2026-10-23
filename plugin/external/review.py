@@ -12,6 +12,8 @@ from typing import Any
 BRIEFS = Path(__file__).resolve().parent / "briefs"
 PROVIDER = "gemini"
 MARKER = "<!-- sdlc:second-opinion -->"
+# the (b) opinion of a design PR the fast lane superseded, carried onto the build PR at (e)
+CARRIED_MARKER = "<!-- sdlc:second-opinion-carried #{pr} -->"
 VERDICTS = ("no concerns", "concerns")
 SEVERITIES = ("important", "minor")
 MAX_CONCERNS = 20
@@ -146,4 +148,29 @@ def comment(record: dict[str, Any]) -> str:
         "Nothing here is applied by a run: carry a real concern into a *Request changes* "
         "review, as with any finding.",
     ]
+    return "\n".join(lines) + "\n"
+
+
+def carried(design_pr: int, body: str | None, url: str | None) -> str:
+    """The (b) opinion of design PR ``design_pr``, which the fast lane closed as superseded,
+    quoted for the build PR at (e) (decision 30: the owner's first look on the fast lane is
+    there; plugin 1.0.24). ``body`` None: no (b) record was found on the design PR, which is
+    said rather than left silent. The quote keeps the original's text, already made inert,
+    and never reads as a verdict of this head (``cli.given_on_head``)."""
+    lines = [CARRIED_MARKER.format(pr=design_pr)]
+    if body is None:
+        lines.append(
+            f"**The design's second opinion was not found** on the superseded design PR "
+            f"#{design_pr}: no (b) record was posted there (its design run's "
+            "`second-opinion` job says why)."
+        )
+        return "\n".join(lines) + "\n"
+    source = f"[the original]({url})" if url else "the original comment"
+    lines += [
+        f"**The design's second opinion, carried from the superseded design PR #{design_pr}** "
+        f"({source}):",
+        "",
+    ]
+    for line in body.replace(MARKER, "").strip().splitlines():
+        lines.append(f"> {line}" if line.strip() else ">")
     return "\n".join(lines) + "\n"

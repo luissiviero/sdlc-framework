@@ -312,3 +312,205 @@ def test_the_scan_and_the_evals_sessions_never_get_the_key():
     assert run_phase.SESSION_HIDDEN_VARS == evals_run.SESSION_HIDDEN_VARS == (gemini.KEY_ENV,)
     source = (ROOT / "plugin" / "scan" / "cli.py").read_text(encoding="utf-8")
     assert "for var in run_phase.SESSION_HIDDEN_VARS:" in source
+
+
+# --- 1.0.24: the job at any pin, the (e) job only after phase (e), the fast lane's carry ------
+
+WORKFLOW_COPIES = [
+    folder / name
+    for folder in (ROOT / "template" / ".github" / "workflows", ROOT / ".github" / "workflows")
+    for name in ("sdlc-design.yml", "sdlc-deploy.yml")
+]
+GUARD = "if: ${{ hashFiles('framework/plugin/external/cli.py') != '' }}"
+
+
+def _second_opinion_job(path: Path) -> str:
+    return path.read_text(encoding="utf-8").split("\n  second-opinion:\n", 1)[1]
+
+
+@pytest.mark.parametrize(
+    "path", WORKFLOW_COPIES, ids=lambda p: f"{p.parent.parent.parent.name}/{p.name}"
+)
+def test_a_pin_without_plugin_external_skips_the_step_green(path):
+    """Defect 1 of the R8 end file: a project pinned below 1.0.19 that carries these copies
+    (this repository, at 1.0.17) has no plugin/external/; the one step that calls it is
+    skipped, and nothing else in the job runs a file of the pinned framework."""
+    steps = _second_opinion_job(path).split("\n      - name: ")[1:]
+    calls = [s for s in steps if "framework/plugin/" in s]
+    assert len(calls) == 1 and "framework/plugin/external/cli.py review" in calls[0]
+    assert calls[0].splitlines()[1].strip() == GUARD
+    kept = next(s for s in steps if s.startswith("Keep the second opinion's record"))
+    assert "if-no-files-found: ignore" in kept
+
+
+def test_off_writes_and_posts_nothing(project, monkeypatch, tmp_path):
+    """With external_review off on the default branch the job leaves no record, no summary
+    and no comment: the printed record is the only trace."""
+    monkeypatch.setattr(gemini, "_request", lambda *a, **k: pytest.fail("called"))
+    monkeypatch.setattr(cli, "_github", lambda: pytest.fail("GitHub read"))
+    git(project, "checkout", "-q", "main")
+    (project / "sdlc.yaml").write_text("profile: standard\n", encoding="utf-8")
+    git(project, "commit", "-q", "-am", "off")
+    summary = tmp_path / "summary.md"
+    monkeypatch.setenv("GITHUB_STEP_SUMMARY", str(summary))
+    out = tmp_path / "record.json"
+    for phase in ("b", "e"):
+        argv = ["review", "--root", str(project), "--id", "0001", "--phase", phase,
+                "--repo", "o/p", "--ref", "main", "--post", "--out", str(out)]  # fmt: skip
+        assert cli.main(argv) == 0
+    assert not out.exists() and not summary.exists()
+
+
+@pytest.mark.parametrize("path", WORKFLOW_COPIES[1::2], ids=lambda p: p.parent.parent.parent.name)
+def test_the_e_job_runs_only_when_phase_e_ran(path):
+    """The (e) waste of the R8 end file: the guard's skip writes phase_ran=false, which the
+    job's condition reads; an older pin writes nothing and the job runs as before."""
+    text = path.read_text(encoding="utf-8")
+    deploy = text.split("\n  second-opinion:\n", 1)[0]
+    assert "      phase_ran: ${{ steps.phase.outputs.phase_ran }}\n" in deploy
+    assert "      - name: Run phase (e)\n        id: phase\n" in deploy
+    condition = _second_opinion_job(path).split("    runs-on:", 1)[0]
+    assert "needs.deploy.outputs.phase_ran != 'false'" in condition
+
+
+ANSWER = {"verdict": "concerns", "summary": "s",
+          "concerns": [{"file": "src/app.py", "claim": "c", "why": "w",
+                        "severity": "important"}]}  # fmt: skip
+
+
+def _fast_lane_build(project: Path, design_pr: int | None) -> str:
+    """``sdlc/0001/c`` cut from the design branch, its status.yaml recording ``fast_lane.b``."""
+    git(project, "checkout", "-q", "-b", "sdlc/0001/c")
+    fast = f"fast_lane:\n  b:\n    sha: {'a' * 40}\n    pr: {design_pr}\n" if design_pr else ""
+    (project / CHANGE / "status.yaml").write_text(f"id: '0001'\nphase: d\n{fast}", "utf-8")
+    (project / "src" / "app.py").write_text("def thing():\n    return 2\n", encoding="utf-8")
+    git(project, "add", "-A")
+    git(project, "commit", "-q", "-m", "build")
+    return git(project, "rev-parse", "HEAD")
+
+
+def _github_with_a_superseded_design(head: str, design_labels: list[str], b_opinions: list[str]):
+    posted: list[tuple[str, int, str]] = []
+
+    class FakeGithub:
+        @staticmethod
+        def find_open_pr(repo, branch, cwd=None):
+            assert branch == "sdlc/0001/c"
+            return {"number": 9, "head_sha": head}
+
+        @staticmethod
+        def pr_by_number(repo, number, cwd=None):
+            assert number == 5
+            return {"ok": True, "number": 5, "labels": design_labels}
+
+        @staticmethod
+        def issue_comments(repo, number, cwd=None):
+            if number == 5:
+                bodies = [(b, "https://github.com/o/p/pull/5#b") for b in b_opinions]
+            else:
+                bodies = [(body, "u") for _, n, body in posted if n == number]
+            return {
+                "ok": True,
+                "comments": [{"type": "Bot", "body": b, "url": u} for b, u in bodies],
+            }
+
+        @staticmethod
+        def add_comment(repo, number, body, cwd=None):
+            posted.append((repo, number, body))
+            return {"ok": True, "url": f"https://github.com/o/p/pull/{number}#c"}
+
+    return FakeGithub, posted
+
+
+B_OPINION = review_mod.comment(
+    {"phase": "b", "head": "b" * 40, "model": "gemini-4-argon", "ran": True,
+     "answer": {"verdict": "no concerns", "summary": "the plan holds", "concerns": []}}
+)  # fmt: skip
+
+
+def test_the_fast_lane_carries_the_b_opinion_onto_the_build_pr_once(
+    project, monkeypatch, tmp_path, capsys
+):
+    """Defect 2 of the R8 end file, as the owner chose (2026-10-23): with (e) off, the (b)
+    opinion of the superseded design PR reaches the build PR at (e) as a comment of its own,
+    calls no model, and is never carried twice."""
+    monkeypatch.setattr(gemini, "_request", lambda *a, **k: pytest.fail("called"))
+    git(project, "checkout", "-q", "main")
+    (project / "sdlc.yaml").write_text(ON.replace("[b, e]", "[b]"), encoding="utf-8")
+    git(project, "commit", "-q", "-am", "(b) only")
+    git(project, "checkout", "-q", "sdlc/0001/b")
+    head = _fast_lane_build(project, design_pr=5)
+    github, posted = _github_with_a_superseded_design(head, ["sdlc:superseded"], [B_OPINION])
+    monkeypatch.setattr(cli, "_github", lambda: github)
+    out = tmp_path / "record.json"
+    argv = ["review", "--root", str(project), "--id", "0001", "--phase", "e", "--repo", "o/p",
+            "--ref", "main", "--post", "--out", str(out)]  # fmt: skip
+    assert cli.main(argv) == 0
+    record = json.loads(out.read_text(encoding="utf-8"))
+    assert record["off"] and record["carried"]["design_pr"] == 5
+    assert len(posted) == 1 and posted[0][:2] == ("o/p", 9)
+    body = posted[0][2]
+    assert body.startswith("<!-- sdlc:second-opinion-carried #5 -->")
+    assert "superseded design PR #5" in body and "https://github.com/o/p/pull/5#b" in body
+    assert "> Verdict: **no concerns**. the plan holds" in body
+    assert review_mod.MARKER not in body  # never read as a verdict on the build head
+    out.unlink()
+    capsys.readouterr()
+    assert cli.main(argv) == 0
+    again = json.loads(capsys.readouterr().out)
+    assert again["carried"]["reason"] == "already carried onto the build PR"
+    assert len(posted) == 1 and not out.exists()  # nothing new: no record, no comment
+
+
+def test_with_e_on_the_carried_opinion_is_a_section_of_the_e_comment(project, monkeypatch):
+    def fake_generate(model, prompt, schema, credential):
+        return {"ok": True, "answer": ANSWER, "model": "gemini-4-argon", "tokens": {},
+                "seconds": 1.0, "reason": ""}  # fmt: skip
+
+    monkeypatch.setattr(gemini, "generate", fake_generate)
+    head = _fast_lane_build(project, design_pr=5)
+    github, posted = _github_with_a_superseded_design(head, ["sdlc:superseded"], [B_OPINION])
+    monkeypatch.setattr(cli, "_github", lambda: github)
+    monkeypatch.setenv("GEMINI_API_KEY", FAKE)
+    argv = ["review", "--root", str(project), "--id", "0001", "--phase", "e", "--repo", "o/p",
+            "--ref", "main", "--post"]  # fmt: skip
+    assert cli.main(argv) == 0
+    assert len(posted) == 1 and posted[0][1] == 9
+    own, carried = posted[0][2].split("<!-- sdlc:second-opinion-carried #5 -->")
+    assert own.startswith(review_mod.MARKER) and "phase (e)" in own and "src/app.py" in own
+    assert "> Verdict: **no concerns**" in carried
+
+
+@pytest.mark.parametrize(
+    ("design_pr", "labels", "opinions", "expected"),
+    [
+        (None, ["sdlc:superseded"], [B_OPINION], None),  # no fast lane: nothing to carry
+        (5, [], [B_OPINION], None),  # the design PR stayed open: the owner read it there
+        (5, ["sdlc:superseded"], [], "was not found"),  # said, never silent
+    ],
+)
+def test_the_carry_only_for_a_superseded_design_and_never_silent(
+    project, monkeypatch, design_pr, labels, opinions, expected
+):
+    monkeypatch.setattr(gemini, "_request", lambda *a, **k: pytest.fail("called"))
+    head = _fast_lane_build(project, design_pr=design_pr)
+    github, _posted = _github_with_a_superseded_design(head, labels, opinions)
+    monkeypatch.setattr(cli, "_github", lambda: github)
+    carried = cli.carry_design_opinion(
+        args(root=str(project), phase="e", repo="o/p"), cli.read_config(project, "main")
+    )
+    if expected is None:
+        assert carried is None
+    else:
+        assert carried["pr"] == 9 and expected in carried["text"]
+
+
+def test_a_phases_value_that_is_not_a_list_is_said_never_silent(project, monkeypatch):
+    """``phases: b`` turns nothing on: the record says so, and is posted, instead of "off"."""
+    monkeypatch.setattr(gemini, "_request", lambda *a, **k: pytest.fail("called"))
+    git(project, "checkout", "-q", "main")
+    (project / "sdlc.yaml").write_text(ON.replace("[b, e]", "b"), encoding="utf-8")
+    git(project, "commit", "-q", "-am", "a string")
+    record = cli.run_review(args(root=str(project), ref="main"), {"GEMINI_API_KEY": FAKE})
+    assert not record.get("off") and not record["ran"]
+    assert record["reason"] == "sdlc.yaml external_review.phases is not a list, as [b, e]"
