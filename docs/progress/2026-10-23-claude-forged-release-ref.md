@@ -14,7 +14,7 @@ The release workflow writes the ref after a release (`release/cli.py`, `remote_r
 
 ## Known limits, recorded
 - **A release job that runs during a phase run of the same change** (an owner's merge while a fix round runs on the PR head) moves the ref and parks that run. The park text says to look at the release workflow's run first and leave a ref it wrote.
-- **The reads go through the checkout's git config.** A planted program is refused (`refuse_planted_config`, R44's I4) and a changed origin URL parks, but a planted `http.proxy` or `http.<url>.*` key could still serve the read after the session from elsewhere. The full answer is a read through the GitHub API or with a clean config, R3's fresh clone or I6's separate job; not built here.
+- **The reads go through the checkout's git config.** A planted program is refused (`refuse_planted_config`, R44's I4) and a changed origin URL parks, but a planted `http.proxy` or `http.<url>.*` key could still serve the read after the session from elsewhere. The full answer is a read through the GitHub API or with a clean config, R3's fresh clone or I6's separate job; not built here. The reviewer's re-check names the one shape left: a planted `http.proxy` with a background process of the session's that serves the read, which needs the detached process of the next row.
 - **A detached background push** the session starts and that fires after the read that follows it is not seen; the branch check has the same limit. Ending the session's process group when `invoke` returns would close both; not built here.
 - **Only the change's own ref is read.** A session that writes another change's `refs/sdlc/released/<other>` makes that change's release skip. Reading `refs/sdlc/released/*` would park a run whenever any other change is released during it (R51's concurrent changes), so it is left; recorded.
 - **The release workflow's own read** (`release/cli.py`, `_remote_ref` and `_fetch`) still takes any ref whose name ends with the pattern. The runner now parks a session that pushes such a name; matching the exact name there too is a small hardening, left for a release-side PR so this one stays local to the runner.
@@ -32,6 +32,8 @@ A fresh-context sub-agent reviewed the first version (report only), with experim
 4. **Medium, fixed:** the park text dropped "unless the push is yours" and gave a 10-character sha; it now gives the full sha, says to fetch the ref first and to leave one the release workflow wrote.
 5. **Fixed in part:** an unreadable read after a readable one parks with its own reason; two unreadable reads stay no reason, for the reason above.
 6. and 7. Recorded under "Known limits".
+
+A second pass on the fixes (`b955ec3`) found nothing still blocking.
 It also found the `ruff format` failure of the first version, fixed.
 
 ## What I need from you

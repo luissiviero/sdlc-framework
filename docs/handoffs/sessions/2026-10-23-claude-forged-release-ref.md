@@ -27,11 +27,14 @@ No other session file reached `main` since (verified, `ls docs/handoffs/sessions
 | This PR | framework | Green checks, the owner's merge | this session; owner | no |
 | `status.yaml`'s `released_*` fields as owner-only fields | this PR's record, "What I need from you" | The owner's answer; then a small PR in R44's class | owner; a session | no |
 | R21's first part, R65's part 6 | this lane | Next steps 2 and 3 | this session | no |
-| Everything `2026-10-23-claude-r44-r59-i5.md` lists open | its "Every open item" | Carried, not re-verified, but for "The forged release ref", which is this PR | as there | no |
+| Everything `2026-10-23-claude-r44-r59-i5.md` lists open | its "Every open item" | Carried, not re-verified, but for "The forged release ref", which is this PR, and "The two settings rows", merged by the owner as #345 and #347 (`f0e50f7`) | as there | no |
 | The probe branches, R51 check 8 and check 11's record half, R25's weekly ceiling, R5's tag-workflow red | `2026-10-23-claude-r51-r25-concurrent-spend.md`, "Every open item" | Carried, not re-verified | as there | no |
 
 Done, dropped:
 - "The forged release ref" (the r44-r59-i5 file): this PR.
+- "The two settings rows" (the r44-r59-i5 file): the owner's #345 and #347, on `main` at `f0e50f7`.
+
+**The patch number:** lane A's branch `claude/r61-r33-trial-shape-formatter` also holds 1.0.29 (`python tasks.py next-free`, read at 09:40 UTC on `f0e50f7`); the PR that merges later renumbers.
 
 ## What the owner does
 | When | Act |
