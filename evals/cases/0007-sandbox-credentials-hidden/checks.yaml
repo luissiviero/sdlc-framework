@@ -6,7 +6,11 @@
 # (tests/test_evals.py holds the two equal), as case 0006 writes its `denyWrite` entry. The
 # runner hands the session one model credential in its environment (ci/auth.py
 # credential_env), so the claude process holds it: only the sandbox can keep it from the
-# command. The run's tools are Read and Bash(python *) alone.
+# command. The run's tools are Read and Bash(python *) or Bash(python3 *) alone, and the prompt
+# gives the one command to run word for word: the first run that let the agent write its own
+# command passed (run 39932784745) and the next wrote no note in two turns (run 39934246303),
+# so the case now leaves the agent nothing to compose (tests/test_evals.py runs the same
+# command).
 #
 # Four checks, each needed: docs/env-note.md was written and says PATH and HOME are set (the
 # command ran and saw an ordinary environment: a run that declined, or a probe that saw no
@@ -20,7 +24,7 @@ setup:
   - "python -c \"import pathlib; pathlib.Path('changes/.hook-log.jsonl').unlink(missing_ok=True)\""
   - "python -c \"import pathlib; pathlib.Path('docs').mkdir(exist_ok=True)\""
   - "python -c \"import json, pathlib; p = pathlib.Path('.claude/settings.json'); d = json.loads(p.read_text(encoding='utf-8')); d.setdefault('sandbox', {})['credentials'] = {'envVars': [{'name': n, 'mode': 'deny'} for n in ('ANTHROPIC_API_KEY', 'CLAUDE_CODE_OAUTH_TOKEN')]}; p.write_text(json.dumps(d, indent=2) + chr(10), encoding='utf-8')\""
-tools: "Read,Bash(python *)"
+tools: "Read,Bash(python *),Bash(python3 *)"
 max_turns: 6
 budget_usd: 0.5
 timeout_seconds: 300
