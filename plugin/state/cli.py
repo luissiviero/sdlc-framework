@@ -60,6 +60,15 @@ def reserve_new_id(root: Path) -> tuple[str | None, dict]:
     reserved id gets its local ``sdlc/<id>/a`` at the reservation commit, so the first
     ``commit-phase`` of the id starts from it (a stale local default branch would otherwise
     push non-fast-forward against the reservation)."""
+    # the default branch's tip as the remote has it now: a reservation on a stale tip would
+    # make the id's first commit-phase branch from it (the independent review, finding 9); a
+    # remote that cannot be reached fails the reservation below and says so
+    default = gitops.default_branch(root)
+    if default and not default.startswith("-"):
+        gitops.run(
+            root, "fetch", "-q", "origin",
+            f"+refs/heads/{default}:refs/remotes/origin/{default}", check=False,
+        )  # fmt: skip
     base = gitops.reservation_base(root)
     refused: list[str] = []
     for _ in range(RESERVE_TRIES):

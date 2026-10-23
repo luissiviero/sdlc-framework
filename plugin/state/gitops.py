@@ -175,7 +175,15 @@ def network_env(
 
 def run_proc(root: Path, *args: str) -> subprocess.CompletedProcess:
     """``git <args>`` in ``root``, its exit code and both streams; ``run`` raises on a
-    non-zero exit instead. A read-only query is bounded by ``READ_TIMEOUT_SECONDS``."""
+    non-zero exit instead. A local read-only query is bounded by ``READ_TIMEOUT_SECONDS``;
+    a network command is not (a sign-in by Git Credential Manager can take longer, and the
+    bound kills git, not its remote helper). A push reports in English (``LC_ALL=C``):
+    ``reserve_change_id`` and ``push`` read git's refusal reasons, which git translates
+    (the independent review of the R51 PR, findings 7 and 8)."""
+    env = network_env(args, root)
+    if args and args[0] == "push":
+        env = {**(env if env is not None else os.environ), "LC_ALL": "C", "LANGUAGE": "C"}
+    local_read = _reads_only(["git", *args]) and not (args and args[0] in NETWORK_COMMANDS)
     try:
         return subprocess.run(
             ["git", *runner_args(), *args],
@@ -183,16 +191,16 @@ def run_proc(root: Path, *args: str) -> subprocess.CompletedProcess:
             capture_output=True,
             text=True,
             encoding="utf-8",
-            env=network_env(args, root),
-            timeout=READ_TIMEOUT_SECONDS if _reads_only(["git", *args]) else None,
+            env=env,
+            timeout=READ_TIMEOUT_SECONDS if local_read else None,
         )
     except subprocess.TimeoutExpired as exc:
         raise GitError(f"git {' '.join(args)} timed out after {exc.timeout:g} s") from exc
 
 
-# a read-only query that hangs (a slow network filesystem, an ``fsmonitor`` command by hand)
-# fails closed after this long, as gate/diff.py's own calls did before 1.0.13 (choice 239);
-# a fetch, a push or a commit keeps the job's own bound
+# a local read-only query that hangs (a slow network filesystem, an ``fsmonitor`` command by
+# hand) fails closed after this long, as gate/diff.py's own calls did before 1.0.13 (choice
+# 239); a network command, a push or a commit keeps the job's own bound
 READ_TIMEOUT_SECONDS = 60
 
 

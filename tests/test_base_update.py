@@ -5,6 +5,7 @@ rebase or a force) and pushes once more."""
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -171,3 +172,29 @@ def test_a_default_branch_that_does_not_merge_parks_with_the_files(remote, tmp_p
 def test_the_recheck_has_no_targets_to_run_without_commands(tmp_path):
     assert base_update.recheck(tmp_path, {}, {}) is None
     assert base_update.judged(tmp_path, {}, {}, "x", "b") == {"ok": True, "recheck": "no targets"}
+
+
+def test_the_merge_after_a_session_runs_no_planted_hook_and_holds_no_credential(
+    remote, tmp_path, monkeypatch
+):
+    """The independent review of the R51 PR, finding 3: on a runner the (e) step's merge
+    follows the REVIEW.md session in the same checkout; a hook planted in ``.git/hooks``
+    must not run, and the merge's environment carries none of the job's credentials."""
+    run = clone(tmp_path, remote, "run", "sdlc/0001/c")
+    moved_main(remote, tmp_path)
+    git(run, "fetch", "-q", "origin")
+    witness = tmp_path / "hook-ran"
+    hook = run / ".git" / "hooks" / "post-merge"
+    hook.write_text(f'#!/bin/sh\necho "$ANTHROPIC_API_KEY" > "{witness.as_posix()}"\n', "utf-8")
+    hook.chmod(0o755)
+    monkeypatch.setenv("GITHUB_ACTIONS", "true")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-secret")
+    out = rp.merge_default_branch(run)
+    assert out["ok"] and out["merged"]
+    assert not witness.exists()
+    # by hand (no GITHUB_ACTIONS) the owner's own hooks run as before, still without the key
+    monkeypatch.delenv("GITHUB_ACTIONS")
+    git(run, "reset", "-q", "--hard", "HEAD~1")
+    rp.merge_default_branch(run)
+    if os.name == "posix":
+        assert witness.read_text(encoding="utf-8").strip() == ""

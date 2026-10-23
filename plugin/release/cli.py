@@ -299,16 +299,26 @@ NEWER_RELEASE = (
     "deployed a newer tree; deploying it now would put an older tree over that one"
 )
 TOKEN_VARS = ("GITHUB_TOKEN", "GH_TOKEN")
+# a variable whose name reads as a credential: the owner's deploy secrets sit in the release
+# step's env:, and the targets run code that no gate judged on this tree (the independent
+# review of the R51 PR, finding 6); a secret named otherwise still reaches them
+SECRET_NAME_RE = re.compile(
+    r"TOKEN|SECRET|PASSWORD|PASSWD|PASSPHRASE|PRIVATE|CREDENTIAL|AUTH|API_?KEY|ACCESS_?KEY|_KEY$",
+    re.IGNORECASE,
+)
 
 
 def recheck_targets(config: Mapping[str, Any], root: Path, timeout: int) -> list[str] | None:
     """Build, test and lint run once more on the checked-out merge commit (the release job's
-    toolchain step installed what they need), with no GitHub token in their environment.
+    toolchain step installed what they need), with no variable whose name reads as a
+    credential in their environment (``SECRET_NAME_RE``; the GitHub token among them).
     The targets that are not green, ``[]`` when all are, None when sdlc.yaml has none."""
     commands = gate_checks.commands_from_config(dict(config))
     if not commands:
         return None
-    env = {k: v for k, v in os.environ.items() if k not in TOKEN_VARS}
+    env = {
+        k: v for k, v in os.environ.items() if k not in TOKEN_VARS and not SECRET_NAME_RE.search(k)
+    }
     red = []
     for name, command in commands.items():
         run = gate_checks.run_command(command, root, timeout, env=env)
@@ -896,6 +906,16 @@ def _release(args, env, github, git, record_git, say) -> int:
         return 2
     if newer is not None:
         say("skip", NEWER_RELEASE.format(sha=merge_sha, other=newer[0], at=newer[1]))
+        # it shipped inside that release: the record job records it, so a release that
+        # GitHub's queue replaced is recorded by dispatching this workflow (the independent
+        # review of the R51 PR, finding 4)
+        problem = _step_output(env, {"released": "true", "change_id": change_id})
+        if problem:
+            say("error", f"the record job's outputs could not be written ({problem})")
+            return 1
+        say("record", f"pending: released inside change {newer[0]}'s release; the record "
+            f"job stores it on {c.work_branch(change_id, 'c')} and "
+            f"{RELEASED_REF.format(id=change_id)}")  # fmt: skip
         return 0
     red = recheck_targets(config, root, _timeout(config))
     if red is None:

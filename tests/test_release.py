@@ -934,6 +934,22 @@ def test_the_recheck_runs_without_the_github_token(tmp_path, monkeypatch):
     assert cli.recheck_targets(yaml, tmp_path, 60) == []
 
 
+def test_the_recheck_runs_without_the_deploy_secrets(tmp_path, monkeypatch):
+    """The independent review of the R51 PR, finding 6: the owner's deploy secrets sit in the
+    release step's env:, and the targets run code no gate judged on the merge commit."""
+    for name in ("TWINE_PASSWORD", "AWS_SECRET_ACCESS_KEY", "NPM_TOKEN", "DEPLOY_API_KEY"):
+        monkeypatch.setenv(name, "secret")
+    monkeypatch.setenv("PROJECT_SETTING", "kept")
+    names = "('TWINE_PASSWORD', 'AWS_SECRET_ACCESS_KEY', 'NPM_TOKEN', 'DEPLOY_API_KEY')"
+    check = (
+        f'python -c "import os, sys; sys.exit(any(n in os.environ for n in {names}) '
+        "or os.environ.get('PROJECT_SETTING') != 'kept')\""
+    )
+    yaml = {"commands": {"build": check, "test": check, "lint": check}}
+    assert cli.recheck_targets(yaml, tmp_path, 60) == []
+    assert cli.SECRET_NAME_RE.search("PATH") is None and cli.SECRET_NAME_RE.search("HOME") is None
+
+
 def test_a_merge_commit_a_newer_release_holds_is_skipped(tmp_path, capfd):
     """Check 11: a merge commit dispatched again after a later change released a tree that
     contains it would put the older tree over the newer one; it is skipped."""
@@ -958,8 +974,16 @@ def test_a_merge_commit_a_newer_release_holds_is_skipped(tmp_path, capfd):
     _git(root, "commit", "-q", "-am", "release(0002): record")
     _git(root, "push", "-q", str(remote), "HEAD:refs/sdlc/released/0002")
     _git(root, "checkout", "-q", "main")
-    code, lines = _run(root, FakeGitHub(), "--merge-sha", older)
+    outputs = tmp_path.parent / f"{tmp_path.name}-github-output"
+    outputs.write_text("", encoding="utf-8")
+    code, lines = _run(
+        root, FakeGitHub(), "--merge-sha", older, env={"GITHUB_OUTPUT": str(outputs)}
+    )
     assert code == 0, "\n".join(lines)
-    assert lines[-1].startswith(f"release: skip: the merge commit {older} is already inside")
-    assert "change 0002" in lines[-1] and newer in lines[-1]
-    assert "released" not in capfd.readouterr().out
+    skip = next(line for line in lines if line.startswith("release: skip:"))
+    assert skip.startswith(f"release: skip: the merge commit {older} is already inside")
+    assert "change 0002" in skip and newer in skip
+    assert "released" not in capfd.readouterr().out  # deploy.command did not run
+    # it shipped inside 0002's release: the record job records it (finding 4 of the review)
+    assert outputs.read_text(encoding="utf-8") == "released=true\nchange_id=0001\n"
+    assert lines[-1].startswith("release: record: pending: released inside change 0002's")

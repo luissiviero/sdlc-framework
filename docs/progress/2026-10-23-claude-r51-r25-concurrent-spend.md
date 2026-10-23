@@ -1,6 +1,6 @@
 # Progress — R51 with R25 parts 1-2: concurrent changes made safe, the weekly window guarded (plugin 1.0.25, 2026-10-23)
 
-This session ran on branch `claude/r51-r25-concurrent-spend`, from `main` at `f090652` (#341). It is lane A of the two parallel build sessions the owner started on 2026-10-23; lane B builds R44 with R59 and R3's I5 in another session. By choice 238 this PR merges first, and lane B merges `main` in after it. The plugin moves from 1.0.24 to 1.0.25 (`python tasks.py next-free`, read after `git fetch origin` at 03:40 UTC on `f090652`).
+This session ran on branch `claude/r51-r25-concurrent-spend`, from `main` at `f090652` (#341). It is lane A of the two parallel build sessions the owner started on 2026-10-23; lane B builds R44 with R59 and R3's I5 in another session. This PR merges first, since choice 238 places R44 after R51 and R25 parts 1-2, and lane B merges `main` in after it. The plugin moves from 1.0.24 to 1.0.25 (`python tasks.py next-free`, read after `git fetch origin` at 03:40 UTC on `f090652`).
 
 ## The two GitHub facts (R51's row asked for them before the design relied on them)
 Both are in `docs/notes/59.md`.
@@ -18,9 +18,9 @@ Both are in `docs/notes/59.md`.
 2. **G1 before gate (e)** (checks 6 and 7): before the REVIEW.md pass, the (e) run and a fix round at (e), the runner merges the default branch into the work branch (1.0.10's `merge_default_branch`, with a message of its own) and runs the three targets itself on the merged tree. A conflict or a red target parks as `base_update` (`plugin/ci/base_update.py`). The merge commit is pushed by the run's next push.
 3. **A rejected push** (check 12): `gitops.push` fetches the moved branch, merges it with a merge commit and pushes once more. A conflict or a second rejection is an error. `commit-phase` reports the merge as `remote_merged`, and the runner re-runs the targets on that tree after the run record's push and parks when they are red.
 4. **The release** (checks 9 to 11):
-   - `sdlc-release.yml` has one group for the repository, `sdlc-release`, so two `deploy.command` runs never overlap.
-   - `release/cli.py` runs the three targets on the merge commit before the command, without the GitHub token in their environment. Red is a red job that prints the route back (check 10): fix the default branch in a change of its own, then dispatch the release with the PR number.
-   - A merge commit that a newer recorded release (`refs/sdlc/released/<id>`) already holds is skipped, so an older tree never goes over a newer one.
+   - `sdlc-release.yml`'s release job has one group for the repository, `sdlc-release`, so two `deploy.command` runs never overlap. The group is the job's, so a label event whose job is skipped never takes it. That a skipped job never enters its group was read, not verified live. The job's `timeout-minutes` goes from 60 to 75 for the targets.
+   - `release/cli.py` runs the three targets on the merge commit before the command, without any variable whose name reads as a credential (the GitHub token and the owner's deploy secrets, by name; the workflow's comment says how to name them). Red is a red job that prints the route back (check 10): fix the default branch in a change of its own, then dispatch the release with the PR number.
+   - A merge commit that a newer recorded release (`refs/sdlc/released/<id>`) already holds is not deployed, so an older tree never goes over a newer one; it is recorded as released inside that release, so a release that GitHub's queue replaced is recorded by dispatching the workflow with its PR number.
 5. **Check 13 already held**: every fix round reads its reviews, threads and comments from GitHub (`plugin/ci/fix_requests.py`), and a pending automatic round's targets are in `auto-round.json` on the branch. Only the trigger link is the trigger's own, and it is provenance, not a request.
 6. **Choice 239's six `gitops` items:**
    - read-only queries are bounded at 60 s again, and a timeout is a `GitError`, which `gate/diff.py` maps to `GitUnavailable`;
@@ -34,7 +34,7 @@ Both are in `docs/notes/59.md`.
 1. **The outer bounds park** (part 1): a session stopped by the CLI's turn limit, its budget stop or the runner's timeout parks with `limits: <the bound>` and `limits.OUTER_BOUND_NEED`. Its stored result and partial evidence are committed, and the run is green.
    - This holds at (b) to (e) and in a fix round; an automatic round with nothing to keep ends green after decision 29's own park.
    - The review pass and (f) stay red and say why: a parked review would let the (e) step of the same job run on it, and (f) hands its park to `detect/cli.py finish`.
-2. **The deploy job's `timeout-minutes`** goes from 200 to 330, covering the review pass (125) and phase (e) (185), so the runner's timeout fires before the job's (the proposal's "deploy job" row).
+2. **The deploy job's `timeout-minutes`** goes from 200 to 355, covering the review pass (125), phase (e) (185) and one re-check of R51 (45), so the runner's timeout fires before the job's (the proposal's "deploy job" row). 355 is five under the 360 a GitHub-hosted job may run.
 3. **M8**: the spend the budget, the gate and the PR read is rebuilt from the stored session results (`limits.spend_from_runs`), never from `evidence/spend.json`. The runner snapshots them before each session and puts back, and parks on, any the session created, changed or deleted, as it does for its own round files.
 4. **Each run line records the credential that paid** (`oauth`, the subscription token, or `api_key`), the session's wall time and whether the runner's timeout stopped it, as `sdlc_run` in the stored result. A session with no result keeps a line with no figure, counted as unknown and never invented.
 5. **The spend on the PR** (part 2): one line under the counters, with the total and, per credential, the runs, their time and their USD.
@@ -51,10 +51,25 @@ Each change follows a behaviour the accepted proposals change on purpose; no tes
 - `tests/test_fix_round_gaps.py`, the turn-cap test: the run is green and the reason says "stopped at the turn limit" (R25 part 1). Before, it asserted a red run with "claude exited 0, error_max_turns".
 - `tests/test_fix_round_gaps.py` and `tests/test_fix_round_edges.py`, ten gap-3 tests (three and seven): they used the turn limit only as an example of a failed session. They now use a session that failed with `error_during_execution` (`FAILED_RUN`), which no outer bound stops, and keep their assertions on the gap-3 path.
 - `tests/test_gate.py`, three budget tests, and `tests/test_ci.py`'s no-budget-left test: they also write the stored session results the total is now rebuilt from (M8). The ledger assertions stay, and one more shows that an emptied ledger no longer lowers the total.
-- `tests/test_templates.py` and `tests/test_ci.py`: the release group is `sdlc-release`, and the deploy job allows 330 minutes.
+- `tests/test_templates.py` and `tests/test_ci.py`: the release job's group is `sdlc-release`, the release job allows 75 minutes, and the deploy job 355.
 - `tests/test_ci_end_to_end.py`, the web-session intent test: "nothing else was pushed" now reads "the reserved `sdlc/0002/a` holds only the reservation", since `new-change` reserves the id before the round runs.
 
+## The independent review
+A fresh-context review of the branch (the owner's rule, as ROADMAP's 2026-10-16 annotation above the candidates' table records it; that annotation names "row 8" of `docs/handoffs/2026-10-15-decision-table-r21-r45.md`, whose row 8 in the file reads otherwise) found two blocking defects, five to fix and three nits. Each fix has a test.
+1. **Blocking:** the workflow-level release group let a label event on any PR replace a pending release. The group moved to the release job.
+2. **Blocking (M8):** the runner chose its own result's name after the session, so a session that deleted an earlier record freed that name and the deletion was never compared. The name is chosen before the session now.
+3. The (e) merge after the REVIEW.md session ran the checkout's hooks with the job's credentials. It runs with `runner_args` and `commands_env` now.
+4. A merge commit found inside a newer release was skipped and never recorded, though the docs gave dispatch as the route. It is recorded now.
+5. The deploy and release timeouts did not count the re-checks: 355 and 75 now.
+6. The release re-check passed the owner's deploy secrets to the targets. Variables named as credentials are dropped now.
+7. Git translates the refusal reasons the reservation and the push read. A push runs with `LC_ALL=C` now.
+8. The 60 s bound hit `ls-remote`. Network commands have no bound now.
+9. Nit: the reservation sat on a stale remote-tracking tip. `new-change` fetches the default branch first now.
+10. Nit, not fixed: the weekly scan (`plugin/scan/route.py`) passes `--id` and reserves nothing; see "Not built".
+11. Nit, no change: a stored result with no JSON is now JSON (`sdlc_run`, `raw`); the review found no reader that breaks.
+
 ## Not built, and why
+- **The weekly scan's ids**: `scan/route.py` allocates up to three ids in one run and passes `--id`, so its incidents are not reserved. Letting `new-change` reserve them would change the scan's run without a push, so it is left for a PR of its own.
 - **R51 check 8** (the (e) offer withdrawn on a later push, and the (e) run re-run on a push to the default branch for every open build PR): it needs a new trigger. Check 9 already stops an untested merge commit from deploying.
 - **R51 check 11, the other half**: recording every change a release's tip holds. A release that GitHub's queue replaced stays unrecorded until the owner dispatches it with its PR number. The workflow's comment says so.
 - **R25's weekly ceiling** in runs and time on the token: see "What I need from you", item 1.

@@ -1563,13 +1563,18 @@ def merge_default_branch(root: Path, message: str = MERGE_BEFORE_PREFLIGHT) -> d
     name = base.removeprefix("refs/remotes/")
     before = gate_diff.head_sha(root)
     message = message.format(base=name)  # R51 names its own merge (ci/base_update.py)
+    # R51 runs this after a model session of the same job, which held ``Bash(git *)`` in this
+    # checkout: on a runner no hook the session planted runs (``runner_args``), and git gets
+    # none of the job's credentials (``commands_env``; the independent review, finding 3)
     proc = subprocess.run(
-        ["git", *gitops.identity_args(root), "merge", "--no-ff", "--no-edit", "-m", message, base],
+        ["git", *gitops.runner_args(), *gitops.identity_args(root), "merge", "--no-ff",
+         "--no-edit", "-m", message, base],
         cwd=root,
         capture_output=True,
         text=True,
         encoding="utf-8",
-    )
+        env=commands_env(),
+    )  # fmt: skip
     if proc.returncode != 0:
         conflicts = gate_diff._z(
             gate_diff._git(root, "diff", "--name-only", "-z", "--diff-filter=U", check=False)
@@ -2970,6 +2975,9 @@ def _run_phase(args, env: dict[str, str], track: dict[str, Any]) -> int:
     gate_before = gate_record_bytes(change_dir, gate_phase)
     # R25 (M8): the stored results of earlier sessions, which the spend is rebuilt from
     records_before = limits.snapshot_run_records(change_dir / art.EVIDENCE_DIR)
+    # chosen before the session: picked after it, a record the session deleted would be
+    # taken for this run's own name and never compared (the independent review, finding 2)
+    result_path, stderr_path = run_record_paths(change_dir, phase)
     session_started = time.monotonic()
     data, raw, err, code = invoke(
         argv,
@@ -2978,7 +2986,6 @@ def _run_phase(args, env: dict[str, str], track: dict[str, Any]) -> int:
         run_timeout_seconds(config, phase, env),
     )
     stored = run_line_record(data, raw, code, env, time.monotonic() - session_started)
-    result_path, stderr_path = run_record_paths(change_dir, phase)
     store_result(change_dir, phase, stored, raw, result_path)
     store_stderr(change_dir, phase, err, stderr_path)
     cost = None

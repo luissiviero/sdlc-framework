@@ -164,8 +164,8 @@ def test_sdlc_yaml_carries_decision_32_s_defaults():
             assert minutes == ["260"], name  # 180 + 5 of grace, the commands step and the judge
         elif name in ("sdlc-design.yml", "sdlc-test.yml"):
             assert minutes == ["200"], name
-        elif name == "sdlc-deploy.yml":  # R25 part 1: the review pass's 125 and phase (e)'s 185
-            assert minutes == ["330"], name
+        elif name == "sdlc-deploy.yml":  # the review pass, (e) and one re-check (R25, R51)
+            assert minutes == ["355"], name
 
 
 def test_sdlc_yaml_also_parses_with_pyyaml():
@@ -508,8 +508,16 @@ def test_release_workflow_runs_the_release_cli_on_merge_and_label():
     # and must not be able to push (the review of the 0.3.1 diff, finding 4)
     assert data["permissions"] == {"contents": "read", "pull-requests": "read", "issues": "read"}
     assert "permissions" not in data["jobs"]["release"]
-    # R51: one release at a time in the repository, so two deploy.command runs never overlap
-    assert data["concurrency"] == {"group": "sdlc-release", "cancel-in-progress": False}
+    # R51: one release at a time in the repository, so two deploy.command runs never overlap;
+    # the group is the release job's, so a label event whose job is skipped never replaces a
+    # pending release (the independent review of the R51 PR, finding 1)
+    assert "concurrency" not in data
+    assert data["jobs"]["release"]["concurrency"] == {
+        "group": "sdlc-release",
+        "cancel-in-progress": False,
+    }
+    assert "concurrency" not in data["jobs"]["record"]
+    assert data["jobs"]["release"]["timeout-minutes"] == 75
     job = data["jobs"]["release"]
     assert "github.event_name == 'workflow_dispatch'" in job["if"]
     assert "github.event.pull_request.merged == true" in job["if"]

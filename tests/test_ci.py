@@ -1677,6 +1677,33 @@ def test_a_session_that_rewrites_an_earlier_run_record_parks(
     assert json.loads(earlier.read_text(encoding="utf-8")) == {"total_cost_usd": 7.5}
 
 
+def test_a_session_that_deletes_an_earlier_run_record_cannot_take_its_place(
+    project, fake_claude, monkeypatch, capsys
+):
+    """M8 (the independent review of the R51 PR, finding 2): run 2 of (c) whose session
+    deletes run 1's ``claude-c.json`` must not have the runner store its own result under
+    that freed name; the record is put back and the change parks."""
+    root, change = project
+    pr_route(monkeypatch)
+    set_state(change, "b", gate_phase="b", gate_result="passed")
+    earlier = change / "evidence" / "claude-c.json"
+    write(earlier, json.dumps({"total_cost_usd": 8.0}))
+    git(root, "add", ".")
+    git(root, "commit", "-q", "-m", "run 1's record")
+    script = root.parent / "delete.py"
+    write(script, f"import os; os.remove({str(earlier)!r})\n")
+    monkeypatch.setenv("FAKE_CLAUDE_RUN", str(script))
+    env = dict(os.environ, **KEY_ENV, GITHUB_TOKEN=FAKE_TOKEN)
+    args = Args(
+        root=str(root), phase="c", dry_run=False, no_dispatch=True, claude=fake_cli(fake_claude)
+    )
+    assert run_phase.run_phase(args, env) == run_phase.EXIT_OK
+    out = json.loads(capsys.readouterr().out)
+    assert "evidence/claude-c.json: the session deleted it" in out["parked"]
+    assert json.loads(earlier.read_text(encoding="utf-8")) == {"total_cost_usd": 8.0}
+    assert (change / "evidence" / "claude-c-2.json").is_file()  # this run's own record
+
+
 def test_guard_skips_when_the_previous_gate_deferred_its_commands(project):
     """A job killed between the session and the runner's step leaves gate (b) "passed" in
     status.yaml with a record whose targets never ran: the build run does not start on it."""
@@ -2176,8 +2203,8 @@ def test_phase_workflow_permissions_and_concurrency(name):
     assert "cancel-in-progress: false" in text
     # 0.3.0: the session, then the commands step; 1.0.8 (decision 32): the build's wall clock
     # is gate.build_max_wall_clock_minutes (180), so its job allows 260
-    # R25 part 1: the deploy job holds the review pass and phase (e), so it allows both (330)
-    minutes = {"sdlc-build.yml": 260, "sdlc-deploy.yml": 330}.get(name, 200)
+    # R25 part 1 and R51: the deploy job holds the review pass, phase (e) and one re-check
+    minutes = {"sdlc-build.yml": 260, "sdlc-deploy.yml": 355}.get(name, 200)
     assert f"timeout-minutes: {minutes}\n" in text
 
 

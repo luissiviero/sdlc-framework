@@ -14,7 +14,7 @@ No other session file reached `main` since (verified, `ls docs/handoffs/sessions
 
 ## Preconditions of the moment
 - The standing ones are in `HANDOFF.md`.
-- **Merge order (choice 238):** this PR first; lane B merges `main` in after it. Both touch `plugin/ci/run_phase.py`, and lane B's version takes the next free patch after 1.0.25 (`python tasks.py version-check` refuses a clash).
+- **Merge order:** this PR first, since choice 238 places R44 after R51 and R25 parts 1-2; lane B merges `main` in after it. Both touch `plugin/ci/run_phase.py`, and lane B's version takes the next free patch after 1.0.25 (`python tasks.py version-check` refuses a clash).
 - **Numbers:** run `python tasks.py next-free` before taking one. This PR takes note 59 and patch 1.0.25.
 
 ## Next steps, in order

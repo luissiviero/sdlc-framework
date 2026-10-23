@@ -167,3 +167,38 @@ def test_the_first_commit_phase_starts_from_the_reservation(remote, tmp_path, ca
     assert code == 0
     pushed = remote_sha(remote, "sdlc/0001/a")
     assert git(work, "rev-parse", f"{pushed}^") == reserved
+
+
+def test_the_reservation_sits_on_the_remote_tip_without_a_fetch_by_hand(remote, tmp_path, capsys):
+    """The independent review of the R51 PR, finding 9: a clone whose remote-tracking default
+    branch is stale still reserves on the remote's tip, since new-change fetches it first."""
+    work = clone(tmp_path, remote, "work")
+    other = clone(tmp_path, remote, "other")
+    (other / "x.txt").write_text("x\n", encoding="utf-8")
+    git(other, "add", "x.txt")
+    git(other, "commit", "-q", "-m", "moves main")
+    git(other, "push", "-q", "origin", "main")
+    tip = git(other, "rev-parse", "HEAD")
+    _, out, _ = new_change(capsys, work)
+    assert git(work, "rev-parse", f"{out['reservation']['sha']}^") == tip
+
+
+def test_a_push_reports_in_english_and_a_network_read_has_no_bound(remote, tmp_path, monkeypatch):
+    """Findings 7 and 8 of the review: git translates its refusal reasons, which the
+    reservation and the push read; a network read keeps no 60 s bound."""
+    work = clone(tmp_path, remote, "work")
+    seen = []
+    real = subprocess.run
+
+    def spy(argv, **kwargs):
+        seen.append((argv, kwargs.get("env"), kwargs.get("timeout")))
+        return real(argv, **kwargs)
+
+    monkeypatch.setattr(gitops.subprocess, "run", spy)
+    gitops.run_proc(work, "push", "origin", "main")
+    gitops.run_proc(work, "ls-remote", "origin")
+    gitops.run_proc(work, "rev-parse", "HEAD")
+    push, ls_remote, rev_parse = seen
+    assert push[1]["LC_ALL"] == "C" and push[1]["LANGUAGE"] == "C" and push[2] is None
+    assert ls_remote[2] is None
+    assert rev_parse[2] == gitops.READ_TIMEOUT_SECONDS
