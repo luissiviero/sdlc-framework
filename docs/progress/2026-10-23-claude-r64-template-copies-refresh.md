@@ -50,10 +50,13 @@ A fresh-context sub-agent reviewed `36f0f4c`, report only. It found nothing bloc
 - **`evals/check.py`:** refreshed like the READMEs. A pristine copy is the plugin's own code with nothing of the project in it, and a newer one carries the runner's fixes; an edited one is kept.
 - **The report's words:** `refreshed (was <version>)`, the version being the first release that shipped the text the copy had. `/sdlc-init` prints the list as the report's `refreshed` map, and the command puts it in the PR body.
 
+## Lane A's merge
+#368 (R18, 1.0.36) merged as `9ffd7c3` and was merged into this branch. The version conflict keeps 1.0.37. R18 changed six workflow templates (`sdlc-build`, `-deploy`, `-design`, `-detect`, `-fix`, `-test`), so `python tasks.py template-hashes` was re-run after `git fetch --tags`; their new texts are labelled 1.0.36, the tag that shipped them.
+
 ## Port list
 None: the PR touches no file under `plugin/detect/`, `plugin/ci/run_phase.py` or the detect, runbook and fix workflow templates.
 
 ## What the owner does
 | When | Act |
 |---|---|
-| When lane B says this PR is ready | Merge it, in wave 3's order by version: lane A's 1.0.36 first. |
+| When lane B says this PR is ready | Merge it, in wave 3's order by version: lane A's 1.0.36 merged first (#368); the small lane's 1.0.38 after this one. |
