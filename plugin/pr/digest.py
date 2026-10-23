@@ -190,11 +190,12 @@ def render_digest(
     protection: dict[str, Any] | None = None,
     merge_key: str = "",
     meter: str = "",
+    failed_runs: str = "",
 ) -> str:
     """The digest markdown. The unprotected-branch notice first when it applies
     (``unprotected_notice``), then parked, then the phase-ready queue by phase letter, then
-    the counters section (build guide step 42.2, ``pr/counters.py``) when the caller gives
-    one."""
+    the "Failed runs" section (R18, ``pr/failed_runs.py``), then the counters section (build
+    guide step 42.2, ``pr/counters.py``) when the caller gives one."""
     queue = [pr for pr in prs if sdlc_labels(pr)]
     parked = [pr for pr in queue if c.NEEDS_HUMAN_LABEL in sdlc_labels(pr)]
     # decision 29: a PR whose automatic fix round runs waits for nobody
@@ -219,6 +220,8 @@ def render_digest(
     out.append("")
     if not parked and not ready and not incidents and not fixing:
         out.append(NOTHING_WAITING)
+        if failed_runs:
+            out += ["", failed_runs.rstrip("\n")]
         if counters:
             out += ["", counters.rstrip("\n")]
         return "\n".join(out) + "\n"
@@ -241,6 +244,8 @@ def render_digest(
         out += [f"## Phase (f): runbook and dismissal PRs — `{c.INCIDENT_LABEL}`", ""]
         out += [_line(pr) for pr in sorted(incidents, key=lambda pr: pr.get("number") or 0)]
         out.append("")
+    if failed_runs:  # R18; R20 places it under "Worth knowing"
+        out += [failed_runs.rstrip("\n"), ""]
     if counters:
         out += [counters.rstrip("\n"), ""]
     out.append(f"Generated {now}.")
@@ -361,6 +366,25 @@ def minutes_meter(repo: str) -> str:
     return actions_minutes.render(meter)
 
 
+def failed_runs_section(repo: str) -> str:
+    """R18: the "Failed runs" section from the Actions API and the failed-run records; a
+    read that fails says so in the section and in the run's log."""
+    from pr import failed_runs  # noqa: PLC0415
+
+    tok = github.token() or ""
+    if not tok:
+        return ""
+    collected = failed_runs.collect(
+        repo,
+        datetime.now(timezone.utc),
+        lambda url: github._request("GET", url, tok),
+        github.API_ROOT,
+    )
+    if not collected.get("ok"):
+        print(f"digest: the failed runs could not be read: {collected['reason']}", file=sys.stderr)
+    return failed_runs.render(collected)
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="pr/digest.py", description=__doc__)
     parser.add_argument("--repo", required=True, help="owner/name")
@@ -385,6 +409,7 @@ def main(argv: list[str] | None = None) -> int:
         protection = None  # a recorded list renders offline
         merge_key = ""
         meter = ""
+        failed = ""
     else:
         prs, error = list_queue_prs(args.repo)
         protection = github.default_branch_protection(args.repo)
@@ -405,6 +430,7 @@ def main(argv: list[str] | None = None) -> int:
         key_in_repository = os.environ.get(KEY_IN_REPOSITORY_ENV, "").strip() == "true"
         merge_key = merge_key_notice(environment, key_in_repository)
         meter = minutes_meter(args.repo)
+        failed = failed_runs_section(args.repo)
         config: dict[str, Any] = {}
         if args.root:
             from hooks._common import ConfigError, load_sdlc_config  # noqa: PLC0415
@@ -421,7 +447,7 @@ def main(argv: list[str] | None = None) -> int:
         from pr import counters  # noqa: PLC0415
 
         counters_md = counters.render(counters.collect(Path(args.root).resolve()))
-    markdown = render_digest(prs, _now(), counters_md, protection, merge_key, meter)
+    markdown = render_digest(prs, _now(), counters_md, protection, merge_key, meter, failed)
     if args.dry_run:
         print(markdown, end="")
         return 0

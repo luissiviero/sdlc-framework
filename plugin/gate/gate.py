@@ -42,6 +42,9 @@ from state import status as status_mod  # noqa: E402
 from state import yamlish  # noqa: E402
 
 RESULTS = ("continue", "wait", "park")
+# R18 (ArtCraft rule A2): the triage lines are a model judgment beside the gate's measured
+# ones, and carry the label where they sit
+TRIAGE_HEADING = "- **Triage (model-written)**: what the triage step read in the run's logs"
 
 
 def _now() -> str:
@@ -63,6 +66,9 @@ class GateResult:
     config_note: str = ""
     # decision 30: gate (b) passed on the fast lane (a routine plan, in CI)
     fast_lane: bool = False
+    # R18: the read-only triage step's lines on a park with a log to read (``run_phase.py
+    # --phase triage``), model-written and passed through the secrets check
+    triage: list[str] = field(default_factory=list)
 
     @property
     def failed(self) -> list[CheckResult]:
@@ -84,6 +90,9 @@ class GateResult:
             lines.append(f"- **{ch.name}**: {ch.reason}")
             if ch.need:
                 lines.append(f"  - what I need: {ch.need}")
+        if self.triage:
+            lines.append(TRIAGE_HEADING)
+            lines += [f"  - {line}" for line in self.triage]
         lines.append(
             "When the item is settled, re-run the gate: "
             f'`python "${{CLAUDE_PLUGIN_ROOT}}/plugin/gate/cli.py" check --root . '
@@ -111,6 +120,8 @@ class GateResult:
         }
         if self.fast_lane:  # decision 30; a record off the fast lane keeps its shape
             data["fast_lane"] = True
+        if self.triage:  # R18; a record with no triage keeps its shape
+            data["triage"] = list(self.triage)
         return data
 
     @classmethod
@@ -118,6 +129,7 @@ class GateResult:
         """A gate record read back from ``evidence/gate-<phase>.json``: ``as_dict`` inverted,
         the derived fields (``reason``, ``what_i_need``) recomputed from the checks."""
         checks_data = data.get("checks")
+        triage = data.get("triage")
         return cls(
             change_id=str(data.get("change_id") or ""),
             slug=str(data.get("slug") or ""),
@@ -135,6 +147,7 @@ class GateResult:
             dry_run=bool(data.get("dry_run")),
             config_note=str(data.get("config_note") or ""),
             fast_lane=data.get("fast_lane") is True,
+            triage=[str(x) for x in triage] if isinstance(triage, list) else [],
         )
 
 

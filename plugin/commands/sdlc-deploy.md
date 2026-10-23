@@ -219,7 +219,17 @@ status, the final findings tally, the links):
 ```
 python "${CLAUDE_PLUGIN_ROOT}/plugin/release/notes.py" --root "${CLAUDE_PROJECT_DIR}" --id <id> --write
 ```
-It writes `changes/<id>-<slug>/evidence/release-notes.md`, which rides in the evidence
+It writes `changes/<id>-<slug>/evidence/release-notes.md`. Read it: when it has no
+`## In plain words` section (the first run, or the code changed since the paragraph was
+written; ROADMAP R18), write three to five sentences in plain words on what the change does
+for its users, from the diff and the plan, never from the commit list alone, with no secret,
+token or URL in them, and store them:
+```
+python "${CLAUDE_PLUGIN_ROOT}/plugin/release/notes.py" --root "${CLAUDE_PROJECT_DIR}" --id <id> --write --plain-words "<the paragraph>"
+```
+The script adds the model-written label and the mark naming the commit the paragraph
+describes; when the section is there, leave it: a re-run with no code change keeps it as it
+is. The file rides in the evidence
 commit (evidence is committed after the gate, OPERATING_MODEL §4.1, so no re-review):
 `python "${CLAUDE_PLUGIN_ROOT}/plugin/state/cli.py" commit-phase --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase e --message "review(<id>): gate (e) evidence" --push`.
 In CI (a token is present), publish the review tally as a check run:

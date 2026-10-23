@@ -379,7 +379,8 @@ def workflow_run_line(phase: str = "b", find: bool = False) -> list[str]:
     or with ``find`` the step before it that finds the change (``--find-change``)."""
     text = (WORKFLOW_DIR / WORKFLOW_FILE[phase]).read_text(encoding="utf-8")
     lines = re.findall(r"(?m)^\s+run: (python framework/plugin/ci/run_phase\.py .*)$", text)
-    lines = [ln for ln in lines if ("--find-change" in ln) == find]
+    # R18: the triage step after the phase run is a run_phase.py line of its own
+    lines = [ln for ln in lines if ("--find-change" in ln) == find and "--phase triage" not in ln]
     assert len(lines) == 1, f"the run line of {WORKFLOW_FILE[phase]} moved"
     return shlex.split(lines[0])
 

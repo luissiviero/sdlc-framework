@@ -1002,3 +1002,39 @@ def test_a_merge_commit_a_newer_release_holds_is_skipped(tmp_path, capfd):
     # it shipped inside 0002's release: the record job records it (finding 4 of the review)
     assert outputs.read_text(encoding="utf-8") == "released=true\nchange_id=0001\n"
     assert lines[-1].startswith("release: record: pending: released inside change 0002's")
+
+
+# --- R18: the model's paragraph beside the deterministic list -------------------------------------
+def test_notes_keep_the_plain_words_until_the_code_changes(tmp_path):
+    """The paragraph is labelled and marked with the commit it describes; a re-run with no
+    code change (an evidence-only commit between) leaves the file byte-identical, and a code
+    commit drops it so the session writes a fresh one."""
+    root, change_dir = _repo_with_change(tmp_path)
+    path = notes.write_notes(root, "0001", base="main", plain_words="It exports\nthe report.")
+    first = path.read_text(encoding="utf-8")
+    head = _git(root, "rev-parse", "--short", "HEAD").strip()
+    assert first.index(notes.PLAIN_HEADING) < first.index("## What changed")
+    assert notes.PLAIN_LABEL in first and "It exports the report." in first
+    assert notes.PLAIN_MARK.format(sha=head) in first
+    _git(root, "add", "changes")
+    _git(root, "commit", "-q", "-m", "Store the release notes")
+    assert notes.write_notes(root, "0001", base="main").read_text(encoding="utf-8") == first
+    (root / "report.py").write_text("x = 4\n", encoding="utf-8")
+    _git(root, "add", "report.py")
+    _git(root, "commit", "-q", "-m", "Change the code again")
+    again = notes.write_notes(root, "0001", base="main").read_text(encoding="utf-8")
+    assert notes.PLAIN_HEADING not in again and "It exports" not in again
+    assert "## What changed" in again
+
+
+def test_notes_without_a_paragraph_keep_their_shape(tmp_path):
+    root, _ = _repo_with_change(tmp_path)
+    text = notes.build_notes(root, "0001", base="main")
+    assert notes.PLAIN_HEADING not in text
+    assert text.splitlines()[2] == "## What changed"
+
+
+def test_notes_plain_words_need_write(tmp_path, capsys):
+    root, _ = _repo_with_change(tmp_path)
+    assert notes.main(["--root", str(root), "--id", "0001", "--plain-words", "x"]) == 2
+    assert "--plain-words needs --write" in capsys.readouterr().err
