@@ -18,7 +18,7 @@ session_model:
 # --- feedback loop: one-command targets (build guide step 14; article p.27 step 1) --------
 # Each must exit non-zero on failure. /sdlc-init detects them for Python projects.
 commands:
-  build: "python -m compileall -q plugin tests tasks.py"
+  build: "python -m compileall -q plugin tests tasks.py .github/scripts"
   test: "python -m pytest"
   lint: "python -m ruff check . && python -m ruff format --check ."
   # one command that installs what test/build/lint need; the CI phase jobs run it before
