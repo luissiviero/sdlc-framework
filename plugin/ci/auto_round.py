@@ -305,14 +305,17 @@ def head_matches(root: Path, change_dir: Path, head: str | None) -> bool:
         if current == head:
             return True
         gitops.run(root, "merge-base", "--is-ancestor", head, "HEAD")
-        changed = gitops.run(root, "diff", "--name-only", head, "HEAD")
+        # a rename's source counted (the review of 1.0.27): a file moved into the change
+        # folder is a change outside it
+        changed = gitops.run(root, "diff", "--name-status", "--no-renames", head, "HEAD")
     except (gitops.GitError, OSError):
         return False
     try:
         rel = Path(change_dir).resolve().relative_to(Path(root).resolve()).as_posix() + "/"
     except ValueError:
         return False
-    return all(line.strip().startswith(rel) for line in changed.splitlines() if line.strip())
+    paths = [line.split("\t", 1)[-1].strip() for line in changed.splitlines() if line.strip()]
+    return all(path.startswith(rel) for path in paths)
 
 
 REQUEST_TEXT = (

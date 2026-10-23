@@ -890,7 +890,7 @@ def test_workflow_keeps_the_reports_and_never_fails_on_scanner_findings():
     scanners = next(s for s in steps if "cli.py scanners" in s.get("run", ""))
     assert scanners.get("continue-on-error") is True
     assert scanners.get("if") == "${{ always() }}"
-    uploads = [s for s in steps if str(s.get("uses", "")).startswith("actions/upload-artifact@v4")]
+    uploads = [s for s in steps if str(s.get("uses", "")).startswith("actions/upload-artifact@")]
     kept = next(s for s in uploads if "scan-findings.json" in s["with"]["path"])
     assert kept["if"] == "${{ always() }}" and kept["with"]["if-no-files-found"] == "ignore"
     for name in ("scan-findings.json", "scan-run.json", "pip-audit.json", "bandit.json",
@@ -899,3 +899,17 @@ def test_workflow_keeps_the_reports_and_never_fails_on_scanner_findings():
     review = next(s for s in steps if "cli.py review" in s.get("run", ""))
     assert set(review["env"]) >= {"ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN"}
     assert "GITHUB_TOKEN" not in review["env"]  # the review reads code; it needs no GitHub
+
+
+def test_the_route_runs_from_a_fresh_framework_after_the_checkout_is_verified():
+    """R44 (the plugin security review of 2026-10-19, I4): the review's session shared the
+    checkout; the route, which holds the tokens, runs from a framework checked out afresh and
+    after ``checkout_check.py`` judged the project's git config."""
+    steps = _workflow()["jobs"]["scan"]["steps"]
+    names = [s.get("name", "") for s in steps]
+    review = names.index("Weekly security review (read-only claude -p)")
+    route = names.index("File the findings as incident intents")
+    between = steps[review + 1 : route]
+    assert "rmtree('framework'" in between[0]["run"]
+    assert between[1]["with"]["path"] == "framework"
+    assert "checkout_check.py" in between[2]["run"]

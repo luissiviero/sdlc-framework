@@ -1506,3 +1506,22 @@ def test_log_state_names_a_log_the_session_left_to_the_runner(tmp_path):
         path, art.render_evidence_header("pytest -x || exit 0", 0, 1.0, "2026-10-03T12:00:00Z"), ""
     )
     assert desc.log_state(path) == "green"
+
+
+def test_a_linked_evidence_file_is_never_quoted_in_the_body(project, tmp_path):
+    """R59, the plugin security review of 2026-10-19, I2: a session links
+    ``evidence/claude-md-proposals.md`` to a file it may not read (``.env``); the runner,
+    which builds the body outside the sandbox, must not quote the target."""
+    root, change = project
+    gate_json(change, "e", "wait", c.ready_label("e"))
+    secret = root / ".env"
+    secret.write_text("FAKE_SECRET=marker-r59-i2\n", encoding="utf-8")
+    link = change / art.EVIDENCE_DIR / desc.CLAUDE_MD_PROPOSALS
+    link.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        os.symlink(secret, link)
+    except (OSError, NotImplementedError):
+        pytest.skip("symbolic links are not permitted here")
+    body = desc.build_description(root, "0001", "e")
+    assert "marker-r59-i2" not in body
+    assert "## Proposed CLAUDE.md lines" not in body

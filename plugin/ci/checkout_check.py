@@ -80,6 +80,28 @@ DENIED_CONFIG = (
     r"^extensions\.worktreeconfig$",
 )
 EXIT_REFUSED = 3
+# The keys that make git run a program the session chose (R44, the plugin security review of
+# 2026-10-19, I4): ``state/gitops.py refuse_planted_config`` refuses every runner git call
+# under one, in the local and the worktree config. The redirect keys stay ``app_token``'s
+# (a finding there switches to the workflow token, R49). ``core.hooksPath`` and
+# ``core.fsmonitor`` are left out: ``runner_args`` overrides both on every call, and a
+# project's own install (husky) sets the first. A plain include and the worktree file are
+# judged through what they hold: the listing resolves both.
+RUNS_PROGRAM = (
+    r"^includeif\..*$",  # applies by branch or path, so may apply after the listing
+    r"^core\.(sshcommand|gitproxy|askpass|pager|editor)$",
+    r"^remote\..*\.(uploadpack|receivepack|vcs)$",
+    r"^credential\..*helper$",
+    r"^alias\..*$",
+    r"^gpg\..*program$",
+    r"^diff\..*command$",
+    r"^diff\.external$",
+    r"^diff\..*\.(textconv|command)$",
+    r"^merge\..*driver$",
+    r"^filter\..*\.(clean|smudge|process)$",
+    r"^protocol\.(.*\.)?allow$",  # ext:: runs a command as a transport (the 1.0.27 review)
+)
+PROGRAM_SCOPES = (("local", RUNS_PROGRAM), ("worktree", RUNS_PROGRAM))
 CLEAN_ENV = {
     "GIT_CONFIG_GLOBAL": "/dev/null",
     "GIT_CONFIG_NOSYSTEM": "1",
@@ -97,7 +119,10 @@ def hardening() -> list[str]:
     global _NO_HOOKS_DIR
     if _NO_HOOKS_DIR is None or not os.path.isdir(_NO_HOOKS_DIR):
         _NO_HOOKS_DIR = tempfile.mkdtemp(prefix="sdlc-no-hooks-")
-    return ["-c", f"core.hooksPath={_NO_HOOKS_DIR}", "-c", "core.fsmonitor=false"]
+    return [
+        "-c", f"core.hooksPath={_NO_HOOKS_DIR}", "-c", "core.fsmonitor=false",
+        "--no-replace-objects",  # a replace ref the session wrote is not read (1.0.27)
+    ]  # fmt: skip
 
 
 def git(cwd: Path, *args: str, env: dict[str, str] | None = None) -> tuple[int, str]:

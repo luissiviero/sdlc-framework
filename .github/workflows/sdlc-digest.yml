@@ -44,7 +44,7 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Check out the project
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           persist-credentials: false
           fetch-depth: 0
@@ -59,7 +59,7 @@ jobs:
         run: git show "refs/remotes/origin/$SDLC_DEFAULT_BRANCH:.github/scripts/sdlc_pin.py" | python - --ref "refs/remotes/origin/$SDLC_DEFAULT_BRANCH"
 
       - name: Check out the pinned framework (public repository, no token)
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           persist-credentials: false
           repository: "luissiviero/sdlc-framework"

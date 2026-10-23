@@ -371,16 +371,31 @@ def _tail(text: str) -> str:
     return text if len(text) <= DETAIL_TAIL else "..." + text[-DETAIL_TAIL:]
 
 
+# R44 (the plugin security review of 2026-10-19, I1): a case's ``command`` check runs code
+# the case's session wrote, outside any sandbox; it gets no model credential and no token
+CHECK_HIDDEN_VARS = (
+    *auth.CREDENTIAL_VARS, *SESSION_HIDDEN_VARS, "GITHUB_TOKEN", "GH_TOKEN",
+    "SDLC_WORKFLOW_TOKEN",
+)  # fmt: skip
+
+
+def check_env() -> dict[str, str]:
+    """The environment of a case's ``command`` check: the process's own without
+    ``CHECK_HIDDEN_VARS``."""
+    return {k: v for k, v in os.environ.items() if k not in CHECK_HIDDEN_VARS}
+
+
 def run_commands(command: str, cwd: Path, timeout: float) -> tuple[int, str]:
-    """Run a command chain without a shell; (exit code of the first failing step or 0, what
-    happened)."""
+    """Run a command chain without a shell, with ``check_env``; (exit code of the first
+    failing step or 0, what happened)."""
     try:
         chain = command_chain(command, cwd)
     except UsageError as exc:
         return 2, str(exc)
+    env = check_env()
     for argv in chain:
         try:
-            code, out, err = run_bounded([_exe(argv[0]), *argv[1:]], cwd, timeout)
+            code, out, err = run_bounded([_exe(argv[0]), *argv[1:]], cwd, timeout, env)
         except subprocess.TimeoutExpired:
             return 124, f"{argv[0]}: timed out after {timeout:g}s"
         except FileNotFoundError:
@@ -402,6 +417,18 @@ def claude_prefix(claude: str) -> list[str]:
     return [shutil.which(claude) or claude]
 
 
+CI_EVAL_SETTINGS = {
+    "sandbox": {
+        "enabled": True,
+        "failIfUnavailable": True,
+        "allowUnsandboxedCommands": False,
+        "credentials": {
+            "envVars": [{"name": name, "mode": "deny"} for name in auth.CREDENTIAL_VARS]
+        },
+    }
+}
+
+
 def compose(
     claude: str,
     prompt: str,
@@ -420,6 +447,11 @@ def compose(
     argv += ["--allowedTools", str(config["tools"])]
     argv += ["--disallowedTools", DISALLOWED_TOOLS]
     argv += ["--plugin-dir", str(plugin_dir)]
+    if env.get("GITHUB_ACTIONS"):
+        # R44 (I1, and the review of 1.0.27): on a runner a case's session, whose tools a
+        # pull request can set, runs sandboxed or not at all, and its shell commands find
+        # neither model credential; the project's own rules still apply beside these
+        argv += ["--settings", json.dumps(CI_EVAL_SETTINGS)]
     model = env.get("SDLC_MODEL")
     if model:
         argv += ["--model", model]

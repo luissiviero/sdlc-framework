@@ -1025,6 +1025,54 @@ def check_clean_tree(ctx: GateContext) -> CheckResult:
     )
 
 
+# --- 10b. no link under the change folder (R59, the plugin security review of 2026-10-19, I2) --
+EVIDENCE_LINKS_NEED = (
+    "Replace each link with the file's own content, or remove it: the runner reads the change "
+    "folder outside the sandbox to build the PR body, and a link there could quote any file "
+    "it can read (.env included)."
+)
+
+
+def change_folder_links(root: Path, change_rel: str, head: str | None) -> list[str]:
+    """Every symbolic link under ``change_rel``: in the working tree (tracked or not, the
+    folder itself and its parents up to ``changes/`` included) and, at ``head``, every entry
+    committed with the link mode ``120000``."""
+    folder = Path(root) / change_rel
+    found: set[str] = set()
+    linked = art.linked_part(folder)
+    if linked is not None:
+        found.add(Path(os.path.relpath(linked, root)).as_posix())
+    elif folder.is_dir():
+        for top, dirs, files in os.walk(folder):
+            for name in dirs + files:
+                entry = Path(top) / name
+                if entry.is_symlink():
+                    found.add(entry.relative_to(root).as_posix())
+    if head:
+        out = diffmod._git(root, "ls-tree", "-r", "-z", head, "--", change_rel + "/", check=False)
+        for record in out.split("\0"):
+            meta, _, path = record.partition("\t")
+            if path and meta.split(" ")[0] == "120000":
+                found.add(path.replace("\\", "/"))
+    return sorted(found)
+
+
+def check_evidence_links(ctx: GateContext) -> CheckResult:
+    if ctx.diff is None:
+        return _fail(
+            "evidence_links", ctx.diff_error, "Run the gate inside the project's git repo."
+        )
+    links = change_folder_links(ctx.root, ctx.change_rel, ctx.diff.head)
+    if links:
+        return _fail(
+            "evidence_links",
+            f"{len(links)} symbolic link(s) under the change folder: " + ", ".join(links[:10]),
+            EVIDENCE_LINKS_NEED,
+            links=links[:50],
+        )
+    return _ok("evidence_links", "no symbolic link under the change folder")
+
+
 # --- 11. phase (b) touches no source (decision 2; OPERATING_MODEL section 8) -------------------
 def check_design_scope(ctx: GateContext) -> CheckResult:
     """The spec-and-plan run of phase (b) is read-only on source: the only files it writes are
@@ -1420,17 +1468,9 @@ def check_test_lock(ctx: GateContext) -> CheckResult:
         patterns = test_path_patterns(ctx.config)
     except ConfigError as exc:
         return _fail("test_lock", str(exc), "Fix sdlc.yaml: test_paths (a list of globs).")
-    changed = diffmod._z(
-        diffmod._git(
-            ctx.root,
-            "diff",
-            "--name-only",
-            "-z",
-            "--diff-filter=ACMRD",
-            f"{sha}..HEAD",
-            check=False,
-        )
-    )
+    # every status, a rename's source and a type change counted (R59, I3): a locked test
+    # renamed away or turned into a symlink is a changed test file
+    changed = diffmod.changed_paths(ctx.root, f"{sha}..HEAD")
     hits = sorted(f for f in changed if any(matches(p, f) for p in patterns))
     if hits:
         return _fail(
@@ -2087,9 +2127,16 @@ def _project_language(root: Path) -> str:
 CHECKS_BY_PHASE: dict[str, tuple[Check, ...]] = {
     # gate (a) judges the intent PR: since 0.2.26 ``design_scope`` refuses a source file on it
     # (OPERATING_MODEL section 4.2 promised it for the fix round at (a); change 0000 is exempt)
-    "a": (check_artifacts, check_design_scope, check_guardrails, check_risk_list),
+    "a": (
+        check_artifacts,
+        check_evidence_links,
+        check_design_scope,
+        check_guardrails,
+        check_risk_list,
+    ),
     "b": (
         check_artifacts,
+        check_evidence_links,
         check_design_scope,
         check_open_concerns,
         check_panel,
@@ -2103,6 +2150,7 @@ CHECKS_BY_PHASE: dict[str, tuple[Check, ...]] = {
     "c": (
         check_clean_tree,
         check_artifacts,
+        check_evidence_links,
         check_open_concerns,
         check_panel,
         check_commands,
@@ -2120,6 +2168,7 @@ CHECKS_BY_PHASE: dict[str, tuple[Check, ...]] = {
     "d": (
         check_clean_tree,
         check_artifacts,
+        check_evidence_links,
         check_open_concerns,
         check_panel,
         check_commands,
@@ -2137,6 +2186,7 @@ CHECKS_BY_PHASE: dict[str, tuple[Check, ...]] = {
     "e": (
         check_clean_tree,
         check_artifacts,
+        check_evidence_links,
         check_open_concerns,
         check_panel,
         check_commands,
@@ -2158,6 +2208,7 @@ CHECKS_BY_PHASE: dict[str, tuple[Check, ...]] = {
     # and the route it took. No toolchain, no verdict, no panel: phase (f) builds nothing.
     "f": (
         check_artifacts,
+        check_evidence_links,
         check_design_scope,
         check_guardrails,
         check_risk_list,

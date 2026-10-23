@@ -594,3 +594,69 @@ def test_a_modified_record_inside_the_change_folder_never_blocks_a_runbook(proje
     assert runbooks._dirty(root) == ["app.py"]
     outcome = runbooks.revert_pr(root, "0007", {"sha": sha}, repo="o/r")
     assert outcome.status == "failed" and "uncommitted" in outcome.reason
+
+
+# --- R3's I5 fix (built in R44) and M7: the project runbook's tree, environment and record ------
+ROLLBACK = (
+    "import os, pathlib\n"
+    "print('approved script')\n"
+    "print('changes kept:', pathlib.Path('changes/0001-x/intent.md').is_file())\n"
+    "print('model key:', os.environ.get('ANTHROPIC_API_KEY'))\n"
+    "print('listed:', os.environ.get('DEPLOY_TOKEN'))\n"
+    "print('unlisted:', os.environ.get('OTHER_SECRET'))\n"
+)
+
+
+def test_a_project_runbook_runs_the_approved_files_with_an_explicit_environment(
+    tmp_path, monkeypatch
+):
+    root = make_repo(tmp_path, {"rollback.py": ROLLBACK, "app.py": "VALUE = 1\n"})
+    approved = runbooks.approved_commit(root, "main")
+    # what the diagnosis session could leave: an edited script, a planted untracked module
+    (root / "rollback.py").write_text("print('session script')\n", encoding="utf-8")
+    (root / "changes" / "0001-x").mkdir(parents=True)
+    (root / "changes" / "0001-x" / "intent.md").write_text("i\n", encoding="utf-8")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-model-key-value")
+    monkeypatch.setenv("DEPLOY_TOKEN", "deploy-token-value-123")
+    monkeypatch.setenv("OTHER_SECRET", "other-secret-value")
+    entry = {"command": f"{sys.executable} rollback.py", "env": ["DEPLOY_TOKEN"]}
+    out = runbooks.project_runbook(root, "rollback-x", entry, timeout=60, approved=approved)
+    assert out.status == runbooks.RAN, out.reason
+    tail = out.output_tail
+    assert "approved script" in tail and "session script" not in tail
+    assert "changes kept: True" in tail
+    assert "model key: None" in tail and "unlisted: None" in tail
+    assert "deploy-token-value-123" not in tail and "listed: [redacted]" in tail  # M7
+    # the checkout is as the session left it, and no worktree is left behind
+    assert (root / "rollback.py").read_text(encoding="utf-8") == "print('session script')\n"
+    assert len(git(root, "worktree", "list").splitlines()) == 1
+
+
+def test_the_model_credentials_never_reach_a_runbook_even_when_listed():
+    env = runbooks.runbook_env(
+        {"env": ["ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN", "X"]},
+        {"ANTHROPIC_API_KEY": "a", "CLAUDE_CODE_OAUTH_TOKEN": "b", "X": "c", "PATH": "/bin"},
+    )
+    assert env == {"X": "c", "PATH": "/bin"}
+
+
+def test_without_the_approved_commit_on_origin_the_runbook_is_refused(tmp_path):
+    root = make_repo(tmp_path, {"app.py": "VALUE = 1\n"}, remote=False)
+    with pytest.raises(runbooks.RunbookError, match="origin carries no main"):
+        runbooks.approved_commit(root, "main")
+
+
+def test_a_replace_ref_does_not_swap_the_runbook_s_approved_tree(tmp_path, monkeypatch):
+    """The review of 1.0.27: ``git replace <approved> <evil>`` made the worktree check out
+    the session's tree; on a runner the runner's git reads no replace ref."""
+    root = make_repo(tmp_path, {"rollback.py": "print('approved script')\n"})
+    approved = runbooks.approved_commit(root, "main")
+    git(root, "checkout", "-q", "-b", "evil")
+    evil = commit(root, {"rollback.py": "print('session script')\n"}, "evil")
+    git(root, "checkout", "-q", "main")
+    git(root, "replace", approved, evil)
+    monkeypatch.setenv("GITHUB_ACTIONS", "true")
+    entry = {"command": f"{sys.executable} rollback.py"}
+    out = runbooks.project_runbook(root, "rollback-x", entry, timeout=60, approved=approved)
+    assert out.status == runbooks.RAN, out.reason
+    assert "approved script" in out.output_tail and "session script" not in out.output_tail

@@ -27,7 +27,14 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _common import Decision, load_sdlc_config, matches, project_dir, run_hook  # noqa: E402
+from _common import (  # noqa: E402
+    Decision,
+    git_options,
+    load_sdlc_config,
+    matches,
+    project_dir,
+    run_hook,
+)
 
 from gate import artifacts as art  # noqa: E402
 from state import conventions as c  # noqa: E402
@@ -61,8 +68,9 @@ _TAKES_ARG = {
 def _git(root: str, *args: str) -> str:
     try:
         proc = subprocess.run(
-            ["git", *args], cwd=root, capture_output=True, text=True, encoding="utf-8", timeout=20
-        )
+            ["git", *git_options(), *args], cwd=root, capture_output=True, text=True,
+            encoding="utf-8", timeout=20,
+        )  # fmt: skip
     except (OSError, subprocess.TimeoutExpired):
         return ""
     return proc.stdout if proc.returncode == 0 else ""

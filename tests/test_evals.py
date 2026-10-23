@@ -938,3 +938,30 @@ def test_check_py_uses_the_variable_then_the_checkout(tmp_path, calls, capsys):
     # an explicit choice that does not hold the runner is never replaced by the checkout
     assert module.main([], env={"SDLC_FRAMEWORK_DIR": str(tmp_path / "nowhere")}) == 2
     assert len(calls) == 3
+
+
+def test_a_case_s_command_check_runs_without_the_model_credentials(tmp_path, monkeypatch):
+    """R44 (the plugin security review of 2026-10-19, I1): a ``command`` check runs code the
+    case's session wrote, outside any sandbox."""
+    names = ("ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN", "GITHUB_TOKEN", "GH_TOKEN")
+    for name in names:
+        monkeypatch.setenv(name, "placeholder-" + name.lower())  # sdlc: allow-secret
+    probe = tmp_path / "probe.py"
+    probe.write_text(
+        f"import os, sys\nsys.exit(1 if any(os.environ.get(n) for n in {names!r}) else 0)\n",
+        encoding="utf-8",
+    )
+    code, detail = run.run_commands(f"python {probe.name}", tmp_path, 60)
+    assert code == 0, detail
+
+
+def test_on_a_runner_a_case_s_session_runs_sandboxed_without_the_credentials():
+    """R44 (I1, the review of 1.0.27): a pull request sets a case's tools; on a runner its
+    session is sandboxed or does not run, and its shell commands find no model credential."""
+    config = {"permission_mode": "acceptEdits", "max_turns": 5, "budget_usd": 1, "tools": "Read"}
+    argv = run.compose("claude", "p", config, Path("/f"), {"GITHUB_ACTIONS": "true"})
+    settings = json.loads(argv[argv.index("--settings") + 1])
+    assert settings["sandbox"]["failIfUnavailable"] is True
+    denied = {e["name"] for e in settings["sandbox"]["credentials"]["envVars"]}
+    assert denied == {"ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN"}
+    assert "--settings" not in run.compose("claude", "p", config, Path("/f"), {})

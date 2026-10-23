@@ -63,6 +63,7 @@ from _common import (  # noqa: E402
     run_hook,
 )
 from release import approval as approval_mod  # noqa: E402
+from secrets_check import redact  # noqa: E402
 
 from state import conventions as c  # noqa: E402
 
@@ -383,7 +384,7 @@ def decide(
     command = str((payload.get("tool_input") or {}).get("command") or "")
     git = git or approval_mod.make_git(CALL_TIMEOUT)
     root = project_dir(payload, env)
-    shown = command[:200]
+    shown = redact(command)[:200]  # R59, M12: redacted before the cut splits a secret
     log_path: Path | None = None
     change: tuple[str | None, Path | None] | None = None
 

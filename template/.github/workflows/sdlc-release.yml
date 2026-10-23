@@ -115,7 +115,7 @@ jobs:
       # The merge commit itself, not the event's default ref: a label applied long after
       # the merge must release what was merged. A dispatch releases the default branch.
       - name: Check out the project
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           persist-credentials: false
           ref: ${{ github.event.pull_request.merge_commit_sha || github.sha }}
@@ -131,7 +131,7 @@ jobs:
         run: git show "refs/remotes/origin/$SDLC_DEFAULT_BRANCH:.github/scripts/sdlc_pin.py" | python - --ref "refs/remotes/origin/$SDLC_DEFAULT_BRANCH"
 
       - name: Check out the pinned framework (public repository, no token)
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           persist-credentials: false
           repository: "{{FRAMEWORK_REPO}}"
@@ -174,14 +174,14 @@ jobs:
       contents: write
     steps:
       - name: Check out the project
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           persist-credentials: false
           ref: ${{ github.event.pull_request.merge_commit_sha || github.sha }}
           fetch-depth: 0
 
       - name: Check out the pinned framework (public repository, no token)
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           persist-credentials: false
           repository: "{{FRAMEWORK_REPO}}"

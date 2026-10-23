@@ -321,8 +321,28 @@ def planned_files(plan_text: str) -> list[str]:
     return files
 
 
+def linked_part(path: Path) -> Path | None:
+    """The first part of ``path`` that is a symbolic link, from the file itself up to the
+    ``changes`` folder or the folder that holds ``.git`` (the project root, not judged), or
+    None. R59 (the plugin security review of 2026-10-19, I2): a session can link
+    ``evidence/claude-md-proposals.md`` to ``.env`` without reading it, and the runner, which
+    builds the PR body outside the sandbox, would quote the target."""
+    part = Path(path).absolute()
+    while True:
+        if part.is_symlink():
+            return part
+        parent = part.parent
+        if part.name == "changes" or parent == part or (parent / ".git").exists():
+            return None
+        part = parent
+
+
 def read_text(path: Path) -> str | None:
+    """The file's text, or None when it is missing, unreadable or reached through a link
+    (``linked_part``)."""
     try:
+        if linked_part(path) is not None:
+            return None
         return Path(path).read_text(encoding="utf-8")
     except OSError:
         return None

@@ -704,11 +704,11 @@ def fast_lane_after_gate(root: Path, change_rel: str, sha: str, tip: str) -> str
     file changed after the gate is not what the gate and the reviewer judged."""
     from state import gitops  # noqa: PLC0415
 
-    try:
-        out = gitops.run(root, "diff", "--name-only", "-z", sha, tip)
+    try:  # a rename's source and a type change counted (R59, I3)
+        out = gitops.run(root, "diff", *gate_diff.CHANGED, sha, tip)
     except (gitops.GitError, OSError) as exc:  # fail closed: an unread diff is not an empty one
         return f"the commits after the gate's commit cannot be read: {exc}"
-    files = [f for f in out.split("\0") if f]
+    files = gate_diff.paths_of(out)
     allowed = (f"{change_rel}/{art.EVIDENCE_DIR}/", f"{change_rel}/{status_mod.STATUS_FILE}")
     outside = [f for f in files if not (f.startswith(allowed[0]) or f == allowed[1])]
     if outside:
@@ -865,7 +865,8 @@ def prepare_branch(
     if gitops.current_branch(root) == branch:
         return {**out, "switched": True, "note": "already on the work branch"}
     if _ref_exists(root, f"refs/heads/{branch}"):
-        return {**out, "switched": _git_ok(root, "checkout", branch), "from": "local"}
+        # N2: "--" ends the options, so a head_ref is a branch, never an option or a path
+        return {**out, "switched": _git_ok(root, "checkout", branch, "--"), "from": "local"}
     if _ref_exists(root, f"refs/remotes/origin/{branch}"):
         ok = _git_ok(root, "checkout", "-b", branch, "--track", f"origin/{branch}")
         return {**out, "switched": ok, "from": f"origin/{branch}"}
@@ -912,9 +913,10 @@ def _committed_diff(root: Path) -> tuple[list[str], str | None]:
     merge_base = gitops.run(root, "merge-base", base, "HEAD", check=False).strip()
     if not merge_base:
         raise NoMergeBase(base)
-    out = gitops.run(root, "diff", "--name-only", merge_base, "HEAD", check=False)
-    files = [line.strip().replace("\\", "/") for line in out.splitlines() if line.strip()]
-    return files, merge_base
+    # NUL-separated (a non-ASCII path is not quoted), a rename's source and a type change
+    # counted (R59, the plugin security review of 2026-10-19, I3 and M9)
+    out = gitops.run(root, "diff", *gate_diff.CHANGED, merge_base, "HEAD", check=False)
+    return gate_diff.paths_of(out), merge_base
 
 
 def guardrail_hits(files: list[str], config: dict[str, Any]) -> list[str]:
@@ -1564,8 +1566,10 @@ def merge_default_branch(root: Path, message: str = MERGE_BEFORE_PREFLIGHT) -> d
     before = gate_diff.head_sha(root)
     message = message.format(base=name)  # R51 names its own merge (ci/base_update.py)
     # R51 runs this after a model session of the same job, which held ``Bash(git *)`` in this
-    # checkout: on a runner no hook the session planted runs (``runner_args``), and git gets
-    # none of the job's credentials (``commands_env``; the independent review, finding 3)
+    # checkout: on a runner no hook the session planted runs (``runner_args``), no planted
+    # filter or driver either (``refuse_planted_config``, R44's I4), and git gets none of the
+    # job's credentials (``commands_env``; the independent review, finding 3)
+    gitops.refuse_planted_config(root)
     proc = subprocess.run(
         ["git", *gitops.runner_args(), *gitops.identity_args(root), "merge", "--no-ff",
          "--no-edit", "-m", message, base],
@@ -3759,9 +3763,7 @@ def _test_files_changed_since(root: Path, pre_head: str, config: dict[str, Any])
         patterns = test_path_patterns(config)
     except _ConfigError:
         return []
-    changed = gate_diff._z(
-        gate_diff._git(root, "diff", "--name-only", "-z", pre_head, check=False)
-    ) + gate_diff._z(
+    changed = gate_diff.changed_paths(root, pre_head) + gate_diff._z(
         gate_diff._git(root, "ls-files", "--others", "--exclude-standard", "-z", check=False)
     )
     return sorted({f for f in changed if any(matches(p, f) for p in patterns)})
@@ -3882,10 +3884,10 @@ def return_to_branch(
     if current is None or current == branch:
         return None
     out: dict[str, Any] = {"from": current, "to": branch, "forced": False, "recreated": False}
-    if _git_ok(root, "checkout", branch):
+    if _git_ok(root, "checkout", branch, "--"):
         return {**out, "ok": True}
     out["forced"] = True
-    if _git_ok(root, "checkout", "-f", branch):
+    if _git_ok(root, "checkout", "-f", branch, "--"):
         return {**out, "ok": True}
     if pre_head and _git_ok(root, "checkout", "-f", "-B", branch, pre_head):
         return {**out, "recreated": True, "ok": True}
@@ -5122,7 +5124,12 @@ def preflight(plugin_dir: Path, root: Path, change_id: str) -> dict[str, Any]:
         "--root", str(root), "--plugin-root", str(plugin_dir), "--id", change_id,
     ]  # fmt: skip
     try:
-        proc = subprocess.run(argv, capture_output=True, text=True, encoding="utf-8", timeout=3600)
+        # the test target runs the project's code before the session, outside the sandbox:
+        # the commands step's environment, with no model credential and no token (R44)
+        proc = subprocess.run(
+            argv, capture_output=True, text=True, encoding="utf-8", timeout=3600,
+            env=commands_env(),
+        )  # fmt: skip
     except (OSError, subprocess.SubprocessError) as exc:
         return {"allow": False, "reasons": [f"preflight could not run: {exc}"]}
     try:

@@ -69,7 +69,7 @@ jobs:
     steps:
       # The default branch, never the pull request's head: the owner's copies judge it.
       - name: Check out the default branch
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           persist-credentials: false
           ref: ${{ github.event.repository.default_branch }}
@@ -83,7 +83,7 @@ jobs:
         run: git show "refs/remotes/origin/$SDLC_DEFAULT_BRANCH:.github/scripts/sdlc_pin.py" | python - --ref "refs/remotes/origin/$SDLC_DEFAULT_BRANCH"
 
       - name: Check out the pinned framework (public repository, no token)
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           persist-credentials: false
           repository: "{{FRAMEWORK_REPO}}"
@@ -106,7 +106,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Check out the default branch
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           persist-credentials: false
           ref: ${{ github.event.repository.default_branch }}
@@ -120,7 +120,7 @@ jobs:
         run: git show "refs/remotes/origin/$SDLC_DEFAULT_BRANCH:.github/scripts/sdlc_pin.py" | python - --ref "refs/remotes/origin/$SDLC_DEFAULT_BRANCH"
 
       - name: Check out the pinned framework (public repository, no token)
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           persist-credentials: false
           repository: "{{FRAMEWORK_REPO}}"

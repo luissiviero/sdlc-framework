@@ -30,9 +30,18 @@ PLUGIN_ROOT = Path(__file__).resolve().parent.parent  # <repo>/plugin
 if str(PLUGIN_ROOT) not in sys.path:
     sys.path.insert(0, str(PLUGIN_ROOT))
 
-from state import yamlish  # noqa: E402
+from state import gitops, yamlish  # noqa: E402
 
 FILE_TOOLS = ("Edit", "Write", "MultiEdit", "NotebookEdit")
+
+
+def git_options() -> list[str]:
+    """The global options of a hook's own git call: ``gitops.runner_args`` on a runner (no
+    hook, no filesystem monitor, no signing, no external diff the session configured), none
+    by hand (R44, the plugin security review of 2026-10-19, N3)."""
+    return gitops.runner_args()
+
+
 SDLC_FILE = "sdlc.yaml"
 
 
@@ -331,7 +340,7 @@ def log_decision(
                 from state import conventions as conv
 
                 proc = subprocess.run(
-                    ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+                    ["git", *git_options(), "rev-parse", "--abbrev-ref", "HEAD"],
                     cwd=root,
                     capture_output=True,
                     text=True,
@@ -357,6 +366,14 @@ def log_decision(
             "cwd": payload.get("cwd"),
         }
         record.update(extra)
+        if isinstance(record.get("command"), str):
+            # a committed log keeps no literal secret (R59, M12): the production gate logs
+            # the command on its fail-closed path, and the log is committed under evidence/
+            if str(Path(__file__).resolve().parent) not in sys.path:
+                sys.path.insert(0, str(Path(__file__).resolve().parent))
+            from secrets_check import redact  # noqa: PLC0415 - secrets_check imports this
+
+            record["command"] = redact(record["command"])
         line = json.dumps(record, sort_keys=True, default=str) + "\n"
         path.parent.mkdir(parents=True, exist_ok=True)
         with path.open("a", encoding="utf-8", newline="\n") as fh:

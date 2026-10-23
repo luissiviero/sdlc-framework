@@ -13,6 +13,9 @@ from init import render
 from state import yamlish
 
 TEMPLATE = Path(__file__).resolve().parents[1] / "template"
+# R60's port in R44: the template's actions, each pinned to the commit of its tested tag
+CHECKOUT = "actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09"  # v5.1.0
+APP_TOKEN_ACTION = "actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349"
 
 VALUES = {
     "PROJECT_NAME": "demo",
@@ -312,9 +315,17 @@ def test_this_repository_s_workflow_copies_match_the_template():
             assert not (REPO_WORKFLOW_DIR / name).exists()
             continue
         installed = (REPO_WORKFLOW_DIR / name).read_text(encoding="utf-8")
-        assert installed == render.render_file(WORKFLOW_DIR / name, VALUES), name
+        expected = render.render_file(WORKFLOW_DIR / name, VALUES)
+        if name == FIX_WORKFLOW:
+            # R44 (1.0.27): project_setup.py --command-from is not in the framework this
+            # repository's sdlc.yaml pins (1.0.17), so the installed copy keeps the setup line
+            # without it until the pin moves (R14's turn); the rest is the template's
+            expected = expected.replace(COMMAND_FROM, "")
+            assert expected.count("project_setup.py --root .\n") == 1, name
+        assert installed == expected, name
 
 
+COMMAND_FROM = ' --command-from "refs/remotes/origin/$SDLC_DEFAULT_BRANCH"'
 FRAMEWORK_CHECKS = "framework-checks.yml"  # this repository's own suite (0.2.28)
 
 
@@ -486,6 +497,18 @@ def test_every_workflow_uses_checkout_and_setup_node_v5(path):
             assert action.endswith("@v5") or pinned, f"{path.name}: {action}"
 
 
+@pytest.mark.parametrize("name", ALL_WORKFLOWS)
+def test_every_third_party_action_is_pinned_to_a_commit_with_its_tag(name):
+    """R60's port (choice 257), carried into R44: a tag can be moved by whoever controls the
+    action's repository, a commit cannot. Every ``uses:`` of a template workflow names a
+    40-hex-digit commit and, in the line's comment, the release tag it was taken from."""
+    text = (WORKFLOW_DIR / name).read_text(encoding="utf-8")
+    uses = [ln.split("uses:", 1)[1].strip() for ln in text.splitlines() if "uses:" in ln]
+    assert uses, name
+    for action in uses:
+        assert re.fullmatch(r"[\w.-]+/[\w./-]+@[0-9a-f]{40} # v\d+(\.\d+)*", action), action
+
+
 def test_the_digest_reads_the_merge_environment_and_never_the_key():
     """Choice 250 (the R22 double check, F8): the digest reads the sdlc-merge environment
     (``actions: read``) and learns only whether the merge key is a repository secret."""
@@ -548,8 +571,8 @@ def test_release_workflow_runs_the_release_cli_on_merge_and_label():
     )
     assert record["permissions"] == {"contents": "write"}
     assert [step.get("uses", step.get("run", "")).split(" ")[0] for step in record["steps"]] == [
-        "actions/checkout@v5",
-        "actions/checkout@v5",
+        CHECKOUT,
+        CHECKOUT,
         "python",
     ]
     assert record["steps"][1]["with"]["ref"] == "${{ needs.release.outputs.pin }}"
@@ -612,7 +635,8 @@ def test_fix_workflow_starts_on_request_changes_and_on_the_owner_labels():
     for refused in ("CONTRIBUTOR", "FIRST_TIME_CONTRIBUTOR", "FIRST_TIMER", "NONE"):
         assert f"'{refused}'" not in job["if"], refused
     installed = (REPO_WORKFLOW_DIR / FIX_WORKFLOW).read_text(encoding="utf-8")
-    assert installed == render.render_file(WORKFLOW_DIR / FIX_WORKFLOW, VALUES)
+    rendered = render.render_file(WORKFLOW_DIR / FIX_WORKFLOW, VALUES)
+    assert installed == rendered.replace(COMMAND_FROM, "")  # see the copies test (R44)
     for label in ("sdlc:reset-iterations", "sdlc:unlock-tests"):
         assert f"github.event.label.name == '{label}'" in job["if"], label
     assert "sdlc:accept-risk" not in job["if"]  # retired with decision 35
@@ -704,7 +728,7 @@ def test_comment_workflow_dispatches_the_fix_round_without_a_model():
     for refused in ("CONTRIBUTOR'", "FIRST_TIME", "'NONE'"):
         assert refused not in job["if"], refused
     steps = job["steps"]
-    assert steps[0]["uses"] == "actions/checkout@v5"
+    assert steps[0]["uses"] == CHECKOUT
     assert steps[0]["with"]["ref"] == DEFAULT_BRANCH_EXPR
     assert "head" not in str(steps[0])
     assert steps[1]["id"] == "pin" and steps[1]["run"] == PIN_RUN
@@ -847,9 +871,30 @@ def test_evals_workflow_runs_on_configuration_changes_and_nightly():
     assert data["permissions"] == {"contents": "read"}
     job = data["jobs"]["evals"]
     runs = [step["run"] for step in job["steps"] if "run" in step]
-    assert runs[-1] == "python evals/check.py --framework framework --report evals-report.json"
+    # R44 (I1): the pinned framework's runner, never the checkout's own evals/check.py
+    assert runs[-1] == (
+        "python framework/plugin/evals/run.py --root . --plugin-dir framework "
+        "--report evals-report.json"
+    )
     assert all("--bare" not in run and "run_phase.py" not in run for run in runs)
+    assert not any("evals/check.py" in run for run in runs)
     assert job["steps"][-1]["name"] == "Keep the report"
+
+
+@pytest.mark.parametrize("name", ["sdlc-evals.yml", "sdlc-fix.yml"])
+def test_a_head_s_setup_command_is_the_default_branch_s_and_the_framework_is_fetched_again(name):
+    """R44 (the head's own setup command): where a session's head reaches the setup step,
+    the command comes from the default branch's sdlc.yaml and the framework the install could
+    write is removed and checked out again before the step that holds the credentials."""
+    steps = [s for job in _workflow_yaml(name)["jobs"].values() for s in job["steps"]]
+    names = [s.get("name", "") for s in steps]
+    setup = next(i for i, n in enumerate(names) if n.startswith("Install the project's own"))
+    assert '--command-from "refs/remotes/origin/$SDLC_DEFAULT_BRANCH"' in steps[setup]["run"]
+    assert "rmtree('framework'" in steps[setup + 1]["run"]
+    again = steps[setup + 2]
+    assert again["uses"] == CHECKOUT and again["with"]["path"] == "framework"
+    assert again["with"]["ref"] == "${{ steps.pin.outputs.ref }}"
+    assert all("secrets." not in json.dumps(s) for s in steps[: setup + 3] if s.get("id") != "app")
 
 
 def test_scan_workflow_is_weekly_reviews_routes_and_scans_in_that_order():
@@ -957,7 +1002,7 @@ MINT_STEP = {
     "name": "Mint the App token (decision 33; skipped without vars.SDLC_APP_ID)",
     "id": "app",
     "if": "${{ vars.SDLC_APP_ID != '' }}",
-    "uses": "actions/create-github-app-token@v2",
+    "uses": APP_TOKEN_ACTION,
     "with": {
         "app-id": "${{ vars.SDLC_APP_ID }}",
         "private-key": "${{ secrets.SDLC_APP_PRIVATE_KEY }}",
