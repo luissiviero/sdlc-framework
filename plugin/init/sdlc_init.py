@@ -20,9 +20,11 @@ What it does, idempotently (re-running upgrades):
   7. creates evals/ (empty suite with its README, decision 17) and bands.yaml (the p.44
      shape for the maintain metric, decision 15) when absent;
   8. installs the SDLC workflows and the pin script under .github/ (step 30), create-only:
-     an existing file is kept and reported as ``outdated`` when it differs from what this
-     version installs (the owner replaces it to upgrade, or keeps their edits), and the
-     `branches:` filter of the merge triggers is rewritten to the project's default branch;
+     an existing file an older release wrote and nobody edited is refreshed with this
+     version's (R64, ``init/refresh.py``; so are the READMEs and ``evals/check.py``), an
+     edited one is kept and reported as ``outdated`` (the owner replaces it to upgrade, or
+     keeps their edits), and the `branches:` filter of the merge triggers is rewritten to the
+     project's default branch;
   9. creates change 0000 (changes/0000-sdlc-init/, intent.md + status.yaml) so the
      installation goes through gate (a) like any other change.
   R61 and R33 (plugin 1.0.29): ``sdlc.yaml`` also gets the registry hosts of the languages
@@ -60,6 +62,7 @@ from detect.source import FRAMEWORK_WORKFLOW_PREFIX, SourceError, parse_source  
 
 from gate import limits  # noqa: E402
 from init import detect as detect_mod  # noqa: E402
+from init import refresh  # noqa: E402
 from init.render import render_file  # noqa: E402
 from state import conventions as c  # noqa: E402
 from state import status, yamlish  # noqa: E402
@@ -425,6 +428,16 @@ WORKFLOW_FILES = (
     ".github/workflows/sdlc-merge.yml",
     ".github/scripts/sdlc_pin.py",
 )
+# R64: the create-only copies a re-run refreshes when nobody edited them (init/refresh.py,
+# init/template_hashes.json). The guardrail files are never among them (decision 6).
+README_COPIES = (
+    "changes/README.md",
+    "evals/README.md",
+    "evals/check.py",  # the project runs it, but a pristine copy is the plugin's own code
+    "lessons/README.md",
+    "policies/README.md",
+)
+REFRESHED_COPIES = (*WORKFLOW_FILES, *README_COPIES)
 # The template writes the default branch GitHub gives most repositories; a project whose
 # default branch has another name gets it substituted here, on the `branches:` filter only
 # (OPERATING_MODEL section 4.2: the merge triggers filter the *base* branch).
@@ -451,8 +464,21 @@ def render_workflow(rel: str, values: dict[str, str], default_branch: str) -> st
 
 
 OUTDATED = (
-    "outdated: differs from what plugin {version} installs; replace it with the template "
-    "copy to upgrade (delete it and re-run /sdlc-init), or keep your edits"
+    "outdated: differs from what plugin {version} installs and from every release's template "
+    "(edited, so never overwritten); replace it with the template copy to upgrade (delete it "
+    "and re-run /sdlc-init), or keep your edits"
+)
+# R64: a copy no one edited since an older release wrote it is replaced in the same PR as the pin
+REFRESHED = "refreshed (was {was})"
+# R64: a guardrail file is never refreshed (decision 6); an outdated one is only reported
+GUARDRAIL_OUTDATED = (
+    "kept; outdated: differs from what plugin {version} installs; a guardrail file, so the "
+    "owner diffs it with the template copy and edits it in a reviewed PR"
+)
+GUARDRAIL_COPIES = ("REVIEW.md", "bands.yaml")
+KEPT_EDITED = (
+    "kept; outdated (edited): differs from what plugin {version} installs and from every "
+    "release's template; diff it with the template copy, or keep your edits"
 )
 # decision 32 (1.0.8): only the new copies export the job timeout the build caps need
 OUTDATED_BUILD_CAPS = (
@@ -464,14 +490,36 @@ OUTDATED_ENV = "; the kept copy may lack the commands.env lines for {names}"
 BUILD_CAP_WORKFLOWS = (".github/workflows/sdlc-build.yml", ".github/workflows/sdlc-fix.yml")
 
 
+def refresh_copy(
+    root: Path, rel: str, content: str, values: dict[str, str], default_branch: str, report: dict
+) -> bool:
+    """R64: replace ``rel`` with ``content`` when an older release's template wrote it and
+    nobody changed it since (``init/refresh.py``); True when it did. The refreshed copy rides
+    in the same pull request as the pin, so the two move together."""
+    target = root / rel
+    was = refresh.written_by(
+        rel,
+        target.read_text(encoding="utf-8"),
+        framework_repo=values.get("FRAMEWORK_REPO", ""),
+        env_names=json.loads(values.get("COMMANDS_ENV", "[]")),
+        default_branch=default_branch,
+    )
+    if was is None:
+        return False
+    target.write_text(content, encoding="utf-8", newline="\n")
+    report[rel] = REFRESHED.format(was=was)
+    return True
+
+
 def install_workflows(root: Path, values: dict[str, str], report: dict) -> None:
     """Install the phase workflows and the pin script, create-only.
 
-    An existing file is never overwritten: the owner may have edited it, and a workflow is
-    project content. "unchanged" means the file on disk is already exactly what this version
-    of the framework installs; "outdated" means it differs and was left alone - an older
-    framework wrote it or the owner edited it, and only the owner can tell which (PROGRESS
-    known gap of 0.2.12: a project initialised before the find step never got it).
+    An existing file is never overwritten when someone edited it: a workflow is project
+    content. "unchanged" means the file on disk is already exactly what this version of the
+    framework installs; "refreshed (was <version>)" (R64) means an older release wrote it and
+    nobody changed it since, so this version's copy replaced it; "outdated" means it differs
+    from every release's template and was left alone (PROGRESS known gap of 0.2.12: a project
+    initialised before the find step never got it).
     """
     default_branch = project_default_branch(root)
     for rel in WORKFLOW_FILES:
@@ -481,6 +529,8 @@ def install_workflows(root: Path, values: dict[str, str], report: dict) -> None:
             _write_if_changed(target, content, report, rel)
         elif target.read_text(encoding="utf-8") == content:
             report[rel] = "unchanged"
+        elif refresh_copy(root, rel, content, values, default_branch, report):
+            continue
         else:
             report[rel] = OUTDATED.format(version=values["PLUGIN_VERSION"]) + (
                 OUTDATED_BUILD_CAPS if rel in BUILD_CAP_WORKFLOWS else ""
@@ -786,6 +836,8 @@ def run(args) -> dict:
     # REVIEW.md, changes/README.md, evals/, bands.yaml, lessons/, policies/: create only
     # (owner-edited afterwards; lessons/ is the incident record of build guide step 36;
     # policies/ holds the owner's policy sources, R27, and starts with its README only)
+    # R64: a README or evals/check.py nobody edited since an older release wrote it is
+    # refreshed; REVIEW.md and bands.yaml are guardrails, only reported when outdated
     for rel in (
         "REVIEW.md",
         "changes/README.md",
@@ -797,10 +849,21 @@ def run(args) -> dict:
         "policies/README.md",
     ):
         target = root / rel
-        if target.exists():
+        content = render_file(TEMPLATE / rel, values)
+        if not target.exists():
+            _write_if_changed(target, content, report["files"], rel)
+        elif target.read_text(encoding="utf-8") == content:
             report["files"][rel] = "kept"
+        elif rel in README_COPIES and refresh_copy(
+            root, rel, content, values, "main", report["files"]
+        ):
+            continue
+        elif rel in GUARDRAIL_COPIES:
+            report["files"][rel] = GUARDRAIL_OUTDATED.format(version=values["PLUGIN_VERSION"])
+        elif rel in README_COPIES:
+            report["files"][rel] = KEPT_EDITED.format(version=values["PLUGIN_VERSION"])
         else:
-            _write_if_changed(target, render_file(TEMPLATE / rel, values), report["files"], rel)
+            report["files"][rel] = "kept"
 
     install_workflows(root, values, report["files"])
 
@@ -835,6 +898,12 @@ def run(args) -> dict:
         "id": st.id,
         "dir": str(change_dir.relative_to(root)).replace("\\", "/"),
         "branch": c.branch_name(st.id, "a"),
+    }
+    # R64: the copies this re-run refreshed, for the upgrade PR's body
+    report["refreshed"] = {
+        rel: state[len("refreshed (was ") : -1]
+        for rel, state in report["files"].items()
+        if state.startswith("refreshed (was ")
     }
     report["maintain"] = _maintain_report(root, source, why)
     report["proposed"] = _proposed(root, det)
