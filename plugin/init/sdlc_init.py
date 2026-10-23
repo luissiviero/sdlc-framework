@@ -2,10 +2,10 @@
 
     python "${CLAUDE_PLUGIN_ROOT}/init/sdlc_init.py" --root <project> \
         --deploy-action none --deploy-production false \
-        --maintain-metric ci_test_failure_rate --maintain-source github-actions \
+        --maintain-metric ci_test_failure_rate [--maintain-source github-actions] \
         [--project-name X] [--build CMD] [--test CMD] [--lint CMD] [--setup CMD] \
-        [--claude-md-from changes/0000-sdlc-init/CLAUDE.proposed.md] \
-        [--framework-repo owner/repo] [--claude-code 2.1.304] [--detect-only]
+        [--env NAME ...] [--claude-md-from changes/0000-sdlc-init/CLAUDE.proposed.md] \
+        [--framework-repo owner/repo] [--claude-code 2.1.304] [--detect-only | --time-commands]
 
 What it does, idempotently (re-running upgrades):
   1. detects build/test/lint targets (init/detect.py) unless overridden;
@@ -25,6 +25,14 @@ What it does, idempotently (re-running upgrades):
      `branches:` filter of the merge triggers is rewritten to the project's default branch;
   9. creates change 0000 (changes/0000-sdlc-init/, intent.md + status.yaml) so the
      installation goes through gate (a) like any other change.
+  R61 and R33 (plugin 1.0.29): ``sdlc.yaml`` also gets the registry hosts of the languages
+  found (``sandbox.allowed_domains``), the secret-shaped paths found (``protected_paths``,
+  and ``Read`` deny rules in ``.claude/settings.json``), the formatter commands per file
+  type (``hooks.formatters``), the secret names ``--env`` gives (``commands.env``, also
+  written into the phase workflows' setup and phase steps) and, with no
+  ``--maintain-source``, the one project workflow that runs the tests when there are
+  several. ``--time-commands`` runs the three targets of an installed ``sdlc.yaml`` once,
+  times them and raises ``gate.command_timeout`` to three times the longest (step 4).
   0. before any of it, checks the hosting (decision 23): every trigger, identity, label,
      check run and the digest issue are GitHub-specific, so a project whose ``origin``
      remote points at another host is refused with the reason (exit 2, nothing written); a
@@ -38,6 +46,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import re
 import sys
 from pathlib import Path
@@ -78,11 +87,88 @@ def plugin_version() -> str:
     return str(manifest["version"])
 
 
-def _rule_for(command: str | None, fallback: str) -> str:
+def rule_for(command: str | None, fallback: str) -> str:
+    """The ``Bash(...)`` allow rule for a target: its first three words and a wildcard. Also
+    what ``run_phase.ci_settings_file`` appends to the CI session's allow list (R61 part 1)."""
     if not command:
         return fallback
     head = " ".join(command.split()[:3])
     return f"Bash({head} *)"
+
+
+def _flow_list(items: list[str]) -> str:
+    """A flow sequence of double-quoted strings (JSON's spelling, which YAML reads)."""
+    return json.dumps(list(items))
+
+
+def _formatters_yaml(entries: list[dict], indent: int = 4) -> str:
+    """``hooks.formatters`` for the placeholder after ``formatters:``: `` []`` when empty,
+    else one block entry per mapping (R33)."""
+    if not entries:
+        return " []"
+    pad = " " * indent
+    lines: list[str] = []
+    for entry in entries:
+        glob = entry["glob"]
+        glob_text = _flow_list(glob) if isinstance(glob, list) else json.dumps(glob)
+        lines.append(f"{pad}- glob: {glob_text}")
+        for key in ("fix", "check"):
+            if entry.get(key):
+                lines.append(f"{pad}  {key}: {_flow_list(entry[key])}")
+    return "\n" + "\n".join(lines)
+
+
+def _source_value(source: str) -> str:
+    """``maintain.source`` as the template writes it: plain when it is ``github-actions``,
+    quoted when it names a workflow (a name may hold ``:`` or ``#``)."""
+    return source if re.fullmatch(r"[\w.-]+", source) else json.dumps(source)
+
+
+# R61 part 4: `commands.env` names repository secrets or variables; the install writes each
+# into the phase workflows' setup and phase steps. The names the framework itself holds, or
+# hides from every session, are refused.
+ENV_NAME_RE = re.compile(r"[A-Z_][A-Z0-9_]*")
+RESERVED_ENV = (
+    "ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN", "GITHUB_TOKEN", "GH_TOKEN",
+    "GEMINI_API_KEY", "PATH", "HOME",
+)  # fmt: skip
+
+
+def env_names(names: list[str] | None) -> list[str]:
+    """``--env`` as a list: unique, in order; raises ``ValueError`` on a name that is not an
+    environment variable's or that the framework reserves (``RESERVED_ENV``, ``SDLC_*``)."""
+    out: list[str] = []
+    for raw in names or []:
+        name = raw.strip()
+        if not ENV_NAME_RE.fullmatch(name):
+            raise ValueError(f"--env {raw!r}: not a variable name ([A-Z_][A-Z0-9_]*)")
+        if name in RESERVED_ENV or name.startswith(("SDLC_", "GITHUB_", "RUNNER_")):
+            raise ValueError(f"--env {name}: reserved by the framework or the runner")
+        if name not in out:
+            out.append(name)
+    return out
+
+
+# R61 part 4: where the phase workflows take `commands.env`. A marker line at the end of a
+# step's `env:` block, or (`setup`) at the step's level where it has no `env:`; the install
+# replaces it with one line per name, or drops it when there is none.
+ENV_MARKER_RE = re.compile(r"(?m)^( *)# sdlc:commands\.env( setup)?\n")
+
+
+def apply_env_markers(text: str, names: list[str]) -> str:
+    """``text`` with every ``ENV_MARKER_RE`` line replaced: each name read from the
+    repository secret or, failing that, the variable of that name."""
+
+    def sub(match: re.Match[str]) -> str:
+        if not names:
+            return ""
+        indent, setup = match.group(1), match.group(2)
+        pad = indent + ("  " if setup else "")
+        lines = [f"{indent}env:"] if setup else []
+        lines += [f"{pad}{n}: ${{{{ secrets.{n} || vars.{n} }}}}" for n in names]
+        return "\n".join(lines) + "\n"
+
+    return ENV_MARKER_RE.sub(sub, text)
 
 
 def _esc(value: str) -> str:
@@ -112,12 +198,14 @@ def _risk_list_yaml(items: list[str | dict], indent: int = 2) -> str:
     return "\n".join(lines)
 
 
-def build_values(args, det: detect_mod.Detection) -> dict[str, str]:
+def build_values(args, det: detect_mod.Detection, source: str | None = None) -> dict[str, str]:
     build_cmd = args.build or det.build.command or "echo no build target"
     test_cmd = args.test or det.test.command or "echo no test target"
     lint_cmd = args.lint or det.lint.command or "echo no lint target"
     # empty is a legitimate answer here: a project with nothing to install runs nothing
     setup_cmd = args.setup if args.setup is not None else (det.setup.command or "")
+    root = Path(args.root)
+    env = env_names(getattr(args, "env", None))
     return {
         "PROJECT_NAME": args.project_name or Path(args.root).resolve().name,
         "BUILD_CMD": _esc(build_cmd),
@@ -132,13 +220,17 @@ def build_values(args, det: detect_mod.Detection) -> dict[str, str]:
         "DEPLOY_ACTION": args.deploy_action,
         "DEPLOY_PRODUCTION": "true" if args.deploy_production else "false",
         "MAINTAIN_METRIC": args.maintain_metric,
-        "MAINTAIN_SOURCE": args.maintain_source,
+        "MAINTAIN_SOURCE": _source_value(source or args.maintain_source or MAINTAIN_SOURCE_KIND),
         "PLUGIN_VERSION": plugin_version(),
-        "BUILD_RULE": _rule_for(build_cmd, "Bash(echo *)"),
-        "TEST_RULE": _rule_for(test_cmd, "Bash(echo *)"),
-        "LINT_RULE": _rule_for(lint_cmd, "Bash(echo *)"),
+        "BUILD_RULE": rule_for(build_cmd, "Bash(echo *)"),
+        "TEST_RULE": rule_for(test_cmd, "Bash(echo *)"),
+        "LINT_RULE": rule_for(lint_cmd, "Bash(echo *)"),
         "TEST_PATHS": _yaml_list(detect_mod.test_paths(det.language)),
-        "RISK_LIST": _risk_list_yaml(detect_mod.risk_list(Path(args.root))),
+        "RISK_LIST": _risk_list_yaml(detect_mod.risk_list(root)),
+        "ALLOWED_DOMAINS": _flow_list(detect_mod.registry_domains(det.signals)),
+        "PROTECTED_PATHS": _flow_list(detect_mod.secret_paths(root)),
+        "FORMATTERS": _formatters_yaml(detect_mod.formatters(root, det.signals)),
+        "COMMANDS_ENV": _flow_list(env),
         "FRAMEWORK_REPO": args.framework_repo,
         "CLAUDE_CODE_VERSION": args.claude_code,
     }
@@ -192,6 +284,11 @@ def merge_settings(existing: dict, fresh: dict) -> dict:
                 have.append(rule)
         perms[key] = have
     perms["disableBypassPermissionsMode"] = "disable"
+    fresh_domains = ((fresh.get("sandbox") or {}).get("network") or {}).get("allowedDomains")
+    network = (out.get("sandbox") or {}).get("network")
+    if isinstance(fresh_domains, list) and isinstance(network, dict):
+        have = list(network.get("allowedDomains") or [])
+        network["allowedDomains"] = have + [d for d in fresh_domains if d not in have]
     out["enabledPlugins"] = {**(out.get("enabledPlugins") or {}), **fresh["enabledPlugins"]}
     out["extraKnownMarketplaces"] = {
         **(out.get("extraKnownMarketplaces") or {}),
@@ -344,7 +441,9 @@ def project_default_branch(root: Path) -> str:
 
 
 def render_workflow(rel: str, values: dict[str, str], default_branch: str) -> str:
-    text = render_file(TEMPLATE / rel, values)
+    text = apply_env_markers(
+        render_file(TEMPLATE / rel, values), json.loads(values.get("COMMANDS_ENV", "[]"))
+    )
     if default_branch != "main":
         text = BRANCH_FILTER_RE.sub(rf"\g<1>{default_branch}\g<2>", text)
     return text
@@ -447,6 +546,56 @@ def maintain_observation(root: Path, source: str) -> str:
     return f"ok: {len(own)} project workflow(s) give the metric an observation: {', '.join(own)}"
 
 
+# R61 part 3: the words that mark a workflow as the one running the tests
+TEST_WORDS = (
+    "pytest", "unittest", "npm test", "npm run test", "jest", "vitest", "cargo test", "go test",
+    "mvn", "gradle", "dotnet test", "rspec", "rake test",
+)  # fmt: skip
+
+
+def _command_lines(text: str) -> str:
+    """A workflow's text without its comments and its install lines, so that a runner named
+    in a comment or installed (``pip install pytest ruff``) is not taken for one that runs."""
+    lines = (re.sub(r"(^|\s)#.*$", "", line) for line in text.splitlines())
+    return "\n".join(
+        line for line in lines if line.strip() and not re.search(r"\binstall\b|\bnpm ci\b", line)
+    )
+
+
+def testing_workflow(root: Path, test_command: str | None) -> str | None:
+    """The one project workflow (its name, as ``_workflow_name`` reads it; the framework's
+    own left out) that runs the tests, when the project has more than one: the one whose
+    commands (``_command_lines``) hold ``test_command``, else the one that names a runner of
+    ``TEST_WORDS``. None when the project has one workflow or fewer, or no single one is
+    found (R61 part 3)."""
+    folder = root / ".github" / "workflows"
+    if not folder.is_dir():
+        return None
+    own: list[tuple[str, str]] = []
+    for path in sorted([*folder.glob("*.yml"), *folder.glob("*.yaml")]):
+        name = _workflow_name(path)
+        if not name.startswith(FRAMEWORK_WORKFLOW_PREFIX):
+            own.append((name, _command_lines(path.read_text(encoding="utf-8", errors="replace"))))
+    if len(own) < 2:
+        return None
+    for words in ((test_command,) if test_command else (), TEST_WORDS):
+        hits = [name for name, text in own if any(w in text for w in words)]
+        if len(hits) == 1:
+            return hits[0]
+    return None
+
+
+def maintain_source(root: Path, args, det: detect_mod.Detection) -> tuple[str, str]:
+    """(source, why): ``--maintain-source`` when given; else ``github-actions:<name>`` for
+    the workflow ``testing_workflow`` finds, else ``github-actions`` (every own workflow)."""
+    if args.maintain_source:
+        return args.maintain_source, "given"
+    name = testing_workflow(root, args.test or det.test.command)
+    if name is None:
+        return MAINTAIN_SOURCE_KIND, "one project workflow or fewer, or none runs the tests alone"
+    return f"{MAINTAIN_SOURCE_KIND}:{name}", f"the one project workflow that runs the tests: {name}"
+
+
 # --- hosting: GitHub only (decision 23; build guide steps 2, 6, 21, 30) -------------------------
 NOT_GITHUB = (
     "hosting: the origin remote {url!r} is on {host}, not github.com. Every trigger, the "
@@ -517,10 +666,12 @@ def run(args) -> dict:
     report: dict = {"root": str(root), "detection": det.as_dict(), "hosting": note, "files": {}}
     if not ok:
         raise HostingError(note)
+    source, why = maintain_source(root, args, det)
     if args.detect_only:
-        report["maintain"] = _maintain_report(root, args.maintain_source)
+        report["maintain"] = _maintain_report(root, source, why)
+        report["proposed"] = _proposed(root, det)
         return report
-    values = build_values(args, det)
+    values = build_values(args, det, source)
 
     # sdlc.yaml
     fresh_yaml = yamlish.loads(render_file(TEMPLATE / "sdlc.yaml", values))
@@ -566,8 +717,10 @@ def run(args) -> dict:
             sdlc_path, render_file(TEMPLATE / "sdlc.yaml", values), report["files"], "sdlc.yaml"
         )
 
-    # .claude/settings.json
+    # .claude/settings.json; R61: the secret-shaped paths unreadable, the registries reachable
     fresh_settings = json.loads(render_file(TEMPLATE / ".claude" / "settings.json", values))
+    fresh_settings["permissions"]["deny"] += read_deny_rules(detect_mod.secret_paths(root))
+    fresh_settings["sandbox"]["network"]["allowedDomains"] += json.loads(values["ALLOWED_DOMAINS"])
     settings_path = root / ".claude" / "settings.json"
     if settings_path.exists():
         merged_s = merge_settings(
@@ -633,13 +786,98 @@ def run(args) -> dict:
         "dir": str(change_dir.relative_to(root)).replace("\\", "/"),
         "branch": c.branch_name(st.id, "a"),
     }
-    report["maintain"] = _maintain_report(root, args.maintain_source)
+    report["maintain"] = _maintain_report(root, source, why)
+    report["proposed"] = _proposed(root, det)
     report["values"] = values
     return report
 
 
-def _maintain_report(root: Path, source: str) -> dict[str, str]:
-    return {"source": source, "observation": maintain_observation(root, source)}
+def _maintain_report(root: Path, source: str, why: str = "given") -> dict[str, str]:
+    return {"source": source, "why": why, "observation": maintain_observation(root, source)}
+
+
+def read_deny_rules(patterns: list[str]) -> list[str]:
+    """The ``Read`` deny rules for the secret-shaped patterns: at the root and in any folder,
+    the template's own ``.env*`` spelling (R61 part 5)."""
+    return [rule for p in patterns for rule in (f"Read({p})", f"Read(**/{p})")]
+
+
+def _proposed(root: Path, det: detect_mod.Detection) -> dict[str, object]:
+    """What the install proposes beyond the targets, for the owner to confirm in the
+    change-0000 PR (R61 parts 1 and 5, R33)."""
+    secrets = detect_mod.secret_paths(root)
+    return {
+        "sandbox.allowed_domains": detect_mod.registry_domains(det.signals),
+        "protected_paths": secrets,
+        "read_deny": read_deny_rules(secrets),
+        "hooks.formatters": detect_mod.formatters(root, det.signals),
+    }
+
+
+# --- R61 part 4: the targets' duration (/sdlc-init step 4) ---------------------------------------
+TIMEOUT_FACTOR = 3
+_COMMAND_TIMEOUT_RE = re.compile(r"(?m)^(\s+command_timeout:\s*)(\d+)")
+_JOB_MINUTES_RE = re.compile(r"SDLC_JOB_TIMEOUT_MINUTES:\s*(\d+)")
+
+
+def time_commands(root: Path, run_command=None, clock=None) -> dict:
+    """Run the installed ``sdlc.yaml``'s build, test and lint once each, as the gate does
+    (``gate.checks.run_command``), and time them. ``gate.command_timeout`` becomes three times
+    the longest run when that is above its value (never below the template's 900); the
+    report names the two numbers of ``sdlc-build.yml`` and ``sdlc-fix.yml`` to raise when
+    the build caps then need more job minutes than the template's (R61 part 4).
+    ``run_command`` and ``clock`` replace the gate's runner and ``time.monotonic`` in tests."""
+    import time  # noqa: PLC0415
+
+    from ci import run_phase  # noqa: PLC0415 - the job arithmetic of decision 32
+
+    from gate import checks  # noqa: PLC0415
+
+    sdlc_path = root / "sdlc.yaml"
+    config = yamlish.load_file(sdlc_path)
+    commands = config.get("commands") if isinstance(config.get("commands"), dict) else {}
+    gate_cfg = config.get("gate") if isinstance(config.get("gate"), dict) else {}
+    run_command = run_command or checks.run_command
+    clock = clock or time.monotonic
+    floor = checks.DEFAULT_COMMAND_TIMEOUT
+    current = run_phase._int_or(gate_cfg.get("command_timeout"), floor)
+    targets: list[dict] = []
+    for name in ("build", "test", "lint"):
+        command = commands.get(name)
+        if not command:
+            targets.append({"target": name, "command": None, "seconds": 0})
+            continue
+        start = clock()
+        result = run_command(str(command), root, current)
+        seconds = round(clock() - start, 1)
+        targets.append({"target": name, "seconds": seconds, **result})
+    longest = max(t["seconds"] for t in targets)
+    wanted = max(floor, math.ceil(TIMEOUT_FACTOR * longest))
+    report: dict = {"root": str(root), "targets": targets, "longest_seconds": longest}
+    if wanted > current:
+        text = sdlc_path.read_text(encoding="utf-8")
+        new_text, n = _COMMAND_TIMEOUT_RE.subn(rf"\g<1>{wanted}", text, count=1)
+        if n:
+            sdlc_path.write_text(new_text, encoding="utf-8", newline="\n")
+            report["command_timeout"] = f"raised from {current} to {wanted}"
+            current = wanted
+        else:
+            report["command_timeout"] = f"not written: no gate.command_timeout line; set {wanted}"
+    else:
+        report["command_timeout"] = f"kept at {current} (three times the longest run is {wanted})"
+    needed = run_phase.build_caps_minutes_needed(
+        {**config, "gate": {**gate_cfg, "command_timeout": current}}
+    )
+    workflow = (TEMPLATE / BUILD_CAP_WORKFLOWS[0]).read_text(encoding="utf-8")
+    job = int(_JOB_MINUTES_RE.search(workflow).group(1))  # type: ignore[union-attr]
+    if needed > job:
+        report["workflows"] = (
+            f"raise timeout-minutes and SDLC_JOB_TIMEOUT_MINUTES from {job} to {needed} in "
+            "sdlc-build.yml and sdlc-fix.yml (the build caps need it; decision 32)"
+        )
+    else:
+        report["workflows"] = f"unchanged: the build caps need {needed} of the job's {job} minutes"
+    return report
 
 
 def _init_intent(values: dict[str, str], det: detect_mod.Detection) -> str:
@@ -662,7 +900,8 @@ The owner; this repository's CLAUDE.md, REVIEW.md, sdlc.yaml and .claude/setting
 
 ## Constraints
 Only the owner merges to main. No bypass-permissions mode. Guardrail files are protected
-paths from this change on.
+paths from this change on. A test that needs a service the CI runner does not start (a
+database, a queue) is deselected until the owner adds the service to the phase workflows.
 
 ## Open questions
 - Detection notes: {"; ".join(det.notes) if det.notes else "none"}
@@ -683,12 +922,19 @@ def build_parser() -> argparse.ArgumentParser:
         "--deploy-production", default="false", type=lambda s: s.lower() in ("1", "true", "yes")
     )
     p.add_argument("--maintain-metric", default="ci_test_failure_rate")
-    p.add_argument("--maintain-source", default="github-actions")
+    # R61 part 3: unset, the install proposes the one workflow that runs the tests
+    p.add_argument("--maintain-source", default=None)
     p.add_argument("--project-name", default=None)
     p.add_argument("--build", default=None)
     p.add_argument("--test", default=None)
     p.add_argument("--lint", default=None)
     p.add_argument("--setup", default=None, help='one-command install ("" = nothing to run)')
+    p.add_argument(
+        "--env",
+        action="append",
+        default=[],
+        help="a repository secret or variable the targets need (commands.env; repeatable)",
+    )
     p.add_argument("--claude-md-from", default=None, help="trimmed CLAUDE.md text to start from")
     p.add_argument("--framework-repo", default=DEFAULT_FRAMEWORK_REPO)
     p.add_argument(
@@ -697,6 +943,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Claude Code CLI version the installed workflows pin",
     )
     p.add_argument("--detect-only", action="store_true")
+    p.add_argument(
+        "--time-commands",
+        action="store_true",
+        help="run the installed sdlc.yaml's three targets once and size gate.command_timeout",
+    )
     return p
 
 
@@ -706,7 +957,11 @@ def main(argv: list[str] | None = None) -> int:
         print("--framework-repo must be owner/repo", file=sys.stderr)
         return 2
     try:
-        report = run(args)
+        report = time_commands(Path(args.root).resolve()) if args.time_commands else run(args)
+    except ValueError as exc:  # an --env name refused
+        print(json.dumps({"error": str(exc)}))
+        print(str(exc), file=sys.stderr)
+        return 2
     except HostingError as exc:
         print(json.dumps({"error": str(exc), "root": str(Path(args.root).resolve())}))
         print(str(exc), file=sys.stderr)

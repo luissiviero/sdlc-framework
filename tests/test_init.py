@@ -277,6 +277,7 @@ def test_init_on_node_fixture_writes_npm_targets(tmp_path):
         "test": "npm test",
         "lint": "npm run lint",
         "setup": "npm install",  # no package-lock.json in the fixture
+        "env": [],  # R61: no --env given
     }
     assert cfg["test_paths"] == detect.TEST_PATHS["node"]  # step 25: the test-file lock
     settings = json.loads((root / ".claude" / "settings.json").read_text(encoding="utf-8"))

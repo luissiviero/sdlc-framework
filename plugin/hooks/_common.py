@@ -50,6 +50,8 @@ class Decision:
     block: bool
     reason: str = ""
     extra: dict[str, Any] | None = None
+    # fields added to the decision's hook-log line (R33: the formatter's commands and exits)
+    log: dict[str, Any] | None = None
 
     @staticmethod
     def allow() -> Decision:
@@ -412,6 +414,7 @@ def run_hook(decide, event: str, argv: list[str] | None = None, *, log: bool = T
                 decision.reason,
                 payload,
                 paths=target_paths(payload.get("tool_input") or {}),
+                **(decision.log or {}),
             )
         return emit(decision, event)
     except Exception as exc:  # noqa: BLE001
