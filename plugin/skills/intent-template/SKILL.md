@@ -11,7 +11,7 @@ incident intents ("the anomaly and its evidence, a proposed outcome, the affecte
 any open questions"). Build guide step 10.
 
 Write `changes/<id>-<slug>/intent.md` with exactly this shape. Keep the five article sections
-in this order; add the Evidence section only for incidents.
+in this order, then Examples/References; add the Evidence section only for incidents.
 
 ```markdown
 # Intent: <short title>
@@ -32,6 +32,10 @@ Author: <name> (<role>). Status: draft | proposed | accepted. Change id: <id>. E
 ## Open questions
 <questions the design pass must answer; "none" is an acceptable answer>
 
+## Examples/References
+<examples of what is wanted and references (a competitor's screen, a page, a document): a
+link, or a file saved in the change folder named by its path; "none" is an acceptable answer>
+
 ## Evidence   (incidents only)
 <the anomaly: metric, threshold, when it started; where the evidence lives (logs, dashboard,
 CI run); what was ruled out>
@@ -47,6 +51,16 @@ Rules
 - Incident route: fill Evidence from the detection record; the Proposed outcome is the fix
   or the mitigation, not the diagnosis.
 - Never leave a section empty; write "none" or "unknown — to be settled in design".
+- Examples/References are what the owner wants the change to resemble, never a target: the
+  build matches the owner's mock in `changes/<id>-<slug>/mock/`, never a referenced screen.
+  Screens the build must match go in `mock/`, not here.
+- **Quick intent** (ROADMAP R54): when the owner gives one paragraph and asks for a quick
+  intent, add the header line `Quick intent: yes` under the Author line, put the paragraph
+  in Problem in the owner's words, write exactly `Left to the design run (quick intent).` as
+  the body of Proposed outcome, Affected users and systems, Constraints and Open questions,
+  and write Examples/References as the owner gave them, or "none". The design run states
+  what it assumed for each of those sections at the top of spec.md, and the design PR shows
+  the list above its bullets, where the owner corrects it.
 - Only when the change is the framework itself (it must edit `.claude/**`, `CLAUDE.md`,
   `REVIEW.md`, `sdlc.yaml` or a protected path): add a header line `Framework change: yes`
   under the Author line. The confidence gate parks any other change whose diff touches a

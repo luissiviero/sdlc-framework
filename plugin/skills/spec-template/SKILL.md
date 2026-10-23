@@ -12,7 +12,8 @@ all logged in version control"). Build guide steps 22–23. The section names ar
 in `plugin/gate/artifacts.py` (`SPEC_SECTIONS`); the gate checks them at gate (b).
 
 Write `changes/<id>-<slug>/spec.md` with exactly this shape. Keep the five sections in this
-order and never leave one empty ("none" is a valid body).
+order and never leave one empty ("none" is a valid body). A quick intent adds one section
+before them (Rules, "A quick intent").
 
 ```markdown
 # Spec: <short title, the same as the intent's>
@@ -39,7 +40,7 @@ contradict each other, a risk-list item touched, a guess made because the intent
 ## Acceptance
 <the quantifiable target the test phase measures (article p.27 step 3): the tests that must
 pass by name or by behaviour, the lint and build state, the screenshot or mock to match for
-UI, the metric and its threshold>
+UI, the metric and its threshold; for a change that touches a screen, the Mock: line>
 ```
 
 ## Rules
@@ -77,6 +78,24 @@ UI, the metric and its threshold>
   `data-conventions`, `definition-of-done`) and say in Requirements which rules apply.
   Where two policies contradict, or a policy cannot be met, that is a flagged concern, not a
   silent choice.
+- **The `Mock:` line** (ROADMAP R29): when the change touches a screen, Acceptance carries
+  one line, exactly `Mock: mock/<file>` (the owner's mock in the change folder's `mock/`) or
+  `Mock: none, screens follow the UX conventions`. A missing mock never blocks; only the
+  design pass knows whether a screen is touched, so the gate does not check the line. The
+  build matches the mock, never a screen the intent's Examples/References only refer to.
+- **A quick intent** (header `Quick intent: yes`, ROADMAP R54): the owner wrote only the
+  Problem paragraph, and the other article sections read "Left to the design run (quick
+  intent)." Add one more section, `## Assumed from the quick intent`, before Requirements:
+  one list item per section the owner left, `- <section>: <what you assumed>`, plus any
+  other assumption the design rests on (the change type included). These are assumptions,
+  not flagged concerns: the design PR and the build PR show them above their bullets and
+  the owner corrects one with a review comment (on the design PR the spec changes; at gate
+  (e) the code does, and the line stays). "Open questions from intent" holds "none"
+  or the questions you assumed answers to, never the intent's marker line. A gap no
+  reasonable reading fills (two
+  policies in conflict, a risk-list item, a cost or data question only the owner can
+  answer) stays a flagged concern. The gate parks a quick intent's spec without the
+  section.
 - **Never edit intent.md** in phase (b): it was accepted at gate (a) and the gate parks a
   branch that changes it.
 - Plain language, short bullets, English only.
