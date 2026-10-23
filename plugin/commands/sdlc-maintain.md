@@ -141,6 +141,6 @@ One line: the PR URL and "gate (f): merge = fix now (the design run starts); lab
 the abandon workflow in a dismissal PR)". When a route waits for Go, add "apply `sdlc:go`
 on the PR to run runbook <name>". Do not start phase (b).
 
-Never edit `.claude/**`, `CLAUDE.md`, `REVIEW.md`, `sdlc.yaml`, `bands.yaml` (a bands change
-is the owner's PR) or `evidence/detection.json`. Never edit source. Never use
-bypass-permissions mode. Never notify anyone. Never merge.
+Never edit `.claude/**`, `CLAUDE.md`, `REVIEW.md`, `sdlc.yaml`, `policies/**`, `bands.yaml`
+(a bands change is the owner's PR) or `evidence/detection.json`. Never edit source. Never
+use bypass-permissions mode. Never notify anyone. Never merge.

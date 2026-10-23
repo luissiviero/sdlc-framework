@@ -12,6 +12,7 @@ from pathlib import Path
 
 import pytest
 
+from gate import preflight
 from init import detect, sdlc_init
 from state import yamlish
 
@@ -330,6 +331,25 @@ def test_init_writes_evals_and_bands_once(tmp_path):
         report2["files"]["bands.yaml"] == "kept" and report2["files"]["evals/README.md"] == "kept"
     )
     assert (root / "bands.yaml").read_text(encoding="utf-8") == "metric: my_metric\n"
+
+
+def test_init_creates_the_policies_folder_with_its_readme_only(tmp_path):
+    """R27: ``policies/`` starts with its README, which names the five sources; no stub source
+    (a stub would read as a policy); an owner's edit survives a re-run; change 0000's intent
+    says the folder starts empty."""
+    root = tmp_path / "proj"
+    shutil.copytree(FIXTURE, root)
+    report = _run_init(root)
+    assert report["files"]["policies/README.md"] == "created"
+    assert sorted(p.name for p in (root / "policies").iterdir()) == ["README.md"]
+    readme = (root / "policies" / "README.md").read_text(encoding="utf-8")
+    for name in preflight.POLICY_SKILLS:
+        assert f"`policies/{name}.md`" in readme
+    intent = (root / "changes" / "0000-sdlc-init" / "intent.md").read_text(encoding="utf-8")
+    assert "`policies/` starts\nempty" in intent or "`policies/` starts empty" in intent
+    (root / "policies" / "README.md").write_text("Our own words.\n", encoding="utf-8")
+    assert _run_init(root)["files"]["policies/README.md"] == "kept"
+    assert (root / "policies" / "README.md").read_text(encoding="utf-8") == "Our own words.\n"
 
 
 def test_bands_yaml_also_parses_with_pyyaml(tmp_path):

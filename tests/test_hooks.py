@@ -82,6 +82,8 @@ def _env(project):
         "CLAUDE.md",
         "REVIEW.md",
         "sdlc.yaml",
+        "policies/security-baseline.md",  # R27, decision 40
+        "policies/README.md",
         "src/gen/model.py",
         "migrations/0002.py",
     ],
@@ -110,6 +112,7 @@ def test_unprotected_paths_allowed(project, rel):
         "docs/x/CLAUDE.md",
         "api/CLAUDE.md",
         "packages/api/.claude/commands/x.md",
+        "docs/policies/security-baseline.md",  # anchored: only the root's policies/
     ],
 )
 def test_nested_guardrail_names_are_project_content(project, rel):
@@ -1836,6 +1839,7 @@ def _bash(command: str, cwd: str) -> dict:
         "python -c \"open('CLAUDE.md','w').write('x')\"",
         "echo x > sdlc.yaml",
         "echo x >> REVIEW.md",
+        "echo x > policies/security-baseline.md",
         "cp notes.txt CLAUDE.md",
         "Set-Content -Path CLAUDE.md -Value x",
         "Remove-Item sdlc.yaml",

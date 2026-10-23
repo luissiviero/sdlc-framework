@@ -71,7 +71,9 @@ Read `changes/<id>-<slug>/intent.md`, `spec.md`, `plan.md` and `status.yaml`. Th
 the contract: "Files that change", "Order of work", "Proof". Do not redesign; if the plan
 cannot be followed, update `plan.md` in the same commit as the departure and say why under
 Risks (article p.16 step 7). Load the policy skills (`coding-standards`,
-`security-baseline`, `ux-conventions`, `data-conventions`, `definition-of-done`).
+`security-baseline`, `ux-conventions`, `data-conventions`, `definition-of-done`; a project
+override under `.claude/skills/<name>/` replaces the plugin's; the owner's source
+`policies/<name>.md`, where it exists, wins over either (decision 40)).
 
 ## 3. Fix-type change: the reproducing test first (build guide step 25, article p.28 step 4)
 When `status.change_type` is `fix`:
@@ -209,5 +211,5 @@ paste. Do not retry with other means.
   intent, spec, plan and code together at (e).
 - `park`: report the PR URL and the gate's "What I need from you" block.
 
-Never edit `.claude/**`, `CLAUDE.md`, `REVIEW.md`, `sdlc.yaml` or `intent.md`. Never use
-bypass-permissions mode. Never notify anyone.
+Never edit `.claude/**`, `CLAUDE.md`, `REVIEW.md`, `sdlc.yaml`, `policies/**` or
+`intent.md`. Never use bypass-permissions mode. Never notify anyone.

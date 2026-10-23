@@ -268,17 +268,22 @@ def render_spec_header(
     plugin_version: str,
     skills: list[str],
     overrides: list[str],
+    sources: list[tuple[str, str]] | None = None,
 ) -> str:
     """The two header lines of spec.md, exactly as the ``spec-template`` skill shows them
     (article p.14: the spec, the prompt that produced it and the skill versions in force are
-    logged together). ``gate/cli.py spec-header`` renders it; the design pass pastes it."""
+    logged together). ``gate/cli.py spec-header`` renders it; the design pass pastes it.
+    ``sources`` are the owner's policy sources in force, ``(path, commit)`` each (R27): the
+    record of which policy text judged the change, beside the plugin version."""
     applied = ", ".join(skills)
     overridden = ", ".join(overrides) if overrides else "none"
+    in_force = ", ".join(f"{path}@{commit}" for path, commit in sources or []) or "none"
     return (
         f"# Spec: {title}\n"
         f"Change id: {change_id}. Status: proposed. Produced by: sdlc plugin "
         f"{plugin_version}, /sdlc-design prompt {DESIGN_PROMPT_VERSION} (article p.14). "
-        f"Skills: {applied} (plugin {plugin_version}); overrides: {overridden}"
+        f"Skills: {applied} (plugin {plugin_version}); overrides: {overridden}; "
+        f"policy sources: {in_force}"
     )
 
 

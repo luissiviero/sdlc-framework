@@ -253,5 +253,5 @@ act: apply it on this PR in the same visit; the release workflow waits for it". 
 else runs; the merge that follows the owner's approval is the trigger for the project's
 deploy adapter.
 
-Never edit `.claude/**`, `CLAUDE.md`, `REVIEW.md`, `sdlc.yaml`, `intent.md` or `spec.md`.
-Never use bypass-permissions mode. Never notify anyone. Never merge.
+Never edit `.claude/**`, `CLAUDE.md`, `REVIEW.md`, `sdlc.yaml`, `policies/**`, `intent.md`
+or `spec.md`. Never use bypass-permissions mode. Never notify anyone. Never merge.

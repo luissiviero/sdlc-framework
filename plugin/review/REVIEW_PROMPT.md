@@ -28,7 +28,8 @@ second only when this brief ends with "Risk-list items this change touches".
    touches, in full where the diff is not enough.
 4. The policy skills in force (`coding-standards`, `security-baseline`, `ux-conventions`,
    `data-conventions`, `definition-of-done`; a project override under `.claude/skills/`
-   replaces the plugin's): re-check every rule the spec cited and every rule the diff
+   replaces the plugin's; the owner's source `policies/<name>.md`, where it exists, wins
+   over either (decision 40)): re-check every rule the spec cited and every rule the diff
    touches.
 5. `{change_dir}/evidence/` — the toolchain output (`test.log`, `build.log`, `lint.log`),
    `verifier.md`, the adversarial verdicts. Evidence is the literal output, not a claim. A

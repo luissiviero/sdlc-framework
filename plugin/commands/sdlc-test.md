@@ -174,6 +174,6 @@ when a token is available, posts the phase (d) check run with the evidence summa
   dispatches the review job itself. Do not run (e) here.
 - `park`: report the PR URL and the gate's "What I need from you" block.
 
-Never edit `.claude/**`, `CLAUDE.md`, `REVIEW.md`, `sdlc.yaml`, `intent.md` or `spec.md`.
-Never weaken, skip or delete a test to get green. Never use bypass-permissions mode. Never
-notify anyone.
+Never edit `.claude/**`, `CLAUDE.md`, `REVIEW.md`, `sdlc.yaml`, `policies/**`, `intent.md`
+or `spec.md`. Never weaken, skip or delete a test to get green. Never use bypass-permissions
+mode. Never notify anyone.

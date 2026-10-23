@@ -22,6 +22,7 @@ import pytest
 
 from evals import case as case_mod
 from evals import run
+from gate import preflight
 from state import yamlish
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -47,6 +48,7 @@ result = {
     "type": "result", "subtype": "success", "is_error": False, "num_turns": 3,
     "total_cost_usd": 0.25, "result": "done", "session_id": "s", "permission_denials": [],
 }
+messages = [{"type": "system", "subtype": "init", "session_id": "s"}]
 for line in prompt.splitlines():
     word, _, rest = line.partition(" ")
     if word == "WRITE":
@@ -68,10 +70,23 @@ for line in prompt.splitlines():
         result["subtype"] = rest
     elif word == "ERROR":
         result["is_error"] = True
+    elif word == "SKILL":  # the verbose shape of a Skill tool call (R27, docs/notes)
+        block = {"type": "tool_use", "id": "toolu_1", "name": "Skill", "input": {"skill": rest}}
+        messages.append({"type": "assistant", "message": {"content": [block]}})
+    elif word == "SKILL-ERROR":  # the call is made, its result is an error
+        block = {"type": "tool_use", "id": "toolu_3", "name": "Skill", "input": {"skill": rest}}
+        messages.append({"type": "assistant", "message": {"content": [block]}})
+        failed = {"type": "tool_result", "tool_use_id": "toolu_3", "is_error": True}
+        messages.append({"type": "user", "message": {"content": [failed]}})
+    elif word == "STRAY":
+        print("a warning line before the output")
+    elif word == "READ":
+        block = {"type": "tool_use", "id": "toolu_2", "name": "Read", "input": {"file_path": rest}}
+        messages.append({"type": "assistant", "message": {"content": [block]}})
     elif word == "GARBAGE":
         print("this is not json")
         sys.exit(1)
-print(json.dumps(result))
+print(json.dumps([*messages, result] if "--verbose" in argv else result))
 """
 
 
@@ -159,8 +174,8 @@ def test_the_documented_example_parses_with_every_check_kind():
     config, problems = run.validate_config(yamlish.loads(block))
     assert problems == []
     kinds = [run.check_kind(c) for c in config["checks"]]
-    assert set(kinds) == {"command", "file", "output", "denied"}
-    assert config["checks"][-2]["output"]["regex"] == r"\d+ passed"
+    assert set(kinds) == {"command", "file", "output", "denied", "skill"}
+    assert config["checks"][-3]["output"]["regex"] == r"\d+ passed"
 
 
 @pytest.mark.parametrize(
@@ -170,6 +185,8 @@ def test_the_documented_example_parses_with_every_check_kind():
         ({"checks": [{"output": {"match": "x"}}]}, "unknown key(s): match"),
         ({"checks": [{"denied": "Edit"}], "retries": 2}, "unknown key(s): retries"),
         ({"checks": [{"file": "a", "command": "x"}]}, "exactly one of"),
+        ({"checks": [{"skill": " "}]}, "skill must name a skill"),
+        ({"checks": [{"skill": "x", "loaded": True}]}, "unknown key(s): loaded"),
         ({"checks": []}, "non-empty list"),
         ({}, "non-empty list"),
         ({"checks": [{"denied": "Edit"}], "permission_mode": "bypassPermissions"}, "never"),
@@ -382,6 +399,88 @@ def test_denied_matches_a_permission_denial(tmp_path, project, cases, fake):
     assert code == 0 and only_case(report)["checks"][0]["detail"] == "Edit was denied"
 
 
+def test_skill_passes_on_a_skill_tool_call_naming_it(tmp_path, project, cases, fake):
+    """R27, the trigger evals: the case passes when the run's tool calls show the skill
+    loading under the name the check gives; the run asks for every message."""
+    make_case(
+        cases,
+        "0001-skill",
+        "STRAY\nSKILL sdlc:security-baseline\n",
+        "checks:\n  - skill: sdlc:security-baseline\n",
+    )
+    code, report = run_suite(tmp_path, project, cases, fake)
+    assert code == 0, report
+    assert only_case(report)["checks"][0]["detail"] == "sdlc:security-baseline was loaded"
+    assert "--verbose" in logged(tmp_path)[0]["argv"]
+
+
+@pytest.mark.parametrize(
+    ("prompt", "want", "seen"),
+    [
+        # a project's override is named bare: the plugin's copy does not satisfy its case
+        ("SKILL sdlc:security-baseline\n", "security-baseline", "sdlc:security-baseline"),
+        ("SKILL security-baseline\n", "sdlc:security-baseline", "security-baseline"),
+        # a call whose result is an error loaded nothing
+        ("SKILL-ERROR sdlc:security-baseline\n", "sdlc:security-baseline", "none"),
+    ],
+)
+def test_skill_matches_the_exact_name_of_a_load_that_succeeded(
+    tmp_path, project, cases, fake, prompt, want, seen
+):
+    make_case(cases, "0001-skill", prompt, f"checks:\n  - skill: {want}\n")
+    code, report = run_suite(tmp_path, project, cases, fake)
+    case = only_case(report)
+    assert code == 1 and f"skills loaded: {seen})" in case["reason"]
+
+
+def test_skill_fails_when_another_skill_or_none_loaded(tmp_path, project, cases, fake):
+    make_case(
+        cases,
+        "0001-skill",
+        "READ plugin/skills/security-baseline/SKILL.md\nSKILL sdlc:coding-standards\n",
+        "checks:\n  - skill: sdlc:security-baseline\n",
+    )
+    code, report = run_suite(tmp_path, project, cases, fake)
+    case = only_case(report)
+    assert code == 1 and not case["passed"]
+    assert "skills loaded: sdlc:coding-standards" in case["reason"]
+
+
+def test_a_case_without_a_skill_check_runs_without_verbose(tmp_path, project, cases, fake):
+    make_case(cases, "0001-plain", "SAY hi\n", "checks:\n  - output:\n      contains: hi\n")
+    code, _report = run_suite(tmp_path, project, cases, fake)
+    assert code == 0 and "--verbose" not in logged(tmp_path)[0]["argv"]
+
+
+def test_skills_loaded_reads_the_line_per_message_shape_too():
+    lines = [
+        {"type": "assistant", "message": {"content": [{"type": "text", "text": "x"}]}},
+        {
+            "type": "assistant",
+            "message": {
+                "content": [
+                    {"type": "tool_use", "name": "Skill", "input": {"command": "/ux-conventions"}}
+                ]
+            },
+        },
+        {"type": "result", "subtype": "success"},
+    ]
+    stdout = "\n".join(json.dumps(m) for m in lines)
+    assert run.skills_loaded(stdout) == ["ux-conventions"]
+    assert run.skills_loaded("") == [] and run.skills_loaded("not json") == []
+    # odd shapes are skipped, never raised: a string message, a string input, a list content
+    odd = [
+        {"type": "assistant", "message": "text"},
+        {
+            "type": "assistant",
+            "message": {"content": [{"type": "tool_use", "name": "Skill", "input": "x"}]},
+        },
+        {"type": "user", "message": {"content": "plain"}},
+        "a bare string",
+    ]
+    assert run.skills_loaded(json.dumps(odd)) == []
+
+
 # --- the run itself failing ----------------------------------------------------------------------
 @pytest.mark.parametrize(
     "prompt, fragment",
@@ -533,6 +632,33 @@ def test_parse_result_tolerates_logs_and_the_verbose_list():
 AWS_KEY_ID = re.compile(r"AKIA[0-9A-Z]{16}")
 
 
+TRIGGER_CASES = sorted(
+    p.name for p in FRAMEWORK_CASES.iterdir() if p.is_dir() and "-trigger-" in p.name
+)
+
+
+def test_each_policy_skill_has_three_trigger_cases_that_never_name_it():
+    """R27 (article p.22 step 4): three prompts per policy skill that ask for the task in
+    different ways without naming the skill; the case passes when the skill loads. The runs
+    are read-only and cheap: Read, Grep, Glob and Skill, a small budget, nothing edited."""
+    by_skill: dict[str, list[str]] = {}
+    for name in TRIGGER_CASES:
+        case = run.load_case(FRAMEWORK_CASES / name)
+        assert case.error == "", (name, case.error)
+        named = case.config["checks"][0]["skill"]
+        assert named.startswith("sdlc:"), name  # the plugin's skill, by its exact name
+        skill = named.removeprefix("sdlc:")
+        by_skill.setdefault(skill, []).append(case.prompt)
+        assert name.split("-trigger-", 1)[1].startswith(skill)
+        assert skill not in case.prompt and skill.replace("-", " ") not in case.prompt.lower()
+        assert "skill" not in case.prompt.lower(), name
+        assert case.config["tools"] == "Read,Grep,Glob,Skill"
+        assert case.config["budget_usd"] <= 0.5 and case.config["max_turns"] <= 12
+        assert case.config["checks"][1] == {"file": "sample_pkg/calc.py", "unchanged": True}
+    assert sorted(by_skill) == sorted(preflight.POLICY_SKILLS)
+    assert all(len(set(prompts)) == 3 for prompts in by_skill.values()), by_skill
+
+
 def test_the_framework_suite_s_cases_load():
     names = [p.name for p in run.discover(FRAMEWORK_CASES)]
     assert names == [
@@ -544,6 +670,7 @@ def test_the_framework_suite_s_cases_load():
         "0005-hooks-loaded",
         "0006-sandbox-write-deny",
         "0007-sandbox-credentials-hidden",
+        *TRIGGER_CASES,
     ]
     loaded = {name: run.load_case(FRAMEWORK_CASES / name) for name in names}
     for name, case in loaded.items():

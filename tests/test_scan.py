@@ -297,6 +297,19 @@ def test_prompt_uses_the_project_override_of_the_skill(tmp_path):
     assert "validate every external input" not in text
 
 
+def test_prompt_quotes_the_owners_policy_source_beside_the_skill(tmp_path):
+    """R27: the scan builds the skill's text in code, so it quotes the owner's source too,
+    under the skills' rule (the source wins); no source, no section."""
+    root = tmp_path / "proj"
+    text = prompt_mod.build_prompt(root, {}, head="abc", out_path="f.json")
+    assert "policies/security-baseline.md" not in text
+    write(root / "policies" / "security-baseline.md", "Admin routes need two factors.\n")
+    text = prompt_mod.build_prompt(root, {}, head="abc", out_path="f.json")
+    assert "## The owner's security policy (policies/security-baseline.md)" in text
+    assert "Admin routes need two factors." in text and "they win" in text
+    assert "validate every external input" in text  # the skill's rules stay
+
+
 def test_tool_lists_are_read_only_but_for_one_write():
     assert prompt_mod.allowed_tools() == "Read,Grep,Glob,Bash(git *),Write"
     assert prompt_mod.disallowed_tools() == "Edit,MultiEdit,NotebookEdit,WebFetch,WebSearch"

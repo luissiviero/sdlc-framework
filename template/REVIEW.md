@@ -18,8 +18,8 @@ Style and naming are nits.
 Report at most five nits per review; summarize the rest as a count.
 
 ## Framework rules (each is an Important finding)
-- The diff must not touch `.claude/**`, `CLAUDE.md`, `REVIEW.md` or `sdlc.yaml` unless the
-  change is the framework itself (its intent.md says so).
+- The diff must not touch `.claude/**`, `CLAUDE.md`, `REVIEW.md`, `sdlc.yaml` or
+  `policies/**` unless the change is the framework itself (its intent.md says so).
 - In a fix-type change (`change_type: fix` in status.yaml) the diff must not modify test
   files that existed before the fix; the failing test written first is the proof.
 - `plan.md` must reflect the diff: files that change, order of work, risks, proof. A diff

@@ -11,8 +11,11 @@ description: The organization's data and storage conventions. Use whenever addin
   p.22 (skill example rule 4: "fields tagged pii in the schema must never appear in logs or
   error messages"), p.34 (security pass: "PII in logs"), p.35 (hooks "can block edits to
   migrations and infra without a change ticket").
-- Owner's data policy and classification scheme: **no owner source yet** — name it here when
-  it exists.
+- Owner's data policy and classification scheme: the project's
+  `policies/data-conventions.md`, written by the owner in their own words (ROADMAP R27).
+  Read it first when it exists: where it and this skill differ, the source wins, over a
+  project override too; a rule here it does not mention still applies. No file means these
+  rules alone. It is a guardrail path (decision 40): never edit it in a run.
 - Project override: `.claude/skills/data-conventions/SKILL.md`.
 
 ## Rules
@@ -46,6 +49,8 @@ output:
 - db/migrations/0007_add_phone.sql: schema or migration file in the diff (backward compatible? rollback? documented in plan.md Risks?)
 - note: src/users.py:88: new personal-data identifier 'phone_number' (classify it; not in logs)
 ```
-Deterministic backing: the risk-list gate check ("data migrations"), the protected-paths hook
-for frozen schema folders (`sdlc.yaml: protected_paths`). This skill is advisory (p.22
+Deterministic backing, rule by rule (R27): rule 2, the protected-paths hook for the frozen
+schema and generated folders a project lists under `sdlc.yaml: protected_paths`; rule 3, the
+gate's `risk_list` check ("data migrations") and its banner. Rules 1, 4, 5 and 6 have no
+hook: only the REVIEW.md pass at (e) re-checks them. This skill is advisory (p.22
 governance).

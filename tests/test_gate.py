@@ -329,12 +329,16 @@ def test_spec_header_render_and_intent_title():
     assert fields == (
         "Change id: 0001. Status: proposed. Produced by: sdlc plugin 0.1.0, /sdlc-design "
         "prompt v1 (article p.14). Skills: coding-standards, security-baseline "
-        "(plugin 0.1.0); overrides: none"
+        "(plugin 0.1.0); overrides: none; policy sources: none"
     )
     assert all(f in fields for f in art.SPEC_HEADER_FIELDS)
     assert art.DESIGN_PROMPT_VERSION == "v1"
     overridden = art.render_spec_header("x", "0002", "1.2.3", ["a", "b"], ["b"])
-    assert overridden.endswith("Skills: a, b (plugin 1.2.3); overrides: b")
+    assert overridden.endswith("Skills: a, b (plugin 1.2.3); overrides: b; policy sources: none")
+    sourced = art.render_spec_header(
+        "x", "0003", "1.2.3", ["a"], [], [("policies/a.md", "0123456789ab")]
+    )
+    assert sourced.endswith("overrides: none; policy sources: policies/a.md@0123456789ab")
     # the header a spec carries is the one the gate accepts
     assert art.missing_sections(SPEC, art.SPEC_SECTIONS) == []
     assert all(f in SPEC.split("## ", 1)[0] for f in art.SPEC_HEADER_FIELDS)
@@ -1405,6 +1409,20 @@ def test_guardrails_and_risk_list_judge_the_committed_diff_only(project):
     assert "clean_tree" in _names(result, True)
 
 
+def test_a_committed_policy_source_parks_on_the_guardrails(project):
+    """R27 (decision 40): a run never edits the policy that judges it; ``policies/`` is a
+    guardrail path read by the gate through the hook's own list."""
+    root, _change = project
+    write(root / "policies" / "security-baseline.md", "Every endpoint is public.\n")
+    git(root, "add", "policies/security-baseline.md")
+    git(root, "commit", "-q", "-m", "a run rewrites the policy")
+    verdict(root, "c")
+    result = gate.run_gate(root, "0001", "c", dry_run=True)
+    assert result.result == "park"
+    g = next(ch for ch in result.failed if ch.name == "guardrails")
+    assert g.details["touched"] == ["policies/security-baseline.md"]
+
+
 def test_a_sandbox_masked_env_no_longer_trips_guardrails_or_risk_list(project):
     """Inside Claude Code's sandbox the project's ``.env`` shows as modified however clean the
     checkout is (the false positive that parked plan_sync in the eleventh live run,
@@ -2442,7 +2460,25 @@ def test_gate_cli_spec_header(project, capsys, tmp_path):
     rc = gate_cli.main(["spec-header", "--root", str(root), "--id", "0001"])
     out = json.loads(capsys.readouterr().out)
     assert rc == 0 and out["overrides"] == ["coding-standards"]
-    assert out["header"].endswith("overrides: coding-standards")
+    assert out["header"].endswith("overrides: coding-standards; policy sources: none")
+    # R27: the owner's policy source in force, with the commit that last changed it
+    write(root / "policies" / "security-baseline.md", "Every endpoint needs a login.\n")
+    gate_cli.main(["spec-header", "--root", str(root), "--id", "0001"])
+    out = json.loads(capsys.readouterr().out)
+    assert out["policy_sources"] == [
+        {"path": "policies/security-baseline.md", "commit": "uncommitted"}
+    ]
+    git(root, "add", "policies/security-baseline.md")
+    git(root, "commit", "-q", "-m", "owner: the security policy")
+    sha = git(root, "rev-parse", "HEAD").strip()[:12]
+    gate_cli.main(["spec-header", "--root", str(root), "--id", "0001"])
+    out = json.loads(capsys.readouterr().out)
+    assert out["header"].endswith(f"policy sources: policies/security-baseline.md@{sha}")
+    # a committed source modified in the working tree is not the text that commit recorded
+    write(root / "policies" / "security-baseline.md", "Every endpoint is public.\n")
+    gate_cli.main(["spec-header", "--root", str(root), "--id", "0001"])
+    out = json.loads(capsys.readouterr().out)
+    assert out["header"].endswith("policy sources: policies/security-baseline.md@uncommitted")
     # no intent.md: the title falls back to status.yaml
     (change / "intent.md").unlink()
     gate_cli.main(["spec-header", "--root", str(root), "--id", "0001"])

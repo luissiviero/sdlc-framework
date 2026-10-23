@@ -1,0 +1,2 @@
+<!-- R27, the trigger eval of the security-baseline policy skill, prompt 2 of 3 (article p.22 step 4: "Ask Claude to do the relevant task in different ways and confirm the skill loads each time"). The prompt never names the skill. -->
+We are adding an HTTP endpoint that returns one user's invoices. What must it do to be acceptable in this project? Answer in a short list; do not write any code or file.
