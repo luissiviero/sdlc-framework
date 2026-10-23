@@ -310,54 +310,10 @@ def test_this_repository_s_workflow_copies_match_the_template():
             assert not (REPO_WORKFLOW_DIR / name).exists()
             assert (REPO_WORKFLOW_DIR / "framework-evals.yml").is_file()
             continue
-        if name == MERGE_WORKFLOW:
-            # R22 (decision 36): plugin/ci/merge_step.py is not in the framework this
-            # repository's sdlc.yaml pins, and this repository has no merge App yet: the copy
-            # is installed with the pin, as the comment workflow's was
-            assert not (REPO_WORKFLOW_DIR / name).exists()
-            continue
-        if name == COMMENT_WORKFLOW:
-            # R17 (decision 34): the dispatcher calls plugin/ci/comment_dispatch.py, which the
-            # framework this repository's sdlc.yaml pins does not ship, and framework changes
-            # are not run through the pipeline here: the copy is installed with the pin
-            assert not (REPO_WORKFLOW_DIR / name).exists()
-            continue
         installed = (REPO_WORKFLOW_DIR / name).read_text(encoding="utf-8")
         # R61: the install drops the commands.env markers when sdlc.yaml names no variable
         expected = sdlc_init.apply_env_markers(render.render_file(WORKFLOW_DIR / name, VALUES), [])
-        expected = without_r18(name, expected)
-        if name == FIX_WORKFLOW:
-            # R44 (1.0.27): project_setup.py --command-from is not in the framework this
-            # repository's sdlc.yaml pins (1.0.17), so the installed copy keeps the setup line
-            # without it until the pin moves (R14's turn); the rest is the template's
-            expected = expected.replace(COMMAND_FROM, "")
-            assert expected.count("project_setup.py --root .\n") == 1, name
         assert installed == expected, name
-
-
-COMMAND_FROM = ' --command-from "refs/remotes/origin/$SDLC_DEFAULT_BRANCH"'
-# R18 (plugin 1.0.36): run_phase.py --out, --phase triage --out/--setup and project_setup.py
-# --out are not in the framework this repository's sdlc.yaml pins (1.0.17), so the installed
-# copies keep their steps without them until the pin moves (R14's turn), as for COMMAND_FROM
-R18_BLOCK_RE = re.compile(
-    r"\n      # R18: a failed run explains itself\..*?\n(?=\n      # Build guide step 41\.1)", re.S
-)
-R18_OUTS = (' --out "$RUNNER_TEMP/sdlc-run.json"', ' --out "$RUNNER_TEMP/sdlc-setup.json"')
-
-
-def without_r18(name: str, text: str) -> str:
-    """The template's text as the 1.0.17 pin can run it: R18's triage steps, its ``--out``
-    flags and the step ids it added (``setup``, ``review``, and ``phase`` where the template
-    had none before) left out."""
-    if "--phase triage" not in text:  # a workflow R18 left as it was (the runbook's own setup id)
-        return text
-    text = R18_BLOCK_RE.sub("", text)
-    for out in R18_OUTS:
-        text = text.replace(out, "")
-    ids = ("setup", "review") if name == "sdlc-deploy.yml" else ("setup", "review", "phase")
-    for step_id in ids:
-        text = text.replace(f"        id: {step_id}\n", "")
-    return text
 
 
 FRAMEWORK_CHECKS = "framework-checks.yml"  # this repository's own suite (0.2.28)
@@ -677,8 +633,7 @@ def test_fix_workflow_starts_on_request_changes_and_on_the_owner_labels():
     rendered = sdlc_init.apply_env_markers(
         render.render_file(WORKFLOW_DIR / FIX_WORKFLOW, VALUES), []
     )
-    # see the copies test (R44, R18)
-    assert installed == without_r18(FIX_WORKFLOW, rendered).replace(COMMAND_FROM, "")
+    assert installed == rendered
     for label in ("sdlc:reset-iterations", "sdlc:unlock-tests"):
         assert f"github.event.label.name == '{label}'" in job["if"], label
     assert "sdlc:accept-risk" not in job["if"]  # retired with decision 35

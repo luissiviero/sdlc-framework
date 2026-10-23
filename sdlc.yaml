@@ -24,6 +24,13 @@ commands:
   # one command that installs what test/build/lint need; the CI phase jobs run it before
   # the phase; empty = nothing to install
   setup: "python -m pip install -e \".[dev]\""
+  # the repository secrets or variables (names only) the targets need, e.g. [TEST_DB_URL]
+  # (R61, plugin 1.0.29). /sdlc-init writes each into the setup and phase steps of the phase
+  # workflows, so the setup command, the model's session and the runner's build, test and
+  # lint read it. Those run code the session wrote, the targets outside the sandbox: name a
+  # test credential here, never a production one. A service a test needs is your edit of the
+  # workflow; the model credentials and the GitHub tokens are never passed.
+  env: []
 
 # --- phase adapters (OPERATING_MODEL section 9; decision 19) ---------------------------------
 deploy:
@@ -32,6 +39,21 @@ deploy:
   action: none
   # true turns on the release label at gate (e) and the production-gate hook (B4)
   production: false
+  # the one command the release workflow (.github/workflows/sdlc-release.yml) runs after the
+  # build PR's merge (and, when production is true, after the release label): e.g.
+  # `python -m build && twine upload dist/*`, `python scripts/regenerate_report.py`.
+  # Empty = the release is prepared in the PR and nothing runs. Runs on the GitHub runner
+  # with the repository's secrets only.
+  command: ""
+  # command patterns (shell-style globs, case-insensitive, matched against every token suffix
+  # of each part of a command, so wrappers such as `python -m`, `nohup` or `bash -c` do not
+  # hide one) the production-gate hook blocks inside a Claude session until the
+  # release approval exists; added to the plugin's defaults for the adapter
+  # (plugin/hooks/production_gate.py DEFAULT_GUARDED) and to the article's own trigger, a
+  # command containing both `deploy` and `production` (p.36). `promote to paper trading` has
+  # no default: a paper-trading project lists its own promotion command here (e.g.
+  # "python scripts/promote.py"). Only read when production is true.
+  guarded_commands: []
 maintain:
   # the watched metric and where the detection script reads it (default: CI test failure
   # rate from the CI API — decision 15). The bands and the 3-sigma tiers are bands.yaml
@@ -64,6 +86,9 @@ gate:
                                  # spend, a by-hand or cloud-session run has no figure); null = off
   command_timeout: 900           # seconds per build/test/lint command run by the gate
   max_turns: 400                 # turns per session of every run but build/fix; unset = 200
+  max_panel_calls: 4             # review-panel calls per change; not fix iterations
+  build_max_turns: 400           # turns of the build run and of every fix round (decision 32)
+  build_max_wall_clock_minutes: 180  # wall clock of the build run and of every fix round
 
 # --- automation identity (decision 5; gate check owner_actions) ----------------------------------
 # The gate honours a risk acceptance, an iteration reset or a test-lock lift only when the
@@ -95,14 +120,36 @@ plan_sync:
   exempt:
     - "*.md"
 hooks:
-  format_on_edit: true
+  # The formatter and linter on each file Claude edits (R33, plugin 1.0.29; one behaviour,
+  # always on). An entry maps a glob, or a list of globs, to `fix` commands run in order on
+  # the changed file and `check` commands whose exit 1 is fed back to Claude; `{file}` is the
+  # file's path from the project root, already quoted for the shell (do not quote it again).
+  # The first matching entry wins. A .py or .pyi file no entry matches gets ruff (check
+  # --fix, format, check); any other file type with no entry is left alone. A missing tool, any other exit code or a timeout never blocks the edit.
+  # In a CI session the project's commands are not run (they run outside the sandbox, on code
+  # the session can write); the runner's lint target judges the change there.
+  # Keep to what is cheap per file: a whole-project check (clippy, a type check) belongs in
+  # commands.lint. /sdlc-init proposed what it found (black, yapf or autopep8 in
+  # pyproject.toml; prettier and eslint in package.json; rustfmt for Cargo.toml), e.g.
+  #   - glob: ["*.ts", "*.tsx"]
+  #     fix: ["npx --no prettier --write {file}", "npx --no eslint --fix {file}"]
+  #     check: ["npx --no eslint {file}"]
+  formatters: []
 
 # --- pinned process (decision 8) ----------------------------------------------------------
 plugin:
   name: sdlc
   marketplace: sdlc-framework
-  version: 1.0.17
+  version: 1.0.38
   # Claude Code CLI version the SDLC workflows install (`npm install -g
   # @anthropic-ai/claude-code@<this>`). `--permission-prompts none` needs 2.1.259 or later;
   # 2.1.304 is the CLI the jobs install and the framework's minimum (NOTES §54).
   claude_code: "2.1.304"
+
+# --- the CI session's sandbox (R61, plugin 1.0.29) -------------------------------------------
+# allowed_domains: hosts the sandboxed CI session may reach beyond the API, GitHub, PyPI and
+# npm (plugin/ci/settings.ci.json), such as the project's package registry; /sdlc-init
+# proposed the registries of the languages it found. The session may also run the commands
+# above: their Bash allow rules follow commands.build, test, lint and setup.
+sandbox:
+  allowed_domains: []
