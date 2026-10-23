@@ -191,10 +191,41 @@ def test_a_gitignored_secret_file_is_still_proposed(tmp_path):
 def test_secret_shaped_paths_are_proposed(tmp_path):
     _write(tmp_path, "certs/server.pem")
     _write(tmp_path, "deploy/credentials.json")
-    _write(tmp_path, ".npmrc")
+    _write(tmp_path, ".npmrc", "//registry.npmjs.org/:_authToken=npm_abc123\n")
     _write(tmp_path, "node_modules/pkg/test.key")  # a tool folder: left out
     assert detect.secret_paths(tmp_path) == ["*.pem", "credentials.json", ".npmrc"]
     assert sdlc_init.read_deny_rules(["*.pem"]) == ["Read(*.pem)", "Read(**/*.pem)"]
+
+
+@pytest.mark.parametrize(
+    "name, text, proposed",
+    [
+        (".npmrc", "//registry.npmjs.org/:_authToken=npm_abc123\n", True),
+        (".npmrc", "_auth = dXNlcjpwYXNz\n", True),
+        (".npmrc", "//registry.npmjs.org/:_authToken=${NPM_TOKEN}\n", False),  # a reference
+        (".npmrc", "registry=https://registry.npmjs.org/\nsave-exact=true\n", False),
+        ("appsettings.Production.json", '{"ConnectionStrings": {"Db": "Server=x"}}', True),
+        ("appsettings.Development.json", '{"Smtp": {"Password": "hunter2"}}', True),
+        ("appsettings.Development.json", '{"Jwt": {"ClientSecret": "s"}}', True),
+        ("appsettings.Development.json", '{"Logging": {"LogLevel": {"Default": "Info"}}}', False),
+    ],
+)
+def test_two_patterns_are_proposed_only_when_the_file_holds_a_secret(
+    tmp_path, name, text, proposed
+):
+    """Choice 263, point 3: `.npmrc` and `appsettings.*.json` are often plain configuration
+    the tests read, and a Read deny hides a file from them too; they are proposed only when
+    their content reads as a secret."""
+    _write(tmp_path, f"src/{name}", text)
+    pattern = ".npmrc" if name == ".npmrc" else "appsettings.*.json"
+    assert (pattern in detect.secret_paths(tmp_path)) is proposed
+    assert (pattern in detect.detect(tmp_path).secrets) is proposed
+
+
+def test_one_secret_file_among_plain_ones_is_enough(tmp_path):
+    _write(tmp_path, "a/.npmrc", "save-exact=true\n")
+    _write(tmp_path, "b/.npmrc", "_password=cGFzcw==\n")
+    assert detect.secret_paths(tmp_path) == [".npmrc"]
 
 
 # --- the install writes all of it -------------------------------------------------------------- -

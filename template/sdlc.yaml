@@ -191,7 +191,8 @@ test_paths:
 # migrations, infra. Entries follow gitignore rules: a bare name matches in any directory,
 # a leading slash anchors it to the project root (e.g. "**/CLAUDE.md" freezes nested copies).
 # /sdlc-init proposes the secret-shaped files it found (*.pem, *.key, credentials.json, ...;
-# R61, plugin 1.0.29), with the same names as Read deny rules in .claude/settings.json; the CI
+# R61, plugin 1.0.29; .npmrc and appsettings.*.json only when one holds a token, a password,
+# a secret or a connection string, since 1.0.31), with the same names as Read deny rules in .claude/settings.json; the CI
 # session cannot read a secret-shaped entry either (any other entry, such as migrations/,
 # stays readable there, since the sandbox hides a denied path from the tests too).
 protected_paths: {{PROTECTED_PATHS}}

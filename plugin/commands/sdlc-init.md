@@ -29,7 +29,8 @@ command and pass it with `--build/--test/--lint`; the gate does not enter phase 
 all three. The report's `proposed` block shows what else the install writes for the owner
 to confirm in the change-0000 PR: the package registries the CI session may reach
 (`sandbox.allowed_domains`), the secret-shaped files found (`protected_paths`, and the same
-names as `Read` deny rules), and the formatter commands per file type (`hooks.formatters`:
+names as `Read` deny rules; `.npmrc` and `appsettings.*.json` only when one holds a token,
+a password, a secret or a connection string), and the formatter commands per file type (`hooks.formatters`:
 black, yapf or autopep8 from `pyproject.toml`, prettier and eslint from `package.json`,
 rustfmt for `Cargo.toml`; ruff stays Python's default with no entry). Detection also proposes `commands.setup`
 — the one command that installs what those three need (`python -m pip install -e ".[dev]"`,
