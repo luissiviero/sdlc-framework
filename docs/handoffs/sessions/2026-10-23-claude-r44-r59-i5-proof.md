@@ -15,7 +15,7 @@ No other session file reached `main` since (verified, `ls docs/handoffs/sessions
 - The standing ones are in `HANDOFF.md`. Numbers: `python tasks.py next-free` after a fetch; this PR takes none.
 
 ## Next steps, in order
-1. **This PR**: the owner merges it when `Framework checks` and `Framework evals` are green on its final head; note 60 then carries the run's URL.
+1. **This PR**: the owner merges it when `Framework checks` and `Framework evals` are green on its final head. Case 0007 passed in run 39932784745 (note 60), proving the deny for `CLAUDE_CODE_OAUTH_TOKEN`, the credential the runner held.
 2. **The running lanes' PRs**, as the parent session orders them.
 3. **The fix workflow's setup step, live:** at the sample's next change, after the owner moves its pin to 1.0.27 or later.
 4. The rest as lane A's file lists it.
