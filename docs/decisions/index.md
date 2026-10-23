@@ -51,6 +51,7 @@ edited by hand; `python tasks.py docs-lint` fails when it differs.
 36. [Gate (e) is the owner's approving review; a GitHub App merges on it (amends 13, 4 and 5)](36.md)
 37. [One profile and one review mode, `standard` and `deferred`, with no per-change override (amends 18, 21, 27, 30, 32, 34 and 35)](37.md)
 38. [When both model secrets are set, the subscription token wins (amends 1)](38.md)
+39. [The names: the name table of 2026-10-20 as recommended, and the names added since plugin 1.0.14 judged by the same rule](39.md)
 40. [The project's policy sources in `policies/` are a guardrail path (amends 6)](40.md)
 
 Sticky decisions (2, 6, 7, 8, 10, 19) shape files and conventions every later step writes to.
