@@ -1,5 +1,5 @@
 """The substrate smoke script picks the credential, runs one bounded turn and reports it
-(build guide step 3; docs/NOTES.md section 2). A fake `claude` written in Python stands in
+(build guide step 3; docs/notes/2.md). A fake `claude` written in Python stands in
 for the CLI so the test runs without a model, on Windows and Linux alike. The credential
 values below are placeholders, never real secrets."""
 

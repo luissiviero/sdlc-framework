@@ -67,7 +67,7 @@ from state import status, yamlish  # noqa: E402
 TEMPLATE = REPO_ROOT / "template"
 DEFAULT_FRAMEWORK_REPO = "luissiviero/sdlc-framework"
 # The Claude Code CLI the SDLC workflows install; the framework's declared minimum
-# (docs/NOTES.md sections 2 and 10b: --permission-prompts none needs 2.1.259 or later).
+# (docs/notes/2.md and docs/notes/10.md, 10b: --permission-prompts none needs 2.1.259 or later).
 # 2.1.304 since 1.0.16 (ROADMAP R63): the first version read to run a sub-agent on a full
 # model id, the template's claude-opus-5-5 (docs/notes/54.md); 2.1.278 ran it on the
 # session's model.

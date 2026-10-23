@@ -448,9 +448,10 @@ def read_status(
     change_dir: Path, on_default_branch: bool = False, production: bool = False
 ) -> Status:
     """``status.yaml`` of the change. ``on_default_branch`` says the file was read from a
-    checkout of the default branch: a change at phase e there was merged by the owner, so
-    gate (e) reads passed (``merged_at_gate_e``; ``production`` is ``sdlc.yaml:
-    deploy.production`` and only changes the derived reason). The derivation happens in
+    checkout of the default branch: a change at phase e there was merged on the owner's
+    approving review (decision 36: by the merge App, or by the owner), so gate (e) reads
+    passed (``merged_at_gate_e``; ``production`` is ``sdlc.yaml: deploy.production`` and
+    only changes the derived reason). The derivation happens in
     memory only; the file on disk is never rewritten by it (the default branch is read-only
     for automation, and only the owner's reviewed PRs reach it)."""
     st = Status.from_dict(_load(change_dir))

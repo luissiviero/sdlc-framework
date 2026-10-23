@@ -1,8 +1,8 @@
 """One merge-triggered phase run: guard, compose, run ``claude -p``, hand over.
 
 Build guide step 30 (tasks 30.3 and 30.5); the trigger and dispatch table it implements is
-docs/OPERATING_MODEL.md sections 4.1 and 4.2; the flag facts are docs/NOTES.md sections 2,
-3 and 10b; the read-only triage step is the article's p.41 pipeline step.
+docs/OPERATING_MODEL.md sections 4.1 and 4.2; the flag facts are docs/notes/2.md,
+3.md and 10.md (10b); the read-only triage step is the article's p.41 pipeline step.
 
     python framework/plugin/ci/run_phase.py --root . --plugin-dir framework \
         --phase b|c|d|e|review --id 0001 --repo owner/name \
@@ -3305,7 +3305,8 @@ def _run_phase(args, env: dict[str, str], track: dict[str, Any]) -> int:
             f"{CLI_MODEL_CHECK}: "
             + CLI_MODEL_PARK.format(cli=pinned or "of this job", models=", ".join(unknown)),
             branch=fix_branch, check=CLI_MODEL_CHECK,
-            need=CLI_MODEL_NEED.format(stderr=stderr_path.name), keep_failed=True,
+            need=CLI_MODEL_NEED.format(stderr=stderr_path.name, version=_default_cli()),
+            keep_failed=True,
         )  # fmt: skip
         _emit({**parked, "unrecognized_models": unknown, "cost_usd": cost, "branch": branch})
         return EXIT_OK
@@ -3529,9 +3530,20 @@ CLI_MODEL_NEED = (
     "The Claude Code CLI the job installed (sdlc.yaml: plugin.claude_code) printed "
     "[claude-code:unrecognized_model] for a model this run was configured with, which did "
     "not run: the sub-agent ran on another model (the framework's NOTES §54). Raise "
-    "plugin.claude_code to a CLI that knows the model (2.1.304 or later for "
+    "plugin.claude_code to a CLI that knows the model ({version} or later for "
     "claude-opus-5-5), then re-run the phase; evidence/{stderr} holds the line."
 )
+
+
+def _default_cli() -> str:
+    """The CLI version ``/sdlc-init`` pins (``init/sdlc_init.DEFAULT_CLAUDE_CODE_VERSION``), so
+    the park's advice moves with it (R65, part 6); imported here, not at the top, since the
+    runner needs nothing else of the installer."""
+    from init.sdlc_init import DEFAULT_CLAUDE_CODE_VERSION  # noqa: PLC0415
+
+    return DEFAULT_CLAUDE_CODE_VERSION
+
+
 PANEL_MODEL_CHECK = "panel_models"
 PANEL_MODEL_NEED = (
     "The review panel's devil's advocate must run on the model sdlc.yaml's "

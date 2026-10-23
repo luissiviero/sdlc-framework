@@ -11,7 +11,7 @@
 #
 # Why two pull_request types:
 #   * closed - the merge (the merge App's events start runs, the workflow token's never
-#     would; whether its merge starts this workflow is verified at R22's first merge, else
+#     would; whether its merge starts this workflow is to verify at the merge App's first merge, else
 #     the merge workflow dispatches it). Without a declared production
 #     (deploy.production: false) the approval of gate (e) is the release's and it runs now;
 #   * labeled - with deploy.production: true the release also needs the label

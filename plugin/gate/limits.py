@@ -31,7 +31,7 @@ Limits (sdlc.yaml ``gate:`` block, all optional; defaults here):
     overwrote, so a change spent several times the cap unless one session did;
   - pause flag: ``sdlc.yaml: paused: true`` (chosen over a PAUSE file: sdlc.yaml is already a
     protected path, so a run cannot un-pause itself).
-The outer bound for headless runs is the CLI's own ``--max-turns`` (docs/NOTES.md section 10).
+The outer bound for headless runs is the CLI's own ``--max-turns`` (docs/notes/10.md, 10b).
 """
 
 from __future__ import annotations
@@ -56,7 +56,7 @@ DEFAULT_MAX_ITERATIONS = 3
 DEFAULT_MAX_ITERATIONS_NON_ROUTINE = 2
 DEFAULT_MAX_PANEL_CALLS = 4
 DEFAULT_MAX_WALL_CLOCK_MINUTES = 120
-DEFAULT_MAX_TURNS = 200  # the runner's ``--max-turns`` (docs/NOTES.md section 10)
+DEFAULT_MAX_TURNS = 200  # the runner's ``--max-turns`` (docs/notes/10.md, 10b)
 DEFAULT_BUILD_MAX_TURNS = 400  # decision 32: the build run and every fix round
 DEFAULT_BUILD_MAX_WALL_CLOCK_MINUTES = 180
 BUILD_RUN = "build"  # run-<phase>.json: "run" for the build run or a fix round
