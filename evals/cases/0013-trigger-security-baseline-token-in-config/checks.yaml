@@ -2,6 +2,9 @@
 # policy skill, prompt 3 of 3. The run loads the skill on its own, seen in its Skill tool
 # call (plugin/evals/run.py, the skill check; the shape in docs/notes/61.md); the prompt asks
 # for the task without naming the skill and the run edits nothing.
+# The prompt names the organization's rules since 2026-10-23: the plainer "is that allowed" loaded
+# the skill in two of three live runs and was answered from general knowledge in the third (run
+# 39988541812, one turn).
 description: the security-baseline skill loads for "token in config" without being named
 tools: "Read,Grep,Glob,Skill"
 max_turns: 12

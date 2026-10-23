@@ -1,2 +1,2 @@
 <!-- R27, the trigger eval of the security-baseline policy skill, prompt 3 of 3 (article p.22 step 4: "Ask Claude to do the relevant task in different ways and confirm the skill loads each time"). The prompt never names the skill. -->
-Someone wants to put an API token in a config file committed to this repository. Is that allowed here, and what should be done instead? Answer only; do not edit any file.
+Under this organization's security rules, may an API token be kept in a config file committed to this repository? If not, what do the rules require instead? Answer only; do not edit any file.

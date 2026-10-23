@@ -53,6 +53,9 @@ A fresh-context sub-agent reviewed `36f0f4c`, report only. It found nothing bloc
 ## Lane A's merge
 #368 (R18, 1.0.36) merged as `9ffd7c3` and was merged into this branch. The version conflict keeps 1.0.37. R18 changed six workflow templates (`sdlc-build`, `-deploy`, `-design`, `-detect`, `-fix`, `-test`), so `python tasks.py template-hashes` was re-run after `git fetch --tags`; their new texts are labelled 1.0.36, the tag that shipped them.
 
+## R27's flaky trigger case
+`Framework evals` on `fde0376` (run 39988541812) failed one case, `0013-trigger-security-baseline-token-in-config`: the model answered in one turn without loading the skill. It had loaded it in the two runs before (39982874210, 39984180036), so the case is flaky. It is R27's own case and `main` carries it, so every plugin PR's evals run could fail on it at random; its fix rides here. The prompt now names "this organization's security rules", as 0011's does; the check is unchanged. NOTES §61 carries the run.
+
 ## Port list
 None: the PR touches no file under `plugin/detect/`, `plugin/ci/run_phase.py` or the detect, runbook and fix workflow templates.
 
