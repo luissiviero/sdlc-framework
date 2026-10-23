@@ -1,0 +1,20 @@
+{
+  "at": "2026-10-23T21:46:19Z",
+  "change_id": null,
+  "cost_usd": null,
+  "exit_code": 1,
+  "parked": false,
+  "phase": "b",
+  "reason": "the project's GitHub App is required (decision 33; R22, 1.0.18): this workflow minted no App token, so the run stops before it starts instead of publishing with the workflow token. Set the repository variable SDLC_APP_ID and the secret SDLC_APP_PRIVATE_KEY (/sdlc-init step 6, in a desktop browser: https://github.com/luissiviero/sdlc-framework/settings/variables/actions), then re-run",
+  "run": {
+    "actor": "luissiviero",
+    "attempt": "1",
+    "event": "pull_request",
+    "id": "40029078478",
+    "url": "https://github.com/luissiviero/sdlc-framework/actions/runs/40029078478/attempts/1",
+    "workflow": "SDLC design (b)"
+  },
+  "schema_version": 1,
+  "step": "runner",
+  "triage": []
+}
