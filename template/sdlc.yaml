@@ -192,7 +192,8 @@ test_paths:
 # a leading slash anchors it to the project root (e.g. "**/CLAUDE.md" freezes nested copies).
 # /sdlc-init proposes the secret-shaped files it found (*.pem, *.key, credentials.json, ...;
 # R61, plugin 1.0.29), with the same names as Read deny rules in .claude/settings.json; the CI
-# session cannot read an entry either.
+# session cannot read a secret-shaped entry either (any other entry, such as migrations/,
+# stays readable there, since the sandbox hides a denied path from the tests too).
 protected_paths: {{PROTECTED_PATHS}}
 plan_sync:
   # staged paths matching these globs do not require a plan.md update in phase (c)
@@ -202,9 +203,11 @@ hooks:
   # The formatter and linter on each file Claude edits (R33, plugin 1.0.29; one behaviour,
   # always on). An entry maps a glob, or a list of globs, to `fix` commands run in order on
   # the changed file and `check` commands whose exit 1 is fed back to Claude; `{file}` is the
-  # file's path from the project root. The first matching entry wins. A .py or .pyi file no
-  # entry matches gets ruff (check --fix, format, check); any other file type with no entry
-  # is left alone. A missing tool, any other exit code or a timeout never blocks the edit.
+  # file's path from the project root, already quoted for the shell (do not quote it again).
+  # The first matching entry wins. A .py or .pyi file no entry matches gets ruff (check
+  # --fix, format, check); any other file type with no entry is left alone. A missing tool, any other exit code or a timeout never blocks the edit.
+  # In a CI session the project's commands are not run (they run outside the sandbox, on code
+  # the session can write); the runner's lint target judges the change there.
   # Keep to what is cheap per file: a whole-project check (clippy, a type check) belongs in
   # commands.lint. /sdlc-init proposed what it found (black, yapf or autopep8 in
   # pyproject.toml; prettier and eslint in package.json; rustfmt for Cargo.toml), e.g.

@@ -15,7 +15,9 @@ from __future__ import annotations
 
 import fnmatch
 import json
+import os
 import re
+import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -111,6 +113,8 @@ class Detection:
     setup: Target = field(default_factory=_no_target)
     # R61 part 2: every language's counted signals (``language_signals``), for the report
     signals: dict[str, dict[str, object]] = field(default_factory=dict)
+    # R61 part 5: the secret-shaped patterns found (``secret_paths``), from the same file list
+    secrets: list[str] = field(default_factory=list)
 
     def as_dict(self) -> dict:
         return {
@@ -374,11 +378,22 @@ def detect(root: Path) -> Detection:
     or a leader that is not dominant (a mixed repository), comes back with every target unset
     and a note, so /sdlc-init asks the owner for the commands (R61 part 2)."""
     root = Path(root)
-    signals = language_signals(root)
+    files = project_files(root)
+    signals = language_signals(root, files)
     leader, dominant = leading_language(signals)
     pkg = _package_json(root)
-    if leader == "unknown" or (leader == "node" and pkg is None):
-        det = detect_python(root)  # "unknown", every target None, as before R61
+    if leader == "unknown" or (
+        leader == "node" and (root / "package.json").is_file() and pkg is None
+    ):
+        det = detect_python(root)  # "unknown" (or an unreadable package.json), as before R61
+    elif leader == "node" and pkg is None:
+        det = _unset(
+            "node",
+            [
+                f"Node project with no package.json at the root ({_signals_text(signals)}): "
+                "no target is detected; ask the owner for the commands"
+            ],
+        )
     elif not dominant:
         det = _unset(
             leader,
@@ -400,6 +415,7 @@ def detect(root: Path) -> Detection:
             ],
         )
     det.signals = signals
+    det.secrets = secret_paths(root, files)
     return det
 
 
@@ -436,27 +452,65 @@ SIGNAL_SCAN_EXCLUDE = (
 )  # fmt: skip
 
 
-def language_signals(root: Path) -> dict[str, dict[str, object]]:
-    """``{language: {"files": n, "manifests": [name, ...]}}`` for every language of
-    ``LANGUAGE_SUFFIXES`` with at least one source file or manifest at the project root."""
+def project_files(root: Path) -> list[str]:
+    """The project's files, project-relative with forward slashes: ``git ls-files`` (tracked,
+    and untracked but not ignored) in a repository, so an ignored virtualenv or build output
+    is not counted; elsewhere a walk that prunes ``SIGNAL_SCAN_EXCLUDE`` and every folder
+    holding a ``pyvenv.cfg`` (a virtualenv of any name). Either way the excluded folders are
+    left out (R61 part 2; the review of 1.0.29)."""
     root = Path(root)
-    files = dict.fromkeys(LANGUAGE_SUFFIXES, 0)
+    listed: list[str] | None = None
+    if (root / ".git").exists():
+        try:
+            proc = subprocess.run(
+                ["git", "-C", str(root), "ls-files", "-co", "--exclude-standard", "-z"],
+                capture_output=True,
+                timeout=60,
+            )
+            if proc.returncode == 0:
+                listed = [f for f in proc.stdout.decode("utf-8", "replace").split("\0") if f]
+        except (OSError, subprocess.SubprocessError):
+            listed = None
+    if listed is None:
+        listed = []
+        for folder, dirs, names in os.walk(root):
+            dirs[:] = [
+                d
+                for d in dirs
+                if d not in SIGNAL_SCAN_EXCLUDE and not (Path(folder, d) / "pyvenv.cfg").is_file()
+            ]
+            rel = Path(folder).relative_to(root).as_posix()
+            listed += [n if rel == "." else f"{rel}/{n}" for n in names]
+    venvs = tuple(f[: -len("pyvenv.cfg")] for f in listed if f.endswith("/pyvenv.cfg"))
+    return [
+        f
+        for f in listed
+        if not any(p in SIGNAL_SCAN_EXCLUDE for p in f.split("/")[:-1])
+        and not (venvs and f.startswith(venvs))
+    ]
+
+
+def language_signals(root: Path, files: list[str] | None = None) -> dict[str, dict[str, object]]:
+    """``{language: {"files": n, "manifests": [path, ...]}}`` for every language of
+    ``LANGUAGE_SUFFIXES`` with at least one source file or manifest, a manifest counted in
+    any folder (``web/package.json`` makes a Node frontend take part)."""
+    files = project_files(root) if files is None else files
+    counts = dict.fromkeys(LANGUAGE_SUFFIXES, 0)
     by_suffix = {s: lang for lang, suffixes in LANGUAGE_SUFFIXES.items() for s in suffixes}
-    for path in root.rglob("*"):
-        rel = path.relative_to(root).parts
-        if any(part in SIGNAL_SCAN_EXCLUDE for part in rel[:-1]) or not path.is_file():
-            continue
-        lang = by_suffix.get(path.suffix.lower())
+    manifests: dict[str, list[str]] = {lang: [] for lang in LANGUAGE_SUFFIXES}
+    for rel in files:
+        name = rel.rsplit("/", 1)[-1]
+        lang = by_suffix.get(Path(name).suffix.lower())
         if lang:
-            files[lang] += 1
-    out: dict[str, dict[str, object]] = {}
-    for lang in LANGUAGE_SUFFIXES:
-        manifests = sorted(
-            {p.name for pattern in LANGUAGE_MANIFESTS[lang] for p in root.glob(pattern)}
-        )
-        if files[lang] or manifests:
-            out[lang] = {"files": files[lang], "manifests": manifests}
-    return out
+            counts[lang] += 1
+        for language, patterns in LANGUAGE_MANIFESTS.items():
+            if any(fnmatch.fnmatchcase(name, pat) for pat in patterns):
+                manifests[language].append(rel)
+    return {
+        lang: {"files": counts[lang], "manifests": sorted(manifests[lang])}
+        for lang in LANGUAGE_SUFFIXES
+        if counts[lang] or manifests[lang]
+    }
 
 
 def _taking_part(signals: dict[str, dict[str, object]]) -> dict[str, int]:
@@ -594,14 +648,20 @@ SECRET_PATTERNS = (
 )  # fmt: skip
 
 
-def secret_paths(root: Path) -> list[str]:
-    """The patterns of ``SECRET_PATTERNS`` that match a file of the project (the usual tool
-    folders left out), for ``protected_paths`` and the ``Read`` deny rules; the owner confirms
-    them in the change-0000 PR."""
-    root = Path(root)
-    names = {
-        p.name
-        for p in root.rglob("*")
-        if p.is_file() and not any(part in RISK_SCAN_EXCLUDE for part in p.relative_to(root).parts)
-    }
+def secret_paths(root: Path, files: list[str] | None = None) -> list[str]:
+    """The patterns of ``SECRET_PATTERNS`` that match a file of the project (``project_files``,
+    the usual tool folders left out), for ``protected_paths`` and the ``Read`` deny rules; the
+    owner confirms them in the change-0000 PR."""
+    files = project_files(root) if files is None else files
+    names = {f.rsplit("/", 1)[-1] for f in files}
     return [pat for pat in SECRET_PATTERNS if any(fnmatch.fnmatchcase(n, pat) for n in names)]
+
+
+def is_secret_pattern(entry: str) -> bool:
+    """Whether a ``protected_paths`` entry names a secret-shaped file: one of
+    ``SECRET_PATTERNS`` itself, or a path whose last part matches one. Only those become a
+    ``Read`` deny in CI, where the sandbox masks a denied path for every command, so a
+    protected ``migrations/`` folder stays readable to the tests (the review of 1.0.29)."""
+    text = str(entry).strip().rstrip("/").replace("\\", "/")
+    name = text.rsplit("/", 1)[-1]
+    return text in SECRET_PATTERNS or any(fnmatch.fnmatchcase(name, p) for p in SECRET_PATTERNS)

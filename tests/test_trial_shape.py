@@ -85,6 +85,36 @@ def test_a_mixed_repository_is_not_given_python_targets(tmp_path):
     assert det.notes[0].startswith("mixed repository (")
 
 
+def test_a_node_frontend_in_a_subfolder_takes_part(tmp_path):
+    """The review of 1.0.29: a manifest counts in any folder, so `web/package.json` with more
+    TypeScript than the root's Python makes the repository mixed, not Python."""
+    _write(tmp_path, "pyproject.toml", "[tool.pytest.ini_options]\n")
+    for n in range(3):
+        _write(tmp_path, f"m{n}.py", "x = 1\n")
+    _write(tmp_path, "web/package.json", "{}")
+    for n in range(8):
+        _write(tmp_path, f"web/src/c{n}.tsx", "export {};\n")
+    det = detect.detect(tmp_path)
+    assert det.language == "node" and det.test.command is None
+    assert "no package.json at the root" in det.notes[0]
+
+
+def test_a_virtualenv_of_any_name_and_ignored_files_are_not_counted(tmp_path):
+    _write(tmp_path, "package.json", json.dumps({"scripts": {"test": "jest"}}))
+    for n in range(5):
+        _write(tmp_path, f"src/m{n}.ts", "export {};\n")
+    _write(tmp_path, ".venv-docs/pyvenv.cfg", "home = /usr\n")
+    for n in range(20):
+        _write(tmp_path, f".venv-docs/lib/m{n}.py", "x = 1\n")
+    assert detect.detect(tmp_path).language == "node"  # no git: the walk prunes the venv
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+    _write(tmp_path, ".gitignore", "build-out/\n")
+    for n in range(20):
+        _write(tmp_path, f"build-out/m{n}.py", "x = 1\n")
+    assert "build-out/m0.py" not in detect.project_files(tmp_path)
+    assert detect.detect(tmp_path).language == "node"
+
+
 def test_a_python_project_with_some_javascript_keeps_its_targets(tmp_path):
     _write(tmp_path, "pyproject.toml", "[tool.pytest.ini_options]\n")
     for n in range(4):
@@ -170,6 +200,32 @@ def test_init_on_a_rust_project_writes_the_shape(tmp_path):
     named = [s for s in steps if "TEST_DB_URL" in (s.get("env") or {})]
     assert len(named) == 2  # the setup step and the phase step
     assert named[0]["env"]["TEST_DB_URL"] == "${{ secrets.TEST_DB_URL || vars.TEST_DB_URL }}"
+
+
+def test_a_re_run_keeps_the_env_names_and_the_owner_s_lists(tmp_path):
+    """The review of 1.0.29: a re-run without --env still writes the names sdlc.yaml lists
+    into a reinstalled workflow; settings follow the protected_paths and allowed_domains the
+    kept sdlc.yaml carries, and the report names what it did not add."""
+    root = _rust_project(tmp_path / "rs")
+    _run_init(root, "--test", "cargo test", "--env", "TEST_DB_URL")
+    path = root / "sdlc.yaml"
+    text = path.read_text(encoding="utf-8")
+    text = text.replace('protected_paths: ["*.pem"]', "protected_paths: []")
+    text = text.replace('"index.crates.io", ', "")
+    path.write_text(text, encoding="utf-8")
+    (root / ".claude" / "settings.json").unlink()
+    (root / ".github" / "workflows" / "sdlc-build.yml").unlink()
+    report = _run_init(root, "--test", "cargo test", "--env", "OTHER_TOKEN")
+    build = (root / ".github" / "workflows" / "sdlc-build.yml").read_text(encoding="utf-8")
+    assert "TEST_DB_URL: ${{ secrets.TEST_DB_URL" in build and "OTHER_TOKEN:" in build
+    assert any("add OTHER_TOKEN to it" in n for n in report["notes"])
+    settings = json.loads((root / ".claude" / "settings.json").read_text(encoding="utf-8"))
+    assert "Read(*.pem)" not in settings["permissions"]["deny"]
+    assert "index.crates.io" not in settings["sandbox"]["network"]["allowedDomains"]
+    assert any("*.pem" in n and "protected_paths" in n for n in report["notes"])
+    assert report["files"][".github/workflows/sdlc-design.yml"].endswith(
+        "may lack the commands.env lines for TEST_DB_URL, OTHER_TOKEN"
+    )
 
 
 def test_init_refuses_a_reserved_env_name(tmp_path):
@@ -259,6 +315,7 @@ def test_time_commands_raises_the_timeout_to_three_times_the_longest_run(tmp_pat
     cfg = yamlish.load_file(root / "sdlc.yaml")
     assert cfg["gate"]["command_timeout"] == 1800
     assert report["workflows"].startswith("raise timeout-minutes and SDLC_JOB_TIMEOUT_MINUTES")
+    assert "timed_out" not in report and not any(t["timed_out"] for t in report["targets"])
     # a quick project keeps the template's value and the job's minutes
     durations = iter([0, 1, 1, 2, 2, 3])
     root2 = tmp_path / "q"
@@ -267,6 +324,21 @@ def test_time_commands_raises_the_timeout_to_three_times_the_longest_run(tmp_pat
     report = sdlc_init.time_commands(root2, run_command=fake_run, clock=lambda: next(durations))
     assert report["command_timeout"].startswith("kept at 900")
     assert report["workflows"].startswith("unchanged")
+
+
+def test_time_commands_says_when_a_target_hit_the_timeout(tmp_path):
+    root = tmp_path / "p"
+    _write(root, "m.py", "x = 1\n")
+    _run_init(root)
+    durations = iter([0, 1, 1, 901, 901, 902])
+
+    def fake_run(command, cwd, timeout):
+        timed_out = "unittest" in command
+        return {"command": command, "exit_code": None if timed_out else 0, "output": ""}
+
+    report = sdlc_init.time_commands(root, run_command=fake_run, clock=lambda: next(durations))
+    assert [t["timed_out"] for t in report["targets"]] == [False, True, False]
+    assert report["timed_out"].startswith("a target hit the timeout")
 
 
 def test_the_session_s_bash_timeout_follows_command_timeout(tmp_path):
@@ -289,7 +361,7 @@ def test_ci_settings_follow_the_project(tmp_path):
         '  setup: ""\n'
         "sandbox:\n"
         '  allowed_domains: ["crates.io", "*.crates.io", "evil.com/path", "a b"]\n'
-        'protected_paths: ["*.pem", "config/secrets.json", "keys/"]\n',
+        'protected_paths: ["*.pem", "config/credentials.json", "migrations/", "gen/"]\n',
     )
     data = json.loads(run_phase.ci_settings_file(ROOT, tmp_path).read_text(encoding="utf-8"))
     allow = data["permissions"]["allow"]
@@ -302,11 +374,13 @@ def test_ci_settings_follow_the_project(tmp_path):
     for rule in (
         f"Read({base}/*.pem)",
         f"Read({base}/**/*.pem)",
-        f"Read({base}/config/secrets.json)",
-        f"Read({base}/keys/**)",
+        f"Read({base}/config/credentials.json)",
     ):
         assert rule in deny, rule
-    assert f"Read({base}/**/config/secrets.json)" not in deny  # anchored: the root only
+    assert f"Read({base}/**/config/credentials.json)" not in deny  # anchored: the root only
+    # the review of 1.0.29: the sandbox hides a denied path from the tests too, so a protected
+    # folder that is not secret-shaped stays readable (it stays unwritable: denyWrite)
+    assert not any("migrations" in r or "gen" in r for r in deny if r.startswith("Read("))
 
 
 # --- R33: the formatter hook --------------------------------------------------------------------
@@ -352,6 +426,28 @@ def test_the_hook_runs_the_project_s_commands(tmp_path, monkeypatch, check, bloc
     rel = os.path.join("src", "a & b.ts")
     assert calls == [f"fix {rel} False", f"{check} {rel} False"]  # the path whole, no key
     assert [c["exit_code"] for c in d.log["commands"]] == [0, int(check[-1])]
+
+
+def test_a_ci_session_does_not_run_the_project_s_commands(tmp_path, monkeypatch):
+    """The review of 1.0.29: a hook runs outside the sandbox, and a project command runs code
+    the session can write (an eslint configuration), so a CI session leaves it to the lint
+    target."""
+    root, target = _hook_project(tmp_path, "check1")
+    monkeypatch.setenv("LOG_DIR", str(tmp_path))
+    env = {"CLAUDE_PROJECT_DIR": str(root), "SDLC_GATE_COMMANDS": "runner"}
+    d = format_on_edit.decide(_payload(target, root), [], env=env)
+    assert not d.block and target.read_text(encoding="utf-8") == "x\n"
+    assert not (tmp_path / "calls.txt").exists()
+    assert format_on_edit.ci_session({"GITHUB_ACTIONS": "true"})
+
+
+def test_a_tool_npx_cannot_find_never_blocks(tmp_path):
+    def fake_run(command, cwd, timeout, env=None):
+        return {"exit_code": 1, "output": "npm error npx canceled due to missing packages"}
+
+    entry = {"glob": ["*"], "fix": [], "check": ["npx --no eslint {file}"]}
+    clean, _note = format_on_edit.run_project_commands(entry, "a.ts", tmp_path, [], fake_run)
+    assert clean
 
 
 def test_a_missing_tool_and_a_bad_mapping_never_block(tmp_path):

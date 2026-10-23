@@ -205,7 +205,8 @@ def build_values(args, det: detect_mod.Detection, source: str | None = None) -> 
     # empty is a legitimate answer here: a project with nothing to install runs nothing
     setup_cmd = args.setup if args.setup is not None else (det.setup.command or "")
     root = Path(args.root)
-    env = env_names(getattr(args, "env", None))
+    # a re-run keeps the names sdlc.yaml already lists, so a reinstalled workflow carries them
+    env = env_names([*existing_env(root), *(getattr(args, "env", None) or [])])
     return {
         "PROJECT_NAME": args.project_name or Path(args.root).resolve().name,
         "BUILD_CMD": _esc(build_cmd),
@@ -228,7 +229,7 @@ def build_values(args, det: detect_mod.Detection, source: str | None = None) -> 
         "TEST_PATHS": _yaml_list(detect_mod.test_paths(det.language)),
         "RISK_LIST": _risk_list_yaml(detect_mod.risk_list(root)),
         "ALLOWED_DOMAINS": _flow_list(detect_mod.registry_domains(det.signals)),
-        "PROTECTED_PATHS": _flow_list(detect_mod.secret_paths(root)),
+        "PROTECTED_PATHS": _flow_list(det.secrets),
         "FORMATTERS": _formatters_yaml(detect_mod.formatters(root, det.signals)),
         "COMMANDS_ENV": _flow_list(env),
         "FRAMEWORK_REPO": args.framework_repo,
@@ -458,6 +459,8 @@ OUTDATED_BUILD_CAPS = (
     "; replace sdlc-build.yml and sdlc-fix.yml to get the build caps (an older copy keeps "
     "the build and every fix round on the general caps)"
 )
+# R61 part 4: a kept copy never gains the commands.env lines the template copy would carry
+OUTDATED_ENV = "; the kept copy may lack the commands.env lines for {names}"
 BUILD_CAP_WORKFLOWS = (".github/workflows/sdlc-build.yml", ".github/workflows/sdlc-fix.yml")
 
 
@@ -482,6 +485,9 @@ def install_workflows(root: Path, values: dict[str, str], report: dict) -> None:
             report[rel] = OUTDATED.format(version=values["PLUGIN_VERSION"]) + (
                 OUTDATED_BUILD_CAPS if rel in BUILD_CAP_WORKFLOWS else ""
             )
+            names = json.loads(values.get("COMMANDS_ENV", "[]"))
+            if names and ENV_MARKER_RE.search(render_file(TEMPLATE / rel, values)):
+                report[rel] += OUTDATED_ENV.format(names=", ".join(names))
 
 
 # --- the maintain metric's observation (choice 87) ---------------------------------------------
@@ -672,6 +678,7 @@ def run(args) -> dict:
         report["proposed"] = _proposed(root, det)
         return report
     values = build_values(args, det, source)
+    was_off = _format_switch_off(root / "sdlc.yaml")
 
     # sdlc.yaml
     fresh_yaml = yamlish.loads(render_file(TEMPLATE / "sdlc.yaml", values))
@@ -719,8 +726,36 @@ def run(args) -> dict:
 
     # .claude/settings.json; R61: the secret-shaped paths unreadable, the registries reachable
     fresh_settings = json.loads(render_file(TEMPLATE / ".claude" / "settings.json", values))
-    fresh_settings["permissions"]["deny"] += read_deny_rules(detect_mod.secret_paths(root))
-    fresh_settings["sandbox"]["network"]["allowedDomains"] += json.loads(values["ALLOWED_DOMAINS"])
+    # both read from the sdlc.yaml just written, so an upgrade that kept the owner's
+    # protected_paths or allowed_domains never adds a rule the file does not carry
+    written = yamlish.load_file(sdlc_path)
+    protected = (
+        written.get("protected_paths") if isinstance(written.get("protected_paths"), list) else []
+    )
+    sandbox_cfg = written.get("sandbox") if isinstance(written.get("sandbox"), dict) else {}
+    domains = sandbox_cfg.get("allowed_domains")
+    fresh_settings["permissions"]["deny"] += read_deny_rules(
+        [p for p in det.secrets if p in protected]
+    )
+    fresh_settings["sandbox"]["network"]["allowedDomains"] += [
+        str(d) for d in (domains if isinstance(domains, list) else [])
+    ]
+    left_out = [p for p in det.secrets if p not in protected]
+    if left_out:
+        report.setdefault("notes", []).append(
+            "secret-shaped files found but not in protected_paths, which this sdlc.yaml keeps "
+            f"as written: {', '.join(left_out)}; add them there (and as Read deny rules) by hand"
+        )
+    missing_env = [n for n in json.loads(values["COMMANDS_ENV"]) if n not in existing_env(root)]
+    if missing_env:
+        report.setdefault("notes", []).append(
+            f"commands.env in sdlc.yaml is kept as written: add {', '.join(missing_env)} to it"
+        )
+    if was_off:
+        report.setdefault("notes", []).append(
+            "hooks.format_on_edit: false is no longer read (R33): the formatter runs on every "
+            "edit; map *.py to the project's own formatter under hooks.formatters"
+        )
     settings_path = root / ".claude" / "settings.json"
     if settings_path.exists():
         merged_s = merge_settings(
@@ -796,6 +831,24 @@ def _maintain_report(root: Path, source: str, why: str = "given") -> dict[str, s
     return {"source": source, "why": why, "observation": maintain_observation(root, source)}
 
 
+def existing_env(root: Path) -> list[str]:
+    """``commands.env`` of the project's ``sdlc.yaml``, or nothing."""
+    try:
+        commands = yamlish.load_file(root / "sdlc.yaml").get("commands")
+    except (OSError, ValueError):
+        return []
+    names = commands.get("env") if isinstance(commands, dict) else None
+    return [str(n) for n in names] if isinstance(names, list) else []
+
+
+def _format_switch_off(path: Path) -> bool:
+    try:
+        hooks_cfg = yamlish.load_file(path).get("hooks")
+    except (OSError, ValueError):
+        return False
+    return isinstance(hooks_cfg, dict) and hooks_cfg.get("format_on_edit") is False
+
+
 def read_deny_rules(patterns: list[str]) -> list[str]:
     """The ``Read`` deny rules for the secret-shaped patterns: at the root and in any folder,
     the template's own ``.env*`` spelling (R61 part 5)."""
@@ -805,7 +858,7 @@ def read_deny_rules(patterns: list[str]) -> list[str]:
 def _proposed(root: Path, det: detect_mod.Detection) -> dict[str, object]:
     """What the install proposes beyond the targets, for the owner to confirm in the
     change-0000 PR (R61 parts 1 and 5, R33)."""
-    secrets = detect_mod.secret_paths(root)
+    secrets = det.secrets
     return {
         "sandbox.allowed_domains": detect_mod.registry_domains(det.signals),
         "protected_paths": secrets,
@@ -850,7 +903,9 @@ def time_commands(root: Path, run_command=None, clock=None) -> dict:
         start = clock()
         result = run_command(str(command), root, current)
         seconds = round(clock() - start, 1)
-        targets.append({"target": name, "seconds": seconds, **result})
+        # a run the timeout stopped says so: its seconds are the timeout's, not the target's
+        timed_out = result.get("exit_code") is None
+        targets.append({"target": name, "seconds": seconds, "timed_out": timed_out, **result})
     longest = max(t["seconds"] for t in targets)
     wanted = max(floor, math.ceil(TIMEOUT_FACTOR * longest))
     report: dict = {"root": str(root), "targets": targets, "longest_seconds": longest}
@@ -868,8 +923,17 @@ def time_commands(root: Path, run_command=None, clock=None) -> dict:
     needed = run_phase.build_caps_minutes_needed(
         {**config, "gate": {**gate_cfg, "command_timeout": current}}
     )
-    workflow = (TEMPLATE / BUILD_CAP_WORKFLOWS[0]).read_text(encoding="utf-8")
-    job = int(_JOB_MINUTES_RE.search(workflow).group(1))  # type: ignore[union-attr]
+    installed = root / BUILD_CAP_WORKFLOWS[0]
+    source = installed if installed.is_file() else TEMPLATE / BUILD_CAP_WORKFLOWS[0]
+    found = _JOB_MINUTES_RE.search(source.read_text(encoding="utf-8"))
+    if found is None:  # an older copy exports no job minutes: the template's are the reference
+        found = _JOB_MINUTES_RE.search((TEMPLATE / BUILD_CAP_WORKFLOWS[0]).read_text("utf-8"))
+    job = int(found.group(1))  # type: ignore[union-attr]
+    if any(t.get("timed_out") for t in targets):
+        report["timed_out"] = (
+            "a target hit the timeout, so its run is longer than measured: re-run "
+            "--time-commands after this raise"
+        )
     if needed > job:
         report["workflows"] = (
             f"raise timeout-minutes and SDLC_JOB_TIMEOUT_MINUTES from {job} to {needed} in "

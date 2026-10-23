@@ -17,7 +17,15 @@ file type with no entry is left alone. One behaviour, always on: the switch
 on edit").
 
 This hook fails open: a missing tool, any exit code but a check's 1, a broken configuration
-or a timeout is reported on stderr and never blocks. The project's commands run without the
+or a timeout is reported on stderr and never blocks.
+
+A hook runs outside the Bash tool's sandbox. A project command runs project code (an eslint
+or prettier configuration, a module next to the file) that the session can write, so in a CI
+session (``CI_SESSION_ENV``, set by ``run_phase.session_env``, or ``GITHUB_ACTIONS``) the
+project's commands are not run, and the runner's lint target judges the change after the
+session; the session could otherwise reach the network or write the pinned framework's own
+hooks through them (the review of 1.0.29). Ruff runs isolated (``python -I``): a module the
+session wrote in the project cannot stand in for it. The project's commands run without the
 model credentials or the GitHub tokens in their environment (an eslint or prettier
 configuration is code the session can write), each within ``STEP_TIMEOUT`` and all of them
 within ``BUDGET``, under the handler's 60 seconds in hooks.json. Every command run, with its
@@ -27,6 +35,7 @@ exit code, is written to the hook's log line.
 from __future__ import annotations
 
 import os
+import re
 import shlex
 import shutil
 import subprocess
@@ -58,16 +67,31 @@ HIDDEN_ENV = (
 )  # fmt: skip
 # what cmd.exe expands even inside double quotes: a path holding one is not passed on Windows
 CMD_UNSAFE = ('"', "%", "!")
+# a CI session: gate.checks.COMMANDS_RUNNER_ENV, which run_phase.session_env sets on every run
+CI_SESSION_ENV = "SDLC_GATE_COMMANDS"
+CI_SKIPPED = (
+    "formatter: the project's commands for {rel} are not run in a CI session (they would run "
+    "session-writable code outside the sandbox); the lint target judges it after the session"
+)
+# what a missing tool prints on an exit 1 of its own (npx --no, a shell): not a finding
+MISSING_TOOL = re.compile(
+    r"npx canceled due to missing packages|could not determine executable to run|"
+    r"command not found|is not recognized as an internal or external command|E404",
+    re.IGNORECASE,
+)
 
 
 def ruff_command() -> list[str] | None:
     """Prefer `python -m ruff` (same interpreter as the hook), else `ruff` on PATH."""
     try:
         probe = subprocess.run(
-            [sys.executable, "-m", "ruff", "--version"], capture_output=True, text=True, timeout=10
+            [sys.executable, "-I", "-m", "ruff", "--version"],
+            capture_output=True,
+            text=True,
+            timeout=10,
         )
         if probe.returncode == 0:
-            return [sys.executable, "-m", "ruff"]
+            return [sys.executable, "-I", "-m", "ruff"]
     except (OSError, subprocess.TimeoutExpired):
         pass
     exe = shutil.which("ruff")
@@ -185,7 +209,7 @@ def run_project_commands(
             code = result.get("exit_code")
             ran.append({"command": command, "exit_code": code})
             output = str(result.get("output") or "").strip()
-            if kind == "check" and code == 1:
+            if kind == "check" and code == 1 and not MISSING_TOOL.search(output):
                 return False, output
             if kind == "fix" and code == 1:
                 continue  # a fixer's exit 1 (eslint --fix with findings left) is the check's
@@ -193,6 +217,11 @@ def run_project_commands(
                 why = "timed out or could not start" if code is None else f"exited {code}"
                 notes.append(f"`{command}` {why}: {output[-500:]}")
     return True, "\n".join(notes)
+
+
+def ci_session(environ: dict[str, str] | None = None) -> bool:
+    environ = os.environ if environ is None else environ
+    return bool(environ.get(CI_SESSION_ENV)) or environ.get("GITHUB_ACTIONS") == "true"
 
 
 def decide(payload: dict, argv: list[str], env: dict[str, str] | None = None) -> Decision:
@@ -216,6 +245,9 @@ def decide(payload: dict, argv: list[str], env: dict[str, str] | None = None) ->
             continue  # gone, or outside the project: not ours to format
         rel = os.path.relpath(path, root)
         entry = matching_entry(entries, rel.replace("\\", "/"))
+        if entry is not None and ci_session(env):
+            sys.stderr.write(CI_SKIPPED.format(rel=rel))
+            continue
         if entry is not None:
             clean, message = run_project_commands(entry, rel, root, ran)
             tool = "the project's check"

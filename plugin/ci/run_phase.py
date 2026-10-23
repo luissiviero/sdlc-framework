@@ -1938,9 +1938,14 @@ def project_domains(config: dict[str, Any]) -> list[str]:
 
 
 def protected_read_rules(config: dict[str, Any], base: str) -> list[str]:
-    """A ``Read`` deny rule for each ``protected_paths`` entry, anchored at the project root
-    (``//<root>/...``), and a second one in any folder for a bare name, which gitignore matches
-    at any depth (R61 part 5: the session cannot read a secret-shaped file it may not edit)."""
+    """A ``Read`` deny rule for each secret-shaped ``protected_paths`` entry
+    (``init.detect.is_secret_pattern``), anchored at the project root (``//<root>/...``), and
+    a second one in any folder for a bare name, which gitignore matches at any depth (R61 part
+    5: the session cannot read a secret-shaped file it may not edit). Any other entry
+    (``migrations/``, generated code) stays readable: the sandbox masks a denied path for
+    every command, the tests included (docs/notes/24.md)."""
+    from init.detect import is_secret_pattern  # noqa: PLC0415
+
     raw = config.get("protected_paths")
     if not isinstance(raw, list):
         return []
@@ -1948,6 +1953,8 @@ def protected_read_rules(config: dict[str, Any], base: str) -> list[str]:
     for entry in raw:
         text = str(entry).strip().replace("\\", "/")
         if not text or text.startswith("!") or ".." in text.split("/"):
+            continue
+        if not is_secret_pattern(text):
             continue
         anchored = "/" in text.rstrip("/")
         path = text.strip("/") + ("/**" if text.endswith("/") else "")
@@ -1973,8 +1980,8 @@ def ci_settings_file(plugin_dir: Path, root: Path) -> Path:
     R61 (1.0.29): the project's shape follows. The allow list gains the rule of each of
     ``commands.build``, ``test``, ``lint`` and ``setup`` (``sdlc_init.rule_for``, the rules
     the project's own settings carry), the network list the hosts of ``sandbox.
-    allowed_domains``, and the deny list a ``Read`` rule for each ``protected_paths`` entry
-    (``protected_read_rules``)."""
+    allowed_domains``, and the deny list a ``Read`` rule for each secret-shaped
+    ``protected_paths`` entry (``protected_read_rules``)."""
     source = Path(plugin_dir).joinpath(*SETTINGS_REL)
     data = json.loads(source.read_text(encoding="utf-8"))
     root_resolved = Path(root).resolve()
