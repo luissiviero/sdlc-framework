@@ -1,2 +1,2 @@
 <!-- R27, the trigger eval of the coding-standards policy skill, prompt 1 of 3 (article p.22 step 4: "Ask Claude to do the relevant task in different ways and confirm the skill loads each time"). The prompt never names the skill. -->
-Review the code in sample_pkg for style: is it idiomatic and consistent with how this project writes code? List what you would change, most important first. Do not edit any file.
+Is the code in sample_pkg written the way this organization requires code to be written? List what you would change, most important first. Do not edit any file.

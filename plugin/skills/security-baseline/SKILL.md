@@ -11,11 +11,11 @@ description: The organization's security baseline. Use whenever creating or chan
   security pass: "injection risks, authentication gaps, PII in logs, credentials in the
   diff"), p.37–38 (permission deny list: `.env*`, `secrets/`, `WebFetch`, `curl`, `wget`;
   credentials files and env vars denied), p.46–48 (recurring security scans).
-- Owner's security policy: the project's `policies/security-baseline.md`, written by the owner in their own
-  words (ROADMAP R27). Read it first when it exists: where it and this skill differ, the
-  source wins, over a project override too; a rule here it does not mention still
-  applies. No file means these rules alone. It is a guardrail path (decision 40): never
-  edit it in a run.
+- Owner's security policy: the project's `policies/security-baseline.md`, written by the
+  owner in their own words (ROADMAP R27). Read it first when it exists: where it and this
+  skill differ, the source wins, over a project override too; a rule here it does not
+  mention still applies. No file means these rules alone. It is a guardrail path (decision
+  40): never edit it in a run.
 - Project override: `.claude/skills/security-baseline/SKILL.md`.
 
 ## Rules

@@ -50,7 +50,8 @@ def test_policy_skill_shape(name):
     source = body.split("## Source", 1)[1].split("## ", 1)[0]
     assert re.search(r"p\.\d+", source), "cites article pages"
     assert "no owner source yet" not in source
-    assert f"`policies/{name}.md`" in source and "the\n  source wins" in source  # R27
+    flat = " ".join(source.split())
+    assert f"`policies/{name}.md`" in flat and "the source wins" in flat  # R27
     assert f".claude/skills/{name}/SKILL.md" in source  # project override
     check = body.split("## Check", 1)[1]
     call = f'python "${{CLAUDE_PLUGIN_ROOT}}/plugin/skills/{name}/check.py"'

@@ -130,8 +130,7 @@ CHECK_KEYS = {
     "denied": frozenset({"denied"}),
     "skill": frozenset({"skill"}),
 }
-SKILL_TOOL = "Skill"
-PLUGIN_NAMESPACE = "sdlc:"  # the plugin's skills load as ``sdlc:<name>``
+SKILL_TOOL = "Skill"  # the plugin's skills load as ``sdlc:<name>`` (docs/notes/61.md)
 OUTPUT_KEYS = frozenset({"contains", "not_contains", "regex"})
 # ``framework`` is where the CI workflows check out the pinned framework inside the project:
 # its own CLAUDE.md and .claude/ must not colour a case
@@ -499,38 +498,58 @@ def parse_result(stdout: str) -> dict[str, Any] | None:
 
 
 def _messages(stdout: str) -> list[Any]:
-    """Every message of a verbose run: the JSON list, or one JSON object per line."""
+    """Every message of a verbose run: the JSON list, or one JSON value per line (a list
+    extends, an object is one message), so a stray line before the output is skipped."""
     text = stdout.strip()
     try:
-        data = json.loads(text) if text else []
+        values = [json.loads(text)] if text else []
     except ValueError:
-        data = []
+        values = []
         for line in text.splitlines():
             try:
-                data.append(json.loads(line))
+                values.append(json.loads(line))
             except ValueError:
                 continue
-    return data if isinstance(data, list) else [data]
+    out: list[Any] = []
+    for value in values:
+        out.extend(value if isinstance(value, list) else [value])
+    return out
+
+
+def _blocks(message: Any, role: str) -> list[dict[str, Any]]:
+    """The content blocks of a ``role`` message (``assistant`` or ``user``), dicts only."""
+    if not isinstance(message, dict) or message.get("type") != role:
+        return []
+    inner = message.get("message")
+    content = inner.get("content") if isinstance(inner, dict) else None
+    return [b for b in content if isinstance(b, dict)] if isinstance(content, list) else []
 
 
 def skills_loaded(stdout: str) -> list[str]:
-    """The skills a run loaded, in order: each ``Skill`` tool call of an assistant message,
-    named by its ``skill`` input (``command`` on older builds), without the plugin's
-    ``sdlc:`` prefix (R27, the trigger evals; the shape is recorded in ``docs/notes/``)."""
+    """The skills a run loaded, in order, named as the call named them (``sdlc:<name>`` for
+    the plugin's, the bare name for a project's own): each ``Skill`` tool call of an
+    assistant message, by its ``skill`` input (``command`` on older builds), whose result is
+    not an error (a refused or unknown skill loads nothing). R27, the trigger evals; the
+    shape is recorded in ``docs/notes/61.md``."""
+    messages = _messages(stdout)
+    failed = {
+        block.get("tool_use_id")
+        for message in messages
+        for block in _blocks(message, "user")
+        if block.get("type") == "tool_result" and block.get("is_error")
+    }
     names = []
-    for message in _messages(stdout):
-        if not isinstance(message, dict) or message.get("type") != "assistant":
-            continue
-        content = (message.get("message") or {}).get("content")
-        for block in content if isinstance(content, list) else []:
-            if not isinstance(block, dict) or block.get("type") != "tool_use":
+    for message in messages:
+        for block in _blocks(message, "assistant"):
+            if block.get("type") != "tool_use" or block.get("name") != SKILL_TOOL:
                 continue
-            if block.get("name") != SKILL_TOOL:
+            if block.get("id") is not None and block.get("id") in failed:
                 continue
-            spec = block.get("input") or {}
+            spec = block.get("input")
+            spec = spec if isinstance(spec, dict) else {}
             name = str(spec.get("skill") or spec.get("command") or "").strip().lstrip("/")
             if name:
-                names.append(name.removeprefix(PLUGIN_NAMESPACE))
+                names.append(name)
     return names
 
 
@@ -642,7 +661,9 @@ def check_output(check: Mapping[str, Any], result_text: str) -> dict[str, Any]:
 
 
 def check_skill(check: Mapping[str, Any], loaded: list[str]) -> dict[str, Any]:
-    want = str(check["skill"]).removeprefix(PLUGIN_NAMESPACE)
+    """Exact names: ``sdlc:<name>`` is the plugin's skill, ``<name>`` a project's own (an
+    override's case must not pass on the plugin's copy)."""
+    want = str(check["skill"]).strip()
     if want in loaded:
         return _outcome("skill", True, f"{want} was loaded")
     seen = ", ".join(loaded) or "none"

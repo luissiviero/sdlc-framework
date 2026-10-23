@@ -25,7 +25,7 @@ would read as a policy.
 `CLAUDE.md` and `REVIEW.md`; Claude may draft one in a session the owner opens, never in a
 run. The owner's merge is the policy owner's sign-off (article p.22, step 5), and the next
 run reads the new text with no plugin version bump. The protected-path hook, the shell guard,
-the deny rules, the gate and the runner each refuse a run's edit here.
+the gate, the runner and, in CI, the deny rules and the sandbox each refuse a run's edit here.
 
 **The record.** The spec header of each change names the commit of every source that existed
 when the design ran, so the record shows which policy text judged the change.

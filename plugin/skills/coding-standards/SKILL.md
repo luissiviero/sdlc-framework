@@ -10,11 +10,11 @@ description: The organization's coding standards. Use whenever writing, changing
   "Things Claude gets wrong", and the p.20 example rules "never edit generated classes",
   "Do not bump dependency versions; the platform team owns them") and p.28 (verification
   block: "If a test fails, fix the code, not the test").
-- Owner's standards document: the project's `policies/coding-standards.md`, written by the owner in their own
-  words (ROADMAP R27). Read it first when it exists: where it and this skill differ, the
-  source wins, over a project override too; a rule here it does not mention still
-  applies. No file means these rules alone. It is a guardrail path (decision 40): never
-  edit it in a run.
+- Owner's standards document: the project's `policies/coding-standards.md`, written by the
+  owner in their own words (ROADMAP R27). Read it first when it exists: where it and this
+  skill differ, the source wins, over a project override too; a rule here it does not
+  mention still applies. No file means these rules alone. It is a guardrail path (decision
+  40): never edit it in a run.
 - Project override: a project replaces this skill with `.claude/skills/coding-standards/SKILL.md`.
 
 ## Rules

@@ -11,11 +11,11 @@ description: The organization's data and storage conventions. Use whenever addin
   p.22 (skill example rule 4: "fields tagged pii in the schema must never appear in logs or
   error messages"), p.34 (security pass: "PII in logs"), p.35 (hooks "can block edits to
   migrations and infra without a change ticket").
-- Owner's data policy and classification scheme: the project's `policies/data-conventions.md`, written by the owner in their own
-  words (ROADMAP R27). Read it first when it exists: where it and this skill differ, the
-  source wins, over a project override too; a rule here it does not mention still
-  applies. No file means these rules alone. It is a guardrail path (decision 40): never
-  edit it in a run.
+- Owner's data policy and classification scheme: the project's
+  `policies/data-conventions.md`, written by the owner in their own words (ROADMAP R27).
+  Read it first when it exists: where it and this skill differ, the source wins, over a
+  project override too; a rule here it does not mention still applies. No file means these
+  rules alone. It is a guardrail path (decision 40): never edit it in a run.
 - Project override: `.claude/skills/data-conventions/SKILL.md`.
 
 ## Rules

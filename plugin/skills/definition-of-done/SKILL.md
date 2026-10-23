@@ -13,11 +13,11 @@ description: What "done" means for a change in the SDLC framework. Use before re
   the tally), p.42 (the confidence gate decides whether a stage's output continues).
 - `docs/OPERATING_MODEL.md` sections 1, 3 and 6 of the framework: the artifact per phase, the
   deterministic checks of the gate, park never page.
-- Owner's definition of done: the project's `policies/definition-of-done.md`, written by the owner in their own
-  words (ROADMAP R27). Read it first when it exists: where it and this skill differ, the
-  source wins, over a project override too; a rule here it does not mention still
-  applies. No file means these rules alone. It is a guardrail path (decision 40): never
-  edit it in a run.
+- Owner's definition of done: the project's `policies/definition-of-done.md`, written by the
+  owner in their own words (ROADMAP R27). Read it first when it exists: where it and this
+  skill differ, the source wins, over a project override too; a rule here it does not
+  mention still applies. No file means these rules alone. It is a guardrail path (decision
+  40): never edit it in a run.
 - Project override: `.claude/skills/definition-of-done/SKILL.md`.
 
 ## Done, per phase
@@ -58,7 +58,9 @@ output:
   - adversarial_review needs: Run the adversarial-reviewer agent in a fresh context for this phase; it writes the verdict JSON.
 ```
 Deterministic backing, item by item (R27): (a) to (d), the gate itself (`plugin/gate/cli.py
-check`: artifacts, commands, evidence, plan sync, the adversarial verdict); (e), the gate's
+check`: artifacts, commands, evidence, plan sync, the adversarial verdict), except the
+screenshots for UI changes at (d), which no gate check requires (`REQUIRED_EVIDENCE` names
+the verifier report and the toolchain logs); (e), the gate's
 findings check on `evidence/review-findings.json`; "Always", the protected-paths hook, the
 shell guard and the gate's `guardrails` check for the guardrail files, the gate's
 `risk_list` check for the banner, the test ratchet and, on a fix-type change, the test-file

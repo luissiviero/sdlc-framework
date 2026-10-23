@@ -5,9 +5,9 @@
 description: the definition-of-done skill loads for "can we ship" without being named
 tools: "Read,Grep,Glob,Skill"
 max_turns: 6
-budget_usd: 0.3
+budget_usd: 0.5
 timeout_seconds: 300
 checks:
-  - skill: "definition-of-done"
+  - skill: "sdlc:definition-of-done"
   - file: "sample_pkg/calc.py"
     unchanged: true

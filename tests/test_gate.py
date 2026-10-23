@@ -2474,6 +2474,11 @@ def test_gate_cli_spec_header(project, capsys, tmp_path):
     gate_cli.main(["spec-header", "--root", str(root), "--id", "0001"])
     out = json.loads(capsys.readouterr().out)
     assert out["header"].endswith(f"policy sources: policies/security-baseline.md@{sha}")
+    # a committed source modified in the working tree is not the text that commit recorded
+    write(root / "policies" / "security-baseline.md", "Every endpoint is public.\n")
+    gate_cli.main(["spec-header", "--root", str(root), "--id", "0001"])
+    out = json.loads(capsys.readouterr().out)
+    assert out["header"].endswith("policy sources: policies/security-baseline.md@uncommitted")
     # no intent.md: the title falls back to status.yaml
     (change / "intent.md").unlink()
     gate_cli.main(["spec-header", "--root", str(root), "--id", "0001"])

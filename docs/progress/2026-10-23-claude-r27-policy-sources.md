@@ -24,8 +24,8 @@ This PR changes `plugin/` and `template/`, so it bumps the patch. It took 1.0.35
 5. **The spec header records each source's commit.** `gate/cli.py spec-header` appends `; policy sources: none | policies/<name>.md@<commit>`, with the commit that last changed the file, shortened to 12, or `@uncommitted`. The gate's required header fields are unchanged, so a spec already written still passes. The `spec-template` skill shows the new field.
 6. **The weekly scan quotes the owner's security source** beside the skill's rules, under the same rule (`plugin/scan/prompt.py`, `policy_source`). This is the code reader the proposal left to the owner; its recommendation, accepted with the row, was to build it.
 7. **The trigger evals** (article p.22 step 4).
-   - A fifth check kind, `skill`, in `plugin/evals/run.py`. A case with one runs with `--verbose`. The check passes when an assistant message holds a `Skill` tool call whose `skill` input names the skill, with or without `sdlc:`.
-   - Fifteen cases, `evals/cases/0008-*` to `0022-*`: three per policy skill, each asking for the task without naming the skill, with the tools `Read,Grep,Glob,Skill`, a budget of 0.30 USD and `sample_pkg/calc.py` unchanged.
+   - A fifth check kind, `skill`, in `plugin/evals/run.py`. A case with one runs with `--verbose`. The check passes when an assistant message holds a `Skill` tool call whose `skill` input is the name exactly (`sdlc:<name>` for the plugin's skill, the bare name for a project's own) and whose result is not an error.
+   - Fifteen cases, `evals/cases/0008-*` to `0022-*`: three per policy skill, each asking for the task without naming the skill, with the tools `Read,Grep,Glob,Skill`, a budget of 0.50 USD and `sample_pkg/calc.py` unchanged.
    - `template/evals/README.md` (and this repository's copy) documents the kind, and says a project that overrides a policy skill copies the framework's three cases in the override's PR.
    - NOTES §61 records the output shape from the documentation. The live check is the first `Framework evals` run on this branch.
 
@@ -59,6 +59,21 @@ This PR changes `plugin/` and `template/`, so it bumps the patch. It took 1.0.35
 
 ## Port list (HANDOFF.md, "Rules for every session")
 This PR touches `plugin/ci/run_phase.py` (one docstring), so it goes on the port list until the 1.0.0 read.
+
+## The fresh-context review
+A fresh-context sub-agent reviewed `65fe810`, report only. It found nothing blocking; what it found, each fixed with a test where code changed:
+1. **Two backing lines claimed a gate check that does not exist.** `ux-conventions` rule 7 and `definition-of-done` (d) cited the gate for screenshots, but `REQUIRED_EVIDENCE` names the verifier report and the toolchain logs only. Both lines now say no gate check requires a screenshot.
+2. **The `skill` check counted a call, not a load, and matched across names.** A `Skill` call whose `tool_result` is an error is no longer counted. Names are now matched exactly, so a project override's case (the bare name) cannot pass on the plugin's `sdlc:<name>`. The framework's cases name `sdlc:<name>`.
+3. **Uncommitted files:** stale; they were committed in `65fe810` while the review read the tree.
+4. **Odd output crashed `skills_loaded`, and a stray line before the JSON hid every call.** Both now parse: a non-dict message or input is skipped, and a line-by-line read extends with a list.
+5. **Two pages claimed a project deny rule the template does not carry yet.** `template/policies/README.md` and OPERATING_MODEL section 8 now say the rule is in CI and reaches a project with the owner's template row.
+6. **Test gaps, closed:**
+   - the `--paths` test lists `policies/README.md`;
+   - a modified committed source reads `@uncommitted`;
+   - an errored `Skill` call fails its case.
+7. **The live risks.**
+   - Two prompts read like the built-in review skills, so cases 0008 and 0011 are reworded around "this organization's" rules.
+   - The budget is 0.50 USD, as the other cases have.
 
 ## Citations checked
 - Decision 40 and #365's corrections.

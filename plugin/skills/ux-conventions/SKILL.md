@@ -48,6 +48,7 @@ It lists the UI files in the diff, flags copy hard-coded in markup, and reports 
 - UI changed but evidence/ holds no screenshot: run the visual loop (implement, screenshot, compare with the mock) and save the result
 - note: UI files changed: src/components/Form.tsx
 ```
-Deterministic backing, rule by rule (R27): rule 7, the evidence check of the gate
-(screenshots are evidence for UI changes, step 28). Rules 1 to 6 have no hook: only the
-REVIEW.md pass at (e) re-checks them. This skill is advisory (p.22 governance).
+Deterministic backing, rule by rule (R27): none of the seven has a hook or a gate check. The
+gate's evidence check requires the verifier report and the toolchain logs, not a screenshot
+(`REQUIRED_EVIDENCE`); only this skill's own advisory check looks for one (rule 7), and the
+REVIEW.md pass at (e) re-checks rules 1 to 7. This skill is advisory (p.22 governance).
