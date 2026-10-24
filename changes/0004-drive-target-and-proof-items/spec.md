@@ -4,7 +4,8 @@ Change id: 0004. Status: proposed. Produced by: sdlc plugin 1.0.38, /sdlc-design
 Read against `main` at `db47dbb` (plugin.json 1.0.39, R26 merged; this repository's pin
 1.0.38), 2026-10-24. The intent's Proposed outcome is restated below as checkable
 requirements; where the code of today differs from what the intent read at 1.0.38, the
-difference is named.
+difference is named. The panel's three decisions (Flagged concerns) are applied in R1, R4,
+R5 and R10.
 
 ## Requirements
 
@@ -13,7 +14,10 @@ difference is named.
   `deploy.command`); empty means no drive. Its comment names `SDLC_PROOF_DIR` (the absolute
   path of `changes/<id>-<slug>/evidence/proof/`), `SDLC_CHANGE_ID`, the folder, the exit
   rule (non-zero when any step failed), the PNG / JSON / text outputs, and the rule that the
-  drive runs on synthetic data, never personal data (data-conventions rule 1).
+  drive runs on synthetic data, never personal data (data-conventions rule 1). It also says
+  that the platform shell expands `$SDLC_PROOF_DIR` in the line (the Linux runner, a by-hand
+  run on Linux or macOS), that a by-hand run under `cmd.exe` writes `%SDLC_PROOF_DIR%`, and
+  that a Playwright test writes its files to `process.env.SDLC_PROOF_DIR` (panel decision 1).
 - The drive's environment is the runner's `commands_env()` (`plugin/ci/run_phase.py`: no
   model credential, no GitHub token, no git credential) plus the two variables above and the
   `commands.env` names the owner gave the targets (R61). Nothing else is added; no network
@@ -84,8 +88,13 @@ difference is named.
   re-check, 45, before the fix session, 185 today and 180 with a drive, then the step, 50 or
   55, and the judge, 10: 290 of 260 today and 290 of 260 with a drive). Each workflow
   template's timeout comment (`sdlc-build.yml`, `sdlc-fix.yml`, `sdlc-test.yml`,
-  `sdlc-deploy.yml`) states the arithmetic with the drive and names the three. See Flagged
-  concerns, item 2, for the fix round at (e).
+  `sdlc-deploy.yml`) states the arithmetic with the drive and names the three. The fix
+  template's comment states the worst case (the 45 of R51's re-check come only when the
+  default branch moved; 290 of 260 with or without a drive) and that a job past 260 is
+  cancelled by GitHub while the park steps run only on a failed step, so such a round ends
+  with no park; no cap changes, and the owner raises `timeout-minutes` together with
+  `SDLC_JOB_TIMEOUT_MINUTES`, or amends the build caps, in a reviewed PR (panel decision 2;
+  Flagged concerns, item 2).
 
 ### R5. Proof items have a fixed shape (skill `plan-template`)
 - `## Proof` of `plan.md` lists one item per line, three kinds:
@@ -99,14 +108,18 @@ difference is named.
   allowed beside the items; only a line that starts with `test:`, `screenshot:` or `state:`
   (after the list marker) is an item, and the gate's parser reads only those.
 - Comparison rules (one definition, in `plugin/gate/artifacts.py`, used by the gate and by
-  `collect.py`): the expected value is parsed as JSON when it parses (`200`, `true`, `"x"`,
-  `null`) and is a string otherwise; `==` compares the parsed values (so `200` equals the
-  JSON number 200 and the text `200`); `contains` is substring of the seen value's string
-  form, or membership when the seen value is a list; `matches` is Python `re.search` on the
-  string form. With `line`, the item holds when any line of the text file satisfies the
-  comparison, and `seen` reports the first line that does not, or the file's first line. A
+  `collect.py`; panel decision 3): one parse applies to the expected value and to each line
+  of a text file: JSON when it parses (`200`, `true`, `"x"`, `null`), else the string
+  itself. `==` holds only when the two parsed values have the same JSON type and value (a
+  bool never equals a number, `1` never equals `1.0`; the text `200` and the JSON number
+  200 both equal `== 200`). The string form for `contains` and `matches` is the value itself
+  for a string and `json.dumps` of the value otherwise; `contains` is substring of that
+  form, or membership when the seen value is a list; `matches` is Python `re.search` on it.
+  With `line`, the item holds when any line of the text file satisfies the comparison, and
+  `seen` on a `differs` is the file's first line; an empty text file is `not produced`. A
   file over 1 MiB, unreadable, not valid JSON (for a dotted path) or missing the path is
-  `not produced`, with `seen` saying which.
+  `not produced`, with `seen` saying which. The `plan-template` skill states the any-line
+  rule and the one parse beside the grammar.
 - A malformed item (a `state:` line with a verb other than the three, no file, a `screenshot:`
   that does not end in `.png` or does not sit under `evidence/proof/`) is refused at gate (b)
   by name and line (R9), never silently ignored.
@@ -184,7 +197,11 @@ difference is named.
 - `sdlc_init.py` renders `{{DRIVE_CMD}}` into `template/sdlc.yaml` and accepts `--drive`
   (`""` = none), as `--setup` does; the detection report shows the proposal under the
   targets. `plugin/commands/sdlc-init.md` says what is detected and that the owner confirms
-  it like the three targets. An existing `sdlc.yaml` without the key needs no edit.
+  it like the three targets, and adds one sentence: the platform shell expands
+  `$SDLC_PROOF_DIR` in the proposed line, a by-hand run under `cmd.exe` writes
+  `%SDLC_PROOF_DIR%`, and the Playwright test writes its files to
+  `process.env.SDLC_PROOF_DIR` (panel decision 1). An existing `sdlc.yaml` without the key
+  needs no edit.
 
 ### R11. The lists that know three logs know four, the drive's only when it is set
 - `plugin/gate/artifacts.py`: `EVIDENCE_DRIVE = "drive.log"`, `EVIDENCE_PROOF = "proof"`;
@@ -286,10 +303,10 @@ images.
 
 **`plugin/gate/artifacts.py`** owns the grammar: the item regex (`PROOF_ITEM_RE`), the
 parser `proof_items(plan_text) -> list[ProofItem]` (kind, file, path, verb, value, the
-line), `malformed_proof_items(plan_text)`, the comparison `compare_state(item, proof_dir)
--> (outcome, seen)`, the manifest name, `EVIDENCE_DRIVE`, `EVIDENCE_PROOF`, and the helper
-`target_logs(drive_set)` the four-log readers call. One definition, as `SPEC_SECTIONS` and
-the ratchet line are today.
+line), `malformed_proof_items(plan_text)`, the one parse `parse_value(text)` and the
+comparison `compare_state(item, proof_dir) -> (outcome, seen)` (R5), the manifest name,
+`EVIDENCE_DRIVE`, `EVIDENCE_PROOF`, and the helper `target_logs(drive_set)` the four-log
+readers call. One definition, as `SPEC_SECTIONS` and the ratchet line are today.
 
 **`plugin/gate/checks.py`**: `drive_from_config(config) -> str | None` beside
 `commands_from_config`; `drive_timeout(ctx)`; `run_drive(ctx, head, phase) -> run` (clear
@@ -303,14 +320,14 @@ the required list through the helper. The `evidence` deferred reason names the d
 when set.
 
 **`plugin/gate/gate.py`** `run_deferred_commands`: after the targets' runs and before the
-logs are written, when the drive is set, `runs["drive"] = run_drive(...)`; the drive's
-not-started exits go through `not_started` like the others (one re-run, decision 29);
-`write_deferred_logs` writes `drive.log` whenever a drive run exists (no mark to find);
-`replaced["proof"] = judge_proof(...)` when `proof` is among the deferred checks (the
-session's gate wrote it deferred; an older record without the entry gets none, and the
-step adds nothing it cannot replace: the record's shape is kept). `DEFERRABLE_CHECKS =
-("commands", "evidence", "proof")`. The verdict rule is unchanged: any failed entry parks,
-and `auto_round` decides whether the park is a round.
+logs are written, when the drive is set and the phase is (c), (d) or (e), `runs["drive"] =
+run_drive(...)`; the drive's not-started exits go through `not_started` like the others (one
+re-run, decision 29); `write_deferred_logs` writes `drive.log` whenever a drive run exists
+(no mark to find); `replaced["proof"] = judge_proof(...)` when `proof` is among the deferred
+checks (the session's gate wrote it deferred; an older record without the entry gets none,
+and the step adds nothing it cannot replace: the record's shape is kept).
+`DEFERRABLE_CHECKS = ("commands", "evidence", "proof")`. The verdict rule is unchanged: any
+failed entry parks, and `auto_round` decides whether the park is a round.
 
 **`plugin/ci/auto_round.py`** `red_targets`: a failed `proof` entry whose details carry
 `items` contributes one red entry `{"target": "proof", "items": [the failed approved items
@@ -363,10 +380,11 @@ proposal (`npx playwright test --output "$SDLC_PROOF_DIR"`, origin "detected:
 @playwright/test in package.json"; setup gains ` && npx playwright install --with-deps`),
 `{{DRIVE_CMD}}`, `--drive`, the report's `targets.drive`.
 
-**`template/sdlc.yaml`**: `commands.drive` with its comment; `gate.drive_timeout: 300` and
-`gate.proof_image_kb: 50` with comments saying they are read only when the drive is set.
-**Workflow templates**: comment lines only (R4). **Skills, commands, agents**: the text of
-R5, R11 and R15.
+**`template/sdlc.yaml`**: `commands.drive` with its comment (R1, the shell sentence
+included); `gate.drive_timeout: 300` and `gate.proof_image_kb: 50` with comments saying they
+are read only when the drive is set. **Workflow templates**: comment lines only (R4, the fix
+template's worst case and cancellation sentence included). **Skills, commands, agents**: the
+text of R5, R10, R11 and R15.
 
 **Error behaviour.** A drive that cannot start: one re-run, then a park with
 `COMMANDS_CRASH_NEED`. A drive that times out or exits non-zero: a round. An approved item
@@ -435,10 +453,10 @@ REVIEW.md pass; this repository's `sdlc.yaml` and workflow copies.
 - Unit tests, by behaviour, all green under `python -m pytest`:
   - a `sdlc.yaml` with `commands.drive` set runs the drive in the runner's step after the
     three targets, with `SDLC_PROOF_DIR` and `SDLC_CHANGE_ID` in its environment and no
-    token or model credential, writes `evidence/drive.log` at (c), (d) and (e), clears
-    `proof/` first and writes `manifest.json`; with it empty, nothing of this runs: the
-    logs, the verdict and the job figures are those of today, and the gate record differs
-    only by the always-ok `proof` entry;
+    token or model credential, writes `evidence/drive.log` at (c), (d) and (e) and never at
+    (b), clears `proof/` first and writes `manifest.json`; with it empty, nothing of this
+    runs: the logs, the verdict and the job figures are those of today, and the gate record
+    differs only by the always-ok `proof` entry;
   - a red or timed-out drive is a red target that starts a round with `drive.log` as its
     constraint; a drive that does not start is re-run once and then parks;
   - the `proof` entry lists the approved items with `matches` / `differs` / `not produced`;
@@ -446,13 +464,18 @@ REVIEW.md pass; this repository's `sdlc.yaml` and workflow copies.
     expected and the seen value, whose PR line reads `proof (N items)`, and whose judge
     prompt names `drive.log` and the `proof` entry; an item added in (c) is reported and
     never fails the entry;
+  - the comparison of R5: `== 1` against JSON `true` differs, `contains true` against JSON
+    `true` matches, the text `200` and the JSON number 200 both match `== 200`, `1` never
+    equals `1.0`, an empty text file is `not produced`, and `seen` on a `line` differs is the
+    first line;
   - an image over `gate.proof_image_kb` or past the tenth is deleted, listed in `dropped`,
     and its item is `not produced`;
   - gate (b) parks a plan that names a `state` or `screenshot` item while the drive is empty
     and a malformed item, and passes a prose-only Proof;
   - `commands_timeout_seconds`, `build_caps_minutes_needed` and the (e) caps hold the figures
     of R4 with and without a drive (a fix round at (e) with a drive: 180 minutes of session);
-    the four workflow templates' comments state them;
+    the four workflow templates' comments state them, the fix template's with the worst case
+    and the cancellation sentence;
   - `commands_from_config`, `base_update.recheck` and `release.recheck_targets` never return
     or run the drive;
   - `collect.py` runs the drive the same way, reports the items and exits 1 on a red one;
@@ -464,12 +487,14 @@ REVIEW.md pass; this repository's `sdlc.yaml` and workflow copies.
   - `triage.logs_for` adds `drive.log` on a red `commands` entry and `drive.log` plus
     `proof/manifest.json` on a failed `proof` entry;
   - `/sdlc-init` proposes the Playwright drive and the browser install only when
-    `@playwright/test` is a dependency, `""` otherwise, writes no skeleton, and renders the
-    three new keys;
+    `@playwright/test` is a dependency, `""` otherwise, writes no skeleton, renders the
+    three new keys, and its command text and the template's comment carry the shell
+    sentence of R1 and R10;
   - the `ux-conventions` check reads `proof/` and `screenshots/`, and the two skill texts
     say what the gate now checks;
-  - the command, skill and agent texts carry the item grammar, the step-3 rule, the
-    verifier's step and the reviewer's angle (the existing text tests extended).
+  - the command, skill and agent texts carry the item grammar with the any-line rule and the
+    one parse, the step-3 rule, the verifier's step and the reviewer's angle (the existing
+    text tests extended).
 - `python -m compileall -q plugin tests tasks.py .github/scripts` prints nothing and exits 0;
   `python -m ruff check . && python -m ruff format --check .` is clean.
 - `.claude-plugin/plugin.json` is bumped to the next free patch and `python tasks.py

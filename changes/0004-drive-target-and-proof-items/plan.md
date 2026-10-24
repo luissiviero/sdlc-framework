@@ -1,14 +1,15 @@
 # Plan: Drive target and proof items (from intent.md 2026-10-23, spec.md 2026-10-24)
 
 Read against `main` at `db47dbb` (plugin.json 1.0.39) with Read, Grep and Glob only. The
-spec's requirement numbers (R1 to R16) are cited beside each step.
+spec's requirement numbers (R1 to R16) are cited beside each step. The panel's three
+decisions of gate (b) are folded into steps 1, 11 and 12.
 
 ## Files that change
 - `plugin/gate/artifacts.py` — `EVIDENCE_DRIVE`, `EVIDENCE_PROOF`, `PROOF_MANIFEST`,
   `PROOF_MAX_IMAGES`, `PROOF_IMAGE_SUFFIXES`, `STATE_FILE_MAX_BYTES`; `target_logs(drive_set)`
   and `required_evidence(phase, drive_set)`; the item grammar: `PROOF_ITEM_RE`, `ProofItem`,
-  `proof_items(plan_text)`, `malformed_proof_items(plan_text)`, `parse_expected(value)`,
-  `compare_state(item, proof_dir) -> (outcome, seen)` (R5, R6, R8, R11)
+  `proof_items(plan_text)`, `malformed_proof_items(plan_text)`, `parse_value(text)`,
+  `string_form(value)`, `compare_state(item, proof_dir) -> (outcome, seen)` (R5, R6, R8, R11)
 - `plugin/gate/checks.py` — `drive_from_config(config)`, `drive_timeout(ctx)`,
   `drive_env(ctx)`, `clear_proof_dir`, `apply_image_caps`, `write_manifest`, `run_drive(ctx,
   head, phase)`, `judge_proof(ctx, manifest)`, `check_proof(ctx)` (c, d, e), `check_proof_items
@@ -16,8 +17,9 @@ spec's requirement numbers (R1 to R16) are cited beside each step.
   through `target_logs`; `EVIDENCE_DEFERRED_REASON` names the drive log when set;
   `CHECKS_BY_PHASE` gains the two checks (R2, R3, R5, R7, R9, R11)
 - `plugin/gate/gate.py` — `DEFERRABLE_CHECKS` gains `proof`; `run_deferred_commands` runs
-  the drive after the targets and judges `proof`; `write_deferred_logs` and `deferred_logs`
-  write and read the drive log through `target_logs` (R2, R7)
+  the drive after the targets at (c), (d) and (e) only and judges `proof`;
+  `write_deferred_logs` and `deferred_logs` write and read the drive log through
+  `target_logs` (R2, R7)
 - `plugin/gate/limits.py` — `run_caps(gate_settings, build, less_minutes=0)` (floor 30),
   `drive_minutes(config)`; `check_limits` subtracts them at (e) and parks on a floor hit (R4)
 - `plugin/gate/cli.py` — nothing but the docstring line naming the drive in `run-commands`
@@ -49,7 +51,8 @@ spec's requirement numbers (R1 to R16) are cited beside each step.
 - `plugin/init/sdlc_init.py` — `{{DRIVE_CMD}}`, `--drive`, the report's `targets.drive`,
   the proposed block's line; `keep_build_caps` keeps calling `limits.run_caps(old_gate,
   False)` unchanged (R10)
-- `plugin/skills/plan-template/SKILL.md` — the `## Proof` item grammar (R5)
+- `plugin/skills/plan-template/SKILL.md` — the `## Proof` item grammar, with the any-line
+  rule and the one parse of R5 (panel decision 3)
 - `plugin/skills/ux-conventions/check.py` — images read from `evidence/proof/` and
   `evidence/screenshots/`; the finding's text names both folders (R11)
 - `plugin/skills/ux-conventions/SKILL.md` — "Check" and "Deterministic backing" name the two
@@ -59,14 +62,17 @@ spec's requirement numbers (R1 to R16) are cited beside each step.
   by-hand screenshots are still required by no check (R11)
 - `plugin/agents/verifier.md` — the (d) step on `proof/` images (R15)
 - `plugin/agents/adversarial-reviewer.md` — angle 9, the drive reads or writes (R15)
-- `plugin/commands/sdlc-init.md` — the drive proposal in step 0 (R10)
+- `plugin/commands/sdlc-init.md` — the drive proposal in step 0, with the shell sentence of
+  R10 (panel decision 1)
 - `plugin/commands/sdlc-build.md` — step 4's screenshot item with a drive (R15)
 - `plugin/commands/sdlc-test.md` — step 3 follows the drive; the "evidence missing" sentence
   goes (R15)
-- `template/sdlc.yaml` — `commands.drive`, `gate.drive_timeout`, `gate.proof_image_kb` with
-  comments (R1, R4, R8)
+- `template/sdlc.yaml` — `commands.drive` with its comment (the shell sentence of R1
+  included, panel decision 1), `gate.drive_timeout`, `gate.proof_image_kb` with comments
+  (R1, R4, R8)
 - `template/.github/workflows/sdlc-build.yml` — timeout comment only (R4)
-- `template/.github/workflows/sdlc-fix.yml` — timeout comment only (R4)
+- `template/.github/workflows/sdlc-fix.yml` — timeout comment only: the drive's figure, the
+  worst case with R51's re-check and the cancellation sentence of R4 (panel decision 2)
 - `template/.github/workflows/sdlc-test.yml` — timeout comment only (R4)
 - `template/.github/workflows/sdlc-deploy.yml` — timeout comment only (R4)
 - `.claude-plugin/plugin.json` — the next free patch version (R16)
@@ -84,20 +90,26 @@ spec's requirement numbers (R1 to R16) are cited beside each step.
 - `tests/test_release.py` — the release notes' evidence line still renders; `recheck_targets`
   never runs a drive
 - `tests/test_triage.py` — `logs_for`
-- `tests/test_init.py` — the Playwright proposal, `--drive`, the rendered keys
-- `tests/test_templates.py` — the four comments and the three keys
+- `tests/test_init.py` — the Playwright proposal, `--drive`, the rendered keys, the shell
+  sentence in the rendered comment and in `sdlc-init.md`
+- `tests/test_templates.py` — the four comments (the fix template's worst case and
+  cancellation sentence) and the three keys
 - `tests/test_base_update.py` — `recheck` never runs a drive
-- `tests/test_commands_and_skills.py` — the skill grammar, the command texts, the two
-  policy skill sentences
+- `tests/test_commands_and_skills.py` — the skill grammar with the any-line rule and the one
+  parse, the command texts, the two policy skill sentences
 - `tests/test_agents.py` — the verifier's step and the reviewer's angle
 - `tests/test_policy_skills.py` — the ux check's folders and finding text
 
 ## Order of work
 1. Grammar and constants (`artifacts.py`, `tests/test_proof.py`): the item regex and parser
    (`test:`, `screenshot:` with optional `vs mock/<file>`, `state:` with the three verbs and
-   the `line` path), `malformed_proof_items`, `parse_expected`, `compare_state` on a JSON
-   file (dotted key, `items.0.name`), on a text file (`line`), over 1 MiB, missing path,
-   unreadable; `target_logs` and `required_evidence`. Pure functions, tests first.
+   the `line` path), `malformed_proof_items`, `parse_value` (JSON when it parses, else the
+   string), `string_form` (the string itself, else `json.dumps`), `compare_state` on a JSON
+   file (dotted key, `items.0.name`), on a text file (`line`, any line, `seen` the first
+   line), over 1 MiB, empty, missing path, unreadable; the panel's four cases: `== 1`
+   against JSON `true` differs, `contains true` against JSON `true` matches, the text `200`
+   and the JSON number 200 both match `== 200`, `1` never equals `1.0`; `target_logs` and
+   `required_evidence`. Pure functions, tests first.
 2. Config readers and the (b) check (`checks.py`, `tests/test_gate.py`):
    `drive_from_config` (empty, placeholder and missing read as None), `drive_timeout`
    (default 300), `check_proof_items` added to `CHECKS_BY_PHASE["b"]`: parks on an item
@@ -116,14 +128,18 @@ spec's requirement numbers (R1 to R16) are cited beside each step.
    `judge_targets` with a fourth run; `check_evidence` requiring `drive.log` at (d) and (e)
    when the drive is set.
 5. The runner's step (`gate.py`, `tests/test_gate.py`): `DEFERRABLE_CHECKS`, the drive after
-   the targets in `run_deferred_commands`, `not_started` covering it, `write_deferred_logs`
-   writing `drive.log` at (c) too, `replaced["proof"]`; the record keeps its shape; a red
-   drive parks like a red target; a missing manifest after a drive run fails `proof` with the
-   step's own reason (no `items`, so never a round).
+   the targets in `run_deferred_commands` at (c), (d) and (e) only (gate (b) runs the step
+   too, since `CHECKS_BY_PHASE["b"]` holds `check_commands`: a test asserts no drive runs
+   there), `not_started` covering it, `write_deferred_logs` writing `drive.log` at (c) too,
+   `replaced["proof"]`; the record keeps its shape; a red drive parks like a red target; a
+   missing manifest after a drive run fails `proof` with the step's own reason (no `items`,
+   so never a round).
 6. The round (`auto_round.py`, `tests/test_auto_round.py`): `red_targets` on a failed `proof`
-   entry and on `evidence` red on `drive.log`; `targets_summary`, `red_targets_request` and
-   `REQUEST_TEXT` with the items; a failed `proof` entry without `items` still parks;
-   `JUDGE_PROMPT` with `drive.log` and the `proof` entry.
+   entry (also when the `commands` entry is green: today the function returns as soon as
+   `commands` passed, `auto_round.py:114`, and must read `proof` first) and on `evidence`
+   red on `drive.log`; `targets_summary`, `red_targets_request` and `REQUEST_TEXT` with the
+   items; a failed `proof` entry without `items` still parks; `JUDGE_PROMPT` with
+   `drive.log` and the `proof` entry.
 7. Time (`limits.py`, `run_phase.py`, `tests/test_ci.py`, `tests/test_gate.py`):
    `limits.run_caps(..., less_minutes)` with the floor, `drive_minutes`, `check_limits` at
    (e); `commands_timeout_seconds` with the drive; `run_phase.run_caps` and
@@ -146,13 +162,15 @@ spec's requirement numbers (R1 to R16) are cited beside each step.
     drive.
 11. `/sdlc-init` (`detect.py`, `sdlc_init.py`, `template/sdlc.yaml`, `sdlc-init.md`,
     `tests/test_init.py`, `tests/test_templates.py`): `Detection.drive`, the Playwright
-    proposal and setup suffix, `{{DRIVE_CMD}}`, `--drive`, the three keys with comments; the
+    proposal and setup suffix, `{{DRIVE_CMD}}`, `--drive`, the three keys with comments, the
+    shell sentence in the template comment and in `sdlc-init.md` (panel decision 1); the
     fixture Node project without Playwright gets `""`; a `package.json` with
     `@playwright/test` under `dependencies` and one under `devDependencies` each get the line.
-12. Texts (`plan-template/SKILL.md`, `ux-conventions/SKILL.md`, `definition-of-done/SKILL.md`,
-    `verifier.md`, `adversarial-reviewer.md`, `sdlc-build.md`, `sdlc-test.md`, the four
-    workflow comments, `tests/test_commands_and_skills.py`, `tests/test_agents.py`,
-    `tests/test_templates.py`).
+12. Texts (`plan-template/SKILL.md` with the any-line rule and the one parse,
+    `ux-conventions/SKILL.md`, `definition-of-done/SKILL.md`, `verifier.md`,
+    `adversarial-reviewer.md`, `sdlc-build.md`, `sdlc-test.md`, the four workflow comments
+    with the fix template's worst case and cancellation sentence (panel decision 2),
+    `tests/test_commands_and_skills.py`, `tests/test_agents.py`, `tests/test_templates.py`).
 13. Version bump (`.claude-plugin/plugin.json`) to the next free patch; `python tasks.py
     verify`; the build session's record lists the `run_phase.py` lines (port list).
 
@@ -177,24 +195,32 @@ spec's requirement numbers (R1 to R16) are cited beside each step.
   gets the same three. `collect.py`'s JSON gains a key; its readers are the phase commands'
   prose. `Detection` gains a field; `as_dict` and the init report tests change.
   `template/sdlc.yaml` gains three keys read only when the drive is set; an existing project
-  file without them reads as before.
+  file without them reads as before. `run_phase.commands_summary` keeps reporting the
+  `commands` and `evidence` entries only; the `proof` verdict reaches the owner through the
+  gate record, the PR body and the round's request, not through the runner's JSON (named,
+  not changed: the intent lists `commands_summary` among the four-log lists, which it joins
+  through `target_logs`).
 - **The riskiest step is 5, the runner's step.** `run_deferred_commands` is the one place a
   red target becomes a park and a round; the drive adds a fourth run, a fourth log written
   even where no mark exists, and a second replaced entry. Mistakes park every CI run of every
-  project at (c), (d) and (e). Mitigations: the record's shape and order are kept (only
-  deferred entries are replaced, as today); the drive runs only when `drive_from_config` is
-  not None, so the no-drive path is the code of today plus one branch and an always-ok
-  entry; the existing tests of the step (`test_the_runner_s_commands_step_*`) stay green
-  untouched; the new tests run the step with a real drive one-liner on Windows and Linux (the
-  platform shell, `$SDLC_PROOF_DIR` is not used in the test's command: the test reads the
-  variable in Python).
+  project at (c), (d) and (e), and a drive run at (b) would park a design on a tree with no
+  implementation. Mitigations: the record's shape and order are kept (only deferred entries
+  are replaced, as today); the drive runs only when `drive_from_config` is not None and the
+  phase is (c), (d) or (e), so the no-drive path is the code of today plus one branch and an
+  always-ok entry; the existing tests of the step (`test_the_runner_s_commands_step_*`) stay
+  green untouched; the new tests run the step with a real drive one-liner on Windows and
+  Linux (the platform shell, `$SDLC_PROOF_DIR` is not used in the test's command: the test
+  reads the variable in Python) and once at (b) asserting no drive ran.
 - **The step's own budget.** `run_gate_commands` waits `commands_timeout_seconds`; the drive's
   clearing, caps and manifest are file operations inside that budget, and the drive itself is
   bounded by `drive_timeout`. A drive that ignores `SDLC_PROOF_DIR` and writes elsewhere
   produces nothing under `proof/`: every item is `not produced`, a round; the request names
   the items, so the fix session sees it. A drive that writes thousands of files: only the
   images are capped; the manifest lists every file; the evidence commit grows. Named, not
-  mitigated beyond the caps the intent fixes.
+  mitigated beyond the caps the intent fixes. A `state:` or `screenshot:` path is kept inside
+  `evidence/proof/` once resolved (`..` and a link refused as `not produced`, through
+  `artifacts.linked_part` and a resolved-prefix check), the cheap containment the reviewer
+  asked for.
 - **The approved plan at (c).** `judge_proof` reads the merge-base copy; on the fast lane
   the design commit. A plan that gains a `state` item in (c) is reported `approved: false`,
   never the bar, so a session cannot raise its own bar, and cannot lower it either (the
@@ -212,12 +238,14 @@ spec's requirement numbers (R1 to R16) are cited beside each step.
   `ctx.phase`, which is the change's phase for both; the test of step 7 asserts the two
   agree for the (e) run and for a fix round at (e). The floor of 30 prevents a nonsensical
   `drive_timeout` from zeroing the session. A fix round at (e) is already over its job's
-  bound (spec concern 2); with the subtraction it stays at 290.
+  bound (spec concern 2, decided by the panel: named, not fixed); with the subtraction it
+  stays at 290, and the fix template's comment says a job past 260 is cancelled with no park.
 - **Playwright's `--output`.** Playwright writes test artifacts (traces, `testInfo.outputPath`)
   under `--output`; a `page.screenshot({path})` with a relative path is relative to the
   working directory, not to `--output`. The proposed line is a proposal the owner confirms;
-  the template comment says the test writes its screenshots under `SDLC_PROOF_DIR`. A wrong
-  line costs `not produced` items and a round, never a silent pass.
+  the template comment says the test writes its files to `process.env.SDLC_PROOF_DIR` and
+  that `cmd.exe` by hand needs `%SDLC_PROOF_DIR%` (panel decision 1). A wrong line costs
+  `not produced` items and a round, never a silent pass.
 - **Windows.** `clear_proof_dir` must remove read-only files (`shutil.rmtree` with an
   `onerror` that clears the bit) and recreate the folder; paths in the manifest use `/`.
   `run_command` already runs the platform shell.
@@ -228,7 +256,10 @@ spec's requirement numbers (R1 to R16) are cited beside each step.
   and skills (`test_sdlc_test_flow_matches_step_28`, `test_plan_template_ratchet_proof_item_
   present`); step 12 updates them with the texts, never weakens them. The two policy skill
   texts (`definition-of-done`, `ux-conventions`) must stay true to the code after step 4:
-  the gate checks `screenshot:` items under `proof/` only when a drive is set.
+  the gate checks `screenshot:` items under `proof/` only when a drive is set. The messages
+  of `release/cli.py` and `merge_step.py` that say "commands check" for a record still
+  deferred are left as they are: a `proof` entry is deferred only beside a `commands` entry,
+  so the wording stays true.
 - **Nothing must change before the plan can be written.**
 
 ## Options not taken
@@ -252,9 +283,10 @@ spec's requirement numbers (R1 to R16) are cited beside each step.
   by-hand run still sees it.
 - Raising `timeout-minutes` of the four jobs: refused by the intent; the drive's own
   timeout and the (e) subtraction keep every figure.
-- Shortening the fix session at (e) to fit the fix job's 260 minutes: a cap change for a
-  shortfall this change did not cause (290 of 260 today); named in the comments and in spec
-  concern 2 for the owner.
+- Shortening the fix session at (e) to fit the fix job's 260 minutes (the advocate of panel
+  item 2): a cap change for a shortfall this change did not cause (290 of 260 today), and the
+  build caps are a settled guardrail (decision 32); the panel decided "named, not fixed", in
+  the fix template's comment, for the owner.
 - Re-running the drive on R51's merged tree: the proof would then be judged against a tree
   no gate record names; the evidence line says which commit the proof is of instead.
 - Comparing the manifest's commit with HEAD by equality for the stale-proof line: it would
@@ -263,11 +295,19 @@ spec's requirement numbers (R1 to R16) are cited beside each step.
 - Importing `ci.auto_round.head_matches` from `pr/description.py` instead of lifting the
   rule into `state/gitops.py`: `pr/` reading `ci/` would be a new dependency direction, and
   `gitops` already holds the git lookups both read.
+- Python's own equality for `==` (`True == 1`, `1 == 1.0`) and `str()` for the string form
+  (the reviewer's lighter reading of panel item 3): a wrong value could pass or a right one
+  fail silently on a proof item that is the owner's bar; the panel pinned the one parse,
+  strict JSON-type equality and `json.dumps`.
+- A plain `npx playwright test` proposal with the test reading `process.env.SDLC_PROOF_DIR`
+  (the advocate of panel item 1): the intent fixes the `$SDLC_PROOF_DIR` form (its R10
+  outcome), which a design run may not rewrite; the two texts the owner reads gain the
+  sentence instead.
 - A `proof/` skeleton drive for Python projects: a green drive that proves nothing, and
   project content written by the plugin (D8).
 - Substituting `$SDLC_PROOF_DIR` textually in `collect.py` for Windows: the drive line is the
   owner's and runs through the platform shell as the three targets do; a substitution would
-  make the by-hand run differ from the runner's (spec concern 1).
+  make the by-hand run differ from the runner's (spec concern 1, decided by the panel).
 - Reading the drive and HEAD inside `evidence_status` from the change folder's parents
   instead of a `root` argument: the change folder is always under `<root>/changes/`, but the
   three callers already hold the root, and an explicit argument is what the coding standards
@@ -275,17 +315,20 @@ spec's requirement numbers (R1 to R16) are cited beside each step.
 
 ## Proof
 - test: tests/test_proof.py — the grammar parses the three kinds and refuses malformed items;
-  `compare_state` on JSON dotted keys, `line`, the 1 MiB cap, a missing path; the image caps
-  by size and by count; the manifest's shape and its `run` from the GitHub variables.
+  `compare_state` on JSON dotted keys, `line` (any line; `seen` the first line), the 1 MiB
+  cap, an empty file, a missing path, a path outside `proof/`; the panel's four cases (`== 1`
+  against `true` differs, `contains true` against JSON `true` matches, text `200` and JSON
+  200 both match `== 200`, `1` is not `1.0`); the image caps by size and by count; the
+  manifest's shape and its `run` from the GitHub variables.
 - test: tests/test_gate.py — the runner's step with a drive set writes `drive.log` at (c),
-  (d) and (e), clears `proof/`, judges the `proof` entry on the approved plan, parks on a red
-  drive, re-runs a drive that did not start once; with the drive empty the logs and verdict
-  are today's and the record differs only by the always-ok `proof` entry;
-  `check_proof_items` at (b); `check_evidence` with `drive.log`; the (e) wall clock
-  subtracts the drive minutes and floors at 30.
-- test: tests/test_auto_round.py — a failed `proof` entry with items is a red target and the
-  request names item, expected and seen; one without items parks; the judge prompt names
-  `drive.log` and the `proof` entry; `head_matches` unchanged.
+  (d) and (e) and runs no drive at (b), clears `proof/`, judges the `proof` entry on the
+  approved plan, parks on a red drive, re-runs a drive that did not start once; with the
+  drive empty the logs and verdict are today's and the record differs only by the always-ok
+  `proof` entry; `check_proof_items` at (b); `check_evidence` with `drive.log`; the (e) wall
+  clock subtracts the drive minutes and floors at 30.
+- test: tests/test_auto_round.py — a failed `proof` entry with items is a red target, also
+  when `commands` is green, and the request names item, expected and seen; one without items
+  parks; the judge prompt names `drive.log` and the `proof` entry; `head_matches` unchanged.
 - test: tests/test_gitops_lookups.py — `only_change_folder_moved` on HEAD, on a change-folder
   commit, on a source commit, on a rename into the folder, on an unknown sha.
 - test: tests/test_ci.py — 245/250, 185/190 and 355 with and without a drive; 180 minutes of
@@ -300,11 +343,14 @@ spec's requirement numbers (R1 to R16) are cited beside each step.
   `recheck_targets` never runs a drive.
 - test: tests/test_triage.py — `logs_for` with the drive's files.
 - test: tests/test_init.py — the Playwright proposal from both dependency blocks, `""`
-  elsewhere, `--drive`, the rendered keys, no skeleton file.
-- test: tests/test_templates.py — the three keys and the four comments.
+  elsewhere, `--drive`, the rendered keys, the shell sentence in the rendered comment and in
+  `sdlc-init.md`, no skeleton file.
+- test: tests/test_templates.py — the three keys and the four comments, the fix template's
+  with the worst case and the cancellation sentence.
 - test: tests/test_base_update.py — the re-check never runs a drive.
 - test: tests/test_commands_and_skills.py, tests/test_agents.py, tests/test_policy_skills.py
-  — the texts, the two policy skill sentences, and the ux check's folders and finding.
+  — the texts (the plan skill's any-line rule and one parse among them), the two policy skill
+  sentences, and the ux check's folders and finding.
 - Every test above is still to be written; the existing tests named in Risks stay as they are.
 - The quantifiable target (spec Acceptance): `python -m pytest` green, `ruff check` and
   `ruff format --check` clean, `compileall` silent, `python tasks.py version-check` passing;
