@@ -49,6 +49,7 @@ if str(PLUGIN_DIR) not in sys.path:
     sys.path.insert(0, str(PLUGIN_DIR))
 
 from gate import artifacts as art  # noqa: E402
+from gate import checks  # noqa: E402
 from gate.checks import CheckResult, GateContext  # noqa: E402
 from hooks._common import ConfigError, config_flag  # noqa: E402
 
@@ -81,25 +82,70 @@ def _float(value: Any) -> float | None:
         return None
 
 
-def run_caps(gate_settings: Any, build: bool) -> tuple[int, int]:
+def run_caps(gate_settings: Any, build: bool, less_minutes: int = 0) -> tuple[int, int]:
     """(turns, wall-clock minutes) of one run, from the ``sdlc.yaml`` ``gate:`` block
     (decision 32): the general ``max_turns`` and ``max_wall_clock_minutes``, or for the build
     run and a fix round (``build``) ``build_max_turns`` and ``build_max_wall_clock_minutes``,
     each of which, when unset or invalid, is the larger of the general setting and the build
     default. The one copy of the rule: the runner's ``--max-turns`` and subprocess timeout and
-    the gate's wall-clock check all read it."""
+    the gate's wall-clock check all read it. ``less_minutes`` comes off the wall clock (the
+    drive's minutes at (e), change 0004), never below ``RUN_CAP_FLOOR_MINUTES``."""
     cfg = gate_settings if isinstance(gate_settings, dict) else {}
     turns = _int(cfg.get("max_turns"), DEFAULT_MAX_TURNS)
     minutes = _int(cfg.get("max_wall_clock_minutes"), DEFAULT_MAX_WALL_CLOCK_MINUTES)
-    if not build:
-        return turns, minutes
-    return (
-        _int(cfg.get("build_max_turns"), max(turns, DEFAULT_BUILD_MAX_TURNS)),
-        _int(
+    if build:
+        turns = _int(cfg.get("build_max_turns"), max(turns, DEFAULT_BUILD_MAX_TURNS))
+        minutes = _int(
             cfg.get("build_max_wall_clock_minutes"),
             max(minutes, DEFAULT_BUILD_MAX_WALL_CLOCK_MINUTES),
-        ),
-    )
+        )
+    if less_minutes > 0:
+        minutes = max(minutes - less_minutes, min(minutes, RUN_CAP_FLOOR_MINUTES))
+    return turns, minutes
+
+
+# Change 0004 (spec R4): the largest ``gate.drive_timeout`` the test and build jobs hold. With
+# the R18 triage step's 5 minutes the test job is 190 + d <= 200 and the build and fix jobs
+# 250 + d <= 260, so the drive adds at most 10 minutes over its default 300 s. A larger value
+# is capped at (c) and (d); at (e) the drive's minutes come off the session's wall clock
+# instead (``run_caps``' ``less_minutes``), never below the floor.
+DRIVE_TIMEOUT_MAX_SECONDS = 600
+DRIVE_CAPPED_PHASES = ("c", "d")
+RUN_CAP_FLOOR_MINUTES = 30
+DRIVE_PHASE = "e"  # the gate whose session gives up the drive's minutes
+DRIVE_TIMEOUT_REFUSAL = (
+    "gate.drive_timeout={n} exceeds the 600 s the test and build jobs hold: 600 applied; "
+    "lower it, or raise timeout-minutes and SDLC_JOB_TIMEOUT_MINUTES together in a reviewed PR"
+)
+
+
+def drive_timeout_seconds(config: Any, gate_phase: str | None) -> int | None:
+    """The drive's timeout at gate ``gate_phase``: ``gate.drive_timeout``, capped at
+    ``DRIVE_TIMEOUT_MAX_SECONDS`` unless the gate is (e); None when no drive is set."""
+    config = config if isinstance(config, dict) else {}
+    if checks.drive_from_config(config) is None:
+        return None
+    seconds = checks.configured_drive_timeout(config)
+    if gate_phase != DRIVE_PHASE:
+        seconds = min(seconds, DRIVE_TIMEOUT_MAX_SECONDS)
+    return seconds
+
+
+def drive_timeout_refusal(config: Any) -> str | None:
+    """Why the configured ``gate.drive_timeout`` is not the one applied at (c) and (d), or None
+    when it is (or no drive is set)."""
+    config = config if isinstance(config, dict) else {}
+    if checks.drive_from_config(config) is None:
+        return None
+    seconds = checks.configured_drive_timeout(config)
+    return DRIVE_TIMEOUT_REFUSAL.format(n=seconds) if seconds > DRIVE_TIMEOUT_MAX_SECONDS else None
+
+
+def drive_minutes(config: Any) -> int:
+    """The minutes the drive takes off the (e) session's wall clock: ``ceil(drive_timeout /
+    60)`` when a drive is set, else 0."""
+    seconds = drive_timeout_seconds(config, DRIVE_PHASE)
+    return math.ceil(seconds / 60) if seconds else 0
 
 
 def iteration_cap(ctx: GateContext, classification: str | None) -> int:
@@ -499,7 +545,24 @@ def check_limits(ctx: GateContext, now: datetime | None = None) -> CheckResult:
         )
     # the build run and a fix round carry ``"run": "build"`` (``start-run``); an older record
     # has no field and gets the general cap, as before 1.0.8
-    _turns, max_minutes = run_caps(ctx.config.get("gate"), run.get("run") == BUILD_RUN)
+    build = run.get("run") == BUILD_RUN
+    # change 0004: at (e) the drive's minutes came off the session's cap; the runner
+    # subtracted the same figure (``run_phase.run_caps`` with the gate phase)
+    less = drive_minutes(ctx.config) if ctx.phase == DRIVE_PHASE else 0
+    _turns, max_minutes = run_caps(ctx.config.get("gate"), build, less)
+    _turns, whole = run_caps(ctx.config.get("gate"), build)
+    if less and whole - less < RUN_CAP_FLOOR_MINUTES:
+        return CheckResult(
+            "limits",
+            False,
+            f"gate.drive_timeout takes {less} min off the (e) session's {whole} min, below the "
+            f"floor of {RUN_CAP_FLOOR_MINUTES} min",
+            "Lower gate.drive_timeout or raise the wall-clock cap in sdlc.yaml (a reviewed PR), "
+            "then re-run the phase.",
+            {**details, "stop": False, "drive_minutes": less, "max_wall_clock_minutes": whole},
+        )
+    if less:
+        details["drive_minutes"] = less
     elapsed = _elapsed_minutes(run.get("started_at"), now)
     details.update({"elapsed_minutes": round(elapsed, 1) if elapsed is not None else None})
     if elapsed is not None and elapsed > max_minutes:
