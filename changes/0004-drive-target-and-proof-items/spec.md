@@ -129,7 +129,11 @@ R5 and R10.
   itself. `==` holds only when the two parsed values have the same Python type after
   `json.loads` and are equal (`bool` is not `int`, `int` is not `float`: a bool never equals
   a number, `1` never equals `1.0`; the text `200` and the JSON number 200 both parse to the
-  `int` 200 and both equal `== 200`). The string form for `contains` and `matches` is the value itself
+  `int` 200 and both equal `== 200`). The rule is strict at every depth, not only at the
+  top level: `artifacts.strict_equal(a, b)` compares two lists element by element (same
+  length) and two dicts key by key (same keys), applying the same-type rule to each leaf, so
+  `[true]` never equals `[1]`, `{"a": 1}` never equals `{"a": 1.0}` and `[1, [2]]` equals
+  `[1, [2]]`; a list never equals a dict. The string form for `contains` and `matches` is the value itself
   for a string and `json.dumps` of the value otherwise; `contains` is substring of that
   form, or membership when the seen value is a list; `matches` is Python `re.search` on it.
   With `line`, the item holds when any line of the text file satisfies the comparison, and
@@ -179,8 +183,10 @@ R5 and R10.
   produced`, and `details.drive_removed: true`; the change parks and never a round: the one
   rule, stated here, in the Design and in the plan, is that `red_targets` skips a failed
   `proof` entry whose details carry `drive_removed`, whatever its `items` (a fix session
-  cannot restore `commands.drive`, a guardrail); its "what I need" says to restore
-  `commands.drive` in a reviewed PR or to re-approve a plan without the items. Gate (b) refused the plan with the
+  cannot restore `commands.drive`, a guardrail); its "what I need" says one thing: restore
+  `commands.drive` in a reviewed PR (the approved plan is the merge base's copy, which no
+  run and no label edits, so there is no way to re-approve a plan without the items short of
+  a new design; the park names none). Gate (b) refused the plan with the
   drive empty (R9); this is the drive going away between the gates.
 - A `differs` or `not produced` on an approved item is a red target under decision 29:
   `plugin/ci/auto_round.red_targets` starts a round on a failed `proof` entry as on a red
@@ -197,10 +203,18 @@ R5 and R10.
   the drive is set (`REQUIRED_EVIDENCE` is read through a helper that adds it; a red header
   parks as a red log does); never when the drive is empty. At (c) it stays optional, as the
   three logs are. Inside a CI session the log does not exist yet (the session never runs
-  the drive) and the `evidence` check is deferred as today, so the step re-judges it after
-  it wrote `drive.log`: the missing log before the step is never a park (a test asserts the
-  in-session (d) record carries `evidence` deferred with a drive set). By hand the log is
-  `collect.py`'s.
+  the drive, and no mark is written for it), and `check_evidence` today fails a required log
+  that is missing or empty before it reaches its deferral branch (`checks.py:463-466`: the
+  three logs pass that line only because the session's `collect.py` wrote their deferred
+  mark). The rule, stated here and in the Design: while `ctx.commands_deferred` is set, a
+  missing or empty `drive.log` counts as deferred, exactly as a marked target log does
+  (`check_evidence` tests the drive log for deferral before the missing test, and only the
+  drive log: a missing `test.log`, `build.log` or `lint.log` still fails), so the step
+  re-judges the check after it wrote `drive.log`, and the missing log before the step is
+  never a park (a test asserts the in-session (d) record carries `evidence` deferred with a
+  drive set and no `drive.log`, and another that a missing `test.log` still fails there). By
+  hand (`commands_deferred` unset) a missing `drive.log` at (d) or (e) fails as a missing
+  target log does: the log is `collect.py`'s.
 - A `state` item is deterministic and never a panel item (decision 21 as amended by 37); a
   verifier `differs` on a screenshot stays a panel item as today.
 
@@ -229,11 +243,19 @@ R5 and R10.
   line `npx playwright test` (its origin names the dependency; no `--output`, no shell
   variable in the line: the test writes its files to `process.env.SDLC_PROOF_DIR`, which
   the runner and `collect.py` set, the same on Linux, macOS and a by-hand `cmd.exe` run;
-  concern 1, the owner's decision at gate (b)), and `commands.setup` gains Playwright's
-  browser install: appended with ` && npx playwright install --with-deps` when a setup
-  command was detected, or `npx playwright install --with-deps` alone when `commands.setup`
-  is empty. For every other project the drive is `Target(None, "", "none")`, rendered `""`
-  with the template's comment naming the slot. No skeleton file is written.
+  concern 1, the owner's decision at gate (b)), and the detected `commands.setup` gains
+  Playwright's browser install, appended with ` && npx playwright install --with-deps`. What
+  installs `@playwright/test` itself is the detected setup command (`node_setup`: `npm ci`
+  with a lockfile, else `npm install`, which a Node project always gets, so a detected setup
+  is never empty), from `package.json`; the install suffix adds only the browsers. An
+  explicit `--setup` is the owner's word and is written as given, empty or not, with nothing
+  appended: with `--setup ""` nothing installs `@playwright/test` or its browsers in CI, the
+  drive is still proposed (the dependency is there), and the detection report says so in the
+  drive's origin ("detected: @playwright/test in package.json; --setup \"\" installs neither
+  it nor its browsers: the owner's setup must, or the checkout carries node_modules"); with
+  `--setup "<cmd>"` the origin says the owner's setup must install them. For every other
+  project the drive is `Target(None, "", "none")`, rendered `""` with the template's comment
+  naming the slot. No skeleton file is written.
 - `sdlc_init.py` renders `{{DRIVE_CMD}}` into `template/sdlc.yaml` and accepts `--drive`
   (`""` = none), as `--setup` does; the detection report shows the proposal under the
   targets. `plugin/commands/sdlc-init.md` says what is detected and that the owner confirms
@@ -360,8 +382,10 @@ false` by hand; without one, judged at once from the approved plan: "no drive ta
 it names no item, "drive removed after gate (b)" when it does); `check_proof_items(ctx)`
 for (b). `judge_targets` takes the drive's run as a
 fourth entry (its red reads "drive (exit n)" or "drive (timed out)"). `check_evidence` reads
-the required list through the helper. The `evidence` deferred reason names the drive log
-when set.
+the required list through the helper, and tests the drive log for deferral before the
+missing test: with `ctx.commands_deferred` set, a missing or empty `drive.log` is
+`deferred`, never `missing` (R7; the three target logs keep today's order: missing fails,
+then the mark defers). The `evidence` deferred reason names the drive log when set.
 
 **`plugin/gate/gate.py`** `run_deferred_commands`: after the targets' runs and before the
 logs are written, when the drive is set and the phase is (c), (d) or (e), `runs["drive"] =
@@ -392,9 +416,13 @@ stale-proof line (R12) and the round's head check read one rule, and `pr/` impor
 from `ci/`.
 
 **`plugin/ci/run_phase.py`**: `commands_timeout_seconds(config, gate_phase=None)` adds the
-drive timeout when set, capped at 600 unless `gate_phase` is `e` (`run_gate_commands` passes
-the gate phase; `build_caps_minutes_needed` passes nothing, the capped figure being the
-build and fix jobs'); `drive_timeout_refusal(config) -> str | None` beside
+drive timeout when set, capped at 600 unless `gate_phase` is `e`. Its two readers in the
+step pass the gate phase: `run_gate_commands` (the subprocess timeout) and the step's own
+budget at the call site, `step_budget = commands_timeout_seconds(config, gate_phase)`
+(`run_phase.py:3503` today), from which `commands_retryable` and the decision-29 re-run take
+what is left; the two must agree, or the re-run's budget and the step's timeout differ at
+(e). `build_caps_minutes_needed` passes nothing, the capped figure being the build and fix
+jobs'. `drive_timeout_refusal(config) -> str | None` beside
 `build_caps_refusal` gives the reason when the configured value exceeds the cap, written in
 the result JSON (R4); `run_caps(config, phase, env, gate_phase=None)` subtracts the drive minutes when
 `gate_phase` is `e` (the (e) run passes its own phase; a fix round passes the change's
@@ -402,8 +430,10 @@ gate phase at its two call sites, the `--max-turns` line and `run_timeout_second
 `limits.run_caps(settings, build, less_minutes)`; `build_caps_minutes_needed` passes
 nothing new; `commands_env()` is unchanged and the drive's two variables are added by
 `run_drive`, not here. The timeout comments above `JUDGE_TIMEOUT_SECONDS` state the drive's
-figure. These lines put the change on the port list (HANDOFF rules); the build's session
-record lists them.
+figure. These lines put the change on the port list (HANDOFF.md, "Rules for every
+session": a PR that touches `plugin/ci/run_phase.py` or the fix workflow template goes on
+the port list in its session's record under `docs/progress/`); the build writes them in the
+change folder (Acceptance) and the session record that records the merge carries them.
 
 **`plugin/gate/limits.py`** `DRIVE_TIMEOUT_MAX_SECONDS = 600` (R4);
 `run_caps(gate_settings, build, less_minutes=0)`: subtracts
@@ -428,9 +458,11 @@ root they already hold.
 **`plugin/ci/triage.py`** `logs_for`: the two additions of R13.
 
 **`plugin/init/detect.py` and `sdlc_init.py`**: `Detection.drive`, the Playwright
-proposal (`npx playwright test`, origin "detected: @playwright/test in package.json"; setup
-gains ` && npx playwright install --with-deps`, or is that install alone when no setup was
-detected), `{{DRIVE_CMD}}`, `--drive`, the report's `targets.drive`.
+proposal (`npx playwright test`, origin "detected: @playwright/test in package.json"; the
+detected setup, `npm ci` or `npm install`, installs the dependency and gains ` && npx
+playwright install --with-deps` for the browsers; an explicit `--setup`, empty or not, is
+written as given with nothing appended and the drive's origin says the owner's setup must
+install both), `{{DRIVE_CMD}}`, `--drive`, the report's `targets.drive`.
 
 **`template/sdlc.yaml`**: `commands.drive` with its comment (R1, the shell sentence
 included); `gate.drive_timeout: 300` and `gate.proof_image_kb: 50` with comments saying they
@@ -524,11 +556,13 @@ REVIEW.md pass; this repository's `sdlc.yaml` and workflow copies.
     (b)" and `details.drive_removed: true`, the change parks, never deferred, and
     `red_targets` starts no round on it; with it empty and no item, the entry is `ok` at
     once, in a CI session too; with a drive set, the in-session (d) record carries
-    `evidence` deferred, never failed on the missing `drive.log`;
+    `evidence` deferred, never failed on the missing `drive.log`, while a missing `test.log`
+    still fails it there;
   - the comparison of R5: `== 1` against JSON `true` differs, `contains true` against JSON
     `true` matches, the text `200` and the JSON number 200 both match `== 200`, `1` never
-    equals `1.0`, an empty text file is `not produced`, and `seen` on a `line` differs is the
-    first line;
+    equals `1.0`, `[true]` never equals `[1]`, `{"a": 1}` never equals `{"a": 1.0}`, `[1,
+    [2]]` equals `[1, [2]]`, an empty text file is `not produced`, and `seen` on a `line`
+    differs is the first line;
   - an image over `gate.proof_image_kb` or past the tenth is deleted, listed in `dropped`,
     and its item is `not produced`;
   - gate (b) parks a plan that names a `state` or `screenshot` item while the drive is empty
@@ -537,7 +571,8 @@ REVIEW.md pass; this repository's `sdlc.yaml` and workflow copies.
     of R4 with and without a drive (a fix round at (e) with a drive: 180 minutes of session);
     a `drive_timeout` of 900 is capped at 600 at (c) and (d) (the step's budget counts 600,
     `drive_timeout_refusal` gives the reason, the gate record's `drive` run carries it) and
-    not at (e); the four workflow templates' comments state them, the fix template's with
+    not at (e), where `commands_timeout_seconds(config, "e")` counts 900 for the
+    `run_gate_commands` timeout and for the `step_budget` the re-run reads alike; the four workflow templates' comments state them, the fix template's with
     the worst case and the cancellation sentence, and the template's `drive_timeout` comment
     states the 600 s maximum;
   - `commands_from_config`, `base_update.recheck` and `release.recheck_targets` never return
@@ -552,9 +587,13 @@ REVIEW.md pass; this repository's `sdlc.yaml` and workflow copies.
     `proof/manifest.json` on a failed `proof` entry;
   - `/sdlc-init` proposes the plain Playwright drive `npx playwright test` and the browser
     install only when `@playwright/test` is a dependency (the install appended with `&&`
-    to a detected setup, alone when `commands.setup` is empty), `""` otherwise, writes no
-    skeleton, renders the three new keys, and its command text and the template's comment
-    say the test writes to `process.env.SDLC_PROOF_DIR` (R1, R8 and R10);
+    to the detected `npm ci` or `npm install`, which installs the dependency itself), `""`
+    otherwise; with `--setup ""` the rendered `commands.setup` is `""`, nothing is appended,
+    the drive is still proposed and the report's drive origin says that nothing installs
+    `@playwright/test` or its browsers; with `--setup "<cmd>"` the owner's command is
+    written as given; it writes no skeleton, renders the three new keys, and its command
+    text and the template's comment say the test writes to `process.env.SDLC_PROOF_DIR`
+    (R1, R8 and R10);
   - the `ux-conventions` check reads `proof/` and `screenshots/`, and the two skill texts
     say what the gate now checks;
   - the command, skill and agent texts carry the item grammar with the any-line rule and the
@@ -566,8 +605,10 @@ REVIEW.md pass; this repository's `sdlc.yaml` and workflow copies.
   version-check` passes.
 - No file outside `plugin/`, `template/`, `tests/`, `.claude-plugin/plugin.json` and the
   change folder changes; this repository's `sdlc.yaml`, `.github/workflows/` and `CLAUDE.md`
-  are untouched. The port-list lines (HANDOFF rules: `plugin/ci/run_phase.py` and the fix
-  workflow template `template/.github/workflows/sdlc-fix.yml`) are recorded in the change
-  folder, `evidence/port-list.md`, one line per file with what changed; the session file
-  that records the merge copies them to `docs/PROGRESS.md`'s "The port list".
+  are untouched. The port-list lines (HANDOFF.md, "Rules for every session": a PR that
+  touches `plugin/ci/run_phase.py` or the fix workflow template
+  `template/.github/workflows/sdlc-fix.yml` goes on the port list in its session's record)
+  are recorded in the change folder, `evidence/port-list.md`, one line per file with what
+  changed; the session that records the merge copies them into its own record under
+  `docs/progress/` (the port list lives in the session records; `docs/PROGRESS.md` has none).
 - No screen is touched: no `Mock:` line.

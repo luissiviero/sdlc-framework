@@ -4,20 +4,29 @@ Read against `main` at `db47dbb` (plugin.json 1.0.39) with Read, Grep and Glob o
 spec's requirement numbers (R1 to R16) are cited beside each step. The panel's three
 decisions of gate (b) are folded into steps 1, 11 and 12; the owner's review of 2026-10-24
 overturned decision 1 (plain `npx playwright test`) and added the drive-removed park (step
-4), the 600 s cap (step 7), the setup rule (step 11) and the port-list file (step 13).
+4), the 600 s cap (step 7), the setup rule (step 11) and the port-list file (step 13); its
+second round (the same day) pinned the `step_budget` reader (step 7), the missing drive log
+in a CI session (step 4), the port list's home under `docs/progress/` (step 13), strict
+`==` at depth (step 1), the one way back from the drive-removed park, and what installs
+`@playwright/test` under an explicit `--setup` (step 11).
 
 ## Files that change
 - `plugin/gate/artifacts.py` — `EVIDENCE_DRIVE`, `EVIDENCE_PROOF`, `PROOF_MANIFEST`,
   `PROOF_MAX_IMAGES`, `PROOF_IMAGE_SUFFIXES`, `STATE_FILE_MAX_BYTES`; `target_logs(drive_set)`
   and `required_evidence(phase, drive_set)`; the item grammar: `PROOF_ITEM_RE`, `ProofItem`,
   `proof_items(plan_text)`, `malformed_proof_items(plan_text)`, `parse_value(text)`,
-  `string_form(value)`, `compare_state(item, proof_dir) -> (outcome, seen)` (R5, R6, R8, R11)
+  `string_form(value)`, `strict_equal(a, b)` (same type and value at every depth: lists
+  element by element, dicts key by key), `compare_state(item, proof_dir) -> (outcome, seen)`
+  (R5, R6, R8, R11)
 - `plugin/gate/checks.py` — `drive_from_config(config)`, `drive_timeout(ctx, phase)` (capped
   at 600 at (c) and (d)), `drive_env(ctx)`, `clear_proof_dir`, `apply_image_caps`,
   `write_manifest`, `run_drive(ctx, head, phase)` (`details.refused` when capped),
   `judge_proof(ctx, manifest)`, `check_proof(ctx)` (c, d, e; "drive removed after gate (b)"
   when the drive is empty and the approved plan names an item), `check_proof_items(ctx)` (b); `judge_targets` names a red `drive`; `check_evidence` and `COMMAND_LOGS` read
-  through `target_logs`; `EVIDENCE_DEFERRED_REASON` names the drive log when set;
+  through `target_logs`, and `check_evidence` tests the drive log for deferral before its
+  missing test (`checks.py:463-466` today): with `ctx.commands_deferred` a missing or empty
+  `drive.log` is `deferred`, the three target logs keep today's order;
+  `EVIDENCE_DEFERRED_REASON` names the drive log when set;
   `CHECKS_BY_PHASE` gains the two checks (R2, R3, R5, R7, R9, R11)
 - `plugin/gate/gate.py` — `DEFERRABLE_CHECKS` gains `proof`; `run_deferred_commands` runs
   the drive after the targets at (c), (d) and (e) only and judges `proof`;
@@ -30,8 +39,11 @@ overturned decision 1 (plain `npx playwright test`) and added the drive-removed 
 - `plugin/state/gitops.py` — `only_change_folder_moved(root, change_dir, sha)`, the body of
   `auto_round.head_matches` today, shared with the PR body (R12)
 - `plugin/ci/run_phase.py` — `commands_timeout_seconds(config, gate_phase=None)` adds the
-  drive timeout when set, capped at 600 unless `gate_phase` is `e` (`run_gate_commands`
-  passes the gate phase, `build_caps_minutes_needed` nothing); `drive_timeout_refusal(config)`
+  drive timeout when set, capped at 600 unless `gate_phase` is `e`; its two readers in the
+  step pass the gate phase: `run_gate_commands` (the subprocess timeout, `:2296` today) and
+  the step's own budget at the call site, `step_budget = commands_timeout_seconds(config,
+  gate_phase)` (`:3503` today, the budget `commands_retryable` and the decision-29 re-run
+  read); `build_caps_minutes_needed` passes nothing; `drive_timeout_refusal(config)`
   beside `build_caps_refusal`,
   its reason in the result JSON; `run_caps(config, phase, env, gate_phase=None)` and
   `run_timeout_seconds(config, phase, env, gate_phase=None)` subtract the drive minutes when
@@ -55,11 +67,15 @@ overturned decision 1 (plain `npx playwright test`) and added the drive-removed 
 - `plugin/pr/cli.py` — `check_run_result` passes `root` to `evidence_status` (R12)
 - `plugin/release/notes.py` — `_evidence_line(change_dir, root)` passes the root (R12)
 - `plugin/init/detect.py` — `Detection.drive`, `playwright_drive(pkg)` (the plain `npx
-  playwright test`), the setup suffix ` && npx playwright install --with-deps`, or the
-  install alone when no setup was detected, `as_dict` (R10)
+  playwright test`), the setup suffix ` && npx playwright install --with-deps` appended to
+  the detected `node_setup` (`npm ci` or `npm install`, which installs `@playwright/test`
+  itself; a Node project always gets one, so a detected setup is never empty), `as_dict` (R10)
 - `plugin/init/sdlc_init.py` — `{{DRIVE_CMD}}`, `--drive`, the report's `targets.drive`,
-  the proposed block's line; `keep_build_caps` keeps calling `limits.run_caps(old_gate,
-  False)` unchanged (R10)
+  the proposed block's line; `build_values` keeps an explicit `--setup` as given, empty or
+  not, with nothing appended, and the drive's origin in the report then says the owner's
+  setup must install `@playwright/test` and its browsers (with `--setup ""`: nothing does,
+  unless the checkout carries `node_modules`); `keep_build_caps` keeps calling
+  `limits.run_caps(old_gate, False)` unchanged (R10)
 - `plugin/skills/plan-template/SKILL.md` — the `## Proof` item grammar, with the any-line
   rule and the one parse of R5 (panel decision 3)
 - `plugin/skills/ux-conventions/check.py` — images read from `evidence/proof/` and
@@ -72,7 +88,9 @@ overturned decision 1 (plain `npx playwright test`) and added the drive-removed 
 - `plugin/agents/verifier.md` — the (d) step on `proof/` images (R15)
 - `plugin/agents/adversarial-reviewer.md` — angle 9, the drive reads or writes (R15)
 - `plugin/commands/sdlc-init.md` — the drive proposal in step 0, the plain line and the
-  `process.env.SDLC_PROOF_DIR` sentence of R10 (the owner's decision on concern 1)
+  `process.env.SDLC_PROOF_DIR` sentence of R10 (the owner's decision on concern 1); beside
+  the `--setup ""` line, one sentence that an explicit `--setup` must install
+  `@playwright/test` and its browsers itself when a drive is proposed (R10)
 - `plugin/commands/sdlc-build.md` — step 4's screenshot item with a drive (R15)
 - `plugin/commands/sdlc-test.md` — step 3 follows the drive; the "evidence missing" sentence
   goes (R15)
@@ -88,28 +106,36 @@ overturned decision 1 (plain `npx playwright test`) and added the drive-removed 
 - `.claude-plugin/plugin.json` — the next free patch version (R16)
 - `changes/0004-drive-target-and-proof-items/evidence/port-list.md` — new: the port-list
   lines of this change (`plugin/ci/run_phase.py` and `template/.github/workflows/sdlc-fix.yml`,
-  one line per file with what changed), written by the build; the session file that records
-  the merge copies them to `docs/PROGRESS.md` (the build may write only `plugin/`,
-  `template/`, `tests/`, `.claude-plugin/plugin.json` and the change folder)
-- `tests/test_proof.py` — new: the grammar, the comparison, the caps, the manifest
+  one line per file with what changed), written by the build; the session that records the
+  merge copies them into its own record under `docs/progress/` (HANDOFF.md, "Rules for every
+  session": the port list lives in the session records, `docs/PROGRESS.md` has none; the
+  build may write only `plugin/`, `template/`, `tests/`, `.claude-plugin/plugin.json` and
+  the change folder)
+- `tests/test_proof.py` — new: the grammar, the comparison (`strict_equal` at depth among
+  its cases), the caps, the manifest
 - `tests/test_gate.py` — the runner's step with a drive, `check_proof` (the drive-removed
-  park among its cases), `check_proof_items`, `check_evidence` with `drive.log`, the (e)
-  wall clock, the 600 s cap of `drive_timeout` at (c) and (d)
+  park among its cases), `check_proof_items`, `check_evidence` with `drive.log` (a missing
+  `drive.log` deferred while `commands_deferred`, a missing `test.log` still failed there,
+  a missing `drive.log` failed by hand at (d)), the (e) wall clock, the 600 s cap of
+  `drive_timeout` at (c) and (d)
 - `tests/test_auto_round.py` — a failed `proof` entry is a round; the request names the
   items; the judge prompt names the drive's files; `head_matches` unchanged on the shared rule
 - `tests/test_gitops_lookups.py` — `only_change_folder_moved`
 - `tests/test_ci.py` — `commands_timeout_seconds`, `build_caps_minutes_needed`, `run_caps`
   and `run_timeout_seconds` with and without a drive, for (e) and for a fix round at (e);
-  `drive_timeout_refusal` and the 600 s cap on a `drive_timeout` of 900
+  `drive_timeout_refusal` and the 600 s cap on a `drive_timeout` of 900; the step's
+  `step_budget` and the `run_gate_commands` timeout read the same figure at (e)
 - `tests/test_evidence.py` — `collect.py` with a drive, `--only drive`, the CI mark
 - `tests/test_pr.py` — `evidence_status` (the stale line only when the tree moved beyond the
   change folder, never after a record commit), the check run's summary, the auto-round line
 - `tests/test_release.py` — the release notes' evidence line still renders; `recheck_targets`
   never runs a drive
 - `tests/test_triage.py` — `logs_for`
-- `tests/test_init.py` — the plain Playwright proposal, the setup suffix with and without a
-  detected setup, `--drive`, the rendered keys, the `process.env.SDLC_PROOF_DIR` sentence in
-  the rendered comment and in `sdlc-init.md`
+- `tests/test_init.py` — the plain Playwright proposal, the setup suffix on the detected
+  `npm ci` and `npm install`, an explicit `--setup ""` rendered `""` with the drive still
+  proposed and the origin's install sentence, an explicit `--setup "<cmd>"` written as
+  given, `--drive`, the rendered keys, the `process.env.SDLC_PROOF_DIR` sentence in the
+  rendered comment and in `sdlc-init.md`
 - `tests/test_templates.py` — the four comments (the fix template's worst case and
   cancellation sentence), the three keys and the `drive_timeout` comment's 600 s maximum
 - `tests/test_base_update.py` — `recheck` never runs a drive
@@ -126,7 +152,10 @@ overturned decision 1 (plain `npx playwright test`) and added the drive-removed 
    file (dotted key, `items.0.name`), on a text file (`line`, any line, `seen` the first
    line), over 1 MiB, empty, missing path, unreadable; the panel's four cases: `== 1`
    against JSON `true` differs, `contains true` against JSON `true` matches, the text `200`
-   and the JSON number 200 both match `== 200`, `1` never equals `1.0`; `target_logs` and
+   and the JSON number 200 both match `== 200`, `1` never equals `1.0`; `strict_equal(a, b)`
+   recursing into lists (same length, element by element) and dicts (same keys, key by
+   key) with the same-type rule at every leaf: `[true]` is not `[1]`, `{"a": 1}` is not
+   `{"a": 1.0}`, `[1, [2]]` equals `[1, [2]]`, a list is not a dict; `target_logs` and
    `required_evidence`. Pure functions, tests first.
 2. Config readers and the (b) check (`checks.py`, `tests/test_gate.py`):
    `drive_from_config` (empty, placeholder and missing read as None), `drive_timeout`
@@ -148,8 +177,13 @@ overturned decision 1 (plain `npx playwright test`) and added the drive-removed 
    listed `not produced`, `details.drive_removed: true`, a park: step 6's `red_targets`
    skips the entry by that flag) when the approved plan names a `state` or `screenshot`
    item, with a test for each; `check_evidence` with a drive set inside a CI session at (d)
-   stays deferred (the record carries it deferred, never failed on the missing `drive.log`),
-   a test asserting it; `judge_targets` with a fourth run;
+   stays deferred: today the function fails a required log that is missing or empty before
+   its deferral branch (`checks.py:463-466`), and the drive log has no mark, so the rule is
+   written in: while `ctx.commands_deferred` is set, a missing or empty `drive.log` is
+   `deferred` (tested before the missing test, for the drive log only; a missing `test.log`
+   still fails), and by hand it fails as a missing target log does; three tests (deferred
+   with a drive and no `drive.log`, failed on a missing `test.log` in the same record,
+   failed by hand on the missing `drive.log` at (d)); `judge_targets` with a fourth run;
    `check_evidence` requiring `drive.log` at (d) and (e) when the drive is set.
 5. The runner's step (`gate.py`, `tests/test_gate.py`): `DEFERRABLE_CHECKS`, the drive after
    the targets in `run_deferred_commands` at (c), (d) and (e) only (gate (b) runs the step
@@ -176,8 +210,12 @@ overturned decision 1 (plain `npx playwright test`) and added the drive-removed 
    holds as `gate_phase`); the figures 245/250, 185/190, 355, and 180 for a fix session at
    (e) with a drive, asserted; `limits.DRIVE_TIMEOUT_MAX_SECONDS = 600`, applied by
    `checks.drive_timeout(ctx, phase)` and `commands_timeout_seconds(config, gate_phase)`
-   at (c) and (d) and not at (e) (`run_gate_commands` passes the gate phase;
-   `build_caps_minutes_needed` passes nothing and gets the capped figure), with `run_phase.drive_timeout_refusal(config)` giving the reason beside
+   at (c) and (d) and not at (e) (its two readers in the step pass the gate phase:
+   `run_gate_commands`, `:2296` today, and the step's own budget `step_budget =
+   commands_timeout_seconds(config, gate_phase)` at `:3503`, which `commands_retryable` and
+   the decision-29 re-run read, so the re-run's budget and the step's timeout never differ
+   at (e), a test asserting the two figures equal; `build_caps_minutes_needed` passes
+   nothing and gets the capped figure), with `run_phase.drive_timeout_refusal(config)` giving the reason beside
    `build_caps_refusal` (written in the result JSON and in the `drive` run's
    `details.refused`), asserted on a `drive_timeout` of 900; the comments.
 8. By hand (`collect.py`, `tests/test_evidence.py`): `drive` in `TARGETS` when set, the
@@ -195,13 +233,20 @@ overturned decision 1 (plain `npx playwright test`) and added the drive-removed 
     drive.
 11. `/sdlc-init` (`detect.py`, `sdlc_init.py`, `template/sdlc.yaml`, `sdlc-init.md`,
     `tests/test_init.py`, `tests/test_templates.py`): `Detection.drive`, the plain
-    Playwright proposal `npx playwright test` and the setup suffix (` && npx playwright
-    install --with-deps` after a detected setup; the install alone when `commands.setup` is
-    empty), `{{DRIVE_CMD}}`, `--drive`, the three keys with comments (the `drive_timeout`
-    comment with the 600 s maximum), the `process.env.SDLC_PROOF_DIR` sentence in the
-    template comment and in `sdlc-init.md` (the owner's decision on concern 1); the fixture
-    Node project without Playwright gets `""`; a `package.json` with `@playwright/test`
-    under `dependencies` and one under `devDependencies` each get the line.
+    Playwright proposal `npx playwright test` and the setup suffix ` && npx playwright
+    install --with-deps` appended to the detected `node_setup` (`npm ci` or `npm install`,
+    which installs `@playwright/test` from `package.json`; the suffix adds the browsers); an
+    explicit `--setup` is written as given with nothing appended (`build_values`: empty is
+    the owner's "nothing to install", as today), the drive still proposed, and the report's
+    drive origin says the owner's setup must install `@playwright/test` and its browsers
+    (with `--setup ""`: nothing does), one sentence in `sdlc-init.md` beside the `--setup
+    ""` line saying the same; `{{DRIVE_CMD}}`, `--drive`, the three keys with comments (the
+    `drive_timeout` comment with the 600 s maximum), the `process.env.SDLC_PROOF_DIR`
+    sentence in the template comment and in `sdlc-init.md` (the owner's decision on
+    concern 1); the fixture Node project without Playwright gets `""`; a `package.json` with
+    `@playwright/test` under `dependencies` and one under `devDependencies` each get the
+    line; tests for the suffix on `npm ci` and on `npm install`, for `--setup ""` (rendered
+    `""`, drive proposed, origin sentence) and for `--setup "make deps"` (written as given).
 12. Texts (`plan-template/SKILL.md` with the any-line rule and the one parse,
     `ux-conventions/SKILL.md`, `definition-of-done/SKILL.md`, `verifier.md`,
     `adversarial-reviewer.md`, `sdlc-build.md`, `sdlc-test.md`, the four workflow comments
@@ -213,8 +258,10 @@ overturned decision 1 (plain `npx playwright test`) and added the drive-removed 
     Acceptance) with one line per port-list file and what changed in it:
     `plugin/ci/run_phase.py` (the lines of step 7) and the fix workflow template
     `template/.github/workflows/sdlc-fix.yml` (the comment lines of step 12). The session
-    file that records this change's merge copies the lines to `docs/PROGRESS.md`'s "The
-    port list" (HANDOFF rules); no build commit touches `docs/`.
+    that records this change's merge copies the lines into its own record under
+    `docs/progress/` (HANDOFF.md, "Rules for every session": every PR that touches
+    `plugin/ci/run_phase.py` or the fix workflow template goes on the port list, in its
+    session's record; `docs/PROGRESS.md` has no port list); no build commit touches `docs/`.
 
 ## Risks
 - **Callers and shapes touched.** The gate record (`evidence/gate-<phase>.json`) gains a
@@ -302,7 +349,17 @@ overturned decision 1 (plain `npx playwright test`) and added the drive-removed 
 - **The 600 s cap.** `checks.drive_timeout` and `run_phase.commands_timeout_seconds` must
   cap the same value at the same phases, or the step's budget and the drive's timeout
   disagree; both read `limits.DRIVE_TIMEOUT_MAX_SECONDS` and the same phase set, and the
-  test of step 7 asserts the two agree at (c), (d) and (e) on a `drive_timeout` of 900.
+  test of step 7 asserts the two agree at (c), (d) and (e) on a `drive_timeout` of 900. The
+  function has two readers in the step, the `run_gate_commands` timeout and the
+  `step_budget` the decision-29 re-run takes what is left of; a gate phase passed to one and
+  not the other would give the re-run a budget 300 s short at (e) with a 900 s drive, so
+  both pass it and a test asserts the two figures equal.
+- **The missing drive log in a CI session.** `check_evidence` fails a missing required log
+  before its deferral branch; the three target logs reach the branch only through the mark
+  `collect.py` writes for them, and the drive has no mark. Without step 4's rule every (d)
+  and (e) session with a drive set would park on `evidence/ lacks drive.log` before the
+  step could write it. The rule is narrow (the drive log only, while `commands_deferred`),
+  so a missing target log still fails as today; three tests pin the three sides.
 - **Windows.** `clear_proof_dir` must remove read-only files (`shutil.rmtree` with an
   `onerror` that clears the bit) and recreate the folder; paths in the manifest use `/`.
   `run_command` already runs the platform shell.
@@ -356,6 +413,20 @@ overturned decision 1 (plain `npx playwright test`) and added the drive-removed 
   (the reviewer's lighter reading of panel item 3): a wrong value could pass or a right one
   fail silently on a proof item that is the owner's bar; the panel pinned the one parse,
   strict JSON-type equality and `json.dumps`.
+- Strict `==` at the top level only, Python's `==` inside lists and dicts (the simpler
+  comparison): `[true]` would equal `[1]` and `{"a": 1}` would equal `{"a": 1.0}`, the same
+  silent pass one level down; `strict_equal` recurses, a few lines (the owner's review of
+  gate (b), second round, item 4).
+- `npx playwright install --with-deps` alone as `commands.setup` when the owner passes
+  `--setup ""` (the design's first reading): it installs the browsers and not
+  `@playwright/test`, overrides the owner's explicit "nothing to install", and a detected
+  Node setup is never empty anyway (`node_setup` always proposes `npm ci` or `npm install`);
+  the suffix goes on the detected setup only, and the report says what an explicit `--setup`
+  must install.
+- Naming a way to "re-approve a plan without the proof items" in the drive-removed park:
+  the approved plan is the merge base's copy, which no run and no label edits; the only
+  way is a new design, so the park names the one way back, restoring `commands.drive` in a
+  reviewed PR (the owner's review of gate (b), second round, item 5).
 - `npx playwright test --output "$SDLC_PROOF_DIR"` as the proposed line (the design's first
   reading of the intent's R10, kept by panel decision 1): `--output` is where Playwright
   puts its own traces and artifacts, not where `page.screenshot` writes, the `$` form fails
@@ -380,8 +451,10 @@ overturned decision 1 (plain `npx playwright test`) and added the drive-removed 
   `compare_state` on JSON dotted keys, `line` (any line; `seen` the first line), the 1 MiB
   cap, an empty file, a missing path, a path outside `proof/`; the panel's four cases (`== 1`
   against `true` differs, `contains true` against JSON `true` matches, text `200` and JSON
-  200 both match `== 200`, `1` is not `1.0`); the image caps by size and by count; the
-  manifest's shape and its `run` from the GitHub variables.
+  200 both match `== 200`, `1` is not `1.0`); `strict_equal` at depth (`[true]` is not
+  `[1]`, `{"a": 1}` is not `{"a": 1.0}`, `[1, [2]]` equals `[1, [2]]`, a list is not a
+  dict); the image caps by size and by count; the manifest's shape and its `run` from the
+  GitHub variables.
 - test: tests/test_gate.py — the runner's step with a drive set writes `drive.log` at (c),
   (d) and (e) and runs no drive at (b), clears `proof/`, judges the `proof` entry on the
   approved plan, parks on a red drive, re-runs a drive that did not start once (the second
@@ -390,7 +463,9 @@ overturned decision 1 (plain `npx playwright test`) and added the drive-removed 
   with the drive empty and an approved `state` or `screenshot` item, `check_proof` fails
   with "drive removed after gate (b)" and `details.drive_removed: true` and parks, not
   deferred in CI; with a drive set the in-session (d) record carries `evidence` deferred,
-  not failed on the missing `drive.log`; `check_proof_items` at (b); `check_evidence` with `drive.log`; the (e) wall clock subtracts the drive minutes and
+  not failed on the missing `drive.log`, while a missing `test.log` in the same record still
+  fails it and a missing `drive.log` by hand at (d) fails it; `check_proof_items` at (b);
+  `check_evidence` with `drive.log`; the (e) wall clock subtracts the drive minutes and
   floors at 30; `drive_timeout` capped at 600 at (c) and (d), not at (e).
 - test: tests/test_auto_round.py — a failed `proof` entry with items is a red target, also
   when `commands` is green, and the request names item, expected and seen; one without items
@@ -401,7 +476,8 @@ overturned decision 1 (plain `npx playwright test`) and added the drive-removed 
 - test: tests/test_ci.py — 245/250, 185/190 and 355 with and without a drive; 180 minutes of
   session for a fix round at (e) with a drive, 185 at (c); a `drive_timeout` of 900 counts
   600 in the step's budget at (c) and (d) with `drive_timeout_refusal`'s reason, and 900 at
-  (e); `commands_from_config` keeps three keys.
+  (e), the `step_budget` and the `run_gate_commands` timeout reading the same figure;
+  `commands_from_config` keeps three keys.
 - test: tests/test_evidence.py — `collect.py` runs the drive, reports items, exits 1 on red,
   skips it in a CI session.
 - test: tests/test_pr.py — the evidence line's drive state, proof line, screenshot count; the
@@ -411,9 +487,11 @@ overturned decision 1 (plain `npx playwright test`) and added the drive-removed 
   `recheck_targets` never runs a drive.
 - test: tests/test_triage.py — `logs_for` with the drive's files.
 - test: tests/test_init.py — the plain Playwright proposal from both dependency blocks, `""`
-  elsewhere, the setup suffix with and without a detected setup, `--drive`, the rendered
-  keys, the `process.env.SDLC_PROOF_DIR` sentence in the rendered comment and in
-  `sdlc-init.md`, no skeleton file.
+  elsewhere, the setup suffix on the detected `npm ci` and `npm install`, `--setup ""`
+  rendered `""` with the drive still proposed and the origin's install sentence, `--setup
+  "make deps"` written as given, `--drive`, the rendered keys, the
+  `process.env.SDLC_PROOF_DIR` sentence in the rendered comment and in `sdlc-init.md`, no
+  skeleton file.
 - test: tests/test_templates.py — the three keys and the four comments, the fix template's
   with the worst case and the cancellation sentence, the `drive_timeout` comment's 600 s
   maximum.
