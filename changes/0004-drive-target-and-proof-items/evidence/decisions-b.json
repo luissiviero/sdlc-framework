@@ -21,6 +21,28 @@
         "The one real gap is the advocate's point 2 (nothing says why): the sentence in the two texts the owner reads closes it (ux-conventions rule 4) inside files already in the plan, with no new mechanism and no plan change."
       ],
       "reviewer": "Keep the `$SDLC_PROOF_DIR` form and no substitution in `collect.py`; add the Windows note to the R1 comment and the R10 text (a nit, not a reason to reopen)."
+    },
+    {
+      "advocate": "Do not settle for naming the shortfall: subtract the re-check's overrun from the fix-at-(e) session cap through the same `limits.run_caps` subtraction this design already adds, so the job fits 260 without raising `timeout-minutes`.",
+      "at": "2026-10-24T12:20:12Z",
+      "cost_usd": null,
+      "decision": "Named, not fixed: the fix template's comment states the worst case (45 of R51's re-check, only when the default branch moved, 290 of 260 with or without a drive) and that a job past 260 is cancelled by GitHub while the park steps run only on a failed step; no cap changes, and the owner raises timeout-minutes with SDLC_JOB_TIMEOUT_MINUTES or amends the build caps in a reviewed PR.",
+      "head": "874cfc25acfdeedac5e81dc3ce9486f4e2788af1",
+      "item": "A fix round at (e) stays over its job's budget: the fix workflow's 260 minutes hold R51's",
+      "item_n": 2,
+      "key": "concern:7111d4db9aa50106",
+      "kind": "concern",
+      "n": 2,
+      "overturned": null,
+      "phase": "b",
+      "rationale": [
+        "Both verdicts agree on the arithmetic and that no timeout-minutes may be raised (intent.md:88-89); they disagree only on whether the design may cut the (e) fix round's session cap.",
+        "The 180-minute cap for the build run and every fix round is gate.build_max_wall_clock_minutes, an sdlc.yaml guardrail settled with R48 (1.0.8); taking 30 more minutes from it at (e) amends that settlement, which a conciliator may not decide and docs/decisions says not to reopen without asking.",
+        "The cut would also charge every (e) fix round for a re-check that base_update.update_before_offer runs only when the default branch moved (base_update.py:86-89), so it pays a fixed price for a sometimes-cost; the intent permits 'names' for this step (intent.md:212-215, spec R4).",
+        "The advocate's fact holds and is kept: sdlc-fix.yml:284-298 park only on outcome == 'failure' or triage == 'park', so a cancellation at 260 writes no park; the comment states this so the owner sees the exposure, and the owner-side remedy is the one build_caps_refusal already prescribes.",
+        "Changing the park steps' conditions is a workflow change beyond the comment lines this change makes to templates (spec, Workflow templates) and is outside this item; it is left for the owner to raise."
+      ],
+      "reviewer": "Accept the design as written: name the fix round's 290-of-260 shortfall in the fix template's comment, raise no `timeout-minutes`, and do not shorten the fix session at (e); the shortfall is pre-existing, unchanged by this change, and the intent allows \"names\" as the answer."
     }
   ],
   "phase": "b",

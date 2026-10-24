@@ -414,7 +414,7 @@ REVIEW.md pass; this repository's `sdlc.yaml` and workflow copies.
    Windows owner writes `%SDLC_PROOF_DIR%` or reads `process.env.SDLC_PROOF_DIR` in the
    Playwright config), and `collect.py` does no substitution of its own. Guess made because
    the intent does not say.
-2. A fix round at (e) stays over its job's budget: the fix workflow's 260 minutes hold R51's
+2. decided (by panel #2): Named, not fixed: the fix template's comment states the worst case (45 of R51's re-check, only when the default branch moved, 290 of 260 with or without a drive) and that a job past 260 is cancelled by GitHub while the park steps run only on a failed step; no cap changes, and the owner raises timeout-minutes with SDLC_JOB_TIMEOUT_MINUTES or amends the build caps in a reviewed PR. — A fix round at (e) stays over its job's budget: the fix workflow's 260 minutes hold R51's
    merge and re-check (45 minutes), the fix session (185 minutes today, 180 with a drive),
    the commands step (50 minutes today, 55 with a drive) and the judge (10 minutes), which
    is 290 minutes today and 290 with a drive, both past 260. The design raises no
