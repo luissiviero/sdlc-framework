@@ -9,7 +9,8 @@ to one version: the later bump fails and the earlier is told, and a branch built
 shares its bump (choice 266). A path added, changed or deleted under ``plugin/`` or
 ``template/`` since the merge base with ``main`` fails without a version above ``main``'s, as
 it runs in Framework checks too (a detached merge commit, ``origin/main`` only); a change
-reverted on the branch, or one that only ``main`` made, needs none; no merge base fails.
+reverted on the branch, one that only ``main`` made, or one a criss-cross merge brings from
+``main``, needs none; a push to ``main`` checks nothing; no merge base fails.
 """
 
 from __future__ import annotations
@@ -306,3 +307,73 @@ def test_task_version_check_fails_when_git_cannot_be_read(monkeypatch, capsys):
     monkeypatch.setattr(tasks, "version_problems", broken)
     assert tasks.task_version_check() == 1
     assert "version-check: FAIL cannot read git:" in capsys.readouterr().out
+
+
+def test_a_file_moved_into_plugin_without_a_bump_fails(tmp_path):
+    root = _repo(tmp_path)
+    _commit(root, {"docs/b.py": "b = 1\n"})
+    _git(root, "checkout", "-q", "main")
+    _git(root, "merge", "-q", "work")
+    _git(root, "checkout", "-q", "-B", "work")
+    _git(root, "mv", "docs/b.py", "plugin/b.py")
+    _git(root, "commit", "-q", "-m", "move in")
+    assert tasks.version_problems(root) == ([f"the branch changes plugin/b.py {NO_BUMP}"], [])
+
+
+def test_an_unreadable_version_fails_a_plugin_change(tmp_path):
+    root = _repo(tmp_path)
+    _commit(root, {".claude-plugin/plugin.json": "{", "plugin/a.py": "a = 2\n"})
+    assert tasks.version_problems(root) == (
+        [".claude-plugin/plugin.json holds no readable version at HEAD"],
+        [],
+    )
+    _git(root, "checkout", "-q", "main")
+    _commit(root, {".claude-plugin/plugin.json": "{"})
+    _git(root, "checkout", "-q", "-B", "work")
+    _commit(root, {"plugin/a.py": "a = 3\n"})
+    failures, _ = tasks.version_problems(root)
+    assert failures[0].startswith(
+        "the branch changes plugin/a.py under plugin/ or template/ with "
+        ".claude-plugin/plugin.json at no readable version, not above main's none readable"
+    )
+
+
+def test_a_push_to_main_as_framework_checks_has_it_checks_nothing(tmp_path):
+    root = _repo(tmp_path)
+    _git(root, "checkout", "-q", "main")
+    _commit(root, {"plugin/a.py": "a = 2\n"})  # an unbumped change already on main
+    _git(root, "update-ref", "refs/remotes/origin/main", _git(root, "rev-parse", "main"))
+    _git(root, "checkout", "-q", "--detach", "main")
+    _git(root, "branch", "-q", "-D", "main", "work")
+    assert tasks.version_problems(root) == ([], [])
+
+
+def test_a_criss_cross_merge_counts_none_of_mains_changes(tmp_path):
+    root = _repo(tmp_path)
+    _commit(root, {"docs/x.md": "x\n"}, "b1")
+    _git(root, "checkout", "-q", "main")
+    _commit(root, {"plugin/a.py": "a = 2\n"}, "m0: main's own, unbumped")
+    m0 = _git(root, "rev-parse", "HEAD")
+    _git(root, "merge", "-q", "--no-ff", "--no-edit", "work")  # main merges b1
+    _git(root, "checkout", "-q", "work")
+    _git(root, "merge", "-q", "--no-ff", "--no-edit", m0)  # work merges m0, not main's tip
+    assert len(_git(root, "merge-base", "--all", "main", "HEAD").split()) == 2
+    assert tasks.version_problems(root) == ([], [])
+
+
+def test_an_unbumped_branch_above_main_still_meets_the_tag_check(tmp_path):
+    root = _repo(tmp_path)
+    _git(root, "checkout", "-q", "main")
+    _commit(root, _version("1.0.3"))
+    _git(root, "tag", "v1.0.3")
+    _git(root, "checkout", "-q", "work")
+    _git(root, "merge", "-q", "--no-edit", "main")
+    _commit(root, {"plugin/a.py": "a = 2\n"})
+    _git(root, "checkout", "-q", "main")
+    _commit(root, _version("1.0.2"))  # main lowers its version
+    _git(root, "checkout", "-q", "work")
+    failures, _ = tasks.version_problems(root)
+    assert failures == [
+        "the branch bumps to 1.0.3, and v1.0.3 is already tagged: "
+        "take the next free patch (python tasks.py next-free)"
+    ]

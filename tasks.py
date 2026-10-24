@@ -17,7 +17,8 @@ retired term used as a live one, CLAUDE.md's verifying lines against ``sdlc.yaml
 the next free choice, candidate, note, decision and patch on ``main`` and every fetched branch
 ahead of it (ROADMAP R65, part 1). ``version-check`` fails a branch that bumps ``plugin.json``
 to a version ``main`` already holds or a tag already has (ROADMAP R5's race, choice 257), or
-that a fetched open branch bumped to first (choice 266). ``template-hashes`` rewrites
+that a fetched open branch bumped to first (choice 266), and one that changes ``plugin/`` or
+``template/`` without a version above ``main``'s (choice 270). ``template-hashes`` rewrites
 ``plugin/init/template_hashes.json``, the hash of each refreshed copy's template at every tag,
 which ``/sdlc-init`` reads to tell a copy nobody edited (ROADMAP R64).
 """
@@ -1606,18 +1607,24 @@ SHIPPED_DIRS = ("plugin", "template")
 
 def shipped_paths(root: Path, base: str, head: str = "HEAD") -> list[str]:
     """Every path under ``plugin/`` or ``template/`` that ``head`` adds, changes or deletes
-    against its merge base with ``base``. ``LookupError`` when there is no merge base."""
+    against its merge base with ``base``; with several merge bases (a criss-cross merge), only
+    the paths that differ from each of them, so that none of main's own is counted.
+    ``LookupError`` when there is no merge base."""
     try:
-        merge_base = _git(root, "merge-base", base, head).decode().strip()
+        merge_bases = _git(root, "merge-base", "--all", base, head).decode().split()
     except subprocess.CalledProcessError:
         raise LookupError(
             f"HEAD has no merge base with main at {base[:7]}: fetch main's whole history "
-            "(git fetch origin; a shallow clone has none)"
+            "(git fetch --unshallow origin in a shallow clone)"
         ) from None
-    listed = _git(
-        root, "diff", "--name-only", "--no-renames", "-z", merge_base, head, "--", *SHIPPED_DIRS
-    )
-    return sorted(p for p in listed.decode("utf-8").split("\0") if p)
+    shipped: set[str] | None = None
+    for merge_base in merge_bases:
+        listed = _git(
+            root, "diff", "--name-only", "--no-renames", "-z", merge_base, head, "--", *SHIPPED_DIRS
+        )
+        paths = {p for p in listed.decode("utf-8", errors="replace").split("\0") if p}
+        shipped = paths if shipped is None else shipped & paths
+    return sorted(shipped or ())
 
 
 def version_problems(root: Path) -> tuple[list[str], list[str]]:
@@ -1629,8 +1636,9 @@ def version_problems(root: Path) -> tuple[list[str], list[str]]:
         return [f"cannot compare the branch with main: {error}"], []
     name = ref.split("/", 2)[2]
     head, on_main = _version_at(root, "HEAD"), _version_at(root, base)
-    if not version_bumped(root, base):
-        if not shipped or (head is not None and on_main is not None and head > on_main):
+    above_main = head is not None and on_main is not None and head > on_main
+    if not version_bumped(root, base) and not (shipped and above_main):
+        if not shipped:
             return [], []
         some = ", ".join(shipped[:3]) + (
             f" and {len(shipped) - 3} more" if len(shipped) > 3 else ""
@@ -1663,8 +1671,8 @@ def version_problems(root: Path) -> tuple[list[str], list[str]]:
 # An open branch that bumps to the same version is a clash before either merges (choice 266).
 # The branch whose bump came first keeps the version; the later one fails here and renumbers.
 # Only the branches this clone has fetched are seen, so `git fetch origin` before `verify`;
-# CI fetches the pull request alone and sees none. A branch built on this one, or one this
-# branch is built on, shares the bump and is no clash.
+# Framework checks fetches every branch too (fetch-depth: 0; choice 270's record). A branch
+# built on this one, or one this branch is built on, shares the bump and is no clash.
 
 
 def _bump_key(root: Path, base: str, tip: str, version: tuple[int, ...]) -> tuple[int, str]:
