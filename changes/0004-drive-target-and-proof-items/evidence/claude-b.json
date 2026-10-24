@@ -1,0 +1,131 @@
+{
+  "api_error_status": null,
+  "duration_api_ms": 3957276,
+  "duration_ms": 3650438,
+  "fast_mode_disabled_reason": "sdk_opt_in_required",
+  "fast_mode_state": "off",
+  "first_content_frame_ms": 3928,
+  "is_error": false,
+  "modelUsage": {
+    "claude-fable-5-1": {
+      "cacheCreationInputTokens": 753065,
+      "cacheReadInputTokens": 16771985,
+      "canonicalModel": "claude-fable-5-1",
+      "contextWindow": 1000000,
+      "costBasis": "list",
+      "costUSD": 26.04543124999999,
+      "inputTokens": 2930,
+      "maxOutputTokens": 64000,
+      "outputTokens": 190152,
+      "provider": "firstParty",
+      "thinkingTokens": 38014,
+      "webSearchRequests": 0
+    },
+    "claude-opus-5-5": {
+      "cacheCreationInputTokens": 657290,
+      "cacheReadInputTokens": 17097555,
+      "canonicalModel": "claude-opus-5-5",
+      "contextWindow": 1000000,
+      "costBasis": "list",
+      "costUSD": 8.882209000000001,
+      "inputTokens": 372,
+      "maxOutputTokens": 128000,
+      "outputTokens": 108738,
+      "provider": "firstParty",
+      "thinkingTokens": 51762,
+      "webSearchRequests": 0
+    }
+  },
+  "num_turns": 188,
+  "permission_denials": [
+    {
+      "tool_input": {
+        "command": "rm changes/0004-drive-target-and-proof-items/evidence/adversarial-review-b.json changes/0004-drive-target-and-proof-items/evidence/adversarial-review-b.model.json changes/0004-drive-target-and-proof-items/evidence/diff-b.patch",
+        "description": "Remove the verdict and diff of the superseded commit"
+      },
+      "tool_name": "Bash",
+      "tool_use_id": "toolu_01TYGWxvV3L27AmE3h8G6SKK"
+    }
+  ],
+  "queued_turn_count": 0,
+  "result": "Design PR opened: https://github.com/luissiviero/sdlc-framework/pull/378. Gate (b) `wait` with label `sdlc:b-ready`; 0 open concerns (3 closed by the panel, 3 panel decisions of the cap's 4); adversarial verdict `continue`, classified non-routine. Nothing else is started.",
+  "result_index": 0,
+  "safety_stops": 0,
+  "sdlc_run": {
+    "at": "2026-10-24T12:30:31Z",
+    "credential": "oauth",
+    "seconds": 3651.4,
+    "timed_out": false
+  },
+  "session_id": "d3370b41-57db-430c-a0fe-6965efcd953d",
+  "stop_reason": "end_turn",
+  "subagent_stats": {
+    "by_type": {
+      "general-purpose": 6,
+      "sdlc:adversarial-reviewer": 7
+    },
+    "completed": 13,
+    "failed": 0,
+    "killed": {
+      "parent": 0,
+      "system": 0,
+      "user": 0
+    },
+    "max_depth": 1,
+    "refused": {
+      "budget": 0,
+      "concurrency_limit": 0,
+      "depth_limit": 0
+    },
+    "requested": {
+      "background": 0,
+      "foreground": 0,
+      "unset": 13
+    },
+    "spawned": 13,
+    "spawned_by_subagents": 0,
+    "started_in_background": 0
+  },
+  "subtype": "success",
+  "terminal_reason": "completed",
+  "time_to_request_ms": 102,
+  "total_cost_usd": 34.927640249999975,
+  "ttft_ms": 6915,
+  "ttft_stream_ms": 3927,
+  "type": "result",
+  "usage": {
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 386963,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "cache_creation_input_tokens": 386963,
+    "cache_read_input_tokens": 15004703,
+    "fallback_credit": null,
+    "inference_geo": "global",
+    "input_tokens": 1830,
+    "iterations": [
+      {
+        "cache_creation": {
+          "ephemeral_1h_input_tokens": 508,
+          "ephemeral_5m_input_tokens": 0
+        },
+        "cache_creation_input_tokens": 508,
+        "cache_read_input_tokens": 386455,
+        "input_tokens": 32,
+        "output_tokens": 118,
+        "type": "message"
+      }
+    ],
+    "output_tokens": 153506,
+    "output_tokens_details": {
+      "thinking_tokens": 22986
+    },
+    "server_tool_use": {
+      "web_fetch_requests": 0,
+      "web_search_requests": 0
+    },
+    "service_tier": "standard",
+    "speed": "standard"
+  },
+  "uuid": "cb5f29b4-1d42-405f-93c6-4b75904efbc4"
+}
