@@ -423,7 +423,7 @@ REVIEW.md pass; this repository's `sdlc.yaml` and workflow copies.
    the fix session at (e) to fit the job. Guess made because the intent asks the design to
    say which of the three uncounted steps it fixes and which it names, and does not say
    which.
-3. The `line` path of a `state` item on a text file is read as "any line satisfies the
+3. decided (by panel #3): Keep both readings, pinned down: the one parse (JSON when it parses, else string) applies to the expected value and to each text line; `==` is equal only when the parsed values have the same JSON type and value (a bool never equals a number, `1` never equals `1.0`); the string form for `contains`/`matches` is the value itself for a string and `json.dumps` otherwise; an empty text file is `not produced`; `seen` on a `line` differs is the file's first line; the `plan-template` skill states the any-line rule and `tests/test_proof.py` covers `== 1` against `true` (differs), `contains true` against JSON `true` (matches), text `200` and JSON `200` against `== 200` (both match) and the empty file. — The `line` path of a `state` item on a text file is read as "any line satisfies the
    comparison" (an `==` holds when one line equals the value; `seen` is the first
    non-matching line, or the first line), and the expected value is parsed as JSON when it
    parses, else taken as a string, so `== 200` matches a JSON number and the text `200`
