@@ -20,7 +20,10 @@ difference is named.
   allowance is added (security-baseline rule 7: the drive runs outside the sandbox exactly as
   the three targets do today).
 - A project whose `sdlc.yaml` has no `commands.drive` key reads as empty: no behaviour, no
-  figure and no gate entry changes for it (compatibility constraint of the intent).
+  log and no job figure changes for it (compatibility constraint of the intent). The one
+  visible addition is uniform: its gate records at (c), (d) and (e) gain the `proof` entry of
+  R7, always `ok` with the reason "no drive target: nothing to compare", so every reader
+  (R19 included) reads one record shape.
 
 ### R2. Where the drive runs, and when
 - The runner's step after the session (`gate.run_deferred_commands`) runs the drive once,
@@ -58,7 +61,7 @@ difference is named.
   `recheck` (R51) and `plugin/release/cli.py` `recheck_targets` keep running
   `commands_from_config`'s three. When the branch moves after the gate and R51's check 12
   re-checks the merged tree, the proof is not re-run; the PR's evidence bullet (R12) names the
-  commit the proof is of when it is not the final head.
+  commit the proof is of when the tree moved beyond the change folder since it.
 
 ### R4. The job time counts only the targets that are set (intent Q2)
 - `run_phase.commands_timeout_seconds` is `3 × command_timeout + drive_timeout (only when
@@ -118,13 +121,14 @@ difference is named.
   run produced it). The manifest is never itself a proof file: no item may name it.
 
 ### R7. The gate compares the state on the final tree, against the approved plan
-- A new gate check `proof` exists at (c), (d) and (e). Inside a CI session its result is
-  `ok` with `details.deferred: true` (the step replaces it, as `commands` and `evidence`;
-  `DEFERRABLE_CHECKS` gains it). By hand it is `ok` with `details.checked: false` (R2). In
-  the runner's step, after the drive, it is judged: the items are read from `plan.md` at
-  `GateContext.approved_artifact` (the merge base, or the fast lane's design commit), every
-  `screenshot` and `state` item is checked against `evidence/proof/` (exists; for `state`,
-  the comparison of R5), and the entry is written beside `commands`.
+- A new gate check `proof` exists at (c), (d) and (e), in every record (R1). Inside a CI
+  session its result is `ok` with `details.deferred: true` (the step replaces it, as
+  `commands` and `evidence`; `DEFERRABLE_CHECKS` gains it). By hand it is `ok` with
+  `details.checked: false` (R2). In the runner's step, after the drive, it is judged: the
+  items are read from `plan.md` at `GateContext.approved_artifact` (the merge base, or the
+  fast lane's design commit), every `screenshot` and `state` item is checked against
+  `evidence/proof/` (exists; for `state`, the comparison of R5), and the entry is written
+  beside `commands`.
 - The entry's shape (provisional, intent Q3 second half): `{"name": "proof", "ok", "reason",
   "details": {"manifest": "evidence/proof/manifest.json", "run": <the manifest's run>,
   "commit": <the manifest's commit>, "items": [{"item": <the plan's line verbatim>, "kind":
@@ -135,15 +139,19 @@ difference is named.
 - `ok` is false when any item with `approved: true` is `differs` or `not produced`. An item
   the (c) session added to the working-tree `plan.md` (not in the approved copy) is listed
   with `approved: false`, reported, and never the bar. With `commands.drive` empty the entry
-  is `ok` with reason "no drive target: nothing to compare" (gate (b) ensured the approved
-  plan names no `state` or `screenshot` item).
+  is `ok` with reason "no drive target: nothing to compare" and no `items` (gate (b) ensured
+  the approved plan names no `state` or `screenshot` item).
 - A `differs` or `not produced` on an approved item is a red target under decision 29:
   `plugin/ci/auto_round.red_targets` starts a round on a failed `proof` entry as on a red
   `commands` entry (today any failed entry other than `commands`, and `evidence` on the
   same logs, parks). A red drive whose items are also `not produced` is one round, not a
   park. The round's request (`red_targets_request`, `targets_summary`) names each failed
   item with its expected value and the value seen, beside the targets' exit codes and output
-  tails; `drive.log` is among the constraint's logs.
+  tails; `drive.log` is among the constraint's logs. The two other readers of a round's
+  targets follow: the PR's "What needs you" line (`description._auto_round_line`) renders a
+  proof round as `proof (N items)`, never `proof (exit None)`, and the fresh-context judge
+  at the iteration cap (`auto_round.JUDGE_PROMPT`) is told to read `drive.log` and the gate
+  record's `proof` entry beside the three logs.
 - The `evidence` check at (d) and (e) requires `drive.log` with the collector header when
   the drive is set (`REQUIRED_EVIDENCE` is read through a helper that adds it; a red header
   parks as a red log does); never when the drive is empty. At (c) it stays optional, as the
@@ -199,15 +207,19 @@ difference is named.
 
 ### R12. The PR body and the check run show the result
 - `plugin/pr/description.py` `evidence_status` takes the project root beside the change
-  folder and the phase (it reads `sdlc.yaml` for the drive and `HEAD` for the manifest's
-  commit; its three callers, `description.py`'s bullets, `pr/cli.py check_run_result` and
-  `release/notes.py _evidence_line`, pass it): adds `drive <state>` after the three logs
-  when the drive is set; adds `proof N, state items M of K matching` read from the `proof`
-  entry of the phase's gate record (N = files in the manifest, M of K = `matches` over
-  approved `state` items; `proof not checked` by hand; nothing when the drive is empty);
-  counts screenshots without the `.gitkeep`; and when the manifest's commit is not HEAD,
-  adds `proof of <sha7>, not the final head`. The "Needs your close look" banner stays the
-  risk list's (decision 35). The per-item Proof line is R19's, not this change.
+  folder and the phase (it reads `sdlc.yaml` for the drive and the git tree for the
+  manifest's commit; its three callers, `description.py`'s bullets, `pr/cli.py
+  check_run_result` and `release/notes.py _evidence_line`, pass it): adds `drive <state>`
+  after the three logs when the drive is set; adds `proof N, state items M of K matching`
+  read from the `proof` entry of the phase's gate record (N = files in the manifest, M of K =
+  `matches` over approved `state` items; `proof not checked` by hand; nothing when the drive
+  is empty); counts screenshots without the `.gitkeep`; and adds `proof of <sha7>, not the
+  final head` only when the tree moved beyond the change folder since the manifest's
+  commit, by the rule `auto_round.head_matches` applies to a round's head today (the
+  manifest's commit is HEAD, or an ancestor of HEAD from which only `changes/<id>-<slug>/`
+  moved): the runner's own record commit, which always follows the step
+  (`commit_run_record`), never trips it. The "Needs your close look" banner stays the risk
+  list's (decision 35). The per-item Proof line is R19's, not this change.
 
 ### R13. The failed run explains itself with the drive's files (R18)
 - `plugin/ci/triage.py` `logs_for`: on a red `commands` entry the logs include `drive.log`
@@ -284,10 +296,11 @@ the ratchet line are today.
 `proof/`, run the command through `run_command` with the environment additions and the drive
 timeout, write `drive.log`, apply the caps, write the manifest; `seconds` kept); `judge_proof
 (ctx, manifest) -> CheckResult` (approved plan's items against `proof/`); `check_proof(ctx)`
-for `CHECKS_BY_PHASE` c, d, e (deferred in CI, `checked: false` by hand); `check_proof_items
-(ctx)` for (b). `judge_targets` takes the drive's run as a fourth entry (its red reads
-"drive (exit n)" or "drive (timed out)"). `check_evidence` reads the required list through
-the helper. The `evidence` deferred reason names the drive log when set.
+for `CHECKS_BY_PHASE` c, d, e (deferred in CI, `checked: false` by hand, "no drive target"
+when empty); `check_proof_items(ctx)` for (b). `judge_targets` takes the drive's run as a
+fourth entry (its red reads "drive (exit n)" or "drive (timed out)"). `check_evidence` reads
+the required list through the helper. The `evidence` deferred reason names the drive log
+when set.
 
 **`plugin/gate/gate.py`** `run_deferred_commands`: after the targets' runs and before the
 logs are written, when the drive is set, `runs["drive"] = run_drive(...)`; the drive's
@@ -304,7 +317,15 @@ and `auto_round` decides whether the park is a round.
 with item, expected, seen]}`, and a failed `evidence` entry on `drive.log` is accepted as
 the `evidence`-on-red-logs case is today. `targets_summary` renders `proof (2 items)`;
 `red_targets_request` adds one block per failed item (`<item>: expected <value>, seen
-<seen>`). `REQUEST_TEXT` says "a red target or proof item".
+<seen>`). `REQUEST_TEXT` says "a red target or proof item". `JUDGE_PROMPT` lists
+`drive.log` and the record's `proof` entry among what the judge reads. `head_matches` keeps
+its behaviour and calls the shared rule below.
+
+**`plugin/state/gitops.py`** gains `only_change_folder_moved(root, change_dir, sha) ->
+bool` (the body of `auto_round.head_matches` today: `sha` is HEAD, or an ancestor of HEAD
+from which only `changes/<id>-<slug>/` moved, renames counted as outside), so the PR body's
+stale-proof line (R12) and the round's head check read one rule, and `pr/` imports nothing
+from `ci/`.
 
 **`plugin/ci/run_phase.py`**: `commands_timeout_seconds` adds the drive timeout when
 set; `run_caps(config, phase, env, gate_phase=None)` subtracts the drive minutes when
@@ -330,9 +351,10 @@ Inside a CI session the drive is skipped with `"exit": "deferred"` and no log is
 
 **`plugin/pr/description.py`**: `evidence_status(change_dir, phase, root)` reads the gate
 record's `proof` entry (`load_gate`), the manifest, `sdlc.yaml` at `root` (the drive) and
-`HEAD` (through `state.gitops`; no repository means no commit line); `LOG_FILES` through
-the helper; the screenshot count filters `.gitkeep`. The three callers pass the root they
-already hold.
+the tree through `gitops.only_change_folder_moved` (no repository means no commit line);
+`LOG_FILES` through the helper; the screenshot count filters `.gitkeep`;
+`_auto_round_line` renders a `proof` target by its item count. The three callers pass the
+root they already hold.
 
 **`plugin/ci/triage.py`** `logs_for`: the two additions of R13.
 
@@ -414,13 +436,16 @@ REVIEW.md pass; this repository's `sdlc.yaml` and workflow copies.
   - a `sdlc.yaml` with `commands.drive` set runs the drive in the runner's step after the
     three targets, with `SDLC_PROOF_DIR` and `SDLC_CHANGE_ID` in its environment and no
     token or model credential, writes `evidence/drive.log` at (c), (d) and (e), clears
-    `proof/` first and writes `manifest.json`; with it empty, nothing of this runs and the
-    gate record, logs and job figures are those of today;
+    `proof/` first and writes `manifest.json`; with it empty, nothing of this runs: the
+    logs, the verdict and the job figures are those of today, and the gate record differs
+    only by the always-ok `proof` entry;
   - a red or timed-out drive is a red target that starts a round with `drive.log` as its
     constraint; a drive that does not start is re-run once and then parks;
   - the `proof` entry lists the approved items with `matches` / `differs` / `not produced`;
     a `differs` on an approved item starts a round whose request names the item, the
-    expected and the seen value; an item added in (c) is reported and never fails the entry;
+    expected and the seen value, whose PR line reads `proof (N items)`, and whose judge
+    prompt names `drive.log` and the `proof` entry; an item added in (c) is reported and
+    never fails the entry;
   - an image over `gate.proof_image_kb` or past the tenth is deleted, listed in `dropped`,
     and its item is `not produced`;
   - gate (b) parks a plan that names a `state` or `screenshot` item while the drive is empty
@@ -431,9 +456,11 @@ REVIEW.md pass; this repository's `sdlc.yaml` and workflow copies.
   - `commands_from_config`, `base_update.recheck` and `release.recheck_targets` never return
     or run the drive;
   - `collect.py` runs the drive the same way, reports the items and exits 1 on a red one;
-  - `evidence_status` shows `drive`, `proof N, state items M of K matching`, the
-    `.gitkeep`-free screenshot count and the manifest's commit when it is not HEAD, and its
-    three callers pass the root;
+  - `evidence_status` shows `drive`, `proof N, state items M of K matching` and the
+    `.gitkeep`-free screenshot count; it shows the manifest's commit only when a commit
+    after it changed a file outside the change folder, and not after the runner's own
+    record commit; its three callers pass the root; `auto_round.head_matches` keeps its
+    behaviour on the shared rule;
   - `triage.logs_for` adds `drive.log` on a red `commands` entry and `drive.log` plus
     `proof/manifest.json` on a failed `proof` entry;
   - `/sdlc-init` proposes the Playwright drive and the browser install only when
