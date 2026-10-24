@@ -10,6 +10,8 @@ This session is the small lane started by the central session `session_013TgyuTu
 5. **Tests**: `tests/test_gate.py` (the fallback, `run_drive` with `"fifty"`, the inherited red `drive.log`, the cap under 30) and `tests/test_ci.py` (the drive out of the (b) budget; an (e) run whose drive takes the cap below the floor parks before the session and never invokes the CLI).
 6. **Version**: `.claude-plugin/plugin.json` and the marketplace entry 1.0.40 → 1.0.41 (choice 270), the patch `python tasks.py next-free` named after `git fetch origin`.
 
+7. **The independent review** (a fresh-context agent, on `325e202`) found nothing blocking and one nit: the runner's floor park read `build` as the session's caps do (`build_caps_refusal`), while the gate reads the `start-run` record, which marks every fix round `build`. A fix round at (e) whose job refuses the build caps could then start a session the gate parks. The park now reads `phase in BUILD_CAP_PHASES`, the gate's figure, with a test. The older mismatch underneath it (`start-run` records `build` whatever the job allows, so a fix round's session and its gate can read different caps) predates change 0004 and is left as found.
+
 Not in scope: nit 1 (the four workflow comments, follow-up 1, the owner's PR), R67, any rename.
 
 ## Proposed edits for the owner

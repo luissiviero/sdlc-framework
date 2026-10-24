@@ -3242,11 +3242,10 @@ def _run_phase(args, env: dict[str, str], track: dict[str, Any]) -> int:
         _emit({**parked, "branch": branch})
         return EXIT_OK
     # change 0004 (R4): the drive's minutes would take the (e) session below the floor - the
-    # gate's wall-clock check parks the same case, so no session starts on it
+    # gate's wall-clock check parks the same case, so no session starts on it; ``build`` is
+    # the one ``start-run`` records (every fix round), which is what that check reads
     floor = (
-        limits.drive_floor_refusal(
-            config, phase in BUILD_CAP_PHASES and build_caps_refusal(config, env) is None
-        )
+        limits.drive_floor_refusal(config, phase in BUILD_CAP_PHASES)
         if gate_phase == limits.DRIVE_PHASE
         else None
     )

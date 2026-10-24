@@ -822,6 +822,16 @@ def test_an_e_run_whose_drive_takes_the_cap_below_the_floor_parks_before_the_ses
     )
     assert out["parked"] == reason
     assert status_mod.read_status(change).parked_reason == reason
+    # a fix round at (e) reads the build caps the gate reads from its start-run record
+    # ("run": "build"), even when the job refuses them for the session
+    cfg = {"commands": {"drive": "x"}, "gate": {"drive_timeout": 3600}}
+    cfg["gate"]["build_max_wall_clock_minutes"] = 60
+    assert run_phase.build_caps_refusal(cfg, {}) is not None
+    assert limits.drive_floor_refusal(cfg, True) == (
+        "gate.drive_timeout takes 60 min off the (e) session's 60 min, below the floor of 30 min"
+    )
+    source = (ROOT / "plugin" / "ci" / "run_phase.py").read_text(encoding="utf-8")
+    assert "limits.drive_floor_refusal(config, phase in BUILD_CAP_PHASES)" in source
 
 
 def test_a_framework_change_may_touch_the_guardrails(project, tmp_path):
