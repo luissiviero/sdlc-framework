@@ -197,9 +197,7 @@ def with_drive(root: Path, change: Path) -> None:
 
     write(root / "drive.py", DRIVE_SCRIPT)
     text = (root / "sdlc.yaml").read_text(encoding="utf-8")
-    write(
-        root / "sdlc.yaml", text.replace("commands:\n", 'commands:\n  drive: "python drive.py"\n')
-    )
+    write(root / "sdlc.yaml", text.replace('  drive: ""\n', '  drive: "python drive.py"\n'))
     write(change / "plan.md", PROOF_PLAN)
     git(root, "add", ".")
     git(root, "commit", "-q", "-m", "owner: the drive and the approved plan")

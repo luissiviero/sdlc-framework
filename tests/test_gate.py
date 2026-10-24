@@ -4077,8 +4077,7 @@ def _with_drive_on_base(root: Path) -> None:
     def edit(r: Path) -> None:
         write(r / "drive.py", DRIVE_SCRIPT)
         cfg = (r / "sdlc.yaml").read_text(encoding="utf-8")
-        cfg = cfg.replace("commands:\n", 'commands:\n  drive: "python drive.py"\n', 1)
-        cfg = cfg.replace("gate:\n", "gate:\n  drive_timeout: 60\n", 1)
+        cfg = cfg.replace('  drive: ""\n', '  drive: "python drive.py"\n', 1)
         write(r / "sdlc.yaml", cfg)
 
     on_base(root, edit, "owner: set commands.drive")

@@ -503,7 +503,7 @@ def test_red_log_is_red(project):
 # --- change 0004: the drive's proof in the evidence line ------------------------------------
 def _with_drive(root: Path) -> None:
     text = (root / "sdlc.yaml").read_text(encoding="utf-8")
-    write(root / "sdlc.yaml", text.replace("commands:\n", 'commands:\n  drive: "npx x"\n', 1))
+    write(root / "sdlc.yaml", text.replace('  drive: ""\n', '  drive: "npx x"\n', 1))
     git(root, "add", "sdlc.yaml")
     git(root, "commit", "-q", "-m", "owner: commands.drive")
 
