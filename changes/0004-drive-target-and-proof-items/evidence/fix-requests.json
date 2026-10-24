@@ -1,0 +1,26 @@
+{
+  "applied_earlier": [],
+  "collected_at": "2026-10-24T13:12:34+00:00",
+  "head": "b8b37a5d48d441b9217f60ad6962849be0e42d00",
+  "not_applied": [],
+  "ok": true,
+  "pr_number": 378,
+  "repo": "luissiviero/sdlc-framework",
+  "requests": [
+    {
+      "applied": true,
+      "association": "OWNER",
+      "at": "2026-10-24T13:11:44Z",
+      "author": "luissiviero",
+      "body": "Gate (b) review: approve after these changes.\n1. R7 / plan step 4: when the approved plan names `state` or `screenshot` items and `commands.drive` is empty at (c)\u2013(e), fail `proof` (park) with \"drive removed after gate (b)\" instead of ok. Add a test.\n2. R4 and the template comment: state the largest `gate.drive_timeout` the jobs hold (600 s with triage: test 190 + d \u2264 200) and refuse a larger value at (c)/(d) as `build_caps_refusal` does.\n3. Panel decision 1: use plain `npx playwright test`, the test writing to `process.env.SDLC_PROOF_DIR` (drop `--output`); say so in R8 and R10.\n4. Plan step 13 vs Acceptance: say where the port-list lines are recorded (the build may write only plugin/, template/, tests/ and the change folder); list sdlc-fix.yml there too.\n5. Pin down: (a) whether `check_proof` is deferred or \"no drive target\" when the drive is empty in CI; (b) that the not-started re-run calls `run_drive` again, clearing `proof/` first; (c) the setup proposal when `commands.setup` is empty; (d) R5 wording: \"same Python type after json.loads\".\n6. Panel decision 2 accepted for this change; record a ROADMAP candidate for the (e) fix round's 290/260 minutes with no park on cancel.",
+      "id": 5638369796,
+      "kind": "review",
+      "state": "CHANGES_REQUESTED",
+      "url": "https://github.com/luissiviero/sdlc-framework/pull/378#pullrequestreview-5638369796"
+    }
+  ],
+  "route": "api",
+  "schema_version": 1,
+  "trigger": null,
+  "unavailable": null
+}

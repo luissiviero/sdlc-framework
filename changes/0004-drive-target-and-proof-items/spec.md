@@ -17,7 +17,8 @@ R5 and R10.
   drive runs on synthetic data, never personal data (data-conventions rule 1). It also says
   that the platform shell expands `$SDLC_PROOF_DIR` in the line (the Linux runner, a by-hand
   run on Linux or macOS), that a by-hand run under `cmd.exe` writes `%SDLC_PROOF_DIR%`, and
-  that a Playwright test writes its files to `process.env.SDLC_PROOF_DIR` (panel decision 1).
+  that a Playwright test writes its files to `process.env.SDLC_PROOF_DIR` (concern 1, the
+  owner's decision at gate (b)).
 - The drive's environment is the runner's `commands_env()` (`plugin/ci/run_phase.py`: no
   model credential, no GitHub token, no git credential) plus the two variables above and the
   `commands.env` names the owner gave the targets (R61). Nothing else is added; no network
@@ -73,6 +74,18 @@ R5 and R10.
   A project without a drive keeps every figure of today: build and fix 245 of 260, test 185
   of 200, deploy 355 of 355.
 - With a drive at the default 300 s: build and fix 250 of 260, test 190 of 200.
+- The largest `gate.drive_timeout` the jobs hold is **600 s**: with the R18 triage step's 5
+  minutes the test job is 190 + d ≤ 200 and the build and fix jobs 250 + d ≤ 260, so the
+  drive may add at most 10 minutes (`limits.DRIVE_TIMEOUT_MAX_SECONDS = 600`, one constant;
+  the template's `gate.drive_timeout` comment states it and the arithmetic). A larger value
+  is refused at (c) and (d), and in a fix round whose gate phase is (c) or (d), the way
+  `build_caps_refusal` refuses the build caps: the drive runs at 600 s, `commands_timeout_
+  seconds` counts 600, and the reason (`run_phase.drive_timeout_refusal(config)`: "gate.
+  drive_timeout=<n> exceeds the 600 s the test and build jobs hold: 600 applied; lower it, or
+  raise timeout-minutes and SDLC_JOB_TIMEOUT_MINUTES together in a reviewed PR") is written
+  in the runner's result JSON and in the gate record's `drive` run (`details.refused`). At
+  (e) the value is not capped: the drive's minutes come out of the session's cap (below),
+  so the deploy job holds any value down to the floor of 30.
 - At (e), when the drive is set, the drive's minutes (`ceil(drive_timeout / 60)`) come out
   of the session's wall-clock cap, for the (e) run and for a fix round whose gate phase is
   (e): `limits.run_caps` takes the minutes to subtract, and both of its readers pass them,
@@ -93,8 +106,11 @@ R5 and R10.
   default branch moved; 290 of 260 with or without a drive) and that a job past 260 is
   cancelled by GitHub while the park steps run only on a failed step, so such a round ends
   with no park; no cap changes, and the owner raises `timeout-minutes` together with
-  `SDLC_JOB_TIMEOUT_MINUTES`, or amends the build caps, in a reviewed PR (panel decision 2;
-  Flagged concerns, item 2).
+  `SDLC_JOB_TIMEOUT_MINUTES`, or amends the build caps, in a reviewed PR (panel decision 2,
+  accepted by the owner for this change; Flagged concerns, item 2). The shortfall itself
+  (290 of 260 for a fix round at (e), and no park when GitHub cancels the job) is a ROADMAP
+  candidate the owner records: its draft row is in `evidence/fix-response.md` (a (b) branch
+  commits only the change folder, gate check `design_scope`).
 
 ### R5. Proof items have a fixed shape (skill `plan-template`)
 - `## Proof` of `plan.md` lists one item per line, three kinds:
@@ -110,9 +126,10 @@ R5 and R10.
 - Comparison rules (one definition, in `plugin/gate/artifacts.py`, used by the gate and by
   `collect.py`; panel decision 3): one parse applies to the expected value and to each line
   of a text file: JSON when it parses (`200`, `true`, `"x"`, `null`), else the string
-  itself. `==` holds only when the two parsed values have the same JSON type and value (a
-  bool never equals a number, `1` never equals `1.0`; the text `200` and the JSON number
-  200 both equal `== 200`). The string form for `contains` and `matches` is the value itself
+  itself. `==` holds only when the two parsed values have the same Python type after
+  `json.loads` and are equal (`bool` is not `int`, `int` is not `float`: a bool never equals
+  a number, `1` never equals `1.0`; the text `200` and the JSON number 200 both parse to the
+  `int` 200 and both equal `== 200`). The string form for `contains` and `matches` is the value itself
   for a string and `json.dumps` of the value otherwise; `contains` is substring of that
   form, or membership when the seen value is a list; `matches` is Python `re.search` on it.
   With `line`, the item holds when any line of the text file satisfies the comparison, and
@@ -134,10 +151,13 @@ R5 and R10.
   run produced it). The manifest is never itself a proof file: no item may name it.
 
 ### R7. The gate compares the state on the final tree, against the approved plan
-- A new gate check `proof` exists at (c), (d) and (e), in every record (R1). Inside a CI
-  session its result is `ok` with `details.deferred: true` (the step replaces it, as
-  `commands` and `evidence`; `DEFERRABLE_CHECKS` gains it). By hand it is `ok` with
-  `details.checked: false` (R2). In the runner's step, after the drive, it is judged: the
+- A new gate check `proof` exists at (c), (d) and (e), in every record (R1). With
+  `commands.drive` set, inside a CI session its result is `ok` with `details.deferred: true`
+  (the step replaces it, as `commands` and `evidence`; `DEFERRABLE_CHECKS` gains it), and by
+  hand it is `ok` with `details.checked: false` (R2). With `commands.drive` empty it is never
+  deferred, in CI or by hand: the session's gate judges it at once from the approved plan
+  (next bullet but one), and the step has nothing to replace. In the runner's step, after
+  the drive, it is judged: the
   items are read from `plan.md` at `GateContext.approved_artifact` (the merge base, or the
   fast lane's design commit), every `screenshot` and `state` item is checked against
   `evidence/proof/` (exists; for `state`, the comparison of R5), and the entry is written
@@ -151,9 +171,15 @@ R5 and R10.
   are not listed: the suite is the `commands` entry's.
 - `ok` is false when any item with `approved: true` is `differs` or `not produced`. An item
   the (c) session added to the working-tree `plan.md` (not in the approved copy) is listed
-  with `approved: false`, reported, and never the bar. With `commands.drive` empty the entry
-  is `ok` with reason "no drive target: nothing to compare" and no `items` (gate (b) ensured
-  the approved plan names no `state` or `screenshot` item).
+  with `approved: false`, reported, and never the bar. With `commands.drive` empty the check
+  reads the approved plan's items itself: when it names no `state` or `screenshot` item the
+  entry is `ok` with reason "no drive target: nothing to compare" and no `items`; when it
+  names one, the entry fails with reason "drive removed after gate (b): the approved plan
+  names N state/screenshot item(s) and commands.drive is empty", its `items` listed as `not
+  produced`, and the change parks (never a round: `red_targets` reads only a failed entry
+  whose details carry a drive run; its "what I need" says to restore `commands.drive` in a
+  reviewed PR or to re-approve a plan without the items). Gate (b) refused the plan with the
+  drive empty (R9); this is the drive going away between the gates.
 - A `differs` or `not produced` on an approved item is a red target under decision 29:
   `plugin/ci/auto_round.red_targets` starts a round on a failed `proof` entry as on a red
   `commands` entry (today any failed entry other than `commands`, and `evidence` on the
@@ -179,6 +205,10 @@ R5 and R10.
   listed in the manifest's `dropped` with the reason, and an item that named it is
   `not produced`. When more than ten images were written, the ten kept are the first ten by
   sorted relative path. Non-image files have no cap but the 1 MiB read cap of R5.
+- The caps apply to what the drive writes under `SDLC_PROOF_DIR` itself: the proposed
+  Playwright line is plain `npx playwright test` (no `--output`), and the test writes each
+  screenshot and JSON file to a path under `process.env.SDLC_PROOF_DIR` (R10), so every image
+  the caps judge is one the test chose to write, not Playwright's own traces and artifacts.
 
 ### R9. Gate (b) refuses a plan that needs a drive the project does not have
 - A new check at (b), `proof_items`: parks when the working-tree `plan.md` names a `state`
@@ -189,19 +219,23 @@ R5 and R10.
 
 ### R10. `/sdlc-init` proposes the command where the tool exists (intent Q4)
 - `plugin/init/detect.py`: `Detection` gains `drive: Target`. For Node, when
-  `detect.node_dependencies(pkg)` holds `@playwright/test`, the proposed drive is a
-  Playwright line that writes under `$SDLC_PROOF_DIR` (its origin names the dependency), and
-  `commands.setup` gains Playwright's browser install appended with `&&`. For every other
-  project the drive is `Target(None, "", "none")`, rendered `""` with the template's comment
-  naming the slot. No skeleton file is written.
+  `detect.node_dependencies(pkg)` holds `@playwright/test`, the proposed drive is the plain
+  line `npx playwright test` (its origin names the dependency; no `--output`, no shell
+  variable in the line: the test writes its files to `process.env.SDLC_PROOF_DIR`, which
+  the runner and `collect.py` set, the same on Linux, macOS and a by-hand `cmd.exe` run;
+  concern 1, the owner's decision at gate (b)), and `commands.setup` gains Playwright's
+  browser install: appended with ` && npx playwright install --with-deps` when a setup
+  command was detected, or `npx playwright install --with-deps` alone when `commands.setup`
+  is empty. For every other project the drive is `Target(None, "", "none")`, rendered `""`
+  with the template's comment naming the slot. No skeleton file is written.
 - `sdlc_init.py` renders `{{DRIVE_CMD}}` into `template/sdlc.yaml` and accepts `--drive`
   (`""` = none), as `--setup` does; the detection report shows the proposal under the
   targets. `plugin/commands/sdlc-init.md` says what is detected and that the owner confirms
-  it like the three targets, and adds one sentence: the platform shell expands
-  `$SDLC_PROOF_DIR` in the proposed line, a by-hand run under `cmd.exe` writes
-  `%SDLC_PROOF_DIR%`, and the Playwright test writes its files to
-  `process.env.SDLC_PROOF_DIR` (panel decision 1). An existing `sdlc.yaml` without the key
-  needs no edit.
+  it like the three targets, and adds one sentence: the proposed line is plain `npx
+  playwright test`, and the Playwright test writes its screenshots and JSON files to paths
+  under `process.env.SDLC_PROOF_DIR` (a line the owner writes by hand may still use the
+  variable: the platform shell expands `$SDLC_PROOF_DIR`, and a by-hand run under `cmd.exe`
+  writes `%SDLC_PROOF_DIR%`). An existing `sdlc.yaml` without the key needs no edit.
 
 ### R11. The lists that know three logs know four, the drive's only when it is set
 - `plugin/gate/artifacts.py`: `EVIDENCE_DRIVE = "drive.log"`, `EVIDENCE_PROOF = "proof"`;
@@ -309,12 +343,16 @@ comparison `compare_state(item, proof_dir) -> (outcome, seen)` (R5), the manifes
 readers call. One definition, as `SPEC_SECTIONS` and the ratchet line are today.
 
 **`plugin/gate/checks.py`**: `drive_from_config(config) -> str | None` beside
-`commands_from_config`; `drive_timeout(ctx)`; `run_drive(ctx, head, phase) -> run` (clear
-`proof/`, run the command through `run_command` with the environment additions and the drive
-timeout, write `drive.log`, apply the caps, write the manifest; `seconds` kept); `judge_proof
-(ctx, manifest) -> CheckResult` (approved plan's items against `proof/`); `check_proof(ctx)`
-for `CHECKS_BY_PHASE` c, d, e (deferred in CI, `checked: false` by hand, "no drive target"
-when empty); `check_proof_items(ctx)` for (b). `judge_targets` takes the drive's run as a
+`commands_from_config`; `drive_timeout(ctx, phase)` (the configured value, capped at
+`limits.DRIVE_TIMEOUT_MAX_SECONDS` at (c) and (d), R4); `run_drive(ctx, head, phase) -> run`
+(clear `proof/`, run the command through `run_command` with the environment additions and
+the drive timeout, write `drive.log`, apply the caps, write the manifest; `seconds` kept;
+`details.refused` carries `drive_timeout_refusal`'s reason when the value was capped);
+`judge_proof(ctx, manifest) -> CheckResult` (approved plan's items against `proof/`);
+`check_proof(ctx)` for `CHECKS_BY_PHASE` c, d, e (with a drive: deferred in CI, `checked:
+false` by hand; without one, judged at once from the approved plan: "no drive target" when
+it names no item, "drive removed after gate (b)" when it does); `check_proof_items(ctx)`
+for (b). `judge_targets` takes the drive's run as a
 fourth entry (its red reads "drive (exit n)" or "drive (timed out)"). `check_evidence` reads
 the required list through the helper. The `evidence` deferred reason names the drive log
 when set.
@@ -322,7 +360,8 @@ when set.
 **`plugin/gate/gate.py`** `run_deferred_commands`: after the targets' runs and before the
 logs are written, when the drive is set and the phase is (c), (d) or (e), `runs["drive"] =
 run_drive(...)`; the drive's not-started exits go through `not_started` like the others (one
-re-run, decision 29); `write_deferred_logs` writes `drive.log` whenever a drive run exists
+re-run, decision 29: the re-run calls `run_drive` again, which clears `proof/` first, so the
+judged folder is the second run's alone); `write_deferred_logs` writes `drive.log` whenever a drive run exists
 (no mark to find); `replaced["proof"] = judge_proof(...)` when `proof` is among the deferred
 checks (the session's gate wrote it deferred; an older record without the entry gets none,
 and the step adds nothing it cannot replace: the record's shape is kept).
@@ -345,7 +384,9 @@ stale-proof line (R12) and the round's head check read one rule, and `pr/` impor
 from `ci/`.
 
 **`plugin/ci/run_phase.py`**: `commands_timeout_seconds` adds the drive timeout when
-set; `run_caps(config, phase, env, gate_phase=None)` subtracts the drive minutes when
+set, capped at 600 at (c) and (d); `drive_timeout_refusal(config) -> str | None` beside
+`build_caps_refusal` gives the reason when the configured value exceeds the cap, written in
+the result JSON (R4); `run_caps(config, phase, env, gate_phase=None)` subtracts the drive minutes when
 `gate_phase` is `e` (the (e) run passes its own phase; a fix round passes the change's
 gate phase at its two call sites, the `--max-turns` line and `run_timeout_seconds`) through
 `limits.run_caps(settings, build, less_minutes)`; `build_caps_minutes_needed` passes
@@ -354,7 +395,8 @@ nothing new; `commands_env()` is unchanged and the drive's two variables are add
 figure. These lines put the change on the port list (HANDOFF rules); the build's session
 record lists them.
 
-**`plugin/gate/limits.py`** `run_caps(gate_settings, build, less_minutes=0)`: subtracts
+**`plugin/gate/limits.py`** `DRIVE_TIMEOUT_MAX_SECONDS = 600` (R4);
+`run_caps(gate_settings, build, less_minutes=0)`: subtracts
 from the wall clock, never below 30; its four callers (`run_phase.run_caps`,
 `run_phase.build_caps_minutes_needed`, `limits.check_limits`, `sdlc_init.keep_build_caps`)
 keep their result when they pass nothing; `check_limits` passes `drive_minutes(ctx.config)`
@@ -376,20 +418,24 @@ root they already hold.
 **`plugin/ci/triage.py`** `logs_for`: the two additions of R13.
 
 **`plugin/init/detect.py` and `sdlc_init.py`**: `Detection.drive`, the Playwright
-proposal (`npx playwright test --output "$SDLC_PROOF_DIR"`, origin "detected:
-@playwright/test in package.json"; setup gains ` && npx playwright install --with-deps`),
-`{{DRIVE_CMD}}`, `--drive`, the report's `targets.drive`.
+proposal (`npx playwright test`, origin "detected: @playwright/test in package.json"; setup
+gains ` && npx playwright install --with-deps`, or is that install alone when no setup was
+detected), `{{DRIVE_CMD}}`, `--drive`, the report's `targets.drive`.
 
 **`template/sdlc.yaml`**: `commands.drive` with its comment (R1, the shell sentence
 included); `gate.drive_timeout: 300` and `gate.proof_image_kb: 50` with comments saying they
-are read only when the drive is set. **Workflow templates**: comment lines only (R4, the fix
+are read only when the drive is set; the `drive_timeout` comment states the 600 s maximum
+and its arithmetic (R4). **Workflow templates**: comment lines only (R4, the fix
 template's worst case and cancellation sentence included). **Skills, commands, agents**: the
 text of R5, R10, R11 and R15.
 
 **Error behaviour.** A drive that cannot start: one re-run, then a park with
 `COMMANDS_CRASH_NEED`. A drive that times out or exits non-zero: a round. An approved item
 that differs or was not produced: a round. A malformed item or an item without a drive: a
-park at (b). An image over the cap: deleted, listed, `not produced`. A missing manifest
+park at (b). A drive emptied after gate (b) while the approved plan names items: a park at
+(c), (d) or (e) ("drive removed after gate (b)"). A `drive_timeout` over 600 s at (c) or
+(d): the drive runs at 600 s with the reason recorded, never a park. An image over the
+cap: deleted, listed, `not produced`. A missing manifest
 after the step: the `proof` check fails with "the drive ran but wrote no manifest" (the
 step's own failure, a park, never a round). An unreadable approved plan: the `proof` check
 fails as `plan_sync` does on no base.
@@ -425,7 +471,7 @@ REVIEW.md pass; this repository's `sdlc.yaml` and workflow copies.
 
 ## Flagged concerns
 
-1. decided (by panel #1): Keep the proposed line `npx playwright test --output "$SDLC_PROOF_DIR"` and no substitution in `collect.py`; the `commands.drive` comment (R1) and the `/sdlc-init` text (R10) each gain one sentence saying the platform shell expands the variable, that a `cmd.exe` by-hand run writes `%SDLC_PROOF_DIR%`, and that the test writes its files to `process.env.SDLC_PROOF_DIR`. — The Playwright line `/sdlc-init` proposes writes to `"$SDLC_PROOF_DIR"`, which the shell
+1. decided Panel decision 1: use plain `npx playwright test`, the test writing to `process.env.SDLC_PROOF_DIR` (drop `--output`); say so in R8 and R10. (The owner's review at gate (b), 2026-10-24, overturning panel decision 1; applied in R1, R8, R10 and the Design.) — The Playwright line `/sdlc-init` proposes writes to `"$SDLC_PROOF_DIR"`, which the shell
    expands on the Linux runner and in a by-hand run on Linux or macOS, and which `cmd.exe`
    does not expand in a by-hand run on Windows; the intent is silent on the by-hand Windows
    case. The design proposes the `$` form unchanged (the owner confirms the line, and a
@@ -463,7 +509,10 @@ REVIEW.md pass; this repository's `sdlc.yaml` and workflow copies.
     a `differs` on an approved item starts a round whose request names the item, the
     expected and the seen value, whose PR line reads `proof (N items)`, and whose judge
     prompt names `drive.log` and the `proof` entry; an item added in (c) is reported and
-    never fails the entry;
+    never fails the entry; with `commands.drive` empty and an approved plan that names a
+    `state` or `screenshot` item, the `proof` entry fails with "drive removed after gate
+    (b)" and the change parks, never deferred and never a round; with it empty and no item,
+    the entry is `ok` at once, in a CI session too;
   - the comparison of R5: `== 1` against JSON `true` differs, `contains true` against JSON
     `true` matches, the text `200` and the JSON number 200 both match `== 200`, `1` never
     equals `1.0`, an empty text file is `not produced`, and `seen` on a `line` differs is the
@@ -474,8 +523,11 @@ REVIEW.md pass; this repository's `sdlc.yaml` and workflow copies.
     and a malformed item, and passes a prose-only Proof;
   - `commands_timeout_seconds`, `build_caps_minutes_needed` and the (e) caps hold the figures
     of R4 with and without a drive (a fix round at (e) with a drive: 180 minutes of session);
-    the four workflow templates' comments state them, the fix template's with the worst case
-    and the cancellation sentence;
+    a `drive_timeout` of 900 is capped at 600 at (c) and (d) (the step's budget counts 600,
+    `drive_timeout_refusal` gives the reason, the gate record's `drive` run carries it) and
+    not at (e); the four workflow templates' comments state them, the fix template's with
+    the worst case and the cancellation sentence, and the template's `drive_timeout` comment
+    states the 600 s maximum;
   - `commands_from_config`, `base_update.recheck` and `release.recheck_targets` never return
     or run the drive;
   - `collect.py` runs the drive the same way, reports the items and exits 1 on a red one;
@@ -486,10 +538,11 @@ REVIEW.md pass; this repository's `sdlc.yaml` and workflow copies.
     behaviour on the shared rule;
   - `triage.logs_for` adds `drive.log` on a red `commands` entry and `drive.log` plus
     `proof/manifest.json` on a failed `proof` entry;
-  - `/sdlc-init` proposes the Playwright drive and the browser install only when
-    `@playwright/test` is a dependency, `""` otherwise, writes no skeleton, renders the
-    three new keys, and its command text and the template's comment carry the shell
-    sentence of R1 and R10;
+  - `/sdlc-init` proposes the plain Playwright drive `npx playwright test` and the browser
+    install only when `@playwright/test` is a dependency (the install appended with `&&`
+    to a detected setup, alone when `commands.setup` is empty), `""` otherwise, writes no
+    skeleton, renders the three new keys, and its command text and the template's comment
+    say the test writes to `process.env.SDLC_PROOF_DIR` (R1, R8 and R10);
   - the `ux-conventions` check reads `proof/` and `screenshots/`, and the two skill texts
     say what the gate now checks;
   - the command, skill and agent texts carry the item grammar with the any-line rule and the
@@ -501,5 +554,8 @@ REVIEW.md pass; this repository's `sdlc.yaml` and workflow copies.
   version-check` passes.
 - No file outside `plugin/`, `template/`, `tests/`, `.claude-plugin/plugin.json` and the
   change folder changes; this repository's `sdlc.yaml`, `.github/workflows/` and `CLAUDE.md`
-  are untouched.
+  are untouched. The port-list lines (HANDOFF rules: `plugin/ci/run_phase.py` and the fix
+  workflow template `template/.github/workflows/sdlc-fix.yml`) are recorded in the change
+  folder, `evidence/port-list.md`, one line per file with what changed; the session file
+  that records the merge copies them to `docs/PROGRESS.md`'s "The port list".
 - No screen is touched: no `Mock:` line.

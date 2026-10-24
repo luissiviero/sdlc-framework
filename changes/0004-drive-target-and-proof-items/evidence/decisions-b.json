@@ -11,7 +11,10 @@
       "key": "concern:51eec3b904e0092f",
       "kind": "concern",
       "n": 1,
-      "overturned": null,
+      "overturned": {
+        "at": "2026-10-24T13:18:33Z",
+        "comment": "Panel decision 1: use plain npx playwright test, the test writing to process.env.SDLC_PROOF_DIR (drop --output); say so in R8 and R10."
+      },
       "phase": "b",
       "rationale": [
         "The intent fixes the form (line 153: \"a Playwright line that writes to `$SDLC_PROOF_DIR`\"), and a design run cannot rewrite an outcome the owner accepted at gate (a); the advocate's plain line is a change to the intent, for the owner at this gate, not for the panel.",
