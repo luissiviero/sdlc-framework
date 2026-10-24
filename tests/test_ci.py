@@ -325,6 +325,8 @@ def test_the_job_time_counts_the_drive_only_when_it_is_set():
     assert limits.run_caps(gate_cfg, True, limits.drive_minutes(DRIVE))[1] == 175
     assert limits.run_caps(gate_cfg, False, limits.drive_minutes(DRIVE))[1] == 115
     assert run_phase.commands_timeout_seconds({"commands": {"drive": ""}}) == 50 * 60
+    # nit 2 of the review: the drive never runs at (b), so it adds nothing to its step
+    assert minutes(DRIVE, "b") == 50 * 60
 
 
 def test_a_drive_timeout_over_600_is_capped_at_c_and_d_and_whole_at_e():
@@ -793,6 +795,43 @@ def test_a_change_with_no_budget_left_parks_before_the_session(project, monkeypa
     assert out["parked"] == reason
     assert status_mod.read_status(change).parked_reason == reason
     assert [a[0] for _n, a in calls if a and a[0] in ("park", "upsert")]
+
+
+def test_an_e_run_whose_drive_takes_the_cap_below_the_floor_parks_before_the_session(
+    project, monkeypatch, capsys
+):
+    """Change 0004's review, nit 5: the (e) floor case the gate's wall-clock check parks is
+    refused before the session starts, with the same reason, and the CLI is never invoked."""
+    root, change = project
+    text = (root / "sdlc.yaml").read_text(encoding="utf-8")
+    text = re.sub(r"(?m)^  drive: .*$", '  drive: "python drive.py"', text, count=1)
+    text = re.sub(r"(?m)^  drive_timeout: \d+", "  drive_timeout: 6000", text, count=1)
+    (root / "sdlc.yaml").write_text(text, encoding="utf-8")
+    set_state(change, "d", gate_phase="d", gate_result="passed")
+    monkeypatch.setattr(run_phase.base_update, "update_before_offer", lambda *a, **k: {"ok": True})
+    invoked: list = []
+    monkeypatch.setattr(run_phase, "invoke", lambda *a, **k: invoked.append(a) or (None, "", "", 1))
+    upsert_recorder(monkeypatch)
+    args = Args(root=str(root), phase="e", dry_run=False)
+    assert run_phase.run_phase(args, dict(KEY_ENV)) == run_phase.EXIT_OK
+    out = json.loads(capsys.readouterr().out)
+    assert invoked == []
+    reason = (
+        "limits: gate.drive_timeout takes 100 min off the (e) session's 120 min, below the "
+        "floor of 30 min"
+    )
+    assert out["parked"] == reason
+    assert status_mod.read_status(change).parked_reason == reason
+    # a fix round at (e) reads the build caps the gate reads from its start-run record
+    # ("run": "build"), even when the job refuses them for the session
+    cfg = {"commands": {"drive": "x"}, "gate": {"drive_timeout": 3600}}
+    cfg["gate"]["build_max_wall_clock_minutes"] = 60
+    assert run_phase.build_caps_refusal(cfg, {}) is not None
+    assert limits.drive_floor_refusal(cfg, True) == (
+        "gate.drive_timeout takes 60 min off the (e) session's 60 min, below the floor of 30 min"
+    )
+    source = (ROOT / "plugin" / "ci" / "run_phase.py").read_text(encoding="utf-8")
+    assert "limits.drive_floor_refusal(config, phase in BUILD_CAP_PHASES)" in source
 
 
 def test_a_framework_change_may_touch_the_guardrails(project, tmp_path):
