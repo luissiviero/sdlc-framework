@@ -13,8 +13,11 @@ reviewer write into ``evidence/``.
 
 from __future__ import annotations
 
+import json
 import re
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 INTENT_SECTIONS = (
     "## Problem",
@@ -78,6 +81,14 @@ EVIDENCE_LINT = "lint.log"
 EVIDENCE_VERIFIER = "verifier.md"
 EVIDENCE_SCREENSHOTS = "screenshots"  # UI proof of phase (d); created empty with a .gitkeep
 EVIDENCE_TARGETS = {"test": EVIDENCE_TEST, "build": EVIDENCE_BUILD, "lint": EVIDENCE_LINT}
+# Change 0004 (ROADMAP R14): the optional fourth target ``commands.drive`` exercises the product
+# and writes its proof under ``evidence/proof/``; the runner's step writes ``drive.log``
+EVIDENCE_DRIVE = "drive.log"
+EVIDENCE_PROOF = "proof"
+PROOF_MANIFEST = "manifest.json"  # written by the step after every drive run, never an item
+PROOF_MAX_IMAGES = 10
+PROOF_IMAGE_SUFFIXES = (".png", ".jpg", ".jpeg", ".webp", ".gif")
+STATE_FILE_MAX_BYTES = 1024 * 1024  # a state file over 1 MiB is ``not produced``
 REVIEW_FINDINGS = "review-findings.json"  # the review passes' machine-readable tally (p.33)
 ADVERSARIAL_VERDICT = "adversarial-review-{phase}.json"  # the agent of step 17, per gate
 GATE_RESULT = "gate-{phase}.json"  # written by the gate itself, read by the PR summary (B3)
@@ -117,6 +128,24 @@ LESSON_STATUSES = ("stable", "retired")
 # The eval case's two files: plugin/evals/case.py:178 is the only writer and must agree.
 EVAL_PROMPT = "prompt.md"
 EVAL_CHECKS = "checks.yaml"
+
+
+def target_logs(drive_set: bool) -> dict[str, str]:
+    """The command logs by target name: the three of ``EVIDENCE_TARGETS``, plus ``drive.log``
+    when ``commands.drive`` is set (change 0004)."""
+    logs = dict(EVIDENCE_TARGETS)
+    if drive_set:
+        logs["drive"] = EVIDENCE_DRIVE
+    return logs
+
+
+def required_evidence(phase: str, drive_set: bool) -> tuple[str, ...]:
+    """``REQUIRED_EVIDENCE`` of ``phase``, with ``drive.log`` at (d) and (e) when the drive is
+    set (change 0004, R7)."""
+    required = REQUIRED_EVIDENCE.get(phase, ())
+    if drive_set and EVIDENCE_TEST in required:
+        return (*required, EVIDENCE_DRIVE)
+    return required
 
 
 def lesson_glob(slug: str) -> str:
@@ -372,3 +401,209 @@ def read_text(path: Path) -> str | None:
         return Path(path).read_text(encoding="utf-8")
     except OSError:
         return None
+
+
+# --- change 0004: the proof items of plan.md's ``## Proof`` (skill ``plan-template``, R5) -----
+# Only a list item whose text starts with ``test:``, ``screenshot:`` or ``state:`` is an item;
+# prose, the ``ratchet:`` line and any other list item stay allowed beside them.
+PROOF_SECTION = "## Proof"
+PROOF_PREFIX = f"{EVIDENCE_DIR}/{EVIDENCE_PROOF}/"
+PROOF_ITEM_RE = re.compile(
+    r"^\s*(?:[-*]|\d+[.)])\s+(?P<kind>test|screenshot|state):[ \t]*(?P<rest>.*?)\s*$"
+)
+PROOF_SCREENSHOT_RE = re.compile(r"^(?P<file>\S+)(?:\s+vs\s+(?P<mock>mock/\S+))?$")
+PROOF_STATE_RE = re.compile(r"^(?P<file>\S+)\s+(?P<path>\S+)\s+(?P<verb>\S+)(?:\s+(?P<value>.*))?$")
+PROOF_VERBS = ("==", "contains", "matches")
+PROOF_LINE_PATH = "line"
+OUTCOME_MATCHES = "matches"
+OUTCOME_DIFFERS = "differs"
+OUTCOME_NOT_PRODUCED = "not produced"
+
+
+@dataclass
+class ProofItem:
+    kind: str  # test | screenshot | state
+    line: str  # the plan's line, stripped
+    number: int  # its line number in plan.md
+    file: str = ""  # evidence/proof/<file> for screenshot and state items
+    path: str = ""  # state: a dotted JSON key, or ``line``
+    verb: str = ""  # state: ``==``, ``contains`` or ``matches``
+    value: str = ""  # state: the rest of the line; test: the test's name
+    mock: str = ""  # screenshot: ``mock/<file>`` after ``vs``
+    problem: str = ""  # why the item is malformed, empty when it is not
+
+
+def _proof_file_problem(file: str) -> str:
+    if not file.startswith(PROOF_PREFIX) or len(file) == len(PROOF_PREFIX):
+        return f"the file must sit under {PROOF_PREFIX}"
+    if file == PROOF_PREFIX + PROOF_MANIFEST:
+        return f"{PROOF_MANIFEST} is the step's own file, never a proof file"
+    return ""
+
+
+def _parse_proof_item(kind: str, rest: str, line: str, number: int) -> ProofItem:
+    item = ProofItem(kind, line, number)
+    if kind == "test":
+        item.value = rest
+        item.problem = "" if rest else "a test item names the test"
+        return item
+    if kind == "screenshot":
+        m = PROOF_SCREENSHOT_RE.match(rest)
+        if not m:
+            item.problem = "expected `screenshot: evidence/proof/<file>.png [vs mock/<file>]`"
+            return item
+        item.file, item.mock = m.group("file"), m.group("mock") or ""
+        item.problem = _proof_file_problem(item.file) or (
+            "" if item.file.lower().endswith(".png") else "a screenshot item names a .png file"
+        )
+        return item
+    m = PROOF_STATE_RE.match(rest)
+    if not m:
+        item.problem = "expected `state: evidence/proof/<file> <path> ==|contains|matches <value>`"
+        return item
+    item.file, item.path, item.verb = m.group("file"), m.group("path"), m.group("verb")
+    item.value = (m.group("value") or "").strip()
+    item.problem = _proof_file_problem(item.file)
+    if not item.problem and item.verb not in PROOF_VERBS:
+        item.problem = f"the verb must be one of {', '.join(PROOF_VERBS)}, not {item.verb!r}"
+    if not item.problem and item.verb == "matches":
+        try:
+            re.compile(item.value)
+        except re.error as exc:
+            item.problem = f"the pattern does not compile: {exc}"
+    return item
+
+
+def _all_proof_items(plan_text: str) -> list[ProofItem]:
+    items: list[ProofItem] = []
+    in_proof = False
+    for number, line in enumerate((plan_text or "").splitlines(), start=1):
+        if line.startswith("## "):
+            in_proof = line.strip() == PROOF_SECTION
+            continue
+        m = PROOF_ITEM_RE.match(line) if in_proof else None
+        if m:
+            items.append(_parse_proof_item(m.group("kind"), m.group("rest"), line.strip(), number))
+    return items
+
+
+def proof_items(plan_text: str) -> list[ProofItem]:
+    """The well-formed items of ``## Proof``, in plan order (R5)."""
+    return [item for item in _all_proof_items(plan_text) if not item.problem]
+
+
+def malformed_proof_items(plan_text: str) -> list[ProofItem]:
+    """The items of ``## Proof`` that do not follow the grammar, each with its ``problem``."""
+    return [item for item in _all_proof_items(plan_text) if item.problem]
+
+
+def parse_value(text: str) -> Any:
+    """The one parse of R5, for the expected value and for each line of a text file: JSON when
+    it parses (``200``, ``true``, ``"x"``, ``null``), else the string itself."""
+    try:
+        return json.loads(text)
+    except ValueError:
+        return text
+
+
+def string_form(value: Any) -> str:
+    """The form ``contains`` and ``matches`` read: a string itself, else its JSON."""
+    return value if isinstance(value, str) else json.dumps(value, sort_keys=True)
+
+
+def strict_equal(a: Any, b: Any) -> bool:
+    """``==`` of R5: the same type and value at every depth (``True`` is not ``1``, ``1`` is
+    not ``1.0``); lists element by element, dicts key by key."""
+    if type(a) is not type(b):
+        return False
+    if isinstance(a, list):
+        return len(a) == len(b) and all(strict_equal(x, y) for x, y in zip(a, b, strict=True))
+    if isinstance(a, dict):
+        return a.keys() == b.keys() and all(strict_equal(a[k], b[k]) for k in a)
+    return a == b
+
+
+def _holds(verb: str, seen: Any, value: str) -> bool:
+    if verb == "matches":
+        return re.search(value, string_form(seen)) is not None
+    expected = parse_value(value)
+    if verb == "==":
+        return strict_equal(seen, expected)
+    if isinstance(seen, list):
+        return any(strict_equal(x, expected) for x in seen)
+    return string_form(expected) in string_form(seen)
+
+
+def _proof_target(item: ProofItem, proof_dir: Path) -> tuple[Path | None, str]:
+    """The file an item names, kept inside ``proof_dir``, or (None, why)."""
+    rel = item.file[len(PROOF_PREFIX) :]
+    if ".." in Path(rel).parts:
+        return None, f"{item.file} leaves {PROOF_PREFIX}"
+    target = Path(proof_dir) / rel
+    if linked_part(target) is not None:
+        return None, f"{item.file} is reached through a link"
+    try:
+        target.resolve().relative_to(Path(proof_dir).resolve())
+    except ValueError:
+        return None, f"{item.file} leaves {PROOF_PREFIX}"
+    if not target.is_file():
+        return None, f"{item.file} missing"
+    return target, ""
+
+
+def screenshot_outcome(item: ProofItem, proof_dir: Path) -> tuple[str, Any]:
+    """(outcome, seen) of a ``screenshot`` item: the file exists under ``proof/`` or not."""
+    target, why = _proof_target(item, proof_dir)
+    return (OUTCOME_MATCHES, None) if target is not None else (OUTCOME_NOT_PRODUCED, why)
+
+
+def _json_at(data: Any, dotted: str) -> tuple[bool, Any]:
+    for key in dotted.split("."):
+        if isinstance(data, dict) and key in data:
+            data = data[key]
+        elif isinstance(data, list) and key.isdigit() and int(key) < len(data):
+            data = data[int(key)]
+        else:
+            return False, None
+    return True, data
+
+
+def compare_state(item: ProofItem, proof_dir: Path) -> tuple[str, Any]:
+    """(outcome, seen) of a ``state`` item against the file it names under ``proof_dir`` (R5):
+    ``matches``, ``differs`` with the value seen (the first line for ``line``), or ``not
+    produced`` with what was wrong (missing, over 1 MiB, unreadable, empty, not JSON, no such
+    key)."""
+    target, why = _proof_target(item, proof_dir)
+    if target is None:
+        return OUTCOME_NOT_PRODUCED, why
+    try:
+        if target.stat().st_size > STATE_FILE_MAX_BYTES:
+            return OUTCOME_NOT_PRODUCED, f"{item.file} is over 1 MiB"
+        text = target.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return OUTCOME_NOT_PRODUCED, f"{item.file} unreadable"
+    if not text.strip():
+        return OUTCOME_NOT_PRODUCED, f"{item.file} is empty"
+    try:
+        if item.path == PROOF_LINE_PATH:
+            lines = text.splitlines()
+            if any(_holds(item.verb, parse_value(line.strip()), item.value) for line in lines):
+                return OUTCOME_MATCHES, None
+            return OUTCOME_DIFFERS, lines[0]
+        try:
+            data = json.loads(text)
+        except ValueError:
+            return OUTCOME_NOT_PRODUCED, f"{item.file} is not valid JSON"
+        found, seen = _json_at(data, item.path)
+        if not found:
+            return OUTCOME_NOT_PRODUCED, f"{item.file} has no {item.path}"
+        return (
+            (OUTCOME_MATCHES, None)
+            if _holds(item.verb, seen, item.value)
+            else (
+                OUTCOME_DIFFERS,
+                seen,
+            )
+        )
+    except re.error as exc:
+        return OUTCOME_DIFFERS, f"the pattern does not compile: {exc}"
