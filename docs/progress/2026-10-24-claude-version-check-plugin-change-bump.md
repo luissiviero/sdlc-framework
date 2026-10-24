@@ -1,0 +1,40 @@
+# Progress — `version-check` fails a plugin or template change with no bump (2026-10-24)
+
+This session is the small lane of wave 4, started by the central session `session_016NLfdsdfTFZUyrVGN4Ektc` at the owner's request. It ran on branch `claude/version-check-plugin-change-bump`, from `main` at `db47dbb` (#375, plugin 1.0.39, tagged `v1.0.39`). It changes `tasks.py`, `tests/test_version_check.py` and this record and session file; no file under `plugin/` or `template/`, so no plugin version.
+
+## The owner's choices
+270. **The small lane of wave 4: `version-check` fails a change under `plugin/` or `template/` with no bump** (the owner, 2026-10-24, to the central session: "yes, start the small lane"). An item pulled forward, registered here as `docs/handoffs/central-session.md` ("The waves") asks. Why: #358 changed files under `plugin/` and `template/` with `plugin.json` left at #355's 1.0.32, so its lines first shipped in 1.0.33; the owner's #369 changed `template/.claude/settings.json` with `plugin.json` at 1.0.35 (`v1.0.35` is on #367's merge `84d4aa3`), so it first shipped in 1.0.36 (`docs/handoffs/sessions/2026-10-23-ccr-545fcec0-ik69zj-end.md`, "What the wave taught"). The rule is `HANDOFF.md`'s "A version bump only for a change under `plugin/` or `template/`", with choices 257 and 266 for `version-check`.
+
+## What was built
+1. **`tasks.py`, `shipped_paths`**: every path under `plugin/` or `template/` that `HEAD` adds, changes or deletes against its merge base with `main` (`origin/main`, else `main`), read by `git diff --name-only --no-renames` so that a file moved out of either folder counts as a deletion. A merge of `main` into the branch brings none of `main`'s own changes, and a change made and then reverted on the branch counts for nothing.
+2. **`tasks.py`, `version_problems`**: a branch that bumps nothing and changes a path under either folder fails, unless `plugin.json` at `HEAD` is above `main`'s. The failure names up to three paths, the two versions, and the fix: "bump it and the marketplace entry to the next free patch (python tasks.py next-free)". A branch that bumps keeps the checks of choices 257 and 266 as they were (a version not above `main`'s, a tag that exists, an open branch that took it first).
+3. **No silent pass.** A clone with neither `origin/main` nor `main`, a `HEAD` with no merge base with it (a shallow or unrelated history), or a git error now fails `version-check` with the reason; until now each was reported as "not checked" and passed.
+4. **Tests** in `tests/test_version_check.py`: a plugin change, a template file added, a plugin file moved out, five paths counted, a bump above `main` passing, a reverted change, a change only `main` made (before and after the branch merges it), a plugin change after `main` bumped, the Framework checks shape (`HEAD` detached at a merge commit, `main` only as `origin/main`) failing and passing, no merge base, no `main`, and `task_version_check` failing on a git error. Two existing tests changed what their branch edits from `plugin/a.py` to files outside both folders, since a plugin change with no bump is what now fails, and the test of a clone without `main` now expects the failure. Nothing in them is OS-specific: git prints `/` paths on Windows too (decision 7); the Windows shards run the file.
+
+Live, read at about 12:20 UTC on `db47dbb`, in a scratch clone with `origin/main` set to each merge's first parent and `HEAD` at the merge: #369's merge `9554cf4` now fails ("the branch changes template/.claude/settings.json under plugin/ or template/ with .claude-plugin/plugin.json at 1.0.35, not above origin/main's 1.0.35"); #358's merge `b6800ff` fails too. On this branch, `python tasks.py version-check` exits 0.
+
+## What counts, and what is exempt
+Any path under `plugin/` or `template/`, added, changed or deleted, needs `plugin.json` above `main`'s. Nothing under them is exempt: the rule in `HANDOFF.md` names the two folders and nothing else, and every file in them ships in the plugin (a test-only or documentation file under `plugin/` still reaches a project through the marketplace). Paths outside them (`docs/`, `tests/`, `tasks.py`, `.github/`, `.claude-plugin/`) need no bump. Only committed changes are read; a session's uncommitted edits are seen once committed.
+
+## The check in Framework checks, verified
+Run 40028159151, job `check (ubuntu-latest, 3.12)` (https://github.com/luissiviero/sdlc-framework/actions/runs/40028159151/job/120669448434), PR #173: `actions/checkout@v5` with `fetch-depth: 0` ran `git fetch ... origin +refs/heads/*:refs/remotes/origin/* +refs/tags/*:refs/tags/* +<sha>:refs/remotes/pull/173/merge`, created `origin/main` and every other branch, and checked out `HEAD` detached at the merge commit. So `origin/main` and the merge base are there, and the comparison is the PR's own change as it would merge. The Windows shards check out with the same `fetch-depth: 0` (`.github/workflows/framework-checks.yml:108-110`). A future change to a shallow checkout fails with "HEAD has no merge base with main", never a silent pass.
+
+## Corrections to other files
+- `HANDOFF.md`, standing precondition 1, says "CI fetches only the PR and sees no other branch"; `docs/handoffs/central-session.md:38`'s annotation of choice 266 and `docs/progress/2026-10-23-claude-r66-follow-up.md` ("Limits") say the same. The run above shows that the checkout fetches every branch, so the open-branch check of choice 266 runs in CI as well. `git fetch origin` before a local `verify` still matters: a session's clone holds only what it last fetched.
+
+## Proposed edits for the owner
+`HANDOFF.md` is a stable page changed in a PR of its own; it is not a guardrail file, but this PR does not edit it.
+
+| Link | Row | What is there now | What it must become |
+|---|---|---|---|
+| `HANDOFF.md` | Standing preconditions, 1 | "(`python tasks.py version-check`: a branch that bumps the plugin to a version `main` holds, a tag has or a fetched open branch took first fails; choices 257 and 266. Run `git fetch origin` first: CI fetches only the PR and sees no other branch)" | "(`python tasks.py version-check`: a branch that changes a path under `plugin/` or `template/` without `plugin.json` and the marketplace entry above `main`'s version fails, and so does one that bumps to a version `main` holds, a tag has or a fetched open branch took first; choices 257, 266 and 270. Run `git fetch origin` first: the check reads the branches the clone last fetched)" |
+| `HANDOFF.md` | Rules for every session, "A version bump only for a change under `plugin/` or `template/`" | "A version bump only for a change under `plugin/` or `template/`; 1.0.0 belongs to the item-11 PR alone." | "A version bump only for a change under `plugin/` or `template/`, and every such change bumps, in the same PR (`version-check`, choice 270); 1.0.0 belongs to the item-11 PR alone." |
+
+## What the owner does on a guardrail PR of their own
+A PR the owner edits in the GitHub web editor that touches a file under `template/` (like #369's `template/.claude/settings.json`) now fails `Framework checks` unless it also bumps. In the same PR, the owner edits two more files: `.claude-plugin/plugin.json`, `"version"`, and `.claude-plugin/marketplace.json`, the `sdlc` entry's `"version"`, both to the patch `python tasks.py next-free` gives (or one above `main`'s version when no session has a branch open). A guardrail file outside both folders (`CLAUDE.md`, `REVIEW.md`, `sdlc.yaml`, this repository's own `.claude/**`) needs no bump.
+
+## Port list
+Not on it: this PR touches neither `plugin/ci/run_phase.py` nor `plugin/detect/` nor the detect, runbook and fix workflow templates.
+
+## The independent review
+Recorded in the PR once the review has run.
