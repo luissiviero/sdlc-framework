@@ -1,0 +1,167 @@
+{
+  "schema_version": 1,
+  "change_id": "0004",
+  "slug": "drive-target-and-proof-items",
+  "phase": "b",
+  "human_gate": true,
+  "result": "wait",
+  "label": "sdlc:b-ready",
+  "head": "f1a2135d8b75de0e1bd474c5ea0686196f20e8da",
+  "at": "2026-10-24T14:17:26Z",
+  "dry_run": false,
+  "reason": "",
+  "config_note": "",
+  "checks": [
+    {
+      "name": "limits",
+      "ok": true,
+      "reason": "within the run limits",
+      "need": "",
+      "details": {
+        "iterations": 2,
+        "cap": 2,
+        "classification": "non-routine",
+        "panel_calls": 3,
+        "panel_cap": 4,
+        "elapsed_minutes": 9.1,
+        "spend_usd": null,
+        "spend_usd_total": 43.648338,
+        "spend_entries": 2,
+        "max_budget_usd": null
+      }
+    },
+    {
+      "name": "artifacts",
+      "ok": true,
+      "reason": "every required artifact exists and has its template sections",
+      "need": "",
+      "details": {}
+    },
+    {
+      "name": "evidence_links",
+      "ok": true,
+      "reason": "no symbolic link under the change folder",
+      "need": "",
+      "details": {}
+    },
+    {
+      "name": "design_scope",
+      "ok": true,
+      "reason": "the committed diff stays inside changes/0004-drive-target-and-proof-items/",
+      "need": "",
+      "details": {
+        "dirty": [
+          "CLAUDE.local.md",
+          "changes/0004-drive-target-and-proof-items/evidence/adversarial-review-b.json",
+          "changes/0004-drive-target-and-proof-items/evidence/adversarial-review-b.model.json",
+          "changes/0004-drive-target-and-proof-items/evidence/diff-b.patch",
+          "changes/0004-drive-target-and-proof-items/evidence/hook-log.jsonl",
+          "changes/0004-drive-target-and-proof-items/evidence/panel/b-items.json",
+          "policies",
+          "tests/fixtures/sample-python-project/.env"
+        ]
+      }
+    },
+    {
+      "name": "open_concerns",
+      "ok": true,
+      "reason": "no open flagged concern",
+      "need": "",
+      "details": {}
+    },
+    {
+      "name": "panel",
+      "ok": true,
+      "reason": "2 panel decision(s) recorded, 1 overturned",
+      "need": "",
+      "details": {
+        "decisions": [
+          {
+            "n": 2,
+            "kind": "concern",
+            "decision": "Named, not fixed: the fix template's comment states the worst case (45 of R51's re-check, only when the default branch moved, 290 of 260 with or without a drive) and that a job past 260 is cancelled by GitHub while the park steps run only on a failed step; no cap changes, and the owner raises timeout-minutes with SDLC_JOB_TIMEOUT_MINUTES or amends the build caps in a reviewed PR."
+          },
+          {
+            "n": 3,
+            "kind": "concern",
+            "decision": "Keep both readings, pinned down: the one parse (JSON when it parses, else string) applies to the expected value and to each text line; `==` is equal only when the parsed values have the same JSON type and value (a bool never equals a number, `1` never equals `1.0`); the string form for `contains`/`matches` is the value itself for a string and `json.dumps` otherwise; an empty text file is `not produced`; `seen` on a `line` differs is the file's first line; the `plan-template` skill states the any-line rule and `tests/test_proof.py` covers `== 1` against `true` (differs), `contains true` against JSON `true` (matches), text `200` and JSON `200` against `== 200` (both match) and the empty file."
+          }
+        ],
+        "cost_usd": 0.0
+      }
+    },
+    {
+      "name": "commands",
+      "ok": true,
+      "reason": "build, test and lint exit 0",
+      "need": "",
+      "details": {
+        "runs": {
+          "build": {
+            "command": "python -m compileall -q plugin tests tasks.py .github/scripts",
+            "exit_code": 0,
+            "output": ""
+          },
+          "test": {
+            "command": "python -m pytest",
+            "exit_code": 0,
+            "output": "........................................................................ [  2%]\n........................................................................ [  5%]\n........................................................................ [  8%]\n........................................................................ [ 10%]\n........................................................................ [ 13%]\n........................................................................ [ 16%]\n........................................................................ [ 18%]\n........................................................................ [ 21%]\n........................................................................ [ 24%]\n........................................................................ [ 27%]\n........................................................................ [ 29%]\n........................................................................ [ 32%]\n........................................................................ [ 35%]\n........................................................................ [ 37%]\n........................................................................ [ 40%]\n........................................................................ [ 43%]\n........................................................................ [ 46%]\n........................................................................ [ 48%]\n........................................................................ [ 51%]\n........................................................................ [ 54%]\n........................................................................ [ 56%]\n........................................................................ [ 59%]\n........................................................................ [ 62%]\n........................................................................ [ 64%]\n........................................................................ [ 67%]\n........................................................................ [ 70%]\n........................................................................ [ 73%]\n........................................................................ [ 75%]\n........................................................................ [ 78%]\n........................................................................ [ 81%]\n........................................................................ [ 83%]\n........................................................................ [ 86%]\n........................................................................ [ 89%]\n........................................................................ [ 92%]\n........................................................................ [ 94%]\n........................................................................ [ 97%]\n......s.............................................................     [100%]\n2659 passed, 1 skipped in 360.28s (0:06:00)\n"
+          },
+          "lint": {
+            "command": "python -m ruff check . && python -m ruff format --check .",
+            "exit_code": 0,
+            "output": "All checks passed!\n285 files already formatted\n"
+          }
+        },
+        "ran_by": "runner"
+      }
+    },
+    {
+      "name": "guardrails",
+      "ok": true,
+      "reason": "the diff does not touch a guardrail file",
+      "need": "",
+      "details": {}
+    },
+    {
+      "name": "risk_list",
+      "ok": true,
+      "reason": "no risk-list item touched",
+      "need": "",
+      "details": {
+        "hits": {},
+        "accepted": []
+      }
+    },
+    {
+      "name": "owner_actions",
+      "ok": true,
+      "reason": "risk acceptances, iteration and panel-call resets and test-lock lifts, if any, were committed by the owner or applied by the owner's label",
+      "need": "",
+      "details": {
+        "risk_accepted": [],
+        "label_actors": {}
+      }
+    },
+    {
+      "name": "adversarial_review",
+      "ok": true,
+      "reason": "adversarial reviewer says continue",
+      "need": "",
+      "details": {
+        "classification": "non-routine",
+        "reasons": []
+      }
+    },
+    {
+      "name": "reviewer_model",
+      "ok": true,
+      "reason": "the adversarial reviewer ran on claude-opus-5-5",
+      "need": "",
+      "details": {
+        "wanted": "claude-opus-5-5"
+      }
+    }
+  ],
+  "what_i_need": ""
+}

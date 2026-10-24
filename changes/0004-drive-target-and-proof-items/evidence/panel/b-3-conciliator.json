@@ -1,0 +1,12 @@
+{
+  "reviewer": "Accept both readings (any line; JSON when it parses) with one tightening: the one parse applies to both sides of a `line` comparison and R5 says so.",
+  "advocate": "Keep both readings but pin the coercion down first: type-strict equality (a bool never equals a number), string form defined as `json.dumps` for non-strings, an empty file `not produced`, tests for each, and the any-line rule in the `plan-template` skill.",
+  "decision": "Keep both readings, pinned down: the one parse (JSON when it parses, else string) applies to the expected value and to each text line; `==` is equal only when the parsed values have the same JSON type and value (a bool never equals a number, `1` never equals `1.0`); the string form for `contains`/`matches` is the value itself for a string and `json.dumps` otherwise; an empty text file is `not produced`; `seen` on a `line` differs is the file's first line; the `plan-template` skill states the any-line rule and `tests/test_proof.py` covers `== 1` against `true` (differs), `contains true` against JSON `true` (matches), text `200` and JSON `200` against `== 200` (both match) and the empty file.",
+  "rationale": [
+    "Both verdicts keep the two readings; the intent fixes only the shape (intent.md lines 93-95), so the readings are a design guess the panel may settle, and no policy rule or limit is touched.",
+    "They differ on how much to pin down; the safer reading is the advocate's, because a proof item is the owner's bar for the change and Python's `True == 1` and `str(True)` would let a wrong value pass or a right value fail silently, against coding-standards rule 7 (explicit behaviour) and R5's 'one definition'.",
+    "The reviewer's own gap (the seen side of a `line` item must go through the same parse) is the same fix the advocate asks for, so the two agree on the mechanism and differ only on completeness.",
+    "The any-line reading stays: it is the only one under which `==` and `matches` mean something on a multi-line log, and the stale-PASS risk is D7's named weakness (R15), not a product of this reading; an empty file is `not produced` because a proof that read nothing proved nothing.",
+    "Everything lands in files the plan already names (`artifacts.py`, `tests/test_proof.py`, the `plan-template` skill); no plan step is added and nothing parks."
+  ]
+}

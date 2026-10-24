@@ -1,0 +1,44 @@
+{
+  "applied_earlier": [
+    {
+      "id": 5638369796,
+      "kind": "review"
+    }
+  ],
+  "collected_at": "2026-10-24T14:05:20+00:00",
+  "head": "93925b741167e2ad69fa95a9e46efade7a365aaf",
+  "not_applied": [
+    {
+      "association": "OWNER",
+      "at": "2026-10-24T13:11:44Z",
+      "author": "luissiviero",
+      "body": null,
+      "chars": 1196,
+      "id": 5638369796,
+      "kind": "review",
+      "state": "CHANGES_REQUESTED",
+      "url": "https://github.com/luissiviero/sdlc-framework/pull/378#pullrequestreview-5638369796",
+      "why": "not applied: applied by an earlier round"
+    }
+  ],
+  "ok": true,
+  "pr_number": 378,
+  "repo": "luissiviero/sdlc-framework",
+  "requests": [
+    {
+      "applied": true,
+      "association": "OWNER",
+      "at": "2026-10-24T14:04:29Z",
+      "author": "luissiviero",
+      "body": "Gate (b) re-review: approve after these.\n1. Plan: pass the gate phase to `step_budget = commands_timeout_seconds(config)` at plugin/ci/run_phase.py:3503 (the decision-29 re-run budget), not only to `run_gate_commands`.\n2. Plan step 4 / R7: `check_evidence` fails a missing required log before its deferral branch (plugin/gate/checks.py:463-466); spell out the rule that a missing `drive.log` while `commands_deferred` counts as deferred, with its test.\n3. Plan step 13 / Acceptance: the port-list lines go to the session's record under docs/progress/ (HANDOFF.md, \"Rules for every session\"); docs/PROGRESS.md has no port list.\n4. R5: make `==` strict inside lists and dicts too (`[true] != [1]`, `1 != 1.0` at any depth), or state that it is strict only at the top level.\n5. R7's drive-removed park: name how the owner re-approves a plan without the proof items, or drop that option from its \"What I need from you\".\n6. R10 / step 11: when `--setup` is explicitly empty, say what installs `@playwright/test`, with a test.",
+      "id": 5638523737,
+      "kind": "review",
+      "state": "CHANGES_REQUESTED",
+      "url": "https://github.com/luissiviero/sdlc-framework/pull/378#pullrequestreview-5638523737"
+    }
+  ],
+  "route": "api",
+  "schema_version": 1,
+  "trigger": null,
+  "unavailable": null
+}

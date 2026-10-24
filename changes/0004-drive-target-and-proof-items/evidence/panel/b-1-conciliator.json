@@ -1,0 +1,12 @@
+{
+  "reviewer": "Keep the `$SDLC_PROOF_DIR` form and no substitution in `collect.py`; add a one-sentence Windows note to the R1 comment and the R10 text.",
+  "advocate": "Drop `--output \"$SDLC_PROOF_DIR\"` and propose plain `npx playwright test` with the test reading `process.env.SDLC_PROOF_DIR`, pinned by a test that the line has no `$` or `%` expansion.",
+  "decision": "Keep the proposed line `npx playwright test --output \"$SDLC_PROOF_DIR\"` and no substitution in `collect.py`; the `commands.drive` comment (R1) and the `/sdlc-init` text (R10) each gain one sentence saying the platform shell expands the variable, that a `cmd.exe` by-hand run writes `%SDLC_PROOF_DIR%`, and that the test writes its files to `process.env.SDLC_PROOF_DIR`.",
+  "rationale": [
+    "The intent fixes the form (line 153: \"a Playwright line that writes to `$SDLC_PROOF_DIR`\"), and a design run cannot rewrite an outcome the owner accepted at gate (a); the advocate's plain line is a change to the intent, for the owner at this gate, not for the panel.",
+    "Both verdicts agree `collect.py` must not substitute (plan \"Options not taken\"); the gate's path is the Linux runner's `/bin/sh`, where the line works as written.",
+    "The intent's \"Python only, Windows and Linux\" (line 201) binds the plugin code, which stays portable (`run_drive`, `clear_proof_dir`, `collect.py`); the drive line is project content the owner confirms (Q4).",
+    "The by-hand Windows failure is loud, not silent: every item `not produced`, `collect.py` exits 1 and names them (spec R2, plan Risks), so by REVIEW.md's bar it breaks no gate behaviour, leaks nothing and breaches no policy.",
+    "The one real gap is the advocate's point 2 (nothing says why): the sentence in the two texts the owner reads closes it (ux-conventions rule 4) inside files already in the plan, with no new mechanism and no plan change."
+  ]
+}
