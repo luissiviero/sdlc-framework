@@ -318,6 +318,29 @@ def ref_exists(root: Path, ref: str) -> bool:
     )
 
 
+def only_change_folder_moved(root: Path, change_dir: Path, sha: str | None) -> bool:
+    """Whether ``sha`` is HEAD, or an ancestor of HEAD from which only ``change_dir`` moved:
+    the rule a fix round's head check (``ci/auto_round.head_matches``) and the PR body's
+    stale-proof line (change 0004, R12) read. A rename's source counts as outside the folder
+    (the review of 1.0.27: a file moved into the change folder is a change outside it); an
+    unknown sha or an unreadable diff reads as moved."""
+    if not sha or not is_repo(root):
+        return False
+    try:
+        if run(root, "rev-parse", "HEAD").strip() == sha:
+            return True
+        run(root, "merge-base", "--is-ancestor", sha, "HEAD")
+        changed = run(root, "diff", "--name-status", "--no-renames", sha, "HEAD")
+    except (GitError, OSError):
+        return False
+    try:
+        rel = Path(change_dir).resolve().relative_to(Path(root).resolve()).as_posix() + "/"
+    except ValueError:
+        return False
+    paths = [line.split("\t", 1)[-1].strip() for line in changed.splitlines() if line.strip()]
+    return all(path.startswith(rel) for path in paths)
+
+
 def explicit_default_branch() -> str | None:
     """``SDLC_DEFAULT_BRANCH`` when non-empty and not a framework branch name, else None.
 

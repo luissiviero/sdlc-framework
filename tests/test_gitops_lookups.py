@@ -315,3 +315,28 @@ def test_a_hanging_default_base_lookup_is_git_unavailable(repo, monkeypatch):
     monkeypatch.setattr(gitops.subprocess, "run", hang)
     with pytest.raises(gate_diff.GitUnavailable):
         gate_diff.default_base(repo)
+
+
+def test_only_change_folder_moved(repo):
+    """Change 0004 (R12): the rule a fix round's head check and the PR body's stale-proof line
+    share: HEAD itself, or an ancestor from which only the change folder moved."""
+    change = repo / "changes" / "0001-x"
+    change.mkdir(parents=True)
+    commit(repo, "changes/0001-x/manifest.json")
+    first = git(repo, "rev-parse", "HEAD").strip()
+    assert gitops.only_change_folder_moved(repo, change, first)  # HEAD itself
+    commit(repo, "changes/0001-x/gate-c.json")  # the runner's record commit
+    assert gitops.only_change_folder_moved(repo, change, first)
+    folder_only = git(repo, "rev-parse", "HEAD").strip()
+    commit(repo, "src.py")  # a source file moved after it
+    assert not gitops.only_change_folder_moved(repo, change, first)
+    assert not gitops.only_change_folder_moved(repo, change, folder_only)
+    after_source = git(repo, "rev-parse", "HEAD").strip()
+    # a file renamed into the change folder is a change outside it
+    git(repo, "mv", "src.py", "changes/0001-x/src.py")
+    git(repo, "commit", "-q", "-m", "move")
+    assert not gitops.only_change_folder_moved(repo, change, after_source)
+    # an unknown sha, no sha, not a repository
+    assert not gitops.only_change_folder_moved(repo, change, "0" * 40)
+    assert not gitops.only_change_folder_moved(repo, change, None)
+    assert not gitops.only_change_folder_moved(repo.parent, change, first)
