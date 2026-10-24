@@ -176,9 +176,11 @@ R5 and R10.
   entry is `ok` with reason "no drive target: nothing to compare" and no `items`; when it
   names one, the entry fails with reason "drive removed after gate (b): the approved plan
   names N state/screenshot item(s) and commands.drive is empty", its `items` listed as `not
-  produced`, and the change parks (never a round: `red_targets` reads only a failed entry
-  whose details carry a drive run; its "what I need" says to restore `commands.drive` in a
-  reviewed PR or to re-approve a plan without the items). Gate (b) refused the plan with the
+  produced`, and `details.drive_removed: true`; the change parks and never a round: the one
+  rule, stated here, in the Design and in the plan, is that `red_targets` skips a failed
+  `proof` entry whose details carry `drive_removed`, whatever its `items` (a fix session
+  cannot restore `commands.drive`, a guardrail); its "what I need" says to restore
+  `commands.drive` in a reviewed PR or to re-approve a plan without the items. Gate (b) refused the plan with the
   drive empty (R9); this is the drive going away between the gates.
 - A `differs` or `not produced` on an approved item is a red target under decision 29:
   `plugin/ci/auto_round.red_targets` starts a round on a failed `proof` entry as on a red
@@ -194,7 +196,11 @@ R5 and R10.
 - The `evidence` check at (d) and (e) requires `drive.log` with the collector header when
   the drive is set (`REQUIRED_EVIDENCE` is read through a helper that adds it; a red header
   parks as a red log does); never when the drive is empty. At (c) it stays optional, as the
-  three logs are.
+  three logs are. Inside a CI session the log does not exist yet (the session never runs
+  the drive) and the `evidence` check is deferred as today, so the step re-judges it after
+  it wrote `drive.log`: the missing log before the step is never a park (a test asserts the
+  in-session (d) record carries `evidence` deferred with a drive set). By hand the log is
+  `collect.py`'s.
 - A `state` item is deterministic and never a panel item (decision 21 as amended by 37); a
   verifier `differs` on a screenshot stays a panel item as today.
 
@@ -369,9 +375,11 @@ and the step adds nothing it cannot replace: the record's shape is kept).
 failed entry parks, and `auto_round` decides whether the park is a round.
 
 **`plugin/ci/auto_round.py`** `red_targets`: a failed `proof` entry whose details carry
-`items` contributes one red entry `{"target": "proof", "items": [the failed approved items
-with item, expected, seen]}`, and a failed `evidence` entry on `drive.log` is accepted as
-the `evidence`-on-red-logs case is today. `targets_summary` renders `proof (2 items)`;
+`items` and not `drive_removed` contributes one red entry `{"target": "proof", "items":
+[the failed approved items with item, expected, seen]}`; a failed `proof` entry without
+`items` (the step's own failure) or with `drive_removed: true` (R7) is a park, as every
+other failed entry is; a failed `evidence` entry on `drive.log` is accepted as the
+`evidence`-on-red-logs case is today. `targets_summary` renders `proof (2 items)`;
 `red_targets_request` adds one block per failed item (`<item>: expected <value>, seen
 <seen>`). `REQUEST_TEXT` says "a red target or proof item". `JUDGE_PROMPT` lists
 `drive.log` and the record's `proof` entry among what the judge reads. `head_matches` keeps
@@ -383,8 +391,10 @@ from which only `changes/<id>-<slug>/` moved, renames counted as outside), so th
 stale-proof line (R12) and the round's head check read one rule, and `pr/` imports nothing
 from `ci/`.
 
-**`plugin/ci/run_phase.py`**: `commands_timeout_seconds` adds the drive timeout when
-set, capped at 600 at (c) and (d); `drive_timeout_refusal(config) -> str | None` beside
+**`plugin/ci/run_phase.py`**: `commands_timeout_seconds(config, gate_phase=None)` adds the
+drive timeout when set, capped at 600 unless `gate_phase` is `e` (`run_gate_commands` passes
+the gate phase; `build_caps_minutes_needed` passes nothing, the capped figure being the
+build and fix jobs'); `drive_timeout_refusal(config) -> str | None` beside
 `build_caps_refusal` gives the reason when the configured value exceeds the cap, written in
 the result JSON (R4); `run_caps(config, phase, env, gate_phase=None)` subtracts the drive minutes when
 `gate_phase` is `e` (the (e) run passes its own phase; a fix round passes the change's
@@ -511,8 +521,10 @@ REVIEW.md pass; this repository's `sdlc.yaml` and workflow copies.
     prompt names `drive.log` and the `proof` entry; an item added in (c) is reported and
     never fails the entry; with `commands.drive` empty and an approved plan that names a
     `state` or `screenshot` item, the `proof` entry fails with "drive removed after gate
-    (b)" and the change parks, never deferred and never a round; with it empty and no item,
-    the entry is `ok` at once, in a CI session too;
+    (b)" and `details.drive_removed: true`, the change parks, never deferred, and
+    `red_targets` starts no round on it; with it empty and no item, the entry is `ok` at
+    once, in a CI session too; with a drive set, the in-session (d) record carries
+    `evidence` deferred, never failed on the missing `drive.log`;
   - the comparison of R5: `== 1` against JSON `true` differs, `contains true` against JSON
     `true` matches, the text `200` and the JSON number 200 both match `== 200`, `1` never
     equals `1.0`, an empty text file is `not produced`, and `seen` on a `line` differs is the

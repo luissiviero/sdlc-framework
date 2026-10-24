@@ -62,6 +62,18 @@ left out (`not_applied` is empty). Nothing was asked of the owner during the rou
    |---|---|---|---|
    | `docs/ROADMAP.md` | the candidates table, after R66 (`python tasks.py next-free` says R67 is free as of this round) | nothing | `\| R67 \| **A fix round at (e) that fits its job, and a park when GitHub cancels** — the fix workflow's 260 minutes hold R51's merge and re-check (45, only when the default branch moved), the fix session (185 today; 180 with a drive, change 0004), the commands step (50; 55 with a drive) and the judge (10): 290 of 260 with or without a drive. A job past 260 is cancelled by GitHub, and the park steps run only on a failed step, so such a round ends with no park, no label and no "what I need from you". Candidate: either a fix round at (e) takes a cap that fits (the re-check's 45 out of its session, or a cap of its own in \`sdlc.yaml\`), or the park steps also run on \`cancelled\` (a \`post\` step or \`if: always()\` with the outcome read), or \`timeout-minutes\` of the fix job rises with \`SDLC_JOB_TIMEOUT_MINUTES\`; a decision file settles which, since decision 32's caps are a guardrail \| change 0004, gate (b) panel decision 2 (\`changes/0004-drive-target-and-proof-items/spec.md\`, Flagged concerns item 2; the owner's review of 2026-10-24, item 6) \| 29, 32 (the build caps; a cancelled job today parks nothing); 20 unchanged \| proposed \| \|` |
 
+## After the adversarial review of this round's first commit (`15b2e9f`)
+
+The reviewer escalated on one reason: item 1's park said "never a round" while the Design's
+`auto_round.py` paragraph and plan step 6 read any failed `proof` entry with `items` as a
+round. Fixed in the second commit with one rule in R7, the Design and step 6: the
+drive-removed entry carries `details.drive_removed: true`, `red_targets` skips an entry with
+that flag whatever its `items`, and `tests/test_auto_round.py` asserts the park. Its two
+observations are taken too: `commands_timeout_seconds(config, gate_phase=None)` is named
+(capped at 600 unless the gate phase is (e); `run_gate_commands` passes it), and R7 states
+that inside a CI session the `evidence` check stays deferred with a drive set, so the
+missing `drive.log` before the step is never a park, with a test.
+
 ## Not applied
 
 none (`fix-requests.json: not_applied` is empty).

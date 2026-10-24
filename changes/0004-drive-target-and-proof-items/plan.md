@@ -29,16 +29,19 @@ overturned decision 1 (plain `npx playwright test`) and added the drive-removed 
 - `plugin/gate/cli.py` — nothing but the docstring line naming the drive in `run-commands`
 - `plugin/state/gitops.py` — `only_change_folder_moved(root, change_dir, sha)`, the body of
   `auto_round.head_matches` today, shared with the PR body (R12)
-- `plugin/ci/run_phase.py` — `commands_timeout_seconds` adds the drive timeout when set,
-  capped at 600 at (c) and (d); `drive_timeout_refusal(config)` beside `build_caps_refusal`,
+- `plugin/ci/run_phase.py` — `commands_timeout_seconds(config, gate_phase=None)` adds the
+  drive timeout when set, capped at 600 unless `gate_phase` is `e` (`run_gate_commands`
+  passes the gate phase, `build_caps_minutes_needed` nothing); `drive_timeout_refusal(config)`
+  beside `build_caps_refusal`,
   its reason in the result JSON; `run_caps(config, phase, env, gate_phase=None)` and
   `run_timeout_seconds(config, phase, env, gate_phase=None)` subtract the drive minutes when
   `gate_phase` is `e`; their two call sites for a session (the `--max-turns` argument in the
   argv builder, `run_phase.py:2082` today, and the `invoke(...)` call, `:3333` today) pass
   the gate phase; the arithmetic comments above `JUDGE_TIMEOUT_SECONDS` and at
   `TRIAGE_TIMEOUT_SECONDS` (R4; port-list lines, recorded in `evidence/port-list.md`, step 13)
-- `plugin/ci/auto_round.py` — `red_targets` accepts a failed `proof` entry (and `evidence`
-  on `drive.log`); `targets_summary`, `red_targets_request`, `REQUEST_TEXT` name the items;
+- `plugin/ci/auto_round.py` — `red_targets` accepts a failed `proof` entry with `items` and
+  without `drive_removed` (and `evidence` on `drive.log`), and parks on one without `items`
+  or with `drive_removed: true`; `targets_summary`, `red_targets_request`, `REQUEST_TEXT` name the items;
   `JUDGE_PROMPT` names `drive.log` and the record's `proof` entry; `head_matches` calls
   `gitops.only_change_folder_moved` (R7, R12)
 - `plugin/ci/triage.py` — `logs_for` adds `drive.log` and `proof/manifest.json` (R13)
@@ -142,8 +145,11 @@ overturned decision 1 (plain `npx playwright test`) and added the drive-removed 
    deferred in CI and `checked: false` by hand; with the drive empty, never deferred (in CI
    too): it reads the approved plan's items itself and is `ok` "no drive target" with no
    `items` when there is none, and fails with "drive removed after gate (b)" (the items
-   listed `not produced`, a park, never a round) when the approved plan names a `state` or
-   `screenshot` item, with a test for each; `judge_targets` with a fourth run;
+   listed `not produced`, `details.drive_removed: true`, a park: step 6's `red_targets`
+   skips the entry by that flag) when the approved plan names a `state` or `screenshot`
+   item, with a test for each; `check_evidence` with a drive set inside a CI session at (d)
+   stays deferred (the record carries it deferred, never failed on the missing `drive.log`),
+   a test asserting it; `judge_targets` with a fourth run;
    `check_evidence` requiring `drive.log` at (d) and (e) when the drive is set.
 5. The runner's step (`gate.py`, `tests/test_gate.py`): `DEFERRABLE_CHECKS`, the drive after
    the targets in `run_deferred_commands` at (c), (d) and (e) only (gate (b) runs the step
@@ -158,7 +164,9 @@ overturned decision 1 (plain `npx playwright test`) and added the drive-removed 
    entry (also when the `commands` entry is green: today the function returns as soon as
    `commands` passed, `auto_round.py:114`, and must read `proof` first) and on `evidence`
    red on `drive.log`; `targets_summary`, `red_targets_request` and `REQUEST_TEXT` with the
-   items; a failed `proof` entry without `items` still parks; `JUDGE_PROMPT` with
+   items; a failed `proof` entry without `items` still parks, and so does one with
+   `details.drive_removed: true` whatever its `items` (the drive emptied after gate (b),
+   step 4: the one rule of spec R7 and the Design), a test for each; `JUDGE_PROMPT` with
    `drive.log` and the `proof` entry.
 7. Time (`limits.py`, `run_phase.py`, `tests/test_ci.py`, `tests/test_gate.py`):
    `limits.run_caps(..., less_minutes)` with the floor, `drive_minutes`, `check_limits` at
@@ -167,8 +175,9 @@ overturned decision 1 (plain `npx playwright test`) and added the drive-removed 
    (e) run passes `e`; a fix round passes the change's gate phase, which the runner already
    holds as `gate_phase`); the figures 245/250, 185/190, 355, and 180 for a fix session at
    (e) with a drive, asserted; `limits.DRIVE_TIMEOUT_MAX_SECONDS = 600`, applied by
-   `checks.drive_timeout(ctx, phase)` and `commands_timeout_seconds` at (c) and (d) and not
-   at (e), with `run_phase.drive_timeout_refusal(config)` giving the reason beside
+   `checks.drive_timeout(ctx, phase)` and `commands_timeout_seconds(config, gate_phase)`
+   at (c) and (d) and not at (e) (`run_gate_commands` passes the gate phase;
+   `build_caps_minutes_needed` passes nothing and gets the capped figure), with `run_phase.drive_timeout_refusal(config)` giving the reason beside
    `build_caps_refusal` (written in the result JSON and in the `drive` run's
    `details.refused`), asserted on a `drive_timeout` of 900; the comments.
 8. By hand (`collect.py`, `tests/test_evidence.py`): `drive` in `TARGETS` when set, the
@@ -285,8 +294,11 @@ overturned decision 1 (plain `npx playwright test`) and added the drive-removed 
   removes the key) after the plan was approved with `state` or `screenshot` items would,
   without the rule of step 4, pass `proof` as "no drive target"; `check_proof` reads the
   approved plan's items when the drive is empty and fails with "drive removed after gate
-  (b)", a park (the owner changed a guardrail; no round can fix it). The config read is the
-  gate's `ctx.config`, so the test sets the drive empty in the merge base's `sdlc.yaml`.
+  (b)" with `details.drive_removed: true`, a park (the owner changed a guardrail; no round
+  can fix it). The entry carries `items`, which is what `red_targets` otherwise reads as a
+  round, so the flag is the one rule the spec, the Design and step 6 state, and
+  `tests/test_auto_round.py` asserts the park. The config read is the gate's `ctx.config`,
+  so the test sets the drive empty in the merge base's `sdlc.yaml`.
 - **The 600 s cap.** `checks.drive_timeout` and `run_phase.commands_timeout_seconds` must
   cap the same value at the same phases, or the step's budget and the drive's timeout
   disagree; both read `limits.DRIVE_TIMEOUT_MAX_SECONDS` and the same phase set, and the
@@ -376,12 +388,14 @@ overturned decision 1 (plain `npx playwright test`) and added the drive-removed 
   run's `proof/` holds nothing of the first); with the drive empty and no approved item the
   logs and verdict are today's and the record differs only by the always-ok `proof` entry;
   with the drive empty and an approved `state` or `screenshot` item, `check_proof` fails
-  with "drive removed after gate (b)" and parks, not deferred in CI; `check_proof_items` at
-  (b); `check_evidence` with `drive.log`; the (e) wall clock subtracts the drive minutes and
+  with "drive removed after gate (b)" and `details.drive_removed: true` and parks, not
+  deferred in CI; with a drive set the in-session (d) record carries `evidence` deferred,
+  not failed on the missing `drive.log`; `check_proof_items` at (b); `check_evidence` with `drive.log`; the (e) wall clock subtracts the drive minutes and
   floors at 30; `drive_timeout` capped at 600 at (c) and (d), not at (e).
 - test: tests/test_auto_round.py — a failed `proof` entry with items is a red target, also
   when `commands` is green, and the request names item, expected and seen; one without items
-  parks; the judge prompt names `drive.log` and the `proof` entry; `head_matches` unchanged.
+  parks, and one with `drive_removed: true` parks whatever its items; the judge prompt
+  names `drive.log` and the `proof` entry; `head_matches` unchanged.
 - test: tests/test_gitops_lookups.py — `only_change_folder_moved` on HEAD, on a change-folder
   commit, on a source commit, on a rename into the folder, on an unknown sha.
 - test: tests/test_ci.py — 245/250, 185/190 and 355 with and without a drive; 180 minutes of
