@@ -205,8 +205,11 @@ def build_values(args, det: detect_mod.Detection, source: str | None = None) -> 
     build_cmd = args.build or det.build.command or "echo no build target"
     test_cmd = args.test or det.test.command or "echo no test target"
     lint_cmd = args.lint or det.lint.command or "echo no lint target"
-    # empty is a legitimate answer here: a project with nothing to install runs nothing
+    # empty is a legitimate answer here: a project with nothing to install runs nothing; an
+    # explicit --setup is written as given, nothing appended (change 0004, R10)
     setup_cmd = args.setup if args.setup is not None else (det.setup.command or "")
+    drive = getattr(args, "drive", None)
+    drive_cmd = drive if drive is not None else (det.drive.command or "")
     root = Path(args.root)
     # a re-run keeps the names sdlc.yaml already lists, so a reinstalled workflow carries them
     env = env_names([*existing_env(root), *(getattr(args, "env", None) or [])])
@@ -216,6 +219,7 @@ def build_values(args, det: detect_mod.Detection, source: str | None = None) -> 
         "TEST_CMD": _esc(test_cmd),
         "LINT_CMD": _esc(lint_cmd),
         "SETUP_CMD": _esc(setup_cmd),
+        "DRIVE_CMD": _esc(drive_cmd),
         "BUILD_HEALTHY": det.build.healthy or "exit code 0",
         "TEST_HEALTHY": det.test.healthy or "exit code 0",
         "LINT_HEALTHY": det.lint.healthy or "exit code 0",
@@ -740,6 +744,7 @@ class HostingError(RuntimeError):
 def run(args) -> dict:
     root = Path(args.root).resolve()
     det = detect_mod.detect(root)
+    det.drive = drive_origin(det.drive, args.setup)
     ok, note = hosting(root)
     report: dict = {"root": str(root), "detection": det.as_dict(), "hosting": note, "files": {}}
     if not ok:
@@ -948,11 +953,31 @@ def read_deny_rules(patterns: list[str]) -> list[str]:
     return [rule for p in patterns for rule in (f"Read({p})", f"Read(**/{p})")]
 
 
+SETUP_EMPTY_DRIVE = (
+    '; --setup "" installs neither it nor its browsers: the owner\'s setup must, or the '
+    "checkout carries node_modules"
+)
+SETUP_OWN_DRIVE = (
+    "; the owner's --setup must install @playwright/test and its browsers "
+    "(npx playwright install --with-deps)"
+)
+
+
+def drive_origin(drive: detect_mod.Target, setup: str | None) -> detect_mod.Target:
+    """The proposed drive, its origin saying what an explicit ``--setup`` must install (change
+    0004, R10): the detected setup gets the browser install appended, the owner's never."""
+    if not drive.command or setup is None:
+        return drive
+    extra = SETUP_EMPTY_DRIVE if not setup.strip() else SETUP_OWN_DRIVE
+    return detect_mod.Target(drive.command, drive.healthy, drive.origin + extra)
+
+
 def _proposed(root: Path, det: detect_mod.Detection) -> dict[str, object]:
     """What the install proposes beyond the targets, for the owner to confirm in the
-    change-0000 PR (R61 parts 1 and 5, R33)."""
+    change-0000 PR (R61 parts 1 and 5, R33; change 0004: the drive)."""
     secrets = det.secrets
     return {
+        "commands.drive": det.drive.command or "",
         "sandbox.allowed_domains": detect_mod.registry_domains(det.signals),
         "protected_paths": secrets,
         "read_deny": read_deny_rules(secrets),
@@ -1090,6 +1115,11 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--test", default=None)
     p.add_argument("--lint", default=None)
     p.add_argument("--setup", default=None, help='one-command install ("" = nothing to run)')
+    p.add_argument(
+        "--drive",
+        default=None,
+        help='the command that exercises the product headless (commands.drive; "" = none)',
+    )
     p.add_argument(
         "--env",
         action="append",

@@ -35,7 +35,19 @@ black, yapf or autopep8 from `pyproject.toml`, prettier and eslint from `package
 rustfmt for `Cargo.toml`; ruff stays Python's default with no entry). Detection also proposes `commands.setup`
 — the one command that installs what those three need (`python -m pip install -e ".[dev]"`,
 `npm ci`, ...), which the CI phase jobs run before every phase; override it with `--setup`
-and pass `--setup ""` when the project has nothing to install.
+and pass `--setup ""` when the project has nothing to install. When a drive is proposed
+(below), an explicit `--setup` must install `@playwright/test` and its browsers itself: it is
+written as given, with nothing appended, and the report's drive origin says so.
+Detection proposes `commands.drive` too (change 0004), the optional fourth target that
+exercises the product after the session: when `package.json` lists `@playwright/test` under
+`dependencies` or `devDependencies`, the plain line `npx playwright test`, with
+` && npx playwright install --with-deps` appended to the detected setup for the browsers
+(`npm ci` or `npm install` installs `@playwright/test` itself); for every other project `""`,
+no drive. The owner confirms it like the three targets, or passes `--drive "<cmd>"` (`""` =
+none). The proposed line is plain `npx playwright test`, and the Playwright test writes its
+screenshots and JSON files to paths under `process.env.SDLC_PROOF_DIR` (a line the owner
+writes by hand may still use the variable: the platform shell expands `$SDLC_PROOF_DIR`, and
+a by-hand run under `cmd.exe` writes `%SDLC_PROOF_DIR%`).
 - **The project's GitHub App is required** (decision 33; ROADMAP R22, plugin 1.0.18): the
   automation pushes and opens pull requests as it, and without it no phase run starts (the
   runner stops each run with the reason; it never falls back to the workflow token for a
@@ -95,7 +107,7 @@ sections, and the owner trims it in the PR.
 
 ## 3. Install
 ```
-python "${CLAUDE_PLUGIN_ROOT}/plugin/init/sdlc_init.py" --root "${CLAUDE_PROJECT_DIR}" --deploy-action "<action>" --deploy-production <true|false> --maintain-metric <metric> [--maintain-source <source>] [--env NAME ...] [--claude-md-from changes/0000-sdlc-init/CLAUDE.proposed.md] [--build "<cmd>"] [--test "<cmd>"] [--lint "<cmd>"] [--setup "<cmd>"]
+python "${CLAUDE_PLUGIN_ROOT}/plugin/init/sdlc_init.py" --root "${CLAUDE_PROJECT_DIR}" --deploy-action "<action>" --deploy-production <true|false> --maintain-metric <metric> [--maintain-source <source>] [--env NAME ...] [--claude-md-from changes/0000-sdlc-init/CLAUDE.proposed.md] [--build "<cmd>"] [--test "<cmd>"] [--lint "<cmd>"] [--setup "<cmd>"] [--drive "<cmd>"]
 ```
 It writes `sdlc.yaml`, `.claude/settings.json` (permissions + the pinned plugin
 declaration; hooks come from the plugin), `REVIEW.md`, `changes/README.md`, builds

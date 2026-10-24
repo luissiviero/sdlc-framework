@@ -259,6 +259,91 @@ def test_detect_node_without_scripts_creates_or_leaves_none(tmp_path):
     assert len(det.notes) == 2
 
 
+# --- change 0004: the drive /sdlc-init proposes ---------------------------------------------
+def _playwright_project(root: Path, block: str = "devDependencies", lock: bool = False) -> Path:
+    shutil.copytree(NODE_FIXTURE, root)
+    pkg = json.loads((root / "package.json").read_text(encoding="utf-8"))
+    pkg[block] = {**pkg.get(block, {}), "@playwright/test": "^1.50.0"}
+    (root / "package.json").write_text(json.dumps(pkg), encoding="utf-8")
+    if lock:
+        (root / "package-lock.json").write_text("{}", encoding="utf-8")
+    return root
+
+
+@pytest.mark.parametrize("block", ["dependencies", "devDependencies"])
+def test_the_plain_playwright_drive_is_proposed_from_either_block(tmp_path, block):
+    det = detect.detect(_playwright_project(tmp_path / "p", block))
+    assert det.drive.command == "npx playwright test"
+    assert det.drive.origin == "detected: @playwright/test in package.json"
+    assert det.setup.command == "npm install && npx playwright install --with-deps"
+    assert det.as_dict()["drive"]["command"] == "npx playwright test"
+
+
+def test_the_browser_install_is_appended_to_npm_ci_and_nothing_else_gets_a_drive(tmp_path):
+    det = detect.detect(_playwright_project(tmp_path / "locked", lock=True))
+    assert det.setup.command == "npm ci && npx playwright install --with-deps"
+    plain = detect.detect(NODE_FIXTURE)
+    assert plain.drive.command is None and plain.drive.origin == "none"
+    assert plain.setup.command == "npm install"
+    assert detect.detect(FIXTURE).drive.command is None
+
+
+def test_init_renders_the_drive_and_the_setup_suffix(tmp_path):
+    root = _playwright_project(tmp_path / "p")
+    report = _run_init(root)
+    cfg = yamlish.load_file(root / "sdlc.yaml")
+    assert cfg["commands"]["drive"] == "npx playwright test"
+    assert cfg["commands"]["setup"] == "npm install && npx playwright install --with-deps"
+    assert cfg["gate"]["drive_timeout"] == 300 and cfg["gate"]["proof_image_kb"] == 50
+    assert report["detection"]["drive"]["command"] == "npx playwright test"
+    assert report["proposed"]["commands.drive"] == "npx playwright test"
+    text = (root / "sdlc.yaml").read_text(encoding="utf-8")
+    assert "process.env.SDLC_PROOF_DIR" in text and "SDLC_CHANGE_ID" in text
+    # no skeleton file is written for the drive
+    assert not list(root.rglob("*.spec.ts")) and not (root / "playwright.config.ts").exists()
+
+
+def test_an_explicit_setup_is_written_as_given_and_the_origin_says_what_it_must_install(
+    tmp_path,
+):
+    root = _playwright_project(tmp_path / "empty")
+    report = _run_init(root, "--setup", "")
+    cfg = yamlish.load_file(root / "sdlc.yaml")
+    assert cfg["commands"]["setup"] == "" and cfg["commands"]["drive"] == "npx playwright test"
+    assert report["detection"]["drive"]["origin"] == (
+        'detected: @playwright/test in package.json; --setup "" installs neither it nor its '
+        "browsers: the owner's setup must, or the checkout carries node_modules"
+    )
+    root = _playwright_project(tmp_path / "own")
+    report = _run_init(root, "--setup", "make deps")
+    assert yamlish.load_file(root / "sdlc.yaml")["commands"]["setup"] == "make deps"
+    assert (
+        "the owner's --setup must install @playwright/test"
+        in (report["detection"]["drive"]["origin"])
+    )
+
+
+def test_drive_overrides_the_proposal(tmp_path):
+    root = _playwright_project(tmp_path / "p")
+    _run_init(root, "--drive", "npm run e2e")
+    assert yamlish.load_file(root / "sdlc.yaml")["commands"]["drive"] == "npm run e2e"
+    root = tmp_path / "node"
+    shutil.copytree(NODE_FIXTURE, root)
+    _run_init(root, "--drive", "")
+    assert yamlish.load_file(root / "sdlc.yaml")["commands"]["drive"] == ""
+
+
+def test_the_init_command_names_the_drive_and_the_proof_dir_sentence():
+    text = (ROOT / "plugin" / "commands" / "sdlc-init.md").read_text(encoding="utf-8")
+    flat = " ".join(text.split())
+    assert "The proposed line is plain `npx playwright test`" in flat
+    assert "writes its screenshots and JSON files to paths under `process.env.SDLC_PROOF_DIR`" in (
+        flat
+    )
+    assert "an explicit `--setup` must install `@playwright/test` and its browsers itself" in flat
+    assert '[--drive "<cmd>"]' in text
+
+
 def test_detect_prefers_python_when_both_exist(tmp_path):
     (tmp_path / "package.json").write_text('{"scripts": {"test": "jest"}}', encoding="utf-8")
     (tmp_path / "app.py").write_text("x = 1\n", encoding="utf-8")
@@ -278,6 +363,7 @@ def test_init_on_node_fixture_writes_npm_targets(tmp_path):
         "test": "npm test",
         "lint": "npm run lint",
         "setup": "npm install",  # no package-lock.json in the fixture
+        "drive": "",  # change 0004: no @playwright/test in the fixture, no drive
         "env": [],  # R61: no --env given
     }
     assert cfg["test_paths"] == detect.TEST_PATHS["node"]  # step 25: the test-file lock

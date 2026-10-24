@@ -97,12 +97,12 @@ in a CI session (step 4), the port list's home under `docs/progress/` (step 13),
 - `template/sdlc.yaml` — `commands.drive` with its comment (the shell sentence of R1
   included), `gate.drive_timeout` with the 600 s maximum and its arithmetic in the comment,
   `gate.proof_image_kb` with its comment (R1, R4, R8)
-- `template/.github/workflows/sdlc-build.yml` — timeout comment only (R4)
-- `template/.github/workflows/sdlc-fix.yml` — timeout comment only: the drive's figure, the
-  worst case with R51's re-check and the cancellation sentence of R4 (panel decision 2); a
-  port-list file (HANDOFF rules), recorded in `evidence/port-list.md` (step 13)
-- `template/.github/workflows/sdlc-test.yml` — timeout comment only (R4)
-- `template/.github/workflows/sdlc-deploy.yml` — timeout comment only (R4)
+- `changes/0004-drive-target-and-proof-items/evidence/workflow-comments.md` — new (a
+  departure of phase (c), see Risks, "The four workflow comments"): the timeout comment lines
+  of `template/.github/workflows/sdlc-build.yml`, `sdlc-fix.yml` (the drive's figure, the
+  worst case with R51's re-check and the cancellation sentence of R4, panel decision 2),
+  `sdlc-test.yml` and `sdlc-deploy.yml`, for the owner to apply to each template and its
+  `.github/workflows/` copy in one reviewed PR; the four templates do not change in this build
 - `.claude-plugin/plugin.json` — the next free patch version (R16)
 - `changes/0004-drive-target-and-proof-items/evidence/port-list.md` — new: the port-list
   lines of this change (`plugin/ci/run_phase.py` and `template/.github/workflows/sdlc-fix.yml`,
@@ -250,7 +250,8 @@ in a CI session (step 4), the port list's home under `docs/progress/` (step 13),
 12. Texts (`plan-template/SKILL.md` with the any-line rule and the one parse,
     `ux-conventions/SKILL.md`, `definition-of-done/SKILL.md`, `verifier.md`,
     `adversarial-reviewer.md`, `sdlc-build.md`, `sdlc-test.md`, the four workflow comments
-    with the fix template's worst case and cancellation sentence (panel decision 2),
+    with the fix template's worst case and cancellation sentence (panel decision 2) written
+    to `evidence/workflow-comments.md` for the owner (Risks, "The four workflow comments"),
     `tests/test_commands_and_skills.py`, `tests/test_agents.py`, `tests/test_templates.py`).
 13. Version bump (`.claude-plugin/plugin.json`) to the next free patch; `python tasks.py
     verify`; the port list: the build writes `evidence/port-list.md` in the change folder
@@ -374,6 +375,19 @@ in a CI session (step 4), the port list's home under `docs/progress/` (step 13),
   of `release/cli.py` and `merge_step.py` that say "commands check" for a record still
   deferred are left as they are: a `proof` entry is deferred only beside a `commands` entry,
   so the wording stays true.
+- **The four workflow comments (a departure of phase (c), 2026-10-24).** Step 12 planned the
+  timeout comments in the four workflow templates. `tests/test_templates.py`
+  (`test_this_repository_s_workflow_copies_match_the_template` and
+  `test_fix_workflow_starts_on_request_changes_and_on_the_owner_labels`) asserts this
+  repository's `.github/workflows/` copies equal the rendered templates byte for byte, and
+  `.github/workflows/**` is a protected path no run may write (`hooks/protected_paths.py`):
+  a template comment changed alone turns the suite red, and weakening those tests is not
+  allowed (coding-standards rule 4). The build leaves the four templates as they are and
+  writes the exact lines, one row per file, in `evidence/workflow-comments.md` for the owner
+  to apply to each template and its copy in one reviewed PR. The arithmetic itself is in the
+  code (`run_phase.py` above `JUDGE_TIMEOUT_SECONDS`, `limits.py` beside
+  `DRIVE_TIMEOUT_MAX_SECONDS`) and in `template/sdlc.yaml`'s `gate.drive_timeout` comment,
+  which `tests/test_templates.py` checks. The port list's fix-workflow line says the same.
 - **Nothing must change before the plan can be written.**
 
 ## Options not taken
@@ -492,9 +506,9 @@ in a CI session (step 4), the port list's home under `docs/progress/` (step 13),
   "make deps"` written as given, `--drive`, the rendered keys, the
   `process.env.SDLC_PROOF_DIR` sentence in the rendered comment and in `sdlc-init.md`, no
   skeleton file.
-- test: tests/test_templates.py — the three keys and the four comments, the fix template's
-  with the worst case and the cancellation sentence, the `drive_timeout` comment's 600 s
-  maximum.
+- test: tests/test_templates.py — the three keys and their comments, the `drive_timeout`
+  comment's 600 s maximum and arithmetic (the four workflow comments are the owner's, in
+  `evidence/workflow-comments.md`: Risks).
 - test: tests/test_base_update.py — the re-check never runs a drive.
 - test: tests/test_commands_and_skills.py, tests/test_agents.py, tests/test_policy_skills.py
   — the texts (the plan skill's any-line rule and one parse among them), the two policy skill
