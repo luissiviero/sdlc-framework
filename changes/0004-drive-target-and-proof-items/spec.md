@@ -67,19 +67,20 @@ difference is named.
   of 200, deploy 355 of 355.
 - With a drive at the default 300 s: build and fix 250 of 260, test 190 of 200.
 - At (e), when the drive is set, the drive's minutes (`ceil(drive_timeout / 60)`) come out
-  of the (e) session's wall-clock cap: `limits.run_caps` takes the minutes to subtract, and
-  both of its readers pass them for a run at (e), the runner (`--max-turns` is unchanged,
-  the subprocess timeout and the gate's `limits` check read the reduced cap) and the gate's
-  wall-clock check; so the deploy job stays at 355 (115 + 5 + 55 + 10 + 125 + 45). The
-  REVIEW.md pass keeps `max_wall_clock_minutes` whole (it runs no drive). The subtraction
-  never takes the cap below 30 minutes; a `drive_timeout` that would is a park of the
-  `limits` check at (e) with the figure, since the owner set it.
+  of the session's wall-clock cap, for the (e) run and for a fix round whose gate phase is
+  (e): `limits.run_caps` takes the minutes to subtract, and both of its readers pass them,
+  the runner (`--max-turns` is unchanged; the subprocess timeout reads the reduced cap) and
+  the gate's wall-clock check; so the deploy job stays at 355 (115 + 5 + 55 + 10 + 125 + 45).
+  The REVIEW.md pass keeps `max_wall_clock_minutes` whole (it runs no drive). The
+  subtraction never takes the cap below 30 minutes; a `drive_timeout` that would is a park of
+  the `limits` check at (e) with the figure, since the owner set it.
 - The three steps the workflow comments leave out are named, not fixed, and no
   `timeout-minutes` is raised: `commands.setup` (`project_setup.py`, 15 minutes, more with
   the browser install R10 adds), the R18 triage session (5 minutes; deploy already reaches
   360 with it, the most a GitHub-hosted job may run) and a fix round at (e) (R51's merge and
-  re-check, 45, before a 185-minute fix session: 290 of 260 today, 295 with a drive). Each
-  workflow template's timeout comment (`sdlc-build.yml`, `sdlc-fix.yml`, `sdlc-test.yml`,
+  re-check, 45, before the fix session, 185 today and 180 with a drive, then the step, 50 or
+  55, and the judge, 10: 290 of 260 today and 290 of 260 with a drive). Each workflow
+  template's timeout comment (`sdlc-build.yml`, `sdlc-fix.yml`, `sdlc-test.yml`,
   `sdlc-deploy.yml`) states the arithmetic with the drive and names the three. See Flagged
   concerns, item 2, for the fix round at (e).
 
@@ -186,10 +187,21 @@ difference is named.
   `TARGETS` (`collect.py`), `red_targets` (`auto_round.py`), `logs_for` (`triage.py`), and
   the (d) check run summary (`pr/cli.py check_run_result`, through `evidence_status`).
 - `plugin/skills/ux-conventions/check.py` looks for images in `evidence/proof/` and
-  `evidence/screenshots/` instead of directly in `evidence/`.
+  `evidence/screenshots/` instead of directly in `evidence/`; its finding reads "UI changed
+  but evidence/proof/ and evidence/screenshots/ hold no screenshot".
+- The two skill texts that say no gate check reads a screenshot are corrected:
+  `plugin/skills/definition-of-done/SKILL.md` ("Deterministic backing": at (d) the
+  screenshots named as `screenshot:` items of the approved plan are checked under
+  `evidence/proof/` by the gate's `proof` entry when a drive is set; by-hand screenshots
+  under `evidence/screenshots/` are still required by no check) and
+  `plugin/skills/ux-conventions/SKILL.md` ("Check" and "Deterministic backing": the two
+  folders the check reads; rule 7's `screenshot:` item of `proof/` when a drive is set).
 
 ### R12. The PR body and the check run show the result
-- `plugin/pr/description.py` `evidence_status`: adds `drive <state>` after the three logs
+- `plugin/pr/description.py` `evidence_status` takes the project root beside the change
+  folder and the phase (it reads `sdlc.yaml` for the drive and `HEAD` for the manifest's
+  commit; its three callers, `description.py`'s bullets, `pr/cli.py check_run_result` and
+  `release/notes.py _evidence_line`, pass it): adds `drive <state>` after the three logs
   when the drive is set; adds `proof N, state items M of K matching` read from the `proof`
   entry of the phase's gate record (N = files in the manifest, M of K = `matches` over
   approved `state` items; `proof not checked` by hand; nothing when the drive is empty);
@@ -248,8 +260,9 @@ difference is named.
   is new), rule 6 (the manifest names the commit and the run). ux-conventions applies to the
   text a person reads (rule 4: every park and `need` text says what happened and what to do;
   rule 7: the folder rule of R14); no screen is touched. definition-of-done applies to each
-  phase as written; (d)'s "screenshots for UI changes" now reads the drive's `proof/` when a
-  drive is set.
+  phase as written; its (d) line "screenshots for UI changes" is backed by the gate's
+  `proof` entry for the `screenshot:` items of the approved plan when a drive is set (R11),
+  and by no check otherwise, as today.
 
 ## Design
 
@@ -294,15 +307,20 @@ the `evidence`-on-red-logs case is today. `targets_summary` renders `proof (2 it
 <seen>`). `REQUEST_TEXT` says "a red target or proof item".
 
 **`plugin/ci/run_phase.py`**: `commands_timeout_seconds` adds the drive timeout when
-set; `run_caps(config, phase, env)` subtracts the drive minutes at (e) (and for a fix
-round whose gate phase is (e)) through `limits.run_caps(settings, build, less_minutes)`;
-`commands_env()` is unchanged and the drive's two variables are added by `run_drive`, not
-here. The timeout comments above `JUDGE_TIMEOUT_SECONDS` state the drive's figure. These
-lines put the change on the port list (HANDOFF rules); the build's session record lists them.
+set; `run_caps(config, phase, env, gate_phase=None)` subtracts the drive minutes when
+`gate_phase` is `e` (the (e) run passes its own phase; a fix round passes the change's
+gate phase at its two call sites, the `--max-turns` line and `run_timeout_seconds`) through
+`limits.run_caps(settings, build, less_minutes)`; `build_caps_minutes_needed` passes
+nothing new; `commands_env()` is unchanged and the drive's two variables are added by
+`run_drive`, not here. The timeout comments above `JUDGE_TIMEOUT_SECONDS` state the drive's
+figure. These lines put the change on the port list (HANDOFF rules); the build's session
+record lists them.
 
 **`plugin/gate/limits.py`** `run_caps(gate_settings, build, less_minutes=0)`: subtracts
-from the wall clock, never below 30; `check_limits` passes `drive_minutes(ctx.config)` at
-(e). A `drive_timeout` that would take the cap below 30 is a `limits` park with the figure.
+from the wall clock, never below 30; its four callers (`run_phase.run_caps`,
+`run_phase.build_caps_minutes_needed`, `limits.check_limits`, `sdlc_init.keep_build_caps`)
+keep their result when they pass nothing; `check_limits` passes `drive_minutes(ctx.config)`
+at (e). A `drive_timeout` that would take the cap below 30 is a `limits` park with the figure.
 
 **`plugin/evidence/collect.py`**: `TARGETS` becomes the three plus `drive` when set; the
 drive runs last through the same `run_drive`; the report gains `"drive": {"exit", "seconds",
@@ -310,9 +328,11 @@ drive runs last through the same `run_drive`; the report gains `"drive": {"exit"
 comparison (printed, not recorded); exit 1 when the drive is red or an approved item fails.
 Inside a CI session the drive is skipped with `"exit": "deferred"` and no log is written.
 
-**`plugin/pr/description.py`**: `evidence_status` reads the gate record's `proof` entry
-(`load_gate`) and the manifest; `LOG_FILES` through the helper; the screenshot count filters
-`.gitkeep`.
+**`plugin/pr/description.py`**: `evidence_status(change_dir, phase, root)` reads the gate
+record's `proof` entry (`load_gate`), the manifest, `sdlc.yaml` at `root` (the drive) and
+`HEAD` (through `state.gitops`; no repository means no commit line); `LOG_FILES` through
+the helper; the screenshot count filters `.gitkeep`. The three callers pass the root they
+already hold.
 
 **`plugin/ci/triage.py`** `logs_for`: the two additions of R13.
 
@@ -324,7 +344,7 @@ proposal (`npx playwright test --output "$SDLC_PROOF_DIR"`, origin "detected:
 **`template/sdlc.yaml`**: `commands.drive` with its comment; `gate.drive_timeout: 300` and
 `gate.proof_image_kb: 50` with comments saying they are read only when the drive is set.
 **Workflow templates**: comment lines only (R4). **Skills, commands, agents**: the text of
-R5 and R15.
+R5, R11 and R15.
 
 **Error behaviour.** A drive that cannot start: one re-run, then a park with
 `COMMANDS_CRASH_NEED`. A drive that times out or exits non-zero: a round. An approved item
@@ -359,8 +379,9 @@ REVIEW.md pass; this repository's `sdlc.yaml` and workflow copies.
   intent's; the other candidate, raising `timeout-minutes`, is refused by the intent's
   constraint. The setup step and the fix round at (e) are named in the comments and not
   fixed (R4): the setup step's 15 minutes are the same today for every job and are not this
-  change's; the fix round at (e) is already over its job's bound today (290 of 260) and this
-  change adds 5 to it (Flagged concerns, item 2).
+  change's; the fix round at (e) is already over its job's bound today (290 of 260) and
+  stays at 290 with a drive, since the drive's minutes come out of that session's cap too
+  (Flagged concerns, item 2).
 
 ## Flagged concerns
 
@@ -372,12 +393,14 @@ REVIEW.md pass; this repository's `sdlc.yaml` and workflow copies.
    Playwright config), and `collect.py` does no substitution of its own. Guess made because
    the intent does not say.
 2. A fix round at (e) stays over its job's budget: the fix workflow's 260 minutes hold R51's
-   merge and re-check (45), the fix session (185), the commands step (50 or, with a drive,
-   55) and the judge (10): 290 today, 295 with a drive, both past 260. The design raises no
-   `timeout-minutes` (the intent's constraint), takes the drive's minutes out of the (e)
-   session's cap and names the shortfall in the fix template's comment; it does not reduce
-   the fix session at (e) to fit. Guess made because the intent asks the design to say which
-   of the three uncounted steps it fixes and which it names, and does not say which.
+   merge and re-check (45 minutes), the fix session (185 minutes today, 180 with a drive),
+   the commands step (50 minutes today, 55 with a drive) and the judge (10 minutes), which
+   is 290 minutes today and 290 with a drive, both past 260. The design raises no
+   `timeout-minutes` (the intent's constraint), takes the drive's minutes out of that
+   session's cap and names the shortfall in the fix template's comment; it does not shorten
+   the fix session at (e) to fit the job. Guess made because the intent asks the design to
+   say which of the three uncounted steps it fixes and which it names, and does not say
+   which.
 3. The `line` path of a `state` item on a text file is read as "any line satisfies the
    comparison" (an `==` holds when one line equals the value; `seen` is the first
    non-matching line, or the first line), and the expected value is parsed as JSON when it
@@ -403,18 +426,21 @@ REVIEW.md pass; this repository's `sdlc.yaml` and workflow copies.
   - gate (b) parks a plan that names a `state` or `screenshot` item while the drive is empty
     and a malformed item, and passes a prose-only Proof;
   - `commands_timeout_seconds`, `build_caps_minutes_needed` and the (e) caps hold the figures
-    of R4 with and without a drive; the four workflow templates' comments state them;
+    of R4 with and without a drive (a fix round at (e) with a drive: 180 minutes of session);
+    the four workflow templates' comments state them;
   - `commands_from_config`, `base_update.recheck` and `release.recheck_targets` never return
     or run the drive;
   - `collect.py` runs the drive the same way, reports the items and exits 1 on a red one;
   - `evidence_status` shows `drive`, `proof N, state items M of K matching`, the
-    `.gitkeep`-free screenshot count and the manifest's commit when it is not HEAD;
+    `.gitkeep`-free screenshot count and the manifest's commit when it is not HEAD, and its
+    three callers pass the root;
   - `triage.logs_for` adds `drive.log` on a red `commands` entry and `drive.log` plus
     `proof/manifest.json` on a failed `proof` entry;
   - `/sdlc-init` proposes the Playwright drive and the browser install only when
     `@playwright/test` is a dependency, `""` otherwise, writes no skeleton, and renders the
     three new keys;
-  - the `ux-conventions` check reads `proof/` and `screenshots/`;
+  - the `ux-conventions` check reads `proof/` and `screenshots/`, and the two skill texts
+    say what the gate now checks;
   - the command, skill and agent texts carry the item grammar, the step-3 rule, the
     verifier's step and the reviewer's angle (the existing text tests extended).
 - `python -m compileall -q plugin tests tasks.py .github/scripts` prints nothing and exits 0;

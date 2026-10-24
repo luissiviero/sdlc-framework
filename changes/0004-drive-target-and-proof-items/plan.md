@@ -22,24 +22,36 @@ spec's requirement numbers (R1 to R16) are cited beside each step.
   `drive_minutes(config)`; `check_limits` subtracts them at (e) and parks on a floor hit (R4)
 - `plugin/gate/cli.py` — nothing but the docstring line naming the drive in `run-commands`
 - `plugin/ci/run_phase.py` — `commands_timeout_seconds` adds the drive timeout when set;
-  `run_caps` passes the drive minutes for (e) and for a fix round whose gate phase is (e);
-  the arithmetic comments above `JUDGE_TIMEOUT_SECONDS` and at `TRIAGE_TIMEOUT_SECONDS`
-  (R4; port-list lines, recorded in the build session's record)
+  `run_caps(config, phase, env, gate_phase=None)` and `run_timeout_seconds(config, phase,
+  env, gate_phase=None)` subtract the drive minutes when `gate_phase` is `e`; their two call
+  sites for a session (the `--max-turns` argument in the argv builder, `run_phase.py:2082`
+  today, and the `invoke(...)` call, `:3333` today) pass the gate phase; the arithmetic
+  comments above `JUDGE_TIMEOUT_SECONDS` and at `TRIAGE_TIMEOUT_SECONDS` (R4; port-list
+  lines, recorded in the build session's record)
 - `plugin/ci/auto_round.py` — `red_targets` accepts a failed `proof` entry (and `evidence`
   on `drive.log`); `targets_summary`, `red_targets_request`, `REQUEST_TEXT` name the items
   (R7)
 - `plugin/ci/triage.py` — `logs_for` adds `drive.log` and `proof/manifest.json` (R13)
 - `plugin/evidence/collect.py` — `TARGETS` plus `drive` when set; runs `run_drive`, reports
   the items, exits 1 on a red drive or a failed approved item; `--only drive` (R2)
-- `plugin/pr/description.py` — `LOG_FILES` through `target_logs`; `evidence_status` adds the
-  drive state, the proof line, the `.gitkeep`-free count and the manifest's commit (R12)
+- `plugin/pr/description.py` — `LOG_FILES` through `target_logs`; `evidence_status(change_dir,
+  phase, root)` adds the drive state, the proof line, the `.gitkeep`-free count and the
+  manifest's commit; the bullets' call passes the root the builder holds (R12)
+- `plugin/pr/cli.py` — `check_run_result` passes `root` to `evidence_status` (R12)
+- `plugin/release/notes.py` — `_evidence_line(change_dir, root)` passes the root (R12)
 - `plugin/init/detect.py` — `Detection.drive`, `playwright_drive(pkg)`, the setup suffix
   `npx playwright install --with-deps`, `as_dict` (R10)
 - `plugin/init/sdlc_init.py` — `{{DRIVE_CMD}}`, `--drive`, the report's `targets.drive`,
-  the proposed block's line (R10)
+  the proposed block's line; `keep_build_caps` keeps calling `limits.run_caps(old_gate,
+  False)` unchanged (R10)
 - `plugin/skills/plan-template/SKILL.md` — the `## Proof` item grammar (R5)
 - `plugin/skills/ux-conventions/check.py` — images read from `evidence/proof/` and
-  `evidence/screenshots/` (R11)
+  `evidence/screenshots/`; the finding's text names both folders (R11)
+- `plugin/skills/ux-conventions/SKILL.md` — "Check" and "Deterministic backing" name the two
+  folders and the gate's `proof` entry for `screenshot:` items when a drive is set (R11)
+- `plugin/skills/definition-of-done/SKILL.md` — "Deterministic backing" at (d): the
+  `screenshot:` items of the approved plan are checked under `proof/` when a drive is set;
+  by-hand screenshots are still required by no check (R11)
 - `plugin/agents/verifier.md` — the (d) step on `proof/` images (R15)
 - `plugin/agents/adversarial-reviewer.md` — angle 9, the drive reads or writes (R15)
 - `plugin/commands/sdlc-init.md` — the drive proposal in step 0 (R10)
@@ -58,17 +70,19 @@ spec's requirement numbers (R1 to R16) are cited beside each step.
   `check_evidence` with `drive.log`, the (e) wall clock
 - `tests/test_auto_round.py` — a failed `proof` entry is a round; the request names the items
 - `tests/test_ci.py` — `commands_timeout_seconds`, `build_caps_minutes_needed`, `run_caps`
-  with and without a drive
+  and `run_timeout_seconds` with and without a drive, for (e) and for a fix round at (e)
 - `tests/test_evidence.py` — `collect.py` with a drive, `--only drive`, the CI mark
-- `tests/test_pr.py` — `evidence_status`
+- `tests/test_pr.py` — `evidence_status` and the check run's summary
+- `tests/test_release.py` — the release notes' evidence line still renders; `recheck_targets`
+  never runs a drive
 - `tests/test_triage.py` — `logs_for`
 - `tests/test_init.py` — the Playwright proposal, `--drive`, the rendered keys
 - `tests/test_templates.py` — the four comments and the three keys
 - `tests/test_base_update.py` — `recheck` never runs a drive
-- `tests/test_release.py` — `recheck_targets` never runs a drive
-- `tests/test_commands_and_skills.py` — the skill grammar, the command texts
+- `tests/test_commands_and_skills.py` — the skill grammar, the command texts, the two
+  policy skill sentences
 - `tests/test_agents.py` — the verifier's step and the reviewer's angle
-- `tests/test_policy_skills.py` — the ux check's folders
+- `tests/test_policy_skills.py` — the ux check's folders and finding text
 
 ## Order of work
 1. Grammar and constants (`artifacts.py`, `tests/test_proof.py`): the item regex and parser
@@ -102,21 +116,27 @@ spec's requirement numbers (R1 to R16) are cited beside each step.
    `REQUEST_TEXT` with the items; a failed `proof` entry without `items` still parks.
 7. Time (`limits.py`, `run_phase.py`, `tests/test_ci.py`, `tests/test_gate.py`):
    `limits.run_caps(..., less_minutes)` with the floor, `drive_minutes`, `check_limits` at
-   (e); `commands_timeout_seconds` with the drive; `run_phase.run_caps` for (e) and a fix
-   round at (e); the figures 245/250, 185/190, 355 asserted; the comments.
+   (e); `commands_timeout_seconds` with the drive; `run_phase.run_caps` and
+   `run_timeout_seconds` with `gate_phase`, their two session call sites passing it (the
+   (e) run passes `e`; a fix round passes the change's gate phase, which the runner already
+   holds as `gate_phase`); the figures 245/250, 185/190, 355, and 180 for a fix session at
+   (e) with a drive, asserted; the comments.
 8. By hand (`collect.py`, `tests/test_evidence.py`): `drive` in `TARGETS` when set, the
    report's `drive` block with items, `--only drive`, exit 1 on red, the CI mark skipping it.
-9. Readers (`description.py`, `triage.py`, `ux-conventions/check.py`, `tests/test_pr.py`,
-   `tests/test_triage.py`, `tests/test_policy_skills.py`): the evidence line, the logs for
-   the triage, the two image folders; `base_update` and `release` tests asserting no drive.
+9. Readers (`description.py`, `pr/cli.py`, `release/notes.py`, `triage.py`,
+   `ux-conventions/check.py`, `tests/test_pr.py`, `tests/test_release.py`,
+   `tests/test_triage.py`, `tests/test_policy_skills.py`): `evidence_status` with the root
+   and its three callers, the logs for the triage, the two image folders and the finding's
+   text; `base_update` and `release` tests asserting no drive.
 10. `/sdlc-init` (`detect.py`, `sdlc_init.py`, `template/sdlc.yaml`, `sdlc-init.md`,
     `tests/test_init.py`, `tests/test_templates.py`): `Detection.drive`, the Playwright
     proposal and setup suffix, `{{DRIVE_CMD}}`, `--drive`, the three keys with comments; the
     fixture Node project without Playwright gets `""`; a `package.json` with
     `@playwright/test` under `dependencies` and one under `devDependencies` each get the line.
-11. Texts (`plan-template/SKILL.md`, `verifier.md`, `adversarial-reviewer.md`,
-    `sdlc-build.md`, `sdlc-test.md`, the four workflow comments,
-    `tests/test_commands_and_skills.py`, `tests/test_agents.py`, `tests/test_templates.py`).
+11. Texts (`plan-template/SKILL.md`, `ux-conventions/SKILL.md`, `definition-of-done/SKILL.md`,
+    `verifier.md`, `adversarial-reviewer.md`, `sdlc-build.md`, `sdlc-test.md`, the four
+    workflow comments, `tests/test_commands_and_skills.py`, `tests/test_agents.py`,
+    `tests/test_templates.py`).
 12. Version bump (`.claude-plugin/plugin.json`) to the next free patch; `python tasks.py
     verify`; the build session's record lists the `run_phase.py` lines (port list).
 
@@ -126,13 +146,17 @@ spec's requirement numbers (R1 to R16) are cited beside each step.
   `description.evidence_status`, `triage.logs_for`, `run_phase.commands_summary`,
   `pr/cli.py check_run_result`, the verifier's and reviewer's prose, and R19 later. All read
   by name, so the additions are additive (data-conventions rule 4). `limits.run_caps` has
-  three callers (`run_phase.run_caps`, `build_caps_minutes_needed`, `check_limits`): the new
-  argument defaults to 0 so the two that do not subtract are unchanged. `EVIDENCE_TARGETS`
-  is read in six places (spec R11); each moves to `target_logs(drive_set)` and a project
-  without a drive gets the same three. `collect.py`'s JSON gains a key; its readers are the
-  phase commands' prose. `Detection` gains a field; `as_dict` and the init report tests
-  change. `template/sdlc.yaml` gains three keys read only when the drive is set; an existing
-  project file without them reads as before.
+  four callers (`run_phase.run_caps`, `run_phase.build_caps_minutes_needed`,
+  `limits.check_limits`, `sdlc_init.keep_build_caps`): the new argument defaults to 0 so the
+  three that do not subtract are unchanged. `run_phase.run_caps` and `run_timeout_seconds`
+  gain `gate_phase=None`; their other callers (`build_caps_refusal`'s neighbours, the
+  review pass, the triage) pass nothing and keep today's caps. `evidence_status` gains the
+  root; its three callers (`description.py`'s bullets, `pr/cli.py`, `release/notes.py`) all
+  hold it. `EVIDENCE_TARGETS` is read in six places (spec R11); each moves to
+  `target_logs(drive_set)` and a project without a drive gets the same three. `collect.py`'s
+  JSON gains a key; its readers are the phase commands' prose. `Detection` gains a field;
+  `as_dict` and the init report tests change. `template/sdlc.yaml` gains three keys read only
+  when the drive is set; an existing project file without them reads as before.
 - **The riskiest step is 5, the runner's step.** `run_deferred_commands` is the one place a
   red target becomes a park and a round; the drive adds a fourth run, a fourth log written
   even where no mark exists, and a second replaced entry. Mistakes park every CI run of every
@@ -155,9 +179,12 @@ spec's requirement numbers (R1 to R16) are cited beside each step.
   approved items are judged whatever the working tree says).
 - **The (e) cap subtraction.** `check_limits` must subtract exactly what the runner
   subtracted, or the gate's wall-clock check and the runner's kill disagree; both call
-  `limits.run_caps` with `drive_minutes(config)`, the one copy. The floor of 30 prevents a
-  nonsensical `drive_timeout` from zeroing the session. A fix round at (e) is already over
-  its job's bound (spec concern 2); the subtraction applies to it and changes nothing there.
+  `limits.run_caps` with `drive_minutes(config)`, the one copy. The runner knows the gate
+  phase of a fix round (`gate_phase` in `run_phase.main`'s flow) while the gate's check reads
+  `ctx.phase`, which is the change's phase for both; the test of step 7 asserts the two
+  agree for the (e) run and for a fix round at (e). The floor of 30 prevents a nonsensical
+  `drive_timeout` from zeroing the session. A fix round at (e) is already over its job's
+  bound (spec concern 2); with the subtraction it stays at 290.
 - **Playwright's `--output`.** Playwright writes test artifacts (traces, `testInfo.outputPath`)
   under `--output`; a `page.screenshot({path})` with a relative path is relative to the
   working directory, not to `--output`. The proposed line is a proposal the owner confirms;
@@ -171,7 +198,9 @@ spec's requirement numbers (R1 to R16) are cited beside each step.
   places than this change's; a merge conflict is unlikely and resolved by taking both.
 - **Text tests.** `tests/test_commands_and_skills.py` asserts exact phrases of the commands
   and skills (`test_sdlc_test_flow_matches_step_28`, `test_plan_template_ratchet_proof_item_
-  present`); step 11 updates them with the texts, never weakens them.
+  present`); step 11 updates them with the texts, never weakens them. The two policy skill
+  texts (`definition-of-done`, `ux-conventions`) must stay true to the code after step 4:
+  the gate checks `screenshot:` items under `proof/` only when a drive is set.
 - **Nothing must change before the plan can be written.**
 
 ## Options not taken
@@ -192,6 +221,9 @@ spec's requirement numbers (R1 to R16) are cited beside each step.
   by-hand run still sees it.
 - Raising `timeout-minutes` of the four jobs: refused by the intent; the drive's own
   timeout and the (e) subtraction keep every figure.
+- Shortening the fix session at (e) to fit the fix job's 260 minutes: a cap change for a
+  shortfall this change did not cause (290 of 260 today); named in the comments and in spec
+  concern 2 for the owner.
 - Re-running the drive on R51's merged tree: the proof would then be judged against a tree
   no gate record names; the evidence line says which commit the proof is of instead.
 - A `proof/` skeleton drive for Python projects: a green drive that proves nothing, and
@@ -199,6 +231,10 @@ spec's requirement numbers (R1 to R16) are cited beside each step.
 - Substituting `$SDLC_PROOF_DIR` textually in `collect.py` for Windows: the drive line is the
   owner's and runs through the platform shell as the three targets do; a substitution would
   make the by-hand run differ from the runner's (spec concern 1).
+- Reading the drive and HEAD inside `evidence_status` from the change folder's parents
+  instead of a `root` argument: the change folder is always under `<root>/changes/`, but the
+  three callers already hold the root, and an explicit argument is what the coding standards
+  ask for (rule 7, explicit names).
 
 ## Proof
 - test: tests/test_proof.py — the grammar parses the three kinds and refuses malformed items;
@@ -211,19 +247,22 @@ spec's requirement numbers (R1 to R16) are cited beside each step.
   wall clock subtracts the drive minutes and floors at 30.
 - test: tests/test_auto_round.py — a failed `proof` entry with items is a red target and the
   request names item, expected and seen; one without items parks.
-- test: tests/test_ci.py — 245/250, 185/190 and 355 with and without a drive;
-  `commands_from_config` keeps three keys.
+- test: tests/test_ci.py — 245/250, 185/190 and 355 with and without a drive; 180 minutes of
+  session for a fix round at (e) with a drive, 185 at (c); `commands_from_config` keeps
+  three keys.
 - test: tests/test_evidence.py — `collect.py` runs the drive, reports items, exits 1 on red,
   skips it in a CI session.
 - test: tests/test_pr.py — the evidence line's drive state, proof line, screenshot count and
-  manifest commit.
+  manifest commit; the check run's summary carries them.
+- test: tests/test_release.py — the release notes' evidence line renders with the root;
+  `recheck_targets` never runs a drive.
 - test: tests/test_triage.py — `logs_for` with the drive's files.
 - test: tests/test_init.py — the Playwright proposal from both dependency blocks, `""`
   elsewhere, `--drive`, the rendered keys, no skeleton file.
 - test: tests/test_templates.py — the three keys and the four comments.
-- test: tests/test_base_update.py and tests/test_release.py — the re-checks never run a drive.
+- test: tests/test_base_update.py — the re-check never runs a drive.
 - test: tests/test_commands_and_skills.py, tests/test_agents.py, tests/test_policy_skills.py
-  — the texts and the ux check's folders.
+  — the texts, the two policy skill sentences, and the ux check's folders and finding.
 - Every test above is still to be written; the existing tests named in Risks stay as they are.
 - The quantifiable target (spec Acceptance): `python -m pytest` green, `ruff check` and
   `ruff format --check` clean, `compileall` silent, `python tasks.py version-check` passing;

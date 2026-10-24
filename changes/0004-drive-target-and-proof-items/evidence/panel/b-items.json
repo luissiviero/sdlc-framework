@@ -1,0 +1,60 @@
+{
+  "decided": 0,
+  "gate": "park",
+  "items": [
+    {
+      "decided": false,
+      "item": "The Playwright line `/sdlc-init` proposes writes to `\"$SDLC_PROOF_DIR\"`, which the shell",
+      "key": "concern:51eec3b904e0092f",
+      "kind": "concern",
+      "n": 1
+    },
+    {
+      "decided": false,
+      "item": "A fix round at (e) stays over its job's budget: the fix workflow's 260 minutes hold R51's",
+      "key": "concern:7111d4db9aa50106",
+      "kind": "concern",
+      "n": 2
+    },
+    {
+      "decided": false,
+      "item": "and the judge (10): 290 today, 295 with a drive, both past 260. The design raises no",
+      "key": "concern:abc8b550837950c8",
+      "kind": "concern",
+      "n": 3
+    },
+    {
+      "decided": false,
+      "item": "The `line` path of a `state` item on a text file is read as \"any line satisfies the",
+      "key": "concern:041886b26e737c3b",
+      "kind": "concern",
+      "n": 4
+    },
+    {
+      "decided": false,
+      "item": "adversarial reviewer says escalate: The fix round at (e) figure contradicts the design: spec R4 and Flagged concern 2 give '290 of 260 today, 295 with a drive', but the design (run_phase.run_caps 'subtracts the drive minutes at (e) (and for a fix round whose gate phase is (e))') and plan Risks ('the subtraction applies to it') take 5 minutes off that session, which makes it 45 + 180 + 55 + 10 = 290 with a drive, not 295. Acceptance says the sdlc-fix.yml comment states this figure and test_templates.py asserts it, so the build would ship a wrong number with a test pinning it. Settle the figure, or settle whether the fix round at (e) is reduced at all.; A spec requirement no plan file carries out, leaving two policy skills false: spec R16 says definition-of-done's (d) 'screenshots for UI changes now reads the drive's proof/ when a drive is set', but plan.md's 'Files that change' lists neither plugin/skills/definition-of-done/SKILL.md nor plugin/skills/ux-conventions/SKILL.md. Today definition-of-done/SKILL.md:60-63 says the screenshots are something 'no gate check requires (REQUIRED_EVIDENCE names the verifier report and the toolchain logs)', and ux-conventions/SKILL.md:44-53 says the check 'reports whether evidence/ holds a screenshot' and that only that advisory check looks for one. With R7 and R9 (the gate checks screenshot: items under proof/, and gate (b) refuses items without a drive), both sentences become false, and so does the check.py message 'evidence/ holds no screenshot', which R11 moves to proof/ and screenshots/. Add both SKILL.md files, with the reworded check message, to the plan, or drop the R16 sentence.; Callers the plan leaves out on the signatures it changes: (1) evidence_status(change_dir, phase) has no config, root or head, yet R12 needs to know whether the drive is set (LOG_FILES through target_logs(drive_set)) and to compare the manifest's commit with HEAD, so its signature or its inputs must change; the plan omits its third caller plugin/release/notes.py:156 (_evidence_line) and does not say how pr/cli.py:236 and description.py:758 pass the new inputs. (2) run_phase.run_caps(config, phase, env) is called with phase 'fix' for a fix round (run_phase.py:2082, 3333), so 'a fix round whose gate phase is (e)' needs gate_phase passed in, and neither the signature nor those two call sites appear in the plan. (3) plan Risks counts three callers of limits.run_caps, but there are four (plugin/init/sdlc_init.py:267 too); the new default argument keeps that one unchanged, but the claim is wrong.",
+      "key": "escalate:f70af649eb206fe5",
+      "kind": "escalate",
+      "n": 5
+    }
+  ],
+  "iterations": {
+    "cap": 2,
+    "left": 2,
+    "used": 0
+  },
+  "panel_calls": {
+    "cap": 4,
+    "left": 4,
+    "used": 0
+  },
+  "parks": [],
+  "pending": [
+    1,
+    2,
+    3,
+    4,
+    5
+  ],
+  "phase": "b"
+}
