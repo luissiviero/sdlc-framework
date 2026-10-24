@@ -291,6 +291,91 @@ def test_a_job_too_short_for_the_build_caps_keeps_the_general_caps(capsys, proje
     assert "replace sdlc-build.yml and sdlc-fix.yml" in err
 
 
+DRIVE = {"commands": {"drive": "npx playwright test"}}
+
+
+def test_the_job_time_counts_the_drive_only_when_it_is_set():
+    """Change 0004 (R4): without a drive every figure is today's (build and fix 245, test
+    185, deploy 355 with the (e) session 125); a drive at the default 300 s adds 5 minutes to
+    the commands step (250 and 190) and takes them off the (e) session's wall clock."""
+    minutes = run_phase.commands_timeout_seconds
+    assert minutes({}) == 50 * 60 and minutes({}, "e") == 50 * 60
+    assert minutes(DRIVE) == 55 * 60 and minutes(DRIVE, "c") == 55 * 60
+    assert run_phase.build_caps_minutes_needed({}) == 245
+    assert run_phase.build_caps_minutes_needed(DRIVE) == 250
+    test_job = {}, DRIVE
+    for config, total in zip(test_job, (185, 190), strict=True):
+        session = run_phase.run_timeout_seconds(config, "d", JOB_ENV, "d") // 60
+        assert session + minutes(config, "d") // 60 + 10 == total
+    for config in ({}, DRIVE):
+        # the (e) run: session, commands step, judge stay at today's 125 + 50 + 10
+        session = run_phase.run_timeout_seconds(config, "e", JOB_ENV, "e") // 60
+        assert session + minutes(config, "e") // 60 + 10 == 185
+    assert run_phase.run_timeout_seconds(DRIVE, "e", JOB_ENV, "e") == (115 + 5) * 60
+    # a fix round at (e) with a drive: 180 minutes of session, 185 at (c); the review pass
+    # keeps its whole wall clock
+    assert run_phase.run_timeout_seconds(DRIVE, "fix", JOB_ENV, "e") == 180 * 60
+    assert run_phase.run_timeout_seconds(DRIVE, "fix", JOB_ENV, "c") == 185 * 60
+    assert run_phase.run_timeout_seconds(DRIVE, "review", JOB_ENV, "review") == 125 * 60
+    assert run_phase.run_caps(DRIVE, "fix", JOB_ENV, "e")[0] == 400  # --max-turns unchanged
+    # the gate's wall-clock check subtracts the same figure for the same runs
+    from gate import limits
+
+    gate_cfg = DRIVE.get("gate")
+    assert limits.run_caps(gate_cfg, True, limits.drive_minutes(DRIVE))[1] == 175
+    assert limits.run_caps(gate_cfg, False, limits.drive_minutes(DRIVE))[1] == 115
+    assert run_phase.commands_timeout_seconds({"commands": {"drive": ""}}) == 50 * 60
+
+
+def test_a_drive_timeout_over_600_is_capped_at_c_and_d_and_whole_at_e():
+    config = {**DRIVE, "gate": {"drive_timeout": 900}}
+    minutes = run_phase.commands_timeout_seconds
+    assert minutes(config) == 45 * 60 + 600 + 300
+    assert minutes(config, "c") == minutes(config, "d") == minutes(config)
+    assert minutes(config, "e") == 45 * 60 + 900 + 300
+    assert run_phase.build_caps_minutes_needed(config) == 180 + 5 + 60 + 10
+    assert run_phase.drive_timeout_refusal(config) == (
+        "gate.drive_timeout=900 exceeds the 600 s the test and build jobs hold: 600 applied; "
+        "lower it, or raise timeout-minutes and SDLC_JOB_TIMEOUT_MINUTES together in a reviewed PR"
+    )
+    assert run_phase.drive_timeout_refusal(DRIVE) is None
+    assert run_phase.drive_timeout_refusal({"gate": {"drive_timeout": 900}}) is None
+    # the gate's drive timeout caps the same value at the same phases
+    from gate import limits
+
+    for phase in ("c", "d", "e"):
+        drive = limits.drive_timeout_seconds(config, phase)
+        assert minutes(config, phase) == 45 * 60 + drive + 300, phase
+
+
+def test_the_step_s_timeout_and_its_re_run_budget_read_the_same_figure(monkeypatch, tmp_path):
+    """The two readers of ``commands_timeout_seconds`` in the step pass the gate phase: the
+    subprocess timeout of ``run-commands`` and the ``step_budget`` the decision-29 re-run
+    takes what is left of; at (e) with a 900 s drive both count 900."""
+    config = {**DRIVE, "gate": {"drive_timeout": 900}}
+    seen: list[int] = []
+    monkeypatch.setattr(
+        run_phase, "_cli_call", lambda cli, args, timeout, env: seen.append(timeout) or {}
+    )
+    for phase in ("c", "e"):
+        run_phase.run_gate_commands(tmp_path, tmp_path, "0001", phase, config)
+    assert seen == [
+        run_phase.commands_timeout_seconds(config, "c"),
+        run_phase.commands_timeout_seconds(config, "e"),
+    ]
+    assert seen[1] - seen[0] == 300
+    source = (ROOT / "plugin" / "ci" / "run_phase.py").read_text(encoding="utf-8")
+    assert "step_budget = commands_timeout_seconds(config, gate_phase)" in source
+    assert "commands_timeout_seconds(config, phase)" in source
+
+
+def test_commands_from_config_keeps_three_keys_with_a_drive():
+    from gate import checks
+
+    config = {"commands": {"build": "b", "test": "t", "lint": "l", "drive": "d"}}
+    assert sorted(checks.commands_from_config(config)) == ["build", "lint", "test"]
+
+
 def test_design_phase_argv_cannot_edit_a_file(capsys, project):
     """Phase (b) writes spec.md and plan.md; it never edits code (decision 6, layer iii)."""
     root, _change = project

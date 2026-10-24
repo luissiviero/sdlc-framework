@@ -104,20 +104,12 @@ def _details(check: dict[str, Any] | None) -> dict[str, Any]:
     return details if isinstance(details, dict) else {}
 
 
-def red_targets(record: dict[str, Any] | None) -> list[dict[str, Any]] | None:
-    """The failing targets when ``record`` (a gate record the runner's commands step rewrote)
-    is a park on red targets only; None otherwise. Each entry: ``target``, ``command``,
-    ``exit_code`` (None on a timeout), ``timed_out``, ``timeout`` and ``output_tail``."""
-    if not isinstance(record, dict) or record.get("result") != "park":
-        return None
-    commands = _check(record, "commands")
-    if commands is None or commands.get("ok"):
-        return None
+def _red_runs(commands: dict[str, Any]) -> list[dict[str, Any]] | None:
+    """The red runs of a failed ``commands`` entry, or None when the entry is not a red target
+    (an ``sdlc.yaml`` gap, a crash, a command that did not start: parks as before)."""
     details = _details(commands)
-    if details.get("missing") or details.get("crashed") or details.get("deferred"):
+    if any(details.get(k) for k in ("missing", "crashed", "deferred", "not_started")):
         return None  # an sdlc.yaml gap, or an infrastructure failure: parks as before
-    if details.get("not_started"):
-        return None
     runs = details.get("runs")
     if not isinstance(runs, dict) or not runs:
         return None
@@ -141,11 +133,68 @@ def red_targets(record: dict[str, Any] | None) -> list[dict[str, Any]] | None:
                     "output_tail": output[-OUTPUT_TAIL_CHARS:],
                 }
             )
+    return red or None
+
+
+def _expected(line: str) -> str:
+    """What an approved proof item asks for, from its line (``artifacts.proof_items``)."""
+    items = art.proof_items(f"{art.PROOF_SECTION}\n{line}\n")
+    if not items:
+        return line
+    item = items[0]
+    if item.kind == "state":
+        return f"{item.path} {item.verb} {item.value}".rstrip()
+    return f"{item.file} written by the drive"
+
+
+def _red_proof(proof: dict[str, Any]) -> dict[str, Any] | None:
+    """The round's ``proof`` entry from a failed ``proof`` check: the approved items that
+    differ or were not produced; None when the failure is a park (the step's own failure, no
+    ``items``, or the drive removed after gate (b), ``drive_removed``: change 0004, R7)."""
+    details = _details(proof)
+    items = details.get("items")
+    if details.get("drive_removed") or not isinstance(items, list):
+        return None
+    failed = [
+        {
+            "item": str(i.get("item") or ""),
+            "outcome": i.get("outcome"),
+            "expected": _expected(str(i.get("item") or "")),
+            "seen": i.get("seen"),
+        }
+        for i in items
+        if isinstance(i, dict) and i.get("approved") and i.get("outcome") != art.OUTCOME_MATCHES
+    ]
+    return {"target": "proof", "items": failed} if failed else None
+
+
+def red_targets(record: dict[str, Any] | None) -> list[dict[str, Any]] | None:
+    """The failing targets when ``record`` (a gate record the runner's commands step rewrote)
+    is a park on red targets only; None otherwise. Each entry: ``target``, ``command``,
+    ``exit_code`` (None on a timeout), ``timed_out``, ``timeout`` and ``output_tail``; a failed
+    ``proof`` entry (change 0004) adds ``{"target": "proof", "items": [...]}``, also when the
+    ``commands`` entry is green."""
+    if not isinstance(record, dict) or record.get("result") != "park":
+        return None
+    red: list[dict[str, Any]] = []
+    commands = _check(record, "commands")
+    if commands is not None and not commands.get("ok"):
+        runs = _red_runs(commands)
+        if runs is None:
+            return None
+        red += runs
+    proof = _check(record, "proof")
+    if proof is not None and not proof.get("ok"):
+        entry = _red_proof(proof)
+        if entry is None:
+            return None
+        red.append(entry)
     if not red:
         return None
-    red_logs = {art.EVIDENCE_TARGETS.get(r["target"]) for r in red}
+    logs = art.target_logs(True)
+    red_logs = {logs.get(r["target"]) for r in red}
     for check in record.get("checks") or []:
-        if not isinstance(check, dict) or check.get("ok") or check is commands:
+        if not isinstance(check, dict) or check.get("ok") or check is commands or check is proof:
             continue
         if check.get("name") == "evidence":
             ev = _details(check)
@@ -163,6 +212,9 @@ def red_targets(record: dict[str, Any] | None) -> list[dict[str, Any]] | None:
 
 def targets_summary(targets: list[dict[str, Any]]) -> str:
     def state(t: dict[str, Any]) -> str:
+        if t.get("target") == "proof":
+            n = len(t.get("items") or [])
+            return f"{n} item{'' if n == 1 else 's'}"
         return "timed out" if t.get("timed_out") else f"exit {t.get('exit_code')}"
 
     return ", ".join(f"{t['target']} ({state(t)})" for t in targets)
@@ -295,34 +347,20 @@ def park_record(
 def head_matches(root: Path, change_dir: Path, head: str | None) -> bool:
     """Whether the round's ``head`` (the tree the runner found red) is what the fix round
     starts from: HEAD itself, or an ancestor of HEAD from which only the change folder moved
-    (the runner's own record commit, the owner's labels committed by the round)."""
+    (the runner's own record commit, the owner's labels committed by the round): the rule
+    ``gitops.only_change_folder_moved`` holds, which the PR body's stale-proof line reads too."""
     from state import gitops  # noqa: PLC0415
 
-    if not head or not gitops.is_repo(root):
-        return False
-    try:
-        current = gitops.run(root, "rev-parse", "HEAD").strip()
-        if current == head:
-            return True
-        gitops.run(root, "merge-base", "--is-ancestor", head, "HEAD")
-        # a rename's source counted (the review of 1.0.27): a file moved into the change
-        # folder is a change outside it
-        changed = gitops.run(root, "diff", "--name-status", "--no-renames", head, "HEAD")
-    except (gitops.GitError, OSError):
-        return False
-    try:
-        rel = Path(change_dir).resolve().relative_to(Path(root).resolve()).as_posix() + "/"
-    except ValueError:
-        return False
-    paths = [line.split("\t", 1)[-1].strip() for line in changed.splitlines() if line.strip()]
-    return all(path.startswith(rel) for path in paths)
+    return gitops.only_change_folder_moved(root, change_dir, head)
 
 
 REQUEST_TEXT = (
-    "The runner ran build, test and lint after the session (outside the sandbox) and found "
-    "a red target: {summary}. This is automatic fix round {round} of {cap} (decision 29). Make "
-    "the failing targets pass: fix the code, not the test; the test-file lock still applies. "
-    "The runner runs the targets again after this round."
+    "The runner ran build, test and lint (and the drive, when set) after the session (outside "
+    "the sandbox) and found a red target or proof item: {summary}. This is automatic fix round "
+    "{round} of {cap} (decision 29). Make the failing targets pass and the product produce what "
+    "the approved plan's proof items say (the plan is the bar, never edited for it): fix the "
+    "code, not the test; the test-file lock still applies. The runner runs the targets again "
+    "after this round."
 )
 
 
@@ -336,6 +374,15 @@ def red_targets_request(data: dict[str, Any]) -> dict[str, Any]:
         )
     ]
     for t in targets:
+        if t.get("target") == "proof":
+            lines.append("\nproof: the approved plan's items the drive did not meet:")
+            lines += [
+                f"- `{i.get('item')}` ({i.get('outcome')}): expected {i.get('expected')}, "
+                f"seen {art.string_form(i.get('seen'))}"
+                for i in t.get("items") or []
+                if isinstance(i, dict)
+            ]
+            continue
         state = (
             f"timed out after {t.get('timeout')} s"
             if t.get("timed_out")
@@ -356,7 +403,9 @@ def red_targets_request(data: dict[str, Any]) -> dict[str, Any]:
         "cap": data.get("cap"),
         "head": data.get("head"),
         "targets": [
-            {k: t.get(k) for k in ("target", "command", "exit_code", "timed_out")} for t in targets
+            {k: t.get(k) for k in ("target", "command", "exit_code", "timed_out")}
+            | ({"items": t["items"]} if "items" in t else {})
+            for t in targets
         ],
     }
 
@@ -395,7 +444,8 @@ JUDGE_PROMPT = (
     "still red: {summary}. Read the rounds, read-only: {rel}/evidence/{gate} (the runner's "
     "record of the last round), {rel}/evidence/{round_file} (the last round and the earlier "
     "ones under history), {rel}/evidence/fix-response.md, the logs {rel}/evidence/test.log, "
-    "build.log and lint.log when they exist, and {rel}/plan.md. Decide whether one more set of "
+    "build.log, lint.log and drive.log when they exist, the record's `proof` entry (the "
+    "approved proof items and the values seen), and {rel}/plan.md. Decide whether one more set of "
     "{cap} automatic rounds is likely to make the targets pass. Reset only when the rounds make "
     "progress (fewer failures, a different failure, a cause the next round can fix in the code) "
     "and the failure is one a session can fix; do not reset when the rounds repeat the same "

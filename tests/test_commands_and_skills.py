@@ -865,3 +865,67 @@ def test_the_quick_intent_route():
     ):
         assert f"`{heading}`" in flat(path), path.name
     assert heading.lstrip("# ") in flat(PLUGIN / "agents" / "adversarial-reviewer.md")
+
+
+def test_the_plan_skill_states_the_proof_item_grammar():
+    """Change 0004 (R5, panel decision 3): the three kinds, the any-line rule and the one
+    parse beside the grammar; the grammar the skill shows is the one the gate parses."""
+    from gate import artifacts as art
+
+    text = flat(PLUGIN / "skills" / "plan-template" / "SKILL.md")
+    for words in (
+        "`- test: <name>`",
+        "`- screenshot: evidence/proof/<file>.png`, optionally followed by ` vs mock/<file>`",
+        "`- state: evidence/proof/<file> <path> ==|contains|matches <value>`",
+        "Only a list item whose text starts with `test:`, `screenshot:` or `state:` is an item",
+        "**The one parse**: the expected value and each line of a text file are read as JSON",
+        "a bool never equals a number, `1` never equals `1.0`, `[true]` is not `[1]`",
+        "**The any-line rule**: with `line`, the item holds when any line of the text file",
+        "the value seen is the file's first line",
+        "the gate (b) check `proof_items` refuses the plan without one",
+    ):
+        assert words in text, words
+    example = (
+        "## Proof\n- test: tests/test_x.py\n"
+        "- screenshot: evidence/proof/home.png vs mock/home.png\n"
+        "- state: evidence/proof/s.json status.code == 200\n- ratchet: tests may fall, because x\n"
+    )
+    assert [i.kind for i in art.proof_items(example)] == ["test", "screenshot", "state"]
+    assert art.malformed_proof_items(example) == []
+
+
+def test_the_phase_commands_follow_the_drive():
+    """Change 0004 (R15): /sdlc-test step 3 compares (c)'s proof/ images when a drive is set and
+    loses the sentence no code backed; /sdlc-build names the drive's screenshot item."""
+    test = flat(COMMANDS / "sdlc-test.md")
+    assert "When `sdlc.yaml: commands.drive` is set (change 0004), capture nothing by hand" in test
+    assert "open those images with the Read tool, compare each with the mock" in test
+    assert "When the drive is empty: run the app" in test
+    assert "Never run the drive in this session" in test
+    assert "the gate treats it as evidence missing" not in test
+    build = flat(COMMANDS / "sdlc-build.md")
+    assert (
+        "`- screenshot: evidence/proof/<file>.png vs mock/<file>`, added to the plan during (c),"
+        in (build)
+    )
+    assert "reported and never the bar" in build
+    assert (
+        'list the drive\'s own files (the Playwright test, its config) under "Files that change"'
+        in (build)
+    )
+
+
+def test_the_policy_skills_say_what_the_gate_checks_of_a_screenshot():
+    """Change 0004 (R11): the two skills that said no gate check reads a screenshot."""
+    done = flat(PLUGIN / "skills" / "definition-of-done" / "SKILL.md")
+    assert (
+        "the screenshots named as `screenshot:` items of the approved plan are checked under "
+        "`evidence/proof/` by the gate's `proof` entry (change 0004)"
+    ) in done
+    assert (
+        "by-hand screenshots under `evidence/screenshots/` are still required by no check" in done
+    )
+    ux = flat(PLUGIN / "skills" / "ux-conventions" / "SKILL.md")
+    assert "`evidence/proof/` or `evidence/screenshots/` holds a screenshot" in ux
+    assert "Rule 7 has one only when `sdlc.yaml: commands.drive` is set" in ux
+    assert "UI changed but evidence/proof/ and evidence/screenshots/ hold no screenshot" in ux

@@ -23,6 +23,7 @@ VALUES = {
     "TEST_CMD": "python -m pytest",
     "LINT_CMD": "python -m ruff check .",
     "SETUP_CMD": "python -m pip install pytest ruff",
+    "DRIVE_CMD": "",  # change 0004: what /sdlc-init renders for a project without Playwright
     "BUILD_HEALTHY": "exit code 0",
     "TEST_HEALTHY": "N passed",
     "LINT_HEALTHY": "All checks passed!",
@@ -123,6 +124,7 @@ def test_sdlc_yaml_renders_to_documented_keys():
         "lint": "python -m ruff check .",
         # step 30: the one-command install the CI phase jobs run before the phase
         "setup": "python -m pip install pytest ruff",
+        "drive": "",  # change 0004: the optional fourth target, none here
         "env": [],  # R61: the secrets the targets need, none here
     }
     # step 29 / 32: the release workflow's command and the production-gate hook's patterns
@@ -148,6 +150,34 @@ def test_sdlc_yaml_renders_to_documented_keys():
         "version": VALUES["PLUGIN_VERSION"],
         "claude_code": VALUES["CLAUDE_CODE_VERSION"],  # step 30: the CLI the workflows pin
     }
+
+
+def test_sdlc_yaml_carries_the_drive_keys_and_their_comments():
+    """Change 0004 (R1, R4, R8): ``commands.drive`` with what the drive writes and where,
+    ``gate.drive_timeout`` with the 600 s maximum and its arithmetic, ``gate.proof_image_kb``;
+    an existing file without them reads as no drive."""
+    text = (TEMPLATE / "sdlc.yaml").read_text(encoding="utf-8")
+    data = yamlish.loads(render.render_file(TEMPLATE / "sdlc.yaml", VALUES))
+    assert data["commands"]["drive"] == ""
+    assert data["gate"]["drive_timeout"] == 300 and data["gate"]["proof_image_kb"] == 50
+    flat = " ".join(line.strip().lstrip("#").strip() for line in text.splitlines())
+    for words in (
+        "SDLC_PROOF_DIR",
+        "SDLC_CHANGE_ID",
+        "changes/<id>-<slug>/evidence/proof/",
+        "it exits non-zero when any step failed",
+        "synthetic data, never personal data",
+        "process.env.SDLC_PROOF_DIR",
+        "%SDLC_PROOF_DIR% by hand under cmd.exe",
+        "at most 600 at (c) and (d)",
+        "the test job is 190 + 10 <= 200 and the build and fix jobs 250 + 10 <= 260",
+        "never below 30",
+        "(at most ten a run)",
+    ):
+        assert words in flat, words
+    from gate import checks
+
+    assert checks.drive_from_config(data) is None and checks.drive_from_config({}) is None
 
 
 def test_sdlc_yaml_carries_decision_32_s_defaults():

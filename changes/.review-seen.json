@@ -7,6 +7,14 @@
     "last_seen": "2026-10-03T22:00:14Z",
     "summary": "Unchanged from the previous three rounds: docs/PROGRESS.md still holds four top-level records (the split entry plus three \"session 18\" sittings), not just the one current record spec.md's Requirements describe; traced, as before (verifier.md's own investigation of the split commit), to a later merge of main bringing in sessions this change's own commits never touched, not to this round's edits."
   },
+  "10b03dd4f1ca8384": {
+    "count": 1,
+    "file": "plugin/gate/limits.py",
+    "first_change": "0004",
+    "last_change": "0004",
+    "last_seen": "2026-10-24T16:31:45Z",
+    "summary": "When the configured wall-clock cap is already under 30 minutes, check_limits parks every (e) run that has a drive set ('below the floor of 30'), while the runner's limits.run_caps applies min(minutes, 30) and subtracts nothing. The gate and the runner then disagree on the cap (doubt: this only happens when a cap below 30 is configured)."
+  },
   "1e0d289bcbd1daec": {
     "count": 1,
     "file": "plugin/gate/checks.py",
@@ -55,6 +63,14 @@
     "last_seen": "2026-10-03T21:52:04Z",
     "summary": "Unchanged from the previous two rounds: the CLAUDE.md guardrail table still has only 3 rows (lines 3, new-line-after-3, 35); spec.md's Acceptance text also names line 39, addressed only in the Summary's prose (explaining no edit is needed there), never as a table row."
   },
+  "3321bfbba6451a7d": {
+    "count": 1,
+    "file": "plugin/gate/checks.py",
+    "first_change": "0004",
+    "last_change": "0004",
+    "last_seen": "2026-10-24T16:31:45Z",
+    "summary": "Inside a CI session check_evidence defers drive.log only when the file is missing or empty. In a fix round at (d) after a red drive, the runner's earlier red drive.log is still committed, so the fix session's own gate fails 'evidence' with a need (re-run collect.py) the session cannot meet, because collect.py skips the drive in CI and writes no mark. The runner's step re-judges the check afterwards, so the final verdict is right, but the session spends turns on it (doubt: the impact is limited to the in-session verdict)."
+  },
   "3384bdbb6b1fbfa5": {
     "count": 1,
     "file": "plugin/ci/run_phase.py",
@@ -87,6 +103,14 @@
     "last_seen": "2026-10-08T12:06:32Z",
     "summary": "The example frontmatter's `sources` list shows only `detection`, `eval` and `fix-pr`, with no sample `run-<n>` entry, even though spec.md's Requirements say `sources` includes \"one `run-<n>` per failed run `detection.json` lists\"."
   },
+  "3c3a060b8e0bdeec": {
+    "count": 1,
+    "file": "changes/0004-drive-target-and-proof-items/evidence/workflow-comments.md",
+    "first_change": "0004",
+    "last_change": "0004",
+    "last_seen": "2026-10-24T16:31:45Z",
+    "summary": "Spec R4 and its Acceptance require the four workflow templates' timeout comments to carry the drive's arithmetic, but the diff leaves those templates unchanged. The departure is recorded in plan.md (Risks) in the same commit, and the lines are handed to the owner, so the spec requirement stays open until the owner applies them in a reviewed PR."
+  },
   "4a9f19fa06c35455": {
     "count": 1,
     "file": "docs/PROGRESS.md",
@@ -118,6 +142,14 @@
     "last_change": "0005",
     "last_seen": "2026-10-16T19:33:13Z",
     "summary": "dropped_test_files and dropped_eval_cases both branch on rec.status in (\"R\", \"C\"), but the only git invocation that feeds them (diff.name_status, which calls `git diff --name-status -M -z`, no `-C`) can never produce a \"C\" record, so that half of the branch is unreachable from this check's own call site."
+  },
+  "58fe2c3783a17780": {
+    "count": 1,
+    "file": "changes/0004-drive-target-and-proof-items/plan.md",
+    "first_change": "0004",
+    "last_change": "0004",
+    "last_seen": "2026-10-24T16:25:41Z",
+    "summary": "Under 'Files that change', plan.md lists `plugin/gate/cli.py` (the docstring line naming the drive in `run-commands`), but the diff leaves that file untouched and the plan was not updated. The departure is docstring-only and changes no behaviour, so it is reported as a nit rather than as an Important plan-conformance breach."
   },
   "5c8c0b6d77fb918c": {
     "count": 1,
@@ -158,6 +190,14 @@
     "last_change": "0001",
     "last_seen": "2026-10-03T22:45:42Z",
     "summary": "docs/PROGRESS.md still carries four top-level records (the new Change 0001 entry plus the session-18 'third sitting', 'second sitting' and plain 'session 18' records) instead of only the current one, unmet against spec.md's own Acceptance text."
+  },
+  "66a196a2d645cd7e": {
+    "count": 1,
+    "file": "plugin/gate/checks.py",
+    "first_change": "0004",
+    "last_change": "0004",
+    "last_seen": "2026-10-24T16:31:45Z",
+    "summary": "run_drive calls int() on gate.proof_image_kb unguarded. A non-numeric value raises ValueError after the drive has run, so the commands step crashes, re-runs and parks with 'check crashed'. configured_drive_timeout falls back to the default on the same kind of input, and this setting should too."
   },
   "68391c290d2c2066": {
     "count": 3,
@@ -231,6 +271,14 @@
     "last_seen": "2026-10-09T11:22:33Z",
     "summary": "The new hook script is 985 lines, nearly double the coding-standards advisory limit of 500 lines for a single source file, with no split proposed in plan.md."
   },
+  "a2537610258e383b": {
+    "count": 1,
+    "file": "plugin/skills/ux-conventions/check.py",
+    "first_change": "0004",
+    "last_change": "0004",
+    "last_seen": "2026-10-24T16:25:41Z",
+    "summary": "The ux check globs `evidence/proof/` non-recursively. The drive, the caps and the manifest all walk `proof/` recursively (rglob), so a drive that writes its screenshots into a subfolder is reported as 'no screenshot'."
+  },
   "a372dc968947c483": {
     "count": 2,
     "file": "plugin/lessons/index.py",
@@ -287,6 +335,14 @@
     "last_seen": "2026-10-09T11:15:39Z",
     "summary": "Since `FRAMEWORK_SUITE` (line 32) is now itself `tuple(p.name for p in run.discover(FRAMEWORK_CASES))`, the pre-existing assertion `names == list(FRAMEWORK_SUITE)` compares `run.discover`'s output against itself and is tautological \u2014 a bug in `run.discover` (e.g. a skipped or duplicated case folder) would no longer be caught by this line, though each case is still individually validated below it."
   },
+  "b44214bae3739e5c": {
+    "count": 1,
+    "file": "plugin/gate/artifacts.py",
+    "first_change": "0004",
+    "last_change": "0004",
+    "last_seen": "2026-10-24T16:25:41Z",
+    "summary": "The `seen` value of a `differs` on a dotted path is stored whole, with no length cap: up to the 1 MiB file cap, and for a `line` item a single long first line. It goes into the gate record's `proof` entry, `auto-round.json` and the fix round's request. Command output, by contrast, is tailed to OUTPUT_TAIL."
+  },
   "b5a283b4ec19a447": {
     "count": 1,
     "file": "tests/test_hooks.py",
@@ -319,6 +375,14 @@
     "last_seen": "2026-10-16T19:33:13Z",
     "summary": "Three assertions that belong to test_review_md_structure (the .claude/** / test-lock / plan.md conformance checks) were moved into the newly added test_review_md_skip_marker_rule_present instead of staying in their own function, so the comment at the bottom of the old function ('# rules added by the guide...') now sits under an unrelated test name."
   },
+  "cc6e0ddbee425cfd": {
+    "count": 1,
+    "file": "plugin/ci/run_phase.py",
+    "first_change": "0004",
+    "last_change": "0004",
+    "last_seen": "2026-10-24T16:25:41Z",
+    "summary": "`commands_timeout_seconds` adds the drive's timeout at gate (b) too, because `run_gate_commands` passes phase 'b' and `drive_timeout_seconds` returns the capped value for any non-(e) phase. The design job's commands step therefore waits 5 to 10 minutes longer for a drive that never runs at (b)."
+  },
   "ce45a2c4192ba2cc": {
     "count": 1,
     "file": "docs/notes/1.md",
@@ -334,6 +398,14 @@
     "last_change": "0001",
     "last_seen": "2026-10-03T21:32:24Z",
     "summary": "Doubt: docs/PROGRESS.md currently holds four top-level records (the new split entry plus three \"session 18\" sittings), not just the one current record spec.md's Requirements describe; the change's own verifier.md traces the extra two sittings to a later merge of main into this branch, not to this change's own split commits, so it may not be this diff's defect."
+  },
+  "d150d6b5675f5412": {
+    "count": 1,
+    "file": "plugin/gate/artifacts.py",
+    "first_change": "0004",
+    "last_change": "0004",
+    "last_seen": "2026-10-24T16:25:41Z",
+    "summary": "A state item with no value parses as well formed, so an approved `- state: evidence/proof/x.json a matches` with an empty pattern matches any file that has the key. That is a proof item that cannot fail. Gate (b) could refuse an empty <value> as malformed. (Doubt: the spec's grammar says only 'the rest of the line' and does not forbid an empty value.)"
   },
   "d4b1309e16dd99e0": {
     "count": 1,
@@ -374,6 +446,14 @@
     "last_change": "0002",
     "last_seen": "2026-10-12T08:17:00Z",
     "summary": "The new hook script is 985 lines, nearly double the coding-standards check's 500-line advisory threshold for a single source file, with no split proposed in plan.md's Options not taken."
+  },
+  "edc90cda6bce7ef2": {
+    "count": 1,
+    "file": "plugin/ci/run_phase.py",
+    "first_change": "0004",
+    "last_change": "0004",
+    "last_seen": "2026-10-24T16:31:45Z",
+    "summary": "At gate (b), commands_timeout_seconds still adds the (capped) drive timeout to the step's subprocess timeout, although the drive never runs at (b). This only loosens the bound, but it departs from R4's rule that the drive counts only at the gates where it runs."
   },
   "f3566379af405bb6": {
     "count": 1,

@@ -386,7 +386,8 @@ def run_gate(
 
 
 # --- issue #91 (0.3.0): the commands check, run by the runner after the model's session ----------
-DEFERRABLE_CHECKS = ("commands", "evidence")  # the checks a CI session's gate leaves to the runner
+# the checks a CI session's gate leaves to the runner; ``proof`` since change 0004 (the drive)
+DEFERRABLE_CHECKS = ("commands", "evidence", "proof")
 # decision 29: the commands step runs the targets at most this many times when it crashes
 # (one automatic re-run of an infrastructure failure, not counted as a fix round)
 COMMANDS_ATTEMPTS = 2
@@ -447,9 +448,10 @@ def deferred_commands(data: dict[str, Any]) -> bool:
 
 def deferred_logs(evidence_dir: Path) -> dict[str, Path]:
     """The command logs under ``evidence/`` that still carry the session's deferred mark
-    (``artifacts.parse_deferred_header``), by target name."""
+    (``artifacts.parse_deferred_header``), by target name (``drive.log`` never carries one:
+    the session never writes it)."""
     found: dict[str, Path] = {}
-    for target, name in art.EVIDENCE_TARGETS.items():
+    for target, name in art.target_logs(True).items():
         path = evidence_dir / name
         if not path.is_file():
             continue
@@ -473,7 +475,9 @@ def write_deferred_logs(
     (a gate that reads the logs, (d) and (e)) the three logs whatever their first line, so a
     log of an older tree never stands beside the runner's run of this one. Returns the file
     names written. A log whose target did not run (no entry in ``runs``) is left as it is:
-    a mark the gate then refuses (``artifacts.DEFERRED_NEVER_REPLACED``)."""
+    a mark the gate then refuses (``artifacts.DEFERRED_NEVER_REPLACED``). ``drive.log`` is
+    written whenever ``runs`` holds the drive, at (c) too: it has no mark to find (change
+    0004)."""
     written: list[str] = []
     stamp = at or _now()
     targets = (
@@ -481,6 +485,8 @@ def write_deferred_logs(
         if all_targets
         else deferred_logs(evidence_dir)
     )
+    if "drive" in runs:
+        targets["drive"] = evidence_dir / art.EVIDENCE_DRIVE
     for target, path in targets.items():
         run = runs.get(target)
         if not isinstance(run, dict):
@@ -494,6 +500,30 @@ def write_deferred_logs(
         art.write_evidence_log(path, header, str(run.get("output") or ""))
         written.append(path.name)
     return written
+
+
+PROOF_NOT_RUN_REASON = "the drive did not run in the runner's step"
+
+
+def _judge_proof_after(
+    ctx: GateContext, runs: dict[str, dict[str, Any]], drive: bool
+) -> CheckResult:
+    """The ``proof`` entry the step writes in place of the session's deferred one: judged on
+    the drive's manifest when the drive ran, as the session's gate would judge it when no
+    drive is set any more, a failure of the step otherwise (no ``items``: never a round)."""
+    try:
+        if "drive" in runs:
+            return checks.judge_proof(ctx, checks.read_manifest(ctx))
+        if not drive:
+            return checks.check_proof(ctx)
+        return CheckResult("proof", False, PROOF_NOT_RUN_REASON, checks.PROOF_STEP_NEED)
+    except Exception as exc:  # noqa: BLE001 - a crashing check parks, as in ``evaluate``
+        return CheckResult(
+            "proof",
+            False,
+            f"check crashed: {exc!r}",
+            "Report this to the framework owner; the gate failed closed.",
+        )
 
 
 def run_deferred_commands(
@@ -535,6 +565,10 @@ def run_deferred_commands(
     replaced: dict[str, CheckResult] = {}
     written: list[str] = []
     attempts = 0
+    runs: dict[str, dict[str, Any]] = {}
+    # change 0004: the drive runs after the three targets at (c), (d) and (e), never at (b)
+    drive = checks.drive_from_config(ctx.config) is not None and phase in checks.DRIVE_PHASES
+    head = ctx.diff.head if ctx.diff else None
     try:
         # one run of the three targets: the record's ``commands`` entry and, at (d) and (e),
         # the three logs come from it, so they agree by construction (item 3b)
@@ -545,7 +579,6 @@ def run_deferred_commands(
             # decision 29: an infrastructure failure (the step itself crashed, not a target
             # that ran red) gets one automatic re-run of the commands step, not counted as a
             # fix round; a second crash parks below with the reason saying it was retried
-            runs: dict[str, dict[str, Any]] = {}
             while True:
                 attempts += 1
                 try:
@@ -553,6 +586,9 @@ def run_deferred_commands(
                     # within the step's timeout; after a crash all three run again
                     again = not_started(runs) if runs else None
                     runs = {**runs, **checks.run_targets(ctx, only=again)}
+                    if drive and (again is None or "drive" in again):
+                        # ``run_drive`` clears proof/ first: a re-run's folder is its own
+                        runs["drive"] = checks.run_drive(ctx, head, phase)
                 except Exception:  # noqa: BLE001
                     if attempts >= COMMANDS_ATTEMPTS:
                         raise
@@ -590,6 +626,8 @@ def run_deferred_commands(
             # as a red target (``ci/auto_round.red_targets``); the reason says it was retried
             {"ran_by": checks.RUN_BY_RUNNER},
         )
+    if "proof" in pending:
+        replaced["proof"] = _judge_proof_after(ctx, runs, drive)
     if "evidence" in pending or written:
         # judged again without the deferral, on the logs the step wrote: a marked log the
         # step did not replace fails it (``DEFERRED_NEVER_REPLACED``), a red log parks as it

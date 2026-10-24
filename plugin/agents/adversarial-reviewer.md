@@ -78,6 +78,12 @@ Attack the output from these angles and record what you tried:
    `attempted`. A first design that reads well but describes code that is not there is the
    case this angle exists for (change 0003's first design passed this review and two
    fresh-context reviews then found build-breaking gaps).
+9. **The drive** (phases (c) and (d); change 0004) — when `sdlc.yaml: commands.drive` is set:
+   does the drive read each value it writes under `evidence/proof/` from the product (a
+   response, a rendered page, the program's own output), or write it itself? A drive that
+   writes the expected value of a `state:` item, or copies a screenshot, makes the item pass
+   whatever the product does: a reason. The drive's own files are listed in plan.md's "Files
+   that change"; read them.
 
 The deterministic checks are not yours to repeat. You cannot run `gate/cli.py check`, the
 definition-of-done `check.py` or any policy skill's `check.py` (you have no shell), you must

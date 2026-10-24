@@ -114,6 +114,8 @@ class Detection:
     signals: dict[str, dict[str, object]] = field(default_factory=dict)
     # R61 part 5: the secret-shaped patterns found (``secret_paths``), from the same file list
     secrets: list[str] = field(default_factory=list)
+    # change 0004 (R10): ``commands.drive``, proposed where the project has the tool
+    drive: Target = field(default_factory=_no_target)
 
     def as_dict(self) -> dict:
         return {
@@ -122,6 +124,7 @@ class Detection:
             "test": self.test.__dict__,
             "lint": self.lint.__dict__,
             "setup": self.setup.__dict__,
+            "drive": self.drive.__dict__,
             "stats": self.stats,
             "notes": self.notes,
             "signals": self.signals,
@@ -179,6 +182,26 @@ def node_setup(root: Path) -> Target:
     if (root / "package-lock.json").is_file():
         return Target("npm ci", "exit code 0", "detected: package-lock.json")
     return Target("npm install", "exit code 0", "created: no package-lock.json to install from")
+
+
+# Change 0004 (R10): the drive /sdlc-init proposes when package.json lists Playwright's test
+# runner. The plain line: the test writes its screenshots and JSON files to paths under
+# process.env.SDLC_PROOF_DIR, the same on every platform (no shell variable in the line).
+PLAYWRIGHT_PACKAGE = "@playwright/test"
+PLAYWRIGHT_DRIVE = "npx playwright test"
+# appended to the detected setup (npm ci or npm install, which installs @playwright/test
+# itself from package.json): the browsers
+PLAYWRIGHT_INSTALL = " && npx playwright install --with-deps"
+
+
+def playwright_drive(pkg: dict) -> Target:
+    """The proposed ``commands.drive``: the plain Playwright line when ``@playwright/test`` is
+    a dependency, else none."""
+    if PLAYWRIGHT_PACKAGE not in node_dependencies(pkg):
+        return _no_target()
+    return Target(
+        PLAYWRIGHT_DRIVE, "exit code 0", f"detected: {PLAYWRIGHT_PACKAGE} in package.json"
+    )
 
 
 def _read(path: Path) -> str:
@@ -368,7 +391,15 @@ def detect_node(root: Path, pkg: dict) -> Detection:
     else:
         build = Target(None, "", "none")
         notes.append("no build script and no main in package.json: add a build script")
-    return Detection("node", build, test, lint, stats, notes, node_setup(root))
+    drive = playwright_drive(pkg)
+    setup = node_setup(root)
+    if drive.command:
+        setup = Target(
+            f"{setup.command}{PLAYWRIGHT_INSTALL}",
+            setup.healthy,
+            f"{setup.origin}; the Playwright browsers for the drive",
+        )
+    return Detection("node", build, test, lint, stats, notes, setup, drive=drive)
 
 
 def detect(root: Path) -> Detection:

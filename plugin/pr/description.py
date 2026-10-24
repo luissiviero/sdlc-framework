@@ -76,8 +76,7 @@ from state import status as status_mod  # noqa: E402
 from state.status import Status  # noqa: E402
 
 ARTIFACTS = ("intent.md", "spec.md", "plan.md")
-LOG_FILES = (art.EVIDENCE_TEST, art.EVIDENCE_BUILD, art.EVIDENCE_LINT)
-SCREENSHOT_DIR = "screenshots"
+SCREENSHOT_DIR = art.EVIDENCE_SCREENSHOTS
 CLAUDE_MD_PROPOSALS = "claude-md-proposals.md"
 RELEASE_NOTES = "release-notes.md"
 MAX_NITS = 5
@@ -236,16 +235,73 @@ def log_state(path: Path) -> str:
     return "green" if m.group(1) == "0" else "red"
 
 
-def evidence_status(change_dir: Path, phase: str) -> str:
-    """One line: the three logs, the verifier report and the screenshot count."""
+def _drive_set(root: Path) -> bool:
+    try:
+        config = load_sdlc_config(str(root)) or {}
+    except ConfigError:
+        return False
+    return checks.drive_from_config(config) is not None
+
+
+def _manifest(change_dir: Path) -> dict[str, Any]:
+    path = Path(change_dir) / art.EVIDENCE_DIR / art.EVIDENCE_PROOF / art.PROOF_MANIFEST
+    try:
+        data = json.loads(art.read_text(path) or "")
+    except ValueError:
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def proof_status(change_dir: Path, phase: str, root: Path) -> list[str]:
+    """The drive's parts of the evidence line (change 0004, R12): ``proof N, state items M of
+    K matching`` from the gate record's ``proof`` entry and the manifest, ``proof not checked``
+    by hand, and ``proof of <sha7>, not the final head`` when a commit after the manifest's
+    changed a file outside the change folder (``gitops.only_change_folder_moved``)."""
+    entry = _gate_check(load_gate(change_dir, phase), "proof")
+    details = (entry or {}).get("details") or {}
+    if entry is None or details.get("checked") is False:
+        return ["proof not checked"]
+    if details.get("deferred"):
+        return ["proof deferred to the runner"]
+    manifest = _manifest(change_dir)
+    files = manifest.get("files") if isinstance(manifest.get("files"), list) else []
+    items = [i for i in details.get("items") or [] if isinstance(i, dict)]
+    state = [i for i in items if i.get("approved") and i.get("kind") == "state"]
+    matching = sum(1 for i in state if i.get("outcome") == art.OUTCOME_MATCHES)
+    parts = [f"proof {len(files)}, state items {matching} of {len(state)} matching"]
+    commit = manifest.get("commit")
+    if (
+        isinstance(commit, str)
+        and commit
+        and gitops.is_repo(root)
+        and not gitops.only_change_folder_moved(root, change_dir, commit)
+    ):
+        parts.append(f"proof of {commit[:7]}, not the final head")
+    return parts
+
+
+def evidence_status(change_dir: Path, phase: str, root: Path) -> str:
+    """One line: the command logs (``drive.log`` too when ``commands.drive`` is set at
+    ``root``), the verifier report, the drive's proof (``proof_status``) and the screenshot
+    count."""
     if phase in ("a", "b"):
         return "design phase, no code yet"
     evidence = Path(change_dir) / art.EVIDENCE_DIR
-    parts = [f"{name.removesuffix('.log')} {log_state(evidence / name)}" for name in LOG_FILES]
+    drive_set = _drive_set(root)
+    parts = [
+        f"{name.removesuffix('.log')} {log_state(evidence / name)}"
+        for name in art.target_logs(drive_set).values()
+    ]
     verifier = evidence / art.EVIDENCE_VERIFIER
     parts.append(f"verifier.md {'present' if verifier.is_file() else 'missing'}")
+    if drive_set:
+        parts += proof_status(change_dir, phase, root)
     shots = evidence / SCREENSHOT_DIR
-    count = len([p for p in shots.iterdir() if p.is_file()]) if shots.is_dir() else 0
+    count = (
+        len([p for p in shots.iterdir() if p.is_file() and p.name != ".gitkeep"])
+        if shots.is_dir()
+        else 0
+    )
     parts.append(f"{count} screenshot(s)")
     return ", ".join(parts)
 
@@ -371,6 +427,9 @@ def auto_round_state(change_dir: Path, gate_json: dict[str, Any] | None) -> dict
 
 def _auto_round_line(auto: dict[str, Any]) -> str:
     def state(t: dict[str, Any]) -> str:
+        if t.get("target") == "proof":  # change 0004: a proof round counts its items
+            n = len(t.get("items") or [])
+            return f"{n} item{'' if n == 1 else 's'}"
         return "timed out" if t.get("timed_out") else f"exit {t.get('exit_code')}"
 
     targets = ", ".join(f"{t.get('target')} ({state(t)})" for t in auto["targets"])
@@ -755,7 +814,7 @@ def build_description(root: Path, change_id: str, phase: str, draft: bool = Fals
     auto = auto_round_state(change_dir, gate_json)
     bullets = [
         f"- **What changed and why**: {what}".rstrip(),
-        f"- **Evidence**: {evidence_status(change_dir, phase)}",
+        f"- **Evidence**: {evidence_status(change_dir, phase, root)}",
         f"- **Review findings**: {findings}",
         f"- **Plan conformance**: {_conformance_line(gate_json, spec, phase)}",
         f"- **What needs you**: {_owner_line(gate_json, phase, auto)}",

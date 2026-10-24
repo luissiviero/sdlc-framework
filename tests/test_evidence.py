@@ -189,3 +189,62 @@ def test_a_missing_command_is_still_a_usage_error_inside_a_ci_session(project):
     assert proc.returncode == 2 and out["all_green"] is False and out["deferred"] is True
     assert out["results"]["lint"]["exit"] == collect_mod.MISSING
     assert art.parse_deferred_header((change / "evidence" / "test.log").read_text("utf-8"))
+
+
+# --- change 0004: the drive, by hand ---------------------------------------------------------
+def with_drive(root: Path, change: Path) -> None:
+    from tests.test_gate import DRIVE_SCRIPT, PROOF_PLAN
+
+    write(root / "drive.py", DRIVE_SCRIPT)
+    text = (root / "sdlc.yaml").read_text(encoding="utf-8")
+    write(root / "sdlc.yaml", text.replace('  drive: ""\n', '  drive: "python drive.py"\n'))
+    write(change / "plan.md", PROOF_PLAN)
+    git(root, "add", ".")
+    git(root, "commit", "-q", "-m", "owner: the drive and the approved plan")
+
+
+def test_collect_runs_the_drive_after_the_targets_and_reports_the_items(project):
+    root, change = project
+    with_drive(root, change)
+    proc, out = run_collect(root)
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    drive = out["drive"]
+    assert drive["exit"] == 0 and drive["green"] is True and drive["timed_out"] is False
+    assert drive["log"] == "changes/0001-percent-helper/evidence/drive.log"
+    assert [(i["kind"], i["outcome"]) for i in drive["items"]] == [
+        ("state", "matches"),
+        ("screenshot", "matches"),
+    ]
+    assert header_of(change / "evidence" / "drive.log")["exit"] == "0"
+    manifest = json.loads((change / "evidence" / "proof" / "manifest.json").read_text("utf-8"))
+    assert [f["path"] for f in manifest["files"]] == ["home.png", "status.json"]
+    assert not (root / "changes" / "0001-percent-helper" / "evidence" / "gate-c.json").exists()
+    # an approved item that differs: exit 1, the value seen in the report
+    proc, out = run_collect(root, env={**os.environ, "DRIVE_MODE": "differs"})
+    assert proc.returncode == 1 and out["all_green"] is False
+    assert out["drive"]["items"][0]["outcome"] == "differs"
+    assert out["drive"]["items"][0]["seen"] == 500
+    # a red drive: exit 1
+    proc, out = run_collect(root, "--only", "drive", env={**os.environ, "DRIVE_MODE": "red"})
+    assert proc.returncode == 1 and out["drive"]["exit"] == 1 and out["results"] == {}
+
+
+def test_collect_leaves_the_drive_to_the_runner_inside_a_ci_session(project):
+    from gate import checks
+
+    root, change = project
+    with_drive(root, change)
+    env = {**os.environ, checks.COMMANDS_RUNNER_ENV: checks.RUN_BY_RUNNER}
+    proc, out = run_collect(root, env=env)
+    assert proc.returncode == 0 and out["deferred"] is True
+    assert out["drive"]["exit"] == collect_mod.DEFERRED and out["drive"]["log"] is None
+    assert not (change / "evidence" / "drive.log").exists()
+    assert not (change / "evidence" / "proof").exists()
+
+
+def test_only_drive_without_a_drive_is_a_usage_error(project):
+    root, _change = project
+    proc, out = run_collect(root, "--only", "drive")
+    assert proc.returncode == 2 and out["results"]["drive"]["exit"] == collect_mod.MISSING
+    proc, out = run_collect(root)
+    assert proc.returncode == 0 and "drive" not in out

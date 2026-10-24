@@ -16,13 +16,16 @@ from __future__ import annotations
 import json
 import os
 import re
+import shutil
 import signal
+import stat
 import subprocess
 import sys
 import time
 from collections import Counter
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -45,6 +48,11 @@ from state.status import STATUS_FILE, Status  # noqa: E402
 PLACEHOLDER_COMMAND_RE = re.compile(r"^\s*echo\s+no\s+\w+\s+target\s*$", re.IGNORECASE)
 DEFAULT_COMMAND_TIMEOUT = 900  # seconds per command; sdlc.yaml: gate.command_timeout
 OUTPUT_TAIL = 4000  # characters of command output kept in the gate result
+DEFAULT_DRIVE_TIMEOUT = 300  # seconds; sdlc.yaml: gate.drive_timeout (change 0004)
+DEFAULT_PROOF_IMAGE_KB = 50  # sdlc.yaml: gate.proof_image_kb, after filmcraft's golden cap
+PROOF_DIR_ENV = "SDLC_PROOF_DIR"  # the absolute evidence/proof/ the drive writes into
+CHANGE_ID_ENV = "SDLC_CHANGE_ID"
+DRIVE_PHASES = ("c", "d", "e")  # the gates whose runner step runs the drive, never (b)
 # Issue #91 (0.3.0): the runner sets this in the model's session's environment, and the gate
 # run inside the session then records its ``commands`` check as deferred instead of running
 # the project's targets inside Claude Code's sandbox, where ``Read(**/.env*)`` makes a nested
@@ -271,10 +279,46 @@ def commands_from_config(config: dict[str, Any]) -> dict[str, str]:
     out: dict[str, str] = {}
     if isinstance(cmds, dict):
         for key in ("build", "test", "lint"):
-            value = cmds.get(key)
-            if isinstance(value, str) and value.strip() and not PLACEHOLDER_COMMAND_RE.match(value):
-                out[key] = value.strip()
+            value = _usable(cmds.get(key))
+            if value:
+                out[key] = value
     return out
+
+
+def _usable(value: Any) -> str | None:
+    """A command line as ``sdlc.yaml`` gives it, stripped, or None when it is not one (not a
+    string, empty, or the "echo no <x> target" placeholder)."""
+    if isinstance(value, str) and value.strip() and not PLACEHOLDER_COMMAND_RE.match(value):
+        return value.strip()
+    return None
+
+
+def drive_from_config(config: dict[str, Any]) -> str | None:
+    """``sdlc.yaml: commands.drive``, the optional fourth target (change 0004, spec R3), or
+    None when it is missing, empty or a placeholder. Read apart from ``commands_from_config``
+    so the three-target readers (the re-checks of R51 and the release) never run it."""
+    cmds = config.get("commands") if isinstance(config, dict) else None
+    return _usable(cmds.get("drive")) if isinstance(cmds, dict) else None
+
+
+def configured_drive_timeout(config: dict[str, Any]) -> int:
+    """``sdlc.yaml: gate.drive_timeout`` in seconds, ``DEFAULT_DRIVE_TIMEOUT`` when unset or
+    not a positive number."""
+    gate_cfg = config.get("gate") if isinstance(config, dict) else None
+    value = gate_cfg.get("drive_timeout") if isinstance(gate_cfg, dict) else None
+    try:
+        seconds = int(value)
+    except (TypeError, ValueError):
+        return DEFAULT_DRIVE_TIMEOUT
+    return seconds if seconds > 0 else DEFAULT_DRIVE_TIMEOUT
+
+
+def drive_timeout(ctx: GateContext, phase: str) -> int:
+    """The drive's timeout at gate ``phase``: capped at 600 s at (c) and (d), whole at (e)
+    (``limits.drive_timeout_seconds``, spec R4)."""
+    from gate import limits  # noqa: PLC0415 - limits imports this module
+
+    return limits.drive_timeout_seconds(ctx.config, phase) or configured_drive_timeout(ctx.config)
 
 
 def _commands(ctx: GateContext) -> dict[str, str]:
@@ -430,7 +474,10 @@ def judge_targets(runs: dict[str, dict[str, Any]], ran_by: str | None = None) ->
             runs=runs,
             **who,
         )
-    return _ok("commands", "build, test and lint exit 0", runs=runs, **who)
+    green = (
+        "build, test, lint and drive exit 0" if "drive" in runs else "build, test and lint exit 0"
+    )
+    return _ok("commands", green, runs=runs, **who)
 
 
 def run_commands_check(ctx: GateContext, ran_by: str | None = None) -> CheckResult:
@@ -442,18 +489,19 @@ def run_commands_check(ctx: GateContext, ran_by: str | None = None) -> CheckResu
 
 
 # --- 4. evidence present (step 28) --------------------------------------------------------
-COMMAND_LOGS = tuple(art.EVIDENCE_TARGETS.values())  # test.log, build.log, lint.log
 HEADER_REQUIRED_AT = ("d", "e")  # the gates that read the toolchain's own output
 EVIDENCE_DEFERRED_REASON = (
     "deferred to the runner: the session wrote no command log, the runner writes {logs} "
-    "from its build, test and lint after the model's session (issue #91); not yet written"
+    "from its {targets} after the model's session (issue #91); not yet written"
 )
 
 
 def check_evidence(ctx: GateContext) -> CheckResult:
-    required = art.REQUIRED_EVIDENCE.get(ctx.phase, ())
+    drive_set = drive_from_config(ctx.config) is not None
+    required = art.required_evidence(ctx.phase, drive_set)
     if not required:
         return _ok("evidence", "no evidence required at this gate")
+    command_logs = tuple(art.target_logs(drive_set).values())
     missing = []
     red: list[str] = []
     red_names: list[str] = []
@@ -461,12 +509,17 @@ def check_evidence(ctx: GateContext) -> CheckResult:
     for name in required:
         path = ctx.evidence_dir / name
         text = path.read_text(encoding="utf-8", errors="replace") if path.is_file() else ""
+        if ctx.commands_deferred and name == art.EVIDENCE_DRIVE and not text.strip():
+            # change 0004 (R7): the session never runs the drive and leaves no mark for it;
+            # the runner's step writes drive.log and judges this check again
+            deferred.append(name)
+            continue
         if not text.strip():
             missing.append(name)
             continue
         if (
             ctx.commands_deferred
-            and name in COMMAND_LOGS
+            and name in command_logs
             and art.parse_deferred_header(text) is not None
         ):
             # item 3b: inside a CI session the writer left the mark and the runner writes
@@ -478,7 +531,7 @@ def check_evidence(ctx: GateContext) -> CheckResult:
         # that records a failure is evidence of a red run, whatever a later re-run says, and
         # at (d) and (e) a command log without that header is not evidence at all
         failure = art.evidence_failure(
-            text, require_header=ctx.phase in HEADER_REQUIRED_AT and name in COMMAND_LOGS
+            text, require_header=ctx.phase in HEADER_REQUIRED_AT and name in command_logs
         )
         if failure:
             red.append(f"evidence/{name}: {failure}")
@@ -508,11 +561,311 @@ def check_evidence(ctx: GateContext) -> CheckResult:
     if deferred:
         return _ok(
             "evidence",
-            EVIDENCE_DEFERRED_REASON.format(logs=", ".join(deferred)),
+            EVIDENCE_DEFERRED_REASON.format(
+                logs=", ".join(deferred),
+                targets="build, test, lint and drive" if drive_set else "build, test and lint",
+            ),
             deferred=True,
             deferred_logs=deferred,
         )
     return _ok("evidence", f"evidence present: {', '.join(required)}")
+
+
+# --- 4b. the drive and its proof (change 0004, ROADMAP R14; spec R2 to R9) -------------------
+PROOF_DEFERRED_REASON = (
+    "deferred to the runner: the drive runs after the model's session, beside build, test and "
+    "lint; not yet run"
+)
+PROOF_NOT_CHECKED_REASON = (
+    "not checked: a gate run by hand runs no drive; `python plugin/evidence/collect.py --root . "
+    "--id {id}` runs it and prints the items"
+)
+PROOF_NO_DRIVE_REASON = "no drive target: nothing to compare"
+PROOF_DRIVE_REMOVED_REASON = (
+    "drive removed after gate (b): the approved plan names {n} state/screenshot item(s) and "
+    "commands.drive is empty"
+)
+PROOF_DRIVE_REMOVED_NEED = (
+    "Restore `commands.drive` in sdlc.yaml in a reviewed PR, then re-run the phase: the plan "
+    "the owner approved at gate (b) names proof items only a drive produces, and no run can "
+    "change sdlc.yaml or the approved plan."
+)
+PROOF_NO_MANIFEST_REASON = "the drive ran but wrote no manifest"
+PROOF_NO_PLAN_REASON = "the approved plan.md cannot be read, so its proof items cannot be judged"
+PROOF_FAILED_NEED = (
+    "Make the product produce what the approved plan's proof items say (fix the code, not the "
+    "plan); each item, the expected value and the value seen are in the gate result."
+)
+PROOF_STEP_NEED = (
+    "The runner's step could not judge the proof; read the job log and evidence/drive.log, "
+    "then re-run the phase."
+)
+PROOF_ITEMS_NEED = (
+    "Fix each item in plan.md's ## Proof to the grammar of the plan-template skill, or, for a "
+    "state or screenshot item while commands.drive is empty, set the drive in sdlc.yaml in a "
+    "reviewed PR or drop the item; then re-run the design."
+)
+GITHUB_RUN_VARS = ("GITHUB_RUN_ID", "GITHUB_SERVER_URL", "GITHUB_REPOSITORY", "GITHUB_EVENT_NAME")
+PROOF_KINDS = ("state", "screenshot")  # the kinds the drive produces; ``test`` is the suite's
+
+
+def proof_dir(ctx: GateContext) -> Path:
+    return ctx.evidence_dir / art.EVIDENCE_PROOF
+
+
+def drive_env(ctx: GateContext, base: dict[str, str] | None = None) -> dict[str, str]:
+    """The drive's environment: ``base`` (the process's own, which the runner already stripped
+    of every credential, ``run_phase.commands_env``) plus ``SDLC_PROOF_DIR`` and
+    ``SDLC_CHANGE_ID``; nothing else is added (spec R1)."""
+    env = dict(os.environ if base is None else base)
+    env[PROOF_DIR_ENV] = str(proof_dir(ctx).resolve())
+    env[CHANGE_ID_ENV] = ctx.status.id
+    return env
+
+
+def _clear_read_only(func, path, _exc) -> None:
+    """rmtree's error handler: Windows refuses to delete a read-only file."""
+    os.chmod(path, stat.S_IWRITE)
+    func(path)
+
+
+def clear_proof_dir(folder: Path) -> None:
+    """Empty ``evidence/proof/`` and recreate it, read-only files (Windows) included: a stale
+    file never counts (spec R2)."""
+    folder = Path(folder)
+    if folder.is_symlink() or folder.is_file():
+        folder.unlink()
+    elif folder.exists() and sys.version_info >= (3, 12):
+        shutil.rmtree(folder, onexc=_clear_read_only)
+    elif folder.exists():
+        shutil.rmtree(folder, onerror=_clear_read_only)
+    folder.mkdir(parents=True, exist_ok=True)
+
+
+def _proof_files(folder: Path) -> list[Path]:
+    return sorted(
+        (p for p in Path(folder).rglob("*") if p.is_file() and p.name != art.PROOF_MANIFEST),
+        key=lambda p: p.relative_to(folder).as_posix(),
+    )
+
+
+def apply_image_caps(folder: Path, max_kb: int) -> list[dict[str, Any]]:
+    """Delete the images over ``max_kb`` and, of the rest, those past the tenth by sorted
+    relative path (spec R8). Returns the manifest's ``dropped`` entries."""
+    dropped: list[dict[str, Any]] = []
+    kept = 0
+    for path in _proof_files(folder):
+        if path.suffix.lower() not in art.PROOF_IMAGE_SUFFIXES:
+            continue
+        size = path.stat().st_size
+        why = ""
+        if size > max_kb * 1024:
+            why = f"over gate.proof_image_kb ({max_kb} KB)"
+        elif kept >= art.PROOF_MAX_IMAGES:
+            why = f"past the {art.PROOF_MAX_IMAGES} images a run keeps"
+        if why:
+            path.unlink()
+            dropped.append({"path": path.relative_to(folder).as_posix(), "bytes": size, "why": why})
+        else:
+            kept += 1
+    return dropped
+
+
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def manifest_run(env: dict[str, str] | None = None) -> dict[str, Any] | None:
+    """The workflow run that produced the proof, from the GitHub variables, or None by hand."""
+    env = os.environ if env is None else env
+    run_id, server, repo, event = (env.get(name) or None for name in GITHUB_RUN_VARS)
+    if run_id is None:
+        return None
+    url = f"{server}/{repo}/actions/runs/{run_id}" if server and repo else None
+    return {"id": run_id, "url": url, "event": event}
+
+
+def write_manifest(
+    folder: Path, head: str | None, phase: str, dropped: list[dict[str, Any]]
+) -> dict[str, Any]:
+    """``evidence/proof/manifest.json`` (spec R6): which commit and run produced the proof,
+    every file with its size, the images dropped by the caps."""
+    folder = Path(folder)
+    manifest = {
+        "schema_version": 1,
+        "commit": head,
+        "run": manifest_run(),
+        "phase": phase,
+        "at": _now_iso(),
+        "files": [
+            {"path": p.relative_to(folder).as_posix(), "bytes": p.stat().st_size}
+            for p in _proof_files(folder)
+        ],
+        "dropped": sorted(dropped, key=lambda d: d["path"]),
+    }
+    (folder / art.PROOF_MANIFEST).write_text(
+        json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8", newline="\n"
+    )
+    return manifest
+
+
+def read_manifest(ctx: GateContext) -> dict[str, Any] | None:
+    """``evidence/proof/manifest.json``, or None when it is missing or not a JSON object."""
+    text = art.read_text(proof_dir(ctx) / art.PROOF_MANIFEST)
+    try:
+        data = json.loads(text) if text else None
+    except ValueError:
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def run_drive(
+    ctx: GateContext, head: str | None, phase: str, env: dict[str, str] | None = None
+) -> dict[str, Any]:
+    """Run ``commands.drive`` once (spec R2): clear ``proof/``, run the line through the
+    platform shell with ``drive_env`` and the drive's timeout, apply the image caps and write
+    the manifest. Returns the run as ``run_targets`` gives one (the literal output, which the
+    caller writes to ``drive.log``), ``refused`` naming a capped ``drive_timeout``."""
+    from gate import limits  # noqa: PLC0415 - limits imports this module
+
+    command = drive_from_config(ctx.config)
+    if command is None:
+        raise ValueError("commands.drive is empty: there is no drive to run")
+    folder = proof_dir(ctx)
+    clear_proof_dir(folder)
+    started = time.monotonic()
+    run = run_command(
+        command,
+        ctx.root,
+        drive_timeout(ctx, phase),
+        tail=None,
+        env=drive_env(ctx, env),
+    )
+    run["seconds"] = round(time.monotonic() - started, 1)
+    max_kb = int(ctx.gate_setting("proof_image_kb", DEFAULT_PROOF_IMAGE_KB) or 0)
+    dropped = apply_image_caps(folder, max_kb if max_kb > 0 else DEFAULT_PROOF_IMAGE_KB)
+    write_manifest(folder, head, phase, dropped)
+    refused = (
+        limits.drive_timeout_refusal(ctx.config) if phase in limits.DRIVE_CAPPED_PHASES else None
+    )
+    if refused:
+        run["refused"] = refused
+    return run
+
+
+def _drive_items(plan_text: str | None) -> list[art.ProofItem]:
+    return [i for i in art.proof_items(plan_text or "") if i.kind in PROOF_KINDS]
+
+
+def item_outcome(item: art.ProofItem, folder: Path, dropped: list[Any]) -> tuple[str, Any]:
+    """(outcome, seen) of one ``state`` or ``screenshot`` item against ``proof/``; an image the
+    caps dropped says why."""
+    rel = item.file[len(art.PROOF_PREFIX) :]
+    why = next(
+        (d.get("why") for d in dropped if isinstance(d, dict) and d.get("path") == rel), None
+    )
+    if why:
+        return art.OUTCOME_NOT_PRODUCED, f"{item.file} dropped: {why}"
+    if item.kind == "screenshot":
+        return art.screenshot_outcome(item, folder)
+    return art.compare_state(item, folder)
+
+
+def proof_entries(ctx: GateContext, dropped: list[Any] | None = None) -> list[dict[str, Any]]:
+    """The approved plan's items judged against ``proof/``, then the items the working-tree
+    plan added (``approved: false``, reported and never the bar; spec R7)."""
+    approved = _drive_items(ctx.approved_artifact("plan.md"))
+    lines = {i.line for i in approved}
+    added = [i for i in _drive_items(ctx.artifact("plan.md")) if i.line not in lines]
+    return [
+        _entry(item, is_approved, *item_outcome(item, proof_dir(ctx), dropped or []))
+        for item, is_approved in [(i, True) for i in approved] + [(i, False) for i in added]
+    ]
+
+
+def _entry(item: art.ProofItem, approved: bool, outcome: str, seen: Any) -> dict[str, Any]:
+    """One item of the ``proof`` entry (spec R7); ``seen`` only when it did not match."""
+    entry = {
+        "item": item.line,
+        "kind": item.kind,
+        "file": item.file,
+        "approved": approved,
+        "outcome": outcome,
+    }
+    if outcome != art.OUTCOME_MATCHES:
+        entry["seen"] = seen
+    return entry
+
+
+def judge_proof(ctx: GateContext, manifest: dict[str, Any] | None) -> CheckResult:
+    """The ``proof`` entry after a drive run (spec R7): ``ok`` only when every approved item
+    matches. A missing manifest or an unreadable approved plan is the step's own failure (no
+    ``items``, so never a round)."""
+    if manifest is None:
+        return _fail("proof", PROOF_NO_MANIFEST_REASON, PROOF_STEP_NEED)
+    if ctx.approved_artifact("plan.md") is None:
+        return _fail("proof", PROOF_NO_PLAN_REASON, PROOF_STEP_NEED)
+    dropped = manifest.get("dropped") if isinstance(manifest.get("dropped"), list) else []
+    items = proof_entries(ctx, dropped)
+    details = {
+        "manifest": f"{art.EVIDENCE_DIR}/{art.EVIDENCE_PROOF}/{art.PROOF_MANIFEST}",
+        "run": manifest.get("run"),
+        "commit": manifest.get("commit"),
+        "items": items,
+        "dropped": dropped,
+    }
+    failed = [i for i in items if i["approved"] and i["outcome"] != art.OUTCOME_MATCHES]
+    if failed:
+        return _fail(
+            "proof",
+            f"{len(failed)} approved proof item(s) not met: "
+            + "; ".join(f"{i['item']} ({i['outcome']})" for i in failed),
+            PROOF_FAILED_NEED,
+            **details,
+        )
+    approved = sum(1 for i in items if i["approved"])
+    return _ok("proof", f"{approved} approved proof item(s) matching", **details)
+
+
+def check_proof(ctx: GateContext) -> CheckResult:
+    """The ``proof`` entry of every (c), (d) and (e) record (spec R7). With a drive: deferred
+    in a CI session (the runner's step judges it after the drive), ``checked: false`` by hand.
+    Without one: judged at once from the approved plan, in CI too."""
+    if drive_from_config(ctx.config) is not None:
+        if ctx.commands_deferred:
+            return _ok("proof", PROOF_DEFERRED_REASON, deferred=True)
+        return _ok("proof", PROOF_NOT_CHECKED_REASON.format(id=ctx.status.id), checked=False)
+    items = _drive_items(ctx.approved_artifact("plan.md"))
+    if not items:
+        return _ok("proof", PROOF_NO_DRIVE_REASON)
+    return _fail(
+        "proof",
+        PROOF_DRIVE_REMOVED_REASON.format(n=len(items)),
+        PROOF_DRIVE_REMOVED_NEED,
+        items=[
+            _entry(i, True, art.OUTCOME_NOT_PRODUCED, "no drive ran: commands.drive is empty")
+            for i in items
+        ],
+        drive_removed=True,
+    )
+
+
+def check_proof_items(ctx: GateContext) -> CheckResult:
+    """Gate (b) (spec R9): every item of the working-tree plan's ``## Proof`` follows the
+    grammar, and a ``state`` or ``screenshot`` item has a drive to produce it."""
+    plan = ctx.artifact("plan.md")
+    problems = [
+        f"plan.md line {i.number}: `{i.line}`: {i.problem}" for i in art.malformed_proof_items(plan)
+    ]
+    if drive_from_config(ctx.config) is None:
+        problems += [
+            f"plan.md line {i.number}: `{i.line}` needs commands.drive, which sdlc.yaml "
+            "leaves empty"
+            for i in _drive_items(plan)
+        ]
+    if problems:
+        return _fail("proof_items", "; ".join(problems), PROOF_ITEMS_NEED, problems=problems)
+    return _ok("proof_items", "the Proof items follow the grammar")
 
 
 # --- 5. no Important review finding (step 26; the tally of p.33) ---------------------------
@@ -2168,6 +2521,7 @@ CHECKS_BY_PHASE: dict[str, tuple[Check, ...]] = {
         check_evidence_links,
         check_design_scope,
         check_open_concerns,
+        check_proof_items,
         check_panel,
         check_commands,
         check_guardrails,
@@ -2184,6 +2538,7 @@ CHECKS_BY_PHASE: dict[str, tuple[Check, ...]] = {
         check_panel,
         check_commands,
         check_evidence,
+        check_proof,
         check_findings,
         check_plan_sync,
         check_guardrails,
@@ -2202,6 +2557,7 @@ CHECKS_BY_PHASE: dict[str, tuple[Check, ...]] = {
         check_panel,
         check_commands,
         check_evidence,
+        check_proof,
         check_findings,
         check_plan_sync,
         check_guardrails,
@@ -2220,6 +2576,7 @@ CHECKS_BY_PHASE: dict[str, tuple[Check, ...]] = {
         check_panel,
         check_commands,
         check_evidence,
+        check_proof,
         check_findings,
         check_plan_sync,
         check_guardrails,

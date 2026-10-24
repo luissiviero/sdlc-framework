@@ -58,6 +58,17 @@ commands:
   # one command that installs what test/build/lint need; the CI phase jobs run it before
   # the phase; empty = nothing to install
   setup: "{{SETUP_CMD}}"
+  # the optional fourth target (change 0004): one command that exercises the product headless
+  # and writes PNG screenshots and JSON or text state files into the folder named by the
+  # environment variable SDLC_PROOF_DIR (the absolute changes/<id>-<slug>/evidence/proof/),
+  # with SDLC_CHANGE_ID beside it; it exits non-zero when any step failed. The runner runs it
+  # after build, test and lint at gates (c), (d) and (e), and the gate compares what it wrote
+  # with the plan's `state:` and `screenshot:` proof items. It runs on synthetic data, never
+  # personal data. A Playwright test writes its files to process.env.SDLC_PROOF_DIR; a line
+  # that names the variable itself is expanded by the platform shell ($SDLC_PROOF_DIR on the
+  # Linux runner and by hand on Linux or macOS; %SDLC_PROOF_DIR% by hand under cmd.exe).
+  # Empty = no drive.
+  drive: "{{DRIVE_CMD}}"
   # the repository secrets or variables (names only) the targets need, e.g. [TEST_DB_URL]
   # (R61, plugin 1.0.29). /sdlc-init writes each into the setup and phase steps of the phase
   # workflows, so the setup command, the model's session and the runner's build, test and
@@ -159,6 +170,14 @@ gate:
   command_timeout: 900           # seconds per build/test/lint command run by the gate; also
                                  # the CI session's Bash timeout (R61). `/sdlc-init` step 4
                                  # sets it to three times the longest target's run
+  drive_timeout: 300             # seconds for commands.drive, read only when it is set; at
+                                 # most 600 at (c) and (d): with the triage step's 5 minutes
+                                 # the test job is 190 + 10 <= 200 and the build and fix jobs
+                                 # 250 + 10 <= 260, so a larger value runs at 600 (the reason
+                                 # is in the run's JSON); at (e) its minutes come off the
+                                 # session's wall clock instead, never below 30
+  proof_image_kb: 50             # the largest image the drive may leave under evidence/proof/
+                                 # (at most ten a run); read only when commands.drive is set
 
 # --- automation identity (decision 5; gate check owner_actions) ----------------------------------
 # The gate honours a risk acceptance, an iteration reset or a test-lock lift only when the

@@ -18,6 +18,7 @@ from state import conventions as c  # noqa: E402
 UI_SUFFIXES = {".html", ".css", ".scss", ".jsx", ".tsx", ".vue", ".svelte"}
 UI_HINTS = ("templates/", "components/", "views/", "pages/", "static/", "ui/")
 IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
+IMAGE_FOLDERS = ("proof", "screenshots")  # under evidence/: the drive's, then the session's
 HARDCODED_TEXT = re.compile(r">\s*[A-Z][a-z]+(?:\s+\w+){2,}\s*<")  # visible copy inline in markup
 
 
@@ -55,15 +56,18 @@ def main(argv: list[str] | None = None) -> int:
         if change_dir is None:
             findings.append(f"no change folder for id {args.id}")
         else:
+            # change 0004 (R11): the drive's evidence/proof/ and the by-hand evidence/screenshots/
             images = [
-                q.name
-                for q in (change_dir / "evidence").glob("*")
+                f"{folder}/{q.name}"
+                for folder in IMAGE_FOLDERS
+                for q in sorted((change_dir / "evidence" / folder).glob("*"))
                 if q.suffix.lower() in IMAGE_SUFFIXES
             ]
             if not images:
                 findings.append(
-                    "UI changed but evidence/ holds no screenshot: run the visual loop "
-                    "(implement, screenshot, compare with the mock) and save the result"
+                    "UI changed but evidence/proof/ and evidence/screenshots/ hold no "
+                    "screenshot: run the visual loop (implement, screenshot, compare with the "
+                    "mock) and save the result"
                 )
             else:
                 notes.append(f"screenshots in evidence/: {', '.join(images[:10])}")

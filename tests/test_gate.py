@@ -669,6 +669,7 @@ def test_gate_continues_on_a_clean_change(project):
         "panel",
         "commands",
         "evidence",
+        "proof",
         "findings",
         "plan_sync",
         "guardrails",
@@ -2259,6 +2260,7 @@ def test_gate_b_waits_for_the_owner(design_project, monkeypatch):
         "evidence_links",
         "design_scope",
         "open_concerns",
+        "proof_items",
         "panel",
         "commands",
         "guardrails",
@@ -3775,3 +3777,441 @@ def test_a_quick_intent_s_spec_must_state_what_it_assumed(tmp_path):
     write(ctx.change_dir / "intent.md", INTENT)
     write(ctx.change_dir / "spec.md", SPEC)
     assert checks.check_artifacts(ctx).ok
+
+
+# --- change 0004 (ROADMAP R14): the drive target and the proof items -------------------------
+DRIVE_SCRIPT = """import json
+import os
+import pathlib
+import sys
+
+proof = pathlib.Path(os.environ["SDLC_PROOF_DIR"])
+mode = os.environ.get("DRIVE_MODE", "ok")
+code = 500 if mode == "differs" else 200
+body = {"status": {"code": code}, "change": os.environ["SDLC_CHANGE_ID"]}
+(proof / "status.json").write_text(json.dumps(body), encoding="utf-8")
+(proof / "home.png").write_bytes(b"0" * int(os.environ.get("DRIVE_PNG_BYTES", "100")))
+print("drove the product in", mode)
+sys.exit(1 if mode == "red" else 0)
+"""
+PROOF_PLAN = PLAN.replace(
+    "tests/test_percent.py::test_percent_rounds\n",
+    "- test: tests/test_percent.py::test_percent_rounds\n"
+    "- state: evidence/proof/status.json status.code == 200\n"
+    "- screenshot: evidence/proof/home.png\n",
+)
+
+
+def _drive_ctx(tmp_path, phase="c", plan=PROOF_PLAN, gate_cfg=None, deferred=False):
+    script = tmp_path / "drive.py"
+    write(script, DRIVE_SCRIPT)
+    config = {
+        "commands": {"drive": f'"{sys.executable}" "{script}"'},
+        "gate": {"drive_timeout": 60, **(gate_cfg or {})},
+    }
+    ctx = _ctx(tmp_path, config, phase=phase)
+    ctx.commands_deferred = deferred
+    write(ctx.change_dir / "plan.md", plan)
+    return ctx
+
+
+def test_the_drive_is_read_apart_from_the_three_targets():
+    config = {"commands": {"build": "b", "test": "t", "lint": "l", "drive": "npx playwright test"}}
+    assert checks.commands_from_config(config) == {"build": "b", "test": "t", "lint": "l"}
+    assert checks.drive_from_config(config) == "npx playwright test"
+    for empty in ({}, {"commands": {}}, {"commands": {"drive": ""}}, {"commands": {"drive": " "}}):
+        assert checks.drive_from_config(empty) is None
+    assert checks.drive_from_config({"commands": {"drive": "echo no drive target"}}) is None
+    assert checks.configured_drive_timeout({}) == 300
+    assert checks.configured_drive_timeout({"gate": {"drive_timeout": "x"}}) == 300
+    assert checks.configured_drive_timeout({"gate": {"drive_timeout": 120}}) == 120
+
+
+def test_the_drive_timeout_is_capped_at_600_at_c_and_d_and_not_at_e(tmp_path):
+    ctx = _drive_ctx(tmp_path, gate_cfg={"drive_timeout": 900})
+    assert checks.drive_timeout(ctx, "c") == 600 and checks.drive_timeout(ctx, "d") == 600
+    assert checks.drive_timeout(ctx, "e") == 900
+    assert limits.drive_timeout_refusal(ctx.config) == (
+        "gate.drive_timeout=900 exceeds the 600 s the test and build jobs hold: 600 applied; "
+        "lower it, or raise timeout-minutes and SDLC_JOB_TIMEOUT_MINUTES together in a reviewed PR"
+    )
+    assert limits.drive_timeout_refusal({"commands": {"drive": "x"}}) is None
+    assert limits.drive_timeout_refusal({"gate": {"drive_timeout": 900}}) is None  # no drive
+    assert checks.DRIVE_PHASES == ("c", "d", "e")
+
+
+def test_gate_b_refuses_items_without_a_drive_and_malformed_items(tmp_path):
+    ctx = _ctx(tmp_path, phase="b")
+    write(ctx.change_dir / "plan.md", PLAN)  # prose-only Proof
+    assert checks.check_proof_items(ctx).ok
+    write(ctx.change_dir / "plan.md", PROOF_PLAN)
+    res = checks.check_proof_items(ctx)
+    assert not res.ok and len(res.details["problems"]) == 2
+    assert "needs commands.drive" in res.reason and "set the drive" in res.need
+    ctx = _drive_ctx(tmp_path / "with-drive", phase="b")
+    assert checks.check_proof_items(ctx).ok
+    write(ctx.change_dir / "plan.md", PROOF_PLAN + "- state: evidence/proof/a.json x is 1\n")
+    res = checks.check_proof_items(ctx)
+    assert not res.ok and "line 22" in res.reason and "the verb must be one of" in res.reason
+    assert checks.check_proof_items in checks.CHECKS_BY_PHASE["b"]
+    assert all(checks.check_proof in checks.CHECKS_BY_PHASE[p] for p in "cde")
+    assert checks.check_proof not in checks.CHECKS_BY_PHASE["b"]
+
+
+def test_the_drive_run_clears_proof_caps_images_and_writes_the_manifest(tmp_path, monkeypatch):
+    ctx = _drive_ctx(tmp_path)
+    stale = ctx.evidence_dir / "proof" / "old" / "stale.json"
+    write(stale, "{}")
+    stale.chmod(0o444)  # read-only, as Windows leaves a file a test marked so
+    monkeypatch.setenv("GITHUB_RUN_ID", "77")
+    monkeypatch.setenv("GITHUB_SERVER_URL", "https://github.com")
+    monkeypatch.setenv("GITHUB_REPOSITORY", "o/r")
+    monkeypatch.setenv("GITHUB_EVENT_NAME", "workflow_dispatch")
+    run = checks.run_drive(ctx, "abc123", "c")
+    assert run["exit_code"] == 0 and "drove the product" in run["output"], run
+    assert run["seconds"] >= 0 and "refused" not in run
+    proof = ctx.evidence_dir / "proof"
+    assert not (proof / "old").exists()
+    status = json.loads((proof / "status.json").read_text(encoding="utf-8"))
+    assert status["change"] == "0001"
+    manifest = json.loads((proof / "manifest.json").read_text(encoding="utf-8"))
+    assert manifest == {
+        "schema_version": 1,
+        "commit": "abc123",
+        "run": {
+            "id": "77",
+            "url": "https://github.com/o/r/actions/runs/77",
+            "event": "workflow_dispatch",
+        },
+        "phase": "c",
+        "at": manifest["at"],
+        "files": [
+            {"path": "home.png", "bytes": 100},
+            {"path": "status.json", "bytes": (proof / "status.json").stat().st_size},
+        ],
+        "dropped": [],
+    }
+    assert (proof / "manifest.json").read_bytes().endswith(b"}\n")
+    assert b"\r\n" not in (proof / "manifest.json").read_bytes()
+    # by hand: no run
+    for name in checks.GITHUB_RUN_VARS:
+        monkeypatch.delenv(name)
+    assert checks.manifest_run() is None
+    # a drive_timeout over the cap runs at 600 and says why
+    ctx.config["gate"]["drive_timeout"] = 900
+    assert "600 applied" in checks.run_drive(ctx, "abc123", "d")["refused"]
+    assert "refused" not in checks.run_drive(ctx, "abc123", "e")
+
+
+def test_the_drive_s_environment_adds_two_variables_and_nothing_else(tmp_path):
+    ctx = _drive_ctx(tmp_path)
+    env = checks.drive_env(ctx, {"PATH": "/bin"})
+    assert env == {
+        "PATH": "/bin",
+        "SDLC_PROOF_DIR": str((ctx.evidence_dir / "proof").resolve()),
+        "SDLC_CHANGE_ID": "0001",
+    }
+
+
+def test_the_image_caps_by_size_and_by_count(tmp_path):
+    folder = tmp_path / "proof"
+    folder.mkdir()
+    for n in range(12):
+        (folder / f"shot-{n:02d}.png").write_bytes(b"0" * 10)
+    (folder / "big.jpg").write_bytes(b"0" * 2048)
+    (folder / "data.json").write_bytes(b"0" * 5000)  # not an image: no cap
+    dropped = checks.apply_image_caps(folder, 1)
+    assert dropped[0] == {
+        "path": "big.jpg",
+        "bytes": 2048,
+        "why": "over gate.proof_image_kb (1 KB)",
+    }
+    assert [d["path"] for d in dropped[1:]] == ["shot-10.png", "shot-11.png"]
+    assert all("past the 10 images" in d["why"] for d in dropped[1:])
+    assert sorted(p.name for p in folder.iterdir()) == ["data.json"] + [
+        f"shot-{n:02d}.png" for n in range(10)
+    ]
+
+
+def test_judge_proof_reads_the_approved_plan_and_reports_added_items(tmp_path, monkeypatch):
+    ctx = _drive_ctx(tmp_path)
+    checks.run_drive(ctx, "abc123", "c")
+    res = checks.judge_proof(ctx, checks.read_manifest(ctx))
+    assert res.ok, res.reason
+    assert [(i["kind"], i["approved"], i["outcome"]) for i in res.details["items"]] == [
+        ("state", True, "matches"),
+        ("screenshot", True, "matches"),
+    ]
+    assert res.details["commit"] == "abc123" and res.details["manifest"].endswith("manifest.json")
+    # a value that differs fails the entry, with what was seen
+    monkeypatch.setenv("DRIVE_MODE", "differs")
+    checks.run_drive(ctx, "abc124", "c")
+    res = checks.judge_proof(ctx, checks.read_manifest(ctx))
+    assert not res.ok and res.details["items"][0]["seen"] == 500
+    assert "status.code == 200 (differs)" in res.reason and "fix the code" in res.need
+    # an image over the cap is dropped and its item not produced
+    monkeypatch.setenv("DRIVE_MODE", "ok")
+    monkeypatch.setenv("DRIVE_PNG_BYTES", str(60 * 1024))
+    checks.run_drive(ctx, "abc125", "c")
+    res = checks.judge_proof(ctx, checks.read_manifest(ctx))
+    shot = res.details["items"][1]
+    assert not res.ok and shot["outcome"] == "not produced" and "dropped" in shot["seen"]
+    assert res.details["dropped"][0]["path"] == "home.png"
+    # an item the session added is reported, never the bar; the approved items are judged
+    monkeypatch.setenv("DRIVE_PNG_BYTES", "100")
+    checks.run_drive(ctx, "abc126", "c")
+    added = PROOF_PLAN + "- state: evidence/proof/status.json change == 9\n"
+    write(ctx.change_dir / "plan.md", added)
+    ctx.approved_artifact = lambda name: PROOF_PLAN if name == "plan.md" else None
+    res = checks.judge_proof(ctx, checks.read_manifest(ctx))
+    assert res.ok and res.details["items"][-1]["approved"] is False
+    assert res.details["items"][-1]["outcome"] == "differs"
+    # the step's own failures carry no items, so they are never a round
+    res = checks.judge_proof(ctx, None)
+    assert not res.ok and res.reason == "the drive ran but wrote no manifest"
+    assert "items" not in res.details
+    ctx.approved_artifact = lambda name: None
+    assert "items" not in checks.judge_proof(ctx, checks.read_manifest(ctx)).details
+
+
+def test_check_proof_with_and_without_a_drive(tmp_path):
+    ctx = _drive_ctx(tmp_path, deferred=True)
+    res = checks.check_proof(ctx)
+    assert res.ok and res.details == {"deferred": True}
+    ctx.commands_deferred = False
+    res = checks.check_proof(ctx)
+    assert res.ok and res.details == {"checked": False} and "collect.py" in res.reason
+    # no drive and no item: ok at once, in a CI session too
+    ctx = _ctx(tmp_path / "plain")
+    ctx.commands_deferred = True
+    write(ctx.change_dir / "plan.md", PLAN)
+    res = checks.check_proof(ctx)
+    assert res.ok and res.reason == "no drive target: nothing to compare" and res.details == {}
+    # the drive removed after gate (b): a park, never deferred
+    write(ctx.change_dir / "plan.md", PROOF_PLAN)
+    res = checks.check_proof(ctx)
+    assert not res.ok and res.details["drive_removed"] is True
+    assert res.reason == (
+        "drive removed after gate (b): the approved plan names 2 state/screenshot item(s) and "
+        "commands.drive is empty"
+    )
+    assert [i["outcome"] for i in res.details["items"]] == ["not produced", "not produced"]
+    assert "Restore `commands.drive`" in res.need
+
+
+def test_check_evidence_defers_the_missing_drive_log_in_a_ci_session_only(tmp_path):
+    ctx = _drive_ctx(tmp_path, phase="d", deferred=True)
+    write(ctx.evidence_dir / "verifier.md", "# Verifier\nok\n")
+    marked = art.render_deferred_header("x", "2026-10-24T00:00:00Z") + "\n"
+    for name in ("test.log", "build.log", "lint.log"):
+        write(ctx.evidence_dir / name, marked)
+    res = checks.check_evidence(ctx)
+    assert res.ok and res.details["deferred"] is True
+    assert res.details["deferred_logs"] == ["test.log", "build.log", "lint.log", "drive.log"]
+    assert "build, test, lint and drive" in res.reason
+    # a missing test.log in the same record still fails
+    (ctx.evidence_dir / "test.log").unlink()
+    res = checks.check_evidence(ctx)
+    assert not res.ok and res.details["missing"] == ["test.log"]
+    # by hand at (d) a missing drive.log fails as a missing target log does
+    ctx.commands_deferred = False
+    green = art.render_evidence_header("x", 0, 1.0, "2026-10-24T00:00:00Z") + "\nok\n"
+    for name in ("test.log", "build.log", "lint.log"):
+        write(ctx.evidence_dir / name, green)
+    res = checks.check_evidence(ctx)
+    assert not res.ok and res.details["missing"] == ["drive.log"]
+    write(ctx.evidence_dir / "drive.log", "no header\n")
+    res = checks.check_evidence(ctx)
+    assert not res.ok and res.details["red_files"] == ["drive.log"]
+    write(ctx.evidence_dir / "drive.log", green)
+    assert checks.check_evidence(ctx).ok
+    # without a drive nothing asks for drive.log
+    ctx.config = {}
+    (ctx.evidence_dir / "drive.log").unlink()
+    assert checks.check_evidence(ctx).ok
+
+
+def test_judge_targets_names_a_red_drive():
+    runs = {
+        "build": {"command": "b", "exit_code": 0, "output": ""},
+        "drive": {"command": "d", "exit_code": 2, "output": "", "refused": "capped"},
+    }
+    res = checks.judge_targets(runs)
+    assert not res.ok and res.reason == "not green: drive (exit 2)"
+    assert res.details["runs"]["drive"]["refused"] == "capped"
+    runs["drive"]["exit_code"] = None
+    assert checks.judge_targets(runs).reason == "not green: drive (timed out)"
+    runs["drive"]["exit_code"] = 0
+    assert checks.judge_targets(runs).reason == "build, test, lint and drive exit 0"
+
+
+def test_the_e_wall_clock_gives_up_the_drive_minutes_and_floors_at_30(tmp_path):
+    assert limits.run_caps({}, True, 5) == (400, 175)
+    assert limits.run_caps({}, False, 5) == (200, 115)
+    assert limits.run_caps({"max_wall_clock_minutes": 40}, False, 20) == (200, 30)
+    assert limits.run_caps({"max_wall_clock_minutes": 20}, False, 5) == (200, 20)
+    assert limits.drive_minutes({}) == 0
+    assert limits.drive_minutes({"commands": {"drive": "x"}}) == 5
+    assert limits.drive_minutes({"commands": {"drive": "x"}, "gate": {"drive_timeout": 900}}) == 15
+    started = (datetime.now(timezone.utc) - timedelta(minutes=118)).isoformat()
+    ctx = _drive_ctx(tmp_path, phase="e", gate_cfg={"drive_timeout": 300})
+    write(ctx.evidence_dir / "run-e.json", json.dumps({"started_at": started}))
+    res = limits.check_limits(ctx)
+    assert not res.ok and "limit 115 min" in res.reason
+    # a fix round at (e) carries the build mark: 180 - 5
+    write(ctx.evidence_dir / "run-e.json", json.dumps({"started_at": started, "run": "build"}))
+    res = limits.check_limits(ctx)
+    assert res.ok and res.details["drive_minutes"] == 5
+    # (c) gives up nothing
+    ctx = _drive_ctx(tmp_path / "c", phase="c")
+    write(ctx.evidence_dir / "run-c.json", json.dumps({"started_at": started}))
+    assert limits.check_limits(ctx).ok
+    # a drive that would take the cap below 30 parks with the figure
+    ctx = _drive_ctx(tmp_path / "floor", phase="e", gate_cfg={"drive_timeout": 6000})
+    write(ctx.evidence_dir / "run-e.json", json.dumps({"started_at": started}))
+    res = limits.check_limits(ctx)
+    assert not res.ok and "takes 100 min off the (e) session's 120 min" in res.reason
+
+
+def _with_drive_on_base(root: Path) -> None:
+    def edit(r: Path) -> None:
+        write(r / "drive.py", DRIVE_SCRIPT)
+        cfg = (r / "sdlc.yaml").read_text(encoding="utf-8")
+        cfg = cfg.replace('  drive: ""\n', '  drive: "python drive.py"\n', 1)
+        write(r / "sdlc.yaml", cfg)
+
+    on_base(root, edit, "owner: set commands.drive")
+
+
+def _approve(monkeypatch, plan: str) -> None:
+    original = checks.GateContext.approved_artifact
+    monkeypatch.setattr(
+        checks.GateContext,
+        "approved_artifact",
+        lambda self, name: plan if name == "plan.md" else original(self, name),
+    )
+
+
+def test_the_runner_s_step_runs_the_drive_after_the_targets_and_judges_the_proof(
+    project, monkeypatch
+):
+    root, change = project
+    _with_drive_on_base(root)
+    _approve(monkeypatch, PROOF_PLAN)
+    verdict(root, "c")
+    monkeypatch.setenv(checks.COMMANDS_RUNNER_ENV, checks.RUN_BY_RUNNER)
+    session = gate.run_gate(root, "0001", "c")
+    assert session.result == "continue", session.reason
+    assert _check(session, "proof").details == {"deferred": True}
+    recorded = json.loads((change / "evidence" / "gate-c.json").read_text(encoding="utf-8"))
+    assert gate.deferred_checks(recorded) == ["commands", "proof"]
+    stale = change / "evidence" / "proof" / "stale.txt"
+    write(stale, "from an earlier run")
+    result = gate.run_deferred_commands(root, "0001", "c")
+    assert result is not None and result.result == "continue", result.reason
+    cmd, proof = _check(result, "commands"), _check(result, "proof")
+    assert list(cmd.details["runs"]) == ["build", "test", "lint", "drive"]
+    assert cmd.reason == "build, test, lint and drive exit 0"
+    assert proof.ok and [i["outcome"] for i in proof.details["items"]] == ["matches", "matches"]
+    assert not stale.exists()
+    log = (change / "evidence" / "drive.log").read_text(encoding="utf-8")
+    assert art.parse_evidence_header(log)["exit"] == "0" and "drove the product" in log
+    assert [ch.name for ch in result.checks] == [ch.name for ch in session.checks]
+
+    # a red drive parks like a red target
+    gate.run_gate(root, "0001", "c")
+    monkeypatch.setenv("DRIVE_MODE", "red")
+    result = gate.run_deferred_commands(root, "0001", "c")
+    assert result.result == "park" and "drive (exit 1)" in _check(result, "commands").reason
+    # a green drive whose value differs fails the proof entry with the value seen
+    gate.run_gate(root, "0001", "c")
+    monkeypatch.setenv("DRIVE_MODE", "differs")
+    result = gate.run_deferred_commands(root, "0001", "c")
+    assert result.result == "park" and _check(result, "commands").ok
+    proof = _check(result, "proof")
+    assert not proof.ok and proof.details["items"][0]["seen"] == 500
+
+
+def test_a_drive_that_did_not_start_is_re_run_once_on_a_fresh_proof_folder(project, monkeypatch):
+    root, change = project
+    _with_drive_on_base(root)
+    _approve(monkeypatch, PROOF_PLAN)
+    verdict(root, "c")
+    monkeypatch.setenv(checks.COMMANDS_RUNNER_ENV, checks.RUN_BY_RUNNER)
+    assert gate.run_gate(root, "0001", "c").result == "continue"
+    calls: list[str] = []
+    original = checks.run_command
+
+    def first_missing(command, root_, timeout, tail=checks.OUTPUT_TAIL, env=None):
+        if env and checks.PROOF_DIR_ENV in env:
+            calls.append(command)
+            if len(calls) == 1:
+                write(Path(env[checks.PROOF_DIR_ENV]) / "first.txt", "first run")
+                return {"command": command, "exit_code": 127, "output": "python: not found"}
+        return original(command, root_, timeout, tail=tail, env=env)
+
+    monkeypatch.setattr(checks, "run_command", first_missing)
+    result = gate.run_deferred_commands(root, "0001", "c")
+    assert len(calls) == 2 and result.result == "continue", result.reason
+    assert _check(result, "commands").details["retried"] == 1
+    assert not (change / "evidence" / "proof" / "first.txt").exists()
+
+
+def test_the_runner_s_step_at_d_writes_drive_log_and_re_judges_the_evidence(project, monkeypatch):
+    root, change = project
+    _with_drive_on_base(root)
+    _approve(monkeypatch, PROOF_PLAN)
+    _at_phase_d(root, change)
+    write(change / "evidence" / "verifier.md", "# Verifier\nread, not run\n")
+    monkeypatch.setenv(checks.COMMANDS_RUNNER_ENV, checks.RUN_BY_RUNNER)
+    write_marked_logs(root, change)
+    session = gate.run_gate(root, "0001", "d")
+    assert session.result == "continue", session.reason
+    ev = _check(session, "evidence")
+    assert ev.details["deferred_logs"] == ["test.log", "build.log", "lint.log", "drive.log"]
+    result = gate.run_deferred_commands(root, "0001", "d")
+    assert result.result == "continue", result.reason
+    assert _check(result, "evidence").reason == (
+        "evidence present: test.log, build.log, lint.log, verifier.md, drive.log"
+    )
+    assert (change / "evidence" / "drive.log").is_file()
+
+
+def test_no_drive_runs_at_b(design_project, monkeypatch):
+    root, change = design_project
+    _with_drive_on_base(root)
+    verdict(root, "b", classification="non-routine")
+    monkeypatch.setenv(checks.COMMANDS_RUNNER_ENV, checks.RUN_BY_RUNNER)
+    gate.run_gate(root, "0001", "b")
+    result = gate.run_deferred_commands(root, "0001", "b")
+    assert result.result == "wait", result.reason
+    assert list(_check(result, "commands").details["runs"]) == ["build", "test", "lint"]
+    assert not (change / "evidence" / "drive.log").exists()
+    assert not (change / "evidence" / "proof").exists()
+    assert "proof" not in [ch.name for ch in result.checks]
+
+
+def test_an_empty_drive_keeps_today_s_logs_and_verdict(project, monkeypatch):
+    root, change = project
+    verdict(root, "c")
+    monkeypatch.setenv(checks.COMMANDS_RUNNER_ENV, checks.RUN_BY_RUNNER)
+    session = gate.run_gate(root, "0001", "c")
+    assert _check(session, "proof").reason == "no drive target: nothing to compare"
+    result = gate.run_deferred_commands(root, "0001", "c")
+    assert result.result == "continue", result.reason
+    assert list(_check(result, "commands").details["runs"]) == ["build", "test", "lint"]
+    assert _check(result, "commands").reason == "build, test and lint exit 0"
+    assert not (change / "evidence" / "drive.log").exists()
+
+
+def test_the_drive_removed_after_gate_b_parks_and_is_never_deferred(project, monkeypatch):
+    root, change = project
+    _approve(monkeypatch, PROOF_PLAN)
+    verdict(root, "c")
+    monkeypatch.setenv(checks.COMMANDS_RUNNER_ENV, checks.RUN_BY_RUNNER)
+    result = gate.run_gate(root, "0001", "c")
+    assert result.result == "park"
+    proof = _check(result, "proof")
+    assert not proof.ok and proof.details["drive_removed"] is True
+    assert "deferred" not in proof.details
+    assert "drive removed after gate (b)" in status_mod.read_status(change).parked_reason

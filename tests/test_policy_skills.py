@@ -157,10 +157,19 @@ def test_ux_check_ignores_non_ui_and_wants_screenshots(project):
     page.write_text("<h1>Welcome to the portal now</h1>\n", encoding="utf-8")
     proc = run_check("ux-conventions", project, "--id", "0000")
     assert proc.returncode == 1
-    assert "holds no screenshot" in proc.stdout and "visible copy hard-coded" in proc.stdout
-    (project / "changes" / "0000-sdlc-init" / "evidence" / "home.png").write_bytes(b"\x89PNG")
-    proc = run_check("ux-conventions", project, "--id", "0000")
-    assert "holds no screenshot" not in proc.stdout
+    finding = "UI changed but evidence/proof/ and evidence/screenshots/ hold no screenshot"
+    assert finding in proc.stdout and "visible copy hard-coded" in proc.stdout
+    evidence = project / "changes" / "0000-sdlc-init" / "evidence"
+    # change 0004 (R11): an image straight under evidence/ is in neither folder
+    (evidence / "home.png").write_bytes(b"\x89PNG")
+    assert finding in run_check("ux-conventions", project, "--id", "0000").stdout
+    for folder in ("screenshots", "proof"):
+        shots = evidence / folder
+        shots.mkdir(exist_ok=True)
+        (shots / "home.png").write_bytes(b"\x89PNG")
+        proc = run_check("ux-conventions", project, "--id", "0000")
+        assert finding not in proc.stdout and f"{folder}/home.png" in proc.stdout
+        shutil.rmtree(shots)
     shutil.rmtree(page.parent)
 
 

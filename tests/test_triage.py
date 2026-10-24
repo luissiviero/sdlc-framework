@@ -62,6 +62,31 @@ def test_the_case_follows_the_park_this_run_wrote():
     assert triage.run_case(0, None, fresh=False) is None
 
 
+def test_the_logs_for_a_park_include_the_drive_s_files(tmp_path):
+    """Change 0004 (R13): a red ``commands`` entry adds ``drive.log`` when it exists; a failed
+    ``proof`` entry adds ``drive.log`` and ``proof/manifest.json``."""
+    change = "changes/0001-x"
+    evidence = tmp_path / change / "evidence"
+    for name in ("test.log", "build.log", "lint.log", "drive.log", "proof/manifest.json"):
+        (evidence / name).parent.mkdir(parents=True, exist_ok=True)
+        (evidence / name).write_text("x\n", encoding="utf-8")
+
+    def logs(failed: list[str]) -> list[str]:
+        record = {"result": "park", "checks": [{"name": n, "ok": False} for n in failed]}
+        (evidence / "gate-c.json").write_text(json.dumps(record), encoding="utf-8")
+        out = {"change_dir": change, "gate_record": f"{change}/evidence/gate-c.json"}
+        return [
+            p.removeprefix(f"{change}/evidence/")
+            for p in triage.logs_for(tmp_path, "park", out, [])
+        ]
+
+    assert logs(["commands"]) == ["gate-c.json", "test.log", "build.log", "lint.log", "drive.log"]
+    assert logs(["proof"]) == ["gate-c.json", "drive.log", "proof/manifest.json"]
+    assert logs(["commands", "proof"])[-2:] == ["drive.log", "proof/manifest.json"]
+    (evidence / "drive.log").unlink()
+    assert logs(["commands"]) == ["gate-c.json", "test.log", "build.log", "lint.log"]
+
+
 def test_a_failed_setup_comes_first_and_a_missing_result_reads_as_red():
     assert triage.case_of(None, {"error": "sdlc.yaml is unreadable"}) == "setup"
     assert triage.case_of({"triage": "park"}, {"ok": False, "exit_code": 1}) == "setup"

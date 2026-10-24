@@ -133,6 +133,114 @@ def test_anything_else_is_not_a_red_target():
         assert auto_round.red_targets(record) is None, record
 
 
+def proof_check(items=None, **details) -> dict:
+    items = (
+        [
+            {
+                "item": "- state: evidence/proof/status.json status.code == 200",
+                "kind": "state",
+                "file": "evidence/proof/status.json",
+                "approved": True,
+                "outcome": "differs",
+                "seen": 500,
+            },
+            {
+                "item": "- screenshot: evidence/proof/home.png",
+                "kind": "screenshot",
+                "file": "evidence/proof/home.png",
+                "approved": True,
+                "outcome": "matches",
+            },
+            {
+                "item": "- state: evidence/proof/status.json change == 9",
+                "kind": "state",
+                "file": "evidence/proof/status.json",
+                "approved": False,
+                "outcome": "differs",
+                "seen": "0004",
+            },
+        ]
+        if items is None
+        else items
+    )
+    return {
+        "name": "proof",
+        "ok": False,
+        "reason": "1 approved proof item(s) not met",
+        "need": "",
+        "details": {"items": items, **details} if items != "none" else details,
+    }
+
+
+def green_record_with(*extra_checks) -> dict:
+    record = red_record(extra_checks=extra_checks)
+    record["checks"][1] = {
+        "name": "commands",
+        "ok": True,
+        "reason": "build, test, lint and drive exit 0",
+        "need": "",
+        "details": {"ran_by": "runner", "runs": runs(test_exit=0)},
+    }
+    return record
+
+
+def test_a_failed_proof_entry_is_a_round_also_when_the_targets_are_green():
+    targets = auto_round.red_targets(green_record_with(proof_check()))
+    assert targets == [
+        {
+            "target": "proof",
+            "items": [
+                {
+                    "item": "- state: evidence/proof/status.json status.code == 200",
+                    "outcome": "differs",
+                    "expected": "status.code == 200",
+                    "seen": 500,
+                }
+            ],
+        }
+    ]
+    assert auto_round.targets_summary(targets) == "proof (1 item)"
+    # a red drive whose items were not produced is one round, its log among the constraint's
+    drive_red = runs(test_exit=0, drive={"command": "npx playwright test", "exit_code": 1})
+    drive_log = {
+        "name": "evidence",
+        "ok": False,
+        "reason": "evidence/drive.log: exited 1",
+        "need": "",
+        "details": {"red_files": ["drive.log"]},
+    }
+    record = red_record(run_map=drive_red, extra_checks=[proof_check(), drive_log])
+    targets = auto_round.red_targets(record)
+    assert [t["target"] for t in targets] == ["drive", "proof"]
+    assert auto_round.targets_summary(targets) == "drive (exit 1), proof (1 item)"
+
+
+def test_a_failed_proof_entry_without_items_or_with_the_drive_removed_parks():
+    assert auto_round.red_targets(green_record_with(proof_check(items="none"))) is None
+    removed = proof_check(drive_removed=True)
+    assert auto_round.red_targets(green_record_with(removed)) is None
+    assert auto_round.red_targets(red_record(extra_checks=[removed])) is None
+    # only items added in (c) failed: nothing approved to fix, a park
+    added_only = proof_check(items=[proof_check()["details"]["items"][2]])
+    assert auto_round.red_targets(green_record_with(added_only)) is None
+
+
+def test_the_round_s_request_names_each_item_with_expected_and_seen():
+    targets = auto_round.red_targets(green_record_with(proof_check()))
+    request = auto_round.red_targets_request(
+        {"round": 1, "cap": 2, "targets": targets, "head": "abc", "at": "now"}
+    )
+    body = request["body"]
+    assert "found a red target or proof item: proof (1 item)" in body
+    assert (
+        "- `- state: evidence/proof/status.json status.code == 200` (differs): expected "
+        "status.code == 200, seen 500"
+    ) in body
+    assert request["targets"][0]["items"][0]["seen"] == 500
+    prompt = auto_round.judge_prompt("0004", "changes/0004-x", "c", 2, 2, targets)
+    assert "drive.log" in prompt and "the record's `proof` entry" in prompt
+
+
 def test_parse_verdict_reads_the_judge_s_json_and_nothing_else():
     assert auto_round.parse_verdict('{"reset": true, "reasons": "progress"}') == {
         "reset": True,

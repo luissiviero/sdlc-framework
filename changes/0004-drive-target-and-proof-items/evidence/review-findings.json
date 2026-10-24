@@ -1,0 +1,57 @@
+{
+  "at": "2026-10-24T16:31:13Z",
+  "findings": [
+    {
+      "file": "changes/0004-drive-target-and-proof-items/evidence/workflow-comments.md",
+      "line": 1,
+      "pass": "compliance",
+      "rule": "spec R4 / Acceptance (the four workflow templates' comments)",
+      "severity": "nit",
+      "signature": "3c3a060b8e0bdeec",
+      "summary": "Spec R4 and its Acceptance require the four workflow templates' timeout comments to carry the drive's arithmetic, but the diff leaves those templates unchanged. The departure is recorded in plan.md (Risks) in the same commit, and the lines are handed to the owner, so the spec requirement stays open until the owner applies them in a reviewed PR."
+    },
+    {
+      "file": "plugin/ci/run_phase.py",
+      "line": 2300,
+      "pass": "compliance",
+      "rule": "spec R4",
+      "severity": "nit",
+      "signature": "edc90cda6bce7ef2",
+      "summary": "At gate (b), commands_timeout_seconds still adds the (capped) drive timeout to the step's subprocess timeout, although the drive never runs at (b). This only loosens the bound, but it departs from R4's rule that the drive counts only at the gates where it runs."
+    },
+    {
+      "file": "plugin/gate/checks.py",
+      "line": 512,
+      "pass": "bugs",
+      "rule": "spec R7 (a drive.log the session cannot write is never a park before the step)",
+      "severity": "nit",
+      "signature": "3321bfbba6451a7d",
+      "summary": "Inside a CI session check_evidence defers drive.log only when the file is missing or empty. In a fix round at (d) after a red drive, the runner's earlier red drive.log is still committed, so the fix session's own gate fails 'evidence' with a need (re-run collect.py) the session cannot meet, because collect.py skips the drive in CI and writes no mark. The runner's step re-judges the check afterwards, so the final verdict is right, but the session spends turns on it (doubt: the impact is limited to the in-session verdict)."
+    },
+    {
+      "file": "plugin/gate/checks.py",
+      "line": 745,
+      "pass": "bugs",
+      "rule": "coding-standards rule 2 (match the surrounding error handling)",
+      "severity": "nit",
+      "signature": "66a196a2d645cd7e",
+      "summary": "run_drive calls int() on gate.proof_image_kb unguarded. A non-numeric value raises ValueError after the drive has run, so the commands step crashes, re-runs and parks with 'check crashed'. configured_drive_timeout falls back to the default on the same kind of input, and this setting should too."
+    },
+    {
+      "file": "plugin/gate/limits.py",
+      "line": 554,
+      "pass": "bugs",
+      "rule": "spec R4 (the runner and the gate's wall-clock check read one figure)",
+      "severity": "nit",
+      "signature": "10b03dd4f1ca8384",
+      "summary": "When the configured wall-clock cap is already under 30 minutes, check_limits parks every (e) run that has a drive set ('below the floor of 30'), while the runner's limits.run_caps applies min(minutes, 30) and subtracts nothing. The gate and the runner then disagree on the cap (doubt: this only happens when a cap below 30 is configured)."
+    }
+  ],
+  "head": "8b5c531ab70971c88ca4d099e6c3e6386aaf0c7e",
+  "schema_version": 1,
+  "tally": {
+    "important": 0,
+    "nit": 5,
+    "nits_omitted": 2
+  }
+}

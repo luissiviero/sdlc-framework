@@ -60,6 +60,28 @@ def test_verifier_copies_the_article_example():
     assert art.EVIDENCE_VERIFIER == "verifier.md"
 
 
+def test_the_verifier_reads_the_drive_s_images_and_the_reviewer_reads_the_drive():
+    """Change 0004 (R15): the verifier's (d) step on ``evidence/proof/`` images and the
+    adversarial reviewer's angle on the drive."""
+    _fm, verifier = frontmatter(AGENTS / "verifier.md")
+    flat = " ".join(verifier.split())
+    for words in (
+        "open (c)'s images under `changes/<id>-<slug>/evidence/proof/` with the Read tool",
+        "compare each with the mock the spec's `Mock:` line names",
+        "(`matches`, `differs` with what you saw, or `not produced`)",
+        "the commit `evidence/proof/manifest.json` names, not the final tree",
+        "`state:` items are the gate's",
+        "A `differs` makes the verdict `does not match the plan`",
+    ):
+        assert words in flat, words
+    _fm, reviewer = frontmatter(AGENTS / "adversarial-reviewer.md")
+    flat = " ".join(reviewer.split())
+    assert "9. **The drive** (phases (c) and (d); change 0004)" in flat
+    assert "from the product (a response, a rendered page, the program's own output), or write" in (
+        flat
+    )
+
+
 def test_only_the_adversarial_reviewer_may_write_and_only_the_verdict():
     for name in NAMES:
         fm, body = frontmatter(AGENTS / f"{name}.md")

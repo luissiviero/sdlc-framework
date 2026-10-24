@@ -233,7 +233,7 @@ def check_run_result(root: Path, change_dir: Path, phase: str) -> dict[str, Any]
     there is no GitHub remote or no commit yet: a missing route is never an error)."""
     gate_json = desc.load_gate(change_dir, phase)
     conclusion = "failure" if (gate_json or {}).get("result") == "park" else "success"
-    summary = desc.evidence_status(change_dir, phase)
+    summary = desc.evidence_status(change_dir, phase, root)
     repo, _base = _repo_and_base(root)
     try:
         head_sha = gitops.run(root, "rev-parse", "HEAD").strip()

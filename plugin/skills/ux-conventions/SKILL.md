@@ -34,7 +34,9 @@ description: The organization's UX and brand conventions for user-facing interfa
 6. Visible copy lives where the project keeps copy (translations, constants), not inline in
    markup.
 7. Phase (d) closes the visual loop: implement, screenshot, compare with the mock, adjust;
-   the screenshots go into `changes/<id>-<slug>/evidence/`.
+   the screenshots go into `changes/<id>-<slug>/evidence/screenshots/` by hand, or, when
+   `sdlc.yaml: commands.drive` is set, the drive writes them into `evidence/proof/` and the
+   plan names each as a `screenshot:` item (change 0004).
 
 ## Check
 Run the deterministic check and include its output in your summary (article p.22 pattern):
@@ -42,13 +44,16 @@ Run the deterministic check and include its output in your summary (article p.22
 python "${CLAUDE_PLUGIN_ROOT}/plugin/skills/ux-conventions/check.py" --root "${CLAUDE_PROJECT_DIR}" --id <change id>
 ```
 It lists the UI files in the diff, flags copy hard-coded in markup, and reports whether
-`evidence/` holds a screenshot. Example output:
+`evidence/proof/` or `evidence/screenshots/` holds a screenshot. Example output:
 ```
 ## ux-conventions check
-- UI changed but evidence/ holds no screenshot: run the visual loop (implement, screenshot, compare with the mock) and save the result
+- UI changed but evidence/proof/ and evidence/screenshots/ hold no screenshot: run the visual loop (implement, screenshot, compare with the mock) and save the result
 - note: UI files changed: src/components/Form.tsx
 ```
-Deterministic backing, rule by rule (R27): none of the seven has a hook or a gate check. The
-gate's evidence check requires the verifier report and the toolchain logs, not a screenshot
-(`REQUIRED_EVIDENCE`); only this skill's own advisory check looks for one (rule 7), and the
-REVIEW.md pass at (e) re-checks rules 1 to 7. This skill is advisory (p.22 governance).
+Deterministic backing, rule by rule (R27): rules 1 to 6 have no hook or gate check. Rule 7 has
+one only when `sdlc.yaml: commands.drive` is set: the gate's `proof` entry checks that each
+`screenshot:` item of the approved plan exists under `evidence/proof/` (change 0004); the
+gate's evidence check requires the verifier report and the toolchain logs, never a by-hand
+screenshot (`REQUIRED_EVIDENCE`), so otherwise only this skill's own advisory check looks for
+one, in the two folders. The REVIEW.md pass at (e) re-checks rules 1 to 7. This skill is
+advisory (p.22 governance).
