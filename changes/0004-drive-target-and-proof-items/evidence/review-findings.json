@@ -1,0 +1,57 @@
+{
+  "at": "2026-10-24T16:25:18Z",
+  "findings": [
+    {
+      "file": "changes/0004-drive-target-and-proof-items/plan.md",
+      "line": 38,
+      "pass": "compliance",
+      "rule": "REVIEW.md: plan.md must reflect the diff (files that change)",
+      "severity": "nit",
+      "signature": "58fe2c3783a17780",
+      "summary": "Under 'Files that change', plan.md lists `plugin/gate/cli.py` (the docstring line naming the drive in `run-commands`), but the diff leaves that file untouched and the plan was not updated. The departure is docstring-only and changes no behaviour, so it is reported as a nit rather than as an Important plan-conformance breach."
+    },
+    {
+      "file": "plugin/ci/run_phase.py",
+      "line": 2300,
+      "pass": "bugs",
+      "rule": "spec R2/R4 (the drive runs at (c), (d) and (e), never (b); figures count only targets that run)",
+      "severity": "nit",
+      "signature": "cc6e0ddbee425cfd",
+      "summary": "`commands_timeout_seconds` adds the drive's timeout at gate (b) too, because `run_gate_commands` passes phase 'b' and `drive_timeout_seconds` returns the capped value for any non-(e) phase. The design job's commands step therefore waits 5 to 10 minutes longer for a drive that never runs at (b)."
+    },
+    {
+      "file": "plugin/gate/artifacts.py",
+      "line": 465,
+      "pass": "bugs",
+      "rule": "spec R5 (a malformed item is refused at gate (b), never silently ignored)",
+      "severity": "nit",
+      "signature": "d150d6b5675f5412",
+      "summary": "A state item with no value parses as well formed, so an approved `- state: evidence/proof/x.json a matches` with an empty pattern matches any file that has the key. That is a proof item that cannot fail. Gate (b) could refuse an empty <value> as malformed. (Doubt: the spec's grammar says only 'the rest of the line' and does not forbid an empty value.)"
+    },
+    {
+      "file": "plugin/gate/artifacts.py",
+      "line": 602,
+      "pass": "bugs",
+      "rule": "",
+      "severity": "nit",
+      "signature": "b44214bae3739e5c",
+      "summary": "The `seen` value of a `differs` on a dotted path is stored whole, with no length cap: up to the 1 MiB file cap, and for a `line` item a single long first line. It goes into the gate record's `proof` entry, `auto-round.json` and the fix round's request. Command output, by contrast, is tailed to OUTPUT_TAIL."
+    },
+    {
+      "file": "plugin/skills/ux-conventions/check.py",
+      "line": 63,
+      "pass": "bugs",
+      "rule": "spec R11 (the ux-conventions check reads proof/ and screenshots/)",
+      "severity": "nit",
+      "signature": "a2537610258e383b",
+      "summary": "The ux check globs `evidence/proof/` non-recursively. The drive, the caps and the manifest all walk `proof/` recursively (rglob), so a drive that writes its screenshots into a subfolder is reported as 'no screenshot'."
+    }
+  ],
+  "head": "eae172d5949e8ff19645159501de38781ed3445c",
+  "schema_version": 1,
+  "tally": {
+    "important": 0,
+    "nit": 5,
+    "nits_omitted": 1
+  }
+}
