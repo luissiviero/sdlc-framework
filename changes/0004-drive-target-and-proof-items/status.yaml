@@ -5,10 +5,10 @@ phase: b
 entry_route: idea
 change_type: feature
 gate:
-  phase: null
-  result: null
-  reason: null
-  at: null
+  phase: b
+  result: passed
+  reason: waiting for the owner at gate (b)
+  at: "2026-10-24T12:30:09Z"
 parked_reason: null
 iterations: 0
 panel_calls: 3
@@ -26,5 +26,5 @@ released_at: null
 released_sha: null
 released_pr: null
 created_at: "2026-10-13T19:24:24Z"
-updated_at: "2026-10-24T12:20:17Z"
+updated_at: "2026-10-24T12:30:09Z"
 schema_version: 1

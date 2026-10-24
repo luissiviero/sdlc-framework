@@ -1,29 +1,7 @@
 {
-  "decided": 0,
-  "gate": "park",
-  "items": [
-    {
-      "decided": false,
-      "item": "The Playwright line `/sdlc-init` proposes writes to `\"$SDLC_PROOF_DIR\"`, which the shell",
-      "key": "concern:51eec3b904e0092f",
-      "kind": "concern",
-      "n": 1
-    },
-    {
-      "decided": false,
-      "item": "A fix round at (e) stays over its job's budget: the fix workflow's 260 minutes hold R51's",
-      "key": "concern:7111d4db9aa50106",
-      "kind": "concern",
-      "n": 2
-    },
-    {
-      "decided": false,
-      "item": "The `line` path of a `state` item on a text file is read as \"any line satisfies the",
-      "key": "concern:041886b26e737c3b",
-      "kind": "concern",
-      "n": 3
-    }
-  ],
+  "decided": 3,
+  "gate": "wait",
+  "items": [],
   "iterations": {
     "cap": 2,
     "left": 2,
@@ -31,14 +9,10 @@
   },
   "panel_calls": {
     "cap": 4,
-    "left": 4,
-    "used": 0
+    "left": 1,
+    "used": 3
   },
   "parks": [],
-  "pending": [
-    1,
-    2,
-    3
-  ],
+  "pending": [],
   "phase": "b"
 }

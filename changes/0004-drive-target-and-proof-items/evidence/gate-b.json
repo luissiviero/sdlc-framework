@@ -1,0 +1,155 @@
+{
+  "schema_version": 1,
+  "change_id": "0004",
+  "slug": "drive-target-and-proof-items",
+  "phase": "b",
+  "human_gate": true,
+  "result": "wait",
+  "label": "sdlc:b-ready",
+  "head": "de376d7210f586d8839fe48949b0f2400db05433",
+  "at": "2026-10-24T12:30:09Z",
+  "dry_run": false,
+  "reason": "",
+  "config_note": "",
+  "checks": [
+    {
+      "name": "limits",
+      "ok": true,
+      "reason": "within the run limits",
+      "need": "",
+      "details": {
+        "iterations": 0,
+        "cap": 2,
+        "classification": "non-routine",
+        "panel_calls": 3,
+        "panel_cap": 4,
+        "elapsed_minutes": 60.0,
+        "spend_usd": null,
+        "spend_usd_total": null,
+        "spend_entries": 0,
+        "max_budget_usd": null
+      }
+    },
+    {
+      "name": "artifacts",
+      "ok": true,
+      "reason": "every required artifact exists and has its template sections",
+      "need": "",
+      "details": {}
+    },
+    {
+      "name": "evidence_links",
+      "ok": true,
+      "reason": "no symbolic link under the change folder",
+      "need": "",
+      "details": {}
+    },
+    {
+      "name": "design_scope",
+      "ok": true,
+      "reason": "the committed diff stays inside changes/0004-drive-target-and-proof-items/",
+      "need": "",
+      "details": {
+        "dirty": [
+          "CLAUDE.local.md",
+          "changes/0004-drive-target-and-proof-items/evidence/adversarial-review-b.json",
+          "changes/0004-drive-target-and-proof-items/evidence/adversarial-review-b.model.json",
+          "changes/0004-drive-target-and-proof-items/evidence/diff-b.patch",
+          "changes/0004-drive-target-and-proof-items/evidence/hook-log.jsonl",
+          "changes/0004-drive-target-and-proof-items/evidence/panel/b-items.json",
+          "policies",
+          "tests/fixtures/sample-python-project/.env"
+        ]
+      }
+    },
+    {
+      "name": "open_concerns",
+      "ok": true,
+      "reason": "no open flagged concern",
+      "need": "",
+      "details": {}
+    },
+    {
+      "name": "panel",
+      "ok": true,
+      "reason": "3 panel decision(s) recorded",
+      "need": "",
+      "details": {
+        "decisions": [
+          {
+            "n": 1,
+            "kind": "concern",
+            "decision": "Keep the proposed line `npx playwright test --output \"$SDLC_PROOF_DIR\"` and no substitution in `collect.py`; the `commands.drive` comment (R1) and the `/sdlc-init` text (R10) each gain one sentence saying the platform shell expands the variable, that a `cmd.exe` by-hand run writes `%SDLC_PROOF_DIR%`, and that the test writes its files to `process.env.SDLC_PROOF_DIR`."
+          },
+          {
+            "n": 2,
+            "kind": "concern",
+            "decision": "Named, not fixed: the fix template's comment states the worst case (45 of R51's re-check, only when the default branch moved, 290 of 260 with or without a drive) and that a job past 260 is cancelled by GitHub while the park steps run only on a failed step; no cap changes, and the owner raises timeout-minutes with SDLC_JOB_TIMEOUT_MINUTES or amends the build caps in a reviewed PR."
+          },
+          {
+            "n": 3,
+            "kind": "concern",
+            "decision": "Keep both readings, pinned down: the one parse (JSON when it parses, else string) applies to the expected value and to each text line; `==` is equal only when the parsed values have the same JSON type and value (a bool never equals a number, `1` never equals `1.0`); the string form for `contains`/`matches` is the value itself for a string and `json.dumps` otherwise; an empty text file is `not produced`; `seen` on a `line` differs is the file's first line; the `plan-template` skill states the any-line rule and `tests/test_proof.py` covers `== 1` against `true` (differs), `contains true` against JSON `true` (matches), text `200` and JSON `200` against `== 200` (both match) and the empty file."
+          }
+        ],
+        "cost_usd": 0.0
+      }
+    },
+    {
+      "name": "commands",
+      "ok": true,
+      "reason": "deferred to the runner: build, test and lint run after the model's session, outside its sandbox (issue #91); not yet run",
+      "need": "",
+      "details": {
+        "deferred": true
+      }
+    },
+    {
+      "name": "guardrails",
+      "ok": true,
+      "reason": "the diff does not touch a guardrail file",
+      "need": "",
+      "details": {}
+    },
+    {
+      "name": "risk_list",
+      "ok": true,
+      "reason": "no risk-list item touched",
+      "need": "",
+      "details": {
+        "hits": {},
+        "accepted": []
+      }
+    },
+    {
+      "name": "owner_actions",
+      "ok": true,
+      "reason": "risk acceptances, iteration and panel-call resets and test-lock lifts, if any, were committed by the owner or applied by the owner's label",
+      "need": "",
+      "details": {
+        "risk_accepted": [],
+        "label_actors": {}
+      }
+    },
+    {
+      "name": "adversarial_review",
+      "ok": true,
+      "reason": "adversarial reviewer says continue",
+      "need": "",
+      "details": {
+        "classification": "non-routine",
+        "reasons": []
+      }
+    },
+    {
+      "name": "reviewer_model",
+      "ok": true,
+      "reason": "the adversarial reviewer ran on claude-opus-5-5",
+      "need": "",
+      "details": {
+        "wanted": "claude-opus-5-5"
+      }
+    }
+  ],
+  "what_i_need": ""
+}
