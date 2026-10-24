@@ -1,57 +1,57 @@
 {
-  "at": "2026-10-24T16:25:18Z",
+  "at": "2026-10-24T16:31:13Z",
   "findings": [
     {
-      "file": "changes/0004-drive-target-and-proof-items/plan.md",
-      "line": 38,
+      "file": "changes/0004-drive-target-and-proof-items/evidence/workflow-comments.md",
+      "line": 1,
       "pass": "compliance",
-      "rule": "REVIEW.md: plan.md must reflect the diff (files that change)",
+      "rule": "spec R4 / Acceptance (the four workflow templates' comments)",
       "severity": "nit",
-      "signature": "58fe2c3783a17780",
-      "summary": "Under 'Files that change', plan.md lists `plugin/gate/cli.py` (the docstring line naming the drive in `run-commands`), but the diff leaves that file untouched and the plan was not updated. The departure is docstring-only and changes no behaviour, so it is reported as a nit rather than as an Important plan-conformance breach."
+      "signature": "3c3a060b8e0bdeec",
+      "summary": "Spec R4 and its Acceptance require the four workflow templates' timeout comments to carry the drive's arithmetic, but the diff leaves those templates unchanged. The departure is recorded in plan.md (Risks) in the same commit, and the lines are handed to the owner, so the spec requirement stays open until the owner applies them in a reviewed PR."
     },
     {
       "file": "plugin/ci/run_phase.py",
       "line": 2300,
-      "pass": "bugs",
-      "rule": "spec R2/R4 (the drive runs at (c), (d) and (e), never (b); figures count only targets that run)",
+      "pass": "compliance",
+      "rule": "spec R4",
       "severity": "nit",
-      "signature": "cc6e0ddbee425cfd",
-      "summary": "`commands_timeout_seconds` adds the drive's timeout at gate (b) too, because `run_gate_commands` passes phase 'b' and `drive_timeout_seconds` returns the capped value for any non-(e) phase. The design job's commands step therefore waits 5 to 10 minutes longer for a drive that never runs at (b)."
+      "signature": "edc90cda6bce7ef2",
+      "summary": "At gate (b), commands_timeout_seconds still adds the (capped) drive timeout to the step's subprocess timeout, although the drive never runs at (b). This only loosens the bound, but it departs from R4's rule that the drive counts only at the gates where it runs."
     },
     {
-      "file": "plugin/gate/artifacts.py",
-      "line": 465,
+      "file": "plugin/gate/checks.py",
+      "line": 512,
       "pass": "bugs",
-      "rule": "spec R5 (a malformed item is refused at gate (b), never silently ignored)",
+      "rule": "spec R7 (a drive.log the session cannot write is never a park before the step)",
       "severity": "nit",
-      "signature": "d150d6b5675f5412",
-      "summary": "A state item with no value parses as well formed, so an approved `- state: evidence/proof/x.json a matches` with an empty pattern matches any file that has the key. That is a proof item that cannot fail. Gate (b) could refuse an empty <value> as malformed. (Doubt: the spec's grammar says only 'the rest of the line' and does not forbid an empty value.)"
+      "signature": "3321bfbba6451a7d",
+      "summary": "Inside a CI session check_evidence defers drive.log only when the file is missing or empty. In a fix round at (d) after a red drive, the runner's earlier red drive.log is still committed, so the fix session's own gate fails 'evidence' with a need (re-run collect.py) the session cannot meet, because collect.py skips the drive in CI and writes no mark. The runner's step re-judges the check afterwards, so the final verdict is right, but the session spends turns on it (doubt: the impact is limited to the in-session verdict)."
     },
     {
-      "file": "plugin/gate/artifacts.py",
-      "line": 602,
+      "file": "plugin/gate/checks.py",
+      "line": 745,
       "pass": "bugs",
-      "rule": "",
+      "rule": "coding-standards rule 2 (match the surrounding error handling)",
       "severity": "nit",
-      "signature": "b44214bae3739e5c",
-      "summary": "The `seen` value of a `differs` on a dotted path is stored whole, with no length cap: up to the 1 MiB file cap, and for a `line` item a single long first line. It goes into the gate record's `proof` entry, `auto-round.json` and the fix round's request. Command output, by contrast, is tailed to OUTPUT_TAIL."
+      "signature": "66a196a2d645cd7e",
+      "summary": "run_drive calls int() on gate.proof_image_kb unguarded. A non-numeric value raises ValueError after the drive has run, so the commands step crashes, re-runs and parks with 'check crashed'. configured_drive_timeout falls back to the default on the same kind of input, and this setting should too."
     },
     {
-      "file": "plugin/skills/ux-conventions/check.py",
-      "line": 63,
+      "file": "plugin/gate/limits.py",
+      "line": 554,
       "pass": "bugs",
-      "rule": "spec R11 (the ux-conventions check reads proof/ and screenshots/)",
+      "rule": "spec R4 (the runner and the gate's wall-clock check read one figure)",
       "severity": "nit",
-      "signature": "a2537610258e383b",
-      "summary": "The ux check globs `evidence/proof/` non-recursively. The drive, the caps and the manifest all walk `proof/` recursively (rglob), so a drive that writes its screenshots into a subfolder is reported as 'no screenshot'."
+      "signature": "10b03dd4f1ca8384",
+      "summary": "When the configured wall-clock cap is already under 30 minutes, check_limits parks every (e) run that has a drive set ('below the floor of 30'), while the runner's limits.run_caps applies min(minutes, 30) and subtracts nothing. The gate and the runner then disagree on the cap (doubt: this only happens when a cap below 30 is configured)."
     }
   ],
-  "head": "eae172d5949e8ff19645159501de38781ed3445c",
+  "head": "8b5c531ab70971c88ca4d099e6c3e6386aaf0c7e",
   "schema_version": 1,
   "tally": {
     "important": 0,
     "nit": 5,
-    "nits_omitted": 1
+    "nits_omitted": 2
   }
 }
