@@ -52,7 +52,14 @@ assumptions that produced the code").
    step 2. Exercise the behavior through direct calls only (a small script, the CLI) that
    read no `.env*`; a call the sandbox denies (`Permission denied` on a `.env*` path) is
    reported as "not run in CI", never as a mismatch — the runner's step judges the suite.
-4. Report what you ran, what you saw, and any behavior that does not match plan.md or
+4. At (d), when `sdlc.yaml: commands.drive` is set (change 0004): open (c)'s images under
+   `changes/<id>-<slug>/evidence/proof/` with the Read tool, compare each with the mock the
+   spec's `Mock:` line names, and report one line per `screenshot:` item of plan.md
+   (`matches`, `differs` with what you saw, or `not produced`). Name the tree you read as step
+   2 does: the images are the runner's drive on the commit `evidence/proof/manifest.json`
+   names, not the final tree. `state:` items are the gate's (its `proof` entry) and are not
+   judged again here. A `differs` makes the verdict `does not match the plan`.
+5. Report what you ran, what you saw, and any behavior that does not match plan.md or
    spec.md. Quote the literal command output; never paraphrase a pass.
 
 Do not fix anything; report only. Do not edit, create or delete any file; the session that

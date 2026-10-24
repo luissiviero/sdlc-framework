@@ -35,6 +35,34 @@ requires, declared with `- ratchet: <name> may fall, because <why>` (`<name>` is
 `evals`; the gate's `ratchets` check reads this line)>
 ```
 
+### Proof items (change 0004; the grammar is `plugin/gate/artifacts.py`)
+Beside prose and the `ratchet:` line, `## Proof` may list items, one per line. Only a list
+item whose text starts with `test:`, `screenshot:` or `state:` is an item; the gate's parser
+reads only those, and every other line stays allowed:
+- `- test: <name>` — a test by name; the suite is the `commands` entry's, not compared here.
+- `- screenshot: evidence/proof/<file>.png`, optionally followed by ` vs mock/<file>` when the
+  spec's Acceptance carries `Mock: mock/<file>` — the drive must write the file.
+- `- state: evidence/proof/<file> <path> ==|contains|matches <value>` — `<path>` is a dotted
+  JSON key (`status.code`, `items.0.name`) for a JSON file, or `line` for a text file; `<value>`
+  is the rest of the line.
+
+How a `state` item is compared (one definition, used by the gate and by `collect.py`):
+- **The one parse**: the expected value and each line of a text file are read as JSON when they
+  parse (`200`, `true`, `"x"`, `null`), else as the string itself.
+- `==` holds only when the two parsed values have the same type and value at every depth: a
+  bool never equals a number, `1` never equals `1.0`, `[true]` is not `[1]`; the text `200` and
+  the JSON number 200 both equal `== 200`. `contains` is a substring of the string form (the
+  value itself for a string, its JSON otherwise), or membership when the value seen is a list;
+  `matches` is a Python `re.search` on the string form.
+- **The any-line rule**: with `line`, the item holds when any line of the text file satisfies
+  the comparison; on a `differs` the value seen is the file's first line. An empty file, a file
+  over 1 MiB, an unreadable or invalid JSON file, or a missing key is `not produced`.
+
+A `state` or `screenshot` item needs `sdlc.yaml: commands.drive` (the gate (b) check
+`proof_items` refuses the plan without one, and refuses a malformed item by its line). The
+runner's step runs the drive after the session at (c), (d) and (e) and compares the items of
+the plan approved at gate (b); an item added during (c) is reported, never the bar.
+
 ## Interrogation prompt (article p.16 step 3; answers land in Risks and Options not taken)
 
 After drafting, answer these in writing before finishing:

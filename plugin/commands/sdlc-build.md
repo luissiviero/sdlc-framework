@@ -91,6 +91,11 @@ When `status.change_type` is `fix`:
 For front-end work the visual target is the exported design mock in
 `changes/<id>-<slug>/mock/` (build guide step 34; article p.12–13): read it before the first
 screen is written, and name in `plan.md` Proof the screenshot that phase (d) compares with it.
+With `sdlc.yaml: commands.drive` set (change 0004), that screenshot is an item the drive
+writes: `- screenshot: evidence/proof/<file>.png vs mock/<file>`, added to the plan during (c),
+reported and never the bar (the gate's bar is the plan approved at (b)); list the drive's own
+files (the Playwright test, its config) under "Files that change", since the reviewer reads
+them. Without a drive it stays prose, as before.
 The build matches the owner's mock (`spec.md` Acceptance, the `Mock:` line), never the
 screens the intent's Examples/References only refer to (ROADMAP R29); with
 `Mock: none`, screens follow the `ux-conventions` skill.

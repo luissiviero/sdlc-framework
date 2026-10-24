@@ -58,9 +58,12 @@ output:
   - adversarial_review needs: Run the adversarial-reviewer agent in a fresh context for this phase; it writes the verdict JSON.
 ```
 Deterministic backing, item by item (R27): (a) to (d), the gate itself (`plugin/gate/cli.py
-check`: artifacts, commands, evidence, plan sync, the adversarial verdict), except the
-screenshots for UI changes at (d), which no gate check requires (`REQUIRED_EVIDENCE` names
-the verifier report and the toolchain logs); (e), the gate's
+check`: artifacts, commands, evidence, plan sync, the adversarial verdict); the screenshots
+for UI changes at (d) only in part: when `sdlc.yaml: commands.drive` is set, the screenshots
+named as `screenshot:` items of the approved plan are checked under `evidence/proof/` by the
+gate's `proof` entry (change 0004), and by-hand screenshots under `evidence/screenshots/` are
+still required by no check (`REQUIRED_EVIDENCE` names the verifier report and the toolchain
+logs); (e), the gate's
 findings check on `evidence/review-findings.json`; "Always", the protected-paths hook, the
 shell guard and the gate's `guardrails` check for the guardrail files, the gate's
 `risk_list` check for the banner, the test ratchet and, on a fix-type change, the test-file

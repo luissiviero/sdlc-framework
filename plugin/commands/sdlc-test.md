@@ -73,15 +73,20 @@ While `all_green` is false (never when the summary says `deferred`):
 4. Re-run step 1.
 
 ## 3. UI changes: screenshot loop against the mock (article p.27 step 2)
-Only when `plan.md` Proof or `spec.md` Acceptance names a mock, screen or screenshot: run
-the app (the project's run instructions or the `run` skill if available), capture the
-screen into `changes/<id>-<slug>/evidence/screenshots/<name>.png`, compare with the mock
-(the exported design mock lives in `changes/<id>-<slug>/mock/`, build guide step 34; a plan
-that names a mock the folder does not hold is a mismatch to report, not a reason to skip),
-adjust and repeat (bounded by the same iteration cap). Say in `evidence/verifier.md` what
-was compared and what differs. Without a browser or screenshot tool in this session, write
-`evidence/screenshots/README.md` saying so; the gate treats it as evidence missing only when
-the plan asked for screenshots.
+Only when `plan.md` Proof or `spec.md` Acceptance names a mock, screen or screenshot.
+When `sdlc.yaml: commands.drive` is set (change 0004), capture nothing by hand: the runner's
+drive wrote (c)'s screenshots into `changes/<id>-<slug>/evidence/proof/` after the build
+session, and the gate checks the plan's `screenshot:` items there; open those images with the
+Read tool, compare each with the mock, and write into `evidence/verifier.md` what you
+compared and what differs (the verifier's (d) step does the same in its fresh context). Never
+run the drive in this session: the runner runs it again after this one.
+When the drive is empty: run the app (the project's run instructions or the `run` skill if
+available), capture the screen into `changes/<id>-<slug>/evidence/screenshots/<name>.png`,
+compare with the mock (the exported design mock lives in `changes/<id>-<slug>/mock/`, build
+guide step 34; a plan that names a mock the folder does not hold is a mismatch to report, not
+a reason to skip), adjust and repeat (bounded by the same iteration cap). Say in
+`evidence/verifier.md` what was compared and what differs. Without a browser or screenshot
+tool in this session, write `evidence/screenshots/README.md` saying so.
 
 ## 4. Verify in a fresh context (agent `sdlc:verifier`)
 Delegate to `sdlc:verifier` with the change id. Store its report as
