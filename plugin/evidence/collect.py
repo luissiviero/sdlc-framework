@@ -21,6 +21,14 @@ error — no change folder, no ``sdlc.yaml``, or a target ``sdlc.yaml`` does not
 one is reported as ``"exit": "none"`` and ``all_green`` is false; the gate refuses a project
 without the three commands anyway, build guide step 14).
 
+When ``sdlc.yaml: commands.drive`` is set (change 0004), the drive runs last, exactly as the
+runner's step runs it (``gate/checks.py: run_drive``: ``evidence/proof/`` cleared, the two
+variables ``SDLC_PROOF_DIR`` and ``SDLC_CHANGE_ID``, the image caps, ``proof/manifest.json``),
+writes ``evidence/drive.log``, and the report gains ``"drive": {"exit", "seconds", "log",
+"timed_out", "items"}`` with each proof item of the approved plan judged against ``proof/``;
+exit 1 when the drive is red or an approved item fails. ``--only drive`` runs it alone. No
+gate record is written: a gate run by hand records the ``proof`` entry as not checked.
+
 The commands run through ``gate/checks.py: run_command``: the platform shell, the timeout of
 ``sdlc.yaml: gate.command_timeout`` (or ``--timeout``) and a process-group kill on a hang, so
 a wedged test suite cannot hold the run open on Windows or Linux.
@@ -36,6 +44,8 @@ targets once, outside the sandbox, writes their output into these logs and re-ju
 gate; the gate accepts the mark only while that step is still to come. The summary then reads
 ``{"all_green": null, "deferred": true, "results": {"test": {"exit": "deferred", ...}}}``,
 exit 0: the session has nothing to fix or to read until the runner has run the targets.
+The drive gets no mark (``"drive": {"exit": "deferred"}``, no log): the runner's step writes
+``drive.log`` itself.
 """
 
 from __future__ import annotations
@@ -56,8 +66,10 @@ from gate import artifacts as art  # noqa: E402
 from gate import checks  # noqa: E402
 from hooks._common import ConfigError, load_sdlc_config  # noqa: E402
 from state import conventions as c  # noqa: E402
+from state import status as status_mod  # noqa: E402
 
 TARGETS = ("test", "build", "lint")  # the order the logs are produced in
+DRIVE = "drive"  # change 0004: ``commands.drive``, run last and only when it is set
 MISSING = "none"  # the exit field of a target sdlc.yaml does not define
 DEFERRED = "deferred"  # the exit field inside a CI session: the runner runs the target later
 
@@ -81,6 +93,42 @@ def ensure_screenshots_dir(evidence_dir: Path) -> Path:
     if not keep.exists():
         keep.write_text("", encoding="utf-8")
     return shots
+
+
+def run_drive(root: Path, change_id: str, change_dir: Path, config: dict, deferred: bool) -> dict:
+    """``commands.drive`` by hand, the way the runner's step runs it (change 0004, R2): the
+    same clearing of ``evidence/proof/``, environment, caps and manifest, ``drive.log``, and
+    the approved plan's items judged against what it wrote (printed, never recorded). The
+    line is ``config``'s, the file the three targets were read from. Inside a CI session it
+    is left to the runner and nothing is written."""
+    if deferred:
+        return {"exit": DEFERRED, "seconds": 0.0, "log": None, "timed_out": False, "items": []}
+    from gate import gate as gate_mod  # noqa: PLC0415 - the gate's context, read-only here
+
+    phase = status_mod.read_status(change_dir).phase
+    ctx = gate_mod.build_context(root, change_id, phase, any_phase=True)
+    ctx.config = config
+    run = checks.run_drive(ctx, ctx.diff.head if ctx.diff else None, phase)
+    log = ctx.evidence_dir / art.EVIDENCE_DRIVE
+    art.write_evidence_log(
+        log,
+        art.render_evidence_header(run["command"], run["exit_code"], run["seconds"], _now()),
+        run["output"] or "",
+    )
+    manifest = checks.read_manifest(ctx) or {}
+    items = checks.proof_entries(ctx, manifest.get("dropped") or [])
+    failed = [i for i in items if i["approved"] and i["outcome"] != art.OUTCOME_MATCHES]
+    report = {
+        "exit": run["exit_code"],
+        "seconds": run["seconds"],
+        "log": str(log.relative_to(root)).replace("\\", "/"),
+        "timed_out": "timeout" in run,
+        "items": items,
+        "green": run["exit_code"] == 0 and not failed,
+    }
+    if run.get("refused"):
+        report["refused"] = run["refused"]
+    return report
 
 
 def collect(
@@ -147,6 +195,14 @@ def collect(
             "timed_out": timed_out,
         }
     report: dict = {"all_green": all_green, "results": results}
+    drive_selected = not only or DRIVE in only
+    if drive_selected and checks.drive_from_config(config) is not None:
+        report[DRIVE] = run_drive(root, change_id, change_dir, config, deferred)
+        if not deferred and not report[DRIVE]["green"]:
+            all_green = report["all_green"] = False
+    elif only and DRIVE in only:
+        all_green, usage_error = False, True
+        results[DRIVE] = {"exit": MISSING, "seconds": 0.0, "log": None, "timed_out": False}
     if deferred:
         # nothing ran: the verdict is the runner's, and the summary says so
         report["all_green"] = None if not usage_error else False
@@ -170,7 +226,11 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--root", default=".")
     p.add_argument("--id", required=True, help="change id, e.g. 0001")
     p.add_argument(
-        "--only", nargs="*", default=None, choices=TARGETS, help="collect these targets only"
+        "--only",
+        nargs="*",
+        default=None,
+        choices=(*TARGETS, DRIVE),
+        help="collect these targets only",
     )
     p.add_argument("--timeout", type=int, default=None, help="seconds per command")
     return p

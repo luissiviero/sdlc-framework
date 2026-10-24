@@ -722,11 +722,14 @@ def run_drive(
     caller writes to ``drive.log``), ``refused`` naming a capped ``drive_timeout``."""
     from gate import limits  # noqa: PLC0415 - limits imports this module
 
+    command = drive_from_config(ctx.config)
+    if command is None:
+        raise ValueError("commands.drive is empty: there is no drive to run")
     folder = proof_dir(ctx)
     clear_proof_dir(folder)
     started = time.monotonic()
     run = run_command(
-        drive_from_config(ctx.config) or "",
+        command,
         ctx.root,
         drive_timeout(ctx, phase),
         tail=None,
