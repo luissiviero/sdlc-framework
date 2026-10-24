@@ -2291,13 +2291,16 @@ def commands_timeout_seconds_per(config: dict[str, Any]) -> int:
 def commands_timeout_seconds(config: dict[str, Any], gate_phase: str | None = None) -> int:
     """How long the runner waits for ``run-commands``: the three targets at the gate's own
     per-command timeout (``sdlc.yaml: gate.command_timeout``), the drive's timeout when
-    ``commands.drive`` is set (change 0004: capped at 600 s unless ``gate_phase`` is (e),
-    ``limits.drive_timeout_seconds``), plus the grace the session gets, so the gate's timeout
-    fires before the runner's and the record says which target."""
+    ``commands.drive`` is set and the drive runs at ``gate_phase`` (change 0004: capped at
+    600 s unless ``gate_phase`` is (e), ``limits.drive_timeout_seconds``; never at (b)), plus
+    the grace the session gets, so the gate's timeout fires before the runner's and the record
+    says which target."""
     per_command = _int_or(
         _gate_settings(config).get("command_timeout"), gate_checks.DEFAULT_COMMAND_TIMEOUT
     )
-    drive = limits.drive_timeout_seconds(config, gate_phase) or 0
+    # the drive never runs at (b) (``DRIVE_PHASES``), so it adds nothing to that gate's step
+    runs_drive = gate_phase is None or gate_phase in gate_checks.DRIVE_PHASES
+    drive = (limits.drive_timeout_seconds(config, gate_phase) or 0) if runs_drive else 0
     return 3 * per_command + drive + GRACE_MINUTES * 60
 
 
@@ -3235,6 +3238,22 @@ def _run_phase(args, env: dict[str, str], track: dict[str, Any]) -> int:
             plugin_dir, root, change_dir, st, phase,
             "limits: " + limits.budget_reason(spent, cap),
             branch=fix_branch, check="limits", need=limits.BUDGET_NEED,
+        )  # fmt: skip
+        _emit({**parked, "branch": branch})
+        return EXIT_OK
+    # change 0004 (R4): the drive's minutes would take the (e) session below the floor - the
+    # gate's wall-clock check parks the same case, so no session starts on it
+    floor = (
+        limits.drive_floor_refusal(
+            config, phase in BUILD_CAP_PHASES and build_caps_refusal(config, env) is None
+        )
+        if gate_phase == limits.DRIVE_PHASE
+        else None
+    )
+    if floor:
+        parked = park_and_publish(
+            plugin_dir, root, change_dir, st, phase, "limits: " + floor,
+            branch=fix_branch, check="limits", need=limits.DRIVE_FLOOR_NEED,
         )  # fmt: skip
         _emit({**parked, "branch": branch})
         return EXIT_OK

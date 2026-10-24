@@ -3825,6 +3825,11 @@ def test_the_drive_is_read_apart_from_the_three_targets():
     assert checks.configured_drive_timeout({}) == 300
     assert checks.configured_drive_timeout({"gate": {"drive_timeout": "x"}}) == 300
     assert checks.configured_drive_timeout({"gate": {"drive_timeout": 120}}) == 120
+    # nit 4 of the review: gate.proof_image_kb falls back the same way
+    assert checks.configured_proof_image_kb({}) == 50
+    for bad in ("x", None, 0, -3, [1]):
+        assert checks.configured_proof_image_kb({"gate": {"proof_image_kb": bad}}) == 50
+    assert checks.configured_proof_image_kb({"gate": {"proof_image_kb": 200}}) == 200
 
 
 def test_the_drive_timeout_is_capped_at_600_at_c_and_d_and_not_at_e(tmp_path):
@@ -3901,6 +3906,9 @@ def test_the_drive_run_clears_proof_caps_images_and_writes_the_manifest(tmp_path
     ctx.config["gate"]["drive_timeout"] = 900
     assert "600 applied" in checks.run_drive(ctx, "abc123", "d")["refused"]
     assert "refused" not in checks.run_drive(ctx, "abc123", "e")
+    # a non-numeric gate.proof_image_kb runs at the default instead of crashing the step
+    ctx.config["gate"]["proof_image_kb"] = "fifty"
+    assert checks.run_drive(ctx, "abc123", "e")["exit_code"] == 0
 
 
 def test_the_drive_s_environment_adds_two_variables_and_nothing_else(tmp_path):
@@ -4023,6 +4031,15 @@ def test_check_evidence_defers_the_missing_drive_log_in_a_ci_session_only(tmp_pa
     write(ctx.evidence_dir / "drive.log", "no header\n")
     res = checks.check_evidence(ctx)
     assert not res.ok and res.details["red_files"] == ["drive.log"]
+    # nit 3 of the review: in a CI session a red drive.log a fix round inherits is deferred
+    # too, since the session cannot rewrite it; the runner's step judges it again
+    write(ctx.evidence_dir / "drive.log", art.render_evidence_header("x", 1, 1.0, "t") + "\nred\n")
+    ctx.commands_deferred = True
+    res = checks.check_evidence(ctx)
+    assert res.ok and res.details["deferred_logs"] == ["drive.log"]
+    ctx.commands_deferred = False
+    res = checks.check_evidence(ctx)
+    assert not res.ok and res.details["red_files"] == ["drive.log"]
     write(ctx.evidence_dir / "drive.log", green)
     assert checks.check_evidence(ctx).ok
     # without a drive nothing asks for drive.log
@@ -4071,6 +4088,15 @@ def test_the_e_wall_clock_gives_up_the_drive_minutes_and_floors_at_30(tmp_path):
     write(ctx.evidence_dir / "run-e.json", json.dumps({"started_at": started}))
     res = limits.check_limits(ctx)
     assert not res.ok and "takes 100 min off the (e) session's 120 min" in res.reason
+    assert limits.drive_floor_refusal(ctx.config, False) == res.reason
+    # nit 5 of the review: a cap already under 30 gives up nothing and is no park, as the
+    # runner's run_caps reads it
+    ctx.config["gate"]["max_wall_clock_minutes"] = 20
+    assert limits.drive_floor_refusal(ctx.config, False) is None
+    res = limits.check_limits(ctx)
+    assert not res.ok and "limit 20 min" in res.reason
+    assert limits.drive_floor_refusal({"commands": {"drive": "x"}}, False) is None
+    assert limits.drive_floor_refusal({}, False) is None
 
 
 def _with_drive_on_base(root: Path) -> None:

@@ -313,6 +313,18 @@ def configured_drive_timeout(config: dict[str, Any]) -> int:
     return seconds if seconds > 0 else DEFAULT_DRIVE_TIMEOUT
 
 
+def configured_proof_image_kb(config: dict[str, Any]) -> int:
+    """``sdlc.yaml: gate.proof_image_kb``, ``DEFAULT_PROOF_IMAGE_KB`` when unset or not a
+    positive number, as ``configured_drive_timeout`` reads its setting."""
+    gate_cfg = config.get("gate") if isinstance(config, dict) else None
+    value = gate_cfg.get("proof_image_kb") if isinstance(gate_cfg, dict) else None
+    try:
+        kb = int(value)
+    except (TypeError, ValueError):
+        return DEFAULT_PROOF_IMAGE_KB
+    return kb if kb > 0 else DEFAULT_PROOF_IMAGE_KB
+
+
 def drive_timeout(ctx: GateContext, phase: str) -> int:
     """The drive's timeout at gate ``phase``: capped at 600 s at (c) and (d), whole at (e)
     (``limits.drive_timeout_seconds``, spec R4)."""
@@ -509,9 +521,10 @@ def check_evidence(ctx: GateContext) -> CheckResult:
     for name in required:
         path = ctx.evidence_dir / name
         text = path.read_text(encoding="utf-8", errors="replace") if path.is_file() else ""
-        if ctx.commands_deferred and name == art.EVIDENCE_DRIVE and not text.strip():
-            # change 0004 (R7): the session never runs the drive and leaves no mark for it;
-            # the runner's step writes drive.log and judges this check again
+        if ctx.commands_deferred and name == art.EVIDENCE_DRIVE:
+            # change 0004 (R7): the session never runs the drive and leaves no mark for it,
+            # so a drive.log already on the tree (a red one a fix round inherits) is not the
+            # session's to rewrite; the runner's step writes drive.log and judges this again
             deferred.append(name)
             continue
         if not text.strip():
@@ -742,8 +755,7 @@ def run_drive(
         env=drive_env(ctx, env),
     )
     run["seconds"] = round(time.monotonic() - started, 1)
-    max_kb = int(ctx.gate_setting("proof_image_kb", DEFAULT_PROOF_IMAGE_KB) or 0)
-    dropped = apply_image_caps(folder, max_kb if max_kb > 0 else DEFAULT_PROOF_IMAGE_KB)
+    dropped = apply_image_caps(folder, configured_proof_image_kb(ctx.config))
     write_manifest(folder, head, phase, dropped)
     refused = (
         limits.drive_timeout_refusal(ctx.config) if phase in limits.DRIVE_CAPPED_PHASES else None

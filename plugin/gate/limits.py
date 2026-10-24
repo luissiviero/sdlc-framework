@@ -148,6 +148,28 @@ def drive_minutes(config: Any) -> int:
     return math.ceil(seconds / 60) if seconds else 0
 
 
+DRIVE_FLOOR_NEED = (
+    "Lower gate.drive_timeout or raise the wall-clock cap in sdlc.yaml (a reviewed PR), then "
+    "re-run the phase."
+)
+
+
+def drive_floor_refusal(config: Any, build: bool) -> str | None:
+    """Why the drive's minutes would take the (e) session's wall clock below
+    ``RUN_CAP_FLOOR_MINUTES``, or None. A cap already under the floor gives up nothing
+    (``run_caps``), so it is no refusal: the runner, before the session starts, and the gate's
+    wall-clock check read this one rule (change 0004, R4)."""
+    config = config if isinstance(config, dict) else {}
+    less = drive_minutes(config)
+    _turns, whole = run_caps(config.get("gate"), build)
+    if not less or whole < RUN_CAP_FLOOR_MINUTES or whole - less >= RUN_CAP_FLOOR_MINUTES:
+        return None
+    return (
+        f"gate.drive_timeout takes {less} min off the (e) session's {whole} min, below the "
+        f"floor of {RUN_CAP_FLOOR_MINUTES} min"
+    )
+
+
 def iteration_cap(ctx: GateContext, classification: str | None) -> int:
     cap = _int(ctx.gate_setting("max_iterations", None), DEFAULT_MAX_ITERATIONS)
     if classification == "non-routine":
@@ -550,15 +572,14 @@ def check_limits(ctx: GateContext, now: datetime | None = None) -> CheckResult:
     # subtracted the same figure (``run_phase.run_caps`` with the gate phase)
     less = drive_minutes(ctx.config) if ctx.phase == DRIVE_PHASE else 0
     _turns, max_minutes = run_caps(ctx.config.get("gate"), build, less)
-    _turns, whole = run_caps(ctx.config.get("gate"), build)
-    if less and whole - less < RUN_CAP_FLOOR_MINUTES:
+    floor = drive_floor_refusal(ctx.config, build) if less else None
+    if floor:
+        _turns, whole = run_caps(ctx.config.get("gate"), build)
         return CheckResult(
             "limits",
             False,
-            f"gate.drive_timeout takes {less} min off the (e) session's {whole} min, below the "
-            f"floor of {RUN_CAP_FLOOR_MINUTES} min",
-            "Lower gate.drive_timeout or raise the wall-clock cap in sdlc.yaml (a reviewed PR), "
-            "then re-run the phase.",
+            floor,
+            DRIVE_FLOOR_NEED,
             {**details, "stop": False, "drive_minutes": less, "max_wall_clock_minutes": whole},
         )
     if less:
