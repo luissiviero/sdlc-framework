@@ -17,7 +17,8 @@ retired term used as a live one, CLAUDE.md's verifying lines against ``sdlc.yaml
 the next free choice, candidate, note, decision and patch on ``main`` and every fetched branch
 ahead of it (ROADMAP R65, part 1). ``version-check`` fails a branch that bumps ``plugin.json``
 to a version ``main`` already holds or a tag already has (ROADMAP R5's race, choice 257), or
-that a fetched open branch bumped to first (choice 266). ``template-hashes`` rewrites
+that a fetched open branch bumped to first (choice 266), and one that changes ``plugin/`` or
+``template/`` without a version above ``main``'s (choice 270). ``template-hashes`` rewrites
 ``plugin/init/template_hashes.json``, the hash of each refreshed copy's template at every tag,
 which ``/sdlc-init`` reads to tell a copy nobody edited (ROADMAP R64).
 """
@@ -1556,9 +1557,9 @@ def task_next_free() -> int:
 # first only: the second's change ships under a tag that does not hold it. A branch bumps when
 # one of its own commits (ahead of main) holds a version none of its parents holds, so a merge
 # of main into the branch brings main's version without bumping. A branch that bumps must hold
-# a version above main's whose tag does not exist yet; one that bumps nothing passes, since a
-# change may ship with the next release (PR #88). On main itself nothing is ahead, so nothing
-# is checked.
+# a version above main's whose tag does not exist yet; one that bumps nothing passes when it
+# changes nothing under plugin/ or template/ (PR #88), and fails when it does (below). On main
+# itself nothing is ahead, so nothing is checked.
 
 
 def _version_at(root: Path, commit: str) -> tuple[int, ...] | None:
@@ -1593,22 +1594,68 @@ def tag_exists(root: Path, version: str) -> bool | None:
         return None
 
 
+# A change under plugin/ or template/ ships only under a version it bumps (HANDOFF.md, "Rules
+# for every session"): #358 and the owner's #369 changed those folders with plugin.json left at
+# main's version, and their lines first shipped in the next PR's release. The branch's own
+# change is the diff from its merge base with main to HEAD, so a merge of main brings none of
+# main's; any path added, changed or deleted under either folder needs a version above main's,
+# and nothing under them is exempt. Framework checks checks out with fetch-depth: 0, which
+# fetches every branch to origin/*, so main and the merge base are read there; a clone that
+# lacks main or the merge base fails rather than passing unchecked.
+SHIPPED_DIRS = ("plugin", "template")
+
+
+def shipped_paths(root: Path, base: str, head: str = "HEAD") -> list[str]:
+    """Every path under ``plugin/`` or ``template/`` that ``head`` adds, changes or deletes
+    against its merge base with ``base``; with several merge bases (a criss-cross merge), only
+    the paths that differ from each of them, so that none of main's own is counted.
+    ``LookupError`` when there is no merge base."""
+    try:
+        merge_bases = _git(root, "merge-base", "--all", base, head).decode().split()
+    except subprocess.CalledProcessError:
+        raise LookupError(
+            f"HEAD has no merge base with main at {base[:7]}: fetch main's whole history "
+            "(git fetch --unshallow origin in a shallow clone)"
+        ) from None
+    shipped: set[str] | None = None
+    for merge_base in merge_bases:
+        listed = _git(
+            root, "diff", "--name-only", "--no-renames", "-z", merge_base, head, "--", *SHIPPED_DIRS
+        )
+        paths = {p for p in listed.decode("utf-8", errors="replace").split("\0") if p}
+        shipped = paths if shipped is None else shipped & paths
+    return sorted(shipped or ())
+
+
 def version_problems(root: Path) -> tuple[list[str], list[str]]:
     """(failures, reports) for the branch at ``HEAD`` against ``main``."""
     try:
         ref, base = main_commit(root)
+        shipped = shipped_paths(root, base)
     except LookupError as error:
-        return [], [f"not checked: {error}"]
-    if not version_bumped(root, base):
-        return [], []
+        return [f"cannot compare the branch with main: {error}"], []
+    name = ref.split("/", 2)[2]
     head, on_main = _version_at(root, "HEAD"), _version_at(root, base)
+    above_main = head is not None and on_main is not None and head > on_main
+    if not version_bumped(root, base) and not (shipped and above_main):
+        if not shipped:
+            return [], []
+        some = ", ".join(shipped[:3]) + (
+            f" and {len(shipped) - 3} more" if len(shipped) > 3 else ""
+        )
+        at = "no readable version" if head is None else _show("patch", head)
+        of_main = "none readable" if on_main is None else _show("patch", on_main)
+        return [
+            f"the branch changes {some} under plugin/ or template/ with {PLUGIN_MANIFEST} at "
+            f"{at}, not above {name}'s {of_main}: bump it and the marketplace entry to the next "
+            "free patch (python tasks.py next-free)"
+        ], []
     if head is None:
         return [f"{PLUGIN_MANIFEST} holds no readable version at HEAD"], []
     shown = _show("patch", head)
     hint = "take the next free patch (python tasks.py next-free)"
     if on_main is not None and head <= on_main:
         main_shown = _show("patch", on_main)
-        name = ref.split("/", 2)[2]
         return [f"the branch bumps to {shown}, not above {name}'s {main_shown}: {hint}"], []
     failures, reports = _open_branch_problems(root, base, head, shown, hint)
     if failures:
@@ -1624,8 +1671,8 @@ def version_problems(root: Path) -> tuple[list[str], list[str]]:
 # An open branch that bumps to the same version is a clash before either merges (choice 266).
 # The branch whose bump came first keeps the version; the later one fails here and renumbers.
 # Only the branches this clone has fetched are seen, so `git fetch origin` before `verify`;
-# CI fetches the pull request alone and sees none. A branch built on this one, or one this
-# branch is built on, shares the bump and is no clash.
+# Framework checks fetches every branch too (fetch-depth: 0; choice 270's record). A branch
+# built on this one, or one this branch is built on, shares the bump and is no clash.
 
 
 def _bump_key(root: Path, base: str, tip: str, version: tuple[int, ...]) -> tuple[int, str]:
@@ -1675,12 +1722,12 @@ def _open_branch_problems(
 
 
 def task_version_check() -> int:
-    """Fail a branch that bumps plugin.json to a version main holds, a tag already has, or a
-    fetched open branch bumped to first."""
+    """Fail a branch that changes plugin/ or template/ without a version above main's, or
+    bumps plugin.json to a version main holds, a tag has or a fetched open branch took first."""
     try:
         failures, reports = version_problems(ROOT)
     except (OSError, subprocess.CalledProcessError) as error:
-        failures, reports = [], [f"not checked: cannot read git: {error}"]
+        failures, reports = [f"cannot read git: {error}"], []
     for line in reports:
         print(f"version-check: {line}")
     for line in failures:
