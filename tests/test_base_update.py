@@ -174,6 +174,17 @@ def test_the_recheck_has_no_targets_to_run_without_commands(tmp_path):
     assert base_update.judged(tmp_path, {}, {}, "x", "b") == {"ok": True, "recheck": "no targets"}
 
 
+def test_the_recheck_never_runs_a_drive(tmp_path):
+    """Change 0004 (R3): the re-check of the merged tree runs the three targets only; a drive
+    that would fail and leave a witness never runs."""
+    witness = tmp_path / "drive-ran"
+    ok = 'python -c "pass"'
+    drive = f"python -c \"open(r'{witness}', 'w').write('x'); raise SystemExit(1)\""
+    config = {"commands": {"build": ok, "test": ok, "lint": ok, "drive": drive}}
+    assert base_update.recheck(tmp_path, config, dict(os.environ)) == []
+    assert not witness.exists()
+
+
 def test_the_merge_after_a_session_runs_no_planted_hook_and_holds_no_credential(
     remote, tmp_path, monkeypatch
 ):

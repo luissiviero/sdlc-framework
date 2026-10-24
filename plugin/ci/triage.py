@@ -136,7 +136,12 @@ def logs_for(root: Path, case: str, out: dict[str, Any] | None, copies: list[str
         checks = failed_checks(read_json(root / str(out.get("gate_record") or "")))
         paths.append(out.get("gate_record"))
         if "commands" in checks:
-            paths += [evidence / name for name in art.EVIDENCE_TARGETS.values()]
+            # drive.log when it exists (change 0004): ``_existing`` keeps only real files
+            paths += [evidence / name for name in art.target_logs(True).values()]
+        if "proof" in checks and "commands" not in checks:
+            paths.append(evidence / art.EVIDENCE_DRIVE)
+        if "proof" in checks:
+            paths.append(evidence / art.EVIDENCE_PROOF / art.PROOF_MANIFEST)
         if "fix" in checks:
             paths.append(out.get("result_file"))
         paths.append(out.get("stderr_file"))

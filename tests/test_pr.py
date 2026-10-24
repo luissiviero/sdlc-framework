@@ -500,6 +500,86 @@ def test_red_log_is_red(project):
     assert "test red, build red, lint red" in lines[1]
 
 
+# --- change 0004: the drive's proof in the evidence line ------------------------------------
+def _with_drive(root: Path) -> None:
+    text = (root / "sdlc.yaml").read_text(encoding="utf-8")
+    write(root / "sdlc.yaml", text.replace("commands:\n", 'commands:\n  drive: "npx x"\n', 1))
+    git(root, "add", "sdlc.yaml")
+    git(root, "commit", "-q", "-m", "owner: commands.drive")
+
+
+def _proof_record(change: Path, details: dict) -> None:
+    record = gate_json(change, "d", "continue", None)
+    record["checks"].append(
+        {"name": "proof", "ok": True, "reason": "x", "need": "", "details": details}
+    )
+    write(change / art.EVIDENCE_DIR / "gate-d.json", json.dumps(record))
+
+
+def _manifest(change: Path, commit: str) -> None:
+    files = [{"path": "home.png", "bytes": 10}, {"path": "status.json", "bytes": 20}]
+    write(
+        change / art.EVIDENCE_DIR / "proof" / "manifest.json",
+        json.dumps({"schema_version": 1, "commit": commit, "files": files, "dropped": []}),
+    )
+
+
+STATE_ITEMS = [
+    {"item": "a", "kind": "state", "approved": True, "outcome": "matches"},
+    {"item": "b", "kind": "state", "approved": True, "outcome": "differs"},
+    {"item": "c", "kind": "screenshot", "approved": True, "outcome": "matches"},
+    {"item": "d", "kind": "state", "approved": False, "outcome": "matches"},
+]
+
+
+def test_the_evidence_line_shows_the_drive_and_its_proof(project):
+    root, change = project
+    _with_drive(root)
+    logs(change, exit_code=0)
+    write(change / art.EVIDENCE_DIR / desc.SCREENSHOT_DIR / ".gitkeep", "")
+    head = git(root, "rev-parse", "HEAD").strip()
+    _manifest(change, head)
+    _proof_record(change, {"items": STATE_ITEMS})
+    status = desc.evidence_status(change, "d", root)
+    assert "test green, build green, lint green, drive missing" in status
+    assert "proof 2, state items 1 of 2 matching" in status
+    assert "0 screenshot(s)" in status  # the .gitkeep is not a screenshot
+    assert "not the final head" not in status
+    # the runner's record commit moves the change folder only: still the final head
+    git(root, "add", ".")
+    git(root, "commit", "-q", "-m", "run(c): gate record")
+    assert "not the final head" not in desc.evidence_status(change, "d", root)
+    # a source file changed after the manifest: the proof is of an older tree
+    write(root / "sample_pkg" / "later.py", "x = 1\n")
+    git(root, "add", ".")
+    git(root, "commit", "-q", "-m", "a later source commit")
+    assert f"proof of {head[:7]}, not the final head" in desc.evidence_status(change, "d", root)
+    # the check run's summary carries the same line
+    summary = pr_cli.check_run_result(root, change, "d")["summary"]
+    assert "drive missing" in summary and "proof 2, state items 1 of 2 matching" in summary
+    # by hand: not checked; and the bullet passes the root
+    _proof_record(change, {"checked": False})
+    assert "proof not checked" in desc.evidence_status(change, "d", root)
+    lines = bullets(desc.build_description(root, "0001", "d"))
+    assert "drive missing" in lines[1] and "proof not checked" in lines[1]
+
+
+def test_no_drive_keeps_the_evidence_line_of_today(project):
+    root, change = project
+    logs(change, exit_code=0)
+    _proof_record(change, {})
+    status = desc.evidence_status(change, "d", root)
+    assert "drive" not in status and "proof" not in status
+    assert status.startswith("test green, build green, lint green, verifier.md missing")
+
+
+def test_a_proof_round_reads_its_item_count():
+    auto = {"round": 1, "cap": 2, "targets": [{"target": "proof", "items": [{}, {}]}]}
+    assert "a red target (proof (2 items))" in desc._auto_round_line(auto)
+    auto["targets"] = [{"target": "test", "exit_code": 1}, {"target": "proof", "items": [{}]}]
+    assert "(test (exit 1), proof (1 item))" in desc._auto_round_line(auto)
+
+
 def test_phase_e_release_note_and_counters(project):
     root, change = project
     logs(change)

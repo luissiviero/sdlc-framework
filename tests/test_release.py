@@ -118,6 +118,8 @@ def test_notes_are_deterministic_and_list_commits_and_links(tmp_path):
     assert "spec.md" not in first.split("## Links", 1)[1]  # no spec.md in the folder
     assert "no review-findings.json" in first
     assert "test missing" in first  # the evidence status line of the PR summary
+    # change 0004: the line is rendered with the root (the drive is read there), never failed
+    assert "evidence status unavailable" not in first and "drive" not in first
 
 
 def test_notes_what_changed_is_the_title_for_a_quick_intent(tmp_path):
@@ -947,6 +949,17 @@ def test_the_recheck_runs_without_the_github_token(tmp_path, monkeypatch):
     check = "python -c \"import os, sys; sys.exit(1 if os.environ.get('GITHUB_TOKEN') else 0)\""
     yaml = {"commands": {"build": check, "test": check, "lint": check}}
     assert cli.recheck_targets(yaml, tmp_path, 60) == []
+
+
+def test_the_recheck_never_runs_a_drive(tmp_path):
+    """Change 0004 (R3): the release's re-check of the merge commit runs build, test and lint
+    only; the drive, which would fail and leave a witness, never runs."""
+    witness = tmp_path / "drive-ran"
+    ok = 'python -c "pass"'
+    drive = f"python -c \"open(r'{witness}', 'w').write('x'); raise SystemExit(1)\""
+    yaml = {"commands": {"build": ok, "test": ok, "lint": ok, "drive": drive}}
+    assert cli.recheck_targets(yaml, tmp_path, 60) == []
+    assert not witness.exists()
 
 
 def test_the_recheck_runs_without_the_deploy_secrets(tmp_path, monkeypatch):

@@ -149,11 +149,11 @@ def commits(root: Path, base: str | None = None) -> list[str] | None:
     return [line.strip() for line in out.splitlines() if line.strip()]
 
 
-def _evidence_line(change_dir: Path) -> str:
+def _evidence_line(change_dir: Path, root: Path) -> str:
     try:
         from pr import description
 
-        return description.evidence_status(change_dir, "e")
+        return description.evidence_status(change_dir, "e", root)
     except Exception as exc:  # noqa: BLE001 - the notes still render
         return f"evidence status unavailable: {exc!r}"
 
@@ -237,7 +237,7 @@ def build_notes(
         lines.append("(no commits since the base)")
     else:
         lines += [f"- {entry}" for entry in found]
-    lines += ["", "## Evidence", "", _evidence_line(change_dir)]
+    lines += ["", "## Evidence", "", _evidence_line(change_dir, root)]
     lines += ["", "## Review findings", "", _findings_line(change_dir)]
     lines += ["", "## Links", ""]
     links = [f"- [{name}](../{name})" for name in LINKED if (change_dir / name).is_file()]
