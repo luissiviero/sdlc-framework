@@ -103,7 +103,9 @@ in a CI session (step 4), the port list's home under `docs/progress/` (step 13),
   worst case with R51's re-check and the cancellation sentence of R4, panel decision 2),
   `sdlc-test.yml` and `sdlc-deploy.yml`, for the owner to apply to each template and its
   `.github/workflows/` copy in one reviewed PR; the four templates do not change in this build
-- `.claude-plugin/plugin.json` — the next free patch version (R16)
+- `.claude-plugin/plugin.json` — the next free patch version (R16): 1.0.40
+- `.claude-plugin/marketplace.json` — the same version in the marketplace entry, which
+  `python tasks.py version-check` requires beside plugin.json (added in phase (c))
 - `changes/0004-drive-target-and-proof-items/evidence/port-list.md` — new: the port-list
   lines of this change (`plugin/ci/run_phase.py` and `template/.github/workflows/sdlc-fix.yml`,
   one line per file with what changed), written by the build; the session that records the
