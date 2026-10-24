@@ -1,0 +1,28 @@
+{
+  "decisions": [
+    {
+      "advocate": "Object: drop the shell-expanded `--output \"$SDLC_PROOF_DIR\"` from the proposed line and propose `npx playwright test`, with the test reading `process.env.SDLC_PROOF_DIR`, rather than keeping the `$` form and leaving Windows to the owner.",
+      "at": "2026-10-24T12:20:00Z",
+      "cost_usd": null,
+      "decision": "Keep the proposed line `npx playwright test --output \"$SDLC_PROOF_DIR\"` and no substitution in `collect.py`; the `commands.drive` comment (R1) and the `/sdlc-init` text (R10) each gain one sentence saying the platform shell expands the variable, that a `cmd.exe` by-hand run writes `%SDLC_PROOF_DIR%`, and that the test writes its files to `process.env.SDLC_PROOF_DIR`.",
+      "head": "fe23373217468a098d53dbda188eabc500d3c3c9",
+      "item": "The Playwright line `/sdlc-init` proposes writes to `\"$SDLC_PROOF_DIR\"`, which the shell",
+      "item_n": 1,
+      "key": "concern:51eec3b904e0092f",
+      "kind": "concern",
+      "n": 1,
+      "overturned": null,
+      "phase": "b",
+      "rationale": [
+        "The intent fixes the form (line 153: \"a Playwright line that writes to `$SDLC_PROOF_DIR`\"), and a design run cannot rewrite an outcome the owner accepted at gate (a); the advocate's plain line is a change to the intent, for the owner at this gate, not for the panel.",
+        "Both verdicts agree `collect.py` must not substitute (plan \"Options not taken\"); the gate's path is the Linux runner's `/bin/sh`, where the line works as written.",
+        "The intent's \"Python only, Windows and Linux\" (line 201) binds the plugin code, which stays portable (`run_drive`, `clear_proof_dir`, `collect.py`); the drive line is project content the owner confirms (Q4).",
+        "The by-hand Windows failure is loud, not silent: every item `not produced`, `collect.py` exits 1 and names them (spec R2, plan Risks), so by REVIEW.md's bar it breaks no gate behaviour, leaks nothing and breaches no policy.",
+        "The one real gap is the advocate's point 2 (nothing says why): the sentence in the two texts the owner reads closes it (ux-conventions rule 4) inside files already in the plan, with no new mechanism and no plan change."
+      ],
+      "reviewer": "Keep the `$SDLC_PROOF_DIR` form and no substitution in `collect.py`; add the Windows note to the R1 comment and the R10 text (a nit, not a reason to reopen)."
+    }
+  ],
+  "phase": "b",
+  "schema_version": 1
+}

@@ -407,7 +407,7 @@ REVIEW.md pass; this repository's `sdlc.yaml` and workflow copies.
 
 ## Flagged concerns
 
-1. The Playwright line `/sdlc-init` proposes writes to `"$SDLC_PROOF_DIR"`, which the shell
+1. decided (by panel #1): Keep the proposed line `npx playwright test --output "$SDLC_PROOF_DIR"` and no substitution in `collect.py`; the `commands.drive` comment (R1) and the `/sdlc-init` text (R10) each gain one sentence saying the platform shell expands the variable, that a `cmd.exe` by-hand run writes `%SDLC_PROOF_DIR%`, and that the test writes its files to `process.env.SDLC_PROOF_DIR`. — The Playwright line `/sdlc-init` proposes writes to `"$SDLC_PROOF_DIR"`, which the shell
    expands on the Linux runner and in a by-hand run on Linux or macOS, and which `cmd.exe`
    does not expand in a by-hand run on Windows; the intent is silent on the by-hand Windows
    case. The design proposes the `$` form unchanged (the owner confirms the line, and a
