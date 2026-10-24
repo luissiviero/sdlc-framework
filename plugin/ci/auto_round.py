@@ -108,10 +108,8 @@ def _red_runs(commands: dict[str, Any]) -> list[dict[str, Any]] | None:
     """The red runs of a failed ``commands`` entry, or None when the entry is not a red target
     (an ``sdlc.yaml`` gap, a crash, a command that did not start: parks as before)."""
     details = _details(commands)
-    if details.get("missing") or details.get("crashed") or details.get("deferred"):
+    if any(details.get(k) for k in ("missing", "crashed", "deferred", "not_started")):
         return None  # an sdlc.yaml gap, or an infrastructure failure: parks as before
-    if details.get("not_started"):
-        return None
     runs = details.get("runs")
     if not isinstance(runs, dict) or not runs:
         return None

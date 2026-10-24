@@ -279,10 +279,18 @@ def commands_from_config(config: dict[str, Any]) -> dict[str, str]:
     out: dict[str, str] = {}
     if isinstance(cmds, dict):
         for key in ("build", "test", "lint"):
-            value = cmds.get(key)
-            if isinstance(value, str) and value.strip() and not PLACEHOLDER_COMMAND_RE.match(value):
-                out[key] = value.strip()
+            value = _usable(cmds.get(key))
+            if value:
+                out[key] = value
     return out
+
+
+def _usable(value: Any) -> str | None:
+    """A command line as ``sdlc.yaml`` gives it, stripped, or None when it is not one (not a
+    string, empty, or the "echo no <x> target" placeholder)."""
+    if isinstance(value, str) and value.strip() and not PLACEHOLDER_COMMAND_RE.match(value):
+        return value.strip()
+    return None
 
 
 def drive_from_config(config: dict[str, Any]) -> str | None:
@@ -290,10 +298,7 @@ def drive_from_config(config: dict[str, Any]) -> str | None:
     None when it is missing, empty or a placeholder. Read apart from ``commands_from_config``
     so the three-target readers (the re-checks of R51 and the release) never run it."""
     cmds = config.get("commands") if isinstance(config, dict) else None
-    value = cmds.get("drive") if isinstance(cmds, dict) else None
-    if isinstance(value, str) and value.strip() and not PLACEHOLDER_COMMAND_RE.match(value):
-        return value.strip()
-    return None
+    return _usable(cmds.get("drive")) if isinstance(cmds, dict) else None
 
 
 def configured_drive_timeout(config: dict[str, Any]) -> int:
@@ -705,6 +710,7 @@ def write_manifest(
 
 
 def read_manifest(ctx: GateContext) -> dict[str, Any] | None:
+    """``evidence/proof/manifest.json``, or None when it is missing or not a JSON object."""
     text = art.read_text(proof_dir(ctx) / art.PROOF_MANIFEST)
     try:
         data = json.loads(text) if text else None
@@ -771,20 +777,24 @@ def proof_entries(ctx: GateContext, dropped: list[Any] | None = None) -> list[di
     approved = _drive_items(ctx.approved_artifact("plan.md"))
     lines = {i.line for i in approved}
     added = [i for i in _drive_items(ctx.artifact("plan.md")) if i.line not in lines]
-    entries = []
-    for item, is_approved in [(i, True) for i in approved] + [(i, False) for i in added]:
-        outcome, seen = item_outcome(item, proof_dir(ctx), dropped or [])
-        entry = {
-            "item": item.line,
-            "kind": item.kind,
-            "file": item.file,
-            "approved": is_approved,
-            "outcome": outcome,
-        }
-        if outcome != art.OUTCOME_MATCHES:
-            entry["seen"] = seen
-        entries.append(entry)
-    return entries
+    return [
+        _entry(item, is_approved, *item_outcome(item, proof_dir(ctx), dropped or []))
+        for item, is_approved in [(i, True) for i in approved] + [(i, False) for i in added]
+    ]
+
+
+def _entry(item: art.ProofItem, approved: bool, outcome: str, seen: Any) -> dict[str, Any]:
+    """One item of the ``proof`` entry (spec R7); ``seen`` only when it did not match."""
+    entry = {
+        "item": item.line,
+        "kind": item.kind,
+        "file": item.file,
+        "approved": approved,
+        "outcome": outcome,
+    }
+    if outcome != art.OUTCOME_MATCHES:
+        entry["seen"] = seen
+    return entry
 
 
 def judge_proof(ctx: GateContext, manifest: dict[str, Any] | None) -> CheckResult:
@@ -833,14 +843,7 @@ def check_proof(ctx: GateContext) -> CheckResult:
         PROOF_DRIVE_REMOVED_REASON.format(n=len(items)),
         PROOF_DRIVE_REMOVED_NEED,
         items=[
-            {
-                "item": i.line,
-                "kind": i.kind,
-                "file": i.file,
-                "approved": True,
-                "outcome": art.OUTCOME_NOT_PRODUCED,
-                "seen": "no drive ran: commands.drive is empty",
-            }
+            _entry(i, True, art.OUTCOME_NOT_PRODUCED, "no drive ran: commands.drive is empty")
             for i in items
         ],
         drive_removed=True,
@@ -850,7 +853,7 @@ def check_proof(ctx: GateContext) -> CheckResult:
 def check_proof_items(ctx: GateContext) -> CheckResult:
     """Gate (b) (spec R9): every item of the working-tree plan's ``## Proof`` follows the
     grammar, and a ``state`` or ``screenshot`` item has a drive to produce it."""
-    plan = ctx.artifact("plan.md") or ""
+    plan = ctx.artifact("plan.md")
     problems = [
         f"plan.md line {i.number}: `{i.line}`: {i.problem}" for i in art.malformed_proof_items(plan)
     ]

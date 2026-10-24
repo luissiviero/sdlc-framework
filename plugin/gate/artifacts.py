@@ -597,13 +597,8 @@ def compare_state(item: ProofItem, proof_dir: Path) -> tuple[str, Any]:
         found, seen = _json_at(data, item.path)
         if not found:
             return OUTCOME_NOT_PRODUCED, f"{item.file} has no {item.path}"
-        return (
-            (OUTCOME_MATCHES, None)
-            if _holds(item.verb, seen, item.value)
-            else (
-                OUTCOME_DIFFERS,
-                seen,
-            )
-        )
+        if _holds(item.verb, seen, item.value):
+            return OUTCOME_MATCHES, None
+        return OUTCOME_DIFFERS, seen
     except re.error as exc:
         return OUTCOME_DIFFERS, f"the pattern does not compile: {exc}"
