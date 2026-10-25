@@ -58,7 +58,7 @@ def template_bands(tmp_path: Path) -> bands.Bands:
 def _rollback_config(production: bool = True, **entry) -> dict:
     runbook = {"name": "rollback-deploy", "command": "x", "rehearsed_at": "2026-09-24"}
     runbook.update(entry)
-    return {"deploy": {"production": production}, "maintain": {"runbooks": [runbook]}}
+    return {"deploy": {"production_gate": production}, "maintain": {"runbooks": [runbook]}}
 
 
 def _verdict(**kw) -> dict:
@@ -378,9 +378,7 @@ def test_project_go_overrides_bands_preapproved(template_bands: bands.Bands):
 def test_bands_go_not_weakened_by_project_preapproved(template_bands: bands.Bands):
     config = {
         "maintain": {
-            "runbooks": [
-                {"name": "rollback-deploy", "command": "x", "authorization": "allow"}
-            ]
+            "runbooks": [{"name": "rollback-deploy", "command": "x", "authorization": "allow"}]
         }
     }
     route = "runbook:rollback-deploy"
@@ -735,7 +733,47 @@ def test_apply_forced_turns_every_runbook_route_into_go_and_leaves_pull_request(
 
 
 def test_production_declared_needs_a_real_boolean():
+    assert routes.production_declared({"deploy": {"production_gate": True}})
+    assert not routes.production_declared({"deploy": {"production_gate": "yes"}})
+    assert not routes.production_declared({"deploy": {"production_gate": None}})
+
+
+def test_production_declared_reads_the_old_key_for_one_release():
+    """R45 (decision 39, row 55): ``deploy.production`` is read as ``production_gate`` for one
+    release; both set and disagreeing declares nothing here (the gate and the hook refuse)."""
     assert routes.production_declared({"deploy": {"production": True}})
     assert not routes.production_declared({"deploy": {"production": "yes"}})
-    assert not routes.production_declared({"deploy": {"production": None}})
+    both = {"deploy": {"production_gate": False, "production": True}}
+    assert not routes.production_declared(both)
+    agree = {"deploy": {"production_gate": True, "production": True}}
+    assert routes.production_declared(agree)
+
+
+def test_the_old_authorization_values_route_as_allow_and_ask(tmp_path):
+    """R45 (decision 39, row 56): a bands.yaml that still says ``preapproved`` and ``go``
+    loads as ``allow`` and ``ask``, and resolves the same; a project runbook's ``go`` is still
+    the stricter value."""
+    old = (
+        _rendered_template()
+        .replace("authorization: allow", "authorization: preapproved")
+        .replace("authorization: ask", "authorization: go")
+    )
+    assert "authorization: preapproved" in old and "authorization: go" in old
+    legacy = _load_bands(tmp_path, old)
+    assert [(r.name, r.authorization) for r in legacy.routes()] == list(TEMPLATE_ROUTES.items())
+    config = {"maintain": {"runbooks": [{"name": "rollback-deploy", "command": "x"}]}}
+    for name, auth in TEMPLATE_ROUTES.items():
+        assert (
+            routes.authorization(name, legacy.route(name), config, "python").authorization == auth
+        )
+    stricter = {"maintain": {"runbooks": [{"name": "revert-pr", "authorization": "go"}]}}
+    route = "runbook:revert-pr"
+    resolved = routes.authorization(route, legacy.route(route), stricter, "python")
+    assert (resolved.authorization, resolved.source) == (
+        "ask",
+        "sdlc.yaml: maintain.runbooks (stricter)",
+    )
+    assert routes.authorization_value("preapproved") == "allow"
+    assert routes.authorization_value("go") == "ask"
+    assert routes.authorization_value("auto") == "auto"
     assert not routes.production_declared({})
