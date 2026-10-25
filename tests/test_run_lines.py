@@ -25,16 +25,16 @@ def meta(credential: str, seconds: float, timed_out: bool = False) -> dict:
 def test_the_spend_is_rebuilt_from_the_stored_results_not_the_ledger(tmp_path):
     """M8: emptying spend.json used to give the next session the whole budget again."""
     ev = tmp_path / "evidence"
-    result(ev, "claude-c.json", total_cost_usd=4.0, sdlc_run=meta("api_key", 600))
+    result(ev, "claude-build.json", total_cost_usd=4.0, sdlc_run=meta("api_key", 600))
     result(ev, "claude-fix.json", total_cost_usd=1.5, sdlc_run=meta("api_key", 60))
     result(ev, "claude-fix-2.json", total_cost_usd=2.5, sdlc_run=meta("api_key", 120))
     (ev / "spend.json").write_text('{"total_usd": 0, "entries": []}', encoding="utf-8")
     (ev / "claude-md-proposals.md").write_text("not a run\n", encoding="utf-8")
-    (ev / "claude-c.stderr.txt").write_text("stderr\n", encoding="utf-8")
+    (ev / "claude-build.stderr.txt").write_text("stderr\n", encoding="utf-8")
     spent = limits.spend_from_runs(ev)
     assert spent["total_usd"] == 8.0 and spent["unknown"] == 0
     assert [e["source"] for e in spent["entries"]] == [
-        "claude-c.json",
+        "claude-build.json",
         "claude-fix.json",
         "claude-fix-2.json",
     ]
@@ -43,17 +43,27 @@ def test_the_spend_is_rebuilt_from_the_stored_results_not_the_ledger(tmp_path):
 
 def test_the_records_are_ordered_by_run_and_number(tmp_path):
     ev = tmp_path / "evidence"
-    for name in ("claude-fix-10.json", "claude-fix-2.json", "claude-fix.json", "claude-b.json"):
+    for name in (
+        "claude-fix-10.json",
+        "claude-fix-2.json",
+        "claude-fix.json",
+        "claude-design.json",
+    ):
         result(ev, name, total_cost_usd=1)
     names = [p.name for p in limits.run_record_paths(ev)]
-    assert names == ["claude-b.json", "claude-fix.json", "claude-fix-2.json", "claude-fix-10.json"]
+    assert names == [
+        "claude-design.json",
+        "claude-fix.json",
+        "claude-fix-2.json",
+        "claude-fix-10.json",
+    ]
 
 
 def test_each_line_names_its_credential_and_time_and_a_timeout_has_no_figure(tmp_path):
     ev = tmp_path / "evidence"
-    result(ev, "claude-c.json", total_cost_usd=3.0, num_turns=40, sdlc_run=meta("oauth", 3600))
-    result(ev, "claude-d.json", total_cost_usd=0.5, subtype="error_max_turns", duration_ms=90000)
-    result(ev, "claude-e.json", sdlc_run=meta("oauth", 7500, timed_out=True), raw="")
+    result(ev, "claude-build.json", total_cost_usd=3.0, num_turns=40, sdlc_run=meta("oauth", 3600))
+    result(ev, "claude-test.json", total_cost_usd=0.5, subtype="error_max_turns", duration_ms=90000)
+    result(ev, "claude-deploy.json", sdlc_run=meta("oauth", 7500, timed_out=True), raw="")
     lines = limits.run_lines(ev)
     assert [(ln["credential"], ln["usd"], ln["seconds"], ln["stop"]) for ln in lines] == [
         ("oauth", 3.0, 3600.0, None),
@@ -79,12 +89,12 @@ def test_the_gate_reads_the_rebuilt_total(tmp_path):
 
     change = tmp_path / "changes" / "0001-x"
     ev = change / "evidence"
-    result(ev, "claude-c.json", total_cost_usd=12.0)
-    (ev / "run-c.json").write_text('{"started_at": null, "spend_usd": 1.0}', encoding="utf-8")
+    result(ev, "claude-build.json", total_cost_usd=12.0)
+    (ev / "run-build.json").write_text('{"started_at": null, "spend_usd": 1.0}', encoding="utf-8")
     (ev / "spend.json").write_text('{"total_usd": 0, "entries": []}', encoding="utf-8")
-    st = status_mod.Status(id="0001", slug="x", title="x", phase="c")
+    st = status_mod.Status(id="0001", slug="x", title="x", phase="build")
     ctx = GateContext(
-        root=tmp_path, change_dir=change, phase="c", status=st,
+        root=tmp_path, change_dir=change, phase="build", status=st,
         config={"gate": {"max_budget_usd": 10}}, diff=None, human_gate=False,
     )  # fmt: skip
     check = limits.check_limits(ctx)
@@ -93,7 +103,7 @@ def test_the_gate_reads_the_rebuilt_total(tmp_path):
 
 def test_a_record_the_session_touched_is_put_back_and_named(tmp_path):
     ev = tmp_path / "evidence"
-    first = result(ev, "claude-c.json", total_cost_usd=4.0)
+    first = result(ev, "claude-build.json", total_cost_usd=4.0)
     second = result(ev, "claude-fix.json", total_cost_usd=2.0)
     before = limits.snapshot_run_records(ev)
     first.write_text('{"total_cost_usd": 0}', encoding="utf-8")  # changed
@@ -102,7 +112,7 @@ def test_a_record_the_session_touched_is_put_back_and_named(tmp_path):
     result(ev, "claude-fix-2.json", total_cost_usd=1.0)  # the runner's own record of this run
     reasons = limits.run_record_mismatches(ev, before, {"claude-fix-2.json"})
     assert reasons == [
-        "evidence/claude-c.json: the session changed it; only the runner writes it",
+        "evidence/claude-build.json: the session changed it; only the runner writes it",
         "evidence/claude-fix-9.json: the session created it; only the runner writes it",
         "evidence/claude-fix.json: the session deleted it; only the runner writes it",
     ]

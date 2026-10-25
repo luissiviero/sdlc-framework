@@ -23,6 +23,7 @@ if str(PLUGIN_DIR) not in sys.path:
 
 from gate.artifacts import planned_files  # noqa: E402
 from hooks.secrets_check import find_secrets  # noqa: E402
+from state.conventions import DESIGN, phase_name  # noqa: E402
 
 DEFAULT_MAX_CHARS = 400_000  # about 100K tokens: the whole design, or a large build diff
 GIT_TIMEOUT = 60
@@ -109,8 +110,8 @@ def build(
 ) -> dict[str, Any]:
     """{'ok', 'pieces': [{'title', 'text'}], 'sent', 'left_out': [{'path', 'why'}],
     'withheld_lines', 'chars', 'change_dir', 'reason'}. The pieces in priority order: the
-    change's own three files, the project's ``CLAUDE.md`` and ``REVIEW.md``, then at (b) the
-    files ``plan.md`` lists and at (e) the diff from ``base``; a piece that would pass
+    change's own three files, the project's ``CLAUDE.md`` and ``REVIEW.md``, then at design the
+    files ``plan.md`` lists and at deploy the diff from ``base``; a piece that would pass
     ``max_chars`` is left out and named. ``ok`` false when the change's own files alone do
     not fit or the folder is not at ``head``."""
     root = Path(root)
@@ -158,7 +159,7 @@ def build(
             return out
     for name in PROJECT_FILES:
         add(name, name, read_at(root, head, name))
-    if phase == "b":
+    if phase_name(phase) == DESIGN:
         for path in planned_files(plan_text or ""):
             if path.startswith(f"{change_rel}/") or path in PROJECT_FILES:
                 continue

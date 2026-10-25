@@ -104,17 +104,17 @@ def test_a_configuration_no_alias_can_satisfy_is_named():
 
 def test_the_panel_cli_prints_the_phase_s_models(tmp_path):
     (tmp_path / "sdlc.yaml").write_text(
-        "session_model:\n  default: claude-opus-5-5\n  b: claude-fable-5-1\n"
+        "session_model:\n  default: claude-opus-5-5\n  design: claude-fable-5-1\n"
         "adversarial_model: claude-opus-5-5\npanel_advocate_model: claude-fable-5-1\n",
         encoding="utf-8",
     )
     proc = subprocess.run(
-        [sys.executable, str(PANEL_CLI), "models", "--root", str(tmp_path), "--phase", "b"],
+        [sys.executable, str(PANEL_CLI), "models", "--root", str(tmp_path), "--phase", "design"],
         capture_output=True, text=True, encoding="utf-8",
     )  # fmt: skip
     assert proc.returncode == 0, proc.stderr
     assert json.loads(proc.stdout) == {
-        "phase": "b",
+        "phase": "design",
         "session": "claude-fable-5-1",
         "reviewer": {"model": "claude-opus-5-5", "alias": "opus"},
         "advocate": {"model": "claude-opus-5-5", "alias": "opus"},

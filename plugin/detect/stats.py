@@ -1,4 +1,4 @@
-"""Control-band statistics of phase (f) maintain (build guide step 37.1; article p.43-45).
+"""Control-band statistics of phase maintain (build guide step 37.1; article p.43-45).
 
 The article asks for the "mean and standard deviation over a rolling window with rules
 (Western Electric or similar) so the bands catch slow drift as well as spikes" (p.43), and

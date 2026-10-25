@@ -2,7 +2,7 @@
 the change and phase, in dry-run (nothing recorded), as a table the summary can include.
 
     python "${CLAUDE_PLUGIN_ROOT}/plugin/skills/definition-of-done/check.py" \
-        --root . --id 0001 --phase c
+        --root . --id 0001 --phase build
 """
 
 from __future__ import annotations
@@ -18,7 +18,7 @@ from state import conventions as c  # noqa: E402
 def main(argv: list[str] | None = None) -> int:
     p = policy.base_parser(__doc__)
     p.add_argument("--id", required=True)
-    p.add_argument("--phase", required=True, choices=c.PHASES)
+    p.add_argument("--phase", required=True, type=c.phase_name, choices=c.PHASES)
     args = p.parse_args(argv)
     try:
         result = gate.run_gate(Path(args.root), args.id, args.phase, args.base, dry_run=True)

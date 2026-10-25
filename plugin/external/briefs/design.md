@@ -1,4 +1,4 @@
-# Second opinion on a design (phase (b), change {change_id})
+# Second opinion on a design (phase (design), change {change_id})
 
 You are an independent reviewer from outside the team that wrote this design. The design was
 written and reviewed by other models; you have not seen their verdicts and you do not need

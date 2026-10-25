@@ -3,12 +3,13 @@
 # It is a protected path: only the owner edits it, in a reviewed PR.
 
 # --- the gates and judgment calls (OPERATING_MODEL section 3; decisions 18, 21, 30, 32, 37) ---
-# One behaviour for every project, with no key to set (decision 37): you merge at (a) intent PR
-# and (b) spec+plan PR, and approve at (e) build PR (the merge App merges on that approval,
-# decision 36); (c) and (d) are the confidence gate's. The fast lane (decision 30): your own
-# intent PR needs no (a) merge (opening it starts the design), and (b) waits for you only on a
+# One behaviour for every project, with no key to set (decision 37): you merge the intent PR at
+# the intent gate and the spec+plan PR at the design gate, and approve the build PR at the
+# deploy gate (the merge App merges on that approval, decision 36); the build and test gates
+# are the confidence gate's. The fast lane (decision 30): your own intent PR needs no merge at
+# the intent gate (opening it starts the design), and the design gate waits for you only on a
 # non-routine plan (a routine one goes on to the build; you review intent, spec, plan and code
-# at (e)). Inside a phase, a judgment item (an open flagged concern in spec.md, contradicting
+# at the deploy gate). Inside a phase, a judgment item (an open flagged concern in spec.md, contradicting
 # policies, an escalate verdict of the adversarial reviewer, an Important review finding whose
 # fix the run cannot determine, a verifier disagreement) goes to a review panel - a reviewer
 # and a devil's advocate in blind fresh contexts, then a conciliator that decides - which
@@ -23,8 +24,9 @@
 # --- models (ROADMAP R7; plugin/panel/models.py) ----------------------------------------------
 # Each a full model id or a family alias (opus, sonnet, haiku, fable).
 # session_model: the CI session's model (--model), one model or `default` plus per-phase
-#   entries (a-f; a fix round takes its change's phase; the triage of (f) and the weekly
-#   scan take `default`); unset = the CLI's default. The workflow's SDLC_MODEL wins.
+#   entries (intent, design, build, test, deploy, maintain; the letters a-f of older files
+#   are read for one release; a fix round takes its change's phase; the triage of maintain
+#   and the weekly scan take `default`); unset = the CLI's default. The workflow's SDLC_MODEL wins.
 # adversarial_model: the adversarial reviewer's model; the gate parks a verdict whose
 #   writer did not run on it (check reviewer_model); unset = not checked.
 # panel_advocate_model: the devil's advocate's (a panel reduces variance, not bias: three
@@ -37,16 +39,16 @@ session_model: claude-opus-5-5
 adversarial_model: claude-opus-5-5
 panel_advocate_model: claude-fable-5-1
 # --- second opinion (ROADMAP R8; plugin/external/cli.py) -------------------------------------
-# A model of another vendor reads the design at (b) and the build at (e) and posts one advisory
-# comment on the PR; it edits nothing, never parks and is not a panel member. Off while this
-# block is absent. On the fast lane the design PR is closed before you read it, so at (e) the
-# (b) opinion is carried onto the build PR (1.0.24). A job of its own after the phase job holds
+# A model of another vendor reads the design in the design phase and the build in the deploy
+# phase and posts one advisory comment on the PR; it edits nothing, never parks and is not a
+# panel member. Off while this block is absent. On the fast lane the design PR is closed before
+# you read it, so in the deploy phase the design opinion is carried onto the build PR (1.0.24). A job of its own after the phase job holds
 # the repository secret GEMINI_API_KEY; no Claude session ever does. Check the id with
 # `cli.py models` first, and send project code only from a Google project with billing linked
 # (the paid tier's terms).
 # external_review:
 #   model: gemini-4-argon
-#   phases: [b, e]
+#   phases: [design, deploy]   # the letters [b, e] of older files are read for one release
 #   max_chars: 400000   # what one call may read; a file past it is left out and named
 
 # --- feedback loop: one-command targets (build guide step 14; article p.27 step 1) --------
@@ -62,7 +64,7 @@ commands:
   # and writes PNG screenshots and JSON or text state files into the folder named by the
   # environment variable SDLC_PROOF_DIR (the absolute changes/<id>-<slug>/evidence/proof/),
   # with SDLC_CHANGE_ID beside it; it exits non-zero when any step failed. The runner runs it
-  # after build, test and lint at gates (c), (d) and (e), and the gate compares what it wrote
+  # after build, test and lint at the build, test and deploy gates, and the gate compares what it wrote
   # with the plan's `state:` and `screenshot:` proof items. It runs on synthetic data, never
   # personal data. A Playwright test writes its files to process.env.SDLC_PROOF_DIR; a line
   # that names the variable itself is expanded by the platform shell ($SDLC_PROOF_DIR on the
@@ -82,7 +84,7 @@ deploy:
   # what makes a merged change live: publish package | schedule job | regenerate report |
   # promote to paper trading | deploy service | none
   action: {{DEPLOY_ACTION}}
-  # true turns on the release label at gate (e), the production-gate hook and the approval
+  # true turns on the release label at the deploy gate, the production-gate hook and the approval
   # check of the release workflow (build guide step 29; decision 13). The approval is the
   # label sdlc:release-approved applied by a person on the build PR from GitHub, nothing
   # else: a run cannot approve itself (decision 5, the automation identity), so no signed
@@ -140,8 +142,9 @@ maintain:
 
 # --- risk list (build guide step 5; decision 35) ---------------------------------------------
 # A hit does not park: it is a line of the "Needs your close look" banner on the PR you merge
-# anyway (the design PR at (b), the build PR at (e)), with the gate's reviewer's brief on the
-# item, and your merge accepts it (at (e), your approving review, decision 36), recorded in the
+# anyway (the design PR at the design gate, the build PR at the deploy gate), with the gate's
+# reviewer's brief on the item, and your merge accepts it (at the deploy gate, your approving
+# review, decision 36), recorded in the
 # change's status.yaml. An item is its words, matched in the committed diff's paths and in
 # spec.md's "Flagged concerns", or
 # {item: <words>, paths: [<glob>, ...]}: the globs are matched on the committed diff and the
@@ -171,10 +174,10 @@ gate:
                                  # the CI session's Bash timeout (R61). `/sdlc-init` step 4
                                  # sets it to three times the longest target's run
   drive_timeout: 300             # seconds for commands.drive, read only when it is set; at
-                                 # most 600 at (c) and (d): with the triage step's 5 minutes
+                                 # most 600 at build and test: with the triage step's 5 minutes
                                  # the test job is 190 + 10 <= 200 and the build and fix jobs
                                  # 250 + 10 <= 260, so a larger value runs at 600 (the reason
-                                 # is in the run's JSON); at (e) its minutes come off the
+                                 # is in the run's JSON); at deploy its minutes come off the
                                  # session's wall clock instead, never below 30
   proof_image_kb: 50             # the largest image the drive may leave under evidence/proof/
                                  # (at most ten a run); read only when commands.drive is set
@@ -216,7 +219,7 @@ test_paths:
 # stays readable there, since the sandbox hides a denied path from the tests too).
 protected_paths: {{PROTECTED_PATHS}}
 plan_sync:
-  # staged paths matching these globs do not require a plan.md update in phase (c)
+  # staged paths matching these globs do not require a plan.md update in the build phase
   exempt:
     - "*.md"
 hooks:

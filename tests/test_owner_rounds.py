@@ -76,7 +76,7 @@ def test_the_owner_is_read_from_os_environ_by_default(monkeypatch):
 
 # --- the "Request changes" path: the find step refuses all but the owner's own head -----------
 def _review_event(tmp_path, login: str, head_repo: str | None, name="event.json"):
-    head = {"ref": "sdlc/0001/b", "repo": {"full_name": head_repo} if head_repo else None}
+    head = {"ref": "sdlc/0001/design", "repo": {"full_name": head_repo} if head_repo else None}
     payload = {
         "action": "submitted",
         "review": {"state": "changes_requested", "user": {"login": login}},
@@ -90,7 +90,7 @@ def _review_event(tmp_path, login: str, head_repo: str | None, name="event.json"
 def _find(root, tmp_path, env, capsys, **kw):
     output = tmp_path / "github-output"
     output.write_text("", encoding="utf-8")
-    args = Args(root=str(root), phase="fix", head_ref="sdlc/0001/b", pr_number="7", **kw)
+    args = Args(root=str(root), phase="fix", head_ref="sdlc/0001/design", pr_number="7", **kw)
     args.id = kw.get("id")
     args.find_change = True
     capsys.readouterr()
@@ -288,17 +288,17 @@ def test_dispatch_adds_extra_inputs_and_keeps_the_two_it_always_sends(monkeypatc
         "_request",
         lambda method, url, tok, payload=None: sent.append((url, payload)) or {"status": 204},
     )
-    assert run_phase.dispatch("o/r", "sdlc-fix.yml", "main", "0001", "sdlc/0001/c")["ok"]
+    assert run_phase.dispatch("o/r", "sdlc-fix.yml", "main", "0001", "sdlc/0001/build")["ok"]
     assert sent[-1][1] == {
         "ref": "main",
-        "inputs": {"change_id": "0001", "head_ref": "sdlc/0001/c"},
+        "inputs": {"change_id": "0001", "head_ref": "sdlc/0001/build"},
     }
     extra = {"trigger": "https://x/1", "change_id": "9999"}
-    assert run_phase.dispatch("o/r", "sdlc-fix.yml", "main", "0001", "sdlc/0001/c", extra)["ok"]
+    assert run_phase.dispatch("o/r", "sdlc-fix.yml", "main", "0001", "sdlc/0001/build", extra)["ok"]
     assert sent[-1][0].endswith("/repos/o/r/actions/workflows/sdlc-fix.yml/dispatches")
     assert sent[-1][1]["inputs"] == {
         "change_id": "0001",  # never overridden by an extra input
-        "head_ref": "sdlc/0001/c",
+        "head_ref": "sdlc/0001/build",
         "trigger": "https://x/1",
     }
 
@@ -443,7 +443,9 @@ def test_the_fix_round_restores_a_forged_requests_file_after_the_session(
         return (None, "", "boom", 1)
 
     monkeypatch.setattr(run_phase, "invoke", session)
-    args = Args(root=str(root), phase="fix", head_ref="sdlc/0001/b", pr_number="7", dry_run=False)
+    args = Args(
+        root=str(root), phase="fix", head_ref="sdlc/0001/design", pr_number="7", dry_run=False
+    )
     env = dict(os.environ, **ci_tests.KEY_ENV, GITHUB_TOKEN=FAKE_TOKEN)
     env.pop("GITHUB_ACTIONS", None)
     capsys.readouterr()
@@ -458,7 +460,7 @@ def test_the_fix_round_restores_a_forged_requests_file_after_the_session(
 # --- the owner check reads the default branch's sdlc.yaml, never the head's --------------------
 def _head_names_its_own_owner(root, tmp_path):
     ci_tests.with_remote(root, tmp_path)  # main carries sdlc.yaml without an owner key
-    ci_tests.git(root, "checkout", "-q", "-b", "sdlc/0001/b")
+    ci_tests.git(root, "checkout", "-q", "-b", "sdlc/0001/design")
     text = (root / "sdlc.yaml").read_text(encoding="utf-8")
     (root / "sdlc.yaml").write_text(text + "\nowner: colleague\n", "utf-8")
     ci_tests.git(root, "commit", "-q", "-am", "the head names its own owner")

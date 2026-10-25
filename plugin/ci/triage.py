@@ -33,6 +33,7 @@ if str(PLUGIN_DIR) not in sys.path:
 
 from gate import artifacts as art  # noqa: E402
 from hooks.secrets_check import find_secrets  # noqa: E402
+from state import conventions as c  # noqa: E402
 
 OUT_SCHEMA = 1
 # the failed checks whose park has a log to read: the commands step (a red target, or a step
@@ -245,7 +246,7 @@ def failed_run_record(
             "actor": env.get("GITHUB_ACTOR", ""),
         },
         "change_id": out.get("change_id"),
-        "phase": out.get("phase"),
+        "phase": c.phase_name(out.get("phase")),  # R45: a letter is read as its name
         "step": "setup" if case == "setup" else "runner",
         "exit_code": None if case == "setup" else out.get("exit_code"),
         "reason": reason_of(case, out or None, setup),

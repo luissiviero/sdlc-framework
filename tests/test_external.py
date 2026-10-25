@@ -29,7 +29,7 @@ def git(root: Path, *args: str) -> str:
 
 @pytest.fixture
 def project(tmp_path: Path) -> Path:
-    """A project with a default branch ``main`` and a design branch ``sdlc/0001/b``."""
+    """A project with a default branch ``main`` and a design branch ``sdlc/0001/design``."""
     root = tmp_path / "p"
     root.mkdir()
     git(root, "init", "-q", "-b", "main")
@@ -42,7 +42,7 @@ def project(tmp_path: Path) -> Path:
     (root / "sdlc.yaml").write_text(ON, encoding="utf-8")
     git(root, "add", "-A")
     git(root, "commit", "-q", "-m", "base")
-    git(root, "checkout", "-q", "-b", "sdlc/0001/b")
+    git(root, "checkout", "-q", "-b", "sdlc/0001/design")
     change = root / CHANGE
     (change / "evidence").mkdir(parents=True)
     (change / "intent.md").write_text("# Intent\nAdd a thing.\n", encoding="utf-8")
@@ -57,7 +57,7 @@ def project(tmp_path: Path) -> Path:
 
 def args(**kw):
     base = dict(
-        root=".", id="0001", head_ref="", phase="b", repo=None, ref=None, head=None,
+        root=".", id="0001", head_ref="", phase="design", repo=None, ref=None, head=None,
         model=None, out=None, post=False, dry_run=False,
     )  # fmt: skip
     base.update(kw)
@@ -168,16 +168,16 @@ def test_the_bundle_leaves_out_env_secrets_and_claude_s_verdicts(project):
     assert "adversarial-review" not in text and "TOKEN=real" not in text
     assert bundle.excluded(".env.local", CHANGE) == ".env file"
     assert bundle.excluded("config/secrets/db.txt", CHANGE) == "under a secrets folder"
-    assert bundle.excluded(f"{CHANGE}/evidence/gate-b.json", CHANGE).startswith("the change's")
+    assert bundle.excluded(f"{CHANGE}/evidence/gate-design.json", CHANGE).startswith("the change's")
 
 
 def test_the_diff_at_e_leaves_out_excluded_files_and_withholds_secret_lines(project):
-    git(project, "checkout", "-q", "-b", "sdlc/0001/c")
+    git(project, "checkout", "-q", "-b", "sdlc/0001/build")
     (project / "src" / "app.py").write_text(
         f'def thing():\n    return 2\nKEY = "{GOOGLE_SHAPED}"\n', encoding="utf-8"
     )
     (project / ".env.prod").write_text("X=1\n", encoding="utf-8")
-    (project / CHANGE / "evidence" / "gate-e.json").write_text("{}", encoding="utf-8")
+    (project / CHANGE / "evidence" / "gate-deploy.json").write_text("{}", encoding="utf-8")
     git(project, "add", "-A")
     git(project, "commit", "-q", "-m", "build")
     head = git(project, "rev-parse", "HEAD")
@@ -186,7 +186,10 @@ def test_the_diff_at_e_leaves_out_excluded_files_and_withholds_secret_lines(proj
     diff = out["pieces"][-1]["text"]
     assert "return 2" in diff and GOOGLE_SHAPED not in diff and "line withheld" in diff
     assert out["withheld_lines"] == 1 and ".env.prod" not in diff and "gate-e" not in diff
-    assert {p["path"] for p in out["left_out"]} >= {".env.prod", f"{CHANGE}/evidence/gate-e.json"}
+    assert {p["path"] for p in out["left_out"]} >= {
+        ".env.prod",
+        f"{CHANGE}/evidence/gate-deploy.json",
+    }
 
 
 def test_the_size_cap_leaves_pieces_out_and_never_cuts_the_change_s_own_files(project):
@@ -213,7 +216,7 @@ def test_check_answer_keeps_the_schema_and_cuts_to_size():
 
 def test_the_comment_makes_the_model_s_text_inert():
     record = {
-        "ran": True, "phase": "b", "head": "a" * 40, "model_reported": "gemini-4-argon",
+        "ran": True, "phase": "design", "head": "a" * 40, "model_reported": "gemini-4-argon",
         "sent": ["x"], "chars": 3, "answer": {"verdict": "concerns", "summary": "@owner <b>",
         "concerns": [{"file": "a.py", "claim": "see [x](https://evil)", "why": "`rm`",
                       "severity": "minor"}]},
@@ -237,7 +240,7 @@ def test_off_unless_the_default_branch_turns_it_on(project, monkeypatch):
     assert not on.get("off") and on["reason"] == "dry run: nothing sent"
     git(project, "checkout", "-q", "main")
     git(project, "commit", "-q", "-am", "off")
-    git(project, "checkout", "-q", "sdlc/0001/b")
+    git(project, "checkout", "-q", "sdlc/0001/design")
     (project / "sdlc.yaml").write_text(ON, encoding="utf-8")
     record = cli.run_review(args(root=str(project), ref="main"), {"GEMINI_API_KEY": FAKE})
     assert record["off"] and record["reason"].startswith("off: sdlc.yaml external_review")
@@ -245,7 +248,9 @@ def test_off_unless_the_default_branch_turns_it_on(project, monkeypatch):
 
 def test_not_run_without_a_key_and_the_change_id_from_the_head_ref(project, monkeypatch):
     monkeypatch.setattr(gemini, "_request", lambda *a, **k: pytest.fail("called"))
-    record = cli.run_review(args(root=str(project), id="", head_ref="sdlc/0001/b", ref="main"), {})
+    record = cli.run_review(
+        args(root=str(project), id="", head_ref="sdlc/0001/design", ref="main"), {}
+    )
     assert record["change_id"] == "0001" and not record["ran"]
     assert record["reason"] == "no GEMINI_API_KEY in this step's environment"
     record = cli.run_review(args(root=str(project), id="", head_ref="feature/x", ref="main"), {})
@@ -270,7 +275,7 @@ def test_a_review_posts_one_comment_on_the_pr_and_exits_zero(project, monkeypatc
     class FakeGithub:
         @staticmethod
         def find_open_pr(repo, branch, cwd=None):
-            assert branch == "sdlc/0001/b"
+            assert branch == "sdlc/0001/design"
             return {"number": 7, "head_sha": head}
 
         @staticmethod
@@ -288,7 +293,7 @@ def test_a_review_posts_one_comment_on_the_pr_and_exits_zero(project, monkeypatc
     summary = tmp_path / "summary.md"
     monkeypatch.setenv("GITHUB_STEP_SUMMARY", str(summary))
     out = tmp_path / "record.json"
-    argv = ["review", "--root", str(project), "--id", "0001", "--phase", "b", "--repo", "o/p",
+    argv = ["review", "--root", str(project), "--id", "0001", "--phase", "design", "--repo", "o/p",
             "--ref", "main", "--post", "--out", str(out)]  # fmt: skip
     assert cli.main(argv) == 0
     record = json.loads(out.read_text(encoding="utf-8"))
@@ -354,7 +359,7 @@ def test_off_writes_and_posts_nothing(project, monkeypatch, tmp_path):
     summary = tmp_path / "summary.md"
     monkeypatch.setenv("GITHUB_STEP_SUMMARY", str(summary))
     out = tmp_path / "record.json"
-    for phase in ("b", "e"):
+    for phase in ("design", "deploy"):
         argv = ["review", "--root", str(project), "--id", "0001", "--phase", phase,
                 "--repo", "o/p", "--ref", "main", "--post", "--out", str(out)]  # fmt: skip
         assert cli.main(argv) == 0
@@ -368,7 +373,12 @@ def test_the_e_job_runs_only_when_phase_e_ran(path):
     text = path.read_text(encoding="utf-8")
     deploy = text.split("\n  second-opinion:\n", 1)[0]
     assert "      phase_ran: ${{ steps.phase.outputs.phase_ran }}\n" in deploy
-    assert "      - name: Run phase (e)\n        id: phase\n" in deploy
+    # R45: the template names the step after the phase; this repository's own copy, which a
+    # run never edits, keeps the letter until the owner's PR
+    assert any(
+        f"      - name: {step}\n        id: phase\n" in deploy
+        for step in ("Run the deploy phase", "Run phase (e)")
+    )
     condition = _second_opinion_job(path).split("    runs-on:", 1)[0]
     assert "needs.deploy.outputs.phase_ran != 'false'" in condition
 
@@ -379,9 +389,9 @@ ANSWER = {"verdict": "concerns", "summary": "s",
 
 
 def _fast_lane_build(project: Path, design_pr: int | None) -> str:
-    """``sdlc/0001/c`` cut from the design branch, its status.yaml recording ``fast_lane.b``
+    """``sdlc/0001/build`` cut from the design branch, its status.yaml recording ``fast_lane.b``
     (``design_pr`` None: no fast lane; 0: the entry without its optional ``pr``)."""
-    git(project, "checkout", "-q", "-b", "sdlc/0001/c")
+    git(project, "checkout", "-q", "-b", "sdlc/0001/build")
     entry = f"fast_lane:\n  b:\n    sha: {'a' * 40}\n    classification: routine\n"
     fast = "" if design_pr is None else entry + (f"    pr: {design_pr}\n" if design_pr else "")
     (project / CHANGE / "status.yaml").write_text(f"id: '0001'\nphase: d\n{fast}", "utf-8")
@@ -399,19 +409,19 @@ def _github_with_a_superseded_design(
     author: str = "github-actions[bot]",
     unread: int | None = None,
 ):
-    """A GitHub where build PR #9 (``sdlc/0001/c``) supersedes design PR #5; ``unread``: the
+    """A GitHub where build PR #9 (``sdlc/0001/build``) supersedes design PR #5; ``unread``: the
     comments of that PR cannot be read."""
     posted: list[tuple[str, int, str]] = []
 
     class FakeGithub:
         @staticmethod
         def find_open_pr(repo, branch, cwd=None):
-            assert branch == "sdlc/0001/c"
+            assert branch == "sdlc/0001/build"
             return {"number": 9, "head_sha": head}
 
         @staticmethod
         def find_pr(repo, branch, state, cwd=None):
-            assert (branch, state) == ("sdlc/0001/b", "closed")
+            assert (branch, state) == ("sdlc/0001/design", "closed")
             return {"ok": True, "number": 5}
 
         @staticmethod
@@ -441,17 +451,17 @@ def _github_with_a_superseded_design(
 
 
 B_OPINION = review_mod.comment(
-    {"phase": "b", "head": "b" * 40, "model": "gemini-4-argon", "ran": True,
+    {"phase": "design", "head": "b" * 40, "model": "gemini-4-argon", "ran": True,
      "answer": {"verdict": "no concerns", "summary": "the plan holds", "concerns": []}}
 )  # fmt: skip
-E_ARGV = ["review", "--id", "0001", "--phase", "e", "--repo", "o/p", "--ref", "main", "--post"]
+E_ARGV = ["review", "--id", "0001", "--phase", "deploy", "--repo", "o/p", "--ref", "main", "--post"]
 
 
 def _b_only(project: Path) -> None:
     git(project, "checkout", "-q", "main")
     (project / "sdlc.yaml").write_text(ON.replace("[b, e]", "[b]"), encoding="utf-8")
     git(project, "commit", "-q", "-am", "(b) only")
-    git(project, "checkout", "-q", "sdlc/0001/b")
+    git(project, "checkout", "-q", "sdlc/0001/design")
 
 
 def _fake_generate(model, prompt, schema, credential):
@@ -503,7 +513,7 @@ def test_with_e_on_the_carried_opinion_is_a_section_of_the_e_comment(project, mo
     assert cli.main(argv) == 0
     assert len(posted) == 1 and posted[0][1] == 9
     own, carried = posted[0][2].split("<!-- sdlc:second-opinion-carried #5 -->")
-    assert own.startswith(review_mod.MARKER) and "phase (e)" in own and "src/app.py" in own
+    assert own.startswith(review_mod.MARKER) and "phase (deploy)" in own and "src/app.py" in own
     assert "> Verdict: **no concerns**" in carried
     assert cli.main(argv) == 0
     assert len(posted) == 1
@@ -536,11 +546,13 @@ def test_the_carried_quote_is_inert_and_only_the_workflow_bot_s_counts(project, 
         head, ["sdlc:superseded"], [forged], author="other-app[bot]"
     )
     monkeypatch.setattr(cli, "_github", lambda: github)
-    carried = cli.carry_design_opinion(args(root=str(project), phase="e", repo="o/p"), config)
+    carried = cli.carry_design_opinion(args(root=str(project), phase="deploy", repo="o/p"), config)
     assert "was not found" in carried["text"]
     github, _ = _github_with_a_superseded_design(head, ["sdlc:superseded"], [forged])
     monkeypatch.setattr(cli, "_github", lambda: github)
-    text = cli.carry_design_opinion(args(root=str(project), phase="e", repo="o/p"), config)["text"]
+    text = cli.carry_design_opinion(args(root=str(project), phase="deploy", repo="o/p"), config)[
+        "text"
+    ]
     quoted = "\n".join(line for line in text.splitlines() if line.startswith(">"))
     assert "@\u200bowner" in quoted and "<img" not in quoted and "&lt;img" in quoted
     assert "](" not in quoted and "https://evil" not in quoted
@@ -567,7 +579,7 @@ def test_the_carry_only_for_a_superseded_design_and_never_silent(
     github, _posted = _github_with_a_superseded_design(head, labels, opinions, state, unread=unread)
     monkeypatch.setattr(cli, "_github", lambda: github)
     carried = cli.carry_design_opinion(
-        args(root=str(project), phase="e", repo="o/p"), cli.read_config(project, "main")
+        args(root=str(project), phase="deploy", repo="o/p"), cli.read_config(project, "main")
     )
     if expected is None:
         assert carried is None
@@ -584,9 +596,37 @@ def test_a_phases_value_that_is_not_a_list_is_said_never_silent(project, monkeyp
     git(project, "commit", "-q", "-am", "a string")
     record = cli.run_review(args(root=str(project), ref="main"), {"GEMINI_API_KEY": FAKE})
     assert not record.get("off") and not record["ran"]
-    assert record["reason"] == "sdlc.yaml external_review.phases is not a list, as [b, e]"
-    git(project, "checkout", "-q", "sdlc/0001/b")
+    assert record["reason"] == "sdlc.yaml external_review.phases is not a list, as [design, deploy]"
+    git(project, "checkout", "-q", "sdlc/0001/design")
     by_hand = cli.run_review(
         args(root=str(project), ref="main", model="gemini-4-argon", dry_run=True), {}
     )
     assert by_hand["reason"] == "dry run: nothing sent"
+
+
+def test_external_review_phases_read_the_names_and_the_letters_of_an_older_file():
+    """R45: ``external_review.phases: [design, deploy]`` is the written form; the letters
+    ``[b, e]`` an older sdlc.yaml holds turn the same gates on, for one release."""
+    for listed in (["design", "deploy"], ["b", "e"], ["design", "e"]):
+        config = {"external_review": {"model": "m", "phases": listed}}
+        assert cli.turned_on(config, "design") and cli.turned_on(config, "deploy")
+        assert cli.turned_on(config, "b") and not cli.turned_on(config, "build")
+    assert not cli.turned_on({"external_review": {"phases": ["deploy"]}}, "design")
+    assert cli.PHASES == ("design", "deploy")
+    assert cli.branches("deploy", "0001") == ("sdlc/0001/build", "sdlc/0001/c")
+
+
+def test_the_design_opinion_is_found_under_the_name_or_the_letter():
+    """N12: the comment names the phase (``phase (design)``); a record an older plugin
+    posted (``phase (b)``) is still the opinion the fast lane carries."""
+    for body in ("phase (design), commit", "phase (b), commit"):
+        comment = {
+            "type": "Bot",
+            "author": cli.WORKFLOW_BOT,
+            "body": f"{review_mod.MARKER}\n**Second opinion ... {body}**",
+        }
+        assert cli._the_opinion(comment)
+    record = {"phase": "design", "head": "a" * 40, "ran": False, "reason": "x"}
+    assert "phase (design)" in review_mod.comment(record)
+    assert review_mod.prompt("b", "0001", [], []) == review_mod.prompt("design", "0001", [], [])
+    assert "phase (deploy)" in review_mod.prompt("deploy", "0001", [], []).splitlines()[0]

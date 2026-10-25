@@ -1,4 +1,4 @@
-"""Release tooling of gate (e) (build guide steps 29 and 32; decision 13): the approval
+"""Release tooling of gate (deploy) (build guide steps 29 and 32; decision 13): the approval
 function, the release notes and the release workflow's step, against tmp git repositories and
 an in-memory GitHub."""
 
@@ -49,11 +49,11 @@ None.
 
 
 def gate_record(deferred: bool) -> dict:
-    """A gate (e) record as the deploy run leaves it: the commands check run by the runner
+    """A gate (deploy) record as the deploy run leaves it: the commands check run by the runner
     after the session (0.3.0), or still deferred (the job died before the runner's step)."""
     details = {"deferred": True} if deferred else {"ran_by": "runner", "deferred": False}
     return {
-        "phase": "e",
+        "phase": "deploy",
         "result": "wait",
         "checks": [{"name": "commands", "ok": True, "reason": "x", "details": details}],
     }
@@ -61,27 +61,27 @@ def gate_record(deferred: bool) -> dict:
 
 def _repo_with_change(
     tmp_path: Path,
-    phase: str = "e",
+    phase: str = "deploy",
     sdlc_yaml: str | None = None,
     gate_result: str | None = "passed",
     parked: str | None = None,
 ):
-    """A git repo: main holds change 0001; sdlc/0001/c carries two more commits. At phase e
-    the merged copy carries gate (e)'s result as the deploy run leaves it (``gate_result``
+    """A git repo: main holds change 0001; sdlc/0001/build carries two more commits. At phase e
+    the merged copy carries gate (deploy)'s result as the deploy run leaves it (``gate_result``
     None leaves the gate as a merge before the run's gate does; ``parked`` is the reason a
-    parked gate (e) recorded)."""
+    parked gate (deploy) recorded)."""
     root = tmp_path
     change_dir, st = status.new_change(root, "Export the claims report")
     (change_dir / "intent.md").write_text(INTENT, encoding="utf-8")
     (change_dir / "plan.md").write_text("# Plan\n", encoding="utf-8")
-    if phase != "a":
+    if phase != "intent":
         st.set_phase(phase)
-        if phase == "e" and parked:
+        if phase == "deploy" and parked:
             st.park(parked)
-        elif phase == "e" and gate_result:
-            st.record_gate("e", gate_result, "waiting for the owner at gate (e)")
-        if phase == "e" and (parked or gate_result):
-            (change_dir / "evidence" / "gate-e.json").write_text(
+        elif phase == "deploy" and gate_result:
+            st.record_gate("deploy", gate_result, "waiting for the owner at gate (deploy)")
+        if phase == "deploy" and (parked or gate_result):
+            (change_dir / "evidence" / "gate-deploy.json").write_text(
                 json.dumps(gate_record(deferred=False)) + "\n", encoding="utf-8"
             )
         status.write_status(change_dir, st)
@@ -94,7 +94,7 @@ def _repo_with_change(
     _git(root, "config", "commit.gpgsign", "false")
     _git(root, "add", ".")
     _git(root, "commit", "-q", "-m", "init")
-    _git(root, "checkout", "-q", "-b", "sdlc/0001/c")
+    _git(root, "checkout", "-q", "-b", "sdlc/0001/build")
     (root / "report.py").write_text("x = 1\n", encoding="utf-8")
     _git(root, "add", "report.py")
     _git(root, "commit", "-q", "-m", "Add the CSV export")
@@ -158,7 +158,7 @@ def test_notes_leave_out_evidence_only_commits(tmp_path):
     notes.write_notes(root, "0001", base="main")
     _git(root, "add", "changes")
     _git(root, "commit", "-q", "-m", "Store the release notes")
-    (change_dir / "evidence" / "gate-e.json").write_text("{}\n", encoding="utf-8")
+    (change_dir / "evidence" / "gate-deploy.json").write_text("{}\n", encoding="utf-8")
     (root / "report.py").write_text("x = 3\n", encoding="utf-8")
     _git(root, "add", ".")
     _git(root, "commit", "-q", "-m", "Code and evidence together")
@@ -222,7 +222,7 @@ class FakeGitHub:
         merged=True,
         files=("changes/0001-export-the-claims-report/status.yaml", "report.py"),
         labels=("sdlc:release-approved",),
-        head_ref="sdlc/0001/c",
+        head_ref="sdlc/0001/build",
     ):
         self.actor, self.ok, self.merged = actor, ok, merged
         self.files, self.labels, self.head_ref = list(files), list(labels), head_ref
@@ -267,7 +267,7 @@ def _recorded(root: Path, number: int | None = 7) -> Path:
 def fake_git(tags=(), verify_ok=False):
     def git(root, *args):
         if args[:2] == ("rev-parse", "--abbrev-ref"):
-            return 0, "sdlc/0001/c\n"
+            return 0, "sdlc/0001/build\n"
         if args == ("rev-parse", "HEAD"):
             return 0, "abc1234def\n"
         if args[:2] == ("remote", "get-url"):
@@ -336,7 +336,7 @@ def test_approval_never_reads_an_environment_variable(tmp_path):
 
 def test_the_approval_is_the_recorded_build_pr_not_the_branch_name(tmp_path):
     """The readiness review's group B (0.2.27): the PR used to be "the most recent one from
-    the current branch's name", merged or not, so a checkout of any ``sdlc/<id>/c`` — a
+    the current branch's name", merged or not, so a checkout of any ``sdlc/<id>/build`` — a
     local branch with any content — inherited that change's label. Now the PR is the one
     ``status.yaml`` records, it must be the change's own build PR, and the checkout must be
     its head (open) or its merge commit (merged)."""
@@ -350,14 +350,18 @@ def test_the_approval_is_the_recorded_build_pr_not_the_branch_name(tmp_path):
     st.build_pr = 7
     status.write_status(change_dir, st)
     # the recorded PR is read by number, and its head must be this change's build branch
-    other = FakeGitHub(head_ref="sdlc/0002/c")
+    other = FakeGitHub(head_ref="sdlc/0002/build")
     a = approval.release_approval(tmp_path, {}, {}, git=git, github=other)
-    assert not a.approved and "#7 (head sdlc/0002/c) is not the build PR sdlc/0001/c" in a.detail
+    assert (
+        not a.approved
+        and "#7 (head sdlc/0002/build) is not the build PR sdlc/0001/build" in a.detail
+    )
     # closed without a merge: void
     gone = FakeGitHub(merged=False)
     gone.pr_by_number = lambda repo, number, cwd=None: {
         "ok": True, "number": number, "merged": False, "state": "closed", "head_sha": "abc1234def",
-        "merge_commit_sha": None, "labels": ["sdlc:release-approved"], "head_ref": "sdlc/0001/c",
+        "merge_commit_sha": None, "labels": ["sdlc:release-approved"],
+        "head_ref": "sdlc/0001/build",
     }  # fmt: skip
     a = approval.release_approval(tmp_path, {}, {}, git=git, github=gone)
     assert not a.approved and "closed without a merge" in a.detail
@@ -372,7 +376,7 @@ def test_the_approval_is_the_recorded_build_pr_not_the_branch_name(tmp_path):
     assert a.approved and a.pr_number == 7
     a = approval.release_approval(tmp_path, {}, {}, git=git, github=FakeGitHub(merged=True))
     assert a.approved and a.pr_number == 7
-    # merged, with the checkout on the PR's own head (the by-hand deploy on sdlc/<id>/c
+    # merged, with the checkout on the PR's own head (the by-hand deploy on sdlc/<id>/build
     # after the owner's merge; the review of the 0.2.27 diff, M3): approved
     at_head = FakeGitHub(merged=True)
     base_pr = at_head.pr_by_number
@@ -449,7 +453,7 @@ def test_cli_skips_a_merged_pull_request_that_is_not_the_build_pr(tmp_path):
     assert code == 0
     assert lines[-1] == (
         "release: skip: pull request #7 (head owner/tidy-status) is not the build PR "
-        "sdlc/0001/c of change 0001"
+        "sdlc/0001/build of change 0001"
     )
     assert not any(line.startswith(("release: run:", "release: pr:")) for line in lines)
 
@@ -465,7 +469,7 @@ def test_cli_passes_production_to_read_status_when_it_takes_it(tmp_path, monkeyp
 
     monkeypatch.setattr(status, "read_status", reader)
     st, note = cli._read_status(change_dir, True)
-    assert note == "" and st.phase == "e"
+    assert note == "" and st.phase == "deploy"
     assert seen == {"on_default_branch": True, "production": True}
 
 
@@ -476,9 +480,9 @@ def test_cli_skips_a_pull_request_without_one_change(tmp_path):
 
 
 def test_cli_skips_a_change_not_at_phase_e(tmp_path):
-    root, _ = _repo_with_change(tmp_path, phase="d", sdlc_yaml=_yaml())
+    root, _ = _repo_with_change(tmp_path, phase="test", sdlc_yaml=_yaml())
     code, lines = _run(root, FakeGitHub())
-    assert code == 0 and "release: skip: change 0001 is at phase d, not e" in lines
+    assert code == 0 and "release: skip: change 0001 is at phase test, not deploy" in lines
 
 
 def test_cli_waits_for_the_release_label_when_production(tmp_path):
@@ -580,10 +584,10 @@ def test_cli_fails_closed_on_a_production_flag_that_is_not_a_boolean(tmp_path):
     assert any("fails closed" in line for line in lines)
 
 
-# --- issue #66: one release per change, and only once gate (e) has a result (0.3.1) ---------
+# --- issue #66: one release per change, and only once gate (deploy) has a result (0.3.1) ---------
 def test_cli_skips_a_build_pr_merged_before_gate_e_has_a_result(tmp_path):
     """Issue #66: the deploy run sets phase e at its start, before the REVIEW.md pass; a build
-    PR merged while it runs carries phase e and no gate (e) result. The release used to run
+    PR merged while it runs carries phase e and no gate (deploy) result. The release used to run
     deploy.command on that merge (sample change 0002, PR #17); now it skips."""
     (tmp_path / "fail.py").write_text("import sys\nsys.exit(3)\n", encoding="utf-8")
     root, change_dir = _repo_with_change(
@@ -593,19 +597,19 @@ def test_cli_skips_a_build_pr_merged_before_gate_e_has_a_result(tmp_path):
     code, lines = _run(root, FakeGitHub())
     assert code == 0
     assert lines[-1].startswith(
-        "release: skip: change 0001 has no gate (e) result on the merged copy (gate: -/-)"
+        "release: skip: change 0001 has no gate (deploy) result on the merged copy (gate: -/-)"
     )
     assert "before its REVIEW.md pass" in lines[-1]
     assert not any(line.startswith(("release: run:", "release: gate:")) for line in lines)
     # the pull request the run opens afterwards carries the result: released on its merge
     st = status.read_status(change_dir)
-    st.record_gate("e", "passed", "waiting for the owner at gate (e)")
+    st.record_gate("deploy", "passed", "waiting for the owner at gate (deploy)")
     status.write_status(change_dir, st)
-    (change_dir / "evidence" / "gate-e.json").write_text(
+    (change_dir / "evidence" / "gate-deploy.json").write_text(
         json.dumps(gate_record(deferred=False)), encoding="utf-8"
     )
     code, lines = _run(root, FakeGitHub())
-    assert "release: gate: e/passed" in lines and "release: run: python fail.py" in lines
+    assert "release: gate: deploy/passed" in lines and "release: run: python fail.py" in lines
 
 
 def test_cli_skips_a_gate_e_record_whose_commands_never_ran(tmp_path):
@@ -614,11 +618,11 @@ def test_cli_skips_a_gate_e_record_whose_commands_never_ran(tmp_path):
     runner's step (or a merge in that window) leaves that record on the merged copy; the
     runner's guard refuses it for the next phase (issue #91) and the release must too."""
     root, change_dir = _repo_with_change(tmp_path, sdlc_yaml=_yaml(command="python x.py"))
-    gate_file = change_dir / "evidence" / "gate-e.json"
+    gate_file = change_dir / "evidence" / "gate-deploy.json"
     gate_file.write_text(json.dumps(gate_record(deferred=True)), encoding="utf-8")
     code, lines = _run(root, FakeGitHub())
     assert code == 0, lines
-    assert lines[-1].startswith("release: skip: gate (e) of change 0001 recorded its commands")
+    assert lines[-1].startswith("release: skip: gate (deploy) of change 0001 recorded its commands")
     assert "the runner never ran it (issue #91)" in lines[-1]
     assert not any(line.startswith(("release: run:", "release: gate:")) for line in lines)
     # item 3b (0.3.2): a record whose evidence logs alone are still deferred is no pass either
@@ -634,26 +638,26 @@ def test_cli_skips_a_gate_e_record_whose_commands_never_ran(tmp_path):
         encoding="utf-8",
     )  # fmt: skip
     code, lines = _run(root, FakeGitHub())
-    assert code == 0 and "or its evidence logs" in lines[-1] and "re-run phase (e)" in lines[-1]
+    assert code == 0 and "or its evidence logs" in lines[-1] and "re-run phase deploy" in lines[-1]
     assert not any(line.startswith("release: run:") for line in lines)
     # no record at all: nothing to judge, the same skip family
     gate_file.unlink()
     code, lines = _run(root, FakeGitHub())
-    assert code == 0 and "no readable evidence/gate-e.json" in lines[-1]
+    assert code == 0 and "no readable evidence/gate-deploy.json" in lines[-1]
     assert not any(line.startswith("release: run:") for line in lines)
 
 
 def _with_remote(root: Path) -> Path:
-    """A bare remote holding main and sdlc/0001/c, as GitHub does after the merge."""
+    """A bare remote holding main and sdlc/0001/build, as GitHub does after the merge."""
     remote = root.parent / f"{root.name}-remote.git"  # beside the project, unique per test
     _git(root, "init", "-q", "--bare", str(remote))
     _git(root, "remote", "add", "origin", str(remote))
-    _git(root, "push", "-q", "origin", "main", "sdlc/0001/c")
+    _git(root, "push", "-q", "origin", "main", "sdlc/0001/build")
     _git(root, "checkout", "-q", "main")  # the release checks out the merge commit
     return remote
 
 
-def _remote_status(root: Path, ref: str = "refs/remotes/origin/sdlc/0001/c") -> dict:
+def _remote_status(root: Path, ref: str = "refs/remotes/origin/sdlc/0001/build") -> dict:
     from state import yamlish
 
     text = _git(root, "show", f"{ref}:changes/0001-export-the-claims-report/status.yaml")
@@ -675,10 +679,10 @@ def test_run_hands_the_record_to_the_record_job_and_never_releases_twice(tmp_pat
     outputs.write_text("ref=v0.3.1\n", encoding="utf-8")
     code, lines = _run(root, FakeGitHub(), env={"GITHUB_OUTPUT": str(outputs)})
     assert code == 0, lines
-    assert "release: note: no release record: no release record on sdlc/0001/c" in lines
+    assert "release: note: no release record: no release record on sdlc/0001/build" in lines
     assert "release: done: deploy.command exited 0 (deploy.action publish package)" in lines
     assert lines[-1] == (
-        "release: record: pending: the record job stores it on sdlc/0001/c and "
+        "release: record: pending: the record job stores it on sdlc/0001/build and "
         "refs/sdlc/released/0001"
     )
     assert outputs.read_text(encoding="utf-8") == "ref=v0.3.1\nreleased=true\nchange_id=0001\n"
@@ -687,20 +691,22 @@ def test_run_hands_the_record_to_the_record_job_and_never_releases_twice(tmp_pat
     code, lines = _record(root, "--merge-sha", "abc1234def")
     assert code == 0, lines
     assert lines == [
-        "release: record: stored on refs/sdlc/released/0001 and sdlc/0001/c ("
-        + _git(root, "rev-parse", "--short", "origin/sdlc/0001/c").strip()
+        "release: record: stored on refs/sdlc/released/0001 and sdlc/0001/build ("
+        + _git(root, "rev-parse", "--short", "origin/sdlc/0001/build").strip()
         + ")"
-    ] or lines[0].startswith("release: record: stored on refs/sdlc/released/0001 and sdlc/0001/c (")
+    ] or lines[0].startswith(
+        "release: record: stored on refs/sdlc/released/0001 and sdlc/0001/build ("
+    )
     _git(root, "fetch", "-q", "origin", "+refs/sdlc/*:refs/sdlc/*")
-    for ref in ("refs/remotes/origin/sdlc/0001/c", "refs/sdlc/released/0001"):
+    for ref in ("refs/remotes/origin/sdlc/0001/build", "refs/sdlc/released/0001"):
         recorded = _remote_status(root, ref)
         assert recorded["released_pr"] == 7 and recorded["released_sha"] == "abc1234def", ref
         assert recorded["released_at"].endswith("Z"), ref
-    assert _git(root, "log", "-1", "--format=%s", "origin/sdlc/0001/c").strip() == (
+    assert _git(root, "log", "-1", "--format=%s", "origin/sdlc/0001/build").strip() == (
         "release(0001): record the release of pull request #7"
     )
     assert _git(root, "rev-parse", "refs/sdlc/released/0001") == _git(
-        root, "rev-parse", "origin/sdlc/0001/c"
+        root, "rev-parse", "origin/sdlc/0001/build"
     )
     assert _git(root, "status", "--porcelain").strip() == ""  # the checkout is untouched
     # a second record (the job re-run) changes nothing
@@ -719,10 +725,44 @@ def test_run_hands_the_record_to_the_record_job_and_never_releases_twice(tmp_pat
     assert not any(line.startswith("release: run:") for line in lines)
     assert outputs.read_text(encoding="utf-8") == "" and "released" not in capfd.readouterr().out
     # a merged copy that carries the record (the second PR merged from the branch): the same
-    _git(root, "merge", "-q", "--no-ff", "-m", "second merge", "origin/sdlc/0001/c")
+    _git(root, "merge", "-q", "--no-ff", "-m", "second merge", "origin/sdlc/0001/build")
     code, lines = _run(root, FakeGitHub())
     assert code == 0 and lines[-1].startswith("release: skip: change 0001 was already released")
     assert "released" not in capfd.readouterr().out
+
+
+def test_a_change_in_flight_before_r45_releases_from_its_letter_branch(tmp_path, capfd):
+    """R45, for one release: the build PR an older plugin opened has the head ``sdlc/0001/c``
+    and its merged copy says ``phase: e`` with ``evidence/gate-e.json``; the release reads
+    every one as deploy, and the record job stores the record on that letter branch."""
+    root, change_dir = _repo_with_change(tmp_path, sdlc_yaml=_yaml(command=RELEASED))
+    _git(root, "branch", "-m", "sdlc/0001/build", "sdlc/0001/c")
+    _git(root, "checkout", "-q", "main")
+    status_file = change_dir / "status.yaml"
+    text = status_file.read_text(encoding="utf-8").replace("phase: deploy", "phase: e")
+    status_file.write_text(text, encoding="utf-8")
+    evidence = change_dir / "evidence"
+    (evidence / "gate-deploy.json").rename(evidence / "gate-e.json")
+    _git(root, "add", "-A")
+    _git(root, "commit", "-q", "-m", "letters as an older plugin wrote them")
+    remote = root.parent / f"{root.name}-remote.git"
+    _git(root, "init", "-q", "--bare", str(remote))
+    _git(root, "remote", "add", "origin", str(remote))
+    _git(root, "push", "-q", "origin", "main", "sdlc/0001/c")
+    code, lines = _run(root, FakeGitHub(head_ref="sdlc/0001/c"))
+    assert code == 0, lines
+    assert "release: phase: deploy" in lines and "release: gate: deploy/passed" in lines
+    assert lines[-1] == (
+        "release: record: pending: the record job stores it on sdlc/0001/c and "
+        "refs/sdlc/released/0001"
+    )
+    assert "released" in capfd.readouterr().out
+    code, lines = _record(root, "--merge-sha", "abc1234def")
+    assert code == 0 and lines[0].startswith(
+        "release: record: stored on refs/sdlc/released/0001 and sdlc/0001/c ("
+    ), lines
+    assert _remote_status(root, "refs/remotes/origin/sdlc/0001/c")["released_pr"] == 7
+    assert "sdlc/0001/build" not in _git(root, "ls-remote", "--heads", "origin")
 
 
 def test_the_record_survives_a_deleted_work_branch(tmp_path, capfd):
@@ -732,14 +772,14 @@ def test_the_record_survives_a_deleted_work_branch(tmp_path, capfd):
     refs/sdlc/released/<id> is no branch: the record goes there, on the merge commit."""
     root, _ = _repo_with_change(tmp_path, sdlc_yaml=_yaml(command=RELEASED))
     _with_remote(root)
-    _git(root, "push", "-q", "origin", "--delete", "sdlc/0001/c")
+    _git(root, "push", "-q", "origin", "--delete", "sdlc/0001/build")
     code, lines = _run(root, FakeGitHub())
     assert code == 0 and lines[-1].startswith("release: record: pending")
     assert "released" in capfd.readouterr().out
     code, lines = _record(root, "--merge-sha", "abc1234def")
     assert code == 0, lines
     assert lines[0].startswith(
-        "release: record: stored on refs/sdlc/released/0001 (sdlc/0001/c is gone)"
+        "release: record: stored on refs/sdlc/released/0001 (sdlc/0001/build is gone)"
     )
     _git(root, "fetch", "-q", "origin", "+refs/sdlc/*:refs/sdlc/*")
     assert _remote_status(root, "refs/sdlc/released/0001")["released_pr"] == 7
@@ -747,7 +787,7 @@ def test_the_record_survives_a_deleted_work_branch(tmp_path, capfd):
         _git(root, "rev-parse", "refs/sdlc/released/0001^").strip()
         == _git(root, "rev-parse", "main").strip()
     )  # on top of the merge commit
-    assert "sdlc/0001/c" not in _git(root, "ls-remote", "--heads", "origin")
+    assert "sdlc/0001/build" not in _git(root, "ls-remote", "--heads", "origin")
     code, lines = _run(root, FakeGitHub(), "--event", "labeled")
     assert code == 0 and lines[-1].startswith("release: skip: change 0001 was already released")
     assert "released" not in capfd.readouterr().out
@@ -791,14 +831,14 @@ def test_run_fails_closed_when_the_remote_record_cannot_be_read(tmp_path, capfd)
 
 
 def test_the_record_lands_after_a_competing_push(tmp_path):
-    """The review of the 0.3.1 diff, finding 8: a session pushing to sdlc/<id>/c at the same
+    """The review of the 0.3.1 diff, finding 8: a session pushing to sdlc/<id>/build at the same
     moment (a fix round the owner started before merging) rejects the record's first push;
     the record is re-applied on the new tip and the competing commit is kept."""
     root, _ = _repo_with_change(tmp_path, sdlc_yaml=_yaml(command=RELEASED))
     remote = _with_remote(root)
     real = approval.make_git()
     other = tmp_path.parent / f"{tmp_path.name}-other"
-    _git(root, "clone", "-q", "--branch", "sdlc/0001/c", str(remote), str(other))
+    _git(root, "clone", "-q", "--branch", "sdlc/0001/build", str(remote), str(other))
     _git(other, "config", "user.email", "s@example.com")
     _git(other, "config", "user.name", "session")
     pushes = {"n": 0}
@@ -808,16 +848,18 @@ def test_the_record_lands_after_a_competing_push(tmp_path):
             pushes["n"] += 1
             (other / "report.py").write_text("x = 3\n", encoding="utf-8")
             _git(other, "commit", "-q", "-am", "fix round: a concurrent push")
-            _git(other, "push", "-q", "origin", "sdlc/0001/c")
+            _git(other, "push", "-q", "origin", "sdlc/0001/build")
         return real(r, *a)
 
     _run(root, FakeGitHub())
     code, lines = _record(root, git=racing)
     assert code == 0, lines
-    assert lines[0].startswith("release: record: stored on refs/sdlc/released/0001 and sdlc/0001/c")
-    subjects = _git(root, "log", "--format=%s", "-2", "origin/sdlc/0001/c").splitlines()
+    assert lines[0].startswith(
+        "release: record: stored on refs/sdlc/released/0001 and sdlc/0001/build"
+    )
+    subjects = _git(root, "log", "--format=%s", "-2", "origin/sdlc/0001/build").splitlines()
     _git(root, "fetch", "-q", "origin")
-    subjects = _git(root, "log", "--format=%s", "-2", "origin/sdlc/0001/c").splitlines()
+    subjects = _git(root, "log", "--format=%s", "-2", "origin/sdlc/0001/build").splitlines()
     assert subjects == [
         "release(0001): record the release of pull request #7",
         "fix round: a concurrent push",
@@ -871,7 +913,7 @@ def test_cli_releases_nothing_twice_with_an_empty_command_either(tmp_path):
 
 # --- issue #68: a parked change merged at (e) waits for the label, with its reason shown ----
 def test_cli_waits_for_the_label_on_a_parked_merge_whatever_production_says(tmp_path, capfd):
-    """Issue #68: gate (e) parked (a risk-list hit, a guardrail change, the iteration cap) and
+    """Issue #68: gate (deploy) parked (a risk-list hit, a guardrail change, the iteration cap) and
     the owner merged anyway; without a declared production the release ran deploy.command
     with no second look and no mention of the park. Now the park reason is printed and the
     release waits for sdlc:release-approved, production or not."""
@@ -882,8 +924,8 @@ def test_cli_waits_for_the_label_on_a_parked_merge_whatever_production_says(tmp_
     assert status.read_status(change_dir, on_default_branch=True).parked_reason is None
     code, lines = _run(root, FakeGitHub(actor=None, labels=()))
     assert code == 0, lines
-    assert "release: gate: e/parked" in lines
-    assert f"release: parked: gate (e) parked change 0001: {reason}" in lines
+    assert "release: gate: deploy/parked" in lines
+    assert f"release: parked: gate (deploy) parked change 0001: {reason}" in lines
     waiting = [line for line in lines if line.startswith("release: waiting: ")]
     assert waiting and f"merged while parked ({reason})" in waiting[0]
     assert "whatever deploy.production says" in waiting[0]
@@ -893,7 +935,7 @@ def test_cli_waits_for_the_label_on_a_parked_merge_whatever_production_says(tmp_
     # the owner's label (a person's act on GitHub) releases it, with the reason in the log
     code, lines = _run(root, FakeGitHub(), "--event", "labeled")
     assert code == 0, lines
-    assert f"release: parked: gate (e) parked change 0001: {reason}" in lines
+    assert f"release: parked: gate (deploy) parked change 0001: {reason}" in lines
     assert "release: approval: label (label applied by owner-login)" in lines
     assert "release: exit: 0" in lines and "released" in capfd.readouterr().out
 
@@ -918,7 +960,7 @@ def _targets(test_exit: int) -> str:
 
 def test_a_merge_commit_whose_targets_are_red_is_refused_with_a_route(tmp_path, capfd):
     """Check 9 of the race analysis: no gate ran on the merge commit when another change
-    merged after this one's gate (e); the release runs the three targets there first and
+    merged after this one's gate (deploy); the release runs the three targets there first and
     deploy.command never runs on red. Check 10: the refusal says what to do next."""
     yaml = _yaml(command=RELEASED) + _targets(1)
     root, _ = _repo_with_change(tmp_path, sdlc_yaml=yaml)

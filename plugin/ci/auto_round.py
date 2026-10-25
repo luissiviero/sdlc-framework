@@ -54,10 +54,10 @@ OUTPUT_TAIL_CHARS = 3000
 REASONS_CHARS = 1000  # the judge's reasons go into status.yaml, the gate record and the PR body
 RUNNER_FILES = (c.AUTO_ROUND_FILE, c.AUTO_RESET_FILE)
 HISTORY_LIMIT = 10
-# The gates whose fix round may change the code (build, test, deploy): at (a), (b) and (f) the
-# gate's design_scope check refuses a source file, so a round could not fix a red target there
-# and the change parks for the owner as before.
-AUTO_ROUND_PHASES = ("c", "d", "e")
+# The gates whose fix round may change the code (build, test, deploy): at intent, design and
+# maintain the gate's design_scope check refuses a source file, so a round could not fix a red
+# target there and the change parks for the owner as before.
+AUTO_ROUND_PHASES = (c.BUILD, c.TEST, c.DEPLOY)
 FIX_ROUNDS_CHECK = "fix_rounds"  # the check a park at the cap or a failed dispatch adds
 RUNNER_AUTHOR = "sdlc-runner"
 
@@ -150,7 +150,7 @@ def _expected(line: str) -> str:
 def _red_proof(proof: dict[str, Any]) -> dict[str, Any] | None:
     """The round's ``proof`` entry from a failed ``proof`` check: the approved items that
     differ or were not produced; None when the failure is a park (the step's own failure, no
-    ``items``, or the drive removed after gate (b), ``drive_removed``: change 0004, R7)."""
+    ``items``, or the drive removed after gate (design), ``drive_removed``: change 0004, R7)."""
     details = _details(proof)
     items = details.get("items")
     if details.get("drive_removed") or not isinstance(items, list):
@@ -270,7 +270,7 @@ def start_round(
         "schema_version": SCHEMA_VERSION,
         "round": int(iterations) + 1,
         "cap": int(cap),
-        "phase": phase,
+        "phase": c.phase_name(phase),
         "head": head,
         "targets": targets,
         "run": github_run(env),
@@ -294,7 +294,14 @@ def set_round_status(change_dir: Path, status: str, **extra: Any) -> dict[str, A
 
 # --- 3. the gate record and status.yaml while the round runs -------------------------------
 def gate_path(change_dir: Path, phase: str) -> Path:
-    return Path(change_dir) / art.EVIDENCE_DIR / art.GATE_RESULT.format(phase=phase)
+    """The gate record a reader takes: ``gate-<name>.json``, or the letter's an older plugin
+    wrote when only that one exists (R45, ``conventions.phase_file``)."""
+    return c.phase_file(Path(change_dir) / art.EVIDENCE_DIR, art.GATE_RESULT, phase)
+
+
+def gate_write_path(change_dir: Path, phase: str) -> Path:
+    """The gate record a writer writes: always the name's (``gate-build.json``, R45)."""
+    return Path(change_dir) / art.EVIDENCE_DIR / art.GATE_RESULT.format(phase=c.phase_name(phase))
 
 
 def mark_fixing(change_dir: Path, phase: str, round_data: dict[str, Any]) -> dict[str, Any]:
@@ -302,8 +309,8 @@ def mark_fixing(change_dir: Path, phase: str, round_data: dict[str, Any]) -> dic
     check run says so), its label becomes ``sdlc:fixing`` and it names the round; the park
     reason in ``status.yaml`` says an automatic round runs, so neither the PR nor the queue
     shows the change as waiting for the owner."""
-    path = gate_path(change_dir, phase)
-    record = read_json(path) or {}
+    record = read_json(gate_path(change_dir, phase)) or {}
+    path = gate_write_path(change_dir, phase)
     record["label"] = c.FIXING_LABEL
     record["auto_round"] = {
         "round": round_data.get("round"),
@@ -331,8 +338,10 @@ def park_record(
     from gate.checks import CheckResult  # noqa: PLC0415
     from gate.gate import GateResult  # noqa: PLC0415
 
-    path = gate_path(change_dir, phase)
-    result = GateResult.from_dict(read_json(path) or {"phase": phase})
+    result = GateResult.from_dict(
+        read_json(gate_path(change_dir, phase)) or {"phase": c.phase_name(phase)}
+    )
+    path = gate_write_path(change_dir, phase)
     result.checks = [ch for ch in result.checks if ch.name != FIX_ROUNDS_CHECK]
     result.checks.append(CheckResult(FIX_ROUNDS_CHECK, False, reason, need, dict(details or {})))
     result.result, result.label = "park", c.NEEDS_HUMAN_LABEL
@@ -467,7 +476,7 @@ def judge_prompt(
         iterations=iterations,
         cap=cap,
         summary=targets_summary(targets),
-        gate=art.GATE_RESULT.format(phase=phase),
+        gate=art.GATE_RESULT.format(phase=c.phase_name(phase)),
         round_file=c.AUTO_ROUND_FILE,
     )
 
@@ -547,7 +556,7 @@ def write_reset(
         "actor": actor,
         "at": at,
         "reasons": verdict.get("reasons") or "",
-        "phase": phase,
+        "phase": c.phase_name(phase),
         "cap": int(cap),
         "iterations_before": st.iterations,
         "panel_calls_before": st.panel_calls,

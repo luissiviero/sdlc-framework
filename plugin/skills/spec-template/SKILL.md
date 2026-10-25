@@ -1,6 +1,6 @@
 ---
 name: spec-template
-description: The spec.md template for phase (b) design of the SDLC framework — the requirements-and-design spec the design pass writes from a merged intent.md, with the mandatory "Flagged concerns" section and the header that logs the prompt and the plugin version in force. Use whenever asked to write, review, update or close concerns in a spec.md or a design spec for a change ("write the spec", "spec.md", "design spec for change 0001", "close the flagged concerns").
+description: The spec.md template for the design phase of the SDLC framework — the requirements-and-design spec the design pass writes from a merged intent.md, with the mandatory "Flagged concerns" section and the header that logs the prompt and the plugin version in force. Use whenever asked to write, review, update or close concerns in a spec.md or a design spec for a change ("write the spec", "spec.md", "design spec for change 0001", "close the flagged concerns").
 ---
 
 # spec.md template
@@ -9,7 +9,7 @@ Source: article p.13–14 (Stage 2 Design: "Claude takes intent.md and produces 
 and design spec, constrained by the organization's skills, with areas of concern flagged";
 p.14 governance: "The spec, the prompt that produced it, and the skill versions in force are
 all logged in version control"). Build guide steps 22–23. The section names are defined once,
-in `plugin/gate/artifacts.py` (`SPEC_SECTIONS`); the gate checks them at gate (b).
+in `plugin/gate/artifacts.py` (`SPEC_SECTIONS`); the gate checks them at the design gate.
 
 Write `changes/<id>-<slug>/spec.md` with exactly this shape. Keep the five sections in this
 order and never leave one empty ("none" is a valid body). A quick intent adds one section
@@ -66,15 +66,15 @@ UI, the metric and its threshold; for a change that touches a screen, the Mock: 
   PR's "Needs your close look" banner, which the owner's merge accepts (decision 35; it no
   longer parks). Decision 35 settles the declaration, so write it closed, one item per
   line: `- decided (decision 35): risk item '<item>': <what the design does to it>; the
-  close-look banner shows it and the owner's merge accepts it (at (e), the owner's approving
-  review).` A question the item raises
+  close-look banner shows it and the owner's merge accepts it (at the deploy gate, the owner's
+  approving review).` A question the item raises
   that the owner must answer is a concern of its own, left open. List the items the design
   touches, and say in Requirements that the others do not apply — never under Flagged
   concerns.
 - **Open questions are answered or carried forward**, never dropped (p.14 step 3). A
   carried-forward question is also a flagged concern if the build cannot proceed without it.
 - **Requirements, not implementation.** Files, order of work, risks and proof go to plan.md
-  (skill `plan-template`), written by the read-only planning run that follows the spec.
+  (skill `plan-template`), written by the planning run that follows the spec.
 - **Apply the policies as constraints** (p.14 governance): write the spec with the policy
   skills loaded (`coding-standards`, `security-baseline`, `ux-conventions`,
   `data-conventions`, `definition-of-done`) and say in Requirements which rules apply.
@@ -91,13 +91,13 @@ UI, the metric and its threshold; for a change that touches a screen, the Mock: 
   one list item per section the owner left, `- <section>: <what you assumed>`, plus any
   other assumption the design rests on (the change type included). These are assumptions,
   not flagged concerns: the design PR and the build PR show them above their bullets and
-  the owner corrects one with a review comment (on the design PR the spec changes; at gate
-  (e) the code does, and the line stays). "Open questions from intent" holds "none"
+  the owner corrects one with a review comment (on the design PR the spec changes; at the
+  deploy gate the code does, and the line stays). "Open questions from intent" holds "none"
   or the questions you assumed answers to, never the intent's marker line. A gap no
   reasonable reading fills (two
   policies in conflict, a risk-list item, a cost or data question only the owner can
   answer) stays a flagged concern. The gate parks a quick intent's spec without the
   section.
-- **Never edit intent.md** in phase (b): it was accepted at gate (a) and the gate parks a
+- **Never edit intent.md** in the design phase: it was accepted at the intent gate and the gate parks a
   branch that changes it.
 - Plain language, short bullets, English only.

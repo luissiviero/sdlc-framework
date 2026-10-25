@@ -128,7 +128,7 @@ def _build_project(base: Path, change_type: str) -> None:
     assert change is not None
     git(root, "add", ".")
     git(root, "commit", "-q", "-m", "intent(0001) (as if the a PR merged)")
-    git(root, "checkout", "-q", "-b", "sdlc/0001/c")
+    git(root, "checkout", "-q", "-b", "sdlc/0001/build")
     calc_test = root / "tests" / "test_calc.py"
     write(calc_test, calc_test.read_text(encoding="utf-8") + "\n\ndef test_more():\n    assert 1\n")
     write(root / "tests" / "test_new.py", "def test_reproduces_the_bug():\n    assert 1\n")
@@ -351,7 +351,7 @@ def test_review_prompt_renders_with_str_format():
         PROMPT_FILE.read_text(encoding="utf-8"),
         change_id="0001",
         title="Rounding is off by one",
-        branch="sdlc/0001/c",
+        branch="sdlc/0001/build",
         head="e" * 40,
         base="origin/main",
         root="/tmp/proj",
@@ -367,7 +367,7 @@ def test_cli_prompt_prints_the_change_the_head_and_the_json_shape(tmp_path, caps
     assert run_cli(["prompt", "--root", str(root), "--id", "0001"]) == 0
     out = capsys.readouterr().out
     assert "0001" in out and head_of(root) in out
-    assert "Rounding is off by one" in out and "sdlc/0001/c" in out
+    assert "Rounding is off by one" in out and "sdlc/0001/build" in out
     assert str(change.resolve()).replace("\\", "/") in out
     assert '"severity": "important | nit"' in out and '"findings": [' in out
 
@@ -452,7 +452,7 @@ def test_cli_validate_writes_the_proposals_on_the_second_occurrence(tmp_path, ca
 
 
 def test_cli_validate_proposes_a_claude_md_finding_the_first_time(tmp_path, capsys):
-    """HANDOFF 6(f): "CLAUDE.md outdated" was a deadlock at gate (e): only the owner edits
+    """HANDOFF 6(f): "CLAUDE.md outdated" was a deadlock at gate (deploy): only the owner edits
     CLAUDE.md, and the proposal appeared only on a second occurrence. The line is proposed
     the first time a finding names CLAUDE.md, so it reaches the PR body at once."""
     root, change = make_project(tmp_path, change_type="feature")
@@ -518,7 +518,7 @@ def test_cli_check_run_posts_the_summary(tmp_path, capsys, monkeypatch, fake_git
     capsys.readouterr()
     monkeypatch.setattr(review_cli.gitops, "github_repo", lambda *_a, **_k: "owner/repo")
 
-    assert run_cli(["check-run", "--root", str(root), "--id", "0001", "--phase", "e"]) == 0
+    assert run_cli(["check-run", "--root", str(root), "--id", "0001", "--phase", "deploy"]) == 0
     out = json.loads(capsys.readouterr().out)
     assert out["route"] == "check-run" and out["conclusion"] == "failure"
     assert out["result"] == {"id": 7, "html_url": "https://github.test/check/7"}
@@ -558,7 +558,7 @@ def test_cli_check_run_on_the_final_head_is_green_across_evidence_only(
     reviewed = head_of(root)
     record_findings(change, payload(reviewed, [NIT]))
     rel = change.relative_to(root).as_posix()
-    final = _commit(root, f"{rel}/evidence/run-e.json", "{}")
+    final = _commit(root, f"{rel}/evidence/run-deploy.json", "{}")
     monkeypatch.setattr(review_cli.gitops, "github_repo", lambda *_a, **_k: "owner/repo")
     argv = ["check-run", "--root", str(root), "--id", "0001", "--final-head"]
     assert run_cli(argv) == 0

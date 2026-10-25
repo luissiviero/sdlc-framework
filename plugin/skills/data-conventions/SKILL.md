@@ -28,7 +28,7 @@ description: The organization's data and storage conventions. Use whenever addin
    reversible, and named in `plan.md` "Files that change" and Risks; "data migrations" is on
    the risk list, so the migration is a line of the "Needs your close look" banner on the
    PR the owner merges, with the reviewer's brief on it, and the owner's merge accepts it
-   (decision 35; at (e), the owner's approving review, decision 36).
+   (decision 35; at the deploy gate, the owner's approving review, decision 36).
 4. **Events and APIs**: additive changes only; a removed or renamed field is a new version
    with a deprecation note.
 5. **Retention and minimisation**: store what the spec needs, nothing "for later"; state the
@@ -52,5 +52,5 @@ output:
 Deterministic backing, rule by rule (R27): rule 2, the protected-paths hook for the frozen
 schema and generated folders a project lists under `sdlc.yaml: protected_paths`; rule 3, the
 gate's `risk_list` check ("data migrations") and its banner. Rules 1, 4, 5 and 6 have no
-hook: only the REVIEW.md pass at (e) re-checks them. This skill is advisory (p.22
+hook: only the REVIEW.md pass at deploy re-checks them. This skill is advisory (p.22
 governance).

@@ -188,7 +188,9 @@ def test_parse_value_and_string_form():
 def test_target_logs_and_required_evidence():
     assert art.target_logs(False) == art.EVIDENCE_TARGETS
     assert art.target_logs(True)["drive"] == "drive.log"
-    assert "drive.log" not in art.required_evidence("d", False)
-    assert art.required_evidence("d", True)[-1] == "drive.log"
-    assert art.required_evidence("e", True)[-1] == "drive.log"
-    assert art.required_evidence("c", True) == art.REQUIRED_EVIDENCE["c"]
+    assert "drive.log" not in art.required_evidence("test", False)
+    assert art.required_evidence("test", True)[-1] == "drive.log"
+    assert art.required_evidence("deploy", True)[-1] == "drive.log"
+    assert art.required_evidence("build", True) == art.REQUIRED_EVIDENCE["build"]
+    # R45: a letter an older caller passes is read as its name
+    assert art.required_evidence("d", True) == art.required_evidence("test", True)

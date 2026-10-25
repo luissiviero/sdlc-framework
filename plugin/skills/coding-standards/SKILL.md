@@ -1,6 +1,6 @@
 ---
 name: coding-standards
-description: The organization's coding standards. Use whenever writing, changing or reviewing source code in a project that runs the SDLC framework — during the design pass (spec.md), the implementation run of phase (c), the code-simplifier and the review passes — and whenever asked which rules or conventions a code change here must follow, before writing it ("apply the coding standards", "is this idiomatic here", "review the diff for style", "what rules does a change here have to follow").
+description: The organization's coding standards. Use whenever writing, changing or reviewing source code in a project that runs the SDLC framework — during the design pass (spec.md), the implementation run of the build phase, the code-simplifier and the review passes — and whenever asked which rules or conventions a code change here must follow, before writing it ("apply the coding standards", "is this idiomatic here", "review the diff for style", "what rules does a change here have to follow").
 ---
 
 # Coding standards
@@ -47,9 +47,9 @@ files over 500 lines. Example output:
 - note: lint target `python -m ruff check .` passed
 ```
 Deterministic backing, rule by rule (R27): rule 3, the plan-sync hook on `git commit` in
-phase (c) and the gate's `plan_sync` and `design_scope` checks; rule 4, the test-file lock
+the build phase and the gate's `plan_sync` and `design_scope` checks; rule 4, the test-file lock
 (hook and gate) on a fix-type change and the gate's test ratchet; rule 6, the
 protected-paths hook for the generated folders a project lists under `sdlc.yaml:
 protected_paths`; rule 8, the formatter hook (`hooks.formatters`, ruff for Python by
 default) and the lint target in the gate. Rules 1, 2, 5 and 7 have no hook: only the
-REVIEW.md pass at (e) re-checks them. This skill is advisory (p.22 governance).
+REVIEW.md pass at deploy re-checks them. This skill is advisory (p.22 governance).

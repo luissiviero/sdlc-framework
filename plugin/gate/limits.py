@@ -14,7 +14,7 @@ Limits (sdlc.yaml ``gate:`` block, all optional; defaults here):
   - ``max_wall_clock_minutes``: elapsed time since the phase run started (default 120);
     the run records its start with ``cli.py start-run``;
   - ``build_max_turns`` and ``build_max_wall_clock_minutes``: the turn and wall-clock caps of
-    the build run (``--phase c``) and of every fix round (decision 32, 1.0.8; defaults 400 and
+    the build run (``--phase build``) and of every fix round (decision 32, 1.0.8; defaults 400 and
     180); every other run keeps ``max_turns`` (the runner's, default 200) and
     ``max_wall_clock_minutes``. An unset build key is the larger of the general setting and
     the build default, so no project's cap goes down (``run_caps``); ``start-run`` records
@@ -52,6 +52,7 @@ from gate import artifacts as art  # noqa: E402
 from gate import checks  # noqa: E402
 from gate.checks import CheckResult, GateContext  # noqa: E402
 from hooks._common import ConfigError, config_flag  # noqa: E402
+from state import conventions as c  # noqa: E402
 
 DEFAULT_MAX_ITERATIONS = 3
 DEFAULT_MAX_ITERATIONS_NON_ROUTINE = 2
@@ -89,7 +90,7 @@ def run_caps(gate_settings: Any, build: bool, less_minutes: int = 0) -> tuple[in
     each of which, when unset or invalid, is the larger of the general setting and the build
     default. The one copy of the rule: the runner's ``--max-turns`` and subprocess timeout and
     the gate's wall-clock check all read it. ``less_minutes`` comes off the wall clock (the
-    drive's minutes at (e), change 0004), never below ``RUN_CAP_FLOOR_MINUTES``."""
+    drive's minutes at (deploy), change 0004), never below ``RUN_CAP_FLOOR_MINUTES``."""
     cfg = gate_settings if isinstance(gate_settings, dict) else {}
     turns = _int(cfg.get("max_turns"), DEFAULT_MAX_TURNS)
     minutes = _int(cfg.get("max_wall_clock_minutes"), DEFAULT_MAX_WALL_CLOCK_MINUTES)
@@ -107,12 +108,12 @@ def run_caps(gate_settings: Any, build: bool, less_minutes: int = 0) -> tuple[in
 # Change 0004 (spec R4): the largest ``gate.drive_timeout`` the test and build jobs hold. With
 # the R18 triage step's 5 minutes the test job is 190 + d <= 200 and the build and fix jobs
 # 250 + d <= 260, so the drive adds at most 10 minutes over its default 300 s. A larger value
-# is capped at (c) and (d); at (e) the drive's minutes come off the session's wall clock
+# is capped at build and test; at (deploy) the drive's minutes come off the session's wall clock
 # instead (``run_caps``' ``less_minutes``), never below the floor.
 DRIVE_TIMEOUT_MAX_SECONDS = 600
-DRIVE_CAPPED_PHASES = ("c", "d")
+DRIVE_CAPPED_PHASES = (c.BUILD, c.TEST)
 RUN_CAP_FLOOR_MINUTES = 30
-DRIVE_PHASE = "e"  # the gate whose session gives up the drive's minutes
+DRIVE_PHASE = c.DEPLOY  # the gate whose session gives up the drive's minutes
 DRIVE_TIMEOUT_REFUSAL = (
     "gate.drive_timeout={n} exceeds the 600 s the test and build jobs hold: 600 applied; "
     "lower it, or raise timeout-minutes and SDLC_JOB_TIMEOUT_MINUTES together in a reviewed PR"
@@ -121,18 +122,18 @@ DRIVE_TIMEOUT_REFUSAL = (
 
 def drive_timeout_seconds(config: Any, gate_phase: str | None) -> int | None:
     """The drive's timeout at gate ``gate_phase``: ``gate.drive_timeout``, capped at
-    ``DRIVE_TIMEOUT_MAX_SECONDS`` unless the gate is (e); None when no drive is set."""
+    ``DRIVE_TIMEOUT_MAX_SECONDS`` unless the gate is (deploy); None when no drive is set."""
     config = config if isinstance(config, dict) else {}
     if checks.drive_from_config(config) is None:
         return None
     seconds = checks.configured_drive_timeout(config)
-    if gate_phase != DRIVE_PHASE:
+    if c.phase_name(gate_phase) != DRIVE_PHASE:
         seconds = min(seconds, DRIVE_TIMEOUT_MAX_SECONDS)
     return seconds
 
 
 def drive_timeout_refusal(config: Any) -> str | None:
-    """Why the configured ``gate.drive_timeout`` is not the one applied at (c) and (d), or None
+    """Why the configured ``gate.drive_timeout`` is not the one applied at build and test, or None
     when it is (or no drive is set)."""
     config = config if isinstance(config, dict) else {}
     if checks.drive_from_config(config) is None:
@@ -142,7 +143,7 @@ def drive_timeout_refusal(config: Any) -> str | None:
 
 
 def drive_minutes(config: Any) -> int:
-    """The minutes the drive takes off the (e) session's wall clock: ``ceil(drive_timeout /
+    """The minutes the drive takes off the (deploy) session's wall clock: ``ceil(drive_timeout /
     60)`` when a drive is set, else 0."""
     seconds = drive_timeout_seconds(config, DRIVE_PHASE)
     return math.ceil(seconds / 60) if seconds else 0
@@ -155,7 +156,7 @@ DRIVE_FLOOR_NEED = (
 
 
 def drive_floor_refusal(config: Any, build: bool) -> str | None:
-    """Why the drive's minutes would take the (e) session's wall clock below
+    """Why the drive's minutes would take the (deploy) session's wall clock below
     ``RUN_CAP_FLOOR_MINUTES``, or None. A cap already under the floor gives up nothing
     (``run_caps``), so it is no refusal: the runner, before the session starts, and the gate's
     wall-clock check read this one rule (change 0004, R4)."""
@@ -165,7 +166,7 @@ def drive_floor_refusal(config: Any, build: bool) -> str | None:
     if not less or whole < RUN_CAP_FLOOR_MINUTES or whole - less >= RUN_CAP_FLOOR_MINUTES:
         return None
     return (
-        f"gate.drive_timeout takes {less} min off the (e) session's {whole} min, below the "
+        f"gate.drive_timeout takes {less} min off the (deploy) session's {whole} min, below the "
         f"floor of {RUN_CAP_FLOOR_MINUTES} min"
     )
 
@@ -190,7 +191,7 @@ def panel_cap(ctx: GateContext) -> int:
 
 def classification_for(ctx: GateContext) -> str | None:
     """The adversarial reviewer's routine/non-routine call for this phase, or the latest one
-    from an earlier gate (a classification made at (b) tightens (c) and (d))."""
+    from an earlier gate (a classification made at (design) tightens build and test)."""
     return classification_in(ctx.evidence_dir, ctx.phase)
 
 
@@ -199,8 +200,11 @@ def classification_in(evidence_dir: Path, phase: str) -> str | None:
     class the way the cap does (R26 part 2)."""
     from gate.checks import load_verdict
 
-    for at in (phase, "d", "c", "b"):
-        data, _ = load_verdict(Path(evidence_dir) / art.ADVERSARIAL_VERDICT.format(phase=at))
+    for at in dict.fromkeys((c.phase_name(phase), c.TEST, c.BUILD, c.DESIGN)):
+        if at not in c.PHASES:
+            continue
+        # R45: the verdict an older plugin wrote (``adversarial-review-c.json``) is read too
+        data, _ = load_verdict(c.phase_file(evidence_dir, art.ADVERSARIAL_VERDICT, at))
         if data is not None:
             return data.get("classification")
     return None
@@ -209,7 +213,7 @@ def classification_in(evidence_dir: Path, phase: str) -> str | None:
 def read_run(ctx: GateContext) -> dict[str, Any]:
     import json
 
-    path = ctx.evidence_dir / RUN_FILE.format(phase=ctx.phase)
+    path = c.phase_file(ctx.evidence_dir, RUN_FILE, ctx.phase)  # ``run-c.json`` from before R45
     if not path.is_file():
         return {}
     try:
@@ -245,8 +249,11 @@ def read_spend_ledger(evidence_dir: Path) -> dict[str, Any]:
         return empty
     if not isinstance(data, dict) or not isinstance(data.get("entries"), list):
         return empty
+    # R45: a ``run`` an older plugin wrote as a letter (``c``) is read as its name
     entries = [
-        e for e in data["entries"] if isinstance(e, dict) and _spend(e.get("usd")) is not None
+        {**e, "run": c.phase_name(e.get("run"))} if "run" in e else e
+        for e in data["entries"]
+        if isinstance(e, dict) and _spend(e.get("usd")) is not None
     ]
     return {"total_usd": round(sum(float(e["usd"]) for e in entries), 6), "entries": entries}
 
@@ -255,16 +262,17 @@ def record_spend_entry(
     evidence_dir: Path, run: str, source: str | None, usd: float, at: str | None = None
 ) -> dict[str, Any]:
     """Add one session's cost to the change's ledger and return the ledger. ``run`` names
-    the run that spent it (``c``, ``review``, ``fix``); ``source`` the stored result it was
-    read from (``claude-fix-2.json``), which makes the entry unique: a second record of the
-    same source (a repeated step) replaces its entry instead of counting it twice."""
+    the run that spent it (``build``, ``review``, ``fix``; a letter is written as its name);
+    ``source`` the stored result it was read from (``claude-fix-2.json``), which makes the entry
+    unique: a second record of the same source (a repeated step) replaces its entry instead of
+    counting it twice."""
     import json
 
     if _spend(usd) is None:
         raise ValueError(f"a spend figure must be a finite, non-negative number, not {usd!r}")
     ledger = read_spend_ledger(evidence_dir)
     at = at or datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
-    entry = {"run": run, "source": source, "usd": float(usd), "at": at}
+    entry = {"run": c.phase_name(run), "source": source, "usd": float(usd), "at": at}
     entries = [e for e in ledger["entries"] if not (source and e.get("source") == source)] + [entry]
     ledger = {"total_usd": round(sum(float(e["usd"]) for e in entries), 6), "entries": entries}
     path = Path(evidence_dir) / SPEND_FILE
@@ -325,7 +333,8 @@ def run_lines(evidence_dir: Path) -> list[dict[str, Any]]:
         lines.append(
             {
                 "source": path.name,
-                "run": RUN_RECORD_RE.match(path.name).group("run"),
+                # R45: ``claude-c.json`` from an older plugin is the build run's
+                "run": c.phase_name(RUN_RECORD_RE.match(path.name).group("run")),
                 "usd": _spend(data.get("total_cost_usd")),
                 "credential": meta.get("credential"),
                 "seconds": round(seconds, 1) if seconds is not None else None,
@@ -555,7 +564,7 @@ def check_limits(ctx: GateContext, now: datetime | None = None) -> CheckResult:
             {**details, "stop": True},
         )
     run = read_run(ctx)
-    if not run and not ctx.human_gate and ctx.phase in ("b", "c", "d"):
+    if not run and not ctx.human_gate and ctx.phase in (c.DESIGN, c.BUILD, c.TEST):
         return CheckResult(
             "limits",
             False,
@@ -568,7 +577,7 @@ def check_limits(ctx: GateContext, now: datetime | None = None) -> CheckResult:
     # the build run and a fix round carry ``"run": "build"`` (``start-run``); an older record
     # has no field and gets the general cap, as before 1.0.8
     build = run.get("run") == BUILD_RUN
-    # change 0004: at (e) the drive's minutes came off the session's cap; the runner
+    # change 0004: at (deploy) the drive's minutes came off the session's cap; the runner
     # subtracted the same figure (``run_phase.run_caps`` with the gate phase)
     less = drive_minutes(ctx.config) if ctx.phase == DRIVE_PHASE else 0
     _turns, max_minutes = run_caps(ctx.config.get("gate"), build, less)

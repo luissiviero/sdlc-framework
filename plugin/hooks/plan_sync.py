@@ -1,21 +1,21 @@
-"""PreToolUse hook on ``git commit``: plan.md must change whenever source changes in phase (c)
-(build guide step 15 (4) and step 12; article p.16 step 7 'When implementation departs from
-the plan, update plan.md in the same commit. Consider using a hook to enforce
+"""PreToolUse hook on ``git commit``: plan.md must change whenever source changes in the
+build phase (build guide step 15 (4) and step 12; article p.16 step 7 'When implementation departs
+from the plan, update plan.md in the same commit. Consider using a hook to enforce
 synchronization between the two.').
 
 Mechanism (the article suggests the hook but not its mechanism): registered on the Bash and
 PowerShell tools with ``"if": "Bash(git *)"`` (a narrower ``Bash(git commit *)`` would skip
 ``git -C dir commit``). The hook itself finds a ``commit`` subcommand anywhere in the command
-text (chains, subshells, env prefixes). It reads the current branch; only ``sdlc/<id>/c``
-branches are checked (OPERATING_MODEL section 8: 'In (c) a hook on git commit denies a
-commit that changes source without changing plan.md in the same commit'). The files the
-commit would contain are the index, plus the working tree when ``-a``/``--all``/``--include``
-is given, plus any pathspec named after ``commit``. If any of them is source — not matched by
-``changes/**`` or by ``plan_sync.exempt`` in sdlc.yaml — **and not listed under "## Files that
-change" of ``changes/<id>-*/plan.md``** (a departure from the plan), then that plan.md must be
-among them, or the commit is denied. A commit inside the plan needs nothing: the first gated
-build run (2026-09-22) committed exactly the three files the plan listed, one plan step per
-commit as /sdlc-build asks, and was parked because no commit carried plan.md.
+text (chains, subshells, env prefixes). It reads the current branch; only ``sdlc/<id>/build``
+branches (``sdlc/<id>/c`` from a plugin before R45) are checked (OPERATING_MODEL section 8: 'In
+(build) a hook on git commit denies a commit that changes source without changing plan.md in the
+same commit'). The files the commit would contain are the index, plus the working tree when
+``-a``/``--all``/``--include`` is given, plus any pathspec named after ``commit``. If any of them is
+source — not matched by ``changes/**`` or by ``plan_sync.exempt`` in sdlc.yaml — **and not listed
+under "## Files that change" of ``changes/<id>-*/plan.md``** (a departure from the plan), then that
+plan.md must be among them, or the commit is denied. A commit inside the plan needs nothing: the
+first gated build run (2026-09-22) committed exactly the three files the plan listed, one plan step
+per commit as /sdlc-build asks, and was parked because no commit carried plan.md.
 """
 
 from __future__ import annotations
@@ -161,7 +161,7 @@ def planned_files(root: str, change_id: str) -> list[str]:
 def check(branch: str, files: list[str], exempt: list[str], planned=()) -> Decision:
     """``planned`` is the plan's file list; without it every source file is a departure."""
     parsed = c.parse_branch(branch)
-    if not parsed or parsed[1] != "c":
+    if not parsed or parsed[1] != c.BUILD:
         return Decision.allow()
     change_id = parsed[0]
     plan_rx = re.compile(rf"^changes/{change_id}-[^/]+/plan\.md$", re.IGNORECASE)

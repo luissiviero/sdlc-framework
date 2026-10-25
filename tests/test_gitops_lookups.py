@@ -325,7 +325,7 @@ def test_only_change_folder_moved(repo):
     commit(repo, "changes/0001-x/manifest.json")
     first = git(repo, "rev-parse", "HEAD").strip()
     assert gitops.only_change_folder_moved(repo, change, first)  # HEAD itself
-    commit(repo, "changes/0001-x/gate-c.json")  # the runner's record commit
+    commit(repo, "changes/0001-x/gate-build.json")  # the runner's record commit
     assert gitops.only_change_folder_moved(repo, change, first)
     folder_only = git(repo, "rev-parse", "HEAD").strip()
     commit(repo, "src.py")  # a source file moved after it

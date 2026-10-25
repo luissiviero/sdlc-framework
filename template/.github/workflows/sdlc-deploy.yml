@@ -1,4 +1,4 @@
-# Phase (e) deploy, fired by the test job's dispatch.
+# The deploy phase, fired by the test job's dispatch.
 #
 # Contract: docs/OPERATING_MODEL.md section 4.2 (the trigger and dispatch table), build guide
 # step 30, article p.39-41 ("Run Claude Code non-interactively inside the CI/CD pipeline,
@@ -18,7 +18,7 @@
 #
 # /sdlc-init filled in the framework repository. The Claude Code version is read from
 # sdlc.yaml at run time.
-name: SDLC deploy (e)
+name: SDLC deploy
 
 on:
   workflow_dispatch:
@@ -28,7 +28,7 @@ on:
         required: true
         type: string
       head_ref:
-        description: "The change's work branch, e.g. sdlc/0001/c; it keys the concurrency group"
+        description: "The change's work branch, e.g. sdlc/0001/build; it keys the concurrency group"
         required: false
         type: string
 
@@ -39,14 +39,14 @@ permissions:
   checks: write
   actions: write
 
-# One change at a time, keyed on the change's own branch: sdlc/<id>/b for the design PR
-# merge, sdlc/<id>/c for build, test and deploy — the runs that must serialise
+# One change at a time, keyed on the change's own branch: sdlc/<id>/design for the design PR
+# merge, sdlc/<id>/build for build, test and deploy — the runs that must serialise
 # (OPERATING_MODEL section 4.2). run_phase.py passes head_ref on every dispatch; since
 # decision 37 (1.0.21) a dispatch is the only way this workflow starts (no approval label).
 # The group is set on the job below.
 jobs:
   deploy:
-    # The review pass and phase (e) are two steps of one job, in that order.
+    # The review pass and the deploy phase are two steps of one job, in that order.
     # 1.0.3 (decision 29): the group is the job's, not the workflow's. Job and workflow
     # groups of one name are one group in the repository.
     concurrency:
@@ -55,7 +55,7 @@ jobs:
     outputs:
       change_id: ${{ inputs.change_id }}
       head_ref: ${{ inputs.head_ref }}
-      # 1.0.24: "false" when the runner's guard skipped phase (e) on this event; empty from a
+      # 1.0.24: "false" when the runner's guard skipped the deploy phase on this event; empty from a
       # framework pinned before it
       phase_ran: ${{ steps.phase.outputs.phase_ran }}
     runs-on: ubuntu-latest
@@ -63,13 +63,13 @@ jobs:
     # 5 of grace) and then the gate's commands step, which runs the three targets after
     # the session at gate.command_timeout each (900 s by default): 125 + 50 minutes;
     # 1.0.3 (decision 29): + 10 for the judge at the iteration cap. R25 part 1: the job holds
-    # two sessions, the REVIEW.md pass (125 minutes) before phase (e) (125 + 50 + 10), so it
+    # two sessions, the REVIEW.md pass (125 minutes) before the deploy phase (125 + 50 + 10), so it
     # covers both and the runner's own timeout, which parks the change, fires before the
     # job's, which records nothing; R51 adds the targets on a merged tree before a session
     # (45, once: the second step merges only when the default branch moved in between):
     # 125 + 185 + 45 = 355, five under the 360 a GitHub-hosted job may run
     # Change 0004: a set commands.drive adds gate.drive_timeout to the commands step and takes
-    # its minutes off the (e) session's wall clock, so the job stays at 355
+    # its minutes off the deploy session's wall clock, so the job stays at 355
     # (115 + 5 + 55 + 10 + 125 + 45 with the default 300 s); a cap already under 30 gives up
     # nothing, and a drive that would take a cap of 30 or more below 30 parks the change
     # before the session starts. Not counted here: commands.setup (up to 15 minutes, more with
@@ -188,7 +188,7 @@ jobs:
           SDLC_DEFAULT_BRANCH: ${{ github.event.repository.default_branch || github.ref_name }}
         run: python framework/plugin/ci/checkout_check.py --root . --framework framework --pin-ref "$PIN_REF" --origin "$ORIGIN_URL" --framework-origin "$FRAMEWORK_URL"
 
-      - name: Run phase (e)
+      - name: Run the deploy phase
         id: phase
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -201,7 +201,7 @@ jobs:
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
           SDLC_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
           # sdlc:commands.env
-        run: python framework/plugin/ci/run_phase.py --root . --plugin-dir framework --phase e --id "$CHANGE_ID" --head-ref "$HEAD_REF" --repo "$REPO" --ref "$DEFAULT_BRANCH" --out "$RUNNER_TEMP/sdlc-run.json"
+        run: python framework/plugin/ci/run_phase.py --root . --plugin-dir framework --phase deploy --id "$CHANGE_ID" --head-ref "$HEAD_REF" --repo "$REPO" --ref "$DEFAULT_BRANCH" --out "$RUNNER_TEMP/sdlc-run.json"
 
       # R18: a failed run explains itself. After a failed setup or runner step, or a park
       # with a log to read (the runner's triage=park output; a park ends the job green), the
@@ -275,17 +275,17 @@ jobs:
           if-no-files-found: ignore
 
   # ROADMAP R8 (plugin 1.0.19): a second opinion on the build from a model of another vendor,
-  # advisory. Off unless the default branch's sdlc.yaml lists (e) under
+  # advisory. Off unless the default branch's sdlc.yaml lists deploy under
   # external_review.phases. A job of its own on a fresh runner after the deploy job: the
   # Claude session never held the Gemini key and never shared this machine, and the key
   # reaches only the one step that calls the API. The step reads the PR's head from git
   # (never the session's working tree), posts one comment on the PR as the workflow token
   # (a fix round never applies a bot's comment) and never fails: a failed call is "not run".
-  # 1.0.24: the job runs only when phase (e) ran on this event (the guard's skip says
+  # 1.0.24: the job runs only when the deploy phase ran on this event (the guard's skip says
   # phase_ran=false; a framework pinned before 1.0.24 says nothing and the job runs as
   # before), and the step is skipped green when the pinned framework has no plugin/external/
-  # (before 1.0.19). On the fast lane it also carries the (b) opinion of the superseded
-  # design PR onto the build PR, once, whether or not (e) is on: the owner looks there first.
+  # (before 1.0.19). On the fast lane it also carries the design opinion of the superseded
+  # design PR onto the build PR, once, whether or not deploy is on: the owner looks there first.
   second-opinion:
     needs: deploy
     if: >-
@@ -329,7 +329,7 @@ jobs:
           HEAD_REF: ${{ needs.deploy.outputs.head_ref }}
           REPO: ${{ github.repository }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch || github.ref_name }}
-        run: python framework/plugin/external/cli.py review --root . --id "$CHANGE_ID" --head-ref "$HEAD_REF" --phase e --repo "$REPO" --ref "$DEFAULT_BRANCH" --post --out second-opinion.json
+        run: python framework/plugin/external/cli.py review --root . --id "$CHANGE_ID" --head-ref "$HEAD_REF" --phase deploy --repo "$REPO" --ref "$DEFAULT_BRANCH" --post --out second-opinion.json
 
       - name: Keep the second opinion's record
         if: ${{ always() }}

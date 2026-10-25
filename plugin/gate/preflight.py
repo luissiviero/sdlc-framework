@@ -3,11 +3,11 @@ later plays mature (a tuned CLAUDE.md, skills that encode policy, hooks that blo
 actions, and a test suite Claude can run), auto-accept becomes the default for routine
 work").
 
-    python "${CLAUDE_PLUGIN_ROOT}/plugin/gate/preflight.py" --root . [--id 0001] [--phase c]
+    python "${CLAUDE_PLUGIN_ROOT}/plugin/gate/preflight.py" --root . [--id 0001] [--phase build]
 
-Says whether the implementation run of phase (c) may start with
-``--permission-mode acceptEdits``, and whether a (d) or (e) run may start at all
-(``--phase d`` / ``--phase e``: the same checks but the test target, which (d) judges
+Says whether the implementation run of the build phase may start with
+``--permission-mode acceptEdits``, and whether a test or deploy run may start at all
+(``--phase test`` / ``--phase deploy``: the same checks but the test target, which (test) judges
 itself). It is the one place that decides; the phase commands read its ``allow`` and never
 judge ``status.yaml`` on their own (the ninth live run, 2026-09-22: the CI guard let a
 change through and the session refused it on a ``parked_reason`` a later gate had lifted).
@@ -22,7 +22,7 @@ Every precondition is checked deterministically:
   5. the repository is not paused (step 19);
   6. with ``--id``, the change is not parked: a park is the owner's item (decision 11) and
      nothing runs under it;
-  7. the one-command test target runs green (step 14) - phase (c) only.
+  7. the one-command test target runs green (step 14) - the build phase only.
 The report also carries ``setup_command``: the project's one-command install from
 ``sdlc.yaml: commands.setup``, which the CI phase jobs run before the phase. It is reported
 so the owner sees what the runner installs; it is not a precondition.
@@ -332,23 +332,26 @@ def classification(root: Path, config: dict[str, Any], change_id: str | None) ->
     if change_dir is None:
         return {"change_id": change_id, "error": "no change folder"}
     st = status_mod.read_status(change_dir)
-    ctx = GateContext(root, change_dir, "c", st, config, None, False)
+    ctx = GateContext(root, change_dir, c.BUILD, st, config, None, False)
     cls = limits.classification_for(ctx)
     return {
         "change_id": change_id,
         "classification": cls,
         "iteration_cap": limits.iteration_cap(ctx, cls),
         "iterations_so_far": st.iterations,
-        "verdict_file": art.ADVERSARIAL_VERDICT.format(phase="b"),
+        "verdict_file": art.ADVERSARIAL_VERDICT.format(phase=c.DESIGN),
     }
 
 
-PHASES_WITH_TEST_TARGET = ("c",)  # (d) judges the suite itself; (e) ships what (d) judged
+PHASES_WITH_TEST_TARGET = (
+    c.BUILD,
+)  # (test) judges the suite itself; (deploy) ships what (test) judged
 
 
 def run_preflight(
-    root: Path, plugin_root: Path, change_id: str | None = None, phase: str = "c"
+    root: Path, plugin_root: Path, change_id: str | None = None, phase: str = c.BUILD
 ) -> dict[str, Any]:
+    phase = c.phase_name(phase)  # R45: a letter from an older caller is read as its name
     root = Path(root).resolve()
     plugin_root = Path(plugin_root).resolve()
     try:
@@ -400,9 +403,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--id", default=None, help="change id: refuse a park; classification and cap")
     p.add_argument(
         "--phase",
-        default="c",
-        choices=("c", "d", "e"),
-        help="the phase about to run; (d) and (e) skip the test target",
+        default=c.BUILD,
+        type=c.phase_name,
+        choices=(c.BUILD, c.TEST, c.DEPLOY),
+        help="the phase about to run; test and deploy skip the test target",
     )
     return p
 

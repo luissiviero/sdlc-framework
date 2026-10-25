@@ -5,7 +5,7 @@ kept as evidence with the change and read by the gate and by the PR summary.
 Files, under ``changes/<id>-<slug>/evidence/``:
 
 - ``decisions-<phase>.json`` — the record the gate, ``pr/description.py`` and ``/sdlc-fix``
-  read: ``{"schema_version": 1, "phase": "b", "decisions": [<entry>, ...]}``;
+  read: ``{"schema_version": 1, "phase": "design", "decisions": [<entry>, ...]}``;
 - ``decisions-<phase>.md`` — the same ledger rendered for a person, one line per decision
   (item, the two verdicts in one clause each, the decision, the rationale, the cost);
 - ``panel/<phase>-items.json`` — the items ``panel/cli.py items`` found for the phase;
@@ -17,7 +17,7 @@ Files, under ``changes/<id>-<slug>/evidence/``:
 
 An entry::
 
-    {"n": 1, "phase": "b", "kind": "concern", "key": "<stable key of the item>",
+    {"n": 1, "phase": "design", "kind": "concern", "key": "<stable key of the item>",
      "item": "<the item as the owner would read it>",
      "reviewer": "<the reviewer's verdict, one clause>",
      "advocate": "<the devil's advocate's verdict, one clause>",
@@ -65,6 +65,7 @@ if str(PLUGIN_DIR) not in sys.path:
     sys.path.insert(0, str(PLUGIN_DIR))
 
 from gate import artifacts as art  # noqa: E402
+from state import conventions as c  # noqa: E402
 
 SCHEMA_VERSION = 1
 LEDGER_JSON = "decisions-{phase}.json"
@@ -171,37 +172,48 @@ def clean_decision(decision: str, item: str) -> str:
     return text
 
 
-LEDGER_PHASES = ("b", "c", "d", "e")
+LEDGER_PHASES = (c.DESIGN, c.BUILD, c.TEST, c.DEPLOY)
 
 
 def phases_up_to(phase: str) -> tuple[str, ...]:
     """The phases whose ledgers a gate at ``phase`` reads for the closings in ``spec.md``:
-    a concern closed by the panel at (b) stays closed through (c), (d) and (e), and its
-    ledger line lives in ``decisions-b.json`` (the first build under deferred review, sample
-    change 0002, 2026-09-24, parked at gate (c) on "closed with no ledger line" because the
+    a concern closed by the panel at (design) stays closed through build, test and deploy, and its
+    ledger line lives in ``decisions-design.json`` (the first build under deferred review, sample
+    change 0002, 2026-09-24, parked at gate (build) on "closed with no ledger line" because the
     check read the phase's own ledger only)."""
+    phase = c.phase_name(phase)
     if phase not in LEDGER_PHASES:
         return ()
     return LEDGER_PHASES[: LEDGER_PHASES.index(phase) + 1]
 
 
 # --- paths --------------------------------------------------------------------------------------
-def ledger_path(change_dir: Path, phase: str) -> Path:
-    return Path(change_dir) / art.EVIDENCE_DIR / LEDGER_JSON.format(phase=phase)
+def _phase_path(folder: Path, pattern: str, phase: str, write: bool, **fields: Any) -> Path:
+    """R45: the file ``pattern`` names for ``phase``. A writer (``write``) takes the phase
+    name's always (``decisions-design.json``); a reader takes it too unless only the letter's
+    exists (``decisions-b.json``, ``panel/b-1-reviewer.md``, written by a plugin before R45),
+    which it then reads (``conventions.phase_file``)."""
+    if write:
+        return Path(folder) / pattern.format(phase=c.phase_name(phase), **fields)
+    return c.phase_file(folder, pattern, phase, **fields)
 
 
-def ledger_md_path(change_dir: Path, phase: str) -> Path:
-    return Path(change_dir) / art.EVIDENCE_DIR / LEDGER_MD.format(phase=phase)
+def ledger_path(change_dir: Path, phase: str, write: bool = False) -> Path:
+    return _phase_path(Path(change_dir) / art.EVIDENCE_DIR, LEDGER_JSON, phase, write)
 
 
-def items_path(change_dir: Path, phase: str) -> Path:
-    return Path(change_dir) / art.EVIDENCE_DIR / PANEL_DIR / ITEMS_FILE.format(phase=phase)
+def ledger_md_path(change_dir: Path, phase: str, write: bool = False) -> Path:
+    return _phase_path(Path(change_dir) / art.EVIDENCE_DIR, LEDGER_MD, phase, write)
 
 
-def member_path(change_dir: Path, phase: str, n: int, member: str) -> Path:
+def items_path(change_dir: Path, phase: str, write: bool = False) -> Path:
+    return _phase_path(Path(change_dir) / art.EVIDENCE_DIR / PANEL_DIR, ITEMS_FILE, phase, write)
+
+
+def member_path(change_dir: Path, phase: str, n: int, member: str, write: bool = False) -> Path:
     ext = "json" if member == "conciliator" else "md"
-    name = MEMBER_FILE.format(phase=phase, n=n, member=member, ext=ext)
-    return Path(change_dir) / art.EVIDENCE_DIR / PANEL_DIR / name
+    folder = Path(change_dir) / art.EVIDENCE_DIR / PANEL_DIR
+    return _phase_path(folder, MEMBER_FILE, phase, write, n=n, member=member, ext=ext)
 
 
 BLIND_MEMBERS = ("reviewer", "advocate")
@@ -257,9 +269,9 @@ ADVOCATE_MODEL_FILE = "{phase}-{n}-advocate.model.json"
 ADVOCATE_AGENT = "adversarial-reviewer"  # the plugin agent ``sdlc:adversarial-reviewer``
 
 
-def advocate_model_path(change_dir: Path, phase: str, n: int) -> Path:
-    name = ADVOCATE_MODEL_FILE.format(phase=phase, n=n)
-    return Path(change_dir) / art.EVIDENCE_DIR / PANEL_DIR / name
+def advocate_model_path(change_dir: Path, phase: str, n: int, write: bool = False) -> Path:
+    folder = Path(change_dir) / art.EVIDENCE_DIR / PANEL_DIR
+    return _phase_path(folder, ADVOCATE_MODEL_FILE, phase, write, n=n)
 
 
 def _model_record(text: str | None, name: str) -> tuple[dict[str, Any] | None, list[str]]:
@@ -319,8 +331,8 @@ def advocate_model_problems(
 REVIEWER_MODEL_FILE = "adversarial-review-{phase}.model.json"
 
 
-def reviewer_model_path(change_dir: Path, phase: str) -> Path:
-    return Path(change_dir) / art.EVIDENCE_DIR / REVIEWER_MODEL_FILE.format(phase=phase)
+def reviewer_model_path(change_dir: Path, phase: str, write: bool = False) -> Path:
+    return _phase_path(Path(change_dir) / art.EVIDENCE_DIR, REVIEWER_MODEL_FILE, phase, write)
 
 
 def reviewer_model_problems(
@@ -403,13 +415,14 @@ def ledger_error(change_dir: Path, phase: str) -> str | None:
 
 
 def save_ledger(change_dir: Path, phase: str, entries: list[dict[str, Any]]) -> Path:
-    path = ledger_path(change_dir, phase)
+    phase = c.phase_name(phase)
+    path = ledger_path(change_dir, phase, write=True)
     path.parent.mkdir(parents=True, exist_ok=True)
     data = {"schema_version": SCHEMA_VERSION, "phase": phase, "decisions": entries}
     path.write_text(
         json.dumps(data, indent=2, sort_keys=True) + "\n", encoding="utf-8", newline="\n"
     )
-    ledger_md_path(change_dir, phase).write_text(
+    ledger_md_path(change_dir, phase, write=True).write_text(
         render_md(phase, entries), encoding="utf-8", newline="\n"
     )
     return path
@@ -620,7 +633,7 @@ def new_entry(
     verdicts = verdicts or {}
     entry: dict[str, Any] = {
         "n": n,
-        "phase": phase,
+        "phase": c.phase_name(phase),
         "kind": str(item.get("kind")),
         "key": str(item.get("key")),
         "item": " ".join(str(item.get("item", "")).split()),
@@ -650,8 +663,8 @@ MODELS_FILE = "panel-models-{phase}.json"
 MODEL_FAMILIES = ("opus", "sonnet", "haiku", "fable")
 
 
-def models_path(change_dir: Path, phase: str) -> Path:
-    return Path(change_dir) / art.EVIDENCE_DIR / MODELS_FILE.format(phase=phase)
+def models_path(change_dir: Path, phase: str, write: bool = False) -> Path:
+    return _phase_path(Path(change_dir) / art.EVIDENCE_DIR, MODELS_FILE, phase, write)
 
 
 def model_matches(wanted: str, model: str) -> bool:
@@ -735,7 +748,7 @@ def check_models(
 
 
 def save_models(change_dir: Path, phase: str, record: dict[str, Any]) -> Path:
-    path = models_path(change_dir, phase)
+    path = models_path(change_dir, phase, write=True)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
         json.dumps(record, indent=2, sort_keys=True) + "\n", encoding="utf-8", newline="\n"

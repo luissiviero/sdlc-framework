@@ -60,7 +60,7 @@ COMMIT_EDITS = (
 )
 WRITE_DEFERRED = (
     "import json, pathlib\n"
-    "path = pathlib.Path('changes/0001-percent-helper/evidence/gate-c.json')\n"
+    "path = pathlib.Path('changes/0001-percent-helper/evidence/gate-build.json')\n"
     f"path.write_text({json.dumps(json.dumps(DEFERRED_GATE_FILE))}, encoding='utf-8')\n"
 )
 
@@ -114,7 +114,7 @@ def test_a_session_that_failed_after_its_gate_keeps_its_work_under_that_reason(
     root, change, args, env, _calls = gaps._owner_round(
         project, fake_claude, monkeypatch, tmp_path, gaps.EDITS, gaps.FAILED_RUN
     )
-    env["FAKE_CLAUDE_GATE"] = "changes/0001-percent-helper/evidence/gate-c.json"
+    env["FAKE_CLAUDE_GATE"] = "changes/0001-percent-helper/evidence/gate-build.json"
     assert run_phase.run_phase(args, env) == run_phase.EXIT_FAILED
     capsys.readouterr()
     sha = git(root, "rev-parse", "HEAD").strip()
@@ -134,7 +134,7 @@ def _restart_after_main_fixes_claude_md(project, tmp_path, fake_claude, monkeypa
     root, _change, _bare, lint, _args, _env = parked
     fixed = (root / "CLAUDE.md").read_text(encoding="utf-8").replace("ruff", lint)
     git(root, "checkout", "-q", "main")
-    git(root, "branch", "-q", "-D", "sdlc/0001/c")
+    git(root, "branch", "-q", "-D", "sdlc/0001/build")
     gaps._owner_commits_on_main(root, "CLAUDE.md", fixed, "CLAUDE.md names the lint command")
     return parked
 
@@ -161,7 +161,7 @@ def test_a_restart_merges_a_default_branch_that_changed_the_change_s_status(
     merges = git(root, "log", "--merges", "--format=%s", "HEAD").splitlines()
     assert merges == ["run(c): origin/main merged before the restarted preflight (gap 2)"]
     st = status_mod.read_status(change)
-    assert st.phase == "c" and st.parked_reason is None
+    assert st.phase == "build" and st.parked_reason is None
     assert st.external_ref == "#42"  # the owner's change is kept
 
 
@@ -184,31 +184,31 @@ def _stacked_build_parked(project, tmp_path, fake_claude, monkeypatch, intent_on
         git(root, "reset", "-q", "--", rel)  # main before the design: no change folder yet
     git(root, "commit", "-q", "-m", "sdlc-init" + (" and the intent" if intent_on_main else ""))
     git(root, "push", "-q", "-u", "origin", "main")
-    git(root, "checkout", "-q", "-b", "sdlc/0001/b")
-    set_state(change, "b", gate_phase="b", gate_result="passed")
+    git(root, "checkout", "-q", "-b", "sdlc/0001/design")
+    set_state(change, "design", gate_phase="design", gate_result="passed")
     st = status_mod.read_status(change)
     st.panel_calls, st.iterations = 2, 1
     status_mod.write_status(change, st)
     git(root, "add", rel)
     git(root, "commit", "-q", "-m", "design(0001): spec and plan")
-    git(root, "checkout", "-q", "-b", "sdlc/0001/c")  # stacked on the design
+    git(root, "checkout", "-q", "-b", "sdlc/0001/build")  # stacked on the design
     gaps._preflight_park(root, change)
     git(root, "add", rel)
     git(root, "commit", "-q", "-m", "run(c): parked at the preflight")
-    git(root, "push", "-q", "-u", "origin", "sdlc/0001/c")
+    git(root, "push", "-q", "-u", "origin", "sdlc/0001/build")
     git(root, "checkout", "-q", "main")
     gaps._pr_upsert_only(monkeypatch, 7)
     session = tmp_path / "session.py"
     write(
         session,
         "import json, pathlib\n"
-        "path = pathlib.Path('changes/0001-percent-helper/evidence/gate-c.json')\n"
-        f"path.write_text({json.dumps(json.dumps({**GATE_FILE, 'phase': 'c'}))})\n",
+        "path = pathlib.Path('changes/0001-percent-helper/evidence/gate-build.json')\n"
+        f"path.write_text({json.dumps(json.dumps({**GATE_FILE, 'phase': 'build'}))})\n",
     )
     monkeypatch.setenv("FAKE_CLAUDE_RUN", str(session))
     monkeypatch.setenv("FAKE_CLAUDE_RESULT", json.dumps(FAKE_RESULT))
     args = Args(
-        root=str(root), phase="c", dry_run=False, no_dispatch=True, claude=fake_cli(fake_claude)
+        root=str(root), phase="build", dry_run=False, no_dispatch=True, claude=fake_cli(fake_claude)
     )
     env = dict(os.environ, **KEY_ENV, GITHUB_TOKEN=FAKE_TOKEN)
     return root, change, claude_md, args, env
@@ -223,7 +223,9 @@ def test_a_stacked_build_after_a_merged_intent_keeps_its_counters_on_restart(
         project, tmp_path, fake_claude, monkeypatch, intent_on_main=True
     )
     gaps._owner_commits_on_main(root, "CLAUDE.md", claude_md, "CLAUDE.md names the lint command")
-    git(root, "branch", "-q", "-D", "sdlc/0001/c", "sdlc/0001/b")  # a fresh runner has main
+    git(
+        root, "branch", "-q", "-D", "sdlc/0001/build", "sdlc/0001/design"
+    )  # a fresh runner has main
     assert run_phase.run_phase(args, env) == run_phase.EXIT_OK
     out = json.loads(capsys.readouterr().out)
     assert "parked" not in out and "skipped" not in out, out
@@ -232,7 +234,7 @@ def test_a_stacked_build_after_a_merged_intent_keeps_its_counters_on_restart(
     assert merges == ["run(c): origin/main merged before the restarted preflight (gap 2)"]
     st = status_mod.read_status(change)
     assert (st.panel_calls, st.iterations) == (2, 1)
-    assert st.phase == "c" and st.parked_reason is None
+    assert st.phase == "build" and st.parked_reason is None
 
 
 def test_a_restart_whose_status_yaml_conflicts_parks_and_settles_nothing(
@@ -244,14 +246,16 @@ def test_a_restart_whose_status_yaml_conflicts_parks_and_settles_nothing(
     root, change, claude_md, args, env = _stacked_build_parked(
         project, tmp_path, fake_claude, monkeypatch, intent_on_main=False
     )
-    git(root, "merge", "-q", "--squash", "sdlc/0001/b")
+    git(root, "merge", "-q", "--squash", "sdlc/0001/design")
     git(root, "commit", "-q", "-m", "design(0001) (squash merge)")
     gaps._owner_commits_on_main(root, "CLAUDE.md", claude_md, "CLAUDE.md names the lint command")
-    git(root, "branch", "-q", "-D", "sdlc/0001/c", "sdlc/0001/b")  # a fresh runner has main
+    git(
+        root, "branch", "-q", "-D", "sdlc/0001/build", "sdlc/0001/design"
+    )  # a fresh runner has main
     assert run_phase.run_phase(args, env) == run_phase.EXIT_OK
     out = json.loads(capsys.readouterr().out)
     expected = (
-        "preflight: the default branch does not merge into sdlc/0001/c: "
+        "preflight: the default branch does not merge into sdlc/0001/build: "
         "changes/0001-percent-helper/status.yaml"
     )
     assert out["parked"] == expected
@@ -283,7 +287,7 @@ def test_a_file_the_merge_would_overwrite_is_named_as_the_conflict(
     assert run_phase.run_phase(args, env) == run_phase.EXIT_OK
     out = json.loads(capsys.readouterr().out)
     assert out["parked"] == (
-        "preflight: the default branch does not merge into sdlc/0001/c: notes.txt"
+        "preflight: the default branch does not merge into sdlc/0001/build: notes.txt"
     )
     assert not (root / ".git" / "MERGE_HEAD").exists()
 
@@ -299,7 +303,7 @@ def test_a_dry_run_of_a_restart_merges_nothing(project, tmp_path, fake_claude, m
     out = json.loads(capsys.readouterr().out)
     assert out["merged"] is None  # the restart's merge is skipped
     assert git(root, "log", "--merges", "--format=%s", "HEAD") == ""
-    assert git(root, "rev-parse", "HEAD") == git(bare, "rev-parse", "sdlc/0001/c")
+    assert git(root, "rev-parse", "HEAD") == git(bare, "rev-parse", "sdlc/0001/build")
 
 
 # --- item 3: a round whose trigger carries nothing never starts a session ---------------------
@@ -321,8 +325,8 @@ def _ready_round(project, fake_claude, monkeypatch, tmp_path, requests: list, tr
     root, change, args, env, calls = gaps._owner_round(
         project, fake_claude, monkeypatch, tmp_path, gaps.EDITS, gaps.QUESTION
     )
-    set_state(change, "c", gate_phase="c", gate_result="passed")
-    git(root, "commit", "-q", "-am", "gate (c) passed")
+    set_state(change, "build", gate_phase="build", gate_result="passed")
+    git(root, "commit", "-q", "-am", "gate (build) passed")
     for name in ("GITHUB_EVENT_NAME", "SDLC_TRIGGER", "GITHUB_ACTIONS"):
         env.pop(name, None)
     env.update(TRIGGERS[trigger])
@@ -354,14 +358,14 @@ def test_a_round_whose_trigger_carries_nothing_is_skipped_before_the_session(
         project, fake_claude, monkeypatch, tmp_path, [APPLIED] if applied else [], trigger
     )
     head = git(root, "rev-parse", "HEAD").strip()
-    record = (change / "evidence" / "gate-c.json").read_bytes()
+    record = (change / "evidence" / "gate-build.json").read_bytes()
     assert run_phase.run_phase(args, env) == run_phase.EXIT_OK
     assert json.loads(capsys.readouterr().out) == {
         "skipped": f"the fix round has nothing to do: its {said} performed no owner label and "
         "left no request to apply in evidence/fix-requests.json, and the change is not parked"
     }
     assert not (change / "evidence" / "claude-fix.json").exists()  # no session
-    assert (change / "evidence" / "gate-c.json").read_bytes() == record
+    assert (change / "evidence" / "gate-build.json").read_bytes() == record
     assert status_mod.read_status(change).parked_reason is None
     assert git(root, "rev-parse", "HEAD").strip() == head and calls == []
 
@@ -395,7 +399,9 @@ def test_a_review_on_a_parked_change_runs_with_no_request(
     root, change, args, env, _calls = _ready_round(
         project, fake_claude, monkeypatch, tmp_path, [], "review"
     )
-    set_state(change, "c", gate_phase="c", gate_result="parked", parked="commands: not green")
+    set_state(
+        change, "build", gate_phase="build", gate_result="parked", parked="commands: not green"
+    )
     git(root, "commit", "-q", "-am", "parked")
     run_phase.run_phase(args, env)
     assert "skipped" not in json.loads(capsys.readouterr().out)
@@ -425,7 +431,7 @@ def _label_event(tmp_path, sender: str):
         "action": "labeled",
         "label": {"name": c.RESET_ITERATIONS_LABEL},
         "sender": {"login": sender},
-        "pull_request": {"number": 7, "head": {"ref": "sdlc/0001/b"}},
+        "pull_request": {"number": 7, "head": {"ref": "sdlc/0001/design"}},
     }
     path = tmp_path / f"label-{sender}.json"
     path.write_text(json.dumps(payload), encoding="utf-8")
@@ -511,7 +517,7 @@ def test_a_nested_claude_settings_file_stays_out_of_the_kept_work(
 # --- round 2, item 2: the unfinished round's park keeps the gate park it replaces -------------
 RISK_PARK = {
     **GATE_FILE,
-    "phase": "c",
+    "phase": "build",
     "result": "park",
     "label": c.NEEDS_HUMAN_LABEL,
     "at": "2026-10-19T09:00:00Z",
@@ -528,7 +534,7 @@ RISK_PARK = {
 }
 GATE_PARKS_AGAIN = (
     "import json, pathlib\n"
-    "path = pathlib.Path('changes/0001-percent-helper/evidence/gate-c.json')\n"
+    "path = pathlib.Path('changes/0001-percent-helper/evidence/gate-build.json')\n"
     f"path.write_text({json.dumps(json.dumps(RISK_PARK))}, encoding='utf-8')\n"
 )
 
@@ -554,7 +560,7 @@ def test_an_unfinished_round_keeps_the_risk_hits_the_banner_shows(
     assert record["checks"][1]["details"] == {"hits": {"auth": ["src/x.py"]}}
     assert "- **risk_list**: risk-list hit: auth" in record["what_i_need"]
     assert risk.recorded_hits(record) == {"auth": ["src/x.py"]}
-    entries = risk.banner_entries(change, "c", status_mod.read_status(change))
+    entries = risk.banner_entries(change, "build", status_mod.read_status(change))
     assert [(e["item"], e["first"], e["accepted"]) for e in entries] == [("auth", "c", None)]
 
 
@@ -579,7 +585,7 @@ def test_an_unfinished_round_keeps_a_reported_risk_hit_too(
     }
     parks_again = (
         "import json, pathlib\n"
-        "path = pathlib.Path('changes/0001-percent-helper/evidence/gate-c.json')\n"
+        "path = pathlib.Path('changes/0001-percent-helper/evidence/gate-build.json')\n"
         f"path.write_text({json.dumps(json.dumps(reported))}, encoding='utf-8')\n"
     )
     _root, change, args, env, _calls = gaps._owner_round(
@@ -641,7 +647,7 @@ def test_a_restart_keeps_an_owner_change_on_main_the_branch_record_predates(
     assert status_mod.read_status(change).risk_accepted == ["auth"]  # the branch's record
     fixed = (root / "CLAUDE.md").read_text(encoding="utf-8").replace("ruff", lint)
     git(root, "checkout", "-q", "main")
-    git(root, "branch", "-q", "-D", "sdlc/0001/c")
+    git(root, "branch", "-q", "-D", "sdlc/0001/build")
     main_st = status_mod.read_status(change)
     main_st.risk_accepted = []
     status_mod.write_status(change, main_st)
@@ -653,7 +659,7 @@ def test_a_restart_keeps_an_owner_change_on_main_the_branch_record_predates(
     assert "parked" not in out and "skipped" not in out, out
     st = status_mod.read_status(change)
     assert st.risk_accepted == []  # the owner's revocation stands
-    assert st.phase == "c" and st.parked_reason is None
+    assert st.phase == "build" and st.parked_reason is None
     assert (st.gate.phase, st.gate.result) == ("b", "passed")
 
 
@@ -675,7 +681,7 @@ def test_an_unfinished_round_after_a_reset_does_not_carry_the_iteration_cap(
         "details": {"iterations": 3},
     }
     write(
-        change / "evidence" / "gate-c.json",
+        change / "evidence" / "gate-build.json",
         json.dumps({**RISK_PARK, "checks": [cap, *RISK_PARK["checks"]]}),
     )
     git(root, "commit", "-q", "-am", "the iteration cap park")

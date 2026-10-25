@@ -25,7 +25,7 @@ Rules:
 
 ``is_owner_actor`` (decision 34) sits beside ``is_automation_actor``: the one rule, fail
 closed, for who starts a fix round (the ``@claude`` comment and the "Request changes"
-review) and who approves gates (c) and (d); since plugin 1.0.10 (choice 218) it also judges
+review) and who approves gates (build) and (test); since plugin 1.0.10 (choice 218) it also judges
 who applied an un-park label, after the automation rule above.
 
 ``github`` is injectable: an object with ``pr_by_number``, ``label_actor`` and ``set_labels``
@@ -105,7 +105,7 @@ def is_owner_actor(
     repo: str | None = None,
 ) -> bool:
     """True only for the owner's account (decision 34): the one rule for who starts a fix
-    round and who approves gates (c) and (d). Fails closed: an empty actor, a ``[bot]`` or
+    round and who approves gates (build) and (test). Fails closed: an empty actor, a ``[bot]`` or
     the automation identity (even when ``owner:`` names it) and an unknown owner are False;
     a workflow's ``if:`` keeps only a coarse check."""
     who = str(actor or "").strip()

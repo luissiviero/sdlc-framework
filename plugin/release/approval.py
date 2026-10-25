@@ -2,7 +2,7 @@
 gate also defines what counts as approval, whether that's an approved change ticket or the
 release manager's sign-off").
 
-When ``sdlc.yaml: deploy.production`` is true, gate (e) has two acts: the owner's approving
+When ``sdlc.yaml: deploy.production`` is true, gate (deploy) has two acts: the owner's approving
 review of the build PR (decision 36; the owner's merge where no merge App merges), and the
 release approval. The approval is **the label** ``sdlc:release-approved`` on
 the change's build PR, applied by a person, and nothing else: the actor of the last
@@ -166,10 +166,10 @@ def _recorded_pr(
 ) -> tuple[int | None, list[str] | None, str]:
     """(PR number, its labels, "") of the change's build PR — the one ``status.yaml`` records
     (``build_pr``, written by ``pr/cli.py upsert``), read from GitHub by that number and
-    accepted only while it is the change's own (head ``sdlc/<id>/c``) and the checked-out
-    commit is the PR's own: its head commit (open or merged — the by-hand deploy runs on
-    ``sdlc/<id>/c`` after the owner's merge) or its merge commit (merged) — or (None, None,
-    why not).
+    accepted only while it is the change's own (head ``sdlc/<id>/build``, or the letter's
+    ``sdlc/<id>/c``) and the checked-out commit is the PR's own: its head commit (open or
+    merged — the by-hand deploy runs on ``sdlc/<id>/build`` after the owner's merge) or its
+    merge commit (merged) — or (None, None, why not).
 
     Before 0.2.27 the PR was "the most recent one from the current branch's name": a session
     that checked out any ``sdlc/<id>/c`` (a local branch rebuilt with any commits) inherited
@@ -199,8 +199,9 @@ def _recorded_pr(
     found = _call(github, "pr_by_number", repo, int(number), cwd=str(root))
     if not found.get("ok"):
         return None, None, f"cannot read the PR #{number}: {found.get('reason') or 'failed'}"
-    head = c.work_branch(change_id, "c")
-    if found.get("head_ref") != head:
+    head = c.work_branch(change_id, c.BUILD)
+    # R45: the build PR of a change in flight before 1.0.43 has the letter head sdlc/<id>/c
+    if found.get("head_ref") not in c.work_branches(change_id, c.BUILD):
         return (
             None,
             None,

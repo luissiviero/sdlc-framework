@@ -1,4 +1,4 @@
-"""Collect the phase (d) evidence: run the three ``sdlc.yaml`` commands and store what they
+"""Collect the test phase evidence: run the three ``sdlc.yaml`` commands and store what they
 printed (build guide step 28; article p.27-29 — the evidence is the toolchain's own output,
 not a summary of it).
 

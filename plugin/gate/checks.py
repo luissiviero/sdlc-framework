@@ -52,7 +52,11 @@ DEFAULT_DRIVE_TIMEOUT = 300  # seconds; sdlc.yaml: gate.drive_timeout (change 00
 DEFAULT_PROOF_IMAGE_KB = 50  # sdlc.yaml: gate.proof_image_kb, after filmcraft's golden cap
 PROOF_DIR_ENV = "SDLC_PROOF_DIR"  # the absolute evidence/proof/ the drive writes into
 CHANGE_ID_ENV = "SDLC_CHANGE_ID"
-DRIVE_PHASES = ("c", "d", "e")  # the gates whose runner step runs the drive, never (b)
+DRIVE_PHASES = (
+    c.BUILD,
+    c.TEST,
+    c.DEPLOY,
+)  # the gates whose runner step runs the drive, never (design)
 # Issue #91 (0.3.0): the runner sets this in the model's session's environment, and the gate
 # run inside the session then records its ``commands`` check as deferred instead of running
 # the project's targets inside Claude Code's sandbox, where ``Read(**/.env*)`` makes a nested
@@ -112,6 +116,9 @@ class GateContext:
     # ``COMMANDS_RUNNER_ENV`` by ``gate.build_context``; a by-hand gate runs them itself)
     commands_deferred: bool = False
 
+    def __post_init__(self) -> None:
+        self.phase = c.phase_name(self.phase)  # R45: a letter an older caller passes
+
     @property
     def evidence_dir(self) -> Path:
         return self.change_dir / art.EVIDENCE_DIR
@@ -127,8 +134,8 @@ class GateContext:
         """The commit the approved copies are read at: the merge base with the default
         branch, or, on the fast lane (decision 30), the commit ``status.yaml: fast_lane``
         records for this phase while it stands (``diff.fast_lane_sha``: the owner's unmerged
-        intent PR head for (b), the design commit gate (b) passed on for (c) to (e)). None
-        when there is no base to compare with."""
+        intent PR head for (design), the design commit gate (design) passed on for build to deploy).
+        None when there is no base to compare with."""
         if self.diff is None:
             return None
         return diffmod.approved_base(
@@ -271,7 +278,7 @@ def check_open_concerns(ctx: GateContext) -> CheckResult:
     return _ok("open_concerns", "no open flagged concern")
 
 
-# --- 3. tests/build/lint green via the sdlc.yaml commands (step 14: refuse to enter (c)) -----
+# --- 3. tests/build/lint green via the sdlc.yaml commands (step 14: refuse to enter (build)) -----
 def commands_from_config(config: dict[str, Any]) -> dict[str, str]:
     """The usable ``sdlc.yaml: commands`` targets ("echo no lint target" is not one). Shared
     with plugin/evidence/collect.py so the gate and the evidence writer run the same lines."""
@@ -326,7 +333,7 @@ def configured_proof_image_kb(config: dict[str, Any]) -> int:
 
 
 def drive_timeout(ctx: GateContext, phase: str) -> int:
-    """The drive's timeout at gate ``phase``: capped at 600 s at (c) and (d), whole at (e)
+    """The drive's timeout at gate ``phase``: capped at 600 s at build and test, whole at (deploy)
     (``limits.drive_timeout_seconds``, spec R4)."""
     from gate import limits  # noqa: PLC0415 - limits imports this module
 
@@ -436,7 +443,7 @@ def missing_targets(ctx: GateContext) -> CheckResult | None:
         f"sdlc.yaml has no usable {', '.join(missing)} target",
         "Give the project one-command build/test/lint targets in sdlc.yaml "
         "(re-run /sdlc-init or edit sdlc.yaml in a reviewed PR); the framework does not "
-        "enter phase (c) without them (article p.27 step 1).",
+        "enter the build phase without them (article p.27 step 1).",
         missing=missing,
     )
 
@@ -501,7 +508,7 @@ def run_commands_check(ctx: GateContext, ran_by: str | None = None) -> CheckResu
 
 
 # --- 4. evidence present (step 28) --------------------------------------------------------
-HEADER_REQUIRED_AT = ("d", "e")  # the gates that read the toolchain's own output
+HEADER_REQUIRED_AT = (c.TEST, c.DEPLOY)  # the gates that read the toolchain's own output
 EVIDENCE_DEFERRED_REASON = (
     "deferred to the runner: the session wrote no command log, the runner writes {logs} "
     "from its {targets} after the model's session (issue #91); not yet written"
@@ -542,7 +549,7 @@ def check_evidence(ctx: GateContext) -> CheckResult:
             continue
         # logs written by evidence/collect.py carry their exit code on the first line; a log
         # that records a failure is evidence of a red run, whatever a later re-run says, and
-        # at (d) and (e) a command log without that header is not evidence at all
+        # at test and deploy a command log without that header is not evidence at all
         failure = art.evidence_failure(
             text, require_header=ctx.phase in HEADER_REQUIRED_AT and name in command_logs
         )
@@ -553,7 +560,7 @@ def check_evidence(ctx: GateContext) -> CheckResult:
         return _fail(
             "evidence",
             f"evidence/ lacks {', '.join(missing)}",
-            "Phase (d) must leave the literal toolchain output and the verifier report in "
+            "The test phase must leave the literal toolchain output and the verifier report in "
             f"{ctx.change_rel}/evidence/ (article p.28–29): write "
             + ", ".join(f"{ctx.change_rel}/evidence/{n}" for n in missing)
             + ' by running `python "${CLAUDE_PLUGIN_ROOT}/plugin/evidence/collect.py" --root . '
@@ -595,12 +602,12 @@ PROOF_NOT_CHECKED_REASON = (
 )
 PROOF_NO_DRIVE_REASON = "no drive target: nothing to compare"
 PROOF_DRIVE_REMOVED_REASON = (
-    "drive removed after gate (b): the approved plan names {n} state/screenshot item(s) and "
+    "drive removed after gate (design): the approved plan names {n} state/screenshot item(s) and "
     "commands.drive is empty"
 )
 PROOF_DRIVE_REMOVED_NEED = (
     "Restore `commands.drive` in sdlc.yaml in a reviewed PR, then re-run the phase: the plan "
-    "the owner approved at gate (b) names proof items only a drive produces, and no run can "
+    "the owner approved at gate (design) names proof items only a drive produces, and no run can "
     "change sdlc.yaml or the approved plan."
 )
 PROOF_NO_MANIFEST_REASON = "the drive ran but wrote no manifest"
@@ -840,7 +847,7 @@ def judge_proof(ctx: GateContext, manifest: dict[str, Any] | None) -> CheckResul
 
 
 def check_proof(ctx: GateContext) -> CheckResult:
-    """The ``proof`` entry of every (c), (d) and (e) record (spec R7). With a drive: deferred
+    """The ``proof`` entry of every build, test and deploy record (spec R7). With a drive: deferred
     in a CI session (the runner's step judges it after the drive), ``checked: false`` by hand.
     Without one: judged at once from the approved plan, in CI too."""
     if drive_from_config(ctx.config) is not None:
@@ -863,7 +870,7 @@ def check_proof(ctx: GateContext) -> CheckResult:
 
 
 def check_proof_items(ctx: GateContext) -> CheckResult:
-    """Gate (b) (spec R9): every item of the working-tree plan's ``## Proof`` follows the
+    """Gate (design) (spec R9): every item of the working-tree plan's ``## Proof`` follows the
     grammar, and a ``state`` or ``screenshot`` item has a drive to produce it."""
     plan = ctx.artifact("plan.md")
     problems = [
@@ -910,7 +917,9 @@ def check_findings(ctx: GateContext) -> CheckResult:
     data, error = load_findings(path)
     if data is None:
         if error == "missing" and ctx.phase not in art.FINDINGS_REQUIRED_AT:
-            return _ok("findings", "no review findings yet (the review pass runs in phase e)")
+            return _ok(
+                "findings", "no review findings yet (the review pass runs in the deploy phase)"
+            )
         return _fail(
             "findings",
             f"evidence/{art.REVIEW_FINDINGS} {error}",
@@ -1021,7 +1030,7 @@ def check_plan_sync(ctx: GateContext) -> CheckResult:
     unplanned = [f for f in source if not any(plan_sync.is_planned(f, p) for p in planned)]
     # the per-commit rule of the plan-sync hook, re-applied to every commit on the branch
     # (catches commits driven from scripts the hook could not parse, NOTES section 9)
-    branch = c.branch_name(change_id, "c")
+    branch = c.branch_name(change_id, c.BUILD)
     exempt = plan_sync.exempt_patterns(ctx.config)
     unsynced = [
         commit.sha[:10]
@@ -1055,11 +1064,11 @@ def check_plan_sync(ctx: GateContext) -> CheckResult:
 
 
 def _plan_growth(ctx: GateContext, planned: list[str]) -> dict[str, list[str]] | None:
-    """The files plan.md lists now and the copy the owner approved at gate (b) did not, and
+    """The files plan.md lists now and the copy the owner approved at gate (design) did not, and
     the reverse (R26, choice 257: R60's port): the build PR's banner shows the first, the
-    digest counts it. None at (b), where the plan is being written, and when there is no
+    digest counts it. None at (design), where the plan is being written, and when there is no
     approved copy to compare with."""
-    if ctx.phase not in ("c", "d", "e"):
+    if ctx.phase not in (c.BUILD, c.TEST, c.DEPLOY):
         return None
     approved = ctx.approved_artifact("plan.md")  # the caller returned already with no base
     if approved is None:
@@ -1090,23 +1099,23 @@ def check_guardrails(ctx: GateContext) -> CheckResult:
     touched = [f for f in committed if any(matches(p, f) for p in patterns)]
     intent_rel = f"{ctx.change_rel}/intent.md"
     # decision 30: on the fast lane the intent was accepted at the owner's unmerged intent PR
-    # head, which the branch was cut from; "changed after gate (a)" is read since that commit
+    # head, which the branch was cut from; "changed after gate (intent)" is read since that commit
     approved = ctx.approved_base()
     since_gate = (
         committed
         if approved == ctx.diff.merge_base
         else diffmod.committed_files(ctx.root, approved, ctx.diff.head)
     )
-    if ctx.phase not in ("a", "f") and intent_rel in since_gate:
-        # the intent was accepted at gate (a): a later phase may not rewrite it (it is what
-        # the guardrail exemption and the risk acceptance are judged against). Phase (f)
+    if ctx.phase not in (c.INTENT, c.MAINTAIN) and intent_rel in since_gate:
+        # the intent was accepted at gate (intent): a later phase may not rewrite it (it is what
+        # the guardrail exemption and the risk acceptance are judged against). The maintain phase
         # writes the incident intent itself (p.44 step 5): its PR is the intent PR of that
-        # change, and the owner's merge is its gate (a) (decision 25)
+        # change, and the owner's merge is its gate (intent) (decision 25)
         return _fail(
             "guardrails",
-            "intent.md changed on this branch after gate (a)",
+            "intent.md changed on this branch after gate (intent)",
             "Revert the intent.md change; an accepted intent changes only through a new "
-            "intent PR (phase a).",
+            "intent PR (the intent phase).",
             touched=touched,
         )
     if not touched:
@@ -1124,7 +1133,7 @@ def check_guardrails(ctx: GateContext) -> CheckResult:
         "Guardrail files (.claude/**, CLAUDE.md, REVIEW.md, sdlc.yaml, policies/**, "
         "protected_paths) are changed by the owner in a reviewed PR. Revert them here; a "
         "framework change says 'Framework change: yes' in the intent the owner merged at "
-        "gate (a).",
+        "gate (intent).",
         touched=touched,
     )
 
@@ -1174,7 +1183,7 @@ def check_risk_list(ctx: GateContext) -> CheckResult:
     # sentence in every live design run of 2026-09-21. A risk item the design touches is a
     # flagged concern (skill spec-template), so that section is where it is declared.
     # The spec is read at HEAD: ``check_clean_tree`` skips the change folder (the evidence is
-    # committed after the gate) and does not run at (a) or (b), so the working-tree spec is
+    # committed after the gate) and does not run at intent or design, so the working-tree spec is
     # not guaranteed to be the committed one. The working tree is the fallback only when there
     # is no commit to read (not a repository, or an unborn branch).
     texts = {}
@@ -1220,14 +1229,14 @@ def _phase_brief(ctx: GateContext) -> dict[str, dict[str, str]]:
 
 
 def _phase_verdict(ctx: GateContext) -> dict[str, Any] | None:
-    data, _error = load_verdict(ctx.evidence_dir / art.ADVERSARIAL_VERDICT.format(phase=ctx.phase))
+    data, _error = load_verdict(c.phase_file(ctx.evidence_dir, art.ADVERSARIAL_VERDICT, ctx.phase))
     return data
 
 
 # --- 9. the adversarial reviewer's verdict (step 17; an input, never run by the gate) ---------
 def load_verdict(path: Path) -> tuple[dict[str, Any] | None, str]:
     """Format written by the adversarial-reviewer agent:
-    {"schema_version": 1, "phase": "c", "head": "<sha>", "verdict": "continue|escalate",
+    {"schema_version": 1, "phase": "build", "head": "<sha>", "verdict": "continue|escalate",
      "reasons": [...], "classification": "routine|non-routine",
      "classification_reasons": [...], "at": "<iso>"}"""
     if not path.is_file():
@@ -1257,11 +1266,11 @@ def parse_verdict(text: str | None) -> tuple[dict[str, Any] | None, str]:
     return data, ""
 
 
-VERDICT_REQUIRED_AT = ("b", "c", "d")  # the reviewer runs before each of these
+VERDICT_REQUIRED_AT = (c.DESIGN, c.BUILD, c.TEST)  # the reviewer runs before each of these
 
 
 def check_adversarial_verdict(ctx: GateContext) -> CheckResult:
-    path = ctx.evidence_dir / art.ADVERSARIAL_VERDICT.format(phase=ctx.phase)
+    path = c.phase_file(ctx.evidence_dir, art.ADVERSARIAL_VERDICT, ctx.phase)
     data, error = load_verdict(path)
     if data is None:
         if error == "missing" and ctx.phase not in VERDICT_REQUIRED_AT:
@@ -1349,7 +1358,7 @@ def check_reviewer_model(ctx: GateContext) -> CheckResult:
     wanted = models.reviewer_model(ctx.config)
     if not wanted:
         return _ok("reviewer_model", "sdlc.yaml names no adversarial_model: not checked")
-    data, _error = load_verdict(ctx.evidence_dir / art.ADVERSARIAL_VERDICT.format(phase=ctx.phase))
+    data, _error = load_verdict(c.phase_file(ctx.evidence_dir, art.ADVERSARIAL_VERDICT, ctx.phase))
     if data is None:
         # the adversarial_review check reports a missing or unreadable verdict
         return _ok("reviewer_model", "no readable verdict to check", wanted=wanted)
@@ -1387,17 +1396,17 @@ def check_clean_tree(ctx: GateContext) -> CheckResult:
     tree = diffmod.dirty_files(ctx.root)
     # four kinds of entry are nobody's work: the sandbox's empty placeholders, the root
     # names it masks (.env, .idea, .vscode and friends — diffmod.SANDBOX_MASKED), the review
-    # pass's own record at (d) and (e) (changes/.review-seen.json, written by ``review/cli.py
+    # pass's own record at test and deploy (changes/.review-seen.json, written by ``review/cli.py
     # validate`` right before this gate reads the findings file in the change's evidence/,
     # and committed with the evidence after it by ``commit-phase``, 0.3.5: change 0001's fix
-    # rounds at gate (e) parked on it — a regular file holding a JSON object, so a deleted,
+    # rounds at gate (deploy) parked on it — a regular file holding a JSON object, so a deleted,
     # replaced or malformed record is still reported) and, inside a CI session only, what the
     # sandbox has mounted over at any depth (diffmod.sandbox_mounted, 0.3.4; the mark the
     # runner sets says the gate runs inside the sandbox, and by hand a mount over a tracked
     # path is nobody's mask)
     ignored = set(diffmod.sandbox_placeholders(ctx.root, tree)) | set(diffmod.sandbox_masked(tree))
     seen = c.review_seen_rel()
-    if ctx.phase in ("d", "e") and seen in tree and _is_review_record(ctx.root / seen):
+    if ctx.phase in (c.TEST, c.DEPLOY) and seen in tree and _is_review_record(ctx.root / seen):
         ignored.add(seen)
     dirty = [f for f in tree if f not in ignored and not f.startswith(prefix)]
     if dirty and ctx.commands_deferred:
@@ -1467,10 +1476,11 @@ def check_evidence_links(ctx: GateContext) -> CheckResult:
     return _ok("evidence_links", "no symbolic link under the change folder")
 
 
-# --- 11. phase (b) touches no source (decision 2; OPERATING_MODEL section 8) -------------------
+# --- 11. the design phase touches no source (decision 2; OPERATING_MODEL section 8) ---------------
 def check_design_scope(ctx: GateContext) -> CheckResult:
-    """The spec-and-plan run of phase (b) is read-only on source: the only files it writes are
-    the change folder's own artifacts. The first run with edit tools on source is phase (c).
+    """The spec-and-plan run of the design phase is read-only on source: the only files it writes
+    are the change folder's own artifacts. The first run with edit tools on source is the build
+    phase.
 
     The verdict is the **committed** diff only: the files between the merge base and HEAD,
     which is what the PR carries and what would merge. The working tree is reported under
@@ -1480,10 +1490,10 @@ def check_design_scope(ctx: GateContext) -> CheckResult:
     """
     if ctx.diff is None:
         return _fail("design_scope", ctx.diff_error, "Run the gate inside the project's git repo.")
-    if ctx.phase == "a" and ctx.change_dir.name.startswith(c.INIT_CHANGE_ID + "-"):
+    if ctx.phase == c.INTENT and ctx.change_dir.name.startswith(c.INIT_CHANGE_ID + "-"):
         # the installation PR of /sdlc-init (change 0000) is the one intent PR that carries
         # files outside its folder: the guardrails, the workflows and the pin script it writes
-        # (OPERATING_MODEL section 8, layer i). Keyed on the folder name and gate (a) only:
+        # (OPERATING_MODEL section 8, layer i). Keyed on the folder name and gate (intent) only:
         # ``status.id`` is the session's to write (the review of the 0.2.26 diff, L2)
         return _ok("design_scope", "change 0000 installs the framework: not judged")
     no_base = _no_base(ctx, "design_scope")
@@ -1494,15 +1504,15 @@ def check_design_scope(ctx: GateContext) -> CheckResult:
     outside = [f for f in committed if not f.startswith(prefix)]
     dirty = diffmod.without_placeholders(ctx.root, diffmod.dirty_files(ctx.root))
     if outside:
-        if ctx.phase == "a":
+        if ctx.phase == c.INTENT:
             why = (
-                " (the intent PR carries the intent alone; a fix round at gate (a) applies the "
-                "owner's review comments to intent.md and nothing else, decision 22)."
+                " (the intent PR carries the intent alone; a fix round at gate (intent) applies "
+                "the owner's review comments to intent.md and nothing else, decision 22)."
             )
-        elif ctx.phase == "f":
+        elif ctx.phase == c.MAINTAIN:
             why = (
-                " (the diagnosis of phase (f) is read-only, p.43 step 3; a runbook works on "
-                "a branch of its own)."
+                " (the diagnosis of the maintain phase is read-only, p.43 step 3; a runbook works "
+                "on a branch of its own)."
             )
         else:
             why = "."
@@ -1510,7 +1520,7 @@ def check_design_scope(ctx: GateContext) -> CheckResult:
             "design_scope",
             f"{len(outside)} committed file(s) outside {prefix}: " + ", ".join(outside[:10]),
             f"Revert them on the branch: phase ({ctx.phase}) commits only {prefix}; the "
-            "first run with edit tools on source is phase (c)" + why,
+            "first run with edit tools on source is the build phase" + why,
             outside=outside[:50],
             dirty=dirty[:50],
         )
@@ -2041,7 +2051,7 @@ def check_ratchets(ctx: GateContext) -> CheckResult:
     """A dropped test file or eval case, undeclared by the approved plan, is a risk-list hit
     named after its ratchet (``ratchet: tests``, ``ratchet: evals``; R15). The approved plan
     is read at the merge base (``ctx.approved_artifact``; on the fast lane, decision 30, at the
-    design commit gate (b) passed on), never the working tree, so a
+    design commit gate (design) passed on), never the working tree, so a
     commit cannot excuse its own drop by editing plan.md alongside it (the riskiest step,
     spec.md Design/Risks). Added skip markers are listed in ``details.skip_markers``, never
     affecting ``ok``.
@@ -2132,7 +2142,7 @@ def _blind_verdicts_problems(ctx: GateContext, entry: dict) -> list[str]:
     item_n = entry.get("item_n")
     if isinstance(item_n, bool) or not isinstance(item_n, int):
         return []
-    phase = str(entry.get("phase") or ctx.phase)
+    phase = str(c.phase_name(entry.get("phase") or ctx.phase))
     texts: dict[str, str | None] = {}
     for member in ledger.BLIND_MEMBERS:
         path = ledger.member_path(ctx.change_dir, phase, item_n, member)
@@ -2191,8 +2201,8 @@ def check_panel(ctx: GateContext) -> CheckResult:
         )
     # a closing names its ledger line (``decided (by panel #n):``, 0.2.15), so the words after
     # it may be tidied; the 0.2.14 form without the number is matched on the decision text.
-    # The line may live in an earlier phase's ledger: a concern closed at (b) stays closed
-    # through (c), (d) and (e) (0.2.18; the first build under deferred review parked here)
+    # The line may live in an earlier phase's ledger: a concern closed at (design) stays closed
+    # through build, test and deploy (0.2.18; the first build under deferred review parked here)
     earlier = [
         e
         for _ph, phase_entries in ledger.load_ledgers(ctx.change_dir, ctx.phase)
@@ -2260,7 +2270,8 @@ def check_panel(ctx: GateContext) -> CheckResult:
 
 # --- which checks at which gate --------------------------------------------------------------
 Check = Callable[[GateContext], CheckResult]
-# --- 15/16. gate (f): the finding and its route (build guide steps 37, 39; decisions 14, 25, 26)
+# --- 15/16. gate (maintain): the finding and its route (build guide steps 37, 39; decisions 14,
+# 25, 26)
 DETECTION_NEED = (
     "The maintain run files a change from a detection record (detect/cli.py run --file) or "
     "the weekly security review from a scan finding (scan/cli.py route); an incident intent "
@@ -2275,7 +2286,7 @@ ROUTE_NEED = (
 
 
 def _detect_modules():
-    from detect import dismissals, finding, routes  # noqa: PLC0415 - only at gate (f)
+    from detect import dismissals, finding, routes  # noqa: PLC0415 - only at gate (maintain)
 
     return dismissals, finding, routes
 
@@ -2459,15 +2470,16 @@ def _supersedes_problem(lessons_dir: Path, lesson_name: str, fm: dict[str, Any])
     return None
 
 
-# --- lesson and eval, gate (e) only (build guide: change 0003) -------------------------------
+# --- lesson and eval, gate (deploy) only (build guide: change 0003) -------------------------------
 def lesson_and_eval(ctx: GateContext) -> CheckResult:
     """An incident change's fix ships with its lesson and its eval (spec.md change 0003).
-    Guarded on ``ctx.phase == "e"`` as well as the route, not only registered for phase "e" in
-    ``CHECKS_BY_PHASE``: the same ``entry_route == "incident"`` holds all the way through
-    phase (f) too, before either the lesson or the eval exists, and this check must never run
-    there (the regression guard is ``test_gate_f_waits_for_the_owner_s_triage...``)."""
-    if not (ctx.status.entry_route == "incident" and ctx.phase == "e"):
-        return _ok("lesson_and_eval", "not an incident change at gate (e): nothing to check")
+    Guarded on ``ctx.phase == "deploy"`` as well as the route, not only registered for
+    "deploy" in ``CHECKS_BY_PHASE``: the same ``entry_route == "incident"`` holds all the way
+    through the maintain phase too, before either the lesson or the eval exists, and this
+    check must never run there (the regression guard is
+    ``test_gate_f_waits_for_the_owner_s_triage...``)."""
+    if not (ctx.status.entry_route == "incident" and ctx.phase == c.DEPLOY):
+        return _ok("lesson_and_eval", "not an incident change at gate (deploy): nothing to check")
 
     problems: list[str] = []
     lessons_dir = ctx.root / "lessons"
@@ -2519,16 +2531,16 @@ def _project_language(root: Path) -> str:
 
 
 CHECKS_BY_PHASE: dict[str, tuple[Check, ...]] = {
-    # gate (a) judges the intent PR: since 0.2.26 ``design_scope`` refuses a source file on it
-    # (OPERATING_MODEL section 4.2 promised it for the fix round at (a); change 0000 is exempt)
-    "a": (
+    # gate (intent) judges the intent PR: since 0.2.26 ``design_scope`` refuses a source file on it
+    # (OPERATING_MODEL section 4.2 promised it for the fix round at (intent); change 0000 is exempt)
+    c.INTENT: (
         check_artifacts,
         check_evidence_links,
         check_design_scope,
         check_guardrails,
         check_risk_list,
     ),
-    "b": (
+    c.DESIGN: (
         check_artifacts,
         check_evidence_links,
         check_design_scope,
@@ -2542,7 +2554,7 @@ CHECKS_BY_PHASE: dict[str, tuple[Check, ...]] = {
         check_adversarial_verdict,
         check_reviewer_model,
     ),
-    "c": (
+    c.BUILD: (
         check_clean_tree,
         check_artifacts,
         check_evidence_links,
@@ -2561,7 +2573,7 @@ CHECKS_BY_PHASE: dict[str, tuple[Check, ...]] = {
         check_adversarial_verdict,
         check_reviewer_model,
     ),
-    "d": (
+    c.TEST: (
         check_clean_tree,
         check_artifacts,
         check_evidence_links,
@@ -2580,7 +2592,7 @@ CHECKS_BY_PHASE: dict[str, tuple[Check, ...]] = {
         check_adversarial_verdict,
         check_reviewer_model,
     ),
-    "e": (
+    c.DEPLOY: (
         check_clean_tree,
         check_artifacts,
         check_evidence_links,
@@ -2600,11 +2612,11 @@ CHECKS_BY_PHASE: dict[str, tuple[Check, ...]] = {
         check_adversarial_verdict,
         check_reviewer_model,
     ),
-    # gate (f) = the owner's triage of the incident intent PR (decision 25): the intent in
+    # gate (maintain) = the owner's triage of the incident intent PR (decision 25): the intent in
     # its incident shape, nothing committed outside the change folder (the diagnosis is
-    # read-only on source), the guardrails and the risk list as at (a), the finding itself
-    # and the route it took. No toolchain, no verdict, no panel: phase (f) builds nothing.
-    "f": (
+    # read-only on source), the guardrails and the risk list as at (intent), the finding itself
+    # and the route it took. No toolchain, no verdict, no panel: the maintain phase builds nothing.
+    c.MAINTAIN: (
         check_artifacts,
         check_evidence_links,
         check_design_scope,

@@ -1,6 +1,6 @@
 ---
 name: verifier
-description: Runs the project and checks that the change works before the session reports done. Use proactively at the end of phase (c) build and in phase (d) test, once the session believes the work is done, so the verdict comes from a fresh context.
+description: Runs the project and checks that the change works before the session reports done. Use proactively at the end of the build phase and in the test phase, once the session believes the work is done, so the verdict comes from a fresh context.
 tools: Bash, Read
 model: inherit
 maxTurns: 40
@@ -21,13 +21,14 @@ assumptions that produced the code").
    `.env*` to every process you start, so the targets fail there whatever the code does.
    The runner runs the three targets once after this session, outside the sandbox, and
    writes the result into `changes/<id>-<slug>/evidence/gate-<phase>.json`'s `commands`
-   check (`details.ran_by: runner`) and, at (d) and (e), into `evidence/test.log`,
+   check (`details.ran_by: runner`) and, at test and deploy, into `evidence/test.log`,
    `build.log` and `lint.log`; a red target parks the change there, and nothing you can do
    in this session changes that record. Read instead the record of **the phase before
-   yours**, named by phase and never by recency: `evidence/gate-b.json` at the end of (c)
-   and `evidence/gate-c.json` at (d) — the runner's run on the tree this phase started
-   from. Your own phase's record, when one is present (`gate-c.json` at (c), `gate-d.json`
-   at (d)), is an earlier round's and is never judged here. Read the three logs too when
+   yours**, named by phase and never by recency: `evidence/gate-design.json` at the end of build
+   and `evidence/gate-build.json` at test (`gate-b.json` and `gate-c.json` when an older
+   plugin wrote them) — the runner's run on the tree this phase started from. Your own
+   phase's record, when one is present (`gate-build.json` at build, `gate-test.json` at
+   test), is an earlier round's and is never judged here. Read the three logs too when
    they exist. Quote the record's `commands` entry (each command, its exit code, the tail
    of its output) and each log's first line under **Commands run**. The verdict is
    `does not match the plan` when that `commands` entry is red (`ok: false`), when the
@@ -36,11 +37,11 @@ assumptions that produced the code").
    when a log's first line records a non-zero exit or a timeout. A log whose first line
    reads `— deferred to the runner —` is not a failure: this session wrote it minutes ago
    and the runner replaces it; say so. **Say which tree you read** (decision 29): name the
-   record you quoted by its phase and its commit (`gate-c.json`, `head` and its `at`, e.g.
-   "read evidence/gate-c.json, the runner's run on commit 1a2b3c4d5e of
+   record you quoted by its phase and its commit (`gate-build.json`, `head` and its `at`, e.g.
+   "read evidence/gate-build.json, the runner's run on commit 1a2b3c4d5e of
    2026-10-17T10:00:00Z"), and say in one sentence that this is the tree the phase started
    from, not the final one: the final tree's result is the runner's, which runs the three
-   targets once after this session and shows it in the check run `sdlc/d` (and in this
+   targets once after this session and shows it in the check run `sdlc/test` (and in this
    phase's own gate record); a red target there starts the next fix round by itself, so
    nothing you report here stands in for it. By hand, without the variable, run the targets
    as above.
@@ -52,7 +53,7 @@ assumptions that produced the code").
    step 2. Exercise the behavior through direct calls only (a small script, the CLI) that
    read no `.env*`; a call the sandbox denies (`Permission denied` on a `.env*` path) is
    reported as "not run in CI", never as a mismatch — the runner's step judges the suite.
-4. At (d), when `sdlc.yaml: commands.drive` is set (change 0004): open (c)'s images under
+4. At test, when `sdlc.yaml: commands.drive` is set (change 0004): open the build run's images under
    `changes/<id>-<slug>/evidence/proof/` with the Read tool, compare each with the mock the
    spec's `Mock:` line names, and report one line per `screenshot:` item of plan.md
    (`matches`, `differs` with what you saw, or `not produced`). Name the tree you read as step
@@ -69,7 +70,7 @@ Report shape (markdown):
 - **Commands run** — each command with its exit code and the last lines of output (in a CI
   session: read from the previous phase's gate record and the logs, each marked "read, not
   run", headed by the record's phase and commit and the sentence that the final tree's
-  result is the runner's, in the check run `sdlc/d`)
+  result is the runner's, in the check run `sdlc/test`)
 - **Behavior exercised** — what you called, with what, what came back
 - **Not exercised** — the paths, platforms and inputs this verdict says nothing about: the
   changed code you did not call, the platforms you did not run on (Windows when you ran on

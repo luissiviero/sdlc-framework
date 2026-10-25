@@ -63,22 +63,32 @@ import re
 import sys
 from pathlib import Path
 
+# R45: the phase in a file name is its name (``design-1-reviewer.md``) or, in a file a plugin
+# before R45 wrote, its letter (``b-1-reviewer.md``); both are read, the name is written. The
+# fast path imports nothing from the plugin, so the two forms are spelled out here.
+PHASE_NAMES = dict(
+    zip("abcdef", ("intent", "design", "build", "test", "deploy", "maintain"), strict=True)
+)
+PHASE_LETTERS = {name: letter for letter, name in PHASE_NAMES.items()}
+PHASE_TOKEN = "[a-z]+"
 PANEL_FILE_RE = re.compile(
-    r"(?:^|/)changes/[^/]+/evidence/panel/([a-z])-(\d+)-(reviewer|advocate)\.md$", re.IGNORECASE
+    rf"(?:^|/)changes/[^/]+/evidence/panel/({PHASE_TOKEN})-(\d+)-(reviewer|advocate)\.md$",
+    re.IGNORECASE,
 )
 OTHER = {"reviewer": "advocate", "advocate": "reviewer"}
 SHELL_TOOLS = ("Bash", "PowerShell")
 WRITE_TOOLS = ("Write", "Edit", "MultiEdit")
 HOOKED_TOOLS = ("Read", "Grep", *SHELL_TOOLS, *WRITE_TOOLS)
 ADVOCATE_FILE_RE = re.compile(
-    r"(?:^|/)changes/[^/]+/evidence/panel/([a-z])-(\d+)-advocate\.md$", re.IGNORECASE
+    rf"(?:^|/)changes/[^/]+/evidence/panel/({PHASE_TOKEN})-(\d+)-advocate\.md$", re.IGNORECASE
 )
 MODEL_RECORD_RE = re.compile(
-    r"(?:^|/)evidence/(?:panel/[^/]*|adversarial-review-[a-z])\.model\.json$", re.IGNORECASE
+    rf"(?:^|/)evidence/(?:panel/[^/]*|adversarial-review-{PHASE_TOKEN})\.model\.json$",
+    re.IGNORECASE,
 )
 MODEL_RECORD = "{phase}-{n}-advocate.model.json"
 VERDICT_FILE_RE = re.compile(
-    r"(?:^|/)changes/[^/]+/evidence/adversarial-review-([a-z])\.json$", re.IGNORECASE
+    rf"(?:^|/)changes/[^/]+/evidence/adversarial-review-({PHASE_TOKEN})\.json$", re.IGNORECASE
 )
 VERDICT_RECORD = "adversarial-review-{phase}.model.json"
 # a shell command that names a verdict or the panel folder: the cheap first look
@@ -96,20 +106,20 @@ CODE_TYPES = frozenset(
 
 READ_REASON = (
     "Review panel blindness (decision 21): {rel} is the {member}'s verdict on item {n} of "
-    "phase ({phase}), and the {other} has not written its own yet "
+    "the {phase} phase, and the {other} has not written its own yet "
     "({other_rel} is missing). The two verdicts are blind to each other; the conciliator "
     "reads both once both exist. Judge the item from the change's files and your own sources. "
     "If you wrote this file yourself, it is saved: there is no need to read it back."
 )
 GREP_REASON = (
     "Review panel blindness (decision 21): this search would read {rel}, the {member}'s "
-    "verdict on item {n} of phase ({phase}), which the {other} must not see before writing "
+    "verdict on item {n} of the {phase} phase, which the {other} must not see before writing "
     "its own. Search a folder that does not contain {panel_dir}/ (for example src/ or "
     'plugin/), or limit the search to code with a type (type: py) or a glob (glob: "*.py").'
 )
 SHELL_REASON = (
     "Review panel blindness (decision 21): this command names {what}, and {rel} is the "
-    "{member}'s verdict on item {n} of phase ({phase}), which the {other} must not see "
+    "{member}'s verdict on item {n} of the {phase} phase, which the {other} must not see "
     "before writing its own. Run it once both verdicts exist, or without the panel folder."
 )
 RECORD_REASON = (
@@ -121,6 +131,22 @@ RECORD_REASON = (
 
 def _slash(path: str) -> str:
     return str(path).replace("\\", "/")
+
+
+def phase_name(token: str) -> str:
+    """The phase name of a file name's phase token: a letter becomes its name (R45)."""
+    token = token.lower()
+    return PHASE_NAMES.get(token, token)
+
+
+def counterparts(phase: str, n: str, member: str) -> tuple[str, ...]:
+    """The names the other member's verdict may have: with the same phase token, and with
+    the other form of it (a reviewer's ``b-1-reviewer.md`` from an older plugin, an
+    advocate's ``design-1-advocate.md`` from this one: R45)."""
+    token = phase.lower()
+    other = PHASE_LETTERS.get(token) or PHASE_NAMES.get(token)
+    tokens = (token,) if other is None else (token, other)
+    return tuple(f"{t}-{n}-{OTHER[member]}.md" for t in tokens)
 
 
 def project_root(payload: dict, env: dict[str, str] | None = None) -> str:
@@ -152,13 +178,13 @@ def one_sided(root: str) -> list[tuple[Path, str, str, str, Path]]:
             continue
         present = set(names)
         for name in names:
-            m = re.fullmatch(r"([a-z])-(\d+)-(reviewer|advocate)\.md", name, re.IGNORECASE)
+            m = re.fullmatch(rf"({PHASE_TOKEN})-(\d+)-(reviewer|advocate)\.md", name, re.IGNORECASE)
             if not m:
                 continue
             phase, n, member = m.group(1).lower(), m.group(2), m.group(3).lower()
-            counterpart = f"{phase}-{n}-{OTHER[member]}.md"
-            if counterpart not in present:
-                found.append((panel / name, phase, n, member, panel / counterpart))
+            names = counterparts(phase, n, member)
+            if not any(other in present for other in names):
+                found.append((panel / name, phase_name(phase), n, member, panel / names[0]))
     return found
 
 
@@ -276,6 +302,7 @@ def record_advocate_model(payload: dict, verdict_path: str, phase: str, n: str) 
     """Write ``<phase>-<n>-advocate.model.json`` beside the advocate's verdict: who wrote it
     (``agent_type``) and on which model, read from the writer's own transcript. ``record``
     and the gate's ``panel`` check require it; ``reason`` says why ``models`` is empty."""
+    phase = phase_name(phase)  # R45: the record carries the name, beside a letter's verdict too
     record = {"schema_version": 1, "phase": phase, "n": int(n), "member": "advocate"}
     record.update(writer_record(payload))
     path = Path(verdict_path).with_name(MODEL_RECORD.format(phase=phase, n=n))
@@ -296,6 +323,7 @@ def record_reviewer_model(payload: dict, verdict_path: str, phase: str) -> Path:
     """Write ``adversarial-review-<phase>.model.json`` beside the reviewer's verdict (R7):
     the writer and its models as for the advocate, the ``head`` the verdict names and the
     real time it was written. The gate's ``reviewer_model`` check requires it."""
+    phase = phase_name(phase)
     record = {"schema_version": 1, "phase": phase, "member": "reviewer"}
     record["head"] = verdict_head(payload.get("tool_input") or {})
     record.update(writer_record(payload))
@@ -339,9 +367,11 @@ def decide(payload: dict, argv: list[str], env: dict[str, str] | None = None):
             if not m:
                 continue
             phase, n, member = m.group(1).lower(), m.group(2), m.group(3).lower()
-            counterpart = Path(candidate).with_name(f"{phase}-{n}-{OTHER[member]}.md")
-            if counterpart.is_file():
+            names = counterparts(phase, n, member)
+            if any(Path(candidate).with_name(other).is_file() for other in names):
                 continue
+            counterpart = Path(candidate).with_name(names[0])
+            phase = phase_name(phase)
             rel = common.rel_to(root, candidate) or candidate
             other_rel = common.rel_to(root, common.norm(str(counterpart))) or str(counterpart)
             return common.Decision.deny(
@@ -366,7 +396,9 @@ def decide(payload: dict, argv: list[str], env: dict[str, str] | None = None):
             if not m:
                 continue
             try:
-                record_advocate_model(payload, common.fs_path(path), m.group(1).lower(), m.group(2))
+                record_advocate_model(
+                    payload, common.fs_path(path), phase_name(m.group(1)), m.group(2)
+                )
             except (OSError, ValueError):
                 # never refuse the verdict itself: with no record, `record` refuses the item
                 # and it parks for the owner
@@ -376,7 +408,7 @@ def decide(payload: dict, argv: list[str], env: dict[str, str] | None = None):
             if not m:
                 continue
             try:
-                record_reviewer_model(payload, common.fs_path(path), m.group(1).lower())
+                record_reviewer_model(payload, common.fs_path(path), phase_name(m.group(1)))
             except (OSError, ValueError):
                 pass  # with no record, the gate's reviewer_model check parks when it applies
         return common.Decision.allow()

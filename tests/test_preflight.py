@@ -201,8 +201,9 @@ def test_classification_reported_for_a_change(project):
         "classification": None,
         "iteration_cap": 3,
         "iterations_so_far": 0,
-        "verdict_file": "adversarial-review-b.json",
+        "verdict_file": "adversarial-review-design.json",
     }
+    # R45: the verdict a plugin before 1.0.43 wrote under the letter is still read
     verdict = project / "changes" / "0001-x" / "evidence" / "adversarial-review-b.json"
     verdict.write_text(
         json.dumps({"verdict": "continue", "classification": "non-routine", "head": "abc1234"})
@@ -259,13 +260,14 @@ def test_a_missing_change_refuses(project):
     assert report["reasons"] == ["parked: no change folder for id 0042"]
 
 
-def test_phases_d_and_e_skip_the_test_target(project, monkeypatch):
-    """(d) judges the suite itself and (e) ships what (d) judged: their preflight checks the
-    guardrails and the park, never the tests. (c) still needs the suite green to lean on."""
+def test_phases_test_and_deploy_skip_the_test_target(project, monkeypatch):
+    """Test judges the suite itself and deploy ships what test judged: their preflight checks
+    the guardrails and the park, never the tests. Build still needs the suite green to lean
+    on. A letter (``d``) an older caller passes is read as its name (R45)."""
     monkeypatch.setenv("SAMPLE_FAIL", "1")
-    for phase in ("d", "e"):
+    for phase, name in (("test", "test"), ("deploy", "deploy"), ("d", "test"), ("e", "deploy")):
         report = preflight.run_preflight(project, ROOT, phase=phase)
-        assert report["allow"] is True and report["phase"] == phase
+        assert report["allow"] is True and report["phase"] == name
         assert "test_target" not in [ch["name"] for ch in report["checks"]]
     report = preflight.run_preflight(project, ROOT, phase="c")
     assert report["allow"] is False and _names(report, False) == ["test_target"]

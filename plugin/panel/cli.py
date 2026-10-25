@@ -1,12 +1,13 @@
 """Command-line face of the review panel (decision 21; build guide step 16a), called by the
 phase commands: deferred review is the only mode (decision 37).
 
-    python "${CLAUDE_PLUGIN_ROOT}/plugin/panel/cli.py" items --root . --id 0001 --phase b
-    python cli.py prompt --root . --id 0001 --phase b --item 1 \
+    python "${CLAUDE_PLUGIN_ROOT}/plugin/panel/cli.py" items --root . --id 0001 --phase design
+    python cli.py prompt --root . --id 0001 --phase design --item 1 \
         --member reviewer|advocate|conciliator
-    python cli.py record --root . --id 0001 --phase b --item 1 [--cost-usd 0.42]
-    python cli.py overturn --root . --id 0001 --phase b --item 1 --comment "<the owner's words>"
-    python cli.py models --root . --phase b
+    python cli.py record --root . --id 0001 --phase design --item 1 [--cost-usd 0.42]
+    python cli.py overturn --root . --id 0001 --phase design --item 1 \
+        --comment "<the owner's words>"
+    python cli.py models --root . --phase design
 
 ``items`` runs the gate's checks without
 recording anything and lists what would park on a judgment item of the fixed list — an
@@ -64,12 +65,12 @@ from state import status as status_mod  # noqa: E402
 EXIT_OK, EXIT_USAGE, EXIT_CAP = 0, 2, 3
 # the commit word of each phase's runbook (design(<id>): ..., build(<id>): ...)
 COMMIT_WORD = {
-    "a": "intent",
-    "b": "design",
-    "c": "build",
-    "d": "test",
-    "e": "review",
-    "f": "maintain",
+    c.INTENT: "intent",
+    c.DESIGN: "design",
+    c.BUILD: "build",
+    c.TEST: "test",
+    c.DEPLOY: "review",
+    c.MAINTAIN: "maintain",
 }
 
 
@@ -209,7 +210,7 @@ def cmd_items(args) -> int:
         },
         "gate": result.result,
     }
-    path = ledger.items_path(change_dir, args.phase)
+    path = ledger.items_path(change_dir, args.phase, write=True)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
         json.dumps(out, indent=2, sort_keys=True) + "\n", encoding="utf-8", newline="\n"
@@ -239,6 +240,7 @@ def render_prompt(
         "advocate": prompts_mod.ADVOCATE,
         "conciliator": prompts_mod.CONCILIATOR,
     }[member]
+    phase = c.phase_name(phase)
     n = int(item["n"])
     kind = str(item.get("kind"))
     return template.format(
@@ -250,7 +252,7 @@ def render_prompt(
         item=str(item.get("item", "")),
         root=_posix(root),
         change_dir=_posix(change_dir),
-        output=_posix(ledger.member_path(change_dir, phase, n, member)),
+        output=_posix(ledger.member_path(change_dir, phase, n, member, write=True)),
         reviewer_file=_posix(ledger.member_path(change_dir, phase, n, "reviewer")),
         advocate_file=_posix(ledger.member_path(change_dir, phase, n, "advocate")),
         evidence_hint=prompts_mod.EVIDENCE_HINT.get(phase, "whatever the phase left there."),
@@ -400,7 +402,7 @@ def build_parser() -> argparse.ArgumentParser:
         s = sub.add_parser(name)
         s.add_argument("--root", default=".")
         s.add_argument("--id", required=True)
-        s.add_argument("--phase", required=True, choices=c.PHASES)
+        s.add_argument("--phase", required=True, type=c.phase_name, choices=c.PHASES)
         if name == "items":
             s.add_argument("--base", default=None, help="base ref for the diff")
         if name in ("prompt", "record", "overturn"):
@@ -419,7 +421,7 @@ def build_parser() -> argparse.ArgumentParser:
         s.set_defaults(fn=fn)
     s = sub.add_parser("models")
     s.add_argument("--root", default=".")
-    s.add_argument("--phase", required=True, choices=c.PHASES)
+    s.add_argument("--phase", required=True, type=c.phase_name, choices=c.PHASES)
     s.set_defaults(fn=cmd_models)
     return p
 

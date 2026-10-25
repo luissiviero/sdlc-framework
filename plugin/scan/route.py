@@ -2,10 +2,10 @@
 25; article p.46-48).
 
 The routing rule: every Important finding, bounded or wide, enters the framework as an
-**incident intent change** (``entry_route: incident``, gate (f) = the owner's triage): no
-route skips gates (a) and (b). The article's two routes (p.47 step 5 "a bounded finding" into
-the PR review gate, step 6 "anything wider than one patch ... write it up as intent.md")
-differ in the intent, not in the gates:
+**incident intent change** (``entry_route: incident``, gate (maintain) = the owner's triage):
+no route skips gates (intent) and (design). The article's two routes (p.47 step 5 "a
+bounded finding" into the PR review gate, step 6 "anything wider than one patch ... write it
+up as intent.md") differ in the intent, not in the gates:
 
 - **bounded** (one file, one patch): ``change_type: fix``; the Proposed outcome is the patch,
   stored beside the intent as ``evidence/suggested-patch.diff`` for the build run to apply;
@@ -286,7 +286,7 @@ def intent_text(finding: dict[str, Any], change_id: str, head: str, repo: str | 
 
 
 def finding_record(finding: dict[str, Any], head: str, at: str | None = None) -> dict[str, Any]:
-    """``evidence/scan-finding.json``: what ``detect/cli.py dismiss`` and gate (f) read."""
+    """``evidence/scan-finding.json``: what ``detect/cli.py dismiss`` and gate (maintain) read."""
     line = finding.get("line")
     return {
         "schema_version": SCHEMA_VERSION,
@@ -330,12 +330,13 @@ def _signature_in(text: str | None) -> str | None:
 
 
 def _in_flight(st: status_mod.Status | None) -> bool:
-    return st is not None and not st.abandoned and st.phase != "e"
+    return st is not None and not st.abandoned and st.phase != c.DEPLOY
 
 
 def filed_signatures(root: Path) -> dict[str, str]:
     """signature -> change id of every scan change still in flight: in the checkout (the
-    default branch, once its intent merged) or on a remote ``sdlc/<id>/a`` branch, not
+    default branch, once its intent merged) or on a remote ``sdlc/<id>/intent`` branch (or,
+    for good, the letter's ``sdlc/<id>/a`` an older plugin cut: R45, choice 273), not
     abandoned and not shipped. A finding the owner has not triaged yet is not filed twice."""
     root = Path(root)
     found: dict[str, str] = {}
@@ -359,7 +360,7 @@ def filed_signatures(root: Path) -> dict[str, str]:
         return found
     for ref in refs:
         parsed = c.parse_branch(ref.removeprefix("origin/"))
-        if not parsed or parsed[1] != "a":
+        if not parsed or parsed[1] != c.INTENT:  # the name's branch and the letter's
             continue
         change_id = parsed[0]
         listing = _show(root, ref, c.CHANGES_DIR) or ""
@@ -462,7 +463,7 @@ def file_one(
     push: bool,
 ) -> dict[str, Any]:
     """Allocate one incident change for the finding, write its intent and evidence, commit
-    them on ``sdlc/<id>/a`` from the default branch and open the intent PR."""
+    them on ``sdlc/<id>/intent`` from the default branch and open the intent PR."""
     sig = finding["signature"]
     bounded = bool(finding.get("bounded"))
     change_type = "fix" if bounded else "feature"
@@ -488,7 +489,7 @@ def file_one(
     _write_json(evidence / PROPOSAL_FILE, dict(PROPOSAL))
     default = _default_branch(root)
     start = f"origin/{default}" if gitops.has_remote(root) else default
-    argv = ["commit-phase", "--root", str(root), "--id", change_id, "--phase", "f",
+    argv = ["commit-phase", "--root", str(root), "--id", change_id, "--phase", c.MAINTAIN,
             "--message", f"maintain({change_id}): security review finding {sig}",
             "--start-point", start]  # fmt: skip
     if push:
@@ -500,21 +501,22 @@ def file_one(
             "change_id": change_id,
             "error": f"commit-phase failed: {err or code}",
         }
-    # gate (f) on the filed change (no diagnosis run: the review already wrote the intent
-    # and the proposal), so the intent PR carries the gate's label (sdlc:f-ready, or
+    # gate (maintain) on the filed change (no diagnosis run: the review already wrote the
+    # intent and the proposal), so the intent PR carries the gate's label (sdlc:maintain-ready, or
     # sdlc:needs-human with the reason) beside `incident`; the evidence rides in its own
     # commit, as every phase does (OPERATING_MODEL section 4.1)
-    _cli(GATE_CLI, ["start-run", "--root", str(root), "--id", change_id, "--phase", "f"], root)
+    phase = c.MAINTAIN
+    _cli(GATE_CLI, ["start-run", "--root", str(root), "--id", change_id, "--phase", phase], root)
     gate, _code, _err = _cli(
-        GATE_CLI, ["check", "--root", str(root), "--id", change_id, "--phase", "f"], root
+        GATE_CLI, ["check", "--root", str(root), "--id", change_id, "--phase", phase], root
     )
-    evidence_argv = ["commit-phase", "--root", str(root), "--id", change_id, "--phase", "f",
-                     "--message", f"maintain({change_id}): gate (f) evidence"]  # fmt: skip
+    evidence_argv = ["commit-phase", "--root", str(root), "--id", change_id, "--phase", phase,
+                     "--message", f"maintain({change_id}): gate (maintain) evidence"]  # fmt: skip
     if push:
         evidence_argv.append("--push")
     _cli(STATE_CLI, evidence_argv, root)
     # the automation's publication: the owner's review when the PR waits (decision 31)
-    upsert_argv = ["upsert", "--root", str(root), "--id", change_id, "--phase", "f",
+    upsert_argv = ["upsert", "--root", str(root), "--id", change_id, "--phase", phase,
                    "--request-review"]  # fmt: skip
     upsert, code, err = _cli(PR_CLI, upsert_argv, root)
     out: dict[str, Any] = {

@@ -1,7 +1,7 @@
 """Deterministic check behind the data-conventions skill: schema and migration files in the
 diff, generated files edited, personal-data identifiers in added code, and those identifiers
 appearing in logging statements. Advisory; the gate's risk list ("data migrations") shows a
-migration in the close-look banner the owner's merge accepts (decision 35; at (e), the owner's
+migration in the close-look banner the owner's merge accepts (decision 35; at (deploy), the owner's
 approving review, decision 36).
 
     python "${CLAUDE_PLUGIN_ROOT}/plugin/skills/data-conventions/check.py" --root .

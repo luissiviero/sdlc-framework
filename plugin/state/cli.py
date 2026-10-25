@@ -6,9 +6,10 @@ and identical on Windows, in a cloud session and in CI.
 
     python "${CLAUDE_PLUGIN_ROOT}/state/cli.py" new-change --root . --title "..." \
         [--route idea|ticket|incident] [--type feature|fix] [--external-ref 42]
-    python cli.py commit-phase --root . --id 0001 --phase a --message "..."
-        # phases d and e commit on the (c) branch: the build PR stays open through them
-    python cli.py set-phase --root . --id 0001 --phase b
+    python cli.py commit-phase --root . --id 0001 --phase intent --message "..."
+        # phases test and deploy commit on the build branch: the build PR stays open through
+        # them (R45: a letter, --phase c, is read as its name for one release)
+    python cli.py set-phase --root . --id 0001 --phase design
     python cli.py park --root . --id 0001 --reason "..."
     python cli.py accept-risk --root . --id 0001 --item "auth"   # owner accepts a risk hit by
         # hand (decision 35: the merge of the PR whose banner shows it is the usual act)
@@ -22,8 +23,8 @@ and identical on Windows, in a cloud session and in CI.
     python cli.py abandon --root . --id 0001 --reason "..." [--push]
         # decision 25: the PR was closed without a merge; phase: abandoned on the current
         # branch and on every other sdlc/<id>/* branch of the change on the remote
-    python cli.py show --root . --id 0001   # on the default branch: gate (e) of a merged
-    python cli.py list --root .             # phase-e change is derived as passed
+    python cli.py show --root . --id 0001   # on the default branch: gate (deploy) of a merged
+    python cli.py list --root .             # deploy change is derived as passed
     python cli.py labels
 """
 
@@ -57,7 +58,7 @@ def reserve_new_id(root: Path) -> tuple[str | None, dict]:
     afresh and skips every id already refused, so a third allocation that took the next id
     meanwhile is seen. An id refused ``RESERVE_TRIES`` times in a row gives None. A failure
     other than git's refusal keeps today's best-effort id, unreserved, and says why. A
-    reserved id gets its local ``sdlc/<id>/a`` at the reservation commit, so the first
+    reserved id gets its local ``sdlc/<id>/intent`` at the reservation commit, so the first
     ``commit-phase`` of the id starts from it (a stale local default branch would otherwise
     push non-fast-forward against the reservation)."""
     # the default branch's tip as the remote has it now: a reservation on a stale tip would
@@ -82,7 +83,7 @@ def reserve_new_id(root: Path) -> tuple[str | None, dict]:
         reservation = {"outcome": outcome, "detail": detail[-500:]}
         if outcome == gitops.RESERVED:
             reservation["sha"] = sha
-            branch = c.branch_name(change_id, "a")
+            branch = c.branch_name(change_id, c.INTENT)
             gitops.run(root, "branch", "--", branch, sha, check=False)  # kept if it exists
             reservation["local_branch"] = branch if _branch_exists(root, branch) else None
         return change_id, reservation
@@ -121,7 +122,7 @@ def cmd_new_change(args) -> int:
             "id": st.id,
             "slug": st.slug,
             "dir": str(change_dir.relative_to(root)).replace("\\", "/"),
-            "branch": c.branch_name(st.id, "a"),
+            "branch": c.branch_name(st.id, c.INTENT),
             "status": st.to_dict(),
             **({"reservation": reservation} if reservation is not None else {}),
         }
@@ -138,13 +139,15 @@ def cmd_commit_phase(args) -> int:
     extra paths), and only that: anything staged beforehand elsewhere stays out.
 
     The work branch is ``conventions.work_branch``, not the literal ``sdlc/<id>/<phase>``:
-    phases (d) and (e) commit on ``sdlc/<id>/c``, the build PR that stays open through them
-    (OPERATING_MODEL section 8). A (d)/(e) run therefore never creates a branch: a missing
-    ``sdlc/<id>/c`` means the build phase never ran, which is an error, not a fresh start.
+    phases test and deploy commit on ``sdlc/<id>/build``, the build PR that stays open through
+    them (OPERATING_MODEL section 8). A test or deploy run therefore never creates a branch: a
+    missing build branch means the build phase never ran, which is an error, not a fresh
+    start. R45: a change in flight keeps the letter branch an older plugin cut
+    (``sdlc/<id>/c``): ``gitops.existing_branch`` picks it when only that one exists.
 
     ``--branch`` names the branch instead (decision 22): a fix round on an intent PR that a
     web session pushed from a branch of its own (``claude/...``) commits on that PR's head,
-    never on ``sdlc/<id>/a``, or the PR would not carry it. The branch must exist."""
+    never on ``sdlc/<id>/intent``, or the PR would not carry it. The branch must exist."""
     root = Path(args.root).resolve()
     change_dir = c.find_change_dir(root, args.id)
     if change_dir is None:
@@ -153,7 +156,7 @@ def cmd_commit_phase(args) -> int:
     if not gitops.is_repo(root):
         print(f"{root} is not a git repository", file=sys.stderr)
         return 2
-    branch = c.work_branch(args.id, args.phase)
+    branch = gitops.existing_branch(root, c.work_branches(args.id, args.phase))
     start = args.start_point or None
     explicit = (getattr(args, "branch", None) or "").strip()
     if explicit:
@@ -168,12 +171,12 @@ def cmd_commit_phase(args) -> int:
             )
             return 2
         branch, start = explicit, None
-    elif args.phase in ("d", "e"):
+    elif args.phase in (c.TEST, c.DEPLOY):
         if not _branch_exists(root, branch):
             print(
-                f"phase ({args.phase}) commits on {branch}, which does not exist: run "
+                f"phase {args.phase} commits on {branch}, which does not exist: run "
                 f"/sdlc-build for change {args.id} first (the build PR stays open through "
-                "(d) and (e))",
+                "test and deploy)",
                 file=sys.stderr,
             )
             return 2
@@ -197,18 +200,18 @@ def cmd_commit_phase(args) -> int:
     # partial command or the session stays out of it. A --paths entry that matches nothing
     # (e.g. ruff.toml when it was not created) contributes nothing; a deleted one is recorded.
     # The review pass's record (changes/.review-seen.json) rides along whenever it changed,
-    # at (d) and (e) where the review pass runs: it is the change's own record too, outside
+    # at test and deploy where the review pass runs: it is the change's own record too, outside
     # the folder only because it is one file per project (0.3.5; until then a round that
     # forgot --paths left it uncommitted, and the gate's clean_tree parked on it). The file
     # itself only: a directory of that name is not it, and a deleted record is left for the
     # gate to report (the review of the 0.3.5 diff).
     files = gitops.changed_files(root, [rel, *args.paths])
-    if args.phase in ("d", "e"):
+    if args.phase in (c.TEST, c.DEPLOY):
         files = sorted(set(files) | set(_review_record_changed(root)))
     # The plan-sync rule, applied here because this command is how the phase commands
     # commit and the hook only sees ``git *`` shell commands (NOTES section 9): a commit on
-    # sdlc/<id>/c that departs from plan.md without updating it is refused now, not found
-    # by gate (c) twenty turns later (the first gated build run, 2026-09-22).
+    # sdlc/<id>/build that departs from plan.md without updating it is refused now, not
+    # found by gate (build) twenty turns later (the first gated build run, 2026-09-22).
     denial = plan_sync.check(
         branch,
         files,
@@ -432,7 +435,7 @@ def _default_branch_checkout(root: Path) -> str | None:
 
 def _production(root: Path) -> bool:
     """``sdlc.yaml: deploy.production`` of the project; False when the file or the key is
-    missing or unreadable. It only words the derived gate (e) reason (decision 13): the
+    missing or unreadable. It only words the derived gate (deploy) reason (decision 13): the
     release approval itself is the release workflow's to check."""
     try:
         return config_flag(load_sdlc_config(str(root)), "deploy", "production")
@@ -448,9 +451,10 @@ def _derived_gate(raw: status.Status, st: status.Status, default: str | None) ->
 
 
 def cmd_show(args) -> int:
-    """``status.yaml`` of one change. On a checkout of the default branch a change at phase e
-    was merged at gate (e), which is gate (e) passed (decisions 13 and 36): the output shows the
-    derived gate and says so under ``derived``; the file itself is left as it is."""
+    """``status.yaml`` of one change. On a checkout of the default branch a change at phase
+    deploy was merged at gate (deploy), which is gate (deploy) passed (decisions 13 and 36):
+    the output shows the derived gate and says so under ``derived``; the file itself is left
+    as it is."""
     loaded = _load(args)
     if not loaded:
         return 2
@@ -468,7 +472,7 @@ def cmd_show(args) -> int:
 
 def cmd_list(args) -> int:
     """Every change folder with its phase, so a re-run of /sdlc-plan can find an existing one.
-    On the default branch the gate of a merged phase-e change is derived as in ``show``."""
+    On the default branch the gate of a merged deploy change is derived as in ``show``."""
     root = Path(args.root).resolve()
     default = _default_branch_checkout(root)
     production = _production(root) if default else False
@@ -518,7 +522,8 @@ def build_parser() -> argparse.ArgumentParser:
     cp = sub.add_parser("commit-phase")
     cp.add_argument("--root", default=".")
     cp.add_argument("--id", required=True)
-    cp.add_argument("--phase", required=True, choices=c.PHASES)
+    # R45: a letter (``--phase c``) is read as its name for one release
+    cp.add_argument("--phase", required=True, type=c.phase_name, choices=c.PHASES)
     cp.add_argument("--message", required=True)
     cp.add_argument("--paths", nargs="*", default=[], help="extra paths to commit")
     cp.add_argument("--start-point", default=None)
@@ -562,7 +567,7 @@ def build_parser() -> argparse.ArgumentParser:
         s.add_argument("--root", default=".")
         s.add_argument("--id", required=True)
         if name == "set-phase":
-            s.add_argument("--phase", required=True, choices=c.PHASES)
+            s.add_argument("--phase", required=True, type=c.phase_name, choices=c.PHASES)
         if name == "park":
             s.add_argument("--reason", required=True)
         if name == "accept-risk":

@@ -110,7 +110,7 @@ class Args:
     def __init__(self, **kw):
         self.root = "."
         self.plugin_dir = str(ROOT)
-        self.phase = "b"
+        self.phase = "design"
         self.id = "0001"
         self.head_ref = None
         self.repo = "owner/name"
@@ -122,7 +122,7 @@ class Args:
         self.__dict__.update(kw)
 
 
-def dry_run_argv(capsys, root: Path, phase: str = "b", env=None) -> list[str]:
+def dry_run_argv(capsys, root: Path, phase: str = "design", env=None) -> list[str]:
     """Put the change at the phase this run follows, then compose the command and stop."""
     change = root / "changes" / "0001-percent-helper"
     previous = run_phase.PREVIOUS_PHASE[phase]
@@ -195,8 +195,8 @@ def test_substrate_smoke_agrees_with_the_shared_selection():
 # --- 2. the composed command line (task 30.3; docs/notes/10.md, 10b) ----------------------------
 @pytest.mark.parametrize(
     ("phase", "command", "mode"),
-    [("b", "sdlc-design", "default"), ("d", "sdlc-test", "acceptEdits"),
-     ("e", "sdlc-deploy", "acceptEdits")],
+    [("design", "sdlc-design", "default"), ("test", "sdlc-test", "acceptEdits"),
+     ("deploy", "sdlc-deploy", "acceptEdits")],
 )  # fmt: skip
 def test_dry_run_argv_per_phase(capsys, project, phase, command, mode):
     root, _change = project
@@ -236,22 +236,25 @@ def test_the_build_run_and_a_fix_round_get_the_build_caps(capsys, project):
     """Decision 32 (1.0.8): ``--max-turns`` 400 and a (180 + 5)-minute subprocess timeout for
     the build run and every fix round; 200 turns and (120 + 5) minutes for every other run;
     a general ``max_turns: 400`` (this repository's root ``sdlc.yaml``) applies to (b) too."""
-    for phase in ("c", "fix"):
+    for phase in ("build", "fix"):
         assert _turns(phase, {}, JOB_ENV) == 400, phase
         assert run_phase.run_timeout_seconds({}, phase, JOB_ENV) == (180 + 5) * 60
-    for phase in ("b", "d", "e", "review", "triage"):
+    for phase in ("design", "test", "deploy", "review", "triage"):
         assert _turns(phase, {}, JOB_ENV) == 200, phase
         assert run_phase.run_timeout_seconds({}, phase, JOB_ENV) == (120 + 5) * 60
     root_config = {"gate": {"max_turns": 400, "max_wall_clock_minutes": 120}}
-    assert _turns("b", root_config, JOB_ENV) == 400 and _turns("c", root_config, JOB_ENV) == 400
-    assert run_phase.run_timeout_seconds(root_config, "b", JOB_ENV) == (120 + 5) * 60
+    assert (
+        _turns("design", root_config, JOB_ENV) == 400
+        and _turns("build", root_config, JOB_ENV) == 400
+    )
+    assert run_phase.run_timeout_seconds(root_config, "design", JOB_ENV) == (120 + 5) * 60
     owner = {"gate": {"build_max_turns": 600, "build_max_wall_clock_minutes": 200}}
     longer = {run_phase.JOB_TIMEOUT_ENV: "265"}  # 200 + 5 + 50 (commands) + 10 (judge)
-    assert _turns("fix", owner, longer) == 600 and _turns("d", owner, longer) == 200
-    assert run_phase.run_timeout_seconds(owner, "c", longer) == (200 + 5) * 60
+    assert _turns("fix", owner, longer) == 600 and _turns("test", owner, longer) == 200
+    assert run_phase.run_timeout_seconds(owner, "build", longer) == (200 + 5) * 60
     # the template's own keys reach the build run's argv through /sdlc-init's sdlc.yaml
     root, _change = project
-    argv = dry_run_argv(capsys, root, "c", env={**KEY_ENV, **JOB_ENV})
+    argv = dry_run_argv(capsys, root, "build", env={**KEY_ENV, **JOB_ENV})
     assert int(argv[argv.index("--max-turns") + 1]) == 400
     assert argv[argv.index("--max-budget-usd") + 1] == "150"
 
@@ -262,7 +265,7 @@ def test_a_job_too_short_for_the_build_caps_keeps_the_general_caps(capsys, proje
     the job, and GitHub would kill it with no park. Such a job keeps the general caps, and
     the run says why on stderr, once."""
     for env in ({}, {run_phase.JOB_TIMEOUT_ENV: "200"}, {run_phase.JOB_TIMEOUT_ENV: "x"}):
-        for phase in ("c", "fix"):
+        for phase in ("build", "fix"):
             assert _turns(phase, {}, env) == 200, (env, phase)
             assert run_phase.run_timeout_seconds({}, phase, env) == (120 + 5) * 60
     assert run_phase.build_caps_refusal({}, JOB_ENV) is None
@@ -280,10 +283,10 @@ def test_a_job_too_short_for_the_build_caps_keeps_the_general_caps(capsys, proje
     assert "replace sdlc-build.yml" not in why
     longer = {"gate": {"build_max_wall_clock_minutes": 200}}
     assert "need 265 minutes" in run_phase.build_caps_refusal(longer, JOB_ENV)
-    assert _turns("c", slow, JOB_ENV) == 200
+    assert _turns("build", slow, JOB_ENV) == 200
     root, change = project
-    set_state(change, "b", gate_phase="b", gate_result="passed")
-    assert run_phase.run_phase(Args(root=str(root), phase="c"), dict(KEY_ENV)) == 0
+    set_state(change, "design", gate_phase="design", gate_result="passed")
+    assert run_phase.run_phase(Args(root=str(root), phase="build"), dict(KEY_ENV)) == 0
     out, err = capsys.readouterr()
     argv = json.loads(out)["argv"]
     assert int(argv[argv.index("--max-turns") + 1]) == 200
@@ -299,25 +302,25 @@ def test_the_job_time_counts_the_drive_only_when_it_is_set():
     185, deploy 355 with the (e) session 125); a drive at the default 300 s adds 5 minutes to
     the commands step (250 and 190) and takes them off the (e) session's wall clock."""
     minutes = run_phase.commands_timeout_seconds
-    assert minutes({}) == 50 * 60 and minutes({}, "e") == 50 * 60
-    assert minutes(DRIVE) == 55 * 60 and minutes(DRIVE, "c") == 55 * 60
+    assert minutes({}) == 50 * 60 and minutes({}, "deploy") == 50 * 60
+    assert minutes(DRIVE) == 55 * 60 and minutes(DRIVE, "build") == 55 * 60
     assert run_phase.build_caps_minutes_needed({}) == 245
     assert run_phase.build_caps_minutes_needed(DRIVE) == 250
     test_job = {}, DRIVE
     for config, total in zip(test_job, (185, 190), strict=True):
-        session = run_phase.run_timeout_seconds(config, "d", JOB_ENV, "d") // 60
-        assert session + minutes(config, "d") // 60 + 10 == total
+        session = run_phase.run_timeout_seconds(config, "test", JOB_ENV, "test") // 60
+        assert session + minutes(config, "test") // 60 + 10 == total
     for config in ({}, DRIVE):
         # the (e) run: session, commands step, judge stay at today's 125 + 50 + 10
-        session = run_phase.run_timeout_seconds(config, "e", JOB_ENV, "e") // 60
-        assert session + minutes(config, "e") // 60 + 10 == 185
-    assert run_phase.run_timeout_seconds(DRIVE, "e", JOB_ENV, "e") == (115 + 5) * 60
+        session = run_phase.run_timeout_seconds(config, "deploy", JOB_ENV, "deploy") // 60
+        assert session + minutes(config, "deploy") // 60 + 10 == 185
+    assert run_phase.run_timeout_seconds(DRIVE, "deploy", JOB_ENV, "deploy") == (115 + 5) * 60
     # a fix round at (e) with a drive: 180 minutes of session, 185 at (c); the review pass
     # keeps its whole wall clock
-    assert run_phase.run_timeout_seconds(DRIVE, "fix", JOB_ENV, "e") == 180 * 60
-    assert run_phase.run_timeout_seconds(DRIVE, "fix", JOB_ENV, "c") == 185 * 60
+    assert run_phase.run_timeout_seconds(DRIVE, "fix", JOB_ENV, "deploy") == 180 * 60
+    assert run_phase.run_timeout_seconds(DRIVE, "fix", JOB_ENV, "build") == 185 * 60
     assert run_phase.run_timeout_seconds(DRIVE, "review", JOB_ENV, "review") == 125 * 60
-    assert run_phase.run_caps(DRIVE, "fix", JOB_ENV, "e")[0] == 400  # --max-turns unchanged
+    assert run_phase.run_caps(DRIVE, "fix", JOB_ENV, "deploy")[0] == 400  # --max-turns unchanged
     # the gate's wall-clock check subtracts the same figure for the same runs
     from gate import limits
 
@@ -326,15 +329,15 @@ def test_the_job_time_counts_the_drive_only_when_it_is_set():
     assert limits.run_caps(gate_cfg, False, limits.drive_minutes(DRIVE))[1] == 115
     assert run_phase.commands_timeout_seconds({"commands": {"drive": ""}}) == 50 * 60
     # nit 2 of the review: the drive never runs at (b), so it adds nothing to its step
-    assert minutes(DRIVE, "b") == 50 * 60
+    assert minutes(DRIVE, "design") == 50 * 60
 
 
 def test_a_drive_timeout_over_600_is_capped_at_c_and_d_and_whole_at_e():
     config = {**DRIVE, "gate": {"drive_timeout": 900}}
     minutes = run_phase.commands_timeout_seconds
     assert minutes(config) == 45 * 60 + 600 + 300
-    assert minutes(config, "c") == minutes(config, "d") == minutes(config)
-    assert minutes(config, "e") == 45 * 60 + 900 + 300
+    assert minutes(config, "build") == minutes(config, "test") == minutes(config)
+    assert minutes(config, "deploy") == 45 * 60 + 900 + 300
     assert run_phase.build_caps_minutes_needed(config) == 180 + 5 + 60 + 10
     assert run_phase.drive_timeout_refusal(config) == (
         "gate.drive_timeout=900 exceeds the 600 s the test and build jobs hold: 600 applied; "
@@ -345,7 +348,7 @@ def test_a_drive_timeout_over_600_is_capped_at_c_and_d_and_whole_at_e():
     # the gate's drive timeout caps the same value at the same phases
     from gate import limits
 
-    for phase in ("c", "d", "e"):
+    for phase in ("build", "test", "deploy"):
         drive = limits.drive_timeout_seconds(config, phase)
         assert minutes(config, phase) == 45 * 60 + drive + 300, phase
 
@@ -359,11 +362,11 @@ def test_the_step_s_timeout_and_its_re_run_budget_read_the_same_figure(monkeypat
     monkeypatch.setattr(
         run_phase, "_cli_call", lambda cli, args, timeout, env: seen.append(timeout) or {}
     )
-    for phase in ("c", "e"):
+    for phase in ("build", "deploy"):
         run_phase.run_gate_commands(tmp_path, tmp_path, "0001", phase, config)
     assert seen == [
-        run_phase.commands_timeout_seconds(config, "c"),
-        run_phase.commands_timeout_seconds(config, "e"),
+        run_phase.commands_timeout_seconds(config, "build"),
+        run_phase.commands_timeout_seconds(config, "deploy"),
     ]
     assert seen[1] - seen[0] == 300
     source = (ROOT / "plugin" / "ci" / "run_phase.py").read_text(encoding="utf-8")
@@ -381,7 +384,7 @@ def test_commands_from_config_keeps_three_keys_with_a_drive():
 def test_design_phase_argv_cannot_edit_a_file(capsys, project):
     """Phase (b) writes spec.md and plan.md; it never edits code (decision 6, layer iii)."""
     root, _change = project
-    argv = dry_run_argv(capsys, root, "b")
+    argv = dry_run_argv(capsys, root, "design")
     assert argv[argv.index("--allowedTools") + 1] == run_phase.DESIGN_ALLOWED_TOOLS
     assert argv[argv.index("--disallowedTools") + 1] == run_phase.DESIGN_DISALLOWED_TOOLS
     assert "Edit" in argv[argv.index("--disallowedTools") + 1]
@@ -414,7 +417,7 @@ def test_the_session_runs_on_the_phase_s_model_and_pins_the_sub_agents_aliases(t
     change's phase); no key, no flag; the session's environment pins the aliases the phase
     commands start the reviewer and the advocate with, a pin the workflow set winning."""
     config = {
-        "session_model": {"default": "claude-opus-5-5", "b": "claude-fable-5-1"},
+        "session_model": {"default": "claude-opus-5-5", "design": "claude-fable-5-1"},
         "adversarial_model": "claude-opus-5-5",
         "panel_advocate_model": "claude-fable-5-1",
     }
@@ -426,33 +429,33 @@ def test_the_session_runs_on_the_phase_s_model_and_pins_the_sub_agents_aliases(t
         )  # fmt: skip
         return argv[argv.index("--model") + 1] if "--model" in argv else None
 
-    assert model("b") == "claude-fable-5-1" and model("c") == "claude-opus-5-5"
-    assert model("fix", "b") == "claude-fable-5-1"  # a round on the design PR
-    assert model("fix", "e") == "claude-opus-5-5"
-    assert model("c", env={**KEY_ENV, "SDLC_MODEL": "sonnet"}) == "sonnet"
-    assert model("c", cfg={}) is None  # today's behaviour: the CLI's default
+    assert model("design") == "claude-fable-5-1" and model("build") == "claude-opus-5-5"
+    assert model("fix", "design") == "claude-fable-5-1"  # a round on the design PR
+    assert model("fix", "deploy") == "claude-opus-5-5"
+    assert model("build", env={**KEY_ENV, "SDLC_MODEL": "sonnet"}) == "sonnet"
+    assert model("build", cfg={}) is None  # today's behaviour: the CLI's default
     env = {"PATH": "/bin", **KEY_ENV}
-    pinned = run_phase.session_env(env, tmp_path, "c", config)
+    pinned = run_phase.session_env(env, tmp_path, "build", config)
     assert pinned["ANTHROPIC_DEFAULT_OPUS_MODEL"] == "claude-opus-5-5"
     assert pinned["ANTHROPIC_DEFAULT_FABLE_MODEL"] == "claude-fable-5-1"
     # at (b) the advocate runs on the reviewer's model: nothing pins Fable
     assert "ANTHROPIC_DEFAULT_FABLE_MODEL" not in run_phase.session_env(
-        env, tmp_path, "fix", config, "b"
+        env, tmp_path, "fix", config, "design"
     )
     workflow_pin = {**env, "ANTHROPIC_DEFAULT_OPUS_MODEL": "x"}
-    kept = run_phase.session_env(workflow_pin, tmp_path, "c", config)
+    kept = run_phase.session_env(workflow_pin, tmp_path, "build", config)
     assert kept["ANTHROPIC_DEFAULT_OPUS_MODEL"] == "x"
-    assert "ANTHROPIC_DEFAULT_OPUS_MODEL" not in run_phase.session_env(env, tmp_path, "c")
+    assert "ANTHROPIC_DEFAULT_OPUS_MODEL" not in run_phase.session_env(env, tmp_path, "build")
 
 
 def test_phase_c_takes_its_permission_mode_from_the_preflight(capsys, project, monkeypatch):
     """Auto-accept only when plugin/gate/preflight.py allows it; never bypass (step 18)."""
     root, change = project
-    set_state(change, "b", gate_phase="b", gate_result="passed")
+    set_state(change, "design", gate_phase="design", gate_result="passed")
     monkeypatch.setattr(
         run_phase, "preflight", lambda *a: {"allow": True, "permission_mode": "acceptEdits"}
     )
-    args = Args(root=str(root), phase="c")
+    args = Args(root=str(root), phase="build")
     assert run_phase.run_phase(args, dict(KEY_ENV)) == run_phase.EXIT_OK
     argv = json.loads(capsys.readouterr().out)["argv"]
     assert argv[argv.index("--permission-mode") + 1] == "acceptEdits"
@@ -462,13 +465,13 @@ def test_phase_c_takes_its_permission_mode_from_the_preflight(capsys, project, m
 
 def test_phase_c_parks_when_the_preflight_refuses(capsys, project, monkeypatch):
     root, change = project
-    set_state(change, "b", gate_phase="b", gate_result="passed")
+    set_state(change, "design", gate_phase="design", gate_result="passed")
     monkeypatch.setattr(
         run_phase,
         "preflight",
         lambda *a: {"allow": False, "reasons": ["test_target: the test target is not green"]},
     )
-    args = Args(root=str(root), phase="c", dry_run=False)
+    args = Args(root=str(root), phase="build", dry_run=False)
     assert run_phase.run_phase(args, dict(KEY_ENV)) == run_phase.EXIT_OK  # a park is not a failure
     assert "not green" in json.loads(capsys.readouterr().out)["parked"][0]
     assert "preflight:" in status_mod.read_status(change).parked_reason
@@ -539,64 +542,67 @@ def skip_reason(root: Path, phase: str, env=None) -> str | None:
 
 def test_guard_passes_at_the_expected_phase(project):
     root, _change = project
-    assert skip_reason(root, "b") is None
+    assert skip_reason(root, "design") is None
 
 
 def test_guard_skips_at_the_wrong_phase(project):
     root, change = project
-    set_state(change, "c")
-    assert "not a" in skip_reason(root, "b")
+    set_state(change, "build")
+    assert "not intent" in skip_reason(root, "design")
 
 
 def test_guard_skips_a_parked_change(project):
     root, change = project
     set_state(
         change,
-        "a",
-        gate_phase="a",
+        "intent",
+        gate_phase="intent",
         gate_result="parked",
         parked="waiting for the owner's decision on rounding",
     )
-    assert "parked" in skip_reason(root, "b")
+    assert "parked" in skip_reason(root, "design")
 
 
 def test_guard_skips_when_the_repository_is_paused(project):
     root, _change = project
     text = (root / "sdlc.yaml").read_text(encoding="utf-8").replace("paused: false", "paused: true")
     (root / "sdlc.yaml").write_text(text, encoding="utf-8")
-    assert "paused" in skip_reason(root, "b")
+    assert "paused" in skip_reason(root, "design")
 
 
 def test_guard_skips_when_the_previous_gate_did_not_pass(project):
     root, change = project
-    set_state(change, "b")
-    assert "gate (b) has not passed" in skip_reason(root, "c")
-    set_state(change, "b", gate_phase="b", gate_result="passed")
-    assert skip_reason(root, "c") is None
+    set_state(change, "design")
+    assert "gate (design) has not passed" in skip_reason(root, "build")
+    set_state(change, "design", gate_phase="design", gate_result="passed")
+    assert skip_reason(root, "build") is None
 
 
 def test_a_merged_pr_that_touches_only_change_0000_is_skipped_for_every_phase(project, monkeypatch):
     """Issue #67 (0.3.1): change 0000 is the installation; a merged PR whose only change folder
     is changes/0000-sdlc-init/ (the 0000 PR itself once the secret exists, an upgrade re-run
-    on sdlc/0000/a) resolved to 0000 and the design guard let it through (phase a, not
+    on sdlc/0000/intent) resolved to 0000 and the design guard let it through (phase a, not
     parked): a design run wrote a spec and plan for the installation. The guard now skips
     0000 for every phase run."""
     root, _change = project
     init_dir = root / "changes" / "0000-sdlc-init"
-    assert init_dir.is_dir() and status_mod.read_status(init_dir).phase == "a"
+    assert init_dir.is_dir() and status_mod.read_status(init_dir).phase == "intent"
     _pr_files(monkeypatch, ["changes/0000-sdlc-init/status.yaml", "CLAUDE.md", "sdlc.yaml"])
-    assert run_phase.find_change("b", None, "claude/init-x", "o/r", "12", {}) == ("0000", None)
-    assert run_phase.find_change("b", None, "sdlc/0000/a", "o/r", "12", {}) == ("0000", None)
-    for phase in ("b", "c", "d", "e", "review", "fix", "f"):
+    assert run_phase.find_change("design", None, "claude/init-x", "o/r", "12", {}) == ("0000", None)
+    assert run_phase.find_change("design", None, "sdlc/0000/intent", "o/r", "12", {}) == (
+        "0000",
+        None,
+    )
+    for phase in ("design", "build", "test", "deploy", "review", "fix", "maintain"):
         _d, _s, _c, reason = run_phase.guard(root, "0000", phase, "owner/name", {})
         assert reason == run_phase.INIT_CHANGE_SKIP, phase
         assert reason.startswith("change 0000 is the installation; it has no design")
-    assert skip_reason(root, "b") is None  # change 0001 is untouched by the rule
+    assert skip_reason(root, "design") is None  # change 0001 is untouched by the rule
 
 
 def test_guard_skips_an_unknown_change(project):
     root, _change = project
-    _d, _s, _c, reason = run_phase.guard(root, "0099", "b", "owner/name", {})
+    _d, _s, _c, reason = run_phase.guard(root, "0099", "design", "owner/name", {})
     assert "no change folder" in reason
 
 
@@ -615,40 +621,45 @@ def test_a_dispatched_run_switches_to_the_work_branch_before_the_guard(project, 
     """A workflow_dispatch run checks out the default branch, where status.yaml is still at
     the phase main knows; without the switch every dispatched (d)/(e) run would skip."""
     root, change = project
-    set_state(change, "b")
+    set_state(change, "design")
     with_remote(root, tmp_path)
     # the build branch carries phase (c) with a passing gate; main stays at (b)
-    git(root, "checkout", "-q", "-b", "sdlc/0001/c")
-    set_state(change, "c", gate_phase="c", gate_result="passed")
+    git(root, "checkout", "-q", "-b", "sdlc/0001/build")
+    set_state(change, "build", gate_phase="build", gate_result="passed")
     git(root, "add", "-A")
     git(root, "commit", "-q", "-m", "build(0001): the work")
-    git(root, "push", "-q", "-u", "origin", "sdlc/0001/c")
+    git(root, "push", "-q", "-u", "origin", "sdlc/0001/build")
     git(root, "checkout", "-q", "main")
-    git(root, "branch", "-q", "-D", "sdlc/0001/c")  # the dispatched runner has main only
-    assert status_mod.read_status(change).phase == "b"
+    git(root, "branch", "-q", "-D", "sdlc/0001/build")  # the dispatched runner has main only
+    assert status_mod.read_status(change).phase == "design"
 
-    args = Args(root=str(root), phase="d")
+    args = Args(root=str(root), phase="test")
     assert run_phase.run_phase(args, dict(KEY_ENV)) == run_phase.EXIT_OK
     out = json.loads(capsys.readouterr().out)
-    assert out["branch"]["branch"] == "sdlc/0001/c" and out["branch"]["switched"] is True
-    assert out["branch"]["from"] == "origin/sdlc/0001/c"
+    assert out["branch"]["branch"] == "sdlc/0001/build" and out["branch"]["switched"] is True
+    assert out["branch"]["from"] == "origin/sdlc/0001/build"
     assert out["argv"][2] == "/sdlc:sdlc-test 0001"  # the guard saw phase (c), not (b)
-    assert status_mod.read_status(change).phase == "c"
-    assert git(root, "rev-parse", "--abbrev-ref", "HEAD").strip() == "sdlc/0001/c"
+    assert status_mod.read_status(change).phase == "build"
+    assert git(root, "rev-parse", "--abbrev-ref", "HEAD").strip() == "sdlc/0001/build"
 
 
 def _design_branch_left_on_the_remote(root: Path, tmp_path: Path, extra_sdlc: str = "") -> str:
-    """Main (its ``sdlc.yaml`` with ``extra_sdlc`` appended) and a pushed sdlc/0001/b one
+    """Main (its ``sdlc.yaml`` with ``extra_sdlc`` appended) and a pushed sdlc/0001/design one
     commit past it; its sha."""
     text = (root / "sdlc.yaml").read_text(encoding="utf-8")
     (root / "sdlc.yaml").write_text(text + extra_sdlc, encoding="utf-8")
-    set_state(root / "changes" / "0001-percent-helper", "b", gate_phase="b", gate_result="passed")
+    set_state(
+        root / "changes" / "0001-percent-helper",
+        "design",
+        gate_phase="design",
+        gate_result="passed",
+    )
     with_remote(root, tmp_path)
-    git(root, "checkout", "-q", "-b", "sdlc/0001/b")
+    git(root, "checkout", "-q", "-b", "sdlc/0001/design")
     git(root, "commit", "-q", "--allow-empty", "-m", "design(0001): spec and plan")
-    git(root, "push", "-q", "-u", "origin", "sdlc/0001/b")
+    git(root, "push", "-q", "-u", "origin", "sdlc/0001/design")
     git(root, "checkout", "-q", "main")
-    return git(root, "rev-parse", "origin/sdlc/0001/b").strip()
+    return git(root, "rev-parse", "origin/sdlc/0001/design").strip()
 
 
 def test_a_project_that_still_names_a_retired_profile_builds_from_the_default_branch(
@@ -660,20 +671,20 @@ def test_a_project_that_still_names_a_retired_profile_builds_from_the_default_br
     root, _change = project
     design_head = _design_branch_left_on_the_remote(root, tmp_path, "profile: full\n")
 
-    branch = run_phase.prepare_branch(root, "0001", "c")
-    assert branch["branch"] == "sdlc/0001/c" and branch["switched"] is True
+    branch = run_phase.prepare_branch(root, "0001", "build")
+    assert branch["branch"] == "sdlc/0001/build" and branch["switched"] is True
     assert branch["from"] == "refs/remotes/origin/main"  # fully qualified since 0.2.27
     assert git(root, "rev-parse", "HEAD").strip() != design_head
 
 
 def test_the_build_branch_starts_from_the_default_branch(project, tmp_path):
-    """HANDOFF 6(a): a design branch that outlived the owner's merge at gate (b) is not
+    """HANDOFF 6(a): a design branch that outlived the owner's merge at gate (design) is not
     where the build starts; the default branch is."""
     root, _change = project
     design_head = _design_branch_left_on_the_remote(root, tmp_path)
     main_head = git(root, "rev-parse", "origin/main").strip()
 
-    branch = run_phase.prepare_branch(root, "0001", "c")
+    branch = run_phase.prepare_branch(root, "0001", "build")
     assert branch["switched"] is True and branch["from"] == "refs/remotes/origin/main"
     head = git(root, "rev-parse", "HEAD").strip()
     assert head == main_head and head != design_head
@@ -682,14 +693,14 @@ def test_the_build_branch_starts_from_the_default_branch(project, tmp_path):
 def test_start_point_is_the_default_branch(project, tmp_path):
     root, _change = project
     _design_branch_left_on_the_remote(root, tmp_path)
-    assert run_phase._start_point(root, "0001", "c") == "refs/remotes/origin/main"
-    assert run_phase._start_point(root, "0001", "b") == "refs/remotes/origin/main"
-    assert "b" not in run_phase.NEXT_WORKFLOW  # a design run never dispatches the build
+    assert run_phase._start_point(root, "0001", "build") == "refs/remotes/origin/main"
+    assert run_phase._start_point(root, "0001", "design") == "refs/remotes/origin/main"
+    assert "design" not in run_phase.NEXT_WORKFLOW  # a design run never dispatches the build
 
 
 def test_a_missing_build_branch_leaves_the_checkout_alone(project):
     root, _change = project
-    branch = run_phase.prepare_branch(root, "0001", "e")
+    branch = run_phase.prepare_branch(root, "0001", "deploy")
     assert branch["switched"] is False and "does not exist" in branch["note"]
 
 
@@ -697,21 +708,21 @@ def test_a_ci_park_commits_the_change_and_updates_the_pr(project, tmp_path, caps
     """A park is a queue item: it has to reach the branch and the PR, not just status.yaml
     on a runner that is about to be deleted (OPERATING_MODEL section 5)."""
     root, change = project
-    set_state(change, "b", gate_phase="b", gate_result="passed")
+    set_state(change, "design", gate_phase="design", gate_result="passed")
     bare = with_remote(root, tmp_path)
     monkeypatch.setattr(
         run_phase, "preflight", lambda *a: {"allow": False, "reasons": ["test_target: red"]}
     )
-    args = Args(root=str(root), phase="c", dry_run=False)
+    args = Args(root=str(root), phase="build", dry_run=False)
     assert run_phase.run_phase(args, dict(KEY_ENV)) == run_phase.EXIT_OK
     out = json.loads(capsys.readouterr().out)
     assert out["parked"] == ["test_target: red"] and out["commit"]["ok"] is True
     st = status_mod.read_status(change)
     assert "preflight:" in st.parked_reason  # the park survives the commit
-    assert "sdlc/0001/c" in git(bare, "branch", "--list", "sdlc/0001/c")
-    tracked = git(root, "ls-tree", "-r", "--name-only", "sdlc/0001/c")
-    assert "changes/0001-percent-helper/evidence/gate-c.json" in tracked
-    gate_file = json.loads((change / "evidence" / "gate-c.json").read_text(encoding="utf-8"))
+    assert "sdlc/0001/build" in git(bare, "branch", "--list", "sdlc/0001/build")
+    tracked = git(root, "ls-tree", "-r", "--name-only", "sdlc/0001/build")
+    assert "changes/0001-percent-helper/evidence/gate-build.json" in tracked
+    gate_file = json.loads((change / "evidence" / "gate-build.json").read_text(encoding="utf-8"))
     assert gate_file["result"] == "park" and gate_file["label"] == "sdlc:needs-human"
     assert "What I need from you" in gate_file["what_i_need"]
     # the summary and the block name the check once; status.yaml keeps "preflight: ..."
@@ -727,15 +738,15 @@ def test_a_branch_that_changed_a_guardrail_file_never_runs(project, tmp_path, ca
     """Decision 6 layer iii: prevention. The hook denies the edit inside a run; a branch that
     arrives with one is parked before the model is called."""
     root, change = project
-    set_state(change, "c", gate_phase="c", gate_result="passed")
+    set_state(change, "build", gate_phase="build", gate_result="passed")
     with_remote(root, tmp_path)
-    git(root, "checkout", "-q", "-b", "sdlc/0001/c")
+    git(root, "checkout", "-q", "-b", "sdlc/0001/build")
     (root / "CLAUDE.md").write_text("# rewritten by the run\n", encoding="utf-8")
     git(root, "add", "-A")
     git(root, "commit", "-q", "-m", "build(0001): the work")
-    git(root, "push", "-q", "-u", "origin", "sdlc/0001/c")
+    git(root, "push", "-q", "-u", "origin", "sdlc/0001/build")
 
-    args = Args(root=str(root), phase="d", dry_run=False)
+    args = Args(root=str(root), phase="test", dry_run=False)
     assert run_phase.run_phase(args, dict(KEY_ENV)) == run_phase.EXIT_OK
     out = json.loads(capsys.readouterr().out)
     assert "CLAUDE.md" in out["parked"] and "refuses to run" in out["parked"]
@@ -752,7 +763,7 @@ def test_a_session_gets_what_is_left_of_the_change_s_budget(capsys, project):
 
     def budget(**kw) -> str:
         argv = run_phase.compose(
-            claude="claude", plugin_dir=ROOT, phase="d", prompt="x",
+            claude="claude", plugin_dir=ROOT, phase="test", prompt="x",
             permission_mode="default", config=config, env=dict(KEY_ENV), **kw,
         )  # fmt: skip
         return argv[argv.index("--max-budget-usd") + 1]
@@ -760,20 +771,20 @@ def test_a_session_gets_what_is_left_of_the_change_s_budget(capsys, project):
     assert budget() == "150" and budget(change_dir=change) == "150"  # nothing spent yet
     # M8 (R25, 1.0.26): the total is rebuilt from the stored session results
     evidence.mkdir(parents=True, exist_ok=True)
-    for source, usd in (("claude-b.json", 100.0), ("claude-c.json", 49.0)):
+    for source, usd in (("claude-design.json", 100.0), ("claude-build.json", 49.0)):
         write(evidence / source, json.dumps({"total_cost_usd": usd}))
     assert budget(change_dir=change) == "1"
-    write(evidence / "claude-c-2.json", json.dumps({"total_cost_usd": 0.42}))
+    write(evidence / "claude-build-2.json", json.dumps({"total_cost_usd": 0.42}))
     assert budget(change_dir=change) == "0.58"
     # no exponent form, and never 0 for a positive amount left
     assert run_phase._usd(0.00001) == "0.0001" and run_phase._usd(149.99999) == "150"
     assert run_phase._usd(1e-7) == "0.0001" and run_phase._usd(12.5) == "12.5"
     assert limits.budget_reason(151, 150).startswith("budget exceeded: 151.00 USD")
     # the template's cap through a real dry run
-    for name in ("claude-c.json", "claude-c-2.json"):
+    for name in ("claude-build.json", "claude-build-2.json"):
         (evidence / name).unlink()
-    write(evidence / "claude-b.json", json.dumps({"total_cost_usd": 149.0}))
-    argv = dry_run_argv(capsys, root, "d")
+    write(evidence / "claude-design.json", json.dumps({"total_cost_usd": 149.0}))
+    argv = dry_run_argv(capsys, root, "test")
     assert argv[argv.index("--max-budget-usd") + 1] == "1"
 
 
@@ -781,13 +792,13 @@ def test_a_change_with_no_budget_left_parks_before_the_session(project, monkeypa
     """1.0.8: with the change's total at the cap, no session starts: the runner parks with
     the budget reason of the gate's ``limits`` check and never invokes the CLI."""
     root, change = project
-    set_state(change, "c", gate_phase="c", gate_result="passed")
+    set_state(change, "build", gate_phase="build", gate_result="passed")
     # M8 (R25, 1.0.26): the total is rebuilt from the stored session results, not the ledger
-    write(change / "evidence" / "claude-c.json", json.dumps({"total_cost_usd": 150.0}))
+    write(change / "evidence" / "claude-build.json", json.dumps({"total_cost_usd": 150.0}))
     invoked: list = []
     monkeypatch.setattr(run_phase, "invoke", lambda *a, **k: invoked.append(a) or (None, "", "", 1))
     calls = upsert_recorder(monkeypatch)
-    args = Args(root=str(root), phase="d", dry_run=False)
+    args = Args(root=str(root), phase="test", dry_run=False)
     assert run_phase.run_phase(args, dict(KEY_ENV)) == run_phase.EXIT_OK
     out = json.loads(capsys.readouterr().out)
     assert invoked == []
@@ -807,17 +818,17 @@ def test_an_e_run_whose_drive_takes_the_cap_below_the_floor_parks_before_the_ses
     text = re.sub(r"(?m)^  drive: .*$", '  drive: "python drive.py"', text, count=1)
     text = re.sub(r"(?m)^  drive_timeout: \d+", "  drive_timeout: 6000", text, count=1)
     (root / "sdlc.yaml").write_text(text, encoding="utf-8")
-    set_state(change, "d", gate_phase="d", gate_result="passed")
+    set_state(change, "test", gate_phase="test", gate_result="passed")
     monkeypatch.setattr(run_phase.base_update, "update_before_offer", lambda *a, **k: {"ok": True})
     invoked: list = []
     monkeypatch.setattr(run_phase, "invoke", lambda *a, **k: invoked.append(a) or (None, "", "", 1))
     upsert_recorder(monkeypatch)
-    args = Args(root=str(root), phase="e", dry_run=False)
+    args = Args(root=str(root), phase="deploy", dry_run=False)
     assert run_phase.run_phase(args, dict(KEY_ENV)) == run_phase.EXIT_OK
     out = json.loads(capsys.readouterr().out)
     assert invoked == []
     reason = (
-        "limits: gate.drive_timeout takes 100 min off the (e) session's 120 min, below the "
+        "limits: gate.drive_timeout takes 100 min off the (deploy) session's 120 min, below the "
         "floor of 30 min"
     )
     assert out["parked"] == reason
@@ -840,7 +851,7 @@ def test_a_framework_change_may_touch_the_guardrails(project, tmp_path):
     root, change = project
     write(change / "intent.md", "# Intent: the framework\nFramework change: yes\n")
     with_remote(root, tmp_path)  # the marker is on the base branch
-    git(root, "checkout", "-q", "-b", "sdlc/0001/c")
+    git(root, "checkout", "-q", "-b", "sdlc/0001/build")
     (root / "CLAUDE.md").write_text("# a reviewed framework change\n", encoding="utf-8")
     git(root, "add", "-A")
     git(root, "commit", "-q", "-m", "build(0001): the framework change")
@@ -852,18 +863,18 @@ def test_a_branch_with_no_merge_base_is_parked_not_passed(project, tmp_path, cap
     when the base existed but shared no commit with HEAD, so ``guardrail_changes`` passed
     an orphan branch whatever it carried. Now the guard parks it, naming the base."""
     root, change = project
-    set_state(change, "c", gate_phase="c", gate_result="passed")
+    set_state(change, "build", gate_phase="build", gate_result="passed")
     with_remote(root, tmp_path)
-    git(root, "checkout", "-q", "--orphan", "sdlc/0001/c")
+    git(root, "checkout", "-q", "--orphan", "sdlc/0001/build")
     (root / "CLAUDE.md").write_text("# rewritten on an unrelated history\n", encoding="utf-8")
     git(root, "add", "-A")
     git(root, "commit", "-q", "-m", "build(0001): the work")
-    git(root, "push", "-q", "-u", "origin", "sdlc/0001/c")
+    git(root, "push", "-q", "-u", "origin", "sdlc/0001/build")
     with pytest.raises(run_phase.NoMergeBase) as info:
         run_phase.guardrail_changes(root, change, {})
     assert info.value.base == "refs/remotes/origin/main"
 
-    args = Args(root=str(root), phase="d", dry_run=False)
+    args = Args(root=str(root), phase="test", dry_run=False)
     assert run_phase.run_phase(args, dict(KEY_ENV)) == run_phase.EXIT_OK
     out = json.loads(capsys.readouterr().out)
     assert "no merge base with refs/remotes/origin/main" in out["parked"]
@@ -944,7 +955,7 @@ def test_no_session_holds_the_gemini_key_and_the_sandbox_never_reaches_its_host(
         for name in ("sdlc-deploy.yml", "sdlc-design.yml")
     )
     env = {"GEMINI_API_KEY": "placeholder-gemini", "PATH": "/bin"}  # sdlc: allow-secret
-    assert "GEMINI_API_KEY" not in run_phase.session_env(env, tmp_path, "b")
+    assert "GEMINI_API_KEY" not in run_phase.session_env(env, tmp_path, "design")
     assert "GEMINI_API_KEY" not in run_phase.commands_env()
 
 
@@ -1014,7 +1025,7 @@ def test_a_nested_guardrail_name_is_not_a_guardrail_change(project, tmp_path):
     framework repository's template/CLAUDE.md runs; the root CLAUDE.md still parks."""
     root, change = project
     with_remote(root, tmp_path)
-    git(root, "checkout", "-q", "-b", "sdlc/0001/c")
+    git(root, "checkout", "-q", "-b", "sdlc/0001/build")
     (root / "template").mkdir()
     (root / "template" / "CLAUDE.md").write_text("# the product\n", encoding="utf-8")
     (root / "template" / "sdlc.yaml").write_text("profile: standard\n", encoding="utf-8")
@@ -1065,11 +1076,11 @@ def test_label_events_are_read_page_by_page(monkeypatch):
 
 
 def test_change_id_comes_from_the_head_ref_when_no_input_is_given():
-    assert run_phase.resolve_change_id(None, "sdlc/0042/a", "b") == ("0042", None)
-    assert run_phase.resolve_change_id(None, "sdlc/0042/b", "b")[0] is None
-    assert run_phase.resolve_change_id(None, "feature/x", "b")[0] is None
-    assert run_phase.resolve_change_id("0007", None, "b") == ("0007", None)
-    assert run_phase.resolve_change_id("7", None, "b")[0] is None
+    assert run_phase.resolve_change_id(None, "sdlc/0042/intent", "design") == ("0042", None)
+    assert run_phase.resolve_change_id(None, "sdlc/0042/design", "design")[0] is None
+    assert run_phase.resolve_change_id(None, "feature/x", "design")[0] is None
+    assert run_phase.resolve_change_id("0007", None, "design") == ("0007", None)
+    assert run_phase.resolve_change_id("7", None, "design")[0] is None
 
 
 # --- 3b. the change a merged pull request carries (HANDOFF 4(a), plugin 0.2.12) ---------------
@@ -1089,19 +1100,22 @@ def _pr_files(monkeypatch, files=(), ok=True, reason="") -> list:
 
 def test_find_change_takes_the_id_first(monkeypatch):
     calls = _pr_files(monkeypatch, ["changes/0002-other/intent.md"])
-    assert run_phase.find_change("b", "0001", "claude/x", "o/r", "5", {}) == ("0001", None)
-    change_id, reason = run_phase.find_change("b", "7", None, "o/r", "5", {})
+    assert run_phase.find_change("design", "0001", "claude/x", "o/r", "5", {}) == ("0001", None)
+    change_id, reason = run_phase.find_change("design", "7", None, "o/r", "5", {})
     assert change_id is None and "not four digits" in reason
     assert calls == []
 
 
 def test_find_change_reads_an_sdlc_head_before_the_files(monkeypatch):
     calls = _pr_files(monkeypatch, ["changes/0042-x/intent.md"])
-    assert run_phase.find_change("b", None, "sdlc/0042/a", "o/r", "5", {}) == ("0042", None)
+    assert run_phase.find_change("design", None, "sdlc/0042/intent", "o/r", "5", {}) == (
+        "0042",
+        None,
+    )
     # another phase's own PR keeps its skip: its files carry the same change folder, and
     # reading them would re-run the design the owner has just merged
-    change_id, reason = run_phase.find_change("b", None, "sdlc/0042/b", "o/r", "5", {})
-    assert change_id is None and "is phase b, not a" in reason
+    change_id, reason = run_phase.find_change("design", None, "sdlc/0042/design", "o/r", "5", {})
+    assert change_id is None and "is phase design, not intent" in reason
     assert calls == []
 
 
@@ -1115,18 +1129,18 @@ def test_find_change_reads_the_merged_pull_request_files(monkeypatch):
             "changes/0001-percent-helper/status.yaml",
         ],
     )
-    found = run_phase.find_change("b", None, "claude/relaxed-x", "o/r", "12", {})
+    found = run_phase.find_change("design", None, "claude/relaxed-x", "o/r", "12", {})
     assert found == ("0001", None)
     assert calls == [("o/r", 12)]
 
 
 def test_find_change_skips_a_pr_with_no_or_several_change_folders(monkeypatch):
     _pr_files(monkeypatch, ["src/app.py", "changes/README.md"])
-    change_id, reason = run_phase.find_change("c", None, "claude/x", "o/r", 12, {})
+    change_id, reason = run_phase.find_change("build", None, "claude/x", "o/r", 12, {})
     assert change_id is None
     assert reason == "pull request #12 touches no changes/<id>-<slug>/ folder"
     _pr_files(monkeypatch, ["changes/0002-b/intent.md", "changes/0001-a/intent.md"])
-    change_id, reason = run_phase.find_change("c", None, "claude/x", "o/r", 12, {})
+    change_id, reason = run_phase.find_change("build", None, "claude/x", "o/r", 12, {})
     assert change_id is None and "ambiguous" in reason and "(0001, 0002)" in reason
 
 
@@ -1135,12 +1149,12 @@ def test_find_change_without_a_route_a_number_or_a_repo(monkeypatch):
 
     monkeypatch.setattr(github, "gh_path", lambda: None)
     monkeypatch.setattr(github, "token", lambda: None)
-    change_id, reason = run_phase.find_change("b", None, "claude/x", "o/r", "12", {})
+    change_id, reason = run_phase.find_change("design", None, "claude/x", "o/r", "12", {})
     assert change_id is None and github.NO_ROUTE in reason and "#12" in reason
-    assert "--pr-number" in run_phase.find_change("b", None, "claude/x", "o/r", None, {})[1]
-    bad = run_phase.find_change("b", None, "claude/x", "o/r", "abc", {})[1]
+    assert "--pr-number" in run_phase.find_change("design", None, "claude/x", "o/r", None, {})[1]
+    bad = run_phase.find_change("design", None, "claude/x", "o/r", "abc", {})[1]
     assert "not a pull request number" in bad
-    assert "--repo" in run_phase.find_change("b", None, "claude/x", "", "12", {})[1]
+    assert "--repo" in run_phase.find_change("design", None, "claude/x", "", "12", {})[1]
 
 
 def test_the_find_change_flag_prints_the_id_and_writes_the_step_output(
@@ -1151,7 +1165,7 @@ def test_the_find_change_flag_prints_the_id_and_writes_the_step_output(
     output.write_text("ref=v0.2.12\n", encoding="utf-8")
     monkeypatch.setenv("GITHUB_OUTPUT", str(output))
     argv = [
-        "--root", str(tmp_path), "--phase", "b", "--id", "", "--head-ref", "claude/relaxed-x",
+        "--root", str(tmp_path), "--phase", "design", "--id", "", "--head-ref", "claude/relaxed-x",
         "--repo", "o/r", "--pr-number", "12", "--find-change",
     ]  # fmt: skip
     assert run_phase.main(argv) == run_phase.EXIT_OK
@@ -1359,9 +1373,9 @@ def test_pr_by_number_reads_the_merge_through_either_route(monkeypatch):
         "state": "closed",
         "merged": True,
         "merge_commit_sha": "abc123",
-        "head": {"ref": "sdlc/0001/c"},
+        "head": {"ref": "sdlc/0001/build"},
         "base": {"ref": "main"},
-        "labels": [{"name": "sdlc:e-ready"}],
+        "labels": [{"name": "sdlc:deploy-ready"}],
         "html_url": "https://github.com/o/r/pull/12",
     }
     _api(monkeypatch, {f"{API}/pulls/12": {"status": 200, "data": rest, "error": ""}})
@@ -1372,9 +1386,9 @@ def test_pr_by_number_reads_the_merge_through_either_route(monkeypatch):
         "state": "closed",
         "merged": True,
         "merge_commit_sha": "abc123",
-        "head_ref": "sdlc/0001/c",
+        "head_ref": "sdlc/0001/build",
         "base_ref": "main",
-        "labels": ["sdlc:e-ready"],
+        "labels": ["sdlc:deploy-ready"],
         "html_url": "https://github.com/o/r/pull/12",
     }
     assert {k: got[k] for k in expected} == expected
@@ -1383,9 +1397,9 @@ def test_pr_by_number_reads_the_merge_through_either_route(monkeypatch):
         "number": 12,
         "state": "MERGED",
         "mergeCommit": {"oid": "abc123"},
-        "headRefName": "sdlc/0001/c",
+        "headRefName": "sdlc/0001/build",
         "baseRefName": "main",
-        "labels": [{"name": "sdlc:e-ready"}],
+        "labels": [{"name": "sdlc:deploy-ready"}],
         "url": "https://github.com/o/r/pull/12",
     }
     seen = _gh_only(monkeypatch, lambda args: (view, ""))
@@ -1441,7 +1455,7 @@ GATE_FILE = {
     "schema_version": 1,
     "change_id": "0001",
     "slug": "percent-helper",
-    "phase": "b",
+    "phase": "design",
     "profile": "standard",
     "human_gate": False,
     "result": "continue",
@@ -1457,7 +1471,7 @@ GATE_FILE = {
 # the record a CI session's gate writes since 0.3.0 (issue #91): the targets wait for the runner
 DEFERRED_GATE_FILE = {
     **GATE_FILE,
-    "phase": "c",
+    "phase": "build",
     "checks": [
         {
             "name": "commands",
@@ -1573,30 +1587,30 @@ def test_full_run_stores_the_result_record_records_spend_and_hands_over(
     spec+plan PR waits for the owner's merge, which fires ``sdlc-build.yml``."""
     root, change = project
     pr_route(monkeypatch)
-    set_state(change, "b", gate_phase="b", gate_result="passed")
-    write(change / "evidence" / "gate-c.json", json.dumps({**GATE_FILE, "phase": "c"}))
+    set_state(change, "design", gate_phase="design", gate_result="passed")
+    write(change / "evidence" / "gate-build.json", json.dumps({**GATE_FILE, "phase": "build"}))
     monkeypatch.setenv("FAKE_CLAUDE_RESULT", json.dumps(FAKE_RESULT))
     env = dict(os.environ, **KEY_ENV, GITHUB_TOKEN=FAKE_TOKEN)
     args = Args(
-        root=str(root), phase="c", dry_run=False, no_dispatch=True, claude=fake_cli(fake_claude)
+        root=str(root), phase="build", dry_run=False, no_dispatch=True, claude=fake_cli(fake_claude)
     )
     assert run_phase.run_phase(args, env) == run_phase.EXIT_OK
     out = json.loads(capsys.readouterr().out)
     assert out["result"] == "continue" and out["cost_usd"] == 0.42
     assert out["dispatched"]["would_dispatch"] == "sdlc-test.yml"
     assert out["dispatched"]["change_id"] == "0001"
-    assert out["dispatched"]["head_ref"] == "sdlc/0001/c"  # (d) runs on the build branch
+    assert out["dispatched"]["head_ref"] == "sdlc/0001/build"  # (d) runs on the build branch
 
-    stored = json.loads((change / "evidence" / "claude-c.json").read_text(encoding="utf-8"))
+    stored = json.loads((change / "evidence" / "claude-build.json").read_text(encoding="utf-8"))
     run_meta = stored.pop("sdlc_run")  # R25: the credential that paid and the session's time
     assert stored == FAKE_RESULT
     assert run_meta["credential"] == "api_key" and run_meta["timed_out"] is False
-    run_file = json.loads((change / "evidence" / "run-c.json").read_text(encoding="utf-8"))
-    assert run_file["spend_usd"] == 0.42 and run_file["phase"] == "c"
+    run_file = json.loads((change / "evidence" / "run-build.json").read_text(encoding="utf-8"))
+    assert run_file["spend_usd"] == 0.42 and run_file["phase"] == "build"
     ledger = json.loads((change / "evidence" / "spend.json").read_text(encoding="utf-8"))
     assert ledger["total_usd"] == 0.42  # issue #71: one entry per run, named by its record
     assert [(e["run"], e["source"], e["usd"]) for e in ledger["entries"]] == [
-        ("c", "claude-c.json", 0.42)
+        ("build", "claude-build.json", 0.42)
     ]
 
 
@@ -1635,7 +1649,7 @@ def test_the_fix_session_s_environment_says_it_is_a_fix_round(tmp_path):
     env = {"PATH": "/bin", **KEY_ENV}
     assert run_phase.session_env(env, tmp_path, "fix")[limits.RUN_KIND_ENV] == "fix"
     assert limits.RUN_KIND_ENV == "SDLC_RUN"
-    for phase in ("b", "c", "d", "e", "review", None):
+    for phase in ("design", "build", "test", "deploy", "review", None):
         marked = run_phase.session_env({**env, limits.RUN_KIND_ENV: "fix"}, tmp_path, phase)
         assert limits.RUN_KIND_ENV not in marked, phase
     assert auth.credential_env(run_phase.session_env(env, tmp_path, "fix"))["SDLC_RUN"] == "fix"
@@ -1697,15 +1711,15 @@ def test_a_run_whose_commands_step_cannot_run_is_an_infrastructure_failure(
     a record whose targets never ran is never left reading as a pass."""
     root, change = project
     calls = pr_route(monkeypatch)
-    set_state(change, "b", gate_phase="b", gate_result="passed")
-    write(change / "evidence" / "gate-c.json", json.dumps(DEFERRED_GATE_FILE))
+    set_state(change, "design", gate_phase="design", gate_result="passed")
+    write(change / "evidence" / "gate-build.json", json.dumps(DEFERRED_GATE_FILE))
     monkeypatch.setenv("FAKE_CLAUDE_RESULT", json.dumps(FAKE_RESULT))
     monkeypatch.setattr(
         run_phase, "run_gate_commands", lambda *a, **k: {"ok": False, "reason": "gate: boom"}
     )
     env = dict(os.environ, **KEY_ENV, GITHUB_TOKEN=FAKE_TOKEN)
     args = Args(
-        root=str(root), phase="c", dry_run=False, no_dispatch=True, claude=fake_cli(fake_claude)
+        root=str(root), phase="build", dry_run=False, no_dispatch=True, claude=fake_cli(fake_claude)
     )
     assert run_phase.run_phase(args, env) == run_phase.EXIT_FAILED
     out, err = capsys.readouterr()
@@ -1713,7 +1727,7 @@ def test_a_run_whose_commands_step_cannot_run_is_an_infrastructure_failure(
     assert json.loads(out)["parked"].startswith("commands: deferred to the runner")
     st = status_mod.read_status(change)
     assert st.gate.result == "parked" and "never run: the gate's commands check" in st.parked_reason
-    recorded = json.loads((change / "evidence" / "gate-c.json").read_text(encoding="utf-8"))
+    recorded = json.loads((change / "evidence" / "gate-build.json").read_text(encoding="utf-8"))
     assert recorded["result"] == "park" and recorded["label"] == "sdlc:needs-human"
     cmd = next(ch for ch in recorded["checks"] if ch["name"] == "commands")
     assert cmd["ok"] is False and "deferred to the runner and never run" in cmd["reason"]
@@ -1730,12 +1744,12 @@ def test_a_session_that_fails_after_a_deferred_gate_parks_the_record(
     passed (the first finding of the 0.3.0 review)."""
     root, change = project
     pr_route(monkeypatch)
-    set_state(change, "b", gate_phase="b", gate_result="passed")
-    write(change / "evidence" / "gate-c.json", json.dumps(DEFERRED_GATE_FILE))
+    set_state(change, "design", gate_phase="design", gate_result="passed")
+    write(change / "evidence" / "gate-build.json", json.dumps(DEFERRED_GATE_FILE))
     monkeypatch.setenv("FAKE_CLAUDE_RESULT", json.dumps({**FAKE_RESULT, "is_error": True}))
     env = dict(os.environ, **KEY_ENV, GITHUB_TOKEN=FAKE_TOKEN)
     args = Args(
-        root=str(root), phase="c", dry_run=False, no_dispatch=True, claude=fake_cli(fake_claude)
+        root=str(root), phase="build", dry_run=False, no_dispatch=True, claude=fake_cli(fake_claude)
     )
     assert run_phase.run_phase(args, env) == run_phase.EXIT_FAILED
     out, err = capsys.readouterr()
@@ -1743,11 +1757,11 @@ def test_a_session_that_fails_after_a_deferred_gate_parks_the_record(
     assert json.loads(out)["parked"].endswith("never run: claude exited 0")
     st = status_mod.read_status(change)
     assert st.gate.result == "parked" and st.parked_reason.startswith("commands: deferred")
-    recorded = json.loads((change / "evidence" / "gate-c.json").read_text(encoding="utf-8"))
+    recorded = json.loads((change / "evidence" / "gate-build.json").read_text(encoding="utf-8"))
     assert recorded["result"] == "park" and not gate_mod.deferred_commands(recorded)
     # the same session failing after a gate that ran its targets itself parks nothing
-    write(change / "evidence" / "gate-c.json", json.dumps({**GATE_FILE, "phase": "c"}))
-    set_state(change, "b", gate_phase="b", gate_result="passed")
+    write(change / "evidence" / "gate-build.json", json.dumps({**GATE_FILE, "phase": "build"}))
+    set_state(change, "design", gate_phase="design", gate_result="passed")
     assert run_phase.run_phase(args, env) == run_phase.EXIT_FAILED
     assert status_mod.read_status(change).gate.result == "passed"
 
@@ -1760,23 +1774,23 @@ def test_a_session_stopped_at_the_turn_limit_parks_green_with_its_record(
     257), and the run is not red."""
     root, change = project
     pr_route(monkeypatch)
-    set_state(change, "b", gate_phase="b", gate_result="passed")
-    write(change / "evidence" / "gate-c.json", json.dumps(DEFERRED_GATE_FILE))
+    set_state(change, "design", gate_phase="design", gate_result="passed")
+    write(change / "evidence" / "gate-build.json", json.dumps(DEFERRED_GATE_FILE))
     stopped = {**FAKE_RESULT, "is_error": True, "subtype": "error_max_turns", "num_turns": 400}
     monkeypatch.setenv("FAKE_CLAUDE_RESULT", json.dumps(stopped))
     env = dict(os.environ, **KEY_ENV, GITHUB_TOKEN=FAKE_TOKEN)
     args = Args(
-        root=str(root), phase="c", dry_run=False, no_dispatch=True, claude=fake_cli(fake_claude)
+        root=str(root), phase="build", dry_run=False, no_dispatch=True, claude=fake_cli(fake_claude)
     )
     assert run_phase.run_phase(args, env) == run_phase.EXIT_OK
     out = json.loads(capsys.readouterr().out)
     assert out["parked"] == "limits: stopped at the turn limit (400 turns)"
     st = status_mod.read_status(change)
     assert st.gate.result == "parked" and st.parked_reason == out["parked"]
-    recorded = json.loads((change / "evidence" / "gate-c.json").read_text(encoding="utf-8"))
+    recorded = json.loads((change / "evidence" / "gate-build.json").read_text(encoding="utf-8"))
     limit = next(ch for ch in recorded["checks"] if ch["name"] == "limits")
     assert "raise the bound in sdlc.yaml" in limit["need"]
-    stored = json.loads((change / "evidence" / "claude-c.json").read_text(encoding="utf-8"))
+    stored = json.loads((change / "evidence" / "claude-build.json").read_text(encoding="utf-8"))
     assert stored["subtype"] == "error_max_turns"
     assert stored["sdlc_run"]["credential"] == "api_key"  # KEY_ENV holds the key only
     assert stored["sdlc_run"]["timed_out"] is False and stored["sdlc_run"]["seconds"] >= 0
@@ -1790,8 +1804,8 @@ def test_a_session_that_rewrites_an_earlier_run_record_parks(
     fields."""
     root, change = project
     pr_route(monkeypatch)
-    set_state(change, "b", gate_phase="b", gate_result="passed")
-    earlier = change / "evidence" / "claude-b.json"
+    set_state(change, "design", gate_phase="design", gate_result="passed")
+    earlier = change / "evidence" / "claude-design.json"
     write(earlier, json.dumps({"total_cost_usd": 7.5}))
     git(root, "add", ".")
     git(root, "commit", "-q", "-m", "the design's record")
@@ -1800,11 +1814,11 @@ def test_a_session_that_rewrites_an_earlier_run_record_parks(
     monkeypatch.setenv("FAKE_CLAUDE_RUN", str(script))
     env = dict(os.environ, **KEY_ENV, GITHUB_TOKEN=FAKE_TOKEN)
     args = Args(
-        root=str(root), phase="c", dry_run=False, no_dispatch=True, claude=fake_cli(fake_claude)
+        root=str(root), phase="build", dry_run=False, no_dispatch=True, claude=fake_cli(fake_claude)
     )
     assert run_phase.run_phase(args, env) == run_phase.EXIT_OK
     out = json.loads(capsys.readouterr().out)
-    assert "evidence/claude-b.json: the session changed it" in out["parked"]
+    assert "evidence/claude-design.json: the session changed it" in out["parked"]
     assert json.loads(earlier.read_text(encoding="utf-8")) == {"total_cost_usd": 7.5}
 
 
@@ -1812,12 +1826,12 @@ def test_a_session_that_deletes_an_earlier_run_record_cannot_take_its_place(
     project, fake_claude, monkeypatch, capsys
 ):
     """M8 (the independent review of the R51 PR, finding 2): run 2 of (c) whose session
-    deletes run 1's ``claude-c.json`` must not have the runner store its own result under
+    deletes run 1's ``claude-build.json`` must not have the runner store its own result under
     that freed name; the record is put back and the change parks."""
     root, change = project
     pr_route(monkeypatch)
-    set_state(change, "b", gate_phase="b", gate_result="passed")
-    earlier = change / "evidence" / "claude-c.json"
+    set_state(change, "design", gate_phase="design", gate_result="passed")
+    earlier = change / "evidence" / "claude-build.json"
     write(earlier, json.dumps({"total_cost_usd": 8.0}))
     git(root, "add", ".")
     git(root, "commit", "-q", "-m", "run 1's record")
@@ -1826,46 +1840,49 @@ def test_a_session_that_deletes_an_earlier_run_record_cannot_take_its_place(
     monkeypatch.setenv("FAKE_CLAUDE_RUN", str(script))
     env = dict(os.environ, **KEY_ENV, GITHUB_TOKEN=FAKE_TOKEN)
     args = Args(
-        root=str(root), phase="c", dry_run=False, no_dispatch=True, claude=fake_cli(fake_claude)
+        root=str(root), phase="build", dry_run=False, no_dispatch=True, claude=fake_cli(fake_claude)
     )
     assert run_phase.run_phase(args, env) == run_phase.EXIT_OK
     out = json.loads(capsys.readouterr().out)
-    assert "evidence/claude-c.json: the session deleted it" in out["parked"]
+    assert "evidence/claude-build.json: the session deleted it" in out["parked"]
     assert json.loads(earlier.read_text(encoding="utf-8")) == {"total_cost_usd": 8.0}
-    assert (change / "evidence" / "claude-c-2.json").is_file()  # this run's own record
+    assert (change / "evidence" / "claude-build-2.json").is_file()  # this run's own record
 
 
 def test_guard_skips_when_the_previous_gate_deferred_its_commands(project):
-    """A job killed between the session and the runner's step leaves gate (b) "passed" in
+    """A job killed between the session and the runner's step leaves gate (design) "passed" in
     status.yaml with a record whose targets never ran: the build run does not start on it."""
     root, change = project
-    set_state(change, "b", gate_phase="b", gate_result="passed")
-    assert skip_reason(root, "c") is None
-    write(change / "evidence" / "gate-b.json", json.dumps({**DEFERRED_GATE_FILE, "phase": "b"}))
-    reason = skip_reason(root, "c")
-    assert reason is not None and reason.startswith("gate (b) of change 0001 recorded")
-    assert "the runner never ran it" in reason and "re-run phase (b)" in reason
+    set_state(change, "design", gate_phase="design", gate_result="passed")
+    assert skip_reason(root, "build") is None
+    write(
+        change / "evidence" / "gate-design.json",
+        json.dumps({**DEFERRED_GATE_FILE, "phase": "design"}),
+    )
+    reason = skip_reason(root, "build")
+    assert reason is not None and reason.startswith("gate (design) of change 0001 recorded")
+    assert "the runner never ran it" in reason and "re-run the design phase" in reason
 
 
 def test_guard_skips_when_the_previous_gate_deferred_its_evidence_logs(project):
     """Item 3b (0.3.2): a (d) record whose three logs still carry the session's mark (the
     ``evidence`` check deferred) is no more a pass than one whose targets never ran."""
     root, change = project
-    set_state(change, "d", gate_phase="d", gate_result="passed")
-    assert skip_reason(root, "e") is None
+    set_state(change, "test", gate_phase="test", gate_result="passed")
+    assert skip_reason(root, "deploy") is None
     marked = {
         **GATE_FILE,
-        "phase": "d",
+        "phase": "test",
         "checks": [
             {"name": "commands", "ok": True, "reason": "ran", "need": "", "details": {"runs": {}}},
             {"name": "evidence", "ok": True, "reason": "deferred", "need": "",
              "details": {"deferred": True, "deferred_logs": ["test.log"]}},
         ],
     }  # fmt: skip
-    write(change / "evidence" / "gate-d.json", json.dumps(marked))
-    reason = skip_reason(root, "e")
-    assert reason is not None and reason.startswith("gate (d) of change 0001 recorded")
-    assert "command logs" in reason and "re-run phase (d)" in reason
+    write(change / "evidence" / "gate-test.json", json.dumps(marked))
+    reason = skip_reason(root, "deploy")
+    assert reason is not None and reason.startswith("gate (test) of change 0001 recorded")
+    assert "command logs" in reason and "re-run the test phase" in reason
 
 
 def test_the_commands_step_runs_without_the_job_s_credentials(monkeypatch):
@@ -1886,7 +1903,9 @@ def test_the_commands_step_runs_without_the_job_s_credentials(monkeypatch):
         return {"ok": True, "output": {"ran": False}}
 
     monkeypatch.setattr(run_phase, "_cli_call", fake_cli_call)
-    run_phase.run_gate_commands(ROOT, Path("/p"), "0001", "c", {"gate": {"command_timeout": 60}})
+    run_phase.run_gate_commands(
+        ROOT, Path("/p"), "0001", "build", {"gate": {"command_timeout": 60}}
+    )
     assert seen["argv"][:5] == ["run-commands", "--root", str(Path("/p")), "--id", "0001"]
     assert seen["timeout"] == 480 and "GITHUB_TOKEN" not in seen["env"]
     assert seen["env"]["SDLC_PROJECT_SETTING"] == "kept"
@@ -1937,8 +1956,8 @@ def test_a_rewritten_record_that_did_not_reach_the_branch_fails_the_run(
     the session's deferred record, so the run hands nothing over and exits 1."""
     root, change = project
     pr_route(monkeypatch)
-    set_state(change, "b", gate_phase="b", gate_result="passed")
-    write(change / "evidence" / "gate-c.json", json.dumps({**GATE_FILE, "phase": "c"}))
+    set_state(change, "design", gate_phase="design", gate_result="passed")
+    write(change / "evidence" / "gate-build.json", json.dumps({**GATE_FILE, "phase": "build"}))
     monkeypatch.setenv("FAKE_CLAUDE_RESULT", json.dumps(FAKE_RESULT))
     ran = {"ok": True, "output": {"ran": True, "result": "continue", "checks": []}}
     monkeypatch.setattr(run_phase, "run_gate_commands", lambda *a, **k: ran)
@@ -1947,7 +1966,7 @@ def test_a_rewritten_record_that_did_not_reach_the_branch_fails_the_run(
     )
     env = dict(os.environ, **KEY_ENV, GITHUB_TOKEN=FAKE_TOKEN)
     args = Args(
-        root=str(root), phase="c", dry_run=False, no_dispatch=True, claude=fake_cli(fake_claude)
+        root=str(root), phase="build", dry_run=False, no_dispatch=True, claude=fake_cli(fake_claude)
     )
     assert run_phase.run_phase(args, env) == run_phase.EXIT_FAILED
     out, err = capsys.readouterr()
@@ -1963,12 +1982,12 @@ def test_a_record_without_the_deferred_mark_leaves_the_commands_step_idle(
     goes on as before (the full-run test above is this case; here its JSON says so)."""
     root, change = project
     pr_route(monkeypatch)
-    set_state(change, "b", gate_phase="b", gate_result="passed")
-    write(change / "evidence" / "gate-c.json", json.dumps({**GATE_FILE, "phase": "c"}))
+    set_state(change, "design", gate_phase="design", gate_result="passed")
+    write(change / "evidence" / "gate-build.json", json.dumps({**GATE_FILE, "phase": "build"}))
     monkeypatch.setenv("FAKE_CLAUDE_RESULT", json.dumps(FAKE_RESULT))
     env = dict(os.environ, **KEY_ENV, GITHUB_TOKEN=FAKE_TOKEN)
     args = Args(
-        root=str(root), phase="c", dry_run=False, no_dispatch=True, claude=fake_cli(fake_claude)
+        root=str(root), phase="build", dry_run=False, no_dispatch=True, claude=fake_cli(fake_claude)
     )
     assert run_phase.run_phase(args, env) == run_phase.EXIT_OK
     out = json.loads(capsys.readouterr().out)
@@ -1977,10 +1996,10 @@ def test_a_record_without_the_deferred_mark_leaves_the_commands_step_idle(
 
 PANEL_DECISION_SCRIPT = """
 import json, pathlib
-path = pathlib.Path("changes/0001-percent-helper/evidence/decisions-c.json")
+path = pathlib.Path("changes/0001-percent-helper/evidence/decisions-build.json")
 path.parent.mkdir(parents=True, exist_ok=True)
-path.write_text(json.dumps({"schema_version": 1, "phase": "c", "decisions": [
-    {"n": 1, "phase": "c", "kind": "escalate", "key": "escalate:x", "item": "escalate",
+path.write_text(json.dumps({"schema_version": 1, "phase": "build", "decisions": [
+    {"n": 1, "phase": "build", "kind": "escalate", "key": "escalate:x", "item": "escalate",
      "reviewer": "continue", "advocate": "no objection", "decision": "continue",
      "rationale": ["the plan lists every file"], "head": "abc", "at": "2026-10-02T00:00:00Z",
      "cost_usd": None, "overturned": None, "item_n": 1}]}), encoding="utf-8")
@@ -2006,8 +2025,8 @@ def test_a_run_that_added_panel_decisions_must_show_the_advocate_model(
     handing over."""
     root, change = project
     pr_route(monkeypatch)
-    set_state(change, "b", gate_phase="b", gate_result="passed")
-    write(change / "evidence" / "gate-c.json", json.dumps({**GATE_FILE, "phase": "c"}))
+    set_state(change, "design", gate_phase="design", gate_result="passed")
+    write(change / "evidence" / "gate-build.json", json.dumps({**GATE_FILE, "phase": "build"}))
     script = tmp_path / "panel_run.py"
     write(script, PANEL_DECISION_SCRIPT)
     monkeypatch.setenv("FAKE_CLAUDE_RUN", str(script))
@@ -2015,17 +2034,21 @@ def test_a_run_that_added_panel_decisions_must_show_the_advocate_model(
     env = dict(os.environ, **KEY_ENV, GITHUB_TOKEN=FAKE_TOKEN)
     env.pop("SDLC_MODEL", None)
     args = Args(
-        root=str(root), phase="c", dry_run=False, no_dispatch=True, claude=fake_cli(fake_claude)
+        root=str(root), phase="build", dry_run=False, no_dispatch=True, claude=fake_cli(fake_claude)
     )
     assert run_phase.run_phase(args, env) == run_phase.EXIT_OK
     out = json.loads(capsys.readouterr().out)
-    record = json.loads((change / "evidence" / "panel-models-c.json").read_text(encoding="utf-8"))
+    record = json.loads(
+        (change / "evidence" / "panel-models-build.json").read_text(encoding="utf-8")
+    )
     assert record["new_decisions"] == 1 and record["advocate_model"] == "claude-fable-5-1"
     assert record["session_model"] == "claude-opus-5-5"  # the run's --model (R7)
     assert record["ok"] is (not parked)
     if parked:
         assert "no model of this run is claude-fable-5-1" in out["parked"]
-        gate_file = json.loads((change / "evidence" / "gate-c.json").read_text(encoding="utf-8"))
+        gate_file = json.loads(
+            (change / "evidence" / "gate-build.json").read_text(encoding="utf-8")
+        )
         assert gate_file["result"] == "park"
         assert [ch["name"] for ch in gate_file["checks"]] == ["panel_models"]
         assert "panel_advocate_model" in gate_file["what_i_need"]
@@ -2061,31 +2084,33 @@ def test_a_model_the_pinned_cli_does_not_know_parks_with_the_pin_to_raise(
     change, the reason naming the pin; any other line changes nothing."""
     root, change = project
     pr_route(monkeypatch)
-    set_state(change, "b", gate_phase="b", gate_result="passed")
-    write(change / "evidence" / "gate-c.json", json.dumps({**GATE_FILE, "phase": "c"}))
+    set_state(change, "design", gate_phase="design", gate_result="passed")
+    write(change / "evidence" / "gate-build.json", json.dumps({**GATE_FILE, "phase": "build"}))
     script = tmp_path / "unknown_model.py"
     write(script, UNKNOWN_MODEL_SCRIPT % model)
     monkeypatch.setenv("FAKE_CLAUDE_RUN", str(script))
     monkeypatch.setenv("FAKE_CLAUDE_RESULT", json.dumps({**FAKE_RESULT, "modelUsage": usage}))
     env = dict(os.environ, **KEY_ENV, GITHUB_TOKEN=FAKE_TOKEN, SDLC_MODEL="claude-fable-5-1")
     args = Args(
-        root=str(root), phase="c", dry_run=False, no_dispatch=True, claude=fake_cli(fake_claude)
+        root=str(root), phase="build", dry_run=False, no_dispatch=True, claude=fake_cli(fake_claude)
     )
     assert run_phase.run_phase(args, env) == run_phase.EXIT_OK
     out = json.loads(capsys.readouterr().out)
-    stderr = (change / "evidence" / "claude-c.stderr.txt").read_text(encoding="utf-8")
+    stderr = (change / "evidence" / "claude-build.stderr.txt").read_text(encoding="utf-8")
     assert "unrecognized_model" in stderr  # the line the park points to is kept
     if parked:
         assert out["unrecognized_models"] == ["claude-opus-5-5"]
         assert "does not know model claude-opus-5-5" in out["parked"]
         assert "raise sdlc.yaml: claude_code" in out["parked"]
-        gate_file = json.loads((change / "evidence" / "gate-c.json").read_text(encoding="utf-8"))
+        gate_file = json.loads(
+            (change / "evidence" / "gate-build.json").read_text(encoding="utf-8")
+        )
         assert gate_file["result"] == "park"
         assert [ch["name"] for ch in gate_file["checks"]] == ["cli_model"]
         assert "plugin.claude_code" in gate_file["what_i_need"]
         # R65 part 6: the advice names the CLI /sdlc-init pins
         assert f"{run_phase._default_cli()} or later for" in gate_file["what_i_need"]
-        assert "evidence/claude-c.stderr.txt holds the line" in gate_file["what_i_need"]
+        assert "evidence/claude-build.stderr.txt holds the line" in gate_file["what_i_need"]
         assert status_mod.read_status(change).parked_reason.startswith("cli_model: ")
         assert "dispatched" not in out
     else:
@@ -2096,15 +2121,15 @@ def test_a_model_the_pinned_cli_does_not_know_parks_with_the_pin_to_raise(
 def test_a_run_without_panel_decisions_keeps_no_models_record(project, fake_claude, monkeypatch):
     root, change = project
     pr_route(monkeypatch)
-    set_state(change, "b", gate_phase="b", gate_result="passed")
-    write(change / "evidence" / "gate-c.json", json.dumps({**GATE_FILE, "phase": "c"}))
+    set_state(change, "design", gate_phase="design", gate_result="passed")
+    write(change / "evidence" / "gate-build.json", json.dumps({**GATE_FILE, "phase": "build"}))
     monkeypatch.setenv("FAKE_CLAUDE_RESULT", json.dumps(FAKE_RESULT))  # no modelUsage at all
     args = Args(
-        root=str(root), phase="c", dry_run=False, no_dispatch=True, claude=fake_cli(fake_claude)
+        root=str(root), phase="build", dry_run=False, no_dispatch=True, claude=fake_cli(fake_claude)
     )
     env = dict(os.environ, **KEY_ENV, GITHUB_TOKEN=FAKE_TOKEN)
     assert run_phase.run_phase(args, env) == run_phase.EXIT_OK
-    assert not (change / "evidence" / "panel-models-c.json").exists()
+    assert not (change / "evidence" / "panel-models-build.json").exists()
 
 
 def test_the_stored_result_is_called_a_result_record_never_a_transcript():
@@ -2151,7 +2176,7 @@ def test_every_run_of_a_phase_keeps_its_own_result_record(project):
     assert json.loads(first.read_text(encoding="utf-8")) == {"result": "one"}  # untouched
     assert run_phase.store_stderr(change, "fix", "   ", second_err) is None  # nothing to keep
     # another phase's first run is still the plain name
-    assert run_phase.run_record_paths(change, "b")[0] == evidence / "claude-b.json"
+    assert run_phase.run_record_paths(change, "design")[0] == evidence / "claude-design.json"
 
 
 def test_a_run_that_leaves_no_gate_file_is_an_infrastructure_failure(
@@ -2160,10 +2185,14 @@ def test_a_run_that_leaves_no_gate_file_is_an_infrastructure_failure(
     root, _change = project
     monkeypatch.setenv("FAKE_CLAUDE_RESULT", json.dumps(FAKE_RESULT))
     args = Args(
-        root=str(root), phase="b", dry_run=False, no_dispatch=True, claude=fake_cli(fake_claude)
+        root=str(root),
+        phase="design",
+        dry_run=False,
+        no_dispatch=True,
+        claude=fake_cli(fake_claude),
     )
     assert run_phase.run_phase(args, dict(os.environ, **KEY_ENV)) == run_phase.EXIT_FAILED
-    assert "gate-b.json" in capsys.readouterr().err
+    assert "gate-design.json" in capsys.readouterr().err
 
 
 def test_a_failing_claude_run_exits_1_with_its_text_on_stderr(
@@ -2174,7 +2203,11 @@ def test_a_failing_claude_run_exits_1_with_its_text_on_stderr(
         "FAKE_CLAUDE_RESULT", json.dumps({"is_error": True, "result": "Authentication error"})
     )
     args = Args(
-        root=str(root), phase="b", dry_run=False, no_dispatch=True, claude=fake_cli(fake_claude)
+        root=str(root),
+        phase="design",
+        dry_run=False,
+        no_dispatch=True,
+        claude=fake_cli(fake_claude),
     )
     assert run_phase.run_phase(args, dict(os.environ, **KEY_ENV)) == run_phase.EXIT_FAILED
     assert "Authentication error" in capsys.readouterr().err
@@ -2182,7 +2215,7 @@ def test_a_failing_claude_run_exits_1_with_its_text_on_stderr(
 
 def test_no_credential_skips_instead_of_failing(project, capsys):
     root, _change = project
-    args = Args(root=str(root), phase="b", dry_run=False)
+    args = Args(root=str(root), phase="design", dry_run=False)
     assert run_phase.run_phase(args, {}) == run_phase.EXIT_OK
     assert "no credential" in json.loads(capsys.readouterr().out)["skipped"]
 
@@ -2193,29 +2226,31 @@ def test_the_run_says_whether_the_phase_ran_for_the_e_second_opinion(project, tm
     root, change = project
     output = tmp_path / "github-output"
     env = {**KEY_ENV, "GITHUB_OUTPUT": str(output)}
-    assert run_phase.run_phase(Args(root=str(root), phase="e"), env) == run_phase.EXIT_OK
+    assert run_phase.run_phase(Args(root=str(root), phase="deploy"), env) == run_phase.EXIT_OK
     assert output.read_text(encoding="utf-8") == "phase_ran=false\n"  # at (a), not past (d)
     output.unlink()
-    set_state(change, "d", gate_phase="d", gate_result="passed")
+    set_state(change, "test", gate_phase="test", gate_result="passed")
     # past the guard with no credential: skipped, so the second opinion is not paid either
-    no_key = Args(root=str(root), phase="e", dry_run=False)
+    no_key = Args(root=str(root), phase="deploy", dry_run=False)
     assert run_phase.run_phase(no_key, {"GITHUB_OUTPUT": str(output)}) == run_phase.EXIT_OK
     assert output.read_text(encoding="utf-8") == "phase_ran=false\n"
     output.unlink()
-    assert run_phase.run_phase(Args(root=str(root), phase="e"), env) == run_phase.EXIT_OK
+    assert run_phase.run_phase(Args(root=str(root), phase="deploy"), env) == run_phase.EXIT_OK
     assert output.read_text(encoding="utf-8") == "phase_ran=true\n"
 
 
 def test_hand_over_table_matches_operating_model_4_2():
     # the design job hands over nothing (0.2.14, decision 21): the owner's merge of the
     # spec+plan PR is what fires sdlc-build.yml
-    assert run_phase.NEXT_WORKFLOW == {"c": "sdlc-test.yml", "d": "sdlc-deploy.yml"}
-    assert run_phase.NEXT_PHASE == {"c": "d", "d": "e"}
+    assert run_phase.NEXT_WORKFLOW == {"build": "sdlc-test.yml", "test": "sdlc-deploy.yml"}
+    assert run_phase.NEXT_PHASE == {"build": "test", "test": "deploy"}
     args = Args(no_dispatch=True)
-    assert run_phase.hand_over(args, {"result": "wait"}, "c", "0001") is None
-    assert run_phase.hand_over(args, {"result": "continue"}, "b", "0001") is None
-    assert run_phase.hand_over(args, {"result": "park"}, "c", "0001") is None
-    assert run_phase.hand_over(args, {"result": "continue"}, "e", "0001") is None  # (e) ends here
+    assert run_phase.hand_over(args, {"result": "wait"}, "build", "0001") is None
+    assert run_phase.hand_over(args, {"result": "continue"}, "design", "0001") is None
+    assert run_phase.hand_over(args, {"result": "park"}, "build", "0001") is None
+    assert (
+        run_phase.hand_over(args, {"result": "continue"}, "deploy", "0001") is None
+    )  # (e) ends here
 
 
 def test_the_review_pass_commits_its_own_result_record_and_spend_entry(
@@ -2227,10 +2262,10 @@ def test_the_review_pass_commits_its_own_result_record_and_spend_entry(
     the (e) run never came. The pass commits them itself, on the build branch at phase (d)."""
     root, change = project
     monkeypatch.setattr(run_phase, "review_prompt", lambda *a: ("REVIEW the diff.", ""))
-    set_state(change, "d", gate_phase="d", gate_result="passed")
+    set_state(change, "test", gate_phase="test", gate_result="passed")
     git(root, "add", ".")
     git(root, "commit", "-q", "-m", "as if (d) passed")
-    git(root, "checkout", "-q", "-b", "sdlc/0001/c")  # the build PR's branch, open through (e)
+    git(root, "checkout", "-q", "-b", "sdlc/0001/build")  # the build PR's branch, open through (e)
     monkeypatch.setenv("FAKE_CLAUDE_RESULT", json.dumps({**FAKE_RESULT, "total_cost_usd": 0.65}))
     # the pass "writes" a findings file that fails validation: the pass fails, the commit holds
     write(change / "evidence" / "review-findings.json", "{not json")
@@ -2240,14 +2275,14 @@ def test_the_review_pass_commits_its_own_result_record_and_spend_entry(
     assert code == run_phase.EXIT_FAILED and out["review"]["ok"] is False, out
     assert out["cost_usd"] == 0.65 and out["run_record"]["ok"], out["run_record"]
     assert git(root, "status", "--porcelain", "--", "changes").strip() == ""
-    assert git(root, "rev-parse", "--abbrev-ref", "HEAD").strip() == "sdlc/0001/c"
-    assert status_mod.read_status(change).phase == "d"  # the commit moved no phase
+    assert git(root, "rev-parse", "--abbrev-ref", "HEAD").strip() == "sdlc/0001/build"
+    assert status_mod.read_status(change).phase == "test"  # the commit moved no phase
     subject = git(root, "log", "-1", "--format=%s").strip()
     assert subject == "run(review): spend recorded"
     committed = git(root, "show", "--name-only", "--format=", "HEAD").split()
     assert "changes/0001-percent-helper/evidence/claude-review.json" in committed
     assert "changes/0001-percent-helper/evidence/spend.json" in committed
-    assert "changes/0001-percent-helper/evidence/run-e.json" in committed
+    assert "changes/0001-percent-helper/evidence/run-deploy.json" in committed
     ledger = json.loads((change / "evidence" / "spend.json").read_text(encoding="utf-8"))
     assert [(e["run"], e["source"], e["usd"]) for e in ledger["entries"]] == [
         ("review", "claude-review.json", 0.65)
@@ -2256,16 +2291,16 @@ def test_the_review_pass_commits_its_own_result_record_and_spend_entry(
 
 def _behind_main(root: Path, change: Path) -> str:
     """The build branch at phase (d) and a default branch that moved after it: the tip."""
-    set_state(change, "d", gate_phase="d", gate_result="passed")
+    set_state(change, "test", gate_phase="test", gate_result="passed")
     git(root, "add", ".")
     git(root, "commit", "-q", "-m", "as if (d) passed")
-    git(root, "checkout", "-q", "-b", "sdlc/0001/c")
+    git(root, "checkout", "-q", "-b", "sdlc/0001/build")
     git(root, "checkout", "-q", "main")
     write(root / "another.txt", "another change merged\n")
     git(root, "add", "another.txt")
     git(root, "commit", "-q", "-m", "another change merged")
     tip = git(root, "rev-parse", "HEAD").strip()
-    git(root, "checkout", "-q", "sdlc/0001/c")
+    git(root, "checkout", "-q", "sdlc/0001/build")
     return tip
 
 
@@ -2286,7 +2321,7 @@ def test_a_build_branch_behind_main_parks_before_the_review_pass_on_red(
     code = run_phase.run_phase(args, dict(os.environ, **KEY_ENV))
     out = json.loads(capsys.readouterr().out)
     assert code == run_phase.EXIT_OK, out
-    assert out["parked"].startswith("base_update: the default branch merged into sdlc/0001/c")
+    assert out["parked"].startswith("base_update: the default branch merged into sdlc/0001/build")
     assert "test (exit 1)" in out["parked"]
     assert not ran.exists()  # no session
     assert git(root, "merge-base", "--is-ancestor", tip, "HEAD").strip() == ""
@@ -2309,13 +2344,13 @@ def test_a_green_merged_tree_goes_on_to_the_review_pass(
     assert "parked" not in out and out["cost_usd"] == 0.5, out  # the session ran
     assert git(root, "merge-base", "--is-ancestor", tip, "HEAD").strip() == ""
     subjects = git(root, "log", "-3", "--format=%s").splitlines()
-    assert any("merged before gate (e) is offered (R51)" in line for line in subjects)
+    assert any("merged before gate (deploy) is offered (R51)" in line for line in subjects)
 
 
 def test_review_phase_argv_is_read_only(project, monkeypatch, capsys):
     root, change = project
     monkeypatch.setattr(run_phase, "review_prompt", lambda *a: ("REVIEW the diff.", ""))
-    set_state(change, "d", gate_phase="d", gate_result="passed")
+    set_state(change, "test", gate_phase="test", gate_result="passed")
     args = Args(root=str(root), phase="review")
     assert run_phase.run_phase(args, dict(KEY_ENV)) == run_phase.EXIT_OK
     argv = json.loads(capsys.readouterr().out)["argv"]
@@ -2414,7 +2449,7 @@ def test_merge_fired_workflows_find_the_change_from_the_merged_pr(name):
     assert steps.index("path: framework") < find < steps.index("actions/setup-node@")
     assert find < steps.index("runner_setup.py") < steps.index("project_setup.py")
     find_line = next(ln for ln in steps.splitlines() if "--find-change" in ln).strip()
-    phase = "b" if name == "sdlc-design.yml" else "c"
+    phase = "design" if name == "sdlc-design.yml" else "build"
     assert find_line == (
         "run: python framework/plugin/ci/run_phase.py --root . --plugin-dir framework "
         f'--phase {phase} --id "$CHANGE_ID" --head-ref "$HEAD_REF" --repo "$REPO" '
@@ -2495,8 +2530,8 @@ def test_workflow_steps_are_python_or_the_pinned_cli(name):
 @pytest.mark.parametrize(
     "name, first, second",
     [
-        ("sdlc-deploy.yml", "--phase review", "--phase e"),
-        ("sdlc-detect.yml", "--phase f", "detect/cli.py finish"),
+        ("sdlc-deploy.yml", "--phase review", "--phase deploy"),
+        ("sdlc-detect.yml", "--phase maintain", "detect/cli.py finish"),
     ],
 )
 def test_the_framework_is_checked_out_afresh_between_the_two_steps_of_a_shared_checkout(
@@ -2594,7 +2629,7 @@ def test_permission_prompts_none_lives_in_run_phase_not_in_yaml():
 
 def test_deploy_workflow_runs_the_review_pass_before_phase_e():
     text = workflow("sdlc-deploy.yml")
-    assert text.index("--phase review") < text.index("--phase e")
+    assert text.index("--phase review") < text.index("--phase deploy")
     assert text.count("jobs:") == 1  # both steps are in one job
 
 
@@ -2614,7 +2649,7 @@ def test_the_prompt_precedes_every_list_valued_flag(tmp_path):
     argv = run_phase.compose(
         claude="claude",
         plugin_dir=tmp_path,
-        phase="b",
+        phase="design",
         prompt="/sdlc:sdlc-design 0001",
         permission_mode="default",
         config={},
@@ -2788,7 +2823,7 @@ def test_project_setup_with_a_ref_refuses_a_head_that_changed_files_outside_chan
     set_setup_command(root, f'"{sys.executable}" install.py')
     git(root, "add", "sdlc.yaml", "install.py")
     git(root, "commit", "-q", "-m", "setup command")
-    git(root, "checkout", "-q", "-b", "sdlc/0001/a")
+    git(root, "checkout", "-q", "-b", "sdlc/0001/intent")
     write(root / "src" / "x.py", "print('planted')\n")
     write(root / "changes" / "0001-percent-helper" / "intent.md", "# Intent\n")
     git(root, "add", "src/x.py", "changes/0001-percent-helper/intent.md")
@@ -2820,7 +2855,7 @@ def test_project_setup_with_a_ref_accepts_a_head_that_changed_only_the_change_fo
     set_setup_command(root, f'"{sys.executable}" install.py')
     git(root, "add", "sdlc.yaml", "install.py")
     git(root, "commit", "-q", "-m", "setup command")
-    git(root, "checkout", "-q", "-b", "sdlc/0001/a")
+    git(root, "checkout", "-q", "-b", "sdlc/0001/intent")
     write(root / "changes" / "0001-percent-helper" / "intent.md", "# Intent\n")
     git(root, "add", "changes/0001-percent-helper/intent.md")
     git(root, "commit", "-q", "-m", "incident intent")
@@ -2860,7 +2895,7 @@ def upsert_recorder(monkeypatch, number: int | None = 7, route: str = "api", **e
     return calls
 
 
-def full_run(root: Path, change: Path, fake_claude, monkeypatch, phase: str = "b") -> dict:
+def full_run(root: Path, change: Path, fake_claude, monkeypatch, phase: str = "design") -> dict:
     write(change / "evidence" / f"gate-{phase}.json", json.dumps({**GATE_FILE, "phase": phase}))
     monkeypatch.setenv("FAKE_CLAUDE_RESULT", json.dumps(FAKE_RESULT))
     args = Args(
@@ -2874,18 +2909,18 @@ def full_run(root: Path, change: Path, fake_claude, monkeypatch, phase: str = "b
 def test_the_hand_over_opens_the_phase_pr_when_the_run_left_none(
     project, fake_claude, monkeypatch, capsys
 ):
-    """The parked design run of 2026-09-21 pushed sdlc/0001/b with the evidence on it and
+    """The parked design run of 2026-09-21 pushed sdlc/0001/design with the evidence on it and
     opened no PR: the runbook's pr/cli.py step never ran inside the model's session."""
     root, change = project
     calls = pr_route(monkeypatch)
-    full_run(root, change, fake_claude, monkeypatch, "b")
+    full_run(root, change, fake_claude, monkeypatch, "design")
 
     pr = json.loads(capsys.readouterr().out)["pr"]
-    assert pr["head"] == "sdlc/0001/b" and pr["existed"] is False and pr["ok"] is True
+    assert pr["head"] == "sdlc/0001/design" and pr["existed"] is False and pr["ok"] is True
     assert pr["route"] == "api" and pr["number"] == 7  # read from the upsert's own JSON
     upserts = [argv for name, argv in calls if name == "cli.py" and argv[0] == "upsert"]
     assert upserts == [
-        ["upsert", "--root", str(root), "--id", "0001", "--phase", "b", "--request-review"]
+        ["upsert", "--root", str(root), "--id", "0001", "--phase", "design", "--request-review"]
     ]
     assert "--draft" not in upserts[0] and "--ready" not in upserts[0]
 
@@ -2899,8 +2934,8 @@ def test_the_hand_over_still_upserts_when_the_pr_is_already_open(
     monkeypatch.setattr(
         run_phase, "preflight", lambda *a: {"allow": True, "permission_mode": "acceptEdits"}
     )
-    set_state(change, "b", gate_phase="b", gate_result="passed")
-    full_run(root, change, fake_claude, monkeypatch, "c")
+    set_state(change, "design", gate_phase="design", gate_result="passed")
+    full_run(root, change, fake_claude, monkeypatch, "build")
 
     pr = json.loads(capsys.readouterr().out)["pr"]
     assert pr["existed"] is True and pr["number"] == 12 and pr["ok"] is True
@@ -2918,15 +2953,16 @@ def test_the_hand_over_commits_the_recorded_build_pr(project, fake_claude, monke
     monkeypatch.setattr(
         run_phase, "preflight", lambda *a: {"allow": True, "permission_mode": "acceptEdits"}
     )
-    set_state(change, "b", gate_phase="b", gate_result="passed")
-    full_run(root, change, fake_claude, monkeypatch, "c")
+    set_state(change, "design", gate_phase="design", gate_result="passed")
+    full_run(root, change, fake_claude, monkeypatch, "build")
     pr = json.loads(capsys.readouterr().out)["pr"]
     assert pr["build_pr_recorded"] == 12 and pr["build_pr_commit"]["ok"] is True
     commits = [argv for name, argv in calls if name == "cli.py" and argv[0] == "commit-phase"]
     assert (
-        commits[-1][commits[-1].index("--message") + 1] == "run(c): build pull request #12 recorded"
+        commits[-1][commits[-1].index("--message") + 1]
+        == "run(build): build pull request #12 recorded"
     )
-    assert "--push" in commits[-1] and commits[-1][commits[-1].index("--phase") + 1] == "c"
+    assert "--push" in commits[-1] and commits[-1][commits[-1].index("--phase") + 1] == "build"
 
 
 def test_an_upsert_that_opened_no_pull_request_fails_the_run(
@@ -2942,10 +2978,14 @@ def test_an_upsert_that_opened_no_pull_request_fails_the_run(
         github, "find_open_pr", lambda repo, head, cwd=None: {"number": None, "labels": []}
     )
     upsert_recorder(monkeypatch, number=None, route="none", reason="no GitHub remote")
-    write(change / "evidence" / "gate-b.json", json.dumps(GATE_FILE))
+    write(change / "evidence" / "gate-design.json", json.dumps(GATE_FILE))
     monkeypatch.setenv("FAKE_CLAUDE_RESULT", json.dumps(FAKE_RESULT))
     args = Args(
-        root=str(root), phase="b", dry_run=False, no_dispatch=True, claude=fake_cli(fake_claude)
+        root=str(root),
+        phase="design",
+        dry_run=False,
+        no_dispatch=True,
+        claude=fake_cli(fake_claude),
     )
     env = dict(os.environ, **KEY_ENV, GITHUB_TOKEN=FAKE_TOKEN)
     assert run_phase.run_phase(args, env) == run_phase.EXIT_FAILED
@@ -2956,8 +2996,8 @@ def test_an_upsert_that_opened_no_pull_request_fails_the_run(
     assert out["dispatched"] is None  # nothing is handed over past a missing queue item
     assert "no pull request carries this phase's result" in captured.err
     # the evidence and the spend are written before the failure: the run is not lost
-    assert (change / "evidence" / "claude-b.json").is_file()
-    assert json.loads((change / "evidence" / "run-b.json").read_text(encoding="utf-8"))
+    assert (change / "evidence" / "claude-design.json").is_file()
+    assert json.loads((change / "evidence" / "run-design.json").read_text(encoding="utf-8"))
 
 
 def test_a_run_without_a_pr_route_is_an_infrastructure_failure(
@@ -2967,10 +3007,14 @@ def test_a_run_without_a_pr_route_is_an_infrastructure_failure(
     from pr import github
 
     monkeypatch.setattr(github, "gh_path", lambda: None)
-    write(change / "evidence" / "gate-b.json", json.dumps(GATE_FILE))
+    write(change / "evidence" / "gate-design.json", json.dumps(GATE_FILE))
     monkeypatch.setenv("FAKE_CLAUDE_RESULT", json.dumps(FAKE_RESULT))
     args = Args(
-        root=str(root), phase="b", dry_run=False, no_dispatch=True, claude=fake_cli(fake_claude)
+        root=str(root),
+        phase="design",
+        dry_run=False,
+        no_dispatch=True,
+        claude=fake_cli(fake_claude),
     )
     env = {k: v for k, v in os.environ.items() if k not in run_phase.TOKEN_VARS}
     assert run_phase.run_phase(args, dict(env, **KEY_ENV)) == run_phase.EXIT_FAILED
@@ -3020,7 +3064,7 @@ def test_the_phase_run_installs_the_project_toolchain(project, fake_claude, monk
     named pytest". The run installs the toolchain itself."""
     root, change = project
     pr_route(monkeypatch)
-    full_run(root, change, fake_claude, monkeypatch, "b")
+    full_run(root, change, fake_claude, monkeypatch, "design")
     setup = json.loads(capsys.readouterr().out)["setup"]
     assert setup["ok"] is True and setup["command"] == NOOP_SETUP
     assert "setup ok" in setup["output"]
@@ -3030,9 +3074,9 @@ def test_a_failing_setup_command_stops_the_run_before_the_guard(project, capsys)
     """Proof of the order: this change sits at a phase this run does not follow, so a run
     that reached the guard would print ``{"skipped": ...}`` and exit 0."""
     root, change = project
-    set_state(change, "d")
+    set_state(change, "test")
     set_setup_command(root, f'"{sys.executable}" -c "import sys; sys.exit(3)"')
-    args = Args(root=str(root), phase="b", dry_run=False)
+    args = Args(root=str(root), phase="design", dry_run=False)
     assert run_phase.run_phase(args, dict(KEY_ENV)) == run_phase.EXIT_FAILED
     captured = capsys.readouterr()
     out = json.loads(captured.out)
@@ -3077,23 +3121,27 @@ def _pr_lookup(monkeypatch, number: int | None) -> None:
 
 
 def test_a_design_run_repeats_on_its_branch_when_no_pr_carries_it(project, monkeypatch):
-    """The fifth live run pushed sdlc/0001/b (phase b, parked) and was refused the PR; the
+    """The fifth live run pushed sdlc/0001/design (phase b, parked) and was refused the PR; the
     sixth dispatch skipped with "at phase b, not a". A branch with no PR is run again."""
     root, change = project
     set_state(
-        change, "b", gate_phase="b", gate_result="parked", parked="risk-list hit: 'auth' in spec.md"
+        change,
+        "design",
+        gate_phase="design",
+        gate_result="parked",
+        parked="risk-list hit: 'auth' in spec.md",
     )
     _pr_lookup(monkeypatch, None)
-    assert skip_reason(root, "b") is None
+    assert skip_reason(root, "design") is None
     st = status_mod.read_status(change)
-    assert st.phase == "b" and st.parked_reason is None  # the earlier park does not hold
+    assert st.phase == "design" and st.parked_reason is None  # the earlier park does not hold
 
 
 def test_a_design_run_does_not_repeat_when_its_pr_exists(project, monkeypatch):
     root, change = project
-    set_state(change, "b")
+    set_state(change, "design")
     _pr_lookup(monkeypatch, 12)
-    reason = skip_reason(root, "b")
+    reason = skip_reason(root, "design")
     assert "pull request #12" in reason and "/sdlc-fix" in reason
 
 
@@ -3101,16 +3149,18 @@ def test_a_re_run_fails_closed_without_a_github_route(project, monkeypatch):
     from pr import github
 
     root, change = project
-    set_state(change, "b")
+    set_state(change, "design")
     monkeypatch.setattr(github, "gh_path", lambda: None)
-    assert "no GitHub route" in skip_reason(root, "b")
+    assert "no GitHub route" in skip_reason(root, "design")
 
 
 def test_a_park_lifted_by_a_passed_gate_does_not_stop_the_next_phase(project):
-    """status.yaml written by a plugin before 0.2.6: gate (b) passed, parked_reason stale."""
+    """status.yaml written by a plugin before 0.2.6: gate (design) passed, parked_reason stale."""
     root, change = project
-    set_state(change, "b", gate_phase="b", gate_result="passed", parked="open_concerns: stale")
-    assert skip_reason(root, "c") is None
+    set_state(
+        change, "design", gate_phase="design", gate_result="passed", parked="open_concerns: stale"
+    )
+    assert skip_reason(root, "build") is None
     # the file the session reads on the work branch says so too: the ninth live run
     # (2026-09-22, phase (c)) had the guard let the change through and the session refuse
     # it on the raw field
@@ -3119,21 +3169,23 @@ def test_a_park_lifted_by_a_passed_gate_does_not_stop_the_next_phase(project):
 
 def test_a_park_still_stops_the_next_phase_when_its_gate_did_not_pass(project):
     root, change = project
-    set_state(change, "b", gate_phase="b", gate_result="parked", parked="open_concerns: 1 open")
-    assert "parked" in skip_reason(root, "c")
+    set_state(
+        change, "design", gate_phase="design", gate_result="parked", parked="open_concerns: 1 open"
+    )
+    assert "parked" in skip_reason(root, "build")
 
 
 # --- the implementation phases name their tools (eighth live run, 2026-09-22) ------------------
 def test_implementation_phases_name_their_tools(capsys, project):
     root, _change = project
-    for phase in ("d", "e"):
+    for phase in ("test", "deploy"):
         argv = dry_run_argv(capsys, root, phase)
         assert argv[argv.index("--allowedTools") + 1] == run_phase.IMPLEMENT_ALLOWED_TOOLS
         assert argv[argv.index("--disallowedTools") + 1] == run_phase.IMPLEMENT_DISALLOWED_TOOLS
     argv = run_phase.compose(
         claude="claude",
         plugin_dir=ROOT,
-        phase="c",
+        phase="build",
         prompt="/sdlc:sdlc-build 0001",
         permission_mode="acceptEdits",
         config={},
@@ -3149,11 +3201,11 @@ def test_implementation_phases_name_their_tools(capsys, project):
 
 # --- decisions 22, 24, 25: the fix round, the owner labels, the abandoned change --------------
 def test_a_fix_round_runs_on_the_change_s_phase_parked_or_not(project):
-    """Decision 22: the guard of a fix round asks only that the change is at a gate (a)-(f)
+    """Decision 22: the guard of a fix round asks only that the change is at a gate (intent)-(f)
     and not abandoned; a park is the change request it answers (an incident intent PR at (f)
     takes review comments like the intent PR at (a), plugin 0.2.19)."""
     root, change = project
-    for phase in ("a", "b", "c", "d", "e", "f"):
+    for phase in ("intent", "design", "build", "test", "deploy", "maintain"):
         set_state(change, phase, parked="risk-list hit: 'auth'")
         assert skip_reason(root, "fix") is None, phase
 
@@ -3163,7 +3215,7 @@ def test_every_run_skips_an_abandoned_change(project):
     st = status_mod.read_status(change)
     st.abandon("pull request 9 closed without a merge")
     status_mod.write_status(change, st)
-    for phase in ("b", "c", "d", "e", "review", "fix"):
+    for phase in ("design", "build", "test", "deploy", "review", "fix"):
         reason = skip_reason(root, phase)
         assert reason == "change 0001 is abandoned: pull request 9 closed without a merge", phase
 
@@ -3171,7 +3223,7 @@ def test_every_run_skips_an_abandoned_change(project):
 def test_find_change_for_a_fix_round_takes_any_sdlc_head():
     """The review may be on the intent, design or build PR: a head sdlc/<id>/<any phase>
     names the change; anything else falls through to the PR's files."""
-    for head in ("sdlc/0001/a", "sdlc/0001/b", "sdlc/0001/c"):
+    for head in ("sdlc/0001/intent", "sdlc/0001/design", "sdlc/0001/build"):
         assert run_phase.resolve_change_id(None, head, "fix") == ("0001", None)
     change_id, reason = run_phase.find_change("fix", None, "claude/relaxed-x", "", "", {})
     assert change_id is None and "--pr-number" in reason
@@ -3179,36 +3231,39 @@ def test_find_change_for_a_fix_round_takes_any_sdlc_head():
 
 def test_fix_branch_is_the_pull_request_s_head_else_the_phase_s_work_branch(project):
     root, change = project
-    assert run_phase.fix_branch_for(root, "0001", "claude/relaxed-x") == ("claude/relaxed-x", "a")
-    assert run_phase.fix_branch_for(root, "0001", "") == ("sdlc/0001/a", "a")
-    set_state(change, "d")
-    assert run_phase.fix_branch_for(root, "0001", None) == ("sdlc/0001/c", "d")
-    assert run_phase.fix_branch_for(root, "0009", None) == ("sdlc/0009/a", None)
+    assert run_phase.fix_branch_for(root, "0001", "claude/relaxed-x") == (
+        "claude/relaxed-x",
+        "intent",
+    )
+    assert run_phase.fix_branch_for(root, "0001", "") == ("sdlc/0001/intent", "intent")
+    set_state(change, "test")
+    assert run_phase.fix_branch_for(root, "0001", None) == ("sdlc/0001/build", "test")
+    assert run_phase.fix_branch_for(root, "0009", None) == ("sdlc/0009/intent", None)
 
 
 def test_a_fix_round_dry_run_names_its_command_tools_and_branch(capsys, project, tmp_path):
     root, change = project
     with_remote(root, tmp_path)
-    set_state(change, "b")
-    git(root, "checkout", "-q", "-b", "sdlc/0001/b")
+    set_state(change, "design")
+    git(root, "checkout", "-q", "-b", "sdlc/0001/design")
     git(root, "add", "-A")
     git(root, "commit", "-q", "-m", "design(0001): spec and plan")
-    git(root, "push", "-q", "-u", "origin", "sdlc/0001/b")
+    git(root, "push", "-q", "-u", "origin", "sdlc/0001/design")
     git(root, "checkout", "-q", "main")
-    git(root, "branch", "-q", "-D", "sdlc/0001/b")  # the runner starts on main
-    args = Args(root=str(root), phase="fix", head_ref="sdlc/0001/b", pr_number="7")
+    git(root, "branch", "-q", "-D", "sdlc/0001/design")  # the runner starts on main
+    args = Args(root=str(root), phase="fix", head_ref="sdlc/0001/design", pr_number="7")
     assert run_phase.run_phase(args, dict(KEY_ENV)) == run_phase.EXIT_OK
     out = json.loads(capsys.readouterr().out)
     assert out["branch"] == {
-        "branch": "sdlc/0001/b",
+        "branch": "sdlc/0001/design",
         "switched": True,
-        "from": "origin/sdlc/0001/b",
+        "from": "origin/sdlc/0001/design",
     }
     argv = out["argv"]
     assert argv[2] == "/sdlc:sdlc-fix 0001"
     assert argv[argv.index("--permission-mode") + 1] == "acceptEdits"
     assert argv[argv.index("--allowedTools") + 1] == run_phase.IMPLEMENT_ALLOWED_TOOLS
-    assert git(root, "rev-parse", "--abbrev-ref", "HEAD").strip() == "sdlc/0001/b"
+    assert git(root, "rev-parse", "--abbrev-ref", "HEAD").strip() == "sdlc/0001/design"
     # a head that is not on the remote is reported, not created
     args = Args(root=str(root), phase="fix", head_ref="claude/gone", pr_number="7")
     assert run_phase.run_phase(args, dict(KEY_ENV)) == run_phase.EXIT_OK
@@ -3226,14 +3281,14 @@ def test_apply_owner_labels_performs_commits_and_reports(project, tmp_path, monk
     # default branch's sdlc.yaml as an organization repository names it
     owner = {"owner": "luissiviero"}
     with_remote(root, tmp_path)
-    set_state(change, "b")
+    set_state(change, "design")
     st = status_mod.read_status(change)
     st.iterations = 3
     status_mod.write_status(change, st)
-    git(root, "checkout", "-q", "-b", "sdlc/0001/b")
+    git(root, "checkout", "-q", "-b", "sdlc/0001/design")
     git(root, "add", "-A")
     git(root, "commit", "-q", "-m", "design(0001): spec and plan")
-    git(root, "push", "-q", "-u", "origin", "sdlc/0001/b")
+    git(root, "push", "-q", "-u", "origin", "sdlc/0001/design")
     monkeypatch.setattr(github, "gh_path", lambda: "gh")
     monkeypatch.setattr(
         github,
@@ -3252,7 +3307,7 @@ def test_apply_owner_labels_performs_commits_and_reports(project, tmp_path, monk
         ),
     )
     out = run_phase.apply_owner_labels(
-        ROOT, root, change, owner, "owner/name", "7", "b", None, {"GITHUB_TOKEN": FAKE_TOKEN}
+        ROOT, root, change, owner, "owner/name", "7", "design", None, {"GITHUB_TOKEN": FAKE_TOKEN}
     )
     assert out["ok"] and out["performed"] == [
         {"label": "sdlc:reset-iterations", "actor": "luissiviero"}
@@ -3260,11 +3315,13 @@ def test_apply_owner_labels_performs_commits_and_reports(project, tmp_path, monk
     assert removed == ["sdlc:reset-iterations"]
     assert out["commit"]["ok"] and out["commit"]["output"]["pushed"] is True
     assert "iterations_reset_by: luissiviero" in git(
-        root, "show", "origin/sdlc/0001/b:changes/0001-percent-helper/status.yaml"
+        root, "show", "origin/sdlc/0001/design:changes/0001-percent-helper/status.yaml"
     )
     assert status_mod.read_status(change).iterations == 0
     # without a route or a number nothing is read
-    out = run_phase.apply_owner_labels(ROOT, root, change, owner, "owner/name", "", "b", None, {})
+    out = run_phase.apply_owner_labels(
+        ROOT, root, change, owner, "owner/name", "", "design", None, {}
+    )
     assert out["ok"] is False and "labels not read" in out["reason"]
     assert out["reason"].startswith("no pull request number and no open pull request for the head")
     # a dispatched round carries no number: the open PR of the round's head supplies it
@@ -3274,7 +3331,8 @@ def test_apply_owner_labels_performs_commits_and_reports(project, tmp_path, monk
         github,
         "find_open_pr",
         lambda repo, head, cwd=None: (
-            looked_up.append(head) or {"ok": True, "number": 7 if head == "sdlc/0001/b" else None}
+            looked_up.append(head)
+            or {"ok": True, "number": 7 if head == "sdlc/0001/design" else None}
         ),
     )
     st = status_mod.read_status(change)
@@ -3287,11 +3345,11 @@ def test_apply_owner_labels_performs_commits_and_reports(project, tmp_path, monk
         owner,
         "owner/name",
         "",
-        "b",
-        "sdlc/0001/b",
+        "design",
+        "sdlc/0001/design",
         {"GITHUB_TOKEN": FAKE_TOKEN},
     )
-    assert looked_up == ["sdlc/0001/b"]
+    assert looked_up == ["sdlc/0001/design"]
     assert out["ok"] and out["performed"] == [
         {"label": "sdlc:reset-iterations", "actor": "luissiviero"}
     ]
@@ -3303,7 +3361,7 @@ def test_apply_owner_labels_performs_commits_and_reports(project, tmp_path, monk
         owner,
         "owner/name",
         "",
-        "b",
+        "design",
         "sdlc/0001/gone",
         {"GITHUB_TOKEN": FAKE_TOKEN},
     )
@@ -3320,13 +3378,18 @@ def test_apply_owner_labels_performs_commits_and_reports(project, tmp_path, monk
         owner,
         "owner/name",
         "",
-        "b",
-        "sdlc/0001/b",
+        "design",
+        "sdlc/0001/design",
         {"GITHUB_TOKEN": FAKE_TOKEN},
     )
-    assert out["reason"] == "cannot look up the pull request of sdlc/0001/b: boom: labels not read"
+    assert (
+        out["reason"]
+        == "cannot look up the pull request of sdlc/0001/design: boom: labels not read"
+    )
     monkeypatch.setattr(github, "gh_path", lambda: None)
-    out = run_phase.apply_owner_labels(ROOT, root, change, owner, "owner/name", "7", "b", None, {})
+    out = run_phase.apply_owner_labels(
+        ROOT, root, change, owner, "owner/name", "7", "design", None, {}
+    )
     assert out["ok"] is False and "no gh and no GITHUB_TOKEN" in out["reason"]
 
 
@@ -3649,16 +3712,28 @@ def test_the_fix_run_writes_the_requests_file_before_the_session(project, tmp_pa
     found = []
     gh.find_open_pr = lambda repo, head, cwd=None: found.append(head) or {"number": 9}
     out = run_phase.collect_fix_requests(
-        root, change, {}, "owner/name", "", {"GITHUB_TOKEN": FAKE_TOKEN}, head_ref="sdlc/0001/b"
+        root,
+        change,
+        {},
+        "owner/name",
+        "",
+        {"GITHUB_TOKEN": FAKE_TOKEN},
+        head_ref="sdlc/0001/design",
     )
-    assert out["ok"] is True and found == ["sdlc/0001/b"]
+    assert out["ok"] is True and found == ["sdlc/0001/design"]
     assert gh.calls[0] == ("pr_reviews", "owner/name", 9)
     # no number and no open PR, then no route: the file says so and the counts are zero
     gh.find_open_pr = lambda repo, head, cwd=None: {"number": None, "reason": "none open"}
     out = run_phase.collect_fix_requests(
-        root, change, {}, "owner/name", "", {"GITHUB_TOKEN": FAKE_TOKEN}, head_ref="sdlc/0001/b"
+        root,
+        change,
+        {},
+        "owner/name",
+        "",
+        {"GITHUB_TOKEN": FAKE_TOKEN},
+        head_ref="sdlc/0001/design",
     )
-    assert out["ok"] is False and "no open pull request for sdlc/0001/b" in out["unavailable"]
+    assert out["ok"] is False and "no open pull request for sdlc/0001/design" in out["unavailable"]
     data = json.loads((change / "evidence" / "fix-requests.json").read_text(encoding="utf-8"))
     assert data["requests"] == [] and data["unavailable"] == out["unavailable"]
     monkeypatch.setattr(run_phase, "_github", lambda: github)
@@ -3681,16 +3756,16 @@ def test_the_fix_run_writes_the_requests_file_before_the_session(project, tmp_pa
 
 
 def _fix_round(root, change, tmp_path, monkeypatch):
-    """A fix round on sdlc/0001/b with every network call answered locally; returns the
+    """A fix round on sdlc/0001/design with every network call answered locally; returns the
     recorder of the calls in order (labels, collection, invoke)."""
     from pr import github
 
     with_remote(root, tmp_path)
-    set_state(change, "b")
-    git(root, "checkout", "-q", "-b", "sdlc/0001/b")
+    set_state(change, "design")
+    git(root, "checkout", "-q", "-b", "sdlc/0001/design")
     git(root, "add", "-A")
     git(root, "commit", "-q", "-m", "design(0001): spec and plan")
-    git(root, "push", "-q", "-u", "origin", "sdlc/0001/b")
+    git(root, "push", "-q", "-u", "origin", "sdlc/0001/design")
     order: list = []
     monkeypatch.setattr(github, "gh_path", lambda: None)
     monkeypatch.setattr(
@@ -3718,7 +3793,9 @@ def test_the_fix_run_collects_the_requests_after_the_labels_and_before_the_sessi
         return real(*a, **k)
 
     monkeypatch.setattr(run_phase, "collect_fix_requests", spy)
-    args = Args(root=str(root), phase="fix", head_ref="sdlc/0001/b", pr_number="7", dry_run=False)
+    args = Args(
+        root=str(root), phase="fix", head_ref="sdlc/0001/design", pr_number="7", dry_run=False
+    )
     env = dict(os.environ, **KEY_ENV, GITHUB_TOKEN=FAKE_TOKEN)
     env.pop("GITHUB_ACTIONS", None)
     assert run_phase.run_phase(args, env) == run_phase.EXIT_FAILED  # the fake claude failed
@@ -3727,7 +3804,7 @@ def test_the_fix_run_collects_the_requests_after_the_labels_and_before_the_sessi
     # a dry run collects nothing
     order.clear()
     capsys.readouterr()
-    args = Args(root=str(root), phase="fix", head_ref="sdlc/0001/b", pr_number="7")
+    args = Args(root=str(root), phase="fix", head_ref="sdlc/0001/design", pr_number="7")
     assert run_phase.run_phase(args, dict(KEY_ENV)) == run_phase.EXIT_OK
     assert order == [] and json.loads(capsys.readouterr().out)["argv"]
 
@@ -3749,7 +3826,9 @@ def test_the_fix_session_runs_with_the_fix_mark_and_the_build_timeout(
         return None, "", "boom", 1
 
     monkeypatch.setattr(run_phase, "invoke", invoke)
-    args = Args(root=str(root), phase="fix", head_ref="sdlc/0001/b", pr_number="7", dry_run=False)
+    args = Args(
+        root=str(root), phase="fix", head_ref="sdlc/0001/design", pr_number="7", dry_run=False
+    )
     env = dict(os.environ, **KEY_ENV, **JOB_ENV, GITHUB_TOKEN=FAKE_TOKEN)
     env.pop("GITHUB_ACTIONS", None)
     env.pop("SDLC_RUN", None)
@@ -3771,7 +3850,9 @@ def test_the_fix_run_parks_on_a_runner_when_the_requests_are_unavailable(
     gh.reviews = {"ok": False, "reason": "HTTP 502", "reviews": []}
     monkeypatch.setattr(run_phase, "_github", lambda: gh)
     calls = upsert_recorder(monkeypatch)
-    args = Args(root=str(root), phase="fix", head_ref="sdlc/0001/b", pr_number="7", dry_run=False)
+    args = Args(
+        root=str(root), phase="fix", head_ref="sdlc/0001/design", pr_number="7", dry_run=False
+    )
     env = dict(os.environ, **KEY_ENV, GITHUB_TOKEN=FAKE_TOKEN, GITHUB_ACTIONS="true")
     assert run_phase.run_phase(args, env) == run_phase.EXIT_OK
     out = json.loads(capsys.readouterr().out)
@@ -3784,7 +3865,7 @@ def test_the_fix_run_parks_on_a_runner_when_the_requests_are_unavailable(
     # by hand the same failure is left to the command's fallback
     order.clear()
     env.pop("GITHUB_ACTIONS")
-    set_state(change, "b")
+    set_state(change, "design")
     assert run_phase.run_phase(args, env) == run_phase.EXIT_FAILED
     assert order[-1] == "invoke"
 
@@ -3794,7 +3875,7 @@ def test_dry_run_argv_at_phase_f_is_read_only_on_source(capsys, project):
     """The diagnosis runs /sdlc-maintain with the bands' diagnose tools plus the plugin's own
     (Write for the two artifacts, python and git for the CLIs) and no Edit (p.43 step 3)."""
     root, _change = project
-    argv = dry_run_argv(capsys, root, "f")
+    argv = dry_run_argv(capsys, root, "maintain")
     # --diagnosis-only: the CI tail (dispatch, gate, PR) is detect/cli.py finish, a step of
     # its own with the runbook secrets, never the model's session
     assert argv[:3] == ["claude", "-p", "/sdlc:sdlc-maintain 0001 --diagnosis-only"]
@@ -3809,19 +3890,19 @@ def test_dry_run_argv_at_phase_f_is_read_only_on_source(capsys, project):
 
 
 def test_the_design_run_accepts_a_merged_incident_at_phase_f_as_at_a(project):
-    """Decision 25: the owner's merge of the incident intent PR is gate (a) of that change,
+    """Decision 25: the owner's merge of the incident intent PR is gate (intent) of that change,
     which stays at phase f on its branch; the design guard reads it as at (a)."""
     root, change = project
-    set_state(change, "f")
-    assert skip_reason(root, "b") is None
-    set_state(change, "e")
-    assert "not a" in skip_reason(root, "b")
+    set_state(change, "maintain")
+    assert skip_reason(root, "design") is None
+    set_state(change, "deploy")
+    assert "not intent" in skip_reason(root, "design")
     # a maintain run follows the filing step, which leaves the change at f itself
-    set_state(change, "f")
-    assert skip_reason(root, "f") is None
-    set_state(change, "a")
-    assert "not f" in skip_reason(root, "f")
-    assert run_phase.NEXT_WORKFLOW.get("f") is None  # gate (f) is the owner's triage
+    set_state(change, "maintain")
+    assert skip_reason(root, "maintain") is None
+    set_state(change, "intent")
+    assert "not maintain" in skip_reason(root, "maintain")
+    assert run_phase.NEXT_WORKFLOW.get("maintain") is None  # gate (maintain) is the owner's triage
 
 
 def test_the_merge_of_a_parked_incident_pr_is_still_gate_a(project):
@@ -3829,15 +3910,23 @@ def test_the_merge_of_a_parked_incident_pr_is_still_gate_a(project):
     merge it instead (fix now, decision 25), and that merge lifts the park for the design
     run - the park was the maintain run's, the merge is the owner's answer."""
     root, change = project
-    set_state(change, "f", gate_phase="f", gate_result="parked", parked="route: Go requested")
-    assert skip_reason(root, "b") is None
+    set_state(
+        change,
+        "maintain",
+        gate_phase="maintain",
+        gate_result="parked",
+        parked="route: Go requested",
+    )
+    assert skip_reason(root, "design") is None
     lifted = status_mod.read_status(change)  # the guard rewrote the file (0.2.21)
-    assert lifted.phase == "a" and lifted.parked_reason is None
-    assert (lifted.gate.phase, lifted.gate.result) == ("a", "passed")
+    assert lifted.phase == "intent" and lifted.parked_reason is None
+    assert (lifted.gate.phase, lifted.gate.result) == ("intent", "passed")
     # a parked change at any other phase still skips (the park is a change request); a park
     # is a gate result, so the gate that parked is recorded with it
-    set_state(change, "a", gate_phase="a", gate_result="parked", parked="risk-list hit: 'auth'")
-    assert "parked" in skip_reason(root, "b")
+    set_state(
+        change, "intent", gate_phase="intent", gate_result="parked", parked="risk-list hit: 'auth'"
+    )
+    assert "parked" in skip_reason(root, "design")
 
 
 @pytest.mark.parametrize("parked", [None, "route: Go requested"])
@@ -3845,45 +3934,45 @@ def test_the_design_run_hands_the_session_a_merged_incident_at_phase_a(
     project, fake_claude, monkeypatch, capsys, tmp_path, parked
 ):
     """The design run of 2026-09-25 (change 0005) passed the guard at phase f, and the model
-    read ``phase: f`` in status.yaml itself and stopped with nothing to do: the runner now
-    rewrites the file on the work branch to phase a, gate (a) passed by the owner's merge
+    read ``phase: maintain`` in status.yaml itself and stopped with nothing to do: the runner now
+    rewrites the file on the work branch to phase a, gate (intent) passed by the owner's merge
     and no park, before the session starts; the run then goes on as any design run."""
     root, change = project
     st = status_mod.read_status(change)
     st.entry_route = "incident"
     status_mod.write_status(change, st)
     if parked:
-        set_state(change, "f", gate_phase="f", gate_result="parked", parked=parked)
+        set_state(change, "maintain", gate_phase="maintain", gate_result="parked", parked=parked)
     else:
-        set_state(change, "f", gate_phase="f", gate_result="passed")
+        set_state(change, "maintain", gate_phase="maintain", gate_result="passed")
     calls = pr_route(monkeypatch)
     record = tmp_path / "status-seen-by-claude.yaml"
     monkeypatch.setenv("FAKE_CLAUDE_WATCH", str((change / "status.yaml").relative_to(root)))
     monkeypatch.setenv("FAKE_CLAUDE_RECORD", str(record))
-    full_run(root, change, fake_claude, monkeypatch, "b")
+    full_run(root, change, fake_claude, monkeypatch, "design")
 
     seen = status_mod.Status.from_dict(yamlish.load_file(record))
     raw = yamlish.load_file(record)
-    assert seen.phase == "a" and raw["phase"] == "a"
+    assert seen.phase == "intent" and raw["phase"] == "intent"
     assert raw["parked_reason"] is None  # the raw field, as the model reads it
-    assert (seen.gate.phase, seen.gate.result) == ("a", "passed")
+    assert (seen.gate.phase, seen.gate.result) == ("intent", "passed")
     assert seen.gate.reason == status_mod.MERGED_AT_GATE_A_REASON
     assert seen.entry_route == "incident"
-    assert git(root, "branch", "--show-current").strip() == "sdlc/0001/b"
+    assert git(root, "branch", "--show-current").strip() == "sdlc/0001/design"
     out = json.loads(capsys.readouterr().out)
-    assert out["pr"]["head"] == "sdlc/0001/b" and out["pr"]["ok"] is True
+    assert out["pr"]["head"] == "sdlc/0001/design" and out["pr"]["ok"] is True
     assert out["dispatched"] is None  # a design run hands over nothing (decision 21)
     upserts = [argv for name, argv in calls if name == "cli.py" and argv[0] == "upsert"]
     assert upserts == [
-        ["upsert", "--root", str(root), "--id", "0001", "--phase", "b", "--request-review"]
+        ["upsert", "--root", str(root), "--id", "0001", "--phase", "design", "--request-review"]
     ]
-    # the session's own commit-phase --phase b moves the change on from a
+    # the session's own commit-phase --phase design moves the change on from a
     proc = run_py(
-        str(STATE_CLI), "commit-phase", "--root", str(root), "--id", "0001", "--phase", "b",
+        str(STATE_CLI), "commit-phase", "--root", str(root), "--id", "0001", "--phase", "design",
         "--message", "design(0001): spec", cwd=root,
     )  # fmt: skip
     assert proc.returncode == 0, proc.stderr
-    assert status_mod.read_status(change).phase == "b"
+    assert status_mod.read_status(change).phase == "design"
 
 
 def test_guard_reads_paused_and_the_profile_from_the_default_branch_s_copy(
@@ -3895,7 +3984,7 @@ def test_guard_reads_paused_and_the_profile_from_the_default_branch_s_copy(
     the "base branch copy of sdlc.yaml"; 1.0.0 readiness review, 2026-09-26)."""
     root, _change = project
     with_remote(root, tmp_path)
-    git(root, "checkout", "-q", "-b", "sdlc/0001/b")  # its copy says paused: false
+    git(root, "checkout", "-q", "-b", "sdlc/0001/design")  # its copy says paused: false
     git(root, "checkout", "-q", "main")
     path = root / "sdlc.yaml"
     path.write_text(
@@ -3903,10 +3992,10 @@ def test_guard_reads_paused_and_the_profile_from_the_default_branch_s_copy(
     )
     git(root, "commit", "-q", "-am", "owner: pause the pipeline")
     git(root, "push", "-q", "origin", "main")
-    git(root, "checkout", "-q", "sdlc/0001/b")
+    git(root, "checkout", "-q", "sdlc/0001/design")
     assert "paused: false" in path.read_text(encoding="utf-8")  # the work branch's own copy
     assert run_phase._approved_config(root)["paused"] is True
-    assert "paused" in skip_reason(root, "b")
+    assert "paused" in skip_reason(root, "design")
     # the reverse: the work branch pauses itself, the owner's copy does not — it runs
     git(root, "checkout", "-q", "main")
     path.write_text(
@@ -3914,16 +4003,16 @@ def test_guard_reads_paused_and_the_profile_from_the_default_branch_s_copy(
     )
     git(root, "commit", "-q", "-am", "owner: resume")
     git(root, "push", "-q", "origin", "main")
-    git(root, "checkout", "-q", "sdlc/0001/b")
+    git(root, "checkout", "-q", "sdlc/0001/design")
     path.write_text(
         path.read_text(encoding="utf-8").replace("paused: false", "paused: true"), "utf-8"
     )
     git(root, "commit", "-q", "-am", "the branch pauses itself")
     assert run_phase._approved_config(root)["paused"] is False
-    assert skip_reason(root, "b") is None
+    assert skip_reason(root, "design") is None
     # a default-branch name that is a framework branch is refused (state/gitops) and the
     # guess still finds origin/main: the owner's copy wins over the branch's
-    monkeypatch.setenv("SDLC_DEFAULT_BRANCH", "sdlc/0001/b")
+    monkeypatch.setenv("SDLC_DEFAULT_BRANCH", "sdlc/0001/design")
     assert run_phase._approved_config(root)["paused"] is False
     # without a remote-tracking default branch the checkout's copy is all there is
     git(root, "remote", "remove", "origin")
@@ -3941,11 +4030,11 @@ def test_approved_config_reads_the_default_branch_s_copy(project, tmp_path):
     path.write_text(owner, "utf-8")
     git(root, "commit", "-q", "-am", "owner: a lower budget cap")
     git(root, "push", "-q", "origin", "main")
-    git(root, "checkout", "-q", "-b", "sdlc/0001/c")
+    git(root, "checkout", "-q", "-b", "sdlc/0001/build")
     path.write_text(owner.replace("max_budget_usd: 90", "max_budget_usd: 900"), "utf-8")
     git(root, "commit", "-q", "-am", "the branch raises its own cap")
     assert run_phase._approved_config(root)["gate"]["max_budget_usd"] == 90
-    _dir, _st, config, _reason = run_phase.guard(root, "0001", "c", "owner/name", {})
+    _dir, _st, config, _reason = run_phase.guard(root, "0001", "build", "owner/name", {})
     assert config["gate"]["max_budget_usd"] == 90
 
 
@@ -4050,7 +4139,7 @@ def test_verify_owner_fields_restores_the_fields_before_anything_is_committed(pr
     st.panel_calls = 0
     st.accept_risk("auth")
     st.risk_accepted_by = [{"item": "auth", "actor": "luissiviero"}]
-    st.record_gate("c", "passed", None)
+    st.record_gate("build", "passed", None)
     status_mod.write_status(change, st)
     verified = run_phase.verify_owner_fields(change, before, None)
     assert verified["ok"] is False and len(verified["mismatches"]) == 5
@@ -4094,7 +4183,7 @@ def test_a_session_that_writes_an_owner_field_parks_with_the_fields_restored(
         "status.write_status(change, st)\n",
     )
     monkeypatch.setenv("FAKE_CLAUDE_RUN", str(script))
-    full_run(root, change, fake_claude, monkeypatch, "b")
+    full_run(root, change, fake_claude, monkeypatch, "design")
     out = json.loads(capsys.readouterr().out)
     assert out["parked"].startswith("status.yaml: the session wrote owner-only field(s): ")
     assert (
@@ -4105,7 +4194,7 @@ def test_a_session_that_writes_an_owner_field_parks_with_the_fields_restored(
     st = status_mod.read_status(change)
     assert st.risk_accepted == [] and st.risk_accepted_by == []
     assert st.parked_reason == out["parked"]
-    gate_file = json.loads((change / "evidence" / "gate-b.json").read_text(encoding="utf-8"))
+    gate_file = json.loads((change / "evidence" / "gate-design.json").read_text(encoding="utf-8"))
     (check,) = gate_file["checks"]
     assert check["name"] == "owner_fields" and not check["ok"]
     assert "the run cannot approve itself (decision 5)" in check["need"]
@@ -4118,7 +4207,7 @@ def test_an_honest_session_reports_the_owner_fields_ok_and_hands_over(
 ):
     root, change = project
     pr_route(monkeypatch)
-    full_run(root, change, fake_claude, monkeypatch, "b")
+    full_run(root, change, fake_claude, monkeypatch, "design")
     out = json.loads(capsys.readouterr().out)
     assert out["owner_fields"] == {
         "ok": True,
@@ -4134,19 +4223,19 @@ def test_guard_fails_closed_on_an_unreadable_approved_status(project, tmp_path):
     0.2.26 diff, L3); a folder not on the default branch yet has no approved copy."""
     root, change = project
     with_remote(root, tmp_path)
-    git(root, "checkout", "-q", "-b", "sdlc/0001/c")
-    set_state(change, "c", gate_phase="c", gate_result="passed")
+    git(root, "checkout", "-q", "-b", "sdlc/0001/build")
+    set_state(change, "build", gate_phase="build", gate_result="passed")
     git(root, "commit", "-q", "-am", "the build")
-    assert skip_reason(root, "d") is None
+    assert skip_reason(root, "test") is None
     assert run_phase._approved_status(root, root / "changes" / "0009-nope") is None
     git(root, "checkout", "-q", "main")
     (change / "status.yaml").write_text("phase: [", encoding="utf-8")
     git(root, "commit", "-q", "-am", "owner: a broken status.yaml")
     git(root, "push", "-q", "origin", "main")
-    git(root, "checkout", "-q", "sdlc/0001/c")
+    git(root, "checkout", "-q", "sdlc/0001/build")
     with pytest.raises(run_phase.ApprovedCopyUnreadable):
         run_phase._approved_status(root, change)
-    reason = skip_reason(root, "d")
+    reason = skip_reason(root, "test")
     assert reason and "on the default branch is unreadable" in reason
 
 
@@ -4156,7 +4245,7 @@ def test_guard_fails_closed_on_a_pause_flag_that_is_not_a_boolean(project):
     path.write_text(
         path.read_text(encoding="utf-8").replace("paused: false", "paused: yes"), "utf-8"
     )
-    reason = skip_reason(root, "b")
+    reason = skip_reason(root, "design")
     assert reason and "paused is 'yes', not a boolean" in reason and "nothing runs" in reason
 
 
@@ -4175,15 +4264,15 @@ def test_guard_refuses_an_unreadable_sdlc_yaml_on_the_default_branch(project, tm
     budget and 200 turns. It now refuses to run until the owner fixes the file."""
     root, _change = project
     with_remote(root, tmp_path)
-    git(root, "checkout", "-q", "-b", "sdlc/0001/b")  # its own copy stays readable
+    git(root, "checkout", "-q", "-b", "sdlc/0001/design")  # its own copy stays readable
     git(root, "checkout", "-q", "main")
     _indent_max_turns_under_command_timeout(root / "sdlc.yaml")
     git(root, "commit", "-q", "-am", "owner: max_turns, indented by four spaces")
     git(root, "push", "-q", "origin", "main")
-    git(root, "checkout", "-q", "sdlc/0001/b")
+    git(root, "checkout", "-q", "sdlc/0001/design")
     with pytest.raises(run_phase.ConfigError, match="on the default branch could not be read"):
         run_phase._approved_config(root)
-    reason = skip_reason(root, "b")
+    reason = skip_reason(root, "design")
     assert reason and "on the default branch could not be read" in reason
     assert "nothing runs until it is fixed" in reason
 
@@ -4194,11 +4283,11 @@ def test_guard_refuses_a_work_branch_that_kept_an_unreadable_copy(project, tmp_p
     (``_config`` reads ``{}``: no ``protected_paths`` in ``denyWrite``), so it is refused."""
     root, _change = project
     with_remote(root, tmp_path)
-    git(root, "checkout", "-q", "-b", "sdlc/0001/b")
+    git(root, "checkout", "-q", "-b", "sdlc/0001/design")
     _indent_max_turns_under_command_timeout(root / "sdlc.yaml")
     git(root, "commit", "-q", "-am", "the branch inherits PR #214's slip")
     assert run_phase._approved_config(root)  # the default branch's copy reads
-    reason = skip_reason(root, "b")
+    reason = skip_reason(root, "design")
     assert reason and "sdlc.yaml could not be read" in reason and "nothing runs" in reason
     assert "on the default branch" not in reason
 
@@ -4208,7 +4297,7 @@ def test_guard_refuses_an_unreadable_checkout_copy_without_a_default_branch(proj
     unreadable one is refused the same way, never read as no settings at all."""
     root, _change = project
     _indent_max_turns_under_command_timeout(root / "sdlc.yaml")
-    reason = skip_reason(root, "b")
+    reason = skip_reason(root, "design")
     assert reason and "sdlc.yaml could not be read" in reason and "nothing runs" in reason
 
 
@@ -4249,7 +4338,7 @@ def test_a_session_that_accepts_a_risk_under_the_owner_s_name_parks(
         " '-am', 'accept the auth risk')\n",
     )
     monkeypatch.setenv("FAKE_CLAUDE_RUN", str(script))
-    full_run(root, change, fake_claude, monkeypatch, "b")
+    full_run(root, change, fake_claude, monkeypatch, "design")
     out = json.loads(capsys.readouterr().out)
     assert (
         "risk_accepted: the session accepted 'auth'; only the owner's label or commit does"
@@ -4309,7 +4398,7 @@ def test_a_session_that_writes_the_release_record_parks_with_it_restored(
         "git('commit', '-q', '-am', 'the change is released')\n",
     )
     monkeypatch.setenv("FAKE_CLAUDE_RUN", str(script))
-    full_run(root, change, fake_claude, monkeypatch, "b")
+    full_run(root, change, fake_claude, monkeypatch, "design")
     out = json.loads(capsys.readouterr().out)
     assert out["parked"].startswith("status.yaml: the session wrote owner-only field(s): ")
     assert "released_at, released_sha, released_pr: the session recorded (" in out["parked"]
@@ -4317,7 +4406,7 @@ def test_a_session_that_writes_the_release_record_parks_with_it_restored(
     st = status_mod.read_status(change)
     assert (st.released_at, st.released_sha, st.released_pr) == (None, None, None)
     assert not st.released and st.parked_reason == out["parked"]
-    gate_file = json.loads((change / "evidence" / "gate-b.json").read_text(encoding="utf-8"))
+    gate_file = json.loads((change / "evidence" / "gate-design.json").read_text(encoding="utf-8"))
     (check,) = gate_file["checks"]
     assert check["name"] == "owner_fields" and "choice 268" in check["need"]
 
@@ -4347,7 +4436,7 @@ def test_a_session_that_lifts_the_lock_has_its_test_edits_restored(
     )
     monkeypatch.setenv("FAKE_CLAUDE_RUN", str(script))
     before = (root / "tests" / "test_calc.py").read_text(encoding="utf-8")
-    full_run(root, change, fake_claude, monkeypatch, "b")
+    full_run(root, change, fake_claude, monkeypatch, "design")
     out = json.loads(capsys.readouterr().out)
     assert "tests_unlocked_by: the session recorded 'luissiviero'; expected None" in out["parked"]
     assert "tests_locked: the session lifted the test-file lock" in out["parked"]
@@ -4378,28 +4467,31 @@ def test_a_session_that_pushes_another_branch_of_the_change_parks(
         "st.risk_accepted_by = [{'item': 'auth', 'actor': 'luissiviero'}]\n"
         "status.write_status(change, st)\n"
         "git('commit', '-q', '-am', 'plant')\n"
-        "git('push', '-q', 'origin', 'HEAD:sdlc/0001/c')\n"
+        "git('push', '-q', 'origin', 'HEAD:sdlc/0001/build')\n"
         "git('reset', '-q', '--hard', 'HEAD~1')\n",
     )
     monkeypatch.setenv("FAKE_CLAUDE_RUN", str(script))
-    full_run(root, change, fake_claude, monkeypatch, "b")
+    full_run(root, change, fake_claude, monkeypatch, "design")
     out = json.loads(capsys.readouterr().out)
-    assert "origin/sdlc/0001/c: the session pushed to another branch of the change" in out["parked"]
+    assert (
+        "origin/sdlc/0001/build: the session pushed to another branch of the change"
+        in out["parked"]
+    )
     assert "absent ->" in out["parked"]
     # the divergence of its own branch
     refs_before = run_phase.change_refs(root, "0001")
-    git(root, "checkout", "-q", "-b", "sdlc/0001/d-test", "sdlc/0001/b")
+    git(root, "checkout", "-q", "-b", "sdlc/0001/test-test", "sdlc/0001/design")
     git(root, "commit", "-q", "--allow-empty", "-m", "pushed then moved")
-    git(root, "push", "-q", "origin", "sdlc/0001/d-test")
+    git(root, "push", "-q", "origin", "sdlc/0001/test-test")
     git(root, "reset", "-q", "--hard", "HEAD~1")
     reasons = run_phase.session_push_mismatches(
-        root, "sdlc/0001/d-test", refs_before, run_phase.change_refs(root, "0001")
+        root, "sdlc/0001/test-test", refs_before, run_phase.change_refs(root, "0001")
     )
     assert any("is not in the runner's checkout" in r for r in reasons)
     # a push of its own branch that the checkout contains is the run's normal commit-phase
-    git(root, "push", "-q", "-f", "origin", "sdlc/0001/d-test")
+    git(root, "push", "-q", "-f", "origin", "sdlc/0001/test-test")
     assert run_phase.session_push_mismatches(
-        root, "sdlc/0001/d-test", run_phase.change_refs(root, "0001"),
+        root, "sdlc/0001/test-test", run_phase.change_refs(root, "0001"),
         run_phase.change_refs(root, "0001"),
     ) == []  # fmt: skip
 
@@ -4439,7 +4531,7 @@ def test_a_session_that_writes_the_change_s_release_ref_parks(
         f"git('remote', 'set-url', '--push', 'origin', {str(bare)!r})\n",
     }[moved]
     monkeypatch.setenv("FAKE_CLAUDE_RUN", str(_forging_session(tmp_path, change, push)))
-    full_run(root, change, fake_claude, monkeypatch, "b")
+    full_run(root, change, fake_claude, monkeypatch, "design")
     out = json.loads(capsys.readouterr().out)
     assert out["parked"].startswith("session_branch: ")
     if moved == "redirected":
@@ -4464,16 +4556,16 @@ def test_the_release_ref_left_alone_or_unreadable(project, tmp_path):
     root, _change = project
     with_remote(root, tmp_path)
     git(root, "push", "-q", "origin", "HEAD:refs/sdlc/released/0001")
-    git(root, "checkout", "-q", "-b", "sdlc/0001/b")
+    git(root, "checkout", "-q", "-b", "sdlc/0001/design")
     refs = run_phase.change_refs(root, "0001")
     assert refs["refs/sdlc/released/0001"] == git(root, "rev-parse", "HEAD").strip()
-    assert run_phase.session_push_mismatches(root, "sdlc/0001/b", refs, dict(refs)) == []
+    assert run_phase.session_push_mismatches(root, "sdlc/0001/design", refs, dict(refs)) == []
     git(root, "remote", "set-url", "origin", str(tmp_path / "gone.git"))
     unreadable = run_phase.released_refs(root, "0001")
     assert unreadable == {"refs/sdlc/released/0001": run_phase.RELEASED_REF_UNREADABLE}
     after = {**refs, **unreadable}
-    assert run_phase.session_push_mismatches(root, "sdlc/0001/b", after, dict(after)) == []
-    assert run_phase.session_push_mismatches(root, "sdlc/0001/b", refs, after) == [
+    assert run_phase.session_push_mismatches(root, "sdlc/0001/design", after, dict(after)) == []
+    assert run_phase.session_push_mismatches(root, "sdlc/0001/design", refs, after) == [
         "refs/sdlc/released/0001: the remote could not be read after the session"
     ]
 
@@ -4492,33 +4584,36 @@ def test_a_session_that_switches_to_another_branch_of_the_change_and_stays_parks
     records survive the forced checkout."""
     root, change = project
     ledger = {"total_usd": 1.0, "entries": [
-        {"run": "a", "source": "claude-a.json", "usd": 1.0, "at": "2026-10-08T00:00:00Z"},
+        {"run": "intent", "source": "claude-intent.json", "usd": 1.0, "at": "2026-10-08T00:00:00Z"},
     ]}  # fmt: skip
     write(change / "evidence" / "spend.json", json.dumps(ledger))
-    with_remote(root, tmp_path)  # the ledger is committed on main, so on sdlc/0001/b too
+    with_remote(root, tmp_path)  # the ledger is committed on main, so on sdlc/0001/design too
     calls = pr_route(monkeypatch)
     script = _forging_session(
         tmp_path,
         change,
-        "git('checkout', '-q', '-b', 'sdlc/0001/c')\n"
+        "git('checkout', '-q', '-b', 'sdlc/0001/build')\n"
         "st = status.read_status(change)\n"
         "st.accept_risk('auth')\n"
         "st.risk_accepted_by = [{'item': 'auth', 'actor': 'luissiviero'}]\n"
         "status.write_status(change, st)\n"
         "git('commit', '-q', '-am', 'plant')\n"
-        "git('push', '-q', 'origin', 'sdlc/0001/c')\n"
+        "git('push', '-q', 'origin', 'sdlc/0001/build')\n"
         + ("" if stays_with_the_plant else "git('revert', '--no-edit', 'HEAD')\n"),
     )
     monkeypatch.setenv("FAKE_CLAUDE_RUN", str(script))
-    full_run(root, change, fake_claude, monkeypatch, "b")
+    full_run(root, change, fake_claude, monkeypatch, "design")
     out = json.loads(capsys.readouterr().out)
     assert out["claude_exit"] == 0  # the forging script ran to its end
-    assert out["parked"].startswith("session_branch: the run's own branch is sdlc/0001/b; ")
+    assert out["parked"].startswith("session_branch: the run's own branch is sdlc/0001/design; ")
     assert (
-        "the session ended on sdlc/0001/c, not on sdlc/0001/b, the branch the runner prepared"
+        "the session ended on sdlc/0001/build, not on sdlc/0001/design, the branch the runner "
+        "prepared" in out["parked"]
+    )
+    assert (
+        "origin/sdlc/0001/build: the session pushed to another branch of the change"
         in out["parked"]
     )
-    assert "origin/sdlc/0001/c: the session pushed to another branch of the change" in out["parked"]
     assert "is not in the runner's checkout" not in out["parked"]  # nothing of b was pushed
     assert out["session_branch"]["ok"] is False and len(out["session_branch"]["mismatches"]) == 2
     # the owner-field check alone saw the plant only while it stayed in the checkout
@@ -4527,34 +4622,34 @@ def test_a_session_that_switches_to_another_branch_of_the_change_and_stays_parks
     # the plant in the checkout the plain checkout is refused and the forced one runs (and so
     # it does after the revert, on the runner's own pre-session status.yaml edits, which the
     # session's commit carried away and the revert brought back as a modification)
-    assert out["branch"]["branch"] == "sdlc/0001/b"
+    assert out["branch"]["branch"] == "sdlc/0001/design"
     returned = out["branch"]["returned"]
-    assert (returned["from"], returned["to"]) == ("sdlc/0001/c", "sdlc/0001/b")
+    assert (returned["from"], returned["to"]) == ("sdlc/0001/build", "sdlc/0001/design")
     assert returned["ok"] is True and returned["recreated"] is False
     if stays_with_the_plant:
         assert returned["forced"] is True
-    assert git(root, "rev-parse", "--abbrev-ref", "HEAD").strip() == "sdlc/0001/b"
+    assert git(root, "rev-parse", "--abbrev-ref", "HEAD").strip() == "sdlc/0001/design"
     [commit] = [argv for name, argv in calls if name == "cli.py" and argv[0] == "commit-phase"]
-    assert commit[commit.index("--phase") + 1] == "b" and "--branch" not in commit
+    assert commit[commit.index("--phase") + 1] == "design" and "--branch" not in commit
     assert status_mod.read_status(change).risk_accepted == []
     # the run's result record and its spend entry are on the prepared tree, counted once
-    assert (change / "evidence" / "claude-b.json").is_file()
+    assert (change / "evidence" / "claude-design.json").is_file()
     ledger = json.loads((change / "evidence" / "spend.json").read_text(encoding="utf-8"))
     assert [(e["source"], e["usd"]) for e in ledger["entries"]] == [
-        ("claude-a.json", 1.0), ("claude-b.json", 0.42),
+        ("claude-intent.json", 1.0), ("claude-design.json", 0.42),
     ]  # fmt: skip
     assert ledger["total_usd"] == 1.42
-    gate = json.loads((change / "evidence" / "gate-b.json").read_text(encoding="utf-8"))
+    gate = json.loads((change / "evidence" / "gate-design.json").read_text(encoding="utf-8"))
     assert [chk["name"] for chk in gate["checks"]] == ["session_branch"]
     assert "reset it to the tip it had before the run" in gate["what_i_need"]
     # the direct check: the current branch after the session is compared with the prepared one
-    assert run_phase.session_branch_mismatches(root, "sdlc/0001/b") == []
-    assert run_phase.session_branch_mismatches(root, "sdlc/0001/c") == [
-        "the session ended on sdlc/0001/b, not on sdlc/0001/c, the branch the runner prepared; "
-        "a run ends on its own branch"
+    assert run_phase.session_branch_mismatches(root, "sdlc/0001/design") == []
+    assert run_phase.session_branch_mismatches(root, "sdlc/0001/build") == [
+        "the session ended on sdlc/0001/design, not on sdlc/0001/build, the branch the runner "
+        "prepared; a run ends on its own branch"
     ]
     assert run_phase.session_branch_mismatches(root, None) == []
-    assert run_phase.return_to_branch(root, "sdlc/0001/b") is None  # nothing to move
+    assert run_phase.return_to_branch(root, "sdlc/0001/design") is None  # nothing to move
 
 
 def test_a_session_that_only_leaves_its_branch_is_parked_for_that_alone(
@@ -4565,21 +4660,23 @@ def test_a_session_that_only_leaves_its_branch_is_parked_for_that_alone(
     put back first, so a session that only switched away is not also accused of a push."""
     root, change = project
     with_remote(root, tmp_path)
-    git(root, "checkout", "-q", "-b", "sdlc/0001/b")  # an earlier run left the branch on origin
-    git(root, "push", "-q", "-u", "origin", "sdlc/0001/b")
+    git(
+        root, "checkout", "-q", "-b", "sdlc/0001/design"
+    )  # an earlier run left the branch on origin
+    git(root, "push", "-q", "-u", "origin", "sdlc/0001/design")
     git(root, "checkout", "-q", "main")
-    git(root, "branch", "-q", "-D", "sdlc/0001/b")
+    git(root, "branch", "-q", "-D", "sdlc/0001/design")
     pr_route(monkeypatch)
     script = _forging_session(tmp_path, change, "git('checkout', '-q', 'main')\n")
     monkeypatch.setenv("FAKE_CLAUDE_RUN", str(script))
-    full_run(root, change, fake_claude, monkeypatch, "b")
+    full_run(root, change, fake_claude, monkeypatch, "design")
     out = json.loads(capsys.readouterr().out)
     assert out["session_branch"]["mismatches"] == [
-        "the session ended on main, not on sdlc/0001/b, the branch the runner prepared; "
+        "the session ended on main, not on sdlc/0001/design, the branch the runner prepared; "
         "a run ends on its own branch"
     ]
     assert out["owner_fields"]["ok"] is True and out["branch"]["returned"]["forced"] is False
-    assert git(root, "rev-parse", "--abbrev-ref", "HEAD").strip() == "sdlc/0001/b"
+    assert git(root, "rev-parse", "--abbrev-ref", "HEAD").strip() == "sdlc/0001/design"
 
 
 def test_return_to_branch_drops_what_the_session_left_on_the_wrong_branch(project, tmp_path):
@@ -4587,35 +4684,35 @@ def test_return_to_branch_drops_what_the_session_left_on_the_wrong_branch(projec
     sit on the wrong branch, and the park says so), the forced one."""
     root, change = project
     with_remote(root, tmp_path)
-    git(root, "checkout", "-q", "-b", "sdlc/0001/b")
-    git(root, "checkout", "-q", "-b", "sdlc/0001/c")
-    assert run_phase.return_to_branch(root, "sdlc/0001/b") == {
-        "from": "sdlc/0001/c", "to": "sdlc/0001/b", "forced": False, "recreated": False,
+    git(root, "checkout", "-q", "-b", "sdlc/0001/design")
+    git(root, "checkout", "-q", "-b", "sdlc/0001/build")
+    assert run_phase.return_to_branch(root, "sdlc/0001/design") == {
+        "from": "sdlc/0001/build", "to": "sdlc/0001/design", "forced": False, "recreated": False,
         "ok": True,
     }  # fmt: skip
-    git(root, "checkout", "-q", "sdlc/0001/c")
+    git(root, "checkout", "-q", "sdlc/0001/build")
     write(change / "status.yaml", (change / "status.yaml").read_text(encoding="utf-8") + "# c\n")
     git(root, "commit", "-q", "-am", "the branches differ on status.yaml")
     write(change / "status.yaml", (change / "status.yaml").read_text(encoding="utf-8") + "# x\n")
-    returned = run_phase.return_to_branch(root, "sdlc/0001/b")
+    returned = run_phase.return_to_branch(root, "sdlc/0001/design")
     assert returned == {
-        "from": "sdlc/0001/c", "to": "sdlc/0001/b", "forced": True, "recreated": False,
+        "from": "sdlc/0001/build", "to": "sdlc/0001/design", "forced": True, "recreated": False,
         "ok": True,
     }  # fmt: skip
-    assert git(root, "rev-parse", "--abbrev-ref", "HEAD").strip() == "sdlc/0001/b"
+    assert git(root, "rev-parse", "--abbrev-ref", "HEAD").strip() == "sdlc/0001/design"
     assert git(root, "status", "--porcelain", "--", "changes").strip() == ""
     assert "# x" not in (change / "status.yaml").read_text(encoding="utf-8")
     # the session deleted the prepared branch: recreated at its tip before the session
     pre_head = git(root, "rev-parse", "HEAD").strip()
-    git(root, "checkout", "-q", "sdlc/0001/c")
-    git(root, "branch", "-q", "-D", "sdlc/0001/b")
-    assert run_phase.return_to_branch(root, "sdlc/0001/b") == {
-        "from": "sdlc/0001/c", "to": "sdlc/0001/b", "forced": True, "recreated": False,
+    git(root, "checkout", "-q", "sdlc/0001/build")
+    git(root, "branch", "-q", "-D", "sdlc/0001/design")
+    assert run_phase.return_to_branch(root, "sdlc/0001/design") == {
+        "from": "sdlc/0001/build", "to": "sdlc/0001/design", "forced": True, "recreated": False,
         "ok": False,
     }  # fmt: skip
-    returned = run_phase.return_to_branch(root, "sdlc/0001/b", pre_head)
+    returned = run_phase.return_to_branch(root, "sdlc/0001/design", pre_head)
     assert returned["recreated"] is True and returned["ok"] is True
-    assert git(root, "rev-parse", "--abbrev-ref", "HEAD").strip() == "sdlc/0001/b"
+    assert git(root, "rev-parse", "--abbrev-ref", "HEAD").strip() == "sdlc/0001/design"
     assert git(root, "rev-parse", "HEAD").strip() == pre_head
 
 
@@ -4623,7 +4720,7 @@ class _PullRequestGitHub(FixGitHub):
     """``FixGitHub`` plus the pull request lookups a round makes: one open pull request,
     on ``head``, numbered ``number``."""
 
-    def __init__(self, head: str = "sdlc/0001/b", number: int = 7, files=None):
+    def __init__(self, head: str = "sdlc/0001/design", number: int = 7, files=None):
         super().__init__()
         self.head = head
         self.number = number
@@ -4650,59 +4747,61 @@ def _ready_for(root: Path, change: Path, phase: str, tmp_path: Path, monkeypatch
     branch, or the branch the workflow checked out), with the state the guard expects; the
     branch the phase's command ends on comes back."""
     with_remote(root, tmp_path)
-    if phase == "b":
-        return "sdlc/0001/b"
-    if phase == "c":
-        set_state(change, "b", gate_phase="b", gate_result="passed")
-        git(root, "commit", "-q", "-am", "the owner's merge at gate (b)")
+    if phase == "design":
+        return "sdlc/0001/design"
+    if phase == "build":
+        set_state(change, "design", gate_phase="design", gate_result="passed")
+        git(root, "commit", "-q", "-am", "the owner's merge at gate (design)")
         git(root, "push", "-q", "origin", "main")
         monkeypatch.setattr(
             run_phase, "preflight", lambda *a: {"allow": True, "permission_mode": "acceptEdits"}
         )
-        return "sdlc/0001/c"
-    if phase in ("d", "e", "review"):
-        previous = {"d": "c", "e": "d", "review": "d"}[phase]
-        git(root, "checkout", "-q", "-b", "sdlc/0001/c")
+        return "sdlc/0001/build"
+    if phase in ("test", "deploy", "review"):
+        previous = {"test": "build", "deploy": "test", "review": "test"}[phase]
+        git(root, "checkout", "-q", "-b", "sdlc/0001/build")
         set_state(change, previous, gate_phase=previous, gate_result="passed")
         git(root, "commit", "-q", "-am", f"gate ({previous}) passed on the build branch")
-        git(root, "push", "-q", "-u", "origin", "sdlc/0001/c")
+        git(root, "push", "-q", "-u", "origin", "sdlc/0001/build")
         git(root, "checkout", "-q", "main")
-        git(root, "branch", "-q", "-D", "sdlc/0001/c")  # the dispatched runner has main only
+        git(root, "branch", "-q", "-D", "sdlc/0001/build")  # the dispatched runner has main only
         if phase == "review":
             monkeypatch.setattr(run_phase, "review_prompt", lambda *a: ("REVIEW the diff.", ""))
-        return "sdlc/0001/c"
-    if phase == "f":
-        git(root, "checkout", "-q", "-b", "sdlc/0001/a")  # the filing step's branch
+        return "sdlc/0001/build"
+    if phase == "maintain":
+        git(root, "checkout", "-q", "-b", "sdlc/0001/intent")  # the filing step's branch
         st = status_mod.read_status(change)
         st.entry_route = "incident"
         status_mod.write_status(change, st)
-        set_state(change, "f")
+        set_state(change, "maintain")
         git(root, "commit", "-q", "-am", "detect: filed")
-        return "sdlc/0001/a"
+        return "sdlc/0001/intent"
     if phase == "fix":
-        set_state(change, "b")
-        git(root, "checkout", "-q", "-b", "sdlc/0001/b")
+        set_state(change, "design")
+        git(root, "checkout", "-q", "-b", "sdlc/0001/design")
         git(root, "commit", "-q", "-am", "design(0001): spec and plan")
-        git(root, "push", "-q", "-u", "origin", "sdlc/0001/b")
+        git(root, "push", "-q", "-u", "origin", "sdlc/0001/design")
         gh = with_a_request(_PullRequestGitHub())
         monkeypatch.setattr(run_phase, "_github", lambda: gh)
         monkeypatch.setattr(run_phase, "apply_owner_labels", lambda *a, **k: {"ok": True})
         monkeypatch.setattr(run_phase, "ensure_labels", lambda repo, env: {"ok": True})
-        return "sdlc/0001/b"
+        return "sdlc/0001/design"
     raise AssertionError(phase)
 
 
-@pytest.mark.parametrize("phase", ["b", "c", "d", "e", "review", "f", "fix"])
+@pytest.mark.parametrize(
+    "phase", ["design", "build", "test", "deploy", "review", "maintain", "fix"]
+)
 def test_every_phase_s_normal_ending_is_on_the_branch_the_runner_prepared(
     project, fake_claude, monkeypatch, capsys, tmp_path, phase
 ):
     """A session that stays where ``prepare_branch`` put it (what every phase command's
-    step 0 does: (b) sdlc/<id>/b; (c), (d), (e) and the review pass sdlc/<id>/c; (f)
-    sdlc/<id>/a; a fix round the pull request's head) is not parked by the branch check."""
+    step 0 does: (b) sdlc/<id>/design; (c), (d), (e) and the review pass sdlc/<id>/build; (f)
+    sdlc/<id>/intent; a fix round the pull request's head) is not parked by the branch check."""
     root, change = project
     expected = _ready_for(root, change, phase, tmp_path, monkeypatch)
     pr_route(monkeypatch)
-    gate_phase = "b" if phase == "fix" else phase
+    gate_phase = "design" if phase == "fix" else phase
     gate_file = {**GATE_FILE, "phase": gate_phase}
     write(change / "evidence" / f"gate-{gate_phase}.json", json.dumps(gate_file))
     if phase == "fix":  # the round's own gate writes its record (gap 4 of NOTES §45)
@@ -4710,7 +4809,7 @@ def test_every_phase_s_normal_ending_is_on_the_branch_the_runner_prepared(
     monkeypatch.setenv("FAKE_CLAUDE_RESULT", json.dumps(FAKE_RESULT))
     args = Args(
         root=str(root), phase=phase, dry_run=False, no_dispatch=True, claude=fake_cli(fake_claude),
-        head_ref="sdlc/0001/b" if phase == "fix" else None,
+        head_ref="sdlc/0001/design" if phase == "fix" else None,
         pr_number="7" if phase == "fix" else None,
     )  # fmt: skip
     env = dict(os.environ, **KEY_ENV, GITHUB_TOKEN=FAKE_TOKEN)
@@ -4730,18 +4829,23 @@ def test_the_phase_commands_end_on_the_branch_the_runner_prepares():
     """The branch check rests on the commands' own step 0: the branch each command switches
     to (or creates) is ``work_branch_for``'s answer, and the fix command's table names the
     same branch per phase as ``fix_branch_for``."""
-    for phase in ("b", "c", "d", "e", "f"):
+    for phase in ("design", "build", "test", "deploy", "maintain"):
         text = (ROOT / "plugin" / "commands" / f"{run_phase.PHASE_COMMAND[phase]}.md").read_text(
             encoding="utf-8"
         )
-        switched = set(re.findall(r"git switch (?:-c )?sdlc/<id>/([a-f])", text))
-        letter = run_phase.work_branch_for("0001", phase).rsplit("/", 1)[1]
-        assert switched == {letter}, (phase, switched)
-    assert run_phase.work_branch_for("0001", "review") == "sdlc/0001/c"
-    fix = (ROOT / "plugin" / "commands" / "sdlc-fix.md").read_text(encoding="utf-8")
-    assert "phase `a` → the intent PR's head — `sdlc/<id>/a`, or the branch the web session" in fix
-    assert "phase `f` → `sdlc/<id>/a`" in fix
-    assert "phase `b` → `sdlc/<id>/b`; `c`, `d`, `e` → `sdlc/<id>/c`" in fix
+        switched = set(re.findall(r"git switch (?:-c )?sdlc/<id>/([a-z]+)", text))
+        name = run_phase.work_branch_for("0001", phase).rsplit("/", 1)[1]
+        assert switched == {name}, (phase, switched)
+    assert run_phase.work_branch_for("0001", "review") == "sdlc/0001/build"
+    fix = " ".join((ROOT / "plugin" / "commands" / "sdlc-fix.md").read_text("utf-8").split())
+    assert (
+        "phase `intent` → the intent PR's head — `sdlc/<id>/intent`, or the branch the web "
+        "session" in fix
+    )
+    assert "phase `maintain` → `sdlc/<id>/intent`" in fix
+    assert (
+        "phase `design` → `sdlc/<id>/design`; `build`, `test`, `deploy` → `sdlc/<id>/build`" in fix
+    )
     assert "In CI the run is already on that branch." in fix
 
 
@@ -4749,7 +4853,7 @@ def test_a_dispatched_fix_round_with_no_head_ref_runs_on_the_open_pull_request_s
     project, fake_claude, monkeypatch, capsys, tmp_path
 ):
     """sdlc-fix.yml dispatched with no head_ref, from the ``claude/...`` branch of a
-    web-session intent PR: ``fix_branch_for`` answered sdlc/<id>/a, which exists nowhere, so
+    web-session intent PR: ``fix_branch_for`` answered sdlc/<id>/intent, which exists nowhere, so
     ``prepare_branch`` reported the head gone and the requests were collected for no pull
     request — a park before the session on a runner, and by hand a session that switched to
     the head itself (sdlc-fix.md step 0), which the branch check would now park. The open
@@ -4763,54 +4867,81 @@ def test_a_dispatched_fix_round_with_no_head_ref_runs_on_the_open_pull_request_s
     git(root, "add", "-A")
     git(root, "commit", "-q", "-m", "intent(0001): from a web session")
     git(root, "push", "-q", "-u", "origin", "claude/relaxed-x")
-    assert git(root, "branch", "-a", "--list", "*sdlc/0001/a").strip() == ""
+    assert git(root, "branch", "-a", "--list", "*sdlc/0001/intent").strip() == ""
     gh = _PullRequestGitHub(head="claude/relaxed-x", number=12)
     monkeypatch.setattr(run_phase, "_github", lambda: gh)
-    assert run_phase.fix_branch_for(root, "0001", "", "owner/name") == ("claude/relaxed-x", "a")
+    assert run_phase.fix_branch_for(root, "0001", "", "owner/name") == (
+        "claude/relaxed-x",
+        "intent",
+    )
     assert run_phase.fix_branch_for(root, "0001", "", "owner/name", "12") == (
-        "claude/relaxed-x", "a",
+        "claude/relaxed-x", "intent",
     )  # fmt: skip
-    assert run_phase.fix_branch_for(root, "0001", "") == ("sdlc/0001/a", "a")  # no repository
-    assert run_phase.fix_branch_for(root, "0001", "", "owner/name", "13") == ("sdlc/0001/a", "a")
-    assert run_phase.fix_branch_for(root, "0001", "sdlc/0001/b", "owner/name") == (
-        "sdlc/0001/b", "a",
+    assert run_phase.fix_branch_for(root, "0001", "") == (
+        "sdlc/0001/intent",
+        "intent",
+    )  # no repository
+    assert run_phase.fix_branch_for(root, "0001", "", "owner/name", "13") == (
+        "sdlc/0001/intent",
+        "intent",
+    )
+    assert run_phase.fix_branch_for(root, "0001", "sdlc/0001/design", "owner/name") == (
+        "sdlc/0001/design", "intent",
     )  # fmt: skip
     nothing_open = _PullRequestGitHub(head="elsewhere", number=3)
     monkeypatch.setattr(run_phase, "_github", lambda: nothing_open)
-    assert run_phase.fix_branch_for(root, "0001", "", "owner/name") == ("sdlc/0001/a", "a")
+    assert run_phase.fix_branch_for(root, "0001", "", "owner/name") == (
+        "sdlc/0001/intent",
+        "intent",
+    )
     # the review of this diff, finding 2: a pull request that does not carry the change's
     # folder is another change's, whatever branch the owner dispatched from
     other = _PullRequestGitHub(head="claude/relaxed-x", number=12, files=["changes/0002-x/a.md"])
     monkeypatch.setattr(run_phase, "_github", lambda: other)
-    assert run_phase.fix_branch_for(root, "0001", "", "owner/name") == ("sdlc/0001/a", "a")
-    assert run_phase.fix_branch_for(root, "0001", "", "owner/name", "12") == ("sdlc/0001/a", "a")
+    assert run_phase.fix_branch_for(root, "0001", "", "owner/name") == (
+        "sdlc/0001/intent",
+        "intent",
+    )
+    assert run_phase.fix_branch_for(root, "0001", "", "owner/name", "12") == (
+        "sdlc/0001/intent",
+        "intent",
+    )
     assert ("pr_files", "owner/name", 12) in other.calls
-    git(root, "checkout", "-q", "-b", "sdlc/0002/b")
-    another = _PullRequestGitHub(head="sdlc/0002/b", number=21)
+    git(root, "checkout", "-q", "-b", "sdlc/0002/design")
+    another = _PullRequestGitHub(head="sdlc/0002/design", number=21)
     monkeypatch.setattr(run_phase, "_github", lambda: another)
-    assert run_phase.fix_branch_for(root, "0001", "", "owner/name") == ("sdlc/0001/a", "a")
+    assert run_phase.fix_branch_for(root, "0001", "", "owner/name") == (
+        "sdlc/0001/intent",
+        "intent",
+    )
     assert another.calls == []  # another change's framework branch: no lookup at all
     git(root, "checkout", "-q", "claude/relaxed-x")
-    git(root, "branch", "-q", "-D", "sdlc/0002/b")
+    git(root, "branch", "-q", "-D", "sdlc/0002/design")
     git(root, "checkout", "-q", "main")
-    assert run_phase.fix_branch_for(root, "0001", "", "owner/name") == ("sdlc/0001/a", "a")
+    assert run_phase.fix_branch_for(root, "0001", "", "owner/name") == (
+        "sdlc/0001/intent",
+        "intent",
+    )
     assert ("find_open_pr", "owner/name", "main") not in nothing_open.calls  # never the default
     git(root, "checkout", "-q", "claude/relaxed-x")
     # the work branch exists on the remote: no lookup
-    git(root, "push", "-q", "origin", "claude/relaxed-x:sdlc/0001/a")
+    git(root, "push", "-q", "origin", "claude/relaxed-x:sdlc/0001/intent")
     monkeypatch.setattr(run_phase, "_github", lambda: gh)
     before = len(gh.calls)
-    assert run_phase.fix_branch_for(root, "0001", "", "owner/name") == ("sdlc/0001/a", "a")
+    assert run_phase.fix_branch_for(root, "0001", "", "owner/name") == (
+        "sdlc/0001/intent",
+        "intent",
+    )
     assert len(gh.calls) == before
-    git(root, "push", "-q", "origin", ":sdlc/0001/a")
+    git(root, "push", "-q", "origin", ":sdlc/0001/intent")
     git(root, "fetch", "-q", "--prune", "origin")
     # the whole round, dispatched on a runner from the pull request's own branch
     with_a_request(gh)
     monkeypatch.setattr(run_phase, "apply_owner_labels", lambda *a, **k: {"ok": True})
     monkeypatch.setattr(run_phase, "ensure_labels", lambda repo, env: {"ok": True})
     pr_route(monkeypatch, number=12)
-    write(change / "evidence" / "gate-a.json", json.dumps({**GATE_FILE, "phase": "a"}))
-    session_gate(monkeypatch, "a")  # the round's own gate writes its record (gap 4)
+    write(change / "evidence" / "gate-intent.json", json.dumps({**GATE_FILE, "phase": "intent"}))
+    session_gate(monkeypatch, "intent")  # the round's own gate writes its record (gap 4)
     monkeypatch.setenv("FAKE_CLAUDE_RESULT", json.dumps(FAKE_RESULT))
     args = Args(
         root=str(root), phase="fix", head_ref="", pr_number=None, dry_run=False,

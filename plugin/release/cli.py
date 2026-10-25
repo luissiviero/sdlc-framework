@@ -1,5 +1,5 @@
 """The release workflow's steps (build guide step 32.3; decision 13; OPERATING_MODEL section
-4, gate (e): the owner's approving review of the build PR, on which the merge App merges
+4, gate (deploy): the owner's approving review of the build PR, on which the merge App merges
 (decision 36), "plus the release label" only when sdlc.yaml declares a real production).
 
     python cli.py run --root <project> --repo <owner/repo> --pr <number>
@@ -17,24 +17,26 @@ release that ran. Neither is a phase run: no ``claude`` starts and no hook fires
 1. ``config``: ``sdlc.yaml: deploy`` (action, production, command);
 2. ``change``: ``--change-id``, else the one ``changes/<id>-<slug>/`` the PR touches (zero or
    several -> ``skip``);
-3. ``pr``: the PR must be merged and be the change's build PR, head ``sdlc/<id>/c`` (else
+3. ``pr``: the PR must be merged and be the change's build PR, head ``sdlc/<id>/build`` or
+   the letter's ``sdlc/<id>/c`` of a change in flight before R45 (else
    ``skip``: an owner's PR that touches ``changes/<id>-*/`` after the merge never releases
    again);
-4. ``phase``: ``status.yaml`` read as on the default branch must be at phase (e) (else
+4. ``phase``: ``status.yaml`` read as on the default branch must be at phase deploy (else
    ``skip``), and the PR must be the change's recorded build PR;
-4b. ``gate`` (0.3.1, issue #66): gate (e) must have a result on the merged copy
-   (``gate.phase`` ``e`` with any result) and the merged copy's ``evidence/gate-e.json`` must
+4b. ``gate`` (0.3.1, issue #66): gate (deploy) must have a result on the merged copy
+   (``gate.phase`` ``deploy`` with any result) and the merged copy's
+   ``evidence/gate-deploy.json`` (or an older plugin's ``gate-e.json``) must
    not be a record whose ``commands`` check is still deferred to the runner (issue #91: a
    job that died between the session and the runner's step leaves one, which says passed
-   and is not). The deploy run sets phase (e) at its start, before the REVIEW.md pass, so a
-   build PR merged while that run is still running carries no gate (e) result: ``skip``,
+   and is not). The deploy run sets phase deploy at its start, before the REVIEW.md pass, so a
+   build PR merged while that run is still running carries no gate (deploy) result: ``skip``,
    never a release of code the review has not judged; the pull request the run opens
    afterwards carries the result and is released on its merge;
-4c. ``parked`` (0.3.1, issue #68): the merged copy carries a ``parked_reason`` (gate (e)
-   parked and the owner merged anyway): the reason is printed, and the release needs the
+4c. ``parked`` (0.3.1, issue #68): the merged copy carries a ``parked_reason`` (gate
+   (deploy) parked and the owner merged anyway): the reason is printed, and the release needs the
    release label whatever ``deploy.production`` says;
 4a. ``released`` (0.3.1, issue #66): the merged copy, the ref ``refs/sdlc/released/<id>`` on
-   the remote or the work branch's copy of ``status.yaml`` (``sdlc/<id>/c``) already records
+   the remote or the work branch's copy of ``status.yaml`` (``sdlc/<id>/build``) already records
    a release of this change -> ``skip``: one release per change, whatever pull request,
    label or dispatch fired the workflow. A remote that cannot be read is exit 2 (fail
    closed: a release is never run on a read that did not happen); a remote without the ref,
@@ -50,8 +52,9 @@ release that ran. Neither is a phase run: no ``claude`` starts and no hook fires
    only one with ``contents: write`` - the first job, which runs the project's own toolchain
    and ``deploy.command``, holds a read-only token): ``released_at``, ``released_sha`` and
    ``released_pr`` committed into ``status.yaml`` on top of the work branch's tip, pushed to
-   ``sdlc/<id>/c`` (so the next pull request from that branch carries them) and to the ref
-   ``refs/sdlc/released/<id>`` (no branch: GitHub's "automatically delete head branches"
+   ``sdlc/<id>/build`` or the letter branch it found (so the next pull request from that
+   branch carries them) and to the ref ``refs/sdlc/released/<id>`` (no branch: GitHub's
+   "automatically delete head branches"
    cannot remove it, and no pull request ever comes from it), on top of the merge commit
    when the branch is already gone. A push that fails is exit 1, so a release that ran
    without its record is seen; a record already there is exit 0.
@@ -107,7 +110,7 @@ DEFAULT_TIMEOUT = 900  # seconds, when sdlc.yaml has no gate.command_timeout
 RECORD_GIT_TIMEOUT = 120  # seconds per git call of the record (a fetch or a push)
 RECORD_PUSH_ATTEMPTS = 3  # a push rejected by a concurrent push is retried on the new tip
 RECORD_COMMIT = "release({id}): record the release of pull request #{pr}"
-# decision 35: the record job stores the (e) merge's risk acceptance when no release ran
+# decision 35: the record job stores the deploy merge's risk acceptance when no release ran
 ACCEPTANCE_COMMIT = "release({id}): record the risk acceptance of pull request #{pr}'s merge"
 RELEASED_REF = "refs/sdlc/released/{id}"  # not a branch: survives the head branch's deletion
 
@@ -245,6 +248,19 @@ def _remote_ref(
     return bool(out.strip())
 
 
+def _remote_build_branch(
+    root: Path, change_id: str, git: Callable[..., tuple[int, str]]
+) -> tuple[str, bool]:
+    """``(branch, on the remote)`` of the change's build branch: ``sdlc/<id>/build``, or the
+    ``sdlc/<id>/c`` an older plugin cut when only that one is on ``origin`` (R45: a change in
+    flight keeps its branch). ``RemoteUnreadable`` when ``origin`` cannot be asked."""
+    names = c.work_branches(change_id, c.BUILD)
+    for name in names:
+        if _remote_ref(root, name, git, heads=True):
+            return name, True
+    return names[0], False
+
+
 def _fetch(root: Path, ref: str, git: Callable[..., tuple[int, str]]) -> None:
     code, _ = git(root, "fetch", "--quiet", "origin", ref)
     if code != 0:
@@ -255,14 +271,14 @@ def remote_record(
     root: Path, change_id: str, rel_status: str, git: Callable[..., tuple[int, str]]
 ) -> tuple[Any, str]:
     """(the release record the remote carries, or None; where it came from or why there is
-    none). The ref ``refs/sdlc/released/<id>`` first, then the work branch ``sdlc/<id>/c``.
+    none). The ref ``refs/sdlc/released/<id>`` first, then the work branch ``sdlc/<id>/build``
+    (or the letter's ``sdlc/<id>/c`` of a change in flight before R45).
     A remote that cannot be asked, fetched or read raises ``RemoteUnreadable``: the caller
     fails closed. No ``origin`` remote (a by-hand run on a bare checkout) is "no remote"."""
     code, remotes = git(root, "remote")
     if code != 0 or "origin" not in remotes.split():
         return None, "no origin remote"
     ref = RELEASED_REF.format(id=change_id)
-    branch = c.work_branch(change_id, "c")
     if _remote_ref(root, ref, git):
         _fetch(root, ref, git)
         st = _status_at(root, "FETCH_HEAD", rel_status, git)
@@ -270,10 +286,11 @@ def remote_record(
             return st, ref
         if st is None or not st.risk_acceptances:
             raise RemoteUnreadable(f"{ref} is on the remote but carries no release record")
-        # decision 35: the record job stored the (e) merge's risk acceptance there before
+        # decision 35: the record job stored the deploy merge's risk acceptance there before
         # any release ran (a declared production waiting for its label); the work branch is
         # still read, since a push of two refspecs is not atomic
-    if not _remote_ref(root, branch, git, heads=True):
+    branch, on_branch = _remote_build_branch(root, change_id, git)
+    if not on_branch:
         return None, f"neither {ref} nor the work branch {branch} is on the remote"
     _fetch(root, f"refs/heads/{branch}", git)
     st = _status_at(root, "FETCH_HEAD", rel_status, git)
@@ -287,7 +304,7 @@ def remote_record(
 # --- R51: the merge commit re-checked, and never deployed over a newer release ----------------
 RECHECK_RED = (
     "the merge commit {sha} is not green ({red}): no gate ran on this tree, which holds what "
-    "merged into the default branch after gate (e); deploy.command did not run"
+    "merged into the default branch after gate (deploy); deploy.command did not run"
 )
 RECHECK_ROUTE = (
     "fix the default branch in a change of its own (an incident intent, /sdlc-plan), then "
@@ -372,8 +389,9 @@ def _records_all(st: Any, release: bool, acceptance: dict[str, Any] | None) -> b
         return True
     return any(
         line.get("pr") == acceptance.get("pr")
-        and (line.get("details") or {}).get("phase")
-        == (acceptance.get("details") or {}).get("phase")
+        # R45: a line an older plugin stored names the letter ``e``
+        and c.phase_name((line.get("details") or {}).get("phase"))
+        == c.phase_name((acceptance.get("details") or {}).get("phase"))
         for line in st.risk_acceptances
     )
 
@@ -390,7 +408,8 @@ def store_release_record(
 ) -> tuple[bool, str]:
     """Commit the release record into ``status.yaml`` and push it: (stored, what happened).
 
-    The commit sits on the work branch's tip when ``sdlc/<id>/c`` is still on the remote
+    The commit sits on the work branch's tip when ``sdlc/<id>/build`` (or a change in flight's
+    ``sdlc/<id>/c``) is still on the remote
     (a later pull request from it then carries the record), else on the ref's tip when the
     ref is there, else on the merge commit the release checked out; it is pushed to the
     branch (when there) and always to the ref
@@ -401,13 +420,13 @@ def store_release_record(
     no checkout persists one in ``.git/config`` (decision 33, R49), so a worktree needs
     nothing of its own. A record already there, on the ref or the branch, is "stored".
 
-    Decision 35 (1.0.15): ``acceptance`` is the (e) merge's ``risk_acceptances`` line, stored
+    Decision 35 (1.0.15): ``acceptance`` is the deploy merge's ``risk_acceptances`` line, stored
     in the same commit; with ``release`` False the commit carries that line alone (the
     merge accepted a risk and no release ran: none is configured, or a declared production
     waits for its label), and ``remote_record`` reads such a ref as carrying no release.
     """
-    branch = c.work_branch(change_id, "c")
     ref = RELEASED_REF.format(id=change_id)
+    branch = c.work_branch(change_id, c.BUILD)
     try:
         on_ref = _remote_ref(root, ref, git)
         if on_ref:
@@ -417,7 +436,7 @@ def store_release_record(
                 return True, f"{ref} already records it" + (
                     f": {_released_line(st)}" if st.released else ""
                 )
-        on_branch = _remote_ref(root, branch, git, heads=True)
+        branch, on_branch = _remote_build_branch(root, change_id, git)
     except RemoteUnreadable as exc:
         return False, str(exc)
     why = "not attempted"
@@ -500,7 +519,7 @@ def merge_acceptance(
     repo: str | None = None,
     reviews: Callable[[], dict[str, Any]] | None = None,
 ) -> tuple[dict[str, Any] | None, str] | None:
-    """Decision 35: the ``risk_acceptances`` line of the (e) merge, from the merged copy's
+    """Decision 35: the ``risk_acceptances`` line of the deploy merge, from the merged copy's
     gate records (the items no earlier act accepted, ``risk.banner_entries``) and GitHub's
     record of the act (who, when, the body it showed); (None, why) when no act of the
     owner's account accepted (``unpark.is_owner_actor``, decision 34's one rule), None when
@@ -511,7 +530,7 @@ def merge_acceptance(
     owner's latest review that approves or requests changes must approve."""
     from state import unpark  # noqa: PLC0415
 
-    items = risk_mod.new_items(risk_mod.banner_entries(change_dir, "e", st))
+    items = risk_mod.new_items(risk_mod.banner_entries(change_dir, c.DEPLOY, st))
     if not items:
         return None
     by = str(pr.get("merged_by") or "").strip()
@@ -526,7 +545,7 @@ def merge_acceptance(
             )
         if approval is not None:
             line = risk_mod.acceptance_line(
-                "e",
+                c.DEPLOY,
                 items,
                 str(approval.get("author")),
                 str(approval.get("at") or "").strip() or gate_mod._now(),
@@ -541,7 +560,7 @@ def merge_acceptance(
             f"and no approving review by the owner (decisions 34, 35 and 36): {', '.join(items)}"
         )
     line = risk_mod.acceptance_line(
-        "e",
+        c.DEPLOY,
         items,
         by,
         str(pr.get("merged_at") or "").strip() or gate_mod._now(),
@@ -753,8 +772,9 @@ def _release(args, env, github, git, record_git, say) -> int:
     if not pr.get("merged"):
         say("skip", f"pull request #{args.pr} is not merged")
         return 0
-    build_head = c.work_branch(change_id, "c")
-    if pr.get("head_ref") != build_head:
+    build_head = c.work_branch(change_id, c.BUILD)
+    # R45: the build PR of a change in flight before 1.0.43 has the letter head sdlc/<id>/c
+    if pr.get("head_ref") not in c.work_branches(change_id, c.BUILD):
         say(
             "skip",
             f"pull request #{args.pr} (head {pr.get('head_ref') or '?'}) is not the build PR "
@@ -763,7 +783,8 @@ def _release(args, env, github, git, record_git, say) -> int:
         return 0
     merge_sha = args.merge_sha or pr.get("merge_commit_sha")
     say("pr", f"#{args.pr} merged{f' as {merge_sha}' if merge_sha else ''}")
-    # (4) the change is at phase (e), read as on the default branch
+    build_head = str(pr.get("head_ref"))
+    # (4) the change is at phase deploy, read as on the default branch
     change_dir = c.find_change_dir(root, change_id)
     if change_dir is None:
         say("skip", f"no changes/{change_id}-<slug>/ folder at {root}")
@@ -776,8 +797,8 @@ def _release(args, env, github, git, record_git, say) -> int:
         return 2
     if note:
         say("note", note)
-    if st.phase != "e":
-        say("skip", f"change {change_id} is at phase {st.phase}, not e")
+    if st.phase != c.DEPLOY:
+        say("skip", f"change {change_id} is at phase {st.phase}, not {c.DEPLOY}")
         return 0
     if st.build_pr is not None and int(st.build_pr) != int(args.pr):
         # the recorded build PR is the one the approval belongs to (0.2.27)
@@ -786,19 +807,20 @@ def _release(args, env, github, git, record_git, say) -> int:
             f"pull request #{args.pr} is not the build PR #{st.build_pr} status.yaml records",
         )
         return 0
-    say("phase", "e")
-    # (4b) gate (e) must have a result on the merged copy, and a record whose commands check
+    say("phase", c.DEPLOY)
+    # (4b) gate (deploy) must have a result on the merged copy, and a record whose commands check
     # the runner ran (issue #66; issue #91's deferred mark)
-    if raw.gate.phase != "e" or not raw.gate.result:
+    if raw.gate.phase != c.DEPLOY or not raw.gate.result:
         say(
             "skip",
-            f"change {change_id} has no gate (e) result on the merged copy "
+            f"change {change_id} has no gate (deploy) result on the merged copy "
             f"(gate: {raw.gate.phase or '-'}/{raw.gate.result or '-'}): the build PR was merged "
             "while the deploy run was still running, before its REVIEW.md pass; the pull "
             "request that run opens carries the result and releases on its merge",
         )
         return 0
-    gate_file = change_dir / art.EVIDENCE_DIR / art.GATE_RESULT.format(phase="e")
+    # R45: the letter's gate-e.json of a change merged by an older plugin is read too
+    gate_file = c.phase_file(change_dir / art.EVIDENCE_DIR, art.GATE_RESULT, c.DEPLOY)
     try:
         gate_record = json.loads(gate_file.read_text(encoding="utf-8"))
     except (OSError, ValueError):
@@ -807,19 +829,19 @@ def _release(args, env, github, git, record_git, say) -> int:
         say(
             "skip",
             f"change {change_id} has no readable evidence/{gate_file.name} on the merged "
-            "copy: gate (e)'s record is what the release judges, and it is not there",
+            "copy: gate (deploy)'s record is what the release judges, and it is not there",
         )
         return 0
     if gate_mod.deferred_commands(gate_record):
         say(
             "skip",
-            f"gate (e) of change {change_id} recorded its commands check (or its evidence "
+            f"gate (deploy) of change {change_id} recorded its commands check (or its evidence "
             "logs, item 3b) as deferred to the runner and the runner never ran it (issue "
-            "#91): the gate is not passed; re-run phase (e), then merge the pull request it "
+            "#91): the gate is not passed; re-run phase deploy, then merge the pull request it "
             "opens",
         )
         return 0
-    say("gate", f"e/{raw.gate.result}")
+    say("gate", f"{c.DEPLOY}/{raw.gate.result}")
     # (4c) a parked change merged anyway (issue #68): the reason is shown, the label required
     parked = (raw.parked_reason or "").strip()
     if parked:
@@ -895,7 +917,7 @@ def _release(args, env, github, git, record_git, say) -> int:
         say("done", "release prepared in the PR; deploy.command is empty, nothing runs")
         return 0
     # (5b) R51 (checks 9 to 11 of the race analysis): the tree that deploys is the merge
-    # commit, which no gate judged when another change merged after this one's gate (e) or
+    # commit, which no gate judged when another change merged after this one's gate (deploy) or
     # the owner updated the branch; a newer release that already holds it deploys nothing
     # older over it
     try:
@@ -914,7 +936,7 @@ def _release(args, env, github, git, record_git, say) -> int:
             say("error", f"the record job's outputs could not be written ({problem})")
             return 1
         say("record", f"pending: released inside change {newer[0]}'s release; the record "
-            f"job stores it on {c.work_branch(change_id, 'c')} and "
+            f"job stores it on {build_head} and "
             f"{RELEASED_REF.format(id=change_id)}")  # fmt: skip
         return 0
     red = recheck_targets(config, root, _timeout(config))
@@ -943,7 +965,7 @@ def _release(args, env, github, git, record_git, say) -> int:
         say("error", f"the record job's outputs could not be written ({problem}): the release "
             "ran and would run again on the next event")  # fmt: skip
         return 1
-    say("record", f"pending: the record job stores it on {c.work_branch(change_id, 'c')} and "
+    say("record", f"pending: the record job stores it on {build_head} and "
         f"{RELEASED_REF.format(id=change_id)}")  # fmt: skip
     return 0
 
@@ -978,7 +1000,7 @@ def build_parser() -> argparse.ArgumentParser:
     rec.add_argument(
         "--acceptance",
         default="",
-        help="decision 35: the (e) merge's risk_acceptances line as JSON, from the run step",
+        help="decision 35: the deploy merge's risk_acceptances line as JSON, from the run step",
     )
     return p
 

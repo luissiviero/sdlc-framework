@@ -3,7 +3,7 @@ by the review job in CI.
 
     python "${CLAUDE_PLUGIN_ROOT}/plugin/review/cli.py" prompt --root . --id 0001 [--base <ref>]
     python cli.py validate --root . --id 0001 [--base <ref>] [--no-record]
-    python cli.py check-run --root . --id 0001 --phase e
+    python cli.py check-run --root . --id 0001 --phase deploy
 
 ``prompt`` prints ``REVIEW_PROMPT.md`` with the change filled in — plain text, handed to a
 context that did not write the code (decision 12). ``validate`` reads
@@ -112,7 +112,7 @@ on this pull request, and the owner's approving review accepts it
 below, in a second file, `{brief}`, one section per item, its name exactly as listed:
 
 ```markdown
-# Security & policy brief, gate (e)
+# Security & policy brief, gate (deploy)
 
 ## <item>
 - Word: continue
@@ -131,13 +131,13 @@ escalation on a risk item parks the change for the owner and never goes to the r
 
 def risk_section(root: Path, change_id: str, base: str | None) -> str:
     """The prompt's last section when the committed diff touches risk-list items (decision
-    35): the items gate (e) will report, with where each matched, and the brief file the
+    35): the items gate (deploy) will report, with where each matched, and the brief file the
     pass writes for them; "" when nothing hits or the hits cannot be read (the gate reports
     them anyway, and the banner then says no brief was written)."""
     from gate import gate as gate_mod  # noqa: PLC0415
 
     try:
-        found = gate_mod.risk_hits_now(root, change_id, "e", base)
+        found = gate_mod.risk_hits_now(root, change_id, c.DEPLOY, base)
     except Exception:  # noqa: BLE001 - the prompt never fails on the risk read
         return ""
     hits = found.get("hits") or {}
@@ -391,12 +391,13 @@ def build_parser() -> argparse.ArgumentParser:
                 help="do not write changes/.review-seen.json (a dry run)",
             )
         if name == "check-run":
-            s.add_argument("--phase", default="e", choices=c.PHASES)
+            # R45: a letter (``--phase e``) is read as its name for one release
+            s.add_argument("--phase", default=c.DEPLOY, type=c.phase_name, choices=c.PHASES)
             s.add_argument(
                 "--final-head",
                 action="store_true",
                 help="post on HEAD, green only if every commit since the reviewed one is "
-                "evidence or the run record (the runner, at (e))",
+                "evidence or the run record (the runner, at deploy)",
             )
         s.set_defaults(fn=fn)
     return p

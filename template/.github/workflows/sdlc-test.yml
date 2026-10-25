@@ -1,4 +1,4 @@
-# Phase (d) test, fired by the build job's dispatch.
+# The test phase, fired by the build job's dispatch.
 #
 # Contract: docs/OPERATING_MODEL.md section 4.2 (the trigger and dispatch table), build guide
 # step 30, article p.39-41 ("Run Claude Code non-interactively inside the CI/CD pipeline,
@@ -18,7 +18,7 @@
 #
 # /sdlc-init filled in the framework repository. The Claude Code version is read from
 # sdlc.yaml at run time.
-name: SDLC test (d)
+name: SDLC test
 
 on:
   workflow_dispatch:
@@ -28,7 +28,7 @@ on:
         required: true
         type: string
       head_ref:
-        description: "The change's work branch, e.g. sdlc/0001/c; it keys the concurrency group"
+        description: "The change's work branch, e.g. sdlc/0001/build; it keys the concurrency group"
         required: false
         type: string
 
@@ -39,8 +39,8 @@ permissions:
   checks: write
   actions: write
 
-# One change at a time, keyed on the change's own branch: sdlc/<id>/b for the design PR
-# merge, sdlc/<id>/c for build, test and deploy — the runs that must serialise
+# One change at a time, keyed on the change's own branch: sdlc/<id>/design for the design PR
+# merge, sdlc/<id>/build for build, test and deploy — the runs that must serialise
 # (OPERATING_MODEL section 4.2). run_phase.py passes head_ref on every dispatch; since
 # decision 37 (1.0.21) a dispatch is the only way this workflow starts (no approval label).
 # The group is set on the job below.
@@ -130,7 +130,7 @@ jobs:
         # sdlc:commands.env setup
         run: python framework/plugin/ci/project_setup.py --root . --out "$RUNNER_TEMP/sdlc-setup.json"
 
-      - name: Run phase (d)
+      - name: Run the test phase
         id: phase
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -143,7 +143,7 @@ jobs:
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
           SDLC_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
           # sdlc:commands.env
-        run: python framework/plugin/ci/run_phase.py --root . --plugin-dir framework --phase d --id "$CHANGE_ID" --head-ref "$HEAD_REF" --repo "$REPO" --ref "$DEFAULT_BRANCH" --out "$RUNNER_TEMP/sdlc-run.json"
+        run: python framework/plugin/ci/run_phase.py --root . --plugin-dir framework --phase test --id "$CHANGE_ID" --head-ref "$HEAD_REF" --repo "$REPO" --ref "$DEFAULT_BRANCH" --out "$RUNNER_TEMP/sdlc-run.json"
 
       # R18: a failed run explains itself. After a failed setup or runner step, or a park
       # with a log to read (the runner's triage=park output; a park ends the job green), the

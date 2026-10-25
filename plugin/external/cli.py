@@ -1,7 +1,7 @@
 """The second opinion (ROADMAP R8, plugin 1.0.19): a model of another vendor reads a change at
-gate (b) or (e) and answers; it edits nothing, never parks and never fails its job.
+gate (design) or (deploy) and answers; it edits nothing, never parks and never fails its job.
 
-    python plugin/external/cli.py review --root . --id 0001 --phase b [--repo owner/name]
+    python plugin/external/cli.py review --root . --id 0001 --phase design [--repo owner/name]
         [--ref main] [--head <rev>] [--model <id>] [--out record.json] [--post] [--dry-run]
     python plugin/external/cli.py models
 
@@ -11,19 +11,21 @@ step's environment; the Claude session never sees the key (``ci/run_phase.sessio
 strips it) and its sandbox does not reach the Gemini host. By hand it runs the same way from
 a terminal where the owner set the key for that window only.
 
-On: ``sdlc.yaml: external_review: {model: <id>, phases: [b, e]}`` on the default branch
-(``--ref``), as the pin is read; absent means off and the command says so and stops.
+On: ``sdlc.yaml: external_review: {model: <id>, phases: [design, deploy]}`` on the default
+branch (``--ref``), as the pin is read (R45: the letters ``[b, e]`` an older file holds are
+read as the names); absent means off and the command says so and stops.
 ``--model`` runs it by hand whatever ``sdlc.yaml`` says. With ``--repo`` it reviews the head
-of the change's open pull request (``sdlc/<id>/b`` at (b), ``sdlc/<id>/c`` at (e)) and
+of the change's open pull request (``sdlc/<id>/design`` at design, ``sdlc/<id>/build`` at
+deploy, or the letter branch of a change in flight before R45) and
 ``--post`` puts the record on that pull request as one comment. Every failure is the
 record's "not run: <reason>"; the exit code is 0 whenever the arguments parse. An "off"
 record writes no file and posts nothing: the printed record is the only trace (1.0.24).
 
-At (e), when ``external_review.phases`` lists (b) and the build head's ``status.yaml``
-records the fast lane (``fast_lane.b.pr``, decision 30), the (b) opinion posted on the
-design PR, which the build PR closed as ``sdlc:superseded``, is carried onto the build PR
-once, where the owner looks first (plugin 1.0.24): a section of the (e) comment, or a
-comment of its own when (e) is off. It calls no model.
+At deploy, when ``external_review.phases`` lists design and the build head's ``status.yaml``
+records the fast lane (``fast_lane.design.pr``, decision 30), the design opinion posted on
+the design PR, which the build PR closed as ``sdlc:superseded``, is carried onto the build
+PR once, where the owner looks first (plugin 1.0.24): a section of the deploy comment, or a
+comment of its own when deploy is off. It calls no model.
 """
 
 from __future__ import annotations
@@ -31,7 +33,6 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import re
 import sys
 from pathlib import Path
 from typing import Any
@@ -42,15 +43,38 @@ if str(PLUGIN_DIR) not in sys.path:
 
 from external import bundle, gemini  # noqa: E402
 from external import review as review_mod  # noqa: E402
+from state import conventions as conv  # noqa: E402
 from state import yamlish  # noqa: E402
 from state.conventions import SUPERSEDED_LABEL  # noqa: E402
 
-PHASES = ("b", "e")
-BRANCH = {"b": "sdlc/{id}/b", "e": "sdlc/{id}/c"}
+PHASES = (conv.DESIGN, conv.DEPLOY)
 CONFIG_KEY = "external_review"
 # who posts the record: the job's `GITHUB_TOKEN` is the workflow token
 WORKFLOW_BOT = "github-actions[bot]"
-WORK_BRANCH_RE = re.compile(r"^sdlc/(\d{4})/[a-f]$")
+
+
+def branches(phase: str, change_id: str) -> tuple[str, str]:
+    """The heads of the change's pull request at ``phase``: the name's branch
+    (``sdlc/<id>/design``, ``sdlc/<id>/build``), then the letter's an older plugin cut (R45)."""
+    return conv.work_branches(change_id, phase)
+
+
+def _find_pr(
+    github: Any, repo: str, phase: str, change_id: str, state: str, root: Path
+) -> tuple[str, dict[str, Any]]:
+    """``(branch, found)``: the first of ``branches`` with a pull request in ``state``; the
+    name's branch and its answer when neither has one."""
+    heads = branches(phase, change_id)
+    first: dict[str, Any] | None = None
+    for head in heads:
+        if state == "open":
+            found = github.find_open_pr(repo, head, cwd=root)
+        else:
+            found = github.find_pr(repo, head, state, cwd=root)
+        if found.get("number"):
+            return head, found
+        first = found if first is None else first
+    return heads[0], first or {}
 
 
 def _github():
@@ -82,8 +106,11 @@ def settings(config: dict[str, Any]) -> dict[str, Any]:
 
 
 def turned_on(config: dict[str, Any], phase: str) -> bool:
+    """``phase`` is listed in ``external_review.phases``: by name, or by the letter an older
+    file holds (``[b, e]``, R45)."""
     phases = settings(config).get("phases")
-    return isinstance(phases, list) and phase in [str(p) for p in phases]
+    listed = [conv.phase_name(str(p)) for p in phases] if isinstance(phases, list) else []
+    return conv.phase_name(phase) in listed
 
 
 def max_chars(config: dict[str, Any]) -> int:
@@ -107,9 +134,10 @@ def given_on_head(repo: str, pr: int, head: str, root: Path) -> str | None:
 def run_review(args: argparse.Namespace, env: dict[str, str]) -> dict[str, Any]:
     root = Path(args.root).resolve()
     config = read_config(root, args.ref)
+    args.phase = conv.phase_name(args.phase)
     if not args.id:
-        found_id = WORK_BRANCH_RE.match(args.head_ref or "")
-        args.id = found_id.group(1) if found_id else ""
+        parsed = conv.parse_branch(args.head_ref or "")
+        args.id = parsed[0] if parsed else ""
     record: dict[str, Any] = {
         "provider": review_mod.PROVIDER,
         "phase": args.phase,
@@ -121,7 +149,7 @@ def run_review(args: argparse.Namespace, env: dict[str, str]) -> dict[str, Any]:
     }
     if not args.model and settings(config) and not isinstance(settings(config).get("phases"), list):
         # a block the owner wrote but that turns nothing on is said, never silent (1.0.24)
-        record["reason"] = f"sdlc.yaml {CONFIG_KEY}.phases is not a list, as [b, e]"
+        record["reason"] = f"sdlc.yaml {CONFIG_KEY}.phases is not a list, as [design, deploy]"
         return record
     if not args.model and not turned_on(config, args.phase):
         record["off"] = True
@@ -140,8 +168,7 @@ def run_review(args: argparse.Namespace, env: dict[str, str]) -> dict[str, Any]:
         return record
     head_rev = args.head
     if args.repo and not head_rev:
-        branch = BRANCH[args.phase].format(id=args.id)
-        found = _github().find_open_pr(args.repo, branch, cwd=root)
+        branch, found = _find_pr(_github(), args.repo, args.phase, args.id, "open", root)
         if not found.get("number"):
             record["reason"] = (
                 f"no open pull request from {branch} ({found.get('reason') or 'none'})"
@@ -160,7 +187,7 @@ def run_review(args: argparse.Namespace, env: dict[str, str]) -> dict[str, Any]:
         record["reason"] = f"already given on this head: {earlier}"
         return record
     base = None
-    if args.phase == "e":
+    if args.phase == conv.DEPLOY:
         ref = args.ref or "main"
         target = bundle.resolve(root, f"refs/remotes/origin/{ref}") or bundle.resolve(root, ref)
         ok, out = bundle.run_git(root, "merge-base", target or "", head) if target else (False, "")
@@ -204,7 +231,8 @@ def run_review(args: argparse.Namespace, env: dict[str, str]) -> dict[str, Any]:
 
 
 def _fast_lane_b(root: Path, head: str, change_id: str) -> dict[str, Any] | None:
-    """``fast_lane.b`` of the change's ``status.yaml`` at ``head``: the record of a build the
+    """``fast_lane.design`` (or the letter's ``fast_lane.b`` an older plugin wrote, R45) of
+    the change's ``status.yaml`` at ``head``: the record of a build the
     fast lane started (decision 30), None off the fast lane or when unreadable. Its ``pr``,
     the design PR, is optional (``state/status.py FAST_LANE_REQUIRED``)."""
     folder = bundle.change_folder(root, head, change_id)
@@ -214,7 +242,9 @@ def _fast_lane_b(root: Path, head: str, change_id: str) -> dict[str, Any] | None
     except Exception:  # noqa: BLE001 - an unreadable file carries nothing, never a crash
         return None
     fast = status.get("fast_lane") if isinstance(status, dict) else None
-    entry = fast.get("b") if isinstance(fast, dict) else None
+    entry = None
+    if isinstance(fast, dict):
+        entry = fast.get(conv.DESIGN, fast.get(conv.PHASE_LETTERS[conv.DESIGN]))
     return entry if isinstance(entry, dict) else None
 
 
@@ -223,27 +253,31 @@ def _pr_number(value: Any) -> int | None:
 
 
 def _the_opinion(comment: dict[str, Any]) -> bool:
-    """A (b) record the second-opinion job posted: the workflow token's identity, never
-    another App's (``given_on_head`` reads any bot, for a verdict it only skips on)."""
+    """A design record the second-opinion job posted: the workflow token's identity, never
+    another App's (``given_on_head`` reads any bot, for a verdict it only skips on). A record
+    an older plugin posted says ``phase (b)`` (R45)."""
     body = comment.get("body") or ""
+    letter = conv.PHASE_LETTERS[conv.DESIGN]
     return (
         comment.get("type") == "Bot"
         and comment.get("author") == WORKFLOW_BOT
         and body.startswith(review_mod.MARKER)
-        and "phase (b)" in body
+        and any(f"phase ({p})" in body for p in (conv.DESIGN, letter))
     )
 
 
 def carry_design_opinion(args: argparse.Namespace, config: dict[str, Any]) -> dict[str, Any] | None:
-    """At (e): the (b) opinion of the design PR the fast lane superseded, for the build PR
-    (``review.carried``), once per build PR. None when there is nothing to carry: (b) is off,
+    """At deploy: the design opinion of the design PR the fast lane superseded, for the build
+    PR (``review.carried``), once per build PR. None when there is nothing to carry: design is
+    off,
     the change took no fast lane, or its design PR is not closed as superseded (the owner
     reads the opinion there). A reason without ``text`` when GitHub could not be read."""
-    if args.phase != "e" or not args.repo or not args.id or not turned_on(config, "b"):
+    phase = conv.phase_name(args.phase)
+    if phase != conv.DEPLOY or not args.repo or not args.id or not turned_on(config, conv.DESIGN):
         return None
     root = Path(args.root).resolve()
     github = _github()
-    build = github.find_open_pr(args.repo, BRANCH["e"].format(id=args.id), cwd=root)
+    _branch, build = _find_pr(github, args.repo, conv.DEPLOY, args.id, "open", root)
     head = bundle.resolve(root, build.get("head_sha") or "") if build.get("number") else None
     entry = _fast_lane_b(root, head, args.id) if head else None
     if entry is None:
@@ -253,10 +287,10 @@ def carry_design_opinion(args: argparse.Namespace, config: dict[str, Any]) -> di
     if design_pr is None:
         # the number was never recorded: the build PR superseded the design PR it found by
         # its branch (``run_phase.supersede_earlier_pr``), so look for it the same way
-        found = github.find_pr(args.repo, BRANCH["b"].format(id=args.id), "closed", cwd=root)
+        _branch, found = _find_pr(github, args.repo, conv.DESIGN, args.id, "closed", root)
         design_pr = _pr_number(found.get("number"))
         if design_pr is None:
-            return {**carry, "reason": "fast_lane.b names no design PR and none was found"}
+            return {**carry, "reason": "fast_lane.design names no design PR and none was found"}
     carry["design_pr"] = design_pr
     design = github.pr_by_number(args.repo, design_pr, cwd=root)
     if not design.get("ok"):
@@ -284,8 +318,9 @@ def carry_design_opinion(args: argparse.Namespace, config: dict[str, Any]) -> di
 def publish(args: argparse.Namespace, record: dict[str, Any], env: dict[str, str]) -> None:
     """The record where the owner reads it: the job summary in CI, one PR comment with
     ``--post``, the JSON with ``--out``. An "off" record with nothing carried writes and posts
-    nothing; a repeat on a head that already has a verdict is not posted again. A carried (b)
-    opinion is a section of the (e) comment, or a comment of its own; an (e) record that found
+    nothing; a repeat on a head that already has a verdict is not posted again. A carried
+    design opinion is a section of the deploy comment, or a comment of its own; a deploy
+    record that found
     no pull request of its own (no model, say) goes with it onto the build PR. A carry that
     only has a reason (GitHub unread, already carried) is written to the summary and the
     JSON, never posted."""
@@ -320,7 +355,7 @@ def cmd_review(args: argparse.Namespace) -> int:
     record = run_review(args, env)
     try:
         carried = carry_design_opinion(args, read_config(Path(args.root).resolve(), args.ref))
-    except Exception as exc:  # noqa: BLE001 - the carry never costs the (e) record its post
+    except Exception as exc:  # noqa: BLE001 - the carry never costs the deploy record its post
         carried = {"reason": f"the carry failed: {type(exc).__name__}: {exc}"}
     if carried is not None:
         record["carried"] = carried
@@ -341,13 +376,14 @@ def cmd_models(args: argparse.Namespace) -> int:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n", 1)[0])
     sub = parser.add_subparsers(dest="command", required=True)
-    rv = sub.add_parser("review", help="ask for a second opinion on a change at (b) or (e)")
+    rv = sub.add_parser("review", help="ask for a second opinion on a change at design or deploy")
     rv.add_argument("--root", default=".")
     rv.add_argument("--id", default="", help="the change id (else read from --head-ref)")
     rv.add_argument("--head-ref", default="", help="the work branch sdlc/<id>/<phase>")
-    rv.add_argument("--phase", required=True, choices=PHASES)
+    # R45: a letter (``--phase b``) is read as its name for one release
+    rv.add_argument("--phase", required=True, type=conv.phase_name, choices=PHASES)
     rv.add_argument("--repo", help="owner/name: review the head of the change's open PR")
-    rv.add_argument("--ref", help="the default branch: sdlc.yaml and the (e) merge base")
+    rv.add_argument("--ref", help="the default branch: sdlc.yaml and the deploy merge base")
     rv.add_argument("--head", help="the commit to review (default: the PR's head, else HEAD)")
     rv.add_argument("--model", help="by hand: this model id, whatever sdlc.yaml says")
     rv.add_argument("--out", help="write the record (JSON) to this file")

@@ -1,8 +1,8 @@
-# The release of gate (e): the merge of the build PR - by the merge App on the owner's
+# The release of the deploy gate: the merge of the build PR - by the merge App on the owner's
 # approving review (decision 36), or by the owner - runs the project's own
 # sdlc.yaml: deploy.command - after checking the approval - and nothing else.
 #
-# Contract: docs/OPERATING_MODEL.md sections 4 (gate (e): "merge of the build PR; plus a
+# Contract: docs/OPERATING_MODEL.md sections 4 (the deploy gate: "merge of the build PR; plus a
 # release label only when sdlc.yaml declares a real production") and 4.2, build guide step 32
 # (task 32.3), decision 13; article p.32 (the framework takes a change through "everything up
 # to the production gate and nothing past it") and p.40 (CI/CD step 5: the deploy runs behind
@@ -13,7 +13,7 @@
 #   * closed - the merge (the merge App's events start runs, the workflow token's never
 #     would; whether its merge starts this workflow is to verify at the merge App's first merge, else
 #     the merge workflow dispatches it). Without a declared production
-#     (deploy.production: false) the approval of gate (e) is the release's and it runs now;
+#     (deploy.production: false) the approval at the deploy gate is the release's and it runs now;
 #   * labeled - with deploy.production: true the release also needs the label
 #     sdlc:release-approved, applied by a person on GitHub - the only route: a run cannot
 #     approve itself (decision 5), so no signed tag counts and no bot's label does. The
@@ -30,13 +30,13 @@
 # record could not be pushed (red).
 #
 # One release per change (0.3.1, issues #66 and #68): the release step releases only a
-# merged copy whose gate (e) has a result and whose gate record the runner's commands step
+# merged copy whose deploy gate has a result and whose gate record the runner's commands step
 # completed (a build PR merged while the deploy run still runs is skipped; the PR that run
 # opens afterwards releases), waits for sdlc:release-approved when the merged copy was parked
 # (the park reason is printed), and skips a change whose release is already recorded. After
 # a command that exited 0 the second job, record, commits released_at / released_sha /
-# released_pr into status.yaml on the change's work branch sdlc/<id>/c and on the ref
-# refs/sdlc/released/<id> (which no branch deletion removes) - never on the default branch -
+# released_pr into status.yaml on the change's work branch sdlc/<id>/build (or /c) and on
+# the ref refs/sdlc/released/<id> (which no branch deletion removes) - never on the default branch -
 # so a second merge of the same change, the label or a dispatch releases nothing again.
 #
 # Token rule: events caused by the GITHUB_TOKEN never start another workflow run - only
@@ -53,7 +53,7 @@
 #
 # /sdlc-init rewrote `branches: [main]` below to this project's default branch and filled
 # in the framework repository.
-name: SDLC release (e)
+name: SDLC release (deploy)
 
 on:
   pull_request:
@@ -158,8 +158,8 @@ jobs:
   # The release record (0.3.1, issue #66): the only job with a write token, and it runs the
   # framework's record step and nothing of the project's (no toolchain, no deploy.command).
   # It commits released_at / released_sha / released_pr into status.yaml on the work branch
-  # sdlc/<id>/c (when still there) and on refs/sdlc/released/<id>; the release step reads
-  # both before releasing. A push that fails is red: the release ran without its record.
+  # sdlc/<id>/build or /c (when still there) and on refs/sdlc/released/<id>; the release
+  # step reads both before releasing. A push that fails is red: the release ran without its record.
   # Decision 35 (1.0.15): it also runs when the merge accepted risk-list items the build
   # PR's close-look banner showed, and commits that acceptance line (who merged, when, the
   # items, whether the body showed the banner) the same way, with the release or alone,

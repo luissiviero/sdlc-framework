@@ -511,8 +511,8 @@ def issue_comments(repo: str, number: int, cwd: str | Path | None = None) -> dic
     """The comments on issue or pull request ``number``, oldest first: {'ok', 'comments',
     'reason'}; each comment is {'id', 'author', 'type', 'association', 'body', 'at', 'url'}
     (``GET /repos/{repo}/issues/{number}/comments``, paged like the label events, fail closed
-    past the page cap). Read by the dismissal of gate (f): the last comment by a person before
-    the close is the reason; and by the fix round (``ci/fix_requests.py``, 0.2.24)."""
+    past the page cap). Read by the dismissal of gate (maintain): the last comment by a person
+    before the close is the reason; and by the fix round (``ci/fix_requests.py``, 0.2.24)."""
 
     path = f"repos/{repo}/issues/{number}/comments"
 
@@ -916,7 +916,7 @@ def close_pr(repo: str, number: int, cwd: str | Path | None = None) -> dict[str,
 
 
 def set_ready(repo: str, number: int, cwd: str | Path | None = None) -> dict[str, Any]:
-    """Mark a draft PR ready for review (phase (e)). REST has no such field: the GraphQL
+    """Mark a draft PR ready for review (phase deploy). REST has no such field: the GraphQL
     mutation ``markPullRequestReadyForReview`` takes the PR's node id."""
 
     def via_gh() -> dict[str, Any]:
@@ -1091,7 +1091,7 @@ def create_check_run(
     summary: str,
     cwd: str | Path | None = None,
 ) -> dict[str, Any]:
-    """The phase (d) check run (build guide step 28). Check runs need an app/installation
+    """The test phase's check run (build guide step 28). Check runs need an app/installation
     token, which neither ``gh``'s user token nor every workflow token is - both routes are
     tried and the failure is reported rather than a route invented."""
     payload = {
@@ -1389,7 +1389,7 @@ def default_branch_protection(repo: str, cwd: str | Path | None = None) -> dict[
     return _attempt(via_api, via_gh)
 
 
-# --- the merge step of gate (e) (decision 36; ROADMAP R22) --------------------------------------
+# --- the merge step of gate (deploy) (decision 36; ROADMAP R22) ---------------------------------
 # Token route only: the merge workflow runs on a runner, where the job's token is the identity.
 MERGE_METHOD = "merge"  # a merge commit keeps the reviewed commits on the default branch
 COMPARE_FILE_CAP = 300  # GitHub's compare lists at most 300 files: past it, fail closed
@@ -1455,8 +1455,8 @@ def merge_environment(repo: str, branch: str) -> dict[str, Any]:
 REVIEW_CHECK = "sdlc/review"  # review/findings.py CHECK_RUN_NAME, the check ruleset 2 requires
 NOT_BUILD_TITLE = "not a build PR"
 NOT_BUILD_SUMMARY = (
-    "This pull request is not a framework build PR (its head is not `sdlc/<id>/c`), so gate "
-    "(e)'s review does not apply to it: it merges as before (decision 36, point 5)."
+    "This pull request is not a framework build PR (its head is not `sdlc/<id>/build`), so "
+    "gate (deploy)'s review does not apply to it: it merges as before (decision 36, point 5)."
 )
 
 

@@ -61,12 +61,12 @@ def test_verifier_copies_the_article_example():
 
 
 def test_the_verifier_reads_the_drive_s_images_and_the_reviewer_reads_the_drive():
-    """Change 0004 (R15): the verifier's (d) step on ``evidence/proof/`` images and the
+    """Change 0004 (R15): the verifier's test-phase step on ``evidence/proof/`` images and the
     adversarial reviewer's angle on the drive."""
     _fm, verifier = frontmatter(AGENTS / "verifier.md")
     flat = " ".join(verifier.split())
     for words in (
-        "open (c)'s images under `changes/<id>-<slug>/evidence/proof/` with the Read tool",
+        "open the build run's images under `changes/<id>-<slug>/evidence/proof/` with the Read tool",
         "compare each with the mock the spec's `Mock:` line names",
         "(`matches`, `differs` with what you saw, or `not produced`)",
         "the commit `evidence/proof/manifest.json` names, not the final tree",
@@ -76,7 +76,7 @@ def test_the_verifier_reads_the_drive_s_images_and_the_reviewer_reads_the_drive(
         assert words in flat, words
     _fm, reviewer = frontmatter(AGENTS / "adversarial-reviewer.md")
     flat = " ".join(reviewer.split())
-    assert "9. **The drive** (phases (c) and (d); change 0004)" in flat
+    assert "9. **The drive** (the build and test phases; change 0004)" in flat
     assert "from the product (a response, a rendered page, the program's own output), or write" in (
         flat
     )
@@ -135,7 +135,7 @@ def test_adversarial_reviewer_skip_marker_angle_present():
     text = " ".join(body.split())
     assert "7. **Skip markers**" in text
     assert "ratchets" in text and "details.skip_markers" in text
-    assert "phases (c) and (d)" in text
+    assert "the build and test phases" in text
 
 
 def test_adversarial_verdict_still_carries_head(tmp_path):

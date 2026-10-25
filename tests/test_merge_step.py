@@ -1,4 +1,4 @@
-"""Decision 36 (ROADMAP R22): gate (e) is the owner's approving review, and the merge App
+"""Decision 36 (ROADMAP R22): gate (deploy) is the owner's approving review, and the merge App
 merges on it (``plugin/ci/merge_step.py``, run by ``template/.github/workflows/sdlc-merge.yml``,
 whose structure ``tests/test_templates.py`` checks). No model and no network: the GitHub
 client and the dispatch are fakes, the event payload a file.
@@ -23,9 +23,9 @@ DIR = "changes/0007-dark-mode"
 
 def status_text(**over) -> str:
     st = status_mod.Status.from_dict(
-        {"id": "0007", "slug": "dark-mode", "title": "Dark mode", "phase": "e"}
+        {"id": "0007", "slug": "dark-mode", "title": "Dark mode", "phase": "deploy"}
     )
-    st.record_gate("e", "passed", "waiting for the owner at gate (e)")
+    st.record_gate("deploy", "passed", "waiting for the owner at gate (deploy)")
     st.build_pr = 12
     data = {**st.to_dict(), **over}
     return yamlish.dumps(data)
@@ -42,16 +42,16 @@ class FakeGitHub:
             "number": 12,
             "state": "open",
             "draft": False,
-            "head_ref": "sdlc/0007/c",
+            "head_ref": "sdlc/0007/build",
             "head_sha": HEAD,
             "head_repo": REPO,
             "base_ref": "main",
-            "labels": ["sdlc:e-ready"],
+            "labels": ["sdlc:deploy-ready"],
         }
         self.pr.update(over.pop("pr", {}))
         self.files = {
             f"{DIR}/status.yaml": status_text(),
-            f"{DIR}/evidence/gate-e.json": json.dumps({"phase": "e", "result": "wait"}),
+            f"{DIR}/evidence/gate-deploy.json": json.dumps({"phase": "deploy", "result": "wait"}),
             f"{DIR}/evidence/review-findings.json": json.dumps(
                 {"head": REVIEWED, "findings": [], "summary": "clean"}
             ),
@@ -137,6 +137,33 @@ def test_the_owner_s_approval_merges_at_the_head_through_the_merge_app(tmp_path,
     assert "merge: merged #12" in (tmp_path / "summary.md").read_text(encoding="utf-8")
 
 
+def test_a_change_in_flight_before_r45_merges_with_its_letters(tmp_path, capsys):
+    """R45, for one release: a build PR an older plugin opened has the head ``sdlc/0007/c``,
+    the label ``sdlc:e-ready``, ``phase: e`` in status.yaml and ``evidence/gate-e.json``;
+    the merge step reads every one of them as deploy and merges."""
+    letter = "e"
+    letters = yamlish.dumps(
+        {
+            **yamlish.loads(status_text()),
+            "phase": letter,
+            "gate": {"phase": letter, "result": "passed", "reason": None, "at": None},
+        }
+    )
+    gh = FakeGitHub(
+        pr={"head_ref": "sdlc/0007/" + "c", "labels": ["sdlc:" + letter + "-ready"]},
+        files={
+            f"{DIR}/status.yaml": letters,
+            f"{DIR}/evidence/gate-deploy.json": None,
+            f"{DIR}/evidence/gate-{letter}.json": json.dumps({"result": "wait"}),
+        },
+    )
+    assert merge_step.merge(checkout(tmp_path), REPO, 12, env(tmp_path), gh) == 0
+    assert ("merge", 12, HEAD, "merge-app-token") in gh.calls, capsys.readouterr().out
+    assert merge_step.build_change_id("sdlc/0007/" + "c") == "0007"
+    assert merge_step.build_change_id("sdlc/0007/build") == "0007"
+    assert merge_step.build_change_id("sdlc/0007/design") is None
+
+
 def _waits(tmp_path, capsys, gh, why):
     assert merge_step.merge(checkout(tmp_path), REPO, 12, env(tmp_path), gh) == 0
     out = capsys.readouterr().out
@@ -191,7 +218,7 @@ def test_a_head_that_does_not_follow_the_approved_commit_waits(tmp_path, capsys,
         "ok": True,
         "reviews": [{"author": "owner", "state": "APPROVED", "commit": approved}],
     }
-    files = {f"{DIR}/evidence/gate-e.json": json.dumps({"phase": "e", "result": "wait"})}
+    files = {f"{DIR}/evidence/gate-deploy.json": json.dumps({"phase": "deploy", "result": "wait"})}
     _waits(tmp_path, capsys, Moved(reviews=reviews, files=files), f"({status})")
 
 
@@ -211,11 +238,11 @@ def test_a_pr_that_is_not_a_ready_build_pr_waits(tmp_path, capsys):
     cases = [
         ({"state": "closed"}, "is not open"),
         ({"draft": True}, "is a draft"),
-        ({"head_ref": "sdlc/0007/b"}, "is not a build PR"),
+        ({"head_ref": "sdlc/0007/design"}, "is not a build PR"),
         ({"head_repo": "fork/app"}, "outside"),
         ({"base_ref": "dev"}, "is not into main"),
-        ({"labels": ["sdlc:e-ready", "sdlc:needs-human"]}, "is parked"),
-        ({"labels": ["sdlc:d-ready"]}, "does not carry sdlc:e-ready"),
+        ({"labels": ["sdlc:deploy-ready", "sdlc:needs-human"]}, "is parked"),
+        ({"labels": ["sdlc:test-ready"]}, "does not carry sdlc:deploy-ready"),
     ]
     for pr, why in cases:
         _waits(tmp_path, capsys, FakeGitHub(pr=pr), why)
@@ -223,19 +250,19 @@ def test_a_pr_that_is_not_a_ready_build_pr_waits(tmp_path, capsys):
 
 def test_gate_e_s_record_and_the_findings_must_say_green(tmp_path, capsys):
     findings = f"{DIR}/evidence/review-findings.json"
-    gate = f"{DIR}/evidence/gate-e.json"
+    gate = f"{DIR}/evidence/gate-deploy.json"
     status = f"{DIR}/status.yaml"
     cases = [
-        ({status: status_text(phase="d")}, "not (e) passed"),
+        ({status: status_text(phase="test")}, "not deploy passed"),
         (
             {status: status_text(
                 parked_reason="the owner must decide",
-                gate={"phase": "e", "result": "parked", "reason": "the owner must decide"},
+                gate={"phase": "deploy", "result": "parked", "reason": "the owner must decide"},
             )},
-            "gate e/parked",
+            "gate deploy/parked",
         ),
         ({status: status_text(build_pr=13)}, "names build PR #13"),
-        ({gate: None}, "gate-e.json is missing"),
+        ({gate: None}, "gate-deploy.json is missing"),
         ({gate: json.dumps({"result": "park"})}, "recorded 'park'"),
         (
             {gate: json.dumps({"result": "wait", "checks": [
@@ -299,14 +326,18 @@ def test_a_refused_merge_or_a_failed_read_is_red(tmp_path, capsys):
 def test_allowed_after_review_is_evidence_status_and_the_seen_record():
     from review import findings as fmod
 
-    for path in (f"{DIR}/evidence/run-e.json", f"{DIR}/status.yaml", "changes/.review-seen.json"):
+    for path in (
+        f"{DIR}/evidence/run-deploy.json",
+        f"{DIR}/status.yaml",
+        "changes/.review-seen.json",
+    ):
         assert fmod.allowed_after_review(path, DIR)
     for path in (f"{DIR}/plan.md", f"{DIR}/spec.md", "src/app.py", "changes/0008-x/status.yaml"):
         assert not fmod.allowed_after_review(path, DIR)
 
 
 # --- doorbell ---------------------------------------------------------------------------------
-def review_payload(state="approved", login="owner", ref="sdlc/0007/c", head_repo=REPO):
+def review_payload(state="approved", login="owner", ref="sdlc/0007/build", head_repo=REPO):
     return {
         "action": "submitted",
         "review": {"state": state, "user": {"login": login}},
@@ -324,7 +355,7 @@ def test_the_owner_s_approval_rings_the_merge(tmp_path, capsys):
 
     e = env(tmp_path, review_payload(), name="pull_request_review")
     assert merge_step.doorbell(checkout(tmp_path), REPO, e, FakeGitHub(), send) == 0
-    assert sent == [(REPO, "sdlc-merge.yml", "main", "0007", "sdlc/0007/c", {"pr": "12"})]
+    assert sent == [(REPO, "sdlc-merge.yml", "main", "0007", "sdlc/0007/build", {"pr": "12"})]
     assert "dispatched sdlc-merge.yml for #12" in capsys.readouterr().out
 
 
@@ -333,7 +364,7 @@ def test_any_other_review_rings_nothing(tmp_path, capsys):
         (review_payload(state="changes_requested"), "does not approve"),
         (review_payload(login="someone"), "not the owner's"),
         (review_payload(login="owner[bot]"), "not the owner's"),
-        (review_payload(ref="sdlc/0007/b"), "not a build PR"),
+        (review_payload(ref="sdlc/0007/design"), "not a build PR"),
         (review_payload(head_repo="fork/app"), "fork/app"),
     ):
         sent = []
@@ -358,7 +389,7 @@ def test_every_other_pull_request_gets_a_passing_check(tmp_path, capsys):
     e = env(tmp_path, pull_payload(), name="pull_request")
     assert merge_step.not_build(checkout(tmp_path), REPO, e, gh) == 0
     assert gh.calls == [("not-build", HEAD)]
-    for data in (pull_payload(ref="sdlc/0007/c"), pull_payload(head_repo="fork/app")):
+    for data in (pull_payload(ref="sdlc/0007/build"), pull_payload(head_repo="fork/app")):
         gh = FakeGitHub()
         e = env(tmp_path, data, name="pull_request")
         assert merge_step.not_build(checkout(tmp_path), REPO, e, gh) == 0
@@ -398,7 +429,7 @@ def test_the_runner_refuses_a_phase_run_without_the_app(monkeypatch, capsys):
     monkeypatch.setenv("SDLC_WORKFLOW_TOKEN", "wf")
     monkeypatch.delenv("SDLC_APP_TOKEN_MINTED_AT", raising=False)
     monkeypatch.setattr(run_phase, "run_phase", lambda *a: (_ for _ in ()).throw(AssertionError))
-    assert run_phase.main(["--phase", "c", "--id", "0007"]) == run_phase.EXIT_FAILED
+    assert run_phase.main(["--phase", "build", "--id", "0007"]) == run_phase.EXIT_FAILED
     assert "GitHub App is required" in capsys.readouterr().err
 
 
@@ -427,11 +458,11 @@ def test_the_e_run_posts_on_the_final_head_and_offers_the_merge(tmp_path, monkey
     monkeypatch.setattr(run_phase, "dispatch", lambda *a: sent.append(a) or {"ok": True})
     out = run_phase.offer_merge(_Args(), tmp_path, root, "0007", {"result": "wait"}, {"number": 12})
     assert calls == [
-        ["check-run", "--root", str(root), "--id", "0007", "--phase", "e", "--final-head"]
+        ["check-run", "--root", str(root), "--id", "0007", "--phase", "deploy", "--final-head"]
     ]
-    assert sent == [(REPO, "sdlc-merge.yml", "main", "0007", "sdlc/0007/c", {"pr": "12"})]
+    assert sent == [(REPO, "sdlc-merge.yml", "main", "0007", "sdlc/0007/build", {"pr": "12"})]
     assert out["dispatched"] == {"ok": True}
-    # a red check, or a gate (e) that does not wait for the owner, offers nothing
+    # a red check, or a gate (deploy) that does not wait for the owner, offers nothing
     for check, result in (({**posted, "conclusion": "failure"}, "wait"), (posted, "park")):
         sent.clear()
         monkeypatch.setattr(run_phase, "_cli_call", lambda *a, check=check, **k: {"output": check})
@@ -458,7 +489,12 @@ def test_the_digest_says_an_approved_build_pr_is_not_merged_and_why(monkeypatch)
     from pr import digest
     from pr import github as gh
 
-    pr = {"number": 12, "labels": [{"name": "sdlc:e-ready"}], "head": {"sha": HEAD}, "title": "t"}
+    pr = {
+        "number": 12,
+        "labels": [{"name": "sdlc:deploy-ready"}],
+        "head": {"sha": HEAD},
+        "title": "t",
+    }
     reviews = {
         "ok": True,
         "reviews": [{"author": "owner", "state": "APPROVED", "at": "2026-10-21T"}],
@@ -487,7 +523,7 @@ def test_the_digest_says_an_approved_build_pr_is_not_merged_and_why(monkeypatch)
     # not approved, or not at (e): no line
     monkeypatch.setattr(gh, "pr_reviews", lambda *a, **k: {"ok": True, "reviews": []})
     assert digest.approval_of("owner/r", pr) is None
-    assert digest.approval_of("owner/r", {**pr, "labels": [{"name": "sdlc:b-ready"}]}) is None
+    assert digest.approval_of("owner/r", {**pr, "labels": [{"name": "sdlc:design-ready"}]}) is None
 
 
 # --- detect and scan file nothing without the App -------------------------------------------
@@ -522,24 +558,28 @@ def test_compare_lists_a_rename_s_old_path_too(monkeypatch):
         "status": "ahead",
         "files": [
             {"filename": f"{DIR}/evidence/app.py", "previous_filename": "src/app.py"},
-            {"filename": f"{DIR}/evidence/run-e.json"},
+            {"filename": f"{DIR}/evidence/run-deploy.json"},
         ],
     }
     monkeypatch.setattr(github, "_request", lambda *a, **k: {"data": data, "error": ""})
     got = github.compare_commits(REPO, REVIEWED, HEAD)
-    assert got["files"] == [f"{DIR}/evidence/app.py", "src/app.py", f"{DIR}/evidence/run-e.json"]
+    assert got["files"] == [
+        f"{DIR}/evidence/app.py",
+        "src/app.py",
+        f"{DIR}/evidence/run-deploy.json",
+    ]
 
 
 def test_an_approval_before_gate_e_waits_and_a_leftover_full_profile_is_not_read(tmp_path, capsys):
-    """Choice 250 (the R22 double check, F3): an approval on a commit without gate (e)'s
+    """Choice 250 (the R22 double check, F3): an approval on a commit without gate (deploy)'s
     record was given before the owner could read the (e) banner and findings, so it is no
-    gate (e) on any profile; the owner approves again. Decision 37 (1.0.21): a leftover
+    gate (deploy) on any profile; the owner approves again. Decision 37 (1.0.21): a leftover
     ``profile: full`` changes nothing."""
     early = "a" * 40
 
     class Early(FakeGitHub):
         def file_at(self, repo, path, ref):
-            if ref == early and path.endswith("gate-e.json"):
+            if ref == early and path.endswith("gate-deploy.json"):
                 return {"ok": False, "text": None, "missing": True, "reason": "404"}
             return super().file_at(repo, path, ref)
 
@@ -547,13 +587,13 @@ def test_an_approval_before_gate_e_waits_and_a_leftover_full_profile_is_not_read
         "ok": True,
         "reviews": [{"author": "owner", "state": "APPROVED", "commit": early}],
     }
-    _waits(tmp_path, capsys, Early(reviews=approval), "approval predates gate (e)")
+    _waits(tmp_path, capsys, Early(reviews=approval), "approval predates gate (deploy)")
     root = checkout(tmp_path)
     (root / "sdlc.yaml").write_text("profile: full\n", encoding="utf-8")
     gh = Early(reviews=approval)
     assert merge_step.merge(root, REPO, 12, env(tmp_path), gh) == 0
     assert not [c for c in gh.calls if c[0] == "merge"]
-    # the same approval given again once (e) ran (its commit carries gate-e.json) merges
+    # the same approval given again once (e) ran (its commit carries gate-deploy.json) merges
     again = {
         "ok": True,
         "reviews": [
@@ -567,19 +607,19 @@ def test_an_approval_before_gate_e_waits_and_a_leftover_full_profile_is_not_read
 
 
 def test_an_approval_on_an_escalated_gate_e_record_waits(tmp_path, capsys):
-    """The review of the 1.0.22 diff (finding 6): a gate (e) record that did not offer the
+    """The review of the 1.0.22 diff (finding 6): a gate (deploy) record that did not offer the
     PR (an escalation, a park) is no offer, so an approval given on it does not count."""
     early = "a" * 40
 
     class Escalated(FakeGitHub):
         def file_at(self, repo, path, ref):
-            if ref == early and path.endswith("gate-e.json"):
-                text = json.dumps({"phase": "e", "result": "escalate"})
+            if ref == early and path.endswith("gate-deploy.json"):
+                text = json.dumps({"phase": "deploy", "result": "escalate"})
                 return {"ok": True, "text": text, "missing": False}
             return super().file_at(repo, path, ref)
 
     approval = {"ok": True, "reviews": [{"author": "owner", "state": "APPROVED", "commit": early}]}
-    _waits(tmp_path, capsys, Escalated(reviews=approval), "approval predates gate (e)")
+    _waits(tmp_path, capsys, Escalated(reviews=approval), "approval predates gate (deploy)")
 
 
 def test_the_digest_asks_for_a_new_approval_when_it_predates_gate_e(monkeypatch):
@@ -590,8 +630,8 @@ def test_the_digest_asks_for_a_new_approval_when_it_predates_gate_e(monkeypatch)
 
     early = "a" * 40
     pr = {
-        "number": 12, "labels": [{"name": "sdlc:e-ready"}], "title": "t",
-        "head": {"sha": HEAD, "ref": "sdlc/0007/c"},
+        "number": 12, "labels": [{"name": "sdlc:deploy-ready"}], "title": "t",
+        "head": {"sha": HEAD, "ref": "sdlc/0007/build"},
     }  # fmt: skip
     reviews = {"ok": True, "reviews": [{"author": "owner", "state": "APPROVED", "commit": early}]}
     gate = {"text": None}
@@ -600,8 +640,11 @@ def test_the_digest_asks_for_a_new_approval_when_it_predates_gate_e(monkeypatch)
     monkeypatch.setattr(gh, "dir_at", lambda *a, **k: {"ok": True, "names": [DIR.split("/")[1]]})
 
     def file_at(repo, path, ref):
-        assert path == f"{DIR}/evidence/gate-e.json" and ref == early
-        if gate["text"] is None:
+        # R45: the name's record first, then the letter's an older plugin wrote
+        letter = f"{DIR}/evidence/gate-" + "e.json"
+        assert path in (f"{DIR}/evidence/gate-deploy.json", letter)
+        assert ref == early
+        if gate["text"] is None or path == letter:
             return {"ok": False, "text": None, "missing": True, "reason": "404"}
         return {"ok": True, "text": gate["text"], "missing": False}
 
@@ -641,10 +684,10 @@ def test_the_merge_step_s_github_helpers_shape_the_api(monkeypatch):
         return {"status": 404, "data": {"message": "Not Found"}, "error": "Not Found"}
 
     monkeypatch.setattr(github, "_request", fake)
-    text = base64.b64encode(b"phase: e\n").decode()
+    text = base64.b64encode(b"phase: deploy\n").decode()
     answers["/contents/a.yaml"] = {"status": 200, "data": {"type": "file", "content": text},
                                    "error": ""}  # fmt: skip
-    assert github.file_at(REPO, "a.yaml", HEAD)["text"] == "phase: e\n"
+    assert github.file_at(REPO, "a.yaml", HEAD)["text"] == "phase: deploy\n"
     assert github.file_at(REPO, "b.yaml", HEAD)["missing"] is True
     answers["/contents/changes"] = {
         "status": 200,

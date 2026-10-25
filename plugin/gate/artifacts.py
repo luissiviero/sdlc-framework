@@ -6,7 +6,7 @@ plan.md (skill ``plan-template``), spec.md (written by ``/sdlc-design`` in B3; t
 p.13–14 prescribes the prompt, not the sections, so they are defined here: requirements and
 design, the intent's open questions answered or carried forward (p.14 step 3), flagged
 concerns (p.14 step 4, mandatory — "the points an analyst would have escalated"), and the
-acceptance target the test phase measures (p.27 step 3)), the evidence files phase (d)
+acceptance target the test phase measures (p.27 step 3)), the evidence files the test phase
 leaves behind (step 28) and the two JSON files the review passes and the adversarial
 reviewer write into ``evidence/``.
 """
@@ -19,6 +19,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from state import conventions as c
+
 INTENT_SECTIONS = (
     "## Problem",
     "## Proposed outcome",
@@ -26,7 +28,7 @@ INTENT_SECTIONS = (
     "## Constraints",
     "## Open questions",
 )
-# Incidents only (article p.44 step 5: "the anomaly and its evidence"): required by gate (f)
+# Incidents only (article p.44 step 5: "the anomaly and its evidence"): required by gate (maintain)
 # when ``status.yaml: entry_route`` is ``incident``.
 INTENT_EVIDENCE_SECTION = "## Evidence"
 INTENT_HEADER_FIELDS = ("Author:", "Status:", "Change id:", "Entry route:")
@@ -79,7 +81,7 @@ EVIDENCE_TEST = "test.log"
 EVIDENCE_BUILD = "build.log"
 EVIDENCE_LINT = "lint.log"
 EVIDENCE_VERIFIER = "verifier.md"
-EVIDENCE_SCREENSHOTS = "screenshots"  # UI proof of phase (d); created empty with a .gitkeep
+EVIDENCE_SCREENSHOTS = "screenshots"  # UI proof of the test phase; created empty with a .gitkeep
 EVIDENCE_TARGETS = {"test": EVIDENCE_TEST, "build": EVIDENCE_BUILD, "lint": EVIDENCE_LINT}
 # Change 0004 (ROADMAP R14): the optional fourth target ``commands.drive`` exercises the product
 # and writes its proof under ``evidence/proof/``; the runner's step writes ``drive.log``
@@ -95,20 +97,20 @@ GATE_RESULT = "gate-{phase}.json"  # written by the gate itself, read by the PR 
 
 # Which artifacts and evidence each gate requires. The key is the phase that just finished.
 REQUIRED_ARTIFACTS = {
-    "a": ("intent.md",),
-    "b": ("intent.md", "spec.md", "plan.md"),
-    "c": ("intent.md", "spec.md", "plan.md"),
-    "d": ("intent.md", "spec.md", "plan.md"),
-    "e": ("intent.md", "spec.md", "plan.md"),
-    "f": ("intent.md",),  # the incident intent (p.44 step 5); Evidence checked by the gate
+    c.INTENT: ("intent.md",),
+    c.DESIGN: ("intent.md", "spec.md", "plan.md"),
+    c.BUILD: ("intent.md", "spec.md", "plan.md"),
+    c.TEST: ("intent.md", "spec.md", "plan.md"),
+    c.DEPLOY: ("intent.md", "spec.md", "plan.md"),
+    c.MAINTAIN: ("intent.md",),  # the incident intent (p.44 step 5); Evidence checked by the gate
 }
 REQUIRED_EVIDENCE = {
-    "c": (EVIDENCE_VERIFIER,),
-    "d": (EVIDENCE_TEST, EVIDENCE_BUILD, EVIDENCE_LINT, EVIDENCE_VERIFIER),
-    "e": (EVIDENCE_TEST, EVIDENCE_BUILD, EVIDENCE_LINT, EVIDENCE_VERIFIER),
+    c.BUILD: (EVIDENCE_VERIFIER,),
+    c.TEST: (EVIDENCE_TEST, EVIDENCE_BUILD, EVIDENCE_LINT, EVIDENCE_VERIFIER),
+    c.DEPLOY: (EVIDENCE_TEST, EVIDENCE_BUILD, EVIDENCE_LINT, EVIDENCE_VERIFIER),
 }
 # The incident's lesson and eval (change 0003; docs/proposals/okf-adoption.md R1), checked
-# only at gate (e) by gate/checks.py:lesson_and_eval. The field names and order are spec.md
+# only at gate (deploy) by gate/checks.py:lesson_and_eval. The field names and order are spec.md
 # Requirements' first bullet, minus the three optional fields (runbook, supersedes,
 # retired_by); the value names what a present field must not be to count as missing.
 LESSON_REQUIRED_FIELDS = {
@@ -140,9 +142,9 @@ def target_logs(drive_set: bool) -> dict[str, str]:
 
 
 def required_evidence(phase: str, drive_set: bool) -> tuple[str, ...]:
-    """``REQUIRED_EVIDENCE`` of ``phase``, with ``drive.log`` at (d) and (e) when the drive is
+    """``REQUIRED_EVIDENCE`` of ``phase``, with ``drive.log`` at test and deploy when the drive is
     set (change 0004, R7)."""
-    required = REQUIRED_EVIDENCE.get(phase, ())
+    required = REQUIRED_EVIDENCE.get(c.phase_name(phase), ())
     if drive_set and EVIDENCE_TEST in required:
         return (*required, EVIDENCE_DRIVE)
     return required
@@ -155,9 +157,9 @@ def lesson_glob(slug: str) -> str:
     return f"lessons/[0-9][0-9][0-9][0-9]-[0-9][0-9]-{slug}.md"
 
 
-# The review passes (step 26, phase e) publish review-findings.json; the gate refuses to pass
-# gate (e) without it, and reads it at (c)/(d) whenever it is present.
-FINDINGS_REQUIRED_AT = ("e",)
+# The review passes (step 26, the deploy phase) publish review-findings.json; the gate refuses to
+# pass gate (deploy) without it, and reads it at build/test whenever it is present.
+FINDINGS_REQUIRED_AT = (c.DEPLOY,)
 
 # The first line of each command log written by plugin/evidence/collect.py (step 28):
 #   # <command> — exit <code> — <seconds>s — <ISO-8601 UTC>
@@ -237,7 +239,7 @@ DEFERRED_NEVER_REPLACED = (
 def evidence_failure(text: str, *, require_header: bool = False) -> str | None:
     """The header's failure, or None when the log records exit 0.
 
-    ``require_header`` is what gates (d) and (e) pass for the three command logs: a log
+    ``require_header`` is what gates (test) and (deploy) pass for the three command logs: a log
     nobody can date back to a command and an exit code is not evidence, and accepting it
     would let a hand-written "all good" stand in for the toolchain's own output (p.27-29).
     """

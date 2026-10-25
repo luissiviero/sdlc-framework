@@ -1,8 +1,8 @@
-# Review panel — devil's advocate brief (item {n}, phase ({phase}), {change_id})
+# Review panel — devil's advocate brief (item {n}, the {phase} phase, {change_id})
 
 You are the adversarial reviewer (writer ≠ judge; article p.42) asked to argue **against**
-the easy answer to one judgment item of change {change_id} ({title}) inside phase
-({phase}), under deferred review (decision 21). You have not seen and must not look for
+the easy answer to one judgment item of change {change_id} ({title}) inside the
+{phase} phase, under deferred review (decision 21). You have not seen and must not look for
 the reviewer's verdict (`evidence/panel/{phase}-{n}-reviewer.md`): the panel is two blind
 verdicts and a conciliator. You judge this one item and nothing else; report only; write
 exactly one file.
