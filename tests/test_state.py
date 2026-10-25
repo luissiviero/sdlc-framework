@@ -601,12 +601,15 @@ def test_show_and_list_word_the_derived_reason_from_deploy_production(repo, caps
     out = json.loads(capsys.readouterr().out)
     assert out["status"]["gate"]["reason"] == status.MERGED_AT_GATE_E_REASON
 
-    for production, reason in (
-        ("false", status.MERGED_AT_GATE_E_REASON),
-        ("true", status.MERGED_AT_GATE_E_PRODUCTION_REASON),
+    for key, production, reason in (
+        ("production_gate", "false", status.MERGED_AT_GATE_E_REASON),
+        ("production_gate", "true", status.MERGED_AT_GATE_E_PRODUCTION_REASON),
+        # R45 (decision 39, row 55): the old key is read for one release
+        ("production", "false", status.MERGED_AT_GATE_E_REASON),
+        ("production", "true", status.MERGED_AT_GATE_E_PRODUCTION_REASON),
     ):
         (root / "sdlc.yaml").write_text(
-            f"deploy:\n  action: none\n  production: {production}\n", encoding="utf-8"
+            f"deploy:\n  action: none\n  {key}: {production}\n", encoding="utf-8"
         )
         assert cli.main(["show", "--root", str(root), "--id", "0001"]) == 0
         out = json.loads(capsys.readouterr().out)

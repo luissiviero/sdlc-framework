@@ -18,7 +18,9 @@ from external import review as review_mod  # noqa: E402
 CHANGE = "changes/0001-add-thing"
 FAKE = "placeholder-gemini-key"  # sdlc: allow-secret
 GOOGLE_SHAPED = "AIza" + "B" * 35
-ON = "external_review:\n  model: gemini-4-argon\n  phases: [b, e]\n"
+ON = "second_opinion:\n  model: gemini-4-argon\n  phases: [b, e]\n"
+# R45 (decision 39, row N11): the key until plugin 1.0.44, read for one release
+LEGACY_ON = ON.replace("second_opinion:", "external_review:")
 
 
 def git(root: Path, *args: str) -> str:
@@ -243,7 +245,7 @@ def test_off_unless_the_default_branch_turns_it_on(project, monkeypatch):
     git(project, "checkout", "-q", "sdlc/0001/design")
     (project / "sdlc.yaml").write_text(ON, encoding="utf-8")
     record = cli.run_review(args(root=str(project), ref="main"), {"GEMINI_API_KEY": FAKE})
-    assert record["off"] and record["reason"].startswith("off: sdlc.yaml external_review")
+    assert record["off"] and record["reason"].startswith("off: sdlc.yaml second_opinion")
 
 
 def test_not_run_without_a_key_and_the_change_id_from_the_head_ref(project, monkeypatch):
@@ -596,7 +598,7 @@ def test_a_phases_value_that_is_not_a_list_is_said_never_silent(project, monkeyp
     git(project, "commit", "-q", "-am", "a string")
     record = cli.run_review(args(root=str(project), ref="main"), {"GEMINI_API_KEY": FAKE})
     assert not record.get("off") and not record["ran"]
-    assert record["reason"] == "sdlc.yaml external_review.phases is not a list, as [design, deploy]"
+    assert record["reason"] == "sdlc.yaml second_opinion.phases is not a list, as [design, deploy]"
     git(project, "checkout", "-q", "sdlc/0001/design")
     by_hand = cli.run_review(
         args(root=str(project), ref="main", model="gemini-4-argon", dry_run=True), {}
@@ -604,14 +606,14 @@ def test_a_phases_value_that_is_not_a_list_is_said_never_silent(project, monkeyp
     assert by_hand["reason"] == "dry run: nothing sent"
 
 
-def test_external_review_phases_read_the_names_and_the_letters_of_an_older_file():
-    """R45: ``external_review.phases: [design, deploy]`` is the written form; the letters
+def test_second_opinion_phases_read_the_names_and_the_letters_of_an_older_file():
+    """R45: ``second_opinion.phases: [design, deploy]`` is the written form; the letters
     ``[b, e]`` an older sdlc.yaml holds turn the same gates on, for one release."""
     for listed in (["design", "deploy"], ["b", "e"], ["design", "e"]):
-        config = {"external_review": {"model": "m", "phases": listed}}
+        config = {"second_opinion": {"model": "m", "phases": listed}}
         assert cli.turned_on(config, "design") and cli.turned_on(config, "deploy")
         assert cli.turned_on(config, "b") and not cli.turned_on(config, "build")
-    assert not cli.turned_on({"external_review": {"phases": ["deploy"]}}, "design")
+    assert not cli.turned_on({"second_opinion": {"phases": ["deploy"]}}, "design")
     assert cli.PHASES == ("design", "deploy")
     assert cli.branches("deploy", "0001") == ("sdlc/0001/build", "sdlc/0001/c")
 
@@ -630,3 +632,38 @@ def test_the_design_opinion_is_found_under_the_name_or_the_letter():
     assert "phase (design)" in review_mod.comment(record)
     assert review_mod.prompt("b", "0001", [], []) == review_mod.prompt("design", "0001", [], [])
     assert "phase (deploy)" in review_mod.prompt("deploy", "0001", [], []).splitlines()[0]
+
+
+def test_the_old_external_review_key_still_turns_the_second_opinion_on(project, monkeypatch):
+    """R45 (decision 39, row N11): an ``external_review:`` block is read as ``second_opinion``
+    for one release, and the record says so once (``config_note``), never a refusal."""
+    monkeypatch.setattr(gemini, "_request", lambda *a, **k: pytest.fail("called"))
+    git(project, "checkout", "-q", "main")
+    (project / "sdlc.yaml").write_text(LEGACY_ON, encoding="utf-8")
+    git(project, "commit", "-q", "-am", "the old key")
+    git(project, "checkout", "-q", "sdlc/0001/design")
+    record = cli.run_review(args(root=str(project), ref="main", dry_run=True), {})
+    assert not record.get("off") and record["reason"] == "dry run: nothing sent"
+    assert record["model"] == "gemini-4-argon"
+    assert record["config_note"] == (
+        "sdlc.yaml: external_review is read as second_opinion for one release (R45); "
+        "rename the key to second_opinion"
+    )
+    config = {"external_review": {"model": "m", "phases": ["design"], "max_chars": 7}}
+    assert cli.turned_on(config, "design") and not cli.turned_on(config, "deploy")
+    assert cli.max_chars(config) == 7
+    assert "external_review is read as second_opinion" in review_mod.comment(record)
+
+
+def test_with_both_keys_the_second_opinion_block_wins_and_the_old_one_is_named():
+    config = {
+        "second_opinion": {"model": "new", "phases": ["deploy"]},
+        "external_review": {"model": "old", "phases": ["design"]},
+    }
+    assert cli.settings(config)["model"] == "new"
+    assert cli.turned_on(config, "deploy") and not cli.turned_on(config, "design")
+    assert cli.config_note(config) == (
+        "sdlc.yaml: external_review is not read beside second_opinion; remove it"
+    )
+    assert cli.config_note({"second_opinion": {"model": "m"}}) == ""
+    assert cli.config_note({}) == ""

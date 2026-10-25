@@ -7,7 +7,7 @@
 # trigger were approved in advance"). Installed into this project by /sdlc-init from the
 # framework's template/.github/workflows/; edit it here, not in the framework.
 #
-# A route whose bands.yaml authorization is `go` parks the incident PR with "Go requested"
+# A route whose bands.yaml authorization is `ask` parks the incident PR with "Go requested"
 # (label sdlc:needs-human, "What I need from you"). Applying the label sdlc:go on that PR
 # is the Go: this job checks that a person applied it (never the workflow token or a
 # [bot]), runs the runbook once, records the actor in status.yaml (runbook_authorized_by),

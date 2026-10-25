@@ -26,18 +26,20 @@ tiers:
   3sigma:
     action: propose
     # Every route is one of the two authorization models of decision 14 (split by blast
-    # radius): preapproved = CI-scoped and reversible, runs with no human in the path;
-    # go = touches a running system, parks with "what I need from you" until the owner
-    # says Go. A route not listed here is never taken.
+    # radius), named by the hook's verbs (p.36): allow = CI-scoped and reversible, runs with
+    # no human in the path; ask = touches a running system, parks with "what I need from you"
+    # until the owner says Go (the label sdlc:go). A route not listed here is never taken.
+    # Until plugin 1.0.44 the values were preapproved and go, read as allow and ask for one
+    # release (R45, decision 39).
     routes:
       - name: pull_request          # open an intent PR into the review queue (p.44 step 5)
-        authorization: preapproved
+        authorization: allow
       - name: runbook:quarantine-flaky-test
-        authorization: preapproved
+        authorization: allow
       - name: runbook:revert-pr
-        authorization: preapproved
+        authorization: allow
       - name: runbook:rollback-deploy
-        authorization: go
+        authorization: ask
 # Dismissals of findings tune these bands (p.44 step 6): widen a band before muting a metric.
 # A dismissal (closing an incident PR with a comment) mutes the metric+rule pair for one
 # baseline window (changes/.dismissed.json); a bands change is a pull request on this file.

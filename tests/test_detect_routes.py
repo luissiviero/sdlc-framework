@@ -19,10 +19,10 @@ TEMPLATE_BANDS = Path(__file__).resolve().parents[1] / "template" / "bands.yaml"
 # authorization line), to render a bands.yaml that does not list it
 PR_ROUTE_RE = re.compile(r"^ *- name: pull_request\b[^\n]*\n *authorization: \w+[^\n]*\n", re.M)
 TEMPLATE_ROUTES = {
-    "pull_request": "preapproved",
-    "runbook:quarantine-flaky-test": "preapproved",
-    "runbook:revert-pr": "preapproved",
-    "runbook:rollback-deploy": "go",
+    "pull_request": "allow",
+    "runbook:quarantine-flaky-test": "allow",
+    "runbook:revert-pr": "allow",
+    "runbook:rollback-deploy": "ask",
 }
 SHA = "a" * 40
 NODE_ID = "tests/test_x.py::test_y"
@@ -58,7 +58,7 @@ def template_bands(tmp_path: Path) -> bands.Bands:
 def _rollback_config(production: bool = True, **entry) -> dict:
     runbook = {"name": "rollback-deploy", "command": "x", "rehearsed_at": "2026-09-24"}
     runbook.update(entry)
-    return {"deploy": {"production": production}, "maintain": {"runbooks": [runbook]}}
+    return {"deploy": {"production_gate": production}, "maintain": {"runbooks": [runbook]}}
 
 
 def _verdict(**kw) -> dict:
@@ -361,16 +361,16 @@ def test_template_routes_resolve_to_their_bands_value(template_bands: bands.Band
 
 def test_route_not_listed_is_unsupported_go():
     resolved = routes.authorization("runbook:unknown", None, {}, "python")
-    assert resolved.authorization == "go"
+    assert resolved.authorization == "ask"
     assert resolved.supported is False
     assert resolved.source == "not listed in bands.yaml"
 
 
 def test_project_go_overrides_bands_preapproved(template_bands: bands.Bands):
-    config = {"maintain": {"runbooks": [{"name": "revert-pr", "authorization": "go"}]}}
+    config = {"maintain": {"runbooks": [{"name": "revert-pr", "authorization": "ask"}]}}
     route = "runbook:revert-pr"
     resolved = routes.authorization(route, template_bands.route(route), config, "python")
-    assert resolved.authorization == "go"
+    assert resolved.authorization == "ask"
     assert "sdlc.yaml" in resolved.source
     assert resolved.builtin and resolved.supported
 
@@ -378,14 +378,12 @@ def test_project_go_overrides_bands_preapproved(template_bands: bands.Bands):
 def test_bands_go_not_weakened_by_project_preapproved(template_bands: bands.Bands):
     config = {
         "maintain": {
-            "runbooks": [
-                {"name": "rollback-deploy", "command": "x", "authorization": "preapproved"}
-            ]
+            "runbooks": [{"name": "rollback-deploy", "command": "x", "authorization": "allow"}]
         }
     }
     route = "runbook:rollback-deploy"
     resolved = routes.authorization(route, template_bands.route(route), config, "python")
-    assert resolved.authorization == "go"
+    assert resolved.authorization == "ask"
     assert resolved.source == "bands.yaml"
 
 
@@ -396,7 +394,7 @@ def test_decision_26_rehearsed_rollback_on_production_is_preapproved(
     route = "runbook:rollback-deploy"
     config = _rollback_config(rehearsed_at=stamp)
     resolved = routes.authorization(route, template_bands.route(route), config, "python")
-    assert resolved.authorization == "preapproved"
+    assert resolved.authorization == "allow"
     assert resolved.rehearsed_at == "2026-09-24"
     assert "decision 26" in resolved.source
     assert resolved.supported
@@ -418,7 +416,7 @@ def test_decision_26_rehearsed_rollback_on_production_is_preapproved(
 def test_decision_26_does_not_apply(template_bands: bands.Bands, config: dict):
     route = "runbook:rollback-deploy"
     resolved = routes.authorization(route, template_bands.route(route), config, "python")
-    assert resolved.authorization == "go"
+    assert resolved.authorization == "ask"
     assert resolved.rehearsed_at is None
     assert resolved.source == "bands.yaml"
 
@@ -458,7 +456,7 @@ def test_available_tier_1_and_0_is_empty(template_bands: bands.Bands):
 def test_available_tier_2_is_pull_request_only(template_bands: bands.Bands):
     out = routes.available(template_bands, {}, "python", 2)
     assert [r.route for r in out] == ["pull_request"]
-    assert out[0].authorization == "preapproved"
+    assert out[0].authorization == "allow"
 
 
 def test_available_tier_2_adds_pull_request_when_bands_list_none(tmp_path: Path):
@@ -466,7 +464,7 @@ def test_available_tier_2_adds_pull_request_when_bands_list_none(tmp_path: Path)
     no_pr = _load_bands(tmp_path, _without_pull_request(text))
     assert no_pr.route("pull_request") is None
     out = routes.available(no_pr, {}, "python", 2)
-    assert [(r.route, r.authorization) for r in out] == [("pull_request", "preapproved")]
+    assert [(r.route, r.authorization) for r in out] == [("pull_request", "allow")]
 
 
 def test_available_tier_3_lists_every_route_resolved(template_bands: bands.Bands):
@@ -561,7 +559,7 @@ def test_validate_proposal_tier_2_pull_request_ok(template_bands: bands.Bands):
         Proposal(2, "pull_request"), 2, template_bands, {}, "python"
     )
     assert why == "" and resolved.route == "pull_request"
-    assert resolved.authorization == "preapproved"
+    assert resolved.authorization == "allow"
 
 
 def test_validate_proposal_tier_3_pull_request_ok(template_bands: bands.Bands):
@@ -569,7 +567,7 @@ def test_validate_proposal_tier_3_pull_request_ok(template_bands: bands.Bands):
         Proposal(3, "pull_request"), 3, template_bands, {}, "python"
     )
     assert why == ""
-    assert (resolved.route, resolved.authorization) == ("pull_request", "preapproved")
+    assert (resolved.route, resolved.authorization) == ("pull_request", "allow")
 
 
 def test_validate_proposal_tier_3_pull_request_not_listed_refused(tmp_path: Path):
@@ -596,7 +594,7 @@ def test_validate_proposal_revert_pr_needs_sha(template_bands: bands.Bands):
     resolved, why = routes.validate_proposal(
         Proposal(3, "runbook:revert-pr", {"sha": SHA}), 3, template_bands, {}, "node"
     )
-    assert why == "" and resolved.authorization == "preapproved"
+    assert why == "" and resolved.authorization == "allow"
 
 
 def test_validate_proposal_quarantine_on_python_ok(template_bands: bands.Bands):
@@ -604,7 +602,7 @@ def test_validate_proposal_quarantine_on_python_ok(template_bands: bands.Bands):
     resolved, why = routes.validate_proposal(proposal, 3, template_bands, {}, "python")
     assert why == ""
     assert resolved.runbook == "quarantine-flaky-test" and resolved.builtin
-    assert resolved.authorization == "preapproved"
+    assert resolved.authorization == "allow"
 
 
 def test_validate_proposal_quarantine_on_node_refused_with_note(template_bands: bands.Bands):
@@ -627,7 +625,7 @@ def test_validate_proposal_project_runbook_with_command_ok(template_bands: bands
     )
     assert why == ""
     assert resolved.runbook == "rollback-deploy" and not resolved.builtin
-    assert resolved.authorization == "go"
+    assert resolved.authorization == "ask"
     assert resolved.project_runbook == config["maintain"]["runbooks"][0]
 
 
@@ -645,7 +643,7 @@ def test_validate_proposal_project_runbook_without_command_refused(template_band
         (
             "runbook:revert-pr",
             {"sha": SHA},
-            {"maintain": {"runbooks": [{"name": "revert-pr", "authorization": "go"}]}},
+            {"maintain": {"runbooks": [{"name": "revert-pr", "authorization": "ask"}]}},
         ),
         ("runbook:rollback-deploy", {}, _rollback_config()),
         ("runbook:rollback-deploy", {}, _rollback_config(production=False)),
@@ -676,7 +674,7 @@ def test_proposal_runbook_and_runbook_name():
 def test_resolved_as_dict_shape():
     resolved = Resolved(
         "runbook:rollback-deploy",
-        "preapproved",
+        "allow",
         "decision 26: ...",
         runbook="rollback-deploy",
         project_runbook={"name": "rollback-deploy"},
@@ -684,7 +682,7 @@ def test_resolved_as_dict_shape():
     )
     assert resolved.as_dict() == {
         "route": "runbook:rollback-deploy",
-        "authorization": "preapproved",
+        "authorization": "allow",
         "source": "decision 26: ...",
         "runbook": "rollback-deploy",
         "builtin": False,
@@ -715,27 +713,73 @@ def test_apply_forced_turns_every_runbook_route_into_go_and_leaves_pull_request(
     from detect import routes
 
     resolved = routes.Resolved(
-        "runbook:revert-pr", "preapproved", "bands.yaml", runbook="revert-pr", builtin=True
+        "runbook:revert-pr", "allow", "bands.yaml", runbook="revert-pr", builtin=True
     )
-    assert routes.apply_forced(resolved, False).authorization == "preapproved"
+    assert routes.apply_forced(resolved, False).authorization == "allow"
     forced = routes.apply_forced(resolved, True)
-    assert forced.authorization == "go" and forced.source == routes.FORCED_SOURCE
+    assert forced.authorization == "ask" and forced.source == routes.FORCED_SOURCE
     rehearsed = routes.Resolved(
         "runbook:rollback-deploy",
-        "preapproved",
+        "allow",
         "decision 26: ...",
         runbook="rollback-deploy",
         rehearsed_at="2026-09-24",
     )
     forced = routes.apply_forced(rehearsed, True)
-    assert forced.authorization == "go" and forced.rehearsed_at is None
-    intent = routes.Resolved("pull_request", "preapproved", "the incident intent PR")
-    assert routes.apply_forced(intent, True).authorization == "preapproved"
+    assert forced.authorization == "ask" and forced.rehearsed_at is None
+    intent = routes.Resolved("pull_request", "allow", "the incident intent PR")
+    assert routes.apply_forced(intent, True).authorization == "allow"
     assert routes.apply_forced(None, True) is None
 
 
 def test_production_declared_needs_a_real_boolean():
+    assert routes.production_declared({"deploy": {"production_gate": True}})
+    assert not routes.production_declared({"deploy": {"production_gate": "yes"}})
+    assert not routes.production_declared({"deploy": {"production_gate": None}})
+
+
+def test_production_declared_reads_the_old_key_for_one_release():
+    """R45 (decision 39, row 55): ``deploy.production`` is read as ``production_gate`` for one
+    release; both set and disagreeing declares nothing here (the gate and the hook refuse)."""
     assert routes.production_declared({"deploy": {"production": True}})
     assert not routes.production_declared({"deploy": {"production": "yes"}})
-    assert not routes.production_declared({"deploy": {"production": None}})
+    both = {"deploy": {"production_gate": False, "production": True}}
+    assert not routes.production_declared(both)
+    agree = {"deploy": {"production_gate": True, "production": True}}
+    assert routes.production_declared(agree)
+
+
+def test_the_old_authorization_values_route_as_allow_and_ask(tmp_path):
+    """R45 (decision 39, row 56): a bands.yaml that still says ``preapproved`` and ``go``
+    loads as ``allow`` and ``ask``, and resolves the same; a project runbook's ``go`` is still
+    the stricter value."""
+    old = (
+        _rendered_template()
+        .replace("authorization: allow", "authorization: preapproved")
+        .replace("authorization: ask", "authorization: go")
+    )
+    assert "authorization: preapproved" in old and "authorization: go" in old
+    legacy = _load_bands(tmp_path, old)
+    assert [(r.name, r.authorization) for r in legacy.routes()] == list(TEMPLATE_ROUTES.items())
+    config = {"maintain": {"runbooks": [{"name": "rollback-deploy", "command": "x"}]}}
+    for name, auth in TEMPLATE_ROUTES.items():
+        assert (
+            routes.authorization(name, legacy.route(name), config, "python").authorization == auth
+        )
+    stricter = {"maintain": {"runbooks": [{"name": "revert-pr", "authorization": "go"}]}}
+    route = "runbook:revert-pr"
+    resolved = routes.authorization(route, legacy.route(route), stricter, "python")
+    assert (resolved.authorization, resolved.source) == (
+        "ask",
+        "sdlc.yaml: maintain.runbooks (stricter)",
+    )
+    # a project value that is neither allow nor ask can only tighten: it reads as ask
+    for odd in ("Ask", "asks", "auto"):
+        typo = {"maintain": {"runbooks": [{"name": "revert-pr", "authorization": odd}]}}
+        assert routes.authorization(route, legacy.route(route), typo, "python").authorization == (
+            "ask"
+        )
+    assert routes.authorization_value("preapproved") == "allow"
+    assert routes.authorization_value("go") == "ask"
+    assert routes.authorization_value("auto") == "auto"
     assert not routes.production_declared({})

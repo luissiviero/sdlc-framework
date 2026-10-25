@@ -404,9 +404,9 @@ def test_init_writes_evals_and_bands_once(tmp_path):
     assert bands["tiers"]["1sigma"] == {"action": "log"}
     assert bands["tiers"]["2sigma"]["action"] == "diagnose"
     routes = bands["tiers"]["3sigma"]["routes"]
-    assert {r["authorization"] for r in routes} == {"preapproved", "go"}
+    assert {r["authorization"] for r in routes} == {"allow", "ask"}
     assert (
-        next(r for r in routes if r["name"] == "runbook:rollback-deploy")["authorization"] == "go"
+        next(r for r in routes if r["name"] == "runbook:rollback-deploy")["authorization"] == "ask"
     )
     readme = (root / "evals" / "README.md").read_text(encoding="utf-8")
     assert "starts empty on purpose" in readme and "p.30" in readme
@@ -590,6 +590,43 @@ def test_init_upgrade_adds_a_missing_nested_key_as_text(tmp_path):
     assert cfg["plugin"]["claude_code"] == sdlc_init.DEFAULT_CLAUDE_CODE_VERSION
     assert cfg["test_paths"] == detect.TEST_PATHS["python"]
     assert _run_init(root)["files"]["sdlc.yaml"] == "unchanged"
+
+
+def test_init_upgrade_never_adds_production_gate_beside_the_old_key(tmp_path):
+    """R45 (decision 39, row 55): a project whose sdlc.yaml still says ``deploy.production:
+    true`` is read as the production gate for one release; the upgrade must not insert the
+    template's ``production_gate: false`` beside it (the two would disagree and every reader
+    fail closed). The report names the rename for the owner."""
+    from hooks._common import production_gate  # noqa: PLC0415
+
+    root = tmp_path / "proj"
+    shutil.copytree(FIXTURE, root)
+    assert "legacy_keys" not in _run_init(root)
+    text = (root / "sdlc.yaml").read_text(encoding="utf-8")
+    assert text.count("  production_gate: false\n") == 1
+    old = text.replace("  production_gate: false\n", "  production: true\n")
+    old += "\nexternal_review:\n  model: gemini-4-argon\n  phases: [design]\n"
+    (root / "sdlc.yaml").write_text(old, encoding="utf-8")
+
+    report = _run_init(root)
+    new_text = (root / "sdlc.yaml").read_text(encoding="utf-8")
+    assert "production_gate" not in yamlish.loads(new_text)["deploy"]
+    assert "  production: true\n" in new_text
+    assert production_gate(yamlish.loads(new_text)) is True
+    pin = sdlc_init.PIN_NOTE  # the rename waits for a pin that reads the new key
+    assert report["legacy_keys"] == [
+        f"deploy.production: rename it deploy.production_gate (R45; the old key is read for "
+        f"one release{pin})",
+        f"external_review: rename it second_opinion (R45; the old key is read for one release"
+        f"{pin})",
+    ]
+    assert "1.0.45" in pin and "production gate off" in pin
+    # with both external_review and second_opinion the advice matches the runtime's note
+    both = new_text + "\nsecond_opinion:\n  model: gemini-4-argon\n  phases: [design]\n"
+    (root / "sdlc.yaml").write_text(both, encoding="utf-8")
+    assert (
+        "external_review: remove it, second_opinion is read (R45)" in _run_init(root)["legacy_keys"]
+    )
 
 
 # --- the SDLC workflows /sdlc-init installs (build guide step 30, task 30.8) -----------------

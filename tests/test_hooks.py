@@ -934,8 +934,10 @@ def gate_git(tags=(), verify_ok=False, branch="sdlc/0001/c", remote="https://git
     return git
 
 
-def _gate_project(tmp_path, production=True, action="publish package", guarded=None):
-    body = f"deploy:\n  action: {action}\n  production: {'true' if production else 'false'}\n"
+def _gate_project(
+    tmp_path, production=True, action="publish package", guarded=None, key="production_gate"
+):
+    body = f"deploy:\n  action: {action}\n  {key}: {'true' if production else 'false'}\n"
     if guarded is not None:
         body += "  guarded_commands:\n" + "".join(f'    - "{g}"\n' for g in guarded)
     (tmp_path / "sdlc.yaml").write_text(body, encoding="utf-8")
@@ -1351,7 +1353,7 @@ def test_production_gate_computes_the_log_path_itself_and_log_decision_runs_no_g
     started = []
     monkeypatch.setattr(common.subprocess, "run", lambda *a, **k: started.append(a))
     (tmp_path / "sdlc.yaml").write_text(
-        "deploy:\n  action: publish package\n  production: true\n", encoding="utf-8"
+        "deploy:\n  action: publish package\n  production_gate: true\n", encoding="utf-8"
     )
     env = {"CLAUDE_PROJECT_DIR": str(tmp_path)}
 
@@ -1528,12 +1530,39 @@ def test_production_gate_fails_closed_on_a_production_flag_that_is_not_a_boolean
     root, env, log = _gate_project(tmp_path)
     path = root / "sdlc.yaml"
     path.write_text(
-        path.read_text(encoding="utf-8").replace("production: true", "production: yes"),
+        path.read_text(encoding="utf-8").replace("production_gate: true", "production_gate: yes"),
         encoding="utf-8",
     )
     with pytest.raises(_common_config_error()) as exc:
         _gate(root, env, "twine upload dist/*")
-    assert "deploy.production is 'yes', not a boolean" in str(exc.value)
+    assert "deploy.production_gate is 'yes', not a boolean" in str(exc.value)
+    (line,) = _log_lines(log)
+    assert line["verdict"] == "block" and "fail closed" in line["reason"]
+
+
+def test_production_gate_reads_the_old_key_for_one_release(tmp_path):
+    """R45 (decision 39, row 55): a project whose sdlc.yaml still says ``deploy.production:
+    true`` keeps its production gate: the guarded command is blocked without the approval."""
+    root, env, log = _gate_project(tmp_path, key="production")
+    assert "  production: true\n" in (root / "sdlc.yaml").read_text(encoding="utf-8")
+    assert _gate(root, env, "twine upload dist/*").block
+    assert _log_lines(log)[-1]["verdict"] == "block"
+    (tmp_path / "off").mkdir()
+    off_root, off_env, off_log = _gate_project(tmp_path / "off", production=False, key="production")
+    assert not _gate(off_root, off_env, "twine upload dist/*").block
+    assert not off_log.exists()
+
+
+def test_production_gate_fails_closed_when_the_old_and_new_keys_disagree(tmp_path):
+    """Both keys set to different values: the hook does not guess which one the owner meant,
+    it blocks on the config error that names both."""
+    root, env, log = _gate_project(tmp_path, production=False)
+    path = root / "sdlc.yaml"
+    path.write_text(path.read_text(encoding="utf-8") + "  production: true\n", encoding="utf-8")
+    with pytest.raises(_common_config_error()) as exc:
+        _gate(root, env, "twine upload dist/*")
+    assert "deploy.production_gate is false" in str(exc.value)
+    assert "deploy.production is true" in str(exc.value)
     (line,) = _log_lines(log)
     assert line["verdict"] == "block" and "fail closed" in line["reason"]
 
@@ -2559,3 +2588,38 @@ def test_panel_blind_reads_both_forms_of_the_phase_in_a_file_name(panel_project)
     assert not _blind(root, pre("Read", file_path=str(panel / "design-1-reviewer.md"))).block
     assert not _blind(root, pre("Read", file_path=str(panel / "b-1-advocate.md"))).block
     assert panel_blind.one_sided(str(root)) == []
+
+
+@pytest.mark.parametrize(
+    ("deploy", "expected"),
+    [
+        ({}, False),
+        ({"production_gate": True}, True),
+        ({"production_gate": False}, False),
+        ({"production": True}, True),
+        ({"production": False}, False),
+        ({"production_gate": True, "production": True}, True),
+        ({"production_gate": None, "production": True}, True),
+        ({"production_gate": False, "production": None}, False),
+    ],
+)
+def test_the_production_gate_key_reads_the_new_name_then_the_old(deploy, expected):
+    """R45 (decision 39, row 55): ``deploy.production_gate``, else ``deploy.production`` for
+    one release, by ``config_flag``'s rule."""
+    common = sys.modules["_common"]
+    assert common.production_gate({"deploy": deploy}) is expected
+
+
+@pytest.mark.parametrize(
+    "deploy",
+    [
+        {"production_gate": True, "production": False},
+        {"production_gate": False, "production": True},
+        {"production": "yes"},
+        {"production_gate": True, "production": "yes"},
+    ],
+)
+def test_the_production_gate_key_fails_closed_on_a_conflict_or_a_non_boolean(deploy):
+    common = sys.modules["_common"]
+    with pytest.raises(common.ConfigError):
+        common.production_gate({"deploy": deploy})

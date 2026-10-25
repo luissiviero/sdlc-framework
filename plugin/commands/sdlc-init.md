@@ -137,7 +137,13 @@ the template of every release (`plugin/init/template_hashes.json`):
   <version>): …` for the owner's reviewed PR; an edited one and `bands.yaml` are the owner's
   content and say `kept`;
 - `sdlc.yaml` reports `unchanged` or `updated (added …)` with its comments kept as the first
-  install wrote them (only `updated (… comments dropped)` loses them).
+  install wrote them (only `updated (… comments dropped)` loses them). A key an older
+  release named otherwise (`deploy.production`, `external_review`; R45) is read under its old
+  name for one release and never gets its new name added beside it; the report's
+  `legacy_keys` names each one, and the rename is the owner's edit: show those lines to the
+  owner as they are. The rename waits for the pin at 1.0.45 or later: an older plugin reads
+  only the old key, so a `deploy.production_gate: true` under it is read as false and the
+  production gate is off.
 
 Read its JSON report and show the owner the file-by-file result, the `outdated` ones first,
 then the `refreshed` ones; the refreshed copies ride in the same PR as the pin, so the two

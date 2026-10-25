@@ -184,7 +184,7 @@ def load_sdlc_config(root: str) -> dict[str, Any]:
 
 def config_flag(config: dict[str, Any], *path: str, file: str = SDLC_FILE) -> bool:
     """A boolean setting of ``sdlc.yaml`` (``config_flag(cfg, "paused")``, ``config_flag(cfg,
-    "deploy", "production")``): False when absent or null, else the boolean, and a
+    "deploy", "production_gate")``): False when absent or null, else the boolean, and a
     ``ConfigError`` for anything else — ``yes``, ``on``, ``"true"`` and ``1`` are not booleans
     to YAML 1.2 (``yamlish`` reads them as strings or numbers, correctly), and every reader
     used to test ``is True``, so ``deploy.production: yes`` turned the release approval and
@@ -204,6 +204,33 @@ def config_flag(config: dict[str, Any], *path: str, file: str = SDLC_FILE) -> bo
         f"{file}: {'.'.join(path)} is {value!r}, not a boolean; write true or false "
         "(YAML 1.2: yes, on and quoted words are strings)"
     )
+
+
+# R45 (decision 39, row 55; plugin 1.0.45): the key that turns on the production gate is
+# ``deploy.production_gate``; until plugin 1.0.44 it was ``deploy.production``, which read as
+# "this project is production". The old key is read for one release.
+PRODUCTION_GATE_KEY = "production_gate"
+LEGACY_PRODUCTION_GATE_KEY = "production"
+
+
+def production_gate(config: dict[str, Any], file: str = SDLC_FILE) -> bool:
+    """``sdlc.yaml: deploy.production_gate``, else the old ``deploy.production`` (read for one
+    release), by ``config_flag``'s rule: False when absent or null, a ``ConfigError`` for a
+    value that is not a boolean. When both keys are set and disagree, a ``ConfigError`` that
+    names both: the reader fails closed rather than guess which one the owner meant."""
+    new = config_flag(config, "deploy", PRODUCTION_GATE_KEY, file=file)
+    deploy = config.get("deploy")
+    if not isinstance(deploy, dict) or deploy.get(LEGACY_PRODUCTION_GATE_KEY) is None:
+        return new
+    old = config_flag(config, "deploy", LEGACY_PRODUCTION_GATE_KEY, file=file)
+    if deploy.get(PRODUCTION_GATE_KEY) is None:
+        return old
+    if new != old:
+        raise ConfigError(
+            f"{file}: deploy.production_gate is {str(new).lower()} and the old "
+            f"deploy.production is {str(old).lower()}; keep deploy.production_gate only"
+        )
+    return new
 
 
 # --- glob matching, gitignore-style (case-insensitive, like norm()) -------------------------

@@ -45,8 +45,9 @@ panel_advocate_model: claude-fable-5-1
 # you read it, so in the deploy phase the design opinion is carried onto the build PR (1.0.24). A job of its own after the phase job holds
 # the repository secret GEMINI_API_KEY; no Claude session ever does. Check the id with
 # `cli.py models` first, and send project code only from a Google project with billing linked
-# (the paid tier's terms).
-# external_review:
+# (the paid tier's terms). Until plugin 1.0.44 the block was `external_review:`, which is
+# read as this one for one release (R45, decision 39).
+# second_opinion:
 #   model: gemini-4-argon
 #   phases: [design, deploy]   # the letters [b, e] of older files are read for one release
 #   max_chars: 400000   # what one call may read; a file past it is left out and named
@@ -88,10 +89,12 @@ deploy:
   # check of the release workflow (build guide step 29; decision 13). The approval is the
   # label sdlc:release-approved applied by a person on the build PR from GitHub, nothing
   # else: a run cannot approve itself (decision 5, the automation identity), so no signed
-  # tag counts and the hook blocks any command that names the label
-  production: {{DEPLOY_PRODUCTION}}
+  # tag counts and the hook blocks any command that names the label. Until plugin 1.0.44
+  # the key was `production`, which is read for one release (R45, decision 39); a plugin
+  # before 1.0.45 reads only `production`, so rename it only with the pin at 1.0.45 or later
+  production_gate: {{DEPLOY_PRODUCTION}}
   # the one command the release workflow (.github/workflows/sdlc-release.yml) runs after the
-  # build PR's merge (and, when production is true, after the release label): e.g.
+  # build PR's merge (and, when production_gate is true, after the release label): e.g.
   # `python -m build && twine upload dist/*`, `python scripts/regenerate_report.py`.
   # Empty = the release is prepared in the PR and nothing runs. Runs on the GitHub runner
   # with the repository's secrets only.
@@ -103,7 +106,7 @@ deploy:
   # (plugin/hooks/production_gate.py DEFAULT_GUARDED) and to the article's own trigger, a
   # command containing both `deploy` and `production` (p.36). `promote to paper trading` has
   # no default: a paper-trading project lists its own promotion command here (e.g.
-  # "python scripts/promote.py"). Only read when production is true.
+  # "python scripts/promote.py"). Only read when production_gate is true.
   guarded_commands: []
 maintain:
   # the watched metric and where the detection script reads it (default: CI test failure
@@ -112,13 +115,14 @@ maintain:
   metric: {{MAINTAIN_METRIC}}
   source: {{MAINTAIN_SOURCE}}
   # the project's own runbooks (plugin 0.2.19; plugin/detect/routes.py). bands.yaml names a
-  # route `runbook:<name>` with its authorization (decision 14: preapproved = CI-scoped and
-  # reversible, runs with no human in the path; go = touches a running system, parks the
-  # incident PR with "Go" requested until the owner applies sdlc:go). The plugin ships
+  # route `runbook:<name>` with its authorization (decision 14: allow = CI-scoped and
+  # reversible, runs with no human in the path; ask = touches a running system, parks the
+  # incident PR with "Go" requested until the owner applies sdlc:go; until plugin 1.0.44
+  # preapproved and go, read as allow and ask for one release). The plugin ships
   # quarantine-flaky-test and revert-pr; an entry here adds a `command` (no shell; steps
   # joined by &&, run on the runner with the repository's own secrets) under that name.
-  # A `go` here is stricter than the bands' value and wins. Decision 26: on a project with
-  # deploy.production: true, a runbook whose name contains "rollback" and whose
+  # An `ask` here is stricter than the bands' value and wins. Decision 26: on a project with
+  # deploy.production_gate: true, a runbook whose name contains "rollback" and whose
   # rehearsed_at is a date the owner set after a staging rehearsal is pre-approved.
   # Since plugin 1.0.27 (R44) a runbook on the runner runs in a fresh tree of the default
   # branch's commit (with changes/ copied in), never in the checkout the diagnosis session
@@ -129,7 +133,7 @@ maintain:
   # - name: rollback-deploy
   #   command: "python scripts/rollback.py"
   #   env: [DEPLOY_TOKEN]      # the step's secrets this command may read
-  #   authorization: go
+  #   authorization: ask
   #   rehearsed_at: null       # e.g. 2026-09-24, set by you after the rehearsal
   runbooks: []
 

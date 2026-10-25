@@ -2,9 +2,9 @@
 gate also defines what counts as approval, whether that's an approved change ticket or the
 release manager's sign-off").
 
-When ``sdlc.yaml: deploy.production`` is true, gate (deploy) has two acts: the owner's approving
-review of the build PR (decision 36; the owner's merge where no merge App merges), and the
-release approval. The approval is **the label** ``sdlc:release-approved`` on
+When ``sdlc.yaml: deploy.production_gate`` is true, gate (deploy) has two acts: the owner's
+approving review of the build PR (decision 36; the owner's merge where no merge App merges),
+and the release approval. The approval is **the label** ``sdlc:release-approved`` on
 the change's build PR, applied by a person, and nothing else: the actor of the last
 ``labeled`` event for that label is read through GitHub, never from an environment variable
 (the article's example reads ``$RELEASE_APPROVAL``, p.36-37; an unattended run could set that

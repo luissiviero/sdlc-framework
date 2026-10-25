@@ -2338,7 +2338,7 @@ def check_detection(ctx: GateContext) -> CheckResult:
 
 def check_route(ctx: GateContext) -> CheckResult:
     """The proposed route is one bands.yaml lists for the tier, and it was taken: a
-    pre-approved runbook ran (its PR is open, the record says ``ran``); a ``go`` route waits
+    pre-approved runbook ran (its PR is open, the record says ``ran``); an ``ask`` route waits
     for the owner's ``sdlc:go`` (parks with "Go" requested, decision 14); a failed runbook
     parks with its reason; ``pull_request`` is this PR itself."""
     dismissals, finding, routes = _detect_modules()
@@ -2389,12 +2389,13 @@ def check_route(ctx: GateContext) -> CheckResult:
         )
     status = str(outcome.get("status") or "")
     details["outcome"] = outcome
-    if status == "ran" and resolved.authorization == routes.GO and not outcome.get("authorized_by"):
+    asked = resolved.authorization == routes.ASK
+    if status == "ran" and asked and not outcome.get("authorized_by"):
         return _fail(
             "route",
             f"runbook {name} is recorded as run, but its route needs the owner's Go and the "
             "record names nobody who gave it",
-            f"A `go` route runs only through `{c.GO_LABEL}` (sdlc-runbook.yml records the "
+            f"An `ask` route runs only through `{c.GO_LABEL}` (sdlc-runbook.yml records the "
             "actor); re-run /sdlc-maintain <id> to record the route again.",
             **details,
         )
@@ -2420,7 +2421,7 @@ def check_route(ctx: GateContext) -> CheckResult:
     if status == "go-requested":
         return _fail(
             "route",
-            f"runbook {name} touches a running system (authorization: go): Go requested",
+            f"runbook {name} touches a running system (authorization: ask): Go requested",
             f"Apply `{c.GO_LABEL}` on this PR to run runbook {name} now (it touches a running "
             "system, decision 14), or merge to fix through the pipeline, or close with a "
             "reason to dismiss the finding.",

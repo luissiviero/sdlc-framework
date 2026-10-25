@@ -83,7 +83,7 @@ OWNER_FIELDS_PARK_PREFIX = "status.yaml: the session wrote owner-only field(s): 
 # The detect step's snapshot of the detection record (0.2.27): ``detect/cli.py run`` prints
 # the digest of evidence/detection.json before the maintain session, ``finish`` compares.
 DETECTION_SNAPSHOT_PARK_PREFIX = "evidence/detection.json changed after the detection step: "
-# The second act at gate (e) when `sdlc.yaml: deploy.production` is true (decision 13; build
+# The second act at gate (e) when `sdlc.yaml: deploy.production_gate` is true (decision 13; build
 # guide step 29): the owner applies it on the build PR; the production-gate hook and the
 # release workflow read it through the PR, never from an environment variable.
 RELEASE_APPROVED_LABEL = "sdlc:release-approved"
@@ -102,7 +102,7 @@ UNPARK_LABELS = (RESET_ITERATIONS_LABEL, UNLOCK_TESTS_LABEL)
 # every intent PR the maintain loop opens - the triage queue is the set of open PRs carrying
 # it (p.44 step 6); ``sdlc:schedule`` is the owner's "not now" (the PR stays open, nothing
 # runs; "Fix now, schedule, or dismiss", p.44); ``sdlc:go`` is the owner's per-incident
-# authorization of a runbook whose route says ``authorization: go`` (p.49-50: "shall I run
+# authorization of a runbook whose route says ``authorization: ask`` (p.49-50: "shall I run
 # it?" - "Go."), read by ``sdlc-runbook.yml``, performed once, recorded with the actor and
 # removed, like the un-park labels. R45 (decision 39, rows 37 and 38): until plugin 1.0.43
 # the two labels were ``incident`` and ``schedule``, without the prefix that groups the

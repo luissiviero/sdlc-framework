@@ -34,7 +34,7 @@ release that ran. Neither is a phase run: no ``claude`` starts and no hook fires
    afterwards carries the result and is released on its merge;
 4c. ``parked`` (0.3.1, issue #68): the merged copy carries a ``parked_reason`` (gate
    (deploy) parked and the owner merged anyway): the reason is printed, and the release needs the
-   release label whatever ``deploy.production`` says;
+   release label whatever ``deploy.production_gate`` says;
 4a. ``released`` (0.3.1, issue #66): the merged copy, the ref ``refs/sdlc/released/<id>`` on
    the remote or the work branch's copy of ``status.yaml`` (``sdlc/<id>/build``) already records
    a release of this change -> ``skip``: one release per change, whatever pull request,
@@ -98,7 +98,7 @@ from gate import artifacts as art  # noqa: E402
 from gate import checks as gate_checks  # noqa: E402
 from gate import gate as gate_mod  # noqa: E402
 from gate import risk as risk_mod  # noqa: E402
-from hooks._common import ConfigError, config_flag, load_sdlc_config  # noqa: E402
+from hooks._common import ConfigError, load_sdlc_config, production_gate  # noqa: E402
 from release import approval as approval_mod  # noqa: E402
 from state import conventions as c  # noqa: E402
 from state import gitops, yamlish  # noqa: E402
@@ -729,7 +729,7 @@ def _release(args, env, github, git, record_git, say) -> int:
         return 2
     action = str(deploy.get("action") or "none").strip().lower()
     try:
-        production = config_flag(config, "deploy", "production")
+        production = production_gate(config)
     except ConfigError as exc:
         say("error", f"{exc}; the release fails closed")
         return 2
@@ -902,7 +902,7 @@ def _release(args, env, github, git, record_git, say) -> int:
                     "waiting",
                     f"change {change_id} was merged while parked ({parked}); a parked change "
                     f"releases only after {approval_mod.RELEASE_LABEL}, whatever "
-                    f"deploy.production says ({result.detail})",
+                    f"deploy.production_gate says ({result.detail})",
                 )
             else:
                 say("waiting", result.detail)

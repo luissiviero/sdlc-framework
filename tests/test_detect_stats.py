@@ -264,12 +264,12 @@ def test_load_rendered_template(tmp_path):
     assert [b.action(t) for t in (0, 1, 2, 3)] == [None, "log", "diagnose", "propose"]
     assert b.diagnose_tools() == "Read,Grep,Bash(gh run view *)"
     assert [(r.name, r.authorization) for r in b.routes()] == [
-        ("pull_request", "preapproved"),
-        ("runbook:quarantine-flaky-test", "preapproved"),
-        ("runbook:revert-pr", "preapproved"),
-        ("runbook:rollback-deploy", "go"),
+        ("pull_request", "allow"),
+        ("runbook:quarantine-flaky-test", "allow"),
+        ("runbook:revert-pr", "allow"),
+        ("runbook:rollback-deploy", "ask"),
     ]
-    assert b.route("runbook:rollback-deploy") == bands.Route("runbook:rollback-deploy", "go")
+    assert b.route("runbook:rollback-deploy") == bands.Route("runbook:rollback-deploy", "ask")
     assert b.route("runbook:unknown") is None
 
 
@@ -313,7 +313,7 @@ VALID = {
         "2sigma": {"action": "diagnose", "tools": "Read"},
         "3sigma": {
             "action": "propose",
-            "routes": [{"name": "pull_request", "authorization": "preapproved"}],
+            "routes": [{"name": "pull_request", "authorization": "allow"}],
         },
     },
 }
@@ -345,7 +345,7 @@ def _tier3(**route) -> dict:
         (_with(tiers={"1sigma": {"tools": "Read"}}), "tier 1sigma has no action"),
         (_with(tiers={"1sigma": None}), "tier 1sigma has no action"),
         (_with(tiers={"3sigma": {"action": "propose", "routes": "x"}}), "routes is not a list"),
-        (_tier3(authorization="go"), "tier 3sigma: route 1 has no name"),
+        (_tier3(authorization="ask"), "tier 3sigma: route 1 has no name"),
         (_tier3(name="runbook:x", authorization="auto"), "has authorization 'auto'"),
         (_tier3(name="runbook:x"), "has authorization None"),
     ],

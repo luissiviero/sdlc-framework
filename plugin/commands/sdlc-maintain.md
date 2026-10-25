@@ -90,7 +90,7 @@ Write `changes/<id>-<slug>/evidence/proposal.json` in the shape `routes` printed
   `{"sha": "<full sha>"}` when one commit in the breach window (the record lists them)
   introduced the failures; a project runbook by its name when the incident is what it was
   written for. Never propose a route `routes` did not list, and never an unsupported one.
-The rationale says why this route and what was ruled out. A `go` route may be proposed
+The rationale says why this route and what was ruled out. An `ask` route may be proposed
 when it is the right action: the dispatcher parks the PR with "Go" requested and the owner's
 `sdlc:go` label runs it (`sdlc-runbook.yml`); do not propose a weaker route to avoid the
 wait.
@@ -107,11 +107,11 @@ runs the triage gate, commits the evidence and opens the PR. Steps 6–8 are the
 `python "${CLAUDE_PLUGIN_ROOT}/plugin/detect/cli.py" dispatch --root "${CLAUDE_PROJECT_DIR}" --id <id> --commit`
 It validates the proposal against the tier and the **default branch's** `bands.yaml` and
 `sdlc.yaml` (never the checkout's: an edit in this session changes no authorization,
-decision 14), resolves the authorization (the bands' value; a stricter `go` in
+decision 14), resolves the authorization (the bands' value; a stricter `ask` in
 `sdlc.yaml: maintain.runbooks` wins; a rollback runbook with `rehearsed_at` set on a project
-with `deploy.production: true` is pre-approved, decision 26; a forced finding — a rehearsal —
+with `deploy.production_gate: true` is pre-approved, decision 26; a forced finding — a rehearsal —
 never pre-approves a runbook), and acts: a pre-approved runbook runs now (its branch, its pull request, the
-record `evidence/runbook-<name>.json` with `status: ran`), a `go` route records
+record `evidence/runbook-<name>.json` with `status: ran`), an `ask` route records
 `go-requested`, `pull_request` records nothing. `--commit` commits the record on the
 branch. Read its JSON; a rejected proposal (`acted: false` with a reason) is fixed by
 rewriting `proposal.json` once (a listed route, the right arguments) and re-running steps

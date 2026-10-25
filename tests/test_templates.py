@@ -130,7 +130,7 @@ def test_sdlc_yaml_renders_to_documented_keys():
     # step 29 / 32: the release workflow's command and the production-gate hook's patterns
     assert data["deploy"] == {
         "action": "none",
-        "production": False,
+        "production_gate": False,  # R45 (decision 39, row 55): `production` until 1.0.44
         "command": "",
         "guarded_commands": [],
     }
@@ -260,7 +260,7 @@ def test_bands_yaml_has_the_p44_shape_with_authorization_per_route():
     assert set(data) == {"metric", "source", "baseline", "rules", "tiers"}
     assert set(data["tiers"]) == {"1sigma", "2sigma", "3sigma"}
     for route in data["tiers"]["3sigma"]["routes"]:
-        assert route["authorization"] in ("preapproved", "go")
+        assert route["authorization"] in ("allow", "ask")
     assert (TEMPLATE / "evals" / "README.md").is_file() and (
         TEMPLATE / "evals" / "cases" / ".gitkeep"
     ).is_file()

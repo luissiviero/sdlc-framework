@@ -13,8 +13,10 @@
   a perfectly flat baseline makes every single failure a 3 sigma breach and the loop too loud.
 - ``tiers``: ``1sigma``, ``2sigma``, ``3sigma``, each with an ``action`` (p.43 step 3: log,
   diagnose, propose); ``2sigma`` may name the read-only ``tools`` of the diagnosis and
-  ``3sigma`` lists the ``routes`` (``name`` plus ``authorization``: ``preapproved`` or
-  ``go``, decision 14). A route not listed is never taken.
+  ``3sigma`` lists the ``routes`` (``name`` plus ``authorization``: ``allow`` or ``ask``,
+  decision 14, the hook's verbs of p.36). A route not listed is never taken. Until plugin
+  1.0.44 the values were ``preapproved`` and ``go``, which are read as ``allow`` and ``ask``
+  for one release (R45, decision 39, row 56; ``routes.LEGACY_AUTHORIZATIONS``).
 
 Read with ``state.yamlish`` (no PyYAML at runtime). ``load`` raises ``BandsError`` (a
 ``ValueError``) with a one-line reason; ``validate`` returns the reasons.
@@ -32,13 +34,13 @@ if str(PLUGIN_DIR) not in sys.path:
     sys.path.insert(0, str(PLUGIN_DIR))
 
 from detect import stats  # noqa: E402
+from detect.routes import AUTHORIZATIONS, authorization_value  # noqa: E402
 from state import yamlish  # noqa: E402
 
 BANDS_FILE = "bands.yaml"
 DEFAULT_BASELINE = "rolling_30d"
 KNOWN_RULES = ("western_electric",)
 TIER_KEYS = {"1sigma": 1, "2sigma": 2, "3sigma": 3}
-AUTHORIZATIONS = ("preapproved", "go")
 
 
 class BandsError(ValueError):
@@ -48,7 +50,7 @@ class BandsError(ValueError):
 @dataclass
 class Route:
     name: str  # "pull_request" | "runbook:<name>"
-    authorization: str  # "preapproved" | "go"
+    authorization: str  # "allow" | "ask"
 
 
 @dataclass
@@ -142,7 +144,7 @@ def validate(data: Any) -> list[str]:
                 reasons.append(f"tier {key}: route {i} has no name")
                 continue
             auth = route.get("authorization")
-            if auth not in AUTHORIZATIONS:
+            if authorization_value(auth) not in AUTHORIZATIONS:
                 reasons.append(
                     f"tier {key}: route {route['name']} has authorization {auth!r}, "
                     f"expected one of {', '.join(AUTHORIZATIONS)}"
@@ -156,7 +158,7 @@ def _tiers(raw: dict[str, Any]) -> dict[int, dict[str, Any]]:
         entry = dict(tier)
         if "routes" in entry:
             entry["routes"] = [
-                Route(name=r["name"], authorization=r["authorization"])
+                Route(name=r["name"], authorization=authorization_value(r["authorization"]))
                 for r in entry["routes"] or []
             ]
         out[TIER_KEYS[key]] = entry

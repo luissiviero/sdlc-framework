@@ -4,11 +4,14 @@ a pre-approved runbook", p.44 governance "the runbooks the agent may trigger wer
 in advance").
 
 Every route is one of two authorization models, written per route in ``bands.yaml``
-(decision 14, split by blast radius): ``preapproved`` (CI-scoped and reversible: the intent
-PR, quarantining a flaky test, a revert PR) runs with no human in the path; ``go`` (anything
-that touches a running system: a rollback, a config change) parks the incident PR with "Go"
-requested, and the owner's ``sdlc:go`` label runs it (``sdlc-runbook.yml``). Decision 26
-amends one case: on a project with ``deploy.production: true``, a rollback runbook the owner
+(decision 14, split by blast radius), named by the hook's verbs (a hook "can allow, ask, or
+block", p.36): ``allow`` (CI-scoped and reversible: the intent PR, quarantining a flaky test,
+a revert PR) runs with no human in the path; ``ask`` (anything that touches a running system:
+a rollback, a config change) parks the incident PR with "Go" requested, and the owner's
+``sdlc:go`` label runs it (``sdlc-runbook.yml``). Until plugin 1.0.44 the values were
+``preapproved`` and ``go``; a file that still holds them is read as ``allow`` and ``ask`` for
+one release (R45, decision 39, row 56; ``LEGACY_AUTHORIZATIONS``). Decision 26
+amends one case: on a project with ``deploy.production_gate: true``, a rollback runbook the owner
 has rehearsed (``sdlc.yaml: maintain.runbooks[].rehearsed_at`` set to a date) is
 pre-approved - the p.49 figure makes the rehearsal the precondition, and a "Go" that waits
 silently in the queue brings back the missed alert the loop exists to remove.
@@ -29,8 +32,9 @@ from typing import Any
 
 PULL_REQUEST = "pull_request"
 RUNBOOK_PREFIX = "runbook:"
-PREAPPROVED, GO = "preapproved", "go"
-AUTHORIZATIONS = (PREAPPROVED, GO)
+ALLOW, ASK = "allow", "ask"
+AUTHORIZATIONS = (ALLOW, ASK)
+LEGACY_AUTHORIZATIONS = {"preapproved": ALLOW, "go": ASK}
 # The runbooks the plugin ships (CI-scoped, reversible, p.45 "the agent quarantines the flaky
 # test or opens a revert PR, and the review gate decides"); a project adds its own under
 # ``sdlc.yaml: maintain.runbooks`` with a ``command``.
@@ -98,6 +102,14 @@ class Proposal:
         }
 
 
+def authorization_value(value: Any) -> Any:
+    """``value`` with an old authorization (``preapproved``, ``go``) read as its new name
+    (``allow``, ``ask``); anything else unchanged, for the caller to judge."""
+    if not isinstance(value, str):
+        return value
+    return LEGACY_AUTHORIZATIONS.get(value.strip(), value.strip())
+
+
 def runbook_name(route: str) -> str | None:
     return route[len(RUNBOOK_PREFIX) :] if route.startswith(RUNBOOK_PREFIX) else None
 
@@ -113,12 +125,12 @@ def project_runbooks(config: dict[str, Any]) -> dict[str, dict[str, Any]]:
 
 
 def production_declared(config: dict[str, Any]) -> bool:
-    """``sdlc.yaml: deploy.production`` is true; a value that is not a boolean declares
-    nothing here (the rollback keeps its ``go``; the gate and the hook refuse it)."""
-    from hooks._common import ConfigError, config_flag  # noqa: PLC0415
+    """``sdlc.yaml: deploy.production_gate`` is true; a value that is not a boolean declares
+    nothing here (the rollback keeps its ``ask``; the gate and the hook refuse it)."""
+    from hooks._common import ConfigError, production_gate  # noqa: PLC0415
 
     try:
-        return config_flag(config, "deploy", "production")
+        return production_gate(config)
     except ConfigError:
         return False
 
@@ -143,13 +155,13 @@ def authorization(route: str, bands_route: Any, config: dict[str, Any], language
 
     ``bands_route`` is ``bands.Route`` (``name``, ``authorization``) or None when bands.yaml
     does not list the route - then it is never taken. The bands' value stands unless the
-    project's own ``maintain.runbooks`` entry of the same name says ``go`` (the stricter
+    project's own ``maintain.runbooks`` entry of the same name says ``ask`` (the stricter
     wins), and a rehearsed rollback on a declared production is pre-approved whatever the
     two files say (decision 26)."""
     if bands_route is None:
-        return Resolved(route, GO, "not listed in bands.yaml", supported=False,
+        return Resolved(route, ASK, "not listed in bands.yaml", supported=False,
                         note="a route not listed in bands.yaml is never taken")  # fmt: skip
-    auth = str(getattr(bands_route, "authorization", GO) or GO)
+    auth = str(authorization_value(getattr(bands_route, "authorization", ASK) or ASK))
     source = "bands.yaml"
     name = runbook_name(route)
     if name is None:
@@ -157,8 +169,13 @@ def authorization(route: str, bands_route: Any, config: dict[str, Any], language
     entry = project_runbooks(config).get(name)
     builtin = name in BUILTIN_RUNBOOKS
     resolved = Resolved(route, auth, source, runbook=name, project_runbook=entry, builtin=builtin)
-    if entry is not None and str(entry.get("authorization") or "").strip() == GO and auth != GO:
-        resolved.authorization, resolved.source = GO, "sdlc.yaml: maintain.runbooks (stricter)"
+    stricter = authorization_value(str(entry.get("authorization") or "")) if entry else None
+    # a value the project set that is neither allow nor ask (a typo, "Ask") is read as the
+    # stricter one: a runbook entry can only tighten the bands' value, never loosen it
+    if stricter and stricter != ALLOW:
+        stricter = ASK
+    if stricter == ASK and auth != ASK:
+        resolved.authorization, resolved.source = ASK, "sdlc.yaml: maintain.runbooks (stricter)"
     if builtin:
         langs = BUILTIN_RUNBOOKS[name]["languages"]
         if langs and language not in langs:
@@ -171,12 +188,12 @@ def authorization(route: str, bands_route: Any, config: dict[str, Any], language
         )
     stamp = rehearsed(entry)
     if (
-        resolved.authorization == GO
+        resolved.authorization == ASK
         and ROLLBACK_RE.search(name)
         and production_declared(config)
         and stamp
     ):
-        resolved.authorization = PREAPPROVED
+        resolved.authorization = ALLOW
         resolved.source = f"decision 26: rollback rehearsed on {stamp} on a declared production"
         resolved.rehearsed_at = stamp
     return resolved
@@ -187,10 +204,10 @@ FORCED_SOURCE = "a forced finding (a rehearsal) never pre-approves a runbook: Go
 
 def apply_forced(resolved: Resolved | None, forced: bool) -> Resolved | None:
     """A rehearsal (``detection.json: forced``) has no breach behind it: decision 26's
-    pre-approval and a bands ``preapproved`` are for a real 3σ, so every runbook route of a
+    pre-approval and a bands ``allow`` are for a real 3σ, so every runbook route of a
     forced finding waits for the owner's Go (the intent PR is still opened)."""
     if resolved is not None and forced and resolved.runbook:
-        resolved.authorization = GO
+        resolved.authorization = ASK
         resolved.source = FORCED_SOURCE
         resolved.rehearsed_at = None
     return resolved
@@ -208,7 +225,7 @@ def available(bands: Any, config: dict[str, Any], language: str, tier: int) -> l
         out.append(authorization(route.name, route, config, language))
     if tier == 2 and not any(r.route == PULL_REQUEST for r in out):
         # the intent PR is the diagnosis's own artifact: it needs no bands entry to exist
-        out.append(Resolved(PULL_REQUEST, PREAPPROVED, "the incident intent PR (p.44 step 5)"))
+        out.append(Resolved(PULL_REQUEST, ALLOW, "the incident intent PR (p.44 step 5)"))
     return out
 
 
@@ -253,7 +270,7 @@ def validate_proposal(
         listed = bands.route(PULL_REQUEST)
         if listed is None and detection_tier == 3:
             return None, "pull_request is not a route of the 3sigma tier in bands.yaml"
-        return Resolved(PULL_REQUEST, PREAPPROVED, "the incident intent PR (p.44 step 5)"), ""
+        return Resolved(PULL_REQUEST, ALLOW, "the incident intent PR (p.44 step 5)"), ""
     listed = bands.route(proposal.route)
     if listed is None:
         return None, f"{proposal.route} is not a route of the 3sigma tier in bands.yaml"

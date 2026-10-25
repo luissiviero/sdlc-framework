@@ -727,19 +727,20 @@ def test_first_sentence_reads_the_whole_first_paragraph(helper, body, sentence):
     assert first_sentence(body) == sentence
 
 
-def _declare_production(root: Path, value: str) -> None:
+def _declare_production(root: Path, value: str, key: str = "production_gate") -> None:
+    """The one ``deploy.production_gate:`` (or old ``production:``) line set to ``key: value``."""
     config = root / "sdlc.yaml"
     text = config.read_text(encoding="utf-8")
+    keys = ("production_gate:", "production:")
     lines = [
-        f"  production: {value}" if line.strip().startswith("production:") else line
-        for line in text.splitlines()
+        f"  {key}: {value}" if line.strip().startswith(keys) else line for line in text.splitlines()
     ]
-    assert sum(line.strip().startswith("production:") for line in text.splitlines()) == 1
+    assert sum(line.strip().startswith(keys) for line in text.splitlines()) == 1
     write(config, "\n".join(lines) + "\n")
 
 
 def test_release_approval_line_only_when_production_is_declared(project):
-    """Decision 13: with `deploy.production: true` the release label is the second act; the
+    """Decision 13: with `deploy.production_gate: true` the release label is the second act; the
     line sits below the five bullets (not a sixth bullet) and only at phase (e)."""
     root, change = project
     logs(change)
@@ -759,6 +760,12 @@ def test_release_approval_line_only_when_production_is_declared(project):
     )
     assert line not in desc.build_description(root, "0001", "test")
     _declare_production(root, "false")
+    assert line not in desc.build_description(root, "0001", "deploy")
+    # R45 (decision 39, row 55): the old key `deploy.production` is read for one release
+    _declare_production(root, "true", key="production")
+    assert "  production: true" in (root / "sdlc.yaml").read_text(encoding="utf-8")
+    assert line in desc.build_description(root, "0001", "deploy").splitlines()
+    _declare_production(root, "false", key="production")
     assert line not in desc.build_description(root, "0001", "deploy")
 
 

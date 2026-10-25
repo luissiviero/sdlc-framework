@@ -18,7 +18,7 @@
 # - unless an incident of the same metric is already open or the finding was dismissed
 # (changes/.dismissed.json). Then, only when a change was filed, run_phase.py runs the
 # diagnosis: /sdlc-maintain, read-only on source, which writes the incident intent.md and
-# the proposed route, dispatches it (a pre-approved runbook runs and opens its PR; a `go`
+# the proposed route, dispatches it (a pre-approved runbook runs and opens its PR; an `ask`
 # route parks the PR with "Go" requested) and opens the intent PR with the labels
 # sdlc:maintain-ready and sdlc:triage. The triage gate is your triage of that PR (decision 25).
 #
