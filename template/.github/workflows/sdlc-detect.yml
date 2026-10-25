@@ -20,7 +20,7 @@
 # diagnosis: /sdlc-maintain, read-only on source, which writes the incident intent.md and
 # the proposed route, dispatches it (a pre-approved runbook runs and opens its PR; a `go`
 # route parks the PR with "Go" requested) and opens the intent PR with the labels
-# sdlc:maintain-ready and incident. The triage gate is your triage of that PR (decision 25).
+# sdlc:maintain-ready and sdlc:triage. The triage gate is your triage of that PR (decision 25).
 #
 # Token rule (decision 33): with the repository variable SDLC_APP_ID set, the job pushes and
 # opens the incident PR with the project's GitHub App token, and the events the App causes do

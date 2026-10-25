@@ -52,7 +52,7 @@ CHECK_RUN_NAME = "sdlc/{phase}"
 # the owner's labels: applied by a person, read by the release workflow and the next run,
 # never swept away when the gate label changes
 # R45 (row 37): the gate-label sweep keeps the owner's labels and the maintain queue's two,
-# which carry the ``sdlc:`` prefix since plugin 1.0.43
+# which carry the ``sdlc:`` prefix since plugin 1.0.44
 OWNER_LABELS = frozenset(
     {c.RELEASE_APPROVED_LABEL, *c.UNPARK_LABELS, c.GO_LABEL, c.TRIAGE_LABEL, c.SCHEDULE_LABEL}
 )

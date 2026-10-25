@@ -23,7 +23,7 @@ family alias (``opus``):
   ``adversarial_model`` instead.
 
 Every CI session the runner composes takes ``session_model``: the phases, a fix round, the
-triage of the maintain phase and the weekly scan (their own run kinds read the ``default`` entry).
+explain step and the weekly scan (their own run kinds read the ``default`` entry).
 
 The Agent tool's per-invocation model takes a family alias, not a full id (Claude Code
 2.1.304's Agent tool, docs/notes/51.md), and an alias the CLI resolves on its own may

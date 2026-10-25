@@ -1687,7 +1687,7 @@ def test_counters_line_of_an_open_pr_after_a_reset(project):
 
 def test_digest_lists_the_runbook_and_dismissal_prs_under_the_triage_label():
     """Session-5 review: a revert, a quarantine or a dismissal PR carries `sdlc:triage` (R45,
-    row 37; `incident` before 1.0.43) and no gate label; decision 20 makes the digest the
+    row 37; `incident` until 1.0.43) and no gate label; decision 20 makes the digest the
     only place the owner meets them. Since the label carries the `sdlc:` prefix, the filter
     is "no gate label", not "no sdlc: label", and the PR is not a queue item."""
     revert = {
@@ -1707,10 +1707,33 @@ def test_digest_lists_the_runbook_and_dismissal_prs_under_the_triage_label():
     assert digest_mod.NOTHING_WAITING not in md and "#31" in md
     assert "0 parked, 0 waiting at a gate" in md
     assert digest_mod.incident_prs(QUEUE) == []  # an intent PR has its gate label: a queue item
+    # an incident intent PR at its gate is a queue item, listed once, never as a runbook PR
+    intent = {
+        **revert,
+        "number": 33,
+        "labels": [{"name": "sdlc:triage"}, {"name": "sdlc:maintain-ready"}],
+    }
+    md = digest_mod.render_digest([intent], "2026-09-25T06:00:00Z")
+    assert "0 parked, 1 waiting at a gate" in md and md.count("#33") == 1
+    assert "## Maintain:" not in md and digest_mod.incident_prs([intent]) == []
     # a scheduled one stays a runbook PR, and an older plugin's `incident` is still read
     scheduled = {**revert, "labels": [{"name": "sdlc:triage"}, {"name": "sdlc:schedule"}]}
     older = {**revert, "number": 32, "labels": [{"name": "incident"}]}
     assert digest_mod.incident_prs([scheduled, older]) == [scheduled, older]
+
+
+def test_the_queue_listing_keeps_an_older_plugin_s_incident_pr(monkeypatch):
+    """R45 (row 37): the pulls listing keeps every PR with an ``sdlc:`` label, and for one
+    release a PR an older plugin labelled ``incident`` with no ``sdlc:`` label at all."""
+    pulls = [
+        {"number": 1, "labels": [{"name": "sdlc:triage"}]},
+        {"number": 2, "labels": [{"name": "incident"}]},
+        {"number": 3, "labels": [{"name": "bug"}]},
+    ]
+    monkeypatch.setattr(github, "token", lambda: "t")
+    monkeypatch.setattr(github, "_request", lambda *a, **k: {"error": None, "data": pulls})
+    prs, error = digest_mod.list_queue_prs("o/r")
+    assert error == "" and [pr["number"] for pr in prs] == [1, 2]
 
 
 def test_digest_and_review_requests_read_the_letter_labels_of_an_older_plugin(monkeypatch):

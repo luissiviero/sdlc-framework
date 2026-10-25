@@ -15,7 +15,15 @@ This session ran on branch `claude/r45-2-labels-verdict`, built on R45's first r
 This session built the labels; two sub-agents built the verdict and the explain step in parallel on disjoint files, and this session merged `main`, bumped the version, regenerated `plugin/init/template_hashes.json` and ran the suite. Tests that asserted the old names now assert the new ones; none was deleted or skipped; each part added tests that the old names are still read.
 
 ## The fresh-context review
-<!-- filled in after the review -->
+A fresh-context sub-agent reviewed the diff (report only). It found nothing blocking: every old name it looked for is read and the new ones written, and a probe of `render_digest` listed no PR twice (a PR with `sdlc:triage` and `sdlc:maintain-ready` once under waiting, one with only `sdlc:triage` or `incident` once under maintain). Its findings and what was done:
+1. **Fixed:** `docs/OPERATING_MODEL.md`'s labels paragraph and maintain row, the `/sdlc-maintain` description, the detect workflow's comment and `README.md` still named `incident` and `schedule`; `README.md` also named `/sdlc-plan` (left from #389).
+2. **Fixed:** three comments said the labels carry the prefix "since 1.0.43"; it is 1.0.44.
+3. **Fixed:** the digest test now covers an incident intent PR at its gate (listed once, never as a runbook PR) and the pulls listing that keeps an older plugin's `incident` PR.
+4. **Fixed:** `plugin/panel/models.py` named the explain step "the triage of the maintain phase"; `read_spend_ledger` now reads a `run: triage` entry as `explain`, with a test; a stray "escalated" in `merge_step.py`'s docstring.
+5. **Not taken:** a `session_model: {triage: ...}` entry is no longer read (it was never documented; the step reads the `default` entry); decision 21's annotation stays beside the item it renames.
+
+## In this repository until the pin moves
+As with #389: once the owner commits these copies, the explain step passes `--phase explain` and tests `outputs.explain`, which the pinned 1.0.38 runner neither takes nor writes; both steps are `continue-on-error`, so the explain step is idle here until the pin moves past 1.0.43. In a project `/sdlc-init` moves the copies with the pin.
 
 ## Carried from #389
 The owner checked both rulesets on `main` (the central session's message of 2026-10-25, 20:39 UTC; not re-verified here): neither requires a status check, so the check runs' new names (`sdlc/build`, `sdlc/deploy`) block nothing.

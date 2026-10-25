@@ -4351,3 +4351,17 @@ def test_phase_tables_are_keyed_by_name():
     assert gate.fast_lane_applies("b", True, [], True) == gate.fast_lane_applies(
         "design", True, [], True
     )
+
+
+def test_the_spend_ledger_reads_an_older_plugin_s_run_names(tmp_path):
+    """R45: a ``spend.json`` entry an older plugin wrote names its run by letter (``c``) or as
+    ``triage`` (the explain step's name until 1.0.43); both are read under today's names."""
+    evidence = tmp_path / "evidence"
+    entries = [
+        {"run": "c", "source": "claude-c.json", "usd": 1.0, "at": "2026-10-25T10:00:00Z"},
+        {"run": "triage", "source": "claude-triage.json", "usd": 0.5, "at": "2026-10-25T10:05:00Z"},
+    ]
+    write(evidence / limits.SPEND_FILE, json.dumps({"total_usd": 1.5, "entries": entries}))
+    ledger = limits.read_spend_ledger(evidence)
+    assert [e["run"] for e in ledger["entries"]] == ["build", "explain"]
+    assert ledger["total_usd"] == 1.5

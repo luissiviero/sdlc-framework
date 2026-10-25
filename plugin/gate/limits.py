@@ -249,9 +249,10 @@ def read_spend_ledger(evidence_dir: Path) -> dict[str, Any]:
         return empty
     if not isinstance(data, dict) or not isinstance(data.get("entries"), list):
         return empty
-    # R45: a ``run`` an older plugin wrote as a letter (``c``) is read as its name
+    # R45: a ``run`` an older plugin wrote as a letter (``c``) or as ``triage`` is read as
+    # its current name
     entries = [
-        {**e, "run": c.phase_name(e.get("run"))} if "run" in e else e
+        {**e, "run": _run_name(e.get("run"))} if isinstance(e.get("run"), str) else e
         for e in data["entries"]
         if isinstance(e, dict) and _spend(e.get("usd")) is not None
     ]

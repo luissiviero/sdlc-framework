@@ -32,7 +32,7 @@ def test_labels():
         label.endswith("-approved") and label != c.RELEASE_APPROVED_LABEL for label in labels
     )
     # the maintain phase, decision 25; R45 (rows 37 and 38): the triage queue's labels carry
-    # the prefix since 1.0.43, so every label the framework creates is an sdlc: label
+    # the prefix since 1.0.44, so every label the framework creates is an sdlc: label
     assert {"sdlc:triage", "sdlc:schedule", "sdlc:go"} <= set(labels)
     assert all(label.startswith("sdlc:") for label in labels)
     assert "incident" not in labels and "schedule" not in labels
