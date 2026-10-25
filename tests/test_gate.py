@@ -2,7 +2,7 @@
 readers, run limits — and, against a temporary copy of the fixture project, the gate itself:
 `continue` on a clean change, `wait` at a human gate, `park` with the right reason for each
 prepared failure (missing plan.md, failing test behind SAMPLE_FAIL=1, a diff touching
-.claude/settings.json, a risk-list word, an escalating or stale adversarial verdict, an open
+.claude/settings.json, a risk-list word, a parking or stale adversarial verdict, an open
 flagged concern, a limit hit), and gate (design): a spec.md without its rendered header or a design
 branch that touches source parks, while a clean one waits for the owner."""
 
@@ -379,6 +379,15 @@ def test_findings_and_verdict_readers(tmp_path):
         json.dumps({"verdict": "continue", "classification": "routine", "head": "abc1234"})
     )
     assert checks.load_verdict(v)[0]["verdict"] == "continue"
+    # R45 row 62: the verdict is ``continue | park``; an older plugin's ``escalate`` is read
+    # as ``park`` for one release, and every reader gets the new word
+    for word, read in (("park", "park"), ("escalate", "park"), ("continue", "continue")):
+        v.write_text(json.dumps({"verdict": word, "classification": "routine", "head": "abc1234"}))
+        assert checks.load_verdict(v)[0]["verdict"] == read
+    for word in ("Park", "ESCALATE", "wait", None, 1):
+        assert art.verdict_word(word) is None
+    assert art.verdict_word("escalate") == art.VERDICT_PARK
+    assert art.VERDICTS == ("continue", "park")
 
 
 # --- run limits (step 19) with a bare context -------------------------------------------------
@@ -1343,10 +1352,21 @@ def test_gate_parks_on_escalate_missing_or_stale_verdict(project):
     result = gate.run_gate(root, "0001", "build")
     assert result.result == "park"
     assert "missing" in next(ch for ch in result.failed if ch.name == "adversarial_review").reason
+    verdict(root, "build", "park", "non-routine")
+    result = gate.run_gate(root, "0001", "build")
+    a = next(ch for ch in result.failed if ch.name == "adversarial_review")
+    assert "says park" in a.reason and "blast radius" in a.reason
+    assert a.details["verdict"] == "park"
+    # R45 row 62: an older plugin's ``escalate`` reads as ``park`` for one release
     verdict(root, "build", "escalate", "non-routine")
     result = gate.run_gate(root, "0001", "build")
     a = next(ch for ch in result.failed if ch.name == "adversarial_review")
-    assert "escalate" in a.reason and "blast radius" in a.reason
+    assert "says park" in a.reason and "escalate" not in a.reason
+    # any other word is a malformed verdict
+    verdict(root, "build", "Park", "non-routine")
+    result = gate.run_gate(root, "0001", "build")
+    a = next(ch for ch in result.failed if ch.name == "adversarial_review")
+    assert "malformed: 'verdict' must be 'continue' or 'park'" in a.reason
     verdict(root, "build", head="0000000000deadbeef")
     a = next(
         ch for ch in gate.run_gate(root, "0001", "build").failed if ch.name == "adversarial_review"
