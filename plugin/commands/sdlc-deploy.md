@@ -169,10 +169,10 @@ at the deploy gate parked on it). A deleted or malformed record is still uncommi
 python "${CLAUDE_PLUGIN_ROOT}/plugin/panel/cli.py" items --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase deploy
 ```
 It prints the items the gate would park on that belong to the panel's fixed list (an open
-flagged concern, a concern naming contradicting policies, the reviewer's `escalate`
+flagged concern, a concern naming contradicting policies, the reviewer's `park`
 verdict, an Important finding the run cannot fix, the verifier's "does not match the
 plan"), which of them the ledger already decides, and under `parks` what stays the owner's
-(an escalation on a risk-list item, a guardrail file, a run limit, an infrastructure
+(the reviewer's park on a risk-list item, a guardrail file, a run limit, an infrastructure
 failure; a risk-list hit itself parks nothing, decision 35). When `pending` is empty, go on
 to the gate. Otherwise, for each pending item `n` in
 order, three fresh contexts, each with the brief printed by
@@ -193,8 +193,8 @@ iteration; exit 3 at the cap: stop the panel, the gate parks); it appends the li
 in `spec.md` as `decided (by panel #<n>): <decision> — <concern>`, and commits the change
 folder itself (`review(<id>): panel decision <n>`), so the decision is in HEAD before anyone
 judges it. Do not reword a closed concern line: the gate matches it to the ledger by
-`#<n>`. Apply what the decision asks beyond that (an `escalate` decided `continue` needs
-nothing more; an `escalate` decided `park`: go straight to the gate, it parks; a fix the decision names is made now, `plan.md` in the same commit, committed
+`#<n>`. Apply what the decision asks beyond that (a `park` verdict decided `continue` needs
+nothing more; one decided `park`: go straight to the gate, it parks; a fix the decision names is made now, `plan.md` in the same commit, committed
 with `commit-phase ... --phase deploy --message "review(<id>): panel decision <n> applied"`).
 After the last item, run step 1 again for the new HEAD, once — the review prompt, the
 reviewer in a fresh context, then `validate` — because the panel's commits moved HEAD and
@@ -203,7 +203,7 @@ the old HEAD is stale and the deploy gate refuses it (the 1.0.0 readiness review
 then on nothing is committed before the gate except the gate evidence, and a findings file
 never travels in a commit with content the reviewer did not see (the first deferred run,
 2026-09-24, committed each verdict beside the content it did not judge, three times, and
-needed four commits to land one). An `escalate` with new reasons is a new item: run `items`
+needed four commits to land one). A `park` verdict with new reasons is a new item: run `items`
 once more. The panel never decides a park item, never raises a limit, never
 touches a guardrail file, and never asks the owner: the owner reads "Decisions taken for
 you" at the gate and overturns any line with a review comment.
@@ -211,7 +211,7 @@ you" at the gate and overturns any line with a review comment.
 ## 4. The deploy gate
 `python "${CLAUDE_PLUGIN_ROOT}/plugin/gate/cli.py" check --root "${CLAUDE_PROJECT_DIR}" --id <id> --phase deploy`
 — requires the test phase's evidence green, `review-findings.json` for HEAD with no Important
-finding, the plan in sync with the diff, no guardrail file, no escalation on a risk-list
+finding, the plan in sync with the diff, no guardrail file, no reviewer's park on a risk-list
 item (a hit is a line of the PR's "Needs your close look" banner, which the owner's
 approving review accepts: decision 35, choice 242). Exit 3 `wait` is the
 normal outcome (the deploy gate is always human); 4 = `park`. Then the release notes

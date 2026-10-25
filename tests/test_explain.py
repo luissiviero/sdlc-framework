@@ -1,5 +1,5 @@
-"""ROADMAP R18: a failed CI run explains itself (``plugin/ci/triage.py``, ``run_phase.py
---phase triage``, ``pr/failed_runs.py``; ``docs/proposals/failed-run-explains-itself.md``)."""
+"""ROADMAP R18: a failed CI run explains itself (``plugin/ci/explain.py``, ``run_phase.py
+--phase explain``, ``pr/failed_runs.py``; ``docs/proposals/failed-run-explains-itself.md``)."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
-from ci import project_setup, run_phase, triage
+from ci import explain, project_setup, run_phase
 from pr import digest, failed_runs
 
 from gate import gate as gate_mod
@@ -35,7 +35,7 @@ fake_claude = ci_tests.fake_claude
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOWS = ROOT / "template" / ".github" / "workflows"
-TRIAGED = ("design", "build", "test", "deploy", "fix", "detect")
+EXPLAINED = ("design", "build", "test", "deploy", "fix", "detect")
 AWS_KEY = "AKIA" + "ABCDEFGHIJKLMNOP"  # split so the secrets hook does not flag this file
 
 
@@ -45,21 +45,21 @@ def _git(root: Path, *args: str) -> str:
     ).stdout.strip()
 
 
-# --- the case the runner leaves for the triage step ----------------------------------------------
+# --- the case the runner leaves for the explain step ----------------------------------------------
 PARK = {"result": "park", "checks": [{"name": "commands", "ok": False, "reason": "red"}]}
 GUARDRAIL_PARK = {"result": "park", "checks": [{"name": "guardrails", "ok": False}]}
 
 
 def test_the_case_follows_the_park_this_run_wrote():
-    assert triage.run_case(1, PARK, fresh=True) == "park"
-    assert triage.run_case(0, PARK, fresh=True) == "park"  # a park ends the job green
+    assert explain.run_case(1, PARK, fresh=True) == "park"
+    assert explain.run_case(0, PARK, fresh=True) == "park"  # a park ends the job green
     # a park that already says why costs no model call, and is in the queue already
-    assert triage.run_case(0, GUARDRAIL_PARK, fresh=True) is None
-    assert triage.run_case(1, GUARDRAIL_PARK, fresh=True) is None
+    assert explain.run_case(0, GUARDRAIL_PARK, fresh=True) is None
+    assert explain.run_case(1, GUARDRAIL_PARK, fresh=True) is None
     # an older park the run did not write is not this run's
-    assert triage.run_case(0, PARK, fresh=False) is None
-    assert triage.run_case(1, PARK, fresh=False) == "red"
-    assert triage.run_case(0, None, fresh=False) is None
+    assert explain.run_case(0, PARK, fresh=False) is None
+    assert explain.run_case(1, PARK, fresh=False) == "red"
+    assert explain.run_case(0, None, fresh=False) is None
 
 
 def test_the_logs_for_a_park_include_the_drive_s_files(tmp_path):
@@ -77,7 +77,7 @@ def test_the_logs_for_a_park_include_the_drive_s_files(tmp_path):
         out = {"change_dir": change, "gate_record": f"{change}/evidence/gate-build.json"}
         return [
             p.removeprefix(f"{change}/evidence/")
-            for p in triage.logs_for(tmp_path, "park", out, [])
+            for p in explain.logs_for(tmp_path, "park", out, [])
         ]
 
     assert logs(["commands"]) == [
@@ -94,43 +94,43 @@ def test_the_logs_for_a_park_include_the_drive_s_files(tmp_path):
 
 
 def test_a_failed_setup_comes_first_and_a_missing_result_reads_as_red():
-    assert triage.case_of(None, {"error": "sdlc.yaml is unreadable"}) == "setup"
-    assert triage.case_of({"triage": "park"}, {"ok": False, "exit_code": 1}) == "setup"
-    assert triage.case_of(None, None) == "red"
-    assert triage.case_of({"triage": None}, {"ok": True}) is None
-    assert triage.case_of({"triage": "park"}, None) == "park"
+    assert explain.case_of(None, {"error": "sdlc.yaml is unreadable"}) == "setup"
+    assert explain.case_of({"explain": "park"}, {"ok": False, "exit_code": 1}) == "setup"
+    assert explain.case_of(None, None) == "red"
+    assert explain.case_of({"explain": None}, {"ok": True}) is None
+    assert explain.case_of({"explain": "park"}, None) == "park"
 
 
 def test_the_lines_are_capped_and_a_line_carrying_a_secret_is_dropped():
     text = "\n".join(
         ["- the test target failed", f"* key {AWS_KEY} in the log", "", "3", "4", "5", "6"]
     )
-    kept, dropped = triage.lines_of(text)
+    kept, dropped = explain.lines_of(text)
     assert dropped == 1 and AWS_KEY not in " ".join(kept)
     assert kept == ["the test target failed", "3", "4", "5"]
-    assert triage.lines_of("x" * 1000)[0] == ["x" * triage.LINE_MAX]
+    assert explain.lines_of("x" * 1000)[0] == ["x" * explain.LINE_MAX]
 
 
 # --- the park block ------------------------------------------------------------------------------
-def test_the_park_block_prints_the_triage_lines_under_their_label():
+def test_the_park_block_prints_the_explain_lines_under_their_label():
     result = gate_mod.GateResult.from_dict(
-        {**PARK, "change_id": "0001", "slug": "s", "phase": "build", "triage": ["a", "b"]}
+        {**PARK, "change_id": "0001", "slug": "s", "phase": "build", "explanation": ["a", "b"]}
     )
     block = result.what_i_need()
-    assert gate_mod.TRIAGE_HEADING in block and "  - a\n  - b" in block
-    assert block.index("**commands**") < block.index("Triage (model-written)")
+    assert gate_mod.EXPLANATION_HEADING in block and "  - a\n  - b" in block
+    assert block.index("**commands**") < block.index("Explanation (model-written)")
     data = result.as_dict()
-    assert data["triage"] == ["a", "b"] and gate_mod.TRIAGE_HEADING in data["what_i_need"]
-    # a record without triage keeps its shape
-    assert "triage" not in gate_mod.GateResult.from_dict(PARK).as_dict()
+    assert data["explanation"] == ["a", "b"] and gate_mod.EXPLANATION_HEADING in data["what_i_need"]
+    # a record without an explanation keeps its shape
+    assert "explanation" not in gate_mod.GateResult.from_dict(PARK).as_dict()
 
 
 # --- the runner's --out file ---------------------------------------------------------------------
-def test_a_parked_run_writes_its_out_file_and_the_triage_output(
+def test_a_parked_run_writes_its_out_file_and_the_explain_output(
     project, fake_claude, monkeypatch, capsys, tmp_path
 ):
     """The commands step could not run: the run parks and exits 1; its --out file names the
-    park's record and the session's files, and the step output says ``triage=park``."""
+    park's record and the session's files, and the step output says ``explain=park``."""
     root, change = project
     pr_route(monkeypatch)
     set_state(change, "design", gate_phase="design", gate_result="passed")
@@ -153,12 +153,13 @@ def test_a_parked_run_writes_its_out_file_and_the_triage_output(
     assert run_phase.run_phase(args, env) == run_phase.EXIT_FAILED
     capsys.readouterr()
     data = json.loads(out.read_text(encoding="utf-8"))
-    assert data["triage"] == "park" and data["exit_code"] == run_phase.EXIT_FAILED
+    assert data["explain"] == "park" and data["exit_code"] == run_phase.EXIT_FAILED
     assert data["change_id"] == "0001" and data["gate_phase"] == "build"
     assert data["gate_record"] == "changes/0001-percent-helper/evidence/gate-build.json"
     assert data["result_file"].endswith("evidence/claude-build.json")
     assert data["emitted"]["parked"].startswith("commands: deferred")
-    assert "triage=park\n" in output.read_text(encoding="utf-8")
+    assert "explain=park\n" in output.read_text(encoding="utf-8")
+    assert "triage=park\n" in output.read_text(encoding="utf-8")  # R45's PR 2: one release
 
 
 def test_a_red_run_with_no_park_says_red(project, fake_claude, monkeypatch, capsys, tmp_path):
@@ -179,7 +180,7 @@ def test_a_red_run_with_no_park_says_red(project, fake_claude, monkeypatch, caps
     assert run_phase.run_phase(args, env) == run_phase.EXIT_FAILED
     capsys.readouterr()
     data = json.loads(out.read_text(encoding="utf-8"))
-    assert data["triage"] == "red" and "claude exited 0" in data["why"]
+    assert data["explain"] == "red" and "claude exited 0" in data["why"]
 
 
 def test_a_run_refused_before_it_starts_still_writes_its_out_file(tmp_path, monkeypatch):
@@ -190,7 +191,7 @@ def test_a_run_refused_before_it_starts_still_writes_its_out_file(tmp_path, monk
     argv = ["--root", str(tmp_path), "--phase", "build", "--id", "0001", "--out", str(out)]
     assert run_phase.main(argv) == run_phase.EXIT_FAILED
     data = json.loads(out.read_text(encoding="utf-8"))
-    assert data["triage"] == "red" and data["why"] == "no App"
+    assert data["explain"] == "red" and data["why"] == "no App"
 
 
 def test_project_setup_writes_its_out_file(tmp_path):
@@ -200,10 +201,10 @@ def test_project_setup_writes_its_out_file(tmp_path):
     out = tmp_path / "setup.json"
     assert project_setup.main(["--root", str(tmp_path), "--out", str(out)]) == 1
     data = json.loads(out.read_text(encoding="utf-8"))
-    assert triage.setup_failed(data) and data["exit_code"] == 3
+    assert explain.setup_failed(data) and data["exit_code"] == 3
 
 
-# --- the triage step -----------------------------------------------------------------------------
+# --- the explain step -----------------------------------------------------------------------------
 class Session:
     """A fake ``_run_session``: records the argv and environment, answers ``text``."""
 
@@ -216,10 +217,10 @@ class Session:
         return data, json.dumps(data), "", 0
 
 
-def _triage_args(root: Path, out: Path | None, setup: Path | None = None, **kw) -> Args:
+def _explain_args(root: Path, out: Path | None, setup: Path | None = None, **kw) -> Args:
     return Args(
         root=str(root),
-        phase="triage",
+        phase="explain",
         id=None,
         out=str(out) if out else None,
         setup=str(setup) if setup else None,
@@ -238,14 +239,14 @@ def test_nothing_to_explain_runs_no_session(tmp_path, monkeypatch, capsys):
     session = Session("x")
     monkeypatch.setattr(run_phase, "_run_session", session)
     out = tmp_path / "run.json"
-    out.write_text(json.dumps({"triage": None, "exit_code": 0}), encoding="utf-8")
-    assert run_phase.run_triage(_triage_args(tmp_path, out), dict(KEY_ENV)) == 0
+    out.write_text(json.dumps({"explain": None, "exit_code": 0}), encoding="utf-8")
+    assert run_phase.run_explain(_explain_args(tmp_path, out), dict(KEY_ENV)) == 0
     assert "nothing to explain" in json.loads(capsys.readouterr().out)["skipped"]
     assert session.calls == []
 
 
 def test_a_parked_run_gets_its_lines_in_the_park_block(project, monkeypatch, capsys, tmp_path):
-    """The park's record gains the triage lines, the block is re-rendered, the session's
+    """The park's record gains the explain step's lines, the block is re-rendered, the session's
     result is stored where the budget reads it, and the park is committed and the PR body
     brought up to date; the session held no GitHub token and read the target logs."""
     root, change = project
@@ -264,7 +265,7 @@ def test_a_parked_run_gets_its_lines_in_the_park_block(project, monkeypatch, cap
     out.write_text(
         json.dumps(
             {
-                "triage": "park",
+                "explain": "park",
                 "change_id": "0001",
                 "gate_phase": "build",
                 "branch_phase": "build",
@@ -286,27 +287,27 @@ def test_a_parked_run_gets_its_lines_in_the_park_block(project, monkeypatch, cap
     monkeypatch.setattr(run_phase, "_cli_call", cli_call)
     monkeypatch.setattr(run_phase, "record_spend", lambda *a, **k: True)
     env = dict(os.environ, **KEY_ENV, GITHUB_TOKEN=FAKE_TOKEN, SDLC_WORKFLOW_TOKEN="wf")
-    assert run_phase.run_triage(_triage_args(root, out), env) == 0
+    assert run_phase.run_explain(_explain_args(root, out), env) == 0
     report = json.loads(capsys.readouterr().out)
     assert report["case"] == "park" and report["added"] is True
     stored = json.loads((evidence / "gate-build.json").read_text(encoding="utf-8"))
-    assert stored["triage"] == ["test_percent fails", "looks real"]
-    assert "Triage (model-written)" in stored["what_i_need"]
+    assert stored["explanation"] == ["test_percent fails", "looks real"]
+    assert "Explanation (model-written)" in stored["what_i_need"]
     assert AWS_KEY not in json.dumps(stored)
     seen = session.calls[0]
     assert not {"GITHUB_TOKEN", "GH_TOKEN", "SDLC_WORKFLOW_TOKEN"} & set(seen["env"])
-    assert seen["timeout"] == run_phase.TRIAGE_TIMEOUT_SECONDS
+    assert seen["timeout"] == run_phase.EXPLAIN_TIMEOUT_SECONDS
     prompt = seen["argv"][2]
     assert "changes/0001-percent-helper/evidence/test.log" in prompt
-    assert ".sdlc-cache/triage/run.json" in prompt
-    assert (evidence / "claude-triage.json").is_file()  # the budget's own record
+    assert ".sdlc-cache/explain/run.json" in prompt
+    assert (evidence / "claude-explain.json").is_file()  # the budget's own record
     # committed on the branch without moving the change's phase (the review, finding B1),
     # then the PR body refreshed with no review request
-    assert _git(root, "log", "-1", "--format=%s") == "triage(0001): the run's logs read"
+    assert _git(root, "log", "-1", "--format=%s") == "explain(0001): the run's logs read"
     names = [argv[0] for _name, argv in calls]
     assert names == ["upsert"] and "--request-review" not in calls[0][1]
     # the park ended the job red: a record marked parked, which the digest leaves to the queue
-    assert report["record"]["reason"] == triage.NO_RUN_ID  # no GITHUB_RUN_ID here
+    assert report["record"]["reason"] == explain.NO_RUN_ID  # no GITHUB_RUN_ID here
 
 
 def test_a_red_run_writes_its_failed_run_record_on_its_own_ref(tmp_path, monkeypatch, capsys):
@@ -323,7 +324,7 @@ def test_a_red_run_writes_its_failed_run_record_on_its_own_ref(tmp_path, monkeyp
     out.write_text(
         json.dumps(
             {
-                "triage": "red",
+                "explain": "red",
                 "exit_code": 1,
                 "why": "the run left no gate record",
                 "stderr_file": "stderr.txt",
@@ -344,16 +345,16 @@ def test_a_red_run_writes_its_failed_run_record_on_its_own_ref(tmp_path, monkeyp
     for var in ("GITHUB_TOKEN", "GH_TOKEN", "GITHUB_ACTIONS"):
         env.pop(var, None)
         monkeypatch.delenv(var, raising=False)
-    assert run_phase.run_triage(_triage_args(root, out), env) == 0
+    assert run_phase.run_explain(_explain_args(root, out), env) == 0
     report = json.loads(capsys.readouterr().out)
     assert report["record"]["ok"] is True, report
     ref = "refs/sdlc/failed-runs/4242-2"
     record = json.loads(subprocess.run(
-        ["git", "--git-dir", str(bare), "show", f"{ref}:{triage.RECORD_FILE}"],
+        ["git", "--git-dir", str(bare), "show", f"{ref}:{explain.RECORD_FILE}"],
         capture_output=True, text=True, check=True,
     ).stdout)  # fmt: skip
     assert record["reason"] == "the run left no gate record" and record["parked"] is False
-    assert record["triage"] == ["it never reached its gate", "looks real"]
+    assert record["explanation"] == ["it never reached its gate", "looks real"]
     assert record["run"]["url"].endswith("/o/r/actions/runs/4242/attempts/2")
 
 
@@ -364,21 +365,21 @@ def test_a_failed_setup_is_read_from_its_file(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(run_phase, "_run_session", session)
     root = tmp_path / "proj"
     root.mkdir()
-    args = _triage_args(root, tmp_path / "missing.json", setup, dry_run=True)
-    assert run_phase.run_triage(args, dict(KEY_ENV)) == 0
+    args = _explain_args(root, tmp_path / "missing.json", setup, dry_run=True)
+    assert run_phase.run_explain(args, dict(KEY_ENV)) == 0
     report = json.loads(capsys.readouterr().out)
-    assert report["case"] == "setup" and report["logs"] == [".sdlc-cache/triage/setup.json"]
-    record = triage.failed_run_record("setup", None, json.loads(setup.read_text()), [], {})
+    assert report["case"] == "setup" and report["logs"] == [".sdlc-cache/explain/setup.json"]
+    record = explain.failed_run_record("setup", None, json.loads(setup.read_text()), [], {})
     assert record["step"] == "setup" and record["reason"].startswith("the project's setup failed")
 
 
 def test_a_run_with_no_file_to_read_is_recorded_without_a_session(tmp_path, monkeypatch):
-    record = triage.failed_run_record("red", None, None, [], {"GITHUB_RUN_ID": "1"})
-    assert record["reason"] == triage.RUNNER_DID_NOT_FINISH and record["triage"] == []
+    record = explain.failed_run_record("red", None, None, [], {"GITHUB_RUN_ID": "1"})
+    assert record["reason"] == explain.RUNNER_DID_NOT_FINISH and record["explanation"] == []
 
 
 def test_a_red_review_pass_keeps_the_change_at_its_phase(project, monkeypatch, capsys):
-    """The review, finding B1: the triage of a red review pass stores its result and commits
+    """The review, finding B1: the explain step on a red review pass stores its result and commits
     it on the build branch without moving the change to (e), so the next deploy run's guard
     still finds it at (d)."""
     root, change = project
@@ -390,7 +391,7 @@ def test_a_red_review_pass_keeps_the_change_at_its_phase(project, monkeypatch, c
     out.write_text(
         json.dumps(
             {
-                "triage": "red",
+                "explain": "red",
                 "exit_code": 1,
                 "change_id": "0001",
                 "gate_phase": "review",
@@ -403,10 +404,10 @@ def test_a_red_review_pass_keeps_the_change_at_its_phase(project, monkeypatch, c
     )
     monkeypatch.setattr(run_phase, "_run_session", Session("the review CLI crashed\nreal"))
     monkeypatch.setattr(run_phase, "record_spend", lambda *a, **k: True)
-    assert run_phase.run_triage(_triage_args(root, out), dict(KEY_ENV)) == 0
+    assert run_phase.run_explain(_explain_args(root, out), dict(KEY_ENV)) == 0
     report = json.loads(capsys.readouterr().out)
     assert report["commit"]["ok"] is True and report["session"]["result_file"] == (
-        "claude-triage.json"
+        "claude-explain.json"
     )
     assert status_mod.read_status(change).phase == "test"
     committed = _git(root, "show", "HEAD:changes/0001-percent-helper/status.yaml")
@@ -419,9 +420,9 @@ def test_a_red_run_the_runner_already_explained_costs_no_session(tmp_path, monke
     session = Session("x")
     monkeypatch.setattr(run_phase, "_run_session", session)
     out = tmp_path / "run.json"
-    out.write_text(json.dumps({"triage": "red", "exit_code": 1, "why": "no App"}), "utf-8")
-    args = _triage_args(tmp_path, out, dry_run=True)
-    assert run_phase.run_triage(args, dict(KEY_ENV)) == 0
+    out.write_text(json.dumps({"explain": "red", "exit_code": 1, "why": "no App"}), "utf-8")
+    args = _explain_args(tmp_path, out, dry_run=True)
+    assert run_phase.run_explain(args, dict(KEY_ENV)) == 0
     assert json.loads(capsys.readouterr().out)["logs"] == [] and session.calls == []
 
 
@@ -434,7 +435,7 @@ def test_the_two_halves_run_in_two_steps(project, monkeypatch, capsys, tmp_path)
     out.write_text(
         json.dumps(
             {
-                "triage": "red",
+                "explain": "red",
                 "exit_code": 1,
                 "change_id": "0001",
                 "gate_phase": "build",
@@ -447,23 +448,23 @@ def test_the_two_halves_run_in_two_steps(project, monkeypatch, capsys, tmp_path)
     session = Session("the session crashed\nlooks real")
     monkeypatch.setattr(run_phase, "_run_session", session)
     monkeypatch.setattr(run_phase, "record_spend", lambda *a, **k: True)
-    lines = tmp_path / "triage.json"
-    assert run_phase.run_triage(_triage_args(root, out, lines=str(lines)), dict(KEY_ENV)) == 0
+    lines = tmp_path / "explain.json"
+    assert run_phase.run_explain(_explain_args(root, out, lines=str(lines)), dict(KEY_ENV)) == 0
     capsys.readouterr()
     assert json.loads(lines.read_text(encoding="utf-8"))["lines"] == [
         "the session crashed",
         "looks real",
     ]
-    assert not (change / "evidence" / "claude-triage.json").exists()  # nothing written yet
+    assert not (change / "evidence" / "claude-explain.json").exists()  # nothing written yet
     monkeypatch.setattr(run_phase, "_run_session", None)  # the writing half calls no model
-    args = _triage_args(root, out, publish=str(lines))
-    assert run_phase.run_triage(args, {"GITHUB_TOKEN": FAKE_TOKEN}) == 0
+    args = _explain_args(root, out, publish=str(lines))
+    assert run_phase.run_explain(args, {"GITHUB_TOKEN": FAKE_TOKEN}) == 0
     report = json.loads(capsys.readouterr().out)
-    assert report["case"] == "red" and (change / "evidence" / "claude-triage.json").is_file()
-    assert report["record"]["reason"] == triage.NO_RUN_ID
+    assert report["case"] == "red" and (change / "evidence" / "claude-explain.json").is_file()
+    assert report["record"]["reason"] == explain.NO_RUN_ID
     # a missing lines file (the read-only step failed): a record with no lines
-    args = _triage_args(root, out, publish=str(tmp_path / "none.json"))
-    assert run_phase.run_triage(args, {}) == 0
+    args = _explain_args(root, out, publish=str(tmp_path / "none.json"))
+    assert run_phase.run_explain(args, {}) == 0
     assert json.loads(capsys.readouterr().out)["lines"] == []
 
 
@@ -471,8 +472,8 @@ def test_a_reason_carrying_a_secret_is_withheld():
     """The review, finding S2: a setup's last output line can carry a token."""
     token = "ghp_" + "a" * 36
     setup = {"command": "pip install", "exit_code": 1, "output": f"401 https://x:{token}@idx"}
-    record = triage.failed_run_record("setup", None, setup, [], {})
-    assert record["reason"] == triage.REASON_WITHHELD and token not in json.dumps(record)
+    record = explain.failed_run_record("setup", None, setup, [], {})
+    assert record["reason"] == explain.REASON_WITHHELD and token not in json.dumps(record)
 
 
 # --- the digest's "Failed runs" line -------------------------------------------------------------
@@ -518,7 +519,7 @@ def test_the_failed_runs_line_lists_red_runs_with_their_records():
         {"ref": "refs/sdlc/failed-runs/9-1", "object": {"sha": "d"}},  # no such red run
     ]
     records = {
-        "a": {"change_id": "0004", "reason": "claude exited 1", "triage": ["x", "y"]},
+        "a": {"change_id": "0004", "reason": "claude exited 1", "explanation": ["x", "y"]},
         "b": {"reason": "old"},
         "c": {"reason": "parked one", "parked": True},
         "d": {"reason": "forged"},
@@ -529,9 +530,9 @@ def test_the_failed_runs_line_lists_red_runs_with_their_records():
     text = failed_runs.render(got)
     lines = text.splitlines()
     assert lines[0] == failed_runs.HEADING.format(days=7)
-    assert "cancelled; no triage record" in lines[2]
-    assert "attempt 2" in lines[3] and "no triage record" in lines[3]  # its record parked
-    assert "change 0004 — claude exited 1 — triage (model-written): x; y" in lines[4]
+    assert "cancelled; no failed-run record" in lines[2]
+    assert "attempt 2" in lines[3] and "no failed-run record" in lines[3]  # its record parked
+    assert "change 0004 — claude exited 1 — explanation (model-written): x; y" in lines[4]
     assert "parked one" not in text and "forged" not in text and "old" not in text
 
 
@@ -543,7 +544,7 @@ def test_a_record_s_mentions_and_links_are_inert_and_the_runs_are_paged():
                   "headers": {"Link": '<https://api/next>; rel="next"'}},
         "next": {"error": "", "data": {"workflow_runs": [_run(7, "failure")]}},
     }  # fmt: skip
-    record = {"reason": "ping @owner [x](https://evil) <img>", "triage": ["@team"]}
+    record = {"reason": "ping @owner [x](https://evil) <img>", "explanation": ["@team"]}
 
     def get(url):
         if url == "https://api/next":
@@ -581,38 +582,38 @@ def test_the_digest_places_the_failed_runs_after_the_queue():
 
 
 # --- the workflow templates ----------------------------------------------------------------------
-@pytest.mark.parametrize("name", TRIAGED)
-def test_each_phase_workflow_triages_after_a_fresh_framework_checkout(name):
+@pytest.mark.parametrize("name", EXPLAINED)
+def test_each_phase_workflow_explains_after_a_fresh_framework_checkout(name):
     text = (WORKFLOWS / f"sdlc-{name}.yml").read_text(encoding="utf-8")
     steps = text.split("\n      - ")
-    triage_at = next(i for i, s in enumerate(steps) if "--phase triage" in s)
+    explain_at = next(i for i, s in enumerate(steps) if "--phase explain" in s)
     names = [re.match(r"(?:name: )?(.*)", s).group(1) for s in steps]
-    assert names[triage_at - 3].startswith("Remove the framework checkout before the triage")
+    assert names[explain_at - 3].startswith("Remove the framework checkout before the explain")
     assert (
-        "path: framework" in steps[triage_at - 2]
-        and "persist-credentials: false" in (steps[triage_at - 2])
+        "path: framework" in steps[explain_at - 2]
+        and "persist-credentials: false" in (steps[explain_at - 2])
     )
-    assert "checkout_check.py" in steps[triage_at - 1]
-    explain, publish = steps[triage_at], steps[triage_at + 1]
-    for step in (explain, publish):
+    assert "checkout_check.py" in steps[explain_at - 1]
+    read_half, publish = steps[explain_at], steps[explain_at + 1]
+    for step in (read_half, publish):
         assert "continue-on-error: true" in step
-        assert "if: always() && steps.triage_checkout.outcome == 'success'" in step
+        assert "if: always() && steps.explain_checkout.outcome == 'success'" in step
         assert "# sdlc:commands.env" not in step  # the project's secrets never reach it
     # the read-only half holds the model credential and no GitHub token; the writing half
     # the token and no model credential (the review, finding S4)
-    assert "--lines " in explain and "ANTHROPIC_API_KEY" in explain
-    assert "GITHUB_TOKEN" not in explain and "SDLC_WORKFLOW_TOKEN" not in explain
+    assert "--lines " in read_half and "ANTHROPIC_API_KEY" in read_half
+    assert "GITHUB_TOKEN" not in read_half and "SDLC_WORKFLOW_TOKEN" not in read_half
     assert "--publish " in publish and "GITHUB_TOKEN" in publish
     assert "ANTHROPIC_API_KEY" not in publish and "CLAUDE_CODE_OAUTH_TOKEN" not in publish
     failed = ("review", "phase") if name == "deploy" else ("phase",)
-    for before in steps[triage_at - 3 : triage_at]:
-        assert "steps.phase.outputs.triage == 'park'" in before
+    for before in steps[explain_at - 3 : explain_at]:
+        assert "steps.phase.outputs.explain == 'park'" in before
         assert "steps.setup.outcome == 'failure'" in before
         for step_id in failed:
             assert f"steps.{step_id}.outcome == 'failure'" in before
-    # every phase run and the setup write the files the triage step reads
+    # every phase run and the setup write the files the explain step reads
     for line in [ln for ln in text.splitlines() if ln.strip().startswith("run: python")]:
-        if "run_phase.py" in line and "--find-change" not in line and "--phase triage" not in line:
+        if "run_phase.py" in line and "--find-change" not in line and "--phase explain" not in line:
             assert '--out "$RUNNER_TEMP/sdlc-run.json"' in line, line
         if "project_setup.py" in line:
             assert '--out "$RUNNER_TEMP/sdlc-setup.json"' in line, line
@@ -621,7 +622,71 @@ def test_each_phase_workflow_triages_after_a_fresh_framework_checkout(name):
 
 def test_a_run_file_an_older_plugin_wrote_names_its_phase(tmp_path):
     """R45: ``phase: c`` in a run's out file reads as the build in the failed-run record."""
-    record = triage.failed_run_record("red", {"phase": "c", "exit_code": 1}, None, [], {})
+    record = explain.failed_run_record("red", {"phase": "c", "exit_code": 1}, None, [], {})
     assert record["phase"] == "build"
-    record = triage.failed_run_record("red", {"phase": "review", "exit_code": 1}, None, [], {})
+    record = explain.failed_run_record("red", {"phase": "review", "exit_code": 1}, None, [], {})
     assert record["phase"] == "review"
+
+
+# --- R45's PR 2: the step's older name, read for one release -------------------------------------
+def test_the_older_phase_name_still_runs_the_explain_step(tmp_path, monkeypatch, capsys):
+    """A workflow copy from before R45's PR 2 passes ``--phase triage``: the runner reads it
+    as ``explain`` and runs the read-only step, not a phase."""
+    for var, value in KEY_ENV.items():
+        monkeypatch.setenv(var, value)
+    argv = ["--root", str(tmp_path), "--phase", "triage", "--log", "build.log", "--dry-run"]
+    assert run_phase.main(argv) == run_phase.EXIT_OK
+    report = json.loads(capsys.readouterr().out)
+    assert report["phase"] == "explain"
+    assert report["argv"][report["argv"].index("--allowedTools") + 1] == "Read"
+
+
+def test_the_runner_still_writes_the_older_step_output(tmp_path):
+    """A workflow copy from before R45's PR 2 tests ``steps.phase.outputs.triage``: the
+    runner writes ``triage=`` beside ``explain=`` for one release."""
+    out, output = tmp_path / "run.json", tmp_path / "github-output"
+    args = Args(root=str(tmp_path), phase="build", out=str(out))
+    run_phase.write_run_out(args, {"GITHUB_OUTPUT": str(output)}, {"why": "no App"}, 1)
+    assert output.read_text(encoding="utf-8").splitlines() == ["explain=red", "triage=red"]
+    assert json.loads(out.read_text(encoding="utf-8"))["explain"] == "red"
+
+
+def test_a_run_file_an_older_runner_wrote_is_still_read():
+    """The out file's case was ``triage`` before R45's PR 2."""
+    assert explain.case_of({"triage": "park"}, None) == "park"
+    assert explain.case_of({"triage": "red"}, {"ok": True}) == "red"
+    assert explain.case_of({"explain": None, "triage": "park"}, None) is None
+
+
+def test_a_gate_record_with_the_older_key_is_still_read():
+    """A park written before R45's PR 2 keeps the lines under ``triage``; read back, they
+    print under the new heading and are written under ``explanation``."""
+    result = gate_mod.GateResult.from_dict({**PARK, "change_id": "0001", "triage": ["a", "b"]})
+    assert result.explanation == ["a", "b"]
+    assert "Explanation (model-written)" in result.what_i_need()
+    data = result.as_dict()
+    assert data["explanation"] == ["a", "b"] and "triage" not in data
+
+
+def test_a_failed_run_record_with_the_older_key_is_still_read():
+    """A failed-run ref is never rewritten: a record written before R45's PR 2 keeps its
+    lines under ``triage``, and the digest's line still shows them."""
+    text = failed_runs.line(
+        {"run": _run(8, "failure"), "record": {"reason": "claude exited 1", "triage": ["x"]}}
+    )
+    assert "claude exited 1 — explanation (model-written): x" in text
+
+
+def test_the_older_result_file_still_counts_toward_the_budget(tmp_path):
+    """``evidence/claude-triage.json`` (before R45's PR 2) is the explain step's run in the
+    spend the budget reads, beside a ``claude-explain.json``."""
+    from gate import limits
+
+    for name, usd in (("claude-triage.json", 0.1), ("claude-explain.json", 0.2)):
+        write(tmp_path / name, json.dumps({"total_cost_usd": usd}))
+    spend = limits.spend_from_runs(tmp_path)
+    assert spend["total_usd"] == pytest.approx(0.3)
+    assert sorted((e["source"], e["run"]) for e in spend["entries"]) == [
+        ("claude-explain.json", "explain"),
+        ("claude-triage.json", "explain"),
+    ]

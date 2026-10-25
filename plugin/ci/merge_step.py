@@ -312,7 +312,7 @@ def gate_e_waits_at(
     """True when ``gate_path`` (the change's ``evidence/gate-deploy.json``; candidates from
     ``gate_e_paths`` are read in order) at ``ref`` reads ``result: wait``: gate (deploy) had
     run and offered the PR to the owner there (choice 250; an earlier deploy record that
-    escalated or parked is no offer). ``StepError`` on a read error."""
+    parked is no offer). ``StepError`` on a read error."""
     _path, text = _first_text_at(github, repo, gate_path, ref)
     try:
         record = json.loads(text) if text is not None else None

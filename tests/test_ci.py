@@ -239,7 +239,7 @@ def test_the_build_run_and_a_fix_round_get_the_build_caps(capsys, project):
     for phase in ("build", "fix"):
         assert _turns(phase, {}, JOB_ENV) == 400, phase
         assert run_phase.run_timeout_seconds({}, phase, JOB_ENV) == (180 + 5) * 60
-    for phase in ("design", "test", "deploy", "review", "triage"):
+    for phase in ("design", "test", "deploy", "review", "explain"):
         assert _turns(phase, {}, JOB_ENV) == 200, phase
         assert run_phase.run_timeout_seconds({}, phase, JOB_ENV) == (120 + 5) * 60
     root_config = {"gate": {"max_turns": 400, "max_wall_clock_minutes": 120}}
@@ -477,10 +477,10 @@ def test_phase_c_parks_when_the_preflight_refuses(capsys, project, monkeypatch):
     assert "preflight:" in status_mod.read_status(change).parked_reason
 
 
-def test_triage_phase_is_read_only(capsys):
+def test_explain_phase_is_read_only(capsys):
     """The article's p.41 pipeline step: read the log, say what failed, fix nothing."""
-    args = Args(phase="triage", log="out/build.log", id=None)
-    assert run_phase.run_triage(args, dict(KEY_ENV)) == run_phase.EXIT_OK
+    args = Args(phase="explain", log="out/build.log", id=None)
+    assert run_phase.run_explain(args, dict(KEY_ENV)) == run_phase.EXIT_OK
     argv = json.loads(capsys.readouterr().out)["argv"]
     assert argv[argv.index("--allowedTools") + 1] == "Read"
     # R18, point 5: .git is unreadable too, and /proc, where another process's environment is
@@ -493,8 +493,8 @@ def test_triage_phase_is_read_only(capsys):
     assert "flaky or real" in argv[2] and "Quote no values" in argv[2]
 
 
-def test_triage_without_a_log_is_a_usage_error():
-    assert run_phase.run_triage(Args(phase="triage"), {}) == run_phase.EXIT_USAGE
+def test_explain_without_a_log_is_a_usage_error():
+    assert run_phase.run_explain(Args(phase="explain"), {}) == run_phase.EXIT_USAGE
 
 
 # --- 3. the guard (OPERATING_MODEL section 4.2, "Guard" column) -----------------------------------
@@ -1999,7 +1999,7 @@ import json, pathlib
 path = pathlib.Path("changes/0001-percent-helper/evidence/decisions-build.json")
 path.parent.mkdir(parents=True, exist_ok=True)
 path.write_text(json.dumps({"schema_version": 1, "phase": "build", "decisions": [
-    {"n": 1, "phase": "build", "kind": "escalate", "key": "escalate:x", "item": "escalate",
+    {"n": 1, "phase": "build", "kind": "park", "key": "park:x", "item": "park",
      "reviewer": "continue", "advocate": "no objection", "decision": "continue",
      "rationale": ["the plan lists every file"], "head": "abc", "at": "2026-10-02T00:00:00Z",
      "cost_usd": None, "overturned": None, "item_n": 1}]}), encoding="utf-8")
@@ -2458,8 +2458,8 @@ def test_merge_fired_workflows_find_the_change_from_the_merged_pr(name):
     assert "PR_NUMBER: ${{ github.event.pull_request.number }}" in steps
     # every step after the find step is conditional on a change having been found
     after = steps[find:].split("\n      - ")[1:]
-    # setup-node, the CLI, the sandbox, the toolchain, the run, R18's five triage steps (the
-    # framework removed and checked out afresh, the checkout verified, the read-only triage,
+    # setup-node, the CLI, the sandbox, the toolchain, the run, R18's five explain steps (the
+    # framework removed and checked out afresh, the checkout verified, the read-only explain,
     # its publication), the log
     assert len(after) == 11
     for step in after[:5] + after[-1:]:
@@ -2467,7 +2467,7 @@ def test_merge_fired_workflows_find_the_change_from_the_merged_pr(name):
     for step in after[5:8]:
         assert "if: always() && steps.find.outputs.change_id != '' && (" in step, step
     for step in after[8:10]:
-        assert "if: always() && steps.triage_checkout.outcome == 'success'" in step, step
+        assert "if: always() && steps.explain_checkout.outcome == 'success'" in step, step
     after = after[:5] + after[-1:]
     # the phase run gets the id the find step printed, through an env var; the hook log
     # (step 41.1) rides as an artifact after it
@@ -2545,7 +2545,7 @@ def test_the_framework_is_checked_out_afresh_between_the_two_steps_of_a_shared_c
     removed and checked out again by the runner's own action at the pin the first step
     read (a step output), and the project checkout's remote, refspec and config are
     verified from that fresh copy before the second step."""
-    # R18's triage block repeats the same three steps after the phase run, on a failure only
+    # R18's explain block repeats the same three steps after the phase run, on a failure only
     text = workflow(name).split("      # R18: a failed run explains itself")[0]
     for step in (REMOVE_STEP, CHECK_STEP):
         assert text.count(step) == 1, step
@@ -5012,8 +5012,10 @@ def test_the_phase_flag_reads_a_letter_as_its_name():
     for letter, name in letters.items():
         assert parse(["--phase", letter, "--id", "0001"]).phase == name
         assert parse(["--phase", name, "--id", "0001"]).phase == name
-    for run in ("review", "fix", "triage"):
+    for run in ("review", "fix", "explain"):
         assert parse(["--phase", run, "--id", "0001"]).phase == run
+    # R45's PR 2: the explain step's older name, from a workflow copy before it
+    assert parse(["--phase", "triage", "--id", "0001"]).phase == "explain"
     with pytest.raises(SystemExit):  # the intent is never a run of its own, as (a) was not
         parse(["--phase", "a", "--id", "0001"])
 

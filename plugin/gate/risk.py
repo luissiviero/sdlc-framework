@@ -6,7 +6,7 @@ the gate's reviewer writes a short brief per hit item; the PR the owner merges a
 both in its "Needs your close look" banner; the owner's merge is the acceptance (at (deploy), the
 owner's approving review, decision 36), which the runner records in
 ``status.yaml: risk_acceptances``. What still parks is the reviewer's
-escalation on a risk item: it never goes to the review panel (decisions 11 and 21 as 35
+``park`` on a risk item: it never goes to the review panel (decisions 11 and 21 as 35
 amends them).
 
 This module holds the parts the gate, the PR description, the runner and the release share:
@@ -20,10 +20,12 @@ This module holds the parts the gate, the PR description, the runner and the rel
 - **the brief** (``brief_path``, ``parse_brief``): ``evidence/roles/security-policy-<phase>.md``,
   the file the Security & policy role owns once R28 builds it, written until then by the
   adversarial reviewer at design to test and by the REVIEW.md pass at (deploy): one ``## <item>``
-  section per hit item, with the reviewer's word on it and what the change does to it, what
-  could break and how to undo it;
-- **the escalation** (``escalated_items``): the brief's word ``escalate`` on a hit item, or an
-  ``escalate`` verdict whose reasons name a hit item;
+  section per hit item, with the reviewer's verdict on it (``- Verdict: continue|park``) and
+  what the change does to it, what could break and how to undo it. A brief an older plugin
+  wrote names the field ``Word`` and the word ``escalate``: both read as today's for one
+  release (R45 rows 62 and N17);
+- **the park** (``parked_items``): the brief's verdict ``park`` on a hit item, or a ``park``
+  verdict whose reasons name a hit item;
 - **the banner** (``banner_entries``, ``banner_lines``, ``banner_shown``) and **the
   acceptance record** (``accepted``, ``acceptance_line``, ``record_acceptance``).
 
@@ -54,7 +56,9 @@ CHANGES_PREFIX = "changes/"
 BRIEF_DIR = "roles"
 BRIEF_FILE = "security-policy-{phase}.md"
 BRIEF_FIELDS = ("What the change does to it", "What could break", "How to undo it")
-WORDS = ("continue", "escalate")
+# the brief's field that holds the reviewer's verdict on the item, ``- Verdict:``; ``Word`` is
+# the name an older plugin wrote, read for one release (R45 row N17)
+VERDICT_FIELDS = ("verdict", "word")
 BANNER_HEADING = "**Needs your close look**"
 ACCEPT_ACT = "risk accepted"
 ACCEPT_VIA = "merge"
@@ -185,10 +189,11 @@ _FIELD_RE = re.compile(r"^\s*[-*]\s*\**(?P<key>[^:*]+?)\**\s*:\s*(?P<value>.*)$"
 
 
 def parse_brief(text: str | None) -> dict[str, dict[str, str]]:
-    """``{item lowercased: {"item", "word", <field>: <text>}}`` from a brief file: one ``## ``
-    section per item, its lines ``- Word: continue|escalate`` and ``- <field>: <text>``
-    (``BRIEF_FIELDS``). A section without a valid word reads as ``continue``; a missing
-    field is absent. Unreadable or empty text gives {}."""
+    """``{item lowercased: {"item", "verdict", <field>: <text>}}`` from a brief file: one
+    ``## `` section per item, its lines ``- Verdict: continue|park`` and ``- <field>: <text>``
+    (``BRIEF_FIELDS``). A section without a valid verdict reads as ``continue``; a missing
+    field is absent. Unreadable or empty text gives {}. A brief an older plugin wrote, with
+    ``- Word: continue|escalate``, reads the same (``art.verdict_word``; R45, one release)."""
     out: dict[str, dict[str, str]] = {}
     for heading, body in art.split_sections(text or "").items():
         if not heading.startswith("## "):
@@ -196,15 +201,15 @@ def parse_brief(text: str | None) -> dict[str, dict[str, str]]:
         name = heading[3:].strip().strip("`").strip()
         if not name:
             continue
-        entry: dict[str, str] = {"item": name, "word": "continue"}
+        entry: dict[str, str] = {"item": name, "verdict": art.VERDICT_CONTINUE}
         for line in body.splitlines():
             m = _FIELD_RE.match(line)
             if not m:
                 continue
             key, value = m.group("key").strip(), m.group("value").strip()
-            if key.lower() == "word":
-                word = value.strip("`*").strip().lower()
-                entry["word"] = word if word in WORDS else "continue"
+            if key.lower() in VERDICT_FIELDS:
+                word = art.verdict_word(value.strip("`*").strip().lower())
+                entry["verdict"] = word or art.VERDICT_CONTINUE
             else:
                 for field_name in BRIEF_FIELDS:
                     if key.lower() == field_name.lower() and value:
@@ -217,19 +222,20 @@ def read_brief(change_dir: Path, phase: str) -> dict[str, dict[str, str]]:
     return parse_brief(art.read_text(brief_path(change_dir, phase)))
 
 
-def escalated_items(
+def parked_items(
     hit_items: list[str], brief: dict[str, dict[str, str]], verdict: dict[str, Any] | None
 ) -> list[str]:
-    """The hit items the gate's reviewer escalates on: the brief's word ``escalate`` on the
-    item, or an ``escalate`` verdict of the adversarial reviewer whose reasons name it (its
-    words, as the item match reads them)."""
+    """The hit items the gate's reviewer says park on: the brief's verdict ``park`` on the
+    item, or a ``park`` verdict of the adversarial reviewer whose reasons name it (its
+    words, as the item match reads them). ``escalate``, an older plugin's word, is ``park``."""
     reasons: list[str] = []
-    if isinstance(verdict, dict) and verdict.get("verdict") == "escalate":
+    if isinstance(verdict, dict) and art.verdict_word(verdict.get("verdict")) == art.VERDICT_PARK:
         reasons = [str(r) for r in verdict.get("reasons") or []]
     out = []
     for item in hit_items:
         entry = brief.get(item.lower())
-        if (entry and entry.get("word") == "escalate") or any(phrase_in(r, item) for r in reasons):
+        parks = bool(entry) and entry.get("verdict") == art.VERDICT_PARK
+        if parks or any(phrase_in(r, item) for r in reasons):
             out.append(item)
     return out
 
@@ -414,9 +420,9 @@ def _brief_text(entry: dict[str, Any]) -> str:
     if not brief:
         return "the reviewer wrote no brief on it"
     parts = [f"{name.lower()}: {brief[name]}" for name in BRIEF_FIELDS if brief.get(name)]
-    word = " The reviewer escalates on it." if brief.get("word") == "escalate" else ""
+    park = " The reviewer says park on it." if brief.get("verdict") == art.VERDICT_PARK else ""
     return (
-        f"brief ({brief_rel(entry['brief_phase'])}): " + ("; ".join(parts) or "empty") + "." + word
+        f"brief ({brief_rel(entry['brief_phase'])}): " + ("; ".join(parts) or "empty") + "." + park
     )
 
 

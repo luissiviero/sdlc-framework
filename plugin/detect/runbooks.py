@@ -4,7 +4,7 @@ revert PR, and the review gate decides").
 
 Decision 14 pre-approves the CI-scoped, reversible actions: this module performs them and
 never merges. Every built-in runbook ends in a pull request into the review gate (merge to
-apply, close to drop), labelled ``incident``:
+apply, close to drop), labelled ``sdlc:triage``:
 
 - ``revert-pr`` (args ``{"sha": ...}``): ``git revert`` of one commit of the default branch on
   ``sdlc/<id>/revert-<sha7>`` (``-m 1`` for a merge commit), pushed, PR
@@ -47,7 +47,7 @@ from release import cli as release_cli  # noqa: E402
 from hooks._common import matches  # noqa: E402
 from init import detect as init_detect  # noqa: E402
 from state import gitops  # noqa: E402
-from state.conventions import INCIDENT_LABEL  # noqa: E402
+from state.conventions import TRIAGE_LABEL  # noqa: E402
 
 REVERT_PR = "revert-pr"
 QUARANTINE = "quarantine-flaky-test"
@@ -215,7 +215,7 @@ def _open_pr(repo: str, branch: str, root: Path) -> tuple[str | None, int | None
 def _pr_with_label(
     outcome: Outcome, root: Path, repo: str, base: str, title: str, body: str
 ) -> Outcome:
-    """Open (or find) the PR of ``outcome.branch`` and label it ``incident``."""
+    """Open (or find) the PR of ``outcome.branch`` and label it ``sdlc:triage``."""
     branch = outcome.branch or ""
     url, number = _open_pr(repo, branch, root)
     if number is None:
@@ -234,11 +234,11 @@ def _pr_with_label(
         if got.get("ok") and got.get("head_sha"):
             github.post_not_build_check(repo, str(got["head_sha"]), cwd=root)
         github.ensure_label(
-            repo, INCIDENT_LABEL, INCIDENT_COLOR, f"SDLC framework: {INCIDENT_LABEL}", cwd=root
+            repo, TRIAGE_LABEL, INCIDENT_COLOR, f"SDLC framework: {TRIAGE_LABEL}", cwd=root
         )
-        labelled = github.set_labels(repo, int(number), [INCIDENT_LABEL], [], cwd=root)
+        labelled = github.set_labels(repo, int(number), [TRIAGE_LABEL], [], cwd=root)
         if not labelled.get("ok"):
-            outcome.reason = f"the {INCIDENT_LABEL} label was not applied: {labelled.get('reason')}"
+            outcome.reason = f"the {TRIAGE_LABEL} label was not applied: {labelled.get('reason')}"
     return outcome
 
 

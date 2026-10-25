@@ -598,9 +598,9 @@ def test_a_missing_or_invalid_verdict_or_a_park_never_takes_the_fast_lane(design
     assert result.result == "park" and result.fast_lane is False
 
 
-def test_an_escalate_the_panel_settled_never_takes_the_fast_lane():
+def test_a_park_verdict_the_panel_settled_never_takes_the_fast_lane():
     """Decision 30 review, S3: the panel's ``continue`` passes the gate, but the reviewer's
-    own verdict was ``escalate``: gate (design) waits for the owner."""
+    own verdict was ``park``: gate (design) waits for the owner."""
     from gate.checks import CheckResult
 
     def results(**details):
@@ -670,7 +670,9 @@ def test_a_routine_design_records_fast_lane_b_and_dispatches_the_build(
     assert run_phase.stacked_design(root, "0001") == "refs/remotes/origin/sdlc/0001/design"
 
 
-@pytest.mark.parametrize("why", ["non-routine", "missing", "other-head", "escalate", "after-gate"])
+@pytest.mark.parametrize(
+    "why", ["non-routine", "missing", "other-head", "park", "escalate", "after-gate"]
+)
 def test_a_fast_lane_record_the_runner_does_not_confirm_waits_at_b(
     project, fake_claude, monkeypatch, capsys, why
 ):
@@ -682,8 +684,9 @@ def test_a_fast_lane_record_the_runner_does_not_confirm_waits_at_b(
         _verdict(root, "non-routine", head)
     elif why == "other-head":
         _verdict(root, "routine", "0" * 40)
-    elif why == "escalate":  # S3: the reviewer's own verdict must be continue
-        _verdict(root, "routine", head, verdict="escalate")
+    elif why in ("park", "escalate"):  # S3: the reviewer's own verdict must be continue
+        # ``escalate``: an older plugin's word, read as ``park`` (R45 row 62)
+        _verdict(root, "routine", head, verdict=why)
     elif why == "after-gate":  # S7: a plan edit committed after the commit the gate judged
         _verdict(root, "routine", head)
         write(root / "notes.md", "an edit after the gate\n")
@@ -692,7 +695,8 @@ def test_a_fast_lane_record_the_runner_does_not_confirm_waits_at_b(
     out = _design_run(root, change, fake_claude, monkeypatch, capsys)
     assert out["fast_lane"]["recorded"] is False and out["dispatched"] is None
     expected_reason = {
-        "escalate": "the adversarial reviewer said escalate, not continue",
+        "park": "the adversarial reviewer said park, not continue",
+        "escalate": "the adversarial reviewer said park, not continue",
         "after-gate": "commits after the gate's commit changed notes.md",
     }.get(why, "")
     assert expected_reason in out["fast_lane"]["reason"]
@@ -845,7 +849,7 @@ def test_the_build_is_cut_from_the_design_on_the_fast_lane_and_from_main_after_a
     assert run_phase._start_point(root, "0001", "build") == "refs/remotes/origin/main"
 
 
-@pytest.mark.parametrize("pushed", ["no-gate-record", "non-routine", "escalate", "plan"])
+@pytest.mark.parametrize("pushed", ["no-gate-record", "non-routine", "park", "plan"])
 def test_a_design_branch_record_that_does_not_hold_starts_the_build_from_main(lane, pushed):
     """Decision 30 review, B2: anyone with write access could push ``fast_lane.b`` and
     ``gate b/passed``; the build is stacked only when the
@@ -860,8 +864,8 @@ def test_a_design_branch_record_that_does_not_hold_starts_the_build_from_main(la
         write(gate_file, json.dumps({**record, "result": "wait"}))
     elif pushed == "non-routine":
         _verdict(root, "non-routine", design)
-    elif pushed == "escalate":
-        _verdict(root, "routine", design, verdict="escalate")
+    elif pushed == "park":
+        _verdict(root, "routine", design, verdict="park")
     elif pushed == "plan":
         write(change / "plan.md", PLAN + "\nOne more step, written after the gate.\n")
     git(root, "commit", "-q", "-am", f"pushed: {pushed}")

@@ -976,16 +976,16 @@ def _panel_entries(ctx: GateContext, kind: str) -> list[dict[str, Any]]:
 
 
 def _owner_continues(ctx: GateContext) -> list[dict[str, Any]]:
-    """The ``escalate`` lines of this phase's ledger that the owner overturned and whose
+    """The ``park`` lines of this phase's ledger that the owner overturned and whose
     decision upheld the verdict (not ``continue``): the owner's word replaces the panel's
-    (``sdlc-fix.md``), so an ``escalate`` verdict with the same reasons is settled for the
+    (``sdlc-fix.md``), so a ``park`` verdict with the same reasons is settled for the
     phase to continue; one with other reasons is a new item (1.0.8, NOTES 45 gap 1)."""
     from panel import ledger  # noqa: PLC0415
 
     return [
         e
         for e in ledger.load_ledger(ctx.change_dir, ctx.phase)
-        if e.get("kind") == "escalate" and e.get("overturned") and not ledger.decides_continue(e)
+        if e.get("kind") == "park" and e.get("overturned") and not ledger.decides_continue(e)
     ]
 
 
@@ -1146,11 +1146,11 @@ def risk_hits(items: list[Any], paths: list[str], texts: dict[str, str]) -> dict
     return risk_mod.hits(items, paths, texts)
 
 
-RISK_ESCALATION_NEED = (
-    "The gate's reviewer escalates on the risk-list item(s) named above. Under decision 35 a "
-    "hit is only a line of the close-look banner, but an escalation on a risk item parks for "
-    "you and never goes to the review panel (decisions 11 and 21 as 35 amends them). Read the "
-    "brief ({brief}) and the verdict's reasons, then answer as for any escalation: a review "
+RISK_PARK_NEED = (
+    "The gate's reviewer says park on the risk-list item(s) named above. Under decision 35 a "
+    "hit is only a line of the close-look banner, but the reviewer's park on a risk item is "
+    "yours and never goes to the review panel (decisions 11 and 21 as 35 amends them). Read "
+    "the brief ({brief}) and the verdict's reasons, then answer as for any park: a review "
     "comment or Request changes starts a fix round, and the reviewer judges the new HEAD."
 )
 
@@ -1163,9 +1163,9 @@ def check_risk_list(ctx: GateContext) -> CheckResult:
     Decision 35 (1.0.15): a hit no longer parks. The check passes and reports every hit in
     ``details.hits`` (accepted or not; ``details.accepted`` names the accepted ones), which the
     close-look banner of the PR the owner merges reads (``risk.banner_lines``). It fails, and
-    parks, only when the gate's reviewer escalates on a hit item (``risk.escalated_items``:
-    the brief's word, or an ``escalate`` verdict that names the item); ``risk_list`` is on the
-    panel's never list, so that escalation stays the owner's."""
+    parks, only when the gate's reviewer says park on a hit item (``risk.parked_items``:
+    the brief's verdict on it, or a ``park`` verdict that names the item); ``risk_list`` is on
+    the panel's never list, so that park stays the owner's."""
     items, why = risk_mod.parse_items(ctx.config.get("risk_list"))
     if why:
         return _fail("risk_list", why, "Fix sdlc.yaml (decision 35: a string or {item, paths}).")
@@ -1200,18 +1200,18 @@ def check_risk_list(ctx: GateContext) -> CheckResult:
     accepted_hit = sorted(k for k in hits if k.lower() in accepted)
     if not hits:
         return _ok("risk_list", "no risk-list item touched", hits={}, accepted=accepted_hit)
-    escalated = risk_mod.escalated_items(sorted(hits), _phase_brief(ctx), _phase_verdict(ctx))
+    parked = risk_mod.parked_items(sorted(hits), _phase_brief(ctx), _phase_verdict(ctx))
     shown = "; ".join(f"'{k}' in {', '.join(v[:3])}" for k, v in hits.items())
-    if escalated:
+    if parked:
         return _fail(
             "risk_list",
-            "the reviewer escalates on risk-list item(s) "
-            + ", ".join(f"'{i}'" for i in escalated)
+            "the reviewer says park on risk-list item(s) "
+            + ", ".join(f"'{i}'" for i in parked)
             + f" (hits: {shown})",
-            RISK_ESCALATION_NEED.format(brief=risk_mod.brief_rel(ctx.phase)),
+            RISK_PARK_NEED.format(brief=risk_mod.brief_rel(ctx.phase)),
             hits=hits,
             accepted=accepted_hit,
-            escalated=escalated,
+            parked_on=parked,
         )
     return _ok(
         "risk_list",
@@ -1236,9 +1236,12 @@ def _phase_verdict(ctx: GateContext) -> dict[str, Any] | None:
 # --- 9. the adversarial reviewer's verdict (step 17; an input, never run by the gate) ---------
 def load_verdict(path: Path) -> tuple[dict[str, Any] | None, str]:
     """Format written by the adversarial-reviewer agent:
-    {"schema_version": 1, "phase": "build", "head": "<sha>", "verdict": "continue|escalate",
+    {"schema_version": 1, "phase": "build", "head": "<sha>", "verdict": "continue|park",
      "reasons": [...], "classification": "routine|non-routine",
-     "classification_reasons": [...], "at": "<iso>"}"""
+     "classification_reasons": [...], "at": "<iso>"}
+
+    A verdict an older plugin wrote says ``escalate``: it reads as ``park`` (R45 row 62, for
+    one release; ``art.verdict_word``), and the data returned always holds the new word."""
     if not path.is_file():
         return None, "missing"
     try:
@@ -1250,15 +1253,19 @@ def load_verdict(path: Path) -> tuple[dict[str, Any] | None, str]:
 
 def parse_verdict(text: str | None) -> tuple[dict[str, Any] | None, str]:
     """``load_verdict``'s validation of the verdict file's text (the runner reads the file
-    at a commit of the design branch too, decision 30): (data, "") or (None, why)."""
+    at a commit of the design branch too, decision 30): (data, "") or (None, why). Every
+    reader of the verdict goes through here, so ``data["verdict"]`` is ``continue`` or
+    ``park`` whatever word the file holds."""
     if text is None:
         return None, "missing"
     try:
         data = json.loads(text)
     except ValueError as exc:
         return None, f"unreadable: {exc}"
-    if not isinstance(data, dict) or data.get("verdict") not in ("continue", "escalate"):
-        return None, "malformed: 'verdict' must be 'continue' or 'escalate'"
+    word = art.verdict_word(data.get("verdict")) if isinstance(data, dict) else None
+    if word is None:
+        return None, "malformed: 'verdict' must be 'continue' or 'park'"
+    data["verdict"] = word
     if data.get("classification") not in ("routine", "non-routine"):
         return None, "malformed: 'classification' must be 'routine' or 'non-routine'"
     if not isinstance(data.get("head"), str) or len(data["head"]) < 7:
@@ -1293,16 +1300,16 @@ def check_adversarial_verdict(ctx: GateContext) -> CheckResult:
             stale=True,
         )
     reasons = [str(r) for r in (data.get("reasons") or [])]
-    if data["verdict"] == "escalate":
+    if data["verdict"] == art.VERDICT_PARK:
         from panel import ledger  # noqa: PLC0415
 
-        key = ledger.escalate_key(reasons)
-        settled = next((e for e in _panel_entries(ctx, "escalate") if e.get("key") == key), None)
+        key = ledger.park_key(reasons)
+        settled = next((e for e in _panel_entries(ctx, "park") if e.get("key") == key), None)
         owner = next((e for e in _owner_continues(ctx) if e.get("key") == key), None)
         if settled is None and owner is not None:
             return _ok(
                 "adversarial_review",
-                "adversarial reviewer said escalate; the owner overturned the panel's "
+                "adversarial reviewer said park; the owner overturned the panel's "
                 f"decision {owner.get('n')} on it, so the phase continues: "
                 + str((owner.get("overturned") or {}).get("comment", "")),
                 classification=data["classification"],
@@ -1312,7 +1319,7 @@ def check_adversarial_verdict(ctx: GateContext) -> CheckResult:
         if settled is not None and ledger.decides_continue(settled):
             return _ok(
                 "adversarial_review",
-                "adversarial reviewer said escalate; the review panel decided to continue: "
+                "adversarial reviewer said park; the review panel decided to continue: "
                 + str(settled.get("decision", "")),
                 classification=data["classification"],
                 reasons=reasons,
@@ -1320,7 +1327,7 @@ def check_adversarial_verdict(ctx: GateContext) -> CheckResult:
             )
         return _fail(
             "adversarial_review",
-            "adversarial reviewer says escalate: " + ("; ".join(reasons) or "no reason given"),
+            "adversarial reviewer says park: " + ("; ".join(reasons) or "no reason given"),
             "Read the reviewer's reasons and decide: fix and re-run, or accept in review"
             + (
                 " (the panel decided: " + str(settled.get("decision", "")) + ")"
@@ -1330,6 +1337,7 @@ def check_adversarial_verdict(ctx: GateContext) -> CheckResult:
             + ".",
             reasons=reasons,
             classification=data["classification"],
+            verdict=art.VERDICT_PARK,
         )
     return _ok(
         "adversarial_review",
@@ -2044,7 +2052,7 @@ def _declared_ratchets(plan_text: str) -> set[str]:
     return {m.group(1).lower() for m in RATCHET_PROOF_RE.finditer(proof)}
 
 
-RATCHET_ESCALATION_NEED = RISK_ESCALATION_NEED
+RATCHET_PARK_NEED = RISK_PARK_NEED
 
 
 def check_ratchets(ctx: GateContext) -> CheckResult:
@@ -2059,8 +2067,8 @@ def check_ratchets(ctx: GateContext) -> CheckResult:
     Decision 35 (1.0.15), point 6: the hit no longer parks. It is reported in
     ``details.hits`` (accepted or not) for the close-look banner, which the owner's merge
     accepts as every hit; a drop the plan declares is listed in ``details.declared`` and is a
-    banner line too. The check fails only when the gate's reviewer escalates on a ratchet
-    item (``risk.escalated_items``), which parks like any escalation on a risk item. Not
+    banner line too. The check fails only when the gate's reviewer says park on a ratchet
+    item (``risk.parked_items``), which parks like any park on a risk item. Not
     caught here: a test emptied of its own tests, a dropped test inside a file that still
     exists, an edited test-runner configuration line (the measured ratchets, R15's second
     change)."""
@@ -2113,15 +2121,15 @@ def check_ratchets(ctx: GateContext) -> CheckResult:
     if not hits:
         return _ok("ratchets", "no undeclared test file or eval case drop", **details)
     shown = "; ".join(f"'{k}': {', '.join(v[:5])}" for k, v in hits.items())
-    escalated = risk_mod.escalated_items(sorted(hits), _phase_brief(ctx), _phase_verdict(ctx))
-    if escalated:
+    parked = risk_mod.parked_items(sorted(hits), _phase_brief(ctx), _phase_verdict(ctx))
+    if parked:
         return _fail(
             "ratchets",
-            "the reviewer escalates on ratchet item(s) "
-            + ", ".join(f"'{i}'" for i in escalated)
+            "the reviewer says park on ratchet item(s) "
+            + ", ".join(f"'{i}'" for i in parked)
             + f" (dropped-ratchet hit: {shown})",
-            RATCHET_ESCALATION_NEED.format(brief=risk_mod.brief_rel(ctx.phase)),
-            escalated=escalated,
+            RATCHET_PARK_NEED.format(brief=risk_mod.brief_rel(ctx.phase)),
+            parked_on=parked,
             **details,
         )
     return _ok(
@@ -2169,7 +2177,7 @@ def _blind_verdicts_problems(ctx: GateContext, entry: dict) -> list[str]:
 
 def check_panel(ctx: GateContext) -> CheckResult:
     """Every panel decision has a ledger line, no panel decision touched a never-to-panel
-    item, and no standing ``escalate`` decision upholds the adversarial reviewer's verdict:
+    item, and no standing ``park`` decision upholds the adversarial reviewer's verdict:
     one that does not start with ``continue`` (``park``, empty, anything else) fails the
     check, so the gate parks (NOTES 45 gap 1, choice 205; an overturned line is the owner's
     act and is left alone). Passes trivially when there is no ledger and no concern closed
@@ -2193,10 +2201,10 @@ def check_panel(ctx: GateContext) -> CheckResult:
             )
         problems += _blind_verdicts_problems(ctx, entry)
     standing = ledger.active(entries)
-    upheld = [e for e in standing if e.get("kind") == "escalate" and not ledger.decides_continue(e)]
+    upheld = [e for e in standing if e.get("kind") == "park" and not ledger.decides_continue(e)]
     for entry in upheld:
         problems.append(
-            f"decision {entry.get('n')}: the panel upheld the adversarial reviewer's escalate "
+            f"decision {entry.get('n')}: the panel upheld the adversarial reviewer's park "
             f"({str(entry.get('decision') or '').strip()[:80] or 'no decision'!r})"
         )
     # a closing names its ledger line (``decided (by panel #n):``, 0.2.15), so the words after
@@ -2242,7 +2250,7 @@ def check_panel(ctx: GateContext) -> CheckResult:
             "Every panel decision is one ledger line in evidence/decisions-<phase>.json (panel/"
             "cli.py record writes it); a never-to-panel item parks for the owner."
             + (
-                " The panel upheld the adversarial reviewer's escalate (decision "
+                " The panel upheld the adversarial reviewer's park (decision "
                 + ", ".join(str(e.get("n")) for e in upheld)
                 + f" of evidence/decisions-{ctx.phase}.md): read the reviewer's reasons and "
                 "the panel's rationale, then either fix what the reviewer names (a review "

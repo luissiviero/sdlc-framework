@@ -87,11 +87,11 @@ def run(argv: list[str]) -> tuple[int, dict]:
 def test_keys_are_stable_and_kinds_are_the_fixed_list():
     assert ledger.concern_key("- Foo  bar.") == ledger.concern_key("Foo bar.")
     assert ledger.concern_key("a") != ledger.concern_key("b")
-    assert ledger.escalate_key(["b", "a"]) == ledger.escalate_key(["a ", " b"])
+    assert ledger.park_key(["b", "a"]) == ledger.park_key(["a ", " b"])
     assert ledger.finding_key("abc") == "finding:abc"
     assert ledger.kind_of_concern("The security baseline contradicts the UX policy") == "policy"
     assert ledger.kind_of_concern("Rounding is unclear") == "concern"
-    assert set(ledger.PANEL_KINDS) == {"concern", "policy", "escalate", "finding", "verifier"}
+    assert set(ledger.PANEL_KINDS) == {"concern", "policy", "park", "finding", "verifier"}
     assert not set(ledger.PANEL_KINDS) & set(ledger.NEVER_TO_PANEL)
     for name in ("risk_list", "guardrails", "limits"):
         assert name in ledger.NEVER_TO_PANEL
@@ -186,7 +186,7 @@ def test_apply_decision_closes_the_concern_in_spec_md(tmp_path):
     assert ledger.panel_closings(spec) == [(1, closed[0])]
     assert "- [x] Rounding half-even" in spec  # the other item is untouched
     assert ledger.apply_decision(change, entry) is False  # already closed
-    assert ledger.apply_decision(change, dict(entry, kind="escalate")) is False
+    assert ledger.apply_decision(change, dict(entry, kind="park")) is False
 
 
 def test_clean_decision_strips_the_copied_closing_and_the_restated_item():
@@ -233,14 +233,14 @@ def test_items_lists_the_fixed_list_and_the_parks(design_project):  # noqa: F811
     open_the_concern(change)
     git(root, "add", ".")
     git(root, "commit", "-q", "-m", "design(0001): an open concern")
-    verdict(root, "design", verdict="escalate")
+    verdict(root, "design", verdict="park")
     rc, out = run(["items", "--root", str(root), "--id", "0001", "--phase", "design"])
     # decision 37 (1.0.21): deferred review is the only mode, so ``items`` names none
     assert rc == 0 and "mode" not in out and out["gate"] == "park"
     kinds = [(i["kind"], i["decided"]) for i in out["items"]]
-    assert kinds == [("concern", False), ("escalate", False)]
+    assert kinds == [("concern", False), ("park", False)]
     assert out["items"][0]["item"] == OPEN_CONCERN and out["items"][0]["n"] == 1
-    assert out["items"][1]["key"].startswith("escalate:")
+    assert out["items"][1]["key"].startswith("park:")
     assert out["parks"] == [] and out["pending"] == [1, 2]
     assert out["iterations"] == {"used": 0, "cap": 3, "left": 3}
     assert ledger.items_path(change, "design").is_file()
@@ -248,7 +248,7 @@ def test_items_lists_the_fixed_list_and_the_parks(design_project):  # noqa: F811
     write(root / "sample_pkg" / "stray.py", "x = 1\n")
     git(root, "add", ".")
     git(root, "commit", "-q", "-m", "a source file at (b)")
-    verdict(root, "design", verdict="escalate")
+    verdict(root, "design", verdict="park")
     rc, out = run(["items", "--root", str(root), "--id", "0001", "--phase", "design"])
     assert [p["check"] for p in out["parks"]] == ["design_scope"]
     assert len(out["items"]) == 2
@@ -432,13 +432,13 @@ def test_gate_parks_a_panel_decision_whose_advocate_ran_on_another_model(project
     root, change = project
     head = git(root, "rev-parse", "HEAD").strip()
     reasons = ["blast radius larger than the plan says"]
-    item = {"n": 1, "kind": "escalate", "key": ledger.escalate_key(reasons), "item": "escalate"}
+    item = {"n": 1, "kind": "park", "key": ledger.park_key(reasons), "item": "park"}
     write_members(change, "build", 1)
     write_advocate_model(change, "build", 1, models=("claude-sonnet-5",))
     _ledger_entry(change, "build", item, "continue: the plan lists every file", head)
     git(root, "add", ".")
     git(root, "commit", "-q", "-m", "build(0001): panel decision 1")
-    verdict(root, "build", verdict="escalate")
+    verdict(root, "build", verdict="park")
     result = gate.run_gate(root, "0001", "build", dry_run=True)
     panel = next(ch for ch in result.failed if ch.name == "panel")
     assert f"ran on claude-sonnet-5, not on {ADVOCATE_MODEL}" in panel.reason
@@ -556,20 +556,20 @@ def _ledger_entry(change: Path, phase: str, item: dict, decision: str, head: str
     return entry
 
 
-def test_gate_accepts_an_escalate_the_panel_decided_to_continue(project):  # noqa: F811
+def test_gate_accepts_a_park_verdict_the_panel_decided_to_continue(project):  # noqa: F811
     root, change = project
-    verdict(root, "build", verdict="escalate")
+    verdict(root, "build", verdict="park")
     result = gate.run_gate(root, "0001", "build", dry_run=True)
     assert "adversarial_review" in _names(result, False)
     head = git(root, "rev-parse", "HEAD").strip()
     reasons = ["blast radius larger than the plan says"]
-    item = {"kind": "escalate", "key": ledger.escalate_key(reasons), "item": "escalate"}
+    item = {"kind": "park", "key": ledger.park_key(reasons), "item": "park"}
     _ledger_entry(
         change, "build", item, "continue: the plan lists every file the diff touches", head
     )
     git(root, "add", ".")
     git(root, "commit", "-q", "-m", "build(0001): panel decisions")
-    verdict(root, "build", verdict="escalate")
+    verdict(root, "build", verdict="park")
     result = gate.run_gate(root, "0001", "build", dry_run=True)
     assert result.result == "continue", result.reason
     adv = next(ch for ch in result.checks if ch.name == "adversarial_review")
@@ -584,12 +584,97 @@ def test_gate_accepts_an_escalate_the_panel_decided_to_continue(project):  # noq
     assert "the panel decided: park" in adv.need
 
 
-def _gate_with_escalate_decision(root: Path, change: Path, phase: str, decision: str, **extra):
-    """Gate ``phase`` after the panel decided an ``escalate`` with ``decision`` and the
-    adversarial reviewer, re-run on the new HEAD, said ``continue`` (PR #186: the verdict that
-    followed the panel no longer escalated, so ``adversarial_review`` passed)."""
+def _legacy_escalate_verdict(path: Path) -> None:
+    """Rewrite a verdict file as an older plugin wrote it: ``escalate`` (R45 row 62)."""
+    data = json.loads(path.read_text(encoding="utf-8"))
+    path.write_text(json.dumps({**data, "verdict": "escalate"}), encoding="utf-8")
+
+
+def test_an_older_plugin_s_escalate_ledger_line_and_verdict_still_read_as_park(project):  # noqa: F811
+    """R45 row 62, for one release: a ledger line an older plugin wrote, with the kind
+    ``escalate`` and the key ``escalate:<hash>``, settles today's verdict on the same reasons,
+    an ``escalate`` verdict file reads as ``park``, and the next save writes the new word."""
+    root, change = project
+    head = git(root, "rev-parse", "HEAD").strip()
     reasons = ["blast radius larger than the plan says"]
-    item = {"kind": "escalate", "key": ledger.escalate_key(reasons), "item": "escalate"}
+    item = {"kind": "park", "key": ledger.park_key(reasons), "item": "park"}
+    entry = _ledger_entry(change, "build", item, "continue: the plan lists every file", head)
+    old = dict(entry, kind="escalate", key="escalate:" + entry["key"].split(":", 1)[1])
+    ledger_file = ledger.ledger_path(change, "build")
+    ledger_file.write_text(
+        json.dumps({"schema_version": 1, "phase": "build", "decisions": [old]}), encoding="utf-8"
+    )
+    assert ledger.load_ledger(change, "build") == [entry]
+    assert ledger.normalize({"kind": "concern", "key": "concern:x"}) == {
+        "kind": "concern",
+        "key": "concern:x",
+    }
+    git(root, "add", ".")
+    git(root, "commit", "-q", "-m", "build(0001): an older plugin's panel decision")
+    _legacy_escalate_verdict(verdict(root, "build", verdict="park"))
+    result = gate.run_gate(root, "0001", "build", dry_run=True)
+    assert result.result == "continue", result.reason
+    adv = next(ch for ch in result.checks if ch.name == "adversarial_review")
+    assert adv.ok and adv.details["settled_by_panel"] == 1
+    assert "said park" in adv.reason and "escalate" not in adv.reason
+    panel = next(ch for ch in result.checks if ch.name == "panel")
+    assert panel.ok, panel.reason
+    # an older plugin's line the panel upheld still parks, named in today's word
+    old["decision"] = "park: the owner must see the blast radius"
+    ledger_file.write_text(
+        json.dumps({"schema_version": 1, "phase": "build", "decisions": [old]}), encoding="utf-8"
+    )
+    result = gate.run_gate(root, "0001", "build", dry_run=True)
+    panel = next(ch for ch in result.failed if ch.name == "panel")
+    assert "decision 1: the panel upheld the adversarial reviewer's park" in panel.reason
+    # the next write says park
+    ledger.save_ledger(change, "build", ledger.load_ledger(change, "build"))
+    saved = json.loads(ledger_file.read_text(encoding="utf-8"))["decisions"][0]
+    assert saved["kind"] == "park" and saved["key"] == entry["key"]
+    assert "[park]" in ledger.ledger_md_path(change, "build").read_text(encoding="utf-8")
+
+
+def test_an_older_plugin_s_escalate_item_reads_as_park_in_the_prompt(project):  # noqa: F811
+    """An items list an older plugin wrote names the kind ``escalate``: ``prompt`` reads it as
+    ``park`` and fills in today's hint (R45 row 62)."""
+    root, change = project
+    path = ledger.items_path(change, "build", write=True)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    old = {"n": 1, "kind": "escalate", "key": "escalate:abc", "item": "escalate: x"}
+    path.write_text(json.dumps({"items": [old]}), encoding="utf-8")
+    item = panel_cli._item(change, "build", 1)
+    assert item is not None and item["kind"] == "park" and item["key"] == "park:abc"
+    proc = subprocess.run(
+        [
+            sys.executable,
+            str(PANEL_CLI),
+            "prompt",
+            "--root",
+            str(root),
+            "--id",
+            "0001",
+            "--phase",
+            "build",
+            "--item",
+            "1",
+            "--member",
+            "conciliator",
+        ],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert "Kind: park" in proc.stdout
+    assert prompts.APPLY_HINT["park"].split(" (")[0] in proc.stdout
+
+
+def _gate_with_park_decision(root: Path, change: Path, phase: str, decision: str, **extra):
+    """Gate ``phase`` after the panel decided a ``park`` verdict with ``decision`` and the
+    adversarial reviewer, re-run on the new HEAD, said ``continue`` (PR #186: the verdict that
+    followed the panel no longer said park, so ``adversarial_review`` passed)."""
+    reasons = ["blast radius larger than the plan says"]
+    item = {"kind": "park", "key": ledger.park_key(reasons), "item": "park"}
     ledger.save_ledger(change, phase, [])
     entry = _ledger_entry(change, phase, item, "continue", "0" * 40)
     entries = ledger.load_ledger(change, phase)
@@ -602,35 +687,35 @@ def _gate_with_escalate_decision(root: Path, change: Path, phase: str, decision:
 
 
 @pytest.mark.parametrize(("phase", "fixture"), [("design", "design_project"), ("build", "project")])
-def test_a_panel_park_on_an_escalate_parks_the_gate_fail_closed(request, phase, fixture):
+def test_a_panel_park_on_a_park_verdict_parks_the_gate_fail_closed(request, phase, fixture):
     """NOTES 45 gap 1 (choice 205): PR #186's body listed "-> **park**" under ``b-ready``:
-    ``check_panel`` did not read the decision. A standing ``escalate`` decision that does not
+    ``check_panel`` did not read the decision. A standing ``park`` decision that does not
     start with the word ``continue`` fails the ``panel`` check, which never goes back to the
     panel, so the gate parks; an overturned one is the owner's act and is left alone."""
     root, change = request.getfixturevalue(fixture)
     for decision in ("park", "Park: the verdict stands", "", "keep the verdict", "continued"):
-        result = _gate_with_escalate_decision(root, change, phase, decision)
+        result = _gate_with_park_decision(root, change, phase, decision)
         assert result.result == "park" and result.label == "sdlc:needs-human", decision
         panel = next(ch for ch in result.failed if ch.name == "panel")
         assert panel.name in ledger.NEVER_TO_PANEL and panel.details["upheld"] == [1]
-        assert "decision 1: the panel upheld the adversarial reviewer's escalate" in panel.reason
+        assert "decision 1: the panel upheld the adversarial reviewer's park" in panel.reason
         upheld = (
-            "The panel upheld the adversarial reviewer's escalate "
+            "The panel upheld the adversarial reviewer's park "
             f"(decision 1 of evidence/decisions-{phase}.md)"
         )
         assert upheld in panel.need
         assert "overturns it - the fix round marks the ledger line overturned" in panel.need
-    result = _gate_with_escalate_decision(root, change, phase, "park")
+    result = _gate_with_park_decision(root, change, phase, "park")
     assert "('park')" in next(ch for ch in result.failed if ch.name == "panel").reason
     assert "upheld" in result.what_i_need()
     # the PR body keeps showing the decision, now under a park
     assert "→ **park**" in desc.build_description(root, "0001", phase)
     for decision in ("continue", "Continue: add the test first", "  CONTINUE "):
-        result = _gate_with_escalate_decision(root, change, phase, decision)
+        result = _gate_with_park_decision(root, change, phase, decision)
         assert "panel" in _names(result, True), (decision, result.reason)
         assert result.result == ("wait" if phase == "design" else "continue"), result.reason
     overturned = {"comment": "go on: the blast radius is fine", "at": "2026-10-18T10:00:00Z"}
-    result = _gate_with_escalate_decision(root, change, phase, "park", overturned=overturned)
+    result = _gate_with_park_decision(root, change, phase, "park", overturned=overturned)
     assert "panel" in _names(result, True), result.reason
     assert result.result == ("wait" if phase == "design" else "continue"), result.reason
 
@@ -639,12 +724,12 @@ def test_a_panel_park_on_an_escalate_parks_the_gate_fail_closed(request, phase, 
 def test_the_owner_s_overturn_of_a_panel_park_lets_the_phase_continue(request, phase, fixture):
     """The way out of a gap-1 park (1.0.8): the owner overturns the panel's ``park`` with a
     review comment (``sdlc-fix.md``: the owner's word replaces the panel's), so the reviewer
-    escalating again on the same reasons is settled and the panel does not take it again; an
-    escalate on new reasons is a new item, which the panel takes or the gate parks on."""
+    saying park again on the same reasons is settled and the panel does not take it again; a
+    park on new reasons is a new item, which the panel takes or the gate parks on."""
     root, change = request.getfixturevalue(fixture)
     overturned = {"comment": "go on: the blast radius is fine", "at": "2026-10-18T10:00:00Z"}
-    _gate_with_escalate_decision(root, change, phase, "park", overturned=overturned)
-    verdict(root, phase, verdict="escalate")  # the same reasons as the overturned line
+    _gate_with_park_decision(root, change, phase, "park", overturned=overturned)
+    verdict(root, phase, verdict="park")  # the same reasons as the overturned line
     result = gate.run_gate(root, "0001", phase, dry_run=True)
     assert result.result == ("wait" if phase == "design" else "continue"), result.reason
     adv = next(ch for ch in result.checks if ch.name == "adversarial_review")
@@ -658,20 +743,20 @@ def test_the_owner_s_overturn_of_a_panel_park_lets_the_phase_continue(request, p
     entries[0]["overturned"] = None
     ledger.save_ledger(change, phase, entries)
     git(root, "commit", "-q", "-am", "the overturn undone")
-    verdict(root, phase, verdict="escalate")
+    verdict(root, phase, verdict="park")
     assert gate.run_gate(root, "0001", phase, dry_run=True).result == "park"
     # new reasons are a new item: the panel takes it, and the gate parks until it does
     entries[0]["overturned"] = overturned
     ledger.save_ledger(change, phase, entries)
     git(root, "commit", "-q", "-am", "the overturn again")
-    path = verdict(root, phase, verdict="escalate")
+    path = verdict(root, phase, verdict="park")
     data = json.loads(path.read_text(encoding="utf-8"))
     path.write_text(json.dumps({**data, "reasons": ["a new risk"]}), encoding="utf-8")
     result = gate.run_gate(root, "0001", phase, dry_run=True)
     assert result.result == "park" and "adversarial_review" in _names(result, False)
     rc, out = run(["items", "--root", str(root), "--id", "0001", "--phase", phase])
-    assert [(i["kind"], i["decided"]) for i in out["items"]] == [("escalate", False)]
-    assert out["items"][0]["key"] == ledger.escalate_key(["a new risk"])
+    assert [(i["kind"], i["decided"]) for i in out["items"]] == [("park", False)]
+    assert out["items"][0]["key"] == ledger.park_key(["a new risk"])
 
 
 def test_gate_parks_a_panel_decision_whose_blind_verdict_is_not_committed(project):  # noqa: F811
@@ -681,19 +766,19 @@ def test_gate_parks_a_panel_decision_whose_blind_verdict_is_not_committed(projec
     root, change = project
     head = git(root, "rev-parse", "HEAD").strip()
     reasons = ["blast radius larger than the plan says"]
-    item = {"n": 1, "kind": "escalate", "key": ledger.escalate_key(reasons), "item": "escalate"}
+    item = {"n": 1, "kind": "park", "key": ledger.park_key(reasons), "item": "park"}
     write_members(change, "build", 1)
     entry = _ledger_entry(change, "build", item, "continue: the plan lists every file", head)
     assert entry["item_n"] == 1
     git(root, "add", ".")
     git(root, "commit", "-q", "-m", "build(0001): panel decision 1")
-    verdict(root, "build", verdict="escalate")
+    verdict(root, "build", verdict="park")
     result = gate.run_gate(root, "0001", "build", dry_run=True)
     assert "panel" in _names(result, True), result.reason
     # the advocate's file removed from HEAD: the decision rests on one verdict only
     git(root, "rm", "-q", str(ledger.member_path(change, "build", 1, "advocate")))
     git(root, "commit", "-q", "-m", "build(0001): the advocate's file removed")
-    verdict(root, "build", verdict="escalate")
+    verdict(root, "build", verdict="park")
     result = gate.run_gate(root, "0001", "build", dry_run=True)
     panel = next(ch for ch in result.failed if ch.name == "panel")
     assert "build-1-advocate.md is missing" in panel.reason
@@ -701,7 +786,7 @@ def test_gate_parks_a_panel_decision_whose_blind_verdict_is_not_committed(projec
     write(ledger.member_path(change, "build", 1, "advocate"), "## Verdict\n\n## Why\nx\n")
     git(root, "add", ".")
     git(root, "commit", "-q", "-m", "build(0001): an empty advocate verdict")
-    verdict(root, "build", verdict="escalate")
+    verdict(root, "build", verdict="park")
     result = gate.run_gate(root, "0001", "build", dry_run=True)
     panel = next(ch for ch in result.failed if ch.name == "panel")
     assert "build-1-advocate.md has no '## Verdict' clause" in panel.reason
@@ -873,7 +958,7 @@ def test_model_matches_aliases_and_full_ids():
 
 def test_the_pr_summary_names_the_models_and_the_warning(tmp_path):
     change = tmp_path / "changes" / "0001-x"
-    item = {"n": 1, "kind": "escalate", "key": "escalate:x", "item": "escalate"}
+    item = {"n": 1, "kind": "park", "key": "park:x", "item": "park"}
     entry = ledger.new_entry(1, "build", item, DECISION, "abc", None)
     ledger.save_ledger(change, "build", [entry])
     assert not any("Models of" in line for line in desc.decisions_block(change, "build"))

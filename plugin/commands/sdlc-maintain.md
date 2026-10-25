@@ -1,5 +1,5 @@
 ---
-description: The maintain phase — the diagnosis of a control-band breach the deterministic detection script filed (or, by hand, run the detection first), read-only on source, from the project's lessons and the failed runs, written as an incident intent.md with its Evidence section and a proposed route (the intent PR itself, or at 3σ a listed runbook), dispatched through the route's authorization (pre-approved runs now; go parks with "Go" requested), then the triage gate: the intent PR opens with sdlc:maintain-ready and incident and waits for the owner's triage — merge (fix now), label schedule, or close with a reason (dismiss). Re-runnable.
+description: The maintain phase — the diagnosis of a control-band breach the deterministic detection script filed (or, by hand, run the detection first), read-only on source, from the project's lessons and the failed runs, written as an incident intent.md with its Evidence section and a proposed route (the intent PR itself, or at 3σ a listed runbook), dispatched through the route's authorization (pre-approved runs now; go parks with "Go" requested), then the triage gate: the intent PR opens with sdlc:maintain-ready and sdlc:triage and waits for the owner's triage — merge (fix now), label sdlc:schedule, or close with a reason (dismiss). Re-runnable.
 argument-hint: [change id, e.g. 0007; empty = run the detection first]
 disable-model-invocation: true
 allowed-tools: Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/state/cli.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/gate/cli.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/detect/cli.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/pr/cli.py" *), Bash(python "${CLAUDE_PLUGIN_ROOT}/plugin/lessons/index.py" *), Bash(git *), Bash(gh run view *), Bash(gh run list *), Read, Glob, Grep, Write
@@ -134,12 +134,12 @@ as at `intent`.
 — head `sdlc/<id>/intent`, title `maintain(<id>): <title>`, the summary (the finding, the
 proposed outcome, the route and its state, what needs the owner), labels `sdlc:maintain-ready` (or
 `sdlc:needs-human` with "What I need from you": Go requested, or a failed check) and
-`incident`. Nothing merges, nothing deploys, and you notify nobody (in CI the finish step
+`sdlc:triage` (`incident` on a PR an older plugin opened). Nothing merges, nothing deploys, and you notify nobody (in CI the finish step
 requests the owner's review on the PR, decision 31).
 
 ## 9. Report
 One line: the PR URL and "gate (maintain): merge = fix now (the design run starts); label
-`schedule` = later; close with a comment = dismiss (the comment is the reason, recorded by
+`sdlc:schedule` = later; close with a comment = dismiss (the comment is the reason, recorded by
 the abandon workflow in a dismissal PR)". When a route waits for Go, add "apply `sdlc:go`
 on the PR to run runbook <name>". Do not start the design phase.
 

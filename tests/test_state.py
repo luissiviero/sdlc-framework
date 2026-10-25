@@ -31,13 +31,14 @@ def test_labels():
     assert not any(
         label.endswith("-approved") and label != c.RELEASE_APPROVED_LABEL for label in labels
     )
-    # phase (f), decision 25: the triage queue's labels carry no prefix (the article's own
-    # "incident" and the owner's "schedule"); the Go authorization is the framework's
-    assert {"incident", "schedule", "sdlc:go"} <= set(labels)
-    assert all(
-        label.startswith("sdlc:") or label in (c.INCIDENT_LABEL, c.SCHEDULE_LABEL)
-        for label in labels
-    )
+    # the maintain phase, decision 25; R45 (rows 37 and 38): the triage queue's labels carry
+    # the prefix since 1.0.44, so every label the framework creates is an sdlc: label
+    assert {"sdlc:triage", "sdlc:schedule", "sdlc:go"} <= set(labels)
+    assert all(label.startswith("sdlc:") for label in labels)
+    assert "incident" not in labels and "schedule" not in labels
+    # an open PR an older plugin labelled is still read for one release
+    assert c.TRIAGE_LABELS == {"sdlc:triage", "incident"}
+    assert c.SCHEDULE_LABELS == {"sdlc:schedule", "schedule"}
 
 
 def test_human_gates():

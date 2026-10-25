@@ -35,15 +35,17 @@ Kinds — the fixed list of what may go to the panel (nothing else ever does):
   rewritten to start with ``decided (by panel #<n>): <decision> — <original>``, ``n`` the
   ledger line, which is what the gate matches — the wording after it may be tidied);
 - ``policy``: a concern that names contradicting policy skills (closed the same way);
-- ``escalate``: an ``escalate`` verdict of the adversarial reviewer (keyed by its reasons;
-  the gate's ``adversarial_review`` check reads the entry);
+- ``park``: a ``park`` verdict of the adversarial reviewer (keyed by its reasons; the gate's
+  ``adversarial_review`` check reads the entry). An older plugin named the kind and the key
+  ``escalate``, after its verdict word; such a line reads as ``park`` for one release (R45
+  row 62, ``normalize``);
 - ``finding``: an Important review finding whose fix the run cannot determine (keyed by
   the finding's signature; the gate's ``findings`` check reads the entry);
 - ``verifier``: the verifier's "does not match the plan" (a record; the run acts on it).
 
-What never goes to the panel and still parks (``NEVER_TO_PANEL``): an escalation on a
+What never goes to the panel and still parks (``NEVER_TO_PANEL``): the reviewer's ``park`` on a
 risk-list item (decision 35: a hit itself no longer parks; it is a line of the close-look
-banner, and ``risk_list`` and ``ratchets`` fail only on such an escalation), a guardrail file
+banner, and ``risk_list`` and ``ratchets`` fail only on such a park), a guardrail file
 change, a run limit, an infrastructure failure, any merge to ``main``, any deploy. The gate's
 ``panel`` check refuses a ledger that names one.
 
@@ -75,7 +77,9 @@ ITEMS_FILE = "{phase}-items.json"
 MEMBER_FILE = "{phase}-{n}-{member}.{ext}"
 MEMBERS = ("reviewer", "advocate", "conciliator")
 
-PANEL_KINDS = ("concern", "policy", "escalate", "finding", "verifier")
+PANEL_KINDS = ("concern", "policy", "park", "finding", "verifier")
+# R45 row 62: the kind an older plugin wrote for a ``park`` verdict, read for one release
+LEGACY_KINDS = {"escalate": "park"}
 # the gate checks whose failure is never the panel's to settle (OPERATING_MODEL section 6)
 NEVER_TO_PANEL = (
     "risk_list",
@@ -119,10 +123,26 @@ def concern_key(text: str) -> str:
     return "concern:" + _key(" ".join(text.split()).lower())
 
 
-def escalate_key(reasons: list[str]) -> str:
-    """An escalate verdict's key: its reasons, order-independent. A later verdict with new
+def park_key(reasons: list[str]) -> str:
+    """A park verdict's key: its reasons, order-independent. A later verdict with new
     reasons is a new item; the same reasons again are the item already decided."""
-    return "escalate:" + _key(*sorted(" ".join(str(r).split()).lower() for r in reasons))
+    return "park:" + _key(*sorted(" ".join(str(r).split()).lower() for r in reasons))
+
+
+def normalize(entry: dict[str, Any]) -> dict[str, Any]:
+    """A ledger line or a panel item as this plugin names it: the kind ``escalate`` an older
+    plugin wrote reads as ``park``, and its key ``escalate:<hash>`` as ``park:<hash>`` (the
+    hash is of the reasons alone, so the same verdict finds the same line; R45 row 62, for
+    one release). Any other entry is returned unchanged; a changed one is a copy."""
+    kind = entry.get("kind")
+    if kind not in LEGACY_KINDS:
+        return entry
+    new = LEGACY_KINDS[kind]
+    out = dict(entry, kind=new)
+    key = entry.get("key")
+    if isinstance(key, str) and key.startswith(f"{kind}:"):
+        out["key"] = f"{new}:" + key[len(kind) + 1 :]
+    return out
 
 
 def finding_key(signature: str) -> str:
@@ -383,7 +403,9 @@ def read_member_verdicts(change_dir: Path, phase: str, n: int) -> tuple[dict[str
 # --- the ledger ---------------------------------------------------------------------------------
 def load_ledger(change_dir: Path, phase: str) -> list[dict[str, Any]]:
     """The entries of the phase's ledger, [] when there is none or it is unreadable (the gate's
-    ``panel`` check reports an unreadable one; a reader that only lists is not the judge)."""
+    ``panel`` check reports an unreadable one; a reader that only lists is not the judge).
+    An older plugin's ``escalate`` line reads as ``park`` (``normalize``), so the next
+    ``save_ledger`` writes it so."""
     path = ledger_path(change_dir, phase)
     if not path.is_file():
         return []
@@ -392,7 +414,9 @@ def load_ledger(change_dir: Path, phase: str) -> list[dict[str, Any]]:
     except (OSError, ValueError):
         return []
     entries = data.get("decisions") if isinstance(data, dict) else None
-    return [e for e in entries if isinstance(e, dict)] if isinstance(entries, list) else []
+    if not isinstance(entries, list):
+        return []
+    return [normalize(e) for e in entries if isinstance(e, dict)]
 
 
 def load_ledgers(change_dir: Path, phase: str) -> list[tuple[str, list[dict[str, Any]]]]:
@@ -437,7 +461,7 @@ CONTINUE_RE = re.compile(r"(?i)^continue\b")
 
 
 def decides_continue(entry: dict[str, Any]) -> bool:
-    """Whether an ``escalate`` decision lets the phase continue: its text starts with the word
+    """Whether a ``park`` decision lets the phase continue: its text starts with the word
     ``continue`` (any case, after stripping). Anything else - ``park``, an empty decision, any
     other text - upholds the adversarial reviewer's verdict, and the gate parks (NOTES 45
     gap 1, choice 205: the ``panel`` check fails closed on it)."""

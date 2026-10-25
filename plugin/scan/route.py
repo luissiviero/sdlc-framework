@@ -503,7 +503,7 @@ def file_one(
         }
     # gate (maintain) on the filed change (no diagnosis run: the review already wrote the
     # intent and the proposal), so the intent PR carries the gate's label (sdlc:maintain-ready, or
-    # sdlc:needs-human with the reason) beside `incident`; the evidence rides in its own
+    # sdlc:needs-human with the reason) beside `sdlc:triage`; the evidence rides in its own
     # commit, as every phase does (OPERATING_MODEL section 4.1)
     phase = c.MAINTAIN
     _cli(GATE_CLI, ["start-run", "--root", str(root), "--id", change_id, "--phase", phase], root)

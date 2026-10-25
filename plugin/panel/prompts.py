@@ -48,8 +48,8 @@ APPLY_HINT = {
         "which policy reading wins for this concern and what the design does about the "
         "other (the run closes the concern in spec.md with your decision)."
     ),
-    "escalate": (
-        "whether the adversarial reviewer's escalate verdict stands ('park') or the phase "
+    "park": (
+        "whether the adversarial reviewer's park verdict stands ('park') or the phase "
         "continues ('continue', with what the run changes first, if anything)."
     ),
     "finding": (

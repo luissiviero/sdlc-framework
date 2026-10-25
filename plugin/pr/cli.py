@@ -51,7 +51,11 @@ FIXING_COLOR = "FBCA04"  # yellow: an automatic fix round runs, nothing waits (d
 CHECK_RUN_NAME = "sdlc/{phase}"
 # the owner's labels: applied by a person, read by the release workflow and the next run,
 # never swept away when the gate label changes
-OWNER_LABELS = frozenset({c.RELEASE_APPROVED_LABEL, *c.UNPARK_LABELS, c.GO_LABEL})
+# R45 (row 37): the gate-label sweep keeps the owner's labels and the maintain queue's two,
+# which carry the ``sdlc:`` prefix since plugin 1.0.44
+OWNER_LABELS = frozenset(
+    {c.RELEASE_APPROVED_LABEL, *c.UNPARK_LABELS, c.GO_LABEL, c.TRIAGE_LABEL, c.SCHEDULE_LABEL}
+)
 
 
 def _emit(obj: Any) -> None:
@@ -201,12 +205,15 @@ def cmd_upsert(args) -> int:
         ]
         remove = [lb for lb in carried if lb != label]
         add = [label] if label and label not in carried else []
-        if args.phase == c.MAINTAIN and c.INCIDENT_LABEL not in (found.get("labels") or []):
-            # the triage queue is the set of open intent PRs labelled incident (step 39)
+        if args.phase == c.MAINTAIN and c.TRIAGE_LABEL not in (found.get("labels") or []):
+            # the triage queue is the set of open intent PRs labelled sdlc:triage (step 39);
+            # an older plugin's ``incident`` on the PR gives way to it (R45, row 37)
             github.ensure_label(
-                repo, c.INCIDENT_LABEL, "B60205", "SDLC maintain: an incident intent", cwd=root
+                repo, c.TRIAGE_LABEL, "B60205", "SDLC maintain: in the triage queue", cwd=root
             )
-            add.append(c.INCIDENT_LABEL)
+            add.append(c.TRIAGE_LABEL)
+            if c.LEGACY_TRIAGE_LABEL in (found.get("labels") or []):
+                remove.append(c.LEGACY_TRIAGE_LABEL)
         if add or remove:
             out["labels"] = github.set_labels(repo, int(number), add, remove, cwd=root)
         if args.ready:

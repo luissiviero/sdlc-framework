@@ -40,7 +40,7 @@ def test_the_session_model_is_one_model_or_a_default_with_phase_entries():
     # the (e) review pass is a run of (e); a run kind with no entry takes the default
     only_e = {"session_model": {"default": "claude-opus-5-5", "deploy": "claude-fable-5-1"}}
     assert models.session_model(only_e, "review") == "claude-fable-5-1"
-    assert models.session_model(only_e, "triage") == "claude-opus-5-5"
+    assert models.session_model(only_e, "explain") == "claude-opus-5-5"
     assert models.session_model({"session_model": {"design": "fable"}}, "build") is None
     assert models.session_model({"session_model": 5}, "build") is None
 

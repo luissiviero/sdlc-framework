@@ -98,14 +98,23 @@ ACCEPT_RISK_LABEL = "sdlc:accept-risk"
 RESET_ITERATIONS_LABEL = "sdlc:reset-iterations"
 UNLOCK_TESTS_LABEL = "sdlc:unlock-tests"
 UNPARK_LABELS = (RESET_ITERATIONS_LABEL, UNLOCK_TESTS_LABEL)
-# Phase (f) (build guide steps 37 and 39; decisions 14, 25): ``incident`` marks every intent
-# PR the maintain loop opens - the triage queue is the set of open PRs carrying it (p.44
-# step 6); ``schedule`` is the owner's "not now" (the PR stays open, nothing runs); ``sdlc:go``
-# is the owner's per-incident authorization of a runbook whose route says ``authorization:
-# go`` (p.49-50: "shall I run it?" - "Go."), read by ``sdlc-runbook.yml``, performed once,
-# recorded with the actor and removed, like the un-park labels.
-INCIDENT_LABEL = "incident"
-SCHEDULE_LABEL = "schedule"
+# The maintain phase (build guide steps 37 and 39; decisions 14, 25): ``sdlc:triage`` marks
+# every intent PR the maintain loop opens - the triage queue is the set of open PRs carrying
+# it (p.44 step 6); ``sdlc:schedule`` is the owner's "not now" (the PR stays open, nothing
+# runs; "Fix now, schedule, or dismiss", p.44); ``sdlc:go`` is the owner's per-incident
+# authorization of a runbook whose route says ``authorization: go`` (p.49-50: "shall I run
+# it?" - "Go."), read by ``sdlc-runbook.yml``, performed once, recorded with the actor and
+# removed, like the un-park labels. R45 (decision 39, rows 37 and 38): until plugin 1.0.43
+# the two labels were ``incident`` and ``schedule``, without the prefix that groups the
+# framework's labels, and a weekly scan finding is not an incident; an open PR an older plugin
+# labelled carries the old one, which is read for one release (``TRIAGE_LABELS``,
+# ``SCHEDULE_LABELS``).
+TRIAGE_LABEL = "sdlc:triage"
+SCHEDULE_LABEL = "sdlc:schedule"
+LEGACY_TRIAGE_LABEL = "incident"
+LEGACY_SCHEDULE_LABEL = "schedule"
+TRIAGE_LABELS = frozenset({TRIAGE_LABEL, LEGACY_TRIAGE_LABEL})
+SCHEDULE_LABELS = frozenset({SCHEDULE_LABEL, LEGACY_SCHEDULE_LABEL})
 GO_LABEL = "sdlc:go"
 # Decision 29 (plugin 1.0.3, ROADMAP R10): a red target the CI runner finds after the session
 # starts the next fix round by itself. While that round runs the PR carries ``sdlc:fixing``
@@ -167,7 +176,7 @@ def all_labels() -> list[str]:
     labels.append(RELEASE_APPROVED_LABEL)
     labels += list(UNPARK_LABELS)
     labels.append(NEEDS_HUMAN_LABEL)
-    labels += [INCIDENT_LABEL, SCHEDULE_LABEL, GO_LABEL]
+    labels += [TRIAGE_LABEL, SCHEDULE_LABEL, GO_LABEL]
     return labels
 
 

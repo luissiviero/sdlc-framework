@@ -1,20 +1,21 @@
 """R18: a failed CI run explains itself (``docs/proposals/failed-run-explains-itself.md``).
 
 The phase runner writes its final JSON to ``--out`` on every exit path, with the case it
-leaves for the triage step (``run_case``): ``park`` when this run parked on a check with a
+leaves for the explain step (``run_case``): ``park`` when this run parked on a check with a
 log to read (the commands step, an unfinished fix session; a red target at the iteration
 cap keeps its ``commands`` check), ``red`` when it ended non-zero with no park, nothing
 otherwise; a park that already says why (a guardrail, the owner fields, the panel model, a
-pre-run park) gets no triage and costs no model call. The setup step's ``--out`` file is
+pre-run park) gets no explanation and costs no model call. The setup step's ``--out`` file is
 the third source: a failed setup is a red run with no runner result.
 
-``run_phase.py --phase triage --out <file> [--setup <file>]`` runs after a fresh framework
-checkout. The read-only session (the Read tool only, ``.git`` denied, no GitHub token in its
-environment) reads the files ``logs_for`` names and answers in at most five lines; each
-line passes the secrets check (``hooks/secrets_check.py find_secrets``) or is dropped. Then,
-outside the session, the lines join the park block (``GateResult.triage``, printed under
-"Triage (model-written)") or a failed-run record on its own ref, ``FAILED_RUN_REF``, which
-the digest's "Failed runs" line reads (``pr/failed_runs.py``). Decisions 11 and 20 stay:
+``run_phase.py --phase explain --out <file> [--setup <file>]`` (``--phase triage`` before
+R45's PR 2, read for one release) runs after a fresh framework checkout. The read-only
+session (the Read tool only, ``.git`` denied, no GitHub token in its environment) reads the
+files ``logs_for`` names and answers in at most five lines; each line passes the secrets
+check (``hooks/secrets_check.py find_secrets``) or is dropped. Then, outside the session,
+the lines join the park block (``GateResult.explanation``, printed under "Explanation
+(model-written)") or a failed-run record on its own ref, ``FAILED_RUN_REF``, which the
+digest's "Failed runs" line reads (``pr/failed_runs.py``). Decisions 11 and 20 stay:
 nothing posts a comment and nothing notifies.
 """
 
@@ -38,14 +39,14 @@ from state import conventions as c  # noqa: E402
 OUT_SCHEMA = 1
 # the failed checks whose park has a log to read: the commands step (a red target, or a step
 # that could not run) and the fix session that did not finish (``run_phase.UNFINISHED_CHECK``)
-TRIAGED_PARK_CHECKS = ("commands", "fix")
+EXPLAINED_PARK_CHECKS = ("commands", "fix")
 CASES = ("park", "red", "setup")
 MAX_LINES = 5
 LINE_MAX = 400  # characters of one stored line
 FAILED_RUN_REF = "refs/sdlc/failed-runs/{run}-{attempt}"  # one ref per run: nothing races
 FAILED_RUN_PREFIX = "refs/sdlc/failed-runs/"
 RECORD_FILE = "failed-run.json"
-WORK_DIR = (".sdlc-cache", "triage")  # under the checkout, excluded from git by the runner
+WORK_DIR = (".sdlc-cache", "explain")  # under the checkout, excluded from git by the runner
 RUNNER_DID_NOT_FINISH = "the runner did not finish: it wrote no result file"
 SETUP_FAILED = "the project's setup failed: {line}"
 NO_RUN_ID = "no GITHUB_RUN_ID: not a workflow run, so no failed-run record"
@@ -78,11 +79,11 @@ def failed_checks(record: dict[str, Any] | None) -> list[str]:
 
 
 def run_case(code: int, record: dict[str, Any] | None, fresh: bool) -> str | None:
-    """What the triage step does after a phase run: ``park`` for a park this run wrote on a
+    """What the explain step does after a phase run: ``park`` for a park this run wrote on a
     check with a log to read, ``red`` for a non-zero exit with no park this run wrote, None
     otherwise (a green run, a park that already says why: it is in the queue already)."""
     if fresh and failed_checks(record):
-        return "park" if set(failed_checks(record)) & set(TRIAGED_PARK_CHECKS) else None
+        return "park" if set(failed_checks(record)) & set(EXPLAINED_PARK_CHECKS) else None
     return "red" if code != 0 else None
 
 
@@ -97,14 +98,15 @@ def setup_failed(setup: dict[str, Any] | None) -> bool:
 
 
 def case_of(out: dict[str, Any] | None, setup: dict[str, Any] | None) -> str | None:
-    """The case the triage step handles: the setup's failure first (the runner never ran),
-    then the runner's own ``triage`` field; a missing result file reads as a red run whose
+    """The case the explain step handles: the setup's failure first (the runner never ran),
+    then the runner's own ``explain`` field (``triage`` in a file a runner before R45's
+    PR 2 wrote); a missing result file reads as a red run whose
     runner did not finish (the workflow runs the step only after a failure or a park)."""
     if setup_failed(setup):
         return "setup"
     if out is None:
         return "red"
-    case = out.get("triage")
+    case = out.get("explain", out.get("triage"))
     return case if case in CASES else None
 
 
@@ -178,7 +180,7 @@ def lines_of(text: str | None) -> tuple[list[str], int]:
 
 
 def add_to_park(path: Path, lines: list[str]) -> bool:
-    """The triage lines into the park record at ``path``, the "What I need from you" block
+    """The explain step's lines into the park record at ``path``, the "What I need from you" block
     re-rendered by its one renderer (``GateResult.what_i_need``). False when the record is
     gone or no longer a park."""
     from gate.gate import GateResult  # noqa: PLC0415
@@ -187,7 +189,7 @@ def add_to_park(path: Path, lines: list[str]) -> bool:
     if not failed_checks(data):
         return False
     result = GateResult.from_dict(data or {})
-    result.triage = list(lines)
+    result.explanation = list(lines)
     path.write_text(
         json.dumps(result.as_dict(), indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
@@ -230,7 +232,7 @@ def failed_run_record(
 ) -> dict[str, Any]:
     """The record of a red run: the run's address and attempt, the event and its actor, the
     change, the step, the exit code, the reason, whether it parked (a park that ended the
-    job red is in the queue already, and the digest drops it) and the triage text."""
+    job red is in the queue already, and the digest drops it) and the explanation."""
     out = out or {}
     server = env.get("GITHUB_SERVER_URL") or "https://github.com"
     repo, run_id = env.get("GITHUB_REPOSITORY", ""), env.get("GITHUB_RUN_ID", "")
@@ -251,7 +253,7 @@ def failed_run_record(
         "exit_code": None if case == "setup" else out.get("exit_code"),
         "reason": reason_of(case, out or None, setup),
         "parked": case == "park",
-        "triage": list(lines),
+        "explanation": list(lines),
         "cost_usd": cost,
         "at": _now(),
     }

@@ -362,6 +362,39 @@ def test_upsert_on_an_open_pr_reads_its_live_draft_state(project, capsys, monkey
         assert ("the fast lane, decision 30" in bodies[-1]) is fast
 
 
+def test_upsert_keeps_the_triage_queue_s_labels_and_moves_an_older_incident_label(
+    project, capsys, monkeypatch
+):
+    """R45 (rows 37 and 38): `sdlc:triage` and `sdlc:schedule` carry the gate labels' prefix,
+    so the gate-label sweep keeps them (`OWNER_LABELS`); an upsert at maintain labels the PR
+    `sdlc:triage` and takes off the `incident` an older plugin applied."""
+    root, _change = project
+    git(root, "remote", "add", "origin", "https://github.com/o/r.git")
+    calls: list[tuple] = []
+    for phase, labels in (
+        ("intent", ["sdlc:schedule", "sdlc:triage", "sdlc:needs-human"]),
+        ("maintain", ["incident", "sdlc:schedule"]),
+    ):
+        found = {"ok": True, "number": 7, "labels": labels, "draft": False, "route": "api"}
+        monkeypatch.setattr(github, "find_open_pr", lambda *a, _f=found, **k: _f)
+        monkeypatch.setattr(
+            github, "update_pr", lambda *a, **k: {"ok": True, "route": "api", "number": 7}
+        )
+        monkeypatch.setattr(github, "ensure_label", lambda *a, **k: {"ok": True})
+        monkeypatch.setattr(
+            github, "set_labels", lambda repo, n, add, remove, **k: calls.append((add, remove))
+        )
+        monkeypatch.setattr(pr_cli, "not_build_check", lambda *a, **k: {"ok": True})
+        argv = ["upsert", "--root", str(root), "--id", "0001", "--phase", phase]
+        assert pr_cli.main(argv) == 0
+        capsys.readouterr()
+    (add_a, remove_a), (add_f, remove_f) = calls
+    assert "sdlc:needs-human" in remove_a
+    assert "sdlc:schedule" not in remove_a and "sdlc:triage" not in remove_a
+    assert "sdlc:triage" in add_f and "incident" in remove_f
+    assert "sdlc:schedule" not in remove_f
+
+
 QUICK_INTENT = """# Intent: percent helper
 Author: owner (developer). Status: proposed. Change id: 0001. Entry route: idea.
 Quick intent: yes
@@ -1652,23 +1685,55 @@ def test_counters_line_of_an_open_pr_after_a_reset(project):
     )
 
 
-def test_digest_lists_the_runbook_and_dismissal_prs_under_the_incident_label():
-    """Session-5 review: a revert, a quarantine or a dismissal PR carries `incident` and no
-    gate label; decision 20 makes the digest the only place the owner meets them."""
+def test_digest_lists_the_runbook_and_dismissal_prs_under_the_triage_label():
+    """Session-5 review: a revert, a quarantine or a dismissal PR carries `sdlc:triage` (R45,
+    row 37; `incident` until 1.0.43) and no gate label; decision 20 makes the digest the
+    only place the owner meets them. Since the label carries the `sdlc:` prefix, the filter
+    is "no gate label", not "no sdlc: label", and the PR is not a queue item."""
     revert = {
         "number": 31,
         "title": "revert(0007): fix x",
         "body": "- **Runbook**: revert-pr",
         "html_url": "https://x/31",
-        "labels": [{"name": "incident"}],
+        "labels": [{"name": "sdlc:triage"}],
     }
     md = digest_mod.render_digest([*QUEUE, revert], "2026-09-25T06:00:00Z")
     assert "1 runbook or dismissal PR(s) of maintain" in md
-    assert "## Maintain: runbook and dismissal PRs — `incident`" in md and "#31" in md
+    assert "## Maintain: runbook and dismissal PRs — `sdlc:triage`" in md and "#31" in md
     assert md.index("## Waiting at a human gate") < md.index("## Maintain:")
+    waiting = md[md.index("## Waiting at a human gate") : md.index("## Maintain:")]
+    assert "#31" not in waiting  # a runbook PR waits at no gate
     md = digest_mod.render_digest([revert], "2026-09-25T06:00:00Z")
     assert digest_mod.NOTHING_WAITING not in md and "#31" in md
+    assert "0 parked, 0 waiting at a gate" in md
     assert digest_mod.incident_prs(QUEUE) == []  # an intent PR has its gate label: a queue item
+    # an incident intent PR at its gate is a queue item, listed once, never as a runbook PR
+    intent = {
+        **revert,
+        "number": 33,
+        "labels": [{"name": "sdlc:triage"}, {"name": "sdlc:maintain-ready"}],
+    }
+    md = digest_mod.render_digest([intent], "2026-09-25T06:00:00Z")
+    assert "0 parked, 1 waiting at a gate" in md and md.count("#33") == 1
+    assert "## Maintain:" not in md and digest_mod.incident_prs([intent]) == []
+    # a scheduled one stays a runbook PR, and an older plugin's `incident` is still read
+    scheduled = {**revert, "labels": [{"name": "sdlc:triage"}, {"name": "sdlc:schedule"}]}
+    older = {**revert, "number": 32, "labels": [{"name": "incident"}]}
+    assert digest_mod.incident_prs([scheduled, older]) == [scheduled, older]
+
+
+def test_the_queue_listing_keeps_an_older_plugin_s_incident_pr(monkeypatch):
+    """R45 (row 37): the pulls listing keeps every PR with an ``sdlc:`` label, and for one
+    release a PR an older plugin labelled ``incident`` with no ``sdlc:`` label at all."""
+    pulls = [
+        {"number": 1, "labels": [{"name": "sdlc:triage"}]},
+        {"number": 2, "labels": [{"name": "incident"}]},
+        {"number": 3, "labels": [{"name": "bug"}]},
+    ]
+    monkeypatch.setattr(github, "token", lambda: "t")
+    monkeypatch.setattr(github, "_request", lambda *a, **k: {"error": None, "data": pulls})
+    prs, error = digest_mod.list_queue_prs("o/r")
+    assert error == "" and [pr["number"] for pr in prs] == [1, 2]
 
 
 def test_digest_and_review_requests_read_the_letter_labels_of_an_older_plugin(monkeypatch):

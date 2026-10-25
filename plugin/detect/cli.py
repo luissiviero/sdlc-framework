@@ -1539,16 +1539,16 @@ def cmd_dismiss(args) -> int:
                 # re-run that commits nothing new posts on the branch tip it pushed
                 pushed = sha or gitops.run(root, "rev-parse", "HEAD").strip()
                 out["review_check"] = github.post_not_build_check(args.repo, pushed, cwd=root)
-                if number:  # the digest lists it under the incident label (decision 20)
+                if number:  # the digest lists it under the sdlc:triage label (decision 20)
                     github.ensure_label(
                         args.repo,
-                        c.INCIDENT_LABEL,
+                        c.TRIAGE_LABEL,
                         "B60205",
-                        "SDLC maintain: an incident intent",
+                        "SDLC maintain: in the triage queue",
                         cwd=root,
                     )
                     out["label"] = github.set_labels(
-                        args.repo, int(number), [c.INCIDENT_LABEL], [], cwd=root
+                        args.repo, int(number), [c.TRIAGE_LABEL], [], cwd=root
                     )
     finally:
         if original and gitops.is_repo(root):

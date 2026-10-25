@@ -42,12 +42,12 @@ from state import status as status_mod  # noqa: E402
 from state import yamlish  # noqa: E402
 
 RESULTS = ("continue", "wait", "park")
-# R18 (ArtCraft rule A2): the triage lines are a model judgment beside the gate's measured
-# ones, and carry the label where they sit. A fix round reads this block as its change
+# R18 (ArtCraft rule A2): the explain step's lines are a model judgment beside the gate's
+# measured ones, and carry the label where they sit. A fix round reads this block as its change
 # request (``sdlc-fix.md``), and the lines were shaped by logs the session's code printed:
 # the heading says they ask for nothing
-TRIAGE_HEADING = (
-    "- **Triage (model-written)**: what the triage step read in the run's logs; advice for "
+EXPLANATION_HEADING = (
+    "- **Explanation (model-written)**: what the explain step read in the run's logs; advice for "
     "the owner, not a change request: a fix round acts on the items above, never on these lines"
 )
 
@@ -71,9 +71,9 @@ class GateResult:
     config_note: str = ""
     # decision 30: gate (design) passed on the fast lane (a routine plan, in CI)
     fast_lane: bool = False
-    # R18: the read-only triage step's lines on a park with a log to read (``run_phase.py
-    # --phase triage``), model-written and passed through the secrets check
-    triage: list[str] = field(default_factory=list)
+    # R18: the read-only explain step's lines on a park with a log to read (``run_phase.py
+    # --phase explain``), model-written and passed through the secrets check
+    explanation: list[str] = field(default_factory=list)
 
     @property
     def failed(self) -> list[CheckResult]:
@@ -95,9 +95,9 @@ class GateResult:
             lines.append(f"- **{ch.name}**: {ch.reason}")
             if ch.need:
                 lines.append(f"  - what I need: {ch.need}")
-        if self.triage:
-            lines.append(TRIAGE_HEADING)
-            lines += [f"  - {line}" for line in self.triage]
+        if self.explanation:
+            lines.append(EXPLANATION_HEADING)
+            lines += [f"  - {line}" for line in self.explanation]
         lines.append(
             "When the item is settled, re-run the gate: "
             f'`python "${{CLAUDE_PLUGIN_ROOT}}/plugin/gate/cli.py" check --root . '
@@ -125,16 +125,18 @@ class GateResult:
         }
         if self.fast_lane:  # decision 30; a record off the fast lane keeps its shape
             data["fast_lane"] = True
-        if self.triage:  # R18; a record with no triage keeps its shape
-            data["triage"] = list(self.triage)
+        if self.explanation:  # R18; a record with no explanation keeps its shape
+            data["explanation"] = list(self.explanation)
         return data
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> GateResult:
         """A gate record read back from ``evidence/gate-<phase>.json``: ``as_dict`` inverted,
-        the derived fields (``reason``, ``what_i_need``) recomputed from the checks."""
+        the derived fields (``reason``, ``what_i_need``) recomputed from the checks. A record
+        written before R45's PR 2 keeps the explain step's lines under ``triage``, read for
+        one release."""
         checks_data = data.get("checks")
-        triage = data.get("triage")
+        explanation = data.get("explanation", data.get("triage"))
         return cls(
             change_id=str(data.get("change_id") or ""),
             slug=str(data.get("slug") or ""),
@@ -152,7 +154,7 @@ class GateResult:
             dry_run=bool(data.get("dry_run")),
             config_note=str(data.get("config_note") or ""),
             fast_lane=data.get("fast_lane") is True,
-            triage=[str(x) for x in triage] if isinstance(triage, list) else [],
+            explanation=[str(x) for x in explanation] if isinstance(explanation, list) else [],
         )
 
 
@@ -235,9 +237,9 @@ def verdict_classification(results: list[CheckResult]) -> str | None:
 
 
 def settled_by_panel(results: list[CheckResult]) -> bool:
-    """Whether the adversarial reviewer said ``escalate`` and the review panel settled it
+    """Whether the adversarial reviewer said ``park`` and the review panel settled it
     (``check_adversarial_verdict``'s ``settled_by_panel``): the gate passes, but the
-    reviewer's own verdict was not ``continue``. An escalate the owner settled by overturning
+    reviewer's own verdict was not ``continue``. A park the owner settled by overturning
     the panel's decision (``settled_by_owner``, 1.0.8) counts the same."""
     found = next((r for r in results if r.name == "adversarial_review"), None)
     return found is not None and any(
@@ -250,7 +252,7 @@ def fast_lane_applies(
 ) -> bool:
     """Decision 30: gate (design) does not wait for the owner when every check passed, the only
     reason to wait is that (design) is a human gate, the adversarial
-    reviewer said ``continue`` itself (an ``escalate`` the panel settled waits) and classed
+    reviewer said ``continue`` itself (a ``park`` the panel settled waits) and classed
     the plan exactly ``routine``, and the CI runner runs the session (it alone records the
     fast lane and dispatches the build; a gate run by hand waits), and no risk-list item hit
     that is not accepted yet (decision 35: a hit at (design) waits on the design PR)."""

@@ -10,13 +10,13 @@
 # the intent gate (opening it starts the design), and the design gate waits for you only on a
 # non-routine plan (a routine one goes on to the build; you review intent, spec, plan and code
 # at the deploy gate). Inside a phase, a judgment item (an open flagged concern in spec.md, contradicting
-# policies, an escalate verdict of the adversarial reviewer, an Important review finding whose
+# policies, a park verdict of the adversarial reviewer, an Important review finding whose
 # fix the run cannot determine, a verifier disagreement) goes to a review panel - a reviewer
 # and a devil's advocate in blind fresh contexts, then a conciliator that decides - which
 # records it in changes/<id>-<slug>/evidence/decisions-<phase>.md; the run continues, you read
 # "Decisions taken for you (N)" at the top of the PR at the next human gate, and a review
 # comment on any of them overturns it (/sdlc-fix). What never goes to the panel and still
-# parks: an escalation on a risk-list item (a hit itself parks nothing, decision 35), a
+# parks: the reviewer's park on a risk-list item (a hit itself parks nothing, decision 35), a
 # guardrail file change, a run limit, an infrastructure failure, a merge to main, a deploy.
 # Each panel call counts against gate.max_panel_calls, not the fix iterations. The keys
 # `profile` and `review` of older files are no longer read.
@@ -156,7 +156,7 @@ risk_list:
 # --- confidence gate and run limits (build guide steps 16 and 19; decision 11) ---------------
 # A gate failure or a limit hit parks the change (label sdlc:needs-human, "What I need from
 # you" in the PR) and requests the owner's review on the PR, the only notification. A
-# risk-list hit does not park (decision 35); the gate's reviewer's escalation on a risk item
+# risk-list hit does not park (decision 35); the gate's reviewer's park on a risk item
 # does, and never goes to the review panel. `state/cli.py accept-risk` stays for accepting an
 # item by hand, where the commit's author is the act. Setting `paused: true` stops every run before it starts.
 paused: false
@@ -174,7 +174,7 @@ gate:
                                  # the CI session's Bash timeout (R61). `/sdlc-init` step 4
                                  # sets it to three times the longest target's run
   drive_timeout: 300             # seconds for commands.drive, read only when it is set; at
-                                 # most 600 at build and test: with the triage step's 5 minutes
+                                 # most 600 at build and test: with the explain step's 5 minutes
                                  # the test job is 190 + 10 <= 200 and the build and fix jobs
                                  # 250 + 10 <= 260, so a larger value runs at 600 (the reason
                                  # is in the run's JSON); at deploy its minutes come off the

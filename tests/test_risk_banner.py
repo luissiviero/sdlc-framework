@@ -1,5 +1,5 @@
 """Decision 35 (ROADMAP R24, plugin 1.0.15): a risk-list hit is a line in the close-look
-banner. The items with globs, the check that reports and never parks, the escalation on a
+banner. The items with globs, the check that reports and never parks, the reviewer's park on a
 risk item that still parks and stays off the panel, the brief per hit item, the banner on
 the PR the owner merges, the acceptance record the (b) and (e) merges write, the fast lane
 that waits on a hit at (b), and what /sdlc-init proposes."""
@@ -28,7 +28,7 @@ OWNER = "luissiviero"
 BRIEF = """# Security & policy brief, gate ({phase})
 
 ## auth
-- Word: {word}
+- {field}: {word}
 - What the change does to it: adds a token TTL in sample_pkg/auth.py
 - What could break: sessions expire after a minute
 - How to undo it: revert the commit
@@ -89,19 +89,30 @@ def test_a_glob_item_does_not_match_its_words_on_paths():
     assert risk.hits(items, ["src/security/keys.py"], {}) == {"auth": ["src/security/keys.py"]}
 
 
-# --- the brief and the escalation -----------------------------------------------------------
-def test_the_brief_is_read_per_item_with_the_reviewer_s_word():
+# --- the brief and the park ------------------------------------------------------------------
+def test_the_brief_is_read_per_item_with_the_reviewer_s_verdict():
     brief = risk.parse_brief(
-        BRIEF.format(phase="build", word="escalate") + "\n## `money movement`\n"
+        BRIEF.format(phase="build", field="Verdict", word="park") + "\n## `money movement`\n"
     )
-    assert brief["auth"]["word"] == "escalate"
+    assert brief["auth"]["verdict"] == "park"
     assert brief["auth"]["What could break"] == "sessions expire after a minute"
-    assert brief["money movement"] == {"item": "money movement", "word": "continue"}
+    assert brief["money movement"] == {"item": "money movement", "verdict": "continue"}
     assert risk.parse_brief(None) == {}
-    assert risk.escalated_items(["auth", "money movement"], brief, None) == ["auth"]
-    escalate = {"verdict": "escalate", "reasons": ["risk item 'money movement': refunds double"]}
-    assert risk.escalated_items(["money movement"], {}, escalate) == ["money movement"]
-    assert risk.escalated_items(["money movement"], {}, {**escalate, "verdict": "continue"}) == []
+    assert risk.parked_items(["auth", "money movement"], brief, None) == ["auth"]
+    park = {"verdict": "park", "reasons": ["risk item 'money movement': refunds double"]}
+    assert risk.parked_items(["money movement"], {}, park) == ["money movement"]
+    assert risk.parked_items(["money movement"], {}, {**park, "verdict": "continue"}) == []
+    # R45 rows 62 and N17, for one release: an older plugin's verdict ``escalate``, and its
+    # brief with the field "Word", read as today's
+    assert risk.parked_items(["money movement"], {}, {**park, "verdict": "escalate"}) == [
+        "money movement"
+    ]
+    for field, word in (("Word", "escalate"), ("Word", "park"), ("Verdict", "`ESCALATE`")):
+        old = risk.parse_brief(BRIEF.format(phase="build", field=field, word=word))
+        assert old["auth"]["verdict"] == "park", (field, word)
+    for field, word in (("Word", "continue"), ("Verdict", "maybe")):
+        old = risk.parse_brief(BRIEF.format(phase="build", field=field, word=word))
+        assert old["auth"]["verdict"] == "continue", (field, word)
 
 
 def _auth_change(root: Path, change: Path) -> None:
@@ -127,32 +138,50 @@ def test_a_hit_parks_nothing_and_its_park_record_keeps_no_reason(project):  # no
     assert risk.recorded_hits(record) == {"auth": ["sample_pkg/auth.py"]}
 
 
-def test_the_reviewer_s_escalation_on_a_risk_item_parks(project):  # noqa: F811
+def test_the_reviewer_s_park_on_a_risk_item_parks(project):  # noqa: F811
     root, change = project
     _auth_change(root, change)
-    write(risk.brief_path(change, "build"), BRIEF.format(phase="build", word="escalate"))
+    write(
+        risk.brief_path(change, "build"), BRIEF.format(phase="build", field="Verdict", word="park")
+    )
     git(root, "add", ".")
     git(root, "commit", "-q", "-m", "the reviewer's brief")
     verdict(root, "build")
     result = gate.run_gate(root, "0001", "build", dry_run=True)
     assert result.result == "park"
     r = next(ch for ch in result.failed if ch.name == "risk_list")
-    assert r.details["escalated"] == ["auth"] and "'auth'" in r.reason
+    assert r.details["parked_on"] == ["auth"] and "'auth'" in r.reason
+    assert "says park" in r.reason and "escalat" not in r.reason
     assert "never goes to the review panel" in r.need
     assert "evidence/roles/security-policy-build.md" in r.need
-    # the reviewer's word continue: a banner line, no park
-    write(risk.brief_path(change, "build"), BRIEF.format(phase="build", word="continue"))
+    # a brief an older plugin wrote ("- Word: escalate") parks the same (R45 N17)
+    write(
+        risk.brief_path(change, "build"),
+        BRIEF.format(phase="build", field="Word", word="escalate"),
+    )
+    git(root, "commit", "-q", "-am", "the reviewer's brief, an older plugin's")
+    verdict(root, "build")
+    result = gate.run_gate(root, "0001", "build", dry_run=True)
+    assert result.result == "park"
+    r = next(ch for ch in result.failed if ch.name == "risk_list")
+    assert r.details["parked_on"] == ["auth"]
+    # the reviewer's verdict continue: a banner line, no park
+    write(
+        risk.brief_path(change, "build"),
+        BRIEF.format(phase="build", field="Verdict", word="continue"),
+    )
     git(root, "commit", "-q", "-am", "the reviewer's brief, continue")
     verdict(root, "build")
     assert gate.run_gate(root, "0001", "build", dry_run=True).result == "continue"
 
 
-def test_an_escalate_verdict_naming_a_hit_item_stays_off_the_panel(project):  # noqa: F811
+@pytest.mark.parametrize("word", ["park", "escalate"])
+def test_a_park_verdict_naming_a_hit_item_stays_off_the_panel(project, word):  # noqa: F811
     root, change = project
     _auth_change(root, change)
     head = git(root, "rev-parse", "HEAD").strip()
     path = change / "evidence" / "adversarial-review-build.json"
-    verdict(root, "build", verdict="escalate")
+    verdict(root, "build", verdict=word)
     data = json.loads(path.read_text(encoding="utf-8"))
     data["reasons"] = ["risk item 'auth': the token never expires on refresh"]
     data["head"] = head
@@ -160,21 +189,22 @@ def test_an_escalate_verdict_naming_a_hit_item_stays_off_the_panel(project):  # 
     result = gate.run_gate(root, "0001", "build", dry_run=True)
     assert {"risk_list", "adversarial_review"} <= set(ch.name for ch in result.failed)
     items, parks = panel_cli.collect_items(root, change, "build", result)
-    assert not any(i["kind"] == "escalate" for i in items)
+    assert not any(i["kind"] in ("park", "escalate") for i in items)
     assert any(
         p["check"] == "adversarial_review" and "never the panel's" in p["reason"] for p in parks
     )
     assert any(p["check"] == "risk_list" for p in parks)
 
 
-def test_an_escalate_verdict_on_something_else_still_goes_to_the_panel(project):  # noqa: F811
+@pytest.mark.parametrize("word", ["park", "escalate"])
+def test_a_park_verdict_on_something_else_still_goes_to_the_panel(project, word):  # noqa: F811
     root, change = project
     _auth_change(root, change)
-    verdict(root, "build", verdict="escalate")  # "blast radius larger than the plan says"
+    verdict(root, "build", verdict=word)  # "blast radius larger than the plan says"
     result = gate.run_gate(root, "0001", "build", dry_run=True)
     assert "risk_list" not in {ch.name for ch in result.failed}
     items, _parks = panel_cli.collect_items(root, change, "build", result)
-    assert [i["kind"] for i in items] == ["escalate"]
+    assert [i["kind"] for i in items] == ["park"]
 
 
 def test_risk_hits_now_lists_the_items_for_the_reviewer(project):  # noqa: F811
@@ -240,7 +270,10 @@ def _gate_file(change: Path, phase: str, hits: dict, declared=()) -> None:
 def test_the_banner_lists_each_item_with_its_brief_and_what_merging_does(tmp_path):
     change, st = status_mod.new_change(tmp_path, "Risky")
     _gate_file(change, "design", {"auth": ["spec.md Flagged concerns: text"]})
-    write(risk.brief_path(change, "design"), BRIEF.format(phase="design", word="continue"))
+    write(
+        risk.brief_path(change, "design"),
+        BRIEF.format(phase="design", field="Verdict", word="continue"),
+    )
     lines = risk.banner_lines(change, "design", st)
     assert lines[0].startswith(risk.BANNER_HEADING) and "Merging this PR accepts them" in lines[0]
     assert lines[1].startswith("- `auth` — first found at gate (design): spec.md Flagged concerns")
@@ -641,7 +674,7 @@ def test_the_review_pass_is_asked_for_the_e_brief_and_the_cli_lists_the_hits(
     _auth_change(root, change)
     text = review_cli.risk_section(root, "0001", None)
     assert "evidence/roles/security-policy-deploy.md" in text
-    assert "- `auth`: sample_pkg/auth.py" in text and "- Word: continue" in text
+    assert "- `auth`: sample_pkg/auth.py" in text and "- Verdict: continue" in text
     assert (
         gate_cli.main(["risk-hits", "--root", str(root), "--id", "0001", "--phase", "build"]) == 0
     )
@@ -656,12 +689,16 @@ def test_the_banner_reads_an_older_plugin_s_letter_records_and_briefs(tmp_path):
     change, st = status_mod.new_change(tmp_path, "Risky")
     _gate_file(change, "c", {"auth": ["sample_pkg/auth.py"]})
     letter_brief = change / "evidence" / "roles" / "security-policy-c.md"
-    write(letter_brief, BRIEF.format(phase="c", word="continue"))
+    write(letter_brief, BRIEF.format(phase="c", field="Word", word="continue"))
     assert risk.brief_path(change, "build") == letter_brief
     assert risk.brief_rel("c") == "evidence/roles/security-policy-build.md"
     lines = risk.banner_lines(change, "c", st)
     assert lines[1].startswith("- `auth` — first found at gate (build): sample_pkg/auth.py.")
     assert "brief (evidence/roles/security-policy-build.md)" in lines[1]
+    assert "park on it" not in lines[1]
+    # the older brief's "- Word: escalate" shows as today's verdict (R45 rows 62 and N17)
+    write(letter_brief, BRIEF.format(phase="c", field="Word", word="escalate"))
+    assert "The reviewer says park on it." in risk.banner_lines(change, "c", st)[1]
     st.risk_acceptances = [{**_line(), "details": {**_line()["details"], "phase": "b"}}]
     risk.validate_acceptances(st.risk_acceptances)
     assert risk.accepted(st)["auth"].startswith("accepted at gate (design) by @luissiviero")

@@ -630,9 +630,9 @@ WORKFLOW_PHASE_NAMES = {
 def test_phase_workflows_pass_the_phase_name_never_its_letter(name):
     """R45 (decision 39, rows 1-6 and 59): every --phase a workflow passes is the phase's name,
     and no display name, step name or comment carries a phase letter; the runs that are not
-    phases (the review pass, the R18 triage step) keep their own names."""
+    phases (the review pass, the R18 explain step) keep their own names."""
     text = (WORKFLOW_DIR / name).read_text(encoding="utf-8")
-    phases = set(re.findall(r"--phase (\S+)", text)) - {"review", "triage"}
+    phases = set(re.findall(r"--phase (\S+)", text)) - {"review", "explain"}
     assert phases == {WORKFLOW_PHASE_NAMES[name]}, phases
     assert not re.search(r"\((?:a|b|c|d|e|f)\)", text.replace("HANDOFF 4(a)", ""))
     assert not re.search(r"sdlc:[a-f]-ready", text)
@@ -649,9 +649,10 @@ def test_merge_fired_jobs_find_the_change_instead_of_filtering_the_head(name):
     assert job["steps"][find - 1]["with"]["path"] == "framework"
     assert "--find-change" in job["steps"][find]["run"]
     for step in job["steps"][find + 1 :]:
-        if "triage" in step.get("name", ""):  # R18: after a failure or a park, behind the find
+        title = step.get("name", "").lower()
+        if "explain" in title or "explanation" in title:  # R18: after a failure or a park
             assert "steps.find.outputs.change_id != ''" in step["if"] or (
-                step["if"] == "always() && steps.triage_checkout.outcome == 'success'"
+                step["if"] == "always() && steps.explain_checkout.outcome == 'success'"
             ), step
             continue
         assert step["if"] == "steps.find.outputs.change_id != ''", step
