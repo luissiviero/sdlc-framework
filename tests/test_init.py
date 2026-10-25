@@ -404,9 +404,9 @@ def test_init_writes_evals_and_bands_once(tmp_path):
     assert bands["tiers"]["1sigma"] == {"action": "log"}
     assert bands["tiers"]["2sigma"]["action"] == "diagnose"
     routes = bands["tiers"]["3sigma"]["routes"]
-    assert {r["authorization"] for r in routes} == {"preapproved", "go"}
+    assert {r["authorization"] for r in routes} == {"allow", "ask"}
     assert (
-        next(r for r in routes if r["name"] == "runbook:rollback-deploy")["authorization"] == "go"
+        next(r for r in routes if r["name"] == "runbook:rollback-deploy")["authorization"] == "ask"
     )
     readme = (root / "evals" / "README.md").read_text(encoding="utf-8")
     assert "starts empty on purpose" in readme and "p.30" in readme

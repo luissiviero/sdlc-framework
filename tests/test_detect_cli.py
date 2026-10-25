@@ -39,7 +39,7 @@ ROLLBACK_ENTRY = (
     "  runbooks:\n"
     "    - name: rollback-deploy\n"
     '      command: "python scripts/rollback.py"\n'
-    "      authorization: go\n"
+    "      authorization: ask\n"
 )
 # cli.open_incidents builds the change folder path from `git show <ref>:changes`, whose
 # listing names a directory with a trailing "/" ("0001-slug/"): the detection record is then
@@ -670,8 +670,8 @@ def test_routes_at_tier_3_lists_the_template_routes(incident, capsys):
         "runbook:revert-pr",
         "runbook:rollback-deploy",
     ]
-    assert all(r["authorization"] in ("preapproved", "go") for r in out["routes"])
-    assert by_name["runbook:rollback-deploy"]["authorization"] == "go"
+    assert all(r["authorization"] in ("allow", "ask") for r in out["routes"])
+    assert by_name["runbook:rollback-deploy"]["authorization"] == "ask"
     for builtin in ("runbook:quarantine-flaky-test", "runbook:revert-pr"):
         assert by_name[builtin]["builtin"] is True
         assert by_name[builtin]["args"]
@@ -722,7 +722,7 @@ def test_dispatch_preapproved_revert_runs_records_and_commits(incident, spy, cap
     record = json.loads((change / "evidence" / "runbook-revert-pr.json").read_text("utf-8"))
     assert record["status"] == "ran"
     assert record["pr_url"] == "https://x/pr/9"
-    assert record["authorization"]["authorization"] == "preapproved"
+    assert record["authorization"]["authorization"] == "allow"
     assert out["commit"]["ok"] is True
     branch = "sdlc/0001/intent"
     assert gitops.current_branch(root) == branch
@@ -743,7 +743,7 @@ def test_dispatch_go_route_records_go_requested_and_runs_nothing(rollback_incide
     assert spy.calls == []
     record = json.loads((change / "evidence" / "runbook-rollback-deploy.json").read_text("utf-8"))
     assert record["status"] == "go-requested"
-    assert record["authorization"]["authorization"] == "go"
+    assert record["authorization"]["authorization"] == "ask"
 
 
 def test_dispatch_rollback_without_a_command_is_not_taken(incident, spy, capsys):
@@ -1349,12 +1349,12 @@ def test_finish_judges_by_the_default_branch_s_bands_not_the_checkout_s(
     bands = root / "bands.yaml"
     bands.write_text(
         bands.read_text(encoding="utf-8").replace(
-            "- name: runbook:rollback-deploy\n        authorization: go",
-            "- name: runbook:rollback-deploy\n        authorization: preapproved",
+            "- name: runbook:rollback-deploy\n        authorization: ask",
+            "- name: runbook:rollback-deploy\n        authorization: allow",
         ),
         encoding="utf-8",
     )
-    assert "authorization: preapproved" in bands.read_text(encoding="utf-8")
+    assert "authorization: allow" in bands.read_text(encoding="utf-8")
     code, out = cli(capsys, "dispatch", "--root", str(root), "--id", "0001", "--repo", REPO)
     assert code == 0 and out["outcome"]["status"] == "go-requested", out
     assert spy.calls == []

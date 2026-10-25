@@ -260,7 +260,7 @@ def test_bands_yaml_has_the_p44_shape_with_authorization_per_route():
     assert set(data) == {"metric", "source", "baseline", "rules", "tiers"}
     assert set(data["tiers"]) == {"1sigma", "2sigma", "3sigma"}
     for route in data["tiers"]["3sigma"]["routes"]:
-        assert route["authorization"] in ("preapproved", "go")
+        assert route["authorization"] in ("allow", "ask")
     assert (TEMPLATE / "evals" / "README.md").is_file() and (
         TEMPLATE / "evals" / "cases" / ".gitkeep"
     ).is_file()

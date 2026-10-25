@@ -84,7 +84,7 @@ class Status:
     iterations_reset_at: str | None = None
     tests_unlocked_by: str | None = None
     # Phase (f), decision 14 (plugin 0.2.19): who applied ``sdlc:go`` on the incident PR to
-    # run a runbook whose route says ``authorization: go``, as GitHub recorded the actor.
+    # run a runbook whose route says ``authorization: ask``, as GitHub recorded the actor.
     runbook_authorized_by: str | None = None
     # Decision 25: the PR of gate (a)-(e) was closed without a merge; why, and when.
     abandoned_reason: str | None = None

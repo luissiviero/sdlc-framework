@@ -23,11 +23,11 @@ stays entirely deterministic"). ``--force-tier`` rehearses the loop on demand
 
 ``routes`` tells the diagnosis what it may propose at the finding's tier and with which
 arguments. ``dispatch`` judges ``evidence/proposal.json`` (``detect/routes.py``): a
-pre-approved runbook runs now, a ``go`` route records "Go requested" (the gate parks on
-it), ``pull_request`` is the intent PR itself. ``go`` performs the owner's ``sdlc:go`` label
-(a person must have applied it, never the workflow token), ``dismiss`` records a close with
-a reason in ``changes/.dismissed.json`` through a pull request against the default branch
-(the automation identity never writes to it, decision 4).
+pre-approved runbook runs now (``allow``), an ``ask`` route records "Go requested" (the gate
+parks on it), ``pull_request`` is the intent PR itself. ``go`` performs the owner's
+``sdlc:go`` label (a person must have applied it, never the workflow token), ``dismiss``
+records a close with a reason in ``changes/.dismissed.json`` through a pull request against
+the default branch (the automation identity never writes to it, decision 4).
 
 Exit codes: 0 done (a skip is a green outcome with its reason), 1 an infrastructure
 failure (the source unreachable, git or GitHub refused), 2 a usage error.
@@ -785,7 +785,7 @@ def cmd_routes(args) -> int:
             },
             "note": (
                 "tier 2 may only propose pull_request (the intent PR is the diagnosis's "
-                "artifact); tier 3 may name a listed route; a route with authorization go "
+                "artifact); tier 3 may name a listed route; a route with authorization ask "
                 "parks the PR with Go requested (decision 14), unless it is a rehearsed "
                 "rollback on a declared production (decision 26)"
             ),
@@ -843,11 +843,11 @@ def _act(
 
     name = resolved.runbook or ""
     evidence_dir = change_dir / art.EVIDENCE_DIR
-    if resolved.authorization == routes.GO and not authorized_by:
+    if resolved.authorization == routes.ASK and not authorized_by:
         outcome = {
             "runbook": name,
             "status": "go-requested",
-            "reason": "the route touches a running system (authorization: go, decision 14)",
+            "reason": "the route touches a running system (authorization: ask, decision 14)",
             "args": dict(proposal.args),
             "authorization": resolved.as_dict(),
             "at": _now(),

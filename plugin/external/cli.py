@@ -11,9 +11,13 @@ step's environment; the Claude session never sees the key (``ci/run_phase.sessio
 strips it) and its sandbox does not reach the Gemini host. By hand it runs the same way from
 a terminal where the owner set the key for that window only.
 
-On: ``sdlc.yaml: external_review: {model: <id>, phases: [design, deploy]}`` on the default
+On: ``sdlc.yaml: second_opinion: {model: <id>, phases: [design, deploy]}`` on the default
 branch (``--ref``), as the pin is read (R45: the letters ``[b, e]`` an older file holds are
-read as the names); absent means off and the command says so and stops.
+read as the names); absent means off and the command says so and stops. Until plugin 1.0.44
+the key was ``external_review`` (R45, decision 39, row N11): a file that still holds it is
+read as ``second_opinion`` for one release; with both keys present ``second_opinion`` is
+read, and either way the record's ``config_note`` names the old key once, never a refusal
+(as ``conventions.retired_settings_note`` treats a retired key).
 ``--model`` runs it by hand whatever ``sdlc.yaml`` says. With ``--repo`` it reviews the head
 of the change's open pull request (``sdlc/<id>/design`` at design, ``sdlc/<id>/build`` at
 deploy, or the letter branch of a change in flight before R45) and
@@ -21,7 +25,7 @@ deploy, or the letter branch of a change in flight before R45) and
 record's "not run: <reason>"; the exit code is 0 whenever the arguments parse. An "off"
 record writes no file and posts nothing: the printed record is the only trace (1.0.24).
 
-At deploy, when ``external_review.phases`` lists design and the build head's ``status.yaml``
+At deploy, when ``second_opinion.phases`` lists design and the build head's ``status.yaml``
 records the fast lane (``fast_lane.design.pr``, decision 30), the design opinion posted on
 the design PR, which the build PR closed as ``sdlc:superseded``, is carried onto the build
 PR once, where the owner looks first (plugin 1.0.24): a section of the deploy comment, or a
@@ -48,7 +52,9 @@ from state import yamlish  # noqa: E402
 from state.conventions import SUPERSEDED_LABEL  # noqa: E402
 
 PHASES = (conv.DESIGN, conv.DEPLOY)
-CONFIG_KEY = "external_review"
+CONFIG_KEY = "second_opinion"
+# R45 (decision 39, row N11): the key until plugin 1.0.44, read for one release
+LEGACY_CONFIG_KEY = "external_review"
 # who posts the record: the job's `GITHUB_TOKEN` is the workflow token
 WORKFLOW_BOT = "github-actions[bot]"
 
@@ -101,12 +107,30 @@ def read_config(root: Path, ref: str | None) -> dict[str, Any]:
 
 
 def settings(config: dict[str, Any]) -> dict[str, Any]:
+    """The ``second_opinion`` block, else the old ``external_review`` one (R45, one release);
+    {} when neither is a mapping."""
     value = config.get(CONFIG_KEY)
+    if value is None:
+        value = config.get(LEGACY_CONFIG_KEY)
     return value if isinstance(value, dict) else {}
 
 
+def config_note(config: dict[str, Any]) -> str:
+    """One line naming the old key when ``sdlc.yaml`` still holds it, or ``""``: read as the
+    new one when alone, not read beside it. Never a refusal: the second opinion is advisory
+    and a retired key is reported, not refused (``conventions.retired_settings_note``)."""
+    if config.get(LEGACY_CONFIG_KEY) is None:
+        return ""
+    if config.get(CONFIG_KEY) is None:
+        return (
+            f"sdlc.yaml: {LEGACY_CONFIG_KEY} is read as {CONFIG_KEY} for one release (R45); "
+            f"rename the key to {CONFIG_KEY}"
+        )
+    return f"sdlc.yaml: {LEGACY_CONFIG_KEY} is not read beside {CONFIG_KEY}; remove it"
+
+
 def turned_on(config: dict[str, Any], phase: str) -> bool:
-    """``phase`` is listed in ``external_review.phases``: by name, or by the letter an older
+    """``phase`` is listed in ``second_opinion.phases``: by name, or by the letter an older
     file holds (``[b, e]``, R45)."""
     phases = settings(config).get("phases")
     listed = [conv.phase_name(str(p)) for p in phases] if isinstance(phases, list) else []
@@ -147,6 +171,9 @@ def run_review(args: argparse.Namespace, env: dict[str, str]) -> dict[str, Any]:
         "model": args.model or settings(config).get("model"),
         "pr": None,
     }
+    note = config_note(config)
+    if note:
+        record["config_note"] = note
     if not args.model and settings(config) and not isinstance(settings(config).get("phases"), list):
         # a block the owner wrote but that turns nothing on is said, never silent (1.0.24)
         record["reason"] = f"sdlc.yaml {CONFIG_KEY}.phases is not a list, as [design, deploy]"

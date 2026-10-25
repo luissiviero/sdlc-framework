@@ -162,7 +162,7 @@ with what you changed:
   comment that names another route ("propose runbook:revert-pr for <sha>", "no runbook,
   just the intent") rewrites `evidence/proposal.json` and re-runs
   `python "${CLAUDE_PLUGIN_ROOT}/plugin/detect/cli.py" dispatch --root "${CLAUDE_PROJECT_DIR}" --id <id> --commit`
-  (a route with `authorization: go` still waits for `sdlc:go`; a comment is not a Go).
+  (a route with `authorization: ask` still waits for `sdlc:go`; a comment is not a Go).
   No verdict at maintain either; step 5 runs the triage gate.
 - **Phase design** — comments on `spec.md` / `plan.md`. A comment that decides a flagged
   concern (any wording that settles it, e.g. "close concern 2: use half-up rounding",
